@@ -1,0 +1,4 @@
+.env
+web/assets/css/output.css
+web/assets/css/sources.generated.css
+*_templ.go

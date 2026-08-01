@@ -1,0 +1,7 @@
+{
+  "componentsDir": "web/shared/ui",
+  "utilsDir": "web/shared/utils",
+  "moduleName": "myapp",
+  "jsDir": "web/assets/js",
+  "jsPublicPath": "/assets/js"
+}
