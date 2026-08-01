@@ -294,46 +294,75 @@ Every interface shares the same memory and coaching engine.
 
 # Repository Structure
 
+North is organised in **vertical slices**. Each feature owns its handler, service,
+repository, and SQL in one directory, so a change to goals touches one folder rather
+than four. Layering is enforced *inside* the slice, not across the tree.
+
 ```
 cmd/
-    web/
-    worker/
-    mcp-server/
+    web/            HTTP server
+    worker/         background jobs
+    mcp-server/     MCP server
 
 internal/
 
-    ai/
-    auth/
-    coach/
+    ai/             AIClient interface, provider registry, prompts
+        gemini/
+        openrouter/
+        fake/
+        prompts/
+    auth/           sessions, passwords, RequireAuth
+    users/
+    coach/          CoachService, ContextBuilder, PromptBuilder
     conversations/
+    checkins/
     goals/
+    workouts/
     reports/
-    fitness/
+    fitness/        Strava and other providers
     documents/
-    media/
-    integrations/
-    messaging/
-    repository/
-    handlers/
-    jobs/
-    domain/
+    media/          object storage
+    search/
+    integrations/   MCP client
+    messaging/      Telegram, Discord, WhatsApp adapters
+    config/
+
+    shared/
+        database/   pgxpool
+        errors/     sentinel errors
+        middleware/ request id, logging, recover, CSRF
+        types/
 
 web/
+    shared/
+        layout/     base and app layouts
+        ui/         templUI components
+        utils/
+    auth/           login, signup pages
+    chat/
+    workouts/
+    landing/
+    assets/         css, js, fonts (embedded)
 
-    templates/
-    components/
-    pages/
-    layouts/
-    static/
-
+migrations/         goose migrations
 terraform/
-
 charts/
-
 docs/
-
-migrations/
 ```
+
+Every slice follows the same shape:
+
+```
+internal/<feature>/
+    handler.go      parse, validate, authenticate, call service, render
+    service.go      business logic; depends on repository interfaces
+    repository.go   thin wrapper over generated code
+    db/queries.sql  sqlc input
+    db/*.go         sqlc output (generated, committed)
+```
+
+Repositories never call services. Services never import handlers.
+
 
 ---
 
@@ -457,4 +486,4 @@ These documents define the project's architecture, coding standards, and AI-agen
 
 ## License
 
-MIT# north-client
+MIT

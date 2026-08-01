@@ -1,4 +1,4 @@
-module myapp
+module github.com/NorthAIProject/north-client
 
 go 1.24
 

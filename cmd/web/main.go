@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"os"
 
-	"myapp/web/assets"
-	"myapp/web/landing"
+	"github.com/NorthAIProject/north-client/web/assets"
+	"github.com/NorthAIProject/north-client/web/landing"
 
 	"github.com/a-h/templ"
 	"github.com/joho/godotenv"
