@@ -26,6 +26,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/shared/database"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/internal/workouts"
 	"github.com/NorthAIProject/north-client/web/app"
 	"github.com/NorthAIProject/north-client/web/assets"
 	"github.com/NorthAIProject/north-client/web/landing"
@@ -135,16 +136,27 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry) http.
 	authHandler := auth.NewHandler(authSvc, authMW, "/app")
 
 	conversationSvc := conversations.NewService(conversations.NewRepository(pool))
+
+	workoutSvc := workouts.NewService(workouts.Options{
+		Repository: workouts.NewRepository(pool),
+		Registry:   registry,
+		Model:      cfg.AI.Model,
+	})
+	workoutHandler := workouts.NewHandler(workoutSvc)
+
 	coachSvc := coach.NewService(coach.Options{
 		Registry:      registry,
 		Conversations: conversationSvc,
-		// No context sources registered yet. Goals, check-ins, and knowledge
-		// search each add one here as their slices are built; the coach already
-		// tells the user honestly that it cannot see them.
-		ContextBuilder: coach.NewContextBuilder(conversationSvc),
-		PromptBuilder:  coach.NewPromptBuilder(),
-		Model:          cfg.AI.Model,
-		FastModel:      cfg.AI.FastModel,
+		// Context sources are registered here and nowhere else. Goals,
+		// check-ins, and knowledge search each add one as their slices are
+		// built; the ContextBuilder itself never changes. Until a source
+		// exists, the coach honestly tells the user it cannot see that.
+		ContextBuilder: coach.NewContextBuilder(conversationSvc,
+			workouts.NewContextSource(workoutSvc),
+		),
+		PromptBuilder: coach.NewPromptBuilder(),
+		Model:         cfg.AI.Model,
+		FastModel:     cfg.AI.FastModel,
 	})
 	coachHandler := coach.NewHandler(coachSvc)
 
@@ -175,6 +187,7 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry) http.
 		})
 
 		coachHandler.Routes(r)
+		workoutHandler.Routes(r)
 	})
 
 	return r

@@ -50,3 +50,13 @@ sql:
         package: conversationsdb
         out: internal/conversations/db
         overrides: *overrides
+
+  - engine: postgresql
+    schema: migrations
+    queries: internal/workouts/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: workoutsdb
+        out: internal/workouts/db
+        overrides: *overrides

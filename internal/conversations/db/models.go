@@ -51,3 +51,26 @@ type User struct {
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
 }
+
+type WorkoutIntake struct {
+	ID             uuid.UUID
+	UserID         uuid.UUID
+	Goal           string
+	Experience     string
+	DaysPerWeek    int16
+	SessionMinutes int16
+	Equipment      []string
+	Limitations    string
+	CreatedAt      time.Time
+}
+
+type WorkoutPlan struct {
+	ID        uuid.UUID
+	UserID    uuid.UUID
+	IntakeID  uuid.UUID
+	Name      string
+	Plan      []byte
+	Model     string
+	Provider  string
+	CreatedAt time.Time
+}

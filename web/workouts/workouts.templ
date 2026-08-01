@@ -1,0 +1,295 @@
+package workouts
+
+import (
+	"strconv"
+	"time"
+
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/internal/workouts/plan"
+	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/alert"
+	"github.com/NorthAIProject/north-client/web/shared/ui/badge"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/checkbox"
+	"github.com/NorthAIProject/north-client/web/shared/ui/form"
+	"github.com/NorthAIProject/north-client/web/shared/ui/input"
+	"github.com/NorthAIProject/north-client/web/shared/ui/label"
+	"github.com/NorthAIProject/north-client/web/shared/ui/selectbox"
+	"github.com/NorthAIProject/north-client/web/shared/ui/textarea"
+)
+
+// IntakeForm is the questionnaire, re-rendered with the user's answers when
+// something is rejected.
+type IntakeForm struct {
+	Goal           string
+	Experience     string
+	DaysPerWeek    int
+	SessionMinutes int
+	Equipment      []string
+	Limitations    string
+
+	Errors map[string]string
+	Error  string
+}
+
+func (f IntakeForm) fieldError(name string) string { return f.Errors[name] }
+
+func (f IntakeForm) hasEquipment(item string) bool {
+	for _, e := range f.Equipment {
+		if e == item {
+			return true
+		}
+	}
+	return false
+}
+
+// equipmentOptions are the values the plan validator understands. Keeping the
+// form and the validator on the same vocabulary is what makes the equipment
+// constraint enforceable rather than aspirational.
+var equipmentOptions = []struct{ Value, Label string }{
+	{"dumbbell", "Dumbbells"},
+	{"barbell", "Barbell"},
+	{"kettlebell", "Kettlebells"},
+	{"pull-up bar", "Pull-up bar"},
+	{"bench", "Bench"},
+	{"resistance band", "Resistance bands"},
+	{"machine", "Machines / cables"},
+	{"treadmill", "Treadmill"},
+	{"bike", "Bike"},
+	{"rower", "Rower"},
+}
+
+func nav(active string) []layout.NavItem {
+	items := []layout.NavItem{
+		{Label: "Overview", Href: "/app"},
+		{Label: "Coach", Href: "/app/chat"},
+		{Label: "Training", Href: "/app/training"},
+	}
+	for i := range items {
+		items[i].Active = items[i].Href == active
+	}
+	return items
+}
+
+templ IntakePage(user users.User, f IntakeForm) {
+	@layout.App("Build a plan", user, nav("/app/training")) {
+		<div class="mx-auto w-full max-w-2xl p-6 md:p-8">
+			<header class="mb-6">
+				<h1 class="text-2xl font-semibold tracking-tight">Build your training plan</h1>
+				<p class="text-muted-foreground mt-1 text-sm">
+					North only programmes what you can actually do. Be honest about the
+					equipment and the time — the plan is checked against your answers.
+				</p>
+			</header>
+			if f.Error != "" {
+				@alert.Alert(alert.Props{Variant: alert.VariantDestructive, Class: "mb-4"}) {
+					@alert.Description() {
+						{ f.Error }
+					}
+				}
+			}
+			@card.Card() {
+				@card.Content() {
+					<form method="post" action="/app/training/new" class="space-y-5 pt-6">
+						@ui.CSRFInput()
+						@field("goal", "What are you training for?", f.fieldError("goal")) {
+							@textarea.Textarea(textarea.Props{
+								ID:          "goal",
+								Name:        "goal",
+								Value:       f.Goal,
+								Placeholder: "Get stronger overall, and be able to do 10 pull-ups by the spring.",
+								Rows:        3,
+								HasError:    f.fieldError("goal") != "",
+							})
+						}
+						@field("experience", "How much have you trained before?", f.fieldError("experience")) {
+							@selectbox.SelectBox() {
+								@selectbox.Trigger(selectbox.TriggerProps{ID: "experience", Name: "experience"}) {
+									@selectbox.Value(selectbox.ValueProps{Placeholder: "Choose one"})
+								}
+								@selectbox.Content() {
+									@selectbox.Item(selectbox.ItemProps{Value: "beginner", Selected: f.Experience == "beginner"}) {
+										New to training
+									}
+									@selectbox.Item(selectbox.ItemProps{Value: "returning", Selected: f.Experience == "returning"}) {
+										Coming back after a break
+									}
+									@selectbox.Item(selectbox.ItemProps{Value: "intermediate", Selected: f.Experience == "intermediate"}) {
+										A year or two of consistent training
+									}
+									@selectbox.Item(selectbox.ItemProps{Value: "advanced", Selected: f.Experience == "advanced"}) {
+										Several years, I know my numbers
+									}
+								}
+							}
+						}
+						<div class="grid gap-5 sm:grid-cols-2">
+							@field("days_per_week", "Days per week", f.fieldError("days_per_week")) {
+								@input.Input(input.Props{
+									ID:       "days_per_week",
+									Name:     "days_per_week",
+									Type:     input.TypeNumber,
+									Value:    itoa(f.DaysPerWeek),
+									Required: true,
+									HasError: f.fieldError("days_per_week") != "",
+									Attributes: templ.Attributes{"min": "1", "max": "7"},
+								})
+							}
+							@field("session_minutes", "Minutes per session", f.fieldError("session_minutes")) {
+								@input.Input(input.Props{
+									ID:       "session_minutes",
+									Name:     "session_minutes",
+									Type:     input.TypeNumber,
+									Value:    itoa(f.SessionMinutes),
+									Required: true,
+									HasError: f.fieldError("session_minutes") != "",
+									Attributes: templ.Attributes{"min": "10", "max": "240", "step": "5"},
+								})
+							}
+						</div>
+						@form.Item() {
+							@label.Label() {
+								What equipment do you have?
+							}
+							@form.Description() {
+								Leave everything unticked for bodyweight only. Nothing outside this list will appear in your plan.
+							}
+							<div class="grid gap-3 pt-1 sm:grid-cols-2">
+								for _, option := range equipmentOptions {
+									<div class="flex items-center gap-2">
+										@checkbox.Checkbox(checkbox.Props{
+											ID:      "equipment-" + option.Value,
+											Name:    "equipment",
+											Value:   option.Value,
+											Checked: f.hasEquipment(option.Value),
+										})
+										@label.Label(label.Props{For: "equipment-" + option.Value, Class: "font-normal"}) {
+											{ option.Label }
+										}
+									</div>
+								}
+							</div>
+						}
+						@field("limitations", "Injuries or anything to work around?", f.fieldError("limitations")) {
+							@textarea.Textarea(textarea.Props{
+								ID:          "limitations",
+								Name:        "limitations",
+								Value:       f.Limitations,
+								Placeholder: "Left shoulder is fine pressing but not overhead. Optional.",
+								Rows:        2,
+								HasError:    f.fieldError("limitations") != "",
+							})
+						}
+						@button.Button(button.Props{Type: button.TypeSubmit, FullWidth: true}) {
+							Build my plan
+						}
+						<p class="text-muted-foreground text-center text-xs">
+							This takes a few seconds while North writes and checks the plan.
+						</p>
+					</form>
+				}
+			}
+		</div>
+		@input.Script()
+		@label.Script()
+		@textarea.Script()
+		@checkbox.Script()
+		@selectbox.Script()
+	}
+}
+
+templ PlanPage(user users.User, p plan.Plan, createdAt time.Time) {
+	@layout.App(p.Name, user, nav("/app/training")) {
+		<div class="mx-auto w-full max-w-3xl p-6 md:p-8">
+			<header class="mb-6 flex items-start justify-between gap-4">
+				<div>
+					<h1 class="text-2xl font-semibold tracking-tight">{ p.Name }</h1>
+					<p class="text-muted-foreground mt-1 text-sm">
+						{ strconv.Itoa(p.WeeksTotal) } weeks · { strconv.Itoa(len(p.Days)) } days a week · built { createdAt.Format("2 January 2006") }
+					</p>
+				</div>
+				@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Href: "/app/training/new"}) {
+					New plan
+				}
+			</header>
+			@card.Card(card.Props{Class: "mb-6"}) {
+				@card.Header() {
+					@card.Title(card.TitleProps{Class: "text-base"}) {
+						Why this plan
+					}
+				}
+				@card.Content() {
+					<p class="text-muted-foreground text-sm">{ p.Rationale }</p>
+				}
+			}
+			<div class="space-y-4">
+				for _, day := range p.Days {
+					@dayCard(day)
+				}
+			</div>
+		</div>
+	}
+}
+
+templ dayCard(day plan.PlanDay) {
+	@card.Card() {
+		@card.Header() {
+			<div class="flex items-center gap-3">
+				@card.Title(card.TitleProps{Class: "text-base"}) {
+					{ day.Weekday }
+				}
+				@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
+					{ day.Focus }
+				}
+			</div>
+		}
+		@card.Content() {
+			<ul class="divide-border divide-y">
+				for _, ex := range day.Exercises {
+					@exerciseRow(ex)
+				}
+			</ul>
+		}
+	}
+}
+
+templ exerciseRow(ex plan.Exercise) {
+	<li class="py-3 first:pt-0 last:pb-0">
+		<div class="flex items-baseline justify-between gap-4">
+			<span class="font-medium">{ ex.Name }</span>
+			<span class="text-muted-foreground shrink-0 font-mono text-sm">
+				{ strconv.Itoa(ex.Sets) }×{ ex.Reps }
+			</span>
+		</div>
+		<p class="text-muted-foreground mt-1 text-sm">{ ex.FormCues }</p>
+		<p class="text-muted-foreground/70 mt-1 text-xs">
+			Rest { strconv.Itoa(ex.RestSeconds) }s · { ex.Equipment }
+			if ex.Substitute != "" {
+				· No equipment? { ex.Substitute }
+			}
+		</p>
+	</li>
+}
+
+templ field(name, labelText, errMsg string) {
+	@form.Item() {
+		@label.Label(label.Props{For: name, Error: errMsg}) {
+			{ labelText }
+		}
+		{ children... }
+		if errMsg != "" {
+			@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+				{ errMsg }
+			}
+		}
+	}
+}
+
+func itoa(n int) string {
+	if n == 0 {
+		return ""
+	}
+	return strconv.Itoa(n)
+}
