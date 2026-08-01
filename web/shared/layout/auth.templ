@@ -1,0 +1,18 @@
+package layout
+
+// Auth is the layout for signed-out pages: a single centred card with no
+// navigation, so there is nothing to do on the page except the one thing it is
+// asking for.
+templ Auth(title string) {
+	@Base(title) {
+		<div class="flex min-h-full flex-col items-center justify-center px-4 py-12">
+			<div class="w-full max-w-sm">
+				<div class="mb-8 text-center">
+					<a href="/" class="text-2xl font-semibold tracking-tight">North</a>
+					<p class="text-muted-foreground mt-1 text-sm">Your AI operating system for personal growth.</p>
+				</div>
+				{ children... }
+			</div>
+		</div>
+	}
+}

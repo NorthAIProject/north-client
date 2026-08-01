@@ -1,0 +1,138 @@
+package auth
+
+import (
+	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/alert"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/form"
+	"github.com/NorthAIProject/north-client/web/shared/ui/input"
+	"github.com/NorthAIProject/north-client/web/shared/ui/label"
+)
+
+// SignupForm re-renders a rejected signup with the user's answers intact.
+//
+// Errors are keyed by field name so each message appears under the input that
+// caused it, and every problem is shown at once rather than one per submit.
+type SignupForm struct {
+	Email       string
+	DisplayName string
+	Timezone    string
+
+	Errors map[string]string
+	Error  string
+}
+
+func (f SignupForm) fieldError(name string) string { return f.Errors[name] }
+
+templ SignupPage(f SignupForm) {
+	@layout.Auth("Create your account") {
+		@card.Card() {
+			@card.Header() {
+				@card.Title() {
+					Create your account
+				}
+				@card.Description() {
+					North remembers your goals and your progress. Start by telling it who you are.
+				}
+			}
+			@card.Content() {
+				if f.Error != "" {
+					@alert.Alert(alert.Props{Variant: alert.VariantDestructive, Class: "mb-4"}) {
+						@alert.Description() {
+							{ f.Error }
+						}
+					}
+				}
+				<form method="post" action="/signup" class="space-y-4">
+					@ui.CSRFInput()
+					// The browser reports the visitor's IANA zone, so a daily
+					// briefing lands at their 07:00 without asking. The server
+					// still defaults to UTC if this is absent or unparseable.
+					<input type="hidden" name="timezone" x-data x-init="$el.value = Intl.DateTimeFormat().resolvedOptions().timeZone" value={ f.Timezone }/>
+					@field("display_name", "Name", f.fieldError("display_name")) {
+						@input.Input(input.Props{
+							ID:       "display_name",
+							Name:     "display_name",
+							Value:    f.DisplayName,
+							Required: true,
+							HasError: f.fieldError("display_name") != "",
+							Attributes: templ.Attributes{
+								"autocomplete": "name",
+								"autofocus":    true,
+							},
+						})
+					}
+					@field("email", "Email", f.fieldError("email")) {
+						@input.Input(input.Props{
+							ID:       "email",
+							Name:     "email",
+							Type:     input.TypeEmail,
+							Value:    f.Email,
+							Required: true,
+							HasError: f.fieldError("email") != "",
+							Attributes: templ.Attributes{
+								"autocomplete": "email",
+							},
+						})
+					}
+					@field("password", "Password", f.fieldError("password")) {
+						@input.Input(input.Props{
+							ID:       "password",
+							Name:     "password",
+							Type:     input.TypePassword,
+							Required: true,
+							HasError: f.fieldError("password") != "",
+							Attributes: templ.Attributes{
+								"autocomplete": "new-password",
+							},
+						})
+						if f.fieldError("password") == "" {
+							@form.Description() {
+								At least 12 characters. A short sentence works well.
+							}
+						}
+					}
+					@field("password_confirmation", "Confirm password", f.fieldError("password_confirmation")) {
+						@input.Input(input.Props{
+							ID:       "password_confirmation",
+							Name:     "password_confirmation",
+							Type:     input.TypePassword,
+							Required: true,
+							HasError: f.fieldError("password_confirmation") != "",
+							Attributes: templ.Attributes{
+								"autocomplete": "new-password",
+							},
+						})
+					}
+					@button.Button(button.Props{Type: button.TypeSubmit, FullWidth: true}) {
+						Create account
+					}
+				</form>
+			}
+		}
+		<p class="text-muted-foreground mt-6 text-center text-sm">
+			Already have an account?
+			<a href="/login" class="text-foreground font-medium underline underline-offset-4">Sign in</a>
+		</p>
+		@input.Script()
+		@label.Script()
+	}
+}
+
+// field pairs a label and its control, showing the validation message beneath
+// when there is one.
+templ field(name, labelText, errMsg string) {
+	@form.Item() {
+		@label.Label(label.Props{For: name, Error: errMsg}) {
+			{ labelText }
+		}
+		{ children... }
+		if errMsg != "" {
+			@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+				{ errMsg }
+			}
+		}
+	}
+}

@@ -1,0 +1,96 @@
+package auth
+
+import (
+	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/alert"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/form"
+	"github.com/NorthAIProject/north-client/web/shared/ui/input"
+	"github.com/NorthAIProject/north-client/web/shared/ui/label"
+)
+
+// LoginForm carries the state of a submitted attempt back to the page, so a
+// failed login re-renders with the email still filled in rather than making the
+// user retype it.
+type LoginForm struct {
+	Email string
+	Next  string
+
+	// Error is a single form-level message. Login failures are deliberately not
+	// attributed to a specific field: saying which half was wrong tells an
+	// attacker which email addresses are registered.
+	Error string
+}
+
+templ LoginPage(f LoginForm) {
+	@layout.Auth("Sign in") {
+		@card.Card() {
+			@card.Header() {
+				@card.Title() {
+					Welcome back
+				}
+				@card.Description() {
+					Sign in to continue with your coach.
+				}
+			}
+			@card.Content() {
+				if f.Error != "" {
+					@alert.Alert(alert.Props{Variant: alert.VariantDestructive, Class: "mb-4"}) {
+						@alert.Description() {
+							{ f.Error }
+						}
+					}
+				}
+				<form method="post" action="/login" class="space-y-4">
+					@ui.CSRFInput()
+					if f.Next != "" {
+						<input type="hidden" name="next" value={ f.Next }/>
+					}
+					@form.Item() {
+						@label.Label(label.Props{For: "email"}) {
+							Email
+						}
+						@input.Input(input.Props{
+							ID:       "email",
+							Name:     "email",
+							Type:     input.TypeEmail,
+							Value:    f.Email,
+							Required: true,
+							Attributes: templ.Attributes{
+								"autocomplete": "email",
+								"autofocus":    true,
+							},
+						})
+					}
+					@form.Item() {
+						@label.Label(label.Props{For: "password"}) {
+							Password
+						}
+						@input.Input(input.Props{
+							ID:       "password",
+							Name:     "password",
+							Type:     input.TypePassword,
+							Required: true,
+							Attributes: templ.Attributes{
+								"autocomplete": "current-password",
+							},
+						})
+					}
+					@button.Button(button.Props{Type: button.TypeSubmit, FullWidth: true}) {
+						Sign in
+					}
+				</form>
+			}
+		}
+		<p class="text-muted-foreground mt-6 text-center text-sm">
+			No account?
+			<a href="/signup" class="text-foreground font-medium underline underline-offset-4">Create one</a>
+		</p>
+		// Powers the show/hide toggle on password inputs. Guarded by a
+		// OnceHandle, so including it per page renders it exactly once.
+		@input.Script()
+		@label.Script()
+	}
+}

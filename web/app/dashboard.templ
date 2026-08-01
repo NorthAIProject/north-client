@@ -1,0 +1,59 @@
+package app
+
+import (
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+)
+
+// Nav is the application sidebar. Sections that do not exist yet are absent
+// rather than disabled: a link that goes nowhere is worse than no link.
+func Nav(active string) []layout.NavItem {
+	items := []layout.NavItem{
+		{Label: "Overview", Href: "/app"},
+	}
+	for i := range items {
+		items[i].Active = items[i].Href == active
+	}
+	return items
+}
+
+templ Dashboard(user users.User) {
+	@layout.App("Overview", user, Nav("/app")) {
+		<div class="mx-auto w-full max-w-4xl p-6 md:p-8">
+			<header class="mb-8">
+				<h1 class="text-2xl font-semibold tracking-tight">
+					Hello, { user.FirstName() }
+				</h1>
+				<p class="text-muted-foreground mt-1 text-sm">
+					This is where your coaching, goals, and progress will live.
+				</p>
+			</header>
+			@card.Card() {
+				@card.Header() {
+					@card.Title() {
+						You are signed in
+					}
+					@card.Description() {
+						Account and session handling are working end to end.
+					}
+				}
+				@card.Content() {
+					<dl class="grid gap-3 text-sm sm:grid-cols-2">
+						@detail("Name", user.DisplayName)
+						@detail("Email", user.Email)
+						@detail("Timezone", user.Timezone)
+						@detail("Member since", user.CreatedAt.Format("2 January 2006"))
+					</dl>
+				}
+			}
+		</div>
+	}
+}
+
+templ detail(term, value string) {
+	<div>
+		<dt class="text-muted-foreground text-xs uppercase tracking-wide">{ term }</dt>
+		<dd class="mt-0.5 font-medium">{ value }</dd>
+	</div>
+}

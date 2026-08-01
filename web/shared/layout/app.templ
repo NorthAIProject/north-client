@@ -1,0 +1,93 @@
+package layout
+
+import (
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+)
+
+// NavItem is one entry in the application sidebar.
+type NavItem struct {
+	Label string
+	Href  string
+	// Active marks the section the current page belongs to. Set by the handler,
+	// which knows the route, rather than inferred here from the URL.
+	Active bool
+}
+
+// App is the shell for every signed-in page.
+//
+// The sidebar is plain markup and Tailwind rather than a component library
+// widget: it is a list of links, and a list of links does not need JavaScript.
+templ App(title string, user users.User, nav []NavItem) {
+	@Base(title) {
+		<div class="flex h-full">
+			<aside class="border-border bg-card hidden w-60 shrink-0 flex-col border-r md:flex">
+				<div class="border-border flex h-14 items-center border-b px-5">
+					<a href="/app" class="text-lg font-semibold tracking-tight">North</a>
+				</div>
+				<nav class="flex-1 space-y-1 p-3">
+					for _, item := range nav {
+						@navLink(item)
+					}
+				</nav>
+				@userFooter(user)
+			</aside>
+			<div class="flex min-w-0 flex-1 flex-col">
+				<header class="border-border flex h-14 shrink-0 items-center justify-between border-b px-5 md:hidden">
+					<a href="/app" class="text-lg font-semibold tracking-tight">North</a>
+					@signOutButton()
+				</header>
+				<main class="min-h-0 flex-1 overflow-y-auto">
+					{ children... }
+				</main>
+			</div>
+		</div>
+	}
+}
+
+templ navLink(item NavItem) {
+	if item.Active {
+		<a
+			href={ templ.SafeURL(item.Href) }
+			aria-current="page"
+			class="bg-accent text-accent-foreground block rounded-md px-3 py-2 text-sm font-medium"
+		>
+			{ item.Label }
+		</a>
+	} else {
+		<a
+			href={ templ.SafeURL(item.Href) }
+			class="text-muted-foreground hover:bg-accent hover:text-accent-foreground block rounded-md px-3 py-2 text-sm font-medium transition-colors"
+		>
+			{ item.Label }
+		</a>
+	}
+}
+
+templ userFooter(user users.User) {
+	<div class="border-border border-t p-3">
+		<div class="mb-2 px-2">
+			<p class="truncate text-sm font-medium">{ user.DisplayName }</p>
+			<p class="text-muted-foreground truncate text-xs">{ user.Email }</p>
+		</div>
+		@signOutButton()
+	</div>
+}
+
+// signOutButton posts rather than links. A GET that ends a session can be
+// triggered by any image tag on any page on the internet.
+templ signOutButton() {
+	<form method="post" action="/logout">
+		@ui.CSRFInput()
+		@button.Button(button.Props{
+			Type:      button.TypeSubmit,
+			Variant:   button.VariantGhost,
+			Size:      button.SizeSm,
+			FullWidth: true,
+			Class:     "justify-start",
+		}) {
+			Sign out
+		}
+	</form>
+}

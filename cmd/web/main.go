@@ -17,9 +17,12 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 
+	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/config"
 	"github.com/NorthAIProject/north-client/internal/shared/database"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/web/app"
 	"github.com/NorthAIProject/north-client/web/assets"
 	"github.com/NorthAIProject/north-client/web/landing"
 
@@ -99,17 +102,43 @@ func run() error {
 }
 
 func routes(cfg *config.Config, pool *pgxpool.Pool) http.Handler {
+	// Wiring happens once, here. Every dependency is constructed explicitly and
+	// passed down, so the shape of the application is readable in one place
+	// rather than discovered through package-level initialisation.
+	userRepo := users.NewRepository(pool)
+	userSvc := users.NewService(userRepo)
+
+	sessions := auth.NewSessionStore(pool, cfg.SessionLifetime)
+	authSvc := auth.NewService(userSvc, sessions)
+	authMW := auth.NewMiddleware(sessions, cfg.Env.IsProduction())
+	authHandler := auth.NewHandler(authSvc, authMW, "/app")
+
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Logger(slog.Default()))
 	r.Use(middleware.Recover)
 	r.Use(middleware.CSRF(cfg.Env.IsProduction()))
+	r.Use(authMW.LoadUser)
 
 	mountAssets(r, cfg)
 
 	r.Get("/healthz", healthz(pool))
 	r.Method(http.MethodGet, "/", templ.Handler(landing.Page()))
+
+	authHandler.Routes(r)
+
+	// Everything under /app requires a session.
+	r.Route("/app", func(r chi.Router) {
+		r.Use(authMW.RequireAuth)
+
+		r.Get("/", func(w http.ResponseWriter, req *http.Request) {
+			user := auth.MustUser(req.Context())
+			if err := app.Dashboard(user).Render(req.Context(), w); err != nil {
+				middleware.FromContext(req.Context()).Error("render dashboard", slog.Any("error", err))
+			}
+		})
+	})
 
 	return r
 }

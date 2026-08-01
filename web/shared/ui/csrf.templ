@@ -1,0 +1,12 @@
+package ui
+
+import "github.com/NorthAIProject/north-client/internal/shared/middleware"
+
+// CSRFInput renders the hidden token that every state-changing form must carry.
+//
+// The token is read from the request context rather than passed in, so a form
+// cannot be written that forgets to thread it through, and a page that omits
+// this component fails loudly with a 403 instead of quietly being insecure.
+templ CSRFInput() {
+	<input type="hidden" name={ middleware.CSRFFieldName } value={ middleware.CSRFToken(ctx) }/>
+}

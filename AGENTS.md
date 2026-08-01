@@ -395,6 +395,33 @@ Guidelines:
 
 Avoid giant template files.
 
+## Use the component library
+
+North vendors templUI under `web/shared/ui/`.
+
+**If a templUI component exists for what you are building, use it.**
+
+Do not hand-roll a `<button>`, `<input>`, card, dialog, table, or any other
+element that the library already provides — even when raw HTML would be shorter.
+
+Reasons:
+
+- one place to restyle the whole application
+- consistent focus, disabled, and error states
+- accessibility already handled
+
+Before writing markup, look in `web/shared/ui/`.
+
+Components that ship JavaScript expose a `Script()` template guarded by a
+`templ.OnceHandle`. Include it on any page that uses the component; it renders
+only once regardless of how many times it is called.
+
+Hand-rolling is allowed only when no component fits, and the reason belongs in a
+comment next to the markup.
+
+Plain elements and Tailwind remain correct for page scaffolding — layout
+containers, grids, spacing — where there is no component and no behaviour.
+
 ---
 
 # HTMX

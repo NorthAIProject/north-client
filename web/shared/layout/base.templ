@@ -1,8 +1,11 @@
 package layout
 
-import "github.com/NorthAIProject/north-client/web/shared/ui"
-
-templ Base() {
+// Base is the outermost HTML document. Every page renders inside it.
+//
+// It carries no navigation of its own: the signed-out pages and the application
+// shell want different chrome, so that choice belongs to the layout above this
+// one rather than to the document.
+templ Base(title string) {
 	<!DOCTYPE html>
 	<html lang="en" class="h-full dark">
 		<head>
@@ -10,16 +13,26 @@ templ Base() {
 			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 			<link rel="preload" href="/assets/fonts/geist/geist-variable.woff2" as="font" type="font/woff2" crossorigin="anonymous"/>
 			<link rel="preload" href="/assets/fonts/geist/geist-mono-variable.woff2" as="font" type="font/woff2" crossorigin="anonymous"/>
-			<title>templUI App</title>
+			<title>{ pageTitle(title) }</title>
 			<link href="/assets/css/output.css" rel="stylesheet"/>
+			// Vendored rather than loaded from a CDN: the production binary embeds
+			// its assets, so the application keeps working with no third-party
+			// origin to trust, block, or outlive us.
+			<script src="/assets/js/vendor/htmx.min.js"></script>
+			<script src="/assets/js/vendor/htmx-ext-sse.js"></script>
+			<script defer src="/assets/js/vendor/alpine.min.js"></script>
 		</head>
-		<body class="h-full">
-			<div class="flex h-full flex-col">
-				@ui.Navbar()
-				<main class="flex-1">
-					{ children... }
-				</main>
-			</div>
+		<body class="h-full bg-background text-foreground antialiased">
+			{ children... }
 		</body>
 	</html>
+}
+
+// pageTitle suffixes the product name so a browser tab is identifiable among a
+// dozen others.
+func pageTitle(title string) string {
+	if title == "" {
+		return "North"
+	}
+	return title + " · North"
 }
