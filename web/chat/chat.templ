@@ -1,0 +1,209 @@
+package chat
+
+import (
+	"net/url"
+
+	"github.com/google/uuid"
+
+	"github.com/NorthAIProject/north-client/internal/conversations"
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
+	"github.com/NorthAIProject/north-client/web/shared/ui/textarea"
+)
+
+// Page is a conversation with its history and composer.
+templ Page(user users.User, conversation conversations.Conversation, messages []conversations.Message, list []conversations.Conversation) {
+	@layout.App(conversation.DisplayTitle(), user, nav()) {
+		<div id="chat-root" class="flex h-full">
+			@threadList(list, conversation.ID)
+			<div class="flex min-w-0 flex-1 flex-col">
+				@transcript(messages)
+				@composer(conversation.ID, "")
+			</div>
+		</div>
+	}
+}
+
+// Empty is what a user with no conversations sees.
+templ Empty(user users.User, list []conversations.Conversation) {
+	@layout.App("Coach", user, nav()) {
+		<div class="flex h-full flex-col items-center justify-center gap-4 p-8 text-center">
+			<h1 class="text-xl font-semibold tracking-tight">Talk to your coach</h1>
+			<p class="text-muted-foreground max-w-sm text-sm">
+				North remembers what you tell it. Start with what you are working on.
+			</p>
+			<form method="post" action="/app/chat">
+				@ui.CSRFInput()
+				@button.Button(button.Props{Type: button.TypeSubmit}) {
+					@icon.Plus(icon.Props{Class: "size-4"})
+					New conversation
+				}
+			</form>
+		</div>
+	}
+}
+
+func nav() []layout.NavItem {
+	return []layout.NavItem{
+		{Label: "Overview", Href: "/app"},
+		{Label: "Coach", Href: "/app/chat", Active: true},
+	}
+}
+
+templ threadList(list []conversations.Conversation, current uuid.UUID) {
+	<aside class="border-border hidden w-64 shrink-0 flex-col border-r lg:flex">
+		<div class="border-border border-b p-3">
+			<form method="post" action="/app/chat">
+				@ui.CSRFInput()
+				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, FullWidth: true, Size: button.SizeSm}) {
+					@icon.Plus(icon.Props{Class: "size-4"})
+					New conversation
+				}
+			</form>
+		</div>
+		<nav class="flex-1 space-y-0.5 overflow-y-auto p-2">
+			for _, c := range list {
+				@threadLink(c, c.ID == current)
+			}
+		</nav>
+	</aside>
+}
+
+templ threadLink(c conversations.Conversation, active bool) {
+	if active {
+		<a href={ templ.SafeURL("/app/chat/" + c.ID.String()) } aria-current="page" class="bg-accent text-accent-foreground block truncate rounded-md px-3 py-2 text-sm">
+			{ c.DisplayTitle() }
+		</a>
+	} else {
+		<a href={ templ.SafeURL("/app/chat/" + c.ID.String()) } class="text-muted-foreground hover:bg-accent hover:text-accent-foreground block truncate rounded-md px-3 py-2 text-sm transition-colors">
+			{ c.DisplayTitle() }
+		</a>
+	}
+}
+
+// transcript holds the message history. New turns are appended into it by HTMX,
+// and Alpine keeps it scrolled to the bottom as content arrives.
+templ transcript(messages []conversations.Message) {
+	<div
+		id="transcript"
+		class="min-h-0 flex-1 overflow-y-auto"
+		x-data="{
+			pin() { this.$el.scrollTop = this.$el.scrollHeight }
+		}"
+		x-init="pin(); new MutationObserver(() => pin()).observe($el, { childList: true, subtree: true, characterData: true })"
+	>
+		<div class="mx-auto w-full max-w-3xl space-y-6 p-6">
+			for _, m := range messages {
+				@Bubble(m)
+			}
+		</div>
+	</div>
+}
+
+// Bubble is one stored turn.
+templ Bubble(m conversations.Message) {
+	if m.IsUser() {
+		<div class="flex justify-end">
+			<div class="bg-primary text-primary-foreground max-w-[85%] rounded-2xl rounded-br-sm px-4 py-2.5 text-sm whitespace-pre-wrap">
+				{ m.Content }
+			</div>
+		</div>
+	} else {
+		<div class="flex justify-start">
+			<div class="bg-muted max-w-[85%] rounded-2xl rounded-bl-sm px-4 py-2.5 text-sm whitespace-pre-wrap">
+				{ m.Content }
+			</div>
+		</div>
+	}
+}
+
+// PendingExchange is what the composer swaps in on submit: the user's turn, and
+// an empty coach turn that opens the SSE stream.
+//
+// The message is echoed straight back rather than re-fetched, so the user sees
+// their own words immediately instead of after a round trip.
+templ PendingExchange(conversationID uuid.UUID, message string) {
+	<div class="flex justify-end">
+		<div class="bg-primary text-primary-foreground max-w-[85%] rounded-2xl rounded-br-sm px-4 py-2.5 text-sm whitespace-pre-wrap">
+			{ message }
+		</div>
+	</div>
+	// The bubble and the refresh are separate elements on purpose. Each needs its
+	// own hx-swap — "beforeend" to append tokens, "outerHTML" to replace the
+	// page — and two hx-swap attributes on one element silently lose one of
+	// them, which appends a whole copy of the page into the chat.
+	//
+	// sse-close="done" ends the connection when the reply does. Without it the
+	// browser reconnects on close and the coach answers again, forever.
+	<div class="flex justify-start" hx-ext="sse" sse-connect={ streamURL(conversationID, message) } sse-close="done">
+		<div
+			class="bg-muted max-w-[85%] rounded-2xl rounded-bl-sm px-4 py-2.5 text-sm whitespace-pre-wrap"
+			sse-swap="token,error"
+			hx-swap="beforeend"
+		></div>
+		<div
+			class="hidden"
+			hx-trigger="sse:done"
+			hx-get={ "/app/chat/" + conversationID.String() }
+			hx-target="#chat-root"
+			hx-select="#chat-root"
+			hx-swap="outerHTML"
+		></div>
+	</div>
+}
+
+// streamURL builds the SSE endpoint for a pending message.
+//
+// The message travels as a query parameter, which is why it is escaped here and
+// why nothing sensitive belongs in a chat URL. It is the same text the user
+// just posted and which is already stored.
+func streamURL(conversationID uuid.UUID, message string) string {
+	return "/app/chat/" + conversationID.String() + "/stream?m=" + url.QueryEscape(message)
+}
+
+templ composer(conversationID uuid.UUID, draft string) {
+	<div class="border-border border-t">
+		// x-data is required even though it holds nothing: Alpine only processes
+		// directives inside a scope, so without it the Enter-to-send binding on
+		// the textarea below is silently ignored.
+		<form
+			x-data
+			class="mx-auto flex w-full max-w-3xl items-end gap-2 p-4"
+			hx-post={ "/app/chat/" + conversationID.String() + "/messages" }
+			hx-target="#transcript > div"
+			hx-swap="beforeend"
+			hx-on::after-request="if(event.detail.successful) this.reset()"
+		>
+			@ui.CSRFInput()
+			@textarea.Textarea(textarea.Props{
+				ID:          "message",
+				Name:        "message",
+				Placeholder: "What are you working on?",
+				Value:       draft,
+				Rows:        1,
+				AutoResize:  true,
+				Class:       "max-h-48 min-h-[2.5rem] resize-none",
+				Attributes: templ.Attributes{
+					"required": true,
+					// Enter sends, shift+Enter makes a new line: what every
+					// chat interface does, and what fingers expect.
+					"@keydown.enter.prevent": "if (!$event.shiftKey) $el.form.requestSubmit()",
+				},
+			})
+			@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeIcon}) {
+				@icon.ArrowUp(icon.Props{Class: "size-4"})
+			}
+		</form>
+	</div>
+	@textarea.Script()
+}
+
+// ComposerError re-renders the composer with what was typed and why it was
+// rejected.
+templ ComposerError(conversationID uuid.UUID, draft, message string) {
+	<p class="text-destructive px-4 pb-2 text-sm">{ message }</p>
+	@composer(conversationID, draft)
+}

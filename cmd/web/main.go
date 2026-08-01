@@ -20,7 +20,9 @@ import (
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/ai/providers"
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/coach"
 	"github.com/NorthAIProject/north-client/internal/config"
+	"github.com/NorthAIProject/north-client/internal/conversations"
 	"github.com/NorthAIProject/north-client/internal/shared/database"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -132,6 +134,20 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry) http.
 	authMW := auth.NewMiddleware(sessions, cfg.Env.IsProduction())
 	authHandler := auth.NewHandler(authSvc, authMW, "/app")
 
+	conversationSvc := conversations.NewService(conversations.NewRepository(pool))
+	coachSvc := coach.NewService(coach.Options{
+		Registry:      registry,
+		Conversations: conversationSvc,
+		// No context sources registered yet. Goals, check-ins, and knowledge
+		// search each add one here as their slices are built; the coach already
+		// tells the user honestly that it cannot see them.
+		ContextBuilder: coach.NewContextBuilder(conversationSvc),
+		PromptBuilder:  coach.NewPromptBuilder(),
+		Model:          cfg.AI.Model,
+		FastModel:      cfg.AI.FastModel,
+	})
+	coachHandler := coach.NewHandler(coachSvc)
+
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
@@ -157,6 +173,8 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry) http.
 				middleware.FromContext(req.Context()).Error("render dashboard", slog.Any("error", err))
 			}
 		})
+
+		coachHandler.Routes(r)
 	})
 
 	return r

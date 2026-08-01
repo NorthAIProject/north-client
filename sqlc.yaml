@@ -40,3 +40,13 @@ sql:
         package: authdb
         out: internal/auth/db
         overrides: *overrides
+
+  - engine: postgresql
+    schema: migrations
+    queries: internal/conversations/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: conversationsdb
+        out: internal/conversations/db
+        overrides: *overrides

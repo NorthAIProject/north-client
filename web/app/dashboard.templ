@@ -11,6 +11,7 @@ import (
 func Nav(active string) []layout.NavItem {
 	items := []layout.NavItem{
 		{Label: "Overview", Href: "/app"},
+		{Label: "Coach", Href: "/app/chat"},
 	}
 	for i := range items {
 		items[i].Active = items[i].Href == active

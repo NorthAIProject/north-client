@@ -11,6 +11,26 @@ import (
 	"github.com/google/uuid"
 )
 
+type Conversation struct {
+	ID        uuid.UUID
+	UserID    uuid.UUID
+	Title     *string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+type Message struct {
+	ID             uuid.UUID
+	ConversationID uuid.UUID
+	Role           string
+	Content        string
+	Parts          []byte
+	Usage          []byte
+	Model          *string
+	Provider       *string
+	CreatedAt      time.Time
+}
+
 type Session struct {
 	TokenHash  []byte
 	UserID     uuid.UUID
