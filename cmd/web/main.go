@@ -17,6 +17,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 
+	"github.com/NorthAIProject/north-client/internal/ai"
+	"github.com/NorthAIProject/north-client/internal/ai/providers"
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/config"
 	"github.com/NorthAIProject/north-client/internal/shared/database"
@@ -64,9 +66,26 @@ func run() error {
 
 	log.Info("connected to database")
 
+	registry, err := providers.Build(ctx, providers.Options{
+		Default:           cfg.AI.Provider,
+		Model:             cfg.AI.Model,
+		GeminiAPIKey:      cfg.AI.GeminiAPIKey,
+		OpenRouterAPIKey:  cfg.AI.OpenRouterAPIKey,
+		OpenRouterSiteURL: cfg.AI.OpenRouterSiteURL,
+		OpenRouterSiteApp: cfg.AI.OpenRouterSiteApp,
+	})
+	if err != nil {
+		return err
+	}
+
+	log.Info("ai providers ready",
+		slog.String("default", registry.DefaultName()),
+		slog.Any("registered", registry.Names()),
+	)
+
 	srv := &http.Server{
 		Addr:    cfg.Addr(),
-		Handler: routes(cfg, pool),
+		Handler: routes(cfg, pool, registry),
 
 		ReadHeaderTimeout: 10 * time.Second,
 		// No WriteTimeout: it would cut off SSE streams mid-answer. Individual
@@ -101,7 +120,7 @@ func run() error {
 	return nil
 }
 
-func routes(cfg *config.Config, pool *pgxpool.Pool) http.Handler {
+func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry) http.Handler {
 	// Wiring happens once, here. Every dependency is constructed explicitly and
 	// passed down, so the shape of the application is readable in one place
 	// rather than discovered through package-level initialisation.
