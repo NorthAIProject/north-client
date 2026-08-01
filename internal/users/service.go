@@ -42,7 +42,12 @@ type Registration struct {
 	Timezone     string
 }
 
-func (s *Service) Register(ctx context.Context, reg Registration) (User, error) {
+// ValidateRegistration checks the account fields without touching the database.
+//
+// It exists so a caller can collect account problems alongside problems it
+// found itself (a rejected password, say) and report them in one pass, without
+// that collection having the side effect of creating an account.
+func (s *Service) ValidateRegistration(reg Registration) (Registration, error) {
 	var errs apperr.FieldErrors
 
 	email := strings.TrimSpace(reg.Email)
@@ -68,14 +73,29 @@ func (s *Service) Register(ctx context.Context, reg Registration) (User, error) 
 	}
 
 	if err := errs.OrNil(); err != nil {
-		return User{}, err
+		return Registration{}, err
 	}
 
-	return s.repo.Create(ctx, NewRecord{
+	// Returned normalised so the caller persists exactly what was validated.
+	return Registration{
 		Email:        email,
 		PasswordHash: reg.PasswordHash,
 		DisplayName:  name,
 		Timezone:     tz,
+	}, nil
+}
+
+func (s *Service) Register(ctx context.Context, reg Registration) (User, error) {
+	clean, err := s.ValidateRegistration(reg)
+	if err != nil {
+		return User{}, err
+	}
+
+	return s.repo.Create(ctx, NewRecord{
+		Email:        clean.Email,
+		PasswordHash: clean.PasswordHash,
+		DisplayName:  clean.DisplayName,
+		Timezone:     clean.Timezone,
 	})
 }
 

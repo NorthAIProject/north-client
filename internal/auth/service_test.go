@@ -138,6 +138,36 @@ func TestSignupRejectsMismatchedConfirmation(t *testing.T) {
 	}
 }
 
+// Regression: an earlier version collected account-field errors by calling
+// Register with a placeholder password hash. That created a real account with
+// an unusable hash, so a user who mistyped their password on the first attempt
+// could never sign up or log in with that address again.
+func TestRejectedSignupCreatesNoAccount(t *testing.T) {
+	svc, _, pool := newService(t)
+	ctx := context.Background()
+
+	in := validSignup()
+	in.Password = "short"
+	in.PasswordConfirmation = "short"
+
+	if _, _, err := svc.Signup(ctx, in, auth.Metadata{}); err == nil {
+		t.Fatal("a short password must be rejected")
+	}
+
+	var count int
+	if err := pool.QueryRow(ctx, "SELECT count(*) FROM users").Scan(&count); err != nil {
+		t.Fatalf("count users: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("a rejected signup must write nothing; found %d user row(s)", count)
+	}
+
+	// The address must still be usable once the password is fixed.
+	if _, _, err := svc.Signup(ctx, validSignup(), auth.Metadata{}); err != nil {
+		t.Fatalf("retrying with a valid password should succeed: %v", err)
+	}
+}
+
 func TestLoginSucceedsWithCorrectPassword(t *testing.T) {
 	svc, sessions, _ := newService(t)
 	ctx := context.Background()

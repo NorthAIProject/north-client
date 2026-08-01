@@ -33,32 +33,36 @@ type SignupInput struct {
 func (s *Service) Signup(ctx context.Context, in SignupInput, meta Metadata) (users.User, string, error) {
 	var errs apperr.FieldErrors
 
-	if err := ValidatePassword(in.Password); err != nil {
+	// Both halves are validated before anything is written, so every problem is
+	// reported in one pass and a rejected signup leaves no trace. Validation
+	// must never have side effects: an earlier version collected account errors
+	// by calling Register with a placeholder hash, which created a real account
+	// with an unusable password and locked that address out permanently.
+	registration := users.Registration{
+		Email:       in.Email,
+		DisplayName: in.DisplayName,
+		Timezone:    in.Timezone,
+	}
+	if _, err := s.users.ValidateRegistration(registration); err != nil {
 		var fieldErrs apperr.FieldErrors
-		if apperr.As(err, &fieldErrs) {
-			errs = append(errs, fieldErrs...)
-		} else {
+		if !apperr.As(err, &fieldErrs) {
 			return users.User{}, "", err
 		}
+		errs = append(errs, fieldErrs...)
+	}
+
+	if err := ValidatePassword(in.Password); err != nil {
+		var fieldErrs apperr.FieldErrors
+		if !apperr.As(err, &fieldErrs) {
+			return users.User{}, "", err
+		}
+		errs = append(errs, fieldErrs...)
 	} else if !ConfirmationMatches(in.Password, in.PasswordConfirmation) {
 		errs = errs.Add("password_confirmation", "Passwords do not match.")
 	}
 
-	// Validate the account fields in the same pass so the user fixes every
-	// problem at once instead of discovering them one reload at a time.
 	if err := errs.OrNil(); err != nil {
-		if _, accErr := s.users.Register(ctx, users.Registration{
-			Email:        in.Email,
-			PasswordHash: "unused: validation only",
-			DisplayName:  in.DisplayName,
-			Timezone:     in.Timezone,
-		}); accErr != nil {
-			var accFieldErrs apperr.FieldErrors
-			if apperr.As(accErr, &accFieldErrs) {
-				errs = append(accFieldErrs, errs...)
-			}
-		}
-		return users.User{}, "", errs
+		return users.User{}, "", err
 	}
 
 	hash, err := HashPassword(in.Password)
@@ -66,12 +70,9 @@ func (s *Service) Signup(ctx context.Context, in SignupInput, meta Metadata) (us
 		return users.User{}, "", err
 	}
 
-	user, err := s.users.Register(ctx, users.Registration{
-		Email:        in.Email,
-		PasswordHash: hash,
-		DisplayName:  in.DisplayName,
-		Timezone:     in.Timezone,
-	})
+	registration.PasswordHash = hash
+
+	user, err := s.users.Register(ctx, registration)
 	if err != nil {
 		if apperr.Is(err, apperr.ErrConflict) {
 			// Reported against the field so the form can highlight it. This does
