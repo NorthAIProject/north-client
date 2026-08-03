@@ -80,3 +80,13 @@ sql:
         package: mediadb
         out: internal/media/db
         overrides: *overrides
+
+  - engine: postgresql
+    schema: migrations
+    queries: internal/goals/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: goalsdb
+        out: internal/goals/db
+        overrides: *overrides

@@ -1,0 +1,627 @@
+package landing
+
+import (
+	"fmt"
+
+	"github.com/NorthAIProject/north-client/web/shared/ui/aspectratio"
+	"github.com/NorthAIProject/north-client/web/shared/ui/badge"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/checkbox"
+	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
+	"github.com/NorthAIProject/north-client/web/shared/ui/label"
+	"github.com/NorthAIProject/north-client/web/shared/ui/selectbox"
+	"github.com/NorthAIProject/north-client/web/shared/ui/separator"
+	"github.com/NorthAIProject/north-client/web/shared/ui/slider"
+	"github.com/NorthAIProject/north-client/web/shared/ui/tabs"
+	"github.com/NorthAIProject/north-client/web/shared/ui/textarea"
+)
+
+// ---------------------------------------------------------------------------
+// Muscle viewer
+// ---------------------------------------------------------------------------
+
+// muscleLoad is one muscle group's share of an exercise.
+//
+// Share is a percentage of total work. The figures are rendered into the DOM as
+// data attributes and read back by the WebGL scene, so the readout a person can
+// see and the colour they are shown come from a single source.
+type muscleLoad struct {
+	Key   string
+	Group string
+	Role  string
+	Share int
+}
+
+type exercise struct {
+	Key   string
+	Name  string
+	Cue   string
+	Loads []muscleLoad
+}
+
+func exercises() []exercise {
+	return []exercise{
+		{
+			Key:  "squat",
+			Name: "Barbell squat",
+			Cue:  "Brace before you descend, not after. Knees track over the middle toe.",
+			Loads: []muscleLoad{
+				{"quads", "Quadriceps", "Primary", 38},
+				{"glutes", "Gluteus maximus", "Primary", 27},
+				{"erectors", "Erector spinae", "Secondary", 13},
+				{"adductors", "Adductors", "Secondary", 12},
+				{"hamstrings", "Hamstrings", "Stabiliser", 6},
+				{"calves", "Calves", "Stabiliser", 4},
+			},
+		},
+		{
+			Key:  "rdl",
+			Name: "Romanian deadlift",
+			Cue:  "Push the hips back until the hamstrings complain. The bar stays against the leg.",
+			Loads: []muscleLoad{
+				{"hamstrings", "Hamstrings", "Primary", 40},
+				{"glutes", "Gluteus maximus", "Primary", 26},
+				{"erectors", "Erector spinae", "Secondary", 18},
+				{"lats", "Latissimus dorsi", "Stabiliser", 9},
+				{"forearms", "Forearms", "Stabiliser", 7},
+			},
+		},
+		{
+			Key:  "press",
+			Name: "Overhead press",
+			Cue:  "Ribs down. The bar finishes over the ears, not in front of them.",
+			Loads: []muscleLoad{
+				{"delts", "Anterior deltoid", "Primary", 34},
+				{"triceps", "Triceps", "Primary", 24},
+				{"traps", "Upper trapezius", "Secondary", 16},
+				{"serratus", "Serratus anterior", "Secondary", 12},
+				{"erectors", "Erector spinae", "Stabiliser", 8},
+				{"abs", "Abdominals", "Stabiliser", 6},
+			},
+		},
+		{
+			Key:  "pullup",
+			Name: "Pull-up",
+			Cue:  "Start from a dead hang. Pull the elbows to the ribs rather than the chin to the bar.",
+			Loads: []muscleLoad{
+				{"lats", "Latissimus dorsi", "Primary", 37},
+				{"biceps", "Biceps", "Primary", 21},
+				{"rhomboids", "Rhomboids", "Secondary", 15},
+				{"traps", "Lower trapezius", "Secondary", 12},
+				{"forearms", "Forearms", "Stabiliser", 9},
+				{"abs", "Abdominals", "Stabiliser", 6},
+			},
+		},
+	}
+}
+
+templ muscleDemo() {
+	<section id="muscle" class="relative border-t border-hairline py-24" x-data="northMuscle">
+		@waypoint("Week 3")
+		@sectionHeading(
+			"Fitness intelligence",
+			"See where the work actually lands.",
+			"North reads your plan as anatomy, not as a list of names. Pick a lift and watch the load distribute — the same model that decides what your week is allowed to stack.",
+		)
+		@card.Card(card.Props{Class: "mt-10 overflow-hidden border-hairline bg-surface p-0"}) {
+			@card.Content(card.ContentProps{Class: "grid gap-0 p-0 lg:grid-cols-[1.1fr_1fr]"}) {
+				<div class="relative border-b border-hairline p-5 lg:border-b-0 lg:border-r">
+					@tabs.Tabs(tabs.Props{ID: "muscle-tabs"}) {
+						@tabs.List(tabs.ListProps{
+							Class:      "grid w-full grid-cols-2 gap-1 bg-transparent p-0 sm:grid-cols-4 h-auto",
+							Attributes: templ.Attributes{"role": "tablist", "aria-label": "Exercise"},
+						}) {
+							for i, ex := range exercises() {
+								@tabs.Trigger(tabs.TriggerProps{
+									Value:    ex.Key,
+									IsActive: i == 0,
+									Class:    "h-auto rounded-md border border-hairline bg-background/40 px-2 py-2 text-xs data-[tui-tabs-state=active]:border-signal/50 data-[tui-tabs-state=active]:text-signal",
+									Attributes: templ.Attributes{
+										"role":          "tab",
+										"aria-selected": fmt.Sprintf("%t", i == 0),
+										"aria-controls": "muscle-panel-" + ex.Key,
+										"x-on:click":    "select()",
+									},
+								}) {
+									{ ex.Name }
+								}
+							}
+						}
+					}
+					<div class="mt-5">
+						@aspectratio.AspectRatio(aspectratio.Props{Ratio: aspectratio.RatioSquare, Class: "rounded-lg border border-hairline bg-background/40"}) {
+							// Hand-rolled: a WebGL surface has no counterpart in the
+							// component library. It is decorative — every fact it
+							// shows is also in the readout beside it — so it is
+							// hidden from assistive technology rather than
+							// described twice.
+							<canvas
+								x-ref="canvas"
+								aria-hidden="true"
+								class="size-full cursor-grab touch-none rounded-lg active:cursor-grabbing"
+							></canvas>
+							<div
+								x-show="!ready || failed"
+								class="pointer-events-none absolute inset-0 flex items-center justify-center"
+							>
+								<span
+									class="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground"
+									x-text="failed ? 'Preview unavailable — the readout is beside it' : 'Loading model'"
+								>Loading model</span>
+							</div>
+						}
+						<div class="mt-3 flex flex-wrap items-center justify-between gap-3">
+							<div class="flex items-center gap-3">
+								@heatKey("Primary", "bg-ember")
+								@heatKey("Secondary", "bg-ember/55")
+								@heatKey("Stabiliser", "bg-ember/25")
+							</div>
+							@monoLabel("Drag to rotate")
+						</div>
+					</div>
+				</div>
+				<div class="p-5">
+					for i, ex := range exercises() {
+						@tabs.Content(tabs.ContentProps{
+							TabsID:   "muscle-tabs",
+							Value:    ex.Key,
+							IsActive: i == 0,
+							ID:       "muscle-panel-" + ex.Key,
+							Attributes: templ.Attributes{
+								"role":            "tabpanel",
+								"data-north-lift": ex.Key,
+							},
+						}) {
+							@monoLabel("Load distribution")
+							<h3 class="mt-2 text-xl font-medium tracking-[-0.02em]">{ ex.Name }</h3>
+							<p class="mt-2 text-sm leading-relaxed text-muted-foreground">{ ex.Cue }</p>
+							<ul class="mt-5 space-y-3">
+								for _, m := range ex.Loads {
+									@muscleRow(m)
+								}
+							</ul>
+						}
+					}
+				</div>
+			}
+		}
+	</section>
+}
+
+templ heatKey(name string, swatch string) {
+	<span class="flex items-center gap-1.5">
+		<span class={ "size-2 rounded-[2px]", swatch }></span>
+		@monoLabel(name)
+	</span>
+}
+
+templ muscleRow(m muscleLoad) {
+	<li data-north-muscle={ m.Key } data-north-share={ fmt.Sprintf("%d", m.Share) } data-north-role={ m.Role }>
+		<div class="flex items-baseline justify-between gap-4">
+			<span class="text-sm">{ m.Group }</span>
+			<span class="font-mono text-[11px] tabular-nums text-muted-foreground">{ fmt.Sprintf("%d%%", m.Share) }</span>
+		</div>
+		<div class="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-foreground/8">
+			<div class={ "h-full rounded-full", roleShade(m.Role) } style={ barWidth(m.Share) }></div>
+		</div>
+	</li>
+}
+
+func roleShade(role string) string {
+	switch role {
+	case "Primary":
+		return "bg-ember"
+	case "Secondary":
+		return "bg-ember/55"
+	default:
+		return "bg-ember/25"
+	}
+}
+
+func barWidth(share int) templ.SafeCSS {
+	// Shares are read as a proportion of the heaviest contributor rather than
+	// of the whole, so a 6% stabiliser is still visible as a bar.
+	return templ.SafeCSS(fmt.Sprintf("width:%d%%", min(100, share*5/2)))
+}
+
+// ---------------------------------------------------------------------------
+// Goal repair
+// ---------------------------------------------------------------------------
+
+templ goalDemo() {
+	<section class="relative border-t border-hairline py-24" x-data="northGoal">
+		@sectionHeading(
+			"Context-aware coaching",
+			"Say it badly. That is the point.",
+			"Nobody arrives with a well-formed goal. Type the way you would actually type it and watch North turn it into something a training block can be built from.",
+		)
+		@card.Card(card.Props{Class: "mt-10 border-hairline bg-surface"}) {
+			@card.Content(card.ContentProps{Class: "grid gap-8 lg:grid-cols-2"}) {
+				<div>
+					@label.Label(label.Props{For: "goal-input", Class: "font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground"}) {
+						What you would actually write
+					}
+					@textarea.Textarea(textarea.Props{
+						ID:    "goal-input",
+						Rows:  5,
+						Class: "mt-2 resize-none border-hairline bg-background/50 text-sm",
+						Attributes: templ.Attributes{
+							"x-model":     "input",
+							"x-on:keydown.meta.enter": "run()",
+						},
+						Value: "i wanna get stronger idk maybe lose a bit too, gym like 3x if im lucky, home has dumbbells and a pullup bar. back goes out sometimes",
+					})
+					<div class="mt-4 flex flex-wrap items-center gap-3">
+						@button.Button(button.Props{
+							Class:      "bg-signal text-background hover:bg-signal/90",
+							Attributes: templ.Attributes{"x-on:click": "run()", "x-bind:disabled": "running"},
+						}) {
+							<span x-text="running ? 'Reading…' : 'Structure this'">Structure this</span>
+							@icon.WandSparkles(icon.Props{Class: "size-4"})
+						}
+						@button.Button(button.Props{
+							Variant:    button.VariantGhost,
+							Attributes: templ.Attributes{"x-on:click": "reset()"},
+						}) {
+							@icon.RotateCcw(icon.Props{Class: "size-3.5"})
+							Reset
+						}
+					</div>
+					<p class="mt-4 text-xs leading-relaxed text-muted-foreground">
+						The same parser runs on your first message after signup, so the first plan
+						already respects the equipment and the limits you mentioned in passing.
+					</p>
+				</div>
+				<div class="rounded-lg border border-hairline bg-background/40 p-5">
+					<div class="flex items-center justify-between">
+						@monoLabel("Structured goal")
+						<span x-show="running" x-cloak class="text-signal">
+							@icon.LoaderCircle(icon.Props{Class: "size-3.5 motion-safe:animate-spin"})
+						</span>
+					</div>
+					<dl class="mt-4 space-y-3">
+						@goalField("Objective", "out.objective")
+						@goalField("Horizon", "out.horizon")
+						@goalField("Commitment", "out.commitment")
+						@goalField("Equipment", "out.equipment")
+						@goalField("Constraint", "out.constraint")
+					</dl>
+					@separator.Separator(separator.Props{Class: "my-5 bg-hairline"})
+					@monoLabel("First week")
+					<ol class="mt-3 space-y-2">
+						<template x-for="(s, i) in out.sessions" x-bind:key="i">
+							<li class="flex items-baseline gap-3 text-sm">
+								<span class="font-mono text-[10px] uppercase tracking-[0.14em] text-signal" x-text="s.day"></span>
+								<span class="text-foreground/90" x-text="s.work"></span>
+							</li>
+						</template>
+					</ol>
+					<div x-show="out.measure" x-cloak class="mt-5 flex items-start gap-2 rounded-md bg-signal/10 p-3">
+						@icon.Target(icon.Props{Class: "mt-0.5 size-3.5 shrink-0 text-signal"})
+						<p class="text-xs leading-relaxed text-foreground/90" x-text="out.measure"></p>
+					</div>
+				</div>
+			}
+		}
+	</section>
+}
+
+templ goalField(name string, expr string) {
+	<div class="flex items-baseline gap-4">
+		<dt class="w-24 shrink-0 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">{ name }</dt>
+		<dd class="min-h-[1.25rem] flex-1 text-sm text-foreground/90">
+			<span x-text={ expr }></span>
+			<span x-show="running" x-cloak class="ml-0.5 inline-block h-3.5 w-1.5 -mb-0.5 bg-signal motion-safe:animate-caret"></span>
+		</dd>
+	</div>
+}
+
+// ---------------------------------------------------------------------------
+// Cross-surface continuity
+// ---------------------------------------------------------------------------
+
+type surface struct {
+	Key      string
+	Name     string
+	Chrome   string
+	Icon     templ.Component
+	Gap      string
+	Messages []threadTurn
+}
+
+func surfaces() []surface {
+	return []surface{
+		{
+			Key: "web", Name: "Web", Chrome: "north.app/coach", Icon: icon.Globe(icon.Props{Class: "size-3.5"}),
+			Gap: "Monday, 07:12",
+			Messages: []threadTurn{
+				{"", "", true, "Back is fine but I only slept five hours. Do I still squat today?"},
+				{"", "", false, "No. You have squatted heavy on under six hours twice this year and both times the following week went missing. Do the Wednesday session today — dumbbell work and the carry — and move the squat to Thursday."},
+			},
+		},
+		{
+			Key: "telegram", Name: "Telegram", Chrome: "North · online", Icon: icon.Send(icon.Props{Class: "size-3.5"}),
+			Gap: "Thursday, 18:40 — from the gym floor",
+			Messages: []threadTurn{
+				{"", "", true, "squatting now. 80 felt heavy"},
+				{"", "", false, "It should. That is 5kg above anything you have done since March, on the session we moved. Stop at three sets and tell me how the back feels in the morning."},
+			},
+		},
+		{
+			Key: "discord", Name: "Discord", Chrome: "#training", Icon: icon.Hash(icon.Props{Class: "size-3.5"}),
+			Gap: "Friday, 21:05 — in your accountability server",
+			Messages: []threadTurn{
+				{"", "", true, "@North post my week"},
+				{"", "", false, "Three sessions, one moved for sleep, 80kg squat for three — a March best. Carry is still the weak link at 40 minutes against a 90 minute target."},
+			},
+		},
+		{
+			Key: "whatsapp", Name: "WhatsApp", Chrome: "North", Icon: icon.MessageCircle(icon.Props{Class: "size-3.5"}),
+			Gap: "Sunday, 09:30",
+			Messages: []threadTurn{
+				{"", "", false, "You told me on Monday that five hours of sleep is your line. You have hit it four nights this week. Before we add load, that is the thing worth fixing."},
+				{"", "", true, "fair"},
+			},
+		},
+	}
+}
+
+templ platformDemo() {
+	<section class="relative border-t border-hairline py-24" x-data="northSurfaces">
+		@waypoint("Week 12")
+		@sectionHeading(
+			"Available everywhere",
+			"Four apps. One conversation. Nothing repeated back.",
+			"North is not four bots sharing a name. Move between surfaces and it keeps the thread — including the thing you said on Monday that you have already forgotten.",
+		)
+		<div class="mt-10">
+			@tabs.Tabs(tabs.Props{ID: "surface-tabs"}) {
+				@tabs.List(tabs.ListProps{
+					Class:      "flex h-auto w-full flex-wrap gap-1 border border-hairline bg-surface p-1",
+					Attributes: templ.Attributes{"role": "tablist", "aria-label": "Surface"},
+				}) {
+					for i, s := range surfaces() {
+						@tabs.Trigger(tabs.TriggerProps{
+							Value:    s.Key,
+							IsActive: i == 0,
+							Class:    "gap-1.5 px-3 py-1.5 text-xs data-[tui-tabs-state=active]:text-signal",
+							Attributes: templ.Attributes{
+								"role":          "tab",
+								"aria-selected": fmt.Sprintf("%t", i == 0),
+								"x-on:click":    "pause()",
+							},
+						}) {
+							@s.Icon
+							{ s.Name }
+						}
+					}
+				}
+				<div class="mt-4" x-on:mouseenter="pause()" x-on:focusin="pause()">
+					for i, s := range surfaces() {
+						@tabs.Content(tabs.ContentProps{Value: s.Key, IsActive: i == 0, Attributes: templ.Attributes{"role": "tabpanel"}}) {
+							@surfacePanel(s)
+						}
+					}
+				</div>
+			}
+		</div>
+	</section>
+}
+
+// surfacePanel is hand-rolled: the point of the section is that each surface
+// looks like itself, and no component in the library describes application
+// chrome. The framing is generic on purpose — a title bar and a composer, not a
+// reproduction of anyone's brand.
+templ surfacePanel(s surface) {
+	<div class="overflow-hidden rounded-xl border border-hairline bg-surface">
+		<div class="flex items-center gap-2 border-b border-hairline bg-background/40 px-4 py-2.5">
+			<span class="flex gap-1.5" aria-hidden="true">
+				<span class="size-2 rounded-full bg-foreground/15"></span>
+				<span class="size-2 rounded-full bg-foreground/15"></span>
+				<span class="size-2 rounded-full bg-foreground/15"></span>
+			</span>
+			<span class="ml-2 flex items-center gap-1.5 text-muted-foreground">
+				@s.Icon
+				@monoLabel(s.Chrome)
+			</span>
+		</div>
+		<div class="space-y-4 px-5 py-6">
+			<div class="flex items-center gap-3">
+				<span class="h-px flex-1 bg-hairline"></span>
+				@monoLabel(s.Gap)
+				<span class="h-px flex-1 bg-hairline"></span>
+			</div>
+			for _, m := range s.Messages {
+				@surfaceMessage(m)
+			}
+		</div>
+		<div class="flex items-center gap-2 border-t border-hairline px-5 py-3 text-muted-foreground">
+			@icon.MessageSquare(icon.Props{Class: "size-3.5"})
+			@monoLabel("Same memory, whichever window you are in")
+		</div>
+	</div>
+}
+
+templ surfaceMessage(m threadTurn) {
+	<div class={ "flex", templ.KV("justify-end", m.FromUser) }>
+		<div
+			class={ "max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed",
+				templ.KV("bg-foreground/8 text-foreground/90", m.FromUser),
+				templ.KV("border border-agent/25 bg-agent/10", !m.FromUser) }
+		>
+			if !m.FromUser {
+				<div class="pb-1">
+					<span class="font-mono text-[10px] uppercase tracking-[0.14em] text-agent">North</span>
+				</div>
+			}
+			{ m.Body }
+		</div>
+	</div>
+}
+
+// ---------------------------------------------------------------------------
+// Quick tools
+// ---------------------------------------------------------------------------
+
+templ toolsDemo() {
+	<section class="relative border-t border-hairline py-24">
+		@sectionHeading(
+			"Two minutes in",
+			"Numbers are the easy part.",
+			"Anything can compute a BMI. The work is knowing what it is worth — and what to do on Tuesday.",
+		)
+		<div class="mt-10 grid gap-5 lg:grid-cols-2">
+			@bmiPanel()
+			@goalSetterPanel()
+		</div>
+	</section>
+}
+
+templ bmiPanel() {
+	<div x-data="northBmi">
+		@card.Card(card.Props{Class: "h-full border-hairline bg-surface"}) {
+			@card.Content(card.ContentProps{Class: "flex h-full flex-col"}) {
+				<div class="flex items-center gap-2 text-muted-foreground">
+					@icon.Scale(icon.Props{Class: "size-3.5"})
+					@monoLabel("Body mass index")
+				</div>
+				<div class="mt-5 space-y-6" x-on:input="sync()">
+					<div>
+						<div class="flex items-baseline justify-between">
+							@label.Label(label.Props{For: "bmi-height", Class: "text-sm"}) {
+								Height
+							}
+							<span class="font-mono text-sm tabular-nums" x-text="height + ' cm'">178 cm</span>
+						</div>
+						@slider.Slider(slider.Props{ID: "bmi-height", Min: 140, Max: 210, Step: 1, Value: 178, Class: "mt-3"})
+					</div>
+					<div>
+						<div class="flex items-baseline justify-between">
+							@label.Label(label.Props{For: "bmi-weight", Class: "text-sm"}) {
+								Weight
+							}
+							<span class="font-mono text-sm tabular-nums" x-text="weight + ' kg'">82 kg</span>
+						</div>
+						@slider.Slider(slider.Props{ID: "bmi-weight", Min: 40, Max: 160, Step: 1, Value: 82, Class: "mt-3"})
+					</div>
+				</div>
+				@separator.Separator(separator.Props{Class: "mb-6 mt-auto bg-hairline"})
+				<div class="flex items-end justify-between">
+					<div>
+						@monoLabel("Index")
+						<div class="mt-1 font-mono text-4xl tabular-nums tracking-tight" x-text="bmi">25.9</div>
+					</div>
+					@badge.Badge(badge.Props{Variant: badge.VariantOutline, Class: "border-hairline"}) {
+						<span x-text="band">Overweight</span>
+					}
+				</div>
+				<div class="mt-5 flex items-start gap-2 rounded-md bg-signal/10 p-3">
+					@icon.Compass(icon.Props{Class: "mt-0.5 size-3.5 shrink-0 text-signal"})
+					<p class="text-xs leading-relaxed text-foreground/90" x-text="reading">
+						BMI cannot tell muscle from anything else.
+					</p>
+				</div>
+			}
+		}
+	</div>
+}
+
+templ goalSetterPanel() {
+	<div x-data="northSetter">
+		@card.Card(card.Props{Class: "h-full border-hairline bg-surface"}) {
+			@card.Content(card.ContentProps{}) {
+				<div class="flex items-center gap-2 text-muted-foreground">
+					@icon.Target(icon.Props{Class: "size-3.5"})
+					@monoLabel("Set a goal")
+				</div>
+				<div class="mt-5 space-y-5">
+					<div>
+						@label.Label(label.Props{Class: "text-sm"}) {
+							What are you after
+						}
+						@selectbox.SelectBox() {
+							@selectbox.Trigger(selectbox.TriggerProps{
+								Class:      "mt-2 border-hairline bg-background/50",
+								Attributes: templ.Attributes{"x-on:change": "goal = $event.target.value"},
+							}) {
+								@selectbox.Value(selectbox.ValueProps{Placeholder: "Pick one"})
+							}
+							@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
+								@selectbox.Item(selectbox.ItemProps{Value: "strength", Selected: true}) {
+									Get stronger
+								}
+								@selectbox.Item(selectbox.ItemProps{Value: "leaner"}) {
+									Get leaner
+								}
+								@selectbox.Item(selectbox.ItemProps{Value: "endurance"}) {
+									Last longer
+								}
+								@selectbox.Item(selectbox.ItemProps{Value: "pain"}) {
+									Stop hurting
+								}
+							}
+						}
+					</div>
+					<div>
+						<div class="flex items-baseline justify-between">
+							@label.Label(label.Props{For: "setter-days", Class: "text-sm"}) {
+								Days you can train
+							}
+							<span class="font-mono text-sm tabular-nums" x-text="days">3</span>
+						</div>
+						@slider.Slider(slider.Props{ID: "setter-days", Min: 1, Max: 6, Step: 1, Value: 3, Class: "mt-3", Attributes: templ.Attributes{"x-on:input": "days = Number($event.target.value)"}})
+					</div>
+					<div>
+						@label.Label(label.Props{Class: "text-sm"}) {
+							What you have
+						}
+						<div class="mt-3 flex flex-wrap gap-x-5 gap-y-2.5">
+							@equipmentToggle("barbell", "Barbell", true)
+							@equipmentToggle("dumbbells", "Dumbbells", true)
+							@equipmentToggle("pullup", "Pull-up bar", false)
+							@equipmentToggle("none", "Nothing at all", false)
+						</div>
+					</div>
+				</div>
+				@separator.Separator(separator.Props{Class: "my-6 bg-hairline"})
+				<div class="rounded-lg border border-hairline bg-background/40 p-4">
+					@monoLabel("What your week becomes")
+					<p class="mt-2 text-sm leading-relaxed text-foreground/90" x-text="summary"></p>
+					<ol class="mt-4 space-y-2">
+						<template x-for="(s, i) in split" x-bind:key="i">
+							<li class="flex items-baseline gap-3 text-sm">
+								<span class="font-mono text-[10px] uppercase tracking-[0.14em] text-signal" x-text="s.day"></span>
+								<span class="text-foreground/90" x-text="s.work"></span>
+							</li>
+						</template>
+					</ol>
+				</div>
+				@button.Button(button.Props{
+					Href:      "/signup",
+					FullWidth: true,
+					Class:     "mt-5 bg-signal text-background hover:bg-signal/90",
+				}) {
+					Start this plan
+					@icon.ArrowRight(icon.Props{Class: "size-4"})
+				}
+			}
+		}
+	</div>
+}
+
+templ equipmentToggle(key string, name string, checked bool) {
+	<div class="flex items-center gap-2">
+		@checkbox.Checkbox(checkbox.Props{
+			ID:      "kit-" + key,
+			Value:   key,
+			Checked: checked,
+			Attributes: templ.Attributes{
+				"x-on:change": fmt.Sprintf("toggle('%s', $event.target.checked)", key),
+			},
+		})
+		@label.Label(label.Props{For: "kit-" + key, Class: "text-sm font-normal"}) {
+			{ name }
+		}
+	</div>
+}

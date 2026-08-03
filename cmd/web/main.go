@@ -23,6 +23,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/coach"
 	"github.com/NorthAIProject/north-client/internal/config"
 	"github.com/NorthAIProject/north-client/internal/conversations"
+	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/jobs"
 	"github.com/NorthAIProject/north-client/internal/media"
 	"github.com/NorthAIProject/north-client/internal/shared/database"
@@ -151,6 +152,9 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, stora
 
 	conversationSvc := conversations.NewService(conversations.NewRepository(pool))
 
+	goalSvc := goals.NewService(goals.NewRepository(pool))
+	goalHandler := goals.NewHandler(goalSvc)
+
 	workoutSvc := workouts.NewService(workouts.Options{
 		Repository: workouts.NewRepository(pool),
 		Registry:   registry,
@@ -175,6 +179,7 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, stora
 		// built; the ContextBuilder itself never changes. Until a source
 		// exists, the coach honestly tells the user it cannot see that.
 		ContextBuilder: coach.NewContextBuilder(conversationSvc,
+			goals.NewContextSource(goalSvc),
 			workouts.NewContextSource(workoutSvc),
 			media.NewContextSource(mediaSvc),
 		),
@@ -216,6 +221,7 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, stora
 		})
 
 		coachHandler.Routes(r)
+		goalHandler.Routes(r)
 		workoutHandler.Routes(r)
 		mediaHandler.Routes(r)
 	})

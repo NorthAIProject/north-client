@@ -58,6 +58,34 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+
+  /* Landing page only. The application shell is deliberately achromatic; the
+     marketing page needs an accent, and each of these has exactly one job. */
+  --color-signal: var(--north-signal);
+  --color-agent: var(--north-agent);
+  --color-ember: var(--north-ember);
+  --color-surface: var(--north-surface);
+  --color-hairline: var(--north-hairline);
+
+  --animate-thread-in: north-thread-in 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-caret: north-caret 1s steps(2, start) infinite;
+
+  @keyframes north-thread-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  @keyframes north-caret {
+    50% {
+      opacity: 0;
+    }
+  }
 }
 
 :root {
@@ -88,6 +116,15 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+
+  /* signal: bearing, primary accent. agent: the coach speaking, used only in
+     the cross-surface thread. ember: physical effort, used only where it is a
+     literal heat scale. */
+  --north-signal: oklch(0.55 0.14 218);
+  --north-agent: oklch(0.52 0.19 288);
+  --north-ember: oklch(0.62 0.15 62);
+  --north-surface: oklch(0.985 0.003 250);
+  --north-hairline: oklch(0 0 0 / 8%);
 }
 
 .dark {
@@ -117,6 +154,12 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+
+  --north-signal: oklch(0.74 0.15 218);
+  --north-agent: oklch(0.63 0.19 288);
+  --north-ember: oklch(0.76 0.16 62);
+  --north-surface: oklch(0.19 0.008 250);
+  --north-hairline: oklch(1 0 0 / 8%);
 }
 
 @layer base {

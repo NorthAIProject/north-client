@@ -1,179 +1,187 @@
 package landing
 
 import (
+	"fmt"
+
 	"github.com/NorthAIProject/north-client/web/shared/layout"
 	"github.com/NorthAIProject/north-client/web/shared/ui/badge"
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
-	"github.com/NorthAIProject/north-client/web/shared/ui/card"
 	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
-	"github.com/NorthAIProject/north-client/web/shared/ui/separator"
 )
 
-// principle mirrors the four ideas North is built around, as stated in the
-// README. Kept as data rather than repeated markup so the page and the
-// positioning cannot drift apart.
-type principle struct {
-	Icon templ.Component
-	Name string
-	Body string
-}
-
-func principles() []principle {
-	return []principle{
-		{
-			Icon: icon.Brain(icon.Props{Class: "size-5"}),
-			Name: "Persistent memory",
-			Body: "Goals, preferences, check-ins, and progress carry across every conversation. You never start from scratch.",
-		},
-		{
-			Icon: icon.Target(icon.Props{Class: "size-5"}),
-			Name: "Context-aware coaching",
-			Body: "Advice is built from your real life: active goals, recent reflections, calendar, and training history.",
-		},
-		{
-			Icon: icon.Globe(icon.Props{Class: "size-5"}),
-			Name: "Available everywhere",
-			Body: "Web today, with Telegram, Discord, WhatsApp, and MCP sharing one continuous memory.",
-		},
-		{
-			Icon: icon.Plug(icon.Props{Class: "size-5"}),
-			Name: "Provider agnostic",
-			Body: "Gemini, Claude, GPT, or Grok behind one internal interface. The model is an implementation detail.",
-		},
-	}
-}
-
-type capability struct {
-	Icon templ.Component
-	Name string
-	Body string
-}
-
-func capabilities() []capability {
-	return []capability{
-		{icon.Dumbbell(icon.Props{Class: "size-5"}), "Training plans", "Describe your goal, your equipment, and the days you can train. Get a structured plan, not a wall of text."},
-		{icon.Activity(icon.Props{Class: "size-5"}), "Form feedback", "Upload a set. Get timestamped notes on what to fix, tied to the moment it happens in your own video."},
-		{icon.NotebookPen(icon.Props{Class: "size-5"}), "Daily check-ins", "Mood, energy, wins, and friction. Short entries that teach North how your weeks actually go."},
-		{icon.FileText(icon.Props{Class: "size-5"}), "Your knowledge", "Documents, notes, and research the coach can search and reference when it is relevant."},
-		{icon.Repeat(icon.Props{Class: "size-5"}), "Reviews", "Daily briefings and weekly reviews that summarise progress instead of asking you to remember it."},
-		{icon.HeartPulse(icon.Props{Class: "size-5"}), "Fitness data", "Strava now, with Apple Health and Garmin to follow. Summaries, not raw activity dumps."},
-	}
-}
-
+// Page is the signed-out marketing page.
+//
+// Its argument is continuity rather than capability, so it is built around
+// demonstrations a visitor can operate instead of a list of features they have
+// to take on trust. The sections are laid out along a time axis — the bearing
+// line — because the claim North is sold on is that it is still useful in month
+// eight.
 templ Page() {
 	@layout.Public("") {
-		@hero()
-		@principlesSection()
-		@capabilitiesSection()
-		@closing()
-		@footer()
+		<div x-data="northBearing" class="relative">
+			@bearingRail()
+			<div class="mx-auto w-full max-w-6xl px-6 lg:pl-28 lg:pr-8">
+				@hero()
+				@muscleDemo()
+				@goalDemo()
+				@platformDemo()
+				@toolsDemo()
+				@featuresSection()
+				@howItWorksSection()
+				@visionSection()
+				@pricingSection()
+				@finalCTA()
+			</div>
+			@siteFooter()
+		</div>
+		@landingScripts()
 	}
+}
+
+// bearingRail is the page's one piece of hand-rolled chrome. No component in
+// the library describes a scroll-linked axis, and this one carries meaning:
+// it is the horizon the product is sold on, filling as the reader travels it.
+templ bearingRail() {
+	<div aria-hidden="true" class="pointer-events-none absolute inset-y-0 left-10 hidden w-px bg-hairline lg:block">
+		<div
+			class="w-px bg-signal/70 transition-[height] duration-150 ease-out"
+			x-bind:style="'height:' + progress + '%'"
+		></div>
+	</div>
+	// Below lg the rail has nowhere to live, so the same signal becomes a
+	// hairline of scroll progress pinned under the navbar.
+	<div
+		aria-hidden="true"
+		class="pointer-events-none fixed left-0 top-14 z-40 h-px bg-signal/70 lg:hidden"
+		x-bind:style="'width:' + progress + '%'"
+	></div>
+}
+
+// waypoint marks a section's position on the bearing line. The labels are
+// distances rather than an ordered list, which is why they are not 01 / 02 / 03.
+templ waypoint(distance string) {
+	<div aria-hidden="true" class="absolute -left-[4.5rem] top-14 hidden lg:block">
+		<div class="-ml-[3px] flex items-center gap-2">
+			<span class="size-1.5 rounded-full bg-signal"></span>
+			@monoLabel(distance)
+		</div>
+	</div>
+}
+
+// monoLabel is the page's utility voice: every eyebrow, axis, timestamp, and
+// readout is set this way, so the demos read as instruments rather than as
+// marketing panels.
+templ monoLabel(text string) {
+	<span class="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">{ text }</span>
+}
+
+// sectionHeading is the standard opening of every non-hero section.
+templ sectionHeading(eyebrow string, title string, body string) {
+	<div class="max-w-2xl">
+		@monoLabel(eyebrow)
+		<h2 class="mt-3 text-3xl font-medium tracking-[-0.03em] text-balance md:text-4xl">{ title }</h2>
+		if body != "" {
+			<p class="mt-4 text-base leading-relaxed text-muted-foreground">{ body }</p>
+		}
+	</div>
 }
 
 templ hero() {
-	<section class="mx-auto max-w-5xl px-6 pt-20 pb-16 text-center md:pt-28">
-		@badge.Badge(badge.Props{Variant: badge.VariantSecondary, Class: "mb-6"}) {
-			@icon.Sparkles(icon.Props{Class: "size-3.5"})
-			An operating system for personal growth
-		}
-		<h1 class="mx-auto max-w-3xl text-4xl font-semibold tracking-tight text-balance md:text-6xl">
-			Most AI assistants answer questions.
-			<span class="text-muted-foreground block">North helps you build a better life.</span>
-		</h1>
-		<p class="text-muted-foreground mx-auto mt-6 max-w-xl text-lg text-pretty">
-			A coach that remembers who you are, what you are working towards, and how
-			your life actually changes over months and years.
-		</p>
-		<div class="mt-10 flex flex-wrap items-center justify-center gap-3">
-			@button.Button(button.Props{Size: button.SizeLg, Href: "/signup"}) {
-				Create your account
-				@icon.ArrowRight(icon.Props{Class: "size-4"})
-			}
-			@button.Button(button.Props{Size: button.SizeLg, Variant: button.VariantOutline, Href: "/login"}) {
-				Sign in
-			}
-		</div>
-	</section>
-}
-
-templ principlesSection() {
-	<section class="mx-auto max-w-5xl px-6 py-16">
-		<div class="grid gap-4 sm:grid-cols-2">
-			for _, p := range principles() {
-				@card.Card() {
-					@card.Header() {
-						<div class="text-muted-foreground mb-2">
-							@p.Icon
-						</div>
-						@card.Title() {
-							{ p.Name }
-						}
-						@card.Description() {
-							{ p.Body }
-						}
+	<section class="relative pb-24 pt-16 md:pt-24">
+		@waypoint("Day 1")
+		<div class="grid items-start gap-14 lg:grid-cols-[minmax(0,1fr)_25rem] lg:gap-16">
+			<div>
+				@badge.Badge(badge.Props{Variant: badge.VariantOutline, Class: "h-auto max-w-full gap-2 whitespace-normal border-hairline bg-surface/60 py-1 pl-1.5 pr-3 text-left"}) {
+					<span class="flex size-5 items-center justify-center rounded-full bg-signal/15 text-signal">
+						@icon.Compass(icon.Props{Class: "size-3"})
+					</span>
+					@monoLabel("An operating system for personal growth")
+				}
+				<h1 class="mt-7 text-[clamp(2.5rem,6vw,4.25rem)] font-medium leading-[0.98] tracking-[-0.035em] text-balance">
+					Most AI forgets you by Tuesday.
+					<span class="block text-muted-foreground">North has been keeping notes since March.</span>
+				</h1>
+				<p class="mt-7 max-w-[54ch] text-lg leading-relaxed text-muted-foreground">
+					One coach with one memory — on the web, in Telegram, in Discord, in WhatsApp,
+					and inside any tool that speaks MCP. It holds your goals, your training, your
+					documents, and every check-in you have ever written.
+				</p>
+				<div class="mt-9 flex flex-wrap items-center gap-3">
+					@button.Button(button.Props{Href: "/signup", Size: button.SizeLg, Class: "bg-signal text-background hover:bg-signal/90"}) {
+						Create your account
+						@icon.ArrowRight(icon.Props{Class: "size-4"})
 					}
-				}
-			}
-		</div>
-	</section>
-}
-
-templ capabilitiesSection() {
-	<section class="mx-auto max-w-5xl px-6 py-16">
-		<h2 class="text-2xl font-semibold tracking-tight md:text-3xl">What it does</h2>
-		<p class="text-muted-foreground mt-2 max-w-xl">
-			Coaching that has your context, not a chat window that forgets you.
-		</p>
-		@separator.Separator(separator.Props{Class: "my-8"})
-		<div class="grid gap-x-10 gap-y-8 sm:grid-cols-2 lg:grid-cols-3">
-			for _, c := range capabilities() {
-				<div>
-					<div class="text-muted-foreground mb-3">
-						@c.Icon
-					</div>
-					<h3 class="font-medium">{ c.Name }</h3>
-					<p class="text-muted-foreground mt-1 text-sm text-pretty">{ c.Body }</p>
+					@button.Button(button.Props{Href: "#muscle", Size: button.SizeLg, Variant: button.VariantOutline, Class: "border-hairline"}) {
+						See it work
+					}
 				</div>
-			}
+				<p class="mt-5 flex items-center gap-2 text-sm text-muted-foreground">
+					@icon.Check(icon.Props{Class: "size-3.5 text-signal"})
+					Free while you find out whether it sticks. No card.
+				</p>
+			</div>
+			@heroThread()
 		</div>
 	</section>
 }
 
-templ closing() {
-	<section class="mx-auto max-w-5xl px-6 py-16">
-		@card.Card(card.Props{Class: "text-center"}) {
-			@card.Header() {
-				@card.Title(card.TitleProps{Class: "text-2xl"}) {
-					North is not another chatbot.
-				}
-				@card.Description(card.DescriptionProps{Class: "mx-auto max-w-lg text-base"}) {
-					It is a long-term thinking partner. The goal is not to replace your
-					judgement — it is to sharpen it.
-				}
+// heroThread states the memory claim and the multi-surface claim in one
+// picture: a single conversation, five months long, four surfaces, nothing
+// repeated back.
+templ heroThread() {
+	<div class="rounded-xl border border-hairline bg-surface p-5 md:p-6">
+		<div class="flex items-center justify-between pb-5">
+			@monoLabel("One thread")
+			@monoLabel("Mar — Aug")
+		</div>
+		<ol class="space-y-5 border-l border-hairline pl-5">
+			for i, e := range heroThreadEntries() {
+				@threadEntry(e, i)
 			}
-			@card.Content() {
-				@button.Button(button.Props{Size: button.SizeLg, Href: "/signup"}) {
-					Get started
-					@icon.ArrowRight(icon.Props{Class: "size-4"})
-				}
-			}
-		}
-	</section>
+		</ol>
+	</div>
 }
 
-templ footer() {
-	<footer class="border-border/60 mt-8 border-t">
-		<div class="text-muted-foreground mx-auto flex max-w-5xl flex-col items-center justify-between gap-3 px-6 py-8 text-sm sm:flex-row">
-			<span>North — your AI operating system for personal growth.</span>
-			<a
-				href="https://github.com/NorthAIProject/north-client"
-				target="_blank"
-				rel="noopener noreferrer"
-				class="hover:text-foreground flex items-center gap-1.5 transition-colors"
-			>
-				@icon.Github(icon.Props{Class: "size-4"})
-				Source
-			</a>
+// threadTurn is one message in the hero conversation.
+type threadTurn struct {
+	Date     string
+	Surface  string
+	FromUser bool
+	Body     string
+}
+
+func heroThreadEntries() []threadTurn {
+	return []threadTurn{
+		{"Mar 14", "Web", true, "Starting over. Bad back, three days a week, and I want to hike Peneda-Gerês in September."},
+		{"Mar 14", "Web", false, "Then we build around the back first. Six weeks of hinge tolerance before anything gets heavy."},
+		{"Apr 02", "Telegram", true, "Deadlifted 60kg today. Nothing hurt."},
+		{"May 19", "WhatsApp", false, "Fourth session in a row with no pain. That is the signal I was waiting for — moving you into the loading block."},
+		{"Aug 03", "Discord", false, "Gerês is five weeks out. Your longest carry so far is 40 minutes. We should get that to 90."},
+	}
+}
+
+templ threadEntry(t threadTurn, index int) {
+	<li class="relative motion-safe:animate-thread-in" style={ threadDelay(index) }>
+		<span
+			class={ "absolute -left-[1.65rem] top-1.5 size-2 rounded-full ring-4 ring-surface",
+				templ.KV("bg-muted-foreground/40", t.FromUser),
+				templ.KV("bg-agent", !t.FromUser) }
+		></span>
+		<div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+			@monoLabel(t.Date)
+			<span class="text-hairline" aria-hidden="true">·</span>
+			@monoLabel(t.Surface)
+			if !t.FromUser {
+				<span class="font-mono text-[10px] uppercase tracking-[0.14em] text-agent">North</span>
+			}
 		</div>
-	</footer>
+		<p class="mt-1.5 text-sm leading-relaxed text-foreground/90">{ t.Body }</p>
+	</li>
+}
+
+// threadDelay staggers the entries so the thread assembles itself once on load.
+// Under prefers-reduced-motion the animation utility never applies, which
+// leaves the delay inert rather than merely faster.
+func threadDelay(index int) templ.SafeCSS {
+	return templ.SafeCSS(fmt.Sprintf("animation-delay:%dms", 120*index))
 }

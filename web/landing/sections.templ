@@ -1,0 +1,311 @@
+package landing
+
+import (
+	"github.com/NorthAIProject/north-client/web/shared/ui/badge"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
+	"github.com/NorthAIProject/north-client/web/shared/ui/separator"
+)
+
+// ---------------------------------------------------------------------------
+// Features
+// ---------------------------------------------------------------------------
+
+type feature struct {
+	Icon templ.Component
+	Name string
+	Body string
+}
+
+func features() []feature {
+	return []feature{
+		{
+			icon.Brain(icon.Props{Class: "size-4"}),
+			"Persistent memory",
+			"Every goal, session, check-in, and offhand remark stays. North reads back across months, not across the last ten messages, so the injury you mentioned in March still shapes the plan in September.",
+		},
+		{
+			icon.Target(icon.Props{Class: "size-4"}),
+			"Context-aware coaching",
+			"Before it answers, North assembles what it knows: active goals, this week's training, your documents, your calendar, how you have been sleeping. Advice arrives already fitted to your life.",
+		},
+		{
+			icon.Plug(icon.Props{Class: "size-4"}),
+			"Everywhere, and inside your tools",
+			"Web, Telegram, Discord, and WhatsApp share one memory. Through MCP, North can also act — reading your notes, filing a check-in, pulling a summary — from whatever agent you already use.",
+		},
+		{
+			icon.Dumbbell(icon.Props{Class: "size-4"}),
+			"Fitness intelligence",
+			"Strava and Apple Health flow in as summaries rather than raw activity dumps. Plans respect the equipment you actually own, and form checks come back with timestamps you can jump to in your own video.",
+		},
+		{
+			icon.FileText(icon.Props{Class: "size-4"}),
+			"Knowledge you already have",
+			"Drop in the research, the PDFs, the physio notes. North searches them when they are relevant and cites what it used, instead of pretending to remember.",
+		},
+	}
+}
+
+templ featuresSection() {
+	<section class="relative border-t border-hairline py-24">
+		@waypoint("Month 8")
+		@sectionHeading(
+			"What you get",
+			"Built to still be useful in month eight.",
+			"",
+		)
+		// Six columns rather than three: five cards over two rows leaves a hole
+		// on a three-column grid, so the last two are widened to close it.
+		<div class="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
+			for i, f := range features() {
+				@card.Card(card.Props{Class: "border-hairline bg-surface " + featureSpan(i)}) {
+					@card.Content(card.ContentProps{}) {
+						<span class="flex size-8 items-center justify-center rounded-md bg-signal/12 text-signal">
+							@f.Icon
+						</span>
+						<h3 class="mt-4 text-base font-medium">{ f.Name }</h3>
+						<p class="mt-2 text-sm leading-relaxed text-muted-foreground">{ f.Body }</p>
+					}
+				}
+			}
+		</div>
+	</section>
+}
+
+func featureSpan(index int) string {
+	if index < 3 {
+		return "lg:col-span-2"
+	}
+	return "lg:col-span-3"
+}
+
+// ---------------------------------------------------------------------------
+// How it works
+// ---------------------------------------------------------------------------
+
+type step struct {
+	When string
+	Name string
+	Body string
+}
+
+func steps() []step {
+	return []step{
+		{"Minute one", "Say where you are going", "In your own words, badly. North turns it into an objective, a horizon, and a first week."},
+		{"Week one", "It builds the context", "Your equipment, your limits, your calendar, your documents. The plan is assembled from what is true about you, not from a template."},
+		{"Every week after", "You just live", "Check in from whichever app is in your hand. A sentence is enough. North is keeping the ledger."},
+		{"Month three", "It changes the plan first", "When the pattern shifts — sleep, pain, a missed block — North moves before you fall off, and tells you what it saw."},
+	}
+}
+
+templ howItWorksSection() {
+	<section class="relative border-t border-hairline py-24">
+		@sectionHeading("How it works", "Four things happen.", "")
+		<ol class="mt-10 space-y-0">
+			for i, s := range steps() {
+				<li class="grid gap-2 py-6 md:grid-cols-[10rem_1fr] md:gap-8">
+					<div class="pt-0.5">
+						@monoLabel(s.When)
+					</div>
+					<div>
+						<h3 class="text-lg font-medium tracking-[-0.02em]">{ s.Name }</h3>
+						<p class="mt-2 max-w-[62ch] text-sm leading-relaxed text-muted-foreground">{ s.Body }</p>
+					</div>
+				</li>
+				if i < len(steps())-1 {
+					@separator.Separator(separator.Props{Class: "bg-hairline"})
+				}
+			}
+		</ol>
+	</section>
+}
+
+// ---------------------------------------------------------------------------
+// Vision
+// ---------------------------------------------------------------------------
+
+templ visionSection() {
+	<section class="relative border-t border-hairline py-24">
+		@waypoint("Year 2")
+		<div class="grid gap-12 lg:grid-cols-[1.3fr_1fr] lg:gap-16">
+			<div>
+				@monoLabel("Why we are building it")
+				<blockquote class="mt-5 text-2xl font-medium leading-[1.25] tracking-[-0.025em] text-balance md:text-3xl">
+					“The useful thing was never the answer. It was that somebody had been
+					watching long enough to notice the pattern.”
+				</blockquote>
+				<p class="mt-6 max-w-[58ch] text-base leading-relaxed text-muted-foreground">
+					A good coach is not smarter than the internet. A good coach knows that you
+					always quit in week five, that you lie about sleep, and that the last time
+					you tried this you injured yourself doing something you were told not to do.
+					That knowledge takes months to build and it is the entire product. North is
+					not trying to be a better chatbot — it is trying to be the thing that has
+					been paying attention.
+				</p>
+			</div>
+			<div class="space-y-4">
+				@visionStat("Six months", "The horizon plans are written against, not the session in front of you.")
+				@visionStat("Four surfaces", "Web, Telegram, Discord, WhatsApp — and one memory behind all of them.")
+				@visionStat("Zero", "Times you re-explain your injury, your equipment, or what you are training for.")
+			</div>
+		</div>
+	</section>
+}
+
+templ visionStat(value string, body string) {
+	<div class="rounded-lg border border-hairline bg-surface p-5">
+		<div class="font-mono text-xl tracking-tight text-signal">{ value }</div>
+		<p class="mt-2 text-sm leading-relaxed text-muted-foreground">{ body }</p>
+	</div>
+}
+
+// ---------------------------------------------------------------------------
+// Pricing
+// ---------------------------------------------------------------------------
+
+templ pricingSection() {
+	<section class="relative border-t border-hairline py-24">
+		@sectionHeading("Pricing", "Two plans. No seat maths.", "")
+		<div class="mt-10 grid gap-5 lg:grid-cols-2">
+			@planCard(
+				"Free",
+				"€0",
+				"forever",
+				"Enough to find out whether a coach with memory changes anything for you.",
+				[]string{
+					"The coach on the web, with full memory",
+					"One active training plan",
+					"Three form checks a month",
+					"Daily check-ins and weekly summaries",
+				},
+				"Create your account",
+				false,
+			)
+			@planCard(
+				"Pro",
+				"€12",
+				"per month",
+				"For when North stops being a tool you visit and starts being the thing you talk to.",
+				[]string{
+					"Everything in Free",
+					"Telegram, Discord, and WhatsApp",
+					"MCP access from your own agents and editors",
+					"Unlimited form checks and document knowledge",
+					"Strava and Apple Health",
+				},
+				"Start with Pro",
+				true,
+			)
+		</div>
+		<p class="mt-6 text-xs text-muted-foreground">
+			Cancel from the settings page in two clicks. Your memory is exportable, and it is yours.
+		</p>
+	</section>
+}
+
+templ planCard(name string, price string, period string, blurb string, lines []string, cta string, featured bool) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface " + planCardAccent(featured)}) {
+		@card.Content(card.ContentProps{Class: "flex h-full flex-col"}) {
+			<div class="flex items-center justify-between">
+				@monoLabel(name)
+				if featured {
+					@badge.Badge(badge.Props{Class: "border-signal/40 bg-signal/12 text-signal", Variant: badge.VariantOutline}) {
+						Most of the product
+					}
+				}
+			</div>
+			<div class="mt-4 flex items-baseline gap-2">
+				<span class="text-4xl font-medium tracking-[-0.03em]">{ price }</span>
+				@monoLabel(period)
+			</div>
+			<p class="mt-3 text-sm leading-relaxed text-muted-foreground">{ blurb }</p>
+			<ul class="mt-6 flex-1 space-y-2.5">
+				for _, line := range lines {
+					<li class="flex items-start gap-2.5 text-sm">
+						@icon.Check(icon.Props{Class: "mt-0.5 size-3.5 shrink-0 text-signal"})
+						<span class="text-foreground/90">{ line }</span>
+					</li>
+				}
+			</ul>
+			@button.Button(button.Props{
+				Href:      "/signup",
+				FullWidth: true,
+				Variant:   planCardVariant(featured),
+				Class:     "mt-7 " + planCardButton(featured),
+			}) {
+				{ cta }
+			}
+		}
+	}
+}
+
+func planCardAccent(featured bool) string {
+	if featured {
+		return "ring-1 ring-signal/25"
+	}
+	return ""
+}
+
+func planCardVariant(featured bool) button.Variant {
+	if featured {
+		return button.VariantDefault
+	}
+	return button.VariantOutline
+}
+
+func planCardButton(featured bool) string {
+	if featured {
+		return "bg-signal text-background hover:bg-signal/90"
+	}
+	return "border-hairline"
+}
+
+// ---------------------------------------------------------------------------
+// Close
+// ---------------------------------------------------------------------------
+
+templ finalCTA() {
+	<section class="relative border-t border-hairline py-28">
+		<div class="mx-auto max-w-2xl text-center">
+			<span class="mx-auto flex size-10 items-center justify-center rounded-full bg-signal/12 text-signal">
+				@icon.Compass(icon.Props{Class: "size-5"})
+			</span>
+			<h2 class="mt-7 text-3xl font-medium tracking-[-0.03em] text-balance md:text-4xl">
+				In six months it will know things about you that you have forgotten.
+			</h2>
+			<p class="mx-auto mt-5 max-w-[48ch] text-base leading-relaxed text-muted-foreground">
+				That only works if it starts now. The first conversation is the shortest one
+				you will ever have with it.
+			</p>
+			<div class="mt-8 flex flex-wrap justify-center gap-3">
+				@button.Button(button.Props{Href: "/signup", Size: button.SizeLg, Class: "bg-signal text-background hover:bg-signal/90"}) {
+					Create your account
+					@icon.ArrowRight(icon.Props{Class: "size-4"})
+				}
+				@button.Button(button.Props{Href: "/login", Size: button.SizeLg, Variant: button.VariantOutline, Class: "border-hairline"}) {
+					Sign in
+				}
+			</div>
+		</div>
+	</section>
+}
+
+templ siteFooter() {
+	<footer class="border-t border-hairline">
+		<div class="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-4 px-6 py-8 lg:pl-28 lg:pr-8">
+			<div class="flex items-center gap-2 text-muted-foreground">
+				@icon.Compass(icon.Props{Class: "size-3.5"})
+				@monoLabel("North — an operating system for personal growth")
+			</div>
+			<a
+				href="https://github.com/NorthAIProject/north-client"
+				class="flex items-center gap-2 rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-signal"
+			>
+				@icon.Github(icon.Props{Class: "size-3.5"})
+				@monoLabel("Source")
+			</a>
+		</div>
+	</footer>
+}

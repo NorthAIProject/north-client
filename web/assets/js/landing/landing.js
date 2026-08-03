@@ -1,0 +1,452 @@
+/**
+ * Behaviour for the marketing page.
+ *
+ * Everything here is presentation. The demos are canned so a visitor can
+ * operate them before signing up; the real equivalents live behind /app.
+ *
+ * Alpine is loaded with `defer`, and so is this file, so document order
+ * guarantees these definitions are registered before Alpine boots on
+ * DOMContentLoaded.
+ */
+(function () {
+  "use strict";
+
+  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  // The page script is cache-busted by the server; reuse the same query for the
+  // lazily imported module so a rebuild is not masked by an immutable header.
+  function assetURL(path) {
+    const src = document.currentScript && document.currentScript.src;
+    const version = src ? new URL(src, location.href).searchParams.get("v") : null;
+    return version ? `${path}?v=${version}` : path;
+  }
+
+  const viewerModuleURL = assetURL("/assets/js/landing/muscle-viewer.js");
+
+  // templUI's tabs component tracks state in data attributes. ARIA needs to say
+  // the same thing, so mirror it whenever the state changes.
+  function syncTabsAria() {
+    document.querySelectorAll("[data-tui-tabs-trigger][role='tab']").forEach((el) => {
+      el.setAttribute(
+        "aria-selected",
+        el.getAttribute("data-tui-tabs-state") === "active" ? "true" : "false",
+      );
+    });
+  }
+  document.addEventListener("click", () => setTimeout(syncTabsAria, 0));
+
+  document.addEventListener("alpine:init", () => {
+    const Alpine = window.Alpine;
+
+    // -----------------------------------------------------------------------
+    // Bearing line
+    // -----------------------------------------------------------------------
+    Alpine.data("northBearing", () => ({
+      progress: 0,
+      init() {
+        const update = () => {
+          const max = document.documentElement.scrollHeight - window.innerHeight;
+          this.progress = max > 0 ? Math.min(100, (window.scrollY / max) * 100) : 0;
+        };
+        update();
+        window.addEventListener("scroll", update, { passive: true });
+        window.addEventListener("resize", update, { passive: true });
+      },
+    }));
+
+    // -----------------------------------------------------------------------
+    // Muscle viewer
+    // -----------------------------------------------------------------------
+    Alpine.data("northMuscle", () => ({
+      ready: false,
+      failed: false,
+      viewer: null,
+
+      init() {
+        const observer = new IntersectionObserver(
+          (entries) => {
+            if (!entries.some((e) => e.isIntersecting)) return;
+            observer.disconnect();
+            this.load();
+          },
+          { rootMargin: "300px" },
+        );
+        observer.observe(this.$el);
+      },
+
+      async load() {
+        try {
+          const module = await import(viewerModuleURL);
+          this.viewer = module.createViewer(this.$refs.canvas, {
+            reduced,
+            dark: document.documentElement.classList.contains("dark"),
+          });
+          this.ready = true;
+          this.apply();
+          // The theme switcher announces itself; the figure has to follow or it
+          // turns into a silhouette on a light panel.
+          document.addEventListener("theme-changed", () => {
+            this.viewer.setTheme(document.documentElement.classList.contains("dark"));
+          });
+        } catch (err) {
+          // The readout beside the canvas carries every fact the model shows,
+          // so a failure here costs presentation rather than information.
+          this.failed = true;
+          this.ready = true;
+        }
+      },
+
+      // Loads are read back out of the active panel so the numbers a visitor
+      // reads and the colours they see cannot drift apart.
+      activeLoads() {
+        const panel = this.$el.querySelector(
+          "[data-north-lift][data-tui-tabs-state='active']",
+        );
+        if (!panel) return [];
+        return Array.from(panel.querySelectorAll("[data-north-muscle]")).map((row) => ({
+          key: row.dataset.northMuscle,
+          share: Number(row.dataset.northShare),
+          role: row.dataset.northRole,
+        }));
+      },
+
+      apply() {
+        if (this.viewer) this.viewer.setLoads(this.activeLoads());
+      },
+
+      select() {
+        // The tabs component swaps panels on the same click, so read after it.
+        this.$nextTick(() => this.apply());
+      },
+    }));
+
+    // -----------------------------------------------------------------------
+    // Goal repair
+    // -----------------------------------------------------------------------
+    const blankGoal = () => ({
+      objective: "",
+      horizon: "",
+      commitment: "",
+      equipment: "",
+      constraint: "",
+      sessions: [],
+      measure: "",
+    });
+
+    Alpine.data("northGoal", () => ({
+      input:
+        "i wanna get stronger idk maybe lose a bit too, gym like 3x if im lucky, home has dumbbells and a pullup bar. back goes out sometimes",
+      running: false,
+      out: blankGoal(),
+
+      init() {
+        this.out = parseGoal(this.input);
+      },
+
+      reset() {
+        this.running = false;
+        this.out = parseGoal(this.input);
+      },
+
+      async run() {
+        if (this.running) return;
+        const parsed = parseGoal(this.input);
+        this.out = blankGoal();
+
+        if (reduced) {
+          this.out = parsed;
+          return;
+        }
+
+        this.running = true;
+        for (const field of ["objective", "horizon", "commitment", "equipment", "constraint"]) {
+          await this.type(field, parsed[field]);
+          await sleep(90);
+        }
+        for (const session of parsed.sessions) {
+          this.out.sessions.push(session);
+          await sleep(130);
+        }
+        await sleep(160);
+        this.out.measure = parsed.measure;
+        this.running = false;
+      },
+
+      async type(field, value) {
+        for (let i = 1; i <= value.length; i += 2) {
+          this.out[field] = value.slice(0, i);
+          await sleep(8);
+        }
+        this.out[field] = value;
+      },
+    }));
+
+    // -----------------------------------------------------------------------
+    // Cross-surface continuity
+    // -----------------------------------------------------------------------
+    Alpine.data("northSurfaces", () => ({
+      order: ["web", "telegram", "discord", "whatsapp"],
+      index: 0,
+      timer: null,
+      halted: false,
+
+      init() {
+        if (reduced) return;
+        const observer = new IntersectionObserver(
+          (entries) => {
+            if (entries.some((e) => e.isIntersecting)) this.start();
+            else this.stop();
+          },
+          { threshold: 0.35 },
+        );
+        observer.observe(this.$el);
+      },
+
+      start() {
+        if (this.halted || this.timer) return;
+        this.timer = setInterval(() => this.advance(), 4600);
+      },
+
+      stop() {
+        clearInterval(this.timer);
+        this.timer = null;
+      },
+
+      // Any deliberate interaction ends the tour for good — a panel that keeps
+      // moving under a reader is worse than one that never moved.
+      pause() {
+        this.halted = true;
+        this.stop();
+      },
+
+      advance() {
+        this.index = (this.index + 1) % this.order.length;
+        if (window.tui && window.tui.tabs) {
+          window.tui.tabs.setActive("surface-tabs", this.order[this.index]);
+          syncTabsAria();
+        }
+      },
+    }));
+
+    // -----------------------------------------------------------------------
+    // BMI
+    // -----------------------------------------------------------------------
+    Alpine.data("northBmi", () => ({
+      height: 178,
+      weight: 82,
+
+      sync() {
+        const read = (id) => {
+          const input = document.querySelector(`#${id} [data-input]`);
+          return input ? Number(input.value) : null;
+        };
+        const h = read("bmi-height");
+        const w = read("bmi-weight");
+        if (h) this.height = h;
+        if (w) this.weight = w;
+      },
+
+      get raw() {
+        return this.weight / Math.pow(this.height / 100, 2);
+      },
+
+      get bmi() {
+        return this.raw.toFixed(1);
+      },
+
+      get band() {
+        if (this.raw < 18.5) return "Under";
+        if (this.raw < 25) return "Normal";
+        if (this.raw < 30) return "Over";
+        return "Obese";
+      },
+
+      get reading() {
+        const n = this.bmi;
+        if (this.raw < 18.5) {
+          return `At ${this.height}cm and ${this.weight}kg the index reads ${n}, which usually means eating is the training. North would put food and sleep ahead of any programme for the first month.`;
+        }
+        if (this.raw < 25) {
+          return `${n} sits inside the range everyone chases, and it still tells you nothing about whether you can carry a pack for ninety minutes. North tracks that instead.`;
+        }
+        if (this.raw < 30) {
+          return `The index says ${n} and cannot tell muscle from anything else. North watches waist, resting heart rate, and whether your lifts still climb while you eat less — those three disagree with BMI often enough to be the ones worth measuring.`;
+        }
+        return `At ${n} the number is loud, and it is still one weak signal. The first thing North would change is not your weight but how many sessions in a row you finish.`;
+      },
+    }));
+
+    // -----------------------------------------------------------------------
+    // Goal setter
+    // -----------------------------------------------------------------------
+    Alpine.data("northSetter", () => ({
+      goal: "strength",
+      days: 3,
+      kit: { barbell: true, dumbbells: true, pullup: false, none: false },
+
+      toggle(key, checked) {
+        this.kit[key] = checked;
+        // "Nothing at all" is a claim about the other boxes, so it settles them.
+        if (key === "none" && checked) {
+          this.kit.barbell = false;
+          this.kit.dumbbells = false;
+          this.kit.pullup = false;
+          document.querySelectorAll("#kit-barbell, #kit-dumbbells, #kit-pullup").forEach((el) => {
+            el.checked = false;
+            el.setAttribute("data-state", "unchecked");
+          });
+        } else if (checked) {
+          this.kit.none = false;
+          const none = document.querySelector("#kit-none");
+          if (none) {
+            none.checked = false;
+            none.setAttribute("data-state", "unchecked");
+          }
+        }
+      },
+
+      get owned() {
+        const names = [];
+        if (this.kit.barbell) names.push("a barbell");
+        if (this.kit.dumbbells) names.push("dumbbells");
+        if (this.kit.pullup) names.push("a pull-up bar");
+        return names.length ? names.join(" and ") : "nothing but the floor";
+      },
+
+      get summary() {
+        const objective = {
+          strength: "getting stronger",
+          leaner: "getting leaner",
+          endurance: "lasting longer",
+          pain: "training without pain",
+        }[this.goal];
+        return `${this.days} ${this.days === 1 ? "day" : "days"} a week, ${objective}, with ${this.owned}. North would spend the first three weeks proving you can hold the schedule before adding any load.`;
+      },
+
+      get split() {
+        const heavy = this.kit.barbell ? "Barbell" : this.kit.dumbbells ? "Dumbbell" : "Bodyweight";
+        const pull = this.kit.pullup ? "pull-ups" : this.kit.dumbbells ? "rows" : "inverted rows";
+
+        const library = {
+          strength: [
+            { day: "Day 1", work: `${heavy} squat, hinge, and a carry` },
+            { day: "Day 2", work: `Press, ${pull}, and a loaded carry` },
+            { day: "Day 3", work: `${heavy} hinge and single-leg work` },
+            { day: "Day 4", work: "Repeat day 1 at a lighter load" },
+            { day: "Day 5", work: "Press variation and arms" },
+            { day: "Day 6", work: "Easy walk and mobility" },
+          ],
+          leaner: [
+            { day: "Day 1", work: `${heavy} full body, then twenty minutes easy` },
+            { day: "Day 2", work: `${pull}, press, and intervals` },
+            { day: "Day 3", work: "Long easy effort, conversational pace" },
+            { day: "Day 4", work: `${heavy} full body, heavier and shorter` },
+            { day: "Day 5", work: "Intervals and core" },
+            { day: "Day 6", work: "Walk, and eat like it is a training day" },
+          ],
+          endurance: [
+            { day: "Day 1", work: "Easy aerobic hour, nose breathing" },
+            { day: "Day 2", work: `Strength: ${heavy} squat and ${pull}` },
+            { day: "Day 3", work: "Tempo effort, thirty minutes" },
+            { day: "Day 4", work: "Long slow distance" },
+            { day: "Day 5", work: "Hills or intervals" },
+            { day: "Day 6", work: "Recovery walk" },
+          ],
+          pain: [
+            { day: "Day 1", work: "Hinge pattern, unloaded, plus breathing work" },
+            { day: "Day 2", work: `Isometrics and ${pull} at low load` },
+            { day: "Day 3", work: "Walk, and one tolerance test" },
+            { day: "Day 4", work: "Add load to the pattern that stayed quiet" },
+            { day: "Day 5", work: "Full body, everything sub-maximal" },
+            { day: "Day 6", work: "Easy movement only" },
+          ],
+        };
+
+        return library[this.goal].slice(0, Number(this.days));
+      },
+    }));
+  });
+
+  // -------------------------------------------------------------------------
+  // Goal parsing
+  // -------------------------------------------------------------------------
+
+  /**
+   * Turns a sentence somebody would actually type into the shape a training
+   * block can be built from. Deliberately shallow — it exists so the demo
+   * responds to what a visitor writes rather than replaying a fixed script.
+   */
+  function parseGoal(text) {
+    const t = (text || "").toLowerCase();
+
+    const explicit = t.match(/([1-7])\s*(?:x|times|days?|sessions?)/);
+    const days = explicit ? Number(explicit[1]) : 3;
+
+    const kit = [];
+    if (/barbell|squat rack|the gym|gym\b/.test(t)) kit.push("barbell");
+    if (/dumbbell|db\b/.test(t)) kit.push("dumbbells");
+    if (/pull ?-?up|chin ?-?up/.test(t)) kit.push("pull-up bar");
+    if (/kettlebell|kb\b/.test(t)) kit.push("kettlebell");
+    if (/band/.test(t)) kit.push("bands");
+    if (!kit.length) kit.push("bodyweight only");
+
+    const wantsLean = /lose|leaner|lean|fat|weight off|slim|cut/.test(t);
+    const wantsStrong = /strong|strength|lift|muscle|bigger|gains/.test(t);
+    const wantsEndurance = /run|hike|cycle|endurance|cardio|marathon|fitter/.test(t);
+
+    let objective = "Build a habit that survives a bad week, then add load";
+    if (wantsStrong && wantsLean) {
+      objective = "Add strength while losing fat — strength leads, the deficit follows it";
+    } else if (wantsStrong) {
+      objective = "Add strength on the main patterns: squat, hinge, press, pull";
+    } else if (wantsLean) {
+      objective = "Lose fat without losing the strength you already have";
+    } else if (wantsEndurance) {
+      objective = "Raise the aerobic base, then add the specific work";
+    }
+
+    let constraint = "None mentioned — say so later and the plan changes";
+    if (/back/.test(t)) {
+      constraint = "Lower back flares up — the hinge is patterned before it is loaded";
+    } else if (/knee/.test(t)) {
+      constraint = "Knee to work around — depth and volume progress separately";
+    } else if (/shoulder/.test(t)) {
+      constraint = "Shoulder to work around — pressing angle is chosen before load";
+    } else if (/if i'?m lucky|busy|no time|work|kids|travel/.test(t)) {
+      constraint = "The week goes wrong often — sessions are built to survive it";
+    }
+
+    const heavy = kit.includes("barbell") ? "Barbell" : kit.includes("dumbbells") ? "Dumbbell" : "Bodyweight";
+    const pull = kit.includes("pull-up bar") ? "pull-ups" : kit.includes("dumbbells") ? "rows" : "inverted rows";
+    const cautious = /back|knee|shoulder/.test(t);
+
+    const sessions = [
+      {
+        day: "Session 1",
+        work: cautious ? `${heavy} squat to a box, ${pull}, and a loaded carry` : `${heavy} squat, ${pull}, and a loaded carry`,
+      },
+      {
+        day: "Session 2",
+        work: cautious ? "Hip hinge unloaded, press, and split squats" : `${heavy} hinge, press, and split squats`,
+      },
+      {
+        day: "Session 3",
+        work: wantsLean ? "Full body at a lighter load, then twenty easy minutes" : "Full body, one heavy set per pattern",
+      },
+    ].slice(0, Math.max(2, Math.min(3, days)));
+
+    return {
+      objective,
+      horizon: "Twelve weeks, reviewed every third week",
+      commitment: `${days} ${days === 1 ? "session" : "sessions"} a week, 45 to 60 minutes`,
+      equipment: kit.join(", "),
+      constraint,
+      sessions,
+      measure: wantsLean
+        ? "In week six, either the squat goes up 5kg or the same weight moves at a lower bodyweight. One of the two, not both."
+        : "In week six, the main lift adds 5kg for the same number of clean reps. If it does not, the problem is recovery, not programming.",
+    };
+  }
+})();

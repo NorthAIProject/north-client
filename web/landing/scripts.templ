@@ -1,0 +1,55 @@
+package landing
+
+import (
+	"github.com/NorthAIProject/north-client/web/shared/ui/checkbox"
+	"github.com/NorthAIProject/north-client/web/shared/ui/label"
+	"github.com/NorthAIProject/north-client/web/shared/ui/selectbox"
+	"github.com/NorthAIProject/north-client/web/shared/ui/slider"
+	"github.com/NorthAIProject/north-client/web/shared/ui/tabs"
+	"github.com/NorthAIProject/north-client/web/shared/ui/textarea"
+	"github.com/NorthAIProject/north-client/web/shared/utils"
+)
+
+// landingScripts loads the behaviour for the page. Each component's Script is
+// guarded by its own OnceHandle, so listing them here is safe regardless of how
+// many times the component appears above.
+//
+// The three-dimensional viewer is deliberately absent: it is imported at
+// runtime by landing.js the first time its panel approaches the viewport, so a
+// visitor who never scrolls that far never pays for it.
+templ landingScripts() {
+	@tabs.Script()
+	@slider.Script()
+	@textarea.Script()
+	@label.Script()
+	@checkbox.Script()
+	@selectbox.Script()
+	@landingBehaviour()
+}
+
+var landingScriptOnce = templ.NewOnceHandle()
+
+// landingBehaviour loads the page script.
+//
+// Deliberately not deferred. Alpine is deferred from the document head, and a
+// deferred script runs once the parser has finished — at which point Alpine
+// starts on a microtask and dispatches alpine:init before any later deferred
+// script gets a turn. Loading this synchronously at the end of the body puts it
+// ahead of Alpine entirely, so its component definitions are registered when
+// that event fires. It blocks nothing: the document is already parsed.
+templ landingBehaviour() {
+	@landingScriptOnce.Once() {
+		if nonce := templ.GetNonce(ctx); nonce != "" {
+			<script nonce={ nonce } src={ landingScriptURL() }></script>
+		} else {
+			<script src={ landingScriptURL() }></script>
+		}
+	}
+}
+
+// landingScriptURL routes the page's own script through the same cache-busting
+// used for component scripts, so a rebuild is picked up on the next refresh
+// despite the immutable cache header in production.
+func landingScriptURL() string {
+	return utils.ScriptURL("/assets/js/landing/landing.js")
+}
