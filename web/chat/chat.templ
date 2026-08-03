@@ -8,19 +8,52 @@ import (
 	"github.com/NorthAIProject/north-client/internal/conversations"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/markdown"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
 	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
 	"github.com/NorthAIProject/north-client/web/shared/ui/textarea"
 )
 
+// proseClasses styles rendered markdown.
+//
+// Written as arbitrary variants rather than a stylesheet rule so the styling
+// travels with the component and nothing has to be kept in sync in input.css.
+const proseClasses = "text-sm " +
+	"[&>*:first-child]:mt-0 [&>*:last-child]:mb-0 " +
+	"[&_p]:my-2 [&_p]:leading-relaxed " +
+	"[&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:space-y-1 " +
+	"[&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:space-y-1 " +
+	"[&_strong]:font-semibold " +
+	"[&_h1]:mt-3 [&_h1]:mb-1 [&_h1]:text-base [&_h1]:font-semibold " +
+	"[&_h2]:mt-3 [&_h2]:mb-1 [&_h2]:text-sm [&_h2]:font-semibold " +
+	"[&_h3]:mt-3 [&_h3]:mb-1 [&_h3]:text-sm [&_h3]:font-semibold " +
+	"[&_code]:bg-background/60 [&_code]:rounded [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-xs " +
+	"[&_pre]:bg-background/60 [&_pre]:my-2 [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:p-3 " +
+	"[&_pre_code]:bg-transparent [&_pre_code]:p-0 " +
+	"[&_a]:underline [&_a]:underline-offset-2 " +
+	"[&_blockquote]:border-l-2 [&_blockquote]:border-current/20 [&_blockquote]:pl-3 [&_blockquote]:italic " +
+	"[&_table]:my-2 [&_table]:w-full [&_table]:text-left " +
+	"[&_th]:border-b [&_th]:border-current/20 [&_th]:pb-1 [&_th]:font-medium " +
+	"[&_td]:py-1"
+
+// starters seed a brand new conversation. A blank box is the hardest thing to
+// answer; these say what North is for better than a paragraph of explanation.
+var starters = []string{
+	"I want to get stronger but I don't know where to start.",
+	"Help me build a habit I'll actually keep.",
+	"I've been training for a month and feel stuck.",
+	"I keep starting things and not finishing them.",
+}
+
 // Page is a conversation with its history and composer.
 templ Page(user users.User, conversation conversations.Conversation, messages []conversations.Message, list []conversations.Conversation) {
 	@layout.App(conversation.DisplayTitle(), user, nav()) {
-		<div id="chat-root" class="flex h-full">
+		<div id="chat-root" class="flex h-full" x-data="{ threads: false }">
 			@threadList(list, conversation.ID)
 			<div class="flex min-w-0 flex-1 flex-col">
-				@transcript(messages)
+				@chatHeader(conversation)
+				@transcript(messages, conversation.ID)
 				@composer(conversation.ID, "")
 			</div>
 		</div>
@@ -50,11 +83,53 @@ func nav() []layout.NavItem {
 	return []layout.NavItem{
 		{Label: "Overview", Href: "/app"},
 		{Label: "Coach", Href: "/app/chat", Active: true},
+		{Label: "Training", Href: "/app/training"},
+		{Label: "Form check", Href: "/app/form"},
 	}
 }
 
+// chatHeader carries the title and the actions that belong to this thread. On
+// small screens it also owns the toggle for the thread list, which has nowhere
+// else to live once the sidebar is hidden.
+templ chatHeader(c conversations.Conversation) {
+	<header class="border-border flex h-12 shrink-0 items-center justify-between gap-2 border-b px-3">
+		<div class="flex min-w-0 items-center gap-2">
+			<button
+				type="button"
+				@click="threads = !threads"
+				class="hover:bg-accent rounded-md p-1.5 lg:hidden"
+				aria-label="Show conversations"
+			>
+				@icon.PanelLeft(icon.Props{Class: "size-4"})
+			</button>
+			<span class="truncate text-sm font-medium">{ c.DisplayTitle() }</span>
+		</div>
+		// A conversation is memory. Deleting one takes a deliberate second
+		// action rather than a stray tap on a small screen.
+		<form
+			method="post"
+			action={ templ.SafeURL("/app/chat/" + c.ID.String() + "/delete") }
+			@submit="if (!confirm('Delete this conversation? Everything in it is lost.')) $event.preventDefault()"
+		>
+			@ui.CSRFInput()
+			<button
+				type="submit"
+				class="text-muted-foreground hover:bg-accent hover:text-destructive rounded-md p-1.5 transition-colors"
+				aria-label="Delete conversation"
+			>
+				@icon.Trash2(icon.Props{Class: "size-4"})
+			</button>
+		</form>
+	</header>
+}
+
 templ threadList(list []conversations.Conversation, current uuid.UUID) {
-	<aside class="border-border hidden w-64 shrink-0 flex-col border-r lg:flex">
+	// Hidden off-canvas on small screens and pinned open from lg up, so one
+	// piece of markup serves both rather than two that can drift.
+	<aside
+		class="border-border bg-card absolute inset-y-0 left-0 z-30 flex w-64 shrink-0 flex-col border-r transition-transform lg:static lg:z-auto lg:translate-x-0"
+		:class="threads ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'"
+	>
 		<div class="border-border border-b p-3">
 			<form method="post" action="/app/chat">
 				@ui.CSRFInput()
@@ -70,6 +145,12 @@ templ threadList(list []conversations.Conversation, current uuid.UUID) {
 			}
 		</nav>
 	</aside>
+	<div
+		x-show="threads"
+		x-cloak
+		@click="threads = false"
+		class="fixed inset-0 z-20 bg-black/50 lg:hidden"
+	></div>
 }
 
 templ threadLink(c conversations.Conversation, active bool) {
@@ -86,7 +167,7 @@ templ threadLink(c conversations.Conversation, active bool) {
 
 // transcript holds the message history. New turns are appended into it by HTMX,
 // and Alpine keeps it scrolled to the bottom as content arrives.
-templ transcript(messages []conversations.Message) {
+templ transcript(messages []conversations.Message, conversationID uuid.UUID) {
 	<div
 		id="transcript"
 		class="min-h-0 flex-1 overflow-y-auto"
@@ -96,8 +177,36 @@ templ transcript(messages []conversations.Message) {
 		x-init="pin(); new MutationObserver(() => pin()).observe($el, { childList: true, subtree: true, characterData: true })"
 	>
 		<div class="mx-auto w-full max-w-3xl space-y-6 p-6">
+			if len(messages) == 0 {
+				@conversationStarters()
+			}
 			for _, m := range messages {
 				@Bubble(m)
+			}
+		</div>
+	</div>
+}
+
+// conversationStarters fills an empty thread with something to click. Answering
+// a blank box is the hardest part of talking to a coach for the first time.
+templ conversationStarters() {
+	<div class="flex flex-col items-center gap-4 py-12 text-center">
+		<h2 class="text-lg font-medium">What's on your mind?</h2>
+		<p class="text-muted-foreground max-w-sm text-sm">
+			Tell North what you are working on. It remembers, so you only have to
+			explain once.
+		</p>
+		// Clicking a starter fills the composer rather than sending it, so the
+		// person still edits it into their own words before committing.
+		<div class="mt-2 grid w-full max-w-lg gap-2 sm:grid-cols-2">
+			for _, starter := range starters {
+				<button
+					type="button"
+					@click={ "document.getElementById('message').value = " + jsString(starter) + "; document.getElementById('message').focus()" }
+					class="border-border hover:bg-accent rounded-lg border p-3 text-left text-sm transition-colors"
+				>
+					{ starter }
+				</button>
 			}
 		</div>
 	</div>
@@ -112,10 +221,18 @@ templ Bubble(m conversations.Message) {
 			</div>
 		</div>
 	} else {
-		<div class="flex justify-start">
-			<div class="bg-muted max-w-[85%] rounded-2xl rounded-bl-sm px-4 py-2.5 text-sm whitespace-pre-wrap">
-				{ m.Content }
+		<div class="group flex flex-col items-start gap-1" x-data="{ copied: false }">
+			<div class={ "bg-muted max-w-[85%] rounded-2xl rounded-bl-sm px-4 py-2.5 " + proseClasses }>
+				@markdown.Render(m.Content)
 			</div>
+			<button
+				type="button"
+				@click={ "navigator.clipboard.writeText(" + jsString(m.Content) + "); copied = true; setTimeout(() => copied = false, 1500)" }
+				class="text-muted-foreground hover:text-foreground ml-1 text-xs opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"
+			>
+				<span x-show="!copied">Copy</span>
+				<span x-show="copied" x-cloak>Copied</span>
+			</button>
 		</div>
 	}
 }
@@ -138,6 +255,10 @@ templ PendingExchange(conversationID uuid.UUID, message string) {
 	//
 	// sse-close="done" ends the connection when the reply does. Without it the
 	// browser reconnects on close and the coach answers again, forever.
+	//
+	// Tokens stream in as plain text; markdown is only rendered once the reply
+	// is complete and the page re-fetches it. Formatting a half-written
+	// sentence would make the text jump around as it arrives.
 	<div class="flex justify-start" hx-ext="sse" sse-connect={ streamURL(conversationID, message) } sse-close="done">
 		<div
 			class="bg-muted max-w-[85%] rounded-2xl rounded-bl-sm px-4 py-2.5 text-sm whitespace-pre-wrap"
