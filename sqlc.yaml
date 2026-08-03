@@ -60,3 +60,23 @@ sql:
         package: workoutsdb
         out: internal/workouts/db
         overrides: *overrides
+
+  - engine: postgresql
+    schema: migrations
+    queries: internal/jobs/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: jobsdb
+        out: internal/jobs/db
+        overrides: *overrides
+
+  - engine: postgresql
+    schema: migrations
+    queries: internal/media/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: mediadb
+        out: internal/media/db
+        overrides: *overrides

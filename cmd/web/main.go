@@ -23,6 +23,8 @@ import (
 	"github.com/NorthAIProject/north-client/internal/coach"
 	"github.com/NorthAIProject/north-client/internal/config"
 	"github.com/NorthAIProject/north-client/internal/conversations"
+	"github.com/NorthAIProject/north-client/internal/jobs"
+	"github.com/NorthAIProject/north-client/internal/media"
 	"github.com/NorthAIProject/north-client/internal/shared/database"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -86,9 +88,21 @@ func run() error {
 		slog.Any("registered", registry.Names()),
 	)
 
+	storage, err := media.NewS3Storage(ctx, media.S3Options{
+		Endpoint:     cfg.Storage.Endpoint,
+		Region:       cfg.Storage.Region,
+		Bucket:       cfg.Storage.Bucket,
+		AccessKey:    cfg.Storage.AccessKey,
+		SecretKey:    cfg.Storage.SecretKey,
+		UsePathStyle: cfg.Storage.UsePathStyle,
+	})
+	if err != nil {
+		return err
+	}
+
 	srv := &http.Server{
 		Addr:    cfg.Addr(),
-		Handler: routes(cfg, pool, registry),
+		Handler: routes(cfg, pool, registry, storage),
 
 		ReadHeaderTimeout: 10 * time.Second,
 		// No WriteTimeout: it would cut off SSE streams mid-answer. Individual
@@ -123,7 +137,7 @@ func run() error {
 	return nil
 }
 
-func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry) http.Handler {
+func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, storage media.Storage) http.Handler {
 	// Wiring happens once, here. Every dependency is constructed explicitly and
 	// passed down, so the shape of the application is readable in one place
 	// rather than discovered through package-level initialisation.
@@ -144,6 +158,15 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry) http.
 	})
 	workoutHandler := workouts.NewHandler(workoutSvc)
 
+	mediaSvc := media.NewService(media.Options{
+		Repository: media.NewRepository(pool),
+		Storage:    storage,
+		Queue:      jobs.NewQueue(pool),
+		Registry:   registry,
+		Model:      cfg.AI.Model,
+	})
+	mediaHandler := media.NewHandler(mediaSvc)
+
 	coachSvc := coach.NewService(coach.Options{
 		Registry:      registry,
 		Conversations: conversationSvc,
@@ -153,6 +176,7 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry) http.
 		// exists, the coach honestly tells the user it cannot see that.
 		ContextBuilder: coach.NewContextBuilder(conversationSvc,
 			workouts.NewContextSource(workoutSvc),
+			media.NewContextSource(mediaSvc),
 		),
 		PromptBuilder: coach.NewPromptBuilder(),
 		Model:         cfg.AI.Model,
@@ -165,6 +189,11 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry) http.
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Logger(slog.Default()))
 	r.Use(middleware.Recover)
+	// Before CSRF: that middleware parses multipart bodies to find the token,
+	// so the cap has to be in place first. Slightly above the media limit, so a
+	// too-large video gets the media handler's explanation rather than a bare
+	// connection error.
+	r.Use(middleware.MaxBody(media.MaxVideoBytes + (16 << 20)))
 	r.Use(middleware.CSRF(cfg.Env.IsProduction()))
 	r.Use(authMW.LoadUser)
 
@@ -188,6 +217,7 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry) http.
 
 		coachHandler.Routes(r)
 		workoutHandler.Routes(r)
+		mediaHandler.Routes(r)
 	})
 
 	return r

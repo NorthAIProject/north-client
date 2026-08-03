@@ -19,6 +19,43 @@ type Conversation struct {
 	UpdatedAt time.Time
 }
 
+type FormAnalysis struct {
+	ID        uuid.UUID
+	MediaID   uuid.UUID
+	UserID    uuid.UUID
+	Status    string
+	Analysis  []byte
+	Error     string
+	Model     string
+	Provider  string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+type Job struct {
+	ID          uuid.UUID
+	Kind        string
+	Payload     []byte
+	Status      string
+	Attempts    int16
+	MaxAttempts int16
+	RunAfter    time.Time
+	LastError   string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+type Medium struct {
+	ID           uuid.UUID
+	UserID       uuid.UUID
+	Kind         string
+	MimeType     string
+	SizeBytes    int64
+	StorageKey   string
+	OriginalName string
+	CreatedAt    time.Time
+}
+
 type Message struct {
 	ID             uuid.UUID
 	ConversationID uuid.UUID

@@ -1,0 +1,296 @@
+package form
+
+import (
+	"fmt"
+
+	"github.com/NorthAIProject/north-client/internal/media/analysis"
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/alert"
+	"github.com/NorthAIProject/north-client/web/shared/ui/badge"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
+	"github.com/NorthAIProject/north-client/web/shared/ui/input"
+)
+
+func nav(active string) []layout.NavItem {
+	items := []layout.NavItem{
+		{Label: "Overview", Href: "/app"},
+		{Label: "Coach", Href: "/app/chat"},
+		{Label: "Training", Href: "/app/training"},
+		{Label: "Form check", Href: "/app/form"},
+	}
+	for i := range items {
+		items[i].Active = items[i].Href == active
+	}
+	return items
+}
+
+templ IndexPage(user users.User, analyses []analysis.Analysis, errMsg string) {
+	@layout.App("Form check", user, nav("/app/form")) {
+		<div class="mx-auto w-full max-w-2xl p-6 md:p-8">
+			<header class="mb-6">
+				<h1 class="text-2xl font-semibold tracking-tight">Form check</h1>
+				<p class="text-muted-foreground mt-1 text-sm">
+					Upload a clip of a working set. North watches it and points at the
+					moments worth fixing — you can see each one for yourself.
+				</p>
+			</header>
+			if errMsg != "" {
+				@alert.Alert(alert.Props{Variant: alert.VariantDestructive, Class: "mb-4"}) {
+					@alert.Description() {
+						{ errMsg }
+					}
+				}
+			}
+			@card.Card(card.Props{Class: "mb-8"}) {
+				@card.Content() {
+					<form method="post" action="/app/form" enctype="multipart/form-data" class="space-y-4 pt-6">
+						@ui.CSRFInput()
+						@input.Input(input.Props{
+							ID:         "video",
+							Name:       "video",
+							Type:       input.TypeFile,
+							FileAccept: "video/mp4,video/quicktime,video/webm",
+							Required:   true,
+						})
+						<p class="text-muted-foreground text-xs">
+							MP4, MOV, or WebM, under 200 MB. Film from the side, full body in
+							frame, one set.
+						</p>
+						@button.Button(button.Props{Type: button.TypeSubmit, FullWidth: true}) {
+							@icon.Upload(icon.Props{Class: "size-4"})
+							Analyse my form
+						}
+					</form>
+				}
+			}
+			if len(analyses) > 0 {
+				<h2 class="mb-3 text-sm font-medium">Previous checks</h2>
+				<div class="space-y-2">
+					for _, a := range analyses {
+						@analysisLink(a)
+					}
+				</div>
+			}
+		</div>
+		@input.Script()
+	}
+}
+
+templ analysisLink(a analysis.Analysis) {
+	<a
+		href={ templ.SafeURL("/app/form/" + a.ID.String()) }
+		class="border-border hover:bg-accent flex items-center justify-between gap-3 rounded-lg border px-4 py-3 transition-colors"
+	>
+		<div class="min-w-0">
+			<p class="truncate text-sm font-medium">
+				if a.Result != nil {
+					{ a.Result.Exercise }
+				} else {
+					Form check
+				}
+			</p>
+			<p class="text-muted-foreground text-xs">{ a.CreatedAt.Format("2 January, 15:04") }</p>
+		</div>
+		if a.Result != nil {
+			@issueCountBadge(*a.Result)
+		}
+	</a>
+}
+
+templ issueCountBadge(result analysis.FormAnalysis) {
+	if result.Clean() {
+		@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
+			Looks clean
+		}
+	} else if !result.Trustworthy() {
+		@badge.Badge(badge.Props{Variant: badge.VariantOutline}) {
+			Unclear footage
+		}
+	} else {
+		@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
+			{ fmt.Sprintf("%d to fix", len(result.Issues)) }
+		}
+	}
+}
+
+templ AnalysisPage(user users.User, item analysis.Analysis, playbackURL string) {
+	@layout.App("Form check", user, nav("/app/form")) {
+		<div
+			class="mx-auto w-full max-w-3xl p-6 md:p-8"
+			x-data="{ seek(seconds) { const v = $refs.clip; if (v) { v.currentTime = seconds; v.play(); } } }"
+		>
+			<header class="mb-6 flex items-center justify-between gap-4">
+				<h1 class="text-2xl font-semibold tracking-tight">
+					if item.Result != nil {
+						{ item.Result.Exercise }
+					} else {
+						Form check
+					}
+				</h1>
+				@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Href: "/app/form"}) {
+					New check
+				}
+			</header>
+			<video
+				x-ref="clip"
+				src={ playbackURL }
+				controls
+				playsinline
+				preload="metadata"
+				class="border-border mb-6 w-full rounded-lg border bg-black"
+			></video>
+			<div id="analysis-status">
+				@StatusFragment(item)
+			</div>
+		</div>
+	}
+}
+
+// StatusFragment is both the initial render and what the poll swaps in, so
+// there is one description of each state rather than two that can disagree.
+templ StatusFragment(item analysis.Analysis) {
+	if item.InProgress() {
+		<div
+			id="analysis-status"
+			hx-get={ "/app/form/" + item.ID.String() + "/status" }
+			hx-trigger="every 3s"
+			hx-swap="outerHTML"
+		>
+			@card.Card() {
+				@card.Content() {
+					<div class="text-muted-foreground flex items-center gap-3 py-6 text-sm">
+						<span class="border-muted-foreground/30 border-t-muted-foreground size-4 animate-spin rounded-full border-2"></span>
+						North is watching your set. This usually takes under a minute.
+					</div>
+				}
+			}
+		</div>
+	} else if item.IsFailed() {
+		<div id="analysis-status">
+			@alert.Alert(alert.Props{Variant: alert.VariantDestructive}) {
+				@alert.Title() {
+					That did not work
+				}
+				@alert.Description() {
+					if item.Error != "" {
+						{ item.Error }
+					} else {
+						Something went wrong analysing that video.
+					}
+				}
+			}
+		</div>
+	} else if item.Result != nil {
+		<div id="analysis-status">
+			@result(*item.Result)
+		</div>
+	}
+}
+
+templ result(a analysis.FormAnalysis) {
+	@card.Card(card.Props{Class: "mb-4"}) {
+		@card.Header() {
+			<div class="flex items-center justify-between gap-3">
+				@card.Title(card.TitleProps{Class: "text-base"}) {
+					What North saw
+				}
+				@confidenceBadge(a.Confidence)
+			</div>
+		}
+		@card.Content() {
+			<p class="text-muted-foreground text-sm">{ a.Summary }</p>
+		}
+	}
+	if !a.Trustworthy() {
+		// Low confidence deliberately produces no findings. Saying so is the
+		// point: an honest "I could not see enough" is worth more than invented
+		// faults, and the fix is a better camera angle.
+		@alert.Alert() {
+			@alert.Description() {
+				North could not see the movement clearly enough to judge it. Try
+				filming from the side, further back, with your whole body in frame.
+			}
+		}
+	} else if len(a.Issues) == 0 {
+		@alert.Alert() {
+			@alert.Description() {
+				Nothing worth changing in this set. Keep the load where it is and
+				film again if it starts to feel different.
+			}
+		}
+	} else {
+		<h2 class="mb-3 text-sm font-medium">
+			{ fmt.Sprintf("%d thing(s) to work on", len(a.Issues)) }
+			<span class="text-muted-foreground font-normal">— tap a timestamp to jump there</span>
+		</h2>
+		<div class="space-y-3">
+			for _, issue := range a.Issues {
+				@issueCard(issue)
+			}
+		</div>
+	}
+}
+
+templ issueCard(issue analysis.FormIssue) {
+	@card.Card() {
+		@card.Content() {
+			<div class="flex items-start gap-3 pt-6">
+				// The one piece of JavaScript in this milestone that earns its
+				// place: it moves the video to the moment being described, which
+				// is what lets the person check the claim instead of trusting it.
+				<button
+					type="button"
+					@click={ fmt.Sprintf("seek(%v)", issue.TimestampSeconds) }
+					class="border-border hover:bg-accent shrink-0 rounded-md border px-2 py-1 font-mono text-xs transition-colors"
+				>
+					{ issue.Timestamp() }
+				</button>
+				<div class="min-w-0 flex-1">
+					<div class="mb-1 flex items-center gap-2">
+						@severityBadge(issue.Severity)
+					</div>
+					<p class="text-sm">{ issue.Observation }</p>
+					<p class="text-muted-foreground mt-1 text-sm">{ issue.Correction }</p>
+				</div>
+			</div>
+		}
+	}
+}
+
+templ confidenceBadge(confidence string) {
+	switch confidence {
+		case analysis.ConfidenceHigh:
+			@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
+				Clear footage
+			}
+		case analysis.ConfidenceMedium:
+			@badge.Badge(badge.Props{Variant: badge.VariantOutline}) {
+				Mostly clear
+			}
+		default:
+			@badge.Badge(badge.Props{Variant: badge.VariantOutline}) {
+				Unclear footage
+			}
+	}
+}
+
+templ severityBadge(severity string) {
+	switch severity {
+		case analysis.SeverityCritical:
+			@badge.Badge(badge.Props{Variant: badge.VariantDestructive}) {
+				Fix before adding load
+			}
+		case analysis.SeverityModerate:
+			@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
+				Worth fixing
+			}
+		default:
+			@badge.Badge(badge.Props{Variant: badge.VariantOutline}) {
+				Minor
+			}
+	}
+}

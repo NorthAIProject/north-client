@@ -23,6 +23,11 @@ const (
 	CSRFHeaderName = "X-CSRF-Token"
 
 	csrfTokenBytes = 32
+
+	// multipartMemoryLimit is how much of an upload is held in memory while the
+	// token is read. Anything larger spills to a temp file, which Go cleans up.
+	// The total request size is bounded separately by MaxBody.
+	multipartMemoryLimit = 8 << 20 // 8 MB
 )
 
 var csrfKey = ctxValue[string]{key: "csrf_token"}
@@ -65,9 +70,20 @@ func CSRF(secure bool) func(http.Handler) http.Handler {
 
 			presented := r.Header.Get(CSRFHeaderName)
 			if presented == "" {
-				// ParseForm is safe to call here: handlers that need the body
-				// call it again and get the cached result.
-				if err := r.ParseForm(); err == nil {
+				// Multipart needs ParseMultipartForm; ParseForm leaves PostForm
+				// empty but non-nil for a multipart body, and every later read
+				// then returns "". Getting this wrong makes every file upload
+				// fail with 403 and look like a token problem.
+				//
+				// Parsing here is safe: handlers that need the body call the
+				// same methods and get the cached result.
+				var err error
+				if isMultipart(r) {
+					err = r.ParseMultipartForm(multipartMemoryLimit)
+				} else {
+					err = r.ParseForm()
+				}
+				if err == nil {
 					presented = r.PostFormValue(CSRFFieldName)
 				}
 			}
@@ -113,6 +129,10 @@ func ensureCSRFCookie(w http.ResponseWriter, r *http.Request, secure bool) (stri
 	})
 
 	return token, nil
+}
+
+func isMultipart(r *http.Request) bool {
+	return strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data")
 }
 
 func isSafeMethod(method string) bool {
