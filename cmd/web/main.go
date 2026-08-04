@@ -146,7 +146,16 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, stora
 	userSvc := users.NewService(userRepo)
 
 	sessions := auth.NewSessionStore(pool, cfg.SessionLifetime)
-	authSvc := auth.NewService(userSvc, sessions)
+	authSvc := auth.NewService(userSvc, sessions, auth.ServiceOptions{
+		BaseURL: cfg.BaseURL,
+		// LogMailer until a real SMTP provider is wired; reset links show in logs.
+		Mailer:              auth.LogMailer{},
+		GoogleClientID:      cfg.GoogleClientID,
+		GoogleClientSecret:  cfg.GoogleClientSecret,
+		WebAuthnRPID:        cfg.WebAuthnRPID,
+		WebAuthnDisplayName: cfg.WebAuthnDisplayName,
+		Log:                 slog.Default(),
+	})
 	authMW := auth.NewMiddleware(sessions, cfg.Env.IsProduction())
 	authHandler := auth.NewHandler(authSvc, authMW, "/app")
 

@@ -1,6 +1,8 @@
 package auth
 
 import (
+	"net/url"
+
 	"github.com/NorthAIProject/north-client/web/shared/layout"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/ui/alert"
@@ -10,6 +12,19 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/input"
 	"github.com/NorthAIProject/north-client/web/shared/ui/label"
 )
+
+func googleAuthHref(next string) string {
+	if next == "" {
+		return "/auth/google"
+	}
+	return "/auth/google?next=" + url.QueryEscape(next)
+}
+
+// AuthOptions toggles optional sign-in methods on the login and signup pages.
+type AuthOptions struct {
+	GoogleEnabled  bool
+	PasskeyEnabled bool
+}
 
 // LoginForm carries the state of a submitted attempt back to the page, so a
 // failed login re-renders with the email still filled in rather than making the
@@ -22,6 +37,8 @@ type LoginForm struct {
 	// attributed to a specific field: saying which half was wrong tells an
 	// attacker which email addresses are registered.
 	Error string
+
+	Options AuthOptions
 }
 
 templ LoginPage(f LoginForm) {
@@ -43,7 +60,8 @@ templ LoginPage(f LoginForm) {
 						}
 					}
 				}
-				<form method="post" action="/login" class="space-y-4">
+				@altAuthButtons(f.Options, f.Next, "login")
+				<form method="post" action="/login" class="space-y-4" id="login-form">
 					@ui.CSRFInput()
 					if f.Next != "" {
 						<input type="hidden" name="next" value={ f.Next }/>
@@ -65,9 +83,14 @@ templ LoginPage(f LoginForm) {
 						})
 					}
 					@form.Item() {
-						@label.Label(label.Props{For: "password"}) {
-							Password
-						}
+						<div class="flex items-center justify-between gap-2">
+							@label.Label(label.Props{For: "password"}) {
+								Password
+							}
+							<a href="/forgot-password" class="text-muted-foreground hover:text-foreground text-xs font-medium underline-offset-4 hover:underline">
+								Forgot password?
+							</a>
+						</div>
 						@input.Input(input.Props{
 							ID:       "password",
 							Name:     "password",
@@ -82,6 +105,7 @@ templ LoginPage(f LoginForm) {
 						Sign in
 					}
 				</form>
+				<p id="passkey-error" class="text-destructive mt-3 hidden text-sm" role="alert"></p>
 			}
 		}
 		<p class="text-muted-foreground mt-6 text-center text-sm">
@@ -92,5 +116,48 @@ templ LoginPage(f LoginForm) {
 		// OnceHandle, so including it per page renders it exactly once.
 		@input.Script()
 		@label.Script()
+		if f.Options.PasskeyEnabled {
+			<script src="/assets/js/auth/passkey.js" defer></script>
+		}
+	}
+}
+
+// altAuthButtons renders Google and/or passkey entry points above the password
+// form, with an "or" divider when at least one is enabled.
+templ altAuthButtons(opts AuthOptions, next string, mode string) {
+	if opts.GoogleEnabled || opts.PasskeyEnabled {
+		<div class="mb-4 space-y-3">
+			if opts.GoogleEnabled {
+				@button.Button(button.Props{
+					Type:      button.TypeButton,
+					Variant:   button.VariantOutline,
+					FullWidth: true,
+					Href:      googleAuthHref(next),
+				}) {
+					Continue with Google
+				}
+			}
+			if opts.PasskeyEnabled {
+				@button.Button(button.Props{
+					Type:      button.TypeButton,
+					Variant:   button.VariantOutline,
+					FullWidth: true,
+					ID:        "passkey-btn",
+					Attributes: templ.Attributes{
+						"data-passkey-mode": mode,
+					},
+				}) {
+					Use a passkey
+				}
+			}
+			<div class="relative py-1">
+				<div class="absolute inset-0 flex items-center" aria-hidden="true">
+					<div class="border-border w-full border-t"></div>
+				</div>
+				<div class="relative flex justify-center text-xs uppercase">
+					<span class="bg-card text-muted-foreground px-2">or</span>
+				</div>
+			</div>
+		</div>
 	}
 }

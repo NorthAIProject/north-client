@@ -34,8 +34,11 @@ func (s *Service) CredentialsByEmail(ctx context.Context, email string) (User, s
 }
 
 // Registration is a validated signup request. PasswordHash is supplied by
-// internal/auth; this package never handles plaintext.
+// internal/auth; this package never handles plaintext. Empty PasswordHash is
+// allowed for OAuth- and passkey-only accounts.
 type Registration struct {
+	// ID is optional; see NewRecord.ID.
+	ID           uuid.UUID
 	Email        string
 	PasswordHash string
 	DisplayName  string
@@ -78,6 +81,7 @@ func (s *Service) ValidateRegistration(reg Registration) (Registration, error) {
 
 	// Returned normalised so the caller persists exactly what was validated.
 	return Registration{
+		ID:           reg.ID,
 		Email:        email,
 		PasswordHash: reg.PasswordHash,
 		DisplayName:  name,
@@ -92,11 +96,22 @@ func (s *Service) Register(ctx context.Context, reg Registration) (User, error) 
 	}
 
 	return s.repo.Create(ctx, NewRecord{
+		ID:           clean.ID,
 		Email:        clean.Email,
 		PasswordHash: clean.PasswordHash,
 		DisplayName:  clean.DisplayName,
 		Timezone:     clean.Timezone,
 	})
+}
+
+// UpdatePasswordHash replaces the stored hash. The caller (internal/auth) is
+// responsible for hashing and for revoking sessions; this package only
+// persists the opaque string.
+func (s *Service) UpdatePasswordHash(ctx context.Context, id uuid.UUID, hash string) error {
+	if hash == "" {
+		return apperr.New("password hash is required")
+	}
+	return s.repo.UpdatePasswordHash(ctx, id, hash)
 }
 
 func (s *Service) UpdateProfile(ctx context.Context, id uuid.UUID, p Profile) (User, error) {

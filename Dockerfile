@@ -1,7 +1,7 @@
 # Build stage:
 # We install everything we need here, build the CSS, generate templ code,
 # and compile the app binary.
-FROM golang:1.24 AS build
+FROM golang:1.25 AS build
 WORKDIR /app
 
 # Copy Go dependency files first so Docker can cache downloads better.
@@ -24,18 +24,8 @@ RUN arch="$(dpkg --print-architecture)" && \
     wget -O /usr/local/bin/tailwindcss "https://github.com/tailwindlabs/tailwindcss/releases/latest/download/tailwindcss-linux-${tailwind_arch}" && \
     chmod +x /usr/local/bin/tailwindcss
 
-# Build the Tailwind CSS file.
-# We also include templUI component templates, so Tailwind sees their classes too.
-RUN TEMPLUI_PATH="$(go list -mod=mod -m -f '{{.Dir}}' github.com/templui/templui)" && \
-    test -n "$TEMPLUI_PATH" && \
-    test -d "$TEMPLUI_PATH/components" && \
-    printf '%s\n' \
-      '@source "./**/*.templ";' \
-      '@source "./**/*.js";' \
-      "@source \"$TEMPLUI_PATH/components/**/*.templ\";" \
-      "@source \"$TEMPLUI_PATH/components/**/*.js\";" \
-      > ./web/assets/css/sources.generated.css && \
-    tailwindcss -i ./web/assets/css/input.css -o ./web/assets/css/output.css --minify
+# Build CSS via the same script CI uses so local/CI/image stay aligned.
+RUN bash scripts/build-css.sh
 
 # Generate Go files from .templ files.
 RUN go tool templ generate

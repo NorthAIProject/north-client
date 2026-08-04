@@ -2,3 +2,13 @@
 web/assets/css/output.css
 web/assets/css/sources.generated.css
 *_templ.go
+
+# Compiled binaries (local and CI outputs)
+bin/
+/north-web
+/north-worker
+/north-mcp
+/main
+*.exe
+*.test
+*.out

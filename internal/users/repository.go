@@ -29,8 +29,12 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 }
 
 // NewRecord is everything needed to create an account. PasswordHash is already
-// hashed; this package never sees a plaintext password.
+// hashed; this package never sees a plaintext password. An empty PasswordHash
+// stores NULL, which is correct for OAuth- or passkey-only accounts.
 type NewRecord struct {
+	// ID is optional. When set, the row is inserted with that primary key so a
+	// WebAuthn registration can use the same handle that the authenticator stored.
+	ID           uuid.UUID
 	Email        string
 	PasswordHash string
 	DisplayName  string
@@ -38,12 +42,30 @@ type NewRecord struct {
 }
 
 func (r *Repository) Create(ctx context.Context, rec NewRecord) (User, error) {
-	row, err := r.q.CreateUser(ctx, usersdb.CreateUserParams{
-		Email:        normalizeEmail(rec.Email),
-		PasswordHash: rec.PasswordHash,
-		DisplayName:  strings.TrimSpace(rec.DisplayName),
-		Timezone:     rec.Timezone,
-	})
+	email := normalizeEmail(rec.Email)
+	name := strings.TrimSpace(rec.DisplayName)
+	passwordHash := optionalHash(rec.PasswordHash)
+
+	var (
+		row usersdb.User
+		err error
+	)
+	if rec.ID != uuid.Nil {
+		row, err = r.q.CreateUserWithID(ctx, usersdb.CreateUserWithIDParams{
+			ID:           rec.ID,
+			Email:        email,
+			PasswordHash: passwordHash,
+			DisplayName:  name,
+			Timezone:     rec.Timezone,
+		})
+	} else {
+		row, err = r.q.CreateUser(ctx, usersdb.CreateUserParams{
+			Email:        email,
+			PasswordHash: passwordHash,
+			DisplayName:  name,
+			Timezone:     rec.Timezone,
+		})
+	}
 	if err != nil {
 		// Relying on the unique index rather than a prior existence check keeps
 		// signup correct under concurrency: two simultaneous requests for the
@@ -81,7 +103,8 @@ func (r *Repository) ByEmail(ctx context.Context, email string) (User, error) {
 
 // CredentialsByEmail returns the user together with the stored password hash.
 // It is separate from ByEmail so the hash is only loaded on the one code path
-// that needs it: verifying a login.
+// that needs it: verifying a login. A null column becomes "" so password login
+// for OAuth/passkey-only accounts fails the same way as a wrong password.
 func (r *Repository) CredentialsByEmail(ctx context.Context, email string) (User, string, error) {
 	row, err := r.q.GetUserByEmail(ctx, normalizeEmail(email))
 	if err != nil {
@@ -90,7 +113,7 @@ func (r *Repository) CredentialsByEmail(ctx context.Context, email string) (User
 		}
 		return User{}, "", apperr.Wrap(err, "get credentials by email")
 	}
-	return fromDB(row), row.PasswordHash, nil
+	return fromDB(row), derefString(row.PasswordHash), nil
 }
 
 // Profile carries the user-editable fields of an account.
@@ -122,7 +145,10 @@ func (r *Repository) UpdateProfile(ctx context.Context, id uuid.UUID, p Profile)
 }
 
 func (r *Repository) UpdatePasswordHash(ctx context.Context, id uuid.UUID, hash string) error {
-	err := r.q.UpdateUserPassword(ctx, usersdb.UpdateUserPasswordParams{ID: id, PasswordHash: hash})
+	err := r.q.UpdateUserPassword(ctx, usersdb.UpdateUserPasswordParams{
+		ID:           id,
+		PasswordHash: optionalHash(hash),
+	})
 	return apperr.Wrap(err, "update password")
 }
 
@@ -131,4 +157,18 @@ func (r *Repository) UpdatePasswordHash(ctx context.Context, id uuid.UUID, hash 
 // to the user consistent with what they typed at signup.
 func normalizeEmail(email string) string {
 	return strings.ToLower(strings.TrimSpace(email))
+}
+
+func optionalHash(hash string) *string {
+	if hash == "" {
+		return nil
+	}
+	return &hash
+}
+
+func derefString(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }

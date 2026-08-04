@@ -118,10 +118,16 @@ tasks:
   # ---------------------------------------------------------------------------
   # Quality
   # ---------------------------------------------------------------------------
+  assets:
+    desc: Build Tailwind CSS (required before go build/test — css is gitignored)
+    cmds:
+      - bash scripts/build-css.sh
+
   build:
     desc: Build all binaries
     cmds:
       - go tool templ generate
+      - task: assets
       - go build ./...
 
   test:
@@ -140,15 +146,36 @@ tasks:
       - go vet ./...
 
   fmt:
-    desc: Format Go and templ sources
+    desc: Format Go (gofumpt) and templ sources
     cmds:
-      - go fmt ./...
+      - go tool gofumpt -w .
+      - |
+        # Generated Lucide dumps from templUI — leave generator formatting.
+        git checkout -- \
+          web/shared/ui/icon/icon_data.go \
+          web/shared/ui/icon/icon_defs.go 2>/dev/null || true
       - go tool templ fmt .
 
-  check:
-    desc: Everything CI runs
+  hooks:
+    desc: Install versioned git hooks (.githooks → core.hooksPath)
     cmds:
-      - task: fmt
+      - bash scripts/install-hooks.sh
+
+  check:
+    desc: Everything CI runs (local equivalent of .github/workflows/ci.yml)
+    cmds:
+      - bash scripts/check-no-build-artifacts.sh
+      - go tool templ generate
+      - task: assets
+      - |
+        go tool gofumpt -w .
+        git checkout -- \
+          web/shared/ui/icon/icon_data.go \
+          web/shared/ui/icon/icon_defs.go 2>/dev/null || true
+        if ! git diff --exit-code -- '*.go'; then
+          echo "Go files need gofumpt -w . (run: task fmt)"
+          exit 1
+        fi
       - task: vet
-      - task: build
-      - task: test
+      - go test ./... -count=1
+      - go build ./...

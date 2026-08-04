@@ -3,6 +3,13 @@ INSERT INTO users (email, password_hash, display_name, timezone)
 VALUES ($1, $2, $3, $4)
 RETURNING *;
 
+-- name: CreateUserWithID :one
+-- Used when a passkey registration ceremony needs a stable user handle
+-- (WebAuthnID) before the row is inserted.
+INSERT INTO users (id, email, password_hash, display_name, timezone)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING *;
+
 -- name: GetUserByID :one
 SELECT * FROM users WHERE id = $1;
 

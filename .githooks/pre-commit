@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Pre-commit: keep Go sources gofumpt-clean before they land in git.
+set -euo pipefail
+
+ROOT="$(git rev-parse --show-toplevel)"
+cd "$ROOT"
+
+# Generated Lucide dumps from templUI — gofumpt and the generator disagree
+# on alignment; leave them as installed.
+ICON_GENERATED=(
+  web/shared/ui/icon/icon_data.go
+  web/shared/ui/icon/icon_defs.go
+)
+
+# Remember what was already staged so we only re-add those after formatting.
+staged_go="$(git diff --cached --name-only --diff-filter=ACM -- '*.go' || true)"
+
+echo "pre-commit: gofumpt -w ."
+go tool gofumpt -w .
+
+# Put generated icon dumps back if gofumpt touched them.
+for f in "${ICON_GENERATED[@]}"; do
+  if git ls-files --error-unmatch "$f" >/dev/null 2>&1; then
+    git checkout -- "$f" 2>/dev/null || true
+  fi
+done
+
+# Re-stage only files that were already in the index (partial commits stay partial).
+if [[ -n "${staged_go}" ]]; then
+  while IFS= read -r f; do
+    [[ -z "${f}" ]] && continue
+    [[ -f "${f}" ]] || continue
+    git add -- "${f}"
+  done <<< "${staged_go}"
+  echo "pre-commit: re-staged previously staged .go files after gofumpt"
+fi
+
+echo "pre-commit: ok"

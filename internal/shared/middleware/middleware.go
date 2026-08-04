@@ -9,8 +9,10 @@ import "context"
 
 // contextKey is unexported so no other package can write to this context
 // namespace by accident.
-type contextKey string
-type ctxValue[T any] struct{ key contextKey }
+type (
+	contextKey      string
+	ctxValue[T any] struct{ key contextKey }
+)
 
 func (k ctxValue[T]) set(ctx context.Context, v T) context.Context {
 	return context.WithValue(ctx, k.key, v)

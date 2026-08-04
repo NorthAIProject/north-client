@@ -19,13 +19,51 @@ RETURNING id, email, password_hash, display_name, timezone, coaching_style, crea
 
 type CreateUserParams struct {
 	Email        string
-	PasswordHash string
+	PasswordHash *string
 	DisplayName  string
 	Timezone     string
 }
 
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
 	row := q.db.QueryRow(ctx, createUser,
+		arg.Email,
+		arg.PasswordHash,
+		arg.DisplayName,
+		arg.Timezone,
+	)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.PasswordHash,
+		&i.DisplayName,
+		&i.Timezone,
+		&i.CoachingStyle,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const createUserWithID = `-- name: CreateUserWithID :one
+INSERT INTO users (id, email, password_hash, display_name, timezone)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at
+`
+
+type CreateUserWithIDParams struct {
+	ID           uuid.UUID
+	Email        string
+	PasswordHash *string
+	DisplayName  string
+	Timezone     string
+}
+
+// Used when a passkey registration ceremony needs a stable user handle
+// (WebAuthnID) before the row is inserted.
+func (q *Queries) CreateUserWithID(ctx context.Context, arg CreateUserWithIDParams) (User, error) {
+	row := q.db.QueryRow(ctx, createUserWithID,
+		arg.ID,
 		arg.Email,
 		arg.PasswordHash,
 		arg.DisplayName,
@@ -105,7 +143,7 @@ WHERE id = $1
 
 type UpdateUserPasswordParams struct {
 	ID           uuid.UUID
-	PasswordHash string
+	PasswordHash *string
 }
 
 func (q *Queries) UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) error {

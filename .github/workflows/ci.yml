@@ -1,0 +1,122 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test & Build
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        # Match docker-compose: pgvector image so extensions stay available.
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: north
+          POSTGRES_PASSWORD: north
+          POSTGRES_DB: north
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U north -d north"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://north:north@localhost:5432/north?sslmode=disable
+      TEST_DATABASE_URL: postgres://north:north@localhost:5432/north?sslmode=disable
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Reject tracked build artifacts
+        run: bash scripts/check-no-build-artifacts.sh
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Install Tailwind CSS
+        run: |
+          curl -sL "https://github.com/tailwindlabs/tailwindcss/releases/latest/download/tailwindcss-linux-x64" \
+            -o /usr/local/bin/tailwindcss
+          chmod +x /usr/local/bin/tailwindcss
+
+      - name: Generate templates
+        run: go tool templ generate
+
+      # Generated code is gitignored (*_templ.go). Building CSS before Go
+      # compile is required: web/assets embeds the css/ directory, so a missing
+      # output.css fails the build rather than shipping an unstyled app.
+      - name: Build frontend assets
+        run: bash scripts/build-css.sh
+
+      # Same gate as .githooks/pre-commit: gofumpt -w ., then restore the
+      # templUI Lucide dumps that fight gofumpt's alignment rules.
+      - name: Check formatting (gofumpt)
+        run: |
+          go tool gofumpt -w .
+          git checkout -- \
+            web/shared/ui/icon/icon_data.go \
+            web/shared/ui/icon/icon_defs.go
+          if ! git diff --exit-code -- '*.go'; then
+            echo "Go files need gofumpt -w . (run: go tool gofumpt -w .)"
+            exit 1
+          fi
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Run tests
+        run: go test ./... -count=1 -race
+
+      - name: Build binaries
+        run: |
+          go build -o /tmp/north-web ./cmd/web
+          go build -o /tmp/north-worker ./cmd/worker
+          go build -o /tmp/north-mcp ./cmd/mcp-server
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Install Tailwind CSS
+        run: |
+          curl -sL "https://github.com/tailwindlabs/tailwindcss/releases/latest/download/tailwindcss-linux-x64" \
+            -o /usr/local/bin/tailwindcss
+          chmod +x /usr/local/bin/tailwindcss
+
+      - name: Generate templates
+        run: go tool templ generate
+
+      - name: Build frontend assets
+        run: bash scripts/build-css.sh
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          # Keep roughly in lockstep with norviq-web (v2.x series).
+          version: v2.12.2
+          working-directory: .

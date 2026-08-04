@@ -22,6 +22,8 @@ type SignupForm struct {
 
 	Errors map[string]string
 	Error  string
+
+	Options AuthOptions
 }
 
 func (f SignupForm) fieldError(name string) string { return f.Errors[name] }
@@ -45,12 +47,32 @@ templ SignupPage(f SignupForm) {
 						}
 					}
 				}
-				<form method="post" action="/signup" class="space-y-4">
+				if f.Options.GoogleEnabled {
+					<div class="mb-4 space-y-3">
+						@button.Button(button.Props{
+							Type:      button.TypeButton,
+							Variant:   button.VariantOutline,
+							FullWidth: true,
+							Href:      "/auth/google",
+						}) {
+							Continue with Google
+						}
+						<div class="relative py-1">
+							<div class="absolute inset-0 flex items-center" aria-hidden="true">
+								<div class="border-border w-full border-t"></div>
+							</div>
+							<div class="relative flex justify-center text-xs uppercase">
+								<span class="bg-card text-muted-foreground px-2">or</span>
+							</div>
+						</div>
+					</div>
+				}
+				<form method="post" action="/signup" class="space-y-4" id="signup-form">
 					@ui.CSRFInput()
 					// The browser reports the visitor's IANA zone, so a daily
 					// briefing lands at their 07:00 without asking. The server
 					// still defaults to UTC if this is absent or unparseable.
-					<input type="hidden" name="timezone" x-data x-init="$el.value = Intl.DateTimeFormat().resolvedOptions().timeZone" value={ f.Timezone }/>
+					<input type="hidden" name="timezone" id="timezone" x-data x-init="$el.value = Intl.DateTimeFormat().resolvedOptions().timeZone" value={ f.Timezone }/>
 					@field("display_name", "Name", f.fieldError("display_name")) {
 						@input.Input(input.Props{
 							ID:       "display_name",
@@ -76,6 +98,27 @@ templ SignupPage(f SignupForm) {
 								"autocomplete": "email",
 							},
 						})
+					}
+					if f.Options.PasskeyEnabled {
+						@button.Button(button.Props{
+							Type:      button.TypeButton,
+							Variant:   button.VariantOutline,
+							FullWidth: true,
+							ID:        "passkey-btn",
+							Attributes: templ.Attributes{
+								"data-passkey-mode": "register",
+							},
+						}) {
+							Create account with a passkey
+						}
+						<div class="relative py-1">
+							<div class="absolute inset-0 flex items-center" aria-hidden="true">
+								<div class="border-border w-full border-t"></div>
+							</div>
+							<div class="relative flex justify-center text-xs uppercase">
+								<span class="bg-card text-muted-foreground px-2">or with password</span>
+							</div>
+						</div>
 					}
 					@field("password", "Password", f.fieldError("password")) {
 						@input.Input(input.Props{
@@ -110,6 +153,7 @@ templ SignupPage(f SignupForm) {
 						Create account
 					}
 				</form>
+				<p id="passkey-error" class="text-destructive mt-3 hidden text-sm" role="alert"></p>
 			}
 		}
 		<p class="text-muted-foreground mt-6 text-center text-sm">
@@ -118,6 +162,9 @@ templ SignupPage(f SignupForm) {
 		</p>
 		@input.Script()
 		@label.Script()
+		if f.Options.PasskeyEnabled {
+			<script src="/assets/js/auth/passkey.js" defer></script>
+		}
 	}
 }
 

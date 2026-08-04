@@ -1,0 +1,34 @@
+# golangci-lint configuration for North.
+# Keep this thin — prefer gofmt/go vet defaults over a large rule farm.
+
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+
+  settings:
+    govet:
+      enable:
+        - shadow
+
+  exclusions:
+    paths:
+      # Huge auto-generated Lucide icon dumps from templUI.
+      - web/shared/ui/icon/icon_data\.go
+      - web/shared/ui/icon/icon_defs\.go
+
+formatters:
+  enable:
+    - gofumpt
+  exclusions:
+    paths:
+      - web/shared/ui/icon/icon_data\.go
+      - web/shared/ui/icon/icon_defs\.go

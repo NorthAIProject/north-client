@@ -2,6 +2,7 @@ package auth_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,14 +16,19 @@ import (
 
 const goodPassword = "correct horse battery staple"
 
-func newService(t *testing.T) (*auth.Service, *auth.SessionStore, *pgxpool.Pool) {
+func newService(t *testing.T) (*auth.Service, *auth.SessionStore, *pgxpool.Pool, *auth.CaptureMailer) {
 	t.Helper()
 
 	pool := testdb.New(t)
 	userSvc := users.NewService(users.NewRepository(pool))
 	sessions := auth.NewSessionStore(pool, time.Hour)
+	mailer := &auth.CaptureMailer{}
 
-	return auth.NewService(userSvc, sessions), sessions, pool
+	svc := auth.NewService(userSvc, sessions, auth.ServiceOptions{
+		Mailer:  mailer,
+		BaseURL: "http://north.test",
+	})
+	return svc, sessions, pool, mailer
 }
 
 func validSignup() auth.SignupInput {
@@ -36,7 +42,7 @@ func validSignup() auth.SignupInput {
 }
 
 func TestSignupCreatesAccountAndSession(t *testing.T) {
-	svc, sessions, _ := newService(t)
+	svc, sessions, _, _ := newService(t)
 	ctx := context.Background()
 
 	user, token, err := svc.Signup(ctx, validSignup(), auth.Metadata{})
@@ -62,7 +68,7 @@ func TestSignupCreatesAccountAndSession(t *testing.T) {
 }
 
 func TestSignupRejectsDuplicateEmailCaseInsensitively(t *testing.T) {
-	svc, _, _ := newService(t)
+	svc, _, _, _ := newService(t)
 	ctx := context.Background()
 
 	if _, _, err := svc.Signup(ctx, validSignup(), auth.Metadata{}); err != nil {
@@ -88,7 +94,7 @@ func TestSignupRejectsDuplicateEmailCaseInsensitively(t *testing.T) {
 }
 
 func TestSignupReportsEveryProblemAtOnce(t *testing.T) {
-	svc, _, _ := newService(t)
+	svc, _, _, _ := newService(t)
 
 	in := auth.SignupInput{
 		Email:                "not-an-email",
@@ -119,7 +125,7 @@ func TestSignupReportsEveryProblemAtOnce(t *testing.T) {
 }
 
 func TestSignupRejectsMismatchedConfirmation(t *testing.T) {
-	svc, _, _ := newService(t)
+	svc, _, _, _ := newService(t)
 
 	in := validSignup()
 	in.PasswordConfirmation = goodPassword + " but different"
@@ -143,7 +149,7 @@ func TestSignupRejectsMismatchedConfirmation(t *testing.T) {
 // an unusable hash, so a user who mistyped their password on the first attempt
 // could never sign up or log in with that address again.
 func TestRejectedSignupCreatesNoAccount(t *testing.T) {
-	svc, _, pool := newService(t)
+	svc, _, pool, _ := newService(t)
 	ctx := context.Background()
 
 	in := validSignup()
@@ -169,7 +175,7 @@ func TestRejectedSignupCreatesNoAccount(t *testing.T) {
 }
 
 func TestLoginSucceedsWithCorrectPassword(t *testing.T) {
-	svc, sessions, _ := newService(t)
+	svc, sessions, _, _ := newService(t)
 	ctx := context.Background()
 
 	created, _, err := svc.Signup(ctx, validSignup(), auth.Metadata{})
@@ -193,7 +199,7 @@ func TestLoginSucceedsWithCorrectPassword(t *testing.T) {
 }
 
 func TestLoginFailuresAreIndistinguishable(t *testing.T) {
-	svc, _, _ := newService(t)
+	svc, _, _, _ := newService(t)
 	ctx := context.Background()
 
 	if _, _, err := svc.Signup(ctx, validSignup(), auth.Metadata{}); err != nil {
@@ -223,7 +229,7 @@ func TestLoginFailuresAreIndistinguishable(t *testing.T) {
 }
 
 func TestLogoutRevokesOnlyThatSession(t *testing.T) {
-	svc, sessions, _ := newService(t)
+	svc, sessions, _, _ := newService(t)
 	ctx := context.Background()
 
 	if _, _, err := svc.Signup(ctx, validSignup(), auth.Metadata{}); err != nil {
@@ -260,7 +266,7 @@ func TestResolveRejectsUnknownAndExpiredTokens(t *testing.T) {
 
 	// A lifetime already in the past, so the row is created expired.
 	expired := auth.NewSessionStore(pool, -time.Minute)
-	svc := auth.NewService(userSvc, expired)
+	svc := auth.NewService(userSvc, expired, auth.ServiceOptions{BaseURL: "http://north.test"})
 
 	_, token, err := svc.Signup(ctx, validSignup(), auth.Metadata{})
 	if err != nil {
@@ -279,7 +285,7 @@ func TestResolveRejectsUnknownAndExpiredTokens(t *testing.T) {
 }
 
 func TestRevokeAllEndsEverySession(t *testing.T) {
-	svc, sessions, _ := newService(t)
+	svc, sessions, _, _ := newService(t)
 	ctx := context.Background()
 
 	user, first, err := svc.Signup(ctx, validSignup(), auth.Metadata{})
@@ -311,7 +317,7 @@ func TestPurgeExpiredRemovesOnlyExpiredRows(t *testing.T) {
 	live := auth.NewSessionStore(pool, time.Hour)
 	dead := auth.NewSessionStore(pool, -time.Minute)
 
-	user, liveToken, err := auth.NewService(userSvc, live).Signup(ctx, validSignup(), auth.Metadata{})
+	user, liveToken, err := auth.NewService(userSvc, live, auth.ServiceOptions{BaseURL: "http://north.test"}).Signup(ctx, validSignup(), auth.Metadata{})
 	if err != nil {
 		t.Fatalf("signup: %v", err)
 	}
@@ -332,7 +338,7 @@ func TestPurgeExpiredRemovesOnlyExpiredRows(t *testing.T) {
 }
 
 func TestSessionsDieWithTheirUser(t *testing.T) {
-	svc, sessions, pool := newService(t)
+	svc, sessions, pool, _ := newService(t)
 	ctx := context.Background()
 
 	user, token, err := svc.Signup(ctx, validSignup(), auth.Metadata{})
@@ -349,4 +355,133 @@ func TestSessionsDieWithTheirUser(t *testing.T) {
 	if _, err := sessions.Resolve(ctx, token); !apperr.Is(err, apperr.ErrUnauthenticated) {
 		t.Fatalf("deleting the user must invalidate the session, got %v", err)
 	}
+}
+
+func TestRequestPasswordResetSendsLinkForKnownEmail(t *testing.T) {
+	svc, _, _, mailer := newService(t)
+	ctx := context.Background()
+
+	if _, _, err := svc.Signup(ctx, validSignup(), auth.Metadata{}); err != nil {
+		t.Fatalf("signup: %v", err)
+	}
+
+	if err := svc.RequestPasswordReset(ctx, "fernando@north.test"); err != nil {
+		t.Fatalf("request reset: %v", err)
+	}
+	if len(mailer.Messages) != 1 {
+		t.Fatalf("expected one email, got %d", len(mailer.Messages))
+	}
+	msg := mailer.Messages[0]
+	if msg.To != "fernando@north.test" {
+		t.Fatalf("to = %q", msg.To)
+	}
+	if !strings.Contains(msg.Body, "http://north.test/reset-password?token=") {
+		t.Fatalf("email body missing reset URL: %q", msg.Body)
+	}
+}
+
+func TestRequestPasswordResetIsSilentForUnknownEmail(t *testing.T) {
+	svc, _, _, mailer := newService(t)
+
+	if err := svc.RequestPasswordReset(context.Background(), "nobody@north.test"); err != nil {
+		t.Fatalf("unknown email must still succeed: %v", err)
+	}
+	if len(mailer.Messages) != 0 {
+		t.Fatalf("must not send mail for unknown addresses, sent %d", len(mailer.Messages))
+	}
+}
+
+func TestRequestPasswordResetRejectsBadEmail(t *testing.T) {
+	svc, _, _, _ := newService(t)
+
+	err := svc.RequestPasswordReset(context.Background(), "not-an-email")
+	var fieldErrs apperr.FieldErrors
+	if !apperr.As(err, &fieldErrs) {
+		t.Fatalf("expected field errors, got %v", err)
+	}
+	if _, ok := fieldErrs.Messages()["email"]; !ok {
+		t.Fatalf("expected email field error, got %v", fieldErrs.Messages())
+	}
+}
+
+func TestResetPasswordChangesPasswordRevokesSessionsAndSignsIn(t *testing.T) {
+	svc, sessions, _, mailer := newService(t)
+	ctx := context.Background()
+
+	user, oldToken, err := svc.Signup(ctx, validSignup(), auth.Metadata{})
+	if err != nil {
+		t.Fatalf("signup: %v", err)
+	}
+
+	if err := svc.RequestPasswordReset(ctx, user.Email); err != nil {
+		t.Fatalf("request reset: %v", err)
+	}
+	raw := extractResetToken(t, mailer.Messages[0].Body)
+
+	const newPassword = "a brand new horse battery"
+	resetUser, newToken, err := svc.ResetPassword(ctx, auth.ResetPasswordInput{
+		Token:                raw,
+		Password:             newPassword,
+		PasswordConfirmation: newPassword,
+	}, auth.Metadata{})
+	if err != nil {
+		t.Fatalf("reset: %v", err)
+	}
+	if resetUser.ID != user.ID {
+		t.Fatal("reset signed in the wrong user")
+	}
+
+	// Old sessions must die so a stolen cookie cannot outlive a password change.
+	if _, err := sessions.Resolve(ctx, oldToken); !apperr.Is(err, apperr.ErrUnauthenticated) {
+		t.Fatalf("pre-reset session must be revoked, got %v", err)
+	}
+	if _, err := sessions.Resolve(ctx, newToken); err != nil {
+		t.Fatalf("reset should sign the user in: %v", err)
+	}
+
+	// Old password fails; new password works.
+	if _, _, err := svc.Login(ctx, auth.LoginInput{Email: user.Email, Password: goodPassword}, auth.Metadata{}); !apperr.Is(err, auth.ErrInvalidCredentials) {
+		t.Fatalf("old password must fail, got %v", err)
+	}
+	if _, _, err := svc.Login(ctx, auth.LoginInput{Email: user.Email, Password: newPassword}, auth.Metadata{}); err != nil {
+		t.Fatalf("new password must work: %v", err)
+	}
+
+	// Token is single-use.
+	if _, _, err := svc.ResetPassword(ctx, auth.ResetPasswordInput{
+		Token:                raw,
+		Password:             newPassword + " again",
+		PasswordConfirmation: newPassword + " again",
+	}, auth.Metadata{}); !apperr.Is(err, auth.ErrInvalidResetToken) {
+		t.Fatalf("reusing a token must fail, got %v", err)
+	}
+}
+
+func TestResetPasswordRejectsInvalidToken(t *testing.T) {
+	svc, _, _, _ := newService(t)
+
+	_, _, err := svc.ResetPassword(context.Background(), auth.ResetPasswordInput{
+		Token:                "not-a-real-token",
+		Password:             goodPassword,
+		PasswordConfirmation: goodPassword,
+	}, auth.Metadata{})
+	if !apperr.Is(err, auth.ErrInvalidResetToken) {
+		t.Fatalf("expected ErrInvalidResetToken, got %v", err)
+	}
+}
+
+func extractResetToken(t *testing.T, body string) string {
+	t.Helper()
+	const marker = "http://north.test/reset-password?token="
+	idx := strings.Index(body, marker)
+	if idx < 0 {
+		t.Fatalf("reset URL not found in body: %q", body)
+	}
+	rest := body[idx+len(marker):]
+	// Token is the first non-whitespace run.
+	end := strings.IndexAny(rest, " \n\r\t")
+	if end < 0 {
+		return rest
+	}
+	return rest[:end]
 }

@@ -1,0 +1,217 @@
+{
+  "project": {
+    "id": "681fce6e-c967-4dc7-a878-0b7aed505031",
+    "name": "North \u2014 Feature-ready OS",
+    "url": "https://linear.app/northos/project/north-feature-ready-os-fe507439bf24"
+  },
+  "created_count": 41,
+  "failed_count": 0,
+  "issues": [
+    {
+      "identifier": "NOR-9",
+      "title": "Daily check-ins: schema, service, and UI",
+      "url": "https://linear.app/northos/issue/NOR-9/daily-check-ins-schema-service-and-ui"
+    },
+    {
+      "identifier": "NOR-10",
+      "title": "Check-in ContextSource for CoachService",
+      "url": "https://linear.app/northos/issue/NOR-10/check-in-contextsource-for-coachservice"
+    },
+    {
+      "identifier": "NOR-11",
+      "title": "Guided check-in flow (HTMX, mobile-first)",
+      "url": "https://linear.app/northos/issue/NOR-11/guided-check-in-flow-htmx-mobile-first"
+    },
+    {
+      "identifier": "NOR-12",
+      "title": "Goal milestones and progress updates",
+      "url": "https://linear.app/northos/issue/NOR-12/goal-milestones-and-progress-updates"
+    },
+    {
+      "identifier": "NOR-13",
+      "title": "Link check-ins to related goals",
+      "url": "https://linear.app/northos/issue/NOR-13/link-check-ins-to-related-goals"
+    },
+    {
+      "identifier": "NOR-14",
+      "title": "Long-term memory store (profile facts)",
+      "url": "https://linear.app/northos/issue/NOR-14/long-term-memory-store-profile-facts"
+    },
+    {
+      "identifier": "NOR-15",
+      "title": "Memory extraction job after conversations",
+      "url": "https://linear.app/northos/issue/NOR-15/memory-extraction-job-after-conversations"
+    },
+    {
+      "identifier": "NOR-16",
+      "title": "Memory ContextSource and prompt policy",
+      "url": "https://linear.app/northos/issue/NOR-16/memory-contextsource-and-prompt-policy"
+    },
+    {
+      "identifier": "NOR-17",
+      "title": "Onboarding: first-run goals and coaching style",
+      "url": "https://linear.app/northos/issue/NOR-17/onboarding-first-run-goals-and-coaching-style"
+    },
+    {
+      "identifier": "NOR-18",
+      "title": "Dashboard as today\u2019s OS home",
+      "url": "https://linear.app/northos/issue/NOR-18/dashboard-as-todays-os-home"
+    },
+    {
+      "identifier": "NOR-19",
+      "title": "Documents: upload, storage, and metadata",
+      "url": "https://linear.app/northos/issue/NOR-19/documents-upload-storage-and-metadata"
+    },
+    {
+      "identifier": "NOR-20",
+      "title": "Document extraction pipeline (worker)",
+      "url": "https://linear.app/northos/issue/NOR-20/document-extraction-pipeline-worker"
+    },
+    {
+      "identifier": "NOR-21",
+      "title": "Embeddings and search package (semantic memory)",
+      "url": "https://linear.app/northos/issue/NOR-21/embeddings-and-search-package-semantic-memory"
+    },
+    {
+      "identifier": "NOR-22",
+      "title": "Knowledge ContextSource (RAG into coach)",
+      "url": "https://linear.app/northos/issue/NOR-22/knowledge-contextsource-rag-into-coach"
+    },
+    {
+      "identifier": "NOR-23",
+      "title": "Weekly review report generation",
+      "url": "https://linear.app/northos/issue/NOR-23/weekly-review-report-generation"
+    },
+    {
+      "identifier": "NOR-24",
+      "title": "Reports UI: view, archive, regenerate",
+      "url": "https://linear.app/northos/issue/NOR-24/reports-ui-view-archive-regenerate"
+    },
+    {
+      "identifier": "NOR-25",
+      "title": "Daily briefing (lightweight report)",
+      "url": "https://linear.app/northos/issue/NOR-25/daily-briefing-lightweight-report"
+    },
+    {
+      "identifier": "NOR-26",
+      "title": "Conversation summarization for long threads",
+      "url": "https://linear.app/northos/issue/NOR-26/conversation-summarization-for-long-threads"
+    },
+    {
+      "identifier": "NOR-27",
+      "title": "MCP server v0: expose North capabilities",
+      "url": "https://linear.app/northos/issue/NOR-27/mcp-server-v0-expose-north-capabilities"
+    },
+    {
+      "identifier": "NOR-28",
+      "title": "MCP client: connect one external server (calendar or tasks)",
+      "url": "https://linear.app/northos/issue/NOR-28/mcp-client-connect-one-external-server-calendar-or-tasks"
+    },
+    {
+      "identifier": "NOR-29",
+      "title": "Tool-calling loop in CoachService",
+      "url": "https://linear.app/northos/issue/NOR-29/tool-calling-loop-in-coachservice"
+    },
+    {
+      "identifier": "NOR-30",
+      "title": "Confirm side-effect tools in UI",
+      "url": "https://linear.app/northos/issue/NOR-30/confirm-side-effect-tools-in-ui"
+    },
+    {
+      "identifier": "NOR-31",
+      "title": "Scheduled coach nudges (worker)",
+      "url": "https://linear.app/northos/issue/NOR-31/scheduled-coach-nudges-worker"
+    },
+    {
+      "identifier": "NOR-32",
+      "title": "Reflection session mode",
+      "url": "https://linear.app/northos/issue/NOR-32/reflection-session-mode"
+    },
+    {
+      "identifier": "NOR-33",
+      "title": "Decision journal",
+      "url": "https://linear.app/northos/issue/NOR-33/decision-journal"
+    },
+    {
+      "identifier": "NOR-34",
+      "title": "Simple consistency metrics (check-in streak, 7d goal activity)",
+      "url": "https://linear.app/northos/issue/NOR-34/simple-consistency-metrics-check-in-streak-7d-goal-activity"
+    },
+    {
+      "identifier": "NOR-35",
+      "title": "Fitness summary interface + Strava import",
+      "url": "https://linear.app/northos/issue/NOR-35/fitness-summary-interface-strava-import"
+    },
+    {
+      "identifier": "NOR-36",
+      "title": "Activity summary ContextSource",
+      "url": "https://linear.app/northos/issue/NOR-36/activity-summary-contextsource"
+    },
+    {
+      "identifier": "NOR-37",
+      "title": "Messaging adapter interface into CoachService",
+      "url": "https://linear.app/northos/issue/NOR-37/messaging-adapter-interface-into-coachservice"
+    },
+    {
+      "identifier": "NOR-38",
+      "title": "Telegram bot as first messaging channel",
+      "url": "https://linear.app/northos/issue/NOR-38/telegram-bot-as-first-messaging-channel"
+    },
+    {
+      "identifier": "NOR-39",
+      "title": "Mobile-first PWA polish for check-in and chat",
+      "url": "https://linear.app/northos/issue/NOR-39/mobile-first-pwa-polish-for-check-in-and-chat"
+    },
+    {
+      "identifier": "NOR-40",
+      "title": "User data export and account delete",
+      "url": "https://linear.app/northos/issue/NOR-40/user-data-export-and-account-delete"
+    },
+    {
+      "identifier": "NOR-41",
+      "title": "Rate limits on AI and uploads",
+      "url": "https://linear.app/northos/issue/NOR-41/rate-limits-on-ai-and-uploads"
+    },
+    {
+      "identifier": "NOR-42",
+      "title": "Expand AI eval harness for grounding cases",
+      "url": "https://linear.app/northos/issue/NOR-42/expand-ai-eval-harness-for-grounding-cases"
+    },
+    {
+      "identifier": "NOR-43",
+      "title": "Empty states and \u201cwhat should I do next?\u201d CTAs",
+      "url": "https://linear.app/northos/issue/NOR-43/empty-states-and-what-should-i-do-next-ctas"
+    },
+    {
+      "identifier": "NOR-44",
+      "title": "Settings: timezone, coaching tone, notification prefs",
+      "url": "https://linear.app/northos/issue/NOR-44/settings-timezone-coaching-tone-notification-prefs"
+    },
+    {
+      "identifier": "NOR-45",
+      "title": "Observability for coach, context sources, and jobs",
+      "url": "https://linear.app/northos/issue/NOR-45/observability-for-coach-context-sources-and-jobs"
+    },
+    {
+      "identifier": "NOR-46",
+      "title": "[Later] Discord messaging channel",
+      "url": "https://linear.app/northos/issue/NOR-46/later-discord-messaging-channel"
+    },
+    {
+      "identifier": "NOR-47",
+      "title": "[Later] WhatsApp messaging channel",
+      "url": "https://linear.app/northos/issue/NOR-47/later-whatsapp-messaging-channel"
+    },
+    {
+      "identifier": "NOR-48",
+      "title": "[Later] Native iOS companion, widgets, Live Activities, Watch",
+      "url": "https://linear.app/northos/issue/NOR-48/later-native-ios-companion-widgets-live-activities-watch"
+    },
+    {
+      "identifier": "NOR-49",
+      "title": "[Later] Apple Health / Garmin / Fitbit providers",
+      "url": "https://linear.app/northos/issue/NOR-49/later-apple-health-garmin-fitbit-providers"
+    }
+  ],
+  "failures": []
+}

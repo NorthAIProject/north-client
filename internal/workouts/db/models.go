@@ -12,6 +12,15 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AuthIdentity struct {
+	ID              uuid.UUID
+	UserID          uuid.UUID
+	Provider        string
+	ProviderSubject string
+	Email           *string
+	CreatedAt       time.Time
+}
+
 type Conversation struct {
 	ID        uuid.UUID
 	UserID    uuid.UUID
@@ -92,6 +101,14 @@ type Message struct {
 	CreatedAt      time.Time
 }
 
+type PasswordResetToken struct {
+	TokenHash []byte
+	UserID    uuid.UUID
+	ExpiresAt time.Time
+	CreatedAt time.Time
+	UsedAt    *time.Time
+}
+
 type Session struct {
 	TokenHash  []byte
 	UserID     uuid.UUID
@@ -105,12 +122,34 @@ type Session struct {
 type User struct {
 	ID            uuid.UUID
 	Email         string
-	PasswordHash  string
+	PasswordHash  *string
 	DisplayName   string
 	Timezone      string
 	CoachingStyle *string
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
+}
+
+type WebauthnChallenge struct {
+	ID        uuid.UUID
+	Data      []byte
+	ExpiresAt time.Time
+	CreatedAt time.Time
+}
+
+type WebauthnCredential struct {
+	CredentialID    []byte
+	UserID          uuid.UUID
+	PublicKey       []byte
+	AttestationType string
+	Transport       []string
+	SignCount       int64
+	Name            string
+	Aaguid          []byte
+	BackupEligible  bool
+	BackupState     bool
+	CreatedAt       time.Time
+	LastUsedAt      *time.Time
 }
 
 type WorkoutIntake struct {

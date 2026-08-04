@@ -23,6 +23,14 @@ type Config struct {
 
 	SessionLifetime time.Duration
 
+	// Google OAuth (optional). Empty credentials disable the feature.
+	GoogleClientID     string
+	GoogleClientSecret string
+
+	// WebAuthn relying party. RPID defaults to the host of BaseURL when empty.
+	WebAuthnRPID        string
+	WebAuthnDisplayName string
+
 	AI      AIConfig
 	Storage StorageConfig
 }
@@ -89,6 +97,12 @@ func Load() (*Config, error) {
 		LogLevel: optional("LOG_LEVEL", "info"),
 
 		DatabaseURL: require("DATABASE_URL"),
+
+		GoogleClientID:     strings.TrimSpace(os.Getenv("GOOGLE_CLIENT_ID")),
+		GoogleClientSecret: strings.TrimSpace(os.Getenv("GOOGLE_CLIENT_SECRET")),
+
+		WebAuthnRPID:        optional("WEBAUTHN_RP_ID", ""),
+		WebAuthnDisplayName: optional("WEBAUTHN_RP_DISPLAY_NAME", "North"),
 
 		AI: AIConfig{
 			Provider:  optional("AI_PROVIDER", "gemini"),

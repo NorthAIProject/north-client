@@ -1,0 +1,646 @@
+Title,Description,Status,Priority,Labels,Estimate,Project
+"Daily check-ins: schema, service, and UI","## Context
+Phase 1 gap. Check-ins are the primary growth ritual; `internal/checkins` is a stub (`doc.go` only). Without them North is chat + goals, not a personal growth loop.
+
+## Scope
+- Migration: `check_ins` table (`user_id`, mood, energy, wins, challenges, notes, `related_goal_id` nullable, timestamps)
+- `internal/checkins/`: repository, service, handler
+- `web/` HTMX list + create form using templUI
+- User-scoped queries only
+
+## Out of scope
+- ContextSource wiring (separate ticket)
+- Push notifications
+
+## Acceptance
+- [ ] Authenticated user can create a check-in (mood, energy, wins, challenges, notes)
+- [ ] User can list own check-in history (newest first)
+- [ ] Multi-tenant isolation on all queries
+- [ ] Service tests for create/list and ownership
+
+## Architecture
+- Vertical slice under `internal/checkins/`
+- No business logic in handlers
+- Prefer HTMX partials + templUI components",Backlog,Urgent,"phase-1-gap, growth-loop, must-ship",5,North — Feature-ready OS
+Check-in ContextSource for CoachService,"## Context
+Coach must *use* reflections. ContextBuilder already supports `ContextSource` and `Context.CheckIns []string`.
+
+## Scope
+- Implement `checkins.ContextSource` collecting recent check-ins (e.g. last 7–14 days)
+- Register source in web/worker wiring
+- Prompt already renders absence; ensure non-empty formatting is readable
+
+## Depends on
+- Daily check-ins schema/service/UI
+
+## Acceptance
+- [ ] Recent check-ins appear in coach context when data exists
+- [ ] Source failure degrades gracefully (does not fail the whole reply)
+- [ ] Coach replies can reference yesterday’s mood/energy when present (manual or eval smoke)
+
+## Architecture
+- Implement `coach.ContextSource` only; do not edit builder core unless needed",Backlog,Urgent,"phase-1-gap, growth-loop, coach, must-ship",2,North — Feature-ready OS
+"Guided check-in flow (HTMX, mobile-first)","## Context
+Empty free-text check-ins die. A 30–60s structured flow drives retention.
+
+## Scope
+- Multi-step or single-page guided form: mood → energy → wins → challenges → notes
+- HTMX partials; works one-handed on phone
+- templUI form controls; no SPA framework
+
+## Depends on
+- Daily check-ins schema/service/UI
+
+## Acceptance
+- [ ] User completes a check-in in under ~60 seconds on mobile viewport
+- [ ] Validation errors render inline
+- [ ] Success returns to dashboard or history with clear confirmation
+
+## Architecture
+- Presentation only on top of existing check-in service",Backlog,High,"phase-1-gap, growth-loop, ui, must-ship",3,North — Feature-ready OS
+Goal milestones and progress updates,"## Context
+Goals without progress feel dead. Goals CRUD exists; milestones/progress need first-class support.
+
+## Scope
+- Schema: milestones and/or progress fields on goals
+- Service methods + UI on goal detail
+- Timeline of progress updates
+
+## Acceptance
+- [ ] User can add/edit/complete milestones on a goal
+- [ ] Progress status or % is visible on goal list/detail
+- [ ] User isolation + service tests
+
+## Architecture
+- Extend `internal/goals/` slice; keep handlers thin",Backlog,High,"phase-1-gap, growth-loop, goals, should-ship",5,North — Feature-ready OS
+Link check-ins to related goals,"## Context
+Accountability loop: reflections should optionally attach to a goal so context groups by goal.
+
+## Scope
+- Optional `related_goal_id` on check-in (if not already in A1)
+- UI: goal picker on create
+- ContextSource groups or labels reflections by goal title
+
+## Depends on
+- Check-ins schema + ContextSource
+
+## Acceptance
+- [ ] User can attach a check-in to an active goal
+- [ ] Coach context shows goal association when set
+- [ ] Detached check-ins still work
+
+## Architecture
+- FK to goals; validate ownership of goal_id",Backlog,High,"phase-1-gap, growth-loop, must-ship",2,North — Feature-ready OS
+Long-term memory store (profile facts),"## Context
+README promises persistent memory. Today coach has conversation tail + goals/workouts, not durable profile facts (preferences, coaching style, recurring habits).
+
+## Scope
+- Migration: `user_memories` (user_id, key/category, content, pinned, source, timestamps, soft-delete)
+- `internal/` slice or under users: CRUD service + simple settings UI list/edit/delete
+- Never log secrets
+
+## Acceptance
+- [ ] User can view/edit/delete own memories
+- [ ] Pin/exclude supported
+- [ ] Isolation + service tests
+
+## Architecture
+- Domain independent of AI provider; coach reads via ContextSource in follow-up ticket",Backlog,Urgent,"phase-1-gap, memory, must-ship",5,North — Feature-ready OS
+Memory extraction job after conversations,"## Context
+Agentic memory: durable facts should be proposed from conversations, not only manual entry.
+
+## Scope
+- Worker job: after N messages or conversation idle, extract candidate facts via AI
+- Store as unconfirmed or draft memories for user review
+- Prompt in `internal/ai/prompts/`
+
+## Depends on
+- Long-term memory store
+
+## Acceptance
+- [ ] Job enqueues and writes candidate memories
+- [ ] User can approve/edit/discard candidates
+- [ ] Failures are logged; no silent data loss
+
+## Architecture
+- Jobs via existing `internal/jobs` worker; no AI in handlers",Backlog,High,"memory, agentic, must-ship",5,North — Feature-ready OS
+Memory ContextSource and prompt policy,"## Context
+Memory must be bounded and trustworthy in the system prompt.
+
+## Scope
+- ContextSource that loads pinned + recent approved memories
+- Render as short bullets; hard cap (token/char budget)
+- Prompt policy: coach treats memory as known facts, admits gaps
+
+## Depends on
+- Long-term memory store
+
+## Acceptance
+- [ ] Memories appear in context when present
+- [ ] Empty memory is silent/graceful
+- [ ] Source failure does not fail coach reply
+
+## Architecture
+- Follow goals ContextSource pattern",Backlog,Urgent,"memory, coach, must-ship",2,North — Feature-ready OS
+Onboarding: first-run goals and coaching style,"## Context
+Cold start kills OS feel. After signup, seed goals, memory, and first conversation.
+
+## Scope
+- First-run flow (3 questions): focus areas, coaching style, one near-term goal
+- Creates goal(s) + initial memory facts
+- Optional first coach conversation with seeded context
+- Skip path available
+
+## Depends on
+- Goals + memory store
+
+## Acceptance
+- [ ] New user hits onboarding once
+- [ ] Completing seeds usable coach context
+- [ ] Returning users never re-see forced onboarding
+
+## Architecture
+- SSR/HTMX; state on user profile flag",Backlog,High,"growth-loop, activation, must-ship",5,North — Feature-ready OS
+Dashboard as today’s OS home,"## Context
+Dashboard should orient the day: check-in CTA, active goals, last coach thread, next workout if any.
+
+## Scope
+- Expand `web/app/dashboard.templ` (or equivalent)
+- Server-composed sections from services
+- Empty states with clear CTAs
+
+## Depends on
+- Check-ins (for CTA)
+
+## Acceptance
+- [ ] Authenticated `/` or dashboard shows today’s next actions
+- [ ] Links to check-in, goals, last conversation work
+- [ ] Mobile layout usable
+
+## Architecture
+- Thin handler; aggregate in a small dashboard service or parallel service calls",Backlog,High,"ui, activation, must-ship",3,North — Feature-ready OS
+"Documents: upload, storage, and metadata","## Context
+Knowledge base pillar. `internal/documents` is stubbed; media/storage patterns already exist.
+
+## Scope
+- Upload PDF, Markdown, text
+- Metadata list/delete UI
+- Object storage via existing media patterns where possible
+- User isolation
+
+## Out of scope
+- Embeddings/RAG (follow-up)
+
+## Acceptance
+- [ ] User can upload and list documents
+- [ ] Delete removes storage object + DB row
+- [ ] Size/type validation; clear errors
+
+## Architecture
+- `internal/documents/` slice; reuse media/storage abstractions",Backlog,High,"knowledge, phase-2, must-ship",5,North — Feature-ready OS
+Document extraction pipeline (worker),"## Context
+Turn uploads into plain text chunks for search/LLM.
+
+## Scope
+- Job types: extract text from PDF/MD/text
+- Chunk storage; status: pending/ready/failed
+- UI status on document list
+
+## Depends on
+- Documents upload
+
+## Acceptance
+- [ ] Ready documents have extractable text chunks
+- [ ] Failures surface in UI with retry optional
+- [ ] Worker idempotent enough for re-runs
+
+## Architecture
+- `internal/jobs` worker; no extraction in HTTP request path",Backlog,High,"knowledge, phase-2, must-ship",5,North — Feature-ready OS
+Embeddings and search package (semantic memory),"## Context
+`internal/search` is stubbed. Semantic retrieval powers knowledge context.
+
+## Scope
+- Choose store (prefer pgvector in Postgres if ops-friendly)
+- Embed on document ready
+- Query by user_id + text → top-k chunks
+- Service tests with fake embedder if needed
+
+## Depends on
+- Document extraction
+
+## Acceptance
+- [ ] Semantic query returns only caller’s documents
+- [ ] Empty index returns empty, not error
+- [ ] Embedding failures mark chunks retryable
+
+## Architecture
+- AI embeddings via provider interface; no provider lock-in in services",Backlog,High,"knowledge, search, phase-2, must-ship",8,North — Feature-ready OS
+Knowledge ContextSource (RAG into coach),"## Context
+Coach should cite user knowledge; never dump whole documents by default.
+
+## Scope
+- ContextSource: query search with latest user message (or conversation topic)
+- Include title + short snippet; budget capped
+- Wire into ContextBuilder sources
+
+## Depends on
+- Embeddings/search
+
+## Acceptance
+- [ ] Relevant docs appear as KnowledgeHits in context
+- [ ] No full-document dump
+- [ ] Graceful degrade if search down
+
+## Architecture
+- Fill `Context.KnowledgeHits`; follow existing source pattern",Backlog,High,"knowledge, coach, must-ship",3,North — Feature-ready OS
+Weekly review report generation,"## Context
+Reports are a product differentiator. `internal/reports` is stubbed.
+
+## Scope
+- Domain model + migration for reports
+- Worker job: weekly review from goals, check-ins, conversations, workouts
+- Prompt in `internal/ai/prompts/`
+- Store markdown/structured body
+
+## Depends on
+- Check-ins (and ideally goals/workouts already exist)
+
+## Acceptance
+- [ ] Job can generate a weekly report for a user
+- [ ] Report persisted and user-scoped
+- [ ] Regenerable once per window (define rule)
+
+## Architecture
+- Service coordinates repos + AI; worker triggers schedule later or manual first",Backlog,High,"reports, phase-2, must-ship",5,North — Feature-ready OS
+"Reports UI: view, archive, regenerate","## Context
+Reviews must be consumed, not only generated.
+
+## Scope
+- List + detail pages for weekly reports
+- Archive action
+- Regenerate control (rate-limited)
+
+## Depends on
+- Weekly review generation
+
+## Acceptance
+- [ ] User reads full report rendered as markdown
+- [ ] Archive hides from default list
+- [ ] Unauthorized access returns 404/403
+
+## Architecture
+- Thin handler + templ; markdown via existing shared markdown helper",Backlog,High,"reports, ui, must-ship",3,North — Feature-ready OS
+Daily briefing (lightweight report),"## Context
+Morning OS habit: short “today” brief from goals focus, last check-in, suggested next step.
+
+## Scope
+- Generate on demand or nightly job
+- Shorter than weekly review; optional store last briefing
+- Surface on dashboard
+
+## Depends on
+- Check-ins + goals context
+
+## Acceptance
+- [ ] User can open today’s briefing
+- [ ] Content references real user data or admits gaps
+- [ ] Cheap/fast path preferred over long essay
+
+## Priority note
+Should-ship after weekly review if capacity is tight.",Backlog,Medium,"reports, should-ship",3,North — Feature-ready OS
+Conversation summarization for long threads,"## Context
+Keep continuity without infinite token history. Title generation already exists—extend pattern.
+
+## Scope
+- Summarize older turns; keep recent raw messages
+- Store summary on conversation
+- ContextBuilder uses summary + recent tail
+
+## Acceptance
+- [ ] Long threads stay within bounded context
+- [ ] Summary updates periodically (job or threshold)
+- [ ] User still sees full history in UI
+
+## Architecture
+- conversations service + coach ContextBuilder",Backlog,Medium,"memory, coach, should-ship",5,North — Feature-ready OS
+MCP server v0: expose North capabilities,"## Context
+`cmd/mcp-server` is a placeholder. North should expose business tools—not raw SQL—for Claude Desktop / agents.
+
+## Scope
+- Auth model for MCP (token/API key linked to user)
+- Tools: list goals, create check-in, search knowledge, start/send coach message (read carefully for side effects)
+- No internal IDs leakage beyond necessary; no raw SQL
+
+## Depends on
+- Check-ins + preferably knowledge search
+
+## Acceptance
+- [ ] External MCP client can list goals for authenticated user
+- [ ] Create check-in works end-to-end
+- [ ] Documented run instructions in README/docs
+
+## Architecture
+- MCP server calls the same services as HTTP; zero duplicated business logic",Backlog,Medium,"mcp, agentic, should-ship, phase-2",8,North — Feature-ready OS
+MCP client: connect one external server (calendar or tasks),"## Context
+`internal/integrations` stubbed. Bring outside world into context via one real connector.
+
+## Scope
+- MCP client connection config per user
+- One integration: calendar events OR tasks
+- ContextSource summarizing next 7 days / open tasks
+
+## Acceptance
+- [ ] User can connect/disconnect
+- [ ] Coach context includes external summary when connected
+- [ ] Failure degrades gracefully
+
+## Architecture
+- Integrations package owns client; coach only sees summary strings",Backlog,Medium,"mcp, integrations, should-ship, phase-2",8,North — Feature-ready OS
+Tool-calling loop in CoachService,"## Context
+Architecture says CoachService should execute tools. Today coach is largely chat+context. Tools make North agentic.
+
+## Scope
+- Tool definitions: create_goal, log_checkin, search_docs, get_workout_plan (minimal set)
+- Multi-step tool loop with budget (max rounds)
+- Persist tool results into conversation/context for the reply
+- Provider-agnostic tool schema on AIClient if needed
+
+## Depends on
+- Check-ins (+ docs search if search_docs included)
+
+## Acceptance
+- [ ] Model can log a check-in via tool and confirm in reply
+- [ ] Model can create a goal via tool
+- [ ] Loop terminates cleanly; errors returned to model
+- [ ] Service tests with fake AI client
+
+## Architecture
+- Tools call services, not repos/SQL
+- No provider-specific tool APIs in domain",Backlog,Urgent,"agentic, coach, must-ship",8,North — Feature-ready OS
+Confirm side-effect tools in UI,"## Context
+Trust: writes from the agent need explicit confirmation (or clearly safe defaults).
+
+## Scope
+- UX for pending tool confirmation (HTMX/Alpine)
+- Policy: which tools auto-run vs confirm
+- Audit log of tool executions optional but preferred
+
+## Depends on
+- Tool-calling loop
+
+## Acceptance
+- [ ] Destructive or state-changing tools can require confirm
+- [ ] User can reject; coach continues without applying
+- [ ] Confirmed tools apply exactly once
+
+## Architecture
+- Keep policy in service; UI only presents pending actions",Backlog,High,"agentic, trust, must-ship",5,North — Feature-ready OS
+Scheduled coach nudges (worker),"## Context
+Accountability without waiting for the user to open chat.
+
+## Scope
+- Rules: e.g. no check-in in 2 days; goal deadline approaching
+- Worker evaluates and stores in-app notifications
+- Dashboard/bell UI for notifications
+- Optional email/push later (out of scope)
+
+## Depends on
+- Check-ins + settings timezone preferred
+
+## Acceptance
+- [ ] Nudges created by schedule for eligible users
+- [ ] User can dismiss/read notifications
+- [ ] No spam: dedupe window defined
+
+## Architecture
+- jobs worker; pure rules in service",Backlog,Medium,"agentic, should-ship",5,North — Feature-ready OS
+Reflection session mode,"## Context
+Structured coaching product: coach asks 3–5 questions, ends with summary + optional memory write.
+
+## Scope
+- Session type or conversation flag `reflection`
+- Prompt + flow for Q&A rounds
+- End: summary stored; optional memory candidates
+
+## Depends on
+- Memory store preferred
+
+## Acceptance
+- [ ] User can start a reflection session from UI
+- [ ] Session ends with written summary user can see
+- [ ] Optional “save to memory” action
+
+## Architecture
+- Still CoachService; different prompt/mode, not a second brain",Backlog,Medium,"agentic, coach, should-ship",5,North — Feature-ready OS
+Decision journal,"## Context
+Personal growth staple: capture decision, options, later outcome; searchable for coach.
+
+## Scope
+- CRUD decision entries
+- Optional outcome field later
+- ContextSource when user discusses related topics (simple keyword/recent first)
+
+## Acceptance
+- [ ] User can log and list decisions
+- [ ] Coach can see recent decisions in context when source enabled
+
+## Priority note
+Nice-to-have after must-ship agentic core.",Backlog,Low,"growth-loop, nice-to-have",5,North — Feature-ready OS
+"Simple consistency metrics (check-in streak, 7d goal activity)","## Context
+Light motivation on dashboard without gamification spam.
+
+## Scope
+- Compute check-in streak
+- Count goal-related activity last 7 days
+- Show on dashboard
+
+## Depends on
+- Check-ins
+
+## Acceptance
+- [ ] Streak correct across timezone boundary (use user timezone when available)
+- [ ] Hidden or zero-state when no data (no shame UX)
+
+## Priority
+Should/nice after core loop works.",Backlog,Low,"ui, nice-to-have",2,North — Feature-ready OS
+Fitness summary interface + Strava import,"## Context
+README Phase 3. Workouts exist in-app; external fitness summaries still stubbed in `internal/fitness`.
+
+## Scope
+- Fitness provider interface producing summaries
+- Strava OAuth + activity sync job
+- Store normalized summaries only for coach
+
+## Acceptance
+- [ ] User connects Strava
+- [ ] Recent activities summarized for coach consumption
+- [ ] Disconnect revokes tokens safely
+
+## Architecture
+- Coach never sees raw Strava JSON",Backlog,Medium,"fitness, phase-3, nice-to-have",8,North — Feature-ready OS
+Activity summary ContextSource,"## Context
+Wire fitness summaries into coach context (last 7 days volume/recovery hints).
+
+## Depends on
+- Strava import / fitness summaries
+
+## Acceptance
+- [ ] Connected users get fitness section in context
+- [ ] Disconnected users unaffected
+- [ ] Graceful degrade on API failure",Backlog,Medium,"fitness, coach, nice-to-have",2,North — Feature-ready OS
+Messaging adapter interface into CoachService,"## Context
+One brain, many mouths. `internal/messaging` is stubbed.
+
+## Scope
+- `InboundMessage` / `OutboundMessage` interfaces
+- Adapter maps platform → CoachService
+- No platform-specific business logic
+
+## Acceptance
+- [ ] Unit test with fake adapter round-trip to CoachService
+- [ ] Shared conversation identity strategy documented (link account)
+
+## Architecture
+- Messaging package is infrastructure; services own logic",Backlog,Medium,"messaging, phase-3, should-ship",3,North — Feature-ready OS
+Telegram bot as first messaging channel,"## Context
+Highest-ROI non-web channel for a personal coach.
+
+## Scope
+- Telegram bot webhook/long-poll
+- Account linking flow (web code → telegram user)
+- Send/receive via messaging adapter → CoachService
+- Same memory as web
+
+## Depends on
+- Messaging adapter interface
+
+## Acceptance
+- [ ] Linked user can chat with North on Telegram
+- [ ] Messages appear in web conversation history (or documented dual-store strategy)
+- [ ] Unlinked users get link instructions only
+
+## Architecture
+- Zero coaching logic in Telegram package",Backlog,Medium,"messaging, phase-3, should-ship",8,North — Feature-ready OS
+Mobile-first PWA polish for check-in and chat,"## Context
+Bridge before native iOS. Chat already improved for phone; extend to check-in + installability.
+
+## Scope
+- Web app manifest + service worker basics if missing
+- Check-in + chat one-handed usability pass
+- Safe areas, sticky composer, large tap targets
+
+## Acceptance
+- [ ] Installable on iOS/Android Safari/Chrome
+- [ ] Check-in + chat usable without desktop
+
+## Priority
+Should-ship polish; not a substitute for growth loop features.",Backlog,Low,"ui, should-ship",3,North — Feature-ready OS
+User data export and account delete,"## Context
+Trust baseline before strangers use the product.
+
+## Scope
+- Export JSON (or zip) of user data: profile, goals, check-ins, conversations, memories, documents metadata
+- Account delete with cascade of user-owned rows + storage objects
+- Confirm UX
+
+## Acceptance
+- [ ] Export completes for account with sample data
+- [ ] Delete removes sessions and personal data
+- [ ] Cannot access deleted account resources
+
+## Architecture
+- Service-level orchestration; careful transaction boundaries",Backlog,High,"trust, should-ship",5,North — Feature-ready OS
+Rate limits on AI and uploads,"## Context
+Cost and abuse control for a real multi-user OS.
+
+## Scope
+- Per-user rate limits: coach messages, uploads, report regenerations
+- Clear UX errors when limited
+- Config via env
+
+## Acceptance
+- [ ] Exceeding limit returns friendly error, not 500
+- [ ] Limits documented for operators
+
+## Architecture
+- Middleware or service guards; prefer simple token bucket/counters in Redis or DB",Backlog,High,"trust, should-ship",3,North — Feature-ready OS
+Expand AI eval harness for grounding cases,"## Context
+`internal/ai/eval` exists. Feature-ready needs golden cases for growth OS behaviors.
+
+## Scope
+- Cases: goals appear in context; no hallucinated check-ins; RAG citations when docs exist; memory respect
+- Runnable in CI or documented live test tags
+- Fake provider fixtures where possible
+
+## Acceptance
+- [ ] Eval suite covers ≥4 growth-OS scenarios
+- [ ] Failures are actionable (which case/assertion)
+
+## Architecture
+- Keep evals out of unit-test default path if flaky/live",Backlog,Medium,"trust, eval, should-ship",5,North — Feature-ready OS
+Empty states and “what should I do next?” CTAs,"## Context
+Activation: new users must never stare at blank chat/dashboard.
+
+## Scope
+- Empty states for goals, check-ins, chat, documents, reports
+- Primary CTA per surface
+- Optional coach-suggested first message chips
+
+## Acceptance
+- [ ] Fresh account has guided next step on dashboard and chat
+- [ ] Copy is product-quality, not lorem
+
+## Architecture
+- Templ components; no new frameworks",Backlog,High,"activation, ui, must-ship",2,North — Feature-ready OS
+"Settings: timezone, coaching tone, notification prefs","## Context
+Context already has LocalTime. Users need editable profile that affects prompts and schedules.
+
+## Scope
+- Settings page: timezone, coaching tone, notification toggles
+- Persist on user profile
+- Coach prompt uses tone; jobs use timezone
+
+## Acceptance
+- [ ] Changing timezone updates local-time in coach context
+- [ ] Tone reflected in system prompt section
+- [ ] Defaults sensible for new users
+
+## Architecture
+- users service fields; prompt builder reads profile",Backlog,High,"settings, must-ship",3,North — Feature-ready OS
+"Observability for coach, context sources, and jobs","## Context
+Context sources already fail soft—need visibility in production.
+
+## Scope
+- Structured logs/metrics: coach latency, per-source errors, job failures, AI token usage if available
+- Request IDs already exist—propagate into coach/jobs
+
+## Acceptance
+- [ ] Operator can identify which ContextSource failed from logs
+- [ ] Job failures alertable via log patterns
+- [ ] No secrets in logs
+
+## Architecture
+- slog structured fields; optional Prometheus later",Backlog,Medium,"ops, should-ship",3,North — Feature-ready OS
+[Later] Discord messaging channel,"## Context
+Phase 3 multi-platform. Do after Telegram adapter patterns are proven.
+
+## Out of scope for feature-ready v1
+Ship only if Telegram path is stable.
+
+## Acceptance
+- Same adapter interface as Telegram; account linking; CoachService only.",Backlog,Low,"messaging, later",8,North — Feature-ready OS
+[Later] WhatsApp messaging channel,"## Context
+Phase 3. Higher compliance/ops cost than Telegram—defer past strangers-ready v1.
+
+## Acceptance
+- Adapter + linking + CoachService parity with Telegram.",Backlog,No priority,"messaging, later",8,North — Feature-ready OS
+"[Later] Native iOS companion, widgets, Live Activities, Watch","## Context
+README Phase 4. Explicitly not required for feature-ready web/agentic OS.
+
+## Notes
+Keep as placeholder epic; do not pull into current milestone until strangers use web/PWA.",Backlog,No priority,"phase-4, later",,North — Feature-ready OS
+[Later] Apple Health / Garmin / Fitbit providers,"## Context
+After Strava summary interface exists. Interchangeable fitness providers producing summaries only.
+
+## Depends on
+- Fitness summary interface",Backlog,No priority,"fitness, later",,North — Feature-ready OS

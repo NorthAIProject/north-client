@@ -13,6 +13,67 @@ import (
 	"github.com/google/uuid"
 )
 
+const createAuthIdentity = `-- name: CreateAuthIdentity :one
+
+INSERT INTO auth_identities (user_id, provider, provider_subject, email)
+VALUES ($1, $2, $3, $4)
+RETURNING id, user_id, provider, provider_subject, email, created_at
+`
+
+type CreateAuthIdentityParams struct {
+	UserID          uuid.UUID
+	Provider        string
+	ProviderSubject string
+	Email           *string
+}
+
+// ---------------------------------------------------------------------------
+// Auth identities (Google OAuth, future providers)
+// ---------------------------------------------------------------------------
+func (q *Queries) CreateAuthIdentity(ctx context.Context, arg CreateAuthIdentityParams) (AuthIdentity, error) {
+	row := q.db.QueryRow(ctx, createAuthIdentity,
+		arg.UserID,
+		arg.Provider,
+		arg.ProviderSubject,
+		arg.Email,
+	)
+	var i AuthIdentity
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Provider,
+		&i.ProviderSubject,
+		&i.Email,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const createPasswordResetToken = `-- name: CreatePasswordResetToken :one
+INSERT INTO password_reset_tokens (token_hash, user_id, expires_at)
+VALUES ($1, $2, $3)
+RETURNING token_hash, user_id, expires_at, created_at, used_at
+`
+
+type CreatePasswordResetTokenParams struct {
+	TokenHash []byte
+	UserID    uuid.UUID
+	ExpiresAt time.Time
+}
+
+func (q *Queries) CreatePasswordResetToken(ctx context.Context, arg CreatePasswordResetTokenParams) (PasswordResetToken, error) {
+	row := q.db.QueryRow(ctx, createPasswordResetToken, arg.TokenHash, arg.UserID, arg.ExpiresAt)
+	var i PasswordResetToken
+	err := row.Scan(
+		&i.TokenHash,
+		&i.UserID,
+		&i.ExpiresAt,
+		&i.CreatedAt,
+		&i.UsedAt,
+	)
+	return i, err
+}
+
 const createSession = `-- name: CreateSession :one
 INSERT INTO sessions (token_hash, user_id, expires_at, user_agent, ip)
 VALUES ($1, $2, $3, $4, $5)
@@ -48,6 +109,104 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (S
 	return i, err
 }
 
+const createWebAuthnChallenge = `-- name: CreateWebAuthnChallenge :one
+
+INSERT INTO webauthn_challenges (data, expires_at)
+VALUES ($1, $2)
+RETURNING id, data, expires_at, created_at
+`
+
+type CreateWebAuthnChallengeParams struct {
+	Data      []byte
+	ExpiresAt time.Time
+}
+
+// ---------------------------------------------------------------------------
+// WebAuthn ceremony challenges (short-lived server-side session)
+// ---------------------------------------------------------------------------
+func (q *Queries) CreateWebAuthnChallenge(ctx context.Context, arg CreateWebAuthnChallengeParams) (WebauthnChallenge, error) {
+	row := q.db.QueryRow(ctx, createWebAuthnChallenge, arg.Data, arg.ExpiresAt)
+	var i WebauthnChallenge
+	err := row.Scan(
+		&i.ID,
+		&i.Data,
+		&i.ExpiresAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const createWebAuthnCredential = `-- name: CreateWebAuthnCredential :one
+
+INSERT INTO webauthn_credentials (
+    credential_id, user_id, public_key, attestation_type, transport,
+    sign_count, name, aaguid, backup_eligible, backup_state
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+RETURNING credential_id, user_id, public_key, attestation_type, transport, sign_count, name, aaguid, backup_eligible, backup_state, created_at, last_used_at
+`
+
+type CreateWebAuthnCredentialParams struct {
+	CredentialID    []byte
+	UserID          uuid.UUID
+	PublicKey       []byte
+	AttestationType string
+	Transport       []string
+	SignCount       int64
+	Name            string
+	Aaguid          []byte
+	BackupEligible  bool
+	BackupState     bool
+}
+
+// ---------------------------------------------------------------------------
+// WebAuthn credentials
+// ---------------------------------------------------------------------------
+func (q *Queries) CreateWebAuthnCredential(ctx context.Context, arg CreateWebAuthnCredentialParams) (WebauthnCredential, error) {
+	row := q.db.QueryRow(ctx, createWebAuthnCredential,
+		arg.CredentialID,
+		arg.UserID,
+		arg.PublicKey,
+		arg.AttestationType,
+		arg.Transport,
+		arg.SignCount,
+		arg.Name,
+		arg.Aaguid,
+		arg.BackupEligible,
+		arg.BackupState,
+	)
+	var i WebauthnCredential
+	err := row.Scan(
+		&i.CredentialID,
+		&i.UserID,
+		&i.PublicKey,
+		&i.AttestationType,
+		&i.Transport,
+		&i.SignCount,
+		&i.Name,
+		&i.Aaguid,
+		&i.BackupEligible,
+		&i.BackupState,
+		&i.CreatedAt,
+		&i.LastUsedAt,
+	)
+	return i, err
+}
+
+const deleteExpiredPasswordResetTokens = `-- name: DeleteExpiredPasswordResetTokens :execrows
+DELETE FROM password_reset_tokens
+WHERE expires_at <= now()
+   OR used_at IS NOT NULL
+`
+
+func (q *Queries) DeleteExpiredPasswordResetTokens(ctx context.Context) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteExpiredPasswordResetTokens)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const deleteExpiredSessions = `-- name: DeleteExpiredSessions :execrows
 DELETE FROM sessions WHERE expires_at <= now()
 `
@@ -58,6 +217,29 @@ func (q *Queries) DeleteExpiredSessions(ctx context.Context) (int64, error) {
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const deleteExpiredWebAuthnChallenges = `-- name: DeleteExpiredWebAuthnChallenges :execrows
+DELETE FROM webauthn_challenges WHERE expires_at <= now()
+`
+
+func (q *Queries) DeleteExpiredWebAuthnChallenges(ctx context.Context) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteExpiredWebAuthnChallenges)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const deletePasswordResetTokensForUser = `-- name: DeletePasswordResetTokensForUser :exec
+DELETE FROM password_reset_tokens WHERE user_id = $1
+`
+
+// Called when issuing a new token (only the latest link should work) and after
+// a successful reset.
+func (q *Queries) DeletePasswordResetTokensForUser(ctx context.Context, userID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deletePasswordResetTokensForUser, userID)
+	return err
 }
 
 const deleteSession = `-- name: DeleteSession :exec
@@ -77,6 +259,76 @@ DELETE FROM sessions WHERE user_id = $1
 func (q *Queries) DeleteUserSessions(ctx context.Context, userID uuid.UUID) error {
 	_, err := q.db.Exec(ctx, deleteUserSessions, userID)
 	return err
+}
+
+const deleteWebAuthnChallenge = `-- name: DeleteWebAuthnChallenge :exec
+DELETE FROM webauthn_challenges WHERE id = $1
+`
+
+func (q *Queries) DeleteWebAuthnChallenge(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteWebAuthnChallenge, id)
+	return err
+}
+
+const deleteWebAuthnCredential = `-- name: DeleteWebAuthnCredential :exec
+DELETE FROM webauthn_credentials WHERE credential_id = $1 AND user_id = $2
+`
+
+type DeleteWebAuthnCredentialParams struct {
+	CredentialID []byte
+	UserID       uuid.UUID
+}
+
+func (q *Queries) DeleteWebAuthnCredential(ctx context.Context, arg DeleteWebAuthnCredentialParams) error {
+	_, err := q.db.Exec(ctx, deleteWebAuthnCredential, arg.CredentialID, arg.UserID)
+	return err
+}
+
+const getAuthIdentity = `-- name: GetAuthIdentity :one
+SELECT id, user_id, provider, provider_subject, email, created_at FROM auth_identities
+WHERE provider = $1 AND provider_subject = $2
+`
+
+type GetAuthIdentityParams struct {
+	Provider        string
+	ProviderSubject string
+}
+
+func (q *Queries) GetAuthIdentity(ctx context.Context, arg GetAuthIdentityParams) (AuthIdentity, error) {
+	row := q.db.QueryRow(ctx, getAuthIdentity, arg.Provider, arg.ProviderSubject)
+	var i AuthIdentity
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Provider,
+		&i.ProviderSubject,
+		&i.Email,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getPasswordResetToken = `-- name: GetPasswordResetToken :one
+SELECT token_hash, user_id, expires_at, created_at, used_at
+FROM password_reset_tokens
+WHERE token_hash = $1
+  AND used_at IS NULL
+  AND expires_at > now()
+`
+
+// Unused and still within its window. Expired or already-used tokens are
+// indistinguishable from unknown ones at the service layer.
+func (q *Queries) GetPasswordResetToken(ctx context.Context, tokenHash []byte) (PasswordResetToken, error) {
+	row := q.db.QueryRow(ctx, getPasswordResetToken, tokenHash)
+	var i PasswordResetToken
+	err := row.Scan(
+		&i.TokenHash,
+		&i.UserID,
+		&i.ExpiresAt,
+		&i.CreatedAt,
+		&i.UsedAt,
+	)
+	return i, err
 }
 
 const getSessionUser = `-- name: GetSessionUser :one
@@ -114,6 +366,138 @@ func (q *Queries) GetSessionUser(ctx context.Context, tokenHash []byte) (GetSess
 	return i, err
 }
 
+const getWebAuthnChallenge = `-- name: GetWebAuthnChallenge :one
+SELECT id, data, expires_at, created_at FROM webauthn_challenges
+WHERE id = $1
+  AND expires_at > now()
+`
+
+func (q *Queries) GetWebAuthnChallenge(ctx context.Context, id uuid.UUID) (WebauthnChallenge, error) {
+	row := q.db.QueryRow(ctx, getWebAuthnChallenge, id)
+	var i WebauthnChallenge
+	err := row.Scan(
+		&i.ID,
+		&i.Data,
+		&i.ExpiresAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getWebAuthnCredential = `-- name: GetWebAuthnCredential :one
+SELECT credential_id, user_id, public_key, attestation_type, transport, sign_count, name, aaguid, backup_eligible, backup_state, created_at, last_used_at FROM webauthn_credentials WHERE credential_id = $1
+`
+
+func (q *Queries) GetWebAuthnCredential(ctx context.Context, credentialID []byte) (WebauthnCredential, error) {
+	row := q.db.QueryRow(ctx, getWebAuthnCredential, credentialID)
+	var i WebauthnCredential
+	err := row.Scan(
+		&i.CredentialID,
+		&i.UserID,
+		&i.PublicKey,
+		&i.AttestationType,
+		&i.Transport,
+		&i.SignCount,
+		&i.Name,
+		&i.Aaguid,
+		&i.BackupEligible,
+		&i.BackupState,
+		&i.CreatedAt,
+		&i.LastUsedAt,
+	)
+	return i, err
+}
+
+const listAuthIdentitiesByUser = `-- name: ListAuthIdentitiesByUser :many
+SELECT id, user_id, provider, provider_subject, email, created_at FROM auth_identities
+WHERE user_id = $1
+ORDER BY created_at
+`
+
+func (q *Queries) ListAuthIdentitiesByUser(ctx context.Context, userID uuid.UUID) ([]AuthIdentity, error) {
+	rows, err := q.db.Query(ctx, listAuthIdentitiesByUser, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AuthIdentity{}
+	for rows.Next() {
+		var i AuthIdentity
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Provider,
+			&i.ProviderSubject,
+			&i.Email,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listWebAuthnCredentialsByUser = `-- name: ListWebAuthnCredentialsByUser :many
+SELECT credential_id, user_id, public_key, attestation_type, transport, sign_count, name, aaguid, backup_eligible, backup_state, created_at, last_used_at FROM webauthn_credentials
+WHERE user_id = $1
+ORDER BY created_at
+`
+
+func (q *Queries) ListWebAuthnCredentialsByUser(ctx context.Context, userID uuid.UUID) ([]WebauthnCredential, error) {
+	rows, err := q.db.Query(ctx, listWebAuthnCredentialsByUser, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []WebauthnCredential{}
+	for rows.Next() {
+		var i WebauthnCredential
+		if err := rows.Scan(
+			&i.CredentialID,
+			&i.UserID,
+			&i.PublicKey,
+			&i.AttestationType,
+			&i.Transport,
+			&i.SignCount,
+			&i.Name,
+			&i.Aaguid,
+			&i.BackupEligible,
+			&i.BackupState,
+			&i.CreatedAt,
+			&i.LastUsedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const markPasswordResetTokenUsed = `-- name: MarkPasswordResetTokenUsed :execrows
+UPDATE password_reset_tokens
+SET used_at = now()
+WHERE token_hash = $1
+  AND used_at IS NULL
+  AND expires_at > now()
+`
+
+// Returns 0 when the token was already consumed (or never existed), so two
+// concurrent resets cannot both succeed.
+func (q *Queries) MarkPasswordResetTokenUsed(ctx context.Context, tokenHash []byte) (int64, error) {
+	result, err := q.db.Exec(ctx, markPasswordResetTokenUsed, tokenHash)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const touchSession = `-- name: TouchSession :exec
 UPDATE sessions
 SET last_seen_at = now(),
@@ -130,5 +514,31 @@ type TouchSessionParams struct {
 // logout mid-conversation.
 func (q *Queries) TouchSession(ctx context.Context, arg TouchSessionParams) error {
 	_, err := q.db.Exec(ctx, touchSession, arg.TokenHash, arg.ExpiresAt)
+	return err
+}
+
+const updateWebAuthnCredentialSignCount = `-- name: UpdateWebAuthnCredentialSignCount :exec
+UPDATE webauthn_credentials
+SET sign_count   = $2,
+    last_used_at = now(),
+    backup_eligible = $3,
+    backup_state    = $4
+WHERE credential_id = $1
+`
+
+type UpdateWebAuthnCredentialSignCountParams struct {
+	CredentialID   []byte
+	SignCount      int64
+	BackupEligible bool
+	BackupState    bool
+}
+
+func (q *Queries) UpdateWebAuthnCredentialSignCount(ctx context.Context, arg UpdateWebAuthnCredentialSignCountParams) error {
+	_, err := q.db.Exec(ctx, updateWebAuthnCredentialSignCount,
+		arg.CredentialID,
+		arg.SignCount,
+		arg.BackupEligible,
+		arg.BackupState,
+	)
 	return err
 }
