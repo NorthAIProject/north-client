@@ -31,6 +31,8 @@ RUN bash scripts/build-css.sh
 RUN go tool templ generate
 
 # Build one static Linux binary for the final image.
+# Goose SQL is embedded via migrations.FS, so the runtime image needs no
+# separate migrations directory — schema updates on process start.
 RUN CGO_ENABLED=0 GOOS=linux go build -o main ./cmd/web
 
 # Runtime stage:
@@ -50,5 +52,5 @@ COPY --from=build /app/main .
 # The app listens on port 8090.
 EXPOSE 8090
 
-# Start the app.
+# Start the app (applies pending goose migrations before serving).
 CMD ["./main"]

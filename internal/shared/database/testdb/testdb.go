@@ -11,18 +11,16 @@ package testdb
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/jackc/pgx/v5/stdlib"
-	"github.com/pressly/goose/v3"
+
+	"github.com/NorthAIProject/north-client/internal/shared/database"
 )
 
 // New returns a pool connected to a freshly migrated, uniquely named database.
@@ -57,7 +55,12 @@ func New(t *testing.T) *pgxpool.Pool {
 	}
 
 	testURL := replaceDatabase(adminURL, name)
-	migrate(t, testURL)
+
+	// Same embedded migrations the web and worker run on boot, so tests and
+	// production never diverge on schema.
+	if err := database.Migrate(ctx, testURL); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
 
 	pool, err := pgxpool.New(ctx, testURL)
 	if err != nil {
@@ -87,48 +90,6 @@ func New(t *testing.T) *pgxpool.Pool {
 	return pool
 }
 
-func migrate(t *testing.T, url string) {
-	t.Helper()
-
-	db, err := sql.Open("pgx", url)
-	if err != nil {
-		t.Fatalf("open migration connection: %v", err)
-	}
-	defer db.Close()
-
-	goose.SetLogger(goose.NopLogger())
-	if err := goose.SetDialect("postgres"); err != nil {
-		t.Fatalf("set goose dialect: %v", err)
-	}
-
-	if err := goose.Up(db, migrationsDir(t)); err != nil {
-		t.Fatalf("run migrations: %v", err)
-	}
-}
-
-// migrationsDir walks up from the test's working directory to the module root
-// and returns its migrations directory. Tests run in their own package
-// directory, so a relative path would differ per slice.
-func migrationsDir(t *testing.T) string {
-	t.Helper()
-
-	dir, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("working directory: %v", err)
-	}
-
-	for {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			return filepath.Join(dir, "migrations")
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			t.Fatal("could not find module root above the test directory")
-		}
-		dir = parent
-	}
-}
-
 func databaseURL() string {
 	if u := os.Getenv("TEST_DATABASE_URL"); u != "" {
 		return u
@@ -152,6 +113,3 @@ func replaceDatabase(url, name string) string {
 	}
 	return base
 }
-
-// ensures the pgx stdlib driver is linked, so sql.Open("pgx", ...) resolves.
-var _ = stdlib.GetDefaultDriver

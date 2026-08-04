@@ -1,9 +1,11 @@
+# No fixed container_name: Compose scopes names to this project directory.
+# Fixed names (north-postgres / north-minio) collide when the same services
+# were started from another checkout or project label.
 services:
   postgres:
     # pgvector image rather than plain postgres: semantic search arrives in
     # Phase 2 and swapping the image later would mean recreating the volume.
     image: pgvector/pgvector:pg17
-    container_name: north-postgres
     environment:
       POSTGRES_USER: north
       POSTGRES_PASSWORD: north
@@ -22,7 +24,6 @@ services:
 
   minio:
     image: minio/minio:latest
-    container_name: north-minio
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: north
@@ -33,7 +34,8 @@ services:
     volumes:
       - minio-data:/data
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      # minio image has curl; mc is only in the minio/mc image used by minio-init.
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 5s
       timeout: 5s
       retries: 10

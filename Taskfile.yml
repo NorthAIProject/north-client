@@ -28,9 +28,23 @@ tasks:
         tailwindcss -i ./web/assets/css/input.css -o ./web/assets/css/output.css --watch
 
   dev:
-    desc: Start development server with hot reload
+    desc: Start development server with hot reload (expects DB already up)
     cmds:
       - task --parallel tailwind templ
+
+  # Full local stack: containers, wait for Postgres, then hot-reload app.
+  # Schema migrations run automatically when the web process starts.
+  dev:up:
+    desc: Start Postgres/MinIO and the hot-reload app
+    cmds:
+      - task: db:up
+      - task: db:wait
+      - task: dev
+
+  dev:down:
+    desc: Stop Postgres/MinIO (alias for db:down; keeps volumes)
+    cmds:
+      - task: db:down
 
   worker:
     desc: Run the background worker
@@ -43,22 +57,30 @@ tasks:
   db:up:
     desc: Start Postgres and MinIO
     cmds:
-      - docker compose up -d
+      # --remove-orphans: drop services that left this compose file.
+      # Free fixed host ports if a stale container from another project still holds them.
+      - |
+        for name in north-postgres north-minio; do
+          if docker container inspect "$name" >/dev/null 2>&1; then
+            echo "removing stale container $name (from an older compose project)"
+            docker rm -f "$name"
+          fi
+        done
+      - docker compose up -d --remove-orphans
       - docker compose ps
 
   db:down:
     desc: Stop Postgres and MinIO (keeps volumes)
     cmds:
-      - docker compose down
+      - docker compose down --remove-orphans
 
   db:reset:
-    desc: Destroy and recreate the database volume, then migrate
+    desc: Destroy and recreate the database volume (schema applied on next app start)
     prompt: This deletes all local database and object storage data. Continue?
     cmds:
-      - docker compose down -v
+      - docker compose down -v --remove-orphans
       - task: db:up
       - task: db:wait
-      - task: migrate:up
 
   db:wait:
     desc: Block until Postgres accepts connections
@@ -81,8 +103,10 @@ tasks:
   # ---------------------------------------------------------------------------
   # Migrations (goose)
   # ---------------------------------------------------------------------------
+  # Prefer app start for "up": web and worker call database.Migrate on boot
+  # with embedded SQL. These tasks remain for inspection and authoring.
   migrate:up:
-    desc: Apply all pending migrations
+    desc: Apply pending migrations manually (also runs automatically on app start)
     cmds:
       - go tool goose -dir {{.MIGRATIONS_DIR}} postgres "$DATABASE_URL" up
 
@@ -97,7 +121,7 @@ tasks:
       - go tool goose -dir {{.MIGRATIONS_DIR}} postgres "$DATABASE_URL" status
 
   migrate:new:
-    desc: Create a new migration. Usage: task migrate:new -- add_users_table
+    desc: "Create a new migration. Usage: task migrate:new -- add_users_table"
     cmds:
       - go tool goose -dir {{.MIGRATIONS_DIR}} create {{.CLI_ARGS}} sql
 
