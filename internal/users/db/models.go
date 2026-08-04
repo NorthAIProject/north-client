@@ -21,6 +21,20 @@ type AuthIdentity struct {
 	CreatedAt       time.Time
 }
 
+type CheckIn struct {
+	ID            uuid.UUID
+	UserID        uuid.UUID
+	LocalDate     pgtype.Date
+	Mood          int16
+	Energy        int16
+	Wins          string
+	Challenges    string
+	Notes         string
+	RelatedGoalID *uuid.UUID
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
+
 type Conversation struct {
 	ID        uuid.UUID
 	UserID    uuid.UUID
@@ -128,6 +142,21 @@ type User struct {
 	CoachingStyle *string
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
+}
+
+type UserMemory struct {
+	ID                   uuid.UUID
+	UserID               uuid.UUID
+	Category             string
+	Content              string
+	Status               string
+	Pinned               bool
+	Source               string
+	SourceConversationID *uuid.UUID
+	Confidence           *float32
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
+	DeletedAt            *time.Time
 }
 
 type WebauthnChallenge struct {

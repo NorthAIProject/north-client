@@ -1,6 +1,8 @@
 package app
 
 import (
+	"strconv"
+
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
@@ -8,12 +10,23 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/card"
 )
 
-// Nav is the application sidebar. Sections that do not exist yet are absent
-// rather than disabled: a link that goes nowhere is worse than no link.
+// DashboardData is the overview snapshot.
+type DashboardData struct {
+	CheckedInToday bool
+	Streak         int
+	PendingMemories int
+}
+
+// Nav is the application sidebar for the overview page.
 func Nav(active string) []layout.NavItem {
 	items := []layout.NavItem{
 		{Label: "Overview", Href: "/app"},
 		{Label: "Coach", Href: "/app/chat"},
+		{Label: "Check-ins", Href: "/app/check-ins"},
+		{Label: "Goals", Href: "/app/goals"},
+		{Label: "Memory", Href: "/app/memories"},
+		{Label: "Training", Href: "/app/training"},
+		{Label: "Form check", Href: "/app/form"},
 	}
 	for i := range items {
 		items[i].Active = items[i].Href == active
@@ -21,48 +34,82 @@ func Nav(active string) []layout.NavItem {
 	return items
 }
 
-templ Dashboard(user users.User) {
+templ Dashboard(user users.User, data DashboardData) {
 	@layout.App("Overview", user, Nav("/app")) {
-		<div class="mx-auto w-full max-w-4xl p-6 md:p-8">
-			<header class="mb-8">
+		<div class="mx-auto w-full max-w-4xl space-y-6 p-6 md:p-8">
+			<header>
 				@ui.MonoLabel("Overview")
 				<h1 class="mt-2 text-2xl font-medium tracking-tight">
 					Hello, { user.FirstName() }
 				</h1>
 				<p class="text-muted-foreground mt-1 max-w-lg text-sm leading-relaxed">
-					Your coach still has the thread. Coaching, goals, and progress live here.
+					Your coach still has the thread. Check in, keep goals current, and review what North remembers.
 				</p>
 			</header>
+			<div class="grid gap-4 sm:grid-cols-2">
+				@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+					@card.Header() {
+						@card.Title() {
+							Today’s check-in
+						}
+						@card.Description() {
+							if data.CheckedInToday {
+								You’re set for today.
+							} else {
+								Thirty seconds. Mood, energy, what went well.
+							}
+						}
+					}
+					@card.Content() {
+						if data.Streak > 0 {
+							<p class="text-signal mb-3 text-sm font-medium">
+								{ strconv.Itoa(data.Streak) }-day streak
+							</p>
+						}
+						@button.Button(button.Props{Href: "/app/check-ins", Class: "bg-signal text-background hover:bg-signal/90"}) {
+							if data.CheckedInToday {
+								Edit check-in
+							} else {
+								Check in
+							}
+						}
+					}
+				}
+				@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+					@card.Header() {
+						@card.Title() {
+							Memory
+						}
+						@card.Description() {
+							if data.PendingMemories > 0 {
+								{ strconv.Itoa(data.PendingMemories) } proposed facts to review.
+							} else {
+								Facts North may use when coaching you.
+							}
+						}
+					}
+					@card.Content() {
+						@button.Button(button.Props{Href: "/app/memories", Variant: button.VariantOutline}) {
+							Open memory
+						}
+					}
+				}
+			</div>
 			@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 				@card.Header() {
 					@card.Title() {
-						Account
+						Coach
 					}
 					@card.Description() {
-						The basics North uses to keep your context straight.
+						Pick up the conversation. North already has your goals and check-ins when they exist.
 					}
 				}
 				@card.Content() {
-					<div class="grid gap-4 text-sm sm:grid-cols-2">
-						@detail("Name", user.DisplayName)
-						@detail("Email", user.Email)
-						@detail("Timezone", user.Timezone)
-						@detail("Member since", user.CreatedAt.Format("2 January 2006"))
-					</div>
-					<div class="mt-6">
-						@button.Button(button.Props{Href: "/app/chat", Class: "bg-signal text-background hover:bg-signal/90"}) {
-							Talk to your coach
-						}
-					</div>
+					@button.Button(button.Props{Href: "/app/chat", Class: "bg-signal text-background hover:bg-signal/90"}) {
+						Talk to your coach
+					}
 				}
 			}
 		</div>
 	}
-}
-
-templ detail(term, value string) {
-	<div>
-		@ui.MonoLabel(term)
-		<p class="mt-1 font-medium">{ value }</p>
-	</div>
 }

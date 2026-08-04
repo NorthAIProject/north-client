@@ -1,0 +1,277 @@
+package checkins
+
+import (
+	"strconv"
+
+	"github.com/NorthAIProject/north-client/internal/checkins/checkin"
+	"github.com/NorthAIProject/north-client/internal/goals/goal"
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/form"
+	"github.com/NorthAIProject/north-client/web/shared/ui/label"
+	"github.com/NorthAIProject/north-client/web/shared/ui/selectbox"
+	"github.com/NorthAIProject/north-client/web/shared/ui/textarea"
+)
+
+// CheckInForm carries today's reflection back on validation failure.
+type CheckInForm struct {
+	Mood       int
+	Energy     int
+	Wins       string
+	Challenges string
+	Notes      string
+	GoalID     string
+	Errors     map[string]string
+}
+
+func (f CheckInForm) fieldError(name string) string {
+	if f.Errors == nil {
+		return ""
+	}
+	return f.Errors[name]
+}
+
+// FormFor pre-fills from an existing check-in.
+func FormFor(c checkin.CheckIn) CheckInForm {
+	f := CheckInForm{
+		Mood:       c.Mood,
+		Energy:     c.Energy,
+		Wins:       c.Wins,
+		Challenges: c.Challenges,
+		Notes:      c.Notes,
+	}
+	if c.RelatedGoalID != nil {
+		f.GoalID = c.RelatedGoalID.String()
+	}
+	return f
+}
+
+func nav(active string) []layout.NavItem {
+	items := []layout.NavItem{
+		{Label: "Overview", Href: "/app"},
+		{Label: "Coach", Href: "/app/chat"},
+		{Label: "Check-ins", Href: "/app/check-ins"},
+		{Label: "Goals", Href: "/app/goals"},
+		{Label: "Memory", Href: "/app/memories"},
+		{Label: "Training", Href: "/app/training"},
+		{Label: "Form check", Href: "/app/form"},
+	}
+	for i := range items {
+		items[i].Active = items[i].Href == active
+	}
+	return items
+}
+
+templ IndexPage(user users.User, list []checkin.CheckIn, form CheckInForm, activeGoals []goal.Goal, streak int, saved bool) {
+	@layout.App("Check-ins", user, nav("/app/check-ins")) {
+		<div class="mx-auto w-full max-w-2xl space-y-8 p-6 md:p-8">
+			<header>
+				<p class="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Daily loop</p>
+				<h1 class="mt-2 text-2xl font-medium tracking-tight">Check-in</h1>
+				<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
+					Thirty seconds. Mood, energy, what went well, what was hard.
+				</p>
+				if streak > 0 {
+					<p class="text-signal mt-3 text-sm font-medium">
+						{ strconv.Itoa(streak) }-day streak
+					</p>
+				}
+			</header>
+			if saved {
+				<p class="rounded-lg border border-signal/30 bg-signal/10 px-4 py-3 text-sm">Saved for today.</p>
+			}
+			@todayForm(form, activeGoals)
+			if len(list) > 0 {
+				<section class="space-y-3">
+					<h2 class="text-sm font-medium">Recent</h2>
+					for _, c := range list {
+						@historyCard(c)
+					}
+				</section>
+			}
+		</div>
+		@textarea.Script()
+		@label.Script()
+		@selectbox.Script()
+	}
+}
+
+templ todayForm(f CheckInForm, activeGoals []goal.Goal) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Title() {
+				Today
+			}
+			@card.Description() {
+				Same-day edits replace the earlier entry. One reflection per day.
+			}
+		}
+		@card.Content() {
+			<form
+				method="post"
+				action="/app/check-ins"
+				class="space-y-6"
+				x-data={ "{ step: 1, mood: " + strconv.Itoa(f.Mood) + ", energy: " + strconv.Itoa(f.Energy) + " }" }
+			>
+				@ui.CSRFInput()
+				// Step indicators
+				<div class="flex gap-2 text-[10px] font-mono uppercase tracking-[0.12em] text-muted-foreground">
+					<span :class="step >= 1 && 'text-signal'">Mood</span>
+					<span aria-hidden="true">·</span>
+					<span :class="step >= 2 && 'text-signal'">Energy</span>
+					<span aria-hidden="true">·</span>
+					<span :class="step >= 3 && 'text-signal'">Wins</span>
+					<span aria-hidden="true">·</span>
+					<span :class="step >= 4 && 'text-signal'">Hard</span>
+					<span aria-hidden="true">·</span>
+					<span :class="step >= 5 && 'text-signal'">Notes</span>
+				</div>
+				<div x-show="step === 1" class="space-y-3">
+					@label.Label() {
+						How is your mood?
+					}
+					@scalePicker("mood", "mood")
+					if f.fieldError("mood") != "" {
+						@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+							{ f.fieldError("mood") }
+						}
+					}
+					@button.Button(button.Props{Type: button.TypeButton, Attributes: templ.Attributes{"@click": "step = 2"}}) {
+						Next
+					}
+				</div>
+				<div x-show="step === 2" x-cloak class="space-y-3">
+					@label.Label() {
+						How is your energy?
+					}
+					@scalePicker("energy", "energy")
+					if f.fieldError("energy") != "" {
+						@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+							{ f.fieldError("energy") }
+						}
+					}
+					<div class="flex gap-2">
+						@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantOutline, Attributes: templ.Attributes{"@click": "step = 1"}}) {
+							Back
+						}
+						@button.Button(button.Props{Type: button.TypeButton, Attributes: templ.Attributes{"@click": "step = 3"}}) {
+							Next
+						}
+					</div>
+				</div>
+				<div x-show="step === 3" x-cloak class="space-y-3">
+					@form.Item() {
+						@label.Label(label.Props{For: "wins"}) {
+							What went well?
+						}
+						@textarea.Textarea(textarea.Props{ID: "wins", Name: "wins", Rows: 3, Placeholder: "Optional. A small win counts."}) {
+							{ f.Wins }
+						}
+					}
+					<div class="flex gap-2">
+						@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantOutline, Attributes: templ.Attributes{"@click": "step = 2"}}) {
+							Back
+						}
+						@button.Button(button.Props{Type: button.TypeButton, Attributes: templ.Attributes{"@click": "step = 4"}}) {
+							Next
+						}
+					</div>
+				</div>
+				<div x-show="step === 4" x-cloak class="space-y-3">
+					@form.Item() {
+						@label.Label(label.Props{For: "challenges"}) {
+							What was hard?
+						}
+						@textarea.Textarea(textarea.Props{ID: "challenges", Name: "challenges", Rows: 3, Placeholder: "Optional."}) {
+							{ f.Challenges }
+						}
+					}
+					<div class="flex gap-2">
+						@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantOutline, Attributes: templ.Attributes{"@click": "step = 3"}}) {
+							Back
+						}
+						@button.Button(button.Props{Type: button.TypeButton, Attributes: templ.Attributes{"@click": "step = 5"}}) {
+							Next
+						}
+					</div>
+				</div>
+				<div x-show="step === 5" x-cloak class="space-y-3">
+					@form.Item() {
+						@label.Label(label.Props{For: "notes"}) {
+							Anything else?
+						}
+						@textarea.Textarea(textarea.Props{ID: "notes", Name: "notes", Rows: 3, Placeholder: "Optional notes for your coach."}) {
+							{ f.Notes }
+						}
+					}
+					if len(activeGoals) > 0 {
+						@form.Item() {
+							@label.Label() {
+								Related goal (optional)
+							}
+							@selectbox.SelectBox() {
+								@selectbox.Trigger(selectbox.TriggerProps{ID: "related_goal_id", Name: "related_goal_id"}) {
+									@selectbox.Value(selectbox.ValueProps{Placeholder: "None"})
+								}
+								@selectbox.Content() {
+									@selectbox.Item(selectbox.ItemProps{Value: "", Selected: f.GoalID == ""}) {
+										None
+									}
+									for _, g := range activeGoals {
+										@selectbox.Item(selectbox.ItemProps{Value: g.ID.String(), Selected: f.GoalID == g.ID.String()}) {
+											{ g.Title }
+										}
+									}
+								}
+							}
+						}
+					}
+					<div class="flex gap-2">
+						@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantOutline, Attributes: templ.Attributes{"@click": "step = 4"}}) {
+							Back
+						}
+						@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90"}) {
+							Save check-in
+						}
+					</div>
+				</div>
+			</form>
+		}
+	}
+}
+
+templ scalePicker(name string, model string) {
+	<div class="flex gap-2">
+		for i := 1; i <= 5; i++ {
+			<label class="cursor-pointer">
+				<input
+					type="radio"
+					name={ name }
+					value={ strconv.Itoa(i) }
+					class="peer sr-only"
+					x-model.number={ model }
+				/>
+				<span class="flex size-11 items-center justify-center rounded-lg border border-hairline text-sm font-medium peer-checked:border-signal peer-checked:bg-signal/15 peer-checked:text-signal">
+					{ strconv.Itoa(i) }
+				</span>
+			</label>
+		}
+	</div>
+}
+
+templ historyCard(c checkin.CheckIn) {
+	@card.Card(card.Props{Class: "border-hairline"}) {
+		@card.Content(card.ContentProps{Class: "py-4"}) {
+			<p class="text-sm font-medium">{ c.Label() }</p>
+			if c.Wins != "" {
+				<p class="text-muted-foreground mt-1 text-sm">Wins: { c.Wins }</p>
+			}
+			if c.Challenges != "" {
+				<p class="text-muted-foreground mt-1 text-sm">Hard: { c.Challenges }</p>
+			}
+		}
+	}
+}

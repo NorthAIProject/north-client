@@ -44,6 +44,7 @@ type Context struct {
 	// for a new account.
 	Goals         []string
 	CheckIns      []string
+	Memories      []string
 	WorkoutPlan   string
 	FormAnalyses  []string
 	KnowledgeHits []string
@@ -160,6 +161,7 @@ func (c *Context) Render() string {
 
 	section(&b, "Goals", c.Goals, "none recorded yet")
 	section(&b, "Recent check-ins", c.CheckIns, "none recorded yet")
+	section(&b, "Known about them", c.Memories, "none recorded yet")
 
 	b.WriteString("\nCurrent training plan: ")
 	if plan := strings.TrimSpace(c.WorkoutPlan); plan != "" {

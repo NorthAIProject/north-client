@@ -20,12 +20,14 @@ import (
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/ai/providers"
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/checkins"
 	"github.com/NorthAIProject/north-client/internal/coach"
 	"github.com/NorthAIProject/north-client/internal/config"
 	"github.com/NorthAIProject/north-client/internal/conversations"
 	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/jobs"
 	"github.com/NorthAIProject/north-client/internal/media"
+	"github.com/NorthAIProject/north-client/internal/memories"
 	"github.com/NorthAIProject/north-client/internal/shared/database"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -165,9 +167,16 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, stora
 	authHandler := auth.NewHandler(authSvc, authMW, "/app")
 
 	conversationSvc := conversations.NewService(conversations.NewRepository(pool))
+	queue := jobs.NewQueue(pool)
 
 	goalSvc := goals.NewService(goals.NewRepository(pool))
 	goalHandler := goals.NewHandler(goalSvc)
+
+	checkinSvc := checkins.NewService(checkins.NewRepository(pool), goalSvc)
+	checkinHandler := checkins.NewHandler(checkinSvc, goalSvc)
+
+	memorySvc := memories.NewService(memories.NewRepository(pool))
+	memoryHandler := memories.NewHandler(memorySvc)
 
 	workoutSvc := workouts.NewService(workouts.Options{
 		Repository: workouts.NewRepository(pool),
@@ -179,7 +188,7 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, stora
 	mediaSvc := media.NewService(media.Options{
 		Repository: media.NewRepository(pool),
 		Storage:    storage,
-		Queue:      jobs.NewQueue(pool),
+		Queue:      queue,
 		Registry:   registry,
 		Model:      cfg.AI.Model,
 	})
@@ -189,15 +198,17 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, stora
 		Registry:      registry,
 		Conversations: conversationSvc,
 		// Context sources are registered here and nowhere else. Goals,
-		// check-ins, and knowledge search each add one as their slices are
-		// built; the ContextBuilder itself never changes. Until a source
-		// exists, the coach honestly tells the user it cannot see that.
+		// check-ins, memories, and knowledge search each add one as their
+		// slices are built; the ContextBuilder itself never changes.
 		ContextBuilder: coach.NewContextBuilder(conversationSvc,
 			goals.NewContextSource(goalSvc),
+			checkins.NewContextSource(checkinSvc),
+			memories.NewContextSource(memorySvc),
 			workouts.NewContextSource(workoutSvc),
 			media.NewContextSource(mediaSvc),
 		),
 		PromptBuilder: coach.NewPromptBuilder(),
+		Queue:         queue,
 		Model:         cfg.AI.Model,
 		FastModel:     cfg.AI.FastModel,
 	})
@@ -229,13 +240,25 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, stora
 
 		r.Get("/", func(w http.ResponseWriter, req *http.Request) {
 			user := auth.MustUser(req.Context())
-			if err := app.Dashboard(user).Render(req.Context(), w); err != nil {
+			data := app.DashboardData{}
+			if _, err := checkinSvc.Today(req.Context(), user); err == nil {
+				data.CheckedInToday = true
+			}
+			if n, err := checkinSvc.Streak(req.Context(), user); err == nil {
+				data.Streak = n
+			}
+			if n, err := memorySvc.CountPending(req.Context(), user.ID); err == nil {
+				data.PendingMemories = n
+			}
+			if err := app.Dashboard(user, data).Render(req.Context(), w); err != nil {
 				middleware.FromContext(req.Context()).Error("render dashboard", slog.Any("error", err))
 			}
 		})
 
 		coachHandler.Routes(r)
+		checkinHandler.Routes(r)
 		goalHandler.Routes(r)
+		memoryHandler.Routes(r)
 		workoutHandler.Routes(r)
 		mediaHandler.Routes(r)
 	})

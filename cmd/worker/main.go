@@ -19,8 +19,10 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/ai/providers"
 	"github.com/NorthAIProject/north-client/internal/config"
+	"github.com/NorthAIProject/north-client/internal/conversations"
 	"github.com/NorthAIProject/north-client/internal/jobs"
 	"github.com/NorthAIProject/north-client/internal/media"
+	"github.com/NorthAIProject/north-client/internal/memories"
 	"github.com/NorthAIProject/north-client/internal/shared/database"
 )
 
@@ -90,8 +92,19 @@ func run() error {
 		Model:      cfg.AI.Model,
 	})
 
+	memoryExtract := &memories.ExtractionService{
+		Memories:      memories.NewService(memories.NewRepository(pool)),
+		Conversations: conversations.NewService(conversations.NewRepository(pool)),
+		Extractor: &memories.AIExtractor{
+			Registry: registry,
+			Model:    cfg.AI.FastModel,
+		},
+		Log: log,
+	}
+
 	worker := jobs.NewWorker(queue, log)
 	worker.Register(jobs.KindAnalyzeFormVideo, mediaSvc.AnalyzeVideo)
+	worker.Register(jobs.KindExtractMemories, memoryExtract.HandleExtractJob)
 
 	log.Info("worker ready",
 		slog.String("ai_provider", registry.DefaultName()),

@@ -90,3 +90,24 @@ sql:
         package: goalsdb
         out: internal/goals/db
         overrides: *overrides
+
+  - engine: postgresql
+    schema: migrations
+    queries: internal/checkins/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: checkinsdb
+        out: internal/checkins/db
+        overrides: *overrides
+
+  - engine: postgresql
+    schema: migrations
+    queries: internal/memories/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: memoriesdb
+        out: internal/memories/db
+        overrides: *overrides
+

@@ -31,7 +31,19 @@ type Kind string
 const (
 	// KindAnalyzeFormVideo runs a form analysis over an uploaded video.
 	KindAnalyzeFormVideo Kind = "analyze_form_video"
+
+	// KindExtractMemories proposes durable profile facts from a conversation.
+	KindExtractMemories Kind = "extract_memories"
 )
+
+// ExtractMemoriesPayload is the job body for KindExtractMemories.
+//
+// Lives here (not in memories) so coach can enqueue without an import cycle:
+// memories imports coach for ContextSource; coach must not import memories.
+type ExtractMemoriesPayload struct {
+	UserID         uuid.UUID `json:"user_id"`
+	ConversationID uuid.UUID `json:"conversation_id"`
+}
 
 // Job is a unit of queued work.
 type Job struct {

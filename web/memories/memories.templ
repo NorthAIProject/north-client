@@ -1,0 +1,205 @@
+package memories
+
+import (
+	"github.com/NorthAIProject/north-client/internal/memories/memory"
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/badge"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/form"
+	"github.com/NorthAIProject/north-client/web/shared/ui/label"
+	"github.com/NorthAIProject/north-client/web/shared/ui/selectbox"
+	"github.com/NorthAIProject/north-client/web/shared/ui/textarea"
+)
+
+// MemoryForm is a manual fact entry.
+type MemoryForm struct {
+	Category string
+	Content  string
+	Errors   map[string]string
+}
+
+func (f MemoryForm) fieldError(name string) string {
+	if f.Errors == nil {
+		return ""
+	}
+	return f.Errors[name]
+}
+
+func nav(active string) []layout.NavItem {
+	items := []layout.NavItem{
+		{Label: "Overview", Href: "/app"},
+		{Label: "Coach", Href: "/app/chat"},
+		{Label: "Check-ins", Href: "/app/check-ins"},
+		{Label: "Goals", Href: "/app/goals"},
+		{Label: "Memory", Href: "/app/memories"},
+		{Label: "Training", Href: "/app/training"},
+		{Label: "Form check", Href: "/app/form"},
+	}
+	for i := range items {
+		items[i].Active = items[i].Href == active
+	}
+	return items
+}
+
+templ IndexPage(user users.User, pending, approved []memory.Memory, form MemoryForm) {
+	@layout.App("Memory", user, nav("/app/memories")) {
+		<div class="mx-auto w-full max-w-2xl space-y-8 p-6 md:p-8">
+			<header>
+				<p class="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Long-term</p>
+				<h1 class="mt-2 text-2xl font-medium tracking-tight">Memory</h1>
+				<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
+					Facts North may use in coaching. Proposed facts from conversations wait here until you approve them.
+				</p>
+			</header>
+			if len(pending) > 0 {
+				<section class="space-y-3">
+					<h2 class="text-sm font-medium">Proposed from conversations</h2>
+					for _, m := range pending {
+						@pendingCard(m)
+					}
+				</section>
+			}
+			@addForm(form)
+			<section class="space-y-3">
+				<h2 class="text-sm font-medium">Known facts</h2>
+				if len(approved) == 0 {
+					<p class="text-muted-foreground text-sm">Nothing pinned yet. Approve proposals or add a fact yourself.</p>
+				}
+				for _, m := range approved {
+					@approvedCard(m)
+				}
+			</section>
+		</div>
+		@textarea.Script()
+		@label.Script()
+		@selectbox.Script()
+	}
+}
+
+templ addForm(f MemoryForm) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Title() {
+				Add a fact
+			}
+		}
+		@card.Content() {
+			<form method="post" action="/app/memories" class="space-y-4">
+				@ui.CSRFInput()
+				@form.Item() {
+					@label.Label() {
+						Category
+					}
+					@selectbox.SelectBox() {
+						@selectbox.Trigger(selectbox.TriggerProps{ID: "category", Name: "category"}) {
+							@selectbox.Value(selectbox.ValueProps{Placeholder: "Choose one"})
+						}
+						@selectbox.Content() {
+							for _, c := range memory.Categories {
+								@selectbox.Item(selectbox.ItemProps{Value: c, Selected: f.Category == c || (f.Category == "" && c == memory.CategoryGeneral)}) {
+									{ c }
+								}
+							}
+						}
+					}
+				}
+				@form.Item() {
+					@label.Label(label.Props{For: "content", Error: f.fieldError("content")}) {
+						Fact
+					}
+					@textarea.Textarea(textarea.Props{
+						ID:          "content",
+						Name:        "content",
+						Rows:        3,
+						Placeholder: "e.g. Prefers morning training before 8am",
+						HasError:    f.fieldError("content") != "",
+					}) {
+						{ f.Content }
+					}
+					if f.fieldError("content") != "" {
+						@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+							{ f.fieldError("content") }
+						}
+					}
+				}
+				@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90"}) {
+					Save fact
+				}
+			</form>
+		}
+	}
+}
+
+templ pendingCard(m memory.Memory) {
+	@card.Card(card.Props{Class: "border-hairline"}) {
+		@card.Content(card.ContentProps{Class: "space-y-3 py-4"}) {
+			<div class="flex flex-wrap items-center gap-2">
+				@badge.Badge(badge.Props{Variant: badge.VariantOutline}) {
+					{ m.Category }
+				}
+				@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
+					proposed
+				}
+			</div>
+			<p class="text-sm">{ m.Content }</p>
+			<div class="flex flex-wrap gap-2">
+				<form method="post" action={ templ.SafeURL("/app/memories/" + m.ID.String() + "/approve") }>
+					@ui.CSRFInput()
+					@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Class: "bg-signal text-background hover:bg-signal/90"}) {
+						Approve
+					}
+				</form>
+				<form method="post" action={ templ.SafeURL("/app/memories/" + m.ID.String() + "/reject") }>
+					@ui.CSRFInput()
+					@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Variant: button.VariantOutline}) {
+						Discard
+					}
+				</form>
+			</div>
+		}
+	}
+}
+
+templ approvedCard(m memory.Memory) {
+	@card.Card(card.Props{Class: "border-hairline"}) {
+		@card.Content(card.ContentProps{Class: "space-y-3 py-4"}) {
+			<div class="flex flex-wrap items-center gap-2">
+				@badge.Badge(badge.Props{Variant: badge.VariantOutline}) {
+					{ m.Category }
+				}
+				if m.Pinned {
+					@badge.Badge(badge.Props{Class: "border-signal/40 bg-signal/12 text-signal", Variant: badge.VariantOutline}) {
+						pinned
+					}
+				}
+			</div>
+			<p class="text-sm">{ m.Content }</p>
+			<div class="flex flex-wrap gap-2">
+				if m.Pinned {
+					<form method="post" action={ templ.SafeURL("/app/memories/" + m.ID.String() + "/unpin") }>
+						@ui.CSRFInput()
+						@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Variant: button.VariantOutline}) {
+							Unpin
+						}
+					</form>
+				} else {
+					<form method="post" action={ templ.SafeURL("/app/memories/" + m.ID.String() + "/pin") }>
+						@ui.CSRFInput()
+						@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Variant: button.VariantOutline}) {
+							Pin
+						}
+					</form>
+				}
+				<form method="post" action={ templ.SafeURL("/app/memories/" + m.ID.String() + "/delete") }>
+					@ui.CSRFInput()
+					@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Variant: button.VariantGhost}) {
+						Delete
+					}
+				</form>
+			</div>
+		}
+	}
+}

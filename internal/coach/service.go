@@ -10,6 +10,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/conversations"
+	"github.com/NorthAIProject/north-client/internal/jobs"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -33,6 +34,7 @@ type Service struct {
 	conversations *conversations.Service
 	contextB      *ContextBuilder
 	promptB       *PromptBuilder
+	queue         *jobs.Queue
 
 	model     string
 	fastModel string
@@ -43,6 +45,10 @@ type Options struct {
 	Conversations  *conversations.Service
 	ContextBuilder *ContextBuilder
 	PromptBuilder  *PromptBuilder
+
+	// Queue receives post-turn memory extraction jobs. Nil disables extraction
+	// (tests and processes that have no worker).
+	Queue *jobs.Queue
 
 	// Model answers conversations. FastModel handles cheap side work such as
 	// naming a thread, which does not need the expensive model.
@@ -56,6 +62,7 @@ func NewService(opts Options) *Service {
 		conversations: opts.Conversations,
 		contextB:      opts.ContextBuilder,
 		promptB:       opts.PromptBuilder,
+		queue:         opts.Queue,
 		model:         opts.Model,
 		fastModel:     opts.FastModel,
 	}
@@ -217,6 +224,32 @@ func (s *Service) pump(
 
 	if s.conversations.NeedsTitle(saveCtx, target.conversation) {
 		s.titleConversation(saveCtx, target.conversation.ID, target.firstMessage)
+	}
+
+	s.enqueueMemoryExtraction(saveCtx, target)
+}
+
+// enqueueMemoryExtraction proposes durable facts off the chat hot path.
+//
+// Failures are logged only: a missed extraction is preferable to a failed reply.
+func (s *Service) enqueueMemoryExtraction(ctx context.Context, target pumpTarget) {
+	if s.queue == nil {
+		return
+	}
+	log := middleware.FromContext(ctx)
+
+	// Wait until the thread has real back-and-forth before filing notes.
+	recent, err := s.conversations.Recent(ctx, target.conversation.ID, 6)
+	if err != nil || len(recent) < 4 {
+		return
+	}
+
+	if _, err := s.queue.Enqueue(ctx, jobs.KindExtractMemories, jobs.ExtractMemoriesPayload{
+		UserID:         target.user.ID,
+		ConversationID: target.conversation.ID,
+	}); err != nil {
+		log.Warn("could not enqueue memory extraction", slog.Any("error", err),
+			slog.String("conversation_id", target.conversation.ID.String()))
 	}
 }
 

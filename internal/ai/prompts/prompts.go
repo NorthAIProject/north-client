@@ -31,6 +31,7 @@ const (
 	WorkoutPlan       = "workout_plan.md"
 	FormAnalysis      = "form_analysis.md"
 	ConversationTitle = "conversation_title.md"
+	MemoryExtraction  = "memory_extraction.md"
 )
 
 // Render executes a prompt template with the given data.
