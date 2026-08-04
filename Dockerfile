@@ -21,10 +21,12 @@ RUN arch="$(dpkg --print-architecture)" && \
       arm64) tailwind_arch="arm64" ;; \
       *) echo "unsupported architecture: $arch" && exit 1 ;; \
     esac && \
-    wget -O /usr/local/bin/tailwindcss "https://github.com/tailwindlabs/tailwindcss/releases/latest/download/tailwindcss-linux-${tailwind_arch}" && \
+    wget -O /usr/local/bin/tailwindcss "https://github.com/tailwindlabs/tailwindcss/releases/download/v4.3.3/tailwindcss-linux-${tailwind_arch}" && \
     chmod +x /usr/local/bin/tailwindcss
 
 # Build CSS via the same script CI uses so local/CI/image stay aligned.
+# build-css.sh downloads the templui module so its component sources are
+# available to Tailwind even on a cold module cache.
 RUN bash scripts/build-css.sh
 
 # Generate Go files from .templ files.
