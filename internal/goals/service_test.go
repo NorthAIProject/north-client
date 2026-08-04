@@ -88,7 +88,7 @@ func TestGoalsAreScopedToTheirOwner(t *testing.T) {
 
 	// Ownership is part of the query, so a stranger holding the exact goal id
 	// still finds nothing.
-	if _, err := svc.Get(ctx, created.ID, stranger.ID); !apperr.Is(err, apperr.ErrNotFound) {
+	if _, err = svc.Get(ctx, created.ID, stranger.ID); !apperr.Is(err, apperr.ErrNotFound) {
 		t.Fatalf("a stranger should not reach this goal, got %v", err)
 	}
 

@@ -321,8 +321,8 @@ func TestPurgeExpiredRemovesOnlyExpiredRows(t *testing.T) {
 	if err != nil {
 		t.Fatalf("signup: %v", err)
 	}
-	if _, _, err := dead.Create(ctx, user.ID, auth.Metadata{}); err != nil {
-		t.Fatalf("create expired session: %v", err)
+	if _, _, createErr := dead.Create(ctx, user.ID, auth.Metadata{}); createErr != nil {
+		t.Fatalf("create expired session: %v", createErr)
 	}
 
 	removed, err := live.PurgeExpired(ctx)
@@ -413,8 +413,8 @@ func TestResetPasswordChangesPasswordRevokesSessionsAndSignsIn(t *testing.T) {
 		t.Fatalf("signup: %v", err)
 	}
 
-	if err := svc.RequestPasswordReset(ctx, user.Email); err != nil {
-		t.Fatalf("request reset: %v", err)
+	if resetErr := svc.RequestPasswordReset(ctx, user.Email); resetErr != nil {
+		t.Fatalf("request reset: %v", resetErr)
 	}
 	raw := extractResetToken(t, mailer.Messages[0].Body)
 

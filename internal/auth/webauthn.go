@@ -103,13 +103,14 @@ func (s *Service) PasskeyRegisterBegin(ctx context.Context, in PasskeyRegisterBe
 
 	// Surface email conflicts before the browser ceremony so the user does not
 	// complete a passkey only to learn the address is taken.
-	if existing, err := s.users.ByEmail(ctx, clean.Email); err == nil && existing.ID != uuid.Nil {
+	existing, byEmailErr := s.users.ByEmail(ctx, clean.Email)
+	if byEmailErr == nil && existing.ID != uuid.Nil {
 		return PasskeyCeremony{}, apperr.FieldErrors{{
 			Field:   "email",
 			Message: "An account with that email already exists.",
 		}}
-	} else if err != nil && !apperr.Is(err, apperr.ErrNotFound) {
-		return PasskeyCeremony{}, err
+	} else if byEmailErr != nil && !apperr.Is(byEmailErr, apperr.ErrNotFound) {
+		return PasskeyCeremony{}, byEmailErr
 	}
 
 	waUser := &webAuthnUser{
@@ -200,8 +201,8 @@ func (s *Service) PasskeyRegisterFinish(ctx context.Context, in PasskeyRegisterF
 		return users.User{}, "", err
 	}
 
-	if err := s.saveCredential(ctx, user.ID, cred, "Passkey"); err != nil {
-		return users.User{}, "", err
+	if saveErr := s.saveCredential(ctx, user.ID, cred, "Passkey"); saveErr != nil {
+		return users.User{}, "", saveErr
 	}
 
 	token, _, err := s.sessions.Create(ctx, user.ID, meta)
@@ -364,7 +365,7 @@ func (s *Service) PasskeyLoginFinish(ctx context.Context, in PasskeyLoginFinishI
 		}
 	}
 
-	if err := s.touchCredential(ctx, cred); err != nil {
+	if err = s.touchCredential(ctx, cred); err != nil {
 		s.log.ErrorContext(ctx, "update passkey sign count", slog.Any("error", err))
 	}
 

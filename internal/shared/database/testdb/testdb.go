@@ -50,7 +50,7 @@ func New(t *testing.T) *pgxpool.Pool {
 
 	// The name is generated above, never user input, so interpolation is safe.
 	// Postgres does not accept a placeholder in CREATE DATABASE.
-	if _, err := admin.Exec(ctx, fmt.Sprintf("CREATE DATABASE %q", name)); err != nil {
+	if _, err = admin.Exec(ctx, fmt.Sprintf("CREATE DATABASE %q", name)); err != nil {
 		t.Fatalf("create test database: %v", err)
 	}
 
@@ -58,7 +58,7 @@ func New(t *testing.T) *pgxpool.Pool {
 
 	// Same embedded migrations the web and worker run on boot, so tests and
 	// production never diverge on schema.
-	if err := database.Migrate(ctx, testURL); err != nil {
+	if err = database.Migrate(ctx, testURL); err != nil {
 		t.Fatalf("run migrations: %v", err)
 	}
 

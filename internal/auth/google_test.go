@@ -25,18 +25,18 @@ func TestFindOrCreateGoogleUserCreatesAccountWithoutPassword(t *testing.T) {
 	}
 
 	var hash *string
-	if err := pool.QueryRow(ctx, "SELECT password_hash FROM users WHERE id = $1", user.ID).Scan(&hash); err != nil {
-		t.Fatalf("scan password_hash: %v", err)
+	if scanErr := pool.QueryRow(ctx, "SELECT password_hash FROM users WHERE id = $1", user.ID).Scan(&hash); scanErr != nil {
+		t.Fatalf("scan password_hash: %v", scanErr)
 	}
 	if hash != nil {
 		t.Fatalf("oauth-only account must have null password_hash, got %q", *hash)
 	}
 
 	var provider, subject string
-	if err := pool.QueryRow(ctx,
+	if scanErr := pool.QueryRow(ctx,
 		`SELECT provider, provider_subject FROM auth_identities WHERE user_id = $1`, user.ID,
-	).Scan(&provider, &subject); err != nil {
-		t.Fatalf("identity: %v", err)
+	).Scan(&provider, &subject); scanErr != nil {
+		t.Fatalf("identity: %v", scanErr)
 	}
 	if provider != "google" || subject != "google-sub-1" {
 		t.Fatalf("identity = %s/%s", provider, subject)
@@ -96,18 +96,18 @@ func TestFindOrCreateGoogleUserLinksExistingEmailAccount(t *testing.T) {
 	}
 
 	var count int
-	if err := pool.QueryRow(ctx, "SELECT count(*) FROM users").Scan(&count); err != nil {
-		t.Fatalf("count users: %v", err)
+	if scanErr := pool.QueryRow(ctx, "SELECT count(*) FROM users").Scan(&count); scanErr != nil {
+		t.Fatalf("count users: %v", scanErr)
 	}
 	if count != 1 {
 		t.Fatalf("expected one user, got %d", count)
 	}
 
 	// Original password still works after linking.
-	if _, _, err := svc.Login(ctx, auth.LoginInput{
+	if _, _, loginErr := svc.Login(ctx, auth.LoginInput{
 		Email: created.Email, Password: goodPassword,
-	}, auth.Metadata{}); err != nil {
-		t.Fatalf("password login after link: %v", err)
+	}, auth.Metadata{}); loginErr != nil {
+		t.Fatalf("password login after link: %v", loginErr)
 	}
 
 	// Google subject now resolves to the same user.

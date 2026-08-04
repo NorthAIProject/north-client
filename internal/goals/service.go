@@ -77,13 +77,7 @@ func (s *Service) Create(ctx context.Context, userID uuid.UUID, in Input) (Goal,
 		return Goal{}, err
 	}
 
-	return s.repo.Create(ctx, userID, NewGoal{
-		Title:      clean.Title,
-		Motivation: clean.Motivation,
-		Success:    clean.Success,
-		Category:   clean.Category,
-		TargetDate: clean.TargetDate,
-	})
+	return s.repo.Create(ctx, userID, NewGoal(clean))
 }
 
 func (s *Service) Update(ctx context.Context, id, userID uuid.UUID, in Input) (Goal, error) {
@@ -92,13 +86,7 @@ func (s *Service) Update(ctx context.Context, id, userID uuid.UUID, in Input) (G
 		return Goal{}, err
 	}
 
-	return s.repo.Update(ctx, id, userID, NewGoal{
-		Title:      clean.Title,
-		Motivation: clean.Motivation,
-		Success:    clean.Success,
-		Category:   clean.Category,
-		TargetDate: clean.TargetDate,
-	})
+	return s.repo.Update(ctx, id, userID, NewGoal(clean))
 }
 
 func (s *Service) Get(ctx context.Context, id, userID uuid.UUID) (Goal, error) {

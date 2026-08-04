@@ -71,7 +71,7 @@ func TestOwnershipIsolation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := svc.Get(ctx, created.ID, stranger.ID); !apperr.Is(err, apperr.ErrNotFound) {
+	if _, err = svc.Get(ctx, created.ID, stranger.ID); !apperr.Is(err, apperr.ErrNotFound) {
 		t.Fatalf("stranger get: %v", err)
 	}
 	list, err := svc.List(ctx, stranger.ID, 10)

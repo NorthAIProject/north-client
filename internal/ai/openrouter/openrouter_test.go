@@ -49,12 +49,12 @@ func TestChatParsesServerSentEvents(t *testing.T) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		// Deliberately includes the shapes a real stream contains: a keep-alive
 		// comment, a blank line, an unparseable frame, and the usage frame.
-		io.WriteString(w, ": OPENROUTER PROCESSING\n\n")
-		io.WriteString(w, `data: {"choices":[{"delta":{"content":"Add "}}]}`+"\n\n")
-		io.WriteString(w, `data: {"choices":[{"delta":{"content":"2.5kg."}}]}`+"\n\n")
-		io.WriteString(w, "data: {not json}\n\n")
-		io.WriteString(w, `data: {"choices":[],"usage":{"prompt_tokens":11,"completion_tokens":4}}`+"\n\n")
-		io.WriteString(w, "data: [DONE]\n\n")
+		_, _ = io.WriteString(w, ": OPENROUTER PROCESSING\n\n")
+		_, _ = io.WriteString(w, `data: {"choices":[{"delta":{"content":"Add "}}]}`+"\n\n")
+		_, _ = io.WriteString(w, `data: {"choices":[{"delta":{"content":"2.5kg."}}]}`+"\n\n")
+		_, _ = io.WriteString(w, "data: {not json}\n\n")
+		_, _ = io.WriteString(w, `data: {"choices":[],"usage":{"prompt_tokens":11,"completion_tokens":4}}`+"\n\n")
+		_, _ = io.WriteString(w, "data: [DONE]\n\n")
 	})
 
 	ch, err := c.Chat(context.Background(), ai.Request{Messages: []ai.Message{ai.UserText("what next?")}})
@@ -86,7 +86,7 @@ func TestChatRequestsUsageAndMapsRoles(t *testing.T) {
 	t.Parallel()
 
 	c, received := newClient(t, func(w http.ResponseWriter, _ *http.Request) {
-		io.WriteString(w, "data: [DONE]\n\n")
+		_, _ = io.WriteString(w, "data: [DONE]\n\n")
 	})
 
 	_, err := c.Chat(context.Background(), ai.Request{
@@ -131,7 +131,7 @@ func TestGenerateSendsStrictJSONSchema(t *testing.T) {
 	t.Parallel()
 
 	c, received := newClient(t, func(w http.ResponseWriter, _ *http.Request) {
-		io.WriteString(w, `{"choices":[{"message":{"content":"{\"name\":\"Push day\"}"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":7}}`)
+		_, _ = io.WriteString(w, `{"choices":[{"message":{"content":"{\"name\":\"Push day\"}"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":7}}`)
 	})
 
 	schema := ai.Object("a plan", map[string]*ai.Schema{
@@ -187,7 +187,7 @@ func TestErrorStatusesMapToSentinels(t *testing.T) {
 
 			c, _ := newClient(t, func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(tt.status)
-				io.WriteString(w, `{"error":"nope"}`)
+				_, _ = io.WriteString(w, `{"error":"nope"}`)
 			})
 
 			_, err := c.Generate(context.Background(), ai.Request{})

@@ -27,7 +27,7 @@ func TestRegisterWithoutPasswordStoresNullHash(t *testing.T) {
 	}
 
 	var hash *string
-	if err := pool.QueryRow(ctx, "SELECT password_hash FROM users WHERE id = $1", user.ID).Scan(&hash); err != nil {
+	if err = pool.QueryRow(ctx, "SELECT password_hash FROM users WHERE id = $1", user.ID).Scan(&hash); err != nil {
 		t.Fatalf("scan: %v", err)
 	}
 	if hash != nil {

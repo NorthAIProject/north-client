@@ -66,8 +66,8 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if err := database.Migrate(ctx, cfg.DatabaseURL); err != nil {
-		return fmt.Errorf("database migrations: %w", err)
+	if migrateErr := database.Migrate(ctx, cfg.DatabaseURL); migrateErr != nil {
+		return fmt.Errorf("database migrations: %w", migrateErr)
 	}
 	log.Info("database migrations applied")
 
@@ -279,11 +279,11 @@ func healthz(pool *pgxpool.Pool) http.HandlerFunc {
 		if err := pool.Ping(ctx); err != nil {
 			middleware.FromContext(r.Context()).Error("health check failed", slog.Any("error", err))
 			w.WriteHeader(http.StatusServiceUnavailable)
-			fmt.Fprint(w, `{"status":"unhealthy","database":"unreachable"}`)
+			_, _ = fmt.Fprint(w, `{"status":"unhealthy","database":"unreachable"}`)
 			return
 		}
 
-		fmt.Fprint(w, `{"status":"ok","database":"ok"}`)
+		_, _ = fmt.Fprint(w, `{"status":"ok","database":"ok"}`)
 	}
 }
 

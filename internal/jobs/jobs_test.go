@@ -213,7 +213,7 @@ func TestBackoffGrows(t *testing.T) {
 
 	first, second, third := jobs.Backoff(1), jobs.Backoff(2), jobs.Backoff(3)
 
-	if !(first < second && second < third) {
+	if first >= second || second >= third {
 		t.Fatalf("backoff should grow: %v, %v, %v", first, second, third)
 	}
 }

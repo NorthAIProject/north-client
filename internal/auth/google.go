@@ -131,8 +131,8 @@ func (s *Service) FindOrCreateGoogleUser(ctx context.Context, profile GoogleProf
 
 	// Link to an existing password account with the same email when possible.
 	if existing, err := s.users.ByEmail(ctx, profile.Email); err == nil {
-		if err := s.linkGoogleIdentity(ctx, existing.ID, profile); err != nil {
-			return users.User{}, err
+		if linkErr := s.linkGoogleIdentity(ctx, existing.ID, profile); linkErr != nil {
+			return users.User{}, linkErr
 		}
 		return existing, nil
 	} else if !apperr.Is(err, apperr.ErrNotFound) {
@@ -214,7 +214,7 @@ func (g *googleOAuth) exchange(ctx context.Context, code string) (GoogleProfile,
 	if err != nil {
 		return GoogleProfile{}, apperr.Wrap(err, "fetch google userinfo")
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {

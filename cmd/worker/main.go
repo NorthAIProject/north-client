@@ -47,8 +47,8 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if err := database.Migrate(ctx, cfg.DatabaseURL); err != nil {
-		return fmt.Errorf("database migrations: %w", err)
+	if migrateErr := database.Migrate(ctx, cfg.DatabaseURL); migrateErr != nil {
+		return fmt.Errorf("database migrations: %w", migrateErr)
 	}
 	log.Info("database migrations applied")
 

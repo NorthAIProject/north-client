@@ -323,11 +323,11 @@ func (s *Service) ResetPassword(ctx context.Context, in ResetPasswordInput, meta
 		return users.User{}, "", err
 	}
 
-	if err := s.users.UpdatePasswordHash(ctx, row.UserID, hash); err != nil {
+	if err = s.users.UpdatePasswordHash(ctx, row.UserID, hash); err != nil {
 		return users.User{}, "", err
 	}
 
-	if err := s.sessions.q.DeletePasswordResetTokensForUser(ctx, row.UserID); err != nil {
+	if err = s.sessions.q.DeletePasswordResetTokensForUser(ctx, row.UserID); err != nil {
 		// Password already changed; do not leave the user mid-flow.
 		s.log.ErrorContext(ctx, "clear reset tokens after password change",
 			slog.String("user_id", row.UserID.String()),
@@ -335,7 +335,7 @@ func (s *Service) ResetPassword(ctx context.Context, in ResetPasswordInput, meta
 		)
 	}
 
-	if err := s.sessions.RevokeAll(ctx, row.UserID); err != nil {
+	if err = s.sessions.RevokeAll(ctx, row.UserID); err != nil {
 		return users.User{}, "", err
 	}
 

@@ -87,7 +87,7 @@ func (s *Service) SendMessage(ctx context.Context, user users.User, conversation
 		return nil, err
 	}
 
-	if _, err := s.conversations.AppendUserMessage(ctx, conversationID, text, nil); err != nil {
+	if _, err = s.conversations.AppendUserMessage(ctx, conversationID, text, nil); err != nil {
 		return nil, err
 	}
 

@@ -23,10 +23,10 @@ func Migrate(ctx context.Context, databaseURL string) error {
 	if err != nil {
 		return fmt.Errorf("open migration connection: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
-	if err := db.PingContext(ctx); err != nil {
-		return fmt.Errorf("ping database for migrations: %w", err)
+	if pingErr := db.PingContext(ctx); pingErr != nil {
+		return fmt.Errorf("ping database for migrations: %w", pingErr)
 	}
 
 	// Session locker: multi-replica deploys all call Migrate on start; only one

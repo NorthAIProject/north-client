@@ -108,8 +108,8 @@ func (s *Service) UploadVideo(ctx context.Context, userID uuid.UUID, filename st
 	// The sniffed bytes are put back in front of the rest of the file.
 	full := io.MultiReader(strings.NewReader(string(header)), body)
 
-	if err := s.storage.Put(ctx, key, normaliseMIME(mimeType), full); err != nil {
-		return analysis.Analysis{}, err
+	if putErr := s.storage.Put(ctx, key, normaliseMIME(mimeType), full); putErr != nil {
+		return analysis.Analysis{}, putErr
 	}
 
 	record, err := s.repo.CreateMedia(ctx, NewMedia{
@@ -184,7 +184,7 @@ func (s *Service) runAnalysis(ctx context.Context, mediaID uuid.UUID) (analysis.
 	if err != nil {
 		return analysis.FormAnalysis{}, "", "", err
 	}
-	defer object.Close()
+	defer func() { _ = object.Close() }()
 
 	// Uploaded to the provider from North's own copy every time, rather than
 	// stored provider-side: Gemini deletes uploads within days, so the durable

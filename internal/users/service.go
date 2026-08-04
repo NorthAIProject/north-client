@@ -95,13 +95,7 @@ func (s *Service) Register(ctx context.Context, reg Registration) (User, error) 
 		return User{}, err
 	}
 
-	return s.repo.Create(ctx, NewRecord{
-		ID:           clean.ID,
-		Email:        clean.Email,
-		PasswordHash: clean.PasswordHash,
-		DisplayName:  clean.DisplayName,
-		Timezone:     clean.Timezone,
-	})
+	return s.repo.Create(ctx, NewRecord(clean))
 }
 
 // UpdatePasswordHash replaces the stored hash. The caller (internal/auth) is

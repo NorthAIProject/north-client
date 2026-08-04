@@ -91,13 +91,13 @@ func (h *Handler) sendMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := r.ParseForm(); err != nil {
+	if err = r.ParseForm(); err != nil {
 		h.fail(w, r, apperr.ErrValidation)
 		return
 	}
 
 	text := strings.TrimSpace(r.PostFormValue("message"))
-	if err := conversations.ValidateMessage(text); err != nil {
+	if err = conversations.ValidateMessage(text); err != nil {
 		// The composer keeps what was typed; nothing was stored.
 		render(w, r, http.StatusUnprocessableEntity, chatpages.ComposerError(conversationID, text, "Type something first."))
 		return
@@ -150,7 +150,7 @@ func (h *Handler) stream(w http.ResponseWriter, r *http.Request) {
 	// ResponseController rather than a ResponseWriter type assertion: the
 	// logging middleware wraps the writer, and Flusher would be lost.
 	rc := http.NewResponseController(w)
-	rc.Flush()
+	_ = rc.Flush()
 
 	stream, err := h.svc.SendMessage(r.Context(), user, conversation.ID, pending)
 	if err != nil {
@@ -227,8 +227,8 @@ func (h *Handler) load(r *http.Request) (conversations.Conversation, []conversat
 // because a bare newline inside data: would terminate the frame early and
 // truncate the coach mid-sentence.
 func writeEvent(w http.ResponseWriter, rc *http.ResponseController, event, data string) {
-	fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, strings.ReplaceAll(data, "\n", "\\n"))
-	rc.Flush()
+	_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, strings.ReplaceAll(data, "\n", "\\n"))
+	_ = rc.Flush()
 }
 
 func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {

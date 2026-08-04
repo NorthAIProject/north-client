@@ -95,7 +95,7 @@ func (c *Client) Generate(ctx context.Context, req ai.Request) (*ai.Response, er
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var payload completionResponse
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
@@ -125,7 +125,7 @@ func (c *Client) Chat(ctx context.Context, req ai.Request) (<-chan ai.StreamChun
 
 	go func() {
 		defer close(out)
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		scanner := bufio.NewScanner(resp.Body)
 		// A single SSE frame can carry a large delta; the default 64KB limit
@@ -219,7 +219,7 @@ func (c *Client) post(ctx context.Context, body any) (*http.Response, error) {
 	if resp.StatusCode >= 300 {
 		// Bounded read: an error page is not worth unbounded memory.
 		detail, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return nil, statusError(resp.StatusCode, string(detail))
 	}
 

@@ -55,7 +55,7 @@ func (h *Handler) upload(w http.ResponseWriter, r *http.Request) {
 		h.uploadFailed(w, r, "Choose a video to upload. Clips must be under 200 MB.")
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	pending, err := h.svc.UploadVideo(r.Context(), user.ID, header.Filename, header.Size, file)
 	if err != nil {

@@ -175,7 +175,7 @@ func (c *Context) Render() string {
 	if len(c.EarlierTopics) > 0 {
 		b.WriteString("\nWhat they have been talking about in other conversations:\n")
 		for _, m := range c.EarlierTopics {
-			b.WriteString(fmt.Sprintf("- [%s] %s\n", m.CreatedAt.In(c.User.Location()).Format("2 Jan"), truncate(m.Content, 200)))
+			fmt.Fprintf(&b, "- [%s] %s\n", m.CreatedAt.In(c.User.Location()).Format("2 Jan"), truncate(m.Content, 200))
 		}
 	}
 

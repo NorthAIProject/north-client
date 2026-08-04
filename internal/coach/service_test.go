@@ -298,7 +298,7 @@ func TestProviderFailureKeepsTheUserMessage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("send: %v", err)
 	}
-	if _, err := drain(stream); err == nil {
+	if _, err = drain(stream); err == nil {
 		t.Fatal("the stream should have reported the provider failure")
 	}
 
