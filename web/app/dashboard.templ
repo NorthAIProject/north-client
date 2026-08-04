@@ -3,6 +3,8 @@ package app
 import (
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
 	"github.com/NorthAIProject/north-client/web/shared/ui/card"
 )
 
@@ -23,29 +25,35 @@ templ Dashboard(user users.User) {
 	@layout.App("Overview", user, Nav("/app")) {
 		<div class="mx-auto w-full max-w-4xl p-6 md:p-8">
 			<header class="mb-8">
-				<h1 class="text-2xl font-semibold tracking-tight">
+				@ui.MonoLabel("Overview")
+				<h1 class="mt-2 text-2xl font-medium tracking-tight">
 					Hello, { user.FirstName() }
 				</h1>
-				<p class="text-muted-foreground mt-1 text-sm">
-					This is where your coaching, goals, and progress will live.
+				<p class="text-muted-foreground mt-1 max-w-lg text-sm leading-relaxed">
+					Your coach still has the thread. Coaching, goals, and progress live here.
 				</p>
 			</header>
-			@card.Card() {
+			@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 				@card.Header() {
 					@card.Title() {
-						You are signed in
+						Account
 					}
 					@card.Description() {
-						Account and session handling are working end to end.
+						The basics North uses to keep your context straight.
 					}
 				}
 				@card.Content() {
-					<dl class="grid gap-3 text-sm sm:grid-cols-2">
+					<div class="grid gap-4 text-sm sm:grid-cols-2">
 						@detail("Name", user.DisplayName)
 						@detail("Email", user.Email)
 						@detail("Timezone", user.Timezone)
 						@detail("Member since", user.CreatedAt.Format("2 January 2006"))
-					</dl>
+					</div>
+					<div class="mt-6">
+						@button.Button(button.Props{Href: "/app/chat", Class: "bg-signal text-background hover:bg-signal/90"}) {
+							Talk to your coach
+						}
+					</div>
 				}
 			}
 		</div>
@@ -54,7 +62,7 @@ templ Dashboard(user users.User) {
 
 templ detail(term, value string) {
 	<div>
-		<dt class="text-muted-foreground text-xs uppercase tracking-wide">{ term }</dt>
-		<dd class="mt-0.5 font-medium">{ value }</dd>
+		@ui.MonoLabel(term)
+		<p class="mt-1 font-medium">{ value }</p>
 	</div>
 }

@@ -59,8 +59,11 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
 
-  /* Landing page only. The application shell is deliberately achromatic; the
-     marketing page needs an accent, and each of these has exactly one job. */
+  /* North role accents — product-wide, not landing-only. Each has one job:
+     signal = bearing / continuity / primary CTA
+     agent  = coach speaking (never chrome decoration)
+     ember  = physical effort / heat scale only
+     surface / hairline = instrument panels and rules */
   --color-signal: var(--north-signal);
   --color-agent: var(--north-agent);
   --color-ember: var(--north-ember);
@@ -90,76 +93,78 @@
 
 :root {
   --radius: 0.65rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
+  /* Cool-biased neutrals: night navigation, not pure gray or terminal black. */
+  --background: oklch(0.995 0.002 250);
+  --foreground: oklch(0.16 0.01 250);
+  --card: oklch(1 0.002 250);
+  --card-foreground: oklch(0.16 0.01 250);
+  --popover: oklch(1 0.002 250);
+  --popover-foreground: oklch(0.16 0.01 250);
+  --primary: oklch(0.22 0.02 250);
+  --primary-foreground: oklch(0.985 0.002 250);
+  --secondary: oklch(0.96 0.006 250);
+  --secondary-foreground: oklch(0.22 0.02 250);
+  --muted: oklch(0.96 0.006 250);
+  --muted-foreground: oklch(0.5 0.02 250);
+  --accent: oklch(0.96 0.006 250);
+  --accent-foreground: oklch(0.22 0.02 250);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --border: oklch(0.91 0.008 250);
+  --input: oklch(0.91 0.008 250);
+  --ring: oklch(0.55 0.08 218);
+  --sidebar: oklch(0.985 0.004 250);
+  --sidebar-foreground: oklch(0.16 0.01 250);
+  --sidebar-primary: oklch(0.45 0.12 218);
+  --sidebar-primary-foreground: oklch(0.985 0.002 250);
+  --sidebar-accent: oklch(0.96 0.006 250);
+  --sidebar-accent-foreground: oklch(0.22 0.02 250);
+  --sidebar-border: oklch(0.91 0.008 250);
+  --sidebar-ring: oklch(0.55 0.08 218);
 
-  /* signal: bearing, primary accent. agent: the coach speaking, used only in
-     the cross-surface thread. ember: physical effort, used only where it is a
-     literal heat scale. */
+  /* signal: bearing / continuity / primary CTA.
+     agent: coach speaking only (thread attribution, never nav chrome).
+     ember: physical effort / heat only (form, load) — never marketing fills. */
   --north-signal: oklch(0.55 0.14 218);
   --north-agent: oklch(0.52 0.19 288);
   --north-ember: oklch(0.62 0.15 62);
-  --north-surface: oklch(0.985 0.003 250);
-  --north-hairline: oklch(0 0 0 / 8%);
+  --north-surface: oklch(0.985 0.004 250);
+  --north-hairline: oklch(0.3 0.02 250 / 10%);
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
+  /* Void: cool night navigation (~#1C1C1F with blue bias), not pure black. */
+  --background: oklch(0.145 0.006 250);
+  --foreground: oklch(0.97 0.004 250);
+  --card: oklch(0.19 0.008 250);
+  --card-foreground: oklch(0.97 0.004 250);
+  --popover: oklch(0.19 0.008 250);
+  --popover-foreground: oklch(0.97 0.004 250);
+  --primary: oklch(0.92 0.004 250);
+  --primary-foreground: oklch(0.18 0.01 250);
+  --secondary: oklch(0.24 0.01 250);
+  --secondary-foreground: oklch(0.97 0.004 250);
+  --muted: oklch(0.24 0.01 250);
+  --muted-foreground: oklch(0.7 0.015 250);
+  --accent: oklch(0.24 0.01 250);
+  --accent-foreground: oklch(0.97 0.004 250);
   --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --border: oklch(1 0.01 250 / 10%);
+  --input: oklch(1 0.01 250 / 14%);
+  --ring: oklch(0.65 0.1 218);
+  --sidebar: oklch(0.17 0.008 250);
+  --sidebar-foreground: oklch(0.97 0.004 250);
+  --sidebar-primary: oklch(0.74 0.15 218);
+  --sidebar-primary-foreground: oklch(0.16 0.02 250);
+  --sidebar-accent: oklch(0.24 0.01 250);
+  --sidebar-accent-foreground: oklch(0.97 0.004 250);
+  --sidebar-border: oklch(1 0.01 250 / 10%);
+  --sidebar-ring: oklch(0.65 0.1 218);
 
   --north-signal: oklch(0.74 0.15 218);
   --north-agent: oklch(0.63 0.19 288);
   --north-ember: oklch(0.76 0.16 62);
-  --north-surface: oklch(0.19 0.008 250);
-  --north-hairline: oklch(1 0 0 / 8%);
+  --north-surface: oklch(0.19 0.01 250);
+  --north-hairline: oklch(1 0.01 250 / 8%);
 }
 
 @layer base {

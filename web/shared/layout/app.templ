@@ -19,14 +19,16 @@ type NavItem struct {
 //
 // The sidebar is plain markup and Tailwind rather than a component library
 // widget: it is a list of links, and a list of links does not need JavaScript.
+// Active items use a signal-colored left rail — a segment of the same bearing
+// line as the marketing page — rather than a filled gray pill.
 templ App(title string, user users.User, nav []NavItem) {
 	@Base(title) {
 		<div class="flex h-full">
-			<aside class="border-border bg-card hidden w-60 shrink-0 flex-col border-r md:flex">
-				<div class="border-border flex h-14 items-center border-b px-5">
-					<a href="/app" class="text-lg font-semibold tracking-tight">North</a>
+			<aside class="border-border bg-sidebar hidden w-60 shrink-0 flex-col border-r md:flex">
+				<div class="border-border flex h-14 items-center border-b px-4">
+					@ui.BrandLockup("/app", "size-6", "text-base font-medium tracking-tight")
 				</div>
-				<nav class="flex-1 space-y-1 p-3">
+				<nav class="flex-1 space-y-0.5 p-3">
 					for _, item := range nav {
 						@navLink(item)
 					}
@@ -34,8 +36,8 @@ templ App(title string, user users.User, nav []NavItem) {
 				@userFooter(user)
 			</aside>
 			<div class="flex min-w-0 flex-1 flex-col">
-				<header class="border-border flex h-14 shrink-0 items-center justify-between border-b px-5 md:hidden">
-					<a href="/app" class="text-lg font-semibold tracking-tight">North</a>
+				<header class="border-border flex h-14 shrink-0 items-center justify-between border-b px-4 md:hidden">
+					@ui.BrandLockup("/app", "size-6", "text-base font-medium tracking-tight")
 					@signOutButton()
 				</header>
 				<main class="min-h-0 flex-1 overflow-y-auto">
@@ -51,14 +53,14 @@ templ navLink(item NavItem) {
 		<a
 			href={ templ.SafeURL(item.Href) }
 			aria-current="page"
-			class="bg-accent text-accent-foreground block rounded-md px-3 py-2 text-sm font-medium"
+			class="text-foreground relative block rounded-md py-2 pl-3 pr-3 text-sm font-medium before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-signal"
 		>
 			{ item.Label }
 		</a>
 	} else {
 		<a
 			href={ templ.SafeURL(item.Href) }
-			class="text-muted-foreground hover:bg-accent hover:text-accent-foreground block rounded-md px-3 py-2 text-sm font-medium transition-colors"
+			class="text-muted-foreground hover:bg-accent/60 hover:text-foreground block rounded-md px-3 py-2 text-sm font-medium transition-colors"
 		>
 			{ item.Label }
 		</a>

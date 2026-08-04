@@ -1,0 +1,25 @@
+package ui
+
+// BrandMark is the north-star symbol used in marketing, auth, and app chrome so
+// the product is recognizable after login — not only on the landing page.
+//
+// Size is the rendered box; the PNG is transparent and works on light and dark.
+templ BrandMark(size string) {
+	<img
+		src="/assets/brand/north-logo-mark.png"
+		alt=""
+		width="32"
+		height="32"
+		class={ "shrink-0 object-contain", size }
+		decoding="async"
+	/>
+}
+
+// BrandLockup is mark + word for headers. The mark carries identity; the text
+// is the readable product name next to it.
+templ BrandLockup(href string, markSize string, textClass string) {
+	<a href={ templ.SafeURL(href) } class="inline-flex items-center gap-2">
+		@BrandMark(markSize)
+		<span class={ textClass }>North</span>
+	</a>
+}

@@ -2,24 +2,23 @@ package ui
 
 import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
-	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
 )
 
 // Navbar is the signed-out header. The application shell has its own sidebar,
 // so this is only ever seen by visitors who are not logged in.
+//
+// max-w-6xl matches the landing content column so the mark sits on the same
+// vertical as the bearing rail and demos.
 templ Navbar() {
-	<nav class="border-border/60 sticky top-0 z-40 border-b backdrop-blur">
-		<div class="mx-auto flex h-14 max-w-5xl items-center justify-between px-6">
-			<a href="/" class="flex items-center gap-2">
-				@icon.Compass(icon.Props{Class: "size-5"})
-				<span class="text-lg font-semibold tracking-tight">North</span>
-			</a>
+	<nav class="border-hairline/80 sticky top-0 z-40 border-b bg-background/80 backdrop-blur">
+		<div class="mx-auto flex h-14 max-w-6xl items-center justify-between px-6 lg:pl-28 lg:pr-8">
+			@BrandLockup("/", "size-6", "text-base font-medium tracking-tight")
 			<div class="flex items-center gap-1">
 				@ThemeSwitcher()
 				@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Href: "/login"}) {
 					Sign in
 				}
-				@button.Button(button.Props{Size: button.SizeSm, Href: "/signup"}) {
+				@button.Button(button.Props{Size: button.SizeSm, Href: "/signup", Class: "bg-signal text-background hover:bg-signal/90"}) {
 					Get started
 				}
 			</div>

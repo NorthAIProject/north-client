@@ -1,0 +1,10 @@
+package ui
+
+// MonoLabel is the product's instrument voice: every eyebrow, axis, timestamp,
+// surface name, and continuity caption is set this way so demos and chrome read
+// as instruments rather than marketing panels.
+//
+// Prefer this over ad-hoc mono classes so tracking and size stay consistent.
+templ MonoLabel(text string) {
+	<span class="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">{ text }</span>
+}

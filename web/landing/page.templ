@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/ui/badge"
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
 	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
@@ -68,11 +69,9 @@ templ waypoint(distance string) {
 	</div>
 }
 
-// monoLabel is the page's utility voice: every eyebrow, axis, timestamp, and
-// readout is set this way, so the demos read as instruments rather than as
-// marketing panels.
+// monoLabel is a thin landing alias for the shared instrument voice.
 templ monoLabel(text string) {
-	<span class="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">{ text }</span>
+	@ui.MonoLabel(text)
 }
 
 // sectionHeading is the standard opening of every non-hero section.

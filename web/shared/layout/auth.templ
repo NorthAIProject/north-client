@@ -1,15 +1,25 @@
 package layout
 
+import "github.com/NorthAIProject/north-client/web/shared/ui"
+
 // Auth is the layout for signed-out pages: a single centred card with no
 // navigation, so there is nothing to do on the page except the one thing it is
 // asking for.
+//
+// The short signal tick beside the mark is a fragment of the landing bearing —
+// the door into the same continuity line, not a second marketing column.
 templ Auth(title string) {
 	@Base(title) {
 		<div class="flex min-h-full flex-col items-center justify-center px-4 py-12">
 			<div class="w-full max-w-sm">
-				<div class="mb-8 text-center">
-					<a href="/" class="text-2xl font-semibold tracking-tight">North</a>
-					<p class="text-muted-foreground mt-1 text-sm">Your AI operating system for personal growth.</p>
+				<div class="mb-8 flex flex-col items-center text-center">
+					<div class="flex items-center gap-3">
+						<span aria-hidden="true" class="h-8 w-px bg-signal/70"></span>
+						@ui.BrandLockup("/", "size-7", "text-xl font-medium tracking-tight")
+					</div>
+					<div class="mt-3">
+						@ui.MonoLabel("Continue your thread")
+					</div>
 				</div>
 				{ children... }
 			</div>

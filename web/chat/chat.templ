@@ -15,6 +15,9 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/textarea"
 )
 
+// signalCTA is the shared continuity primary for coach entry points.
+const signalCTA = "bg-signal text-background hover:bg-signal/90"
+
 // proseClasses styles rendered markdown.
 //
 // Written as arbitrary variants rather than a stylesheet rule so the styling
@@ -64,13 +67,14 @@ templ Page(user users.User, conversation conversations.Conversation, messages []
 templ Empty(user users.User, list []conversations.Conversation) {
 	@layout.App("Coach", user, nav()) {
 		<div class="flex h-full flex-col items-center justify-center gap-4 p-8 text-center">
-			<h1 class="text-xl font-semibold tracking-tight">Talk to your coach</h1>
-			<p class="text-muted-foreground max-w-sm text-sm">
+			@ui.MonoLabel("Day 1 · no sessions yet")
+			<h1 class="text-xl font-medium tracking-tight">Talk to your coach</h1>
+			<p class="text-muted-foreground max-w-sm text-sm leading-relaxed">
 				North remembers what you tell it. Start with what you are working on.
 			</p>
 			<form method="post" action="/app/chat">
 				@ui.CSRFInput()
-				@button.Button(button.Props{Type: button.TypeSubmit}) {
+				@button.Button(button.Props{Type: button.TypeSubmit, Class: signalCTA}) {
 					@icon.Plus(icon.Props{Class: "size-4"})
 					New conversation
 				}
@@ -155,11 +159,18 @@ templ threadList(list []conversations.Conversation, current uuid.UUID) {
 
 templ threadLink(c conversations.Conversation, active bool) {
 	if active {
-		<a href={ templ.SafeURL("/app/chat/" + c.ID.String()) } aria-current="page" class="bg-accent text-accent-foreground block truncate rounded-md px-3 py-2 text-sm">
+		<a
+			href={ templ.SafeURL("/app/chat/" + c.ID.String()) }
+			aria-current="page"
+			class="text-foreground relative block truncate rounded-md py-2 pl-3 pr-3 text-sm font-medium before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-signal"
+		>
 			{ c.DisplayTitle() }
 		</a>
 	} else {
-		<a href={ templ.SafeURL("/app/chat/" + c.ID.String()) } class="text-muted-foreground hover:bg-accent hover:text-accent-foreground block truncate rounded-md px-3 py-2 text-sm transition-colors">
+		<a
+			href={ templ.SafeURL("/app/chat/" + c.ID.String()) }
+			class="text-muted-foreground hover:bg-accent/60 hover:text-foreground block truncate rounded-md px-3 py-2 text-sm transition-colors"
+		>
 			{ c.DisplayTitle() }
 		</a>
 	}
@@ -191,8 +202,9 @@ templ transcript(messages []conversations.Message, conversationID uuid.UUID) {
 // a blank box is the hardest part of talking to a coach for the first time.
 templ conversationStarters() {
 	<div class="flex flex-col items-center gap-4 py-12 text-center">
-		<h2 class="text-lg font-medium">What's on your mind?</h2>
-		<p class="text-muted-foreground max-w-sm text-sm">
+		@ui.MonoLabel("This thread")
+		<h2 class="text-lg font-medium tracking-tight">What's on your mind?</h2>
+		<p class="text-muted-foreground max-w-sm text-sm leading-relaxed">
 			Tell North what you are working on. It remembers, so you only have to
 			explain once.
 		</p>
@@ -203,7 +215,7 @@ templ conversationStarters() {
 				<button
 					type="button"
 					@click={ "document.getElementById('message').value = " + jsString(starter) + "; document.getElementById('message').focus()" }
-					class="border-border hover:bg-accent rounded-lg border p-3 text-left text-sm transition-colors"
+					class="border-hairline bg-surface hover:bg-accent/50 rounded-lg border p-3 text-left text-sm transition-colors"
 				>
 					{ starter }
 				</button>
@@ -212,7 +224,8 @@ templ conversationStarters() {
 	</div>
 }
 
-// Bubble is one stored turn.
+// Bubble is one stored turn. Coach turns carry agent attribution so the
+// product thread matches the landing hero grammar (signal path, agent voice).
 templ Bubble(m conversations.Message) {
 	if m.IsUser() {
 		<div class="flex justify-end">
@@ -222,7 +235,8 @@ templ Bubble(m conversations.Message) {
 		</div>
 	} else {
 		<div class="group flex flex-col items-start gap-1" x-data="{ copied: false }">
-			<div class={ "bg-muted max-w-[85%] rounded-2xl rounded-bl-sm px-4 py-2.5 " + proseClasses }>
+			<span class="font-mono text-[10px] uppercase tracking-[0.14em] text-agent">North</span>
+			<div class={ "border-hairline bg-surface max-w-[85%] rounded-2xl rounded-bl-sm border px-4 py-2.5 " + proseClasses }>
 				@markdown.Render(m.Content)
 			</div>
 			<button
@@ -259,9 +273,10 @@ templ PendingExchange(conversationID uuid.UUID, message string) {
 	// Tokens stream in as plain text; markdown is only rendered once the reply
 	// is complete and the page re-fetches it. Formatting a half-written
 	// sentence would make the text jump around as it arrives.
-	<div class="flex justify-start" hx-ext="sse" sse-connect={ streamURL(conversationID, message) } sse-close="done">
+	<div class="flex flex-col items-start gap-1" hx-ext="sse" sse-connect={ streamURL(conversationID, message) } sse-close="done">
+		<span class="font-mono text-[10px] uppercase tracking-[0.14em] text-agent">North</span>
 		<div
-			class="bg-muted max-w-[85%] rounded-2xl rounded-bl-sm px-4 py-2.5 text-sm whitespace-pre-wrap"
+			class="border-hairline bg-surface max-w-[85%] rounded-2xl rounded-bl-sm border px-4 py-2.5 text-sm whitespace-pre-wrap"
 			sse-swap="token,error"
 			hx-swap="beforeend"
 		></div>
