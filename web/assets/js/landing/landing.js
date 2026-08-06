@@ -63,8 +63,14 @@
       ready: false,
       failed: false,
       viewer: null,
+      themeHandler: null,
+      root: null,
 
       init() {
+        // Captured once, synchronously: $el resolves correctly here and in load()
+        // (both run in Alpine's own call chain), but is unreliable from inside the
+        // tabs library's click handler further down — see select() below.
+        this.root = this.$el;
         const observer = new IntersectionObserver(
           (entries) => {
             if (!entries.some((e) => e.isIntersecting)) return;
@@ -73,23 +79,25 @@
           },
           { rootMargin: "300px" },
         );
-        observer.observe(this.$el);
+        observer.observe(this.root);
       },
 
       async load() {
         try {
           const module = await import(viewerModuleURL);
-          this.viewer = module.createViewer(this.$refs.canvas, {
+          this.viewer = await module.createViewer(this.$refs.canvas, {
             reduced,
             dark: document.documentElement.classList.contains("dark"),
           });
           this.ready = true;
           this.apply();
           // The theme switcher announces itself; the figure has to follow or it
-          // turns into a silhouette on a light panel.
-          document.addEventListener("theme-changed", () => {
+          // turns into a silhouette on a light panel. Handler is stored so destroy()
+          // can remove it — the viewer now owns real GPU resources, not just DOM.
+          this.themeHandler = () => {
             this.viewer.setTheme(document.documentElement.classList.contains("dark"));
-          });
+          };
+          document.addEventListener("theme-changed", this.themeHandler);
         } catch (err) {
           // The readout beside the canvas carries every fact the model shows,
           // so a failure here costs presentation rather than information.
@@ -98,10 +106,15 @@
         }
       },
 
+      destroy() {
+        if (this.themeHandler) document.removeEventListener("theme-changed", this.themeHandler);
+        if (this.viewer) this.viewer.destroy();
+      },
+
       // Loads are read back out of the active panel so the numbers a visitor
       // reads and the colours they see cannot drift apart.
       activeLoads() {
-        const panel = this.$el.querySelector(
+        const panel = this.root.querySelector(
           "[data-north-lift][data-tui-tabs-state='active']",
         );
         if (!panel) return [];
@@ -117,8 +130,11 @@
       },
 
       select() {
-        // The tabs component swaps panels on the same click, so read after it.
-        this.$nextTick(() => this.apply());
+        // The tabs library swaps data-tui-tabs-state synchronously on its own
+        // document-level click listener, which fires after this one (bubble order),
+        // so a deferred read is still needed to go after it — setTimeout(fn, 0),
+        // same as syncTabsAria above needs for the same library.
+        setTimeout(() => this.apply(), 0);
       },
     }));
 

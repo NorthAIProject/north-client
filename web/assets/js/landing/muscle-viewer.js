@@ -1,28 +1,68 @@
 /**
  * The muscle viewer on the marketing page.
  *
- * The figure is built from primitives rather than loaded from a model file: it
- * has to communicate which region is working, not what a body looks like, and a
- * few dozen capsules do that at a fraction of the weight. Every mesh is tagged
- * with a muscle key, and the shares come from the readout beside the canvas, so
- * the numbers a visitor reads are the numbers being coloured.
+ * The figure is built from primitives (buildFigure) rather than loaded from a model
+ * file: it started as a way to communicate which region is working at a fraction of
+ * the weight of a real mesh. Every mesh is tagged with a muscle key, and the shares
+ * come from the readout beside the canvas, so the numbers a visitor reads are the
+ * numbers being coloured.
  *
- * To swap in a real anatomical model later, replace buildFigure() with a loader
- * that returns the same { group, regions } shape. Nothing else changes.
+ * loadFigure() is the seam for a real anatomical model (NOR-6): it must resolve to
+ * the same { group, regions, inert } shape buildFigure returns today. Nothing else
+ * in this file — setLoads, setTheme, the render loop — needs to change when it does.
  */
 import * as THREE from "/assets/js/vendor/three.module.min.js";
+import { RoomEnvironment } from "/assets/js/vendor/three-room-environment.module.js";
 
 // The figure has to sit on the panel in both themes: a single mid grey reads as
-// a silhouette on a light card and disappears on a dark one.
+// a silhouette on a light card and disappears on a dark one. These are figure
+// shading values with no brand-token counterpart — only the effort colour (ember)
+// is a brand token, read live from CSS below.
 const THEME = {
   dark: { base: 0x3a4048, inert: 0x272c33 },
   light: { base: 0xb4bcc6, inert: 0xd4d9df },
 };
-const EMBER = 0xe8973c;
 
-export function createViewer(canvas, options = {}) {
+// Resolves a CSS custom property to a THREE.Color through the browser's own color
+// parser. Necessary because North's tokens are oklch() and THREE.Color.setStyle()
+// only understands hex/rgb()/hsl()/named colors. The "#000" sentinel means a value
+// the canvas can't parse (unlikely, but cheap to guard) leaves visibly black rather
+// than silently reusing whatever the fallback default was.
+function readCSSColor(varName, fallbackHex) {
+  const color = new THREE.Color(fallbackHex);
+  const raw = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+  if (!raw) return color;
+  const ctx = document.createElement("canvas").getContext("2d");
+  ctx.fillStyle = "#000";
+  ctx.fillStyle = raw;
+  ctx.fillRect(0, 0, 1, 1);
+  const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+  color.setRGB(r / 255, g / 255, b / 255, THREE.SRGBColorSpace);
+  return color;
+}
+
+// A soft radial-gradient disc under the figure. Cheaper than a shadow map by a full
+// render pass every frame — the figure never stops rotating (see tick()), so nothing
+// about a real shadow could be cached anyway.
+function createShadowTexture() {
+  const size = 128;
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  const gradient = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  gradient.addColorStop(0, "rgba(0,0,0,0.55)");
+  gradient.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, size, size);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+export async function createViewer(canvas, options = {}) {
   const reduced = Boolean(options.reduced);
-  let palette = options.dark === false ? THEME.light : THEME.dark;
+  let dark = options.dark !== false;
+  let palette = dark ? THEME.dark : THEME.light;
 
   const renderer = new THREE.WebGLRenderer({
     canvas,
@@ -31,13 +71,27 @@ export function createViewer(canvas, options = {}) {
     powerPreference: "low-power",
   });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = dark ? 1.05 : 0.9;
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
   camera.position.set(0, 0.25, 9.2);
   camera.lookAt(0, 0.1, 0);
 
-  scene.add(new THREE.HemisphereLight(0xdfe7f2, 0x0b0d10, 1.15));
+  // Image-based lighting from a procedural room, not a real HDRI: an .hdr file would
+  // cost 300KB-1MB and hit the same asset-arrival problem the body model itself is
+  // waiting on, to light a figure that (today, and even post-NOR-6) carries no baked
+  // textures. The environment is generated once and the generator dropped immediately
+  // — only the resulting texture is kept.
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const roomEnv = new RoomEnvironment();
+  const envTexture = pmrem.fromScene(roomEnv, 0.04).texture;
+  roomEnv.dispose();
+  pmrem.dispose();
+  scene.environment = envTexture;
+  scene.environmentIntensity = 0.5;
 
   const key = new THREE.DirectionalLight(0xffffff, 1.5);
   key.position.set(3.5, 5, 6);
@@ -47,7 +101,22 @@ export function createViewer(canvas, options = {}) {
   rim.position.set(-4, 1.5, -5);
   scene.add(rim);
 
-  const { group, regions, inert } = buildFigure(palette);
+  const shadowTexture = createShadowTexture();
+  const shadowMaterial = new THREE.MeshBasicMaterial({
+    map: shadowTexture,
+    transparent: true,
+    depthWrite: false,
+    toneMapped: false,
+  });
+  const shadowGeometry = new THREE.CircleGeometry(1.6, 32);
+  const shadow = new THREE.Mesh(shadowGeometry, shadowMaterial);
+  shadow.rotation.x = -Math.PI / 2;
+  shadow.position.y = -2.15;
+  // On scene, not group: group.rotation.y turns every frame (see tick()), and a
+  // shadow spinning with the body it belongs to would read as a bug, not a feature.
+  scene.add(shadow);
+
+  const { group, regions, inert } = await loadFigure(palette);
   scene.add(group);
 
   // ---------------------------------------------------------------------
@@ -59,26 +128,26 @@ export function createViewer(canvas, options = {}) {
   let dragging = false;
   let lastX = 0;
 
-  canvas.addEventListener("pointerdown", (e) => {
+  const onPointerDown = (e) => {
     dragging = true;
     lastX = e.clientX;
     canvas.setPointerCapture(e.pointerId);
-  });
-
-  canvas.addEventListener("pointermove", (e) => {
+  };
+  const onPointerMove = (e) => {
     if (!dragging) return;
     targetY += (e.clientX - lastX) * 0.01;
     lastX = e.clientX;
-  });
-
-  const release = (e) => {
+  };
+  const onPointerRelease = (e) => {
     dragging = false;
     if (e.pointerId !== undefined && canvas.hasPointerCapture(e.pointerId)) {
       canvas.releasePointerCapture(e.pointerId);
     }
   };
-  canvas.addEventListener("pointerup", release);
-  canvas.addEventListener("pointercancel", release);
+  canvas.addEventListener("pointerdown", onPointerDown);
+  canvas.addEventListener("pointermove", onPointerMove);
+  canvas.addEventListener("pointerup", onPointerRelease);
+  canvas.addEventListener("pointercancel", onPointerRelease);
 
   // ---------------------------------------------------------------------
   // Sizing
@@ -122,7 +191,7 @@ export function createViewer(canvas, options = {}) {
   // Highlighting
   // ---------------------------------------------------------------------
   const base = new THREE.Color(palette.base);
-  const ember = new THREE.Color(EMBER);
+  let ember = readCSSColor("--north-ember", 0xe8973c);
   let current = [];
 
   function setLoads(loads) {
@@ -141,16 +210,19 @@ export function createViewer(canvas, options = {}) {
       const intensity = Math.min(1, load.share / peak);
       material.color.copy(base).lerp(ember, 0.3 + 0.7 * intensity);
       material.emissive.copy(ember);
-      material.emissiveIntensity = 0.12 + 0.38 * intensity;
+      material.emissiveIntensity = 0.15 + 0.85 * intensity;
     }
   }
 
   return {
     setLoads,
     setTheme(isDark) {
-      palette = isDark ? THEME.dark : THEME.light;
+      dark = isDark;
+      palette = dark ? THEME.dark : THEME.light;
+      renderer.toneMappingExposure = dark ? 1.05 : 0.9;
       base.set(palette.base);
       inert.color.set(palette.inert);
+      ember = readCSSColor("--north-ember", 0xe8973c);
       setLoads(current);
     },
     destroy() {
@@ -158,9 +230,40 @@ export function createViewer(canvas, options = {}) {
       running = false;
       resizeObserver.disconnect();
       visibility.disconnect();
+      canvas.removeEventListener("pointerdown", onPointerDown);
+      canvas.removeEventListener("pointermove", onPointerMove);
+      canvas.removeEventListener("pointerup", onPointerRelease);
+      canvas.removeEventListener("pointercancel", onPointerRelease);
+
+      const geometries = new Set();
+      const materials = new Set();
+      group.traverse((obj) => {
+        if (!obj.isMesh) return;
+        geometries.add(obj.geometry);
+        materials.add(obj.material);
+      });
+      for (const geometry of geometries) geometry.dispose();
+      for (const material of materials) material.dispose();
+
+      shadowGeometry.dispose();
+      shadowMaterial.dispose();
+      shadowTexture.dispose();
+      envTexture.dispose();
+
+      scene.clear();
       renderer.dispose();
+      renderer.forceContextLoss();
     },
   };
+}
+
+/**
+ * Resolves the figure for the viewer. Today this just wraps buildFigure(); NOR-6's
+ * follow-up replaces the body with a GLTFLoader fetch of a real anatomical model,
+ * matching named meshes to the same muscle keys — the return shape doesn't change.
+ */
+async function loadFigure(palette) {
+  return buildFigure(palette);
 }
 
 /**
