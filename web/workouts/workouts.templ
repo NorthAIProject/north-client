@@ -1,19 +1,23 @@
 package workouts
 
 import (
+	"fmt"
 	"strconv"
 	"time"
 
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/workouts/plan"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/muscleviewer"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/ui/alert"
 	"github.com/NorthAIProject/north-client/web/shared/ui/badge"
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
 	"github.com/NorthAIProject/north-client/web/shared/ui/card"
 	"github.com/NorthAIProject/north-client/web/shared/ui/checkbox"
+	"github.com/NorthAIProject/north-client/web/shared/ui/dialog"
 	"github.com/NorthAIProject/north-client/web/shared/ui/form"
+	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
 	"github.com/NorthAIProject/north-client/web/shared/ui/input"
 	"github.com/NorthAIProject/north-client/web/shared/ui/label"
 	"github.com/NorthAIProject/north-client/web/shared/ui/selectbox"
@@ -225,15 +229,17 @@ templ PlanPage(user users.User, p plan.Plan, createdAt time.Time) {
 				}
 			}
 			<div class="space-y-4">
-				for _, day := range p.Days {
-					@dayCard(day)
+				for i, day := range p.Days {
+					@dayCard(i, day)
 				}
 			</div>
 		</div>
+		@dialog.Script()
+		@muscleviewer.Script()
 	}
 }
 
-templ dayCard(day plan.PlanDay) {
+templ dayCard(dayIndex int, day plan.PlanDay) {
 	@card.Card() {
 		@card.Header() {
 			<div class="flex items-center gap-3">
@@ -247,15 +253,15 @@ templ dayCard(day plan.PlanDay) {
 		}
 		@card.Content() {
 			<ul class="divide-border divide-y">
-				for _, ex := range day.Exercises {
-					@exerciseRow(ex)
+				for j, ex := range day.Exercises {
+					@exerciseRow(fmt.Sprintf("exercise-%d-%d", dayIndex, j), ex)
 				}
 			</ul>
 		}
 	}
 }
 
-templ exerciseRow(ex plan.Exercise) {
+templ exerciseRow(id string, ex plan.Exercise) {
 	<li class="py-3 first:pt-0 last:pb-0">
 		<div class="flex items-baseline justify-between gap-4">
 			<span class="font-medium">{ ex.Name }</span>
@@ -270,6 +276,32 @@ templ exerciseRow(ex plan.Exercise) {
 				· No equipment? { ex.Substitute }
 			}
 		</p>
+		// Older plans generated before NOR-8 have no muscle data at all — the
+		// trigger only appears once there's something for it to show.
+		if len(ex.Primary) > 0 || len(ex.Secondary) > 0 || len(ex.Stabilizers) > 0 {
+			@dialog.Dialog(dialog.Props{ID: id}) {
+				@dialog.Trigger(dialog.TriggerProps{For: id, Class: "mt-2 inline-flex"}) {
+					@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm}) {
+						@icon.Dumbbell(icon.Props{Class: "size-3.5"})
+						View muscles
+					}
+				}
+				@dialog.Content() {
+					@dialog.Header() {
+						@dialog.Title() {
+							{ ex.Name }
+						}
+					}
+					@muscleviewer.Viewer(muscleviewer.Props{
+						ID:           id + "-viewer",
+						Primary:      ex.Primary,
+						Secondary:    ex.Secondary,
+						Stabilizers:  ex.Stabilizers,
+						ExerciseName: ex.Name,
+					})
+				}
+			}
+		}
 	</li>
 }
 
