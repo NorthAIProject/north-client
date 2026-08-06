@@ -1,18 +1,17 @@
 /**
  * The muscle viewer on the marketing page.
  *
- * The figure is built from primitives (buildFigure) rather than loaded from a model
- * file: it started as a way to communicate which region is working at a fraction of
- * the weight of a real mesh. Every mesh is tagged with a muscle key, and the shares
- * come from the readout beside the canvas, so the numbers a visitor reads are the
- * numbers being coloured.
- *
- * loadFigure() is the seam for a real anatomical model (NOR-6): it must resolve to
- * the same { group, regions, inert } shape buildFigure returns today. Nothing else
- * in this file — setLoads, setTheme, the render loop — needs to change when it does.
+ * The figure is a real anatomical model (NOR-6): a Z-Anatomy-derived muscle set
+ * (CC BY-SA 4.0, hpfrei/body-anatomy-3d-viewer) layered under a translucent skin
+ * shell (CC BY, ferrumiron6) — see web/assets/models/README.md for the full
+ * attribution and how body.glb was built. Every muscle mesh is tagged with a
+ * muscle key by name, and the shares come from the readout beside the canvas, so
+ * the numbers a visitor reads are the numbers being coloured.
  */
 import * as THREE from "/assets/js/vendor/three.module.min.js";
 import { RoomEnvironment } from "/assets/js/vendor/three-room-environment.module.js";
+import { GLTFLoader } from "/assets/js/vendor/three-gltf-loader.module.js";
+import { MeshoptDecoder } from "/assets/js/vendor/three-meshopt-decoder.module.js";
 
 // The figure has to sit on the panel in both themes: a single mid grey reads as
 // a silhouette on a light card and disappears on a dark one. These are figure
@@ -257,26 +256,196 @@ export async function createViewer(canvas, options = {}) {
   };
 }
 
-/**
- * Resolves the figure for the viewer. Today this just wraps buildFigure(); NOR-6's
- * follow-up replaces the body with a GLTFLoader fetch of a real anatomical model,
- * matching named meshes to the same muscle keys — the return shape doesn't change.
- */
-async function loadFigure(palette) {
-  return buildFigure(palette);
+const MODEL_PATH = "/assets/models/body.glb";
+
+// Exact node names from body.glb, one entry per muscle key. Both sides and every
+// anatomical head/segment share a key — that's how a limb pair lights up together.
+// The short common-name aliases are a safety net for a future re-export that might
+// not match these exact Z-Anatomy labels.
+const MUSCLE_ALIASES = {
+  quads: [
+    "rectus femoris muscle",
+    "vastus lateralis muscle",
+    "vastus medialis muscle",
+    "vastus intermedius muscle",
+    "quadriceps",
+  ],
+  glutes: [
+    "gluteus medius muscle",
+    "gluteus maximus muscle",
+    "gluteus minimus muscle",
+    "glutes",
+  ],
+  hamstrings: [
+    "long head of biceps femoris",
+    "short head of biceps femoris",
+    "semimembranosus muscle",
+    "semitendinosus muscle",
+    "hamstrings",
+  ],
+  calves: [
+    "lateral head of gastrocnemius",
+    "medial head of gastrocnemius",
+    "soleus muscle",
+    "calves",
+  ],
+  adductors: ["adductor magnus", "adductor longus", "adductor brevis", "adductors"],
+  traps: [
+    "ascending part of trapezius muscle",
+    "descending part of trapezius muscle",
+    "transverse part of trapezius muscle",
+    "trapezius",
+    "traps",
+  ],
+  delts: [
+    "acromial part of deltoid muscle",
+    "clavicular part of deltoid muscle",
+    "scapular spinal part of deltoid muscle",
+    "deltoid",
+    "delts",
+  ],
+  biceps: ["long head of biceps brachii", "short head of biceps brachii", "biceps brachii", "biceps"],
+  triceps: [
+    "medial head of triceps brachii",
+    "lateral head of triceps brachii",
+    "long head of triceps brachii",
+    "triceps brachii",
+    "triceps",
+  ],
+  forearms: [
+    "brachioradialis muscle",
+    "flexor carpi radialis",
+    "superficial head of pronator teres",
+    "deep head of pronator teres",
+    "humeral head of flexor carpi ulnaris",
+    "ulnar head of flexor carpi ulnaris",
+    "pronator quadratus",
+    "ulnar head of extensor carpi ulnaris",
+    "humeral head of extensor carpi ulnaris",
+    "extensor carpi radialis longus",
+    "extensor carpi radialis brevis",
+    "forearms",
+  ],
+  lats: ["latissimus dorsi muscle", "latissimus dorsi", "lats"],
+  rhomboids: ["rhomboid major muscle", "rhomboid minor muscle", "rhomboids"],
+  erectors: [
+    "iliocostalis lumborum muscle",
+    "iliocostalis thoracis muscle",
+    "iliocostalis colli muscle",
+    "longissimus thoracis muscle",
+    "longissimus capitis muscle",
+    "longissimus colli muscle",
+    "spinalis capitis muscle",
+    "spinalis colli muscle",
+    "spinalis thoracis muscle",
+    "semispinalis thoracis muscle",
+    "semispinalis colli muscle",
+    "erector spinae",
+    "erectors",
+  ],
+  serratus: ["serratus anterior muscle", "serratus anterior", "serratus"],
+  abs: [
+    "rectus abdominis muscle",
+    "external abdominal oblique muscle",
+    "internal abdominal oblique muscle",
+    "transversus abdominis muscle",
+    "abdominals",
+    "abs",
+  ],
+};
+
+// Built once at module scope: normalized alias text -> muscle key. Both the aliases
+// here and every incoming mesh name go through the same normalizeName(), so this
+// table doesn't need to anticipate GLTFLoader's node-name sanitization itself.
+const ALIAS_LOOKUP = new Map();
+for (const [key, aliases] of Object.entries(MUSCLE_ALIASES)) {
+  for (const alias of aliases) ALIAS_LOOKUP.set(normalizeName(alias), key);
+}
+
+// GLTFLoader runs every node name through PropertyBinding.sanitizeNodeName() (so
+// glTF names are safe as animation track target paths): spaces become underscores
+// and periods are stripped outright, so "Iliocostalis lumborum muscle.001" arrives
+// here as "Iliocostalis_lumborum_muscle001" — the duplicate-suffix digits end up
+// glued straight onto the word with no separator at all. Unifying separators to
+// spaces before stripping trailing digits makes both forms converge on the same
+// normalized string regardless of which one a given alias or mesh name started as.
+function normalizeName(name) {
+  return (name || "")
+    .toLowerCase()
+    .replace(/[_.]+/g, " ")
+    .replace(/\d+$/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function resolveKey(name) {
+  const normalized = normalizeName(name);
+  if (!normalized) return null;
+  if (ALIAS_LOOKUP.has(normalized)) return ALIAS_LOOKUP.get(normalized);
+  // Fallback: substring containment, for names this exact table doesn't cover.
+  for (const [alias, key] of ALIAS_LOOKUP) {
+    if (normalized.includes(alias) || alias.includes(normalized)) return key;
+  }
+  return null;
+}
+
+function isUnderSkinNode(obj) {
+  for (let n = obj; n; n = n.parent) {
+    if (n.name === "skin") return true;
+  }
+  return false;
 }
 
 /**
- * Builds the figure and returns the material used for each muscle key, so
- * colouring a region never has to walk the scene graph.
+ * Loads body.glb, walks the scene, and recolors every mesh in place: muscle meshes
+ * get a per-key material (shared across both sides and every anatomical head, so
+ * `setLoads` never has to walk the scene graph), the skin shell gets a fixed
+ * translucent material, and anything unmatched falls through to `inert`.
  */
-function buildFigure(palette) {
+async function loadFigure(palette) {
+  const loader = new GLTFLoader();
+  loader.setMeshoptDecoder(MeshoptDecoder);
+
+  // MODEL_PATH is versioned the same way the module itself is (landing.js appends
+  // ?v=<deploy token> to the import), since mountAssets serves everything under
+  // /assets/ with a one-year immutable Cache-Control.
+  const moduleVersion = new URL(import.meta.url).searchParams.get("v");
+  const url = moduleVersion ? `${MODEL_PATH}?v=${moduleVersion}` : MODEL_PATH;
+
+  const gltf = await loader.loadAsync(url);
+  const inner = gltf.scene;
+
+  // Auto-frame: scale to the height this viewer's camera/lighting/contact-shadow
+  // are tuned for, and recenter into a pivot group so rotation.y (driven every
+  // frame by tick()) turns around the figure's own center rather than wherever
+  // the source asset happened to put its origin.
+  const box = new THREE.Box3().setFromObject(inner);
+  const size = box.getSize(new THREE.Vector3());
+  const TARGET_HEIGHT = 4.7;
+  inner.scale.setScalar(TARGET_HEIGHT / size.y);
+
+  const scaledBox = new THREE.Box3().setFromObject(inner);
+  const center = scaledBox.getCenter(new THREE.Vector3());
+  inner.position.x -= center.x;
+  inner.position.z -= center.z;
+  inner.position.y -= scaledBox.min.y + 2.15; // feet rest on the contact-shadow plane
+
   const group = new THREE.Group();
+  group.add(inner);
+
   const regions = {};
   const inert = new THREE.MeshStandardMaterial({
     color: palette.inert,
-    roughness: 0.85,
-    metalness: 0.05,
+    roughness: 0.72,
+    metalness: 0,
+  });
+  const skinMaterial = new THREE.MeshStandardMaterial({
+    color: 0xcaa27a,
+    roughness: 0.55,
+    metalness: 0,
+    transparent: true,
+    opacity: 0.55,
+    depthWrite: false,
   });
 
   function materialFor(key) {
@@ -285,70 +454,49 @@ function buildFigure(palette) {
         color: palette.base,
         emissive: palette.base,
         emissiveIntensity: 0,
-        roughness: 0.55,
-        metalness: 0.1,
+        roughness: 0.45,
+        metalness: 0,
       });
     }
     return regions[key];
   }
 
-  function add(key, geometry, position, rotation) {
-    const mesh = new THREE.Mesh(geometry, key ? materialFor(key) : inert);
-    mesh.position.set(position[0], position[1], position[2]);
-    if (rotation) mesh.rotation.set(rotation[0], rotation[1], rotation[2]);
-    group.add(mesh);
-    return mesh;
-  }
+  const originalMaterials = new Set();
+  const unmatchedNames = [];
+  const orphanedKeys = new Set(Object.keys(MUSCLE_ALIASES));
 
-  // Mirrors a part across the sagittal plane, which is how every limb is built.
-  function pair(key, geometry, position, rotation) {
-    add(key, geometry, position, rotation);
-    add(
-      key,
-      geometry,
-      [-position[0], position[1], position[2]],
-      rotation ? [rotation[0], -rotation[1], -rotation[2]] : null,
+  inner.traverse((obj) => {
+    if (!obj.isMesh) return;
+    obj.frustumCulled = false;
+    if (obj.material) originalMaterials.add(obj.material);
+
+    if (isUnderSkinNode(obj)) {
+      obj.material = skinMaterial;
+      return;
+    }
+
+    const key = resolveKey(obj.name) || resolveKey(obj.parent && obj.parent.name);
+    if (key) {
+      obj.material = materialFor(key);
+      orphanedKeys.delete(key);
+    } else {
+      obj.material = inert;
+      unmatchedNames.push(obj.name);
+    }
+  });
+
+  // The GLTF's own materials are replaced above and never rendered — dispose them
+  // rather than let them sit unused until GC.
+  for (const material of originalMaterials) material.dispose();
+
+  if (orphanedKeys.size > 0 || unmatchedNames.length > 0) {
+    console.warn(
+      "[muscle-viewer] asset naming drift — orphaned keys:",
+      [...orphanedKeys],
+      "unmatched meshes:",
+      unmatchedNames,
     );
   }
 
-  const capsule = (r, l) => new THREE.CapsuleGeometry(r, l, 6, 14);
-
-  // Head and neck — structural, never highlighted.
-  add(null, new THREE.SphereGeometry(0.34, 24, 18), [0, 2.52, 0]);
-  add(null, capsule(0.14, 0.2), [0, 2.13, 0]);
-
-  // Trunk core: a slab the muscle plates sit on.
-  add(null, new THREE.BoxGeometry(1.0, 1.45, 0.5), [0, 1.28, 0]);
-  add(null, new THREE.BoxGeometry(0.94, 0.42, 0.52), [0, 0.36, 0]);
-
-  // Front of the trunk.
-  pair("traps", capsule(0.13, 0.34), [0.3, 1.94, 0.03], [0, 0, Math.PI / 2.4]);
-  add(null, new THREE.BoxGeometry(0.86, 0.42, 0.16), [0, 1.72, 0.28]);
-  add("abs", new THREE.BoxGeometry(0.5, 0.72, 0.16), [0, 1.04, 0.27]);
-  pair("serratus", capsule(0.08, 0.3), [0.42, 1.34, 0.18], [Math.PI / 2.6, 0, 0]);
-
-  // Back of the trunk.
-  pair("lats", new THREE.BoxGeometry(0.32, 0.86, 0.16), [0.33, 1.42, -0.27]);
-  pair("rhomboids", new THREE.BoxGeometry(0.28, 0.36, 0.14), [0.19, 1.76, -0.27]);
-  add("erectors", new THREE.BoxGeometry(0.3, 1.1, 0.16), [0, 1.12, -0.28]);
-
-  // Shoulders and arms.
-  pair("delts", new THREE.SphereGeometry(0.26, 20, 14), [0.62, 1.86, 0]);
-  pair("biceps", capsule(0.13, 0.42), [0.7, 1.46, 0.09], [0, 0, 0.12]);
-  pair("triceps", capsule(0.13, 0.42), [0.72, 1.46, -0.09], [0, 0, 0.12]);
-  pair("forearms", capsule(0.11, 0.5), [0.8, 0.86, 0.02], [0, 0, 0.06]);
-  pair(null, new THREE.SphereGeometry(0.11, 14, 10), [0.83, 0.52, 0.02]);
-
-  // Hips and legs.
-  pair("glutes", new THREE.SphereGeometry(0.28, 20, 14), [0.24, 0.16, -0.22]);
-  pair("quads", capsule(0.21, 0.72), [0.28, -0.42, 0.08]);
-  pair("hamstrings", capsule(0.18, 0.7), [0.28, -0.44, -0.14]);
-  pair("adductors", capsule(0.11, 0.62), [0.11, -0.46, -0.01]);
-  pair(null, new THREE.SphereGeometry(0.16, 16, 12), [0.28, -1.02, 0]);
-  pair("calves", capsule(0.16, 0.48), [0.28, -1.42, -0.06]);
-  pair(null, capsule(0.1, 0.42), [0.28, -1.48, 0.06]);
-  pair(null, new THREE.BoxGeometry(0.26, 0.14, 0.52), [0.28, -1.92, 0.1]);
-
-  group.position.y = -0.15;
   return { group, regions, inert };
 }
