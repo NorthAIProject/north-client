@@ -109,7 +109,11 @@ func (s *Service) List(ctx context.Context, userID uuid.UUID, limit int) ([]Chec
 	if limit <= 0 || limit > 100 {
 		limit = listDefault
 	}
-	return s.repo.List(ctx, userID, limit)
+	list, err := s.repo.List(ctx, userID, limit)
+	if err != nil {
+		return nil, err
+	}
+	return s.withGoalTitles(ctx, userID, list), nil
 }
 
 func (s *Service) Update(ctx context.Context, id, userID uuid.UUID, in Input) (CheckIn, error) {
@@ -130,10 +134,45 @@ func (s *Service) Update(ctx context.Context, id, userID uuid.UUID, in Input) (C
 	})
 }
 
+// Delete removes a check-in. It only affects rows the caller owns.
+func (s *Service) Delete(ctx context.Context, id, userID uuid.UUID) error {
+	return s.repo.Delete(ctx, id, userID)
+}
+
 // RecentForContext returns the last two weeks of check-ins for the coach.
 func (s *Service) RecentForContext(ctx context.Context, user users.User) ([]CheckIn, error) {
 	since := LocalDate(user, time.Now()).AddDate(0, 0, -(contextDays - 1))
-	return s.repo.ListSince(ctx, user.ID, since, contextLimit)
+	list, err := s.repo.ListSince(ctx, user.ID, since, contextLimit)
+	if err != nil {
+		return nil, err
+	}
+	return s.withGoalTitles(ctx, user.ID, list), nil
+}
+
+// withGoalTitles fills RelatedGoalTitle on each check-in that links to a
+// goal. Lookups are best-effort: a goal that fails to resolve (deleted,
+// lookup unavailable) leaves the title blank rather than failing the list.
+func (s *Service) withGoalTitles(ctx context.Context, userID uuid.UUID, list []CheckIn) []CheckIn {
+	if s.goals == nil {
+		return list
+	}
+	titles := make(map[uuid.UUID]string)
+	for i, c := range list {
+		if c.RelatedGoalID == nil {
+			continue
+		}
+		title, ok := titles[*c.RelatedGoalID]
+		if !ok {
+			g, err := s.goals.Get(ctx, *c.RelatedGoalID, userID)
+			if err != nil {
+				continue
+			}
+			title = g.Title
+			titles[*c.RelatedGoalID] = title
+		}
+		list[i].RelatedGoalTitle = title
+	}
+	return list
 }
 
 // Streak is consecutive local days with a check-in, ending today or yesterday.

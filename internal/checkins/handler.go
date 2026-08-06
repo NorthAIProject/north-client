@@ -30,6 +30,8 @@ func NewHandler(svc *Service, goals *goals.Service) *Handler {
 func (h *Handler) Routes(r chi.Router) {
 	r.Get("/check-ins", h.index)
 	r.Post("/check-ins", h.upsert)
+	r.Patch("/check-ins/{id}", h.update)
+	r.Delete("/check-ins/{id}", h.delete)
 }
 
 func (h *Handler) index(w http.ResponseWriter, r *http.Request) {
@@ -83,6 +85,61 @@ func (h *Handler) upsert(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Redirect(w, r, "/app/check-ins?saved=1", http.StatusSeeOther)
+}
+
+func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		h.fail(w, r, apperr.ErrValidation)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		h.fail(w, r, apperr.ErrValidation)
+		return
+	}
+
+	form := formFrom(r)
+	in := inputFrom(form)
+
+	if _, err := h.svc.Update(r.Context(), id, user.ID, in); err != nil {
+		var fieldErrs apperr.FieldErrors
+		if apperr.As(err, &fieldErrs) {
+			form.Errors = fieldErrs.Messages()
+			list, listErr := h.svc.List(r.Context(), user.ID, 30)
+			if listErr != nil {
+				h.fail(w, r, listErr)
+				return
+			}
+			active, _ := h.goals.ListActive(r.Context(), user.ID)
+			streak, _ := h.svc.Streak(r.Context(), user)
+			render(w, r, http.StatusUnprocessableEntity, checkinpages.IndexPage(user, list, form, active, streak, true))
+			return
+		}
+		h.fail(w, r, err)
+		return
+	}
+
+	http.Redirect(w, r, "/app/check-ins?saved=1", http.StatusSeeOther)
+}
+
+func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		h.fail(w, r, apperr.ErrValidation)
+		return
+	}
+
+	if err := h.svc.Delete(r.Context(), id, user.ID); err != nil {
+		h.fail(w, r, err)
+		return
+	}
+
+	http.Redirect(w, r, "/app/check-ins", http.StatusSeeOther)
 }
 
 func formFrom(r *http.Request) checkinpages.CheckInForm {

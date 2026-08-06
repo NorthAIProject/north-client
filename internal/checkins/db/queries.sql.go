@@ -12,6 +12,23 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const deleteCheckIn = `-- name: DeleteCheckIn :execrows
+DELETE FROM check_ins WHERE id = $1 AND user_id = $2
+`
+
+type DeleteCheckInParams struct {
+	ID     uuid.UUID
+	UserID uuid.UUID
+}
+
+func (q *Queries) DeleteCheckIn(ctx context.Context, arg DeleteCheckInParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteCheckIn, arg.ID, arg.UserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getCheckIn = `-- name: GetCheckIn :one
 SELECT id, user_id, local_date, mood, energy, wins, challenges, notes, related_goal_id, created_at, updated_at FROM check_ins WHERE id = $1 AND user_id = $2
 `

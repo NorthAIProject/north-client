@@ -117,6 +117,17 @@ func (r *Repository) Update(ctx context.Context, id, userID uuid.UUID, w Write) 
 	return fromDB(row), nil
 }
 
+func (r *Repository) Delete(ctx context.Context, id, userID uuid.UUID) error {
+	n, err := r.q.DeleteCheckIn(ctx, checkinsdb.DeleteCheckInParams{ID: id, UserID: userID})
+	if err != nil {
+		return apperr.Wrap(err, "delete check-in")
+	}
+	if n == 0 {
+		return apperr.ErrNotFound
+	}
+	return nil
+}
+
 func (r *Repository) Dates(ctx context.Context, userID uuid.UUID, limit int) ([]time.Time, error) {
 	rows, err := r.q.ListCheckInDates(ctx, checkinsdb.ListCheckInDatesParams{
 		UserID: userID,

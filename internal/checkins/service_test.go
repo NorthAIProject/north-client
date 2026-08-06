@@ -123,6 +123,64 @@ func TestStreak(t *testing.T) {
 	}
 }
 
+func TestDeleteOwnershipIsolation(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	owner := seedUser(t, pool, "deleteowner@north.test", "UTC")
+	stranger := seedUser(t, pool, "deletestranger@north.test", "UTC")
+	svc := checkins.NewService(checkins.NewRepository(pool), nil)
+
+	created, err := svc.UpsertToday(ctx, owner, checkins.Input{Mood: 3, Energy: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := svc.Delete(ctx, created.ID, stranger.ID); !apperr.Is(err, apperr.ErrNotFound) {
+		t.Fatalf("stranger delete: %v", err)
+	}
+
+	if err := svc.Delete(ctx, created.ID, owner.ID); err != nil {
+		t.Fatalf("owner delete: %v", err)
+	}
+
+	if _, err := svc.Get(ctx, created.ID, owner.ID); !apperr.Is(err, apperr.ErrNotFound) {
+		t.Fatalf("expected not found after delete, got %v", err)
+	}
+}
+
+func TestListPopulatesRelatedGoalTitle(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	user := seedUser(t, pool, "goaltitle@north.test", "UTC")
+	goalSvc := goals.NewService(goals.NewRepository(pool))
+	svc := checkins.NewService(checkins.NewRepository(pool), goalSvc)
+
+	g, err := goalSvc.Create(ctx, user.ID, goals.Input{
+		Title:    "Run a marathon",
+		Category: goals.CategoryFitness,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := svc.UpsertToday(ctx, user, checkins.Input{
+		Mood: 4, Energy: 4, RelatedGoalID: &g.ID,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	list, err := svc.List(ctx, user.ID, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 {
+		t.Fatalf("want 1 row, got %d", len(list))
+	}
+	if list[0].RelatedGoalTitle != "Run a marathon" {
+		t.Fatalf("RelatedGoalTitle = %q, want %q", list[0].RelatedGoalTitle, "Run a marathon")
+	}
+}
+
 func TestRelatedGoalMustBelongToUser(t *testing.T) {
 	pool := testdb.New(t)
 	ctx := context.Background()
@@ -140,6 +198,35 @@ func TestRelatedGoalMustBelongToUser(t *testing.T) {
 	}
 
 	_, err = svc.UpsertToday(ctx, user, checkins.Input{
+		Mood: 3, Energy: 3, RelatedGoalID: &g.ID,
+	})
+	if err == nil {
+		t.Fatal("expected ownership error for foreign goal")
+	}
+}
+
+func TestUpdateRelatedGoalMustBelongToUser(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	user := seedUser(t, pool, "updategoalowner@north.test", "UTC")
+	stranger := seedUser(t, pool, "updategoalstranger@north.test", "UTC")
+	goalSvc := goals.NewService(goals.NewRepository(pool))
+	svc := checkins.NewService(checkins.NewRepository(pool), goalSvc)
+
+	created, err := svc.UpsertToday(ctx, user, checkins.Input{Mood: 3, Energy: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	g, err := goalSvc.Create(ctx, stranger.ID, goals.Input{
+		Title:    "Stranger goal",
+		Category: goals.CategoryFitness,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = svc.Update(ctx, created.ID, user.ID, checkins.Input{
 		Mood: 3, Energy: 3, RelatedGoalID: &g.ID,
 	})
 	if err == nil {
