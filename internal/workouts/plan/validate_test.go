@@ -180,6 +180,48 @@ func TestValidateRequiresNameAndRationale(t *testing.T) {
 	}
 }
 
+func TestValidateDropsMuscleKeysOutsideTheTaxonomy(t *testing.T) {
+	t.Parallel()
+
+	ex := exercise("Push-up", "none")
+	ex.Primary = []string{"chest", "abs"} // "chest" is not a MuscleGroups key
+	ex.Secondary = []string{"triceps", "shoulders"}
+	ex.Stabilizers = []string{"not-a-key"}
+
+	plan := planWith(
+		day("Monday", ex),
+		day("Wednesday", exercise("Push-up", "none")),
+		day("Friday", exercise("Push-up", "none")),
+	)
+
+	if problems := Validate(plan, dumbbellOnly()); len(problems) != 0 {
+		t.Fatalf("an out-of-taxonomy muscle key should be dropped, not rejected: %v", problems)
+	}
+
+	got := plan.Days[0].Exercises[0]
+	if want := []string{"abs"}; !equalStrings(got.Primary, want) {
+		t.Errorf("Primary = %v, want %v", got.Primary, want)
+	}
+	if want := []string{"triceps"}; !equalStrings(got.Secondary, want) {
+		t.Errorf("Secondary = %v, want %v", got.Secondary, want)
+	}
+	if len(got.Stabilizers) != 0 {
+		t.Errorf("Stabilizers = %v, want empty", got.Stabilizers)
+	}
+}
+
+func equalStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
 func TestEquipmentTheyOwnIsAccepted(t *testing.T) {
 	t.Parallel()
 

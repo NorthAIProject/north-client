@@ -52,6 +52,14 @@ type Exercise struct {
 	// Substitute keeps a session possible when the gym is busy or a piece of
 	// equipment is taken.
 	Substitute string `json:"substitute"`
+
+	// Primary, Secondary, and Stabilizers are muscle keys from MuscleGroups
+	// (NOR-8) — what the 3D viewer highlights for this exercise. Constrained
+	// by PlanSchema's enum, so these never need fuzzy-matching against the
+	// free-text exercise Name.
+	Primary     []string `json:"primary_muscles"`
+	Secondary   []string `json:"secondary_muscles"`
+	Stabilizers []string `json:"stabilizer_muscles"`
 }
 
 // PlanSchema is the shape the model must return.
@@ -60,15 +68,20 @@ type Exercise struct {
 // so it commits to a structure in prose and then follows it. Asking for the
 // conclusion first produces worse conclusions.
 func PlanSchema() *ai.Schema {
+	muscleGroup := func(desc string) *ai.Schema { return ai.Enum(desc, MuscleGroups...) }
+
 	exercise := ai.Object("a single exercise", map[string]*ai.Schema{
-		"name":         ai.String("the exercise, as a lifter would name it"),
-		"sets":         ai.Integer("number of working sets"),
-		"reps":         ai.String("rep range as written on a programme, such as 8-12, 5, or AMRAP"),
-		"rest_seconds": ai.Integer("rest between sets, in seconds"),
-		"equipment":    ai.String("equipment this needs; must be something the person said they have"),
-		"form_cues":    ai.String("one short cue for the thing most likely to go wrong"),
-		"substitute":   ai.String("an alternative if the equipment is unavailable"),
-	}, "name", "sets", "reps", "rest_seconds", "equipment", "form_cues", "substitute")
+		"name":               ai.String("the exercise, as a lifter would name it"),
+		"sets":               ai.Integer("number of working sets"),
+		"reps":               ai.String("rep range as written on a programme, such as 8-12, 5, or AMRAP"),
+		"rest_seconds":       ai.Integer("rest between sets, in seconds"),
+		"equipment":          ai.String("equipment this needs; must be something the person said they have"),
+		"form_cues":          ai.String("one short cue for the thing most likely to go wrong"),
+		"substitute":         ai.String("an alternative if the equipment is unavailable"),
+		"primary_muscles":    ai.Array("the one or two muscle groups doing most of the work", muscleGroup("a primary muscle group")),
+		"secondary_muscles":  ai.Array("muscle groups meaningfully involved but not the main target", muscleGroup("a secondary muscle group")),
+		"stabilizer_muscles": ai.Array("muscle groups bracing or stabilising the movement, without driving it", muscleGroup("a stabilizer muscle group")),
+	}, "name", "sets", "reps", "rest_seconds", "equipment", "form_cues", "substitute", "primary_muscles", "secondary_muscles", "stabilizer_muscles")
 
 	day := ai.Object("one training day", map[string]*ai.Schema{
 		"weekday":   ai.String("which day, such as Monday"),
@@ -109,8 +122,30 @@ func (p Plan) Summary() string {
 			}
 			fmt.Fprintf(&b, "%s %dx%s", e.Name, e.Sets, e.Reps)
 		}
+		if emphasis := dayEmphasis(d); emphasis != "" {
+			fmt.Fprintf(&b, " (emphasis: %s)", emphasis)
+		}
 		b.WriteString("\n")
 	}
 
 	return b.String()
+}
+
+// dayEmphasis lists the day's primary muscle groups once each, in the order
+// they first appear across its exercises — the coach's read of "what does
+// this session actually train", derived from the same muscle data the 3D
+// viewer highlights (NOR-8), not a separate judgement.
+func dayEmphasis(d PlanDay) string {
+	seen := make(map[string]bool)
+	var groups []string
+	for _, e := range d.Exercises {
+		for _, key := range e.Primary {
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			groups = append(groups, key)
+		}
+	}
+	return strings.Join(groups, ", ")
 }
