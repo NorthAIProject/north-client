@@ -1,12 +1,20 @@
 /**
- * The muscle viewer on the marketing page.
+ * The muscle viewer (NOR-8). Shared between the marketing landing page and the
+ * real /app/training pages — one module, two callers, no page-specific logic here.
  *
  * The figure is a real anatomical model (NOR-6): a Z-Anatomy-derived muscle set
  * (CC BY-SA 4.0, hpfrei/body-anatomy-3d-viewer) layered under a translucent skin
  * shell (CC BY, ferrumiron6) — see web/assets/models/README.md for the full
  * attribution and how body.glb was built. Every muscle mesh is tagged with a
- * muscle key by name, and the shares come from the readout beside the canvas, so
- * the numbers a visitor reads are the numbers being coloured.
+ * muscle key by name.
+ *
+ * Two ways to drive the colouring:
+ *   - setLoads([{key, share, role}]) — continuous, per-muscle percentages. Used
+ *     by the landing demo, which has its own richer readout beside the canvas.
+ *   - setMuscleGroups({primary, secondary, stabilizers}) — the production data
+ *     contract (NOR-8): three flat arrays of muscle keys, no percentages, because
+ *     that's what the AI plan generator actually produces. This is an adapter
+ *     over setLoads with a fixed intensity per tier, not a separate code path.
  */
 import * as THREE from "/assets/js/vendor/three.module.min.js";
 import { RoomEnvironment } from "/assets/js/vendor/three-room-environment.module.js";
@@ -58,7 +66,24 @@ function createShadowTexture() {
   return texture;
 }
 
+// Cheap to check before spending the GLTF download and the WebGLRenderer
+// constructor call (which throws, inconsistently across browsers, rather than
+// failing predictably) — callers treat a thrown createViewer() as "no 3D here,
+// show the fallback" (see the alpine wrapper's load()).
+function hasWebGL() {
+  try {
+    const probe = document.createElement("canvas");
+    return Boolean(
+      window.WebGLRenderingContext && (probe.getContext("webgl2") || probe.getContext("webgl")),
+    );
+  } catch {
+    return false;
+  }
+}
+
 export async function createViewer(canvas, options = {}) {
+  if (!hasWebGL()) throw new Error("WebGL unavailable");
+
   const reduced = Boolean(options.reduced);
   let dark = options.dark !== false;
   let palette = dark ? THEME.dark : THEME.light;
@@ -126,10 +151,16 @@ export async function createViewer(canvas, options = {}) {
   let currentY = 0.35;
   let dragging = false;
   let lastX = 0;
+  let downX = 0;
+  let downY = 0;
+  let downAt = 0;
 
   const onPointerDown = (e) => {
     dragging = true;
     lastX = e.clientX;
+    downX = e.clientX;
+    downY = e.clientY;
+    downAt = performance.now();
     canvas.setPointerCapture(e.pointerId);
   };
   const onPointerMove = (e) => {
@@ -147,6 +178,36 @@ export async function createViewer(canvas, options = {}) {
   canvas.addEventListener("pointermove", onPointerMove);
   canvas.addEventListener("pointerup", onPointerRelease);
   canvas.addEventListener("pointercancel", onPointerRelease);
+
+  // ---------------------------------------------------------------------
+  // Click-to-inspect: a pointerup that barely moved and didn't linger is a
+  // click, not the end of a drag-to-rotate. Raycast against the figure and
+  // resolve the hit mesh back to a muscle key the same way loadFigure() does,
+  // so "what did I click" and "what does setLoads colour" never disagree.
+  // ---------------------------------------------------------------------
+  const raycaster = new THREE.Raycaster();
+  const pointerNDC = new THREE.Vector2();
+
+  const onPointerClick = (e) => {
+    if (!options.onMuscleClick) return;
+    const moved = Math.hypot(e.clientX - downX, e.clientY - downY);
+    if (moved > 6 || performance.now() - downAt > 500) return;
+
+    const rect = canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    pointerNDC.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    pointerNDC.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+    raycaster.setFromCamera(pointerNDC, camera);
+
+    for (const hit of raycaster.intersectObject(group, true)) {
+      const key = resolveKey(hit.object.name) || resolveKey(hit.object.parent && hit.object.parent.name);
+      if (key) {
+        options.onMuscleClick(key, MUSCLE_INFO[key] || null);
+        return;
+      }
+    }
+  };
+  canvas.addEventListener("pointerup", onPointerClick);
 
   // ---------------------------------------------------------------------
   // Sizing
@@ -213,8 +274,23 @@ export async function createViewer(canvas, options = {}) {
     }
   }
 
+  // Production data contract (NOR-8): three flat key arrays, no percentages —
+  // that's what the AI plan generator returns. share values here are fixed
+  // per tier, chosen to match the opacity tiers the landing readout already
+  // uses for Primary/Secondary/Stabiliser (demos.templ's roleShade), so the
+  // two call sites stay visually consistent even though only one of them
+  // exposes numbers to the person looking at it.
+  function setMuscleGroups({ primary = [], secondary = [], stabilizers = [] } = {}) {
+    setLoads([
+      ...primary.map((key) => ({ key, share: 100, role: "primary" })),
+      ...secondary.map((key) => ({ key, share: 55, role: "secondary" })),
+      ...stabilizers.map((key) => ({ key, share: 25, role: "stabilizer" })),
+    ]);
+  }
+
   return {
     setLoads,
+    setMuscleGroups,
     setTheme(isDark) {
       dark = isDark;
       palette = dark ? THEME.dark : THEME.light;
@@ -233,6 +309,7 @@ export async function createViewer(canvas, options = {}) {
       canvas.removeEventListener("pointermove", onPointerMove);
       canvas.removeEventListener("pointerup", onPointerRelease);
       canvas.removeEventListener("pointercancel", onPointerRelease);
+      canvas.removeEventListener("pointerup", onPointerClick);
 
       const geometries = new Set();
       const materials = new Set();
@@ -352,6 +429,27 @@ const MUSCLE_ALIASES = {
     "abdominals",
     "abs",
   ],
+};
+
+// Display name + one-line description per muscle key, for the click-to-inspect
+// panel. Same 15 keys as MUSCLE_ALIASES and internal/workouts/plan/muscle.go —
+// see that file's doc comment for the checklist to keep all three in sync.
+const MUSCLE_INFO = {
+  quads: { name: "Quadriceps", description: "Front of the thigh; straightens the knee and drives out of a squat." },
+  glutes: { name: "Glutes", description: "The hip's main extensor — powers standing up from a squat or hinge." },
+  hamstrings: { name: "Hamstrings", description: "Back of the thigh; bends the knee and extends the hip in a hinge." },
+  calves: { name: "Calves", description: "Back of the lower leg; points the foot, drives a calf raise or a jump." },
+  adductors: { name: "Adductors", description: "Inner thigh; pulls the leg toward the midline and stabilises the squat." },
+  traps: { name: "Trapezius", description: "Upper back and neck; shrugs the shoulders and stabilises overhead loads." },
+  delts: { name: "Deltoids", description: "Cap of the shoulder; raises the arm out to the side or overhead." },
+  biceps: { name: "Biceps", description: "Front of the upper arm; bends the elbow, as in a curl or a pull-up." },
+  triceps: { name: "Triceps", description: "Back of the upper arm; straightens the elbow, as in a press." },
+  forearms: { name: "Forearms", description: "Grip and wrist control; the limiting factor in most pulling work." },
+  lats: { name: "Latissimus dorsi", description: "Broadest back muscle; pulls the arm down and in, as in a pull-up or row." },
+  rhomboids: { name: "Rhomboids", description: "Between the shoulder blades; pulls them together, as in a row." },
+  erectors: { name: "Erector spinae", description: "Runs the length of the spine; keeps the back straight under load." },
+  serratus: { name: "Serratus anterior", description: "Side of the ribcage; rotates the shoulder blade during an overhead press." },
+  abs: { name: "Abdominals", description: "Front of the core; braces the trunk against load, more than it bends it." },
 };
 
 // Built once at module scope: normalized alias text -> muscle key. Both the aliases
