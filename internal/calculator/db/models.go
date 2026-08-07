@@ -67,6 +67,21 @@ type Diet struct {
 	Description string
 }
 
+type Exercise struct {
+	ID               uuid.UUID
+	Slug             string
+	Name             string
+	Category         string
+	Equipment        string
+	Difficulty       string
+	Instructions     string
+	VideoUrl         string
+	PrimaryMuscles   []string
+	SecondaryMuscles []string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+}
+
 type FoodLog struct {
 	ID            uuid.UUID
 	UserID        uuid.UUID
