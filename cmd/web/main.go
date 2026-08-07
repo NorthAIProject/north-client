@@ -30,6 +30,8 @@ import (
 	"github.com/NorthAIProject/north-client/internal/conversations"
 	"github.com/NorthAIProject/north-client/internal/fitness"
 	"github.com/NorthAIProject/north-client/internal/goals"
+	"github.com/NorthAIProject/north-client/internal/habits"
+	"github.com/NorthAIProject/north-client/internal/hydration"
 	"github.com/NorthAIProject/north-client/internal/jobs"
 	"github.com/NorthAIProject/north-client/internal/meals"
 	"github.com/NorthAIProject/north-client/internal/media"
@@ -39,6 +41,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/settings"
 	"github.com/NorthAIProject/north-client/internal/shared/database"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
+	"github.com/NorthAIProject/north-client/internal/sleep"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/workouts"
 	"github.com/NorthAIProject/north-client/web/app"
@@ -240,6 +243,13 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, stora
 	mindSvc := mind.NewService(mind.NewRepository(pool), checkinSvc)
 	mindHandler := mind.NewHandler(mindSvc)
 
+	// Daily lifestyle signals. None of these own a page: they are logged from
+	// /app/care, the same way biometrics and preferences are reached through
+	// calculator and settings.
+	hydrationSvc := hydration.NewService(hydration.NewRepository(pool))
+	sleepSvc := sleep.NewService(sleep.NewRepository(pool))
+	habitSvc := habits.NewService(habits.NewRepository(pool))
+
 	careHandler := care.NewHandler(mealReminderSvc, checkinSvc)
 
 	coachSvc := coach.NewService(coach.Options{
@@ -259,6 +269,9 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, stora
 			meals.NewContextSource(mealProgressSvc, mealDietSvc),
 			preferences.NewContextSource(preferencesSvc),
 			mind.NewContextSource(mindSvc),
+			hydration.NewContextSource(hydrationSvc),
+			sleep.NewContextSource(sleepSvc),
+			habits.NewContextSource(habitSvc),
 		),
 		PromptBuilder: coach.NewPromptBuilder(),
 		Queue:         queue,

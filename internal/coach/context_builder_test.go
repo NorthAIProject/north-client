@@ -48,6 +48,8 @@ func TestNewSectionsRenderWithEmptyStateLabels(t *testing.T) {
 	for _, want := range []string{
 		"Fitness & nutrition targets: not calculated yet",
 		"Today's nutrition: nothing logged yet",
+		"Sleep & hydration: nothing logged yet",
+		"Habits: none set up yet",
 		"Preferences: not set yet",
 		"Reflections: none yet",
 	} {
@@ -68,6 +70,17 @@ func TestNewSectionsRenderContentWhenSourcesFillThem(t *testing.T) {
 		fakeSource{name: "nutrition", fill: func(c *coach.Context) { c.Nutrition = append(c.Nutrition, "2 Jan: 1800/2136 kcal logged") }},
 		fakeSource{name: "preferences", fill: func(c *coach.Context) { c.Preferences = append(c.Preferences, "Units: metric") }},
 		fakeSource{name: "reflections", fill: func(c *coach.Context) { c.Reflections = append(c.Reflections, "Feeling good this week") }},
+		// Two sources sharing one heading, the arrangement the DailySignals
+		// field exists for.
+		fakeSource{name: "sleep", fill: func(c *coach.Context) {
+			c.DailySignals = append(c.DailySignals, "Sleep: averaging 6.2h over the last 5 nights")
+		}},
+		fakeSource{name: "hydration", fill: func(c *coach.Context) {
+			c.DailySignals = append(c.DailySignals, "Water today: 1.5L of a 2.0L target (75%), across 4 drinks")
+		}},
+		fakeSource{name: "habits", fill: func(c *coach.Context) {
+			c.Habits = append(c.Habits, "Meditate (personal, every day): kept 5 of 6 (83%), 2 day streak")
+		}},
 	)
 
 	ctx, err := builder.Build(context.Background(), coach.ContextRequest{User: testUser()})
@@ -81,6 +94,9 @@ func TestNewSectionsRenderContentWhenSourcesFillThem(t *testing.T) {
 		"1800/2136 kcal logged",
 		"Units: metric",
 		"Feeling good this week",
+		"averaging 6.2h over the last 5 nights",
+		"1.5L of a 2.0L target",
+		"2 day streak",
 	} {
 		if !strings.Contains(rendered, want) {
 			t.Errorf("rendered context missing %q:\n%s", want, rendered)

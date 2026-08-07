@@ -68,6 +68,22 @@ type Context struct {
 	// Reflections is recent mood trend and journal entries (internal/mind),
 	// giving the coach visibility beyond the structured check-in fields.
 	Reflections []string
+
+	// DailySignals is the day-to-day lifestyle background: sleep and
+	// hydration. Populated by two sources for the same reason FitnessSummary
+	// is — these are the ambient numbers a coach reads before interpreting
+	// anything else, and one heading each would make the prompt a list of
+	// near-empty sections.
+	//
+	// They matter here more than their size suggests: bad sleep is the
+	// likeliest explanation for a week that went wrong in every other domain,
+	// and the coach can only make that connection if it can see both.
+	DailySignals []string
+
+	// Habits is recurring intentions with their streaks and adherence
+	// (internal/habits). Separate from DailySignals because it carries an
+	// expectation: a missed habit is information, a missed log is not.
+	Habits []string
 }
 
 // ContextSource contributes one section of the context.
@@ -194,6 +210,8 @@ func (c *Context) Render() string {
 
 	section(&b, "Fitness & nutrition targets", c.FitnessSummary, "not calculated yet")
 	section(&b, "Today's nutrition", c.Nutrition, "nothing logged yet")
+	section(&b, "Sleep & hydration", c.DailySignals, "nothing logged yet")
+	section(&b, "Habits", c.Habits, "none set up yet")
 	section(&b, "Preferences", c.Preferences, "not set yet")
 	section(&b, "Reflections", c.Reflections, "none yet")
 
