@@ -145,6 +145,26 @@ type apiActivity struct {
 	MovingTime  int     `json:"moving_time"`
 	Calories    float64 `json:"calories"`
 	Distance    float64 `json:"distance"`
+
+	TotalElevationGain float64 `json:"total_elevation_gain"`
+	AverageSpeed       float64 `json:"average_speed"`
+
+	// Map carries the route. The list endpoint returns only the summary
+	// polyline, which is exactly the resolution a route drawn a few hundred
+	// pixels wide can show — fetching full streams would cost one request per
+	// activity against a 100-per-15-minutes budget for detail nobody sees.
+	Map struct {
+		SummaryPolyline string `json:"summary_polyline"`
+	} `json:"map"`
+}
+
+// sport prefers the newer sport_type and falls back to the legacy type, so
+// stored rows carry whichever one Strava actually sent.
+func (a apiActivity) sport() string {
+	if a.SportType != "" {
+		return a.SportType
+	}
+	return a.Type
 }
 
 // fetchActivities returns the athlete's activities after `after`, most

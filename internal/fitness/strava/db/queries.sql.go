@@ -42,6 +42,53 @@ func (q *Queries) GetStravaConnection(ctx context.Context, userID uuid.UUID) (St
 	return i, err
 }
 
+const listStravaActivities = `-- name: ListStravaActivities :many
+SELECT id, user_id, strava_id, name, sport_type, start_date, distance_m, moving_time_s, elapsed_time_s, total_elevation_gain_m, average_speed_ms, summary_polyline, created_at, updated_at FROM strava_activities
+WHERE user_id = $1
+ORDER BY start_date DESC
+LIMIT $2
+`
+
+type ListStravaActivitiesParams struct {
+	UserID uuid.UUID
+	Limit  int32
+}
+
+func (q *Queries) ListStravaActivities(ctx context.Context, arg ListStravaActivitiesParams) ([]StravaActivity, error) {
+	rows, err := q.db.Query(ctx, listStravaActivities, arg.UserID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []StravaActivity{}
+	for rows.Next() {
+		var i StravaActivity
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.StravaID,
+			&i.Name,
+			&i.SportType,
+			&i.StartDate,
+			&i.DistanceM,
+			&i.MovingTimeS,
+			&i.ElapsedTimeS,
+			&i.TotalElevationGainM,
+			&i.AverageSpeedMs,
+			&i.SummaryPolyline,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const markStravaSynced = `-- name: MarkStravaSynced :exec
 UPDATE strava_connections
 SET last_synced_at = $2, updated_at = now()
@@ -92,6 +139,58 @@ func (q *Queries) UpdateStravaTokens(ctx context.Context, arg UpdateStravaTokens
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const upsertStravaActivity = `-- name: UpsertStravaActivity :exec
+INSERT INTO strava_activities (
+    user_id, strava_id, name, sport_type, start_date,
+    distance_m, moving_time_s, elapsed_time_s,
+    total_elevation_gain_m, average_speed_ms, summary_polyline
+) VALUES (
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
+)
+ON CONFLICT (user_id, strava_id) DO UPDATE SET
+    name                   = EXCLUDED.name,
+    sport_type             = EXCLUDED.sport_type,
+    start_date             = EXCLUDED.start_date,
+    distance_m             = EXCLUDED.distance_m,
+    moving_time_s          = EXCLUDED.moving_time_s,
+    elapsed_time_s         = EXCLUDED.elapsed_time_s,
+    total_elevation_gain_m = EXCLUDED.total_elevation_gain_m,
+    average_speed_ms       = EXCLUDED.average_speed_ms,
+    summary_polyline       = EXCLUDED.summary_polyline,
+    updated_at             = now()
+`
+
+type UpsertStravaActivityParams struct {
+	UserID              uuid.UUID
+	StravaID            int64
+	Name                string
+	SportType           string
+	StartDate           time.Time
+	DistanceM           float64
+	MovingTimeS         int32
+	ElapsedTimeS        int32
+	TotalElevationGainM float64
+	AverageSpeedMs      float64
+	SummaryPolyline     string
+}
+
+func (q *Queries) UpsertStravaActivity(ctx context.Context, arg UpsertStravaActivityParams) error {
+	_, err := q.db.Exec(ctx, upsertStravaActivity,
+		arg.UserID,
+		arg.StravaID,
+		arg.Name,
+		arg.SportType,
+		arg.StartDate,
+		arg.DistanceM,
+		arg.MovingTimeS,
+		arg.ElapsedTimeS,
+		arg.TotalElevationGainM,
+		arg.AverageSpeedMs,
+		arg.SummaryPolyline,
+	)
+	return err
 }
 
 const upsertStravaConnection = `-- name: UpsertStravaConnection :one
