@@ -106,7 +106,7 @@ func (h *Handler) addMeal(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, apperr.ErrNotFound)
 		return
 	}
-	if err := r.ParseForm(); err != nil {
+	if err = r.ParseForm(); err != nil {
 		h.fail(w, r, apperr.ErrValidation)
 		return
 	}

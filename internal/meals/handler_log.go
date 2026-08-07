@@ -33,7 +33,8 @@ func (h *Handler) logIndex(w http.ResponseWriter, r *http.Request) {
 	var recommendationMsg string
 	hasRecommendation := false
 	if hasProgress {
-		rec, err := h.recommend.Recommend(ctx, user.ID)
+		var rec Recommendation
+		rec, err = h.recommend.Recommend(ctx, user.ID)
 		if err != nil {
 			h.fail(w, r, err)
 			return

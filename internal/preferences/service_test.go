@@ -63,7 +63,7 @@ func TestUpsertSavesAndOverwrites(t *testing.T) {
 	}
 
 	// A second upsert overwrites in place — no history to accumulate.
-	if _, err := svc.Upsert(ctx, user.ID, preferences.Input{UnitsSystem: preferences.UnitsMetric}); err != nil {
+	if _, err = svc.Upsert(ctx, user.ID, preferences.Input{UnitsSystem: preferences.UnitsMetric}); err != nil {
 		t.Fatalf("second upsert: %v", err)
 	}
 	p, err = svc.Get(ctx, user.ID)
