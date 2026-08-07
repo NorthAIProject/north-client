@@ -76,6 +76,58 @@ var METTable = []MET{
 	{"martial_arts", "Martial arts", "sport", 10.3},
 	{"climbing", "Rock climbing", "sport", 8.0},
 	{"skiing", "Downhill skiing", "sport", 6.0},
+
+	// Ported from the FitMe project's activity list, which stores calories per
+	// hour rather than METs. Converted by dividing by the 70kg reference body
+	// weight its figures are built on, then rounded to one decimal.
+	//
+	// Where the two lists overlapped they agreed to within a few percent —
+	// downhill skiing 6.2 against 6.0, golf 4.7 against 4.8, martial arts 10.4
+	// against 10.3 — so the entries above were kept and the duplicates
+	// dropped. The one real disagreement was hatha yoga, which FitMe puts at
+	// 4.1 against the Compendium's 2.5; the existing value stands.
+	{"cycling_stationary_very_light", "Stationary cycling (very light)", "cardio", 3.1},
+	{"cycling_stationary_light", "Stationary cycling (light)", "cardio", 5.7},
+	{"cycling_stationary_moderate", "Stationary cycling (moderate)", "cardio", 7.3},
+	{"cycling_stationary_vigorous", "Stationary cycling (vigorous)", "cardio", 10.9},
+	{"cycling_stationary_very_vigorous", "Stationary cycling (very vigorous)", "cardio", 13.0},
+	{"cycling_mountain", "Mountain biking / BMX", "cardio", 8.8},
+	{"unicycling", "Unicycling", "cardio", 5.2},
+	{"race_walking", "Race walking", "cardio", 6.7},
+	{"walking_with_children", "Walking with children or a stroller", "cardio", 2.6},
+	{"step_aerobics", "Step aerobics", "cardio", 8.8},
+	{"water_aerobics", "Water aerobics", "cardio", 4.1},
+	{"water_jogging", "Water jogging", "cardio", 8.3},
+	{"ballroom_dancing_slow", "Ballroom dancing (slow)", "cardio", 3.1},
+	{"ballroom_dancing_fast", "Ballroom dancing (fast)", "cardio", 5.7},
+
+	{"canoeing_light", "Canoeing or rowing (light)", "sport", 3.1},
+	{"canoeing_moderate", "Canoeing or rowing (moderate)", "sport", 7.3},
+	{"canoeing_vigorous", "Canoeing or rowing (vigorous)", "sport", 12.4},
+	{"sculling_competition", "Sculling or crew (competition)", "sport", 12.4},
+	{"kayaking_whitewater", "Whitewater kayaking or rafting", "sport", 5.2},
+	{"sailing", "Sailing or windsurfing", "sport", 3.1},
+	{"surfing", "Surfing", "sport", 3.1},
+	{"water_skiing", "Water skiing", "sport", 6.2},
+
+	{"skiing_downhill_light", "Downhill skiing (light)", "sport", 5.2},
+	{"skiing_downhill_racing", "Downhill skiing (racing)", "sport", 8.3},
+	{"skiing_cross_country_slow", "Cross-country skiing (slow)", "sport", 7.3},
+	{"skiing_cross_country_moderate", "Cross-country skiing (moderate)", "sport", 8.3},
+	{"skiing_cross_country_vigorous", "Cross-country skiing (vigorous)", "sport", 9.3},
+	{"skiing_cross_country_racing", "Cross-country skiing (racing)", "sport", 14.5},
+
+	{"ice_hockey", "Ice hockey", "sport", 8.3},
+	{"kickboxing", "Kickboxing", "sport", 10.4},
+	{"table_tennis", "Table tennis", "sport", 4.1},
+	{"volleyball", "Volleyball", "sport", 3.1},
+	{"water_volleyball", "Water volleyball", "sport", 3.1},
+	{"basketball_shooting", "Basketball (shooting baskets)", "sport", 4.7},
+	{"baseball_softball", "Baseball or softball", "sport", 5.2},
+	{"playing_catch", "Playing catch", "sport", 2.6},
+	{"golf_pulling_clubs", "Golf (walking, pulling clubs)", "sport", 4.5},
+	{"horseback_riding", "Horseback riding (walking)", "sport", 2.6},
+	{"coaching_sports", "Coaching a team sport", "sport", 4.1},
 }
 
 // LookupMET finds a MET entry by code.
