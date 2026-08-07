@@ -110,3 +110,35 @@ func TestAFailingSourceDoesNotAbortTheOthers(t *testing.T) {
 		t.Fatalf("the working source's data should still be present:\n%s", rendered)
 	}
 }
+
+// TestCheckInsRenderUnderTheirHeading covers the coach half of NOR-10: whatever
+// the check-ins source collects has to reach the prompt under a heading the
+// model can attribute, and its absence has to stay explicit rather than silent.
+func TestCheckInsRenderUnderTheirHeading(t *testing.T) {
+	pool := testdb.New(t)
+	convos := conversations.NewService(conversations.NewRepository(pool))
+
+	const summary = "6 Aug — mood 4/5, energy 2/5. Notes: sleep was the limiter"
+
+	filled, err := coach.NewContextBuilder(convos,
+		fakeSource{name: "check-ins", fill: func(c *coach.Context) {
+			c.CheckIns = append(c.CheckIns, summary)
+		}},
+	).Build(context.Background(), coach.ContextRequest{User: testUser()})
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+
+	rendered := filled.Render()
+	if !strings.Contains(rendered, "Recent check-ins:\n- "+summary) {
+		t.Fatalf("check-ins should render as bullets under their heading:\n%s", rendered)
+	}
+
+	empty, err := coach.NewContextBuilder(convos).Build(context.Background(), coach.ContextRequest{User: testUser()})
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	if !strings.Contains(empty.Render(), "Recent check-ins: none recorded yet") {
+		t.Fatalf("an empty section must say so rather than go missing:\n%s", empty.Render())
+	}
+}

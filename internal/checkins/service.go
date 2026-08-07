@@ -13,8 +13,11 @@ import (
 )
 
 const (
-	contextDays  = 14
-	contextLimit = 10
+	contextDays = 14
+	// contextLimit is a safety bound on the query, not a second window: it must
+	// stay >= contextDays, or a user who checks in daily silently loses the
+	// older days the coach has been told it can see.
+	contextLimit = contextDays
 	listDefault  = 30
 	streakLook   = 400
 )

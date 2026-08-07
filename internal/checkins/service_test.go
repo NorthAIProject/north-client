@@ -233,3 +233,78 @@ func TestUpdateRelatedGoalMustBelongToUser(t *testing.T) {
 		t.Fatal("expected ownership error for foreign goal")
 	}
 }
+
+// seedDays writes one check-in per offset, counted back from the user's local
+// today. Backdating cannot go through UpsertToday, which always writes today.
+func seedDays(t *testing.T, repo *checkins.Repository, user users.User, offsets ...int) {
+	t.Helper()
+	today := checkins.LocalDate(user, time.Now())
+	for _, offset := range offsets {
+		if _, err := repo.Upsert(context.Background(), user.ID, checkins.Write{
+			LocalDate: today.AddDate(0, 0, -offset),
+			Mood:      3,
+			Energy:    3,
+		}); err != nil {
+			t.Fatalf("seed day -%d: %v", offset, err)
+		}
+	}
+}
+
+// TestRecentForContextHonoursTheWindow pins the boundary the coach relies on:
+// a check-in from three weeks ago is history, not context.
+func TestRecentForContextHonoursTheWindow(t *testing.T) {
+	pool := testdb.New(t)
+	user := seedUser(t, pool, "window@north.test", "Europe/Lisbon")
+	repo := checkins.NewRepository(pool)
+	svc := checkins.NewService(repo, nil)
+
+	seedDays(t, repo, user, 0, 3, 13, 20)
+
+	list, err := svc.RecentForContext(context.Background(), user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 3 {
+		t.Fatalf("want the 3 check-ins inside the 14-day window, got %d", len(list))
+	}
+
+	today := checkins.LocalDate(user, time.Now())
+	oldest := today.AddDate(0, 0, -20)
+	for _, c := range list {
+		if c.LocalDate.Equal(oldest) {
+			t.Fatalf("the 20-day-old check-in should be outside the window: %+v", c)
+		}
+	}
+
+	// Newest first: the coach reads the top of the list as "most recent".
+	for i := 1; i < len(list); i++ {
+		if !list[i-1].LocalDate.After(list[i].LocalDate) {
+			t.Fatalf("check-ins should be newest first, got %s before %s",
+				list[i-1].LocalDate, list[i].LocalDate)
+		}
+	}
+}
+
+// TestRecentForContextReturnsAFullFortnight guards the row cap against the
+// window: a user who checks in every day must not silently lose the older half
+// of the fortnight the coach is told it can see.
+func TestRecentForContextReturnsAFullFortnight(t *testing.T) {
+	pool := testdb.New(t)
+	user := seedUser(t, pool, "fortnight@north.test", "Europe/Lisbon")
+	repo := checkins.NewRepository(pool)
+	svc := checkins.NewService(repo, nil)
+
+	offsets := make([]int, 0, 14)
+	for i := range 14 {
+		offsets = append(offsets, i)
+	}
+	seedDays(t, repo, user, offsets...)
+
+	list, err := svc.RecentForContext(context.Background(), user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 14 {
+		t.Fatalf("14 consecutive days of check-ins should all reach the coach, got %d", len(list))
+	}
+}

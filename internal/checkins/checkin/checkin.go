@@ -47,6 +47,9 @@ func (c CheckIn) Summary() string {
 	if challenges := strings.TrimSpace(c.Challenges); challenges != "" {
 		fmt.Fprintf(&b, ". Challenges: %s", truncate(challenges, 120))
 	}
+	if notes := strings.TrimSpace(c.Notes); notes != "" {
+		fmt.Fprintf(&b, ". Notes: %s", truncate(notes, 120))
+	}
 	return b.String()
 }
 
