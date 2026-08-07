@@ -307,7 +307,7 @@ func (c *Client) body(req ai.Request, stream bool) map[string]any {
 			"json_schema": map[string]any{
 				"name":   "response",
 				"strict": true,
-				"schema": toJSONSchema(req.ResponseSchema),
+				"schema": ai.JSONSchema(req.ResponseSchema),
 			},
 		}
 	}
@@ -331,7 +331,7 @@ func toToolPayload(tools []ai.Tool) []map[string]any {
 			"function": map[string]any{
 				"name":        tool.Name,
 				"description": tool.Description,
-				"parameters":  toJSONSchema(tool.Parameters),
+				"parameters":  ai.JSONSchema(tool.Parameters),
 			},
 		})
 	}
@@ -384,47 +384,6 @@ func toRole(r ai.Role) string {
 		return "assistant"
 	}
 	return "user"
-}
-
-// toJSONSchema renders an ai.Schema as standard JSON Schema.
-//
-// additionalProperties is false throughout because OpenAI-compatible strict
-// mode requires it; without it the request is rejected outright.
-func toJSONSchema(s *ai.Schema) map[string]any {
-	if s == nil {
-		return nil
-	}
-
-	out := map[string]any{"type": string(s.Type)}
-	if s.Description != "" {
-		out["description"] = s.Description
-	}
-	if len(s.Enum) > 0 {
-		out["enum"] = s.Enum
-	}
-	if s.Items != nil {
-		out["items"] = toJSONSchema(s.Items)
-	}
-	if len(s.Properties) > 0 {
-		props := make(map[string]any, len(s.Properties))
-		for name, prop := range s.Properties {
-			props[name] = toJSONSchema(prop)
-		}
-		out["properties"] = props
-		out["additionalProperties"] = false
-
-		required := s.Required
-		if len(required) == 0 {
-			// Strict mode requires every property to be listed as required.
-			required = make([]string, 0, len(s.Properties))
-			for name := range s.Properties {
-				required = append(required, name)
-			}
-		}
-		out["required"] = required
-	}
-
-	return out
 }
 
 func statusError(status int, detail string) error {
