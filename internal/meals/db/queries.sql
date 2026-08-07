@@ -3,10 +3,10 @@
 -- name: CreateIngredient :one
 INSERT INTO ingredients (
     user_id, name, brand, category, serving_size_grams,
-    calories_per_100g, protein_g_per_100g, fat_g_per_100g, carbs_g_per_100g,
+    calories_per_100g, protein_g_per_100g, fat_g_per_100g, saturated_fat_g_per_100g, carbs_g_per_100g,
     fiber_g_per_100g, sugar_g_per_100g, sodium_mg_per_100g, potassium_mg_per_100g, cholesterol_mg_per_100g
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 RETURNING *;
 
 -- name: GetIngredient :one
@@ -24,9 +24,9 @@ LIMIT $3;
 -- everyone, which this WHERE clause enforces by requiring ownership.
 UPDATE ingredients
 SET name = $3, brand = $4, category = $5, serving_size_grams = $6,
-    calories_per_100g = $7, protein_g_per_100g = $8, fat_g_per_100g = $9, carbs_g_per_100g = $10,
-    fiber_g_per_100g = $11, sugar_g_per_100g = $12, sodium_mg_per_100g = $13, potassium_mg_per_100g = $14,
-    cholesterol_mg_per_100g = $15, updated_at = now()
+    calories_per_100g = $7, protein_g_per_100g = $8, fat_g_per_100g = $9, saturated_fat_g_per_100g = $10,
+    carbs_g_per_100g = $11, fiber_g_per_100g = $12, sugar_g_per_100g = $13, sodium_mg_per_100g = $14,
+    potassium_mg_per_100g = $15, cholesterol_mg_per_100g = $16, updated_at = now()
 WHERE id = $1 AND user_id = $2
 RETURNING *;
 

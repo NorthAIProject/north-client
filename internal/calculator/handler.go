@@ -1,15 +1,18 @@
 package calculator
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/biometrics"
+	"github.com/NorthAIProject/north-client/internal/calculator/macroplan"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	calculatorpages "github.com/NorthAIProject/north-client/web/calculator"
@@ -22,10 +25,39 @@ import (
 type Handler struct {
 	svc        *Service
 	biometrics *biometrics.Service
+	units      UnitsLookup
 }
 
-func NewHandler(svc *Service, bio *biometrics.Service) *Handler {
-	return &Handler{svc: svc, biometrics: bio}
+// UnitsLookup is the calculator's view of internal/preferences: the units
+// system and nothing else, so this page renders in the units the person
+// already chose instead of asking them again on a second form.
+//
+// It returns a string rather than preferences.Preferences because preferences
+// imports this package — it validates its stored defaults against Goals and
+// Splits — so importing it back would be a cycle.
+type UnitsLookup interface {
+	UnitsSystem(ctx context.Context, userID uuid.UUID) (string, error)
+}
+
+func NewHandler(svc *Service, bio *biometrics.Service, units UnitsLookup) *Handler {
+	return &Handler{svc: svc, biometrics: bio, units: units}
+}
+
+// units reports the person's chosen units system, falling back to metric.
+//
+// A failure here is not worth failing the page for: the worst case is that
+// someone is shown kilograms when they wanted pounds, which is visibly wrong
+// and harmless, where an error page tells them nothing at all.
+func (h *Handler) unitsFor(ctx context.Context, userID uuid.UUID) string {
+	system, err := h.units.UnitsSystem(ctx, userID)
+	if err != nil {
+		middleware.FromContext(ctx).Warn("could not read units preference; showing metric", slog.Any("error", err))
+		return macroplan.UnitsMetric
+	}
+	if system == "" {
+		return macroplan.UnitsMetric
+	}
+	return system
 }
 
 func (h *Handler) Routes(r chi.Router) {
@@ -47,12 +79,19 @@ func (h *Handler) recordBiometrics(w http.ResponseWriter, r *http.Request) {
 	}
 
 	form := calculatorpages.BiometricsForm{
-		WeightKg: r.PostFormValue("weight_kg"), HeightCm: r.PostFormValue("height_cm"),
+		Weight: r.PostFormValue("weight"), Height: r.PostFormValue("height"),
 		DateOfBirth: r.PostFormValue("date_of_birth"), Sex: r.PostFormValue("sex"),
 	}
 
-	weight, _ := strconv.ParseFloat(form.WeightKg, 64)
-	height, _ := strconv.ParseFloat(form.HeightCm, 64)
+	units := h.unitsFor(r.Context(), user.ID)
+
+	// The form is filled in the person's own units, so it is converted here,
+	// at the edge. biometrics stores metric and knows nothing about units —
+	// its 20-400 kg validation only means anything if what reaches it is
+	// already kilograms.
+	entered, _ := strconv.ParseFloat(form.Weight, 64)
+	enteredHeight, _ := strconv.ParseFloat(form.Height, 64)
+	weight, height := macroplan.ToMetric(entered, enteredHeight, units)
 	dob, _ := time.Parse("2006-01-02", form.DateOfBirth)
 
 	if _, err := h.biometrics.Record(r.Context(), user.ID, biometrics.Input{
@@ -130,7 +169,8 @@ func (h *Handler) render(w http.ResponseWriter, r *http.Request, status int, bio
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
-	if err := calculatorpages.Page(user, bio, hasBio, plan, hasPlan, bioForm, planForm).Render(ctx, w); err != nil {
+	page := calculatorpages.Page(user, bio, hasBio, plan, hasPlan, bioForm, planForm, h.unitsFor(ctx, user.ID))
+	if err := page.Render(ctx, w); err != nil {
 		middleware.FromContext(ctx).Error("render calculator", slog.Any("error", err))
 	}
 }

@@ -1,0 +1,244 @@
+// Package exercises renders the catalog: a filterable list, and a detail page
+// that shows what a movement trains on the shared 3D model.
+package exercises
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/NorthAIProject/north-client/internal/exercises/exercise"
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/internal/workouts/plan"
+	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/muscleviewer"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/badge"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/input"
+	"github.com/NorthAIProject/north-client/web/shared/ui/selectbox"
+)
+
+// Filters carries the raw query-string values back into the form, so a
+// filtered page re-renders with its own controls still set. Raw rather than
+// normalized: showing someone a filter they did not choose is more confusing
+// than showing an unrecognised one that matched nothing.
+type Filters struct {
+	Query     string
+	Muscle    string
+	Category  string
+	Equipment string
+}
+
+// equipmentOptions are the values the catalog actually contains. Kept here
+// rather than derived from plan.EquipmentNames(): the catalog carries "none"
+// and "other", which are not equipment rules, and not every rule appears in
+// the seed.
+var equipmentOptions = []string{
+	exercise.EquipmentNone,
+	"barbell",
+	"dumbbell",
+	"kettlebell",
+	"machine",
+	"bench",
+	"pull-up bar",
+	"resistance band",
+	"bike",
+	exercise.EquipmentOther,
+}
+
+// humanize turns a stored value ("olympic_weightlifting", "pull-up bar") into
+// something readable, without a second table to keep in sync.
+func humanize(value string) string {
+	if value == "" {
+		return ""
+	}
+	spaced := strings.ReplaceAll(value, "_", " ")
+	return strings.ToUpper(spaced[:1]) + spaced[1:]
+}
+
+func summary(shown, total int) string {
+	if shown == total {
+		return fmt.Sprintf("%d exercises", total)
+	}
+	return fmt.Sprintf("Showing %d of %d exercises", shown, total)
+}
+
+templ Browse(user users.User, found []exercise.Exercise, total int, f Filters) {
+	@layout.App("Exercises", user, layout.BuildNav("/app/fitness")) {
+		<div class="mx-auto w-full max-w-4xl space-y-6 p-6 md:p-8">
+			<header>
+				@ui.MonoLabel("Fitness")
+				<h1 class="mt-2 text-2xl font-medium tracking-tight">Exercises</h1>
+				<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
+					What each movement trains, shown on the model. The coach picks from this same catalog when it writes you a plan.
+				</p>
+			</header>
+			@filterForm(f)
+			<p class="text-muted-foreground font-mono text-[10px] uppercase tracking-[0.14em]">
+				{ summary(len(found), total) }
+			</p>
+			if len(found) == 0 {
+				<p class="border-hairline text-muted-foreground rounded-lg border border-dashed px-4 py-8 text-center text-sm">
+					Nothing matched. Try a broader filter.
+				</p>
+			} else {
+				<ul class="space-y-2">
+					for _, e := range found {
+						@row(e)
+					}
+				</ul>
+			}
+		</div>
+		@selectbox.Script()
+	}
+}
+
+// A GET form, so every filtered view is a URL that can be bookmarked, shared,
+// or reloaded — and so the back button does what it looks like it does.
+templ filterForm(f Filters) {
+	<form method="get" action="/app/exercises" class="border-hairline bg-surface grid gap-3 rounded-lg border p-4 sm:grid-cols-2 lg:grid-cols-4">
+		@input.Input(input.Props{
+			Name:        "q",
+			Value:       f.Query,
+			Placeholder: "Search by name",
+			Type:        input.TypeSearch,
+		})
+		@selectbox.SelectBox() {
+			@selectbox.Trigger(selectbox.TriggerProps{ID: "muscle", Name: "muscle"}) {
+				@selectbox.Value(selectbox.ValueProps{Placeholder: "Any muscle"})
+			}
+			@selectbox.Content() {
+				for _, key := range plan.MuscleGroups {
+					@selectbox.Item(selectbox.ItemProps{Value: key, Selected: f.Muscle == key}) {
+						{ humanize(key) }
+					}
+				}
+			}
+		}
+		@selectbox.SelectBox() {
+			@selectbox.Trigger(selectbox.TriggerProps{ID: "category", Name: "category"}) {
+				@selectbox.Value(selectbox.ValueProps{Placeholder: "Any type"})
+			}
+			@selectbox.Content() {
+				for _, category := range exercise.Categories {
+					@selectbox.Item(selectbox.ItemProps{Value: category, Selected: f.Category == category}) {
+						{ humanize(category) }
+					}
+				}
+			}
+		}
+		@selectbox.SelectBox() {
+			@selectbox.Trigger(selectbox.TriggerProps{ID: "equipment", Name: "equipment"}) {
+				@selectbox.Value(selectbox.ValueProps{Placeholder: "Any equipment"})
+			}
+			@selectbox.Content() {
+				for _, item := range equipmentOptions {
+					@selectbox.Item(selectbox.ItemProps{Value: item, Selected: f.Equipment == item}) {
+						{ humanize(item) }
+					}
+				}
+			}
+		}
+		<div class="flex gap-2 sm:col-span-2 lg:col-span-4">
+			@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90"}) {
+				Filter
+			}
+			@button.Button(button.Props{Href: "/app/exercises", Variant: button.VariantGhost}) {
+				Clear
+			}
+		</div>
+	</form>
+}
+
+templ row(e exercise.Exercise) {
+	<li>
+		<a
+			href={ templ.SafeURL("/app/exercises/" + e.Slug) }
+			class="border-hairline bg-surface hover:border-signal/40 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border px-4 py-3 transition-colors"
+		>
+			<span class="min-w-0 flex-1 text-sm font-medium">{ e.Name }</span>
+			for _, key := range e.Primary {
+				@badge.Badge(badge.Props{Variant: badge.VariantDefault}) {
+					{ humanize(key) }
+				}
+			}
+			if e.NeedsEquipment() {
+				<span class="text-muted-foreground font-mono text-[10px] uppercase tracking-[0.14em]">
+					{ e.Equipment }
+				</span>
+			}
+		</a>
+	</li>
+}
+
+templ Detail(user users.User, e exercise.Exercise) {
+	@layout.App(e.Name, user, layout.BuildNav("/app/fitness")) {
+		<div class="mx-auto w-full max-w-4xl space-y-6 p-6 md:p-8">
+			<header>
+				<a href="/app/exercises" class="text-muted-foreground hover:text-foreground font-mono text-[10px] uppercase tracking-[0.14em]">
+					&larr; Exercises
+				</a>
+				<h1 class="mt-2 text-2xl font-medium tracking-tight">{ e.Name }</h1>
+				<div class="mt-3 flex flex-wrap items-center gap-2">
+					@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
+						{ humanize(e.Category) }
+					}
+					@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
+						{ humanize(e.Difficulty) }
+					}
+					if e.NeedsEquipment() {
+						@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
+							{ humanize(e.Equipment) }
+						}
+					}
+				</div>
+			</header>
+			<div class="grid gap-6 md:grid-cols-2">
+				@muscleviewer.Viewer(muscleviewer.Props{
+					ID:           "exercise-" + e.Slug,
+					Primary:      e.Primary,
+					Secondary:    e.Secondary,
+					ExerciseName: e.Name,
+				})
+				<div class="space-y-4">
+					@muscleCard("Primary", e.Primary)
+					@muscleCard("Secondary", e.Secondary)
+					if e.VideoURL != "" {
+						@button.Button(button.Props{Href: e.VideoURL, Variant: button.VariantOutline, Target: "_blank"}) {
+							Watch the movement
+						}
+					}
+				</div>
+			</div>
+			if e.Instructions != "" {
+				@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+					@card.Header() {
+						@card.Title() {
+							How to do it
+						}
+					}
+					@card.Content() {
+						<p class="text-sm leading-relaxed">{ e.Instructions }</p>
+					}
+				}
+			}
+		</div>
+		@muscleviewer.Script()
+	}
+}
+
+templ muscleCard(label string, keys []string) {
+	if len(keys) > 0 {
+		<div>
+			@ui.MonoLabel(label)
+			<div class="mt-2 flex flex-wrap gap-2">
+				for _, key := range keys {
+					@badge.Badge(badge.Props{Variant: badge.VariantDefault}) {
+						{ humanize(key) }
+					}
+				}
+			</div>
+		</div>
+	}
+}

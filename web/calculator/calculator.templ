@@ -1,6 +1,10 @@
 package calculator
 
 import (
+	"fmt"
+	"strings"
+	"time"
+
 	"github.com/NorthAIProject/north-client/internal/biometrics"
 	"github.com/NorthAIProject/north-client/internal/calculator/macroplan"
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -14,10 +18,11 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/selectbox"
 )
 
-// BiometricsForm carries submitted (or rejected) body measurements.
+// BiometricsForm carries submitted (or rejected) body measurements, as typed:
+// in whatever units the person works in, not necessarily metric.
 type BiometricsForm struct {
-	WeightKg    string
-	HeightCm    string
+	Weight      string
+	Height      string
 	DateOfBirth string
 	Sex         string
 	Errors      map[string]string
@@ -45,7 +50,44 @@ func (f PlanForm) fieldError(name string) string {
 	return f.Errors[name]
 }
 
-templ Page(user users.User, bio biometrics.Biometric, hasBio bool, plan macroplan.MacroPlan, hasPlan bool, bioForm BiometricsForm, planForm PlanForm) {
+// choiceLabel renders one option as "Label — what it means".
+//
+// The description goes in the option text because the choice is meaningless
+// without it: "moderate" and "heavy" are several hundred calories a day apart,
+// and nothing in those two words says which one someone training four times a
+// week should pick.
+func choiceLabel(value string, descriptions map[string]string) string {
+	label := humanize(value)
+	if description, ok := descriptions[value]; ok {
+		return label + " — " + description
+	}
+	return label
+}
+
+// humanize turns an enum value ("extra_heavy") into a label ("Extra heavy").
+func humanize(value string) string {
+	if value == "" {
+		return ""
+	}
+	spaced := strings.ReplaceAll(value, "_", " ")
+	return strings.ToUpper(spaced[:1]) + spaced[1:]
+}
+
+// currentMeasurements renders the stored metric biometrics in the person's own
+// units. The numbers and their labels both come from macroplan, so a converted
+// value and the unit beside it cannot disagree.
+//
+// Replaces biometrics.Summary() here, which is metric-only — it is still the
+// right thing for the coach's context, which is not shown to anyone.
+func currentMeasurements(bio biometrics.Biometric, units string) string {
+	weight, height := macroplan.Display(bio.WeightKg, bio.HeightCm, units)
+	return fmt.Sprintf("%.1f %s, %.1f %s, %d years old.",
+		weight, macroplan.WeightUnit(units),
+		height, macroplan.HeightUnit(units),
+		bio.AgeYears(time.Now()))
+}
+
+templ Page(user users.User, bio biometrics.Biometric, hasBio bool, plan macroplan.MacroPlan, hasPlan bool, bioForm BiometricsForm, planForm PlanForm, units string) {
 	@layout.App("Calculator", user, layout.BuildNav("/app/fitness")) {
 		<div class="mx-auto w-full max-w-2xl space-y-6 p-6 md:p-8">
 			<header>
@@ -55,15 +97,18 @@ templ Page(user users.User, bio biometrics.Biometric, hasBio bool, plan macropla
 					Mifflin-St Jeor, scaled by your own activity and goal.
 				</p>
 			</header>
-			@biometricsCard(bio, hasBio, bioForm)
+			@biometricsCard(bio, hasBio, bioForm, units)
 			@planCard(plan, hasPlan, planForm)
+			if hasPlan {
+				@goalComparison(plan)
+			}
 		</div>
 		@label.Script()
 		@selectbox.Script()
 	}
 }
 
-templ biometricsCard(bio biometrics.Biometric, hasBio bool, f BiometricsForm) {
+templ biometricsCard(bio biometrics.Biometric, hasBio bool, f BiometricsForm, units string) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 		@card.Header() {
 			@card.Title() {
@@ -71,7 +116,7 @@ templ biometricsCard(bio biometrics.Biometric, hasBio bool, f BiometricsForm) {
 			}
 			@card.Description() {
 				if hasBio {
-					{ bio.Summary() }
+					{ currentMeasurements(bio, units) }
 				} else {
 					Needed before a plan can be generated.
 				}
@@ -82,10 +127,10 @@ templ biometricsCard(bio biometrics.Biometric, hasBio bool, f BiometricsForm) {
 				@ui.CSRFInput()
 				<div class="grid grid-cols-2 gap-4">
 					@form.Item() {
-						@label.Label(label.Props{For: "weight_kg"}) {
-							Weight (kg)
+						@label.Label(label.Props{For: "weight"}) {
+							{ "Weight (" + macroplan.WeightUnit(units) + ")" }
 						}
-						@input.Input(input.Props{ID: "weight_kg", Name: "weight_kg", Type: input.TypeNumber, Value: f.WeightKg, Required: true, HasError: f.fieldError("weight_kg") != ""})
+						@input.Input(input.Props{ID: "weight", Name: "weight", Type: input.TypeNumber, Attributes: templ.Attributes{"step": "0.1"}, Value: f.Weight, Required: true, HasError: f.fieldError("weight_kg") != ""})
 						if f.fieldError("weight_kg") != "" {
 							@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
 								{ f.fieldError("weight_kg") }
@@ -93,10 +138,10 @@ templ biometricsCard(bio biometrics.Biometric, hasBio bool, f BiometricsForm) {
 						}
 					}
 					@form.Item() {
-						@label.Label(label.Props{For: "height_cm"}) {
-							Height (cm)
+						@label.Label(label.Props{For: "height"}) {
+							{ "Height (" + macroplan.HeightUnit(units) + ")" }
 						}
-						@input.Input(input.Props{ID: "height_cm", Name: "height_cm", Type: input.TypeNumber, Value: f.HeightCm, Required: true, HasError: f.fieldError("height_cm") != ""})
+						@input.Input(input.Props{ID: "height", Name: "height", Type: input.TypeNumber, Attributes: templ.Attributes{"step": "0.1"}, Value: f.Height, Required: true, HasError: f.fieldError("height_cm") != ""})
 						if f.fieldError("height_cm") != "" {
 							@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
 								{ f.fieldError("height_cm") }
@@ -167,20 +212,10 @@ templ planCard(plan macroplan.MacroPlan, hasPlan bool, f PlanForm) {
 							@selectbox.Value(selectbox.ValueProps{Placeholder: "Moderate"})
 						}
 						@selectbox.Content() {
-							@selectbox.Item(selectbox.ItemProps{Value: macroplan.ActivitySedentary, Selected: f.ActivityLevel == macroplan.ActivitySedentary}) {
-								Sedentary
-							}
-							@selectbox.Item(selectbox.ItemProps{Value: macroplan.ActivityLight, Selected: f.ActivityLevel == macroplan.ActivityLight}) {
-								Light
-							}
-							@selectbox.Item(selectbox.ItemProps{Value: macroplan.ActivityModerate, Selected: f.ActivityLevel == macroplan.ActivityModerate}) {
-								Moderate
-							}
-							@selectbox.Item(selectbox.ItemProps{Value: macroplan.ActivityHeavy, Selected: f.ActivityLevel == macroplan.ActivityHeavy}) {
-								Heavy
-							}
-							@selectbox.Item(selectbox.ItemProps{Value: macroplan.ActivityExtraHeavy, Selected: f.ActivityLevel == macroplan.ActivityExtraHeavy}) {
-								Extra heavy
+							for _, level := range macroplan.ActivityLevels {
+								@selectbox.Item(selectbox.ItemProps{Value: level, Selected: f.ActivityLevel == level}) {
+									{ choiceLabel(level, macroplan.ActivityDescriptions) }
+								}
 							}
 						}
 					}
@@ -194,14 +229,10 @@ templ planCard(plan macroplan.MacroPlan, hasPlan bool, f PlanForm) {
 							@selectbox.Value(selectbox.ValueProps{Placeholder: "Maintenance"})
 						}
 						@selectbox.Content() {
-							@selectbox.Item(selectbox.ItemProps{Value: macroplan.GoalCutting, Selected: f.Goal == macroplan.GoalCutting}) {
-								Cutting
-							}
-							@selectbox.Item(selectbox.ItemProps{Value: macroplan.GoalMaintenance, Selected: f.Goal == macroplan.GoalMaintenance}) {
-								Maintenance
-							}
-							@selectbox.Item(selectbox.ItemProps{Value: macroplan.GoalBulking, Selected: f.Goal == macroplan.GoalBulking}) {
-								Bulking
+							for _, goal := range macroplan.Goals {
+								@selectbox.Item(selectbox.ItemProps{Value: goal, Selected: f.Goal == goal}) {
+									{ choiceLabel(goal, macroplan.GoalDescriptions) }
+								}
 							}
 						}
 					}
@@ -215,14 +246,10 @@ templ planCard(plan macroplan.MacroPlan, hasPlan bool, f PlanForm) {
 							@selectbox.Value(selectbox.ValueProps{Placeholder: "Moderate carb"})
 						}
 						@selectbox.Content() {
-							@selectbox.Item(selectbox.ItemProps{Value: macroplan.SplitHighCarb, Selected: f.MacroSplit == macroplan.SplitHighCarb}) {
-								High carb
-							}
-							@selectbox.Item(selectbox.ItemProps{Value: macroplan.SplitModerateCarb, Selected: f.MacroSplit == macroplan.SplitModerateCarb}) {
-								Moderate carb
-							}
-							@selectbox.Item(selectbox.ItemProps{Value: macroplan.SplitLowCarb, Selected: f.MacroSplit == macroplan.SplitLowCarb}) {
-								Low carb
+							for _, split := range macroplan.Splits {
+								@selectbox.Item(selectbox.ItemProps{Value: split, Selected: f.MacroSplit == split}) {
+									{ choiceLabel(split, macroplan.SplitDescriptions) }
+								}
 							}
 						}
 					}
@@ -236,6 +263,42 @@ templ planCard(plan macroplan.MacroPlan, hasPlan bool, f PlanForm) {
 					Generate plan
 				}
 			</form>
+		}
+	}
+}
+
+// goalComparison shows what each objective would cost at this TDEE.
+//
+// Shown after a plan exists rather than instead of one: the number that makes
+// the choice concrete is the gap between the three, and someone who picked
+// Maintenance should be able to see what Cutting would have meant without
+// generating a second plan to find out.
+templ goalComparison(plan macroplan.MacroPlan) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Title() {
+				What each goal would cost
+			}
+			@card.Description() {
+				{ fmt.Sprintf("Against a TDEE of %.0f kcal a day.", plan.TDEE) }
+			}
+		}
+		@card.Content() {
+			<dl class="space-y-2">
+				for _, goal := range macroplan.Goals {
+					<div class="flex items-baseline justify-between gap-4">
+						<dt class="text-sm">
+							{ macroplan.GoalLabel(goal) }
+							if goal == plan.Goal {
+								<span class="text-signal ml-2 font-mono text-[10px] uppercase tracking-[0.14em]">Yours</span>
+							}
+						</dt>
+						<dd class="text-sm font-medium tabular-nums">
+							{ fmt.Sprintf("%.0f kcal", macroplan.AllGoals(plan.TDEE)[goal]) }
+						</dd>
+					</div>
+				}
+			</dl>
 		}
 	}
 }

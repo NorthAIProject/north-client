@@ -8,6 +8,7 @@ package fake
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
@@ -52,10 +53,29 @@ type Response struct {
 	// can control exactly how a reply arrives.
 	Chunks []string
 
+	// ToolCalls makes this response the model asking for tools rather than
+	// answering. Scripting them is the only way to test a tool loop without a
+	// provider that decides on its own whether to call anything.
+	ToolCalls []ai.ToolCall
+
 	// Err is returned instead of a reply.
 	Err error
 
 	Usage ai.Usage
+}
+
+// ToolCall is shorthand for scripting one call, with arguments given as a JSON
+// string so a test reads as the thing it is asserting.
+func ToolCall(name, argumentsJSON string) ai.ToolCall {
+	if argumentsJSON == "" {
+		argumentsJSON = "{}"
+	}
+	return ai.ToolCall{ID: name + "-call", Name: name, Arguments: json.RawMessage(argumentsJSON)}
+}
+
+// Calling is shorthand for a response that asks for tools and says nothing.
+func Calling(calls ...ai.ToolCall) Response {
+	return Response{ToolCalls: calls}
 }
 
 func New(responses ...Response) *Client {
@@ -77,7 +97,11 @@ func (c *Client) Generate(ctx context.Context, req ai.Request) (*ai.Response, er
 	if resp.Err != nil {
 		return nil, resp.Err
 	}
-	return &ai.Response{Text: resp.Text, Usage: resp.Usage, FinishReason: "stop"}, nil
+	finish := "stop"
+	if len(resp.ToolCalls) > 0 {
+		finish = "tool_calls"
+	}
+	return &ai.Response{Text: resp.Text, ToolCalls: resp.ToolCalls, Usage: resp.Usage, FinishReason: finish}, nil
 }
 
 func (c *Client) Chat(ctx context.Context, req ai.Request) (<-chan ai.StreamChunk, error) {
@@ -106,6 +130,12 @@ func (c *Client) Chat(ctx context.Context, req ai.Request) (<-chan ai.StreamChun
 				}
 			}
 			if !send(ctx, out, ai.StreamChunk{Text: chunk}) {
+				return
+			}
+		}
+
+		if len(resp.ToolCalls) > 0 {
+			if !send(ctx, out, ai.StreamChunk{ToolCalls: resp.ToolCalls}) {
 				return
 			}
 		}
