@@ -10,5 +10,5 @@ import "embed"
 // build in a way that has nothing to do with the change being made. Naming the
 // directory embeds it recursively and skips empty subtrees quietly.
 //
-//go:embed brand css fonts js models
+//go:embed brand css fonts js models video
 var Assets embed.FS
