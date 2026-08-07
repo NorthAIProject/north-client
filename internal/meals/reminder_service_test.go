@@ -82,7 +82,13 @@ func TestDueNowFiresOnceAndRespectsScheduling(t *testing.T) {
 	svc := meals.NewMealReminderService(meals.NewRepository(pool))
 	ctx := context.Background()
 
-	now := time.Now()
+	// A fixed instant rather than time.Now(). DueNow derives the date, the
+	// weekday and the wall-clock time entirely from what it is passed, so
+	// pinning it makes the test deterministic — and stops it failing between
+	// midnight and 01:00, when "an hour ago" formatted as a time of day lands
+	// at 23:xx and reads as later today rather than earlier.
+	now := time.Date(2026, time.March, 11, 12, 0, 0, 0, time.Local)
+
 	todayWeekday := int(now.Weekday())
 	otherWeekday := (todayWeekday + 1) % 7
 
