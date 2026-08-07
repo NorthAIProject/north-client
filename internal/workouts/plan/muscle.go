@@ -31,6 +31,35 @@ var MuscleGroups = []string{
 	"erectors",
 	"serratus",
 	"abs",
+	"chest",
+	"neck",
+}
+
+// UnmodelledGroups are canonical keys the 3D model cannot draw yet.
+//
+// body.glb ships no pectoralis major or minor mesh — all 231 of its node
+// names were checked, and the "CHEST" node in the file is a camera-preset
+// label alongside HEAD, HIP, and KNEE, not anatomy. So "chest" is a real
+// muscle group that exercises may legitimately target, and the viewer has
+// nothing to colour for it.
+//
+// Callers must say so rather than silently dropping the key: a bench press
+// whose muscle list omits the chest reads as a data bug, not as a missing
+// asset. Remove a key from here the moment the model gains its mesh.
+var UnmodelledGroups = []string{"chest"}
+
+var unmodelledSet = func() map[string]bool {
+	set := make(map[string]bool, len(UnmodelledGroups))
+	for _, key := range UnmodelledGroups {
+		set[key] = true
+	}
+	return set
+}()
+
+// IsUnmodelled reports whether key is a valid muscle group that body.glb
+// cannot currently highlight.
+func IsUnmodelled(key string) bool {
+	return unmodelledSet[key]
 }
 
 var muscleGroupSet = func() map[string]bool {

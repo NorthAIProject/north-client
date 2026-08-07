@@ -16,6 +16,22 @@ import (
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
+// ToolRunner is the coach's view of internal/agent's registry: the tools a
+// model may call, and a way to run them.
+//
+// An interface rather than the concrete type because agent depends on the
+// feature slices — calculator, goals, meals — and several of those contribute
+// a ContextSource back to this package. Importing agent here would close that
+// loop.
+type ToolRunner interface {
+	// Tools is what the model is shown it can call.
+	Tools() []ai.Tool
+
+	// InvokeAll runs a turn's calls in order and returns their results. The
+	// user id comes from the authenticated session, never from the model.
+	InvokeAll(ctx context.Context, userID uuid.UUID, calls []ai.ToolCall) []ai.ToolResult
+}
+
 // generationTimeout bounds a detached generation. Long, because a large model
 // answering a considered question is slow; bounded, because a stuck provider
 // must not leak a goroutine forever.
@@ -23,6 +39,15 @@ const generationTimeout = 5 * time.Minute
 
 // persistTimeout bounds the write that saves a completed reply.
 const persistTimeout = 15 * time.Second
+
+// toolRounds bounds how many times the coach may run tools and go back to the
+// model within one turn.
+//
+// Bounded because the loop is the model deciding when to stop, and a model
+// that keeps asking is an unbounded bill against a paid provider. Five is more
+// than any current capability chain needs — the deepest is search, read, then
+// answer — and low enough that a loop costs a few calls rather than a budget.
+const toolRounds = 5
 
 // Service turns a user's message into a coached reply.
 //
@@ -35,6 +60,7 @@ type Service struct {
 	contextB      *ContextBuilder
 	promptB       *PromptBuilder
 	queue         *jobs.Queue
+	tools         ToolRunner
 
 	// chains decides which providers serve a given user, in what order.
 	chains ai.ChainSet
@@ -58,6 +84,10 @@ type Options struct {
 	// coach at all must supply one.
 	Chains ai.ChainSet
 
+	// Tools the coach may call mid-answer. Nil leaves the coach answering
+	// purely from its context, which is what it did before tools existed.
+	Tools ToolRunner
+
 	// Model answers conversations. FastModel handles cheap side work such as
 	// naming a thread, which does not need the expensive model. Both may be
 	// empty, which lets whichever provider answers use its own default — the
@@ -74,6 +104,7 @@ func NewService(opts Options) *Service {
 		promptB:       opts.PromptBuilder,
 		queue:         opts.Queue,
 		chains:        opts.Chains,
+		tools:         opts.Tools,
 		model:         opts.Model,
 		fastModel:     opts.FastModel,
 	}
@@ -119,11 +150,14 @@ func (s *Service) SendMessage(ctx context.Context, user users.User, conversation
 	// started them.
 	genCtx, cancelGen := context.WithTimeout(context.WithoutCancel(ctx), generationTimeout)
 
-	stream, client, err := s.startChat(ctx, genCtx, user, ai.Request{
+	req := ai.Request{
 		Model:    s.model,
 		System:   system,
 		Messages: conversations.ToAIMessages(coachCtx.RecentMessages),
-	})
+		Tools:    s.toolDeclarations(),
+	}
+
+	stream, client, err := s.startChat(ctx, genCtx, user, req)
 	if err != nil {
 		cancelGen()
 		return nil, apperr.Wrap(err, "coach: start reply")
@@ -136,6 +170,8 @@ func (s *Service) SendMessage(ctx context.Context, user users.User, conversation
 		user:         user,
 		provider:     client.Name(),
 		firstMessage: text,
+		client:       client,
+		request:      req,
 	})
 
 	return out, nil
@@ -220,11 +256,26 @@ func (s *Service) eachProvider(ctx context.Context, user users.User, attempt fun
 	return nil, lastErr
 }
 
+// toolDeclarations is what the model is shown it can call, or nil when the
+// coach has no registry wired.
+func (s *Service) toolDeclarations() []ai.Tool {
+	if s.tools == nil {
+		return nil
+	}
+	return s.tools.Tools()
+}
+
 type pumpTarget struct {
 	conversation conversations.Conversation
 	user         users.User
 	provider     string
 	firstMessage string
+
+	// client and request are kept so the pump can go back to the model after
+	// running tools, carrying the same system prompt and history plus what the
+	// tools returned.
+	client  ai.Client
+	request ai.Request
 }
 
 // pump forwards the provider's stream to the caller while accumulating the full
@@ -253,29 +304,82 @@ func (s *Service) pump(
 		listening = true
 	)
 
-	for chunk := range stream {
-		if chunk.Err != nil {
-			streamErr = chunk.Err
-			if listening {
-				trySend(callerCtx, out, chunk)
+	// One pass per round-trip to the model. A pass that ends in tool calls
+	// runs them, appends what they returned, and asks again; a pass that ends
+	// in prose is the answer.
+	request := target.request
+
+	for round := 0; ; round++ {
+		var calls []ai.ToolCall
+
+		for chunk := range stream {
+			if chunk.Err != nil {
+				streamErr = chunk.Err
+				if listening {
+					trySend(callerCtx, out, chunk)
+				}
+				break
 			}
+
+			if chunk.Usage != nil {
+				usage = chunk.Usage
+			}
+			if len(chunk.ToolCalls) > 0 {
+				// Not forwarded to the caller: the browser renders prose, and
+				// a tool call is machinery the person did not ask to watch.
+				calls = append(calls, chunk.ToolCalls...)
+				continue
+			}
+			if chunk.Text != "" {
+				reply.WriteString(chunk.Text)
+			}
+
+			if listening && !trySend(callerCtx, out, chunk) {
+				// The browser went away. Keep draining: the answer is still
+				// worth finishing and saving.
+				listening = false
+				log.Info("client disconnected mid-reply; continuing to save it",
+					slog.String("conversation_id", target.conversation.ID.String()))
+			}
+		}
+
+		if streamErr != nil || len(calls) == 0 {
 			break
 		}
 
-		if chunk.Usage != nil {
-			usage = chunk.Usage
-		}
-		if chunk.Text != "" {
-			reply.WriteString(chunk.Text)
+		if round+1 >= toolRounds {
+			// The model is still asking. Stopping here rather than continuing
+			// is the whole point of the bound; the partial answer is kept.
+			log.Warn("coach hit the tool-call limit",
+				slog.Int("rounds", toolRounds),
+				slog.String("conversation_id", target.conversation.ID.String()))
+			break
 		}
 
-		if listening && !trySend(callerCtx, out, chunk) {
-			// The browser went away. Keep draining: the answer is still worth
-			// finishing and saving.
-			listening = false
-			log.Info("client disconnected mid-reply; continuing to save it",
+		results := s.tools.InvokeAll(genCtx, target.user.ID, calls)
+		for _, result := range results {
+			log.Info("coach ran a tool",
+				slog.String("tool", result.Name),
+				slog.Bool("failed", result.IsError),
 				slog.String("conversation_id", target.conversation.ID.String()))
 		}
+
+		// Both turns, in this order: every provider rejects a result whose
+		// call it has not been shown.
+		request.Messages = append(request.Messages,
+			ai.ToolCallMessage(calls),
+			ai.ToolResultMessage(results),
+		)
+
+		next, err := target.client.Chat(genCtx, request)
+		if err != nil {
+			streamErr = apperr.Wrap(err, "coach: continue after tools")
+			if listening {
+				trySend(callerCtx, out, ai.StreamChunk{Err: streamErr})
+			}
+			break
+		}
+		stream = next
 	}
 
 	text := strings.TrimSpace(reply.String())

@@ -53,10 +53,24 @@ type Exercise struct {
 	// equipment is taken.
 	Substitute string `json:"substitute"`
 
+	// CatalogSlug is the exercises-table slug the model picked, or empty when
+	// it improvised past the catalog.
+	//
+	// The model echoes back an identifier it was shown rather than having its
+	// free-text Name matched against the catalog afterwards: a name match has
+	// to guess whether "Barbell Squat" is barbell-full-squat, and guessing
+	// wrong attaches the wrong muscles to the movement.
+	CatalogSlug string `json:"catalog_slug"`
+
 	// Primary, Secondary, and Stabilizers are muscle keys from MuscleGroups
 	// (NOR-8) — what the 3D viewer highlights for this exercise. Constrained
 	// by PlanSchema's enum, so these never need fuzzy-matching against the
 	// free-text exercise Name.
+	//
+	// When CatalogSlug resolves, these are overwritten from the catalog row
+	// (see workouts.Service.Generate): a curated answer beats a generated one.
+	// When it does not, the model's own keys stand — that is the free-text
+	// fallback, and it is why these stay part of the schema.
 	Primary     []string `json:"primary_muscles"`
 	Secondary   []string `json:"secondary_muscles"`
 	Stabilizers []string `json:"stabilizer_muscles"`
@@ -72,6 +86,7 @@ func PlanSchema() *ai.Schema {
 
 	exercise := ai.Object("a single exercise", map[string]*ai.Schema{
 		"name":               ai.String("the exercise, as a lifter would name it"),
+		"catalog_slug":       ai.String("the slug of the catalog exercise you chose, copied exactly from the candidate list; empty string if you used an exercise that is not on that list"),
 		"sets":               ai.Integer("number of working sets"),
 		"reps":               ai.String("rep range as written on a programme, such as 8-12, 5, or AMRAP"),
 		"rest_seconds":       ai.Integer("rest between sets, in seconds"),
@@ -81,7 +96,7 @@ func PlanSchema() *ai.Schema {
 		"primary_muscles":    ai.Array("the one or two muscle groups doing most of the work", muscleGroup("a primary muscle group")),
 		"secondary_muscles":  ai.Array("muscle groups meaningfully involved but not the main target", muscleGroup("a secondary muscle group")),
 		"stabilizer_muscles": ai.Array("muscle groups bracing or stabilising the movement, without driving it", muscleGroup("a stabilizer muscle group")),
-	}, "name", "sets", "reps", "rest_seconds", "equipment", "form_cues", "substitute", "primary_muscles", "secondary_muscles", "stabilizer_muscles")
+	}, "name", "catalog_slug", "sets", "reps", "rest_seconds", "equipment", "form_cues", "substitute", "primary_muscles", "secondary_muscles", "stabilizer_muscles")
 
 	day := ai.Object("one training day", map[string]*ai.Schema{
 		"weekday":   ai.String("which day, such as Monday"),

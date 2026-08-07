@@ -8,6 +8,7 @@ package macroplan
 
 import (
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/google/uuid"
@@ -25,6 +26,19 @@ const (
 
 // ActivityLevels is the ordered set offered in the UI.
 var ActivityLevels = []string{ActivitySedentary, ActivityLight, ActivityModerate, ActivityHeavy, ActivityExtraHeavy}
+
+// ActivityDescriptions says what each level means in training days per week.
+//
+// Without them the choice is five adjectives, and someone training four times
+// a week has no way to tell "moderate" from "heavy" — which is a difference of
+// several hundred calories a day.
+var ActivityDescriptions = map[string]string{
+	ActivitySedentary:  "Desk job, little activity beyond daily life.",
+	ActivityLight:      "Training one or two days a week.",
+	ActivityModerate:   "Training three to five days a week.",
+	ActivityHeavy:      "Training six or seven days a week.",
+	ActivityExtraHeavy: "Training twice a day, or physical work on top of training.",
+}
 
 var activityMultipliers = map[string]float64{
 	ActivitySedentary:  1.2,
@@ -56,6 +70,26 @@ var goalLabels = map[string]string{
 	GoalCutting:     "Cutting",
 	GoalMaintenance: "Maintenance",
 	GoalBulking:     "Bulking",
+}
+
+// GoalLabel is the display name for a goal.
+func GoalLabel(goal string) string { return goalLabels[goal] }
+
+// GoalDescriptions state the rate of change each goal implies. The offsets
+// above are the honest answer to "how fast", and quoting the rate is what
+// stops someone picking Cutting and expecting it to be quicker.
+var GoalDescriptions = map[string]string{
+	GoalCutting:     "Lose weight, at roughly 0.45 kg (1 lb) a week.",
+	GoalMaintenance: "Hold your current weight.",
+	GoalBulking:     "Gain weight, at roughly 0.35 kg (0.75 lb) a week.",
+}
+
+// SplitDescriptions spell out the ratios behind each preset, so the choice is
+// between numbers rather than between three adjectives.
+var SplitDescriptions = map[string]string{
+	SplitHighCarb:     "30% protein, 20% fat, 50% carbs.",
+	SplitModerateCarb: "30% protein, 35% fat, 35% carbs.",
+	SplitLowCarb:      "40% protein, 40% fat, 20% carbs.",
 }
 
 // Macro splits offered as presets rather than a free-form ratio: most people
@@ -97,6 +131,78 @@ const (
 	SexMale   = "male"
 	SexFemale = "female"
 )
+
+// UnitsMetric/UnitsImperial mirror preference.UnitsMetric/UnitsImperial's
+// string values, and are not imported from there for the same reason
+// SexMale/SexFemale above are not imported from biometrics: macroplan is a
+// leaf with no dependency on other feature slices. The person's chosen system
+// lives in internal/preferences and is read by the handler; nothing here
+// stores one, because a second copy of that setting would be free to drift
+// from the first.
+const (
+	UnitsMetric   = "metric"
+	UnitsImperial = "imperial"
+)
+
+const (
+	poundsPerKg = 1 / 0.45359237
+	inchesPerCm = 1 / 2.54
+)
+
+// ToMetric converts a weight and height entered in the given units into
+// kilograms and centimetres.
+//
+// Conversion happens at the edge, on the way in. Everything stored and
+// everything computed below this line is metric, so no downstream code — and
+// no stored row — has to carry which units it came from.
+func ToMetric(weight, height float64, units string) (kg, cm float64) {
+	if units == UnitsImperial {
+		return weight / poundsPerKg, height / inchesPerCm
+	}
+	return weight, height
+}
+
+// Display is ToMetric's inverse, for showing a stored value back in the units
+// it was entered in. The last step before a template, never an input to the
+// maths.
+func Display(kg, cm float64, units string) (weight, height float64) {
+	if units == UnitsImperial {
+		return round1(kg * poundsPerKg), round1(cm * inchesPerCm)
+	}
+	return kg, cm
+}
+
+// WeightUnit and HeightUnit are the labels that must accompany a Display
+// result. Returned rather than hard-coded in a template so the conversion and
+// its unit can never disagree.
+func WeightUnit(units string) string {
+	if units == UnitsImperial {
+		return "lb"
+	}
+	return "kg"
+}
+
+func HeightUnit(units string) string {
+	if units == UnitsImperial {
+		return "in"
+	}
+	return "cm"
+}
+
+func round1(value float64) float64 { return math.Round(value*10) / 10 }
+
+// AllGoals returns the daily calorie target for every goal at this TDEE.
+//
+// Shown before the choice is made: the difference between cutting and bulking
+// is a concrete number of calories, and someone deciding between them should
+// see both rather than pick one and discover the cost afterwards.
+func AllGoals(tdee float64) map[string]float64 {
+	targets := make(map[string]float64, len(Goals))
+	for _, goal := range Goals {
+		targets[goal] = CalorieGoalFor(tdee, goal)
+	}
+	return targets
+}
 
 // BMR is the Mifflin-St Jeor basal metabolic rate estimate, in kcal/day.
 // Callers must pass a validated sex (SexMale or SexFemale); anything else is

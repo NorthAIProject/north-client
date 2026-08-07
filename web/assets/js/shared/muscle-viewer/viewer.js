@@ -405,18 +405,17 @@ const MUSCLE_ALIASES = {
   ],
   lats: ["latissimus dorsi muscle", "latissimus dorsi", "lats"],
   rhomboids: ["rhomboid major muscle", "rhomboid minor muscle", "rhomboids"],
+  // Thoracolumbar only. The capitis/colli heads of the same three columns
+  // moved to `neck` below — ALIAS_LOOKUP is a Map built in key order, so a
+  // mesh listed twice silently belongs to whichever key is written last.
+  // Splitting them is also the more accurate read: what a deadlift loads is
+  // the thoracolumbar erectors, not the neck extensors.
   erectors: [
     "iliocostalis lumborum muscle",
     "iliocostalis thoracis muscle",
-    "iliocostalis colli muscle",
     "longissimus thoracis muscle",
-    "longissimus capitis muscle",
-    "longissimus colli muscle",
-    "spinalis capitis muscle",
-    "spinalis colli muscle",
     "spinalis thoracis muscle",
     "semispinalis thoracis muscle",
-    "semispinalis colli muscle",
     "erector spinae",
     "erectors",
   ],
@@ -429,11 +428,33 @@ const MUSCLE_ALIASES = {
     "abdominals",
     "abs",
   ],
+  // Deliberately empty: body.glb has no pectoralis mesh, so setLoads finds
+  // nothing to colour and skips the key. The group is still canonical — see
+  // UnmodelledGroups in internal/workouts/plan/muscle.go, and the note the
+  // viewer component renders so a bench press does not appear to train
+  // nothing. Fill this in when the model gains pec major/minor.
+  chest: [],
+  // The cervical heads of the erector columns, moved out of `erectors`
+  // above. Not a sternocleidomastoid — body.glb has none — so this
+  // highlights neck extension, which is what the neck-trained exercises in
+  // the catalog actually are.
+  neck: [
+    "iliocostalis colli muscle",
+    "longissimus capitis muscle",
+    "longissimus colli muscle",
+    "spinalis capitis muscle",
+    "spinalis colli muscle",
+    "semispinalis colli muscle",
+    "neck",
+  ],
 };
 
 // Display name + one-line description per muscle key, for the click-to-inspect
-// panel. Same 15 keys as MUSCLE_ALIASES and internal/workouts/plan/muscle.go —
+// panel. Same 17 keys as MUSCLE_ALIASES and internal/workouts/plan/muscle.go —
 // see that file's doc comment for the checklist to keep all three in sync.
+// A key whose MUSCLE_ALIASES entry is empty still belongs here: the model
+// cannot colour it, but the person clicking around still deserves to be told
+// what it is.
 const MUSCLE_INFO = {
   quads: { name: "Quadriceps", description: "Front of the thigh; straightens the knee and drives out of a squat." },
   glutes: { name: "Glutes", description: "The hip's main extensor — powers standing up from a squat or hinge." },
@@ -450,6 +471,8 @@ const MUSCLE_INFO = {
   erectors: { name: "Erector spinae", description: "Runs the length of the spine; keeps the back straight under load." },
   serratus: { name: "Serratus anterior", description: "Side of the ribcage; rotates the shoulder blade during an overhead press." },
   abs: { name: "Abdominals", description: "Front of the core; braces the trunk against load, more than it bends it." },
+  chest: { name: "Pectorals", description: "Front of the ribcage; pushes the arm forward and across, as in a bench press." },
+  neck: { name: "Neck extensors", description: "Back of the neck; holds the head steady under load and extends it." },
 };
 
 // Built once at module scope: normalized alias text -> muscle key. Both the aliases
