@@ -7,15 +7,20 @@ import (
 	"testing"
 )
 
-// viewerJS is the client-side half of the muscle vocabulary. muscle.go's doc
-// comment describes a three-file sync checklist; these tests are what stops
-// the checklist from being the only thing enforcing it.
-const viewerJS = "../../../web/assets/js/shared/muscle-viewer/viewer.js"
+// musclesJS is the client-side half of the muscle vocabulary. muscle.go's doc
+// comment describes a two-file sync checklist; these tests are what stops the
+// checklist from being the only thing enforcing it.
+//
+// The tables used to live in viewer.js and moved here when the asset build
+// started reading them too — tools/model/build-body.mjs decides which meshes go
+// into body.glb from this same list, so the model and the code that reads it
+// cannot disagree.
+const musclesJS = "../../../web/assets/js/shared/muscle-viewer/muscles.js"
 
 func TestEveryMuscleGroupIsKnownToTheViewer(t *testing.T) {
 	t.Parallel()
 
-	source := readViewer(t)
+	source := readMuscleTables(t)
 	aliases := keysOfJSObject(t, source, "MUSCLE_ALIASES")
 	info := keysOfJSObject(t, source, "MUSCLE_INFO")
 
@@ -40,7 +45,7 @@ func TestEveryMuscleGroupIsKnownToTheViewer(t *testing.T) {
 func TestUnmodelledGroupsAreCanonicalAndHaveNoMeshes(t *testing.T) {
 	t.Parallel()
 
-	source := readViewer(t)
+	source := readMuscleTables(t)
 
 	for _, key := range UnmodelledGroups {
 		if !IsMuscleGroup(key) {
@@ -57,11 +62,11 @@ func TestUnmodelledGroupsAreCanonicalAndHaveNoMeshes(t *testing.T) {
 func TestNoMeshNameIsClaimedByTwoMuscleGroups(t *testing.T) {
 	t.Parallel()
 
-	// viewer.js builds ALIAS_LOOKUP as a Map in key order, so a mesh listed
+	// muscles.js builds ALIAS_LOOKUP as a Map in key order, so a mesh listed
 	// under two groups silently belongs to whichever is written last. That is
 	// a highlight quietly going to the wrong muscle, which no amount of
 	// looking at the model would reveal as a bug.
-	source := readViewer(t)
+	source := readMuscleTables(t)
 	owner := map[string]string{}
 
 	for _, key := range MuscleGroups {
@@ -75,12 +80,12 @@ func TestNoMeshNameIsClaimedByTwoMuscleGroups(t *testing.T) {
 	}
 }
 
-func readViewer(t *testing.T) string {
+func readMuscleTables(t *testing.T) string {
 	t.Helper()
 
-	data, err := os.ReadFile(filepath.Clean(viewerJS))
+	data, err := os.ReadFile(filepath.Clean(musclesJS))
 	if err != nil {
-		t.Fatalf("reading the viewer: %v", err)
+		t.Fatalf("reading the muscle tables: %v", err)
 	}
 	return string(data)
 }
@@ -92,14 +97,14 @@ func readViewer(t *testing.T) string {
 func jsObject(t *testing.T, source, name string) string {
 	t.Helper()
 
-	start := regexp.MustCompile(`(?m)^const ` + name + ` = \{$`).FindStringIndex(source)
+	start := regexp.MustCompile(`(?m)^(?:export )?const ` + name + ` = \{$`).FindStringIndex(source)
 	if start == nil {
-		t.Fatalf("could not find `const %s = {` in %s", name, viewerJS)
+		t.Fatalf("could not find `const %s = {` in %s", name, musclesJS)
 	}
 	rest := source[start[1]:]
 	end := regexp.MustCompile(`(?m)^\};$`).FindStringIndex(rest)
 	if end == nil {
-		t.Fatalf("could not find the end of %s in %s", name, viewerJS)
+		t.Fatalf("could not find the end of %s in %s", name, musclesJS)
 	}
 	return rest[:end[0]]
 }

@@ -1,0 +1,18 @@
+{
+  "name": "north-model-tools",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Build pipeline for web/assets/models/body.glb. Not part of the Go build or the deployed application.",
+  "scripts": {
+    "build-body": "node build-body.mjs"
+  },
+  "dependencies": {
+    "@gltf-transform/core": "^4.1.1",
+    "@gltf-transform/extensions": "^4.1.1",
+    "@gltf-transform/functions": "^4.1.1",
+    "draco3dgltf": "^1.5.7",
+    "meshoptimizer": "^0.22.0",
+    "sharp": "^0.33.5"
+  }
+}
