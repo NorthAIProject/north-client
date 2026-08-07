@@ -28,6 +28,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/coach"
 	"github.com/NorthAIProject/north-client/internal/config"
 	"github.com/NorthAIProject/north-client/internal/conversations"
+	"github.com/NorthAIProject/north-client/internal/exercises"
 	"github.com/NorthAIProject/north-client/internal/fitness"
 	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/jobs"
@@ -187,6 +188,11 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, stora
 	memorySvc := memories.NewService(memories.NewRepository(pool))
 	memoryHandler := memories.NewHandler(memorySvc)
 
+	// Built before workouts: the plan generator picks from this catalog, so
+	// the catalog has to exist before the thing that reads it.
+	exerciseSvc := exercises.NewService(exercises.NewRepository(pool))
+	exerciseHandler := exercises.NewHandler(exerciseSvc)
+
 	workoutSvc := workouts.NewService(workouts.Options{
 		Repository: workouts.NewRepository(pool),
 		Registry:   registry,
@@ -312,6 +318,7 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, stora
 		checkinHandler.Routes(r)
 		goalHandler.Routes(r)
 		memoryHandler.Routes(r)
+		exerciseHandler.Routes(r)
 		workoutHandler.Routes(r)
 		mediaHandler.Routes(r)
 		settingsHandler.Routes(r)

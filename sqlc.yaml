@@ -143,6 +143,16 @@ sql:
 
   - engine: postgresql
     schema: migrations
+    queries: internal/exercises/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: exercisesdb
+        out: internal/exercises/db
+        overrides: *overrides
+
+  - engine: postgresql
+    schema: migrations
     queries: internal/meals/db/queries.sql
     gen:
       go:

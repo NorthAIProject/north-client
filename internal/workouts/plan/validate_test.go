@@ -223,6 +223,45 @@ func equalStrings(a, b []string) bool {
 	return true
 }
 
+// The bug this test exists for: the barbell rule's "deadlift" keyword was
+// checked before the dumbbell rule, so "Romanian Deadlift With Dumbbells" was
+// judged to need a barbell — and someone holding two dumbbells was told they
+// could not do it.
+func TestANamedImplementBeatsAMovementNameKeyword(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct{ name, equipment, want string }{
+		{"Romanian Deadlift With Dumbbells", "dumbbell", "dumbbell"},
+		{"Dumbbell Bench Press", "dumbbell", "dumbbell"},
+		{"Kettlebell Sumo Deadlift High Pull", "kettlebells", "kettlebell"},
+		// Still a barbell when nothing else is named.
+		{"Barbell Bench Press - Medium Grip", "barbell", "barbell"},
+		{"Deadlift", "free weights", "barbell"},
+		{"Sumo Deadlift", "barbell", "barbell"},
+		{"Push-up", "body_only", "none"},
+	}
+
+	for _, tt := range tests {
+		if got := InferEquipment(tt.name, tt.equipment); got != tt.want {
+			t.Errorf("InferEquipment(%q, %q) = %q, want %q", tt.name, tt.equipment, got, tt.want)
+		}
+	}
+}
+
+func TestDumbbellVariantsAreAllowedForSomeoneWithDumbbells(t *testing.T) {
+	t.Parallel()
+
+	plan := planWith(
+		day("Monday", exercise("Romanian Deadlift With Dumbbells", "dumbbell")),
+		day("Wednesday", exercise("Dumbbell Bench Press", "dumbbell")),
+		day("Friday", exercise("Push-up", "none")),
+	)
+
+	if problems := Validate(plan, dumbbellOnly()); len(problems) != 0 {
+		t.Fatalf("dumbbell variants must be allowed for someone with dumbbells: %v", problems)
+	}
+}
+
 func TestEquipmentTheyOwnIsAccepted(t *testing.T) {
 	t.Parallel()
 
