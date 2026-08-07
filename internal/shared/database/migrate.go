@@ -41,6 +41,23 @@ func Migrate(ctx context.Context, databaseURL string) error {
 		db,
 		migrations.FS,
 		goose.WithSessionLocker(locker),
+
+		// Out-of-order migrations are applied rather than refused.
+		//
+		// Without this, two branches developed in parallel cannot both be
+		// merged: whichever lands second carries a version lower than one the
+		// database has already applied, and every boot fails with "missing
+		// (out-of-order) migration" until someone renumbers files by hand.
+		// That is not a hypothetical — it happened twice in one day here.
+		//
+		// The trade this accepts: migrations are no longer guaranteed to run
+		// in the order they were written, only that each runs exactly once.
+		// That is already true of any system with branches, and it is what
+		// the numbering was pretending to guarantee rather than actually
+		// guaranteeing. Migrations must therefore not depend on each other's
+		// ordering beyond what the schema itself enforces — which is the
+		// discipline a migration should have anyway.
+		goose.WithAllowOutofOrder(true),
 	)
 	if err != nil {
 		return fmt.Errorf("migration provider: %w", err)
