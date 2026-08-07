@@ -2,11 +2,16 @@
  * The muscle viewer (NOR-8). Shared between the marketing landing page and the
  * real /app/training pages — one module, two callers, no page-specific logic here.
  *
- * The figure is a real anatomical model (NOR-6): a Z-Anatomy-derived muscle set
- * (CC BY-SA 4.0, hpfrei/body-anatomy-3d-viewer) layered under a translucent skin
- * shell (CC BY, ferrumiron6) — see web/assets/models/README.md for the full
- * attribution and how body.glb was built. Every muscle mesh is tagged with a
- * muscle key by name.
+ * The figure is a real anatomical model: a Z-Anatomy-derived muscle set
+ * (CC BY-SA 4.0, hpfrei/body-anatomy-3d-viewer) sealed inside an opaque athletic
+ * skin — see web/assets/models/README.md for the full attribution and how
+ * body.glb was built. Every muscle mesh is tagged with a muscle key by name.
+ *
+ * NOR-6 changed what you see. The figure used to be a translucent shell with grey
+ * muscles permanently visible underneath, which read as a blocky anatomy diagram.
+ * Now the body is solid and lit like a product shot, and only the muscles an
+ * exercise actually works light up — glowing out through the skin from inside
+ * rather than being drawn on top of it. See glowMaterial() for how that works.
  *
  * Two ways to drive the colouring:
  *   - setLoads([{key, share, role}]) — continuous, per-muscle percentages. Used
@@ -17,18 +22,26 @@
  *     over setLoads with a fixed intensity per tier, not a separate code path.
  */
 import * as THREE from "/assets/js/vendor/three.module.min.js";
-import { RoomEnvironment } from "/assets/js/vendor/three-room-environment.module.js";
 import { GLTFLoader } from "/assets/js/vendor/three-gltf-loader.module.js";
 import { MeshoptDecoder } from "/assets/js/vendor/three-meshopt-decoder.module.js";
+// Shared with tools/model/build-body.mjs, which uses the same table to decide what
+// goes into body.glb in the first place — see muscles.js.
+import { MUSCLE_ALIASES, MUSCLE_INFO, resolveKey } from "./muscles.js";
 
-// The figure has to sit on the panel in both themes: a single mid grey reads as
-// a silhouette on a light card and disappears on a dark one. These are figure
-// shading values with no brand-token counterpart — only the effort colour (ember)
-// is a brand token, read live from CSS below.
+// The figure has to sit on the panel in both themes. Since NOR-6 the body carries
+// its own baked colour, so a theme is only how brightly it's lit and what colour
+// separates it from the card behind it — not the figure's own palette. The effort
+// colour (ember) is a brand token, read live from CSS below.
 const THEME = {
-  dark: { base: 0x3a4048, inert: 0x272c33 },
-  light: { base: 0xb4bcc6, inert: 0xd4d9df },
+  dark: { exposure: 1.05, rim: 0x8ec6ff, rimStrength: 0.4 },
+  light: { exposure: 0.85, rim: 0x2b3a52, rimStrength: 0.22 },
 };
+
+// Fallback skin shading for a model with no baked textures. body.glb is expected
+// to ship UVs and PBR maps; if it doesn't (or a future rebuild drops them) the
+// figure still renders as a solid body rather than falling back to the pre-NOR-6
+// translucent shell.
+const SKIN_FALLBACK = { color: 0xb98963, roughness: 0.68 };
 
 // Resolves a CSS custom property to a THREE.Color through the browser's own color
 // parser. Necessary because North's tokens are oklch() and THREE.Color.setStyle()
@@ -66,6 +79,127 @@ function createShadowTexture() {
   return texture;
 }
 
+// A studio softbox rig, built as geometry and baked into an environment map by
+// PMREMGenerator. This is what an .hdr file would buy us, for no bytes: the
+// ticket asked for HDRI lighting, but a real one costs 300KB-1MB on top of the
+// model download. Three emissive panels (warm key, cool fill, overhead strip)
+// plus a dim floor bounce is enough structure for skin to read as skin — the
+// point is that reflections have *shape*, not that they depict a real room.
+// Colours exceed 1.0 deliberately: PMREM renders to a half-float target, so the
+// panels stay HDR and specular highlights keep their punch through ACES.
+function createStudioEnvironment() {
+  const env = new THREE.Scene();
+  const geometry = new THREE.PlaneGeometry(1, 1);
+
+  const panel = (hex, intensity, scale, position, lookAt) => {
+    const material = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
+    material.color.setHex(hex).multiplyScalar(intensity);
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.scale.set(scale[0], scale[1], 1);
+    mesh.position.set(position[0], position[1], position[2]);
+    mesh.lookAt(lookAt[0], lookAt[1], lookAt[2]);
+    env.add(mesh);
+    return mesh;
+  };
+
+  panel(0xfff4e6, 7.5, [9, 12], [5, 5, 7], [0, 0, 0]); // key, warm, front-right
+  panel(0xdce8ff, 2.6, [8, 10], [-6, 2, 3], [0, 0, 0]); // fill, cool, front-left
+  panel(0xffffff, 4.0, [10, 4], [0, 9, -1], [0, 0, 0]); // overhead strip
+  panel(0x6b6257, 0.9, [12, 12], [0, -6, 2], [0, 0, 0]); // floor bounce
+  panel(0xa8c4e8, 1.4, [7, 10], [0, 1, -9], [0, 0, 0]); // back separation
+
+  return env;
+}
+
+// The glow-through shader. A muscle lives *inside* an opaque body, so it can't be
+// lit conventionally — nothing would ever see it. Instead each worked muscle is
+// drawn after the skin with additive blending and depthFunc GreaterDepth, which
+// means it only renders where the skin is already in front of it: the light reads
+// as coming from under the surface.
+//
+// Two terms shape it into something volumetric rather than a flat decal:
+//
+//   fresnel  — glancing surfaces contribute most, so a muscle glows brightest at
+//              its edges and where it wraps away from the camera.
+//   depth    — GreaterDepth alone also passes for muscles on the *far* side of the
+//              body (nothing but the skin writes depth, so the far quad is "behind
+//              the skin" too, and the torso would light up from behind). uDepthMid
+//              is the camera's distance to the figure's centre; anything further
+//              than that fades out over uDepthFade, which is what keeps the body
+//              reading as solid.
+//
+// Blending is alpha, not additive. Additive is the obvious choice for something
+// called a glow and it's wrong here: the landing page card is white and the skin
+// is a light tan, so adding light to it does nothing except at the few pixels
+// where the body is already dark — the figure ends up looking like it's on fire
+// along its silhouette and flat everywhere else. Compositing ember *over* the skin
+// instead reads the same on a white card and on the dark /app shell.
+const GLOW_VERTEX = /* glsl */ `
+  varying vec3 vWorldNormal;
+  varying vec3 vViewDir;
+  varying float vCameraDist;
+  void main() {
+    vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+    vWorldNormal = normalize(mat3(modelMatrix) * normal);
+    vViewDir = normalize(cameraPosition - worldPosition.xyz);
+    vCameraDist = distance(cameraPosition, worldPosition.xyz);
+    gl_Position = projectionMatrix * viewMatrix * worldPosition;
+  }
+`;
+
+const GLOW_FRAGMENT = /* glsl */ `
+  uniform vec3 uColor;
+  uniform float uIntensity;
+  uniform float uDepthMid;
+  uniform float uDepthFade;
+  varying vec3 vWorldNormal;
+  varying vec3 vViewDir;
+  varying float vCameraDist;
+  void main() {
+    float facing = abs(dot(normalize(vWorldNormal), normalize(vViewDir)));
+    float fresnel = pow(1.0 - facing, 1.5);
+    // Base term carries most of it and fresnel only adds shape. Leaning on fresnel
+    // instead reads well in profile and then fades out exactly when the viewer turns
+    // a muscle to face them — which is the moment they're trying to look at it.
+    float body = 0.55 + 0.45 * fresnel;
+    float depthMask = 1.0 - smoothstep(uDepthMid, uDepthMid + uDepthFade, vCameraDist);
+    // Hotter towards the rim, so a muscle still has interior shape once the alpha
+    // has flattened out near 1.
+    vec3 tint = uColor * (0.9 + 0.45 * fresnel);
+    gl_FragColor = vec4(tint, clamp(body * depthMask * uIntensity, 0.0, 1.0));
+    #include <tonemapping_fragment>
+    #include <colorspace_fragment>
+  }
+`;
+
+function createGlowMaterial(color, depthMid) {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      uColor: { value: color.clone() },
+      uIntensity: { value: 0 },
+      uDepthMid: { value: depthMid },
+      uDepthFade: { value: 1.1 },
+    },
+    vertexShader: GLOW_VERTEX,
+    fragmentShader: GLOW_FRAGMENT,
+    transparent: true,
+    depthWrite: false,
+    depthFunc: THREE.GreaterDepth,
+    side: THREE.FrontSide,
+  });
+}
+
+// ?muscleDebug=1 makes the skin translucent so muscle geometry poking through it
+// is obvious. Alignment between the two source meshes is the fragile part of the
+// asset pipeline (see tools/model/README.md) and this is how you check it.
+function isDebug() {
+  try {
+    return new URLSearchParams(location.search).get("muscleDebug") === "1";
+  } catch {
+    return false;
+  }
+}
+
 // Cheap to check before spending the GLTF download and the WebGLRenderer
 // constructor call (which throws, inconsistently across browsers, rather than
 // failing predictably) — callers treat a thrown createViewer() as "no 3D here,
@@ -97,31 +231,43 @@ export async function createViewer(canvas, options = {}) {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = dark ? 1.05 : 0.9;
+  renderer.toneMappingExposure = palette.exposure;
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
   camera.position.set(0, 0.25, 9.2);
   camera.lookAt(0, 0.1, 0);
 
-  // Image-based lighting from a procedural room, not a real HDRI: an .hdr file would
-  // cost 300KB-1MB and hit the same asset-arrival problem the body model itself is
-  // waiting on, to light a figure that (today, and even post-NOR-6) carries no baked
-  // textures. The environment is generated once and the generator dropped immediately
-  // — only the resulting texture is kept.
+  // Distance from the camera to the figure's centre, which is what the glow shader
+  // fades past to stop far-side muscles bleeding through the torso. Derived rather
+  // than hardcoded so moving the camera above can't silently desync the two.
+  const depthMid = camera.position.distanceTo(new THREE.Vector3(0, 0.1, 0));
+
+  // Image-based lighting from a procedural studio rig baked through PMREM — see
+  // createStudioEnvironment() for why this isn't an .hdr file. Generated once, and
+  // both the source scene and the generator are dropped immediately; only the
+  // resulting cube texture is kept.
   const pmrem = new THREE.PMREMGenerator(renderer);
-  const roomEnv = new RoomEnvironment();
-  const envTexture = pmrem.fromScene(roomEnv, 0.04).texture;
-  roomEnv.dispose();
+  const studioEnv = createStudioEnvironment();
+  const envTexture = pmrem.fromScene(studioEnv, 0.03).texture;
+  studioEnv.traverse((obj) => {
+    if (obj.isMesh) {
+      obj.geometry.dispose();
+      obj.material.dispose();
+    }
+  });
   pmrem.dispose();
   scene.environment = envTexture;
-  scene.environmentIntensity = 0.5;
+  scene.environmentIntensity = 1.0;
 
-  const key = new THREE.DirectionalLight(0xffffff, 1.5);
+  // The environment does most of the work now that the body has real materials.
+  // These two are for shaping only: a soft key to keep the chest and quads from
+  // going flat, and a cool back rim so the silhouette separates from the card.
+  const key = new THREE.DirectionalLight(0xfff1e0, 0.85);
   key.position.set(3.5, 5, 6);
   scene.add(key);
 
-  const rim = new THREE.DirectionalLight(0x8ec6ff, 0.7);
+  const rim = new THREE.DirectionalLight(palette.rim, 0.55);
   rim.position.set(-4, 1.5, -5);
   scene.add(rim);
 
@@ -140,8 +286,11 @@ export async function createViewer(canvas, options = {}) {
   // shadow spinning with the body it belongs to would read as a bug, not a feature.
   scene.add(shadow);
 
-  const { group, regions, inert } = await loadFigure(palette);
+  let ember = readCSSColor("--north-ember", 0xe8973c);
+  const { group, regions, skin } = await loadFigure(ember, depthMid, palette);
   scene.add(group);
+
+  const muscleMeshes = Object.values(regions).flatMap((region) => region.meshes);
 
   // ---------------------------------------------------------------------
   // Interaction: a drag to rotate is the whole control surface, so pulling in
@@ -184,6 +333,16 @@ export async function createViewer(canvas, options = {}) {
   // click, not the end of a drag-to-rotate. Raycast against the figure and
   // resolve the hit mesh back to a muscle key the same way loadFigure() does,
   // so "what did I click" and "what does setLoads colour" never disagree.
+  //
+  // Muscle meshes only, never the skin: since NOR-6 the skin is opaque and sits
+  // in front of every muscle, so a raycast against the whole group would return
+  // the shell for every single click.
+  //
+  // The list is also filtered to what's currently lit. Raycaster does NOT skip
+  // objects with visible === false — it only tests layers — so without this a
+  // click anywhere on the body reports whichever unlit muscle happens to lie
+  // under the cursor, including deep ones nobody can see. Only offering the
+  // muscles that are actually glowing is what the person is looking at.
   // ---------------------------------------------------------------------
   const raycaster = new THREE.Raycaster();
   const pointerNDC = new THREE.Vector2();
@@ -199,7 +358,8 @@ export async function createViewer(canvas, options = {}) {
     pointerNDC.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
     raycaster.setFromCamera(pointerNDC, camera);
 
-    for (const hit of raycaster.intersectObject(group, true)) {
+    const lit = muscleMeshes.filter((mesh) => mesh.visible);
+    for (const hit of raycaster.intersectObjects(lit, false)) {
       const key = resolveKey(hit.object.name) || resolveKey(hit.object.parent && hit.object.parent.name);
       if (key) {
         options.onMuscleClick(key, MUSCLE_INFO[key] || null);
@@ -250,27 +410,38 @@ export async function createViewer(canvas, options = {}) {
   // ---------------------------------------------------------------------
   // Highlighting
   // ---------------------------------------------------------------------
-  const base = new THREE.Color(palette.base);
-  let ember = readCSSColor("--north-ember", 0xe8973c);
   let current = [];
 
+  // A muscle at zero load isn't dimmed, it's switched off: it's sealed inside an
+  // opaque body, so anything less than "off" would read as the skin being dirty.
+  // Hiding it also drops it out of the draw call list and out of the raycast —
+  // on a typical exercise fewer than a dozen of the 116 meshes are worked.
   function setLoads(loads) {
     current = loads;
     const peak = loads.reduce((m, l) => Math.max(m, l.share), 0) || 1;
 
-    for (const material of Object.values(regions)) {
-      material.color.copy(base);
-      material.emissive.copy(base);
-      material.emissiveIntensity = 0;
+    for (const region of Object.values(regions)) {
+      region.material.uniforms.uIntensity.value = 0;
+      for (const mesh of region.meshes) mesh.visible = false;
     }
 
     for (const load of loads) {
-      const material = regions[load.key];
-      if (!material) continue;
+      const region = regions[load.key];
+      if (!region) continue;
       const intensity = Math.min(1, load.share / peak);
-      material.color.copy(base).lerp(ember, 0.3 + 0.7 * intensity);
-      material.emissive.copy(ember);
-      material.emissiveIntensity = 0.15 + 0.85 * intensity;
+      // Floor of 0.22 so a stabiliser still reads as lit rather than as a smudge;
+      // the tier spread above it is what distinguishes primary from secondary. The
+      // ceiling stays under 1 so even a primary mover keeps some skin reading over
+      // it — at full opacity the muscle stops looking like it's under the surface.
+      //
+      // These numbers are per *layer*, not per muscle group. Glow meshes don't write
+      // depth (they can't — see createGlowMaterial), so where a group is several
+      // sheets deep the alphas composite. "abs" is the worst case at four layers
+      // (transversus, both obliques, rectus) and turns into a flat slab across the
+      // whole abdomen if a single layer is allowed to be strong. Anything much above
+      // this trades a legible quad for an unreadable torso.
+      region.material.uniforms.uIntensity.value = 0.32 + 0.42 * intensity;
+      for (const mesh of region.meshes) mesh.visible = true;
     }
   }
 
@@ -294,10 +465,13 @@ export async function createViewer(canvas, options = {}) {
     setTheme(isDark) {
       dark = isDark;
       palette = dark ? THEME.dark : THEME.light;
-      renderer.toneMappingExposure = dark ? 1.05 : 0.9;
-      base.set(palette.base);
-      inert.color.set(palette.inert);
+      renderer.toneMappingExposure = palette.exposure;
+      rim.color.set(palette.rim);
+      skin.setRim(palette);
       ember = readCSSColor("--north-ember", 0xe8973c);
+      for (const region of Object.values(regions)) {
+        region.material.uniforms.uColor.value.copy(ember);
+      }
       setLoads(current);
     },
     destroy() {
@@ -320,6 +494,10 @@ export async function createViewer(canvas, options = {}) {
       });
       for (const geometry of geometries) geometry.dispose();
       for (const material of materials) material.dispose();
+      // Material.dispose() doesn't touch the textures the material points at, and
+      // the skin's baked PBR maps are the only textures in the file that came from
+      // the GLTF rather than being generated here.
+      skin.disposeTextures();
 
       shadowGeometry.dispose();
       shadowMaterial.dispose();
@@ -335,181 +513,6 @@ export async function createViewer(canvas, options = {}) {
 
 const MODEL_PATH = "/assets/models/body.glb";
 
-// Exact node names from body.glb, one entry per muscle key. Both sides and every
-// anatomical head/segment share a key — that's how a limb pair lights up together.
-// The short common-name aliases are a safety net for a future re-export that might
-// not match these exact Z-Anatomy labels.
-const MUSCLE_ALIASES = {
-  quads: [
-    "rectus femoris muscle",
-    "vastus lateralis muscle",
-    "vastus medialis muscle",
-    "vastus intermedius muscle",
-    "quadriceps",
-  ],
-  glutes: [
-    "gluteus medius muscle",
-    "gluteus maximus muscle",
-    "gluteus minimus muscle",
-    "glutes",
-  ],
-  hamstrings: [
-    "long head of biceps femoris",
-    "short head of biceps femoris",
-    "semimembranosus muscle",
-    "semitendinosus muscle",
-    "hamstrings",
-  ],
-  calves: [
-    "lateral head of gastrocnemius",
-    "medial head of gastrocnemius",
-    "soleus muscle",
-    "calves",
-  ],
-  adductors: ["adductor magnus", "adductor longus", "adductor brevis", "adductors"],
-  traps: [
-    "ascending part of trapezius muscle",
-    "descending part of trapezius muscle",
-    "transverse part of trapezius muscle",
-    "trapezius",
-    "traps",
-  ],
-  delts: [
-    "acromial part of deltoid muscle",
-    "clavicular part of deltoid muscle",
-    "scapular spinal part of deltoid muscle",
-    "deltoid",
-    "delts",
-  ],
-  biceps: ["long head of biceps brachii", "short head of biceps brachii", "biceps brachii", "biceps"],
-  triceps: [
-    "medial head of triceps brachii",
-    "lateral head of triceps brachii",
-    "long head of triceps brachii",
-    "triceps brachii",
-    "triceps",
-  ],
-  forearms: [
-    "brachioradialis muscle",
-    "flexor carpi radialis",
-    "superficial head of pronator teres",
-    "deep head of pronator teres",
-    "humeral head of flexor carpi ulnaris",
-    "ulnar head of flexor carpi ulnaris",
-    "pronator quadratus",
-    "ulnar head of extensor carpi ulnaris",
-    "humeral head of extensor carpi ulnaris",
-    "extensor carpi radialis longus",
-    "extensor carpi radialis brevis",
-    "forearms",
-  ],
-  lats: ["latissimus dorsi muscle", "latissimus dorsi", "lats"],
-  rhomboids: ["rhomboid major muscle", "rhomboid minor muscle", "rhomboids"],
-  // Thoracolumbar only. The capitis/colli heads of the same three columns
-  // moved to `neck` below — ALIAS_LOOKUP is a Map built in key order, so a
-  // mesh listed twice silently belongs to whichever key is written last.
-  // Splitting them is also the more accurate read: what a deadlift loads is
-  // the thoracolumbar erectors, not the neck extensors.
-  erectors: [
-    "iliocostalis lumborum muscle",
-    "iliocostalis thoracis muscle",
-    "longissimus thoracis muscle",
-    "spinalis thoracis muscle",
-    "semispinalis thoracis muscle",
-    "erector spinae",
-    "erectors",
-  ],
-  serratus: ["serratus anterior muscle", "serratus anterior", "serratus"],
-  abs: [
-    "rectus abdominis muscle",
-    "external abdominal oblique muscle",
-    "internal abdominal oblique muscle",
-    "transversus abdominis muscle",
-    "abdominals",
-    "abs",
-  ],
-  // Deliberately empty: body.glb has no pectoralis mesh, so setLoads finds
-  // nothing to colour and skips the key. The group is still canonical — see
-  // UnmodelledGroups in internal/workouts/plan/muscle.go, and the note the
-  // viewer component renders so a bench press does not appear to train
-  // nothing. Fill this in when the model gains pec major/minor.
-  chest: [],
-  // The cervical heads of the erector columns, moved out of `erectors`
-  // above. Not a sternocleidomastoid — body.glb has none — so this
-  // highlights neck extension, which is what the neck-trained exercises in
-  // the catalog actually are.
-  neck: [
-    "iliocostalis colli muscle",
-    "longissimus capitis muscle",
-    "longissimus colli muscle",
-    "spinalis capitis muscle",
-    "spinalis colli muscle",
-    "semispinalis colli muscle",
-    "neck",
-  ],
-};
-
-// Display name + one-line description per muscle key, for the click-to-inspect
-// panel. Same 17 keys as MUSCLE_ALIASES and internal/workouts/plan/muscle.go —
-// see that file's doc comment for the checklist to keep all three in sync.
-// A key whose MUSCLE_ALIASES entry is empty still belongs here: the model
-// cannot colour it, but the person clicking around still deserves to be told
-// what it is.
-const MUSCLE_INFO = {
-  quads: { name: "Quadriceps", description: "Front of the thigh; straightens the knee and drives out of a squat." },
-  glutes: { name: "Glutes", description: "The hip's main extensor — powers standing up from a squat or hinge." },
-  hamstrings: { name: "Hamstrings", description: "Back of the thigh; bends the knee and extends the hip in a hinge." },
-  calves: { name: "Calves", description: "Back of the lower leg; points the foot, drives a calf raise or a jump." },
-  adductors: { name: "Adductors", description: "Inner thigh; pulls the leg toward the midline and stabilises the squat." },
-  traps: { name: "Trapezius", description: "Upper back and neck; shrugs the shoulders and stabilises overhead loads." },
-  delts: { name: "Deltoids", description: "Cap of the shoulder; raises the arm out to the side or overhead." },
-  biceps: { name: "Biceps", description: "Front of the upper arm; bends the elbow, as in a curl or a pull-up." },
-  triceps: { name: "Triceps", description: "Back of the upper arm; straightens the elbow, as in a press." },
-  forearms: { name: "Forearms", description: "Grip and wrist control; the limiting factor in most pulling work." },
-  lats: { name: "Latissimus dorsi", description: "Broadest back muscle; pulls the arm down and in, as in a pull-up or row." },
-  rhomboids: { name: "Rhomboids", description: "Between the shoulder blades; pulls them together, as in a row." },
-  erectors: { name: "Erector spinae", description: "Runs the length of the spine; keeps the back straight under load." },
-  serratus: { name: "Serratus anterior", description: "Side of the ribcage; rotates the shoulder blade during an overhead press." },
-  abs: { name: "Abdominals", description: "Front of the core; braces the trunk against load, more than it bends it." },
-  chest: { name: "Pectorals", description: "Front of the ribcage; pushes the arm forward and across, as in a bench press." },
-  neck: { name: "Neck extensors", description: "Back of the neck; holds the head steady under load and extends it." },
-};
-
-// Built once at module scope: normalized alias text -> muscle key. Both the aliases
-// here and every incoming mesh name go through the same normalizeName(), so this
-// table doesn't need to anticipate GLTFLoader's node-name sanitization itself.
-const ALIAS_LOOKUP = new Map();
-for (const [key, aliases] of Object.entries(MUSCLE_ALIASES)) {
-  for (const alias of aliases) ALIAS_LOOKUP.set(normalizeName(alias), key);
-}
-
-// GLTFLoader runs every node name through PropertyBinding.sanitizeNodeName() (so
-// glTF names are safe as animation track target paths): spaces become underscores
-// and periods are stripped outright, so "Iliocostalis lumborum muscle.001" arrives
-// here as "Iliocostalis_lumborum_muscle001" — the duplicate-suffix digits end up
-// glued straight onto the word with no separator at all. Unifying separators to
-// spaces before stripping trailing digits makes both forms converge on the same
-// normalized string regardless of which one a given alias or mesh name started as.
-function normalizeName(name) {
-  return (name || "")
-    .toLowerCase()
-    .replace(/[_.]+/g, " ")
-    .replace(/\d+$/, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function resolveKey(name) {
-  const normalized = normalizeName(name);
-  if (!normalized) return null;
-  if (ALIAS_LOOKUP.has(normalized)) return ALIAS_LOOKUP.get(normalized);
-  // Fallback: substring containment, for names this exact table doesn't cover.
-  for (const [alias, key] of ALIAS_LOOKUP) {
-    if (normalized.includes(alias) || alias.includes(normalized)) return key;
-  }
-  return null;
-}
-
 function isUnderSkinNode(obj) {
   for (let n = obj; n; n = n.parent) {
     if (n.name === "skin") return true;
@@ -518,12 +521,161 @@ function isUnderSkinNode(obj) {
 }
 
 /**
- * Loads body.glb, walks the scene, and recolors every mesh in place: muscle meshes
- * get a per-key material (shared across both sides and every anatomical head, so
- * `setLoads` never has to walk the scene graph), the skin shell gets a fixed
- * translucent material, and anything unmatched falls through to `inert`.
+ * Builds the skin's material from whatever the asset actually shipped.
+ *
+ * The intended input is a Tripo/Meshy export with UVs and baked PBR maps, in which
+ * case its own material is kept (that's the whole reason for regenerating the
+ * model) and only forced opaque. A model with no maps falls back to flat shading
+ * so the viewer degrades to "plain body" rather than to a broken one.
+ *
+ * The fresnel rim is what stops a dark body dissolving into a dark card. It's
+ * injected into the standard material rather than replacing it, so albedo,
+ * roughness, normals and the environment map all keep working.
  */
-async function loadFigure(palette) {
+function buildSkin(source, palette, debug) {
+  const material =
+    source && source.isMeshStandardMaterial
+      ? source
+      : new THREE.MeshStandardMaterial(SKIN_FALLBACK);
+
+  material.metalness = 0;
+  if (!material.map) {
+    material.color.setHex(SKIN_FALLBACK.color);
+    material.roughness = SKIN_FALLBACK.roughness;
+  }
+
+  // ?muscleDebug=1 only — production skin is opaque, which is what lets the glow
+  // pass use GreaterDepth at all.
+  material.transparent = debug;
+  material.opacity = debug ? 0.25 : 1;
+  material.depthWrite = !debug;
+
+  const rimColor = { value: new THREE.Color(palette.rim) };
+  const rimStrength = { value: palette.rimStrength };
+
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uRimColor = rimColor;
+    shader.uniforms.uRimStrength = rimStrength;
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        "#include <common>",
+        "#include <common>\nuniform vec3 uRimColor;\nuniform float uRimStrength;",
+      )
+      .replace(
+        "#include <opaque_fragment>",
+        `{
+          float rim = 1.0 - abs(dot(normalize(normal), normalize(vViewPosition)));
+          outgoingLight += uRimColor * pow(rim, 2.5) * uRimStrength;
+        }
+        #include <opaque_fragment>`,
+      );
+  };
+  material.needsUpdate = true;
+
+  const textures = [
+    material.map,
+    material.normalMap,
+    material.roughnessMap,
+    material.metalnessMap,
+    material.aoMap,
+  ].filter(Boolean);
+
+  return {
+    material,
+    setRim(next) {
+      rimColor.value.set(next.rim);
+      rimStrength.value = next.rimStrength;
+    },
+    disposeTextures() {
+      for (const texture of textures) texture.dispose();
+    },
+  };
+}
+
+/**
+ * PLACEHOLDER — delete once body.glb ships a body with arms.
+ *
+ * The current asset's outer body is a T-pose mesh whose arms were cropped off at the
+ * shoulders, because its pose can't be reconciled with the arms-down muscle set. That
+ * leaves two visible defects: hollow stumps where the deltoids should be, and arms
+ * whose muscles can never glow, since the glow shader only draws where skin is in
+ * front of it and there is no skin out there at all.
+ *
+ * This fills each arm with a capsule sized from the arm muscles it has to cover. It
+ * looks like a mannequin, which is the point — it is a stand-in, not a fix.
+ *
+ * It removes itself: a textured skin is taken to be the real model and skips this
+ * entirely. That is the same condition `tools/model/README.md` states the replacement
+ * has to satisfy (UVs and baked PBR maps), and the interim mesh has neither — so
+ * dropping in the real body retires this on its own. The function should still be
+ * deleted when that happens; it is dead weight, not a feature.
+ *
+ * Geometry extents can't stand in for that test: the crop removed the arms but left
+ * the torso, so the skin's bounding box still spans the full shoulder width and every
+ * arm muscle reads as "inside the body" no matter how exposed it actually is.
+ */
+function addPlaceholderArms(group, regions, skinMaterial) {
+  if (skinMaterial.map) return; // real, textured body — nothing to stand in for
+
+  // Deliberately not "delts": the deltoid wraps the shoulder joint and reaches almost
+  // to the midline, so including it drags the capsule's centre inboard until the arm
+  // sits inside the ribcage. The limb below the shoulder is what needs covering.
+  const ARM_KEYS = ["biceps", "triceps", "forearms"];
+  // Measured and attached in `group` space, not on the model node inside it: that node
+  // carries the auto-fit scale, and Box3.setFromObject already reports world units, so
+  // parenting there would apply the same scale a second time.
+  group.updateWorldMatrix(true, true);
+
+  for (const side of [-1, 1]) {
+    const box = new THREE.Box3();
+    let thickness = 0;
+    for (const key of ARM_KEYS) {
+      for (const mesh of regions[key] ? regions[key].meshes : []) {
+        const meshBox = new THREE.Box3().setFromObject(mesh);
+        const centre = meshBox.getCenter(new THREE.Vector3());
+        if (Math.sign(centre.x) !== side) continue;
+        box.union(meshBox);
+        // Thickness of one muscle across its narrow axis, not of the whole arm: an
+        // axis-aligned box around a limb that hangs at an angle is far wider than the
+        // limb, and sizing a capsule from it produces a beach ball.
+        const meshSize = meshBox.getSize(new THREE.Vector3());
+        thickness = Math.max(thickness, Math.min(meshSize.x, meshSize.z));
+      }
+    }
+    if (box.isEmpty()) continue;
+
+    const size = box.getSize(new THREE.Vector3());
+    const centre = box.getCenter(new THREE.Vector3());
+    // Wide enough that the muscles sit inside it — a muscle poking through has no
+    // skin in front of it and silently stops being drawn.
+    const radius = (thickness / 2) * 1.35;
+    const length = Math.max(size.y - radius * 2, 0.1);
+
+    const arm = new THREE.Mesh(new THREE.CapsuleGeometry(radius, length, 6, 20), skinMaterial);
+    arm.position.copy(centre);
+    // Nudged up and out: up so the top cap fills the cropped shoulder rather than
+    // ending below it, out so the limb clears the ribcage and reads as an arm instead
+    // of a thickened flank. The muscles it covers overlap the torso in this asset, so
+    // sizing alone never separates the two.
+    arm.position.y += radius * 1.2;
+    arm.position.x += side * radius * 0.5;
+    arm.renderOrder = 0;
+    arm.frustumCulled = false;
+    group.add(arm);
+  }
+}
+
+/**
+ * Loads body.glb, walks the scene, and rebuilds every mesh's material in place.
+ *
+ * Muscle meshes share one glow material per key across both sides and every
+ * anatomical head, so `setLoads` sets one uniform instead of walking the scene
+ * graph; the mesh list beside it is what gets shown and hidden. The skin keeps
+ * its own baked material. Anything unmatched is a leftover from the asset build
+ * and is hidden outright — it's sealed inside an opaque body, so drawing it can
+ * only cost frames.
+ */
+async function loadFigure(ember, depthMid, palette) {
   const loader = new GLTFLoader();
   loader.setMeshoptDecoder(MeshoptDecoder);
 
@@ -554,70 +706,84 @@ async function loadFigure(palette) {
   const group = new THREE.Group();
   group.add(inner);
 
+  const debug = isDebug();
   const regions = {};
-  const inert = new THREE.MeshStandardMaterial({
-    color: palette.inert,
-    roughness: 0.72,
-    metalness: 0,
-  });
-  const skinMaterial = new THREE.MeshStandardMaterial({
-    color: 0xcaa27a,
-    roughness: 0.55,
-    metalness: 0,
-    transparent: true,
-    opacity: 0.55,
-    depthWrite: false,
-  });
 
-  function materialFor(key) {
+  function regionFor(key) {
     if (!regions[key]) {
-      regions[key] = new THREE.MeshStandardMaterial({
-        color: palette.base,
-        emissive: palette.base,
-        emissiveIntensity: 0,
-        roughness: 0.45,
-        metalness: 0,
-      });
+      regions[key] = { material: createGlowMaterial(ember, depthMid), meshes: [] };
     }
     return regions[key];
   }
 
-  const originalMaterials = new Set();
+  const discardedMaterials = new Set();
   const unmatchedNames = [];
-  const orphanedKeys = new Set(Object.keys(MUSCLE_ALIASES));
+  // Keys with no mesh names are unmodelled on purpose (chest, until body.glb gains a
+  // pectoralis) and are recorded as such in internal/workouts/plan/muscle.go. Warning
+  // about them would fire on every page load for a known, documented gap.
+  const orphanedKeys = new Set(
+    Object.entries(MUSCLE_ALIASES)
+      .filter(([, aliases]) => aliases.length > 0)
+      .map(([key]) => key),
+  );
+  let skinSource = null;
 
   inner.traverse((obj) => {
     if (!obj.isMesh) return;
     obj.frustumCulled = false;
-    if (obj.material) originalMaterials.add(obj.material);
 
     if (isUnderSkinNode(obj)) {
-      obj.material = skinMaterial;
+      skinSource = obj.material;
+      obj.renderOrder = 0;
       return;
     }
 
+    if (obj.material) discardedMaterials.add(obj.material);
+
     const key = resolveKey(obj.name) || resolveKey(obj.parent && obj.parent.name);
     if (key) {
-      obj.material = materialFor(key);
+      const region = regionFor(key);
+      obj.material = region.material;
+      // Drawn after the skin has written depth, which is what GreaterDepth in the
+      // glow shader tests against.
+      obj.renderOrder = 2;
+      obj.visible = false;
+      region.meshes.push(obj);
       orphanedKeys.delete(key);
     } else {
-      obj.material = inert;
+      obj.visible = false;
       unmatchedNames.push(obj.name);
     }
   });
 
-  // The GLTF's own materials are replaced above and never rendered — dispose them
-  // rather than let them sit unused until GC.
-  for (const material of originalMaterials) material.dispose();
+  const skin = buildSkin(skinSource, palette, debug);
+  inner.traverse((obj) => {
+    if (obj.isMesh && isUnderSkinNode(obj)) obj.material = skin.material;
+  });
 
-  if (orphanedKeys.size > 0 || unmatchedNames.length > 0) {
+  addPlaceholderArms(group, regions, skin.material);
+
+  // The GLTF's own muscle materials are replaced above and never rendered — dispose
+  // them rather than let them sit unused until GC. The skin's is deliberately not in
+  // this set: buildSkin() keeps it for its baked maps.
+  for (const material of discardedMaterials) material.dispose();
+
+  if (!skinSource) {
+    console.warn("[muscle-viewer] body.glb has no node tagged \"skin\" — see tools/model/README.md");
+  }
+  // An orphaned key is a real fault: a muscle North can name but never show. Meshes
+  // the other way round are expected until body.glb is rebuilt — the deep abdominal
+  // and spinal layers were dropped from muscles.js but are still in the shipped asset,
+  // and warning about them on every page load would train everyone to ignore this.
+  if (orphanedKeys.size > 0) {
     console.warn(
-      "[muscle-viewer] asset naming drift — orphaned keys:",
+      "[muscle-viewer] asset naming drift — these keys have no mesh in body.glb and can never light up:",
       [...orphanedKeys],
-      "unmatched meshes:",
-      unmatchedNames,
     );
   }
+  if (debug && unmatchedNames.length > 0) {
+    console.info("[muscle-viewer] meshes in body.glb with no muscle key:", unmatchedNames);
+  }
 
-  return { group, regions, inert };
+  return { group, regions, skin };
 }

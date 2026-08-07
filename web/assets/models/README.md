@@ -1,58 +1,58 @@
 # body.glb
 
-3D model for the muscle viewer (`web/assets/js/shared/muscle-viewer/viewer.js`,
-NOR-6, extracted from the landing page and generalized for production use in
-NOR-8). Two layers, both real assets — no procedural/primitive geometry.
+The figure rendered by the muscle viewer
+(`web/assets/js/shared/muscle-viewer/viewer.js`). Two layers, both real assets — no
+procedural or primitive geometry.
 
-## Sources
+Built by `tools/model/build-body.mjs`. That script and its README are the authority
+on how to regenerate this file, what the sources have to look like, and how to fix
+the alignment when it goes wrong. This file records only what the current asset *is*.
+
+## Layers
 
 **Muscles** — [hpfrei/body-anatomy-3d-viewer](https://github.com/hpfrei/body-anatomy-3d-viewer)
 (`public/body.glb`), built on anatomical data from [Z-Anatomy](https://www.z-anatomy.com/).
-Licensed [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). Pruned from the
-full atlas (826 meshes: skeleton, organs, cartilage, teeth, facial muscles, hand/foot
-detail) down to the 116 meshes matching North's 15 highlightable muscle groups — every
-anatomical head and both sides, named as in the source (e.g. `Vastus lateralis muscle`,
-`Vastus lateralis muscle.001`).
+Licensed [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). Pruned from
+the full atlas (826 meshes: skeleton, organs, cartilage, teeth, facial muscles,
+hand/foot detail) down to the 116 meshes matching North's 15 highlightable muscle
+groups — every anatomical head and both sides, named as in the source (e.g.
+`Vastus lateralis muscle`, `Vastus lateralis muscle.001`). ~76,000 triangles.
 
-**Skin** — [Human Body Base Mesh Male](https://sketchfab.com/3d-models/human-body-base-mesh-male-3678451d8ccb435e833f8a10729c09f5)
-by [ferrumiron6](https://sketchfab.com/ferrumiron6) on Sketchfab. Licensed
-[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Source mesh is a static
-T-pose with no rig — arms can't be repositioned to match the muscle data's arms-down
-pose without hand-sculpting (not available in this pipeline), so the skin is cropped at
-the shoulders (world-space |x| > 0.32m) and kept only for head/torso/legs. Arms show the
-Z-Anatomy muscle geometry directly, uncovered.
+**Skin** — the outer body. Opaque since NOR-6; the muscles are sealed inside it and
+only surface as a glow where an exercise works them.
 
-Per CC BY-SA's ShareAlike clause, the combined asset is licensed **CC BY-SA 4.0**.
-Attribution for both sources lives in the site footer (`web/landing/sections.templ`,
-`siteFooter()`).
+> **Current state (NOR-6, in progress).** The skin is still the interim asset:
+> [Human Body Base Mesh Male](https://sketchfab.com/3d-models/human-body-base-mesh-male-3678451d8ccb435e833f8a10729c09f5)
+> by [ferrumiron6](https://sketchfab.com/ferrumiron6), CC BY 4.0. It is a rigless
+> T-pose with no UVs and no textures, so the pipeline crops its arms off at the
+> shoulders (`|x| > 0.32m`) to avoid a pose clash, and the runtime falls back to flat
+> shading. That is why the figure reads as clay rather than skin.
+>
+> The missing arms are filled at runtime by `addPlaceholderArms()` in `viewer.js` —
+> a capsule per side, sized from the arm muscles it has to cover. Without it the
+> figure has hollow stumps at the deltoids *and* its arm muscles can never light up,
+> since the glow only draws where there is skin in front of it. It looks like a
+> mannequin, on purpose. It switches itself off when the skin has textures, so
+> dropping in the real body retires it; delete the function at that point.
+>
+> Replacing this mesh with an arms-down, textured export is the remaining half of
+> NOR-6 — see `tools/model/README.md` for the requirements.
 
-## How it was built
+Per CC BY-SA's ShareAlike clause the combined asset is licensed **CC BY-SA 4.0**,
+whatever the skin's own licence. Attribution for every source lives in the site
+footer (`web/landing/sections.templ`, `siteFooter()`).
 
-No Blender involved — this is a scripted pipeline (`@gltf-transform/core` +
-`@gltf-transform/functions`, Node), because the Z-Anatomy source already ships
-individually named, anatomically separated meshes; no manual segmentation was needed.
+## Compression
 
-1. **Extract muscles**: read the source `body.glb` (Draco-compressed), keep only nodes
-   whose name (after stripping Blender's `.NNN` duplicate suffix) matches one of the 15
-   muscle groups' known anatomical names, drop everything else, weld/dedupe.
-2. **Crop skin**: read the skin `.glb`, transform each vertex by its node's world
-   matrix, drop any triangle with a vertex beyond `|x| > 0.32` (removes the T-pose
-   arms), drop the `Eyes` sub-mesh, weld.
-3. **Merge**: combine both into one document (`mergeDocuments`), tag the skin's
-   top-level node `"skin"` and its material `"skin-material"` so the runtime loader can
-   treat it separately (always translucent, never colored by muscle load) without
-   depending on traversal order.
-4. **Compress**: `gltf-transform meshopt --level high` (Meshopt, not Draco — see
-   `web/assets/js/vendor/three-gltf-loader.module.js`'s header for why) + prune +
-   `KHR_mesh_quantization`.
+`EXT_meshopt_compression` + `KHR_mesh_quantization`. Meshopt rather than Draco — see
+the header of `web/assets/js/vendor/three-gltf-loader.module.js` for why.
 
-Final size: ~1MB (well under the 2–3MB target). No textures, no materials baked in —
-every material is assigned at runtime by `muscle-viewer.js`'s `loadFigure()`.
+## Contract with the runtime
 
-## Regenerating
+Two things in this file are load-bearing, and `build-body.mjs` asserts both:
 
-The extraction/crop/merge scripts aren't checked into this repo (they're a one-off
-build step, not application code). If the source assets change or the skin fit needs
-adjusting, the pipeline above is reproducible in a scratch Node project with
-`@gltf-transform/core`, `@gltf-transform/functions`, `@gltf-transform/extensions`,
-`draco3dgltf` (to read the Draco-compressed source), and the `gltf-transform` CLI.
+- the outer body hangs under a node named **`skin`**, with its material named
+  `skin-material`. `isUnderSkinNode()` in `viewer.js` walks parents looking for
+  exactly that name to decide what is body and what is muscle.
+- every muscle mesh is named as in `web/assets/js/shared/muscle-viewer/muscles.js`.
+  A mesh the viewer can't resolve to a muscle key is hidden, not drawn.

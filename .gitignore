@@ -12,3 +12,7 @@ bin/
 *.exe
 *.test
 *.out
+
+# tools/model is a build-time Node tool, run by hand and never deployed
+node_modules/
+package-lock.json
