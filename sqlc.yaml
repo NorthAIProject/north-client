@@ -191,3 +191,13 @@ sql:
         out: internal/sleep/db
         overrides: *overrides
 
+  - engine: postgresql
+    schema: migrations
+    queries: internal/habits/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: habitsdb
+        out: internal/habits/db
+        overrides: *overrides
+
