@@ -33,7 +33,7 @@ func TestFoodLogDayAndDailyTotals(t *testing.T) {
 	}
 
 	today := time.Now()
-	if _, err := foodLogSvc.LogIngredient(ctx, user.ID, meals.LogIngredientInput{IngredientID: oats.ID, QuantityGrams: 50, LogDate: today}); err != nil {
+	if _, err = foodLogSvc.LogIngredient(ctx, user.ID, meals.LogIngredientInput{IngredientID: oats.ID, QuantityGrams: 50, LogDate: today}); err != nil {
 		t.Fatalf("log ingredient: %v", err)
 	}
 
@@ -115,7 +115,7 @@ func TestProgressForDayComputesDelta(t *testing.T) {
 
 	today := time.Now()
 	// One filler gram = one kcal, so this logs exactly the goal's calories.
-	if _, err := foodLogSvc.LogIngredient(ctx, user.ID, meals.LogIngredientInput{
+	if _, err = foodLogSvc.LogIngredient(ctx, user.ID, meals.LogIngredientInput{
 		IngredientID: fillerID, QuantityGrams: goalPlan.CalorieGoal, LogDate: today,
 	}); err != nil {
 		t.Fatalf("log ingredient: %v", err)
