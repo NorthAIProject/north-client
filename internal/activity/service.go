@@ -123,3 +123,48 @@ func (s *Service) List(ctx context.Context, userID uuid.UUID, limit int) ([]Sess
 func (s *Service) TotalCaloriesSince(ctx context.Context, userID uuid.UUID, since time.Time) (float64, error) {
 	return s.repo.SumCaloriesSince(ctx, userID, since)
 }
+
+// ImportInput is one finished session arriving from a provider sync.
+//
+// It carries its own weight rather than looking one up: the caller is the
+// one holding the context about when the session happened.
+type ImportInput struct {
+	UserID       uuid.UUID
+	ActivityCode string
+	Source       string
+	ExternalID   string
+	StartedAt    time.Time
+	EndedAt      time.Time
+	WeightKg     float64
+
+	// Calories is the provider's own figure when it has one. Zero means
+	// "unknown", and Import falls back to the MET estimate.
+	Calories float64
+}
+
+// Import records a finished session from a provider, reporting false when it
+// had already been imported.
+//
+// The provider's own calorie figure wins when present: a device that watched
+// someone's heart rate knows more than a MET table does. The estimate is the
+// fallback, computed exactly as Stop computes it, so a synced session and a
+// logged one are costed the same way.
+func (s *Service) Import(ctx context.Context, in ImportInput) (Session, bool, error) {
+	met, ok := LookupMET(in.ActivityCode)
+	if !ok {
+		return Session{}, false, apperr.Wrap(apperr.ErrValidation, "unknown activity %q", in.ActivityCode)
+	}
+	if in.ExternalID == "" {
+		return Session{}, false, apperr.Wrap(apperr.ErrValidation, "an imported session needs an external id")
+	}
+
+	if in.Calories <= 0 {
+		hours := in.EndedAt.Sub(in.StartedAt).Hours()
+		if hours < 0 {
+			hours = 0
+		}
+		in.Calories = met.Value * in.WeightKg * hours
+	}
+
+	return s.repo.Import(ctx, in)
+}

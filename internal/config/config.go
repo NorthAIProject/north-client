@@ -32,6 +32,12 @@ type Config struct {
 	GoogleClientID     string
 	GoogleClientSecret string
 
+	// Strava credentials are optional, like Google's: without them the
+	// integration reports itself unavailable rather than failing the boot,
+	// so a developer with no Strava app can still run everything else.
+	StravaClientID     string
+	StravaClientSecret string
+
 	// WebAuthn relying party. RPID defaults to the host of BaseURL when empty.
 	WebAuthnRPID        string
 	WebAuthnDisplayName string
@@ -139,6 +145,9 @@ func Load() (*Config, error) {
 
 		GoogleClientID:     strings.TrimSpace(os.Getenv("GOOGLE_CLIENT_ID")),
 		GoogleClientSecret: strings.TrimSpace(os.Getenv("GOOGLE_CLIENT_SECRET")),
+
+		StravaClientID:     strings.TrimSpace(os.Getenv("STRAVA_CLIENT_ID")),
+		StravaClientSecret: strings.TrimSpace(os.Getenv("STRAVA_CLIENT_SECRET")),
 
 		MCPListenAddr: optional("MCP_LISTEN_ADDR", "127.0.0.1:8093"),
 
