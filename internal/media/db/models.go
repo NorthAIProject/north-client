@@ -118,6 +118,25 @@ type GoalUpdate struct {
 	CreatedAt time.Time
 }
 
+type Habit struct {
+	ID         uuid.UUID
+	UserID     uuid.UUID
+	Name       string
+	Domain     string
+	DaysOfWeek []int16
+	Active     bool
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+}
+
+type HabitCompletion struct {
+	ID          uuid.UUID
+	HabitID     uuid.UUID
+	UserID      uuid.UUID
+	LocalDate   pgtype.Date
+	CompletedAt time.Time
+}
+
 type HydrationLog struct {
 	ID       uuid.UUID
 	UserID   uuid.UUID
