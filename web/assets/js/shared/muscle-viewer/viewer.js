@@ -336,10 +336,13 @@ export async function createViewer(canvas, options = {}) {
   //
   // Muscle meshes only, never the skin: since NOR-6 the skin is opaque and sits
   // in front of every muscle, so a raycast against the whole group would return
-  // the shell for every single click. Three skips invisible objects, and a muscle
-  // at zero load is invisible (see setLoads), so this also lands on exactly the
-  // muscles that are currently glowing — clicking a dark region does nothing,
-  // which matches what the person can actually see.
+  // the shell for every single click.
+  //
+  // The list is also filtered to what's currently lit. Raycaster does NOT skip
+  // objects with visible === false — it only tests layers — so without this a
+  // click anywhere on the body reports whichever unlit muscle happens to lie
+  // under the cursor, including deep ones nobody can see. Only offering the
+  // muscles that are actually glowing is what the person is looking at.
   // ---------------------------------------------------------------------
   const raycaster = new THREE.Raycaster();
   const pointerNDC = new THREE.Vector2();
@@ -355,7 +358,8 @@ export async function createViewer(canvas, options = {}) {
     pointerNDC.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
     raycaster.setFromCamera(pointerNDC, camera);
 
-    for (const hit of raycaster.intersectObjects(muscleMeshes, false)) {
+    const lit = muscleMeshes.filter((mesh) => mesh.visible);
+    for (const hit of raycaster.intersectObjects(lit, false)) {
       const key = resolveKey(hit.object.name) || resolveKey(hit.object.parent && hit.object.parent.name);
       if (key) {
         options.onMuscleClick(key, MUSCLE_INFO[key] || null);
