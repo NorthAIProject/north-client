@@ -196,6 +196,7 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, stora
 	workoutSvc := workouts.NewService(workouts.Options{
 		Repository: workouts.NewRepository(pool),
 		Registry:   registry,
+		Catalog:    exerciseSvc,
 		Model:      cfg.AI.Model,
 	})
 	workoutHandler := workouts.NewHandler(workoutSvc)
