@@ -14,26 +14,47 @@ package eval
 import (
 	"context"
 	"os"
+	"sort"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/ai/gemini"
-	"github.com/NorthAIProject/north-client/internal/ai/openrouter"
+	"github.com/NorthAIProject/north-client/internal/ai/openaicompat"
 )
 
 // timeout bounds a single live call. Generous, because a large model under load
 // is slow, not broken.
 const timeout = 2 * time.Minute
 
+// compatible describes the OpenAI-dialect backends the evals can run against.
+// A table rather than a switch, so a new backend is one line here and the list
+// in the error message stays correct by construction.
+var compatible = map[string]struct {
+	keyEnv             string
+	baseURLEnv         string
+	defaultBaseURL     string
+	defaultModel       string
+	supportsJSONSchema bool
+}{
+	"openrouter": {"OPENROUTER_API_KEY", "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1", "anthropic/claude-sonnet-4.5", true},
+	"nvidia":     {"NVIDIA_API_KEY", "NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1", "meta/llama-3.3-70b-instruct", false},
+	"xai":        {"XAI_API_KEY", "XAI_BASE_URL", "https://api.x.ai/v1", "grok-4.5", true},
+	"hermes":     {"HERMES_API_KEY", "HERMES_BASE_URL", "", "hermes-3", false},
+}
+
 // Provider builds the client under test, skipping when its key is absent so a
 // contributor with only one key can still run the evals they can afford.
 func Provider(t *testing.T) ai.Client {
 	t.Helper()
 
-	switch strings.ToLower(os.Getenv("EVAL_PROVIDER")) {
-	case "", "gemini":
+	name := strings.ToLower(os.Getenv("EVAL_PROVIDER"))
+	if name == "" {
+		name = "gemini"
+	}
+
+	if name == "gemini" {
 		key := os.Getenv("GEMINI_API_KEY")
 		if key == "" {
 			t.Skip("GEMINI_API_KEY not set; skipping live evaluation")
@@ -44,23 +65,43 @@ func Provider(t *testing.T) ai.Client {
 			t.Fatalf("build gemini client: %v", err)
 		}
 		return c
+	}
 
-	case "openrouter":
-		key := os.Getenv("OPENROUTER_API_KEY")
-		if key == "" {
-			t.Skip("OPENROUTER_API_KEY not set; skipping live evaluation")
-		}
-		model := envOr("EVAL_MODEL", "anthropic/claude-sonnet-4.5")
-		c, err := openrouter.New(openrouter.Options{APIKey: key, DefaultModel: model})
-		if err != nil {
-			t.Fatalf("build openrouter client: %v", err)
-		}
-		return c
-
-	default:
-		t.Fatalf("unknown EVAL_PROVIDER %q (want gemini or openrouter)", os.Getenv("EVAL_PROVIDER"))
+	spec, ok := compatible[name]
+	if !ok {
+		t.Fatalf("unknown EVAL_PROVIDER %q (want gemini, %s)", name, strings.Join(compatibleNames(), ", "))
 		return nil
 	}
+
+	key := os.Getenv(spec.keyEnv)
+	if key == "" {
+		t.Skipf("%s not set; skipping live evaluation", spec.keyEnv)
+	}
+	baseURL := envOr(spec.baseURLEnv, spec.defaultBaseURL)
+	if baseURL == "" {
+		t.Skipf("%s not set; skipping live evaluation", spec.baseURLEnv)
+	}
+
+	c, err := openaicompat.New(openaicompat.Options{
+		Name:               name,
+		BaseURL:            baseURL,
+		APIKey:             key,
+		DefaultModel:       envOr("EVAL_MODEL", spec.defaultModel),
+		SupportsJSONSchema: spec.supportsJSONSchema,
+	})
+	if err != nil {
+		t.Fatalf("build %s client: %v", name, err)
+	}
+	return c
+}
+
+func compatibleNames() []string {
+	names := make([]string, 0, len(compatible))
+	for name := range compatible {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 // Context bounds a live call.

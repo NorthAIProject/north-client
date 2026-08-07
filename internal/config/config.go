@@ -4,9 +4,14 @@ package config
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/NorthAIProject/north-client/internal/ai"
+	"github.com/NorthAIProject/north-client/internal/ai/providers"
+	"github.com/NorthAIProject/north-client/internal/users"
 )
 
 // Config is the complete configuration of a North process. It is loaded once at
@@ -33,20 +38,54 @@ type Config struct {
 
 	AI      AIConfig
 	Storage StorageConfig
+
+	// MCPListenAddr is where cmd/mcp-server listens. It defaults to the
+	// loopback interface rather than all of them: the MCP surface authenticates
+	// with one static token for one account, so binding it wide by accident is
+	// the mistake worth making impossible by default.
+	MCPListenAddr string
 }
 
-// AIConfig selects and configures the AI provider. Provider names must match a
+// AIConfig selects and configures the AI providers. Provider names must match a
 // client registered in internal/ai.
 type AIConfig struct {
-	Provider  string
+	// Chain is the ordered preference list of providers. The first one whose
+	// credentials are present and which answers a request wins; the rest are
+	// there for when it refuses.
+	Chain []string
+
+	// FreeChain is the equivalent for users on the free tier, so the cheap and
+	// self-hosted backends carry them by default.
+	FreeChain []string
+
+	// Model overrides the head provider's default model. Empty means each
+	// provider uses its own configured model.
 	Model     string
 	FastModel string
 
 	GeminiAPIKey string
+	GeminiModel  string
 
-	OpenRouterAPIKey  string
-	OpenRouterSiteURL string
-	OpenRouterSiteApp string
+	// UploadProvider handles work that needs a file upload API — form video
+	// analysis. Not part of a chain: the OpenAI-dialect backends have no upload
+	// endpoint, so there is nothing useful to fall back to.
+	UploadProvider string
+
+	OpenRouter OpenAICompatConfig
+	NVIDIA     OpenAICompatConfig
+	XAI        OpenAICompatConfig
+	Hermes     OpenAICompatConfig
+
+	// OpenRouter's attribution headers. Its convention, not the dialect's.
+	OpenRouterSiteURL  string
+	OpenRouterSiteName string
+}
+
+// OpenAICompatConfig configures one backend speaking the OpenAI chat dialect.
+type OpenAICompatConfig struct {
+	APIKey  string
+	BaseURL string
+	Model   string
 }
 
 // StorageConfig describes an S3-compatible bucket. The same shape serves MinIO
@@ -101,19 +140,50 @@ func Load() (*Config, error) {
 		GoogleClientID:     strings.TrimSpace(os.Getenv("GOOGLE_CLIENT_ID")),
 		GoogleClientSecret: strings.TrimSpace(os.Getenv("GOOGLE_CLIENT_SECRET")),
 
+		MCPListenAddr: optional("MCP_LISTEN_ADDR", "127.0.0.1:8093"),
+
 		WebAuthnRPID:        optional("WEBAUTHN_RP_ID", ""),
 		WebAuthnDisplayName: optional("WEBAUTHN_RP_DISPLAY_NAME", "North"),
 
 		AI: AIConfig{
-			Provider:  optional("AI_PROVIDER", "gemini"),
-			Model:     optional("AI_MODEL", "gemini-2.5-pro"),
-			FastModel: optional("AI_FAST_MODEL", "gemini-2.5-flash"),
+			Chain:     providerChain("AI_PROVIDER_CHAIN"),
+			FreeChain: providerChain("AI_PROVIDER_CHAIN_FREE"),
+
+			// Both default to empty, meaning "whatever model the provider that
+			// answers is configured with". A concrete default here would name a
+			// model from one vendor and fail against every other.
+			Model:     optional("AI_MODEL", ""),
+			FastModel: optional("AI_FAST_MODEL", ""),
 
 			GeminiAPIKey: os.Getenv("GEMINI_API_KEY"),
+			GeminiModel:  optional("GEMINI_MODEL", "gemini-2.5-pro"),
 
-			OpenRouterAPIKey:  os.Getenv("OPENROUTER_API_KEY"),
-			OpenRouterSiteURL: os.Getenv("OPENROUTER_SITE_URL"),
-			OpenRouterSiteApp: optional("OPENROUTER_SITE_NAME", "North"),
+			UploadProvider: optional("AI_UPLOAD_PROVIDER", "gemini"),
+
+			OpenRouter: OpenAICompatConfig{
+				APIKey:  os.Getenv("OPENROUTER_API_KEY"),
+				BaseURL: optional("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
+				Model:   optional("OPENROUTER_MODEL", "anthropic/claude-sonnet-4.5"),
+			},
+			NVIDIA: OpenAICompatConfig{
+				APIKey:  os.Getenv("NVIDIA_API_KEY"),
+				BaseURL: optional("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1"),
+				Model:   optional("NVIDIA_MODEL", "meta/llama-3.3-70b-instruct"),
+			},
+			XAI: OpenAICompatConfig{
+				APIKey:  os.Getenv("XAI_API_KEY"),
+				BaseURL: optional("XAI_BASE_URL", "https://api.x.ai/v1"),
+				Model:   optional("XAI_MODEL", "grok-4.5"),
+			},
+			Hermes: OpenAICompatConfig{
+				APIKey: os.Getenv("HERMES_API_KEY"),
+				// No default: Hermes is self-hosted and has no public address.
+				BaseURL: os.Getenv("HERMES_BASE_URL"),
+				Model:   optional("HERMES_MODEL", "hermes-3"),
+			},
+
+			OpenRouterSiteURL:  os.Getenv("OPENROUTER_SITE_URL"),
+			OpenRouterSiteName: optional("OPENROUTER_SITE_NAME", "North"),
 		},
 
 		Storage: StorageConfig{
@@ -143,22 +213,30 @@ func Load() (*Config, error) {
 	}
 	cfg.Storage.UsePathStyle = pathStyle
 
-	// The selected provider needs its credential; the others do not. Checking
-	// only what is in use keeps a Gemini-only setup from demanding four keys.
-	switch cfg.AI.Provider {
-	case "gemini":
-		if cfg.AI.GeminiAPIKey == "" {
-			problems = append(problems, "GEMINI_API_KEY is required when AI_PROVIDER=gemini")
+	// AI_PROVIDER is the older single-provider form. Honouring it as a
+	// one-element chain keeps existing .env files and deployments working.
+	if len(cfg.AI.Chain) == 0 {
+		cfg.AI.Chain = []string{optional("AI_PROVIDER", "gemini")}
+	}
+	if len(cfg.AI.FreeChain) == 0 {
+		cfg.AI.FreeChain = cfg.AI.Chain
+	}
+
+	// Only the names are checked here. Whether a named provider has its
+	// credential is settled in providers.Build, which skips the ones that do
+	// not and fails only if nothing usable is left — that way one chain can be
+	// shared between a laptop with two keys and a deployment with five.
+	//
+	// Reported once per distinct name: the free chain defaults to the main one,
+	// so a single typo would otherwise be listed twice.
+	reported := make(map[string]bool)
+	for _, name := range append(append([]string{}, cfg.AI.Chain...), cfg.AI.FreeChain...) {
+		if knownProviders[name] || reported[name] {
+			continue
 		}
-	case "openrouter":
-		if cfg.AI.OpenRouterAPIKey == "" {
-			problems = append(problems, "OPENROUTER_API_KEY is required when AI_PROVIDER=openrouter")
-		}
-	case "fake":
-		// The fake provider exists for tests and for running the application
-		// without spending money. It needs no credential.
-	default:
-		problems = append(problems, fmt.Sprintf("AI_PROVIDER %q is not a known provider (gemini, openrouter, fake)", cfg.AI.Provider))
+		reported[name] = true
+		problems = append(problems, fmt.Sprintf(
+			"%q is not a known AI provider (%s)", name, strings.Join(knownProviderNames(), ", ")))
 	}
 
 	if len(problems) > 0 {
@@ -170,11 +248,118 @@ func Load() (*Config, error) {
 // Addr is the listen address for the HTTP server.
 func (c *Config) Addr() string { return ":" + strconv.Itoa(c.Port) }
 
+// ChainSet renders the configured chains as the coach's provider preference.
+//
+// Only the free tier gets an entry of its own. Anything else — "pro" today,
+// whatever billing invents later — falls back to the main chain, so adding a
+// tier does not silently leave its users with no provider at all.
+func (c AIConfig) ChainSet() ai.ChainSet {
+	return ai.NewChainSet(c.Chain, map[string][]string{
+		string(users.TierFree): c.FreeChain,
+	})
+}
+
+// ProviderOptions renders the AI configuration as the registry's build input.
+//
+// It lives here rather than in each main so that cmd/web and cmd/worker cannot
+// drift apart — they previously repeated the same literal, and a provider added
+// to one but not the other would have failed only in whichever process happened
+// to need it.
+//
+// The dependency runs config -> providers, never the reverse: providers stays
+// ignorant of how North reads its environment.
+func (c AIConfig) ProviderOptions() providers.Options {
+	return providers.Options{
+		Chain:        c.Chain,
+		GeminiAPIKey: c.GeminiAPIKey,
+		GeminiModel:  c.GeminiModel,
+		Compatible: []providers.Compatible{
+			{
+				Name:    "openrouter",
+				BaseURL: c.OpenRouter.BaseURL,
+				APIKey:  c.OpenRouter.APIKey,
+				Model:   c.OpenRouter.Model,
+				Headers: map[string]string{
+					"HTTP-Referer": c.OpenRouterSiteURL,
+					"X-Title":      c.OpenRouterSiteName,
+				},
+				SupportsJSONSchema: true,
+			},
+			{
+				Name:    "nvidia",
+				BaseURL: c.NVIDIA.BaseURL,
+				APIKey:  c.NVIDIA.APIKey,
+				Model:   c.NVIDIA.Model,
+				// NIM's strict json_schema support varies by model, and a
+				// request it rejects fails outright. Asking in the prompt costs
+				// a retry at worst.
+				SupportsJSONSchema: false,
+			},
+			{
+				Name:               "xai",
+				BaseURL:            c.XAI.BaseURL,
+				APIKey:             c.XAI.APIKey,
+				Model:              c.XAI.Model,
+				SupportsJSONSchema: true,
+			},
+			{
+				Name:    "hermes",
+				BaseURL: c.Hermes.BaseURL,
+				APIKey:  c.Hermes.APIKey,
+				Model:   c.Hermes.Model,
+				// Depends on whichever model the gateway is fronting, so the
+				// safe assumption is the weaker one.
+				SupportsJSONSchema: false,
+			},
+		},
+	}
+}
+
 func optional(key, fallback string) string {
 	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
 		return v
 	}
 	return fallback
+}
+
+// knownProviders is the set of names internal/ai/providers can build. It exists
+// so a typo in a chain is caught at boot rather than becoming a silently
+// skipped provider — Resolve drops unknown names, which is the right behaviour
+// at runtime and the wrong one for a misspelled configuration.
+var knownProviders = map[string]bool{
+	"gemini":     true,
+	"openrouter": true,
+	"nvidia":     true,
+	"xai":        true,
+	"hermes":     true,
+	"fake":       true,
+}
+
+func knownProviderNames() []string {
+	names := make([]string, 0, len(knownProviders))
+	for name := range knownProviders {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// providerChain reads a comma-separated preference list, discarding blanks so
+// a trailing comma or a padded value is not treated as a provider named "".
+func providerChain(key string) []string {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return nil
+	}
+
+	parts := strings.Split(raw, ",")
+	chain := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if name := strings.TrimSpace(part); name != "" {
+			chain = append(chain, name)
+		}
+	}
+	return chain
 }
 
 func intValue(key string, fallback int) (int, error) {
