@@ -33,11 +33,11 @@ const createIngredient = `-- name: CreateIngredient :one
 
 INSERT INTO ingredients (
     user_id, name, brand, category, serving_size_grams,
-    calories_per_100g, protein_g_per_100g, fat_g_per_100g, carbs_g_per_100g,
+    calories_per_100g, protein_g_per_100g, fat_g_per_100g, saturated_fat_g_per_100g, carbs_g_per_100g,
     fiber_g_per_100g, sugar_g_per_100g, sodium_mg_per_100g, potassium_mg_per_100g, cholesterol_mg_per_100g
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-RETURNING id, user_id, name, brand, category, serving_size_grams, calories_per_100g, protein_g_per_100g, fat_g_per_100g, carbs_g_per_100g, fiber_g_per_100g, sugar_g_per_100g, sodium_mg_per_100g, potassium_mg_per_100g, cholesterol_mg_per_100g, created_at, updated_at
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+RETURNING id, user_id, name, brand, category, serving_size_grams, calories_per_100g, protein_g_per_100g, fat_g_per_100g, carbs_g_per_100g, fiber_g_per_100g, sugar_g_per_100g, sodium_mg_per_100g, potassium_mg_per_100g, cholesterol_mg_per_100g, created_at, updated_at, saturated_fat_g_per_100g
 `
 
 type CreateIngredientParams struct {
@@ -49,6 +49,7 @@ type CreateIngredientParams struct {
 	CaloriesPer100g      float64
 	ProteinGPer100g      float64
 	FatGPer100g          float64
+	SaturatedFatGPer100g float64
 	CarbsGPer100g        float64
 	FiberGPer100g        float64
 	SugarGPer100g        float64
@@ -68,6 +69,7 @@ func (q *Queries) CreateIngredient(ctx context.Context, arg CreateIngredientPara
 		arg.CaloriesPer100g,
 		arg.ProteinGPer100g,
 		arg.FatGPer100g,
+		arg.SaturatedFatGPer100g,
 		arg.CarbsGPer100g,
 		arg.FiberGPer100g,
 		arg.SugarGPer100g,
@@ -94,6 +96,7 @@ func (q *Queries) CreateIngredient(ctx context.Context, arg CreateIngredientPara
 		&i.CholesterolMgPer100g,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SaturatedFatGPer100g,
 	)
 	return i, err
 }
@@ -373,7 +376,7 @@ func (q *Queries) DeleteUserDiets(ctx context.Context, userID uuid.UUID) error {
 }
 
 const getIngredient = `-- name: GetIngredient :one
-SELECT id, user_id, name, brand, category, serving_size_grams, calories_per_100g, protein_g_per_100g, fat_g_per_100g, carbs_g_per_100g, fiber_g_per_100g, sugar_g_per_100g, sodium_mg_per_100g, potassium_mg_per_100g, cholesterol_mg_per_100g, created_at, updated_at FROM ingredients WHERE id = $1
+SELECT id, user_id, name, brand, category, serving_size_grams, calories_per_100g, protein_g_per_100g, fat_g_per_100g, carbs_g_per_100g, fiber_g_per_100g, sugar_g_per_100g, sodium_mg_per_100g, potassium_mg_per_100g, cholesterol_mg_per_100g, created_at, updated_at, saturated_fat_g_per_100g FROM ingredients WHERE id = $1
 `
 
 func (q *Queries) GetIngredient(ctx context.Context, id uuid.UUID) (Ingredient, error) {
@@ -397,6 +400,7 @@ func (q *Queries) GetIngredient(ctx context.Context, id uuid.UUID) (Ingredient, 
 		&i.CholesterolMgPer100g,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SaturatedFatGPer100g,
 	)
 	return i, err
 }
@@ -920,7 +924,7 @@ func (q *Queries) RemoveUserDiet(ctx context.Context, arg RemoveUserDietParams) 
 }
 
 const searchIngredients = `-- name: SearchIngredients :many
-SELECT id, user_id, name, brand, category, serving_size_grams, calories_per_100g, protein_g_per_100g, fat_g_per_100g, carbs_g_per_100g, fiber_g_per_100g, sugar_g_per_100g, sodium_mg_per_100g, potassium_mg_per_100g, cholesterol_mg_per_100g, created_at, updated_at FROM ingredients
+SELECT id, user_id, name, brand, category, serving_size_grams, calories_per_100g, protein_g_per_100g, fat_g_per_100g, carbs_g_per_100g, fiber_g_per_100g, sugar_g_per_100g, sodium_mg_per_100g, potassium_mg_per_100g, cholesterol_mg_per_100g, created_at, updated_at, saturated_fat_g_per_100g FROM ingredients
 WHERE (user_id IS NULL OR user_id = $1) AND lower(name) LIKE lower($2)
 ORDER BY name
 LIMIT $3
@@ -960,6 +964,7 @@ func (q *Queries) SearchIngredients(ctx context.Context, arg SearchIngredientsPa
 			&i.CholesterolMgPer100g,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.SaturatedFatGPer100g,
 		); err != nil {
 			return nil, err
 		}
@@ -1031,11 +1036,11 @@ func (q *Queries) SumMealIngredientMacros(ctx context.Context, mealID uuid.UUID)
 const updateIngredient = `-- name: UpdateIngredient :one
 UPDATE ingredients
 SET name = $3, brand = $4, category = $5, serving_size_grams = $6,
-    calories_per_100g = $7, protein_g_per_100g = $8, fat_g_per_100g = $9, carbs_g_per_100g = $10,
-    fiber_g_per_100g = $11, sugar_g_per_100g = $12, sodium_mg_per_100g = $13, potassium_mg_per_100g = $14,
-    cholesterol_mg_per_100g = $15, updated_at = now()
+    calories_per_100g = $7, protein_g_per_100g = $8, fat_g_per_100g = $9, saturated_fat_g_per_100g = $10,
+    carbs_g_per_100g = $11, fiber_g_per_100g = $12, sugar_g_per_100g = $13, sodium_mg_per_100g = $14,
+    potassium_mg_per_100g = $15, cholesterol_mg_per_100g = $16, updated_at = now()
 WHERE id = $1 AND user_id = $2
-RETURNING id, user_id, name, brand, category, serving_size_grams, calories_per_100g, protein_g_per_100g, fat_g_per_100g, carbs_g_per_100g, fiber_g_per_100g, sugar_g_per_100g, sodium_mg_per_100g, potassium_mg_per_100g, cholesterol_mg_per_100g, created_at, updated_at
+RETURNING id, user_id, name, brand, category, serving_size_grams, calories_per_100g, protein_g_per_100g, fat_g_per_100g, carbs_g_per_100g, fiber_g_per_100g, sugar_g_per_100g, sodium_mg_per_100g, potassium_mg_per_100g, cholesterol_mg_per_100g, created_at, updated_at, saturated_fat_g_per_100g
 `
 
 type UpdateIngredientParams struct {
@@ -1048,6 +1053,7 @@ type UpdateIngredientParams struct {
 	CaloriesPer100g      float64
 	ProteinGPer100g      float64
 	FatGPer100g          float64
+	SaturatedFatGPer100g float64
 	CarbsGPer100g        float64
 	FiberGPer100g        float64
 	SugarGPer100g        float64
@@ -1069,6 +1075,7 @@ func (q *Queries) UpdateIngredient(ctx context.Context, arg UpdateIngredientPara
 		arg.CaloriesPer100g,
 		arg.ProteinGPer100g,
 		arg.FatGPer100g,
+		arg.SaturatedFatGPer100g,
 		arg.CarbsGPer100g,
 		arg.FiberGPer100g,
 		arg.SugarGPer100g,
@@ -1095,6 +1102,7 @@ func (q *Queries) UpdateIngredient(ctx context.Context, arg UpdateIngredientPara
 		&i.CholesterolMgPer100g,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SaturatedFatGPer100g,
 	)
 	return i, err
 }

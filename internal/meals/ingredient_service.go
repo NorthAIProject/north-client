@@ -26,6 +26,7 @@ type IngredientInput struct {
 	ServingSizeGrams float64
 	Per100g          Macros
 
+	SaturatedFatGPer100g float64
 	FiberGPer100g        float64
 	SugarGPer100g        float64
 	SodiumMgPer100g      float64
@@ -98,7 +99,8 @@ func toIngredient(in IngredientInput) Ingredient {
 	return Ingredient{
 		Name: in.Name, Brand: in.Brand, Category: in.Category,
 		ServingSizeGrams: in.ServingSizeGrams, Per100g: in.Per100g,
-		FiberGPer100g: in.FiberGPer100g, SugarGPer100g: in.SugarGPer100g,
+		SaturatedFatGPer100g: in.SaturatedFatGPer100g,
+		FiberGPer100g:        in.FiberGPer100g, SugarGPer100g: in.SugarGPer100g,
 		SodiumMgPer100g: in.SodiumMgPer100g, PotassiumMgPer100g: in.PotassiumMgPer100g,
 		CholesterolMgPer100g: in.CholesterolMgPer100g,
 	}
