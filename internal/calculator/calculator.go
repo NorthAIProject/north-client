@@ -29,4 +29,23 @@ var (
 	ActivityLevels = macroplan.ActivityLevels
 	Goals          = macroplan.Goals
 	Splits         = macroplan.Splits
+
+	// What each choice actually means, so the form is not five adjectives and
+	// three nouns with no explanation of what picking one costs.
+	ActivityDescriptions = macroplan.ActivityDescriptions
+	GoalDescriptions     = macroplan.GoalDescriptions
+	SplitDescriptions    = macroplan.SplitDescriptions
 )
+
+// Display, WeightUnit, and HeightUnit render a stored plan's metric numbers in
+// the units the person prefers (internal/preferences owns that setting).
+var (
+	Display    = macroplan.Display
+	WeightUnit = macroplan.WeightUnit
+	HeightUnit = macroplan.HeightUnit
+	GoalLabel  = macroplan.GoalLabel
+)
+
+// AllGoals returns the daily calorie target for every goal at a given TDEE, so
+// the page can show what each objective costs before one is chosen.
+var AllGoals = macroplan.AllGoals

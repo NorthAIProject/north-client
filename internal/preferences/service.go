@@ -82,6 +82,21 @@ func (s *Service) Get(ctx context.Context, userID uuid.UUID) (Preferences, error
 	return p, nil
 }
 
+// UnitsSystem returns just the units the person works in.
+//
+// Narrower than Get because that is all its caller needs, and because the
+// caller is internal/calculator: this package imports calculator to validate
+// the stored defaults against its enums, so calculator cannot import this one
+// back. A method returning a plain string is something calculator can depend
+// on through an interface of its own without a cycle.
+func (s *Service) UnitsSystem(ctx context.Context, userID uuid.UUID) (string, error) {
+	p, err := s.Get(ctx, userID)
+	if err != nil {
+		return "", err
+	}
+	return p.UnitsSystem, nil
+}
+
 func (s *Service) Upsert(ctx context.Context, userID uuid.UUID, in Input) (Preferences, error) {
 	clean, err := Validate(in)
 	if err != nil {
