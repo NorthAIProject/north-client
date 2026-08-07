@@ -105,3 +105,56 @@ func sortStrings(s []string) {
 		}
 	}
 }
+
+// JSONSchema renders a Schema as standard JSON Schema.
+//
+// One implementation, used by every consumer that needs the standard form: the
+// OpenAI-compatible provider, and the MCP server that publishes the same tools.
+// A second copy would be free to disagree about a corner, and the corner it
+// disagreed about would be one nobody tested.
+//
+// additionalProperties is false throughout because OpenAI-compatible strict
+// mode requires it; without it the request is rejected outright.
+func JSONSchema(s *Schema) map[string]any {
+	if s == nil {
+		return nil
+	}
+
+	out := map[string]any{"type": string(s.Type)}
+	if s.Description != "" {
+		out["description"] = s.Description
+	}
+	if len(s.Enum) > 0 {
+		out["enum"] = s.Enum
+	}
+	if s.Items != nil {
+		out["items"] = JSONSchema(s.Items)
+	}
+	if len(s.Properties) > 0 {
+		props := make(map[string]any, len(s.Properties))
+		for name, prop := range s.Properties {
+			props[name] = JSONSchema(prop)
+		}
+		out["properties"] = props
+		out["additionalProperties"] = false
+
+		required := s.Required
+		if len(required) == 0 {
+			// Strict mode requires every property to be listed as required.
+			required = make([]string, 0, len(s.Properties))
+			for name := range s.Properties {
+				required = append(required, name)
+			}
+		}
+		out["required"] = required
+	} else if s.Type == TypeObject {
+		// An object with no properties still needs both, or a strict validator
+		// rejects the tool outright. This is the shape of a tool that takes no
+		// arguments, which several capabilities are.
+		out["properties"] = map[string]any{}
+		out["additionalProperties"] = false
+		out["required"] = []string{}
+	}
+
+	return out
+}

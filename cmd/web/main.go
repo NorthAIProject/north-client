@@ -18,6 +18,7 @@ import (
 	"github.com/joho/godotenv"
 
 	"github.com/NorthAIProject/north-client/internal/activity"
+	"github.com/NorthAIProject/north-client/internal/agent"
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/ai/providers"
 	"github.com/NorthAIProject/north-client/internal/auth"
@@ -251,6 +252,17 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, stora
 
 	careHandler := care.NewHandler(mealReminderSvc, checkinSvc)
 
+	// One registry of capabilities, shared by the coach's chat loop and the
+	// MCP server. Two definitions of "calculate my macros" would drift, and
+	// the drift would show as the coach and Telegram disagreeing.
+	agentTools := agent.Build(agent.Services{
+		Exercises:   exerciseSvc,
+		Calculator:  calculatorSvc,
+		Goals:       goalSvc,
+		Ingredients: mealIngredientSvc,
+		FoodLog:     foodLogSvc,
+	})
+
 	coachSvc := coach.NewService(coach.Options{
 		Registry:      registry,
 		Conversations: conversationSvc,
@@ -271,6 +283,7 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, stora
 		),
 		PromptBuilder: coach.NewPromptBuilder(),
 		Queue:         queue,
+		Tools:         agentTools,
 		Model:         cfg.AI.Model,
 		FastModel:     cfg.AI.FastModel,
 	})
