@@ -250,7 +250,13 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, stora
 	sleepSvc := sleep.NewService(sleep.NewRepository(pool))
 	habitSvc := habits.NewService(habits.NewRepository(pool))
 
-	careHandler := care.NewHandler(mealReminderSvc, checkinSvc)
+	careHandler := care.NewHandler(care.Options{
+		Reminders: mealReminderSvc,
+		CheckIns:  checkinSvc,
+		Hydration: hydrationSvc,
+		Sleep:     sleepSvc,
+		Habits:    habitSvc,
+	})
 
 	coachSvc := coach.NewService(coach.Options{
 		Registry:      registry,
