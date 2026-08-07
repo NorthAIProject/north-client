@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/NorthAIProject/north-client/internal/shared/lifedomain"
 )
 
 // Status values a goal can hold.
@@ -24,22 +26,24 @@ const (
 	StatusAbandoned = "abandoned"
 )
 
-// Categories are broad on purpose. Fine-grained taxonomies make people stop and
-// classify instead of write, and North gains nothing from the precision.
+// A goal's category is a life domain, and goals is no longer the only slice
+// that needs that vocabulary — habits classify themselves the same way. The
+// list therefore lives in internal/shared/lifedomain now, and these names are
+// kept as aliases so goals' own callers (handler, templates, validation) read
+// in goals' own language.
+//
+// Same values, same order as before: nothing stored needs migrating.
 const (
-	CategoryFitness  = "fitness"
-	CategoryHealth   = "health"
-	CategoryWork     = "work"
-	CategoryLearning = "learning"
-	CategoryPersonal = "personal"
-	CategoryOther    = "other"
+	CategoryFitness  = lifedomain.Fitness
+	CategoryHealth   = lifedomain.Health
+	CategoryWork     = lifedomain.Work
+	CategoryLearning = lifedomain.Learning
+	CategoryPersonal = lifedomain.Personal
+	CategoryOther    = lifedomain.Other
 )
 
 // Categories is the ordered set offered in the UI.
-var Categories = []string{
-	CategoryFitness, CategoryHealth, CategoryWork,
-	CategoryLearning, CategoryPersonal, CategoryOther,
-}
+var Categories = lifedomain.Domains
 
 // Statuses that a user can move a goal to.
 var Statuses = []string{StatusActive, StatusAchieved, StatusPaused, StatusAbandoned}
