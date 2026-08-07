@@ -36,6 +36,9 @@ type Service struct {
 	promptB       *PromptBuilder
 	queue         *jobs.Queue
 
+	// chains decides which providers serve a given user, in what order.
+	chains ai.ChainSet
+
 	model     string
 	fastModel string
 }
@@ -50,8 +53,15 @@ type Options struct {
 	// (tests and processes that have no worker).
 	Queue *jobs.Queue
 
+	// Chains decides which providers serve a given user, in what order. The
+	// zero value resolves every tier to an empty chain, so callers that want a
+	// coach at all must supply one.
+	Chains ai.ChainSet
+
 	// Model answers conversations. FastModel handles cheap side work such as
-	// naming a thread, which does not need the expensive model.
+	// naming a thread, which does not need the expensive model. Both may be
+	// empty, which lets whichever provider answers use its own default — the
+	// only sane behaviour when the chain spans several vendors.
 	Model     string
 	FastModel string
 }
@@ -63,6 +73,7 @@ func NewService(opts Options) *Service {
 		contextB:      opts.ContextBuilder,
 		promptB:       opts.PromptBuilder,
 		queue:         opts.Queue,
+		chains:        opts.Chains,
 		model:         opts.Model,
 		fastModel:     opts.FastModel,
 	}
@@ -103,17 +114,12 @@ func (s *Service) SendMessage(ctx context.Context, user users.User, conversation
 		return nil, err
 	}
 
-	client, err := s.registry.Default()
-	if err != nil {
-		return nil, err
-	}
-
 	// Detached from the request so a disconnect does not abort generation. The
 	// logger is preserved, so these lines stay attached to the request that
 	// started them.
 	genCtx, cancelGen := context.WithTimeout(context.WithoutCancel(ctx), generationTimeout)
 
-	stream, err := client.Chat(genCtx, ai.Request{
+	stream, client, err := s.startChat(ctx, genCtx, user, ai.Request{
 		Model:    s.model,
 		System:   system,
 		Messages: conversations.ToAIMessages(coachCtx.RecentMessages),
@@ -133,6 +139,85 @@ func (s *Service) SendMessage(ctx context.Context, user users.User, conversation
 	})
 
 	return out, nil
+}
+
+// startChat asks each provider in the user's chain until one of them begins a
+// reply, and returns the client that did so the answer can be attributed.
+//
+// Failover happens here, before the first byte, and nowhere else. Once a stream
+// has produced text that text has already reached the browser, and a second
+// provider would contradict what the user is reading mid-sentence — so a
+// mid-stream failure is recorded and the reply ends there. See pump.
+func (s *Service) startChat(
+	ctx context.Context,
+	genCtx context.Context,
+	user users.User,
+	req ai.Request,
+) (<-chan ai.StreamChunk, ai.Client, error) {
+	var stream <-chan ai.StreamChunk
+
+	client, err := s.eachProvider(ctx, user, func(c ai.Client) error {
+		opened, err := c.Chat(genCtx, req)
+		stream = opened
+		return err
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return stream, client, nil
+}
+
+// generate is startChat's one-shot counterpart, for the side work that does not
+// stream.
+func (s *Service) generate(ctx context.Context, user users.User, req ai.Request) (*ai.Response, error) {
+	var resp *ai.Response
+
+	_, err := s.eachProvider(ctx, user, func(c ai.Client) error {
+		r, err := c.Generate(ctx, req)
+		resp = r
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return resp, nil
+}
+
+// eachProvider tries the user's chain in order until attempt succeeds, and
+// returns the client that managed it.
+func (s *Service) eachProvider(ctx context.Context, user users.User, attempt func(ai.Client) error) (ai.Client, error) {
+	log := middleware.FromContext(ctx)
+
+	clients := s.registry.Resolve(s.chains.For(string(user.Tier)))
+	if len(clients) == 0 {
+		return nil, apperr.Wrap(apperr.ErrUnavailable, "coach: no AI provider is configured")
+	}
+
+	var lastErr error
+	for i, client := range clients {
+		err := attempt(client)
+		if err == nil {
+			return client, nil
+		}
+		lastErr = err
+
+		// A request the provider refused on its own account is worth asking
+		// someone else. A malformed one is not: it would fail identically
+		// everywhere, and walking the chain only delays the same error.
+		if !ai.Failover(err) || i == len(clients)-1 {
+			break
+		}
+
+		log.Warn("ai provider refused; falling back to the next in the chain",
+			slog.String("provider", client.Name()),
+			slog.String("next", clients[i+1].Name()),
+			slog.Any("error", err),
+		)
+	}
+
+	return nil, lastErr
 }
 
 type pumpTarget struct {
@@ -223,7 +308,7 @@ func (s *Service) pump(
 	}
 
 	if s.conversations.NeedsTitle(saveCtx, target.conversation) {
-		s.titleConversation(saveCtx, target.conversation.ID, target.firstMessage)
+		s.titleConversation(saveCtx, target.user, target.conversation.ID, target.firstMessage)
 	}
 
 	s.enqueueMemoryExtraction(saveCtx, target)
@@ -257,7 +342,7 @@ func (s *Service) enqueueMemoryExtraction(ctx context.Context, target pumpTarget
 //
 // Failure is logged and ignored: an untitled conversation shows a placeholder,
 // which is a far better outcome than failing the message that created it.
-func (s *Service) titleConversation(ctx context.Context, conversationID uuid.UUID, firstMessage string) {
+func (s *Service) titleConversation(ctx context.Context, user users.User, conversationID uuid.UUID, firstMessage string) {
 	log := middleware.FromContext(ctx)
 
 	prompt, err := s.promptB.Titler(firstMessage)
@@ -266,13 +351,10 @@ func (s *Service) titleConversation(ctx context.Context, conversationID uuid.UUI
 		return
 	}
 
-	client, err := s.registry.Default()
-	if err != nil {
-		return
-	}
-
-	// The fast model: naming a thread is not worth the expensive one.
-	resp, err := client.Generate(ctx, ai.Request{
+	// The same chain as the reply, so a title is not the one thing that breaks
+	// when the head provider runs dry. The fast model: naming a thread is not
+	// worth the expensive one.
+	resp, err := s.generate(ctx, user, ai.Request{
 		Model:     s.fastModel,
 		Messages:  []ai.Message{ai.UserText(prompt)},
 		MaxTokens: 40,

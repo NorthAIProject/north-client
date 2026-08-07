@@ -58,14 +58,7 @@ func run() error {
 	}
 	defer pool.Close()
 
-	registry, err := providers.Build(ctx, providers.Options{
-		Default:           cfg.AI.Provider,
-		Model:             cfg.AI.Model,
-		GeminiAPIKey:      cfg.AI.GeminiAPIKey,
-		OpenRouterAPIKey:  cfg.AI.OpenRouterAPIKey,
-		OpenRouterSiteURL: cfg.AI.OpenRouterSiteURL,
-		OpenRouterSiteApp: cfg.AI.OpenRouterSiteApp,
-	})
+	registry, err := providers.Build(ctx, cfg.AI.ProviderOptions())
 	if err != nil {
 		return err
 	}
@@ -89,6 +82,7 @@ func run() error {
 		Storage:    storage,
 		Queue:      queue,
 		Registry:   registry,
+		Provider:   cfg.AI.UploadProvider,
 		Model:      cfg.AI.Model,
 	})
 

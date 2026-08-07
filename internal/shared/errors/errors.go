@@ -43,6 +43,14 @@ var (
 	// ErrUnavailable means a dependency (AI provider, storage) failed in a way
 	// that may succeed on retry.
 	ErrUnavailable = errors.New("temporarily unavailable")
+
+	// ErrPaymentRequired means a paid dependency refused on billing grounds —
+	// an exhausted credit balance rather than a transient overload.
+	//
+	// Separate from ErrUnavailable because the remedy differs: retrying the
+	// same provider will never succeed, so the only useful response is to ask
+	// a different one.
+	ErrPaymentRequired = errors.New("payment required")
 )
 
 // Wrap adds context to an error while preserving the sentinel underneath, so

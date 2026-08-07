@@ -255,6 +255,7 @@ type User struct {
 	CoachingStyle *string
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
+	Tier          string
 }
 
 type UserBiometric struct {

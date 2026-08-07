@@ -14,7 +14,7 @@ import (
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (email, password_hash, display_name, timezone)
 VALUES ($1, $2, $3, $4)
-RETURNING id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at
+RETURNING id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at, tier
 `
 
 type CreateUserParams struct {
@@ -41,6 +41,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.CoachingStyle,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Tier,
 	)
 	return i, err
 }
@@ -48,7 +49,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 const createUserWithID = `-- name: CreateUserWithID :one
 INSERT INTO users (id, email, password_hash, display_name, timezone)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at
+RETURNING id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at, tier
 `
 
 type CreateUserWithIDParams struct {
@@ -79,6 +80,7 @@ func (q *Queries) CreateUserWithID(ctx context.Context, arg CreateUserWithIDPara
 		&i.CoachingStyle,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Tier,
 	)
 	return i, err
 }
@@ -95,7 +97,7 @@ func (q *Queries) EmailExists(ctx context.Context, email string) (bool, error) {
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at FROM users WHERE email = $1
+SELECT id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at, tier FROM users WHERE email = $1
 `
 
 func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
@@ -110,12 +112,13 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.CoachingStyle,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Tier,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at FROM users WHERE id = $1
+SELECT id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at, tier FROM users WHERE id = $1
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
@@ -130,6 +133,7 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 		&i.CoachingStyle,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Tier,
 	)
 	return i, err
 }
@@ -158,7 +162,7 @@ SET display_name   = $2,
     coaching_style = $4,
     updated_at     = now()
 WHERE id = $1
-RETURNING id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at
+RETURNING id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at, tier
 `
 
 type UpdateUserProfileParams struct {
@@ -185,6 +189,7 @@ func (q *Queries) UpdateUserProfile(ctx context.Context, arg UpdateUserProfilePa
 		&i.CoachingStyle,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Tier,
 	)
 	return i, err
 }
