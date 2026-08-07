@@ -18,6 +18,7 @@ import (
 	"github.com/joho/godotenv"
 
 	"github.com/NorthAIProject/north-client/internal/activity"
+	"github.com/NorthAIProject/north-client/internal/agent"
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/ai/providers"
 	"github.com/NorthAIProject/north-client/internal/auth"
@@ -28,6 +29,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/coach"
 	"github.com/NorthAIProject/north-client/internal/config"
 	"github.com/NorthAIProject/north-client/internal/conversations"
+	"github.com/NorthAIProject/north-client/internal/exercises"
 	"github.com/NorthAIProject/north-client/internal/fitness"
 	"github.com/NorthAIProject/north-client/internal/fitness/strava"
 	"github.com/NorthAIProject/north-client/internal/goals"
@@ -184,9 +186,15 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, stora
 	memorySvc := memories.NewService(memories.NewRepository(pool))
 	memoryHandler := memories.NewHandler(memorySvc)
 
+	// Built before workouts: the plan generator picks from this catalog, so
+	// the catalog has to exist before the thing that reads it.
+	exerciseSvc := exercises.NewService(exercises.NewRepository(pool))
+	exerciseHandler := exercises.NewHandler(exerciseSvc)
+
 	workoutSvc := workouts.NewService(workouts.Options{
 		Repository: workouts.NewRepository(pool),
 		Registry:   registry,
+		Catalog:    exerciseSvc,
 		Model:      cfg.AI.Model,
 	})
 	workoutHandler := workouts.NewHandler(workoutSvc)
@@ -211,7 +219,10 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, stora
 	activitySvc := activity.NewService(activity.NewRepository(pool), biometricSvc)
 	activityHandler := activity.NewHandler(activitySvc)
 
-	calculatorHandler := calculator.NewHandler(calculatorSvc, biometricSvc)
+	// Preferences owns the units system, which the calculator renders in.
+	preferencesSvc := preferences.NewService(preferences.NewRepository(pool))
+
+	calculatorHandler := calculator.NewHandler(calculatorSvc, biometricSvc, preferencesSvc)
 
 	// Strava is the first provider integration. Absent credentials leave it
 	// reporting itself unconfigured rather than failing the boot, so a
@@ -245,7 +256,6 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, stora
 		Recommend:   mealRecommendSvc,
 	})
 
-	preferencesSvc := preferences.NewService(preferences.NewRepository(pool))
 	settingsHandler := settings.NewHandler(userSvc, preferencesSvc, mealDietSvc)
 
 	mindSvc := mind.NewService(mind.NewRepository(pool), checkinSvc)
@@ -264,6 +274,17 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, stora
 		Hydration: hydrationSvc,
 		Sleep:     sleepSvc,
 		Habits:    habitSvc,
+	})
+
+	// One registry of capabilities, shared by the coach's chat loop and the
+	// MCP server. Two definitions of "calculate my macros" would drift, and
+	// the drift would show as the coach and Telegram disagreeing.
+	agentTools := agent.Build(agent.Services{
+		Exercises:   exerciseSvc,
+		Calculator:  calculatorSvc,
+		Goals:       goalSvc,
+		Ingredients: mealIngredientSvc,
+		FoodLog:     foodLogSvc,
 	})
 
 	coachSvc := coach.NewService(coach.Options{
@@ -290,6 +311,7 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, stora
 		PromptBuilder: coach.NewPromptBuilder(),
 		Queue:         queue,
 		Chains:        cfg.AI.ChainSet(),
+		Tools:         agentTools,
 		Model:         cfg.AI.Model,
 		FastModel:     cfg.AI.FastModel,
 	})
@@ -340,6 +362,7 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, stora
 		checkinHandler.Routes(r)
 		goalHandler.Routes(r)
 		memoryHandler.Routes(r)
+		exerciseHandler.Routes(r)
 		workoutHandler.Routes(r)
 		mediaHandler.Routes(r)
 		settingsHandler.Routes(r)

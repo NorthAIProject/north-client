@@ -21,6 +21,8 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/NorthAIProject/north-client/internal/activity"
+	"github.com/NorthAIProject/north-client/internal/agent"
+	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/checkins"
 	"github.com/NorthAIProject/north-client/internal/coach"
 	"github.com/NorthAIProject/north-client/internal/goals"
@@ -37,6 +39,15 @@ type Services struct {
 	Memories *memories.Service
 	Activity *activity.Service
 	Coach    *coach.Service
+
+	// Agent is the capability registry the coach's own tool loop reads. Its
+	// tools are published here too, so a capability defined once is reachable
+	// from both the coach mid-conversation and an outside MCP client.
+	//
+	// The tools defined in this package are the ones that have no capability
+	// yet; they belong in the registry, and moving them there is the follow-up
+	// that removes this split.
+	Agent *agent.Registry
 }
 
 // Register wires every tool onto a server, acting as the given user.
@@ -45,11 +56,52 @@ type Services struct {
 // letting a caller name the user it wants to act as would make the bearer token
 // an authorisation bypass.
 func Register(s *mcp.Server, svc Services, user users.User) {
+	registerAgentCapabilities(s, svc.Agent, user)
 	registerGoals(s, svc, user)
 	registerCheckIns(s, svc, user)
 	registerKnowledge(s, svc, user)
 	registerFitness(s, svc, user)
 	registerCoach(s, svc, user)
+}
+
+// registerAgentCapabilities publishes the shared registry over MCP.
+//
+// Server.AddTool rather than the generic mcp.AddTool: the argument schema is
+// already described by ai.Schema, and going through a Go type just to have the
+// SDK infer the schema back would mean two descriptions of every tool's
+// arguments — the duplication internal/agent exists to avoid.
+func registerAgentCapabilities(s *mcp.Server, registry *agent.Registry, user users.User) {
+	if registry == nil {
+		return
+	}
+
+	for _, tool := range registry.Tools() {
+		schema, err := json.Marshal(ai.JSONSchema(tool.Parameters))
+		if err != nil {
+			// Only reachable if a capability declares a schema that cannot be
+			// marshalled, which is a programming error present at startup.
+			panic("mcpserver: cannot marshal the schema for " + tool.Name + ": " + err.Error())
+		}
+
+		s.AddTool(&mcp.Tool{
+			Name:        tool.Name,
+			Description: tool.Description,
+			InputSchema: json.RawMessage(schema),
+		}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			// The user was fixed when the session authenticated. Nothing in the
+			// request can change it.
+			result := registry.Invoke(ctx, user.ID, ai.ToolCall{
+				ID:        tool.Name,
+				Name:      tool.Name,
+				Arguments: req.Params.Arguments,
+			})
+
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{&mcp.TextContent{Text: result.Content}},
+				IsError: result.IsError,
+			}, nil
+		})
+	}
 }
 
 func registerGoals(s *mcp.Server, svc Services, user users.User) {

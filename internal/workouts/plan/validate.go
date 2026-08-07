@@ -80,13 +80,17 @@ type equipmentRule struct {
 	keywords []string
 }
 
-// Ordered most specific first. "Barbell bench press" must be caught as a
-// barbell before "bench" claims it.
+// Ordered most specific first, and a named implement is the most specific
+// thing there is. "Barbell bench press" must be caught as a barbell before
+// "bench" claims it — and "Romanian deadlift with dumbbells" must be caught as
+// a dumbbell before "deadlift" claims it as a barbell, which is why dumbbell
+// and kettlebell come before the movement-name rules rather than after them.
+// A name that says which implement it uses is not guessing.
 var equipmentRules = []equipmentRule{
-	{"barbell", []string{"barbell", "bench press", "deadlift", "back squat", "front squat", "overhead press", "power clean", "rack pull"}},
-	{"machine", []string{"machine", "leg press", "lat pulldown", "cable", "smith", "pec deck", "hack squat", "leg extension", "leg curl"}},
 	{"dumbbell", []string{"dumbbell", "db "}},
 	{"kettlebell", []string{"kettlebell", "kb ", "turkish get"}},
+	{"barbell", []string{"barbell", "bench press", "deadlift", "back squat", "front squat", "overhead press", "power clean", "rack pull"}},
+	{"machine", []string{"machine", "leg press", "lat pulldown", "cable", "smith", "pec deck", "hack squat", "leg extension", "leg curl"}},
 	{"pull-up bar", []string{"pull-up", "pull up", "pullup", "chin-up", "chin up", "chinup", "hanging leg raise"}},
 	{"resistance band", []string{"resistance band", "band"}},
 	{"rower", []string{"row machine", "rowing machine", "erg"}},
@@ -104,6 +108,50 @@ var bodyweightOnly = []string{
 	"push-up", "push up", "pushup", "plank", "squat jump", "burpee", "lunge",
 	"mountain climber", "sit-up", "sit up", "crunch", "glute bridge",
 	"bodyweight", "air squat", "run", "walk", "jog", "sprint", "stretch",
+}
+
+// EquipmentNames is the vocabulary an intake's Equipment list is matched
+// against, in the order the rules are checked.
+//
+// Exported so the exercise catalog can normalise onto exactly these words.
+// Anything else in a catalog row would be equipment the validator has no rule
+// for, which means a plan could recommend a machine to someone with a pair of
+// dumbbells and pass validation.
+func EquipmentNames() []string {
+	names := make([]string, 0, len(equipmentRules))
+	for _, rule := range equipmentRules {
+		names = append(names, rule.name)
+	}
+	return names
+}
+
+// InferEquipment reports what an exercise needs, judged by the same rules
+// Validate checks a generated plan against. It returns an EquipmentNames()
+// value, "none" for a movement that needs nothing, or "" when nothing matches.
+//
+// Exported so the catalog can be seeded with what the validator will conclude
+// rather than with what its source file claimed. Those disagree in practice:
+// the source files a pull-up as "body_only", the validator reads the name and
+// requires a pull-up bar, and a catalog that recommends bar work to someone
+// with no bar is worse than one that never mentions it.
+func InferEquipment(name, equipment string) string {
+	haystack := strings.ToLower(name + " " + equipment)
+
+	for _, rule := range equipmentRules {
+		for _, keyword := range rule.keywords {
+			if strings.Contains(haystack, keyword) {
+				return rule.name
+			}
+		}
+	}
+
+	for _, phrase := range bodyweightOnly {
+		if strings.Contains(haystack, phrase) {
+			return "none"
+		}
+	}
+
+	return ""
 }
 
 func availableEquipment(equipment []string) map[string]bool {

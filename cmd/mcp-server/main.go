@@ -30,6 +30,7 @@ import (
 	"github.com/joho/godotenv"
 
 	"github.com/NorthAIProject/north-client/internal/activity"
+	"github.com/NorthAIProject/north-client/internal/agent"
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/ai/providers"
 	"github.com/NorthAIProject/north-client/internal/biometrics"
@@ -38,6 +39,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/coach"
 	"github.com/NorthAIProject/north-client/internal/config"
 	"github.com/NorthAIProject/north-client/internal/conversations"
+	"github.com/NorthAIProject/north-client/internal/exercises"
 	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/habits"
 	"github.com/NorthAIProject/north-client/internal/hydration"
@@ -200,7 +202,16 @@ func buildServices(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry
 		FastModel:     cfg.AI.FastModel,
 	})
 
+	agentTools := agent.Build(agent.Services{
+		Exercises:   exercises.NewService(exercises.NewRepository(pool)),
+		Calculator:  calculatorSvc,
+		Goals:       goalSvc,
+		Ingredients: meals.NewIngredientService(mealsRepo),
+		FoodLog:     foodLogSvc,
+	})
+
 	return mcpserver.Services{
+		Agent:    agentTools,
 		Users:    userSvc,
 		Goals:    goalSvc,
 		CheckIns: checkinSvc,

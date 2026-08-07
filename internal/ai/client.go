@@ -53,9 +53,20 @@ func FilePart(uri, mimeType string) Part {
 }
 
 // Message is one turn in a conversation.
+//
+// Parts, ToolCalls, and ToolResults are alternatives, not a mixture: a turn is
+// content, or the model asking for tools, or the answers coming back. Every
+// provider models it that way, and pretending otherwise here would only move
+// the split into each adapter.
 type Message struct {
 	Role  Role
 	Parts []Part
+
+	// ToolCalls is set on a model turn that asked for tools to be run.
+	ToolCalls []ToolCall
+
+	// ToolResults is set on the user turn carrying their answers back.
+	ToolResults []ToolResult
 }
 
 func UserText(text string) Message {
@@ -92,6 +103,14 @@ type Request struct {
 	// workout plan it can parse instead of prose it has to guess at.
 	ResponseSchema *Schema
 
+	// Tools the model may call. Empty — the default — means a plain reply, so
+	// every existing call site is unaffected by tool support existing.
+	//
+	// Mutually exclusive with ResponseSchema in practice: a provider asked for
+	// both is being told to answer in a fixed shape and to call something
+	// instead, and they disagree about which wins.
+	Tools []Tool
+
 	// Temperature is nil for the provider default. Structured generation should
 	// set it low; conversation should usually leave it alone.
 	Temperature *float32
@@ -103,6 +122,11 @@ type Request struct {
 type Response struct {
 	Text  string
 	Usage Usage
+
+	// ToolCalls is non-empty when the model asked for tools instead of
+	// answering. Text is usually empty then, and a caller that ignores this
+	// field sees a reply that stopped mid-thought.
+	ToolCalls []ToolCall
 
 	// FinishReason is the provider's own string, normalised only enough to
 	// detect truncation. Callers should treat it as diagnostic.
@@ -124,6 +148,11 @@ type StreamChunk struct {
 	Text  string
 	Usage *Usage
 	Err   error
+
+	// ToolCalls arrives as a single chunk once the model has finished asking.
+	// Not streamed piecewise: a half-decoded argument object is of no use to
+	// anyone, and every provider only makes the call actionable when complete.
+	ToolCalls []ToolCall
 }
 
 // File is a provider-side upload.

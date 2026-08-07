@@ -86,6 +86,10 @@ type Ingredient struct {
 	ServingSizeGrams float64
 	Per100g          Macros
 
+	// SaturatedFatGPer100g is tracked separately from total fat: it is the
+	// one fat number a coach has anything specific to say about.
+	SaturatedFatGPer100g float64
+
 	FiberGPer100g        float64
 	SugarGPer100g        float64
 	SodiumMgPer100g      float64

@@ -11,6 +11,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/ai/prompts"
+	"github.com/NorthAIProject/north-client/internal/exercises/exercise"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -28,20 +29,48 @@ const generationAttempts = 2
 // not a creative one; the person's equipment list is not a suggestion.
 var planTemperature = float32(0.2)
 
+// Catalog is the slice of the exercise catalog this service needs.
+//
+// An interface, and a narrow one, so workouts depends on "somewhere to look
+// exercises up" rather than on the exercises package — and so a test can
+// supply a fixed catalog without a database.
+type Catalog interface {
+	// Candidates returns exercises performable with this equipment, for the
+	// model to choose from.
+	Candidates(ctx context.Context, equipment []string) ([]exercise.Exercise, error)
+
+	// Resolve returns the catalog rows for the slugs it recognises. Slugs it
+	// does not recognise are simply absent, not an error.
+	Resolve(ctx context.Context, slugs []string) (map[string]exercise.Exercise, error)
+}
+
 type Service struct {
 	repo     *Repository
 	registry *ai.Registry
+	catalog  Catalog
 	model    string
 }
 
 type Options struct {
 	Repository *Repository
 	Registry   *ai.Registry
-	Model      string
+
+	// Catalog may be nil, which turns the candidate list off and leaves the
+	// model to name exercises freely — the behaviour before the catalog
+	// existed. Tests that care about generation but not about the catalog do
+	// not have to build one.
+	Catalog Catalog
+
+	Model string
 }
 
 func NewService(opts Options) *Service {
-	return &Service{repo: opts.Repository, registry: opts.Registry, model: opts.Model}
+	return &Service{
+		repo:     opts.Repository,
+		registry: opts.Registry,
+		catalog:  opts.Catalog,
+		model:    opts.Model,
+	}
 }
 
 // ValidateIntake checks the form before anything is generated.
@@ -92,6 +121,15 @@ func (s *Service) Generate(ctx context.Context, user users.User, in Intake) (Pla
 	}
 	system += "\n\n## CONTEXT\n\n" + intakeContext(user, in)
 
+	// Fetched before the loop so a retry does not pay for it twice, and so a
+	// catalog that is unreachable degrades to free-text generation instead of
+	// failing the request: a plan named from the model's own vocabulary is
+	// worth more than no plan.
+	candidates := s.candidates(ctx, in)
+	if len(candidates) > 0 {
+		system += "\n\n## EXERCISE CATALOG\n\n" + catalogContext(candidates)
+	}
+
 	messages := []ai.Message{ai.UserText(intakeRequest(in))}
 
 	var lastProblems []string
@@ -121,6 +159,7 @@ func (s *Service) Generate(ctx context.Context, user users.User, in Intake) (Pla
 
 		problems := Validate(plan, in)
 		if len(problems) == 0 {
+			s.applyCatalog(ctx, &plan)
 			return plan, client.Name(), nil
 		}
 
@@ -191,6 +230,105 @@ func (s *Service) ListPlans(ctx context.Context, userID uuid.UUID, limit int) ([
 		limit = 20
 	}
 	return s.repo.ListPlans(ctx, userID, limit)
+}
+
+// candidates fetches the catalog rows the model may pick from.
+//
+// Failures are logged and swallowed. The catalog improves a plan; it is not
+// required to produce one, and a database hiccup should cost the person their
+// muscle highlighting, not their programme.
+func (s *Service) candidates(ctx context.Context, in Intake) []exercise.Exercise {
+	if s.catalog == nil {
+		return nil
+	}
+
+	found, err := s.catalog.Candidates(ctx, in.Equipment)
+	if err != nil {
+		middleware.FromContext(ctx).Warn("could not load the exercise catalog; generating without it",
+			slog.Any("error", err))
+		return nil
+	}
+	return found
+}
+
+func catalogContext(candidates []exercise.Exercise) string {
+	var b strings.Builder
+
+	b.WriteString("Prefer exercises from this catalog. Each line is `slug — Name (equipment) [muscles]`.\n")
+	b.WriteString("When you use one, copy its slug into catalog_slug exactly. If nothing here fits, use your own exercise and leave catalog_slug empty.\n\n")
+
+	for _, e := range candidates {
+		b.WriteString(e.Line())
+		b.WriteString("\n")
+	}
+
+	return b.String()
+}
+
+// applyCatalog replaces the model's muscle keys with the catalog's wherever an
+// exercise resolved to a catalog row.
+//
+// This is the point of the whole catalog: a curated answer to "what does this
+// train" beats a generated one. Exercises the model improvised keep their own
+// keys, which Validate has already filtered to the canonical set.
+//
+// A lookup failure leaves the plan exactly as generated, for the same reason
+// candidates swallows its errors.
+func (s *Service) applyCatalog(ctx context.Context, p *Plan) {
+	if s.catalog == nil {
+		return
+	}
+
+	var slugs []string
+	for _, day := range p.Days {
+		for _, ex := range day.Exercises {
+			if ex.CatalogSlug != "" {
+				slugs = append(slugs, ex.CatalogSlug)
+			}
+		}
+	}
+
+	log := middleware.FromContext(ctx)
+
+	var total, matched int
+	for _, day := range p.Days {
+		total += len(day.Exercises)
+	}
+
+	if len(slugs) == 0 {
+		log.Info("plan used no catalog exercises", slog.Int("exercises", total))
+		return
+	}
+
+	found, err := s.catalog.Resolve(ctx, slugs)
+	if err != nil {
+		log.Warn("could not resolve catalog slugs; keeping the model's muscle keys", slog.Any("error", err))
+		return
+	}
+
+	for _, day := range p.Days {
+		for i := range day.Exercises {
+			ex := &day.Exercises[i]
+			catalogued, ok := found[strings.ToLower(ex.CatalogSlug)]
+			if !ok {
+				// A slug the model invented. Blanked so nothing downstream
+				// treats it as a real catalog reference.
+				ex.CatalogSlug = ""
+				continue
+			}
+			matched++
+			ex.Primary = catalogued.Primary
+			ex.Secondary = catalogued.Secondary
+			// The catalog carries no stabilizers, so the model's stand.
+		}
+	}
+
+	// The only signal that says whether the catalog is actually being used.
+	// Without it, a prompt change that stops the model echoing slugs looks
+	// exactly like everything working.
+	log.Info("resolved plan exercises against the catalog",
+		slog.Int("matched", matched),
+		slog.Int("exercises", total))
 }
 
 func intakeContext(user users.User, in Intake) string {
