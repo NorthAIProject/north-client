@@ -42,3 +42,16 @@ LIMIT $2;
 SELECT COALESCE(SUM(calories_burned), 0)::double precision AS total
 FROM activity_sessions
 WHERE user_id = $1 AND status = 'completed' AND ended_at >= $2;
+
+-- name: ImportActivitySession :one
+-- A finished session written in one shot, for a provider sync rather than
+-- the in-app start/stop lifecycle. Deduped by the existing
+-- UNIQUE (source, external_id) index, so re-importing is a no-op.
+INSERT INTO activity_sessions (
+    user_id, activity_code, source, status, weight_kg_snapshot,
+    started_at, ended_at, calories_burned, external_id
+) VALUES (
+    $1, $2, $3, 'completed', $4, $5, $6, $7, $8
+)
+ON CONFLICT (source, external_id) WHERE external_id IS NOT NULL DO NOTHING
+RETURNING *;

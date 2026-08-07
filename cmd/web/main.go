@@ -29,6 +29,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/config"
 	"github.com/NorthAIProject/north-client/internal/conversations"
 	"github.com/NorthAIProject/north-client/internal/fitness"
+	"github.com/NorthAIProject/north-client/internal/fitness/strava"
 	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/habits"
 	"github.com/NorthAIProject/north-client/internal/hydration"
@@ -218,7 +219,20 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, stora
 
 	calculatorHandler := calculator.NewHandler(calculatorSvc, biometricSvc)
 
-	fitnessHandler := fitness.NewHandler()
+	// Strava is the first provider integration. Absent credentials leave it
+	// reporting itself unconfigured rather than failing the boot, so a
+	// developer without a Strava app can still run everything else.
+	stravaSvc := strava.NewService(strava.Options{
+		Repository:   strava.NewRepository(pool),
+		Activity:     activitySvc,
+		Biometrics:   biometricSvc,
+		Queue:        queue,
+		ClientID:     cfg.StravaClientID,
+		ClientSecret: cfg.StravaClientSecret,
+		BaseURL:      cfg.BaseURL,
+	})
+
+	fitnessHandler := fitness.NewHandler(stravaSvc, cfg.Env.IsProduction())
 
 	mealsRepo := meals.NewRepository(pool)
 	mealIngredientSvc := meals.NewIngredientService(mealsRepo)

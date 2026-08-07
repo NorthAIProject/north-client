@@ -286,6 +286,18 @@ type SleepLog struct {
 	UpdatedAt       time.Time
 }
 
+type StravaConnection struct {
+	UserID       uuid.UUID
+	AthleteID    int64
+	AccessToken  string
+	RefreshToken string
+	ExpiresAt    time.Time
+	Scopes       string
+	LastSyncedAt *time.Time
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
+
 type User struct {
 	ID            uuid.UUID
 	Email         string

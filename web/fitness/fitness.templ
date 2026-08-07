@@ -1,9 +1,11 @@
 package fitness
 
 import (
+	"github.com/NorthAIProject/north-client/internal/fitness/strava"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
 	"github.com/NorthAIProject/north-client/web/shared/ui/card"
 )
 
@@ -23,7 +25,7 @@ var tiles = []tile{
 	{"Food log", "Log today, see progress.", "/app/nutrition/log"},
 }
 
-templ Hub(user users.User) {
+templ Hub(user users.User, stravaStatus strava.Status, notice string) {
 	@layout.App("Fitness", user, layout.BuildNav("/app/fitness")) {
 		<div class="mx-auto w-full max-w-2xl space-y-6 p-6 md:p-8">
 			<header>
@@ -33,12 +35,71 @@ templ Hub(user users.User) {
 					Training, form, activity, and the numbers behind them.
 				</p>
 			</header>
+			if notice != "" {
+				<div class="border-hairline bg-signal/10 rounded-lg border px-4 py-3 text-sm">
+					{ notice }
+				</div>
+			}
 			<div class="grid gap-4 sm:grid-cols-2">
 				for _, t := range tiles {
 					@tileCard(t)
 				}
 			</div>
+			@stravaCard(stravaStatus)
 		</div>
+	}
+}
+
+// stravaCard is the whole surface of the integration: connect, sync,
+// disconnect, and when it last ran. Nothing about tokens reaches here — the
+// handler is given a Status, which cannot carry them.
+templ stravaCard(status strava.Status) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Title() {
+				Strava
+			}
+			@card.Description() {
+				if !status.Configured {
+					Not configured on this server.
+				} else if status.Connected {
+					Connected.
+					if status.LastSyncedAt != nil {
+						Last synced { status.LastSyncedAt.Format("2 Jan, 15:04") }.
+					} else {
+						No sync yet.
+					}
+				} else {
+					Import your runs and rides automatically.
+				}
+			}
+		}
+		@card.Content() {
+			if !status.Configured {
+				<p class="text-muted-foreground text-xs leading-relaxed">
+					Set STRAVA_CLIENT_ID and STRAVA_CLIENT_SECRET to enable this.
+				</p>
+			} else if status.Connected {
+				<div class="flex flex-wrap gap-2">
+					<form method="post" action="/app/fitness/strava/sync">
+						@ui.CSRFInput()
+						@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90"}) {
+							Sync now
+						}
+					</form>
+					<form method="post" action="/app/fitness/strava/disconnect">
+						@ui.CSRFInput()
+						@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
+							Disconnect
+						}
+					</form>
+				</div>
+			} else {
+				@button.Button(button.Props{Href: "/app/fitness/strava/connect", Class: "bg-signal text-background hover:bg-signal/90"}) {
+					Connect Strava
+				}
+			}
+		}
 	}
 }
 

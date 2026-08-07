@@ -96,6 +96,27 @@ schedule; it is the thing logs and habits are measured against.
 | Standing settings (units, default goal) | `internal/preferences` | `user_preferences` |
 | A generated training plan | `internal/workouts` | `workout_plans` |
 
+## Where imported data fits
+
+A log does not have to be typed by a person. `internal/fitness/strava` imports
+recorded activities into the same `activity_sessions` table that in-app tracking
+writes to, marked `source='strava'` with the provider's id in `external_id`.
+
+Two rules keep that honest:
+
+- **Imports are logs like any other.** They are not a parallel table, a separate
+  history, or a different type. A run is a run whether a watch recorded it or a
+  person tapped start.
+- **Dedupe belongs in the schema.** `UNIQUE (source, external_id)` plus
+  `ON CONFLICT DO NOTHING` is what lets a sync run as often as it likes without
+  anyone reasoning about it. A provider integration that had to remember what it
+  had already imported would eventually get it wrong.
+
+Provider integrations live under `internal/fitness`, which its package doc
+claims for exactly this. They are **not** sign-in: disconnecting a provider must
+never affect someone's ability to log in, which is why Strava has its own table
+rather than a row in `auth_identities`.
+
 ---
 
 # Life domains

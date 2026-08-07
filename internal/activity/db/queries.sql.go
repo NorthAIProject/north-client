@@ -160,6 +160,62 @@ func (q *Queries) GetActivitySession(ctx context.Context, arg GetActivitySession
 	return i, err
 }
 
+const importActivitySession = `-- name: ImportActivitySession :one
+INSERT INTO activity_sessions (
+    user_id, activity_code, source, status, weight_kg_snapshot,
+    started_at, ended_at, calories_burned, external_id
+) VALUES (
+    $1, $2, $3, 'completed', $4, $5, $6, $7, $8
+)
+ON CONFLICT (source, external_id) WHERE external_id IS NOT NULL DO NOTHING
+RETURNING id, user_id, activity_code, source, status, weight_kg_snapshot, started_at, paused_at, total_paused_seconds, ended_at, calories_burned, external_id, created_at, updated_at
+`
+
+type ImportActivitySessionParams struct {
+	UserID           uuid.UUID
+	ActivityCode     string
+	Source           string
+	WeightKgSnapshot float64
+	StartedAt        time.Time
+	EndedAt          *time.Time
+	CaloriesBurned   *float64
+	ExternalID       *string
+}
+
+// A finished session written in one shot, for a provider sync rather than
+// the in-app start/stop lifecycle. Deduped by the existing
+// UNIQUE (source, external_id) index, so re-importing is a no-op.
+func (q *Queries) ImportActivitySession(ctx context.Context, arg ImportActivitySessionParams) (ActivitySession, error) {
+	row := q.db.QueryRow(ctx, importActivitySession,
+		arg.UserID,
+		arg.ActivityCode,
+		arg.Source,
+		arg.WeightKgSnapshot,
+		arg.StartedAt,
+		arg.EndedAt,
+		arg.CaloriesBurned,
+		arg.ExternalID,
+	)
+	var i ActivitySession
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.ActivityCode,
+		&i.Source,
+		&i.Status,
+		&i.WeightKgSnapshot,
+		&i.StartedAt,
+		&i.PausedAt,
+		&i.TotalPausedSeconds,
+		&i.EndedAt,
+		&i.CaloriesBurned,
+		&i.ExternalID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const listActivitySessions = `-- name: ListActivitySessions :many
 SELECT id, user_id, activity_code, source, status, weight_kg_snapshot, started_at, paused_at, total_paused_seconds, ended_at, calories_burned, external_id, created_at, updated_at FROM activity_sessions
 WHERE user_id = $1
