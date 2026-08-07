@@ -51,7 +51,7 @@ var starters = []string{
 
 // Page is a conversation with its history and composer.
 templ Page(user users.User, conversation conversations.Conversation, messages []conversations.Message, list []conversations.Conversation) {
-	@layout.App(conversation.DisplayTitle(), user, nav()) {
+	@layout.App(conversation.DisplayTitle(), user, layout.BuildNav("/app/chat")) {
 		<div id="chat-root" class="flex h-full" x-data="{ threads: false }">
 			@threadList(list, conversation.ID)
 			<div class="flex min-w-0 flex-1 flex-col">
@@ -65,7 +65,7 @@ templ Page(user users.User, conversation conversations.Conversation, messages []
 
 // Empty is what a user with no conversations sees.
 templ Empty(user users.User, list []conversations.Conversation) {
-	@layout.App("Coach", user, nav()) {
+	@layout.App("Coach", user, layout.BuildNav("/app/chat")) {
 		<div class="flex h-full flex-col items-center justify-center gap-4 p-8 text-center">
 			@ui.MonoLabel("Day 1 · no sessions yet")
 			<h1 class="text-xl font-medium tracking-tight">Talk to your coach</h1>
@@ -80,18 +80,6 @@ templ Empty(user users.User, list []conversations.Conversation) {
 				}
 			</form>
 		</div>
-	}
-}
-
-func nav() []layout.NavItem {
-	return []layout.NavItem{
-		{Label: "Overview", Href: "/app"},
-		{Label: "Coach", Href: "/app/chat", Active: true},
-		{Label: "Check-ins", Href: "/app/check-ins"},
-		{Label: "Goals", Href: "/app/goals"},
-		{Label: "Memory", Href: "/app/memories"},
-		{Label: "Training", Href: "/app/training"},
-		{Label: "Form check", Href: "/app/form"},
 	}
 }
 

@@ -1,0 +1,216 @@
+package care
+
+import (
+	"strconv"
+	"strings"
+
+	"github.com/NorthAIProject/north-client/internal/meals"
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/checkbox"
+	"github.com/NorthAIProject/north-client/web/shared/ui/form"
+	"github.com/NorthAIProject/north-client/web/shared/ui/input"
+	"github.com/NorthAIProject/north-client/web/shared/ui/label"
+)
+
+// ReminderForm carries a submitted (or rejected) reminder.
+type ReminderForm struct {
+	Label      string
+	TimeOfDay  string
+	DaysOfWeek []int
+	Errors     map[string]string
+}
+
+func (f ReminderForm) fieldError(name string) string {
+	if f.Errors == nil {
+		return ""
+	}
+	return f.Errors[name]
+}
+
+func (f ReminderForm) dayChecked(day int) bool {
+	if len(f.DaysOfWeek) == 0 {
+		return true // default: every day checked on a blank form
+	}
+	for _, d := range f.DaysOfWeek {
+		if d == day {
+			return true
+		}
+	}
+	return false
+}
+
+var weekdayLabels = []string{"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"}
+
+func daysSummary(days []int) string {
+	if len(days) == 7 {
+		return "Every day"
+	}
+	labels := make([]string, len(days))
+	for i, d := range days {
+		if d >= 0 && d < len(weekdayLabels) {
+			labels[i] = weekdayLabels[d]
+		}
+	}
+	return strings.Join(labels, ", ")
+}
+
+// Page is a to-do-list view over signals that already live elsewhere
+// (meal reminders, check-in status) — Care owns no data of its own beyond
+// what it composes from meals.MealReminderService and checkins.Service.
+templ Page(user users.User, dueReminders []meals.Reminder, checkedInToday bool, allReminders []meals.Reminder, f ReminderForm) {
+	@layout.App("Care", user, layout.BuildNav("/app/care")) {
+		<div class="mx-auto w-full max-w-2xl space-y-6 p-6 md:p-8">
+			<header>
+				@ui.MonoLabel("Care")
+				<h1 class="mt-2 text-2xl font-medium tracking-tight">Today</h1>
+				<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
+					What the app is looking out for you about, in one place.
+				</p>
+			</header>
+			@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+				@card.Header() {
+					@card.Title() {
+						Check-in
+					}
+					@card.Description() {
+						if checkedInToday {
+							Done for today.
+						} else {
+							You haven't checked in yet today.
+						}
+					}
+				}
+				if !checkedInToday {
+					@card.Content() {
+						@button.Button(button.Props{Href: "/app/check-ins", Class: "bg-signal text-background hover:bg-signal/90"}) {
+							Check in
+						}
+					}
+				}
+			}
+			if len(dueReminders) > 0 {
+				@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+					@card.Header() {
+						@card.Title() {
+							Reminders
+						}
+						@card.Description() {
+							Due now.
+						}
+					}
+					@card.Content() {
+						<ul class="space-y-2">
+							for _, r := range dueReminders {
+								<li class="flex items-center justify-between text-sm">
+									<span>{ r.Label }</span>
+									<span class="text-muted-foreground text-xs">{ r.TimeOfDay }</span>
+								</li>
+							}
+						</ul>
+					}
+				}
+			} else {
+				@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+					@card.Header() {
+						@card.Title() {
+							Reminders
+						}
+						@card.Description() {
+							Nothing due right now.
+						}
+					}
+				}
+			}
+			@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+				@card.Header() {
+					@card.Title() {
+						Manage reminders
+					}
+				}
+				@card.Content() {
+					if len(allReminders) > 0 {
+						<ul class="mb-4 space-y-2">
+							for _, r := range allReminders {
+								@reminderRow(r)
+							}
+						</ul>
+					}
+					<form method="post" action="/app/care/reminders" class="space-y-4">
+						@ui.CSRFInput()
+						<div class="flex gap-4">
+							@form.Item() {
+								@label.Label(label.Props{For: "label"}) {
+									Label
+								}
+								@input.Input(input.Props{ID: "label", Name: "label", Value: f.Label, Placeholder: "Log lunch", Required: true, HasError: f.fieldError("label") != ""})
+							}
+							@form.Item() {
+								@label.Label(label.Props{For: "time_of_day"}) {
+									Time
+								}
+								@input.Input(input.Props{ID: "time_of_day", Name: "time_of_day", Type: input.TypeTime, Value: f.TimeOfDay, Required: true, HasError: f.fieldError("time_of_day") != ""})
+							}
+						</div>
+						<div>
+							@label.Label() {
+								Days
+							}
+							<div class="mt-2 flex flex-wrap gap-3">
+								for d := 0; d < 7; d++ {
+									<label class="flex items-center gap-1 text-sm">
+										@checkbox.Checkbox(checkbox.Props{Name: "days_of_week", Value: strconv.Itoa(d), Checked: f.dayChecked(d)})
+										{ weekdayLabels[d] }
+									</label>
+								}
+							</div>
+						</div>
+						@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90"}) {
+							Add reminder
+						}
+					</form>
+				}
+			}
+		</div>
+		@label.Script()
+		@checkbox.Script()
+	}
+}
+
+templ reminderRow(r meals.Reminder) {
+	<li class="border-hairline flex items-center justify-between rounded-lg border px-3 py-2 text-sm">
+		<div>
+			<span class="font-medium">{ r.Label }</span>
+			<span class="text-muted-foreground ml-2">{ r.TimeOfDay } · { daysSummary(r.DaysOfWeek) }</span>
+		</div>
+		<div class="flex items-center gap-2">
+			<form method="post" action={ templ.SafeURL("/app/care/reminders/" + r.ID.String() + "/toggle") }>
+				@ui.CSRFInput()
+				<input type="hidden" name="enabled" value={ toggleValue(r.Enabled) }/>
+				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Size: button.SizeSm}) {
+					if r.Enabled {
+						Disable
+					} else {
+						Enable
+					}
+				}
+			</form>
+			<form method="post" action={ templ.SafeURL("/app/care/reminders/" + r.ID.String() + "/delete") }>
+				@ui.CSRFInput()
+				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm}) {
+					Delete
+				}
+			</form>
+		</div>
+	</li>
+}
+
+func toggleValue(currentlyEnabled bool) string {
+	if currentlyEnabled {
+		return "false"
+	}
+	return "true"
+}

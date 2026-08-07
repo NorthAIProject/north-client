@@ -1,0 +1,234 @@
+package nutrition
+
+import (
+	"fmt"
+
+	"github.com/NorthAIProject/north-client/internal/meals/meal"
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/form"
+	"github.com/NorthAIProject/north-client/web/shared/ui/input"
+	"github.com/NorthAIProject/north-client/web/shared/ui/label"
+	"github.com/NorthAIProject/north-client/web/shared/ui/selectbox"
+)
+
+// PlanForm carries a submitted (or rejected) meal plan.
+type PlanForm struct {
+	Name        string
+	Description string
+	Errors      map[string]string
+}
+
+func (f PlanForm) fieldError(name string) string {
+	if f.Errors == nil {
+		return ""
+	}
+	return f.Errors[name]
+}
+
+templ PlansIndexPage(user users.User, plans []meal.MealPlan, f PlanForm) {
+	@layout.App("Meal plans", user, nav()) {
+		<div class="mx-auto w-full max-w-2xl space-y-6 p-6 md:p-8">
+			<header>
+				@ui.MonoLabel("Nutrition")
+				<h1 class="mt-2 text-2xl font-medium tracking-tight">Meal plans</h1>
+			</header>
+			@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+				@card.Header() {
+					@card.Title() {
+						New plan
+					}
+				}
+				@card.Content() {
+					<form method="post" action="/app/nutrition/plans" class="space-y-4">
+						@ui.CSRFInput()
+						@form.Item() {
+							@label.Label(label.Props{For: "name"}) {
+								Name
+							}
+							@input.Input(input.Props{ID: "name", Name: "name", Value: f.Name, Required: true, HasError: f.fieldError("name") != ""})
+							if f.fieldError("name") != "" {
+								@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+									{ f.fieldError("name") }
+								}
+							}
+						}
+						@form.Item() {
+							@label.Label(label.Props{For: "description"}) {
+								Description (optional)
+							}
+							@input.Input(input.Props{ID: "description", Name: "description", Value: f.Description})
+						}
+						@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90"}) {
+							Create plan
+						}
+					</form>
+				}
+			}
+			if len(plans) > 0 {
+				<section class="space-y-3">
+					<h2 class="text-sm font-medium">Your plans</h2>
+					for _, p := range plans {
+						@planCard(p)
+					}
+				</section>
+			}
+		</div>
+	}
+}
+
+templ planCard(p meal.MealPlan) {
+	<a href={ templ.SafeURL("/app/nutrition/plans/" + p.ID.String()) } class="block">
+		@card.Card(card.Props{Class: "border-hairline hover:border-muted-foreground/30 transition-colors"}) {
+			@card.Content(card.ContentProps{Class: "py-4"}) {
+				<div class="flex items-center justify-between">
+					<span class="font-medium">{ p.Name }</span>
+					<span class="text-muted-foreground text-sm">{ fmt.Sprintf("%.0f kcal", p.TotalMacros.Calories) }</span>
+				</div>
+			}
+		}
+	</a>
+}
+
+// MealForm carries a submitted meal name.
+type MealForm struct {
+	Name   string
+	Errors map[string]string
+}
+
+func (f MealForm) fieldError(name string) string {
+	if f.Errors == nil {
+		return ""
+	}
+	return f.Errors[name]
+}
+
+// MealIngredientForm carries a submitted ingredient + quantity for a meal.
+type MealIngredientForm struct {
+	IngredientID string
+	Quantity     string
+	Errors       map[string]string
+}
+
+func (f MealIngredientForm) fieldError(name string) string {
+	if f.Errors == nil {
+		return ""
+	}
+	return f.Errors[name]
+}
+
+templ PlanDetailPage(user users.User, plan meal.MealPlan, allIngredients []meal.Ingredient, mealForm MealForm, ingredientForm MealIngredientForm) {
+	@layout.App(plan.Name, user, nav()) {
+		<div class="mx-auto w-full max-w-2xl space-y-6 p-6 md:p-8">
+			<a href="/app/nutrition/plans" class="text-muted-foreground hover:text-foreground text-sm">← All plans</a>
+			<header class="flex items-start justify-between gap-4">
+				<div>
+					<h1 class="text-2xl font-medium tracking-tight">{ plan.Name }</h1>
+					if plan.Description != "" {
+						<p class="text-muted-foreground mt-1 text-sm">{ plan.Description }</p>
+					}
+					<p class="text-signal mt-2 text-sm font-medium">
+						{ fmt.Sprintf("%.0f kcal · %.0fg protein / %.0fg fat / %.0fg carbs", plan.TotalMacros.Calories, plan.TotalMacros.ProteinG, plan.TotalMacros.FatG, plan.TotalMacros.CarbG) }
+					</p>
+				</div>
+				<form method="post" action={ templ.SafeURL("/app/nutrition/plans/" + plan.ID.String() + "/delete") }>
+					@ui.CSRFInput()
+					@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm}) {
+						Delete plan
+					}
+				</form>
+			</header>
+			for _, m := range plan.Meals {
+				@mealCard(m, allIngredients, ingredientForm)
+			}
+			@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+				@card.Header() {
+					@card.Title() {
+						Add a meal
+					}
+				}
+				@card.Content() {
+					<form method="post" action={ templ.SafeURL("/app/nutrition/plans/" + plan.ID.String() + "/meals") } class="flex gap-2">
+						@ui.CSRFInput()
+						@input.Input(input.Props{Name: "name", Value: mealForm.Name, Placeholder: "e.g. Breakfast", Required: true, HasError: mealForm.fieldError("name") != ""})
+						@button.Button(button.Props{Type: button.TypeSubmit}) {
+							Add
+						}
+					</form>
+					if mealForm.fieldError("name") != "" {
+						@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+							{ mealForm.fieldError("name") }
+						}
+					}
+				}
+			}
+		</div>
+		@label.Script()
+		@selectbox.Script()
+	}
+}
+
+templ mealCard(m meal.Meal, allIngredients []meal.Ingredient, f MealIngredientForm) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Title() {
+				{ m.Name }
+			}
+			@card.Description() {
+				{ fmt.Sprintf("%.0f kcal", m.TotalMacros.Calories) }
+			}
+		}
+		@card.Content() {
+			if len(m.Ingredients) > 0 {
+				<ul class="mb-4 space-y-1">
+					for _, mi := range m.Ingredients {
+						<li class="flex items-center justify-between text-sm">
+							<span>{ mi.IngredientName } · { fmt.Sprintf("%.0fg", mi.QuantityGrams) }</span>
+							<div class="flex items-center gap-2">
+								<span class="text-muted-foreground">{ fmt.Sprintf("%.0f kcal", mi.Macros.Calories) }</span>
+								<form method="post" action={ templ.SafeURL("/app/nutrition/meal-ingredients/" + mi.ID.String() + "/delete") }>
+									@ui.CSRFInput()
+									@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm}) {
+										Remove
+									}
+								</form>
+							</div>
+						</li>
+					}
+				</ul>
+			}
+			<form method="post" action={ templ.SafeURL("/app/nutrition/meals/" + m.ID.String() + "/ingredients") } class="flex items-end gap-2">
+				@ui.CSRFInput()
+				<div class="flex-1">
+					@selectbox.SelectBox() {
+						@selectbox.Trigger(selectbox.TriggerProps{Name: "ingredient_id"}) {
+							@selectbox.Value(selectbox.ValueProps{Placeholder: "Choose an ingredient"})
+						}
+						@selectbox.Content() {
+							for _, ing := range allIngredients {
+								@selectbox.Item(selectbox.ItemProps{Value: ing.ID.String()}) {
+									{ ing.Name }
+								}
+							}
+						}
+					}
+				</div>
+				<div class="w-24">
+					@input.Input(input.Props{Name: "quantity_grams", Type: input.TypeNumber, Placeholder: "grams"})
+				</div>
+				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
+					Add
+				}
+			</form>
+			if f.fieldError("ingredient_id") != "" || f.fieldError("quantity_grams") != "" {
+				@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+					{ f.fieldError("ingredient_id") }
+					{ f.fieldError("quantity_grams") }
+				}
+			}
+		}
+	}
+}

@@ -17,17 +17,26 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 
+	"github.com/NorthAIProject/north-client/internal/activity"
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/ai/providers"
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/biometrics"
+	"github.com/NorthAIProject/north-client/internal/calculator"
+	"github.com/NorthAIProject/north-client/internal/care"
 	"github.com/NorthAIProject/north-client/internal/checkins"
 	"github.com/NorthAIProject/north-client/internal/coach"
 	"github.com/NorthAIProject/north-client/internal/config"
 	"github.com/NorthAIProject/north-client/internal/conversations"
+	"github.com/NorthAIProject/north-client/internal/fitness"
 	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/jobs"
+	"github.com/NorthAIProject/north-client/internal/meals"
 	"github.com/NorthAIProject/north-client/internal/media"
 	"github.com/NorthAIProject/north-client/internal/memories"
+	"github.com/NorthAIProject/north-client/internal/mind"
+	"github.com/NorthAIProject/north-client/internal/preferences"
+	"github.com/NorthAIProject/north-client/internal/settings"
 	"github.com/NorthAIProject/north-client/internal/shared/database"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -194,6 +203,45 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, stora
 	})
 	mediaHandler := media.NewHandler(mediaSvc)
 
+	// Biometrics -> calculator/activity both need the user's current weight,
+	// so biometrics is constructed first and passed in as a lookup rather
+	// than each depending on its concrete type.
+	biometricSvc := biometrics.NewService(biometrics.NewRepository(pool))
+
+	calculatorSvc := calculator.NewService(calculator.NewRepository(pool), biometricSvc)
+
+	activitySvc := activity.NewService(activity.NewRepository(pool), biometricSvc)
+	activityHandler := activity.NewHandler(activitySvc)
+
+	calculatorHandler := calculator.NewHandler(calculatorSvc, biometricSvc)
+
+	fitnessHandler := fitness.NewHandler()
+
+	mealsRepo := meals.NewRepository(pool)
+	mealIngredientSvc := meals.NewIngredientService(mealsRepo)
+	mealDietSvc := meals.NewDietPreferenceService(mealsRepo)
+	mealPlanSvc := meals.NewMealPlanService(mealsRepo)
+	foodLogSvc := meals.NewFoodLogService(mealsRepo)
+	mealProgressSvc := meals.NewTrackMealProgressService(foodLogSvc, calculatorSvc)
+	mealRecommendSvc := meals.NewGoalRecommendationService(mealProgressSvc, calculatorSvc)
+	mealReminderSvc := meals.NewMealReminderService(mealsRepo)
+	mealsHandler := meals.NewHandler(meals.HandlerOptions{
+		Ingredients: mealIngredientSvc,
+		Diets:       mealDietSvc,
+		Plans:       mealPlanSvc,
+		FoodLog:     foodLogSvc,
+		Progress:    mealProgressSvc,
+		Recommend:   mealRecommendSvc,
+	})
+
+	preferencesSvc := preferences.NewService(preferences.NewRepository(pool))
+	settingsHandler := settings.NewHandler(userSvc, preferencesSvc, mealDietSvc)
+
+	mindSvc := mind.NewService(mind.NewRepository(pool), checkinSvc)
+	mindHandler := mind.NewHandler(mindSvc)
+
+	careHandler := care.NewHandler(mealReminderSvc, checkinSvc)
+
 	coachSvc := coach.NewService(coach.Options{
 		Registry:      registry,
 		Conversations: conversationSvc,
@@ -206,6 +254,11 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, stora
 			memories.NewContextSource(memorySvc),
 			workouts.NewContextSource(workoutSvc),
 			media.NewContextSource(mediaSvc),
+			calculator.NewContextSource(calculatorSvc),
+			activity.NewContextSource(activitySvc),
+			meals.NewContextSource(mealProgressSvc, mealDietSvc),
+			preferences.NewContextSource(preferencesSvc),
+			mind.NewContextSource(mindSvc),
 		),
 		PromptBuilder: coach.NewPromptBuilder(),
 		Queue:         queue,
@@ -261,6 +314,13 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, stora
 		memoryHandler.Routes(r)
 		workoutHandler.Routes(r)
 		mediaHandler.Routes(r)
+		settingsHandler.Routes(r)
+		mindHandler.Routes(r)
+		careHandler.Routes(r)
+		activityHandler.Routes(r)
+		calculatorHandler.Routes(r)
+		mealsHandler.Routes(r)
+		fitnessHandler.Routes(r)
 	})
 
 	return r

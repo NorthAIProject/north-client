@@ -1,0 +1,158 @@
+package activity
+
+import (
+	"fmt"
+
+	"github.com/NorthAIProject/north-client/internal/activity/activity"
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/form"
+	"github.com/NorthAIProject/north-client/web/shared/ui/label"
+	"github.com/NorthAIProject/north-client/web/shared/ui/selectbox"
+)
+
+templ Page(user users.User, active activity.Session, hasActive bool, recent []activity.Session, todayCalories float64, errMsg string) {
+	@layout.App("Activity", user, layout.BuildNav("/app/fitness")) {
+		<div class="mx-auto w-full max-w-2xl space-y-6 p-6 md:p-8">
+			<header>
+				@ui.MonoLabel("Fitness")
+				<h1 class="mt-2 text-2xl font-medium tracking-tight">Activity</h1>
+				<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
+					Calorie burn estimated from your weight and the activity's MET value.
+				</p>
+				if todayCalories > 0 {
+					<p class="text-signal mt-3 text-sm font-medium">
+						{ fmt.Sprintf("~%.0f kcal burned today", todayCalories) }
+					</p>
+				}
+			</header>
+			if errMsg != "" {
+				<p class="border-destructive/30 bg-destructive/10 rounded-lg border px-4 py-3 text-sm">{ errMsg }</p>
+			}
+			if hasActive {
+				@activeCard(active)
+			} else {
+				@startCard()
+			}
+			if len(recent) > 0 {
+				<section class="space-y-3">
+					<h2 class="text-sm font-medium">Recent</h2>
+					for _, s := range recent {
+						@sessionCard(s)
+					}
+				</section>
+			}
+		</div>
+		@label.Script()
+		@selectbox.Script()
+	}
+}
+
+templ startCard() {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Title() {
+				Start a session
+			}
+		}
+		@card.Content() {
+			<form method="post" action="/app/activity/start" class="space-y-4">
+				@ui.CSRFInput()
+				@form.Item() {
+					@label.Label() {
+						Activity
+					}
+					@selectbox.SelectBox() {
+						@selectbox.Trigger(selectbox.TriggerProps{ID: "activity_code", Name: "activity_code"}) {
+							@selectbox.Value(selectbox.ValueProps{Placeholder: "Choose one"})
+						}
+						@selectbox.Content() {
+							for _, m := range activity.METTable {
+								@selectbox.Item(selectbox.ItemProps{Value: m.Code}) {
+									{ m.Name }
+								}
+							}
+						}
+					}
+				}
+				@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90"}) {
+					Start
+				}
+			</form>
+		}
+	}
+}
+
+templ activeCard(s activity.Session) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Title() {
+				{ activityName(s.ActivityCode) }
+			}
+			@card.Description() {
+				if s.Status == activity.StatusPaused {
+					Paused
+				} else {
+					In progress
+				}
+			}
+		}
+		@card.Content() {
+			<div class="flex gap-2">
+				if s.Status == activity.StatusPaused {
+					<form method="post" action={ templ.SafeURL("/app/activity/" + s.ID.String() + "/resume") }>
+						@ui.CSRFInput()
+						@button.Button(button.Props{Type: button.TypeSubmit}) {
+							Resume
+						}
+					</form>
+				} else {
+					<form method="post" action={ templ.SafeURL("/app/activity/" + s.ID.String() + "/pause") }>
+						@ui.CSRFInput()
+						@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
+							Pause
+						}
+					</form>
+				}
+				<form method="post" action={ templ.SafeURL("/app/activity/" + s.ID.String() + "/stop") }>
+					@ui.CSRFInput()
+					@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90"}) {
+						Stop
+					}
+				</form>
+				<form method="post" action={ templ.SafeURL("/app/activity/" + s.ID.String() + "/cancel") }>
+					@ui.CSRFInput()
+					@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost}) {
+						Cancel
+					}
+				</form>
+			</div>
+		}
+	}
+}
+
+templ sessionCard(s activity.Session) {
+	@card.Card(card.Props{Class: "border-hairline"}) {
+		@card.Content(card.ContentProps{Class: "py-4"}) {
+			<div class="flex items-center justify-between text-sm">
+				<span>{ activityName(s.ActivityCode) }</span>
+				<span class="text-muted-foreground">
+					{ s.StartedAt.Format("2 Jan") }
+					if s.CaloriesBurned != nil {
+						{ fmt.Sprintf(" · ~%.0f kcal", *s.CaloriesBurned) }
+					}
+				</span>
+			</div>
+		}
+	}
+}
+
+func activityName(code string) string {
+	if m, ok := activity.LookupMET(code); ok {
+		return m.Name
+	}
+	return code
+}

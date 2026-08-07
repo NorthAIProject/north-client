@@ -12,6 +12,23 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type ActivitySession struct {
+	ID                 uuid.UUID
+	UserID             uuid.UUID
+	ActivityCode       string
+	Source             string
+	Status             string
+	WeightKgSnapshot   float64
+	StartedAt          time.Time
+	PausedAt           *time.Time
+	TotalPausedSeconds int32
+	EndedAt            *time.Time
+	CaloriesBurned     *float64
+	ExternalID         *string
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+}
+
 type AuthIdentity struct {
 	ID              uuid.UUID
 	UserID          uuid.UUID
@@ -41,6 +58,28 @@ type Conversation struct {
 	Title     *string
 	CreatedAt time.Time
 	UpdatedAt time.Time
+}
+
+type Diet struct {
+	ID          uuid.UUID
+	Code        string
+	Name        string
+	Description string
+}
+
+type FoodLog struct {
+	ID            uuid.UUID
+	UserID        uuid.UUID
+	LogDate       pgtype.Date
+	MealID        *uuid.UUID
+	IngredientID  *uuid.UUID
+	QuantityGrams *float64
+	Label         string
+	Calories      float64
+	ProteinG      float64
+	FatG          float64
+	CarbsG        float64
+	LoggedAt      time.Time
 }
 
 type FormAnalysis struct {
@@ -79,6 +118,26 @@ type GoalUpdate struct {
 	CreatedAt time.Time
 }
 
+type Ingredient struct {
+	ID                   uuid.UUID
+	UserID               *uuid.UUID
+	Name                 string
+	Brand                string
+	Category             string
+	ServingSizeGrams     float64
+	CaloriesPer100g      float64
+	ProteinGPer100g      float64
+	FatGPer100g          float64
+	CarbsGPer100g        float64
+	FiberGPer100g        float64
+	SugarGPer100g        float64
+	SodiumMgPer100g      float64
+	PotassiumMgPer100g   float64
+	CholesterolMgPer100g float64
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
+}
+
 type Job struct {
 	ID          uuid.UUID
 	Kind        string
@@ -90,6 +149,60 @@ type Job struct {
 	LastError   string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+}
+
+type JournalEntry struct {
+	ID        uuid.UUID
+	UserID    uuid.UUID
+	Content   string
+	Mood      *int16
+	CreatedAt time.Time
+}
+
+type Meal struct {
+	ID          uuid.UUID
+	MealPlanID  uuid.UUID
+	MealNumber  int16
+	Name        string
+	TotalMacros []byte
+	CreatedAt   time.Time
+}
+
+type MealIngredient struct {
+	ID            uuid.UUID
+	MealID        uuid.UUID
+	IngredientID  uuid.UUID
+	QuantityGrams float64
+	Calories      float64
+	ProteinG      float64
+	FatG          float64
+	CarbsG        float64
+	CreatedAt     time.Time
+}
+
+type MealPlan struct {
+	ID            uuid.UUID
+	UserID        uuid.UUID
+	Name          string
+	Description   string
+	Objective     string
+	ActivityLevel string
+	Gender        string
+	TotalMacros   []byte
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
+
+type MealReminder struct {
+	ID                 uuid.UUID
+	UserID             uuid.UUID
+	Label              string
+	TimeOfDay          string
+	DaysOfWeek         []int16
+	Enabled            bool
+	LastFiredLocalDate pgtype.Date
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
 }
 
 type Medium struct {
@@ -144,6 +257,44 @@ type User struct {
 	UpdatedAt     time.Time
 }
 
+type UserBiometric struct {
+	ID          uuid.UUID
+	UserID      uuid.UUID
+	WeightKg    float64
+	HeightCm    float64
+	DateOfBirth pgtype.Date
+	Sex         string
+	IsCurrent   bool
+	CreatedAt   time.Time
+}
+
+type UserDietPreference struct {
+	ID        uuid.UUID
+	UserID    uuid.UUID
+	DietID    uuid.UUID
+	CreatedAt time.Time
+}
+
+type UserMacroPlan struct {
+	ID            uuid.UUID
+	UserID        uuid.UUID
+	WeightKg      float64
+	HeightCm      float64
+	Age           int16
+	Sex           string
+	ActivityLevel string
+	Goal          string
+	MacroSplit    string
+	Bmr           float64
+	Tdee          float64
+	CalorieGoal   float64
+	ProteinG      float64
+	FatG          float64
+	CarbG         float64
+	IsCurrent     bool
+	CreatedAt     time.Time
+}
+
 type UserMemory struct {
 	ID                   uuid.UUID
 	UserID               uuid.UUID
@@ -157,6 +308,15 @@ type UserMemory struct {
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
 	DeletedAt            *time.Time
+}
+
+type UserPreference struct {
+	ID                uuid.UUID
+	UserID            uuid.UUID
+	UnitsSystem       string
+	DefaultGoal       string
+	DefaultMacroSplit string
+	UpdatedAt         time.Time
 }
 
 type WebauthnChallenge struct {

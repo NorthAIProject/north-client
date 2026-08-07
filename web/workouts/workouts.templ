@@ -61,20 +61,8 @@ var equipmentOptions = []struct{ Value, Label string }{
 	{"rower", "Rower"},
 }
 
-func nav(active string) []layout.NavItem {
-	items := []layout.NavItem{
-		{Label: "Overview", Href: "/app"},
-		{Label: "Coach", Href: "/app/chat"},
-		{Label: "Training", Href: "/app/training"},
-	}
-	for i := range items {
-		items[i].Active = items[i].Href == active
-	}
-	return items
-}
-
 templ IntakePage(user users.User, f IntakeForm) {
-	@layout.App("Build a plan", user, nav("/app/training")) {
+	@layout.App("Build a plan", user, layout.BuildNav("/app/fitness")) {
 		<div class="mx-auto w-full max-w-2xl p-6 md:p-8">
 			<header class="mb-6">
 				<h1 class="text-2xl font-semibold tracking-tight">Build your training plan</h1>
@@ -201,7 +189,7 @@ templ IntakePage(user users.User, f IntakeForm) {
 }
 
 templ PlanPage(user users.User, p plan.Plan, createdAt time.Time) {
-	@layout.App(p.Name, user, nav("/app/training")) {
+	@layout.App(p.Name, user, layout.BuildNav("/app/fitness")) {
 		<div class="mx-auto w-full max-w-3xl p-6 md:p-8">
 			<header class="mb-6 flex items-start justify-between gap-4">
 				<div>

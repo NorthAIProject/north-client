@@ -48,6 +48,26 @@ type Context struct {
 	WorkoutPlan   string
 	FormAnalyses  []string
 	KnowledgeHits []string
+
+	// FitnessSummary is biometrics/BMR/TDEE/macro targets (calculator) and
+	// today's activity burn (activity). Populated by two sources on purpose:
+	// both are "numbers about the body," and splitting them into separate
+	// fields would make Render() enumerate near-duplicate headings.
+	FitnessSummary []string
+
+	// Nutrition is today's logged intake versus the current macro goal
+	// (meals: FoodLogService + TrackMealProgressService), plus the user's
+	// standing diet preferences.
+	Nutrition []string
+
+	// Preferences is standing settings the coach should default to when it
+	// makes suggestions: units system, fitness objective, macro-split
+	// preference (internal/preferences).
+	Preferences []string
+
+	// Reflections is recent mood trend and journal entries (internal/mind),
+	// giving the coach visibility beyond the structured check-in fields.
+	Reflections []string
 }
 
 // ContextSource contributes one section of the context.
@@ -171,6 +191,11 @@ func (c *Context) Render() string {
 	}
 
 	section(&b, "Recent form analyses", c.FormAnalyses, "none yet")
+
+	section(&b, "Fitness & nutrition targets", c.FitnessSummary, "not calculated yet")
+	section(&b, "Today's nutrition", c.Nutrition, "nothing logged yet")
+	section(&b, "Preferences", c.Preferences, "not set yet")
+	section(&b, "Reflections", c.Reflections, "none yet")
 
 	if len(c.EarlierTopics) > 0 {
 		b.WriteString("\nWhat they have been talking about in other conversations:\n")

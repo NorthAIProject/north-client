@@ -15,21 +15,8 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/input"
 )
 
-func nav(active string) []layout.NavItem {
-	items := []layout.NavItem{
-		{Label: "Overview", Href: "/app"},
-		{Label: "Coach", Href: "/app/chat"},
-		{Label: "Training", Href: "/app/training"},
-		{Label: "Form check", Href: "/app/form"},
-	}
-	for i := range items {
-		items[i].Active = items[i].Href == active
-	}
-	return items
-}
-
 templ IndexPage(user users.User, analyses []analysis.Analysis, errMsg string) {
-	@layout.App("Form check", user, nav("/app/form")) {
+	@layout.App("Form check", user, layout.BuildNav("/app/fitness")) {
 		<div class="mx-auto w-full max-w-2xl p-6 md:p-8">
 			<header class="mb-6">
 				<h1 class="text-2xl font-semibold tracking-tight">Form check</h1>
@@ -118,7 +105,7 @@ templ issueCountBadge(result analysis.FormAnalysis) {
 }
 
 templ AnalysisPage(user users.User, item analysis.Analysis, playbackURL string) {
-	@layout.App("Form check", user, nav("/app/form")) {
+	@layout.App("Form check", user, layout.BuildNav("/app/fitness")) {
 		<div
 			class="mx-auto w-full max-w-3xl p-6 md:p-8"
 			x-data="{ seek(seconds) { const v = $refs.clip; if (v) { v.currentTime = seconds; v.play(); } } }"

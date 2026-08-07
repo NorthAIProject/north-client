@@ -9,6 +9,7 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
 	"github.com/NorthAIProject/north-client/web/shared/ui/card"
 	"github.com/NorthAIProject/north-client/web/shared/ui/form"
+	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
 	"github.com/NorthAIProject/north-client/web/shared/ui/input"
 	"github.com/NorthAIProject/north-client/web/shared/ui/label"
 )
@@ -134,6 +135,7 @@ templ altAuthButtons(opts AuthOptions, next string, mode string) {
 					FullWidth: true,
 					Href:      googleAuthHref(next),
 				}) {
+					@icon.BrandGoogle()
 					Continue with Google
 				}
 			}

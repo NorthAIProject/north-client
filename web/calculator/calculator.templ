@@ -1,0 +1,241 @@
+package calculator
+
+import (
+	"github.com/NorthAIProject/north-client/internal/biometrics"
+	"github.com/NorthAIProject/north-client/internal/calculator/macroplan"
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/form"
+	"github.com/NorthAIProject/north-client/web/shared/ui/input"
+	"github.com/NorthAIProject/north-client/web/shared/ui/label"
+	"github.com/NorthAIProject/north-client/web/shared/ui/selectbox"
+)
+
+// BiometricsForm carries submitted (or rejected) body measurements.
+type BiometricsForm struct {
+	WeightKg    string
+	HeightCm    string
+	DateOfBirth string
+	Sex         string
+	Errors      map[string]string
+}
+
+func (f BiometricsForm) fieldError(name string) string {
+	if f.Errors == nil {
+		return ""
+	}
+	return f.Errors[name]
+}
+
+// PlanForm carries the submitted choices for a new plan.
+type PlanForm struct {
+	ActivityLevel string
+	Goal          string
+	MacroSplit    string
+	Errors        map[string]string
+}
+
+func (f PlanForm) fieldError(name string) string {
+	if f.Errors == nil {
+		return ""
+	}
+	return f.Errors[name]
+}
+
+templ Page(user users.User, bio biometrics.Biometric, hasBio bool, plan macroplan.MacroPlan, hasPlan bool, bioForm BiometricsForm, planForm PlanForm) {
+	@layout.App("Calculator", user, layout.BuildNav("/app/fitness")) {
+		<div class="mx-auto w-full max-w-2xl space-y-6 p-6 md:p-8">
+			<header>
+				@ui.MonoLabel("Fitness")
+				<h1 class="mt-2 text-2xl font-medium tracking-tight">Calorie & macro calculator</h1>
+				<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
+					Mifflin-St Jeor, scaled by your own activity and goal.
+				</p>
+			</header>
+			@biometricsCard(bio, hasBio, bioForm)
+			@planCard(plan, hasPlan, planForm)
+		</div>
+		@label.Script()
+		@selectbox.Script()
+	}
+}
+
+templ biometricsCard(bio biometrics.Biometric, hasBio bool, f BiometricsForm) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Title() {
+				Your measurements
+			}
+			@card.Description() {
+				if hasBio {
+					{ bio.Summary() }
+				} else {
+					Needed before a plan can be generated.
+				}
+			}
+		}
+		@card.Content() {
+			<form method="post" action="/app/calculator/biometrics" class="space-y-4">
+				@ui.CSRFInput()
+				<div class="grid grid-cols-2 gap-4">
+					@form.Item() {
+						@label.Label(label.Props{For: "weight_kg"}) {
+							Weight (kg)
+						}
+						@input.Input(input.Props{ID: "weight_kg", Name: "weight_kg", Type: input.TypeNumber, Value: f.WeightKg, Required: true, HasError: f.fieldError("weight_kg") != ""})
+						if f.fieldError("weight_kg") != "" {
+							@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+								{ f.fieldError("weight_kg") }
+							}
+						}
+					}
+					@form.Item() {
+						@label.Label(label.Props{For: "height_cm"}) {
+							Height (cm)
+						}
+						@input.Input(input.Props{ID: "height_cm", Name: "height_cm", Type: input.TypeNumber, Value: f.HeightCm, Required: true, HasError: f.fieldError("height_cm") != ""})
+						if f.fieldError("height_cm") != "" {
+							@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+								{ f.fieldError("height_cm") }
+							}
+						}
+					}
+				</div>
+				@form.Item() {
+					@label.Label(label.Props{For: "date_of_birth"}) {
+						Date of birth
+					}
+					@input.Input(input.Props{ID: "date_of_birth", Name: "date_of_birth", Type: input.TypeDate, Value: f.DateOfBirth, Required: true, HasError: f.fieldError("date_of_birth") != ""})
+					if f.fieldError("date_of_birth") != "" {
+						@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+							{ f.fieldError("date_of_birth") }
+						}
+					}
+				}
+				@form.Item() {
+					@label.Label() {
+						Sex
+					}
+					@selectbox.SelectBox() {
+						@selectbox.Trigger(selectbox.TriggerProps{ID: "sex", Name: "sex"}) {
+							@selectbox.Value(selectbox.ValueProps{Placeholder: "Choose one"})
+						}
+						@selectbox.Content() {
+							@selectbox.Item(selectbox.ItemProps{Value: biometrics.SexMale, Selected: f.Sex == biometrics.SexMale}) {
+								Male
+							}
+							@selectbox.Item(selectbox.ItemProps{Value: biometrics.SexFemale, Selected: f.Sex == biometrics.SexFemale}) {
+								Female
+							}
+						}
+					}
+				}
+				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
+					Save measurements
+				}
+			</form>
+		}
+	}
+}
+
+templ planCard(plan macroplan.MacroPlan, hasPlan bool, f PlanForm) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Title() {
+				Generate a plan
+			}
+			@card.Description() {
+				if hasPlan {
+					{ plan.Summary() }
+				} else {
+					Record your measurements above first.
+				}
+			}
+		}
+		@card.Content() {
+			<form method="post" action="/app/calculator/generate" class="space-y-4">
+				@ui.CSRFInput()
+				@form.Item() {
+					@label.Label() {
+						Activity level
+					}
+					@selectbox.SelectBox() {
+						@selectbox.Trigger(selectbox.TriggerProps{ID: "activity_level", Name: "activity_level"}) {
+							@selectbox.Value(selectbox.ValueProps{Placeholder: "Moderate"})
+						}
+						@selectbox.Content() {
+							@selectbox.Item(selectbox.ItemProps{Value: macroplan.ActivitySedentary, Selected: f.ActivityLevel == macroplan.ActivitySedentary}) {
+								Sedentary
+							}
+							@selectbox.Item(selectbox.ItemProps{Value: macroplan.ActivityLight, Selected: f.ActivityLevel == macroplan.ActivityLight}) {
+								Light
+							}
+							@selectbox.Item(selectbox.ItemProps{Value: macroplan.ActivityModerate, Selected: f.ActivityLevel == macroplan.ActivityModerate}) {
+								Moderate
+							}
+							@selectbox.Item(selectbox.ItemProps{Value: macroplan.ActivityHeavy, Selected: f.ActivityLevel == macroplan.ActivityHeavy}) {
+								Heavy
+							}
+							@selectbox.Item(selectbox.ItemProps{Value: macroplan.ActivityExtraHeavy, Selected: f.ActivityLevel == macroplan.ActivityExtraHeavy}) {
+								Extra heavy
+							}
+						}
+					}
+				}
+				@form.Item() {
+					@label.Label() {
+						Goal
+					}
+					@selectbox.SelectBox() {
+						@selectbox.Trigger(selectbox.TriggerProps{ID: "goal", Name: "goal"}) {
+							@selectbox.Value(selectbox.ValueProps{Placeholder: "Maintenance"})
+						}
+						@selectbox.Content() {
+							@selectbox.Item(selectbox.ItemProps{Value: macroplan.GoalCutting, Selected: f.Goal == macroplan.GoalCutting}) {
+								Cutting
+							}
+							@selectbox.Item(selectbox.ItemProps{Value: macroplan.GoalMaintenance, Selected: f.Goal == macroplan.GoalMaintenance}) {
+								Maintenance
+							}
+							@selectbox.Item(selectbox.ItemProps{Value: macroplan.GoalBulking, Selected: f.Goal == macroplan.GoalBulking}) {
+								Bulking
+							}
+						}
+					}
+				}
+				@form.Item() {
+					@label.Label() {
+						Macro split
+					}
+					@selectbox.SelectBox() {
+						@selectbox.Trigger(selectbox.TriggerProps{ID: "macro_split", Name: "macro_split"}) {
+							@selectbox.Value(selectbox.ValueProps{Placeholder: "Moderate carb"})
+						}
+						@selectbox.Content() {
+							@selectbox.Item(selectbox.ItemProps{Value: macroplan.SplitHighCarb, Selected: f.MacroSplit == macroplan.SplitHighCarb}) {
+								High carb
+							}
+							@selectbox.Item(selectbox.ItemProps{Value: macroplan.SplitModerateCarb, Selected: f.MacroSplit == macroplan.SplitModerateCarb}) {
+								Moderate carb
+							}
+							@selectbox.Item(selectbox.ItemProps{Value: macroplan.SplitLowCarb, Selected: f.MacroSplit == macroplan.SplitLowCarb}) {
+								Low carb
+							}
+						}
+					}
+				}
+				if f.fieldError("_") != "" {
+					@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+						{ f.fieldError("_") }
+					}
+				}
+				@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90"}) {
+					Generate plan
+				}
+			</form>
+		}
+	}
+}

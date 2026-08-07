@@ -1,0 +1,136 @@
+package mind
+
+import (
+	"fmt"
+
+	"github.com/NorthAIProject/north-client/internal/mind/journal"
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/form"
+	"github.com/NorthAIProject/north-client/web/shared/ui/label"
+	"github.com/NorthAIProject/north-client/web/shared/ui/selectbox"
+	"github.com/NorthAIProject/north-client/web/shared/ui/textarea"
+)
+
+// JournalForm carries a submitted (or rejected) journal entry.
+type JournalForm struct {
+	Content string
+	Mood    *int
+	Errors  map[string]string
+}
+
+func (f JournalForm) fieldError(name string) string {
+	if f.Errors == nil {
+		return ""
+	}
+	return f.Errors[name]
+}
+
+func (f JournalForm) moodSelected(n int) bool { return f.Mood != nil && *f.Mood == n }
+
+templ IndexPage(user users.User, entries []journal.Entry, avgMood, avgEnergy float64, moodCount int, f JournalForm) {
+	@layout.App("Mind", user, layout.BuildNav("/app/mind")) {
+		<div class="mx-auto w-full max-w-2xl space-y-6 p-6 md:p-8">
+			<header>
+				@ui.MonoLabel("Mind")
+				<h1 class="mt-2 text-2xl font-medium tracking-tight">How you've been</h1>
+				<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
+					A trend from your check-ins, and a place for reflections that don't fit a 1-5 scale.
+				</p>
+			</header>
+			if moodCount > 0 {
+				@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+					@card.Content() {
+						<p class="text-sm">
+							Average mood <span class="text-signal font-medium">{ fmt.Sprintf("%.1f/5", avgMood) }</span>
+							· average energy <span class="text-signal font-medium">{ fmt.Sprintf("%.1f/5", avgEnergy) }</span>
+							over the last { fmt.Sprintf("%d", moodCount) } check-ins.
+						</p>
+					}
+				}
+			}
+			@journalFormCard(f)
+			if len(entries) > 0 {
+				<section class="space-y-3">
+					<h2 class="text-sm font-medium">Journal</h2>
+					for _, e := range entries {
+						@entryCard(e)
+					}
+				</section>
+			}
+		</div>
+		@label.Script()
+		@selectbox.Script()
+	}
+}
+
+templ journalFormCard(f JournalForm) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Title() {
+				Write something
+			}
+			@card.Description() {
+				Optional mood rating. No structure required.
+			}
+		}
+		@card.Content() {
+			<form method="post" action="/app/mind/journal" class="space-y-4">
+				@ui.CSRFInput()
+				@form.Item() {
+					@label.Label(label.Props{For: "content"}) {
+						Reflection
+					}
+					@textarea.Textarea(textarea.Props{ID: "content", Name: "content", Rows: 4, Placeholder: "What's on your mind?"}) {
+						{ f.Content }
+					}
+					if f.fieldError("content") != "" {
+						@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+							{ f.fieldError("content") }
+						}
+					}
+				}
+				@form.Item() {
+					@label.Label() {
+						Mood (optional)
+					}
+					@selectbox.SelectBox() {
+						@selectbox.Trigger(selectbox.TriggerProps{ID: "mood", Name: "mood"}) {
+							@selectbox.Value(selectbox.ValueProps{Placeholder: "No rating"})
+						}
+						@selectbox.Content() {
+							@selectbox.Item(selectbox.ItemProps{Value: "", Selected: f.Mood == nil}) {
+								No rating
+							}
+							for i := 1; i <= 5; i++ {
+								@selectbox.Item(selectbox.ItemProps{Value: fmt.Sprintf("%d", i), Selected: f.moodSelected(i)}) {
+									{ fmt.Sprintf("%d/5", i) }
+								}
+							}
+						}
+					}
+				}
+				@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90"}) {
+					Save entry
+				}
+			</form>
+		}
+	}
+}
+
+templ entryCard(e journal.Entry) {
+	@card.Card(card.Props{Class: "border-hairline"}) {
+		@card.Content(card.ContentProps{Class: "py-4"}) {
+			<p class="text-muted-foreground text-xs">
+				{ e.CreatedAt.Format("2 Jan 2006") }
+				if e.Mood != nil {
+					· mood { fmt.Sprintf("%d/5", *e.Mood) }
+				}
+			</p>
+			<p class="mt-1 text-sm">{ e.Content }</p>
+		}
+	}
+}

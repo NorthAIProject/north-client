@@ -1,0 +1,245 @@
+package settings
+
+import (
+	"github.com/google/uuid"
+
+	"github.com/NorthAIProject/north-client/internal/calculator"
+	"github.com/NorthAIProject/north-client/internal/meals"
+	"github.com/NorthAIProject/north-client/internal/preferences"
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/checkbox"
+	"github.com/NorthAIProject/north-client/web/shared/ui/form"
+	"github.com/NorthAIProject/north-client/web/shared/ui/input"
+	"github.com/NorthAIProject/north-client/web/shared/ui/label"
+	"github.com/NorthAIProject/north-client/web/shared/ui/selectbox"
+	"github.com/NorthAIProject/north-client/web/shared/ui/textarea"
+)
+
+// ProfileForm carries the account fields (users.Service.UpdateProfile).
+type ProfileForm struct {
+	DisplayName   string
+	Timezone      string
+	CoachingStyle string
+	Errors        map[string]string
+}
+
+func (f ProfileForm) fieldError(name string) string { return f.Errors[name] }
+
+// ProfileFormFor pre-fills from the signed-in user.
+func ProfileFormFor(u users.User) ProfileForm {
+	return ProfileForm{DisplayName: u.DisplayName, Timezone: u.Timezone, CoachingStyle: u.CoachingStyle}
+}
+
+// PreferencesForm carries units/objective/macro-split defaults.
+type PreferencesForm struct {
+	UnitsSystem       string
+	DefaultGoal       string
+	DefaultMacroSplit string
+	Errors            map[string]string
+}
+
+func (f PreferencesForm) fieldError(name string) string { return f.Errors[name] }
+
+func PreferencesFormFor(p preferences.Preferences) PreferencesForm {
+	return PreferencesForm{UnitsSystem: p.UnitsSystem, DefaultGoal: p.DefaultGoal, DefaultMacroSplit: p.DefaultMacroSplit}
+}
+
+// Page renders account settings: profile, calculator defaults, and dietary
+// preferences (backed by meals.DietPreferenceService — Settings has no
+// store of its own for that data).
+templ Page(user users.User, profileForm ProfileForm, prefsForm PreferencesForm, allDiets []meals.Diet, selectedDietIDs map[uuid.UUID]bool, saved string) {
+	@layout.App("Settings", user, layout.BuildNav("/app/settings")) {
+		<div class="mx-auto w-full max-w-2xl space-y-6 p-6 md:p-8">
+			<header>
+				@ui.MonoLabel("Settings")
+				<h1 class="mt-2 text-2xl font-medium tracking-tight">Account</h1>
+				<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
+					How the coach addresses you, what it defaults to, and what it should never suggest.
+				</p>
+			</header>
+			if saved != "" {
+				<p class="rounded-lg border border-signal/30 bg-signal/10 px-4 py-3 text-sm">{ saved }</p>
+			}
+			@profileCard(profileForm)
+			@preferencesCard(prefsForm)
+			@dietsCard(allDiets, selectedDietIDs)
+		</div>
+		@label.Script()
+		@selectbox.Script()
+		@checkbox.Script()
+	}
+}
+
+templ profileCard(f ProfileForm) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Title() {
+				Profile
+			}
+			@card.Description() {
+				Your name, timezone, and how you want to be coached.
+			}
+		}
+		@card.Content() {
+			<form method="post" action="/app/settings/profile" class="space-y-4">
+				@ui.CSRFInput()
+				@form.Item() {
+					@label.Label(label.Props{For: "display_name"}) {
+						Name
+					}
+					@input.Input(input.Props{
+						ID: "display_name", Name: "display_name", Value: f.DisplayName, Required: true,
+						HasError: f.fieldError("display_name") != "",
+					})
+					if f.fieldError("display_name") != "" {
+						@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+							{ f.fieldError("display_name") }
+						}
+					}
+				}
+				@form.Item() {
+					@label.Label(label.Props{For: "timezone"}) {
+						Timezone
+					}
+					@input.Input(input.Props{
+						ID: "timezone", Name: "timezone", Value: f.Timezone, Required: true,
+						HasError: f.fieldError("timezone") != "", Placeholder: "Europe/Lisbon",
+					})
+					if f.fieldError("timezone") != "" {
+						@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+							{ f.fieldError("timezone") }
+						}
+					}
+				}
+				@form.Item() {
+					@label.Label(label.Props{For: "coaching_style"}) {
+						How you want to be coached
+					}
+					@textarea.Textarea(textarea.Props{
+						ID: "coaching_style", Name: "coaching_style", Rows: 3,
+						Placeholder: "Optional. E.g. \"Be direct, skip the pep talks.\"",
+					}) {
+						{ f.CoachingStyle }
+					}
+				}
+				@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90"}) {
+					Save profile
+				}
+			</form>
+		}
+	}
+}
+
+templ preferencesCard(f PreferencesForm) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Title() {
+				Fitness defaults
+			}
+			@card.Description() {
+				Pre-fills the calculator; you can still override per calculation.
+			}
+		}
+		@card.Content() {
+			<form method="post" action="/app/settings/preferences" class="space-y-4">
+				@ui.CSRFInput()
+				@form.Item() {
+					@label.Label() {
+						Units
+					}
+					@selectbox.SelectBox() {
+						@selectbox.Trigger(selectbox.TriggerProps{ID: "units_system", Name: "units_system"}) {
+							@selectbox.Value(selectbox.ValueProps{Placeholder: "Metric"})
+						}
+						@selectbox.Content() {
+							@selectbox.Item(selectbox.ItemProps{Value: preferences.UnitsMetric, Selected: f.UnitsSystem == preferences.UnitsMetric}) {
+								Metric (kg, cm)
+							}
+							@selectbox.Item(selectbox.ItemProps{Value: preferences.UnitsImperial, Selected: f.UnitsSystem == preferences.UnitsImperial}) {
+								Imperial (lb, in)
+							}
+						}
+					}
+				}
+				@form.Item() {
+					@label.Label() {
+						Default objective
+					}
+					@selectbox.SelectBox() {
+						@selectbox.Trigger(selectbox.TriggerProps{ID: "default_goal", Name: "default_goal"}) {
+							@selectbox.Value(selectbox.ValueProps{Placeholder: "Maintenance"})
+						}
+						@selectbox.Content() {
+							@selectbox.Item(selectbox.ItemProps{Value: calculator.GoalCutting, Selected: f.DefaultGoal == calculator.GoalCutting}) {
+								Cutting
+							}
+							@selectbox.Item(selectbox.ItemProps{Value: calculator.GoalMaintenance, Selected: f.DefaultGoal == calculator.GoalMaintenance}) {
+								Maintenance
+							}
+							@selectbox.Item(selectbox.ItemProps{Value: calculator.GoalBulking, Selected: f.DefaultGoal == calculator.GoalBulking}) {
+								Bulking
+							}
+						}
+					}
+				}
+				@form.Item() {
+					@label.Label() {
+						Default macro split
+					}
+					@selectbox.SelectBox() {
+						@selectbox.Trigger(selectbox.TriggerProps{ID: "default_macro_split", Name: "default_macro_split"}) {
+							@selectbox.Value(selectbox.ValueProps{Placeholder: "Moderate carb"})
+						}
+						@selectbox.Content() {
+							@selectbox.Item(selectbox.ItemProps{Value: calculator.SplitHighCarb, Selected: f.DefaultMacroSplit == calculator.SplitHighCarb}) {
+								High carb
+							}
+							@selectbox.Item(selectbox.ItemProps{Value: calculator.SplitModerateCarb, Selected: f.DefaultMacroSplit == calculator.SplitModerateCarb}) {
+								Moderate carb
+							}
+							@selectbox.Item(selectbox.ItemProps{Value: calculator.SplitLowCarb, Selected: f.DefaultMacroSplit == calculator.SplitLowCarb}) {
+								Low carb
+							}
+						}
+					}
+				}
+				@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90"}) {
+					Save defaults
+				}
+			</form>
+		}
+	}
+}
+
+templ dietsCard(allDiets []meals.Diet, selected map[uuid.UUID]bool) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Title() {
+				Dietary preferences
+			}
+			@card.Description() {
+				The coach won't suggest meals outside of these.
+			}
+		}
+		@card.Content() {
+			<form method="post" action="/app/settings/diets" class="space-y-4">
+				@ui.CSRFInput()
+				<div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
+					for _, d := range allDiets {
+						<label class="flex items-center gap-2 text-sm">
+							@checkbox.Checkbox(checkbox.Props{Name: "diet_ids", Value: d.ID.String(), Checked: selected[d.ID]})
+							{ d.Name }
+						</label>
+					}
+				</div>
+				@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90"}) {
+					Save preferences
+				}
+			</form>
+		}
+	}
+}

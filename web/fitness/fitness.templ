@@ -1,0 +1,58 @@
+package fitness
+
+import (
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+)
+
+type tile struct {
+	Title       string
+	Description string
+	Href        string
+}
+
+var tiles = []tile{
+	{"Training", "AI-generated workout plans.", "/app/training"},
+	{"Form check", "Upload a clip, get feedback.", "/app/form"},
+	{"Activity", "Track a session, see calories burned.", "/app/activity"},
+	{"Calculator", "BMR, TDEE, and a macro target.", "/app/calculator"},
+	{"Ingredients", "Shared and your own foods.", "/app/nutrition/ingredients"},
+	{"Meal plans", "Build plans, track totals.", "/app/nutrition/plans"},
+	{"Food log", "Log today, see progress.", "/app/nutrition/log"},
+}
+
+templ Hub(user users.User) {
+	@layout.App("Fitness", user, layout.BuildNav("/app/fitness")) {
+		<div class="mx-auto w-full max-w-2xl space-y-6 p-6 md:p-8">
+			<header>
+				@ui.MonoLabel("Fitness")
+				<h1 class="mt-2 text-2xl font-medium tracking-tight">Fitness</h1>
+				<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
+					Training, form, activity, and the numbers behind them.
+				</p>
+			</header>
+			<div class="grid gap-4 sm:grid-cols-2">
+				for _, t := range tiles {
+					@tileCard(t)
+				}
+			</div>
+		</div>
+	}
+}
+
+templ tileCard(t tile) {
+	<a href={ templ.SafeURL(t.Href) } class="block">
+		@card.Card(card.Props{Class: "border-hairline bg-surface hover:border-muted-foreground/30 transition-colors"}) {
+			@card.Header() {
+				@card.Title() {
+					{ t.Title }
+				}
+				@card.Description() {
+					{ t.Description }
+				}
+			}
+		}
+	</a>
+}

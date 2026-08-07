@@ -7,6 +7,7 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
 	"github.com/NorthAIProject/north-client/web/shared/ui/card"
 	"github.com/NorthAIProject/north-client/web/shared/ui/form"
+	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
 	"github.com/NorthAIProject/north-client/web/shared/ui/input"
 	"github.com/NorthAIProject/north-client/web/shared/ui/label"
 )
@@ -55,6 +56,7 @@ templ SignupPage(f SignupForm) {
 							FullWidth: true,
 							Href:      "/auth/google",
 						}) {
+							@icon.BrandGoogle()
 							Continue with Google
 						}
 						<div class="relative py-1">

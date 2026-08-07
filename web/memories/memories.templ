@@ -28,24 +28,8 @@ func (f MemoryForm) fieldError(name string) string {
 	return f.Errors[name]
 }
 
-func nav(active string) []layout.NavItem {
-	items := []layout.NavItem{
-		{Label: "Overview", Href: "/app"},
-		{Label: "Coach", Href: "/app/chat"},
-		{Label: "Check-ins", Href: "/app/check-ins"},
-		{Label: "Goals", Href: "/app/goals"},
-		{Label: "Memory", Href: "/app/memories"},
-		{Label: "Training", Href: "/app/training"},
-		{Label: "Form check", Href: "/app/form"},
-	}
-	for i := range items {
-		items[i].Active = items[i].Href == active
-	}
-	return items
-}
-
 templ IndexPage(user users.User, pending, approved []memory.Memory, form MemoryForm) {
-	@layout.App("Memory", user, nav("/app/memories")) {
+	@layout.App("Memory", user, layout.BuildNav("/app/memories")) {
 		<div class="mx-auto w-full max-w-2xl space-y-8 p-6 md:p-8">
 			<header>
 				<p class="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Long-term</p>

@@ -111,3 +111,63 @@ sql:
         out: internal/memories/db
         overrides: *overrides
 
+  - engine: postgresql
+    schema: migrations
+    queries: internal/biometrics/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: biometricsdb
+        out: internal/biometrics/db
+        overrides: *overrides
+
+  - engine: postgresql
+    schema: migrations
+    queries: internal/calculator/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: calculatordb
+        out: internal/calculator/db
+        overrides: *overrides
+
+  - engine: postgresql
+    schema: migrations
+    queries: internal/activity/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: activitydb
+        out: internal/activity/db
+        overrides: *overrides
+
+  - engine: postgresql
+    schema: migrations
+    queries: internal/meals/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: mealsdb
+        out: internal/meals/db
+        overrides: *overrides
+
+  - engine: postgresql
+    schema: migrations
+    queries: internal/preferences/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: preferencesdb
+        out: internal/preferences/db
+        overrides: *overrides
+
+  - engine: postgresql
+    schema: migrations
+    queries: internal/mind/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: minddb
+        out: internal/mind/db
+        overrides: *overrides
+

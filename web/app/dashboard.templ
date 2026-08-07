@@ -17,25 +17,8 @@ type DashboardData struct {
 	PendingMemories int
 }
 
-// Nav is the application sidebar for the overview page.
-func Nav(active string) []layout.NavItem {
-	items := []layout.NavItem{
-		{Label: "Overview", Href: "/app"},
-		{Label: "Coach", Href: "/app/chat"},
-		{Label: "Check-ins", Href: "/app/check-ins"},
-		{Label: "Goals", Href: "/app/goals"},
-		{Label: "Memory", Href: "/app/memories"},
-		{Label: "Training", Href: "/app/training"},
-		{Label: "Form check", Href: "/app/form"},
-	}
-	for i := range items {
-		items[i].Active = items[i].Href == active
-	}
-	return items
-}
-
 templ Dashboard(user users.User, data DashboardData) {
-	@layout.App("Overview", user, Nav("/app")) {
+	@layout.App("Overview", user, layout.BuildNav("/app")) {
 		<div class="mx-auto w-full max-w-4xl space-y-6 p-6 md:p-8">
 			<header>
 				@ui.MonoLabel("Overview")

@@ -1,0 +1,129 @@
+package nutrition
+
+import (
+	"fmt"
+
+	"github.com/NorthAIProject/north-client/internal/meals/meal"
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/input"
+	"github.com/NorthAIProject/north-client/web/shared/ui/selectbox"
+)
+
+// MealOption is one entry in the "log a meal" dropdown — a plan/meal pair
+// flattened to a label, since a food log entry only needs the meal's id.
+type MealOption struct {
+	ID    string
+	Label string
+}
+
+templ LogPage(user users.User, entries []meal.FoodLogEntry, progressSummary string, hasProgress bool, recommendationMsg string, hasRecommendation bool, allIngredients []meal.Ingredient, mealOptions []MealOption) {
+	@layout.App("Food log", user, nav()) {
+		<div class="mx-auto w-full max-w-2xl space-y-6 p-6 md:p-8">
+			<header>
+				@ui.MonoLabel("Nutrition")
+				<h1 class="mt-2 text-2xl font-medium tracking-tight">Today's log</h1>
+			</header>
+			if hasProgress {
+				@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+					@card.Content() {
+						<p class="text-sm">{ progressSummary }</p>
+						if hasRecommendation {
+							<p class="text-muted-foreground mt-2 text-sm">{ recommendationMsg }</p>
+						}
+					}
+				}
+			}
+			@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+				@card.Header() {
+					@card.Title() {
+						Log an ingredient
+					}
+				}
+				@card.Content() {
+					<form method="post" action="/app/nutrition/log/ingredients" class="flex items-end gap-2">
+						@ui.CSRFInput()
+						<div class="flex-1">
+							@selectbox.SelectBox() {
+								@selectbox.Trigger(selectbox.TriggerProps{Name: "ingredient_id"}) {
+									@selectbox.Value(selectbox.ValueProps{Placeholder: "Choose an ingredient"})
+								}
+								@selectbox.Content() {
+									for _, ing := range allIngredients {
+										@selectbox.Item(selectbox.ItemProps{Value: ing.ID.String()}) {
+											{ ing.Name }
+										}
+									}
+								}
+							}
+						</div>
+						<div class="w-24">
+							@input.Input(input.Props{Name: "quantity_grams", Type: input.TypeNumber, Placeholder: "grams"})
+						</div>
+						@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
+							Log
+						}
+					</form>
+				}
+			}
+			if len(mealOptions) > 0 {
+				@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+					@card.Header() {
+						@card.Title() {
+							Log a meal
+						}
+					}
+					@card.Content() {
+						<form method="post" action="/app/nutrition/log/meals" class="flex items-end gap-2">
+							@ui.CSRFInput()
+							<div class="flex-1">
+								@selectbox.SelectBox() {
+									@selectbox.Trigger(selectbox.TriggerProps{Name: "meal_id"}) {
+										@selectbox.Value(selectbox.ValueProps{Placeholder: "Choose a meal"})
+									}
+									@selectbox.Content() {
+										for _, m := range mealOptions {
+											@selectbox.Item(selectbox.ItemProps{Value: m.ID}) {
+												{ m.Label }
+											}
+										}
+									}
+								}
+							</div>
+							@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
+								Log
+							}
+						</form>
+					}
+				}
+			}
+			if len(entries) > 0 {
+				<section class="space-y-2">
+					<h2 class="text-sm font-medium">Logged today</h2>
+					for _, e := range entries {
+						@logEntryRow(e)
+					}
+				</section>
+			}
+		</div>
+		@selectbox.Script()
+	}
+}
+
+templ logEntryRow(e meal.FoodLogEntry) {
+	<div class="border-hairline flex items-center justify-between rounded-lg border px-3 py-2 text-sm">
+		<span>{ e.Label }</span>
+		<div class="flex items-center gap-2">
+			<span class="text-muted-foreground">{ fmt.Sprintf("%.0f kcal", e.Macros.Calories) }</span>
+			<form method="post" action={ templ.SafeURL("/app/nutrition/log/" + e.ID.String() + "/delete") }>
+				@ui.CSRFInput()
+				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm}) {
+					Remove
+				}
+			</form>
+		</div>
+	</div>
+}
