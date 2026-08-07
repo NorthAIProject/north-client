@@ -107,6 +107,7 @@ func (c *Client) Generate(ctx context.Context, req ai.Request) (*ai.Response, er
 
 	return &ai.Response{
 		Text:         payload.Choices[0].Message.Content,
+		ToolCalls:    fromToolCallPayload(payload.Choices[0].Message.ToolCalls),
 		FinishReason: payload.Choices[0].FinishReason,
 		Usage: ai.Usage{
 			InputTokens:  payload.Usage.PromptTokens,
@@ -132,6 +133,24 @@ func (c *Client) Chat(ctx context.Context, req ai.Request) (<-chan ai.StreamChun
 		// would turn that into a spurious "token too long" mid-answer.
 		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
+		// Tool calls arrive in fragments: the first delta for an index carries
+		// the id and name, and the argument JSON is appended across the ones
+		// that follow. They are accumulated by index and emitted once whole,
+		// because half an argument object cannot be acted on.
+		accumulator := newToolCallAccumulator()
+		flushed := false
+		flush := func() bool {
+			if flushed {
+				return true
+			}
+			flushed = true
+			calls := accumulator.calls()
+			if len(calls) == 0 {
+				return true
+			}
+			return send(ctx, out, ai.StreamChunk{ToolCalls: calls})
+		}
+
 		for scanner.Scan() {
 			line := strings.TrimSpace(scanner.Text())
 
@@ -145,6 +164,7 @@ func (c *Client) Chat(ctx context.Context, req ai.Request) (<-chan ai.StreamChun
 				continue
 			}
 			if data == "[DONE]" {
+				flush()
 				return
 			}
 
@@ -165,6 +185,8 @@ func (c *Client) Chat(ctx context.Context, req ai.Request) (<-chan ai.StreamChun
 			}
 
 			for _, choice := range chunk.Choices {
+				accumulator.add(choice.Delta.ToolCalls)
+
 				if choice.Delta.Content == "" {
 					continue
 				}
@@ -176,7 +198,11 @@ func (c *Client) Chat(ctx context.Context, req ai.Request) (<-chan ai.StreamChun
 
 		if err := scanner.Err(); err != nil {
 			send(ctx, out, ai.StreamChunk{Err: apperr.Wrap(err, "openrouter: read stream")})
+			return
 		}
+
+		// Reached when the stream ends without a [DONE] frame.
+		flush()
 	}()
 
 	return out, nil
@@ -237,10 +263,30 @@ func (c *Client) body(req ai.Request, stream bool) map[string]any {
 		messages = append(messages, map[string]any{"role": "system", "content": req.System})
 	}
 	for _, m := range req.Messages {
-		messages = append(messages, map[string]any{
-			"role":    toRole(m.Role),
-			"content": m.Text(),
-		})
+		// A turn is content, tool calls, or tool results. The OpenAI shape
+		// gives each its own form: an assistant turn carrying tool_calls, and
+		// one message per result with role "tool".
+		switch {
+		case len(m.ToolCalls) > 0:
+			messages = append(messages, map[string]any{
+				"role":       "assistant",
+				"content":    nil,
+				"tool_calls": toToolCallPayload(m.ToolCalls),
+			})
+		case len(m.ToolResults) > 0:
+			for _, result := range m.ToolResults {
+				messages = append(messages, map[string]any{
+					"role":         "tool",
+					"tool_call_id": result.ID,
+					"content":      result.Content,
+				})
+			}
+		default:
+			messages = append(messages, map[string]any{
+				"role":    toRole(m.Role),
+				"content": m.Text(),
+			})
+		}
 	}
 
 	body := map[string]any{
@@ -265,6 +311,9 @@ func (c *Client) body(req ai.Request, stream bool) map[string]any {
 			},
 		}
 	}
+	if len(req.Tools) > 0 {
+		body["tools"] = toToolPayload(req.Tools)
+	}
 	if stream {
 		// Otherwise the final usage frame is omitted and North cannot account
 		// for what a conversation cost.
@@ -272,6 +321,61 @@ func (c *Client) body(req ai.Request, stream bool) map[string]any {
 	}
 
 	return body
+}
+
+func toToolPayload(tools []ai.Tool) []map[string]any {
+	out := make([]map[string]any, 0, len(tools))
+	for _, tool := range tools {
+		out = append(out, map[string]any{
+			"type": "function",
+			"function": map[string]any{
+				"name":        tool.Name,
+				"description": tool.Description,
+				"parameters":  toJSONSchema(tool.Parameters),
+			},
+		})
+	}
+	return out
+}
+
+func toToolCallPayload(calls []ai.ToolCall) []map[string]any {
+	out := make([]map[string]any, 0, len(calls))
+	for _, call := range calls {
+		out = append(out, map[string]any{
+			"id":   call.ID,
+			"type": "function",
+			"function": map[string]any{
+				"name":      call.Name,
+				"arguments": string(call.Arguments),
+			},
+		})
+	}
+	return out
+}
+
+// fromToolCallPayload converts the wire form back.
+//
+// Arguments arrive as a JSON string containing JSON, which is the OpenAI
+// convention rather than a mistake. An empty one becomes "{}" so a caller can
+// always unmarshal without a nil check.
+func fromToolCallPayload(payload []toolCallPayload) []ai.ToolCall {
+	if len(payload) == 0 {
+		return nil
+	}
+
+	calls := make([]ai.ToolCall, 0, len(payload))
+	for _, call := range payload {
+		arguments := call.Function.Arguments
+		if arguments == "" {
+			arguments = "{}"
+		}
+		calls = append(calls, ai.ToolCall{
+			ID:        call.ID,
+			Name:      call.Function.Name,
+			Arguments: json.RawMessage(arguments),
+		})
+	}
+	return calls
 }
 
 // toRole maps North's vocabulary onto the OpenAI one.
@@ -335,10 +439,24 @@ func statusError(status int, detail string) error {
 	}
 }
 
+// toolCallPayload is the OpenAI tool-call wire shape, shared by the complete
+// and streamed responses.
+type toolCallPayload struct {
+	// Index orders the calls when they arrive in stream deltas; a single
+	// response carries them in order already.
+	Index    int    `json:"index"`
+	ID       string `json:"id"`
+	Function struct {
+		Name      string `json:"name"`
+		Arguments string `json:"arguments"`
+	} `json:"function"`
+}
+
 type completionResponse struct {
 	Choices []struct {
 		Message struct {
-			Content string `json:"content"`
+			Content   string            `json:"content"`
+			ToolCalls []toolCallPayload `json:"tool_calls"`
 		} `json:"message"`
 		FinishReason string `json:"finish_reason"`
 	} `json:"choices"`
@@ -348,7 +466,8 @@ type completionResponse struct {
 type streamChunk struct {
 	Choices []struct {
 		Delta struct {
-			Content string `json:"content"`
+			Content   string            `json:"content"`
+			ToolCalls []toolCallPayload `json:"tool_calls"`
 		} `json:"delta"`
 		FinishReason string `json:"finish_reason"`
 	} `json:"choices"`
@@ -370,3 +489,59 @@ func send(ctx context.Context, out chan<- ai.StreamChunk, chunk ai.StreamChunk) 
 }
 
 var _ ai.Client = (*Client)(nil)
+
+// toolCallAccumulator reassembles tool calls from streamed fragments.
+//
+// OpenAI-compatible streams send the id and name once, on the first delta for
+// an index, then append the argument JSON across later deltas. Keyed by index
+// rather than id for that reason: the id is not present on every fragment.
+type toolCallAccumulator struct {
+	order   []int
+	byIndex map[int]*ai.ToolCall
+	args    map[int]*strings.Builder
+}
+
+func newToolCallAccumulator() *toolCallAccumulator {
+	return &toolCallAccumulator{
+		byIndex: map[int]*ai.ToolCall{},
+		args:    map[int]*strings.Builder{},
+	}
+}
+
+func (a *toolCallAccumulator) add(fragments []toolCallPayload) {
+	for _, fragment := range fragments {
+		call, seen := a.byIndex[fragment.Index]
+		if !seen {
+			call = &ai.ToolCall{}
+			a.byIndex[fragment.Index] = call
+			a.args[fragment.Index] = &strings.Builder{}
+			a.order = append(a.order, fragment.Index)
+		}
+
+		if fragment.ID != "" {
+			call.ID = fragment.ID
+		}
+		if fragment.Function.Name != "" {
+			call.Name = fragment.Function.Name
+		}
+		a.args[fragment.Index].WriteString(fragment.Function.Arguments)
+	}
+}
+
+func (a *toolCallAccumulator) calls() []ai.ToolCall {
+	if len(a.order) == 0 {
+		return nil
+	}
+
+	out := make([]ai.ToolCall, 0, len(a.order))
+	for _, index := range a.order {
+		call := *a.byIndex[index]
+		arguments := a.args[index].String()
+		if arguments == "" {
+			arguments = "{}"
+		}
+		call.Arguments = json.RawMessage(arguments)
+		out = append(out, call)
+	}
+	return out
+}

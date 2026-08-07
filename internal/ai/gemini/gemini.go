@@ -7,6 +7,7 @@ package gemini
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -64,7 +65,7 @@ func (c *Client) Generate(ctx context.Context, req ai.Request) (*ai.Response, er
 		return nil, apperr.Wrap(classify(err), "gemini: generate")
 	}
 
-	out := &ai.Response{Text: resp.Text()}
+	out := &ai.Response{Text: resp.Text(), ToolCalls: fromFunctionCalls(resp.Candidates)}
 	if usage := resp.UsageMetadata; usage != nil {
 		out.Usage = ai.Usage{
 			InputTokens:  int(usage.PromptTokenCount),
@@ -91,6 +92,11 @@ func (c *Client) Chat(ctx context.Context, req ai.Request) (<-chan ai.StreamChun
 		// cancels an in-flight generation instead of paying for the rest of it.
 		var usage *ai.Usage
 
+		// Accumulated rather than sent per chunk: a half-decoded argument
+		// object cannot be acted on, so the calls go out once, complete,
+		// after the stream ends.
+		var calls []ai.ToolCall
+
 		for resp, err := range stream {
 			if err != nil {
 				send(ctx, out, ai.StreamChunk{Err: apperr.Wrap(classify(err), "gemini: stream")})
@@ -104,10 +110,18 @@ func (c *Client) Chat(ctx context.Context, req ai.Request) (<-chan ai.StreamChun
 				}
 			}
 
+			calls = append(calls, fromFunctionCalls(resp.Candidates)...)
+
 			if text := resp.Text(); text != "" {
 				if !send(ctx, out, ai.StreamChunk{Text: text}) {
 					return
 				}
+			}
+		}
+
+		if len(calls) > 0 {
+			if !send(ctx, out, ai.StreamChunk{ToolCalls: calls}) {
+				return
 			}
 		}
 
@@ -186,6 +200,18 @@ func toContents(messages []ai.Message) []*genai.Content {
 	contents := make([]*genai.Content, 0, len(messages))
 
 	for _, m := range messages {
+		// A turn is content, tool calls, or tool results — never a mixture.
+		// Gemini carries the latter two as parts of their own, so they are
+		// built here rather than alongside the text loop below.
+		if len(m.ToolCalls) > 0 {
+			contents = append(contents, &genai.Content{Role: string(RoleModelGemini), Parts: toFunctionCalls(m.ToolCalls)})
+			continue
+		}
+		if len(m.ToolResults) > 0 {
+			contents = append(contents, &genai.Content{Role: "user", Parts: toFunctionResponses(m.ToolResults)})
+			continue
+		}
+
 		parts := make([]*genai.Part, 0, len(m.Parts))
 		for _, p := range m.Parts {
 			switch {
@@ -228,8 +254,91 @@ func toConfig(req ai.Request) *genai.GenerateContentConfig {
 		cfg.ResponseMIMEType = "application/json"
 		cfg.ResponseSchema = toSchema(req.ResponseSchema)
 	}
+	if len(req.Tools) > 0 {
+		cfg.Tools = []*genai.Tool{{FunctionDeclarations: toFunctionDeclarations(req.Tools)}}
+	}
 
 	return cfg
+}
+
+// RoleModelGemini is Gemini's name for the assistant turn. ai.RoleModel
+// already matches it; the constant exists so the tool path does not silently
+// depend on that continuing to be true.
+const RoleModelGemini = "model"
+
+func toFunctionDeclarations(tools []ai.Tool) []*genai.FunctionDeclaration {
+	out := make([]*genai.FunctionDeclaration, 0, len(tools))
+	for _, tool := range tools {
+		out = append(out, &genai.FunctionDeclaration{
+			Name:        tool.Name,
+			Description: tool.Description,
+			Parameters:  toSchema(tool.Parameters),
+		})
+	}
+	return out
+}
+
+func toFunctionCalls(calls []ai.ToolCall) []*genai.Part {
+	out := make([]*genai.Part, 0, len(calls))
+	for _, call := range calls {
+		args := map[string]any{}
+		// A call this adapter produced always decodes; one a caller built by
+		// hand might not, and an empty argument map is a better thing to send
+		// back than a dropped turn the model then sees a gap where.
+		_ = json.Unmarshal(call.Arguments, &args)
+		out = append(out, &genai.Part{
+			FunctionCall: &genai.FunctionCall{Name: call.Name, Args: args},
+		})
+	}
+	return out
+}
+
+func toFunctionResponses(results []ai.ToolResult) []*genai.Part {
+	out := make([]*genai.Part, 0, len(results))
+	for _, result := range results {
+		// Gemini takes a map, not a string. "output"/"error" are the keys its
+		// own documentation uses, and the distinction is what tells the model
+		// a call failed rather than returned that text.
+		payload := map[string]any{"output": result.Content}
+		if result.IsError {
+			payload = map[string]any{"error": result.Content}
+		}
+		out = append(out, &genai.Part{
+			FunctionResponse: &genai.FunctionResponse{Name: result.Name, Response: payload},
+		})
+	}
+	return out
+}
+
+// fromFunctionCalls pulls the calls out of a response.
+//
+// Gemini has no per-call id, so one is synthesised from the position. It only
+// has to survive the round trip back to fromFunctionResponses, which matches
+// on name.
+func fromFunctionCalls(candidates []*genai.Candidate) []ai.ToolCall {
+	var calls []ai.ToolCall
+
+	for _, candidate := range candidates {
+		if candidate.Content == nil {
+			continue
+		}
+		for _, part := range candidate.Content.Parts {
+			if part.FunctionCall == nil {
+				continue
+			}
+			args, err := json.Marshal(part.FunctionCall.Args)
+			if err != nil {
+				args = []byte("{}")
+			}
+			calls = append(calls, ai.ToolCall{
+				ID:        fmt.Sprintf("%s-%d", part.FunctionCall.Name, len(calls)),
+				Name:      part.FunctionCall.Name,
+				Arguments: args,
+			})
+		}
+	}
+
+	return calls
 }
 
 func toSchema(s *ai.Schema) *genai.Schema {
