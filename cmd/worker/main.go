@@ -8,6 +8,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -17,9 +18,12 @@ import (
 
 	"github.com/joho/godotenv"
 
+	"github.com/NorthAIProject/north-client/internal/activity"
 	"github.com/NorthAIProject/north-client/internal/ai/providers"
+	"github.com/NorthAIProject/north-client/internal/biometrics"
 	"github.com/NorthAIProject/north-client/internal/config"
 	"github.com/NorthAIProject/north-client/internal/conversations"
+	"github.com/NorthAIProject/north-client/internal/fitness/strava"
 	"github.com/NorthAIProject/north-client/internal/jobs"
 	"github.com/NorthAIProject/north-client/internal/media"
 	"github.com/NorthAIProject/north-client/internal/memories"
@@ -102,9 +106,23 @@ func run() error {
 		Log: log,
 	}
 
+	// Strava syncs run here rather than in the request that triggered them,
+	// so a slow or rate-limited provider never holds a page open.
+	biometricSvc := biometrics.NewService(biometrics.NewRepository(pool))
+	stravaSvc := strava.NewService(strava.Options{
+		Repository:   strava.NewRepository(pool),
+		Activity:     activity.NewService(activity.NewRepository(pool), biometricSvc),
+		Biometrics:   biometricSvc,
+		Queue:        queue,
+		ClientID:     cfg.StravaClientID,
+		ClientSecret: cfg.StravaClientSecret,
+		BaseURL:      cfg.BaseURL,
+	})
+
 	worker := jobs.NewWorker(queue, log)
 	worker.Register(jobs.KindAnalyzeFormVideo, mediaSvc.AnalyzeVideo)
 	worker.Register(jobs.KindExtractMemories, memoryExtract.HandleExtractJob)
+	worker.Register(jobs.KindSyncStrava, syncStravaHandler(stravaSvc))
 
 	log.Info("worker ready",
 		slog.String("ai_provider", registry.DefaultName()),
@@ -112,6 +130,18 @@ func run() error {
 	)
 
 	return worker.Run(ctx)
+}
+
+// syncStravaHandler adapts the service to the worker's Handler signature.
+// The payload type lives in jobs so neither side has to import the other.
+func syncStravaHandler(svc *strava.Service) jobs.Handler {
+	return func(ctx context.Context, raw json.RawMessage) error {
+		var payload jobs.SyncStravaPayload
+		if err := json.Unmarshal(raw, &payload); err != nil {
+			return err
+		}
+		return svc.HandleSyncJob(ctx, payload.UserID)
+	}
 }
 
 func newLogger(cfg *config.Config) *slog.Logger {

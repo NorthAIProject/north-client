@@ -201,3 +201,13 @@ sql:
         out: internal/habits/db
         overrides: *overrides
 
+  - engine: postgresql
+    schema: migrations
+    queries: internal/fitness/strava/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: stravadb
+        out: internal/fitness/strava/db
+        overrides: *overrides
+
