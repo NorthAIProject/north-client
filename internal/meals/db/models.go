@@ -151,6 +151,7 @@ type Ingredient struct {
 	CholesterolMgPer100g float64
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
+	SaturatedFatGPer100g float64
 }
 
 type Job struct {
