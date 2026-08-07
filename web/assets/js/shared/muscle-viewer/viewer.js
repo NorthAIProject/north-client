@@ -593,6 +593,79 @@ function buildSkin(source, palette, debug) {
 }
 
 /**
+ * PLACEHOLDER — delete once body.glb ships a body with arms.
+ *
+ * The current asset's outer body is a T-pose mesh whose arms were cropped off at the
+ * shoulders, because its pose can't be reconciled with the arms-down muscle set. That
+ * leaves two visible defects: hollow stumps where the deltoids should be, and arms
+ * whose muscles can never glow, since the glow shader only draws where skin is in
+ * front of it and there is no skin out there at all.
+ *
+ * This fills each arm with a capsule sized from the arm muscles it has to cover. It
+ * looks like a mannequin, which is the point — it is a stand-in, not a fix.
+ *
+ * It removes itself: a textured skin is taken to be the real model and skips this
+ * entirely. That is the same condition `tools/model/README.md` states the replacement
+ * has to satisfy (UVs and baked PBR maps), and the interim mesh has neither — so
+ * dropping in the real body retires this on its own. The function should still be
+ * deleted when that happens; it is dead weight, not a feature.
+ *
+ * Geometry extents can't stand in for that test: the crop removed the arms but left
+ * the torso, so the skin's bounding box still spans the full shoulder width and every
+ * arm muscle reads as "inside the body" no matter how exposed it actually is.
+ */
+function addPlaceholderArms(group, regions, skinMaterial) {
+  if (skinMaterial.map) return; // real, textured body — nothing to stand in for
+
+  // Deliberately not "delts": the deltoid wraps the shoulder joint and reaches almost
+  // to the midline, so including it drags the capsule's centre inboard until the arm
+  // sits inside the ribcage. The limb below the shoulder is what needs covering.
+  const ARM_KEYS = ["biceps", "triceps", "forearms"];
+  // Measured and attached in `group` space, not on the model node inside it: that node
+  // carries the auto-fit scale, and Box3.setFromObject already reports world units, so
+  // parenting there would apply the same scale a second time.
+  group.updateWorldMatrix(true, true);
+
+  for (const side of [-1, 1]) {
+    const box = new THREE.Box3();
+    let thickness = 0;
+    for (const key of ARM_KEYS) {
+      for (const mesh of regions[key] ? regions[key].meshes : []) {
+        const meshBox = new THREE.Box3().setFromObject(mesh);
+        const centre = meshBox.getCenter(new THREE.Vector3());
+        if (Math.sign(centre.x) !== side) continue;
+        box.union(meshBox);
+        // Thickness of one muscle across its narrow axis, not of the whole arm: an
+        // axis-aligned box around a limb that hangs at an angle is far wider than the
+        // limb, and sizing a capsule from it produces a beach ball.
+        const meshSize = meshBox.getSize(new THREE.Vector3());
+        thickness = Math.max(thickness, Math.min(meshSize.x, meshSize.z));
+      }
+    }
+    if (box.isEmpty()) continue;
+
+    const size = box.getSize(new THREE.Vector3());
+    const centre = box.getCenter(new THREE.Vector3());
+    // Wide enough that the muscles sit inside it — a muscle poking through has no
+    // skin in front of it and silently stops being drawn.
+    const radius = (thickness / 2) * 1.35;
+    const length = Math.max(size.y - radius * 2, 0.1);
+
+    const arm = new THREE.Mesh(new THREE.CapsuleGeometry(radius, length, 6, 20), skinMaterial);
+    arm.position.copy(centre);
+    // Nudged up and out: up so the top cap fills the cropped shoulder rather than
+    // ending below it, out so the limb clears the ribcage and reads as an arm instead
+    // of a thickened flank. The muscles it covers overlap the torso in this asset, so
+    // sizing alone never separates the two.
+    arm.position.y += radius * 1.2;
+    arm.position.x += side * radius * 0.5;
+    arm.renderOrder = 0;
+    arm.frustumCulled = false;
+    group.add(arm);
+  }
+}
+
+/**
  * Loads body.glb, walks the scene, and rebuilds every mesh's material in place.
  *
  * Muscle meshes share one glow material per key across both sides and every
@@ -681,6 +754,8 @@ async function loadFigure(ember, depthMid, palette) {
     if (obj.isMesh && isUnderSkinNode(obj)) obj.material = skin.material;
   });
 
+  addPlaceholderArms(group, regions, skin.material);
+
   // The GLTF's own muscle materials are replaced above and never rendered — dispose
   // them rather than let them sit unused until GC. The skin's is deliberately not in
   // this set: buildSkin() keeps it for its baked maps.
@@ -689,13 +764,18 @@ async function loadFigure(ember, depthMid, palette) {
   if (!skinSource) {
     console.warn("[muscle-viewer] body.glb has no node tagged \"skin\" — see tools/model/README.md");
   }
-  if (orphanedKeys.size > 0 || unmatchedNames.length > 0) {
+  // An orphaned key is a real fault: a muscle North can name but never show. Meshes
+  // the other way round are expected until body.glb is rebuilt — the deep abdominal
+  // and spinal layers were dropped from muscles.js but are still in the shipped asset,
+  // and warning about them on every page load would train everyone to ignore this.
+  if (orphanedKeys.size > 0) {
     console.warn(
-      "[muscle-viewer] asset naming drift — orphaned keys:",
+      "[muscle-viewer] asset naming drift — these keys have no mesh in body.glb and can never light up:",
       [...orphanedKeys],
-      "unmatched meshes:",
-      unmatchedNames,
     );
+  }
+  if (debug && unmatchedNames.length > 0) {
+    console.info("[muscle-viewer] meshes in body.glb with no muscle key:", unmatchedNames);
   }
 
   return { group, regions, skin };

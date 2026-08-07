@@ -26,9 +26,17 @@ only surface as a glow where an exercise works them.
 > by [ferrumiron6](https://sketchfab.com/ferrumiron6), CC BY 4.0. It is a rigless
 > T-pose with no UVs and no textures, so the pipeline crops its arms off at the
 > shoulders (`|x| > 0.32m`) to avoid a pose clash, and the runtime falls back to flat
-> shading. That is why the figure currently has hollow stumps at the deltoids and
-> reads as clay rather than skin. Replacing it with an arms-down, textured export is
-> the remaining half of NOR-6 — see `tools/model/README.md` for the requirements.
+> shading. That is why the figure reads as clay rather than skin.
+>
+> The missing arms are filled at runtime by `addPlaceholderArms()` in `viewer.js` —
+> a capsule per side, sized from the arm muscles it has to cover. Without it the
+> figure has hollow stumps at the deltoids *and* its arm muscles can never light up,
+> since the glow only draws where there is skin in front of it. It looks like a
+> mannequin, on purpose. It switches itself off when the skin has textures, so
+> dropping in the real body retires it; delete the function at that point.
+>
+> Replacing this mesh with an arms-down, textured export is the remaining half of
+> NOR-6 — see `tools/model/README.md` for the requirements.
 
 Per CC BY-SA's ShareAlike clause the combined asset is licensed **CC BY-SA 4.0**,
 whatever the skin's own licence. Attribution for every source lives in the site

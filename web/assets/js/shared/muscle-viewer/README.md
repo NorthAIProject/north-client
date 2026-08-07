@@ -64,7 +64,16 @@ wrong, and both are easy to break by "simplifying":
   depth. Without the fade, the torso lights up from behind.
 
 `?muscleDebug=1` renders the skin at 25% opacity, for checking that the two
-source meshes in `body.glb` actually fit each other. See `tools/model/README.md`.
+source meshes in `body.glb` actually fit each other, and lists any mesh in the
+asset that no muscle key claims. See `tools/model/README.md`.
+
+## Placeholder arms
+
+`addPlaceholderArms()` is temporary. The shipped `body.glb` has no arms on its
+outer body — they were cropped off to dodge a T-pose clash — which leaves hollow
+shoulders and arm muscles that can never glow. It stands a capsule in for each
+arm until the real body arrives, and disables itself as soon as the skin has
+textures. **Delete it when `body.glb` is rebuilt.**
 
 ## Adding a new exercise
 
