@@ -171,3 +171,43 @@ sql:
         out: internal/mind/db
         overrides: *overrides
 
+  - engine: postgresql
+    schema: migrations
+    queries: internal/hydration/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: hydrationdb
+        out: internal/hydration/db
+        overrides: *overrides
+
+  - engine: postgresql
+    schema: migrations
+    queries: internal/sleep/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: sleepdb
+        out: internal/sleep/db
+        overrides: *overrides
+
+  - engine: postgresql
+    schema: migrations
+    queries: internal/habits/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: habitsdb
+        out: internal/habits/db
+        overrides: *overrides
+
+  - engine: postgresql
+    schema: migrations
+    queries: internal/fitness/strava/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: stravadb
+        out: internal/fitness/strava/db
+        overrides: *overrides
+

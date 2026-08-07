@@ -34,6 +34,12 @@ const (
 
 	// KindExtractMemories proposes durable profile facts from a conversation.
 	KindExtractMemories Kind = "extract_memories"
+
+	// KindSyncStrava imports recent activities from a linked Strava account.
+	//
+	// Enqueued when someone connects and when they ask for a sync — never on
+	// a timer, because North has no scheduler.
+	KindSyncStrava Kind = "sync_strava"
 )
 
 // ExtractMemoriesPayload is the job body for KindExtractMemories.
@@ -43,6 +49,13 @@ const (
 type ExtractMemoriesPayload struct {
 	UserID         uuid.UUID `json:"user_id"`
 	ConversationID uuid.UUID `json:"conversation_id"`
+}
+
+// SyncStravaPayload is the job body for KindSyncStrava. Here for the same
+// reason as above: the enqueueing side must not have to import the package
+// that handles it.
+type SyncStravaPayload struct {
+	UserID uuid.UUID `json:"user_id"`
 }
 
 // Job is a unit of queued work.

@@ -143,3 +143,34 @@ func fromDB(row activitydb.ActivitySession) Session {
 		UpdatedAt:          row.UpdatedAt,
 	}
 }
+
+// Import writes an already-finished session from a provider sync.
+//
+// Distinct from Create because the in-app lifecycle (start, pause, stop)
+// does not apply: a synced session arrives complete. Returns false when the
+// row already existed — the ON CONFLICT DO NOTHING on
+// UNIQUE (source, external_id) makes re-importing the same activity a no-op
+// rather than an error, which is what lets a sync run as often as it likes.
+func (r *Repository) Import(ctx context.Context, in ImportInput) (Session, bool, error) {
+	endedAt := in.EndedAt
+	calories := in.Calories
+	externalID := in.ExternalID
+
+	row, err := r.q.ImportActivitySession(ctx, activitydb.ImportActivitySessionParams{
+		UserID:           in.UserID,
+		ActivityCode:     in.ActivityCode,
+		Source:           in.Source,
+		WeightKgSnapshot: in.WeightKg,
+		StartedAt:        in.StartedAt,
+		EndedAt:          &endedAt,
+		CaloriesBurned:   &calories,
+		ExternalID:       &externalID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Session{}, false, nil // already imported
+		}
+		return Session{}, false, apperr.Wrap(err, "import activity session")
+	}
+	return fromDB(row), true, nil
+}

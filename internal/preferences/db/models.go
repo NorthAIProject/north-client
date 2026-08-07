@@ -118,6 +118,33 @@ type GoalUpdate struct {
 	CreatedAt time.Time
 }
 
+type Habit struct {
+	ID         uuid.UUID
+	UserID     uuid.UUID
+	Name       string
+	Domain     string
+	DaysOfWeek []int16
+	Active     bool
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+}
+
+type HabitCompletion struct {
+	ID          uuid.UUID
+	HabitID     uuid.UUID
+	UserID      uuid.UUID
+	LocalDate   pgtype.Date
+	CompletedAt time.Time
+}
+
+type HydrationLog struct {
+	ID       uuid.UUID
+	UserID   uuid.UUID
+	LogDate  pgtype.Date
+	AmountMl int32
+	LoggedAt time.Time
+}
+
 type Ingredient struct {
 	ID                   uuid.UUID
 	UserID               *uuid.UUID
@@ -244,6 +271,31 @@ type Session struct {
 	LastSeenAt time.Time
 	UserAgent  *string
 	Ip         *netip.Addr
+}
+
+type SleepLog struct {
+	ID              uuid.UUID
+	UserID          uuid.UUID
+	LocalDate       pgtype.Date
+	DurationMinutes int32
+	Quality         *int16
+	Bedtime         *string
+	WakeTime        *string
+	Notes           string
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+}
+
+type StravaConnection struct {
+	UserID       uuid.UUID
+	AthleteID    int64
+	AccessToken  string
+	RefreshToken string
+	ExpiresAt    time.Time
+	Scopes       string
+	LastSyncedAt *time.Time
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
 
 type User struct {
