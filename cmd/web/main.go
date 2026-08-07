@@ -94,14 +94,7 @@ func run() error {
 
 	log.Info("connected to database")
 
-	registry, err := providers.Build(ctx, providers.Options{
-		Default:           cfg.AI.Provider,
-		Model:             cfg.AI.Model,
-		GeminiAPIKey:      cfg.AI.GeminiAPIKey,
-		OpenRouterAPIKey:  cfg.AI.OpenRouterAPIKey,
-		OpenRouterSiteURL: cfg.AI.OpenRouterSiteURL,
-		OpenRouterSiteApp: cfg.AI.OpenRouterSiteApp,
-	})
+	registry, err := providers.Build(ctx, cfg.AI.ProviderOptions())
 	if err != nil {
 		return err
 	}
@@ -211,6 +204,7 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, stora
 		Storage:    storage,
 		Queue:      queue,
 		Registry:   registry,
+		Provider:   cfg.AI.UploadProvider,
 		Model:      cfg.AI.Model,
 	})
 	mediaHandler := media.NewHandler(mediaSvc)
@@ -316,6 +310,7 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, stora
 		),
 		PromptBuilder: coach.NewPromptBuilder(),
 		Queue:         queue,
+		Chains:        cfg.AI.ChainSet(),
 		Tools:         agentTools,
 		Model:         cfg.AI.Model,
 		FastModel:     cfg.AI.FastModel,

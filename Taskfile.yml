@@ -154,6 +154,11 @@ tasks:
       - task: assets
       - go build ./...
 
+  mcp:
+    desc: Run the MCP server (needs MCP_API_TOKEN and MCP_USER_ID)
+    cmds:
+      - go run ./cmd/mcp-server
+
   test:
     desc: Run the offline test suite
     cmds:
