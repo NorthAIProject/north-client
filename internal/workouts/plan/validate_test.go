@@ -184,7 +184,8 @@ func TestValidateDropsMuscleKeysOutsideTheTaxonomy(t *testing.T) {
 	t.Parallel()
 
 	ex := exercise("Push-up", "none")
-	ex.Primary = []string{"chest", "abs"} // "chest" is not a MuscleGroups key
+	// "pecs" is the synonym a model reaches for; the canonical key is "chest".
+	ex.Primary = []string{"pecs", "abs"}
 	ex.Secondary = []string{"triceps", "shoulders"}
 	ex.Stabilizers = []string{"not-a-key"}
 
