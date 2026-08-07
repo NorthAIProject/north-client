@@ -18,6 +18,11 @@ import (
 const (
 	stravaStateCookie = "north_strava_oauth"
 	stravaStateTTL    = 10 * time.Minute
+
+	// activityLimit bounds both the scene and the list beside it. Enough to
+	// show a training block; past that the tiles are too small to read and
+	// the page is shipping polylines nobody looks at.
+	activityLimit = 24
 )
 
 type Handler struct {
@@ -35,10 +40,40 @@ func NewHandler(stravaSvc *strava.Service, secure bool) *Handler {
 func (h *Handler) Routes(r chi.Router) {
 	r.Get("/fitness", h.hub)
 
+	r.Get("/fitness/activities", h.activities)
+
 	r.Get("/fitness/strava/connect", h.stravaConnect)
 	r.Get("/fitness/strava/callback", h.stravaCallback)
 	r.Post("/fitness/strava/sync", h.stravaSync)
 	r.Post("/fitness/strava/disconnect", h.stravaDisconnect)
+}
+
+// activities renders the 3D landscape of recent Strava activities.
+func (h *Handler) activities(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+	ctx := r.Context()
+
+	status, err := h.strava.Status(ctx, user.ID)
+	if err != nil {
+		middleware.FromContext(ctx).Error("read strava status", slog.Any("error", err))
+		status = strava.Status{Configured: h.strava.Configured()}
+	}
+
+	var recent []strava.Activity
+	if status.Connected {
+		recent, err = h.strava.RecentActivities(ctx, user.ID, activityLimit)
+		if err != nil {
+			middleware.FromContext(ctx).Error("list strava activities", slog.Any("error", err))
+			// An empty set renders as "nothing imported yet", which is wrong
+			// but harmless; failing the page would be worse.
+			recent = nil
+		}
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := fitnesspages.ActivitiesPage(user, status, recent).Render(ctx, w); err != nil {
+		middleware.FromContext(ctx).Error("render activities", slog.Any("error", err))
+	}
 }
 
 func (h *Handler) hub(w http.ResponseWriter, r *http.Request) {

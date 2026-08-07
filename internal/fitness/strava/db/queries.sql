@@ -29,3 +29,29 @@ SELECT * FROM strava_connections WHERE user_id = $1;
 
 -- name: DeleteStravaConnection :exec
 DELETE FROM strava_connections WHERE user_id = $1;
+
+-- name: UpsertStravaActivity :exec
+INSERT INTO strava_activities (
+    user_id, strava_id, name, sport_type, start_date,
+    distance_m, moving_time_s, elapsed_time_s,
+    total_elevation_gain_m, average_speed_ms, summary_polyline
+) VALUES (
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
+)
+ON CONFLICT (user_id, strava_id) DO UPDATE SET
+    name                   = EXCLUDED.name,
+    sport_type             = EXCLUDED.sport_type,
+    start_date             = EXCLUDED.start_date,
+    distance_m             = EXCLUDED.distance_m,
+    moving_time_s          = EXCLUDED.moving_time_s,
+    elapsed_time_s         = EXCLUDED.elapsed_time_s,
+    total_elevation_gain_m = EXCLUDED.total_elevation_gain_m,
+    average_speed_ms       = EXCLUDED.average_speed_ms,
+    summary_polyline       = EXCLUDED.summary_polyline,
+    updated_at             = now();
+
+-- name: ListStravaActivities :many
+SELECT * FROM strava_activities
+WHERE user_id = $1
+ORDER BY start_date DESC
+LIMIT $2;

@@ -137,6 +137,16 @@ func (s *Service) Disconnect(ctx context.Context, userID uuid.UUID) error {
 	return s.repo.Delete(ctx, userID)
 }
 
+// RecentActivities is what the 3D view draws. Reads from North's own copy
+// rather than calling Strava, so opening the page is fast, works when Strava
+// is down, and costs nothing against the rate limit.
+func (s *Service) RecentActivities(ctx context.Context, userID uuid.UUID, limit int) ([]Activity, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 30
+	}
+	return s.repo.RecentActivities(ctx, userID, limit)
+}
+
 // RequestSync queues a sync rather than running it inline, so a click
 // returns immediately and a slow or rate-limited Strava never holds a
 // request open.
@@ -222,6 +232,25 @@ func (s *Service) Sync(ctx context.Context, userID uuid.UUID) (SyncResult, error
 func (s *Service) importOne(ctx context.Context, userID uuid.UUID, a apiActivity, weightKg float64) (imported, mapped bool, err error) {
 	startedAt, err := a.startedAt()
 	if err != nil {
+		return false, false, err
+	}
+
+	// Strava's own record is saved unconditionally, before the normalised
+	// import: it is what the 3D view draws, and it stays useful (and
+	// correctable) even for an activity already imported, whose session row
+	// the dedupe below will leave alone.
+	if err := s.repo.SaveActivity(ctx, userID, Activity{
+		StravaID:        a.ID,
+		Name:            a.Name,
+		SportType:       a.sport(),
+		StartDate:       startedAt,
+		DistanceM:       a.Distance,
+		MovingTimeS:     a.MovingTime,
+		ElapsedTimeS:    a.ElapsedTime,
+		ElevationGainM:  a.TotalElevationGain,
+		AverageSpeedMS:  a.AverageSpeed,
+		SummaryPolyline: a.Map.SummaryPolyline,
+	}); err != nil {
 		return false, false, err
 	}
 

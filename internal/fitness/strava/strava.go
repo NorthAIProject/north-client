@@ -54,6 +54,45 @@ type Status struct {
 	LastSyncedAt *time.Time
 }
 
+// Activity is Strava's own view of one recorded activity.
+//
+// Kept distinct from activity.Session: that is North's normalised log, this
+// is the provider's richer record, and the 3D view needs the parts North's
+// own model has no reason to carry — a route, an elevation profile, the name
+// the athlete gave it.
+type Activity struct {
+	StravaID  int64
+	Name      string
+	SportType string
+	StartDate time.Time
+
+	DistanceM      float64
+	MovingTimeS    int
+	ElapsedTimeS   int
+	ElevationGainM float64
+	AverageSpeedMS float64
+
+	// SummaryPolyline is Google-encoded. Empty for anything without GPS,
+	// which the viewer handles rather than hides.
+	SummaryPolyline string
+}
+
+// HasRoute reports whether there is a path to draw.
+func (a Activity) HasRoute() bool { return a.SummaryPolyline != "" }
+
+// DistanceKm and Pace are display helpers, kept here so the template and the
+// JSON handed to the viewer agree on the arithmetic.
+func (a Activity) DistanceKm() float64 { return a.DistanceM / 1000 }
+
+// PaceMinPerKm is minutes per kilometre, the unit runners actually think in.
+// Zero distance means the question does not apply.
+func (a Activity) PaceMinPerKm() float64 {
+	if a.DistanceM <= 0 || a.MovingTimeS <= 0 {
+		return 0
+	}
+	return (float64(a.MovingTimeS) / 60) / a.DistanceKm()
+}
+
 // SyncResult reports what one sync did, for the flash message and the logs.
 type SyncResult struct {
 	Fetched  int

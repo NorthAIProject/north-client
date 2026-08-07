@@ -82,9 +82,12 @@ templ stravaCard(status strava.Status) {
 				</p>
 			} else if status.Connected {
 				<div class="flex flex-wrap gap-2">
+					@button.Button(button.Props{Href: "/app/fitness/activities", Class: "bg-signal text-background hover:bg-signal/90"}) {
+						View activities in 3D
+					}
 					<form method="post" action="/app/fitness/strava/sync">
 						@ui.CSRFInput()
-						@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90"}) {
+						@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
 							Sync now
 						}
 					</form>

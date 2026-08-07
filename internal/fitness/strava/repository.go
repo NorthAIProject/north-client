@@ -85,6 +85,57 @@ func (r *Repository) Delete(ctx context.Context, userID uuid.UUID) error {
 	return nil
 }
 
+// SaveActivity records Strava's own view of an activity, alongside the
+// normalised session the import produced. Upserted rather than inserted, so a
+// renamed or corrected activity updates instead of duplicating.
+func (r *Repository) SaveActivity(ctx context.Context, userID uuid.UUID, a Activity) error {
+	err := r.q.UpsertStravaActivity(ctx, stravadb.UpsertStravaActivityParams{
+		UserID:              userID,
+		StravaID:            a.StravaID,
+		Name:                a.Name,
+		SportType:           a.SportType,
+		StartDate:           a.StartDate,
+		DistanceM:           a.DistanceM,
+		MovingTimeS:         int32(a.MovingTimeS),
+		ElapsedTimeS:        int32(a.ElapsedTimeS),
+		TotalElevationGainM: a.ElevationGainM,
+		AverageSpeedMs:      a.AverageSpeedMS,
+		SummaryPolyline:     a.SummaryPolyline,
+	})
+	if err != nil {
+		return apperr.Wrap(err, "save strava activity")
+	}
+	return nil
+}
+
+// RecentActivities returns the newest activities first, for the 3D view.
+func (r *Repository) RecentActivities(ctx context.Context, userID uuid.UUID, limit int) ([]Activity, error) {
+	rows, err := r.q.ListStravaActivities(ctx, stravadb.ListStravaActivitiesParams{
+		UserID: userID,
+		Limit:  int32(limit),
+	})
+	if err != nil {
+		return nil, apperr.Wrap(err, "list strava activities")
+	}
+
+	out := make([]Activity, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, Activity{
+			StravaID:        row.StravaID,
+			Name:            row.Name,
+			SportType:       row.SportType,
+			StartDate:       row.StartDate,
+			DistanceM:       row.DistanceM,
+			MovingTimeS:     int(row.MovingTimeS),
+			ElapsedTimeS:    int(row.ElapsedTimeS),
+			ElevationGainM:  row.TotalElevationGainM,
+			AverageSpeedMS:  row.AverageSpeedMs,
+			SummaryPolyline: row.SummaryPolyline,
+		})
+	}
+	return out, nil
+}
+
 func fromDB(row stravadb.StravaConnection) Connection {
 	return Connection{
 		UserID:       row.UserID.String(),

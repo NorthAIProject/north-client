@@ -1,0 +1,215 @@
+package fitness
+
+import (
+	"encoding/json"
+	"fmt"
+	"time"
+
+	"github.com/NorthAIProject/north-client/internal/fitness/strava"
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/badge"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+)
+
+// viewerActivity is the shape handed to the browser. A deliberate subset:
+// the scene needs a route, a climb and a label, and shipping the rest would
+// be sending someone's training history to the client for no reason.
+type viewerActivity struct {
+	Name           string  `json:"name"`
+	SportType      string  `json:"sport_type"`
+	Polyline       string  `json:"polyline"`
+	ElevationGainM float64 `json:"elevation_gain_m"`
+	DistanceKm     float64 `json:"distance_km"`
+	MovingTimeS    int     `json:"moving_time_s"`
+	StartedAt      string  `json:"started_at"`
+}
+
+// activitiesJSON serialises the set for the JSON script tag. templ escapes
+// the result, and an encoding failure yields an empty array rather than a
+// broken page: the list beside the canvas still renders from Go.
+func activitiesJSON(activities []strava.Activity, loc *time.Location) string {
+	out := make([]viewerActivity, 0, len(activities))
+	for _, a := range activities {
+		out = append(out, viewerActivity{
+			Name:           a.Name,
+			SportType:      a.SportType,
+			Polyline:       a.SummaryPolyline,
+			ElevationGainM: a.ElevationGainM,
+			DistanceKm:     a.DistanceKm(),
+			MovingTimeS:    a.MovingTimeS,
+			StartedAt:      a.StartDate.In(loc).Format("2 Jan"),
+		})
+	}
+
+	body, err := json.Marshal(out)
+	if err != nil {
+		return "[]"
+	}
+	return string(body)
+}
+
+func formatDuration(seconds int) string {
+	d := time.Duration(seconds) * time.Second
+	h := int(d.Hours())
+	m := int(d.Minutes()) % 60
+	if h > 0 {
+		return fmt.Sprintf("%dh %02dm", h, m)
+	}
+	return fmt.Sprintf("%dm", m)
+}
+
+func formatPace(a strava.Activity) string {
+	pace := a.PaceMinPerKm()
+	if pace <= 0 {
+		return ""
+	}
+	minutes := int(pace)
+	seconds := int((pace - float64(minutes)) * 60)
+	return fmt.Sprintf("%d:%02d /km", minutes, seconds)
+}
+
+templ ActivitiesPage(user users.User, status strava.Status, activities []strava.Activity) {
+	@layout.App("Activities", user, layout.BuildNav("/app/fitness")) {
+		<div class="mx-auto w-full max-w-5xl space-y-6 p-6 md:p-8" x-data="northStravaActivities">
+			<header class="flex flex-wrap items-start justify-between gap-4">
+				<div>
+					@ui.MonoLabel("Strava")
+					<h1 class="mt-2 text-2xl font-medium tracking-tight">Recent activities</h1>
+					<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
+						Every route you have recorded lately, floating at the height it climbed.
+						Drag to turn, scroll to zoom, click one to read it.
+					</p>
+				</div>
+				@button.Button(button.Props{Href: "/app/fitness", Variant: button.VariantOutline, Size: button.SizeSm}) {
+					Back to Fitness
+				}
+			</header>
+			if !status.Connected {
+				@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+					@card.Header() {
+						@card.Title() {
+							Not connected
+						}
+						@card.Description() {
+							Connect Strava to see your activities here.
+						}
+					}
+					@card.Content() {
+						if status.Configured {
+							@button.Button(button.Props{Href: "/app/fitness/strava/connect", Class: "bg-signal text-background hover:bg-signal/90"}) {
+								Connect Strava
+							}
+						} else {
+							<p class="text-muted-foreground text-xs">Strava is not configured on this server.</p>
+						}
+					}
+				}
+			} else if len(activities) == 0 {
+				@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+					@card.Header() {
+						@card.Title() {
+							Nothing imported yet
+						}
+						@card.Description() {
+							Connected, but no activities have arrived. Run a sync from the Fitness page.
+						}
+					}
+				}
+			} else {
+				@templ.JSONScript("strava-activities-data", activitiesJSON(activities, user.Location()))
+				<div class="grid gap-5 lg:grid-cols-[1.4fr_1fr]">
+					<div class="border-hairline bg-background/40 relative aspect-square overflow-hidden rounded-lg border">
+						// Hand-rolled: a WebGL surface has no counterpart in the
+						// component library. Every fact it shows is also in the
+						// list beside it, so it is hidden from assistive tech
+						// rather than described twice.
+						<canvas
+							x-ref="canvas"
+							aria-hidden="true"
+							class="size-full cursor-grab touch-none active:cursor-grabbing"
+						></canvas>
+						<div
+							x-show="!ready || failed"
+							class="pointer-events-none absolute inset-0 flex items-center justify-center p-6 text-center"
+						>
+							<span
+								class="text-muted-foreground font-mono text-[10px] uppercase tracking-[0.14em]"
+								x-text="failed ? 'Preview unavailable — your activities are listed beside it' : 'Loading activities'"
+							>Loading activities</span>
+						</div>
+						<div x-show="selected" x-cloak class="border-hairline bg-surface/95 absolute bottom-3 left-3 right-3 rounded-md border p-3 backdrop-blur">
+							<p class="text-sm font-medium" x-text="selected && selected.name"></p>
+							<p class="text-muted-foreground mt-0.5 font-mono text-[11px]">
+								<span x-text="selected && selected.started_at"></span>
+								<span> · </span>
+								<span x-text="selected && selected.distance_km.toFixed(1) + ' km'"></span>
+								<span> · </span>
+								<span x-text="selected && Math.round(selected.elevation_gain_m) + ' m climb'"></span>
+							</p>
+						</div>
+					</div>
+					<div>
+						@legend()
+						<ul class="mt-3 space-y-2">
+							for i, a := range activities {
+								@activityRow(i, a, user.Location())
+							}
+						</ul>
+					</div>
+				</div>
+			}
+		</div>
+		<script src="/assets/js/shared/strava-activities/alpine.js"></script>
+	}
+}
+
+templ legend() {
+	<div class="flex flex-wrap items-center gap-3">
+		@legendKey("Run", "bg-ember")
+		@legendKey("Ride", "bg-[#4ea1ff]")
+		@legendKey("Swim", "bg-[#36d1c4]")
+		@legendKey("Other", "bg-[#9aa4b2]")
+	</div>
+}
+
+templ legendKey(name string, swatch string) {
+	<span class="flex items-center gap-1.5">
+		<span class={ "size-2 rounded-[2px]", swatch }></span>
+		<span class="text-muted-foreground font-mono text-[10px] uppercase tracking-[0.14em]">{ name }</span>
+	</span>
+}
+
+templ activityRow(index int, a strava.Activity, loc *time.Location) {
+	<li>
+		<button
+			type="button"
+			class="border-hairline hover:border-muted-foreground/40 w-full rounded-lg border px-3 py-2 text-left transition-colors"
+			x-bind:class={ fmt.Sprintf("isSelected(%d) ? 'border-signal/60 bg-signal/5' : ''", index) }
+			x-on:click={ fmt.Sprintf("pick(%d)", index) }
+		>
+			<div class="flex items-baseline justify-between gap-2">
+				<span class="truncate text-sm font-medium">{ a.Name }</span>
+				<span class="text-muted-foreground shrink-0 font-mono text-[10px]">
+					{ a.StartDate.In(loc).Format("2 Jan") }
+				</span>
+			</div>
+			<div class="mt-1 flex flex-wrap items-center gap-2">
+				@badge.Badge(badge.Props{Variant: badge.VariantSecondary, Class: "text-[10px]"}) {
+					{ a.SportType }
+				}
+				<span class="text-muted-foreground font-mono text-[11px]">
+					{ fmt.Sprintf("%.1f km", a.DistanceKm()) } · { formatDuration(a.MovingTimeS) }
+					if pace := formatPace(a); pace != "" {
+						· { pace }
+					}
+					if a.ElevationGainM > 0 {
+						· { fmt.Sprintf("%.0f m", a.ElevationGainM) }
+					}
+				</span>
+			</div>
+		</button>
+	</li>
+}
