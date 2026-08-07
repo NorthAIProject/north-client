@@ -220,7 +220,10 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, stora
 	activitySvc := activity.NewService(activity.NewRepository(pool), biometricSvc)
 	activityHandler := activity.NewHandler(activitySvc)
 
-	calculatorHandler := calculator.NewHandler(calculatorSvc, biometricSvc)
+	// Preferences owns the units system, which the calculator renders in.
+	preferencesSvc := preferences.NewService(preferences.NewRepository(pool))
+
+	calculatorHandler := calculator.NewHandler(calculatorSvc, biometricSvc, preferencesSvc)
 
 	fitnessHandler := fitness.NewHandler()
 
@@ -241,7 +244,6 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, stora
 		Recommend:   mealRecommendSvc,
 	})
 
-	preferencesSvc := preferences.NewService(preferences.NewRepository(pool))
 	settingsHandler := settings.NewHandler(userSvc, preferencesSvc, mealDietSvc)
 
 	mindSvc := mind.NewService(mind.NewRepository(pool), checkinSvc)
