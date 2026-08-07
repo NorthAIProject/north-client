@@ -163,7 +163,7 @@ func TestListPopulatesRelatedGoalTitle(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := svc.UpsertToday(ctx, user, checkins.Input{
+	if _, err = svc.UpsertToday(ctx, user, checkins.Input{
 		Mood: 4, Energy: 4, RelatedGoalID: &g.ID,
 	}); err != nil {
 		t.Fatal(err)

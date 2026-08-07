@@ -110,7 +110,7 @@ templ hero() {
 						Create your account
 						@icon.ArrowRight(icon.Props{Class: "size-4"})
 					}
-					@button.Button(button.Props{Href: "#muscle", Size: button.SizeLg, Variant: button.VariantOutline, Class: "border-hairline"}) {
+					@button.Button(button.Props{Href: "#product-film", Size: button.SizeLg, Variant: button.VariantOutline, Class: "border-hairline"}) {
 						See it work
 					}
 				</div>
@@ -121,7 +121,39 @@ templ hero() {
 			</div>
 			@heroThread()
 		</div>
+		@heroFilm()
 	</section>
+}
+
+// heroFilm is the short silent product loop for the signed-out marketing page.
+// Muted + playsinline + loop so it autoplays on mobile without becoming a sound
+// assault; the poster covers the first paint before the mp4 is ready.
+templ heroFilm() {
+	<div id="product-film" class="mt-16">
+		<div class="mb-4 flex flex-wrap items-end justify-between gap-3">
+			<div>
+				@monoLabel("Product film · 4s")
+				<p class="mt-2 max-w-[54ch] text-sm leading-relaxed text-muted-foreground">
+					One memory across surfaces — coaching thread, goals, training anatomy, check-ins.
+				</p>
+			</div>
+			@monoLabel("Autoplay · silent loop")
+		</div>
+		<div class="overflow-hidden rounded-xl border border-hairline bg-surface shadow-[0_0_0_1px_color-mix(in_oklab,var(--north-signal)_12%,transparent)]">
+			<video
+				class="aspect-video w-full bg-background object-cover"
+				autoplay
+				muted
+				loop
+				playsinline
+				preload="metadata"
+				poster="/assets/video/north-hero-poster.webp"
+				aria-label="North product film: persistent coaching memory across web and messaging surfaces"
+			>
+				<source src="/assets/video/north-hero.mp4" type="video/mp4"/>
+			</video>
+		</div>
+	</div>
 }
 
 // heroThread states the memory claim and the multi-surface claim in one

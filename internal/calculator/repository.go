@@ -28,11 +28,11 @@ func (r *Repository) RecordCurrent(ctx context.Context, userID uuid.UUID, plan M
 	if err != nil {
 		return MacroPlan{}, apperr.Wrap(err, "begin macro plan transaction")
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	qtx := r.q.WithTx(tx)
 
-	if err := qtx.UnsetCurrentMacroPlans(ctx, userID); err != nil {
+	if err = qtx.UnsetCurrentMacroPlans(ctx, userID); err != nil {
 		return MacroPlan{}, apperr.Wrap(err, "unset current macro plans")
 	}
 
