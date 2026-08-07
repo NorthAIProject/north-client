@@ -19,6 +19,8 @@ import (
 func Validate(plan Plan, intake Intake) []string {
 	var problems []string
 
+	sanitizeMuscleGroups(plan)
+
 	if strings.TrimSpace(plan.Name) == "" {
 		problems = append(problems, "the plan has no name")
 	}
@@ -141,6 +143,35 @@ func usesUnavailableEquipment(ex Exercise, available map[string]bool) (string, b
 	// unavailable equipment would reject correct plans, and the prompt already
 	// states the constraint.
 	return "", true
+}
+
+// sanitizeMuscleGroups drops any muscle key outside MuscleGroups from every
+// exercise, in place. PlanSchema already constrains these via ai.Enum, so in
+// practice a provider should never return anything else — this is a defensive
+// second layer, the same posture as every other field the schema "guarantees"
+// (see the package doc above), not a retry-worthy problem: an unresolved key
+// is silently invisible to the viewer (viewer.js's setLoads skips it) rather
+// than something a person notices, so it's dropped rather than added to
+// problems.
+func sanitizeMuscleGroups(p Plan) {
+	for i := range p.Days {
+		for j := range p.Days[i].Exercises {
+			ex := &p.Days[i].Exercises[j]
+			ex.Primary = filterMuscleGroups(ex.Primary)
+			ex.Secondary = filterMuscleGroups(ex.Secondary)
+			ex.Stabilizers = filterMuscleGroups(ex.Stabilizers)
+		}
+	}
+}
+
+func filterMuscleGroups(keys []string) []string {
+	kept := keys[:0]
+	for _, key := range keys {
+		if IsMuscleGroup(key) {
+			kept = append(kept, key)
+		}
+	}
+	return kept
 }
 
 func dayLabel(day PlanDay) string {

@@ -1,7 +1,8 @@
 # body.glb
 
-3D model for the marketing-page muscle viewer (`web/assets/js/landing/muscle-viewer.js`,
-NOR-6). Two layers, both real assets — no procedural/primitive geometry.
+3D model for the muscle viewer (`web/assets/js/shared/muscle-viewer/viewer.js`,
+NOR-6, extracted from the landing page and generalized for production use in
+NOR-8). Two layers, both real assets — no procedural/primitive geometry.
 
 ## Sources
 

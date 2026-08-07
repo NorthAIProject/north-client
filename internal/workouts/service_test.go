@@ -122,6 +122,55 @@ func TestCreatePlanStoresAConformingPlan(t *testing.T) {
 	}
 }
 
+// NOR-8: muscle groups round-trip through the real Postgres jsonb column, not
+// just Go's own json.Marshal/Unmarshal — CreatePlan encodes, Postgres stores,
+// and the RETURNING row is what the assertion below reads back.
+func TestCreatePlanPersistsMuscleGroupsThroughStorage(t *testing.T) {
+	plan := goodPlan()
+	plan.Days[0].Exercises[0].Primary = []string{"quads", "glutes"}
+	plan.Days[0].Exercises[0].Secondary = []string{"hamstrings"}
+	plan.Days[0].Exercises[0].Stabilizers = []string{"abs"}
+
+	client := &fake.Client{}
+	client.Handler = func(_ context.Context, _ ai.Request) (fake.Response, error) {
+		return fake.Response{Text: planJSON(t, plan)}, nil
+	}
+
+	svc, user := newService(t, client)
+
+	stored, err := svc.CreatePlan(context.Background(), user, dumbbellIntake())
+	if err != nil {
+		t.Fatalf("create plan: %v", err)
+	}
+
+	ex := stored.Plan.Days[0].Exercises[0]
+	if got, want := ex.Primary, []string{"quads", "glutes"}; !slicesEqual(got, want) {
+		t.Errorf("Primary = %v, want %v", got, want)
+	}
+	if got, want := ex.Secondary, []string{"hamstrings"}; !slicesEqual(got, want) {
+		t.Errorf("Secondary = %v, want %v", got, want)
+	}
+	if got, want := ex.Stabilizers, []string{"abs"}; !slicesEqual(got, want) {
+		t.Errorf("Stabilizers = %v, want %v", got, want)
+	}
+
+	if !strings.Contains(stored.Plan.Summary(), "(emphasis: quads, glutes)") {
+		t.Errorf("Summary() lost the muscle emphasis after storage: %q", stored.Plan.Summary())
+	}
+}
+
+func slicesEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
 // The heart of WP4: a model that breaks the constraints gets told exactly what
 // it broke, and the corrected plan is what reaches the user.
 func TestBadPlanIsRejectedAndRetriedWithTheViolations(t *testing.T) {

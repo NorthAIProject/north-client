@@ -1,0 +1,148 @@
+// Package muscleviewer is the reusable 3D muscle-highlight component (NOR-8).
+//
+// It renders a canvas driven by web/assets/js/shared/muscle-viewer/{viewer,alpine}.js
+// against the shared body.glb model (see web/assets/models/README.md), given
+// nothing but three muscle-key arrays. Any page — an exercise row, a workout
+// plan, eventually a coaching response — embeds it the same way:
+//
+//	@muscleviewer.Viewer(muscleviewer.Props{
+//		ID:        "exercise-42",
+//		Primary:   ex.Primary,
+//		Secondary: ex.Secondary,
+//		Stabilizers: ex.Stabilizers,
+//		ExerciseName: ex.Name,
+//	})
+//
+// Loading, WebGL fallback, and click-to-inspect are all handled inside the
+// component; a caller only supplies the muscle keys.
+package muscleviewer
+
+import (
+	"encoding/json"
+	"strings"
+
+	"github.com/NorthAIProject/north-client/web/shared/ui/aspectratio"
+)
+
+// Props is the data contract handed to the AI-driven viewer: three flat
+// muscle-key arrays, no percentages. Keys must be members of
+// internal/workouts/plan.MuscleGroups — anything else is silently ignored by
+// the viewer (see viewer.js's setLoads, which skips unresolved keys).
+type Props struct {
+	// ID must be unique on the page; it namespaces the canvas ref and the
+	// legend so multiple viewers (e.g. one per dialog) don't collide.
+	ID string
+
+	Primary      []string
+	Secondary    []string
+	Stabilizers  []string
+	ExerciseName string
+}
+
+// alpineData serializes Props into the object literal northMuscleViewer()
+// expects. templ HTML-escapes the { expr } attribute value automatically,
+// which matters here since muscle keys and the exercise name can originate
+// from AI output.
+func alpineData(p Props) string {
+	data, _ := json.Marshal(map[string]any{
+		"primary":      nonNil(p.Primary),
+		"secondary":    nonNil(p.Secondary),
+		"stabilizers":  nonNil(p.Stabilizers),
+		"exerciseName": p.ExerciseName,
+	})
+	return "northMuscleViewer(" + string(data) + ")"
+}
+
+func nonNil(keys []string) []string {
+	if keys == nil {
+		return []string{}
+	}
+	return keys
+}
+
+// titleCase turns a muscle key ("quads") into fallback label text ("Quads")
+// for the no-WebGL path, without depending on the JS module's MUSCLE_INFO
+// display names.
+func titleCase(key string) string {
+	if key == "" {
+		return key
+	}
+	return strings.ToUpper(key[:1]) + key[1:]
+}
+
+templ Viewer(p Props) {
+	<div
+		if p.ID != "" {
+			id={ p.ID }
+		}
+		x-data={ alpineData(p) }
+		class="rounded-lg border border-hairline bg-background/40 p-4"
+	>
+		@aspectratio.AspectRatio(aspectratio.Props{Ratio: aspectratio.RatioSquare, Class: "rounded-lg border border-hairline bg-background/60"}) {
+			// Hand-rolled: a WebGL surface has no counterpart in the component
+			// library — see web/landing/demos.templ for the same rationale.
+			<canvas
+				x-ref="canvas"
+				aria-hidden="true"
+				class="size-full cursor-grab touch-none rounded-lg active:cursor-grabbing"
+			></canvas>
+			<div
+				x-show="!ready || failed"
+				class="pointer-events-none absolute inset-0 flex items-center justify-center p-4 text-center"
+			>
+				<span
+					class="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground"
+					x-text="failed ? 'Preview unavailable — see the muscle list below' : 'Loading model'"
+				>Loading model</span>
+			</div>
+		}
+		<div class="mt-3 flex flex-wrap items-center gap-3">
+			<span class="flex items-center gap-1.5">
+				<span class="size-2 rounded-[2px] bg-ember"></span>
+				<span class="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Primary</span>
+			</span>
+			<span class="flex items-center gap-1.5">
+				<span class="size-2 rounded-[2px] bg-ember/55"></span>
+				<span class="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Secondary</span>
+			</span>
+			<span class="flex items-center gap-1.5">
+				<span class="size-2 rounded-[2px] bg-ember/25"></span>
+				<span class="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Stabiliser</span>
+			</span>
+		</div>
+		<div x-show="ready && !failed && selectedMuscle" x-cloak class="mt-3 rounded-md bg-signal/10 p-3">
+			<p class="text-sm font-medium" x-text="selectedMuscle && selectedMuscle.name"></p>
+			<p class="mt-0.5 text-xs leading-relaxed text-foreground/90" x-text="selectedMuscle && selectedMuscle.description"></p>
+		</div>
+		<div x-show="failed" x-cloak class="mt-3 space-y-2 text-sm">
+			@muscleList("Primary", p.Primary)
+			@muscleList("Secondary", p.Secondary)
+			@muscleList("Stabiliser", p.Stabilizers)
+		</div>
+	</div>
+}
+
+var scriptOnce = templ.NewOnceHandle()
+
+// Script must be included on any page that uses Viewer; it registers the
+// Alpine component before alpine:init fires (see alpine.js's doc comment for
+// why plain script-tag ordering is enough). Safe to call more than once.
+templ Script() {
+	@scriptOnce.Once() {
+		<script src="/assets/js/shared/muscle-viewer/alpine.js"></script>
+	}
+}
+
+templ muscleList(label string, keys []string) {
+	if len(keys) > 0 {
+		<p>
+			<span class="text-muted-foreground">{ label }: </span>
+			for i, key := range keys {
+				if i > 0 {
+					{ ", " }
+				}
+				{ titleCase(key) }
+			}
+		</p>
+	}
+}

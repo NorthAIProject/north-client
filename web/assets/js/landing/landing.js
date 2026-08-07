@@ -23,7 +23,7 @@
     return version ? `${path}?v=${version}` : path;
   }
 
-  const viewerModuleURL = assetURL("/assets/js/landing/muscle-viewer.js");
+  const viewerModuleURL = assetURL("/assets/js/shared/muscle-viewer/viewer.js");
 
   // templUI's tabs component tracks state in data attributes. ARIA needs to say
   // the same thing, so mirror it whenever the state changes.
