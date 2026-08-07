@@ -44,6 +44,7 @@ type Service struct {
 	storage  Storage
 	queue    *jobs.Queue
 	registry *ai.Registry
+	provider string
 	model    string
 }
 
@@ -52,7 +53,14 @@ type Options struct {
 	Storage    Storage
 	Queue      *jobs.Queue
 	Registry   *ai.Registry
-	Model      string
+
+	// Provider names the client used for analysis. Unlike the coach, this is a
+	// single provider rather than a chain: the work needs a file upload API,
+	// which only some of them have, so falling back to an arbitrary next
+	// provider would fail rather than degrade.
+	Provider string
+
+	Model string
 }
 
 func NewService(opts Options) *Service {
@@ -61,6 +69,7 @@ func NewService(opts Options) *Service {
 		storage:  opts.Storage,
 		queue:    opts.Queue,
 		registry: opts.Registry,
+		provider: opts.Provider,
 		model:    opts.Model,
 	}
 }
@@ -175,9 +184,14 @@ func (s *Service) runAnalysis(ctx context.Context, mediaID uuid.UUID) (analysis.
 		return analysis.FormAnalysis{}, "", "", err
 	}
 
-	client, err := s.registry.Default()
+	// Named rather than default: form analysis needs a provider with a real
+	// upload API, and the OpenAI-dialect backends have none. Taking whatever
+	// happens to head the chain would break video analysis every time the
+	// coach was pointed at OpenRouter, NVIDIA, xAI, or Hermes.
+	client, err := s.registry.Get(s.provider)
 	if err != nil {
-		return analysis.FormAnalysis{}, "", "", err
+		return analysis.FormAnalysis{}, "", "", apperr.Wrap(err,
+			"media: analysis needs a provider that supports uploads")
 	}
 
 	object, err := s.storage.Get(ctx, record.StorageKey)

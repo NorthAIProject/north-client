@@ -1,52 +1,59 @@
-// Command mcp-server exposes North's capabilities over the Model Context
-// Protocol, so an MCP client — Claude Desktop, or the Hermes bridge that
-// carries Telegram and WhatsApp — can use them.
+// Command mcp-server exposes North's coaching capabilities over the Model
+// Context Protocol.
 //
-// The tools are not defined here. They come from internal/agent, the same
-// registry the coach's chat loop reads, so a capability added once appears in
-// both. Two definitions would drift, and the drift would show up as the coach
-// and Telegram giving different answers to the same question.
+// A separate binary from the web server, sharing the same services. It exists
+// so an agent that already has the user's attention elsewhere — Hermes on the
+// VPS, an editor, a chat client — can log a check-in or ask the coach without
+// anybody opening a browser.
 //
-// # Who the tools run as
+// # Bind it to the tailnet
 //
-// One process serves one person, named by NORTH_MCP_USER_EMAIL and resolved to
-// an account at startup. There is no per-request authentication because there
-// are no per-request credentials to carry: this speaks MCP over stdio, where
-// the client spawns the process and the pipe is the session.
-//
-// That is a property worth stating rather than a shortcut. The user id handed
-// to every capability is fixed before the first request is read, so no
-// argument a model invents can reach another account's data. Serving several
-// people would mean an HTTP transport and real per-request credentials, and
-// that is the point at which to add them — not before.
+// Authentication is a single static bearer token mapping to a single account.
+// That is enough for one person's private tooling and nowhere near enough for
+// the public internet. See internal/mcpserver.NewHandler.
 package main
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/NorthAIProject/north-client/internal/activity"
 	"github.com/NorthAIProject/north-client/internal/agent"
 	"github.com/NorthAIProject/north-client/internal/ai"
+	"github.com/NorthAIProject/north-client/internal/ai/providers"
 	"github.com/NorthAIProject/north-client/internal/biometrics"
 	"github.com/NorthAIProject/north-client/internal/calculator"
+	"github.com/NorthAIProject/north-client/internal/checkins"
+	"github.com/NorthAIProject/north-client/internal/coach"
 	"github.com/NorthAIProject/north-client/internal/config"
+	"github.com/NorthAIProject/north-client/internal/conversations"
 	"github.com/NorthAIProject/north-client/internal/exercises"
 	"github.com/NorthAIProject/north-client/internal/goals"
+	"github.com/NorthAIProject/north-client/internal/habits"
+	"github.com/NorthAIProject/north-client/internal/hydration"
+	"github.com/NorthAIProject/north-client/internal/mcpserver"
 	"github.com/NorthAIProject/north-client/internal/meals"
+	"github.com/NorthAIProject/north-client/internal/memories"
+	"github.com/NorthAIProject/north-client/internal/mind"
+	"github.com/NorthAIProject/north-client/internal/preferences"
 	"github.com/NorthAIProject/north-client/internal/shared/database"
+	"github.com/NorthAIProject/north-client/internal/sleep"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
-const serverName = "north"
+const shutdownTimeout = 10 * time.Second
 
 func main() {
 	if err := run(); err != nil {
@@ -63,15 +70,24 @@ func run() error {
 		return err
 	}
 
-	// stderr, never stdout: stdout is the protocol stream, and a stray log
-	// line there is a parse error at the other end rather than a log line.
-	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
-	slog.SetDefault(log)
-
-	email := os.Getenv("NORTH_MCP_USER_EMAIL")
-	if email == "" {
-		return fmt.Errorf("NORTH_MCP_USER_EMAIL is required: this server acts for exactly one account")
+	token := strings.TrimSpace(os.Getenv("MCP_API_TOKEN"))
+	if token == "" {
+		return errors.New("MCP_API_TOKEN is required: the MCP server will not start without a bearer token")
 	}
+
+	rawUserID := strings.TrimSpace(os.Getenv("MCP_USER_ID"))
+	if rawUserID == "" {
+		return errors.New("MCP_USER_ID is required: every tool call acts as one account")
+	}
+	userID, err := uuid.Parse(rawUserID)
+	if err != nil {
+		return fmt.Errorf("MCP_USER_ID is not a uuid: %w", err)
+	}
+
+	addr := cfg.MCPListenAddr
+
+	log := newLogger(cfg)
+	slog.SetDefault(log)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -82,72 +98,147 @@ func run() error {
 	}
 	defer pool.Close()
 
-	userSvc := users.NewService(users.NewRepository(pool))
-	user, err := userSvc.ByEmail(ctx, email)
+	registry, err := providers.Build(ctx, cfg.AI.ProviderOptions())
 	if err != nil {
-		return fmt.Errorf("no account for %s: %w", email, err)
+		return err
 	}
 
-	mealsRepo := meals.NewRepository(pool)
-	biometricSvc := biometrics.NewService(biometrics.NewRepository(pool))
-
-	registry := agent.Build(agent.Services{
-		Exercises:   exercises.NewService(exercises.NewRepository(pool)),
-		Calculator:  calculator.NewService(calculator.NewRepository(pool), biometricSvc),
-		Goals:       goals.NewService(goals.NewRepository(pool)),
-		Ingredients: meals.NewIngredientService(mealsRepo),
-		FoodLog:     meals.NewFoodLogService(mealsRepo),
+	handler := mcpserver.NewHandler(mcpserver.Config{
+		Services: buildServices(cfg, pool, registry),
+		Token:    token,
+		UserID:   userID,
+		Log:      log,
 	})
 
-	server := mcp.NewServer(&mcp.Implementation{
-		Name:    serverName,
-		Version: "0.1.0",
-	}, nil)
-
-	for _, tool := range registry.Tools() {
-		addTool(server, registry, user.ID, tool)
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 
-	log.Info("north mcp server ready",
-		slog.String("user", user.Email),
-		slog.Any("tools", registry.Names()))
+	errs := make(chan error, 1)
+	go func() {
+		log.Info("mcp server listening",
+			slog.String("addr", addr),
+			slog.String("user", userID.String()),
+			slog.String("ai_provider", registry.DefaultName()),
+		)
+		if serveErr := srv.ListenAndServe(); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+			errs <- serveErr
+		}
+	}()
 
-	if err := server.Run(ctx, &mcp.StdioTransport{}); err != nil {
-		return fmt.Errorf("mcp server: %w", err)
+	select {
+	case serveErr := <-errs:
+		return serveErr
+	case <-ctx.Done():
+		log.Info("shutdown signal received")
 	}
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer cancel()
+
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		return fmt.Errorf("graceful shutdown: %w", err)
+	}
+
+	log.Info("mcp server stopped")
 	return nil
 }
 
-// addTool publishes one capability.
+// buildServices constructs what the tools call into.
 //
-// Server.AddTool rather than the generic mcp.AddTool: the argument schema is
-// already described by ai.Schema, and going through a Go type just to have the
-// SDK infer the schema back would mean two descriptions of every tool's
-// arguments, which is the duplication this whole package exists to avoid.
-func addTool(server *mcp.Server, registry *agent.Registry, userID uuid.UUID, tool ai.Tool) {
-	schema, err := json.Marshal(ai.JSONSchema(tool.Parameters))
-	if err != nil {
-		// Only reachable if a capability declares a schema that cannot be
-		// marshalled, which is a programming error present at startup.
-		panic("mcp: cannot marshal the schema for " + tool.Name + ": " + err.Error())
-	}
+// The coach is given the same context sources cmd/web gives it, because an
+// answer from the MCP tool has to be as grounded as one from the web UI —
+// a coach that forgot the user's goals when asked through Hermes would be
+// worse than no tool at all.
+//
+// This list is duplicated from cmd/web's routes(). Adding a context source in
+// one place and not the other is the drift to watch for; the two are worth
+// unifying into a shared composition root once a third binary needs them.
+func buildServices(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry) mcpserver.Services {
+	userSvc := users.NewService(users.NewRepository(pool))
+	conversationSvc := conversations.NewService(conversations.NewRepository(pool))
 
-	server.AddTool(&mcp.Tool{
-		Name:        tool.Name,
-		Description: tool.Description,
-		InputSchema: json.RawMessage(schema),
-	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		// userID is the one resolved at startup. Nothing in the request can
-		// change it.
-		result := registry.Invoke(ctx, userID, ai.ToolCall{
-			ID:        tool.Name,
-			Name:      tool.Name,
-			Arguments: req.Params.Arguments,
-		})
+	goalSvc := goals.NewService(goals.NewRepository(pool))
+	checkinSvc := checkins.NewService(checkins.NewRepository(pool), goalSvc)
+	memorySvc := memories.NewService(memories.NewRepository(pool))
 
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: result.Content}},
-			IsError: result.IsError,
-		}, nil
+	biometricSvc := biometrics.NewService(biometrics.NewRepository(pool))
+	calculatorSvc := calculator.NewService(calculator.NewRepository(pool), biometricSvc)
+	activitySvc := activity.NewService(activity.NewRepository(pool), biometricSvc)
+
+	mealsRepo := meals.NewRepository(pool)
+	mealDietSvc := meals.NewDietPreferenceService(mealsRepo)
+	foodLogSvc := meals.NewFoodLogService(mealsRepo)
+	mealProgressSvc := meals.NewTrackMealProgressService(foodLogSvc, calculatorSvc)
+
+	preferencesSvc := preferences.NewService(preferences.NewRepository(pool))
+	mindSvc := mind.NewService(mind.NewRepository(pool), checkinSvc)
+
+	hydrationSvc := hydration.NewService(hydration.NewRepository(pool))
+	sleepSvc := sleep.NewService(sleep.NewRepository(pool))
+	habitSvc := habits.NewService(habits.NewRepository(pool))
+
+	coachSvc := coach.NewService(coach.Options{
+		Registry:      registry,
+		Conversations: conversationSvc,
+		ContextBuilder: coach.NewContextBuilder(conversationSvc,
+			goals.NewContextSource(goalSvc),
+			checkins.NewContextSource(checkinSvc),
+			memories.NewContextSource(memorySvc),
+			calculator.NewContextSource(calculatorSvc),
+			activity.NewContextSource(activitySvc),
+			meals.NewContextSource(mealProgressSvc, mealDietSvc),
+			preferences.NewContextSource(preferencesSvc),
+			mind.NewContextSource(mindSvc),
+			hydration.NewContextSource(hydrationSvc),
+			sleep.NewContextSource(sleepSvc),
+			habits.NewContextSource(habitSvc),
+		),
+		PromptBuilder: coach.NewPromptBuilder(),
+		Chains:        cfg.AI.ChainSet(),
+		Model:         cfg.AI.Model,
+		FastModel:     cfg.AI.FastModel,
 	})
+
+	agentTools := agent.Build(agent.Services{
+		Exercises:   exercises.NewService(exercises.NewRepository(pool)),
+		Calculator:  calculatorSvc,
+		Goals:       goalSvc,
+		Ingredients: meals.NewIngredientService(mealsRepo),
+		FoodLog:     foodLogSvc,
+	})
+
+	return mcpserver.Services{
+		Agent:    agentTools,
+		Users:    userSvc,
+		Goals:    goalSvc,
+		CheckIns: checkinSvc,
+		Memories: memorySvc,
+		Activity: activitySvc,
+		Coach:    coachSvc,
+	}
+}
+
+func newLogger(cfg *config.Config) *slog.Logger {
+	opts := &slog.HandlerOptions{Level: parseLevel(cfg.LogLevel)}
+
+	if cfg.Env.IsProduction() {
+		return slog.New(slog.NewJSONHandler(os.Stdout, opts)).With(slog.String("service", "mcp-server"))
+	}
+	return slog.New(slog.NewTextHandler(os.Stdout, opts)).With(slog.String("service", "mcp-server"))
+}
+
+func parseLevel(s string) slog.Level {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "debug":
+		return slog.LevelDebug
+	case "warn", "warning":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
+	}
 }

@@ -66,8 +66,11 @@ func newToolHarness(t *testing.T, client *fake.Client, tools coach.ToolRunner) h
 		ContextBuilder: coach.NewContextBuilder(convos),
 		PromptBuilder:  coach.NewPromptBuilder(),
 		Tools:          tools,
-		Model:          "test-model",
-		FastModel:      "test-fast-model",
+		// Every tier resolves to the one fake provider: these tests are about
+		// the tool loop, not about which provider serves which user.
+		Chains:    ai.NewChainSet([]string{client.Name()}, nil),
+		Model:     "test-model",
+		FastModel: "test-fast-model",
 	})
 
 	return harness{coach: svc, convos: convos, client: client, user: user, pool: pool}

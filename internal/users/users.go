@@ -15,6 +15,17 @@ import (
 	usersdb "github.com/NorthAIProject/north-client/internal/users/db"
 )
 
+// Tier decides which chain of AI providers serves a user. It is deliberately
+// not a billing state: what North needs to know at coaching time is which
+// backends to spend on, and whatever eventually manages subscriptions can set
+// this without the coach learning anything about payments.
+type Tier string
+
+const (
+	TierFree Tier = "free"
+	TierPro  Tier = "pro"
+)
+
 // User is the domain view of an account. It excludes the password hash: nothing
 // outside internal/auth has any business reading it, and leaving it off the
 // type means it cannot be leaked into a template or a log line by accident.
@@ -27,6 +38,8 @@ type User struct {
 	// CoachingStyle is the user's own description of how they want to be
 	// coached. Empty until they set one.
 	CoachingStyle string
+
+	Tier Tier
 
 	CreatedAt time.Time
 	UpdatedAt time.Time
@@ -60,6 +73,7 @@ func fromDB(row usersdb.User) User {
 		Email:       row.Email,
 		DisplayName: row.DisplayName,
 		Timezone:    row.Timezone,
+		Tier:        Tier(row.Tier),
 		CreatedAt:   row.CreatedAt,
 		UpdatedAt:   row.UpdatedAt,
 	}
