@@ -1,22 +1,56 @@
 package care
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
+	"github.com/NorthAIProject/north-client/internal/habits"
+	"github.com/NorthAIProject/north-client/internal/hydration"
 	"github.com/NorthAIProject/north-client/internal/meals"
+	"github.com/NorthAIProject/north-client/internal/shared/lifedomain"
+	"github.com/NorthAIProject/north-client/internal/sleep"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/badge"
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
 	"github.com/NorthAIProject/north-client/web/shared/ui/card"
 	"github.com/NorthAIProject/north-client/web/shared/ui/checkbox"
 	"github.com/NorthAIProject/north-client/web/shared/ui/form"
 	"github.com/NorthAIProject/north-client/web/shared/ui/input"
 	"github.com/NorthAIProject/north-client/web/shared/ui/label"
+	"github.com/NorthAIProject/north-client/web/shared/ui/progress"
+	"github.com/NorthAIProject/north-client/web/shared/ui/selectbox"
 )
 
-// ReminderForm carries a submitted (or rejected) reminder.
+// Data is everything the page renders. A struct rather than a growing
+// parameter list: this page composes five slices, and positional arguments
+// would be five chances to pass two of them the wrong way round.
+type Data struct {
+	DueReminders   []meals.Reminder
+	AllReminders   []meals.Reminder
+	CheckedInToday bool
+
+	Water        hydration.Day
+	WaterEntries []hydration.Entry
+
+	LastNight      sleep.Log
+	SleptLastNight bool
+
+	Habits []habits.Stats
+}
+
+// Forms carries whichever submission was rejected, so a failed write
+// re-renders the whole page with that one form's errors rather than losing
+// what someone typed.
+type Forms struct {
+	Reminder ReminderForm
+	Water    WaterForm
+	Sleep    SleepForm
+	Habit    HabitForm
+}
+
 type ReminderForm struct {
 	Label      string
 	TimeOfDay  string
@@ -24,18 +58,48 @@ type ReminderForm struct {
 	Errors     map[string]string
 }
 
-func (f ReminderForm) fieldError(name string) string {
-	if f.Errors == nil {
-		return ""
-	}
-	return f.Errors[name]
+type WaterForm struct {
+	Errors map[string]string
 }
 
-func (f ReminderForm) dayChecked(day int) bool {
-	if len(f.DaysOfWeek) == 0 {
-		return true // default: every day checked on a blank form
+type SleepForm struct {
+	Hours    string
+	Minutes  string
+	Quality  string
+	Bedtime  string
+	WakeTime string
+	Notes    string
+	Errors   map[string]string
+}
+
+type HabitForm struct {
+	Name       string
+	Domain     string
+	DaysOfWeek []int
+	Errors     map[string]string
+}
+
+func fieldError(errs map[string]string, name string) string {
+	if errs == nil {
+		return ""
 	}
-	for _, d := range f.DaysOfWeek {
+	return errs[name]
+}
+
+func (f ReminderForm) fieldError(name string) string { return fieldError(f.Errors, name) }
+func (f SleepForm) fieldError(name string) string    { return fieldError(f.Errors, name) }
+func (f HabitForm) fieldError(name string) string    { return fieldError(f.Errors, name) }
+
+func (f ReminderForm) dayChecked(day int) bool { return dayChecked(f.DaysOfWeek, day) }
+func (f HabitForm) dayChecked(day int) bool    { return dayChecked(f.DaysOfWeek, day) }
+
+// An untouched form defaults to every day: the common case for both a
+// reminder and a habit is "daily", and an empty set would be rejected.
+func dayChecked(days []int, day int) bool {
+	if len(days) == 0 {
+		return true
+	}
+	for _, d := range days {
 		if d == day {
 			return true
 		}
@@ -58,10 +122,19 @@ func daysSummary(days []int) string {
 	return strings.Join(labels, ", ")
 }
 
-// Page is a to-do-list view over signals that already live elsewhere
-// (meal reminders, check-in status) — Care owns no data of its own beyond
-// what it composes from meals.MealReminderService and checkins.Service.
-templ Page(user users.User, dueReminders []meals.Reminder, checkedInToday bool, allReminders []meals.Reminder, f ReminderForm) {
+func litres(ml int) string { return fmt.Sprintf("%.1fL", float64(ml)/1000) }
+
+func amountLabel(ml int) string {
+	if ml >= 1000 {
+		return litres(ml)
+	}
+	return fmt.Sprintf("%dml", ml)
+}
+
+// Page is the daily view: what is due, what has been logged, and the quick
+// controls to log the rest. Every fact shown belongs to another slice; Care
+// owns the arrangement.
+templ Page(user users.User, data Data, forms Forms) {
 	@layout.App("Care", user, layout.BuildNav("/app/care")) {
 		<div class="mx-auto w-full max-w-2xl space-y-6 p-6 md:p-8">
 			<header>
@@ -71,112 +144,392 @@ templ Page(user users.User, dueReminders []meals.Reminder, checkedInToday bool, 
 					What the app is looking out for you about, in one place.
 				</p>
 			</header>
-			@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
-				@card.Header() {
-					@card.Title() {
-						Check-in
-					}
-					@card.Description() {
-						if checkedInToday {
-							Done for today.
-						} else {
-							You haven't checked in yet today.
-						}
-					}
-				}
-				if !checkedInToday {
-					@card.Content() {
-						@button.Button(button.Props{Href: "/app/check-ins", Class: "bg-signal text-background hover:bg-signal/90"}) {
-							Check in
-						}
-					}
-				}
-			}
-			if len(dueReminders) > 0 {
-				@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
-					@card.Header() {
-						@card.Title() {
-							Reminders
-						}
-						@card.Description() {
-							Due now.
-						}
-					}
-					@card.Content() {
-						<ul class="space-y-2">
-							for _, r := range dueReminders {
-								<li class="flex items-center justify-between text-sm">
-									<span>{ r.Label }</span>
-									<span class="text-muted-foreground text-xs">{ r.TimeOfDay }</span>
-								</li>
-							}
-						</ul>
-					}
-				}
-			} else {
-				@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
-					@card.Header() {
-						@card.Title() {
-							Reminders
-						}
-						@card.Description() {
-							Nothing due right now.
-						}
-					}
-				}
-			}
-			@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
-				@card.Header() {
-					@card.Title() {
-						Manage reminders
-					}
-				}
-				@card.Content() {
-					if len(allReminders) > 0 {
-						<ul class="mb-4 space-y-2">
-							for _, r := range allReminders {
-								@reminderRow(r)
-							}
-						</ul>
-					}
-					<form method="post" action="/app/care/reminders" class="space-y-4">
-						@ui.CSRFInput()
-						<div class="flex gap-4">
-							@form.Item() {
-								@label.Label(label.Props{For: "label"}) {
-									Label
-								}
-								@input.Input(input.Props{ID: "label", Name: "label", Value: f.Label, Placeholder: "Log lunch", Required: true, HasError: f.fieldError("label") != ""})
-							}
-							@form.Item() {
-								@label.Label(label.Props{For: "time_of_day"}) {
-									Time
-								}
-								@input.Input(input.Props{ID: "time_of_day", Name: "time_of_day", Type: input.TypeTime, Value: f.TimeOfDay, Required: true, HasError: f.fieldError("time_of_day") != ""})
-							}
-						</div>
-						<div>
-							@label.Label() {
-								Days
-							}
-							<div class="mt-2 flex flex-wrap gap-3">
-								for d := 0; d < 7; d++ {
-									<label class="flex items-center gap-1 text-sm">
-										@checkbox.Checkbox(checkbox.Props{Name: "days_of_week", Value: strconv.Itoa(d), Checked: f.dayChecked(d)})
-										{ weekdayLabels[d] }
-									</label>
-								}
-							</div>
-						</div>
-						@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90"}) {
-							Add reminder
-						}
-					</form>
-				}
-			}
+			@checkInCard(data.CheckedInToday)
+			@waterCard(data.Water, data.WaterEntries, forms.Water)
+			@sleepCard(data.LastNight, data.SleptLastNight, forms.Sleep)
+			@habitsCard(data.Habits, forms.Habit)
+			@remindersCard(data.DueReminders)
+			@manageRemindersCard(data.AllReminders, forms.Reminder)
 		</div>
 		@label.Script()
 		@checkbox.Script()
+		@input.Script()
+		@selectbox.Script()
+		@progress.Script()
+	}
+}
+
+templ checkInCard(checkedInToday bool) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Title() {
+				Check-in
+			}
+			@card.Description() {
+				if checkedInToday {
+					Done for today.
+				} else {
+					You haven't checked in yet today.
+				}
+			}
+		}
+		if !checkedInToday {
+			@card.Content() {
+				@button.Button(button.Props{Href: "/app/check-ins", Class: "bg-signal text-background hover:bg-signal/90"}) {
+					Check in
+				}
+			}
+		}
+	}
+}
+
+templ waterCard(day hydration.Day, entries []hydration.Entry, f WaterForm) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Title() {
+				Water
+			}
+			@card.Description() {
+				{ litres(day.TotalML) } of { litres(day.TargetML) } today
+			}
+		}
+		@card.Content() {
+			@progress.Progress(progress.Props{Value: day.Percent(), Class: "mb-4"})
+			if msg := fieldError(f.Errors, "amount_ml"); msg != "" {
+				@form.Message(form.MessageProps{Variant: form.MessageVariantError, Class: "mb-3"}) {
+					{ msg }
+				}
+			}
+			<div class="flex flex-wrap gap-2">
+				for _, amount := range hydration.QuickAmounts {
+					<form method="post" action="/app/care/water">
+						@ui.CSRFInput()
+						<input type="hidden" name="amount_ml" value={ strconv.Itoa(amount) }/>
+						@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Size: button.SizeSm}) {
+							+ { amountLabel(amount) }
+						}
+					</form>
+				}
+			</div>
+			if len(entries) > 0 {
+				<ul class="mt-4 space-y-1">
+					for _, e := range entries {
+						<li class="text-muted-foreground flex items-center justify-between text-xs">
+							<span>{ amountLabel(e.AmountML) } at { e.LoggedAt.Format("15:04") }</span>
+							<form method="post" action={ templ.SafeURL("/app/care/water/" + e.ID.String() + "/undo") }>
+								@ui.CSRFInput()
+								@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm}) {
+									Undo
+								}
+							</form>
+						</li>
+					}
+				</ul>
+			}
+		}
+	}
+}
+
+templ sleepCard(last sleep.Log, logged bool, f SleepForm) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Title() {
+				Sleep
+			}
+			@card.Description() {
+				if logged {
+					Last night: { last.Duration() }
+					if last.Quality != nil {
+						, quality { strconv.Itoa(*last.Quality) }/5
+					}
+				} else {
+					Nothing logged for last night.
+				}
+			}
+		}
+		@card.Content() {
+			<form method="post" action="/app/care/sleep" class="space-y-4">
+				@ui.CSRFInput()
+				<div class="flex flex-wrap gap-4">
+					@form.Item() {
+						@label.Label(label.Props{For: "hours"}) {
+							Hours
+						}
+						@input.Input(input.Props{
+							ID: "hours", Name: "hours", Type: input.TypeNumber,
+							Value:      f.Hours,
+							HasError:   f.fieldError("duration_minutes") != "",
+							Attributes: templ.Attributes{"min": "0", "max": "24", "placeholder": "7"},
+						})
+					}
+					@form.Item() {
+						@label.Label(label.Props{For: "minutes"}) {
+							Minutes
+						}
+						@input.Input(input.Props{
+							ID: "minutes", Name: "minutes", Type: input.TypeNumber,
+							Value:      f.Minutes,
+							Attributes: templ.Attributes{"min": "0", "max": "59", "step": "5", "placeholder": "30"},
+						})
+					}
+					@form.Item() {
+						@label.Label(label.Props{For: "quality"}) {
+							Quality
+						}
+						@selectbox.SelectBox() {
+							@selectbox.Trigger(selectbox.TriggerProps{ID: "quality", Name: "quality"}) {
+								@selectbox.Value(selectbox.ValueProps{Placeholder: "Optional"})
+							}
+							@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
+								for _, q := range []string{"1", "2", "3", "4", "5"} {
+									@selectbox.Item(selectbox.ItemProps{Value: q, Selected: f.Quality == q}) {
+										{ q } / 5
+									}
+								}
+							}
+						}
+					}
+				</div>
+				if msg := f.fieldError("duration_minutes"); msg != "" {
+					@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+						{ msg }
+					}
+				}
+				<div class="flex flex-wrap gap-4">
+					@form.Item() {
+						@label.Label(label.Props{For: "bedtime"}) {
+							Bedtime
+						}
+						@input.Input(input.Props{ID: "bedtime", Name: "bedtime", Type: input.TypeTime, Value: f.Bedtime, HasError: f.fieldError("bedtime") != ""})
+					}
+					@form.Item() {
+						@label.Label(label.Props{For: "wake_time"}) {
+							Woke up
+						}
+						@input.Input(input.Props{ID: "wake_time", Name: "wake_time", Type: input.TypeTime, Value: f.WakeTime, HasError: f.fieldError("wake_time") != ""})
+					}
+				</div>
+				@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90"}) {
+					if logged {
+						Update last night
+					} else {
+						Log last night
+					}
+				}
+			</form>
+		}
+	}
+}
+
+templ habitsCard(stats []habits.Stats, f HabitForm) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Title() {
+				Habits
+			}
+			@card.Description() {
+				Recurring things you meant to keep doing.
+			}
+		}
+		@card.Content() {
+			if len(stats) > 0 {
+				<ul class="mb-6 space-y-2">
+					for _, s := range stats {
+						@habitRow(s)
+					}
+				</ul>
+			}
+			<form method="post" action="/app/care/habits" class="space-y-4">
+				@ui.CSRFInput()
+				<div class="flex flex-wrap gap-4">
+					@form.Item() {
+						@label.Label(label.Props{For: "name"}) {
+							New habit
+						}
+						@input.Input(input.Props{
+							ID: "name", Name: "name", Value: f.Name,
+							Placeholder: "Ten minutes of reading",
+							HasError:    f.fieldError("name") != "",
+						})
+					}
+					@form.Item() {
+						@label.Label(label.Props{For: "domain"}) {
+							Area
+						}
+						@selectbox.SelectBox() {
+							@selectbox.Trigger(selectbox.TriggerProps{ID: "domain", Name: "domain"}) {
+								@selectbox.Value(selectbox.ValueProps{Placeholder: "Personal"})
+							}
+							@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
+								for _, d := range lifedomain.Domains {
+									@selectbox.Item(selectbox.ItemProps{Value: d, Selected: f.Domain == d}) {
+										{ strings.ToUpper(d[:1]) + d[1:] }
+									}
+								}
+							}
+						}
+					}
+				</div>
+				if msg := f.fieldError("name"); msg != "" {
+					@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+						{ msg }
+					}
+				}
+				<div>
+					@label.Label() {
+						Days
+					}
+					<div class="mt-2 flex flex-wrap gap-3">
+						for d := 0; d < 7; d++ {
+							<label class="flex items-center gap-1 text-sm">
+								@checkbox.Checkbox(checkbox.Props{Name: "days_of_week", Value: strconv.Itoa(d), Checked: f.dayChecked(d)})
+								{ weekdayLabels[d] }
+							</label>
+						}
+					</div>
+					if msg := f.fieldError("days"); msg != "" {
+						@form.Message(form.MessageProps{Variant: form.MessageVariantError, Class: "mt-2"}) {
+							{ msg }
+						}
+					}
+				</div>
+				@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90"}) {
+					Add habit
+				}
+			</form>
+		}
+	}
+}
+
+templ habitRow(s habits.Stats) {
+	<li class="border-hairline flex items-center justify-between gap-3 rounded-lg border px-3 py-2">
+		<div class="min-w-0">
+			<div class="flex flex-wrap items-center gap-2">
+				<span class="text-sm font-medium">{ s.Habit.Name }</span>
+				@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
+					{ s.Habit.Domain }
+				}
+				if s.Streak > 0 {
+					<span class="text-signal font-mono text-[10px] uppercase tracking-[0.14em]">
+						{ strconv.Itoa(s.Streak) } day streak
+					</span>
+				}
+			</div>
+			<p class="text-muted-foreground mt-0.5 text-xs">
+				{ s.Habit.Schedule() }
+				if s.Scheduled > 0 {
+					· kept { strconv.Itoa(s.Kept) } of { strconv.Itoa(s.Scheduled) } this week
+				}
+			</p>
+		</div>
+		<div class="flex shrink-0 items-center gap-2">
+			if s.ScheduledToday {
+				<form method="post" action={ templ.SafeURL("/app/care/habits/" + s.Habit.ID.String() + "/toggle") }>
+					@ui.CSRFInput()
+					<input type="hidden" name="done" value={ doneValue(s.DoneToday) }/>
+					if s.DoneToday {
+						@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Size: button.SizeSm}) {
+							Done
+						}
+					} else {
+						@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Class: "bg-signal text-background hover:bg-signal/90"}) {
+							Mark done
+						}
+					}
+				</form>
+			} else {
+				// Not due today is not the same as missed, and should not read
+				// like a failure.
+				<span class="text-muted-foreground text-xs">Not today</span>
+			}
+			<form method="post" action={ templ.SafeURL("/app/care/habits/" + s.Habit.ID.String() + "/delete") }>
+				@ui.CSRFInput()
+				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm}) {
+					Delete
+				}
+			</form>
+		</div>
+	</li>
+}
+
+templ remindersCard(due []meals.Reminder) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Title() {
+				Reminders
+			}
+			@card.Description() {
+				if len(due) > 0 {
+					Due now.
+				} else {
+					Nothing due right now.
+				}
+			}
+		}
+		if len(due) > 0 {
+			@card.Content() {
+				<ul class="space-y-2">
+					for _, r := range due {
+						<li class="flex items-center justify-between text-sm">
+							<span>{ r.Label }</span>
+							<span class="text-muted-foreground text-xs">{ r.TimeOfDay }</span>
+						</li>
+					}
+				</ul>
+			}
+		}
+	}
+}
+
+templ manageRemindersCard(all []meals.Reminder, f ReminderForm) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Title() {
+				Manage reminders
+			}
+		}
+		@card.Content() {
+			if len(all) > 0 {
+				<ul class="mb-4 space-y-2">
+					for _, r := range all {
+						@reminderRow(r)
+					}
+				</ul>
+			}
+			<form method="post" action="/app/care/reminders" class="space-y-4">
+				@ui.CSRFInput()
+				<div class="flex gap-4">
+					@form.Item() {
+						@label.Label(label.Props{For: "label"}) {
+							Label
+						}
+						@input.Input(input.Props{ID: "label", Name: "label", Value: f.Label, Placeholder: "Log lunch", Required: true, HasError: f.fieldError("label") != ""})
+					}
+					@form.Item() {
+						@label.Label(label.Props{For: "time_of_day"}) {
+							Time
+						}
+						@input.Input(input.Props{ID: "time_of_day", Name: "time_of_day", Type: input.TypeTime, Value: f.TimeOfDay, Required: true, HasError: f.fieldError("time_of_day") != ""})
+					}
+				</div>
+				<div>
+					@label.Label() {
+						Days
+					}
+					<div class="mt-2 flex flex-wrap gap-3">
+						for d := 0; d < 7; d++ {
+							<label class="flex items-center gap-1 text-sm">
+								@checkbox.Checkbox(checkbox.Props{Name: "days_of_week", Value: strconv.Itoa(d), Checked: f.dayChecked(d)})
+								{ weekdayLabels[d] }
+							</label>
+						}
+					</div>
+				</div>
+				@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90"}) {
+					Add reminder
+				}
+			</form>
+		}
 	}
 }
 
@@ -210,6 +563,15 @@ templ reminderRow(r meals.Reminder) {
 
 func toggleValue(currentlyEnabled bool) string {
 	if currentlyEnabled {
+		return "false"
+	}
+	return "true"
+}
+
+// The form submits the state it wants, not a flip, so a double submit is
+// idempotent rather than toggling twice.
+func doneValue(currentlyDone bool) string {
+	if currentlyDone {
 		return "false"
 	}
 	return "true"
