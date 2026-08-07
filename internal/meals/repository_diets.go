@@ -32,7 +32,7 @@ func (r *Repository) SetUserDiets(ctx context.Context, userID uuid.UUID, dietIDs
 	if err != nil {
 		return apperr.Wrap(err, "begin set diets transaction")
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	qtx := r.q.WithTx(tx)
 

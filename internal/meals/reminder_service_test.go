@@ -64,7 +64,7 @@ func TestCreateListUpdateDeleteReminder(t *testing.T) {
 		t.Fatal("expected the reminder to be disabled")
 	}
 
-	if err := svc.Delete(ctx, created.ID, user.ID); err != nil {
+	if err = svc.Delete(ctx, created.ID, user.ID); err != nil {
 		t.Fatalf("delete: %v", err)
 	}
 	list, err = svc.List(ctx, user.ID)
@@ -94,13 +94,13 @@ func TestDueNowFiresOnceAndRespectsScheduling(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create due reminder: %v", err)
 	}
-	if _, err := svc.Create(ctx, user.ID, meals.ReminderInput{
+	if _, err = svc.Create(ctx, user.ID, meals.ReminderInput{
 		Label: "Not today", TimeOfDay: past, DaysOfWeek: []int{otherWeekday},
 	}); err != nil {
 		t.Fatalf("create not-today reminder: %v", err)
 	}
 	future := now.Add(time.Hour).Format("15:04")
-	if _, err := svc.Create(ctx, user.ID, meals.ReminderInput{
+	if _, err = svc.Create(ctx, user.ID, meals.ReminderInput{
 		Label: "Later today", TimeOfDay: future, DaysOfWeek: []int{todayWeekday},
 	}); err != nil {
 		t.Fatalf("create later-today reminder: %v", err)

@@ -220,7 +220,7 @@ func TestTotalCaloriesSinceSumsCompletedSessions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("start: %v", err)
 	}
-	if _, err := svc.Stop(ctx, started.ID, user.ID); err != nil {
+	if _, err = svc.Stop(ctx, started.ID, user.ID); err != nil {
 		t.Fatalf("stop: %v", err)
 	}
 

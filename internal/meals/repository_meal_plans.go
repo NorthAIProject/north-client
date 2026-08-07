@@ -171,7 +171,7 @@ func (r *Repository) RemoveIngredient(ctx context.Context, mealIngredientID, use
 		return apperr.Wrap(err, "get meal ingredient")
 	}
 
-	if err := r.q.DeleteMealIngredient(ctx, mealIngredientID); err != nil {
+	if err = r.q.DeleteMealIngredient(ctx, mealIngredientID); err != nil {
 		return apperr.Wrap(err, "delete meal ingredient")
 	}
 
@@ -192,7 +192,7 @@ func (r *Repository) recalculateTotals(ctx context.Context, mealID, planID uuid.
 	if err != nil {
 		return apperr.Wrap(err, "begin recalculate transaction")
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	qtx := r.q.WithTx(tx)
 
@@ -201,7 +201,7 @@ func (r *Repository) recalculateTotals(ctx context.Context, mealID, planID uuid.
 		return apperr.Wrap(err, "sum meal ingredients")
 	}
 	mealMacros := Macros{Calories: sums.Calories, ProteinG: sums.ProteinG, FatG: sums.FatG, CarbG: sums.CarbsG}
-	if err := qtx.UpdateMealTotalMacros(ctx, mealsdb.UpdateMealTotalMacrosParams{ID: mealID, TotalMacros: macrosToJSON(mealMacros)}); err != nil {
+	if err = qtx.UpdateMealTotalMacros(ctx, mealsdb.UpdateMealTotalMacrosParams{ID: mealID, TotalMacros: macrosToJSON(mealMacros)}); err != nil {
 		return apperr.Wrap(err, "update meal total macros")
 	}
 

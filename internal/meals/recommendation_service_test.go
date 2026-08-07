@@ -39,7 +39,7 @@ func TestRecommendationRuleBranches(t *testing.T) {
 				kcal := goalPlan.CalorieGoal + tt.deltaPerDay
 				for d := 0; d < 14; d++ {
 					day := time.Now().AddDate(0, 0, -d)
-					if _, err := foodLogSvc.LogIngredient(ctx, user.ID, meals.LogIngredientInput{
+					if _, err = foodLogSvc.LogIngredient(ctx, user.ID, meals.LogIngredientInput{
 						IngredientID: fillerID, QuantityGrams: kcal, LogDate: day,
 					}); err != nil {
 						t.Fatalf("log day %d: %v", d, err)
