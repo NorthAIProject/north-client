@@ -30,11 +30,11 @@ func (r *Repository) RecordCurrent(ctx context.Context, userID uuid.UUID, in Inp
 	if err != nil {
 		return Biometric{}, apperr.Wrap(err, "begin biometrics transaction")
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	qtx := r.q.WithTx(tx)
 
-	if err := qtx.UnsetCurrentBiometrics(ctx, userID); err != nil {
+	if err = qtx.UnsetCurrentBiometrics(ctx, userID); err != nil {
 		return Biometric{}, apperr.Wrap(err, "unset current biometrics")
 	}
 

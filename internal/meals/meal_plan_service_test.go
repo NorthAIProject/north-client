@@ -61,7 +61,7 @@ func TestTotalsAlwaysEqualTheSumOfChildren(t *testing.T) {
 		t.Fatalf("chicken line calories = %v, want 330", chickenLine.Macros.Calories)
 	}
 
-	if _, err := planSvc.AddIngredient(ctx, meal.ID, user.ID, meals.MealIngredientInput{IngredientID: rice.ID, QuantityGrams: 150}); err != nil {
+	if _, err = planSvc.AddIngredient(ctx, meal.ID, user.ID, meals.MealIngredientInput{IngredientID: rice.ID, QuantityGrams: 150}); err != nil {
 		t.Fatalf("add rice: %v", err)
 	}
 
@@ -82,7 +82,7 @@ func TestTotalsAlwaysEqualTheSumOfChildren(t *testing.T) {
 
 	// Removing the rice line should bring both totals back down to just the
 	// chicken.
-	if err := planSvc.RemoveIngredient(ctx, chickenLine.ID, user.ID); err != nil {
+	if err = planSvc.RemoveIngredient(ctx, chickenLine.ID, user.ID); err != nil {
 		t.Fatalf("remove chicken line: %v", err)
 	}
 
@@ -101,7 +101,7 @@ func TestTotalsAlwaysEqualTheSumOfChildren(t *testing.T) {
 	}
 
 	// Removing the whole meal should zero out the plan.
-	if err := planSvc.RemoveMeal(ctx, meal.ID, user.ID); err != nil {
+	if err = planSvc.RemoveMeal(ctx, meal.ID, user.ID); err != nil {
 		t.Fatalf("remove meal: %v", err)
 	}
 	afterMealRemoval, err := planSvc.GetPlan(ctx, plan.ID, user.ID)
