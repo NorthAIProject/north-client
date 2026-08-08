@@ -13,6 +13,15 @@ bin/
 *.test
 *.out
 
+# `go build ./cmd/worker/` writes its output here, named after the package
+# directory rather than the names above. A 50 MB binary reached main this way
+# once; `git add -A` does not know the difference.
+#
+# Not `/web`: that is the templates directory. `go build ./cmd/web/` cannot
+# write there anyway, because the directory already exists.
+/worker
+/mcp-server
+
 # tools/model is a build-time Node tool, run by hand and never deployed
 node_modules/
 package-lock.json
