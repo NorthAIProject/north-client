@@ -16,3 +16,6 @@ bin/
 # tools/model is a build-time Node tool, run by hand and never deployed
 node_modules/
 package-lock.json
+
+# Dev server binary built by the templ watcher.
+tmp/

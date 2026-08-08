@@ -11,8 +11,25 @@ tasks:
   # ---------------------------------------------------------------------------
   templ:
     desc: Run templ with integrated server and hot reload
+    deps: [port:free]
     cmds:
-      - go tool templ generate --watch --proxy="http://localhost:8090" --cmd="go run ./cmd/web" --open-browser=false
+      # scripts/dev-web.sh rather than `go run ./cmd/web` — see that file for
+      # why. Short version: `go run` leaves the real server orphaned on the
+      # port every time templ restarts or you Ctrl-C.
+      - go tool templ generate --watch --proxy="http://localhost:8090" --cmd="./scripts/dev-web.sh" --open-browser=false
+
+  # Frees the dev port if a previous run left something behind. Runs before the
+  # watcher rather than being something to remember: the whole problem with a
+  # stale process is that you find out about it from a confusing symptom.
+  port:free:
+    internal: true
+    cmds:
+      - lsof -ti tcp:{{.PORT | default "8090"}} -sTCP:LISTEN 2>/dev/null | xargs -r kill 2>/dev/null || true
+
+  dev:stop:
+    desc: Kill anything left holding the dev port
+    cmds:
+      - task: port:free
 
   tailwind:
     desc: Watch Tailwind CSS changes
