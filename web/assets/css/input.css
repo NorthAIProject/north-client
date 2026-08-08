@@ -178,4 +178,12 @@
       "rlig" 1,
       "calt" 1;
   }
+
+  /* Alpine hides x-show elements only once it has booted, and it is loaded
+     deferred. Without this rule every collapsed pane renders expanded first —
+     the whole check-in wizard arrives as one stacked column and then snaps.
+     Alpine's cloak contract is an attribute selector, so no utility replaces it. */
+  [x-cloak] {
+    display: none !important;
+  }
 }

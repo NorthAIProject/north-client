@@ -98,7 +98,10 @@ func TestValidateMoodEnergy(t *testing.T) {
 func TestStreak(t *testing.T) {
 	pool := testdb.New(t)
 	ctx := context.Background()
-	user := seedUser(t, pool, "streak@north.test", "UTC")
+	// A positive UTC offset rather than "UTC": converting local midnight to UTC
+	// lands on the previous day, which zeroed the streak for every such user
+	// while this test — the only caller that pinned the behaviour — stayed green.
+	user := seedUser(t, pool, "streak@north.test", "Europe/Lisbon")
 	repo := checkins.NewRepository(pool)
 	svc := checkins.NewService(repo, nil)
 

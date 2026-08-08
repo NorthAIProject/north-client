@@ -16,6 +16,11 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/textarea"
 )
 
+// PanelID is the element the guided form swaps itself into. The handler and the
+// template both need it, and a typo in either would silently append a second
+// copy of the form to the page instead of replacing the first.
+const PanelID = "checkin-panel"
+
 // CheckInForm carries today's reflection back on validation failure.
 type CheckInForm struct {
 	Mood       int
@@ -32,6 +37,40 @@ func (f CheckInForm) fieldError(name string) string {
 		return ""
 	}
 	return f.Errors[name]
+}
+
+// stepFor maps a validation field name onto the pane that owns it.
+var stepFor = map[string]int{
+	"mood":            1,
+	"energy":          2,
+	"wins":            3,
+	"challenges":      4,
+	"notes":           5,
+	"related_goal_id": 5,
+}
+
+// FirstErrorStep is the pane the wizard should open on.
+//
+// A rejected submission re-renders the whole form, so without this the user
+// lands back on step one and has to walk forward through four panes to reach
+// the field that actually failed. Earliest failing pane wins, so fixing them in
+// order works; the map iteration order is irrelevant because we take the
+// minimum rather than the first seen.
+func (f CheckInForm) FirstErrorStep() int {
+	step := 0
+	for name := range f.Errors {
+		s, ok := stepFor[name]
+		if !ok {
+			continue
+		}
+		if step == 0 || s < step {
+			step = s
+		}
+	}
+	if step == 0 {
+		return 1
+	}
+	return step
 }
 
 // FormFor pre-fills from an existing check-in.
@@ -52,34 +91,87 @@ func FormFor(c checkin.CheckIn) CheckInForm {
 templ IndexPage(user users.User, list []checkin.CheckIn, form CheckInForm, activeGoals []goal.Goal, streak int, saved bool) {
 	@layout.App("Check-ins", user, layout.BuildNav("/app/check-ins")) {
 		<div class="mx-auto w-full max-w-2xl space-y-8 p-6 md:p-8">
-			<header>
-				<p class="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Daily loop</p>
-				<h1 class="mt-2 text-2xl font-medium tracking-tight">Check-in</h1>
-				<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
-					Thirty seconds. Mood, energy, what went well, what was hard.
-				</p>
-				if streak > 0 {
-					<p class="text-signal mt-3 text-sm font-medium">
-						{ strconv.Itoa(streak) }-day streak
-					</p>
-				}
-			</header>
+			@header(streak)
 			if saved {
 				<p class="rounded-lg border border-signal/30 bg-signal/10 px-4 py-3 text-sm">Saved for today.</p>
 			}
-			@todayForm(form, activeGoals)
-			if len(list) > 0 {
-				<section class="space-y-3">
-					<h2 class="text-sm font-medium">Recent</h2>
-					for _, c := range list {
-						@historyCard(c)
-					}
-				</section>
-			}
+			@Panel(list, form, activeGoals)
 		</div>
 		@textarea.Script()
 		@label.Script()
 		@selectbox.Script()
+	}
+}
+
+templ header(streak int) {
+	<header>
+		<p class="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Daily loop</p>
+		<h1 class="mt-2 text-2xl font-medium tracking-tight">Check-in</h1>
+		<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
+			Thirty seconds. Mood, energy, what went well, what was hard.
+		</p>
+		if streak > 0 {
+			<p class="text-signal mt-3 text-sm font-medium">
+				{ strconv.Itoa(streak) }-day streak
+			</p>
+		}
+	</header>
+}
+
+// Panel is the swappable region: the form plus the history it writes into.
+//
+// Both move together on every submit, so they are one target rather than a swap
+// and an out-of-band swap. IndexPage renders it too, which keeps the full page
+// and the fragment from drifting apart.
+templ Panel(list []checkin.CheckIn, form CheckInForm, activeGoals []goal.Goal) {
+	<div id={ PanelID } class="space-y-8">
+		@todayForm(form, activeGoals)
+		@recent(list)
+	</div>
+}
+
+// SavedPanel replaces the form once the check-in is stored. Same element id, so
+// it swaps into the same place, and it carries the refreshed history with it.
+templ SavedPanel(c checkin.CheckIn, list []checkin.CheckIn, streak int) {
+	<div id={ PanelID } class="space-y-8">
+		@card.Card(card.Props{Class: "border-signal/30 bg-signal/5"}) {
+			@card.Content() {
+				<p class="font-mono text-[10px] uppercase tracking-[0.14em] text-signal">Logged</p>
+				<p class="mt-2 text-lg font-medium tracking-tight">{ c.Label() }</p>
+				if streak > 0 {
+					<p class="text-muted-foreground mt-1 text-sm">
+						{ strconv.Itoa(streak) }-day streak. Same time tomorrow.
+					</p>
+				}
+				<div class="mt-5 flex flex-col gap-2 sm:flex-row">
+					@button.Button(button.Props{
+						Class: "min-h-11 flex-1",
+						Attributes: templ.Attributes{
+							"hx-get":    "/app/check-ins",
+							"hx-target": "#" + PanelID,
+							"hx-swap":   "outerHTML",
+						},
+					}) {
+						Edit today's check-in
+					}
+					@button.Button(button.Props{Href: "/app", Variant: button.VariantOutline, Class: "min-h-11 flex-1"}) {
+						Back to dashboard
+					}
+				</div>
+			}
+		}
+		@recent(list)
+	</div>
+}
+
+templ recent(list []checkin.CheckIn) {
+	if len(list) > 0 {
+		<section class="space-y-3">
+			<h2 class="text-sm font-medium">Recent</h2>
+			for _, c := range list {
+				@historyCard(c)
+			}
+		</section>
 	}
 }
 
@@ -94,102 +186,92 @@ templ todayForm(f CheckInForm, activeGoals []goal.Goal) {
 			}
 		}
 		@card.Content() {
+			// method/action are kept alongside the hx- attributes so the flow still
+			// saves with JavaScript disabled; the handler falls back to a redirect
+			// when the HX-Request header is absent.
+			//
+			// A rejected submission answers 422 with this same form re-rendered
+			// around the error messages. htmx is configured in the base layout to
+			// swap that status; see the htmx-config meta tag there.
 			<form
 				method="post"
 				action="/app/check-ins"
 				class="space-y-6"
-				x-data={ "{ step: 1, mood: " + strconv.Itoa(f.Mood) + ", energy: " + strconv.Itoa(f.Energy) + " }" }
+				hx-post="/app/check-ins"
+				hx-target={ "#" + PanelID }
+				hx-swap="outerHTML"
+				hx-disabled-elt="find button[type='submit']"
+				x-data={ "{ step: " + strconv.Itoa(f.FirstErrorStep()) + ", mood: " + strconv.Itoa(f.Mood) + ", energy: " + strconv.Itoa(f.Energy) + " }" }
 			>
 				@ui.CSRFInput()
-				// Step indicators
-				<div class="flex gap-2 text-[10px] font-mono uppercase tracking-[0.12em] text-muted-foreground">
-					<span :class="step >= 1 && 'text-signal'">Mood</span>
-					<span aria-hidden="true">·</span>
-					<span :class="step >= 2 && 'text-signal'">Energy</span>
-					<span aria-hidden="true">·</span>
-					<span :class="step >= 3 && 'text-signal'">Wins</span>
-					<span aria-hidden="true">·</span>
-					<span :class="step >= 4 && 'text-signal'">Hard</span>
-					<span aria-hidden="true">·</span>
-					<span :class="step >= 5 && 'text-signal'">Notes</span>
-				</div>
+				@stepStrip()
 				<div x-show="step === 1" class="space-y-3">
 					@label.Label() {
 						How is your mood?
 					}
-					@scalePicker("mood", "mood")
-					if f.fieldError("mood") != "" {
-						@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
-							{ f.fieldError("mood") }
-						}
-					}
-					@button.Button(button.Props{Type: button.TypeButton, Attributes: templ.Attributes{"@click": "step = 2"}}) {
-						Next
-					}
+					@scalePicker("mood", "Mood", f.Mood)
+					@fieldMessage(f.fieldError("mood"))
+					@stepNav(0, 2)
 				</div>
 				<div x-show="step === 2" x-cloak class="space-y-3">
 					@label.Label() {
 						How is your energy?
 					}
-					@scalePicker("energy", "energy")
-					if f.fieldError("energy") != "" {
-						@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
-							{ f.fieldError("energy") }
-						}
-					}
-					<div class="flex gap-2">
-						@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantOutline, Attributes: templ.Attributes{"@click": "step = 1"}}) {
-							Back
-						}
-						@button.Button(button.Props{Type: button.TypeButton, Attributes: templ.Attributes{"@click": "step = 3"}}) {
-							Next
-						}
-					</div>
+					@scalePicker("energy", "Energy", f.Energy)
+					@fieldMessage(f.fieldError("energy"))
+					@stepNav(1, 3)
 				</div>
 				<div x-show="step === 3" x-cloak class="space-y-3">
 					@form.Item() {
 						@label.Label(label.Props{For: "wins"}) {
 							What went well?
 						}
-						@textarea.Textarea(textarea.Props{ID: "wins", Name: "wins", Rows: 3, Placeholder: "Optional. A small win counts."}) {
-							{ f.Wins }
-						}
+						// Value, not children: the component renders p.Value and drops
+						// anything passed as children, so text handed to it that way
+						// vanished silently on every re-render.
+						@textarea.Textarea(textarea.Props{
+							ID:          "wins",
+							Name:        "wins",
+							Rows:        3,
+							Placeholder: "Optional. A small win counts.",
+							Value:       f.Wins,
+							HasError:    f.fieldError("wins") != "",
+						})
+						@fieldMessage(f.fieldError("wins"))
 					}
-					<div class="flex gap-2">
-						@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantOutline, Attributes: templ.Attributes{"@click": "step = 2"}}) {
-							Back
-						}
-						@button.Button(button.Props{Type: button.TypeButton, Attributes: templ.Attributes{"@click": "step = 4"}}) {
-							Next
-						}
-					</div>
+					@stepNav(2, 4)
 				</div>
 				<div x-show="step === 4" x-cloak class="space-y-3">
 					@form.Item() {
 						@label.Label(label.Props{For: "challenges"}) {
 							What was hard?
 						}
-						@textarea.Textarea(textarea.Props{ID: "challenges", Name: "challenges", Rows: 3, Placeholder: "Optional."}) {
-							{ f.Challenges }
-						}
+						@textarea.Textarea(textarea.Props{
+							ID:          "challenges",
+							Name:        "challenges",
+							Rows:        3,
+							Placeholder: "Optional.",
+							Value:       f.Challenges,
+							HasError:    f.fieldError("challenges") != "",
+						})
+						@fieldMessage(f.fieldError("challenges"))
 					}
-					<div class="flex gap-2">
-						@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantOutline, Attributes: templ.Attributes{"@click": "step = 3"}}) {
-							Back
-						}
-						@button.Button(button.Props{Type: button.TypeButton, Attributes: templ.Attributes{"@click": "step = 5"}}) {
-							Next
-						}
-					</div>
+					@stepNav(3, 5)
 				</div>
 				<div x-show="step === 5" x-cloak class="space-y-3">
 					@form.Item() {
 						@label.Label(label.Props{For: "notes"}) {
 							Anything else?
 						}
-						@textarea.Textarea(textarea.Props{ID: "notes", Name: "notes", Rows: 3, Placeholder: "Optional notes for your coach."}) {
-							{ f.Notes }
-						}
+						@textarea.Textarea(textarea.Props{
+							ID:          "notes",
+							Name:        "notes",
+							Rows:        3,
+							Placeholder: "Optional notes for your coach.",
+							Value:       f.Notes,
+							HasError:    f.fieldError("notes") != "",
+						})
+						@fieldMessage(f.fieldError("notes"))
 					}
 					if len(activeGoals) > 0 {
 						@form.Item() {
@@ -211,39 +293,111 @@ templ todayForm(f CheckInForm, activeGoals []goal.Goal) {
 									}
 								}
 							}
+							@fieldMessage(f.fieldError("related_goal_id"))
 						}
 					}
-					<div class="flex gap-2">
-						@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantOutline, Attributes: templ.Attributes{"@click": "step = 4"}}) {
-							Back
-						}
-						@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90"}) {
-							Save check-in
-						}
-					</div>
+					@stepNav(4, 0)
 				</div>
 			</form>
 		}
 	}
 }
 
-templ scalePicker(name string, model string) {
-	<div class="flex gap-2">
-		for i := 1; i <= 5; i++ {
-			<label class="cursor-pointer">
-				<input
-					type="radio"
-					name={ name }
-					value={ strconv.Itoa(i) }
-					class="peer sr-only"
-					x-model.number={ model }
-				/>
-				<span class="flex size-11 items-center justify-center rounded-lg border border-hairline text-sm font-medium peer-checked:border-signal peer-checked:bg-signal/15 peer-checked:text-signal">
-					{ strconv.Itoa(i) }
-				</span>
-			</label>
+// stepStrip doubles as progress and as navigation — on a phone it is the only
+// way back to an earlier answer without walking the Back button. Both scales
+// default to a valid value, so jumping ahead can never submit an empty pane.
+templ stepStrip() {
+	<div class="flex flex-wrap gap-1.5">
+		@stepChip(1, "Mood")
+		@stepChip(2, "Energy")
+		@stepChip(3, "Wins")
+		@stepChip(4, "Hard")
+		@stepChip(5, "Notes")
+	</div>
+}
+
+templ stepChip(n int, title string) {
+	<button
+		type="button"
+		@click={ "step = " + strconv.Itoa(n) }
+		:aria-current={ "step === " + strconv.Itoa(n) + " ? 'step' : null" }
+		:class={ "step >= " + strconv.Itoa(n) + " ? 'border-signal/40 text-signal' : 'border-hairline text-muted-foreground'" }
+		class="rounded-full border px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.12em] transition-colors"
+	>
+		{ title }
+	</button>
+}
+
+// stepNav is pinned to the bottom of the viewport so the primary action stays
+// under the thumb on a phone rather than riding up above a grown textarea.
+// A back target of 0 means first pane; a next target of 0 means submit.
+templ stepNav(back int, next int) {
+	<div class="sticky bottom-0 -mx-6 -mb-6 flex gap-2 border-t border-hairline bg-surface/95 px-6 py-3 backdrop-blur">
+		if back > 0 {
+			@button.Button(button.Props{
+				Type:       button.TypeButton,
+				Variant:    button.VariantOutline,
+				Class:      "min-h-11 flex-1",
+				Attributes: templ.Attributes{"@click": "step = " + strconv.Itoa(back)},
+			}) {
+				Back
+			}
+		}
+		if next > 0 {
+			@button.Button(button.Props{
+				Type:       button.TypeButton,
+				Class:      "min-h-11 flex-1",
+				Attributes: templ.Attributes{"@click": "step = " + strconv.Itoa(next)},
+			}) {
+				Next
+			}
+		} else {
+			@button.Button(button.Props{Type: button.TypeSubmit, Class: "min-h-11 flex-1 bg-signal text-background hover:bg-signal/90"}) {
+				Save check-in
+			}
 		}
 	</div>
+}
+
+templ fieldMessage(msg string) {
+	if msg != "" {
+		@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+			{ msg }
+		}
+	}
+}
+
+// scalePicker renders a 1–5 radio group. The inputs are visually replaced by
+// the squares but stay real radios, so keyboard and screen-reader users get the
+// group for free — hence the per-option label, which otherwise announces as a
+// bare digit. `checked` is set server-side so a value is selected before Alpine
+// boots and on the no-JavaScript path.
+templ scalePicker(name string, legend string, current int) {
+	<fieldset class="space-y-1.5">
+		<legend class="sr-only">{ legend } on a scale of 1 to 5</legend>
+		<div class="flex gap-2">
+			for i := 1; i <= 5; i++ {
+				<label class="cursor-pointer">
+					<input
+						type="radio"
+						name={ name }
+						value={ strconv.Itoa(i) }
+						class="peer sr-only"
+						aria-label={ legend + " " + strconv.Itoa(i) + " of 5" }
+						checked?={ i == current }
+						x-model.number={ name }
+					/>
+					<span class="flex size-11 items-center justify-center rounded-lg border border-hairline text-sm font-medium peer-checked:border-signal peer-checked:bg-signal/15 peer-checked:text-signal peer-focus-visible:ring-2 peer-focus-visible:ring-ring">
+						{ strconv.Itoa(i) }
+					</span>
+				</label>
+			}
+		</div>
+		<div class="text-muted-foreground flex justify-between text-[10px]">
+			<span>Low</span>
+			<span>High</span>
+		</div>
+	</fieldset>
 }
 
 templ historyCard(c checkin.CheckIn) {
