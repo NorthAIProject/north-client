@@ -83,6 +83,7 @@ func searchExercises(svc *exercises.Service) Capability {
 				"equipment": ai.String("equipment available, such as 'dumbbell', 'barbell', or 'none' for bodyweight"),
 			}, "query", "muscle", "equipment"),
 		},
+		ReadOnly: true,
 		Invoke: func(ctx context.Context, _ uuid.UUID, raw json.RawMessage) (string, error) {
 			in, err := Decode[args](raw)
 			if err != nil {
@@ -125,6 +126,7 @@ func getExercise(svc *exercises.Service) Capability {
 				"slug": ai.String("the exercise's slug, as returned by search_exercises"),
 			}, "slug"),
 		},
+		ReadOnly: true,
 		Invoke: func(ctx context.Context, _ uuid.UUID, raw json.RawMessage) (string, error) {
 			in, err := Decode[args](raw)
 			if err != nil {
@@ -207,6 +209,7 @@ func listGoals(svc *goals.Service) Capability {
 			Description: "List the goals this person is currently working towards. Use this before giving advice that assumes what they are training for.",
 			Parameters:  ai.Object("no arguments", map[string]*ai.Schema{}),
 		},
+		ReadOnly: true,
 		Invoke: func(ctx context.Context, userID uuid.UUID, _ json.RawMessage) (string, error) {
 			active, err := svc.ListActive(ctx, userID)
 			if err != nil {
@@ -243,6 +246,7 @@ func searchIngredients(svc *meals.IngredientService) Capability {
 				"query": ai.String("part of a food's name, such as 'chicken'"),
 			}, "query"),
 		},
+		ReadOnly: true,
 		Invoke: func(ctx context.Context, userID uuid.UUID, raw json.RawMessage) (string, error) {
 			in, err := Decode[args](raw)
 			if err != nil {
@@ -275,6 +279,7 @@ func todaysNutrition(svc *meals.FoodLogService) Capability {
 			Description: "Read what this person has eaten today and the totals so far. Use this before commenting on how their day is going.",
 			Parameters:  ai.Object("no arguments", map[string]*ai.Schema{}),
 		},
+		ReadOnly: true,
 		Invoke: func(ctx context.Context, userID uuid.UUID, _ json.RawMessage) (string, error) {
 			today := time.Now()
 

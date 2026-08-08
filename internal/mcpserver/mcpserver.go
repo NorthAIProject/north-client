@@ -87,6 +87,12 @@ func registerAgentCapabilities(s *mcp.Server, registry *agent.Registry, user use
 			Name:        tool.Name,
 			Description: tool.Description,
 			InputSchema: json.RawMessage(schema),
+
+			// Carried through from the capability. Without it every registry
+			// tool arrived unannotated, so a client in read-only mode could not
+			// tell search_exercises from calculate_macros — which saves the plan
+			// it computes.
+			Annotations: &mcp.ToolAnnotations{ReadOnlyHint: registry.IsReadOnly(tool.Name)},
 		}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			// The user was fixed when the session authenticated. Nothing in the
 			// request can change it.
@@ -128,7 +134,7 @@ func registerGoals(s *mcp.Server, svc Services, user users.User) {
 			return fail(err), nil, nil
 		}
 
-		return jsonResult(matchGoals(found, args.Query)), nil, nil
+		return structured(matchGoals(found, args.Query))
 	})
 
 	type addUpdateArgs struct {
@@ -156,11 +162,11 @@ func registerGoals(s *mcp.Server, svc Services, user users.User) {
 			return fail(err), nil, nil
 		}
 
-		return jsonResult(map[string]any{
+		return structured(map[string]any{
 			"goal":     goal.Title,
 			"note":     update.Note,
 			"progress": args.Progress,
-		}), nil, nil
+		})
 	})
 }
 
@@ -197,12 +203,12 @@ func registerCheckIns(s *mcp.Server, svc Services, user users.User) {
 			streak = 0
 		}
 
-		return jsonResult(map[string]any{
+		return structured(map[string]any{
 			"saved":  true,
 			"mood":   entry.Mood,
 			"energy": entry.Energy,
 			"streak": streak,
-		}), nil, nil
+		})
 	})
 
 	type listArgs struct {
@@ -236,7 +242,7 @@ func registerCheckIns(s *mcp.Server, svc Services, user users.User) {
 			})
 		}
 
-		return jsonResult(out), nil, nil
+		return structured(out)
 	})
 }
 
@@ -276,7 +282,7 @@ func registerKnowledge(s *mcp.Server, svc Services, user users.User) {
 			}
 		}
 
-		return jsonResult(out), nil, nil
+		return structured(out)
 	})
 }
 
@@ -318,12 +324,12 @@ func registerFitness(s *mcp.Server, svc Services, user users.User) {
 			}
 		}
 
-		return jsonResult(map[string]any{
+		return structured(map[string]any{
 			"days":                days,
 			"sessions":            recent,
 			"calories":            calories,
 			"session_in_progress": inProgress,
-		}), nil, nil
+		})
 	})
 }
 
@@ -422,6 +428,20 @@ func matches(query string, fields ...string) bool {
 		}
 	}
 	return false
+}
+
+// structured returns a result an agent can read as data as well as prose.
+//
+// Every tool used to end `return jsonResult(v), nil, nil`, so structuredContent
+// was never populated and a caller received JSON it had to parse back out of a
+// text block. That was tolerable while the answers were flat numbers. It
+// stopped being tolerable once retrieval started carrying citations: a ref an
+// agent has to recover with a regular expression is a ref it will get wrong.
+//
+// The text block stays alongside it, because clients predating structured
+// content read that and nothing else.
+func structured[T any](v T) (*mcp.CallToolResult, any, error) {
+	return jsonResult(v), v, nil
 }
 
 func jsonResult(v any) *mcp.CallToolResult {
