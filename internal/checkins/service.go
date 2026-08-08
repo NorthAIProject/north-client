@@ -226,6 +226,14 @@ func (s *Service) checkGoal(ctx context.Context, userID uuid.UUID, goalID *uuid.
 	return nil
 }
 
+// dateKey identifies the calendar day a timestamp falls on, for comparing the
+// user's local days against stored check-in dates.
+//
+// Deliberately not .UTC(): the two sides arrive in different locations — stored
+// dates come back as midnight UTC, while LocalDate builds midnight in the user's
+// zone — and converting to UTC moves that local midnight onto the previous day
+// for every positive offset. Lisbon, Berlin, and Tokyo all reported a streak of
+// zero no matter how many days in a row the user checked in.
 func dateKey(t time.Time) string {
-	return t.UTC().Format("2006-01-02")
+	return t.Format("2006-01-02")
 }
