@@ -50,6 +50,11 @@ type Message struct {
 	Model    string
 	Provider string
 
+	// EvidenceRefs are the stored facts the coach drew on for this reply, in
+	// "memory:<uuid>" / "chunk:<id>" form. Model and Provider record which LLM
+	// wrote the words; this records what it was working from.
+	EvidenceRefs []string
+
 	CreatedAt time.Time
 }
 

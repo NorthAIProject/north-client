@@ -12,9 +12,9 @@ import (
 )
 
 const appendMessage = `-- name: AppendMessage :one
-INSERT INTO messages (conversation_id, role, content, parts, usage, model, provider)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, conversation_id, role, content, parts, usage, model, provider, created_at
+INSERT INTO messages (conversation_id, role, content, parts, usage, model, provider, evidence_refs)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+RETURNING id, conversation_id, role, content, parts, usage, model, provider, created_at, evidence_refs
 `
 
 type AppendMessageParams struct {
@@ -25,6 +25,7 @@ type AppendMessageParams struct {
 	Usage          []byte
 	Model          *string
 	Provider       *string
+	EvidenceRefs   []string
 }
 
 func (q *Queries) AppendMessage(ctx context.Context, arg AppendMessageParams) (Message, error) {
@@ -36,6 +37,7 @@ func (q *Queries) AppendMessage(ctx context.Context, arg AppendMessageParams) (M
 		arg.Usage,
 		arg.Model,
 		arg.Provider,
+		arg.EvidenceRefs,
 	)
 	var i Message
 	err := row.Scan(
@@ -48,6 +50,7 @@ func (q *Queries) AppendMessage(ctx context.Context, arg AppendMessageParams) (M
 		&i.Model,
 		&i.Provider,
 		&i.CreatedAt,
+		&i.EvidenceRefs,
 	)
 	return i, err
 }
@@ -168,7 +171,7 @@ func (q *Queries) ListConversations(ctx context.Context, arg ListConversationsPa
 }
 
 const listMessages = `-- name: ListMessages :many
-SELECT id, conversation_id, role, content, parts, usage, model, provider, created_at FROM messages
+SELECT id, conversation_id, role, content, parts, usage, model, provider, created_at, evidence_refs FROM messages
 WHERE conversation_id = $1
 ORDER BY created_at
 LIMIT $2
@@ -198,6 +201,7 @@ func (q *Queries) ListMessages(ctx context.Context, arg ListMessagesParams) ([]M
 			&i.Model,
 			&i.Provider,
 			&i.CreatedAt,
+			&i.EvidenceRefs,
 		); err != nil {
 			return nil, err
 		}
@@ -210,7 +214,7 @@ func (q *Queries) ListMessages(ctx context.Context, arg ListMessagesParams) ([]M
 }
 
 const recentMessages = `-- name: RecentMessages :many
-SELECT id, conversation_id, role, content, parts, usage, model, provider, created_at FROM messages
+SELECT id, conversation_id, role, content, parts, usage, model, provider, created_at, evidence_refs FROM messages
 WHERE conversation_id = $1
 ORDER BY created_at DESC
 LIMIT $2
@@ -244,6 +248,7 @@ func (q *Queries) RecentMessages(ctx context.Context, arg RecentMessagesParams) 
 			&i.Model,
 			&i.Provider,
 			&i.CreatedAt,
+			&i.EvidenceRefs,
 		); err != nil {
 			return nil, err
 		}
@@ -256,7 +261,7 @@ func (q *Queries) RecentMessages(ctx context.Context, arg RecentMessagesParams) 
 }
 
 const recentUserMessages = `-- name: RecentUserMessages :many
-SELECT m.id, m.conversation_id, m.role, m.content, m.parts, m.usage, m.model, m.provider, m.created_at
+SELECT m.id, m.conversation_id, m.role, m.content, m.parts, m.usage, m.model, m.provider, m.created_at, m.evidence_refs
 FROM messages m
 JOIN conversations c ON c.id = m.conversation_id
 WHERE c.user_id = $1 AND m.role = 'user'
@@ -290,6 +295,7 @@ func (q *Queries) RecentUserMessages(ctx context.Context, arg RecentUserMessages
 			&i.Model,
 			&i.Provider,
 			&i.CreatedAt,
+			&i.EvidenceRefs,
 		); err != nil {
 			return nil, err
 		}

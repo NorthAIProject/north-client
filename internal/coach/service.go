@@ -135,7 +135,11 @@ func (s *Service) SendMessage(ctx context.Context, user users.User, conversation
 
 	// Built after the user's message is stored, so the model sees the turn it
 	// is answering as part of the history rather than as a special case.
-	coachCtx, err := s.contextB.Build(ctx, ContextRequest{User: user, ConversationID: conversationID})
+	coachCtx, err := s.contextB.Build(ctx, ContextRequest{
+		User:           user,
+		ConversationID: conversationID,
+		Query:          text,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -172,6 +176,7 @@ func (s *Service) SendMessage(ctx context.Context, user users.User, conversation
 		firstMessage: text,
 		client:       client,
 		request:      req,
+		offeredRefs:  coachCtx.OfferedRefs(),
 	})
 
 	return out, nil
@@ -276,6 +281,13 @@ type pumpTarget struct {
 	// tools returned.
 	client  ai.Client
 	request ai.Request
+
+	// offeredRefs is every evidence ref the context block showed the model this
+	// turn. Citations outside it are discarded rather than recorded: a model
+	// asked to cite will occasionally produce a well-formed ref for a fact it
+	// was never given, and storing that would make the audit trail wrong in the
+	// one direction that matters.
+	offeredRefs map[string]bool
 }
 
 // pump forwards the provider's stream to the caller while accumulating the full
@@ -302,6 +314,13 @@ func (s *Service) pump(
 		usage     *ai.Usage
 		streamErr error
 		listening = true
+
+		// The reply is accumulated with its citations intact and stripped only
+		// at the end, because that is what says which facts were used. What
+		// reaches the browser is filtered as it goes: the user should never see
+		// the handles, and waiting for the whole reply to strip them would give
+		// up streaming entirely.
+		visible refStripper
 	)
 
 	// One pass per round-trip to the model. A pass that ends in tool calls
@@ -332,6 +351,12 @@ func (s *Service) pump(
 			}
 			if chunk.Text != "" {
 				reply.WriteString(chunk.Text)
+
+				// Usage was already taken above, so holding this chunk back
+				// loses nothing but the text it did not yet have.
+				if chunk.Text = visible.Take(chunk.Text); chunk.Text == "" {
+					continue
+				}
 			}
 
 			if listening && !trySend(callerCtx, out, chunk) {
@@ -382,7 +407,13 @@ func (s *Service) pump(
 		stream = next
 	}
 
-	text := strings.TrimSpace(reply.String())
+	// Anything the filter was still holding when the stream ended was never a
+	// citation after all, so it belongs to the reader.
+	if tail := visible.Flush(); tail != "" && listening {
+		trySend(callerCtx, out, ai.StreamChunk{Text: tail})
+	}
+
+	text, evidenceRefs := StripRefs(strings.TrimSpace(reply.String()), target.offeredRefs)
 
 	if streamErr != nil {
 		log.Error("coach reply failed", slog.Any("error", streamErr),
@@ -404,7 +435,7 @@ func (s *Service) pump(
 	defer cancel()
 
 	if _, err := s.conversations.AppendModelMessage(
-		saveCtx, target.conversation.ID, text, usage, s.model, target.provider,
+		saveCtx, target.conversation.ID, text, usage, s.model, target.provider, evidenceRefs,
 	); err != nil {
 		log.Error("could not save the coach's reply", slog.Any("error", err),
 			slog.String("conversation_id", target.conversation.ID.String()))

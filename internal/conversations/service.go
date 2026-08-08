@@ -93,8 +93,9 @@ func (s *Service) AppendUserMessage(ctx context.Context, conversationID uuid.UUI
 	})
 }
 
-// AppendModelMessage stores the coach's reply along with what it cost.
-func (s *Service) AppendModelMessage(ctx context.Context, conversationID uuid.UUID, text string, usage *ai.Usage, model, provider string) (Message, error) {
+// AppendModelMessage stores the coach's reply along with what it cost and what
+// it was built from.
+func (s *Service) AppendModelMessage(ctx context.Context, conversationID uuid.UUID, text string, usage *ai.Usage, model, provider string, evidenceRefs []string) (Message, error) {
 	return s.repo.Append(ctx, NewMessage{
 		ConversationID: conversationID,
 		Role:           ai.RoleModel,
@@ -102,6 +103,7 @@ func (s *Service) AppendModelMessage(ctx context.Context, conversationID uuid.UU
 		Usage:          usage,
 		Model:          model,
 		Provider:       provider,
+		EvidenceRefs:   evidenceRefs,
 	})
 }
 

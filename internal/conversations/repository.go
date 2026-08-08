@@ -93,6 +93,10 @@ type NewMessage struct {
 	Usage          *ai.Usage
 	Model          string
 	Provider       string
+
+	// EvidenceRefs are the stored facts this reply was built from. Empty for a
+	// user message, and empty for a reply that cited nothing.
+	EvidenceRefs []string
 }
 
 func (r *Repository) Append(ctx context.Context, msg NewMessage) (Message, error) {
@@ -116,6 +120,7 @@ func (r *Repository) Append(ctx context.Context, msg NewMessage) (Message, error
 		Usage:          usage,
 		Model:          nilIfEmpty(msg.Model),
 		Provider:       nilIfEmpty(msg.Provider),
+		EvidenceRefs:   orEmptyStrings(msg.EvidenceRefs),
 	})
 	if err != nil {
 		return Message{}, apperr.Wrap(err, "append message")
@@ -226,8 +231,20 @@ func messageFromDB(row conversationsdb.Message) Message {
 	if row.Provider != nil {
 		m.Provider = *row.Provider
 	}
+	m.EvidenceRefs = row.EvidenceRefs
 
 	return m
+}
+
+// orEmptyStrings keeps a nil slice out of the insert.
+//
+// The column is NOT NULL DEFAULT '{}', and pgx encodes a nil []string as SQL
+// NULL rather than as an empty array, which the constraint rejects.
+func orEmptyStrings(v []string) []string {
+	if v == nil {
+		return []string{}
+	}
+	return v
 }
 
 func nilIfEmpty(s string) *string {

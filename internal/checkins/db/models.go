@@ -269,6 +269,7 @@ type Message struct {
 	Model          *string
 	Provider       *string
 	CreatedAt      time.Time
+	EvidenceRefs   []string
 }
 
 type PasswordResetToken struct {

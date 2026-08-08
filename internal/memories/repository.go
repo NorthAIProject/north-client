@@ -3,6 +3,7 @@ package memories
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -96,6 +97,61 @@ func (r *Repository) ForContext(ctx context.Context, userID uuid.UUID, limit int
 		return nil, apperr.Wrap(err, "list memories for context")
 	}
 	return fromDBList(rows), nil
+}
+
+// Retrieved is a memory as it came back from a ranked search.
+//
+// Snippet and Rank are artifacts of one retrieval, not properties of the fact,
+// so they live here rather than on Memory: a fact does not have a relevance
+// score, it has one relative to a question.
+type Retrieved struct {
+	Memory
+
+	// Snippet is the stored content with matching terms bracketed, or empty
+	// for a fact that was included without matching — a pinned one.
+	Snippet string
+
+	// Rank is 0..1, comparable across tables. Zero for a pinned non-match.
+	Rank float64
+}
+
+// SearchForContext returns approved memories ranked against query.
+//
+// Pinned facts come back whether or not they match; see the query for why.
+func (r *Repository) SearchForContext(ctx context.Context, userID uuid.UUID, query string, limit int) ([]Retrieved, error) {
+	rows, err := r.q.SearchApprovedForContext(ctx, memoriesdb.SearchApprovedForContextParams{
+		UserID:      userID,
+		Query:       query,
+		ResultLimit: int32(limit),
+	})
+	if err != nil {
+		return nil, apperr.Wrap(err, "search memories for context")
+	}
+
+	out := make([]Retrieved, 0, len(rows))
+	for _, row := range rows {
+		snippet := row.Snippet
+		// ts_headline on a non-matching row returns the opening words of the
+		// content with nothing marked, which reads as a truncated fact rather
+		// than as an excerpt. A pinned fact that did not match has no excerpt.
+		if !strings.Contains(snippet, "[") {
+			snippet = ""
+		}
+		out = append(out, Retrieved{
+			Memory: Memory{
+				ID:        row.ID,
+				UserID:    userID,
+				Category:  row.Category,
+				Content:   row.Content,
+				Status:    StatusApproved,
+				Pinned:    row.Pinned,
+				UpdatedAt: row.UpdatedAt,
+			},
+			Snippet: snippet,
+			Rank:    row.Rank,
+		})
+	}
+	return out, nil
 }
 
 func (r *Repository) ExistingContents(ctx context.Context, userID uuid.UUID) (map[string]bool, error) {

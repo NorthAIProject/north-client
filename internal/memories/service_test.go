@@ -46,7 +46,7 @@ func TestCreateApprovedAndContext(t *testing.T) {
 		t.Fatalf("status = %s", m.Status)
 	}
 
-	list, err := svc.ForContext(ctx, user.ID)
+	list, err := svc.ForContext(ctx, user.ID, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +71,7 @@ func TestPendingNotInContextUntilApproved(t *testing.T) {
 		t.Fatal("expected pending insert")
 	}
 
-	list, err := svc.ForContext(ctx, user.ID)
+	list, err := svc.ForContext(ctx, user.ID, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func TestPendingNotInContextUntilApproved(t *testing.T) {
 	if approved.Status != memories.StatusApproved {
 		t.Fatal(approved.Status)
 	}
-	list, err = svc.ForContext(ctx, user.ID)
+	list, err = svc.ForContext(ctx, user.ID, "")
 	if err != nil || len(list) != 1 {
 		t.Fatalf("after approve: %v len=%d", err, len(list))
 	}
