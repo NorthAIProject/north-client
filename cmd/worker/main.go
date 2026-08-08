@@ -23,6 +23,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/biometrics"
 	"github.com/NorthAIProject/north-client/internal/config"
 	"github.com/NorthAIProject/north-client/internal/conversations"
+	"github.com/NorthAIProject/north-client/internal/documents"
 	"github.com/NorthAIProject/north-client/internal/fitness/strava"
 	"github.com/NorthAIProject/north-client/internal/jobs"
 	"github.com/NorthAIProject/north-client/internal/media"
@@ -113,10 +114,17 @@ func run() error {
 		BaseURL:      cfg.BaseURL,
 	})
 
+	// Documents are parsed and chunked here rather than during the upload:
+	// indexing one file is bounded work, rebuilding a library is not, and
+	// neither belongs in the time somebody spends watching a spinner.
+	documentIndexer := documents.NewIndexer(documents.NewRepository(pool), storage)
+
 	worker := jobs.NewWorker(queue, log)
 	worker.Register(jobs.KindAnalyzeFormVideo, mediaSvc.AnalyzeVideo)
 	worker.Register(jobs.KindExtractMemories, memoryExtract.HandleExtractJob)
 	worker.Register(jobs.KindSyncStrava, syncStravaHandler(stravaSvc))
+	worker.Register(jobs.KindIndexDocument, documentIndexer.HandleIndexDocument)
+	worker.Register(jobs.KindReindexUser, documentIndexer.HandleReindexUser)
 
 	log.Info("worker ready",
 		slog.String("ai_provider", registry.DefaultName()),

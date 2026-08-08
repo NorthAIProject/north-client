@@ -29,6 +29,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/coach"
 	"github.com/NorthAIProject/north-client/internal/config"
 	"github.com/NorthAIProject/north-client/internal/conversations"
+	"github.com/NorthAIProject/north-client/internal/documents"
 	"github.com/NorthAIProject/north-client/internal/exercises"
 	"github.com/NorthAIProject/north-client/internal/fitness"
 	"github.com/NorthAIProject/north-client/internal/fitness/strava"
@@ -186,6 +187,10 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, stora
 	memorySvc := memories.NewService(memories.NewRepository(pool))
 	memoryHandler := memories.NewHandler(memorySvc)
 
+	// Notes and uploaded documents. Bytes go to the same object storage as
+	// media; parsing and chunking happen on the worker, never here.
+	documentSvc := documents.NewService(documents.NewRepository(pool), storage, queue)
+
 	// Built before workouts: the plan generator picks from this catalog, so
 	// the catalog has to exist before the thing that reads it.
 	exerciseSvc := exercises.NewService(exercises.NewRepository(pool))
@@ -297,6 +302,7 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, stora
 			goals.NewContextSource(goalSvc),
 			checkins.NewContextSource(checkinSvc),
 			memories.NewContextSource(memorySvc),
+			documents.NewContextSource(documentSvc),
 			workouts.NewContextSource(workoutSvc),
 			media.NewContextSource(mediaSvc),
 			calculator.NewContextSource(calculatorSvc),
