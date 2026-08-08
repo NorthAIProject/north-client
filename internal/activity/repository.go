@@ -153,8 +153,20 @@ func fromDB(row activitydb.ActivitySession) Session {
 // rather than an error, which is what lets a sync run as often as it likes.
 func (r *Repository) Import(ctx context.Context, in ImportInput) (Session, bool, error) {
 	endedAt := in.EndedAt
-	calories := in.Calories
 	externalID := in.ExternalID
+
+	// Unknown calories are stored as NULL, not as zero.
+	//
+	// They are genuinely unknown when the provider sent no figure and we hold
+	// no body weight to estimate from — Strava's list endpoint omits calories,
+	// and a new account has no biometrics yet. Writing 0 would be a claim that
+	// an hour of training burned nothing, and it would flow straight into the
+	// coach's "kcal burned today" line as fact.
+	var calories *float64
+	if in.Calories > 0 {
+		c := in.Calories
+		calories = &c
+	}
 
 	row, err := r.q.ImportActivitySession(ctx, activitydb.ImportActivitySessionParams{
 		UserID:           in.UserID,
@@ -163,7 +175,7 @@ func (r *Repository) Import(ctx context.Context, in ImportInput) (Session, bool,
 		WeightKgSnapshot: in.WeightKg,
 		StartedAt:        in.StartedAt,
 		EndedAt:          &endedAt,
-		CaloriesBurned:   &calories,
+		CaloriesBurned:   calories,
 		ExternalID:       &externalID,
 	})
 	if err != nil {
