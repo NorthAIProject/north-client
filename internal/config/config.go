@@ -42,8 +42,9 @@ type Config struct {
 	WebAuthnRPID        string
 	WebAuthnDisplayName string
 
-	AI      AIConfig
-	Storage StorageConfig
+	AI        AIConfig
+	Storage   StorageConfig
+	Embedding EmbeddingConfig
 
 	// MCPListenAddr is where cmd/mcp-server listens. It defaults to the
 	// loopback interface rather than all of them: the MCP surface authenticates
@@ -98,6 +99,29 @@ type AIConfig struct {
 	// OpenRouter's attribution headers. Its convention, not the dialect's.
 	OpenRouterSiteURL  string
 	OpenRouterSiteName string
+}
+
+// EmbeddingConfig turns on semantic retrieval.
+//
+// Off unless Provider and Model are both set, and that default is deliberate:
+// with no embeddings configured North retrieves by full text alone, which is
+// what it did before and is a complete feature rather than a degraded one.
+type EmbeddingConfig struct {
+	// Provider names a registered OpenAI-dialect client that serves
+	// /embeddings. NVIDIA NIM does; OpenRouter and xAI do not.
+	Provider string
+
+	Model string
+
+	// Dimensions must match both the model and the vector column in
+	// migrations/20260808192429_create_chunk_embeddings.sql. Checked at
+	// startup, because the alternative is finding out mid-reindex.
+	Dimensions int
+}
+
+// Enabled reports whether semantic retrieval is configured.
+func (e EmbeddingConfig) Enabled() bool {
+	return e.Provider != "" && e.Model != "" && e.Dimensions > 0
 }
 
 // OpenAICompatConfig configures one backend speaking the OpenAI chat dialect.
@@ -162,7 +186,12 @@ func Load() (*Config, error) {
 		StravaClientID:     strings.TrimSpace(os.Getenv("STRAVA_CLIENT_ID")),
 		StravaClientSecret: strings.TrimSpace(os.Getenv("STRAVA_CLIENT_SECRET")),
 
-		MCPListenAddr:     optional("MCP_LISTEN_ADDR", "127.0.0.1:8093"),
+		MCPListenAddr: optional("MCP_LISTEN_ADDR", "127.0.0.1:8093"),
+
+		Embedding: EmbeddingConfig{
+			Provider: optional("EMBEDDING_PROVIDER", ""),
+			Model:    optional("EMBEDDING_MODEL", ""),
+		},
 		MCPAllowedOrigins: commaList("MCP_ALLOWED_ORIGINS"),
 
 		WebAuthnRPID:        optional("WEBAUTHN_RP_ID", ""),
@@ -229,6 +258,21 @@ func Load() (*Config, error) {
 		problems = append(problems, err.Error())
 	}
 	cfg.MCPRequestsPerMinute = mcpRate
+
+	// 1024 is the width of the vector column. A model of another width needs a
+	// migration, so a mismatch is refused at startup rather than at the first
+	// insert of somebody's reindex.
+	dims, err := intValue("EMBEDDING_DIMENSIONS", 1024)
+	if err != nil {
+		problems = append(problems, err.Error())
+	}
+	cfg.Embedding.Dimensions = dims
+	if cfg.Embedding.Enabled() && dims != 1024 {
+		problems = append(problems, "EMBEDDING_DIMENSIONS must be 1024 to match the chunk_embeddings column")
+	}
+	if (cfg.Embedding.Provider == "") != (cfg.Embedding.Model == "") {
+		problems = append(problems, "EMBEDDING_PROVIDER and EMBEDDING_MODEL must be set together")
+	}
 
 	lifetime, err := durationValue("SESSION_LIFETIME", 30*24*time.Hour)
 	if err != nil {

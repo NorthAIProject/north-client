@@ -9,7 +9,56 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/pgvector/pgvector-go"
 )
+
+const chunksNeedingEmbedding = `-- name: ChunksNeedingEmbedding :many
+SELECT c.chunk_id, c.content
+FROM document_chunks c
+JOIN documents d ON d.id = c.document_id
+LEFT JOIN chunk_embeddings e ON e.chunk_id = c.chunk_id
+WHERE c.user_id = $1
+  AND d.deleted_at IS NULL
+  AND (e.chunk_id IS NULL OR e.model <> $2)
+ORDER BY c.document_id, c.ordinal
+LIMIT $3
+`
+
+type ChunksNeedingEmbeddingParams struct {
+	UserID      uuid.UUID
+	Model       string
+	ResultLimit int32
+}
+
+type ChunksNeedingEmbeddingRow struct {
+	ChunkID string
+	Content string
+}
+
+// Passages with no vector, or one from a model North is no longer using.
+//
+// A vector from another model is worse than none: cosine distance between two
+// coordinate systems is a number, and it will rank things confidently and
+// wrongly. So a model change makes every row stale rather than mixed.
+func (q *Queries) ChunksNeedingEmbedding(ctx context.Context, arg ChunksNeedingEmbeddingParams) ([]ChunksNeedingEmbeddingRow, error) {
+	rows, err := q.db.Query(ctx, chunksNeedingEmbedding, arg.UserID, arg.Model, arg.ResultLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ChunksNeedingEmbeddingRow{}
+	for rows.Next() {
+		var i ChunksNeedingEmbeddingRow
+		if err := rows.Scan(&i.ChunkID, &i.Content); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
 
 const completeIndexRun = `-- name: CompleteIndexRun :exec
 UPDATE index_runs
@@ -64,6 +113,22 @@ SELECT count(*)::int FROM document_chunks WHERE user_id = $1
 
 func (q *Queries) CountChunks(ctx context.Context, userID uuid.UUID) (int32, error) {
 	row := q.db.QueryRow(ctx, countChunks, userID)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const countEmbeddedChunks = `-- name: CountEmbeddedChunks :one
+SELECT count(*)::int FROM chunk_embeddings WHERE user_id = $1 AND model = $2
+`
+
+type CountEmbeddedChunksParams struct {
+	UserID uuid.UUID
+	Model  string
+}
+
+func (q *Queries) CountEmbeddedChunks(ctx context.Context, arg CountEmbeddedChunksParams) (int32, error) {
+	row := q.db.QueryRow(ctx, countEmbeddedChunks, arg.UserID, arg.Model)
 	var column_1 int32
 	err := row.Scan(&column_1)
 	return column_1, err
@@ -517,6 +582,83 @@ func (q *Queries) SearchChunks(ctx context.Context, arg SearchChunksParams) ([]S
 	return items, nil
 }
 
+const searchChunksByVector = `-- name: SearchChunksByVector :many
+SELECT
+    c.chunk_id,
+    c.document_id,
+    c.heading_path,
+    c.start_line,
+    c.end_line,
+    c.content,
+    d.title,
+    (e.embedding <=> $1::vector)::float8 AS distance
+FROM chunk_embeddings e
+JOIN document_chunks c ON c.chunk_id = e.chunk_id
+JOIN documents d ON d.id = c.document_id
+WHERE e.user_id = $2
+  AND e.model = $3
+  AND d.deleted_at IS NULL
+ORDER BY e.embedding <=> $1::vector
+LIMIT $4
+`
+
+type SearchChunksByVectorParams struct {
+	QueryVector *pgvector.Vector
+	UserID      uuid.UUID
+	Model       string
+	ResultLimit int32
+}
+
+type SearchChunksByVectorRow struct {
+	ChunkID     string
+	DocumentID  uuid.UUID
+	HeadingPath []byte
+	StartLine   int32
+	EndLine     int32
+	Content     string
+	Title       string
+	Distance    float64
+}
+
+// Nearest passages by cosine distance.
+//
+// Only rows embedded with the current model are considered, for the reason
+// above. Distance is returned rather than similarity so the ordering reads the
+// way pgvector writes it; the caller converts.
+func (q *Queries) SearchChunksByVector(ctx context.Context, arg SearchChunksByVectorParams) ([]SearchChunksByVectorRow, error) {
+	rows, err := q.db.Query(ctx, searchChunksByVector,
+		arg.QueryVector,
+		arg.UserID,
+		arg.Model,
+		arg.ResultLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SearchChunksByVectorRow{}
+	for rows.Next() {
+		var i SearchChunksByVectorRow
+		if err := rows.Scan(
+			&i.ChunkID,
+			&i.DocumentID,
+			&i.HeadingPath,
+			&i.StartLine,
+			&i.EndLine,
+			&i.Content,
+			&i.Title,
+			&i.Distance,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const softDeleteDocument = `-- name: SoftDeleteDocument :exec
 UPDATE documents
 SET deleted_at = now(),
@@ -604,6 +746,35 @@ func (q *Queries) UpsertChunk(ctx context.Context, arg UpsertChunkParams) error 
 		arg.EndLine,
 		arg.Content,
 		arg.ContentSha256,
+	)
+	return err
+}
+
+const upsertChunkEmbedding = `-- name: UpsertChunkEmbedding :exec
+INSERT INTO chunk_embeddings (chunk_id, user_id, provider, model, embedding)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (chunk_id) DO UPDATE
+SET provider   = EXCLUDED.provider,
+    model      = EXCLUDED.model,
+    embedding  = EXCLUDED.embedding,
+    created_at = now()
+`
+
+type UpsertChunkEmbeddingParams struct {
+	ChunkID   string
+	UserID    uuid.UUID
+	Provider  string
+	Model     string
+	Embedding *pgvector.Vector
+}
+
+func (q *Queries) UpsertChunkEmbedding(ctx context.Context, arg UpsertChunkEmbeddingParams) error {
+	_, err := q.db.Exec(ctx, upsertChunkEmbedding,
+		arg.ChunkID,
+		arg.UserID,
+		arg.Provider,
+		arg.Model,
+		arg.Embedding,
 	)
 	return err
 }

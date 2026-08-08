@@ -35,6 +35,10 @@ type Client struct {
 	defaultModel       string
 	headers            map[string]string
 	supportsJSONSchema bool
+
+	// embed is zero unless WithEmbeddings was called. A zero value means this
+	// client speaks chat only, and asserting ai.Embedder on it should fail.
+	embed EmbedOptions
 }
 
 type Options struct {
@@ -241,12 +245,16 @@ func (c *Client) UploadFile(ctx context.Context, req ai.UploadRequest) (*ai.File
 }
 
 func (c *Client) post(ctx context.Context, body any) (*http.Response, error) {
+	return c.postTo(ctx, "/chat/completions", body)
+}
+
+func (c *Client) postTo(ctx context.Context, path string, body any) (*http.Response, error) {
 	encoded, err := json.Marshal(body)
 	if err != nil {
 		return nil, apperr.Wrap(err, "%s: encode request", c.name)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/chat/completions", bytes.NewReader(encoded))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, bytes.NewReader(encoded))
 	if err != nil {
 		return nil, apperr.Wrap(err, "%s: build request", c.name)
 	}

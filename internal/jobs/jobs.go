@@ -49,6 +49,13 @@ const (
 	// The schema calls chunks derived state. A claim like that is only true
 	// while something exercises it, and this is that something.
 	KindReindexUser Kind = "reindex_user"
+
+	// KindEmbedChunks computes vectors for passages that have none.
+	//
+	// Its own job, after indexing, because it fails differently: chunking is
+	// local and deterministic, embedding is a call to somebody else's service.
+	// A passage must be searchable by text before that call succeeds.
+	KindEmbedChunks Kind = "embed_chunks"
 )
 
 // ExtractMemoriesPayload is the job body for KindExtractMemories.
@@ -75,6 +82,10 @@ type IndexDocumentPayload struct {
 }
 
 type ReindexUserPayload struct {
+	UserID uuid.UUID `json:"user_id"`
+}
+
+type EmbedChunksPayload struct {
 	UserID uuid.UUID `json:"user_id"`
 }
 

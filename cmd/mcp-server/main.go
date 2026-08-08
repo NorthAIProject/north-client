@@ -114,8 +114,17 @@ func run() error {
 		return err
 	}
 
+	embedder, err := providers.Embedder(registry, providers.EmbedderOptions{
+		Provider:   cfg.Embedding.Provider,
+		Model:      cfg.Embedding.Model,
+		Dimensions: cfg.Embedding.Dimensions,
+	})
+	if err != nil {
+		return err
+	}
+
 	handler := mcpserver.NewHandler(mcpserver.Config{
-		Services: buildServices(cfg, pool, registry),
+		Services: buildServices(cfg, pool, registry, embedder),
 		Token:    token,
 		UserID:   userID,
 		Log:      log,
@@ -175,7 +184,7 @@ func run() error {
 // This list is duplicated from cmd/web's routes(). Adding a context source in
 // one place and not the other is the drift to watch for; the two are worth
 // unifying into a shared composition root once a third binary needs them.
-func buildServices(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry) mcpserver.Services {
+func buildServices(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, embedder ai.Embedder) mcpserver.Services {
 	userSvc := users.NewService(users.NewRepository(pool))
 	conversationSvc := conversations.NewService(conversations.NewRepository(pool))
 
@@ -187,6 +196,10 @@ func buildServices(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry
 	// can read a person's indexed documents but cannot add to them or index
 	// them — which is the right shape for a surface an agent holds a token to.
 	documentSvc := documents.NewService(documents.NewRepository(pool), nil, nil)
+
+	if embedder != nil {
+		documentSvc = documentSvc.WithEmbeddings(embedder, slog.Default())
+	}
 
 	biometricSvc := biometrics.NewService(biometrics.NewRepository(pool))
 	calculatorSvc := calculator.NewService(calculator.NewRepository(pool), biometricSvc)

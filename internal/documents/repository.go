@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/pgvector/pgvector-go"
 
 	documentsdb "github.com/NorthAIProject/north-client/internal/documents/db"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
@@ -306,4 +307,80 @@ func orEmpty(v []string) []string {
 		return []string{}
 	}
 	return v
+}
+
+// PendingChunk is a passage still waiting for a vector.
+type PendingChunk struct {
+	ChunkID string
+	Content string
+}
+
+func (r *Repository) ChunksNeedingEmbedding(ctx context.Context, userID uuid.UUID, model string, limit int) ([]PendingChunk, error) {
+	rows, err := r.q.ChunksNeedingEmbedding(ctx, documentsdb.ChunksNeedingEmbeddingParams{
+		UserID:      userID,
+		Model:       model,
+		ResultLimit: int32(limit),
+	})
+	if err != nil {
+		return nil, apperr.Wrap(err, "list chunks needing embedding")
+	}
+
+	out := make([]PendingChunk, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, PendingChunk{ChunkID: row.ChunkID, Content: row.Content})
+	}
+	return out, nil
+}
+
+func (r *Repository) SaveEmbedding(ctx context.Context, chunkID string, userID uuid.UUID, provider, model string, vector []float32) error {
+	v := pgvector.NewVector(vector)
+	return apperr.Wrap(r.q.UpsertChunkEmbedding(ctx, documentsdb.UpsertChunkEmbeddingParams{
+		ChunkID:   chunkID,
+		UserID:    userID,
+		Provider:  provider,
+		Model:     model,
+		Embedding: &v,
+	}), "save embedding")
+}
+
+// SearchByVector returns the passages nearest the query vector.
+//
+// Cosine distance comes back as 0 (identical) to 2 (opposite); it is turned
+// into a 0..1 similarity here so a caller never has to remember which direction
+// is better.
+func (r *Repository) SearchByVector(ctx context.Context, userID uuid.UUID, model string, vector []float32, limit int) ([]Hit, error) {
+	v := pgvector.NewVector(vector)
+
+	rows, err := r.q.SearchChunksByVector(ctx, documentsdb.SearchChunksByVectorParams{
+		UserID:      userID,
+		Model:       model,
+		QueryVector: &v,
+		ResultLimit: int32(limit),
+	})
+	if err != nil {
+		return nil, apperr.Wrap(err, "search chunks by vector")
+	}
+
+	out := make([]Hit, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, Hit{
+			ChunkID:     row.ChunkID,
+			DocumentID:  row.DocumentID,
+			Title:       row.Title,
+			HeadingPath: decodePath(row.HeadingPath),
+			StartLine:   int(row.StartLine),
+			EndLine:     int(row.EndLine),
+			Content:     row.Content,
+			Rank:        1 - (row.Distance / 2),
+		})
+	}
+	return out, nil
+}
+
+func (r *Repository) CountEmbedded(ctx context.Context, userID uuid.UUID, model string) (int, error) {
+	n, err := r.q.CountEmbeddedChunks(ctx, documentsdb.CountEmbeddedChunksParams{UserID: userID, Model: model})
+	if err != nil {
+		return 0, apperr.Wrap(err, "count embedded chunks")
+	}
+	return int(n), nil
 }

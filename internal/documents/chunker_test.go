@@ -56,7 +56,10 @@ func TestChunkContentAlwaysQuotesItsOwnLineRange(t *testing.T) {
 		"crlf":          "# Heading\r\n\r\nBody with windows endings.\r\n",
 	} {
 		t.Run(name, func(t *testing.T) {
-			doc := parse.Parse("log.md", "text/markdown", source)
+			doc, err := parse.Parse("log.md", "text/markdown", source)
+			if err != nil {
+				t.Fatal(err)
+			}
 			chunks := documents.ChunkDocument(doc, documents.Options{})
 
 			for _, c := range chunks {
@@ -76,7 +79,7 @@ func TestChunkContentAlwaysQuotesItsOwnLineRange(t *testing.T) {
 }
 
 func TestChunkOrdinalsAreDenseAndOrdered(t *testing.T) {
-	doc := parse.Parse("log.md", "text/markdown", trainingLog)
+	doc := mustParse(t, "log.md", "text/markdown", trainingLog)
 	chunks := documents.ChunkDocument(doc, documents.Options{})
 
 	if len(chunks) == 0 {
@@ -93,7 +96,7 @@ func TestChunkOrdinalsAreDenseAndOrdered(t *testing.T) {
 }
 
 func TestHeadingPathCarriesTheTrail(t *testing.T) {
-	doc := parse.Parse("log.md", "text/markdown", trainingLog)
+	doc := mustParse(t, "log.md", "text/markdown", trainingLog)
 	chunks := documents.ChunkDocument(doc, documents.Options{})
 
 	var found bool
@@ -121,7 +124,7 @@ func TestHeadingPathCarriesTheTrail(t *testing.T) {
 // A shell comment inside a fenced block is not a section. Treating it as one
 // shreds a document into chunks named after its code.
 func TestFencedCodeDoesNotCreateHeadings(t *testing.T) {
-	doc := parse.Parse("log.md", "text/markdown", trainingLog)
+	doc := mustParse(t, "log.md", "text/markdown", trainingLog)
 
 	for _, h := range doc.Headings {
 		if strings.Contains(h.Text, "shell comment") || strings.Contains(h.Text, "neither is this") {
@@ -131,7 +134,7 @@ func TestFencedCodeDoesNotCreateHeadings(t *testing.T) {
 }
 
 func TestFrontMatterTitleWins(t *testing.T) {
-	doc := parse.Parse("some-file.md", "text/markdown", trainingLog)
+	doc := mustParse(t, "some-file.md", "text/markdown", trainingLog)
 	if doc.Title != "Training log" {
 		t.Errorf("title = %q, want %q", doc.Title, "Training log")
 	}
@@ -141,7 +144,7 @@ func TestFrontMatterTitleWins(t *testing.T) {
 }
 
 func TestTitleFallsBackToTheFilename(t *testing.T) {
-	doc := parse.Parse("physio_notes-2026.txt", "text/plain", "no structure at all")
+	doc := mustParse(t, "physio_notes-2026.txt", "text/plain", "no structure at all")
 	if doc.Title != "physio notes 2026" {
 		t.Errorf("title = %q", doc.Title)
 	}
@@ -158,7 +161,7 @@ func TestOversizedSectionsAreSplit(t *testing.T) {
 		_ = i
 	}
 
-	doc := parse.Parse("long.md", "text/markdown", b.String())
+	doc := mustParse(t, "long.md", "text/markdown", b.String())
 	chunks := documents.ChunkDocument(doc, documents.Options{})
 
 	if len(chunks) < 2 {
@@ -176,7 +179,7 @@ func TestOversizedSectionsAreSplit(t *testing.T) {
 
 // Determinism is what makes reindexing cheap and old citations resolvable.
 func TestChunkingIsDeterministic(t *testing.T) {
-	doc := parse.Parse("log.md", "text/markdown", trainingLog)
+	doc := mustParse(t, "log.md", "text/markdown", trainingLog)
 
 	first := documents.ChunkDocument(doc, documents.Options{})
 	second := documents.ChunkDocument(doc, documents.Options{})
@@ -208,4 +211,13 @@ func TestChunkIDChangesWithContent(t *testing.T) {
 	if documents.ChunkID(id, 1, "aaa") == documents.ChunkID(uuid.New(), 1, "aaa") {
 		t.Error("the same passage in two documents shares one id")
 	}
+}
+
+func mustParse(t *testing.T, filename, mime, source string) parse.Document {
+	t.Helper()
+	doc, err := parse.Parse(filename, mime, source)
+	if err != nil {
+		t.Fatalf("parse %s: %v", filename, err)
+	}
+	return doc
 }

@@ -162,3 +162,55 @@ SELECT * FROM index_runs
 WHERE user_id = $1
 ORDER BY started_at DESC
 LIMIT 1;
+
+-- name: UpsertChunkEmbedding :exec
+INSERT INTO chunk_embeddings (chunk_id, user_id, provider, model, embedding)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (chunk_id) DO UPDATE
+SET provider   = EXCLUDED.provider,
+    model      = EXCLUDED.model,
+    embedding  = EXCLUDED.embedding,
+    created_at = now();
+
+-- name: ChunksNeedingEmbedding :many
+-- Passages with no vector, or one from a model North is no longer using.
+--
+-- A vector from another model is worse than none: cosine distance between two
+-- coordinate systems is a number, and it will rank things confidently and
+-- wrongly. So a model change makes every row stale rather than mixed.
+SELECT c.chunk_id, c.content
+FROM document_chunks c
+JOIN documents d ON d.id = c.document_id
+LEFT JOIN chunk_embeddings e ON e.chunk_id = c.chunk_id
+WHERE c.user_id = @user_id
+  AND d.deleted_at IS NULL
+  AND (e.chunk_id IS NULL OR e.model <> @model)
+ORDER BY c.document_id, c.ordinal
+LIMIT @result_limit;
+
+-- name: SearchChunksByVector :many
+-- Nearest passages by cosine distance.
+--
+-- Only rows embedded with the current model are considered, for the reason
+-- above. Distance is returned rather than similarity so the ordering reads the
+-- way pgvector writes it; the caller converts.
+SELECT
+    c.chunk_id,
+    c.document_id,
+    c.heading_path,
+    c.start_line,
+    c.end_line,
+    c.content,
+    d.title,
+    (e.embedding <=> @query_vector::vector)::float8 AS distance
+FROM chunk_embeddings e
+JOIN document_chunks c ON c.chunk_id = e.chunk_id
+JOIN documents d ON d.id = c.document_id
+WHERE e.user_id = @user_id
+  AND e.model = @model
+  AND d.deleted_at IS NULL
+ORDER BY e.embedding <=> @query_vector::vector
+LIMIT @result_limit;
+
+-- name: CountEmbeddedChunks :one
+SELECT count(*)::int FROM chunk_embeddings WHERE user_id = $1 AND model = $2;

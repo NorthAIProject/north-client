@@ -118,9 +118,22 @@ func run() error {
 		return err
 	}
 
+	// Semantic retrieval, when a provider is configured. A failure here is fatal
+	// rather than silent: somebody who set EMBEDDING_PROVIDER has said what they
+	// want, and booting with full-text-only retrieval would look like it worked
+	// and surface as worse answers weeks later.
+	embedder, err := providers.Embedder(registry, providers.EmbedderOptions{
+		Provider:   cfg.Embedding.Provider,
+		Model:      cfg.Embedding.Model,
+		Dimensions: cfg.Embedding.Dimensions,
+	})
+	if err != nil {
+		return err
+	}
+
 	srv := &http.Server{
 		Addr:    cfg.Addr(),
-		Handler: routes(cfg, pool, registry, storage),
+		Handler: routes(cfg, pool, registry, storage, embedder),
 
 		ReadHeaderTimeout: 10 * time.Second,
 		// No WriteTimeout: it would cut off SSE streams mid-answer. Individual
@@ -155,7 +168,7 @@ func run() error {
 	return nil
 }
 
-func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, storage media.Storage) http.Handler {
+func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, storage media.Storage, embedder ai.Embedder) http.Handler {
 	// Wiring happens once, here. Every dependency is constructed explicitly and
 	// passed down, so the shape of the application is readable in one place
 	// rather than discovered through package-level initialisation.
@@ -191,6 +204,10 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, stora
 	// Notes and uploaded documents. Bytes go to the same object storage as
 	// media; parsing and chunking happen on the worker, never here.
 	documentSvc := documents.NewService(documents.NewRepository(pool), storage, queue)
+
+	if embedder != nil {
+		documentSvc = documentSvc.WithEmbeddings(embedder, slog.Default())
+	}
 	documentHandler := documents.NewHandler(documentSvc)
 
 	// Export reads across memories, documents and conversations, which is why

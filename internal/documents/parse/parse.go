@@ -50,14 +50,28 @@ func (d Document) LineCount() int { return len(d.Lines) }
 
 // Parse reads a source according to its filename and MIME type.
 //
-// Anything not recognised as Markdown is treated as plain text rather than
-// rejected: a document with no headings still chunks, still ranks, and is still
-// better in the index than absent from it.
-func Parse(filename, mime, source string) Document {
-	if isMarkdown(filename, mime) {
-		return Markdown(filename, source)
+// Anything not recognised as Markdown or PDF is treated as plain text rather
+// than rejected: a document with no headings still chunks, still ranks, and is
+// still better in the index than absent from it.
+//
+// Only PDF can fail. Markdown and text always parse to something, because
+// "no headings and one paragraph" is a valid document; a PDF can be encrypted,
+// malformed, or a scan with no text layer at all, and each of those is worth
+// telling its owner about specifically.
+func Parse(filename, mime, source string) (Document, error) {
+	switch {
+	case isPDF(filename, mime):
+		return PDF(filename, []byte(source))
+	case isMarkdown(filename, mime):
+		return Markdown(filename, source), nil
+	default:
+		return Plaintext(filename, source), nil
 	}
-	return Plaintext(filename, source)
+}
+
+func isPDF(filename, mime string) bool {
+	return strings.EqualFold(filepath.Ext(filename), ".pdf") ||
+		strings.Contains(strings.ToLower(mime), "pdf")
 }
 
 func isMarkdown(filename, mime string) bool {

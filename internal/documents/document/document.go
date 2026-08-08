@@ -88,6 +88,10 @@ type Hit struct {
 	Rank float64
 }
 
+// Key identifies a passage across retrieval methods, so full-text and vector
+// results for the same passage fuse into one entry rather than two.
+func (h Hit) Key() string { return h.ChunkID }
+
 // Label names the source of a hit the way a person would.
 //
 // "Training log › Deload weeks" rather than a chunk id: a citation nobody can

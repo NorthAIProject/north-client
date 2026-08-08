@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/documents/parse"
+	"github.com/NorthAIProject/north-client/internal/jobs"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
@@ -25,10 +26,34 @@ type Indexer struct {
 	repo    *Repository
 	storage Storage
 	opts    Options
+
+	// queue is nil unless embeddings are wired. When present, a pass that
+	// wrote chunks queues the vector work behind it rather than doing it
+	// inline: a provider outage must not fail an index that otherwise
+	// succeeded, and the passages are already searchable by text.
+	queue *jobs.Queue
 }
 
 func NewIndexer(repo *Repository, storage Storage) *Indexer {
 	return &Indexer{repo: repo, storage: storage}
+}
+
+// WithEmbeddingQueue makes the indexer schedule vector work after each pass.
+func (ix *Indexer) WithEmbeddingQueue(queue *jobs.Queue) *Indexer {
+	ix.queue = queue
+	return ix
+}
+
+// queueEmbeddings schedules the vector pass for whatever this run changed.
+//
+// Failures are logged by the queue and otherwise ignored: the chunks are
+// written and searchable, and a missing vector costs recall rather than
+// correctness.
+func (ix *Indexer) queueEmbeddings(ctx context.Context, userID uuid.UUID, run IndexRun) {
+	if ix.queue == nil || run.ChunksWritten == 0 {
+		return
+	}
+	_, _ = ix.queue.Enqueue(ctx, jobs.KindEmbedChunks, jobs.EmbedChunksPayload{UserID: userID})
 }
 
 // IndexDocument indexes one document and records the run.
@@ -47,6 +72,7 @@ func (ix *Indexer) IndexDocument(ctx context.Context, userID, documentID uuid.UU
 	ix.indexOne(ctx, doc, &run)
 
 	run.Success = run.Failed == 0
+	ix.queueEmbeddings(ctx, userID, run)
 	return ix.repo.CompleteRun(ctx, run)
 }
 
@@ -76,6 +102,7 @@ func (ix *Indexer) ReindexUser(ctx context.Context, userID uuid.UUID) error {
 	}
 
 	run.Success = run.Failed == 0 && run.ErrorSummary == ""
+	ix.queueEmbeddings(ctx, userID, run)
 	return ix.repo.CompleteRun(ctx, run)
 }
 
@@ -93,7 +120,13 @@ func (ix *Indexer) indexOne(ctx context.Context, doc Document, run *IndexRun) {
 		return
 	}
 
-	parsed := parseDoc(titleSource(doc), doc.MIME, content)
+	parsed, err := parse.Parse(titleSource(doc), doc.MIME, content)
+	if err != nil {
+		// A parse failure is a fact about the person's file, not an outage.
+		// Its message is written for them to read on the knowledge page.
+		ix.fail(ctx, doc, run, err.Error())
+		return
+	}
 	sum := sha256.Sum256([]byte(content))
 	sha := hex.EncodeToString(sum[:])
 
@@ -166,10 +199,6 @@ func titleSource(doc Document) string {
 		return doc.StorageKey
 	}
 	return doc.Title
-}
-
-func parseDoc(filename, mime, content string) parse.Document {
-	return parse.Parse(filename, mime, content)
 }
 
 // HandleIndexDocument and HandleReindexUser adapt the queue's payloads.

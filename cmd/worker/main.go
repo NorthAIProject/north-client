@@ -117,7 +117,21 @@ func run() error {
 	// Documents are parsed and chunked here rather than during the upload:
 	// indexing one file is bounded work, rebuilding a library is not, and
 	// neither belongs in the time somebody spends watching a spinner.
-	documentIndexer := documents.NewIndexer(documents.NewRepository(pool), storage)
+	documentRepo := documents.NewRepository(pool)
+	documentIndexer := documents.NewIndexer(documentRepo, storage).WithEmbeddingQueue(queue)
+
+	// Semantic retrieval is optional. With no provider configured this is nil,
+	// the job does nothing, and retrieval stays full-text — which is a complete
+	// feature, not a degraded one.
+	embedClient, err := providers.Embedder(registry, providers.EmbedderOptions{
+		Provider:   cfg.Embedding.Provider,
+		Model:      cfg.Embedding.Model,
+		Dimensions: cfg.Embedding.Dimensions,
+	})
+	if err != nil {
+		return err
+	}
+	documentEmbedder := documents.NewEmbedder(documentRepo, embedClient, log)
 
 	worker := jobs.NewWorker(queue, log)
 	worker.Register(jobs.KindAnalyzeFormVideo, mediaSvc.AnalyzeVideo)
@@ -125,10 +139,12 @@ func run() error {
 	worker.Register(jobs.KindSyncStrava, syncStravaHandler(stravaSvc))
 	worker.Register(jobs.KindIndexDocument, documentIndexer.HandleIndexDocument)
 	worker.Register(jobs.KindReindexUser, documentIndexer.HandleReindexUser)
+	worker.Register(jobs.KindEmbedChunks, documentEmbedder.HandleEmbedJob)
 
 	log.Info("worker ready",
 		slog.String("ai_provider", registry.DefaultName()),
 		slog.String("bucket", cfg.Storage.Bucket),
+		slog.Bool("embeddings", documentEmbedder.Enabled()),
 	)
 
 	return worker.Run(ctx)

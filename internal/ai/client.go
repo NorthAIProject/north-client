@@ -195,3 +195,42 @@ type Client interface {
 	// URI is empty, and callers should then inline the bytes instead.
 	UploadFile(ctx context.Context, req UploadRequest) (*File, error)
 }
+
+// Embedder turns text into vectors.
+//
+// Separate from Client, and type-asserted for rather than required, because
+// most of what North talks to does not do embeddings: OpenRouter proxies chat
+// models, xAI has no embedding endpoint. Putting Embed on Client would force
+// four providers to implement a method that answers "not supported", and every
+// caller would still have to handle that — the same check, moved somewhere it
+// reads worse.
+type Embedder interface {
+	// Name identifies the provider, so a stored vector can record what
+	// produced it.
+	Name() string
+
+	// EmbedModel is the model these vectors come from. A vector is only
+	// comparable with others from the same model, so it is stored alongside
+	// them and a change to it invalidates everything that came before.
+	EmbedModel() string
+
+	// Dimensions is the length of every vector returned. Fixed per model, and
+	// checked against the database column at startup rather than discovered
+	// when the first insert fails.
+	Dimensions() int
+
+	// EmbedQuery embeds a search query rather than a passage.
+	//
+	// Separate from Embed because retrieval models are usually asymmetric:
+	// they are trained with a different prefix for the question and for the
+	// thing being searched. Using the passage side for both still returns
+	// results, just worse ones, which is the kind of bug nobody finds.
+	EmbedQuery(ctx context.Context, query string) ([]float32, error)
+
+	// Embed returns one vector per input, in the same order.
+	//
+	// Batched because the cost is dominated by the round trip: embedding a
+	// hundred passages one at a time is a hundred times the latency of
+	// embedding them together, for identical tokens.
+	Embed(ctx context.Context, texts []string) ([][]float32, error)
+}

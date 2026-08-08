@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/pgvector/pgvector-go"
 )
 
 type ActivitySession struct {
@@ -50,6 +51,15 @@ type CheckIn struct {
 	RelatedGoalID *uuid.UUID
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
+}
+
+type ChunkEmbedding struct {
+	ChunkID   string
+	UserID    uuid.UUID
+	Provider  string
+	Model     string
+	Embedding *pgvector.Vector
+	CreatedAt time.Time
 }
 
 type Conversation struct {
