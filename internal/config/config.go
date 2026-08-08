@@ -50,6 +50,19 @@ type Config struct {
 	// with one static token for one account, so binding it wide by accident is
 	// the mistake worth making impossible by default.
 	MCPListenAddr string
+
+	// MCPAllowedOrigins are browser origins permitted to reach /mcp, comma
+	// separated in MCP_ALLOWED_ORIGINS.
+	//
+	// Empty by default, which rejects every browser: a real MCP client sends no
+	// Origin header at all, so the only thing an Origin identifies is a web
+	// page — and a web page reaching a loopback server is the DNS-rebinding
+	// case, not a user.
+	MCPAllowedOrigins []string
+
+	// MCPRequestsPerMinute bounds the single token's call rate. Zero uses the
+	// package default. ask_coach spends money on every call.
+	MCPRequestsPerMinute int
 }
 
 // AIConfig selects and configures the AI providers. Provider names must match a
@@ -149,7 +162,8 @@ func Load() (*Config, error) {
 		StravaClientID:     strings.TrimSpace(os.Getenv("STRAVA_CLIENT_ID")),
 		StravaClientSecret: strings.TrimSpace(os.Getenv("STRAVA_CLIENT_SECRET")),
 
-		MCPListenAddr: optional("MCP_LISTEN_ADDR", "127.0.0.1:8093"),
+		MCPListenAddr:     optional("MCP_LISTEN_ADDR", "127.0.0.1:8093"),
+		MCPAllowedOrigins: commaList("MCP_ALLOWED_ORIGINS"),
 
 		WebAuthnRPID:        optional("WEBAUTHN_RP_ID", ""),
 		WebAuthnDisplayName: optional("WEBAUTHN_RP_DISPLAY_NAME", "North"),
@@ -209,6 +223,12 @@ func Load() (*Config, error) {
 		problems = append(problems, err.Error())
 	}
 	cfg.Port = port
+
+	mcpRate, err := intValue("MCP_REQUESTS_PER_MINUTE", 0)
+	if err != nil {
+		problems = append(problems, err.Error())
+	}
+	cfg.MCPRequestsPerMinute = mcpRate
 
 	lifetime, err := durationValue("SESSION_LIFETIME", 30*24*time.Hour)
 	if err != nil {
@@ -356,6 +376,11 @@ func knownProviderNames() []string {
 // providerChain reads a comma-separated preference list, discarding blanks so
 // a trailing comma or a padded value is not treated as a provider named "".
 func providerChain(key string) []string {
+	return commaList(key)
+}
+
+// commaList reads a comma-separated setting, discarding blanks.
+func commaList(key string) []string {
 	raw := strings.TrimSpace(os.Getenv(key))
 	if raw == "" {
 		return nil

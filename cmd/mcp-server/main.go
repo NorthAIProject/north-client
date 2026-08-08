@@ -54,6 +54,16 @@ import (
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
+// version is what the MCP handshake advertises.
+//
+// It was never set, so every client saw the handler's "0.1.0" fallback no
+// matter what had shipped — which makes the field worse than absent, because a
+// client reading it is being told something false. Bumped here because the
+// published contract changed: every tool now declares whether it writes, and
+// results carry structured content as well as text. The contract this names is
+// internal/mcpserver/testdata/tools.golden.json.
+const version = "0.2.0"
+
 const shutdownTimeout = 10 * time.Second
 
 func main() {
@@ -109,6 +119,14 @@ func run() error {
 		Token:    token,
 		UserID:   userID,
 		Log:      log,
+
+		// Empty unless MCP_ALLOWED_ORIGINS says otherwise, which rejects every
+		// browser. Real MCP clients send no Origin at all; a request that does
+		// is a web page, and a web page is not the intended caller.
+		AllowedOrigins:    cfg.MCPAllowedOrigins,
+		RequestsPerMinute: cfg.MCPRequestsPerMinute,
+
+		Version: version,
 	})
 
 	srv := &http.Server{

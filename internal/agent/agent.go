@@ -30,6 +30,18 @@ type Capability struct {
 	// shape of its arguments.
 	Tool ai.Tool
 
+	// ReadOnly reports that invoking this capability changes nothing.
+	//
+	// It exists because the MCP surface publishes these tools, and a client
+	// running in read-only mode decides what it may call from the annotation
+	// alone. Unannotated, calculate_macros — which saves the plan it computes
+	// — is indistinguishable from search_exercises, so a client honouring
+	// read-only would either refuse everything or write when told not to.
+	//
+	// The default is the safe one: a capability that says nothing is treated as
+	// though it writes.
+	ReadOnly bool
+
 	// Invoke runs it for a specific person.
 	//
 	// userID is passed by the caller from an authenticated session, never
@@ -79,6 +91,15 @@ func (r *Registry) Tools() []ai.Tool {
 	}
 	sort.Slice(tools, func(i, j int) bool { return tools[i].Name < tools[j].Name })
 	return tools
+}
+
+// IsReadOnly reports whether invoking the named capability changes nothing.
+//
+// An unknown name answers false. A caller asking about a tool that does not
+// exist is already wrong, and the safe wrong answer is "assume it writes".
+func (r *Registry) IsReadOnly(name string) bool {
+	capability, ok := r.capabilities[name]
+	return ok && capability.ReadOnly
 }
 
 // Names returns the registered capability names, sorted.

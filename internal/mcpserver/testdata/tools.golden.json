@@ -1,0 +1,310 @@
+[
+  {
+    "name": "add_goal_update",
+    "description": "Record progress against one of the user's goals. The goal is named by title, not by ID.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "goal_title": {
+          "description": "the goal to update, matched by title",
+          "type": "string"
+        },
+        "note": {
+          "description": "what happened, in the user's own terms",
+          "type": "string"
+        },
+        "progress": {
+          "description": "completion percentage from 0 to 100",
+          "type": [
+            "null",
+            "integer"
+          ]
+        }
+      },
+      "required": [
+        "goal_title",
+        "note"
+      ],
+      "type": "object"
+    },
+    "readOnly": false
+  },
+  {
+    "name": "ask_coach",
+    "description": "Ask North's coach a question. The reply is grounded in the user's goals, check-ins, training, and remembered facts, and the exchange is saved to their history like any other conversation.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "message": {
+          "description": "what to ask the coach, in the user's voice",
+          "type": "string"
+        }
+      },
+      "required": [
+        "message"
+      ],
+      "type": "object"
+    },
+    "readOnly": false
+  },
+  {
+    "name": "calculate_macros",
+    "description": "Work out this person's daily calorie and macro target from the biometrics they have recorded, and save it as their current plan. Use this instead of doing the arithmetic yourself — it uses the same Mifflin-St Jeor calculation as the app, so the number matches what they see. It fails if they have not recorded their weight, height, and date of birth.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "description": "the choices behind the target",
+      "properties": {
+        "activity_level": {
+          "description": "how much they train",
+          "enum": [
+            "sedentary",
+            "light",
+            "moderate",
+            "heavy",
+            "extra_heavy"
+          ],
+          "type": "string"
+        },
+        "goal": {
+          "description": "what they are trying to do with their weight",
+          "enum": [
+            "cutting",
+            "maintenance",
+            "bulking"
+          ],
+          "type": "string"
+        },
+        "macro_split": {
+          "description": "how the calories divide between protein, fat, and carbohydrate",
+          "enum": [
+            "high_carb",
+            "moderate_carb",
+            "low_carb"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "activity_level",
+        "goal",
+        "macro_split"
+      ],
+      "type": "object"
+    },
+    "readOnly": false
+  },
+  {
+    "name": "create_check_in",
+    "description": "Record today's check-in. Writing again on the same day replaces that day's entry rather than adding a second one, so this is safe to call twice.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "challenges": {
+          "description": "what got in the way",
+          "type": "string"
+        },
+        "energy": {
+          "description": "the user's energy level, 1 (lowest) to 5 (highest)",
+          "type": "integer"
+        },
+        "mood": {
+          "description": "how the user feels, 1 (worst) to 5 (best)",
+          "type": "integer"
+        },
+        "notes": {
+          "description": "anything else worth telling the coach",
+          "type": "string"
+        },
+        "wins": {
+          "description": "what went well",
+          "type": "string"
+        }
+      },
+      "required": [
+        "mood",
+        "energy"
+      ],
+      "type": "object"
+    },
+    "readOnly": false,
+    "idempotent": true
+  },
+  {
+    "name": "get_exercise",
+    "description": "Read one catalog exercise in full: how to perform it, what it needs, and every muscle it trains.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "description": "which exercise",
+      "properties": {
+        "slug": {
+          "description": "the exercise's slug, as returned by search_exercises",
+          "type": "string"
+        }
+      },
+      "required": [
+        "slug"
+      ],
+      "type": "object"
+    },
+    "readOnly": true
+  },
+  {
+    "name": "get_fitness_summary",
+    "description": "Summarise the user's recent training: sessions logged, total calories, and whether something is in progress right now.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "days": {
+          "description": "how many days back to summarise, default 7",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "readOnly": true
+  },
+  {
+    "name": "list_check_ins",
+    "description": "Return the user's recent daily check-ins, newest first, with mood, energy, wins, challenges, and notes.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "description": "how many recent check-ins to return, default 7",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "readOnly": true
+  },
+  {
+    "name": "list_goals",
+    "description": "List the goals this person is currently working towards. Use this before giving advice that assumes what they are training for.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "description": "no arguments",
+      "properties": {},
+      "required": [],
+      "type": "object"
+    },
+    "readOnly": true
+  },
+  {
+    "name": "search_exercises",
+    "description": "Find exercises in North's catalog, by name, by the muscle they train, or by the equipment they need. Use this before recommending an exercise, so the muscles you describe are the catalog's and not your own recollection.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "description": "search terms; all are optional, but give at least one",
+      "properties": {
+        "equipment": {
+          "description": "equipment available, such as 'dumbbell', 'barbell', or 'none' for bodyweight",
+          "type": "string"
+        },
+        "muscle": {
+          "description": "the muscle group it should train",
+          "enum": [
+            "quads",
+            "glutes",
+            "hamstrings",
+            "calves",
+            "adductors",
+            "traps",
+            "delts",
+            "biceps",
+            "triceps",
+            "forearms",
+            "lats",
+            "rhomboids",
+            "erectors",
+            "serratus",
+            "abs",
+            "chest",
+            "neck"
+          ],
+          "type": "string"
+        },
+        "query": {
+          "description": "part of an exercise name, such as 'squat'",
+          "type": "string"
+        }
+      },
+      "required": [
+        "query",
+        "muscle",
+        "equipment"
+      ],
+      "type": "object"
+    },
+    "readOnly": true
+  },
+  {
+    "name": "search_goals",
+    "description": "Search the user's goals by text, optionally restricted to those still active. Returns title, category, status, progress, and target date.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "active_only": {
+          "description": "restrict to goals still in progress",
+          "type": "boolean"
+        },
+        "query": {
+          "description": "case-insensitive text to match against goal titles and motivations; omit to list all",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "readOnly": true
+  },
+  {
+    "name": "search_ingredients",
+    "description": "Look up foods in North's ingredient database and read their nutrition per 100g. Use this rather than quoting figures from memory, so the numbers match what the person would see if they logged it.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "description": "what to look for",
+      "properties": {
+        "query": {
+          "description": "part of a food's name, such as 'chicken'",
+          "type": "string"
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "type": "object"
+    },
+    "readOnly": true
+  },
+  {
+    "name": "search_knowledge",
+    "description": "Search what North has remembered about the user — the durable facts, preferences, and constraints the coach reasons from. Only approved memories are returned.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "description": "maximum results, default 20",
+          "type": "integer"
+        },
+        "query": {
+          "description": "text to match; omit to return everything the coach remembers",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "readOnly": true
+  },
+  {
+    "name": "todays_nutrition",
+    "description": "Read what this person has eaten today and the totals so far. Use this before commenting on how their day is going.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "description": "no arguments",
+      "properties": {},
+      "required": [],
+      "type": "object"
+    },
+    "readOnly": true
+  }
+]
