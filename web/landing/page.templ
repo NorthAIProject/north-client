@@ -20,6 +20,11 @@ import (
 templ Page() {
 	@layout.Public("") {
 		<div x-data="northBearing" class="relative">
+			// Host for the 3D scroll world. Empty on purpose: landing.js builds the
+			// canvas into it, so a visitor with no JavaScript, no WebGL, or a viewport
+			// too narrow to be worth it gets the page exactly as it was before.
+			// See web/assets/js/landing/scroll-world/README.md.
+			<div id="scroll-world" aria-hidden="true" class="pointer-events-none fixed inset-0 -z-10"></div>
 			@bearingRail()
 			<div class="mx-auto w-full max-w-6xl px-6 lg:pl-28 lg:pr-8">
 				@hero()
@@ -140,7 +145,11 @@ templ heroFilm() {
 			@monoLabel("Autoplay · silent loop")
 		</div>
 		<div class="overflow-hidden rounded-xl border border-hairline bg-surface shadow-[0_0_0_1px_color-mix(in_oklab,var(--north-signal)_12%,transparent)]">
+			// The id is not styling: the 3D world binds a VideoTexture to this exact
+			// element so the mp4 is decoded once and drawn twice. Removing it costs
+			// the world's panel its film — see scroll-world/panel.js.
 			<video
+				id="north-hero-film"
 				class="aspect-video w-full bg-background object-cover"
 				autoplay
 				muted

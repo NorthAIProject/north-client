@@ -24,6 +24,112 @@
   }
 
   const viewerModuleURL = assetURL("/assets/js/shared/muscle-viewer/viewer.js");
+  const scrollModuleURL = assetURL("/assets/js/landing/scroll.js");
+  const worldModuleURL = assetURL("/assets/js/landing/scroll-world/world.js");
+
+  // ---------------------------------------------------------------------------
+  // Page progress
+  // ---------------------------------------------------------------------------
+
+  /**
+   * How far down the page we are, as one number with one owner.
+   *
+   * The bearing rail reads it and so does the 3D world. A rail that says 60%
+   * while the camera is somewhere else reads as a bug even though neither value
+   * is wrong on its own.
+   *
+   * A plain scroll listener owns it until scroll.js loads, at which point
+   * ScrollTrigger takes over and the listener is removed. A handover, not two
+   * sources running side by side.
+   */
+  const pageProgress = (() => {
+    const subscribers = new Set();
+    let value = 0;
+    let native = null;
+
+    const publish = (v) => {
+      value = v;
+      subscribers.forEach((fn) => fn(v));
+    };
+
+    const fromWindow = () => {
+      const max = document.documentElement.scrollHeight - window.innerHeight;
+      publish(max > 0 ? Math.min(1, window.scrollY / max) : 0);
+    };
+
+    window.addEventListener("scroll", fromWindow, { passive: true });
+    window.addEventListener("resize", fromWindow, { passive: true });
+    native = fromWindow;
+    fromWindow();
+
+    return {
+      subscribe(fn) {
+        subscribers.add(fn);
+        fn(value);
+        return () => subscribers.delete(fn);
+      },
+      // Called once, by the scroll driver, when it is ready to be the source.
+      adopt(register) {
+        if (native) {
+          window.removeEventListener("scroll", native);
+          window.removeEventListener("resize", native);
+          native = null;
+        }
+        register(publish);
+      },
+    };
+  })();
+
+  // ---------------------------------------------------------------------------
+  // Scroll driver and 3D world
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Loads GSAP, Lenis, and the world after first paint.
+   *
+   * Deferred to an idle callback rather than started here: this file runs
+   * synchronously before Alpine boots, and roughly 170KB of scroll machinery is
+   * not something the first frame should wait behind. Everything it improves is
+   * a scroll away by definition.
+   */
+  function bootScrollWorld() {
+    const host = document.getElementById("scroll-world");
+    if (!host) return;
+
+    import(scrollModuleURL)
+      .then(async (scrollModule) => {
+        const driver = scrollModule.createScrollDriver({ reduced });
+        pageProgress.adopt((publish) => driver.onProgress(publish));
+
+        // WebGL is the part most likely to be unavailable, so it is imported
+        // last: a browser that cannot render the world still gets the smooth
+        // scrolling and the rail stays driven by ScrollTrigger.
+        const worldModule = await import(worldModuleURL);
+        const world = worldModule.createWorld(host, { reduced });
+        if (!world) return;
+
+        // Waypoints stand at the middle of each section's own scroll range, so
+        // passing a section and lighting its mark happen at the same moment.
+        world.setSections(driver.sections.map((s) => (s.start + s.end) / 2));
+
+        driver.onProgress((p) => world.update(p, driver.muscle && driver.muscle.active));
+
+        // The sections were measured before the world existed and before any
+        // late layout shift; one refresh once everything has settled keeps the
+        // marks on the line where the sections actually are.
+        window.addEventListener("load", () => driver.refresh(), { once: true });
+      })
+      .catch(() => {
+        // The page is complete without any of this. There is no degraded state
+        // to render and nothing for a visitor to act on, so it stays quiet.
+      });
+  }
+
+  if ("requestIdleCallback" in window) {
+    requestIdleCallback(bootScrollWorld, { timeout: 2000 });
+  } else {
+    window.addEventListener("load", bootScrollWorld, { once: true });
+  }
 
   // templUI's tabs component tracks state in data attributes. ARIA needs to say
   // the same thing, so mirror it whenever the state changes.
@@ -43,16 +149,21 @@
     // -----------------------------------------------------------------------
     // Bearing line
     // -----------------------------------------------------------------------
+    // The rail renders the number; it does not compute it. pageProgress above is
+    // the owner, so the rail and the 3D world can never disagree about where the
+    // page is — including across the handover to ScrollTrigger.
     Alpine.data("northBearing", () => ({
       progress: 0,
+      unsubscribe: null,
+
       init() {
-        const update = () => {
-          const max = document.documentElement.scrollHeight - window.innerHeight;
-          this.progress = max > 0 ? Math.min(100, (window.scrollY / max) * 100) : 0;
-        };
-        update();
-        window.addEventListener("scroll", update, { passive: true });
-        window.addEventListener("resize", update, { passive: true });
+        this.unsubscribe = pageProgress.subscribe((p) => {
+          this.progress = p * 100;
+        });
+      },
+
+      destroy() {
+        if (this.unsubscribe) this.unsubscribe();
       },
     }));
 

@@ -27,6 +27,7 @@ import { MeshoptDecoder } from "/assets/js/vendor/three-meshopt-decoder.module.j
 // Shared with tools/model/build-body.mjs, which uses the same table to decide what
 // goes into body.glb in the first place — see muscles.js.
 import { MUSCLE_ALIASES, MUSCLE_INFO, resolveKey } from "./muscles.js";
+import { readCSSColor } from "../css-color.js";
 
 // The figure has to sit on the panel in both themes. Since NOR-6 the body carries
 // its own baked colour, so a theme is only how brightly it's lit and what colour
@@ -42,24 +43,6 @@ const THEME = {
 // figure still renders as a solid body rather than falling back to the pre-NOR-6
 // translucent shell.
 const SKIN_FALLBACK = { color: 0xb98963, roughness: 0.68 };
-
-// Resolves a CSS custom property to a THREE.Color through the browser's own color
-// parser. Necessary because North's tokens are oklch() and THREE.Color.setStyle()
-// only understands hex/rgb()/hsl()/named colors. The "#000" sentinel means a value
-// the canvas can't parse (unlikely, but cheap to guard) leaves visibly black rather
-// than silently reusing whatever the fallback default was.
-function readCSSColor(varName, fallbackHex) {
-  const color = new THREE.Color(fallbackHex);
-  const raw = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
-  if (!raw) return color;
-  const ctx = document.createElement("canvas").getContext("2d");
-  ctx.fillStyle = "#000";
-  ctx.fillStyle = raw;
-  ctx.fillRect(0, 0, 1, 1);
-  const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
-  color.setRGB(r / 255, g / 255, b / 255, THREE.SRGBColorSpace);
-  return color;
-}
 
 // A soft radial-gradient disc under the figure. Cheaper than a shadow map by a full
 // render pass every frame — the figure never stops rotating (see tick()), so nothing
