@@ -16,6 +16,7 @@ func BuildNav(active string) []NavItem {
 		{Label: "Goals", Href: "/app/goals"},
 		{Label: "Check-ins", Href: "/app/check-ins"},
 		{Label: "Memory", Href: "/app/memories"},
+		{Label: "Knowledge", Href: "/app/knowledge"},
 		{Label: "Settings", Href: "/app/settings"},
 	}
 	for i := range items {
