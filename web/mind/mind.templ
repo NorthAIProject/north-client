@@ -84,9 +84,17 @@ templ journalFormCard(f JournalForm) {
 					@label.Label(label.Props{For: "content"}) {
 						Reflection
 					}
-					@textarea.Textarea(textarea.Props{ID: "content", Name: "content", Rows: 4, Placeholder: "What's on your mind?"}) {
-						{ f.Content }
-					}
+					// Value, not children: the component renders p.Value and has no
+					// children block, so a reflection handed to it that way was
+					// dropped and the writer lost it on every rejected submission.
+					@textarea.Textarea(textarea.Props{
+						ID:          "content",
+						Name:        "content",
+						Rows:        4,
+						Placeholder: "What's on your mind?",
+						Value:       f.Content,
+						HasError:    f.fieldError("content") != "",
+					})
 					if f.fieldError("content") != "" {
 						@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
 							{ f.fieldError("content") }
