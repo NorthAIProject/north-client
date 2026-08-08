@@ -17,21 +17,32 @@
  */
 import * as THREE from "/assets/js/vendor/three.module.min.js";
 
-// Route colour by sport family. Runs, rides and swims are the three a person
-// glances at and expects to tell apart instantly; everything else shares the
-// neutral tone rather than inventing a colour nobody has learned.
+// Route colour by sport family.
+//
+// Walking and strength earn their own colours rather than sharing the neutral
+// one. That was not the original plan — the first version kept only run, ride
+// and swim distinct — but real accounts are dominated by walks and gym
+// sessions, and a field where every tile is the same grey tells you nothing.
+// The families are chosen to be what a week actually contains, not what a
+// sports magazine cover contains.
 const SPORT_COLORS = {
   run: 0xe8973c,
   ride: 0x4ea1ff,
   swim: 0x36d1c4,
+  walk: 0x7bc86c,
+  strength: 0xb98cf0,
   other: 0x9aa4b2,
 };
 
 function sportFamily(sportType) {
   const s = (sportType || "").toLowerCase();
+  // Run before walk: Strava has no sport type containing both, but "run" is
+  // the substring more likely to appear inside a future compound name.
   if (s.includes("run")) return "run";
   if (s.includes("ride") || s.includes("cycl") || s.includes("bike")) return "ride";
   if (s.includes("swim")) return "swim";
+  if (s.includes("walk") || s.includes("hike")) return "walk";
+  if (s.includes("weight") || s.includes("workout") || s.includes("crossfit")) return "strength";
   return "other";
 }
 

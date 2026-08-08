@@ -293,10 +293,13 @@ func (s *Service) ensureFreshToken(ctx context.Context, conn Connection) (Connec
 	return s.repo.UpdateTokens(ctx, userID, token.AccessToken, token.RefreshToken, time.Unix(token.ExpiresAt, 0))
 }
 
-// currentWeight is needed to cost a session when Strava has no calorie
-// figure of its own. Absent biometrics is not fatal: a zero weight means the
-// MET estimate comes out zero, which reads as "unknown" rather than blocking
-// the import of a run that genuinely happened.
+// currentWeight is needed to cost a session when Strava has no calorie figure
+// of its own — which is most of them, since the list endpoint omits calories.
+//
+// Absent biometrics is not fatal: the estimate is skipped and the session is
+// imported with calories unknown (NULL), rather than blocking the import of a
+// run that genuinely happened. Recording biometrics later does not backfill
+// these, which is the honest trade for not inventing a number.
 func (s *Service) currentWeight(ctx context.Context, userID uuid.UUID) (float64, error) {
 	bio, err := s.biometrics.Current(ctx, userID)
 	if err != nil {

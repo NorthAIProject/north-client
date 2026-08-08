@@ -1,7 +1,6 @@
 package fitness
 
 import (
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -27,10 +26,12 @@ type viewerActivity struct {
 	StartedAt      string  `json:"started_at"`
 }
 
-// activitiesJSON serialises the set for the JSON script tag. templ escapes
-// the result, and an encoding failure yields an empty array rather than a
-// broken page: the list beside the canvas still renders from Go.
-func activitiesJSON(activities []strava.Activity, loc *time.Location) string {
+// viewerActivities builds the set for the JSON script tag.
+//
+// Returns the slice rather than marshalled bytes: templ.JSONScript does the
+// encoding itself, so handing it a string would encode the JSON a second time
+// and the browser would parse out a string where it expected an array.
+func viewerActivities(activities []strava.Activity, loc *time.Location) []viewerActivity {
 	out := make([]viewerActivity, 0, len(activities))
 	for _, a := range activities {
 		out = append(out, viewerActivity{
@@ -43,12 +44,7 @@ func activitiesJSON(activities []strava.Activity, loc *time.Location) string {
 			StartedAt:      a.StartDate.In(loc).Format("2 Jan"),
 		})
 	}
-
-	body, err := json.Marshal(out)
-	if err != nil {
-		return "[]"
-	}
-	return string(body)
+	return out
 }
 
 func formatDuration(seconds int) string {
@@ -119,7 +115,7 @@ templ ActivitiesPage(user users.User, status strava.Status, activities []strava.
 					}
 				}
 			} else {
-				@templ.JSONScript("strava-activities-data", activitiesJSON(activities, user.Location()))
+				@templ.JSONScript("strava-activities-data", viewerActivities(activities, user.Location()))
 				<div class="grid gap-5 lg:grid-cols-[1.4fr_1fr]">
 					<div class="border-hairline bg-background/40 relative aspect-square overflow-hidden rounded-lg border">
 						// Hand-rolled: a WebGL surface has no counterpart in the
@@ -166,11 +162,16 @@ templ ActivitiesPage(user users.User, status strava.Status, activities []strava.
 	}
 }
 
+// Kept in step with SPORT_COLORS in the viewer by hand. Two lists rather than
+// one because the swatches are Tailwind classes and the scene needs hex
+// numbers; the pairing is asserted nowhere, so change both together.
 templ legend() {
 	<div class="flex flex-wrap items-center gap-3">
 		@legendKey("Run", "bg-ember")
 		@legendKey("Ride", "bg-[#4ea1ff]")
 		@legendKey("Swim", "bg-[#36d1c4]")
+		@legendKey("Walk", "bg-[#7bc86c]")
+		@legendKey("Strength", "bg-[#b98cf0]")
 		@legendKey("Other", "bg-[#9aa4b2]")
 	</div>
 }
