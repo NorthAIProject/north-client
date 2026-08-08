@@ -40,6 +40,15 @@ const (
 	// Enqueued when someone connects and when they ask for a sync — never on
 	// a timer, because North has no scheduler.
 	KindSyncStrava Kind = "sync_strava"
+
+	// KindIndexDocument parses and chunks one uploaded document or note.
+	KindIndexDocument Kind = "index_document"
+
+	// KindReindexUser rebuilds every chunk one person has.
+	//
+	// The schema calls chunks derived state. A claim like that is only true
+	// while something exercises it, and this is that something.
+	KindReindexUser Kind = "reindex_user"
 )
 
 // ExtractMemoriesPayload is the job body for KindExtractMemories.
@@ -55,6 +64,17 @@ type ExtractMemoriesPayload struct {
 // reason as above: the enqueueing side must not have to import the package
 // that handles it.
 type SyncStravaPayload struct {
+	UserID uuid.UUID `json:"user_id"`
+}
+
+// IndexDocumentPayload and ReindexUserPayload are the job bodies for the
+// knowledge index, here for the same reason as the two above.
+type IndexDocumentPayload struct {
+	UserID     uuid.UUID `json:"user_id"`
+	DocumentID uuid.UUID `json:"document_id"`
+}
+
+type ReindexUserPayload struct {
 	UserID uuid.UUID `json:"user_id"`
 }
 

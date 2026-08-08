@@ -67,6 +67,38 @@ type Diet struct {
 	Description string
 }
 
+type Document struct {
+	ID            uuid.UUID
+	UserID        uuid.UUID
+	Title         string
+	SourceKind    string
+	StorageKey    *string
+	Body          *string
+	Mime          string
+	ByteSize      int64
+	ContentSha256 string
+	LineCount     int32
+	Status        string
+	ParseError    string
+	IndexedAt     *time.Time
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+	DeletedAt     *time.Time
+}
+
+type DocumentChunk struct {
+	ChunkID       string
+	DocumentID    uuid.UUID
+	UserID        uuid.UUID
+	Ordinal       int32
+	HeadingPath   []byte
+	StartLine     int32
+	EndLine       int32
+	Content       string
+	ContentSha256 string
+	CreatedAt     time.Time
+}
+
 type Exercise struct {
 	ID               uuid.UUID
 	Slug             string
@@ -158,6 +190,24 @@ type HydrationLog struct {
 	LogDate  pgtype.Date
 	AmountMl int32
 	LoggedAt time.Time
+}
+
+type IndexRun struct {
+	ID                 uuid.UUID
+	UserID             uuid.UUID
+	Kind               string
+	StartedAt          time.Time
+	CompletedAt        *time.Time
+	DocumentsSeen      int32
+	DocumentsAdded     int32
+	DocumentsUpdated   int32
+	DocumentsUnchanged int32
+	DocumentsFailed    int32
+	ChunksWritten      int32
+	ChunksRemoved      int32
+	Warnings           []byte
+	Success            bool
+	ErrorSummary       string
 }
 
 type Ingredient struct {

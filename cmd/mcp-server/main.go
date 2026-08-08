@@ -39,6 +39,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/coach"
 	"github.com/NorthAIProject/north-client/internal/config"
 	"github.com/NorthAIProject/north-client/internal/conversations"
+	"github.com/NorthAIProject/north-client/internal/documents"
 	"github.com/NorthAIProject/north-client/internal/exercises"
 	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/habits"
@@ -164,6 +165,11 @@ func buildServices(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry
 	checkinSvc := checkins.NewService(checkins.NewRepository(pool), goalSvc)
 	memorySvc := memories.NewService(memories.NewRepository(pool))
 
+	// Retrieval only. This process has no object storage and no queue, so it
+	// can read a person's indexed documents but cannot add to them or index
+	// them — which is the right shape for a surface an agent holds a token to.
+	documentSvc := documents.NewService(documents.NewRepository(pool), nil, nil)
+
 	biometricSvc := biometrics.NewService(biometrics.NewRepository(pool))
 	calculatorSvc := calculator.NewService(calculator.NewRepository(pool), biometricSvc)
 	activitySvc := activity.NewService(activity.NewRepository(pool), biometricSvc)
@@ -187,6 +193,7 @@ func buildServices(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry
 			goals.NewContextSource(goalSvc),
 			checkins.NewContextSource(checkinSvc),
 			memories.NewContextSource(memorySvc),
+			documents.NewContextSource(documentSvc),
 			calculator.NewContextSource(calculatorSvc),
 			activity.NewContextSource(activitySvc),
 			meals.NewContextSource(mealProgressSvc, mealDietSvc),
