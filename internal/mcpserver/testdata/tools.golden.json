@@ -164,6 +164,15 @@
     "readOnly": true
   },
   {
+    "name": "knowledge_status",
+    "description": "Report what North has actually read: document counts by state, how many passages are indexed, which documents have changed since they were last read, and what the last indexing pass did. Use it before concluding the user has not told North something.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "readOnly": true
+  },
+  {
     "name": "list_check_ins",
     "description": "Return the user's recent daily check-ins, newest first, with mood, energy, wins, challenges, and notes.",
     "inputSchema": {
@@ -186,6 +195,28 @@
       "description": "no arguments",
       "properties": {},
       "required": [],
+      "type": "object"
+    },
+    "readOnly": true
+  },
+  {
+    "name": "search_documents",
+    "description": "Search the passages of the user's own notes and uploaded documents. Returns each passage with the document it came from, the heading above it, its line range, and a citable chunk id. Quote the chunk id when using a passage.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "description": "maximum passages, default 6",
+          "type": "integer"
+        },
+        "query": {
+          "description": "what to look for in the user's own notes and documents",
+          "type": "string"
+        }
+      },
+      "required": [
+        "query"
+      ],
       "type": "object"
     },
     "readOnly": true

@@ -14,6 +14,7 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -25,6 +26,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/checkins"
 	"github.com/NorthAIProject/north-client/internal/coach"
+	"github.com/NorthAIProject/north-client/internal/documents"
 	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/memories"
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -37,8 +39,12 @@ type Services struct {
 	Goals    *goals.Service
 	CheckIns *checkins.Service
 	Memories *memories.Service
-	Activity *activity.Service
-	Coach    *coach.Service
+
+	// Documents is the person's own notes and uploads. Nil in a process with
+	// no index behind it, which the tools check rather than assume.
+	Documents *documents.Service
+	Activity  *activity.Service
+	Coach     *coach.Service
 
 	// Agent is the capability registry the coach's own tool loop reads. Its
 	// tools are published here too, so a capability defined once is reachable
@@ -283,6 +289,82 @@ func registerKnowledge(s *mcp.Server, svc Services, user users.User) {
 		}
 
 		return structured(out)
+	})
+
+	type documentSearchArgs struct {
+		Query string `json:"query" jsonschema:"what to look for in the user's own notes and documents"`
+		Limit int    `json:"limit,omitempty" jsonschema:"maximum passages, default 6"`
+	}
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name: "search_documents",
+		Description: "Search the passages of the user's own notes and uploaded documents. Returns each " +
+			"passage with the document it came from, the heading above it, its line range, and a " +
+			"citable chunk id. Quote the chunk id when using a passage.",
+		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true},
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, args documentSearchArgs) (*mcp.CallToolResult, any, error) {
+		if svc.Documents == nil {
+			return fail(errors.New("this server has no document index")), nil, nil
+		}
+
+		hits, err := svc.Documents.Search(ctx, user.ID, args.Query, args.Limit)
+		if err != nil {
+			return fail(err), nil, nil
+		}
+
+		out := make([]map[string]any, 0, len(hits))
+		for _, h := range hits {
+			out = append(out, map[string]any{
+				// The ref, not the internal document id: this is the handle
+				// that resolves in a stored reply months from now.
+				"ref":     coach.ChunkRef(h.ChunkID),
+				"source":  h.Label(),
+				"lines":   fmt.Sprintf("%d-%d", h.StartLine, h.EndLine),
+				"passage": h.Content,
+			})
+		}
+
+		return structured(out)
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name: "knowledge_status",
+		Description: "Report what North has actually read: document counts by state, how many passages " +
+			"are indexed, which documents have changed since they were last read, and what the last " +
+			"indexing pass did. Use it before concluding the user has not told North something.",
+		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true},
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
+		if svc.Documents == nil {
+			return fail(errors.New("this server has no document index")), nil, nil
+		}
+
+		counts, err := svc.Documents.Counts(ctx, user.ID)
+		if err != nil {
+			return fail(err), nil, nil
+		}
+
+		status := map[string]any{
+			"documents_read":       counts.Ready,
+			"documents_waiting":    counts.Pending,
+			"documents_unreadable": counts.Failed,
+			"documents_stale":      counts.Stale,
+			"passages_indexed":     counts.Chunks,
+		}
+
+		// A missing run is not an error: it means nothing has ever been
+		// indexed, which is itself the answer.
+		if run, err := svc.Documents.LatestRun(ctx, user.ID); err == nil {
+			status["last_index_run"] = map[string]any{
+				"started_at": run.StartedAt.UTC().Format(time.RFC3339),
+				"succeeded":  run.Success,
+				"seen":       run.Seen,
+				"unchanged":  run.Unchanged,
+				"failed":     run.Failed,
+				"warnings":   run.Warnings,
+			}
+		}
+
+		return structured(status)
 	})
 }
 

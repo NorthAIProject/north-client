@@ -1,0 +1,316 @@
+// Package knowledge renders what the coach can actually see.
+//
+// The page answers a question North could not answer before: of everything you
+// have given it, what has it read, what is it still working on, and what did it
+// fail on. A memory system nobody can inspect is one nobody has reason to
+// trust.
+package knowledge
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/NorthAIProject/north-client/internal/documents/document"
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/badge"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/form"
+	"github.com/NorthAIProject/north-client/web/shared/ui/input"
+	"github.com/NorthAIProject/north-client/web/shared/ui/label"
+	"github.com/NorthAIProject/north-client/web/shared/ui/textarea"
+)
+
+// NoteForm is a note written directly in North.
+type NoteForm struct {
+	Title  string
+	Body   string
+	Errors map[string]string
+}
+
+func (f NoteForm) fieldError(name string) string {
+	if f.Errors == nil {
+		return ""
+	}
+	return f.Errors[name]
+}
+
+// View is everything the page renders.
+type View struct {
+	Documents []document.Document
+	Counts    document.Counts
+
+	// LastRun is the most recent indexing pass, and HasRun says whether there
+	// has ever been one. A zero run and a genuinely empty one look identical
+	// otherwise.
+	LastRun document.IndexRun
+	HasRun  bool
+}
+
+templ IndexPage(user users.User, view View, form NoteForm) {
+	@layout.App("Knowledge", user, layout.BuildNav("/app/knowledge")) {
+		<div class="mx-auto w-full max-w-2xl space-y-8 p-6 md:p-8">
+			<header>
+				<p class="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">What North has read</p>
+				<h1 class="mt-2 text-2xl font-medium tracking-tight">Knowledge</h1>
+				<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
+					Notes and files the coach can draw on. It only quotes what it has read here, and it
+					says where each answer came from.
+				</p>
+			</header>
+			@status(view)
+			@addNote(form)
+			<section class="space-y-3">
+				<h2 class="text-sm font-medium">Your documents</h2>
+				if len(view.Documents) == 0 {
+					<p class="text-muted-foreground text-sm">
+						Nothing yet. Add a note above, or upload a Markdown or text file.
+					</p>
+				}
+				for _, d := range view.Documents {
+					@documentCard(d)
+				}
+			</section>
+			@exportSection()
+		</div>
+		@textarea.Script()
+		@label.Script()
+	}
+}
+
+// status is the honest summary: not just what worked, but what is waiting and
+// what failed.
+templ status(view View) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Content(card.ContentProps{Class: "space-y-4 py-4"}) {
+			<div class="grid grid-cols-2 gap-4 sm:grid-cols-4">
+				@stat("Documents read", fmt.Sprint(view.Counts.Ready))
+				@stat("Passages", fmt.Sprint(view.Counts.Chunks))
+				@stat("Waiting", fmt.Sprint(view.Counts.Pending))
+				@stat("Unreadable", fmt.Sprint(view.Counts.Failed))
+			</div>
+			if view.Counts.Failed > 0 {
+				<p class="text-sm text-destructive">
+					{ fmt.Sprintf("%d document(s) could not be read. They are listed below with the reason.", view.Counts.Failed) }
+				</p>
+			}
+			if view.Counts.Stale > 0 {
+				<p class="text-muted-foreground text-sm">
+					{ fmt.Sprintf("%d document(s) changed since North last read them.", view.Counts.Stale) }
+				</p>
+			}
+			if view.HasRun {
+				<p class="text-muted-foreground text-xs">
+					{ runSummary(view.LastRun) }
+				</p>
+			}
+			<form method="post" action="/app/knowledge/reindex">
+				@ui.CSRFInput()
+				@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Variant: button.VariantOutline}) {
+					Rebuild the index
+				}
+			</form>
+			<p class="text-muted-foreground text-xs leading-relaxed">
+				Rebuilding re-reads every document. Nothing you wrote is changed by it — the search
+				index is built from your documents, never the other way round.
+			</p>
+		}
+	}
+}
+
+templ stat(label, value string) {
+	<div>
+		<p class="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">{ label }</p>
+		<p class="mt-1 text-xl font-medium tabular-nums">{ value }</p>
+	</div>
+}
+
+templ addNote(f NoteForm) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Title() {
+				Add something North should know
+			}
+		}
+		@card.Content(card.ContentProps{Class: "space-y-6"}) {
+			<form method="post" action="/app/knowledge/notes" class="space-y-4">
+				@ui.CSRFInput()
+				@form.Item() {
+					@label.Label(label.Props{For: "title", Error: f.fieldError("title")}) {
+						Name
+					}
+					@input.Input(input.Props{
+						ID:          "title",
+						Name:        "title",
+						Value:       f.Title,
+						Placeholder: "e.g. Physio notes, March",
+						HasError:    f.fieldError("title") != "",
+					})
+					if f.fieldError("title") != "" {
+						@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+							{ f.fieldError("title") }
+						}
+					}
+				}
+				@form.Item() {
+					@label.Label(label.Props{For: "body", Error: f.fieldError("body")}) {
+						Note
+					}
+					@textarea.Textarea(textarea.Props{
+						ID:          "body",
+						Name:        "body",
+						Rows:        8,
+						Placeholder: "Markdown headings help North quote the right part back to you.",
+						HasError:    f.fieldError("body") != "",
+					}) {
+						{ f.Body }
+					}
+					if f.fieldError("body") != "" {
+						@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+							{ f.fieldError("body") }
+						}
+					}
+				}
+				@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90"}) {
+					Save note
+				}
+			</form>
+			<div class="border-hairline border-t pt-6">
+				<form method="post" action="/app/knowledge/uploads" enctype="multipart/form-data" class="space-y-4">
+					@ui.CSRFInput()
+					@form.Item() {
+						@label.Label(label.Props{For: "file", Error: f.fieldError("file")}) {
+							Or upload a file
+						}
+						@input.Input(input.Props{
+							ID:         "file",
+							Name:       "file",
+							Type:       input.TypeFile,
+							FileAccept: ".md,.markdown,.txt,.text,.log,.csv",
+							HasError:   f.fieldError("file") != "",
+						})
+						@form.Description() {
+							Markdown or plain text, up to 8 MB.
+						}
+						if f.fieldError("file") != "" {
+							@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+								{ f.fieldError("file") }
+							}
+						}
+					}
+					@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
+						Upload
+					}
+				</form>
+			</div>
+		}
+	}
+}
+
+templ documentCard(d document.Document) {
+	@card.Card(card.Props{Class: "border-hairline"}) {
+		@card.Content(card.ContentProps{Class: "space-y-3 py-4"}) {
+			<div class="flex flex-wrap items-center gap-2">
+				<p class="text-sm font-medium">{ d.Title }</p>
+				@statusBadge(d)
+			</div>
+			<p class="text-muted-foreground text-xs">
+				{ documentDetail(d) }
+			</p>
+			if d.Status == document.StatusFailed && d.ParseError != "" {
+				<p class="text-sm text-destructive">{ d.ParseError }</p>
+			}
+			<form method="post" action={ templ.SafeURL("/app/knowledge/" + d.ID.String() + "/delete") }>
+				@ui.CSRFInput()
+				@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Variant: button.VariantOutline}) {
+					Remove
+				}
+			</form>
+		}
+	}
+}
+
+templ statusBadge(d document.Document) {
+	switch d.Status {
+		case document.StatusReady:
+			if d.IsStale() {
+				@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
+					changed since read
+				}
+			} else {
+				@badge.Badge(badge.Props{Class: "border-signal/40 bg-signal/12 text-signal", Variant: badge.VariantOutline}) {
+					read
+				}
+			}
+		case document.StatusFailed:
+			@badge.Badge(badge.Props{Variant: badge.VariantDestructive}) {
+				could not read
+			}
+		default:
+			@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
+				waiting
+			}
+	}
+}
+
+templ exportSection() {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Title() {
+				Take it with you
+			}
+		}
+		@card.Content(card.ContentProps{Class: "space-y-4"}) {
+			<p class="text-muted-foreground text-sm leading-relaxed">
+				Everything North knows about you, as Markdown and your original files. It stays
+				readable without North, and you can take it anywhere.
+			</p>
+			@button.Button(button.Props{
+				Href:    "/app/knowledge/export.zip",
+				Variant: button.VariantOutline,
+			}) {
+				Download everything
+			}
+		}
+	}
+}
+
+// documentDetail is the one line under a title: where it came from, how big it
+// is, and when North last read it.
+func documentDetail(d document.Document) string {
+	parts := make([]string, 0, 3)
+
+	if d.SourceKind == document.SourceUpload {
+		parts = append(parts, "uploaded file")
+	} else {
+		parts = append(parts, "note")
+	}
+	if d.LineCount > 0 {
+		parts = append(parts, fmt.Sprintf("%d lines", d.LineCount))
+	}
+	if d.IndexedAt != nil {
+		parts = append(parts, "read "+d.IndexedAt.In(d.CreatedAt.Location()).Format("2 Jan 2006"))
+	}
+	return strings.Join(parts, " · ")
+}
+
+// runSummary describes the last indexing pass in the terms a person would use.
+func runSummary(run document.IndexRun) string {
+	if run.CompletedAt == nil {
+		return "Indexing is running now."
+	}
+
+	when := run.CompletedAt.Format("2 Jan, 15:04")
+	switch {
+	case run.Failed > 0:
+		return fmt.Sprintf("Last checked %s — %d of %d could not be read.", when, run.Failed, run.Seen)
+	case run.Seen == 0:
+		return fmt.Sprintf("Last checked %s — nothing to read.", when)
+	case run.Unchanged == run.Seen:
+		return fmt.Sprintf("Last checked %s — everything was already up to date.", when)
+	default:
+		return fmt.Sprintf("Last checked %s — read %d of %d.", when, run.Added+run.Updated, run.Seen)
+	}
+}

@@ -49,13 +49,36 @@ credential one — see Troubleshooting.
 | `search_knowledge` | You need durable facts about the user: injuries, preferences, constraints. Only confirmed memories are returned. |
 | `get_fitness_summary` | They ask about training volume, or you need to know whether they have actually been moving. |
 | `ask_coach` | The question deserves North's own coaching context. Prefer this over answering from your own reasoning when the topic is their training or goals — the coach sees data you do not. |
+| `search_documents` | They refer to their own notes, a training log, or something a professional wrote for them. Returns passages with a citable `ref`, the document and heading it came from, and its line range. |
+| `knowledge_status` | Before concluding the user has not told North something. It reports what has actually been read, what is still waiting, and what could not be parsed. |
+| `search_exercises` | You need a movement from North's catalogue rather than one you remember. |
+| `get_exercise` | You have a slug from `search_exercises` and need the full entry. |
+| `search_ingredients` | You need nutrition figures per 100g for a specific food. |
+| `todays_nutrition` | They ask what they have eaten today, or you need intake against their targets. |
+| `list_goals` | A no-argument list of active goals. `search_goals` is the better tool when you have a term. |
+| `calculate_macros` | **Writes.** They ask for macro targets. This saves the result as their current plan, so confirm before calling it. |
+
+Every tool declares whether it writes. A client running in read-only mode can
+trust that annotation: the four that change anything are `add_goal_update`,
+`create_check_in`, `ask_coach`, and `calculate_macros`.
+
+Results carry structured content as well as text, so read
+`structuredContent` rather than parsing the text block.
+
+### Citing what you use
+
+`search_documents` returns a `ref` for every passage, like
+`chunk:nor_chk_1a2b…`. When you use a passage, quote its ref. North records
+which stored facts produced a reply, and a ref you invented rather than
+received breaks that record in the one direction that matters — it makes a
+guess look like evidence.
 
 ### Behaviour
 
 - **Every call acts as one fixed account.** There is no user parameter and no
   way to act as anyone else.
-- **Ask before writing.** `create_check_in` and `add_goal_update` change the
-  user's record. Confirm the details you are about to write, in their words.
+- **Ask before writing.** `create_check_in`, `add_goal_update` and
+  `calculate_macros` change the user's record. Confirm the details you are about to write, in their words.
 - **Do not paraphrase a check-in into shape.** Mood and energy are the user's
   own read on their day. Ask for the numbers rather than inferring them from
   tone.

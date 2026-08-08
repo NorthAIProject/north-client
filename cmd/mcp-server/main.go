@@ -236,13 +236,14 @@ func buildServices(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry
 	})
 
 	return mcpserver.Services{
-		Agent:    agentTools,
-		Users:    userSvc,
-		Goals:    goalSvc,
-		CheckIns: checkinSvc,
-		Memories: memorySvc,
-		Activity: activitySvc,
-		Coach:    coachSvc,
+		Agent:     agentTools,
+		Users:     userSvc,
+		Goals:     goalSvc,
+		CheckIns:  checkinSvc,
+		Memories:  memorySvc,
+		Documents: documentSvc,
+		Activity:  activitySvc,
+		Coach:     coachSvc,
 	}
 }
 
