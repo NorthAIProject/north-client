@@ -8,14 +8,24 @@ on start by `internal/shared/database.Migrate`.
 New migrations are named with a UTC timestamp, not the next number:
 
 ```
-20260808T1430_add_thing.sql
+20260808143000_add_thing.sql
 ```
 
 Create one with:
 
 ```sh
-date -u +%Y%m%dT%H%M
+date -u +%Y%m%d%H%M%S
 ```
+
+**Digits only — no `T` separator.** Goose takes everything before the first `_`
+and runs it through `strconv.ParseInt` (`NumericComponent`, goose
+`migration.go`). `20260808T1430_add_thing.sql` does not parse, and goose then
+*skips* the file rather than refusing it: `Migrate` returns no error, the schema
+quietly lacks the change, and the first symptom is a query failing on a column
+that the migration in front of you plainly creates.
+
+`TestEveryMigrationFilenameIsParseable` in `internal/shared/database` fails the
+build rather than letting that recur.
 
 **Why not sequential numbers.** They only work when one person is adding
 migrations at a time. Two branches developed in parallel both reach for the

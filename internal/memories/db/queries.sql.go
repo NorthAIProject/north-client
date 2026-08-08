@@ -7,6 +7,7 @@ package memoriesdb
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -265,6 +266,104 @@ func (q *Queries) ListMemoriesByStatus(ctx context.Context, arg ListMemoriesBySt
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const searchApprovedForContext = `-- name: SearchApprovedForContext :many
+WITH q AS (
+    SELECT replace(
+        websearch_to_tsquery('english', $3::text)::text,
+        '&', '|'
+    )::tsquery AS tsq
+)
+SELECT
+    m.id,
+    m.category,
+    m.content,
+    m.pinned,
+    m.updated_at,
+    ts_headline(
+        'english',
+        m.content,
+        q.tsq,
+        'StartSel=[, StopSel=], MaxWords=35, MinWords=15, ShortWord=3, HighlightAll=FALSE'
+    )::text AS snippet,
+    ts_rank_cd(to_tsvector('english', m.content), q.tsq, 32)::float8 AS rank
+FROM user_memories m, q
+WHERE m.user_id = $1
+  AND m.deleted_at IS NULL
+  AND m.status = 'approved'
+  AND (
+      m.pinned
+      OR to_tsvector('english', m.content) @@ q.tsq
+  )
+ORDER BY m.pinned DESC, rank DESC, m.updated_at DESC
+LIMIT $2
+`
+
+type SearchApprovedForContextParams struct {
+	UserID      uuid.UUID
+	ResultLimit int32
+	Query       string
+}
+
+type SearchApprovedForContextRow struct {
+	ID        uuid.UUID
+	Category  string
+	Content   string
+	Pinned    bool
+	UpdatedAt time.Time
+	Snippet   string
+	Rank      float64
+}
+
+// Approved facts ranked against what the user just said.
+//
+// Pinned facts are matched by `pinned OR ...` rather than being left to the
+// ranking. A pinned fact is one the user explicitly said always matters, and
+// letting a relevance score outvote that would be the coach forgetting on
+// purpose — on the exact facts it was told never to.
+//
+// The tsvector expression must stay identical to the one indexed in
+// migrations/20260808090000_add_memory_and_message_search.sql and mirrored in
+// internal/search/rank.go, or this silently becomes a sequential scan.
+//
+// The query is a sentence someone said to a coach, not a search box, and that
+// changes what the operator between the terms has to be. websearch_to_tsquery
+// joins terms with AND, so "my shoulder hurts when I press overhead" only
+// matches a fact containing every one of those words — which no fact does, so
+// the whole thing retrieves nothing. Swapping AND for OR asks the question the
+// caller actually meant: which stored facts touch any of this, best first.
+//
+// The swap is done on the parsed tsquery rather than on the user's text. The
+// text has already been through websearch_to_tsquery by then, so it is a
+// normalised expression of quoted lexemes, and replacing '&' cannot reach
+// inside one. Phrase (<->) and negation (!) operators are left as they are.
+func (q *Queries) SearchApprovedForContext(ctx context.Context, arg SearchApprovedForContextParams) ([]SearchApprovedForContextRow, error) {
+	rows, err := q.db.Query(ctx, searchApprovedForContext, arg.UserID, arg.ResultLimit, arg.Query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SearchApprovedForContextRow{}
+	for rows.Next() {
+		var i SearchApprovedForContextRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Category,
+			&i.Content,
+			&i.Pinned,
+			&i.UpdatedAt,
+			&i.Snippet,
+			&i.Rank,
 		); err != nil {
 			return nil, err
 		}

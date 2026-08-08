@@ -269,6 +269,7 @@ type Message struct {
 	Model          *string
 	Provider       *string
 	CreatedAt      time.Time
+	EvidenceRefs   []string
 }
 
 type PasswordResetToken struct {
@@ -340,6 +341,7 @@ type User struct {
 	CoachingStyle *string
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
+	Tier          string
 }
 
 type UserBiometric struct {

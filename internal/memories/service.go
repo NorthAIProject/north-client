@@ -2,12 +2,14 @@ package memories
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"strings"
 
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/memories/extract"
+	"github.com/NorthAIProject/north-client/internal/search"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
@@ -116,9 +118,34 @@ func (s *Service) CountPending(ctx context.Context, userID uuid.UUID) (int, erro
 	return s.repo.CountPending(ctx, userID)
 }
 
-// ForContext returns approved memories for the coach, pinned first.
-func (s *Service) ForContext(ctx context.Context, userID uuid.UUID) ([]Memory, error) {
-	return s.repo.ForContext(ctx, userID, contextLimit)
+// ForContext returns the approved memories the coach should see this turn.
+//
+// With a query, facts are ranked against it and pinned facts are kept
+// regardless. Without one — a background job, or a turn with no user text —
+// there is nothing to rank against, so it falls back to the newest facts. That
+// fallback is the old behaviour, and it is the correct answer to "show me
+// something" rather than a degraded answer to "show me what matters".
+func (s *Service) ForContext(ctx context.Context, userID uuid.UUID, query string) ([]Retrieved, error) {
+	normalised, err := search.Normalise(query)
+	if err != nil {
+		if !errors.Is(err, search.ErrEmptyTerm) {
+			return nil, err
+		}
+		return s.recentForContext(ctx, userID)
+	}
+	return s.repo.SearchForContext(ctx, userID, normalised, contextLimit)
+}
+
+func (s *Service) recentForContext(ctx context.Context, userID uuid.UUID) ([]Retrieved, error) {
+	list, err := s.repo.ForContext(ctx, userID, contextLimit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Retrieved, 0, len(list))
+	for _, m := range list {
+		out = append(out, Retrieved{Memory: m})
+	}
+	return out, nil
 }
 
 // InsertExtractions stores sanitised candidates as pending, skipping duplicates.

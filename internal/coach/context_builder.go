@@ -42,12 +42,17 @@ type Context struct {
 	// Sources that will be added as their slices are built. Named here so the
 	// prompt renderer already handles their absence, which is the normal state
 	// for a new account.
-	Goals         []string
-	CheckIns      []string
-	Memories      []string
-	WorkoutPlan   string
-	FormAnalyses  []string
-	KnowledgeHits []string
+	Goals        []string
+	CheckIns     []string
+	WorkoutPlan  string
+	FormAnalyses []string
+
+	// Memories and KnowledgeHits are retrieved rather than listed: which of
+	// them appear depends on what the user just said. They carry Evidence
+	// instead of plain strings so the coach can cite them, and so that after
+	// the fact we can say which stored facts a reply was actually built from.
+	Memories      []Evidence
+	KnowledgeHits []Evidence
 
 	// FitnessSummary is biometrics/BMR/TDEE/macro targets (calculator) and
 	// today's activity burn (activity). Populated by two sources on purpose:
@@ -86,6 +91,33 @@ type Context struct {
 	Habits []string
 }
 
+// Evidence is one retrieved fact carrying enough provenance to cite it.
+//
+// Everything the coach knew used to arrive as a bare string, which meant a
+// reply could not be traced back to what produced it — not by the model, not by
+// the interface, and not by whoever is reading a log at 2am working out why the
+// coach said something odd. A fact and its origin travel together now.
+type Evidence struct {
+	// Ref is the stable handle the model cites and the reply records, in the
+	// form "memory:<uuid>" or "chunk:<id>". Prefixed by kind because the two
+	// kinds resolve against different tables, and a bare id in a stored reply
+	// would be unresolvable a month later.
+	Ref string
+
+	// Text is the fact itself, as stored.
+	Text string
+
+	// Label says where it came from in words a person would use — "profile
+	// fact", "note: Training log › Deload weeks".
+	Label string
+
+	// Snippet is the matched excerpt with the matching terms bracketed, or
+	// empty when the fact was included for a reason other than matching (a
+	// pinned memory, say). Shown to the user; never sent to the model, which
+	// gets Text and would only have to ignore the brackets.
+	Snippet string
+}
+
 // ContextSource contributes one section of the context.
 //
 // New sources are added by writing one of these and registering it, rather than
@@ -104,6 +136,20 @@ type ContextSource interface {
 type ContextRequest struct {
 	User           users.User
 	ConversationID uuid.UUID
+
+	// Query is what the user just said, and it is the only thing that lets a
+	// source rank rather than merely list.
+	//
+	// Without it every source could do exactly one thing — return its newest
+	// rows — so a person with two hundred stored facts got the twenty most
+	// recent whether or not any of them bore on the question. Sources that
+	// have nothing to rank ignore this field.
+	//
+	// Empty on background jobs and wherever no user turn prompted the build. A
+	// source must treat that as "contribute nothing", not as "fall back to
+	// everything": a retrieval source with no query has no reason to prefer
+	// any particular fact, and guessing fills the context window with noise.
+	Query string
 }
 
 // ContextBuilder assembles a Context from its registered sources.
@@ -197,7 +243,7 @@ func (c *Context) Render() string {
 
 	section(&b, "Goals", c.Goals, "none recorded yet")
 	section(&b, "Recent check-ins", c.CheckIns, "none recorded yet")
-	section(&b, "Known about them", c.Memories, "none recorded yet")
+	evidenceSection(&b, "Known about them", c.Memories, "none recorded yet")
 
 	b.WriteString("\nCurrent training plan: ")
 	if plan := strings.TrimSpace(c.WorkoutPlan); plan != "" {
@@ -223,10 +269,27 @@ func (c *Context) Render() string {
 	}
 
 	if len(c.KnowledgeHits) > 0 {
-		section(&b, "Relevant notes from their knowledge base", c.KnowledgeHits, "")
+		evidenceSection(&b, "Relevant notes from their knowledge base", c.KnowledgeHits, "")
 	}
 
 	return strings.TrimSpace(b.String())
+}
+
+// evidenceSection renders a retrieved section with each fact's ref attached.
+//
+// The ref is written in double brackets because that is what the system prompt
+// asks the model to echo when it uses a fact, and a form that already appears
+// beside the fact is one the model copies rather than invents.
+func evidenceSection(b *strings.Builder, heading string, items []Evidence, whenEmpty string) {
+	if len(items) == 0 {
+		section(b, heading, nil, whenEmpty)
+		return
+	}
+
+	b.WriteString("\n" + heading + ":\n")
+	for _, it := range items {
+		fmt.Fprintf(b, "- [[%s]] %s\n", it.Ref, it.Text)
+	}
 }
 
 func section(b *strings.Builder, heading string, items []string, whenEmpty string) {

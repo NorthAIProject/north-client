@@ -269,6 +269,7 @@ type Message struct {
 	Model          *string
 	Provider       *string
 	CreatedAt      time.Time
+	EvidenceRefs   []string
 }
 
 type PasswordResetToken struct {
@@ -302,6 +303,23 @@ type SleepLog struct {
 	UpdatedAt       time.Time
 }
 
+type StravaActivity struct {
+	ID                  uuid.UUID
+	UserID              uuid.UUID
+	StravaID            int64
+	Name                string
+	SportType           string
+	StartDate           time.Time
+	DistanceM           float64
+	MovingTimeS         int32
+	ElapsedTimeS        int32
+	TotalElevationGainM float64
+	AverageSpeedMs      float64
+	SummaryPolyline     string
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+}
+
 type StravaConnection struct {
 	UserID       uuid.UUID
 	AthleteID    int64
@@ -323,6 +341,7 @@ type User struct {
 	CoachingStyle *string
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
+	Tier          string
 }
 
 type UserBiometric struct {
