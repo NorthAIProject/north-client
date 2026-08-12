@@ -62,7 +62,7 @@ func (r *Repository) List(ctx context.Context, userID uuid.UUID, limit int) ([]G
 	if err != nil {
 		return nil, apperr.Wrap(err, "list goals")
 	}
-	return r.withLatestUpdates(ctx, userID, goalsFromDB(rows))
+	return r.withProgress(ctx, userID, goalsFromDB(rows))
 }
 
 func (r *Repository) ListActive(ctx context.Context, userID uuid.UUID, limit int) ([]Goal, error) {
@@ -70,13 +70,21 @@ func (r *Repository) ListActive(ctx context.Context, userID uuid.UUID, limit int
 	if err != nil {
 		return nil, apperr.Wrap(err, "list active goals")
 	}
-	return r.withLatestUpdates(ctx, userID, goalsFromDB(rows))
+	return r.withProgress(ctx, userID, goalsFromDB(rows))
 }
 
-// withLatestUpdates attaches each goal's most recent note.
+// withProgress attaches each goal's most recent note and its milestone counts.
 //
-// One query for every goal rather than one per goal: the coach loads this on
-// every message, and N+1 there is a query per goal per message forever.
+// Two queries for the whole list rather than one per goal: the coach loads
+// this on every message, and N+1 there is a query per goal per message forever.
+func (r *Repository) withProgress(ctx context.Context, userID uuid.UUID, list []Goal) ([]Goal, error) {
+	list, err := r.withLatestUpdates(ctx, userID, list)
+	if err != nil {
+		return nil, err
+	}
+	return r.withMilestoneCounts(ctx, userID, list)
+}
+
 func (r *Repository) withLatestUpdates(ctx context.Context, userID uuid.UUID, list []Goal) ([]Goal, error) {
 	if len(list) == 0 {
 		return list, nil
@@ -95,6 +103,32 @@ func (r *Repository) withLatestUpdates(ctx context.Context, userID uuid.UUID, li
 	for i := range list {
 		if update, ok := latest[list[i].ID]; ok {
 			list[i].LatestUpdate = &update
+		}
+	}
+
+	return list, nil
+}
+
+func (r *Repository) withMilestoneCounts(ctx context.Context, userID uuid.UUID, list []Goal) ([]Goal, error) {
+	if len(list) == 0 {
+		return list, nil
+	}
+
+	rows, err := r.q.MilestoneCounts(ctx, userID)
+	if err != nil {
+		return nil, apperr.Wrap(err, "milestone counts")
+	}
+
+	type counts struct{ total, done int }
+	byGoal := make(map[uuid.UUID]counts, len(rows))
+	for _, row := range rows {
+		byGoal[row.GoalID] = counts{total: int(row.Total), done: int(row.Completed)}
+	}
+
+	for i := range list {
+		if c, ok := byGoal[list[i].ID]; ok {
+			list[i].MilestoneTotal = c.total
+			list[i].MilestoneDone = c.done
 		}
 	}
 
@@ -158,8 +192,12 @@ func (r *Repository) AddUpdate(ctx context.Context, goalID, userID uuid.UUID, no
 	return updateFromDB(row), nil
 }
 
-func (r *Repository) Updates(ctx context.Context, goalID uuid.UUID, limit int) ([]Update, error) {
-	rows, err := r.q.ListGoalUpdates(ctx, goalsdb.ListGoalUpdatesParams{GoalID: goalID, Limit: int32(limit)})
+func (r *Repository) Updates(ctx context.Context, goalID, userID uuid.UUID, limit int) ([]Update, error) {
+	rows, err := r.q.ListGoalUpdates(ctx, goalsdb.ListGoalUpdatesParams{
+		GoalID: goalID,
+		UserID: userID,
+		Limit:  int32(limit),
+	})
 	if err != nil {
 		return nil, apperr.Wrap(err, "list goal updates")
 	}
@@ -167,6 +205,78 @@ func (r *Repository) Updates(ctx context.Context, goalID uuid.UUID, limit int) (
 	out := make([]Update, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, updateFromDB(row))
+	}
+	return out, nil
+}
+
+func (r *Repository) AddMilestone(ctx context.Context, goalID, userID uuid.UUID, title string, targetDate time.Time) (Milestone, error) {
+	row, err := r.q.CreateMilestone(ctx, goalsdb.CreateMilestoneParams{
+		GoalID:     goalID,
+		UserID:     userID,
+		Title:      title,
+		TargetDate: toDate(targetDate),
+	})
+	if err != nil {
+		return Milestone{}, apperr.Wrap(err, "create milestone")
+	}
+	return milestoneFromDB(row), nil
+}
+
+func (r *Repository) GetMilestone(ctx context.Context, id, userID uuid.UUID) (Milestone, error) {
+	row, err := r.q.GetMilestone(ctx, goalsdb.GetMilestoneParams{ID: id, UserID: userID})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Milestone{}, apperr.ErrNotFound
+		}
+		return Milestone{}, apperr.Wrap(err, "get milestone")
+	}
+	return milestoneFromDB(row), nil
+}
+
+func (r *Repository) UpdateMilestone(ctx context.Context, id, userID uuid.UUID, title string, targetDate time.Time) (Milestone, error) {
+	row, err := r.q.UpdateMilestone(ctx, goalsdb.UpdateMilestoneParams{
+		ID:         id,
+		UserID:     userID,
+		Title:      title,
+		TargetDate: toDate(targetDate),
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Milestone{}, apperr.ErrNotFound
+		}
+		return Milestone{}, apperr.Wrap(err, "update milestone")
+	}
+	return milestoneFromDB(row), nil
+}
+
+func (r *Repository) SetMilestoneStatus(ctx context.Context, id, userID uuid.UUID, status string) (Milestone, error) {
+	row, err := r.q.SetMilestoneStatus(ctx, goalsdb.SetMilestoneStatusParams{
+		ID:     id,
+		UserID: userID,
+		Status: status,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Milestone{}, apperr.ErrNotFound
+		}
+		return Milestone{}, apperr.Wrap(err, "set milestone status")
+	}
+	return milestoneFromDB(row), nil
+}
+
+func (r *Repository) DeleteMilestone(ctx context.Context, id, userID uuid.UUID) error {
+	return apperr.Wrap(r.q.DeleteMilestone(ctx, goalsdb.DeleteMilestoneParams{ID: id, UserID: userID}), "delete milestone")
+}
+
+func (r *Repository) Milestones(ctx context.Context, goalID, userID uuid.UUID) ([]Milestone, error) {
+	rows, err := r.q.ListMilestones(ctx, goalsdb.ListMilestonesParams{GoalID: goalID, UserID: userID})
+	if err != nil {
+		return nil, apperr.Wrap(err, "list milestones")
+	}
+
+	out := make([]Milestone, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, milestoneFromDB(row))
 	}
 	return out, nil
 }
@@ -210,6 +320,24 @@ func updateFromDB(row goalsdb.GoalUpdate) Update {
 		u.Progress = &p
 	}
 	return u
+}
+
+func milestoneFromDB(row goalsdb.GoalMilestone) Milestone {
+	m := Milestone{
+		ID:          row.ID,
+		GoalID:      row.GoalID,
+		UserID:      row.UserID,
+		Title:       row.Title,
+		Status:      row.Status,
+		Position:    int(row.Position),
+		CompletedAt: row.CompletedAt,
+		CreatedAt:   row.CreatedAt,
+		UpdatedAt:   row.UpdatedAt,
+	}
+	if row.TargetDate.Valid {
+		m.TargetDate = row.TargetDate.Time
+	}
+	return m
 }
 
 // toDate converts a zero time to SQL NULL, which is how "no deadline" is

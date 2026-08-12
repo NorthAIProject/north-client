@@ -48,6 +48,15 @@ var Categories = lifedomain.Domains
 // Statuses that a user can move a goal to.
 var Statuses = []string{StatusActive, StatusAchieved, StatusPaused, StatusAbandoned}
 
+// Milestone status values.
+const (
+	MilestoneOpen      = "open"
+	MilestoneCompleted = "completed"
+)
+
+// MilestoneStatuses that a user can move a checkpoint to.
+var MilestoneStatuses = []string{MilestoneOpen, MilestoneCompleted}
+
 // Goal is something the user is working toward.
 type Goal struct {
 	ID     uuid.UUID
@@ -73,7 +82,35 @@ type Goal struct {
 
 	// LatestUpdate is the most recent progress note, when one has been loaded.
 	LatestUpdate *Update
+
+	// Milestones is the checklist, loaded on the detail page. Empty on the
+	// list; MilestoneTotal / MilestoneDone still carry the counts there.
+	Milestones     []Milestone
+	MilestoneTotal int
+	MilestoneDone  int
 }
+
+// Milestone is a checkpoint on the way to a goal.
+type Milestone struct {
+	ID     uuid.UUID
+	GoalID uuid.UUID
+	UserID uuid.UUID
+
+	Title    string
+	Status   string
+	Position int
+
+	// TargetDate is zero when the checkpoint has no date.
+	TargetDate time.Time
+
+	CompletedAt *time.Time
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+func (m Milestone) IsComplete() bool { return m.Status == MilestoneCompleted }
+
+func (m Milestone) HasDeadline() bool { return !m.TargetDate.IsZero() }
 
 // Update is a progress note against a goal.
 type Update struct {
@@ -91,6 +128,45 @@ type Update struct {
 
 func (g Goal) IsActive() bool    { return g.Status == StatusActive }
 func (g Goal) HasDeadline() bool { return !g.TargetDate.IsZero() }
+
+// WithMilestones attaches the checklist and its counts so Progress can see them.
+func (g Goal) WithMilestones(ms []Milestone) Goal {
+	g.Milestones = ms
+	g.MilestoneTotal = len(ms)
+	g.MilestoneDone = 0
+	for _, m := range ms {
+		if m.IsComplete() {
+			g.MilestoneDone++
+		}
+	}
+	return g
+}
+
+// Progress is the current completion, when one can be derived.
+//
+// Milestones win over a self-assessed note: a checklist is the more honest
+// number. No milestones and no note percentage means unset, not zero.
+func (g Goal) Progress() (int, bool) {
+	if g.MilestoneTotal > 0 {
+		return g.MilestoneDone * 100 / g.MilestoneTotal, true
+	}
+	if g.LatestUpdate != nil && g.LatestUpdate.Progress != nil {
+		return *g.LatestUpdate.Progress, true
+	}
+	return 0, false
+}
+
+// ProgressLabel is what the UI prints: "2 of 5" when there are milestones,
+// "40%" when only a note has a percentage, empty when there is nothing to show.
+func (g Goal) ProgressLabel() string {
+	if g.MilestoneTotal > 0 {
+		return fmt.Sprintf("%d of %d", g.MilestoneDone, g.MilestoneTotal)
+	}
+	if pct, ok := g.Progress(); ok {
+		return fmt.Sprintf("%d%%", pct)
+	}
+	return ""
+}
 
 // DaysRemaining is how long is left, negative when the date has passed.
 // Meaningless without a deadline, so check HasDeadline first.
@@ -151,6 +227,12 @@ func (g Goal) Summary() string {
 	}
 	if how := strings.TrimSpace(g.Success); how != "" {
 		fmt.Fprintf(&b, "; done when %s", how)
+	}
+
+	if g.MilestoneTotal > 0 {
+		fmt.Fprintf(&b, "; %d of %d milestones", g.MilestoneDone, g.MilestoneTotal)
+	} else if g.LatestUpdate != nil && g.LatestUpdate.Progress != nil {
+		fmt.Fprintf(&b, "; %d%%", *g.LatestUpdate.Progress)
 	}
 
 	if g.LatestUpdate != nil {

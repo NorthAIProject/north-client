@@ -14,6 +14,7 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
 	"github.com/NorthAIProject/north-client/web/shared/ui/input"
 	"github.com/NorthAIProject/north-client/web/shared/ui/label"
+	"github.com/NorthAIProject/north-client/web/shared/ui/progress"
 	"github.com/NorthAIProject/north-client/web/shared/ui/selectbox"
 	"github.com/NorthAIProject/north-client/web/shared/ui/textarea"
 )
@@ -35,9 +36,27 @@ type GoalForm struct {
 
 	// UpdateError belongs to the progress-note form on the detail page.
 	UpdateError string
+
+	MilestoneTitle   string
+	MilestoneDate    string
+	MilestoneErrors  map[string]string
+	MilestoneOpen    bool
+	EditingMilestone string
 }
 
 func (f GoalForm) fieldError(name string) string { return f.Errors[name] }
+
+func (f GoalForm) milestoneError(name string) string { return f.MilestoneErrors[name] }
+
+func hasProgress(g goal.Goal) bool {
+	_, ok := g.Progress()
+	return ok
+}
+
+func progressPct(g goal.Goal) int {
+	pct, _ := g.Progress()
+	return pct
+}
 
 // FormFor pre-fills the edit form from an existing goal.
 func FormFor(g goal.Goal) GoalForm {
@@ -131,6 +150,7 @@ templ IndexPage(user users.User, list []goal.Goal, f GoalForm) {
 		@label.Script()
 		@textarea.Script()
 		@selectbox.Script()
+		@progress.Script()
 	}
 }
 
@@ -152,11 +172,20 @@ templ goalCard(g goal.Goal) {
 						<span>{ categoryLabel(g.Category) }</span>
 						<span>·</span>
 						<span class={ templ.KV("text-destructive", g.Overdue()) }>{ g.Deadline() }</span>
+						if hasProgress(g) {
+							<span>·</span>
+							<span>{ g.ProgressLabel() }</span>
+						}
 						if g.LatestUpdate != nil {
 							<span>·</span>
 							<span>Last note { g.LatestUpdate.CreatedAt.Format("2 Jan") }</span>
 						}
 					</div>
+					if hasProgress(g) {
+						<div class="mt-3">
+							@progress.Progress(progress.Props{Value: progressPct(g), Max: 100, Size: progress.SizeSm})
+						</div>
+					}
 				</div>
 			}
 		}
@@ -203,6 +232,10 @@ templ DetailPage(user users.User, g goal.Goal, updates []goal.Update, f GoalForm
 					<span class={ templ.KV("text-destructive", g.Overdue()) }>{ g.Deadline() }</span>
 					<span>·</span>
 					<span>{ statusLabel(g.Status) }</span>
+					if hasProgress(g) {
+						<span>·</span>
+						<span>{ g.ProgressLabel() }</span>
+					}
 				</div>
 			</header>
 			<div x-show="editing" x-cloak class="mb-6">
@@ -230,6 +263,7 @@ templ DetailPage(user users.User, g goal.Goal, updates []goal.Update, f GoalForm
 				@goalDetails(g)
 			}
 			@statusActions(g)
+			@milestonesCard(g, f)
 			@progressForm(g, f.UpdateError)
 			if len(updates) > 0 {
 				<h2 class="mt-8 mb-3 text-sm font-medium">Progress</h2>
@@ -245,6 +279,7 @@ templ DetailPage(user users.User, g goal.Goal, updates []goal.Update, f GoalForm
 		@label.Script()
 		@textarea.Script()
 		@selectbox.Script()
+		@progress.Script()
 	}
 }
 
@@ -293,6 +328,193 @@ templ statusButton(g goal.Goal, status, labelText string, variant button.Variant
 			{ labelText }
 		}
 	</form>
+}
+
+templ milestonesCard(g goal.Goal, f GoalForm) {
+	@card.Card(card.Props{Class: "mb-6"}) {
+		@card.Header() {
+			@card.Title(card.TitleProps{Class: "text-base"}) {
+				Milestones
+			}
+			@card.Description() {
+				if len(g.Milestones) == 0 {
+					The steps that make this goal feel alive. Optional, but the coach can see them.
+				} else {
+					{ g.ProgressLabel() } complete.
+				}
+			}
+		}
+		@card.Content() {
+			if hasProgress(g) && g.MilestoneTotal > 0 {
+				<div class="mb-4">
+					@progress.Progress(progress.Props{Value: progressPct(g), Max: 100, Size: progress.SizeSm, ShowValue: true})
+				</div>
+			}
+			if len(g.Milestones) > 0 {
+				<ul class="mb-4 space-y-2">
+					for _, m := range g.Milestones {
+						@milestoneRow(g, m, f)
+					}
+				</ul>
+			}
+			@addMilestoneForm(g, f)
+		}
+	}
+}
+
+templ milestoneRow(g goal.Goal, m goal.Milestone, f GoalForm) {
+	<li
+		class="border-border rounded-lg border p-3"
+		x-data={ "{ editing: " + boolJS(f.EditingMilestone == m.ID.String()) + " }" }
+	>
+		<div x-show="!editing" class="flex items-start justify-between gap-3">
+			<div class="min-w-0">
+				<p class={ "text-sm font-medium", templ.KV("text-muted-foreground line-through", m.IsComplete()) }>
+					{ m.Title }
+				</p>
+				if m.HasDeadline() {
+					<p class="text-muted-foreground mt-0.5 text-xs">{ m.TargetDate.Format("2 Jan 2006") }</p>
+				}
+			</div>
+			<div class="flex shrink-0 flex-wrap items-center justify-end gap-1">
+				if m.IsComplete() {
+					@milestoneStatusButton(g, m, goal.MilestoneOpen, "Reopen", button.VariantGhost)
+				} else {
+					@milestoneStatusButton(g, m, goal.MilestoneCompleted, "Complete", button.VariantOutline)
+				}
+				@button.Button(button.Props{
+					Variant:    button.VariantGhost,
+					Size:       button.SizeSm,
+					Attributes: templ.Attributes{"@click": "editing = true", "type": "button"},
+				}) {
+					Edit
+				}
+				@milestoneDeleteButton(g, m)
+			</div>
+		</div>
+		<div x-show="editing" x-cloak>
+			@editMilestoneForm(g, m, f)
+		</div>
+	</li>
+}
+
+templ milestoneStatusButton(g goal.Goal, m goal.Milestone, status, labelText string, variant button.Variant) {
+	<form method="post" action={ templ.SafeURL("/app/goals/" + g.ID.String() + "/milestones/" + m.ID.String() + "/status") }>
+		@ui.CSRFInput()
+		<input type="hidden" name="status" value={ status }/>
+		@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Variant: variant}) {
+			{ labelText }
+		}
+	</form>
+}
+
+templ milestoneDeleteButton(g goal.Goal, m goal.Milestone) {
+	<form
+		method="post"
+		action={ templ.SafeURL("/app/goals/" + g.ID.String() + "/milestones/" + m.ID.String() + "/delete") }
+		@submit="if (!confirm('Remove this milestone?')) $event.preventDefault()"
+	>
+		@ui.CSRFInput()
+		@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Variant: button.VariantGhost}) {
+			Remove
+		}
+	</form>
+}
+
+templ editMilestoneForm(g goal.Goal, m goal.Milestone, f GoalForm) {
+	<form method="post" action={ templ.SafeURL("/app/goals/" + g.ID.String() + "/milestones/" + m.ID.String()) } class="space-y-3">
+		@ui.CSRFInput()
+		@field("milestone_title", "Milestone", f.milestoneError("title")) {
+			@input.Input(input.Props{
+				ID:        "milestone_title_" + m.ID.String(),
+				Name:      "milestone_title",
+				Value:     milestoneEditTitle(m, f),
+				Required:  true,
+				HasError:  f.EditingMilestone == m.ID.String() && f.milestoneError("title") != "",
+			})
+		}
+		@field("milestone_date", "Target date", "") {
+			@input.Input(input.Props{
+				ID:    "milestone_date_" + m.ID.String(),
+				Name:  "milestone_date",
+				Type:  input.TypeDate,
+				Value: milestoneEditDate(m, f),
+			})
+		}
+		<div class="flex gap-2">
+			@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm}) {
+				Save
+			}
+			@button.Button(button.Props{
+				Variant:    button.VariantGhost,
+				Size:       button.SizeSm,
+				Attributes: templ.Attributes{"@click.prevent": "editing = false"},
+			}) {
+				Cancel
+			}
+		</div>
+	</form>
+}
+
+templ addMilestoneForm(g goal.Goal, f GoalForm) {
+	<form method="post" action={ templ.SafeURL("/app/goals/" + g.ID.String() + "/milestones") } class="space-y-3">
+		@ui.CSRFInput()
+		<div class="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+			@field("milestone_title", "Add a milestone", f.milestoneError("title")) {
+				@input.Input(input.Props{
+					ID:          "milestone_title",
+					Name:        "milestone_title",
+					Value:       addMilestoneTitle(f),
+					Placeholder: "Run 5k without stopping",
+					HasError:    f.EditingMilestone == "" && f.milestoneError("title") != "",
+				})
+			}
+			<div class="w-full sm:w-40">
+				@field("milestone_date", "Target date", "") {
+					@input.Input(input.Props{
+						ID:    "milestone_date",
+						Name:  "milestone_date",
+						Type:  input.TypeDate,
+						Value: addMilestoneDate(f),
+					})
+				}
+			</div>
+		</div>
+		@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm}) {
+			Add milestone
+		}
+	</form>
+}
+
+func milestoneEditTitle(m goal.Milestone, f GoalForm) string {
+	if f.EditingMilestone == m.ID.String() && f.MilestoneTitle != "" {
+		return f.MilestoneTitle
+	}
+	return m.Title
+}
+
+func milestoneEditDate(m goal.Milestone, f GoalForm) string {
+	if f.EditingMilestone == m.ID.String() && f.MilestoneDate != "" {
+		return f.MilestoneDate
+	}
+	if m.HasDeadline() {
+		return m.TargetDate.Format("2006-01-02")
+	}
+	return ""
+}
+
+func addMilestoneTitle(f GoalForm) string {
+	if f.EditingMilestone != "" {
+		return ""
+	}
+	return f.MilestoneTitle
+}
+
+func addMilestoneDate(f GoalForm) string {
+	if f.EditingMilestone != "" {
+		return ""
+	}
+	return f.MilestoneDate
 }
 
 templ progressForm(g goal.Goal, errMsg string) {
@@ -360,7 +582,7 @@ templ dangerZone(g goal.Goal) {
 		<form
 			method="post"
 			action={ templ.SafeURL("/app/goals/" + g.ID.String() + "/delete") }
-			@submit="if (!confirm('Delete this goal and every note on it? This cannot be undone.')) $event.preventDefault()"
+			@submit="if (!confirm('Delete this goal, its milestones, and every note on it? This cannot be undone.')) $event.preventDefault()"
 		>
 			@ui.CSRFInput()
 			<button type="submit" class="text-muted-foreground hover:text-destructive text-sm transition-colors">

@@ -90,7 +90,7 @@ schedule; it is the thing logs and habits are measured against.
 
 | Objective | Slice | Table |
 |---|---|---|
-| A stated goal, in the user's words | `internal/goals` | `goals`, `goal_updates` |
+| A stated goal, in the user's words | `internal/goals` | `goals`, `goal_updates`, `goal_milestones` |
 | Calorie and macro targets | `internal/calculator` | `user_macro_plans` |
 | Diet preferences (vegan, low-carb…) | `internal/meals` | `user_diet_preferences` |
 | Standing settings (units, default goal) | `internal/preferences` | `user_preferences` |

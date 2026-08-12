@@ -1,6 +1,7 @@
 package goals
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -31,6 +32,10 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Post("/goals/{id}", h.update)
 	r.Post("/goals/{id}/status", h.setStatus)
 	r.Post("/goals/{id}/updates", h.addUpdate)
+	r.Post("/goals/{id}/milestones", h.addMilestone)
+	r.Post("/goals/{id}/milestones/{mid}", h.updateMilestone)
+	r.Post("/goals/{id}/milestones/{mid}/status", h.setMilestoneStatus)
+	r.Post("/goals/{id}/milestones/{mid}/delete", h.deleteMilestone)
 	r.Post("/goals/{id}/delete", h.destroy)
 }
 
@@ -87,13 +92,7 @@ func (h *Handler) show(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	goal, err := h.svc.Get(r.Context(), id, user.ID)
-	if err != nil {
-		h.fail(w, r, err)
-		return
-	}
-
-	updates, err := h.svc.Updates(r.Context(), goal.ID, 50)
+	goal, updates, err := h.loadDetail(r.Context(), id, user.ID)
 	if err != nil {
 		h.fail(w, r, err)
 		return
@@ -120,12 +119,11 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 	if _, err := h.svc.Update(r.Context(), id, user.ID, inputFrom(form)); err != nil {
 		var fieldErrs apperr.FieldErrors
 		if apperr.As(err, &fieldErrs) {
-			goal, getErr := h.svc.Get(r.Context(), id, user.ID)
-			if getErr != nil {
-				h.fail(w, r, getErr)
+			goal, updates, loadErr := h.loadDetail(r.Context(), id, user.ID)
+			if loadErr != nil {
+				h.fail(w, r, loadErr)
 				return
 			}
-			updates, _ := h.svc.Updates(r.Context(), id, 50)
 
 			form.Errors = fieldErrs.Messages()
 			form.Open = true
@@ -183,18 +181,126 @@ func (h *Handler) addUpdate(w http.ResponseWriter, r *http.Request) {
 	if _, err := h.svc.AddUpdate(r.Context(), id, user.ID, r.PostFormValue("note"), progress); err != nil {
 		var fieldErrs apperr.FieldErrors
 		if apperr.As(err, &fieldErrs) {
-			goal, getErr := h.svc.Get(r.Context(), id, user.ID)
-			if getErr != nil {
-				h.fail(w, r, getErr)
+			goal, updates, loadErr := h.loadDetail(r.Context(), id, user.ID)
+			if loadErr != nil {
+				h.fail(w, r, loadErr)
 				return
 			}
-			updates, _ := h.svc.Updates(r.Context(), id, 50)
 
 			form := goalpages.FormFor(goal)
 			form.UpdateError = fieldErrs.Messages()["note"]
 			render(w, r, http.StatusUnprocessableEntity, goalpages.DetailPage(user, goal, updates, form))
 			return
 		}
+		h.fail(w, r, err)
+		return
+	}
+
+	http.Redirect(w, r, "/app/goals/"+id.String(), http.StatusSeeOther)
+}
+
+func (h *Handler) addMilestone(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		h.fail(w, r, apperr.ErrNotFound)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		h.fail(w, r, apperr.ErrValidation)
+		return
+	}
+
+	in, submitted := milestoneFrom(r)
+	if _, err := h.svc.AddMilestone(r.Context(), id, user.ID, in); err != nil {
+		var fieldErrs apperr.FieldErrors
+		if apperr.As(err, &fieldErrs) {
+			goal, updates, loadErr := h.loadDetail(r.Context(), id, user.ID)
+			if loadErr != nil {
+				h.fail(w, r, loadErr)
+				return
+			}
+			form := goalpages.FormFor(goal)
+			form.MilestoneTitle = submitted.MilestoneTitle
+			form.MilestoneDate = submitted.MilestoneDate
+			form.MilestoneErrors = fieldErrs.Messages()
+			form.MilestoneOpen = true
+			render(w, r, http.StatusUnprocessableEntity, goalpages.DetailPage(user, goal, updates, form))
+			return
+		}
+		h.fail(w, r, err)
+		return
+	}
+
+	http.Redirect(w, r, "/app/goals/"+id.String(), http.StatusSeeOther)
+}
+
+func (h *Handler) updateMilestone(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+
+	id, mid, ok := parseGoalAndMilestone(w, r, h)
+	if !ok {
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		h.fail(w, r, apperr.ErrValidation)
+		return
+	}
+
+	in, submitted := milestoneFrom(r)
+	if _, err := h.svc.UpdateMilestone(r.Context(), mid, user.ID, in); err != nil {
+		var fieldErrs apperr.FieldErrors
+		if apperr.As(err, &fieldErrs) {
+			goal, updates, loadErr := h.loadDetail(r.Context(), id, user.ID)
+			if loadErr != nil {
+				h.fail(w, r, loadErr)
+				return
+			}
+			form := goalpages.FormFor(goal)
+			form.MilestoneTitle = submitted.MilestoneTitle
+			form.MilestoneDate = submitted.MilestoneDate
+			form.MilestoneErrors = fieldErrs.Messages()
+			form.EditingMilestone = mid.String()
+			render(w, r, http.StatusUnprocessableEntity, goalpages.DetailPage(user, goal, updates, form))
+			return
+		}
+		h.fail(w, r, err)
+		return
+	}
+
+	http.Redirect(w, r, "/app/goals/"+id.String(), http.StatusSeeOther)
+}
+
+func (h *Handler) setMilestoneStatus(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+
+	id, mid, ok := parseGoalAndMilestone(w, r, h)
+	if !ok {
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		h.fail(w, r, apperr.ErrValidation)
+		return
+	}
+
+	if _, err := h.svc.SetMilestoneStatus(r.Context(), mid, user.ID, r.PostFormValue("status")); err != nil {
+		h.fail(w, r, err)
+		return
+	}
+
+	http.Redirect(w, r, "/app/goals/"+id.String(), http.StatusSeeOther)
+}
+
+func (h *Handler) deleteMilestone(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+
+	id, mid, ok := parseGoalAndMilestone(w, r, h)
+	if !ok {
+		return
+	}
+
+	if err := h.svc.DeleteMilestone(r.Context(), mid, user.ID); err != nil {
 		h.fail(w, r, err)
 		return
 	}
@@ -246,6 +352,53 @@ func inputFrom(f goalpages.GoalForm) Input {
 	}
 
 	return in
+}
+
+func milestoneFrom(r *http.Request) (MilestoneInput, goalpages.GoalForm) {
+	form := formFrom(r)
+	form.MilestoneTitle = strings.TrimSpace(r.PostFormValue("milestone_title"))
+	form.MilestoneDate = strings.TrimSpace(r.PostFormValue("milestone_date"))
+
+	in := MilestoneInput{Title: form.MilestoneTitle}
+	if form.MilestoneDate != "" {
+		if parsed, err := time.Parse("2006-01-02", form.MilestoneDate); err == nil {
+			in.TargetDate = parsed
+		}
+	}
+	return in, form
+}
+
+func parseGoalAndMilestone(w http.ResponseWriter, r *http.Request, h *Handler) (uuid.UUID, uuid.UUID, bool) {
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		h.fail(w, r, apperr.ErrNotFound)
+		return uuid.UUID{}, uuid.UUID{}, false
+	}
+	mid, err := uuid.Parse(chi.URLParam(r, "mid"))
+	if err != nil {
+		h.fail(w, r, apperr.ErrNotFound)
+		return uuid.UUID{}, uuid.UUID{}, false
+	}
+	return id, mid, true
+}
+
+func (h *Handler) loadDetail(ctx context.Context, id, userID uuid.UUID) (Goal, []Update, error) {
+	goal, err := h.svc.Get(ctx, id, userID)
+	if err != nil {
+		return Goal{}, nil, err
+	}
+
+	ms, err := h.svc.Milestones(ctx, id, userID)
+	if err != nil {
+		return Goal{}, nil, err
+	}
+
+	updates, err := h.svc.Updates(ctx, id, userID, 50)
+	if err != nil {
+		return Goal{}, nil, err
+	}
+
+	return goal.WithMilestones(ms), updates, nil
 }
 
 func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {

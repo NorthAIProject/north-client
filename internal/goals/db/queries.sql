@@ -56,9 +56,9 @@ RETURNING *;
 
 -- name: ListGoalUpdates :many
 SELECT * FROM goal_updates
-WHERE goal_id = $1
+WHERE goal_id = $1 AND user_id = $2
 ORDER BY created_at DESC
-LIMIT $2;
+LIMIT $3;
 
 -- name: LatestGoalUpdates :many
 -- The most recent note per goal, for the coach's context and the goal list.
@@ -66,3 +66,50 @@ SELECT DISTINCT ON (goal_id) *
 FROM goal_updates
 WHERE user_id = $1
 ORDER BY goal_id, created_at DESC;
+
+-- name: CreateMilestone :one
+-- Position is MAX+1 for this goal so appends stay stable without a round trip.
+INSERT INTO goal_milestones (goal_id, user_id, title, target_date, position)
+VALUES (
+    $1, $2, $3, $4,
+    (SELECT COALESCE(MAX(position), -1) + 1 FROM goal_milestones WHERE goal_id = $1)
+)
+RETURNING *;
+
+-- name: GetMilestone :one
+SELECT * FROM goal_milestones WHERE id = $1 AND user_id = $2;
+
+-- name: UpdateMilestone :one
+UPDATE goal_milestones
+SET title       = $3,
+    target_date = $4,
+    updated_at  = now()
+WHERE id = $1 AND user_id = $2
+RETURNING *;
+
+-- name: SetMilestoneStatus :one
+UPDATE goal_milestones
+SET status       = $3,
+    -- Stamped when it is completed and cleared if it is reopened, so a
+    -- reopened checkpoint does not still look finished.
+    completed_at = CASE WHEN $3::text = 'completed' THEN now() ELSE NULL END,
+    updated_at   = now()
+WHERE id = $1 AND user_id = $2
+RETURNING *;
+
+-- name: DeleteMilestone :exec
+DELETE FROM goal_milestones WHERE id = $1 AND user_id = $2;
+
+-- name: ListMilestones :many
+SELECT * FROM goal_milestones
+WHERE goal_id = $1 AND user_id = $2
+ORDER BY position ASC, created_at ASC;
+
+-- name: MilestoneCounts :many
+-- One row per goal that has any milestones, for the list and the coach.
+SELECT goal_id,
+       COUNT(*)::int AS total,
+       COUNT(*) FILTER (WHERE status = 'completed')::int AS completed
+FROM goal_milestones
+WHERE user_id = $1
+GROUP BY goal_id;

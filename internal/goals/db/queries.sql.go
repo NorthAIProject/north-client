@@ -85,6 +85,46 @@ func (q *Queries) CreateGoal(ctx context.Context, arg CreateGoalParams) (Goal, e
 	return i, err
 }
 
+const createMilestone = `-- name: CreateMilestone :one
+INSERT INTO goal_milestones (goal_id, user_id, title, target_date, position)
+VALUES (
+    $1, $2, $3, $4,
+    (SELECT COALESCE(MAX(position), -1) + 1 FROM goal_milestones WHERE goal_id = $1)
+)
+RETURNING id, goal_id, user_id, title, status, position, target_date, completed_at, created_at, updated_at
+`
+
+type CreateMilestoneParams struct {
+	GoalID     uuid.UUID
+	UserID     uuid.UUID
+	Title      string
+	TargetDate pgtype.Date
+}
+
+// Position is MAX+1 for this goal so appends stay stable without a round trip.
+func (q *Queries) CreateMilestone(ctx context.Context, arg CreateMilestoneParams) (GoalMilestone, error) {
+	row := q.db.QueryRow(ctx, createMilestone,
+		arg.GoalID,
+		arg.UserID,
+		arg.Title,
+		arg.TargetDate,
+	)
+	var i GoalMilestone
+	err := row.Scan(
+		&i.ID,
+		&i.GoalID,
+		&i.UserID,
+		&i.Title,
+		&i.Status,
+		&i.Position,
+		&i.TargetDate,
+		&i.CompletedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const deleteGoal = `-- name: DeleteGoal :exec
 DELETE FROM goals WHERE id = $1 AND user_id = $2
 `
@@ -96,6 +136,20 @@ type DeleteGoalParams struct {
 
 func (q *Queries) DeleteGoal(ctx context.Context, arg DeleteGoalParams) error {
 	_, err := q.db.Exec(ctx, deleteGoal, arg.ID, arg.UserID)
+	return err
+}
+
+const deleteMilestone = `-- name: DeleteMilestone :exec
+DELETE FROM goal_milestones WHERE id = $1 AND user_id = $2
+`
+
+type DeleteMilestoneParams struct {
+	ID     uuid.UUID
+	UserID uuid.UUID
+}
+
+func (q *Queries) DeleteMilestone(ctx context.Context, arg DeleteMilestoneParams) error {
+	_, err := q.db.Exec(ctx, deleteMilestone, arg.ID, arg.UserID)
 	return err
 }
 
@@ -123,6 +177,33 @@ func (q *Queries) GetGoal(ctx context.Context, arg GetGoalParams) (Goal, error) 
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ClosedAt,
+	)
+	return i, err
+}
+
+const getMilestone = `-- name: GetMilestone :one
+SELECT id, goal_id, user_id, title, status, position, target_date, completed_at, created_at, updated_at FROM goal_milestones WHERE id = $1 AND user_id = $2
+`
+
+type GetMilestoneParams struct {
+	ID     uuid.UUID
+	UserID uuid.UUID
+}
+
+func (q *Queries) GetMilestone(ctx context.Context, arg GetMilestoneParams) (GoalMilestone, error) {
+	row := q.db.QueryRow(ctx, getMilestone, arg.ID, arg.UserID)
+	var i GoalMilestone
+	err := row.Scan(
+		&i.ID,
+		&i.GoalID,
+		&i.UserID,
+		&i.Title,
+		&i.Status,
+		&i.Position,
+		&i.TargetDate,
+		&i.CompletedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -213,18 +294,19 @@ func (q *Queries) ListActiveGoals(ctx context.Context, arg ListActiveGoalsParams
 
 const listGoalUpdates = `-- name: ListGoalUpdates :many
 SELECT id, goal_id, user_id, note, progress, created_at FROM goal_updates
-WHERE goal_id = $1
+WHERE goal_id = $1 AND user_id = $2
 ORDER BY created_at DESC
-LIMIT $2
+LIMIT $3
 `
 
 type ListGoalUpdatesParams struct {
 	GoalID uuid.UUID
+	UserID uuid.UUID
 	Limit  int32
 }
 
 func (q *Queries) ListGoalUpdates(ctx context.Context, arg ListGoalUpdatesParams) ([]GoalUpdate, error) {
-	rows, err := q.db.Query(ctx, listGoalUpdates, arg.GoalID, arg.Limit)
+	rows, err := q.db.Query(ctx, listGoalUpdates, arg.GoalID, arg.UserID, arg.Limit)
 	if err != nil {
 		return nil, err
 	}
@@ -296,6 +378,84 @@ func (q *Queries) ListGoals(ctx context.Context, arg ListGoalsParams) ([]Goal, e
 	return items, nil
 }
 
+const listMilestones = `-- name: ListMilestones :many
+SELECT id, goal_id, user_id, title, status, position, target_date, completed_at, created_at, updated_at FROM goal_milestones
+WHERE goal_id = $1 AND user_id = $2
+ORDER BY position ASC, created_at ASC
+`
+
+type ListMilestonesParams struct {
+	GoalID uuid.UUID
+	UserID uuid.UUID
+}
+
+func (q *Queries) ListMilestones(ctx context.Context, arg ListMilestonesParams) ([]GoalMilestone, error) {
+	rows, err := q.db.Query(ctx, listMilestones, arg.GoalID, arg.UserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GoalMilestone{}
+	for rows.Next() {
+		var i GoalMilestone
+		if err := rows.Scan(
+			&i.ID,
+			&i.GoalID,
+			&i.UserID,
+			&i.Title,
+			&i.Status,
+			&i.Position,
+			&i.TargetDate,
+			&i.CompletedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const milestoneCounts = `-- name: MilestoneCounts :many
+SELECT goal_id,
+       COUNT(*)::int AS total,
+       COUNT(*) FILTER (WHERE status = 'completed')::int AS completed
+FROM goal_milestones
+WHERE user_id = $1
+GROUP BY goal_id
+`
+
+type MilestoneCountsRow struct {
+	GoalID    uuid.UUID
+	Total     int32
+	Completed int32
+}
+
+// One row per goal that has any milestones, for the list and the coach.
+func (q *Queries) MilestoneCounts(ctx context.Context, userID uuid.UUID) ([]MilestoneCountsRow, error) {
+	rows, err := q.db.Query(ctx, milestoneCounts, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []MilestoneCountsRow{}
+	for rows.Next() {
+		var i MilestoneCountsRow
+		if err := rows.Scan(&i.GoalID, &i.Total, &i.Completed); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const setGoalStatus = `-- name: SetGoalStatus :one
 UPDATE goals
 SET status     = $3,
@@ -328,6 +488,41 @@ func (q *Queries) SetGoalStatus(ctx context.Context, arg SetGoalStatusParams) (G
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ClosedAt,
+	)
+	return i, err
+}
+
+const setMilestoneStatus = `-- name: SetMilestoneStatus :one
+UPDATE goal_milestones
+SET status       = $3,
+    -- Stamped when it is completed and cleared if it is reopened, so a
+    -- reopened checkpoint does not still look finished.
+    completed_at = CASE WHEN $3::text = 'completed' THEN now() ELSE NULL END,
+    updated_at   = now()
+WHERE id = $1 AND user_id = $2
+RETURNING id, goal_id, user_id, title, status, position, target_date, completed_at, created_at, updated_at
+`
+
+type SetMilestoneStatusParams struct {
+	ID     uuid.UUID
+	UserID uuid.UUID
+	Status string
+}
+
+func (q *Queries) SetMilestoneStatus(ctx context.Context, arg SetMilestoneStatusParams) (GoalMilestone, error) {
+	row := q.db.QueryRow(ctx, setMilestoneStatus, arg.ID, arg.UserID, arg.Status)
+	var i GoalMilestone
+	err := row.Scan(
+		&i.ID,
+		&i.GoalID,
+		&i.UserID,
+		&i.Title,
+		&i.Status,
+		&i.Position,
+		&i.TargetDate,
+		&i.CompletedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -377,6 +572,45 @@ func (q *Queries) UpdateGoal(ctx context.Context, arg UpdateGoalParams) (Goal, e
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ClosedAt,
+	)
+	return i, err
+}
+
+const updateMilestone = `-- name: UpdateMilestone :one
+UPDATE goal_milestones
+SET title       = $3,
+    target_date = $4,
+    updated_at  = now()
+WHERE id = $1 AND user_id = $2
+RETURNING id, goal_id, user_id, title, status, position, target_date, completed_at, created_at, updated_at
+`
+
+type UpdateMilestoneParams struct {
+	ID         uuid.UUID
+	UserID     uuid.UUID
+	Title      string
+	TargetDate pgtype.Date
+}
+
+func (q *Queries) UpdateMilestone(ctx context.Context, arg UpdateMilestoneParams) (GoalMilestone, error) {
+	row := q.db.QueryRow(ctx, updateMilestone,
+		arg.ID,
+		arg.UserID,
+		arg.Title,
+		arg.TargetDate,
+	)
+	var i GoalMilestone
+	err := row.Scan(
+		&i.ID,
+		&i.GoalID,
+		&i.UserID,
+		&i.Title,
+		&i.Status,
+		&i.Position,
+		&i.TargetDate,
+		&i.CompletedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }

@@ -8,8 +8,9 @@ import "github.com/NorthAIProject/north-client/internal/goals/goal"
 // and the handler that serves them do not import each other. These aliases mean
 // callers still say goals.Goal.
 type (
-	Goal   = goal.Goal
-	Update = goal.Update
+	Goal      = goal.Goal
+	Update    = goal.Update
+	Milestone = goal.Milestone
 )
 
 const (
@@ -24,9 +25,13 @@ const (
 	CategoryLearning = goal.CategoryLearning
 	CategoryPersonal = goal.CategoryPersonal
 	CategoryOther    = goal.CategoryOther
+
+	MilestoneOpen      = goal.MilestoneOpen
+	MilestoneCompleted = goal.MilestoneCompleted
 )
 
 var (
-	Categories = goal.Categories
-	Statuses   = goal.Statuses
+	Categories        = goal.Categories
+	Statuses          = goal.Statuses
+	MilestoneStatuses = goal.MilestoneStatuses
 )

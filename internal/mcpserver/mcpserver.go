@@ -488,6 +488,9 @@ func matchGoals(all []goals.Goal, query string) []map[string]any {
 			"status":     g.Status,
 			"motivation": g.Motivation,
 		}
+		if pct, ok := g.Progress(); ok {
+			entry["progress"] = pct
+		}
 		if !g.TargetDate.IsZero() {
 			entry["target_date"] = g.TargetDate.Format(time.DateOnly)
 		}

@@ -140,9 +140,68 @@ func (s *Service) AddUpdate(ctx context.Context, goalID, userID uuid.UUID, note 
 	return s.repo.AddUpdate(ctx, goalID, userID, note, progress)
 }
 
-func (s *Service) Updates(ctx context.Context, goalID uuid.UUID, limit int) ([]Update, error) {
+func (s *Service) Updates(ctx context.Context, goalID, userID uuid.UUID, limit int) ([]Update, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 50
 	}
-	return s.repo.Updates(ctx, goalID, limit)
+	return s.repo.Updates(ctx, goalID, userID, limit)
+}
+
+// MilestoneInput is a checkpoint as submitted.
+type MilestoneInput struct {
+	Title      string
+	TargetDate time.Time
+}
+
+// ValidateMilestone checks a checkpoint before it is stored.
+func ValidateMilestone(in MilestoneInput) (MilestoneInput, error) {
+	var errs apperr.FieldErrors
+
+	in.Title = strings.TrimSpace(in.Title)
+	switch {
+	case in.Title == "":
+		errs = errs.Add("title", "Give the milestone a name.")
+	case len(in.Title) > 200:
+		errs = errs.Add("title", "Keep the name under 200 characters.")
+	}
+
+	return in, errs.OrNil()
+}
+
+func (s *Service) AddMilestone(ctx context.Context, goalID, userID uuid.UUID, in MilestoneInput) (Milestone, error) {
+	clean, err := ValidateMilestone(in)
+	if err != nil {
+		return Milestone{}, err
+	}
+
+	// Ownership is checked before writing, because goal_milestones has its own
+	// user_id and would otherwise accept a checkpoint against someone else's goal.
+	if _, err := s.repo.Get(ctx, goalID, userID); err != nil {
+		return Milestone{}, err
+	}
+
+	return s.repo.AddMilestone(ctx, goalID, userID, clean.Title, clean.TargetDate)
+}
+
+func (s *Service) UpdateMilestone(ctx context.Context, id, userID uuid.UUID, in MilestoneInput) (Milestone, error) {
+	clean, err := ValidateMilestone(in)
+	if err != nil {
+		return Milestone{}, err
+	}
+	return s.repo.UpdateMilestone(ctx, id, userID, clean.Title, clean.TargetDate)
+}
+
+func (s *Service) SetMilestoneStatus(ctx context.Context, id, userID uuid.UUID, status string) (Milestone, error) {
+	if !slices.Contains(MilestoneStatuses, status) {
+		return Milestone{}, apperr.Wrap(apperr.ErrValidation, "unknown milestone status %q", status)
+	}
+	return s.repo.SetMilestoneStatus(ctx, id, userID, status)
+}
+
+func (s *Service) DeleteMilestone(ctx context.Context, id, userID uuid.UUID) error {
+	return s.repo.DeleteMilestone(ctx, id, userID)
+}
+
+func (s *Service) Milestones(ctx context.Context, goalID, userID uuid.UUID) ([]Milestone, error) {
+	return s.repo.Milestones(ctx, goalID, userID)
 }

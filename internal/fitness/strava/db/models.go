@@ -166,6 +166,19 @@ type Goal struct {
 	ClosedAt   *time.Time
 }
 
+type GoalMilestone struct {
+	ID          uuid.UUID
+	GoalID      uuid.UUID
+	UserID      uuid.UUID
+	Title       string
+	Status      string
+	Position    int32
+	TargetDate  pgtype.Date
+	CompletedAt *time.Time
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
 type GoalUpdate struct {
 	ID        uuid.UUID
 	GoalID    uuid.UUID
