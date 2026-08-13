@@ -238,7 +238,7 @@ func TestPinAndExcludeAreMutuallyExclusive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if excluded.Excluded || excluded.Pinned {
+	if !excluded.Excluded || excluded.Pinned {
 		t.Fatalf("after exclude: pinned=%t excluded=%t", excluded.Pinned, excluded.Excluded)
 	}
 
