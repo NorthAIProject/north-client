@@ -77,9 +77,21 @@ templ issuedCard(issued connections.Issued, setup connections.Setup) {
 			<div class="space-y-5">
 				@copyBlock("Key", "issued-token", "text", issued.Token)
 				@copyBlock(setup.ConfigLabel, "issued-config", setup.ConfigLang, setup.Config)
+				if setup.Safe != "" {
+					<div>
+						<p class="text-muted-foreground mb-2 text-sm leading-relaxed">
+							If that file lives in a git repository, use this version instead and keep
+							the key in your environment — { setup.SafeLabel } is committed more often than people expect.
+						</p>
+						@copyBlock(setup.SafeLabel, "issued-safe", "json", setup.Safe)
+						@copyBlock("Environment", "issued-export", "bash", setup.Export)
+					</div>
+				}
 				<div>
 					<p class="text-muted-foreground mb-2 text-sm leading-relaxed">
-						Or paste this into the agent itself and let it do the setup:
+						Or paste this into the agent itself and let it do the setup. It sends the key
+						to whichever model that agent runs on, so use it with an agent you would
+						trust with your coaching data — and revoke the key here if you change your mind.
 					</p>
 					@copyBlock("Setup prompt", "issued-prompt", "text", setup.Prompt)
 				</div>

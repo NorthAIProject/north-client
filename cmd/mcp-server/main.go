@@ -8,9 +8,18 @@
 //
 // # Bind it to the tailnet
 //
-// Authentication is a single static bearer token mapping to a single account.
-// That is enough for one person's private tooling and nowhere near enough for
-// the public internet. See internal/mcpserver.NewHandler.
+// Authentication here is a single static bearer token mapping to a single
+// account, configured with MCP_API_TOKEN and MCP_USER_ID. That is enough for
+// one person's private tooling and nowhere near enough for the public
+// internet: the credential has no owner, no name, and no revoke button, so a
+// leaked environment variable is a silent account takeover fixable only by a
+// redeploy.
+//
+// For anyone else, cmd/web serves the same tool surface at /mcp with per-user
+// tokens issued from the settings page — see internal/connections. This binary
+// remains for the private tailnet deployment documented in
+// skills/north-connect/SKILL.md, and is the one to reach for only when there is
+// exactly one user and no public URL.
 package main
 
 import (

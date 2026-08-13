@@ -66,12 +66,12 @@ func (s *Service) Issue(ctx context.Context, userID uuid.UUID, name string, kind
 
 	var fieldErrs apperr.FieldErrors
 	if name == "" {
-		fieldErrs.Add("name", "Give this connection a name, so you know which one to revoke later.")
+		fieldErrs = fieldErrs.Add("name", "Give this connection a name, so you know which one to revoke later.")
 	} else if utf8.RuneCountInString(name) > maxNameLen {
-		fieldErrs.Add("name", "That name is too long.")
+		fieldErrs = fieldErrs.Add("name", "That name is too long.")
 	}
 	if !kind.valid() {
-		fieldErrs.Add("client_kind", "Choose which client this is for.")
+		fieldErrs = fieldErrs.Add("client_kind", "Choose which client this is for.")
 	}
 	if err := fieldErrs.OrNil(); err != nil {
 		return Issued{}, err

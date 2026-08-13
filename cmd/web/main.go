@@ -354,75 +354,11 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, stora
 	})
 	coachHandler := coach.NewHandler(coachSvc)
 
-	r := chi.NewRouter()
-
-	r.Use(middleware.RequestID)
-	r.Use(middleware.Logger(slog.Default()))
-	r.Use(middleware.Recover)
-	// Before CSRF: that middleware parses multipart bodies to find the token,
-	// so the cap has to be in place first. Slightly above the media limit, so a
-	// too-large video gets the media handler's explanation rather than a bare
-	// connection error.
-	r.Use(middleware.MaxBody(media.MaxVideoBytes + (16 << 20)))
-	r.Use(middleware.CSRF(cfg.Env.IsProduction()))
-	r.Use(authMW.LoadUser)
-
-	mountAssets(r, cfg)
-
-	r.Get("/healthz", healthz(pool))
-	r.Method(http.MethodGet, "/", templ.Handler(landing.Page()))
-
-	authHandler.Routes(r)
-
-	// Everything under /app requires a session.
-	r.Route("/app", func(r chi.Router) {
-		r.Use(authMW.RequireAuth)
-
-		r.Get("/", func(w http.ResponseWriter, req *http.Request) {
-			user := auth.MustUser(req.Context())
-			data := app.DashboardData{}
-			if _, err := checkinSvc.Today(req.Context(), user); err == nil {
-				data.CheckedInToday = true
-			}
-			if n, err := checkinSvc.Streak(req.Context(), user); err == nil {
-				data.Streak = n
-			}
-			if n, err := memorySvc.CountPending(req.Context(), user.ID); err == nil {
-				data.PendingMemories = n
-			}
-			if err := app.Dashboard(user, data).Render(req.Context(), w); err != nil {
-				middleware.FromContext(req.Context()).Error("render dashboard", slog.Any("error", err))
-			}
-		})
-
-		coachHandler.Routes(r)
-		checkinHandler.Routes(r)
-		goalHandler.Routes(r)
-		memoryHandler.Routes(r)
-		documentHandler.Routes(r)
-		exportHandler.Routes(r)
-		exerciseHandler.Routes(r)
-		workoutHandler.Routes(r)
-		mediaHandler.Routes(r)
-		settingsHandler.Routes(r)
-		mindHandler.Routes(r)
-		careHandler.Routes(r)
-		activityHandler.Routes(r)
-		calculatorHandler.Routes(r)
-		mealsHandler.Routes(r)
-		fitnessHandler.Routes(r)
-	})
-
-	// /mcp is deliberately outside the chi router.
+	// The MCP endpoint an outside agent connects to.
 	//
-	// Two of that router's global middlewares are wrong for this endpoint. CSRF
-	// would reject every call: an MCP client presents a bearer token and has no
-	// cookie or form field to double-submit, and the protection CSRF provides
-	// is meaningless for a credential a browser never attaches automatically.
-	// LoadUser would resolve a session that has nothing to do with the token.
-	//
-	// So the MCP endpoint authenticates itself, from the token alone, and this
-	// mux keeps the two worlds from sharing middleware neither wants.
+	// Every token resolves to its own owner, which is what makes this safe to
+	// serve publicly at all. Compare cmd/mcp-server, where one static token maps
+	// to one configured account and the endpoint belongs on a tailnet.
 	mcpEndpoint := mcpserver.Endpoint(mcpserver.Config{
 		Services: mcpserver.Services{
 			Users:     userSvc,
@@ -434,10 +370,6 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, stora
 			Coach:     coachSvc,
 			Agent:     agentTools,
 		},
-
-		// Each token resolves to its own owner, which is what makes this safe to
-		// serve publicly at all. Compare cmd/mcp-server, where one token maps to
-		// one configured account and the endpoint belongs on a tailnet.
 		Auth: connectionSvc,
 
 		// Empty unless MCP_ALLOWED_ORIGINS says otherwise, which rejects every
@@ -446,13 +378,91 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, stora
 		AllowedOrigins:    cfg.MCPAllowedOrigins,
 		RequestsPerMinute: cfg.MCPRequestsPerMinute,
 		Version:           mcpserver.Version,
+		Log:               slog.Default(),
 	})
 
-	mux := http.NewServeMux()
-	mux.Handle("/mcp", mcpEndpoint)
-	mux.Handle("/", r)
+	r := chi.NewRouter()
 
-	return mux
+	r.Use(middleware.RequestID)
+	r.Use(middleware.Logger(slog.Default()))
+	r.Use(middleware.Recover)
+
+	// /mcp sits outside the session group, and the two middlewares it skips are
+	// the reason it needs its own.
+	//
+	// CSRF is a browser defence: it works by requiring back a token the server
+	// put in a form. An MCP client has no form and no cookie — it authenticates
+	// with a bearer, which a browser never attaches on its own, so there is no
+	// ambient authority to confuse and nothing for CSRF to protect. Left in the
+	// main group it would reject every call with a 403 and an HTML body no MCP
+	// client can read. LoadUser would meanwhile resolve a session that has
+	// nothing to do with the token.
+	//
+	// The body cap is its own and far below the media limit: an MCP request is a
+	// small JSON-RPC envelope, and there is no reason to accept a video's worth
+	// of one.
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.MaxBody(1 << 20))
+		r.Handle("/mcp", mcpEndpoint)
+	})
+
+	r.Group(func(r chi.Router) {
+		// Before CSRF: that middleware parses multipart bodies to find the token,
+		// so the cap has to be in place first. Slightly above the media limit, so a
+		// too-large video gets the media handler's explanation rather than a bare
+		// connection error.
+		r.Use(middleware.MaxBody(media.MaxVideoBytes + (16 << 20)))
+		r.Use(middleware.CSRF(cfg.Env.IsProduction()))
+		r.Use(authMW.LoadUser)
+
+		mountAssets(r, cfg)
+
+		r.Get("/healthz", healthz(pool))
+		r.Method(http.MethodGet, "/", templ.Handler(landing.Page()))
+
+		authHandler.Routes(r)
+
+		// Everything under /app requires a session.
+		r.Route("/app", func(r chi.Router) {
+			r.Use(authMW.RequireAuth)
+
+			r.Get("/", func(w http.ResponseWriter, req *http.Request) {
+				user := auth.MustUser(req.Context())
+				data := app.DashboardData{}
+				if _, err := checkinSvc.Today(req.Context(), user); err == nil {
+					data.CheckedInToday = true
+				}
+				if n, err := checkinSvc.Streak(req.Context(), user); err == nil {
+					data.Streak = n
+				}
+				if n, err := memorySvc.CountPending(req.Context(), user.ID); err == nil {
+					data.PendingMemories = n
+				}
+				if err := app.Dashboard(user, data).Render(req.Context(), w); err != nil {
+					middleware.FromContext(req.Context()).Error("render dashboard", slog.Any("error", err))
+				}
+			})
+
+			coachHandler.Routes(r)
+			checkinHandler.Routes(r)
+			goalHandler.Routes(r)
+			memoryHandler.Routes(r)
+			documentHandler.Routes(r)
+			exportHandler.Routes(r)
+			exerciseHandler.Routes(r)
+			workoutHandler.Routes(r)
+			mediaHandler.Routes(r)
+			settingsHandler.Routes(r)
+			mindHandler.Routes(r)
+			careHandler.Routes(r)
+			activityHandler.Routes(r)
+			calculatorHandler.Routes(r)
+			mealsHandler.Routes(r)
+			fitnessHandler.Routes(r)
+		})
+	})
+
+	return r
 }
 
 // healthz reports whether the process can serve traffic. It checks the database

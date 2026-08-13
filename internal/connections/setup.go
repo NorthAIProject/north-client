@@ -22,6 +22,17 @@ type Setup struct {
 	ConfigLang  string
 	Config      string
 
+	// Safe is the same configuration with the token read from an environment
+	// variable instead of written into the file, and Export is the line that
+	// sets it. Empty for clients whose config is not a file somebody commits.
+	//
+	// Not an advanced option: .mcp.json lives in a project root and is routinely
+	// committed, so offering only the literal form is how a token reaches a
+	// public repository.
+	SafeLabel string
+	Safe      string
+	Export    string
+
 	// Prompt is the client-agnostic instruction to paste into an agent that is
 	// already running, for people who would rather not open a config file.
 	Prompt string
@@ -43,19 +54,26 @@ func (s *Service) Instructions(kind ClientKind, token string) Setup {
 
 	switch kind {
 	case ClientClaudeCode:
-		setup.ConfigLabel = ".mcp.json"
-		setup.ConfigLang = "json"
-		setup.Config = fmt.Sprintf(`{
+		// The CLI first: it needs no file, no path, and no JSON, which is the
+		// whole difficulty for someone who has not edited one before.
+		setup.ConfigLabel = "one command"
+		setup.ConfigLang = "bash"
+		setup.Config = fmt.Sprintf(`claude mcp add --transport http north %s \
+  --header "Authorization: Bearer %s"`, url, token)
+
+		setup.SafeLabel = ".mcp.json"
+		setup.Safe = fmt.Sprintf(`{
   "mcpServers": {
     "north": {
       "type": "http",
       "url": %q,
       "headers": {
-        "Authorization": "Bearer %s"
+        "Authorization": "Bearer ${NORTH_MCP_TOKEN}"
       }
     }
   }
-}`, url, token)
+}`, url)
+		setup.Export = "export NORTH_MCP_TOKEN=" + token
 
 	case ClientCodex:
 		setup.ConfigLabel = "~/.codex/config.toml"

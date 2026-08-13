@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"log/slog"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -160,11 +161,18 @@ func Endpoint(cfg Config) http.Handler {
 		return s
 	}, nil)
 
-	// Order matters: reject the browser first, then the wrong token, then the
-	// caller who is asking too often. Each stage is cheaper than the next, and
-	// an unauthenticated caller must never be able to consume the rate budget
-	// of the authenticated one.
-	return guardOrigin(cfg, log, authenticate(cfg, log, throttle(cfg, log, streamable)))
+	// Order matters, and it is not the obvious one.
+	//
+	// The real throttle needs an identity, so it has to run after authentication
+	// — which means a token-guessing loop would otherwise reach the database on
+	// every attempt. throttleAnonymous sits in front to absorb that: generous
+	// enough that no real client notices, cheap enough that a flood costs a map
+	// lookup rather than a query. The browser check stays first because it is
+	// cheaper still.
+	return guardOrigin(cfg, log,
+		throttleAnonymous(cfg, log,
+			authenticate(cfg, log,
+				throttle(cfg, log, streamable))))
 }
 
 // guardOrigin rejects requests carrying a browser origin North does not know.
@@ -203,16 +211,15 @@ func guardOrigin(cfg Config, log *slog.Logger, next http.Handler) http.Handler {
 // tracks active users rather than every user who has ever connected.
 const limiterTTL = 30 * time.Minute
 
-// limiters holds one rate limiter per account.
+// limiters holds one rate limiter per key, whatever the caller is counting.
 //
-// Per account, not per token and not per remote address. Per token would let
-// one person issue ten connections and get ten times the budget; per address
-// would let a caller reset its own budget by changing port. The account is the
-// thing whose inference is being spent, so the account is what is bounded.
+// The key is a string so that the same type serves both stages: the account id
+// after authentication, and the remote address before it. Two near-identical
+// maps differing only in key type would be a worse answer than one conversion.
 type limiters struct {
 	mu        sync.Mutex
 	perMinute int
-	buckets   map[uuid.UUID]*bucket
+	buckets   map[string]*bucket
 	lastSweep time.Time
 }
 
@@ -222,10 +229,10 @@ type bucket struct {
 }
 
 func newLimiters(perMinute int) *limiters {
-	return &limiters{perMinute: perMinute, buckets: make(map[uuid.UUID]*bucket), lastSweep: time.Now()}
+	return &limiters{perMinute: perMinute, buckets: make(map[string]*bucket), lastSweep: time.Now()}
 }
 
-func (l *limiters) allow(userID uuid.UUID) bool {
+func (l *limiters) allow(key string) bool {
 	now := time.Now()
 
 	l.mu.Lock()
@@ -235,25 +242,58 @@ func (l *limiters) allow(userID uuid.UUID) bool {
 	// behind it cannot leak one, and the only cost of sweeping late is a map
 	// that is briefly larger than it needs to be.
 	if now.Sub(l.lastSweep) > limiterTTL {
-		for id, b := range l.buckets {
+		for k, b := range l.buckets {
 			if now.Sub(b.lastSeen) > limiterTTL {
-				delete(l.buckets, id)
+				delete(l.buckets, k)
 			}
 		}
 		l.lastSweep = now
 	}
 
-	b, ok := l.buckets[userID]
+	b, ok := l.buckets[key]
 	if !ok {
 		// Burst is a full minute's worth: a client listing tools and then
 		// calling several in quick succession is normal, and shaping that into
 		// a trickle would make the server feel broken.
 		b = &bucket{limiter: rate.NewLimiter(rate.Limit(float64(l.perMinute)/60.0), l.perMinute)}
-		l.buckets[userID] = b
+		l.buckets[key] = b
 	}
 	b.lastSeen = now
 
 	return b.limiter.Allow()
+}
+
+// anonymousPerMinute bounds unauthenticated attempts from one address.
+//
+// Far above anything a real client does, because this is not the spend limit —
+// that is throttle's job, after the caller has a name. This exists only so a
+// loop guessing tokens costs a map lookup instead of a database query.
+const anonymousPerMinute = 600
+
+// throttleAnonymous bounds requests by remote address before they are
+// authenticated.
+//
+// Keyed by address, which throttle deliberately is not: an address is the only
+// identity available before the token has been checked, and its weakness — a
+// caller can change ports, or arrive from many hosts — is why this is a floor
+// rather than the real limit.
+func throttleAnonymous(_ Config, log *slog.Logger, next http.Handler) http.Handler {
+	buckets := newLimiters(anonymousPerMinute)
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		addr := r.RemoteAddr
+		if host, _, err := net.SplitHostPort(addr); err == nil {
+			addr = host
+		}
+
+		if !buckets.allow(addr) {
+			log.Warn("mcp request throttled before authentication", slog.String("remote", r.RemoteAddr))
+			w.Header().Set("Retry-After", "1")
+			http.Error(w, "too many requests", http.StatusTooManyRequests)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // throttle bounds how often one account may call.
@@ -277,7 +317,7 @@ func throttle(cfg Config, log *slog.Logger, next http.Handler) http.Handler {
 			return
 		}
 
-		if !buckets.allow(user.ID) {
+		if !buckets.allow(user.ID.String()) {
 			log.Warn("mcp request throttled",
 				slog.String("remote", r.RemoteAddr),
 				slog.String("user_id", user.ID.String()))
