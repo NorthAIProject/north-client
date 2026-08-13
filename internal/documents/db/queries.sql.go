@@ -140,7 +140,7 @@ INSERT INTO documents (
 ) VALUES (
     $1, $2, $3, $4, $5, $6, $7
 )
-RETURNING id, user_id, title, source_kind, storage_key, body, mime, byte_size, content_sha256, line_count, status, parse_error, indexed_at, created_at, updated_at, deleted_at
+RETURNING id, user_id, title, source_kind, storage_key, body, mime, byte_size, content_sha256, line_count, status, parse_error, indexed_at, created_at, updated_at, deleted_at, chunker_fingerprint
 `
 
 type CreateDocumentParams struct {
@@ -181,6 +181,7 @@ func (q *Queries) CreateDocument(ctx context.Context, arg CreateDocumentParams) 
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.ChunkerFingerprint,
 	)
 	return i, err
 }
@@ -298,7 +299,7 @@ func (q *Queries) GetChunk(ctx context.Context, arg GetChunkParams) (GetChunkRow
 }
 
 const getDocument = `-- name: GetDocument :one
-SELECT id, user_id, title, source_kind, storage_key, body, mime, byte_size, content_sha256, line_count, status, parse_error, indexed_at, created_at, updated_at, deleted_at FROM documents
+SELECT id, user_id, title, source_kind, storage_key, body, mime, byte_size, content_sha256, line_count, status, parse_error, indexed_at, created_at, updated_at, deleted_at, chunker_fingerprint FROM documents
 WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
 `
 
@@ -327,6 +328,7 @@ func (q *Queries) GetDocument(ctx context.Context, arg GetDocumentParams) (Docum
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.ChunkerFingerprint,
 	)
 	return i, err
 }
@@ -361,8 +363,73 @@ func (q *Queries) LatestIndexRun(ctx context.Context, userID uuid.UUID) (IndexRu
 	return i, err
 }
 
+const listChunksByIDs = `-- name: ListChunksByIDs :many
+SELECT
+    c.chunk_id,
+    c.document_id,
+    c.heading_path,
+    c.start_line,
+    c.end_line,
+    c.content,
+    d.title
+FROM document_chunks c
+JOIN documents d ON d.id = c.document_id
+WHERE c.user_id = $1
+  AND c.chunk_id = ANY($2::text[])
+  AND d.deleted_at IS NULL
+ORDER BY d.title, c.ordinal
+`
+
+type ListChunksByIDsParams struct {
+	UserID   uuid.UUID
+	ChunkIds []string
+}
+
+type ListChunksByIDsRow struct {
+	ChunkID     string
+	DocumentID  uuid.UUID
+	HeadingPath []byte
+	StartLine   int32
+	EndLine     int32
+	Content     string
+	Title       string
+}
+
+// The passages behind one reply's citations, in one round trip.
+//
+// A ref whose chunk has gone — the document deleted, the passage rewritten by a
+// reindex — simply does not come back. That is deliberate: an old conversation
+// naming a source that no longer exists should lose the source, not break.
+func (q *Queries) ListChunksByIDs(ctx context.Context, arg ListChunksByIDsParams) ([]ListChunksByIDsRow, error) {
+	rows, err := q.db.Query(ctx, listChunksByIDs, arg.UserID, arg.ChunkIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListChunksByIDsRow{}
+	for rows.Next() {
+		var i ListChunksByIDsRow
+		if err := rows.Scan(
+			&i.ChunkID,
+			&i.DocumentID,
+			&i.HeadingPath,
+			&i.StartLine,
+			&i.EndLine,
+			&i.Content,
+			&i.Title,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listDocuments = `-- name: ListDocuments :many
-SELECT id, user_id, title, source_kind, storage_key, body, mime, byte_size, content_sha256, line_count, status, parse_error, indexed_at, created_at, updated_at, deleted_at FROM documents
+SELECT id, user_id, title, source_kind, storage_key, body, mime, byte_size, content_sha256, line_count, status, parse_error, indexed_at, created_at, updated_at, deleted_at, chunker_fingerprint FROM documents
 WHERE user_id = $1 AND deleted_at IS NULL
 ORDER BY updated_at DESC
 LIMIT $2
@@ -399,6 +466,7 @@ func (q *Queries) ListDocuments(ctx context.Context, arg ListDocumentsParams) ([
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+			&i.ChunkerFingerprint,
 		); err != nil {
 			return nil, err
 		}
@@ -411,7 +479,7 @@ func (q *Queries) ListDocuments(ctx context.Context, arg ListDocumentsParams) ([
 }
 
 const listDocumentsForIndexing = `-- name: ListDocumentsForIndexing :many
-SELECT id, user_id, title, source_kind, storage_key, body, mime, byte_size, content_sha256, line_count, status, parse_error, indexed_at, created_at, updated_at, deleted_at FROM documents
+SELECT id, user_id, title, source_kind, storage_key, body, mime, byte_size, content_sha256, line_count, status, parse_error, indexed_at, created_at, updated_at, deleted_at, chunker_fingerprint FROM documents
 WHERE user_id = $1 AND deleted_at IS NULL
 ORDER BY created_at
 `
@@ -444,6 +512,7 @@ func (q *Queries) ListDocumentsForIndexing(ctx context.Context, userID uuid.UUID
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+			&i.ChunkerFingerprint,
 		); err != nil {
 			return nil, err
 		}
@@ -477,22 +546,29 @@ func (q *Queries) MarkDocumentFailed(ctx context.Context, arg MarkDocumentFailed
 
 const markDocumentIndexed = `-- name: MarkDocumentIndexed :exec
 UPDATE documents
-SET status         = 'ready',
-    parse_error    = '',
-    content_sha256 = $2,
-    line_count     = $3,
-    indexed_at     = now()
+SET status             = 'ready',
+    parse_error        = '',
+    content_sha256     = $2,
+    chunker_fingerprint = $3,
+    line_count         = $4,
+    indexed_at         = now()
 WHERE id = $1
 `
 
 type MarkDocumentIndexedParams struct {
-	ID            uuid.UUID
-	ContentSha256 string
-	LineCount     int32
+	ID                 uuid.UUID
+	ContentSha256      string
+	ChunkerFingerprint string
+	LineCount          int32
 }
 
 func (q *Queries) MarkDocumentIndexed(ctx context.Context, arg MarkDocumentIndexedParams) error {
-	_, err := q.db.Exec(ctx, markDocumentIndexed, arg.ID, arg.ContentSha256, arg.LineCount)
+	_, err := q.db.Exec(ctx, markDocumentIndexed,
+		arg.ID,
+		arg.ContentSha256,
+		arg.ChunkerFingerprint,
+		arg.LineCount,
+	)
 	return err
 }
 
@@ -511,11 +587,16 @@ SELECT
     c.end_line,
     c.content,
     d.title,
+    -- STX and ETX rather than brackets. The passage is the person's own
+    -- writing, and a markdown link in it — [the paper](https://…) — is
+    -- indistinguishable from a bracket ts_headline put there, so a reader
+    -- rendering the marks would emphasise the wrong words. Control characters
+    -- cannot occur in the source text, which makes the split unambiguous.
     ts_headline(
         'english',
         c.content,
         q.tsq,
-        'StartSel=[, StopSel=], MaxWords=35, MinWords=15, ShortWord=3, HighlightAll=FALSE'
+        E'StartSel=\x02, StopSel=\x03, MaxWords=35, MinWords=15, ShortWord=3, HighlightAll=FALSE'
     )::text AS snippet,
     ts_rank_cd(to_tsvector('english', c.content), q.tsq, 32)::float8 AS rank
 FROM document_chunks c

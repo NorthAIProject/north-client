@@ -3,6 +3,7 @@ package documents
 import (
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/a-h/templ"
@@ -10,6 +11,8 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/conversations"
+	"github.com/NorthAIProject/north-client/internal/search"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	knowledgepages "github.com/NorthAIProject/north-client/web/knowledge"
@@ -31,6 +34,15 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Post("/knowledge/notes", h.createNote)
 	r.Post("/knowledge/uploads", h.upload)
 	r.Post("/knowledge/reindex", h.reindex)
+
+	// Before /knowledge/{id}: chi matches literal segments ahead of parameters,
+	// but keeping them adjacent makes the ordering something a reader can see
+	// rather than something they have to know.
+	r.Get("/knowledge/search", h.search)
+	r.Get("/knowledge/passages", h.passages)
+
+	r.Get("/knowledge/{id}", h.show)
+	r.Post("/knowledge/{id}/reindex", h.reindexOne)
 	r.Post("/knowledge/{id}/delete", h.destroy)
 
 	// The export route is mounted by internal/export, not here: it reads
@@ -122,6 +134,120 @@ func (h *Handler) reindex(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/app/knowledge", http.StatusSeeOther)
 }
 
+// show renders a document with the lines a citation points at highlighted.
+//
+// from and to are the passage's own line numbers, carried in the query rather
+// than only in the fragment because the server draws the highlight and a
+// fragment never reaches it.
+func (h *Handler) show(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		h.fail(w, r, apperr.ErrNotFound)
+		return
+	}
+
+	from, to := highlightRange(r)
+
+	doc, parsed, err := h.svc.Content(r.Context(), id, user.ID)
+	if err != nil {
+		// A document whose bytes cannot be read is still a document its owner
+		// should be able to see the record of, and the reason it failed is on
+		// the row. Rendering the page without a body says more than a 500.
+		if apperr.Is(err, apperr.ErrNotFound) {
+			h.fail(w, r, err)
+			return
+		}
+		render(w, r, http.StatusOK, knowledgepages.DocumentPage(user, knowledgepages.DocumentView{
+			Document:  doc,
+			ReadError: err.Error(),
+		}))
+		return
+	}
+
+	render(w, r, http.StatusOK, knowledgepages.DocumentPage(user, knowledgepages.DocumentView{
+		Document:  doc,
+		Lines:     parsed.Lines,
+		Headings:  parsed.Headings,
+		FromLine:  from,
+		ToLine:    to,
+		Highlight: from > 0,
+	}))
+}
+
+// highlightRange reads the passage bounds off the query string.
+//
+// Anything unreadable becomes no highlight rather than an error: a hand-edited
+// URL should show the document, not a failure.
+func highlightRange(r *http.Request) (from, to int) {
+	from, _ = strconv.Atoi(r.URL.Query().Get("from"))
+	to, _ = strconv.Atoi(r.URL.Query().Get("to"))
+	if from < 1 {
+		return 0, 0
+	}
+	if to < from {
+		to = from
+	}
+	return from, to
+}
+
+// search renders retrieval results as an HTMX fragment.
+func (h *Handler) search(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+	query := strings.TrimSpace(r.URL.Query().Get("q"))
+
+	hits, err := h.svc.Search(r.Context(), user.ID, query, 0)
+	if err != nil {
+		// An empty or stopword-only term is a person who has not finished
+		// typing, not a failure worth a red box.
+		if apperr.Is(err, search.ErrEmptyTerm) {
+			render(w, r, http.StatusOK, knowledgepages.SearchResults(query, nil))
+			return
+		}
+		h.fail(w, r, err)
+		return
+	}
+
+	render(w, r, http.StatusOK, knowledgepages.SearchResults(query, hits))
+}
+
+// passages resolves the citations under one reply.
+//
+// Scoped to the session user by the query, so a ref copied out of somebody
+// else's conversation resolves to nothing.
+func (h *Handler) passages(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+
+	// The refs arrive as the message stored them, so the same filter the
+	// template used decides what is resolvable here.
+	msg := conversations.Message{EvidenceRefs: r.URL.Query()["ref"]}
+
+	hits, err := h.svc.Passages(r.Context(), user.ID, msg.ChunkIDs())
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+
+	render(w, r, http.StatusOK, knowledgepages.Passages(hits))
+}
+
+// reindexOne queues a rebuild of a single document; see reindex.
+func (h *Handler) reindexOne(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		h.fail(w, r, apperr.ErrNotFound)
+		return
+	}
+	if err := h.svc.ReindexDocument(r.Context(), id, user.ID); err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	http.Redirect(w, r, "/app/knowledge", http.StatusSeeOther)
+}
+
 func (h *Handler) destroy(w http.ResponseWriter, r *http.Request) {
 	user := auth.MustUser(r.Context())
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
@@ -151,6 +277,10 @@ func (h *Handler) renderIndex(w http.ResponseWriter, r *http.Request, status int
 	if counts, err := h.svc.Counts(r.Context(), user.ID); err == nil {
 		view.Counts = counts
 	}
+	if problems, err := h.svc.Attention(r.Context(), user.ID); err == nil {
+		view.Problems = problems
+	}
+	view.EmbeddingGap = h.svc.EmbeddingGap(r.Context(), user.ID)
 	if run, err := h.svc.LatestRun(r.Context(), user.ID); err == nil {
 		view.LastRun, view.HasRun = run, true
 	}

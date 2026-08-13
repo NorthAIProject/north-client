@@ -110,7 +110,7 @@ func (ix *Indexer) ReindexUser(ctx context.Context, userID uuid.UUID) error {
 // the run rather than returning it: a per-document failure is a fact to record,
 // not a reason to abandon the pass.
 func (ix *Indexer) indexOne(ctx context.Context, doc Document, run *IndexRun) {
-	content, err := ix.read(ctx, doc)
+	content, err := readContent(ctx, ix.storage, doc)
 	if err != nil {
 		ix.fail(ctx, doc, run, err.Error())
 		return
@@ -130,9 +130,13 @@ func (ix *Indexer) indexOne(ctx context.Context, doc Document, run *IndexRun) {
 	sum := sha256.Sum256([]byte(content))
 	sha := hex.EncodeToString(sum[:])
 
-	// An unchanged document that is already indexed has nothing to do. This is
-	// what makes a full reindex cheap, and what the idempotence test asserts.
-	if doc.Status == StatusReady && doc.ContentUnchanged(sha) {
+	// An unchanged document already indexed by this reader has nothing to do.
+	// This is what makes a full reindex cheap, and what the idempotence test
+	// asserts. The fingerprint is half the question: same text read under
+	// different bounds is different chunks, and skipping it would leave the
+	// document holding passages the running code would never produce.
+	fingerprint := ix.opts.Fingerprint()
+	if doc.Status == StatusReady && doc.IndexedWith(sha, fingerprint) {
 		run.Unchanged++
 		return
 	}
@@ -151,7 +155,7 @@ func (ix *Indexer) indexOne(ctx context.Context, doc Document, run *IndexRun) {
 		return
 	}
 
-	if err := ix.repo.MarkIndexed(ctx, doc.ID, sha, parsed.LineCount()); err != nil {
+	if err := ix.repo.MarkIndexed(ctx, doc.ID, sha, fingerprint, parsed.LineCount()); err != nil {
 		ix.fail(ctx, doc, run, "North could not record that this document was indexed")
 		return
 	}
@@ -169,17 +173,23 @@ func (ix *Indexer) fail(ctx context.Context, doc Document, run *IndexRun, reason
 	_ = ix.repo.MarkFailed(ctx, doc.ID, reason)
 }
 
-// read returns a document's text, from the database for a note and from object
-// storage for an upload.
-func (ix *Indexer) read(ctx context.Context, doc Document) (string, error) {
+// readContent returns a document's text, from the database for a note and from
+// object storage for an upload.
+//
+// A package function rather than a method because two callers need it and they
+// are not the same object: the indexer, which chunks the text, and the service,
+// which shows it to the person a citation points at. Two copies of this branch
+// would be two ways for the view and the index to disagree about what the
+// document says.
+func readContent(ctx context.Context, storage Storage, doc Document) (string, error) {
 	if doc.SourceKind == SourceNote {
 		return doc.Body, nil
 	}
-	if ix.storage == nil {
+	if storage == nil {
 		return "", fmt.Errorf("North has no file storage configured")
 	}
 
-	body, err := ix.storage.Get(ctx, doc.StorageKey)
+	body, err := storage.Get(ctx, doc.StorageKey)
 	if err != nil {
 		return "", fmt.Errorf("North could not read this file back from storage")
 	}

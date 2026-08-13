@@ -1,0 +1,169 @@
+package knowledge
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/NorthAIProject/north-client/internal/documents/document"
+	"github.com/NorthAIProject/north-client/internal/documents/parse"
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+)
+
+// DocumentView is one document as a citation resolves it.
+//
+// Lines are the parsed lines, not the file's bytes: they are the sequence the
+// chunker numbered, and a page that showed anything else would highlight the
+// wrong text while looking entirely correct.
+type DocumentView struct {
+	Document document.Document
+
+	Lines    []string
+	Headings []parse.Heading
+
+	// FromLine and ToLine are the passage a citation pointed at, one-based and
+	// inclusive. Highlight says whether there was one — a document opened from
+	// the list has no passage, and zero is a line number nothing can have.
+	FromLine  int
+	ToLine    int
+	Highlight bool
+
+	// ReadError is set when the row exists but its text could not be fetched.
+	// The record is still worth showing; the reason is the useful part.
+	ReadError string
+}
+
+func (v DocumentView) isHighlighted(line int) bool {
+	return v.Highlight && line >= v.FromLine && line <= v.ToLine
+}
+
+templ DocumentPage(user users.User, view DocumentView) {
+	@layout.App(view.Document.Title, user, layout.BuildNav("/app/knowledge")) {
+		<div class="mx-auto w-full max-w-4xl space-y-6 p-6 md:p-8">
+			<header class="space-y-3">
+				<a href="/app/knowledge" class="text-muted-foreground hover:text-foreground font-mono text-[10px] uppercase tracking-[0.14em]">
+					← Knowledge
+				</a>
+				<div class="flex flex-wrap items-center gap-2">
+					<h1 class="text-2xl font-medium tracking-tight">{ view.Document.Title }</h1>
+					@statusBadge(view.Document)
+				</div>
+				<p class="text-muted-foreground text-xs">{ documentDetail(view.Document) }</p>
+				if view.Highlight {
+					<p class="text-muted-foreground text-sm">
+						{ fmt.Sprintf("Showing lines %d–%d, the passage that was quoted.", view.FromLine, view.ToLine) }
+					</p>
+				}
+			</header>
+			if view.ReadError != "" {
+				@card.Card(card.Props{Class: "border-hairline"}) {
+					@card.Content(card.ContentProps{Class: "py-4"}) {
+						<p class="text-sm text-destructive">{ view.ReadError }</p>
+					}
+				}
+			}
+			if len(view.Headings) > 1 {
+				@outline(view.Headings)
+			}
+			if len(view.Lines) > 0 {
+				@source(view)
+			}
+			<div class="flex flex-wrap gap-2">
+				<form method="post" action={ templ.SafeURL("/app/knowledge/" + view.Document.ID.String() + "/reindex") }>
+					@ui.CSRFInput()
+					@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Variant: button.VariantOutline}) {
+						Read it again
+					}
+				</form>
+				<form method="post" action={ templ.SafeURL("/app/knowledge/" + view.Document.ID.String() + "/delete") }>
+					@ui.CSRFInput()
+					@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Variant: button.VariantOutline}) {
+						Remove
+					}
+				</form>
+			</div>
+		</div>
+	}
+}
+
+// outline is the heading trail, each entry jumping to the line it sits on.
+templ outline(headings []parse.Heading) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Content(card.ContentProps{Class: "py-4"}) {
+			<p class="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Contents</p>
+			<ul class="mt-3 space-y-1">
+				for _, h := range headings {
+					<li style={ indentFor(h.Level) }>
+						<a
+							href={ templ.SafeURL(fmt.Sprintf("#L%d", h.Line)) }
+							class="text-muted-foreground hover:text-foreground text-sm"
+						>
+							{ h.Text }
+						</a>
+					</li>
+				}
+			</ul>
+		}
+	}
+}
+
+// source is the document itself, one row per line.
+//
+// Hand-rolled rather than a component: web/shared/ui has no line-numbered
+// source view, and this one has a requirement no generic block would carry —
+// every line must be individually addressable and individually highlightable,
+// because a citation names a range and the whole point of the page is being
+// able to check it.
+//
+// A table rather than a <pre>: the gutter must not be selectable with the text,
+// or copying a quoted passage copies the line numbers into it.
+templ source(view DocumentView) {
+	<div class="border-hairline overflow-x-auto rounded-md border bg-surface">
+		<table class="w-full border-collapse font-mono text-xs leading-relaxed">
+			<tbody>
+				for i, text := range view.Lines {
+					<tr
+						id={ fmt.Sprintf("L%d", i+1) }
+						class={ "scroll-mt-24", templ.KV("bg-signal/12", view.isHighlighted(i+1)) }
+					>
+						<td class="text-muted-foreground/60 w-12 select-none border-r border-hairline px-2 py-0.5 text-right align-top tabular-nums">
+							{ fmt.Sprint(i + 1) }
+						</td>
+						<td class="whitespace-pre-wrap break-words px-3 py-0.5 align-top">
+							{ text }
+						</td>
+					</tr>
+				}
+			</tbody>
+		</table>
+	</div>
+}
+
+// indentFor steps the outline in by heading level.
+// An inline style rather than a Tailwind class because the class would have to
+// be built by string concatenation, and Tailwind cannot see a class name it was
+// never given literally — it would be absent from the built stylesheet.
+func indentFor(level int) string {
+	if level < 1 {
+		level = 1
+	}
+	if level > 6 {
+		level = 6
+	}
+	return fmt.Sprintf("padding-left: %drem", level-1)
+}
+
+// headingTrail names where a passage sits, for a result row.
+func headingTrail(h document.Hit) string {
+	parts := make([]string, 0, len(h.HeadingPath))
+	for _, part := range h.HeadingPath {
+		if strings.EqualFold(part, h.Title) {
+			continue
+		}
+		parts = append(parts, part)
+	}
+	return strings.Join(parts, " › ")
+}

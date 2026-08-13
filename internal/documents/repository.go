@@ -78,11 +78,12 @@ func (r *Repository) ForIndexing(ctx context.Context, userID uuid.UUID) ([]Docum
 	return fromDBList(rows), nil
 }
 
-func (r *Repository) MarkIndexed(ctx context.Context, id uuid.UUID, sha string, lineCount int) error {
+func (r *Repository) MarkIndexed(ctx context.Context, id uuid.UUID, sha, fingerprint string, lineCount int) error {
 	return apperr.Wrap(r.q.MarkDocumentIndexed(ctx, documentsdb.MarkDocumentIndexedParams{
-		ID:            id,
-		ContentSha256: sha,
-		LineCount:     int32(lineCount),
+		ID:                 id,
+		ContentSha256:      sha,
+		ChunkerFingerprint: fingerprint,
+		LineCount:          int32(lineCount),
 	}), "mark document indexed")
 }
 
@@ -144,6 +145,63 @@ func (r *Repository) ReplaceChunks(ctx context.Context, doc Document, chunks []C
 		return written, 0, apperr.Wrap(err, "remove stale chunks")
 	}
 	return written, int(n), nil
+}
+
+// Chunk resolves one citation back to the passage it names.
+//
+// Scoped to the user by the query itself, not by a check here: a chunk id is
+// guessable in the sense that it appears in stored replies and logs, and the
+// row filter is the thing that stops one person's ref reading another person's
+// document.
+func (r *Repository) Chunk(ctx context.Context, chunkID string, userID uuid.UUID) (Hit, error) {
+	row, err := r.q.GetChunk(ctx, documentsdb.GetChunkParams{
+		ChunkID: chunkID,
+		UserID:  userID,
+	})
+	if err != nil {
+		return Hit{}, apperr.Wrap(err, "get chunk")
+	}
+	return Hit{
+		ChunkID:     row.ChunkID,
+		DocumentID:  row.DocumentID,
+		Title:       row.Title,
+		HeadingPath: decodePath(row.HeadingPath),
+		StartLine:   int(row.StartLine),
+		EndLine:     int(row.EndLine),
+		Content:     row.Content,
+	}, nil
+}
+
+// ChunksByIDs resolves the citations of one reply together.
+//
+// Ids that no longer resolve are absent from the result rather than an error;
+// see the query.
+func (r *Repository) ChunksByIDs(ctx context.Context, userID uuid.UUID, ids []string) ([]Hit, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	rows, err := r.q.ListChunksByIDs(ctx, documentsdb.ListChunksByIDsParams{
+		UserID:   userID,
+		ChunkIds: ids,
+	})
+	if err != nil {
+		return nil, apperr.Wrap(err, "list chunks by id")
+	}
+
+	out := make([]Hit, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, Hit{
+			ChunkID:     row.ChunkID,
+			DocumentID:  row.DocumentID,
+			Title:       row.Title,
+			HeadingPath: decodePath(row.HeadingPath),
+			StartLine:   int(row.StartLine),
+			EndLine:     int(row.EndLine),
+			Content:     row.Content,
+		})
+	}
+	return out, nil
 }
 
 func (r *Repository) Search(ctx context.Context, userID uuid.UUID, query string, limit int) ([]Hit, error) {
@@ -247,13 +305,14 @@ func fromDB(row documentsdb.Document) Document {
 		MIME:       row.Mime,
 		ByteSize:   row.ByteSize,
 
-		ContentSHA256: row.ContentSha256,
-		LineCount:     int(row.LineCount),
-		Status:        row.Status,
-		ParseError:    row.ParseError,
-		IndexedAt:     row.IndexedAt,
-		CreatedAt:     row.CreatedAt,
-		UpdatedAt:     row.UpdatedAt,
+		ContentSHA256:      row.ContentSha256,
+		ChunkerFingerprint: row.ChunkerFingerprint,
+		LineCount:          int(row.LineCount),
+		Status:             row.Status,
+		ParseError:         row.ParseError,
+		IndexedAt:          row.IndexedAt,
+		CreatedAt:          row.CreatedAt,
+		UpdatedAt:          row.UpdatedAt,
 	}
 	if row.StorageKey != nil {
 		d.StorageKey = *row.StorageKey

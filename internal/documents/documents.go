@@ -35,6 +35,7 @@ type (
 	Hit      = document.Hit
 	IndexRun = document.IndexRun
 	Counts   = document.Counts
+	Problem  = document.Problem
 )
 
 const (
@@ -44,6 +45,12 @@ const (
 	StatusPending = document.StatusPending
 	StatusReady   = document.StatusReady
 	StatusFailed  = document.StatusFailed
+
+	ProblemFailed    = document.ProblemFailed
+	ProblemEmpty     = document.ProblemEmpty
+	ProblemStale     = document.ProblemStale
+	ProblemOldReader = document.ProblemOldReader
+	ProblemStuck     = document.ProblemStuck
 )
 
 // Storage is the object store, declared here rather than imported from media so

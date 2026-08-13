@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"fmt"
 	"net/url"
 
 	"github.com/google/uuid"
@@ -230,6 +231,7 @@ templ Bubble(m conversations.Message) {
 			<div class={ "border-hairline bg-surface max-w-[85%] rounded-2xl rounded-bl-sm border px-4 py-2.5 " + proseClasses }>
 				@markdown.Render(m.Content)
 			</div>
+			@sources(m)
 			<button
 				type="button"
 				@click={ "navigator.clipboard.writeText(" + jsString(m.Content) + "); copied = true; setTimeout(() => copied = false, 1500)" }
@@ -240,6 +242,50 @@ templ Bubble(m conversations.Message) {
 			</button>
 		</div>
 	}
+}
+
+// sources opens the passages a reply was built from.
+//
+// One disclosure per message rather than a chip per citation. Labelling each
+// ref separately would mean resolving every ref in the transcript to render the
+// page — a query per reply on every load — and the labels are only worth
+// fetching for the reply somebody actually decides to check.
+//
+// The refs are already stored on the message; nothing new is recorded to make
+// this work. It has been possible to show these since the column was added.
+templ sources(m conversations.Message) {
+	if refs := m.ChunkIDs(); len(refs) > 0 {
+		<div class="ml-1 w-full max-w-[85%]">
+			<button
+				type="button"
+				hx-get={ sourcesURL(m.EvidenceRefs) }
+				hx-target="this"
+				hx-swap="outerHTML"
+				class="text-muted-foreground hover:text-foreground text-xs underline underline-offset-2"
+			>
+				{ sourceLabel(len(refs)) }
+			</button>
+		</div>
+	}
+}
+
+// sourcesURL asks the knowledge handler for the passages behind one reply.
+// Refs go in as repeated query parameters and are resolved against the session
+// user there; a ref lifted from somebody else's conversation resolves to
+// nothing.
+func sourcesURL(refs []string) string {
+	q := make(url.Values, len(refs))
+	for _, ref := range refs {
+		q.Add("ref", ref)
+	}
+	return "/app/knowledge/passages?" + q.Encode()
+}
+
+func sourceLabel(n int) string {
+	if n == 1 {
+		return "1 source"
+	}
+	return fmt.Sprintf("%d sources", n)
 }
 
 // PendingExchange is what the composer swaps in on submit: the user's turn, and
@@ -283,7 +329,6 @@ templ PendingExchange(conversationID uuid.UUID, message string) {
 }
 
 // streamURL builds the SSE endpoint for a pending message.
-//
 // The message travels as a query parameter, which is why it is escaped here and
 // why nothing sensitive belongs in a chat URL. It is the same text the user
 // just posted and which is already stored.

@@ -177,6 +177,38 @@ func TestOversizedSectionsAreSplit(t *testing.T) {
 	}
 }
 
+// Consecutive chunks of one section must share lines.
+//
+// This is the assertion whose absence let DefaultOverlapChars go unapplied from
+// the day the chunker shipped: everything else about chunking was correct and
+// tested, so nothing failed, and the only symptom was recall quietly lost at
+// every boundary. A sentence split across two chunks has to be findable from
+// either one, or the split decides what the coach can answer.
+func TestSplitChunksOverlapTheirNeighbour(t *testing.T) {
+	var b strings.Builder
+	b.WriteString("# Long section\n\n")
+	for range 200 {
+		b.WriteString("Paragraph ")
+		b.WriteString(strings.Repeat("x", 60))
+		b.WriteString("\n\n")
+	}
+
+	doc := mustParse(t, "long.md", "text/markdown", b.String())
+	chunks := documents.ChunkDocument(doc, documents.Options{})
+
+	if len(chunks) < 2 {
+		t.Fatalf("expected a split section, got %d chunk(s)", len(chunks))
+	}
+
+	for i := 1; i < len(chunks); i++ {
+		prev, cur := chunks[i-1], chunks[i]
+		if cur.StartLine > prev.EndLine {
+			t.Errorf("chunk %d starts at line %d, after chunk %d ends at %d: no overlap",
+				cur.Ordinal, cur.StartLine, prev.Ordinal, prev.EndLine)
+		}
+	}
+}
+
 // Determinism is what makes reindexing cheap and old citations resolvable.
 func TestChunkingIsDeterministic(t *testing.T) {
 	doc := mustParse(t, "log.md", "text/markdown", trainingLog)

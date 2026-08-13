@@ -3,6 +3,7 @@ package documents
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"strings"
 
 	"github.com/NorthAIProject/north-client/internal/documents/parse"
@@ -40,14 +41,42 @@ type Options struct {
 	OverlapChars int
 }
 
+// withDefaults fills in whichever bound the caller left unset.
+//
+// Zero means unset for both fields, which is what the type's doc comment
+// promises and what every caller in the tree relies on by passing Options{}.
+// Overlap treated zero as a deliberate choice until the fingerprint test
+// noticed the two disagreed, which meant DefaultOverlapChars had never once
+// been applied — every document in the product was chunked with no overlap at
+// all, and a sentence spanning a boundary was retrievable from neither side.
+//
+// The cost of the reading here is that no caller can ask for genuinely zero
+// overlap. None wants to: overlap exists because a passage does not stop
+// mattering at the character the chunker happened to cut it at.
 func (o Options) withDefaults() Options {
 	if o.MaxChars <= 0 {
 		o.MaxChars = DefaultMaxChars
 	}
-	if o.OverlapChars < 0 || o.OverlapChars >= o.MaxChars {
+	if o.OverlapChars <= 0 || o.OverlapChars >= o.MaxChars {
 		o.OverlapChars = DefaultOverlapChars
 	}
 	return o
+}
+
+// Fingerprint identifies the bounds a document's chunks were produced under.
+//
+// Stored alongside the content hash so that changing the bounds is visible.
+// Without it, raising MaxChars leaves every already-indexed document holding
+// chunks from the old reader while still reporting that it was read — the
+// index quietly disagrees with the code that built it, and nothing says so.
+//
+// Defaults are resolved first, so the zero value and an explicit
+// Options{DefaultMaxChars, DefaultOverlapChars} fingerprint identically. They
+// chunk identically; they should not look like different readers.
+func (o Options) Fingerprint() string {
+	o = o.withDefaults()
+	sum := sha256.Sum256(fmt.Appendf(nil, "max=%d;overlap=%d", o.MaxChars, o.OverlapChars))
+	return hex.EncodeToString(sum[:])[:16]
 }
 
 // ChunkDocument splits a parsed document into heading-aware passages.

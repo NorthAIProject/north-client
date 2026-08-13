@@ -9,6 +9,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/coach"
 	"github.com/NorthAIProject/north-client/internal/documents"
+	"github.com/NorthAIProject/north-client/internal/documents/document"
 	"github.com/NorthAIProject/north-client/internal/shared/database/testdb"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
@@ -99,8 +100,25 @@ func TestIndexedDocumentBecomesRetrievable(t *testing.T) {
 	if top.StartLine < 1 || top.EndLine < top.StartLine {
 		t.Errorf("hit carries an impossible line range %d-%d", top.StartLine, top.EndLine)
 	}
-	if !strings.Contains(top.Snippet, "[") {
+	if !strings.Contains(top.Snippet, document.MarkStart) {
 		t.Errorf("snippet has no marked terms: %q", top.Snippet)
+	}
+
+	// The marks have to survive as far as the reader, or the emphasis in a
+	// result row is decoration rather than a report of what matched.
+	var matched []string
+	for _, s := range top.Segments() {
+		if s.Matched {
+			matched = append(matched, s.Text)
+		}
+	}
+	if len(matched) == 0 {
+		t.Errorf("no segment of the snippet came back matched: %q", top.Snippet)
+	}
+	for _, m := range matched {
+		if !strings.Contains(strings.ToLower(top.Content), strings.ToLower(m)) {
+			t.Errorf("snippet marked %q, which is not in the passage", m)
+		}
 	}
 }
 

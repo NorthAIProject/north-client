@@ -6,13 +6,18 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+
+	"github.com/NorthAIProject/north-client/internal/conversations"
 )
 
 // Evidence kinds. The prefix is part of the ref because the two kinds resolve
 // against different tables.
+//
+// Defined by internal/conversations, which owns the column they are stored in;
+// see the constants there for why.
 const (
-	EvidenceKindMemory = "memory"
-	EvidenceKindChunk  = "chunk"
+	EvidenceKindMemory = conversations.EvidenceKindMemory
+	EvidenceKindChunk  = conversations.EvidenceKindChunk
 )
 
 // MemoryRef builds the ref for a stored profile fact.

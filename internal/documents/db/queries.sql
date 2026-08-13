@@ -25,11 +25,12 @@ ORDER BY created_at;
 
 -- name: MarkDocumentIndexed :exec
 UPDATE documents
-SET status         = 'ready',
-    parse_error    = '',
-    content_sha256 = $2,
-    line_count     = $3,
-    indexed_at     = now()
+SET status             = 'ready',
+    parse_error        = '',
+    content_sha256     = $2,
+    chunker_fingerprint = $3,
+    line_count         = $4,
+    indexed_at         = now()
 WHERE id = $1;
 
 -- name: MarkDocumentFailed :exec
@@ -92,11 +93,16 @@ SELECT
     c.end_line,
     c.content,
     d.title,
+    -- STX and ETX rather than brackets. The passage is the person's own
+    -- writing, and a markdown link in it — [the paper](https://…) — is
+    -- indistinguishable from a bracket ts_headline put there, so a reader
+    -- rendering the marks would emphasise the wrong words. Control characters
+    -- cannot occur in the source text, which makes the split unambiguous.
     ts_headline(
         'english',
         c.content,
         q.tsq,
-        'StartSel=[, StopSel=], MaxWords=35, MinWords=15, ShortWord=3, HighlightAll=FALSE'
+        E'StartSel=\x02, StopSel=\x03, MaxWords=35, MinWords=15, ShortWord=3, HighlightAll=FALSE'
     )::text AS snippet,
     ts_rank_cd(to_tsvector('english', c.content), q.tsq, 32)::float8 AS rank
 FROM document_chunks c
@@ -120,6 +126,27 @@ SELECT
 FROM document_chunks c
 JOIN documents d ON d.id = c.document_id
 WHERE c.chunk_id = $1 AND c.user_id = $2 AND d.deleted_at IS NULL;
+
+-- name: ListChunksByIDs :many
+-- The passages behind one reply's citations, in one round trip.
+--
+-- A ref whose chunk has gone — the document deleted, the passage rewritten by a
+-- reindex — simply does not come back. That is deliberate: an old conversation
+-- naming a source that no longer exists should lose the source, not break.
+SELECT
+    c.chunk_id,
+    c.document_id,
+    c.heading_path,
+    c.start_line,
+    c.end_line,
+    c.content,
+    d.title
+FROM document_chunks c
+JOIN documents d ON d.id = c.document_id
+WHERE c.user_id = $1
+  AND c.chunk_id = ANY(@chunk_ids::text[])
+  AND d.deleted_at IS NULL
+ORDER BY d.title, c.ordinal;
 
 -- name: DocumentCounts :one
 -- What the knowledge page reports. Stale means the document has changed since

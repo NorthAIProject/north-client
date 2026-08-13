@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -43,7 +44,6 @@ var acceptedExtensions = map[string]bool{
 	".pdf": true,
 }
 
-// Service owns documents and the retrieval over them.
 // QueryEmbedder embeds a search query.
 //
 // Narrower than ai.Embedder on purpose: retrieval needs one method, and a
@@ -54,10 +54,16 @@ type QueryEmbedder interface {
 	EmbedQuery(ctx context.Context, query string) ([]float32, error)
 }
 
+// Service owns documents and the retrieval over them.
 type Service struct {
 	repo    *Repository
 	storage Storage
 	queue   *jobs.Queue
+
+	// opts must match the Indexer's, and both take the zero value. Held here
+	// only so Attention can name a document whose chunks came from bounds the
+	// running code no longer uses; nothing in this type chunks anything.
+	opts Options
 
 	// embeddings is nil unless a provider is configured. Retrieval then runs
 	// full-text only, which is what North did before embeddings existed.
@@ -179,6 +185,47 @@ func (s *Service) List(ctx context.Context, userID uuid.UUID) ([]Document, error
 	return s.repo.List(ctx, userID, listDefault)
 }
 
+// Content returns a document and the parsed text a citation is numbered
+// against.
+//
+// The parsed document, not the raw bytes. parse.Document.Lines is the exact
+// sequence the chunker counted, so line 40 here is line 40 in the citation. For
+// a PDF the two are nothing alike — the raw bytes are a binary container — and
+// for a markdown file with front matter they differ by the width of the block.
+// Showing anything else would produce a page that highlights the wrong lines
+// while looking entirely correct.
+func (s *Service) Content(ctx context.Context, id, userID uuid.UUID) (Document, parse.Document, error) {
+	doc, err := s.repo.Get(ctx, id, userID)
+	if err != nil {
+		return Document{}, parse.Document{}, err
+	}
+
+	raw, err := readContent(ctx, s.storage, doc)
+	if err != nil {
+		return doc, parse.Document{}, err
+	}
+
+	parsed, err := parse.Parse(titleSource(doc), doc.MIME, raw)
+	if err != nil {
+		return doc, parse.Document{}, err
+	}
+	return doc, parsed, nil
+}
+
+// Chunk resolves one citation to the passage it names.
+func (s *Service) Chunk(ctx context.Context, chunkID string, userID uuid.UUID) (Hit, error) {
+	return s.repo.Chunk(ctx, chunkID, userID)
+}
+
+// Passages resolves the citations of one reply together.
+//
+// Ids that no longer resolve are absent rather than an error: a document
+// deleted since the reply was written should cost that reply its sources, not
+// make the conversation unreadable.
+func (s *Service) Passages(ctx context.Context, userID uuid.UUID, chunkIDs []string) ([]Hit, error) {
+	return s.repo.ChunksByIDs(ctx, userID, chunkIDs)
+}
+
 // Delete removes a document from the person's knowledge.
 //
 // The row is soft-deleted and its chunks go with it, because a chunk left
@@ -292,6 +339,91 @@ func (s *Service) LatestRun(ctx context.Context, userID uuid.UUID) (IndexRun, er
 	return s.repo.LatestRun(ctx, userID)
 }
 
+// stuckAfter is how long a document may sit unread before it is worth naming.
+//
+// Indexing runs on the queue and normally finishes in seconds. Long enough that
+// a busy worker is not reported as broken, short enough that a worker which is
+// not running is visible while the person is still on the page.
+const stuckAfter = 10 * time.Minute
+
+// Attention lists the documents that need something done to them.
+//
+// Computed from the rows the page already loads rather than from a query: every
+// input is a column on the document, and a second trip to the database to
+// re-derive what is in memory would be work for its own sake.
+//
+// One problem per document, worst first: a document that failed to parse is not
+// also usefully described as stale, and a list that says the same file three
+// ways is a list nobody reads to the end.
+func (s *Service) Attention(ctx context.Context, userID uuid.UUID) ([]Problem, error) {
+	docs, err := s.repo.List(ctx, userID, listDefault)
+	if err != nil {
+		return nil, err
+	}
+
+	fingerprint := s.opts.Fingerprint()
+	out := make([]Problem, 0)
+
+	for _, d := range docs {
+		p := Problem{DocumentID: d.ID, Title: d.Title}
+
+		switch {
+		case d.Status == StatusFailed:
+			p.Kind = ProblemFailed
+			p.Detail = d.ParseError
+			if p.Detail == "" {
+				p.Detail = "North could not read this one."
+			}
+
+		case d.Status == StatusPending && time.Since(d.CreatedAt) > stuckAfter:
+			p.Kind = ProblemStuck
+			p.Detail = "Queued to be read, and still waiting."
+
+		case d.Status == StatusReady && d.LineCount == 0:
+			p.Kind = ProblemEmpty
+			p.Detail = "North read this and found no text in it."
+
+		case d.IsStale():
+			p.Kind = ProblemStale
+			p.Detail = "This changed after North last read it."
+
+		case d.ReadByAnotherChunker(fingerprint):
+			p.Kind = ProblemOldReader
+			p.Detail = "North reads documents differently now. Re-reading this will improve what it finds."
+
+		default:
+			continue
+		}
+
+		out = append(out, p)
+	}
+	return out, nil
+}
+
+// EmbeddingGap is how many passages are searchable by word but not by meaning.
+//
+// Reported as one number rather than per document because a missing vector is
+// almost never about one file: it is a provider that was down, or a backfill
+// that has not caught up. Zero when no embedding provider is configured, where
+// the gap is not a gap but the design.
+func (s *Service) EmbeddingGap(ctx context.Context, userID uuid.UUID) int {
+	if s.embeddings == nil {
+		return 0
+	}
+
+	counts, err := s.repo.Counts(ctx, userID)
+	if err != nil {
+		return 0
+	}
+
+	embedded, err := s.repo.CountEmbedded(ctx, userID, s.embeddings.EmbedModel())
+	if err != nil {
+		return 0
+	}
+
+	return max(counts.Chunks-embedded, 0)
+}
+
 // Reindex rebuilds everything derived for one person.
 //
 // The reason this exists is the claim the schema makes: chunks are derived
@@ -301,6 +433,28 @@ func (s *Service) Reindex(ctx context.Context, userID uuid.UUID) error {
 		return fmt.Errorf("documents: no queue configured")
 	}
 	_, err := s.queue.Enqueue(ctx, jobs.KindReindexUser, jobs.ReindexUserPayload{UserID: userID})
+	return err
+}
+
+// ReindexDocument rebuilds one document's chunks.
+//
+// The per-document form of Reindex, for the case the attention list names: a
+// single file North read badly, or read under bounds it no longer uses. Fetches
+// the row first so that a request naming somebody else's document, or one that
+// has been deleted, enqueues nothing.
+func (s *Service) ReindexDocument(ctx context.Context, id, userID uuid.UUID) error {
+	doc, err := s.repo.Get(ctx, id, userID)
+	if err != nil {
+		return err
+	}
+	if s.queue == nil {
+		return fmt.Errorf("documents: no queue configured")
+	}
+
+	_, err = s.queue.Enqueue(ctx, jobs.KindIndexDocument, jobs.IndexDocumentPayload{
+		UserID:     doc.UserID,
+		DocumentID: doc.ID,
+	})
 	return err
 }
 

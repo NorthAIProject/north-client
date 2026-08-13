@@ -68,8 +68,36 @@ type Attachment struct {
 	Name     string    `json:"name"`
 }
 
+// Evidence ref kinds, as stored in EvidenceRefs.
+//
+// Declared by the package that owns the column rather than by the one that
+// writes it: internal/coach builds these refs, but it also renders web/chat,
+// and a template that needed to read a ref would have to import the service
+// that produced it. The vocabulary of a stored column belongs with the column.
+const (
+	EvidenceKindMemory = "memory"
+	EvidenceKindChunk  = "chunk"
+)
+
 func (m Message) IsUser() bool  { return m.Role == ai.RoleUser }
 func (m Message) IsModel() bool { return m.Role == ai.RoleModel }
+
+// ChunkIDs is the document passages this reply drew on.
+//
+// Memory refs are dropped: a stored fact has no line range and no page to open,
+// so there is nothing a reader could check. A ref that does not parse is
+// dropped too — this is a text column, and a malformed value in it should cost
+// a reply one source rather than fail the page.
+func (m Message) ChunkIDs() []string {
+	out := make([]string, 0, len(m.EvidenceRefs))
+	for _, ref := range m.EvidenceRefs {
+		kind, id, found := strings.Cut(ref, ":")
+		if found && id != "" && kind == EvidenceKindChunk {
+			out = append(out, id)
+		}
+	}
+	return out
+}
 
 // ToAIMessages converts stored history into the form the AI layer expects.
 func ToAIMessages(messages []Message) []ai.Message {

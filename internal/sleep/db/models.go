@@ -30,6 +30,18 @@ type ActivitySession struct {
 	UpdatedAt          time.Time
 }
 
+type AgentConnection struct {
+	ID          uuid.UUID
+	UserID      uuid.UUID
+	Name        string
+	ClientKind  string
+	TokenHash   []byte
+	TokenPrefix string
+	CreatedAt   time.Time
+	LastUsedAt  *time.Time
+	RevokedAt   *time.Time
+}
+
 type AuthIdentity struct {
 	ID              uuid.UUID
 	UserID          uuid.UUID
@@ -78,22 +90,23 @@ type Diet struct {
 }
 
 type Document struct {
-	ID            uuid.UUID
-	UserID        uuid.UUID
-	Title         string
-	SourceKind    string
-	StorageKey    *string
-	Body          *string
-	Mime          string
-	ByteSize      int64
-	ContentSha256 string
-	LineCount     int32
-	Status        string
-	ParseError    string
-	IndexedAt     *time.Time
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
-	DeletedAt     *time.Time
+	ID                 uuid.UUID
+	UserID             uuid.UUID
+	Title              string
+	SourceKind         string
+	StorageKey         *string
+	Body               *string
+	Mime               string
+	ByteSize           int64
+	ContentSha256      string
+	LineCount          int32
+	Status             string
+	ParseError         string
+	IndexedAt          *time.Time
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+	DeletedAt          *time.Time
+	ChunkerFingerprint string
 }
 
 type DocumentChunk struct {
