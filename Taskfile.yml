@@ -16,7 +16,7 @@ tasks:
       # scripts/dev-web.sh rather than `go run ./cmd/web` — see that file for
       # why. Short version: `go run` leaves the real server orphaned on the
       # port every time templ restarts or you Ctrl-C.
-      - go tool templ generate --watch --proxy="http://localhost:8090" --cmd="./scripts/dev-web.sh" --open-browser=false
+      - GOFLAGS=-mod=mod go tool templ generate --watch --proxy="http://localhost:8090" --cmd="./scripts/dev-web.sh" --open-browser=false
 
   # Frees the dev port if a previous run left something behind. Runs before the
   # watcher rather than being something to remember: the whole problem with a
@@ -153,7 +153,7 @@ tasks:
   generate:
     desc: Run every code generator
     cmds:
-      - go tool templ generate
+      - GOFLAGS=-mod=mod go tool templ generate
       - sqlc generate
 
   # ---------------------------------------------------------------------------
@@ -167,7 +167,7 @@ tasks:
   build:
     desc: Build all binaries
     cmds:
-      - go tool templ generate
+      - GOFLAGS=-mod=mod go tool templ generate
       - task: assets
       - go build ./...
 
@@ -211,7 +211,7 @@ tasks:
     desc: Everything CI runs (local equivalent of .github/workflows/ci.yml)
     cmds:
       - bash scripts/check-no-build-artifacts.sh
-      - go tool templ generate
+      - GOFLAGS=-mod=mod go tool templ generate
       - task: assets
       - |
         go tool gofumpt -w .

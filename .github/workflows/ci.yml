@@ -62,7 +62,7 @@ jobs:
           echo "tailwindcss ready: $("$HOME/bin/tailwindcss" --help 2>&1 | head -1 || true)"
 
       - name: Generate templates
-        run: go tool templ generate
+        run: GOFLAGS=-mod=mod go tool templ generate
 
       # Generated code is gitignored (*_templ.go). Building CSS before Go
       # compile is required: web/assets embeds the css/ directory, so a missing
@@ -120,7 +120,7 @@ jobs:
           "$HOME/bin/tailwindcss" --help >/dev/null
 
       - name: Generate templates
-        run: go tool templ generate
+        run: GOFLAGS=-mod=mod go tool templ generate
 
       - name: Build frontend assets
         run: bash scripts/build-css.sh
