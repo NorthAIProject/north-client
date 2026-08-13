@@ -163,12 +163,14 @@ func userFromDB(row authdb.User) users.User {
 		Email:       row.Email,
 		DisplayName: row.DisplayName,
 		Timezone:    row.Timezone,
+		Tier:        users.Tier(row.Tier),
 		CreatedAt:   row.CreatedAt,
 		UpdatedAt:   row.UpdatedAt,
 	}
 	if row.CoachingStyle != nil {
 		u.CoachingStyle = *row.CoachingStyle
 	}
+	u.OnboardedAt = row.OnboardedAt
 	return u
 }
 

@@ -7,6 +7,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/checkins"
 	"github.com/NorthAIProject/north-client/internal/coach"
+	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/shared/database/testdb"
 )
 
@@ -76,6 +77,69 @@ func TestContextSourceSurfacesErrors(t *testing.T) {
 	}
 	if len(into.CheckIns) != 0 {
 		t.Fatalf("a failed collect should leave the section untouched, got %v", into.CheckIns)
+	}
+}
+
+func TestContextSourceLabelsAttachedGoal(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	user := seedUser(t, pool, "attachedgoal@north.test", "UTC")
+	goalSvc := goals.NewService(goals.NewRepository(pool))
+	svc := checkins.NewService(checkins.NewRepository(pool), goalSvc)
+
+	g, err := goalSvc.Create(ctx, user.ID, goals.Input{
+		Title:    "Run a marathon",
+		Category: goals.CategoryFitness,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err = svc.UpsertToday(ctx, user, checkins.Input{
+		Mood: 3, Energy: 3, RelatedGoalID: &g.ID,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	into := &coach.Context{User: user}
+	if err := checkins.NewContextSource(svc).Collect(ctx, coach.ContextRequest{User: user}, into); err != nil {
+		t.Fatalf("collect: %v", err)
+	}
+	if len(into.CheckIns) != 1 {
+		t.Fatalf("want 1 check-in, got %d", len(into.CheckIns))
+	}
+	if !strings.Contains(into.CheckIns[0], "(re: Run a marathon)") {
+		t.Fatalf("attached check-in should name the goal:\n%s", into.CheckIns[0])
+	}
+}
+
+func TestContextSourceLeavesDetachedCheckInUnlabeled(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	user := seedUser(t, pool, "detachedgoal@north.test", "UTC")
+	goalSvc := goals.NewService(goals.NewRepository(pool))
+	svc := checkins.NewService(checkins.NewRepository(pool), goalSvc)
+
+	if _, err := goalSvc.Create(ctx, user.ID, goals.Input{
+		Title:    "Run a marathon",
+		Category: goals.CategoryFitness,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := svc.UpsertToday(ctx, user, checkins.Input{Mood: 3, Energy: 3}); err != nil {
+		t.Fatal(err)
+	}
+
+	into := &coach.Context{User: user}
+	if err := checkins.NewContextSource(svc).Collect(ctx, coach.ContextRequest{User: user}, into); err != nil {
+		t.Fatalf("collect: %v", err)
+	}
+	if len(into.CheckIns) != 1 {
+		t.Fatalf("want 1 check-in, got %d", len(into.CheckIns))
+	}
+	if strings.Contains(into.CheckIns[0], "(re:") {
+		t.Fatalf("detached check-in should not name a goal:\n%s", into.CheckIns[0])
 	}
 }
 

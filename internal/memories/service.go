@@ -110,6 +110,10 @@ func (s *Service) SetPinned(ctx context.Context, id, userID uuid.UUID, pinned bo
 	return s.repo.SetPinned(ctx, id, userID, pinned)
 }
 
+func (s *Service) SetExcluded(ctx context.Context, id, userID uuid.UUID, excluded bool) (Memory, error) {
+	return s.repo.SetExcluded(ctx, id, userID, excluded)
+}
+
 func (s *Service) Delete(ctx context.Context, id, userID uuid.UUID) error {
 	return s.repo.SoftDelete(ctx, id, userID)
 }

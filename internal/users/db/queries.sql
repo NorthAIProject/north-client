@@ -33,3 +33,12 @@ UPDATE users
 SET password_hash = $2,
     updated_at    = now()
 WHERE id = $1;
+
+-- name: MarkUserOnboarded :one
+-- Sets the first-run flag once. A second call returns the row unchanged.
+UPDATE users
+SET onboarded_at = now(),
+    updated_at   = now()
+WHERE id = $1
+  AND onboarded_at IS NULL
+RETURNING *;

@@ -428,6 +428,7 @@ type User struct {
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
 	Tier          string
+	OnboardedAt   *time.Time
 }
 
 type UserBiometric struct {
@@ -481,6 +482,7 @@ type UserMemory struct {
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
 	DeletedAt            *time.Time
+	Excluded             bool
 }
 
 type UserPreference struct {

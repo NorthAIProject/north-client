@@ -144,6 +144,18 @@ func (r *Repository) UpdateProfile(ctx context.Context, id uuid.UUID, p Profile)
 	return fromDB(row), nil
 }
 
+func (r *Repository) MarkOnboarded(ctx context.Context, id uuid.UUID) (User, error) {
+	row, err := r.q.MarkUserOnboarded(ctx, id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			// Already onboarded or missing user — return current row when present.
+			return r.ByID(ctx, id)
+		}
+		return User{}, apperr.Wrap(err, "mark onboarded")
+	}
+	return fromDB(row), nil
+}
+
 func (r *Repository) UpdatePasswordHash(ctx context.Context, id uuid.UUID, hash string) error {
 	err := r.q.UpdateUserPassword(ctx, usersdb.UpdateUserPasswordParams{
 		ID:           id,

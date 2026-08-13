@@ -50,6 +50,7 @@ type Memory struct {
 	Content  string
 	Status   string
 	Pinned   bool
+	Excluded bool
 	Source   string
 
 	SourceConversationID *uuid.UUID

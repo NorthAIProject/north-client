@@ -9,9 +9,19 @@ import "github.com/NorthAIProject/north-client/web/shared/ui"
 // The short signal tick beside the mark is a fragment of the landing bearing —
 // the door into the same continuity line, not a second marketing column.
 templ Auth(title string) {
+	@authShell(title, "max-w-sm")
+}
+
+// AuthWide is Auth with a wider card — onboarding needs room for checkboxes
+// and a goal field without feeling cramped.
+templ AuthWide(title string) {
+	@authShell(title, "max-w-lg")
+}
+
+templ authShell(title string, widthClass string) {
 	@Base(title) {
 		<div class="flex min-h-full flex-col items-center justify-center px-4 py-12">
-			<div class="w-full max-w-sm">
+			<div class={ "w-full " + widthClass }>
 				<div class="mb-8 flex flex-col items-center text-center">
 					<div class="flex items-center gap-3">
 						<span aria-hidden="true" class="h-8 w-px bg-signal/70"></span>

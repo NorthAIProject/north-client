@@ -138,6 +138,9 @@ templ SavedPanel(c checkin.CheckIn, list []checkin.CheckIn, streak int) {
 			@card.Content() {
 				<p class="font-mono text-[10px] uppercase tracking-[0.14em] text-signal">Logged</p>
 				<p class="mt-2 text-lg font-medium tracking-tight">{ c.Label() }</p>
+				if c.RelatedGoalTitle != "" {
+					<p class="text-muted-foreground mt-1 text-sm">Related: { c.RelatedGoalTitle }</p>
+				}
 				if streak > 0 {
 					<p class="text-muted-foreground mt-1 text-sm">
 						{ strconv.Itoa(streak) }-day streak. Same time tomorrow.
@@ -404,6 +407,9 @@ templ historyCard(c checkin.CheckIn) {
 	@card.Card(card.Props{Class: "border-hairline"}) {
 		@card.Content(card.ContentProps{Class: "py-4"}) {
 			<p class="text-sm font-medium">{ c.Label() }</p>
+			if c.RelatedGoalTitle != "" {
+				<p class="text-muted-foreground mt-1 text-sm">Related: { c.RelatedGoalTitle }</p>
+			}
 			if c.Wins != "" {
 				<p class="text-muted-foreground mt-1 text-sm">Wins: { c.Wins }</p>
 			}

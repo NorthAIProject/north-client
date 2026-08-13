@@ -129,6 +129,34 @@ func TestSearchSurvivesOperatorCharacters(t *testing.T) {
 	}
 }
 
+func TestSearchSkipsExcludedFacts(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	user := seedUser(t, pool, "excluded-search@north.test")
+	svc := memories.NewService(memories.NewRepository(pool))
+
+	const hidden = "Cannot do overhead pressing due to shoulder instability"
+
+	m, err := svc.Create(ctx, user.ID, memories.Input{
+		Category: memories.CategoryInjury,
+		Content:  hidden,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = svc.SetExcluded(ctx, m.ID, user.ID, true); err != nil {
+		t.Fatal(err)
+	}
+
+	ranked, err := svc.ForContext(ctx, user.ID, "shoulder overhead press")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if containsContent(ranked, hidden) {
+		t.Fatal("excluded fact was ranked into coach context")
+	}
+}
+
 func TestSearchStaysInsideOneAccount(t *testing.T) {
 	pool := testdb.New(t)
 	ctx := context.Background()
