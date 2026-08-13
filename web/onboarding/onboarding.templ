@@ -1,0 +1,242 @@
+package onboarding
+
+import (
+	"github.com/NorthAIProject/north-client/internal/shared/lifedomain"
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/alert"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/checkbox"
+	"github.com/NorthAIProject/north-client/web/shared/ui/input"
+	"github.com/NorthAIProject/north-client/web/shared/ui/label"
+	"github.com/NorthAIProject/north-client/web/shared/ui/radio"
+	"github.com/NorthAIProject/north-client/web/shared/ui/textarea"
+)
+
+const (
+	styleDirect     = "direct"
+	styleSupportive = "supportive"
+	styleSocratic   = "socratic"
+	styleCustom     = "custom"
+)
+
+// focusAreas matches internal/onboarding.FocusAreas — duplicated here to avoid
+// an import cycle between web and internal packages.
+var focusAreas = []string{
+	lifedomain.Fitness,
+	lifedomain.Health,
+	lifedomain.Work,
+	lifedomain.Learning,
+	lifedomain.Personal,
+}
+
+// Form carries submitted answers back when validation fails.
+type Form struct {
+	FocusAreas  []string
+	StylePreset string
+	StyleCustom string
+	GoalTitle   string
+	Errors      map[string]string
+}
+
+func (f Form) fieldError(name string) string { return f.Errors[name] }
+
+func (f Form) focusChecked(area string) bool {
+	for _, a := range f.FocusAreas {
+		if a == area {
+			return true
+		}
+	}
+	return false
+}
+
+func (f Form) stylePreset() string {
+	if f.StylePreset != "" {
+		return f.StylePreset
+	}
+	return styleDirect
+}
+
+func focusLabel(area string) string {
+	switch area {
+	case lifedomain.Fitness:
+		return "Fitness"
+	case lifedomain.Health:
+		return "Health"
+	case lifedomain.Work:
+		return "Work"
+	case lifedomain.Learning:
+		return "Learning"
+	case lifedomain.Personal:
+		return "Personal"
+	default:
+		return area
+	}
+}
+
+templ FormPage(f Form) {
+	@layout.AuthWide("Welcome to North") {
+		@checkbox.Script()
+		@card.Card() {
+			@card.Header() {
+				@card.Title() {
+					Tell North where to start
+				}
+				@card.Description() {
+					Three quick answers. North uses them to coach you from day one — not from a blank slate.
+				}
+			}
+			@card.Content() {
+				if f.fieldError("focus_areas") != "" || f.fieldError("coaching_style") != "" || f.fieldError("goal_title") != "" {
+					@alert.Alert(alert.Props{Variant: alert.VariantDestructive, Class: "mb-4"}) {
+						@alert.Description() {
+							Fix the highlighted fields and try again.
+						}
+					}
+				}
+				<form
+					method="post"
+					action="/app/onboarding"
+					class="space-y-8"
+					x-data={ "{ preset: '" + f.stylePreset() + "' }" }
+				>
+					@ui.CSRFInput()
+					<section class="space-y-3">
+						@label.Label(label.Props{For: "focus-fitness"}) {
+							What do you want North focused on?
+						}
+						<p class="text-muted-foreground text-sm">Pick one or more.</p>
+						<div class="grid grid-cols-2 gap-3">
+							for _, area := range focusAreas {
+								<label class="flex items-center gap-2 text-sm">
+									@checkbox.Checkbox(checkbox.Props{
+										ID:      "focus-" + area,
+										Name:    "focus_areas",
+										Value:   area,
+										Checked: f.focusChecked(area),
+									})
+									{ focusLabel(area) }
+								</label>
+							}
+						</div>
+						if f.fieldError("focus_areas") != "" {
+							<p class="text-destructive text-sm">{ f.fieldError("focus_areas") }</p>
+						}
+					</section>
+					<section class="space-y-3">
+						@label.Label(label.Props{For: "style-direct"}) {
+							How should North coach you?
+						}
+						<div class="space-y-2">
+							@styleOption("style-direct", styleDirect, "Direct", "Skip pep talks. Challenge me.", f)
+							@styleOption("style-supportive", styleSupportive, "Supportive", "Warm, encouraging, celebrates progress.", f)
+							@styleOption("style-socratic", styleSocratic, "Socratic", "Ask questions. Help me think it through.", f)
+							@styleOption("style-custom", styleCustom, "Custom", "Describe it in your own words.", f)
+						</div>
+						<div x-show="preset === 'custom'" x-cloak class="space-y-2">
+							@textarea.Textarea(textarea.Props{
+								ID:          "coaching_style_custom",
+								Name:        "coaching_style_custom",
+								Rows:        3,
+								Placeholder: "E.g. \"Be direct, skip the pep talks.\"",
+								Value:       f.StyleCustom,
+							})
+						</div>
+						if f.fieldError("coaching_style") != "" {
+							<p class="text-destructive text-sm">{ f.fieldError("coaching_style") }</p>
+						}
+					</section>
+					<section class="space-y-2">
+						@label.Label(label.Props{For: "goal_title"}) {
+							One goal you are working toward right now
+						}
+						@input.Input(input.Props{
+							ID:          "goal_title",
+							Name:        "goal_title",
+							Value:       f.GoalTitle,
+							Placeholder: "E.g. Run a 10K by November",
+						})
+						if f.fieldError("goal_title") != "" {
+							<p class="text-destructive text-sm">{ f.fieldError("goal_title") }</p>
+						}
+					</section>
+					<div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+						@button.Button(button.Props{
+							Type:      button.TypeSubmit,
+							Class:     "bg-signal text-background hover:bg-signal/90",
+							FullWidth: true,
+						}) {
+							Start with North
+						}
+						@button.Button(button.Props{
+							Type:    button.TypeSubmit,
+							Variant: button.VariantGhost,
+							Class:   "text-muted-foreground",
+							Attributes: templ.Attributes{
+								"formaction": "/app/onboarding/skip",
+							},
+						}) {
+							Skip for now
+						}
+					</div>
+				</form>
+			}
+		}
+	}
+}
+
+templ styleOption(id, value, title, desc string, f Form) {
+	<label class="flex cursor-pointer items-start gap-3 rounded-md border border-border p-3 has-[:checked]:border-signal/50 has-[:checked]:bg-signal/5">
+		@radio.Radio(radio.Props{
+			ID:      id,
+			Name:    "coaching_style_preset",
+			Value:   value,
+			Checked: f.stylePreset() == value,
+			Attributes: templ.Attributes{
+				"x-model": "preset",
+			},
+		})
+		<span class="space-y-0.5">
+			<span class="block text-sm font-medium">{ title }</span>
+			<span class="text-muted-foreground block text-sm">{ desc }</span>
+		</span>
+	</label>
+}
+
+templ DonePage(user users.User) {
+	@layout.AuthWide("You are set up") {
+		@card.Card() {
+			@card.Header() {
+				@card.Title() {
+					North knows where to start, { user.FirstName() }
+				}
+				@card.Description() {
+					Your focus areas, coaching style, and first goal are in place. Talk to North whenever you are ready.
+				}
+			}
+			@card.Content() {
+				<div class="flex flex-col gap-3">
+					<form method="post" action="/app/chat">
+						@ui.CSRFInput()
+						@button.Button(button.Props{
+							Type:      button.TypeSubmit,
+							Class:     "bg-signal text-background hover:bg-signal/90 w-full",
+							FullWidth: true,
+						}) {
+							Talk to North
+						}
+					</form>
+					@button.Button(button.Props{
+						Href:    "/app",
+						Variant: button.VariantOutline,
+						FullWidth: true,
+					}) {
+						Go to dashboard
+					}
+				</div>
+			}
+		}
+	}
+}

@@ -14,6 +14,7 @@ package plan
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/NorthAIProject/north-client/internal/ai"
 )
@@ -144,6 +145,44 @@ func (p Plan) Summary() string {
 	}
 
 	return b.String()
+}
+
+// NextSession is the training day that belongs to now, or the next one after
+// it. Today wins when today is a plan day; otherwise the search walks forward
+// through the week. Unrecognised weekday labels are ignored.
+func (p Plan) NextSession(now time.Time) (PlanDay, bool) {
+	byDay := make(map[time.Weekday]PlanDay, len(p.Days))
+	for _, d := range p.Days {
+		wd, ok := parseWeekday(d.Weekday)
+		if !ok {
+			continue
+		}
+		byDay[wd] = d
+	}
+	if len(byDay) == 0 {
+		return PlanDay{}, false
+	}
+
+	for i := 0; i < 7; i++ {
+		day := now.AddDate(0, 0, i)
+		if session, ok := byDay[day.Weekday()]; ok {
+			return session, true
+		}
+	}
+	return PlanDay{}, false
+}
+
+func parseWeekday(label string) (time.Weekday, bool) {
+	label = strings.TrimSpace(label)
+	if label == "" {
+		return 0, false
+	}
+	for d := time.Sunday; d <= time.Saturday; d++ {
+		if strings.EqualFold(d.String(), label) {
+			return d, true
+		}
+	}
+	return 0, false
 }
 
 // dayEmphasis lists the day's primary muscle groups once each, in the order

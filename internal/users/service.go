@@ -108,6 +108,12 @@ func (s *Service) UpdatePasswordHash(ctx context.Context, id uuid.UUID, hash str
 	return s.repo.UpdatePasswordHash(ctx, id, hash)
 }
 
+// MarkOnboarded records that first-run onboarding finished (complete or skip).
+// Idempotent: a user who is already onboarded is returned unchanged.
+func (s *Service) MarkOnboarded(ctx context.Context, id uuid.UUID) (User, error) {
+	return s.repo.MarkOnboarded(ctx, id)
+}
+
 func (s *Service) UpdateProfile(ctx context.Context, id uuid.UUID, p Profile) (User, error) {
 	var errs apperr.FieldErrors
 

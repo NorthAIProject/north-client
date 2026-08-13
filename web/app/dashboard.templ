@@ -3,18 +3,42 @@ package app
 import (
 	"strconv"
 
+	"github.com/google/uuid"
+
+	"github.com/NorthAIProject/north-client/internal/conversations"
+	"github.com/NorthAIProject/north-client/internal/goals/goal"
 	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/internal/workouts/plan"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
 	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/progress"
 )
 
 // DashboardData is the overview snapshot.
 type DashboardData struct {
-	CheckedInToday bool
-	Streak         int
+	CheckedInToday  bool
+	Streak          int
 	PendingMemories int
+	Goals           []goal.Goal
+	LastThread      *conversations.Conversation
+	NextSession     *plan.PlanDay
+	PlanID          uuid.UUID
+}
+
+func (d DashboardData) HasPlan() bool {
+	return d.PlanID != uuid.Nil
+}
+
+func hasProgress(g goal.Goal) bool {
+	_, ok := g.Progress()
+	return ok
+}
+
+func progressPct(g goal.Goal) int {
+	pct, _ := g.Progress()
+	return pct
 }
 
 templ Dashboard(user users.User, data DashboardData) {
@@ -26,73 +50,181 @@ templ Dashboard(user users.User, data DashboardData) {
 					Hello, { user.FirstName() }
 				</h1>
 				<p class="text-muted-foreground mt-1 max-w-lg text-sm leading-relaxed">
-					Your coach still has the thread. Check in, keep goals current, and review what North remembers.
+					What today asks of you. Check in, keep goals current, pick up the thread.
 				</p>
 			</header>
 			<div class="grid gap-4 sm:grid-cols-2">
-				@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
-					@card.Header() {
-						@card.Title() {
-							Today’s check-in
-						}
-						@card.Description() {
-							if data.CheckedInToday {
-								You’re set for today.
-							} else {
-								Thirty seconds. Mood, energy, what went well.
-							}
-						}
-					}
-					@card.Content() {
-						if data.Streak > 0 {
-							<p class="text-signal mb-3 text-sm font-medium">
-								{ strconv.Itoa(data.Streak) }-day streak
-							</p>
-						}
-						@button.Button(button.Props{Href: "/app/check-ins", Class: "bg-signal text-background hover:bg-signal/90"}) {
-							if data.CheckedInToday {
-								Edit check-in
-							} else {
-								Check in
-							}
-						}
-					}
-				}
-				@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
-					@card.Header() {
-						@card.Title() {
-							Memory
-						}
-						@card.Description() {
-							if data.PendingMemories > 0 {
-								{ strconv.Itoa(data.PendingMemories) } proposed facts to review.
-							} else {
-								Facts North may use when coaching you.
-							}
-						}
-					}
-					@card.Content() {
-						@button.Button(button.Props{Href: "/app/memories", Variant: button.VariantOutline}) {
-							Open memory
-						}
-					}
-				}
+				@checkInCard(data)
+				@goalsCard(data)
+				@coachCard(data)
+				@trainingCard(data)
+				@memoryCard(data)
 			</div>
-			@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
-				@card.Header() {
-					@card.Title() {
-						Coach
-					}
-					@card.Description() {
-						Pick up the conversation. North already has your goals and check-ins when they exist.
-					}
-				}
-				@card.Content() {
-					@button.Button(button.Props{Href: "/app/chat", Class: "bg-signal text-background hover:bg-signal/90"}) {
-						Talk to your coach
-					}
+		</div>
+		@progress.Script()
+	}
+}
+
+templ checkInCard(data DashboardData) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Title() {
+				Today’s check-in
+			}
+			@card.Description() {
+				if data.CheckedInToday {
+					You’re set for today.
+				} else {
+					Thirty seconds. Mood, energy, what went well.
 				}
 			}
-		</div>
+		}
+		@card.Content() {
+			if data.Streak > 0 {
+				<p class="text-signal mb-3 text-sm font-medium">
+					{ strconv.Itoa(data.Streak) }-day streak
+				</p>
+			}
+			@button.Button(button.Props{Href: "/app/check-ins", Class: "bg-signal text-background hover:bg-signal/90"}) {
+				if data.CheckedInToday {
+					Edit check-in
+				} else {
+					Check in
+				}
+			}
+		}
+	}
+}
+
+templ goalsCard(data DashboardData) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Title() {
+				Goals
+			}
+			@card.Description() {
+				if len(data.Goals) == 0 {
+					The coach works better once it knows what you are aiming at.
+				} else {
+					What you are working toward.
+				}
+			}
+		}
+		@card.Content() {
+			if len(data.Goals) == 0 {
+				@button.Button(button.Props{Href: "/app/goals", Class: "bg-signal text-background hover:bg-signal/90"}) {
+					Add a goal
+				}
+			} else {
+				<ul class="space-y-3">
+					for _, g := range data.Goals {
+						<li>
+							<a href={ templ.SafeURL("/app/goals/" + g.ID.String()) } class="block">
+								<p class="text-sm font-medium">{ g.Title }</p>
+								if hasProgress(g) {
+									<div class="mt-2">
+										@progress.Progress(progress.Props{Value: progressPct(g), Max: 100, Size: progress.SizeSm})
+									</div>
+								}
+							</a>
+						</li>
+					}
+				</ul>
+				<div class="mt-4">
+					@button.Button(button.Props{Href: "/app/goals", Variant: button.VariantOutline}) {
+						All goals
+					}
+				</div>
+			}
+		}
+	}
+}
+
+templ coachCard(data DashboardData) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Title() {
+				Coach
+			}
+			@card.Description() {
+				if data.LastThread != nil {
+					Pick up where you left off.
+				} else {
+					North already has your goals and check-ins when they exist.
+				}
+			}
+		}
+		@card.Content() {
+			if data.LastThread != nil {
+				<p class="mb-3 text-sm font-medium">{ data.LastThread.DisplayTitle() }</p>
+				@button.Button(button.Props{Href: "/app/chat/" + data.LastThread.ID.String(), Class: "bg-signal text-background hover:bg-signal/90"}) {
+					Continue
+				}
+			} else {
+				@button.Button(button.Props{Href: "/app/chat", Class: "bg-signal text-background hover:bg-signal/90"}) {
+					Start a conversation
+				}
+			}
+		}
+	}
+}
+
+templ trainingCard(data DashboardData) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Title() {
+				Training
+			}
+			@card.Description() {
+				if data.NextSession != nil {
+					Next session on the plan.
+				} else if data.HasPlan() {
+					Your current plan is ready when you are.
+				} else {
+					A plan the coach can actually follow, not a paragraph of sets.
+				}
+			}
+		}
+		@card.Content() {
+			if data.NextSession != nil {
+				<p class="text-sm font-medium">{ data.NextSession.Weekday } — { data.NextSession.Focus }</p>
+				<p class="text-muted-foreground mt-1 mb-3 text-sm">
+					{ strconv.Itoa(len(data.NextSession.Exercises)) } exercises
+				</p>
+				@button.Button(button.Props{Href: "/app/training/" + data.PlanID.String(), Class: "bg-signal text-background hover:bg-signal/90"}) {
+					Open session
+				}
+			} else if data.HasPlan() {
+				@button.Button(button.Props{Href: "/app/training/" + data.PlanID.String(), Variant: button.VariantOutline}) {
+					Open plan
+				}
+			} else {
+				@button.Button(button.Props{Href: "/app/training", Class: "bg-signal text-background hover:bg-signal/90"}) {
+					Build a training plan
+				}
+			}
+		}
+	}
+}
+
+templ memoryCard(data DashboardData) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Title() {
+				Memory
+			}
+			@card.Description() {
+				if data.PendingMemories > 0 {
+					{ strconv.Itoa(data.PendingMemories) } proposed facts to review.
+				} else {
+					Facts North may use when coaching you.
+				}
+			}
+		}
+		@card.Content() {
+			@button.Button(button.Props{Href: "/app/memories", Variant: button.VariantOutline}) {
+				Open memory
+			}
+		}
 	}
 }

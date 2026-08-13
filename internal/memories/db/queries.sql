@@ -1,8 +1,8 @@
 -- name: CreateMemory :one
 INSERT INTO user_memories (
-    user_id, category, content, status, pinned, source, source_conversation_id, confidence
+    user_id, category, content, status, pinned, excluded, source, source_conversation_id, confidence
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8
+    $1, $2, $3, $4, $5, $6, $7, $8, $9
 )
 RETURNING *;
 
@@ -16,6 +16,7 @@ WHERE user_id = $1
   AND deleted_at IS NULL
 ORDER BY
     pinned DESC,
+    excluded ASC,
     CASE status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END,
     updated_at DESC
 LIMIT $2;
@@ -25,7 +26,7 @@ SELECT * FROM user_memories
 WHERE user_id = $1
   AND deleted_at IS NULL
   AND status = $2
-ORDER BY pinned DESC, updated_at DESC
+ORDER BY pinned DESC, excluded ASC, updated_at DESC
 LIMIT $3;
 
 -- name: ListApprovedForContext :many
@@ -33,6 +34,7 @@ SELECT * FROM user_memories
 WHERE user_id = $1
   AND deleted_at IS NULL
   AND status = 'approved'
+  AND NOT excluded
 ORDER BY pinned DESC, updated_at DESC
 LIMIT $2;
 
@@ -82,6 +84,7 @@ FROM user_memories m, q
 WHERE m.user_id = @user_id
   AND m.deleted_at IS NULL
   AND m.status = 'approved'
+  AND NOT m.excluded
   AND (
       m.pinned
       OR to_tsvector('english', m.content) @@ q.tsq
@@ -115,11 +118,20 @@ RETURNING *;
 -- name: SetMemoryPinned :one
 UPDATE user_memories
 SET pinned     = $3,
+    excluded   = false,
     updated_at = now()
 WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL AND status = 'approved'
 RETURNING *;
 
--- name: SoftDeleteMemory :exec
+-- name: SetMemoryExcluded :one
+UPDATE user_memories
+SET excluded   = $3,
+    pinned     = false,
+    updated_at = now()
+WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL AND status = 'approved'
+RETURNING *;
+
+-- name: SoftDeleteMemory :execrows
 UPDATE user_memories
 SET deleted_at = now(),
     updated_at = now()

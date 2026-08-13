@@ -110,8 +110,144 @@ func TestOwnershipIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Get(ctx, m.ID, stranger.ID); !apperr.Is(err, apperr.ErrNotFound) {
+
+	assertNotFound := func(label string, err error) {
+		t.Helper()
+		if !apperr.Is(err, apperr.ErrNotFound) {
+			t.Fatalf("%s: %v", label, err)
+		}
+	}
+
+	if _, err = svc.Get(ctx, m.ID, stranger.ID); !apperr.Is(err, apperr.ErrNotFound) {
 		t.Fatalf("stranger get: %v", err)
+	}
+	if _, err = svc.Update(ctx, m.ID, stranger.ID, memories.Input{
+		Category: memories.CategoryGeneral,
+		Content:  "Hijacked content here for test",
+	}); err == nil {
+		t.Fatal("stranger update should fail")
+	} else {
+		assertNotFound("stranger update", err)
+	}
+	if err = svc.Delete(ctx, m.ID, stranger.ID); err == nil {
+		t.Fatal("stranger delete should fail")
+	} else {
+		assertNotFound("stranger delete", err)
+	}
+	if _, err = svc.SetPinned(ctx, m.ID, stranger.ID, true); err == nil {
+		t.Fatal("stranger pin should fail")
+	} else {
+		assertNotFound("stranger pin", err)
+	}
+	if _, err = svc.SetExcluded(ctx, m.ID, stranger.ID, true); err == nil {
+		t.Fatal("stranger exclude should fail")
+	} else {
+		assertNotFound("stranger exclude", err)
+	}
+	pending, err := svc.InsertExtractions(ctx, owner.ID, uuid.Nil, []extract.Candidate{
+		{Category: memory.CategoryHabit, Content: "Another private habit for isolation", Confidence: 0.9},
+	})
+	if err != nil || pending != 1 {
+		t.Fatalf("seed pending: n=%d err=%v", pending, err)
+	}
+	pendingList, err := svc.ListPending(ctx, owner.ID)
+	if err != nil || len(pendingList) == 0 {
+		t.Fatal(err)
+	}
+	if _, err = svc.Approve(ctx, pendingList[0].ID, stranger.ID); err == nil {
+		t.Fatal("stranger approve should fail")
+	} else {
+		assertNotFound("stranger approve", err)
+	}
+
+	if err = svc.Delete(ctx, m.ID, owner.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = svc.Get(ctx, m.ID, owner.ID); !apperr.Is(err, apperr.ErrNotFound) {
+		t.Fatalf("after delete get: %v", err)
+	}
+	if err = svc.Delete(ctx, m.ID, owner.ID); !apperr.Is(err, apperr.ErrNotFound) {
+		t.Fatalf("double delete: %v", err)
+	}
+}
+
+func TestExcludedFactsStayOutOfCoachContext(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	user := seedUser(t, pool, "excluded@north.test")
+	svc := memories.NewService(memories.NewRepository(pool))
+
+	m, err := svc.Create(ctx, user.ID, memories.Input{
+		Category: memories.CategoryPreference,
+		Content:  "Prefers short coaching replies over long essays",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	list, err := svc.ForContext(ctx, user.ID, "coaching style")
+	if err != nil || len(list) != 1 {
+		t.Fatalf("before exclude: %v len=%d", err, len(list))
+	}
+
+	excluded, err := svc.SetExcluded(ctx, m.ID, user.ID, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !excluded.Excluded || excluded.Pinned {
+		t.Fatalf("excluded=%t pinned=%t", excluded.Excluded, excluded.Pinned)
+	}
+
+	list, err = svc.ForContext(ctx, user.ID, "coaching style")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 0 {
+		t.Fatalf("excluded fact reached context, got %d", len(list))
+	}
+
+	approved, err := svc.ListApproved(ctx, user.ID)
+	if err != nil || len(approved) != 1 || !approved[0].Excluded {
+		t.Fatalf("UI list should still show excluded fact: %v len=%d", err, len(approved))
+	}
+}
+
+func TestPinAndExcludeAreMutuallyExclusive(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	user := seedUser(t, pool, "mutex@north.test")
+	svc := memories.NewService(memories.NewRepository(pool))
+
+	m, err := svc.Create(ctx, user.ID, memories.Input{
+		Category: memories.CategoryHabit,
+		Content:  "Trains before breakfast on most weekdays",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	pinned, err := svc.SetPinned(ctx, m.ID, user.ID, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !pinned.Pinned || pinned.Excluded {
+		t.Fatalf("after pin: pinned=%t excluded=%t", pinned.Pinned, pinned.Excluded)
+	}
+
+	excluded, err := svc.SetExcluded(ctx, m.ID, user.ID, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if excluded.Excluded || excluded.Pinned {
+		t.Fatalf("after exclude: pinned=%t excluded=%t", excluded.Pinned, excluded.Excluded)
+	}
+
+	pinnedAgain, err := svc.SetPinned(ctx, m.ID, user.ID, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !pinnedAgain.Pinned || pinnedAgain.Excluded {
+		t.Fatalf("after re-pin: pinned=%t excluded=%t", pinnedAgain.Pinned, pinnedAgain.Excluded)
 	}
 }
 

@@ -14,7 +14,7 @@ import (
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (email, password_hash, display_name, timezone)
 VALUES ($1, $2, $3, $4)
-RETURNING id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at, tier
+RETURNING id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at, tier, onboarded_at
 `
 
 type CreateUserParams struct {
@@ -42,6 +42,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Tier,
+		&i.OnboardedAt,
 	)
 	return i, err
 }
@@ -49,7 +50,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 const createUserWithID = `-- name: CreateUserWithID :one
 INSERT INTO users (id, email, password_hash, display_name, timezone)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at, tier
+RETURNING id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at, tier, onboarded_at
 `
 
 type CreateUserWithIDParams struct {
@@ -81,6 +82,7 @@ func (q *Queries) CreateUserWithID(ctx context.Context, arg CreateUserWithIDPara
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Tier,
+		&i.OnboardedAt,
 	)
 	return i, err
 }
@@ -97,7 +99,7 @@ func (q *Queries) EmailExists(ctx context.Context, email string) (bool, error) {
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at, tier FROM users WHERE email = $1
+SELECT id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at, tier, onboarded_at FROM users WHERE email = $1
 `
 
 func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
@@ -113,12 +115,13 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Tier,
+		&i.OnboardedAt,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at, tier FROM users WHERE id = $1
+SELECT id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at, tier, onboarded_at FROM users WHERE id = $1
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
@@ -134,6 +137,35 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Tier,
+		&i.OnboardedAt,
+	)
+	return i, err
+}
+
+const markUserOnboarded = `-- name: MarkUserOnboarded :one
+UPDATE users
+SET onboarded_at = now(),
+    updated_at   = now()
+WHERE id = $1
+  AND onboarded_at IS NULL
+RETURNING id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at, tier, onboarded_at
+`
+
+// Sets the first-run flag once. A second call returns the row unchanged.
+func (q *Queries) MarkUserOnboarded(ctx context.Context, id uuid.UUID) (User, error) {
+	row := q.db.QueryRow(ctx, markUserOnboarded, id)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.PasswordHash,
+		&i.DisplayName,
+		&i.Timezone,
+		&i.CoachingStyle,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Tier,
+		&i.OnboardedAt,
 	)
 	return i, err
 }
@@ -162,7 +194,7 @@ SET display_name   = $2,
     coaching_style = $4,
     updated_at     = now()
 WHERE id = $1
-RETURNING id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at, tier
+RETURNING id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at, tier, onboarded_at
 `
 
 type UpdateUserProfileParams struct {
@@ -190,6 +222,7 @@ func (q *Queries) UpdateUserProfile(ctx context.Context, arg UpdateUserProfilePa
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Tier,
+		&i.OnboardedAt,
 	)
 	return i, err
 }

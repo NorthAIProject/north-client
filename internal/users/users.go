@@ -41,8 +41,18 @@ type User struct {
 
 	Tier Tier
 
+	// OnboardedAt is set when the user completes or skips first-run onboarding.
+	// Nil means the web app should show the onboarding flow once.
+	OnboardedAt *time.Time
+
 	CreatedAt time.Time
 	UpdatedAt time.Time
+}
+
+// NeedsOnboarding reports whether the web app should gate this account behind
+// the first-run questionnaire.
+func (u User) NeedsOnboarding() bool {
+	return u.OnboardedAt == nil
 }
 
 // Location resolves the user's timezone, falling back to UTC. Scheduling a
@@ -80,5 +90,6 @@ func fromDB(row usersdb.User) User {
 	if row.CoachingStyle != nil {
 		u.CoachingStyle = *row.CoachingStyle
 	}
+	u.OnboardedAt = row.OnboardedAt
 	return u
 }

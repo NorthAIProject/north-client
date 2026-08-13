@@ -30,6 +30,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/config"
 	"github.com/NorthAIProject/north-client/internal/connections"
 	"github.com/NorthAIProject/north-client/internal/conversations"
+	"github.com/NorthAIProject/north-client/internal/dashboard"
 	"github.com/NorthAIProject/north-client/internal/documents"
 	"github.com/NorthAIProject/north-client/internal/exercises"
 	"github.com/NorthAIProject/north-client/internal/export"
@@ -44,6 +45,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/media"
 	"github.com/NorthAIProject/north-client/internal/memories"
 	"github.com/NorthAIProject/north-client/internal/mind"
+	"github.com/NorthAIProject/north-client/internal/onboarding"
 	"github.com/NorthAIProject/north-client/internal/preferences"
 	"github.com/NorthAIProject/north-client/internal/settings"
 	"github.com/NorthAIProject/north-client/internal/shared/database"
@@ -51,7 +53,6 @@ import (
 	"github.com/NorthAIProject/north-client/internal/sleep"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/workouts"
-	"github.com/NorthAIProject/north-client/web/app"
 	"github.com/NorthAIProject/north-client/web/assets"
 	"github.com/NorthAIProject/north-client/web/landing"
 
@@ -229,6 +230,14 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, stora
 	})
 	workoutHandler := workouts.NewHandler(workoutSvc)
 
+	dashboardHandler := dashboard.NewHandler(dashboard.NewService(dashboard.Options{
+		CheckIns:      checkinSvc,
+		Goals:         goalSvc,
+		Conversations: conversationSvc,
+		Workouts:      workoutSvc,
+		Memories:      memorySvc,
+	}))
+
 	mediaSvc := media.NewService(media.Options{
 		Repository: media.NewRepository(pool),
 		Storage:    storage,
@@ -354,6 +363,9 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, stora
 	})
 	coachHandler := coach.NewHandler(coachSvc)
 
+	onboardingSvc := onboarding.NewService(userSvc, memorySvc, goalSvc)
+	onboardingHandler := onboarding.NewHandler(onboardingSvc)
+
 	// The MCP endpoint an outside agent connects to.
 	//
 	// Every token resolves to its own owner, which is what makes this safe to
@@ -426,39 +438,30 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, stora
 		r.Route("/app", func(r chi.Router) {
 			r.Use(authMW.RequireAuth)
 
-			r.Get("/", func(w http.ResponseWriter, req *http.Request) {
-				user := auth.MustUser(req.Context())
-				data := app.DashboardData{}
-				if _, err := checkinSvc.Today(req.Context(), user); err == nil {
-					data.CheckedInToday = true
-				}
-				if n, err := checkinSvc.Streak(req.Context(), user); err == nil {
-					data.Streak = n
-				}
-				if n, err := memorySvc.CountPending(req.Context(), user.ID); err == nil {
-					data.PendingMemories = n
-				}
-				if err := app.Dashboard(user, data).Render(req.Context(), w); err != nil {
-					middleware.FromContext(req.Context()).Error("render dashboard", slog.Any("error", err))
-				}
-			})
+			onboardingHandler.Routes(r)
 
-			coachHandler.Routes(r)
-			checkinHandler.Routes(r)
-			goalHandler.Routes(r)
-			memoryHandler.Routes(r)
-			documentHandler.Routes(r)
-			exportHandler.Routes(r)
-			exerciseHandler.Routes(r)
-			workoutHandler.Routes(r)
-			mediaHandler.Routes(r)
-			settingsHandler.Routes(r)
-			mindHandler.Routes(r)
-			careHandler.Routes(r)
-			activityHandler.Routes(r)
-			calculatorHandler.Routes(r)
-			mealsHandler.Routes(r)
-			fitnessHandler.Routes(r)
+			r.Group(func(r chi.Router) {
+				r.Use(onboarding.RequireOnboarded)
+
+				dashboardHandler.Routes(r)
+
+				coachHandler.Routes(r)
+				checkinHandler.Routes(r)
+				goalHandler.Routes(r)
+				memoryHandler.Routes(r)
+				documentHandler.Routes(r)
+				exportHandler.Routes(r)
+				exerciseHandler.Routes(r)
+				workoutHandler.Routes(r)
+				mediaHandler.Routes(r)
+				settingsHandler.Routes(r)
+				mindHandler.Routes(r)
+				careHandler.Routes(r)
+				activityHandler.Routes(r)
+				calculatorHandler.Routes(r)
+				mealsHandler.Routes(r)
+				fitnessHandler.Routes(r)
+			})
 		})
 	})
 

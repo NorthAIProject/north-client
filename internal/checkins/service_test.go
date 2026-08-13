@@ -208,6 +208,40 @@ func TestRelatedGoalMustBelongToUser(t *testing.T) {
 	}
 }
 
+func TestRelatedGoalMustBeActive(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	user := seedUser(t, pool, "activegoal@north.test", "UTC")
+	goalSvc := goals.NewService(goals.NewRepository(pool))
+	svc := checkins.NewService(checkins.NewRepository(pool), goalSvc)
+
+	g, err := goalSvc.Create(ctx, user.ID, goals.Input{
+		Title:    "Run a marathon",
+		Category: goals.CategoryFitness,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err = goalSvc.SetStatus(ctx, g.ID, user.ID, goals.StatusPaused); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = svc.UpsertToday(ctx, user, checkins.Input{
+		Mood: 3, Energy: 3, RelatedGoalID: &g.ID,
+	})
+	if err == nil {
+		t.Fatal("expected rejection for inactive goal")
+	}
+	var fieldErrs apperr.FieldErrors
+	if !apperr.As(err, &fieldErrs) {
+		t.Fatalf("expected field error, got %v", err)
+	}
+	if msg := fieldErrs.Messages()["related_goal_id"]; msg != "That goal is not available." {
+		t.Fatalf("related_goal_id error = %q", msg)
+	}
+}
+
 func TestUpdateRelatedGoalMustBelongToUser(t *testing.T) {
 	pool := testdb.New(t)
 	ctx := context.Background()

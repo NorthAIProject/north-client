@@ -27,6 +27,7 @@ type NewMemory struct {
 	Content              string
 	Status               string
 	Pinned               bool
+	Excluded             bool
 	Source               string
 	SourceConversationID *uuid.UUID
 	Confidence           *float64
@@ -44,6 +45,7 @@ func (r *Repository) Create(ctx context.Context, userID uuid.UUID, m NewMemory) 
 		Content:              m.Content,
 		Status:               m.Status,
 		Pinned:               m.Pinned,
+		Excluded:             m.Excluded,
 		Source:               m.Source,
 		SourceConversationID: m.SourceConversationID,
 		Confidence:           conf,
@@ -145,6 +147,7 @@ func (r *Repository) SearchForContext(ctx context.Context, userID uuid.UUID, que
 				Content:   row.Content,
 				Status:    StatusApproved,
 				Pinned:    row.Pinned,
+				Excluded:  false,
 				UpdatedAt: row.UpdatedAt,
 			},
 			Snippet: snippet,
@@ -214,11 +217,33 @@ func (r *Repository) SetPinned(ctx context.Context, id, userID uuid.UUID, pinned
 	return fromDB(row), nil
 }
 
+func (r *Repository) SetExcluded(ctx context.Context, id, userID uuid.UUID, excluded bool) (Memory, error) {
+	row, err := r.q.SetMemoryExcluded(ctx, memoriesdb.SetMemoryExcludedParams{
+		ID:       id,
+		UserID:   userID,
+		Excluded: excluded,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Memory{}, apperr.ErrNotFound
+		}
+		return Memory{}, apperr.Wrap(err, "set memory excluded")
+	}
+	return fromDB(row), nil
+}
+
 func (r *Repository) SoftDelete(ctx context.Context, id, userID uuid.UUID) error {
-	return apperr.Wrap(r.q.SoftDeleteMemory(ctx, memoriesdb.SoftDeleteMemoryParams{
+	n, err := r.q.SoftDeleteMemory(ctx, memoriesdb.SoftDeleteMemoryParams{
 		ID:     id,
 		UserID: userID,
-	}), "soft delete memory")
+	})
+	if err != nil {
+		return apperr.Wrap(err, "soft delete memory")
+	}
+	if n == 0 {
+		return apperr.ErrNotFound
+	}
+	return nil
 }
 
 func (r *Repository) CountPending(ctx context.Context, userID uuid.UUID) (int, error) {
@@ -245,6 +270,7 @@ func fromDB(row memoriesdb.UserMemory) Memory {
 		Content:              row.Content,
 		Status:               row.Status,
 		Pinned:               row.Pinned,
+		Excluded:             row.Excluded,
 		Source:               row.Source,
 		SourceConversationID: row.SourceConversationID,
 		CreatedAt:            row.CreatedAt,

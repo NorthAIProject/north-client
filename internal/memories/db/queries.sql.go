@@ -27,11 +27,11 @@ func (q *Queries) CountPendingMemories(ctx context.Context, userID uuid.UUID) (i
 
 const createMemory = `-- name: CreateMemory :one
 INSERT INTO user_memories (
-    user_id, category, content, status, pinned, source, source_conversation_id, confidence
+    user_id, category, content, status, pinned, excluded, source, source_conversation_id, confidence
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8
+    $1, $2, $3, $4, $5, $6, $7, $8, $9
 )
-RETURNING id, user_id, category, content, status, pinned, source, source_conversation_id, confidence, created_at, updated_at, deleted_at
+RETURNING id, user_id, category, content, status, pinned, source, source_conversation_id, confidence, created_at, updated_at, deleted_at, excluded
 `
 
 type CreateMemoryParams struct {
@@ -40,6 +40,7 @@ type CreateMemoryParams struct {
 	Content              string
 	Status               string
 	Pinned               bool
+	Excluded             bool
 	Source               string
 	SourceConversationID *uuid.UUID
 	Confidence           *float32
@@ -52,6 +53,7 @@ func (q *Queries) CreateMemory(ctx context.Context, arg CreateMemoryParams) (Use
 		arg.Content,
 		arg.Status,
 		arg.Pinned,
+		arg.Excluded,
 		arg.Source,
 		arg.SourceConversationID,
 		arg.Confidence,
@@ -70,12 +72,13 @@ func (q *Queries) CreateMemory(ctx context.Context, arg CreateMemoryParams) (Use
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.Excluded,
 	)
 	return i, err
 }
 
 const getMemory = `-- name: GetMemory :one
-SELECT id, user_id, category, content, status, pinned, source, source_conversation_id, confidence, created_at, updated_at, deleted_at FROM user_memories
+SELECT id, user_id, category, content, status, pinned, source, source_conversation_id, confidence, created_at, updated_at, deleted_at, excluded FROM user_memories
 WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
 `
 
@@ -100,6 +103,7 @@ func (q *Queries) GetMemory(ctx context.Context, arg GetMemoryParams) (UserMemor
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.Excluded,
 	)
 	return i, err
 }
@@ -134,10 +138,11 @@ func (q *Queries) ListActiveContents(ctx context.Context, userID uuid.UUID) ([]s
 }
 
 const listApprovedForContext = `-- name: ListApprovedForContext :many
-SELECT id, user_id, category, content, status, pinned, source, source_conversation_id, confidence, created_at, updated_at, deleted_at FROM user_memories
+SELECT id, user_id, category, content, status, pinned, source, source_conversation_id, confidence, created_at, updated_at, deleted_at, excluded FROM user_memories
 WHERE user_id = $1
   AND deleted_at IS NULL
   AND status = 'approved'
+  AND NOT excluded
 ORDER BY pinned DESC, updated_at DESC
 LIMIT $2
 `
@@ -169,6 +174,7 @@ func (q *Queries) ListApprovedForContext(ctx context.Context, arg ListApprovedFo
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+			&i.Excluded,
 		); err != nil {
 			return nil, err
 		}
@@ -181,11 +187,12 @@ func (q *Queries) ListApprovedForContext(ctx context.Context, arg ListApprovedFo
 }
 
 const listMemories = `-- name: ListMemories :many
-SELECT id, user_id, category, content, status, pinned, source, source_conversation_id, confidence, created_at, updated_at, deleted_at FROM user_memories
+SELECT id, user_id, category, content, status, pinned, source, source_conversation_id, confidence, created_at, updated_at, deleted_at, excluded FROM user_memories
 WHERE user_id = $1
   AND deleted_at IS NULL
 ORDER BY
     pinned DESC,
+    excluded ASC,
     CASE status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END,
     updated_at DESC
 LIMIT $2
@@ -218,6 +225,7 @@ func (q *Queries) ListMemories(ctx context.Context, arg ListMemoriesParams) ([]U
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+			&i.Excluded,
 		); err != nil {
 			return nil, err
 		}
@@ -230,11 +238,11 @@ func (q *Queries) ListMemories(ctx context.Context, arg ListMemoriesParams) ([]U
 }
 
 const listMemoriesByStatus = `-- name: ListMemoriesByStatus :many
-SELECT id, user_id, category, content, status, pinned, source, source_conversation_id, confidence, created_at, updated_at, deleted_at FROM user_memories
+SELECT id, user_id, category, content, status, pinned, source, source_conversation_id, confidence, created_at, updated_at, deleted_at, excluded FROM user_memories
 WHERE user_id = $1
   AND deleted_at IS NULL
   AND status = $2
-ORDER BY pinned DESC, updated_at DESC
+ORDER BY pinned DESC, excluded ASC, updated_at DESC
 LIMIT $3
 `
 
@@ -266,6 +274,7 @@ func (q *Queries) ListMemoriesByStatus(ctx context.Context, arg ListMemoriesBySt
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+			&i.Excluded,
 		); err != nil {
 			return nil, err
 		}
@@ -301,6 +310,7 @@ FROM user_memories m, q
 WHERE m.user_id = $1
   AND m.deleted_at IS NULL
   AND m.status = 'approved'
+  AND NOT m.excluded
   AND (
       m.pinned
       OR to_tsvector('english', m.content) @@ q.tsq
@@ -375,12 +385,49 @@ func (q *Queries) SearchApprovedForContext(ctx context.Context, arg SearchApprov
 	return items, nil
 }
 
+const setMemoryExcluded = `-- name: SetMemoryExcluded :one
+UPDATE user_memories
+SET excluded   = $3,
+    pinned     = false,
+    updated_at = now()
+WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL AND status = 'approved'
+RETURNING id, user_id, category, content, status, pinned, source, source_conversation_id, confidence, created_at, updated_at, deleted_at, excluded
+`
+
+type SetMemoryExcludedParams struct {
+	ID       uuid.UUID
+	UserID   uuid.UUID
+	Excluded bool
+}
+
+func (q *Queries) SetMemoryExcluded(ctx context.Context, arg SetMemoryExcludedParams) (UserMemory, error) {
+	row := q.db.QueryRow(ctx, setMemoryExcluded, arg.ID, arg.UserID, arg.Excluded)
+	var i UserMemory
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Category,
+		&i.Content,
+		&i.Status,
+		&i.Pinned,
+		&i.Source,
+		&i.SourceConversationID,
+		&i.Confidence,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+		&i.Excluded,
+	)
+	return i, err
+}
+
 const setMemoryPinned = `-- name: SetMemoryPinned :one
 UPDATE user_memories
 SET pinned     = $3,
+    excluded   = false,
     updated_at = now()
 WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL AND status = 'approved'
-RETURNING id, user_id, category, content, status, pinned, source, source_conversation_id, confidence, created_at, updated_at, deleted_at
+RETURNING id, user_id, category, content, status, pinned, source, source_conversation_id, confidence, created_at, updated_at, deleted_at, excluded
 `
 
 type SetMemoryPinnedParams struct {
@@ -405,6 +452,7 @@ func (q *Queries) SetMemoryPinned(ctx context.Context, arg SetMemoryPinnedParams
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.Excluded,
 	)
 	return i, err
 }
@@ -414,7 +462,7 @@ UPDATE user_memories
 SET status     = $3,
     updated_at = now()
 WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
-RETURNING id, user_id, category, content, status, pinned, source, source_conversation_id, confidence, created_at, updated_at, deleted_at
+RETURNING id, user_id, category, content, status, pinned, source, source_conversation_id, confidence, created_at, updated_at, deleted_at, excluded
 `
 
 type SetMemoryStatusParams struct {
@@ -439,11 +487,12 @@ func (q *Queries) SetMemoryStatus(ctx context.Context, arg SetMemoryStatusParams
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.Excluded,
 	)
 	return i, err
 }
 
-const softDeleteMemory = `-- name: SoftDeleteMemory :exec
+const softDeleteMemory = `-- name: SoftDeleteMemory :execrows
 UPDATE user_memories
 SET deleted_at = now(),
     updated_at = now()
@@ -455,9 +504,12 @@ type SoftDeleteMemoryParams struct {
 	UserID uuid.UUID
 }
 
-func (q *Queries) SoftDeleteMemory(ctx context.Context, arg SoftDeleteMemoryParams) error {
-	_, err := q.db.Exec(ctx, softDeleteMemory, arg.ID, arg.UserID)
-	return err
+func (q *Queries) SoftDeleteMemory(ctx context.Context, arg SoftDeleteMemoryParams) (int64, error) {
+	result, err := q.db.Exec(ctx, softDeleteMemory, arg.ID, arg.UserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const updateMemory = `-- name: UpdateMemory :one
@@ -466,7 +518,7 @@ SET category   = $3,
     content    = $4,
     updated_at = now()
 WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
-RETURNING id, user_id, category, content, status, pinned, source, source_conversation_id, confidence, created_at, updated_at, deleted_at
+RETURNING id, user_id, category, content, status, pinned, source, source_conversation_id, confidence, created_at, updated_at, deleted_at, excluded
 `
 
 type UpdateMemoryParams struct {
@@ -497,6 +549,7 @@ func (q *Queries) UpdateMemory(ctx context.Context, arg UpdateMemoryParams) (Use
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.Excluded,
 	)
 	return i, err
 }

@@ -217,11 +217,15 @@ func (s *Service) checkGoal(ctx context.Context, userID uuid.UUID, goalID *uuid.
 	if goalID == nil || s.goals == nil {
 		return nil
 	}
-	if _, err := s.goals.Get(ctx, *goalID, userID); err != nil {
+	g, err := s.goals.Get(ctx, *goalID, userID)
+	if err != nil {
 		if apperr.Is(err, apperr.ErrNotFound) {
 			return apperr.FieldErrors{{Field: "related_goal_id", Message: "That goal is not available."}}
 		}
 		return err
+	}
+	if !g.IsActive() {
+		return apperr.FieldErrors{{Field: "related_goal_id", Message: "That goal is not available."}}
 	}
 	return nil
 }
