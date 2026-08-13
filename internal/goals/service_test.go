@@ -398,7 +398,7 @@ func TestMilestonesCanBeAddedEditedCompletedAndRemoved(t *testing.T) {
 		t.Fatal("reopening a milestone should clear its completed date")
 	}
 
-	if err := svc.DeleteMilestone(ctx, second.ID, user.ID); err != nil {
+	if err = svc.DeleteMilestone(ctx, second.ID, user.ID); err != nil {
 		t.Fatalf("delete: %v", err)
 	}
 
@@ -421,16 +421,16 @@ func TestMilestonesCannotBeTouchedByAnotherUser(t *testing.T) {
 		t.Fatalf("add: %v", err)
 	}
 
-	if _, err := svc.AddMilestone(ctx, created.ID, stranger.ID, goals.MilestoneInput{Title: "sneaking in"}); !apperr.Is(err, apperr.ErrNotFound) {
+	if _, err = svc.AddMilestone(ctx, created.ID, stranger.ID, goals.MilestoneInput{Title: "sneaking in"}); !apperr.Is(err, apperr.ErrNotFound) {
 		t.Fatalf("a stranger should not add a milestone, got %v", err)
 	}
-	if _, err := svc.UpdateMilestone(ctx, ms.ID, stranger.ID, goals.MilestoneInput{Title: "hijacked"}); !apperr.Is(err, apperr.ErrNotFound) {
+	if _, err = svc.UpdateMilestone(ctx, ms.ID, stranger.ID, goals.MilestoneInput{Title: "hijacked"}); !apperr.Is(err, apperr.ErrNotFound) {
 		t.Fatalf("a stranger should not edit a milestone, got %v", err)
 	}
-	if _, err := svc.SetMilestoneStatus(ctx, ms.ID, stranger.ID, goals.MilestoneCompleted); !apperr.Is(err, apperr.ErrNotFound) {
+	if _, err = svc.SetMilestoneStatus(ctx, ms.ID, stranger.ID, goals.MilestoneCompleted); !apperr.Is(err, apperr.ErrNotFound) {
 		t.Fatalf("a stranger should not complete a milestone, got %v", err)
 	}
-	if err := svc.DeleteMilestone(ctx, ms.ID, stranger.ID); err != nil {
+	if err = svc.DeleteMilestone(ctx, ms.ID, stranger.ID); err != nil {
 		t.Fatalf("delete by a stranger should be a no-op, got %v", err)
 	}
 
@@ -476,17 +476,17 @@ func TestProgressPrefersMilestonesOverNotePercentage(t *testing.T) {
 		t.Fatalf("label = %q", list[0].ProgressLabel())
 	}
 
-	if _, err := svc.AddMilestone(ctx, created.ID, user.ID, goals.MilestoneInput{Title: "Run 5k"}); err != nil {
+	if _, err = svc.AddMilestone(ctx, created.ID, user.ID, goals.MilestoneInput{Title: "Run 5k"}); err != nil {
 		t.Fatalf("add first: %v", err)
 	}
 	second, err := svc.AddMilestone(ctx, created.ID, user.ID, goals.MilestoneInput{Title: "Run 8k"})
 	if err != nil {
 		t.Fatalf("add second: %v", err)
 	}
-	if _, err := svc.AddMilestone(ctx, created.ID, user.ID, goals.MilestoneInput{Title: "Run 10k"}); err != nil {
+	if _, err = svc.AddMilestone(ctx, created.ID, user.ID, goals.MilestoneInput{Title: "Run 10k"}); err != nil {
 		t.Fatalf("add third: %v", err)
 	}
-	if _, err := svc.SetMilestoneStatus(ctx, second.ID, user.ID, goals.MilestoneCompleted); err != nil {
+	if _, err = svc.SetMilestoneStatus(ctx, second.ID, user.ID, goals.MilestoneCompleted); err != nil {
 		t.Fatalf("complete: %v", err)
 	}
 
@@ -511,7 +511,7 @@ func TestCompletingEveryMilestoneLeavesTheGoalActive(t *testing.T) {
 	if err != nil {
 		t.Fatalf("add: %v", err)
 	}
-	if _, err := svc.SetMilestoneStatus(ctx, ms.ID, user.ID, goals.MilestoneCompleted); err != nil {
+	if _, err = svc.SetMilestoneStatus(ctx, ms.ID, user.ID, goals.MilestoneCompleted); err != nil {
 		t.Fatalf("complete: %v", err)
 	}
 
@@ -616,10 +616,10 @@ func TestSummaryIncludesMilestoneProgress(t *testing.T) {
 	if err != nil {
 		t.Fatalf("add: %v", err)
 	}
-	if _, err := svc.AddMilestone(ctx, created.ID, user.ID, goals.MilestoneInput{Title: "Run 10k"}); err != nil {
+	if _, err = svc.AddMilestone(ctx, created.ID, user.ID, goals.MilestoneInput{Title: "Run 10k"}); err != nil {
 		t.Fatalf("add second: %v", err)
 	}
-	if _, err := svc.SetMilestoneStatus(ctx, ms.ID, user.ID, goals.MilestoneCompleted); err != nil {
+	if _, err = svc.SetMilestoneStatus(ctx, ms.ID, user.ID, goals.MilestoneCompleted); err != nil {
 		t.Fatalf("complete: %v", err)
 	}
 

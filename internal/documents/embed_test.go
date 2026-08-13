@@ -83,7 +83,7 @@ func TestEmbeddingsAreStoredAndSearchable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := indexer.IndexDocument(ctx, user.ID, doc.ID); err != nil {
+	if err = indexer.IndexDocument(ctx, user.ID, doc.ID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -150,7 +150,7 @@ func TestAModelChangeInvalidatesOldVectors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := indexer.IndexDocument(ctx, user.ID, doc.ID); err != nil {
+	if err = indexer.IndexDocument(ctx, user.ID, doc.ID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -220,10 +220,10 @@ func TestHybridSearchReturnsBothKindsOfMatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := indexer.IndexDocument(ctx, user.ID, doc.ID); err != nil {
+	if err = indexer.IndexDocument(ctx, user.ID, doc.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := documents.NewEmbedder(repo, fake, nil).EmbedPending(ctx, user.ID); err != nil {
+	if _, err = documents.NewEmbedder(repo, fake, nil).EmbedPending(ctx, user.ID); err != nil {
 		t.Fatal(err)
 	}
 

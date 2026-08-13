@@ -33,9 +33,10 @@ func newService(t *testing.T) (*hydration.Service, users.User) {
 func TestDrinksAccumulateAcrossTheDay(t *testing.T) {
 	svc, user := newService(t)
 	ctx := context.Background()
+	var err error
 
 	for _, amount := range []int{250, 500, 250} {
-		if _, err := svc.Log(ctx, user, amount); err != nil {
+		if _, err = svc.Log(ctx, user, amount); err != nil {
 			t.Fatalf("log %dml: %v", amount, err)
 		}
 	}
@@ -79,11 +80,11 @@ func TestUndoRemovesADrinkFromTheTotal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("log: %v", err)
 	}
-	if _, err := svc.Log(ctx, user, 250); err != nil {
+	if _, err = svc.Log(ctx, user, 250); err != nil {
 		t.Fatalf("log: %v", err)
 	}
 
-	if err := svc.Undo(ctx, user, entry.ID); err != nil {
+	if err = svc.Undo(ctx, user, entry.ID); err != nil {
 		t.Fatalf("undo: %v", err)
 	}
 
@@ -99,8 +100,9 @@ func TestUndoRemovesADrinkFromTheTotal(t *testing.T) {
 func TestDrinksAreScopedToTheirOwner(t *testing.T) {
 	svc, user := newService(t)
 	ctx := context.Background()
+	var err error
 
-	if _, err := svc.Log(ctx, user, 500); err != nil {
+	if _, err = svc.Log(ctx, user, 500); err != nil {
 		t.Fatalf("log: %v", err)
 	}
 
@@ -114,7 +116,7 @@ func TestDrinksAreScopedToTheirOwner(t *testing.T) {
 
 	stranger := user
 	stranger.ID = users.User{}.ID // zero uuid, definitely not the owner
-	if err := svc.Undo(ctx, stranger, entries[0].ID); err != nil {
+	if err = svc.Undo(ctx, stranger, entries[0].ID); err != nil {
 		t.Fatalf("undo by stranger: %v", err)
 	}
 

@@ -81,7 +81,7 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := r.ParseForm(); err != nil {
+	if err = r.ParseForm(); err != nil {
 		h.fail(w, r, apperr.ErrValidation)
 		return
 	}

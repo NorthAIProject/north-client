@@ -195,9 +195,9 @@ func (e *Exporter) writeDocuments(ctx context.Context, zw *zip.Writer, user user
 		if err != nil {
 			// One unreadable blob must not cost the person the rest of their
 			// export; the note in its place says what happened.
-			if err := writeFile(zw, name+".missing.txt",
-				"North could not read this file back from storage.\n"); err != nil {
-				return err
+			if writeErr := writeFile(zw, name+".missing.txt",
+				"North could not read this file back from storage.\n"); writeErr != nil {
+				return writeErr
 			}
 			continue
 		}

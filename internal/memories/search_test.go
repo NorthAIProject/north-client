@@ -83,7 +83,7 @@ func TestSearchAlwaysKeepsPinnedFacts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.SetPinned(ctx, m.ID, user.ID, true); err != nil {
+	if _, err = svc.SetPinned(ctx, m.ID, user.ID, true); err != nil {
 		t.Fatal(err)
 	}
 

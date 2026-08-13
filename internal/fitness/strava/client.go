@@ -114,10 +114,10 @@ func (o *oauthConfig) postToken(ctx context.Context, form url.Values) (tokenResp
 	if err != nil {
 		return tokenResponse{}, apperr.Wrap(err, "strava: token request")
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		io.Copy(io.Discard, io.LimitReader(resp.Body, 4<<10))
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4<<10))
 		// The body is deliberately discarded rather than reported: this
 		// response carries tokens on success and echoes request parameters
 		// on failure, and neither belongs in an error string.
@@ -192,7 +192,7 @@ func fetchActivities(ctx context.Context, accessToken string, after time.Time) (
 	if err != nil {
 		return nil, apperr.Wrap(err, "strava: fetch activities")
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	switch resp.StatusCode {
 	case http.StatusOK:
@@ -201,7 +201,7 @@ func fetchActivities(ctx context.Context, accessToken string, after time.Time) (
 		// than treat the connection as broken.
 		return nil, apperr.Wrap(apperr.ErrUnavailable, "strava: rate limited, try again later")
 	default:
-		io.Copy(io.Discard, io.LimitReader(resp.Body, 4<<10))
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4<<10))
 		return nil, apperr.Wrap(apperr.ErrUnavailable, "strava: activities request failed with status %d", resp.StatusCode)
 	}
 

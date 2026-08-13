@@ -67,7 +67,7 @@ func TestIndexedDocumentBecomesRetrievable(t *testing.T) {
 		t.Fatalf("a new document should be pending, got %q", doc.Status)
 	}
 
-	if err := indexer.IndexDocument(ctx, user.ID, doc.ID); err != nil {
+	if err = indexer.IndexDocument(ctx, user.ID, doc.ID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -132,7 +132,7 @@ func TestReindexIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := indexer.IndexDocument(ctx, user.ID, doc.ID); err != nil {
+	if err = indexer.IndexDocument(ctx, user.ID, doc.ID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -144,7 +144,7 @@ func TestReindexIsIdempotent(t *testing.T) {
 		t.Fatal("nothing indexed on the first pass")
 	}
 
-	if err := indexer.ReindexUser(ctx, user.ID); err != nil {
+	if err = indexer.ReindexUser(ctx, user.ID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -184,19 +184,20 @@ func TestAFailedDocumentIsRecordedNotSwallowed(t *testing.T) {
 	// A note whose text is only whitespace parses to nothing.
 	doc, err := svc.CreateNote(ctx, user.ID, "Empty", "   \n\n   \t  \n  ")
 	if err == nil {
-		if err := indexer.IndexDocument(ctx, user.ID, doc.ID); err != nil {
+		if err = indexer.IndexDocument(ctx, user.ID, doc.ID); err != nil {
 			t.Fatal(err)
 		}
-		after, err := svc.Get(ctx, doc.ID, user.ID)
+		var after documents.Document
+		after, err = svc.Get(ctx, doc.ID, user.ID)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if after.Status != documents.StatusFailed || after.ParseError == "" {
 			t.Errorf("status = %q, parse error = %q; want a recorded failure", after.Status, after.ParseError)
 		}
-		run, err := repo.LatestRun(ctx, user.ID)
-		if err != nil {
-			t.Fatal(err)
+		run, runErr := repo.LatestRun(ctx, user.ID)
+		if runErr != nil {
+			t.Fatal(runErr)
 		}
 		if run.Failed != 1 || len(run.Warnings) == 0 {
 			t.Errorf("run recorded %d failures and %d warnings", run.Failed, len(run.Warnings))
@@ -219,10 +220,10 @@ func TestDeleteRemovesTheChunksToo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := indexer.IndexDocument(ctx, user.ID, doc.ID); err != nil {
+	if err = indexer.IndexDocument(ctx, user.ID, doc.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.Delete(ctx, doc.ID, user.ID); err != nil {
+	if err = svc.Delete(ctx, doc.ID, user.ID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -251,7 +252,7 @@ func TestSearchStaysInsideOneAccount(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := indexer.IndexDocument(ctx, owner.ID, doc.ID); err != nil {
+	if err = indexer.IndexDocument(ctx, owner.ID, doc.ID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -273,7 +274,7 @@ func TestContextSourceFillsKnowledgeHits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := indexer.IndexDocument(ctx, user.ID, doc.ID); err != nil {
+	if err = indexer.IndexDocument(ctx, user.ID, doc.ID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -320,7 +321,7 @@ func TestContextSourceContributesNothingWithoutAQuery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := indexer.IndexDocument(ctx, user.ID, doc.ID); err != nil {
+	if err = indexer.IndexDocument(ctx, user.ID, doc.ID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -350,7 +351,7 @@ func TestCountsReportStaleDocuments(t *testing.T) {
 		t.Errorf("before indexing: %+v", counts)
 	}
 
-	if err := indexer.IndexDocument(ctx, user.ID, doc.ID); err != nil {
+	if err = indexer.IndexDocument(ctx, user.ID, doc.ID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -370,7 +371,7 @@ func TestChunkIDsSurviveAnEdit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := indexer.IndexDocument(ctx, user.ID, doc.ID); err != nil {
+	if err = indexer.IndexDocument(ctx, user.ID, doc.ID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -383,7 +384,7 @@ func TestChunkIDsSurviveAnEdit(t *testing.T) {
 	}
 	// An untouched section keeps its identity across a reindex; that is what
 	// keeps a citation written months ago resolvable.
-	if err := indexer.ReindexUser(ctx, user.ID); err != nil {
+	if err = indexer.ReindexUser(ctx, user.ID); err != nil {
 		t.Fatal(err)
 	}
 	again, err := svc.Search(ctx, user.ID, "band pull-aparts three sets", 0)

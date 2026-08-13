@@ -77,7 +77,7 @@ func TestCompletingTwiceInADayIsIdempotent(t *testing.T) {
 	}
 
 	for i := 0; i < 3; i++ {
-		if err := svc.Complete(ctx, user, h.ID); err != nil {
+		if err = svc.Complete(ctx, user, h.ID); err != nil {
 			t.Fatalf("complete %d: %v", i, err)
 		}
 	}
@@ -106,10 +106,10 @@ func TestUncompleteUndoesToday(t *testing.T) {
 		t.Fatalf("create: %v", err)
 	}
 
-	if err := svc.Complete(ctx, user, h.ID); err != nil {
+	if err = svc.Complete(ctx, user, h.ID); err != nil {
 		t.Fatalf("complete: %v", err)
 	}
-	if err := svc.Uncomplete(ctx, user, h.ID); err != nil {
+	if err = svc.Uncomplete(ctx, user, h.ID); err != nil {
 		t.Fatalf("uncomplete: %v", err)
 	}
 
@@ -173,7 +173,7 @@ func TestArchivedHabitsDropOutOfTheActiveList(t *testing.T) {
 		t.Fatalf("create: %v", err)
 	}
 
-	if _, err := svc.Update(ctx, user, h.ID, habits.Input{
+	if _, err = svc.Update(ctx, user, h.ID, habits.Input{
 		Name: "Old habit", Domain: "personal", Days: everyDay(), Active: false,
 	}); err != nil {
 		t.Fatalf("archive: %v", err)

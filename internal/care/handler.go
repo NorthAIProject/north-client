@@ -102,7 +102,7 @@ func (h *Handler) render(w http.ResponseWriter, r *http.Request, status int, for
 	}
 
 	checkedInToday := true
-	if _, err := h.checkins.Today(ctx, user); err != nil {
+	if _, err = h.checkins.Today(ctx, user); err != nil {
 		if apperr.Is(err, apperr.ErrNotFound) {
 			checkedInToday = false
 		} else {

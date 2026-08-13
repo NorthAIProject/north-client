@@ -116,12 +116,12 @@ func (r *Repository) ReplaceChunks(ctx context.Context, doc Document, chunks []C
 		id := ChunkID(doc.ID, c.Ordinal, c.SHA256)
 		keep = append(keep, id)
 
-		path, err := json.Marshal(c.HeadingPath)
-		if err != nil {
-			return written, 0, apperr.Wrap(err, "encode heading path")
+		path, pathErr := json.Marshal(c.HeadingPath)
+		if pathErr != nil {
+			return written, 0, apperr.Wrap(pathErr, "encode heading path")
 		}
 
-		if err := r.q.UpsertChunk(ctx, documentsdb.UpsertChunkParams{
+		if err = r.q.UpsertChunk(ctx, documentsdb.UpsertChunkParams{
 			ChunkID:       id,
 			DocumentID:    doc.ID,
 			UserID:        doc.UserID,

@@ -186,18 +186,18 @@ func readContent(ctx context.Context, storage Storage, doc Document) (string, er
 		return doc.Body, nil
 	}
 	if storage == nil {
-		return "", fmt.Errorf("North has no file storage configured")
+		return "", fmt.Errorf("north has no file storage configured")
 	}
 
 	body, err := storage.Get(ctx, doc.StorageKey)
 	if err != nil {
-		return "", fmt.Errorf("North could not read this file back from storage")
+		return "", fmt.Errorf("north could not read this file back from storage")
 	}
 	defer func() { _ = body.Close() }()
 
 	content, err := io.ReadAll(io.LimitReader(body, maxUploadBytes))
 	if err != nil {
-		return "", fmt.Errorf("North could not read this file back from storage")
+		return "", fmt.Errorf("north could not read this file back from storage")
 	}
 	return string(content), nil
 }

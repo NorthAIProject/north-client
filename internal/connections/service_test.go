@@ -187,14 +187,14 @@ func TestRevokedTokenStopsWorking(t *testing.T) {
 	if err != nil {
 		t.Fatalf("issue: %v", err)
 	}
-	if _, err := svc.Authenticate(ctx, issued.Token); err != nil {
+	if _, err = svc.Authenticate(ctx, issued.Token); err != nil {
 		t.Fatalf("authenticate before revoke: %v", err)
 	}
 
-	if err := svc.Revoke(ctx, issued.ID, user.ID); err != nil {
+	if err = svc.Revoke(ctx, issued.ID, user.ID); err != nil {
 		t.Fatalf("revoke: %v", err)
 	}
-	if _, err := svc.Authenticate(ctx, issued.Token); !apperr.Is(err, apperr.ErrUnauthenticated) {
+	if _, err = svc.Authenticate(ctx, issued.Token); !apperr.Is(err, apperr.ErrUnauthenticated) {
 		t.Fatalf("revoked token still authenticates: err = %v", err)
 	}
 

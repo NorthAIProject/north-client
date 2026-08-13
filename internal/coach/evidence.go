@@ -26,14 +26,11 @@ func MemoryRef(id uuid.UUID) string { return EvidenceKindMemory + ":" + id.Strin
 // ChunkRef builds the ref for a document chunk.
 func ChunkRef(chunkID string) string { return EvidenceKindChunk + ":" + chunkID }
 
-// refPattern matches a citation as the model is asked to write it.
+// refRemoval matches a citation plus the usual leading space.
 //
 // Deliberately narrow: a kind from a known set, then an id of the characters
 // those ids actually use. A looser pattern would strip anything a user happened
 // to write in double brackets out of their own conversation.
-var refPattern = regexp.MustCompile(`\[\[(memory|chunk):([A-Za-z0-9_-]{1,80})\]\]`)
-
-// refRemoval is refPattern plus the space that usually precedes a citation.
 //
 // Removing the citation alone leaves "fasted  most days" with a doubled space.
 // The saved text gets that repaired by tidy, but the streamed text cannot —

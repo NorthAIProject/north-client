@@ -15,7 +15,6 @@ var (
 	wed = date(2026, 8, 5)
 	thu = date(2026, 8, 6)
 	fri = date(2026, 8, 7)
-	sat = date(2026, 8, 8)
 	sun = date(2026, 8, 9)
 )
 

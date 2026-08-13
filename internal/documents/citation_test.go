@@ -23,7 +23,7 @@ func TestACitationResolvesToTheLinesItNames(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := indexer.IndexDocument(ctx, user.ID, doc.ID); err != nil {
+	if err = indexer.IndexDocument(ctx, user.ID, doc.ID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -62,7 +62,7 @@ func TestAStoredRefResolvesToItsPassage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := indexer.IndexDocument(ctx, user.ID, doc.ID); err != nil {
+	if err = indexer.IndexDocument(ctx, user.ID, doc.ID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -103,7 +103,7 @@ func TestPassagesSkipRefsThatNoLongerResolve(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := indexer.IndexDocument(ctx, user.ID, doc.ID); err != nil {
+	if err = indexer.IndexDocument(ctx, user.ID, doc.ID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -125,7 +125,7 @@ func TestPassagesSkipRefsThatNoLongerResolve(t *testing.T) {
 	}
 
 	// A deleted document takes its passages with it.
-	if err := svc.Delete(ctx, doc.ID, user.ID); err != nil {
+	if err = svc.Delete(ctx, doc.ID, user.ID); err != nil {
 		t.Fatal(err)
 	}
 	after, err := svc.Passages(ctx, user.ID, []string{live})
@@ -153,7 +153,7 @@ func TestChunkLookupStaysInsideOneAccount(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := indexer.IndexDocument(ctx, owner.ID, doc.ID); err != nil {
+	if err = indexer.IndexDocument(ctx, owner.ID, doc.ID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -166,7 +166,7 @@ func TestChunkLookupStaysInsideOneAccount(t *testing.T) {
 	}
 	stolen := hits[0].ChunkID
 
-	if _, err := svc.Chunk(ctx, stolen, intruder.ID); err == nil {
+	if _, err = svc.Chunk(ctx, stolen, intruder.ID); err == nil {
 		t.Error("another account resolved a chunk id it does not own")
 	}
 
@@ -198,13 +198,15 @@ func TestAttentionNamesAFailedDocument(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := indexer.IndexDocument(ctx, user.ID, doc.ID); err != nil {
+	if err = indexer.IndexDocument(ctx, user.ID, doc.ID); err != nil {
 		t.Fatal(err)
 	}
 
-	if after, err := svc.Get(ctx, doc.ID, user.ID); err != nil {
+	after, err := svc.Get(ctx, doc.ID, user.ID)
+	if err != nil {
 		t.Fatal(err)
-	} else if after.Status != documents.StatusFailed {
+	}
+	if after.Status != documents.StatusFailed {
 		t.Fatalf("status = %q, want %q", after.Status, documents.StatusFailed)
 	}
 
@@ -239,7 +241,7 @@ func TestAttentionNamesADocumentReadAnOlderWay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := indexer.IndexDocument(ctx, user.ID, doc.ID); err != nil {
+	if err = indexer.IndexDocument(ctx, user.ID, doc.ID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -259,7 +261,7 @@ func TestAttentionNamesADocumentReadAnOlderWay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := repo.MarkIndexed(ctx, doc.ID, after.ContentSHA256, "some-older-reader", after.LineCount); err != nil {
+	if err = repo.MarkIndexed(ctx, doc.ID, after.ContentSHA256, "some-older-reader", after.LineCount); err != nil {
 		t.Fatal(err)
 	}
 

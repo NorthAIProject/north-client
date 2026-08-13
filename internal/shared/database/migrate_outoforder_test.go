@@ -36,13 +36,13 @@ func TestMigrateAppliesOutOfOrderMigrations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open admin connection: %v", err)
 	}
-	defer admin.Close()
+	defer func() { _ = admin.Close() }()
 
 	const dbName = "north_ooo_check"
-	if _, err := admin.ExecContext(ctx, `DROP DATABASE IF EXISTS `+dbName+` WITH (FORCE)`); err != nil {
+	if _, err = admin.ExecContext(ctx, `DROP DATABASE IF EXISTS `+dbName+` WITH (FORCE)`); err != nil {
 		t.Fatalf("drop: %v", err)
 	}
-	if _, err := admin.ExecContext(ctx, `CREATE DATABASE `+dbName); err != nil {
+	if _, err = admin.ExecContext(ctx, `CREATE DATABASE `+dbName); err != nil {
 		t.Fatalf("create: %v", err)
 	}
 	t.Cleanup(func() {
@@ -52,7 +52,7 @@ func TestMigrateAppliesOutOfOrderMigrations(t *testing.T) {
 	targetURL := swapDatabase(url, dbName)
 
 	// A full, honest run first.
-	if err := database.Migrate(ctx, targetURL); err != nil {
+	if err = database.Migrate(ctx, targetURL); err != nil {
 		t.Fatalf("initial migrate: %v", err)
 	}
 
@@ -63,7 +63,7 @@ func TestMigrateAppliesOutOfOrderMigrations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open target: %v", err)
 	}
-	defer target.Close()
+	defer func() { _ = target.Close() }()
 
 	if _, err := target.ExecContext(ctx, `DELETE FROM goose_db_version WHERE version_id = 21`); err != nil {
 		t.Fatalf("stage missing migration: %v", err)

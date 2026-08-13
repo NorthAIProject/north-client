@@ -154,8 +154,8 @@ func (s *Service) Upload(ctx context.Context, userID uuid.UUID, filename, mime s
 	}
 
 	key := fmt.Sprintf("users/%s/documents/%s%s", userID, uuid.New(), ext)
-	if err := s.storage.Put(ctx, key, mime, strings.NewReader(string(content))); err != nil {
-		return Document{}, apperr.Wrap(err, "store document")
+	if putErr := s.storage.Put(ctx, key, mime, strings.NewReader(string(content))); putErr != nil {
+		return Document{}, apperr.Wrap(putErr, "store document")
 	}
 
 	doc, err := s.repo.Create(ctx, userID, NewDocument{

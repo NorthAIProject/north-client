@@ -239,7 +239,7 @@ func (s *Service) importOne(ctx context.Context, userID uuid.UUID, a apiActivity
 	// import: it is what the 3D view draws, and it stays useful (and
 	// correctable) even for an activity already imported, whose session row
 	// the dedupe below will leave alone.
-	if err := s.repo.SaveActivity(ctx, userID, Activity{
+	if err = s.repo.SaveActivity(ctx, userID, Activity{
 		StravaID:        a.ID,
 		Name:            a.Name,
 		SportType:       a.sport(),

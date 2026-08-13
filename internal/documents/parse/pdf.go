@@ -37,7 +37,7 @@ func PDF(filename string, data []byte) (Document, error) {
 	if err != nil {
 		// Encrypted, malformed, or not really a PDF. The detail is for the log;
 		// what reaches the person is that North could not open it.
-		return Document{}, fmt.Errorf("North could not open this PDF: %w", err)
+		return Document{}, fmt.Errorf("north could not open this PDF: %w", err)
 	}
 
 	var (

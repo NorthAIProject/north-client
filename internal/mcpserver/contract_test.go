@@ -52,10 +52,10 @@ func TestToolContractIsUnchanged(t *testing.T) {
 	golden := filepath.Join("testdata", "tools.golden.json")
 
 	if *update {
-		if err := os.MkdirAll("testdata", 0o755); err != nil {
+		if err = os.MkdirAll("testdata", 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(golden, encoded, 0o644); err != nil {
+		if err = os.WriteFile(golden, encoded, 0o644); err != nil {
 			t.Fatal(err)
 		}
 		t.Logf("wrote %s", golden)
@@ -139,13 +139,13 @@ func describeTools(t *testing.T) []toolContract {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer serverSession.Close()
+	defer func() { _ = serverSession.Close() }()
 
 	session, err := client.Connect(ctx, clientTransport, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer session.Close()
+	defer func() { _ = session.Close() }()
 
 	listed, err := session.ListTools(ctx, nil)
 	if err != nil {

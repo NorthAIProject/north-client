@@ -414,7 +414,7 @@ func TestChainDoesNotFailOverOnCallerErrors(t *testing.T) {
 		t.Fatal("expected the validation error to surface")
 	}
 
-	if calls := second.Client.Calls(); len(calls) != 0 {
+	if calls := second.Calls(); len(calls) != 0 {
 		t.Fatalf("the second provider should not have been asked, got %d calls", len(calls))
 	}
 }
@@ -492,8 +492,8 @@ func TestFreeTierUsesTheFreeChain(t *testing.T) {
 	if !strings.Contains(reply, "from the free provider") {
 		t.Fatalf("reply = %q, want the free provider's answer", reply)
 	}
-	if len(paid.Client.Calls()) != 0 {
-		t.Errorf("the paid provider was called %d time(s) for a free user", len(paid.Client.Calls()))
+	if len(paid.Calls()) != 0 {
+		t.Errorf("the paid provider was called %d time(s) for a free user", len(paid.Calls()))
 	}
 }
 
