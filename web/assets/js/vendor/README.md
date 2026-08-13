@@ -27,6 +27,7 @@ grep -oE 'from"[^".][^"]*"' web/assets/js/vendor/<file> | grep -v 'from"\.'
 | `alpine.min.js` | alpinejs | 3.15.0 | MIT | not recorded |
 | `htmx.min.js` | htmx.org | 2.0.7 | Zero-Clause BSD | not recorded |
 | `htmx-ext-sse.js` | htmx-ext-sse | not recorded | Zero-Clause BSD | not recorded |
+| `echarts.min.js` | echarts | 5.5.1 | Apache-2.0 | `https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js` |
 
 † The three.js files predate this README and carry no version string. r169 is **inferred**
 from a revision constant in the bundle and its `Copyright 2010-2024` header — treat it as

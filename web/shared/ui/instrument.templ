@@ -1,5 +1,7 @@
 package ui
 
+import "github.com/NorthAIProject/north-client/web/shared/ui/chart"
+
 // MonoLabel is the product's instrument voice: every eyebrow, axis, timestamp,
 // surface name, and continuity caption is set this way so demos and chrome read
 // as instruments rather than marketing panels.
@@ -7,4 +9,49 @@ package ui
 // Prefer this over ad-hoc mono classes so tracking and size stay consistent.
 templ MonoLabel(text string) {
 	<span class="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">{ text }</span>
+}
+
+// KpiCellProps is one instrument in a KPI strip.
+type KpiCellProps struct {
+	Label string
+	Value string
+	Href  string
+	CTA   string
+}
+
+templ KpiCell(props KpiCellProps) {
+	<div class="space-y-1">
+		<p class="text-muted-foreground font-mono text-[10px] uppercase tracking-[0.14em]">{ props.Label }</p>
+		<p class="text-lg font-medium tabular-nums">{ props.Value }</p>
+		if props.Href != "" && props.CTA != "" {
+			<a href={ templ.SafeURL(props.Href) } class="text-signal text-xs hover:underline">{ props.CTA }</a>
+		}
+	</div>
+}
+
+templ KpiStrip() {
+	<div class="border-hairline bg-surface/60 grid gap-3 rounded-lg border p-4 sm:grid-cols-2 lg:grid-cols-5">
+		{ children... }
+	</div>
+}
+
+// EChartsMount renders a canvas host fed by a JSONScript option id.
+templ EChartsMount(mountID, optionID, class string) {
+	<div
+		id={ mountID }
+		data-echarts
+		data-echarts-option={ optionID }
+		class={ class }
+	></div>
+}
+
+var chartScriptsOnce = templ.NewOnceHandle()
+
+// ChartScripts includes Chart.js and ECharts once per page.
+templ ChartScripts() {
+	@chartScriptsOnce.Once() {
+		@chart.Script()
+		<script src="/assets/js/vendor/echarts.min.js"></script>
+		<script src="/assets/js/shared/echarts-init.js"></script>
+	}
 }

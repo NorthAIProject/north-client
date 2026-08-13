@@ -1,6 +1,8 @@
 package settings
 
 import (
+	"fmt"
+
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/calculator"
@@ -48,12 +50,20 @@ func PreferencesFormFor(p preferences.Preferences) PreferencesForm {
 	return PreferencesForm{UnitsSystem: p.UnitsSystem, DefaultGoal: p.DefaultGoal, DefaultMacroSplit: p.DefaultMacroSplit}
 }
 
+// SettingsSummary is the instrument row at the top of the settings page.
+type SettingsSummary struct {
+	Timezone        string
+	Units           string
+	DietCount       int
+	ConnectionCount int
+}
+
 // Page renders account settings: profile, calculator defaults, and dietary
 // preferences (backed by meals.DietPreferenceService — Settings has no
 // store of its own for that data).
-templ Page(user users.User, profileForm ProfileForm, prefsForm PreferencesForm, allDiets []meals.Diet, selectedDietIDs map[uuid.UUID]bool, saved string) {
+templ Page(user users.User, summary SettingsSummary, profileForm ProfileForm, prefsForm PreferencesForm, allDiets []meals.Diet, selectedDietIDs map[uuid.UUID]bool, saved string) {
 	@layout.App("Settings", user, layout.BuildNav("/app/settings")) {
-		<div class="mx-auto w-full max-w-2xl space-y-6 p-6 md:p-8">
+		<div class="mx-auto w-full max-w-6xl space-y-6 p-6 md:p-8">
 			<header>
 				@ui.MonoLabel("Settings")
 				<h1 class="mt-2 text-2xl font-medium tracking-tight">Account</h1>
@@ -61,6 +71,7 @@ templ Page(user users.User, profileForm ProfileForm, prefsForm PreferencesForm, 
 					How the coach addresses you, what it defaults to, and what it should never suggest.
 				</p>
 			</header>
+			@settingsKpiStrip(summary)
 			if saved != "" {
 				<p class="rounded-lg border border-signal/30 bg-signal/10 px-4 py-3 text-sm">{ saved }</p>
 			}
@@ -72,6 +83,15 @@ templ Page(user users.User, profileForm ProfileForm, prefsForm PreferencesForm, 
 		@label.Script()
 		@selectbox.Script()
 		@checkbox.Script()
+	}
+}
+
+templ settingsKpiStrip(summary SettingsSummary) {
+	@ui.KpiStrip() {
+		@ui.KpiCell(ui.KpiCellProps{Label: "Timezone", Value: summary.Timezone})
+		@ui.KpiCell(ui.KpiCellProps{Label: "Units", Value: summary.Units})
+		@ui.KpiCell(ui.KpiCellProps{Label: "Diets", Value: fmt.Sprintf("%d", summary.DietCount), Href: "#diets", CTA: "Edit"})
+		@ui.KpiCell(ui.KpiCellProps{Label: "Connections", Value: fmt.Sprintf("%d", summary.ConnectionCount), Href: "/app/settings/connections", CTA: "Manage"})
 	}
 }
 
@@ -217,7 +237,7 @@ templ preferencesCard(f PreferencesForm) {
 }
 
 templ dietsCard(allDiets []meals.Diet, selected map[uuid.UUID]bool) {
-	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface", ID: "diets"}) {
 		@card.Header() {
 			@card.Title() {
 				Dietary preferences

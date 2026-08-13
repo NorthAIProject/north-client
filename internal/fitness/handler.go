@@ -26,6 +26,7 @@ const (
 )
 
 type Handler struct {
+	svc    *Service
 	strava *strava.Service
 
 	// secure marks the state cookie Secure outside development, matching how
@@ -33,8 +34,12 @@ type Handler struct {
 	secure bool
 }
 
-func NewHandler(stravaSvc *strava.Service, secure bool) *Handler {
-	return &Handler{strava: stravaSvc, secure: secure}
+func NewHandler(opts Options, secure bool) *Handler {
+	return &Handler{
+		svc:    NewService(opts),
+		strava: opts.Strava,
+		secure: secure,
+	}
 }
 
 func (h *Handler) Routes(r chi.Router) {
@@ -82,18 +87,24 @@ func (h *Handler) hub(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) render(w http.ResponseWriter, r *http.Request, notice string) {
 	user := auth.MustUser(r.Context())
+	ctx := r.Context()
 
-	status, err := h.strava.Status(r.Context(), user.ID)
+	snap, err := h.svc.Load(ctx, user)
 	if err != nil {
-		middleware.FromContext(r.Context()).Error("read strava status", slog.Any("error", err))
-		// A hub page that cannot read the integration's status is still a
-		// useful hub page; show it as disconnected rather than 500.
-		status = strava.Status{Configured: h.strava.Configured()}
+		middleware.FromContext(ctx).Error("load fitness hub", slog.Any("error", err))
+		http.Error(w, "Something went wrong.", http.StatusInternalServerError)
+		return
+	}
+
+	data := fitnesspages.HubData{
+		StravaStatus: snap.StravaStatus,
+		Instruments:  buildView(snap),
+		Notice:       notice,
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := fitnesspages.Hub(user, status, notice).Render(r.Context(), w); err != nil {
-		middleware.FromContext(r.Context()).Error("render fitness hub", slog.Any("error", err))
+	if err := fitnesspages.Hub(user, data).Render(ctx, w); err != nil {
+		middleware.FromContext(ctx).Error("render fitness hub", slog.Any("error", err))
 	}
 }
 

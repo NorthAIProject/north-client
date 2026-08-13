@@ -113,3 +113,14 @@ SELECT goal_id,
 FROM goal_milestones
 WHERE user_id = $1
 GROUP BY goal_id;
+
+-- name: CountOverdueMilestones :one
+-- Open checkpoints on active goals whose date has passed.
+SELECT COUNT(*)::int
+FROM goal_milestones m
+INNER JOIN goals g ON g.id = m.goal_id AND g.user_id = m.user_id
+WHERE m.user_id = $1
+  AND g.status = 'active'
+  AND m.status = 'open'
+  AND m.target_date IS NOT NULL
+  AND m.target_date < CURRENT_DATE;

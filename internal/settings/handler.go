@@ -243,8 +243,16 @@ func (h *Handler) render(w http.ResponseWriter, r *http.Request, profileForm set
 		selected[d.ID] = true
 	}
 
+	conns, err := h.connections.List(ctx, user.ID)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+
+	summary := buildSettingsSummary(user, prefsForm.UnitsSystem, len(userDiets), len(conns))
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := settingspages.Page(user, profileForm, *prefsForm, allDiets, selected, saved).Render(ctx, w); err != nil {
+	if err := settingspages.Page(user, summary, profileForm, *prefsForm, allDiets, selected, saved).Render(ctx, w); err != nil {
 		middleware.FromContext(ctx).Error("render settings", slog.Any("error", err))
 	}
 }

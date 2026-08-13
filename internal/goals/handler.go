@@ -48,7 +48,19 @@ func (h *Handler) index(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	render(w, r, http.StatusOK, goalpages.IndexPage(user, list, goalpages.GoalForm{}))
+	overdue, err := h.svc.CountOverdueMilestones(r.Context(), user.ID)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+
+	inst, err := buildInstruments(list, overdue)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+
+	render(w, r, http.StatusOK, goalpages.IndexPage(user, list, inst, goalpages.GoalForm{}))
 }
 
 func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
@@ -73,7 +85,17 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 				h.fail(w, r, listErr)
 				return
 			}
-			render(w, r, http.StatusUnprocessableEntity, goalpages.IndexPage(user, list, form))
+			overdue, overdueErr := h.svc.CountOverdueMilestones(r.Context(), user.ID)
+			if overdueErr != nil {
+				h.fail(w, r, overdueErr)
+				return
+			}
+			inst, instErr := buildInstruments(list, overdue)
+			if instErr != nil {
+				h.fail(w, r, instErr)
+				return
+			}
+			render(w, r, http.StatusUnprocessableEntity, goalpages.IndexPage(user, list, inst, form))
 			return
 		}
 		h.fail(w, r, err)

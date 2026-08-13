@@ -1,6 +1,8 @@
 package memories
 
 import (
+	"strconv"
+
 	"github.com/NorthAIProject/north-client/internal/memories/memory"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
@@ -14,6 +16,18 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/selectbox"
 	"github.com/NorthAIProject/north-client/web/shared/ui/textarea"
 )
+
+// PanelID is the HTMX-swappable region for memory writes.
+const PanelID = "memories-panel"
+
+// Instruments holds chart configs for the memory index header.
+type Instruments struct {
+	PendingCount     int
+	ApprovedCount    int
+	PinnedCount      int
+	CategoryDonut    map[string]any
+	HasCategoryDonut bool
+}
 
 // MemoryForm is a manual fact entry or inline edit.
 type MemoryForm struct {
@@ -30,48 +44,104 @@ func (f MemoryForm) fieldError(name string) string {
 	return f.Errors[name]
 }
 
-templ IndexPage(user users.User, pending, approved []memory.Memory, form MemoryForm, edit *MemoryForm) {
+templ IndexPage(user users.User, pending, approved []memory.Memory, inst Instruments, form MemoryForm, edit *MemoryForm) {
+	@Page(user, pending, approved, inst, form, edit)
+}
+
+templ Page(user users.User, pending, approved []memory.Memory, inst Instruments, form MemoryForm, edit *MemoryForm) {
 	@layout.App("Memory", user, layout.BuildNav("/app/memories")) {
-		<div class="mx-auto w-full max-w-2xl space-y-8 p-6 md:p-8">
-			@header()
-			if len(pending) > 0 {
-				<section class="space-y-3">
-					<h2 class="text-sm font-medium">Proposed from conversations</h2>
-					for _, m := range pending {
-						@pendingCard(m)
-					}
-				</section>
-			}
-			@addForm(form)
-			<section class="space-y-6">
-				<h2 class="text-sm font-medium">Known facts</h2>
-				if len(approved) == 0 {
-					<p class="text-muted-foreground text-sm">Nothing stored yet. Approve a proposal or add a fact.</p>
-				}
-				for _, group := range GroupApprovedByCategory(approved) {
-					<div class="space-y-3">
-						<h3 class="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">{ group.Category }</h3>
-						for _, m := range group.Items {
-							if edit != nil && edit.ID == m.ID.String() {
-								@approvedCardEdit(m, *edit)
-							} else {
-								@approvedCard(m)
-							}
-						}
-					</div>
-				}
-			</section>
-		</div>
+		@Panel(user, pending, approved, inst, form, edit)
 		@textarea.Script()
 		@label.Script()
 		@selectbox.Script()
 		@dialog.Script()
+		@ui.ChartScripts()
+	}
+}
+
+templ Panel(user users.User, pending, approved []memory.Memory, inst Instruments, form MemoryForm, edit *MemoryForm) {
+	<div id={ PanelID } class="mx-auto w-full max-w-6xl space-y-6 p-6 md:p-8">
+		@header()
+		@kpiStrip(inst)
+		@categoryDonut(inst)
+		if len(pending) > 0 {
+			<section class="space-y-3">
+				<h2 class="text-sm font-medium">Proposed from conversations</h2>
+				for _, m := range pending {
+					@pendingCard(m)
+				}
+			</section>
+		}
+		@addForm(form)
+		<section class="space-y-6">
+			<h2 class="text-sm font-medium">Known facts</h2>
+			if len(approved) == 0 {
+				<p class="text-muted-foreground text-sm">Nothing stored yet. Approve a proposal or add a fact.</p>
+			}
+			for _, group := range GroupApprovedByCategory(approved) {
+				<div class="space-y-3">
+					<h3 class="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">{ group.Category }</h3>
+					for _, m := range group.Items {
+						if edit != nil && edit.ID == m.ID.String() {
+							@approvedCardEdit(m, *edit)
+						} else {
+							@approvedCard(m)
+						}
+					}
+				</div>
+			}
+		</section>
+	</div>
+}
+
+templ kpiStrip(inst Instruments) {
+	@ui.KpiStrip() {
+		@kpiCell("Pending", strconv.Itoa(inst.PendingCount), "", "")
+		@kpiCell("Approved", strconv.Itoa(inst.ApprovedCount), "", "")
+		@kpiCell("Pinned", pinnedKPI(inst), "", "")
+	}
+}
+
+templ kpiCell(label, value, href, cta string) {
+	@ui.KpiCell(ui.KpiCellProps{Label: label, Value: value, Href: href, CTA: cta})
+}
+
+func pinnedKPI(inst Instruments) string {
+	if inst.PinnedCount == 0 {
+		return "None"
+	}
+	return strconv.Itoa(inst.PinnedCount)
+}
+
+templ categoryDonut(inst Instruments) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Title() {
+				Facts by category
+			}
+		}
+		@card.Content() {
+			if inst.HasCategoryDonut && len(inst.CategoryDonut) > 0 {
+				@templ.JSONScript("memories-category-donut-option", inst.CategoryDonut)
+				@ui.EChartsMount("memories-category-donut", "memories-category-donut-option", "min-h-48 w-full max-w-sm mx-auto")
+			} else {
+				<p class="text-muted-foreground text-sm">No approved facts yet.</p>
+			}
+		}
+	}
+}
+
+func panelSwapAttrs() templ.Attributes {
+	return templ.Attributes{
+		"hx-target": "#" + PanelID,
+		"hx-select": "#" + PanelID,
+		"hx-swap":   "outerHTML",
 	}
 }
 
 templ header() {
 	<header>
-		<p class="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Long-term</p>
+		@ui.MonoLabel("Long-term")
 		<h1 class="mt-2 text-2xl font-medium tracking-tight">Memory</h1>
 		<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
 			Facts North may use in coaching. Proposed facts from conversations wait here until you approve them.
@@ -154,13 +224,13 @@ templ pendingCard(m memory.Memory) {
 			</div>
 			<p class="text-sm">{ m.Content }</p>
 			<div class="flex flex-wrap gap-2">
-				<form method="post" action={ templ.SafeURL("/app/memories/" + m.ID.String() + "/approve") }>
+				<form method="post" action={ templ.SafeURL("/app/memories/" + m.ID.String() + "/approve") } { panelSwapAttrs()... }>
 					@ui.CSRFInput()
 					@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Class: "bg-signal text-background hover:bg-signal/90"}) {
 						Approve
 					}
 				</form>
-				<form method="post" action={ templ.SafeURL("/app/memories/" + m.ID.String() + "/reject") }>
+				<form method="post" action={ templ.SafeURL("/app/memories/" + m.ID.String() + "/reject") } { panelSwapAttrs()... }>
 					@ui.CSRFInput()
 					@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Variant: button.VariantOutline}) {
 						Discard

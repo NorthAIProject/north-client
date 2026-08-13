@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"strconv"
 
 	"github.com/google/uuid"
@@ -13,18 +14,86 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
 	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/chart"
 	"github.com/NorthAIProject/north-client/web/shared/ui/progress"
 )
 
-// DashboardData is the overview snapshot.
+// DashboardData is the command-center snapshot.
 type DashboardData struct {
-	CheckedInToday  bool
-	Streak          int
-	PendingMemories int
-	Goals           []goal.Goal
-	LastThread      *conversations.Conversation
-	NextSession     *plan.PlanDay
-	PlanID          uuid.UUID
+	CheckedInToday     bool
+	Streak             int
+	PendingMemories    int
+	Goals              []goal.Goal
+	LastThread         *conversations.Conversation
+	NextSession        *plan.PlanDay
+	PlanID             uuid.UUID
+	CheckIns           CheckInSeriesView
+	Habits             HabitsView
+	Hydration          HydrationView
+	Sleep              SleepView
+	ActivityCalories7d float64
+	MoodChart          chart.Props
+	HydrationChart     chart.Props
+	HabitGaugeOption   map[string]any
+	CheckInHeatmap     map[string]any
+}
+
+type CheckInDayView struct {
+	Label  string
+	Mood   int
+	Energy int
+}
+
+type CheckInSeriesView struct {
+	Days []CheckInDayView
+}
+
+func (s CheckInSeriesView) HasData() bool {
+	for _, d := range s.Days {
+		if d.Mood > 0 || d.Energy > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+type HabitsView struct {
+	HasHabits  bool
+	Rate       int
+	Kept       int
+	Scheduled  int
+	BestStreak int
+}
+
+type HydrationDayView struct {
+	Label    string
+	TotalML  int
+	TargetML int
+}
+
+type HydrationView struct {
+	TodayML  int
+	TargetML int
+	Percent  int
+	Days     []HydrationDayView
+}
+
+func (h HydrationView) HasData() bool {
+	if h.TodayML > 0 {
+		return true
+	}
+	for _, d := range h.Days {
+		if d.TotalML > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+type SleepView struct {
+	Logged          bool
+	DurationMinutes int
+	Quality         *int
 }
 
 func (d DashboardData) HasPlan() bool {
@@ -41,54 +110,131 @@ func progressPct(g goal.Goal) int {
 	return pct
 }
 
+func formatLitres(ml int) string {
+	if ml >= 1000 {
+		return fmt.Sprintf("%.1f L", float64(ml)/1000)
+	}
+	return fmt.Sprintf("%d ml", ml)
+}
+
+func formatSleep(minutes int) string {
+	h := minutes / 60
+	m := minutes % 60
+	if m == 0 {
+		return fmt.Sprintf("%dh", h)
+	}
+	return fmt.Sprintf("%dh %dm", h, m)
+}
+
 templ Dashboard(user users.User, data DashboardData) {
 	@layout.App("Overview", user, layout.BuildNav("/app")) {
-		<div class="mx-auto w-full max-w-4xl space-y-6 p-6 md:p-8">
+		<div class="mx-auto w-full max-w-6xl space-y-6 p-6 md:p-8">
 			<header>
-				@ui.MonoLabel("Overview")
+				@ui.MonoLabel("Command center")
 				<h1 class="mt-2 text-2xl font-medium tracking-tight">
 					Hello, { user.FirstName() }
 				</h1>
-				<p class="text-muted-foreground mt-1 max-w-lg text-sm leading-relaxed">
-					What today asks of you. Check in, keep goals current, pick up the thread.
+				<p class="text-muted-foreground mt-1 max-w-2xl text-sm leading-relaxed">
+					Today’s instruments: check-in, habits, hydration, sleep, goals, coach, training.
 				</p>
 			</header>
-			<div class="grid gap-4 sm:grid-cols-2">
-				@checkInCard(data)
-				@goalsCard(data)
-				@coachCard(data)
-				@trainingCard(data)
-				@memoryCard(data)
+			@kpiStrip(data)
+			@checkInPanel(data)
+			<div class="grid gap-4 lg:grid-cols-2">
+				@habitsPanel(data)
+				@hydrationPanel(data)
+			</div>
+			<div class="grid gap-4 lg:grid-cols-3">
+				@goalsPanel(data)
+				@coachPanel(data)
+				@trainingPanel(data)
 			</div>
 		</div>
 		@progress.Script()
+		@ui.ChartScripts()
 	}
 }
 
-templ checkInCard(data DashboardData) {
+templ kpiStrip(data DashboardData) {
+	@ui.KpiStrip() {
+		@kpiCell("Check-in", checkInKPI(data), "/app/check-ins", checkInCTA(data))
+		@kpiCell("Streak", streakKPI(data), "/app/check-ins", "Check in")
+		@kpiCell("Water", waterKPI(data), "/app/care", "Log water")
+		@kpiCell("Sleep", sleepKPI(data), "/app/care", "Log sleep")
+		@kpiCell("Memory", memoryKPI(data), "/app/memories", "Review")
+	}
+}
+
+templ kpiCell(label, value, href, cta string) {
+	@ui.KpiCell(ui.KpiCellProps{Label: label, Value: value, Href: href, CTA: cta})
+}
+
+func checkInKPI(data DashboardData) string {
+	if data.CheckedInToday {
+		return "Done"
+	}
+	return "Pending"
+}
+
+func checkInCTA(data DashboardData) string {
+	if data.CheckedInToday {
+		return "Edit"
+	}
+	return "Check in"
+}
+
+func streakKPI(data DashboardData) string {
+	if data.Streak <= 0 {
+		return "—"
+	}
+	return strconv.Itoa(data.Streak) + " days"
+}
+
+func waterKPI(data DashboardData) string {
+	if data.Hydration.TargetML <= 0 && data.Hydration.TodayML <= 0 {
+		return "—"
+	}
+	return fmt.Sprintf("%s / %s", formatLitres(data.Hydration.TodayML), formatLitres(data.Hydration.TargetML))
+}
+
+func sleepKPI(data DashboardData) string {
+	if !data.Sleep.Logged {
+		return "—"
+	}
+	text := formatSleep(data.Sleep.DurationMinutes)
+	if data.Sleep.Quality != nil {
+		text += fmt.Sprintf(" · %d/5", *data.Sleep.Quality)
+	}
+	return text
+}
+
+func memoryKPI(data DashboardData) string {
+	if data.PendingMemories <= 0 {
+		return "Clear"
+	}
+	return strconv.Itoa(data.PendingMemories) + " pending"
+}
+
+templ checkInPanel(data DashboardData) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 		@card.Header() {
 			@card.Title() {
-				Today’s check-in
+				Mood & energy
 			}
 			@card.Description() {
-				if data.CheckedInToday {
-					You’re set for today.
-				} else {
-					Thirty seconds. Mood, energy, what went well.
-				}
+				Trailing fourteen days from your check-ins.
 			}
 		}
 		@card.Content() {
-			if data.Streak > 0 {
-				<p class="text-signal mb-3 text-sm font-medium">
-					{ strconv.Itoa(data.Streak) }-day streak
-				</p>
-			}
-			@button.Button(button.Props{Href: "/app/check-ins", Class: "bg-signal text-background hover:bg-signal/90"}) {
-				if data.CheckedInToday {
-					Edit check-in
-				} else {
+			if data.CheckIns.HasData() {
+				@chart.Chart(data.MoodChart)
+				if len(data.CheckInHeatmap) > 0 {
+					@templ.JSONScript("dashboard-checkin-heatmap-option", data.CheckInHeatmap)
+					@ui.EChartsMount("dashboard-checkin-heatmap", "dashboard-checkin-heatmap-option", "border-hairline mt-4 min-h-32 w-full rounded-md border")
+				}
+			} else {
+				<p class="text-muted-foreground mb-4 text-sm">No check-ins yet in this window.</p>
+				@button.Button(button.Props{Href: "/app/check-ins", Class: "bg-signal text-background hover:bg-signal/90"}) {
 					Check in
 				}
 			}
@@ -96,22 +242,82 @@ templ checkInCard(data DashboardData) {
 	}
 }
 
-templ goalsCard(data DashboardData) {
+templ habitsPanel(data DashboardData) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 		@card.Header() {
 			@card.Title() {
-				Goals
+				Habits
 			}
 			@card.Description() {
-				if len(data.Goals) == 0 {
-					The coach works better once it knows what you are aiming at.
+				if data.Habits.HasHabits {
+					Seven-day adherence across active habits.
 				} else {
-					What you are working toward.
+					Recurring intentions you can keep or miss.
 				}
 			}
 		}
 		@card.Content() {
+			if data.Habits.HasHabits {
+				if len(data.HabitGaugeOption) > 0 {
+					@templ.JSONScript("dashboard-habit-gauge-option", data.HabitGaugeOption)
+					@ui.EChartsMount("dashboard-habit-gauge", "dashboard-habit-gauge-option", "min-h-48 w-full")
+				}
+				<p class="text-muted-foreground mt-2 text-xs">
+					{ strconv.Itoa(data.Habits.Kept) } kept of { strconv.Itoa(data.Habits.Scheduled) } scheduled
+					if data.Habits.BestStreak > 0 {
+						<span> · best streak { strconv.Itoa(data.Habits.BestStreak) }</span>
+					}
+				</p>
+			} else {
+				<p class="text-muted-foreground mb-4 text-sm">No habits yet.</p>
+				@button.Button(button.Props{Href: "/app/care", Class: "bg-signal text-background hover:bg-signal/90"}) {
+					Add a habit
+				}
+			}
+		}
+	}
+}
+
+templ hydrationPanel(data DashboardData) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Title() {
+				Hydration
+			}
+			@card.Description() {
+				if data.Hydration.HasData() {
+					Seven-day intake in millilitres.
+				} else {
+					Water logged from Care.
+				}
+			}
+		}
+		@card.Content() {
+			if data.Hydration.HasData() {
+				<p class="text-signal mb-3 text-sm font-medium tabular-nums">
+					Today { strconv.Itoa(data.Hydration.Percent) }% · { formatLitres(data.Hydration.TodayML) }
+				</p>
+				@chart.Chart(data.HydrationChart)
+			} else {
+				<p class="text-muted-foreground mb-4 text-sm">No water logged this week.</p>
+				@button.Button(button.Props{Href: "/app/care", Class: "bg-signal text-background hover:bg-signal/90"}) {
+					Log water
+				}
+			}
+		}
+	}
+}
+
+templ goalsPanel(data DashboardData) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface h-full"}) {
+		@card.Header() {
+			@card.Title() {
+				Goals
+			}
+		}
+		@card.Content() {
 			if len(data.Goals) == 0 {
+				<p class="text-muted-foreground mb-4 text-sm">The coach works better once it knows what you are aiming at.</p>
 				@button.Button(button.Props{Href: "/app/goals", Class: "bg-signal text-background hover:bg-signal/90"}) {
 					Add a goal
 				}
@@ -131,7 +337,7 @@ templ goalsCard(data DashboardData) {
 					}
 				</ul>
 				<div class="mt-4">
-					@button.Button(button.Props{Href: "/app/goals", Variant: button.VariantOutline}) {
+					@button.Button(button.Props{Href: "/app/goals", Variant: button.VariantOutline, Size: button.SizeSm}) {
 						All goals
 					}
 				</div>
@@ -140,18 +346,11 @@ templ goalsCard(data DashboardData) {
 	}
 }
 
-templ coachCard(data DashboardData) {
-	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+templ coachPanel(data DashboardData) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface h-full"}) {
 		@card.Header() {
 			@card.Title() {
 				Coach
-			}
-			@card.Description() {
-				if data.LastThread != nil {
-					Pick up where you left off.
-				} else {
-					North already has your goals and check-ins when they exist.
-				}
 			}
 		}
 		@card.Content() {
@@ -161,6 +360,7 @@ templ coachCard(data DashboardData) {
 					Continue
 				}
 			} else {
+				<p class="text-muted-foreground mb-4 text-sm">North already has your goals and check-ins when they exist.</p>
 				@button.Button(button.Props{Href: "/app/chat", Class: "bg-signal text-background hover:bg-signal/90"}) {
 					Start a conversation
 				}
@@ -169,20 +369,11 @@ templ coachCard(data DashboardData) {
 	}
 }
 
-templ trainingCard(data DashboardData) {
-	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+templ trainingPanel(data DashboardData) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface h-full"}) {
 		@card.Header() {
 			@card.Title() {
 				Training
-			}
-			@card.Description() {
-				if data.NextSession != nil {
-					Next session on the plan.
-				} else if data.HasPlan() {
-					Your current plan is ready when you are.
-				} else {
-					A plan the coach can actually follow, not a paragraph of sets.
-				}
 			}
 		}
 		@card.Content() {
@@ -199,31 +390,15 @@ templ trainingCard(data DashboardData) {
 					Open plan
 				}
 			} else {
+				<p class="text-muted-foreground mb-4 text-sm">A plan the coach can follow, not a paragraph of sets.</p>
 				@button.Button(button.Props{Href: "/app/training", Class: "bg-signal text-background hover:bg-signal/90"}) {
 					Build a training plan
 				}
 			}
-		}
-	}
-}
-
-templ memoryCard(data DashboardData) {
-	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
-		@card.Header() {
-			@card.Title() {
-				Memory
-			}
-			@card.Description() {
-				if data.PendingMemories > 0 {
-					{ strconv.Itoa(data.PendingMemories) } proposed facts to review.
-				} else {
-					Facts North may use when coaching you.
-				}
-			}
-		}
-		@card.Content() {
-			@button.Button(button.Props{Href: "/app/memories", Variant: button.VariantOutline}) {
-				Open memory
+			if data.ActivityCalories7d > 0 {
+				<p class="text-muted-foreground mt-4 text-xs tabular-nums">
+					{ fmt.Sprintf("%.0f kcal", data.ActivityCalories7d) } burned this week
+				</p>
 			}
 		}
 	}

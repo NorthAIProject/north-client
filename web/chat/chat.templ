@@ -50,11 +50,17 @@ var starters = []string{
 	"I keep starting things and not finishing them.",
 }
 
+// CoachStats is sidebar instrumentation for the coach page.
+type CoachStats struct {
+	ThreadCount      int
+	MessagesThisWeek int
+}
+
 // Page is a conversation with its history and composer.
-templ Page(user users.User, conversation conversations.Conversation, messages []conversations.Message, list []conversations.Conversation) {
+templ Page(user users.User, conversation conversations.Conversation, messages []conversations.Message, list []conversations.Conversation, stats CoachStats) {
 	@layout.App(conversation.DisplayTitle(), user, layout.BuildNav("/app/chat")) {
 		<div id="chat-root" class="flex h-full" x-data="{ threads: false }">
-			@threadList(list, conversation.ID)
+			@threadList(list, conversation.ID, stats)
 			<div class="flex min-w-0 flex-1 flex-col">
 				@chatHeader(conversation)
 				@transcript(messages, conversation.ID)
@@ -65,8 +71,13 @@ templ Page(user users.User, conversation conversations.Conversation, messages []
 }
 
 // Empty is what a user with no conversations sees.
-templ Empty(user users.User, list []conversations.Conversation) {
+templ Empty(user users.User, list []conversations.Conversation, stats CoachStats) {
 	@layout.App("Coach", user, layout.BuildNav("/app/chat")) {
+		if len(list) > 0 {
+			<div class="border-border border-b px-3 py-2 lg:hidden">
+				@coachKpiStrip(stats)
+			</div>
+		}
 		<div class="flex h-full flex-col items-center justify-center gap-4 p-8 text-center">
 			@ui.MonoLabel("Day 1 · no sessions yet")
 			<h1 class="text-xl font-medium tracking-tight">Talk to your coach</h1>
@@ -119,14 +130,15 @@ templ chatHeader(c conversations.Conversation) {
 	</header>
 }
 
-templ threadList(list []conversations.Conversation, current uuid.UUID) {
+templ threadList(list []conversations.Conversation, current uuid.UUID, stats CoachStats) {
 	// Hidden off-canvas on small screens and pinned open from lg up, so one
 	// piece of markup serves both rather than two that can drift.
 	<aside
 		class="border-border bg-card absolute inset-y-0 left-0 z-30 flex w-64 shrink-0 flex-col border-r transition-transform lg:static lg:z-auto lg:translate-x-0"
 		:class="threads ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'"
 	>
-		<div class="border-border border-b p-3">
+		<div class="border-border space-y-3 border-b p-3">
+			@coachKpiStrip(stats)
 			<form method="post" action="/app/chat">
 				@ui.CSRFInput()
 				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, FullWidth: true, Size: button.SizeSm}) {
@@ -147,6 +159,13 @@ templ threadList(list []conversations.Conversation, current uuid.UUID) {
 		@click="threads = false"
 		class="fixed inset-0 z-20 bg-black/50 lg:hidden"
 	></div>
+}
+
+templ coachKpiStrip(stats CoachStats) {
+	@ui.KpiStrip() {
+		@ui.KpiCell(ui.KpiCellProps{Label: "Threads", Value: fmt.Sprintf("%d", stats.ThreadCount)})
+		@ui.KpiCell(ui.KpiCellProps{Label: "Messages", Value: fmt.Sprintf("%d", stats.MessagesThisWeek)})
+	}
 }
 
 templ threadLink(c conversations.Conversation, active bool) {

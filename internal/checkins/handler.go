@@ -148,6 +148,17 @@ func (h *Handler) renderForm(w http.ResponseWriter, r *http.Request, user users.
 	}
 	active, _ := h.goals.ListActive(r.Context(), user.ID)
 
+	chartList, err := h.svc.RecentForContext(r.Context(), user)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	inst, err := buildInstruments(user, chartList)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+
 	if isHTMX(r) {
 		render(w, r, status, checkinpages.Panel(list, form, active))
 		return
@@ -157,7 +168,7 @@ func (h *Handler) renderForm(w http.ResponseWriter, r *http.Request, user users.
 	// Only the post-redirect landing carries saved=1. A rejected POST has no
 	// query string, so the confirmation cannot appear above an error.
 	saved := r.URL.Query().Get("saved") == "1"
-	render(w, r, status, checkinpages.IndexPage(user, list, form, active, streak, saved))
+	render(w, r, status, checkinpages.IndexPage(user, list, form, active, streak, saved, inst))
 }
 
 // renderSaved confirms a stored check-in in place for htmx, and falls back to

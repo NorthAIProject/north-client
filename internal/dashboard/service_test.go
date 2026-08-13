@@ -3,18 +3,24 @@ package dashboard_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/NorthAIProject/north-client/internal/activity"
+	"github.com/NorthAIProject/north-client/internal/biometrics"
 	"github.com/NorthAIProject/north-client/internal/checkins"
 	"github.com/NorthAIProject/north-client/internal/conversations"
 	"github.com/NorthAIProject/north-client/internal/dashboard"
 	"github.com/NorthAIProject/north-client/internal/goals"
+	"github.com/NorthAIProject/north-client/internal/habits"
+	"github.com/NorthAIProject/north-client/internal/hydration"
 	"github.com/NorthAIProject/north-client/internal/memories"
 	"github.com/NorthAIProject/north-client/internal/memories/extract"
 	"github.com/NorthAIProject/north-client/internal/memories/memory"
 	"github.com/NorthAIProject/north-client/internal/shared/database/testdb"
+	"github.com/NorthAIProject/north-client/internal/sleep"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/workouts"
 )
@@ -36,12 +42,17 @@ func seedUser(t *testing.T, pool *pgxpool.Pool, email string) users.User {
 func newDashboard(t *testing.T, pool *pgxpool.Pool) *dashboard.Service {
 	t.Helper()
 	goalSvc := goals.NewService(goals.NewRepository(pool))
+	biometricSvc := biometrics.NewService(biometrics.NewRepository(pool))
 	return dashboard.NewService(dashboard.Options{
 		CheckIns:      checkins.NewService(checkins.NewRepository(pool), goalSvc),
 		Goals:         goalSvc,
 		Conversations: conversations.NewService(conversations.NewRepository(pool)),
 		Workouts:      workouts.NewService(workouts.Options{Repository: workouts.NewRepository(pool)}),
 		Memories:      memories.NewService(memories.NewRepository(pool)),
+		Habits:        habits.NewService(habits.NewRepository(pool)),
+		Hydration:     hydration.NewService(hydration.NewRepository(pool)),
+		Sleep:         sleep.NewService(sleep.NewRepository(pool)),
+		Activity:      activity.NewService(activity.NewRepository(pool), biometricSvc),
 	})
 }
 
@@ -72,6 +83,24 @@ func TestLoadEmptyNewUser(t *testing.T) {
 	}
 	if snap.NextSession != nil || snap.PlanID != uuid.Nil {
 		t.Fatal("expected no plan")
+	}
+	if snap.CheckIns.HasData() {
+		t.Fatal("expected empty check-in series")
+	}
+	if len(snap.CheckIns.Days) != 14 {
+		t.Fatalf("check-in window = %d want 14", len(snap.CheckIns.Days))
+	}
+	if snap.Habits.HasHabits {
+		t.Fatal("expected no habits")
+	}
+	if snap.Hydration.HasData() {
+		t.Fatal("expected empty hydration")
+	}
+	if len(snap.Hydration.Days) != 7 {
+		t.Fatalf("hydration window = %d want 7", len(snap.Hydration.Days))
+	}
+	if snap.Sleep.Logged {
+		t.Fatal("expected no sleep")
 	}
 }
 
@@ -204,5 +233,62 @@ func TestLoadAssemblesToday(t *testing.T) {
 	}
 	if other.PlanID == stored.ID {
 		t.Fatal("stranger saw the owner's plan")
+	}
+}
+
+func TestLoadCheckInAndHydrationSeries(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	user := seedUser(t, pool, "series@north.test")
+	checkinRepo := checkins.NewRepository(pool)
+	hydrationSvc := hydration.NewService(hydration.NewRepository(pool))
+	svc := newDashboard(t, pool)
+
+	today := checkins.LocalDate(user, time.Now())
+	for i := range 14 {
+		mood := (i % 5) + 1
+		if _, err := checkinRepo.Upsert(ctx, user.ID, checkins.Write{
+			LocalDate: today.AddDate(0, 0, -i),
+			Mood:      mood,
+			Energy:    mood,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if _, err := hydrationSvc.Log(ctx, user, hydration.Glass); err != nil {
+		t.Fatal(err)
+	}
+
+	snap, err := svc.Load(ctx, user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snap.CheckIns.Days) != 14 {
+		t.Fatalf("check-in days = %d", len(snap.CheckIns.Days))
+	}
+	withMood := 0
+	for _, d := range snap.CheckIns.Days {
+		if d.Mood > 0 {
+			withMood++
+		}
+	}
+	if withMood != 14 {
+		t.Fatalf("mood points = %d want 14", withMood)
+	}
+	if len(snap.Hydration.Days) != 7 {
+		t.Fatalf("hydration days = %d", len(snap.Hydration.Days))
+	}
+	zeros := 0
+	for _, d := range snap.Hydration.Days {
+		if d.TotalML == 0 {
+			zeros++
+		}
+	}
+	if zeros != 6 {
+		t.Fatalf("hydration zero-fill = %d want 6", zeros)
+	}
+	if snap.Hydration.TodayML != hydration.Glass {
+		t.Fatalf("today ml = %d", snap.Hydration.TodayML)
 	}
 }

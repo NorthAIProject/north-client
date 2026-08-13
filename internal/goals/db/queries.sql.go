@@ -44,6 +44,25 @@ func (q *Queries) AddGoalUpdate(ctx context.Context, arg AddGoalUpdateParams) (G
 	return i, err
 }
 
+const countOverdueMilestones = `-- name: CountOverdueMilestones :one
+SELECT COUNT(*)::int
+FROM goal_milestones m
+INNER JOIN goals g ON g.id = m.goal_id AND g.user_id = m.user_id
+WHERE m.user_id = $1
+  AND g.status = 'active'
+  AND m.status = 'open'
+  AND m.target_date IS NOT NULL
+  AND m.target_date < CURRENT_DATE
+`
+
+// Open checkpoints on active goals whose date has passed.
+func (q *Queries) CountOverdueMilestones(ctx context.Context, userID uuid.UUID) (int32, error) {
+	row := q.db.QueryRow(ctx, countOverdueMilestones, userID)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const createGoal = `-- name: CreateGoal :one
 INSERT INTO goals (user_id, title, motivation, success, category, target_date)
 VALUES ($1, $2, $3, $4, $5, $6)

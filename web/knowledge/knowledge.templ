@@ -55,19 +55,29 @@ type View struct {
 	// otherwise.
 	LastRun document.IndexRun
 	HasRun  bool
+
+	Instruments Instruments
+}
+
+// Instruments holds chart configs for the knowledge index header.
+type Instruments struct {
+	IndexHealthDonut map[string]any
+	HasDonut         bool
 }
 
 templ IndexPage(user users.User, view View, form NoteForm) {
 	@layout.App("Knowledge", user, layout.BuildNav("/app/knowledge")) {
-		<div class="mx-auto w-full max-w-2xl space-y-8 p-6 md:p-8">
+		<div class="mx-auto w-full max-w-6xl space-y-6 p-6 md:p-8">
 			<header>
-				<p class="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">What North has read</p>
+				@ui.MonoLabel("What North has read")
 				<h1 class="mt-2 text-2xl font-medium tracking-tight">Knowledge</h1>
 				<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
 					Notes and files the coach can draw on. It only quotes what it has read here, and it
 					says where each answer came from.
 				</p>
 			</header>
+			@kpiStrip(view)
+			@indexHealthDonut(view)
 			@status(view)
 			@attention(view)
 			@searchBox()
@@ -87,20 +97,53 @@ templ IndexPage(user users.User, view View, form NoteForm) {
 		</div>
 		@textarea.Script()
 		@label.Script()
+		@ui.ChartScripts()
 	}
 }
 
-// status is the honest summary: not just what worked, but what is waiting and
-// what failed.
+templ kpiStrip(view View) {
+	@ui.KpiStrip() {
+		@kpiCell("Documents read", fmt.Sprint(view.Counts.Ready), "", "")
+		@kpiCell("Passages", fmt.Sprint(view.Counts.Chunks), "", "")
+		@kpiCell("Waiting", fmt.Sprint(view.Counts.Pending), "", "")
+		@kpiCell("Unreadable", fmt.Sprint(view.Counts.Failed), "", "")
+		@kpiCell("Embedding gap", embeddingGapKPI(view), "", "")
+	}
+}
+
+templ kpiCell(label, value, href, cta string) {
+	@ui.KpiCell(ui.KpiCellProps{Label: label, Value: value, Href: href, CTA: cta})
+}
+
+func embeddingGapKPI(view View) string {
+	if view.EmbeddingGap <= 0 {
+		return "—"
+	}
+	return fmt.Sprint(view.EmbeddingGap)
+}
+
+templ indexHealthDonut(view View) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Title() {
+				Index health
+			}
+		}
+		@card.Content() {
+			if view.Instruments.HasDonut && len(view.Instruments.IndexHealthDonut) > 0 {
+				@templ.JSONScript("knowledge-index-health-option", view.Instruments.IndexHealthDonut)
+				@ui.EChartsMount("knowledge-index-health", "knowledge-index-health-option", "min-h-48 w-full max-w-sm mx-auto")
+			} else {
+				<p class="text-muted-foreground text-sm">No documents indexed yet.</p>
+			}
+		}
+	}
+}
+
+// status keeps reindex actions and the last run summary.
 templ status(view View) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 		@card.Content(card.ContentProps{Class: "space-y-4 py-4"}) {
-			<div class="grid grid-cols-2 gap-4 sm:grid-cols-4">
-				@stat("Documents read", fmt.Sprint(view.Counts.Ready))
-				@stat("Passages", fmt.Sprint(view.Counts.Chunks))
-				@stat("Waiting", fmt.Sprint(view.Counts.Pending))
-				@stat("Unreadable", fmt.Sprint(view.Counts.Failed))
-			</div>
 			if view.HasRun {
 				<p class="text-muted-foreground text-xs">
 					{ runSummary(view.LastRun) }
@@ -188,13 +231,6 @@ templ problemBadge(kind string) {
 				read an older way
 			}
 	}
-}
-
-templ stat(label, value string) {
-	<div>
-		<p class="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">{ label }</p>
-		<p class="mt-1 text-xl font-medium tabular-nums">{ value }</p>
-	</div>
 }
 
 templ addNote(f NoteForm) {
