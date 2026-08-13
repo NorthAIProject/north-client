@@ -54,16 +54,6 @@ import (
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
-// version is what the MCP handshake advertises.
-//
-// It was never set, so every client saw the handler's "0.1.0" fallback no
-// matter what had shipped — which makes the field worse than absent, because a
-// client reading it is being told something false. Bumped here because the
-// published contract changed: every tool now declares whether it writes, and
-// results carry structured content as well as text. The contract this names is
-// internal/mcpserver/testdata/tools.golden.json.
-const version = "0.2.0"
-
 const shutdownTimeout = 10 * time.Second
 
 func main() {
@@ -123,11 +113,17 @@ func run() error {
 		return err
 	}
 
+	services := buildServices(cfg, pool, registry, embedder)
+
 	handler := mcpserver.NewHandler(mcpserver.Config{
-		Services: buildServices(cfg, pool, registry, embedder),
-		Token:    token,
-		UserID:   userID,
-		Log:      log,
+		Services: services,
+
+		// One token, one account, straight from the environment. This binary is
+		// the single-user tailnet deployment; the multi-user endpoint lives on
+		// cmd/web and authenticates against agent_connections instead.
+		Auth: mcpserver.StaticAuthenticator{Token: token, UserID: userID, Users: services.Users},
+
+		Log: log,
 
 		// Empty unless MCP_ALLOWED_ORIGINS says otherwise, which rejects every
 		// browser. Real MCP clients send no Origin at all; a request that does
@@ -135,7 +131,7 @@ func run() error {
 		AllowedOrigins:    cfg.MCPAllowedOrigins,
 		RequestsPerMinute: cfg.MCPRequestsPerMinute,
 
-		Version: version,
+		Version: mcpserver.Version,
 	})
 
 	srv := &http.Server{

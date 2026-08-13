@@ -28,6 +28,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/checkins"
 	"github.com/NorthAIProject/north-client/internal/coach"
 	"github.com/NorthAIProject/north-client/internal/config"
+	"github.com/NorthAIProject/north-client/internal/connections"
 	"github.com/NorthAIProject/north-client/internal/conversations"
 	"github.com/NorthAIProject/north-client/internal/documents"
 	"github.com/NorthAIProject/north-client/internal/exercises"
@@ -38,6 +39,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/habits"
 	"github.com/NorthAIProject/north-client/internal/hydration"
 	"github.com/NorthAIProject/north-client/internal/jobs"
+	"github.com/NorthAIProject/north-client/internal/mcpserver"
 	"github.com/NorthAIProject/north-client/internal/meals"
 	"github.com/NorthAIProject/north-client/internal/media"
 	"github.com/NorthAIProject/north-client/internal/memories"
@@ -284,7 +286,13 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, stora
 		Recommend:   mealRecommendSvc,
 	})
 
-	settingsHandler := settings.NewHandler(userSvc, preferencesSvc, mealDietSvc)
+	// Personal access tokens for outside agents. The base URL comes from
+	// configuration and not from the request, because the setup instructions
+	// this renders carry a live credential and a host-derived URL would let a
+	// visitor decide where it is sent.
+	connectionSvc := connections.NewService(connections.NewRepository(pool), userSvc, cfg.BaseURL)
+
+	settingsHandler := settings.NewHandler(userSvc, preferencesSvc, mealDietSvc, connectionSvc)
 
 	mindSvc := mind.NewService(mind.NewRepository(pool), checkinSvc)
 	mindHandler := mind.NewHandler(mindSvc)
@@ -405,7 +413,46 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, stora
 		fitnessHandler.Routes(r)
 	})
 
-	return r
+	// /mcp is deliberately outside the chi router.
+	//
+	// Two of that router's global middlewares are wrong for this endpoint. CSRF
+	// would reject every call: an MCP client presents a bearer token and has no
+	// cookie or form field to double-submit, and the protection CSRF provides
+	// is meaningless for a credential a browser never attaches automatically.
+	// LoadUser would resolve a session that has nothing to do with the token.
+	//
+	// So the MCP endpoint authenticates itself, from the token alone, and this
+	// mux keeps the two worlds from sharing middleware neither wants.
+	mcpEndpoint := mcpserver.Endpoint(mcpserver.Config{
+		Services: mcpserver.Services{
+			Users:     userSvc,
+			Goals:     goalSvc,
+			CheckIns:  checkinSvc,
+			Memories:  memorySvc,
+			Documents: documentSvc,
+			Activity:  activitySvc,
+			Coach:     coachSvc,
+			Agent:     agentTools,
+		},
+
+		// Each token resolves to its own owner, which is what makes this safe to
+		// serve publicly at all. Compare cmd/mcp-server, where one token maps to
+		// one configured account and the endpoint belongs on a tailnet.
+		Auth: connectionSvc,
+
+		// Empty unless MCP_ALLOWED_ORIGINS says otherwise, which rejects every
+		// browser. Real MCP clients send no Origin; a request that does is a web
+		// page, and a web page is not the intended caller.
+		AllowedOrigins:    cfg.MCPAllowedOrigins,
+		RequestsPerMinute: cfg.MCPRequestsPerMinute,
+		Version:           mcpserver.Version,
+	})
+
+	mux := http.NewServeMux()
+	mux.Handle("/mcp", mcpEndpoint)
+	mux.Handle("/", r)
+
+	return mux
 }
 
 // healthz reports whether the process can serve traffic. It checks the database

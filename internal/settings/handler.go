@@ -1,7 +1,7 @@
-// Package settings composes users.Service, preferences.Service, and
-// meals.DietPreferenceService into one account settings page. It owns no
-// repository of its own — every field on the page already has a home in one
-// of those three services.
+// Package settings composes users.Service, preferences.Service,
+// meals.DietPreferenceService, and connections.Service into the account
+// settings pages. It owns no repository of its own — every field on these
+// pages already has a home in one of those services.
 package settings
 
 import (
@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/connections"
 	"github.com/NorthAIProject/north-client/internal/meals"
 	"github.com/NorthAIProject/north-client/internal/preferences"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
@@ -25,10 +26,11 @@ type Handler struct {
 	users       *users.Service
 	preferences *preferences.Service
 	diets       *meals.DietPreferenceService
+	connections *connections.Service
 }
 
-func NewHandler(u *users.Service, p *preferences.Service, d *meals.DietPreferenceService) *Handler {
-	return &Handler{users: u, preferences: p, diets: d}
+func NewHandler(u *users.Service, p *preferences.Service, d *meals.DietPreferenceService, c *connections.Service) *Handler {
+	return &Handler{users: u, preferences: p, diets: d, connections: c}
 }
 
 func (h *Handler) Routes(r chi.Router) {
@@ -36,6 +38,10 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Post("/settings/profile", h.updateProfile)
 	r.Post("/settings/preferences", h.updatePreferences)
 	r.Post("/settings/diets", h.updateDiets)
+
+	r.Get("/settings/connections", h.showConnections)
+	r.Post("/settings/connections", h.createConnection)
+	r.Post("/settings/connections/{id}/revoke", h.revokeConnection)
 }
 
 func (h *Handler) show(w http.ResponseWriter, r *http.Request) {
@@ -125,6 +131,84 @@ func (h *Handler) updateDiets(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Redirect(w, r, "/app/settings", http.StatusSeeOther)
+}
+
+func (h *Handler) showConnections(w http.ResponseWriter, r *http.Request) {
+	h.renderConnections(w, r, settingspages.ConnectForm{Kind: connections.ClientClaudeCode}, nil)
+}
+
+// createConnection issues a token and renders it.
+//
+// The only handler on this page that does not redirect, and it cannot: the
+// plaintext token exists once, in this response. A 303 would send the browser
+// to a page that has no way to learn what the token was.
+func (h *Handler) createConnection(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+
+	if err := r.ParseForm(); err != nil {
+		h.fail(w, r, apperr.ErrValidation)
+		return
+	}
+
+	form := settingspages.ConnectForm{
+		Name: strings.TrimSpace(r.PostFormValue("name")),
+		Kind: connections.ClientKind(r.PostFormValue("client_kind")),
+	}
+
+	issued, err := h.connections.Issue(r.Context(), user.ID, form.Name, form.Kind)
+	if err != nil {
+		var fieldErrs apperr.FieldErrors
+		if apperr.As(err, &fieldErrs) {
+			form.Errors = fieldErrs.Messages()
+			h.renderConnections(w, r, form, nil)
+			return
+		}
+		h.fail(w, r, err)
+		return
+	}
+
+	h.renderConnections(w, r, settingspages.ConnectForm{Kind: form.Kind}, &issued)
+}
+
+func (h *Handler) revokeConnection(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		h.fail(w, r, apperr.ErrNotFound)
+		return
+	}
+
+	if err := h.connections.Revoke(r.Context(), id, user.ID); err != nil {
+		h.fail(w, r, err)
+		return
+	}
+
+	http.Redirect(w, r, "/app/settings/connections", http.StatusSeeOther)
+}
+
+// renderConnections shows the connections page. issued is non-nil only on the
+// response that created a token; the setup instructions are built here rather
+// than stored, because they carry that token.
+func (h *Handler) renderConnections(w http.ResponseWriter, r *http.Request, form settingspages.ConnectForm, issued *connections.Issued) {
+	user := auth.MustUser(r.Context())
+	ctx := r.Context()
+
+	list, err := h.connections.List(ctx, user.ID)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+
+	var setup connections.Setup
+	if issued != nil {
+		setup = h.connections.Instructions(issued.Kind, issued.Token)
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := settingspages.ConnectionsPage(user, list, form, issued, setup).Render(ctx, w); err != nil {
+		middleware.FromContext(ctx).Error("render connections", slog.Any("error", err))
+	}
 }
 
 // render loads whatever the caller didn't already have (preferences, diets)

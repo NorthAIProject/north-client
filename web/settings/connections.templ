@@ -1,0 +1,253 @@
+package settings
+
+import (
+	"github.com/NorthAIProject/north-client/internal/connections"
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/copybutton"
+	"github.com/NorthAIProject/north-client/web/shared/ui/dialog"
+	"github.com/NorthAIProject/north-client/web/shared/ui/form"
+	"github.com/NorthAIProject/north-client/web/shared/ui/input"
+	"github.com/NorthAIProject/north-client/web/shared/ui/label"
+	"github.com/NorthAIProject/north-client/web/shared/ui/selectbox"
+)
+
+// ConnectForm carries the "connect an agent" fields.
+type ConnectForm struct {
+	Name   string
+	Kind   connections.ClientKind
+	Errors map[string]string
+}
+
+func (f ConnectForm) fieldError(name string) string { return f.Errors[name] }
+
+// ConnectionsPage lists the agents connected to this account.
+//
+// issued is non-nil for exactly one response: the one that created a token.
+// The token is not stored, so this render is the only place it can ever be
+// shown, and a reload of this page will not show it again.
+templ ConnectionsPage(user users.User, list []connections.Connection, f ConnectForm, issued *connections.Issued, setup connections.Setup) {
+	@layout.App("Agent connections", user, layout.BuildNav("/app/settings")) {
+		<div class="mx-auto w-full max-w-2xl space-y-6 p-6 md:p-8">
+			<header>
+				@ui.MonoLabel("Settings")
+				<h1 class="mt-2 text-2xl font-medium tracking-tight">Agent connections</h1>
+				<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
+					Let an agent you already use — Claude Code, Codex, Hermes — read your goals,
+					log check-ins, and ask your coach. Each connection gets its own key, so you
+					can turn one off without touching the others.
+				</p>
+				<a href="/app/settings" class="text-muted-foreground hover:text-foreground mt-3 inline-block text-sm underline underline-offset-4">
+					Back to account settings
+				</a>
+			</header>
+			if issued != nil {
+				@issuedCard(*issued, setup)
+			}
+			@connectionListCard(list)
+			@connectCard(f)
+		</div>
+		@label.Script()
+		@selectbox.Script()
+		@dialog.Script()
+		@copybutton.Script()
+	}
+}
+
+// issuedCard shows a new token once.
+//
+// Styled as the loudest thing on the page on purpose: it is the only moment
+// this value exists outside the user's own machine, and somebody who scrolls
+// past it has to revoke and start again.
+templ issuedCard(issued connections.Issued, setup connections.Setup) {
+	@card.Card(card.Props{Class: "border-signal/40 bg-signal/5"}) {
+		@card.Header() {
+			@card.Title() {
+				{ issued.Name } is ready
+			}
+			@card.Description() {
+				Copy this now. It is not stored, so it cannot be shown again — if you lose it,
+				revoke this connection and make another.
+			}
+		}
+		@card.Content() {
+			<div class="space-y-5">
+				@copyBlock("Key", "issued-token", "text", issued.Token)
+				@copyBlock(setup.ConfigLabel, "issued-config", setup.ConfigLang, setup.Config)
+				<div>
+					<p class="text-muted-foreground mb-2 text-sm leading-relaxed">
+						Or paste this into the agent itself and let it do the setup:
+					</p>
+					@copyBlock("Setup prompt", "issued-prompt", "text", setup.Prompt)
+				</div>
+			</div>
+		}
+	}
+}
+
+// copyBlock is a labelled, scrollable, copyable snippet.
+//
+// Hand-rolled rather than assembled from a component: the library has a copy
+// button but no code block for it to target, and this is the markup that gives
+// it something with an ID to read.
+templ copyBlock(heading, id, lang, body string) {
+	<div>
+		<div class="mb-1.5 flex items-center justify-between gap-2">
+			<span class="text-muted-foreground font-mono text-xs tracking-wide uppercase">{ heading }</span>
+			@copybutton.CopyButton(copybutton.Props{TargetID: id})
+		</div>
+		<pre
+			id={ id }
+			data-language={ lang }
+			class="border-hairline bg-background overflow-x-auto rounded-lg border p-3 font-mono text-xs leading-relaxed break-words whitespace-pre-wrap"
+		>{ body }</pre>
+	</div>
+}
+
+templ connectionListCard(list []connections.Connection) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Title() {
+				Connected agents
+			}
+			@card.Description() {
+				Every one of these can read and write your coaching data. Revoke anything you
+				do not recognise.
+			}
+		}
+		@card.Content() {
+			if len(list) == 0 {
+				<p class="text-muted-foreground text-sm leading-relaxed">
+					Nothing connected yet.
+				</p>
+			} else {
+				<ul class="divide-hairline divide-y">
+					for _, conn := range list {
+						@connectionRow(conn)
+					}
+				</ul>
+			}
+		}
+	}
+}
+
+templ connectionRow(conn connections.Connection) {
+	<li class="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
+		<div class="min-w-0">
+			<p class="truncate text-sm font-medium">{ conn.Name }</p>
+			<p class="text-muted-foreground mt-0.5 font-mono text-xs">
+				{ conn.Kind.Label() } · { conn.TokenPrefix }…
+			</p>
+			<p class="text-muted-foreground mt-0.5 text-xs">
+				Added { conn.CreatedAt.Format("2 Jan 2006") }
+				if conn.Used() {
+					· last used { conn.LastUsedAt.Format("2 Jan, 15:04") }
+				} else {
+					· never used
+				}
+			</p>
+		</div>
+		@revokeDialog(conn)
+	</li>
+}
+
+// revokeDialog asks before cutting an agent off. Revoking is instant and
+// cannot be undone — the token is gone, not paused — so the confirmation is
+// worth the extra click.
+templ revokeDialog(conn connections.Connection) {
+	{{ dialogID := "revoke-" + conn.ID.String() }}
+	@dialog.Trigger(dialog.TriggerProps{For: dialogID}) {
+		@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Type: button.TypeButton}) {
+			Revoke
+		}
+	}
+	@dialog.Dialog(dialog.Props{ID: dialogID}) {
+		@dialog.Content() {
+			@dialog.Header() {
+				@dialog.Title() {
+					Revoke { conn.Name }?
+				}
+				@dialog.Description() {
+					That agent stops being able to read or change anything straight away. The
+					key cannot be turned back on; you would connect the agent again with a new one.
+				}
+			}
+			@dialog.Footer() {
+				@dialog.Close() {
+					@button.Button(button.Props{Variant: button.VariantOutline, Type: button.TypeButton}) {
+						Keep it
+					}
+				}
+				<form method="post" action={ templ.SafeURL("/app/settings/connections/" + conn.ID.String() + "/revoke") }>
+					@ui.CSRFInput()
+					@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantDestructive}) {
+						Revoke
+					}
+				</form>
+			}
+		}
+	}
+}
+
+templ connectCard(f ConnectForm) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Title() {
+				Connect an agent
+			}
+			@card.Description() {
+				Name it after the machine it will live on, so you know which one to revoke later.
+			}
+		}
+		@card.Content() {
+			<form method="post" action="/app/settings/connections" class="space-y-4">
+				@ui.CSRFInput()
+				@form.Item() {
+					@label.Label(label.Props{For: "name"}) {
+						Name
+					}
+					@input.Input(input.Props{
+						ID: "name", Name: "name", Value: f.Name, Required: true,
+						Placeholder: "Laptop", HasError: f.fieldError("name") != "",
+					})
+					if f.fieldError("name") != "" {
+						@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+							{ f.fieldError("name") }
+						}
+					}
+				}
+				@form.Item() {
+					@label.Label(label.Props{For: "client_kind"}) {
+						Which client
+					}
+					@selectbox.SelectBox() {
+						@selectbox.Trigger(selectbox.TriggerProps{ID: "client_kind", Name: "client_kind"}) {
+							@selectbox.Value(selectbox.ValueProps{Placeholder: "Claude Code"})
+						}
+						@selectbox.Content() {
+							for _, kind := range connections.ClientKinds {
+								@selectbox.Item(selectbox.ItemProps{Value: string(kind), Selected: f.Kind == kind}) {
+									{ kind.Label() }
+								}
+							}
+						}
+					}
+					if f.fieldError("client_kind") != "" {
+						@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+							{ f.fieldError("client_kind") }
+						}
+					}
+					@form.Description() {
+						Only decides which setup snippet you get. A key works in any MCP client.
+					}
+				}
+				@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90"}) {
+					Create key
+				}
+			</form>
+		}
+	}
+}

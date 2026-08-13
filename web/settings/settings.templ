@@ -67,6 +67,7 @@ templ Page(user users.User, profileForm ProfileForm, prefsForm PreferencesForm, 
 			@profileCard(profileForm)
 			@preferencesCard(prefsForm)
 			@dietsCard(allDiets, selectedDietIDs)
+			@connectionsCard()
 		</div>
 		@label.Script()
 		@selectbox.Script()
@@ -240,6 +241,27 @@ templ dietsCard(allDiets []meals.Diet, selected map[uuid.UUID]bool) {
 					Save preferences
 				}
 			</form>
+		}
+	}
+}
+
+// connectionsCard is a doorway, not a section. Managing agent keys needs a
+// list, a one-time reveal, and a destructive action, which is more than this
+// page should carry — so it links to a page of its own.
+templ connectionsCard() {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Title() {
+				Agent connections
+			}
+			@card.Description() {
+				Let Claude Code, Codex, or Hermes work with your goals, check-ins, and coach.
+			}
+		}
+		@card.Content() {
+			@button.Button(button.Props{Href: "/app/settings/connections", Variant: button.VariantOutline}) {
+				Manage connections
+			}
 		}
 	}
 }
