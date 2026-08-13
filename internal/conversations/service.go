@@ -125,6 +125,10 @@ func (s *Service) SetTitle(ctx context.Context, id uuid.UUID, title string) erro
 	return s.repo.SetTitle(ctx, id, title)
 }
 
+func (s *Service) CountMessages(ctx context.Context, conversationID uuid.UUID) (int, error) {
+	return s.repo.CountMessages(ctx, conversationID)
+}
+
 // NeedsTitle reports whether a conversation is still unnamed.
 func (s *Service) NeedsTitle(ctx context.Context, c Conversation) bool {
 	return strings.TrimSpace(c.Title) == ""

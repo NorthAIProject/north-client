@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -49,7 +50,12 @@ func (h *Handler) index(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	render(w, r, http.StatusOK, chatpages.Empty(user, nil))
+	stats, err := buildCoachStats(r.Context(), h.svc.Conversations(), nil, time.Now())
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	render(w, r, http.StatusOK, chatpages.Empty(user, nil, stats))
 }
 
 func (h *Handler) startConversation(w http.ResponseWriter, r *http.Request) {
@@ -73,7 +79,12 @@ func (h *Handler) show(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	render(w, r, http.StatusOK, chatpages.Page(user, conversation, messages, list))
+	stats, err := buildCoachStats(r.Context(), h.svc.Conversations(), list, time.Now())
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	render(w, r, http.StatusOK, chatpages.Page(user, conversation, messages, list, stats))
 }
 
 // sendMessage stores the message and returns the two bubbles that HTMX appends:

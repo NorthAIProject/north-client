@@ -274,16 +274,23 @@ func (h *Handler) renderIndex(w http.ResponseWriter, r *http.Request, status int
 	}
 	view.Documents = docs
 
-	if counts, err := h.svc.Counts(r.Context(), user.ID); err == nil {
+	if counts, countsErr := h.svc.Counts(r.Context(), user.ID); countsErr == nil {
 		view.Counts = counts
 	}
-	if problems, err := h.svc.Attention(r.Context(), user.ID); err == nil {
+	if problems, problemsErr := h.svc.Attention(r.Context(), user.ID); problemsErr == nil {
 		view.Problems = problems
 	}
 	view.EmbeddingGap = h.svc.EmbeddingGap(r.Context(), user.ID)
-	if run, err := h.svc.LatestRun(r.Context(), user.ID); err == nil {
+	if run, runErr := h.svc.LatestRun(r.Context(), user.ID); runErr == nil {
 		view.LastRun, view.HasRun = run, true
 	}
+
+	inst, err := buildInstruments(view.Counts)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	view.Instruments = inst
 
 	render(w, r, status, knowledgepages.IndexPage(user, view, form))
 }

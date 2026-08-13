@@ -281,6 +281,14 @@ func (r *Repository) Milestones(ctx context.Context, goalID, userID uuid.UUID) (
 	return out, nil
 }
 
+func (r *Repository) CountOverdueMilestones(ctx context.Context, userID uuid.UUID) (int, error) {
+	n, err := r.q.CountOverdueMilestones(ctx, userID)
+	if err != nil {
+		return 0, apperr.Wrap(err, "count overdue milestones")
+	}
+	return int(n), nil
+}
+
 func goalsFromDB(rows []goalsdb.Goal) []Goal {
 	out := make([]Goal, 0, len(rows))
 	for _, row := range rows {

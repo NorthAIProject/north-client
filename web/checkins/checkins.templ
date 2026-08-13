@@ -1,6 +1,7 @@
 package checkins
 
 import (
+	"fmt"
 	"strconv"
 
 	"github.com/NorthAIProject/north-client/internal/checkins/checkin"
@@ -10,6 +11,7 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
 	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/chart"
 	"github.com/NorthAIProject/north-client/web/shared/ui/form"
 	"github.com/NorthAIProject/north-client/web/shared/ui/label"
 	"github.com/NorthAIProject/north-client/web/shared/ui/selectbox"
@@ -20,6 +22,16 @@ import (
 // template both need it, and a typo in either would silently append a second
 // copy of the form to the page instead of replacing the first.
 const PanelID = "checkin-panel"
+
+// Instruments holds chart configs for the check-ins page header.
+type Instruments struct {
+	MoodChart    chart.Props
+	Heatmap      map[string]any
+	HasData      bool
+	AvgMood      float64
+	AvgEnergy    float64
+	CheckInCount int
+}
 
 // CheckInForm carries today's reflection back on validation failure.
 type CheckInForm struct {
@@ -88,34 +100,121 @@ func FormFor(c checkin.CheckIn) CheckInForm {
 	return f
 }
 
-templ IndexPage(user users.User, list []checkin.CheckIn, form CheckInForm, activeGoals []goal.Goal, streak int, saved bool) {
+templ IndexPage(user users.User, list []checkin.CheckIn, form CheckInForm, activeGoals []goal.Goal, streak int, saved bool, inst Instruments) {
 	@layout.App("Check-ins", user, layout.BuildNav("/app/check-ins")) {
-		<div class="mx-auto w-full max-w-2xl space-y-8 p-6 md:p-8">
-			@header(streak)
+		<div class="mx-auto w-full max-w-6xl space-y-8 p-6 md:p-8">
+			@header()
 			if saved {
 				<p class="rounded-lg border border-signal/30 bg-signal/10 px-4 py-3 text-sm">Saved for today.</p>
 			}
+			@kpiStrip(streak, inst)
+			@instrumentsRow(inst)
 			@Panel(list, form, activeGoals)
 		</div>
 		@textarea.Script()
 		@label.Script()
 		@selectbox.Script()
+		@ui.ChartScripts()
 	}
 }
 
-templ header(streak int) {
+templ header() {
 	<header>
 		<p class="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Daily loop</p>
 		<h1 class="mt-2 text-2xl font-medium tracking-tight">Check-in</h1>
 		<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
 			Thirty seconds. Mood, energy, what went well, what was hard.
 		</p>
-		if streak > 0 {
-			<p class="text-signal mt-3 text-sm font-medium">
-				{ strconv.Itoa(streak) }-day streak
-			</p>
-		}
 	</header>
+}
+
+templ kpiStrip(streak int, inst Instruments) {
+	@ui.KpiStrip() {
+		@kpiCell("Streak", streakKPI(streak), "/app/check-ins", "Check in")
+		@kpiCell("Avg mood", avgMoodKPI(inst), "", "")
+		@kpiCell("Avg energy", avgEnergyKPI(inst), "", "")
+		@kpiCell("Logged", checkInCountKPI(inst), "", "")
+	}
+}
+
+templ kpiCell(label, value, href, cta string) {
+	@ui.KpiCell(ui.KpiCellProps{Label: label, Value: value, Href: href, CTA: cta})
+}
+
+func streakKPI(streak int) string {
+	if streak <= 0 {
+		return "—"
+	}
+	return strconv.Itoa(streak) + " days"
+}
+
+func avgMoodKPI(inst Instruments) string {
+	if inst.CheckInCount <= 0 {
+		return "—"
+	}
+	return fmt.Sprintf("%.1f/5", inst.AvgMood)
+}
+
+func avgEnergyKPI(inst Instruments) string {
+	if inst.CheckInCount <= 0 {
+		return "—"
+	}
+	return fmt.Sprintf("%.1f/5", inst.AvgEnergy)
+}
+
+func checkInCountKPI(inst Instruments) string {
+	if inst.CheckInCount <= 0 {
+		return "—"
+	}
+	return strconv.Itoa(inst.CheckInCount) + " in 14d"
+}
+
+templ instrumentsRow(inst Instruments) {
+	<div class="grid gap-4 lg:grid-cols-2">
+		@moodChart(inst)
+		@moodHeatmap(inst)
+	</div>
+}
+
+templ moodChart(inst Instruments) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Title() {
+				Mood & energy
+			}
+			@card.Description() {
+				Trailing fourteen days.
+			}
+		}
+		@card.Content() {
+			if inst.HasData {
+				@chart.Chart(inst.MoodChart)
+			} else {
+				<p class="text-muted-foreground text-sm">No check-ins yet in this window.</p>
+			}
+		}
+	}
+}
+
+templ moodHeatmap(inst Instruments) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Title() {
+				Mood heatmap
+			}
+			@card.Description() {
+				Days you checked in, coloured by mood.
+			}
+		}
+		@card.Content() {
+			if len(inst.Heatmap) > 0 {
+				@templ.JSONScript("checkins-mood-heatmap-option", inst.Heatmap)
+				@ui.EChartsMount("checkins-mood-heatmap", "checkins-mood-heatmap-option", "border-hairline min-h-32 w-full rounded-md border")
+			} else {
+				<p class="text-muted-foreground text-sm">Check in to see your pattern.</p>
+			}
+		}
+	}
 }
 
 // Panel is the swappable region: the form plus the history it writes into.
@@ -407,6 +506,9 @@ templ historyCard(c checkin.CheckIn) {
 	@card.Card(card.Props{Class: "border-hairline"}) {
 		@card.Content(card.ContentProps{Class: "py-4"}) {
 			<p class="text-sm font-medium">{ c.Label() }</p>
+			<p class="text-muted-foreground mt-1 text-xs tabular-nums">
+				Mood { strconv.Itoa(c.Mood) }/5 · energy { strconv.Itoa(c.Energy) }/5
+			</p>
 			if c.RelatedGoalTitle != "" {
 				<p class="text-muted-foreground mt-1 text-sm">Related: { c.RelatedGoalTitle }</p>
 			}

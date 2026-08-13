@@ -12,6 +12,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/htmx"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	memorypages "github.com/NorthAIProject/north-client/web/memories"
 )
@@ -37,13 +38,35 @@ func (h *Handler) Routes(r chi.Router) {
 }
 
 func (h *Handler) index(w http.ResponseWriter, r *http.Request) {
+	h.respond(w, r, http.StatusOK, memorypages.MemoryForm{}, nil)
+}
+
+func (h *Handler) respond(w http.ResponseWriter, r *http.Request, status int, form memorypages.MemoryForm, edit *memorypages.MemoryForm) {
 	user := auth.MustUser(r.Context())
 	pending, approved, err := h.lists(r.Context(), user.ID)
 	if err != nil {
 		h.fail(w, r, err)
 		return
 	}
-	render(w, r, http.StatusOK, memorypages.IndexPage(user, pending, approved, memorypages.MemoryForm{}, nil))
+
+	inst, err := buildInstruments(pending, approved)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
+
+	var component templ.Component
+	if htmx.IsRequest(r) {
+		component = memorypages.Panel(user, pending, approved, inst, form, edit)
+	} else {
+		component = memorypages.Page(user, pending, approved, inst, form, edit)
+	}
+	if err := component.Render(r.Context(), w); err != nil {
+		middleware.FromContext(r.Context()).Error("render failed", slog.Any("error", err))
+	}
 }
 
 func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
@@ -62,8 +85,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		var fieldErrs apperr.FieldErrors
 		if apperr.As(err, &fieldErrs) {
 			form.Errors = fieldErrs.Messages()
-			pending, approved, _ := h.lists(r.Context(), user.ID)
-			render(w, r, http.StatusUnprocessableEntity, memorypages.IndexPage(user, pending, approved, form, nil))
+			h.respond(w, r, http.StatusUnprocessableEntity, form, nil)
 			return
 		}
 		h.fail(w, r, err)
@@ -95,8 +117,7 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 		var fieldErrs apperr.FieldErrors
 		if apperr.As(err, &fieldErrs) {
 			form.Errors = fieldErrs.Messages()
-			pending, approved, _ := h.lists(r.Context(), user.ID)
-			render(w, r, http.StatusUnprocessableEntity, memorypages.IndexPage(user, pending, approved, memorypages.MemoryForm{}, &form))
+			h.respond(w, r, http.StatusUnprocessableEntity, memorypages.MemoryForm{}, &form)
 			return
 		}
 		h.fail(w, r, err)
@@ -154,6 +175,10 @@ func (h *Handler) statusAction(w http.ResponseWriter, r *http.Request, fn func(c
 		h.fail(w, r, err)
 		return
 	}
+	if htmx.IsRequest(r) {
+		h.respond(w, r, http.StatusOK, memorypages.MemoryForm{}, nil)
+		return
+	}
 	http.Redirect(w, r, "/app/memories", http.StatusSeeOther)
 }
 
@@ -203,13 +228,5 @@ func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 	default:
 		middleware.FromContext(r.Context()).Error("memory request failed", slog.Any("error", err))
 		http.Error(w, "Something went wrong.", http.StatusInternalServerError)
-	}
-}
-
-func render(w http.ResponseWriter, r *http.Request, status int, c templ.Component) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(status)
-	if err := c.Render(r.Context(), w); err != nil {
-		middleware.FromContext(r.Context()).Error("render failed", slog.Any("error", err))
 	}
 }

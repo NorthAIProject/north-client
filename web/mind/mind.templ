@@ -2,6 +2,7 @@ package mind
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/NorthAIProject/north-client/internal/mind/journal"
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -9,11 +10,21 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
 	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/chart"
 	"github.com/NorthAIProject/north-client/web/shared/ui/form"
 	"github.com/NorthAIProject/north-client/web/shared/ui/label"
 	"github.com/NorthAIProject/north-client/web/shared/ui/selectbox"
 	"github.com/NorthAIProject/north-client/web/shared/ui/textarea"
 )
+
+// Instruments holds chart configs for the mind page header.
+type Instruments struct {
+	MoodChart    chart.Props
+	HasData      bool
+	AvgMood      float64
+	AvgEnergy    float64
+	CheckInCount int
+}
 
 // JournalForm carries a submitted (or rejected) journal entry.
 type JournalForm struct {
@@ -31,9 +42,9 @@ func (f JournalForm) fieldError(name string) string {
 
 func (f JournalForm) moodSelected(n int) bool { return f.Mood != nil && *f.Mood == n }
 
-templ IndexPage(user users.User, entries []journal.Entry, avgMood, avgEnergy float64, moodCount int, f JournalForm) {
+templ IndexPage(user users.User, entries []journal.Entry, inst Instruments, f JournalForm) {
 	@layout.App("Mind", user, layout.BuildNav("/app/mind")) {
-		<div class="mx-auto w-full max-w-2xl space-y-6 p-6 md:p-8">
+		<div class="mx-auto w-full max-w-6xl space-y-6 p-6 md:p-8">
 			<header>
 				@ui.MonoLabel("Mind")
 				<h1 class="mt-2 text-2xl font-medium tracking-tight">How you've been</h1>
@@ -41,17 +52,8 @@ templ IndexPage(user users.User, entries []journal.Entry, avgMood, avgEnergy flo
 					A trend from your check-ins, and a place for reflections that don't fit a 1-5 scale.
 				</p>
 			</header>
-			if moodCount > 0 {
-				@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
-					@card.Content() {
-						<p class="text-sm">
-							Average mood <span class="text-signal font-medium">{ fmt.Sprintf("%.1f/5", avgMood) }</span>
-							· average energy <span class="text-signal font-medium">{ fmt.Sprintf("%.1f/5", avgEnergy) }</span>
-							over the last { fmt.Sprintf("%d", moodCount) } check-ins.
-						</p>
-					}
-				}
-			}
+			@kpiStrip(inst)
+			@moodChart(inst)
 			@journalFormCard(f)
 			if len(entries) > 0 {
 				<section class="space-y-3">
@@ -64,6 +66,63 @@ templ IndexPage(user users.User, entries []journal.Entry, avgMood, avgEnergy flo
 		</div>
 		@label.Script()
 		@selectbox.Script()
+		@ui.ChartScripts()
+	}
+}
+
+templ kpiStrip(inst Instruments) {
+	@ui.KpiStrip() {
+		@kpiCell("Avg mood", avgMoodKPI(inst), "/app/check-ins", "Check in")
+		@kpiCell("Avg energy", avgEnergyKPI(inst), "/app/check-ins", "Check in")
+		@kpiCell("Check-ins", checkInCountKPI(inst), "/app/check-ins", "View")
+	}
+}
+
+templ kpiCell(label, value, href, cta string) {
+	@ui.KpiCell(ui.KpiCellProps{Label: label, Value: value, Href: href, CTA: cta})
+}
+
+func avgMoodKPI(inst Instruments) string {
+	if inst.CheckInCount <= 0 {
+		return "—"
+	}
+	return fmt.Sprintf("%.1f/5", inst.AvgMood)
+}
+
+func avgEnergyKPI(inst Instruments) string {
+	if inst.CheckInCount <= 0 {
+		return "—"
+	}
+	return fmt.Sprintf("%.1f/5", inst.AvgEnergy)
+}
+
+func checkInCountKPI(inst Instruments) string {
+	if inst.CheckInCount <= 0 {
+		return "—"
+	}
+	return strconv.Itoa(inst.CheckInCount) + " in 14d"
+}
+
+templ moodChart(inst Instruments) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Title() {
+				Mood & energy
+			}
+			@card.Description() {
+				Trailing fourteen days from your check-ins.
+			}
+		}
+		@card.Content() {
+			if inst.HasData {
+				@chart.Chart(inst.MoodChart)
+			} else {
+				<p class="text-muted-foreground mb-4 text-sm">No check-ins yet in this window.</p>
+				@button.Button(button.Props{Href: "/app/check-ins", Class: "bg-signal text-background hover:bg-signal/90"}) {
+					Check in
+				}
+			}
+		}
 	}
 }
 

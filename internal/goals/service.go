@@ -205,3 +205,7 @@ func (s *Service) DeleteMilestone(ctx context.Context, id, userID uuid.UUID) err
 func (s *Service) Milestones(ctx context.Context, goalID, userID uuid.UUID) ([]Milestone, error) {
 	return s.repo.Milestones(ctx, goalID, userID)
 }
+
+func (s *Service) CountOverdueMilestones(ctx context.Context, userID uuid.UUID) (int, error) {
+	return s.repo.CountOverdueMilestones(ctx, userID)
+}

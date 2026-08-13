@@ -16,17 +16,32 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/badge"
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
 	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/chart"
 	"github.com/NorthAIProject/north-client/web/shared/ui/checkbox"
 	"github.com/NorthAIProject/north-client/web/shared/ui/form"
 	"github.com/NorthAIProject/north-client/web/shared/ui/input"
 	"github.com/NorthAIProject/north-client/web/shared/ui/label"
 	"github.com/NorthAIProject/north-client/web/shared/ui/progress"
 	"github.com/NorthAIProject/north-client/web/shared/ui/selectbox"
+	"github.com/NorthAIProject/north-client/web/shared/ui/chart"
 )
 
-// Data is everything the page renders. A struct rather than a growing
-// parameter list: this page composes five slices, and positional arguments
-// would be five chances to pass two of them the wrong way round.
+// PanelID is the HTMX-swappable region for care writes.
+const PanelID = "care-panel"
+
+// Instruments holds chart configs for the care panel header.
+type Instruments struct {
+	HydrationChart chart.Props
+	SleepChart     chart.Props
+	HabitGauge     map[string]any
+	HabitRate      int
+	HasHydration   bool
+	HasSleep       bool
+	HasHabits      bool
+	DueCount       int
+}
+
+// Data is everything the page renders.
 type Data struct {
 	DueReminders   []meals.Reminder
 	AllReminders   []meals.Reminder
@@ -38,7 +53,8 @@ type Data struct {
 	LastNight      sleep.Log
 	SleptLastNight bool
 
-	Habits []habits.Stats
+	Habits      []habits.Stats
+	Instruments Instruments
 }
 
 // Forms carries whichever submission was rejected, so a failed write
@@ -131,31 +147,150 @@ func amountLabel(ml int) string {
 	return fmt.Sprintf("%dml", ml)
 }
 
-// Page is the daily view: what is due, what has been logged, and the quick
-// controls to log the rest. Every fact shown belongs to another slice; Care
-// owns the arrangement.
+func panelSwapAttrs() templ.Attributes {
+	return templ.Attributes{
+		"hx-target": "#" + PanelID,
+		"hx-select": "#" + PanelID,
+		"hx-swap":   "outerHTML",
+	}
+}
+
 templ Page(user users.User, data Data, forms Forms) {
 	@layout.App("Care", user, layout.BuildNav("/app/care")) {
-		<div class="mx-auto w-full max-w-2xl space-y-6 p-6 md:p-8">
-			<header>
-				@ui.MonoLabel("Care")
-				<h1 class="mt-2 text-2xl font-medium tracking-tight">Today</h1>
-				<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
-					What the app is looking out for you about, in one place.
-				</p>
-			</header>
-			@checkInCard(data.CheckedInToday)
-			@waterCard(data.Water, data.WaterEntries, forms.Water)
-			@sleepCard(data.LastNight, data.SleptLastNight, forms.Sleep)
-			@habitsCard(data.Habits, forms.Habit)
-			@remindersCard(data.DueReminders)
-			@manageRemindersCard(data.AllReminders, forms.Reminder)
-		</div>
+		@Panel(user, data, forms)
 		@label.Script()
 		@checkbox.Script()
 		@input.Script()
 		@selectbox.Script()
 		@progress.Script()
+		@ui.ChartScripts()
+	}
+}
+
+templ Panel(user users.User, data Data, forms Forms) {
+	<div id={ PanelID } class="mx-auto w-full max-w-6xl space-y-6 p-6 md:p-8">
+		<header>
+			@ui.MonoLabel("Care")
+			<h1 class="mt-2 text-2xl font-medium tracking-tight">Today</h1>
+			<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
+				What the app is looking out for you about, in one place.
+			</p>
+		</header>
+		@kpiStrip(data)
+		@instrumentsRow(data)
+		@checkInCard(data.CheckedInToday)
+		@waterCard(data.Water, data.WaterEntries, forms.Water)
+		@sleepCard(data.LastNight, data.SleptLastNight, forms.Sleep)
+		@habitsCard(data.Habits, forms.Habit)
+		@remindersCard(data.DueReminders)
+		@manageRemindersCard(data.AllReminders, forms.Reminder)
+	</div>
+}
+
+templ kpiStrip(data Data) {
+	@ui.KpiStrip() {
+		@kpiCell("Water", waterKPI(data), "", "")
+		@kpiCell("Sleep", sleepKPI(data), "", "")
+		@kpiCell("Habits", habitKPI(data), "", "")
+		@kpiCell("Due", dueKPI(data), "", "")
+		@kpiCell("Check-in", checkInKPI(data), "/app/check-ins", checkInCTA(data))
+	}
+}
+
+templ kpiCell(label, value, href, cta string) {
+	@ui.KpiCell(ui.KpiCellProps{Label: label, Value: value, Href: href, CTA: cta})
+}
+
+func waterKPI(data Data) string {
+	return fmt.Sprintf("%s / %s", litres(data.Water.TotalML), litres(data.Water.TargetML))
+}
+
+func sleepKPI(data Data) string {
+	if !data.SleptLastNight {
+		return "—"
+	}
+	return data.LastNight.Duration()
+}
+
+func habitKPI(data Data) string {
+	if !data.Instruments.HasHabits {
+		return "—"
+	}
+	return strconv.Itoa(data.Instruments.HabitRate) + "%"
+}
+
+func dueKPI(data Data) string {
+	if data.Instruments.DueCount == 0 {
+		return "None"
+	}
+	return strconv.Itoa(data.Instruments.DueCount)
+}
+
+func checkInKPI(data Data) string {
+	if data.CheckedInToday {
+		return "Done"
+	}
+	return "Pending"
+}
+
+func checkInCTA(data Data) string {
+	if data.CheckedInToday {
+		return "Edit"
+	}
+	return "Check in"
+}
+
+templ instrumentsRow(data Data) {
+	<div class="grid gap-4 lg:grid-cols-3">
+		@hydrationInstrument(data)
+		@sleepInstrument(data)
+		@habitInstrument(data)
+	</div>
+}
+
+templ hydrationInstrument(data Data) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Title() { Hydration 7d }
+		}
+		@card.Content() {
+			if data.Instruments.HasHydration {
+				@chart.Chart(data.Instruments.HydrationChart)
+			} else {
+				<p class="text-muted-foreground text-sm">No water logged this week.</p>
+			}
+		}
+	}
+}
+
+templ sleepInstrument(data Data) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Title() { Sleep 7d }
+		}
+		@card.Content() {
+			if data.Instruments.HasSleep {
+				@chart.Chart(data.Instruments.SleepChart)
+			} else {
+				<p class="text-muted-foreground text-sm">Log last night below.</p>
+			}
+		}
+	}
+}
+
+templ habitInstrument(data Data) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Title() { Habits }
+		}
+		@card.Content() {
+			if data.Instruments.HasHabits && len(data.Instruments.HabitGauge) > 0 {
+				@templ.JSONScript("care-habit-gauge-option", data.Instruments.HabitGauge)
+				@ui.EChartsMount("care-habit-gauge", "care-habit-gauge-option", "min-h-40 w-full")
+			} else {
+				<p class="text-muted-foreground text-sm">Add a habit below.</p>
+			}
+		}
 	}
 }
 
@@ -202,7 +337,7 @@ templ waterCard(day hydration.Day, entries []hydration.Entry, f WaterForm) {
 			}
 			<div class="flex flex-wrap gap-2">
 				for _, amount := range hydration.QuickAmounts {
-					<form method="post" action="/app/care/water">
+					<form method="post" action="/app/care/water" { panelSwapAttrs()... }>
 						@ui.CSRFInput()
 						<input type="hidden" name="amount_ml" value={ strconv.Itoa(amount) }/>
 						@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Size: button.SizeSm}) {
@@ -216,7 +351,7 @@ templ waterCard(day hydration.Day, entries []hydration.Entry, f WaterForm) {
 					for _, e := range entries {
 						<li class="text-muted-foreground flex items-center justify-between text-xs">
 							<span>{ amountLabel(e.AmountML) } at { e.LoggedAt.Format("15:04") }</span>
-							<form method="post" action={ templ.SafeURL("/app/care/water/" + e.ID.String() + "/undo") }>
+							<form method="post" action={ templ.SafeURL("/app/care/water/" + e.ID.String() + "/undo") } { panelSwapAttrs()... }>
 								@ui.CSRFInput()
 								@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm}) {
 									Undo
@@ -248,7 +383,7 @@ templ sleepCard(last sleep.Log, logged bool, f SleepForm) {
 			}
 		}
 		@card.Content() {
-			<form method="post" action="/app/care/sleep" class="space-y-4">
+			<form method="post" action="/app/care/sleep" class="space-y-4" { panelSwapAttrs()... }>
 				@ui.CSRFInput()
 				<div class="flex flex-wrap gap-4">
 					@form.Item() {
@@ -339,7 +474,7 @@ templ habitsCard(stats []habits.Stats, f HabitForm) {
 					}
 				</ul>
 			}
-			<form method="post" action="/app/care/habits" class="space-y-4">
+			<form method="post" action="/app/care/habits" class="space-y-4" { panelSwapAttrs()... }>
 				@ui.CSRFInput()
 				<div class="flex flex-wrap gap-4">
 					@form.Item() {
@@ -424,7 +559,7 @@ templ habitRow(s habits.Stats) {
 		</div>
 		<div class="flex shrink-0 items-center gap-2">
 			if s.ScheduledToday {
-				<form method="post" action={ templ.SafeURL("/app/care/habits/" + s.Habit.ID.String() + "/toggle") }>
+				<form method="post" action={ templ.SafeURL("/app/care/habits/" + s.Habit.ID.String() + "/toggle") } { panelSwapAttrs()... }>
 					@ui.CSRFInput()
 					<input type="hidden" name="done" value={ doneValue(s.DoneToday) }/>
 					if s.DoneToday {
@@ -442,7 +577,7 @@ templ habitRow(s habits.Stats) {
 				// like a failure.
 				<span class="text-muted-foreground text-xs">Not today</span>
 			}
-			<form method="post" action={ templ.SafeURL("/app/care/habits/" + s.Habit.ID.String() + "/delete") }>
+			<form method="post" action={ templ.SafeURL("/app/care/habits/" + s.Habit.ID.String() + "/delete") } { panelSwapAttrs()... }>
 				@ui.CSRFInput()
 				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm}) {
 					Delete
@@ -496,7 +631,7 @@ templ manageRemindersCard(all []meals.Reminder, f ReminderForm) {
 					}
 				</ul>
 			}
-			<form method="post" action="/app/care/reminders" class="space-y-4">
+			<form method="post" action="/app/care/reminders" class="space-y-4" { panelSwapAttrs()... }>
 				@ui.CSRFInput()
 				<div class="flex gap-4">
 					@form.Item() {
@@ -540,7 +675,7 @@ templ reminderRow(r meals.Reminder) {
 			<span class="text-muted-foreground ml-2">{ r.TimeOfDay } · { daysSummary(r.DaysOfWeek) }</span>
 		</div>
 		<div class="flex items-center gap-2">
-			<form method="post" action={ templ.SafeURL("/app/care/reminders/" + r.ID.String() + "/toggle") }>
+			<form method="post" action={ templ.SafeURL("/app/care/reminders/" + r.ID.String() + "/toggle") } { panelSwapAttrs()... }>
 				@ui.CSRFInput()
 				<input type="hidden" name="enabled" value={ toggleValue(r.Enabled) }/>
 				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Size: button.SizeSm}) {
@@ -551,7 +686,7 @@ templ reminderRow(r meals.Reminder) {
 					}
 				}
 			</form>
-			<form method="post" action={ templ.SafeURL("/app/care/reminders/" + r.ID.String() + "/delete") }>
+			<form method="post" action={ templ.SafeURL("/app/care/reminders/" + r.ID.String() + "/delete") } { panelSwapAttrs()... }>
 				@ui.CSRFInput()
 				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm}) {
 					Delete

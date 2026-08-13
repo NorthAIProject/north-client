@@ -10,16 +10,21 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/checkins"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
+	"github.com/NorthAIProject/north-client/internal/users"
 	mindpages "github.com/NorthAIProject/north-client/web/mind"
 )
 
 type Handler struct {
-	svc *Service
+	svc      *Service
+	checkins *checkins.Service
 }
 
-func NewHandler(svc *Service) *Handler { return &Handler{svc: svc} }
+func NewHandler(svc *Service, checkins *checkins.Service) *Handler {
+	return &Handler{svc: svc, checkins: checkins}
+}
 
 func (h *Handler) Routes(r chi.Router) {
 	r.Get("/mind", h.index)
@@ -34,13 +39,14 @@ func (h *Handler) index(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	trend, err := h.svc.RecentMoodTrend(r.Context(), user.ID, 14)
+
+	inst, err := h.loadInstruments(r, user)
 	if err != nil {
 		h.fail(w, r, err)
 		return
 	}
 
-	h.render(w, r, http.StatusOK, mindpages.IndexPage(user, entries, trend.AverageMood, trend.AverageEnergy, trend.Count, mindpages.JournalForm{}))
+	h.render(w, r, http.StatusOK, mindpages.IndexPage(user, entries, inst, mindpages.JournalForm{}))
 }
 
 func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
@@ -71,12 +77,12 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 				h.fail(w, r, listErr)
 				return
 			}
-			trend, trendErr := h.svc.RecentMoodTrend(r.Context(), user.ID, 14)
-			if trendErr != nil {
-				h.fail(w, r, trendErr)
+			inst, instErr := h.loadInstruments(r, user)
+			if instErr != nil {
+				h.fail(w, r, instErr)
 				return
 			}
-			h.render(w, r, http.StatusUnprocessableEntity, mindpages.IndexPage(user, entries, trend.AverageMood, trend.AverageEnergy, trend.Count, form))
+			h.render(w, r, http.StatusUnprocessableEntity, mindpages.IndexPage(user, entries, inst, form))
 			return
 		}
 		h.fail(w, r, err)
@@ -84,6 +90,14 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Redirect(w, r, "/app/mind", http.StatusSeeOther)
+}
+
+func (h *Handler) loadInstruments(r *http.Request, user users.User) (mindpages.Instruments, error) {
+	list, err := h.checkins.RecentForContext(r.Context(), user)
+	if err != nil {
+		return mindpages.Instruments{}, err
+	}
+	return buildInstruments(user, list), nil
 }
 
 func (h *Handler) render(w http.ResponseWriter, r *http.Request, status int, c templ.Component) {

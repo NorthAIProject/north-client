@@ -48,6 +48,15 @@ func (f GoalForm) fieldError(name string) string { return f.Errors[name] }
 
 func (f GoalForm) milestoneError(name string) string { return f.MilestoneErrors[name] }
 
+// Instruments holds chart configs for the goals index header.
+type Instruments struct {
+	ActiveCount       int
+	AvgProgress       int
+	OverdueMilestones int
+	CategoryDonut     map[string]any
+	HasCategoryDonut  bool
+}
+
 func hasProgress(g goal.Goal) bool {
 	_, ok := g.Progress()
 	return ok
@@ -103,22 +112,27 @@ func statusLabel(status string) string {
 	}
 }
 
-templ IndexPage(user users.User, list []goal.Goal, f GoalForm) {
+templ IndexPage(user users.User, list []goal.Goal, inst Instruments, f GoalForm) {
 	@layout.App("Goals", user, layout.BuildNav("/app/goals")) {
-		<div class="mx-auto w-full max-w-3xl p-6 md:p-8" x-data={ "{ open: " + boolJS(f.Open) + " }" }>
-			<header class="mb-6 flex items-start justify-between gap-4">
-				<div>
-					<h1 class="text-2xl font-semibold tracking-tight">Goals</h1>
-					<p class="text-muted-foreground mt-1 text-sm">
-						What you are working toward. North reads these before every reply.
-					</p>
+		<div class="mx-auto w-full max-w-6xl space-y-6 p-6 md:p-8" x-data={ "{ open: " + boolJS(f.Open) + " }" }>
+			<header>
+				@ui.MonoLabel("Direction")
+				<div class="mt-2 flex items-start justify-between gap-4">
+					<div>
+						<h1 class="text-2xl font-medium tracking-tight">Goals</h1>
+						<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
+							What you are working toward. North reads these before every reply.
+						</p>
+					</div>
+					@button.Button(button.Props{Size: button.SizeSm, Attributes: templ.Attributes{"@click": "open = !open"}}) {
+						@icon.Plus(icon.Props{Class: "size-4"})
+						New goal
+					}
 				</div>
-				@button.Button(button.Props{Size: button.SizeSm, Attributes: templ.Attributes{"@click": "open = !open"}}) {
-					@icon.Plus(icon.Props{Class: "size-4"})
-					New goal
-				}
 			</header>
-			<div x-show="open" x-cloak class="mb-8">
+			@kpiStrip(inst)
+			@categoryDonut(inst)
+			<div x-show="open" x-cloak>
 				@card.Card() {
 					@card.Content() {
 						<form method="post" action="/app/goals" class="space-y-4 pt-6">
@@ -151,6 +165,51 @@ templ IndexPage(user users.User, list []goal.Goal, f GoalForm) {
 		@textarea.Script()
 		@selectbox.Script()
 		@progress.Script()
+		@ui.ChartScripts()
+	}
+}
+
+templ kpiStrip(inst Instruments) {
+	@ui.KpiStrip() {
+		@kpiCell("Active", strconv.Itoa(inst.ActiveCount), "", "")
+		@kpiCell("Avg progress", avgProgressKPI(inst), "", "")
+		@kpiCell("Overdue milestones", overdueMilestonesKPI(inst), "", "")
+	}
+}
+
+templ kpiCell(label, value, href, cta string) {
+	@ui.KpiCell(ui.KpiCellProps{Label: label, Value: value, Href: href, CTA: cta})
+}
+
+func avgProgressKPI(inst Instruments) string {
+	if inst.ActiveCount == 0 {
+		return "—"
+	}
+	return strconv.Itoa(inst.AvgProgress) + "%"
+}
+
+func overdueMilestonesKPI(inst Instruments) string {
+	if inst.OverdueMilestones == 0 {
+		return "None"
+	}
+	return strconv.Itoa(inst.OverdueMilestones)
+}
+
+templ categoryDonut(inst Instruments) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Title() {
+				Active by category
+			}
+		}
+		@card.Content() {
+			if inst.HasCategoryDonut && len(inst.CategoryDonut) > 0 {
+				@templ.JSONScript("goals-category-donut-option", inst.CategoryDonut)
+				@ui.EChartsMount("goals-category-donut", "goals-category-donut-option", "min-h-48 w-full max-w-sm mx-auto")
+			} else {
+				<p class="text-muted-foreground text-sm">No active goals yet.</p>
+			}
+		}
 	}
 }
 

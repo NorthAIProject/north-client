@@ -230,14 +230,6 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, stora
 	})
 	workoutHandler := workouts.NewHandler(workoutSvc)
 
-	dashboardHandler := dashboard.NewHandler(dashboard.NewService(dashboard.Options{
-		CheckIns:      checkinSvc,
-		Goals:         goalSvc,
-		Conversations: conversationSvc,
-		Workouts:      workoutSvc,
-		Memories:      memorySvc,
-	}))
-
 	mediaSvc := media.NewService(media.Options{
 		Repository: media.NewRepository(pool),
 		Storage:    storage,
@@ -276,8 +268,6 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, stora
 		BaseURL:      cfg.BaseURL,
 	})
 
-	fitnessHandler := fitness.NewHandler(stravaSvc, cfg.Env.IsProduction())
-
 	mealsRepo := meals.NewRepository(pool)
 	mealIngredientSvc := meals.NewIngredientService(mealsRepo)
 	mealDietSvc := meals.NewDietPreferenceService(mealsRepo)
@@ -286,6 +276,13 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, stora
 	mealProgressSvc := meals.NewTrackMealProgressService(foodLogSvc, calculatorSvc)
 	mealRecommendSvc := meals.NewGoalRecommendationService(mealProgressSvc, calculatorSvc)
 	mealReminderSvc := meals.NewMealReminderService(mealsRepo)
+
+	fitnessHandler := fitness.NewHandler(fitness.Options{
+		Activity: activitySvc,
+		Workouts: workoutSvc,
+		Strava:   stravaSvc,
+		Meals:    mealProgressSvc,
+	}, cfg.Env.IsProduction())
 	mealsHandler := meals.NewHandler(meals.HandlerOptions{
 		Ingredients: mealIngredientSvc,
 		Diets:       mealDietSvc,
@@ -304,7 +301,7 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, stora
 	settingsHandler := settings.NewHandler(userSvc, preferencesSvc, mealDietSvc, connectionSvc)
 
 	mindSvc := mind.NewService(mind.NewRepository(pool), checkinSvc)
-	mindHandler := mind.NewHandler(mindSvc)
+	mindHandler := mind.NewHandler(mindSvc, checkinSvc)
 
 	// Daily lifestyle signals. None of these own a page: they are logged from
 	// /app/care, the same way biometrics and preferences are reached through
@@ -320,6 +317,18 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, stora
 		Sleep:     sleepSvc,
 		Habits:    habitSvc,
 	})
+
+	dashboardHandler := dashboard.NewHandler(dashboard.NewService(dashboard.Options{
+		CheckIns:      checkinSvc,
+		Goals:         goalSvc,
+		Conversations: conversationSvc,
+		Workouts:      workoutSvc,
+		Memories:      memorySvc,
+		Habits:        habitSvc,
+		Hydration:     hydrationSvc,
+		Sleep:         sleepSvc,
+		Activity:      activitySvc,
+	}))
 
 	// One registry of capabilities, shared by the coach's chat loop and the
 	// MCP server. Two definitions of "calculate my macros" would drift, and

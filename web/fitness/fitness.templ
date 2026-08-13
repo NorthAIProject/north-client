@@ -1,12 +1,19 @@
 package fitness
 
 import (
+	"fmt"
+
+	"github.com/google/uuid"
+
 	"github.com/NorthAIProject/north-client/internal/fitness/strava"
+	"github.com/NorthAIProject/north-client/internal/meals"
 	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/internal/workouts/plan"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
 	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/chart"
 )
 
 type tile struct {
@@ -26,9 +33,31 @@ var tiles = []tile{
 	{"Food log", "Log today, see progress.", "/app/nutrition/log"},
 }
 
-templ Hub(user users.User, stravaStatus strava.Status, notice string) {
+// Instruments holds chart configs and KPI values for the fitness hub header.
+type Instruments struct {
+	CalorieChart chart.Props
+	HasCalories  bool
+	Calories7d   float64
+	PlanID       uuid.UUID
+	NextSession  *plan.PlanDay
+	HasMealProgress bool
+	MealProgress    *meals.Progress
+}
+
+// HubData is everything the fitness hub renders.
+type HubData struct {
+	StravaStatus strava.Status
+	Instruments  Instruments
+	Notice       string
+}
+
+func (d HubData) HasPlan() bool {
+	return d.Instruments.PlanID != uuid.Nil
+}
+
+templ Hub(user users.User, data HubData) {
 	@layout.App("Fitness", user, layout.BuildNav("/app/fitness")) {
-		<div class="mx-auto w-full max-w-2xl space-y-6 p-6 md:p-8">
+		<div class="mx-auto w-full max-w-6xl space-y-6 p-6 md:p-8">
 			<header>
 				@ui.MonoLabel("Fitness")
 				<h1 class="mt-2 text-2xl font-medium tracking-tight">Fitness</h1>
@@ -36,18 +65,114 @@ templ Hub(user users.User, stravaStatus strava.Status, notice string) {
 					Training, form, activity, and the numbers behind them.
 				</p>
 			</header>
-			if notice != "" {
+			if data.Notice != "" {
 				<div class="border-hairline bg-signal/10 rounded-lg border px-4 py-3 text-sm">
-					{ notice }
+					{ data.Notice }
 				</div>
 			}
+			@kpiStrip(data)
+			@calorieInstrument(data)
 			<div class="grid gap-4 sm:grid-cols-2">
 				for _, t := range tiles {
 					@tileCard(t)
 				}
 			</div>
-			@stravaCard(stravaStatus)
+			@stravaCard(data.StravaStatus)
 		</div>
+		@ui.ChartScripts()
+	}
+}
+
+templ kpiStrip(data HubData) {
+	@ui.KpiStrip() {
+		@kpiCell("Burned 7d", burnedKPI(data), "/app/activity", "Track activity")
+		@kpiCell("Training", trainingKPI(data), trainingHref(data), trainingCTA(data))
+		@kpiCell("Nutrition", nutritionKPI(data), "/app/nutrition/log", "Log food")
+		@kpiCell("Strava", stravaKPI(data.StravaStatus), "/app/fitness", stravaCTA(data.StravaStatus))
+	}
+}
+
+templ kpiCell(label, value, href, cta string) {
+	@ui.KpiCell(ui.KpiCellProps{Label: label, Value: value, Href: href, CTA: cta})
+}
+
+func burnedKPI(data HubData) string {
+	if data.Instruments.Calories7d <= 0 {
+		return "—"
+	}
+	return fmt.Sprintf("%.0f kcal", data.Instruments.Calories7d)
+}
+
+func trainingKPI(data HubData) string {
+	if data.Instruments.NextSession != nil {
+		return data.Instruments.NextSession.Weekday
+	}
+	if data.HasPlan() {
+		return "Plan ready"
+	}
+	return "—"
+}
+
+func trainingHref(data HubData) string {
+	if data.HasPlan() {
+		return "/app/training/" + data.Instruments.PlanID.String()
+	}
+	return "/app/training"
+}
+
+func trainingCTA(data HubData) string {
+	if data.Instruments.NextSession != nil {
+		return "Open session"
+	}
+	if data.HasPlan() {
+		return "Open plan"
+	}
+	return "Build plan"
+}
+
+func nutritionKPI(data HubData) string {
+	if !data.Instruments.HasMealProgress || data.Instruments.MealProgress == nil {
+		return "—"
+	}
+	p := data.Instruments.MealProgress
+	return fmt.Sprintf("%.0f / %.0f kcal", p.Logged.Calories, p.Goal.Calories)
+}
+
+func stravaKPI(status strava.Status) string {
+	if !status.Configured {
+		return "Off"
+	}
+	if status.Connected {
+		return "Connected"
+	}
+	return "Not linked"
+}
+
+func stravaCTA(status strava.Status) string {
+	if !status.Configured {
+		return ""
+	}
+	if status.Connected {
+		return "Manage"
+	}
+	return "Connect"
+}
+
+templ calorieInstrument(data HubData) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Title() { Activity 7d }
+			@card.Description() {
+				Calories burned from tracked and imported sessions.
+			}
+		}
+		@card.Content() {
+			if data.Instruments.HasCalories {
+				@chart.Chart(data.Instruments.CalorieChart)
+			} else {
+				<p class="text-muted-foreground text-sm">No activity logged this week.</p>
+			}
+		}
 	}
 }
 
