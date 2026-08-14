@@ -1,0 +1,245 @@
+package insights
+
+import (
+	"fmt"
+	"time"
+
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
+	"github.com/NorthAIProject/north-client/web/shared/ui/progress"
+)
+
+// RangeOption is one choice in the period selector.
+type RangeOption struct {
+	Key      string
+	Label    string
+	Selected bool
+}
+
+type RangeView struct {
+	Key     string
+	Label   string
+	Options []RangeOption
+}
+
+// DeltaView is a change against the previous window of equal length.
+// HasPrior false renders nothing at all, rather than a fabricated gain.
+type DeltaView struct {
+	Pct       float64
+	Direction int
+	HasPrior  bool
+}
+
+// section names the insights page being viewed, for the sub-nav.
+type section struct {
+	Key   string
+	Label string
+	Href  string
+	Icon  string
+}
+
+func sections() []section {
+	return []section{
+		{Key: "timeline", Label: "Activity", Href: "/app/insights/timeline", Icon: "list"},
+		{Key: "body", Label: "Body", Href: "/app/insights/body", Icon: "heart-pulse"},
+		{Key: "mind", Label: "Mind", Href: "/app/insights/mind", Icon: "brain"},
+		{Key: "progress", Label: "Progress", Href: "/app/insights/progress", Icon: "target"},
+		{Key: "training", Label: "Training", Href: "/app/insights/training", Icon: "dumbbell"},
+	}
+}
+
+// page is the shell every insights view shares: title, sub-nav, range
+// selector, and a swap target the selector replaces.
+//
+// bodyHref is the endpoint that renders just the panels, so switching the
+// range costs one fragment instead of a whole document.
+templ page(title, active, bodyHref string, user users.User, rg RangeView) {
+	@layout.App(title, user, layout.BuildNav("/app/insights/timeline")) {
+		<div class="mx-auto w-full max-w-6xl space-y-6 p-6 md:p-8">
+			<header class="space-y-4">
+				<div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+					<div>
+						@ui.MonoLabel("Insights")
+						<h1 class="mt-2 text-2xl font-medium tracking-tight">{ title }</h1>
+						<p class="text-muted-foreground mt-1 max-w-2xl text-sm leading-relaxed">
+							How it has been going, { rg.Label }.
+						</p>
+					</div>
+					@rangeSelector(bodyHref, rg)
+				</div>
+				@sectionNav(active)
+			</header>
+			<div id="insights-panels">
+				{ children... }
+			</div>
+		</div>
+		@progress.Script()
+		@ui.ChartScripts()
+	}
+}
+
+templ sectionNav(active string) {
+	<nav aria-label="Insights sections" class="-mx-1 flex gap-1 overflow-x-auto">
+		for _, s := range sections() {
+			<a
+				href={ templ.SafeURL(s.Href) }
+				if s.Key == active {
+					aria-current="page"
+					class="border-hairline bg-surface text-foreground flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium whitespace-nowrap"
+				} else {
+					class="text-muted-foreground hover:bg-accent/60 hover:text-foreground flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors"
+				}
+			>
+				@icon.Icon(s.Icon)(icon.Props{Class: "size-3.5"})
+				{ s.Label }
+			</a>
+		}
+	</nav>
+}
+
+// rangeSelector swaps the panels. Each option is a real link as well as an
+// hx-get, so the page still works with JavaScript off.
+templ rangeSelector(bodyHref string, rg RangeView) {
+	<nav
+		aria-label="Time period"
+		class="border-hairline bg-surface/60 -mx-1 flex shrink-0 gap-1 overflow-x-auto rounded-lg border p-1"
+	>
+		for _, opt := range rg.Options {
+			<a
+				href={ templ.SafeURL(pageHref(bodyHref, opt.Key)) }
+				hx-get={ bodyHref + "?range=" + opt.Key }
+				hx-target="#insights-panels"
+				hx-swap="innerHTML"
+				hx-push-url={ pageHref(bodyHref, opt.Key) }
+				if opt.Selected {
+					aria-current="true"
+					class="bg-signal text-background rounded-md px-3 py-1.5 text-xs font-medium whitespace-nowrap"
+				} else {
+					class="text-muted-foreground hover:bg-accent/60 hover:text-foreground rounded-md px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors"
+				}
+			>
+				{ opt.Label }
+			</a>
+		}
+	</nav>
+}
+
+// pageHref turns a body endpoint back into its page URL by dropping the
+// trailing "/body", so the no-JavaScript link lands on a whole document.
+func pageHref(bodyHref, key string) string {
+	page := bodyHref
+	if len(page) > 5 && page[len(page)-5:] == "/body" {
+		page = page[:len(page)-5]
+	}
+	return page + "?range=" + key
+}
+
+// statTile is one headline number, optionally with a trend chip.
+templ statTile(label, value, note string, delta DeltaView) {
+	<div class="border-hairline bg-surface/60 space-y-1 rounded-lg border p-4">
+		<p class="text-muted-foreground font-mono text-[10px] uppercase tracking-[0.14em]">{ label }</p>
+		<div class="flex items-baseline gap-2">
+			<p class="text-xl font-medium tabular-nums">{ value }</p>
+			@deltaChip(delta)
+		</div>
+		if note != "" {
+			<p class="text-muted-foreground text-xs">{ note }</p>
+		}
+	</div>
+}
+
+// deltaChip renders nothing without a previous window to compare against.
+// Direction is carried by an arrow as well as a colour, since colour alone is
+// not a signal everyone receives.
+templ deltaChip(delta DeltaView) {
+	if delta.HasPrior && delta.Direction != 0 {
+		<span
+			class={ "inline-flex items-center gap-0.5 font-mono text-[10px] tabular-nums",
+				templ.KV("text-signal", delta.Direction > 0),
+				templ.KV("text-muted-foreground", delta.Direction < 0) }
+		>
+			if delta.Direction > 0 {
+				@icon.Icon("trending-up")(icon.Props{Class: "size-3"})
+			} else {
+				@icon.Icon("trending-down")(icon.Props{Class: "size-3"})
+			}
+			{ formatPct(delta.Pct) }
+		</span>
+	}
+}
+
+// emptyState is what a window with nothing in it says. Every panel has one:
+// a chart axis with no series reads as a bug.
+templ emptyState(message, cta, href string) {
+	<div class="py-6 text-center">
+		<p class="text-muted-foreground text-sm">{ message }</p>
+		if cta != "" && href != "" {
+			<a href={ templ.SafeURL(href) } class="text-signal mt-2 inline-block text-sm hover:underline">{ cta }</a>
+		}
+	</div>
+}
+
+func formatPct(pct float64) string {
+	if pct < 0 {
+		pct = -pct
+	}
+	return fmt.Sprintf("%.0f%%", pct)
+}
+
+func formatKcal(v float64) string {
+	if v <= 0 {
+		return "—"
+	}
+	return fmt.Sprintf("%.0f kcal", v)
+}
+
+func formatLitres(ml int) string {
+	if ml <= 0 {
+		return "—"
+	}
+	if ml >= 1000 {
+		return fmt.Sprintf("%.1f L", float64(ml)/1000)
+	}
+	return fmt.Sprintf("%d ml", ml)
+}
+
+func formatHours(minutes float64) string {
+	if minutes <= 0 {
+		return "—"
+	}
+	h := int(minutes) / 60
+	m := int(minutes) % 60
+	if m == 0 {
+		return fmt.Sprintf("%dh", h)
+	}
+	return fmt.Sprintf("%dh %dm", h, m)
+}
+
+func formatScore(v float64) string {
+	if v <= 0 {
+		return "—"
+	}
+	return fmt.Sprintf("%.1f/5", v)
+}
+
+func formatCount(n int) string {
+	return fmt.Sprintf("%d", n)
+}
+
+func relativeTime(t time.Time) string {
+	d := time.Since(t)
+	switch {
+	case d < time.Minute:
+		return "just now"
+	case d < time.Hour:
+		return fmt.Sprintf("%dm ago", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh ago", int(d.Hours()))
+	case d < 7*24*time.Hour:
+		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
+	default:
+		return t.Format("2 Jan")
+	}
+}

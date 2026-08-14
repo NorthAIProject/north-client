@@ -4,72 +4,122 @@ import (
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
+	"github.com/NorthAIProject/north-client/web/shared/ui/sidebar"
 )
 
 // NavItem is one entry in the application sidebar.
 type NavItem struct {
 	Label string
 	Href  string
-	// Active marks the section the current page belongs to. Set by the handler,
+
+	// Icon is a Lucide name. It is what the rail shows once collapsed, so an
+	// item without one becomes unreachable in icon mode.
+	Icon string
+
+	// Active marks the section the current page belongs to. Set by BuildNav,
 	// which knows the route, rather than inferred here from the URL.
 	Active bool
+
+	Children []NavItem
+}
+
+// NavGroup is a labelled run of items.
+type NavGroup struct {
+	Label string
+	Items []NavItem
 }
 
 // App is the shell for every signed-in page.
 //
-// The sidebar is plain markup and Tailwind rather than a component library
-// widget: it is a list of links, and a list of links does not need JavaScript.
-// Active items use a signal-colored left rail — a segment of the same bearing
-// line as the marketing page — rather than a filled gray pill.
-templ App(title string, user users.User, nav []NavItem) {
+// The sidebar is the vendored templUI component rather than hand-rolled
+// markup. It was a plain <ul> of links for as long as it was a flat list, and
+// that was the right call then. Grouping, collapsing to an icon rail, and
+// remembering that choice across navigations are three behaviours the
+// component already implements correctly, including the keyboard shortcut and
+// the focus handling that a hand-rolled version would have skipped.
+templ App(title string, user users.User, nav []NavGroup) {
 	@Base(title) {
-		<div class="flex h-full">
-			<aside class="border-border bg-sidebar hidden w-60 shrink-0 flex-col border-r md:flex">
-				<div class="border-border flex h-14 items-center border-b px-4">
+		@sidebar.Layout() {
+			@sidebar.Sidebar(sidebar.Props{
+				ID:          "app-sidebar",
+				Collapsible: sidebar.CollapsibleIcon,
+			}) {
+				@sidebar.Header() {
 					@ui.BrandLockup("/app", "size-6", "text-base font-medium tracking-tight")
-				</div>
-				<nav class="flex-1 space-y-0.5 p-3">
-					for _, item := range nav {
-						@navLink(item)
+				}
+				@sidebar.Content() {
+					for _, group := range nav {
+						@navGroup(group)
 					}
-				</nav>
-				@userFooter(user)
-			</aside>
-			<div class="flex min-w-0 flex-1 flex-col">
-				<header class="border-border flex h-14 shrink-0 items-center justify-between border-b px-4 md:hidden">
-					@ui.BrandLockup("/app", "size-6", "text-base font-medium tracking-tight")
-					@signOutButton()
+				}
+				@sidebar.Footer() {
+					@userFooter(user)
+				}
+			}
+			@sidebar.Inset() {
+				<header class="border-border flex h-14 shrink-0 items-center gap-2 border-b px-4">
+					@sidebar.Trigger(sidebar.TriggerProps{Target: "app-sidebar"}) {
+						@icon.Icon("panel-left")(icon.Props{Class: "size-4"})
+					}
+					<span class="md:hidden">
+						@ui.BrandLockup("/app", "size-5", "text-sm font-medium tracking-tight")
+					</span>
 				</header>
 				<main class="min-h-0 flex-1 overflow-y-auto">
 					{ children... }
 				</main>
-			</div>
-		</div>
+			}
+		}
+		@sidebar.Script()
 	}
 }
 
-templ navLink(item NavItem) {
-	if item.Active {
-		<a
-			href={ templ.SafeURL(item.Href) }
-			aria-current="page"
-			class="text-foreground relative block rounded-md py-2 pl-3 pr-3 text-sm font-medium before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-signal"
-		>
-			{ item.Label }
-		</a>
-	} else {
-		<a
-			href={ templ.SafeURL(item.Href) }
-			class="text-muted-foreground hover:bg-accent/60 hover:text-foreground block rounded-md px-3 py-2 text-sm font-medium transition-colors"
-		>
-			{ item.Label }
-		</a>
+templ navGroup(group NavGroup) {
+	@sidebar.Group() {
+		@sidebar.GroupLabel() {
+			{ group.Label }
+		}
+		@sidebar.Menu() {
+			for _, item := range group.Items {
+				@navItem(item)
+			}
+		}
+	}
+}
+
+templ navItem(item NavItem) {
+	@sidebar.MenuItem() {
+		@sidebar.MenuButton(sidebar.MenuButtonProps{
+			Href:     item.Href,
+			IsActive: item.Active,
+			// Doubles as the label when the rail is collapsed and the text is
+			// hidden, which is the only thing left to identify the icon by.
+			Tooltip: item.Label,
+		}) {
+			@icon.Icon(item.Icon)(icon.Props{Class: "size-4"})
+			<span>{ item.Label }</span>
+		}
+		if len(item.Children) > 0 && item.Active {
+			@sidebar.MenuSub() {
+				for _, child := range item.Children {
+					@sidebar.MenuSubItem() {
+						@sidebar.MenuSubButton(sidebar.MenuSubButtonProps{
+							Href:     child.Href,
+							IsActive: child.Active,
+						}) {
+							<span>{ child.Label }</span>
+						}
+					}
+				}
+			}
+		}
 	}
 }
 
 templ userFooter(user users.User) {
-	<div class="border-border border-t p-3">
-		<div class="mb-2 px-2">
+	<div class="p-1">
+		<div class="mb-2 px-2 group-data-[tui-sidebar-state=collapsed]:hidden">
 			<p class="truncate text-sm font-medium">{ user.DisplayName }</p>
 			<p class="text-muted-foreground truncate text-xs">{ user.Email }</p>
 		</div>
@@ -89,7 +139,8 @@ templ signOutButton() {
 			FullWidth: true,
 			Class:     "justify-start",
 		}) {
-			Sign out
+			@icon.Icon("log-out")(icon.Props{Class: "size-4"})
+			<span class="group-data-[tui-sidebar-state=collapsed]:hidden">Sign out</span>
 		}
 	</form>
 }

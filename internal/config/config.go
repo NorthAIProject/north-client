@@ -47,6 +47,7 @@ type Config struct {
 	Storage    StorageConfig
 	Embedding  EmbeddingConfig
 	Encryption EncryptionConfig
+	PostHog    PostHogConfig
 
 	// MCPListenAddr is where cmd/mcp-server listens. It defaults to the
 	// loopback interface rather than all of them: the MCP surface authenticates
@@ -140,6 +141,18 @@ type EncryptionConfig struct {
 
 // Enabled reports whether secrets can be stored.
 func (e EncryptionConfig) Enabled() bool { return len(e.Keys) > 0 }
+
+// PostHogConfig reports the coach's LLM calls to PostHog's AI Observability.
+//
+// Optional, like Strava and Google: an empty APIKey in production just means
+// no events. Unlike them, an empty APIKey in development fails the boot —
+// see cmd/web/main.go — because a missing analytics key is a silent gap that
+// only shows up as an empty dashboard, and every other optional integration
+// here at least reports its own absence somewhere a person will see it.
+type PostHogConfig struct {
+	APIKey string
+	Host   string
+}
 
 // OpenAICompatConfig configures one backend speaking the OpenAI chat dialect.
 type OpenAICompatConfig struct {
@@ -261,6 +274,11 @@ func Load() (*Config, error) {
 			Bucket:    optional("STORAGE_BUCKET", "north-media"),
 			AccessKey: os.Getenv("STORAGE_ACCESS_KEY"),
 			SecretKey: os.Getenv("STORAGE_SECRET_KEY"),
+		},
+
+		PostHog: PostHogConfig{
+			APIKey: os.Getenv("POSTHOG_API_KEY"),
+			Host:   optional("POSTHOG_HOST", "https://us.i.posthog.com"),
 		},
 	}
 

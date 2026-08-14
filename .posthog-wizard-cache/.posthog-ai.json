@@ -1,0 +1,5 @@
+{
+  "provider": "manual",
+  "package": "github.com/posthog/posthog-go",
+  "otel_init_file": "internal/coach/analytics.go"
+}
