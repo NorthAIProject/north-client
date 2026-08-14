@@ -36,6 +36,27 @@ type BYOProvider struct {
 	// so somebody can tell at a glance whether they pasted the right thing.
 	KeyHint string
 
+	// VerifyPath is a cheap GET, relative to BaseURL, that answers 401 or 403
+	// when the key is wrong. It exists to tell somebody their key is bad while
+	// they are still looking at the form.
+	//
+	// Empty means no such endpoint was found for this provider, and the key is
+	// stored unverified. That is the honest state for three of the five:
+	//
+	//   openrouter  /key      401 on a bad key. NOT /models, which is public
+	//                         and answers 200 to anything.
+	//   openai      /models   401 on a bad key.
+	//   nvidia      —         /models is public; answers 200 to anything.
+	//   xai         —         /models and /api-key both answer 400, which is
+	//                         indistinguishable from a malformed request, so
+	//                         treating it as rejection would refuse good keys.
+	//   gemini      —         not an OpenAI-dialect backend; no equivalent
+	//                         endpoint under a shared base URL.
+	//
+	// Each of these was probed with a deliberately invalid key rather than
+	// assumed. Re-probe before adding one.
+	VerifyPath string
+
 	SupportsJSONSchema bool
 
 	// Note is one line under the option in the settings page.
@@ -52,13 +73,13 @@ var Catalog = []BYOProvider{
 	{
 		Name: "openrouter", Label: "OpenRouter",
 		BaseURL: "https://openrouter.ai/api/v1", DefaultModel: "anthropic/claude-sonnet-4.5",
-		KeyHint: "sk-or-v1-…", SupportsJSONSchema: true,
+		KeyHint: "sk-or-v1-…", VerifyPath: "/key", SupportsJSONSchema: true,
 		Note: "One key, most models — including Claude and GPT. The simplest choice.",
 	},
 	{
 		Name: "openai", Label: "OpenAI",
 		BaseURL: "https://api.openai.com/v1", DefaultModel: "gpt-4.1",
-		KeyHint: "sk-…", SupportsJSONSchema: true,
+		KeyHint: "sk-…", VerifyPath: "/models", SupportsJSONSchema: true,
 		Note: "Needs no new code: openaicompat speaks OpenAI's dialect already.",
 	},
 	{
@@ -73,6 +94,9 @@ var Catalog = []BYOProvider{
 		Note:    "Free models, and what North's own free tier already runs on.",
 	},
 	{
+		// No VerifyPath: Gemini is not an OpenAI-dialect backend and has no
+		// equivalent endpoint under a shared base URL, so its keys are stored
+		// without a live check.
 		Name: "gemini", Label: "Google Gemini",
 		DefaultModel: "gemini-2.5-pro", KeyHint: "AIza…",
 	},

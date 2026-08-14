@@ -54,7 +54,12 @@ func newService(t *testing.T, s *secret.Sealer) (*aicreds.Service, *pgxpool.Pool
 		t.Fatalf("create user: %v", err)
 	}
 
-	return aicreds.NewService(aicreds.NewRepository(pool), s, nil), pool, user
+	// Never the live verifier: a test suite that reaches five vendors is slow,
+	// flaky, and would need real keys to mean anything. Tests that care about
+	// verification install their own stub with WithVerifier.
+	svc := aicreds.NewService(aicreds.NewRepository(pool), s, nil).WithVerifier(&stubVerifier{})
+
+	return svc, pool, user
 }
 
 func save(t *testing.T, svc *aicreds.Service, userID uuid.UUID, in aicreds.Input) aicreds.Credential {
