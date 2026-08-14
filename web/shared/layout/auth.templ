@@ -8,14 +8,21 @@ import "github.com/NorthAIProject/north-client/web/shared/ui"
 //
 // The short signal tick beside the mark is a fragment of the landing bearing —
 // the door into the same continuity line, not a second marketing column.
+// The children block is forwarded explicitly. Calling @authShell without one
+// passes no children at all, which renders the page furniture and silently
+// drops the form inside it — every auth page comes back empty.
 templ Auth(title string) {
-	@authShell(title, "max-w-sm")
+	@authShell(title, "max-w-sm") {
+		{ children... }
+	}
 }
 
 // AuthWide is Auth with a wider card — onboarding needs room for checkboxes
 // and a goal field without feeling cramped.
 templ AuthWide(title string) {
-	@authShell(title, "max-w-lg")
+	@authShell(title, "max-w-lg") {
+		{ children... }
+	}
 }
 
 templ authShell(title string, widthClass string) {

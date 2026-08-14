@@ -20,6 +20,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/memories/extract"
 	"github.com/NorthAIProject/north-client/internal/memories/memory"
 	"github.com/NorthAIProject/north-client/internal/shared/database/testdb"
+	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/sleep"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/workouts"
@@ -56,13 +57,19 @@ func newDashboard(t *testing.T, pool *pgxpool.Pool) *dashboard.Service {
 	})
 }
 
+// defaultRange is the window the dashboard shows by default, which is what
+// these tests were written against before Load took a range.
+func defaultRange(user users.User) timerange.Range {
+	return timerange.Parse(timerange.DefaultKey, user.Location())
+}
+
 func TestLoadEmptyNewUser(t *testing.T) {
 	pool := testdb.New(t)
 	ctx := context.Background()
 	user := seedUser(t, pool, "empty@north.test")
 	svc := newDashboard(t, pool)
 
-	snap, err := svc.Load(ctx, user)
+	snap, err := svc.Load(ctx, user, defaultRange(user))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +191,7 @@ func TestLoadAssemblesToday(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	snap, err := svc.Load(ctx, user)
+	snap, err := svc.Load(ctx, user, defaultRange(user))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,7 +225,7 @@ func TestLoadAssemblesToday(t *testing.T) {
 		t.Fatal("expected a next session")
 	}
 
-	other, err := svc.Load(ctx, stranger)
+	other, err := svc.Load(ctx, stranger, defaultRange(stranger))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -260,7 +267,7 @@ func TestLoadCheckInAndHydrationSeries(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	snap, err := svc.Load(ctx, user)
+	snap, err := svc.Load(ctx, user, defaultRange(user))
 	if err != nil {
 		t.Fatal(err)
 	}
