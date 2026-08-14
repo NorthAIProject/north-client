@@ -97,6 +97,20 @@ func (r *Repository) ListSince(ctx context.Context, userID uuid.UUID, since time
 	return fromDBList(rows), nil
 }
 
+// ListBetween returns the check-ins in the half-open window [since, until).
+// Unlike ListSince there is no limit: the window is the limit.
+func (r *Repository) ListBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]CheckIn, error) {
+	rows, err := r.q.ListCheckInsBetween(ctx, checkinsdb.ListCheckInsBetweenParams{
+		UserID:      userID,
+		LocalDate:   toDate(since),
+		LocalDate_2: toDate(until),
+	})
+	if err != nil {
+		return nil, apperr.Wrap(err, "list check-ins between")
+	}
+	return fromDBList(rows), nil
+}
+
 func (r *Repository) Update(ctx context.Context, id, userID uuid.UUID, w Write) (CheckIn, error) {
 	row, err := r.q.UpdateCheckIn(ctx, checkinsdb.UpdateCheckInParams{
 		ID:            id,

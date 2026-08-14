@@ -23,5 +23,11 @@ WHERE user_id = $1
 ORDER BY local_date DESC
 LIMIT $2;
 
+-- name: ListSleepLogsBetween :many
+-- Half-open [since, until).
+SELECT * FROM sleep_logs
+WHERE user_id = $1 AND local_date >= $2 AND local_date < $3
+ORDER BY local_date DESC;
+
 -- name: DeleteSleepLog :exec
 DELETE FROM sleep_logs WHERE id = $1 AND user_id = $2;

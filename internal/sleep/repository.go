@@ -73,6 +73,25 @@ func (r *Repository) Recent(ctx context.Context, userID uuid.UUID, limit int) ([
 	return out, nil
 }
 
+// ListBetween returns the nights logged in the half-open window
+// [since, until), newest first.
+func (r *Repository) ListBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]Log, error) {
+	rows, err := r.q.ListSleepLogsBetween(ctx, sleepdb.ListSleepLogsBetweenParams{
+		UserID:      userID,
+		LocalDate:   toDate(since),
+		LocalDate_2: toDate(until),
+	})
+	if err != nil {
+		return nil, apperr.Wrap(err, "list sleep logs between")
+	}
+
+	out := make([]Log, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, fromDB(row))
+	}
+	return out, nil
+}
+
 func (r *Repository) Delete(ctx context.Context, id, userID uuid.UUID) error {
 	if err := r.q.DeleteSleepLog(ctx, sleepdb.DeleteSleepLogParams{ID: id, UserID: userID}); err != nil {
 		return apperr.Wrap(err, "delete sleep log")

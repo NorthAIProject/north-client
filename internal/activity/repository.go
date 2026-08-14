@@ -125,6 +125,39 @@ func (r *Repository) SumCaloriesSince(ctx context.Context, userID uuid.UUID, sin
 	return total, nil
 }
 
+// SumCaloriesBetween totals completed sessions in the half-open window
+// [since, until). The bounded form is what lets a window be compared against
+// the one before it without counting a boundary session twice.
+func (r *Repository) SumCaloriesBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) (float64, error) {
+	total, err := r.q.SumActivityCaloriesBetween(ctx, activitydb.SumActivityCaloriesBetweenParams{
+		UserID:    userID,
+		EndedAt:   &since,
+		EndedAt_2: &until,
+	})
+	if err != nil {
+		return 0, apperr.Wrap(err, "sum activity calories between")
+	}
+	return total, nil
+}
+
+// ListBetween returns the sessions finished in [since, until), newest first.
+func (r *Repository) ListBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]Session, error) {
+	rows, err := r.q.ListActivitySessionsBetween(ctx, activitydb.ListActivitySessionsBetweenParams{
+		UserID:    userID,
+		EndedAt:   &since,
+		EndedAt_2: &until,
+	})
+	if err != nil {
+		return nil, apperr.Wrap(err, "list activity sessions between")
+	}
+
+	out := make([]Session, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, fromDB(row))
+	}
+	return out, nil
+}
+
 func fromDB(row activitydb.ActivitySession) Session {
 	return Session{
 		ID:                 row.ID,

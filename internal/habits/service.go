@@ -11,6 +11,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/habits/habit"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/lifedomain"
+	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
@@ -112,6 +113,12 @@ func (s *Service) Get(ctx context.Context, user users.User, id uuid.UUID) (Habit
 
 func (s *Service) List(ctx context.Context, user users.User, activeOnly bool) ([]Habit, error) {
 	return s.repo.List(ctx, user.ID, activeOnly)
+}
+
+// CompletionsBetween returns every habit ticked inside a window, most
+// recently ticked first.
+func (s *Service) CompletionsBetween(ctx context.Context, user users.User, rg timerange.Range) ([]Completion, error) {
+	return s.repo.CompletionsBetween(ctx, user.ID, rg.Since, rg.Until)
 }
 
 func (s *Service) Delete(ctx context.Context, user users.User, id uuid.UUID) error {

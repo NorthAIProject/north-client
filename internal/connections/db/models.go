@@ -428,6 +428,19 @@ type User struct {
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
 	Tier          string
+	OnboardedAt   *time.Time
+}
+
+type UserAiCredential struct {
+	UserID      uuid.UUID
+	Provider    string
+	ApiKey      []byte
+	KeyHint     string
+	Model       string
+	LastError   string
+	LastErrorAt *time.Time
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 type UserBiometric struct {
@@ -481,6 +494,7 @@ type UserMemory struct {
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
 	DeletedAt            *time.Time
+	Excluded             bool
 }
 
 type UserPreference struct {

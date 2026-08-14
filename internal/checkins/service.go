@@ -9,6 +9,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/goals"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
@@ -106,6 +107,16 @@ func (s *Service) Get(ctx context.Context, id, userID uuid.UUID) (CheckIn, error
 
 func (s *Service) Today(ctx context.Context, user users.User) (CheckIn, error) {
 	return s.repo.GetByDate(ctx, user.ID, LocalDate(user, time.Now()))
+}
+
+// ListBetween returns every check-in inside a window, newest first. Unlike
+// List it takes no limit: the window bounds the result.
+func (s *Service) ListBetween(ctx context.Context, userID uuid.UUID, rg timerange.Range) ([]CheckIn, error) {
+	list, err := s.repo.ListBetween(ctx, userID, rg.Since, rg.Until)
+	if err != nil {
+		return nil, err
+	}
+	return s.withGoalTitles(ctx, userID, list), nil
 }
 
 func (s *Service) List(ctx context.Context, userID uuid.UUID, limit int) ([]CheckIn, error) {

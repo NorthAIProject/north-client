@@ -139,6 +139,47 @@ func (q *Queries) ListCompletionDatesSince(ctx context.Context, arg ListCompleti
 	return items, nil
 }
 
+const listCompletionsBetween = `-- name: ListCompletionsBetween :many
+SELECT id, habit_id, user_id, local_date, completed_at FROM habit_completions
+WHERE user_id = $1 AND local_date >= $2 AND local_date < $3
+ORDER BY completed_at DESC
+`
+
+type ListCompletionsBetweenParams struct {
+	UserID      uuid.UUID
+	LocalDate   pgtype.Date
+	LocalDate_2 pgtype.Date
+}
+
+// Half-open [since, until). Ordered by completed_at rather than local_date so
+// the activity timeline can place a habit against the rest of its day, which
+// local_date alone cannot do.
+func (q *Queries) ListCompletionsBetween(ctx context.Context, arg ListCompletionsBetweenParams) ([]HabitCompletion, error) {
+	rows, err := q.db.Query(ctx, listCompletionsBetween, arg.UserID, arg.LocalDate, arg.LocalDate_2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []HabitCompletion{}
+	for rows.Next() {
+		var i HabitCompletion
+		if err := rows.Scan(
+			&i.ID,
+			&i.HabitID,
+			&i.UserID,
+			&i.LocalDate,
+			&i.CompletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listHabits = `-- name: ListHabits :many
 SELECT id, user_id, name, domain, days_of_week, active, created_at, updated_at FROM habits
 WHERE user_id = $1 AND (active OR NOT $2::boolean)

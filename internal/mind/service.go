@@ -9,6 +9,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/checkins"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 )
 
 // contextEntries bounds how many journal entries reach the coach, same
@@ -62,6 +63,11 @@ func (s *Service) Create(ctx context.Context, userID uuid.UUID, in Input) (Journ
 		return JournalEntry{}, err
 	}
 	return s.repo.Create(ctx, userID, clean.Content, clean.Mood)
+}
+
+// ListBetween returns the entries written inside a window, newest first.
+func (s *Service) ListBetween(ctx context.Context, userID uuid.UUID, rg timerange.Range) ([]JournalEntry, error) {
+	return s.repo.ListBetween(ctx, userID, rg.Since, rg.Until)
 }
 
 func (s *Service) Recent(ctx context.Context, userID uuid.UUID, limit int) ([]JournalEntry, error) {

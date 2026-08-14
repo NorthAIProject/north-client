@@ -21,6 +21,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/agent"
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/ai/providers"
+	"github.com/NorthAIProject/north-client/internal/aicreds"
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/biometrics"
 	"github.com/NorthAIProject/north-client/internal/calculator"
@@ -50,6 +51,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/settings"
 	"github.com/NorthAIProject/north-client/internal/shared/database"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
+	"github.com/NorthAIProject/north-client/internal/shared/secret"
 	"github.com/NorthAIProject/north-client/internal/sleep"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/workouts"
@@ -298,7 +300,24 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, stora
 	// visitor decide where it is sent.
 	connectionSvc := connections.NewService(connections.NewRepository(pool), userSvc, cfg.BaseURL)
 
-	settingsHandler := settings.NewHandler(userSvc, preferencesSvc, mealDietSvc, connectionSvc)
+	// Bring-your-own-key, when the deployment has somewhere safe to put one.
+	// Without ENCRYPTION_KEY the sealer is nil and the feature reports itself
+	// unavailable, rather than storing somebody's credential in the clear.
+	var sealer *secret.Sealer
+	if cfg.Encryption.Enabled() {
+		built, err := secret.NewSealer(cfg.Encryption.Keys...)
+		if err != nil {
+			// Unreachable: config.Load already validated these keys. Refusing
+			// anyway, because the alternative to a sealer that failed to build
+			// is one that silently is not there — and the feature it guards
+			// would then be quietly unavailable rather than loudly broken.
+			panic("encryption keys passed validation but produced no sealer: " + err.Error())
+		}
+		sealer = built
+	}
+	aicredSvc := aicreds.NewService(aicreds.NewRepository(pool), sealer, slog.Default())
+
+	settingsHandler := settings.NewHandler(userSvc, preferencesSvc, mealDietSvc, connectionSvc, aicredSvc)
 
 	mindSvc := mind.NewService(mind.NewRepository(pool), checkinSvc)
 	mindHandler := mind.NewHandler(mindSvc, checkinSvc)
@@ -367,8 +386,11 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, stora
 		Queue:         queue,
 		Chains:        cfg.AI.ChainSet(),
 		Tools:         agentTools,
-		Model:         cfg.AI.Model,
-		FastModel:     cfg.AI.FastModel,
+		// Tried ahead of the chain above, so a user who supplied a key is
+		// served by it and a user who did not is unaffected.
+		Own:       aicredSvc,
+		Model:     cfg.AI.Model,
+		FastModel: cfg.AI.FastModel,
 	})
 	coachHandler := coach.NewHandler(coachSvc)
 

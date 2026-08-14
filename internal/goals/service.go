@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 )
 
 // contextGoals bounds how many active goals reach the coach. Someone with
@@ -95,6 +96,17 @@ func (s *Service) Get(ctx context.Context, id, userID uuid.UUID) (Goal, error) {
 
 func (s *Service) List(ctx context.Context, userID uuid.UUID) ([]Goal, error) {
 	return s.repo.List(ctx, userID, 100)
+}
+
+// UpdatesBetween returns every note across every goal inside a window, newest
+// first, each carrying the title of the goal it belongs to.
+func (s *Service) UpdatesBetween(ctx context.Context, userID uuid.UUID, rg timerange.Range) ([]TimelineUpdate, error) {
+	return s.repo.UpdatesBetween(ctx, userID, rg.Since, rg.Until)
+}
+
+// CreatedBetween returns the goals opened inside a window, newest first.
+func (s *Service) CreatedBetween(ctx context.Context, userID uuid.UUID, rg timerange.Range) ([]Goal, error) {
+	return s.repo.CreatedBetween(ctx, userID, rg.Since, rg.Until)
 }
 
 func (s *Service) ListActive(ctx context.Context, userID uuid.UUID) ([]Goal, error) {

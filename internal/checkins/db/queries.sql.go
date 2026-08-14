@@ -162,6 +162,52 @@ func (q *Queries) ListCheckIns(ctx context.Context, arg ListCheckInsParams) ([]C
 	return items, nil
 }
 
+const listCheckInsBetween = `-- name: ListCheckInsBetween :many
+SELECT id, user_id, local_date, mood, energy, wins, challenges, notes, related_goal_id, created_at, updated_at FROM check_ins
+WHERE user_id = $1 AND local_date >= $2 AND local_date < $3
+ORDER BY local_date DESC
+`
+
+type ListCheckInsBetweenParams struct {
+	UserID      uuid.UUID
+	LocalDate   pgtype.Date
+	LocalDate_2 pgtype.Date
+}
+
+// Half-open [since, until) so consecutive windows tile without overlapping.
+// Unbounded on purpose: the window itself is the limit.
+func (q *Queries) ListCheckInsBetween(ctx context.Context, arg ListCheckInsBetweenParams) ([]CheckIn, error) {
+	rows, err := q.db.Query(ctx, listCheckInsBetween, arg.UserID, arg.LocalDate, arg.LocalDate_2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CheckIn{}
+	for rows.Next() {
+		var i CheckIn
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.LocalDate,
+			&i.Mood,
+			&i.Energy,
+			&i.Wins,
+			&i.Challenges,
+			&i.Notes,
+			&i.RelatedGoalID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listCheckInsSince = `-- name: ListCheckInsSince :many
 SELECT id, user_id, local_date, mood, energy, wins, challenges, notes, related_goal_id, created_at, updated_at FROM check_ins
 WHERE user_id = $1 AND local_date >= $2

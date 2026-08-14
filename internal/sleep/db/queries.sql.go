@@ -97,6 +97,50 @@ func (q *Queries) ListSleepLogs(ctx context.Context, arg ListSleepLogsParams) ([
 	return items, nil
 }
 
+const listSleepLogsBetween = `-- name: ListSleepLogsBetween :many
+SELECT id, user_id, local_date, duration_minutes, quality, bedtime, wake_time, notes, created_at, updated_at FROM sleep_logs
+WHERE user_id = $1 AND local_date >= $2 AND local_date < $3
+ORDER BY local_date DESC
+`
+
+type ListSleepLogsBetweenParams struct {
+	UserID      uuid.UUID
+	LocalDate   pgtype.Date
+	LocalDate_2 pgtype.Date
+}
+
+// Half-open [since, until).
+func (q *Queries) ListSleepLogsBetween(ctx context.Context, arg ListSleepLogsBetweenParams) ([]SleepLog, error) {
+	rows, err := q.db.Query(ctx, listSleepLogsBetween, arg.UserID, arg.LocalDate, arg.LocalDate_2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SleepLog{}
+	for rows.Next() {
+		var i SleepLog
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.LocalDate,
+			&i.DurationMinutes,
+			&i.Quality,
+			&i.Bedtime,
+			&i.WakeTime,
+			&i.Notes,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const upsertSleepLog = `-- name: UpsertSleepLog :one
 INSERT INTO sleep_logs (
     user_id, local_date, duration_minutes, quality, bedtime, wake_time, notes

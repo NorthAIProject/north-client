@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
@@ -66,6 +67,18 @@ func (s *Service) Today(ctx context.Context, user users.User) (Day, error) {
 }
 
 // TodayEntries lists today's drinks, most recent first, for the undo affordance.
+// DaysBetween returns the days inside a window that have entries, most recent
+// first. Days with nothing logged are absent rather than zero — the caller
+// knows which dates it asked about and fills the gaps itself.
+func (s *Service) DaysBetween(ctx context.Context, user users.User, rg timerange.Range) ([]Day, error) {
+	return s.repo.TotalsBetween(ctx, user.ID, rg.Since, rg.Until)
+}
+
+// EntriesBetween returns each individual pour inside a window, newest first.
+func (s *Service) EntriesBetween(ctx context.Context, user users.User, rg timerange.Range) ([]Entry, error) {
+	return s.repo.ListBetween(ctx, user.ID, rg.Since, rg.Until)
+}
+
 func (s *Service) TodayEntries(ctx context.Context, user users.User) ([]Entry, error) {
 	return s.repo.ListForDate(ctx, user.ID, LocalDate(user, time.Now()))
 }

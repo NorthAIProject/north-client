@@ -231,3 +231,23 @@ sql:
         out: internal/fitness/strava/db
         overrides: *overrides
 
+  - engine: postgresql
+    schema: migrations
+    queries: internal/connections/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: connectionsdb
+        out: internal/connections/db
+        overrides: *overrides
+
+  - engine: postgresql
+    schema: migrations
+    queries: internal/aicreds/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: aicredsdb
+        out: internal/aicreds/db
+        overrides: *overrides
+

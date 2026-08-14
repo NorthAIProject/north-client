@@ -43,6 +43,22 @@ SELECT COALESCE(SUM(calories_burned), 0)::double precision AS total
 FROM activity_sessions
 WHERE user_id = $1 AND status = 'completed' AND ended_at >= $2;
 
+-- name: SumActivityCaloriesBetween :one
+-- Half-open [since, until), so this window and the one before it can be
+-- compared without double-counting the session on the boundary.
+SELECT COALESCE(SUM(calories_burned), 0)::double precision AS total
+FROM activity_sessions
+WHERE user_id = $1 AND status = 'completed'
+  AND ended_at >= $2 AND ended_at < $3;
+
+-- name: ListActivitySessionsBetween :many
+-- Completed sessions only: an abandoned or still-running session is not
+-- something that happened.
+SELECT * FROM activity_sessions
+WHERE user_id = $1 AND status = 'completed'
+  AND ended_at >= $2 AND ended_at < $3
+ORDER BY ended_at DESC;
+
 -- name: ImportActivitySession :one
 -- A finished session written in one shot, for a provider sync rather than
 -- the in-app start/stop lifecycle. Deduped by the existing
