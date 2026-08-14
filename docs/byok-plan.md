@@ -4,6 +4,24 @@ Written 2026-08-07, alongside the multi-provider work. This is a decision
 record, not a build order — the recommendation at the bottom is to **not build
 BYOK yet**, and the reasoning matters more than the schema.
 
+> **Superseded 2026-08-14.** BYOK is built: `internal/aicreds`,
+> `internal/shared/secret`, and the provider card on
+> `/app/settings/connections`. The trigger this document named — "build BYOK
+> when a user asks to plug their own key in" — was met, and the agent-connection
+> work needed the same encryption primitive anyway, so the marginal cost of the
+> outbound half dropped to a migration and a resolution path.
+>
+> The reasoning below still holds and is why the design came out as it did: the
+> free tier is untouched, North still does not sponsor frontier inference, the
+> registry stayed immutable, and a user's own credential is resolved per request
+> in front of `ai.ChainSet` rather than becoming a second chain concept.
+>
+> What was **not** taken from here: the OpenRouter PKCE flow. Keys are pasted
+> for every provider, deliberately — PKCE is one provider's mechanism, and
+> shipping it first would have left the other four with nothing. See
+> `docs/mcp-oauth-plan.md` for the OAuth work that is still outstanding, which
+> is about the inbound MCP endpoint rather than this.
+
 ## The question
 
 Should North sponsor xAI (Grok) keys for its users, or should each user bring
