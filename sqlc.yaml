@@ -261,3 +261,13 @@ sql:
         out: internal/aicreds/db
         overrides: *overrides
 
+  - engine: postgresql
+    schema: migrations
+    queries: internal/reports/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: reportsdb
+        out: internal/reports/db
+        overrides: *overrides
+

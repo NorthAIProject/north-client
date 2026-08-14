@@ -24,7 +24,7 @@ func (q *Queries) DeleteUserAICredential(ctx context.Context, userID uuid.UUID) 
 }
 
 const getUserAICredential = `-- name: GetUserAICredential :one
-SELECT user_id, provider, api_key, key_hint, model, last_error, last_error_at, created_at, updated_at FROM user_ai_credentials WHERE user_id = $1
+SELECT user_id, provider, api_key, key_hint, model, last_error, last_error_at, created_at, updated_at, base_url FROM user_ai_credentials WHERE user_id = $1
 `
 
 func (q *Queries) GetUserAICredential(ctx context.Context, userID uuid.UUID) (UserAiCredential, error) {
@@ -40,6 +40,7 @@ func (q *Queries) GetUserAICredential(ctx context.Context, userID uuid.UUID) (Us
 		&i.LastErrorAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.BaseUrl,
 	)
 	return i, err
 }
@@ -60,22 +61,23 @@ func (q *Queries) RecordUserAICredentialError(ctx context.Context, arg RecordUse
 	return err
 }
 
-const updateUserAICredentialModel = `-- name: UpdateUserAICredentialModel :one
+const updateUserAICredentialSettings = `-- name: UpdateUserAICredentialSettings :one
 UPDATE user_ai_credentials
-SET model = $2, last_error = '', last_error_at = NULL, updated_at = now()
+SET model = $2, base_url = $3, last_error = '', last_error_at = NULL, updated_at = now()
 WHERE user_id = $1
-RETURNING user_id, provider, api_key, key_hint, model, last_error, last_error_at, created_at, updated_at
+RETURNING user_id, provider, api_key, key_hint, model, last_error, last_error_at, created_at, updated_at, base_url
 `
 
-type UpdateUserAICredentialModelParams struct {
-	UserID uuid.UUID
-	Model  string
+type UpdateUserAICredentialSettingsParams struct {
+	UserID  uuid.UUID
+	Model   string
+	BaseUrl string
 }
 
-// UpdateUserAICredentialModel changes the model without touching the key, for
-// the save that leaves the key field blank.
-func (q *Queries) UpdateUserAICredentialModel(ctx context.Context, arg UpdateUserAICredentialModelParams) (UserAiCredential, error) {
-	row := q.db.QueryRow(ctx, updateUserAICredentialModel, arg.UserID, arg.Model)
+// UpdateUserAICredentialSettings changes the model and gateway URL without
+// touching the key, for the save that leaves the key field blank.
+func (q *Queries) UpdateUserAICredentialSettings(ctx context.Context, arg UpdateUserAICredentialSettingsParams) (UserAiCredential, error) {
+	row := q.db.QueryRow(ctx, updateUserAICredentialSettings, arg.UserID, arg.Model, arg.BaseUrl)
 	var i UserAiCredential
 	err := row.Scan(
 		&i.UserID,
@@ -87,19 +89,20 @@ func (q *Queries) UpdateUserAICredentialModel(ctx context.Context, arg UpdateUse
 		&i.LastErrorAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.BaseUrl,
 	)
 	return i, err
 }
 
 const upsertUserAICredential = `-- name: UpsertUserAICredential :one
-INSERT INTO user_ai_credentials (user_id, provider, api_key, key_hint, model)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO user_ai_credentials (user_id, provider, api_key, key_hint, model, base_url)
+VALUES ($1, $2, $3, $4, $5, $6)
 ON CONFLICT (user_id) DO UPDATE
-SET provider = $2, api_key = $3, key_hint = $4, model = $5,
+SET provider = $2, api_key = $3, key_hint = $4, model = $5, base_url = $6,
     -- A new key clears the old complaint. Leaving it would leave the page
     -- saying the credential was rejected after it had been replaced.
     last_error = '', last_error_at = NULL, updated_at = now()
-RETURNING user_id, provider, api_key, key_hint, model, last_error, last_error_at, created_at, updated_at
+RETURNING user_id, provider, api_key, key_hint, model, last_error, last_error_at, created_at, updated_at, base_url
 `
 
 type UpsertUserAICredentialParams struct {
@@ -108,6 +111,7 @@ type UpsertUserAICredentialParams struct {
 	ApiKey   []byte
 	KeyHint  string
 	Model    string
+	BaseUrl  string
 }
 
 func (q *Queries) UpsertUserAICredential(ctx context.Context, arg UpsertUserAICredentialParams) (UserAiCredential, error) {
@@ -117,6 +121,7 @@ func (q *Queries) UpsertUserAICredential(ctx context.Context, arg UpsertUserAICr
 		arg.ApiKey,
 		arg.KeyHint,
 		arg.Model,
+		arg.BaseUrl,
 	)
 	var i UserAiCredential
 	err := row.Scan(
@@ -129,6 +134,7 @@ func (q *Queries) UpsertUserAICredential(ctx context.Context, arg UpsertUserAICr
 		&i.LastErrorAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.BaseUrl,
 	)
 	return i, err
 }

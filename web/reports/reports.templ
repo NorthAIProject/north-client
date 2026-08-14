@@ -1,0 +1,143 @@
+package reports
+
+import (
+	"github.com/NorthAIProject/north-client/internal/reports/report"
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/markdown"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+)
+
+type IndexView struct {
+	Archived bool
+	Notice   string
+}
+
+templ IndexPage(user users.User, list []report.Report, view IndexView) {
+	@layout.App("Reports", user, layout.BuildNav("/app/reports")) {
+		<div class="mx-auto w-full max-w-3xl space-y-6 p-6 md:p-8">
+			<header class="flex items-start justify-between gap-4">
+				<div>
+					@ui.MonoLabel("Review")
+					<h1 class="mt-2 text-2xl font-medium tracking-tight">Weekly reports</h1>
+					<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
+						A written week, from what you actually recorded.
+					</p>
+				</div>
+				<form method="post" action="/app/reports/generate">
+					@ui.CSRFInput()
+					@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm}) {
+						Generate this week
+					}
+				</form>
+			</header>
+			if view.Notice == "cooldown" {
+				<p class="text-sm">Already generated this hour. Read the current review, or wait a bit.</p>
+			}
+			<div class="text-muted-foreground flex gap-4 text-xs">
+				if view.Archived {
+					<a href="/app/reports" class="hover:text-foreground">Current</a>
+					<span class="text-foreground">Archived</span>
+				} else {
+					<span class="text-foreground">Current</span>
+					<a href="/app/reports?archived=1" class="hover:text-foreground">Archived</a>
+				}
+			</div>
+			if len(list) == 0 {
+				<div class="text-muted-foreground py-16 text-center text-sm">
+					<p>No review yet.</p>
+					<p class="mt-1">Generate this week to write one from your check-ins, goals, and training.</p>
+				</div>
+			} else {
+				<div class="space-y-3">
+					for _, report := range list {
+						@reportRow(report)
+					}
+				</div>
+			}
+		</div>
+	}
+}
+
+templ reportRow(item report.Report) {
+	<a href={ templ.SafeURL("/app/reports/" + item.ID.String()) } class="block">
+		@card.Card() {
+			@card.Content() {
+				<div class="flex items-baseline justify-between gap-4 pt-4">
+					<div>
+						<p class="text-sm font-medium">{ item.Title }</p>
+						<p class="text-muted-foreground mt-1 text-xs">{ statusLabel(item) }</p>
+					</div>
+					<span class="text-muted-foreground font-mono text-[10px] uppercase tracking-wide">{ string(item.Status) }</span>
+				</div>
+			}
+		}
+	</a>
+}
+
+templ DetailPage(user users.User, item report.Report, notice string) {
+	@layout.App(item.Title, user, layout.BuildNav("/app/reports")) {
+		<div class="mx-auto w-full max-w-3xl space-y-6 p-6 md:p-8">
+			<header class="space-y-3">
+				<a href="/app/reports" class="text-muted-foreground hover:text-foreground font-mono text-[10px] uppercase tracking-[0.14em]">
+					← Reports
+				</a>
+				<div class="flex flex-wrap items-start justify-between gap-4">
+					<div>
+						<h1 class="text-2xl font-medium tracking-tight">{ item.Title }</h1>
+						<p class="text-muted-foreground mt-1 text-sm">{ statusLabel(item) }</p>
+					</div>
+					<div class="flex gap-2">
+						if !item.Archived() {
+							<form method="post" action={ templ.SafeURL("/app/reports/" + item.ID.String() + "/archive") }>
+								@ui.CSRFInput()
+								@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Variant: button.VariantOutline}) {
+									Archive
+								}
+							</form>
+							<form method="post" action={ templ.SafeURL("/app/reports/" + item.ID.String() + "/regenerate") }>
+								@ui.CSRFInput()
+								@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm}) {
+									Regenerate
+								}
+							</form>
+						}
+					</div>
+				</div>
+			</header>
+			if notice == "cooldown" {
+				<p class="text-sm">Already generated this hour.</p>
+			}
+			if notice == "archived" {
+				<p class="text-sm">This review is archived. Generate a new one from the list instead.</p>
+			}
+			if item.Status == report.StatusPending {
+				<p class="text-muted-foreground text-sm">Writing this week… refresh in a moment.</p>
+			}
+			if item.Status == report.StatusFailed {
+				<p class="text-sm">That pass failed. { item.LastError }</p>
+			}
+			if item.Body != "" {
+				<div class="prose prose-neutral dark:prose-invert max-w-none text-sm leading-relaxed">
+					@markdown.Render(item.Body)
+				</div>
+			}
+		</div>
+	}
+}
+
+func statusLabel(item report.Report) string {
+	switch item.Status {
+	case report.StatusPending:
+		return "Generating"
+	case report.StatusFailed:
+		return "Failed"
+	default:
+		if item.GeneratedAt != nil {
+			return "Ready · " + item.GeneratedAt.Format("2 Jan")
+		}
+		return "Ready"
+	}
+}

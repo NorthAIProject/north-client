@@ -97,17 +97,29 @@ func (s *ExtractionService) HandleExtractJob(ctx context.Context, payload json.R
 		return err
 	}
 	if len(msgs) < 2 {
-		return nil
+		// Still counts as read. A one-line thread will never be worth
+		// extracting, and leaving it unmarked would put it back in front of
+		// the sweep on every pass.
+		return s.markRead(ctx, p.ConversationID)
 	}
 
 	transcript := formatTranscript(msgs)
 	candidates, err := s.Extractor.Extract(ctx, transcript)
 	if err != nil {
+		// Deliberately not marked: the thread was not read, the provider
+		// failed. Marking here would lose it silently.
 		return err
 	}
 
 	n, err := s.Memories.InsertExtractions(ctx, p.UserID, p.ConversationID, candidates)
 	if err != nil {
+		return err
+	}
+
+	// Marked whether or not anything was found. Recording "nothing here" is the
+	// whole reason an uneventful conversation is not re-read, and re-run, for
+	// as long as it exists.
+	if err := s.markRead(ctx, p.ConversationID); err != nil {
 		return err
 	}
 	if s.Log != nil && n > 0 {
@@ -118,6 +130,10 @@ func (s *ExtractionService) HandleExtractJob(ctx context.Context, payload json.R
 		)
 	}
 	return nil
+}
+
+func (s *ExtractionService) markRead(ctx context.Context, conversationID uuid.UUID) error {
+	return s.Conversations.MarkExtracted(ctx, conversationID)
 }
 
 func formatTranscript(msgs []conversations.Message) string {

@@ -6,6 +6,7 @@ import (
 
 	"github.com/a-h/templ"
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
@@ -63,12 +64,21 @@ func (h *Handler) complete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := h.svc.Complete(r.Context(), user, answers); err != nil {
+	_, thread, err := h.svc.Complete(r.Context(), user, answers)
+	if err != nil {
 		h.fail(w, r, err)
 		return
 	}
 
-	http.Redirect(w, r, "/app/onboarding/done", http.StatusSeeOther)
+	// The thread id travels in the query rather than a session value because
+	// the done page is a plain GET after a redirect and has nowhere else to
+	// learn it. A forged or stale id costs nothing: the page only links to it,
+	// and the chat route is user-scoped.
+	done := "/app/onboarding/done"
+	if thread != uuid.Nil {
+		done += "?thread=" + thread.String()
+	}
+	http.Redirect(w, r, done, http.StatusSeeOther)
 }
 
 func (h *Handler) skip(w http.ResponseWriter, r *http.Request) {
@@ -92,7 +102,13 @@ func (h *Handler) done(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/app/onboarding", http.StatusSeeOther)
 		return
 	}
-	render(w, r, http.StatusOK, onboardingpages.DonePage(user))
+	// Parsed rather than passed through, so nothing but a real uuid ever
+	// reaches the template's href.
+	thread := ""
+	if id, err := uuid.Parse(r.URL.Query().Get("thread")); err == nil {
+		thread = id.String()
+	}
+	render(w, r, http.StatusOK, onboardingpages.DonePage(user, thread))
 }
 
 func formFrom(r *http.Request) onboardingpages.Form {

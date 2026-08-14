@@ -61,6 +61,11 @@ type BYOProvider struct {
 
 	// Note is one line under the option in the settings page.
 	Note string
+
+	// RequiresBaseURL means this backend has no public address: the user
+	// names theirs (their Hermes gateway). The URL is validated before
+	// North will dial it; see ParseGatewayURL.
+	RequiresBaseURL bool
 }
 
 // Catalog is deliberately a different list from config.knownProviders.
@@ -100,6 +105,14 @@ var Catalog = []BYOProvider{
 		Name: "gemini", Label: "Google Gemini",
 		DefaultModel: "gemini-2.5-pro", KeyHint: "AIza…",
 	},
+	{
+		// BaseURL is supplied per user: each person runs their own Hermes
+		// gateway. The catalogue cannot name one address.
+		Name: "hermes", Label: "Hermes (your gateway)",
+		DefaultModel: "hermes-3", KeyHint: "gateway API_SERVER_KEY",
+		VerifyPath: "/models", RequiresBaseURL: true,
+		Note: "Your own Hermes instance — tailnet, LAN, or public. URL and key stay on this account.",
+	},
 }
 
 // ByName finds a catalogue entry.
@@ -119,20 +132,16 @@ func ByName(name string) (BYOProvider, bool) {
 }
 
 // UserSpec is one person's credential, ready to become a client.
-//
-// There is no BaseURL field, and that is a security decision rather than an
-// oversight. A user-supplied base URL makes North's server issue an outbound
-// request to an address that user chose — into the cluster's own services, the
-// cloud metadata endpoint, or a database port. Supporting it needs https-only,
-// resolution followed by rejection of private ranges, a DialContext that
-// re-checks the resolved address at connect time to defeat rebinding, and no
-// redirect following. Until that exists, the URL comes from the catalogue.
 type UserSpec struct {
 	Provider string
 	APIKey   string
 
 	// Model may be empty, meaning the catalogue's default.
 	Model string
+
+	// BaseURL is set only for providers with RequiresBaseURL (Hermes).
+	// Catalogue URLs are used otherwise; a value here for OpenRouter is ignored.
+	BaseURL string
 
 	// HTTPClient is shared across every user's client so a per-user provider
 	// gets connection reuse rather than a TLS handshake per coach turn.
@@ -159,6 +168,17 @@ func User(ctx context.Context, spec UserSpec) (ai.Client, error) {
 		model = entry.DefaultModel
 	}
 
+	baseURL := entry.BaseURL
+	httpClient := spec.HTTPClient
+	if entry.RequiresBaseURL {
+		parsed, err := ParseGatewayURL(spec.BaseURL)
+		if err != nil {
+			return nil, fmt.Errorf("providers: cannot build a %s client for this credential", entry.Name)
+		}
+		baseURL = parsed
+		httpClient = GatewayHTTPClient(spec.HTTPClient)
+	}
+
 	if entry.Name == "gemini" {
 		client, err := gemini.New(ctx, gemini.Options{APIKey: spec.APIKey, DefaultModel: model})
 		if err != nil {
@@ -170,11 +190,11 @@ func User(ctx context.Context, spec UserSpec) (ai.Client, error) {
 
 	client, err := openaicompat.New(openaicompat.Options{
 		Name:               entry.Name,
-		BaseURL:            entry.BaseURL,
+		BaseURL:            baseURL,
 		APIKey:             spec.APIKey,
 		DefaultModel:       model,
 		SupportsJSONSchema: entry.SupportsJSONSchema,
-		HTTPClient:         spec.HTTPClient,
+		HTTPClient:         httpClient,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("providers: cannot build a %s client for this credential", entry.Name)

@@ -2,10 +2,15 @@ package onboarding_test
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/NorthAIProject/north-client/internal/ai"
+	"github.com/NorthAIProject/north-client/internal/conversations"
 	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/memories"
 	"github.com/NorthAIProject/north-client/internal/onboarding"
@@ -45,7 +50,7 @@ func TestCompleteSeedsContext(t *testing.T) {
 	user := seedUser(t, pool, "onboard-complete@north.test")
 	svc := newSvc(pool)
 
-	updated, err := svc.Complete(ctx, user, onboarding.Answers{
+	updated, _, err := svc.Complete(ctx, user, onboarding.Answers{
 		FocusAreas:    []string{lifedomain.Fitness, lifedomain.Health},
 		CoachingStyle: onboarding.StyleText(onboarding.StyleDirect),
 		NearTermGoal:  "Run a 10K",
@@ -149,12 +154,12 @@ func TestCompleteIdempotent(t *testing.T) {
 		GoalCategory:  lifedomain.Work,
 	}
 
-	first, err := svc.Complete(ctx, user, answers)
+	first, _, err := svc.Complete(ctx, user, answers)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	second, err := svc.Complete(ctx, first, answers)
+	second, _, err := svc.Complete(ctx, first, answers)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,6 +174,125 @@ func TestCompleteIdempotent(t *testing.T) {
 	}
 	if len(active) != 1 {
 		t.Fatalf("idempotent complete should not duplicate goals, got %d", len(active))
+	}
+}
+
+// stubCoach records what onboarding asked the coach to do, without an AI
+// provider or a context builder behind it.
+type stubCoach struct {
+	thread    uuid.UUID
+	sent      string
+	startErr  error
+	sendErr   error
+	sendCalls int
+}
+
+func (c *stubCoach) StartConversation(_ context.Context, _ uuid.UUID) (conversations.Conversation, error) {
+	if c.startErr != nil {
+		return conversations.Conversation{}, c.startErr
+	}
+	c.thread = uuid.New()
+	return conversations.Conversation{ID: c.thread}, nil
+}
+
+func (c *stubCoach) SendMessage(_ context.Context, _ users.User, id uuid.UUID, text string) (<-chan ai.StreamChunk, error) {
+	c.sendCalls++
+	c.sent = text
+	if c.sendErr != nil {
+		return nil, c.sendErr
+	}
+	ch := make(chan ai.StreamChunk)
+	close(ch)
+	_ = id
+	return ch, nil
+}
+
+// The cold start is the thing NOR-17 exists to remove: finishing the
+// questionnaire and landing on an empty chat box.
+func TestCompleteOpensTheFirstConversation(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	user := seedUser(t, pool, "onboard-thread@north.test")
+
+	coach := &stubCoach{}
+	svc := newSvc(pool).WithCoach(coach, nil)
+
+	_, thread, err := svc.Complete(ctx, user, onboarding.Answers{
+		FocusAreas:    []string{lifedomain.Fitness},
+		CoachingStyle: onboarding.StyleText(onboarding.StyleDirect),
+		NearTermGoal:  "Run a 10K",
+		GoalCategory:  lifedomain.Fitness,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if thread == uuid.Nil {
+		t.Fatal("no conversation was opened")
+	}
+	if thread != coach.thread {
+		t.Fatalf("returned %s, coach opened %s", thread, coach.thread)
+	}
+	if !strings.Contains(coach.sent, "Run a 10K") {
+		t.Fatalf("opening message does not carry the goal: %q", coach.sent)
+	}
+	if !strings.Contains(coach.sent, lifedomain.Fitness) {
+		t.Fatalf("opening message does not carry the focus area: %q", coach.sent)
+	}
+}
+
+// A provider having a bad minute must not cost somebody their onboarding. They
+// answered three questions; that work is theirs whether or not a model replied.
+func TestCompleteSurvivesACoachThatCannotAnswer(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	user := seedUser(t, pool, "onboard-nocoach@north.test")
+
+	coach := &stubCoach{startErr: errors.New("no provider configured")}
+	svc := newSvc(pool).WithCoach(coach, nil)
+
+	updated, thread, err := svc.Complete(ctx, user, onboarding.Answers{
+		FocusAreas:    []string{lifedomain.Work},
+		CoachingStyle: onboarding.StyleText(onboarding.StyleSupportive),
+		NearTermGoal:  "Ship the feature",
+		GoalCategory:  lifedomain.Work,
+	})
+	if err != nil {
+		t.Fatalf("onboarding failed because the coach did: %v", err)
+	}
+	if updated.NeedsOnboarding() {
+		t.Fatal("user was not marked onboarded")
+	}
+	if thread != uuid.Nil {
+		t.Fatalf("reported a thread that was never opened: %s", thread)
+	}
+
+	goalSvc := goals.NewService(goals.NewRepository(pool))
+	active, err := goalSvc.ListActive(ctx, user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(active) != 1 {
+		t.Fatalf("seeded goals = %d, want 1", len(active))
+	}
+}
+
+// Without a coach wired the questionnaire still has to work end to end.
+func TestCompleteWithoutACoachSeedsNoThread(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	user := seedUser(t, pool, "onboard-plain@north.test")
+
+	_, thread, err := newSvc(pool).Complete(ctx, user, onboarding.Answers{
+		FocusAreas:    []string{lifedomain.Learning},
+		CoachingStyle: onboarding.StyleText(onboarding.StyleSocratic),
+		NearTermGoal:  "Finish the course",
+		GoalCategory:  lifedomain.Learning,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if thread != uuid.Nil {
+		t.Fatalf("thread = %s, want none", thread)
 	}
 }
 

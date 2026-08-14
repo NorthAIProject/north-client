@@ -250,6 +250,7 @@ templ Bubble(m conversations.Message) {
 			<div class={ "border-hairline bg-surface max-w-[85%] rounded-2xl rounded-bl-sm border px-4 py-2.5 " + proseClasses }>
 				@markdown.Render(m.Content)
 			</div>
+			@muscles(m)
 			@sources(m)
 			<button
 				type="button"
@@ -260,6 +261,28 @@ templ Bubble(m conversations.Message) {
 				<span x-show="copied" x-cloak>Copied</span>
 			</button>
 		</div>
+	}
+}
+
+// muscles draws what a recommended movement trains (NOR-8).
+//
+// Only for replies that actually looked an exercise up: the slug comes off the
+// recorded tool call, so this cannot appear under a reply that merely mentioned
+// a squat in passing, and the muscles shown are the catalogue's rather than
+// something the model was asked to name a second time in a parseable shape.
+//
+// Fetched rather than rendered inline, for the reason the sources disclosure
+// gives: resolving every exercise in a long transcript on every page load is a
+// query per reply. Unlike sources it loads on sight, because a picture nobody
+// clicked is the point of having one.
+templ muscles(m conversations.Message) {
+	for _, slug := range m.ExerciseSlugs() {
+		<div
+			hx-get={ "/app/exercises/" + slug + "/muscles" }
+			hx-trigger="load"
+			hx-swap="outerHTML"
+			class="w-full"
+		></div>
 	}
 }
 

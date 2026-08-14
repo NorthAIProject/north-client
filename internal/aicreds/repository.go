@@ -58,9 +58,9 @@ func (r *Repository) Key(ctx context.Context, userID uuid.UUID) (Credential, Sea
 // The error is not wrapped with the parameters, following
 // strava/repository.go: one of them is a credential, and an error string is
 // where a credential-shaped value most easily ends up in a log.
-func (r *Repository) Upsert(ctx context.Context, userID uuid.UUID, provider string, key Sealed, hint, model string) (Credential, error) {
+func (r *Repository) Upsert(ctx context.Context, userID uuid.UUID, provider string, key Sealed, hint, model, baseURL string) (Credential, error) {
 	row, err := r.q.UpsertUserAICredential(ctx, aicredsdb.UpsertUserAICredentialParams{
-		UserID: userID, Provider: provider, ApiKey: key, KeyHint: hint, Model: model,
+		UserID: userID, Provider: provider, ApiKey: key, KeyHint: hint, Model: model, BaseUrl: baseURL,
 	})
 	if err != nil {
 		return Credential{}, errors.New("upsert user ai credential: query failed")
@@ -68,16 +68,16 @@ func (r *Repository) Upsert(ctx context.Context, userID uuid.UUID, provider stri
 	return fromDB(row), nil
 }
 
-// UpdateModel changes the model without touching the stored key.
-func (r *Repository) UpdateModel(ctx context.Context, userID uuid.UUID, model string) (Credential, error) {
-	row, err := r.q.UpdateUserAICredentialModel(ctx, aicredsdb.UpdateUserAICredentialModelParams{
-		UserID: userID, Model: model,
+// UpdateSettings changes the model and gateway URL without touching the stored key.
+func (r *Repository) UpdateSettings(ctx context.Context, userID uuid.UUID, model, baseURL string) (Credential, error) {
+	row, err := r.q.UpdateUserAICredentialSettings(ctx, aicredsdb.UpdateUserAICredentialSettingsParams{
+		UserID: userID, Model: model, BaseUrl: baseURL,
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return Credential{}, apperr.ErrNotFound
 		}
-		return Credential{}, apperr.Wrap(err, "update user ai credential model")
+		return Credential{}, apperr.Wrap(err, "update user ai credential settings")
 	}
 	return fromDB(row), nil
 }
@@ -108,6 +108,7 @@ func fromDB(row aicredsdb.UserAiCredential) Credential {
 		Provider:    row.Provider,
 		KeyHint:     row.KeyHint,
 		Model:       row.Model,
+		BaseURL:     row.BaseUrl,
 		LastError:   row.LastError,
 		LastErrorAt: row.LastErrorAt,
 		UpdatedAt:   row.UpdatedAt,

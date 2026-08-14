@@ -112,6 +112,7 @@ func (s *Service) Save(ctx context.Context, userID uuid.UUID, in Input) (Credent
 	provider := strings.TrimSpace(in.Provider)
 	key := strings.TrimSpace(in.APIKey)
 	model := strings.TrimSpace(in.Model)
+	baseURL := strings.TrimSpace(in.BaseURL)
 
 	var errs apperr.FieldErrors
 
@@ -124,6 +125,17 @@ func (s *Service) Save(ctx context.Context, userID uuid.UUID, in Input) (Credent
 	}
 	if utf8.RuneCountInString(model) > 200 {
 		errs = errs.Add("model", "That model name is too long.")
+	}
+	if known && entry.RequiresBaseURL {
+		parsed, parseErr := providers.ParseGatewayURL(baseURL)
+		if parseErr != nil {
+			errs = errs.Add("base_url", parseErr.Error())
+		} else {
+			baseURL = parsed
+			entry.BaseURL = parsed
+		}
+	} else {
+		baseURL = ""
 	}
 
 	existing, err := s.repo.Get(ctx, userID)
@@ -146,7 +158,7 @@ func (s *Service) Save(ctx context.Context, userID uuid.UUID, in Input) (Credent
 	// Model-only save: the stored key stays where it is, and is not decrypted
 	// on the way past — there is no reason for this path to hold it.
 	if key == "" && existing.Provider == provider {
-		return s.repo.UpdateModel(ctx, userID, model)
+		return s.repo.UpdateSettings(ctx, userID, model, baseURL)
 	}
 
 	// Ask the provider before storing, so a mistyped key is caught while the
@@ -173,7 +185,7 @@ func (s *Service) Save(ctx context.Context, userID uuid.UUID, in Input) (Credent
 		return Credential{}, apperr.Wrap(err, "seal user ai credential")
 	}
 
-	return s.repo.Upsert(ctx, userID, provider, Sealed(sealed), hint(key), model)
+	return s.repo.Upsert(ctx, userID, provider, Sealed(sealed), hint(key), model, baseURL)
 }
 
 // Delete removes the credential and puts the user back on North's providers.
@@ -213,7 +225,8 @@ func (s *Service) For(ctx context.Context, userID uuid.UUID) (ai.Client, error) 
 	}
 
 	client, err := providers.User(ctx, providers.UserSpec{
-		Provider: cred.Provider, APIKey: string(key), Model: cred.Model, HTTPClient: s.http,
+		Provider: cred.Provider, APIKey: string(key), Model: cred.Model,
+		BaseURL: cred.BaseURL, HTTPClient: s.http,
 	})
 	if err != nil {
 		return nil, err

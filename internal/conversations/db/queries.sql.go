@@ -7,6 +7,7 @@ package conversationsdb
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -55,6 +56,56 @@ func (q *Queries) AppendMessage(ctx context.Context, arg AppendMessageParams) (M
 	return i, err
 }
 
+const conversationsAwaitingExtraction = `-- name: ConversationsAwaitingExtraction :many
+SELECT c.id, c.user_id
+FROM conversations c
+WHERE c.updated_at < $1::timestamptz
+  AND (c.memories_extracted_at IS NULL OR c.memories_extracted_at < c.updated_at)
+  AND (SELECT count(*) FROM messages m WHERE m.conversation_id = c.id) >= $2::bigint
+ORDER BY c.updated_at
+LIMIT $3::int
+`
+
+type ConversationsAwaitingExtractionParams struct {
+	IdleBefore  time.Time
+	MinMessages int64
+	ResultLimit int32
+}
+
+type ConversationsAwaitingExtractionRow struct {
+	ID     uuid.UUID
+	UserID uuid.UUID
+}
+
+// Threads that have gone quiet with messages the extractor has never read.
+//
+// The coach only enqueues extraction once a conversation reaches four messages,
+// which means a thread that says something worth remembering and then stops at
+// three is never mined at all. This is the other half: whatever went quiet and
+// was never looked at.
+//
+// memories_extracted_at older than updated_at means new messages arrived since
+// the last pass, so the thread is worth reading again. Null means never read.
+func (q *Queries) ConversationsAwaitingExtraction(ctx context.Context, arg ConversationsAwaitingExtractionParams) ([]ConversationsAwaitingExtractionRow, error) {
+	rows, err := q.db.Query(ctx, conversationsAwaitingExtraction, arg.IdleBefore, arg.MinMessages, arg.ResultLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ConversationsAwaitingExtractionRow{}
+	for rows.Next() {
+		var i ConversationsAwaitingExtractionRow
+		if err := rows.Scan(&i.ID, &i.UserID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const countMessages = `-- name: CountMessages :one
 SELECT count(*) FROM messages WHERE conversation_id = $1
 `
@@ -69,7 +120,7 @@ func (q *Queries) CountMessages(ctx context.Context, conversationID uuid.UUID) (
 const createConversation = `-- name: CreateConversation :one
 INSERT INTO conversations (user_id, title)
 VALUES ($1, $2)
-RETURNING id, user_id, title, created_at, updated_at
+RETURNING id, user_id, title, created_at, updated_at, memories_extracted_at
 `
 
 type CreateConversationParams struct {
@@ -86,6 +137,7 @@ func (q *Queries) CreateConversation(ctx context.Context, arg CreateConversation
 		&i.Title,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.MemoriesExtractedAt,
 	)
 	return i, err
 }
@@ -106,7 +158,7 @@ func (q *Queries) DeleteConversation(ctx context.Context, arg DeleteConversation
 }
 
 const getConversation = `-- name: GetConversation :one
-SELECT id, user_id, title, created_at, updated_at FROM conversations
+SELECT id, user_id, title, created_at, updated_at, memories_extracted_at FROM conversations
 WHERE id = $1 AND user_id = $2
 `
 
@@ -127,12 +179,13 @@ func (q *Queries) GetConversation(ctx context.Context, arg GetConversationParams
 		&i.Title,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.MemoriesExtractedAt,
 	)
 	return i, err
 }
 
 const listConversations = `-- name: ListConversations :many
-SELECT id, user_id, title, created_at, updated_at FROM conversations
+SELECT id, user_id, title, created_at, updated_at, memories_extracted_at FROM conversations
 WHERE user_id = $1
 ORDER BY updated_at DESC
 LIMIT $2 OFFSET $3
@@ -159,6 +212,7 @@ func (q *Queries) ListConversations(ctx context.Context, arg ListConversationsPa
 			&i.Title,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.MemoriesExtractedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -211,6 +265,19 @@ func (q *Queries) ListMessages(ctx context.Context, arg ListMessagesParams) ([]M
 		return nil, err
 	}
 	return items, nil
+}
+
+const markConversationExtracted = `-- name: MarkConversationExtracted :exec
+UPDATE conversations
+SET memories_extracted_at = now()
+WHERE id = $1
+`
+
+// Records that extraction ran, not that it found anything. A thread with
+// nothing worth remembering must not be re-read on every sweep forever.
+func (q *Queries) MarkConversationExtracted(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, markConversationExtracted, id)
+	return err
 }
 
 const recentMessages = `-- name: RecentMessages :many

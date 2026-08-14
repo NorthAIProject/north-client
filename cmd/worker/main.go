@@ -22,14 +22,25 @@ import (
 	"github.com/NorthAIProject/north-client/internal/activity"
 	"github.com/NorthAIProject/north-client/internal/ai/providers"
 	"github.com/NorthAIProject/north-client/internal/biometrics"
+	"github.com/NorthAIProject/north-client/internal/calculator"
+	"github.com/NorthAIProject/north-client/internal/checkins"
 	"github.com/NorthAIProject/north-client/internal/config"
 	"github.com/NorthAIProject/north-client/internal/conversations"
 	"github.com/NorthAIProject/north-client/internal/documents"
 	"github.com/NorthAIProject/north-client/internal/fitness/strava"
+	"github.com/NorthAIProject/north-client/internal/goals"
+	"github.com/NorthAIProject/north-client/internal/habits"
+	"github.com/NorthAIProject/north-client/internal/hydration"
+	"github.com/NorthAIProject/north-client/internal/insights"
 	"github.com/NorthAIProject/north-client/internal/jobs"
+	"github.com/NorthAIProject/north-client/internal/meals"
 	"github.com/NorthAIProject/north-client/internal/media"
 	"github.com/NorthAIProject/north-client/internal/memories"
+	"github.com/NorthAIProject/north-client/internal/mind"
+	"github.com/NorthAIProject/north-client/internal/reports"
 	"github.com/NorthAIProject/north-client/internal/shared/database"
+	"github.com/NorthAIProject/north-client/internal/sleep"
+	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/vault"
 	vaultdb "github.com/NorthAIProject/north-client/internal/vault/db"
 )
@@ -70,6 +81,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	cfg.AI.LogReady(log, registry)
 
 	storage, err := media.NewS3Storage(ctx, media.S3Options{
 		Endpoint:     cfg.Storage.Endpoint,
@@ -115,9 +127,10 @@ func run() error {
 	// Strava syncs run here rather than in the request that triggered them,
 	// so a slow or rate-limited provider never holds a page open.
 	biometricSvc := biometrics.NewService(biometrics.NewRepository(pool))
+	activitySvc := activity.NewService(activity.NewRepository(pool), biometricSvc)
 	stravaSvc := strava.NewService(strava.Options{
 		Repository:   strava.NewRepository(pool, sealer),
-		Activity:     activity.NewService(activity.NewRepository(pool), biometricSvc),
+		Activity:     activitySvc,
 		Biometrics:   biometricSvc,
 		Queue:        queue,
 		ClientID:     cfg.StravaClientID,
@@ -164,7 +177,53 @@ func run() error {
 	worker.Register(jobs.KindEmbedChunks, documentEmbedder.HandleEmbedJob)
 	worker.Register(jobs.KindSweepEmbeddings, embedSweeper.HandleSweep)
 	worker.Register(jobs.KindSyncVault, vaultSvc.HandleSyncJob)
+
+	// The weekly review is generated here, so the week's records have to be
+	// readable here. The web process wires the same loader for the same reason;
+	// wiring it in only one of them would give a report whose content depended
+	// on which process happened to pick the job up.
+	//
+	// Dashboard is deliberately nil: it backs insights.Timeline, which is the
+	// activity feed on a page, and a review never asks for it. Building the
+	// dashboard here would drag in workouts and conversations to serve a call
+	// that is never made.
+	goalSvc := goals.NewService(goals.NewRepository(pool))
+	checkinSvc := checkins.NewService(checkins.NewRepository(pool), goalSvc)
+	calculatorSvc := calculator.NewService(calculator.NewRepository(pool), biometricSvc)
+	mealsRepo := meals.NewRepository(pool)
+
+	reviewContext := reports.NewInsightsContext(
+		insights.NewService(insights.Options{
+			CheckIns:  checkinSvc,
+			Hydration: hydration.NewService(hydration.NewRepository(pool)),
+			Sleep:     sleep.NewService(sleep.NewRepository(pool)),
+			Habits:    habits.NewService(habits.NewRepository(pool)),
+			Goals:     goalSvc,
+			Mind:      mind.NewService(mind.NewRepository(pool), checkinSvc),
+			Activity:  activitySvc,
+		}),
+		meals.NewTrackMealProgressService(meals.NewFoodLogService(mealsRepo), calculatorSvc),
+		memories.NewService(memories.NewRepository(pool)),
+	)
+
+	reportSvc := reports.NewService(reports.Options{
+		Repository: reports.NewRepository(pool),
+		Users:      users.NewService(users.NewRepository(pool)),
+		Queue:      queue,
+		Client:     reports.ClientFromRegistry(registry),
+		Context:    reviewContext,
+	})
+	worker.Register(jobs.KindWeeklyReview, reportSvc.HandleGenerateJob)
+
+	// The coach enqueues extraction only once a thread reaches four messages,
+	// from inside the reply pump. This catches the rest: conversations that
+	// said something worth keeping and then went quiet. Hourly, because the
+	// threads it looks for have been idle for six hours already.
+	worker.Register(jobs.KindSweepMemories,
+		memories.NewExtractionSweeper(memoryExtract.Conversations, queue, log).HandleSweep)
+
 	worker.RegisterPeriodic(15*time.Minute, jobs.KindSweepEmbeddings, struct{}{})
+	worker.RegisterPeriodic(time.Hour, jobs.KindSweepMemories, struct{}{})
 
 	log.Info("worker ready",
 		slog.String("ai_provider", registry.DefaultName()),

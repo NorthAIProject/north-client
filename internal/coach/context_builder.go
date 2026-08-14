@@ -89,6 +89,9 @@ type Context struct {
 	// (internal/habits). Separate from DailySignals because it carries an
 	// expectation: a missed habit is information, a missed log is not.
 	Habits []string
+
+	// Reports is the latest ready weekly review, when one exists.
+	Reports []string
 }
 
 // Evidence is one retrieved fact carrying enough provenance to cite it.
@@ -260,6 +263,7 @@ func (c *Context) Render() string {
 	section(&b, "Habits", c.Habits, "none set up yet")
 	section(&b, "Preferences", c.Preferences, "not set yet")
 	section(&b, "Reflections", c.Reflections, "none yet")
+	section(&b, "Latest weekly review", c.Reports, "none yet")
 
 	if len(c.EarlierTopics) > 0 {
 		b.WriteString("\nWhat they have been talking about in other conversations:\n")

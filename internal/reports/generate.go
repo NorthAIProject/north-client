@@ -1,0 +1,155 @@
+package reports
+
+import (
+	"context"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+
+	"github.com/NorthAIProject/north-client/internal/ai"
+	"github.com/NorthAIProject/north-client/internal/ai/prompts"
+	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/users"
+)
+
+// Generator is the non-streaming AI call a review needs.
+type Generator interface {
+	Generate(ctx context.Context, req ai.Request) (*ai.Response, error)
+}
+
+type registryGenerator struct {
+	registry *ai.Registry
+}
+
+// ClientFromRegistry uses whichever provider is currently the default.
+func ClientFromRegistry(registry *ai.Registry) Generator {
+	return registryGenerator{registry: registry}
+}
+
+func (g registryGenerator) Generate(ctx context.Context, req ai.Request) (*ai.Response, error) {
+	client, err := g.registry.Default()
+	if err != nil {
+		return nil, err
+	}
+	return client.Generate(ctx, req)
+}
+
+// ReviewContext is the week, in the person's own recorded words.
+type ReviewContext struct {
+	Goals     []string
+	CheckIns  []string
+	Training  []string
+	Nutrition []string
+	Sleep     []string
+	Hydration []string
+	Habits    []string
+	Memories  []string
+}
+
+// ContextLoader collects the recorded week. Tests inject a stub; production
+// wires the same slices the coach already reads.
+type ContextLoader interface {
+	Load(ctx context.Context, user users.User, start, end time.Time) (ReviewContext, error)
+}
+
+// Generate writes the review body. Failures mark the row failed and return
+// the error, so the worker can retry without losing the slot.
+func (s *Service) Generate(ctx context.Context, id, userID uuid.UUID) error {
+	report, err := s.repo.Get(ctx, id, userID)
+	if err != nil {
+		return err
+	}
+
+	user, err := s.users.ByID(ctx, userID)
+	if err != nil {
+		return s.fail(ctx, id, userID, err)
+	}
+
+	var review ReviewContext
+	if s.context != nil {
+		review, err = s.context.Load(ctx, user, report.PeriodStart, report.PeriodEnd)
+		if err != nil {
+			return s.fail(ctx, id, userID, err)
+		}
+	}
+
+	if s.client == nil {
+		return s.fail(ctx, id, userID, apperr.New("report generation is not configured"))
+	}
+
+	prompt, err := prompts.Render(prompts.WeeklyReview, map[string]string{
+		"Title":   report.Title,
+		"Context": formatContext(user, report, review),
+	})
+	if err != nil {
+		return s.fail(ctx, id, userID, err)
+	}
+
+	resp, err := s.client.Generate(ctx, ai.Request{
+		Messages: []ai.Message{ai.UserText(prompt)},
+	})
+	if err != nil {
+		return s.fail(ctx, id, userID, err)
+	}
+
+	body := strings.TrimSpace(resp.Text)
+	if body == "" {
+		return s.fail(ctx, id, userID, apperr.New("the model returned an empty review"))
+	}
+
+	_, err = s.repo.SaveGenerated(ctx, id, userID, body)
+	return err
+}
+
+func (s *Service) fail(ctx context.Context, id, userID uuid.UUID, cause error) error {
+	_, _ = s.repo.MarkFailed(ctx, id, userID, userFacing(cause))
+	return cause
+}
+
+func userFacing(err error) string {
+	switch {
+	case apperr.Is(err, apperr.ErrValidation), apperr.Is(err, apperr.ErrNotFound), apperr.Is(err, apperr.ErrConflict):
+		return err.Error()
+	default:
+		return "Generation failed. Try again in a minute."
+	}
+}
+
+func formatContext(user users.User, report Report, review ReviewContext) string {
+	var b strings.Builder
+	b.WriteString("Person: ")
+	b.WriteString(user.DisplayName)
+	b.WriteString("\nTimezone: ")
+	b.WriteString(user.Timezone)
+	b.WriteString("\nWeek: ")
+	b.WriteString(report.PeriodStart.Format("2 Jan 2006"))
+	b.WriteString(" – ")
+	b.WriteString(report.PeriodEnd.Add(-time.Second).Format("2 Jan 2006"))
+	b.WriteString("\n")
+
+	writeSection(&b, "Goals", review.Goals)
+	writeSection(&b, "Check-ins", review.CheckIns)
+	writeSection(&b, "Training", review.Training)
+	writeSection(&b, "Nutrition", review.Nutrition)
+	writeSection(&b, "Sleep", review.Sleep)
+	writeSection(&b, "Hydration", review.Hydration)
+	writeSection(&b, "Habits", review.Habits)
+	writeSection(&b, "Remembered facts", review.Memories)
+	return strings.TrimSpace(b.String())
+}
+
+func writeSection(b *strings.Builder, title string, lines []string) {
+	b.WriteString("\n")
+	b.WriteString(title)
+	b.WriteString(":\n")
+	if len(lines) == 0 {
+		b.WriteString("(none recorded)\n")
+		return
+	}
+	for _, line := range lines {
+		b.WriteString("- ")
+		b.WriteString(line)
+		b.WriteString("\n")
+	}
+}

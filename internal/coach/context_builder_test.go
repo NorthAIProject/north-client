@@ -52,6 +52,7 @@ func TestNewSectionsRenderWithEmptyStateLabels(t *testing.T) {
 		"Habits: none set up yet",
 		"Preferences: not set yet",
 		"Reflections: none yet",
+		"Latest weekly review: none yet",
 	} {
 		if !strings.Contains(rendered, want) {
 			t.Errorf("rendered context missing %q:\n%s", want, rendered)

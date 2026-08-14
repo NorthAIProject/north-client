@@ -3,6 +3,7 @@ package conversations
 import (
 	"context"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -127,6 +128,21 @@ func (s *Service) SetTitle(ctx context.Context, id uuid.UUID, title string) erro
 
 func (s *Service) CountMessages(ctx context.Context, conversationID uuid.UUID) (int, error) {
 	return s.repo.CountMessages(ctx, conversationID)
+}
+
+// AwaitingExtraction lists threads that went quiet before the memory extractor
+// read them.
+//
+// Not user-scoped, unlike everything else here, because its only caller is a
+// background sweep over every account. Nothing reachable from a request should
+// call it.
+func (s *Service) AwaitingExtraction(ctx context.Context, idleBefore time.Time, minMessages, limit int) ([]Pending, error) {
+	return s.repo.AwaitingExtraction(ctx, idleBefore, minMessages, limit)
+}
+
+// MarkExtracted records that extraction ran over a thread, found or not.
+func (s *Service) MarkExtracted(ctx context.Context, id uuid.UUID) error {
+	return s.repo.MarkExtracted(ctx, id)
 }
 
 // NeedsTitle reports whether a conversation is still unnamed.

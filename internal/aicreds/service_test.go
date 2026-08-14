@@ -256,10 +256,12 @@ func TestSaveValidates(t *testing.T) {
 		in    aicreds.Input
 		field string
 	}{
-		"unknown provider": {aicreds.Input{Provider: "anthropic", APIKey: testKey}, "provider"},
-		"no key at all":    {aicreds.Input{Provider: "openrouter"}, "api_key"},
-		"absurd key":       {aicreds.Input{Provider: "openrouter", APIKey: strings.Repeat("k", 5000)}, "api_key"},
-		"absurd model":     {aicreds.Input{Provider: "openrouter", APIKey: testKey, Model: strings.Repeat("m", 300)}, "model"},
+		"unknown provider":   {aicreds.Input{Provider: "anthropic", APIKey: testKey}, "provider"},
+		"no key at all":      {aicreds.Input{Provider: "openrouter"}, "api_key"},
+		"absurd key":         {aicreds.Input{Provider: "openrouter", APIKey: strings.Repeat("k", 5000)}, "api_key"},
+		"absurd model":       {aicreds.Input{Provider: "openrouter", APIKey: testKey, Model: strings.Repeat("m", 300)}, "model"},
+		"hermes without url": {aicreds.Input{Provider: "hermes", APIKey: testKey}, "base_url"},
+		"hermes loopback":    {aicreds.Input{Provider: "hermes", APIKey: testKey, BaseURL: "http://127.0.0.1:8642/v1"}, "base_url"},
 	}
 
 	for name, tc := range cases {
@@ -274,6 +276,28 @@ func TestSaveValidates(t *testing.T) {
 				t.Fatalf("errors = %v, want one on %q", fieldErrs.Messages(), tc.field)
 			}
 		})
+	}
+}
+
+func TestHermesCredentialKeepsItsOwnURL(t *testing.T) {
+	svc, _, user := newService(t, sealer(t, 1))
+	ctx := context.Background()
+
+	cred := save(t, svc, user.ID, aicreds.Input{
+		Provider: "hermes",
+		APIKey:   testKey,
+		BaseURL:  "http://hermes-vps-2.tail562587.ts.net:8642",
+	})
+	if cred.BaseURL != "http://hermes-vps-2.tail562587.ts.net:8642/v1" {
+		t.Fatalf("base_url = %q", cred.BaseURL)
+	}
+
+	client, err := svc.For(ctx, user.ID)
+	if err != nil || client == nil {
+		t.Fatalf("for = (%v, %v)", client, err)
+	}
+	if client.Name() != "hermes" {
+		t.Fatalf("client = %q", client.Name())
 	}
 }
 

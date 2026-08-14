@@ -1,12 +1,15 @@
 package coach
 
 import (
+	"encoding/json"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/google/uuid"
 
+	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/conversations"
 )
 
@@ -16,8 +19,9 @@ import (
 // Defined by internal/conversations, which owns the column they are stored in;
 // see the constants there for why.
 const (
-	EvidenceKindMemory = conversations.EvidenceKindMemory
-	EvidenceKindChunk  = conversations.EvidenceKindChunk
+	EvidenceKindMemory   = conversations.EvidenceKindMemory
+	EvidenceKindChunk    = conversations.EvidenceKindChunk
+	EvidenceKindExercise = conversations.EvidenceKindExercise
 )
 
 // MemoryRef builds the ref for a stored profile fact.
@@ -25,6 +29,55 @@ func MemoryRef(id uuid.UUID) string { return EvidenceKindMemory + ":" + id.Strin
 
 // ChunkRef builds the ref for a document chunk.
 func ChunkRef(chunkID string) string { return EvidenceKindChunk + ":" + chunkID }
+
+// ToolGetExercise is the capability that reads one catalogue exercise, and
+// ExerciseArgs is what it takes.
+//
+// Declared here rather than in internal/agent, where the capability is built,
+// because this package cannot import that one: agent reaches calculator, which
+// reaches back here. Since exactly one of the two directions is available, the
+// name lives with the side that has to recognise it in a recorded call, and
+// agent refers to these when declaring the tool.
+const ToolGetExercise = "get_exercise"
+
+// ExerciseArgs is the argument object for ToolGetExercise.
+type ExerciseArgs struct {
+	Slug string `json:"slug"`
+}
+
+// ExerciseRef builds the ref for a catalogue exercise the coach looked up.
+//
+// Deliberately absent from refRemoval's pattern: the other two kinds are
+// citations the model writes into its prose and this one is not. Nothing should
+// be stripped out of a reply on account of it.
+func ExerciseRef(slug string) string { return EvidenceKindExercise + ":" + slug }
+
+// appendExerciseLookups records the exercises a round of tool calls read.
+//
+// Reads the call rather than the result, because the result is prose written
+// for the model and the slug is the thing the catalogue is addressed by. A call
+// whose arguments will not decode is skipped: the tool itself is about to
+// reject it, and a malformed argument should cost a picture rather than a
+// reply.
+func appendExerciseLookups(into []string, calls []ai.ToolCall) []string {
+	for _, call := range calls {
+		if call.Name != ToolGetExercise {
+			continue
+		}
+
+		var args ExerciseArgs
+		if err := json.Unmarshal(call.Arguments, &args); err != nil {
+			continue
+		}
+
+		slug := strings.TrimSpace(args.Slug)
+		if slug == "" || slices.Contains(into, slug) {
+			continue
+		}
+		into = append(into, slug)
+	}
+	return into
+}
 
 // refRemoval matches a citation plus the usual leading space.
 //

@@ -75,11 +75,12 @@ type ChunkEmbedding struct {
 }
 
 type Conversation struct {
-	ID        uuid.UUID
-	UserID    uuid.UUID
-	Title     *string
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID                  uuid.UUID
+	UserID              uuid.UUID
+	Title               *string
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+	MemoriesExtractedAt *time.Time
 }
 
 type Diet struct {
@@ -368,6 +369,22 @@ type PasswordResetToken struct {
 	UsedAt    *time.Time
 }
 
+type Report struct {
+	ID          uuid.UUID
+	UserID      uuid.UUID
+	Kind        string
+	PeriodStart pgtype.Date
+	PeriodEnd   pgtype.Date
+	Title       string
+	Body        string
+	Status      string
+	LastError   string
+	GeneratedAt *time.Time
+	ArchivedAt  *time.Time
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
 type Session struct {
 	TokenHash  []byte
 	UserID     uuid.UUID
@@ -445,6 +462,7 @@ type UserAiCredential struct {
 	LastErrorAt *time.Time
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+	BaseUrl     string
 }
 
 type UserBiometric struct {

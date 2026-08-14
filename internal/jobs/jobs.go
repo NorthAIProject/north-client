@@ -62,6 +62,17 @@ const (
 
 	// KindSyncVault imports files from a connected local vault folder.
 	KindSyncVault Kind = "sync_vault"
+
+	// KindWeeklyReview writes one week's review from the person's recorded week.
+	KindWeeklyReview Kind = "weekly_review"
+
+	// KindSweepMemories enqueues extraction for conversations that went quiet
+	// before the coach's own trigger fired.
+	//
+	// That trigger only runs at four messages, in the reply pump. A thread that
+	// says something worth remembering and then stops at three is invisible to
+	// it, which is what this sweep exists to catch.
+	KindSweepMemories Kind = "sweep_memories"
 )
 
 // ExtractMemoriesPayload is the job body for KindExtractMemories.
@@ -97,6 +108,12 @@ type EmbedChunksPayload struct {
 
 type SyncVaultPayload struct {
 	UserID uuid.UUID `json:"user_id"`
+}
+
+// WeeklyReviewPayload is the job body for KindWeeklyReview.
+type WeeklyReviewPayload struct {
+	UserID   uuid.UUID `json:"user_id"`
+	ReportID uuid.UUID `json:"report_id"`
 }
 
 // Job is a unit of queued work.
