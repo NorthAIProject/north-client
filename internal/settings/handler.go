@@ -7,6 +7,7 @@ package settings
 import (
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -44,6 +45,7 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Get("/settings/connections", h.showConnections)
 	r.Post("/settings/connections", h.createConnection)
 	r.Post("/settings/connections/{id}/revoke", h.revokeConnection)
+	r.Get("/settings/connections/{id}/status", h.connectionStatus)
 
 	r.Post("/settings/ai", h.updateAICredential)
 	r.Post("/settings/ai/remove", h.removeAICredential)
@@ -214,6 +216,36 @@ func (h *Handler) createConnection(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.renderConnections(w, r, settingspages.ConnectForm{Kind: form.Kind}, &issued, nil)
+}
+
+// connectionStatus answers the poll behind "waiting for first use".
+//
+// A fragment rather than a JSON endpoint, because the answer is markup that
+// decides whether to ask again — the poll stops by returning something with no
+// hx-trigger on it. A revoked connection is gone from the list and answers 404,
+// which also stops the poll.
+func (h *Handler) connectionStatus(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		h.fail(w, r, apperr.ErrNotFound)
+		return
+	}
+
+	conn, err := h.connections.Get(r.Context(), id, user.ID)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+
+	// Unparseable means zero, which only costs the caller a longer poll.
+	tries, _ := strconv.Atoi(r.URL.Query().Get("tries"))
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := settingspages.ConnectionStatus(conn, tries).Render(r.Context(), w); err != nil {
+		middleware.FromContext(r.Context()).Error("render connection status", slog.Any("error", err))
+	}
 }
 
 func (h *Handler) revokeConnection(w http.ResponseWriter, r *http.Request) {
