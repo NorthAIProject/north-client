@@ -1,6 +1,8 @@
 package settings
 
 import (
+	"fmt"
+
 	"github.com/NorthAIProject/north-client/internal/aicreds"
 	"github.com/NorthAIProject/north-client/internal/ai/providers"
 	"github.com/NorthAIProject/north-client/internal/connections"
@@ -118,10 +120,9 @@ templ issuedCard(issued connections.Issued, setup connections.Setup) {
 				if setup.Safe != "" {
 					<div>
 						<p class="text-muted-foreground mb-2 text-sm leading-relaxed">
-							If that file lives in a git repository, use this version instead and keep
-							the key in your environment — { setup.SafeLabel } is committed more often than people expect.
+							{ setup.SafeNote }
 						</p>
-						@copyBlock(setup.SafeLabel, "issued-safe", "json", setup.Safe)
+						@copyBlock(setup.SafeLabel, "issued-safe", setup.SafeLang, setup.Safe)
 						@copyBlock("Environment", "issued-export", "bash", setup.Export)
 					</div>
 				}
@@ -192,16 +193,52 @@ templ connectionRow(conn connections.Connection) {
 				{ conn.Kind.Label() } · { conn.TokenPrefix }…
 			</p>
 			<p class="text-muted-foreground mt-0.5 text-xs">
-				Added { conn.CreatedAt.Format("2 Jan 2006") }
-				if conn.Used() {
-					· last used { conn.LastUsedAt.Format("2 Jan, 15:04") }
-				} else {
-					· never used
-				}
+				Added { conn.CreatedAt.Format("2 Jan 2006") } ·
+				@ConnectionStatus(conn, 0)
 			</p>
 		</div>
 		@revokeDialog(conn)
 	</li>
+}
+
+// pollLimit stops the status poll after roughly two minutes.
+//
+// Someone who pasted the config into an agent finds out inside a few seconds.
+// Someone who wandered off leaves a tab polling forever, which is a cost North
+// pays and they never see — so it gives up and says so.
+const pollLimit = 24
+
+// ConnectionStatus is both the initial render and the polled fragment.
+//
+// Without it the flow ends in silence: the user pastes a config into their
+// agent and this page has no idea whether it worked until they think to
+// reload. That is the moment people give up, so it is worth one small poll.
+//
+// The poll stops by rendering markup that does not ask for another: an
+// hx-trigger only appears while there is still something to wait for.
+templ ConnectionStatus(conn connections.Connection, tries int) {
+	if conn.Used() {
+		<span id={ statusID(conn) } class="text-signal">
+			connected · last used { conn.LastUsedAt.Format("2 Jan, 15:04") }
+		</span>
+	} else if tries >= pollLimit {
+		<span id={ statusID(conn) }>not used yet</span>
+	} else {
+		<span
+			id={ statusID(conn) }
+			hx-get={ statusURL(conn, tries+1) }
+			hx-trigger="load delay:5s"
+			hx-swap="outerHTML"
+		>
+			waiting for first use…
+		</span>
+	}
+}
+
+func statusID(conn connections.Connection) string { return "connection-status-" + conn.ID.String() }
+
+func statusURL(conn connections.Connection, tries int) string {
+	return fmt.Sprintf("/app/settings/connections/%s/status?tries=%d", conn.ID, tries)
 }
 
 // revokeDialog asks before cutting an agent off. Revoking is instant and

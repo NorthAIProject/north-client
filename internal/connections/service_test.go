@@ -179,6 +179,61 @@ func TestRevokeIsScopedToTheOwner(t *testing.T) {
 	}
 }
 
+// The status poll takes a connection id straight from the URL, so Get must be
+// scoped by owner as well. Unscoped, a stranger could confirm that a guessed id
+// exists and watch when it was last used — a two-field leak that reveals both
+// that somebody has connected an agent and roughly when they are working.
+//
+// It is scoped today because Get filters a list that is already
+// WHERE user_id = $1. This test is here so that stays true if somebody later
+// replaces it with a lookup by id, which is the obvious optimisation and the
+// one that would quietly remove the predicate.
+func TestGetIsScopedToTheOwner(t *testing.T) {
+	pool := testdb.New(t)
+	userSvc := users.NewService(users.NewRepository(pool))
+	owner := register(t, userSvc, "get-owner@north.test")
+	stranger := register(t, userSvc, "get-stranger@north.test")
+
+	svc := connections.NewService(connections.NewRepository(pool), userSvc, "https://north.test")
+	ctx := context.Background()
+
+	issued, err := svc.Issue(ctx, owner.ID, "Laptop", connections.ClientClaudeCode)
+	if err != nil {
+		t.Fatalf("issue: %v", err)
+	}
+
+	if _, strangerErr := svc.Get(ctx, issued.ID, stranger.ID); !apperr.Is(strangerErr, apperr.ErrNotFound) {
+		t.Fatalf("a stranger read another user's connection: err = %v, want ErrNotFound", strangerErr)
+	}
+
+	got, err := svc.Get(ctx, issued.ID, owner.ID)
+	if err != nil {
+		t.Fatalf("the owner could not read their own connection: %v", err)
+	}
+	if got.ID != issued.ID {
+		t.Fatalf("got connection %s, want %s", got.ID, issued.ID)
+	}
+}
+
+// A revoked connection is gone as far as Get is concerned, which is also what
+// stops the status poll rather than leaving it asking about a dead token.
+func TestGetDoesNotReturnARevokedConnection(t *testing.T) {
+	svc, _, user := newService(t)
+	ctx := context.Background()
+
+	issued, err := svc.Issue(ctx, user.ID, "Laptop", connections.ClientOther)
+	if err != nil {
+		t.Fatalf("issue: %v", err)
+	}
+	if err := svc.Revoke(ctx, issued.ID, user.ID); err != nil {
+		t.Fatalf("revoke: %v", err)
+	}
+
+	if _, err := svc.Get(ctx, issued.ID, user.ID); !apperr.Is(err, apperr.ErrNotFound) {
+		t.Fatalf("a revoked connection was still readable: err = %v, want ErrNotFound", err)
+	}
+}
+
 func TestRevokedTokenStopsWorking(t *testing.T) {
 	svc, _, user := newService(t)
 	ctx := context.Background()

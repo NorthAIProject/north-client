@@ -95,6 +95,26 @@ func (s *Service) List(ctx context.Context, userID uuid.UUID) ([]Connection, err
 	return s.repo.List(ctx, userID)
 }
 
+// Get returns one of the user's live connections.
+//
+// Filtered from the list rather than fetched by id: the list is already scoped
+// to the owner and already excludes revoked rows, so this cannot return
+// somebody else's connection or a dead one by construction. A person has a
+// handful of these, and a second query to save reading four rows would be
+// paying in complexity for nothing.
+func (s *Service) Get(ctx context.Context, id, userID uuid.UUID) (Connection, error) {
+	list, err := s.repo.List(ctx, userID)
+	if err != nil {
+		return Connection{}, err
+	}
+	for _, conn := range list {
+		if conn.ID == id {
+			return conn, nil
+		}
+	}
+	return Connection{}, apperr.ErrNotFound
+}
+
 func (s *Service) Revoke(ctx context.Context, id, userID uuid.UUID) error {
 	return s.repo.Revoke(ctx, id, userID)
 }

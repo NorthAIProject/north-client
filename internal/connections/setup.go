@@ -30,8 +30,14 @@ type Setup struct {
 	// committed, so offering only the literal form is how a token reaches a
 	// public repository.
 	SafeLabel string
+	SafeLang  string
 	Safe      string
 	Export    string
+
+	// SafeNote explains why the second form exists, which differs by client:
+	// for Claude Code it is an alternative to a literal key in a committed
+	// file, for Codex it is the only form there is.
+	SafeNote string
 
 	// Prompt is the client-agnostic instruction to paste into an agent that is
 	// already running, for people who would rather not open a config file.
@@ -62,6 +68,9 @@ func (s *Service) Instructions(kind ClientKind, token string) Setup {
   --header "Authorization: Bearer %s"`, url, token)
 
 		setup.SafeLabel = ".mcp.json"
+		setup.SafeLang = "json"
+		setup.SafeNote = "If that file lives in a git repository, use this version instead and keep " +
+			"the key in your environment — .mcp.json is committed more often than people expect."
 		setup.Safe = fmt.Sprintf(`{
   "mcpServers": {
     "north": {
@@ -76,11 +85,27 @@ func (s *Service) Instructions(kind ClientKind, token string) Setup {
 		setup.Export = "export NORTH_MCP_TOKEN=" + token
 
 	case ClientCodex:
-		setup.ConfigLabel = "~/.codex/config.toml"
-		setup.ConfigLang = "toml"
-		setup.Config = fmt.Sprintf(`[mcp_servers.north]
+		// Codex reads the credential from a named environment variable rather
+		// than taking it inline, so its config file never contains the key.
+		// That makes this the one client where the git-safe form is the only
+		// form — there is no literal variant to offer or to warn about.
+		//
+		// Verified against codex-cli 0.147.0: `codex mcp add --url` writes
+		// exactly the TOML below, and the flag is --bearer-token-env-var. There
+		// is no --header option for HTTP servers.
+		setup.ConfigLabel = "one command"
+		setup.ConfigLang = "bash"
+		setup.Config = fmt.Sprintf(
+			`codex mcp add north --url %s --bearer-token-env-var NORTH_MCP_TOKEN`, url)
+
+		setup.SafeLabel = "~/.codex/config.toml"
+		setup.SafeLang = "toml"
+		setup.SafeNote = "That command writes this, which you can also write yourself. Codex reads " +
+			"the key from the environment, so the file never contains it."
+		setup.Safe = fmt.Sprintf(`[mcp_servers.north]
 url = %q
-http_headers = { Authorization = "Bearer %s" }`, url, token)
+bearer_token_env_var = "NORTH_MCP_TOKEN"`, url)
+		setup.Export = "export NORTH_MCP_TOKEN=" + token
 
 	case ClientHermes:
 		setup.ConfigLabel = "shell"
