@@ -114,6 +114,18 @@ func run() error {
 		slog.Any("registered", registry.Names()),
 	)
 
+	// Said out loud at boot because the alternative is silence. A deployment
+	// that forgot ENCRYPTION_KEY still starts and still works — it just cannot
+	// offer bring-your-own-key, and it writes Strava tokens in the clear. Both
+	// are invisible from the outside, so the only place anyone would find out
+	// is here.
+	if cfg.Encryption.Enabled() {
+		log.Info("encryption at rest enabled", slog.Int("keys", len(cfg.Encryption.Keys)))
+	} else {
+		log.Warn("encryption at rest is not configured: " +
+			"provider keys cannot be stored and Strava tokens are written in plaintext. Set ENCRYPTION_KEY")
+	}
+
 	storage, err := media.NewS3Storage(ctx, media.S3Options{
 		Endpoint:     cfg.Storage.Endpoint,
 		Region:       cfg.Storage.Region,
