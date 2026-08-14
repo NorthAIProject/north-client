@@ -3,6 +3,7 @@ package app
 import (
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -15,27 +16,77 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
 	"github.com/NorthAIProject/north-client/web/shared/ui/card"
 	"github.com/NorthAIProject/north-client/web/shared/ui/chart"
+	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
 	"github.com/NorthAIProject/north-client/web/shared/ui/progress"
 )
 
 // DashboardData is the command-center snapshot.
 type DashboardData struct {
-	CheckedInToday     bool
-	Streak             int
-	PendingMemories    int
-	Goals              []goal.Goal
-	LastThread         *conversations.Conversation
-	NextSession        *plan.PlanDay
-	PlanID             uuid.UUID
-	CheckIns           CheckInSeriesView
-	Habits             HabitsView
-	Hydration          HydrationView
-	Sleep              SleepView
-	ActivityCalories7d float64
-	MoodChart          chart.Props
-	HydrationChart     chart.Props
-	HabitGaugeOption   map[string]any
-	CheckInHeatmap     map[string]any
+	Range RangeView
+
+	CheckedInToday   bool
+	Streak           int
+	PendingMemories  int
+	Goals            []goal.Goal
+	LastThread       *conversations.Conversation
+	NextSession      *plan.PlanDay
+	PlanID           uuid.UUID
+	CheckIns         CheckInSeriesView
+	Habits           HabitsView
+	Hydration        HydrationView
+	Sleep            SleepView
+	ActivityCalories float64
+	Timeline         []TimelineEntryView
+	Deltas           DeltasView
+
+	MoodChart        chart.Props
+	HydrationChart   chart.Props
+	HabitGaugeOption map[string]any
+	CheckInHeatmap   map[string]any
+	ActivityDonut    map[string]any
+	HasActivityDonut bool
+}
+
+// RangeOption is one choice in the period selector.
+type RangeOption struct {
+	Key      string
+	Label    string
+	Selected bool
+}
+
+type RangeView struct {
+	Key     string
+	Label   string
+	Options []RangeOption
+}
+
+// DeltaView is a metric's change against the previous window of equal length.
+//
+// HasPrior false means there is nothing to compare against. The template then
+// renders nothing at all: a first-week user shown "+100%" on every tile is
+// being told something false.
+type DeltaView struct {
+	Pct       float64
+	Direction int
+	HasPrior  bool
+}
+
+type DeltasView struct {
+	Hydration  DeltaView
+	SleepHours DeltaView
+	Calories   DeltaView
+	CheckIns   DeltaView
+}
+
+// TimelineEntryView is one row of the activity feed.
+type TimelineEntryView struct {
+	Kind   string
+	Label  string
+	At     time.Time
+	Title  string
+	Detail string
+	Href   string
+	Icon   string
 }
 
 type CheckInDayView struct {
@@ -126,28 +177,50 @@ func formatSleep(minutes int) string {
 	return fmt.Sprintf("%dh %dm", h, m)
 }
 
+// rangeHref keeps the selector working without JavaScript.
+func rangeHref(key string) string {
+	return "/app?range=" + key
+}
+
+func panelsHref(key string) string {
+	return "/app/panels?range=" + key
+}
+
+// relativeTime keeps a feed row short. Anything older than a week is a date,
+// because "9 days ago" is harder to place than "4 Aug".
+func relativeTime(t time.Time) string {
+	d := time.Since(t)
+	switch {
+	case d < time.Minute:
+		return "just now"
+	case d < time.Hour:
+		return fmt.Sprintf("%dm ago", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh ago", int(d.Hours()))
+	case d < 7*24*time.Hour:
+		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
+	default:
+		return t.Format("2 Jan")
+	}
+}
+
 templ Dashboard(user users.User, data DashboardData) {
 	@layout.App("Overview", user, layout.BuildNav("/app")) {
 		<div class="mx-auto w-full max-w-6xl space-y-6 p-6 md:p-8">
-			<header>
-				@ui.MonoLabel("Command center")
-				<h1 class="mt-2 text-2xl font-medium tracking-tight">
-					Hello, { user.FirstName() }
-				</h1>
-				<p class="text-muted-foreground mt-1 max-w-2xl text-sm leading-relaxed">
-					Today’s instruments: check-in, habits, hydration, sleep, goals, coach, training.
-				</p>
+			<header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+				<div>
+					@ui.MonoLabel("Command center")
+					<h1 class="mt-2 text-2xl font-medium tracking-tight">
+						Hello, { user.FirstName() }
+					</h1>
+					<p class="text-muted-foreground mt-1 max-w-2xl text-sm leading-relaxed">
+						Everything across North, for { data.Range.Label }.
+					</p>
+				</div>
+				@rangeSelector(data)
 			</header>
-			@kpiStrip(data)
-			@checkInPanel(data)
-			<div class="grid gap-4 lg:grid-cols-2">
-				@habitsPanel(data)
-				@hydrationPanel(data)
-			</div>
-			<div class="grid gap-4 lg:grid-cols-3">
-				@goalsPanel(data)
-				@coachPanel(data)
-				@trainingPanel(data)
+			<div id="dashboard-panels">
+				@DashboardPanels(data)
 			</div>
 		</div>
 		@progress.Script()
@@ -155,18 +228,120 @@ templ Dashboard(user users.User, data DashboardData) {
 	}
 }
 
+// rangeSelector swaps the panel grid rather than the page.
+//
+// Every option is a real link as well as an hx-get, so the page still works
+// with JavaScript off — the href reloads, the hx-get swaps.
+templ rangeSelector(data DashboardData) {
+	<nav
+		aria-label="Time period"
+		class="border-hairline bg-surface/60 -mx-1 flex shrink-0 gap-1 overflow-x-auto rounded-lg border p-1"
+	>
+		for _, opt := range data.Range.Options {
+			<a
+				href={ templ.SafeURL(rangeHref(opt.Key)) }
+				hx-get={ panelsHref(opt.Key) }
+				hx-target="#dashboard-panels"
+				hx-swap="innerHTML"
+				hx-push-url={ rangeHref(opt.Key) }
+				if opt.Selected {
+					aria-current="true"
+					class="bg-signal text-background rounded-md px-3 py-1.5 text-xs font-medium whitespace-nowrap"
+				} else {
+					class="text-muted-foreground hover:bg-accent/60 hover:text-foreground rounded-md px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors"
+				}
+			>
+				{ opt.Label }
+			</a>
+		}
+	</nav>
+}
+
+// DashboardPanels is everything the range selector replaces. Exported because
+// the panels endpoint renders it on its own.
+//
+// It carries no <script> tags: Chart.js re-initialises swapped canvases
+// through a MutationObserver and ECharts through echarts-init.js, both of
+// which are already loaded by the page around it.
+templ DashboardPanels(data DashboardData) {
+	<div class="space-y-6">
+		@kpiStrip(data)
+		<div class="grid gap-4 lg:grid-cols-3">
+			<div class="lg:col-span-2">
+				@checkInPanel(data)
+			</div>
+			@timelinePanel(data)
+		</div>
+		<div class="grid gap-4 lg:grid-cols-3">
+			@habitsPanel(data)
+			@hydrationPanel(data)
+			@splitPanel(data)
+		</div>
+		<div class="grid gap-4 lg:grid-cols-3">
+			@goalsPanel(data)
+			@coachPanel(data)
+			@trainingPanel(data)
+		</div>
+	</div>
+}
+
 templ kpiStrip(data DashboardData) {
 	@ui.KpiStrip() {
-		@kpiCell("Check-in", checkInKPI(data), "/app/check-ins", checkInCTA(data))
-		@kpiCell("Streak", streakKPI(data), "/app/check-ins", "Check in")
-		@kpiCell("Water", waterKPI(data), "/app/care", "Log water")
-		@kpiCell("Sleep", sleepKPI(data), "/app/care", "Log sleep")
-		@kpiCell("Memory", memoryKPI(data), "/app/memories", "Review")
+		@ui.KpiCell(ui.KpiCellProps{
+			Label: "Check-in", Value: checkInKPI(data),
+			Href: "/app/check-ins", CTA: checkInCTA(data),
+		})
+		@ui.KpiCell(ui.KpiCellProps{
+			Label: "Streak", Value: streakKPI(data),
+			Href: "/app/check-ins", CTA: "Check in",
+		})
+		@kpiCellWithDelta("Water", waterKPI(data), "/app/care", "Log water", data.Deltas.Hydration)
+		@kpiCellWithDelta("Sleep", sleepKPI(data), "/app/care", "Log sleep", data.Deltas.SleepHours)
+		@kpiCellWithDelta("Burned", caloriesKPI(data), "/app/fitness", "Activity", data.Deltas.Calories)
 	}
 }
 
-templ kpiCell(label, value, href, cta string) {
-	@ui.KpiCell(ui.KpiCellProps{Label: label, Value: value, Href: href, CTA: cta})
+// kpiCellWithDelta is KpiCell plus a trend chip. The chip is a separate
+// element rather than a KpiCell field so the shared component stays a plain
+// label/value/link and every other caller is unaffected.
+templ kpiCellWithDelta(label, value, href, cta string, delta DeltaView) {
+	<div class="space-y-1">
+		<p class="text-muted-foreground font-mono text-[10px] uppercase tracking-[0.14em]">{ label }</p>
+		<div class="flex items-baseline gap-2">
+			<p class="text-lg font-medium tabular-nums">{ value }</p>
+			@deltaChip(delta)
+		</div>
+		if href != "" && cta != "" {
+			<a href={ templ.SafeURL(href) } class="text-signal text-xs hover:underline">{ cta }</a>
+		}
+	</div>
+}
+
+// deltaChip renders nothing when there is no previous window to compare
+// against. Direction is shown with an arrow as well as a colour, because
+// colour alone is not a signal everyone receives.
+templ deltaChip(delta DeltaView) {
+	if delta.HasPrior && delta.Direction != 0 {
+		<span
+			class={ "inline-flex items-center gap-0.5 font-mono text-[10px] tabular-nums",
+				templ.KV("text-signal", delta.Direction > 0),
+				templ.KV("text-muted-foreground", delta.Direction < 0) }
+		>
+			if delta.Direction > 0 {
+				@icon.Icon("trending-up")(icon.Props{Class: "size-3"})
+			} else {
+				@icon.Icon("trending-down")(icon.Props{Class: "size-3"})
+			}
+			{ formatPct(delta.Pct) }
+		</span>
+	}
+}
+
+func formatPct(pct float64) string {
+	if pct < 0 {
+		pct = -pct
+	}
+	return fmt.Sprintf("%.0f%%", pct)
 }
 
 func checkInKPI(data DashboardData) string {
@@ -208,21 +383,97 @@ func sleepKPI(data DashboardData) string {
 	return text
 }
 
-func memoryKPI(data DashboardData) string {
-	if data.PendingMemories <= 0 {
-		return "Clear"
+func caloriesKPI(data DashboardData) string {
+	if data.ActivityCalories <= 0 {
+		return "—"
 	}
-	return strconv.Itoa(data.PendingMemories) + " pending"
+	return fmt.Sprintf("%.0f kcal", data.ActivityCalories)
+}
+
+// timelinePanel is the feed of everything that happened in the window,
+// assembled across every slice.
+templ timelinePanel(data DashboardData) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface h-full"}) {
+		@card.Header() {
+			@card.Title() {
+				Activity
+			}
+			@card.Description() {
+				Everything you did, { data.Range.Label }.
+			}
+		}
+		@card.Content() {
+			if len(data.Timeline) == 0 {
+				<p class="text-muted-foreground mb-4 text-sm">Nothing logged in this window yet.</p>
+				@button.Button(button.Props{Href: "/app/check-ins", Class: "bg-signal text-background hover:bg-signal/90"}) {
+					Check in
+				}
+			} else {
+				<ul class="divide-border -my-2 divide-y">
+					for _, e := range data.Timeline {
+						<li class="py-2">
+							@timelineRow(e)
+						</li>
+					}
+				</ul>
+			}
+		}
+	}
+}
+
+templ timelineRow(e TimelineEntryView) {
+	<a
+		if e.Href != "" {
+			href={ templ.SafeURL(e.Href) }
+		}
+		class="group flex items-start gap-3"
+	>
+		<span class="border-hairline text-muted-foreground group-hover:text-signal mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md border transition-colors">
+			@icon.Icon(e.Icon)(icon.Props{Class: "size-3"})
+		</span>
+		<span class="min-w-0 flex-1">
+			<span class="block truncate text-sm font-medium">{ e.Title }</span>
+			if e.Detail != "" {
+				<span class="text-muted-foreground block truncate text-xs">{ e.Detail }</span>
+			}
+		</span>
+		<span class="text-muted-foreground shrink-0 font-mono text-[10px] whitespace-nowrap tabular-nums">
+			{ relativeTime(e.At) }
+		</span>
+	</a>
+}
+
+// splitPanel answers "where did my effort go" from the feed already in
+// memory, rather than from another query.
+templ splitPanel(data DashboardData) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface h-full"}) {
+		@card.Header() {
+			@card.Title() {
+				Where it went
+			}
+			@card.Description() {
+				Your logged activity by kind.
+			}
+		}
+		@card.Content() {
+			if data.HasActivityDonut {
+				@templ.JSONScript("dashboard-split-option", data.ActivityDonut)
+				@ui.EChartsMount("dashboard-split", "dashboard-split-option", "min-h-48 w-full")
+			} else {
+				<p class="text-muted-foreground text-sm">Nothing logged in this window yet.</p>
+			}
+		}
+	}
 }
 
 templ checkInPanel(data DashboardData) {
-	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface h-full"}) {
 		@card.Header() {
 			@card.Title() {
 				Mood & energy
 			}
 			@card.Description() {
-				Trailing fourteen days from your check-ins.
+				The trailing fortnight from your check-ins.
 			}
 		}
 		@card.Content() {
@@ -243,7 +494,7 @@ templ checkInPanel(data DashboardData) {
 }
 
 templ habitsPanel(data DashboardData) {
-	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface h-full"}) {
 		@card.Header() {
 			@card.Title() {
 				Habits
@@ -279,14 +530,14 @@ templ habitsPanel(data DashboardData) {
 }
 
 templ hydrationPanel(data DashboardData) {
-	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface h-full"}) {
 		@card.Header() {
 			@card.Title() {
 				Hydration
 			}
 			@card.Description() {
 				if data.Hydration.HasData() {
-					Seven-day intake in millilitres.
+					Daily intake in millilitres.
 				} else {
 					Water logged from Care.
 				}
@@ -299,7 +550,7 @@ templ hydrationPanel(data DashboardData) {
 				</p>
 				@chart.Chart(data.HydrationChart)
 			} else {
-				<p class="text-muted-foreground mb-4 text-sm">No water logged this week.</p>
+				<p class="text-muted-foreground mb-4 text-sm">No water logged in this window.</p>
 				@button.Button(button.Props{Href: "/app/care", Class: "bg-signal text-background hover:bg-signal/90"}) {
 					Log water
 				}
@@ -395,9 +646,9 @@ templ trainingPanel(data DashboardData) {
 					Build a training plan
 				}
 			}
-			if data.ActivityCalories7d > 0 {
+			if data.ActivityCalories > 0 {
 				<p class="text-muted-foreground mt-4 text-xs tabular-nums">
-					{ fmt.Sprintf("%.0f kcal", data.ActivityCalories7d) } burned this week
+					{ fmt.Sprintf("%.0f kcal", data.ActivityCalories) } burned in this window
 				</p>
 			}
 		}
