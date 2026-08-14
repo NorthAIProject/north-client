@@ -260,9 +260,12 @@ templ rangeSelector(data DashboardData) {
 // DashboardPanels is everything the range selector replaces. Exported because
 // the panels endpoint renders it on its own.
 //
-// It carries no <script> tags: Chart.js re-initialises swapped canvases
-// through a MutationObserver and ECharts through echarts-init.js, both of
-// which are already loaded by the page around it.
+// The only <script> tags inside are type="application/json" data payloads —
+// each chart's series, emitted by chart.Chart and templ.JSONScript. Those have
+// to travel with the swap, since they are the new numbers. No executable
+// JavaScript is in here: Chart.js picks up swapped canvases through a
+// MutationObserver and ECharts through echarts-init.js's htmx:afterSwap
+// listener, and both libraries are loaded once by the page around this.
 templ DashboardPanels(data DashboardData) {
 	<div class="space-y-6">
 		@kpiStrip(data)
