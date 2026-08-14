@@ -9,6 +9,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/auth"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
+	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/shared/viz"
 	"github.com/NorthAIProject/north-client/web/app"
 )
@@ -28,7 +29,14 @@ func (h *Handler) Routes(r chi.Router) {
 
 func (h *Handler) show(w http.ResponseWriter, r *http.Request) {
 	user := auth.MustUser(r.Context())
-	snap, err := h.svc.Load(r.Context(), user)
+
+	// Anchored to the user's own timezone, so "today" means their today.
+	// An absent or unrecognised value resolves to timerange.DefaultKey rather
+	// than erroring: a bookmarked or hand-edited URL should show the dashboard,
+	// not a validation message.
+	rg := timerange.Parse(r.URL.Query().Get("range"), user.Location())
+
+	snap, err := h.svc.Load(r.Context(), user, rg)
 	if err != nil {
 		h.fail(w, r, err)
 		return
@@ -94,7 +102,7 @@ func buildDashboardData(snap Snapshot) (app.DashboardData, error) {
 		Habits:             mapHabits(snap.Habits),
 		Hydration:          mapHydration(snap.Hydration),
 		Sleep:              mapSleep(snap.Sleep),
-		ActivityCalories7d: snap.ActivityCalories7d,
+		ActivityCalories7d: snap.ActivityCalories,
 		MoodChart:          viz.MoodEnergyLine("dashboard-mood-energy", labels, mood, energy),
 		HydrationChart:     viz.Bar("dashboard-hydration", "Water (ml)", hydrationLabels, hydrationTotals),
 		HabitGaugeOption:   habitGaugeOption,

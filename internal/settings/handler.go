@@ -344,6 +344,11 @@ func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 		http.Error(w, "Not found.", http.StatusNotFound)
 	case apperr.Is(err, apperr.ErrValidation):
 		http.Error(w, "That request could not be read.", http.StatusUnprocessableEntity)
+	case apperr.Is(err, apperr.ErrUnavailable):
+		// A feature this deployment cannot offer — storing a provider key with
+		// no encryption configured. Nothing is wrong with the request, so a
+		// 500 would send the caller looking for a fault that is not there.
+		http.Error(w, "That is not available on this server.", http.StatusServiceUnavailable)
 	default:
 		middleware.FromContext(r.Context()).Error("settings request failed", slog.Any("error", err))
 		http.Error(w, "Something went wrong.", http.StatusInternalServerError)
