@@ -2,6 +2,7 @@ package mind
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -36,6 +37,25 @@ func (r *Repository) Recent(ctx context.Context, userID uuid.UUID, limit int) ([
 	rows, err := r.q.ListJournalEntries(ctx, minddb.ListJournalEntriesParams{UserID: userID, Limit: int32(limit)})
 	if err != nil {
 		return nil, apperr.Wrap(err, "list journal entries")
+	}
+
+	out := make([]JournalEntry, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, fromDB(row))
+	}
+	return out, nil
+}
+
+// ListBetween returns the entries written in the half-open window
+// [since, until), newest first.
+func (r *Repository) ListBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]JournalEntry, error) {
+	rows, err := r.q.ListJournalEntriesBetween(ctx, minddb.ListJournalEntriesBetweenParams{
+		UserID:      userID,
+		CreatedAt:   since,
+		CreatedAt_2: until,
+	})
+	if err != nil {
+		return nil, apperr.Wrap(err, "list journal entries between")
 	}
 
 	out := make([]JournalEntry, 0, len(rows))

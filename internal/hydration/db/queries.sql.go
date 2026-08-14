@@ -51,6 +51,45 @@ func (q *Queries) DeleteHydrationEntry(ctx context.Context, arg DeleteHydrationE
 	return err
 }
 
+const listHydrationEntriesBetween = `-- name: ListHydrationEntriesBetween :many
+SELECT id, user_id, log_date, amount_ml, logged_at FROM hydration_logs
+WHERE user_id = $1 AND log_date >= $2 AND log_date < $3
+ORDER BY logged_at DESC
+`
+
+type ListHydrationEntriesBetweenParams struct {
+	UserID    uuid.UUID
+	LogDate   pgtype.Date
+	LogDate_2 pgtype.Date
+}
+
+// Individual entries rather than daily sums, for the activity timeline.
+func (q *Queries) ListHydrationEntriesBetween(ctx context.Context, arg ListHydrationEntriesBetweenParams) ([]HydrationLog, error) {
+	rows, err := q.db.Query(ctx, listHydrationEntriesBetween, arg.UserID, arg.LogDate, arg.LogDate_2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []HydrationLog{}
+	for rows.Next() {
+		var i HydrationLog
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.LogDate,
+			&i.AmountMl,
+			&i.LoggedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listHydrationEntriesForDate = `-- name: ListHydrationEntriesForDate :many
 SELECT id, user_id, log_date, amount_ml, logged_at FROM hydration_logs
 WHERE user_id = $1 AND log_date = $2
@@ -78,6 +117,51 @@ func (q *Queries) ListHydrationEntriesForDate(ctx context.Context, arg ListHydra
 			&i.AmountMl,
 			&i.LoggedAt,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const sumHydrationByDateBetween = `-- name: SumHydrationByDateBetween :many
+SELECT
+    log_date,
+    COALESCE(SUM(amount_ml), 0)::bigint AS total_ml,
+    COUNT(*)::bigint                    AS entry_count
+FROM hydration_logs
+WHERE user_id = $1 AND log_date >= $2 AND log_date < $3
+GROUP BY log_date
+ORDER BY log_date DESC
+`
+
+type SumHydrationByDateBetweenParams struct {
+	UserID    uuid.UUID
+	LogDate   pgtype.Date
+	LogDate_2 pgtype.Date
+}
+
+type SumHydrationByDateBetweenRow struct {
+	LogDate    pgtype.Date
+	TotalMl    int64
+	EntryCount int64
+}
+
+// Half-open [since, until). Days with nothing logged are absent rather than
+// zero; the caller knows which dates it asked about and fills the gaps.
+func (q *Queries) SumHydrationByDateBetween(ctx context.Context, arg SumHydrationByDateBetweenParams) ([]SumHydrationByDateBetweenRow, error) {
+	rows, err := q.db.Query(ctx, sumHydrationByDateBetween, arg.UserID, arg.LogDate, arg.LogDate_2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SumHydrationByDateBetweenRow{}
+	for rows.Next() {
+		var i SumHydrationByDateBetweenRow
+		if err := rows.Scan(&i.LogDate, &i.TotalMl, &i.EntryCount); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

@@ -431,6 +431,18 @@ type User struct {
 	OnboardedAt   *time.Time
 }
 
+type UserAiCredential struct {
+	UserID      uuid.UUID
+	Provider    string
+	ApiKey      []byte
+	KeyHint     string
+	Model       string
+	LastError   string
+	LastErrorAt *time.Time
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
 type UserBiometric struct {
 	ID          uuid.UUID
 	UserID      uuid.UUID

@@ -34,3 +34,11 @@ SELECT habit_id, local_date
 FROM habit_completions
 WHERE user_id = $1 AND local_date >= $2
 ORDER BY local_date DESC;
+
+-- name: ListCompletionsBetween :many
+-- Half-open [since, until). Ordered by completed_at rather than local_date so
+-- the activity timeline can place a habit against the rest of its day, which
+-- local_date alone cannot do.
+SELECT * FROM habit_completions
+WHERE user_id = $1 AND local_date >= $2 AND local_date < $3
+ORDER BY completed_at DESC;

@@ -32,6 +32,13 @@ WHERE user_id = $1 AND local_date >= $2
 ORDER BY local_date DESC
 LIMIT $3;
 
+-- name: ListCheckInsBetween :many
+-- Half-open [since, until) so consecutive windows tile without overlapping.
+-- Unbounded on purpose: the window itself is the limit.
+SELECT * FROM check_ins
+WHERE user_id = $1 AND local_date >= $2 AND local_date < $3
+ORDER BY local_date DESC;
+
 -- name: UpdateCheckIn :one
 UPDATE check_ins
 SET mood            = $3,

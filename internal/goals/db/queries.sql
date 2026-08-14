@@ -60,6 +60,20 @@ WHERE goal_id = $1 AND user_id = $2
 ORDER BY created_at DESC
 LIMIT $3;
 
+-- name: ListGoalUpdatesBetween :many
+-- Every note across every goal in a window, for the activity timeline. Joins
+-- the title in so the feed can name the goal without a second round trip.
+SELECT u.*, g.title AS goal_title
+FROM goal_updates u
+JOIN goals g ON g.id = u.goal_id
+WHERE u.user_id = $1 AND u.created_at >= $2 AND u.created_at < $3
+ORDER BY u.created_at DESC;
+
+-- name: ListGoalsCreatedBetween :many
+SELECT * FROM goals
+WHERE user_id = $1 AND created_at >= $2 AND created_at < $3
+ORDER BY created_at DESC;
+
 -- name: LatestGoalUpdates :many
 -- The most recent note per goal, for the coach's context and the goal list.
 SELECT DISTINCT ON (goal_id) *

@@ -209,6 +209,63 @@ func (r *Repository) Updates(ctx context.Context, goalID, userID uuid.UUID, limi
 	return out, nil
 }
 
+// TimelineUpdate is a goal note carrying the title of the goal it belongs to,
+// so a cross-domain feed can name it without a second query per row.
+type TimelineUpdate struct {
+	Update
+	GoalTitle string
+}
+
+// UpdatesBetween returns every note across every goal in the half-open window
+// [since, until), newest first.
+func (r *Repository) UpdatesBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]TimelineUpdate, error) {
+	rows, err := r.q.ListGoalUpdatesBetween(ctx, goalsdb.ListGoalUpdatesBetweenParams{
+		UserID:      userID,
+		CreatedAt:   since,
+		CreatedAt_2: until,
+	})
+	if err != nil {
+		return nil, apperr.Wrap(err, "list goal updates between")
+	}
+
+	out := make([]TimelineUpdate, 0, len(rows))
+	for _, row := range rows {
+		u := Update{
+			ID:        row.ID,
+			GoalID:    row.GoalID,
+			Note:      row.Note,
+			CreatedAt: row.CreatedAt,
+		}
+		if row.Progress != nil {
+			p := int(*row.Progress)
+			u.Progress = &p
+		}
+		out = append(out, TimelineUpdate{Update: u, GoalTitle: row.GoalTitle})
+	}
+	return out, nil
+}
+
+// CreatedBetween returns the goals opened in the half-open window
+// [since, until). Deliberately without progress, latest-update, or milestone
+// enrichment: a timeline entry needs a title and a date, and the enrichment
+// costs three extra queries.
+func (r *Repository) CreatedBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]Goal, error) {
+	rows, err := r.q.ListGoalsCreatedBetween(ctx, goalsdb.ListGoalsCreatedBetweenParams{
+		UserID:      userID,
+		CreatedAt:   since,
+		CreatedAt_2: until,
+	})
+	if err != nil {
+		return nil, apperr.Wrap(err, "list goals created between")
+	}
+
+	out := make([]Goal, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, fromDB(row))
+	}
+	return out, nil
+}
+
 func (r *Repository) AddMilestone(ctx context.Context, goalID, userID uuid.UUID, title string, targetDate time.Time) (Milestone, error) {
 	row, err := r.q.CreateMilestone(ctx, goalsdb.CreateMilestoneParams{
 		GoalID:     goalID,

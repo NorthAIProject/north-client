@@ -8,6 +8,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/biometrics"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 )
 
 // BiometricsLookup is the activity package's view of biometrics: just enough
@@ -122,6 +123,18 @@ func (s *Service) List(ctx context.Context, userID uuid.UUID, limit int) ([]Sess
 // point in time, e.g. the user's local midnight for "today's burn."
 func (s *Service) TotalCaloriesSince(ctx context.Context, userID uuid.UUID, since time.Time) (float64, error) {
 	return s.repo.SumCaloriesSince(ctx, userID, since)
+}
+
+// CaloriesBetween sums completed sessions inside a window. Bounded at both
+// ends so a window and the one before it can be compared without the session
+// on the boundary landing in both.
+func (s *Service) CaloriesBetween(ctx context.Context, userID uuid.UUID, rg timerange.Range) (float64, error) {
+	return s.repo.SumCaloriesBetween(ctx, userID, rg.Since, rg.Until)
+}
+
+// ListBetween returns the sessions finished inside a window, newest first.
+func (s *Service) ListBetween(ctx context.Context, userID uuid.UUID, rg timerange.Range) ([]Session, error) {
+	return s.repo.ListBetween(ctx, userID, rg.Since, rg.Until)
 }
 
 // ImportInput is one finished session arriving from a provider sync.

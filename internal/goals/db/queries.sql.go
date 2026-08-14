@@ -7,6 +7,7 @@ package goalsdb
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -351,6 +352,60 @@ func (q *Queries) ListGoalUpdates(ctx context.Context, arg ListGoalUpdatesParams
 	return items, nil
 }
 
+const listGoalUpdatesBetween = `-- name: ListGoalUpdatesBetween :many
+SELECT u.id, u.goal_id, u.user_id, u.note, u.progress, u.created_at, g.title AS goal_title
+FROM goal_updates u
+JOIN goals g ON g.id = u.goal_id
+WHERE u.user_id = $1 AND u.created_at >= $2 AND u.created_at < $3
+ORDER BY u.created_at DESC
+`
+
+type ListGoalUpdatesBetweenParams struct {
+	UserID      uuid.UUID
+	CreatedAt   time.Time
+	CreatedAt_2 time.Time
+}
+
+type ListGoalUpdatesBetweenRow struct {
+	ID        uuid.UUID
+	GoalID    uuid.UUID
+	UserID    uuid.UUID
+	Note      string
+	Progress  *int16
+	CreatedAt time.Time
+	GoalTitle string
+}
+
+// Every note across every goal in a window, for the activity timeline. Joins
+// the title in so the feed can name the goal without a second round trip.
+func (q *Queries) ListGoalUpdatesBetween(ctx context.Context, arg ListGoalUpdatesBetweenParams) ([]ListGoalUpdatesBetweenRow, error) {
+	rows, err := q.db.Query(ctx, listGoalUpdatesBetween, arg.UserID, arg.CreatedAt, arg.CreatedAt_2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListGoalUpdatesBetweenRow{}
+	for rows.Next() {
+		var i ListGoalUpdatesBetweenRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.GoalID,
+			&i.UserID,
+			&i.Note,
+			&i.Progress,
+			&i.CreatedAt,
+			&i.GoalTitle,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listGoals = `-- name: ListGoals :many
 SELECT id, user_id, title, motivation, success, category, status, target_date, created_at, updated_at, closed_at FROM goals
 WHERE user_id = $1
@@ -367,6 +422,50 @@ type ListGoalsParams struct {
 // person is actually doing.
 func (q *Queries) ListGoals(ctx context.Context, arg ListGoalsParams) ([]Goal, error) {
 	rows, err := q.db.Query(ctx, listGoals, arg.UserID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Goal{}
+	for rows.Next() {
+		var i Goal
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Title,
+			&i.Motivation,
+			&i.Success,
+			&i.Category,
+			&i.Status,
+			&i.TargetDate,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ClosedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listGoalsCreatedBetween = `-- name: ListGoalsCreatedBetween :many
+SELECT id, user_id, title, motivation, success, category, status, target_date, created_at, updated_at, closed_at FROM goals
+WHERE user_id = $1 AND created_at >= $2 AND created_at < $3
+ORDER BY created_at DESC
+`
+
+type ListGoalsCreatedBetweenParams struct {
+	UserID      uuid.UUID
+	CreatedAt   time.Time
+	CreatedAt_2 time.Time
+}
+
+func (q *Queries) ListGoalsCreatedBetween(ctx context.Context, arg ListGoalsCreatedBetweenParams) ([]Goal, error) {
+	rows, err := q.db.Query(ctx, listGoalsCreatedBetween, arg.UserID, arg.CreatedAt, arg.CreatedAt_2)
 	if err != nil {
 		return nil, err
 	}

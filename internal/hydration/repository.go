@@ -91,6 +91,50 @@ func (r *Repository) TotalsSince(ctx context.Context, userID uuid.UUID, since ti
 	return out, nil
 }
 
+// TotalsBetween returns one row per day that has entries in the half-open
+// window [since, until). Days with nothing logged are absent rather than zero,
+// same as TotalsSince.
+func (r *Repository) TotalsBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]Day, error) {
+	rows, err := r.q.SumHydrationByDateBetween(ctx, hydrationdb.SumHydrationByDateBetweenParams{
+		UserID:    userID,
+		LogDate:   toDate(since),
+		LogDate_2: toDate(until),
+	})
+	if err != nil {
+		return nil, apperr.Wrap(err, "sum hydration by date between")
+	}
+
+	out := make([]Day, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, Day{
+			Date:     fromDate(row.LogDate),
+			TotalML:  int(row.TotalMl),
+			Entries:  int(row.EntryCount),
+			TargetML: DefaultDailyTargetML,
+		})
+	}
+	return out, nil
+}
+
+// ListBetween returns the individual entries in [since, until), newest first.
+// The activity timeline needs each pour, not the daily total.
+func (r *Repository) ListBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]Entry, error) {
+	rows, err := r.q.ListHydrationEntriesBetween(ctx, hydrationdb.ListHydrationEntriesBetweenParams{
+		UserID:    userID,
+		LogDate:   toDate(since),
+		LogDate_2: toDate(until),
+	})
+	if err != nil {
+		return nil, apperr.Wrap(err, "list hydration entries between")
+	}
+
+	out := make([]Entry, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, fromDB(row))
+	}
+	return out, nil
+}
+
 func fromDB(row hydrationdb.HydrationLog) Entry {
 	return Entry{
 		ID:       row.ID,

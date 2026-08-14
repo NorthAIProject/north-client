@@ -1,6 +1,8 @@
 package settings
 
 import (
+	"github.com/NorthAIProject/north-client/internal/aicreds"
+	"github.com/NorthAIProject/north-client/internal/ai/providers"
 	"github.com/NorthAIProject/north-client/internal/connections"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
@@ -24,12 +26,47 @@ type ConnectForm struct {
 
 func (f ConnectForm) fieldError(name string) string { return f.Errors[name] }
 
-// ConnectionsPage lists the agents connected to this account.
+// ProviderForm carries the bring-your-own-key fields.
+//
+// There is no field that can hold the key, and that is the mechanism rather
+// than the discipline: the value is write-only because the type this template
+// receives has nowhere to put it. Compare connections.Connection.
+type ProviderForm struct {
+	Provider string
+	Model    string
+	Errors   map[string]string
+}
+
+func (f ProviderForm) fieldError(name string) string { return f.Errors[name] }
+
+// ProviderFormFor pre-fills from a submission or a stored credential.
+func ProviderFormFor(in aicreds.Input) ProviderForm {
+	return ProviderForm{Provider: in.Provider, Model: in.Model}
+}
+
+// ProviderPanel is everything the model-provider card needs.
+type ProviderPanel struct {
+	// Enabled is false when the deployment has no encryption key, in which
+	// case the card explains itself rather than offering a form it could not
+	// honour safely.
+	Enabled bool
+
+	Catalog []providers.BYOProvider
+
+	// Current is the stored credential, or nil when the user is on North's
+	// own providers. It cannot carry the key.
+	Current *aicreds.Credential
+
+	Form ProviderForm
+}
+
+// ConnectionsPage lists the agents connected to this account, and which model
+// provider answers for it.
 //
 // issued is non-nil for exactly one response: the one that created a token.
 // The token is not stored, so this render is the only place it can ever be
 // shown, and a reload of this page will not show it again.
-templ ConnectionsPage(user users.User, list []connections.Connection, f ConnectForm, issued *connections.Issued, setup connections.Setup) {
+templ ConnectionsPage(user users.User, list []connections.Connection, f ConnectForm, issued *connections.Issued, setup connections.Setup, provider ProviderPanel) {
 	@layout.App("Agent connections", user, layout.BuildNav("/app/settings")) {
 		<div class="mx-auto w-full max-w-2xl space-y-6 p-6 md:p-8">
 			<header>
@@ -49,6 +86,7 @@ templ ConnectionsPage(user users.User, list []connections.Connection, f ConnectF
 			}
 			@connectionListCard(list)
 			@connectCard(f)
+			@providerCard(provider)
 		</div>
 		@label.Script()
 		@selectbox.Script()
@@ -202,6 +240,164 @@ templ revokeDialog(conn connections.Connection) {
 			}
 		}
 	}
+}
+
+// providerCard chooses who answers the coach.
+//
+// Alpine holds only which half of the form is showing — local UI state, which
+// is exactly what CLAUDE.md sanctions it for. Which provider is actually used
+// is decided on the server, from the stored credential.
+templ providerCard(p ProviderPanel) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Title() {
+				Model provider
+			}
+			@card.Description() {
+				By default North supplies the AI. You can point it at your own account instead.
+			}
+		}
+		@card.Content() {
+			if !p.Enabled {
+				<p class="text-muted-foreground text-sm leading-relaxed">
+					Not available on this server — it has no encryption key configured, and North
+					will not store a provider key it cannot encrypt.
+				</p>
+			} else {
+				if p.Current != nil && p.Current.Failing() {
+					@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+						{ p.Current.LastError } North's own model is answering in the meantime.
+					}
+				}
+				<form
+					method="post"
+					action="/app/settings/ai"
+					class="space-y-4"
+					x-data={ templ.JSONString(map[string]bool{"own": p.Current != nil}) }
+				>
+					@ui.CSRFInput()
+					<div class="space-y-2">
+						<label class="flex items-start gap-2 text-sm">
+							<input type="radio" name="mode" value="north" x-model="own" :value="false" checked?={ p.Current == nil } class="mt-1"/>
+							<span>
+								<span class="font-medium">Use North's AI</span>
+								<span class="text-muted-foreground block text-xs leading-relaxed">
+									Nothing to set up. Free accounts are served by models that cost nothing to run.
+								</span>
+							</span>
+						</label>
+						<label class="flex items-start gap-2 text-sm">
+							<input type="radio" name="mode" value="own" x-model="own" :value="true" checked?={ p.Current != nil } class="mt-1"/>
+							<span>
+								<span class="font-medium">Use my own API key</span>
+								<span class="text-muted-foreground block text-xs leading-relaxed">
+									Your account pays for the tokens, and North stops paying for yours.
+								</span>
+							</span>
+						</label>
+					</div>
+					<div x-show="own" x-cloak class="space-y-4 pt-2">
+						@form.Item() {
+							@label.Label(label.Props{For: "provider"}) {
+								Provider
+							}
+							@selectbox.SelectBox() {
+								@selectbox.Trigger(selectbox.TriggerProps{ID: "provider", Name: "provider"}) {
+									@selectbox.Value(selectbox.ValueProps{Placeholder: "OpenRouter"})
+								}
+								@selectbox.Content() {
+									for _, entry := range p.Catalog {
+										@selectbox.Item(selectbox.ItemProps{Value: entry.Name, Selected: p.Form.Provider == entry.Name}) {
+											{ entry.Label }
+										}
+									}
+								}
+							}
+							if p.Form.fieldError("provider") != "" {
+								@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+									{ p.Form.fieldError("provider") }
+								}
+							}
+						}
+						@form.Item() {
+							@label.Label(label.Props{For: "api_key"}) {
+								API key
+							}
+							@input.Input(input.Props{
+								ID: "api_key", Name: "api_key", Type: input.TypePassword,
+								Placeholder: keyPlaceholder(p), HasError: p.Form.fieldError("api_key") != "",
+							})
+							if p.Form.fieldError("api_key") != "" {
+								@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+									{ p.Form.fieldError("api_key") }
+								}
+							}
+							@form.Description() {
+								if p.Current != nil {
+									A key ending { p.Current.KeyHint } is stored. Leave this blank to keep it.
+								} else {
+									North stores this encrypted and can never show it back to you.
+								}
+							}
+						}
+						@form.Item() {
+							@label.Label(label.Props{For: "model"}) {
+								Model
+							}
+							@input.Input(input.Props{
+								ID: "model", Name: "model", Value: p.Form.Model,
+								Placeholder: defaultModel(p), HasError: p.Form.fieldError("model") != "",
+							})
+							if p.Form.fieldError("model") != "" {
+								@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+									{ p.Form.fieldError("model") }
+								}
+							}
+							@form.Description() {
+								Leave blank for this provider's default. Free text rather than a list,
+								because a hardcoded list of models goes stale within weeks.
+							}
+						}
+						@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90"}) {
+							Save provider
+						}
+						<p class="text-muted-foreground text-xs leading-relaxed">
+							Want Claude? Use an OpenRouter key and a model beginning
+							<code class="font-mono">anthropic/</code>.
+						</p>
+					</div>
+				</form>
+				if p.Current != nil {
+					<form method="post" action="/app/settings/ai/remove" class="border-hairline mt-4 border-t pt-4">
+						@ui.CSRFInput()
+						@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Size: button.SizeSm}) {
+							Remove my key
+						}
+					</form>
+				}
+			}
+		}
+	}
+}
+
+// keyPlaceholder shows the shape of the credential for the selected provider,
+// so somebody can tell at a glance whether they pasted the right thing.
+func keyPlaceholder(p ProviderPanel) string {
+	for _, entry := range p.Catalog {
+		if entry.Name == p.Form.Provider {
+			return entry.KeyHint
+		}
+	}
+	return "Your provider's API key"
+}
+
+func defaultModel(p ProviderPanel) string {
+	for _, entry := range p.Catalog {
+		if entry.Name == p.Form.Provider {
+			return entry.DefaultModel
+		}
+	}
+	return ""
 }
 
 templ connectCard(f ConnectForm) {

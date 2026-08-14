@@ -8,6 +8,7 @@ import (
 	"time"
 
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
@@ -109,6 +110,11 @@ func (s *Service) Today(ctx context.Context, user users.User) (Log, bool, error)
 		return Log{}, false, err
 	}
 	return log, true, nil
+}
+
+// ListBetween returns the nights logged inside a window, newest first.
+func (s *Service) ListBetween(ctx context.Context, user users.User, rg timerange.Range) ([]Log, error) {
+	return s.repo.ListBetween(ctx, user.ID, rg.Since, rg.Until)
 }
 
 func (s *Service) Recent(ctx context.Context, user users.User, limit int) ([]Log, error) {

@@ -129,6 +129,35 @@ func (r *Repository) CompletionsSince(ctx context.Context, userID uuid.UUID, sin
 	return out, nil
 }
 
+// CompletionsBetween returns every completion in the half-open window
+// [since, until), most recently ticked first.
+//
+// CompletionsSince answers "which dates" per habit, for streaks. This answers
+// "what happened when", for the activity timeline, which is why it returns
+// rows rather than a map.
+func (r *Repository) CompletionsBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]Completion, error) {
+	rows, err := r.q.ListCompletionsBetween(ctx, habitsdb.ListCompletionsBetweenParams{
+		UserID:      userID,
+		LocalDate:   toDate(since),
+		LocalDate_2: toDate(until),
+	})
+	if err != nil {
+		return nil, apperr.Wrap(err, "list habit completions between")
+	}
+
+	out := make([]Completion, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, Completion{
+			ID:          row.ID,
+			HabitID:     row.HabitID,
+			UserID:      row.UserID,
+			LocalDate:   fromDate(row.LocalDate),
+			CompletedAt: row.CompletedAt,
+		})
+	}
+	return out, nil
+}
+
 func fromDB(row habitsdb.Habit) Habit {
 	return Habit{
 		ID:        row.ID,

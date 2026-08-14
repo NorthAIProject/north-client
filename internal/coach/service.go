@@ -32,6 +32,23 @@ type ToolRunner interface {
 	InvokeAll(ctx context.Context, userID uuid.UUID, calls []ai.ToolCall) []ai.ToolResult
 }
 
+// ClientSource yields the provider a user brought themselves.
+//
+// An interface for the same reason ToolRunner is one: the implementation lives
+// in a slice this package must not import, and a stub makes the fallback
+// behaviour testable without a database or a network.
+type ClientSource interface {
+	// For returns the user's own client, or (nil, nil) when they have not
+	// configured one — which is the normal case and is not an error.
+	For(ctx context.Context, userID uuid.UUID) (ai.Client, error)
+
+	// NoteFailure records that the user's provider refused, so the settings
+	// page can tell them instead of leaving them to notice. The reason is a
+	// summary written by the coach, never the provider's response body, which
+	// can echo the key back.
+	NoteFailure(ctx context.Context, userID uuid.UUID, reason string)
+}
+
 // generationTimeout bounds a detached generation. Long, because a large model
 // answering a considered question is slow; bounded, because a stuck provider
 // must not leak a goroutine forever.
@@ -65,6 +82,10 @@ type Service struct {
 	// chains decides which providers serve a given user, in what order.
 	chains ai.ChainSet
 
+	// own yields a user's bring-your-own provider. Nil disables the path
+	// entirely, which is what every process without a sealer gets.
+	own ClientSource
+
 	model     string
 	fastModel string
 }
@@ -88,6 +109,11 @@ type Options struct {
 	// purely from its context, which is what it did before tools existed.
 	Tools ToolRunner
 
+	// Own yields a user's own provider, tried ahead of Chains. Nil leaves
+	// every user on North's providers, which is what a deployment with no
+	// encryption key gets.
+	Own ClientSource
+
 	// Model answers conversations. FastModel handles cheap side work such as
 	// naming a thread, which does not need the expensive model. Both may be
 	// empty, which lets whichever provider answers use its own default — the
@@ -105,6 +131,7 @@ func NewService(opts Options) *Service {
 		queue:         opts.Queue,
 		chains:        opts.Chains,
 		tools:         opts.Tools,
+		own:           opts.Own,
 		model:         opts.Model,
 		fastModel:     opts.FastModel,
 	}
@@ -232,6 +259,32 @@ func (s *Service) eachProvider(ctx context.Context, user users.User, attempt fun
 	log := middleware.FromContext(ctx)
 
 	clients := s.registry.Resolve(s.chains.For(string(user.Tier)))
+
+	// A user's own key goes in front of North's chain rather than replacing
+	// it, which is docs/byok-plan.md's "the user's own credential, else the
+	// platform provider" expressed with the failover machinery that already
+	// exists: a key that is out of credit or rejected produces
+	// ErrPaymentRequired or ErrForbidden, ai.Failover says so, and the loop
+	// below walks on by itself. No second fallback concept, and nobody loses
+	// their coach to a mistyped key.
+	//
+	// The registry is untouched. It is built once at startup and read without
+	// locking, and registering a per-user client into it would be exactly the
+	// bug that comment warns about.
+	// True when clients[0] is the user's own provider rather than North's.
+	ownIsFirst := false
+	if s.own != nil {
+		own, err := s.own.For(ctx, user.ID)
+		switch {
+		case err != nil:
+			log.Warn("the user's own provider could not be built; serving from North's chain",
+				slog.String("user_id", user.ID.String()), slog.Any("error", err))
+		case own != nil:
+			ownIsFirst = true
+			clients = append([]ai.Client{own}, clients...)
+		}
+	}
+
 	if len(clients) == 0 {
 		return nil, apperr.Wrap(apperr.ErrUnavailable, "coach: no AI provider is configured")
 	}
@@ -240,9 +293,19 @@ func (s *Service) eachProvider(ctx context.Context, user users.User, attempt fun
 	for i, client := range clients {
 		err := attempt(client)
 		if err == nil {
+			// The user's own key worked, so any complaint recorded against it
+			// is stale. Clearing it is the settings page's job on the next
+			// save; nothing to do here but stop blaming it.
 			return client, nil
 		}
 		lastErr = err
+
+		// The user's key is the only one they can do anything about, so its
+		// refusal is recorded where they will see it. Everything else is
+		// North's problem and stays in the log.
+		if i == 0 && ownIsFirst {
+			s.own.NoteFailure(ctx, user.ID, ownFailureReason(err))
+		}
 
 		// A request the provider refused on its own account is worth asking
 		// someone else. A malformed one is not: it would fail identically
@@ -259,6 +322,25 @@ func (s *Service) eachProvider(ctx context.Context, user users.User, attempt fun
 	}
 
 	return nil, lastErr
+}
+
+// ownFailureReason summarises why a user's provider refused, in words meant
+// for the person who owns the key.
+//
+// A summary rather than the provider's own error: a response body can quote
+// the credential back, and this string is rendered in a template and stored in
+// a column that outlives the request.
+func ownFailureReason(err error) string {
+	switch {
+	case apperr.Is(err, apperr.ErrForbidden):
+		return "Your provider rejected the key. It may have been revoked or copied incompletely."
+	case apperr.Is(err, apperr.ErrPaymentRequired):
+		return "Your provider refused on billing grounds — the account is out of credit."
+	case apperr.Is(err, apperr.ErrUnavailable):
+		return "Your provider was unreachable or overloaded."
+	default:
+		return "Your provider could not answer this request."
+	}
 }
 
 // toolDeclarations is what the model is shown it can call, or nil when the

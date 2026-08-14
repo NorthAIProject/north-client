@@ -11,6 +11,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/ai/providers"
+	"github.com/NorthAIProject/north-client/internal/shared/secret"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
@@ -42,9 +43,10 @@ type Config struct {
 	WebAuthnRPID        string
 	WebAuthnDisplayName string
 
-	AI        AIConfig
-	Storage   StorageConfig
-	Embedding EmbeddingConfig
+	AI         AIConfig
+	Storage    StorageConfig
+	Embedding  EmbeddingConfig
+	Encryption EncryptionConfig
 
 	// MCPListenAddr is where cmd/mcp-server listens. It defaults to the
 	// loopback interface rather than all of them: the MCP surface authenticates
@@ -123,6 +125,21 @@ type EmbeddingConfig struct {
 func (e EmbeddingConfig) Enabled() bool {
 	return e.Provider != "" && e.Model != "" && e.Dimensions > 0
 }
+
+// EncryptionConfig holds the keys that seal user-supplied secrets at rest.
+//
+// Off unless ENCRYPTION_KEY is set, and that default is deliberate: a
+// deployment with no key runs everything except the features that would have
+// to store somebody's credential, which report themselves unavailable rather
+// than storing it in the clear.
+//
+// The first key seals; the rest only open. See internal/shared/secret.
+type EncryptionConfig struct {
+	Keys []secret.Key
+}
+
+// Enabled reports whether secrets can be stored.
+func (e EncryptionConfig) Enabled() bool { return len(e.Keys) > 0 }
 
 // OpenAICompatConfig configures one backend speaking the OpenAI chat dialect.
 type OpenAICompatConfig struct {
@@ -273,6 +290,16 @@ func Load() (*Config, error) {
 	if (cfg.Embedding.Provider == "") != (cfg.Embedding.Model == "") {
 		problems = append(problems, "EMBEDDING_PROVIDER and EMBEDDING_MODEL must be set together")
 	}
+
+	// A malformed key is always a problem, even though an absent one is not.
+	// Somebody who set this variable meant to turn encryption on, and booting
+	// anyway is the failure mode where credentials get written in the clear.
+	// The error names the shape and never the value.
+	keys, err := secret.ParseKeys(os.Getenv("ENCRYPTION_KEY"))
+	if err != nil {
+		problems = append(problems, "ENCRYPTION_KEY is invalid: "+err.Error())
+	}
+	cfg.Encryption.Keys = keys
 
 	lifetime, err := durationValue("SESSION_LIFETIME", 30*24*time.Hour)
 	if err != nil {

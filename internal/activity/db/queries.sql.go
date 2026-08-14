@@ -263,6 +263,56 @@ func (q *Queries) ListActivitySessions(ctx context.Context, arg ListActivitySess
 	return items, nil
 }
 
+const listActivitySessionsBetween = `-- name: ListActivitySessionsBetween :many
+SELECT id, user_id, activity_code, source, status, weight_kg_snapshot, started_at, paused_at, total_paused_seconds, ended_at, calories_burned, external_id, created_at, updated_at FROM activity_sessions
+WHERE user_id = $1 AND status = 'completed'
+  AND ended_at >= $2 AND ended_at < $3
+ORDER BY ended_at DESC
+`
+
+type ListActivitySessionsBetweenParams struct {
+	UserID    uuid.UUID
+	EndedAt   *time.Time
+	EndedAt_2 *time.Time
+}
+
+// Completed sessions only: an abandoned or still-running session is not
+// something that happened.
+func (q *Queries) ListActivitySessionsBetween(ctx context.Context, arg ListActivitySessionsBetweenParams) ([]ActivitySession, error) {
+	rows, err := q.db.Query(ctx, listActivitySessionsBetween, arg.UserID, arg.EndedAt, arg.EndedAt_2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ActivitySession{}
+	for rows.Next() {
+		var i ActivitySession
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.ActivityCode,
+			&i.Source,
+			&i.Status,
+			&i.WeightKgSnapshot,
+			&i.StartedAt,
+			&i.PausedAt,
+			&i.TotalPausedSeconds,
+			&i.EndedAt,
+			&i.CaloriesBurned,
+			&i.ExternalID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const pauseActivitySession = `-- name: PauseActivitySession :one
 UPDATE activity_sessions
 SET status = 'paused', paused_at = now(), updated_at = now()
@@ -330,6 +380,28 @@ func (q *Queries) ResumeActivitySession(ctx context.Context, arg ResumeActivityS
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const sumActivityCaloriesBetween = `-- name: SumActivityCaloriesBetween :one
+SELECT COALESCE(SUM(calories_burned), 0)::double precision AS total
+FROM activity_sessions
+WHERE user_id = $1 AND status = 'completed'
+  AND ended_at >= $2 AND ended_at < $3
+`
+
+type SumActivityCaloriesBetweenParams struct {
+	UserID    uuid.UUID
+	EndedAt   *time.Time
+	EndedAt_2 *time.Time
+}
+
+// Half-open [since, until), so this window and the one before it can be
+// compared without double-counting the session on the boundary.
+func (q *Queries) SumActivityCaloriesBetween(ctx context.Context, arg SumActivityCaloriesBetweenParams) (float64, error) {
+	row := q.db.QueryRow(ctx, sumActivityCaloriesBetween, arg.UserID, arg.EndedAt, arg.EndedAt_2)
+	var total float64
+	err := row.Scan(&total)
+	return total, err
 }
 
 const sumActivityCaloriesSince = `-- name: SumActivityCaloriesSince :one

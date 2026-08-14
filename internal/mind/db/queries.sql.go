@@ -7,6 +7,7 @@ package minddb
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -50,6 +51,45 @@ type ListJournalEntriesParams struct {
 
 func (q *Queries) ListJournalEntries(ctx context.Context, arg ListJournalEntriesParams) ([]JournalEntry, error) {
 	rows, err := q.db.Query(ctx, listJournalEntries, arg.UserID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []JournalEntry{}
+	for rows.Next() {
+		var i JournalEntry
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Content,
+			&i.Mood,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listJournalEntriesBetween = `-- name: ListJournalEntriesBetween :many
+SELECT id, user_id, content, mood, created_at FROM journal_entries
+WHERE user_id = $1 AND created_at >= $2 AND created_at < $3
+ORDER BY created_at DESC
+`
+
+type ListJournalEntriesBetweenParams struct {
+	UserID      uuid.UUID
+	CreatedAt   time.Time
+	CreatedAt_2 time.Time
+}
+
+// Half-open [since, until).
+func (q *Queries) ListJournalEntriesBetween(ctx context.Context, arg ListJournalEntriesBetweenParams) ([]JournalEntry, error) {
+	rows, err := q.db.Query(ctx, listJournalEntriesBetween, arg.UserID, arg.CreatedAt, arg.CreatedAt_2)
 	if err != nil {
 		return nil, err
 	}
