@@ -45,7 +45,9 @@ func TestLoadEmptyUser(t *testing.T) {
 		Activity: activitySvc,
 		Workouts: workouts.NewService(workouts.Options{Repository: workouts.NewRepository(pool)}),
 		Strava: strava.NewService(strava.Options{
-			Repository: strava.NewRepository(pool),
+			// No sealer: this exercises the hub, and the unencrypted path is
+			// still a supported deployment. Encryption has its own tests.
+			Repository: strava.NewRepository(pool, nil),
 			Activity:   activitySvc,
 			Biometrics: biometricSvc,
 		}),

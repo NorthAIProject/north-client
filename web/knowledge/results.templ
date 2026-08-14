@@ -2,12 +2,13 @@ package knowledge
 
 import (
 	"fmt"
+	"net/url"
 
 	"github.com/NorthAIProject/north-client/internal/documents/document"
 )
 
-// SearchResults is the fragment the search box swaps in.
-templ SearchResults(query string, hits []document.Hit) {
+// SearchResults is the fragment the library search box swaps in.
+templ SearchResults(query string, hits []document.Hit, hasMore bool) {
 	if query == "" {
 		<!-- nothing typed yet; an empty region reads better than a prompt -->
 	} else if len(hits) == 0 {
@@ -21,6 +22,13 @@ templ SearchResults(query string, hits []document.Hit) {
 				@resultRow(h)
 			}
 		</div>
+		if hasMore {
+			<p class="mt-2">
+				<a href={ templ.SafeURL("/app/knowledge/search?q=" + url.QueryEscape(query)) } class="text-sm font-medium hover:underline">
+					See all passages
+				</a>
+			</p>
+		}
 	}
 }
 

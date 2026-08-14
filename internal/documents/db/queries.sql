@@ -6,6 +6,45 @@ INSERT INTO documents (
 )
 RETURNING *;
 
+-- name: CreateVaultDocument :one
+INSERT INTO documents (
+    user_id, title, source_kind, storage_key, mime, byte_size, external_path, external_mtime
+) VALUES (
+    $1, $2, 'vault', $3, $4, $5, $6, $7
+)
+RETURNING *;
+
+-- name: GetDocumentByExternalPath :one
+SELECT * FROM documents
+WHERE user_id = $1
+  AND external_path = $2
+  AND source_kind = 'vault'
+  AND deleted_at IS NULL;
+
+-- name: UpdateVaultDocument :exec
+UPDATE documents
+SET title          = $2,
+    mime           = $3,
+    byte_size      = $4,
+    external_mtime = $5,
+    status         = 'pending',
+    parse_error    = '',
+    updated_at     = now()
+WHERE id = $1;
+
+-- name: ListVaultDocumentPaths :many
+SELECT id, external_path FROM documents
+WHERE user_id = $1 AND source_kind = 'vault' AND deleted_at IS NULL;
+
+-- name: UsersWithEmbeddingGap :many
+SELECT DISTINCT c.user_id
+FROM document_chunks c
+JOIN documents d ON d.id = c.document_id
+LEFT JOIN chunk_embeddings e ON e.chunk_id = c.chunk_id AND e.model = @model
+WHERE d.deleted_at IS NULL
+  AND e.chunk_id IS NULL
+LIMIT @result_limit;
+
 -- name: GetDocument :one
 SELECT * FROM documents
 WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL;

@@ -3,6 +3,7 @@ package documents
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 
 	"github.com/google/uuid"
@@ -10,6 +11,11 @@ import (
 	"github.com/NorthAIProject/north-client/internal/ai"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
+
+// embeddingDims is the width of chunk_embeddings.embedding. A vector of any
+// other length is refused here so the failure names the mismatch, rather than
+// arriving as a Postgres error about a column the caller has never seen.
+const embeddingDims = 1024
 
 // embedBatchSize bounds one pass. Small enough that a provider outage costs a
 // few seconds rather than a stalled worker, large enough that the round trip is
@@ -55,6 +61,9 @@ func (e *Embedder) EmbedPending(ctx context.Context, userID uuid.UUID) (int, err
 	if !e.Enabled() {
 		return 0, nil
 	}
+	if dims := e.client.Dimensions(); dims != 0 && dims != embeddingDims {
+		return 0, fmt.Errorf("embedding model width %d does not match the store (%d)", dims, embeddingDims)
+	}
 
 	model := e.client.EmbedModel()
 	written := 0
@@ -86,6 +95,11 @@ func (e *Embedder) EmbedPending(ctx context.Context, userID uuid.UUID) (int, err
 		}
 		if len(vectors) != len(pending) {
 			return written, apperr.New("embedding count did not match the passages sent")
+		}
+		for i, vec := range vectors {
+			if len(vec) != embeddingDims {
+				return written, fmt.Errorf("embedding %d has width %d, want %d", i, len(vec), embeddingDims)
+			}
 		}
 
 		for i, c := range pending {

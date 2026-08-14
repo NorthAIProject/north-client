@@ -41,6 +41,28 @@ UPDATE jobs
 SET status = 'failed', last_error = $2, updated_at = now()
 WHERE id = $1;
 
+-- name: RequeueFailedEmbedJobsForUser :execrows
+-- @user_id uuid
+UPDATE jobs
+SET status     = 'pending',
+    attempts   = 0,
+    run_after  = now(),
+    last_error = '',
+    updated_at = now()
+WHERE kind = 'embed_chunks'
+  AND status = 'failed'
+  AND (payload->>'user_id')::uuid = @user_id;
+
+-- name: HasPendingJobForUser :one
+-- @kind text
+-- @user_id uuid
+SELECT EXISTS(
+    SELECT 1 FROM jobs
+    WHERE kind = @kind
+      AND status IN ('pending', 'running')
+      AND (payload->>'user_id')::uuid = @user_id
+)::bool;
+
 -- name: ReleaseStaleJobs :execrows
 -- Returns jobs abandoned by a worker that died mid-run. Without this a crash
 -- leaves them 'running' forever and the work silently never happens.

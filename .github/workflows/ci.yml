@@ -70,8 +70,9 @@ jobs:
       - name: Build frontend assets
         run: bash scripts/build-css.sh
 
-      # Same gate as .githooks/pre-commit: gofumpt -w ., then restore the
-      # templUI Lucide dumps that fight gofumpt's alignment rules.
+      # Same format gate as .githooks/pre-commit: gofumpt -w ., then restore
+      # the templUI Lucide dumps that fight gofumpt's alignment rules.
+      # Lint is a separate job below; the pre-commit hook runs both.
       - name: Check formatting (gofumpt)
         run: |
           go tool gofumpt -w .

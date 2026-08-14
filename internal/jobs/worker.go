@@ -27,13 +27,25 @@ type Handler func(ctx context.Context, payload json.RawMessage) error
 
 // Worker claims jobs and runs their handlers.
 type Worker struct {
-	queue    *Queue
-	log      *slog.Logger
-	handlers map[Kind]Handler
+	queue     *Queue
+	log       *slog.Logger
+	handlers  map[Kind]Handler
+	periodics []periodicEnqueue
+}
+
+type periodicEnqueue struct {
+	interval time.Duration
+	kind     Kind
+	payload  any
 }
 
 func NewWorker(queue *Queue, log *slog.Logger) *Worker {
 	return &Worker{queue: queue, log: log, handlers: make(map[Kind]Handler)}
+}
+
+// RegisterPeriodic enqueues a job on a fixed interval until ctx is cancelled.
+func (w *Worker) RegisterPeriodic(interval time.Duration, kind Kind, payload any) {
+	w.periodics = append(w.periodics, periodicEnqueue{interval: interval, kind: kind, payload: payload})
 }
 
 // Register attaches a handler to a job kind.
@@ -48,6 +60,10 @@ func (w *Worker) Register(kind Kind, handler Handler) {
 // goroutine pool that would make one crash lose several jobs at once.
 func (w *Worker) Run(ctx context.Context) error {
 	w.log.Info("worker started", slog.Any("kinds", w.kinds()))
+
+	for _, p := range w.periodics {
+		go w.runPeriodic(ctx, p)
+	}
 
 	// Anything left 'running' by a previous process that died is returned to
 	// the queue before this one starts taking new work.
@@ -153,4 +169,20 @@ func (w *Worker) kinds() []string {
 		out = append(out, string(kind))
 	}
 	return out
+}
+
+func (w *Worker) runPeriodic(ctx context.Context, p periodicEnqueue) {
+	ticker := time.NewTicker(p.interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if _, err := w.queue.Enqueue(ctx, p.kind, p.payload); err != nil {
+				w.log.Error("periodic enqueue failed", slog.String("kind", string(p.kind)), slog.Any("error", err))
+			}
+		}
+	}
 }

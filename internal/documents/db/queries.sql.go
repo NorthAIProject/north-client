@@ -7,6 +7,7 @@ package documentsdb
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/pgvector/pgvector-go"
@@ -140,7 +141,7 @@ INSERT INTO documents (
 ) VALUES (
     $1, $2, $3, $4, $5, $6, $7
 )
-RETURNING id, user_id, title, source_kind, storage_key, body, mime, byte_size, content_sha256, line_count, status, parse_error, indexed_at, created_at, updated_at, deleted_at, chunker_fingerprint
+RETURNING id, user_id, title, source_kind, storage_key, body, mime, byte_size, content_sha256, line_count, status, parse_error, indexed_at, created_at, updated_at, deleted_at, chunker_fingerprint, external_path, external_mtime
 `
 
 type CreateDocumentParams struct {
@@ -182,6 +183,62 @@ func (q *Queries) CreateDocument(ctx context.Context, arg CreateDocumentParams) 
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.ChunkerFingerprint,
+		&i.ExternalPath,
+		&i.ExternalMtime,
+	)
+	return i, err
+}
+
+const createVaultDocument = `-- name: CreateVaultDocument :one
+INSERT INTO documents (
+    user_id, title, source_kind, storage_key, mime, byte_size, external_path, external_mtime
+) VALUES (
+    $1, $2, 'vault', $3, $4, $5, $6, $7
+)
+RETURNING id, user_id, title, source_kind, storage_key, body, mime, byte_size, content_sha256, line_count, status, parse_error, indexed_at, created_at, updated_at, deleted_at, chunker_fingerprint, external_path, external_mtime
+`
+
+type CreateVaultDocumentParams struct {
+	UserID        uuid.UUID
+	Title         string
+	StorageKey    *string
+	Mime          string
+	ByteSize      int64
+	ExternalPath  *string
+	ExternalMtime *time.Time
+}
+
+func (q *Queries) CreateVaultDocument(ctx context.Context, arg CreateVaultDocumentParams) (Document, error) {
+	row := q.db.QueryRow(ctx, createVaultDocument,
+		arg.UserID,
+		arg.Title,
+		arg.StorageKey,
+		arg.Mime,
+		arg.ByteSize,
+		arg.ExternalPath,
+		arg.ExternalMtime,
+	)
+	var i Document
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Title,
+		&i.SourceKind,
+		&i.StorageKey,
+		&i.Body,
+		&i.Mime,
+		&i.ByteSize,
+		&i.ContentSha256,
+		&i.LineCount,
+		&i.Status,
+		&i.ParseError,
+		&i.IndexedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+		&i.ChunkerFingerprint,
+		&i.ExternalPath,
+		&i.ExternalMtime,
 	)
 	return i, err
 }
@@ -299,7 +356,7 @@ func (q *Queries) GetChunk(ctx context.Context, arg GetChunkParams) (GetChunkRow
 }
 
 const getDocument = `-- name: GetDocument :one
-SELECT id, user_id, title, source_kind, storage_key, body, mime, byte_size, content_sha256, line_count, status, parse_error, indexed_at, created_at, updated_at, deleted_at, chunker_fingerprint FROM documents
+SELECT id, user_id, title, source_kind, storage_key, body, mime, byte_size, content_sha256, line_count, status, parse_error, indexed_at, created_at, updated_at, deleted_at, chunker_fingerprint, external_path, external_mtime FROM documents
 WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
 `
 
@@ -329,6 +386,48 @@ func (q *Queries) GetDocument(ctx context.Context, arg GetDocumentParams) (Docum
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.ChunkerFingerprint,
+		&i.ExternalPath,
+		&i.ExternalMtime,
+	)
+	return i, err
+}
+
+const getDocumentByExternalPath = `-- name: GetDocumentByExternalPath :one
+SELECT id, user_id, title, source_kind, storage_key, body, mime, byte_size, content_sha256, line_count, status, parse_error, indexed_at, created_at, updated_at, deleted_at, chunker_fingerprint, external_path, external_mtime FROM documents
+WHERE user_id = $1
+  AND external_path = $2
+  AND source_kind = 'vault'
+  AND deleted_at IS NULL
+`
+
+type GetDocumentByExternalPathParams struct {
+	UserID       uuid.UUID
+	ExternalPath *string
+}
+
+func (q *Queries) GetDocumentByExternalPath(ctx context.Context, arg GetDocumentByExternalPathParams) (Document, error) {
+	row := q.db.QueryRow(ctx, getDocumentByExternalPath, arg.UserID, arg.ExternalPath)
+	var i Document
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Title,
+		&i.SourceKind,
+		&i.StorageKey,
+		&i.Body,
+		&i.Mime,
+		&i.ByteSize,
+		&i.ContentSha256,
+		&i.LineCount,
+		&i.Status,
+		&i.ParseError,
+		&i.IndexedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+		&i.ChunkerFingerprint,
+		&i.ExternalPath,
+		&i.ExternalMtime,
 	)
 	return i, err
 }
@@ -429,7 +528,7 @@ func (q *Queries) ListChunksByIDs(ctx context.Context, arg ListChunksByIDsParams
 }
 
 const listDocuments = `-- name: ListDocuments :many
-SELECT id, user_id, title, source_kind, storage_key, body, mime, byte_size, content_sha256, line_count, status, parse_error, indexed_at, created_at, updated_at, deleted_at, chunker_fingerprint FROM documents
+SELECT id, user_id, title, source_kind, storage_key, body, mime, byte_size, content_sha256, line_count, status, parse_error, indexed_at, created_at, updated_at, deleted_at, chunker_fingerprint, external_path, external_mtime FROM documents
 WHERE user_id = $1 AND deleted_at IS NULL
 ORDER BY updated_at DESC
 LIMIT $2
@@ -467,6 +566,8 @@ func (q *Queries) ListDocuments(ctx context.Context, arg ListDocumentsParams) ([
 			&i.UpdatedAt,
 			&i.DeletedAt,
 			&i.ChunkerFingerprint,
+			&i.ExternalPath,
+			&i.ExternalMtime,
 		); err != nil {
 			return nil, err
 		}
@@ -479,7 +580,7 @@ func (q *Queries) ListDocuments(ctx context.Context, arg ListDocumentsParams) ([
 }
 
 const listDocumentsForIndexing = `-- name: ListDocumentsForIndexing :many
-SELECT id, user_id, title, source_kind, storage_key, body, mime, byte_size, content_sha256, line_count, status, parse_error, indexed_at, created_at, updated_at, deleted_at, chunker_fingerprint FROM documents
+SELECT id, user_id, title, source_kind, storage_key, body, mime, byte_size, content_sha256, line_count, status, parse_error, indexed_at, created_at, updated_at, deleted_at, chunker_fingerprint, external_path, external_mtime FROM documents
 WHERE user_id = $1 AND deleted_at IS NULL
 ORDER BY created_at
 `
@@ -513,7 +614,39 @@ func (q *Queries) ListDocumentsForIndexing(ctx context.Context, userID uuid.UUID
 			&i.UpdatedAt,
 			&i.DeletedAt,
 			&i.ChunkerFingerprint,
+			&i.ExternalPath,
+			&i.ExternalMtime,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listVaultDocumentPaths = `-- name: ListVaultDocumentPaths :many
+SELECT id, external_path FROM documents
+WHERE user_id = $1 AND source_kind = 'vault' AND deleted_at IS NULL
+`
+
+type ListVaultDocumentPathsRow struct {
+	ID           uuid.UUID
+	ExternalPath *string
+}
+
+func (q *Queries) ListVaultDocumentPaths(ctx context.Context, userID uuid.UUID) ([]ListVaultDocumentPathsRow, error) {
+	rows, err := q.db.Query(ctx, listVaultDocumentPaths, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListVaultDocumentPathsRow{}
+	for rows.Next() {
+		var i ListVaultDocumentPathsRow
+		if err := rows.Scan(&i.ID, &i.ExternalPath); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -791,6 +924,37 @@ func (q *Queries) StartIndexRun(ctx context.Context, arg StartIndexRunParams) (I
 	return i, err
 }
 
+const updateVaultDocument = `-- name: UpdateVaultDocument :exec
+UPDATE documents
+SET title          = $2,
+    mime           = $3,
+    byte_size      = $4,
+    external_mtime = $5,
+    status         = 'pending',
+    parse_error    = '',
+    updated_at     = now()
+WHERE id = $1
+`
+
+type UpdateVaultDocumentParams struct {
+	ID            uuid.UUID
+	Title         string
+	Mime          string
+	ByteSize      int64
+	ExternalMtime *time.Time
+}
+
+func (q *Queries) UpdateVaultDocument(ctx context.Context, arg UpdateVaultDocumentParams) error {
+	_, err := q.db.Exec(ctx, updateVaultDocument,
+		arg.ID,
+		arg.Title,
+		arg.Mime,
+		arg.ByteSize,
+		arg.ExternalMtime,
+	)
+	return err
+}
+
 const upsertChunk = `-- name: UpsertChunk :exec
 INSERT INTO document_chunks (
     chunk_id, document_id, user_id, ordinal, heading_path,
@@ -858,4 +1022,39 @@ func (q *Queries) UpsertChunkEmbedding(ctx context.Context, arg UpsertChunkEmbed
 		arg.Embedding,
 	)
 	return err
+}
+
+const usersWithEmbeddingGap = `-- name: UsersWithEmbeddingGap :many
+SELECT DISTINCT c.user_id
+FROM document_chunks c
+JOIN documents d ON d.id = c.document_id
+LEFT JOIN chunk_embeddings e ON e.chunk_id = c.chunk_id AND e.model = $1
+WHERE d.deleted_at IS NULL
+  AND e.chunk_id IS NULL
+LIMIT $2
+`
+
+type UsersWithEmbeddingGapParams struct {
+	Model       string
+	ResultLimit int32
+}
+
+func (q *Queries) UsersWithEmbeddingGap(ctx context.Context, arg UsersWithEmbeddingGapParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, usersWithEmbeddingGap, arg.Model, arg.ResultLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []uuid.UUID{}
+	for rows.Next() {
+		var user_id uuid.UUID
+		if err := rows.Scan(&user_id); err != nil {
+			return nil, err
+		}
+		items = append(items, user_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

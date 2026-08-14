@@ -21,6 +21,9 @@ const (
 
 	// SourceNote was written in North and lives in the database.
 	SourceNote = "note"
+
+	// SourceVault was synced from a local Obsidian or markdown folder.
+	SourceVault = "vault"
 )
 
 // Indexing states.
@@ -41,6 +44,11 @@ type Document struct {
 	Body       string
 	MIME       string
 	ByteSize   int64
+
+	// ExternalPath is the vault-relative path for source_kind = vault.
+	ExternalPath string
+	// ExternalMtime is the file mtime when the vault file was last synced.
+	ExternalMtime *time.Time
 
 	// ContentSHA256 fingerprints the text that was last chunked. It is what
 	// lets a reindex recognise a document it has already done and skip it.

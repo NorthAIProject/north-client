@@ -235,6 +235,96 @@ func TestLibraryRowShowsTypeAndSize(t *testing.T) {
 	}
 }
 
+func TestSearchPageShowsPromptWhenQueryEmpty(t *testing.T) {
+	html := render(t, SearchPage(users.User{DisplayName: "Test"}, SearchView{}))
+
+	if !strings.Contains(html, "Type a phrase to search") {
+		t.Errorf("empty search page missing prompt:\n%s", html)
+	}
+	if !strings.Contains(html, `action="/app/knowledge/search"`) {
+		t.Error("search form does not post to the dedicated page")
+	}
+	if !strings.Contains(html, "knowledge-search-indicator") {
+		t.Error("search form is missing the HTMX loading indicator")
+	}
+}
+
+func TestSearchPageShowsPassageCount(t *testing.T) {
+	hit := document.Hit{
+		DocumentID: uuid.New(),
+		Title:      "Training notes",
+		StartLine:  1,
+		EndLine:    3,
+		Snippet:    "narrow grip overhead press",
+	}
+	html := render(t, SearchPanel(SearchView{
+		Query: "overhead",
+		Hits:  []document.Hit{hit},
+		Limit: 20,
+	}))
+
+	if !strings.Contains(html, "1 passage") {
+		t.Errorf("search panel does not show passage count:\n%s", html)
+	}
+	if !strings.Contains(html, "narrow grip overhead press") {
+		t.Error("search panel is missing the hit snippet")
+	}
+}
+
+func TestSearchPageEscapesPassage(t *testing.T) {
+	hit := document.Hit{
+		DocumentID: uuid.New(),
+		Title:      "Notes",
+		StartLine:  1,
+		EndLine:    1,
+		Snippet:    document.MarkStart + "<script>x</script>" + document.MarkEnd,
+	}
+	html := render(t, SearchPanel(SearchView{
+		Query: "x",
+		Hits:  []document.Hit{hit},
+	}))
+
+	if strings.Contains(html, "<script>") {
+		t.Errorf("script tag leaked into search results:\n%s", html)
+	}
+}
+
+func TestSearchShowMoreLinkIncludesOffset(t *testing.T) {
+	view := SearchView{
+		Query:   "shoulder",
+		Hits:    []document.Hit{{DocumentID: uuid.New(), Title: "A", StartLine: 1, EndLine: 1}},
+		Offset:  0,
+		Limit:   1,
+		HasMore: true,
+	}
+	html := render(t, searchResultsBody(view))
+
+	if !strings.Contains(html, "Show more") {
+		t.Fatal("missing show-more control")
+	}
+	if !strings.Contains(html, "offset=1") {
+		t.Errorf("show-more URL missing next offset:\n%s", html)
+	}
+	if !strings.Contains(html, `hx-target="#knowledge-search-tail"`) {
+		t.Error("show-more must replace the tail, not append a second button")
+	}
+}
+
+func TestInlineSearchOffersFullPageWhenThereIsMore(t *testing.T) {
+	hit := document.Hit{
+		DocumentID: uuid.New(),
+		Title:      "Training notes",
+		StartLine:  1,
+		EndLine:    2,
+		Snippet:    "narrow grip",
+	}
+	html := render(t, SearchResults("grip", []document.Hit{hit}, true))
+
+	if !strings.Contains(html, "/app/knowledge/search?q=grip") {
+		t.Errorf("preview is missing the full-page link:\n%s", html)
+	}
+}
+
 func TestDocumentDetailKeepsNotesPlain(t *testing.T) {
 	got := documentDetail(document.Document{
 		Title:      "A note",

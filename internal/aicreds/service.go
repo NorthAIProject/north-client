@@ -121,7 +121,7 @@ func (s *Service) Save(ctx context.Context, userID uuid.UUID, in Input) (Credent
 		return Credential{}, err
 	}
 
-	if err := errs.OrNil(); err != nil {
+	if err = errs.OrNil(); err != nil {
 		return Credential{}, err
 	}
 

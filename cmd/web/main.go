@@ -41,6 +41,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/habits"
 	"github.com/NorthAIProject/north-client/internal/hydration"
+	"github.com/NorthAIProject/north-client/internal/insights"
 	"github.com/NorthAIProject/north-client/internal/jobs"
 	"github.com/NorthAIProject/north-client/internal/mcpserver"
 	"github.com/NorthAIProject/north-client/internal/meals"
@@ -52,9 +53,10 @@ import (
 	"github.com/NorthAIProject/north-client/internal/settings"
 	"github.com/NorthAIProject/north-client/internal/shared/database"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
-	"github.com/NorthAIProject/north-client/internal/shared/secret"
 	"github.com/NorthAIProject/north-client/internal/sleep"
 	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/internal/vault"
+	vaultdb "github.com/NorthAIProject/north-client/internal/vault/db"
 	"github.com/NorthAIProject/north-client/internal/workouts"
 	"github.com/NorthAIProject/north-client/web/assets"
 	"github.com/NorthAIProject/north-client/web/landing"
@@ -229,6 +231,13 @@ func routes(
 	}
 	documentHandler := documents.NewHandler(documentSvc)
 
+	vaultSvc := vault.NewService(vault.Options{
+		Repository: vault.NewRepository(vaultdb.New(pool)),
+		Documents:  documentSvc,
+		Queue:      queue,
+	})
+	vaultHandler := vault.NewHandler(vaultSvc)
+
 	// Export reads across memories, documents and conversations, which is why
 	// it is its own package rather than a method on any one of them.
 	exportHandler := export.NewHandler(export.NewExporter(documentSvc, memorySvc, conversationSvc, storage))
@@ -271,11 +280,23 @@ func routes(
 
 	calculatorHandler := calculator.NewHandler(calculatorSvc, biometricSvc, preferencesSvc)
 
+	// Built once and shared by everything that stores a user's secret: the
+	// Strava tokens below, and the bring-your-own provider key further down.
+	// Nil when no ENCRYPTION_KEY is configured, which each of them handles.
+	sealer, err := cfg.Encryption.Sealer()
+	if err != nil {
+		// Unreachable: config.Load already validated these keys. Refusing
+		// anyway, because the alternative to a sealer that failed to build is
+		// one that silently is not there, and credentials would then be written
+		// in the clear by a deployment that asked for encryption.
+		panic("encryption keys passed validation but produced no sealer: " + err.Error())
+	}
+
 	// Strava is the first provider integration. Absent credentials leave it
 	// reporting itself unconfigured rather than failing the boot, so a
 	// developer without a Strava app can still run everything else.
 	stravaSvc := strava.NewService(strava.Options{
-		Repository:   strava.NewRepository(pool),
+		Repository:   strava.NewRepository(pool, sealer),
 		Activity:     activitySvc,
 		Biometrics:   biometricSvc,
 		Queue:        queue,
@@ -317,18 +338,6 @@ func routes(
 	// Bring-your-own-key, when the deployment has somewhere safe to put one.
 	// Without ENCRYPTION_KEY the sealer is nil and the feature reports itself
 	// unavailable, rather than storing somebody's credential in the clear.
-	var sealer *secret.Sealer
-	if cfg.Encryption.Enabled() {
-		built, err := secret.NewSealer(cfg.Encryption.Keys...)
-		if err != nil {
-			// Unreachable: config.Load already validated these keys. Refusing
-			// anyway, because the alternative to a sealer that failed to build
-			// is one that silently is not there — and the feature it guards
-			// would then be quietly unavailable rather than loudly broken.
-			panic("encryption keys passed validation but produced no sealer: " + err.Error())
-		}
-		sealer = built
-	}
 	aicredSvc := aicreds.NewService(aicreds.NewRepository(pool), sealer, slog.Default())
 
 	settingsHandler := settings.NewHandler(userSvc, preferencesSvc, mealDietSvc, connectionSvc, aicredSvc)
@@ -517,6 +526,7 @@ func routes(
 				workoutHandler.Routes(r)
 				mediaHandler.Routes(r)
 				settingsHandler.Routes(r)
+				vaultHandler.Routes(r)
 				mindHandler.Routes(r)
 				careHandler.Routes(r)
 				activityHandler.Routes(r)

@@ -107,6 +107,8 @@ type Document struct {
 	UpdatedAt          time.Time
 	DeletedAt          *time.Time
 	ChunkerFingerprint string
+	ExternalPath       *string
+	ExternalMtime      *time.Time
 }
 
 type DocumentChunk struct {
@@ -407,15 +409,17 @@ type StravaActivity struct {
 }
 
 type StravaConnection struct {
-	UserID       uuid.UUID
-	AthleteID    int64
-	AccessToken  string
-	RefreshToken string
-	ExpiresAt    time.Time
-	Scopes       string
-	LastSyncedAt *time.Time
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	UserID             uuid.UUID
+	AthleteID          int64
+	AccessToken        string
+	RefreshToken       string
+	ExpiresAt          time.Time
+	Scopes             string
+	LastSyncedAt       *time.Time
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+	AccessTokenSealed  []byte
+	RefreshTokenSealed []byte
 }
 
 type User struct {
@@ -504,6 +508,16 @@ type UserPreference struct {
 	DefaultGoal       string
 	DefaultMacroSplit string
 	UpdatedAt         time.Time
+}
+
+type VaultConnection struct {
+	UserID     uuid.UUID
+	RootPath   string
+	LastSyncAt *time.Time
+	LastError  string
+	Enabled    bool
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
 }
 
 type WebauthnChallenge struct {

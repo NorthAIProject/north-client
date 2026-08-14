@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Pre-commit: keep Go sources gofumpt-clean before they land in git.
+# Pre-commit: format, then lint, before anything lands in git.
+# golangci-lint version must stay in lockstep with .github/workflows/ci.yml.
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
@@ -34,5 +35,16 @@ if [[ -n "${staged_go}" ]]; then
   done <<< "${staged_go}"
   echo "pre-commit: re-staged previously staged .go files after gofumpt"
 fi
+
+# Same command CI runs (golangci/golangci-lint-action, version v2.12.2).
+# Fail closed if the binary is missing — a skipped lint is not a pass.
+if ! command -v golangci-lint >/dev/null 2>&1; then
+  echo "pre-commit: golangci-lint not on PATH. Install v2.12.2 to match CI:" >&2
+  echo "  https://golangci-lint.run/welcome/install/" >&2
+  exit 1
+fi
+
+echo "pre-commit: golangci-lint run"
+golangci-lint run
 
 echo "pre-commit: ok"

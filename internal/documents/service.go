@@ -28,6 +28,9 @@ const (
 	// twenty of them has been handed the document back.
 	searchLimit = 6
 
+	// searchPageLimit is the default page size on the dedicated search page.
+	searchPageLimit = 20
+
 	// maxUploadBytes is what North will read from an upload. Text documents are
 	// small; anything larger is a file somebody chose by mistake, and reading
 	// it costs memory before anything has looked at what it is.
@@ -277,22 +280,46 @@ func (s *Service) Delete(ctx context.Context, id, userID uuid.UUID) error {
 // full-text result stands. A slow or broken provider must never cost somebody
 // an answer they would otherwise have got.
 func (s *Service) Search(ctx context.Context, userID uuid.UUID, query string, limit int) ([]Hit, error) {
-	normalised, err := search.Normalise(query)
-	if err != nil {
-		return nil, err
-	}
 	if limit <= 0 {
 		limit = searchLimit
 	}
+	hits, _, err := s.SearchPage(ctx, userID, query, limit, 0)
+	return hits, err
+}
+
+// SearchPage returns one page of hybrid results and whether more exist beyond it.
+func (s *Service) SearchPage(ctx context.Context, userID uuid.UUID, query string, limit, offset int) ([]Hit, bool, error) {
+	normalised, err := search.Normalise(query)
+	if err != nil {
+		return nil, false, err
+	}
+	if limit <= 0 {
+		limit = searchPageLimit
+	}
 	if limit, err = limits.Validate(limit, "limit", limits.MaxSearchLimit); err != nil {
-		return nil, err
+		return nil, false, err
+	}
+	if offset < 0 {
+		offset = 0
 	}
 
-	// Each retriever is asked for more than the final count: fusion only has
-	// something to work with if the lists overlap, and two lists of six rarely
-	// do.
-	deep := min(limit*3, limits.MaxSearchLimit)
+	need := min(offset+limit+1, limits.MaxSearchLimit)
+	deep := min(need*3, limits.MaxSearchLimit)
 
+	fused, err := s.fusedSearch(ctx, userID, normalised, deep)
+	if err != nil {
+		return nil, false, err
+	}
+
+	hasMore := len(fused) > offset+limit
+	if offset >= len(fused) {
+		return nil, hasMore, nil
+	}
+	end := min(offset+limit, len(fused))
+	return fused[offset:end], hasMore, nil
+}
+
+func (s *Service) fusedSearch(ctx context.Context, userID uuid.UUID, normalised string, deep int) ([]Hit, error) {
 	textHits, err := s.repo.Search(ctx, userID, normalised, deep)
 	if err != nil {
 		return nil, err
@@ -300,10 +327,10 @@ func (s *Service) Search(ctx context.Context, userID uuid.UUID, query string, li
 
 	vectorHits := s.vectorSearch(ctx, userID, normalised, deep)
 	if len(vectorHits) == 0 {
-		return truncate(textHits, limit), nil
+		return textHits, nil
 	}
 
-	return truncate(search.Fuse(textHits, vectorHits), limit), nil
+	return search.Fuse(textHits, vectorHits), nil
 }
 
 // vectorSearch is best-effort by design; see Search.
@@ -315,6 +342,11 @@ func (s *Service) vectorSearch(ctx context.Context, userID uuid.UUID, query stri
 	vector, err := s.embeddings.EmbedQuery(ctx, query)
 	if err != nil {
 		s.log().Warn("semantic search skipped: could not embed the query", slog.Any("error", err))
+		return nil
+	}
+	if len(vector) != embeddingDims {
+		s.log().Warn("semantic search skipped: query vector width does not match the store",
+			slog.Int("got", len(vector)), slog.Int("want", embeddingDims))
 		return nil
 	}
 
@@ -331,13 +363,6 @@ func (s *Service) log() *slog.Logger {
 		return s.logger
 	}
 	return slog.Default()
-}
-
-func truncate(hits []Hit, limit int) []Hit {
-	if len(hits) > limit {
-		return hits[:limit]
-	}
-	return hits
 }
 
 // Counts and LatestRun back the knowledge page and the MCP status tool.

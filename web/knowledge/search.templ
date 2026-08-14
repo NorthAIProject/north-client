@@ -1,0 +1,151 @@
+package knowledge
+
+import (
+	"fmt"
+
+	"github.com/NorthAIProject/north-client/internal/documents/document"
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/ui/input"
+)
+
+// SearchView is everything the dedicated search page renders.
+type SearchView struct {
+	Query   string
+	Hits    []document.Hit
+	Offset  int
+	Limit   int
+	HasMore bool
+	Append  bool
+}
+
+templ SearchPage(user users.User, view SearchView) {
+	@layout.App("Search knowledge", user, layout.BuildNav("/app/knowledge")) {
+		<div class="mx-auto w-full max-w-3xl p-6 md:p-8">
+			<header class="border-b border-hairline pb-6">
+				<a href="/app/knowledge" class="text-muted-foreground hover:text-foreground font-mono text-[10px] uppercase tracking-[0.14em]">
+					&larr; Knowledge
+				</a>
+				<h1 class="mt-2 text-2xl font-medium tracking-tight">Search passages</h1>
+				<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
+					Find what North has read across your notes and files.
+				</p>
+			</header>
+			<div class="mt-6">
+				@searchForm(view)
+			</div>
+			<div id="knowledge-search-panel" class="mt-6">
+				@searchPanel(view)
+			</div>
+		</div>
+	}
+}
+
+templ searchForm(view SearchView) {
+	<form
+		method="get"
+		action="/app/knowledge/search"
+		class="relative"
+		hx-get="/app/knowledge/search"
+		hx-trigger="input changed delay:300ms from:#knowledge-search-page-input, search"
+		hx-target="#knowledge-search-panel"
+		hx-swap="innerHTML"
+		hx-select="#knowledge-search-panel-inner"
+		hx-push-url="true"
+	>
+		@input.Input(input.Props{
+			ID:          "knowledge-search-page-input",
+			Name:        "q",
+			Value:       view.Query,
+			Type:        input.TypeSearch,
+			Placeholder: "Search passages…",
+			Attributes: templ.Attributes{
+				"autocomplete": "off",
+				"aria-label":   "Search what North has read",
+			},
+		})
+		<div id="knowledge-search-indicator" class="htmx-indicator text-muted-foreground absolute right-3 top-1/2 -translate-y-1/2 text-xs">
+			Searching…
+		</div>
+	</form>
+}
+
+templ SearchPanel(view SearchView) {
+	@searchPanel(view)
+}
+
+templ SearchAppendRows(view SearchView) {
+	<div id="knowledge-search-append">
+		for _, h := range view.Hits {
+			<div data-search-row="true">
+				@resultRow(h)
+			</div>
+		}
+		@searchTail(view)
+	</div>
+}
+
+templ searchPanel(view SearchView) {
+	<div id="knowledge-search-panel-inner">
+		@searchResultsBody(view)
+	</div>
+}
+
+templ searchResultsBody(view SearchView) {
+	if view.Query == "" {
+		<p class="text-muted-foreground text-sm">
+			Type a phrase to search what North has read.
+		</p>
+	} else if len(view.Hits) == 0 && !view.Append {
+		<p class="text-muted-foreground text-sm">
+			Nothing matched. North can only find what it has read.
+		</p>
+	} else {
+		if !view.Append {
+			<p class="text-muted-foreground mb-3 font-mono text-[11px] tabular-nums">
+				{ searchCountLabel(view) }
+			</p>
+		}
+		<div id="knowledge-search-results-list" class="border-hairline divide-y divide-hairline overflow-hidden rounded-md border">
+			for _, h := range view.Hits {
+				<div data-search-row="true">
+					@resultRow(h)
+				</div>
+			}
+			if view.HasMore {
+				@searchTail(view)
+			}
+		</div>
+	}
+}
+
+// searchTail is the pagination control. It is swapped for the next page of
+// rows so the button disappears when nothing remains, rather than appending a
+// second "Show more" under a stale one.
+templ searchTail(view SearchView) {
+	<div id="knowledge-search-tail" class="px-3 py-2">
+		if view.HasMore {
+			<a
+				href={ templ.SafeURL(showMoreURL(view)) }
+				class="text-sm font-medium hover:underline"
+				hx-get={ showMoreURL(view) }
+				hx-target="#knowledge-search-tail"
+				hx-swap="outerHTML"
+				hx-select="#knowledge-search-append"
+			>
+				Show more
+			</a>
+		}
+	</div>
+}
+
+func searchCountLabel(view SearchView) string {
+	n := len(view.Hits) + view.Offset
+	if view.HasMore {
+		return fmt.Sprintf("%d+ passages", n)
+	}
+	if n == 1 {
+		return "1 passage"
+	}
+	return fmt.Sprintf("%d passages", n)
+}

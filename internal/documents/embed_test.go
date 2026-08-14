@@ -2,12 +2,15 @@ package documents_test
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"hash/fnv"
 	"math"
 	"strings"
 	"testing"
 
 	"github.com/NorthAIProject/north-client/internal/documents"
+	"github.com/NorthAIProject/north-client/internal/jobs"
 	"github.com/NorthAIProject/north-client/internal/shared/database/testdb"
 )
 
@@ -18,6 +21,34 @@ import (
 // network call or an API key. Texts sharing words land near each other, which
 // is the only property the code under test depends on.
 type fakeEmbedder struct{ dims int }
+
+// failingEmbedder fails Embed or EmbedQuery independently.
+type failingEmbedder struct {
+	fakeEmbedder
+	fail      bool
+	failQuery bool
+	err       error
+}
+
+func (f *failingEmbedder) Embed(ctx context.Context, texts []string) ([][]float32, error) {
+	if f.fail {
+		if f.err != nil {
+			return nil, f.err
+		}
+		return nil, errors.New("embedding provider unavailable")
+	}
+	return f.fakeEmbedder.Embed(ctx, texts)
+}
+
+func (f *failingEmbedder) EmbedQuery(ctx context.Context, query string) ([]float32, error) {
+	if f.failQuery {
+		if f.err != nil {
+			return nil, f.err
+		}
+		return nil, errors.New("embedding provider unavailable")
+	}
+	return f.fakeEmbedder.EmbedQuery(ctx, query)
+}
 
 func (f fakeEmbedder) Name() string       { return "fake" }
 func (f fakeEmbedder) EmbedModel() string { return "fake-embed-v1" }
@@ -247,5 +278,271 @@ func TestHybridSearchReturnsBothKindsOfMatch(t *testing.T) {
 
 	if !strings.Contains(hits[0].Content, "Wide grip") {
 		t.Errorf("top hit was the wrong passage:\n%s", hits[0].Content)
+	}
+}
+
+const isolationNote = `# Private vault marker
+
+The xyzzy-plugh-secret-marker appears only in this person's library.
+`
+
+func TestSearchIsScopedToTheCaller(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	owner := seedUser(t, pool, "embed-owner@north.test")
+	stranger := seedUser(t, pool, "embed-stranger@north.test")
+
+	repo := documents.NewRepository(pool)
+	fake := fakeEmbedder{dims: 1024}
+	svc := documents.NewService(repo, nil, nil).WithEmbeddings(fake, nil)
+	indexer := documents.NewIndexer(repo, nil)
+
+	doc, err := svc.CreateNote(ctx, owner.ID, "Private notes", isolationNote)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = indexer.IndexDocument(ctx, owner.ID, doc.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = documents.NewEmbedder(repo, fake, nil).EmbedPending(ctx, owner.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	query := "xyzzy-plugh-secret-marker"
+	vector, err := fake.EmbedQuery(ctx, query)
+	if err != nil {
+		t.Fatal(err)
+	}
+	vecHits, err := repo.SearchByVector(ctx, stranger.ID, fake.EmbedModel(), vector, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(vecHits) != 0 {
+		t.Errorf("stranger vector search = %+v, want none", vecHits)
+	}
+
+	hybrid, err := svc.Search(ctx, stranger.ID, query, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hybrid) != 0 {
+		t.Errorf("stranger hybrid search = %+v, want none", hybrid)
+	}
+
+	owned, err := svc.Search(ctx, owner.ID, query, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(owned) == 0 {
+		t.Fatal("owner hybrid search found nothing in their own library")
+	}
+}
+
+func TestSearchOnEmptyCorpusReturnsNothing(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	user := seedUser(t, pool, "embed-empty@north.test")
+
+	repo := documents.NewRepository(pool)
+	fake := fakeEmbedder{dims: 1024}
+	svc := documents.NewService(repo, nil, nil).WithEmbeddings(fake, nil)
+
+	hits, err := svc.Search(ctx, user.ID, "anything at all", 0)
+	if err != nil {
+		t.Fatalf("search on empty library: %v", err)
+	}
+	if len(hits) != 0 {
+		t.Errorf("search on empty library = %+v, want none", hits)
+	}
+}
+
+func TestWorkerHandlersIndexThenEmbedThenSearch(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	user := seedUser(t, pool, "embed-worker@north.test")
+
+	repo := documents.NewRepository(pool)
+	fake := fakeEmbedder{dims: 1024}
+	svc := documents.NewService(repo, nil, nil).WithEmbeddings(fake, nil)
+	indexer := documents.NewIndexer(repo, nil)
+	embedder := documents.NewEmbedder(repo, fake, nil)
+
+	doc, err := svc.CreateNote(ctx, user.ID, "Training notes", embedNote)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	indexPayload, err := json.Marshal(jobs.IndexDocumentPayload{
+		UserID:     user.ID,
+		DocumentID: doc.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = indexer.HandleIndexDocument(ctx, indexPayload); err != nil {
+		t.Fatal(err)
+	}
+
+	embedPayload, err := json.Marshal(jobs.EmbedChunksPayload{UserID: user.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = embedder.HandleEmbedJob(ctx, embedPayload); err != nil {
+		t.Fatal(err)
+	}
+
+	hits, err := svc.Search(ctx, user.ID, "wide grip pressing", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hits) == 0 {
+		t.Fatal("hybrid search after worker handlers returned nothing")
+	}
+	if !strings.Contains(hits[0].Content, "Wide grip") {
+		t.Errorf("top hit was the wrong passage:\n%s", hits[0].Content)
+	}
+}
+
+func TestEmbedFailureLeavesDocumentReadyAndFTSSearchable(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	user := seedUser(t, pool, "embed-fail@north.test")
+
+	repo := documents.NewRepository(pool)
+	fake := &failingEmbedder{fakeEmbedder: fakeEmbedder{dims: 1024}, fail: true}
+	svc := documents.NewService(repo, nil, nil).WithEmbeddings(fake, nil)
+	indexer := documents.NewIndexer(repo, nil)
+	embedder := documents.NewEmbedder(repo, fake, nil)
+
+	doc, err := svc.CreateNote(ctx, user.ID, "Training notes", embedNote)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = indexer.IndexDocument(ctx, user.ID, doc.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	written, err := embedder.EmbedPending(ctx, user.ID)
+	if err == nil {
+		t.Fatal("expected embed failure")
+	}
+	if written != 0 {
+		t.Errorf("wrote %d vectors despite failure", written)
+	}
+
+	after, err := repo.Get(ctx, doc.ID, user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Status != documents.StatusReady {
+		t.Errorf("status = %q after embed failure, want ready", after.Status)
+	}
+
+	fts, err := svc.Search(ctx, user.ID, "wide grip shoulder", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fts) == 0 {
+		t.Fatal("FTS search returned nothing while vectors were missing")
+	}
+
+	fake.fail = false
+	if _, err = embedder.EmbedPending(ctx, user.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	hybrid, err := svc.Search(ctx, user.ID, "wide grip pressing", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hybrid) == 0 {
+		t.Fatal("hybrid search returned nothing after embed retry")
+	}
+}
+
+func TestQueryEmbedFailureFallsBackToFullText(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	user := seedUser(t, pool, "embed-query-fail@north.test")
+
+	repo := documents.NewRepository(pool)
+	fake := &failingEmbedder{fakeEmbedder: fakeEmbedder{dims: 1024}}
+	svc := documents.NewService(repo, nil, nil).WithEmbeddings(fake, nil)
+	indexer := documents.NewIndexer(repo, nil)
+
+	doc, err := svc.CreateNote(ctx, user.ID, "Training notes", embedNote)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = indexer.IndexDocument(ctx, user.ID, doc.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = documents.NewEmbedder(repo, fake, nil).EmbedPending(ctx, user.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	fake.failQuery = true
+	hits, err := svc.Search(ctx, user.ID, "wide grip shoulder", 0)
+	if err != nil {
+		t.Fatalf("search with a broken query embedder: %v", err)
+	}
+	if len(hits) == 0 {
+		t.Fatal("full-text results were dropped when query embedding failed")
+	}
+}
+
+func TestEmbedRejectsWrongDimension(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	user := seedUser(t, pool, "embed-dims@north.test")
+
+	repo := documents.NewRepository(pool)
+	svc := documents.NewService(repo, nil, nil)
+	indexer := documents.NewIndexer(repo, nil)
+
+	doc, err := svc.CreateNote(ctx, user.ID, "Training notes", embedNote)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = indexer.IndexDocument(ctx, user.ID, doc.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	written, err := documents.NewEmbedder(repo, fakeEmbedder{dims: 8}, nil).EmbedPending(ctx, user.ID)
+	if err == nil {
+		t.Fatal("expected a dimension mismatch")
+	}
+	if written != 0 {
+		t.Errorf("wrote %d vectors of the wrong width", written)
+	}
+	if !strings.Contains(err.Error(), "width") {
+		t.Errorf("error = %v, want it to name the width", err)
+	}
+}
+
+func TestIndexEnqueuesEmbedJob(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	user := seedUser(t, pool, "index-enqueue-embed@north.test")
+
+	repo := documents.NewRepository(pool)
+	queue := jobs.NewQueue(pool)
+	svc := documents.NewService(repo, nil, nil)
+	indexer := documents.NewIndexer(repo, nil).WithEmbeddingQueue(queue)
+
+	doc, err := svc.CreateNote(ctx, user.ID, "Training notes", embedNote)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = indexer.IndexDocument(ctx, user.ID, doc.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	claimed, ok, err := queue.Claim(ctx)
+	if err != nil || !ok {
+		t.Fatal("indexing should queue an embed job when a queue is wired")
+	}
+	if claimed.Kind != jobs.KindEmbedChunks {
+		t.Fatalf("kind = %q, want embed_chunks", claimed.Kind)
 	}
 }
