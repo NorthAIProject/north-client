@@ -6,11 +6,13 @@ import (
 	html2 "html"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/a-h/templ"
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/documents/document"
+	"github.com/NorthAIProject/north-client/internal/users"
 )
 
 func render(t *testing.T, c templ.Component) string {
@@ -147,5 +149,103 @@ func TestPassagesSaysSoWhenNothingResolves(t *testing.T) {
 
 	if !strings.Contains(html, "no longer in your knowledge") {
 		t.Errorf("an empty sources list says nothing to the reader:\n%s", html)
+	}
+}
+
+func TestUploadPickerAcceptsPdf(t *testing.T) {
+	html := render(t, addNote(NoteForm{}))
+
+	if !strings.Contains(html, ".pdf") {
+		t.Error("the file picker does not accept PDF")
+	}
+	if !strings.Contains(html, "PDF, Markdown, or plain text") {
+		t.Errorf("the helper copy does not mention PDF:\n%s", html)
+	}
+}
+
+func TestEmptyLibraryMentionsPdf(t *testing.T) {
+	html := render(t, IndexPage(users.User{DisplayName: "Test"}, View{}, NoteForm{}))
+
+	if !strings.Contains(html, "PDF, Markdown, or text file") {
+		t.Errorf("the empty state does not mention PDF:\n%s", html)
+	}
+}
+
+func TestIndexIsAWorkspaceNotACardStack(t *testing.T) {
+	now := time.Now()
+	html := render(t, IndexPage(users.User{DisplayName: "Test"}, View{
+		Documents: []document.Document{{
+			ID:         uuid.New(),
+			Title:      "Physio report",
+			SourceKind: document.SourceUpload,
+			MIME:       "application/pdf",
+			ByteSize:   142 * 1024,
+			LineCount:  48,
+			Status:     document.StatusReady,
+			IndexedAt:  &now,
+		}},
+		Counts: document.Counts{Ready: 1, Chunks: 12},
+	}, NoteForm{}))
+
+	if !strings.Contains(html, "<table") {
+		t.Error("library is missing a table")
+	}
+	if !strings.Contains(html, "Drop a file, or browse") {
+		t.Error("compose rail is missing the drop target")
+	}
+	if !strings.Contains(html, "Search passages") {
+		t.Error("toolbar is missing passage search")
+	}
+	if !strings.Contains(html, `x-data="{ filter: 'all' }"`) {
+		t.Error("library is missing the filter state")
+	}
+	if !strings.Contains(html, ">Notes<") && !strings.Contains(html, "Notes") {
+		t.Error("toolbar is missing the notes filter")
+	}
+	if strings.Contains(html, "Index health") {
+		t.Error("the old donut card is still on the page")
+	}
+	if strings.Contains(html, "Documents read") {
+		t.Error("the old KPI strip is still on the page")
+	}
+}
+
+func TestLibraryRowShowsTypeAndSize(t *testing.T) {
+	d := document.Document{
+		ID:         uuid.New(),
+		Title:      "Physio report",
+		SourceKind: document.SourceUpload,
+		MIME:       "application/pdf",
+		ByteSize:   142 * 1024,
+	}
+
+	html := render(t, documentLibrary(View{Documents: []document.Document{d}}))
+
+	if !strings.Contains(html, "<table") {
+		t.Error("the library is not a table")
+	}
+	if !strings.Contains(html, "PDF") {
+		t.Errorf("the row does not name the file type:\n%s", html)
+	}
+	if !strings.Contains(html, "142 KB") {
+		t.Errorf("the row does not name the file size:\n%s", html)
+	}
+	if !strings.Contains(html, "Physio report") {
+		t.Error("the row does not name the document")
+	}
+}
+
+func TestDocumentDetailKeepsNotesPlain(t *testing.T) {
+	got := documentDetail(document.Document{
+		Title:      "A note",
+		SourceKind: document.SourceNote,
+		MIME:       "text/markdown",
+		ByteSize:   80,
+	})
+	if strings.Contains(got, "PDF") || strings.Contains(got, "Markdown") || strings.Contains(got, "B") {
+		t.Errorf("a note should not show file metadata: %q", got)
+	}
+	if got != "note" {
+		t.Errorf("documentDetail = %q, want %q", got, "note")
 	}
 }

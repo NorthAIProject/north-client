@@ -14,12 +14,15 @@ import (
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/alert"
 	"github.com/NorthAIProject/north-client/web/shared/ui/badge"
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
-	"github.com/NorthAIProject/north-client/web/shared/ui/card"
 	"github.com/NorthAIProject/north-client/web/shared/ui/form"
+	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
 	"github.com/NorthAIProject/north-client/web/shared/ui/input"
 	"github.com/NorthAIProject/north-client/web/shared/ui/label"
+	"github.com/NorthAIProject/north-client/web/shared/ui/separator"
+	"github.com/NorthAIProject/north-client/web/shared/ui/table"
 	"github.com/NorthAIProject/north-client/web/shared/ui/textarea"
 )
 
@@ -67,145 +70,165 @@ type Instruments struct {
 
 templ IndexPage(user users.User, view View, form NoteForm) {
 	@layout.App("Knowledge", user, layout.BuildNav("/app/knowledge")) {
-		<div class="mx-auto w-full max-w-6xl space-y-6 p-6 md:p-8">
-			<header>
-				@ui.MonoLabel("What North has read")
-				<h1 class="mt-2 text-2xl font-medium tracking-tight">Knowledge</h1>
-				<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
-					Notes and files the coach can draw on. It only quotes what it has read here, and it
-					says where each answer came from.
-				</p>
-			</header>
-			@kpiStrip(view)
-			@indexHealthDonut(view)
-			@status(view)
-			@attention(view)
-			@searchBox()
-			@addNote(form)
-			<section class="space-y-3">
-				<h2 class="text-sm font-medium">Your documents</h2>
-				if len(view.Documents) == 0 {
-					<p class="text-muted-foreground text-sm">
-						Nothing yet. Add a note above, or upload a Markdown or text file.
-					</p>
-				}
-				for _, d := range view.Documents {
-					@documentCard(d)
-				}
-			</section>
-			@exportSection()
+		<div class="mx-auto w-full max-w-7xl p-6 md:p-8">
+			@pageHeader(view)
+			if len(view.Problems) > 0 || view.EmbeddingGap > 0 {
+				<div class="mt-6">
+					@attention(view)
+				</div>
+			}
+			<div class="mt-8 grid items-start gap-8 lg:grid-cols-12">
+				<section class="order-2 min-w-0 lg:order-1 lg:col-span-8" x-data="{ filter: 'all' }">
+					@libraryToolbar(view)
+					<div id="knowledge-search-results" class="mt-4"></div>
+					<div class="mt-4">
+						@documentLibrary(view)
+					</div>
+				</section>
+				<aside class="order-1 space-y-6 lg:sticky lg:top-6 lg:order-2 lg:col-span-4 lg:self-start">
+					@addNote(form)
+					@exportSection()
+				</aside>
+			</div>
 		</div>
 		@textarea.Script()
 		@label.Script()
-		@ui.ChartScripts()
 	}
 }
 
-templ kpiStrip(view View) {
-	@ui.KpiStrip() {
-		@kpiCell("Documents read", fmt.Sprint(view.Counts.Ready), "", "")
-		@kpiCell("Passages", fmt.Sprint(view.Counts.Chunks), "", "")
-		@kpiCell("Waiting", fmt.Sprint(view.Counts.Pending), "", "")
-		@kpiCell("Unreadable", fmt.Sprint(view.Counts.Failed), "", "")
-		@kpiCell("Embedding gap", embeddingGapKPI(view), "", "")
-	}
+templ pageHeader(view View) {
+	<header class="flex flex-col gap-6 border-b border-hairline pb-6 lg:flex-row lg:items-end lg:justify-between">
+		<div class="max-w-xl">
+			<h1 class="text-2xl font-medium tracking-tight text-balance">Knowledge</h1>
+			<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
+				Notes and files the coach can quote. It only uses what it has read here,
+				and it says where each answer came from.
+			</p>
+		</div>
+		@indexMeter(view)
+	</header>
 }
 
-templ kpiCell(label, value, href, cta string) {
-	@ui.KpiCell(ui.KpiCellProps{Label: label, Value: value, Href: href, CTA: cta})
-}
-
-func embeddingGapKPI(view View) string {
-	if view.EmbeddingGap <= 0 {
-		return "—"
-	}
-	return fmt.Sprint(view.EmbeddingGap)
-}
-
-templ indexHealthDonut(view View) {
-	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
-		@card.Header() {
-			@card.Title() {
-				Index health
+// indexMeter is the index as a bar and a line of counts, not a card of KPIs.
+templ indexMeter(view View) {
+	<div class="w-full max-w-md space-y-2 lg:text-right">
+		<div class="flex h-1.5 overflow-hidden rounded-full bg-muted" role="img" aria-label={ meterLabel(view.Counts) }>
+			if view.Counts.Ready > 0 {
+				<div class="bg-signal h-full" style={ meterWidth(view.Counts.Ready, view.Counts) }></div>
 			}
-		}
-		@card.Content() {
-			if view.Instruments.HasDonut && len(view.Instruments.IndexHealthDonut) > 0 {
-				@templ.JSONScript("knowledge-index-health-option", view.Instruments.IndexHealthDonut)
-				@ui.EChartsMount("knowledge-index-health", "knowledge-index-health-option", "min-h-48 w-full max-w-sm mx-auto")
-			} else {
-				<p class="text-muted-foreground text-sm">No documents indexed yet.</p>
+			if view.Counts.Pending > 0 {
+				<div class="bg-muted-foreground/40 h-full" style={ meterWidth(view.Counts.Pending, view.Counts) }></div>
 			}
-		}
-	}
-}
-
-// status keeps reindex actions and the last run summary.
-templ status(view View) {
-	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
-		@card.Content(card.ContentProps{Class: "space-y-4 py-4"}) {
+			if view.Counts.Failed > 0 {
+				<div class="bg-destructive h-full" style={ meterWidth(view.Counts.Failed, view.Counts) }></div>
+			}
+		</div>
+		<div class="text-muted-foreground flex flex-wrap items-baseline gap-x-3 gap-y-1 font-mono text-[11px] tabular-nums lg:justify-end">
+			<span><span class="text-foreground">{ fmt.Sprint(view.Counts.Ready) }</span> read</span>
+			<span><span class="text-foreground">{ fmt.Sprint(view.Counts.Chunks) }</span> passages</span>
+			if view.Counts.Pending > 0 {
+				<span>{ fmt.Sprint(view.Counts.Pending) } waiting</span>
+			}
+			if view.Counts.Failed > 0 {
+				<span class="text-destructive">{ fmt.Sprint(view.Counts.Failed) } unreadable</span>
+			}
+		</div>
+		<div class="flex flex-wrap items-center gap-3 lg:justify-end">
 			if view.HasRun {
-				<p class="text-muted-foreground text-xs">
-					{ runSummary(view.LastRun) }
-				</p>
+				<p class="text-muted-foreground text-xs">{ runSummary(view.LastRun) }</p>
 			}
 			<form method="post" action="/app/knowledge/reindex">
 				@ui.CSRFInput()
-				@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Variant: button.VariantOutline}) {
-					Rebuild the index
+				@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Variant: button.VariantGhost}) {
+					Rebuild index
 				}
 			</form>
-			<p class="text-muted-foreground text-xs leading-relaxed">
-				Rebuilding re-reads every document. Nothing you wrote is changed by it — the search
-				index is built from your documents, never the other way round.
-			</p>
-		}
-	}
+		</div>
+	</div>
+}
+
+templ libraryToolbar(view View) {
+	<div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+		<div class="bg-muted inline-flex h-9 w-fit items-center rounded-lg p-[3px]">
+			@filterTab("all", "All", len(view.Documents))
+			@filterTab("notes", "Notes", countNotes(view.Documents))
+			@filterTab("files", "Files", countFiles(view.Documents))
+			@filterTab("waiting", "Waiting", countWaiting(view.Documents))
+		</div>
+		<div class="min-w-0 sm:max-w-xs sm:flex-1">
+			@input.Input(input.Props{
+				ID:          "knowledge-search",
+				Name:        "q",
+				Type:        input.TypeSearch,
+				Placeholder: "Search passages…",
+				Attributes: templ.Attributes{
+					"hx-get":        "/app/knowledge/search",
+					"hx-trigger":    "input changed delay:300ms, search",
+					"hx-target":     "#knowledge-search-results",
+					"hx-swap":       "innerHTML",
+					"autocomplete":  "off",
+					"aria-label":    "Search what North has read",
+				},
+			})
+		</div>
+	</div>
+}
+
+templ filterTab(value, label string, n int) {
+	<button
+		type="button"
+		@click={ "filter = '" + value + "'" }
+		:class={ "filter === '" + value + "' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground'" }
+		class="inline-flex h-[calc(100%-1px)] items-center gap-1.5 rounded-md px-2.5 text-sm font-medium transition-colors duration-150"
+	>
+		{ label }
+		<span class="font-mono text-[10px] tabular-nums opacity-70">{ fmt.Sprint(n) }</span>
+	</button>
 }
 
 // attention names the documents something is wrong with, and offers the fix.
-//
-// The counts above could already say four documents were stale. They could not
-// say which four, or why, or do anything about it — which makes a number a
-// worry rather than a task.
 templ attention(view View) {
-	if len(view.Problems) > 0 || view.EmbeddingGap > 0 {
-		<section class="space-y-3">
-			<h2 class="text-sm font-medium">Needs attention</h2>
-			for _, p := range view.Problems {
-				@problemRow(p)
-			}
+	@alert.Alert(alert.Props{Class: "border-hairline bg-surface"}) {
+		@alert.Title() {
+			Needs attention
+		}
+		@alert.Description() {
+			<div class="mt-2 divide-y divide-hairline">
+				for _, p := range view.Problems {
+					@problemRow(p)
+				}
+			</div>
 			if view.EmbeddingGap > 0 {
-				<p class="text-muted-foreground text-xs leading-relaxed">
+				<p class="text-muted-foreground mt-3 text-xs leading-relaxed">
 					{ fmt.Sprintf("%d passage(s) are searchable by word but not yet by meaning. This catches up on its own.", view.EmbeddingGap) }
 				</p>
 			}
-		</section>
+		}
 	}
 }
 
 templ problemRow(p document.Problem) {
-	@card.Card(card.Props{Class: "border-hairline"}) {
-		@card.Content(card.ContentProps{Class: "space-y-2 py-3"}) {
+	<div class="flex flex-wrap items-center justify-between gap-3 py-2 first:pt-0 last:pb-0">
+		<div class="min-w-0 space-y-0.5">
 			<div class="flex flex-wrap items-center gap-2">
 				<a href={ templ.SafeURL("/app/knowledge/" + p.DocumentID.String()) } class="text-sm font-medium hover:underline">
 					{ p.Title }
 				</a>
 				@problemBadge(p.Kind)
 			</div>
-			<p class={ "text-sm", templ.KV("text-destructive", p.Kind == document.ProblemFailed), templ.KV("text-muted-foreground", p.Kind != document.ProblemFailed) }>
+			<p class={ "text-xs", templ.KV("text-destructive", p.Kind == document.ProblemFailed), templ.KV("text-muted-foreground", p.Kind != document.ProblemFailed) }>
 				{ p.Detail }
 			</p>
-			if p.Kind != document.ProblemStuck {
-				<form method="post" action={ templ.SafeURL("/app/knowledge/" + p.DocumentID.String() + "/reindex") }>
-					@ui.CSRFInput()
-					@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Variant: button.VariantOutline}) {
-						Read it again
-					}
-				</form>
-			}
+		</div>
+		if p.Kind != document.ProblemStuck {
+			<form method="post" action={ templ.SafeURL("/app/knowledge/" + p.DocumentID.String() + "/reindex") }>
+				@ui.CSRFInput()
+				@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Variant: button.VariantOutline}) {
+					Read again
+				}
+			</form>
 		}
-	}
+	</div>
 }
 
 templ problemBadge(kind string) {
@@ -233,111 +256,202 @@ templ problemBadge(kind string) {
 	}
 }
 
+// addNote is the compose rail: drop a file or write a note.
 templ addNote(f NoteForm) {
-	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
-		@card.Header() {
-			@card.Title() {
-				Add something North should know
+	<div class="space-y-5">
+		<div>
+			<h2 class="text-sm font-medium">Add to the library</h2>
+			<p class="text-muted-foreground mt-1 text-xs leading-relaxed">
+				PDF, Markdown, or plain text, up to 8 MB.
+			</p>
+		</div>
+		@uploadDrop(f)
+		@separator.Separator()
+		<form method="post" action="/app/knowledge/notes" class="space-y-3">
+			@ui.CSRFInput()
+			@form.Item() {
+				@label.Label(label.Props{For: "title", Error: f.fieldError("title")}) {
+					Or write a note
+				}
+				@input.Input(input.Props{
+					ID:          "title",
+					Name:        "title",
+					Value:       f.Title,
+					Placeholder: "e.g. Physio notes, March",
+					HasError:    f.fieldError("title") != "",
+				})
+				if f.fieldError("title") != "" {
+					@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+						{ f.fieldError("title") }
+					}
+				}
+			}
+			@form.Item() {
+				@textarea.Textarea(textarea.Props{
+					ID:          "body",
+					Name:        "body",
+					Rows:        5,
+					Placeholder: "Markdown headings help North quote the right part.",
+					HasError:    f.fieldError("body") != "",
+				}) {
+					{ f.Body }
+				}
+				if f.fieldError("body") != "" {
+					@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+						{ f.fieldError("body") }
+					}
+				}
+			}
+			@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90 w-full"}) {
+				Save note
+			}
+		</form>
+	</div>
+}
+
+// uploadDrop is a drop target. No templUI dropzone exists; Alpine only tracks
+// drag-over state and submits the same multipart form the file input uses.
+templ uploadDrop(f NoteForm) {
+	<form
+		method="post"
+		action="/app/knowledge/uploads"
+		enctype="multipart/form-data"
+		class="space-y-2"
+		x-data="{ over: false }"
+		@dragover.prevent="over = true"
+		@dragleave.prevent="over = false"
+		@drop.prevent="over = false; $refs.file.files = $event.dataTransfer.files; $el.submit()"
+	>
+		@ui.CSRFInput()
+		<label
+			for="file"
+			:class="over ? 'border-signal bg-signal/8' : 'border-hairline bg-surface'"
+			class="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-md border border-dashed px-4 py-8 text-center transition-colors duration-150"
+		>
+			@icon.Icon("file-up")(icon.Props{Class: "text-muted-foreground size-5"})
+			<span class="text-sm font-medium">Drop a file, or browse</span>
+			<span class="text-muted-foreground text-xs">PDF · Markdown · text</span>
+			<!-- Hidden native input: templUI Input cannot sit inside a drop
+			     target without drawing its own field chrome. -->
+			<input
+				id="file"
+				type="file"
+				name="file"
+				accept=".pdf,.md,.markdown,.txt,.text,.log,.csv,application/pdf"
+				class="sr-only"
+				x-ref="file"
+				onchange="this.form.requestSubmit()"
+			/>
+		</label>
+		if f.fieldError("file") != "" {
+			@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+				{ f.fieldError("file") }
 			}
 		}
-		@card.Content(card.ContentProps{Class: "space-y-6"}) {
-			<form method="post" action="/app/knowledge/notes" class="space-y-4">
-				@ui.CSRFInput()
-				@form.Item() {
-					@label.Label(label.Props{For: "title", Error: f.fieldError("title")}) {
-						Name
-					}
-					@input.Input(input.Props{
-						ID:          "title",
-						Name:        "title",
-						Value:       f.Title,
-						Placeholder: "e.g. Physio notes, March",
-						HasError:    f.fieldError("title") != "",
-					})
-					if f.fieldError("title") != "" {
-						@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
-							{ f.fieldError("title") }
+	</form>
+}
+
+templ documentLibrary(view View) {
+	if len(view.Documents) == 0 {
+		<div class="border-hairline rounded-md border border-dashed px-4 py-10 text-center">
+			<p class="text-sm font-medium">Nothing in the library yet</p>
+			<p class="text-muted-foreground mt-1 text-sm">
+				Add a note, or upload a PDF, Markdown, or text file.
+			</p>
+		</div>
+	} else {
+		<div class="border-hairline overflow-x-auto rounded-md border">
+			@table.Table() {
+				@table.Header() {
+					@table.Row() {
+						@table.Head(table.HeadProps{Class: "w-12 pl-3"}) {
+							Type
+						}
+						@table.Head() {
+							Name
+						}
+						@table.Head(table.HeadProps{Class: "hidden sm:table-cell"}) {
+							Size
+						}
+						@table.Head(table.HeadProps{Class: "hidden md:table-cell"}) {
+							Lines
+						}
+						@table.Head() {
+							Status
+						}
+						@table.Head(table.HeadProps{Class: "hidden lg:table-cell"}) {
+							Read
+						}
+						@table.Head(table.HeadProps{Class: "w-0 pr-3 text-right"}) {
+							<span class="sr-only">Actions</span>
 						}
 					}
 				}
-				@form.Item() {
-					@label.Label(label.Props{For: "body", Error: f.fieldError("body")}) {
-						Note
-					}
-					@textarea.Textarea(textarea.Props{
-						ID:          "body",
-						Name:        "body",
-						Rows:        8,
-						Placeholder: "Markdown headings help North quote the right part back to you.",
-						HasError:    f.fieldError("body") != "",
-					}) {
-						{ f.Body }
-					}
-					if f.fieldError("body") != "" {
-						@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
-							{ f.fieldError("body") }
-						}
+				@table.Body() {
+					for _, d := range view.Documents {
+						@documentRow(d)
 					}
 				}
-				@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90"}) {
-					Save note
-				}
-			</form>
-			<div class="border-hairline border-t pt-6">
-				<form method="post" action="/app/knowledge/uploads" enctype="multipart/form-data" class="space-y-4">
-					@ui.CSRFInput()
-					@form.Item() {
-						@label.Label(label.Props{For: "file", Error: f.fieldError("file")}) {
-							Or upload a file
-						}
-						@input.Input(input.Props{
-							ID:         "file",
-							Name:       "file",
-							Type:       input.TypeFile,
-							FileAccept: ".md,.markdown,.txt,.text,.log,.csv",
-							HasError:   f.fieldError("file") != "",
-						})
-						@form.Description() {
-							Markdown or plain text, up to 8 MB.
-						}
-						if f.fieldError("file") != "" {
-							@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
-								{ f.fieldError("file") }
-							}
-						}
-					}
-					@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
-						Upload
-					}
-				</form>
-			</div>
-		}
+			}
+		</div>
 	}
 }
 
-templ documentCard(d document.Document) {
-	@card.Card(card.Props{Class: "border-hairline"}) {
-		@card.Content(card.ContentProps{Class: "space-y-3 py-4"}) {
-			<div class="flex flex-wrap items-center gap-2">
-				<a href={ templ.SafeURL("/app/knowledge/" + d.ID.String()) } class="text-sm font-medium hover:underline">
-					{ d.Title }
-				</a>
-				@statusBadge(d)
-			</div>
-			<p class="text-muted-foreground text-xs">
-				{ documentDetail(d) }
-			</p>
+templ documentRow(d document.Document) {
+	@table.Row(table.RowProps{
+		Attributes: templ.Attributes{
+			"x-show": rowShowExpr(d),
+		},
+	}) {
+		@table.Cell(table.CellProps{Class: "pl-3"}) {
+			@typeMark(d)
+		}
+		@table.Cell() {
+			<a href={ templ.SafeURL("/app/knowledge/" + d.ID.String()) } class="font-medium hover:underline">
+				{ d.Title }
+			</a>
 			if d.Status == document.StatusFailed && d.ParseError != "" {
-				<p class="text-sm text-destructive">{ d.ParseError }</p>
+				<p class="text-destructive mt-0.5 text-xs">{ d.ParseError }</p>
 			}
+		}
+		@table.Cell(table.CellProps{Class: "text-muted-foreground hidden tabular-nums sm:table-cell"}) {
+			if d.SourceKind == document.SourceUpload && d.ByteSize > 0 {
+				{ humanSize(d.ByteSize) }
+			} else {
+				<span class="text-muted-foreground/50">—</span>
+			}
+		}
+		@table.Cell(table.CellProps{Class: "text-muted-foreground hidden tabular-nums md:table-cell"}) {
+			if d.LineCount > 0 {
+				{ fmt.Sprint(d.LineCount) }
+			} else {
+				<span class="text-muted-foreground/50">—</span>
+			}
+		}
+		@table.Cell() {
+			@statusBadge(d)
+		}
+		@table.Cell(table.CellProps{Class: "text-muted-foreground hidden text-xs lg:table-cell"}) {
+			{ readWhen(d) }
+		}
+		@table.Cell(table.CellProps{Class: "pr-3 text-right"}) {
 			<form method="post" action={ templ.SafeURL("/app/knowledge/" + d.ID.String() + "/delete") }>
 				@ui.CSRFInput()
-				@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Variant: button.VariantOutline}) {
+				@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Variant: button.VariantGhost}) {
 					Remove
 				}
 			</form>
 		}
 	}
+}
+
+templ typeMark(d document.Document) {
+	<span
+		class="bg-muted text-muted-foreground inline-flex size-8 items-center justify-center rounded-md font-mono text-[9px] font-medium tracking-wide"
+		title={ fileTypeLabel(d) }
+	>
+		{ typeCode(d) }
+	</span>
 }
 
 templ statusBadge(d document.Document) {
@@ -364,34 +478,34 @@ templ statusBadge(d document.Document) {
 }
 
 templ exportSection() {
-	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
-		@card.Header() {
-			@card.Title() {
-				Take it with you
-			}
-		}
-		@card.Content(card.ContentProps{Class: "space-y-4"}) {
-			<p class="text-muted-foreground text-sm leading-relaxed">
-				Everything North knows about you, as Markdown and your original files. It stays
-				readable without North, and you can take it anywhere.
-			</p>
+	<div class="border-hairline border-t pt-4">
+		<p class="text-muted-foreground text-xs leading-relaxed">
+			Take everything North knows about you — Markdown and original files.
+		</p>
+		<div class="mt-2">
 			@button.Button(button.Props{
 				Href:    "/app/knowledge/export.zip",
-				Variant: button.VariantOutline,
+				Variant: button.VariantGhost,
+				Size:    button.SizeSm,
 			}) {
-				Download everything
+				Download export
 			}
-		}
-	}
+		</div>
+	</div>
 }
 
-// documentDetail is the one line under a title: where it came from, how big it
-// is, and when North last read it.
+// documentDetail is the one line under a title on the document page.
 func documentDetail(d document.Document) string {
-	parts := make([]string, 0, 3)
+	parts := make([]string, 0, 5)
 
 	if d.SourceKind == document.SourceUpload {
 		parts = append(parts, "uploaded file")
+		if label := fileTypeLabel(d); label != "" {
+			parts = append(parts, label)
+		}
+		if d.ByteSize > 0 {
+			parts = append(parts, humanSize(d.ByteSize))
+		}
 	} else {
 		parts = append(parts, "note")
 	}
@@ -402,6 +516,133 @@ func documentDetail(d document.Document) string {
 		parts = append(parts, "read "+d.IndexedAt.In(d.CreatedAt.Location()).Format("2 Jan 2006"))
 	}
 	return strings.Join(parts, " · ")
+}
+
+func fileTypeLabel(d document.Document) string {
+	switch {
+	case strings.Contains(strings.ToLower(d.MIME), "pdf"):
+		return "PDF"
+	case strings.Contains(strings.ToLower(d.MIME), "markdown"):
+		return "Markdown"
+	case strings.Contains(strings.ToLower(d.MIME), "csv"):
+		return "CSV"
+	case d.SourceKind == document.SourceUpload:
+		return "text"
+	default:
+		return "note"
+	}
+}
+
+func typeCode(d document.Document) string {
+	switch {
+	case strings.Contains(strings.ToLower(d.MIME), "pdf"):
+		return "PDF"
+	case strings.Contains(strings.ToLower(d.MIME), "markdown"):
+		return "MD"
+	case strings.Contains(strings.ToLower(d.MIME), "csv"):
+		return "CSV"
+	case d.SourceKind == document.SourceUpload:
+		return "TXT"
+	default:
+		return "NOTE"
+	}
+}
+
+func humanSize(n int64) string {
+	switch {
+	case n < 1024:
+		return fmt.Sprintf("%d B", n)
+	case n < 1024*1024:
+		return fmt.Sprintf("%d KB", (n+512)/1024)
+	default:
+		return fmt.Sprintf("%.1f MB", float64(n)/(1024*1024))
+	}
+}
+
+func readWhen(d document.Document) string {
+	if d.IndexedAt == nil {
+		return "—"
+	}
+	return d.IndexedAt.In(d.CreatedAt.Location()).Format("2 Jan")
+}
+
+func documentSize(d document.Document) string {
+	if d.ByteSize <= 0 {
+		return "—"
+	}
+	return humanSize(d.ByteSize)
+}
+
+func documentLines(d document.Document) string {
+	if d.LineCount <= 0 {
+		return "—"
+	}
+	return fmt.Sprint(d.LineCount)
+}
+
+func isWaiting(d document.Document) bool {
+	return d.Status == document.StatusPending ||
+		d.Status == document.StatusFailed ||
+		d.IsStale()
+}
+
+func rowShowExpr(d document.Document) string {
+	expr := "filter === 'all'"
+	if d.SourceKind == document.SourceNote {
+		expr += " || filter === 'notes'"
+	} else {
+		expr += " || filter === 'files'"
+	}
+	if isWaiting(d) {
+		expr += " || filter === 'waiting'"
+	}
+	return expr
+}
+
+func countNotes(docs []document.Document) int {
+	n := 0
+	for _, d := range docs {
+		if d.SourceKind == document.SourceNote {
+			n++
+		}
+	}
+	return n
+}
+
+func countFiles(docs []document.Document) int {
+	n := 0
+	for _, d := range docs {
+		if d.SourceKind == document.SourceUpload {
+			n++
+		}
+	}
+	return n
+}
+
+func countWaiting(docs []document.Document) int {
+	n := 0
+	for _, d := range docs {
+		if isWaiting(d) {
+			n++
+		}
+	}
+	return n
+}
+
+func meterTotal(c document.Counts) int {
+	return c.Ready + c.Pending + c.Failed
+}
+
+func meterWidth(n int, c document.Counts) string {
+	total := meterTotal(c)
+	if total == 0 || n == 0 {
+		return "width:0"
+	}
+	return fmt.Sprintf("width:%.1f%%", float64(n)/float64(total)*100)
+}
+
+func meterLabel(c document.Counts) string {
+	return fmt.Sprintf("%d read, %d waiting, %d unreadable", c.Ready, c.Pending, c.Failed)
 }
 
 // runSummary describes the last indexing pass in the terms a person would use.

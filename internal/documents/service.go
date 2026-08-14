@@ -1,10 +1,12 @@
 package documents
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"path/filepath"
 	"strings"
 	"time"
@@ -153,16 +155,24 @@ func (s *Service) Upload(ctx context.Context, userID uuid.UUID, filename, mime s
 		return Document{}, apperr.FieldErrors{}.Add("file", "That file is empty.").OrNil()
 	}
 
+	// The declared MIME is ignored: browsers send application/octet-stream
+	// for .md files, and an extension can be attached to anything. Sniff the
+	// bytes the way media does, and store that.
+	detected, err := classifyUpload(ext, content)
+	if err != nil {
+		return Document{}, err
+	}
+
 	key := fmt.Sprintf("users/%s/documents/%s%s", userID, uuid.New(), ext)
-	if putErr := s.storage.Put(ctx, key, mime, strings.NewReader(string(content))); putErr != nil {
+	if putErr := s.storage.Put(ctx, key, detected, bytes.NewReader(content)); putErr != nil {
 		return Document{}, apperr.Wrap(putErr, "store document")
 	}
 
 	doc, err := s.repo.Create(ctx, userID, NewDocument{
-		Title:      parseTitle(filename, mime, string(content)),
+		Title:      parseTitle(filename, detected, string(content)),
 		SourceKind: SourceUpload,
 		StorageKey: key,
-		MIME:       mime,
+		MIME:       detected,
 		ByteSize:   int64(len(content)),
 	})
 	if err != nil {
@@ -492,6 +502,54 @@ func parseTitle(filename, mime, content string) string {
 		return titleFromFilename(filename)
 	}
 	return doc.Title
+}
+
+// classifyUpload decides what an upload actually is.
+//
+// Extension is the allowlist; the leading bytes are the type. A .pdf that is
+// not a PDF, or a .txt full of NULs, is refused here rather than stored and
+// later indexed as gibberish.
+func classifyUpload(ext string, content []byte) (string, error) {
+	header := content
+	if len(header) > 512 {
+		header = header[:512]
+	}
+	sniffed := normaliseMIME(http.DetectContentType(header))
+
+	if ext == ".pdf" {
+		if sniffed != "application/pdf" && !bytes.HasPrefix(content, []byte("%PDF")) {
+			return "", apperr.FieldErrors{}.Add("file",
+				"That does not look like a PDF North can read.").OrNil()
+		}
+		return "application/pdf", nil
+	}
+
+	binary := bytes.IndexByte(content, 0) >= 0 || sniffed == "application/octet-stream"
+	pdf := sniffed == "application/pdf" || bytes.HasPrefix(content, []byte("%PDF"))
+	if binary || pdf {
+		return "", apperr.FieldErrors{}.Add("file",
+			"That file is not readable text.").OrNil()
+	}
+	return mimeForExt(ext), nil
+}
+
+func mimeForExt(ext string) string {
+	switch ext {
+	case ".md", ".markdown", ".mdown":
+		return "text/markdown"
+	case ".csv":
+		return "text/csv"
+	default:
+		return "text/plain"
+	}
+}
+
+// normaliseMIME strips the charset parameter DetectContentType can append.
+func normaliseMIME(mimeType string) string {
+	if base, _, found := strings.Cut(mimeType, ";"); found {
+		return strings.TrimSpace(base)
+	}
+	return mimeType
 }
 
 // titleFromFilename mirrors the parser's fallback for the case above.

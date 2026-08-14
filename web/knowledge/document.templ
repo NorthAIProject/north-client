@@ -51,7 +51,24 @@ templ DocumentPage(user users.User, view DocumentView) {
 					<h1 class="text-2xl font-medium tracking-tight">{ view.Document.Title }</h1>
 					@statusBadge(view.Document)
 				</div>
-				<p class="text-muted-foreground text-xs">{ documentDetail(view.Document) }</p>
+				<dl class="text-muted-foreground mt-3 grid grid-cols-2 gap-x-6 gap-y-2 text-xs sm:grid-cols-4">
+					<div>
+						<dt class="text-[10px] uppercase tracking-wide opacity-70">Kind</dt>
+						<dd class="mt-0.5 text-foreground">{ fileTypeLabel(view.Document) }</dd>
+					</div>
+					<div>
+						<dt class="text-[10px] uppercase tracking-wide opacity-70">Size</dt>
+						<dd class="mt-0.5 text-foreground tabular-nums">{ documentSize(view.Document) }</dd>
+					</div>
+					<div>
+						<dt class="text-[10px] uppercase tracking-wide opacity-70">Lines</dt>
+						<dd class="mt-0.5 text-foreground tabular-nums">{ documentLines(view.Document) }</dd>
+					</div>
+					<div>
+						<dt class="text-[10px] uppercase tracking-wide opacity-70">Read</dt>
+						<dd class="mt-0.5 text-foreground">{ readWhen(view.Document) }</dd>
+					</div>
+				</dl>
 				if view.Highlight {
 					<p class="text-muted-foreground text-sm">
 						{ fmt.Sprintf("Showing lines %d–%d, the passage that was quoted.", view.FromLine, view.ToLine) }

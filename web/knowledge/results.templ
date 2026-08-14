@@ -4,33 +4,7 @@ import (
 	"fmt"
 
 	"github.com/NorthAIProject/north-client/internal/documents/document"
-	"github.com/NorthAIProject/north-client/web/shared/ui/card"
-	"github.com/NorthAIProject/north-client/web/shared/ui/input"
 )
-
-// searchBox is the retrieval North already runs on every reply, made reachable.
-//
-// The same Service.Search the coach uses, so what a person finds here is what
-// the coach would have found — which is the only way to tell whether a missing
-// answer was a retrieval problem or a knowledge problem.
-templ searchBox() {
-	<section class="space-y-3">
-		<h2 class="text-sm font-medium">Search what North has read</h2>
-		@input.Input(input.Props{
-			ID:          "knowledge-search",
-			Name:        "q",
-			Type:        input.TypeSearch,
-			Placeholder: "A word from the passage you are looking for",
-			Attributes: templ.Attributes{
-				"hx-get":     "/app/knowledge/search",
-				"hx-trigger": "input changed delay:300ms, search",
-				"hx-target":  "#knowledge-search-results",
-				"hx-swap":    "innerHTML",
-			},
-		})
-		<div id="knowledge-search-results"></div>
-	</section>
-}
 
 // SearchResults is the fragment the search box swaps in.
 templ SearchResults(query string, hits []document.Hit) {
@@ -42,7 +16,7 @@ templ SearchResults(query string, hits []document.Hit) {
 			anything still waiting.
 		</p>
 	} else {
-		<div class="mt-3 space-y-2">
+		<div class="border-hairline mt-3 divide-y divide-hairline overflow-hidden rounded-md border">
 			for _, h := range hits {
 				@resultRow(h)
 			}
@@ -52,9 +26,9 @@ templ SearchResults(query string, hits []document.Hit) {
 
 // Passages is the fragment behind a reply's sources.
 templ Passages(hits []document.Hit) {
-	<div class="mt-2 space-y-2">
+	<div class="border-hairline mt-2 divide-y divide-hairline overflow-hidden rounded-md border">
 		if len(hits) == 0 {
-			<p class="text-muted-foreground text-xs">
+			<p class="text-muted-foreground px-3 py-2 text-xs">
 				The documents behind this reply are no longer in your knowledge.
 			</p>
 		}
@@ -70,22 +44,18 @@ templ Passages(hits []document.Hit) {
 // document it sits, the range says exactly which lines, and the link opens them
 // highlighted. A hit that could not be opened would be an assertion.
 templ resultRow(h document.Hit) {
-	@card.Card(card.Props{Class: "border-hairline"}) {
-		@card.Content(card.ContentProps{Class: "space-y-2 py-3"}) {
-			<a href={ templ.SafeURL(h.URL()) } class="block space-y-2 group">
-				<div class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-					<span class="text-sm font-medium group-hover:underline">{ h.Title }</span>
-					if trail := headingTrail(h); trail != "" {
-						<span class="text-muted-foreground text-xs">{ "› " + trail }</span>
-					}
-					<span class="text-muted-foreground/70 font-mono text-[10px] tabular-nums">{ h.Lines() }</span>
-				</div>
-				<p class="text-muted-foreground text-sm leading-relaxed">
-					@snippet(h)
-				</p>
-			</a>
-		}
-	}
+	<a href={ templ.SafeURL(h.URL()) } class="hover:bg-muted/50 block space-y-1.5 px-3 py-2.5 transition-colors duration-150">
+		<div class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+			<span class="text-sm font-medium">{ h.Title }</span>
+			if trail := headingTrail(h); trail != "" {
+				<span class="text-muted-foreground text-xs">{ "› " + trail }</span>
+			}
+			<span class="text-muted-foreground/70 font-mono text-[10px] tabular-nums">{ h.Lines() }</span>
+		</div>
+		<p class="text-muted-foreground text-sm leading-relaxed">
+			@snippet(h)
+		</p>
+	</a>
 }
 
 // snippet renders the excerpt with the matched terms emphasised.
