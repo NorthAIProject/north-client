@@ -2,6 +2,7 @@ package aicreds
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -54,6 +55,10 @@ type Service struct {
 	// what makes constructing clients outside the registry affordable.
 	http *http.Client
 
+	// verifier checks a key against its provider before storing it. Never nil
+	// in production; WithVerifier replaces it in tests.
+	verifier KeyVerifier
+
 	mu    sync.RWMutex
 	cache map[uuid.UUID]cached
 }
@@ -62,13 +67,24 @@ func NewService(repo *Repository, sealer *secret.Sealer, log *slog.Logger) *Serv
 	if log == nil {
 		log = slog.Default()
 	}
+	// A separate client from the one handed to per-user providers: that one has
+	// a long timeout because a model answering a considered question is slow,
+	// and a form submission must not inherit it.
 	return &Service{
-		repo:   repo,
-		log:    log,
-		sealer: sealer,
-		http:   &http.Client{Timeout: 5 * time.Minute},
-		cache:  make(map[uuid.UUID]cached),
+		repo:     repo,
+		log:      log,
+		sealer:   sealer,
+		http:     &http.Client{Timeout: 5 * time.Minute},
+		cache:    make(map[uuid.UUID]cached),
+		verifier: NewHTTPVerifier(nil),
 	}
+}
+
+// WithVerifier replaces the live provider check, for tests that must not make
+// real calls to five vendors. Follows documents.Service.WithEmbeddings.
+func (s *Service) WithVerifier(v KeyVerifier) *Service {
+	s.verifier = v
+	return s
 }
 
 // Enabled reports whether keys can be stored at all.
@@ -131,6 +147,25 @@ func (s *Service) Save(ctx context.Context, userID uuid.UUID, in Input) (Credent
 	// on the way past — there is no reason for this path to hold it.
 	if key == "" && existing.Provider == provider {
 		return s.repo.UpdateModel(ctx, userID, model)
+	}
+
+	// Ask the provider before storing, so a mistyped key is caught while the
+	// person is still looking at the form rather than discovered later as a
+	// coach that quietly got worse.
+	//
+	// Only a refusal blocks the save. A provider that is unreachable or having
+	// a bad minute says nothing about the key, and refusing then would make
+	// North's settings page depend on somebody else's uptime.
+	if s.verifier != nil {
+		switch verifyErr := s.verifier.Verify(ctx, entry, key); {
+		case verifyErr == nil:
+		case errors.Is(verifyErr, ErrKeyRejected):
+			return Credential{}, apperr.FieldErrors{}.
+				Add("api_key", entryLabel(entry, provider)+" rejected this key. Check it was copied whole.")
+		default:
+			s.log.Info("could not verify a provider key before storing it; saving unverified",
+				slog.String("provider", provider), slog.Any("error", verifyErr))
+		}
 	}
 
 	sealed, err := s.sealer.Seal(userID[:], []byte(key))
