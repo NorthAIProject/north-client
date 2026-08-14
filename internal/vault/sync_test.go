@@ -104,6 +104,24 @@ func newVaultFixture(t *testing.T) vaultFixture {
 	}
 }
 
+func claimKind(t *testing.T, ctx context.Context, q *jobs.Queue, want jobs.Kind) jobs.Job {
+	t.Helper()
+	for i := 0; i < 8; i++ {
+		job, ok, err := q.Claim(ctx)
+		if err != nil {
+			t.Fatalf("claim: %v", err)
+		}
+		if !ok {
+			t.Fatalf("expected a %q job still queued", want)
+		}
+		if job.Kind == want {
+			return job
+		}
+	}
+	t.Fatalf("did not find a %q job", want)
+	return jobs.Job{}
+}
+
 func TestVaultSyncIndexesMarkdown(t *testing.T) {
 	f := newVaultFixture(t)
 
@@ -130,13 +148,9 @@ func TestVaultSyncIndexesMarkdown(t *testing.T) {
 		t.Fatalf("paths = %v", paths)
 	}
 
-	indexJob, ok, err := f.queue.Claim(f.ctx)
-	if err != nil || !ok {
-		t.Fatal("expected index job after vault sync")
-	}
-	if indexJob.Kind != jobs.KindIndexDocument {
-		t.Fatalf("kind = %q", indexJob.Kind)
-	}
+	// Connect also queues a background sync. Sync() already applied the files,
+	// so skip that leftover job and run the index job the upsert enqueued.
+	indexJob := claimKind(t, f.ctx, f.queue, jobs.KindIndexDocument)
 
 	if err = f.indexer.HandleIndexDocument(f.ctx, indexJob.Payload); err != nil {
 		t.Fatal(err)

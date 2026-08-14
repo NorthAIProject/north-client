@@ -201,11 +201,21 @@ import "./chartjs.js";
     });
 
     // Observe for new charts
+    //
+    // NORTH LOCAL PATCH — keep this when upgrading templUI. Upstream guards on
+    // `!chartInstances.has(canvas.id)`, which is wrong for htmx: a swapped-in
+    // canvas reuses its id, so the Map still holds the instance belonging to
+    // the canvas htmx just removed. The new canvas then matches neither
+    // "already drawn" nor "new" and is never initialised, leaving a blank
+    // chart after every swap. Comparing against the tracked instance's own
+    // canvas distinguishes "already drawn" from "same id, different element";
+    // initChart already destroys the stale instance before redrawing.
     new MutationObserver(() => {
       document
         .querySelectorAll("canvas[data-tui-chart-id]")
         .forEach((canvas) => {
-          if (!chartInstances.has(canvas.id)) {
+          const tracked = chartInstances.get(canvas.id);
+          if (!tracked || tracked.canvas !== canvas) {
             initChart(canvas);
           }
         });
