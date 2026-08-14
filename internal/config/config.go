@@ -3,6 +3,7 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"sort"
 	"strconv"
@@ -387,6 +388,40 @@ func (c *Config) Addr() string { return ":" + strconv.Itoa(c.Port) }
 // Only the free tier gets an entry of its own. Anything else — "pro" today,
 // whatever billing invents later — falls back to the main chain, so adding a
 // tier does not silently leave its users with no provider at all.
+// LogReady writes which providers will answer, and names any the chain asked
+// for that were skipped because their credentials are missing.
+//
+// The usual footgun is AI_PROVIDER_CHAIN=hermes,fake with an empty
+// HERMES_API_KEY: Hermes is skipped, fake becomes the default, and the coach
+// replies with the fake string while MCP still works. That is not an error —
+// a missing key is a normal laptop state — but it has to be loud at boot.
+func (c AIConfig) LogReady(log *slog.Logger, r *ai.Registry) {
+	if log == nil || r == nil {
+		return
+	}
+	log.Info("ai providers ready",
+		slog.String("default", r.DefaultName()),
+		slog.Any("registered", r.Names()),
+	)
+
+	have := make(map[string]bool, len(r.Names()))
+	for _, name := range r.Names() {
+		have[name] = true
+	}
+	seen := make(map[string]bool)
+	for _, name := range append(append([]string{}, c.Chain...), c.FreeChain...) {
+		if name == "" || name == "fake" || have[name] || seen[name] {
+			continue
+		}
+		seen[name] = true
+		msg := "provider named in AI_PROVIDER_CHAIN was skipped (missing credentials)"
+		if name == "hermes" {
+			msg = "hermes named in AI_PROVIDER_CHAIN but HERMES_API_KEY or HERMES_BASE_URL is empty; coach will not use the gateway"
+		}
+		log.Warn(msg, slog.String("provider", name))
+	}
+}
+
 func (c AIConfig) ChainSet() ai.ChainSet {
 	return ai.NewChainSet(c.Chain, map[string][]string{
 		string(users.TierFree): c.FreeChain,

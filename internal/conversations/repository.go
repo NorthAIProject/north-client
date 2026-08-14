@@ -6,6 +6,7 @@ import (
 	"errors"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -182,6 +183,29 @@ func (r *Repository) RecentUserMessages(ctx context.Context, userID uuid.UUID, l
 func (r *Repository) CountMessages(ctx context.Context, conversationID uuid.UUID) (int, error) {
 	n, err := r.q.CountMessages(ctx, conversationID)
 	return int(n), apperr.Wrap(err, "count messages")
+}
+
+// AwaitingExtraction lists quiet threads the extractor has not read yet.
+func (r *Repository) AwaitingExtraction(ctx context.Context, idleBefore time.Time, minMessages, limit int) ([]Pending, error) {
+	rows, err := r.q.ConversationsAwaitingExtraction(ctx, conversationsdb.ConversationsAwaitingExtractionParams{
+		IdleBefore:  idleBefore,
+		MinMessages: int64(minMessages),
+		ResultLimit: int32(limit),
+	})
+	if err != nil {
+		return nil, apperr.Wrap(err, "list conversations awaiting extraction")
+	}
+
+	out := make([]Pending, len(rows))
+	for i, row := range rows {
+		out[i] = Pending{ID: row.ID, UserID: row.UserID}
+	}
+	return out, nil
+}
+
+// MarkExtracted records that extraction ran over this thread.
+func (r *Repository) MarkExtracted(ctx context.Context, id uuid.UUID) error {
+	return apperr.Wrap(r.q.MarkConversationExtracted(ctx, id), "mark conversation extracted")
 }
 
 func conversationFromDB(row conversationsdb.Conversation) Conversation {

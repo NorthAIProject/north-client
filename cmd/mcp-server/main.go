@@ -59,6 +59,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/memories"
 	"github.com/NorthAIProject/north-client/internal/mind"
 	"github.com/NorthAIProject/north-client/internal/preferences"
+	"github.com/NorthAIProject/north-client/internal/reports"
 	"github.com/NorthAIProject/north-client/internal/shared/database"
 	"github.com/NorthAIProject/north-client/internal/shared/secret"
 	"github.com/NorthAIProject/north-client/internal/sleep"
@@ -114,6 +115,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	cfg.AI.LogReady(log, registry)
 
 	embedder, err := providers.Embedder(registry, providers.EmbedderOptions{
 		Provider:   cfg.Embedding.Provider,
@@ -231,6 +233,10 @@ func buildServices(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry
 	hydrationSvc := hydration.NewService(hydration.NewRepository(pool))
 	sleepSvc := sleep.NewService(sleep.NewRepository(pool))
 	habitSvc := habits.NewService(habits.NewRepository(pool))
+	reportSvc := reports.NewService(reports.Options{
+		Repository: reports.NewRepository(pool),
+		Users:      userSvc,
+	})
 
 	coachSvc := coach.NewService(coach.Options{
 		Registry:      registry,
@@ -248,6 +254,7 @@ func buildServices(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry
 			hydration.NewContextSource(hydrationSvc),
 			sleep.NewContextSource(sleepSvc),
 			habits.NewContextSource(habitSvc),
+			reports.NewContextSource(reportSvc),
 		),
 		PromptBuilder: coach.NewPromptBuilder(),
 		Chains:        cfg.AI.ChainSet(),

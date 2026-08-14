@@ -205,7 +205,9 @@ templ styleOption(id, value, title, desc string, f Form) {
 	</label>
 }
 
-templ DonePage(user users.User) {
+// thread is the conversation seeded from the answers, or empty when none was
+// opened — a deployment with no AI provider, or a provider that was down.
+templ DonePage(user users.User, thread string) {
 	@layout.AuthWide("You are set up") {
 		@card.Card() {
 			@card.Header() {
@@ -213,21 +215,35 @@ templ DonePage(user users.User) {
 					North knows where to start, { user.FirstName() }
 				}
 				@card.Description() {
-					Your focus areas, coaching style, and first goal are in place. Talk to North whenever you are ready.
+					if thread != "" {
+						Your focus areas, coaching style, and first goal are in place. North is already writing back.
+					} else {
+						Your focus areas, coaching style, and first goal are in place. Talk to North whenever you are ready.
+					}
 				}
 			}
 			@card.Content() {
 				<div class="flex flex-col gap-3">
-					<form method="post" action="/app/chat">
-						@ui.CSRFInput()
+					if thread != "" {
 						@button.Button(button.Props{
-							Type:      button.TypeSubmit,
+							Href:      "/app/chat/" + thread,
 							Class:     "bg-signal text-background hover:bg-signal/90 w-full",
 							FullWidth: true,
 						}) {
-							Talk to North
+							Read what North said
 						}
-					</form>
+					} else {
+						<form method="post" action="/app/chat">
+							@ui.CSRFInput()
+							@button.Button(button.Props{
+								Type:      button.TypeSubmit,
+								Class:     "bg-signal text-background hover:bg-signal/90 w-full",
+								FullWidth: true,
+							}) {
+								Talk to North
+							}
+						</form>
+					}
 					@button.Button(button.Props{
 						Href:    "/app",
 						Variant: button.VariantOutline,

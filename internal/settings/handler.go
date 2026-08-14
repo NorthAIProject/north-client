@@ -63,6 +63,7 @@ func (h *Handler) updateAICredential(w http.ResponseWriter, r *http.Request) {
 		Provider: r.PostFormValue("provider"),
 		APIKey:   r.PostFormValue("api_key"),
 		Model:    r.PostFormValue("model"),
+		BaseURL:  r.PostFormValue("base_url"),
 	}
 
 	if _, err := h.aicreds.Save(r.Context(), user.ID, in); err != nil {
@@ -309,7 +310,9 @@ func (h *Handler) renderConnections(
 		case err == nil:
 			provider.Current = &cred
 			if providerForm == nil {
-				provider.Form = settingspages.ProviderFormFor(aicreds.Input{Provider: cred.Provider, Model: cred.Model})
+				provider.Form = settingspages.ProviderFormFor(aicreds.Input{
+					Provider: cred.Provider, Model: cred.Model, BaseURL: cred.BaseURL,
+				})
 			}
 		case apperr.Is(err, apperr.ErrNotFound):
 		default:

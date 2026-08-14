@@ -5,9 +5,14 @@ package onboarding
 
 import (
 	"context"
+	"log/slog"
 	"slices"
 	"strings"
 
+	"github.com/google/uuid"
+
+	"github.com/NorthAIProject/north-client/internal/ai"
+	"github.com/NorthAIProject/north-client/internal/conversations"
 	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/memories"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
@@ -56,14 +61,41 @@ type Answers struct {
 	GoalCategory  string
 }
 
+// Coach opens the first conversation.
+//
+// An interface, and optional, for two reasons: onboarding must still work on a
+// deployment with no AI provider configured, and taking *coach.Service directly
+// would pull the whole context builder into this package's tests to seed three
+// answers.
+type Coach interface {
+	StartConversation(ctx context.Context, userID uuid.UUID) (conversations.Conversation, error)
+	SendMessage(ctx context.Context, user users.User, conversationID uuid.UUID, text string) (<-chan ai.StreamChunk, error)
+}
+
 type Service struct {
 	users    *users.Service
 	memories *memories.Service
 	goals    *goals.Service
+
+	// coach is nil when the first conversation should not be seeded. The
+	// questionnaire still works; the person simply starts their own thread.
+	coach Coach
+	log   *slog.Logger
 }
 
 func NewService(u *users.Service, m *memories.Service, g *goals.Service) *Service {
-	return &Service{users: u, memories: m, goals: g}
+	return &Service{users: u, memories: m, goals: g, log: slog.Default()}
+}
+
+// WithCoach seeds a first conversation from the answers. Follows
+// documents.Service.WithEmbeddings: the feature is opt-in at wiring time, and
+// absent it the rest behaves exactly as before.
+func (s *Service) WithCoach(c Coach, log *slog.Logger) *Service {
+	s.coach = c
+	if log != nil {
+		s.log = log
+	}
+	return s
 }
 
 // ValidateAnswers checks a submitted onboarding form.
@@ -131,9 +163,14 @@ func normalizeFocusAreas(raw []string) []string {
 
 // Complete seeds coach context from the answers and marks onboarding finished.
 // Idempotent once the user is already onboarded.
-func (s *Service) Complete(ctx context.Context, user users.User, in Answers) (users.User, error) {
+//
+// The second return is the conversation opened from the answers, or uuid.Nil
+// when none was. A cold start is what makes a coach feel like a chatbot: the
+// first thread already having a question in it, answered with the goal and
+// focus areas the person just gave, is most of the difference.
+func (s *Service) Complete(ctx context.Context, user users.User, in Answers) (users.User, uuid.UUID, error) {
 	if !user.NeedsOnboarding() {
-		return user, nil
+		return user, uuid.Nil, nil
 	}
 
 	if _, err := s.users.UpdateProfile(ctx, user.ID, users.Profile{
@@ -141,7 +178,7 @@ func (s *Service) Complete(ctx context.Context, user users.User, in Answers) (us
 		Timezone:      user.Timezone,
 		CoachingStyle: in.CoachingStyle,
 	}); err != nil {
-		return user, err
+		return user, uuid.Nil, err
 	}
 
 	for _, area := range in.FocusAreas {
@@ -151,10 +188,10 @@ func (s *Service) Complete(ctx context.Context, user users.User, in Answers) (us
 			Content:  content,
 		})
 		if err != nil {
-			return user, err
+			return user, uuid.Nil, err
 		}
 		if _, err := s.memories.SetPinned(ctx, m.ID, user.ID, true); err != nil {
-			return user, err
+			return user, uuid.Nil, err
 		}
 	}
 
@@ -163,20 +200,69 @@ func (s *Service) Complete(ctx context.Context, user users.User, in Answers) (us
 		Content:  in.CoachingStyle,
 	})
 	if err != nil {
-		return user, err
+		return user, uuid.Nil, err
 	}
-	if _, err := s.memories.SetPinned(ctx, coachingMem.ID, user.ID, true); err != nil {
-		return user, err
+	if _, err = s.memories.SetPinned(ctx, coachingMem.ID, user.ID, true); err != nil {
+		return user, uuid.Nil, err
 	}
 
-	if _, err := s.goals.Create(ctx, user.ID, goals.Input{
+	if _, err = s.goals.Create(ctx, user.ID, goals.Input{
 		Title:    in.NearTermGoal,
 		Category: in.GoalCategory,
 	}); err != nil {
-		return user, err
+		return user, uuid.Nil, err
 	}
 
-	return s.users.MarkOnboarded(ctx, user.ID)
+	onboarded, err := s.users.MarkOnboarded(ctx, user.ID)
+	if err != nil {
+		return user, uuid.Nil, err
+	}
+
+	// Seeded last, and deliberately after MarkOnboarded: the context builder
+	// reads the goal and memories written above, so the first reply is only
+	// worth anything once they exist. A failure here is logged, not returned —
+	// somebody who has answered three questions is onboarded whether or not a
+	// provider was reachable in that moment.
+	return onboarded, s.seedFirstConversation(ctx, onboarded, in), nil
+}
+
+// seedFirstConversation opens the thread and asks the coach the question the
+// answers imply. Returns uuid.Nil when nothing was opened.
+func (s *Service) seedFirstConversation(ctx context.Context, user users.User, in Answers) uuid.UUID {
+	if s.coach == nil {
+		return uuid.Nil
+	}
+
+	thread, err := s.coach.StartConversation(ctx, user.ID)
+	if err != nil {
+		s.log.Warn("could not open the first conversation", slog.Any("error", err),
+			slog.String("user_id", user.ID.String()))
+		return uuid.Nil
+	}
+
+	// SendMessage detaches generation from this request, so the redirect is not
+	// held open while a model writes. The person lands on a thread already
+	// being answered.
+	if _, err = s.coach.SendMessage(ctx, user, thread.ID, openingMessage(in)); err != nil {
+		s.log.Warn("could not seed the first conversation", slog.Any("error", err),
+			slog.String("conversation_id", thread.ID.String()))
+		return thread.ID
+	}
+
+	return thread.ID
+}
+
+// openingMessage is written in the person's own voice because it is stored as
+// their message. Putting words in the coach's mouth that no model produced
+// would make the transcript a lie.
+func openingMessage(in Answers) string {
+	var b strings.Builder
+	b.WriteString("I am starting with North. My focus areas are ")
+	b.WriteString(strings.Join(in.FocusAreas, ", "))
+	b.WriteString(". The goal I am working toward is: ")
+	b.WriteString(in.NearTermGoal)
+	b.WriteString(". Where should I start this week?")
+	return b.String()
 }
 
 // Skip marks onboarding finished without seeding data.

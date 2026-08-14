@@ -33,15 +33,7 @@ type passkeyAuth struct {
 func newPasskeyAuth(sessions *SessionStore, opts ServiceOptions, baseURL string, log *slog.Logger) *passkeyAuth {
 	_ = sessions // challenges live on SessionStore's queries via Service
 
-	rpID := strings.TrimSpace(opts.WebAuthnRPID)
-	if rpID == "" {
-		if u, err := url.Parse(baseURL); err == nil {
-			rpID = u.Hostname()
-		}
-	}
-	if rpID == "" {
-		rpID = "localhost"
-	}
+	rpID := relyingPartyID(opts.WebAuthnRPID, baseURL)
 
 	origins := opts.WebAuthnRPOrigins
 	if len(origins) == 0 {
@@ -65,6 +57,30 @@ func newPasskeyAuth(sessions *SessionStore, opts ServiceOptions, baseURL string,
 }
 
 func (p *passkeyAuth) enabled() bool { return p != nil && p.wa != nil }
+
+// relyingPartyID is the WebAuthn RP ID: a hostname, never a URL.
+//
+// Inline comments in .env (`WEBAUTHN_RP_ID=  # defaults to host`) survive
+// godotenv and become the value. A string starting with # is a URL fragment,
+// which go-webauthn rejects with "the fragment component must be empty".
+func relyingPartyID(configured, baseURL string) string {
+	rpID := strings.TrimSpace(configured)
+	if i := strings.Index(rpID, "#"); i >= 0 {
+		rpID = strings.TrimSpace(rpID[:i])
+	}
+	if u, err := url.Parse(rpID); err == nil && u.Hostname() != "" {
+		rpID = u.Hostname()
+	}
+	if rpID == "" {
+		if u, err := url.Parse(baseURL); err == nil {
+			rpID = u.Hostname()
+		}
+	}
+	if rpID == "" {
+		return "localhost"
+	}
+	return rpID
+}
 
 // PasskeyRegisterBeginInput is the body for POST /auth/passkey/register/begin.
 type PasskeyRegisterBeginInput struct {

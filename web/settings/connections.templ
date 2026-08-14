@@ -36,6 +36,7 @@ func (f ConnectForm) fieldError(name string) string { return f.Errors[name] }
 type ProviderForm struct {
 	Provider string
 	Model    string
+	BaseURL  string
 	Errors   map[string]string
 }
 
@@ -43,7 +44,7 @@ func (f ProviderForm) fieldError(name string) string { return f.Errors[name] }
 
 // ProviderFormFor pre-fills from a submission or a stored credential.
 func ProviderFormFor(in aicreds.Input) ProviderForm {
-	return ProviderForm{Provider: in.Provider, Model: in.Model}
+	return ProviderForm{Provider: in.Provider, Model: in.Model, BaseURL: in.BaseURL}
 }
 
 // ProviderPanel is everything the model-provider card needs.
@@ -291,7 +292,7 @@ templ providerCard(p ProviderPanel) {
 				Model provider
 			}
 			@card.Description() {
-				By default North supplies the AI. You can point it at your own account instead.
+				By default North supplies the AI. Point this account at your own key — or at your own Hermes gateway — if you have one.
 			}
 		}
 		@card.Content() {
@@ -354,6 +355,24 @@ templ providerCard(p ProviderPanel) {
 								@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
 									{ p.Form.fieldError("provider") }
 								}
+							}
+						}
+						@form.Item() {
+							@label.Label(label.Props{For: "base_url"}) {
+								Hermes gateway URL
+							}
+							@input.Input(input.Props{
+								ID: "base_url", Name: "base_url", Value: p.Form.BaseURL,
+								Placeholder: "http://hermes-box.ts.net:8642/v1",
+								HasError:    p.Form.fieldError("base_url") != "",
+							})
+							if p.Form.fieldError("base_url") != "" {
+								@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+									{ p.Form.fieldError("base_url") }
+								}
+							}
+							@form.Description() {
+								Required for Hermes. Each account has its own instance — tailnet, LAN, or public HTTPS. Leave blank for the other providers.
 							}
 						}
 						@form.Item() {

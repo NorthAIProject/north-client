@@ -1,10 +1,13 @@
 package coach
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/google/uuid"
+
+	"github.com/NorthAIProject/north-client/internal/ai"
 )
 
 func known(refs ...string) map[string]bool {
@@ -133,6 +136,51 @@ func TestRefStripperHoldsThenReleasesATrailingSpace(t *testing.T) {
 
 	if got, want := out.String(), "two words"; got != want {
 		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestExerciseLookupsAreRecordedOncePerSlug(t *testing.T) {
+	calls := []ai.ToolCall{
+		{Name: ToolGetExercise, Arguments: []byte(`{"slug":"barbell-back-squat"}`)},
+		{Name: "search_exercises", Arguments: []byte(`{"query":"squat"}`)},
+		{Name: ToolGetExercise, Arguments: []byte(`{"slug":"romanian-deadlift"}`)},
+		// The model asking twice in one turn is normal and must not put the
+		// same picture on the page twice.
+		{Name: ToolGetExercise, Arguments: []byte(`{"slug":"barbell-back-squat"}`)},
+	}
+
+	got := appendExerciseLookups(nil, calls)
+	want := []string{"barbell-back-squat", "romanian-deadlift"}
+
+	if !slices.Equal(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
+// A malformed or empty argument costs the reply a picture, never the reply.
+func TestExerciseLookupsSkipUnusableCalls(t *testing.T) {
+	calls := []ai.ToolCall{
+		{Name: ToolGetExercise, Arguments: []byte(`not json`)},
+		{Name: ToolGetExercise, Arguments: []byte(`{"slug":"   "}`)},
+		{Name: ToolGetExercise, Arguments: []byte(`{}`)},
+	}
+
+	if got := appendExerciseLookups(nil, calls); len(got) != 0 {
+		t.Errorf("got %v, want nothing", got)
+	}
+}
+
+// Exercise refs are recorded, not cited: nothing should be cut out of a reply
+// because one was stored against it.
+func TestStripRefsLeavesExerciseHandlesAlone(t *testing.T) {
+	reply := "Try the [[exercise:barbell-back-squat]] pattern."
+
+	text, used := StripRefs(reply, known(ExerciseRef("barbell-back-squat")))
+	if text != reply {
+		t.Errorf("text = %q, want it untouched", text)
+	}
+	if len(used) != 0 {
+		t.Errorf("used = %v, want none", used)
 	}
 }
 

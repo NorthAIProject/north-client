@@ -26,6 +26,17 @@ type Conversation struct {
 	UpdatedAt time.Time
 }
 
+// Pending is a thread the memory extractor has work to do on.
+//
+// Deliberately not a Conversation: the sweep needs an id and an owner and
+// nothing else, and loading whole rows to throw away every field but two would
+// make a background pass over the table more expensive than the work it
+// schedules.
+type Pending struct {
+	ID     uuid.UUID
+	UserID uuid.UUID
+}
+
 // DisplayTitle is what the sidebar shows, including for a thread whose title
 // has not been generated yet.
 func (c Conversation) DisplayTitle() string {
@@ -77,6 +88,13 @@ type Attachment struct {
 const (
 	EvidenceKindMemory = "memory"
 	EvidenceKindChunk  = "chunk"
+
+	// EvidenceKindExercise records a catalogue exercise the coach looked up
+	// while writing the reply. Unlike the other two it is not something the
+	// model cited: it is something it fetched, which is a stronger claim and
+	// the reason the chat can draw the muscles worked without asking the model
+	// to name them again in a format a template could parse.
+	EvidenceKindExercise = "exercise"
 )
 
 func (m Message) IsUser() bool  { return m.Role == ai.RoleUser }
@@ -94,6 +112,22 @@ func (m Message) ChunkIDs() []string {
 		kind, id, found := strings.Cut(ref, ":")
 		if found && id != "" && kind == EvidenceKindChunk {
 			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// ExerciseSlugs is the catalogue exercises the coach read while writing this
+// reply, in the order it read them.
+//
+// Slugs rather than ids because that is what get_exercise takes and what the
+// catalogue is addressed by everywhere else.
+func (m Message) ExerciseSlugs() []string {
+	out := make([]string, 0, len(m.EvidenceRefs))
+	for _, ref := range m.EvidenceRefs {
+		kind, slug, found := strings.Cut(ref, ":")
+		if found && slug != "" && kind == EvidenceKindExercise {
+			out = append(out, slug)
 		}
 	}
 	return out

@@ -110,6 +110,36 @@ func Parse(q string, loc *time.Location) Range {
 	}
 }
 
+// Between is a window the selector cannot express: an explicit half-open span
+// somebody else already decided on.
+//
+// The weekly review is the reason it exists. A report covers the Monday–Monday
+// week it was filed for, which may be months old, so Parse — which resolves
+// every key relative to now — cannot name it. The location comes from since,
+// because that is where the caller anchored the window; passing a bare UTC
+// instant here would silently shift the day boundaries.
+//
+// Key is empty on purpose. A range with no selector key cannot be round-tripped
+// through a URL, and pretending otherwise would put a link on a page that
+// resolves to the wrong week.
+func Between(since, until time.Time) Range {
+	loc := since.Location()
+	if loc == nil {
+		loc = time.UTC
+	}
+	since = since.In(loc)
+	until = until.In(loc)
+
+	return Range{
+		Label: fmt.Sprintf("%s – %s",
+			since.Format("2 Jan"), until.Add(-time.Second).Format("2 Jan 2006")),
+		Since: since,
+		Until: until,
+		Grain: GrainDay,
+		loc:   loc,
+	}
+}
+
 // All is every range the selector offers, resolved in one location.
 func All(loc *time.Location) []Range {
 	keys := []string{KeyToday, KeyYesterday, KeyWeek, KeyMonth, KeyQuarter}

@@ -50,6 +50,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/mind"
 	"github.com/NorthAIProject/north-client/internal/onboarding"
 	"github.com/NorthAIProject/north-client/internal/preferences"
+	"github.com/NorthAIProject/north-client/internal/reports"
 	"github.com/NorthAIProject/north-client/internal/settings"
 	"github.com/NorthAIProject/north-client/internal/shared/database"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
@@ -108,11 +109,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-
-	log.Info("ai providers ready",
-		slog.String("default", registry.DefaultName()),
-		slog.Any("registered", registry.Names()),
-	)
+	cfg.AI.LogReady(log, registry)
 
 	// Said out loud at boot because the alternative is silence. A deployment
 	// that forgot ENCRYPTION_KEY still starts and still works — it just cannot
@@ -388,7 +385,7 @@ func routes(
 
 	// Insights reuses the dashboard's timeline rather than reimplementing the
 	// merge across eight slices. Two copies of that would drift.
-	insightsHandler := insights.NewHandler(insights.NewService(insights.Options{
+	insightsSvc := insights.NewService(insights.Options{
 		Dashboard: dashboardSvc,
 		CheckIns:  checkinSvc,
 		Hydration: hydrationSvc,
@@ -397,7 +394,21 @@ func routes(
 		Goals:     goalSvc,
 		Mind:      mindSvc,
 		Activity:  activitySvc,
-	}))
+	})
+	insightsHandler := insights.NewHandler(insightsSvc)
+
+	// Built here rather than beside the other slices because a weekly review
+	// reads the whole week through insights: it has to come after everything
+	// insights itself depends on. Without Context the generator still runs and
+	// still writes a report — one whose every section says "(none recorded)".
+	reportSvc := reports.NewService(reports.Options{
+		Repository: reports.NewRepository(pool),
+		Users:      userSvc,
+		Queue:      queue,
+		Client:     reports.ClientFromRegistry(registry),
+		Context:    reports.NewInsightsContext(insightsSvc, mealProgressSvc, memorySvc),
+	})
+	reportHandler := reports.NewHandler(reportSvc)
 
 	// One registry of capabilities, shared by the coach's chat loop and the
 	// MCP server. Two definitions of "calculate my macros" would drift, and
@@ -431,6 +442,7 @@ func routes(
 			hydration.NewContextSource(hydrationSvc),
 			sleep.NewContextSource(sleepSvc),
 			habits.NewContextSource(habitSvc),
+			reports.NewContextSource(reportSvc),
 		),
 		PromptBuilder: coach.NewPromptBuilder(),
 		Queue:         queue,
@@ -445,7 +457,11 @@ func routes(
 	})
 	coachHandler := coach.NewHandler(coachSvc)
 
-	onboardingSvc := onboarding.NewService(userSvc, memorySvc, goalSvc)
+	// Given the coach so the questionnaire ends in a thread that is already
+	// being answered, rather than an empty chat box the person has to think of
+	// something to say to.
+	onboardingSvc := onboarding.NewService(userSvc, memorySvc, goalSvc).
+		WithCoach(coachSvc, slog.Default())
 	onboardingHandler := onboarding.NewHandler(onboardingSvc)
 
 	// The MCP endpoint an outside agent connects to.
@@ -527,6 +543,7 @@ func routes(
 
 				dashboardHandler.Routes(r)
 				insightsHandler.Routes(r)
+				reportHandler.Routes(r)
 
 				coachHandler.Routes(r)
 				checkinHandler.Routes(r)

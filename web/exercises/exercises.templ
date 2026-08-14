@@ -228,6 +228,27 @@ templ Detail(user users.User, e exercise.Exercise) {
 	}
 }
 
+// MusclePartial is the viewer on its own, for a caller that has a slug and
+// wants the picture — today the coach's transcript.
+//
+// Carries its own Script() because it is swapped into a page that was rendered
+// before anyone knew an exercise would appear on it. The OnceHandle makes the
+// repeat harmless on a page that already had one.
+templ MusclePartial(e exercise.Exercise) {
+	<figure class="mt-3 w-full max-w-[85%]">
+		@muscleviewer.Viewer(muscleviewer.Props{
+			ID:           "coach-muscles-" + e.Slug,
+			Primary:      e.Primary,
+			Secondary:    e.Secondary,
+			ExerciseName: e.Name,
+		})
+		<figcaption class="text-muted-foreground mt-2 text-xs">
+			What <a href={ templ.SafeURL("/app/exercises/" + e.Slug) } class="underline underline-offset-2">{ e.Name }</a> trains.
+		</figcaption>
+	</figure>
+	@muscleviewer.Script()
+}
+
 templ muscleCard(label string, keys []string) {
 	if len(keys) > 0 {
 		<div>

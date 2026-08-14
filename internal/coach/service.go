@@ -421,6 +421,11 @@ func (s *Service) pump(
 		// the handles, and waiting for the whole reply to strip them would give
 		// up streaming entirely.
 		visible refStripper
+
+		// Catalogue exercises the model looked up this turn, across every
+		// round. Accumulated here rather than read back off the request
+		// afterwards because the tool messages are rewritten each round.
+		exerciseSlugs []string
 	)
 
 	// One pass per round-trip to the model. A pass that ends in tool calls
@@ -495,6 +500,8 @@ func (s *Service) pump(
 			break
 		}
 
+		exerciseSlugs = appendExerciseLookups(exerciseSlugs, calls)
+
 		results := s.tools.InvokeAll(genCtx, target.user.ID, calls)
 		for _, result := range results {
 			log.Info("coach ran a tool",
@@ -531,6 +538,14 @@ func (s *Service) pump(
 	}
 
 	text, evidenceRefs := StripRefs(strings.TrimSpace(reply.String()), target.offeredRefs)
+
+	// Recorded alongside the citations because it is the same kind of claim:
+	// what this reply was built from. The chat draws the muscles worked from
+	// these rather than asking the model to describe them in a shape a template
+	// could parse — the catalogue already knows, and the model already looked.
+	for _, slug := range exerciseSlugs {
+		evidenceRefs = append(evidenceRefs, ExerciseRef(slug))
+	}
 
 	if streamErr != nil {
 		log.Error("coach reply failed", slog.Any("error", streamErr),

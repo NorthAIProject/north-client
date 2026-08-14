@@ -29,6 +29,9 @@ type Credential struct {
 	// Model is empty when the user accepted the provider's default.
 	Model string
 
+	// BaseURL is the user's Hermes gateway, empty for catalogue providers.
+	BaseURL string
+
 	// LastError is why the most recent attempt failed, if it did. Written so
 	// the page can say the key was rejected rather than letting somebody
 	// discover it as a coach that quietly got worse.
@@ -51,4 +54,7 @@ type Input struct {
 	APIKey string
 
 	Model string
+
+	// BaseURL is required when the provider is Hermes.
+	BaseURL string
 }

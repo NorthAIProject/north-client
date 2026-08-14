@@ -118,8 +118,19 @@ guess look like evidence.
 
 ## Direction 2 — North uses Hermes (LLM backend)
 
-The Hermes gateway speaks the OpenAI chat dialect, so North treats it as an
-ordinary provider. In North's environment:
+This is independent of Direction 1. Hermes as an MCP *client* talking to
+North does not make North's coach use Hermes as a *model*. For that, North
+must call **that user's** Hermes gateway.
+
+Each North account points at its own instance. The person sets this in
+**Settings → Agent connections → Model provider → Hermes (your gateway)**:
+gateway URL (for example `http://hermes-vps-2.<tailnet>.ts.net:8642/v1`)
+and the gateway's `API_SERVER_KEY`.
+
+The process-wide `HERMES_*` environment variables are only a fallback for
+operators who run one shared gateway for everyone who has not set their own.
+
+The gateway speaks the OpenAI chat dialect. In North's `.env`:
 
 ```bash
 HERMES_BASE_URL=http://hermes-vps-2.<tailnet>.ts.net:8642/v1
@@ -127,22 +138,57 @@ HERMES_API_KEY=<the gateway's API_SERVER_KEY>
 HERMES_MODEL=hermes-3
 ```
 
-Then put it in the chain. North tries providers in order and moves to the next
-when one refuses — out of credit, rate limited, overloaded, or a rejected key:
+`HERMES_API_KEY` is the VPS `API_SERVER_KEY`, not a chat-provider key and
+not a North `nk_` MCP token.
+
+Then put Hermes in the chain. North tries providers in order and moves to the
+next when one refuses — out of credit, rate limited, overloaded, or a
+rejected key:
 
 ```bash
+# Laptop: Hermes first, a paid key if the gateway is down, fake last.
+AI_PROVIDER_CHAIN=hermes,openrouter,fake
+
+# Until the gateway key exists, do not put hermes at the head:
+# AI_PROVIDER_CHAIN=openrouter,nvidia,fake
+
+# Production: paid provider first, Hermes as the free fallback.
 AI_PROVIDER_CHAIN=openrouter,hermes,nvidia
 ```
-
-Hermes sitting behind a paid provider is the useful arrangement: it costs
-nothing per token, so it catches the day the paid balance runs out.
 
 Confirm the model name rather than trusting `hermes-3`:
 
 ```bash
+curl -s http://hermes-vps-2.<tailnet>.ts.net:8642/health
+# expect {"status":"ok",...}
+
 curl -s -H "Authorization: Bearer $HERMES_API_KEY" \
   http://hermes-vps-2.<tailnet>.ts.net:8642/v1/models
+# expect 200 and a model list. 401 means the key is wrong.
 ```
+
+A missing `HERMES_API_KEY` or `HERMES_BASE_URL` skips Hermes at boot rather
+than failing the process — the next name in the chain answers instead.
+
+**MCP up does not mean the coach is real.** Listing tools on `/mcp` never
+calls an LLM. If the chain is `hermes,fake` and the Hermes key is empty,
+the coach replies with the fake provider string. Put a working provider
+after Hermes, or set the key.
+
+### From a laptop already on the tailnet
+
+No Kubernetes, no CoreDNS, no SNAT. The Mac (or any tailnet node) resolves
+MagicDNS and dials the gateway the same way `curl` does:
+
+1. `tailscale status` shows `hermes-vps-2` as active.
+2. `curl -s http://hermes-vps-2.<tailnet>.ts.net:8642/health` returns 200.
+3. Set the three `HERMES_*` variables and `AI_PROVIDER_CHAIN=hermes,fake`.
+4. Restart `task dev`. The web/worker boot log's `ai_provider` should be
+   `hermes`.
+
+If health is 200 but `/v1/models` is 401, the URL is right and the key is
+not. The key lives on the VPS as `API_SERVER_KEY` (Hermes gateway config),
+not in `~/.hermes/.env` on the laptop.
 
 ## Networking
 

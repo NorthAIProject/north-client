@@ -21,6 +21,7 @@ func NewHandler(svc *Service) *Handler { return &Handler{svc: svc} }
 func (h *Handler) Routes(r chi.Router) {
 	r.Get("/exercises", h.browse)
 	r.Get("/exercises/{slug}", h.detail)
+	r.Get("/exercises/{slug}/muscles", h.muscles)
 }
 
 func (h *Handler) browse(w http.ResponseWriter, r *http.Request) {
@@ -75,6 +76,36 @@ func (h *Handler) detail(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := exercisepages.Detail(user, found).Render(ctx, w); err != nil {
 		middleware.FromContext(ctx).Error("render exercise detail", slog.Any("error", err))
+	}
+}
+
+// muscles renders the viewer alone, for a page that knows a slug and nothing
+// else about the exercise.
+//
+// The coach's chat is the caller: a reply that looked an exercise up records
+// the slug, and the transcript fetches the picture rather than resolving every
+// exercise mentioned anywhere in a conversation on every page load. Same
+// reasoning as the sources disclosure in web/chat.
+//
+// An unknown slug renders nothing at all, with a 200. It arrives from a stored
+// message that may be months old and may name an exercise since removed from
+// the catalogue; a 404 in the middle of a transcript would be a broken-looking
+// page for something that is merely out of date.
+func (h *Handler) muscles(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	found, err := h.svc.GetBySlug(ctx, chi.URLParam(r, "slug"))
+	if err != nil {
+		if !apperr.Is(err, apperr.ErrNotFound) {
+			middleware.FromContext(ctx).Error("render exercise muscles", slog.Any("error", err))
+		}
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := exercisepages.MusclePartial(found).Render(ctx, w); err != nil {
+		middleware.FromContext(ctx).Error("render exercise muscles", slog.Any("error", err))
 	}
 }
 
