@@ -41,6 +41,7 @@ type (
 const (
 	SourceUpload = document.SourceUpload
 	SourceNote   = document.SourceNote
+	SourceVault  = document.SourceVault
 
 	StatusPending = document.StatusPending
 	StatusReady   = document.StatusReady

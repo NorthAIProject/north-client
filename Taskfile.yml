@@ -168,6 +168,7 @@ tasks:
     desc: Build all binaries
     cmds:
       - GOFLAGS=-mod=mod go tool templ generate
+      - sqlc generate
       - task: assets
       - go build ./...
 

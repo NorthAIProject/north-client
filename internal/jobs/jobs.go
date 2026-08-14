@@ -56,6 +56,12 @@ const (
 	// local and deterministic, embedding is a call to somebody else's service.
 	// A passage must be searchable by text before that call succeeds.
 	KindEmbedChunks Kind = "embed_chunks"
+
+	// KindSweepEmbeddings enqueues embed work for users with missing vectors.
+	KindSweepEmbeddings Kind = "sweep_embeddings"
+
+	// KindSyncVault imports files from a connected local vault folder.
+	KindSyncVault Kind = "sync_vault"
 )
 
 // ExtractMemoriesPayload is the job body for KindExtractMemories.
@@ -86,6 +92,10 @@ type ReindexUserPayload struct {
 }
 
 type EmbedChunksPayload struct {
+	UserID uuid.UUID `json:"user_id"`
+}
+
+type SyncVaultPayload struct {
 	UserID uuid.UUID `json:"user_id"`
 }
 
@@ -170,6 +180,26 @@ func (q *Queue) Fail(ctx context.Context, id uuid.UUID, reason string) error {
 func (q *Queue) ReleaseStale(ctx context.Context, olderThan time.Duration) (int64, error) {
 	n, err := q.q.ReleaseStaleJobs(ctx, olderThan.Seconds())
 	return n, apperr.Wrap(err, "release stale jobs")
+}
+
+// RequeueFailedEmbedJobsForUser returns permanently failed embed jobs to pending.
+func (q *Queue) RequeueFailedEmbedJobsForUser(ctx context.Context, userID uuid.UUID) (int64, error) {
+	n, err := q.q.RequeueFailedEmbedJobsForUser(ctx, userIDBytes(userID))
+	return n, apperr.Wrap(err, "requeue failed embed jobs")
+}
+
+// HasPendingJobForUser reports whether a job kind is already queued for a user.
+func (q *Queue) HasPendingJobForUser(ctx context.Context, kind Kind, userID uuid.UUID) (bool, error) {
+	ok, err := q.q.HasPendingJobForUser(ctx, jobsdb.HasPendingJobForUserParams{
+		Kind:   string(kind),
+		UserID: userIDBytes(userID),
+	})
+	return ok, apperr.Wrap(err, "check pending job")
+}
+
+// userIDBytes is how embed job payloads store user IDs in JSON.
+func userIDBytes(id uuid.UUID) []byte {
+	return []byte(id.String())
 }
 
 // Backoff is the delay before a job's next attempt.

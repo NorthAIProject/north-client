@@ -1,0 +1,126 @@
+package vault
+
+import (
+	"fmt"
+	"time"
+
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/input"
+	"github.com/NorthAIProject/north-client/web/shared/ui/label"
+)
+
+// View is the connected vault state for templates.
+type View struct {
+	RootPath   string
+	LastSyncAt *time.Time
+	LastError  string
+}
+
+// Form is the vault connection form.
+type Form struct {
+	RootPath string
+	Errors   map[string]string
+}
+
+func (f Form) fieldError(name string) string {
+	if f.Errors == nil {
+		return ""
+	}
+	return f.Errors[name]
+}
+
+templ Page(user users.User, conn View, form Form) {
+	@layout.App("Vault sync", user, layout.BuildNav("/app/settings/vault")) {
+		<div class="mx-auto w-full max-w-2xl space-y-8 p-6 md:p-8">
+			<header>
+				<a href="/app/settings" class="text-muted-foreground hover:text-foreground font-mono text-[10px] uppercase tracking-[0.14em]">
+					&larr; Settings
+				</a>
+				<h1 class="mt-2 text-2xl font-medium tracking-tight">Vault folder</h1>
+				<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
+					Point North at an Obsidian or markdown folder on this machine. The worker must run where it can read that path.
+				</p>
+			</header>
+			if conn.RootPath != "" {
+				<section class="border-hairline bg-surface space-y-3 rounded-lg border p-4">
+					<p class="text-sm"><span class="text-muted-foreground">Connected:</span> { conn.RootPath }</p>
+					if conn.LastSyncAt != nil {
+						<p class="text-muted-foreground text-xs">Last sync: { conn.LastSyncAt.Format("Jan 2, 2006 3:04 PM") }</p>
+					}
+					if conn.LastError != "" {
+						<p class="text-destructive text-xs">{ conn.LastError }</p>
+					}
+					<div class="flex flex-wrap gap-2">
+						<form method="post" action="/app/settings/vault/sync">
+							@ui.CSRFInput()
+							@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm}) {
+								Sync now
+							}
+						</form>
+						<form method="post" action="/app/settings/vault/disconnect">
+							@ui.CSRFInput()
+							@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Variant: button.VariantOutline}) {
+								Disconnect
+							}
+						</form>
+					</div>
+				</section>
+			}
+			<section class="border-hairline bg-surface space-y-4 rounded-lg border p-4">
+				<h2 class="text-sm font-medium">{ connectTitle(conn) }</h2>
+				<form method="post" action="/app/settings/vault/connect" class="space-y-4">
+					@ui.CSRFInput()
+					<div class="space-y-2">
+						@label.Label(label.Props{For: "root_path"}) {
+							Folder path
+						}
+						@input.Input(input.Props{
+							ID:          "root_path",
+							Name:        "root_path",
+							Value:       formValue(conn, form),
+							Placeholder: "/Users/you/Documents/Obsidian/MyVault",
+							Attributes: templ.Attributes{
+								"aria-invalid": ariaInvalid(form.fieldError("path")),
+							},
+						})
+						if msg := form.fieldError("path"); msg != "" {
+							<p class="text-destructive text-xs">{ msg }</p>
+						}
+					</div>
+					@button.Button(button.Props{Type: button.TypeSubmit}) {
+						Save and sync
+					}
+				</form>
+			</section>
+		</div>
+		@label.Script()
+	}
+}
+
+func connectTitle(conn View) string {
+	if conn.RootPath != "" {
+		return "Change folder"
+	}
+	return "Connect a folder"
+}
+
+func formValue(conn View, form Form) string {
+	if form.RootPath != "" {
+		return form.RootPath
+	}
+	return conn.RootPath
+}
+
+func ariaInvalid(msg string) string {
+	if msg != "" {
+		return "true"
+	}
+	return "false"
+}
+
+func FormatUpdated(t time.Time) string {
+	return fmt.Sprintf("updated %s", t.Format(time.Kitchen))
+}

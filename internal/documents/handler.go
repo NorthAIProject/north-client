@@ -14,7 +14,9 @@ import (
 	"github.com/NorthAIProject/north-client/internal/conversations"
 	"github.com/NorthAIProject/north-client/internal/search"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/htmx"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
+	"github.com/NorthAIProject/north-client/internal/users"
 	knowledgepages "github.com/NorthAIProject/north-client/web/knowledge"
 )
 
@@ -34,6 +36,7 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Post("/knowledge/notes", h.createNote)
 	r.Post("/knowledge/uploads", h.upload)
 	r.Post("/knowledge/reindex", h.reindex)
+	r.Post("/knowledge/retry-embeddings", h.retryEmbeddings)
 
 	// Before /knowledge/{id}: chi matches literal segments ahead of parameters,
 	// but keeping them adjacent makes the ordering something a reader can see
@@ -192,24 +195,90 @@ func highlightRange(r *http.Request) (from, to int) {
 	return from, to
 }
 
-// search renders retrieval results as an HTMX fragment.
+// search renders the dedicated search page, an HTMX panel, or the index preview.
 func (h *Handler) search(w http.ResponseWriter, r *http.Request) {
 	user := auth.MustUser(r.Context())
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
 
-	hits, err := h.svc.Search(r.Context(), user.ID, query, 0)
+	if htmx.IsRequest(r) && r.Header.Get("HX-Target") == "knowledge-search-results" {
+		h.renderInlineSearch(w, r, user, query)
+		return
+	}
+
+	limit, offset, appendMode := searchPageParams(r)
+
+	if query == "" {
+		h.renderSearch(w, r, user, knowledgepages.SearchView{Limit: limit}, appendMode)
+		return
+	}
+
+	hits, hasMore, err := h.svc.SearchPage(r.Context(), user.ID, query, limit, offset)
 	if err != nil {
-		// An empty or stopword-only term is a person who has not finished
-		// typing, not a failure worth a red box.
 		if apperr.Is(err, search.ErrEmptyTerm) {
-			render(w, r, http.StatusOK, knowledgepages.SearchResults(query, nil))
+			h.renderSearch(w, r, user, knowledgepages.SearchView{Query: query, Limit: limit}, appendMode)
 			return
 		}
 		h.fail(w, r, err)
 		return
 	}
 
-	render(w, r, http.StatusOK, knowledgepages.SearchResults(query, hits))
+	view := knowledgepages.SearchView{
+		Query:   query,
+		Hits:    hits,
+		Offset:  offset,
+		Limit:   limit,
+		HasMore: hasMore,
+		Append:  appendMode,
+	}
+	h.renderSearch(w, r, user, view, appendMode)
+}
+
+func (h *Handler) renderInlineSearch(w http.ResponseWriter, r *http.Request, user users.User, query string) {
+	hits, hasMore, err := h.svc.SearchPage(r.Context(), user.ID, query, searchLimit, 0)
+	if err != nil {
+		if apperr.Is(err, search.ErrEmptyTerm) {
+			render(w, r, http.StatusOK, knowledgepages.SearchResults(query, nil, false))
+			return
+		}
+		h.fail(w, r, err)
+		return
+	}
+	render(w, r, http.StatusOK, knowledgepages.SearchResults(query, hits, hasMore))
+}
+
+func searchPageParams(r *http.Request) (limit, offset int, appendMode bool) {
+	limit = searchPageDefault
+	if v, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && v > 0 {
+		limit = v
+	}
+	if v, err := strconv.Atoi(r.URL.Query().Get("offset")); err == nil && v >= 0 {
+		offset = v
+	}
+	appendMode = r.URL.Query().Get("append") == "1"
+	return limit, offset, appendMode
+}
+
+const searchPageDefault = 20
+
+func (h *Handler) renderSearch(w http.ResponseWriter, r *http.Request, user users.User, view knowledgepages.SearchView, appendMode bool) {
+	if htmx.IsRequest(r) {
+		if appendMode {
+			render(w, r, http.StatusOK, knowledgepages.SearchAppendRows(view))
+			return
+		}
+		render(w, r, http.StatusOK, knowledgepages.SearchPanel(view))
+		return
+	}
+	render(w, r, http.StatusOK, knowledgepages.SearchPage(user, view))
+}
+
+func (h *Handler) retryEmbeddings(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+	if err := h.svc.RetryEmbeddings(r.Context(), user.ID); err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	http.Redirect(w, r, "/app/knowledge", http.StatusSeeOther)
 }
 
 // passages resolves the citations under one reply.

@@ -142,6 +142,22 @@ type EncryptionConfig struct {
 // Enabled reports whether secrets can be stored.
 func (e EncryptionConfig) Enabled() bool { return len(e.Keys) > 0 }
 
+// Sealer builds the encryptor these keys describe, or nil when none are
+// configured.
+//
+// (nil, nil) is a supported result and the callers depend on it: a deployment
+// without a key runs everything else, and the features that would have to store
+// somebody's credential report themselves unavailable instead. An error here
+// means keys were supplied and are unusable, which Load has already rejected —
+// so a caller that sees one should refuse to start rather than continue without
+// encryption it was told to use.
+func (e EncryptionConfig) Sealer() (*secret.Sealer, error) {
+	if !e.Enabled() {
+		return nil, nil
+	}
+	return secret.NewSealer(e.Keys...)
+}
+
 // PostHogConfig reports the coach's LLM calls to PostHog's AI Observability.
 //
 // Optional, like Strava and Google: an empty APIKey in production just means

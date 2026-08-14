@@ -40,7 +40,7 @@ func testRoutes(t *testing.T) http.Handler {
 		SessionLifetime: time.Hour,
 	}
 
-	return routes(cfg, pool, registry, stubStorage{}, nil)
+	return routes(cfg, pool, registry, stubStorage{}, nil, nil)
 }
 
 // The MCP endpoint must not sit behind the CSRF middleware.

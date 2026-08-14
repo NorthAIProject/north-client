@@ -12,6 +12,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/jobs"
 	"github.com/NorthAIProject/north-client/internal/shared/database/testdb"
+	"github.com/google/uuid"
 )
 
 type payload struct {
@@ -215,6 +216,78 @@ func TestBackoffGrows(t *testing.T) {
 
 	if first >= second || second >= third {
 		t.Fatalf("backoff should grow: %v, %v, %v", first, second, third)
+	}
+}
+
+func TestRequeueFailedEmbedJobsForUser(t *testing.T) {
+	q := newQueue(t)
+	ctx := context.Background()
+	userID := uuid.New()
+
+	if _, err := q.Enqueue(ctx, jobs.KindEmbedChunks, jobs.EmbedChunksPayload{UserID: userID}); err != nil {
+		t.Fatal(err)
+	}
+	job, ok, err := q.Claim(ctx)
+	if err != nil || !ok {
+		t.Fatal(err)
+	}
+	if err = q.Fail(ctx, job.ID, "provider down"); err != nil {
+		t.Fatal(err)
+	}
+
+	n, err := q.RequeueFailedEmbedJobsForUser(ctx, userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("requeued %d jobs, want 1", n)
+	}
+
+	again, ok, err := q.Claim(ctx)
+	if err != nil || !ok {
+		t.Fatal("requeued job should be claimable")
+	}
+	if again.Attempts != 1 {
+		t.Fatalf("attempts = %d, want 1 after requeue", again.Attempts)
+	}
+}
+
+func TestHasPendingJobForUser(t *testing.T) {
+	q := newQueue(t)
+	ctx := context.Background()
+	userID := uuid.New()
+
+	pending, err := q.HasPendingJobForUser(ctx, jobs.KindEmbedChunks, userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pending {
+		t.Fatal("no jobs yet")
+	}
+
+	if _, err = q.Enqueue(ctx, jobs.KindEmbedChunks, jobs.EmbedChunksPayload{UserID: userID}); err != nil {
+		t.Fatal(err)
+	}
+
+	pending, err = q.HasPendingJobForUser(ctx, jobs.KindEmbedChunks, userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !pending {
+		t.Fatal("embed job should be pending")
+	}
+
+	var claimed bool
+	if _, claimed, err = q.Claim(ctx); err != nil || !claimed {
+		t.Fatal(err)
+	}
+
+	pending, err = q.HasPendingJobForUser(ctx, jobs.KindEmbedChunks, userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !pending {
+		t.Fatal("running embed job should count as pending")
 	}
 }
 

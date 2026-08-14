@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -320,6 +321,10 @@ func fromDB(row documentsdb.Document) Document {
 	if row.Body != nil {
 		d.Body = *row.Body
 	}
+	if row.ExternalPath != nil {
+		d.ExternalPath = *row.ExternalPath
+	}
+	d.ExternalMtime = row.ExternalMtime
 	return d
 }
 
@@ -442,4 +447,69 @@ func (r *Repository) CountEmbedded(ctx context.Context, userID uuid.UUID, model 
 		return 0, apperr.Wrap(err, "count embedded chunks")
 	}
 	return int(n), nil
+}
+
+func (r *Repository) GetByExternalPath(ctx context.Context, userID uuid.UUID, path string) (Document, error) {
+	row, err := r.q.GetDocumentByExternalPath(ctx, documentsdb.GetDocumentByExternalPathParams{
+		UserID:       userID,
+		ExternalPath: &path,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Document{}, apperr.ErrNotFound
+		}
+		return Document{}, apperr.Wrap(err, "get vault document")
+	}
+	return fromDB(row), nil
+}
+
+func (r *Repository) CreateVault(ctx context.Context, userID uuid.UUID, title, key, mime string, size int64, path string, mtime time.Time) (Document, error) {
+	row, err := r.q.CreateVaultDocument(ctx, documentsdb.CreateVaultDocumentParams{
+		UserID:        userID,
+		Title:         title,
+		StorageKey:    &key,
+		Mime:          mime,
+		ByteSize:      size,
+		ExternalPath:  &path,
+		ExternalMtime: &mtime,
+	})
+	if err != nil {
+		return Document{}, apperr.Wrap(err, "create vault document")
+	}
+	return fromDB(row), nil
+}
+
+func (r *Repository) UpdateVault(ctx context.Context, id uuid.UUID, title, mime string, size int64, mtime time.Time) error {
+	return apperr.Wrap(r.q.UpdateVaultDocument(ctx, documentsdb.UpdateVaultDocumentParams{
+		ID:            id,
+		Title:         title,
+		Mime:          mime,
+		ByteSize:      size,
+		ExternalMtime: &mtime,
+	}), "update vault document")
+}
+
+func (r *Repository) ListVaultPaths(ctx context.Context, userID uuid.UUID) (map[string]uuid.UUID, error) {
+	rows, err := r.q.ListVaultDocumentPaths(ctx, userID)
+	if err != nil {
+		return nil, apperr.Wrap(err, "list vault paths")
+	}
+	out := make(map[string]uuid.UUID, len(rows))
+	for _, row := range rows {
+		if row.ExternalPath != nil {
+			out[*row.ExternalPath] = row.ID
+		}
+	}
+	return out, nil
+}
+
+func (r *Repository) UsersWithEmbeddingGap(ctx context.Context, model string, limit int) ([]uuid.UUID, error) {
+	rows, err := r.q.UsersWithEmbeddingGap(ctx, documentsdb.UsersWithEmbeddingGapParams{
+		Model:       model,
+		ResultLimit: int32(limit),
+	})
+	if err != nil {
+		return nil, apperr.Wrap(err, "list users with embedding gap")
+	}
+	return rows, nil
 }

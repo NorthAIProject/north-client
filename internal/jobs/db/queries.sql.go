@@ -113,6 +113,29 @@ func (q *Queries) FailJob(ctx context.Context, arg FailJobParams) error {
 	return err
 }
 
+const hasPendingJobForUser = `-- name: HasPendingJobForUser :one
+SELECT EXISTS(
+    SELECT 1 FROM jobs
+    WHERE kind = $1
+      AND status IN ('pending', 'running')
+      AND (payload->>'user_id')::uuid = $2
+)::bool
+`
+
+type HasPendingJobForUserParams struct {
+	Kind   string
+	UserID []byte
+}
+
+// @kind text
+// @user_id uuid
+func (q *Queries) HasPendingJobForUser(ctx context.Context, arg HasPendingJobForUserParams) (bool, error) {
+	row := q.db.QueryRow(ctx, hasPendingJobForUser, arg.Kind, arg.UserID)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const releaseStaleJobs = `-- name: ReleaseStaleJobs :execrows
 UPDATE jobs
 SET status = 'pending', updated_at = now()
@@ -129,6 +152,27 @@ WHERE status = 'running'
 // do not have to.
 func (q *Queries) ReleaseStaleJobs(ctx context.Context, staleSeconds float64) (int64, error) {
 	result, err := q.db.Exec(ctx, releaseStaleJobs, staleSeconds)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const requeueFailedEmbedJobsForUser = `-- name: RequeueFailedEmbedJobsForUser :execrows
+UPDATE jobs
+SET status     = 'pending',
+    attempts   = 0,
+    run_after  = now(),
+    last_error = '',
+    updated_at = now()
+WHERE kind = 'embed_chunks'
+  AND status = 'failed'
+  AND (payload->>'user_id')::uuid = $1
+`
+
+// @user_id uuid
+func (q *Queries) RequeueFailedEmbedJobsForUser(ctx context.Context, userID []byte) (int64, error) {
+	result, err := q.db.Exec(ctx, requeueFailedEmbedJobsForUser, userID)
 	if err != nil {
 		return 0, err
 	}

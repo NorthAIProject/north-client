@@ -63,7 +63,7 @@ func TestTimelineMergesEveryKindNewestFirst(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := goalSvc.AddUpdate(ctx, g.ID, user.ID, "Managed 6k today", nil); err != nil {
+	if _, err = goalSvc.AddUpdate(ctx, g.ID, user.ID, "Managed 6k today", nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -79,7 +79,7 @@ func TestTimelineMergesEveryKindNewestFirst(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := habitSvc.Complete(ctx, user, h.ID); err != nil {
+	if err = habitSvc.Complete(ctx, user, h.ID); err != nil {
 		t.Fatal(err)
 	}
 

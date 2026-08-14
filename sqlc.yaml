@@ -123,6 +123,16 @@ sql:
 
   - engine: postgresql
     schema: migrations
+    queries: internal/vault/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: vaultdb
+        out: internal/vault/db
+        overrides: *overrides
+
+  - engine: postgresql
+    schema: migrations
     queries: internal/biometrics/db/queries.sql
     gen:
       go:

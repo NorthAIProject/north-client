@@ -22,7 +22,7 @@ func (q *Queries) DeleteStravaConnection(ctx context.Context, userID uuid.UUID) 
 }
 
 const getStravaConnection = `-- name: GetStravaConnection :one
-SELECT user_id, athlete_id, access_token, refresh_token, expires_at, scopes, last_synced_at, created_at, updated_at FROM strava_connections WHERE user_id = $1
+SELECT user_id, athlete_id, access_token, refresh_token, expires_at, scopes, last_synced_at, created_at, updated_at, access_token_sealed, refresh_token_sealed FROM strava_connections WHERE user_id = $1
 `
 
 func (q *Queries) GetStravaConnection(ctx context.Context, userID uuid.UUID) (StravaConnection, error) {
@@ -38,6 +38,8 @@ func (q *Queries) GetStravaConnection(ctx context.Context, userID uuid.UUID) (St
 		&i.LastSyncedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AccessTokenSealed,
+		&i.RefreshTokenSealed,
 	)
 	return i, err
 }
@@ -107,16 +109,23 @@ func (q *Queries) MarkStravaSynced(ctx context.Context, arg MarkStravaSyncedPara
 
 const updateStravaTokens = `-- name: UpdateStravaTokens :one
 UPDATE strava_connections
-SET access_token = $2, refresh_token = $3, expires_at = $4, updated_at = now()
+SET access_token         = $2,
+    refresh_token        = $3,
+    access_token_sealed  = $4,
+    refresh_token_sealed = $5,
+    expires_at           = $6,
+    updated_at           = now()
 WHERE user_id = $1
-RETURNING user_id, athlete_id, access_token, refresh_token, expires_at, scopes, last_synced_at, created_at, updated_at
+RETURNING user_id, athlete_id, access_token, refresh_token, expires_at, scopes, last_synced_at, created_at, updated_at, access_token_sealed, refresh_token_sealed
 `
 
 type UpdateStravaTokensParams struct {
-	UserID       uuid.UUID
-	AccessToken  string
-	RefreshToken string
-	ExpiresAt    time.Time
+	UserID             uuid.UUID
+	AccessToken        string
+	RefreshToken       string
+	AccessTokenSealed  []byte
+	RefreshTokenSealed []byte
+	ExpiresAt          time.Time
 }
 
 func (q *Queries) UpdateStravaTokens(ctx context.Context, arg UpdateStravaTokensParams) (StravaConnection, error) {
@@ -124,6 +133,8 @@ func (q *Queries) UpdateStravaTokens(ctx context.Context, arg UpdateStravaTokens
 		arg.UserID,
 		arg.AccessToken,
 		arg.RefreshToken,
+		arg.AccessTokenSealed,
+		arg.RefreshTokenSealed,
 		arg.ExpiresAt,
 	)
 	var i StravaConnection
@@ -137,6 +148,8 @@ func (q *Queries) UpdateStravaTokens(ctx context.Context, arg UpdateStravaTokens
 		&i.LastSyncedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AccessTokenSealed,
+		&i.RefreshTokenSealed,
 	)
 	return i, err
 }
@@ -195,35 +208,49 @@ func (q *Queries) UpsertStravaActivity(ctx context.Context, arg UpsertStravaActi
 
 const upsertStravaConnection = `-- name: UpsertStravaConnection :one
 INSERT INTO strava_connections (
-    user_id, athlete_id, access_token, refresh_token, expires_at, scopes
+    user_id, athlete_id,
+    access_token, refresh_token,
+    access_token_sealed, refresh_token_sealed,
+    expires_at, scopes
 ) VALUES (
-    $1, $2, $3, $4, $5, $6
+    $1, $2, $3, $4, $5, $6, $7, $8
 )
 ON CONFLICT (user_id) DO UPDATE SET
-    athlete_id    = EXCLUDED.athlete_id,
-    access_token  = EXCLUDED.access_token,
-    refresh_token = EXCLUDED.refresh_token,
-    expires_at    = EXCLUDED.expires_at,
-    scopes        = EXCLUDED.scopes,
-    updated_at    = now()
-RETURNING user_id, athlete_id, access_token, refresh_token, expires_at, scopes, last_synced_at, created_at, updated_at
+    athlete_id           = EXCLUDED.athlete_id,
+    access_token         = EXCLUDED.access_token,
+    refresh_token        = EXCLUDED.refresh_token,
+    access_token_sealed  = EXCLUDED.access_token_sealed,
+    refresh_token_sealed = EXCLUDED.refresh_token_sealed,
+    expires_at           = EXCLUDED.expires_at,
+    scopes               = EXCLUDED.scopes,
+    updated_at           = now()
+RETURNING user_id, athlete_id, access_token, refresh_token, expires_at, scopes, last_synced_at, created_at, updated_at, access_token_sealed, refresh_token_sealed
 `
 
 type UpsertStravaConnectionParams struct {
-	UserID       uuid.UUID
-	AthleteID    int64
-	AccessToken  string
-	RefreshToken string
-	ExpiresAt    time.Time
-	Scopes       string
+	UserID             uuid.UUID
+	AthleteID          int64
+	AccessToken        string
+	RefreshToken       string
+	AccessTokenSealed  []byte
+	RefreshTokenSealed []byte
+	ExpiresAt          time.Time
+	Scopes             string
 }
 
+// Both forms of each token are written together, and exactly one of each pair
+// carries a value: sealed when the deployment has an encryption key, plaintext
+// when it does not. Writing both clears whichever the previous write used, so a
+// row that was plaintext before a key was configured does not keep a readable
+// copy alongside the sealed one.
 func (q *Queries) UpsertStravaConnection(ctx context.Context, arg UpsertStravaConnectionParams) (StravaConnection, error) {
 	row := q.db.QueryRow(ctx, upsertStravaConnection,
 		arg.UserID,
 		arg.AthleteID,
 		arg.AccessToken,
 		arg.RefreshToken,
+		arg.AccessTokenSealed,
+		arg.RefreshTokenSealed,
 		arg.ExpiresAt,
 		arg.Scopes,
 	)
@@ -238,6 +265,8 @@ func (q *Queries) UpsertStravaConnection(ctx context.Context, arg UpsertStravaCo
 		&i.LastSyncedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AccessTokenSealed,
+		&i.RefreshTokenSealed,
 	)
 	return i, err
 }

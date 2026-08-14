@@ -15,6 +15,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/joho/godotenv"
 
@@ -29,6 +30,8 @@ import (
 	"github.com/NorthAIProject/north-client/internal/media"
 	"github.com/NorthAIProject/north-client/internal/memories"
 	"github.com/NorthAIProject/north-client/internal/shared/database"
+	"github.com/NorthAIProject/north-client/internal/vault"
+	vaultdb "github.com/NorthAIProject/north-client/internal/vault/db"
 )
 
 func main() {
@@ -101,11 +104,19 @@ func run() error {
 		Log: log,
 	}
 
+	// The worker refreshes Strava tokens, so it needs the same key the web
+	// process seals them with. A deployment that gave one process the key and
+	// not the other would have syncs failing on rows they cannot decrypt.
+	sealer, err := cfg.Encryption.Sealer()
+	if err != nil {
+		return err
+	}
+
 	// Strava syncs run here rather than in the request that triggered them,
 	// so a slow or rate-limited provider never holds a page open.
 	biometricSvc := biometrics.NewService(biometrics.NewRepository(pool))
 	stravaSvc := strava.NewService(strava.Options{
-		Repository:   strava.NewRepository(pool),
+		Repository:   strava.NewRepository(pool, sealer),
 		Activity:     activity.NewService(activity.NewRepository(pool), biometricSvc),
 		Biometrics:   biometricSvc,
 		Queue:        queue,
@@ -132,6 +143,17 @@ func run() error {
 		return err
 	}
 	documentEmbedder := documents.NewEmbedder(documentRepo, embedClient, log)
+	embedModel := ""
+	if embedClient != nil {
+		embedModel = embedClient.EmbedModel()
+	}
+	embedSweeper := documents.NewEmbedSweeper(documentRepo, queue, embedModel, log)
+
+	vaultSvc := vault.NewService(vault.Options{
+		Repository: vault.NewRepository(vaultdb.New(pool)),
+		Documents:  documents.NewService(documentRepo, storage, queue),
+		Queue:      queue,
+	})
 
 	worker := jobs.NewWorker(queue, log)
 	worker.Register(jobs.KindAnalyzeFormVideo, mediaSvc.AnalyzeVideo)
@@ -140,6 +162,9 @@ func run() error {
 	worker.Register(jobs.KindIndexDocument, documentIndexer.HandleIndexDocument)
 	worker.Register(jobs.KindReindexUser, documentIndexer.HandleReindexUser)
 	worker.Register(jobs.KindEmbedChunks, documentEmbedder.HandleEmbedJob)
+	worker.Register(jobs.KindSweepEmbeddings, embedSweeper.HandleSweep)
+	worker.Register(jobs.KindSyncVault, vaultSvc.HandleSyncJob)
+	worker.RegisterPeriodic(15*time.Minute, jobs.KindSweepEmbeddings, struct{}{})
 
 	log.Info("worker ready",
 		slog.String("ai_provider", registry.DefaultName()),
