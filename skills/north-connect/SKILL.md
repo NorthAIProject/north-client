@@ -1,6 +1,6 @@
 ---
 name: north-connect
-description: Use when the user wants to connect Hermes to North — registering North's MCP server so Hermes can read goals, log check-ins, and ask the coach, or pointing North's coach back at the Hermes gateway as an LLM backend. Covers both directions and the tailnet networking they depend on.
+description: Use when the user wants to connect an agent to North — registering North's MCP server with Hermes, Claude Code, Codex, or any MCP client so it can read goals, log check-ins, and ask the coach, or pointing North's coach back at the Hermes gateway as an LLM backend. Covers both directions, per-user keys, and the tailnet networking the self-hosted path depends on.
 ---
 
 # Connecting Hermes and North
@@ -17,26 +17,59 @@ anything — they solve different problems and neither implies the other.
 
 ## Direction 1 — Hermes uses North (MCP)
 
-North runs an MCP server over Streamable HTTP. Register it:
+North serves the same MCP tools from two places. Work out which one is in front
+of you before touching anything, because the credential differs.
+
+| | Web app — `https://<north-host>/mcp` | Standalone — `http://<north-host>:8093/mcp` |
+| --- | --- | --- |
+| Credential | A key the user creates in Settings | `MCP_API_TOKEN` from the environment |
+| Acts as | Whoever created the key | The one account in `MCP_USER_ID` |
+| Revoking | A button on the settings page | Editing the environment and redeploying |
+| Where it belongs | Public | The tailnet, and nowhere else |
+
+**Prefer the web app.** Its keys are per person, revocable without a restart,
+and it is the only one that works when more than one person uses North. The
+standalone binary (`cmd/mcp-server`) exists for a private single-user
+deployment and is not going to grow per-user credentials.
+
+### Getting a key (web app)
+
+The user makes it themselves — you cannot, and neither can an operator:
+
+1. Settings → Agent connections → **Manage connections**.
+2. Name it after the machine it will live on, choose the client, create.
+3. The key is shown **once**. It starts `nk_`. If it is lost, revoke that
+   connection and make another; nothing can recover it.
+
+That page also offers a ready-made setup prompt, which is worth using instead of
+this section when the user would rather paste one block than follow steps.
+
+### Registering it
 
 ```bash
-hermes mcp add north --url http://<north-host>:8093/mcp --auth header
+hermes mcp add north --url https://<north-host>/mcp --auth header
 ```
 
-When prompted for the header, use `Authorization: Bearer <MCP_API_TOKEN>` —
-the same value set in North's environment.
+When prompted for the header, use `Authorization: Bearer nk_…` — or
+`Authorization: Bearer <MCP_API_TOKEN>` if this is the standalone server.
 
-Confirm it is reachable before registering, since a failed registration looks
-identical to a wrong token:
+Confirm the endpoint is reachable before registering, since a failed
+registration looks identical to a wrong key:
 
 ```bash
-curl -s -o /dev/null -w '%{http_code}\n' http://<north-host>:8093/healthz   # expect 200
-curl -s -o /dev/null -w '%{http_code}\n' -X POST http://<north-host>:8093/mcp   # expect 401
+# Web app
+curl -s -o /dev/null -w '%{http_code}\n' https://<north-host>/healthz          # expect 200
+curl -s -o /dev/null -w '%{http_code}\n' -X POST https://<north-host>/mcp      # expect 401
+
+# Standalone
+curl -s -o /dev/null -w '%{http_code}\n' http://<north-host>:8093/healthz      # expect 200
+curl -s -o /dev/null -w '%{http_code}\n' -X POST http://<north-host>:8093/mcp  # expect 401
 ```
 
 A 200 on `/healthz` and a 401 on `/mcp` together mean the server is up and
-authentication is working. Anything else is a networking problem, not a
-credential one — see Troubleshooting.
+authentication is working. A **403** means the request carried an `Origin`
+header — the endpoint rejects browsers on purpose. Anything else is a
+networking problem, not a credential one; see Troubleshooting.
 
 ### The tools
 
@@ -75,8 +108,8 @@ guess look like evidence.
 
 ### Behaviour
 
-- **Every call acts as one fixed account.** There is no user parameter and no
-  way to act as anyone else.
+- **Every call acts as the account the key belongs to.** There is no user
+  parameter and no way to act as anyone else — the key decides, not the caller.
 - **Ask before writing.** `create_check_in`, `add_goal_update` and
   `calculate_macros` change the user's record. Confirm the details you are about to write, in their words.
 - **Do not paraphrase a check-in into shape.** Mood and energy are the user's
@@ -130,8 +163,16 @@ See `references/troubleshooting.md` for the symptoms of each.
 
 ## Do not
 
-- **Expose port 8093 publicly.** One static token, one account, no scopes. It
-  belongs on the tailnet.
-- **Put the token in a URL.** It is a header. URLs end up in logs.
+- **Expose port 8093 publicly.** The standalone server is one static token, one
+  account, no scopes, and no revoke button — a leaked environment variable is a
+  silent account takeover fixable only by a redeploy. It belongs on the tailnet.
+  The web app's `/mcp` is the one built to be reachable.
+- **Put the key in a URL.** It is a header. URLs end up in access logs, in
+  `Referer`, and in browser history.
+- **Write the key into a file inside a git repository.** `.mcp.json` is
+  committed far more often than people expect. Put it in an environment variable
+  and reference that from the config; the settings page hands out both forms.
+- **Echo the key back in full.** Not into a terminal, not into a reply, not into
+  a file the user did not ask for.
 - **Register North twice under different names.** Duplicate tool names across
   MCP servers make tool selection unpredictable.

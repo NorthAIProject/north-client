@@ -25,33 +25,51 @@ func NewHandler(svc *Service) *Handler {
 // Routes mounts the overview. Must be behind RequireAuth.
 func (h *Handler) Routes(r chi.Router) {
 	r.Get("/", h.show)
+	r.Get("/panels", h.panels)
 }
 
 func (h *Handler) show(w http.ResponseWriter, r *http.Request) {
-	user := auth.MustUser(r.Context())
-
-	// Anchored to the user's own timezone, so "today" means their today.
-	// An absent or unrecognised value resolves to timerange.DefaultKey rather
-	// than erroring: a bookmarked or hand-edited URL should show the dashboard,
-	// not a validation message.
-	rg := timerange.Parse(r.URL.Query().Get("range"), user.Location())
-
-	snap, err := h.svc.Load(r.Context(), user, rg)
-	if err != nil {
-		h.fail(w, r, err)
-		return
-	}
-
-	data, err := buildDashboardData(snap)
+	data, err := h.load(r)
 	if err != nil {
 		h.fail(w, r, err)
 		return
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := app.Dashboard(user, data).Render(r.Context(), w); err != nil {
+	if err := app.Dashboard(auth.MustUser(r.Context()), data).Render(r.Context(), w); err != nil {
 		middleware.FromContext(r.Context()).Error("render dashboard", slog.Any("error", err))
 	}
+}
+
+// panels re-renders only the swappable body when the range selector changes.
+//
+// The selector's links carry a plain href to "/?range=" alongside their
+// hx-get, so someone without JavaScript gets a whole page rather than nothing.
+func (h *Handler) panels(w http.ResponseWriter, r *http.Request) {
+	data, err := h.load(r)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := app.DashboardPanels(data).Render(r.Context(), w); err != nil {
+		middleware.FromContext(r.Context()).Error("render dashboard panels", slog.Any("error", err))
+	}
+}
+
+func (h *Handler) load(r *http.Request) (app.DashboardData, error) {
+	user := auth.MustUser(r.Context())
+
+	// Parse never fails: a hand-typed ?range= falls back to today rather than
+	// taking the page down.
+	rg := timerange.Parse(r.URL.Query().Get("range"), user.Location())
+
+	snap, err := h.svc.Load(r.Context(), user, rg)
+	if err != nil {
+		return app.DashboardData{}, err
+	}
+	return buildDashboardData(snap)
 }
 
 func buildDashboardData(snap Snapshot) (app.DashboardData, error) {
@@ -90,24 +108,113 @@ func buildDashboardData(snap Snapshot) (app.DashboardData, error) {
 		return app.DashboardData{}, err
 	}
 
+	activityDonut, hasDonut, err := buildKindDonut(snap.Timeline)
+	if err != nil {
+		return app.DashboardData{}, err
+	}
+
 	return app.DashboardData{
-		CheckedInToday:     snap.CheckedInToday,
-		Streak:             snap.Streak,
-		PendingMemories:    snap.PendingMemories,
-		Goals:              snap.Goals,
-		LastThread:         snap.LastThread,
-		NextSession:        snap.NextSession,
-		PlanID:             snap.PlanID,
-		CheckIns:           mapCheckIns(snap.CheckIns),
-		Habits:             mapHabits(snap.Habits),
-		Hydration:          mapHydration(snap.Hydration),
-		Sleep:              mapSleep(snap.Sleep),
-		ActivityCalories7d: snap.ActivityCalories,
-		MoodChart:          viz.MoodEnergyLine("dashboard-mood-energy", labels, mood, energy),
-		HydrationChart:     viz.Bar("dashboard-hydration", "Water (ml)", hydrationLabels, hydrationTotals),
-		HabitGaugeOption:   habitGaugeOption,
-		CheckInHeatmap:     checkInHeatmapOption,
+		Range:            mapRange(snap.Range),
+		CheckedInToday:   snap.CheckedInToday,
+		Streak:           snap.Streak,
+		PendingMemories:  snap.PendingMemories,
+		Goals:            snap.Goals,
+		LastThread:       snap.LastThread,
+		NextSession:      snap.NextSession,
+		PlanID:           snap.PlanID,
+		CheckIns:         mapCheckIns(snap.CheckIns),
+		Habits:           mapHabits(snap.Habits),
+		Hydration:        mapHydration(snap.Hydration),
+		Sleep:            mapSleep(snap.Sleep),
+		ActivityCalories: snap.ActivityCalories,
+		Timeline:         mapTimeline(snap.Timeline),
+		Deltas:           mapDeltas(snap.Deltas),
+		MoodChart:        viz.MoodEnergyLine("dashboard-mood-energy", labels, mood, energy),
+		HydrationChart:   viz.Bar("dashboard-hydration", "Water (ml)", hydrationLabels, hydrationTotals),
+		HabitGaugeOption: habitGaugeOption,
+		CheckInHeatmap:   checkInHeatmapOption,
+		ActivityDonut:    activityDonut,
+		HasActivityDonut: hasDonut,
 	}, nil
+}
+
+// buildKindDonut splits the window's activity by which slice it came from.
+// It is the "where did my effort go" panel, and it is built from the feed that
+// is already in memory rather than from a twelfth query.
+func buildKindDonut(feed []Entry) (map[string]any, bool, error) {
+	if len(feed) == 0 {
+		return nil, false, nil
+	}
+
+	counts := make(map[EntryKind]int, len(feed))
+	order := make([]EntryKind, 0, len(feed))
+	for _, e := range feed {
+		if counts[e.Kind] == 0 {
+			order = append(order, e.Kind)
+		}
+		counts[e.Kind]++
+	}
+
+	segments := make([]viz.DonutSegment, 0, len(order))
+	for _, k := range order {
+		segments = append(segments, viz.DonutSegment{Label: k.Label(), Value: counts[k]})
+	}
+
+	raw, err := viz.DonutOptionJSON(segments)
+	if err != nil {
+		return nil, false, err
+	}
+	option, err := viz.UnmarshalOption(raw)
+	if err != nil {
+		return nil, false, err
+	}
+	return option, true, nil
+}
+
+func mapRange(rg timerange.Range) app.RangeView {
+	all := timerange.All(rg.Location())
+	options := make([]app.RangeOption, len(all))
+	for i, r := range all {
+		options[i] = app.RangeOption{
+			Key:      r.Key,
+			Label:    r.Label,
+			Selected: r.Key == rg.Key,
+		}
+	}
+	return app.RangeView{Key: rg.Key, Label: rg.Label, Options: options}
+}
+
+func mapTimeline(feed []Entry) []app.TimelineEntryView {
+	out := make([]app.TimelineEntryView, len(feed))
+	for i, e := range feed {
+		out[i] = app.TimelineEntryView{
+			Kind:   string(e.Kind),
+			Label:  e.Kind.Label(),
+			At:     e.At,
+			Title:  e.Title,
+			Detail: e.Detail,
+			Href:   e.Href,
+			Icon:   e.Icon,
+		}
+	}
+	return out
+}
+
+func mapDeltas(d Deltas) app.DeltasView {
+	return app.DeltasView{
+		Hydration:  mapDelta(d.Hydration),
+		SleepHours: mapDelta(d.SleepHours),
+		Calories:   mapDelta(d.Calories),
+		CheckIns:   mapDelta(d.CheckIns),
+	}
+}
+
+func mapDelta(d Delta) app.DeltaView {
+	return app.DeltaView{
+		Pct:       d.Pct,
+		Direction: d.Direction,
+		HasPrior:  d.HasPrior,
+	}
 }
 
 func mapCheckIns(s CheckInSeries) app.CheckInSeriesView {
