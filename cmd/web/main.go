@@ -16,6 +16,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
+	"github.com/posthog/posthog-go"
 
 	"github.com/NorthAIProject/north-client/internal/activity"
 	"github.com/NorthAIProject/north-client/internal/agent"
@@ -136,9 +137,15 @@ func run() error {
 		return err
 	}
 
+	posthogClient, err := newPostHogClient(cfg)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = posthogClient.Close() }()
+
 	srv := &http.Server{
 		Addr:    cfg.Addr(),
-		Handler: routes(cfg, pool, registry, storage, embedder),
+		Handler: routes(cfg, pool, registry, storage, embedder, posthogClient),
 
 		ReadHeaderTimeout: 10 * time.Second,
 		// No WriteTimeout: it would cut off SSE streams mid-answer. Individual
@@ -173,7 +180,14 @@ func run() error {
 	return nil
 }
 
-func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, storage media.Storage, embedder ai.Embedder) http.Handler {
+func routes(
+	cfg *config.Config,
+	pool *pgxpool.Pool,
+	registry *ai.Registry,
+	storage media.Storage,
+	embedder ai.Embedder,
+	posthogClient posthog.Client,
+) http.Handler {
 	// Wiring happens once, here. Every dependency is constructed explicitly and
 	// passed down, so the shape of the application is readable in one place
 	// rather than discovered through package-level initialisation.
@@ -337,7 +351,7 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, stora
 		Habits:    habitSvc,
 	})
 
-	dashboardHandler := dashboard.NewHandler(dashboard.NewService(dashboard.Options{
+	dashboardSvc := dashboard.NewService(dashboard.Options{
 		CheckIns:      checkinSvc,
 		Goals:         goalSvc,
 		Conversations: conversationSvc,
@@ -347,6 +361,21 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, stora
 		Hydration:     hydrationSvc,
 		Sleep:         sleepSvc,
 		Activity:      activitySvc,
+		Mind:          mindSvc,
+	})
+	dashboardHandler := dashboard.NewHandler(dashboardSvc)
+
+	// Insights reuses the dashboard's timeline rather than reimplementing the
+	// merge across eight slices. Two copies of that would drift.
+	insightsHandler := insights.NewHandler(insights.NewService(insights.Options{
+		Dashboard: dashboardSvc,
+		CheckIns:  checkinSvc,
+		Hydration: hydrationSvc,
+		Sleep:     sleepSvc,
+		Habits:    habitSvc,
+		Goals:     goalSvc,
+		Mind:      mindSvc,
+		Activity:  activitySvc,
 	}))
 
 	// One registry of capabilities, shared by the coach's chat loop and the
@@ -389,6 +418,7 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, stora
 		// Tried ahead of the chain above, so a user who supplied a key is
 		// served by it and a user who did not is unaffected.
 		Own:       aicredSvc,
+		Analytics: coach.NewAnalytics(posthogClient),
 		Model:     cfg.AI.Model,
 		FastModel: cfg.AI.FastModel,
 	})
@@ -475,6 +505,7 @@ func routes(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, stora
 				r.Use(onboarding.RequireOnboarded)
 
 				dashboardHandler.Routes(r)
+				insightsHandler.Routes(r)
 
 				coachHandler.Routes(r)
 				checkinHandler.Routes(r)
@@ -551,6 +582,26 @@ func mountAssets(r chi.Router, cfg *config.Config) {
 			fs.ServeHTTP(w, req)
 		},
 	)))
+}
+
+// newPostHogClient builds the client the coach reports LLM calls through.
+//
+// An absent key is a silently missed dashboard, not a broken app, so it is
+// never fatal — except in development, where a quiet gap in analytics is
+// worth a loud failure at boot rather than a puzzled look at an empty
+// project weeks later. Production gets posthog-go's own no-op client, which
+// answers every call without sending anything.
+func newPostHogClient(cfg *config.Config) (posthog.Client, error) {
+	if cfg.PostHog.APIKey == "" {
+		if !cfg.Env.IsProduction() {
+			return nil, fmt.Errorf("POSTHOG_API_KEY variable required by PostHog is missing or un-configured, this causes events to be silently missed. This error stops appearing once POSTHOG_API_KEY is configured")
+		}
+		return posthog.NewWithConfig("", posthog.Config{})
+	}
+
+	return posthog.NewWithConfig(cfg.PostHog.APIKey, posthog.Config{
+		Endpoint: cfg.PostHog.Host,
+	})
 }
 
 func newLogger(cfg *config.Config) *slog.Logger {

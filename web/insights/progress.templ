@@ -1,0 +1,163 @@
+package insights
+
+import (
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/chart"
+	"github.com/NorthAIProject/north-client/web/shared/ui/progress"
+)
+
+// GoalRow is one active goal and where it stands.
+type GoalRow struct {
+	ID          string
+	Title       string
+	Progress    int
+	HasProgress bool
+	Deadline    string
+	Overdue     bool
+}
+
+type ProgressView struct {
+	Range RangeView
+
+	Goals       []GoalRow
+	NotesChart  chart.Props
+	StatusDonut map[string]any
+
+	ActiveCount int
+	AvgProgress int
+	Overdue     int
+	Streak      int
+	NoteCount   int
+	OpenedCount int
+
+	HasDonut bool
+	HasNotes bool
+}
+
+templ Progress(user users.User, view ProgressView) {
+	@page("Progress", "progress", "/app/insights/progress/body", user, view.Range) {
+		@ProgressPanels(view)
+	}
+}
+
+templ ProgressPanels(view ProgressView) {
+	<div class="space-y-6">
+		<div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+			@statTile("Active goals", formatCount(view.ActiveCount), openedNote(view), DeltaView{})
+			@statTile("Average progress", percentLabel(view.AvgProgress), "across active goals", DeltaView{})
+			@statTile("Check-in streak", streakLabel(view.Streak), "", DeltaView{})
+			@statTile("Overdue milestones", formatCount(view.Overdue), overdueNote(view), DeltaView{})
+		</div>
+		<div class="grid gap-4 lg:grid-cols-3">
+			@card.Card(card.Props{Class: "border-hairline bg-surface lg:col-span-2"}) {
+				@card.Header() {
+					@card.Title() {
+						Where each goal stands
+					}
+				}
+				@card.Content() {
+					if len(view.Goals) == 0 {
+						@emptyState("No active goals.", "Add a goal", "/app/goals")
+					} else {
+						<ul class="space-y-4">
+							for _, g := range view.Goals {
+								<li>
+									<a href={ templ.SafeURL("/app/goals/" + g.ID) } class="block">
+										<div class="mb-1 flex items-baseline justify-between gap-3">
+											<span class="truncate text-sm font-medium">{ g.Title }</span>
+											if g.Deadline != "" {
+												<span
+													class={ "shrink-0 font-mono text-[10px] whitespace-nowrap",
+														templ.KV("text-signal", g.Overdue),
+														templ.KV("text-muted-foreground", !g.Overdue) }
+												>
+													{ g.Deadline }
+												</span>
+											}
+										</div>
+										if g.HasProgress {
+											@progress.Progress(progress.Props{Value: g.Progress, Max: 100, Size: progress.SizeSm})
+										} else {
+											<p class="text-muted-foreground text-xs">No progress recorded yet.</p>
+										}
+									</a>
+								</li>
+							}
+						</ul>
+					}
+				}
+			}
+			@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+				@card.Header() {
+					@card.Title() {
+						By status
+					}
+				}
+				@card.Content() {
+					if view.HasDonut {
+						@templ.JSONScript("insights-progress-donut-option", view.StatusDonut)
+						@ui.EChartsMount("insights-progress-donut", "insights-progress-donut-option", "min-h-48 w-full")
+					} else {
+						@emptyState("No goals yet.", "Add a goal", "/app/goals")
+					}
+				}
+			}
+		</div>
+		@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+			@card.Header() {
+				@card.Title() {
+					Updates written
+				}
+				@card.Description() {
+					Progress notes per day.
+				}
+			}
+			@card.Content() {
+				if view.HasNotes {
+					@chart.Chart(view.NotesChart)
+				} else {
+					@emptyState("No progress notes in this window.", "Open goals", "/app/goals")
+				}
+			}
+		}
+	</div>
+}
+
+func percentLabel(pct int) string {
+	if pct <= 0 {
+		return "—"
+	}
+	return formatCount(pct) + "%"
+}
+
+func streakLabel(days int) string {
+	if days <= 0 {
+		return "—"
+	}
+	if days == 1 {
+		return "1 day"
+	}
+	return formatCount(days) + " days"
+}
+
+func openedNote(view ProgressView) string {
+	switch view.OpenedCount {
+	case 0:
+		return "none opened in this window"
+	case 1:
+		return "1 opened in this window"
+	default:
+		return formatCount(view.OpenedCount) + " opened in this window"
+	}
+}
+
+// overdueNote is deliberately quiet when the count is zero. A dashboard that
+// congratulates you for having nothing wrong is noise.
+func overdueNote(view ProgressView) string {
+	if view.Overdue == 0 {
+		return ""
+	}
+	return "past their target date"
+}

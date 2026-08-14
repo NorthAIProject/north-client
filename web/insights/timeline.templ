@@ -1,0 +1,133 @@
+package insights
+
+import (
+	"time"
+
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
+)
+
+// EntryRow is one row of the full activity feed.
+type EntryRow struct {
+	Kind   string
+	Label  string
+	At     time.Time
+	Title  string
+	Detail string
+	Href   string
+	Icon   string
+}
+
+// FilterChip narrows the feed to one kind. Count is shown so an empty result
+// is obviously a filter and not a missing record.
+type FilterChip struct {
+	Key      string
+	Label    string
+	Count    int
+	Selected bool
+}
+
+type TimelineView struct {
+	Range   RangeView
+	Entries []EntryRow
+	Chips   []FilterChip
+
+	// Overflow marks a window with more rows than one page holds.
+	Overflow bool
+}
+
+templ Timeline(user users.User, view TimelineView) {
+	@page("Activity", "timeline", "/app/insights/timeline/body", user, view.Range) {
+		@TimelineBody(view)
+	}
+}
+
+templ TimelineBody(view TimelineView) {
+	<div class="space-y-4">
+		@filterRow(view)
+		@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+			@card.Content() {
+				if len(view.Entries) == 0 {
+					@emptyState("Nothing logged in this window.", "Check in", "/app/check-ins")
+				} else {
+					<ul class="divide-border -my-3 divide-y">
+						for _, e := range view.Entries {
+							<li class="py-3">
+								@entryRow(e)
+							</li>
+						}
+					</ul>
+					if view.Overflow {
+						<p class="text-muted-foreground border-border mt-4 border-t pt-4 text-xs">
+							Showing the most recent entries only. Narrow the window to see the rest.
+						</p>
+					}
+				}
+			}
+		}
+	</div>
+}
+
+// filterRow keeps every chip a real link so the filter survives without
+// JavaScript, and swaps the panel when htmx is available.
+templ filterRow(view TimelineView) {
+	<nav aria-label="Filter by kind" class="-mx-1 flex flex-wrap gap-1">
+		for _, chip := range view.Chips {
+			<a
+				href={ templ.SafeURL(chipHref("/app/insights/timeline", view.Range.Key, chip.Key)) }
+				hx-get={ chipHref("/app/insights/timeline/body", view.Range.Key, chip.Key) }
+				hx-target="#insights-panels"
+				hx-swap="innerHTML"
+				hx-push-url={ chipHref("/app/insights/timeline", view.Range.Key, chip.Key) }
+				if chip.Selected {
+					aria-current="true"
+					class="bg-signal text-background flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium whitespace-nowrap"
+				} else {
+					class="border-hairline text-muted-foreground hover:text-foreground flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium whitespace-nowrap transition-colors"
+				}
+			>
+				{ chip.Label }
+				<span class="font-mono text-[10px] tabular-nums opacity-70">{ formatCount(chip.Count) }</span>
+			</a>
+		}
+	</nav>
+}
+
+templ entryRow(e EntryRow) {
+	<a
+		if e.Href != "" {
+			href={ templ.SafeURL(e.Href) }
+		}
+		class="group flex items-start gap-3"
+	>
+		<span class="border-hairline text-muted-foreground group-hover:text-signal mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md border transition-colors">
+			@icon.Icon(e.Icon)(icon.Props{Class: "size-3.5"})
+		</span>
+		<span class="min-w-0 flex-1">
+			<span class="block text-sm font-medium">{ e.Title }</span>
+			if e.Detail != "" {
+				<span class="text-muted-foreground block truncate text-xs">{ e.Detail }</span>
+			}
+		</span>
+		<span class="shrink-0 text-right">
+			<span class="text-muted-foreground block font-mono text-[10px] whitespace-nowrap tabular-nums">
+				{ relativeTime(e.At) }
+			</span>
+			<span class="text-muted-foreground block font-mono text-[10px] whitespace-nowrap opacity-60">
+				{ e.Label }
+			</span>
+		</span>
+	</a>
+}
+
+// chipHref keeps the current range while changing the kind. An empty kind
+// means everything, and is written as no parameter at all rather than
+// "kind=", so the URL a person copies is the URL they would have typed.
+func chipHref(base, rangeKey, kind string) string {
+	out := base + "?range=" + rangeKey
+	if kind != "" {
+		out += "&kind=" + kind
+	}
+	return out
+}

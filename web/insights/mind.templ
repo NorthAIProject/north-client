@@ -1,0 +1,79 @@
+package insights
+
+import (
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/chart"
+)
+
+type MindView struct {
+	Range RangeView
+
+	MoodChart    chart.Props
+	JournalChart chart.Props
+	MoodHeatmap  map[string]any
+
+	CheckInCount int
+	JournalCount int
+	AvgMood      float64
+	AvgEnergy    float64
+
+	HasCheckIns bool
+	HasJournal  bool
+}
+
+templ Mind(user users.User, view MindView) {
+	@page("Mind", "mind", "/app/insights/mind/body", user, view.Range) {
+		@MindPanels(view)
+	}
+}
+
+templ MindPanels(view MindView) {
+	<div class="space-y-6">
+		<div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+			@statTile("Check-ins", formatCount(view.CheckInCount), "days recorded", DeltaView{})
+			@statTile("Average mood", formatScore(view.AvgMood), "over days recorded", DeltaView{})
+			@statTile("Average energy", formatScore(view.AvgEnergy), "over days recorded", DeltaView{})
+			@statTile("Journal entries", formatCount(view.JournalCount), "", DeltaView{})
+		</div>
+		@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+			@card.Header() {
+				@card.Title() {
+					Mood & energy
+				}
+				@card.Description() {
+					One point per day. Gaps are days you did not check in.
+				}
+			}
+			@card.Content() {
+				if view.HasCheckIns {
+					@chart.Chart(view.MoodChart)
+					if len(view.MoodHeatmap) > 0 {
+						@templ.JSONScript("insights-mind-heatmap-option", view.MoodHeatmap)
+						@ui.EChartsMount("insights-mind-heatmap", "insights-mind-heatmap-option", "border-hairline mt-4 min-h-32 w-full rounded-md border")
+					}
+				} else {
+					@emptyState("No check-ins in this window.", "Check in", "/app/check-ins")
+				}
+			}
+		}
+		@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+			@card.Header() {
+				@card.Title() {
+					Journalling
+				}
+				@card.Description() {
+					Entries written per day.
+				}
+			}
+			@card.Content() {
+				if view.HasJournal {
+					@chart.Chart(view.JournalChart)
+				} else {
+					@emptyState("Nothing written in this window.", "Open the journal", "/app/mind")
+				}
+			}
+		}
+	</div>
+}

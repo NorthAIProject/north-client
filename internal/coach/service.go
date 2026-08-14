@@ -86,6 +86,10 @@ type Service struct {
 	// entirely, which is what every process without a sealer gets.
 	own ClientSource
 
+	// analytics reports LLM calls and tool runs to PostHog. Nil client makes
+	// every call a no-op — see Analytics.
+	analytics *Analytics
+
 	model     string
 	fastModel string
 }
@@ -114,6 +118,10 @@ type Options struct {
 	// encryption key gets.
 	Own ClientSource
 
+	// Analytics reports LLM calls and tool runs to PostHog. Nil leaves the
+	// coach exactly as it was before AI Observability existed.
+	Analytics *Analytics
+
 	// Model answers conversations. FastModel handles cheap side work such as
 	// naming a thread, which does not need the expensive model. Both may be
 	// empty, which lets whichever provider answers use its own default — the
@@ -132,6 +140,7 @@ func NewService(opts Options) *Service {
 		chains:        opts.Chains,
 		tools:         opts.Tools,
 		own:           opts.Own,
+		analytics:     opts.Analytics,
 		model:         opts.Model,
 		fastModel:     opts.FastModel,
 	}
@@ -196,6 +205,9 @@ func (s *Service) SendMessage(ctx context.Context, user users.User, conversation
 
 	out := make(chan ai.StreamChunk)
 
+	// One trace id per turn: every generation and tool span this message
+	// produces, however many rounds it takes, shares it — that is what lets
+	// PostHog group them into one trace instead of one row per model call.
 	go s.pump(ctx, genCtx, cancelGen, stream, out, pumpTarget{
 		conversation: conversation,
 		user:         user,
@@ -204,6 +216,7 @@ func (s *Service) SendMessage(ctx context.Context, user users.User, conversation
 		client:       client,
 		request:      req,
 		offeredRefs:  coachCtx.OfferedRefs(),
+		traceID:      uuid.New().String(),
 	})
 
 	return out, nil
@@ -237,20 +250,21 @@ func (s *Service) startChat(
 }
 
 // generate is startChat's one-shot counterpart, for the side work that does not
-// stream.
-func (s *Service) generate(ctx context.Context, user users.User, req ai.Request) (*ai.Response, error) {
+// stream. It also returns the client that answered, so a caller reporting the
+// call to analytics can attribute it to the real provider.
+func (s *Service) generate(ctx context.Context, user users.User, req ai.Request) (*ai.Response, ai.Client, error) {
 	var resp *ai.Response
 
-	_, err := s.eachProvider(ctx, user, func(c ai.Client) error {
+	client, err := s.eachProvider(ctx, user, func(c ai.Client) error {
 		r, err := c.Generate(ctx, req)
 		resp = r
 		return err
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return resp, nil
+	return resp, client, nil
 }
 
 // eachProvider tries the user's chain in order until attempt succeeds, and
@@ -370,6 +384,10 @@ type pumpTarget struct {
 	// was never given, and storing that would make the audit trail wrong in the
 	// one direction that matters.
 	offeredRefs map[string]bool
+
+	// traceID groups every generation and tool span this turn produces, so
+	// they land in PostHog as one trace rather than one per model call.
+	traceID string
 }
 
 // pump forwards the provider's stream to the caller while accumulating the full
@@ -412,6 +430,8 @@ func (s *Service) pump(
 
 	for round := 0; ; round++ {
 		var calls []ai.ToolCall
+		var roundUsage *ai.Usage
+		roundStart := time.Now()
 
 		for chunk := range stream {
 			if chunk.Err != nil {
@@ -424,6 +444,7 @@ func (s *Service) pump(
 
 			if chunk.Usage != nil {
 				usage = chunk.Usage
+				roundUsage = chunk.Usage
 			}
 			if len(chunk.ToolCalls) > 0 {
 				// Not forwarded to the caller: the browser renders prose, and
@@ -450,6 +471,17 @@ func (s *Service) pump(
 			}
 		}
 
+		s.analytics.captureGeneration(callerCtx, generation{
+			sessionID:  target.conversation.ID.String(),
+			traceID:    target.traceID,
+			distinctID: target.user.ID.String(),
+			provider:   target.provider,
+			model:      request.Model,
+			usage:      usageOrZero(roundUsage),
+			latency:    time.Since(roundStart),
+			err:        streamErr,
+		})
+
 		if streamErr != nil || len(calls) == 0 {
 			break
 		}
@@ -469,6 +501,9 @@ func (s *Service) pump(
 				slog.String("tool", result.Name),
 				slog.Bool("failed", result.IsError),
 				slog.String("conversation_id", target.conversation.ID.String()))
+
+			s.analytics.captureToolSpan(callerCtx,
+				target.conversation.ID.String(), target.traceID, target.user.ID.String(), result)
 		}
 
 		// Both turns, in this order: every provider rejects a result whose
@@ -571,11 +606,34 @@ func (s *Service) titleConversation(ctx context.Context, user users.User, conver
 	// The same chain as the reply, so a title is not the one thing that breaks
 	// when the head provider runs dry. The fast model: naming a thread is not
 	// worth the expensive one.
-	resp, err := s.generate(ctx, user, ai.Request{
+	started := time.Now()
+	resp, client, err := s.generate(ctx, user, ai.Request{
 		Model:     s.fastModel,
 		Messages:  []ai.Message{ai.UserText(prompt)},
 		MaxTokens: 40,
 	})
+
+	// A trace of its own: naming a thread is not part of the turn that
+	// triggered it, but it shares the conversation's session id.
+	var respUsage ai.Usage
+	provider := ""
+	if client != nil {
+		provider = client.Name()
+	}
+	if resp != nil {
+		respUsage = resp.Usage
+	}
+	s.analytics.captureGeneration(ctx, generation{
+		sessionID:  conversationID.String(),
+		traceID:    uuid.New().String(),
+		distinctID: user.ID.String(),
+		provider:   provider,
+		model:      s.fastModel,
+		usage:      respUsage,
+		latency:    time.Since(started),
+		err:        err,
+	})
+
 	if err != nil {
 		log.Warn("could not generate a conversation title", slog.Any("error", err))
 		return

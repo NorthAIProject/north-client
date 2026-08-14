@@ -1,0 +1,118 @@
+package insights
+
+import (
+	"time"
+
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/chart"
+)
+
+// SessionRow is one completed activity session.
+type SessionRow struct {
+	Name     string
+	At       time.Time
+	Duration string
+	Calories float64
+}
+
+type TrainingView struct {
+	Range RangeView
+
+	Sessions  []SessionRow
+	BurnChart chart.Props
+	KindDonut map[string]any
+
+	Calories     float64
+	Delta        DeltaView
+	SessionCount int
+	TotalTime    string
+
+	HasDonut    bool
+	HasSessions bool
+}
+
+templ Training(user users.User, view TrainingView) {
+	@page("Training", "training", "/app/insights/training/body", user, view.Range) {
+		@TrainingPanels(view)
+	}
+}
+
+templ TrainingPanels(view TrainingView) {
+	<div class="space-y-6">
+		<div class="grid gap-3 sm:grid-cols-3">
+			@statTile("Burned", formatKcal(view.Calories), "against the window before", view.Delta)
+			@statTile("Sessions", formatCount(view.SessionCount), "completed", DeltaView{})
+			@statTile("Time moving", timeLabel(view), "", DeltaView{})
+		</div>
+		<div class="grid gap-4 lg:grid-cols-3">
+			@card.Card(card.Props{Class: "border-hairline bg-surface lg:col-span-2"}) {
+				@card.Header() {
+					@card.Title() {
+						Energy burned
+					}
+					@card.Description() {
+						Kilocalories per day from completed sessions.
+					}
+				}
+				@card.Content() {
+					if view.HasSessions {
+						@chart.Chart(view.BurnChart)
+					} else {
+						@emptyState("No sessions in this window.", "Start one", "/app/fitness")
+					}
+				}
+			}
+			@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+				@card.Header() {
+					@card.Title() {
+						By activity
+					}
+				}
+				@card.Content() {
+					if view.HasDonut {
+						@templ.JSONScript("insights-training-donut-option", view.KindDonut)
+						@ui.EChartsMount("insights-training-donut", "insights-training-donut-option", "min-h-48 w-full")
+					} else {
+						@emptyState("Nothing to split yet.", "", "")
+					}
+				}
+			}
+		</div>
+		@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+			@card.Header() {
+				@card.Title() {
+					Sessions
+				}
+			}
+			@card.Content() {
+				if len(view.Sessions) == 0 {
+					@emptyState("No sessions in this window.", "Start one", "/app/fitness")
+				} else {
+					<ul class="divide-border -my-2 divide-y">
+						for _, s := range view.Sessions {
+							<li class="flex items-baseline justify-between gap-3 py-2">
+								<span class="truncate text-sm font-medium">{ s.Name }</span>
+								<span class="text-muted-foreground shrink-0 font-mono text-[10px] whitespace-nowrap tabular-nums">
+									{ s.Duration }
+									if s.Calories > 0 {
+										<span> · { formatKcal(s.Calories) }</span>
+									}
+									<span> · { relativeTime(s.At) }</span>
+								</span>
+							</li>
+						}
+					</ul>
+				}
+			}
+		}
+	</div>
+}
+
+func timeLabel(view TrainingView) string {
+	if view.SessionCount == 0 {
+		return "—"
+	}
+	return view.TotalTime
+}

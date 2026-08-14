@@ -1,0 +1,146 @@
+package insights
+
+import (
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/chart"
+	"github.com/NorthAIProject/north-client/web/shared/ui/progress"
+)
+
+// HabitRow is one habit's adherence over the window.
+type HabitRow struct {
+	Name      string
+	Kept      int
+	Scheduled int
+	Streak    int
+	Rate      int
+}
+
+type BodyView struct {
+	Range RangeView
+
+	WaterChart   chart.Props
+	SleepChart   chart.Props
+	HabitGauge   map[string]any
+	Habits       []HabitRow
+	TotalWaterML int
+	Nights       int
+	AvgSleep     float64
+	AvgQuality   float64
+
+	// QualityCount is how many nights carried a rating. An average over two
+	// of nine nights is a different claim from an average over nine, and the
+	// page says which.
+	QualityCount int
+
+	HasWater  bool
+	HasSleep  bool
+	HasHabits bool
+}
+
+templ Body(user users.User, view BodyView) {
+	@page("Body", "body", "/app/insights/body/body", user, view.Range) {
+		@BodyPanels(view)
+	}
+}
+
+templ BodyPanels(view BodyView) {
+	<div class="space-y-6">
+		<div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+			@statTile("Water", formatLitres(view.TotalWaterML), "total for the window", DeltaView{})
+			@statTile("Nights logged", formatCount(view.Nights), "", DeltaView{})
+			@statTile("Average sleep", formatHours(view.AvgSleep), "over nights recorded", DeltaView{})
+			@statTile("Sleep quality", formatScore(view.AvgQuality), qualityNote(view), DeltaView{})
+		</div>
+		<div class="grid gap-4 lg:grid-cols-2">
+			@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+				@card.Header() {
+					@card.Title() {
+						Hydration
+					}
+					@card.Description() {
+						Daily intake in millilitres.
+					}
+				}
+				@card.Content() {
+					if view.HasWater {
+						@chart.Chart(view.WaterChart)
+					} else {
+						@emptyState("No water logged in this window.", "Log water", "/app/care")
+					}
+				}
+			}
+			@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+				@card.Header() {
+					@card.Title() {
+						Sleep
+					}
+					@card.Description() {
+						Hours per night. Gaps are nights you did not log.
+					}
+				}
+				@card.Content() {
+					if view.HasSleep {
+						@chart.Chart(view.SleepChart)
+					} else {
+						@emptyState("No sleep logged in this window.", "Log sleep", "/app/care")
+					}
+				}
+			}
+		</div>
+		@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+			@card.Header() {
+				@card.Title() {
+					Habits
+				}
+				@card.Description() {
+					Adherence across your active habits.
+				}
+			}
+			@card.Content() {
+				if view.HasHabits {
+					<div class="grid gap-6 lg:grid-cols-3">
+						<div>
+							if len(view.HabitGauge) > 0 {
+								@templ.JSONScript("insights-habit-gauge-option", view.HabitGauge)
+								@ui.EChartsMount("insights-habit-gauge", "insights-habit-gauge-option", "min-h-48 w-full")
+							}
+						</div>
+						<ul class="space-y-3 lg:col-span-2">
+							for _, h := range view.Habits {
+								<li>
+									<div class="mb-1 flex items-baseline justify-between gap-3">
+										<span class="truncate text-sm font-medium">{ h.Name }</span>
+										<span class="text-muted-foreground shrink-0 font-mono text-[10px] tabular-nums">
+											{ formatCount(h.Kept) }/{ formatCount(h.Scheduled) }
+											if h.Streak > 0 {
+												<span> · streak { formatCount(h.Streak) }</span>
+											}
+										</span>
+									</div>
+									@progress.Progress(progress.Props{Value: h.Rate, Max: 100, Size: progress.SizeSm})
+								</li>
+							}
+						</ul>
+					</div>
+				} else {
+					@emptyState("No habits yet.", "Add a habit", "/app/care")
+				}
+			}
+		}
+	</div>
+}
+
+// qualityNote says what the average is actually an average of. Quality is
+// optional on a sleep log, so the count is the difference between a claim and
+// a misleading one.
+func qualityNote(view BodyView) string {
+	if view.QualityCount == 0 {
+		return "no nights rated"
+	}
+	if view.QualityCount == 1 {
+		return "from 1 rated night"
+	}
+	return "from " + formatCount(view.QualityCount) + " rated nights"
+}
