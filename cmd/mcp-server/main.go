@@ -42,6 +42,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/agent"
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/ai/providers"
+	"github.com/NorthAIProject/north-client/internal/aicreds"
 	"github.com/NorthAIProject/north-client/internal/biometrics"
 	"github.com/NorthAIProject/north-client/internal/calculator"
 	"github.com/NorthAIProject/north-client/internal/checkins"
@@ -59,6 +60,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/mind"
 	"github.com/NorthAIProject/north-client/internal/preferences"
 	"github.com/NorthAIProject/north-client/internal/shared/database"
+	"github.com/NorthAIProject/north-client/internal/shared/secret"
 	"github.com/NorthAIProject/north-client/internal/sleep"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
@@ -122,7 +124,15 @@ func run() error {
 		return err
 	}
 
-	services := buildServices(cfg, pool, registry, embedder)
+	// Shared with cmd/web: the same key that sealed a user's provider key has
+	// to be here to open it, or ask_coach would fall back to North's providers
+	// for somebody who supplied their own.
+	sealer, err := cfg.Encryption.Sealer()
+	if err != nil {
+		return err
+	}
+
+	services := buildServices(cfg, pool, registry, embedder, sealer)
 
 	handler := mcpserver.NewHandler(mcpserver.Config{
 		Services: services,
@@ -189,7 +199,7 @@ func run() error {
 // This list is duplicated from cmd/web's routes(). Adding a context source in
 // one place and not the other is the drift to watch for; the two are worth
 // unifying into a shared composition root once a third binary needs them.
-func buildServices(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, embedder ai.Embedder) mcpserver.Services {
+func buildServices(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, embedder ai.Embedder, sealer *secret.Sealer) mcpserver.Services {
 	userSvc := users.NewService(users.NewRepository(pool))
 	conversationSvc := conversations.NewService(conversations.NewRepository(pool))
 
@@ -241,8 +251,19 @@ func buildServices(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry
 		),
 		PromptBuilder: coach.NewPromptBuilder(),
 		Chains:        cfg.AI.ChainSet(),
-		Model:         cfg.AI.Model,
-		FastModel:     cfg.AI.FastModel,
+
+		// ask_coach reaches a model, so it has to respect the same
+		// bring-your-own key the web app does. Without this, asking the coach
+		// through an agent would quietly bill North for somebody who had
+		// explicitly opted out of that — and the two surfaces would answer from
+		// different providers for the same question.
+		//
+		// Nil when this deployment has no encryption key, which is the same
+		// state cmd/web handles.
+		Own: aicreds.NewService(aicreds.NewRepository(pool), sealer, slog.Default()),
+
+		Model:     cfg.AI.Model,
+		FastModel: cfg.AI.FastModel,
 	})
 
 	agentTools := agent.Build(agent.Services{
