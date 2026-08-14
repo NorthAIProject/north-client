@@ -116,19 +116,18 @@ func (q *Queries) FailJob(ctx context.Context, arg FailJobParams) error {
 const hasPendingJobForUser = `-- name: HasPendingJobForUser :one
 SELECT EXISTS(
     SELECT 1 FROM jobs
-    WHERE kind = $1
+    WHERE kind = $1::text
       AND status IN ('pending', 'running')
-      AND (payload->>'user_id')::uuid = $2
+      AND (payload->>'user_id')::uuid = $2::uuid
 )::bool
 `
 
 type HasPendingJobForUserParams struct {
 	Kind   string
-	UserID []byte
+	UserID uuid.UUID
 }
 
-// @kind text
-// @user_id uuid
+// Same casting rule as RequeueFailedEmbedJobsForUser above.
 func (q *Queries) HasPendingJobForUser(ctx context.Context, arg HasPendingJobForUserParams) (bool, error) {
 	row := q.db.QueryRow(ctx, hasPendingJobForUser, arg.Kind, arg.UserID)
 	var column_1 bool
@@ -167,11 +166,14 @@ SET status     = 'pending',
     updated_at = now()
 WHERE kind = 'embed_chunks'
   AND status = 'failed'
-  AND (payload->>'user_id')::uuid = $1
+  AND (payload->>'user_id')::uuid = $1::uuid
 `
 
-// @user_id uuid
-func (q *Queries) RequeueFailedEmbedJobsForUser(ctx context.Context, userID []byte) (int64, error) {
+// The parameter carries its own ::uuid cast. Without one sqlc cannot infer a
+// type through the payload cast on the left and falls back to []byte, which
+// pgx then sends as bytea — the comparison matches nothing and the update
+// silently requeues zero rows.
+func (q *Queries) RequeueFailedEmbedJobsForUser(ctx context.Context, userID uuid.UUID) (int64, error) {
 	result, err := q.db.Exec(ctx, requeueFailedEmbedJobsForUser, userID)
 	if err != nil {
 		return 0, err

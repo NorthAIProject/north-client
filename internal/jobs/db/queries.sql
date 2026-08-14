@@ -42,7 +42,10 @@ SET status = 'failed', last_error = $2, updated_at = now()
 WHERE id = $1;
 
 -- name: RequeueFailedEmbedJobsForUser :execrows
--- @user_id uuid
+-- The parameter carries its own ::uuid cast. Without one sqlc cannot infer a
+-- type through the payload cast on the left and falls back to []byte, which
+-- pgx then sends as bytea — the comparison matches nothing and the update
+-- silently requeues zero rows.
 UPDATE jobs
 SET status     = 'pending',
     attempts   = 0,
@@ -51,16 +54,15 @@ SET status     = 'pending',
     updated_at = now()
 WHERE kind = 'embed_chunks'
   AND status = 'failed'
-  AND (payload->>'user_id')::uuid = @user_id;
+  AND (payload->>'user_id')::uuid = sqlc.arg(user_id)::uuid;
 
 -- name: HasPendingJobForUser :one
--- @kind text
--- @user_id uuid
+-- Same casting rule as RequeueFailedEmbedJobsForUser above.
 SELECT EXISTS(
     SELECT 1 FROM jobs
-    WHERE kind = @kind
+    WHERE kind = sqlc.arg(kind)::text
       AND status IN ('pending', 'running')
-      AND (payload->>'user_id')::uuid = @user_id
+      AND (payload->>'user_id')::uuid = sqlc.arg(user_id)::uuid
 )::bool;
 
 -- name: ReleaseStaleJobs :execrows

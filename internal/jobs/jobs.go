@@ -184,7 +184,7 @@ func (q *Queue) ReleaseStale(ctx context.Context, olderThan time.Duration) (int6
 
 // RequeueFailedEmbedJobsForUser returns permanently failed embed jobs to pending.
 func (q *Queue) RequeueFailedEmbedJobsForUser(ctx context.Context, userID uuid.UUID) (int64, error) {
-	n, err := q.q.RequeueFailedEmbedJobsForUser(ctx, userIDBytes(userID))
+	n, err := q.q.RequeueFailedEmbedJobsForUser(ctx, userID)
 	return n, apperr.Wrap(err, "requeue failed embed jobs")
 }
 
@@ -192,14 +192,9 @@ func (q *Queue) RequeueFailedEmbedJobsForUser(ctx context.Context, userID uuid.U
 func (q *Queue) HasPendingJobForUser(ctx context.Context, kind Kind, userID uuid.UUID) (bool, error) {
 	ok, err := q.q.HasPendingJobForUser(ctx, jobsdb.HasPendingJobForUserParams{
 		Kind:   string(kind),
-		UserID: userIDBytes(userID),
+		UserID: userID,
 	})
 	return ok, apperr.Wrap(err, "check pending job")
-}
-
-// userIDBytes is how embed job payloads store user IDs in JSON.
-func userIDBytes(id uuid.UUID) []byte {
-	return []byte(id.String())
 }
 
 // Backoff is the delay before a job's next attempt.
