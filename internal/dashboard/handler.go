@@ -135,6 +135,7 @@ func buildDashboardData(snap Snapshot) (app.DashboardData, error) {
 		CheckInHeatmap:   checkInHeatmapOption,
 		ActivityDonut:    activityDonut,
 		HasActivityDonut: hasDonut,
+		Nudges:           snap.Nudges,
 	}, nil
 }
 

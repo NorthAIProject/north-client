@@ -15,6 +15,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/hydration"
 	"github.com/NorthAIProject/north-client/internal/memories"
 	"github.com/NorthAIProject/north-client/internal/mind"
+	"github.com/NorthAIProject/north-client/internal/nudges/nudge"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/sleep"
@@ -55,6 +56,15 @@ type Options struct {
 	Sleep         *sleep.Service
 	Activity      *activity.Service
 	Mind          *mind.Service
+
+	// Nudges is optional. The worker process never loads the dashboard, and
+	// a nil here just leaves the card off.
+	Nudges Nudges
+}
+
+// Nudges is the dashboard's view of scheduled coach notes.
+type Nudges interface {
+	ListOpen(ctx context.Context, userID uuid.UUID, limit int) ([]nudge.Nudge, error)
 }
 
 type Service struct {
@@ -68,6 +78,7 @@ type Service struct {
 	sleep         *sleep.Service
 	activity      *activity.Service
 	mind          *mind.Service
+	nudges        Nudges
 }
 
 func NewService(opts Options) *Service {
@@ -82,6 +93,7 @@ func NewService(opts Options) *Service {
 		sleep:         opts.Sleep,
 		activity:      opts.Activity,
 		mind:          opts.Mind,
+		nudges:        opts.Nudges,
 	}
 }
 
@@ -109,6 +121,9 @@ type Snapshot struct {
 	ActivityCalories float64
 	Timeline         []Entry
 	Deltas           Deltas
+
+	// Unread coach notes. Empty when none, or when Nudges was not wired.
+	Nudges []nudge.Nudge
 }
 
 // Load gathers the overview.
@@ -148,6 +163,21 @@ func (s *Service) Load(ctx context.Context, user users.User, rg timerange.Range)
 		snap.PendingMemories = pending
 		return err
 	})
+
+	if s.nudges != nil {
+		g.Go(func() error {
+			list, err := s.nudges.ListOpen(gctx, user.ID, 10)
+			if err != nil {
+				return err
+			}
+			for _, n := range list {
+				if n.Unread() {
+					snap.Nudges = append(snap.Nudges, n)
+				}
+			}
+			return nil
+		})
+	}
 
 	g.Go(func() error {
 		active, err := s.goals.ListActive(gctx, user.ID)
