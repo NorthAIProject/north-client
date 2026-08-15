@@ -15,7 +15,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
@@ -98,7 +97,10 @@ func registerAgentCapabilities(s *mcp.Server, registry *agent.Registry, user use
 			// tool arrived unannotated, so a client in read-only mode could not
 			// tell search_exercises from calculate_macros — which saves the plan
 			// it computes.
-			Annotations: &mcp.ToolAnnotations{ReadOnlyHint: registry.IsReadOnly(tool.Name)},
+			Annotations: &mcp.ToolAnnotations{
+				ReadOnlyHint:   registry.IsReadOnly(tool.Name),
+				IdempotentHint: registry.IsIdempotent(tool.Name),
+			},
 		}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			// The user was fixed when the session authenticated. Nothing in the
 			// request can change it.
@@ -142,81 +144,9 @@ func registerGoals(s *mcp.Server, svc Services, user users.User) {
 
 		return structured(matchGoals(found, args.Query))
 	})
-
-	type addUpdateArgs struct {
-		GoalTitle string `json:"goal_title" jsonschema:"the goal to update, matched by title"`
-		Note      string `json:"note" jsonschema:"what happened, in the user's own terms"`
-		Progress  *int   `json:"progress,omitempty" jsonschema:"completion percentage from 0 to 100"`
-	}
-
-	mcp.AddTool(s, &mcp.Tool{
-		Name:        "add_goal_update",
-		Description: "Record progress against one of the user's goals. The goal is named by title, not by ID.",
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, args addUpdateArgs) (*mcp.CallToolResult, any, error) {
-		all, err := svc.Goals.List(ctx, user.ID)
-		if err != nil {
-			return fail(err), nil, nil
-		}
-
-		goal, err := pickGoal(all, args.GoalTitle)
-		if err != nil {
-			return fail(err), nil, nil
-		}
-
-		update, err := svc.Goals.AddUpdate(ctx, goal.ID, user.ID, args.Note, args.Progress)
-		if err != nil {
-			return fail(err), nil, nil
-		}
-
-		return structured(map[string]any{
-			"goal":     goal.Title,
-			"note":     update.Note,
-			"progress": args.Progress,
-		})
-	})
 }
 
 func registerCheckIns(s *mcp.Server, svc Services, user users.User) {
-	type createArgs struct {
-		Mood       int    `json:"mood" jsonschema:"how the user feels, 1 (worst) to 5 (best)"`
-		Energy     int    `json:"energy" jsonschema:"the user's energy level, 1 (lowest) to 5 (highest)"`
-		Wins       string `json:"wins,omitempty" jsonschema:"what went well"`
-		Challenges string `json:"challenges,omitempty" jsonschema:"what got in the way"`
-		Notes      string `json:"notes,omitempty" jsonschema:"anything else worth telling the coach"`
-	}
-
-	mcp.AddTool(s, &mcp.Tool{
-		Name: "create_check_in",
-		Description: "Record today's check-in. Writing again on the same day replaces that day's entry " +
-			"rather than adding a second one, so this is safe to call twice.",
-		Annotations: &mcp.ToolAnnotations{IdempotentHint: true},
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, args createArgs) (*mcp.CallToolResult, any, error) {
-		entry, err := svc.CheckIns.UpsertToday(ctx, user, checkins.Input{
-			Mood:       args.Mood,
-			Energy:     args.Energy,
-			Wins:       args.Wins,
-			Challenges: args.Challenges,
-			Notes:      args.Notes,
-		})
-		if err != nil {
-			return fail(err), nil, nil
-		}
-
-		streak, err := svc.CheckIns.Streak(ctx, user)
-		if err != nil {
-			// The check-in is saved; a streak we could not count is not worth
-			// reporting as a failure.
-			streak = 0
-		}
-
-		return structured(map[string]any{
-			"saved":  true,
-			"mood":   entry.Mood,
-			"energy": entry.Energy,
-			"streak": streak,
-		})
-	})
-
 	type listArgs struct {
 		Limit int `json:"limit,omitempty" jsonschema:"how many recent check-ins to return, default 7"`
 	}
@@ -286,42 +216,6 @@ func registerKnowledge(s *mcp.Server, svc Services, user users.User) {
 			if len(out) == limit {
 				break
 			}
-		}
-
-		return structured(out)
-	})
-
-	type documentSearchArgs struct {
-		Query string `json:"query" jsonschema:"what to look for in the user's own notes and documents"`
-		Limit int    `json:"limit,omitempty" jsonschema:"maximum passages, default 6"`
-	}
-
-	mcp.AddTool(s, &mcp.Tool{
-		Name: "search_documents",
-		Description: "Search the passages of the user's own notes and uploaded documents. Returns each " +
-			"passage with the document it came from, the heading above it, its line range, and a " +
-			"citable chunk id. Quote the chunk id when using a passage.",
-		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true},
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, args documentSearchArgs) (*mcp.CallToolResult, any, error) {
-		if svc.Documents == nil {
-			return fail(errors.New("this server has no document index")), nil, nil
-		}
-
-		hits, err := svc.Documents.Search(ctx, user.ID, args.Query, args.Limit)
-		if err != nil {
-			return fail(err), nil, nil
-		}
-
-		out := make([]map[string]any, 0, len(hits))
-		for _, h := range hits {
-			out = append(out, map[string]any{
-				// The ref, not the internal document id: this is the handle
-				// that resolves in a stored reply months from now.
-				"ref":     coach.ChunkRef(h.ChunkID),
-				"source":  h.Label(),
-				"lines":   fmt.Sprintf("%d-%d", h.StartLine, h.EndLine),
-				"passage": h.Content,
-			})
 		}
 
 		return structured(out)
@@ -447,32 +341,6 @@ func registerCoach(s *mcp.Server, svc Services, user users.User) {
 
 		return textResult(reply, false), nil, nil
 	})
-}
-
-// pickGoal resolves a title to exactly one goal.
-//
-// Ambiguity is an error rather than a guess: recording progress against the
-// wrong goal is silent and hard to notice later.
-func pickGoal(all []goals.Goal, title string) (goals.Goal, error) {
-	var hits []goals.Goal
-	for _, g := range all {
-		if matches(title, g.Title) {
-			hits = append(hits, g)
-		}
-	}
-
-	switch len(hits) {
-	case 1:
-		return hits[0], nil
-	case 0:
-		return goals.Goal{}, fmt.Errorf("no goal matches %q", title)
-	default:
-		names := make([]string, 0, len(hits))
-		for _, g := range hits {
-			names = append(names, g.Title)
-		}
-		return goals.Goal{}, fmt.Errorf("%q matches several goals (%v); be more specific", title, names)
-	}
 }
 
 func matchGoals(all []goals.Goal, query string) []map[string]any {

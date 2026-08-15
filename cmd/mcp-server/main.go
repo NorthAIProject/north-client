@@ -64,6 +64,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/shared/secret"
 	"github.com/NorthAIProject/north-client/internal/sleep"
 	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/internal/workouts"
 )
 
 const shutdownTimeout = 10 * time.Second
@@ -214,6 +215,11 @@ func buildServices(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry
 	// them — which is the right shape for a surface an agent holds a token to.
 	documentSvc := documents.NewService(documents.NewRepository(pool), nil, nil)
 
+	// Repository only. get_workout_plan reads the stored plan; the registry,
+	// catalog and model are what Generate needs, and this process never
+	// generates one.
+	workoutSvc := workouts.NewService(workouts.Options{Repository: workouts.NewRepository(pool)})
+
 	if embedder != nil {
 		documentSvc = documentSvc.WithEmbeddings(embedder, slog.Default())
 	}
@@ -279,6 +285,10 @@ func buildServices(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry
 		Goals:       goalSvc,
 		Ingredients: meals.NewIngredientService(mealsRepo),
 		FoodLog:     foodLogSvc,
+		CheckIns:    checkinSvc,
+		Documents:   documentSvc,
+		Workouts:    workoutSvc,
+		Users:       userSvc,
 	})
 
 	return mcpserver.Services{

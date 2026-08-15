@@ -235,3 +235,27 @@ func TestDecodeReportsAValidationErrorTheModelCanAct(t *testing.T) {
 		t.Errorf("empty arguments should decode cleanly, got %v", err)
 	}
 }
+
+// The MCP surface publishes this annotation, and a client deciding whether it
+// may retry a failed call reads it. A capability that says nothing is treated
+// as though a second call would do something a first did not — the safe answer,
+// matching how ReadOnly defaults.
+func TestIdempotencyIsReportedAndDefaultsToNo(t *testing.T) {
+	t.Parallel()
+
+	r := NewRegistry()
+
+	upsert := capability("create_check_in", ok("saved"))
+	upsert.Idempotent = true
+	r.Register(upsert, capability("add_goal_update", ok("recorded")))
+
+	if !r.IsIdempotent("create_check_in") {
+		t.Error("an upsert declared idempotent was not reported as one")
+	}
+	if r.IsIdempotent("add_goal_update") {
+		t.Error("a capability that said nothing was reported idempotent; the default is not the safe one")
+	}
+	if r.IsIdempotent("no_such_tool") {
+		t.Error("an unknown tool was reported idempotent")
+	}
+}
