@@ -12,17 +12,19 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/conversations"
+	"github.com/NorthAIProject/north-client/internal/quota"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	chatpages "github.com/NorthAIProject/north-client/web/chat"
 )
 
 type Handler struct {
-	svc *Service
+	svc    *Service
+	quotas *quota.Service
 }
 
-func NewHandler(svc *Service) *Handler {
-	return &Handler{svc: svc}
+func NewHandler(svc *Service, quotas *quota.Service) *Handler {
+	return &Handler{svc: svc, quotas: quotas}
 }
 
 // Routes mounts the chat endpoints. Must be mounted behind RequireAuth.
@@ -163,6 +165,25 @@ func (h *Handler) stream(w http.ResponseWriter, r *http.Request) {
 	rc := http.NewResponseController(w)
 	_ = rc.Flush()
 
+	// The budget is spent here rather than on the composer POST, because this is
+	// the request that reaches the model. Guarding the POST instead would leave
+	// this route reachable on its own — it generates from stored history, so it
+	// is real spend — and guarding both would charge two for every turn.
+	//
+	// The refusal goes out as an SSE frame rather than a 429, because the
+	// response has already been committed as an event stream by this point. It
+	// takes the same path a provider failure takes, which the page already knows
+	// how to display.
+	decision, err := h.quotas.Consume(r.Context(), user.ID, quota.CoachMessage)
+	if err == nil && !decision.Allowed {
+		log.Warn("coach message refused by quota",
+			slog.String("user_id", user.ID.String()),
+			slog.Duration("retry_after", decision.RetryAfter))
+		writeEvent(w, rc, "error", chatpages.StreamErrorHTML(quotaMessage(decision)))
+		writeEvent(w, rc, "done", "")
+		return
+	}
+
 	stream, err := h.svc.SendMessage(r.Context(), user, conversation.ID, pending)
 	if err != nil {
 		writeEvent(w, rc, "error", chatpages.StreamErrorHTML(friendly(err)))
@@ -265,5 +286,20 @@ func friendly(err error) string {
 		return "North cannot reach its AI provider. Check the server configuration."
 	default:
 		return "Something went wrong while writing that reply."
+	}
+}
+
+// quotaMessage says a refusal out loud, in the same voice friendly uses.
+//
+// It names a wait rather than a limit, because the number a person needs is
+// when they can carry on — not how the bound was configured.
+func quotaMessage(decision quota.Decision) string {
+	switch {
+	case decision.RetryAfter < time.Minute:
+		return "You have reached your coach message limit. Try again in less than a minute."
+	case decision.RetryAfter < time.Hour:
+		return fmt.Sprintf("You have reached your coach message limit. Try again in %d minutes.", int(decision.RetryAfter.Minutes()))
+	default:
+		return "You have reached your coach message limit. Try again in about an hour."
 	}
 }

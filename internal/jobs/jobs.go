@@ -73,6 +73,13 @@ const (
 	// says something worth remembering and then stops at three is invisible to
 	// it, which is what this sweep exists to catch.
 	KindSweepMemories Kind = "sweep_memories"
+
+	// KindSweepQuotas drops rate-limit windows that have already closed.
+	//
+	// Nothing reads a closed window — a request always lands in the current one
+	// — so this is purely reclaiming space. Without it the table grows one row
+	// per account per guarded action per window, forever.
+	KindSweepQuotas Kind = "sweep_quotas"
 )
 
 // ExtractMemoriesPayload is the job body for KindExtractMemories.

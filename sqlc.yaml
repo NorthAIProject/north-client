@@ -281,3 +281,13 @@ sql:
         out: internal/health/db
         overrides: *overrides
 
+  - engine: postgresql
+    schema: migrations
+    queries: internal/quota/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: quotadb
+        out: internal/quota/db
+        overrides: *overrides
+

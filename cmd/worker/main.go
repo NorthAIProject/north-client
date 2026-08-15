@@ -37,6 +37,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/media"
 	"github.com/NorthAIProject/north-client/internal/memories"
 	"github.com/NorthAIProject/north-client/internal/mind"
+	"github.com/NorthAIProject/north-client/internal/quota"
 	"github.com/NorthAIProject/north-client/internal/reports"
 	"github.com/NorthAIProject/north-client/internal/shared/database"
 	"github.com/NorthAIProject/north-client/internal/sleep"
@@ -222,8 +223,15 @@ func run() error {
 	worker.Register(jobs.KindSweepMemories,
 		memories.NewExtractionSweeper(memoryExtract.Conversations, queue, log).HandleSweep)
 
+	// Reclaiming space, nothing more: a closed rate-limit window is never read
+	// again. Daily rather than hourly because the rows are tiny and keeping a
+	// day of them is what lets an operator explain a refusal after the fact.
+	worker.Register(jobs.KindSweepQuotas,
+		quota.NewService(quota.NewRepository(pool), nil, nil).HandleSweep)
+
 	worker.RegisterPeriodic(15*time.Minute, jobs.KindSweepEmbeddings, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepMemories, struct{}{})
+	worker.RegisterPeriodic(24*time.Hour, jobs.KindSweepQuotas, struct{}{})
 
 	log.Info("worker ready",
 		slog.String("ai_provider", registry.DefaultName()),

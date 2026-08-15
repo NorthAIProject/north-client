@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 	"github.com/posthog/posthog-go"
@@ -51,6 +52,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/mind"
 	"github.com/NorthAIProject/north-client/internal/onboarding"
 	"github.com/NorthAIProject/north-client/internal/preferences"
+	"github.com/NorthAIProject/north-client/internal/quota"
 	"github.com/NorthAIProject/north-client/internal/reports"
 	"github.com/NorthAIProject/north-client/internal/settings"
 	"github.com/NorthAIProject/north-client/internal/shared/database"
@@ -239,7 +241,27 @@ func routes(
 	if embedder != nil {
 		documentSvc = documentSvc.WithEmbeddings(embedder, slog.Default())
 	}
-	documentHandler := documents.NewHandler(documentSvc)
+	// One quota service for every guarded surface, so the budgets live in one
+	// table and one place in the configuration rather than one per handler.
+	//
+	// The identity function is passed in rather than imported inside the
+	// package: quota counts, it does not decide who is signed in.
+	quotaSvc := quota.NewService(
+		quota.NewRepository(pool),
+		map[quota.Action]quota.Limit{
+			quota.CoachMessage:    {PerWindow: cfg.Quota.CoachMessages, Window: time.Hour},
+			quota.DocumentUpload:  {PerWindow: cfg.Quota.DocumentUploads, Window: time.Hour},
+			quota.DocumentReindex: {PerWindow: cfg.Quota.DocumentReindexes, Window: time.Hour},
+			quota.ReportGenerate:  {PerWindow: cfg.Quota.ReportGenerations, Window: time.Hour},
+			quota.MediaAnalysis:   {PerWindow: cfg.Quota.MediaAnalyses, Window: time.Hour},
+		},
+		func(ctx context.Context) (uuid.UUID, bool) {
+			user, ok := auth.UserFrom(ctx)
+			return user.ID, ok
+		},
+	)
+
+	documentHandler := documents.NewHandler(documentSvc, quotaSvc)
 
 	vaultSvc := vault.NewService(vault.Options{
 		Repository: vault.NewRepository(vaultdb.New(pool)),
@@ -273,7 +295,7 @@ func routes(
 		Provider:   cfg.AI.UploadProvider,
 		Model:      cfg.AI.Model,
 	})
-	mediaHandler := media.NewHandler(mediaSvc)
+	mediaHandler := media.NewHandler(mediaSvc, quotaSvc)
 
 	// Biometrics -> calculator/activity both need the user's current weight,
 	// so biometrics is constructed first and passed in as a lookup rather
@@ -410,7 +432,7 @@ func routes(
 		Client:     reports.ClientFromRegistry(registry),
 		Context:    reports.NewInsightsContext(insightsSvc, mealProgressSvc, memorySvc),
 	})
-	reportHandler := reports.NewHandler(reportSvc)
+	reportHandler := reports.NewHandler(reportSvc, quotaSvc)
 
 	// One registry of capabilities, shared by the coach's chat loop and the
 	// MCP server. Two definitions of "calculate my macros" would drift, and
@@ -457,7 +479,7 @@ func routes(
 		Model:     cfg.AI.Model,
 		FastModel: cfg.AI.FastModel,
 	})
-	coachHandler := coach.NewHandler(coachSvc)
+	coachHandler := coach.NewHandler(coachSvc, quotaSvc)
 
 	// Given the coach so the questionnaire ends in a thread that is already
 	// being answered, rather than an empty chat box the person has to think of

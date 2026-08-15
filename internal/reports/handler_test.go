@@ -13,6 +13,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/ai/fake"
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/jobs"
+	"github.com/NorthAIProject/north-client/internal/quota"
 	"github.com/NorthAIProject/north-client/internal/reports"
 	"github.com/NorthAIProject/north-client/internal/shared/database/testdb"
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -61,7 +62,18 @@ func newHarness(t *testing.T) harness {
 	r.Use(mw.LoadUser)
 	r.Group(func(r chi.Router) {
 		r.Use(mw.RequireAuth)
-		reports.NewHandler(svc).Routes(r)
+		// A real quota service, wired the way main.go wires it, so these tests
+		// also prove the guard leaves the ordinary path alone. The budget is
+		// far above anything a test spends.
+		quotas := quota.NewService(
+			quota.NewRepository(pool),
+			map[quota.Action]quota.Limit{quota.ReportGenerate: {PerWindow: 1000, Window: time.Hour}},
+			func(ctx context.Context) (uuid.UUID, bool) {
+				u, ok := auth.UserFrom(ctx)
+				return u.ID, ok
+			},
+		)
+		reports.NewHandler(svc, quotas).Routes(r)
 	})
 
 	return harness{

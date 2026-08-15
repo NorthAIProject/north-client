@@ -1,0 +1,24 @@
+package quota
+
+import (
+	"github.com/NorthAIProject/north-client/web/shared/ui/alert"
+	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
+)
+
+// Refused is what a person sees instead of the thing they asked for.
+//
+// It replaces the element that made the request rather than appearing beside
+// it, so the refusal lands where their attention already is. The htmx-config in
+// the base layout is what lets a 429 swap at all — without the rule for that
+// status this renders into nothing.
+templ Refused(action, retryAfter string) {
+	@alert.Alert(alert.Props{Variant: alert.VariantDestructive}) {
+		@icon.TriangleAlert(icon.Props{Class: "size-4"})
+		@alert.Title() {
+			You have hit the limit on { action }
+		}
+		@alert.Description() {
+			Nothing was lost. Try again { retryAfter }.
+		}
+	}
+}

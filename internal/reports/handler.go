@@ -11,24 +11,28 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/quota"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	reportpages "github.com/NorthAIProject/north-client/web/reports"
 )
 
 type Handler struct {
-	svc *Service
+	svc    *Service
+	quotas *quota.Service
 }
 
-func NewHandler(svc *Service) *Handler { return &Handler{svc: svc} }
+func NewHandler(svc *Service, quotas *quota.Service) *Handler {
+	return &Handler{svc: svc, quotas: quotas}
+}
 
 // Routes mounts the review pages. Must be behind RequireAuth.
 func (h *Handler) Routes(r chi.Router) {
 	r.Get("/reports", h.index)
-	r.Post("/reports/generate", h.generate)
+	r.With(h.quotas.Guard(quota.ReportGenerate)).Post("/reports/generate", h.generate)
 	r.Get("/reports/{id}", h.show)
 	r.Post("/reports/{id}/archive", h.archive)
-	r.Post("/reports/{id}/regenerate", h.regenerate)
+	r.With(h.quotas.Guard(quota.ReportGenerate)).Post("/reports/{id}/regenerate", h.regenerate)
 }
 
 func (h *Handler) index(w http.ResponseWriter, r *http.Request) {

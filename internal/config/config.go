@@ -49,6 +49,7 @@ type Config struct {
 	Embedding  EmbeddingConfig
 	Encryption EncryptionConfig
 	PostHog    PostHogConfig
+	Quota      QuotaConfig
 
 	// MCPListenAddr is where cmd/mcp-server listens. It defaults to the
 	// loopback interface rather than all of them: the MCP surface authenticates
@@ -169,6 +170,22 @@ func (e EncryptionConfig) Sealer() (*secret.Sealer, error) {
 type PostHogConfig struct {
 	APIKey string
 	Host   string
+}
+
+// QuotaConfig bounds how often one account may take an action that costs money
+// or real work. Every value is per hour.
+//
+// Zero means "use the package default" rather than "forbid", so an operator who
+// mistypes a variable name gets the shipped bound rather than a feature that
+// refuses everything. Deliberately not a map keyed by action name: an
+// unrecognised key in an env var would be silent, and a misspelled limit that
+// looks configured is worse than one that plainly is not.
+type QuotaConfig struct {
+	CoachMessages     int
+	DocumentUploads   int
+	DocumentReindexes int
+	ReportGenerations int
+	MediaAnalyses     int
 }
 
 // OpenAICompatConfig configures one backend speaking the OpenAI chat dialect.
@@ -310,6 +327,32 @@ func Load() (*Config, error) {
 		problems = append(problems, err.Error())
 	}
 	cfg.MCPRequestsPerMinute = mcpRate
+
+	// Per hour, not per minute: these are human actions with bursty shapes, and
+	// three coach messages in a row is somebody thinking out loud rather than
+	// somebody abusing the service.
+	for _, q := range []struct {
+		key   string
+		def   int
+		field *int
+	}{
+		{"QUOTA_COACH_MESSAGES_PER_HOUR", 30, &cfg.Quota.CoachMessages},
+		{"QUOTA_DOCUMENT_UPLOADS_PER_HOUR", 60, &cfg.Quota.DocumentUploads},
+		{"QUOTA_DOCUMENT_REINDEX_PER_HOUR", 10, &cfg.Quota.DocumentReindexes},
+		{"QUOTA_REPORT_GENERATIONS_PER_HOUR", 10, &cfg.Quota.ReportGenerations},
+		{"QUOTA_MEDIA_ANALYSES_PER_HOUR", 20, &cfg.Quota.MediaAnalyses},
+	} {
+		v, quotaErr := intValue(q.key, q.def)
+		if quotaErr != nil {
+			problems = append(problems, quotaErr.Error())
+			continue
+		}
+		if v < 0 {
+			problems = append(problems, q.key+" must not be negative")
+			continue
+		}
+		*q.field = v
+	}
 
 	// 1024 is the width of the vector column. A model of another width needs a
 	// migration, so a mismatch is refused at startup rather than at the first
