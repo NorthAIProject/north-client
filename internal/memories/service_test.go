@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/NorthAIProject/north-client/internal/conversations"
 	"github.com/NorthAIProject/north-client/internal/memories"
 	"github.com/NorthAIProject/north-client/internal/memories/extract"
 	"github.com/NorthAIProject/north-client/internal/memories/memory"
@@ -284,5 +285,56 @@ func TestValidate(t *testing.T) {
 	_, err := memories.Validate(memories.Input{Content: "short"})
 	if err == nil {
 		t.Fatal("expected error")
+	}
+}
+
+func TestListPendingForConversation(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	user := seedUser(t, pool, "reflect-mem@north.test")
+	svc := memories.NewService(memories.NewRepository(pool))
+	convos := conversations.NewService(conversations.NewRepository(pool))
+
+	thisThread, err := convos.StartKind(ctx, user.ID, conversations.KindReflection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherThread, err := convos.Start(ctx, user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err = svc.InsertExtractions(ctx, user.ID, thisThread.ID, []extract.Candidate{
+		{Category: memory.CategoryHabit, Content: "Sleeps badly before deadlines", Confidence: 0.9},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = svc.InsertExtractions(ctx, user.ID, otherThread.ID, []extract.Candidate{
+		{Category: memory.CategoryPreference, Content: "Prefers evening training sessions", Confidence: 0.8},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	list, err := svc.ListPendingForConversation(ctx, user.ID, thisThread.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 {
+		t.Fatalf("pending for this thread = %d", len(list))
+	}
+	if list[0].Content != "Sleeps badly before deadlines" {
+		t.Fatalf("content = %q", list[0].Content)
+	}
+
+	if _, err = svc.Approve(ctx, list[0].ID, user.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	list, err = svc.ListPendingForConversation(ctx, user.ID, thisThread.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 0 {
+		t.Fatalf("approved fact still pending for this thread: %d", len(list))
 	}
 }
