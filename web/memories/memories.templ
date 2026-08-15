@@ -3,6 +3,8 @@ package memories
 import (
 	"strconv"
 
+	"github.com/google/uuid"
+
 	"github.com/NorthAIProject/north-client/internal/memories/memory"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
@@ -238,6 +240,49 @@ templ pendingCard(m memory.Memory) {
 				</form>
 			</div>
 		}
+	}
+}
+
+// ConversationPending is the chip list a finished reflection loads.
+templ ConversationPending(conversationID uuid.UUID, pending []memory.Memory) {
+	if len(pending) > 0 {
+		<div class="space-y-3">
+			<p class="text-sm font-medium">Save anything from this reflection?</p>
+			for _, m := range pending {
+				@conversationMemoryChip(conversationID, m)
+			}
+		</div>
+	}
+}
+
+templ conversationMemoryChip(conversationID uuid.UUID, m memory.Memory) {
+	@card.Card(card.Props{Class: "border-hairline"}) {
+		@card.Content(card.ContentProps{Class: "space-y-3 py-4"}) {
+			<p class="text-sm">{ m.Content }</p>
+			<div class="flex flex-wrap gap-2">
+				<form method="post" action={ templ.SafeURL("/app/memories/" + m.ID.String() + "/approve") } { conversationSwapAttrs()... }>
+					@ui.CSRFInput()
+					<input type="hidden" name="conversation_id" value={ conversationID.String() }/>
+					@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Class: "bg-signal text-background hover:bg-signal/90"}) {
+						Save to memory
+					}
+				</form>
+				<form method="post" action={ templ.SafeURL("/app/memories/" + m.ID.String() + "/reject") } { conversationSwapAttrs()... }>
+					@ui.CSRFInput()
+					<input type="hidden" name="conversation_id" value={ conversationID.String() }/>
+					@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Variant: button.VariantOutline}) {
+						Skip
+					}
+				</form>
+			</div>
+		}
+	}
+}
+
+func conversationSwapAttrs() templ.Attributes {
+	return templ.Attributes{
+		"hx-target": "#reflection-memories",
+		"hx-swap":   "innerHTML",
 	}
 }
 
