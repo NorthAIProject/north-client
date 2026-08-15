@@ -159,3 +159,38 @@ func TestCheckInsRenderUnderTheirHeading(t *testing.T) {
 		t.Fatalf("an empty section must say so rather than go missing:\n%s", empty.Render())
 	}
 }
+
+func TestMemoriesRenderUnderTheirHeading(t *testing.T) {
+	pool := testdb.New(t)
+	convos := conversations.NewService(conversations.NewRepository(pool))
+
+	const ref = "memory:6f2c81a4-1111-2222-3333-444444444444"
+	const text = "[injury, pinned] Left knee is sore on deep squats"
+
+	filled, err := coach.NewContextBuilder(convos,
+		fakeSource{name: "memories", fill: func(c *coach.Context) {
+			c.Memories = append(c.Memories, coach.Evidence{
+				Ref:   ref,
+				Text:  text,
+				Label: "profile fact",
+			})
+		}},
+	).Build(context.Background(), coach.ContextRequest{User: testUser()})
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+
+	rendered := filled.Render()
+	want := "Known about them:\n- [[" + ref + "]] " + text
+	if !strings.Contains(rendered, want) {
+		t.Fatalf("memories should render as cited bullets under their heading:\n%s", rendered)
+	}
+
+	empty, err := coach.NewContextBuilder(convos).Build(context.Background(), coach.ContextRequest{User: testUser()})
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	if !strings.Contains(empty.Render(), "Known about them: none recorded yet") {
+		t.Fatalf("an empty memory section must say so rather than go missing:\n%s", empty.Render())
+	}
+}
