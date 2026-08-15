@@ -158,6 +158,16 @@ Header:    Authorization: Bearer %s`, url, token)
 // because an agent that verifies a new connection by logging a check-in has
 // written to the user's record to prove it could.
 func setupPrompt(url, token string) string {
+	// One line per paragraph, deliberately unwrapped.
+	//
+	// This text is displayed in a narrow column that soft-wraps it, so hard
+	// breaks sized for an 80-column terminal wrapped a second time and left
+	// orphans mid-sentence — "Do not" alone on a line, then "register North a
+	// second time…". Nothing downstream wants the breaks either: the string is
+	// pasted into an agent, where line length carries no meaning.
+	//
+	// The transport block keeps its own lines, because the alignment there is
+	// the point.
 	return strings.Join([]string{
 		`Add an MCP server called "north" to your own configuration, then confirm it works.`,
 		``,
@@ -165,17 +175,10 @@ func setupPrompt(url, token string) string {
 		`  URL:       ` + url,
 		`  Header:    Authorization: Bearer ` + token,
 		``,
-		`Put the credential in a header, never in the URL — URLs end up in logs. Do not`,
-		`register North a second time under another name; duplicate tool names across MCP`,
-		`servers make tool selection unpredictable.`,
+		`Put the credential in a header, never in the URL — URLs end up in logs. Do not register North a second time under another name; duplicate tool names across MCP servers make tool selection unpredictable.`,
 		``,
-		`Then verify by listing the tools: you should see search_goals, list_check_ins,`,
-		`search_knowledge and ask_coach. Report what you found. Do not call any tool that`,
-		`writes (create_check_in, add_goal_update, ask_coach, calculate_macros) as part of`,
-		`this check.`,
+		`Then verify by listing the tools: you should see search_goals, list_check_ins, search_knowledge and ask_coach. Report what you found. Do not call any tool that writes (create_check_in, add_goal_update, ask_coach, calculate_macros) as part of this check.`,
 		``,
-		`Once connected: every call acts as one account — mine. Ask before writing, and`,
-		`when you use a passage from search_documents, quote the ref it gave you rather`,
-		`than inventing one.`,
+		`Once connected: every call acts as one account — mine. Ask before writing, and when you use a passage from search_documents, quote the ref it gave you rather than inventing one.`,
 	}, "\n")
 }

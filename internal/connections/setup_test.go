@@ -179,3 +179,31 @@ func TestPreviewCarriesAnObviouslyFakeToken(t *testing.T) {
 		t.Error("the placeholder does not say what it is")
 	}
 }
+
+// The prompt is shown in a narrow column that soft-wraps it. Hard breaks sized
+// for a terminal wrapped a second time and stranded fragments like "Do not" on
+// their own line, which reads as a broken paste rather than an instruction.
+//
+// Only the transport block keeps its own lines; everything else is one line per
+// paragraph and lets the container decide.
+func TestTheSetupPromptDoesNotHardWrapItsParagraphs(t *testing.T) {
+	setup := instructions(t, connections.ClientOther)
+
+	for _, line := range strings.Split(setup.Prompt, "\n") {
+		// The aligned block is indented and exempt; blank lines separate
+		// paragraphs.
+		if line == "" || strings.HasPrefix(line, "  ") {
+			continue
+		}
+		if strings.HasSuffix(line, "Do not") || strings.HasSuffix(line, "and") {
+			t.Errorf("paragraph is hard-wrapped mid-sentence: %q", line)
+		}
+	}
+
+	// The transport block still carries its three aligned lines.
+	for _, want := range []string{"  Transport: streamable HTTP", "  URL:       ", "  Header:    Authorization: Bearer "} {
+		if !strings.Contains(setup.Prompt, want) {
+			t.Errorf("the transport block lost %q", want)
+		}
+	}
+}
