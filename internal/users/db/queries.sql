@@ -42,3 +42,12 @@ SET onboarded_at = now(),
 WHERE id = $1
   AND onboarded_at IS NULL
 RETURNING *;
+
+-- name: ListOnboardedUsers :many
+-- Keyset page of accounts the nudge sweep may evaluate. First-run users
+-- stay silent until they finish or skip onboarding.
+SELECT * FROM users
+WHERE onboarded_at IS NOT NULL
+  AND (@after::uuid = '00000000-0000-0000-0000-000000000000' OR id > @after)
+ORDER BY id
+LIMIT @result_limit;
