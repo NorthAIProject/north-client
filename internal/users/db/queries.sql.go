@@ -142,6 +142,52 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 	return i, err
 }
 
+const listOnboardedUsers = `-- name: ListOnboardedUsers :many
+SELECT id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at, tier, onboarded_at FROM users
+WHERE onboarded_at IS NOT NULL
+  AND ($1::uuid = '00000000-0000-0000-0000-000000000000' OR id > $1)
+ORDER BY id
+LIMIT $2
+`
+
+type ListOnboardedUsersParams struct {
+	After       uuid.UUID
+	ResultLimit int32
+}
+
+// Keyset page of accounts the nudge sweep may evaluate. First-run users
+// stay silent until they finish or skip onboarding.
+func (q *Queries) ListOnboardedUsers(ctx context.Context, arg ListOnboardedUsersParams) ([]User, error) {
+	rows, err := q.db.Query(ctx, listOnboardedUsers, arg.After, arg.ResultLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []User{}
+	for rows.Next() {
+		var i User
+		if err := rows.Scan(
+			&i.ID,
+			&i.Email,
+			&i.PasswordHash,
+			&i.DisplayName,
+			&i.Timezone,
+			&i.CoachingStyle,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Tier,
+			&i.OnboardedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const markUserOnboarded = `-- name: MarkUserOnboarded :one
 UPDATE users
 SET onboarded_at = now(),

@@ -532,6 +532,19 @@ type UserMemory struct {
 	Excluded             bool
 }
 
+type UserNudge struct {
+	ID          uuid.UUID
+	UserID      uuid.UUID
+	Kind        string
+	DedupeKey   string
+	Title       string
+	Body        string
+	Href        string
+	ReadAt      *time.Time
+	DismissedAt *time.Time
+	CreatedAt   time.Time
+}
+
 type UserPreference struct {
 	ID                uuid.UUID
 	UserID            uuid.UUID
