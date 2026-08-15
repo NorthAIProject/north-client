@@ -532,7 +532,12 @@ func routes(
 		r.Mount("/ingest/health", http.StripPrefix("/ingest/health", health.NewHandler(health.HandlerConfig{
 			Service: healthSvc,
 			Auth:    connectionSvc,
-			Log:     slog.Default(),
+
+			// Left at the package defaults. The MCP bound is configurable
+			// because a call there can reach a paid model and an operator may
+			// need to tighten it; a write here costs a transaction, so there is
+			// nothing yet for a knob to protect against.
+			Log: slog.Default(),
 		})))
 	})
 
