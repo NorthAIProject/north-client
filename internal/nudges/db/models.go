@@ -2,7 +2,7 @@
 // versions:
 //   sqlc v1.31.1
 
-package usersdb
+package nudgesdb
 
 import (
 	"net/netip"
@@ -380,13 +380,6 @@ type PasswordResetToken struct {
 	ExpiresAt time.Time
 	CreatedAt time.Time
 	UsedAt    *time.Time
-}
-
-type QuotaCounter struct {
-	UserID      uuid.UUID
-	Action      string
-	WindowStart time.Time
-	Used        int32
 }
 
 type Report struct {

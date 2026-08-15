@@ -122,6 +122,10 @@ func (s *Service) CountPending(ctx context.Context, userID uuid.UUID) (int, erro
 	return s.repo.CountPending(ctx, userID)
 }
 
+func (s *Service) ListPendingForConversation(ctx context.Context, userID, conversationID uuid.UUID) ([]Memory, error) {
+	return s.repo.ListPendingForConversation(ctx, userID, conversationID)
+}
+
 // ForContext returns the approved memories the coach should see this turn.
 //
 // With a query, facts are ranked against it and pinned facts are kept

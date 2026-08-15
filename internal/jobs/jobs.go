@@ -80,6 +80,10 @@ const (
 	// — so this is purely reclaiming space. Without it the table grows one row
 	// per account per guarded action per window, forever.
 	KindSweepQuotas Kind = "sweep_quotas"
+
+	// KindSweepNudges evaluates missed check-ins and approaching deadlines
+	// for onboarded accounts and stores any new in-app notes.
+	KindSweepNudges Kind = "sweep_nudges"
 )
 
 // ExtractMemoriesPayload is the job body for KindExtractMemories.

@@ -11,7 +11,9 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/layout"
 	"github.com/NorthAIProject/north-client/web/shared/markdown"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/badge"
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
 	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
 	"github.com/NorthAIProject/north-client/web/shared/ui/textarea"
 )
@@ -63,8 +65,10 @@ templ Page(user users.User, conversation conversations.Conversation, messages []
 			@threadList(list, conversation.ID, stats)
 			<div class="flex min-w-0 flex-1 flex-col">
 				@chatHeader(conversation)
-				@transcript(messages, conversation.ID)
-				@composer(conversation.ID, "")
+				@transcript(messages, conversation)
+				if !conversation.Ended() {
+					@composer(conversation.ID, "")
+				}
 			</div>
 		</div>
 	}
@@ -84,13 +88,16 @@ templ Empty(user users.User, list []conversations.Conversation, stats CoachStats
 			<p class="text-muted-foreground max-w-sm text-sm leading-relaxed">
 				North remembers what you tell it. Start with what you are working on.
 			</p>
-			<form method="post" action="/app/chat">
-				@ui.CSRFInput()
-				@button.Button(button.Props{Type: button.TypeSubmit, Class: signalCTA}) {
-					@icon.Plus(icon.Props{Class: "size-4"})
-					New conversation
-				}
-			</form>
+			<div class="flex flex-wrap items-center justify-center gap-2">
+				<form method="post" action="/app/chat">
+					@ui.CSRFInput()
+					@button.Button(button.Props{Type: button.TypeSubmit, Class: signalCTA}) {
+						@icon.Plus(icon.Props{Class: "size-4"})
+						New conversation
+					}
+				</form>
+				@startReflectionForm(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline})
+			</div>
 		</div>
 	}
 }
@@ -110,6 +117,11 @@ templ chatHeader(c conversations.Conversation) {
 				@icon.PanelLeft(icon.Props{Class: "size-4"})
 			</button>
 			<span class="truncate text-sm font-medium">{ c.DisplayTitle() }</span>
+			if c.IsReflection() {
+				@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
+					Reflection
+				}
+			}
 		</div>
 		// A conversation is memory. Deleting one takes a deliberate second
 		// action rather than a stray tap on a small screen.
@@ -139,13 +151,16 @@ templ threadList(list []conversations.Conversation, current uuid.UUID, stats Coa
 	>
 		<div class="border-border space-y-3 border-b p-3">
 			@coachKpiStrip(stats)
-			<form method="post" action="/app/chat">
-				@ui.CSRFInput()
-				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, FullWidth: true, Size: button.SizeSm}) {
-					@icon.Plus(icon.Props{Class: "size-4"})
-					New conversation
-				}
-			</form>
+			<div class="space-y-2">
+				<form method="post" action="/app/chat">
+					@ui.CSRFInput()
+					@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, FullWidth: true, Size: button.SizeSm}) {
+						@icon.Plus(icon.Props{Class: "size-4"})
+						New conversation
+					}
+				</form>
+				@startReflectionForm(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, FullWidth: true, Size: button.SizeSm})
+			</div>
 		</div>
 		<nav class="flex-1 space-y-0.5 overflow-y-auto p-2">
 			for _, c := range list {
@@ -173,23 +188,43 @@ templ threadLink(c conversations.Conversation, active bool) {
 		<a
 			href={ templ.SafeURL("/app/chat/" + c.ID.String()) }
 			aria-current="page"
-			class="text-foreground relative block truncate rounded-md py-2 pl-3 pr-3 text-sm font-medium before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-signal"
+			class="text-foreground relative flex items-center gap-2 truncate rounded-md py-2 pl-3 pr-3 text-sm font-medium before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-signal"
 		>
-			{ c.DisplayTitle() }
+			<span class="min-w-0 truncate">{ c.DisplayTitle() }</span>
+			if c.IsReflection() {
+				@badge.Badge(badge.Props{Variant: badge.VariantSecondary, Class: "shrink-0"}) {
+					Reflection
+				}
+			}
 		</a>
 	} else {
 		<a
 			href={ templ.SafeURL("/app/chat/" + c.ID.String()) }
-			class="text-muted-foreground hover:bg-accent/60 hover:text-foreground block truncate rounded-md px-3 py-2 text-sm transition-colors"
+			class="text-muted-foreground hover:bg-accent/60 hover:text-foreground flex items-center gap-2 truncate rounded-md px-3 py-2 text-sm transition-colors"
 		>
-			{ c.DisplayTitle() }
+			<span class="min-w-0 truncate">{ c.DisplayTitle() }</span>
+			if c.IsReflection() {
+				@badge.Badge(badge.Props{Variant: badge.VariantSecondary, Class: "shrink-0"}) {
+					Reflection
+				}
+			}
 		</a>
 	}
 }
 
+templ startReflectionForm(props button.Props) {
+	<form method="post" action="/app/chat">
+		@ui.CSRFInput()
+		<input type="hidden" name="kind" value="reflection"/>
+		@button.Button(props) {
+			Start a reflection
+		}
+	</form>
+}
+
 // transcript holds the message history. New turns are appended into it by HTMX,
 // and Alpine keeps it scrolled to the bottom as content arrives.
-templ transcript(messages []conversations.Message, conversationID uuid.UUID) {
+templ transcript(messages []conversations.Message, conversation conversations.Conversation) {
 	<div
 		id="transcript"
 		class="min-h-0 flex-1 overflow-y-auto"
@@ -199,14 +234,62 @@ templ transcript(messages []conversations.Message, conversationID uuid.UUID) {
 		x-init="pin(); new MutationObserver(() => pin()).observe($el, { childList: true, subtree: true, characterData: true })"
 	>
 		<div class="mx-auto w-full max-w-3xl space-y-6 p-6">
-			if len(messages) == 0 {
+			if conversation.IsReflection() && len(messages) == 0 && !conversation.Ended() {
+				@beginReflectionExchange(conversation.ID)
+			} else if len(messages) == 0 {
 				@conversationStarters()
+			} else {
+				for _, m := range messages {
+					@Bubble(m)
+				}
 			}
-			for _, m := range messages {
-				@Bubble(m)
+			if conversation.Ended() {
+				@reflectionClose(conversation)
 			}
 		</div>
 	</div>
+}
+
+templ beginReflectionExchange(conversationID uuid.UUID) {
+	<div class="flex flex-col items-start gap-1" hx-ext="sse" sse-connect={ beginStreamURL(conversationID) } sse-close="done">
+		<span class="font-mono text-[10px] uppercase tracking-[0.14em] text-agent">North</span>
+		<div
+			class="border-hairline bg-surface max-w-[85%] rounded-2xl rounded-bl-sm border px-4 py-2.5 text-sm whitespace-pre-wrap"
+			sse-swap="token,error"
+			hx-swap="beforeend"
+		></div>
+		<div
+			class="hidden"
+			hx-trigger="sse:done"
+			hx-get={ "/app/chat/" + conversationID.String() }
+			hx-target="#chat-root"
+			hx-select="#chat-root"
+			hx-swap="outerHTML"
+		></div>
+	</div>
+}
+
+func beginStreamURL(conversationID uuid.UUID) string {
+	return "/app/chat/" + conversationID.String() + "/stream?begin=1"
+}
+
+templ reflectionClose(c conversations.Conversation) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Title() {
+				Reflection summary
+			}
+		}
+		@card.Content(card.ContentProps{Class: proseClasses}) {
+			@markdown.Render(c.Summary)
+		}
+	}
+	<div
+		id="reflection-memories"
+		hx-get={ "/app/memories/for/" + c.ID.String() }
+		hx-trigger="load"
+		hx-swap="innerHTML"
+	></div>
 }
 
 // conversationStarters fills an empty thread with something to click. Answering

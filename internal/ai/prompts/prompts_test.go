@@ -30,7 +30,7 @@ func TestAllPromptsParse(t *testing.T) {
 func TestNamedPromptsExist(t *testing.T) {
 	t.Parallel()
 
-	for _, name := range []string{CoachSystem, WorkoutPlan, FormAnalysis, ConversationTitle} {
+	for _, name := range []string{CoachSystem, WorkoutPlan, FormAnalysis, ConversationTitle, ReflectionSession} {
 		body, err := Raw(name)
 		if err != nil {
 			t.Errorf("%s: %v", name, err)
@@ -67,6 +67,27 @@ func TestCoachPromptStatesGroundingRules(t *testing.T) {
 	for what, phrase := range required {
 		if !strings.Contains(lower, phrase) {
 			t.Errorf("the coach prompt no longer %s (looked for %q)", what, phrase)
+		}
+	}
+}
+
+func TestReflectionPromptStatesTheSessionRules(t *testing.T) {
+	t.Parallel()
+
+	body, err := Raw(ReflectionSession)
+	if err != nil {
+		t.Fatalf("read reflection prompt: %v", err)
+	}
+	lower := strings.ToLower(body)
+	for _, phrase := range []string{
+		"reflection session",
+		"one question at a time",
+		"at least 3 and at most 5",
+		"## reflection summary",
+		"{{.questionsasked}}",
+	} {
+		if !strings.Contains(lower, phrase) {
+			t.Errorf("reflection prompt missing %q", phrase)
 		}
 	}
 }

@@ -164,6 +164,9 @@ func (s *Service) SendMessage(ctx context.Context, user users.User, conversation
 	if err != nil {
 		return nil, err
 	}
+	if conversation.Ended() {
+		return nil, apperr.Wrap(apperr.ErrConflict, "this reflection has ended")
+	}
 
 	if _, err = s.conversations.AppendUserMessage(ctx, conversationID, text, nil); err != nil {
 		return nil, err
@@ -180,7 +183,7 @@ func (s *Service) SendMessage(ctx context.Context, user users.User, conversation
 		return nil, err
 	}
 
-	system, err := s.promptB.Coach(coachCtx)
+	system, err := s.systemPrompt(coachCtx, conversation)
 	if err != nil {
 		return nil, err
 	}
@@ -194,7 +197,7 @@ func (s *Service) SendMessage(ctx context.Context, user users.User, conversation
 		Model:    s.model,
 		System:   system,
 		Messages: conversations.ToAIMessages(coachCtx.RecentMessages),
-		Tools:    s.toolDeclarations(),
+		Tools:    s.toolsFor(conversation),
 	}
 
 	stream, client, err := s.startChat(ctx, genCtx, user, req)
@@ -578,22 +581,143 @@ func (s *Service) pump(
 		s.titleConversation(saveCtx, target.user, target.conversation.ID, target.firstMessage)
 	}
 
-	s.enqueueMemoryExtraction(saveCtx, target)
+	ended := s.maybeEndReflection(saveCtx, target.conversation, text)
+	s.enqueueMemoryExtraction(saveCtx, target, ended)
+}
+
+const reflectionSummaryHeading = "## Reflection summary"
+
+func (s *Service) systemPrompt(cc *Context, conversation conversations.Conversation) (string, error) {
+	if conversation.IsReflection() {
+		return s.promptB.Reflection(cc, countModelMessages(cc.RecentMessages))
+	}
+	return s.promptB.Coach(cc)
+}
+
+func (s *Service) toolsFor(conversation conversations.Conversation) []ai.Tool {
+	if conversation.IsReflection() {
+		return nil
+	}
+	return s.toolDeclarations()
+}
+
+func countModelMessages(messages []conversations.Message) int {
+	n := 0
+	for _, m := range messages {
+		if m.IsModel() {
+			n++
+		}
+	}
+	return n
+}
+
+func extractReflectionSummary(text string) (string, bool) {
+	idx := strings.Index(text, reflectionSummaryHeading)
+	if idx < 0 {
+		return "", false
+	}
+	return strings.TrimSpace(text[idx+len(reflectionSummaryHeading):]), true
+}
+
+func (s *Service) maybeEndReflection(ctx context.Context, conversation conversations.Conversation, reply string) bool {
+	if !conversation.IsReflection() || conversation.Ended() {
+		return conversation.Ended()
+	}
+	summary, ok := extractReflectionSummary(reply)
+	if !ok {
+		return false
+	}
+	if err := s.conversations.SetSummary(ctx, conversation.ID, summary); err != nil {
+		middleware.FromContext(ctx).Warn("could not store reflection summary", slog.Any("error", err))
+		return false
+	}
+	return true
+}
+
+// BeginReflection asks the first question of an empty reflection thread.
+func (s *Service) BeginReflection(ctx context.Context, user users.User, conversationID uuid.UUID) (<-chan ai.StreamChunk, error) {
+	conversation, err := s.conversations.Get(ctx, conversationID, user.ID)
+	if err != nil {
+		return nil, err
+	}
+	if !conversation.IsReflection() {
+		return nil, apperr.Wrap(apperr.ErrValidation, "not a reflection")
+	}
+	if conversation.Ended() {
+		return nil, apperr.Wrap(apperr.ErrConflict, "this reflection has ended")
+	}
+
+	history, err := s.conversations.History(ctx, conversationID)
+	if err != nil {
+		return nil, err
+	}
+	if len(history) > 0 {
+		return nil, apperr.Wrap(apperr.ErrConflict, "reflection already started")
+	}
+
+	coachCtx, err := s.contextB.Build(ctx, ContextRequest{
+		User:           user,
+		ConversationID: conversationID,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	system, err := s.promptB.Reflection(coachCtx, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	genCtx, cancelGen := context.WithTimeout(context.WithoutCancel(ctx), generationTimeout)
+
+	req := ai.Request{
+		Model:  s.model,
+		System: system,
+		// Sent to the model only. Nothing is stored as a user turn: the
+		// person has not spoken yet.
+		Messages: []ai.Message{ai.UserText("Begin the reflection.")},
+	}
+
+	stream, client, err := s.startChat(ctx, genCtx, user, req)
+	if err != nil {
+		cancelGen()
+		return nil, apperr.Wrap(err, "coach: start reflection")
+	}
+
+	out := make(chan ai.StreamChunk)
+	go s.pump(ctx, genCtx, cancelGen, stream, out, pumpTarget{
+		conversation: conversation,
+		user:         user,
+		provider:     client.Name(),
+		firstMessage: "",
+		client:       client,
+		request:      req,
+		offeredRefs:  coachCtx.OfferedRefs(),
+		traceID:      uuid.New().String(),
+	})
+	return out, nil
+}
+
+func (s *Service) StartReflection(ctx context.Context, userID uuid.UUID) (conversations.Conversation, error) {
+	return s.conversations.StartKind(ctx, userID, conversations.KindReflection)
 }
 
 // enqueueMemoryExtraction proposes durable facts off the chat hot path.
 //
 // Failures are logged only: a missed extraction is preferable to a failed reply.
-func (s *Service) enqueueMemoryExtraction(ctx context.Context, target pumpTarget) {
+func (s *Service) enqueueMemoryExtraction(ctx context.Context, target pumpTarget, force bool) {
 	if s.queue == nil {
 		return
 	}
 	log := middleware.FromContext(ctx)
 
-	// Wait until the thread has real back-and-forth before filing notes.
-	recent, err := s.conversations.Recent(ctx, target.conversation.ID, 6)
-	if err != nil || len(recent) < 4 {
-		return
+	// Wait until the thread has real back-and-forth before filing notes,
+	// unless a reflection just closed — that is the moment to extract.
+	if !force {
+		recent, err := s.conversations.Recent(ctx, target.conversation.ID, 6)
+		if err != nil || len(recent) < 4 {
+			return
+		}
 	}
 
 	if _, err := s.queue.Enqueue(ctx, jobs.KindExtractMemories, jobs.ExtractMemoriesPayload{

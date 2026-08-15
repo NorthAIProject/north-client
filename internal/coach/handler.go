@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/conversations"
 	"github.com/NorthAIProject/north-client/internal/quota"
@@ -63,7 +64,20 @@ func (h *Handler) index(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) startConversation(w http.ResponseWriter, r *http.Request) {
 	user := auth.MustUser(r.Context())
 
-	conversation, err := h.svc.StartConversation(r.Context(), user.ID)
+	if err := r.ParseForm(); err != nil {
+		h.fail(w, r, apperr.ErrValidation)
+		return
+	}
+
+	var (
+		conversation conversations.Conversation
+		err          error
+	)
+	if strings.TrimSpace(r.PostFormValue("kind")) == conversations.KindReflection {
+		conversation, err = h.svc.StartReflection(r.Context(), user.ID)
+	} else {
+		conversation, err = h.svc.StartConversation(r.Context(), user.ID)
+	}
 	if err != nil {
 		h.fail(w, r, err)
 		return
@@ -121,6 +135,10 @@ func (h *Handler) sendMessage(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
+	if conversation.Ended() {
+		h.fail(w, r, apperr.Wrap(apperr.ErrConflict, "this reflection has ended"))
+		return
+	}
 
 	render(w, r, http.StatusOK, chatpages.PendingExchange(conversation.ID, text))
 }
@@ -146,8 +164,9 @@ func (h *Handler) stream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	begin := r.URL.Query().Get("begin") == "1"
 	pending := strings.TrimSpace(r.URL.Query().Get("m"))
-	if pending == "" {
+	if !begin && pending == "" {
 		http.Error(w, "nothing to answer", http.StatusBadRequest)
 		return
 	}
@@ -184,7 +203,15 @@ func (h *Handler) stream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	stream, err := h.svc.SendMessage(r.Context(), user, conversation.ID, pending)
+	// Both branches reach a model, so the budget is spent before either one is
+	// chosen: a reflection is generated from stored history and costs the same
+	// as an answer to a typed message.
+	var stream <-chan ai.StreamChunk
+	if begin {
+		stream, err = h.svc.BeginReflection(r.Context(), user, conversation.ID)
+	} else {
+		stream, err = h.svc.SendMessage(r.Context(), user, conversation.ID, pending)
+	}
 	if err != nil {
 		writeEvent(w, rc, "error", chatpages.StreamErrorHTML(friendly(err)))
 		writeEvent(w, rc, "done", "")
@@ -271,6 +298,8 @@ func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 		http.Error(w, "Not found.", http.StatusNotFound)
 	case apperr.Is(err, apperr.ErrValidation):
 		http.Error(w, "That request could not be read.", http.StatusUnprocessableEntity)
+	case apperr.Is(err, apperr.ErrConflict):
+		http.Error(w, "This reflection has ended.", http.StatusConflict)
 	default:
 		log.Error("chat request failed", slog.Any("error", err))
 		http.Error(w, "Something went wrong.", http.StatusInternalServerError)
@@ -284,6 +313,8 @@ func friendly(err error) string {
 		return "The coach is busy right now. Try again in a moment."
 	case apperr.Is(err, apperr.ErrForbidden):
 		return "North cannot reach its AI provider. Check the server configuration."
+	case apperr.Is(err, apperr.ErrConflict):
+		return "This reflection has ended."
 	default:
 		return "Something went wrong while writing that reply."
 	}

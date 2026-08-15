@@ -50,6 +50,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/media"
 	"github.com/NorthAIProject/north-client/internal/memories"
 	"github.com/NorthAIProject/north-client/internal/mind"
+	"github.com/NorthAIProject/north-client/internal/nudges"
 	"github.com/NorthAIProject/north-client/internal/onboarding"
 	"github.com/NorthAIProject/north-client/internal/preferences"
 	"github.com/NorthAIProject/north-client/internal/quota"
@@ -230,6 +231,9 @@ func routes(
 
 	checkinSvc := checkins.NewService(checkins.NewRepository(pool), goalSvc)
 	checkinHandler := checkins.NewHandler(checkinSvc, goalSvc)
+
+	nudgeSvc := nudges.NewService(nudges.NewRepository(pool), userSvc, checkinSvc, goalSvc)
+	nudgeHandler := nudges.NewHandler(nudgeSvc)
 
 	memorySvc := memories.NewService(memories.NewRepository(pool))
 	memoryHandler := memories.NewHandler(memorySvc)
@@ -413,6 +417,7 @@ func routes(
 		Sleep:         sleepSvc,
 		Activity:      activitySvc,
 		Mind:          mindSvc,
+		Nudges:        nudgeSvc,
 	})
 	dashboardHandler := dashboard.NewHandler(dashboardSvc)
 
@@ -611,6 +616,7 @@ func routes(
 
 				coachHandler.Routes(r)
 				checkinHandler.Routes(r)
+				nudgeHandler.Routes(r)
 				goalHandler.Routes(r)
 				memoryHandler.Routes(r)
 				documentHandler.Routes(r)

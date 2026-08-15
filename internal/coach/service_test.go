@@ -526,3 +526,125 @@ func TestUnknownTierFallsBackToTheMainChain(t *testing.T) {
 		t.Fatalf("reply = %q, want the main chain's answer", reply)
 	}
 }
+
+func TestStartReflectionUsesTheReflectionPrompt(t *testing.T) {
+	h := newHarness(t, fake.Text("What felt heavy this week?"))
+	ctx := context.Background()
+
+	conversation, err := h.coach.StartReflection(ctx, h.user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !conversation.IsReflection() {
+		t.Fatalf("kind = %q", conversation.Kind)
+	}
+
+	stream, err := h.coach.BeginReflection(ctx, h.user, conversation.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = drain(stream); err != nil {
+		t.Fatal(err)
+	}
+	waitForReply(t, h, conversation.ID, 3*time.Second)
+
+	system := h.client.Calls()[0].System
+	if !strings.Contains(strings.ToLower(system), "reflection session") {
+		t.Fatalf("system prompt is not the reflection prompt:\n%s", system)
+	}
+}
+
+func TestBeginReflectionAsksTheFirstQuestionWithoutAUserTurn(t *testing.T) {
+	h := newHarness(t, fake.Text("What felt heavy this week?"))
+	ctx := context.Background()
+	conversation, err := h.coach.StartReflection(ctx, h.user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stream, err := h.coach.BeginReflection(ctx, h.user, conversation.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = drain(stream); err != nil {
+		t.Fatal(err)
+	}
+	waitForReply(t, h, conversation.ID, 3*time.Second)
+
+	history, err := h.convos.History(ctx, conversation.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history) != 1 || !history[0].IsModel() {
+		t.Fatalf("history = %#v, want one model turn", history)
+	}
+}
+
+func TestReflectionDisablesTools(t *testing.T) {
+	tools := &stubTools{tools: []ai.Tool{{Name: "search_goals", Description: "look up goals"}}}
+	h := newToolHarness(t, fake.Text("What felt heavy this week?"), tools)
+	ctx := context.Background()
+	conversation, err := h.coach.StartReflection(ctx, h.user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stream, err := h.coach.SendMessage(ctx, h.user, conversation.ID, "The deadline.")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = drain(stream); err != nil {
+		t.Fatal(err)
+	}
+	if offered := h.client.Calls()[0].Tools; len(offered) != 0 {
+		t.Fatalf("reflection offered tools: %#v", offered)
+	}
+}
+
+func TestReflectionSummaryIsStoredAndEndsTheSession(t *testing.T) {
+	h := newHarness(t, fake.Text("## Reflection summary\n\nYou are tired. Sleep by 22:00 tonight."))
+	ctx := context.Background()
+	conversation, err := h.coach.StartReflection(ctx, h.user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stream, err := h.coach.SendMessage(ctx, h.user, conversation.ID, "I have been sleeping badly.")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = drain(stream); err != nil {
+		t.Fatal(err)
+	}
+	waitForReply(t, h, conversation.ID, 3*time.Second)
+
+	got, err := h.convos.Get(ctx, conversation.ID, h.user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Ended() {
+		t.Fatal("summary should end the session")
+	}
+	if !strings.Contains(got.Summary, "Sleep by 22:00") {
+		t.Fatalf("summary = %q", got.Summary)
+	}
+}
+
+func TestEndedReflectionDoesNotAcceptAnotherMessage(t *testing.T) {
+	h := newHarness(t, fake.Text("## Reflection summary\n\nDone."))
+	ctx := context.Background()
+	conversation, err := h.coach.StartReflection(ctx, h.user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stream, err := h.coach.SendMessage(ctx, h.user, conversation.ID, "wrapping up")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = drain(stream); err != nil {
+		t.Fatal(err)
+	}
+	waitForReply(t, h, conversation.ID, 3*time.Second)
+
+	if _, err = h.coach.SendMessage(ctx, h.user, conversation.ID, "one more thing"); !apperr.Is(err, apperr.ErrConflict) {
+		t.Fatalf("ended session err = %v", err)
+	}
+}
