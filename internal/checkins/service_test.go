@@ -2,6 +2,7 @@ package checkins_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -96,33 +97,90 @@ func TestValidateMoodEnergy(t *testing.T) {
 }
 
 func TestStreak(t *testing.T) {
-	pool := testdb.New(t)
-	ctx := context.Background()
-	// A positive UTC offset rather than "UTC": converting local midnight to UTC
-	// lands on the previous day, which zeroed the streak for every such user
-	// while this test — the only caller that pinned the behaviour — stayed green.
-	user := seedUser(t, pool, "streak@north.test", "Europe/Lisbon")
-	repo := checkins.NewRepository(pool)
-	svc := checkins.NewService(repo, nil)
+	// Offsets are calendar days from today in the user's zone: 0 is today, -1 is yesterday.
+	type dayOffset int
 
-	today := checkins.LocalDate(user, time.Now())
-	for i := 0; i < 3; i++ {
-		day := today.AddDate(0, 0, -i)
-		if _, err := repo.Upsert(ctx, user.ID, checkins.Write{
-			LocalDate: day,
-			Mood:      3,
-			Energy:    3,
-		}); err != nil {
-			t.Fatal(err)
-		}
+	tests := []struct {
+		name     string
+		timezone string
+		offsets  []dayOffset
+		want     int
+	}{
+		{
+			// A positive UTC offset rather than "UTC": converting local midnight
+			// to UTC lands on the previous day, which zeroed the streak for every
+			// such user while the only caller that pinned the behaviour stayed green.
+			name:     "three consecutive days in Lisbon",
+			timezone: "Europe/Lisbon",
+			offsets:  []dayOffset{0, -1, -2},
+			want:     3,
+		},
+		{
+			name:     "yesterday only still counts (not checked in today)",
+			timezone: "Europe/Lisbon",
+			offsets:  []dayOffset{-1, -2},
+			want:     2,
+		},
+		{
+			name:     "gap breaks the streak",
+			timezone: "Europe/Lisbon",
+			offsets:  []dayOffset{0, -2},
+			want:     1,
+		},
+		{
+			name:     "empty history is zero not failure",
+			timezone: "Europe/Lisbon",
+			want:     0,
+		},
+		{
+			name:     "last check-in older than yesterday is zero",
+			timezone: "Europe/Lisbon",
+			offsets:  []dayOffset{-3},
+			want:     0,
+		},
+		{
+			name:     "Auckland today is not UTC yesterday",
+			timezone: "Pacific/Auckland",
+			offsets:  []dayOffset{0},
+			want:     1,
+		},
+		{
+			name:     "invalid timezone falls back to UTC and still counts today",
+			timezone: "Not/AZone",
+			offsets:  []dayOffset{0},
+			want:     1,
+		},
 	}
 
-	streak, err := svc.Streak(ctx, user)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if streak != 3 {
-		t.Fatalf("streak = %d, want 3", streak)
+	for i, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pool := testdb.New(t)
+			ctx := context.Background()
+			user := seedUser(t, pool, fmt.Sprintf("streak-%d@north.test", i), tt.timezone)
+			repo := checkins.NewRepository(pool)
+			svc := checkins.NewService(repo, nil)
+
+			today := checkins.LocalDate(user, time.Now())
+			for _, off := range tt.offsets {
+				day := today.AddDate(0, 0, int(off))
+				if _, err := repo.Upsert(ctx, user.ID, checkins.Write{
+					LocalDate: day,
+					Mood:      3,
+					Energy:    3,
+				}); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			got, err := svc.Streak(ctx, user)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != tt.want {
+				t.Fatalf("Streak = %d, want %d (tz=%s loc=%s today=%s)",
+					got, tt.want, tt.timezone, user.Location(), today.Format("2006-01-02"))
+			}
+		})
 	}
 }
 
