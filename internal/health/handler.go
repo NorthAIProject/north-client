@@ -134,23 +134,81 @@ func NewHandler(cfg HandlerConfig) http.Handler {
 				return
 			}
 
-			result, err := cfg.Service.Ingest(r.Context(), user.ID, source, readings)
+			workouts, err := payload.workouts()
 			if err != nil {
-				if apperr.Is(err, apperr.ErrValidation) {
-					http.Error(w, err.Error(), http.StatusBadRequest)
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+
+			// Both halves are optional, so a bridge that only has one kind of
+			// data does not have to send an empty array of the other.
+			var written, workoutsWritten int
+			if len(readings) > 0 {
+				result, ingestErr := cfg.Service.Ingest(r.Context(), user.ID, source, readings)
+				if ingestErr != nil {
+					fail(w, log, source, user.ID.String(), ingestErr)
 					return
 				}
-				log.Error("health ingest failed",
-					slog.String("source", source),
-					slog.String("user_id", user.ID.String()),
-					slog.Any("error", err))
-				http.Error(w, "could not store readings", http.StatusInternalServerError)
+				written = result.Written
+			}
+			if len(workouts) > 0 {
+				result, ingestErr := cfg.Service.IngestWorkouts(r.Context(), user.ID, source, workouts)
+				if ingestErr != nil {
+					fail(w, log, source, user.ID.String(), ingestErr)
+					return
+				}
+				workoutsWritten = result.Written
+			}
+			if written == 0 && workoutsWritten == 0 {
+				http.Error(w, "payload carried neither readings nor workouts", http.StatusBadRequest)
 				return
 			}
 
 			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(map[string]int{"written": result.Written})
+			_ = json.NewEncoder(w).Encode(map[string]int{
+				"written":  written,
+				"workouts": workoutsWritten,
+			})
 		}))))
+}
+
+// fail reports an ingest error, distinguishing the caller's fault from North's.
+func fail(w http.ResponseWriter, log *slog.Logger, source, userID string, err error) {
+	if apperr.Is(err, apperr.ErrValidation) {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	log.Error("health ingest failed",
+		slog.String("source", source),
+		slog.String("user_id", userID),
+		slog.Any("error", err))
+	http.Error(w, "could not store payload", http.StatusInternalServerError)
+}
+
+// workouts converts the wire shape into the domain one, parsing timestamps here
+// so a bad one is reported with the workout that carried it.
+func (p ingestPayload) workouts() ([]Workout, error) {
+	out := make([]Workout, 0, len(p.Workouts))
+	for i, in := range p.Workouts {
+		started, err := time.Parse(time.RFC3339, in.StartedAt)
+		if err != nil {
+			return nil, apperr.Wrap(apperr.ErrValidation,
+				"workout %d (%s): started_at must be RFC 3339", i, in.ActivityCode)
+		}
+		ended, err := time.Parse(time.RFC3339, in.EndedAt)
+		if err != nil {
+			return nil, apperr.Wrap(apperr.ErrValidation,
+				"workout %d (%s): ended_at must be RFC 3339", i, in.ActivityCode)
+		}
+		out = append(out, Workout{
+			ActivityCode: in.ActivityCode,
+			ExternalID:   in.ExternalID,
+			StartedAt:    started,
+			EndedAt:      ended,
+			Calories:     in.Calories,
+		})
+	}
+	return out, nil
 }
 
 // throttleAnonymous bounds requests by remote address before they are
@@ -219,6 +277,14 @@ func tooManyRequests(w http.ResponseWriter) {
 }
 
 type ingestPayload struct {
+	Workouts []struct {
+		ActivityCode string  `json:"activity_code"`
+		ExternalID   string  `json:"external_id"`
+		StartedAt    string  `json:"started_at"`
+		EndedAt      string  `json:"ended_at"`
+		Calories     float64 `json:"calories"`
+	} `json:"workouts"`
+
 	Readings []struct {
 		Metric    string  `json:"metric"`
 		Value     float64 `json:"value"`
