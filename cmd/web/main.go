@@ -386,6 +386,7 @@ func routes(
 		Sleep:         sleepSvc,
 		Activity:      activitySvc,
 		Mind:          mindSvc,
+		Nudges:        nudgeSvc,
 	})
 	dashboardHandler := dashboard.NewHandler(dashboardSvc)
 

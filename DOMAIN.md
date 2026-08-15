@@ -150,6 +150,16 @@ change for different reasons.
 
 ---
 
+# Scheduled nudges
+
+Accountability that does not wait for the person to open chat lives in
+`internal/nudges`. A worker job evaluates deterministic rules (missed check-in,
+approaching goal deadline) in the user's timezone and writes `user_nudges`
+rows. The web process only lists, marks read, and dismisses. The coach model
+does not produce these notes and they do not go into the context block.
+
+---
+
 # How the coach sees all of this
 
 Everything above is only worth storing because it reaches the coach. That happens
