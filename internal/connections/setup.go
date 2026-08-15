@@ -44,6 +44,28 @@ type Setup struct {
 	Prompt string
 }
 
+// PlaceholderToken stands in for a real key when the settings page shows what
+// setup will look like before anybody has created one.
+//
+// Deliberately not shaped like a real token. A convincing placeholder is how
+// somebody copies the preview, pastes it into a config, and spends an hour on a
+// key that never existed — so this says what it is, loudly, in the one place a
+// person's eye lands when they check whether they pasted the right thing.
+//
+// Lives here rather than in the template so there is exactly one of it, and so
+// a preview can never be built from a token the template invented.
+const PlaceholderToken = "PASTE_YOUR_KEY_HERE__create_one_below"
+
+// Preview renders the setup for a client nobody has a key for yet.
+//
+// The same instructions the real thing produces, with PlaceholderToken where
+// the credential goes. It exists so the page can answer "what am I signing up
+// for" without issuing a credential to answer it — creating a key to find out
+// what setup looks like leaves a live credential behind for a question.
+func (s *Service) Preview(kind ClientKind) Setup {
+	return s.Instructions(kind, PlaceholderToken)
+}
+
 // Instructions renders the setup for one issued token.
 //
 // The token is a parameter rather than a field on Connection because a

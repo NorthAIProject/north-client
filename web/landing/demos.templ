@@ -228,7 +228,6 @@ func barWidth(share int) templ.SafeCSS {
 // ---------------------------------------------------------------------------
 // Goal repair
 // ---------------------------------------------------------------------------
-
 templ goalDemo() {
 	<section class="relative border-t border-hairline py-24" x-data="northGoal">
 		@sectionHeading(
@@ -247,7 +246,7 @@ templ goalDemo() {
 						Rows:  5,
 						Class: "mt-2 resize-none border-hairline bg-background/50 text-sm",
 						Attributes: templ.Attributes{
-							"x-model":     "input",
+							"x-model":                 "input",
 							"x-on:keydown.meta.enter": "run()",
 						},
 						Value: "i wanna get stronger idk maybe lose a bit too, gym like 3x if im lucky, home has dumbbells and a pullup bar. back goes out sometimes",
@@ -463,7 +462,6 @@ templ surfaceMessage(m threadTurn) {
 // ---------------------------------------------------------------------------
 // Quick tools
 // ---------------------------------------------------------------------------
-
 templ toolsDemo() {
 	<section class="relative border-t border-hairline py-24">
 		@sectionHeading(

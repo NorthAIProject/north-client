@@ -140,9 +140,9 @@ templ ActivitiesPage(user users.User, status strava.Status, activities []strava.
 							<p class="text-sm font-medium" x-text="selected && selected.name"></p>
 							<p class="text-muted-foreground mt-0.5 font-mono text-[11px]">
 								<span x-text="selected && selected.started_at"></span>
-								<span> · </span>
+								<span>· </span>
 								<span x-text="selected && selected.distance_km.toFixed(1) + ' km'"></span>
-								<span> · </span>
+								<span>· </span>
 								<span x-text="selected && Math.round(selected.elevation_gain_m) + ' m climb'"></span>
 							</p>
 						</div>

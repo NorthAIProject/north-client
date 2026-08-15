@@ -243,7 +243,7 @@ templ pendingCard(m memory.Memory) {
 
 templ approvedCard(m memory.Memory) {
 	@card.Card(card.Props{Class: "border-hairline"}) {
-		@card.Content(card.ContentProps{Class: "space-y-3 py-4" }) {
+		@card.Content(card.ContentProps{Class: "space-y-3 py-4"}) {
 			<div class="flex flex-wrap items-center gap-2">
 				if m.Pinned {
 					@badge.Badge(badge.Props{Class: "border-signal/40 bg-signal/12 text-signal", Variant: badge.VariantOutline}) {
@@ -271,9 +271,9 @@ templ approvedCard(m memory.Memory) {
 						@ui.CSRFInput()
 						@categoryField("category-"+m.ID.String(), m.Category, "")
 						@textarea.Textarea(textarea.Props{
-							ID:   "content-" + m.ID.String(),
-							Name: "content",
-							Rows: 3,
+							ID:    "content-" + m.ID.String(),
+							Name:  "content",
+							Rows:  3,
 							Value: m.Content,
 						})
 						<div class="flex flex-wrap gap-2">
@@ -288,35 +288,35 @@ templ approvedCard(m memory.Memory) {
 				</div>
 				<div x-show="!editing" class="flex flex-wrap gap-2">
 					if !m.Excluded {
-					if m.Pinned {
-						<form method="post" action={ templ.SafeURL("/app/memories/" + m.ID.String() + "/unpin") }>
+						if m.Pinned {
+							<form method="post" action={ templ.SafeURL("/app/memories/" + m.ID.String() + "/unpin") }>
+								@ui.CSRFInput()
+								@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Variant: button.VariantOutline}) {
+									Unpin
+								}
+							</form>
+						} else {
+							<form method="post" action={ templ.SafeURL("/app/memories/" + m.ID.String() + "/pin") }>
+								@ui.CSRFInput()
+								@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Variant: button.VariantOutline}) {
+									Pin
+								}
+							</form>
+						}
+						<form method="post" action={ templ.SafeURL("/app/memories/" + m.ID.String() + "/exclude") }>
 							@ui.CSRFInput()
 							@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Variant: button.VariantOutline}) {
-								Unpin
+								Hide from coach
 							}
 						</form>
 					} else {
-						<form method="post" action={ templ.SafeURL("/app/memories/" + m.ID.String() + "/pin") }>
+						<form method="post" action={ templ.SafeURL("/app/memories/" + m.ID.String() + "/include") }>
 							@ui.CSRFInput()
 							@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Variant: button.VariantOutline}) {
-								Pin
+								Use in coaching
 							}
 						</form>
 					}
-					<form method="post" action={ templ.SafeURL("/app/memories/" + m.ID.String() + "/exclude") }>
-						@ui.CSRFInput()
-						@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Variant: button.VariantOutline}) {
-							Hide from coach
-						}
-					</form>
-				} else {
-					<form method="post" action={ templ.SafeURL("/app/memories/" + m.ID.String() + "/include") }>
-						@ui.CSRFInput()
-						@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Variant: button.VariantOutline}) {
-							Use in coaching
-						}
-					</form>
-				}
 					@deleteDialog(m)
 				</div>
 			</div>

@@ -23,7 +23,6 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/label"
 	"github.com/NorthAIProject/north-client/web/shared/ui/progress"
 	"github.com/NorthAIProject/north-client/web/shared/ui/selectbox"
-	"github.com/NorthAIProject/north-client/web/shared/ui/chart"
 )
 
 // PanelID is the HTMX-swappable region for care writes.
@@ -251,7 +250,9 @@ templ instrumentsRow(data Data) {
 templ hydrationInstrument(data Data) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 		@card.Header() {
-			@card.Title() { Hydration 7d }
+			@card.Title() {
+				Hydration 7d 
+			}
 		}
 		@card.Content() {
 			if data.Instruments.HasHydration {
@@ -266,7 +267,9 @@ templ hydrationInstrument(data Data) {
 templ sleepInstrument(data Data) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 		@card.Header() {
-			@card.Title() { Sleep 7d }
+			@card.Title() {
+				Sleep 7d 
+			}
 		}
 		@card.Content() {
 			if data.Instruments.HasSleep {
@@ -281,7 +284,9 @@ templ sleepInstrument(data Data) {
 templ habitInstrument(data Data) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 		@card.Header() {
-			@card.Title() { Habits }
+			@card.Title() {
+				Habits 
+			}
 		}
 		@card.Content() {
 			if data.Instruments.HasHabits && len(data.Instruments.HabitGauge) > 0 {

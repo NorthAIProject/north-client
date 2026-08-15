@@ -41,9 +41,9 @@ type Props struct {
 	Name           string
 	Value          time.Time
 	Form           string
-	Format         Format                 // Controls the display format using Intl dateStyle options.
-	LocaleTag      LocaleTag              // BCP 47 Locale Tag (e.g., "en-US", "es-ES"). Determines language and regional format defaults.
-	StartOfWeek    *calendar.Day          // Optional: 0-6 [Sun-Sat] (Default: 1).
+	Format         Format        // Controls the display format using Intl dateStyle options.
+	LocaleTag      LocaleTag     // BCP 47 Locale Tag (e.g., "en-US", "es-ES"). Determines language and regional format defaults.
+	StartOfWeek    *calendar.Day // Optional: 0-6 [Sun-Sat] (Default: 1).
 	Placeholder    string
 	Disabled       bool
 	HasError       bool

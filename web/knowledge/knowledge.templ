@@ -164,12 +164,12 @@ templ libraryToolbar(view View) {
 						Type:        input.TypeSearch,
 						Placeholder: "Search passages…",
 						Attributes: templ.Attributes{
-							"hx-get":        "/app/knowledge/search",
-							"hx-trigger":    "input changed delay:300ms, search",
-							"hx-target":     "#knowledge-search-results",
-							"hx-swap":       "innerHTML",
-							"autocomplete":  "off",
-							"aria-label":    "Search what North has read",
+							"hx-get":       "/app/knowledge/search",
+							"hx-trigger":   "input changed delay:300ms, search",
+							"hx-target":    "#knowledge-search-results",
+							"hx-swap":      "innerHTML",
+							"autocomplete": "off",
+							"aria-label":   "Search what North has read",
 						},
 					})
 				</div>

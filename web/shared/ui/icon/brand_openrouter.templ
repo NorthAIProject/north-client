@@ -1,0 +1,22 @@
+package icon
+
+// BrandOpenRouter is OpenRouter's official mark.
+//
+// Vendored verbatim from the SVG supplied on 2026-08-15 — the path data is
+// untouched. Like BrandGoogle, it is NOT part of the templUI/Lucide codegen set
+// in icon_defs.go/icon_data.go: do not run it through templui's icon generator,
+// and `task fmt`'s `git checkout --` of the generated icon files must never
+// touch this one.
+//
+// Fixed #C8FF00 rather than currentColor: the mark is that colour, and rendered
+// monochrome it stops reading as OpenRouter.
+//
+// The source carried height="1em" width="1em" and an inline flex style; both
+// are dropped so the call site's size utility controls the dimensions, and the
+// <title> is dropped because every call site already renders the name as text
+// beside it — keeping it would have screen readers announce it twice.
+templ BrandOpenRouter() {
+	<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
+		<path d="M18.654 3.87a5.087 5.087 0 110 10.174L23.7 19.09c.64.641.187 1.737-.72 1.737H8.48a8.479 8.479 0 010-16.958h10.175zM8.479 7.26a5.087 5.087 0 100 10.176 5.087 5.087 0 000-10.175z" fill="#C8FF00"></path>
+	</svg>
+}
