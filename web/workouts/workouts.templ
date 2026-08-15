@@ -120,23 +120,23 @@ templ IntakePage(user users.User, f IntakeForm) {
 						<div class="grid gap-5 sm:grid-cols-2">
 							@field("days_per_week", "Days per week", f.fieldError("days_per_week")) {
 								@input.Input(input.Props{
-									ID:       "days_per_week",
-									Name:     "days_per_week",
-									Type:     input.TypeNumber,
-									Value:    itoa(f.DaysPerWeek),
-									Required: true,
-									HasError: f.fieldError("days_per_week") != "",
+									ID:         "days_per_week",
+									Name:       "days_per_week",
+									Type:       input.TypeNumber,
+									Value:      itoa(f.DaysPerWeek),
+									Required:   true,
+									HasError:   f.fieldError("days_per_week") != "",
 									Attributes: templ.Attributes{"min": "1", "max": "7"},
 								})
 							}
 							@field("session_minutes", "Minutes per session", f.fieldError("session_minutes")) {
 								@input.Input(input.Props{
-									ID:       "session_minutes",
-									Name:     "session_minutes",
-									Type:     input.TypeNumber,
-									Value:    itoa(f.SessionMinutes),
-									Required: true,
-									HasError: f.fieldError("session_minutes") != "",
+									ID:         "session_minutes",
+									Name:       "session_minutes",
+									Type:       input.TypeNumber,
+									Value:      itoa(f.SessionMinutes),
+									Required:   true,
+									HasError:   f.fieldError("session_minutes") != "",
 									Attributes: templ.Attributes{"min": "10", "max": "240", "step": "5"},
 								})
 							}

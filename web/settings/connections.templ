@@ -3,8 +3,8 @@ package settings
 import (
 	"fmt"
 
-	"github.com/NorthAIProject/north-client/internal/aicreds"
 	"github.com/NorthAIProject/north-client/internal/ai/providers"
+	"github.com/NorthAIProject/north-client/internal/aicreds"
 	"github.com/NorthAIProject/north-client/internal/connections"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
@@ -14,9 +14,10 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/copybutton"
 	"github.com/NorthAIProject/north-client/web/shared/ui/dialog"
 	"github.com/NorthAIProject/north-client/web/shared/ui/form"
+	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
 	"github.com/NorthAIProject/north-client/web/shared/ui/input"
 	"github.com/NorthAIProject/north-client/web/shared/ui/label"
-	"github.com/NorthAIProject/north-client/web/shared/ui/selectbox"
+	"github.com/NorthAIProject/north-client/web/shared/ui/tabs"
 )
 
 // ConnectForm carries the "connect an agent" fields.
@@ -69,7 +70,12 @@ type ProviderPanel struct {
 // issued is non-nil for exactly one response: the one that created a token.
 // The token is not stored, so this render is the only place it can ever be
 // shown, and a reload of this page will not show it again.
-templ ConnectionsPage(user users.User, list []connections.Connection, f ConnectForm, issued *connections.Issued, setup connections.Setup, provider ProviderPanel) {
+//
+// previews carries one Setup per client kind, in ClientKinds order, each built
+// with connections.PlaceholderToken. It is what lets the page show what setup
+// looks like before a key exists — the alternative being that somebody issues a
+// live credential to find out whether they want one.
+templ ConnectionsPage(user users.User, list []connections.Connection, f ConnectForm, issued *connections.Issued, setup connections.Setup, previews []connections.Setup, provider ProviderPanel) {
 	@layout.App("Agent connections", user, layout.BuildNav("/app/settings")) {
 		<div class="mx-auto w-full max-w-2xl space-y-6 p-6 md:p-8">
 			<header>
@@ -88,13 +94,13 @@ templ ConnectionsPage(user users.User, list []connections.Connection, f ConnectF
 				@issuedCard(*issued, setup)
 			}
 			@connectionListCard(list)
-			@connectCard(f)
+			@connectCard(f, previews)
 			@providerCard(provider)
 		</div>
 		@label.Script()
-		@selectbox.Script()
 		@dialog.Script()
 		@copybutton.Script()
+		@tabs.Script()
 	}
 }
 
@@ -203,7 +209,6 @@ templ connectionRow(conn connections.Connection) {
 }
 
 // pollLimit stops the status poll after roughly two minutes.
-//
 // Someone who pasted the config into an agent finds out inside a few seconds.
 // Someone who wandered off leaves a tab polling forever, which is a cost North
 // pays and they never see — so it gives up and says so.
@@ -311,7 +316,7 @@ templ providerCard(p ProviderPanel) {
 					method="post"
 					action="/app/settings/ai"
 					class="space-y-4"
-					x-data={ templ.JSONString(map[string]bool{"own": p.Current != nil}) }
+					x-data={ templ.JSONString(providerState(p)) }
 				>
 					@ui.CSRFInput()
 					<div class="space-y-2">
@@ -336,45 +341,46 @@ templ providerCard(p ProviderPanel) {
 					</div>
 					<div x-show="own" x-cloak class="space-y-4 pt-2">
 						@form.Item() {
-							@label.Label(label.Props{For: "provider"}) {
+							@label.Label() {
 								Provider
 							}
-							@selectbox.SelectBox() {
-								@selectbox.Trigger(selectbox.TriggerProps{ID: "provider", Name: "provider"}) {
-									@selectbox.Value(selectbox.ValueProps{Placeholder: "OpenRouter"})
+							<div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
+								for _, entry := range p.Catalog {
+									@providerTile(entry, p.Form.Provider == entry.Name)
 								}
-								@selectbox.Content() {
-									for _, entry := range p.Catalog {
-										@selectbox.Item(selectbox.ItemProps{Value: entry.Name, Selected: p.Form.Provider == entry.Name}) {
-											{ entry.Label }
-										}
-									}
-								}
-							}
+							</div>
 							if p.Form.fieldError("provider") != "" {
 								@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
 									{ p.Form.fieldError("provider") }
 								}
 							}
 						}
-						@form.Item() {
-							@label.Label(label.Props{For: "base_url"}) {
-								Hermes gateway URL
-							}
-							@input.Input(input.Props{
-								ID: "base_url", Name: "base_url", Value: p.Form.BaseURL,
-								Placeholder: "http://hermes-box.ts.net:8642/v1",
-								HasError:    p.Form.fieldError("base_url") != "",
-							})
-							if p.Form.fieldError("base_url") != "" {
-								@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
-									{ p.Form.fieldError("base_url") }
+						// Shown only for a provider that has no public address of
+						// its own. Before this it rendered for all six, which read
+						// as though an OpenRouter key needed a gateway URL too.
+						// The condition comes from the catalogue rather than a
+						// literal "hermes", so a second self-hosted backend picks
+						// it up by setting RequiresBaseURL.
+						<div x-show="needsURL.includes(provider)" x-cloak>
+							@form.Item() {
+								@label.Label(label.Props{For: "base_url"}) {
+									Gateway URL
+								}
+								@input.Input(input.Props{
+									ID: "base_url", Name: "base_url", Value: p.Form.BaseURL,
+									Placeholder: "http://hermes-box.ts.net:8642/v1",
+									HasError:    p.Form.fieldError("base_url") != "",
+								})
+								if p.Form.fieldError("base_url") != "" {
+									@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+										{ p.Form.fieldError("base_url") }
+									}
+								}
+								@form.Description() {
+									Each account runs its own instance — tailnet, LAN, or public HTTPS.
 								}
 							}
-							@form.Description() {
-								Required for Hermes. Each account has its own instance — tailnet, LAN, or public HTTPS. Leave blank for the other providers.
-							}
-						}
+						</div>
 						@form.Item() {
 							@label.Label(label.Props{For: "api_key"}) {
 								API key
@@ -436,6 +442,58 @@ templ providerCard(p ProviderPanel) {
 	}
 }
 
+// providerState seeds the card's Alpine state.
+// needsURL is a list rather than a "hermes" literal in the template, so the
+// gateway field follows providers.BYOProvider.RequiresBaseURL — the same field
+// the server validates against. Two places deciding which providers need a URL
+// is how they end up disagreeing.
+func providerState(p ProviderPanel) map[string]any {
+	needsURL := make([]string, 0, 1)
+	for _, entry := range p.Catalog {
+		if entry.RequiresBaseURL {
+			needsURL = append(needsURL, entry.Name)
+		}
+	}
+	return map[string]any{
+		"own":      p.Current != nil,
+		"provider": p.Form.Provider,
+		"needsURL": needsURL,
+	}
+}
+
+// providerTile is one selectable provider.
+//
+// A real radio, visually hidden, with the tile as its label: keyboard focus,
+// arrow-key selection within the group, and submission without JavaScript all
+// come from the input rather than from anything written here. peer-checked
+// carries the selected styling, so the picture and the form agree even when
+// Alpine has not loaded.
+templ providerTile(entry providers.BYOProvider, selected bool) {
+	<label class="cursor-pointer">
+		<input
+			type="radio"
+			name="provider"
+			value={ entry.Name }
+			x-model="provider"
+			checked?={ selected }
+			class="peer sr-only"
+		/>
+		<span
+			class="border-hairline peer-checked:border-signal peer-checked:bg-signal/5 peer-focus-visible:ring-ring/50 hover:bg-accent/40 flex h-full flex-col gap-1.5 rounded-lg border p-3 transition-colors peer-focus-visible:ring-[3px]"
+		>
+			<span class="flex items-center gap-2">
+				<span class="[&_svg]:size-5">
+					@icon.BrandFor(entry.Name)
+				</span>
+				<span class="text-sm font-medium">{ entry.Label }</span>
+			</span>
+			if entry.Note != "" {
+				<span class="text-muted-foreground text-xs leading-relaxed">{ entry.Note }</span>
+			}
+		</span>
+	</label>
+}
+
 // keyPlaceholder shows the shape of the credential for the selected provider,
 // so somebody can tell at a glance whether they pasted the right thing.
 func keyPlaceholder(p ProviderPanel) string {
@@ -456,62 +514,175 @@ func defaultModel(p ProviderPanel) string {
 	return ""
 }
 
-templ connectCard(f ConnectForm) {
+// activeKind is the agent tab that opens.
+//
+// The one the user just picked when a submission came back with errors,
+// otherwise the first in the catalogue. Without this a failed submit would
+// throw away the choice along with the form.
+func activeKind(f ConnectForm) connections.ClientKind {
+	if f.Kind != "" {
+		return f.Kind
+	}
+	return connections.ClientKinds[0]
+}
+
+// connectCard is the tabbed setup: pick the agent, read exactly what you will
+// have to paste, then create the key.
+//
+// The order matters and is the point of the rebuild. Before this, every snippet
+// lived behind issuedCard and appeared only once a key existed — so the way to
+// find out what connecting Codex involved was to create a Codex credential.
+// Now the snippets are shown with connections.PlaceholderToken standing in for
+// the key, and creating one is the last step rather than the first.
+templ connectCard(f ConnectForm, previews []connections.Setup) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 		@card.Header() {
 			@card.Title() {
 				Connect an agent
 			}
 			@card.Description() {
-				Name it after the machine it will live on, so you know which one to revoke later.
+				Pick the agent you use. This shows what you will paste; nothing is created
+				until you ask for a key.
 			}
 		}
 		@card.Content() {
-			<form method="post" action="/app/settings/connections" class="space-y-4">
-				@ui.CSRFInput()
-				@form.Item() {
-					@label.Label(label.Props{For: "name"}) {
-						Name
+			@tabs.Tabs(tabs.Props{ID: "surface-tabs"}) {
+				@tabs.List(tabs.ListProps{Class: "w-full"}) {
+					@tabs.Trigger(tabs.TriggerProps{Value: "hosted", IsActive: true}) {
+						This North
 					}
-					@input.Input(input.Props{
-						ID: "name", Name: "name", Value: f.Name, Required: true,
-						Placeholder: "Laptop", HasError: f.fieldError("name") != "",
-					})
-					if f.fieldError("name") != "" {
-						@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
-							{ f.fieldError("name") }
-						}
+					@tabs.Trigger(tabs.TriggerProps{Value: "self"}) {
+						Self-hosted
 					}
 				}
-				@form.Item() {
-					@label.Label(label.Props{For: "client_kind"}) {
-						Which client
-					}
-					@selectbox.SelectBox() {
-						@selectbox.Trigger(selectbox.TriggerProps{ID: "client_kind", Name: "client_kind"}) {
-							@selectbox.Value(selectbox.ValueProps{Placeholder: "Claude Code"})
-						}
-						@selectbox.Content() {
-							for _, kind := range connections.ClientKinds {
-								@selectbox.Item(selectbox.ItemProps{Value: string(kind), Selected: f.Kind == kind}) {
-									{ kind.Label() }
-								}
-							}
-						}
-					}
-					if f.fieldError("client_kind") != "" {
-						@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
-							{ f.fieldError("client_kind") }
-						}
-					}
-					@form.Description() {
-						Only decides which setup snippet you get. A key works in any MCP client.
-					}
+				@tabs.Content(tabs.ContentProps{Value: "hosted", IsActive: true, Class: "pt-4"}) {
+					@hostedTabs(f, previews)
 				}
-				@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90"}) {
-					Create key
+				@tabs.Content(tabs.ContentProps{Value: "self", Class: "pt-4"}) {
+					@selfHostedPanel()
 				}
-			</form>
+			}
+			// templUI renders inactive tab panels with `hidden` and reveals them
+			// in JavaScript, so without it a reader would see one agent and have
+			// no way to reach the other three. The page is server-rendered and
+			// has to stay readable; this is the same content, stacked.
+			<noscript>
+				<div class="mt-4 space-y-6">
+					<p class="text-muted-foreground text-sm leading-relaxed">
+						Every client's setup, since the tabs above need JavaScript to switch.
+					</p>
+					for _, p := range previews {
+						<div>
+							<h3 class="mb-2 text-sm font-medium">{ p.Kind.Label() }</h3>
+							@copyBlock(p.ConfigLabel, "noscript-"+string(p.Kind), p.ConfigLang, p.Config)
+						</div>
+					}
+				</div>
+			</noscript>
 		}
 	}
+}
+
+// hostedTabs is one tab per agent, each showing that client's real snippet.
+templ hostedTabs(f ConnectForm, previews []connections.Setup) {
+	@tabs.Tabs(tabs.Props{ID: "agent-tabs"}) {
+		@tabs.List(tabs.ListProps{Class: "w-full"}) {
+			for _, p := range previews {
+				@tabs.Trigger(tabs.TriggerProps{
+					Value:    string(p.Kind),
+					IsActive: p.Kind == activeKind(f),
+				}) {
+					<span class="[&_svg]:size-4">
+						@icon.BrandFor(string(p.Kind))
+					</span>
+					{ p.Kind.Label() }
+				}
+			}
+		}
+		for _, p := range previews {
+			@tabs.Content(tabs.ContentProps{
+				Value:    string(p.Kind),
+				IsActive: p.Kind == activeKind(f),
+				Class:    "pt-4",
+			}) {
+				@agentPanel(f, p)
+			}
+		}
+	}
+}
+
+// agentPanel is one client: what it needs, then the button that issues it.
+templ agentPanel(f ConnectForm, p connections.Setup) {
+	<div class="space-y-5">
+		@copyBlock(p.ConfigLabel, "preview-config-"+string(p.Kind), p.ConfigLang, p.Config)
+		if p.Safe != "" {
+			<div>
+				<p class="text-muted-foreground mb-2 text-sm leading-relaxed">
+					{ p.SafeNote }
+				</p>
+				@copyBlock(p.SafeLabel, "preview-safe-"+string(p.Kind), p.SafeLang, p.Safe)
+			</div>
+		}
+		<div>
+			<p class="text-muted-foreground mb-2 text-sm leading-relaxed">
+				Or hand this to the agent and let it configure itself.
+			</p>
+			@copyBlock("Setup prompt", "preview-prompt-"+string(p.Kind), "text", p.Prompt)
+		</div>
+		<form method="post" action="/app/settings/connections" class="border-hairline space-y-4 border-t pt-5">
+			@ui.CSRFInput()
+			// The tab is the choice. Carrying it as a hidden field means picking
+			// the client and creating the key are one action rather than two,
+			// and the snippet above is unambiguously the one being issued for.
+			<input type="hidden" name="client_kind" value={ string(p.Kind) }/>
+			@form.Item() {
+				@label.Label(label.Props{For: "name-" + string(p.Kind)}) {
+					Name this connection
+				}
+				@input.Input(input.Props{
+					ID: "name-" + string(p.Kind), Name: "name", Value: f.Name, Required: true,
+					Placeholder: "Laptop", HasError: f.fieldError("name") != "",
+				})
+				if f.fieldError("name") != "" {
+					@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+						{ f.fieldError("name") }
+					}
+				}
+				@form.Description() {
+					Name it after the machine it will live on, so you know which one to
+					revoke later.
+				}
+			}
+			@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90"}) {
+				Create a key for { p.Kind.Label() }
+			}
+		</form>
+	</div>
+}
+
+// selfHostedPanel describes the standalone MCP binary.
+//
+// It issues nothing, because there is nothing here to issue: cmd/mcp-server
+// authenticates with a token from its own environment and acts as the single
+// account named in MCP_USER_ID. Saying so is the whole content of this tab —
+// somebody who expects a button and does not find one should learn why in the
+// same breath.
+templ selfHostedPanel() {
+	<div class="space-y-4 text-sm leading-relaxed">
+		<p class="text-muted-foreground">
+			North also ships a standalone MCP server (<code class="font-mono">cmd/mcp-server</code>)
+			built to serve a single private deployment. It is a different surface with
+			different rules, and no key you create here will reach it.
+		</p>
+		<ul class="text-muted-foreground list-disc space-y-1.5 pl-5">
+			<li>Its credential is <code class="font-mono">MCP_API_TOKEN</code> from the environment, not a key from this page.</li>
+			<li>Every call acts as the one account in <code class="font-mono">MCP_USER_ID</code>, whoever made it.</li>
+			<li>Revoking means editing the environment and restarting, not clicking a button.</li>
+			<li>It listens on <code class="font-mono">MCP_LISTEN_ADDR</code> — <code class="font-mono">127.0.0.1:8093</code> by default. Keep it on a tailnet or a loopback; it has no per-user isolation to lose.</li>
+		</ul>
+		<p class="text-muted-foreground">
+			Prefer the hosted surface unless you are the only person using this North. Its
+			keys are per person and revocable without a restart.
+		</p>
+	</div>
 }

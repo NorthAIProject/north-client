@@ -81,7 +81,6 @@ func FormFor(g goal.Goal) GoalForm {
 	return f
 }
 
-
 func categoryLabel(category string) string {
 	switch category {
 	case goal.CategoryFitness:
@@ -485,11 +484,11 @@ templ editMilestoneForm(g goal.Goal, m goal.Milestone, f GoalForm) {
 		@ui.CSRFInput()
 		@field("milestone_title", "Milestone", f.milestoneError("title")) {
 			@input.Input(input.Props{
-				ID:        "milestone_title_" + m.ID.String(),
-				Name:      "milestone_title",
-				Value:     milestoneEditTitle(m, f),
-				Required:  true,
-				HasError:  f.EditingMilestone == m.ID.String() && f.milestoneError("title") != "",
+				ID:       "milestone_title_" + m.ID.String(),
+				Name:     "milestone_title",
+				Value:    milestoneEditTitle(m, f),
+				Required: true,
+				HasError: f.EditingMilestone == m.ID.String() && f.milestoneError("title") != "",
 			})
 		}
 		@field("milestone_date", "Target date", "") {

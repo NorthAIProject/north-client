@@ -519,7 +519,7 @@ templ habitsPanel(data DashboardData) {
 				<p class="text-muted-foreground mt-2 text-xs">
 					{ strconv.Itoa(data.Habits.Kept) } kept of { strconv.Itoa(data.Habits.Scheduled) } scheduled
 					if data.Habits.BestStreak > 0 {
-						<span> · best streak { strconv.Itoa(data.Habits.BestStreak) }</span>
+						<span>· best streak { strconv.Itoa(data.Habits.BestStreak) }</span>
 					}
 				</p>
 			} else {

@@ -35,11 +35,11 @@ var tiles = []tile{
 
 // Instruments holds chart configs and KPI values for the fitness hub header.
 type Instruments struct {
-	CalorieChart chart.Props
-	HasCalories  bool
-	Calories7d   float64
-	PlanID       uuid.UUID
-	NextSession  *plan.PlanDay
+	CalorieChart    chart.Props
+	HasCalories     bool
+	Calories7d      float64
+	PlanID          uuid.UUID
+	NextSession     *plan.PlanDay
 	HasMealProgress bool
 	MealProgress    *meals.Progress
 }
@@ -161,7 +161,9 @@ func stravaCTA(status strava.Status) string {
 templ calorieInstrument(data HubData) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 		@card.Header() {
-			@card.Title() { Activity 7d }
+			@card.Title() {
+				Activity 7d 
+			}
 			@card.Description() {
 				Calories burned from tracked and imported sessions.
 			}

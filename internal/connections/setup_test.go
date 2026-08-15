@@ -146,3 +146,36 @@ func TestTheSetupPromptCarriesTheRulesThatMatter(t *testing.T) {
 		}
 	}
 }
+
+// A preview has to be obviously a preview.
+//
+// The failure this guards against is quiet: somebody copies the snippet shown
+// before they created anything, pastes it into a config file, and debugs a
+// working setup that is authenticating with a string. So the placeholder must
+// not look like a credential, and it must appear everywhere the real token
+// would — a preview that silently dropped the token would look complete.
+func TestPreviewCarriesAnObviouslyFakeToken(t *testing.T) {
+	svc := connections.NewService(nil, nil, "https://north.example.com")
+
+	for _, kind := range connections.ClientKinds {
+		setup := svc.Preview(kind)
+
+		if !strings.Contains(setup.Config, connections.PlaceholderToken) &&
+			!strings.Contains(setup.Export, connections.PlaceholderToken) {
+			t.Errorf("%s preview shows neither the placeholder in its config nor in its export:\n%s",
+				kind, setup.Config)
+		}
+		if setup.Token != connections.PlaceholderToken {
+			t.Errorf("%s preview token = %q, want the placeholder", kind, setup.Token)
+		}
+	}
+
+	// Real keys are issued by connections.Issue; nothing about the placeholder
+	// should resemble one. `nk_` is the prefix a person learns to look for.
+	if strings.HasPrefix(connections.PlaceholderToken, "nk_") {
+		t.Error("the placeholder is shaped like a real key, which is the one thing it must not be")
+	}
+	if !strings.Contains(connections.PlaceholderToken, "PASTE") {
+		t.Error("the placeholder does not say what it is")
+	}
+}

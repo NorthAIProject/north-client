@@ -80,14 +80,12 @@ templ Slider(props ...Props) {
 					aria-disabled="true"
 				}
 				style={ fmt.Sprintf("left:%.2f%%", float64(p.Value-p.Min)/float64(p.Max-p.Min)*100) }
-				class={
-					utils.TwMerge(
+				class={ utils.TwMerge(
 						"absolute top-1/2 size-4 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary touch-none",
 						"ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
 						"hover:bg-primary/90",
 						utils.IfElse(p.Disabled, "opacity-50 cursor-not-allowed", "cursor-grab active:cursor-grabbing"),
-					)
-				}
+					) }
 			></div>
 		</div>
 		<input
@@ -118,12 +116,14 @@ templ Range(props ...RangeProps) {
 	if p.MaxValue == 0 {
 		{{ p.MaxValue = p.Max }}
 	}
-	{{ sharedThumbClass := utils.TwMerge(
-		"absolute top-1/2 size-4 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary touch-none",
-		"ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-		"hover:bg-primary/90",
-		utils.IfElse(p.Disabled, "opacity-50 cursor-not-allowed", "cursor-grab active:cursor-grabbing"),
-	) }}
+	{{
+		sharedThumbClass := utils.TwMerge(
+			"absolute top-1/2 size-4 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary touch-none",
+			"ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+			"hover:bg-primary/90",
+			utils.IfElse(p.Disabled, "opacity-50 cursor-not-allowed", "cursor-grab active:cursor-grabbing"),
+		)
+	}}
 	<div
 		id={ p.ID }
 		data-tui-slider
@@ -168,8 +168,22 @@ templ Range(props ...RangeProps) {
 				class={ sharedThumbClass }
 			></div>
 		</div>
-		<input data-input type="hidden" if p.NameMin != "" { name={ p.NameMin } } value={ fmt.Sprintf("%d", p.MinValue) }/>
-		<input data-input type="hidden" if p.NameMax != "" { name={ p.NameMax } } value={ fmt.Sprintf("%d", p.MaxValue) }/>
+		<input
+			data-input
+			type="hidden"
+			if p.NameMin != "" {
+				name={ p.NameMin }
+			}
+			value={ fmt.Sprintf("%d", p.MinValue) }
+		/>
+		<input
+			data-input
+			type="hidden"
+			if p.NameMax != "" {
+				name={ p.NameMax }
+			}
+			value={ fmt.Sprintf("%d", p.MaxValue) }
+		/>
 	</div>
 }
 

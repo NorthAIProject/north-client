@@ -293,6 +293,15 @@ func (h *Handler) renderConnections(
 		setup = h.connections.Instructions(issued.Kind, issued.Token)
 	}
 
+	// One preview per client, so the page can show what setup involves before
+	// anybody creates a credential to find out. Built here rather than in the
+	// template because Instructions belongs to the service, and a template that
+	// reached for it would be the first one in this codebase to do so.
+	previews := make([]connections.Setup, 0, len(connections.ClientKinds))
+	for _, kind := range connections.ClientKinds {
+		previews = append(previews, h.connections.Preview(kind))
+	}
+
 	provider := settingspages.ProviderPanel{
 		Enabled: h.aicreds.Enabled(),
 		Catalog: h.aicreds.Providers(),
@@ -322,7 +331,7 @@ func (h *Handler) renderConnections(
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := settingspages.ConnectionsPage(user, list, form, issued, setup, provider).Render(ctx, w); err != nil {
+	if err := settingspages.ConnectionsPage(user, list, form, issued, setup, previews, provider).Render(ctx, w); err != nil {
 		middleware.FromContext(ctx).Error("render connections", slog.Any("error", err))
 	}
 }
