@@ -25,6 +25,14 @@ func (s *Service) ByID(ctx context.Context, id uuid.UUID) (User, error) {
 	return s.repo.ByID(ctx, id)
 }
 
+// ListOnboarded returns a keyset page of accounts that have finished first-run.
+func (s *Service) ListOnboarded(ctx context.Context, after uuid.UUID, limit int) ([]User, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 100
+	}
+	return s.repo.ListOnboarded(ctx, after, limit)
+}
+
 func (s *Service) ByEmail(ctx context.Context, email string) (User, error) {
 	return s.repo.ByEmail(ctx, email)
 }

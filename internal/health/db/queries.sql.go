@@ -58,6 +58,66 @@ func (q *Queries) DeleteHealthMetricsBySource(ctx context.Context, arg DeleteHea
 	return err
 }
 
+const healthMetricStats = `-- name: HealthMetricStats :one
+SELECT
+    COUNT(*)                                              AS reading_count,
+    COUNT(DISTINCT (started_at AT TIME ZONE 'UTC')::date) AS days,
+    COALESCE(AVG(value), 0)::double precision             AS average,
+    COALESCE(SUM(value), 0)::double precision             AS total,
+    COALESCE(MAX(unit), '')::text                         AS unit
+FROM health_metrics
+WHERE user_id = $1 AND metric = $2
+  AND started_at >= $3 AND started_at < $4
+`
+
+type HealthMetricStatsParams struct {
+	UserID      uuid.UUID
+	Metric      string
+	StartedAt   time.Time
+	StartedAt_2 time.Time
+}
+
+type HealthMetricStatsRow struct {
+	ReadingCount int64
+	Days         int64
+	Average      float64
+	Total        float64
+	Unit         string
+}
+
+// Everything a summary needs about one metric in one window, in one pass.
+//
+// Both aggregates are returned because the caller decides which is meaningful:
+// a resting heart rate is averaged, a step count is totalled. Asking the
+// database twice to get two numbers off the same rows would be the same query
+// run twice.
+//
+// days counts distinct calendar days rather than rows, so "per day" does not
+// change meaning when a phone syncs twice in an afternoon. It is counted in
+// UTC: a summary spanning a week is not sensitive to which side of midnight a
+// reading fell on, and carrying a timezone into this query would buy precision
+// the output does not express.
+// Every aggregate is coalesced so an empty window scans cleanly rather than
+// returning NULLs into non-nullable Go types. reading_count is what the caller
+// checks to tell "measured zero" from "not measured".
+func (q *Queries) HealthMetricStats(ctx context.Context, arg HealthMetricStatsParams) (HealthMetricStatsRow, error) {
+	row := q.db.QueryRow(ctx, healthMetricStats,
+		arg.UserID,
+		arg.Metric,
+		arg.StartedAt,
+		arg.StartedAt_2,
+	)
+	var i HealthMetricStatsRow
+	err := row.Scan(
+		&i.ReadingCount,
+		&i.Days,
+		&i.Average,
+		&i.Total,
+		&i.Unit,
+	)
+	return i, err
+}
+
 const latestHealthMetric = `-- name: LatestHealthMetric :one
 SELECT id, user_id, source, metric, value, unit, started_at, ended_at, created_at, updated_at FROM health_metrics
 WHERE user_id = $1 AND metric = $2

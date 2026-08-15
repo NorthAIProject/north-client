@@ -12,6 +12,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/conversations"
+	"github.com/NorthAIProject/north-client/internal/quota"
 	"github.com/NorthAIProject/north-client/internal/search"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/htmx"
@@ -25,18 +26,21 @@ import (
 const maxMultipartMemory = 4 << 20 // 4 MiB
 
 type Handler struct {
-	svc *Service
+	svc    *Service
+	quotas *quota.Service
 }
 
-func NewHandler(svc *Service) *Handler { return &Handler{svc: svc} }
+func NewHandler(svc *Service, quotas *quota.Service) *Handler {
+	return &Handler{svc: svc, quotas: quotas}
+}
 
 // Routes mounts the knowledge page. Must be behind RequireAuth.
 func (h *Handler) Routes(r chi.Router) {
 	r.Get("/knowledge", h.index)
-	r.Post("/knowledge/notes", h.createNote)
-	r.Post("/knowledge/uploads", h.upload)
-	r.Post("/knowledge/reindex", h.reindex)
-	r.Post("/knowledge/retry-embeddings", h.retryEmbeddings)
+	r.With(h.quotas.Guard(quota.DocumentUpload)).Post("/knowledge/notes", h.createNote)
+	r.With(h.quotas.Guard(quota.DocumentUpload)).Post("/knowledge/uploads", h.upload)
+	r.With(h.quotas.Guard(quota.DocumentReindex)).Post("/knowledge/reindex", h.reindex)
+	r.With(h.quotas.Guard(quota.DocumentReindex)).Post("/knowledge/retry-embeddings", h.retryEmbeddings)
 
 	// Before /knowledge/{id}: chi matches literal segments ahead of parameters,
 	// but keeping them adjacent makes the ordering something a reader can see
@@ -45,7 +49,7 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Get("/knowledge/passages", h.passages)
 
 	r.Get("/knowledge/{id}", h.show)
-	r.Post("/knowledge/{id}/reindex", h.reindexOne)
+	r.With(h.quotas.Guard(quota.DocumentReindex)).Post("/knowledge/{id}/reindex", h.reindexOne)
 	r.Post("/knowledge/{id}/delete", h.destroy)
 
 	// The export route is mounted by internal/export, not here: it reads

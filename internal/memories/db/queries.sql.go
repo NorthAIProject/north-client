@@ -286,6 +286,54 @@ func (q *Queries) ListMemoriesByStatus(ctx context.Context, arg ListMemoriesBySt
 	return items, nil
 }
 
+const listPendingForConversation = `-- name: ListPendingForConversation :many
+SELECT id, user_id, category, content, status, pinned, source, source_conversation_id, confidence, created_at, updated_at, deleted_at, excluded FROM user_memories
+WHERE user_id = $1
+  AND source_conversation_id = $2
+  AND status = 'pending'
+  AND deleted_at IS NULL
+ORDER BY created_at DESC
+`
+
+type ListPendingForConversationParams struct {
+	UserID               uuid.UUID
+	SourceConversationID *uuid.UUID
+}
+
+func (q *Queries) ListPendingForConversation(ctx context.Context, arg ListPendingForConversationParams) ([]UserMemory, error) {
+	rows, err := q.db.Query(ctx, listPendingForConversation, arg.UserID, arg.SourceConversationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []UserMemory{}
+	for rows.Next() {
+		var i UserMemory
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Category,
+			&i.Content,
+			&i.Status,
+			&i.Pinned,
+			&i.Source,
+			&i.SourceConversationID,
+			&i.Confidence,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.Excluded,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const searchApprovedForContext = `-- name: SearchApprovedForContext :many
 WITH q AS (
     SELECT replace(

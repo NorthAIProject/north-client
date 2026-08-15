@@ -4,6 +4,7 @@
     "description": "Record progress against one of the user's goals. The goal is named by title, not by ID.",
     "inputSchema": {
       "additionalProperties": false,
+      "description": "the progress to record",
       "properties": {
         "goal_title": {
           "description": "the goal to update, matched by title",
@@ -15,10 +16,7 @@
         },
         "progress": {
           "description": "completion percentage from 0 to 100",
-          "type": [
-            "null",
-            "integer"
-          ]
+          "type": "integer"
         }
       },
       "required": [
@@ -98,6 +96,7 @@
     "description": "Record today's check-in. Writing again on the same day replaces that day's entry rather than adding a second one, so this is safe to call twice.",
     "inputSchema": {
       "additionalProperties": false,
+      "description": "today's check-in",
       "properties": {
         "challenges": {
           "description": "what got in the way",
@@ -130,6 +129,37 @@
     "idempotent": true
   },
   {
+    "name": "create_goal",
+    "description": "Create a new goal for this person. Use it when they have said what they want to work towards and agreed to track it — not to record a passing wish. The title is what they will see in their list, so write it the way they said it.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "description": "the goal to create",
+      "properties": {
+        "category": {
+          "description": "a short grouping such as strength, health, or work; optional",
+          "type": "string"
+        },
+        "motivation": {
+          "description": "why it matters to them; optional",
+          "type": "string"
+        },
+        "success": {
+          "description": "how they will know they have got there; optional",
+          "type": "string"
+        },
+        "title": {
+          "description": "what they are working towards, in their own words",
+          "type": "string"
+        }
+      },
+      "required": [
+        "title"
+      ],
+      "type": "object"
+    },
+    "readOnly": false
+  },
+  {
     "name": "get_exercise",
     "description": "Read one catalog exercise in full: how to perform it, what it needs, and every muscle it trains.",
     "inputSchema": {
@@ -159,6 +189,18 @@
           "type": "integer"
         }
       },
+      "type": "object"
+    },
+    "readOnly": true
+  },
+  {
+    "name": "get_workout_plan",
+    "description": "Read this person's current training plan: the days, the focus of each, and the exercises on them. Use it before advising on training, so the advice fits the plan they are actually following.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "description": "no arguments",
+      "properties": {},
+      "required": [],
       "type": "object"
     },
     "readOnly": true
@@ -204,6 +246,7 @@
     "description": "Search the passages of the user's own notes and uploaded documents. Returns each passage with the document it came from, the heading above it, its line range, and a citable chunk id. Quote the chunk id when using a passage.",
     "inputSchema": {
       "additionalProperties": false,
+      "description": "what to look for",
       "properties": {
         "limit": {
           "description": "maximum passages, default 6",

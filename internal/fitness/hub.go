@@ -8,6 +8,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/activity"
 	"github.com/NorthAIProject/north-client/internal/fitness/strava"
+	"github.com/NorthAIProject/north-client/internal/health"
 	"github.com/NorthAIProject/north-client/internal/meals"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/viz"
@@ -19,12 +20,17 @@ import (
 
 const calorieWindow = 7
 
+// healthWindow matches the window the coach reads, so the page and the
+// conversation never quote different numbers at the same person.
+const healthWindow = 7
+
 // Options wires the slices the fitness hub composes.
 type Options struct {
 	Activity *activity.Service
 	Workouts *workouts.Service
 	Strava   *strava.Service
 	Meals    *meals.TrackMealProgressService
+	Health   *health.Service
 }
 
 type Service struct {
@@ -32,6 +38,7 @@ type Service struct {
 	workouts *workouts.Service
 	strava   *strava.Service
 	meals    *meals.TrackMealProgressService
+	health   *health.Service
 }
 
 func NewService(opts Options) *Service {
@@ -40,6 +47,7 @@ func NewService(opts Options) *Service {
 		workouts: opts.Workouts,
 		strava:   opts.Strava,
 		meals:    opts.Meals,
+		health:   opts.Health,
 	}
 }
 
@@ -61,6 +69,12 @@ type Snapshot struct {
 
 	MealProgress    *meals.Progress
 	HasMealProgress bool
+
+	// DeviceReadings is the last week of whatever a wearable or phone has
+	// pushed, already rendered as sentences. Empty for the ordinary case of an
+	// account with nothing attached.
+	DeviceReadings    []string
+	HasDeviceReadings bool
 }
 
 func (s Snapshot) HasCalorieChart() bool {
@@ -128,6 +142,15 @@ func (s *Service) Load(ctx context.Context, user users.User) (Snapshot, error) {
 		case !apperr.Is(err, apperr.ErrNotFound):
 			return Snapshot{}, err
 		}
+	}
+
+	if s.health != nil {
+		lines, err := s.health.Summary(ctx, user.ID, now, healthWindow)
+		if err != nil {
+			return Snapshot{}, err
+		}
+		snap.DeviceReadings = lines
+		snap.HasDeviceReadings = len(lines) > 0
 	}
 
 	return snap, nil

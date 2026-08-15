@@ -26,6 +26,7 @@ func NewHandler(svc *Service) *Handler { return &Handler{svc: svc} }
 // Routes mounts memory endpoints. Must be behind RequireAuth.
 func (h *Handler) Routes(r chi.Router) {
 	r.Get("/memories", h.index)
+	r.Get("/memories/for/{conversationID}", h.forConversation)
 	r.Post("/memories", h.create)
 	r.Post("/memories/{id}", h.update)
 	r.Post("/memories/{id}/approve", h.approve)
@@ -164,6 +165,28 @@ func (h *Handler) destroy(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/app/memories", http.StatusSeeOther)
 }
 
+func (h *Handler) forConversation(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+	conversationID, err := uuid.Parse(chi.URLParam(r, "conversationID"))
+	if err != nil {
+		h.fail(w, r, apperr.ErrNotFound)
+		return
+	}
+	h.renderConversationPending(w, r, user.ID, conversationID)
+}
+
+func (h *Handler) renderConversationPending(w http.ResponseWriter, r *http.Request, userID, conversationID uuid.UUID) {
+	pending, err := h.svc.ListPendingForConversation(r.Context(), userID, conversationID)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := memorypages.ConversationPending(conversationID, pending).Render(r.Context(), w); err != nil {
+		middleware.FromContext(r.Context()).Error("render failed", slog.Any("error", err))
+	}
+}
+
 func (h *Handler) statusAction(w http.ResponseWriter, r *http.Request, fn func(context.Context, uuid.UUID, uuid.UUID) (Memory, error)) {
 	user := auth.MustUser(r.Context())
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
@@ -175,11 +198,30 @@ func (h *Handler) statusAction(w http.ResponseWriter, r *http.Request, fn func(c
 		h.fail(w, r, err)
 		return
 	}
+	if conversationID, ok := parseConversationID(r); ok && htmx.IsRequest(r) {
+		h.renderConversationPending(w, r, user.ID, conversationID)
+		return
+	}
 	if htmx.IsRequest(r) {
 		h.respond(w, r, http.StatusOK, memorypages.MemoryForm{}, nil)
 		return
 	}
 	http.Redirect(w, r, "/app/memories", http.StatusSeeOther)
+}
+
+func parseConversationID(r *http.Request) (uuid.UUID, bool) {
+	raw := strings.TrimSpace(r.FormValue("conversation_id"))
+	if raw == "" {
+		raw = strings.TrimSpace(r.URL.Query().Get("conversation_id"))
+	}
+	if raw == "" {
+		return uuid.Nil, false
+	}
+	id, err := uuid.Parse(raw)
+	if err != nil {
+		return uuid.Nil, false
+	}
+	return id, true
 }
 
 func (h *Handler) pinAction(w http.ResponseWriter, r *http.Request, pinned bool) {

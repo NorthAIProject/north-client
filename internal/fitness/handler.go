@@ -97,9 +97,11 @@ func (h *Handler) render(w http.ResponseWriter, r *http.Request, notice string) 
 	}
 
 	data := fitnesspages.HubData{
-		StravaStatus: snap.StravaStatus,
-		Instruments:  buildView(snap),
-		Notice:       notice,
+		StravaStatus:      snap.StravaStatus,
+		Instruments:       buildView(snap),
+		Notice:            notice,
+		DeviceReadings:    snap.DeviceReadings,
+		HasDeviceReadings: snap.HasDeviceReadings,
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

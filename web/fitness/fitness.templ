@@ -49,6 +49,11 @@ type HubData struct {
 	StravaStatus strava.Status
 	Instruments  Instruments
 	Notice       string
+
+	// DeviceReadings is the last week from a wearable or phone, already
+	// rendered as sentences by internal/health. Empty is the normal state.
+	DeviceReadings    []string
+	HasDeviceReadings bool
 }
 
 func (d HubData) HasPlan() bool {
@@ -78,6 +83,7 @@ templ Hub(user users.User, data HubData) {
 				}
 			</div>
 			@stravaCard(data.StravaStatus)
+			@deviceCard(data)
 		</div>
 		@ui.ChartScripts()
 	}
@@ -247,4 +253,42 @@ templ tileCard(t tile) {
 			}
 		}
 	</a>
+}
+
+// deviceCard shows what a wearable or phone has pushed in the last week.
+//
+// It renders even when empty, because the useful answer for most people is
+// "nothing is connected yet, and here is how to change that" — a card that
+// disappeared would leave no route to setting one up.
+templ deviceCard(data HubData) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Title() {
+				Device readings
+			}
+			@card.Description() {
+				if data.HasDeviceReadings {
+					The last 7 days, as your coach sees them.
+				} else {
+					Nothing has been pushed yet.
+				}
+			}
+		}
+		@card.Content() {
+			if data.HasDeviceReadings {
+				<ul class="space-y-1.5">
+					for _, line := range data.DeviceReadings {
+						<li class="text-sm leading-relaxed">{ line }</li>
+					}
+				</ul>
+			} else {
+				<p class="text-muted-foreground text-xs leading-relaxed">
+					Apple Health and Google Health have no web API, so readings have to be
+					pushed from your phone. Issue a token under Settings &rarr; Connections
+					and point a health-export app at
+					<code class="bg-muted rounded px-1 py-0.5">/ingest/health/apple_health</code>.
+				</p>
+			}
+		}
+	}
 }

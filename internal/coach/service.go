@@ -30,6 +30,13 @@ type ToolRunner interface {
 	// InvokeAll runs a turn's calls in order and returns their results. The
 	// user id comes from the authenticated session, never from the model.
 	InvokeAll(ctx context.Context, userID uuid.UUID, calls []ai.ToolCall) []ai.ToolResult
+
+	// IsReadOnly reports whether a named tool changes nothing.
+	//
+	// The loop asks before running anything: a tool that writes is suspended
+	// and shown to the person instead. An unknown name answers false, so the
+	// unrecognised case is the careful one.
+	IsReadOnly(name string) bool
 }
 
 // ClientSource yields the provider a user brought themselves.
@@ -164,6 +171,9 @@ func (s *Service) SendMessage(ctx context.Context, user users.User, conversation
 	if err != nil {
 		return nil, err
 	}
+	if conversation.Ended() {
+		return nil, apperr.Wrap(apperr.ErrConflict, "this reflection has ended")
+	}
 
 	if _, err = s.conversations.AppendUserMessage(ctx, conversationID, text, nil); err != nil {
 		return nil, err
@@ -180,7 +190,7 @@ func (s *Service) SendMessage(ctx context.Context, user users.User, conversation
 		return nil, err
 	}
 
-	system, err := s.promptB.Coach(coachCtx)
+	system, err := s.systemPrompt(coachCtx, conversation)
 	if err != nil {
 		return nil, err
 	}
@@ -194,7 +204,7 @@ func (s *Service) SendMessage(ctx context.Context, user users.User, conversation
 		Model:    s.model,
 		System:   system,
 		Messages: conversations.ToAIMessages(coachCtx.RecentMessages),
-		Tools:    s.toolDeclarations(),
+		Tools:    s.toolsFor(conversation),
 	}
 
 	stream, client, err := s.startChat(ctx, genCtx, user, req)
@@ -502,6 +512,36 @@ func (s *Service) pump(
 
 		exerciseSlugs = appendExerciseLookups(exerciseSlugs, calls)
 
+		// A turn that writes stops here and waits for a person.
+		//
+		// The calls are stored and the stream ends; approving is a fresh
+		// request that rebuilds the conversation and carries on. The loop
+		// cannot simply block: it is running inside an SSE response, and
+		// holding one open until somebody clicks would tie up a connection and
+		// lose everything if the process restarted.
+		//
+		// The whole turn suspends even when only one of its calls writes.
+		// Running the read-only half first would mean a declined turn had
+		// already done something, which is not what "declined" reads as.
+		if writes := writingCalls(s.tools, calls); len(writes) > 0 {
+			if _, err := s.conversations.AppendToolCalls(genCtx, target.conversation.ID, calls); err != nil {
+				log.Error("could not store a tool call awaiting approval",
+					slog.String("conversation_id", target.conversation.ID.String()),
+					slog.Any("error", err))
+				break
+			}
+
+			log.Info("coach is waiting for approval before writing",
+				slog.String("conversation_id", target.conversation.ID.String()),
+				slog.Any("tools", toolNames(writes)))
+
+			// Nothing is sent to the caller here. The handler asks
+			// PendingApproval once the stream closes and renders the card from
+			// that, which keeps the provider-facing ai.StreamChunk free of a
+			// field only North's own UI would ever read.
+			break
+		}
+
 		results := s.tools.InvokeAll(genCtx, target.user.ID, calls)
 		for _, result := range results {
 			log.Info("coach ran a tool",
@@ -519,6 +559,23 @@ func (s *Service) pump(
 			ai.ToolCallMessage(calls),
 			ai.ToolResultMessage(results),
 		)
+
+		// And to the database, in the same order, so a turn that has to pause
+		// for approval can be rebuilt after its stream has ended. A failure
+		// here is logged rather than fatal: the reply in flight is still worth
+		// finishing, and the cost of losing these rows is a turn that cannot be
+		// resumed — not a turn that is wrong.
+		if _, err := s.conversations.AppendToolCalls(genCtx, target.conversation.ID, calls); err != nil {
+			log.Error("could not store the coach's tool calls",
+				slog.String("conversation_id", target.conversation.ID.String()),
+				slog.Any("error", err))
+		} else if _, err := s.conversations.AppendToolResults(genCtx, target.conversation.ID, results); err != nil {
+			// Only when the calls landed: a result whose call was never stored
+			// would rebuild into exactly the shape providers reject.
+			log.Error("could not store the coach's tool results",
+				slog.String("conversation_id", target.conversation.ID.String()),
+				slog.Any("error", err))
+		}
 
 		next, err := target.client.Chat(genCtx, request)
 		if err != nil {
@@ -578,22 +635,143 @@ func (s *Service) pump(
 		s.titleConversation(saveCtx, target.user, target.conversation.ID, target.firstMessage)
 	}
 
-	s.enqueueMemoryExtraction(saveCtx, target)
+	ended := s.maybeEndReflection(saveCtx, target.conversation, text)
+	s.enqueueMemoryExtraction(saveCtx, target, ended)
+}
+
+const reflectionSummaryHeading = "## Reflection summary"
+
+func (s *Service) systemPrompt(cc *Context, conversation conversations.Conversation) (string, error) {
+	if conversation.IsReflection() {
+		return s.promptB.Reflection(cc, countModelMessages(cc.RecentMessages))
+	}
+	return s.promptB.Coach(cc)
+}
+
+func (s *Service) toolsFor(conversation conversations.Conversation) []ai.Tool {
+	if conversation.IsReflection() {
+		return nil
+	}
+	return s.toolDeclarations()
+}
+
+func countModelMessages(messages []conversations.Message) int {
+	n := 0
+	for _, m := range messages {
+		if m.IsModel() {
+			n++
+		}
+	}
+	return n
+}
+
+func extractReflectionSummary(text string) (string, bool) {
+	idx := strings.Index(text, reflectionSummaryHeading)
+	if idx < 0 {
+		return "", false
+	}
+	return strings.TrimSpace(text[idx+len(reflectionSummaryHeading):]), true
+}
+
+func (s *Service) maybeEndReflection(ctx context.Context, conversation conversations.Conversation, reply string) bool {
+	if !conversation.IsReflection() || conversation.Ended() {
+		return conversation.Ended()
+	}
+	summary, ok := extractReflectionSummary(reply)
+	if !ok {
+		return false
+	}
+	if err := s.conversations.SetSummary(ctx, conversation.ID, summary); err != nil {
+		middleware.FromContext(ctx).Warn("could not store reflection summary", slog.Any("error", err))
+		return false
+	}
+	return true
+}
+
+// BeginReflection asks the first question of an empty reflection thread.
+func (s *Service) BeginReflection(ctx context.Context, user users.User, conversationID uuid.UUID) (<-chan ai.StreamChunk, error) {
+	conversation, err := s.conversations.Get(ctx, conversationID, user.ID)
+	if err != nil {
+		return nil, err
+	}
+	if !conversation.IsReflection() {
+		return nil, apperr.Wrap(apperr.ErrValidation, "not a reflection")
+	}
+	if conversation.Ended() {
+		return nil, apperr.Wrap(apperr.ErrConflict, "this reflection has ended")
+	}
+
+	history, err := s.conversations.History(ctx, conversationID)
+	if err != nil {
+		return nil, err
+	}
+	if len(history) > 0 {
+		return nil, apperr.Wrap(apperr.ErrConflict, "reflection already started")
+	}
+
+	coachCtx, err := s.contextB.Build(ctx, ContextRequest{
+		User:           user,
+		ConversationID: conversationID,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	system, err := s.promptB.Reflection(coachCtx, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	genCtx, cancelGen := context.WithTimeout(context.WithoutCancel(ctx), generationTimeout)
+
+	req := ai.Request{
+		Model:  s.model,
+		System: system,
+		// Sent to the model only. Nothing is stored as a user turn: the
+		// person has not spoken yet.
+		Messages: []ai.Message{ai.UserText("Begin the reflection.")},
+	}
+
+	stream, client, err := s.startChat(ctx, genCtx, user, req)
+	if err != nil {
+		cancelGen()
+		return nil, apperr.Wrap(err, "coach: start reflection")
+	}
+
+	out := make(chan ai.StreamChunk)
+	go s.pump(ctx, genCtx, cancelGen, stream, out, pumpTarget{
+		conversation: conversation,
+		user:         user,
+		provider:     client.Name(),
+		firstMessage: "",
+		client:       client,
+		request:      req,
+		offeredRefs:  coachCtx.OfferedRefs(),
+		traceID:      uuid.New().String(),
+	})
+	return out, nil
+}
+
+func (s *Service) StartReflection(ctx context.Context, userID uuid.UUID) (conversations.Conversation, error) {
+	return s.conversations.StartKind(ctx, userID, conversations.KindReflection)
 }
 
 // enqueueMemoryExtraction proposes durable facts off the chat hot path.
 //
 // Failures are logged only: a missed extraction is preferable to a failed reply.
-func (s *Service) enqueueMemoryExtraction(ctx context.Context, target pumpTarget) {
+func (s *Service) enqueueMemoryExtraction(ctx context.Context, target pumpTarget, force bool) {
 	if s.queue == nil {
 		return
 	}
 	log := middleware.FromContext(ctx)
 
-	// Wait until the thread has real back-and-forth before filing notes.
-	recent, err := s.conversations.Recent(ctx, target.conversation.ID, 6)
-	if err != nil || len(recent) < 4 {
-		return
+	// Wait until the thread has real back-and-forth before filing notes,
+	// unless a reflection just closed — that is the moment to extract.
+	if !force {
+		recent, err := s.conversations.Recent(ctx, target.conversation.ID, 6)
+		if err != nil || len(recent) < 4 {
+			return
+		}
 	}
 
 	if _, err := s.queue.Enqueue(ctx, jobs.KindExtractMemories, jobs.ExtractMemoriesPayload{

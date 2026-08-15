@@ -81,6 +81,8 @@ type Conversation struct {
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
 	MemoriesExtractedAt *time.Time
+	Kind                string
+	Summary             string
 }
 
 type Decision struct {
@@ -384,6 +386,8 @@ type Message struct {
 	Provider       *string
 	CreatedAt      time.Time
 	EvidenceRefs   []string
+	ToolCalls      []byte
+	ToolResults    []byte
 }
 
 type PasswordResetToken struct {
@@ -392,6 +396,13 @@ type PasswordResetToken struct {
 	ExpiresAt time.Time
 	CreatedAt time.Time
 	UsedAt    *time.Time
+}
+
+type QuotaCounter struct {
+	UserID      uuid.UUID
+	Action      string
+	WindowStart time.Time
+	Used        int32
 }
 
 type Report struct {
@@ -542,6 +553,19 @@ type UserMemory struct {
 	UpdatedAt            time.Time
 	DeletedAt            *time.Time
 	Excluded             bool
+}
+
+type UserNudge struct {
+	ID          uuid.UUID
+	UserID      uuid.UUID
+	Kind        string
+	DedupeKey   string
+	Title       string
+	Body        string
+	Href        string
+	ReadAt      *time.Time
+	DismissedAt *time.Time
+	CreatedAt   time.Time
 }
 
 type UserPreference struct {

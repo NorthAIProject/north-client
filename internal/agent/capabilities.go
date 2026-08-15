@@ -11,10 +11,15 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/calculator"
+	"github.com/NorthAIProject/north-client/internal/checkins"
 	"github.com/NorthAIProject/north-client/internal/coach"
+	"github.com/NorthAIProject/north-client/internal/documents"
 	"github.com/NorthAIProject/north-client/internal/exercises"
 	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/meals"
+	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/internal/workouts"
 	"github.com/NorthAIProject/north-client/internal/workouts/plan"
 )
 
@@ -33,6 +38,18 @@ type Services struct {
 	Goals       *goals.Service
 	Ingredients *meals.IngredientService
 	FoodLog     *meals.FoodLogService
+	CheckIns    *checkins.Service
+	Documents   *documents.Service
+	Workouts    *workouts.Service
+
+	// Users resolves the account a call runs as.
+	//
+	// Needed because some services take the whole users.User rather than an id:
+	// a check-in is stored against the person's local date, so writing one
+	// requires knowing their timezone. Capabilities receive only a user id — by
+	// design, since it comes from the session and nothing in the arguments can
+	// influence it — so the record is loaded here.
+	Users *users.Service
 }
 
 // Build registers every capability North exposes to a model.
@@ -50,7 +67,19 @@ func Build(svc Services) *Registry {
 		r.Register(calculateMacros(svc.Calculator))
 	}
 	if svc.Goals != nil {
-		r.Register(listGoals(svc.Goals))
+		r.Register(listGoals(svc.Goals), createGoal(svc.Goals), addGoalUpdate(svc.Goals))
+	}
+	if svc.CheckIns != nil && svc.Users != nil {
+		// Both, because writing a check-in needs the person's timezone and
+		// that lives on the user record. Registered without Users, the tool
+		// would exist and fail on every call.
+		r.Register(createCheckIn(svc.CheckIns, svc.Users))
+	}
+	if svc.Documents != nil {
+		r.Register(searchDocs(svc.Documents))
+	}
+	if svc.Workouts != nil {
+		r.Register(getWorkoutPlan(svc.Workouts))
 	}
 	if svc.Ingredients != nil {
 		r.Register(searchIngredients(svc.Ingredients))
@@ -307,3 +336,279 @@ func todaysNutrition(svc *meals.FoodLogService) Capability {
 }
 
 func join(values []string) string { return strings.Join(values, ", ") }
+
+// ---------------------------------------------------------------------------
+// Writes
+//
+// Everything below changes something. None of them carry ReadOnly, which is
+// what makes the coach stop and ask before running one — see the confirmation
+// flow in internal/coach. The MCP surface publishes the same annotation and
+// leaves the decision to the client.
+// ---------------------------------------------------------------------------
+
+func createGoal(svc *goals.Service) Capability {
+	type args struct {
+		Title      string `json:"title"`
+		Motivation string `json:"motivation"`
+		Success    string `json:"success"`
+		Category   string `json:"category"`
+	}
+
+	return Capability{
+		Tool: ai.Tool{
+			Name: "create_goal",
+			Description: "Create a new goal for this person. Use it when they have said what they want to work towards and agreed to track it — " +
+				"not to record a passing wish. The title is what they will see in their list, so write it the way they said it.",
+			Parameters: ai.Object("the goal to create", map[string]*ai.Schema{
+				"title":      ai.String("what they are working towards, in their own words"),
+				"motivation": ai.String("why it matters to them; optional"),
+				"success":    ai.String("how they will know they have got there; optional"),
+				"category":   ai.String("a short grouping such as strength, health, or work; optional"),
+			}, "title"),
+		},
+		Invoke: func(ctx context.Context, userID uuid.UUID, raw json.RawMessage) (string, error) {
+			in, err := Decode[args](raw)
+			if err != nil {
+				return "", err
+			}
+
+			// TargetDate is left unset rather than guessed. A deadline the
+			// person did not give is one they would have to find and correct.
+			goal, err := svc.Create(ctx, userID, goals.Input{
+				Title:      in.Title,
+				Motivation: in.Motivation,
+				Success:    in.Success,
+				Category:   in.Category,
+			})
+			if err != nil {
+				return "", err
+			}
+			return "Created the goal: " + goal.Summary(), nil
+		},
+	}
+}
+
+func addGoalUpdate(svc *goals.Service) Capability {
+	type args struct {
+		GoalTitle string `json:"goal_title"`
+		Note      string `json:"note"`
+		// A pointer so "not given" is distinguishable from "zero percent" —
+		// the service treats nil as "leave the figure alone".
+		Progress *int `json:"progress,omitempty"`
+	}
+
+	return Capability{
+		Tool: ai.Tool{
+			Name:        "add_goal_update",
+			Description: "Record progress against one of the user's goals. The goal is named by title, not by ID.",
+			Parameters: ai.Object("the progress to record", map[string]*ai.Schema{
+				"goal_title": ai.String("the goal to update, matched by title"),
+				"note":       ai.String("what happened, in the user's own terms"),
+				"progress":   ai.Integer("completion percentage from 0 to 100"),
+			}, "goal_title", "note"),
+		},
+		Invoke: func(ctx context.Context, userID uuid.UUID, raw json.RawMessage) (string, error) {
+			in, err := Decode[args](raw)
+			if err != nil {
+				return "", err
+			}
+
+			all, err := svc.List(ctx, userID)
+			if err != nil {
+				return "", err
+			}
+
+			// By title, never by id. A model that could name a UUID would be
+			// one prompt away from writing to somebody else's goal; a title
+			// only resolves within this person's own list.
+			goal, err := pickGoal(all, in.GoalTitle)
+			if err != nil {
+				return "", err
+			}
+
+			if _, err = svc.AddUpdate(ctx, goal.ID, userID, in.Note, in.Progress); err != nil {
+				return "", err
+			}
+			return fmt.Sprintf("Recorded against %q: %s", goal.Title, in.Note), nil
+		},
+	}
+}
+
+func createCheckIn(svc *checkins.Service, userSvc *users.Service) Capability {
+	type args struct {
+		Mood       int    `json:"mood"`
+		Energy     int    `json:"energy"`
+		Wins       string `json:"wins"`
+		Challenges string `json:"challenges"`
+		Notes      string `json:"notes"`
+	}
+
+	return Capability{
+		Tool: ai.Tool{
+			Name: "create_check_in",
+			Description: "Record today's check-in. Writing again on the same day replaces that day's entry " +
+				"rather than adding a second one, so this is safe to call twice.",
+			Parameters: ai.Object("today's check-in", map[string]*ai.Schema{
+				"mood":       ai.Integer("how the user feels, 1 (worst) to 5 (best)"),
+				"energy":     ai.Integer("the user's energy level, 1 (lowest) to 5 (highest)"),
+				"wins":       ai.String("what went well"),
+				"challenges": ai.String("what got in the way"),
+				"notes":      ai.String("anything else worth telling the coach"),
+			}, "mood", "energy"),
+		},
+		// An upsert: the second call of the day corrects the first rather than
+		// adding to it, which is what makes a retry safe.
+		Idempotent: true,
+		Invoke: func(ctx context.Context, userID uuid.UUID, raw json.RawMessage) (string, error) {
+			in, err := Decode[args](raw)
+			if err != nil {
+				return "", err
+			}
+
+			// The whole record, not just the id: a check-in is filed under the
+			// person's local date, so this needs their timezone.
+			user, err := userSvc.ByID(ctx, userID)
+			if err != nil {
+				return "", err
+			}
+
+			entry, err := svc.UpsertToday(ctx, user, checkins.Input{
+				Mood:       in.Mood,
+				Energy:     in.Energy,
+				Wins:       in.Wins,
+				Challenges: in.Challenges,
+				Notes:      in.Notes,
+			})
+			if err != nil {
+				return "", err
+			}
+
+			streak, err := svc.Streak(ctx, user)
+			if err != nil {
+				// The check-in is saved. A streak we could not count is not
+				// worth reporting as a failure.
+				return fmt.Sprintf("Logged today's check-in: mood %d, energy %d.", entry.Mood, entry.Energy), nil
+			}
+			return fmt.Sprintf("Logged today's check-in: mood %d, energy %d. That is a %d-day streak.",
+				entry.Mood, entry.Energy, streak), nil
+		},
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Knowledge and training
+// ---------------------------------------------------------------------------
+
+func searchDocs(svc *documents.Service) Capability {
+	type args struct {
+		Query string `json:"query"`
+		Limit int    `json:"limit"`
+	}
+
+	return Capability{
+		Tool: ai.Tool{
+			Name: "search_documents",
+			Description: "Search the passages of the user's own notes and uploaded documents. Returns each " +
+				"passage with the document it came from, the heading above it, its line range, and a " +
+				"citable chunk id. Quote the chunk id when using a passage.",
+			Parameters: ai.Object("what to look for", map[string]*ai.Schema{
+				"query": ai.String("what to look for in the user's own notes and documents"),
+				"limit": ai.Integer("maximum passages, default 6"),
+			}, "query"),
+		},
+		ReadOnly: true,
+		Invoke: func(ctx context.Context, userID uuid.UUID, raw json.RawMessage) (string, error) {
+			in, err := Decode[args](raw)
+			if err != nil {
+				return "", err
+			}
+
+			hits, err := svc.Search(ctx, userID, in.Query, in.Limit)
+			if err != nil {
+				return "", err
+			}
+			if len(hits) == 0 {
+				return "", nil
+			}
+
+			var b strings.Builder
+			for _, h := range hits {
+				// The ref, not the internal document id: this is the handle
+				// that still resolves in a stored reply months from now.
+				fmt.Fprintf(&b, "- [%s] %s (lines %d-%d)\n  %s\n",
+					coach.ChunkRef(h.ChunkID), h.Label(), h.StartLine, h.EndLine, h.Content)
+			}
+			return b.String(), nil
+		},
+	}
+}
+
+func getWorkoutPlan(svc *workouts.Service) Capability {
+	return Capability{
+		Tool: ai.Tool{
+			Name: "get_workout_plan",
+			Description: "Read this person's current training plan: the days, the focus of each, and the exercises on them. " +
+				"Use it before advising on training, so the advice fits the plan they are actually following.",
+			Parameters: ai.Object("no arguments", map[string]*ai.Schema{}),
+		},
+		ReadOnly: true,
+		Invoke: func(ctx context.Context, userID uuid.UUID, _ json.RawMessage) (string, error) {
+			stored, err := svc.LatestPlan(ctx, userID)
+			if err != nil {
+				if apperr.Is(err, apperr.ErrNotFound) {
+					// Not an error the model should apologise for. They simply
+					// have no plan yet, and saying so lets it offer to build one.
+					return "", nil
+				}
+				return "", err
+			}
+
+			var b strings.Builder
+			fmt.Fprintf(&b, "%s (%d weeks)\n", stored.Plan.Name, stored.Plan.WeeksTotal)
+			for _, day := range stored.Plan.Days {
+				fmt.Fprintf(&b, "- %s — %s:", day.Weekday, day.Focus)
+				for i, exercise := range day.Exercises {
+					if i > 0 {
+						b.WriteString(",")
+					}
+					fmt.Fprintf(&b, " %s %dx%s", exercise.Name, exercise.Sets, exercise.Reps)
+				}
+				b.WriteString("\n")
+			}
+			return b.String(), nil
+		},
+	}
+}
+
+// pickGoal resolves a goal by the title a model used.
+//
+// Moved here from the MCP surface along with add_goal_update, because it is
+// what makes naming a goal by title safe: a title only ever resolves within one
+// person's own list, where a UUID would resolve anywhere.
+//
+// An ambiguous title is an error rather than a guess. Picking the first of
+// several matches would write to the wrong goal silently, and the model can ask
+// when it is told what the choices are.
+func pickGoal(all []goals.Goal, title string) (goals.Goal, error) {
+	needle := strings.TrimSpace(strings.ToLower(title))
+
+	var hits []goals.Goal
+	for _, g := range all {
+		if needle == "" || strings.Contains(strings.ToLower(g.Title), needle) {
+			hits = append(hits, g)
+		}
+	}
+
+	switch len(hits) {
+	case 1:
+		return hits[0], nil
+	case 0:
+		return goals.Goal{}, fmt.Errorf("no goal matches %q", title)
+	default:
+		names := make([]string, 0, len(hits))
+		for _, g := range hits {
+			names = append(names, g.Title)
+		}
+		return goals.Goal{}, fmt.Errorf("%q matches several goals (%v); be more specific", title, names)
+	}
+}

@@ -14,6 +14,11 @@ import (
 	"github.com/NorthAIProject/north-client/internal/ai"
 )
 
+const (
+	KindChat       = "chat"
+	KindReflection = "reflection"
+)
+
 // Conversation is one continuous thread with the coach.
 type Conversation struct {
 	ID     uuid.UUID
@@ -22,8 +27,24 @@ type Conversation struct {
 	// Title is generated from the opening message. Empty until then.
 	Title string
 
+	// Kind is chat (default) or reflection. Reflection is the same coach
+	// with a different prompt and a required closing summary.
+	Kind string
+
+	// Summary is the closing write-up of a reflection. Empty on chat
+	// threads and on an in-progress reflection.
+	Summary string
+
 	CreatedAt time.Time
 	UpdatedAt time.Time
+}
+
+// IsReflection reports whether this thread is a structured reflection.
+func (c Conversation) IsReflection() bool { return c.Kind == KindReflection }
+
+// Ended reports whether a reflection has written its summary.
+func (c Conversation) Ended() bool {
+	return c.IsReflection() && strings.TrimSpace(c.Summary) != ""
 }
 
 // Pending is a thread the memory extractor has work to do on.
@@ -42,6 +63,9 @@ type Pending struct {
 func (c Conversation) DisplayTitle() string {
 	if t := strings.TrimSpace(c.Title); t != "" {
 		return t
+	}
+	if c.IsReflection() {
+		return "Reflection"
 	}
 	return "New conversation"
 }
@@ -65,6 +89,16 @@ type Message struct {
 	// "memory:<uuid>" / "chunk:<id>" form. Model and Provider record which LLM
 	// wrote the words; this records what it was working from.
 	EvidenceRefs []string
+
+	// ToolCalls are the tools the model asked for on this turn, and ToolResults
+	// are what they answered. Only one of the two is ever set: a call is the
+	// model's turn, a result is carried back on the user's.
+	//
+	// Stored rather than kept in memory because a turn can pause — a write
+	// waits for the person to approve it — and the request has to be rebuilt
+	// from the database when they do.
+	ToolCalls   []ai.ToolCall
+	ToolResults []ai.ToolResult
 
 	CreatedAt time.Time
 }
@@ -96,6 +130,10 @@ const (
 	// to name them again in a format a template could parse.
 	EvidenceKindExercise = "exercise"
 )
+
+// IsToolTurn reports whether this turn exists for the model rather than the
+// reader: a tool call or the result handed back to it. Both carry no text.
+func (m Message) IsToolTurn() bool { return len(m.ToolCalls) > 0 || len(m.ToolResults) > 0 }
 
 func (m Message) IsUser() bool  { return m.Role == ai.RoleUser }
 func (m Message) IsModel() bool { return m.Role == ai.RoleModel }
@@ -137,6 +175,17 @@ func (m Message) ExerciseSlugs() []string {
 func ToAIMessages(messages []Message) []ai.Message {
 	out := make([]ai.Message, 0, len(messages))
 	for _, m := range messages {
+		// A tool turn carries no text, so the emptiness rule below would drop
+		// exactly the turns a resumed request needs. Passed through first.
+		switch {
+		case len(m.ToolCalls) > 0:
+			out = append(out, ai.ToolCallMessage(m.ToolCalls))
+			continue
+		case len(m.ToolResults) > 0:
+			out = append(out, ai.ToolResultMessage(m.ToolResults))
+			continue
+		}
+
 		if strings.TrimSpace(m.Content) == "" {
 			// An empty turn carries nothing and some providers reject it.
 			continue

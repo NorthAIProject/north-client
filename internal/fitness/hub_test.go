@@ -3,6 +3,7 @@ package fitness_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/calculator"
 	"github.com/NorthAIProject/north-client/internal/fitness"
 	"github.com/NorthAIProject/north-client/internal/fitness/strava"
+	"github.com/NorthAIProject/north-client/internal/health"
 	"github.com/NorthAIProject/north-client/internal/meals"
 	"github.com/NorthAIProject/north-client/internal/shared/database/testdb"
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -69,5 +71,49 @@ func TestLoadEmptyUser(t *testing.T) {
 	}
 	if snap.HasMealProgress {
 		t.Fatal("expected no meal progress without macro goal")
+	}
+}
+
+// The hub is where a person checks whether their device is actually feeding
+// North anything. Readings that exist in the database but never reach the
+// snapshot are invisible to them.
+func TestLoadSurfacesRecentDeviceReadings(t *testing.T) {
+	pool := testdb.New(t)
+	user := seedUser(t, pool)
+
+	healthSvc := health.NewService(health.NewRepository(pool))
+	if _, err := healthSvc.Ingest(context.Background(), user.ID, "apple_health", []health.Reading{
+		{Metric: "steps", Value: 8432, Unit: "count", StartedAt: time.Now().Add(-24 * time.Hour)},
+	}); err != nil {
+		t.Fatalf("ingest: %v", err)
+	}
+
+	svc := fitness.NewService(fitness.Options{Health: healthSvc})
+
+	snap, err := svc.Load(context.Background(), user)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+
+	if !snap.HasDeviceReadings {
+		t.Fatalf("HasDeviceReadings = false, want true (readings: %v)", snap.DeviceReadings)
+	}
+	if len(snap.DeviceReadings) == 0 {
+		t.Error("DeviceReadings is empty; the step count never reached the page")
+	}
+}
+
+func TestLoadReportsNoDeviceReadingsForAnUntrackedUser(t *testing.T) {
+	pool := testdb.New(t)
+	user := seedUser(t, pool)
+
+	svc := fitness.NewService(fitness.Options{Health: health.NewService(health.NewRepository(pool))})
+
+	snap, err := svc.Load(context.Background(), user)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if snap.HasDeviceReadings {
+		t.Errorf("HasDeviceReadings = true for a user with no device: %v", snap.DeviceReadings)
 	}
 }
