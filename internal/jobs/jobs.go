@@ -73,6 +73,10 @@ const (
 	// says something worth remembering and then stops at three is invisible to
 	// it, which is what this sweep exists to catch.
 	KindSweepMemories Kind = "sweep_memories"
+
+	// KindSweepNudges evaluates missed check-ins and approaching deadlines
+	// for onboarded accounts and stores any new in-app notes.
+	KindSweepNudges Kind = "sweep_nudges"
 )
 
 // ExtractMemoriesPayload is the job body for KindExtractMemories.
