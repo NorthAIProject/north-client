@@ -28,6 +28,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/documents"
 	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/memories"
+	"github.com/NorthAIProject/north-client/internal/shared/toolsurface"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
@@ -104,7 +105,7 @@ func registerAgentCapabilities(s *mcp.Server, registry *agent.Registry, user use
 		}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			// The user was fixed when the session authenticated. Nothing in the
 			// request can change it.
-			result := registry.Invoke(ctx, user.ID, ai.ToolCall{
+			result := registry.Invoke(toolsurface.With(ctx, toolsurface.MCP), user.ID, ai.ToolCall{
 				ID:        tool.Name,
 				Name:      tool.Name,
 				Arguments: req.Params.Arguments,

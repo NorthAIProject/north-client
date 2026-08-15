@@ -10,6 +10,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/ai/fake"
+	"github.com/NorthAIProject/north-client/internal/coach"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
@@ -335,4 +336,89 @@ func registerStranger(t *testing.T, h harness) users.User {
 		t.Fatalf("register stranger: %v", err)
 	}
 	return user
+}
+
+// A refusal never reaches the registry — the tool is not invoked at all — so
+// the coach has to report it itself, or the log would show only the writes
+// that happened and none of the ones somebody stopped.
+func TestADeclinedWriteIsReportedToTheAudit(t *testing.T) {
+	t.Parallel()
+
+	tools := &stubTools{
+		tools:    []ai.Tool{writeTool},
+		results:  map[string]string{"create_check_in": "logged"},
+		readOnly: map[string]bool{"create_check_in": false},
+	}
+	client := &fake.Client{Responses: []fake.Response{
+		fake.Calling(fake.ToolCall("create_check_in", `{"mood":4}`)),
+		{Text: "Nothing recorded."},
+	}}
+
+	audit := &stubAudit{}
+	h := newToolHarnessWithAudit(t, client, tools, audit)
+	conversationID := newConversation(t, h)
+
+	stream, err := h.coach.SendMessage(context.Background(), h.user, conversationID, "log my check-in")
+	if err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	if _, drainErr := drain(stream); drainErr != nil {
+		t.Fatalf("drain: %v", drainErr)
+	}
+
+	if err = h.coach.ResolvePending(context.Background(), h.user, conversationID, uuid.Nil, false); err != nil {
+		t.Fatalf("decline: %v", err)
+	}
+
+	if len(audit.declined) != 1 {
+		t.Fatalf("declined records = %d, want 1", len(audit.declined))
+	}
+	if audit.declined[0].Tool != "create_check_in" {
+		t.Errorf("recorded %q", audit.declined[0].Tool)
+	}
+	if audit.declined[0].UserID != h.user.ID {
+		t.Error("the decline was recorded against the wrong account")
+	}
+}
+
+// Approving is recorded by the registry, not here — recording it twice would
+// make one write look like two.
+func TestAnApprovedWriteIsNotDoubleReported(t *testing.T) {
+	t.Parallel()
+
+	tools := &stubTools{
+		tools:    []ai.Tool{writeTool},
+		results:  map[string]string{"create_check_in": "logged"},
+		readOnly: map[string]bool{"create_check_in": false},
+	}
+	client := &fake.Client{Responses: []fake.Response{
+		fake.Calling(fake.ToolCall("create_check_in", `{"mood":4}`)),
+		{Text: "Logged it."},
+	}}
+
+	audit := &stubAudit{}
+	h := newToolHarnessWithAudit(t, client, tools, audit)
+	conversationID := newConversation(t, h)
+
+	stream, err := h.coach.SendMessage(context.Background(), h.user, conversationID, "log my check-in")
+	if err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	if _, drainErr := drain(stream); drainErr != nil {
+		t.Fatalf("drain: %v", drainErr)
+	}
+
+	if err = h.coach.ResolvePending(context.Background(), h.user, conversationID, uuid.Nil, true); err != nil {
+		t.Fatalf("approve: %v", err)
+	}
+
+	if len(audit.declined) != 0 {
+		t.Errorf("an approved write was recorded as declined %d times", len(audit.declined))
+	}
+}
+
+type stubAudit struct{ declined []coach.DeclinedCall }
+
+func (s *stubAudit) RecordDeclinedCall(_ context.Context, c coach.DeclinedCall) {
+	s.declined = append(s.declined, c)
 }

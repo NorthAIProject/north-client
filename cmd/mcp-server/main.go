@@ -64,6 +64,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/shared/database"
 	"github.com/NorthAIProject/north-client/internal/shared/secret"
 	"github.com/NorthAIProject/north-client/internal/sleep"
+	"github.com/NorthAIProject/north-client/internal/toolaudit"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/workouts"
 )
@@ -282,6 +283,8 @@ func buildServices(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry
 		FastModel: cfg.AI.FastModel,
 	})
 
+	auditRecorder := toolaudit.NewRecorder(toolaudit.NewService(toolaudit.NewRepository(pool)))
+
 	agentTools := agent.Build(agent.Services{
 		Exercises:   exercises.NewService(exercises.NewRepository(pool)),
 		Calculator:  calculatorSvc,
@@ -293,6 +296,7 @@ func buildServices(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry
 		Workouts:    workoutSvc,
 		Users:       userSvc,
 	})
+	agentTools.Record(auditRecorder)
 
 	return mcpserver.Services{
 		Agent:     agentTools,
