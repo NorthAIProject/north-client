@@ -124,6 +124,31 @@ func (s *Service) AppendModelMessage(ctx context.Context, conversationID uuid.UU
 	})
 }
 
+// AppendToolCalls stores the tools a model asked for on this turn.
+//
+// A model turn, because that is whose turn it is: ai.ToolCallMessage builds the
+// same shape for the request. Every provider rejects a result whose call it has
+// not been shown, so this is what makes a resumed conversation replayable.
+func (s *Service) AppendToolCalls(ctx context.Context, conversationID uuid.UUID, calls []ai.ToolCall) (Message, error) {
+	return s.repo.Append(ctx, NewMessage{
+		ConversationID: conversationID,
+		Role:           ai.RoleModel,
+		ToolCalls:      calls,
+	})
+}
+
+// AppendToolResults stores what the tools answered.
+//
+// A user turn, matching ai.ToolResultMessage: from the model's point of view
+// the results arrive from outside, the same way a person's message does.
+func (s *Service) AppendToolResults(ctx context.Context, conversationID uuid.UUID, results []ai.ToolResult) (Message, error) {
+	return s.repo.Append(ctx, NewMessage{
+		ConversationID: conversationID,
+		Role:           ai.RoleUser,
+		ToolResults:    results,
+	})
+}
+
 // SetTitle names a conversation.
 func (s *Service) SetTitle(ctx context.Context, id uuid.UUID, title string) error {
 	title = strings.TrimSpace(title)

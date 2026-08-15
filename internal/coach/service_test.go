@@ -87,7 +87,9 @@ func waitForReply(t *testing.T, h harness, conversationID uuid.UUID, timeout tim
 			t.Fatalf("history: %v", err)
 		}
 		for _, m := range history {
-			if m.IsModel() {
+			// Not a tool turn: those are model turns too, but they carry a call
+			// rather than a reply, and every caller here is waiting for words.
+			if m.IsModel() && !m.IsToolTurn() {
 				return m
 			}
 		}

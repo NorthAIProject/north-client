@@ -240,7 +240,12 @@ templ transcript(messages []conversations.Message, conversation conversations.Co
 				@conversationStarters()
 			} else {
 				for _, m := range messages {
-					@Bubble(m)
+					// Tool turns are part of the conversation the model sees,
+					// not the one the person reads. Rendered, they would be
+					// empty bubbles between a question and its answer.
+					if !m.IsToolTurn() {
+						@Bubble(m)
+					}
 				}
 			}
 			if conversation.Ended() {

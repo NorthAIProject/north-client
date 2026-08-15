@@ -142,7 +142,7 @@ func TestTheCoachRunsAToolAndAnswersFromItsResult(t *testing.T) {
 // The reply that gets stored has to be the prose, not the round-trip. A
 // conversation whose history disagrees with what the person saw is worse than
 // one that saved nothing.
-func TestOnlyTheFinalAnswerIsSaved(t *testing.T) {
+func TestOnlyTheFinalAnswerIsShownToTheReader(t *testing.T) {
 	t.Parallel()
 
 	tools := &stubTools{
@@ -161,13 +161,32 @@ func TestOnlyTheFinalAnswerIsSaved(t *testing.T) {
 	if err != nil {
 		t.Fatalf("send: %v", err)
 	}
-	if _, err := drain(stream); err != nil {
-		t.Fatalf("drain: %v", err)
+	if _, drainErr := drain(stream); drainErr != nil {
+		t.Fatalf("drain: %v", drainErr)
 	}
 
 	saved := waitForReply(t, h, conversationID, 2*time.Second)
 	if !strings.Contains(saved.Content, "barbell deadlift") {
 		t.Errorf("saved reply = %q", saved.Content)
+	}
+
+	// Tool turns are stored now — a paused turn has to be rebuildable — so the
+	// property worth pinning is no longer "nothing else is saved" but "nothing
+	// else is shown". The intermediate round must not reach the reader as a
+	// second bubble.
+	history, err := h.convos.History(context.Background(), conversationID)
+	if err != nil {
+		t.Fatalf("history: %v", err)
+	}
+
+	var visible int
+	for _, m := range history {
+		if m.IsModel() && !m.IsToolTurn() {
+			visible++
+		}
+	}
+	if visible != 1 {
+		t.Errorf("model turns visible to the reader = %d, want 1", visible)
 	}
 }
 
@@ -185,8 +204,8 @@ func TestToolsAreDeclaredToTheProvider(t *testing.T) {
 	if err != nil {
 		t.Fatalf("send: %v", err)
 	}
-	if _, err := drain(stream); err != nil {
-		t.Fatalf("drain: %v", err)
+	if _, drainErr := drain(stream); drainErr != nil {
+		t.Fatalf("drain: %v", drainErr)
 	}
 
 	calls := client.Calls()
@@ -220,8 +239,8 @@ func TestTheToolLoopIsBounded(t *testing.T) {
 	if err != nil {
 		t.Fatalf("send: %v", err)
 	}
-	if _, err := drain(stream); err != nil {
-		t.Fatalf("drain: %v", err)
+	if _, drainErr := drain(stream); drainErr != nil {
+		t.Fatalf("drain: %v", drainErr)
 	}
 
 	// Bounded, and low. The exact cap is coach's business; that it exists is
@@ -282,8 +301,8 @@ func TestTheCallAndItsResultAreBothSentBack(t *testing.T) {
 	if err != nil {
 		t.Fatalf("send: %v", err)
 	}
-	if _, err := drain(stream); err != nil {
-		t.Fatalf("drain: %v", err)
+	if _, drainErr := drain(stream); drainErr != nil {
+		t.Fatalf("drain: %v", drainErr)
 	}
 
 	calls := client.Calls()
@@ -307,5 +326,70 @@ func TestTheCallAndItsResultAreBothSentBack(t *testing.T) {
 	}
 	if resultTurn.ToolResults[0].ID != callTurn.ToolCalls[0].ID {
 		t.Error("the result's id does not match its call, so a provider would reject it")
+	}
+}
+
+// The tool turns have to reach the database, not just the in-memory request.
+//
+// A turn that pauses for approval ends its stream; when the person answers, the
+// conversation is rebuilt from stored rows. Anything held only in memory is
+// gone by then, and the provider would reject a result whose call it was never
+// shown.
+func TestToolTurnsArePersisted(t *testing.T) {
+	t.Parallel()
+
+	tools := &stubTools{
+		tools:   []ai.Tool{searchTool},
+		results: map[string]string{"search_exercises": "- barbell-deadlift"},
+	}
+	client := &fake.Client{Responses: []fake.Response{
+		fake.Calling(fake.ToolCall("search_exercises", `{"muscle":"hamstrings"}`)),
+		{Text: "Try the barbell deadlift."},
+	}}
+
+	h := newToolHarness(t, client, tools)
+	conversationID := newConversation(t, h)
+
+	stream, err := h.coach.SendMessage(context.Background(), h.user, conversationID, "hamstrings?")
+	if err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	if _, drainErr := drain(stream); drainErr != nil {
+		t.Fatalf("drain: %v", drainErr)
+	}
+	waitForReply(t, h, conversationID, 2*time.Second)
+
+	history, err := h.convos.History(context.Background(), conversationID)
+	if err != nil {
+		t.Fatalf("history: %v", err)
+	}
+
+	var calls, results int
+	for _, m := range history {
+		calls += len(m.ToolCalls)
+		results += len(m.ToolResults)
+	}
+
+	if calls != 1 {
+		t.Errorf("stored tool calls = %d, want 1", calls)
+	}
+	if results != 1 {
+		t.Errorf("stored tool results = %d, want 1", results)
+	}
+
+	// And rebuilding the request from those rows has to produce the pair the
+	// provider needs, in that order.
+	rebuilt := conversations.ToAIMessages(history)
+	var sawCall, sawResultAfterCall bool
+	for _, m := range rebuilt {
+		if len(m.ToolCalls) > 0 {
+			sawCall = true
+		}
+		if len(m.ToolResults) > 0 && sawCall {
+			sawResultAfterCall = true
+		}
+	}
+	if !sawResultAfterCall {
+		t.Error("a rebuilt request did not carry the call followed by its result")
 	}
 }

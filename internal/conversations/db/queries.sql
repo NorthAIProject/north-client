@@ -36,8 +36,8 @@ DELETE FROM conversations
 WHERE id = $1 AND user_id = $2;
 
 -- name: AppendMessage :one
-INSERT INTO messages (conversation_id, role, content, parts, usage, model, provider, evidence_refs)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+INSERT INTO messages (conversation_id, role, content, parts, usage, model, provider, evidence_refs, tool_calls, tool_results)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 RETURNING *;
 
 -- name: ListMessages :many

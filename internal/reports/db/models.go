@@ -372,6 +372,8 @@ type Message struct {
 	Provider       *string
 	CreatedAt      time.Time
 	EvidenceRefs   []string
+	ToolCalls      []byte
+	ToolResults    []byte
 }
 
 type PasswordResetToken struct {

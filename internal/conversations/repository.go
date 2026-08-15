@@ -106,6 +106,11 @@ type NewMessage struct {
 	// EvidenceRefs are the stored facts this reply was built from. Empty for a
 	// user message, and empty for a reply that cited nothing.
 	EvidenceRefs []string
+
+	// ToolCalls and ToolResults are set on tool turns; ordinary turns leave
+	// both nil and the columns stay null.
+	ToolCalls   []ai.ToolCall
+	ToolResults []ai.ToolResult
 }
 
 func (r *Repository) Append(ctx context.Context, msg NewMessage) (Message, error) {
@@ -121,11 +126,27 @@ func (r *Repository) Append(ctx context.Context, msg NewMessage) (Message, error
 		}
 	}
 
+	// Left nil when there are none, so an ordinary message writes null rather
+	// than an empty array — "nothing to do with tools", not "called none".
+	var toolCalls, toolResults []byte
+	if len(msg.ToolCalls) > 0 {
+		if toolCalls, err = json.Marshal(msg.ToolCalls); err != nil {
+			return Message{}, apperr.Wrap(err, "encode tool calls")
+		}
+	}
+	if len(msg.ToolResults) > 0 {
+		if toolResults, err = json.Marshal(msg.ToolResults); err != nil {
+			return Message{}, apperr.Wrap(err, "encode tool results")
+		}
+	}
+
 	row, err := r.q.AppendMessage(ctx, conversationsdb.AppendMessageParams{
 		ConversationID: msg.ConversationID,
 		Role:           string(msg.Role),
 		Content:        msg.Content,
 		Parts:          parts,
+		ToolCalls:      toolCalls,
+		ToolResults:    toolResults,
 		Usage:          usage,
 		Model:          nilIfEmpty(msg.Model),
 		Provider:       nilIfEmpty(msg.Provider),
@@ -269,6 +290,13 @@ func messageFromDB(row conversationsdb.Message) Message {
 		m.Provider = *row.Provider
 	}
 	m.EvidenceRefs = row.EvidenceRefs
+
+	if len(row.ToolCalls) > 0 {
+		_ = json.Unmarshal(row.ToolCalls, &m.ToolCalls)
+	}
+	if len(row.ToolResults) > 0 {
+		_ = json.Unmarshal(row.ToolResults, &m.ToolResults)
+	}
 
 	return m
 }
