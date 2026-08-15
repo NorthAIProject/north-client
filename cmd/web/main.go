@@ -346,11 +346,17 @@ func routes(
 	mealRecommendSvc := meals.NewGoalRecommendationService(mealProgressSvc, calculatorSvc)
 	mealReminderSvc := meals.NewMealReminderService(mealsRepo)
 
+	// Declared here rather than with the other lifestyle slices below because
+	// the fitness hub reads it: readings a device pushed are part of what that
+	// page is for.
+	healthSvc := health.NewService(health.NewRepository(pool))
+
 	fitnessHandler := fitness.NewHandler(fitness.Options{
 		Activity: activitySvc,
 		Workouts: workoutSvc,
 		Strava:   stravaSvc,
 		Meals:    mealProgressSvc,
+		Health:   healthSvc,
 	}, cfg.Env.IsProduction())
 	mealsHandler := meals.NewHandler(meals.HandlerOptions{
 		Ingredients: mealIngredientSvc,
@@ -383,7 +389,6 @@ func routes(
 	hydrationSvc := hydration.NewService(hydration.NewRepository(pool))
 	sleepSvc := sleep.NewService(sleep.NewRepository(pool))
 	habitSvc := habits.NewService(habits.NewRepository(pool))
-	healthSvc := health.NewService(health.NewRepository(pool))
 
 	careHandler := care.NewHandler(care.Options{
 		Reminders: mealReminderSvc,
@@ -443,6 +448,10 @@ func routes(
 		Goals:       goalSvc,
 		Ingredients: mealIngredientSvc,
 		FoodLog:     foodLogSvc,
+		CheckIns:    checkinSvc,
+		Documents:   documentSvc,
+		Workouts:    workoutSvc,
+		Users:       userSvc,
 	})
 
 	coachSvc := coach.NewService(coach.Options{
@@ -465,6 +474,10 @@ func routes(
 			mind.NewContextSource(mindSvc),
 			hydration.NewContextSource(hydrationSvc),
 			sleep.NewContextSource(sleepSvc),
+			// nil clock: the real one. Shares DailySignals with sleep and
+			// hydration, because a device's resting numbers are read the same
+			// way — as background, before anything else is interpreted.
+			health.NewContextSource(healthSvc, nil),
 			habits.NewContextSource(habitSvc),
 			reports.NewContextSource(reportSvc),
 		),
