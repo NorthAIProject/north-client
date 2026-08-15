@@ -248,6 +248,8 @@ func TestSystemPromptCarriesRulesAndContext(t *testing.T) {
 		// Absent sources are labelled rather than omitted, so the model knows
 		// they are empty instead of assuming.
 		"Goals: none recorded yet",
+		"Known about them: none recorded yet",
+		`Treat "Known about them" as facts`,
 	} {
 		if !strings.Contains(strings.ToLower(system), strings.ToLower(want)) {
 			t.Errorf("system prompt is missing %q\n---\n%s", want, system)
