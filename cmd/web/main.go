@@ -40,6 +40,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/fitness/strava"
 	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/habits"
+	"github.com/NorthAIProject/north-client/internal/health"
 	"github.com/NorthAIProject/north-client/internal/hydration"
 	"github.com/NorthAIProject/north-client/internal/insights"
 	"github.com/NorthAIProject/north-client/internal/jobs"
@@ -360,6 +361,7 @@ func routes(
 	hydrationSvc := hydration.NewService(hydration.NewRepository(pool))
 	sleepSvc := sleep.NewService(sleep.NewRepository(pool))
 	habitSvc := habits.NewService(habits.NewRepository(pool))
+	healthSvc := health.NewService(health.NewRepository(pool))
 
 	careHandler := care.NewHandler(care.Options{
 		Reminders: mealReminderSvc,
@@ -514,6 +516,24 @@ func routes(
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.MaxBody(1 << 20))
 		r.Handle("/mcp", mcpEndpoint)
+	})
+
+	// Health ingest sits beside /mcp for exactly the reasons above: the caller is
+	// a background process on somebody's phone, holding the same revocable
+	// bearer token and carrying neither a cookie nor a CSRF token.
+	//
+	// It gets its own group only because of the cap. An MCP call is a small
+	// envelope; one health sync is a week of per-beat samples, and 1 MiB would
+	// reject an ordinary Monday morning. This bound and health's own
+	// maxReadings are two spellings of the same limit — a payload at the row
+	// count lands near this size.
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.MaxBody(8 << 20))
+		r.Mount("/ingest/health", http.StripPrefix("/ingest/health", health.NewHandler(health.HandlerConfig{
+			Service: healthSvc,
+			Auth:    connectionSvc,
+			Log:     slog.Default(),
+		})))
 	})
 
 	r.Group(func(r chi.Router) {
