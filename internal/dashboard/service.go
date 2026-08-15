@@ -105,8 +105,11 @@ type Snapshot struct {
 
 	// Today's operational state. Deliberately not range-scoped: "have I
 	// checked in" is a question about now, whichever window is on screen.
-	CheckedInToday  bool
-	Streak          int
+	CheckedInToday bool
+	Streak         int
+	// GoalActivity7d is notes + goal-linked check-ins in the last 7 local days.
+	// Independent of Range. Zero means none — the template hides the line.
+	GoalActivity7d  int
 	PendingMemories int
 	Goals           []goals.Goal
 	LastThread      *conversations.Conversation
@@ -156,6 +159,28 @@ func (s *Service) Load(ctx context.Context, user users.User, rg timerange.Range)
 		streak, err := s.checkins.Streak(gctx, user)
 		snap.Streak = streak
 		return err
+	})
+
+	g.Go(func() error {
+		week := timerange.Parse(timerange.KeyWeek, user.Location())
+
+		notes, err := s.goals.UpdatesBetween(gctx, user.ID, week)
+		if err != nil {
+			return err
+		}
+		list, err := s.checkins.ListBetween(gctx, user.ID, week)
+		if err != nil {
+			return err
+		}
+
+		n := len(notes)
+		for _, c := range list {
+			if c.RelatedGoalID != nil {
+				n++
+			}
+		}
+		snap.GoalActivity7d = n
+		return nil
 	})
 
 	g.Go(func() error {
