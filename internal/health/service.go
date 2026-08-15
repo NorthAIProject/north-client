@@ -40,6 +40,38 @@ func (s *Service) Between(ctx context.Context, userID uuid.UUID, metric string, 
 	return s.repo.Between(ctx, userID, metric, since, until)
 }
 
+// Summary renders the headline metrics of the last `days` days as sentences,
+// newest window first.
+//
+// Metrics with no readings in the window produce no line at all. Saying
+// "Resting heart rate — no data" for every metric a person does not track
+// would fill the coach's context with absences, and an absence is not a
+// signal: most people wear one device measuring three things.
+func (s *Service) Summary(ctx context.Context, userID uuid.UUID, now time.Time, days int) ([]string, error) {
+	if days <= 0 {
+		days = defaultSummaryDays
+	}
+	since := now.AddDate(0, 0, -days)
+
+	lines := make([]string, 0, len(headlines))
+	for _, h := range headlines {
+		stats, err := s.repo.Stats(ctx, userID, h.metric, since, now)
+		if err != nil {
+			return nil, err
+		}
+		if line, ok := h.describe(stats, days); ok {
+			lines = append(lines, line)
+		}
+	}
+	return lines, nil
+}
+
+// defaultSummaryDays is the window the coach reads.
+//
+// A week: long enough that one bad night does not read as a trend, short
+// enough that it still describes now rather than last month.
+const defaultSummaryDays = 7
+
 // Forget removes everything one provider ever wrote for this person.
 //
 // Memory is a product feature and North does not discard history on its own —

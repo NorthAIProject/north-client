@@ -73,6 +73,34 @@ func (r *Repository) Between(ctx context.Context, userID uuid.UUID, metric strin
 	return out, nil
 }
 
+// metricStats is one metric's window, aggregated.
+type metricStats struct {
+	readings int64
+	days     int64
+	average  float64
+	total    float64
+	unit     string
+}
+
+func (r *Repository) Stats(ctx context.Context, userID uuid.UUID, metric string, since, until time.Time) (metricStats, error) {
+	row, err := r.q.HealthMetricStats(ctx, healthdb.HealthMetricStatsParams{
+		UserID:      userID,
+		Metric:      metric,
+		StartedAt:   since,
+		StartedAt_2: until,
+	})
+	if err != nil {
+		return metricStats{}, apperr.Wrap(err, "health metric stats for %q", metric)
+	}
+	return metricStats{
+		readings: row.ReadingCount,
+		days:     row.Days,
+		average:  row.Average,
+		total:    row.Total,
+		unit:     row.Unit,
+	}, nil
+}
+
 func (r *Repository) DeleteBySource(ctx context.Context, userID uuid.UUID, source string) error {
 	if err := r.q.DeleteHealthMetricsBySource(ctx, healthdb.DeleteHealthMetricsBySourceParams{
 		UserID: userID,
