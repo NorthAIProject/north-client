@@ -83,6 +83,18 @@ type Conversation struct {
 	MemoriesExtractedAt *time.Time
 }
 
+type Decision struct {
+	ID        uuid.UUID
+	UserID    uuid.UUID
+	Title     string
+	Options   string
+	Rationale string
+	Outcome   string
+	DecidedAt time.Time
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
 type Diet struct {
 	ID          uuid.UUID
 	Code        string
