@@ -523,6 +523,23 @@ func (s *Service) pump(
 			ai.ToolResultMessage(results),
 		)
 
+		// And to the database, in the same order, so a turn that has to pause
+		// for approval can be rebuilt after its stream has ended. A failure
+		// here is logged rather than fatal: the reply in flight is still worth
+		// finishing, and the cost of losing these rows is a turn that cannot be
+		// resumed — not a turn that is wrong.
+		if _, err := s.conversations.AppendToolCalls(genCtx, target.conversation.ID, calls); err != nil {
+			log.Error("could not store the coach's tool calls",
+				slog.String("conversation_id", target.conversation.ID.String()),
+				slog.Any("error", err))
+		} else if _, err := s.conversations.AppendToolResults(genCtx, target.conversation.ID, results); err != nil {
+			// Only when the calls landed: a result whose call was never stored
+			// would rebuild into exactly the shape providers reject.
+			log.Error("could not store the coach's tool results",
+				slog.String("conversation_id", target.conversation.ID.String()),
+				slog.Any("error", err))
+		}
+
 		next, err := target.client.Chat(genCtx, request)
 		if err != nil {
 			streamErr = apperr.Wrap(err, "coach: continue after tools")
