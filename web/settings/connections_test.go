@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/NorthAIProject/north-client/internal/ai/providers"
+	"github.com/NorthAIProject/north-client/internal/aicreds"
 	"github.com/NorthAIProject/north-client/internal/connections"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
@@ -132,6 +133,63 @@ func TestTheGatewayFieldIsDrivenByTheCatalogue(t *testing.T) {
 			strings.Contains(html, `,&#34;`+entry.Name+`&#34;]`)
 		if entry.RequiresBaseURL && !inState {
 			t.Errorf("%s requires a base URL but is not in the Alpine state", entry.Name)
+		}
+	}
+}
+
+// The mode radios once bound a boolean through x-model with :value, which
+// replaced their real submitted values with "true"/"false" and left neither one
+// checked on a first load — the card opened with no mode selected at all.
+func TestModeRadiosKeepTheirValuesAndOneIsAlwaysChecked(t *testing.T) {
+	t.Run("no credential opens on North's AI", func(t *testing.T) {
+		html := renderPage(t, ConnectForm{}, enabledPanel())
+
+		if strings.Contains(html, `:value="false"`) || strings.Contains(html, `:value="true"`) {
+			t.Error("a boolean is bound over the radio's value again")
+		}
+		if !strings.Contains(html, `name="mode" value="north" x-model="mode" checked`) {
+			t.Error(`"Use North's AI" is not checked when there is no stored credential`)
+		}
+		if !strings.Contains(html, `&#34;mode&#34;:&#34;north&#34;`) {
+			t.Error("Alpine state does not open in north mode")
+		}
+	})
+
+	t.Run("a stored credential opens on the user's own key", func(t *testing.T) {
+		panel := enabledPanel()
+		panel.Current = &aicreds.Credential{Provider: "hermes", KeyHint: "abcd"}
+		html := renderPage(t, ConnectForm{}, panel)
+
+		if !strings.Contains(html, `name="mode" value="own" x-model="mode" checked`) {
+			t.Error(`"Use my own API key" is not checked when a credential is stored`)
+		}
+		if !strings.Contains(html, `&#34;mode&#34;:&#34;own&#34;`) {
+			t.Error("Alpine state does not open in own mode")
+		}
+	})
+}
+
+// The key and model placeholders have to follow the selected tile. Leaving
+// OpenRouter's sk-or-v1- shape on screen while Hermes is selected defeats the
+// point of a key hint, which exists so somebody can tell at a glance whether
+// they pasted the right thing.
+func TestPlaceholdersFollowTheSelectedProvider(t *testing.T) {
+	html := renderPage(t, ConnectForm{}, enabledPanel())
+
+	for _, want := range []string{
+		`:placeholder="hints[provider] ? hints[provider].key : &#39;&#39;"`,
+		`:placeholder="hints[provider] ? hints[provider].model : &#39;&#39;"`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("missing placeholder binding %s", want)
+		}
+	}
+
+	// Every catalogue entry needs an entry in hints, or selecting it blanks the
+	// placeholder instead of changing it.
+	for _, entry := range providers.Catalog {
+		if !strings.Contains(html, `&#34;`+entry.Name+`&#34;:{`) {
+			t.Errorf("%s has no hints entry", entry.Name)
 		}
 	}
 }

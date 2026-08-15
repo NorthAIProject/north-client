@@ -321,7 +321,7 @@ templ providerCard(p ProviderPanel) {
 					@ui.CSRFInput()
 					<div class="space-y-2">
 						<label class="flex items-start gap-2 text-sm">
-							<input type="radio" name="mode" value="north" x-model="own" :value="false" checked?={ p.Current == nil } class="mt-1"/>
+							<input type="radio" name="mode" value="north" x-model="mode" checked?={ p.Current == nil } class="mt-1"/>
 							<span>
 								<span class="font-medium">Use North's AI</span>
 								<span class="text-muted-foreground block text-xs leading-relaxed">
@@ -330,7 +330,7 @@ templ providerCard(p ProviderPanel) {
 							</span>
 						</label>
 						<label class="flex items-start gap-2 text-sm">
-							<input type="radio" name="mode" value="own" x-model="own" :value="true" checked?={ p.Current != nil } class="mt-1"/>
+							<input type="radio" name="mode" value="own" x-model="mode" checked?={ p.Current != nil } class="mt-1"/>
 							<span>
 								<span class="font-medium">Use my own API key</span>
 								<span class="text-muted-foreground block text-xs leading-relaxed">
@@ -339,7 +339,7 @@ templ providerCard(p ProviderPanel) {
 							</span>
 						</label>
 					</div>
-					<div x-show="own" x-cloak class="space-y-4 pt-2">
+					<div x-show="mode === 'own'" x-cloak class="space-y-4 pt-2">
 						@form.Item() {
 							@label.Label() {
 								Provider
@@ -385,9 +385,18 @@ templ providerCard(p ProviderPanel) {
 							@label.Label(label.Props{For: "api_key"}) {
 								API key
 							}
+							// Placeholder twice over: server-rendered for the
+							// current selection so it is right without
+							// JavaScript, and rebound as tiles are clicked so
+							// it follows. Showing OpenRouter's sk-or-v1- shape
+							// while Hermes is selected is exactly the confusion
+							// a key hint exists to prevent.
 							@input.Input(input.Props{
 								ID: "api_key", Name: "api_key", Type: input.TypePassword,
 								Placeholder: keyPlaceholder(p), HasError: p.Form.fieldError("api_key") != "",
+								Attributes: templ.Attributes{
+									":placeholder": "hints[provider] ? hints[provider].key : ''",
+								},
 							})
 							if p.Form.fieldError("api_key") != "" {
 								@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
@@ -409,6 +418,9 @@ templ providerCard(p ProviderPanel) {
 							@input.Input(input.Props{
 								ID: "model", Name: "model", Value: p.Form.Model,
 								Placeholder: defaultModel(p), HasError: p.Form.fieldError("model") != "",
+								Attributes: templ.Attributes{
+									":placeholder": "hints[provider] ? hints[provider].model : ''",
+								},
 							})
 							if p.Form.fieldError("model") != "" {
 								@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
@@ -449,15 +461,35 @@ templ providerCard(p ProviderPanel) {
 // is how they end up disagreeing.
 func providerState(p ProviderPanel) map[string]any {
 	needsURL := make([]string, 0, 1)
+	hints := make(map[string]map[string]string, len(p.Catalog))
+
 	for _, entry := range p.Catalog {
 		if entry.RequiresBaseURL {
 			needsURL = append(needsURL, entry.Name)
 		}
+		// The key shape and default model for each tile, so picking one
+		// updates the placeholders below without a round trip. Same source as
+		// keyPlaceholder and defaultModel, which stay as the no-JS answer.
+		hints[entry.Name] = map[string]string{
+			"key":   entry.KeyHint,
+			"model": entry.DefaultModel,
+		}
 	}
+
+	// A string rather than a bool, because this is also the radio group's
+	// submitted value. Binding a boolean to it — as this did — replaced the
+	// radios' real values with "true"/"false" and left neither checked on a
+	// first load, which is how the card opened with no mode selected at all.
+	mode := "north"
+	if p.Current != nil {
+		mode = "own"
+	}
+
 	return map[string]any{
-		"own":      p.Current != nil,
+		"mode":     mode,
 		"provider": p.Form.Provider,
 		"needsURL": needsURL,
+		"hints":    hints,
 	}
 }
 
