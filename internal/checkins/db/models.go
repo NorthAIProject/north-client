@@ -382,6 +382,13 @@ type PasswordResetToken struct {
 	UsedAt    *time.Time
 }
 
+type QuotaCounter struct {
+	UserID      uuid.UUID
+	Action      string
+	WindowStart time.Time
+	Used        int32
+}
+
 type Report struct {
 	ID          uuid.UUID
 	UserID      uuid.UUID
