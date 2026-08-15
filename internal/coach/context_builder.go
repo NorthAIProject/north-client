@@ -92,6 +92,11 @@ type Context struct {
 
 	// Reports is the latest ready weekly review, when one exists.
 	Reports []string
+
+	// Decisions is recorded calls from the decision journal
+	// (internal/decisions). Separate from Reflections: a journal entry is
+	// how someone felt, a decision is what they chose.
+	Decisions []string
 }
 
 // Evidence is one retrieved fact carrying enough provenance to cite it.
@@ -263,6 +268,7 @@ func (c *Context) Render() string {
 	section(&b, "Habits", c.Habits, "none set up yet")
 	section(&b, "Preferences", c.Preferences, "not set yet")
 	section(&b, "Reflections", c.Reflections, "none yet")
+	section(&b, "Decisions", c.Decisions, "none recorded yet")
 	section(&b, "Latest weekly review", c.Reports, "none yet")
 
 	if len(c.EarlierTopics) > 0 {

@@ -52,6 +52,7 @@ func TestNewSectionsRenderWithEmptyStateLabels(t *testing.T) {
 		"Habits: none set up yet",
 		"Preferences: not set yet",
 		"Reflections: none yet",
+		"Decisions: none recorded yet",
 		"Latest weekly review: none yet",
 	} {
 		if !strings.Contains(rendered, want) {
@@ -192,5 +193,34 @@ func TestMemoriesRenderUnderTheirHeading(t *testing.T) {
 	}
 	if !strings.Contains(empty.Render(), "Known about them: none recorded yet") {
 		t.Fatalf("an empty memory section must say so rather than go missing:\n%s", empty.Render())
+	}
+}
+
+func TestDecisionsRenderUnderTheirHeading(t *testing.T) {
+	pool := testdb.New(t)
+	convos := conversations.NewService(conversations.NewRepository(pool))
+
+	const summary = "15 Aug — Quit the evening client. Options: keep / quit. Why: energy"
+
+	filled, err := coach.NewContextBuilder(convos,
+		fakeSource{name: "decisions", fill: func(c *coach.Context) {
+			c.Decisions = append(c.Decisions, summary)
+		}},
+	).Build(context.Background(), coach.ContextRequest{User: testUser()})
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+
+	rendered := filled.Render()
+	if !strings.Contains(rendered, "Decisions:\n- "+summary) {
+		t.Fatalf("decisions should render as bullets under their heading:\n%s", rendered)
+	}
+
+	empty, err := coach.NewContextBuilder(convos).Build(context.Background(), coach.ContextRequest{User: testUser()})
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	if !strings.Contains(empty.Render(), "Decisions: none recorded yet") {
+		t.Fatalf("an empty section must say so rather than go missing:\n%s", empty.Render())
 	}
 }

@@ -281,3 +281,13 @@ sql:
         out: internal/health/db
         overrides: *overrides
 
+  - engine: postgresql
+    schema: migrations
+    queries: internal/decisions/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: decisionsdb
+        out: internal/decisions/db
+        overrides: *overrides
+

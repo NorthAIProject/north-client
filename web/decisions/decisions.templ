@@ -1,0 +1,180 @@
+package decisions
+
+import (
+	"github.com/NorthAIProject/north-client/internal/decisions/decision"
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/form"
+	"github.com/NorthAIProject/north-client/web/shared/ui/input"
+	"github.com/NorthAIProject/north-client/web/shared/ui/label"
+	"github.com/NorthAIProject/north-client/web/shared/ui/textarea"
+)
+
+// DecisionForm carries a submitted (or rejected) decision.
+type DecisionForm struct {
+	Title     string
+	Options   string
+	Rationale string
+	Errors    map[string]string
+}
+
+func (f DecisionForm) fieldError(name string) string {
+	if f.Errors == nil {
+		return ""
+	}
+	return f.Errors[name]
+}
+
+// FormFor pre-fills the edit form from an existing decision.
+func FormFor(d decision.Decision) DecisionForm {
+	return DecisionForm{
+		Title:     d.Title,
+		Options:   d.Options,
+		Rationale: d.Rationale,
+	}
+}
+
+templ IndexPage(user users.User, list []decision.Decision, f DecisionForm) {
+	@layout.App("Decisions", user, layout.BuildNav("/app/decisions")) {
+		<div class="mx-auto w-full max-w-6xl space-y-6 p-6 md:p-8">
+			<header>
+				@ui.MonoLabel("Mind")
+				<h1 class="mt-2 text-2xl font-medium tracking-tight">Decisions</h1>
+				<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
+					What you chose, what you turned down, and why.
+				</p>
+			</header>
+			@decisionFormCard("/app/decisions", "Log a decision", "Save decision", f)
+			if len(list) == 0 {
+				<p class="text-muted-foreground text-sm">Nothing recorded yet. The first one is the one you'll want later.</p>
+			} else {
+				<section class="space-y-3">
+					<h2 class="text-sm font-medium">Recent</h2>
+					for _, d := range list {
+						@decisionCard(d)
+					}
+				</section>
+			}
+		</div>
+		@label.Script()
+	}
+}
+
+templ ShowPage(user users.User, d decision.Decision, f DecisionForm) {
+	@layout.App("Decisions", user, layout.BuildNav("/app/decisions")) {
+		<div class="mx-auto w-full max-w-6xl space-y-6 p-6 md:p-8">
+			<header>
+				@ui.MonoLabel("Mind")
+				<h1 class="mt-2 text-2xl font-medium tracking-tight">{ d.Title }</h1>
+				<p class="text-muted-foreground mt-1 text-sm">
+					{ d.DecidedAt.Format("2 January 2006") }
+				</p>
+			</header>
+			@decisionFormCard("/app/decisions/"+d.ID.String(), "Edit", "Save changes", f)
+			<form method="post" action={ templ.SafeURL("/app/decisions/" + d.ID.String() + "/delete") }>
+				@ui.CSRFInput()
+				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantDestructive}) {
+					Delete
+				}
+			</form>
+			<p>
+				@button.Button(button.Props{Href: "/app/decisions", Variant: button.VariantGhost}) {
+					Back to decisions
+				}
+			</p>
+		</div>
+		@label.Script()
+	}
+}
+
+templ decisionFormCard(action, heading, submit string, f DecisionForm) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Title() {
+				{ heading }
+			}
+		}
+		@card.Content() {
+			<form method="post" action={ templ.SafeURL(action) } class="space-y-4">
+				@ui.CSRFInput()
+				@form.Item() {
+					@label.Label(label.Props{For: "title", Error: f.fieldError("title")}) {
+						The decision
+					}
+					@input.Input(input.Props{
+						ID:          "title",
+						Name:        "title",
+						Value:       f.Title,
+						Placeholder: "e.g. Quit the evening client",
+						HasError:    f.fieldError("title") != "",
+					})
+					if f.fieldError("title") != "" {
+						@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+							{ f.fieldError("title") }
+						}
+					}
+				}
+				@form.Item() {
+					@label.Label(label.Props{For: "options", Error: f.fieldError("options")}) {
+						Options considered
+					}
+					@textarea.Textarea(textarea.Props{
+						ID:          "options",
+						Name:        "options",
+						Rows:        3,
+						Placeholder: "What else was on the table?",
+						Value:       f.Options,
+						HasError:    f.fieldError("options") != "",
+					})
+					if f.fieldError("options") != "" {
+						@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+							{ f.fieldError("options") }
+						}
+					}
+				}
+				@form.Item() {
+					@label.Label(label.Props{For: "rationale", Error: f.fieldError("rationale")}) {
+						Why this one
+					}
+					@textarea.Textarea(textarea.Props{
+						ID:          "rationale",
+						Name:        "rationale",
+						Rows:        3,
+						Placeholder: "What tipped it?",
+						Value:       f.Rationale,
+						HasError:    f.fieldError("rationale") != "",
+					})
+					if f.fieldError("rationale") != "" {
+						@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+							{ f.fieldError("rationale") }
+						}
+					}
+				}
+				@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90"}) {
+					{ submit }
+				}
+			</form>
+		}
+	}
+}
+
+templ decisionCard(d decision.Decision) {
+	@card.Card(card.Props{Class: "border-hairline"}) {
+		@card.Content(card.ContentProps{Class: "space-y-2 py-4"}) {
+			<p class="text-muted-foreground text-xs">{ d.DecidedAt.Format("2 Jan 2006") }</p>
+			<h3 class="text-sm font-medium">{ d.Title }</h3>
+			if d.Options != "" {
+				<p class="text-muted-foreground text-sm">Options: { d.Options }</p>
+			}
+			if d.Rationale != "" {
+				<p class="text-muted-foreground text-sm">Why: { d.Rationale }</p>
+			}
+			@button.Button(button.Props{Href: "/app/decisions/" + d.ID.String(), Variant: button.VariantGhost, Size: button.SizeSm}) {
+				Edit
+			}
+		}
+	}
+}

@@ -33,6 +33,7 @@ func BuildNav(active string) []NavGroup {
 			Items: []NavItem{
 				{Label: "Mind", Href: "/app/mind", Icon: "brain"},
 				{Label: "Memory", Href: "/app/memories", Icon: "sparkles"},
+				{Label: "Decisions", Href: "/app/decisions", Icon: "scale"},
 			},
 		},
 		{

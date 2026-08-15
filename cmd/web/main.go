@@ -33,6 +33,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/connections"
 	"github.com/NorthAIProject/north-client/internal/conversations"
 	"github.com/NorthAIProject/north-client/internal/dashboard"
+	"github.com/NorthAIProject/north-client/internal/decisions"
 	"github.com/NorthAIProject/north-client/internal/documents"
 	"github.com/NorthAIProject/north-client/internal/exercises"
 	"github.com/NorthAIProject/north-client/internal/export"
@@ -355,6 +356,9 @@ func routes(
 	mindSvc := mind.NewService(mind.NewRepository(pool), checkinSvc)
 	mindHandler := mind.NewHandler(mindSvc, checkinSvc)
 
+	decisionSvc := decisions.NewService(decisions.NewRepository(pool))
+	decisionHandler := decisions.NewHandler(decisionSvc)
+
 	// Daily lifestyle signals. None of these own a page: they are logged from
 	// /app/care, the same way biometrics and preferences are reached through
 	// calculator and settings.
@@ -441,6 +445,7 @@ func routes(
 			meals.NewContextSource(mealProgressSvc, mealDietSvc),
 			preferences.NewContextSource(preferencesSvc),
 			mind.NewContextSource(mindSvc),
+			decisions.NewContextSource(decisionSvc),
 			hydration.NewContextSource(hydrationSvc),
 			sleep.NewContextSource(sleepSvc),
 			habits.NewContextSource(habitSvc),
@@ -577,6 +582,7 @@ func routes(
 				settingsHandler.Routes(r)
 				vaultHandler.Routes(r)
 				mindHandler.Routes(r)
+				decisionHandler.Routes(r)
 				careHandler.Routes(r)
 				activityHandler.Routes(r)
 				calculatorHandler.Routes(r)

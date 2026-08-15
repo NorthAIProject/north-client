@@ -45,8 +45,11 @@ be missed, and it is not right or wrong. It only accumulates.
 | A night's sleep | `internal/sleep` | `sleep_logs` |
 | A daily reflection | `internal/checkins` | `check_ins` |
 | A journal entry | `internal/mind` | `journal_entries` |
+| A recorded decision | `internal/decisions` | `decisions` |
 | A body measurement | `internal/biometrics` | `user_biometrics` |
 | A form-check video analysis | `internal/media` | `form_analyses` |
+
+A decision is not a journal entry. The journal is how someone felt; a decision is what they chose, which options they turned down, and (later) what happened. They share the append-per-event storage flavour and nothing else.
 
 Logs come in two storage flavours, and which one to use is decided by **how often a
 person records it**:
