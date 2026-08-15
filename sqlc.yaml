@@ -291,3 +291,13 @@ sql:
         out: internal/quota/db
         overrides: *overrides
 
+  - engine: postgresql
+    schema: migrations
+    queries: internal/nudges/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: nudgesdb
+        out: internal/nudges/db
+        overrides: *overrides
+

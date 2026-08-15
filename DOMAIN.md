@@ -150,6 +150,26 @@ change for different reasons.
 
 ---
 
+# Scheduled nudges
+
+Accountability that does not wait for the person to open chat lives in
+`internal/nudges`. A worker job evaluates deterministic rules (missed check-in,
+approaching goal deadline) in the user's timezone and writes `user_nudges`
+rows. The web process only lists, marks read, and dismisses. The coach model
+does not produce these notes and they do not go into the context block.
+
+---
+
+# Reflection sessions
+
+A reflection is a `conversations.kind`, not a new slice and not a second coach.
+`CoachService` runs it with `PromptBuilder.Reflection`: three to five questions,
+then a written summary stored on the conversation row. Optional "save to memory"
+is the existing pending/approve path, scoped to that thread. It is not a daily
+check-in and not a journal entry.
+
+---
+
 # How the coach sees all of this
 
 Everything above is only worth storing because it reaches the coach. That happens

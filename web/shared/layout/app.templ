@@ -65,6 +65,12 @@ templ App(title string, user users.User, nav []NavGroup) {
 					<span class="md:hidden">
 						@ui.BrandLockup("/app", "size-5", "text-sm font-medium tracking-tight")
 					</span>
+					<div
+						class="ml-auto"
+						hx-get="/app/nudges/bell"
+						hx-trigger="load"
+						hx-swap="innerHTML"
+					></div>
 				</header>
 				<main class="min-h-0 flex-1 overflow-y-auto">
 					{ children... }

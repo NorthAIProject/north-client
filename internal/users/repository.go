@@ -144,6 +144,21 @@ func (r *Repository) UpdateProfile(ctx context.Context, id uuid.UUID, p Profile)
 	return fromDB(row), nil
 }
 
+func (r *Repository) ListOnboarded(ctx context.Context, after uuid.UUID, limit int) ([]User, error) {
+	rows, err := r.q.ListOnboardedUsers(ctx, usersdb.ListOnboardedUsersParams{
+		After:       after,
+		ResultLimit: int32(limit),
+	})
+	if err != nil {
+		return nil, apperr.Wrap(err, "list onboarded users")
+	}
+	out := make([]User, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, fromDB(row))
+	}
+	return out, nil
+}
+
 func (r *Repository) MarkOnboarded(ctx context.Context, id uuid.UUID) (User, error) {
 	row, err := r.q.MarkUserOnboarded(ctx, id)
 	if err != nil {
