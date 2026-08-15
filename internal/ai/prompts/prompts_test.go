@@ -60,6 +60,8 @@ func TestCoachPromptStatesGroundingRules(t *testing.T) {
 		"forbids invented history":                "never invent history",
 		"forbids medical diagnosis":               "do not give medical diagnoses",
 		"bounds media analysis":                   "stay inside your evidence",
+		"treats approved memories as known facts": "treat \"known about them\" as facts",
+		"admits a missing memory is unknown":      "if a fact you need is not listed there",
 	}
 
 	for what, phrase := range required {
