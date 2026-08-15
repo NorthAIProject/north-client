@@ -81,6 +81,8 @@ type Conversation struct {
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
 	MemoriesExtractedAt *time.Time
+	Kind                string
+	Summary             string
 }
 
 type Diet struct {
@@ -372,6 +374,8 @@ type Message struct {
 	Provider       *string
 	CreatedAt      time.Time
 	EvidenceRefs   []string
+	ToolCalls      []byte
+	ToolResults    []byte
 }
 
 type PasswordResetToken struct {
@@ -380,6 +384,13 @@ type PasswordResetToken struct {
 	ExpiresAt time.Time
 	CreatedAt time.Time
 	UsedAt    *time.Time
+}
+
+type QuotaCounter struct {
+	UserID      uuid.UUID
+	Action      string
+	WindowStart time.Time
+	Used        int32
 }
 
 type Report struct {
