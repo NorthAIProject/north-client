@@ -19,6 +19,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/memories"
 	"github.com/NorthAIProject/north-client/internal/memories/extract"
 	"github.com/NorthAIProject/north-client/internal/memories/memory"
+	"github.com/NorthAIProject/north-client/internal/nudges"
 	"github.com/NorthAIProject/north-client/internal/shared/database/testdb"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/sleep"
@@ -297,5 +298,56 @@ func TestLoadCheckInAndHydrationSeries(t *testing.T) {
 	}
 	if snap.Hydration.TodayML != hydration.Glass {
 		t.Fatalf("today ml = %d", snap.Hydration.TodayML)
+	}
+}
+
+func TestLoadSurfacesUnreadNudges(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	user := seedUser(t, pool, "dash-nudge@north.test")
+	nudgeSvc := nudges.NewService(nudges.NewRepository(pool), nil, nil, nil)
+
+	unread, _, err := nudgeSvc.CreateIfAbsent(ctx, user.ID, nudges.Draft{
+		Kind:      nudges.KindMissedCheckIn,
+		DedupeKey: "2026-08-15",
+		Title:     "Check in with yourself",
+		Body:      "It has been 3 days since your last check-in.",
+		Href:      "/app/check-ins",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	read, _, err := nudgeSvc.CreateIfAbsent(ctx, user.ID, nudges.Draft{
+		Kind:      nudges.KindGoalDeadline,
+		DedupeKey: "goal:2026-08-20",
+		Title:     "A is due Wednesday",
+		Body:      "Due in 5 days.",
+		Href:      "/app/goals",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = nudgeSvc.MarkRead(ctx, read.ID, user.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	opts := dashboard.Options{
+		CheckIns:      checkins.NewService(checkins.NewRepository(pool), goals.NewService(goals.NewRepository(pool))),
+		Goals:         goals.NewService(goals.NewRepository(pool)),
+		Conversations: conversations.NewService(conversations.NewRepository(pool)),
+		Workouts:      workouts.NewService(workouts.Options{Repository: workouts.NewRepository(pool)}),
+		Memories:      memories.NewService(memories.NewRepository(pool)),
+		Habits:        habits.NewService(habits.NewRepository(pool)),
+		Hydration:     hydration.NewService(hydration.NewRepository(pool)),
+		Sleep:         sleep.NewService(sleep.NewRepository(pool)),
+		Activity:      activity.NewService(activity.NewRepository(pool), biometrics.NewService(biometrics.NewRepository(pool))),
+		Nudges:        nudgeSvc,
+	}
+	snap, err := dashboard.NewService(opts).Load(ctx, user, defaultRange(user))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snap.Nudges) != 1 || snap.Nudges[0].ID != unread.ID {
+		t.Fatalf("nudges = %#v", snap.Nudges)
 	}
 }
