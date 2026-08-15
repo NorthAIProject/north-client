@@ -30,6 +30,13 @@ type ToolRunner interface {
 	// InvokeAll runs a turn's calls in order and returns their results. The
 	// user id comes from the authenticated session, never from the model.
 	InvokeAll(ctx context.Context, userID uuid.UUID, calls []ai.ToolCall) []ai.ToolResult
+
+	// IsReadOnly reports whether a named tool changes nothing.
+	//
+	// The loop asks before running anything: a tool that writes is suspended
+	// and shown to the person instead. An unknown name answers false, so the
+	// unrecognised case is the careful one.
+	IsReadOnly(name string) bool
 }
 
 // ClientSource yields the provider a user brought themselves.
@@ -504,6 +511,36 @@ func (s *Service) pump(
 		}
 
 		exerciseSlugs = appendExerciseLookups(exerciseSlugs, calls)
+
+		// A turn that writes stops here and waits for a person.
+		//
+		// The calls are stored and the stream ends; approving is a fresh
+		// request that rebuilds the conversation and carries on. The loop
+		// cannot simply block: it is running inside an SSE response, and
+		// holding one open until somebody clicks would tie up a connection and
+		// lose everything if the process restarted.
+		//
+		// The whole turn suspends even when only one of its calls writes.
+		// Running the read-only half first would mean a declined turn had
+		// already done something, which is not what "declined" reads as.
+		if writes := writingCalls(s.tools, calls); len(writes) > 0 {
+			if _, err := s.conversations.AppendToolCalls(genCtx, target.conversation.ID, calls); err != nil {
+				log.Error("could not store a tool call awaiting approval",
+					slog.String("conversation_id", target.conversation.ID.String()),
+					slog.Any("error", err))
+				break
+			}
+
+			log.Info("coach is waiting for approval before writing",
+				slog.String("conversation_id", target.conversation.ID.String()),
+				slog.Any("tools", toolNames(writes)))
+
+			// Nothing is sent to the caller here. The handler asks
+			// PendingApproval once the stream closes and renders the card from
+			// that, which keeps the provider-facing ai.StreamChunk free of a
+			// field only North's own UI would ever read.
+			break
+		}
 
 		results := s.tools.InvokeAll(genCtx, target.user.ID, calls)
 		for _, result := range results {

@@ -22,9 +22,16 @@ type stubTools struct {
 	tools   []ai.Tool
 	results map[string]string
 
+	// readOnly mirrors the registry's annotation. A name absent from the map
+	// reads as false — a write — which is the same safe default the registry
+	// applies to a capability that says nothing.
+	readOnly map[string]bool
+
 	calls  [][]ai.ToolCall
 	userID uuid.UUID
 }
+
+func (s *stubTools) IsReadOnly(name string) bool { return s.readOnly[name] }
 
 func (s *stubTools) Tools() []ai.Tool { return s.tools }
 
@@ -98,8 +105,9 @@ func TestTheCoachRunsAToolAndAnswersFromItsResult(t *testing.T) {
 	t.Parallel()
 
 	tools := &stubTools{
-		tools:   []ai.Tool{searchTool},
-		results: map[string]string{"search_exercises": "- barbell-deadlift — Barbell Deadlift [hamstrings]"},
+		tools:    []ai.Tool{searchTool},
+		results:  map[string]string{"search_exercises": "- barbell-deadlift — Barbell Deadlift [hamstrings]"},
+		readOnly: map[string]bool{"search_exercises": true},
 	}
 
 	client := &fake.Client{Responses: []fake.Response{
@@ -146,8 +154,9 @@ func TestOnlyTheFinalAnswerIsShownToTheReader(t *testing.T) {
 	t.Parallel()
 
 	tools := &stubTools{
-		tools:   []ai.Tool{searchTool},
-		results: map[string]string{"search_exercises": "- barbell-deadlift"},
+		tools:    []ai.Tool{searchTool},
+		results:  map[string]string{"search_exercises": "- barbell-deadlift"},
+		readOnly: map[string]bool{"search_exercises": true},
 	}
 	client := &fake.Client{Responses: []fake.Response{
 		fake.Calling(fake.ToolCall("search_exercises", `{"muscle":"hamstrings"}`)),
@@ -194,7 +203,7 @@ func TestOnlyTheFinalAnswerIsShownToTheReader(t *testing.T) {
 func TestToolsAreDeclaredToTheProvider(t *testing.T) {
 	t.Parallel()
 
-	tools := &stubTools{tools: []ai.Tool{searchTool}, results: map[string]string{}}
+	tools := &stubTools{tools: []ai.Tool{searchTool}, results: map[string]string{}, readOnly: map[string]bool{"search_exercises": true}}
 	client := &fake.Client{Responses: []fake.Response{{Text: "Sure."}}}
 
 	h := newToolHarness(t, client, tools)
@@ -223,8 +232,9 @@ func TestTheToolLoopIsBounded(t *testing.T) {
 	t.Parallel()
 
 	tools := &stubTools{
-		tools:   []ai.Tool{searchTool},
-		results: map[string]string{"search_exercises": "- something"},
+		tools:    []ai.Tool{searchTool},
+		results:  map[string]string{"search_exercises": "- something"},
+		readOnly: map[string]bool{"search_exercises": true},
 	}
 
 	// Always asks, never answers.
@@ -286,8 +296,9 @@ func TestTheCallAndItsResultAreBothSentBack(t *testing.T) {
 	t.Parallel()
 
 	tools := &stubTools{
-		tools:   []ai.Tool{searchTool},
-		results: map[string]string{"search_exercises": "- barbell-deadlift"},
+		tools:    []ai.Tool{searchTool},
+		results:  map[string]string{"search_exercises": "- barbell-deadlift"},
+		readOnly: map[string]bool{"search_exercises": true},
 	}
 	client := &fake.Client{Responses: []fake.Response{
 		fake.Calling(fake.ToolCall("search_exercises", `{"muscle":"hamstrings"}`)),
@@ -339,8 +350,9 @@ func TestToolTurnsArePersisted(t *testing.T) {
 	t.Parallel()
 
 	tools := &stubTools{
-		tools:   []ai.Tool{searchTool},
-		results: map[string]string{"search_exercises": "- barbell-deadlift"},
+		tools:    []ai.Tool{searchTool},
+		results:  map[string]string{"search_exercises": "- barbell-deadlift"},
+		readOnly: map[string]bool{"search_exercises": true},
 	}
 	client := &fake.Client{Responses: []fake.Response{
 		fake.Calling(fake.ToolCall("search_exercises", `{"muscle":"hamstrings"}`)),

@@ -81,6 +81,8 @@ type Conversation struct {
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
 	MemoriesExtractedAt *time.Time
+	Kind                string
+	Summary             string
 }
 
 type Diet struct {

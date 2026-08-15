@@ -11,6 +11,7 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/layout"
 	"github.com/NorthAIProject/north-client/web/shared/markdown"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/alert"
 	"github.com/NorthAIProject/north-client/web/shared/ui/badge"
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
 	"github.com/NorthAIProject/north-client/web/shared/ui/card"
@@ -59,15 +60,26 @@ type CoachStats struct {
 }
 
 // Page is a conversation with its history and composer.
-templ Page(user users.User, conversation conversations.Conversation, messages []conversations.Message, list []conversations.Conversation, stats CoachStats) {
+templ Page(user users.User, conversation conversations.Conversation, messages []conversations.Message, list []conversations.Conversation, stats CoachStats, pending []PendingTool, resuming bool) {
 	@layout.App(conversation.DisplayTitle(), user, layout.BuildNav("/app/chat")) {
 		<div id="chat-root" class="flex h-full" x-data="{ threads: false }">
 			@threadList(list, conversation.ID, stats)
 			<div class="flex min-w-0 flex-1 flex-col">
 				@chatHeader(conversation)
 				@transcript(messages, conversation)
-				if !conversation.Ended() {
-					@composer(conversation.ID, "")
+				// The card takes the composer's place while it is up. A person
+				// answering "should I run this?" is not also mid-sentence on
+				// something else, and leaving both would invite a second turn
+				// that the pending one has to be resolved before anyway.
+				if len(pending) > 0 {
+					@ApprovalCard(conversation.ID, pending)
+				} else {
+					if resuming {
+						@ResumeExchange(conversation.ID)
+					}
+					if !conversation.Ended() {
+						@composer(conversation.ID, "")
+					}
 				}
 			</div>
 		</div>
@@ -508,4 +520,77 @@ templ composer(conversationID uuid.UUID, draft string) {
 templ ComposerError(conversationID uuid.UUID, draft, message string) {
 	<p class="text-destructive px-4 pb-2 text-sm">{ message }</p>
 	@composer(conversationID, draft)
+}
+
+// PendingTool is one call waiting on a person, rendered as something they can
+// read rather than as JSON.
+type PendingTool struct {
+	MessageID uuid.UUID
+	Name      string
+	Summary   string
+}
+
+// ApprovalCard asks before North changes anything.
+//
+// It names the tool and the values it would write, because "log a check-in" and
+// "log a check-in saying the week went badly" are different requests and only
+// one of them is what was meant.
+templ ApprovalCard(conversationID uuid.UUID, pending []PendingTool) {
+	<div class="border-border border-t p-4">
+		@alert.Alert() {
+			@icon.TriangleAlert(icon.Props{Class: "size-4"})
+			@alert.Title() {
+				North wants to change something
+			}
+			@alert.Description() {
+				<ul class="mt-1 space-y-1">
+					for _, p := range pending {
+						<li class="font-mono text-xs">{ p.Summary }</li>
+					}
+				</ul>
+			}
+		}
+		<div class="mt-3 flex gap-2">
+			<form method="post" action={ templ.SafeURL(resolveURL(conversationID, pending[0].MessageID, "approve")) }>
+				@ui.CSRFInput()
+				@button.Button(button.Props{Type: "submit"}) {
+					Yes, go ahead
+				}
+			</form>
+			<form method="post" action={ templ.SafeURL(resolveURL(conversationID, pending[0].MessageID, "decline")) }>
+				@ui.CSRFInput()
+				@button.Button(button.Props{Type: "submit", Variant: button.VariantOutline}) {
+					No
+				}
+			</form>
+		</div>
+	</div>
+}
+
+// resolveURL names both the conversation and the exact turn being answered, so
+// a stale tab or a double submit cannot approve a later call by accident.
+func resolveURL(conversationID, messageID uuid.UUID, decision string) string {
+	return "/app/chat/" + conversationID.String() + "/tools/" + messageID.String() + "/" + decision
+}
+
+// ResumeExchange opens the stream that finishes a reply interrupted by an
+// approval. It is the same shape as PendingExchange minus the user's bubble,
+// because the question was asked a turn ago and is already on the page.
+templ ResumeExchange(conversationID uuid.UUID) {
+	<div class="flex flex-col items-start gap-1" hx-ext="sse" sse-connect={ "/app/chat/" + conversationID.String() + "/resume" } sse-close="done">
+		<span class="font-mono text-[10px] uppercase tracking-[0.14em] text-agent">North</span>
+		<div
+			class="border-hairline bg-surface max-w-[85%] rounded-2xl rounded-bl-sm border px-4 py-2.5 text-sm whitespace-pre-wrap"
+			sse-swap="token,error"
+			hx-swap="beforeend"
+		></div>
+		<div
+			class="hidden"
+			hx-trigger="sse:done"
+			hx-get={ "/app/chat/" + conversationID.String() }
+			hx-target="#chat-root"
+			hx-select="#chat-root"
+			hx-swap="outerHTML"
+		></div>
+	</div>
 }
