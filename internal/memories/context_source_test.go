@@ -16,10 +16,6 @@ import (
 	"github.com/NorthAIProject/north-client/internal/shared/database/testdb"
 )
 
-// contextCharBudget is the hard cap Task 2 will enforce. The test names the
-// number so a silent change of the constant fails here rather than in prod.
-const contextCharBudget = 2000
-
 func TestContextSourceFillsMemories(t *testing.T) {
 	pool := testdb.New(t)
 	ctx := context.Background()
@@ -186,8 +182,8 @@ func TestContextSourceHonoursCharBudget(t *testing.T) {
 	for _, e := range into.Memories {
 		used += utf8.RuneCountInString(e.Text)
 	}
-	if used > contextCharBudget {
-		t.Fatalf("memory section is %d runes, budget is %d", used, contextCharBudget)
+	if used > memories.ContextCharBudget {
+		t.Fatalf("memory section is %d runes, budget is %d", used, memories.ContextCharBudget)
 	}
 
 	rendered := into.Render()
@@ -246,7 +242,7 @@ func TestContextSourcePrefersPinnedWithinBudget(t *testing.T) {
 	if !found {
 		t.Fatal("a pinned fact must keep its seat inside the budget")
 	}
-	if used > contextCharBudget {
-		t.Fatalf("memory section is %d runes, budget is %d", used, contextCharBudget)
+	if used > memories.ContextCharBudget {
+		t.Fatalf("memory section is %d runes, budget is %d", used, memories.ContextCharBudget)
 	}
 }
