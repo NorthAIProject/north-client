@@ -47,6 +47,10 @@ func (s *stubTools) InvokeAll(_ context.Context, userID uuid.UUID, calls []ai.To
 }
 
 func newToolHarness(t *testing.T, client *fake.Client, tools coach.ToolRunner) harness {
+	return newToolHarnessWithAudit(t, client, tools, nil)
+}
+
+func newToolHarnessWithAudit(t *testing.T, client *fake.Client, tools coach.ToolRunner, declines coach.DeclineRecorder) harness {
 	t.Helper()
 
 	pool := testdb.New(t)
@@ -73,6 +77,7 @@ func newToolHarness(t *testing.T, client *fake.Client, tools coach.ToolRunner) h
 		ContextBuilder: coach.NewContextBuilder(convos),
 		PromptBuilder:  coach.NewPromptBuilder(),
 		Tools:          tools,
+		Declines:       declines,
 		// Every tier resolves to the one fake provider: these tests are about
 		// the tool loop, not about which provider serves which user.
 		Chains:    ai.NewChainSet([]string{client.Name()}, nil),

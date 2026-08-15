@@ -2,6 +2,7 @@ package coach
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -9,8 +10,26 @@ import (
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/conversations"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/toolsurface"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
+
+// DeclinedCall is a write somebody refused.
+//
+// Reported from here because a refusal never reaches the capability registry —
+// the tool is not invoked at all — so without this the account would show only
+// the writes that happened and none of the ones a person stopped.
+type DeclinedCall struct {
+	UserID    uuid.UUID
+	Tool      string
+	Arguments json.RawMessage
+}
+
+// DeclineRecorder keeps the account of refusals. Optional: a service without
+// one still works, it simply records nothing.
+type DeclineRecorder interface {
+	RecordDeclinedCall(ctx context.Context, c DeclinedCall)
+}
 
 // PendingCall is a turn stopped in front of a person: the tools a model asked
 // to run, waiting to be allowed or refused.
@@ -89,7 +108,7 @@ func (s *Service) ResolvePending(ctx context.Context, user users.User, conversat
 
 	results := make([]ai.ToolResult, 0, len(pending.Calls))
 	if approve {
-		results = s.tools.InvokeAll(ctx, user.ID, pending.Calls)
+		results = s.tools.InvokeAll(toolsurface.With(ctx, toolsurface.Coach), user.ID, pending.Calls)
 	} else {
 		for _, call := range pending.Calls {
 			results = append(results, ai.ToolResult{
@@ -97,6 +116,14 @@ func (s *Service) ResolvePending(ctx context.Context, user users.User, conversat
 				Name:    call.Name,
 				Content: declineNotice,
 			})
+
+			if s.declines != nil {
+				s.declines.RecordDeclinedCall(ctx, DeclinedCall{
+					UserID:    user.ID,
+					Tool:      call.Name,
+					Arguments: call.Arguments,
+				})
+			}
 		}
 	}
 

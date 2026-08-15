@@ -60,6 +60,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/shared/database"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/NorthAIProject/north-client/internal/sleep"
+	"github.com/NorthAIProject/north-client/internal/toolaudit"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/vault"
 	vaultdb "github.com/NorthAIProject/north-client/internal/vault/db"
@@ -387,7 +388,13 @@ func routes(
 	// unavailable, rather than storing somebody's credential in the clear.
 	aicredSvc := aicreds.NewService(aicreds.NewRepository(pool), sealer, slog.Default())
 
-	settingsHandler := settings.NewHandler(userSvc, preferencesSvc, mealDietSvc, connectionSvc, aicredSvc)
+	// One account of what North has done, kept by both surfaces: the registry
+	// reports every capability it runs, and the coach reports the writes people
+	// refuse — those never reach the registry at all.
+	auditSvc := toolaudit.NewService(toolaudit.NewRepository(pool))
+	auditRecorder := toolaudit.NewRecorder(auditSvc)
+
+	settingsHandler := settings.NewHandler(userSvc, preferencesSvc, mealDietSvc, connectionSvc, aicredSvc, auditSvc)
 
 	mindSvc := mind.NewService(mind.NewRepository(pool), checkinSvc)
 	mindHandler := mind.NewHandler(mindSvc, checkinSvc)
@@ -467,6 +474,8 @@ func routes(
 		Users:       userSvc,
 	})
 
+	agentTools.Record(auditRecorder)
+
 	coachSvc := coach.NewService(coach.Options{
 		Registry:      registry,
 		Conversations: conversationSvc,
@@ -499,6 +508,7 @@ func routes(
 		Queue:         queue,
 		Chains:        cfg.AI.ChainSet(),
 		Tools:         agentTools,
+		Declines:      auditRecorder,
 		// Tried ahead of the chain above, so a user who supplied a key is
 		// served by it and a user who did not is unaffected.
 		Own:       aicredSvc,

@@ -11,6 +11,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/ai"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/toolsurface"
 )
 
 func capability(name string, invoke func(context.Context, uuid.UUID, json.RawMessage) (string, error)) Capability {
@@ -257,5 +258,114 @@ func TestIdempotencyIsReportedAndDefaultsToNo(t *testing.T) {
 	}
 	if r.IsIdempotent("no_such_tool") {
 		t.Error("an unknown tool was reported idempotent")
+	}
+}
+
+// recorder captures what the registry reports, so the wiring can be tested
+// without a database.
+type recorder struct{ calls []Record }
+
+func (r *recorder) RecordToolRun(_ context.Context, rec Record) { r.calls = append(r.calls, rec) }
+
+// Every executed capability has to be answerable for afterwards. This is the
+// one line both the coach and the MCP server pass through, which is the whole
+// reason the recording happens here rather than in each surface.
+func TestAnExecutedCapabilityIsRecorded(t *testing.T) {
+	t.Parallel()
+
+	rec := &recorder{}
+	r := NewRegistry()
+	r.Record(rec)
+	r.Register(capability("create_goal", ok("Created the goal: Squat 140kg")))
+
+	userID := uuid.New()
+	r.Invoke(toolsurface.With(context.Background(), "mcp"), userID, ai.ToolCall{
+		ID: "c1", Name: "create_goal", Arguments: json.RawMessage(`{"title":"Squat 140kg"}`),
+	})
+
+	if len(rec.calls) != 1 {
+		t.Fatalf("recorded %d runs, want 1", len(rec.calls))
+	}
+
+	got := rec.calls[0]
+	if got.Tool != "create_goal" || got.UserID != userID {
+		t.Errorf("record = %+v, want the tool and the caller", got)
+	}
+	if got.Surface != "mcp" {
+		t.Errorf("surface = %q, want the one on the context", got.Surface)
+	}
+	if got.Failed {
+		t.Error("a successful call was recorded as failed")
+	}
+	if string(got.Arguments) != `{"title":"Squat 140kg"}` {
+		t.Errorf("arguments = %s, want what was sent", got.Arguments)
+	}
+}
+
+func TestAFailedCapabilityIsRecordedAsFailed(t *testing.T) {
+	t.Parallel()
+
+	rec := &recorder{}
+	r := NewRegistry()
+	r.Record(rec)
+	r.Register(capability("create_goal", func(context.Context, uuid.UUID, json.RawMessage) (string, error) {
+		return "", apperr.Wrap(apperr.ErrValidation, "a goal needs a title")
+	}))
+
+	r.Invoke(context.Background(), uuid.New(), ai.ToolCall{ID: "c1", Name: "create_goal"})
+
+	if len(rec.calls) != 1 {
+		t.Fatalf("recorded %d runs, want 1", len(rec.calls))
+	}
+	if !rec.calls[0].Failed {
+		t.Error("a failed call was not recorded as failed")
+	}
+}
+
+// An unlabelled call records the uncertainty rather than guessing a surface.
+func TestAnUnlabelledCallRecordsAnUnknownSurface(t *testing.T) {
+	t.Parallel()
+
+	rec := &recorder{}
+	r := NewRegistry()
+	r.Record(rec)
+	r.Register(capability("list_goals", ok("- Squat 140kg")))
+
+	r.Invoke(context.Background(), uuid.New(), ai.ToolCall{ID: "c1", Name: "list_goals"})
+
+	if len(rec.calls) != 1 {
+		t.Fatalf("recorded %d runs, want 1", len(rec.calls))
+	}
+	if rec.calls[0].Surface != "" {
+		t.Errorf("surface = %q, want empty so the service names the uncertainty", rec.calls[0].Surface)
+	}
+}
+
+// A registry with no recorder must keep working. Recording is an addition to
+// what the registry does, not a dependency of it.
+func TestARegistryWithNoRecorderStillRuns(t *testing.T) {
+	t.Parallel()
+
+	r := NewRegistry()
+	r.Register(capability("list_goals", ok("- Squat 140kg")))
+
+	result := r.Invoke(context.Background(), uuid.New(), ai.ToolCall{ID: "c1", Name: "list_goals"})
+	if result.IsError {
+		t.Errorf("invoking without a recorder failed: %s", result.Content)
+	}
+}
+
+// An unknown tool never ran, so there is nothing to answer for.
+func TestAnUnknownToolIsNotRecorded(t *testing.T) {
+	t.Parallel()
+
+	rec := &recorder{}
+	r := NewRegistry()
+	r.Record(rec)
+
+	r.Invoke(context.Background(), uuid.New(), ai.ToolCall{ID: "c1", Name: "no_such_tool"})
+
+	if len(rec.calls) != 0 {
+		t.Errorf("recorded %d runs for a tool that does not exist", len(rec.calls))
 	}
 }

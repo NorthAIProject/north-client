@@ -13,6 +13,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/jobs"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
+	"github.com/NorthAIProject/north-client/internal/shared/toolsurface"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
@@ -85,6 +86,7 @@ type Service struct {
 	promptB       *PromptBuilder
 	queue         *jobs.Queue
 	tools         ToolRunner
+	declines      DeclineRecorder
 
 	// chains decides which providers serve a given user, in what order.
 	chains ai.ChainSet
@@ -120,6 +122,10 @@ type Options struct {
 	// purely from its context, which is what it did before tools existed.
 	Tools ToolRunner
 
+	// Declines keeps the account of writes a person refused. Nil records
+	// nothing; the refusal still reaches the model either way.
+	Declines DeclineRecorder
+
 	// Own yields a user's own provider, tried ahead of Chains. Nil leaves
 	// every user on North's providers, which is what a deployment with no
 	// encryption key gets.
@@ -146,6 +152,7 @@ func NewService(opts Options) *Service {
 		queue:         opts.Queue,
 		chains:        opts.Chains,
 		tools:         opts.Tools,
+		declines:      opts.Declines,
 		own:           opts.Own,
 		analytics:     opts.Analytics,
 		model:         opts.Model,
@@ -542,7 +549,7 @@ func (s *Service) pump(
 			break
 		}
 
-		results := s.tools.InvokeAll(genCtx, target.user.ID, calls)
+		results := s.tools.InvokeAll(toolsurface.With(genCtx, toolsurface.Coach), target.user.ID, calls)
 		for _, result := range results {
 			log.Info("coach ran a tool",
 				slog.String("tool", result.Name),

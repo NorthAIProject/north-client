@@ -1,0 +1,108 @@
+package settings
+
+import (
+	"github.com/NorthAIProject/north-client/internal/toolaudit"
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/badge"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+)
+
+// ActivityPage answers "what has North actually done to my data?".
+//
+// It sits beside agent connections on purpose: that page hands out the keys
+// that let an outside agent write, and this one shows what those keys did.
+templ ActivityPage(user users.User, executions []toolaudit.Execution) {
+	@layout.App("Activity", user, layout.BuildNav("/app/settings")) {
+		<div class="mx-auto w-full max-w-2xl space-y-6 p-6 md:p-8">
+			<header>
+				@ui.MonoLabel("Settings")
+				<h1 class="mt-2 text-2xl font-medium tracking-tight">Activity</h1>
+				<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
+					Everything North has done to your data on your behalf — from the coach
+					mid-conversation, and from any agent you have connected. Writes you
+					turned down are listed too, so the record shows what was asked as well
+					as what happened.
+				</p>
+				<a href="/app/settings" class="text-muted-foreground hover:text-foreground mt-3 inline-block text-sm underline underline-offset-4">
+					Back to account settings
+				</a>
+			</header>
+			if len(executions) == 0 {
+				@card.Card() {
+					@card.Content() {
+						<p class="text-muted-foreground text-sm">
+							Nothing yet. North records here whenever it creates a goal, logs a
+							check-in, or records progress for you.
+						</p>
+					}
+				}
+			} else {
+				<ul class="space-y-3">
+					for _, e := range executions {
+						@activityRow(e)
+					}
+				</ul>
+			}
+		</div>
+	}
+}
+
+templ activityRow(e toolaudit.Execution) {
+	<li>
+		@card.Card() {
+			@card.Content() {
+				<div class="flex flex-wrap items-center gap-2">
+					<span class="font-mono text-sm">{ e.Tool }</span>
+					@outcomeBadge(e)
+					@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
+						{ surfaceLabel(e.Surface) }
+					}
+					<span class="text-muted-foreground ml-auto text-xs">
+						{ e.CreatedAt.Format("2 Jan 2006, 15:04") }
+					</span>
+				</div>
+				if len(e.Arguments) > 0 {
+					// The arguments, not just the name: "logged a check-in" does not
+					// answer what was written, which is the question this page exists
+					// for.
+					<pre class="text-muted-foreground mt-2 overflow-x-auto rounded bg-muted p-2 font-mono text-xs">{ string(e.Arguments) }</pre>
+				}
+				if e.Detail != "" {
+					<p class="text-muted-foreground mt-2 text-xs leading-relaxed">{ e.Detail }</p>
+				}
+			}
+		}
+	</li>
+}
+
+templ outcomeBadge(e toolaudit.Execution) {
+	switch e.Outcome {
+		case toolaudit.OutcomeExecuted:
+			@badge.Badge(badge.Props{}) {
+				Done
+			}
+		case toolaudit.OutcomeDeclined:
+			@badge.Badge(badge.Props{Variant: badge.VariantOutline}) {
+				You said no
+			}
+		default:
+			@badge.Badge(badge.Props{Variant: badge.VariantDestructive}) {
+				Failed
+			}
+	}
+}
+
+// surfaceLabel names where a call came from in words a person would use, since
+// "mcp" means nothing to somebody reading their own history.
+func surfaceLabel(s toolaudit.Surface) string {
+	switch s {
+	case toolaudit.SurfaceCoach:
+		return "Coach"
+	case toolaudit.SurfaceMCP:
+		return "Connected agent"
+	default:
+		return "Unknown"
+	}
+}

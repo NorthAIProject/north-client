@@ -475,6 +475,17 @@ type StravaConnection struct {
 	RefreshTokenSealed []byte
 }
 
+type ToolExecution struct {
+	ID        uuid.UUID
+	UserID    uuid.UUID
+	Tool      string
+	Arguments []byte
+	Surface   string
+	Outcome   string
+	Detail    *string
+	CreatedAt time.Time
+}
+
 type User struct {
 	ID            uuid.UUID
 	Email         string

@@ -20,6 +20,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/preferences"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
+	"github.com/NorthAIProject/north-client/internal/toolaudit"
 	"github.com/NorthAIProject/north-client/internal/users"
 	settingspages "github.com/NorthAIProject/north-client/web/settings"
 )
@@ -30,10 +31,11 @@ type Handler struct {
 	diets       *meals.DietPreferenceService
 	connections *connections.Service
 	aicreds     *aicreds.Service
+	audit       *toolaudit.Service
 }
 
-func NewHandler(u *users.Service, p *preferences.Service, d *meals.DietPreferenceService, c *connections.Service, a *aicreds.Service) *Handler {
-	return &Handler{users: u, preferences: p, diets: d, connections: c, aicreds: a}
+func NewHandler(u *users.Service, p *preferences.Service, d *meals.DietPreferenceService, c *connections.Service, a *aicreds.Service, audit *toolaudit.Service) *Handler {
+	return &Handler{users: u, preferences: p, diets: d, connections: c, aicreds: a, audit: audit}
 }
 
 func (h *Handler) Routes(r chi.Router) {
@@ -46,6 +48,8 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Post("/settings/connections", h.createConnection)
 	r.Post("/settings/connections/{id}/revoke", h.revokeConnection)
 	r.Get("/settings/connections/{id}/status", h.connectionStatus)
+
+	r.Get("/settings/activity", h.showActivity)
 
 	r.Post("/settings/ai", h.updateAICredential)
 	r.Post("/settings/ai/remove", h.removeAICredential)
@@ -180,6 +184,22 @@ func (h *Handler) updateDiets(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Redirect(w, r, "/app/settings", http.StatusSeeOther)
+}
+
+// showActivity lists what North has done on this person's behalf.
+func (h *Handler) showActivity(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+
+	executions, err := h.audit.List(r.Context(), user.ID, 0)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := settingspages.ActivityPage(user, executions).Render(r.Context(), w); err != nil {
+		middleware.FromContext(r.Context()).Error("render activity", slog.Any("error", err))
+	}
 }
 
 func (h *Handler) showConnections(w http.ResponseWriter, r *http.Request) {

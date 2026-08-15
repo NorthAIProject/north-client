@@ -279,9 +279,16 @@ templ connectionsCard() {
 			}
 		}
 		@card.Content() {
-			@button.Button(button.Props{Href: "/app/settings/connections", Variant: button.VariantOutline}) {
-				Manage connections
-			}
+			<div class="flex flex-wrap gap-2">
+				@button.Button(button.Props{Href: "/app/settings/connections", Variant: button.VariantOutline}) {
+					Manage connections
+				}
+				// Next to the keys that grant the access, because this is what
+				// those keys have actually done.
+				@button.Button(button.Props{Href: "/app/settings/activity", Variant: button.VariantOutline}) {
+					View activity
+				}
+			</div>
 		}
 	}
 }

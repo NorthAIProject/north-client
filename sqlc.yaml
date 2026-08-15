@@ -293,6 +293,16 @@ sql:
 
   - engine: postgresql
     schema: migrations
+    queries: internal/toolaudit/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: toolauditdb
+        out: internal/toolaudit/db
+        overrides: *overrides
+
+  - engine: postgresql
+    schema: migrations
     queries: internal/quota/db/queries.sql
     gen:
       go:

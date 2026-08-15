@@ -22,6 +22,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/ai"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/toolsurface"
 )
 
 // Capability is one thing a model can ask North to do.
@@ -61,17 +62,45 @@ type Capability struct {
 	Invoke func(ctx context.Context, userID uuid.UUID, args json.RawMessage) (string, error)
 }
 
+// Record is one capability run, reported to whoever is keeping the account of
+// what North has done.
+//
+// Deliberately not internal/toolaudit's own type: that package imports nothing
+// from here, and this one must not import it, or the slice that records would
+// depend on the slice that runs. The surface is a plain string for the same
+// reason.
+type Record struct {
+	UserID    uuid.UUID
+	Tool      string
+	Arguments json.RawMessage
+	Surface   string
+	Failed    bool
+
+	// Detail is what the capability said, or the reason it failed — the same
+	// text the model was given.
+	Detail string
+}
+
+// Recorder keeps the account. Optional: a registry without one still runs.
+type Recorder interface {
+	RecordToolRun(ctx context.Context, rec Record)
+}
+
 // Registry holds the capabilities available to a model.
 //
 // Not safe for concurrent registration: it is built once at startup, then only
 // read. Building it lazily would mean a request could observe it half-formed.
 type Registry struct {
 	capabilities map[string]Capability
+	recorder     Recorder
 }
 
 func NewRegistry() *Registry {
 	return &Registry{capabilities: map[string]Capability{}}
 }
+
+// Record attaches the account-keeper. Called once at startup, like Register.
+func (r *Registry) Record(recorder Recorder) { r.recorder = recorder }
 
 // Register adds a capability. A duplicate name panics rather than overwriting:
 // this runs at startup, and two capabilities answering to one name is a wiring
@@ -150,6 +179,26 @@ func (r *Registry) Invoke(ctx context.Context, userID uuid.UUID, call ai.ToolCal
 	}
 
 	content, err := capability.Invoke(ctx, userID, call.Arguments)
+
+	// Recorded whichever way it went, and only once the capability has actually
+	// been reached: an unknown tool never ran, so there is nothing to answer
+	// for. The account is kept here because this is the one line both the
+	// coach and the MCP server pass through.
+	if r.recorder != nil {
+		detail := content
+		if err != nil {
+			detail = userFacing(err)
+		}
+		r.recorder.RecordToolRun(ctx, Record{
+			UserID:    userID,
+			Tool:      call.Name,
+			Arguments: call.Arguments,
+			Surface:   toolsurface.From(ctx),
+			Failed:    err != nil,
+			Detail:    detail,
+		})
+	}
+
 	if err != nil {
 		result.Content = userFacing(err)
 		result.IsError = true
