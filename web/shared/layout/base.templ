@@ -14,6 +14,11 @@ templ Base(title string) {
 			<link rel="preload" href="/assets/fonts/geist/geist-variable.woff2" as="font" type="font/woff2" crossorigin="anonymous"/>
 			<link rel="preload" href="/assets/fonts/geist/geist-mono-variable.woff2" as="font" type="font/woff2" crossorigin="anonymous"/>
 			<title>{ pageTitle(title) }</title>
+			// SVG first, so a browser that understands it gets the sharp one; the
+			// PNG stays as the fallback for those that do not, and as the source
+			// for the PWA icon sizes NOR-50 will want.
+			<link rel="icon" type="image/svg+xml" href="/assets/brand/favicon.svg"/>
+			<link rel="icon" type="image/png" href="/assets/brand/north-logo-mark.png"/>
 			<link href="/assets/css/output.css" rel="stylesheet"/>
 			// htmx throws away 4xx responses rather than swapping them, which makes
 			// a validated form silently do nothing: the server answers 422 with the

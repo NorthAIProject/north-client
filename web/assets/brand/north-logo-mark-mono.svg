@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-hidden="true">
+  <!--
+    Single-colour North mark, for places the gradient cannot survive: a stencil,
+    a print, a surface that has already decided what colour things are.
+
+    fill="currentColor" so it takes the surrounding text colour and inverts with
+    the theme for free. That only works when the file is inlined — an <img> has
+    no parent colour to inherit — so a caller reaching for this instead of
+    north-logo-mark.svg is choosing to inline it.
+
+    Same two shapes and the same coordinates as north-logo-mark.svg: the star
+    body and the long needle across it. If one changes, both do.
+  -->
+  <g fill="currentColor">
+    <path d="M 80.24 50 L 61.09 45.41 L 71.38 28.62 L 54.59 38.91 L 50 19.76 L 45.41 38.91 L 28.62 28.62 L 38.91 45.41 L 19.76 50 L 38.91 54.59 L 28.62 71.38 L 45.41 61.09 L 50 80.24 L 54.59 61.09 L 71.38 71.38 L 61.09 54.59 Z"/>
+    <path d="M 83.94 16.06 L 56.57 41.74 L 18.77 81.23 L 58.26 43.43 Z"/>
+  </g>
+</svg>
