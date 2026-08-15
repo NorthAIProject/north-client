@@ -28,6 +28,7 @@ type DashboardData struct {
 
 	CheckedInToday   bool
 	Streak           int
+	GoalActivity7d   int
 	PendingMemories  int
 	Goals            []goal.Goal
 	LastThread       *conversations.Conversation
@@ -373,6 +374,17 @@ func streakKPI(data DashboardData) string {
 	return strconv.Itoa(data.Streak) + " days"
 }
 
+func goalActivityLabel(n int) string {
+	switch {
+	case n <= 0:
+		return ""
+	case n == 1:
+		return "1 this week"
+	default:
+		return strconv.Itoa(n) + " this week"
+	}
+}
+
 func waterKPI(data DashboardData) string {
 	if data.Hydration.TargetML <= 0 && data.Hydration.TodayML <= 0 {
 		return "—"
@@ -572,6 +584,11 @@ templ goalsPanel(data DashboardData) {
 		@card.Header() {
 			@card.Title() {
 				Goals
+			}
+			if label := goalActivityLabel(data.GoalActivity7d); label != "" {
+				@card.Description() {
+					@ui.MonoLabel(label)
+				}
 			}
 		}
 		@card.Content() {

@@ -80,6 +80,9 @@ func TestLoadEmptyNewUser(t *testing.T) {
 	if snap.Streak != 0 {
 		t.Fatalf("streak = %d", snap.Streak)
 	}
+	if snap.GoalActivity7d != 0 {
+		t.Fatalf("GoalActivity7d = %d", snap.GoalActivity7d)
+	}
 	if snap.PendingMemories != 0 {
 		t.Fatalf("pending = %d", snap.PendingMemories)
 	}
@@ -349,5 +352,145 @@ func TestLoadSurfacesUnreadNudges(t *testing.T) {
 	}
 	if len(snap.Nudges) != 1 || snap.Nudges[0].ID != unread.ID {
 		t.Fatalf("nudges = %#v", snap.Nudges)
+	}
+}
+
+func TestLoadGoalActivityEmptyIsZero(t *testing.T) {
+	pool := testdb.New(t)
+	user := seedUser(t, pool, "goalact-empty@north.test")
+	snap, err := newDashboard(t, pool).Load(context.Background(), user, defaultRange(user))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snap.GoalActivity7d != 0 {
+		t.Fatalf("GoalActivity7d = %d, want 0", snap.GoalActivity7d)
+	}
+}
+
+func TestLoadGoalActivityCountsNotesAndLinkedCheckIns(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	user := seedUser(t, pool, "goalact-count@north.test")
+	stranger := seedUser(t, pool, "goalact-stranger@north.test")
+	svc := newDashboard(t, pool)
+
+	goalSvc := goals.NewService(goals.NewRepository(pool))
+	checkinSvc := checkins.NewService(checkins.NewRepository(pool), goalSvc)
+
+	g, err := goalSvc.Create(ctx, user.ID, goals.Input{
+		Title: "Run a 10k", Category: goals.CategoryFitness,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = goalSvc.AddUpdate(ctx, g.ID, user.ID, "Managed 6k", nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = checkinSvc.UpsertToday(ctx, user, checkins.Input{
+		Mood: 4, Energy: 4, RelatedGoalID: &g.ID,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// Unlinked check-in must not inflate the count. UpsertToday would overwrite
+	// today's row, so write yesterday without a goal.
+	yesterday := checkins.LocalDate(user, time.Now()).AddDate(0, 0, -1)
+	if _, err = checkins.NewRepository(pool).Upsert(ctx, user.ID, checkins.Write{
+		LocalDate: yesterday, Mood: 3, Energy: 3,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	sg, err := goalSvc.Create(ctx, stranger.ID, goals.Input{
+		Title: "Not yours", Category: goals.CategoryFitness,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = goalSvc.AddUpdate(ctx, sg.ID, stranger.ID, "stranger note", nil); err != nil {
+		t.Fatal(err)
+	}
+
+	snap, err := svc.Load(ctx, user, defaultRange(user))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snap.GoalActivity7d != 2 {
+		t.Fatalf("GoalActivity7d = %d, want 2 (one note + one linked check-in)", snap.GoalActivity7d)
+	}
+
+	other, err := svc.Load(ctx, stranger, defaultRange(stranger))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if other.GoalActivity7d != 1 {
+		t.Fatalf("stranger GoalActivity7d = %d, want 1", other.GoalActivity7d)
+	}
+}
+
+func TestLoadGoalActivityIgnoresOlderThanSevenLocalDays(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	user := seedUser(t, pool, "goalact-old@north.test")
+	svc := newDashboard(t, pool)
+	goalSvc := goals.NewService(goals.NewRepository(pool))
+
+	g, err := goalSvc.Create(ctx, user.ID, goals.Input{
+		Title: "Run a 10k", Category: goals.CategoryFitness,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	note, err := goalSvc.AddUpdate(ctx, g.ID, user.ID, "old work", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Last 7 local days are [today-6, tomorrow). Eight days ago is outside.
+	old := time.Now().In(user.Location()).AddDate(0, 0, -8)
+	if _, err = pool.Exec(ctx,
+		`UPDATE goal_updates SET created_at = $2 WHERE id = $1`,
+		note.ID, old,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	snap, err := svc.Load(ctx, user, defaultRange(user))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snap.GoalActivity7d != 0 {
+		t.Fatalf("GoalActivity7d = %d, want 0 for an 8-day-old note", snap.GoalActivity7d)
+	}
+}
+
+func TestLoadGoalActivityUsesLastSevenDaysNotSelectedRange(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	user := seedUser(t, pool, "goalact-range@north.test")
+	svc := newDashboard(t, pool)
+	goalSvc := goals.NewService(goals.NewRepository(pool))
+
+	g, err := goalSvc.Create(ctx, user.ID, goals.Input{
+		Title: "Run a 10k", Category: goals.CategoryFitness,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = goalSvc.AddUpdate(ctx, g.ID, user.ID, "today", nil); err != nil {
+		t.Fatal(err)
+	}
+
+	today := timerange.Parse(timerange.KeyToday, user.Location())
+	week := timerange.Parse(timerange.KeyWeek, user.Location())
+
+	a, err := svc.Load(ctx, user, today)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := svc.Load(ctx, user, week)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.GoalActivity7d != 1 || b.GoalActivity7d != 1 {
+		t.Fatalf("today=%d week=%d, want 1 and 1", a.GoalActivity7d, b.GoalActivity7d)
 	}
 }
