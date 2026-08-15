@@ -223,6 +223,19 @@ type HabitCompletion struct {
 	CompletedAt time.Time
 }
 
+type HealthMetric struct {
+	ID        uuid.UUID
+	UserID    uuid.UUID
+	Source    string
+	Metric    string
+	Value     float64
+	Unit      string
+	StartedAt time.Time
+	EndedAt   *time.Time
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
 type HydrationLog struct {
 	ID       uuid.UUID
 	UserID   uuid.UUID
