@@ -7,14 +7,12 @@ import (
 	"net"
 	"net/http"
 	"strings"
-	"sync"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"golang.org/x/time/rate"
 
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/ratelimit"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
@@ -206,63 +204,6 @@ func guardOrigin(cfg Config, log *slog.Logger, next http.Handler) http.Handler {
 	})
 }
 
-// limiterTTL is how long an idle account keeps its bucket. Long enough that a
-// working session never loses its burst allowance, short enough that the map
-// tracks active users rather than every user who has ever connected.
-const limiterTTL = 30 * time.Minute
-
-// limiters holds one rate limiter per key, whatever the caller is counting.
-//
-// The key is a string so that the same type serves both stages: the account id
-// after authentication, and the remote address before it. Two near-identical
-// maps differing only in key type would be a worse answer than one conversion.
-type limiters struct {
-	mu        sync.Mutex
-	perMinute int
-	buckets   map[string]*bucket
-	lastSweep time.Time
-}
-
-type bucket struct {
-	limiter  *rate.Limiter
-	lastSeen time.Time
-}
-
-func newLimiters(perMinute int) *limiters {
-	return &limiters{perMinute: perMinute, buckets: make(map[string]*bucket), lastSweep: time.Now()}
-}
-
-func (l *limiters) allow(key string) bool {
-	now := time.Now()
-
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	// Swept on access rather than on a ticker: a handler with no goroutine
-	// behind it cannot leak one, and the only cost of sweeping late is a map
-	// that is briefly larger than it needs to be.
-	if now.Sub(l.lastSweep) > limiterTTL {
-		for k, b := range l.buckets {
-			if now.Sub(b.lastSeen) > limiterTTL {
-				delete(l.buckets, k)
-			}
-		}
-		l.lastSweep = now
-	}
-
-	b, ok := l.buckets[key]
-	if !ok {
-		// Burst is a full minute's worth: a client listing tools and then
-		// calling several in quick succession is normal, and shaping that into
-		// a trickle would make the server feel broken.
-		b = &bucket{limiter: rate.NewLimiter(rate.Limit(float64(l.perMinute)/60.0), l.perMinute)}
-		l.buckets[key] = b
-	}
-	b.lastSeen = now
-
-	return b.limiter.Allow()
-}
-
 // anonymousPerMinute bounds unauthenticated attempts from one address.
 //
 // Far above anything a real client does, because this is not the spend limit —
@@ -278,7 +219,7 @@ const anonymousPerMinute = 600
 // caller can change ports, or arrive from many hosts — is why this is a floor
 // rather than the real limit.
 func throttleAnonymous(_ Config, log *slog.Logger, next http.Handler) http.Handler {
-	buckets := newLimiters(anonymousPerMinute)
+	buckets := ratelimit.New(anonymousPerMinute)
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		addr := r.RemoteAddr
@@ -286,7 +227,7 @@ func throttleAnonymous(_ Config, log *slog.Logger, next http.Handler) http.Handl
 			addr = host
 		}
 
-		if !buckets.allow(addr) {
+		if !buckets.Allow(addr) {
 			log.Warn("mcp request throttled before authentication", slog.String("remote", r.RemoteAddr))
 			w.Header().Set("Retry-After", "1")
 			http.Error(w, "too many requests", http.StatusTooManyRequests)
@@ -307,7 +248,7 @@ func throttle(cfg Config, log *slog.Logger, next http.Handler) http.Handler {
 	if perMinute <= 0 {
 		perMinute = defaultRequestsPerMinute
 	}
-	buckets := newLimiters(perMinute)
+	buckets := ratelimit.New(perMinute)
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		user, ok := userFrom(r.Context())
@@ -317,7 +258,7 @@ func throttle(cfg Config, log *slog.Logger, next http.Handler) http.Handler {
 			return
 		}
 
-		if !buckets.allow(user.ID.String()) {
+		if !buckets.Allow(user.ID.String()) {
 			log.Warn("mcp request throttled",
 				slog.String("remote", r.RemoteAddr),
 				slog.String("user_id", user.ID.String()))

@@ -13,9 +13,9 @@ import (
 )
 
 const appendMessage = `-- name: AppendMessage :one
-INSERT INTO messages (conversation_id, role, content, parts, usage, model, provider, evidence_refs)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, conversation_id, role, content, parts, usage, model, provider, created_at, evidence_refs
+INSERT INTO messages (conversation_id, role, content, parts, usage, model, provider, evidence_refs, tool_calls, tool_results)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+RETURNING id, conversation_id, role, content, parts, usage, model, provider, created_at, evidence_refs, tool_calls, tool_results
 `
 
 type AppendMessageParams struct {
@@ -27,6 +27,8 @@ type AppendMessageParams struct {
 	Model          *string
 	Provider       *string
 	EvidenceRefs   []string
+	ToolCalls      []byte
+	ToolResults    []byte
 }
 
 func (q *Queries) AppendMessage(ctx context.Context, arg AppendMessageParams) (Message, error) {
@@ -39,6 +41,8 @@ func (q *Queries) AppendMessage(ctx context.Context, arg AppendMessageParams) (M
 		arg.Model,
 		arg.Provider,
 		arg.EvidenceRefs,
+		arg.ToolCalls,
+		arg.ToolResults,
 	)
 	var i Message
 	err := row.Scan(
@@ -52,6 +56,8 @@ func (q *Queries) AppendMessage(ctx context.Context, arg AppendMessageParams) (M
 		&i.Provider,
 		&i.CreatedAt,
 		&i.EvidenceRefs,
+		&i.ToolCalls,
+		&i.ToolResults,
 	)
 	return i, err
 }
@@ -118,18 +124,19 @@ func (q *Queries) CountMessages(ctx context.Context, conversationID uuid.UUID) (
 }
 
 const createConversation = `-- name: CreateConversation :one
-INSERT INTO conversations (user_id, title)
-VALUES ($1, $2)
-RETURNING id, user_id, title, created_at, updated_at, memories_extracted_at
+INSERT INTO conversations (user_id, title, kind)
+VALUES ($1, $2, $3)
+RETURNING id, user_id, title, created_at, updated_at, memories_extracted_at, kind, summary
 `
 
 type CreateConversationParams struct {
 	UserID uuid.UUID
 	Title  *string
+	Kind   string
 }
 
 func (q *Queries) CreateConversation(ctx context.Context, arg CreateConversationParams) (Conversation, error) {
-	row := q.db.QueryRow(ctx, createConversation, arg.UserID, arg.Title)
+	row := q.db.QueryRow(ctx, createConversation, arg.UserID, arg.Title, arg.Kind)
 	var i Conversation
 	err := row.Scan(
 		&i.ID,
@@ -138,6 +145,8 @@ func (q *Queries) CreateConversation(ctx context.Context, arg CreateConversation
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.MemoriesExtractedAt,
+		&i.Kind,
+		&i.Summary,
 	)
 	return i, err
 }
@@ -158,7 +167,7 @@ func (q *Queries) DeleteConversation(ctx context.Context, arg DeleteConversation
 }
 
 const getConversation = `-- name: GetConversation :one
-SELECT id, user_id, title, created_at, updated_at, memories_extracted_at FROM conversations
+SELECT id, user_id, title, created_at, updated_at, memories_extracted_at, kind, summary FROM conversations
 WHERE id = $1 AND user_id = $2
 `
 
@@ -180,12 +189,14 @@ func (q *Queries) GetConversation(ctx context.Context, arg GetConversationParams
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.MemoriesExtractedAt,
+		&i.Kind,
+		&i.Summary,
 	)
 	return i, err
 }
 
 const listConversations = `-- name: ListConversations :many
-SELECT id, user_id, title, created_at, updated_at, memories_extracted_at FROM conversations
+SELECT id, user_id, title, created_at, updated_at, memories_extracted_at, kind, summary FROM conversations
 WHERE user_id = $1
 ORDER BY updated_at DESC
 LIMIT $2 OFFSET $3
@@ -213,6 +224,8 @@ func (q *Queries) ListConversations(ctx context.Context, arg ListConversationsPa
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.MemoriesExtractedAt,
+			&i.Kind,
+			&i.Summary,
 		); err != nil {
 			return nil, err
 		}
@@ -225,7 +238,7 @@ func (q *Queries) ListConversations(ctx context.Context, arg ListConversationsPa
 }
 
 const listMessages = `-- name: ListMessages :many
-SELECT id, conversation_id, role, content, parts, usage, model, provider, created_at, evidence_refs FROM messages
+SELECT id, conversation_id, role, content, parts, usage, model, provider, created_at, evidence_refs, tool_calls, tool_results FROM messages
 WHERE conversation_id = $1
 ORDER BY created_at
 LIMIT $2
@@ -256,6 +269,8 @@ func (q *Queries) ListMessages(ctx context.Context, arg ListMessagesParams) ([]M
 			&i.Provider,
 			&i.CreatedAt,
 			&i.EvidenceRefs,
+			&i.ToolCalls,
+			&i.ToolResults,
 		); err != nil {
 			return nil, err
 		}
@@ -281,7 +296,7 @@ func (q *Queries) MarkConversationExtracted(ctx context.Context, id uuid.UUID) e
 }
 
 const recentMessages = `-- name: RecentMessages :many
-SELECT id, conversation_id, role, content, parts, usage, model, provider, created_at, evidence_refs FROM messages
+SELECT id, conversation_id, role, content, parts, usage, model, provider, created_at, evidence_refs, tool_calls, tool_results FROM messages
 WHERE conversation_id = $1
 ORDER BY created_at DESC
 LIMIT $2
@@ -316,6 +331,8 @@ func (q *Queries) RecentMessages(ctx context.Context, arg RecentMessagesParams) 
 			&i.Provider,
 			&i.CreatedAt,
 			&i.EvidenceRefs,
+			&i.ToolCalls,
+			&i.ToolResults,
 		); err != nil {
 			return nil, err
 		}
@@ -328,7 +345,7 @@ func (q *Queries) RecentMessages(ctx context.Context, arg RecentMessagesParams) 
 }
 
 const recentUserMessages = `-- name: RecentUserMessages :many
-SELECT m.id, m.conversation_id, m.role, m.content, m.parts, m.usage, m.model, m.provider, m.created_at, m.evidence_refs
+SELECT m.id, m.conversation_id, m.role, m.content, m.parts, m.usage, m.model, m.provider, m.created_at, m.evidence_refs, m.tool_calls, m.tool_results
 FROM messages m
 JOIN conversations c ON c.id = m.conversation_id
 WHERE c.user_id = $1 AND m.role = 'user'
@@ -363,6 +380,8 @@ func (q *Queries) RecentUserMessages(ctx context.Context, arg RecentUserMessages
 			&i.Provider,
 			&i.CreatedAt,
 			&i.EvidenceRefs,
+			&i.ToolCalls,
+			&i.ToolResults,
 		); err != nil {
 			return nil, err
 		}
@@ -372,6 +391,22 @@ func (q *Queries) RecentUserMessages(ctx context.Context, arg RecentUserMessages
 		return nil, err
 	}
 	return items, nil
+}
+
+const setConversationSummary = `-- name: SetConversationSummary :exec
+UPDATE conversations
+SET summary = $2, updated_at = now()
+WHERE id = $1
+`
+
+type SetConversationSummaryParams struct {
+	ID      uuid.UUID
+	Summary string
+}
+
+func (q *Queries) SetConversationSummary(ctx context.Context, arg SetConversationSummaryParams) error {
+	_, err := q.db.Exec(ctx, setConversationSummary, arg.ID, arg.Summary)
+	return err
 }
 
 const setConversationTitle = `-- name: SetConversationTitle :exec

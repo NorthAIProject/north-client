@@ -25,10 +25,11 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 	return &Repository{q: conversationsdb.New(pool)}
 }
 
-func (r *Repository) Create(ctx context.Context, userID uuid.UUID, title string) (Conversation, error) {
+func (r *Repository) Create(ctx context.Context, userID uuid.UUID, title, kind string) (Conversation, error) {
 	row, err := r.q.CreateConversation(ctx, conversationsdb.CreateConversationParams{
 		UserID: userID,
 		Title:  nilIfEmpty(title),
+		Kind:   kind,
 	})
 	if err != nil {
 		return Conversation{}, apperr.Wrap(err, "create conversation")
@@ -68,6 +69,13 @@ func (r *Repository) List(ctx context.Context, userID uuid.UUID, limit, offset i
 	return out, nil
 }
 
+func (r *Repository) SetSummary(ctx context.Context, id uuid.UUID, summary string) error {
+	return apperr.Wrap(r.q.SetConversationSummary(ctx, conversationsdb.SetConversationSummaryParams{
+		ID:      id,
+		Summary: summary,
+	}), "set conversation summary")
+}
+
 func (r *Repository) SetTitle(ctx context.Context, id uuid.UUID, title string) error {
 	err := r.q.SetConversationTitle(ctx, conversationsdb.SetConversationTitleParams{
 		ID:    id,
@@ -98,6 +106,11 @@ type NewMessage struct {
 	// EvidenceRefs are the stored facts this reply was built from. Empty for a
 	// user message, and empty for a reply that cited nothing.
 	EvidenceRefs []string
+
+	// ToolCalls and ToolResults are set on tool turns; ordinary turns leave
+	// both nil and the columns stay null.
+	ToolCalls   []ai.ToolCall
+	ToolResults []ai.ToolResult
 }
 
 func (r *Repository) Append(ctx context.Context, msg NewMessage) (Message, error) {
@@ -113,11 +126,27 @@ func (r *Repository) Append(ctx context.Context, msg NewMessage) (Message, error
 		}
 	}
 
+	// Left nil when there are none, so an ordinary message writes null rather
+	// than an empty array — "nothing to do with tools", not "called none".
+	var toolCalls, toolResults []byte
+	if len(msg.ToolCalls) > 0 {
+		if toolCalls, err = json.Marshal(msg.ToolCalls); err != nil {
+			return Message{}, apperr.Wrap(err, "encode tool calls")
+		}
+	}
+	if len(msg.ToolResults) > 0 {
+		if toolResults, err = json.Marshal(msg.ToolResults); err != nil {
+			return Message{}, apperr.Wrap(err, "encode tool results")
+		}
+	}
+
 	row, err := r.q.AppendMessage(ctx, conversationsdb.AppendMessageParams{
 		ConversationID: msg.ConversationID,
 		Role:           string(msg.Role),
 		Content:        msg.Content,
 		Parts:          parts,
+		ToolCalls:      toolCalls,
+		ToolResults:    toolResults,
 		Usage:          usage,
 		Model:          nilIfEmpty(msg.Model),
 		Provider:       nilIfEmpty(msg.Provider),
@@ -212,8 +241,13 @@ func conversationFromDB(row conversationsdb.Conversation) Conversation {
 	c := Conversation{
 		ID:        row.ID,
 		UserID:    row.UserID,
+		Kind:      row.Kind,
+		Summary:   row.Summary,
 		CreatedAt: row.CreatedAt,
 		UpdatedAt: row.UpdatedAt,
+	}
+	if c.Kind == "" {
+		c.Kind = KindChat
 	}
 	if row.Title != nil {
 		c.Title = *row.Title
@@ -256,6 +290,13 @@ func messageFromDB(row conversationsdb.Message) Message {
 		m.Provider = *row.Provider
 	}
 	m.EvidenceRefs = row.EvidenceRefs
+
+	if len(row.ToolCalls) > 0 {
+		_ = json.Unmarshal(row.ToolCalls, &m.ToolCalls)
+	}
+	if len(row.ToolResults) > 0 {
+		_ = json.Unmarshal(row.ToolResults, &m.ToolResults)
+	}
 
 	return m
 }

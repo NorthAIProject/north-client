@@ -34,6 +34,17 @@ func (p *PromptBuilder) Coach(cc *Context) (string, error) {
 	return base + contextHeading + cc.Render(), nil
 }
 
+// Reflection is the system prompt for a structured reflection session.
+func (p *PromptBuilder) Reflection(cc *Context, questionsAsked int) (string, error) {
+	base, err := prompts.Render(prompts.ReflectionSession, map[string]any{
+		"QuestionsAsked": questionsAsked,
+	})
+	if err != nil {
+		return "", err
+	}
+	return base + contextHeading + cc.Render(), nil
+}
+
 // Titler returns the prompt that names a conversation from its opening message.
 func (p *PromptBuilder) Titler(firstMessage string) (string, error) {
 	return prompts.Render(prompts.ConversationTitle, map[string]any{"Message": firstMessage})

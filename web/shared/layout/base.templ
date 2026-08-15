@@ -24,15 +24,18 @@ templ Base(title string) {
 			// a validated form silently do nothing: the server answers 422 with the
 			// form re-rendered around its error messages, and the browser discards
 			// it. 422 is how North reports a rejected form, so it is swapped like a
-			// success and not logged as a transport error. The other entries repeat
-			// htmx's defaults — the array replaces them wholesale rather than
-			// merging, so dropping one would change unrelated behaviour.
+			// success and not logged as a transport error. 429 is here for the same
+			// reason: a rate-limit refusal carries the panel explaining itself, and
+			// discarding it would leave the button looking like it did nothing. The
+			// other entries repeat htmx's defaults — the array replaces them
+			// wholesale rather than merging, so dropping one would change unrelated
+			// behaviour.
 			//
 			// Declared as meta rather than a script so it is set before htmx reads
 			// its configuration, with no ordering to get wrong.
 			<meta
 				name="htmx-config"
-				content={ `{"responseHandling":[{"code":"204","swap":false},{"code":"[23]..","swap":true},{"code":"422","swap":true,"error":false},{"code":"[45]..","swap":false,"error":true}]}` }
+				content={ `{"responseHandling":[{"code":"204","swap":false},{"code":"[23]..","swap":true},{"code":"422","swap":true,"error":false},{"code":"429","swap":true,"error":false},{"code":"[45]..","swap":false,"error":true}]}` }
 			/>
 			// Vendored rather than loaded from a CDN: the production binary embeds
 			// its assets, so the application keeps working with no third-party

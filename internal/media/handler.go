@@ -12,19 +12,23 @@ import (
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	formpages "github.com/NorthAIProject/north-client/web/form"
 
+	"github.com/NorthAIProject/north-client/internal/quota"
 	"github.com/a-h/templ"
 )
 
 type Handler struct {
-	svc *Service
+	svc    *Service
+	quotas *quota.Service
 }
 
-func NewHandler(svc *Service) *Handler { return &Handler{svc: svc} }
+func NewHandler(svc *Service, quotas *quota.Service) *Handler {
+	return &Handler{svc: svc, quotas: quotas}
+}
 
 // Routes mounts the form-analysis endpoints. Must be behind RequireAuth.
 func (h *Handler) Routes(r chi.Router) {
 	r.Get("/form", h.index)
-	r.Post("/form", h.upload)
+	r.With(h.quotas.Guard(quota.MediaAnalysis)).Post("/form", h.upload)
 	r.Get("/form/{id}", h.show)
 	r.Get("/form/{id}/status", h.status)
 }

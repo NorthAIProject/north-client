@@ -10,19 +10,22 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/conversations"
+	"github.com/NorthAIProject/north-client/internal/quota"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	chatpages "github.com/NorthAIProject/north-client/web/chat"
 )
 
 type Handler struct {
-	svc *Service
+	svc    *Service
+	quotas *quota.Service
 }
 
-func NewHandler(svc *Service) *Handler {
-	return &Handler{svc: svc}
+func NewHandler(svc *Service, quotas *quota.Service) *Handler {
+	return &Handler{svc: svc, quotas: quotas}
 }
 
 // Routes mounts the chat endpoints. Must be mounted behind RequireAuth.
@@ -32,6 +35,13 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Get("/chat/{id}", h.show)
 	r.Post("/chat/{id}/messages", h.sendMessage)
 	r.Get("/chat/{id}/stream", h.stream)
+
+	// Resuming is a GET because it is an event stream, and it spends no quota:
+	// the person asked one question, and answering a confirmation is not a
+	// second one.
+	r.Get("/chat/{id}/resume", h.resume)
+	r.Post("/chat/{id}/tools/{messageID}/{decision}", h.resolveTool)
+
 	r.Post("/chat/{id}/delete", h.deleteConversation)
 }
 
@@ -61,7 +71,20 @@ func (h *Handler) index(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) startConversation(w http.ResponseWriter, r *http.Request) {
 	user := auth.MustUser(r.Context())
 
-	conversation, err := h.svc.StartConversation(r.Context(), user.ID)
+	if err := r.ParseForm(); err != nil {
+		h.fail(w, r, apperr.ErrValidation)
+		return
+	}
+
+	var (
+		conversation conversations.Conversation
+		err          error
+	)
+	if strings.TrimSpace(r.PostFormValue("kind")) == conversations.KindReflection {
+		conversation, err = h.svc.StartReflection(r.Context(), user.ID)
+	} else {
+		conversation, err = h.svc.StartConversation(r.Context(), user.ID)
+	}
 	if err != nil {
 		h.fail(w, r, err)
 		return
@@ -84,7 +107,119 @@ func (h *Handler) show(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	render(w, r, http.StatusOK, chatpages.Page(user, conversation, messages, list, stats))
+	// Rendered from the stored turn rather than pushed down the stream: the
+	// stream that suspended has already closed, and its sse:done handler
+	// re-fetches this page. So the card only has to exist here to appear at the
+	// right moment.
+	pending, err := h.pendingTools(r, conversation.ID)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+
+	// A trailing tool-result turn means the model was handed an answer and has
+	// not replied yet, which is exactly the state an approval leaves behind.
+	// Derived rather than carried in the URL, so a refresh does the right thing
+	// and a stale ?resume=1 cannot open a stream that is not owed.
+	resuming := len(pending) == 0 && len(messages) > 0 && len(messages[len(messages)-1].ToolResults) > 0
+
+	render(w, r, http.StatusOK, chatpages.Page(user, conversation, messages, list, stats, pending, resuming))
+}
+
+// pendingTools renders the waiting call, if there is one, as something a person
+// can read before allowing it.
+func (h *Handler) pendingTools(r *http.Request, conversationID uuid.UUID) ([]chatpages.PendingTool, error) {
+	user := auth.MustUser(r.Context())
+
+	waiting, ok, err := h.svc.PendingApproval(r.Context(), user, conversationID)
+	if err != nil || !ok {
+		return nil, err
+	}
+
+	out := make([]chatpages.PendingTool, 0, len(waiting.Calls))
+	for _, call := range waiting.Calls {
+		out = append(out, chatpages.PendingTool{
+			MessageID: waiting.MessageID,
+			Name:      call.Name,
+			Summary:   describeCall(call),
+		})
+	}
+	return out, nil
+}
+
+// resolveTool records the person's answer and sends them back to the page,
+// where the resumed reply streams in.
+func (h *Handler) resolveTool(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+
+	conversationID, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		h.fail(w, r, apperr.ErrNotFound)
+		return
+	}
+	messageID, err := uuid.Parse(chi.URLParam(r, "messageID"))
+	if err != nil {
+		h.fail(w, r, apperr.ErrNotFound)
+		return
+	}
+
+	decision := chi.URLParam(r, "decision")
+	if decision != "approve" && decision != "decline" {
+		h.fail(w, r, apperr.ErrNotFound)
+		return
+	}
+
+	// The tools run here, inside the POST, before anything redirects. Doing it
+	// on the resumed stream instead would mean a refresh could run a write a
+	// second time.
+	if err = h.svc.ResolvePending(r.Context(), user, conversationID, messageID, decision == "approve"); err != nil {
+		h.fail(w, r, err)
+		return
+	}
+
+	http.Redirect(w, r, "/app/chat/"+conversationID.String(), http.StatusSeeOther)
+}
+
+// resume streams the rest of a reply whose turn stopped for approval.
+func (h *Handler) resume(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+	log := middleware.FromContext(r.Context())
+
+	conversationID, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.WriteHeader(http.StatusOK)
+
+	rc := http.NewResponseController(w)
+	_ = rc.Flush()
+
+	stream, err := h.svc.Resume(r.Context(), user, conversationID)
+	if err != nil {
+		writeEvent(w, rc, "error", chatpages.StreamErrorHTML(friendly(err)))
+		writeEvent(w, rc, "done", "")
+		return
+	}
+
+	for chunk := range stream {
+		if chunk.Err != nil {
+			log.Error("resumed coach stream failed", slog.Any("error", chunk.Err))
+			writeEvent(w, rc, "error", chatpages.StreamErrorHTML(friendly(chunk.Err)))
+			break
+		}
+		if chunk.Text == "" {
+			continue
+		}
+		writeEvent(w, rc, "token", chatpages.TokenHTML(chunk.Text))
+	}
+
+	writeEvent(w, rc, "done", "")
 }
 
 // sendMessage stores the message and returns the two bubbles that HTMX appends:
@@ -119,6 +254,10 @@ func (h *Handler) sendMessage(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
+	if conversation.Ended() {
+		h.fail(w, r, apperr.Wrap(apperr.ErrConflict, "this reflection has ended"))
+		return
+	}
 
 	render(w, r, http.StatusOK, chatpages.PendingExchange(conversation.ID, text))
 }
@@ -144,8 +283,9 @@ func (h *Handler) stream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	begin := r.URL.Query().Get("begin") == "1"
 	pending := strings.TrimSpace(r.URL.Query().Get("m"))
-	if pending == "" {
+	if !begin && pending == "" {
 		http.Error(w, "nothing to answer", http.StatusBadRequest)
 		return
 	}
@@ -163,7 +303,34 @@ func (h *Handler) stream(w http.ResponseWriter, r *http.Request) {
 	rc := http.NewResponseController(w)
 	_ = rc.Flush()
 
-	stream, err := h.svc.SendMessage(r.Context(), user, conversation.ID, pending)
+	// The budget is spent here rather than on the composer POST, because this is
+	// the request that reaches the model. Guarding the POST instead would leave
+	// this route reachable on its own — it generates from stored history, so it
+	// is real spend — and guarding both would charge two for every turn.
+	//
+	// The refusal goes out as an SSE frame rather than a 429, because the
+	// response has already been committed as an event stream by this point. It
+	// takes the same path a provider failure takes, which the page already knows
+	// how to display.
+	decision, err := h.quotas.Consume(r.Context(), user.ID, quota.CoachMessage)
+	if err == nil && !decision.Allowed {
+		log.Warn("coach message refused by quota",
+			slog.String("user_id", user.ID.String()),
+			slog.Duration("retry_after", decision.RetryAfter))
+		writeEvent(w, rc, "error", chatpages.StreamErrorHTML(quotaMessage(decision)))
+		writeEvent(w, rc, "done", "")
+		return
+	}
+
+	// Both branches reach a model, so the budget is spent before either one is
+	// chosen: a reflection is generated from stored history and costs the same
+	// as an answer to a typed message.
+	var stream <-chan ai.StreamChunk
+	if begin {
+		stream, err = h.svc.BeginReflection(r.Context(), user, conversation.ID)
+	} else {
+		stream, err = h.svc.SendMessage(r.Context(), user, conversation.ID, pending)
+	}
 	if err != nil {
 		writeEvent(w, rc, "error", chatpages.StreamErrorHTML(friendly(err)))
 		writeEvent(w, rc, "done", "")
@@ -250,6 +417,8 @@ func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 		http.Error(w, "Not found.", http.StatusNotFound)
 	case apperr.Is(err, apperr.ErrValidation):
 		http.Error(w, "That request could not be read.", http.StatusUnprocessableEntity)
+	case apperr.Is(err, apperr.ErrConflict):
+		http.Error(w, "This reflection has ended.", http.StatusConflict)
 	default:
 		log.Error("chat request failed", slog.Any("error", err))
 		http.Error(w, "Something went wrong.", http.StatusInternalServerError)
@@ -263,7 +432,24 @@ func friendly(err error) string {
 		return "The coach is busy right now. Try again in a moment."
 	case apperr.Is(err, apperr.ErrForbidden):
 		return "North cannot reach its AI provider. Check the server configuration."
+	case apperr.Is(err, apperr.ErrConflict):
+		return "This reflection has ended."
 	default:
 		return "Something went wrong while writing that reply."
+	}
+}
+
+// quotaMessage says a refusal out loud, in the same voice friendly uses.
+//
+// It names a wait rather than a limit, because the number a person needs is
+// when they can carry on — not how the bound was configured.
+func quotaMessage(decision quota.Decision) string {
+	switch {
+	case decision.RetryAfter < time.Minute:
+		return "You have reached your coach message limit. Try again in less than a minute."
+	case decision.RetryAfter < time.Hour:
+		return fmt.Sprintf("You have reached your coach message limit. Try again in %d minutes.", int(decision.RetryAfter.Minutes()))
+	default:
+		return "You have reached your coach message limit. Try again in about an hour."
 	}
 }

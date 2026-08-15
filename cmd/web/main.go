@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 	"github.com/posthog/posthog-go"
@@ -50,8 +51,10 @@ import (
 	"github.com/NorthAIProject/north-client/internal/media"
 	"github.com/NorthAIProject/north-client/internal/memories"
 	"github.com/NorthAIProject/north-client/internal/mind"
+	"github.com/NorthAIProject/north-client/internal/nudges"
 	"github.com/NorthAIProject/north-client/internal/onboarding"
 	"github.com/NorthAIProject/north-client/internal/preferences"
+	"github.com/NorthAIProject/north-client/internal/quota"
 	"github.com/NorthAIProject/north-client/internal/reports"
 	"github.com/NorthAIProject/north-client/internal/settings"
 	"github.com/NorthAIProject/north-client/internal/shared/database"
@@ -230,6 +233,9 @@ func routes(
 	checkinSvc := checkins.NewService(checkins.NewRepository(pool), goalSvc)
 	checkinHandler := checkins.NewHandler(checkinSvc, goalSvc)
 
+	nudgeSvc := nudges.NewService(nudges.NewRepository(pool), userSvc, checkinSvc, goalSvc)
+	nudgeHandler := nudges.NewHandler(nudgeSvc)
+
 	memorySvc := memories.NewService(memories.NewRepository(pool))
 	memoryHandler := memories.NewHandler(memorySvc)
 
@@ -240,7 +246,27 @@ func routes(
 	if embedder != nil {
 		documentSvc = documentSvc.WithEmbeddings(embedder, slog.Default())
 	}
-	documentHandler := documents.NewHandler(documentSvc)
+	// One quota service for every guarded surface, so the budgets live in one
+	// table and one place in the configuration rather than one per handler.
+	//
+	// The identity function is passed in rather than imported inside the
+	// package: quota counts, it does not decide who is signed in.
+	quotaSvc := quota.NewService(
+		quota.NewRepository(pool),
+		map[quota.Action]quota.Limit{
+			quota.CoachMessage:    {PerWindow: cfg.Quota.CoachMessages, Window: time.Hour},
+			quota.DocumentUpload:  {PerWindow: cfg.Quota.DocumentUploads, Window: time.Hour},
+			quota.DocumentReindex: {PerWindow: cfg.Quota.DocumentReindexes, Window: time.Hour},
+			quota.ReportGenerate:  {PerWindow: cfg.Quota.ReportGenerations, Window: time.Hour},
+			quota.MediaAnalysis:   {PerWindow: cfg.Quota.MediaAnalyses, Window: time.Hour},
+		},
+		func(ctx context.Context) (uuid.UUID, bool) {
+			user, ok := auth.UserFrom(ctx)
+			return user.ID, ok
+		},
+	)
+
+	documentHandler := documents.NewHandler(documentSvc, quotaSvc)
 
 	vaultSvc := vault.NewService(vault.Options{
 		Repository: vault.NewRepository(vaultdb.New(pool)),
@@ -274,7 +300,7 @@ func routes(
 		Provider:   cfg.AI.UploadProvider,
 		Model:      cfg.AI.Model,
 	})
-	mediaHandler := media.NewHandler(mediaSvc)
+	mediaHandler := media.NewHandler(mediaSvc, quotaSvc)
 
 	// Biometrics -> calculator/activity both need the user's current weight,
 	// so biometrics is constructed first and passed in as a lookup rather
@@ -325,11 +351,21 @@ func routes(
 	mealRecommendSvc := meals.NewGoalRecommendationService(mealProgressSvc, calculatorSvc)
 	mealReminderSvc := meals.NewMealReminderService(mealsRepo)
 
+	// Declared here rather than with the other lifestyle slices below because
+	// the fitness hub reads it: readings a device pushed are part of what that
+	// page is for.
+	healthSvc := health.NewService(health.NewRepository(pool))
+	// Lets one push carry finished workouts as well as readings. The activity
+	// slice owns the dedupe and the calorie estimate, so a synced session is
+	// costed exactly like a manually logged one.
+	healthSvc.WithWorkouts(activitySvc, biometricSvc)
+
 	fitnessHandler := fitness.NewHandler(fitness.Options{
 		Activity: activitySvc,
 		Workouts: workoutSvc,
 		Strava:   stravaSvc,
 		Meals:    mealProgressSvc,
+		Health:   healthSvc,
 	}, cfg.Env.IsProduction())
 	mealsHandler := meals.NewHandler(meals.HandlerOptions{
 		Ingredients: mealIngredientSvc,
@@ -365,7 +401,6 @@ func routes(
 	hydrationSvc := hydration.NewService(hydration.NewRepository(pool))
 	sleepSvc := sleep.NewService(sleep.NewRepository(pool))
 	habitSvc := habits.NewService(habits.NewRepository(pool))
-	healthSvc := health.NewService(health.NewRepository(pool))
 
 	careHandler := care.NewHandler(care.Options{
 		Reminders: mealReminderSvc,
@@ -386,6 +421,7 @@ func routes(
 		Sleep:         sleepSvc,
 		Activity:      activitySvc,
 		Mind:          mindSvc,
+		Nudges:        nudgeSvc,
 	})
 	dashboardHandler := dashboard.NewHandler(dashboardSvc)
 
@@ -414,7 +450,7 @@ func routes(
 		Client:     reports.ClientFromRegistry(registry),
 		Context:    reports.NewInsightsContext(insightsSvc, mealProgressSvc, memorySvc),
 	})
-	reportHandler := reports.NewHandler(reportSvc)
+	reportHandler := reports.NewHandler(reportSvc, quotaSvc)
 
 	// One registry of capabilities, shared by the coach's chat loop and the
 	// MCP server. Two definitions of "calculate my macros" would drift, and
@@ -425,6 +461,10 @@ func routes(
 		Goals:       goalSvc,
 		Ingredients: mealIngredientSvc,
 		FoodLog:     foodLogSvc,
+		CheckIns:    checkinSvc,
+		Documents:   documentSvc,
+		Workouts:    workoutSvc,
+		Users:       userSvc,
 	})
 
 	coachSvc := coach.NewService(coach.Options{
@@ -448,6 +488,10 @@ func routes(
 			decisions.NewContextSource(decisionSvc),
 			hydration.NewContextSource(hydrationSvc),
 			sleep.NewContextSource(sleepSvc),
+			// nil clock: the real one. Shares DailySignals with sleep and
+			// hydration, because a device's resting numbers are read the same
+			// way — as background, before anything else is interpreted.
+			health.NewContextSource(healthSvc, nil),
 			habits.NewContextSource(habitSvc),
 			reports.NewContextSource(reportSvc),
 		),
@@ -462,7 +506,7 @@ func routes(
 		Model:     cfg.AI.Model,
 		FastModel: cfg.AI.FastModel,
 	})
-	coachHandler := coach.NewHandler(coachSvc)
+	coachHandler := coach.NewHandler(coachSvc, quotaSvc)
 
 	// Given the coach so the questionnaire ends in a thread that is already
 	// being answered, rather than an empty chat box the person has to think of
@@ -537,7 +581,12 @@ func routes(
 		r.Mount("/ingest/health", http.StripPrefix("/ingest/health", health.NewHandler(health.HandlerConfig{
 			Service: healthSvc,
 			Auth:    connectionSvc,
-			Log:     slog.Default(),
+
+			// Left at the package defaults. The MCP bound is configurable
+			// because a call there can reach a paid model and an operator may
+			// need to tighten it; a write here costs a transaction, so there is
+			// nothing yet for a knob to protect against.
+			Log: slog.Default(),
 		})))
 	})
 
@@ -572,6 +621,7 @@ func routes(
 
 				coachHandler.Routes(r)
 				checkinHandler.Routes(r)
+				nudgeHandler.Routes(r)
 				goalHandler.Routes(r)
 				memoryHandler.Routes(r)
 				documentHandler.Routes(r)

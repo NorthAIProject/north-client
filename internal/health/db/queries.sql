@@ -43,6 +43,32 @@ FROM health_metrics
 WHERE user_id = $1 AND metric = $2
   AND started_at >= $3 AND started_at < $4;
 
+-- name: HealthMetricStats :one
+-- Everything a summary needs about one metric in one window, in one pass.
+--
+-- Both aggregates are returned because the caller decides which is meaningful:
+-- a resting heart rate is averaged, a step count is totalled. Asking the
+-- database twice to get two numbers off the same rows would be the same query
+-- run twice.
+--
+-- days counts distinct calendar days rather than rows, so "per day" does not
+-- change meaning when a phone syncs twice in an afternoon. It is counted in
+-- UTC: a summary spanning a week is not sensitive to which side of midnight a
+-- reading fell on, and carrying a timezone into this query would buy precision
+-- the output does not express.
+-- Every aggregate is coalesced so an empty window scans cleanly rather than
+-- returning NULLs into non-nullable Go types. reading_count is what the caller
+-- checks to tell "measured zero" from "not measured".
+SELECT
+    COUNT(*)                                              AS reading_count,
+    COUNT(DISTINCT (started_at AT TIME ZONE 'UTC')::date) AS days,
+    COALESCE(AVG(value), 0)::double precision             AS average,
+    COALESCE(SUM(value), 0)::double precision             AS total,
+    COALESCE(MAX(unit), '')::text                         AS unit
+FROM health_metrics
+WHERE user_id = $1 AND metric = $2
+  AND started_at >= $3 AND started_at < $4;
+
 -- name: ListHealthMetricSources :many
 -- Which providers have written for this user, and how recently. Drives the
 -- connection status shown on the fitness page without a per-provider query.

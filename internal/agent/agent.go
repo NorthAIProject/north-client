@@ -42,6 +42,17 @@ type Capability struct {
 	// though it writes.
 	ReadOnly bool
 
+	// Idempotent reports that calling this twice with the same arguments leaves
+	// the same state as calling it once.
+	//
+	// Published to MCP clients, which read it to decide whether a call that
+	// timed out is safe to retry. create_check_in is the example: it upserts
+	// the day's entry, so a retry corrects rather than duplicating.
+	//
+	// The default is again the safe one — a capability that says nothing is
+	// assumed to do something more on a second call.
+	Idempotent bool
+
 	// Invoke runs it for a specific person.
 	//
 	// userID is passed by the caller from an authenticated session, never
@@ -100,6 +111,16 @@ func (r *Registry) Tools() []ai.Tool {
 func (r *Registry) IsReadOnly(name string) bool {
 	capability, ok := r.capabilities[name]
 	return ok && capability.ReadOnly
+}
+
+// IsIdempotent reports whether calling the named capability twice leaves the
+// same state as calling it once.
+//
+// An unknown name answers false, for the same reason IsReadOnly does: the safe
+// wrong answer is "assume a second call does something more".
+func (r *Registry) IsIdempotent(name string) bool {
+	capability, ok := r.capabilities[name]
+	return ok && capability.Idempotent
 }
 
 // Names returns the registered capability names, sorted.

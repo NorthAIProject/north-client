@@ -27,7 +27,23 @@ func NewService(repo *Repository) *Service {
 }
 
 func (s *Service) Start(ctx context.Context, userID uuid.UUID) (Conversation, error) {
-	return s.repo.Create(ctx, userID, "")
+	return s.StartKind(ctx, userID, KindChat)
+}
+
+// StartKind opens a thread of the given kind. Empty kind is chat.
+func (s *Service) StartKind(ctx context.Context, userID uuid.UUID, kind string) (Conversation, error) {
+	kind = strings.TrimSpace(kind)
+	if kind == "" {
+		kind = KindChat
+	}
+	if kind != KindChat && kind != KindReflection {
+		return Conversation{}, apperr.Wrap(apperr.ErrValidation, "unknown conversation kind")
+	}
+	return s.repo.Create(ctx, userID, "", kind)
+}
+
+func (s *Service) SetSummary(ctx context.Context, id uuid.UUID, summary string) error {
+	return s.repo.SetSummary(ctx, id, strings.TrimSpace(summary))
 }
 
 // Get returns a conversation the user owns, or ErrNotFound.
@@ -105,6 +121,31 @@ func (s *Service) AppendModelMessage(ctx context.Context, conversationID uuid.UU
 		Model:          model,
 		Provider:       provider,
 		EvidenceRefs:   evidenceRefs,
+	})
+}
+
+// AppendToolCalls stores the tools a model asked for on this turn.
+//
+// A model turn, because that is whose turn it is: ai.ToolCallMessage builds the
+// same shape for the request. Every provider rejects a result whose call it has
+// not been shown, so this is what makes a resumed conversation replayable.
+func (s *Service) AppendToolCalls(ctx context.Context, conversationID uuid.UUID, calls []ai.ToolCall) (Message, error) {
+	return s.repo.Append(ctx, NewMessage{
+		ConversationID: conversationID,
+		Role:           ai.RoleModel,
+		ToolCalls:      calls,
+	})
+}
+
+// AppendToolResults stores what the tools answered.
+//
+// A user turn, matching ai.ToolResultMessage: from the model's point of view
+// the results arrive from outside, the same way a person's message does.
+func (s *Service) AppendToolResults(ctx context.Context, conversationID uuid.UUID, results []ai.ToolResult) (Message, error) {
+	return s.repo.Append(ctx, NewMessage{
+		ConversationID: conversationID,
+		Role:           ai.RoleUser,
+		ToolResults:    results,
 	})
 }
 

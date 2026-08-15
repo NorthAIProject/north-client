@@ -153,6 +153,18 @@ func (s *Service) Delete(ctx context.Context, id, userID uuid.UUID) error {
 	return s.repo.Delete(ctx, id, userID)
 }
 
+// LatestLocalDate is the most recent check-in calendar day, if any.
+func (s *Service) LatestLocalDate(ctx context.Context, userID uuid.UUID) (time.Time, bool, error) {
+	dates, err := s.repo.Dates(ctx, userID, 1)
+	if err != nil {
+		return time.Time{}, false, err
+	}
+	if len(dates) == 0 {
+		return time.Time{}, false, nil
+	}
+	return dates[0], true, nil
+}
+
 // RecentForContext returns the last two weeks of check-ins for the coach.
 func (s *Service) RecentForContext(ctx context.Context, user users.User) ([]CheckIn, error) {
 	since := LocalDate(user, time.Now()).AddDate(0, 0, -(contextDays - 1))

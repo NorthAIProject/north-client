@@ -9,6 +9,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/conversations"
 	"github.com/NorthAIProject/north-client/internal/goals/goal"
+	"github.com/NorthAIProject/north-client/internal/nudges/nudge"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/workouts/plan"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
@@ -18,6 +19,7 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/chart"
 	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
 	"github.com/NorthAIProject/north-client/web/shared/ui/progress"
+	nudgepages "github.com/NorthAIProject/north-client/web/nudges"
 )
 
 // DashboardData is the command-center snapshot.
@@ -45,6 +47,8 @@ type DashboardData struct {
 	CheckInHeatmap   map[string]any
 	ActivityDonut    map[string]any
 	HasActivityDonut bool
+
+	Nudges []nudge.Nudge
 }
 
 // RangeOption is one choice in the period selector.
@@ -268,6 +272,7 @@ templ rangeSelector(data DashboardData) {
 // listener, and both libraries are loaded once by the page around this.
 templ DashboardPanels(data DashboardData) {
 	<div class="space-y-6">
+		@nudgepages.Card(data.Nudges)
 		@kpiStrip(data)
 		<div class="grid gap-4 lg:grid-cols-3">
 			<div class="lg:col-span-2">
@@ -600,6 +605,16 @@ templ goalsPanel(data DashboardData) {
 	}
 }
 
+templ startReflectionForm() {
+	<form method="post" action="/app/chat">
+		@ui.CSRFInput()
+		<input type="hidden" name="kind" value="reflection"/>
+		@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
+			Reflect
+		}
+	</form>
+}
+
 templ coachPanel(data DashboardData) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface h-full"}) {
 		@card.Header() {
@@ -610,14 +625,20 @@ templ coachPanel(data DashboardData) {
 		@card.Content() {
 			if data.LastThread != nil {
 				<p class="mb-3 text-sm font-medium">{ data.LastThread.DisplayTitle() }</p>
-				@button.Button(button.Props{Href: "/app/chat/" + data.LastThread.ID.String(), Class: "bg-signal text-background hover:bg-signal/90"}) {
-					Continue
-				}
+				<div class="flex flex-wrap items-center gap-2">
+					@button.Button(button.Props{Href: "/app/chat/" + data.LastThread.ID.String(), Class: "bg-signal text-background hover:bg-signal/90"}) {
+						Continue
+					}
+					@startReflectionForm()
+				</div>
 			} else {
 				<p class="text-muted-foreground mb-4 text-sm">North already has your goals and check-ins when they exist.</p>
-				@button.Button(button.Props{Href: "/app/chat", Class: "bg-signal text-background hover:bg-signal/90"}) {
-					Start a conversation
-				}
+				<div class="flex flex-wrap items-center gap-2">
+					@button.Button(button.Props{Href: "/app/chat", Class: "bg-signal text-background hover:bg-signal/90"}) {
+						Start a conversation
+					}
+					@startReflectionForm()
+				</div>
 			}
 		}
 	}
