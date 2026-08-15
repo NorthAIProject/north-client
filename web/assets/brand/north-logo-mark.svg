@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-hidden="true">
+  <!--
+    The North mark: an eight-point star crossed by one long needle.
+
+    Traced by measuring north-logo-mark.png rather than redrawn by eye, and the
+    measurement is the reason this is two shapes and not one. Sampling the ray
+    width against radius gives 17° at a third out, 10° at half, then 4° at 0.8
+    and 3° at 0.9 — the width collapses long before the radius does. That is not
+    a star with unequal points; it is a star of even points with a thin needle
+    laid across it:
+
+      body     eight tips at 0.63, waists at 0.25, straight edges
+      needle   0.45π axis, out to 1.00 up-right and 0.92 down-left
+
+    Modelling it as a single polygon with one long point produces a fat blunt
+    asterisk, and pulling the flanks concave to compensate produces a rounded
+    blob. Both were tried against an overlay of the PNG before this shape was.
+
+    The same numbers build the landing page's 3D star in
+    web/assets/js/landing/scroll-world/star.js. Change one, change both, or they
+    drift apart again — which is what had already happened.
+
+    The PNG's drop shadow is deliberately absent: it is a raster effect, and a
+    logo carrying its own shadow cannot sit on an arbitrary surface.
+  -->
+  <defs>
+    <radialGradient id="north-mark-fill" gradientUnits="userSpaceOnUse" cx="50" cy="50" r="48">
+      <!--
+        Weighted so the dark end arrives early. The PNG's own profile keeps a
+        light core out to about a third of the radius, but reproducing that
+        faithfully makes the mark disappear at 20px on a white surface — most of
+        the pixels at that size are core, and a pale grey star on white is not a
+        logo. The dark navy takes over from 0.55 instead, which keeps it legible
+        in the nav at 20px while leaving the glow visible at 48px and above.
+      -->
+      <stop offset="0" stop-color="#E4E9E7" stop-opacity="0.92"/>
+      <stop offset="0.14" stop-color="#C3D2CC" stop-opacity="0.95"/>
+      <stop offset="0.30" stop-color="#93C2B2" stop-opacity="0.98"/>
+      <stop offset="0.44" stop-color="#73B2A1" stop-opacity="1"/>
+      <stop offset="0.58" stop-color="#41766E" stop-opacity="1"/>
+      <stop offset="0.74" stop-color="#12303A" stop-opacity="1"/>
+      <stop offset="1" stop-color="#000E1B" stop-opacity="1"/>
+    </radialGradient>
+  </defs>
+  <g fill="url(#north-mark-fill)">
+    <path d="M 80.24 50 L 61.09 45.41 L 71.38 28.62 L 54.59 38.91 L 50 19.76 L 45.41 38.91 L 28.62 28.62 L 38.91 45.41 L 19.76 50 L 38.91 54.59 L 28.62 71.38 L 45.41 61.09 L 50 80.24 L 54.59 61.09 L 71.38 71.38 L 61.09 54.59 Z"/>
+    <path d="M 83.94 16.06 L 56.57 41.74 L 18.77 81.23 L 58.26 43.43 Z"/>
+  </g>
+</svg>

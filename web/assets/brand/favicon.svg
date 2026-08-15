@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img">
+  <title>North</title>
+  <!--
+    The tab icon. Same two shapes as north-logo-mark.svg, drawn to survive 16px.
+    Three differences from the full mark, all deliberate:
+
+    No gradient. At 16px a seven-stop radial reduces to mud; a flat fill reads
+    as a shape rather than a smudge.
+
+    Fully opaque. The full mark's translucent core is a glow that earns its keep
+    at 32px and up; in a browser tab it only lets the tab strip show through.
+
+    prefers-color-scheme rather than currentColor, because a favicon has no
+    parent to inherit from — this is the one place a media query inside an SVG
+    is the only mechanism available. Browsers that ignore it get the light-theme
+    fill, which is the darker of the two and safe against the pale tab strips
+    that are the common case.
+  -->
+  <style>
+    .mark { fill: #0B2A33; }
+    @media (prefers-color-scheme: dark) { .mark { fill: #8FC7B6; } }
+  </style>
+  <g class="mark">
+    <path d="M 80.24 50 L 61.09 45.41 L 71.38 28.62 L 54.59 38.91 L 50 19.76 L 45.41 38.91 L 28.62 28.62 L 38.91 45.41 L 19.76 50 L 38.91 54.59 L 28.62 71.38 L 45.41 61.09 L 50 80.24 L 54.59 61.09 L 71.38 71.38 L 61.09 54.59 Z"/>
+    <path d="M 83.94 16.06 L 56.57 41.74 L 18.77 81.23 L 58.26 43.43 Z"/>
+  </g>
+</svg>
