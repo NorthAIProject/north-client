@@ -14,11 +14,14 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/agent"
 	"github.com/NorthAIProject/north-client/internal/calculator"
+	"github.com/NorthAIProject/north-client/internal/checkins"
+	"github.com/NorthAIProject/north-client/internal/documents"
 	"github.com/NorthAIProject/north-client/internal/exercises"
 	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/mcpserver"
 	"github.com/NorthAIProject/north-client/internal/meals"
 	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/internal/workouts"
 )
 
 var update = flag.Bool("update", false, "rewrite the tool contract golden file")
@@ -86,6 +89,7 @@ func TestEveryToolDeclaresWhetherItWrites(t *testing.T) {
 	writers := map[string]bool{
 		"add_goal_update":  true,
 		"create_check_in":  true,
+		"create_goal":      true,
 		"ask_coach":        true,
 		"calculate_macros": true,
 	}
@@ -201,5 +205,9 @@ func testRegistry() *agent.Registry {
 		Goals:       goals.NewService(goals.NewRepository(nil)),
 		Ingredients: meals.NewIngredientService(meals.NewRepository(nil)),
 		FoodLog:     meals.NewFoodLogService(meals.NewRepository(nil)),
+		CheckIns:    checkins.NewService(checkins.NewRepository(nil), nil),
+		Documents:   documents.NewService(documents.NewRepository(nil), nil, nil),
+		Workouts:    workouts.NewService(workouts.Options{Repository: workouts.NewRepository(nil)}),
+		Users:       users.NewService(users.NewRepository(nil)),
 	})
 }
