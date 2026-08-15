@@ -117,6 +117,7 @@ func buildDashboardData(snap Snapshot) (app.DashboardData, error) {
 		Range:            mapRange(snap.Range),
 		CheckedInToday:   snap.CheckedInToday,
 		Streak:           snap.Streak,
+		GoalActivity7d:   snap.GoalActivity7d,
 		PendingMemories:  snap.PendingMemories,
 		Goals:            snap.Goals,
 		LastThread:       snap.LastThread,
