@@ -10,6 +10,27 @@
 // A provider is named by a string rather than an enum on purpose. The lesson is
 // activity_sessions.source, whose CHECK constraint means a new provider cannot
 // write a single row until someone ships a migration.
+//
+// TODO: nothing pushes to this package yet. The endpoint, the schema and the
+// coach summary are all in place and tested, but no real device has ever sent
+// a payload, so every number this package has stored so far was written by a
+// test or by hand.
+//
+// Closing that is not a code change here. Apple Health can only be read by
+// code running on the phone, so it needs one of:
+//
+//   - an off-the-shelf bridge app (Health Auto Export and similar) that a
+//     person configures with a token and this endpoint's URL — no code, and
+//     the fastest way to find out whether any of this is worth keeping; or
+//   - a native iOS client, which is a separate product surface, not a package.
+//
+// Android has no equivalent: Health Connect is on-device only and Google Fit's
+// REST API is being turned off, so there is no cheap path there at all.
+//
+// Until one of those exists, treat the coverage here as describing behaviour
+// that has never met a real payload. Field names, units and timestamp formats
+// are guesses at what a bridge sends, and the first real sync is likely to
+// correct some of them.
 package health
 
 import (
