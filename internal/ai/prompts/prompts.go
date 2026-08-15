@@ -33,6 +33,7 @@ const (
 	ConversationTitle = "conversation_title.md"
 	MemoryExtraction  = "memory_extraction.md"
 	WeeklyReview      = "weekly_review.md"
+	ReflectionSession = "reflection_session.md"
 )
 
 // Render executes a prompt template with the given data.

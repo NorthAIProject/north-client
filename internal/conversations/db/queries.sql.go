@@ -118,18 +118,19 @@ func (q *Queries) CountMessages(ctx context.Context, conversationID uuid.UUID) (
 }
 
 const createConversation = `-- name: CreateConversation :one
-INSERT INTO conversations (user_id, title)
-VALUES ($1, $2)
-RETURNING id, user_id, title, created_at, updated_at, memories_extracted_at
+INSERT INTO conversations (user_id, title, kind)
+VALUES ($1, $2, $3)
+RETURNING id, user_id, title, created_at, updated_at, memories_extracted_at, kind, summary
 `
 
 type CreateConversationParams struct {
 	UserID uuid.UUID
 	Title  *string
+	Kind   string
 }
 
 func (q *Queries) CreateConversation(ctx context.Context, arg CreateConversationParams) (Conversation, error) {
-	row := q.db.QueryRow(ctx, createConversation, arg.UserID, arg.Title)
+	row := q.db.QueryRow(ctx, createConversation, arg.UserID, arg.Title, arg.Kind)
 	var i Conversation
 	err := row.Scan(
 		&i.ID,
@@ -138,6 +139,8 @@ func (q *Queries) CreateConversation(ctx context.Context, arg CreateConversation
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.MemoriesExtractedAt,
+		&i.Kind,
+		&i.Summary,
 	)
 	return i, err
 }
@@ -158,7 +161,7 @@ func (q *Queries) DeleteConversation(ctx context.Context, arg DeleteConversation
 }
 
 const getConversation = `-- name: GetConversation :one
-SELECT id, user_id, title, created_at, updated_at, memories_extracted_at FROM conversations
+SELECT id, user_id, title, created_at, updated_at, memories_extracted_at, kind, summary FROM conversations
 WHERE id = $1 AND user_id = $2
 `
 
@@ -180,12 +183,14 @@ func (q *Queries) GetConversation(ctx context.Context, arg GetConversationParams
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.MemoriesExtractedAt,
+		&i.Kind,
+		&i.Summary,
 	)
 	return i, err
 }
 
 const listConversations = `-- name: ListConversations :many
-SELECT id, user_id, title, created_at, updated_at, memories_extracted_at FROM conversations
+SELECT id, user_id, title, created_at, updated_at, memories_extracted_at, kind, summary FROM conversations
 WHERE user_id = $1
 ORDER BY updated_at DESC
 LIMIT $2 OFFSET $3
@@ -213,6 +218,8 @@ func (q *Queries) ListConversations(ctx context.Context, arg ListConversationsPa
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.MemoriesExtractedAt,
+			&i.Kind,
+			&i.Summary,
 		); err != nil {
 			return nil, err
 		}
@@ -372,6 +379,22 @@ func (q *Queries) RecentUserMessages(ctx context.Context, arg RecentUserMessages
 		return nil, err
 	}
 	return items, nil
+}
+
+const setConversationSummary = `-- name: SetConversationSummary :exec
+UPDATE conversations
+SET summary = $2, updated_at = now()
+WHERE id = $1
+`
+
+type SetConversationSummaryParams struct {
+	ID      uuid.UUID
+	Summary string
+}
+
+func (q *Queries) SetConversationSummary(ctx context.Context, arg SetConversationSummaryParams) error {
+	_, err := q.db.Exec(ctx, setConversationSummary, arg.ID, arg.Summary)
+	return err
 }
 
 const setConversationTitle = `-- name: SetConversationTitle :exec

@@ -141,3 +141,11 @@ WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL;
 SELECT count(*)::int AS count
 FROM user_memories
 WHERE user_id = $1 AND deleted_at IS NULL AND status = 'pending';
+
+-- name: ListPendingForConversation :many
+SELECT * FROM user_memories
+WHERE user_id = $1
+  AND source_conversation_id = $2
+  AND status = 'pending'
+  AND deleted_at IS NULL
+ORDER BY created_at DESC;

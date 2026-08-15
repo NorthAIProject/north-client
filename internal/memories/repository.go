@@ -254,6 +254,17 @@ func (r *Repository) CountPending(ctx context.Context, userID uuid.UUID) (int, e
 	return int(n), nil
 }
 
+func (r *Repository) ListPendingForConversation(ctx context.Context, userID, conversationID uuid.UUID) ([]Memory, error) {
+	rows, err := r.q.ListPendingForConversation(ctx, memoriesdb.ListPendingForConversationParams{
+		UserID:               userID,
+		SourceConversationID: &conversationID,
+	})
+	if err != nil {
+		return nil, apperr.Wrap(err, "list pending memories for conversation")
+	}
+	return fromDBList(rows), nil
+}
+
 func fromDBList(rows []memoriesdb.UserMemory) []Memory {
 	out := make([]Memory, 0, len(rows))
 	for _, row := range rows {

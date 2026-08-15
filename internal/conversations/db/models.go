@@ -81,6 +81,8 @@ type Conversation struct {
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
 	MemoriesExtractedAt *time.Time
+	Kind                string
+	Summary             string
 }
 
 type Diet struct {
@@ -530,6 +532,19 @@ type UserMemory struct {
 	UpdatedAt            time.Time
 	DeletedAt            *time.Time
 	Excluded             bool
+}
+
+type UserNudge struct {
+	ID          uuid.UUID
+	UserID      uuid.UUID
+	Kind        string
+	DedupeKey   string
+	Title       string
+	Body        string
+	Href        string
+	ReadAt      *time.Time
+	DismissedAt *time.Time
+	CreatedAt   time.Time
 }
 
 type UserPreference struct {

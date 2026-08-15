@@ -27,7 +27,23 @@ func NewService(repo *Repository) *Service {
 }
 
 func (s *Service) Start(ctx context.Context, userID uuid.UUID) (Conversation, error) {
-	return s.repo.Create(ctx, userID, "")
+	return s.StartKind(ctx, userID, KindChat)
+}
+
+// StartKind opens a thread of the given kind. Empty kind is chat.
+func (s *Service) StartKind(ctx context.Context, userID uuid.UUID, kind string) (Conversation, error) {
+	kind = strings.TrimSpace(kind)
+	if kind == "" {
+		kind = KindChat
+	}
+	if kind != KindChat && kind != KindReflection {
+		return Conversation{}, apperr.Wrap(apperr.ErrValidation, "unknown conversation kind")
+	}
+	return s.repo.Create(ctx, userID, "", kind)
+}
+
+func (s *Service) SetSummary(ctx context.Context, id uuid.UUID, summary string) error {
+	return s.repo.SetSummary(ctx, id, strings.TrimSpace(summary))
 }
 
 // Get returns a conversation the user owns, or ErrNotFound.
