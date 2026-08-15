@@ -350,6 +350,10 @@ func routes(
 	// the fitness hub reads it: readings a device pushed are part of what that
 	// page is for.
 	healthSvc := health.NewService(health.NewRepository(pool))
+	// Lets one push carry finished workouts as well as readings. The activity
+	// slice owns the dedupe and the calorie estimate, so a synced session is
+	// costed exactly like a manually logged one.
+	healthSvc.WithWorkouts(activitySvc, biometricSvc)
 
 	fitnessHandler := fitness.NewHandler(fitness.Options{
 		Activity: activitySvc,

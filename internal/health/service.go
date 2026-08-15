@@ -9,6 +9,11 @@ import (
 
 type Service struct {
 	repo *Repository
+
+	// Set by WithWorkouts. Nil is the ordinary state for a deployment that
+	// only accepts readings.
+	activities ActivityImporter
+	biometrics BiometricsLookup
 }
 
 func NewService(repo *Repository) *Service {
