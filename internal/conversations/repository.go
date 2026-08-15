@@ -25,10 +25,11 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 	return &Repository{q: conversationsdb.New(pool)}
 }
 
-func (r *Repository) Create(ctx context.Context, userID uuid.UUID, title string) (Conversation, error) {
+func (r *Repository) Create(ctx context.Context, userID uuid.UUID, title, kind string) (Conversation, error) {
 	row, err := r.q.CreateConversation(ctx, conversationsdb.CreateConversationParams{
 		UserID: userID,
 		Title:  nilIfEmpty(title),
+		Kind:   kind,
 	})
 	if err != nil {
 		return Conversation{}, apperr.Wrap(err, "create conversation")
@@ -66,6 +67,13 @@ func (r *Repository) List(ctx context.Context, userID uuid.UUID, limit, offset i
 		out = append(out, conversationFromDB(row))
 	}
 	return out, nil
+}
+
+func (r *Repository) SetSummary(ctx context.Context, id uuid.UUID, summary string) error {
+	return apperr.Wrap(r.q.SetConversationSummary(ctx, conversationsdb.SetConversationSummaryParams{
+		ID:      id,
+		Summary: summary,
+	}), "set conversation summary")
 }
 
 func (r *Repository) SetTitle(ctx context.Context, id uuid.UUID, title string) error {
@@ -212,8 +220,13 @@ func conversationFromDB(row conversationsdb.Conversation) Conversation {
 	c := Conversation{
 		ID:        row.ID,
 		UserID:    row.UserID,
+		Kind:      row.Kind,
+		Summary:   row.Summary,
 		CreatedAt: row.CreatedAt,
 		UpdatedAt: row.UpdatedAt,
+	}
+	if c.Kind == "" {
+		c.Kind = KindChat
 	}
 	if row.Title != nil {
 		c.Title = *row.Title
