@@ -14,6 +14,11 @@ import (
 	"github.com/NorthAIProject/north-client/internal/ai"
 )
 
+const (
+	KindChat       = "chat"
+	KindReflection = "reflection"
+)
+
 // Conversation is one continuous thread with the coach.
 type Conversation struct {
 	ID     uuid.UUID
@@ -22,8 +27,24 @@ type Conversation struct {
 	// Title is generated from the opening message. Empty until then.
 	Title string
 
+	// Kind is chat (default) or reflection. Reflection is the same coach
+	// with a different prompt and a required closing summary.
+	Kind string
+
+	// Summary is the closing write-up of a reflection. Empty on chat
+	// threads and on an in-progress reflection.
+	Summary string
+
 	CreatedAt time.Time
 	UpdatedAt time.Time
+}
+
+// IsReflection reports whether this thread is a structured reflection.
+func (c Conversation) IsReflection() bool { return c.Kind == KindReflection }
+
+// Ended reports whether a reflection has written its summary.
+func (c Conversation) Ended() bool {
+	return c.IsReflection() && strings.TrimSpace(c.Summary) != ""
 }
 
 // Pending is a thread the memory extractor has work to do on.
@@ -42,6 +63,9 @@ type Pending struct {
 func (c Conversation) DisplayTitle() string {
 	if t := strings.TrimSpace(c.Title); t != "" {
 		return t
+	}
+	if c.IsReflection() {
+		return "Reflection"
 	}
 	return "New conversation"
 }

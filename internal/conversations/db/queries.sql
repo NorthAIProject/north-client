@@ -1,6 +1,6 @@
 -- name: CreateConversation :one
-INSERT INTO conversations (user_id, title)
-VALUES ($1, $2)
+INSERT INTO conversations (user_id, title, kind)
+VALUES ($1, $2, $3)
 RETURNING *;
 
 -- name: GetConversation :one
@@ -19,6 +19,11 @@ LIMIT $2 OFFSET $3;
 -- name: SetConversationTitle :exec
 UPDATE conversations
 SET title = $2, updated_at = now()
+WHERE id = $1;
+
+-- name: SetConversationSummary :exec
+UPDATE conversations
+SET summary = $2, updated_at = now()
 WHERE id = $1;
 
 -- name: TouchConversation :exec
