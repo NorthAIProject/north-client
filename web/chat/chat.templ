@@ -60,7 +60,7 @@ type CoachStats struct {
 }
 
 // Page is a conversation with its history and composer.
-templ Page(user users.User, conversation conversations.Conversation, messages []conversations.Message, list []conversations.Conversation, stats CoachStats, pending []PendingTool, resuming bool) {
+templ Page(user users.User, conversation conversations.Conversation, messages []conversations.Message, list []conversations.Conversation, stats CoachStats, pending []PendingTool, resuming bool, draft string) {
 	@layout.App(conversation.DisplayTitle(), user, layout.BuildNav("/app/chat")) {
 		<div
 			id="chat-root"
@@ -96,7 +96,7 @@ templ Page(user users.User, conversation conversations.Conversation, messages []
 						@ResumeExchange(conversation.ID)
 					}
 					if !conversation.Ended() {
-						@composer(conversation.ID, "")
+						@composer(conversation.ID, draft)
 					}
 				}
 			</div>
@@ -128,6 +128,7 @@ templ Empty(user users.User, list []conversations.Conversation, stats CoachStats
 				</form>
 				@startReflectionForm(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline})
 			</div>
+			@emptyStarterChips()
 		</div>
 	}
 }
@@ -325,6 +326,22 @@ templ reflectionClose(c conversations.Conversation) {
 		hx-trigger="load"
 		hx-swap="innerHTML"
 	></div>
+}
+
+// emptyStarterChips create a thread with the chip as a draft. There is no
+// composer on this page, so filling #message is not an option.
+templ emptyStarterChips() {
+	<div class="mt-2 grid w-full max-w-lg gap-2 sm:grid-cols-2">
+		for _, starter := range starters {
+			<form method="post" action="/app/chat">
+				@ui.CSRFInput()
+				<input type="hidden" name="draft" value={ starter }/>
+				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Class: "min-h-11 w-full justify-start text-left whitespace-normal"}) {
+					{ starter }
+				}
+			</form>
+		}
+	</div>
 }
 
 // conversationStarters fills an empty thread with something to click. Answering

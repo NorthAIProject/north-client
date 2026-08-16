@@ -90,7 +90,7 @@ func (h *Handler) startConversation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, "/app/chat/"+conversation.ID.String(), http.StatusSeeOther)
+	http.Redirect(w, r, conversationURL(conversation.ID, r.PostFormValue("draft")), http.StatusSeeOther)
 }
 
 func (h *Handler) show(w http.ResponseWriter, r *http.Request) {
@@ -123,7 +123,7 @@ func (h *Handler) show(w http.ResponseWriter, r *http.Request) {
 	// and a stale ?resume=1 cannot open a stream that is not owed.
 	resuming := len(pending) == 0 && len(messages) > 0 && len(messages[len(messages)-1].ToolResults) > 0
 
-	render(w, r, http.StatusOK, chatpages.Page(user, conversation, messages, list, stats, pending, resuming))
+	render(w, r, http.StatusOK, chatpages.Page(user, conversation, messages, list, stats, pending, resuming, clipDraft(r.URL.Query().Get("draft"))))
 }
 
 // pendingTools renders the waiting call, if there is one, as something a person
