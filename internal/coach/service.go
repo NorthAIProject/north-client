@@ -12,7 +12,6 @@ import (
 	"github.com/NorthAIProject/north-client/internal/conversations"
 	"github.com/NorthAIProject/north-client/internal/jobs"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
-	"github.com/NorthAIProject/north-client/internal/shared/metrics"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/NorthAIProject/north-client/internal/shared/toolsurface"
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -87,7 +86,6 @@ type Service struct {
 	promptB       *PromptBuilder
 	queue         *jobs.Queue
 	tools         ToolRunner
-	metrics       *metrics.Registry
 	declines      DeclineRecorder
 
 	// chains decides which providers serve a given user, in what order.
@@ -124,10 +122,6 @@ type Options struct {
 	// purely from its context, which is what it did before tools existed.
 	Tools ToolRunner
 
-	// Metrics counts generations and what they spend. Nil turns counting off
-	// without changing any code path — see metrics.Registry's nil handling.
-	Metrics *metrics.Registry
-
 	// Declines keeps the account of writes a person refused. Nil records
 	// nothing; the refusal still reaches the model either way.
 	Declines DeclineRecorder
@@ -158,7 +152,6 @@ func NewService(opts Options) *Service {
 		queue:         opts.Queue,
 		chains:        opts.Chains,
 		tools:         opts.Tools,
-		metrics:       opts.Metrics,
 		declines:      opts.Declines,
 		own:           opts.Own,
 		analytics:     opts.Analytics,
@@ -513,9 +506,6 @@ func (s *Service) pump(
 			latency:    roundLatency,
 			err:        streamErr,
 		})
-
-		s.metrics.CoachGeneration(target.provider, roundLatency, streamErr != nil)
-		s.metrics.CoachTokens(target.provider, roundUsageValue.InputTokens, roundUsageValue.OutputTokens)
 
 		if streamErr != nil || len(calls) == 0 {
 			break
