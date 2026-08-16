@@ -9,8 +9,10 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -42,6 +44,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/quota"
 	"github.com/NorthAIProject/north-client/internal/reports"
 	"github.com/NorthAIProject/north-client/internal/shared/database"
+	"github.com/NorthAIProject/north-client/internal/shared/metrics"
 	"github.com/NorthAIProject/north-client/internal/sleep"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/vault"
@@ -171,7 +174,28 @@ func run() error {
 		Queue:      queue,
 	})
 
-	worker := jobs.NewWorker(queue, log)
+	// The worker gets its own registry and listener: it is a separate process,
+	// and a scrape of the web process says nothing about whether jobs are
+	// failing over here.
+	var metricsReg *metrics.Registry
+	if cfg.MetricsListenAddr != "" {
+		metricsReg = metrics.New()
+
+		metricsSrv := &http.Server{
+			Addr:              cfg.MetricsListenAddr,
+			Handler:           metricsReg.Handler(),
+			ReadHeaderTimeout: 5 * time.Second,
+		}
+		go func() {
+			log.Info("metrics listening", slog.String("addr", metricsSrv.Addr))
+			if err := metricsSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				log.Error("metrics listener stopped", slog.Any("error", err))
+			}
+		}()
+		defer func() { _ = metricsSrv.Close() }()
+	}
+
+	worker := jobs.NewWorker(queue, log).WithMetrics(metricsReg)
 	worker.Register(jobs.KindAnalyzeFormVideo, mediaSvc.AnalyzeVideo)
 	worker.Register(jobs.KindExtractMemories, memoryExtract.HandleExtractJob)
 	worker.Register(jobs.KindSyncStrava, syncStravaHandler(stravaSvc))

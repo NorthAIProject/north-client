@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/NorthAIProject/north-client/internal/shared/metrics"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 )
 
@@ -31,6 +32,7 @@ type Handler func(ctx context.Context, payload json.RawMessage) error
 type Worker struct {
 	queue     *Queue
 	log       *slog.Logger
+	metrics   *metrics.Registry
 	handlers  map[Kind]Handler
 	periodics []periodicEnqueue
 }
@@ -43,6 +45,13 @@ type periodicEnqueue struct {
 
 func NewWorker(queue *Queue, log *slog.Logger) *Worker {
 	return &Worker{queue: queue, log: log, handlers: make(map[Kind]Handler)}
+}
+
+// WithMetrics attaches counters. Returns the worker so it can be wired in one
+// expression at startup; nil leaves counting off.
+func (w *Worker) WithMetrics(m *metrics.Registry) *Worker {
+	w.metrics = m
+	return w
 }
 
 // RegisterPeriodic enqueues a job on a fixed interval until ctx is cancelled.
@@ -152,6 +161,11 @@ func (w *Worker) claimAndRun(ctx context.Context) (bool, error) {
 	started := time.Now()
 	err = runSafely(runCtx, handler, job.Payload)
 	elapsed := time.Since(started)
+
+	// Counted once per run, not once per job: a job that fails twice and then
+	// succeeds is three runs, and the retry rate is the interesting half of
+	// that story.
+	w.metrics.JobFinished(string(job.Kind), elapsed, err != nil)
 
 	if err == nil {
 		log.Info("job done", slog.Duration("took", elapsed))

@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/conversations"
+	"github.com/NorthAIProject/north-client/internal/shared/metrics"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
@@ -170,6 +171,17 @@ type ContextBuilder struct {
 
 	// earlierTopics bounds the cross-conversation continuity.
 	earlierTopics int
+
+	// metrics counts sources that failed. Nil is a working builder that counts
+	// nothing.
+	metrics *metrics.Registry
+}
+
+// WithMetrics attaches counters. Returns the builder so it can be wired in one
+// expression at startup; nil leaves counting off.
+func (b *ContextBuilder) WithMetrics(m *metrics.Registry) *ContextBuilder {
+	b.metrics = m
+	return b
 }
 
 func NewContextBuilder(convos *conversations.Service, sources ...ContextSource) *ContextBuilder {
@@ -208,6 +220,11 @@ func (b *ContextBuilder) Build(ctx context.Context, req ContextRequest) (*Contex
 	for _, source := range b.sources {
 		if err := source.Collect(ctx, req, out); err != nil {
 			logSourceFailure(ctx, source.Name(), err)
+
+			// Counted as well as logged. These fail soft, so the reply still
+			// looks right and the log line is the only sign — which means it is
+			// the sign nobody sees until somebody goes looking.
+			b.metrics.ContextSourceFailed(source.Name())
 		}
 	}
 
