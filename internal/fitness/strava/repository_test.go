@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/NorthAIProject/north-client/internal/activity"
 	"github.com/NorthAIProject/north-client/internal/fitness/strava"
 	"github.com/NorthAIProject/north-client/internal/shared/database/testdb"
 	"github.com/NorthAIProject/north-client/internal/shared/secret"
@@ -222,5 +223,93 @@ func TestARotatedAwayKeyFailsRatherThanReturningNonsense(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), accessToken) {
 		t.Errorf("the error names the token: %q", err)
+	}
+}
+
+// RouteTotals feeds the coach's weekly training summary, which states distance
+// and climb as fact. A window that leaks a neighbouring week, or another
+// person's rides, is a wrong claim in a prompt rather than a wrong pixel.
+
+func saveActivity(t *testing.T, repo *strava.Repository, userID uuid.UUID, id int64, start time.Time, distanceM, climbM float64) {
+	t.Helper()
+
+	err := repo.SaveActivity(context.Background(), userID, strava.Activity{
+		StravaID:       id,
+		Name:           "Morning Run",
+		SportType:      "Run",
+		StartDate:      start,
+		DistanceM:      distanceM,
+		MovingTimeS:    1800,
+		ElapsedTimeS:   1800,
+		ElevationGainM: climbM,
+	})
+	if err != nil {
+		t.Fatalf("save activity: %v", err)
+	}
+}
+
+func TestRouteTotalsSumsOnlyTheRequestedWindow(t *testing.T) {
+	pool := testdb.New(t)
+	user := seedUser(t, pool, "routes@north.test")
+	repo := strava.NewRepository(pool, nil)
+
+	since := time.Date(2026, 8, 10, 0, 0, 0, 0, time.UTC)
+	until := since.AddDate(0, 0, 7)
+
+	saveActivity(t, repo, user.ID, 1, since.Add(-time.Hour), 5000, 100)   // before
+	saveActivity(t, repo, user.ID, 2, since, 10000, 200)                  // on the open edge
+	saveActivity(t, repo, user.ID, 3, since.AddDate(0, 0, 3), 12000, 300) // inside
+	saveActivity(t, repo, user.ID, 4, until, 8000, 400)                   // on the closed edge
+
+	got, err := repo.RouteTotals(context.Background(), user.ID, since, until)
+	if err != nil {
+		t.Fatalf("route totals: %v", err)
+	}
+
+	if got.Activities != 2 {
+		t.Errorf("Activities = %d, want the two inside the half-open window", got.Activities)
+	}
+	if got.DistanceM != 22000 {
+		t.Errorf("DistanceM = %v, want 22000", got.DistanceM)
+	}
+	if got.ElevationM != 500 {
+		t.Errorf("ElevationM = %v, want 500", got.ElevationM)
+	}
+}
+
+func TestRouteTotalsOfAQuietWeekIsZeroRatherThanAnError(t *testing.T) {
+	pool := testdb.New(t)
+	user := seedUser(t, pool, "quiet@north.test")
+
+	// "They rode nothing" is an answer. The caller renders it by saying
+	// nothing, not by handling a not-found.
+	since := time.Date(2026, 8, 10, 0, 0, 0, 0, time.UTC)
+	got, err := strava.NewRepository(pool, nil).RouteTotals(context.Background(), user.ID, since, since.AddDate(0, 0, 7))
+	if err != nil {
+		t.Fatalf("route totals: %v", err)
+	}
+
+	if got != (activity.RouteTotals{}) {
+		t.Fatalf("RouteTotals = %+v, want a zero struct", got)
+	}
+}
+
+func TestRouteTotalsIgnoresAnotherPersonsActivities(t *testing.T) {
+	pool := testdb.New(t)
+	repo := strava.NewRepository(pool, nil)
+	mine := seedUser(t, pool, "mine@north.test")
+	theirs := seedUser(t, pool, "theirs@north.test")
+
+	since := time.Date(2026, 8, 10, 0, 0, 0, 0, time.UTC)
+	saveActivity(t, repo, mine.ID, 1, since.AddDate(0, 0, 1), 10000, 100)
+	saveActivity(t, repo, theirs.ID, 2, since.AddDate(0, 0, 1), 90000, 900)
+
+	got, err := repo.RouteTotals(context.Background(), mine.ID, since, since.AddDate(0, 0, 7))
+	if err != nil {
+		t.Fatalf("route totals: %v", err)
+	}
+
+	if got.DistanceM != 10000 {
+		t.Fatalf("DistanceM = %v, want only my own 10000", got.DistanceM)
 	}
 }

@@ -490,7 +490,9 @@ func routes(
 			workouts.NewContextSource(workoutSvc),
 			media.NewContextSource(mediaSvc),
 			calculator.NewContextSource(calculatorSvc),
-			activity.NewContextSource(activitySvc),
+			// Strava supplies distance and climb, which North's own sessions
+			// do not carry. Nil would simply drop those from the summary.
+			activity.NewContextSource(activitySvc, stravaSvc),
 			meals.NewContextSource(mealProgressSvc, mealDietSvc),
 			preferences.NewContextSource(preferencesSvc),
 			mind.NewContextSource(mindSvc),

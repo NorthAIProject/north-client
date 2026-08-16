@@ -70,3 +70,15 @@ SELECT * FROM strava_activities
 WHERE user_id = $1
 ORDER BY start_date DESC
 LIMIT $2;
+
+-- name: SumStravaActivitiesBetween :one
+-- Half-open window, matching timerange.Range. Both summed columns are NOT NULL,
+-- so the coalesce only guards the empty-set case, where sum() returns NULL.
+SELECT
+    count(*)::bigint                                           AS activities,
+    coalesce(sum(distance_m), 0)::double precision             AS distance_m,
+    coalesce(sum(total_elevation_gain_m), 0)::double precision AS elevation_m
+FROM strava_activities
+WHERE user_id = $1
+  AND start_date >= sqlc.arg(since)::timestamptz
+  AND start_date <  sqlc.arg(until)::timestamptz;
