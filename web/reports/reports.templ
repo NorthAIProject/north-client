@@ -46,10 +46,18 @@ templ IndexPage(user users.User, list []report.Report, view IndexView) {
 				}
 			</div>
 			if len(list) == 0 {
-				<div class="text-muted-foreground py-16 text-center text-sm">
-					<p>No review yet.</p>
-					<p class="mt-1">Generate this week to write one from your check-ins, goals, and training.</p>
-				</div>
+				@ui.Empty(ui.EmptyProps{
+					Eyebrow: "Review",
+					Title:   "No review yet",
+					Body:    "A written week, from what you actually recorded — check-ins, goals, and training.",
+				}) {
+					<form method="post" action="/app/reports/generate">
+						@ui.CSRFInput()
+						@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90"}) {
+							Generate this week
+						}
+					</form>
+				}
 			} else {
 				<div class="space-y-3">
 					for _, report := range list {

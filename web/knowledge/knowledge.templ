@@ -85,7 +85,7 @@ templ IndexPage(user users.User, view View, form NoteForm) {
 						@documentLibrary(view)
 					</div>
 				</section>
-				<aside class="order-1 space-y-6 lg:sticky lg:top-6 lg:order-2 lg:col-span-4 lg:self-start">
+				<aside id="add-note" class="order-1 space-y-6 lg:sticky lg:top-6 lg:order-2 lg:col-span-4 lg:self-start">
 					@addNote(form)
 					@exportSection()
 				</aside>
@@ -365,12 +365,14 @@ templ uploadDrop(f NoteForm) {
 
 templ documentLibrary(view View) {
 	if len(view.Documents) == 0 {
-		<div class="border-hairline rounded-md border border-dashed px-4 py-10 text-center">
-			<p class="text-sm font-medium">Nothing in the library yet</p>
-			<p class="text-muted-foreground mt-1 text-sm">
-				Add a note, or upload a PDF, Markdown, or text file.
-			</p>
-		</div>
+		@ui.Empty(ui.EmptyProps{
+			Title: "The coach has nothing to quote yet",
+			Body:  "Add a note, or drop a PDF, Markdown, or text file. North only uses what it has read here.",
+		}) {
+			@button.Button(button.Props{Href: "#add-note", Class: "bg-signal text-background hover:bg-signal/90"}) {
+				Write a note
+			}
+		}
 	} else {
 		<div class="border-hairline overflow-x-auto rounded-md border">
 			@table.Table() {
