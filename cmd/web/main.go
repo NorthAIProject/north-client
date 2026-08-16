@@ -67,6 +67,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/workouts"
 	"github.com/NorthAIProject/north-client/web/assets"
 	"github.com/NorthAIProject/north-client/web/landing"
+	"github.com/NorthAIProject/north-client/web/pwa"
 
 	"github.com/a-h/templ"
 )
@@ -612,6 +613,7 @@ func routes(
 		r.Use(authMW.LoadUser)
 
 		mountAssets(r, cfg)
+		pwa.Mount(r)
 
 		r.Get("/healthz", healthz(pool))
 		r.Method(http.MethodGet, "/", templ.Handler(landing.Page()))

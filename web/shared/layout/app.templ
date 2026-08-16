@@ -40,7 +40,7 @@ type NavGroup struct {
 // the focus handling that a hand-rolled version would have skipped.
 templ App(title string, user users.User, nav []NavGroup) {
 	@Base(title) {
-		@sidebar.Layout() {
+		@sidebar.Layout(sidebar.LayoutProps{Class: "min-h-dvh"}) {
 			@sidebar.Sidebar(sidebar.Props{
 				ID:          "app-sidebar",
 				Collapsible: sidebar.CollapsibleIcon,
@@ -58,7 +58,7 @@ templ App(title string, user users.User, nav []NavGroup) {
 				}
 			}
 			@sidebar.Inset() {
-				<header class="border-border flex h-14 shrink-0 items-center gap-2 border-b px-4">
+				<header class="border-border flex min-h-14 shrink-0 items-center gap-2 border-b pt-[env(safe-area-inset-top)] pr-[max(1rem,env(safe-area-inset-right))] pl-[max(1rem,env(safe-area-inset-left))]">
 					@sidebar.Trigger(sidebar.TriggerProps{Target: "app-sidebar"}) {
 						@icon.Icon("panel-left")(icon.Props{Class: "size-4"})
 					}

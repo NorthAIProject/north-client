@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -111,5 +112,49 @@ func TestTheSiteIsStillBehindCSRF(t *testing.T) {
 
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("POST /login without a CSRF token = %d, want 403", rec.Code)
+	}
+}
+
+// The install URLs must stay public. A browser fetches the manifest and the
+// service worker before anyone is signed in, and a 302 to /login is how
+// "Add to Home Screen" silently fails.
+func TestManifestIsPublicAndStandalone(t *testing.T) {
+	handler := testRoutes(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/manifest.webmanifest", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.Contains(ct, "application/manifest+json") {
+		t.Errorf("Content-Type = %q, want application/manifest+json", ct)
+	}
+
+	var m map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &m); err != nil {
+		t.Fatalf("manifest: %v", err)
+	}
+	if m["display"] != "standalone" {
+		t.Errorf("display = %v, want standalone", m["display"])
+	}
+}
+
+func TestServiceWorkerIsPublic(t *testing.T) {
+	handler := testRoutes(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/sw.js", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.Contains(ct, "javascript") {
+		t.Errorf("Content-Type = %q, want javascript", ct)
+	}
+	if !strings.Contains(rec.Body.String(), `addEventListener("fetch"`) {
+		t.Error("service worker has no fetch handler")
 	}
 }

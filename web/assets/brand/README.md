@@ -10,7 +10,11 @@ surrounding theme shows through — never place these on a plate.
 | `north-logo-mark.svg` | **The mark.** Fixed brand gradient, works on light and dark. What `ui.BrandMark` serves. |
 | `north-logo-mark-mono.svg` | Single-colour mark, `fill="currentColor"`. For inlining where the surrounding text colour should drive it. |
 | `favicon.svg` | Tab icon. Flat fill, opaque, `prefers-color-scheme` for dark tab strips. |
-| `north-logo-mark.png` | Raster fallback, and the source for the PWA icon sizes NOR-50 will need. |
+| `north-logo-mark.png` | Raster fallback, and the source the PWA plates are generated from (`go run ./scripts/pwa-icons`). |
+| `pwa-180.png` | iOS apple-touch-icon. Opaque `#1C1C1F` plate. |
+| `pwa-192.png` | Manifest `any` 192. Opaque `#1C1C1F` plate. |
+| `pwa-512.png` | Manifest `any` 512. Opaque `#1C1C1F` plate. |
+| `pwa-512-maskable.png` | Manifest `maskable` 512. Same plate, star inset for Android adaptive crop. |
 | `north-wordmark.png` | App name. Dark ink. **Currently unused** — see below. |
 | `north-logo-wordmark.png` | Symbol + name lockup. **Currently unused** — see below. |
 | `north-mascot.png` | Companion cutout. Loaded by the landing scroll-world (`scroll-world/panel.js`). |
@@ -64,6 +68,10 @@ handler change.
 - `/assets/brand/favicon.svg`
 - `/assets/brand/north-logo-mark.png`
 - `/assets/brand/north-mascot.png`
+- `/assets/brand/pwa-180.png`
+- `/assets/brand/pwa-192.png`
+- `/assets/brand/pwa-512.png`
+- `/assets/brand/pwa-512-maskable.png`
 
 ## Still to do
 
