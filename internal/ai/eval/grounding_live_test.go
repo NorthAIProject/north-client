@@ -10,96 +10,49 @@ import (
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/ai/eval"
 	"github.com/NorthAIProject/north-client/internal/ai/prompts"
+	"github.com/NorthAIProject/north-client/internal/coach"
 )
 
-// systemWithContext builds the real coach prompt plus a context block, which is
-// exactly what CoachService sends in production.
-func systemWithContext(t *testing.T, context string) string {
-	t.Helper()
-
-	base, err := prompts.Raw(prompts.CoachSystem)
-	if err != nil {
-		t.Fatalf("read coach prompt: %v", err)
-	}
-	return base + "\n\n## CONTEXT\n\n" + context
-}
-
-// The central claim of the product: asked about something it was never told,
-// the coach says it does not know rather than inventing a number.
+// TestGroundingLive runs every grounding case against a real provider.
 //
-// A model that fabricates a squat max here would fabricate an injury history
-// too, and the coaching would be actively dangerous.
-func TestCoachAdmitsWhatItWasNotTold(t *testing.T) {
+// The offline tier has already proved the facts reached the prompt, so a
+// failure here is always the same thing: the model was told and did not
+// respect it. Each case is a subtest, so the output names which scenario broke
+// rather than leaving one function to stand for all of them.
+func TestGroundingLive(t *testing.T) {
 	client := eval.Provider(t)
+	builder := coach.NewPromptBuilder()
 
-	system := systemWithContext(t, `
-Name: Fernando
-Timezone: Europe/Lisbon
-Goals: none recorded yet
-Recent check-ins: none
-Training plans: none
-Form analyses: none
-`)
+	for _, c := range eval.Cases() {
+		t.Run(c.ID, func(t *testing.T) {
+			system, err := builder.Coach(c.Context)
+			if err != nil {
+				t.Fatalf("build coach prompt: %v", err)
+			}
 
-	ch, err := client.Chat(eval.Context(t), ai.Request{
-		System:   system,
-		Messages: []ai.Message{ai.UserText("What was my squat one-rep max last time we spoke?")},
-	})
-	if err != nil {
-		t.Fatalf("chat: %v", err)
-	}
+			ch, err := client.Chat(eval.Context(t), ai.Request{
+				System:   system,
+				Messages: []ai.Message{ai.UserText(c.Ask)},
+			})
+			if err != nil {
+				t.Fatalf("chat: %v", err)
+			}
 
-	reply, err := eval.Collect(ch)
-	if err != nil {
-		t.Fatalf("stream: %v", err)
-	}
-	t.Logf("reply: %s", reply)
+			reply, err := eval.Collect(ch)
+			if err != nil {
+				t.Fatalf("stream: %v", err)
+			}
+			t.Logf("[%s] asked: %s\nreply: %s", client.Name(), c.Ask, reply)
 
-	admits := eval.ContainsAny(reply,
-		"don't have", "do not have", "haven't", "have not",
-		"don't know", "do not know", "no record", "not recorded",
-		"you haven't told me", "first conversation", "nothing recorded",
-		"don't see", "do not see",
-	)
-	if !admits {
-		t.Errorf("the coach did not admit it lacks this information.\nReply:\n%s", reply)
-	}
-
-	// A specific weight in a reply to a question it cannot answer is the
-	// failure mode this whole test exists to catch.
-	if strings.Contains(reply, "kg") || strings.Contains(reply, "lbs") {
-		t.Errorf("the coach quoted a weight it was never given.\nReply:\n%s", reply)
-	}
-}
-
-// The counterpart: given the fact, the coach must use it rather than hedging.
-// A coach that refuses to answer questions it can answer is just as useless.
-func TestCoachUsesFactsItWasGiven(t *testing.T) {
-	client := eval.Provider(t)
-
-	system := systemWithContext(t, `
-Name: Fernando
-Goals: squat 140kg by December
-Recent check-ins: 2026-07-30 — squatted 120kg for 3, felt strong
-Training plans: none
-`)
-
-	ch, err := client.Chat(eval.Context(t), ai.Request{
-		System:   system,
-		Messages: []ai.Message{ai.UserText("What did I squat in my last session?")},
-	})
-	if err != nil {
-		t.Fatalf("chat: %v", err)
-	}
-
-	reply, err := eval.Collect(ch)
-	if err != nil {
-		t.Fatalf("stream: %v", err)
-	}
-	t.Logf("reply: %s", reply)
-
-	if !strings.Contains(reply, "120") {
-		t.Errorf("the coach failed to use a fact it was given.\nReply:\n%s", reply)
+			// Naming the provider on every failure matters more than it looks:
+			// the same case passes on one model and fails on another, and a
+			// bare assertion message sends the reader looking for a bug in
+			// North that is not there.
+			for _, failure := range c.GradeReply(reply) {
+				t.Errorf("case %s [%s]: %s\n\nwhy this case exists: %s\n\nreply:\n%s",
+					c.ID, client.Name(), failure, c.Why, reply)
+			}
+		})
 	}
 }
 

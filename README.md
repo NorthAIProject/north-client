@@ -366,6 +366,76 @@ Repositories never call services. Services never import handlers.
 
 ---
 
+# Testing
+
+```bash
+task test        # the whole offline suite
+task test:eval   # grounding evals only, offline tier
+task test:live   # evals against a real AI provider (costs money)
+```
+
+`task test` needs nothing. Database-backed tests skip themselves when
+`TEST_DATABASE_URL` is unset — worth knowing, because a suite that skips looks
+a lot like a suite that passes.
+
+## AI grounding evals
+
+North's usefulness rests on the coach not inventing facts, so that claim gets
+its own suite in `internal/ai/eval`. One set of cases, defined once in
+`fixtures.go`, graded at two depths:
+
+| Tier | Question | Cost | Runs |
+| --- | --- | --- | --- |
+| Offline | Did the facts reach the model? | free | every push, in CI |
+| Live | What did the model do with them? | API spend | manually, before a release |
+
+Both tiers render their fixtures through the real `coach.PromptBuilder`, so the
+evals cannot drift into grading a prompt format the application stopped
+sending.
+
+Cases today: `goals-reach-the-prompt`, `no-invented-checkins`,
+`citations-when-docs-exist`, `memory-respect`, `admits-what-it-was-not-told`.
+
+### Running the live tier
+
+Live evals sit behind the `live` build tag and are excluded from CI on purpose:
+a model has bad afternoons, and an unrelated pull request should not go red
+because a provider was slow.
+
+```bash
+export GEMINI_API_KEY=...        # or the key for whichever provider below
+task test:live
+```
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `EVAL_PROVIDER` | `gemini` | `gemini`, `openrouter`, `nvidia`, `xai`, `hermes` |
+| `EVAL_MODEL` | per provider | Override the model under test |
+
+Each provider reads its own key — `GEMINI_API_KEY`, `OPENROUTER_API_KEY`,
+`NVIDIA_API_KEY`, `XAI_API_KEY`, `HERMES_API_KEY` — and skips rather than fails
+when the key is absent, so a contributor with one key can run the evals they
+can afford. `HERMES_BASE_URL` has no default and must be set to run that one.
+
+A failure names the case, the assertion, the provider and model, why the case
+exists, and the full reply that was graded:
+
+```
+--- FAIL: TestGroundingLive/citations-when-docs-exist
+    case citations-when-docs-exist [gemini]: assertion CitesOnlyOfferedRefs:
+    the reply cited "chunk:invented-42", which was never offered;
+    offered were "chunk:physio-deload-1", "chunk:physio-knee-2"
+```
+
+### Adding a case
+
+Add one entry to `Cases()` in `internal/ai/eval/fixtures.go` with a `Context`
+fixture, an `Ask`, and both kinds of assertion. `TestSuiteCoversTheGrowthOSScenarios`
+fails a case that is missing either kind, so a scenario cannot quietly stop
+being evaluated.
+
+---
+
 # Design Philosophy
 
 North is intentionally built as a **Server-Side Rendered** application.
