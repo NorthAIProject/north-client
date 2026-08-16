@@ -76,11 +76,19 @@ func (s *Service) ValidateRegistration(reg Registration) (Registration, error) {
 		errs = errs.Add("display_name", "Name must be 100 characters or fewer.")
 	}
 
+	// An unrecognised zone falls back to UTC rather than refusing the account.
+	//
+	// Nobody types this: it arrives from a browser, an OAuth profile, or an
+	// import, and a value this process happens not to know — an outdated tzdata,
+	// a zone the platform spells differently — is not a reason a person cannot
+	// sign up. UpdateProfile does the same, so a timezone North cannot resolve
+	// never blocks a write; it only means times are shown in UTC until a zone
+	// this build recognises is chosen.
 	tz := strings.TrimSpace(reg.Timezone)
 	if tz == "" {
 		tz = "UTC"
 	} else if _, err := time.LoadLocation(tz); err != nil {
-		errs = errs.Add("timezone", "Unknown timezone.")
+		tz = "UTC"
 	}
 
 	if err := errs.OrNil(); err != nil {
@@ -133,11 +141,16 @@ func (s *Service) UpdateProfile(ctx context.Context, id uuid.UUID, p Profile) (U
 		errs = errs.Add("display_name", "Name must be 100 characters or fewer.")
 	}
 
+	// Falls back to UTC rather than refusing, as registration does. A zone this
+	// process cannot resolve — outdated tzdata, a spelling the platform uses and
+	// Go does not — is a gap in what we recognise, not something the person got
+	// wrong, and refusing would block an otherwise valid profile save over a
+	// field they may not have touched.
 	tz := strings.TrimSpace(p.Timezone)
 	if tz == "" {
 		tz = "UTC"
 	} else if _, err := time.LoadLocation(tz); err != nil {
-		errs = errs.Add("timezone", "Unknown timezone.")
+		tz = "UTC"
 	}
 
 	// Long enough to describe a coaching preference, short enough that it
