@@ -369,8 +369,12 @@ func TestAJobQueuedOutsideARequestHasNoRequestID(t *testing.T) {
 func TestAHandlersOwnLogsCarryTheJobContext(t *testing.T) {
 	q := newQueue(t)
 
-	var buf bytes.Buffer
-	worker := jobs.NewWorker(q, slog.New(slog.NewTextHandler(&buf, nil)))
+	// A plain bytes.Buffer is not safe here: the worker writes to it from its
+	// own goroutine through the slog handler while the loop below reads it.
+	// Without the mutex this passes locally and fails under -race in CI, which
+	// is exactly the kind of flake that gets re-run rather than fixed.
+	buf := &syncBuffer{}
+	worker := jobs.NewWorker(q, slog.New(slog.NewTextHandler(buf, nil)))
 	worker.Register(jobs.KindAnalyzeFormVideo, func(ctx context.Context, _ json.RawMessage) error {
 		middleware.FromContext(ctx).Error("something went wrong inside the handler")
 		return errors.New("handler failed")
@@ -404,4 +408,23 @@ func TestAHandlersOwnLogsCarryTheJobContext(t *testing.T) {
 			t.Errorf("handler log is missing %q; got %s", want, out)
 		}
 	}
+}
+
+// syncBuffer is a bytes.Buffer that survives being written by one goroutine
+// while another reads it.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
 }
