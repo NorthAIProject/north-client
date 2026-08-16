@@ -10,6 +10,12 @@ import "github.com/NorthAIProject/north-client/internal/activity/activity"
 type (
 	Session = activity.Session
 	MET     = activity.MET
+
+	// TrainingWindow and RouteTotals are the multi-day rollup the coach reads.
+	// RouteTotals is aliased here so a provider slice can return one without
+	// naming the leaf package.
+	TrainingWindow = activity.TrainingWindow
+	RouteTotals    = activity.RouteTotals
 )
 
 const (
@@ -23,7 +29,8 @@ const (
 )
 
 var (
-	METTable  = activity.METTable
-	LookupMET = activity.LookupMET
-	METCodes  = activity.METCodes
+	METTable          = activity.METTable
+	LookupMET         = activity.LookupMET
+	METCodes          = activity.METCodes
+	NewTrainingWindow = activity.NewTrainingWindow
 )

@@ -256,7 +256,9 @@ func buildServices(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry
 			memories.NewContextSource(memorySvc),
 			documents.NewContextSource(documentSvc),
 			calculator.NewContextSource(calculatorSvc),
-			activity.NewContextSource(activitySvc),
+			// nil routes: this binary wires no Strava service, so the training
+			// summary carries volume without distance.
+			activity.NewContextSource(activitySvc, nil),
 			meals.NewContextSource(mealProgressSvc, mealDietSvc),
 			preferences.NewContextSource(preferencesSvc),
 			mind.NewContextSource(mindSvc),

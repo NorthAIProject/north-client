@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/NorthAIProject/north-client/internal/activity"
 	stravadb "github.com/NorthAIProject/north-client/internal/fitness/strava/db"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/secret"
@@ -203,6 +204,28 @@ func (r *Repository) RecentActivities(ctx context.Context, userID uuid.UUID, lim
 		})
 	}
 	return out, nil
+}
+
+// RouteTotals sums distance and climb over a half-open window.
+//
+// A quiet week is a zero struct, not apperr.ErrNotFound: "they rode nothing"
+// is an answer, and the caller renders it by saying nothing rather than by
+// handling an error.
+func (r *Repository) RouteTotals(ctx context.Context, userID uuid.UUID, since, until time.Time) (activity.RouteTotals, error) {
+	row, err := r.q.SumStravaActivitiesBetween(ctx, stravadb.SumStravaActivitiesBetweenParams{
+		UserID: userID,
+		Since:  since,
+		Until:  until,
+	})
+	if err != nil {
+		return activity.RouteTotals{}, apperr.Wrap(err, "sum strava activities")
+	}
+
+	return activity.RouteTotals{
+		Activities: int(row.Activities),
+		DistanceM:  row.DistanceM,
+		ElevationM: row.ElevationM,
+	}, nil
 }
 
 // fromDB is a method rather than a function because decrypting needs the
