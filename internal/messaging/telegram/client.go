@@ -95,6 +95,27 @@ func (c *Client) Typing(ctx context.Context, externalID string) error {
 	}, nil)
 }
 
+// RegisterCommands publishes the command menu Telegram clients offer.
+//
+// Cosmetic, and best effort: the commands work whether or not this succeeds,
+// because they are matched from the message text. What it buys is discovery —
+// a person who does not know /unlink exists will never type it.
+//
+// The list comes from messaging rather than being spelled out here, so the menu
+// cannot drift from what is actually handled.
+func (c *Client) RegisterCommands(ctx context.Context) error {
+	commands := messaging.Commands()
+
+	entries := make([]map[string]string, 0, len(commands))
+	for _, cmd := range commands {
+		entries = append(entries, map[string]string{
+			"command":     cmd.Name,
+			"description": cmd.Description,
+		})
+	}
+	return c.call(ctx, "setMyCommands", map[string]any{"commands": entries}, nil)
+}
+
 // Leave removes the bot from a chat.
 //
 // Used for groups and channels, which North refuses: a group has one chat id
