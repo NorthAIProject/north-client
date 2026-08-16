@@ -141,6 +141,35 @@ func (s *Service) RequestGenerate(ctx context.Context, userID uuid.UUID, weekSta
 	}
 }
 
+// EnsureWeekly creates and enqueues the review for one week, and does nothing
+// at all when that week already has one.
+//
+// This is the scheduled path, and it deliberately does not go through
+// RequestGenerate: that method exists to serve somebody pressing a button, so
+// past its cooldown it marks a finished review pending and generates it again.
+// Correct for a person asking twice; wrong for a sweep that will come round
+// every hour and would rewrite the same week all day.
+//
+// created is false when the week already had a review, whatever its status.
+func (s *Service) EnsureWeekly(ctx context.Context, userID uuid.UUID, week Week) (Report, bool, error) {
+	_, err := s.repo.ActiveForWeek(ctx, userID, KindWeekly, week.Start)
+	switch {
+	case err == nil:
+		return Report{}, false, nil
+	case !apperr.Is(err, apperr.ErrNotFound):
+		return Report{}, false, err
+	}
+
+	created, err := s.repo.Create(ctx, userID, week, KindWeekly)
+	if err != nil {
+		return Report{}, false, err
+	}
+	if err := s.enqueue(ctx, created); err != nil {
+		return Report{}, false, err
+	}
+	return created, true, nil
+}
+
 // Regenerate re-runs the review somebody is looking at.
 //
 // Refusing an archived one is the point. Archiving is how a person says they

@@ -7,6 +7,7 @@
 package users
 
 import (
+	"slices"
 	"strings"
 	"time"
 
@@ -26,6 +27,43 @@ const (
 	TierPro  Tier = "pro"
 )
 
+// Tone is the voice the coach speaks in. A closed set, unlike CoachingStyle,
+// so the prompt builder always has something to render and a new account has a
+// voice before anyone opens settings.
+type Tone string
+
+const (
+	ToneDirect     Tone = "direct"
+	ToneWarm       Tone = "warm"
+	ToneAnalytical Tone = "analytical"
+	ToneToughLove  Tone = "tough_love"
+
+	// ToneDefault matches the column default in the migration.
+	ToneDefault = ToneDirect
+)
+
+// Tones is every tone a user may choose, in the order settings shows them.
+var Tones = []Tone{ToneDirect, ToneWarm, ToneAnalytical, ToneToughLove}
+
+// Label is the human name for the tone, for a form or a summary row.
+func (t Tone) Label() string {
+	switch t {
+	case ToneWarm:
+		return "Warm"
+	case ToneAnalytical:
+		return "Analytical"
+	case ToneToughLove:
+		return "Tough love"
+	default:
+		return "Direct"
+	}
+}
+
+// Valid reports whether the tone is one this build knows.
+func (t Tone) Valid() bool {
+	return slices.Contains(Tones, t)
+}
+
 // User is the domain view of an account. It excludes the password hash: nothing
 // outside internal/auth has any business reading it, and leaving it off the
 // type means it cannot be leaked into a template or a log line by accident.
@@ -38,6 +76,10 @@ type User struct {
 	// CoachingStyle is the user's own description of how they want to be
 	// coached. Empty until they set one.
 	CoachingStyle string
+
+	// CoachingTone is the voice the coach uses. CoachingStyle refines it;
+	// this decides it.
+	CoachingTone Tone
 
 	Tier Tier
 
@@ -79,13 +121,14 @@ func (u User) FirstName() string {
 
 func fromDB(row usersdb.User) User {
 	u := User{
-		ID:          row.ID,
-		Email:       row.Email,
-		DisplayName: row.DisplayName,
-		Timezone:    row.Timezone,
-		Tier:        Tier(row.Tier),
-		CreatedAt:   row.CreatedAt,
-		UpdatedAt:   row.UpdatedAt,
+		ID:           row.ID,
+		Email:        row.Email,
+		DisplayName:  row.DisplayName,
+		Timezone:     row.Timezone,
+		CoachingTone: Tone(row.CoachingTone),
+		Tier:         Tier(row.Tier),
+		CreatedAt:    row.CreatedAt,
+		UpdatedAt:    row.UpdatedAt,
 	}
 	if row.CoachingStyle != nil {
 		u.CoachingStyle = *row.CoachingStyle

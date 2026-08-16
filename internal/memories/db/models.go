@@ -516,6 +516,7 @@ type User struct {
 	UpdatedAt     time.Time
 	Tier          string
 	OnboardedAt   *time.Time
+	CoachingTone  string
 }
 
 type UserAiCredential struct {
@@ -583,6 +584,18 @@ type UserMemory struct {
 	UpdatedAt            time.Time
 	DeletedAt            *time.Time
 	Excluded             bool
+}
+
+type UserNotificationPref struct {
+	ID                 uuid.UUID
+	UserID             uuid.UUID
+	NudgeMissedCheckin bool
+	NudgeGoalDeadline  bool
+	WeeklyReportAuto   bool
+	QuietHoursEnabled  bool
+	QuietStart         string
+	QuietEnd           string
+	UpdatedAt          time.Time
 }
 
 type UserNudge struct {

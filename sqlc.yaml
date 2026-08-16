@@ -331,3 +331,13 @@ sql:
         out: internal/messaging/db
         overrides: *overrides
 
+  - engine: postgresql
+    schema: migrations
+    queries: internal/notifications/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: notificationsdb
+        out: internal/notifications/db
+        overrides: *overrides
+

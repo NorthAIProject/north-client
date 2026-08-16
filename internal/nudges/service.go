@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/goals"
+	"github.com/NorthAIProject/north-client/internal/notifications"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
@@ -38,11 +39,19 @@ type activeGoals interface {
 	ListActive(ctx context.Context, userID uuid.UUID) ([]goals.Goal, error)
 }
 
+// notificationPrefs is what this package needs from internal/notifications:
+// permission to speak. Optional — a Service without it nudges as North always
+// has, which is what the defaults say anyway.
+type notificationPrefs interface {
+	Get(ctx context.Context, userID uuid.UUID) (notifications.Prefs, error)
+}
+
 type Service struct {
 	repo     *Repository
 	accounts accounts
 	checkins checkinDays
 	goals    activeGoals
+	prefs    notificationPrefs
 	now      func() time.Time
 }
 
@@ -59,6 +68,14 @@ func NewService(repo *Repository, accounts accounts, checkins checkinDays, goals
 // WithClock fixes now so tests can cross a local midnight without waiting.
 func (s *Service) WithClock(now func() time.Time) *Service {
 	s.now = now
+	return s
+}
+
+// WithPrefs lets each account switch these nudges off, or ask for silence at
+// certain hours. A builder method rather than a constructor argument because
+// the rules work without it and every existing caller should keep compiling.
+func (s *Service) WithPrefs(p notificationPrefs) *Service {
+	s.prefs = p
 	return s
 }
 
@@ -94,26 +111,58 @@ func (s *Service) ListOnboarded(ctx context.Context, after uuid.UUID, limit int)
 	return s.accounts.ListOnboarded(ctx, after, limit)
 }
 
-// Evaluate applies the v1 rules and inserts any new nudges.
+// Evaluate applies the v1 rules and inserts any new nudges, within whatever
+// this person has agreed to hear.
 func (s *Service) Evaluate(ctx context.Context, user users.User) (int, error) {
 	if user.NeedsOnboarding() {
 		return 0, nil
 	}
 
-	today := localDate(user, s.now())
+	now := s.now()
+	today := localDate(user, now)
 	if daysBetween(onboardedLocal(user, today), today) < onboardGraceDays {
 		return 0, nil
 	}
 
-	created := 0
-	n, err := s.evalMissedCheckIn(ctx, user, today)
+	prefs, err := s.prefsFor(ctx, user)
 	if err != nil {
-		return created, err
+		return 0, err
 	}
-	created += n
 
-	n, err = s.evalGoalDeadlines(ctx, user, today)
-	return created + n, err
+	// Quiet hours defer rather than suppress: both dedupe keys below are per
+	// local day, so whatever would have been raised now is raised unchanged by
+	// the next sweep after the window closes.
+	if prefs.InQuietHours(now.In(user.Location())) {
+		return 0, nil
+	}
+
+	created := 0
+	if prefs.AllowsNudge(KindMissedCheckIn) {
+		n, err := s.evalMissedCheckIn(ctx, user, today)
+		if err != nil {
+			return created, err
+		}
+		created += n
+	}
+
+	if prefs.AllowsNudge(KindGoalDeadline) {
+		n, err := s.evalGoalDeadlines(ctx, user, today)
+		if err != nil {
+			return created, err
+		}
+		created += n
+	}
+
+	return created, nil
+}
+
+// prefsFor reads this account's notification settings, or the defaults when no
+// preferences source is wired.
+func (s *Service) prefsFor(ctx context.Context, user users.User) (notifications.Prefs, error) {
+	if s.prefs == nil {
+		return notifications.Defaults(), nil
+	}
+	return s.prefs.Get(ctx, user.ID)
 }
 
 func (s *Service) evalMissedCheckIn(ctx context.Context, user users.User, today time.Time) (int, error) {

@@ -6,6 +6,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/ai/prompts"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
+	"github.com/NorthAIProject/north-client/internal/users"
 )
 
 // contextHeading separates the persona and rules from the facts.
@@ -25,13 +26,18 @@ type PromptBuilder struct{}
 func NewPromptBuilder() *PromptBuilder { return &PromptBuilder{} }
 
 // Coach returns the system prompt for a conversational reply: the persona and
-// grounding rules, followed by everything North knows about this person.
+// grounding rules, the tone this person chose, then everything North knows
+// about them.
 func (p *PromptBuilder) Coach(cc *Context) (string, error) {
 	base, err := prompts.Raw(prompts.CoachSystem)
 	if err != nil {
 		return "", err
 	}
-	return base + contextHeading + cc.Render(), nil
+	tone, err := toneSection(cc)
+	if err != nil {
+		return "", err
+	}
+	return base + tone + contextHeading + cc.Render(), nil
 }
 
 // Reflection is the system prompt for a structured reflection session.
@@ -42,7 +48,30 @@ func (p *PromptBuilder) Reflection(cc *Context, questionsAsked int) (string, err
 	if err != nil {
 		return "", err
 	}
-	return base + contextHeading + cc.Render(), nil
+	tone, err := toneSection(cc)
+	if err != nil {
+		return "", err
+	}
+	return base + tone + contextHeading + cc.Render(), nil
+}
+
+// toneSection renders the chosen tone as an instruction.
+//
+// It sits above the CONTEXT block rather than inside it because a tone is an
+// instruction to the model, not a fact about the person — the free-text
+// "How they want to be coached" line stays in the context, where it reads as
+// the nuance under this.
+func toneSection(cc *Context) (string, error) {
+	tone := users.ToneDefault
+	if cc != nil && cc.User.CoachingTone.Valid() {
+		tone = cc.User.CoachingTone
+	}
+
+	rendered, err := prompts.Render(prompts.CoachTone, map[string]any{"Tone": string(tone)})
+	if err != nil {
+		return "", err
+	}
+	return "\n\n" + rendered, nil
 }
 
 // Titler returns the prompt that names a conversation from its opening message.
