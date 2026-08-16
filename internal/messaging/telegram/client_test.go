@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/NorthAIProject/north-client/internal/messaging"
 )
@@ -55,17 +56,34 @@ func (a *botAPI) client() *Client {
 	return c
 }
 
-func (a *botAPI) sends() []botCall {
+func (a *botAPI) sends() []botCall { return a.method("sendMessage") }
+
+func (a *botAPI) method(name string) []botCall {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
 	var out []botCall
 	for _, call := range a.calls {
-		if call.method == "sendMessage" {
+		if call.method == name {
 			out = append(out, call)
 		}
 	}
 	return out
+}
+
+// waitFor polls until a condition holds. The bridge answers on a detached
+// goroutine, so there is no channel to wait on from out here.
+func waitFor(t *testing.T, done func() bool) {
+	t.Helper()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if done() {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatal("timed out waiting for the bot to act")
 }
 
 func TestSendDeliversTheText(t *testing.T) {

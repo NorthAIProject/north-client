@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"strconv"
 	"strings"
 	"time"
 
@@ -57,6 +58,18 @@ func (s *Service) IssueCode(ctx context.Context, userID uuid.UUID, platform stri
 // codes in bulk has one chat and many codes, so limiting by code would count
 // each attempt against a different bucket and never trigger.
 func (s *Service) redeem(ctx context.Context, in InboundMessage) (uuid.UUID, error) {
+	// Second lock on the same door. The Telegram adapter already refuses a
+	// group before anything reaches here, and this refuses one again — because
+	// what is behind the door is somebody's whole account, and a group id
+	// linked by accident would hand it to everybody in that group.
+	//
+	// Telegram gives groups and channels negative ids and people positive ones,
+	// which is what makes the check possible without this package learning what
+	// a supergroup is.
+	if !linkableExternalID(in.ExternalID) {
+		return uuid.Nil, apperr.Wrap(apperr.ErrForbidden, "only a direct message can be linked")
+	}
+
 	if !s.redeemLimit.Allow(in.Platform + ":" + in.ExternalID) {
 		return uuid.Nil, apperr.Wrap(apperr.ErrForbidden, "too many attempts")
 	}
@@ -76,6 +89,26 @@ func (s *Service) redeem(ctx context.Context, in InboundMessage) (uuid.UUID, err
 		return uuid.Nil, err
 	}
 	return userID, nil
+}
+
+// linkableExternalID reports whether an id may be bound to an account.
+//
+// Empty and negative ids are refused. Negative is Telegram's marker for a group
+// or channel; a platform that numbers its people differently would need its own
+// rule here, and until there is a second platform that is a guess not worth
+// making. The adapter that knows the platform is the primary guard — this is
+// the backstop.
+func linkableExternalID(externalID string) bool {
+	if externalID == "" {
+		return false
+	}
+	// Non-numeric ids are left alone: a future platform may use handles, and
+	// refusing those would break it for no gain.
+	n, err := strconv.ParseInt(externalID, 10, 64)
+	if err != nil {
+		return true
+	}
+	return n > 0
 }
 
 // Unlink disconnects a platform from an account.

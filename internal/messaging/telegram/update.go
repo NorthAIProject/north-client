@@ -24,9 +24,7 @@ type update struct {
 	UpdateID int64 `json:"update_id"`
 
 	Message *struct {
-		Chat struct {
-			ID int64 `json:"id"`
-		} `json:"chat"`
+		Chat chat   `json:"chat"`
 		Text string `json:"text"`
 		Date int64  `json:"date"`
 	} `json:"message"`
@@ -38,11 +36,73 @@ type update struct {
 		ID      string `json:"id"`
 		Data    string `json:"data"`
 		Message *struct {
-			Chat struct {
-				ID int64 `json:"id"`
-			} `json:"chat"`
+			Chat chat `json:"chat"`
 		} `json:"message"`
 	} `json:"callback_query"`
+}
+
+// chat is where a message came from.
+//
+// Type is the field this whole guard turns on. Telegram sends "private",
+// "group", "supergroup" or "channel", and only the first is one person.
+type chat struct {
+	ID   int64  `json:"id"`
+	Type string `json:"type"`
+}
+
+const (
+	chatPrivate    = "private"
+	chatGroup      = "group"
+	chatSupergroup = "supergroup"
+	chatChannel    = "channel"
+)
+
+// intent is what an update asks the adapter to do.
+type intent int
+
+const (
+	// ignoreUpdate covers everything that is not a question: a sticker, a
+	// photo, someone joining, and any chat type North does not recognise.
+	ignoreUpdate intent = iota
+
+	// answerUpdate is a message from one person, in a private chat.
+	answerUpdate
+
+	// leaveChat is a group, supergroup or channel.
+	//
+	// North refuses these and removes itself rather than merely staying quiet.
+	// A group has one chat id shared by everybody in it, so a linked group
+	// would let every member read the owner's goals and log check-ins as them.
+	// Staying in the chat while ignoring it would leave that chat id available
+	// to be linked later, which is the same hole with extra steps.
+	leaveChat
+)
+
+func (i intent) String() string {
+	switch i {
+	case answerUpdate:
+		return "answer"
+	case leaveChat:
+		return "leave"
+	default:
+		return "ignore"
+	}
+}
+
+// intentFor decides what to do about the chat an update arrived from.
+//
+// Deliberately fails closed: an unrecognised type is neither answered nor left.
+// Answering would defeat the guard the moment Telegram adds a chat type, and
+// leaving a chat North cannot identify is its own kind of wrong.
+func intentFor(c chat) intent {
+	switch c.Type {
+	case chatPrivate:
+		return answerUpdate
+	case chatGroup, chatSupergroup, chatChannel:
+		return leaveChat
+	default:
+		return ignoreUpdate
+	}
 }
 
 // decodeUpdate parses one Telegram update. The bool reports whether it parsed
@@ -56,37 +116,50 @@ func decodeUpdate(raw []byte) (update, bool) {
 }
 
 // inbound returns the message, the callback query id that must be answered
-// (empty for an ordinary message), and whether there was anything to act on.
+// (empty for an ordinary message), and what to do with it.
 //
 // An update carrying no text — a photo, a sticker, a member joining — is not
 // an error, it is simply not a question, and answering it would be worse than
 // ignoring it.
-func (u update) inbound() (messaging.InboundMessage, string, bool) {
+//
+// The message is populated even when the intent is leaveChat, because the
+// caller still needs the chat id to leave it.
+func (u update) inbound() (messaging.InboundMessage, string, intent) {
 	switch {
 	case u.CallbackQuery != nil && u.CallbackQuery.Message != nil:
+		from := u.CallbackQuery.Message.Chat
 		return messaging.InboundMessage{
 			Platform:   messaging.PlatformTelegram,
-			ExternalID: chatID(u.CallbackQuery.Message.Chat.ID),
+			ExternalID: chatID(from.ID),
 			Text:       u.CallbackQuery.Data,
 			UpdateID:   u.UpdateID,
 			ReceivedAt: time.Now(),
-		}, u.CallbackQuery.ID, true
+		}, u.CallbackQuery.ID, intentFor(from)
 
-	case u.Message != nil && u.Message.Text != "":
+	case u.Message != nil:
+		from := u.Message.Chat
+
+		// The chat is checked before the text is: a group must be left whether
+		// or not the message that revealed it happened to carry words.
+		what := intentFor(from)
+		if what == answerUpdate && u.Message.Text == "" {
+			what = ignoreUpdate
+		}
+
 		received := time.Now()
 		if u.Message.Date > 0 {
 			received = time.Unix(u.Message.Date, 0)
 		}
 		return messaging.InboundMessage{
 			Platform:   messaging.PlatformTelegram,
-			ExternalID: chatID(u.Message.Chat.ID),
+			ExternalID: chatID(from.ID),
 			Text:       u.Message.Text,
 			UpdateID:   u.UpdateID,
 			ReceivedAt: received,
-		}, "", true
+		}, "", what
 
 	default:
-		return messaging.InboundMessage{}, "", false
+		return messaging.InboundMessage{}, "", ignoreUpdate
 	}
 }
 

@@ -269,6 +269,38 @@ func TestAnAccountThatHasNotOnboardedIsSentToTheWebApp(t *testing.T) {
 	}
 }
 
+// The backstop, exercised through Handle rather than the helper: even holding a
+// valid code, a group chat cannot bind itself to an account.
+func TestAGroupChatCannotRedeemACode(t *testing.T) {
+	client := fake.Text("this should never be generated")
+	h := newHarness(t, client, harnessOptions{})
+	ctx := context.Background()
+
+	code, err := h.messaging.IssueCode(ctx, h.user.ID, messaging.PlatformTelegram)
+	if err != nil {
+		t.Fatalf("issue code: %v", err)
+	}
+
+	out := h.send(t, "-1001234", code)
+
+	if strings.Contains(out.Text, h.user.Email) {
+		t.Fatalf("a group linked itself: %q", out.Text)
+	}
+
+	links, err := h.messaging.Links(ctx, h.user.ID)
+	if err != nil {
+		t.Fatalf("list links: %v", err)
+	}
+	if len(links) != 0 {
+		t.Fatalf("a group chat was linked: %+v", links)
+	}
+
+	// And the code it tried is still unspent, so the real owner can still use it.
+	if out := h.send(t, chat, code); !strings.Contains(out.Text, h.user.Email) {
+		t.Fatalf("the failed group attempt burned the code: %q", out.Text)
+	}
+}
+
 func containsUserMessage(history []conversations.Message, text string) bool {
 	for _, m := range history {
 		if m.Role == ai.RoleUser && strings.TrimSpace(m.Content) == text {

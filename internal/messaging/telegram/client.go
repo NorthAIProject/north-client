@@ -95,6 +95,19 @@ func (c *Client) Typing(ctx context.Context, externalID string) error {
 	}, nil)
 }
 
+// Leave removes the bot from a chat.
+//
+// Used for groups and channels, which North refuses: a group has one chat id
+// shared by everybody in it, so staying would leave an id available to be
+// linked to somebody's account.
+func (c *Client) Leave(ctx context.Context, externalID string) error {
+	chat, err := chatIDFromString(externalID)
+	if err != nil {
+		return err
+	}
+	return c.call(ctx, "leaveChat", map[string]any{"chat_id": chat}, nil)
+}
+
 // AnswerCallback dismisses the loading spinner on a tapped button.
 //
 // Telegram spins that button until this is called, so skipping it leaves the

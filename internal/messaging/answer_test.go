@@ -46,6 +46,25 @@ func TestParseAnswer(t *testing.T) {
 	}
 }
 
+// Telegram numbers people positive and groups negative. A group id must never
+// be bindable, because a group's id is shared by everybody in it.
+func TestLinkableExternalID(t *testing.T) {
+	cases := map[string]bool{
+		"884422":      true,  // a person
+		"1":           true,  // still a person
+		"-1001234":    false, // supergroup
+		"-99":         false, // group
+		"0":           false, // not an id Telegram issues
+		"":            false,
+		"some-handle": true, // a future platform that does not use numbers
+	}
+	for id, want := range cases {
+		if got := linkableExternalID(id); got != want {
+			t.Errorf("linkableExternalID(%q) = %v, want %v", id, got, want)
+		}
+	}
+}
+
 func TestNormaliseCode(t *testing.T) {
 	cases := map[string]string{
 		"abc23xyz":        "ABC23XYZ",
