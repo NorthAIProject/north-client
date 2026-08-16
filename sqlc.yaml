@@ -321,3 +321,13 @@ sql:
         out: internal/nudges/db
         overrides: *overrides
 
+  - engine: postgresql
+    schema: migrations
+    queries: internal/messaging/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: messagingdb
+        out: internal/messaging/db
+        overrides: *overrides
+

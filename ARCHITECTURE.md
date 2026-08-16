@@ -492,6 +492,65 @@ CoachService
 
 Every messaging platform should reuse the same application logic.
 
+`internal/messaging` is the adapter. A platform stops at `InboundMessage` on the
+way in and `Transport` on the way out; nothing downstream knows Telegram exists.
+The adapter builds no prompt and chooses no provider — it resolves who is
+speaking, meters the turn, finds the thread, and calls `SendMessage`.
+
+## Identity
+
+A message arrives carrying a chat id and nothing else. Turning that into an
+account is the whole problem, and North already had three shapes for it:
+
+| Table | Maps | Used for |
+|---|---|---|
+| `auth_identities` | `(provider, subject)` → user | Signing in with Google |
+| `strava_connections` | user → provider data, one way | A data source |
+| `agent_connections` | hashed bearer → user | MCP and health ingest |
+
+`messaging_links` takes `auth_identities`' shape, because the question is the
+same one. It is a **separate table** for the reason `strava_connections` is:
+messaging is not a way to sign in. If it were, unlinking Telegram could lock
+somebody out of their account — a steep price, and a chat id is a far weaker
+credential than one that should be able to do that.
+
+The binding is made with a one-time code:
+
+1. The web app, where the person is already authenticated, issues a code. Only
+   its SHA-256 hash is stored, and issuing a new one invalidates the last.
+2. They send it to the bot.
+3. Redemption is atomic and single use, rate limited per chat, and refuses a
+   chat already bound to a different account rather than moving it.
+
+Sending that code is the **only** thing an unlinked chat can do. It never
+reaches the coach, so finding the bot buys a stranger nothing — there is no
+account to charge a model call to.
+
+## One thread
+
+A linked person has one conversation, not one per surface. The adapter
+continues the newest live chat thread, which is the thread the web app is
+showing. Asking on the phone and asking in the browser continue each other.
+
+The alternative — a conversation per platform — would leave the coach with two
+half-histories and make it worse at the one thing it exists to be good at.
+
+## Delivery
+
+Adapters acknowledge an update **before** they answer it. A coach turn can take
+minutes and every platform retries anything slower than a few seconds, so the
+reply is generated on a detached context and pushed when ready.
+
+The cost is that a restart mid-generation loses the push. The reply is still
+persisted and still appears in the web thread, so what is lost is the
+notification rather than the answer. Redeliveries are made harmless by the
+`last_update_id` watermark on `messaging_links`.
+
+Which edge receives updates follows from configuration rather than a switch:
+a webhook when `TELEGRAM_WEBHOOK_SECRET` is set, long polling otherwise. Polling
+needs nothing but an outbound connection, which is what makes the feature
+developable on localhost.
+
 ---
 
 # Storage

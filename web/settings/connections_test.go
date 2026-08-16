@@ -24,6 +24,9 @@ func renderPage(t *testing.T, f ConnectForm, provider ProviderPanel) string {
 	page := ConnectionsPage(
 		users.User{DisplayName: "Test"},
 		nil, f, nil, connections.Setup{}, previews, provider,
+		// Disabled: these cases are about the agent and provider cards, and a
+		// deployment with no bot token is the shape most of them run in.
+		TelegramPanel{},
 	)
 	if err := page.Render(context.Background(), &b); err != nil {
 		t.Fatalf("render: %v", err)
