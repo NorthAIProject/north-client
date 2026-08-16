@@ -31,6 +31,18 @@ type bridge struct {
 	messages Handler
 	client   *Client
 	log      *slog.Logger
+
+	// typingEvery is how often the indicator is refreshed. Zero means
+	// typingInterval; a test sets it small so it does not have to wait out a
+	// real one.
+	typingEvery time.Duration
+}
+
+func (b *bridge) typingTick() time.Duration {
+	if b.typingEvery > 0 {
+		return b.typingEvery
+	}
+	return typingInterval
 }
 
 // dispatchRaw decodes a webhook body and answers it.
@@ -99,6 +111,51 @@ func (b *bridge) declineGroup(ctx context.Context, externalID string) {
 	}
 }
 
+// typingInterval is how often the indicator is refreshed.
+//
+// Telegram clears it after about five seconds, so anything at or above that
+// leaves visible gaps. Four is under the limit with room for a slow request.
+const typingInterval = 4 * time.Second
+
+// keepTyping shows "typing…" until the returned function is called.
+//
+// One refresh is not enough: a coach turn takes tens of seconds and Telegram
+// drops the indicator after five, so a single call leaves the person watching
+// nothing happen and concluding the bot is broken. That is the moment people
+// stop using it, which makes this worth a goroutine.
+//
+// Failures are logged once rather than every tick. A bot that cannot show an
+// indicator can still answer, and a log line every four seconds for the length
+// of a stuck turn would bury the reason it was stuck.
+func (b *bridge) keepTyping(ctx context.Context, externalID string) (stop func()) {
+	typing, cancel := context.WithCancel(ctx)
+
+	go func() {
+		var failed bool
+		send := func() {
+			if err := b.client.Typing(typing, externalID); err != nil && !failed {
+				failed = true
+				b.log.Warn("telegram could not send a typing indicator", "error", err)
+			}
+		}
+
+		send()
+
+		ticker := time.NewTicker(b.typingTick())
+		defer ticker.Stop()
+		for {
+			select {
+			case <-typing.Done():
+				return
+			case <-ticker.C:
+				send()
+			}
+		}
+	}()
+
+	return cancel
+}
+
 func (b *bridge) answer(ctx context.Context, in messaging.InboundMessage, callbackID string) {
 	// First, so the tapped button stops spinning while the coach thinks.
 	if callbackID != "" {
@@ -107,11 +164,10 @@ func (b *bridge) answer(ctx context.Context, in messaging.InboundMessage, callba
 		}
 	}
 
-	if err := b.client.Typing(ctx, in.ExternalID); err != nil {
-		b.log.Warn("telegram could not send a typing indicator", "error", err)
-	}
+	stopTyping := b.keepTyping(ctx, in.ExternalID)
 
 	out, err := b.messages.Handle(ctx, in)
+	stopTyping()
 	if err != nil {
 		b.log.Error("telegram could not answer a message", "error", err, "platform", in.Platform)
 		// Say something rather than nothing. A person who gets silence assumes
