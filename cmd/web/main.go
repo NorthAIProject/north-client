@@ -61,6 +61,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/reports"
 	"github.com/NorthAIProject/north-client/internal/settings"
 	"github.com/NorthAIProject/north-client/internal/shared/database"
+	"github.com/NorthAIProject/north-client/internal/shared/metrics"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/NorthAIProject/north-client/internal/sleep"
 	"github.com/NorthAIProject/north-client/internal/toolaudit"
@@ -164,7 +165,30 @@ func run() error {
 	}
 	defer func() { _ = posthogClient.Close() }()
 
-	handler, runBackground := routes(cfg, pool, registry, storage, embedder, posthogClient)
+	// One registry for the process, handed to whatever counts. Nil is a working
+	// configuration — see internal/shared/metrics — so turning the listener off
+	// turns counting off with it rather than leaving collectors nobody reads.
+	var metricsReg *metrics.Registry
+	if cfg.MetricsListenAddr != "" {
+		metricsReg = metrics.New()
+
+		metricsSrv := &http.Server{
+			Addr:              cfg.MetricsListenAddr,
+			Handler:           metricsReg.Handler(),
+			ReadHeaderTimeout: 5 * time.Second,
+		}
+		go func() {
+			log.Info("metrics listening", slog.String("addr", metricsSrv.Addr))
+			if err := metricsSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				// Not fatal. Losing metrics is worth knowing about; it is not
+				// worth refusing to serve the application over.
+				log.Error("metrics listener stopped", slog.Any("error", err))
+			}
+		}()
+		defer func() { _ = metricsSrv.Close() }()
+	}
+
+	handler, runBackground := routes(cfg, pool, registry, storage, embedder, posthogClient, metricsReg)
 
 	srv := &http.Server{
 		Addr:    cfg.Addr(),
@@ -231,6 +255,7 @@ func routes(
 	storage media.Storage,
 	embedder ai.Embedder,
 	posthogClient posthog.Client,
+	metricsReg *metrics.Registry,
 ) (http.Handler, background) {
 	// Wiring happens once, here. Every dependency is constructed explicitly and
 	// passed down, so the shape of the application is readable in one place
@@ -537,11 +562,12 @@ func routes(
 			health.NewContextSource(healthSvc, nil),
 			habits.NewContextSource(habitSvc),
 			reports.NewContextSource(reportSvc),
-		),
+		).WithMetrics(metricsReg),
 		PromptBuilder: coach.NewPromptBuilder(),
 		Queue:         queue,
 		Chains:        cfg.AI.ChainSet(),
 		Tools:         agentTools,
+		Metrics:       metricsReg,
 		Declines:      auditRecorder,
 		// Tried ahead of the chain above, so a user who supplied a key is
 		// served by it and a user who did not is unaffected.

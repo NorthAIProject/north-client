@@ -71,6 +71,15 @@ type Config struct {
 	// MCPRequestsPerMinute bounds the single token's call rate. Zero uses the
 	// package default. ask_coach spends money on every call.
 	MCPRequestsPerMinute int
+
+	// MetricsListenAddr is where Prometheus scrapes. Loopback by default, and
+	// empty turns the listener off entirely.
+	//
+	// Deliberately its own listener rather than a route on the public router:
+	// request rates, model spend and job failure counts describe the business
+	// to anyone who asks for them. /healthz is public because it answers one
+	// bit; this answers rather more.
+	MetricsListenAddr string
 }
 
 // AIConfig selects and configures the AI providers. Provider names must match a
@@ -283,7 +292,8 @@ func Load() (*Config, error) {
 		StravaClientID:     strings.TrimSpace(os.Getenv("STRAVA_CLIENT_ID")),
 		StravaClientSecret: strings.TrimSpace(os.Getenv("STRAVA_CLIENT_SECRET")),
 
-		MCPListenAddr: optional("MCP_LISTEN_ADDR", "127.0.0.1:8093"),
+		MCPListenAddr:     optional("MCP_LISTEN_ADDR", "127.0.0.1:8093"),
+		MetricsListenAddr: optional("METRICS_LISTEN_ADDR", "127.0.0.1:9090"),
 
 		Embedding: EmbeddingConfig{
 			Provider: optional("EMBEDDING_PROVIDER", ""),
