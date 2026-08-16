@@ -102,14 +102,14 @@ func FormFor(c checkin.CheckIn) CheckInForm {
 
 templ IndexPage(user users.User, list []checkin.CheckIn, form CheckInForm, activeGoals []goal.Goal, streak int, saved bool, inst Instruments) {
 	@layout.App("Check-ins", user, layout.BuildNav("/app/check-ins")) {
-		<div class="mx-auto w-full max-w-6xl space-y-8 p-6 md:p-8">
+		<div class="mx-auto flex w-full max-w-6xl flex-col gap-8 p-4 md:p-8">
 			@header()
 			if saved {
 				<p class="rounded-lg border border-signal/30 bg-signal/10 px-4 py-3 text-sm">Saved for today.</p>
 			}
+			@Panel(list, form, activeGoals)
 			@kpiStrip(streak, inst)
 			@instrumentsRow(inst)
-			@Panel(list, form, activeGoals)
 		</div>
 		@textarea.Script()
 		@label.Script()
@@ -424,7 +424,7 @@ templ stepChip(n int, title string) {
 		@click={ "step = " + strconv.Itoa(n) }
 		:aria-current={ "step === " + strconv.Itoa(n) + " ? 'step' : null" }
 		:class={ "step >= " + strconv.Itoa(n) + " ? 'border-signal/40 text-signal' : 'border-hairline text-muted-foreground'" }
-		class="rounded-full border px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.12em] transition-colors"
+		class="min-h-11 rounded-full border px-3 font-mono text-[10px] uppercase tracking-[0.12em] transition-colors"
 	>
 		{ title }
 	</button>
@@ -434,7 +434,7 @@ templ stepChip(n int, title string) {
 // under the thumb on a phone rather than riding up above a grown textarea.
 // A back target of 0 means first pane; a next target of 0 means submit.
 templ stepNav(back int, next int) {
-	<div class="sticky bottom-0 -mx-6 -mb-6 flex gap-2 border-t border-hairline bg-surface/95 px-6 py-3 backdrop-blur">
+	<div class="sticky bottom-0 -mx-6 -mb-6 flex gap-2 border-t border-hairline bg-surface/95 px-6 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur">
 		if back > 0 {
 			@button.Button(button.Props{
 				Type:       button.TypeButton,
@@ -479,7 +479,7 @@ templ scalePicker(name string, legend string, current int) {
 		<legend class="sr-only">{ legend } on a scale of 1 to 5</legend>
 		<div class="flex gap-2">
 			for i := 1; i <= 5; i++ {
-				<label class="cursor-pointer">
+				<label class="flex-1 cursor-pointer">
 					<input
 						type="radio"
 						name={ name }
@@ -489,7 +489,7 @@ templ scalePicker(name string, legend string, current int) {
 						checked?={ i == current }
 						x-model.number={ name }
 					/>
-					<span class="flex size-11 items-center justify-center rounded-lg border border-hairline text-sm font-medium peer-checked:border-signal peer-checked:bg-signal/15 peer-checked:text-signal peer-focus-visible:ring-2 peer-focus-visible:ring-ring">
+					<span class="flex min-h-11 w-full items-center justify-center rounded-lg border border-hairline text-sm font-medium peer-checked:border-signal peer-checked:bg-signal/15 peer-checked:text-signal peer-focus-visible:ring-2 peer-focus-visible:ring-ring">
 						{ strconv.Itoa(i) }
 					</span>
 				</label>

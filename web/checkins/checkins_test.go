@@ -1,6 +1,13 @@
 package checkins
 
-import "testing"
+import (
+	"bytes"
+	"context"
+	"strings"
+	"testing"
+
+	"github.com/NorthAIProject/north-client/internal/users"
+)
 
 // A rejected submission re-renders the whole guided form. If it reopens on the
 // wrong pane the user has to walk forward through the wizard to reach the field
@@ -43,5 +50,55 @@ func TestCheckInFormFirstErrorStep(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func renderIndex(t *testing.T) string {
+	t.Helper()
+	var buf bytes.Buffer
+	err := IndexPage(
+		users.User{DisplayName: "Fernando"},
+		nil,
+		CheckInForm{Mood: 3, Energy: 3},
+		nil,
+		0,
+		false,
+		Instruments{},
+	).Render(context.Background(), &buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return buf.String()
+}
+
+// The job of this page is today's check-in. Charts above the form push the
+// first thumb action off a phone screen.
+func TestIndexPagePutsTheFormBeforeTheCharts(t *testing.T) {
+	body := renderIndex(t)
+	panel := strings.Index(body, `id="checkin-panel"`)
+	charts := strings.Index(body, "Mood &amp; energy")
+	if charts < 0 {
+		charts = strings.Index(body, "Mood & energy")
+	}
+	switch {
+	case panel < 0:
+		t.Fatal("missing check-in panel")
+	case charts < 0:
+		t.Fatal("missing mood chart heading")
+	case panel > charts:
+		t.Error("charts appear before today's form; the wizard must come first")
+	}
+}
+
+func TestStepNavClearsTheHomeIndicator(t *testing.T) {
+	body := renderIndex(t)
+	for _, want := range []string{
+		"env(safe-area-inset-bottom)",
+		"min-h-11",
+		"flex-1",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("check-in form missing %q", want)
+		}
 	}
 }
