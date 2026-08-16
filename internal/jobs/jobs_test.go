@@ -12,6 +12,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/jobs"
 	"github.com/NorthAIProject/north-client/internal/shared/database/testdb"
+	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/google/uuid"
 )
 
@@ -319,5 +320,43 @@ func TestAPanickingHandlerFailsOnlyItsOwnJob(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("the worker did not survive a panicking handler")
+	}
+}
+
+// A job runs long after the request that queued it, in another process. Without
+// the request id carried across, a failure in the worker can be traced to a job
+// but not to whatever a person did to cause it.
+func TestAJobRemembersTheRequestThatQueuedIt(t *testing.T) {
+	q := newQueue(t)
+
+	ctx := middleware.WithRequestID(context.Background(), "req-abc123")
+	if _, err := q.Enqueue(ctx, jobs.KindAnalyzeFormVideo, payload{Value: "hello"}); err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+
+	job, ok, err := q.Claim(context.Background())
+	if err != nil || !ok {
+		t.Fatalf("claim: %v ok=%v", err, ok)
+	}
+	if job.RequestID != "req-abc123" {
+		t.Errorf("request id = %q, want the one from the enqueueing request", job.RequestID)
+	}
+}
+
+// The worker queues its own periodic sweeps, and nothing put those there. An
+// invented value would read as though a request existed.
+func TestAJobQueuedOutsideARequestHasNoRequestID(t *testing.T) {
+	q := newQueue(t)
+
+	if _, err := q.Enqueue(context.Background(), jobs.KindSweepEmbeddings, payload{Value: "sweep"}); err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+
+	job, ok, err := q.Claim(context.Background())
+	if err != nil || !ok {
+		t.Fatalf("claim: %v ok=%v", err, ok)
+	}
+	if job.RequestID != "" {
+		t.Errorf("request id = %q, want empty for a job no request created", job.RequestID)
 	}
 }

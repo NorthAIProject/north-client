@@ -34,3 +34,21 @@ func RequestIDFrom(ctx context.Context) string {
 	id, _ := requestIDKey.get(ctx)
 	return id
 }
+
+// WithRequestID attaches an identifier to a context that no HTTP request
+// created.
+//
+// The worker is why this exists. A job carries the id of the request that
+// queued it, and the handler running that job is not in a request — so the id
+// has to be put back on the context by hand for the job's own log lines, and
+// for anything it enqueues in turn, to stay part of the same story.
+//
+// An empty id leaves the context alone rather than storing one: a job the
+// worker queued itself has no request behind it, and an empty string in the
+// logs would look like a value that failed to propagate.
+func WithRequestID(ctx context.Context, id string) context.Context {
+	if id == "" {
+		return ctx
+	}
+	return requestIDKey.set(ctx, id)
+}

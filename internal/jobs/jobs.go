@@ -23,6 +23,7 @@ import (
 
 	jobsdb "github.com/NorthAIProject/north-client/internal/jobs/db"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 )
 
 // Kind identifies what a job does.
@@ -141,6 +142,11 @@ type Job struct {
 	MaxAttempts int
 	LastError   string
 	CreatedAt   time.Time
+
+	// RequestID is the request that queued this job, empty when nothing did —
+	// the worker's own periodic sweeps. Carried so a failure hours later can be
+	// joined to whatever a person was doing at the time.
+	RequestID string
 }
 
 // Exhausted reports whether this job has used its last attempt.
@@ -166,6 +172,9 @@ func (q *Queue) Enqueue(ctx context.Context, kind Kind, payload any) (Job, error
 		Kind:        string(kind),
 		Payload:     body,
 		MaxAttempts: 3,
+		// Read from the context rather than passed in, so every caller is
+		// covered without remembering to: eight payload types and one Enqueue.
+		RequestID: nilIfEmpty(middleware.RequestIDFrom(ctx)),
 	})
 	if err != nil {
 		return Job{}, apperr.Wrap(err, "enqueue %s", kind)
@@ -256,5 +265,18 @@ func fromDB(row jobsdb.Job) Job {
 		LastError:   row.LastError,
 		CreatedAt:   row.CreatedAt,
 	}
+	if row.RequestID != nil {
+		j.RequestID = *row.RequestID
+	}
 	return j
+}
+
+// nilIfEmpty keeps an absent request id out of the column as NULL rather than
+// as an empty string, so "no request queued this" and "the id was lost" stay
+// distinguishable in the data.
+func nilIfEmpty(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }

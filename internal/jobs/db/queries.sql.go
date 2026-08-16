@@ -24,7 +24,7 @@ WHERE id = (
     FOR UPDATE SKIP LOCKED
     LIMIT 1
 )
-RETURNING id, kind, payload, status, attempts, max_attempts, run_after, last_error, created_at, updated_at
+RETURNING id, kind, payload, status, attempts, max_attempts, run_after, last_error, created_at, updated_at, request_id
 `
 
 // Claims one eligible job for this worker.
@@ -46,6 +46,7 @@ func (q *Queries) ClaimJob(ctx context.Context) (Job, error) {
 		&i.LastError,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.RequestID,
 	)
 	return i, err
 }
@@ -62,9 +63,9 @@ func (q *Queries) CompleteJob(ctx context.Context, id uuid.UUID) error {
 }
 
 const enqueueJob = `-- name: EnqueueJob :one
-INSERT INTO jobs (kind, payload, run_after, max_attempts)
-VALUES ($1, $2, coalesce($4::timestamptz, now()), $3)
-RETURNING id, kind, payload, status, attempts, max_attempts, run_after, last_error, created_at, updated_at
+INSERT INTO jobs (kind, payload, run_after, max_attempts, request_id)
+VALUES ($1, $2, coalesce($4::timestamptz, now()), $3, $5)
+RETURNING id, kind, payload, status, attempts, max_attempts, run_after, last_error, created_at, updated_at, request_id
 `
 
 type EnqueueJobParams struct {
@@ -72,6 +73,7 @@ type EnqueueJobParams struct {
 	Payload     []byte
 	MaxAttempts int16
 	RunAfter    *time.Time
+	RequestID   *string
 }
 
 func (q *Queries) EnqueueJob(ctx context.Context, arg EnqueueJobParams) (Job, error) {
@@ -80,6 +82,7 @@ func (q *Queries) EnqueueJob(ctx context.Context, arg EnqueueJobParams) (Job, er
 		arg.Payload,
 		arg.MaxAttempts,
 		arg.RunAfter,
+		arg.RequestID,
 	)
 	var i Job
 	err := row.Scan(
@@ -93,6 +96,7 @@ func (q *Queries) EnqueueJob(ctx context.Context, arg EnqueueJobParams) (Job, er
 		&i.LastError,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.RequestID,
 	)
 	return i, err
 }
