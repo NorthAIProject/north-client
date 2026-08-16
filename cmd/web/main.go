@@ -19,6 +19,7 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/posthog/posthog-go"
 
+	"github.com/NorthAIProject/north-client/internal/account"
 	"github.com/NorthAIProject/north-client/internal/activity"
 	"github.com/NorthAIProject/north-client/internal/agent"
 	"github.com/NorthAIProject/north-client/internal/ai"
@@ -316,6 +317,7 @@ func routes(
 			quota.DocumentReindex: {PerWindow: cfg.Quota.DocumentReindexes, Window: time.Hour},
 			quota.ReportGenerate:  {PerWindow: cfg.Quota.ReportGenerations, Window: time.Hour},
 			quota.MediaAnalysis:   {PerWindow: cfg.Quota.MediaAnalyses, Window: time.Hour},
+			quota.AccountExport:   {PerWindow: cfg.Quota.AccountExports, Window: time.Hour},
 		},
 		func(ctx context.Context) (uuid.UUID, bool) {
 			user, ok := auth.UserFrom(ctx)
@@ -332,9 +334,22 @@ func routes(
 	})
 	vaultHandler := vault.NewHandler(vaultSvc)
 
-	// Export reads across memories, documents and conversations, which is why
-	// it is its own package rather than a method on any one of them.
-	exportHandler := export.NewHandler(export.NewExporter(documentSvc, memorySvc, conversationSvc, storage))
+	// account and export are the two halves of the same promise — leaving with
+	// your data, and being able to leave at all — so they are built together and
+	// share the record of both having happened.
+	accountSvc := account.NewService(account.NewRepository(pool), storage, slog.Default())
+
+	// Export reads across profile, goals, check-ins, memories, documents and
+	// conversations, which is why it is its own package rather than a method on
+	// any one of them.
+	exportHandler := export.NewHandler(export.NewExporter(export.Options{
+		Documents:     documentSvc,
+		Memories:      memorySvc,
+		Conversations: conversationSvc,
+		Goals:         goalSvc,
+		CheckIns:      checkinSvc,
+		Storage:       storage,
+	}), quotaSvc, accountSvc)
 
 	// Built before workouts: the plan generator picks from this catalog, so
 	// the catalog has to exist before the thing that reads it.
@@ -610,7 +625,7 @@ func routes(
 
 	settingsHandler := settings.NewHandler(
 		userSvc, preferencesSvc, notificationSvc, mealDietSvc, connectionSvc, aicredSvc,
-		auditSvc, messagingSvc, cfg.Telegram,
+		auditSvc, messagingSvc, cfg.Telegram, accountSvc, authMW,
 	).WithIntegrations(integrationSvc)
 
 	// Given the coach so the questionnaire ends in a thread that is already

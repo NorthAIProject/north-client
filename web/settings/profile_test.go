@@ -19,7 +19,7 @@ func renderSettings(t *testing.T, profile ProfileForm, notif NotificationsForm) 
 		profile,
 		PreferencesForm{UnitsSystem: "metric"},
 		notif,
-		nil, nil, "",
+		nil, nil, "", "",
 	)
 	if err := page.Render(context.Background(), &b); err != nil {
 		t.Fatalf("render: %v", err)

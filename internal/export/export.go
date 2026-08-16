@@ -17,8 +17,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/NorthAIProject/north-client/internal/checkins"
 	"github.com/NorthAIProject/north-client/internal/conversations"
 	"github.com/NorthAIProject/north-client/internal/documents"
+	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/memories"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -27,6 +29,11 @@ import (
 // conversationLimit bounds how many conversations one export covers. High
 // enough that no real account is truncated.
 const conversationLimit = 5000
+
+// checkInLimit bounds the check-ins one export covers, for the same reason and
+// with more headroom: a check-in is a daily habit, so five thousand is over a
+// decade of them.
+const checkInLimit = 5000
 
 // Exporter writes everything North knows about a person as a zip of Markdown
 // and their own original files.
@@ -40,16 +47,32 @@ type Exporter struct {
 	documents     *documents.Service
 	memories      *memories.Service
 	conversations *conversations.Service
+	goals         *goals.Service
+	checkIns      *checkins.Service
 	storage       documents.Storage
 }
 
-func NewExporter(
-	docs *documents.Service,
-	facts *memories.Service,
-	convos *conversations.Service,
-	storage documents.Storage,
-) *Exporter {
-	return &Exporter{documents: docs, memories: facts, conversations: convos, storage: storage}
+// Options names what an export reads. A struct rather than six positional
+// arguments: the list grows every time North learns to keep something new, and
+// six services of similar shape in a row is an easy thing to get subtly wrong.
+type Options struct {
+	Documents     *documents.Service
+	Memories      *memories.Service
+	Conversations *conversations.Service
+	Goals         *goals.Service
+	CheckIns      *checkins.Service
+	Storage       documents.Storage
+}
+
+func NewExporter(o Options) *Exporter {
+	return &Exporter{
+		documents:     o.Documents,
+		memories:      o.Memories,
+		conversations: o.Conversations,
+		goals:         o.Goals,
+		checkIns:      o.CheckIns,
+		storage:       o.Storage,
+	}
 }
 
 // WriteZip streams the archive.
@@ -75,6 +98,15 @@ func (e *Exporter) WriteZip(ctx context.Context, user users.User, w io.Writer) e
 
 	var problems []string
 
+	if err := e.writeProfile(zw, user); err != nil {
+		problems = append(problems, "profile: "+err.Error())
+	}
+	if err := e.writeGoals(ctx, zw, user); err != nil {
+		problems = append(problems, "goals: "+err.Error())
+	}
+	if err := e.writeCheckIns(ctx, zw, user); err != nil {
+		problems = append(problems, "check-ins: "+err.Error())
+	}
 	if err := e.writeMemories(ctx, zw, user); err != nil {
 		problems = append(problems, "profile facts: "+err.Error())
 	}
@@ -101,6 +133,9 @@ func (e *Exporter) writeManifest(zw *zip.Writer, user users.User) error {
 		"exported_at": time.Now().UTC().Format(time.RFC3339),
 		"account":     user.Email,
 		"contents": []string{
+			"profile.md — your account as North holds it",
+			"goals.md — what you set out to do, open and closed",
+			"check-ins.md — how the days went, newest first",
 			"memories.md — the facts North was told it may use",
 			"documents/ — your notes and uploads, unchanged",
 			"conversations/ — one Markdown file per conversation",
@@ -124,6 +159,9 @@ func (e *Exporter) writeReadme(zw *zip.Writer, user users.User) error {
 Everything in this archive is plain text. It opens in any editor, and it stays
 readable whether or not North exists.
 
+- `+"`profile.md`"+` — your account: name, email, timezone, how you asked to be coached.
+- `+"`goals.md`"+` — everything you set out to do, including the ones you stopped.
+- `+"`check-ins.md`"+` — every day you logged, newest first.
 - `+"`memories.md`"+` — the durable facts North was told it may use in coaching.
 - `+"`documents/`"+` — your notes and uploaded files, exactly as you gave them.
 - `+"`conversations/`"+` — one file per conversation, oldest message first.
@@ -134,6 +172,109 @@ of yours.
 
 Exported %s.
 `, user.DisplayName, time.Now().UTC().Format("2 January 2006")))
+}
+
+// writeProfile is the account itself: who North thinks you are.
+//
+// No query behind it — every field is already on the user the caller is
+// exporting for. It is here because an archive of everything North holds that
+// omitted the record at the centre of it would be a strange kind of everything.
+func (e *Exporter) writeProfile(zw *zip.Writer, user users.User) error {
+	var b strings.Builder
+	b.WriteString("# Your account\n\n")
+
+	fmt.Fprintf(&b, "- **Name** — %s\n", user.DisplayName)
+	fmt.Fprintf(&b, "- **Email** — %s\n", user.Email)
+	fmt.Fprintf(&b, "- **Timezone** — %s\n", user.Timezone)
+	if style := strings.TrimSpace(user.CoachingStyle); style != "" {
+		fmt.Fprintf(&b, "- **How you asked to be coached** — %s\n", style)
+	}
+	fmt.Fprintf(&b, "- **Joined** — %s\n", user.CreatedAt.Format("2 January 2006"))
+	if user.OnboardedAt != nil {
+		fmt.Fprintf(&b, "- **Finished setting up** — %s\n", user.OnboardedAt.Format("2 January 2006"))
+	}
+
+	return writeFile(zw, "profile.md", b.String())
+}
+
+func (e *Exporter) writeGoals(ctx context.Context, zw *zip.Writer, user users.User) error {
+	if e.goals == nil {
+		return nil
+	}
+
+	list, err := e.goals.List(ctx, user.ID)
+	if err != nil {
+		return err
+	}
+
+	var b strings.Builder
+	b.WriteString("# What you are working toward\n\n")
+	if len(list) == 0 {
+		b.WriteString("Nothing recorded yet.\n")
+		return writeFile(zw, "goals.md", b.String())
+	}
+
+	// Closed goals are kept rather than filtered. A goal you abandoned is part
+	// of the record of what you tried, and an export that quietly dropped it
+	// would be telling a tidier story than the one that happened.
+	for _, g := range list {
+		fmt.Fprintf(&b, "## %s\n\n", g.Title)
+		fmt.Fprintf(&b, "_%s · %s", g.Category, g.Status)
+		if !g.TargetDate.IsZero() {
+			fmt.Fprintf(&b, " · target %s", g.TargetDate.Format("2 Jan 2006"))
+		}
+		fmt.Fprintf(&b, " · started %s_\n\n", g.CreatedAt.Format("2 Jan 2006"))
+
+		if m := strings.TrimSpace(g.Motivation); m != "" {
+			fmt.Fprintf(&b, "**Why it matters:** %s\n\n", m)
+		}
+		if s := strings.TrimSpace(g.Success); s != "" {
+			fmt.Fprintf(&b, "**How you would know:** %s\n\n", s)
+		}
+		if g.MilestoneTotal > 0 {
+			fmt.Fprintf(&b, "Milestones: %d of %d done.\n\n", g.MilestoneDone, g.MilestoneTotal)
+		}
+	}
+
+	return writeFile(zw, "goals.md", b.String())
+}
+
+func (e *Exporter) writeCheckIns(ctx context.Context, zw *zip.Writer, user users.User) error {
+	if e.checkIns == nil {
+		return nil
+	}
+
+	list, err := e.checkIns.List(ctx, user.ID, checkInLimit)
+	if err != nil {
+		return err
+	}
+
+	var b strings.Builder
+	b.WriteString("# How the days went\n\n")
+	if len(list) == 0 {
+		b.WriteString("Nothing recorded yet.\n")
+		return writeFile(zw, "check-ins.md", b.String())
+	}
+
+	for _, c := range list {
+		fmt.Fprintf(&b, "## %s\n\n", c.LocalDate.Format("Monday 2 January 2006"))
+		fmt.Fprintf(&b, "Mood %d/5 · energy %d/5\n\n", c.Mood, c.Energy)
+
+		if wins := strings.TrimSpace(c.Wins); wins != "" {
+			fmt.Fprintf(&b, "**Went well:** %s\n\n", wins)
+		}
+		if ch := strings.TrimSpace(c.Challenges); ch != "" {
+			fmt.Fprintf(&b, "**Was hard:** %s\n\n", ch)
+		}
+		if notes := strings.TrimSpace(c.Notes); notes != "" {
+			fmt.Fprintf(&b, "%s\n\n", notes)
+		}
+		if title := strings.TrimSpace(c.RelatedGoalTitle); title != "" {
+			fmt.Fprintf(&b, "_Against: %s_\n\n", title)
+		}
+	}
+
+	return writeFile(zw, "check-ins.md", b.String())
 }
 
 func (e *Exporter) writeMemories(ctx context.Context, zw *zip.Writer, user users.User) error {
