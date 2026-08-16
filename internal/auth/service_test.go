@@ -117,10 +117,19 @@ func TestSignupReportsEveryProblemAtOnce(t *testing.T) {
 	msgs := fieldErrs.Messages()
 	// The point of collecting failures is that the user fixes them in one pass
 	// rather than discovering them one submit at a time.
-	for _, field := range []string{"email", "display_name", "password", "timezone"} {
+	for _, field := range []string{"email", "display_name", "password"} {
 		if _, ok := msgs[field]; !ok {
 			t.Errorf("expected a message for %q; got %v", field, msgs)
 		}
+	}
+
+	// Not timezone, deliberately, even though the input above names a zone that
+	// does not exist. An unresolvable zone falls back to UTC rather than failing
+	// the signup — it usually arrives from a browser rather than being typed, so
+	// refusing would block an account over a value nobody chose. See
+	// users.ValidateRegistration.
+	if _, ok := msgs["timezone"]; ok {
+		t.Errorf("timezone was reported as an error; it should fall back to UTC. got %v", msgs)
 	}
 }
 
