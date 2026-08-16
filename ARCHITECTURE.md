@@ -492,6 +492,11 @@ CoachService
 
 Every messaging platform should reuse the same application logic.
 
+Messaging platforms are one kind of *gateway* — a way into North that is not a
+browser, alongside MCP and health ingest. `docs/gateways.md` is the register of
+all of them: how each authenticates, and how far each has been verified against
+the real service on the other side.
+
 `internal/messaging` is the adapter. A platform stops at `InboundMessage` on the
 way in and `Transport` on the way out; nothing downstream knows Telegram exists.
 The adapter builds no prompt and chooses no provider — it resolves who is

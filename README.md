@@ -530,6 +530,10 @@ Development can be run using Docker Compose.
 
 # Setting up Telegram
 
+> Telegram is one of North's gateways — the ways in that are not a browser.
+> `docs/gateways.md` describes all of them side by side, including how far each
+> one has actually been verified. This section is the setup walkthrough.
+
 Telegram is optional. Without `TELEGRAM_BOT_TOKEN` the adapter is not built, no
 route is mounted, and the card does not appear in Settings — everything else
 works exactly as before.
