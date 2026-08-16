@@ -145,12 +145,18 @@ templ IndexPage(user users.User, list []goal.Goal, inst Instruments, f GoalForm)
 				}
 			</div>
 			if len(list) == 0 {
-				<div class="text-muted-foreground py-16 text-center text-sm">
-					<p>No goals yet.</p>
-					<p class="mt-1">
-						The coach works better once it knows what you are aiming at.
-					</p>
-				</div>
+				@ui.Empty(ui.EmptyProps{
+					Eyebrow: "Direction",
+					Title:   "Nothing to aim at yet",
+					Body:    "The coach works better once it knows what you are aiming at. One goal is enough to start.",
+				}) {
+					@button.Button(button.Props{
+						Class:      "bg-signal text-background hover:bg-signal/90",
+						Attributes: templ.Attributes{"@click": "open = true"},
+					}) {
+						Add a goal
+					}
+				}
 			} else {
 				<div class="space-y-3">
 					for _, g := range list {

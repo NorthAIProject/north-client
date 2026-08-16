@@ -90,6 +90,13 @@ func TestIndexPagePutsTheFormBeforeTheCharts(t *testing.T) {
 	}
 }
 
+func TestIndexPageFirstCheckInFraming(t *testing.T) {
+	body := renderIndex(t)
+	if !strings.Contains(body, "Your first check-in") {
+		t.Fatal("empty check-ins page has no first-time framing")
+	}
+}
+
 func TestStepNavClearsTheHomeIndicator(t *testing.T) {
 	body := renderIndex(t)
 	for _, want := range []string{

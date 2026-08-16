@@ -235,6 +235,22 @@ func TestLibraryRowShowsTypeAndSize(t *testing.T) {
 	}
 }
 
+func TestEmptyLibraryPointsAtWriteANote(t *testing.T) {
+	html := render(t, IndexPage(users.User{DisplayName: "Test"}, View{}, NoteForm{}))
+	if !strings.Contains(html, "The coach has nothing to quote yet") {
+		t.Fatal("knowledge empty state missing title")
+	}
+	if !strings.Contains(html, "Write a note") {
+		t.Fatal("knowledge empty state missing primary CTA")
+	}
+	if !strings.Contains(html, `href="#add-note"`) {
+		t.Fatal("knowledge empty CTA does not point at the compose rail")
+	}
+	if !strings.Contains(html, `id="add-note"`) {
+		t.Fatal("compose rail is missing id=add-note")
+	}
+}
+
 func TestSearchPageShowsPromptWhenQueryEmpty(t *testing.T) {
 	html := render(t, SearchPage(users.User{DisplayName: "Test"}, SearchView{}))
 
