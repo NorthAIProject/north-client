@@ -79,7 +79,9 @@ func post(t *testing.T, hook *Webhook, secret, body string) *httptest.ResponseRe
 	return rec
 }
 
-const messageUpdate = `{"update_id":11,"message":{"message_id":1,"chat":{"id":884422},"text":"how am I doing?","date":1755300000}}`
+// Real deliveries always carry chat.type, and North fails closed without it —
+// a chat whose kind is unknown is not assumed to be one person.
+const messageUpdate = `{"update_id":11,"message":{"message_id":1,"chat":{"id":884422,"type":"private"},"text":"how am I doing?","date":1755300000}}`
 
 // The secret is the only thing separating a real delivery from anyone who
 // guesses the path, so a missing or wrong one must reach nothing.
@@ -140,7 +142,7 @@ func TestATappedButtonArrivesAsItsValue(t *testing.T) {
 	close(rec.release)
 	hook := newTestWebhook(t, rec)
 
-	body := `{"update_id":12,"callback_query":{"id":"cb-1","data":"approve","message":{"chat":{"id":884422}}}}`
+	body := `{"update_id":12,"callback_query":{"id":"cb-1","data":"approve","message":{"chat":{"id":884422,"type":"private"}}}}`
 	if resp := post(t, hook, testSecret, body); resp.Code != http.StatusOK {
 		t.Fatalf("got %d, want 200", resp.Code)
 	}
@@ -166,7 +168,7 @@ func TestAnUpdateWithNothingToAnswerIsIgnored(t *testing.T) {
 	hook := newTestWebhook(t, rec)
 
 	for _, body := range []string{
-		`{"update_id":13,"message":{"message_id":2,"chat":{"id":884422},"date":1755300000}}`,
+		`{"update_id":13,"message":{"message_id":2,"chat":{"id":884422,"type":"private"},"date":1755300000}}`,
 		`{"update_id":14}`,
 		`not json at all`,
 	} {
@@ -179,6 +181,44 @@ func TestAnUpdateWithNothingToAnswerIsIgnored(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 	if got := rec.messages(); len(got) != 0 {
 		t.Fatalf("an empty update was answered: %+v", got)
+	}
+}
+
+// The guard, end to end through the real webhook: a group message reaches
+// nothing and the bot removes itself.
+func TestAGroupDeliveryReachesNothingAndTheBotLeaves(t *testing.T) {
+	rec := newRecorder()
+	close(rec.release)
+
+	api := newBotAPI(t)
+	hook := NewWebhook(WebhookConfig{Messages: rec, Client: api.client(), Secret: testSecret})
+	if hook == nil {
+		t.Fatal("NewWebhook returned nil")
+	}
+
+	body := `{"update_id":20,"message":{"message_id":1,"chat":{"id":-1009876,"type":"supergroup"},"text":"hello","date":1755300000}}`
+	if resp := post(t, hook, testSecret, body); resp.Code != http.StatusOK {
+		t.Fatalf("got %d, want 200", resp.Code)
+	}
+
+	waitFor(t, func() bool { return len(api.method("leaveChat")) > 0 })
+
+	if got := rec.messages(); len(got) != 0 {
+		t.Fatalf("a group message reached the coach: %+v", got)
+	}
+	// Explained itself before going, so the person who added it knows why.
+	if sends := api.sends(); len(sends) != 1 {
+		t.Fatalf("expected one explanation, got %d", len(sends))
+	} else if !strings.Contains(sends[0].body["text"].(string), "direct message") {
+		t.Fatalf("the explanation is unhelpful: %v", sends[0].body["text"])
+	}
+
+	left := api.method("leaveChat")
+	if len(left) != 1 {
+		t.Fatalf("expected one leaveChat, got %d", len(left))
+	}
+	if id, _ := left[0].body["chat_id"].(float64); int64(id) != -1009876 {
+		t.Fatalf("left the wrong chat: %v", left[0].body["chat_id"])
 	}
 }
 
