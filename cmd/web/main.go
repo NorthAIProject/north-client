@@ -50,6 +50,8 @@ import (
 	"github.com/NorthAIProject/north-client/internal/meals"
 	"github.com/NorthAIProject/north-client/internal/media"
 	"github.com/NorthAIProject/north-client/internal/memories"
+	"github.com/NorthAIProject/north-client/internal/messaging"
+	"github.com/NorthAIProject/north-client/internal/messaging/telegram"
 	"github.com/NorthAIProject/north-client/internal/mind"
 	"github.com/NorthAIProject/north-client/internal/nudges"
 	"github.com/NorthAIProject/north-client/internal/onboarding"
@@ -161,9 +163,11 @@ func run() error {
 	}
 	defer func() { _ = posthogClient.Close() }()
 
+	handler, runBackground := routes(cfg, pool, registry, storage, embedder, posthogClient)
+
 	srv := &http.Server{
 		Addr:    cfg.Addr(),
-		Handler: routes(cfg, pool, registry, storage, embedder, posthogClient),
+		Handler: handler,
 
 		ReadHeaderTimeout: 10 * time.Second,
 		// No WriteTimeout: it would cut off SSE streams mid-answer. Individual
@@ -178,6 +182,18 @@ func run() error {
 			errCh <- err
 		}
 	}()
+
+	// Background work stops with the signal context, not with the server, so a
+	// poller mid-request finishes rather than being cut off by Shutdown. It is
+	// logged rather than fatal: losing Telegram is not a reason to take the web
+	// app down with it.
+	if runBackground != nil {
+		go func() {
+			if err := runBackground(ctx); err != nil {
+				log.Error("background worker stopped", slog.Any("error", err))
+			}
+		}()
+	}
 
 	select {
 	case err := <-errCh:
@@ -198,6 +214,15 @@ func run() error {
 	return nil
 }
 
+// background is work that outlives any one request.
+//
+// Today there is exactly one: the Telegram poller, which has to keep asking
+// for updates for as long as the process runs. It is returned rather than
+// started here because routes() has no lifecycle — no context to cancel, no
+// place to report a failure — and a goroutine leaked out of a constructor is
+// how a process ends up with two pollers after a test.
+type background func(ctx context.Context) error
+
 func routes(
 	cfg *config.Config,
 	pool *pgxpool.Pool,
@@ -205,7 +230,7 @@ func routes(
 	storage media.Storage,
 	embedder ai.Embedder,
 	posthogClient posthog.Client,
-) http.Handler {
+) (http.Handler, background) {
 	// Wiring happens once, here. Every dependency is constructed explicitly and
 	// passed down, so the shape of the application is readable in one place
 	// rather than discovered through package-level initialisation.
@@ -395,7 +420,9 @@ func routes(
 	auditSvc := toolaudit.NewService(toolaudit.NewRepository(pool))
 	auditRecorder := toolaudit.NewRecorder(auditSvc)
 
-	settingsHandler := settings.NewHandler(userSvc, preferencesSvc, mealDietSvc, connectionSvc, aicredSvc, auditSvc)
+	// settingsHandler is built further down, once the messaging service exists:
+	// the connections page is where a Telegram link begins, so it needs to be
+	// able to issue a code.
 
 	mindSvc := mind.NewService(mind.NewRepository(pool), checkinSvc)
 	mindHandler := mind.NewHandler(mindSvc, checkinSvc)
@@ -521,12 +548,57 @@ func routes(
 	})
 	coachHandler := coach.NewHandler(coachSvc, quotaSvc)
 
+	// The second mouth on the same brain. Built unconditionally because the
+	// settings page needs it to issue link codes; whether anything can reach it
+	// depends on a bot token, below.
+	messagingSvc := messaging.NewService(messaging.Options{
+		Coach:   coachSvc,
+		Threads: conversationSvc,
+		Users:   userSvc,
+		Links:   messaging.NewRepository(pool),
+
+		// The same budget the web chat spends, deliberately. A surface that
+		// reached the coach without this would be a way around the limits
+		// rather than a second way in — the gap ask_coach still has.
+		Quotas: quotaSvc,
+		Log:    slog.Default(),
+	})
+
+	settingsHandler := settings.NewHandler(
+		userSvc, preferencesSvc, mealDietSvc, connectionSvc, aicredSvc,
+		auditSvc, messagingSvc, cfg.Telegram,
+	)
+
 	// Given the coach so the questionnaire ends in a thread that is already
 	// being answered, rather than an empty chat box the person has to think of
 	// something to say to.
 	onboardingSvc := onboarding.NewService(userSvc, memorySvc, goalSvc).
 		WithCoach(coachSvc, slog.Default())
 	onboardingHandler := onboarding.NewHandler(onboardingSvc)
+
+	// Which Telegram edge runs follows from the configuration rather than from
+	// a switch, so there is no combination that serves a webhook with no
+	// secret. Both are nil without a bot token, and then neither the route nor
+	// the poller exists.
+	var telegramWebhook *telegram.Webhook
+	var telegramPoller *telegram.Poller
+	if cfg.Telegram.Enabled() {
+		telegramClient := telegram.NewClient(cfg.Telegram.BotToken)
+		if cfg.Telegram.UsesWebhook() {
+			telegramWebhook = telegram.NewWebhook(telegram.WebhookConfig{
+				Messages: messagingSvc,
+				Client:   telegramClient,
+				Secret:   cfg.Telegram.WebhookSecret,
+				Log:      slog.Default(),
+			})
+		} else {
+			telegramPoller = telegram.NewPoller(telegram.PollerConfig{
+				Messages: messagingSvc,
+				Client:   telegramClient,
+				Log:      slog.Default(),
+			})
+		}
+	}
 
 	// The MCP endpoint an outside agent connects to.
 	//
@@ -603,6 +675,18 @@ func routes(
 		})))
 	})
 
+	// The Telegram webhook joins /mcp and /ingest/health for the third time for
+	// the same reason: Telegram is not a browser, holds no cookie, and proves
+	// itself with a shared secret in a header instead. Its own cap because an
+	// update is a small JSON envelope and nothing legitimate approaches even
+	// this.
+	if telegramWebhook != nil {
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.MaxBody(1 << 20))
+			r.Handle("/webhooks/telegram", telegramWebhook)
+		})
+	}
+
 	r.Group(func(r chi.Router) {
 		// Before CSRF: that middleware parses multipart bodies to find the token,
 		// so the cap has to be in place first. Slightly above the media limit, so a
@@ -656,7 +740,10 @@ func routes(
 		})
 	})
 
-	return r
+	if telegramPoller != nil {
+		return r, telegramPoller.Run
+	}
+	return r, nil
 }
 
 // healthz reports whether the process can serve traffic. It checks the database

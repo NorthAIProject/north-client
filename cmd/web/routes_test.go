@@ -29,6 +29,11 @@ func (stubStorage) SignedURL(context.Context, string, time.Duration) (string, er
 
 func testRoutes(t *testing.T) http.Handler {
 	t.Helper()
+	return testRoutesWith(t, func(*config.Config) {})
+}
+
+func testRoutesWith(t *testing.T, configure func(*config.Config)) http.Handler {
+	t.Helper()
 
 	pool := testdb.New(t)
 
@@ -40,8 +45,10 @@ func testRoutes(t *testing.T) http.Handler {
 		BaseURL:         "http://north.test",
 		SessionLifetime: time.Hour,
 	}
+	configure(cfg)
 
-	return routes(cfg, pool, registry, stubStorage{}, nil, nil)
+	handler, _ := routes(cfg, pool, registry, stubStorage{}, nil, nil)
+	return handler
 }
 
 // The MCP endpoint must not sit behind the CSRF middleware.
@@ -78,6 +85,53 @@ func TestMCPEndpointIsNotBehindCSRF(t *testing.T) {
 	}
 	if rec.Header().Get("WWW-Authenticate") == "" {
 		t.Error("no WWW-Authenticate challenge; phase-2 OAuth extends this header")
+	}
+}
+
+// The Telegram webhook is the third endpoint that must sit outside CSRF, for
+// the same reason as the first two: Telegram is not a browser, holds no cookie,
+// and proves itself with a header instead. Behind that middleware every
+// delivery would be answered 403, Telegram would retry forever, and the symptom
+// would look like a broken bot rather than a routing mistake.
+func TestTelegramWebhookIsNotBehindCSRF(t *testing.T) {
+	handler := testRoutesWith(t, func(cfg *config.Config) {
+		cfg.Telegram = config.TelegramConfig{
+			BotToken:      "test-token",
+			WebhookSecret: "test-secret",
+		}
+	})
+
+	body := `{"update_id":1,"message":{"chat":{"id":1},"text":"hi"}}`
+	req := httptest.NewRequest(http.MethodPost, "/webhooks/telegram", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code == http.StatusForbidden {
+		t.Fatal("POST /webhooks/telegram was answered 403: the endpoint is behind CSRF again")
+	}
+	// 401 proves the request reached the webhook's own secret check rather than
+	// being turned away before it: no secret header was sent.
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401 from the webhook's secret check", rec.Code)
+	}
+}
+
+// Without a bot token there is nothing to deliver to, so the route must not
+// exist at all — an endpoint that accepts updates nobody can answer is worse
+// than no endpoint.
+func TestTelegramWebhookIsAbsentWithoutABotToken(t *testing.T) {
+	handler := testRoutes(t)
+
+	req := httptest.NewRequest(http.MethodPost, "/webhooks/telegram", strings.NewReader("{}"))
+	req.Header.Set("Content-Type", "application/json")
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code == http.StatusOK || rec.Code == http.StatusUnauthorized {
+		t.Fatalf("status = %d: the webhook is mounted on a deployment with no bot", rec.Code)
 	}
 }
 

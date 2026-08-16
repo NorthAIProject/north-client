@@ -15,8 +15,10 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/aicreds"
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/config"
 	"github.com/NorthAIProject/north-client/internal/connections"
 	"github.com/NorthAIProject/north-client/internal/meals"
+	"github.com/NorthAIProject/north-client/internal/messaging"
 	"github.com/NorthAIProject/north-client/internal/preferences"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
@@ -32,10 +34,31 @@ type Handler struct {
 	connections *connections.Service
 	aicreds     *aicreds.Service
 	audit       *toolaudit.Service
+
+	// messaging issues and revokes platform link codes. Nil is not a valid
+	// state — the service is built whether or not a bot token exists, because
+	// this page is where a link begins.
+	messaging *messaging.Service
+
+	// telegram is configuration, not a service: the page needs to know whether
+	// a bot exists and what it is called, and neither is a decision.
+	telegram config.TelegramConfig
 }
 
-func NewHandler(u *users.Service, p *preferences.Service, d *meals.DietPreferenceService, c *connections.Service, a *aicreds.Service, audit *toolaudit.Service) *Handler {
-	return &Handler{users: u, preferences: p, diets: d, connections: c, aicreds: a, audit: audit}
+func NewHandler(
+	u *users.Service,
+	p *preferences.Service,
+	d *meals.DietPreferenceService,
+	c *connections.Service,
+	a *aicreds.Service,
+	audit *toolaudit.Service,
+	m *messaging.Service,
+	telegram config.TelegramConfig,
+) *Handler {
+	return &Handler{
+		users: u, preferences: p, diets: d, connections: c, aicreds: a,
+		audit: audit, messaging: m, telegram: telegram,
+	}
 }
 
 func (h *Handler) Routes(r chi.Router) {
@@ -51,8 +74,39 @@ func (h *Handler) Routes(r chi.Router) {
 
 	r.Get("/settings/activity", h.showActivity)
 
+	r.Post("/settings/messaging/telegram", h.createTelegramCode)
+	r.Post("/settings/messaging/telegram/disconnect", h.disconnectTelegram)
+
 	r.Post("/settings/ai", h.updateAICredential)
 	r.Post("/settings/ai/remove", h.removeAICredential)
+}
+
+// createTelegramCode issues a link code and renders it.
+//
+// Like createConnection, this cannot redirect: the code exists in plaintext
+// only in this response, and a 303 would send the browser to a page with no way
+// to learn what it was.
+func (h *Handler) createTelegramCode(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+
+	code, err := h.messaging.IssueCode(r.Context(), user.ID, messaging.PlatformTelegram)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+
+	h.renderConnections(w, r, settingspages.ConnectForm{Kind: connections.ClientClaudeCode}, nil, nil, code)
+}
+
+func (h *Handler) disconnectTelegram(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+
+	if _, err := h.messaging.Unlink(r.Context(), user.ID, messaging.PlatformTelegram); err != nil {
+		h.fail(w, r, err)
+		return
+	}
+
+	http.Redirect(w, r, "/app/settings/connections", http.StatusSeeOther)
 }
 
 func (h *Handler) updateAICredential(w http.ResponseWriter, r *http.Request) {
@@ -75,7 +129,7 @@ func (h *Handler) updateAICredential(w http.ResponseWriter, r *http.Request) {
 		if apperr.As(err, &fieldErrs) {
 			form := settingspages.ProviderFormFor(in)
 			form.Errors = fieldErrs.Messages()
-			h.renderConnections(w, r, settingspages.ConnectForm{Kind: connections.ClientClaudeCode}, nil, &form)
+			h.renderConnections(w, r, settingspages.ConnectForm{Kind: connections.ClientClaudeCode}, nil, &form, "")
 			return
 		}
 		h.fail(w, r, err)
@@ -203,7 +257,7 @@ func (h *Handler) showActivity(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) showConnections(w http.ResponseWriter, r *http.Request) {
-	h.renderConnections(w, r, settingspages.ConnectForm{Kind: connections.ClientClaudeCode}, nil, nil)
+	h.renderConnections(w, r, settingspages.ConnectForm{Kind: connections.ClientClaudeCode}, nil, nil, "")
 }
 
 // createConnection issues a token and renders it.
@@ -229,14 +283,14 @@ func (h *Handler) createConnection(w http.ResponseWriter, r *http.Request) {
 		var fieldErrs apperr.FieldErrors
 		if apperr.As(err, &fieldErrs) {
 			form.Errors = fieldErrs.Messages()
-			h.renderConnections(w, r, form, nil, nil)
+			h.renderConnections(w, r, form, nil, nil, "")
 			return
 		}
 		h.fail(w, r, err)
 		return
 	}
 
-	h.renderConnections(w, r, settingspages.ConnectForm{Kind: form.Kind}, &issued, nil)
+	h.renderConnections(w, r, settingspages.ConnectForm{Kind: form.Kind}, &issued, nil, "")
 }
 
 // connectionStatus answers the poll behind "waiting for first use".
@@ -292,12 +346,15 @@ func (h *Handler) revokeConnection(w http.ResponseWriter, r *http.Request) {
 // instructions are built here rather than stored, because they carry it.
 // providerForm is non-nil only when a provider submission failed validation
 // and has to come back with its messages.
+// telegramCode is non-empty only on the response that issued one, for the same
+// reason issued is: it is not stored in a form a page could read back.
 func (h *Handler) renderConnections(
 	w http.ResponseWriter,
 	r *http.Request,
 	form settingspages.ConnectForm,
 	issued *connections.Issued,
 	providerForm *settingspages.ProviderForm,
+	telegramCode string,
 ) {
 	user := auth.MustUser(r.Context())
 	ctx := r.Context()
@@ -350,8 +407,30 @@ func (h *Handler) renderConnections(
 		}
 	}
 
+	telegram := settingspages.TelegramPanel{
+		Enabled:     h.telegram.Enabled(),
+		BotUsername: h.telegram.BotUsername,
+		Code:        telegramCode,
+	}
+
+	// Only asked when there is a bot to link to. A deployment without one
+	// renders no card, so the query would be answering a question nobody asked.
+	if telegram.Enabled {
+		links, err := h.messaging.Links(ctx, user.ID)
+		if err != nil {
+			h.fail(w, r, err)
+			return
+		}
+		for i, link := range links {
+			if link.Platform == messaging.PlatformTelegram {
+				telegram.Linked = &links[i]
+				break
+			}
+		}
+	}
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := settingspages.ConnectionsPage(user, list, form, issued, setup, previews, provider).Render(ctx, w); err != nil {
+	if err := settingspages.ConnectionsPage(user, list, form, issued, setup, previews, provider, telegram).Render(ctx, w); err != nil {
 		middleware.FromContext(ctx).Error("render connections", slog.Any("error", err))
 	}
 }

@@ -390,6 +390,25 @@ type Message struct {
 	ToolResults    []byte
 }
 
+type MessagingLink struct {
+	ID           uuid.UUID
+	UserID       uuid.UUID
+	Platform     string
+	ExternalID   string
+	LastUpdateID int64
+	CreatedAt    time.Time
+	LastSeenAt   *time.Time
+}
+
+type MessagingLinkCode struct {
+	CodeHash   []byte
+	UserID     uuid.UUID
+	Platform   string
+	ExpiresAt  time.Time
+	RedeemedAt *time.Time
+	CreatedAt  time.Time
+}
+
 type PasswordResetToken struct {
 	TokenHash []byte
 	UserID    uuid.UUID

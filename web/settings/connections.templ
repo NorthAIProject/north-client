@@ -6,6 +6,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/ai/providers"
 	"github.com/NorthAIProject/north-client/internal/aicreds"
 	"github.com/NorthAIProject/north-client/internal/connections"
+	"github.com/NorthAIProject/north-client/internal/messaging"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
@@ -64,6 +65,37 @@ type ProviderPanel struct {
 	Form ProviderForm
 }
 
+// TelegramPanel is everything the Telegram card needs.
+type TelegramPanel struct {
+	// Enabled is false when the deployment has no bot token, in which case the
+	// card is not rendered at all — there would be nothing to message.
+	Enabled bool
+
+	// BotUsername is how a person finds the bot. Empty when nobody configured
+	// it, and the card then says to ask whoever runs this North.
+	BotUsername string
+
+	// Linked is the existing link, or nil when this account has none.
+	Linked *messaging.Link
+
+	// Code is a freshly issued link code, shown on exactly one response. It is
+	// stored only as a hash, so this render is the only place it can appear.
+	Code string
+}
+
+// BotLink is the URL that opens a chat with the bot, or empty when no username
+// is configured.
+func (p TelegramPanel) BotLink() string {
+	if p.BotUsername == "" {
+		return ""
+	}
+	return "https://t.me/" + p.BotUsername
+}
+
+// Handle is the bot's @name. A method rather than an "@" in the markup, where
+// templ reads a leading @ as the start of a component call.
+func (p TelegramPanel) Handle() string { return "@" + p.BotUsername }
+
 // ConnectionsPage lists the agents connected to this account, and which model
 // provider answers for it.
 //
@@ -75,7 +107,7 @@ type ProviderPanel struct {
 // with connections.PlaceholderToken. It is what lets the page show what setup
 // looks like before a key exists — the alternative being that somebody issues a
 // live credential to find out whether they want one.
-templ ConnectionsPage(user users.User, list []connections.Connection, f ConnectForm, issued *connections.Issued, setup connections.Setup, previews []connections.Setup, provider ProviderPanel) {
+templ ConnectionsPage(user users.User, list []connections.Connection, f ConnectForm, issued *connections.Issued, setup connections.Setup, previews []connections.Setup, provider ProviderPanel, telegram TelegramPanel) {
 	@layout.App("Agent connections", user, layout.BuildNav("/app/settings")) {
 		<div class="mx-auto w-full max-w-2xl space-y-6 p-6 md:p-8">
 			<header>
@@ -95,6 +127,9 @@ templ ConnectionsPage(user users.User, list []connections.Connection, f ConnectF
 			}
 			@connectionListCard(list)
 			@connectCard(f, previews)
+			if telegram.Enabled {
+				@telegramCard(telegram)
+			}
 			@providerCard(provider)
 		</div>
 		@label.Script()
@@ -278,6 +313,133 @@ templ revokeDialog(conn connections.Connection) {
 					@ui.CSRFInput()
 					@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantDestructive}) {
 						Revoke
+					}
+				</form>
+			}
+		}
+	}
+}
+
+// telegramCard connects a chat to this account.
+//
+// Three states, and the card is one of them at a time: linked, holding a fresh
+// code, or offering to make one. A page that showed all three at once would ask
+// somebody who is already connected to read instructions for connecting.
+templ telegramCard(p TelegramPanel) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Title() {
+				Telegram
+			}
+			@card.Description() {
+				Message your coach from your phone. Same memory, same goals, same conversation —
+				what you ask in Telegram carries on in the web chat, and the other way round.
+			}
+		}
+		@card.Content() {
+			switch {
+				case p.Linked != nil:
+					@telegramLinked(*p.Linked)
+				case p.Code != "":
+					@telegramCode(p)
+				default:
+					@telegramStart()
+			}
+		}
+	}
+}
+
+// telegramCode shows a code once, and says what to do with it.
+//
+// Loud for the same reason issuedCard is: the code is stored only as a hash, so
+// this render is the one moment it exists anywhere a person can read it.
+templ telegramCode(p TelegramPanel) {
+	<div class="space-y-4">
+		<div class="border-signal/40 bg-signal/5 rounded-lg border p-4">
+			<p class="text-muted-foreground mb-2 text-sm leading-relaxed">
+				Send this to the bot. It works once, and only for the next 15 minutes.
+			</p>
+			@copyBlock("Link code", "telegram-code", "text", p.Code)
+		</div>
+		<ol class="text-muted-foreground list-decimal space-y-1.5 pl-5 text-sm leading-relaxed">
+			<li>
+				if link := p.BotLink(); link != "" {
+					Open
+					<a href={ templ.SafeURL(link) } target="_blank" rel="noopener noreferrer" class="text-foreground underline underline-offset-4">
+						{ p.Handle() }
+					</a>
+					in Telegram.
+				} else {
+					Open North's bot in Telegram. Ask whoever runs this North for its name.
+				}
+			</li>
+			<li>Send it the code above.</li>
+			<li>It replies to confirm, and then you can just talk to it.</li>
+		</ol>
+	</div>
+}
+
+templ telegramLinked(link messaging.Link) {
+	<div class="flex flex-wrap items-center justify-between gap-3">
+		<div class="min-w-0">
+			<p class="text-signal text-sm font-medium">Connected</p>
+			<p class="text-muted-foreground mt-0.5 text-xs">
+				Linked { link.CreatedAt.Format("2 Jan 2006") }
+				if link.LastSeenAt != nil {
+					· last message { link.LastSeenAt.Format("2 Jan, 15:04") }
+				} else {
+					· no messages yet
+				}
+			</p>
+		</div>
+		@telegramDisconnectDialog()
+	</div>
+}
+
+templ telegramStart() {
+	<form method="post" action="/app/settings/messaging/telegram" class="space-y-3">
+		@ui.CSRFInput()
+		<p class="text-muted-foreground text-sm leading-relaxed">
+			You will get a short code to send to the bot. That is what tells it which
+			account the chat belongs to.
+		</p>
+		@button.Button(button.Props{Type: button.TypeSubmit}) {
+			Get a link code
+		}
+	</form>
+}
+
+// telegramDisconnectDialog asks first, for the reason revokeDialog does:
+// disconnecting is instant, and the way back is another code.
+templ telegramDisconnectDialog() {
+	{{ dialogID := "disconnect-telegram" }}
+	@dialog.Trigger(dialog.TriggerProps{For: dialogID}) {
+		@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Type: button.TypeButton}) {
+			Disconnect
+		}
+	}
+	@dialog.Dialog(dialog.Props{ID: dialogID}) {
+		@dialog.Content() {
+			@dialog.Header() {
+				@dialog.Title() {
+					Disconnect Telegram?
+				}
+				@dialog.Description() {
+					The bot stops answering that chat straight away. Nothing you have already
+					said is deleted — the conversation stays in the web app. To connect again
+					you would get a new code.
+				}
+			}
+			@dialog.Footer() {
+				@dialog.Close() {
+					@button.Button(button.Props{Variant: button.VariantOutline, Type: button.TypeButton}) {
+						Keep it
+					}
+				}
+				<form method="post" action="/app/settings/messaging/telegram/disconnect">
+					@ui.CSRFInput()
+					@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantDestructive}) {
+						Disconnect
 					}
 				</form>
 			}

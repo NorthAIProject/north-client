@@ -44,6 +44,8 @@ type Config struct {
 	WebAuthnRPID        string
 	WebAuthnDisplayName string
 
+	Telegram TelegramConfig
+
 	AI         AIConfig
 	Storage    StorageConfig
 	Embedding  EmbeddingConfig
@@ -188,6 +190,37 @@ type QuotaConfig struct {
 	MediaAnalyses     int
 }
 
+// TelegramConfig configures the Telegram messaging adapter.
+//
+// Optional, like Google's and Strava's credentials: without a token the
+// adapter is not built at all, so a developer with no bot still runs
+// everything else.
+type TelegramConfig struct {
+	// BotToken is the credential from @BotFather. Empty disables messaging.
+	BotToken string
+
+	// WebhookSecret selects how updates arrive, because the two modes need
+	// different things from the environment and only one can run per bot.
+	//
+	// Set, North serves a webhook — the production shape, and it requires a
+	// public HTTPS URL. Empty, North long-polls instead, which needs nothing
+	// but an outbound connection and is therefore the only mode that works on
+	// localhost. Making the mode follow from the secret rather than from a
+	// third variable means there is no combination that configures a webhook
+	// with no secret, which would be an open endpoint.
+	WebhookSecret string
+
+	// BotUsername is shown in Settings so a person can find the bot. Cosmetic;
+	// nothing authenticates against it.
+	BotUsername string
+}
+
+// Enabled reports whether the messaging adapter should be built.
+func (c TelegramConfig) Enabled() bool { return c.BotToken != "" }
+
+// UsesWebhook reports which inbound edge to run.
+func (c TelegramConfig) UsesWebhook() bool { return c.WebhookSecret != "" }
+
 // OpenAICompatConfig configures one backend speaking the OpenAI chat dialect.
 type OpenAICompatConfig struct {
 	APIKey  string
@@ -260,6 +293,12 @@ func Load() (*Config, error) {
 
 		WebAuthnRPID:        optional("WEBAUTHN_RP_ID", ""),
 		WebAuthnDisplayName: optional("WEBAUTHN_RP_DISPLAY_NAME", "North"),
+
+		Telegram: TelegramConfig{
+			BotToken:      strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN")),
+			WebhookSecret: strings.TrimSpace(os.Getenv("TELEGRAM_WEBHOOK_SECRET")),
+			BotUsername:   strings.TrimPrefix(strings.TrimSpace(os.Getenv("TELEGRAM_BOT_USERNAME")), "@"),
+		},
 
 		AI: AIConfig{
 			Chain:     providerChain("AI_PROVIDER_CHAIN"),

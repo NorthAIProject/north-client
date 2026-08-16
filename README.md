@@ -205,6 +205,13 @@ North is designed to be accessible through:
 
 Every interface shares the same memory and coaching engine.
 
+Telegram is implemented today. A message you send from your phone reaches the
+same coach the web chat does, **in the same conversation** — ask something in
+Telegram and the answer is in the web thread when you open it, and the other way
+round.
+
+See [Setting up Telegram](#setting-up-telegram) below.
+
 ---
 
 # Architecture
@@ -518,6 +525,201 @@ Production stack:
 - GitHub Actions
 
 Development can be run using Docker Compose.
+
+---
+
+# Setting up Telegram
+
+Telegram is optional. Without `TELEGRAM_BOT_TOKEN` the adapter is not built, no
+route is mounted, and the card does not appear in Settings — everything else
+works exactly as before.
+
+Setup is in two halves: **once per deployment** (someone creates the bot) and
+**once per person** (each person links their own chat).
+
+## Part 1 — create the bot (once, by whoever runs North)
+
+### 1. Create it with @BotFather
+
+Open Telegram and message [@BotFather](https://t.me/BotFather):
+
+```
+/newbot
+```
+
+It asks two questions:
+
+- **Name** — what people see at the top of the chat. Anything: `North`.
+- **Username** — must be unique across all of Telegram and must end in `bot`.
+  For example `north_coach_bot`.
+
+It replies with a token that looks like this:
+
+```
+8154392017:AAH9k2LmQ7xVbN3pR8sTuW1yZ4cE6gI0jKm
+```
+
+**That token is a credential.** Anyone holding it controls the bot completely.
+Treat it like a password: never commit it, never paste it into an issue.
+
+### 2. Recommended — turn off group access
+
+Still in @BotFather:
+
+```
+/setjoingroups
+```
+
+Pick your bot, then **Disable**. North answers one person per chat; a bot that
+can be added to a group would be asked questions in front of an audience it has
+no concept of.
+
+### 3. Put it in your `.env`
+
+```bash
+TELEGRAM_BOT_TOKEN=8154392017:AAH9k2LmQ7xVbN3pR8sTuW1yZ4cE6gI0jKm
+TELEGRAM_BOT_USERNAME=north_coach_bot
+```
+
+`TELEGRAM_BOT_USERNAME` is only so the Settings page can tell people which bot
+to open. Nothing authenticates against it.
+
+### 4. Choose how updates arrive
+
+Two modes, and **which one runs follows from whether you set a secret** — there
+is no third variable and no combination that leaves an endpoint unprotected.
+
+**Long polling — leave `TELEGRAM_WEBHOOK_SECRET` empty.**
+
+North asks Telegram for updates over an outbound connection. Nothing is exposed,
+no public URL is needed, and it works on `localhost`. This is the right choice
+for development and fine for a single production instance.
+
+```bash
+TELEGRAM_WEBHOOK_SECRET=
+```
+
+Nothing else to do. Start North and the poller starts with it:
+
+```
+INFO telegram poller started
+```
+
+> Only one process may poll a given bot. Two pollers on one token each receive
+> half the updates, so do not run this mode on more than one replica.
+
+**Webhook — set `TELEGRAM_WEBHOOK_SECRET`.**
+
+Telegram POSTs to `{BASE_URL}/webhooks/telegram`. This needs a **public HTTPS
+URL**, so it is a production choice; it will not work against `localhost`
+without a tunnel.
+
+Generate a secret and register the webhook once:
+
+```bash
+# 1. Generate
+openssl rand -hex 32
+
+# 2. Put it in .env as TELEGRAM_WEBHOOK_SECRET, then deploy.
+
+# 3. Tell Telegram where to send updates.
+curl -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
+  -d url="$BASE_URL/webhooks/telegram" \
+  -d secret_token="$TELEGRAM_WEBHOOK_SECRET"
+```
+
+The secret is echoed back by Telegram in the `X-Telegram-Bot-Api-Secret-Token`
+header and is the only thing separating a real delivery from anyone who guesses
+the path. North answers `401` without it, which is why the secret is required
+rather than optional in this mode.
+
+Check what Telegram thinks:
+
+```bash
+curl "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getWebhookInfo"
+```
+
+`pending_update_count` climbing or a non-empty `last_error_message` means
+deliveries are failing.
+
+To switch back to polling, delete the webhook and clear the secret — Telegram
+refuses to serve `getUpdates` while a webhook is registered:
+
+```bash
+curl -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/deleteWebhook"
+```
+
+## Part 2 — link your account (once per person)
+
+Each person does this for themselves. There is nothing to configure.
+
+1. Open North in a browser and sign in.
+2. Go to **Settings → Agent connections**.
+3. Find the **Telegram** card and press **Get a link code**.
+4. A short code appears — something like `K7PQ2MNX`. It is shown **once** and is
+   valid for **15 minutes**.
+5. Open the bot in Telegram (the card links to it) and send it that code.
+6. It replies confirming which account it linked.
+
+That is the whole flow. From then on, just talk to it.
+
+**Why a code at all.** A message arrives carrying a chat id and nothing else,
+and that has to be turned into an account somehow. Until a chat is linked it can
+do exactly one thing — redeem a code — so it never reaches the coach and nobody
+who merely finds your bot can spend your model budget.
+
+Some details worth knowing:
+
+- Codes are stored hashed, so nobody can read one back out of the database. Lost
+  it? Press the button again; issuing a new code invalidates the old one.
+- A code works once. Sending it from a second chat does nothing.
+- A chat already linked to a **different** account is refused rather than moved.
+- Case and spacing are forgiven, so `k7pq 2mnx` works. The alphabet deliberately
+  excludes `0`, `O`, `1`, `I` and `L`, so there is nothing to misread.
+
+## Using it
+
+Ask anything you would ask in the web chat:
+
+> **You:** how did my week go?
+>
+> **North:** Three workouts and two check-ins, both positive. That is one more
+> session than last week…
+
+**When the coach wants to write something** — log a check-in, create a goal — it
+asks first, exactly as the web app does:
+
+> **North:** Before I do this, can you confirm?
+>
+> • create check in `{"mood":4,"note":"good day"}`
+>
+> `[ Yes, do it ]` `[ No ]`
+
+Tap a button, or just type it — "yes", "no thanks", "go ahead" all work. Anything
+ambiguous gets you the question again rather than a guess, because the wrong
+guess writes something you did not agree to.
+
+Coach messages from Telegram count against **the same hourly quota** as the web
+chat. Answering a confirmation is free: you asked one question, and saying yes to
+it is not a second one.
+
+## Troubleshooting
+
+| Symptom | Cause |
+|---|---|
+| Bot never replies | Polling mode not running (`telegram poller started` missing from the logs), or a webhook is registered and blocking `getUpdates`. |
+| "I do not know you yet…" | That chat is not linked. Get a code from Settings. |
+| Code rejected | Expired (15 min), already used, or superseded by a newer one. Issue another. |
+| "already linked to another North account" | That chat belongs to a different account. Disconnect it there first. |
+| Replies stop after a restart | A reply generated during a restart loses its push. The answer is still saved — open the web thread and it is there. |
+| Webhook returns 401 | `TELEGRAM_WEBHOOK_SECRET` and the `secret_token` given to `setWebhook` disagree. Re-run `setWebhook`. |
+
+## Disconnecting
+
+**Settings → Agent connections → Telegram → Disconnect.** The bot stops
+answering that chat immediately. Nothing you have said is deleted — the whole
+conversation stays in the web app, because a messaging link is a way to reach
+your account, never a way to sign in to it.
 
 ---
 
