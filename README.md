@@ -562,17 +562,20 @@ It replies with a token that looks like this:
 **That token is a credential.** Anyone holding it controls the bot completely.
 Treat it like a password: never commit it, never paste it into an issue.
 
-### 2. Recommended — turn off group access
+### 2. Optional — turn off group access
 
+North already refuses group chats: a group has one chat id shared by everybody
+in it, so a linked group would let every member read the owner's goals and log
+check-ins as them. If the bot is added to one it says so and leaves.
+
+Turning the setting off as well just means it is never added in the first place.
 Still in @BotFather:
 
 ```
 /setjoingroups
 ```
 
-Pick your bot, then **Disable**. North answers one person per chat; a bot that
-can be added to a group would be asked questions in front of an audience it has
-no concept of.
+Pick your bot, then **Disable**.
 
 ### 3. Put it in your `.env`
 
@@ -699,6 +702,18 @@ Tap a button, or just type it — "yes", "no thanks", "go ahead" all work. Anyth
 ambiguous gets you the question again rather than a guess, because the wrong
 guess writes something you did not agree to.
 
+**Commands**, which your Telegram client also offers from the menu button:
+
+| Command | Does |
+|---|---|
+| `/start` | Confirms which account this chat is linked to |
+| `/help` | What it can do, and that writes are confirmed first |
+| `/unlink` | Disconnects this chat. Nothing you have said is deleted |
+
+None of them reaches a model, so none of them costs a message. Anything else
+starting with `/` is treated as an ordinary question — "/summarise my week" is a
+sentence, not a broken command.
+
 Coach messages from Telegram count against **the same hourly quota** as the web
 chat. Answering a confirmation is free: you asked one question, and saying yes to
 it is not a second one.
@@ -709,6 +724,7 @@ it is not a second one.
 |---|---|
 | Bot never replies | Polling mode not running (`telegram poller started` missing from the logs), or a webhook is registered and blocking `getUpdates`. |
 | "I do not know you yet…" | That chat is not linked. Get a code from Settings. |
+| Bot leaves a group immediately | Working as intended. A group's chat id is shared by everyone in it, so North only works in a direct message. |
 | Code rejected | Expired (15 min), already used, or superseded by a newer one. Issue another. |
 | "already linked to another North account" | That chat belongs to a different account. Disconnect it there first. |
 | Replies stop after a restart | A reply generated during a restart loses its push. The answer is still saved — open the web thread and it is there. |

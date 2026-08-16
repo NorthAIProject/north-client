@@ -526,6 +526,14 @@ Sending that code is the **only** thing an unlinked chat can do. It never
 reaches the coach, so finding the bot buys a stranger nothing — there is no
 account to charge a model call to.
 
+**Private chats only.** A link binds an account to one conversation id, and on
+every platform a group has a single id shared by everybody in it. Linking one
+would hand every member the owner's goals, check-ins and write approvals, so the
+adapter refuses any chat that is not one person and removes itself rather than
+sitting in a chat whose id could be linked later. The messaging layer refuses
+the same id again on the way in — the platform adapter knows what a group is,
+and the backstop only needs to know that its id is negative.
+
 ## One thread
 
 A linked person has one conversation, not one per surface. The adapter
