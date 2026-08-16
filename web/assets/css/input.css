@@ -216,3 +216,12 @@ html.lenis body {
 .lenis.lenis-stopped {
   overflow: hidden;
 }
+
+/* NOR-39: the vendored sidebar trigger is size-7. Thumbs miss it.
+   Unlayered so it outranks the size-7 utility. Scoped to the app header
+   so other sheets stay as the component drew them. */
+[data-tui-sidebar-layout] header [data-tui-dialog-trigger] button,
+[data-tui-sidebar-layout] header [data-tui-sidebar-trigger] {
+  width: 2.75rem;
+  height: 2.75rem;
+}
