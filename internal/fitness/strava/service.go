@@ -147,6 +147,18 @@ func (s *Service) RecentActivities(ctx context.Context, userID uuid.UUID, limit 
 	return s.repo.RecentActivities(ctx, userID, limit)
 }
 
+// RouteTotals is the distance and climb recorded over a window, for the coach's
+// weekly training picture. Like RecentActivities it reads North's own copy, so
+// it costs nothing against the rate limit and keeps working while Strava is
+// down — the coach never blocks on a third party to describe someone's week.
+//
+// This is what satisfies activity.RouteLookup. The signature is fixed by that
+// interface, which the activity slice declares because strava already imports
+// it and the reverse would be an import cycle.
+func (s *Service) RouteTotals(ctx context.Context, userID uuid.UUID, since, until time.Time) (activity.RouteTotals, error) {
+	return s.repo.RouteTotals(ctx, userID, since, until)
+}
+
 // RequestSync queues a sync rather than running it inline, so a click
 // returns immediately and a slow or rate-limited Strava never holds a
 // request open.

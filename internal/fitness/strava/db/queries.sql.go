@@ -107,6 +107,38 @@ func (q *Queries) MarkStravaSynced(ctx context.Context, arg MarkStravaSyncedPara
 	return err
 }
 
+const sumStravaActivitiesBetween = `-- name: SumStravaActivitiesBetween :one
+SELECT
+    count(*)::bigint                                           AS activities,
+    coalesce(sum(distance_m), 0)::double precision             AS distance_m,
+    coalesce(sum(total_elevation_gain_m), 0)::double precision AS elevation_m
+FROM strava_activities
+WHERE user_id = $1
+  AND start_date >= $2::timestamptz
+  AND start_date <  $3::timestamptz
+`
+
+type SumStravaActivitiesBetweenParams struct {
+	UserID uuid.UUID
+	Since  time.Time
+	Until  time.Time
+}
+
+type SumStravaActivitiesBetweenRow struct {
+	Activities int64
+	DistanceM  float64
+	ElevationM float64
+}
+
+// Half-open window, matching timerange.Range. Both summed columns are NOT NULL,
+// so the coalesce only guards the empty-set case, where sum() returns NULL.
+func (q *Queries) SumStravaActivitiesBetween(ctx context.Context, arg SumStravaActivitiesBetweenParams) (SumStravaActivitiesBetweenRow, error) {
+	row := q.db.QueryRow(ctx, sumStravaActivitiesBetween, arg.UserID, arg.Since, arg.Until)
+	var i SumStravaActivitiesBetweenRow
+	err := row.Scan(&i.Activities, &i.DistanceM, &i.ElevationM)
+	return i, err
+}
+
 const updateStravaTokens = `-- name: UpdateStravaTokens :one
 UPDATE strava_connections
 SET access_token         = $2,
