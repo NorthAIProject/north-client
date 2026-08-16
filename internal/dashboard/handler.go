@@ -113,6 +113,8 @@ func buildDashboardData(snap Snapshot) (app.DashboardData, error) {
 		return app.DashboardData{}, err
 	}
 
+	step, hasStep := PickNextStep(snap)
+
 	return app.DashboardData{
 		Range:            mapRange(snap.Range),
 		CheckedInToday:   snap.CheckedInToday,
@@ -137,6 +139,14 @@ func buildDashboardData(snap Snapshot) (app.DashboardData, error) {
 		ActivityDonut:    activityDonut,
 		HasActivityDonut: hasDonut,
 		Nudges:           snap.Nudges,
+		HasNextStep:      hasStep,
+		NextStep: app.NextStep{
+			Eyebrow: step.Eyebrow,
+			Title:   step.Title,
+			Body:    step.Body,
+			CTA:     step.CTA,
+			Href:    step.Href,
+		},
 	}, nil
 }
 
