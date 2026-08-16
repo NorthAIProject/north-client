@@ -1,14 +1,21 @@
-// Package eval holds North's evaluations of real model behaviour.
+// Package eval holds North's grounding evaluations.
 //
-// The tests here are the only ones that call a paid provider. They are guarded
-// by the `live` build tag and run with `task test:live`, so an ordinary
-// `go test ./...` never spends money and never fails because a provider is
-// having a bad afternoon.
+// One set of cases (see Cases), graded at two depths.
 //
-// What they check is not that the plumbing works — the offline tests cover
-// that. They check the thing North's usefulness actually rests on: that the
-// coach refuses to invent facts it was not given, and that structured output
-// comes back in the shape the schema demanded.
+// Offline — grounding_test.go, no build tag — asks whether the facts a case
+// carries actually reach the model, by rendering the fixture through the real
+// coach.PromptBuilder. No provider, no database, no cost, so it runs on every
+// push. Most regressions are caught here: a renamed heading, a context source
+// that quietly stopped contributing.
+//
+// Live — grounding_live_test.go, behind the `live` build tag, run with
+// `task test:live` — asks what a real model did with that prompt. These are the
+// only tests that call a paid provider, so an ordinary `go test ./...` never
+// spends money and never fails because a provider is having a bad afternoon.
+//
+// The two tiers share their fixtures on purpose. Evals that hand-write their
+// own version of the context block drift away from what the application sends
+// and end up grading a format that no longer exists.
 package eval
 
 import (
@@ -64,6 +71,9 @@ func Provider(t *testing.T) ai.Client {
 		if err != nil {
 			t.Fatalf("build gemini client: %v", err)
 		}
+		// Which model produced a reply is the first thing anyone reading a
+		// failure needs, and it is not recoverable from the output otherwise.
+		t.Logf("evaluating against gemini/%s", model)
 		return c
 	}
 
@@ -82,16 +92,18 @@ func Provider(t *testing.T) ai.Client {
 		t.Skipf("%s not set; skipping live evaluation", spec.baseURLEnv)
 	}
 
+	model := envOr("EVAL_MODEL", spec.defaultModel)
 	c, err := openaicompat.New(openaicompat.Options{
 		Name:               name,
 		BaseURL:            baseURL,
 		APIKey:             key,
-		DefaultModel:       envOr("EVAL_MODEL", spec.defaultModel),
+		DefaultModel:       model,
 		SupportsJSONSchema: spec.supportsJSONSchema,
 	})
 	if err != nil {
 		t.Fatalf("build %s client: %v", name, err)
 	}
+	t.Logf("evaluating against %s/%s", name, model)
 	return c
 }
 
@@ -122,20 +134,6 @@ func Collect(ch <-chan ai.StreamChunk) (string, error) {
 		out.WriteString(chunk.Text)
 	}
 	return out.String(), nil
-}
-
-// ContainsAny reports whether s contains any of the phrases, case-insensitively.
-//
-// Model output is graded on substance rather than exact wording: a refusal can
-// be phrased many ways and all of them are correct.
-func ContainsAny(s string, phrases ...string) bool {
-	lower := strings.ToLower(s)
-	for _, p := range phrases {
-		if strings.Contains(lower, strings.ToLower(p)) {
-			return true
-		}
-	}
-	return false
 }
 
 func envOr(key, fallback string) string {
