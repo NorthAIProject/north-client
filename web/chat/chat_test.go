@@ -23,6 +23,7 @@ func TestPageKeepsTheComposerReachableOnAPhone(t *testing.T) {
 		CoachStats{},
 		nil,
 		false,
+		"",
 	).Render(context.Background(), &buf)
 	if err != nil {
 		t.Fatal(err)
@@ -68,5 +69,40 @@ func TestApprovalButtonsAreThumbSized(t *testing.T) {
 	body := buf.String()
 	if !strings.Contains(body, "min-h-11") {
 		t.Error("approval buttons smaller than 44px")
+	}
+}
+
+func TestEmptyOffersStarterChips(t *testing.T) {
+	var buf bytes.Buffer
+	if err := Empty(users.User{DisplayName: "Ada"}, nil, CoachStats{}).Render(context.Background(), &buf); err != nil {
+		t.Fatal(err)
+	}
+	body := buf.String()
+	if !strings.Contains(body, "I want to get stronger") {
+		t.Fatal("empty chat has no first-message chips")
+	}
+	if !strings.Contains(body, `name="draft"`) {
+		t.Fatal("chips do not submit a draft")
+	}
+}
+
+func TestComposerPrefillsADraft(t *testing.T) {
+	var buf bytes.Buffer
+	err := Page(
+		users.User{DisplayName: "Ada"},
+		conversations.Conversation{ID: uuid.MustParse("11111111-1111-1111-1111-111111111111")},
+		nil,
+		nil,
+		CoachStats{},
+		nil,
+		false,
+		"Help me build a habit I'll actually keep.",
+	).Render(context.Background(), &buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), "Help me build a habit I&#39;ll actually keep.") &&
+		!strings.Contains(buf.String(), "Help me build a habit I'll actually keep.") {
+		t.Fatal("composer did not prefill the draft")
 	}
 }
