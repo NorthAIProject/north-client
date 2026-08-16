@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 	"time"
+
+	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 )
 
 // pollInterval is how long the worker waits when the queue is empty.
@@ -118,6 +120,16 @@ func (w *Worker) claimAndRun(ctx context.Context) (bool, error) {
 		slog.String("kind", string(job.Kind)),
 		slog.Int("attempt", job.Attempts),
 	)
+	if job.RequestID != "" {
+		// Only when there is one. A periodic sweep has no request behind it,
+		// and an empty field would read as an id that failed to propagate
+		// rather than one that never existed.
+		log = log.With(slog.String("request_id", job.RequestID))
+
+		// Back onto the context too, so anything this handler enqueues in turn
+		// stays attached to the same request rather than starting a new story.
+		ctx = middleware.WithRequestID(ctx, job.RequestID)
+	}
 
 	handler, known := w.handlers[job.Kind]
 	if !known {

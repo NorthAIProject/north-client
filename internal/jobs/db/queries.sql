@@ -1,6 +1,6 @@
 -- name: EnqueueJob :one
-INSERT INTO jobs (kind, payload, run_after, max_attempts)
-VALUES ($1, $2, coalesce(sqlc.narg('run_after')::timestamptz, now()), $3)
+INSERT INTO jobs (kind, payload, run_after, max_attempts, request_id)
+VALUES ($1, $2, coalesce(sqlc.narg('run_after')::timestamptz, now()), $3, sqlc.narg('request_id'))
 RETURNING *;
 
 -- name: ClaimJob :one
