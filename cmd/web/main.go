@@ -582,8 +582,9 @@ func routes(
 	// the poller exists.
 	var telegramWebhook *telegram.Webhook
 	var telegramPoller *telegram.Poller
+	var telegramClient *telegram.Client
 	if cfg.Telegram.Enabled() {
-		telegramClient := telegram.NewClient(cfg.Telegram.BotToken)
+		telegramClient = telegram.NewClient(cfg.Telegram.BotToken)
 		if cfg.Telegram.UsesWebhook() {
 			telegramWebhook = telegram.NewWebhook(telegram.WebhookConfig{
 				Messages: messagingSvc,
@@ -740,10 +741,24 @@ func routes(
 		})
 	})
 
-	if telegramPoller != nil {
-		return r, telegramPoller.Run
+	if telegramClient == nil {
+		return r, nil
 	}
-	return r, nil
+
+	// Both edges need a moment with a context: the command menu is published
+	// once at boot, and the poller then runs for the life of the process. In
+	// webhook mode there is no poller and this returns after registering.
+	return r, func(ctx context.Context) error {
+		if err := telegramClient.RegisterCommands(ctx); err != nil {
+			// Cosmetic. The commands are matched from the message text and work
+			// regardless; what is lost is the menu that advertises them.
+			slog.Default().Warn("could not publish the telegram command menu", slog.Any("error", err))
+		}
+		if telegramPoller == nil {
+			return nil
+		}
+		return telegramPoller.Run(ctx)
+	}
 }
 
 // healthz reports whether the process can serve traffic. It checks the database

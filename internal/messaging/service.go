@@ -155,6 +155,14 @@ func (s *Service) Handle(ctx context.Context, in InboundMessage) (OutboundMessag
 		return OutboundMessage{Text: "Finish setting up your account in the North web app first, then message me again."}, nil
 	}
 
+	// Before the thread is resolved and before anything is metered: a command
+	// is not a coach turn. Pressing START would otherwise spend a message
+	// asking a model to interpret "/start", and asking for help mid-
+	// confirmation would look like an answer to it.
+	if out, handled, err := s.runCommand(ctx, user, in); handled {
+		return out, err
+	}
+
 	return s.coachTurn(ctx, user, in)
 }
 
