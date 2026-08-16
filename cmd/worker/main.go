@@ -37,6 +37,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/media"
 	"github.com/NorthAIProject/north-client/internal/memories"
 	"github.com/NorthAIProject/north-client/internal/mind"
+	"github.com/NorthAIProject/north-client/internal/notifications"
 	"github.com/NorthAIProject/north-client/internal/nudges"
 	"github.com/NorthAIProject/north-client/internal/quota"
 	"github.com/NorthAIProject/north-client/internal/reports"
@@ -218,6 +219,14 @@ func run() error {
 	})
 	worker.Register(jobs.KindWeeklyReview, reportSvc.HandleGenerateJob)
 
+	notificationSvc := notifications.NewService(notifications.NewRepository(pool))
+
+	// Writes the week that just closed for whoever asked for it. Hourly rather
+	// than weekly because Monday morning happens at twenty-odd different
+	// instants around the world, and this is the sweep that catches each one.
+	worker.Register(jobs.KindSweepReports,
+		reports.NewSweeper(reportSvc, userSvc, notificationSvc, log).HandleSweep)
+
 	// The coach enqueues extraction only once a thread reaches four messages,
 	// from inside the reply pump. This catches the rest: conversations that
 	// said something worth keeping and then went quiet. Hourly, because the
@@ -231,12 +240,14 @@ func run() error {
 	worker.Register(jobs.KindSweepQuotas,
 		quota.NewService(quota.NewRepository(pool), nil, nil).HandleSweep)
 
-	nudgeSvc := nudges.NewService(nudges.NewRepository(pool), userSvc, checkinSvc, goalSvc)
+	nudgeSvc := nudges.NewService(nudges.NewRepository(pool), userSvc, checkinSvc, goalSvc).
+		WithPrefs(notificationSvc)
 	worker.Register(jobs.KindSweepNudges, nudges.NewSweeper(nudgeSvc, log).HandleSweep)
 
 	worker.RegisterPeriodic(15*time.Minute, jobs.KindSweepEmbeddings, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepMemories, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepNudges, struct{}{})
+	worker.RegisterPeriodic(time.Hour, jobs.KindSweepReports, struct{}{})
 	worker.RegisterPeriodic(24*time.Hour, jobs.KindSweepQuotas, struct{}{})
 
 	log.Info("worker ready",

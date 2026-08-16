@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/mail"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 
@@ -84,12 +83,7 @@ func (s *Service) ValidateRegistration(reg Registration) (Registration, error) {
 	// sign up. UpdateProfile does the same, so a timezone North cannot resolve
 	// never blocks a write; it only means times are shown in UTC until a zone
 	// this build recognises is chosen.
-	tz := strings.TrimSpace(reg.Timezone)
-	if tz == "" {
-		tz = "UTC"
-	} else if _, err := time.LoadLocation(tz); err != nil {
-		tz = "UTC"
-	}
+	tz := ResolveZone(reg.Timezone)
 
 	if err := errs.OrNil(); err != nil {
 		return Registration{}, err
@@ -146,11 +140,18 @@ func (s *Service) UpdateProfile(ctx context.Context, id uuid.UUID, p Profile) (U
 	// Go does not — is a gap in what we recognise, not something the person got
 	// wrong, and refusing would block an otherwise valid profile save over a
 	// field they may not have touched.
-	tz := strings.TrimSpace(p.Timezone)
-	if tz == "" {
-		tz = "UTC"
-	} else if _, err := time.LoadLocation(tz); err != nil {
-		tz = "UTC"
+	tz := ResolveZone(p.Timezone)
+
+	// Tone gets the opposite treatment to timezone on purpose. The form renders
+	// the whole set as a select, so a value outside it did not come from a
+	// person choosing badly — it came from a hand-made request, and quietly
+	// rewriting that to the default would hide it.
+	tone := Tone(strings.TrimSpace(string(p.CoachingTone)))
+	switch {
+	case tone == "":
+		tone = ToneDefault
+	case !tone.Valid():
+		errs = errs.Add("coaching_tone", "Choose one of the listed tones.")
 	}
 
 	// Long enough to describe a coaching preference, short enough that it
@@ -167,6 +168,7 @@ func (s *Service) UpdateProfile(ctx context.Context, id uuid.UUID, p Profile) (U
 		DisplayName:   name,
 		Timezone:      tz,
 		CoachingStyle: strings.TrimSpace(p.CoachingStyle),
+		CoachingTone:  tone,
 	})
 }
 

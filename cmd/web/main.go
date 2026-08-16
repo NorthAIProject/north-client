@@ -53,6 +53,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/messaging"
 	"github.com/NorthAIProject/north-client/internal/messaging/telegram"
 	"github.com/NorthAIProject/north-client/internal/mind"
+	"github.com/NorthAIProject/north-client/internal/notifications"
 	"github.com/NorthAIProject/north-client/internal/nudges"
 	"github.com/NorthAIProject/north-client/internal/onboarding"
 	"github.com/NorthAIProject/north-client/internal/preferences"
@@ -260,7 +261,10 @@ func routes(
 	checkinSvc := checkins.NewService(checkins.NewRepository(pool), goalSvc)
 	checkinHandler := checkins.NewHandler(checkinSvc, goalSvc)
 
-	nudgeSvc := nudges.NewService(nudges.NewRepository(pool), userSvc, checkinSvc, goalSvc)
+	notificationSvc := notifications.NewService(notifications.NewRepository(pool))
+
+	nudgeSvc := nudges.NewService(nudges.NewRepository(pool), userSvc, checkinSvc, goalSvc).
+		WithPrefs(notificationSvc)
 	nudgeHandler := nudges.NewHandler(nudgeSvc)
 
 	memorySvc := memories.NewService(memories.NewRepository(pool))
@@ -565,7 +569,7 @@ func routes(
 	})
 
 	settingsHandler := settings.NewHandler(
-		userSvc, preferencesSvc, mealDietSvc, connectionSvc, aicredSvc,
+		userSvc, preferencesSvc, notificationSvc, mealDietSvc, connectionSvc, aicredSvc,
 		auditSvc, messagingSvc, cfg.Telegram,
 	)
 

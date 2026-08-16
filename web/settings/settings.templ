@@ -7,6 +7,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/calculator"
 	"github.com/NorthAIProject/north-client/internal/meals"
+	"github.com/NorthAIProject/north-client/internal/notifications"
 	"github.com/NorthAIProject/north-client/internal/preferences"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
@@ -18,6 +19,7 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/input"
 	"github.com/NorthAIProject/north-client/web/shared/ui/label"
 	"github.com/NorthAIProject/north-client/web/shared/ui/selectbox"
+	switchcomp "github.com/NorthAIProject/north-client/web/shared/ui/switch"
 	"github.com/NorthAIProject/north-client/web/shared/ui/textarea"
 )
 
@@ -26,14 +28,64 @@ type ProfileForm struct {
 	DisplayName   string
 	Timezone      string
 	CoachingStyle string
+	CoachingTone  users.Tone
 	Errors        map[string]string
 }
 
 func (f ProfileForm) fieldError(name string) string { return f.Errors[name] }
 
+// tone is the tone to show as selected, defaulting for an account that
+// predates the field or a form built from a rejected submission.
+func (f ProfileForm) tone() users.Tone {
+	if f.CoachingTone.Valid() {
+		return f.CoachingTone
+	}
+	return users.ToneDefault
+}
+
 // ProfileFormFor pre-fills from the signed-in user.
 func ProfileFormFor(u users.User) ProfileForm {
-	return ProfileForm{DisplayName: u.DisplayName, Timezone: u.Timezone, CoachingStyle: u.CoachingStyle}
+	return ProfileForm{
+		DisplayName: u.DisplayName, Timezone: u.Timezone,
+		CoachingStyle: u.CoachingStyle, CoachingTone: u.CoachingTone,
+	}
+}
+
+// NotificationsForm carries what North may say without being asked.
+type NotificationsForm struct {
+	NudgeMissedCheckIn bool
+	NudgeGoalDeadline  bool
+	WeeklyReportAuto   bool
+	QuietHoursEnabled  bool
+	QuietStart         string
+	QuietEnd           string
+	Errors             map[string]string
+}
+
+func (f NotificationsForm) fieldError(name string) string { return f.Errors[name] }
+
+func NotificationsFormFor(p notifications.Prefs) NotificationsForm {
+	return NotificationsForm{
+		NudgeMissedCheckIn: p.NudgeMissedCheckIn,
+		NudgeGoalDeadline:  p.NudgeGoalDeadline,
+		WeeklyReportAuto:   p.WeeklyReportAuto,
+		QuietHoursEnabled:  p.QuietHoursEnabled,
+		QuietStart:         p.QuietStart,
+		QuietEnd:           p.QuietEnd,
+	}
+}
+
+// NotificationsFormFrom re-renders a rejected submission, so a bad quiet-hours
+// time does not also lose the three toggles the person just set.
+func NotificationsFormFrom(in notifications.Input) NotificationsForm {
+	return NotificationsForm{
+		NudgeMissedCheckIn: in.NudgeMissedCheckIn,
+		NudgeGoalDeadline:  in.NudgeGoalDeadline,
+		WeeklyReportAuto:   in.WeeklyReportAuto,
+		QuietHoursEnabled:  in.QuietHoursEnabled,
+		QuietStart:         in.QuietStart,
+		QuietEnd:           in.QuietEnd,
+	}
 }
 
 // PreferencesForm carries units/objective/macro-split defaults.
@@ -61,7 +113,7 @@ type SettingsSummary struct {
 // Page renders account settings: profile, calculator defaults, and dietary
 // preferences (backed by meals.DietPreferenceService — Settings has no
 // store of its own for that data).
-templ Page(user users.User, summary SettingsSummary, profileForm ProfileForm, prefsForm PreferencesForm, allDiets []meals.Diet, selectedDietIDs map[uuid.UUID]bool, saved string) {
+templ Page(user users.User, summary SettingsSummary, profileForm ProfileForm, prefsForm PreferencesForm, notifForm NotificationsForm, allDiets []meals.Diet, selectedDietIDs map[uuid.UUID]bool, saved string) {
 	@layout.App("Settings", user, layout.BuildNav("/app/settings")) {
 		<div class="mx-auto w-full max-w-6xl space-y-6 p-6 md:p-8">
 			<header>
@@ -76,6 +128,7 @@ templ Page(user users.User, summary SettingsSummary, profileForm ProfileForm, pr
 				<p class="rounded-lg border border-signal/30 bg-signal/10 px-4 py-3 text-sm">{ saved }</p>
 			}
 			@profileCard(profileForm)
+			@notificationsCard(notifForm)
 			@preferencesCard(prefsForm)
 			@dietsCard(allDiets, selectedDietIDs)
 			@connectionsCard()
@@ -126,13 +179,56 @@ templ profileCard(f ProfileForm) {
 					@label.Label(label.Props{For: "timezone"}) {
 						Timezone
 					}
-					@input.Input(input.Props{
-						ID: "timezone", Name: "timezone", Value: f.Timezone, Required: true,
-						HasError: f.fieldError("timezone") != "", Placeholder: "Europe/Lisbon",
-					})
+					// A select rather than a text field: an unrecognised zone is
+					// stored as UTC without complaint, so a typo here would move
+					// somebody's whole day and tell them nothing.
+					@selectbox.SelectBox() {
+						@selectbox.Trigger(selectbox.TriggerProps{ID: "timezone", Name: "timezone", HasError: f.fieldError("timezone") != ""}) {
+							@selectbox.Value(selectbox.ValueProps{Placeholder: "Choose a timezone"})
+						}
+						@selectbox.Content(selectbox.ContentProps{SearchPlaceholder: "Search timezones..."}) {
+							for _, group := range users.ZoneGroupsIncluding(f.Timezone) {
+								@selectbox.Group() {
+									@selectbox.Label() {
+										{ group.Region }
+									}
+									for _, zone := range group.Zones {
+										@selectbox.Item(selectbox.ItemProps{Value: zone, Selected: f.Timezone == zone}) {
+											{ zone }
+										}
+									}
+								}
+							}
+						}
+					}
 					if f.fieldError("timezone") != "" {
 						@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
 							{ f.fieldError("timezone") }
+						}
+					}
+				}
+				@form.Item() {
+					@label.Label(label.Props{For: "coaching_tone"}) {
+						Coaching tone
+					}
+					@selectbox.SelectBox() {
+						@selectbox.Trigger(selectbox.TriggerProps{ID: "coaching_tone", Name: "coaching_tone"}) {
+							@selectbox.Value(selectbox.ValueProps{Placeholder: "Direct"})
+						}
+						@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
+							for _, tone := range users.Tones {
+								@selectbox.Item(selectbox.ItemProps{Value: string(tone), Selected: f.tone() == tone}) {
+									{ tone.Label() }
+								}
+							}
+						}
+					}
+					@form.Description() {
+						The voice the coach uses. The note below refines it.
+					}
+					if f.fieldError("coaching_tone") != "" {
+						@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+							{ f.fieldError("coaching_tone") }
 						}
 					}
 				}
@@ -142,13 +238,108 @@ templ profileCard(f ProfileForm) {
 					}
 					@textarea.Textarea(textarea.Props{
 						ID: "coaching_style", Name: "coaching_style", Rows: 3,
-						Placeholder: "Optional. E.g. \"Be direct, skip the pep talks.\"",
+						Placeholder: "Optional. E.g. \"Don't let me skip leg day twice.\"",
 					}) {
 						{ f.CoachingStyle }
+					}
+					if f.fieldError("coaching_style") != "" {
+						@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+							{ f.fieldError("coaching_style") }
+						}
 					}
 				}
 				@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90"}) {
 					Save profile
+				}
+			</form>
+		}
+	}
+}
+
+// notificationsCard is what North may say when nobody asked it anything.
+templ notificationsCard(f NotificationsForm) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface", ID: "notifications"}) {
+		@card.Header() {
+			@card.Title() {
+				Notifications
+			}
+			@card.Description() {
+				When North speaks first. Quiet hours follow your timezone.
+			}
+		}
+		@card.Content() {
+			<form method="post" action="/app/settings/notifications" class="space-y-4">
+				@ui.CSRFInput()
+				@form.Item() {
+					@switchcomp.Switch(switchcomp.Props{
+						ID: "nudge_missed_checkin", Name: "nudge_missed_checkin", Checked: f.NudgeMissedCheckIn,
+					})
+					@label.Label(label.Props{For: "nudge_missed_checkin"}) {
+						Remind me when I stop checking in
+					}
+				}
+				@form.Item() {
+					@switchcomp.Switch(switchcomp.Props{
+						ID: "nudge_goal_deadline", Name: "nudge_goal_deadline", Checked: f.NudgeGoalDeadline,
+					})
+					@label.Label(label.Props{For: "nudge_goal_deadline"}) {
+						Warn me before a goal is due
+					}
+				}
+				@form.Item() {
+					@switchcomp.Switch(switchcomp.Props{
+						ID: "weekly_report_auto", Name: "weekly_report_auto", Checked: f.WeeklyReportAuto,
+					})
+					@label.Label(label.Props{For: "weekly_report_auto"}) {
+						Write my weekly review automatically
+					}
+					@form.Description() {
+						Generated on Monday morning, your time, for the week that just ended.
+					}
+				}
+				@form.Item() {
+					@switchcomp.Switch(switchcomp.Props{
+						ID: "quiet_hours_enabled", Name: "quiet_hours_enabled", Checked: f.QuietHoursEnabled,
+					})
+					@label.Label(label.Props{For: "quiet_hours_enabled"}) {
+						Stay quiet at night
+					}
+				}
+				<div class="grid grid-cols-2 gap-3 sm:max-w-xs">
+					@form.Item() {
+						@label.Label(label.Props{For: "quiet_start"}) {
+							From
+						}
+						// A native time input rather than the timepicker component:
+						// this posts "HH:MM", which is exactly what the column's
+						// CHECK constraint and the service both expect.
+						@input.Input(input.Props{
+							ID: "quiet_start", Name: "quiet_start", Type: input.TypeTime, Value: f.QuietStart,
+							HasError: f.fieldError("quiet_start") != "",
+						})
+						if f.fieldError("quiet_start") != "" {
+							@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+								{ f.fieldError("quiet_start") }
+							}
+						}
+					}
+					@form.Item() {
+						@label.Label(label.Props{For: "quiet_end"}) {
+							To
+						}
+						@input.Input(input.Props{
+							ID: "quiet_end", Name: "quiet_end", Type: input.TypeTime, Value: f.QuietEnd,
+							HasError: f.fieldError("quiet_end") != "",
+						})
+						if f.fieldError("quiet_end") != "" {
+							@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+								{ f.fieldError("quiet_end") }
+							}
+						}
+					}
+				</div>
+				@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90"}) {
+					Save notifications
 				}
 			</form>
 		}

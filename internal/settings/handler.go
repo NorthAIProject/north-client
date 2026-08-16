@@ -19,6 +19,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/connections"
 	"github.com/NorthAIProject/north-client/internal/meals"
 	"github.com/NorthAIProject/north-client/internal/messaging"
+	"github.com/NorthAIProject/north-client/internal/notifications"
 	"github.com/NorthAIProject/north-client/internal/preferences"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
@@ -28,12 +29,13 @@ import (
 )
 
 type Handler struct {
-	users       *users.Service
-	preferences *preferences.Service
-	diets       *meals.DietPreferenceService
-	connections *connections.Service
-	aicreds     *aicreds.Service
-	audit       *toolaudit.Service
+	users         *users.Service
+	preferences   *preferences.Service
+	notifications *notifications.Service
+	diets         *meals.DietPreferenceService
+	connections   *connections.Service
+	aicreds       *aicreds.Service
+	audit         *toolaudit.Service
 
 	// messaging issues and revokes platform link codes. Nil is not a valid
 	// state — the service is built whether or not a bot token exists, because
@@ -48,6 +50,7 @@ type Handler struct {
 func NewHandler(
 	u *users.Service,
 	p *preferences.Service,
+	n *notifications.Service,
 	d *meals.DietPreferenceService,
 	c *connections.Service,
 	a *aicreds.Service,
@@ -56,7 +59,7 @@ func NewHandler(
 	telegram config.TelegramConfig,
 ) *Handler {
 	return &Handler{
-		users: u, preferences: p, diets: d, connections: c, aicreds: a,
+		users: u, preferences: p, notifications: n, diets: d, connections: c, aicreds: a,
 		audit: audit, messaging: m, telegram: telegram,
 	}
 }
@@ -65,6 +68,7 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Get("/settings", h.show)
 	r.Post("/settings/profile", h.updateProfile)
 	r.Post("/settings/preferences", h.updatePreferences)
+	r.Post("/settings/notifications", h.updateNotifications)
 	r.Post("/settings/diets", h.updateDiets)
 
 	r.Get("/settings/connections", h.showConnections)
@@ -152,7 +156,7 @@ func (h *Handler) removeAICredential(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) show(w http.ResponseWriter, r *http.Request) {
-	h.render(w, r, settingspages.ProfileFormFor(auth.MustUser(r.Context())), nil, "")
+	h.render(w, r, settingspages.ProfileFormFor(auth.MustUser(r.Context())), nil, nil, "")
 }
 
 func (h *Handler) updateProfile(w http.ResponseWriter, r *http.Request) {
@@ -167,15 +171,17 @@ func (h *Handler) updateProfile(w http.ResponseWriter, r *http.Request) {
 		DisplayName:   strings.TrimSpace(r.PostFormValue("display_name")),
 		Timezone:      strings.TrimSpace(r.PostFormValue("timezone")),
 		CoachingStyle: strings.TrimSpace(r.PostFormValue("coaching_style")),
+		CoachingTone:  users.Tone(strings.TrimSpace(r.PostFormValue("coaching_tone"))),
 	}
 
 	if _, err := h.users.UpdateProfile(r.Context(), user.ID, users.Profile{
-		DisplayName: form.DisplayName, Timezone: form.Timezone, CoachingStyle: form.CoachingStyle,
+		DisplayName: form.DisplayName, Timezone: form.Timezone,
+		CoachingStyle: form.CoachingStyle, CoachingTone: form.CoachingTone,
 	}); err != nil {
 		var fieldErrs apperr.FieldErrors
 		if apperr.As(err, &fieldErrs) {
 			form.Errors = fieldErrs.Messages()
-			h.render(w, r, form, nil, "")
+			h.render(w, r, form, nil, nil, "")
 			return
 		}
 		h.fail(w, r, err)
@@ -206,7 +212,7 @@ func (h *Handler) updatePreferences(w http.ResponseWriter, r *http.Request) {
 				UnitsSystem: in.UnitsSystem, DefaultGoal: in.DefaultGoal, DefaultMacroSplit: in.DefaultMacroSplit,
 				Errors: fieldErrs.Messages(),
 			}
-			h.render(w, r, settingspages.ProfileFormFor(user), &prefsForm, "")
+			h.render(w, r, settingspages.ProfileFormFor(user), &prefsForm, nil, "")
 			return
 		}
 		h.fail(w, r, err)
@@ -214,6 +220,46 @@ func (h *Handler) updatePreferences(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Redirect(w, r, "/app/settings", http.StatusSeeOther)
+}
+
+// updateNotifications saves what North may say unprompted.
+func (h *Handler) updateNotifications(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+
+	if err := r.ParseForm(); err != nil {
+		h.fail(w, r, apperr.ErrValidation)
+		return
+	}
+
+	in := notifications.Input{
+		NudgeMissedCheckIn: checked(r, "nudge_missed_checkin"),
+		NudgeGoalDeadline:  checked(r, "nudge_goal_deadline"),
+		WeeklyReportAuto:   checked(r, "weekly_report_auto"),
+		QuietHoursEnabled:  checked(r, "quiet_hours_enabled"),
+		QuietStart:         strings.TrimSpace(r.PostFormValue("quiet_start")),
+		QuietEnd:           strings.TrimSpace(r.PostFormValue("quiet_end")),
+	}
+
+	if _, err := h.notifications.Upsert(r.Context(), user.ID, in); err != nil {
+		var fieldErrs apperr.FieldErrors
+		if apperr.As(err, &fieldErrs) {
+			notifForm := settingspages.NotificationsFormFrom(in)
+			notifForm.Errors = fieldErrs.Messages()
+			h.render(w, r, settingspages.ProfileFormFor(user), nil, &notifForm, "")
+			return
+		}
+		h.fail(w, r, err)
+		return
+	}
+
+	http.Redirect(w, r, "/app/settings", http.StatusSeeOther)
+}
+
+// checked reads a checkbox. An unchecked box sends nothing at all, which is
+// what makes this a helper rather than a PostFormValue comparison at each of
+// the four call sites above.
+func checked(r *http.Request, name string) bool {
+	return r.PostFormValue(name) != ""
 }
 
 func (h *Handler) updateDiets(w http.ResponseWriter, r *http.Request) {
@@ -435,10 +481,18 @@ func (h *Handler) renderConnections(
 	}
 }
 
-// render loads whatever the caller didn't already have (preferences, diets)
-// and shows the page. prefsForm is nil on GET /settings and on a profile
-// validation failure, where the caller has no reason to have built one.
-func (h *Handler) render(w http.ResponseWriter, r *http.Request, profileForm settingspages.ProfileForm, prefsForm *settingspages.PreferencesForm, saved string) {
+// render loads whatever the caller didn't already have (preferences,
+// notification prefs, diets) and shows the page. A nil form is one the caller
+// had no reason to build — on GET /settings, or when some other form on the
+// page is the one that failed validation.
+func (h *Handler) render(
+	w http.ResponseWriter,
+	r *http.Request,
+	profileForm settingspages.ProfileForm,
+	prefsForm *settingspages.PreferencesForm,
+	notifForm *settingspages.NotificationsForm,
+	saved string,
+) {
 	user := auth.MustUser(r.Context())
 	ctx := r.Context()
 
@@ -450,6 +504,16 @@ func (h *Handler) render(w http.ResponseWriter, r *http.Request, profileForm set
 		}
 		f := settingspages.PreferencesFormFor(p)
 		prefsForm = &f
+	}
+
+	if notifForm == nil {
+		n, err := h.notifications.Get(ctx, user.ID)
+		if err != nil {
+			h.fail(w, r, err)
+			return
+		}
+		f := settingspages.NotificationsFormFor(n)
+		notifForm = &f
 	}
 
 	allDiets, err := h.diets.ListDiets(ctx)
@@ -476,7 +540,7 @@ func (h *Handler) render(w http.ResponseWriter, r *http.Request, profileForm set
 	summary := buildSettingsSummary(user, prefsForm.UnitsSystem, len(userDiets), len(conns))
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := settingspages.Page(user, summary, profileForm, *prefsForm, allDiets, selected, saved).Render(ctx, w); err != nil {
+	if err := settingspages.Page(user, summary, profileForm, *prefsForm, *notifForm, allDiets, selected, saved).Render(ctx, w); err != nil {
 		middleware.FromContext(ctx).Error("render settings", slog.Any("error", err))
 	}
 }

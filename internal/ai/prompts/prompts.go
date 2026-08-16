@@ -28,6 +28,7 @@ var (
 // is a compile error rather than a runtime one.
 const (
 	CoachSystem       = "coach_system.md"
+	CoachTone         = "coach_tone.md"
 	WorkoutPlan       = "workout_plan.md"
 	FormAnalysis      = "form_analysis.md"
 	ConversationTitle = "conversation_title.md"

@@ -63,6 +63,104 @@ func TestRegisterWithExplicitID(t *testing.T) {
 	}
 }
 
+func TestNewAccountStartsOnTheDefaultTone(t *testing.T) {
+	pool := testdb.New(t)
+	svc := users.NewService(users.NewRepository(pool))
+
+	user, err := svc.Register(context.Background(), users.Registration{
+		Email:       "tone-default@north.test",
+		DisplayName: "Toneless",
+		Timezone:    "UTC",
+	})
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	if user.CoachingTone != users.ToneDefault {
+		t.Fatalf("tone = %q, want %q", user.CoachingTone, users.ToneDefault)
+	}
+}
+
+func TestUpdateProfileStoresTone(t *testing.T) {
+	pool := testdb.New(t)
+	svc := users.NewService(users.NewRepository(pool))
+	ctx := context.Background()
+
+	user := mustRegister(t, svc, "tone-set@north.test")
+
+	updated, err := svc.UpdateProfile(ctx, user.ID, users.Profile{
+		DisplayName:  "Tone Setter",
+		Timezone:     "Europe/Lisbon",
+		CoachingTone: users.ToneToughLove,
+	})
+	if err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if updated.CoachingTone != users.ToneToughLove {
+		t.Fatalf("tone = %q, want %q", updated.CoachingTone, users.ToneToughLove)
+	}
+
+	// An empty tone is a form that predates the field, not a request for
+	// silence about it.
+	updated, err = svc.UpdateProfile(ctx, user.ID, users.Profile{
+		DisplayName: "Tone Setter", Timezone: "Europe/Lisbon",
+	})
+	if err != nil {
+		t.Fatalf("update without tone: %v", err)
+	}
+	if updated.CoachingTone != users.ToneDefault {
+		t.Fatalf("tone = %q, want the default", updated.CoachingTone)
+	}
+}
+
+func TestUpdateProfileRefusesAnUnknownTone(t *testing.T) {
+	pool := testdb.New(t)
+	svc := users.NewService(users.NewRepository(pool))
+
+	user := mustRegister(t, svc, "tone-bad@north.test")
+
+	_, err := svc.UpdateProfile(context.Background(), user.ID, users.Profile{
+		DisplayName: "Tone Setter", Timezone: "UTC", CoachingTone: users.Tone("shouty"),
+	})
+
+	var fieldErrs apperr.FieldErrors
+	if !apperr.As(err, &fieldErrs) {
+		t.Fatalf("expected field errors, got %v", err)
+	}
+	if fieldErrs.Messages()["coaching_tone"] == "" {
+		t.Fatalf("no coaching_tone message: %v", fieldErrs.Messages())
+	}
+}
+
+// The opposite of the tone rule, and deliberately so: a zone this build cannot
+// resolve arrives from a browser or an import, and must never block a save.
+func TestUpdateProfileFallsBackToUTC(t *testing.T) {
+	pool := testdb.New(t)
+	svc := users.NewService(users.NewRepository(pool))
+
+	user := mustRegister(t, svc, "tz-fallback@north.test")
+
+	updated, err := svc.UpdateProfile(context.Background(), user.ID, users.Profile{
+		DisplayName: "Traveller", Timezone: "Mars/Olympus_Mons",
+	})
+	if err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if updated.Timezone != "UTC" {
+		t.Fatalf("timezone = %q, want UTC", updated.Timezone)
+	}
+}
+
+func mustRegister(t *testing.T, svc *users.Service, email string) users.User {
+	t.Helper()
+	user, err := svc.Register(context.Background(), users.Registration{
+		Email: email, DisplayName: "Test", Timezone: "UTC",
+	})
+	if err != nil {
+		t.Fatalf("register %s: %v", email, err)
+	}
+	return user
+}
+
 func TestRegisterConflict(t *testing.T) {
 	pool := testdb.New(t)
 	svc := users.NewService(users.NewRepository(pool))

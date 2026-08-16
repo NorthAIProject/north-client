@@ -121,6 +121,7 @@ type Profile struct {
 	DisplayName   string
 	Timezone      string
 	CoachingStyle string
+	CoachingTone  Tone
 }
 
 func (r *Repository) UpdateProfile(ctx context.Context, id uuid.UUID, p Profile) (User, error) {
@@ -129,11 +130,17 @@ func (r *Repository) UpdateProfile(ctx context.Context, id uuid.UUID, p Profile)
 		style = &s
 	}
 
+	tone := p.CoachingTone
+	if tone == "" {
+		tone = ToneDefault
+	}
+
 	row, err := r.q.UpdateUserProfile(ctx, usersdb.UpdateUserProfileParams{
 		ID:            id,
 		DisplayName:   strings.TrimSpace(p.DisplayName),
 		Timezone:      p.Timezone,
 		CoachingStyle: style,
+		CoachingTone:  string(tone),
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

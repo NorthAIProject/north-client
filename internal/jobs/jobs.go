@@ -84,6 +84,11 @@ const (
 	// KindSweepNudges evaluates missed check-ins and approaching deadlines
 	// for onboarded accounts and stores any new in-app notes.
 	KindSweepNudges Kind = "sweep_nudges"
+
+	// KindSweepReports enqueues the weekly review for accounts that asked for
+	// it, once their own week has closed. Hourly, because "their own week"
+	// closes at a different absolute time in every timezone.
+	KindSweepReports Kind = "sweep_reports"
 )
 
 // ExtractMemoriesPayload is the job body for KindExtractMemories.
