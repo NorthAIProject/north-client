@@ -143,6 +143,12 @@ func (w *Worker) claimAndRun(ctx context.Context) (bool, error) {
 	runCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), jobTimeout)
 	defer cancel()
 
+	// The handler logs through the context like every other layer does, so it
+	// gets the logger built above rather than the default one. Without this a
+	// handler's own errors arrive with no job id, no kind, and no request —
+	// which is the state an operator is least able to act on.
+	runCtx = middleware.WithLogger(runCtx, log)
+
 	started := time.Now()
 	err = runSafely(runCtx, handler, job.Payload)
 	elapsed := time.Since(started)

@@ -54,6 +54,20 @@ func FromContext(ctx context.Context) *slog.Logger {
 	return slog.Default()
 }
 
+// WithLogger attaches a logger to a context that no HTTP request created.
+//
+// The worker needs it. It builds a logger carrying the job id, the kind, the
+// attempt and the request that queued the job — and without this the handler
+// running that job calls FromContext, gets the default logger, and its own
+// error lines land with none of that attached. A job failure an operator cannot
+// tie to a job is most of the way to no log at all.
+func WithLogger(ctx context.Context, log *slog.Logger) context.Context {
+	if log == nil {
+		return ctx
+	}
+	return loggerKey.set(ctx, log)
+}
+
 // responseRecorder captures the status and size that were actually written.
 type responseRecorder struct {
 	http.ResponseWriter
