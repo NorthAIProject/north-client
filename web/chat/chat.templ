@@ -62,7 +62,25 @@ type CoachStats struct {
 // Page is a conversation with its history and composer.
 templ Page(user users.User, conversation conversations.Conversation, messages []conversations.Message, list []conversations.Conversation, stats CoachStats, pending []PendingTool, resuming bool) {
 	@layout.App(conversation.DisplayTitle(), user, layout.BuildNav("/app/chat")) {
-		<div id="chat-root" class="flex h-full" x-data="{ threads: false }">
+		<div
+			id="chat-root"
+			class="flex h-full min-h-0"
+			x-data="{
+				threads: false,
+				fit() {
+					const vv = window.visualViewport
+					if (!vv) return
+					this.$el.style.height = vv.height + 'px'
+				}
+			}"
+			x-init="
+				fit()
+				if (window.visualViewport) {
+					visualViewport.addEventListener('resize', () => fit())
+					visualViewport.addEventListener('scroll', () => fit())
+				}
+			"
+		>
 			@threadList(list, conversation.ID, stats)
 			<div class="flex min-w-0 flex-1 flex-col">
 				@chatHeader(conversation)
@@ -123,7 +141,7 @@ templ chatHeader(c conversations.Conversation) {
 			<button
 				type="button"
 				@click="threads = !threads"
-				class="hover:bg-accent rounded-md p-1.5 lg:hidden"
+				class="hover:bg-accent flex min-h-11 min-w-11 items-center justify-center rounded-md p-0 lg:hidden"
 				aria-label="Show conversations"
 			>
 				@icon.PanelLeft(icon.Props{Class: "size-4"})
@@ -145,7 +163,7 @@ templ chatHeader(c conversations.Conversation) {
 			@ui.CSRFInput()
 			<button
 				type="submit"
-				class="text-muted-foreground hover:bg-accent hover:text-destructive rounded-md p-1.5 transition-colors"
+				class="text-muted-foreground hover:bg-accent hover:text-destructive flex min-h-11 min-w-11 items-center justify-center rounded-md p-0 transition-colors"
 				aria-label="Delete conversation"
 			>
 				@icon.Trash2(icon.Props{Class: "size-4"})
@@ -200,7 +218,7 @@ templ threadLink(c conversations.Conversation, active bool) {
 		<a
 			href={ templ.SafeURL("/app/chat/" + c.ID.String()) }
 			aria-current="page"
-			class="text-foreground relative flex items-center gap-2 truncate rounded-md py-2 pl-3 pr-3 text-sm font-medium before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-signal"
+			class="text-foreground relative flex min-h-11 items-center gap-2 truncate rounded-md py-2 pl-3 pr-3 text-sm font-medium before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-signal"
 		>
 			<span class="min-w-0 truncate">{ c.DisplayTitle() }</span>
 			if c.IsReflection() {
@@ -212,7 +230,7 @@ templ threadLink(c conversations.Conversation, active bool) {
 	} else {
 		<a
 			href={ templ.SafeURL("/app/chat/" + c.ID.String()) }
-			class="text-muted-foreground hover:bg-accent/60 hover:text-foreground flex items-center gap-2 truncate rounded-md px-3 py-2 text-sm transition-colors"
+			class="text-muted-foreground hover:bg-accent/60 hover:text-foreground flex min-h-11 items-center gap-2 truncate rounded-md px-3 py-2 text-sm transition-colors"
 		>
 			<span class="min-w-0 truncate">{ c.DisplayTitle() }</span>
 			if c.IsReflection() {
@@ -326,7 +344,7 @@ templ conversationStarters() {
 				<button
 					type="button"
 					@click={ "document.getElementById('message').value = " + jsString(starter) + "; document.getElementById('message').focus()" }
-					class="border-hairline bg-surface hover:bg-accent/50 rounded-lg border p-3 text-left text-sm transition-colors"
+					class="border-hairline bg-surface hover:bg-accent/50 min-h-11 rounded-lg border p-3 text-left text-sm transition-colors"
 				>
 					{ starter }
 				</button>
@@ -355,7 +373,7 @@ templ Bubble(m conversations.Message) {
 			<button
 				type="button"
 				@click={ "navigator.clipboard.writeText(" + jsString(m.Content) + "); copied = true; setTimeout(() => copied = false, 1500)" }
-				class="text-muted-foreground hover:text-foreground ml-1 text-xs opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"
+				class="text-muted-foreground hover:text-foreground ml-1 text-xs opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100"
 			>
 				<span x-show="!copied">Copy</span>
 				<span x-show="copied" x-cloak>Copied</span>
@@ -479,13 +497,13 @@ func streamURL(conversationID uuid.UUID, message string) string {
 }
 
 templ composer(conversationID uuid.UUID, draft string) {
-	<div class="border-border border-t">
+	<div class="border-border border-t pb-[max(0.75rem,env(safe-area-inset-bottom))]">
 		// x-data is required even though it holds nothing: Alpine only processes
 		// directives inside a scope, so without it the Enter-to-send binding on
 		// the textarea below is silently ignored.
 		<form
 			x-data
-			class="mx-auto flex w-full max-w-3xl items-end gap-2 p-4"
+			class="mx-auto flex w-full max-w-3xl items-end gap-2 px-4 pt-3 pb-3"
 			hx-post={ "/app/chat/" + conversationID.String() + "/messages" }
 			hx-target="#transcript > div"
 			hx-swap="beforeend"
@@ -507,7 +525,7 @@ templ composer(conversationID uuid.UUID, draft string) {
 					"@keydown.enter.prevent": "if (!$event.shiftKey) $el.form.requestSubmit()",
 				},
 			})
-			@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeIcon}) {
+			@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeIcon, Class: "min-h-11 min-w-11"}) {
 				@icon.ArrowUp(icon.Props{Class: "size-4"})
 			}
 		</form>
@@ -551,15 +569,15 @@ templ ApprovalCard(conversationID uuid.UUID, pending []PendingTool) {
 			}
 		}
 		<div class="mt-3 flex gap-2">
-			<form method="post" action={ templ.SafeURL(resolveURL(conversationID, pending[0].MessageID, "approve")) }>
+			<form method="post" action={ templ.SafeURL(resolveURL(conversationID, pending[0].MessageID, "approve")) } class="flex-1">
 				@ui.CSRFInput()
-				@button.Button(button.Props{Type: "submit"}) {
+				@button.Button(button.Props{Type: "submit", Class: "min-h-11 w-full"}) {
 					Yes, go ahead
 				}
 			</form>
-			<form method="post" action={ templ.SafeURL(resolveURL(conversationID, pending[0].MessageID, "decline")) }>
+			<form method="post" action={ templ.SafeURL(resolveURL(conversationID, pending[0].MessageID, "decline")) } class="flex-1">
 				@ui.CSRFInput()
-				@button.Button(button.Props{Type: "submit", Variant: button.VariantOutline}) {
+				@button.Button(button.Props{Type: "submit", Variant: button.VariantOutline, Class: "min-h-11 w-full"}) {
 					No
 				}
 			</form>
