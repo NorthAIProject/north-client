@@ -8,6 +8,7 @@ import (
 	"github.com/posthog/posthog-go"
 
 	"github.com/NorthAIProject/north-client/internal/ai"
+	"github.com/NorthAIProject/north-client/internal/shared/metrics"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 )
 
@@ -18,12 +19,23 @@ import (
 // every method a no-op, so a deployment with no key coaches exactly as it
 // did before this existed.
 type Analytics struct {
-	client posthog.Client
+	client  posthog.Client
+	metrics *metrics.Registry
 }
 
 // NewAnalytics wraps a PostHog client. client may be nil.
 func NewAnalytics(client posthog.Client) *Analytics {
 	return &Analytics{client: client}
+}
+
+// WithMetrics attaches counters. Returns the analytics so it can be wired in
+// one expression at startup; nil leaves counting off.
+func (a *Analytics) WithMetrics(m *metrics.Registry) *Analytics {
+	if a == nil {
+		return a
+	}
+	a.metrics = m
+	return a
 }
 
 // generation is one call to a model, whichever provider answered it.
@@ -50,6 +62,16 @@ func (a *Analytics) captureGeneration(ctx context.Context, g generation) {
 	// slow the coach was or what it spent — anywhere. trace_id is what joins
 	// this line to the PostHog trace when both exist.
 	logGeneration(ctx, g)
+
+	// Counted here rather than at the call site, because there is more than one
+	// call site: the turn itself, and the smaller call that names a
+	// conversation. The second was logged but not counted when the counter
+	// lived beside the first, which is exactly the kind of gap a second call
+	// site opens.
+	if a != nil {
+		a.metrics.CoachGeneration(g.provider, g.latency, g.err != nil)
+		a.metrics.CoachTokens(g.provider, g.usage.InputTokens, g.usage.OutputTokens)
+	}
 
 	if a == nil || a.client == nil {
 		return

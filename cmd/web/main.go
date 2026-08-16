@@ -567,12 +567,11 @@ func routes(
 		Queue:         queue,
 		Chains:        cfg.AI.ChainSet(),
 		Tools:         agentTools,
-		Metrics:       metricsReg,
 		Declines:      auditRecorder,
 		// Tried ahead of the chain above, so a user who supplied a key is
 		// served by it and a user who did not is unaffected.
 		Own:       aicredSvc,
-		Analytics: coach.NewAnalytics(posthogClient),
+		Analytics: coach.NewAnalytics(posthogClient).WithMetrics(metricsReg),
 		Model:     cfg.AI.Model,
 		FastModel: cfg.AI.FastModel,
 	})
