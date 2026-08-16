@@ -10,13 +10,20 @@ templ Base(title string) {
 	<html lang="en" class="h-full dark">
 		<head>
 			<meta charset="UTF-8"/>
-			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+			<meta name="theme-color" content="#1C1C1F"/>
+			<meta name="mobile-web-app-capable" content="yes"/>
+			<meta name="apple-mobile-web-app-capable" content="yes"/>
+			<meta name="apple-mobile-web-app-title" content="North"/>
+			<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+			<link rel="manifest" href="/manifest.webmanifest"/>
+			<link rel="apple-touch-icon" href="/assets/brand/pwa-180.png"/>
 			<link rel="preload" href="/assets/fonts/geist/geist-variable.woff2" as="font" type="font/woff2" crossorigin="anonymous"/>
 			<link rel="preload" href="/assets/fonts/geist/geist-mono-variable.woff2" as="font" type="font/woff2" crossorigin="anonymous"/>
 			<title>{ pageTitle(title) }</title>
 			// SVG first, so a browser that understands it gets the sharp one; the
-			// PNG stays as the fallback for those that do not, and as the source
-			// for the PWA icon sizes NOR-50 will want.
+			// PNG stays as the fallback for those that do not. Install icons are
+			// the opaque plates in web/assets/brand/pwa-*.png.
 			<link rel="icon" type="image/svg+xml" href="/assets/brand/favicon.svg"/>
 			<link rel="icon" type="image/png" href="/assets/brand/north-logo-mark.png"/>
 			<link href="/assets/css/output.css" rel="stylesheet"/>
@@ -43,6 +50,7 @@ templ Base(title string) {
 			<script src="/assets/js/vendor/htmx.min.js"></script>
 			<script src="/assets/js/vendor/htmx-ext-sse.js"></script>
 			<script defer src="/assets/js/vendor/alpine.min.js"></script>
+			<script src="/assets/js/shared/pwa.js" defer></script>
 		</head>
 		<body class="h-full bg-background text-foreground antialiased">
 			{ children... }

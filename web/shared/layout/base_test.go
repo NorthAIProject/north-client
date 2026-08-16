@@ -52,7 +52,7 @@ func TestBaseLinksBothFavicons(t *testing.T) {
 	out := b.String()
 
 	// SVG first so a browser that understands it takes the sharp one; the PNG
-	// is the fallback and the source for PWA icon sizes.
+	// is the tab fallback. Install icons are linked separately as apple-touch-icon.
 	svg := strings.Index(out, `href="/assets/brand/favicon.svg"`)
 	png := strings.Index(out, `href="/assets/brand/north-logo-mark.png"`)
 
@@ -63,5 +63,33 @@ func TestBaseLinksBothFavicons(t *testing.T) {
 		t.Error("no PNG favicon fallback")
 	case svg > png:
 		t.Error("the PNG fallback is declared before the SVG; browsers take the last they understand")
+	}
+}
+
+// Install chrome is the one thing a missing tag silently breaks: iOS Add to
+// Home Screen and Chromium's install criteria both fail closed, and the
+// symptom is "this site is not installable" with no error on the page.
+func TestBaseDeclaresPWAChrome(t *testing.T) {
+	var b strings.Builder
+	if err := Base("").Render(context.Background(), &b); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	out := b.String()
+
+	for _, want := range []string{
+		"viewport-fit=cover",
+		`rel="manifest"`,
+		`href="/manifest.webmanifest"`,
+		`rel="apple-touch-icon"`,
+		`href="/assets/brand/pwa-180.png"`,
+		`name="theme-color"`,
+		"#1C1C1F",
+		`name="apple-mobile-web-app-capable"`,
+		`name="mobile-web-app-capable"`,
+		"/assets/js/shared/pwa.js",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("document is missing %q", want)
+		}
 	}
 }
