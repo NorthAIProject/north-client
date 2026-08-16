@@ -45,6 +45,12 @@ type generation struct {
 // instead of landing as isolated rows — see the AI Observability skill this
 // implements.
 func (a *Analytics) captureGeneration(ctx context.Context, g generation) {
+	// Logged before the PostHog check, and deliberately outside it. PostHog is
+	// optional in production, so a deployment without it had no record of how
+	// slow the coach was or what it spent — anywhere. trace_id is what joins
+	// this line to the PostHog trace when both exist.
+	logGeneration(ctx, g)
+
 	if a == nil || a.client == nil {
 		return
 	}
@@ -103,4 +109,28 @@ func usageOrZero(u *ai.Usage) ai.Usage {
 		return ai.Usage{}
 	}
 	return *u
+}
+
+// logGeneration records one model call as a structured log line.
+//
+// Every field here is a number, an identifier, or a provider name. The prompt
+// and the reply are deliberately absent: a person's conversation with their
+// coach is the most sensitive thing North stores, and an observability change
+// is exactly where it would leak by accident. See the test that pins it.
+func logGeneration(ctx context.Context, g generation) {
+	log := middleware.FromContext(ctx).With(
+		slog.String("trace_id", g.traceID),
+		slog.String("conversation_id", g.sessionID),
+		slog.String("provider", g.provider),
+		slog.String("model", g.model),
+		slog.Int("input_tokens", g.usage.InputTokens),
+		slog.Int("output_tokens", g.usage.OutputTokens),
+		slog.Int64("latency_ms", g.latency.Milliseconds()),
+	)
+
+	if g.err != nil {
+		log.Error("ai generation failed", slog.Any("error", g.err))
+		return
+	}
+	log.Info("ai generation")
 }

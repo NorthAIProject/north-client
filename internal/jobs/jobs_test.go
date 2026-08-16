@@ -1,11 +1,13 @@
 package jobs_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -358,5 +360,48 @@ func TestAJobQueuedOutsideARequestHasNoRequestID(t *testing.T) {
 	}
 	if job.RequestID != "" {
 		t.Errorf("request id = %q, want empty for a job no request created", job.RequestID)
+	}
+}
+
+// The worker builds a logger carrying job_id, kind and request_id — and the
+// handler never saw it. A handler's own error lines are exactly what an
+// operator reads when a job fails, and they were landing unattributed.
+func TestAHandlersOwnLogsCarryTheJobContext(t *testing.T) {
+	q := newQueue(t)
+
+	var buf bytes.Buffer
+	worker := jobs.NewWorker(q, slog.New(slog.NewTextHandler(&buf, nil)))
+	worker.Register(jobs.KindAnalyzeFormVideo, func(ctx context.Context, _ json.RawMessage) error {
+		middleware.FromContext(ctx).Error("something went wrong inside the handler")
+		return errors.New("handler failed")
+	})
+
+	ctx := middleware.WithRequestID(context.Background(), "req-xyz789")
+	if _, err := q.Enqueue(ctx, jobs.KindAnalyzeFormVideo, payload{Value: "x"}); err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+
+	runCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	// Run returns when the context is cancelled; the deferred cancel below is
+	// the only thing that stops it, and its error is that cancellation.
+	go func() { _ = worker.Run(runCtx) }()
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if strings.Contains(buf.String(), "something went wrong inside the handler") {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "something went wrong inside the handler") {
+		t.Fatalf("the handler's own log never appeared: %s", out)
+	}
+	for _, want := range []string{"job_id", "kind=analyze_form_video", "request_id=req-xyz789"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("handler log is missing %q; got %s", want, out)
+		}
 	}
 }
