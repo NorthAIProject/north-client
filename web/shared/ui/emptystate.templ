@@ -1,0 +1,27 @@
+package ui
+
+// EmptyProps is the copy for a surface with nothing on it yet. The CTA is
+// passed as children so each page can use a link, a form, or an Alpine click.
+type EmptyProps struct {
+	Eyebrow string
+	Title   string
+	Body    string
+	Class   string
+}
+
+// Empty is the shared first-run block. A blank list is not an empty page —
+// it is an invitation to do the one next thing.
+templ Empty(p EmptyProps) {
+	<div class={ "flex flex-col items-center py-12 text-center", p.Class }>
+		if p.Eyebrow != "" {
+			@MonoLabel(p.Eyebrow)
+		}
+		<h2 class="mt-2 text-lg font-medium tracking-tight">{ p.Title }</h2>
+		if p.Body != "" {
+			<p class="text-muted-foreground mt-1 max-w-sm text-sm leading-relaxed">{ p.Body }</p>
+		}
+		<div class="mt-4 flex flex-wrap items-center justify-center gap-2">
+			{ children... }
+		</div>
+	</div>
+}
