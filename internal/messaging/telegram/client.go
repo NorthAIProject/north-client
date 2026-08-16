@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
@@ -35,6 +36,7 @@ type Client struct {
 	token   string
 	baseURL string
 	http    *http.Client
+	logger  *slog.Logger
 }
 
 func NewClient(token string) *Client {
@@ -62,20 +64,47 @@ func (c *Client) Send(ctx context.Context, externalID string, msg messaging.Outb
 		return err
 	}
 
+	// Split on the raw text, then format each piece: the limit Telegram
+	// enforces is on what a person reads, and tags do not count towards it.
 	parts := splitMessage(msg.Text, maxMessageRunes)
 	for i, part := range parts {
 		body := map[string]any{
-			"chat_id": chat,
-			"text":    part,
+			"chat_id":    chat,
+			"text":       markdownToHTML(part),
+			"parse_mode": "HTML",
 		}
 		if last := i == len(parts)-1; last && len(msg.Options) > 0 {
 			body["reply_markup"] = inlineKeyboard(msg.Options)
 		}
+
+		err := c.call(ctx, "sendMessage", body, nil)
+		if err == nil {
+			continue
+		}
+
+		// Telegram rejects the whole message when it cannot parse the markup,
+		// so a single stray marker would otherwise cost the person their entire
+		// answer. Slightly plain prose is a much smaller loss, and this is the
+		// part of the formatting that actually matters.
+		c.log().Warn("telegram refused formatted text; resending it plain", "error", err)
+
+		delete(body, "parse_mode")
+		body["text"] = stripMarkdown(part)
 		if err := c.call(ctx, "sendMessage", body, nil); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// log is the client's logger, defaulted rather than required: a Client is
+// constructed from a token alone in several places and none of them should have
+// to think about logging to send a message.
+func (c *Client) log() *slog.Logger {
+	if c.logger != nil {
+		return c.logger
+	}
+	return slog.Default()
 }
 
 // Typing shows the "typing…" indicator. Best effort: a failure here is not

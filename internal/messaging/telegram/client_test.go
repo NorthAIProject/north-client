@@ -32,16 +32,11 @@ func newBotAPI(t *testing.T) *botAPI {
 
 	api := &botAPI{}
 	api.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		raw, _ := io.ReadAll(r.Body)
-
-		var body map[string]any
-		_ = json.Unmarshal(raw, &body)
-
 		// Path is /bot<token>/<method>; the token must never be asserted on.
 		parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/"), "/")
 
 		api.mu.Lock()
-		api.calls = append(api.calls, botCall{method: parts[len(parts)-1], body: body})
+		api.calls = append(api.calls, botCall{method: parts[len(parts)-1], body: decodeBody(r)})
 		api.mu.Unlock()
 
 		_, _ = w.Write([]byte(`{"ok":true,"result":{}}`))
@@ -54,6 +49,15 @@ func (a *botAPI) client() *Client {
 	c := NewClient("test-token")
 	c.baseURL = a.srv.URL
 	return c
+}
+
+// decodeBody reads one Bot API request body.
+func decodeBody(r *http.Request) map[string]any {
+	raw, _ := io.ReadAll(r.Body)
+
+	var body map[string]any
+	_ = json.Unmarshal(raw, &body)
+	return body
 }
 
 func (a *botAPI) sends() []botCall { return a.method("sendMessage") }
