@@ -15,6 +15,7 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
 	"github.com/NorthAIProject/north-client/web/shared/ui/card"
 	"github.com/NorthAIProject/north-client/web/shared/ui/checkbox"
+	"github.com/NorthAIProject/north-client/web/shared/ui/dialog"
 	"github.com/NorthAIProject/north-client/web/shared/ui/form"
 	"github.com/NorthAIProject/north-client/web/shared/ui/input"
 	"github.com/NorthAIProject/north-client/web/shared/ui/label"
@@ -116,7 +117,11 @@ type SettingsSummary struct {
 // Page renders account settings: profile, calculator defaults, and dietary
 // preferences (backed by meals.DietPreferenceService — Settings has no
 // store of its own for that data).
-templ Page(user users.User, summary SettingsSummary, profileForm ProfileForm, prefsForm PreferencesForm, notifForm NotificationsForm, allDiets []meals.Diet, selectedDietIDs map[uuid.UUID]bool, saved string) {
+// deleteErr is the one thing that can go wrong on this page without a form of
+// its own: a confirmation that did not match. One string rather than a form
+// struct because there is one field and one message, and inventing a
+// view-model for that would be more machinery than the failure deserves.
+templ Page(user users.User, summary SettingsSummary, profileForm ProfileForm, prefsForm PreferencesForm, notifForm NotificationsForm, allDiets []meals.Diet, selectedDietIDs map[uuid.UUID]bool, saved string, deleteErr string) {
 	@layout.App("Settings", user, layout.BuildNav("/app/settings")) {
 		<div class="mx-auto w-full max-w-6xl space-y-6 p-6 md:p-8">
 			<header>
@@ -135,10 +140,12 @@ templ Page(user users.User, summary SettingsSummary, profileForm ProfileForm, pr
 			@preferencesCard(prefsForm)
 			@dietsCard(allDiets, selectedDietIDs)
 			@connectionsCard()
+			@yourDataCard(user, deleteErr)
 		</div>
 		@label.Script()
 		@selectbox.Script()
 		@checkbox.Script()
+		@dialog.Script()
 	}
 }
 
@@ -494,6 +501,98 @@ templ connectionsCard() {
 					View activity
 				}
 			</div>
+		}
+	}
+}
+
+// yourDataCard puts leaving with your data and leaving altogether in the same
+// place, because they are the same question asked twice. Being able to take a
+// copy is what makes deleting a real option rather than a threat.
+templ yourDataCard(user users.User, deleteErr string) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Title() {
+				Your data
+			}
+			@card.Description() {
+				Take a copy of everything North holds, or close the account for good.
+			}
+		}
+		@card.Content() {
+			<div class="space-y-6">
+				<div class="space-y-3">
+					<p class="text-muted-foreground text-sm leading-relaxed">
+						The export is a zip of plain text and your own original files: your profile,
+						goals, check-ins, what North remembers, your documents, and every conversation.
+						Nothing in it needs North to read it.
+					</p>
+					@button.Button(button.Props{Href: "/app/settings/export.zip", Variant: button.VariantOutline}) {
+						Download my data
+					}
+				</div>
+				<div class="border-hairline space-y-3 border-t pt-6">
+					<p class="text-muted-foreground text-sm leading-relaxed">
+						Deleting removes your account and everything in it straight away — goals,
+						check-ins, conversations, documents, and the files behind them. It cannot be
+						undone, and North keeps no copy to restore from. Download your data first if
+						you want it.
+					</p>
+					if deleteErr != "" {
+						@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+							{ deleteErr }
+						}
+					}
+					@deleteAccountDialog(user)
+				</div>
+			</div>
+		}
+	}
+}
+
+// deleteAccountDialog asks for the account's own email address rather than a
+// password. An account here can be held entirely by a passkey or by Google, and
+// a confirmation half the accounts cannot satisfy is not a confirmation.
+templ deleteAccountDialog(user users.User) {
+	@dialog.Trigger(dialog.TriggerProps{For: "delete-account"}) {
+		@button.Button(button.Props{Variant: button.VariantDestructive, Type: button.TypeButton}) {
+			Delete my account
+		}
+	}
+	@dialog.Dialog(dialog.Props{ID: "delete-account"}) {
+		@dialog.Content() {
+			<form method="post" action="/app/settings/account/delete">
+				@ui.CSRFInput()
+				@dialog.Header() {
+					@dialog.Title() {
+						Delete your account?
+					}
+					@dialog.Description() {
+						This erases everything North holds for you and signs you out everywhere.
+						There is no undo and no grace period.
+					}
+				}
+				<div class="py-4">
+					@form.Item() {
+						@label.Label(label.Props{For: "confirm_email"}) {
+							Type { user.Email } to confirm
+						}
+						@input.Input(input.Props{
+							ID: "confirm_email", Name: "confirm_email", Type: "email",
+							Required: true, Placeholder: user.Email,
+						})
+					}
+				</div>
+				@dialog.Footer() {
+					@dialog.Close() {
+						@button.Button(button.Props{Variant: button.VariantOutline, Type: button.TypeButton}) {
+							Keep my account
+						}
+					}
+					@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantDestructive}) {
+						Delete everything
+					}
+				}
+			</form>
 		}
 	}
 }

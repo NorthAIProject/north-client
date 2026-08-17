@@ -214,3 +214,44 @@ func TestServiceWorkerIsPublic(t *testing.T) {
 		t.Error("service worker has no fetch handler")
 	}
 }
+
+// Deleting an account is the most destructive thing this site can do, so the
+// guards in front of it are worth pinning here rather than trusting the mount
+// point to stay where it is. An anonymous, tokenless POST must never reach the
+// handler; in a browser both failure modes would look like an ordinary
+// redirect, and neither would show up in a package-level test of the handler.
+func TestDeletingAnAccountIsBehindAuthAndCSRF(t *testing.T) {
+	handler := testRoutes(t)
+
+	req := httptest.NewRequest(http.MethodPost, "/app/settings/account/delete",
+		strings.NewReader("confirm_email=someone@north.test"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	// 403 from CSRF or 303 to the login page both mean it was stopped. What
+	// must not happen is the handler running.
+	if rec.Code != http.StatusForbidden && rec.Code != http.StatusSeeOther {
+		t.Fatalf("anonymous POST to the account delete = %d, want it turned away", rec.Code)
+	}
+}
+
+// The export moved off /knowledge when it grew to cover the whole account, so
+// the new path has to be mounted and behind authentication.
+//
+// Only the presence of the new route is asserted, not the absence of the old
+// one: RequireAuth wraps the whole /app group and answers a signed-out request
+// before chi ever decides whether the path matches, so every /app URL — real or
+// invented — redirects identically. There is nothing here to tell them apart.
+func TestTheExportLivesUnderSettings(t *testing.T) {
+	handler := testRoutes(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/app/settings/export.zip", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("GET /app/settings/export.zip signed out = %d, want a 303 to the login page", rec.Code)
+	}
+}

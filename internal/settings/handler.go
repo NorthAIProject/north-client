@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/NorthAIProject/north-client/internal/account"
 	"github.com/NorthAIProject/north-client/internal/aicreds"
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/config"
@@ -50,6 +51,13 @@ type Handler struct {
 	// integrations is North's outbound MCP connections. Nil leaves the calendar
 	// card off, which is what a process with no encryption key gets.
 	integrations *integrations.Service
+
+	// account and mw are here rather than in a handler of their own because
+	// deleting is refused by re-rendering this page with the reason on it, and
+	// that render already lives here. A separate package would have to export
+	// the whole of it to say one thing back.
+	account *account.Service
+	mw      *auth.Middleware
 }
 
 // WithIntegrations wires the calendar connection card.
@@ -71,10 +79,12 @@ func NewHandler(
 	audit *toolaudit.Service,
 	m *messaging.Service,
 	telegram config.TelegramConfig,
+	acct *account.Service,
+	mw *auth.Middleware,
 ) *Handler {
 	return &Handler{
 		users: u, preferences: p, notifications: n, diets: d, connections: c, aicreds: a,
-		audit: audit, messaging: m, telegram: telegram,
+		audit: audit, messaging: m, telegram: telegram, account: acct, mw: mw,
 	}
 }
 
@@ -100,6 +110,37 @@ func (h *Handler) Routes(r chi.Router) {
 
 	r.Post("/settings/ai", h.updateAICredential)
 	r.Post("/settings/ai/remove", h.removeAICredential)
+
+	r.Post("/settings/account/delete", h.deleteAccount)
+}
+
+// deleteAccount ends the account and signs the browser out.
+//
+// The redirect has to leave /app: by the time it runs there is no user behind
+// the session cookie, and every route under /app would bounce it to the login
+// page anyway — with a message about being signed out, which is not what
+// happened.
+func (h *Handler) deleteAccount(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+
+	if err := r.ParseForm(); err != nil {
+		h.fail(w, r, apperr.ErrValidation)
+		return
+	}
+
+	if _, err := h.account.Delete(r.Context(), user, r.PostFormValue(account.ConfirmField)); err != nil {
+		var fieldErrs apperr.FieldErrors
+		if apperr.As(err, &fieldErrs) {
+			h.render(w, r, settingspages.ProfileFormFor(user), nil, nil, "",
+				fieldErrs.Messages()[account.ConfirmField])
+			return
+		}
+		h.fail(w, r, err)
+		return
+	}
+
+	h.mw.ClearCookie(w)
+	http.Redirect(w, r, "/?deleted=1", http.StatusSeeOther)
 }
 
 // createTelegramCode issues a link code and renders it.
@@ -219,7 +260,7 @@ func (h *Handler) removeAICredential(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) show(w http.ResponseWriter, r *http.Request) {
-	h.render(w, r, settingspages.ProfileFormFor(auth.MustUser(r.Context())), nil, nil, "")
+	h.render(w, r, settingspages.ProfileFormFor(auth.MustUser(r.Context())), nil, nil, "", "")
 }
 
 func (h *Handler) updateProfile(w http.ResponseWriter, r *http.Request) {
@@ -244,7 +285,7 @@ func (h *Handler) updateProfile(w http.ResponseWriter, r *http.Request) {
 		var fieldErrs apperr.FieldErrors
 		if apperr.As(err, &fieldErrs) {
 			form.Errors = fieldErrs.Messages()
-			h.render(w, r, form, nil, nil, "")
+			h.render(w, r, form, nil, nil, "", "")
 			return
 		}
 		h.fail(w, r, err)
@@ -275,7 +316,7 @@ func (h *Handler) updatePreferences(w http.ResponseWriter, r *http.Request) {
 				UnitsSystem: in.UnitsSystem, DefaultGoal: in.DefaultGoal, DefaultMacroSplit: in.DefaultMacroSplit,
 				Errors: fieldErrs.Messages(),
 			}
-			h.render(w, r, settingspages.ProfileFormFor(user), &prefsForm, nil, "")
+			h.render(w, r, settingspages.ProfileFormFor(user), &prefsForm, nil, "", "")
 			return
 		}
 		h.fail(w, r, err)
@@ -309,7 +350,7 @@ func (h *Handler) updateNotifications(w http.ResponseWriter, r *http.Request) {
 		if apperr.As(err, &fieldErrs) {
 			notifForm := settingspages.NotificationsFormFrom(in)
 			notifForm.Errors = fieldErrs.Messages()
-			h.render(w, r, settingspages.ProfileFormFor(user), nil, &notifForm, "")
+			h.render(w, r, settingspages.ProfileFormFor(user), nil, &notifForm, "", "")
 			return
 		}
 		h.fail(w, r, err)
@@ -565,6 +606,8 @@ func (h *Handler) renderConnections(
 // notification prefs, diets) and shows the page. A nil form is one the caller
 // had no reason to build — on GET /settings, or when some other form on the
 // page is the one that failed validation.
+//
+// deleteErr is the account-deletion refusal, which has no form of its own.
 func (h *Handler) render(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -572,6 +615,7 @@ func (h *Handler) render(
 	prefsForm *settingspages.PreferencesForm,
 	notifForm *settingspages.NotificationsForm,
 	saved string,
+	deleteErr string,
 ) {
 	user := auth.MustUser(r.Context())
 	ctx := r.Context()
@@ -620,7 +664,7 @@ func (h *Handler) render(
 	summary := buildSettingsSummary(user, prefsForm.UnitsSystem, len(userDiets), len(conns))
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := settingspages.Page(user, summary, profileForm, *prefsForm, *notifForm, allDiets, selected, saved).Render(ctx, w); err != nil {
+	if err := settingspages.Page(user, summary, profileForm, *prefsForm, *notifForm, allDiets, selected, saved, deleteErr).Render(ctx, w); err != nil {
 		middleware.FromContext(ctx).Error("render settings", slog.Any("error", err))
 	}
 }

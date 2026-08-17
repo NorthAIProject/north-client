@@ -10,9 +10,11 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/NorthAIProject/north-client/internal/checkins"
 	"github.com/NorthAIProject/north-client/internal/conversations"
 	"github.com/NorthAIProject/north-client/internal/documents"
 	"github.com/NorthAIProject/north-client/internal/export"
+	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/memories"
 	"github.com/NorthAIProject/north-client/internal/shared/database/testdb"
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -48,8 +50,25 @@ func TestExportCarriesEverythingAPersonPutIn(t *testing.T) {
 	docSvc := documents.NewService(docRepo, nil, nil)
 	memorySvc := memories.NewService(memories.NewRepository(pool))
 	convoSvc := conversations.NewService(conversations.NewRepository(pool))
+	goalSvc := goals.NewService(goals.NewRepository(pool))
+	checkinSvc := checkins.NewService(checkins.NewRepository(pool), goalSvc)
 
 	if _, err := docSvc.CreateNote(ctx, user.ID, "Physio notes", note); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := goalSvc.Create(ctx, user.ID, goals.Input{
+		Title:      "Press bodyweight overhead",
+		Category:   goals.CategoryFitness,
+		Motivation: "The shoulder should stop deciding what I can lift.",
+		Success:    "One clean rep at bodyweight.",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := checkinSvc.UpsertToday(ctx, user, checkins.Input{
+		Mood: 4, Energy: 3,
+		Wins:       "Pressed narrow grip with no pain",
+		Challenges: "Sleep was short",
+	}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := memorySvc.Create(ctx, user.ID, memories.Input{
@@ -74,9 +93,15 @@ func TestExportCarriesEverythingAPersonPutIn(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	files := unzip(t, export.NewExporter(docSvc, memorySvc, convoSvc, nil), user)
+	files := unzip(t, export.NewExporter(export.Options{
+		Documents:     docSvc,
+		Memories:      memorySvc,
+		Conversations: convoSvc,
+		Goals:         goalSvc,
+		CheckIns:      checkinSvc,
+	}), user)
 
-	for _, name := range []string{"README.md", "manifest.json", "memories.md"} {
+	for _, name := range []string{"README.md", "manifest.json", "memories.md", "profile.md", "goals.md", "check-ins.md"} {
 		if _, ok := files[name]; !ok {
 			t.Errorf("%s is missing from the export", name)
 		}
@@ -87,6 +112,22 @@ func TestExportCarriesEverythingAPersonPutIn(t *testing.T) {
 
 	if got := files["memories.md"]; !strings.Contains(got, "Left shoulder dislocates") {
 		t.Errorf("memories.md does not contain the fact:\n%s", got)
+	}
+
+	// The account record itself, the goals, and the days logged against them.
+	// Each was in North and absent from the archive until this ticket, which is
+	// the gap worth a test rather than the presence of a file.
+	for _, tc := range []struct{ file, want string }{
+		{"profile.md", "export@north.test"},
+		{"profile.md", "Sam"},
+		{"goals.md", "Press bodyweight overhead"},
+		{"goals.md", "The shoulder should stop deciding"},
+		{"check-ins.md", "Pressed narrow grip with no pain"},
+		{"check-ins.md", "Sleep was short"},
+	} {
+		if got := files[tc.file]; !strings.Contains(got, tc.want) {
+			t.Errorf("%s does not contain %q:\n%s", tc.file, tc.want, got)
+		}
 	}
 
 	docFile := findFile(files, "documents/")
@@ -131,9 +172,11 @@ func TestExportDoesNotLoseDocumentsWithTheSameName(t *testing.T) {
 		}
 	}
 
-	files := unzip(t, export.NewExporter(docSvc,
-		memories.NewService(memories.NewRepository(pool)),
-		conversations.NewService(conversations.NewRepository(pool)), nil), user)
+	files := unzip(t, export.NewExporter(export.Options{
+		Documents:     docSvc,
+		Memories:      memories.NewService(memories.NewRepository(pool)),
+		Conversations: conversations.NewService(conversations.NewRepository(pool)),
+	}), user)
 
 	var found int
 	for name := range files {
@@ -156,9 +199,11 @@ func TestExportIsReadableWithoutNorth(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	files := unzip(t, export.NewExporter(docSvc,
-		memories.NewService(memories.NewRepository(pool)),
-		conversations.NewService(conversations.NewRepository(pool)), nil), user)
+	files := unzip(t, export.NewExporter(export.Options{
+		Documents:     docSvc,
+		Memories:      memories.NewService(memories.NewRepository(pool)),
+		Conversations: conversations.NewService(conversations.NewRepository(pool)),
+	}), user)
 
 	// Nothing in the archive should be a format that needs North to read it.
 	for name, body := range files {
