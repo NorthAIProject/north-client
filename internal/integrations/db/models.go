@@ -2,7 +2,7 @@
 // versions:
 //   sqlc v1.31.1
 
-package quotadb
+package integrationsdb
 
 import (
 	"net/netip"
@@ -75,16 +75,14 @@ type ChunkEmbedding struct {
 }
 
 type Conversation struct {
-	ID                    uuid.UUID
-	UserID                uuid.UUID
-	Title                 *string
-	CreatedAt             time.Time
-	UpdatedAt             time.Time
-	MemoriesExtractedAt   *time.Time
-	Kind                  string
-	Summary               string
-	ContextSummary        string
-	ContextSummaryThrough *time.Time
+	ID                  uuid.UUID
+	UserID              uuid.UUID
+	Title               *string
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+	MemoriesExtractedAt *time.Time
+	Kind                string
+	Summary             string
 }
 
 type Decision struct {
@@ -612,7 +610,6 @@ type UserNotificationPref struct {
 	QuietStart         string
 	QuietEnd           string
 	UpdatedAt          time.Time
-	DailyBriefingAuto  bool
 }
 
 type UserNudge struct {

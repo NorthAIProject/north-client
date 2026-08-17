@@ -49,8 +49,13 @@ type Context struct {
 	// Sources that will be added as their slices are built. Named here so the
 	// prompt renderer already handles their absence, which is the normal state
 	// for a new account.
-	Goals        []string
-	CheckIns     []string
+	Goals    []string
+	CheckIns []string
+
+	// Calendar is the next seven days from an external server the person
+	// connected, already reduced to summary strings. Empty when nothing is
+	// connected, which is the normal state.
+	Calendar     []string
 	WorkoutPlan  string
 	FormAnalyses []string
 
@@ -315,6 +320,7 @@ func (c *Context) Render() string {
 	section(&b, "Reflections", c.Reflections, "none yet")
 	section(&b, "Decisions", c.Decisions, "none recorded yet")
 	section(&b, "Latest weekly review", c.Reports, "none yet")
+	section(&b, "Next 7 days (their calendar)", c.Calendar, "no calendar connected")
 
 	// Before the other-conversation continuity block: this is the same thread
 	// the tail comes from, so it reads as one story rather than as an aside.
