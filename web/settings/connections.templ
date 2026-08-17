@@ -6,6 +6,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/ai/providers"
 	"github.com/NorthAIProject/north-client/internal/aicreds"
 	"github.com/NorthAIProject/north-client/internal/connections"
+	"github.com/NorthAIProject/north-client/internal/integrations"
 	"github.com/NorthAIProject/north-client/internal/messaging"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
@@ -66,6 +67,24 @@ type ProviderPanel struct {
 }
 
 // TelegramPanel is everything the Telegram card needs.
+// CalendarPanel is the person's own calendar, reached over MCP.
+//
+// Deliberately carries no token: it is sealed in the database and opened only
+// on the path about to use it, so there is nothing here a render could leak.
+type CalendarPanel struct {
+	// Enabled is false when this process has no integrations service — which is
+	// what a deployment without an encryption key gets. The card is then not
+	// rendered, because connecting would fail at the point of storing a token.
+	Enabled bool
+
+	// Connected is the existing connection, or nil when there is none.
+	Connected *integrations.Connection
+
+	// Error is why the last attempt to connect was rejected, shown beside the
+	// field somebody just filled in.
+	Error string
+}
+
 type TelegramPanel struct {
 	// Enabled is false when the deployment has no bot token, in which case the
 	// card is not rendered at all — there would be nothing to message.
@@ -107,7 +126,7 @@ func (p TelegramPanel) Handle() string { return "@" + p.BotUsername }
 // with connections.PlaceholderToken. It is what lets the page show what setup
 // looks like before a key exists — the alternative being that somebody issues a
 // live credential to find out whether they want one.
-templ ConnectionsPage(user users.User, list []connections.Connection, f ConnectForm, issued *connections.Issued, setup connections.Setup, previews []connections.Setup, provider ProviderPanel, telegram TelegramPanel) {
+templ ConnectionsPage(user users.User, list []connections.Connection, f ConnectForm, issued *connections.Issued, setup connections.Setup, previews []connections.Setup, provider ProviderPanel, telegram TelegramPanel, calendar CalendarPanel) {
 	@layout.App("Agent connections", user, layout.BuildNav("/app/settings")) {
 		<div class="mx-auto w-full max-w-2xl space-y-6 p-6 md:p-8">
 			<header>
@@ -129,6 +148,7 @@ templ ConnectionsPage(user users.User, list []connections.Connection, f ConnectF
 			@connectCard(f, previews)
 			if telegram.Enabled {
 				@telegramCard(telegram)
+				@calendarCard(calendar)
 			}
 			@providerCard(provider)
 		</div>
@@ -879,4 +899,92 @@ templ selfHostedPanel() {
 			keys are per person and revocable without a restart.
 		</p>
 	</div>
+}
+
+// calendarCard connects North to somebody's own calendar over MCP.
+//
+// The outbound direction, unlike everything else on this page: the tokens above
+// are ones North issues so an agent can call in, this is a credential North
+// uses to call out. Kept on the same page because from the reader's side both
+// answer "what is North joined up to".
+templ calendarCard(p CalendarPanel) {
+	if p.Enabled {
+		@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+			@card.Header() {
+				@card.Title() {
+					Calendar
+				}
+				@card.Description() {
+					Connect a calendar MCP server and your coach can see the next seven days —
+					so it stops suggesting a Thursday session when you are already booked.
+				}
+			}
+			@card.Content() {
+				if p.Connected != nil {
+					@calendarConnected(*p.Connected)
+				} else {
+					@calendarConnect(p.Error)
+				}
+			}
+		}
+	}
+}
+
+templ calendarConnected(c integrations.Connection) {
+	<div class="space-y-3">
+		<div class="flex flex-wrap items-center justify-between gap-3">
+			<div class="min-w-0">
+				<p class="truncate font-mono text-sm">{ c.Endpoint }</p>
+				if c.Healthy() {
+					<p class="text-muted-foreground mt-1 text-xs">Answering normally.</p>
+				} else {
+					<p class="mt-1 text-xs text-red-600 dark:text-red-400">{ c.LastError }</p>
+				}
+			</div>
+			<form method="post" action="/app/settings/integrations/calendar/disconnect">
+				@ui.CSRFInput()
+				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Size: button.SizeSm}) {
+					Disconnect
+				}
+			</form>
+		</div>
+	</div>
+}
+
+templ calendarConnect(errMsg string) {
+	<form method="post" action="/app/settings/integrations/calendar" class="space-y-4">
+		@ui.CSRFInput()
+		if errMsg != "" {
+			@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+				{ errMsg }
+			}
+		}
+		@form.Item() {
+			@form.Label(form.LabelProps{For: "endpoint"}) {
+				Server address
+			}
+			@input.Input(input.Props{
+				ID: "endpoint", Name: "endpoint", Type: input.TypeText,
+				Placeholder: "https://calendar.example.com/mcp",
+			})
+			@form.Description() {
+				The MCP endpoint of a server that can list your calendar events.
+			}
+		}
+		@form.Item() {
+			@form.Label(form.LabelProps{For: "token"}) {
+				Access token
+			}
+			@input.Input(input.Props{
+				ID: "token", Name: "token", Type: input.TypePassword,
+				Placeholder: "Leave empty if the server needs no token",
+			})
+			@form.Description() {
+				Stored encrypted. It is never shown again after you save it.
+			}
+		}
+		@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90"}) {
+			Connect calendar
+		}
+	</form>
 }

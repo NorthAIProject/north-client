@@ -45,6 +45,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/health"
 	"github.com/NorthAIProject/north-client/internal/hydration"
 	"github.com/NorthAIProject/north-client/internal/insights"
+	"github.com/NorthAIProject/north-client/internal/integrations"
 	"github.com/NorthAIProject/north-client/internal/jobs"
 	"github.com/NorthAIProject/north-client/internal/mcpserver"
 	"github.com/NorthAIProject/north-client/internal/meals"
@@ -443,6 +444,14 @@ func routes(
 	// unavailable, rather than storing somebody's credential in the clear.
 	aicredSvc := aicreds.NewService(aicreds.NewRepository(pool), sealer, slog.Default())
 
+	// North as an MCP *client*: the calendar somebody connected, reached over
+	// somebody else's server. The opposite direction from the /mcp route below,
+	// which is North serving its own tools to an agent.
+	integrationSvc := integrations.NewService(
+		integrations.NewRepository(pool, sealer),
+		integrations.NewCalendarAdapter(integrations.NewClient()),
+	)
+
 	// One account of what North has done, kept by both surfaces: the registry
 	// reports every capability it runs, and the coach reports the writes people
 	// refuse — those never reach the registry at all.
@@ -567,6 +576,7 @@ func routes(
 			health.NewContextSource(healthSvc, nil),
 			habits.NewContextSource(habitSvc),
 			reports.NewContextSource(reportSvc),
+			integrations.NewContextSource(integrationSvc),
 		).WithMetrics(metricsReg),
 		PromptBuilder: coach.NewPromptBuilder(),
 		Queue:         queue,
@@ -601,7 +611,7 @@ func routes(
 	settingsHandler := settings.NewHandler(
 		userSvc, preferencesSvc, notificationSvc, mealDietSvc, connectionSvc, aicredSvc,
 		auditSvc, messagingSvc, cfg.Telegram,
-	)
+	).WithIntegrations(integrationSvc)
 
 	// Given the coach so the questionnaire ends in a thread that is already
 	// being answered, rather than an empty chat box the person has to think of

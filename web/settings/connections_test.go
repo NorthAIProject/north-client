@@ -27,6 +27,9 @@ func renderPage(t *testing.T, f ConnectForm, provider ProviderPanel) string {
 		// Disabled: these cases are about the agent and provider cards, and a
 		// deployment with no bot token is the shape most of them run in.
 		TelegramPanel{},
+		// Likewise disabled: a process with no encryption key cannot store an
+		// integration token, so it renders no calendar card.
+		CalendarPanel{},
 	)
 	if err := page.Render(context.Background(), &b); err != nil {
 		t.Fatalf("render: %v", err)

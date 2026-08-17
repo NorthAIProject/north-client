@@ -17,6 +17,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/config"
 	"github.com/NorthAIProject/north-client/internal/connections"
+	"github.com/NorthAIProject/north-client/internal/integrations"
 	"github.com/NorthAIProject/north-client/internal/meals"
 	"github.com/NorthAIProject/north-client/internal/messaging"
 	"github.com/NorthAIProject/north-client/internal/notifications"
@@ -45,6 +46,19 @@ type Handler struct {
 	// telegram is configuration, not a service: the page needs to know whether
 	// a bot exists and what it is called, and neither is a decision.
 	telegram config.TelegramConfig
+
+	// integrations is North's outbound MCP connections. Nil leaves the calendar
+	// card off, which is what a process with no encryption key gets.
+	integrations *integrations.Service
+}
+
+// WithIntegrations wires the calendar connection card.
+//
+// A setter rather than a tenth positional argument to NewHandler, which already
+// takes nine.
+func (h *Handler) WithIntegrations(svc *integrations.Service) *Handler {
+	h.integrations = svc
+	return h
 }
 
 func NewHandler(
@@ -81,6 +95,9 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Post("/settings/messaging/telegram", h.createTelegramCode)
 	r.Post("/settings/messaging/telegram/disconnect", h.disconnectTelegram)
 
+	r.Post("/settings/integrations/calendar", h.connectCalendar)
+	r.Post("/settings/integrations/calendar/disconnect", h.disconnectCalendar)
+
 	r.Post("/settings/ai", h.updateAICredential)
 	r.Post("/settings/ai/remove", h.removeAICredential)
 }
@@ -99,7 +116,7 @@ func (h *Handler) createTelegramCode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.renderConnections(w, r, settingspages.ConnectForm{Kind: connections.ClientClaudeCode}, nil, nil, code)
+	h.renderConnections(w, r, settingspages.ConnectForm{Kind: connections.ClientClaudeCode}, nil, nil, code, "")
 }
 
 func (h *Handler) disconnectTelegram(w http.ResponseWriter, r *http.Request) {
@@ -110,6 +127,52 @@ func (h *Handler) disconnectTelegram(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	http.Redirect(w, r, "/app/settings/connections", http.StatusSeeOther)
+}
+
+// connectCalendar links an external MCP calendar server.
+//
+// Renders rather than redirects on failure: the endpoint and the reason it did
+// not work are both worth showing next to the field somebody just filled in.
+func (h *Handler) connectCalendar(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+
+	if h.integrations == nil {
+		h.fail(w, r, apperr.ErrNotFound)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		h.fail(w, r, apperr.ErrValidation)
+		return
+	}
+
+	err := h.integrations.Connect(r.Context(),
+		user.ID,
+		r.PostFormValue("endpoint"),
+		r.PostFormValue("token"),
+	)
+	switch {
+	case err == nil:
+		http.Redirect(w, r, "/app/settings/connections", http.StatusSeeOther)
+	case apperr.Is(err, apperr.ErrValidation), apperr.Is(err, apperr.ErrUnavailable):
+		h.renderConnections(w, r,
+			settingspages.ConnectForm{Kind: connections.ClientClaudeCode}, nil, nil, "", err.Error())
+	default:
+		h.fail(w, r, err)
+	}
+}
+
+func (h *Handler) disconnectCalendar(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+
+	if h.integrations == nil {
+		h.fail(w, r, apperr.ErrNotFound)
+		return
+	}
+	if err := h.integrations.Disconnect(r.Context(), user.ID); err != nil {
+		h.fail(w, r, err)
+		return
+	}
 	http.Redirect(w, r, "/app/settings/connections", http.StatusSeeOther)
 }
 
@@ -133,7 +196,7 @@ func (h *Handler) updateAICredential(w http.ResponseWriter, r *http.Request) {
 		if apperr.As(err, &fieldErrs) {
 			form := settingspages.ProviderFormFor(in)
 			form.Errors = fieldErrs.Messages()
-			h.renderConnections(w, r, settingspages.ConnectForm{Kind: connections.ClientClaudeCode}, nil, &form, "")
+			h.renderConnections(w, r, settingspages.ConnectForm{Kind: connections.ClientClaudeCode}, nil, &form, "", "")
 			return
 		}
 		h.fail(w, r, err)
@@ -304,7 +367,7 @@ func (h *Handler) showActivity(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) showConnections(w http.ResponseWriter, r *http.Request) {
-	h.renderConnections(w, r, settingspages.ConnectForm{Kind: connections.ClientClaudeCode}, nil, nil, "")
+	h.renderConnections(w, r, settingspages.ConnectForm{Kind: connections.ClientClaudeCode}, nil, nil, "", "")
 }
 
 // createConnection issues a token and renders it.
@@ -330,14 +393,14 @@ func (h *Handler) createConnection(w http.ResponseWriter, r *http.Request) {
 		var fieldErrs apperr.FieldErrors
 		if apperr.As(err, &fieldErrs) {
 			form.Errors = fieldErrs.Messages()
-			h.renderConnections(w, r, form, nil, nil, "")
+			h.renderConnections(w, r, form, nil, nil, "", "")
 			return
 		}
 		h.fail(w, r, err)
 		return
 	}
 
-	h.renderConnections(w, r, settingspages.ConnectForm{Kind: form.Kind}, &issued, nil, "")
+	h.renderConnections(w, r, settingspages.ConnectForm{Kind: form.Kind}, &issued, nil, "", "")
 }
 
 // connectionStatus answers the poll behind "waiting for first use".
@@ -402,6 +465,7 @@ func (h *Handler) renderConnections(
 	issued *connections.Issued,
 	providerForm *settingspages.ProviderForm,
 	telegramCode string,
+	calendarErr string,
 ) {
 	user := auth.MustUser(r.Context())
 	ctx := r.Context()
@@ -454,6 +518,21 @@ func (h *Handler) renderConnections(
 		}
 	}
 
+	// The person's own calendar, reached over MCP. Absent is the normal state.
+	var calendar settingspages.CalendarPanel
+	if h.integrations != nil {
+		calendar.Enabled = true
+		conn, ok, err := h.integrations.Status(ctx, user.ID)
+		if err != nil {
+			h.fail(w, r, err)
+			return
+		}
+		if ok {
+			calendar.Connected = &conn
+		}
+	}
+	calendar.Error = calendarErr
+
 	telegram := settingspages.TelegramPanel{
 		Enabled:     h.telegram.Enabled(),
 		BotUsername: h.telegram.BotUsername,
@@ -477,7 +556,7 @@ func (h *Handler) renderConnections(
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := settingspages.ConnectionsPage(user, list, form, issued, setup, previews, provider, telegram).Render(ctx, w); err != nil {
+	if err := settingspages.ConnectionsPage(user, list, form, issued, setup, previews, provider, telegram, calendar).Render(ctx, w); err != nil {
 		middleware.FromContext(ctx).Error("render connections", slog.Any("error", err))
 	}
 }

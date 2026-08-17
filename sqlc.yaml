@@ -341,3 +341,13 @@ sql:
         out: internal/notifications/db
         overrides: *overrides
 
+
+  - engine: postgresql
+    schema: migrations
+    queries: internal/integrations/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: integrationsdb
+        out: internal/integrations/db
+        overrides: *overrides

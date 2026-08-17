@@ -299,6 +299,19 @@ type Ingredient struct {
 	SaturatedFatGPer100g float64
 }
 
+type IntegrationConnection struct {
+	ID            uuid.UUID
+	UserID        uuid.UUID
+	Provider      string
+	Endpoint      string
+	TokenSealed   []byte
+	Status        string
+	LastError     string
+	LastCheckedAt *time.Time
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
+
 type Job struct {
 	ID          uuid.UUID
 	Kind        string
