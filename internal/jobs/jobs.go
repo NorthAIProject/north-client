@@ -101,7 +101,27 @@ const (
 	// KindSweepReports is: "their own morning" is a different absolute time in
 	// every timezone.
 	KindSweepBriefings Kind = "sweep_briefings"
+
+	// KindSummarizeConversation compacts the older turns of one long thread so
+	// its beginning survives past the context window.
+	KindSummarizeConversation Kind = "summarize_conversation"
+
+	// KindSweepSummaries enqueues compaction for threads that outgrew the
+	// context window without the coach's own trigger firing — a conversation
+	// resumed from Telegram, or one whose enqueue was lost.
+	KindSweepSummaries Kind = "sweep_summaries"
 )
+
+// SummarizeConversationPayload is the job body for KindSummarizeConversation.
+//
+// UserID is carried even though the handler re-reads the owner from the row:
+// HasPendingJobForUser matches on payload->>'user_id', so a payload without it
+// would make the "one compaction per person per pass" rationing silently never
+// match anything.
+type SummarizeConversationPayload struct {
+	UserID         uuid.UUID `json:"user_id"`
+	ConversationID uuid.UUID `json:"conversation_id"`
+}
 
 // ExtractMemoriesPayload is the job body for KindExtractMemories.
 //

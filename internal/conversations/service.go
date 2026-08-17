@@ -46,6 +46,44 @@ func (s *Service) SetSummary(ctx context.Context, id uuid.UUID, summary string) 
 	return s.repo.SetSummary(ctx, id, strings.TrimSpace(summary))
 }
 
+// SetContextSummary stores the rolling compaction of a long thread.
+//
+// An empty summary is refused rather than written: it would advance the
+// watermark past turns nothing describes, which is how history disappears.
+func (s *Service) SetContextSummary(ctx context.Context, id uuid.UUID, summary string, through time.Time) error {
+	summary = strings.TrimSpace(summary)
+	if summary == "" {
+		return apperr.Wrap(apperr.ErrValidation, "refusing to store an empty context summary")
+	}
+	if through.IsZero() {
+		return apperr.Wrap(apperr.ErrValidation, "context summary needs a watermark")
+	}
+	return s.repo.SetContextSummary(ctx, id, summary, through)
+}
+
+// ToSummarize returns the turns a summarising pass should fold in: everything
+// after the current watermark, up to and including through.
+func (s *Service) ToSummarize(ctx context.Context, id uuid.UUID, after, through time.Time, limit int) ([]Message, error) {
+	if limit <= 0 {
+		limit = defaultHistoryLimit
+	}
+	return s.repo.MessagesBetween(ctx, id, after, through, limit)
+}
+
+// AwaitingSummary lists threads whose history has outgrown the context window.
+func (s *Service) AwaitingSummary(ctx context.Context, keepRecent, limit int) ([]Pending, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 100
+	}
+	return s.repo.AwaitingSummary(ctx, keepRecent, limit)
+}
+
+// Owner returns who a thread belongs to. For background work that has an id
+// and no user to scope by.
+func (s *Service) Owner(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	return s.repo.Owner(ctx, id)
+}
+
 // Get returns a conversation the user owns, or ErrNotFound.
 func (s *Service) Get(ctx context.Context, id, userID uuid.UUID) (Conversation, error) {
 	return s.repo.Get(ctx, id, userID)

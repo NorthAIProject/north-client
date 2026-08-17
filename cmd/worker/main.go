@@ -277,11 +277,26 @@ func run() error {
 		WithPrefs(notificationSvc)
 	worker.Register(jobs.KindSweepNudges, nudges.NewSweeper(nudgeSvc, log).HandleSweep)
 
+	// Compaction of long threads. The coach enqueues this from the reply pump
+	// once a conversation outgrows the context window; the sweep catches the
+	// ones it never saw — threads continued from Telegram or MCP, and enqueues
+	// lost to a restart.
+	summarizer := conversations.NewSummarizer(conversations.SummarizerOptions{
+		Conversations: memoryExtract.Conversations,
+		Client:        conversations.ClientFromRegistry(registry),
+		Model:         cfg.AI.FastModel,
+		Log:           log,
+	})
+	worker.Register(jobs.KindSummarizeConversation, summarizer.HandleSummarizeJob)
+	worker.Register(jobs.KindSweepSummaries,
+		conversations.NewSummarySweeper(memoryExtract.Conversations, queue, 0, log).HandleSweep)
+
 	worker.RegisterPeriodic(15*time.Minute, jobs.KindSweepEmbeddings, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepMemories, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepNudges, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepReports, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepBriefings, struct{}{})
+	worker.RegisterPeriodic(time.Hour, jobs.KindSweepSummaries, struct{}{})
 	worker.RegisterPeriodic(24*time.Hour, jobs.KindSweepQuotas, struct{}{})
 
 	log.Info("worker ready",

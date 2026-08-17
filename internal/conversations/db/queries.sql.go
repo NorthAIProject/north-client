@@ -62,6 +62,19 @@ func (q *Queries) AppendMessage(ctx context.Context, arg AppendMessageParams) (M
 	return i, err
 }
 
+const conversationOwner = `-- name: ConversationOwner :one
+SELECT user_id FROM conversations WHERE id = $1
+`
+
+// Who owns a thread. For background jobs, which have a conversation id and no
+// user to check it against.
+func (q *Queries) ConversationOwner(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, conversationOwner, id)
+	var user_id uuid.UUID
+	err := row.Scan(&user_id)
+	return user_id, err
+}
+
 const conversationsAwaitingExtraction = `-- name: ConversationsAwaitingExtraction :many
 SELECT c.id, c.user_id
 FROM conversations c
@@ -112,6 +125,56 @@ func (q *Queries) ConversationsAwaitingExtraction(ctx context.Context, arg Conve
 	return items, nil
 }
 
+const conversationsAwaitingSummary = `-- name: ConversationsAwaitingSummary :many
+SELECT c.id, c.user_id
+FROM conversations c
+WHERE (
+        SELECT count(*)
+        FROM messages m
+        WHERE m.conversation_id = c.id
+          AND (c.context_summary_through IS NULL OR m.created_at > c.context_summary_through)
+      ) > $1::bigint
+ORDER BY c.updated_at
+LIMIT $2::int
+`
+
+type ConversationsAwaitingSummaryParams struct {
+	KeepRecent  int64
+	ResultLimit int32
+}
+
+type ConversationsAwaitingSummaryRow struct {
+	ID     uuid.UUID
+	UserID uuid.UUID
+}
+
+// Threads long enough to have lost turns off the end of the context window,
+// whose summary has not caught up.
+//
+// The comparison is against the count of messages the summary does not yet
+// cover: a thread is worth summarising when more than @keep_recent turns sit
+// beyond the watermark, because those are the ones about to fall out of, or
+// already outside, what the model can see.
+func (q *Queries) ConversationsAwaitingSummary(ctx context.Context, arg ConversationsAwaitingSummaryParams) ([]ConversationsAwaitingSummaryRow, error) {
+	rows, err := q.db.Query(ctx, conversationsAwaitingSummary, arg.KeepRecent, arg.ResultLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ConversationsAwaitingSummaryRow{}
+	for rows.Next() {
+		var i ConversationsAwaitingSummaryRow
+		if err := rows.Scan(&i.ID, &i.UserID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const countMessages = `-- name: CountMessages :one
 SELECT count(*) FROM messages WHERE conversation_id = $1
 `
@@ -126,7 +189,7 @@ func (q *Queries) CountMessages(ctx context.Context, conversationID uuid.UUID) (
 const createConversation = `-- name: CreateConversation :one
 INSERT INTO conversations (user_id, title, kind)
 VALUES ($1, $2, $3)
-RETURNING id, user_id, title, created_at, updated_at, memories_extracted_at, kind, summary
+RETURNING id, user_id, title, created_at, updated_at, memories_extracted_at, kind, summary, context_summary, context_summary_through
 `
 
 type CreateConversationParams struct {
@@ -147,6 +210,8 @@ func (q *Queries) CreateConversation(ctx context.Context, arg CreateConversation
 		&i.MemoriesExtractedAt,
 		&i.Kind,
 		&i.Summary,
+		&i.ContextSummary,
+		&i.ContextSummaryThrough,
 	)
 	return i, err
 }
@@ -167,7 +232,7 @@ func (q *Queries) DeleteConversation(ctx context.Context, arg DeleteConversation
 }
 
 const getConversation = `-- name: GetConversation :one
-SELECT id, user_id, title, created_at, updated_at, memories_extracted_at, kind, summary FROM conversations
+SELECT id, user_id, title, created_at, updated_at, memories_extracted_at, kind, summary, context_summary, context_summary_through FROM conversations
 WHERE id = $1 AND user_id = $2
 `
 
@@ -191,12 +256,14 @@ func (q *Queries) GetConversation(ctx context.Context, arg GetConversationParams
 		&i.MemoriesExtractedAt,
 		&i.Kind,
 		&i.Summary,
+		&i.ContextSummary,
+		&i.ContextSummaryThrough,
 	)
 	return i, err
 }
 
 const listConversations = `-- name: ListConversations :many
-SELECT id, user_id, title, created_at, updated_at, memories_extracted_at, kind, summary FROM conversations
+SELECT id, user_id, title, created_at, updated_at, memories_extracted_at, kind, summary, context_summary, context_summary_through FROM conversations
 WHERE user_id = $1
 ORDER BY updated_at DESC
 LIMIT $2 OFFSET $3
@@ -226,6 +293,8 @@ func (q *Queries) ListConversations(ctx context.Context, arg ListConversationsPa
 			&i.MemoriesExtractedAt,
 			&i.Kind,
 			&i.Summary,
+			&i.ContextSummary,
+			&i.ContextSummaryThrough,
 		); err != nil {
 			return nil, err
 		}
@@ -293,6 +362,116 @@ WHERE id = $1
 func (q *Queries) MarkConversationExtracted(ctx context.Context, id uuid.UUID) error {
 	_, err := q.db.Exec(ctx, markConversationExtracted, id)
 	return err
+}
+
+const messagesBefore = `-- name: MessagesBefore :many
+SELECT id, conversation_id, role, content, parts, usage, model, provider, created_at, evidence_refs, tool_calls, tool_results FROM messages
+WHERE conversation_id = $1
+  AND created_at <= $2
+ORDER BY created_at
+LIMIT $3
+`
+
+type MessagesBeforeParams struct {
+	ConversationID uuid.UUID
+	CreatedAt      time.Time
+	Limit          int32
+}
+
+// The turns at or before a point in time, oldest first.
+//
+// This is what the summariser folds in: everything the tail no longer carries.
+func (q *Queries) MessagesBefore(ctx context.Context, arg MessagesBeforeParams) ([]Message, error) {
+	rows, err := q.db.Query(ctx, messagesBefore, arg.ConversationID, arg.CreatedAt, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Message{}
+	for rows.Next() {
+		var i Message
+		if err := rows.Scan(
+			&i.ID,
+			&i.ConversationID,
+			&i.Role,
+			&i.Content,
+			&i.Parts,
+			&i.Usage,
+			&i.Model,
+			&i.Provider,
+			&i.CreatedAt,
+			&i.EvidenceRefs,
+			&i.ToolCalls,
+			&i.ToolResults,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const messagesBetween = `-- name: MessagesBetween :many
+SELECT id, conversation_id, role, content, parts, usage, model, provider, created_at, evidence_refs, tool_calls, tool_results FROM messages
+WHERE conversation_id = $1
+  AND created_at > $2::timestamptz
+  AND created_at <= $3::timestamptz
+ORDER BY created_at
+LIMIT $4::int
+`
+
+type MessagesBetweenParams struct {
+	ConversationID uuid.UUID
+	After          time.Time
+	Through        time.Time
+	ResultLimit    int32
+}
+
+// The turns written since the last summarising pass, oldest first.
+//
+// after is exclusive so a message exactly on the watermark is not folded in
+// twice. Bounded above by through for the same reason the summary is: the tail
+// still carries anything newer, and summarising a turn the model can already
+// read verbatim wastes tokens on both ends.
+func (q *Queries) MessagesBetween(ctx context.Context, arg MessagesBetweenParams) ([]Message, error) {
+	rows, err := q.db.Query(ctx, messagesBetween,
+		arg.ConversationID,
+		arg.After,
+		arg.Through,
+		arg.ResultLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Message{}
+	for rows.Next() {
+		var i Message
+		if err := rows.Scan(
+			&i.ID,
+			&i.ConversationID,
+			&i.Role,
+			&i.Content,
+			&i.Parts,
+			&i.Usage,
+			&i.Model,
+			&i.Provider,
+			&i.CreatedAt,
+			&i.EvidenceRefs,
+			&i.ToolCalls,
+			&i.ToolResults,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const recentMessages = `-- name: RecentMessages :many
@@ -391,6 +570,28 @@ func (q *Queries) RecentUserMessages(ctx context.Context, arg RecentUserMessages
 		return nil, err
 	}
 	return items, nil
+}
+
+const setConversationContextSummary = `-- name: SetConversationContextSummary :exec
+UPDATE conversations
+SET context_summary = $2,
+    context_summary_through = $3
+WHERE id = $1
+`
+
+type SetConversationContextSummaryParams struct {
+	ID                    uuid.UUID
+	ContextSummary        string
+	ContextSummaryThrough *time.Time
+}
+
+// The rolling compaction, plus the watermark saying how far it reaches. Both
+// move together: a summary whose watermark did not advance would be folded in
+// again on the next pass, and a watermark without the text it describes would
+// silently drop those turns from context forever.
+func (q *Queries) SetConversationContextSummary(ctx context.Context, arg SetConversationContextSummaryParams) error {
+	_, err := q.db.Exec(ctx, setConversationContextSummary, arg.ID, arg.ContextSummary, arg.ContextSummaryThrough)
+	return err
 }
 
 const setConversationSummary = `-- name: SetConversationSummary :exec
