@@ -32,6 +32,7 @@ const (
 	DocumentReindex Action = "document_reindex"
 	ReportGenerate  Action = "report_generate"
 	MediaAnalysis   Action = "media_analysis"
+	AccountExport   Action = "account_export"
 )
 
 // Limit is one account's allowance for one action.

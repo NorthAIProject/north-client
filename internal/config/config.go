@@ -197,6 +197,7 @@ type QuotaConfig struct {
 	DocumentReindexes int
 	ReportGenerations int
 	MediaAnalyses     int
+	AccountExports    int
 }
 
 // TelegramConfig configures the Telegram messaging adapter.
@@ -390,6 +391,10 @@ func Load() (*Config, error) {
 		{"QUOTA_DOCUMENT_REINDEX_PER_HOUR", 10, &cfg.Quota.DocumentReindexes},
 		{"QUOTA_REPORT_GENERATIONS_PER_HOUR", 10, &cfg.Quota.ReportGenerations},
 		{"QUOTA_MEDIA_ANALYSES_PER_HOUR", 20, &cfg.Quota.MediaAnalyses},
+		// Low because an export reads the whole account — every document out of
+		// the bucket included — and nobody needs their entire history four times
+		// in an hour.
+		{"QUOTA_ACCOUNT_EXPORTS_PER_HOUR", 3, &cfg.Quota.AccountExports},
 	} {
 		v, quotaErr := intValue(q.key, q.def)
 		if quotaErr != nil {

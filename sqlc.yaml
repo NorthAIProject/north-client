@@ -359,3 +359,15 @@ sql:
         package: integrationsdb
         out: internal/integrations/db
         overrides: *overrides
+  # The one package that reads other slices' tables directly. Erasing an account
+  # spans all of them, and routing it through each slice's repository would make
+  # every slice grow a delete method that only this caller ever uses.
+  - engine: postgresql
+    schema: migrations
+    queries: internal/account/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: accountdb
+        out: internal/account/db
+        overrides: *overrides
