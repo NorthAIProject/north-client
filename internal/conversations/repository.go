@@ -76,6 +76,60 @@ func (r *Repository) SetSummary(ctx context.Context, id uuid.UUID, summary strin
 	}), "set conversation summary")
 }
 
+// SetContextSummary stores the rolling compaction and how far it reaches.
+func (r *Repository) SetContextSummary(ctx context.Context, id uuid.UUID, summary string, through time.Time) error {
+	return apperr.Wrap(r.q.SetConversationContextSummary(ctx, conversationsdb.SetConversationContextSummaryParams{
+		ID:                    id,
+		ContextSummary:        summary,
+		ContextSummaryThrough: &through,
+	}), "set conversation context summary")
+}
+
+// MessagesBetween returns the turns written after a watermark and no later than
+// through, oldest first. A zero after means from the beginning of the thread.
+func (r *Repository) MessagesBetween(ctx context.Context, id uuid.UUID, after, through time.Time, limit int) ([]Message, error) {
+	rows, err := r.q.MessagesBetween(ctx, conversationsdb.MessagesBetweenParams{
+		ConversationID: id,
+		After:          after,
+		Through:        through,
+		ResultLimit:    int32(limit),
+	})
+	if err != nil {
+		return nil, apperr.Wrap(err, "list messages between")
+	}
+	return messagesFromDB(rows), nil
+}
+
+// AwaitingSummary lists threads with more than keepRecent turns beyond their
+// summary watermark — the ones losing history off the end of the window.
+func (r *Repository) AwaitingSummary(ctx context.Context, keepRecent, limit int) ([]Pending, error) {
+	rows, err := r.q.ConversationsAwaitingSummary(ctx, conversationsdb.ConversationsAwaitingSummaryParams{
+		KeepRecent:  int64(keepRecent),
+		ResultLimit: int32(limit),
+	})
+	if err != nil {
+		return nil, apperr.Wrap(err, "list conversations awaiting summary")
+	}
+
+	out := make([]Pending, len(rows))
+	for i, row := range rows {
+		out[i] = Pending{ID: row.ID, UserID: row.UserID}
+	}
+	return out, nil
+}
+
+// Owner returns the account a thread belongs to.
+func (r *Repository) Owner(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	owner, err := r.q.ConversationOwner(ctx, id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return uuid.Nil, apperr.ErrNotFound
+		}
+		return uuid.Nil, apperr.Wrap(err, "conversation owner")
+	}
+	return owner, nil
+}
+
 func (r *Repository) SetTitle(ctx context.Context, id uuid.UUID, title string) error {
 	err := r.q.SetConversationTitle(ctx, conversationsdb.SetConversationTitleParams{
 		ID:    id,
@@ -239,12 +293,14 @@ func (r *Repository) MarkExtracted(ctx context.Context, id uuid.UUID) error {
 
 func conversationFromDB(row conversationsdb.Conversation) Conversation {
 	c := Conversation{
-		ID:        row.ID,
-		UserID:    row.UserID,
-		Kind:      row.Kind,
-		Summary:   row.Summary,
-		CreatedAt: row.CreatedAt,
-		UpdatedAt: row.UpdatedAt,
+		ID:                    row.ID,
+		UserID:                row.UserID,
+		Kind:                  row.Kind,
+		Summary:               row.Summary,
+		ContextSummary:        row.ContextSummary,
+		ContextSummaryThrough: row.ContextSummaryThrough,
+		CreatedAt:             row.CreatedAt,
+		UpdatedAt:             row.UpdatedAt,
 	}
 	if c.Kind == "" {
 		c.Kind = KindChat

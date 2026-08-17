@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/NorthAIProject/north-client/internal/coach"
 	"github.com/NorthAIProject/north-client/internal/conversations"
@@ -222,5 +223,69 @@ func TestDecisionsRenderUnderTheirHeading(t *testing.T) {
 	}
 	if !strings.Contains(empty.Render(), "Decisions: none recorded yet") {
 		t.Fatalf("an empty section must say so rather than go missing:\n%s", empty.Render())
+	}
+}
+
+// A long thread's earlier turns reach the model as a summary rather than being
+// dropped. This is the behaviour NOR-26 exists to add.
+func TestBuildPutsTheConversationSummaryInFrontOfTheModel(t *testing.T) {
+	pool := testdb.New(t)
+	convos := conversations.NewService(conversations.NewRepository(pool))
+	userSvc := users.NewService(users.NewRepository(pool))
+	ctx := context.Background()
+
+	u, err := userSvc.Register(ctx, users.Registration{
+		Email:        "ctx-summary@north.test",
+		PasswordHash: "$2a$12$notarealhashbutthatisfineheretestonly",
+		DisplayName:  "Fernando",
+		Timezone:     "Europe/Lisbon",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	c, err := convos.Start(ctx, u.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = convos.AppendUserMessage(ctx, c.ID, "the newest turn", nil); err != nil {
+		t.Fatal(err)
+	}
+	if err = convos.SetContextSummary(ctx, c.ID, "they decided to train five days a week", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+
+	built, err := coach.NewContextBuilder(convos).Build(ctx, coach.ContextRequest{
+		User:           u,
+		ConversationID: c.ID,
+	})
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+
+	if built.ConversationSummary != "they decided to train five days a week" {
+		t.Fatalf("summary not loaded: %q", built.ConversationSummary)
+	}
+
+	rendered := built.Render()
+	if !strings.Contains(rendered, "Earlier in this conversation:") {
+		t.Fatalf("rendered context has no earlier-conversation block:\n%s", rendered)
+	}
+	if !strings.Contains(rendered, "they decided to train five days a week") {
+		t.Fatalf("rendered context does not carry the summary:\n%s", rendered)
+	}
+}
+
+// A thread with no summary renders no empty heading.
+func TestBuildOmitsTheSummaryBlockWhenThereIsNone(t *testing.T) {
+	pool := testdb.New(t)
+	convos := conversations.NewService(conversations.NewRepository(pool))
+
+	built, err := coach.NewContextBuilder(convos).Build(context.Background(), coach.ContextRequest{User: testUser()})
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	if strings.Contains(built.Render(), "Earlier in this conversation") {
+		t.Fatal("rendered an earlier-conversation block with nothing in it")
 	}
 }

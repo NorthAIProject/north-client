@@ -35,8 +35,25 @@ type Conversation struct {
 	// threads and on an in-progress reflection.
 	Summary string
 
+	// ContextSummary is the rolling compaction of turns that no longer fit in
+	// the context window. Distinct from Summary: that one is a reflection's
+	// closing write-up and is what Ended() reads. This one exists on any long
+	// thread, says nothing about whether it is finished, and is never shown to
+	// the person — the UI still lists every message.
+	ContextSummary string
+
+	// ContextSummaryThrough is the newest turn ContextSummary covers. Nil when
+	// nothing has been summarised yet.
+	ContextSummaryThrough *time.Time
+
 	CreatedAt time.Time
 	UpdatedAt time.Time
+}
+
+// HasContextSummary reports whether there is compacted history to put in front
+// of the model.
+func (c Conversation) HasContextSummary() bool {
+	return strings.TrimSpace(c.ContextSummary) != ""
 }
 
 // IsReflection reports whether this thread is a structured reflection.

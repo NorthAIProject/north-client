@@ -75,14 +75,16 @@ type ChunkEmbedding struct {
 }
 
 type Conversation struct {
-	ID                  uuid.UUID
-	UserID              uuid.UUID
-	Title               *string
-	CreatedAt           time.Time
-	UpdatedAt           time.Time
-	MemoriesExtractedAt *time.Time
-	Kind                string
-	Summary             string
+	ID                    uuid.UUID
+	UserID                uuid.UUID
+	Title                 *string
+	CreatedAt             time.Time
+	UpdatedAt             time.Time
+	MemoriesExtractedAt   *time.Time
+	Kind                  string
+	Summary               string
+	ContextSummary        string
+	ContextSummaryThrough *time.Time
 }
 
 type Decision struct {
