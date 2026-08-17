@@ -12,6 +12,14 @@ sql:
         package: usersdb
         out: internal/users/db
         sql_package: pgx/v5
+        # Each slice gets structs for the tables its own queries touch, and
+        # nothing else.
+        #
+        # Without this, every one of the 33 packages below generated a struct
+        # for every table in the schema — 22,866 lines of identical models, and
+        # a one-column migration showed up as 33 changed files. That made schema
+        # diffs unreviewable and buried real generated-code changes in noise.
+        omit_unused_structs: true
         emit_pointers_for_null_types: true
         emit_empty_slices: true
         overrides: &overrides
