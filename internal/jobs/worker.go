@@ -35,6 +35,16 @@ type Worker struct {
 	metrics   *metrics.Registry
 	handlers  map[Kind]Handler
 	periodics []periodicEnqueue
+
+	// now is the clock periodic alignment reads. Swapped in tests so they do
+	// not have to wait for a real wall-clock boundary.
+	now func() time.Time
+}
+
+// WithClock fixes the worker's idea of now. Tests only.
+func (w *Worker) WithClock(now func() time.Time) *Worker {
+	w.now = now
+	return w
 }
 
 type periodicEnqueue struct {
@@ -44,7 +54,7 @@ type periodicEnqueue struct {
 }
 
 func NewWorker(queue *Queue, log *slog.Logger) *Worker {
-	return &Worker{queue: queue, log: log, handlers: make(map[Kind]Handler)}
+	return &Worker{queue: queue, log: log, handlers: make(map[Kind]Handler), now: time.Now}
 }
 
 // WithMetrics attaches counters. Returns the worker so it can be wired in one
@@ -204,17 +214,48 @@ func (w *Worker) kinds() []string {
 }
 
 func (w *Worker) runPeriodic(ctx context.Context, p periodicEnqueue) {
-	ticker := time.NewTicker(p.interval)
-	defer ticker.Stop()
-
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
+		case <-time.After(untilNext(w.now(), p.interval)):
 			if _, err := w.queue.Enqueue(ctx, p.kind, p.payload); err != nil {
 				w.log.Error("periodic enqueue failed", slog.String("kind", string(p.kind)), slog.Any("error", err))
 			}
 		}
 	}
+}
+
+// untilNext is how long to wait for the next wall-clock boundary of interval.
+//
+// Periodic work used to run on a ticker started at process boot, which had two
+// consequences. The mild one is drift: "hourly" meant an hour after this worker
+// happened to start, so the same sweep ran at :17 on one deploy and :49 on the
+// next, and comparing two days of logs meant first working out when each
+// process began.
+//
+// The severe one is starvation. A ticker's first tick comes a full interval
+// after it is created, so a worker that restarts more often than its longest
+// interval never fires that job at all. A deploy loop, a crash loop, or simply
+// shipping twice an hour was enough to stop the hourly sweeps running — and
+// nothing would have reported it, because a job that is never enqueued produces
+// no failure, no log line and no metric.
+//
+// Aligning to the clock fixes both: whatever time the process starts, the next
+// boundary is at most one interval away and is the same instant for every
+// worker.
+func untilNext(now time.Time, interval time.Duration) time.Duration {
+	if interval <= 0 {
+		// A caller asking for a non-positive interval is a programming error,
+		// but spinning on it would be worse than waiting.
+		return time.Hour
+	}
+
+	// Truncate works on absolute time since the epoch, so the boundaries are
+	// the same everywhere rather than following the server's timezone. That is
+	// what makes them comparable across deployments; anything that has to
+	// happen at a particular *local* hour decides that inside its own handler,
+	// where the user's timezone is known.
+	next := now.Truncate(interval).Add(interval)
+	return next.Sub(now)
 }
