@@ -139,6 +139,8 @@ func buildDashboardData(snap Snapshot) (app.DashboardData, error) {
 		ActivityDonut:    activityDonut,
 		HasActivityDonut: hasDonut,
 		Nudges:           snap.Nudges,
+		Briefing:         briefingBody(snap),
+		HasBriefing:      snap.Briefing != nil && snap.Briefing.Ready(),
 		HasNextStep:      hasStep,
 		NextStep: app.NextStep{
 			Eyebrow: step.Eyebrow,
@@ -278,4 +280,14 @@ func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 		middleware.FromContext(r.Context()).Error("dashboard request failed", slog.Any("error", err))
 		http.Error(w, "Something went wrong.", http.StatusInternalServerError)
 	}
+}
+
+// briefingBody is the markdown the card renders. A briefing that is still
+// pending or that failed has no body worth showing, so the card stays hidden
+// rather than rendering an empty box.
+func briefingBody(snap Snapshot) string {
+	if snap.Briefing == nil || !snap.Briefing.Ready() {
+		return ""
+	}
+	return snap.Briefing.Body
 }

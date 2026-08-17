@@ -12,7 +12,7 @@ import (
 )
 
 const getUserNotificationPrefs = `-- name: GetUserNotificationPrefs :one
-SELECT id, user_id, nudge_missed_checkin, nudge_goal_deadline, weekly_report_auto, quiet_hours_enabled, quiet_start, quiet_end, updated_at FROM user_notification_prefs WHERE user_id = $1
+SELECT id, user_id, nudge_missed_checkin, nudge_goal_deadline, weekly_report_auto, quiet_hours_enabled, quiet_start, quiet_end, updated_at, daily_briefing_auto FROM user_notification_prefs WHERE user_id = $1
 `
 
 func (q *Queries) GetUserNotificationPrefs(ctx context.Context, userID uuid.UUID) (UserNotificationPref, error) {
@@ -28,6 +28,7 @@ func (q *Queries) GetUserNotificationPrefs(ctx context.Context, userID uuid.UUID
 		&i.QuietStart,
 		&i.QuietEnd,
 		&i.UpdatedAt,
+		&i.DailyBriefingAuto,
 	)
 	return i, err
 }
@@ -35,18 +36,19 @@ func (q *Queries) GetUserNotificationPrefs(ctx context.Context, userID uuid.UUID
 const upsertUserNotificationPrefs = `-- name: UpsertUserNotificationPrefs :one
 INSERT INTO user_notification_prefs (
     user_id, nudge_missed_checkin, nudge_goal_deadline,
-    weekly_report_auto, quiet_hours_enabled, quiet_start, quiet_end
+    weekly_report_auto, daily_briefing_auto, quiet_hours_enabled, quiet_start, quiet_end
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 ON CONFLICT (user_id) DO UPDATE
 SET nudge_missed_checkin = EXCLUDED.nudge_missed_checkin,
     nudge_goal_deadline  = EXCLUDED.nudge_goal_deadline,
     weekly_report_auto   = EXCLUDED.weekly_report_auto,
+    daily_briefing_auto  = EXCLUDED.daily_briefing_auto,
     quiet_hours_enabled  = EXCLUDED.quiet_hours_enabled,
     quiet_start          = EXCLUDED.quiet_start,
     quiet_end            = EXCLUDED.quiet_end,
     updated_at           = now()
-RETURNING id, user_id, nudge_missed_checkin, nudge_goal_deadline, weekly_report_auto, quiet_hours_enabled, quiet_start, quiet_end, updated_at
+RETURNING id, user_id, nudge_missed_checkin, nudge_goal_deadline, weekly_report_auto, quiet_hours_enabled, quiet_start, quiet_end, updated_at, daily_briefing_auto
 `
 
 type UpsertUserNotificationPrefsParams struct {
@@ -54,6 +56,7 @@ type UpsertUserNotificationPrefsParams struct {
 	NudgeMissedCheckin bool
 	NudgeGoalDeadline  bool
 	WeeklyReportAuto   bool
+	DailyBriefingAuto  bool
 	QuietHoursEnabled  bool
 	QuietStart         string
 	QuietEnd           string
@@ -65,6 +68,7 @@ func (q *Queries) UpsertUserNotificationPrefs(ctx context.Context, arg UpsertUse
 		arg.NudgeMissedCheckin,
 		arg.NudgeGoalDeadline,
 		arg.WeeklyReportAuto,
+		arg.DailyBriefingAuto,
 		arg.QuietHoursEnabled,
 		arg.QuietStart,
 		arg.QuietEnd,
@@ -80,6 +84,7 @@ func (q *Queries) UpsertUserNotificationPrefs(ctx context.Context, arg UpsertUse
 		&i.QuietStart,
 		&i.QuietEnd,
 		&i.UpdatedAt,
+		&i.DailyBriefingAuto,
 	)
 	return i, err
 }

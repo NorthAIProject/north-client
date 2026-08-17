@@ -156,14 +156,20 @@ func (q *Queries) GetReport(ctx context.Context, arg GetReportParams) (Report, e
 const latestReadyReport = `-- name: LatestReadyReport :one
 SELECT id, user_id, kind, period_start, period_end, title, body, status, last_error, generated_at, archived_at, created_at, updated_at FROM reports
 WHERE user_id = $1
+  AND kind = $2
   AND status = 'ready'
   AND archived_at IS NULL
 ORDER BY period_start DESC
 LIMIT 1
 `
 
-func (q *Queries) LatestReadyReport(ctx context.Context, userID uuid.UUID) (Report, error) {
-	row := q.db.QueryRow(ctx, latestReadyReport, userID)
+type LatestReadyReportParams struct {
+	UserID uuid.UUID
+	Kind   string
+}
+
+func (q *Queries) LatestReadyReport(ctx context.Context, arg LatestReadyReportParams) (Report, error) {
+	row := q.db.QueryRow(ctx, latestReadyReport, arg.UserID, arg.Kind)
 	var i Report
 	err := row.Scan(
 		&i.ID,
@@ -187,6 +193,7 @@ const listReports = `-- name: ListReports :many
 SELECT id, user_id, kind, period_start, period_end, title, body, status, last_error, generated_at, archived_at, created_at, updated_at FROM reports
 WHERE user_id = $1
   AND ($3::boolean OR archived_at IS NULL)
+  AND ($4::text IS NULL OR kind = $4::text)
 ORDER BY period_start DESC, created_at DESC
 LIMIT $2
 `
@@ -195,10 +202,16 @@ type ListReportsParams struct {
 	UserID          uuid.UUID
 	Limit           int32
 	IncludeArchived bool
+	Kind            *string
 }
 
 func (q *Queries) ListReports(ctx context.Context, arg ListReportsParams) ([]Report, error) {
-	rows, err := q.db.Query(ctx, listReports, arg.UserID, arg.Limit, arg.IncludeArchived)
+	rows, err := q.db.Query(ctx, listReports,
+		arg.UserID,
+		arg.Limit,
+		arg.IncludeArchived,
+		arg.Kind,
+	)
 	if err != nil {
 		return nil, err
 	}

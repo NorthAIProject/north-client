@@ -17,6 +17,7 @@ WHERE user_id = $1
 SELECT * FROM reports
 WHERE user_id = $1
   AND (sqlc.arg(include_archived)::boolean OR archived_at IS NULL)
+  AND (sqlc.narg(kind)::text IS NULL OR kind = sqlc.narg(kind)::text)
 ORDER BY period_start DESC, created_at DESC
 LIMIT $2;
 
@@ -55,6 +56,7 @@ RETURNING *;
 -- name: LatestReadyReport :one
 SELECT * FROM reports
 WHERE user_id = $1
+  AND kind = $2
   AND status = 'ready'
   AND archived_at IS NULL
 ORDER BY period_start DESC

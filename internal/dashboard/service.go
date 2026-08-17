@@ -16,6 +16,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/memories"
 	"github.com/NorthAIProject/north-client/internal/mind"
 	"github.com/NorthAIProject/north-client/internal/nudges/nudge"
+	"github.com/NorthAIProject/north-client/internal/reports/report"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/sleep"
@@ -60,6 +61,15 @@ type Options struct {
 	// Nudges is optional. The worker process never loads the dashboard, and
 	// a nil here just leaves the card off.
 	Nudges Nudges
+
+	// Briefings is optional for the same reason.
+	Briefings Briefings
+}
+
+// Briefings is the dashboard's view of the morning briefing. Narrow on purpose:
+// the dashboard shows the latest ready one and nothing else.
+type Briefings interface {
+	LatestBriefing(ctx context.Context, userID uuid.UUID) (report.Report, error)
 }
 
 // Nudges is the dashboard's view of scheduled coach notes.
@@ -79,6 +89,7 @@ type Service struct {
 	activity      *activity.Service
 	mind          *mind.Service
 	nudges        Nudges
+	briefings     Briefings
 }
 
 func NewService(opts Options) *Service {
@@ -94,7 +105,19 @@ func NewService(opts Options) *Service {
 		activity:      opts.Activity,
 		mind:          opts.Mind,
 		nudges:        opts.Nudges,
+		briefings:     opts.Briefings,
 	}
+}
+
+// WithBriefings wires the morning briefing after construction.
+//
+// A setter rather than an Options field because of the order things are built
+// in: the reports service needs insights, and insights reuses this dashboard's
+// timeline, so this dependency cannot be satisfied at NewService time without
+// making the cycle real. Called once at startup, before serving.
+func (s *Service) WithBriefings(b Briefings) *Service {
+	s.briefings = b
+	return s
 }
 
 // Snapshot is the command center for one person over one window.
@@ -127,6 +150,10 @@ type Snapshot struct {
 
 	// Unread coach notes. Empty when none, or when Nudges was not wired.
 	Nudges []nudge.Nudge
+
+	// Briefing is this morning's note. Nil when none has been generated, when
+	// the latest one is not for today, or when Briefings was not wired.
+	Briefing *report.Report
 }
 
 // Load gathers the overview.
@@ -188,6 +215,33 @@ func (s *Service) Load(ctx context.Context, user users.User, rg timerange.Range)
 		snap.PendingMemories = pending
 		return err
 	})
+
+	if s.briefings != nil {
+		g.Go(func() error {
+			latest, err := s.briefings.LatestBriefing(gctx, user.ID)
+			if err != nil {
+				// Not having one is the normal case, not a failure: nobody has
+				// opted in on day one, and the sweep has not run yet on day two.
+				if apperr.Is(err, apperr.ErrNotFound) {
+					return nil
+				}
+				return err
+			}
+			// Yesterday's briefing is worse than none — it describes a day that
+			// has already happened as though it were starting. Compared by
+			// calendar date in the reader's zone, not by truncating an instant:
+			// Truncate works off the UTC epoch and would put the boundary in the
+			// middle of the day for anyone on a non-zero offset.
+			loc := user.Location()
+			wantY, wantM, wantD := time.Now().In(loc).Date()
+			gotY, gotM, gotD := latest.PeriodStart.In(loc).Date()
+			if gotY != wantY || gotM != wantM || gotD != wantD {
+				return nil
+			}
+			snap.Briefing = &latest
+			return nil
+		})
+	}
 
 	if s.nudges != nil {
 		g.Go(func() error {
