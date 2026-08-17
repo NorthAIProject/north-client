@@ -56,6 +56,7 @@ type NotificationsForm struct {
 	NudgeMissedCheckIn bool
 	NudgeGoalDeadline  bool
 	WeeklyReportAuto   bool
+	DailyBriefingAuto  bool
 	QuietHoursEnabled  bool
 	QuietStart         string
 	QuietEnd           string
@@ -69,6 +70,7 @@ func NotificationsFormFor(p notifications.Prefs) NotificationsForm {
 		NudgeMissedCheckIn: p.NudgeMissedCheckIn,
 		NudgeGoalDeadline:  p.NudgeGoalDeadline,
 		WeeklyReportAuto:   p.WeeklyReportAuto,
+		DailyBriefingAuto:  p.DailyBriefingAuto,
 		QuietHoursEnabled:  p.QuietHoursEnabled,
 		QuietStart:         p.QuietStart,
 		QuietEnd:           p.QuietEnd,
@@ -82,6 +84,7 @@ func NotificationsFormFrom(in notifications.Input) NotificationsForm {
 		NudgeMissedCheckIn: in.NudgeMissedCheckIn,
 		NudgeGoalDeadline:  in.NudgeGoalDeadline,
 		WeeklyReportAuto:   in.WeeklyReportAuto,
+		DailyBriefingAuto:  in.DailyBriefingAuto,
 		QuietHoursEnabled:  in.QuietHoursEnabled,
 		QuietStart:         in.QuietStart,
 		QuietEnd:           in.QuietEnd,
@@ -295,6 +298,17 @@ templ notificationsCard(f NotificationsForm) {
 					}
 					@form.Description() {
 						Generated on Monday morning, your time, for the week that just ended.
+					}
+				}
+				@form.Item() {
+					@switchcomp.Switch(switchcomp.Props{
+						ID: "daily_briefing_auto", Name: "daily_briefing_auto", Checked: f.DailyBriefingAuto,
+					})
+					@label.Label(label.Props{For: "daily_briefing_auto"}) {
+						Write my morning briefing automatically
+					}
+					@form.Description() {
+						A few sentences each morning, your time, from your goals and last check-in.
 					}
 				}
 				@form.Item() {

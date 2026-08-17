@@ -34,6 +34,7 @@ const (
 	ConversationTitle = "conversation_title.md"
 	MemoryExtraction  = "memory_extraction.md"
 	WeeklyReview      = "weekly_review.md"
+	DailyBriefing     = "daily_briefing.md"
 	ReflectionSession = "reflection_session.md"
 )
 

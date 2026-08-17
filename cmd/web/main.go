@@ -513,8 +513,13 @@ func routes(
 		Queue:      queue,
 		Client:     reports.ClientFromRegistry(registry),
 		Context:    reports.NewInsightsContext(insightsSvc, mealProgressSvc, memorySvc),
+		FastModel:  cfg.AI.FastModel,
 	})
 	reportHandler := reports.NewHandler(reportSvc, quotaSvc)
+
+	// Late-wired: see Service.WithBriefings. reports needs insights, and
+	// insights needs the dashboard, so the briefing card arrives last.
+	dashboardSvc.WithBriefings(reportSvc)
 
 	// One registry of capabilities, shared by the coach's chat loop and the
 	// MCP server. Two definitions of "calculate my macros" would drift, and

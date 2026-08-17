@@ -22,6 +22,7 @@ type Input struct {
 	NudgeMissedCheckIn bool
 	NudgeGoalDeadline  bool
 	WeeklyReportAuto   bool
+	DailyBriefingAuto  bool
 	QuietHoursEnabled  bool
 	QuietStart         string
 	QuietEnd           string
@@ -73,6 +74,7 @@ func defaults() Prefs {
 		NudgeMissedCheckIn: true,
 		NudgeGoalDeadline:  true,
 		WeeklyReportAuto:   false,
+		DailyBriefingAuto:  false,
 		QuietHoursEnabled:  false,
 		QuietStart:         defaultQuietStart,
 		QuietEnd:           defaultQuietEnd,
