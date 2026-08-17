@@ -27,15 +27,16 @@ var (
 // Names of the available prompts. Constants rather than raw strings so a typo
 // is a compile error rather than a runtime one.
 const (
-	CoachSystem       = "coach_system.md"
-	CoachTone         = "coach_tone.md"
-	WorkoutPlan       = "workout_plan.md"
-	FormAnalysis      = "form_analysis.md"
-	ConversationTitle = "conversation_title.md"
-	MemoryExtraction  = "memory_extraction.md"
-	WeeklyReview      = "weekly_review.md"
-	DailyBriefing     = "daily_briefing.md"
-	ReflectionSession = "reflection_session.md"
+	CoachSystem         = "coach_system.md"
+	CoachTone           = "coach_tone.md"
+	WorkoutPlan         = "workout_plan.md"
+	FormAnalysis        = "form_analysis.md"
+	ConversationTitle   = "conversation_title.md"
+	MemoryExtraction    = "memory_extraction.md"
+	WeeklyReview        = "weekly_review.md"
+	DailyBriefing       = "daily_briefing.md"
+	ReflectionSession   = "reflection_session.md"
+	ConversationSummary = "conversation_summary.md"
 )
 
 // Render executes a prompt template with the given data.

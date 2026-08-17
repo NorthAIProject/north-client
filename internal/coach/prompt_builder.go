@@ -79,6 +79,18 @@ func (p *PromptBuilder) Titler(firstMessage string) (string, error) {
 	return prompts.Render(prompts.ConversationTitle, map[string]any{"Message": firstMessage})
 }
 
+// Summarizer returns the prompt that compacts the earlier part of a thread.
+//
+// existing is the previous compaction, empty on the first pass. The prompt asks
+// for the whole thing back rather than an append, so the model can drop older
+// detail to make room instead of growing without bound.
+func (p *PromptBuilder) Summarizer(existing, transcript string) (string, error) {
+	return prompts.Render(prompts.ConversationSummary, map[string]any{
+		"Existing":   existing,
+		"Transcript": transcript,
+	})
+}
+
 // logSourceFailure records a context source that could not contribute.
 //
 // Deliberately a warning rather than an error: the reply still happens, just

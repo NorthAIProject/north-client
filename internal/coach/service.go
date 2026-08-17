@@ -645,6 +645,11 @@ func (s *Service) pump(
 		s.titleConversation(saveCtx, target.user, target.conversation.ID, target.firstMessage)
 	}
 
+	// Threshold trigger: the turn that pushes a thread past the context window
+	// is the one that makes its beginning invisible, so compact it now rather
+	// than waiting for the sweep an hour later.
+	s.enqueueSummary(saveCtx, target.user.ID, target.conversation.ID)
+
 	ended := s.maybeEndReflection(saveCtx, target.conversation, text)
 	s.enqueueMemoryExtraction(saveCtx, target, ended)
 }
@@ -790,6 +795,34 @@ func (s *Service) enqueueMemoryExtraction(ctx context.Context, target pumpTarget
 	}); err != nil {
 		log.Warn("could not enqueue memory extraction", slog.Any("error", err),
 			slog.String("conversation_id", target.conversation.ID.String()))
+	}
+}
+
+// enqueueSummary asks for a thread to be compacted, once it has more history
+// than the context window carries.
+//
+// Queued rather than run inline: unlike titling, this reads a large slice of
+// the thread and writes a long prompt, and the reply pump has already made the
+// person wait once.
+func (s *Service) enqueueSummary(ctx context.Context, userID, conversationID uuid.UUID) {
+	if s.queue == nil {
+		return
+	}
+	log := middleware.FromContext(ctx)
+
+	// One more than the tail: at exactly the tail size nothing has fallen out
+	// yet, so there is nothing to summarise.
+	count, err := s.conversations.CountMessages(ctx, conversationID)
+	if err != nil || count <= s.contextB.RecentTurns() {
+		return
+	}
+
+	if _, err := s.queue.Enqueue(ctx, jobs.KindSummarizeConversation, jobs.SummarizeConversationPayload{
+		UserID:         userID,
+		ConversationID: conversationID,
+	}); err != nil {
+		log.Warn("could not enqueue conversation summary", slog.Any("error", err),
+			slog.String("conversation_id", conversationID.String()))
 	}
 }
 

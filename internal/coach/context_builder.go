@@ -36,6 +36,12 @@ type Context struct {
 	// RecentMessages is the tail of the current conversation.
 	RecentMessages []conversations.Message
 
+	// ConversationSummary is what was said earlier in this same thread, beyond
+	// the tail. Without it a long conversation simply loses its beginning: the
+	// tail is a fixed number of turns, and everything older used to be dropped
+	// with nothing standing in for it.
+	ConversationSummary string
+
 	// EarlierTopics are the user's recent messages from other conversations, so
 	// a brand new thread still has continuity.
 	EarlierTopics []conversations.Message
@@ -184,14 +190,25 @@ func (b *ContextBuilder) WithMetrics(m *metrics.Registry) *ContextBuilder {
 	return b
 }
 
+// defaultRecentTurns is how many turns of the current thread go to the model
+// verbatim. Everything older is represented by the rolling summary instead.
+const defaultRecentTurns = 20
+
 func NewContextBuilder(convos *conversations.Service, sources ...ContextSource) *ContextBuilder {
 	return &ContextBuilder{
 		conversations: convos,
 		sources:       sources,
-		recentTurns:   20,
+		recentTurns:   defaultRecentTurns,
 		earlierTopics: 8,
 	}
 }
+
+// RecentTurns is the size of the verbatim tail.
+//
+// Exposed so the summariser folds in exactly the turns this builder stops
+// sending. Two independent constants would drift, and the failure mode of
+// drifting is losing history without noticing.
+func (b *ContextBuilder) RecentTurns() int { return b.recentTurns }
 
 // Build gathers context for one request.
 //
@@ -211,6 +228,17 @@ func (b *ContextBuilder) Build(ctx context.Context, req ContextRequest) (*Contex
 			return nil, err // the conversation itself is not optional
 		}
 		out.RecentMessages = recent
+
+		// The compaction of everything older than that tail. Optional in the
+		// way a context source is: a thread short enough never to have been
+		// summarised has none, and failing to read it must not cost the reply
+		// the turns it can still see.
+		if convo, err := b.conversations.Get(ctx, req.ConversationID, req.User.ID); err != nil {
+			logSourceFailure(ctx, "conversation_summary", err)
+			b.metrics.ContextSourceFailed("conversation_summary")
+		} else if convo.HasContextSummary() {
+			out.ConversationSummary = convo.ContextSummary
+		}
 	}
 
 	if earlier, err := b.conversations.RecentUserMessages(ctx, req.User.ID, b.earlierTopics); err == nil {
@@ -287,6 +315,13 @@ func (c *Context) Render() string {
 	section(&b, "Reflections", c.Reflections, "none yet")
 	section(&b, "Decisions", c.Decisions, "none recorded yet")
 	section(&b, "Latest weekly review", c.Reports, "none yet")
+
+	// Before the other-conversation continuity block: this is the same thread
+	// the tail comes from, so it reads as one story rather than as an aside.
+	if summary := strings.TrimSpace(c.ConversationSummary); summary != "" {
+		b.WriteString("\nEarlier in this conversation:\n")
+		b.WriteString(summary + "\n")
+	}
 
 	if len(c.EarlierTopics) > 0 {
 		b.WriteString("\nWhat they have been talking about in other conversations:\n")
