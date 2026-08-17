@@ -18,6 +18,7 @@ type DecisionForm struct {
 	Title     string
 	Options   string
 	Rationale string
+	Outcome   string
 	Errors    map[string]string
 }
 
@@ -34,6 +35,7 @@ func FormFor(d decision.Decision) DecisionForm {
 		Title:     d.Title,
 		Options:   d.Options,
 		Rationale: d.Rationale,
+		Outcome:   d.Outcome,
 	}
 }
 
@@ -47,7 +49,7 @@ templ IndexPage(user users.User, list []decision.Decision, f DecisionForm) {
 					What you chose, what you turned down, and why.
 				</p>
 			</header>
-			@decisionFormCard("/app/decisions", "Log a decision", "Save decision", f)
+			@decisionFormCard("/app/decisions", "Log a decision", "Save decision", f, false)
 			if len(list) == 0 {
 				<p class="text-muted-foreground text-sm">Nothing recorded yet. The first one is the one you'll want later.</p>
 			} else {
@@ -73,7 +75,7 @@ templ ShowPage(user users.User, d decision.Decision, f DecisionForm) {
 					{ d.DecidedAt.Format("2 January 2006") }
 				</p>
 			</header>
-			@decisionFormCard("/app/decisions/"+d.ID.String(), "Edit", "Save changes", f)
+			@decisionFormCard("/app/decisions/"+d.ID.String(), "Edit", "Save changes", f, true)
 			<form method="post" action={ templ.SafeURL("/app/decisions/" + d.ID.String() + "/delete") }>
 				@ui.CSRFInput()
 				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantDestructive}) {
@@ -90,7 +92,10 @@ templ ShowPage(user users.User, d decision.Decision, f DecisionForm) {
 	}
 }
 
-templ decisionFormCard(action, heading, submit string, f DecisionForm) {
+// decisionFormCard is both the create and the edit form. withOutcome is false
+// on create: a call logged today has no outcome yet, and an empty "how did it
+// go?" box at the moment of deciding invites a guess instead of a review.
+templ decisionFormCard(action, heading, submit string, f DecisionForm, withOutcome bool) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 		@card.Header() {
 			@card.Title() {
@@ -153,6 +158,26 @@ templ decisionFormCard(action, heading, submit string, f DecisionForm) {
 						}
 					}
 				}
+				if withOutcome {
+					@form.Item() {
+						@label.Label(label.Props{For: "outcome", Error: f.fieldError("outcome")}) {
+							How it turned out
+						}
+						@textarea.Textarea(textarea.Props{
+							ID:          "outcome",
+							Name:        "outcome",
+							Rows:        3,
+							Placeholder: "Looking back — what actually happened?",
+							Value:       f.Outcome,
+							HasError:    f.fieldError("outcome") != "",
+						})
+						if f.fieldError("outcome") != "" {
+							@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+								{ f.fieldError("outcome") }
+							}
+						}
+					}
+				}
 				@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90"}) {
 					{ submit }
 				}
@@ -171,6 +196,9 @@ templ decisionCard(d decision.Decision) {
 			}
 			if d.Rationale != "" {
 				<p class="text-muted-foreground text-sm">Why: { d.Rationale }</p>
+			}
+			if d.Outcome != "" {
+				<p class="text-muted-foreground text-sm">Outcome: { d.Outcome }</p>
 			}
 			@button.Button(button.Props{Href: "/app/decisions/" + d.ID.String(), Variant: button.VariantGhost, Size: button.SizeSm}) {
 				Edit

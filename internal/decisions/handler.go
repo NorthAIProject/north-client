@@ -108,10 +108,10 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	form := formFrom(r)
+	// The edit form is the only writer of outcome and it always submits the
+	// field, so the posted value wins — including an emptied one, which is how
+	// someone retracts a review they got wrong.
 	in := inputFrom(form)
-	// v1 forms do not collect outcome. Keep whatever is already stored so
-	// an edit cannot wipe a later review.
-	in.Outcome = existing.Outcome
 
 	updated, err := h.svc.Update(r.Context(), id, user.ID, in)
 	if err != nil {
@@ -145,11 +145,14 @@ func (h *Handler) destroy(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/app/decisions", http.StatusSeeOther)
 }
 
+// formFrom reads the posted fields. outcome is absent from the create form, so
+// it arrives empty there, which is the right value for a call just made.
 func formFrom(r *http.Request) decisionpages.DecisionForm {
 	return decisionpages.DecisionForm{
 		Title:     strings.TrimSpace(r.PostFormValue("title")),
 		Options:   strings.TrimSpace(r.PostFormValue("options")),
 		Rationale: strings.TrimSpace(r.PostFormValue("rationale")),
+		Outcome:   strings.TrimSpace(r.PostFormValue("outcome")),
 	}
 }
 
@@ -158,6 +161,7 @@ func inputFrom(form decisionpages.DecisionForm) Input {
 		Title:     form.Title,
 		Options:   form.Options,
 		Rationale: form.Rationale,
+		Outcome:   form.Outcome,
 	}
 }
 
