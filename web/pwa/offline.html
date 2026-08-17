@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#1C1C1F" />
+    <title>Offline — North</title>
+
+    <!--
+      Every style is inline and no file is referenced.
+
+      This page is what a person sees when the network is gone, so anything it
+      links to is a request that has already failed once. Depending on the
+      cached stylesheet would mean the offline page renders unstyled in exactly
+      the case where a cache miss is most likely — a first run, or the pass
+      after a cache version bump.
+    -->
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+      }
+      body {
+        background: #1c1c1f;
+        color: #f4f4f5;
+        font-family:
+          ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+        display: grid;
+        place-items: center;
+        padding: 1.5rem;
+        box-sizing: border-box;
+      }
+      main {
+        max-width: 26rem;
+        text-align: left;
+      }
+      .eyebrow {
+        font-size: 0.75rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #a1a1aa;
+        margin: 0 0 0.5rem;
+      }
+      h1 {
+        font-size: 1.5rem;
+        font-weight: 500;
+        letter-spacing: -0.01em;
+        margin: 0 0 0.75rem;
+      }
+      p {
+        margin: 0 0 1.5rem;
+        line-height: 1.6;
+        color: #d4d4d8;
+      }
+      button {
+        font: inherit;
+        font-size: 0.875rem;
+        padding: 0.625rem 1.125rem;
+        border-radius: 0.5rem;
+        border: 1px solid #3f3f46;
+        background: #f4f4f5;
+        color: #18181b;
+        cursor: pointer;
+      }
+      button:hover {
+        opacity: 0.9;
+      }
+      button:focus-visible {
+        outline: 2px solid #f4f4f5;
+        outline-offset: 2px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">North</p>
+      <h1>You're offline</h1>
+      <p>
+        North keeps your coach, your goals and your check-ins on the server, so
+        it needs a connection to show them. Nothing you had already saved is
+        lost — this page is only what the app can reach right now.
+      </p>
+      <button type="button" onclick="location.reload()">Try again</button>
+    </main>
+  </body>
+</html>

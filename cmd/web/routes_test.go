@@ -255,3 +255,24 @@ func TestTheExportLivesUnderSettings(t *testing.T) {
 		t.Fatalf("GET /app/settings/export.zip signed out = %d, want a 303 to the login page", rec.Code)
 	}
 }
+
+// The offline page has to be reachable signed out. The worker precaches it
+// before anyone logs in, and a 302 to /login cached under that URL would show
+// the login page as North's offline screen.
+func TestOfflinePageIsPublic(t *testing.T) {
+	handler := testRoutes(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/offline.html", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.Contains(ct, "text/html") {
+		t.Errorf("Content-Type = %q, want text/html", ct)
+	}
+	if !strings.Contains(rec.Body.String(), "You're offline") {
+		t.Error("offline page does not say it is the offline page")
+	}
+}
