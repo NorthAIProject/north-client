@@ -3,7 +3,9 @@ package coach_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -287,5 +289,123 @@ func TestBuildOmitsTheSummaryBlockWhenThereIsNone(t *testing.T) {
 	}
 	if strings.Contains(built.Render(), "Earlier in this conversation") {
 		t.Fatal("rendered an earlier-conversation block with nothing in it")
+	}
+}
+
+// slowSource blocks until its context is done, or until it has waited longer
+// than any deadline the builder should allow.
+type slowSource struct {
+	name    string
+	started chan struct{}
+	once    sync.Once
+}
+
+func (s *slowSource) Name() string { return s.name }
+
+func (s *slowSource) Collect(ctx context.Context, _ coach.ContextRequest, _ *coach.Context) error {
+	s.once.Do(func() { close(s.started) })
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(time.Minute):
+		return nil
+	}
+}
+
+// The point of NOR-58: one hanging source must not hold the reply. Before this,
+// eighteen sources ran in series and a stuck one blocked everything behind it.
+func TestAHangingSourceDoesNotHoldTheReply(t *testing.T) {
+	pool := testdb.New(t)
+	convos := conversations.NewService(conversations.NewRepository(pool))
+
+	slow := &slowSource{name: "calendar", started: make(chan struct{})}
+	builder := coach.NewContextBuilder(convos,
+		slow,
+		fakeSource{name: "fine", fill: func(c *coach.Context) { c.Preferences = append(c.Preferences, "Units: metric") }},
+	)
+
+	start := time.Now()
+	built, err := builder.Build(context.Background(), coach.ContextRequest{User: testUser()})
+	elapsed := time.Since(start)
+
+	if err != nil {
+		t.Fatalf("a hanging source should not fail the build: %v", err)
+	}
+
+	select {
+	case <-slow.started:
+	default:
+		t.Fatal("the slow source never ran")
+	}
+
+	// Its own deadline, not a minute. Generous upper bound so a loaded CI box
+	// does not make this flaky — the failure being caught is 60s, not 5s.
+	if elapsed > 30*time.Second {
+		t.Fatalf("build waited %s for a hanging source", elapsed)
+	}
+
+	// And the healthy source still contributed.
+	if !strings.Contains(built.Render(), "Units: metric") {
+		t.Fatal("a hanging source cost the reply a healthy source's data")
+	}
+}
+
+// Sources run concurrently, so the prompt must still be assembled in
+// registration order. A prompt that reordered itself by whichever query
+// finished first would make one reply impossible to compare against the next.
+func TestContextIsAssembledInRegistrationOrderNotCompletionOrder(t *testing.T) {
+	pool := testdb.New(t)
+	convos := conversations.NewService(conversations.NewRepository(pool))
+
+	// The first-registered source is deliberately the slowest to return.
+	builder := coach.NewContextBuilder(convos,
+		fakeSource{name: "sleep", fill: func(c *coach.Context) {
+			time.Sleep(80 * time.Millisecond)
+			c.DailySignals = append(c.DailySignals, "Sleep: 6.2h")
+		}},
+		fakeSource{name: "hydration", fill: func(c *coach.Context) {
+			c.DailySignals = append(c.DailySignals, "Water: 1.5L")
+		}},
+	)
+
+	for range 5 {
+		built, err := builder.Build(context.Background(), coach.ContextRequest{User: testUser()})
+		if err != nil {
+			t.Fatalf("build: %v", err)
+		}
+		if len(built.DailySignals) != 2 {
+			t.Fatalf("DailySignals = %v, want both entries", built.DailySignals)
+		}
+		if built.DailySignals[0] != "Sleep: 6.2h" || built.DailySignals[1] != "Water: 1.5L" {
+			t.Fatalf("order follows completion, not registration: %v", built.DailySignals)
+		}
+	}
+}
+
+// Two sources writing the same field concurrently is the race this design
+// avoids by giving each its own Context. Run under -race, this is the guard.
+func TestSourcesSharingAFieldDoNotRace(t *testing.T) {
+	pool := testdb.New(t)
+	convos := conversations.NewService(conversations.NewRepository(pool))
+
+	sources := make([]coach.ContextSource, 0, 12)
+	for i := range 12 {
+		sources = append(sources, fakeSource{
+			name: fmt.Sprintf("writer-%d", i),
+			fill: func(c *coach.Context) {
+				c.DailySignals = append(c.DailySignals, "signal")
+				c.FitnessSummary = append(c.FitnessSummary, "fitness")
+			},
+		})
+	}
+
+	built, err := coach.NewContextBuilder(convos, sources...).
+		Build(context.Background(), coach.ContextRequest{User: testUser()})
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	if len(built.DailySignals) != 12 || len(built.FitnessSummary) != 12 {
+		t.Fatalf("lost writes: DailySignals=%d FitnessSummary=%d, want 12 and 12",
+			len(built.DailySignals), len(built.FitnessSummary))
 	}
 }

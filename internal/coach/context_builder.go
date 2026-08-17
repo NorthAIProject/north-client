@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -147,8 +148,18 @@ type ContextSource interface {
 	// Name identifies the source in logs and timing.
 	Name() string
 
-	// Collect fills its part of the context. It is given the context under
-	// construction so a source may read what earlier sources found.
+	// Collect fills its part of the context.
+	//
+	// It is given a Context of its own, not the one being assembled: sources
+	// run concurrently, so a source cannot see what any other source found.
+	// Only User and LocalTime are populated on the way in.
+	//
+	// This used to promise the opposite — that a source could read what earlier
+	// sources had contributed. No implementation ever did, and keeping the
+	// promise would have meant running eighteen independent reads in series.
+	//
+	// A source that genuinely needs another's output should depend on that
+	// service directly rather than on the order the builder happens to use.
 	Collect(ctx context.Context, req ContextRequest, into *Context) error
 }
 
@@ -198,6 +209,15 @@ func (b *ContextBuilder) WithMetrics(m *metrics.Registry) *ContextBuilder {
 // defaultRecentTurns is how many turns of the current thread go to the model
 // verbatim. Everything older is represented by the rolling summary instead.
 const defaultRecentTurns = 20
+
+// sourceTimeout bounds one context source.
+//
+// Generous for a local query and tight for a remote one, which is the point:
+// the calendar source dials somebody else's server, and a person waiting for a
+// reply should not pay for that server being slow. A source that misses this
+// deadline is treated exactly like one that failed — logged, counted, and left
+// out of the prompt.
+const sourceTimeout = 3 * time.Second
 
 func NewContextBuilder(convos *conversations.Service, sources ...ContextSource) *ContextBuilder {
 	return &ContextBuilder{
@@ -250,18 +270,94 @@ func (b *ContextBuilder) Build(ctx context.Context, req ContextRequest) (*Contex
 		out.EarlierTopics = excludeConversation(earlier, req.ConversationID)
 	}
 
-	for _, source := range b.sources {
-		if err := source.Collect(ctx, req, out); err != nil {
-			logSourceFailure(ctx, source.Name(), err)
-
-			// Counted as well as logged. These fail soft, so the reply still
-			// looks right and the log line is the only sign — which means it is
-			// the sign nobody sees until somebody goes looking.
-			b.metrics.ContextSourceFailed(source.Name())
-		}
-	}
+	b.collect(ctx, req, out)
 
 	return out, nil
+}
+
+// collect runs every source concurrently and folds the results into out.
+//
+// Concurrent because these are eighteen independent reads, most of them a
+// database round trip and one of them a call to somebody else's MCP server.
+// Run in series they add up: the slowest source used to set the floor for how
+// long a person waits before the coach starts answering, and every feature
+// added made that floor higher.
+//
+// Each source is given its own empty Context rather than a shared one, and the
+// results are merged afterwards in registration order. That avoids a mutex
+// without changing what the model sees: two sources write FitnessSummary and
+// three write DailySignals, so a shared struct would be a genuine race, while
+// merging in order reproduces exactly the sequence the serial loop produced.
+func (b *ContextBuilder) collect(ctx context.Context, req ContextRequest, out *Context) {
+	parts := make([]*Context, len(b.sources))
+
+	var wg sync.WaitGroup
+	for i, source := range b.sources {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			// A deadline per source, so one that hangs costs its own budget
+			// rather than the whole reply. Derived from the request context, so
+			// cancelling the request still stops all of them at once.
+			sourceCtx, cancel := context.WithTimeout(ctx, sourceTimeout)
+			defer cancel()
+
+			// Its own Context to fill. Nothing reads from the context under
+			// construction — checked across all eighteen implementations — so
+			// nothing is lost by not sharing it.
+			part := &Context{User: req.User, LocalTime: out.LocalTime}
+			if err := source.Collect(sourceCtx, req, part); err != nil {
+				logSourceFailure(ctx, source.Name(), err)
+
+				// Counted as well as logged. These fail soft, so the reply still
+				// looks right and the log line is the only sign — which means it
+				// is the sign nobody sees until somebody goes looking.
+				b.metrics.ContextSourceFailed(source.Name())
+				return
+			}
+			parts[i] = part
+		}()
+	}
+	wg.Wait()
+
+	// In registration order, not completion order. A prompt that reordered
+	// itself according to which query finished first would make one reply
+	// impossible to compare against the next.
+	for _, part := range parts {
+		if part != nil {
+			out.merge(part)
+		}
+	}
+}
+
+// merge folds one source's contribution into the context being built.
+//
+// Every field a source may write is listed here. A new field on Context that is
+// not added to this function will silently never reach the model, which is why
+// this sits directly beneath the struct's own documentation rather than in a
+// file of its own.
+func (c *Context) merge(part *Context) {
+	c.Goals = append(c.Goals, part.Goals...)
+	c.CheckIns = append(c.CheckIns, part.CheckIns...)
+	c.Calendar = append(c.Calendar, part.Calendar...)
+	c.FormAnalyses = append(c.FormAnalyses, part.FormAnalyses...)
+	c.Memories = append(c.Memories, part.Memories...)
+	c.KnowledgeHits = append(c.KnowledgeHits, part.KnowledgeHits...)
+	c.FitnessSummary = append(c.FitnessSummary, part.FitnessSummary...)
+	c.Nutrition = append(c.Nutrition, part.Nutrition...)
+	c.Preferences = append(c.Preferences, part.Preferences...)
+	c.Reflections = append(c.Reflections, part.Reflections...)
+	c.DailySignals = append(c.DailySignals, part.DailySignals...)
+	c.Habits = append(c.Habits, part.Habits...)
+	c.Reports = append(c.Reports, part.Reports...)
+	c.Decisions = append(c.Decisions, part.Decisions...)
+
+	// The one scalar a source sets. Last non-empty wins, which matches the
+	// serial loop: only workouts writes it.
+	if part.WorkoutPlan != "" {
+		c.WorkoutPlan = part.WorkoutPlan
+	}
 }
 
 // excludeConversation drops messages already covered by RecentMessages, so the
