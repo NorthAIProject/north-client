@@ -13,6 +13,11 @@ import (
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
+// briefingMaxTokens caps the morning briefing. The prompt asks for three to
+// five sentences; this is the backstop for when the model ignores that, so a
+// runaway generation cannot turn the cheap path into the expensive one.
+const briefingMaxTokens = 400
+
 // Generator is the non-streaming AI call a review needs.
 type Generator interface {
 	Generate(ctx context.Context, req ai.Request) (*ai.Response, error)
@@ -78,7 +83,11 @@ func (s *Service) Generate(ctx context.Context, id, userID uuid.UUID) error {
 		return s.fail(ctx, id, userID, apperr.New("report generation is not configured"))
 	}
 
-	prompt, err := prompts.Render(prompts.WeeklyReview, map[string]string{
+	name := prompts.WeeklyReview
+	if report.Kind == KindDaily {
+		name = prompts.DailyBriefing
+	}
+	prompt, err := prompts.Render(name, map[string]string{
 		"Title":   report.Title,
 		"Context": formatContext(user, report, review),
 	})
@@ -86,9 +95,16 @@ func (s *Service) Generate(ctx context.Context, id, userID uuid.UUID) error {
 		return s.fail(ctx, id, userID, err)
 	}
 
-	resp, err := s.client.Generate(ctx, ai.Request{
-		Messages: []ai.Message{ai.UserText(prompt)},
-	})
+	// A briefing is read once and thrown away, so it runs on the cheap model and
+	// is capped short. The weekly review keeps the default model: it is the
+	// artefact somebody re-reads in six months.
+	req := ai.Request{Messages: []ai.Message{ai.UserText(prompt)}}
+	if report.Kind == KindDaily {
+		req.Model = s.fastModel
+		req.MaxTokens = briefingMaxTokens
+	}
+
+	resp, err := s.client.Generate(ctx, req)
 	if err != nil {
 		return s.fail(ctx, id, userID, err)
 	}
@@ -122,10 +138,15 @@ func formatContext(user users.User, report Report, review ReviewContext) string 
 	b.WriteString(user.DisplayName)
 	b.WriteString("\nTimezone: ")
 	b.WriteString(user.Timezone)
-	b.WriteString("\nWeek: ")
-	b.WriteString(report.PeriodStart.Format("2 Jan 2006"))
-	b.WriteString(" – ")
-	b.WriteString(report.PeriodEnd.Add(-time.Second).Format("2 Jan 2006"))
+	if report.Kind == KindDaily {
+		b.WriteString("\nDay: ")
+		b.WriteString(report.PeriodStart.Format("Monday 2 Jan 2006"))
+	} else {
+		b.WriteString("\nWeek: ")
+		b.WriteString(report.PeriodStart.Format("2 Jan 2006"))
+		b.WriteString(" – ")
+		b.WriteString(report.PeriodEnd.Add(-time.Second).Format("2 Jan 2006"))
+	}
 	b.WriteString("\n")
 
 	writeSection(&b, "Goals", review.Goals)

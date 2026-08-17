@@ -37,6 +37,7 @@ func (r *Repository) Upsert(ctx context.Context, userID uuid.UUID, in Input) (Pr
 		NudgeMissedCheckin: in.NudgeMissedCheckIn,
 		NudgeGoalDeadline:  in.NudgeGoalDeadline,
 		WeeklyReportAuto:   in.WeeklyReportAuto,
+		DailyBriefingAuto:  in.DailyBriefingAuto,
 		QuietHoursEnabled:  in.QuietHoursEnabled,
 		QuietStart:         in.QuietStart,
 		QuietEnd:           in.QuietEnd,

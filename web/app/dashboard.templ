@@ -10,6 +10,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/conversations"
 	"github.com/NorthAIProject/north-client/internal/goals/goal"
 	"github.com/NorthAIProject/north-client/internal/nudges/nudge"
+	"github.com/NorthAIProject/north-client/web/shared/markdown"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/workouts/plan"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
@@ -50,6 +51,11 @@ type DashboardData struct {
 	HasActivityDonut bool
 
 	Nudges []nudge.Nudge
+
+	// Briefing is this morning's note, already rendered markdown source. Empty
+	// when there is none for today.
+	Briefing     string
+	HasBriefing  bool
 
 	// HasNextStep is the first-run card. Hidden once the person has a goal,
 	// today's check-in, and a coach thread.
@@ -304,8 +310,50 @@ templ nextStepCard(step NextStep) {
 	}
 }
 
+// briefingCard is the morning note. It sits above everything else because it is
+// the thing somebody opens the dashboard to read, and it disappears entirely
+// once the day it describes is over.
+templ briefingCard(data DashboardData) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Content() {
+			<p class="text-muted-foreground text-xs tracking-wide uppercase">Today</p>
+			<div class="prose prose-sm dark:prose-invert mt-2 max-w-none">
+				@markdown.Render(data.Briefing)
+			</div>
+		}
+	}
+}
+
+// briefingPrompt is the on-demand path: somebody who has not opted into the
+// morning sweep can still ask for today's briefing from the page they are on.
+templ briefingPrompt() {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Content() {
+			<div class="flex flex-wrap items-center justify-between gap-3">
+				<div>
+					<p class="text-muted-foreground text-xs tracking-wide uppercase">Today</p>
+					<p class="mt-1 text-sm leading-relaxed">
+						No briefing yet this morning.
+					</p>
+				</div>
+				<form method="post" action="/app/reports/briefing">
+					@ui.CSRFInput()
+					@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm}) {
+						Write today's briefing
+					}
+				</form>
+			</div>
+		}
+	}
+}
+
 templ DashboardPanels(data DashboardData) {
 	<div class="space-y-6">
+		if data.HasBriefing {
+			@briefingCard(data)
+		} else {
+			@briefingPrompt()
+		}
 		@nudgepages.Card(data.Nudges)
 		@kpiStrip(data)
 		<div class="grid gap-4 lg:grid-cols-3">

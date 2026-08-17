@@ -22,13 +22,13 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 	return &Repository{q: reportsdb.New(pool)}
 }
 
-func (r *Repository) Create(ctx context.Context, userID uuid.UUID, week Week, kind Kind) (Report, error) {
+func (r *Repository) Create(ctx context.Context, userID uuid.UUID, period Period, kind Kind) (Report, error) {
 	row, err := r.q.CreateReport(ctx, reportsdb.CreateReportParams{
 		UserID:      userID,
 		Kind:        string(kind),
-		PeriodStart: toDate(week.Start),
-		PeriodEnd:   toDate(week.End),
-		Title:       week.Title(),
+		PeriodStart: toDate(period.Start),
+		PeriodEnd:   toDate(period.End),
+		Title:       period.Title,
 		Status:      string(StatusPending),
 	})
 	if err != nil {
@@ -63,14 +63,22 @@ func (r *Repository) ActiveForWeek(ctx context.Context, userID uuid.UUID, kind K
 	return fromDB(row), nil
 }
 
-func (r *Repository) List(ctx context.Context, userID uuid.UUID, includeArchived bool, limit int) ([]Report, error) {
+// List returns the person's reports, newest period first. An empty kind means
+// every kind; pass one to keep briefings out of the weekly review list.
+func (r *Repository) List(ctx context.Context, userID uuid.UUID, kind Kind, includeArchived bool, limit int) ([]Report, error) {
 	if limit <= 0 {
 		limit = 50
+	}
+	var filter *string
+	if kind != "" {
+		k := string(kind)
+		filter = &k
 	}
 	rows, err := r.q.ListReports(ctx, reportsdb.ListReportsParams{
 		UserID:          userID,
 		IncludeArchived: includeArchived,
 		Limit:           int32(limit),
+		Kind:            filter,
 	})
 	if err != nil {
 		return nil, apperr.Wrap(err, "list reports")
@@ -134,8 +142,14 @@ func (r *Repository) MarkFailed(ctx context.Context, id, userID uuid.UUID, reaso
 	return fromDB(row), nil
 }
 
-func (r *Repository) LatestReady(ctx context.Context, userID uuid.UUID) (Report, error) {
-	row, err := r.q.LatestReadyReport(ctx, userID)
+// LatestReady is filtered by kind on purpose. The table holds both weekly
+// reviews and daily briefings, so an unfiltered "newest ready row" would hand
+// the dashboard card whichever kind happened to be generated last.
+func (r *Repository) LatestReady(ctx context.Context, userID uuid.UUID, kind Kind) (Report, error) {
+	row, err := r.q.LatestReadyReport(ctx, reportsdb.LatestReadyReportParams{
+		UserID: userID,
+		Kind:   string(kind),
+	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return Report{}, apperr.ErrNotFound

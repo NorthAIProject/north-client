@@ -30,6 +30,7 @@ func NewHandler(svc *Service, quotas *quota.Service) *Handler {
 func (h *Handler) Routes(r chi.Router) {
 	r.Get("/reports", h.index)
 	r.With(h.quotas.Guard(quota.ReportGenerate)).Post("/reports/generate", h.generate)
+	r.With(h.quotas.Guard(quota.ReportGenerate)).Post("/reports/briefing", h.briefing)
 	r.Get("/reports/{id}", h.show)
 	r.Post("/reports/{id}/archive", h.archive)
 	r.With(h.quotas.Guard(quota.ReportGenerate)).Post("/reports/{id}/regenerate", h.regenerate)
@@ -80,6 +81,22 @@ func (h *Handler) generate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/app/reports/"+report.ID.String(), http.StatusSeeOther)
+}
+
+// briefing is the "open today's briefing" button on the dashboard. It returns
+// there rather than to the report page: the briefing is a dashboard card, and
+// the person pressing this is standing on the page that will show it.
+func (h *Handler) briefing(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+	if _, err := h.svc.RequestBriefing(r.Context(), user.ID); err != nil {
+		if apperr.Is(err, apperr.ErrConflict) {
+			http.Redirect(w, r, "/app?notice=cooldown", http.StatusSeeOther)
+			return
+		}
+		h.fail(w, r, err)
+		return
+	}
+	http.Redirect(w, r, "/app", http.StatusSeeOther)
 }
 
 func (h *Handler) archive(w http.ResponseWriter, r *http.Request) {

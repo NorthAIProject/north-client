@@ -597,6 +597,7 @@ type UserNotificationPref struct {
 	QuietStart         string
 	QuietEnd           string
 	UpdatedAt          time.Time
+	DailyBriefingAuto  bool
 }
 
 type UserNudge struct {

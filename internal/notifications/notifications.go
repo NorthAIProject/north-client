@@ -28,6 +28,11 @@ type Prefs struct {
 	// model call.
 	WeeklyReportAuto bool
 
+	// DailyBriefingAuto opts in to the sweep that writes the morning briefing.
+	// Off unless asked for, and for a stronger reason than the weekly review:
+	// this one is a model call every morning rather than every Monday.
+	DailyBriefingAuto bool
+
 	QuietHoursEnabled bool
 	// QuietStart and QuietEnd are "HH:MM" in the user's own timezone. The
 	// window may wrap midnight, which is what makes InQuietHours worth having.
@@ -103,6 +108,7 @@ func fromDB(row notificationsdb.UserNotificationPref) Prefs {
 		NudgeMissedCheckIn: row.NudgeMissedCheckin,
 		NudgeGoalDeadline:  row.NudgeGoalDeadline,
 		WeeklyReportAuto:   row.WeeklyReportAuto,
+		DailyBriefingAuto:  row.DailyBriefingAuto,
 		QuietHoursEnabled:  row.QuietHoursEnabled,
 		QuietStart:         row.QuietStart,
 		QuietEnd:           row.QuietEnd,

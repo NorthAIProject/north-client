@@ -240,8 +240,13 @@ func run() error {
 		Queue:      queue,
 		Client:     reports.ClientFromRegistry(registry),
 		Context:    reviewContext,
+		FastModel:  cfg.AI.FastModel,
 	})
 	worker.Register(jobs.KindWeeklyReview, reportSvc.HandleGenerateJob)
+
+	// The same handler: a briefing and a review differ in prompt, model and
+	// period, all of which are already on the row the payload names.
+	worker.Register(jobs.KindDailyBriefing, reportSvc.HandleGenerateJob)
 
 	notificationSvc := notifications.NewService(notifications.NewRepository(pool))
 
@@ -250,6 +255,10 @@ func run() error {
 	// instants around the world, and this is the sweep that catches each one.
 	worker.Register(jobs.KindSweepReports,
 		reports.NewSweeper(reportSvc, userSvc, notificationSvc, log).HandleSweep)
+
+	// And the same again for the morning briefing, hourly for the same reason.
+	worker.Register(jobs.KindSweepBriefings,
+		reports.NewBriefingSweeper(reportSvc, userSvc, notificationSvc, log).HandleSweep)
 
 	// The coach enqueues extraction only once a thread reaches four messages,
 	// from inside the reply pump. This catches the rest: conversations that
@@ -272,6 +281,7 @@ func run() error {
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepMemories, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepNudges, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepReports, struct{}{})
+	worker.RegisterPeriodic(time.Hour, jobs.KindSweepBriefings, struct{}{})
 	worker.RegisterPeriodic(24*time.Hour, jobs.KindSweepQuotas, struct{}{})
 
 	log.Info("worker ready",

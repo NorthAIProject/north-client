@@ -12,7 +12,14 @@ import (
 
 type Kind string
 
-const KindWeekly Kind = "weekly"
+const (
+	KindWeekly Kind = "weekly"
+	// KindDaily is the short morning briefing. It shares this table with the
+	// weekly review: the reports schema already keys its one-active-row index on
+	// (user_id, kind, period_start), so a daily row needs no migration, only a
+	// period whose start and end are the same day.
+	KindDaily Kind = "daily"
+)
 
 type Status string
 

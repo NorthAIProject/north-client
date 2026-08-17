@@ -33,13 +33,14 @@ type Users interface {
 }
 
 type Service struct {
-	repo     *Repository
-	users    Users
-	queue    Enqueuer
-	client   Generator
-	context  ContextLoader
-	now      func() time.Time
-	cooldown time.Duration
+	repo      *Repository
+	users     Users
+	queue     Enqueuer
+	client    Generator
+	context   ContextLoader
+	now       func() time.Time
+	cooldown  time.Duration
+	fastModel string
 }
 
 type Options struct {
@@ -50,17 +51,22 @@ type Options struct {
 	Context    ContextLoader
 	Now        func() time.Time
 	Cooldown   time.Duration
+
+	// FastModel generates daily briefings. Empty means the provider default,
+	// which is correct but costs more than a briefing is worth.
+	FastModel string
 }
 
 func NewService(opts Options) *Service {
 	s := &Service{
-		repo:     opts.Repository,
-		users:    opts.Users,
-		queue:    opts.Queue,
-		client:   opts.Client,
-		context:  opts.Context,
-		now:      opts.Now,
-		cooldown: opts.Cooldown,
+		repo:      opts.Repository,
+		users:     opts.Users,
+		queue:     opts.Queue,
+		client:    opts.Client,
+		context:   opts.Context,
+		now:       opts.Now,
+		cooldown:  opts.Cooldown,
+		fastModel: opts.FastModel,
 	}
 	if s.now == nil {
 		s.now = time.Now
@@ -75,8 +81,15 @@ func (s *Service) Get(ctx context.Context, id, userID uuid.UUID) (Report, error)
 	return s.repo.Get(ctx, id, userID)
 }
 
+// List is the weekly review list. Daily briefings live on the dashboard and are
+// deliberately not mixed into it: a page of one-a-day rows would bury them.
 func (s *Service) List(ctx context.Context, userID uuid.UUID, includeArchived bool) ([]Report, error) {
-	return s.repo.List(ctx, userID, includeArchived, 50)
+	return s.repo.List(ctx, userID, KindWeekly, includeArchived, 50)
+}
+
+// ListKind is the same list narrowed to one kind. An empty kind means all.
+func (s *Service) ListKind(ctx context.Context, userID uuid.UUID, kind Kind, includeArchived bool) ([]Report, error) {
+	return s.repo.List(ctx, userID, kind, includeArchived, 50)
 }
 
 func (s *Service) Archive(ctx context.Context, id, userID uuid.UUID) error {
@@ -98,9 +111,21 @@ func (s *Service) RequestGenerate(ctx context.Context, userID uuid.UUID, weekSta
 	if !weekStart.IsZero() {
 		at = weekStart
 	}
-	week := WeekContaining(at, user.Location())
+	return s.requestGenerate(ctx, userID, KindWeekly, WeekContaining(at, user.Location()).Period())
+}
 
-	existing, err := s.repo.ActiveForWeek(ctx, userID, KindWeekly, week.Start)
+// RequestBriefing creates or reuses today's briefing and queues generation.
+// This is the "open today's briefing" path; the sweep uses EnsureBriefing.
+func (s *Service) RequestBriefing(ctx context.Context, userID uuid.UUID) (Report, error) {
+	user, err := s.users.ByID(ctx, userID)
+	if err != nil {
+		return Report{}, err
+	}
+	return s.requestGenerate(ctx, userID, KindDaily, DayContaining(s.now(), user.Location()))
+}
+
+func (s *Service) requestGenerate(ctx context.Context, userID uuid.UUID, kind Kind, period Period) (Report, error) {
+	existing, err := s.repo.ActiveForWeek(ctx, userID, kind, period.Start)
 	switch {
 	case err == nil:
 		if existing.GeneratedAt != nil && s.now().Sub(*existing.GeneratedAt) < s.cooldown {
@@ -128,7 +153,7 @@ func (s *Service) RequestGenerate(ctx context.Context, userID uuid.UUID, weekSta
 		return existing, nil
 	case apperr.Is(err, apperr.ErrNotFound):
 		var created Report
-		created, err = s.repo.Create(ctx, userID, week, KindWeekly)
+		created, err = s.repo.Create(ctx, userID, period, kind)
 		if err != nil {
 			return Report{}, err
 		}
@@ -152,7 +177,18 @@ func (s *Service) RequestGenerate(ctx context.Context, userID uuid.UUID, weekSta
 //
 // created is false when the week already had a review, whatever its status.
 func (s *Service) EnsureWeekly(ctx context.Context, userID uuid.UUID, week Week) (Report, bool, error) {
-	_, err := s.repo.ActiveForWeek(ctx, userID, KindWeekly, week.Start)
+	return s.ensure(ctx, userID, KindWeekly, week.Period())
+}
+
+// EnsureBriefing is the same idempotent contract for one day, used by the
+// nightly sweep. A day that already has a briefing is left alone, whatever its
+// status, so an hourly sweep cannot rewrite the same morning all day.
+func (s *Service) EnsureBriefing(ctx context.Context, userID uuid.UUID, day Period) (Report, bool, error) {
+	return s.ensure(ctx, userID, KindDaily, day)
+}
+
+func (s *Service) ensure(ctx context.Context, userID uuid.UUID, kind Kind, period Period) (Report, bool, error) {
+	_, err := s.repo.ActiveForWeek(ctx, userID, kind, period.Start)
 	switch {
 	case err == nil:
 		return Report{}, false, nil
@@ -160,7 +196,7 @@ func (s *Service) EnsureWeekly(ctx context.Context, userID uuid.UUID, week Week)
 		return Report{}, false, err
 	}
 
-	created, err := s.repo.Create(ctx, userID, week, KindWeekly)
+	created, err := s.repo.Create(ctx, userID, period, kind)
 	if err != nil {
 		return Report{}, false, err
 	}
@@ -192,7 +228,11 @@ func (s *Service) enqueue(ctx context.Context, report Report) error {
 	if s.queue == nil {
 		return nil
 	}
-	_, err := s.queue.Enqueue(ctx, jobs.KindWeeklyReview, jobs.WeeklyReviewPayload{
+	kind := jobs.KindWeeklyReview
+	if report.Kind == KindDaily {
+		kind = jobs.KindDailyBriefing
+	}
+	_, err := s.queue.Enqueue(ctx, kind, jobs.WeeklyReviewPayload{
 		UserID:   report.UserID,
 		ReportID: report.ID,
 	})
@@ -212,5 +252,10 @@ func (s *Service) HandleGenerateJob(ctx context.Context, payload json.RawMessage
 }
 
 func (s *Service) LatestReady(ctx context.Context, userID uuid.UUID) (Report, error) {
-	return s.repo.LatestReady(ctx, userID)
+	return s.repo.LatestReady(ctx, userID, KindWeekly)
+}
+
+// LatestBriefing is what the dashboard card shows.
+func (s *Service) LatestBriefing(ctx context.Context, userID uuid.UUID) (Report, error) {
+	return s.repo.LatestReady(ctx, userID, KindDaily)
 }

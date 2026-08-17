@@ -90,6 +90,17 @@ const (
 	// it, once their own week has closed. Hourly, because "their own week"
 	// closes at a different absolute time in every timezone.
 	KindSweepReports Kind = "sweep_reports"
+
+	// KindDailyBriefing writes one morning's briefing. Its own kind rather than
+	// a flag on KindWeeklyReview so the two can be retried and counted apart:
+	// a briefing is cheap and disposable, a review is neither.
+	KindDailyBriefing Kind = "daily_briefing"
+
+	// KindSweepBriefings enqueues the daily briefing for accounts that asked
+	// for it, once their own morning has arrived. Hourly, for the same reason
+	// KindSweepReports is: "their own morning" is a different absolute time in
+	// every timezone.
+	KindSweepBriefings Kind = "sweep_briefings"
 )
 
 // ExtractMemoriesPayload is the job body for KindExtractMemories.

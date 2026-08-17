@@ -235,6 +235,7 @@ func (h *Handler) updateNotifications(w http.ResponseWriter, r *http.Request) {
 		NudgeMissedCheckIn: checked(r, "nudge_missed_checkin"),
 		NudgeGoalDeadline:  checked(r, "nudge_goal_deadline"),
 		WeeklyReportAuto:   checked(r, "weekly_report_auto"),
+		DailyBriefingAuto:  checked(r, "daily_briefing_auto"),
 		QuietHoursEnabled:  checked(r, "quiet_hours_enabled"),
 		QuietStart:         strings.TrimSpace(r.PostFormValue("quiet_start")),
 		QuietEnd:           strings.TrimSpace(r.PostFormValue("quiet_end")),
