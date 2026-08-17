@@ -8,12 +8,13 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// Files is the install surface: the web app manifest and the service worker.
+// Files is the install surface: the web app manifest, the service worker, and
+// the page the worker shows when a navigation cannot reach the server.
 //
 // They live here rather than under /assets because a worker's default scope
 // is its directory. /assets/js/sw.js cannot control /app.
 //
-//go:embed manifest.webmanifest sw.js
+//go:embed manifest.webmanifest sw.js offline.html
 var Files embed.FS
 
 // Mount registers the public install URLs. They must stay outside
@@ -22,6 +23,10 @@ var Files embed.FS
 func Mount(r chi.Router) {
 	r.Get("/manifest.webmanifest", serve("manifest.webmanifest", "application/manifest+json"))
 	r.Get("/sw.js", serve("sw.js", "application/javascript; charset=utf-8"))
+
+	// Public for the same reason the worker is: it is precached before anyone
+	// signs in, and a redirect to /login would be cached in its place.
+	r.Get("/offline.html", serve("offline.html", "text/html; charset=utf-8"))
 }
 
 func serve(name, contentType string) http.HandlerFunc {
