@@ -6,8 +6,6 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
@@ -50,47 +48,7 @@ func (s *BriefingSweeper) HandleSweep(ctx context.Context, _ json.RawMessage) er
 	if s.svc == nil || s.accounts == nil {
 		return nil
 	}
-
-	var after uuid.UUID
-	started := 0
-	for {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-
-		page, err := s.accounts.ListOnboarded(ctx, after, sweepPageSize)
-		if err != nil {
-			return err
-		}
-		if len(page) == 0 {
-			break
-		}
-
-		for _, user := range page {
-			after = user.ID
-
-			ok, err := s.sweepUser(ctx, user)
-			if err != nil {
-				s.log.Error("daily briefing sweep failed",
-					slog.String("user_id", user.ID.String()),
-					slog.Any("error", err),
-				)
-				continue
-			}
-			if ok {
-				started++
-			}
-		}
-
-		if len(page) < sweepPageSize {
-			break
-		}
-	}
-
-	if started > 0 {
-		s.log.Info("sweep started daily briefings", slog.Int("started", started))
-	}
-	return nil
+	return sweepAccounts(ctx, s.accounts, s.log, "daily briefings", s.sweepUser)
 }
 
 // sweepUser writes today's briefing for one account, if their morning has come
@@ -108,17 +66,14 @@ func (s *BriefingSweeper) sweepUser(ctx context.Context, user users.User) (bool,
 		return false, nil
 	}
 
-	loc := user.Location()
-	local := s.now().In(loc)
-	if local.Hour() < briefingHour {
+	local, due := localTimeIfDue(s.now(), user, briefingHour)
+	if !due {
 		return false, nil
 	}
 
 	// Today's briefing, not yesterday's: unlike the weekly review this is a
 	// forward-looking note about the day starting, and it reads the day that
-	// just ended as context. From briefingHour onwards rather than exactly at
-	// it, so an hour of worker downtime does not cost somebody their morning —
-	// EnsureBriefing does nothing once the day has a row.
-	_, created, err := s.svc.EnsureBriefing(ctx, user.ID, DayContaining(local, loc))
+	// just ended as context.
+	_, created, err := s.svc.EnsureBriefing(ctx, user.ID, DayContaining(local, user.Location()))
 	return created, err
 }

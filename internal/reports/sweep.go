@@ -6,13 +6,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/google/uuid"
-
-	"github.com/NorthAIProject/north-client/internal/notifications"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
-
-const sweepPageSize = 100
 
 // generateHour is the local hour from which the closed week may be written.
 //
@@ -20,17 +15,6 @@ const sweepPageSize = 100
 // reads over Monday morning coffee, and generating it at 00:00 local means the
 // model runs against a week whose last check-in may be minutes old.
 const generateHour = 6
-
-// Accounts is the page of users the sweep walks.
-type Accounts interface {
-	ListOnboarded(ctx context.Context, after uuid.UUID, limit int) ([]users.User, error)
-}
-
-// Prefs answers whether this person asked for the weekly review to write
-// itself.
-type Prefs interface {
-	Get(ctx context.Context, userID uuid.UUID) (notifications.Prefs, error)
-}
 
 // Sweeper generates the weekly review for accounts that opted in, once their
 // own week has closed.
@@ -63,47 +47,7 @@ func (s *Sweeper) HandleSweep(ctx context.Context, _ json.RawMessage) error {
 	if s.svc == nil || s.accounts == nil {
 		return nil
 	}
-
-	var after uuid.UUID
-	started := 0
-	for {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-
-		page, err := s.accounts.ListOnboarded(ctx, after, sweepPageSize)
-		if err != nil {
-			return err
-		}
-		if len(page) == 0 {
-			break
-		}
-
-		for _, user := range page {
-			after = user.ID
-
-			ok, err := s.sweepUser(ctx, user)
-			if err != nil {
-				s.log.Error("weekly review sweep failed",
-					slog.String("user_id", user.ID.String()),
-					slog.Any("error", err),
-				)
-				continue
-			}
-			if ok {
-				started++
-			}
-		}
-
-		if len(page) < sweepPageSize {
-			break
-		}
-	}
-
-	if started > 0 {
-		s.log.Info("sweep started weekly reviews", slog.Int("started", started))
-	}
-	return nil
+	return sweepAccounts(ctx, s.accounts, s.log, "weekly reviews", s.sweepUser)
 }
 
 // sweepUser generates the closed week for one account, if it is that account's
@@ -121,15 +65,12 @@ func (s *Sweeper) sweepUser(ctx context.Context, user users.User) (bool, error) 
 		return false, nil
 	}
 
-	loc := user.Location()
-	local := s.now().In(loc)
-	if local.Weekday() != time.Monday || local.Hour() < generateHour {
+	local, due := localTimeIfDue(s.now(), user, generateHour)
+	if !due || local.Weekday() != time.Monday {
 		return false, nil
 	}
 
-	// From generateHour onwards rather than exactly at it: a worker that was
-	// down for that one hour would otherwise skip somebody's week entirely.
-	// Repeating is free — EnsureWeekly does nothing once the week has a row.
+	loc := user.Location()
 	closed := WeekContaining(local, loc)
 	previous := WeekContaining(closed.Start.AddDate(0, 0, -1), loc)
 
