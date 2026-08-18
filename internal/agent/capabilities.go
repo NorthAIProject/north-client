@@ -17,6 +17,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/exercises"
 	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/meals"
+	"github.com/NorthAIProject/north-client/internal/notifications"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/workouts"
@@ -33,14 +34,15 @@ const resultLimit = 8
 // from its slice: this package is composition, not another layer of interfaces
 // over things that already have one caller.
 type Services struct {
-	Exercises   *exercises.Service
-	Calculator  *calculator.Service
-	Goals       *goals.Service
-	Ingredients *meals.IngredientService
-	FoodLog     *meals.FoodLogService
-	CheckIns    *checkins.Service
-	Documents   *documents.Service
-	Workouts    *workouts.Service
+	Exercises     *exercises.Service
+	Calculator    *calculator.Service
+	Goals         *goals.Service
+	Ingredients   *meals.IngredientService
+	FoodLog       *meals.FoodLogService
+	CheckIns      *checkins.Service
+	Documents     *documents.Service
+	Workouts      *workouts.Service
+	Notifications *notifications.Service
 
 	// Users resolves the account a call runs as.
 	//
@@ -86,6 +88,9 @@ func Build(svc Services) *Registry {
 	}
 	if svc.FoodLog != nil {
 		r.Register(todaysNutrition(svc.FoodLog))
+	}
+	if svc.Notifications != nil {
+		r.Register(listAlerts(svc.Notifications), setAlert(svc.Notifications))
 	}
 
 	return r

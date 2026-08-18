@@ -38,6 +38,8 @@ func (r *Repository) Upsert(ctx context.Context, userID uuid.UUID, in Input) (Pr
 		NudgeGoalDeadline:  in.NudgeGoalDeadline,
 		WeeklyReportAuto:   in.WeeklyReportAuto,
 		DailyBriefingAuto:  in.DailyBriefingAuto,
+		CoachActivity:      in.CoachActivity,
+		TrainingReminders:  in.TrainingReminders,
 		QuietHoursEnabled:  in.QuietHoursEnabled,
 		QuietStart:         in.QuietStart,
 		QuietEnd:           in.QuietEnd,
@@ -46,4 +48,44 @@ func (r *Repository) Upsert(ctx context.Context, userID uuid.UUID, in Input) (Pr
 		return Prefs{}, apperr.Wrap(err, "upsert notification prefs")
 	}
 	return fromDB(row), nil
+}
+
+func (r *Repository) GetSchedule(ctx context.Context, userID uuid.UUID, kind string) (Schedule, error) {
+	row, err := r.q.GetAlertSchedule(ctx, notificationsdb.GetAlertScheduleParams{
+		UserID: userID,
+		Kind:   kind,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Schedule{}, apperr.ErrNotFound
+		}
+		return Schedule{}, apperr.Wrap(err, "get alert schedule")
+	}
+	return scheduleFromDB(row), nil
+}
+
+func (r *Repository) ListSchedules(ctx context.Context, userID uuid.UUID) ([]Schedule, error) {
+	rows, err := r.q.ListAlertSchedules(ctx, userID)
+	if err != nil {
+		return nil, apperr.Wrap(err, "list alert schedules")
+	}
+	out := make([]Schedule, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, scheduleFromDB(row))
+	}
+	return out, nil
+}
+
+func (r *Repository) UpsertSchedule(ctx context.Context, userID uuid.UUID, in ScheduleInput) (Schedule, error) {
+	row, err := r.q.UpsertAlertSchedule(ctx, notificationsdb.UpsertAlertScheduleParams{
+		UserID:       userID,
+		Kind:         in.Kind,
+		Enabled:      in.Enabled,
+		EveryDays:    int32(in.EveryDays),
+		ReminderDays: int32(in.ReminderDays),
+	})
+	if err != nil {
+		return Schedule{}, apperr.Wrap(err, "upsert alert schedule")
+	}
+	return scheduleFromDB(row), nil
 }

@@ -99,8 +99,48 @@ type Service struct {
 	// every call a no-op — see Analytics.
 	analytics *Analytics
 
+	// attachments loads a stored photo so the current turn can show it to the
+	// model. Nil leaves files as text notes only, which is what every test
+	// that does not send a photo gets.
+	attachments AttachmentLoader
+
+	// inbox records a web-bell note when a reply arrived from another surface.
+	// Nil disables it.
+	inbox Inbox
+
 	model     string
 	fastModel string
+}
+
+// Inbox is the nudge table, as seen from the coach.
+type Inbox interface {
+	Raise(ctx context.Context, user users.User, kind, dedupe, title, body, href string) error
+}
+
+// InboxFunc lets a method be used as an Inbox.
+type InboxFunc func(ctx context.Context, user users.User, kind, dedupe, title, body, href string) error
+
+func (f InboxFunc) Raise(ctx context.Context, user users.User, kind, dedupe, title, body, href string) error {
+	return f(ctx, user, kind, dedupe, title, body, href)
+}
+
+// Incoming is one turn the person just sent: words, a file, or both.
+type Incoming struct {
+	Text        string
+	Attachments []conversations.Attachment
+
+	// Source is "telegram" when the turn arrived from a linked chat. The
+	// web bell is told about those replies; Telegram is not, because it
+	// already has the answer.
+	Source string
+}
+
+const SourceTelegram = "telegram"
+
+// AttachmentLoader reads a stored file so the current turn can be shown to
+// the model. The media service satisfies it; a test stubs it.
+type AttachmentLoader interface {
+	LoadInline(ctx context.Context, userID, mediaID uuid.UUID) (mime string, data []byte, err error)
 }
 
 type Options struct {
@@ -135,12 +175,26 @@ type Options struct {
 	// coach exactly as it was before AI Observability existed.
 	Analytics *Analytics
 
+	// Attachments loads a stored photo onto the current turn. Nil leaves
+	// files as a text note in history, which is correct for every caller
+	// that does not send one.
+	Attachments AttachmentLoader
+
+	// Inbox records a web note when a reply arrived from Telegram. Nil
+	// leaves the bell unchanged.
+	Inbox Inbox
+
 	// Model answers conversations. FastModel handles cheap side work such as
 	// naming a thread, which does not need the expensive model. Both may be
 	// empty, which lets whichever provider answers use its own default — the
 	// only sane behaviour when the chain spans several vendors.
 	Model     string
 	FastModel string
+}
+
+func (s *Service) WithInbox(in Inbox) *Service {
+	s.inbox = in
+	return s
 }
 
 func NewService(opts Options) *Service {
@@ -155,6 +209,8 @@ func NewService(opts Options) *Service {
 		declines:      opts.Declines,
 		own:           opts.Own,
 		analytics:     opts.Analytics,
+		attachments:   opts.Attachments,
+		inbox:         opts.Inbox,
 		model:         opts.Model,
 		fastModel:     opts.FastModel,
 	}
@@ -170,7 +226,12 @@ func NewService(opts Options) *Service {
 // The alternative, tying generation to the request, means a user who switches
 // apps on their phone silently loses the reply they were waiting for.
 func (s *Service) SendMessage(ctx context.Context, user users.User, conversationID uuid.UUID, text string) (<-chan ai.StreamChunk, error) {
-	if err := conversations.ValidateMessage(text); err != nil {
+	return s.SendIncoming(ctx, user, conversationID, Incoming{Text: text})
+}
+
+// SendIncoming is SendMessage for a turn that may carry a file.
+func (s *Service) SendIncoming(ctx context.Context, user users.User, conversationID uuid.UUID, in Incoming) (<-chan ai.StreamChunk, error) {
+	if err := conversations.ValidateTurn(in.Text, len(in.Attachments) > 0); err != nil {
 		return nil, err
 	}
 
@@ -182,8 +243,13 @@ func (s *Service) SendMessage(ctx context.Context, user users.User, conversation
 		return nil, apperr.Wrap(apperr.ErrConflict, "this reflection has ended")
 	}
 
-	if _, err = s.conversations.AppendUserMessage(ctx, conversationID, text, nil); err != nil {
+	if _, err = s.conversations.AppendUserMessage(ctx, conversationID, in.Text, in.Attachments); err != nil {
 		return nil, err
+	}
+
+	query := strings.TrimSpace(in.Text)
+	if query == "" && len(in.Attachments) > 0 {
+		query = conversations.AttachmentNote(in.Attachments[0])
 	}
 
 	// Built after the user's message is stored, so the model sees the turn it
@@ -191,7 +257,7 @@ func (s *Service) SendMessage(ctx context.Context, user users.User, conversation
 	coachCtx, err := s.contextB.Build(ctx, ContextRequest{
 		User:           user,
 		ConversationID: conversationID,
-		Query:          text,
+		Query:          query,
 	})
 	if err != nil {
 		return nil, err
@@ -207,10 +273,13 @@ func (s *Service) SendMessage(ctx context.Context, user users.User, conversation
 	// started them.
 	genCtx, cancelGen := context.WithTimeout(context.WithoutCancel(ctx), generationTimeout)
 
+	messages := conversations.ToAIMessages(coachCtx.RecentMessages)
+	messages = s.hydrateCurrentTurn(ctx, user, coachCtx.RecentMessages, messages)
+
 	req := ai.Request{
 		Model:    s.model,
 		System:   system,
-		Messages: conversations.ToAIMessages(coachCtx.RecentMessages),
+		Messages: messages,
 		Tools:    s.toolsFor(conversation),
 	}
 
@@ -229,7 +298,8 @@ func (s *Service) SendMessage(ctx context.Context, user users.User, conversation
 		conversation: conversation,
 		user:         user,
 		provider:     client.Name(),
-		firstMessage: text,
+		firstMessage: firstMessage(in),
+		source:       in.Source,
 		client:       client,
 		request:      req,
 		offeredRefs:  coachCtx.OfferedRefs(),
@@ -237,6 +307,70 @@ func (s *Service) SendMessage(ctx context.Context, user users.User, conversation
 	})
 
 	return out, nil
+}
+
+func (s *Service) noteTelegramReply(ctx context.Context, target pumpTarget, text string) {
+	if s.inbox == nil || target.source != SourceTelegram {
+		return
+	}
+	preview := strings.TrimSpace(text)
+	if len(preview) > 140 {
+		preview = strings.TrimSpace(preview[:140]) + "…"
+	}
+	_ = s.inbox.Raise(ctx, target.user,
+		"coach_reply",
+		target.conversation.ID.String(),
+		"See what I said",
+		preview,
+		"/app/chat/"+target.conversation.ID.String(),
+	)
+}
+
+func firstMessage(in Incoming) string {
+	if text := strings.TrimSpace(in.Text); text != "" {
+		return text
+	}
+	if len(in.Attachments) > 0 {
+		return conversations.AttachmentNote(in.Attachments[0])
+	}
+	return ""
+}
+
+// hydrateCurrentTurn puts the latest photo's bytes on the last user message.
+//
+// Only the current turn: every earlier file is already a text note from
+// ToAIMessages. Re-inlining the last month of progress photos would be a
+// silent context-window tax.
+func (s *Service) hydrateCurrentTurn(ctx context.Context, user users.User, stored []conversations.Message, messages []ai.Message) []ai.Message {
+	if s.attachments == nil || len(stored) == 0 || len(messages) == 0 {
+		return messages
+	}
+
+	last := stored[len(stored)-1]
+	if !last.IsUser() || len(last.Parts) == 0 {
+		return messages
+	}
+
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role != ai.RoleUser || len(messages[i].ToolResults) > 0 {
+			continue
+		}
+		for _, part := range last.Parts {
+			if part.Kind != "image" {
+				continue
+			}
+			mime, data, err := s.attachments.LoadInline(ctx, user.ID, part.MediaID)
+			if err != nil || len(data) == 0 {
+				continue
+			}
+			messages[i].Parts = append(messages[i].Parts, ai.Part{
+				InlineData: data,
+				MIMEType:   mime,
+			})
+		}
+		break
+	}
+	return messages
 }
 
 // startChat asks each provider in the user's chain until one of them begins a
@@ -388,6 +522,7 @@ type pumpTarget struct {
 	user         users.User
 	provider     string
 	firstMessage string
+	source       string
 
 	// client and request are kept so the pump can go back to the model after
 	// running tools, carrying the same system prompt and history plus what the
@@ -640,6 +775,8 @@ func (s *Service) pump(
 			slog.String("conversation_id", target.conversation.ID.String()))
 		return
 	}
+
+	s.noteTelegramReply(saveCtx, target, text)
 
 	if s.conversations.NeedsTitle(saveCtx, target.conversation) {
 		s.titleConversation(saveCtx, target.user, target.conversation.ID, target.firstMessage)

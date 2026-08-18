@@ -338,6 +338,8 @@ func (h *Handler) updateNotifications(w http.ResponseWriter, r *http.Request) {
 	in := notifications.Input{
 		NudgeMissedCheckIn: checked(r, "nudge_missed_checkin"),
 		NudgeGoalDeadline:  checked(r, "nudge_goal_deadline"),
+		CoachActivity:      checked(r, "coach_activity"),
+		TrainingReminders:  checked(r, "training_reminders"),
 		WeeklyReportAuto:   checked(r, "weekly_report_auto"),
 		DailyBriefingAuto:  checked(r, "daily_briefing_auto"),
 		QuietHoursEnabled:  checked(r, "quiet_hours_enabled"),
@@ -345,10 +347,48 @@ func (h *Handler) updateNotifications(w http.ResponseWriter, r *http.Request) {
 		QuietEnd:           strings.TrimSpace(r.PostFormValue("quiet_end")),
 	}
 
+	every, _ := strconv.Atoi(strings.TrimSpace(r.PostFormValue("photo_every_days")))
+	remind, _ := strconv.Atoi(strings.TrimSpace(r.PostFormValue("photo_reminder_days")))
+	sched := notifications.ScheduleInput{
+		Kind:         notifications.KindPhoto,
+		Enabled:      checked(r, "photo_ask_enabled"),
+		EveryDays:    every,
+		ReminderDays: remind,
+	}
+
 	if _, err := h.notifications.Upsert(r.Context(), user.ID, in); err != nil {
 		var fieldErrs apperr.FieldErrors
 		if apperr.As(err, &fieldErrs) {
 			notifForm := settingspages.NotificationsFormFrom(in)
+			notifForm.PhotoAskEnabled = sched.Enabled
+			notifForm.PhotoEveryDays = sched.EveryDays
+			notifForm.PhotoReminderDays = sched.ReminderDays
+			notifForm.Errors = fieldErrs.Messages()
+			h.render(w, r, settingspages.ProfileFormFor(user), nil, &notifForm, "", "")
+			return
+		}
+		h.fail(w, r, err)
+		return
+	}
+
+	if _, err := h.notifications.UpsertSchedule(r.Context(), user.ID, sched); err != nil {
+		var fieldErrs apperr.FieldErrors
+		if apperr.As(err, &fieldErrs) {
+			photo := notifications.Schedule{
+				Enabled: sched.Enabled, EveryDays: sched.EveryDays, ReminderDays: sched.ReminderDays,
+			}
+			n := notifications.Prefs{
+				NudgeMissedCheckIn: in.NudgeMissedCheckIn,
+				NudgeGoalDeadline:  in.NudgeGoalDeadline,
+				CoachActivity:      in.CoachActivity,
+				TrainingReminders:  in.TrainingReminders,
+				WeeklyReportAuto:   in.WeeklyReportAuto,
+				DailyBriefingAuto:  in.DailyBriefingAuto,
+				QuietHoursEnabled:  in.QuietHoursEnabled,
+				QuietStart:         in.QuietStart,
+				QuietEnd:           in.QuietEnd,
+			}
+			notifForm := settingspages.NotificationsFormFor(n, photo)
 			notifForm.Errors = fieldErrs.Messages()
 			h.render(w, r, settingspages.ProfileFormFor(user), nil, &notifForm, "", "")
 			return
@@ -636,7 +676,12 @@ func (h *Handler) render(
 			h.fail(w, r, err)
 			return
 		}
-		f := settingspages.NotificationsFormFor(n)
+		photo, photoErr := h.notifications.PhotoSchedule(ctx, user.ID)
+		if photoErr != nil {
+			h.fail(w, r, photoErr)
+			return
+		}
+		f := settingspages.NotificationsFormFor(n, photo)
 		notifForm = &f
 	}
 

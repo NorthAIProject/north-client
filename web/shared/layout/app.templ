@@ -65,12 +65,34 @@ templ App(title string, user users.User, nav []NavGroup) {
 					<span class="md:hidden">
 						@ui.BrandLockup("/app", "size-5", "text-sm font-medium tracking-tight")
 					</span>
-					<div
-						class="ml-auto"
-						hx-get="/app/nudges/bell"
-						hx-trigger="load"
-						hx-swap="innerHTML"
-					></div>
+					<div class="ml-auto">
+						<div
+							hx-get="/app/nudges/bell"
+							hx-trigger="load, every 20s"
+							hx-swap="innerHTML"
+							hx-on::after-swap="
+								const el = this.querySelector('[data-unread]');
+								const n = el ? parseInt(el.dataset.unread, 10) || 0 : 0;
+								const title = el ? (el.dataset.title || '') : '';
+								const next = el ? (el.dataset.href || '/app') : '/app';
+								const toast = this.parentElement.querySelector('[data-nudge-toast]');
+								if (this._seen > 0 && n > this._seen && title && toast) {
+									toast.textContent = title;
+									toast.setAttribute('href', next);
+									toast.hidden = false;
+									clearTimeout(this._hide);
+									this._hide = setTimeout(() => { toast.hidden = true }, 5000);
+								}
+								this._seen = n;
+							"
+						></div>
+						<a
+							data-nudge-toast
+							hidden
+							href="/app"
+							class="bg-signal text-background fixed right-4 bottom-4 z-50 max-w-xs rounded-lg px-4 py-3 text-sm shadow-lg"
+						></a>
+					</div>
 				</header>
 				<main class="min-h-0 flex-1 overflow-y-auto">
 					{ children... }

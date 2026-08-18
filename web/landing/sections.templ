@@ -33,12 +33,12 @@ func features() []feature {
 		{
 			icon.Plug(icon.Props{Class: "size-4"}),
 			"Everywhere, and inside your tools",
-			"Web, Telegram, Discord, and WhatsApp share one memory. Through MCP, DuxAI can also act — reading your notes, filing a check-in, pulling a summary — from whatever agent you already use.",
+			"Web and Telegram share one memory. Send a photo from either. Through MCP, DuxAI can also act — reading your notes, filing a check-in, pulling a summary — from whatever agent you already use.",
 		},
 		{
 			icon.Dumbbell(icon.Props{Class: "size-4"}),
 			"Fitness intelligence",
-			"Strava and Apple Health flow in as summaries rather than raw activity dumps. Plans respect the equipment you actually own, and form checks come back with timestamps you can jump to in your own video.",
+			"Strava flows in as summaries rather than raw activity dumps. Plans respect the equipment you actually own. Send a form clip or a photo and you get cues, not a lecture.",
 		},
 		{
 			icon.FileText(icon.Props{Class: "size-4"}),
@@ -146,7 +146,7 @@ templ visionSection() {
 			</div>
 			<div class="space-y-4">
 				@visionStat("Six months", "The horizon plans are written against, not the session in front of you.")
-				@visionStat("Four surfaces", "Web, Telegram, Discord, WhatsApp — and one memory behind all of them.")
+				@visionStat("Two surfaces", "Web and Telegram — and one memory behind both.")
 				@visionStat("Zero", "Times you re-explain your injury, your equipment, or what you are training for.")
 			</div>
 		</div>
@@ -188,10 +188,10 @@ templ pricingSection() {
 				"For when DuxAI stops being a tool you visit and starts being the thing you talk to.",
 				[]string{
 					"Everything in Free",
-					"Telegram, Discord, and WhatsApp",
+					"Telegram, with photos",
 					"MCP access from your own agents and editors",
 					"Unlimited form checks and document knowledge",
-					"Strava and Apple Health",
+					"Strava",
 				},
 				"Start with Pro",
 				true,

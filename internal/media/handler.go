@@ -31,6 +31,7 @@ func (h *Handler) Routes(r chi.Router) {
 	r.With(h.quotas.Guard(quota.MediaAnalysis)).Post("/form", h.upload)
 	r.Get("/form/{id}", h.show)
 	r.Get("/form/{id}/status", h.status)
+	r.Get("/media/{id}", h.serve)
 }
 
 func (h *Handler) index(w http.ResponseWriter, r *http.Request) {
@@ -139,6 +140,33 @@ func (h *Handler) status(w http.ResponseWriter, r *http.Request) {
 	}
 
 	render(w, r, http.StatusOK, formpages.StatusFragment(item))
+}
+
+// serve redirects to a short-lived signed URL. The browser fetches the
+// bytes from object storage, so a transcript full of photos does not
+// stream them through the app.
+func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		h.fail(w, r, apperr.ErrNotFound)
+		return
+	}
+
+	record, err := h.svc.GetMedia(r.Context(), id, user.ID)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+
+	url, err := h.svc.PlaybackURL(r.Context(), record)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+
+	http.Redirect(w, r, url, http.StatusFound)
 }
 
 func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {

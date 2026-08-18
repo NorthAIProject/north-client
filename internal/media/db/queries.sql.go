@@ -7,6 +7,7 @@ package mediadb
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -32,6 +33,22 @@ func (q *Queries) CompleteAnalysis(ctx context.Context, arg CompleteAnalysisPara
 		arg.Provider,
 	)
 	return err
+}
+
+const countUserMediaByKind = `-- name: CountUserMediaByKind :one
+SELECT count(*)::int FROM media WHERE user_id = $1 AND kind = $2
+`
+
+type CountUserMediaByKindParams struct {
+	UserID uuid.UUID
+	Kind   string
+}
+
+func (q *Queries) CountUserMediaByKind(ctx context.Context, arg CountUserMediaByKindParams) (int32, error) {
+	row := q.db.QueryRow(ctx, countUserMediaByKind, arg.UserID, arg.Kind)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
 const createAnalysis = `-- name: CreateAnalysis :one
@@ -211,6 +228,25 @@ func (q *Queries) GetMediaByID(ctx context.Context, id uuid.UUID) (Medium, error
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const latestUserMediaCreatedAt = `-- name: LatestUserMediaCreatedAt :one
+SELECT created_at FROM media
+WHERE user_id = $1 AND kind = $2
+ORDER BY created_at DESC
+LIMIT 1
+`
+
+type LatestUserMediaCreatedAtParams struct {
+	UserID uuid.UUID
+	Kind   string
+}
+
+func (q *Queries) LatestUserMediaCreatedAt(ctx context.Context, arg LatestUserMediaCreatedAtParams) (time.Time, error) {
+	row := q.db.QueryRow(ctx, latestUserMediaCreatedAt, arg.UserID, arg.Kind)
+	var created_at time.Time
+	err := row.Scan(&created_at)
+	return created_at, err
 }
 
 const listAnalyses = `-- name: ListAnalyses :many

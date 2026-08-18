@@ -14,6 +14,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/ai/prompts"
+	"github.com/NorthAIProject/north-client/internal/coach"
 	"github.com/NorthAIProject/north-client/internal/jobs"
 	"github.com/NorthAIProject/north-client/internal/media/analysis"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
@@ -23,6 +24,15 @@ import (
 // MaxVideoBytes bounds an upload. Generous enough for a phone clip of a working
 // set, small enough that one request cannot fill the disk.
 const MaxVideoBytes int64 = 200 << 20 // 200 MB
+
+// MaxImageBytes bounds a chat photo. Vision models accept a few megabytes;
+// a 20 MB phone dump does not help the coach and blows the request.
+const MaxImageBytes int64 = 8 << 20 // 8 MB
+
+const (
+	KindVideo = "video"
+	KindImage = "image"
+)
 
 // signedURLLifetime is how long a playback link stays valid. Long enough to
 // watch a clip several times, short enough that a leaked URL expires.
@@ -39,6 +49,13 @@ var allowedVideoTypes = map[string]string{
 	"video/webm":      ".webm",
 }
 
+var allowedImageTypes = map[string]string{
+	"image/jpeg": ".jpg",
+	"image/png":  ".png",
+	"image/gif":  ".gif",
+	"image/webp": ".webp",
+}
+
 type Service struct {
 	repo     *Repository
 	storage  Storage
@@ -46,6 +63,8 @@ type Service struct {
 	registry *ai.Registry
 	provider string
 	model    string
+
+	onReady func(ctx context.Context, userID, analysisID uuid.UUID)
 }
 
 type Options struct {
@@ -61,6 +80,15 @@ type Options struct {
 	Provider string
 
 	Model string
+
+	// OnReady is called after a form analysis completes. Used to raise a
+	// bell note. Nil is a no-op.
+	OnReady func(ctx context.Context, userID, analysisID uuid.UUID)
+}
+
+func (s *Service) WithOnReady(fn func(ctx context.Context, userID, analysisID uuid.UUID)) *Service {
+	s.onReady = fn
+	return s
 }
 
 func NewService(opts Options) *Service {
@@ -71,6 +99,7 @@ func NewService(opts Options) *Service {
 		registry: opts.Registry,
 		provider: opts.Provider,
 		model:    opts.Model,
+		onReady:  opts.OnReady,
 	}
 }
 
@@ -85,54 +114,19 @@ type AnalyzeFormPayload struct {
 // It returns as soon as the file is stored. Analysing a video takes far longer
 // than a request should, so the work happens in the worker and the page polls.
 func (s *Service) UploadVideo(ctx context.Context, userID uuid.UUID, filename string, size int64, body io.Reader) (analysis.Analysis, error) {
-	if size > MaxVideoBytes {
-		return analysis.Analysis{}, apperr.FieldErrors{{
-			Field:   "video",
-			Message: fmt.Sprintf("That file is over %d MB. Trim the clip to the working set.", MaxVideoBytes>>20),
-		}}
-	}
-
-	// The declared content type is not trusted. http.DetectContentType reads the
-	// leading bytes, so a .mp4 extension on something else is caught here rather
-	// than by the provider, or worse, not at all.
-	header := make([]byte, 512)
-	n, err := io.ReadFull(body, header)
-	if err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
-		return analysis.Analysis{}, apperr.Wrap(err, "read upload")
-	}
-	header = header[:n]
-
-	mimeType := http.DetectContentType(header)
-	extension, ok := allowedVideoTypes[normaliseMIME(mimeType)]
-	if !ok {
-		return analysis.Analysis{}, apperr.FieldErrors{{
-			Field:   "video",
-			Message: "That does not look like a video North can read. Upload an MP4, MOV, or WebM.",
-		}}
-	}
-
-	mediaID := uuid.New()
-	key := StorageKey(userID, mediaID, extension)
-
-	// The sniffed bytes are put back in front of the rest of the file.
-	full := io.MultiReader(strings.NewReader(string(header)), body)
-
-	if putErr := s.storage.Put(ctx, key, normaliseMIME(mimeType), full); putErr != nil {
-		return analysis.Analysis{}, putErr
-	}
-
-	record, err := s.repo.CreateMedia(ctx, NewMedia{
-		UserID:       userID,
-		Kind:         "video",
-		MIMEType:     normaliseMIME(mimeType),
-		SizeBytes:    size,
-		StorageKey:   key,
-		OriginalName: filepath.Base(filename),
+	record, err := s.storeUpload(ctx, storeUpload{
+		UserID:   userID,
+		Filename: filename,
+		Size:     size,
+		Body:     body,
+		Kind:     KindVideo,
+		MaxBytes: MaxVideoBytes,
+		Allowed:  allowedVideoTypes,
+		Field:    "video",
+		TooBig:   fmt.Sprintf("That file is over %d MB. Trim the clip to the working set.", MaxVideoBytes>>20),
+		BadType:  "That does not look like a video North can read. Upload an MP4, MOV, or WebM.",
 	})
 	if err != nil {
-		// The object is orphaned rather than left half-registered. A stray
-		// object costs storage; a media row pointing at nothing breaks playback.
-		_ = s.storage.Delete(ctx, key)
 		return analysis.Analysis{}, err
 	}
 
@@ -175,7 +169,15 @@ func (s *Service) AnalyzeVideo(ctx context.Context, payload json.RawMessage) err
 		return err
 	}
 
-	return s.repo.CompleteAnalysis(ctx, p.AnalysisID, result, model, provider)
+	if err := s.repo.CompleteAnalysis(ctx, p.AnalysisID, result, model, provider); err != nil {
+		return err
+	}
+	if s.onReady != nil {
+		if rec, recErr := s.repo.GetAnalysisByMedia(ctx, p.MediaID); recErr == nil {
+			s.onReady(ctx, rec.UserID, rec.ID)
+		}
+	}
+	return nil
 }
 
 func (s *Service) runAnalysis(ctx context.Context, mediaID uuid.UUID) (analysis.FormAnalysis, string, string, error) {
@@ -256,8 +258,168 @@ func (s *Service) ListAnalyses(ctx context.Context, userID uuid.UUID, limit int)
 	return s.repo.ListAnalyses(ctx, userID, limit)
 }
 
+// UploadImage stores a photo the coach should see this turn.
+//
+// Unlike UploadVideo it does not queue an analysis: the chat turn itself is
+// the analysis. The file is just durable so the next photo can be compared
+// and so the transcript can show what was sent.
+func (s *Service) UploadImage(ctx context.Context, userID uuid.UUID, filename string, size int64, body io.Reader) (Media, error) {
+	return s.storeUpload(ctx, storeUpload{
+		UserID:   userID,
+		Filename: filename,
+		Size:     size,
+		Body:     body,
+		Kind:     KindImage,
+		MaxBytes: MaxImageBytes,
+		Allowed:  allowedImageTypes,
+		Field:    "attachment",
+		TooBig:   fmt.Sprintf("That photo is over %d MB. Send a smaller one.", MaxImageBytes>>20),
+		BadType:  "That does not look like a photo I can read. Send a JPEG, PNG, GIF, or WebP.",
+	})
+}
+
+type storeUpload struct {
+	UserID   uuid.UUID
+	Filename string
+	Size     int64
+	Body     io.Reader
+	Kind     string
+	MaxBytes int64
+	Allowed  map[string]string
+	Field    string
+	TooBig   string
+	BadType  string
+}
+
+func (s *Service) storeUpload(ctx context.Context, in storeUpload) (Media, error) {
+	if in.Size > in.MaxBytes {
+		return Media{}, apperr.FieldErrors{{Field: in.Field, Message: in.TooBig}}
+	}
+
+	// The declared content type is not trusted. http.DetectContentType reads the
+	// leading bytes, so a .jpg extension on something else is caught here rather
+	// than by the provider, or worse, not at all.
+	header := make([]byte, 512)
+	n, err := io.ReadFull(in.Body, header)
+	if err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
+		return Media{}, apperr.Wrap(err, "read upload")
+	}
+	header = header[:n]
+
+	mimeType := sniffMIME(header)
+	extension, ok := in.Allowed[mimeType]
+	if !ok {
+		return Media{}, apperr.FieldErrors{{Field: in.Field, Message: in.BadType}}
+	}
+
+	mediaID := uuid.New()
+	key := StorageKey(in.UserID, mediaID, extension)
+
+	// The sniffed bytes are put back in front of the rest of the file.
+	full := io.MultiReader(strings.NewReader(string(header)), in.Body)
+
+	if putErr := s.storage.Put(ctx, key, mimeType, full); putErr != nil {
+		return Media{}, putErr
+	}
+
+	record, err := s.repo.CreateMedia(ctx, NewMedia{
+		UserID:       in.UserID,
+		Kind:         in.Kind,
+		MIMEType:     mimeType,
+		SizeBytes:    in.Size,
+		StorageKey:   key,
+		OriginalName: filepath.Base(in.Filename),
+	})
+	if err != nil {
+		// The object is orphaned rather than left half-registered. A stray
+		// object costs storage; a media row pointing at nothing breaks playback.
+		_ = s.storage.Delete(ctx, key)
+		return Media{}, err
+	}
+	return record, nil
+}
+
 func (s *Service) GetMedia(ctx context.Context, id, userID uuid.UUID) (Media, error) {
 	return s.repo.GetMedia(ctx, id, userID)
+}
+
+// LastImageAt is when they last sent a photo, if ever.
+func (s *Service) LastImageAt(ctx context.Context, userID uuid.UUID) (time.Time, bool, error) {
+	return s.repo.LatestCreatedAt(ctx, userID, KindImage)
+}
+
+// HasImage reports whether this person has uploaded a photo or a form clip.
+func (s *Service) HasImage(ctx context.Context, userID uuid.UUID) (bool, error) {
+	n, err := s.repo.CountByKind(ctx, userID, KindImage)
+	if err != nil {
+		return false, err
+	}
+	if n > 0 {
+		return true, nil
+	}
+	n, err = s.repo.CountByKind(ctx, userID, KindVideo)
+	return n > 0, err
+}
+
+// ReadBytes loads a stored file for the model. Images only: a video is too
+// large to inline, and form analysis already has its own upload path.
+func (s *Service) ReadBytes(ctx context.Context, userID, mediaID uuid.UUID) (string, []byte, error) {
+	record, err := s.repo.GetMedia(ctx, mediaID, userID)
+	if err != nil {
+		return "", nil, err
+	}
+	if record.Kind != KindImage {
+		return "", nil, apperr.Wrap(apperr.ErrValidation, "only photos can be sent inline")
+	}
+
+	object, err := s.storage.Get(ctx, record.StorageKey)
+	if err != nil {
+		return "", nil, err
+	}
+	defer func() { _ = object.Close() }()
+
+	data, err := io.ReadAll(io.LimitReader(object, MaxImageBytes+1))
+	if err != nil {
+		return "", nil, apperr.Wrap(err, "read stored image")
+	}
+	if int64(len(data)) > MaxImageBytes {
+		return "", nil, apperr.Wrap(apperr.ErrValidation, "image is too large to send to the coach")
+	}
+	return record.MIMEType, data, nil
+}
+
+// LoadInline is the name the coach calls. Same bytes as ReadBytes.
+func (s *Service) LoadInline(ctx context.Context, userID, mediaID uuid.UUID) (string, []byte, error) {
+	return s.ReadBytes(ctx, userID, mediaID)
+}
+
+// StoreChatImage / LoadChatImage are the names the chat handler calls.
+//
+// They exist so the coach package never imports this one: we already implement
+// coach.ContextSource, and a reverse import would be a cycle.
+func (s *Service) StoreChatImage(ctx context.Context, userID uuid.UUID, filename string, size int64, body io.Reader) (coach.ChatImage, error) {
+	m, err := s.UploadImage(ctx, userID, filename, size, body)
+	if err != nil {
+		return coach.ChatImage{}, err
+	}
+	return toChatImage(m), nil
+}
+
+func (s *Service) LoadChatImage(ctx context.Context, id, userID uuid.UUID) (coach.ChatImage, error) {
+	m, err := s.GetMedia(ctx, id, userID)
+	if err != nil {
+		return coach.ChatImage{}, err
+	}
+	return toChatImage(m), nil
+}
+
+func toChatImage(m Media) coach.ChatImage {
+	return coach.ChatImage{
+		ID:           m.ID,
+		Kind:         m.Kind,
+		MIMEType:     m.MIMEType,
+		OriginalName: m.OriginalName,
+	}
 }
 
 // PlaybackURL is a time-limited link to the clip, so video bytes go straight
@@ -272,6 +434,26 @@ func normaliseMIME(mimeType string) string {
 		return strings.TrimSpace(base)
 	}
 	return mimeType
+}
+
+// sniffMIME prefers the leading bytes, then a WebP signature DetectContentType
+// does not always name. A .webp that comes back as octet-stream would otherwise
+// be refused even though every vision model we use can read it.
+func sniffMIME(header []byte) string {
+	mimeType := normaliseMIME(http.DetectContentType(header))
+	if mimeType != "application/octet-stream" && mimeType != "text/plain" {
+		return mimeType
+	}
+	if isWebP(header) {
+		return "image/webp"
+	}
+	return mimeType
+}
+
+func isWebP(header []byte) bool {
+	return len(header) >= 12 &&
+		string(header[0:4]) == "RIFF" &&
+		string(header[8:12]) == "WEBP"
 }
 
 // userFacing turns an internal failure into something worth showing.

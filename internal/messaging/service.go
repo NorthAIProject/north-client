@@ -1,9 +1,11 @@
 package messaging
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"strings"
 	"time"
@@ -14,6 +16,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/coach"
 	"github.com/NorthAIProject/north-client/internal/conversations"
+	"github.com/NorthAIProject/north-client/internal/media"
 	"github.com/NorthAIProject/north-client/internal/quota"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/ratelimit"
@@ -29,6 +32,7 @@ import (
 type Coach interface {
 	StartConversation(ctx context.Context, userID uuid.UUID) (conversations.Conversation, error)
 	SendMessage(ctx context.Context, user users.User, conversationID uuid.UUID, text string) (<-chan ai.StreamChunk, error)
+	SendIncoming(ctx context.Context, user users.User, conversationID uuid.UUID, in coach.Incoming) (<-chan ai.StreamChunk, error)
 	PendingApproval(ctx context.Context, user users.User, conversationID uuid.UUID) (coach.PendingCall, bool, error)
 	ResolvePending(ctx context.Context, user users.User, conversationID, messageID uuid.UUID, approve bool) error
 	Resume(ctx context.Context, user users.User, conversationID uuid.UUID) (<-chan ai.StreamChunk, error)
@@ -64,13 +68,20 @@ const threadSearchDepth = 10
 // anyone working through a 40-bit space.
 const redeemAttemptsPerMinute = 6
 
+// Images stores a photo so the coach can see it this turn.
+type Images interface {
+	UploadImage(ctx context.Context, userID uuid.UUID, filename string, size int64, body io.Reader) (media.Media, error)
+}
+
 type Service struct {
-	coach   Coach
-	threads Threads
-	users   Users
-	links   *Repository
-	quotas  Quotas
-	log     *slog.Logger
+	coach     Coach
+	threads   Threads
+	users     Users
+	links     *Repository
+	quotas    Quotas
+	images    Images
+	transport Transport
+	log       *slog.Logger
 
 	redeemLimit *ratelimit.Limiters
 
@@ -89,6 +100,15 @@ type Options struct {
 	// provider's budget from outside the web app's limits.
 	Quotas Quotas
 
+	// Images stores a photo from a platform. Nil refuses the file and asks
+	// the person to use the web app.
+	Images Images
+
+	// Transport delivers unsolicited messages (the morning briefing). Nil
+	// makes Notify a no-op, which is what every process without a bot token
+	// should do.
+	Transport Transport
+
 	Log *slog.Logger
 
 	// Now defaults to time.Now.
@@ -102,6 +122,8 @@ func NewService(opts Options) *Service {
 		users:       opts.Users,
 		links:       opts.Links,
 		quotas:      opts.Quotas,
+		images:      opts.Images,
+		transport:   opts.Transport,
 		log:         opts.Log,
 		redeemLimit: ratelimit.New(redeemAttemptsPerMinute),
 		now:         opts.Now,
@@ -224,11 +246,82 @@ func (s *Service) coachTurn(ctx context.Context, user users.User, in InboundMess
 		return refusal, nil
 	}
 
-	stream, err := s.coach.SendMessage(ctx, user, conversation.ID, in.Text)
+	incoming, refuse, err := s.incomingFrom(ctx, user.ID, in)
+	if err != nil {
+		return OutboundMessage{}, err
+	}
+	if refuse != "" {
+		return OutboundMessage{Text: refuse}, nil
+	}
+
+	stream, err := s.coach.SendIncoming(ctx, user, conversation.ID, incoming)
 	if err != nil {
 		return OutboundMessage{}, err
 	}
 	return s.reply(ctx, user, conversation, stream)
+}
+
+func (s *Service) incomingFrom(ctx context.Context, userID uuid.UUID, in InboundMessage) (coach.Incoming, string, error) {
+	out := coach.Incoming{Text: in.Text, Source: coach.SourceTelegram}
+	if in.Attachment == nil || len(in.Attachment.Bytes) == 0 {
+		return out, "", nil
+	}
+	if s.images == nil {
+		return coach.Incoming{}, "I can see you sent a photo, but I cannot store it right now. Try the web app.", nil
+	}
+
+	name := in.Attachment.Name
+	if name == "" {
+		name = "photo.jpg"
+	}
+	stored, err := s.images.UploadImage(ctx, userID, name, int64(len(in.Attachment.Bytes)), bytes.NewReader(in.Attachment.Bytes))
+	if err != nil {
+		var fieldErrs apperr.FieldErrors
+		if apperr.As(err, &fieldErrs) {
+			msg := fieldErrs.Messages()["attachment"]
+			if msg == "" {
+				msg = "That photo could not be stored."
+			}
+			return coach.Incoming{}, msg, nil
+		}
+		return coach.Incoming{}, "I could not store that photo. Try again?", nil
+	}
+
+	out.Attachments = []conversations.Attachment{{
+		MediaID:  stored.ID,
+		Kind:     stored.Kind,
+		MIMEType: stored.MIMEType,
+		Name:     stored.OriginalName,
+	}}
+	return out, "", nil
+}
+
+// Notify sends an unsolicited message to every linked chat for this account.
+//
+// Used by the morning briefing. A missing transport or no linked chat is
+// success: there is nobody to tell, not a failed generation.
+func (s *Service) Notify(ctx context.Context, userID uuid.UUID, text string) error {
+	if s.transport == nil || s.links == nil || strings.TrimSpace(text) == "" {
+		return nil
+	}
+
+	links, err := s.links.ListByUser(ctx, userID)
+	if err != nil {
+		return err
+	}
+
+	for _, link := range links {
+		if link.Platform != s.transport.Platform() {
+			continue
+		}
+		if err := s.transport.Send(ctx, link.ExternalID, OutboundMessage{Text: text}); err != nil {
+			s.log.Warn("messaging notify failed",
+				"error", err,
+				"user_id", userID,
+				"platform", link.Platform)
+		}
+	}
+	return nil
 }
 
 // answerPending interprets the message as yes or no to a waiting write.

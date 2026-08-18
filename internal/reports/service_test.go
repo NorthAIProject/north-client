@@ -113,6 +113,100 @@ func TestGenerateRefusesSecondCallInsideCooldown(t *testing.T) {
 	}
 }
 
+type stubNotify struct {
+	userID uuid.UUID
+	text   string
+	calls  int
+}
+
+func (s *stubNotify) Notify(_ context.Context, userID uuid.UUID, text string) error {
+	s.calls++
+	s.userID = userID
+	s.text = text
+	return nil
+}
+
+func TestGeneratePushesADailyBriefing(t *testing.T) {
+	pool := testdb.New(t)
+	userSvc := users.NewService(users.NewRepository(pool))
+	user, err := userSvc.Register(context.Background(), users.Registration{
+		Email:        "briefing-push@north.test",
+		PasswordHash: "$2a$12$notarealhashbutthatisfineheretestonly",
+		DisplayName:  "Fernando",
+		Timezone:     "UTC",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	notes := &stubNotify{}
+	client := &fake.Client{Responses: []fake.Response{{Text: "Sleep more. Lift today."}}}
+	svc := reports.NewService(reports.Options{
+		Repository: reports.NewRepository(pool),
+		Users:      userSvc,
+		Queue:      &stubQueue{},
+		Client:     client,
+		Notify:     notes,
+		Now:        func() time.Time { return time.Date(2026, 8, 13, 15, 0, 0, 0, time.UTC) },
+	})
+
+	ctx := context.Background()
+	day := reports.DayContaining(time.Date(2026, 8, 13, 8, 0, 0, 0, time.UTC), time.UTC)
+	pending, created, err := svc.EnsureBriefing(ctx, user.ID, day)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !created {
+		t.Fatal("expected a new briefing")
+	}
+
+	if err := svc.Generate(ctx, pending.ID, user.ID); err != nil {
+		t.Fatal(err)
+	}
+	if notes.calls != 1 {
+		t.Fatalf("notify calls = %d, want 1", notes.calls)
+	}
+	if notes.userID != user.ID || !strings.Contains(notes.text, "Lift today") {
+		t.Fatalf("notify = %+v", notes)
+	}
+}
+
+func TestGenerateDoesNotPushAWeeklyReview(t *testing.T) {
+	notes := &stubNotify{}
+	pool := testdb.New(t)
+	userSvc := users.NewService(users.NewRepository(pool))
+	user, err := userSvc.Register(context.Background(), users.Registration{
+		Email:        "weekly-no-push@north.test",
+		PasswordHash: "$2a$12$notarealhashbutthatisfineheretestonly",
+		DisplayName:  "Fernando",
+		Timezone:     "Europe/Lisbon",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	svc := reports.NewService(reports.Options{
+		Repository: reports.NewRepository(pool),
+		Users:      userSvc,
+		Queue:      &stubQueue{},
+		Client:     &fake.Client{Responses: []fake.Response{{Text: "A weekly review."}}},
+		Notify:     notes,
+		Now:        func() time.Time { return time.Date(2026, 8, 13, 15, 0, 0, 0, time.UTC) },
+	})
+
+	ctx := context.Background()
+	pending, err := svc.RequestGenerate(ctx, user.ID, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Generate(ctx, pending.ID, user.ID); err != nil {
+		t.Fatal(err)
+	}
+	if notes.calls != 0 {
+		t.Fatalf("weekly review must stay in-app, notify calls = %d", notes.calls)
+	}
+}
+
 func TestGenerateDoesNotSeeAnotherUsersData(t *testing.T) {
 	svc, user, stranger, _, _ := fixture(t)
 	ctx := context.Background()

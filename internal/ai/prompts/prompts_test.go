@@ -65,6 +65,8 @@ func TestCoachPromptStatesGroundingRules(t *testing.T) {
 		"states the growth mission":               "your mission is this person's growth",
 		"refuses off-mission questions":           "refuse off-mission questions",
 		"never discusses hosting":                 "never discuss where duxai is hosted",
+		"starts the first week with evidence":     "ask for one piece of evidence",
+		"commits to a next check":                 "when you will check",
 	}
 
 	for what, phrase := range required {

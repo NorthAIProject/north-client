@@ -3,6 +3,7 @@ package chat
 import (
 	"fmt"
 	"net/url"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -361,7 +362,10 @@ templ Bubble(m conversations.Message) {
 	if m.IsUser() {
 		<div class="flex justify-end">
 			<div class="bg-primary text-primary-foreground max-w-[85%] rounded-2xl rounded-br-sm px-4 py-2.5 text-sm whitespace-pre-wrap">
-				{ m.Content }
+				@attachmentThumbs(m.Parts)
+				if strings.TrimSpace(m.Content) != "" {
+					{ m.Content }
+				}
 			</div>
 		</div>
 	} else {
@@ -455,24 +459,45 @@ func sourceLabel(n int) string {
 //
 // The message is echoed straight back rather than re-fetched, so the user sees
 // their own words immediately instead of after a round trip.
-templ PendingExchange(conversationID uuid.UUID, message string) {
+templ PendingExchange(conversationID uuid.UUID, message string, mediaID uuid.UUID) {
 	<div class="flex justify-end">
-		<div class="bg-primary text-primary-foreground max-w-[85%] rounded-2xl rounded-br-sm px-4 py-2.5 text-sm whitespace-pre-wrap">
-			{ message }
+		<div class="bg-primary text-primary-foreground max-w-[85%] space-y-2 rounded-2xl rounded-br-sm px-4 py-2.5 text-sm whitespace-pre-wrap">
+			if mediaID != uuid.Nil {
+				<img src={ "/app/media/" + mediaID.String() } alt="" class="max-h-48 rounded-lg object-cover"/>
+			}
+			if strings.TrimSpace(message) != "" {
+				{ message }
+			}
 		</div>
 	</div>
 	// Tokens stream in as plain text; markdown is only rendered once the reply
 	// is complete and the page re-fetches it. Formatting a half-written
 	// sentence would make the text jump around as it arrives.
-	@streamingCoachBubble(streamURL(conversationID, message), conversationID)
+	@streamingCoachBubble(streamURL(conversationID, message, mediaID), conversationID)
 }
 
 // streamURL builds the SSE endpoint for a pending message.
 // The message travels as a query parameter, which is why it is escaped here and
 // why nothing sensitive belongs in a chat URL. It is the same text the user
-// just posted and which is already stored.
-func streamURL(conversationID uuid.UUID, message string) string {
-	return "/app/chat/" + conversationID.String() + "/stream?m=" + url.QueryEscape(message)
+// just posted and which is already stored. A photo is named by id only.
+func streamURL(conversationID uuid.UUID, message string, mediaID uuid.UUID) string {
+	u := "/app/chat/" + conversationID.String() + "/stream?m=" + url.QueryEscape(message)
+	if mediaID != uuid.Nil {
+		u += "&media=" + mediaID.String()
+	}
+	return u
+}
+
+templ attachmentThumbs(parts []conversations.Attachment) {
+	for _, p := range parts {
+		if p.Kind == "image" && p.MediaID != uuid.Nil {
+			<img
+				src={ "/app/media/" + p.MediaID.String() }
+				alt={ p.Name }
+				class="mb-2 max-h-48 rounded-lg object-cover"
+			/>
+		}
+	}
 }
 
 templ composer(conversationID uuid.UUID, draft string) {
@@ -481,32 +506,63 @@ templ composer(conversationID uuid.UUID, draft string) {
 		// directives inside a scope, so without it the Enter-to-send binding on
 		// the textarea below is silently ignored.
 		<form
-			x-data
-			class="mx-auto flex w-full max-w-3xl items-end gap-2 px-4 pt-3 pb-3"
+			x-data="{ preview: '' }"
+			class="mx-auto flex w-full max-w-3xl flex-col gap-2 px-4 pt-3 pb-3"
 			hx-post={ "/app/chat/" + conversationID.String() + "/messages" }
+			hx-encoding="multipart/form-data"
 			hx-target="#transcript > div"
 			hx-swap="beforeend"
-			hx-on::after-request="if(event.detail.successful) this.reset()"
+			hx-on::after-request="if(event.detail.successful) { this.reset(); preview = '' }"
 		>
 			@ui.CSRFInput()
-			@textarea.Textarea(textarea.Props{
-				ID:          "message",
-				Name:        "message",
-				Placeholder: "What are you working on?",
-				Value:       draft,
-				Rows:        1,
-				AutoResize:  true,
-				Class:       "max-h-48 min-h-[2.5rem] resize-none",
-				Attributes: templ.Attributes{
-					"required": true,
-					// Enter sends, shift+Enter makes a new line: what every
-					// chat interface does, and what fingers expect.
-					"@keydown.enter.prevent": "if (!$event.shiftKey) $el.form.requestSubmit()",
-				},
-			})
-			@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeIcon, Class: "min-h-11 min-w-11"}) {
-				@icon.ArrowUp(icon.Props{Class: "size-4"})
-			}
+			<img
+				x-show="preview"
+				x-bind:src="preview"
+				alt=""
+				class="h-16 w-16 rounded-lg object-cover"
+			/>
+			<div class="flex items-end gap-2">
+				// Hidden file input + icon: templUI's file input is a full
+				// picker, and this control has to stay a 44px thumb target
+				// next to the composer.
+				<input
+					type="file"
+					name="attachment"
+					id="attachment"
+					accept="image/jpeg,image/png,image/webp,image/gif"
+					class="sr-only"
+					x-ref="file"
+					@change="preview = $event.target.files[0] ? URL.createObjectURL($event.target.files[0]) : ''"
+				/>
+				@button.Button(button.Props{
+					Type:  button.TypeButton,
+					Size:  button.SizeIcon,
+					Class: "min-h-11 min-w-11",
+					Attributes: templ.Attributes{
+						"@click":         "$refs.file.click()",
+						"aria-label":     "Attach a photo",
+					},
+				}) {
+					@icon.Paperclip(icon.Props{Class: "size-4"})
+				}
+				@textarea.Textarea(textarea.Props{
+					ID:          "message",
+					Name:        "message",
+					Placeholder: "What are you working on?",
+					Value:       draft,
+					Rows:        1,
+					AutoResize:  true,
+					Class:       "max-h-48 min-h-[2.5rem] resize-none",
+					Attributes: templ.Attributes{
+						// Enter sends, shift+Enter makes a new line: what every
+						// chat interface does, and what fingers expect.
+						"@keydown.enter.prevent": "if (!$event.shiftKey) $el.form.requestSubmit()",
+					},
+				})
+				@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeIcon, Class: "min-h-11 min-w-11"}) {
+					@icon.ArrowUp(icon.Props{Class: "size-4"})
+				}
+			</div>
 		</form>
 	</div>
 	@textarea.Script()

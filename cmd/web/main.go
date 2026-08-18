@@ -549,15 +549,16 @@ func routes(
 	// MCP server. Two definitions of "calculate my macros" would drift, and
 	// the drift would show as the coach and Telegram disagreeing.
 	agentTools := agent.Build(agent.Services{
-		Exercises:   exerciseSvc,
-		Calculator:  calculatorSvc,
-		Goals:       goalSvc,
-		Ingredients: mealIngredientSvc,
-		FoodLog:     foodLogSvc,
-		CheckIns:    checkinSvc,
-		Documents:   documentSvc,
-		Workouts:    workoutSvc,
-		Users:       userSvc,
+		Exercises:     exerciseSvc,
+		Calculator:    calculatorSvc,
+		Goals:         goalSvc,
+		Ingredients:   mealIngredientSvc,
+		FoodLog:       foodLogSvc,
+		CheckIns:      checkinSvc,
+		Documents:     documentSvc,
+		Workouts:      workoutSvc,
+		Users:         userSvc,
+		Notifications: notificationSvc,
 	})
 
 	agentTools.Record(auditRecorder)
@@ -600,12 +601,41 @@ func routes(
 		Declines:      auditRecorder,
 		// Tried ahead of the chain above, so a user who supplied a key is
 		// served by it and a user who did not is unaffected.
-		Own:       aicredSvc,
-		Analytics: coach.NewAnalytics(posthogClient).WithMetrics(metricsReg),
-		Model:     cfg.AI.Model,
-		FastModel: cfg.AI.FastModel,
+		Own:         aicredSvc,
+		Analytics:   coach.NewAnalytics(posthogClient).WithMetrics(metricsReg),
+		Attachments: mediaSvc,
+		Model:       cfg.AI.Model,
+		FastModel:   cfg.AI.FastModel,
 	})
-	coachHandler := coach.NewHandler(coachSvc, quotaSvc)
+	coachHandler := coach.NewHandler(coachSvc, quotaSvc).WithImages(mediaSvc)
+
+	// Wired after construction: the bell and the coach both already exist,
+	// and a cycle of constructors would be worse than two setters.
+	nudgeSvc.WithWeek(nudges.WeekFrom{
+		Chats:  conversationSvc,
+		Photos: mediaSvc,
+		Facts:  memorySvc,
+	}).WithTraining(workoutSvc).WithSchedules(notificationSvc)
+	coachSvc.WithInbox(coach.InboxFunc(nudgeSvc.RaiseFromUser))
+	mediaSvc.WithOnReady(func(ctx context.Context, userID, analysisID uuid.UUID) {
+		_ = nudgeSvc.Note(ctx, userID, nudges.KindFormReady, analysisID.String(),
+			"Your form check is ready",
+			"I watched the clip. Open it to see the cues.",
+			"/app/form/"+analysisID.String())
+	})
+	reportSvc.WithInbox(nudgeSvc)
+
+	// Which Telegram edge runs follows from the configuration rather than from
+	// a switch, so there is no combination that serves a webhook with no
+	// secret. Both are nil without a bot token, and then neither the route nor
+	// the poller exists. The client is built first so messaging can use it
+	// to push briefings, not only to reply.
+	var telegramWebhook *telegram.Webhook
+	var telegramPoller *telegram.Poller
+	var telegramClient *telegram.Client
+	if cfg.Telegram.Enabled() {
+		telegramClient = telegram.NewClient(cfg.Telegram.BotToken)
+	}
 
 	// The second mouth on the same brain. Built unconditionally because the
 	// settings page needs it to issue link codes; whether anything can reach it
@@ -619,9 +649,12 @@ func routes(
 		// The same budget the web chat spends, deliberately. A surface that
 		// reached the coach without this would be a way around the limits
 		// rather than a second way in — the gap ask_coach still has.
-		Quotas: quotaSvc,
-		Log:    slog.Default(),
+		Quotas:    quotaSvc,
+		Images:    mediaSvc,
+		Transport: telegramClient,
+		Log:       slog.Default(),
 	})
+	nudgeSvc.WithFanout(messagingSvc)
 
 	settingsHandler := settings.NewHandler(
 		userSvc, preferencesSvc, notificationSvc, mealDietSvc, connectionSvc, aicredSvc,
@@ -635,15 +668,7 @@ func routes(
 		WithCoach(coachSvc, slog.Default())
 	onboardingHandler := onboarding.NewHandler(onboardingSvc)
 
-	// Which Telegram edge runs follows from the configuration rather than from
-	// a switch, so there is no combination that serves a webhook with no
-	// secret. Both are nil without a bot token, and then neither the route nor
-	// the poller exists.
-	var telegramWebhook *telegram.Webhook
-	var telegramPoller *telegram.Poller
-	var telegramClient *telegram.Client
-	if cfg.Telegram.Enabled() {
-		telegramClient = telegram.NewClient(cfg.Telegram.BotToken)
+	if telegramClient != nil {
 		if cfg.Telegram.UsesWebhook() {
 			telegramWebhook = telegram.NewWebhook(telegram.WebhookConfig{
 				Messages: messagingSvc,

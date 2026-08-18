@@ -2,6 +2,7 @@ package reports
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -115,7 +116,28 @@ func (s *Service) Generate(ctx context.Context, id, userID uuid.UUID) error {
 	}
 
 	_, err = s.repo.SaveGenerated(ctx, id, userID, body)
-	return err
+	if err != nil {
+		return err
+	}
+
+	if report.Kind == KindDaily {
+		if s.notify != nil {
+			if notifyErr := s.notify.Notify(ctx, userID, body); notifyErr != nil {
+				// The briefing is stored. A failed push must not mark it failed
+				// or the next sweep would refuse to rewrite it.
+				slog.Default().Warn("reports: could not send briefing", "error", notifyErr, "user_id", userID)
+			}
+		}
+		if s.inbox != nil {
+			preview := body
+			if len(preview) > 140 {
+				preview = strings.TrimSpace(preview[:140]) + "…"
+			}
+			_ = s.inbox.Note(ctx, userID, "briefing_ready", report.ID.String(),
+				"Today's briefing", preview, "/app/reports/"+report.ID.String())
+		}
+	}
+	return nil
 }
 
 func (s *Service) fail(ctx context.Context, id, userID uuid.UUID, cause error) error {

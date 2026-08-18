@@ -67,8 +67,7 @@ func (b *bridge) dispatch(ctx context.Context, u update) {
 
 	switch what {
 	case ignoreUpdate:
-		// A sticker, a photo, someone joining. Not an error and not a
-		// question, so there is nothing to answer.
+		// A sticker, someone joining. Not an error and not a question.
 		return
 
 	case leaveChat:
@@ -164,6 +163,14 @@ func (b *bridge) answer(ctx context.Context, in messaging.InboundMessage, callba
 		}
 	}
 
+	if err := b.fillAttachment(ctx, &in); err != nil {
+		b.log.Warn("telegram could not download a photo", "error", err)
+		_ = b.client.Send(ctx, in.ExternalID, messaging.OutboundMessage{
+			Text: "I could not download that photo. Try sending it again?",
+		})
+		return
+	}
+
 	stopTyping := b.keepTyping(ctx, in.ExternalID)
 
 	out, err := b.messages.Handle(ctx, in)
@@ -179,4 +186,19 @@ func (b *bridge) answer(ctx context.Context, in messaging.InboundMessage, callba
 	if err := b.client.Send(ctx, in.ExternalID, out); err != nil {
 		b.log.Error("telegram could not deliver a reply", "error", err)
 	}
+}
+
+func (b *bridge) fillAttachment(ctx context.Context, in *messaging.InboundMessage) error {
+	if in.Attachment == nil || in.Attachment.FileID == "" || len(in.Attachment.Bytes) > 0 {
+		return nil
+	}
+	data, mime, err := b.client.File(ctx, in.Attachment.FileID)
+	if err != nil {
+		return err
+	}
+	in.Attachment.Bytes = data
+	if in.Attachment.MIMEType == "" {
+		in.Attachment.MIMEType = mime
+	}
+	return nil
 }

@@ -1,7 +1,9 @@
 package coach
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -22,10 +24,36 @@ import (
 type Handler struct {
 	svc    *Service
 	quotas *quota.Service
+	images imageStore
 }
+
+// ChatImage is the handful of fields the composer needs from a stored photo.
+// Named here so this package does not import internal/media, which already
+// implements a ContextSource and would close a cycle.
+type ChatImage struct {
+	ID           uuid.UUID
+	Kind         string
+	MIMEType     string
+	OriginalName string
+}
+
+// imageStore is the slice of media this handler needs: store a photo, get an id.
+type imageStore interface {
+	StoreChatImage(ctx context.Context, userID uuid.UUID, filename string, size int64, body io.Reader) (ChatImage, error)
+	LoadChatImage(ctx context.Context, id, userID uuid.UUID) (ChatImage, error)
+}
+
+// maxChatUpload is slightly above an 8 MB photo so a just-over file is
+// rejected by the media service, not by a bare multipart parse.
+const maxChatUpload = (8 << 20) + (1 << 20)
 
 func NewHandler(svc *Service, quotas *quota.Service) *Handler {
 	return &Handler{svc: svc, quotas: quotas}
+}
+
+func (h *Handler) WithImages(store imageStore) *Handler {
+	h.images = store
+	return h
 }
 
 // Routes mounts the chat endpoints. Must be mounted behind RequireAuth.
@@ -237,13 +265,21 @@ func (h *Handler) sendMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = r.ParseForm(); err != nil {
-		h.fail(w, r, apperr.ErrValidation)
-		return
+	if err = r.ParseMultipartForm(maxChatUpload); err != nil {
+		if err = r.ParseForm(); err != nil {
+			h.fail(w, r, apperr.ErrValidation)
+			return
+		}
 	}
 
 	text := strings.TrimSpace(r.PostFormValue("message"))
-	if err = conversations.ValidateMessage(text); err != nil {
+	attachment, attErr := h.readAttachment(r, user.ID)
+	if attErr != nil {
+		render(w, r, http.StatusUnprocessableEntity, chatpages.ComposerError(conversationID, text, attErr.Error()))
+		return
+	}
+
+	if err = conversations.ValidateTurn(text, attachment != nil); err != nil {
 		// The composer keeps what was typed; nothing was stored.
 		render(w, r, http.StatusUnprocessableEntity, chatpages.ComposerError(conversationID, text, "Type something first."))
 		return
@@ -259,7 +295,43 @@ func (h *Handler) sendMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	render(w, r, http.StatusOK, chatpages.PendingExchange(conversation.ID, text))
+	mediaID := uuid.Nil
+	if attachment != nil {
+		mediaID = attachment.MediaID
+	}
+	render(w, r, http.StatusOK, chatpages.PendingExchange(conversation.ID, text, mediaID))
+}
+
+func (h *Handler) readAttachment(r *http.Request, userID uuid.UUID) (*conversations.Attachment, error) {
+	if h.images == nil || r.MultipartForm == nil {
+		return nil, nil
+	}
+
+	file, header, err := r.FormFile("attachment")
+	if err != nil {
+		// No file chosen is the common case, not an error.
+		if err == http.ErrMissingFile {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("could not read that file")
+	}
+	defer func() { _ = file.Close() }()
+
+	stored, err := h.images.StoreChatImage(r.Context(), userID, header.Filename, header.Size, file)
+	if err != nil {
+		var fieldErrs apperr.FieldErrors
+		if apperr.As(err, &fieldErrs) {
+			return nil, fmt.Errorf("%s", fieldErrs.Messages()["attachment"])
+		}
+		return nil, fmt.Errorf("could not store that photo")
+	}
+
+	return &conversations.Attachment{
+		MediaID:  stored.ID,
+		Kind:     stored.Kind,
+		MIMEType: stored.MIMEType,
+		Name:     stored.OriginalName,
+	}, nil
 }
 
 // stream generates the reply and pushes it as Server-Sent Events.
@@ -285,7 +357,8 @@ func (h *Handler) stream(w http.ResponseWriter, r *http.Request) {
 
 	begin := r.URL.Query().Get("begin") == "1"
 	pending := strings.TrimSpace(r.URL.Query().Get("m"))
-	if !begin && pending == "" {
+	mediaID, _ := uuid.Parse(r.URL.Query().Get("media"))
+	if !begin && pending == "" && mediaID == uuid.Nil {
 		http.Error(w, "nothing to answer", http.StatusBadRequest)
 		return
 	}
@@ -329,7 +402,24 @@ func (h *Handler) stream(w http.ResponseWriter, r *http.Request) {
 	if begin {
 		stream, err = h.svc.BeginReflection(r.Context(), user, conversation.ID)
 	} else {
-		stream, err = h.svc.SendMessage(r.Context(), user, conversation.ID, pending)
+		in := Incoming{Text: pending}
+		if mediaID != uuid.Nil {
+			in.Attachments = []conversations.Attachment{{
+				MediaID: mediaID,
+				Kind:    "image",
+			}}
+			if h.images != nil {
+				if rec, recErr := h.images.LoadChatImage(r.Context(), mediaID, user.ID); recErr == nil {
+					in.Attachments[0] = conversations.Attachment{
+						MediaID:  rec.ID,
+						Kind:     rec.Kind,
+						MIMEType: rec.MIMEType,
+						Name:     rec.OriginalName,
+					}
+				}
+			}
+		}
+		stream, err = h.svc.SendIncoming(r.Context(), user, conversation.ID, in)
 	}
 	if err != nil {
 		writeEvent(w, rc, "error", chatpages.StreamErrorHTML(friendly(err)))

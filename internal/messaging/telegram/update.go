@@ -24,9 +24,12 @@ type update struct {
 	UpdateID int64 `json:"update_id"`
 
 	Message *struct {
-		Chat chat   `json:"chat"`
-		Text string `json:"text"`
-		Date int64  `json:"date"`
+		Chat     chat      `json:"chat"`
+		Text     string    `json:"text"`
+		Caption  string    `json:"caption"`
+		Date     int64     `json:"date"`
+		Photo    []tgPhoto `json:"photo"`
+		Document *tgDoc    `json:"document"`
 	} `json:"message"`
 
 	// CallbackQuery is a tapped inline-keyboard button. Its Data is the
@@ -39,6 +42,20 @@ type update struct {
 			Chat chat `json:"chat"`
 		} `json:"message"`
 	} `json:"callback_query"`
+}
+
+// tgPhoto is one size of a Telegram photo.
+type tgPhoto struct {
+	FileID string `json:"file_id"`
+	Width  int    `json:"width"`
+	Height int    `json:"height"`
+}
+
+// tgDoc is a file sent as a document.
+type tgDoc struct {
+	FileID   string `json:"file_id"`
+	FileName string `json:"file_name"`
+	MIMEType string `json:"mime_type"`
 }
 
 // chat is where a message came from.
@@ -61,8 +78,9 @@ const (
 type intent int
 
 const (
-	// ignoreUpdate covers everything that is not a question: a sticker, a
-	// photo, someone joining, and any chat type North does not recognise.
+	// ignoreUpdate covers everything that is not a question: a sticker,
+	// someone joining, and any chat type North does not recognise. Photos
+	// are questions now.
 	ignoreUpdate intent = iota
 
 	// answerUpdate is a message from one person, in a private chat.
@@ -118,9 +136,9 @@ func decodeUpdate(raw []byte) (update, bool) {
 // inbound returns the message, the callback query id that must be answered
 // (empty for an ordinary message), and what to do with it.
 //
-// An update carrying no text — a photo, a sticker, a member joining — is not
-// an error, it is simply not a question, and answering it would be worse than
-// ignoring it.
+// An update carrying no text and no photo — a sticker, a member joining — is
+// not an error, it is simply not a question, and answering it would be worse
+// than ignoring it.
 //
 // The message is populated even when the intent is leaveChat, because the
 // caller still needs the chat id to leave it.
@@ -142,7 +160,12 @@ func (u update) inbound() (messaging.InboundMessage, string, intent) {
 		// The chat is checked before the text is: a group must be left whether
 		// or not the message that revealed it happened to carry words.
 		what := intentFor(from)
-		if what == answerUpdate && u.Message.Text == "" {
+		attachment := photoAttachment(u.Message.Photo, u.Message.Document)
+		text := u.Message.Text
+		if text == "" {
+			text = u.Message.Caption
+		}
+		if what == answerUpdate && text == "" && attachment == nil {
 			what = ignoreUpdate
 		}
 
@@ -153,7 +176,8 @@ func (u update) inbound() (messaging.InboundMessage, string, intent) {
 		return messaging.InboundMessage{
 			Platform:   messaging.PlatformTelegram,
 			ExternalID: chatID(from.ID),
-			Text:       u.Message.Text,
+			Text:       text,
+			Attachment: attachment,
 			UpdateID:   u.UpdateID,
 			ReceivedAt: received,
 		}, "", what
@@ -167,4 +191,37 @@ func (u update) inbound() (messaging.InboundMessage, string, intent) {
 // messaging package stores. Text because the next platform's is a string.
 func chatID(id int64) string {
 	return strconv.FormatInt(id, 10)
+}
+
+func photoAttachment(photos []tgPhoto, doc *tgDoc) *messaging.InboundFile {
+	if n := len(photos); n > 0 {
+		// Last size is the largest. The others are Telegram's thumbnails.
+		return &messaging.InboundFile{
+			Kind:   "image",
+			FileID: photos[n-1].FileID,
+			Name:   "photo.jpg",
+		}
+	}
+	if doc != nil && isImageMIME(doc.MIMEType) {
+		name := doc.FileName
+		if name == "" {
+			name = "photo.jpg"
+		}
+		return &messaging.InboundFile{
+			Kind:     "image",
+			FileID:   doc.FileID,
+			MIMEType: doc.MIMEType,
+			Name:     name,
+		}
+	}
+	return nil
+}
+
+func isImageMIME(mime string) bool {
+	switch mime {
+	case "image/jpeg", "image/png", "image/gif", "image/webp":
+		return true
+	default:
+		return false
+	}
 }

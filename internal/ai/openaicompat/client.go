@@ -16,6 +16,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -321,7 +322,7 @@ func (c *Client) body(req ai.Request, stream bool) map[string]any {
 		default:
 			messages = append(messages, map[string]any{
 				"role":    toRole(m.Role),
-				"content": m.Text(),
+				"content": openAIContent(m),
 			})
 		}
 	}
@@ -435,6 +436,47 @@ func fromToolCallPayload(payload []toolCallPayload) []ai.ToolCall {
 		})
 	}
 	return calls
+}
+
+// openAIContent is a string for a text-only turn and a parts array when a
+// photo is attached. The dialect rejects a mixed object, and sending only
+// m.Text() would silently drop the image.
+func openAIContent(m ai.Message) any {
+	hasBinary := false
+	for _, p := range m.Parts {
+		if len(p.InlineData) > 0 || p.FileURI != "" {
+			hasBinary = true
+			break
+		}
+	}
+	if !hasBinary {
+		return m.Text()
+	}
+
+	parts := make([]map[string]any, 0, len(m.Parts))
+	for _, p := range m.Parts {
+		switch {
+		case p.Text != "":
+			parts = append(parts, map[string]any{"type": "text", "text": p.Text})
+		case len(p.InlineData) > 0:
+			mime := p.MIMEType
+			if mime == "" {
+				mime = "image/jpeg"
+			}
+			parts = append(parts, map[string]any{
+				"type": "image_url",
+				"image_url": map[string]any{
+					"url": "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(p.InlineData),
+				},
+			})
+		case p.FileURI != "":
+			parts = append(parts, map[string]any{
+				"type":      "image_url",
+				"image_url": map[string]any{"url": p.FileURI},
+			})
+		}
+	}
+	return parts
 }
 
 // toRole maps North's vocabulary onto the OpenAI one.

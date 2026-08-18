@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -219,6 +220,29 @@ func (s *Service) GetPlan(ctx context.Context, id, userID uuid.UUID) (StoredPlan
 
 func (s *Service) LatestPlan(ctx context.Context, userID uuid.UUID) (StoredPlan, error) {
 	return s.repo.LatestPlan(ctx, userID)
+}
+
+// DueToday reports whether the latest plan has a session on this local day.
+func (s *Service) DueToday(ctx context.Context, user users.User, today time.Time) (string, string, bool, error) {
+	stored, err := s.repo.LatestPlan(ctx, user.ID)
+	if err != nil {
+		if apperr.Is(err, apperr.ErrNotFound) {
+			return "", "", false, nil
+		}
+		return "", "", false, err
+	}
+	session, ok := stored.Plan.NextSession(today)
+	if !ok {
+		return "", "", false, nil
+	}
+	if !strings.EqualFold(session.Weekday, today.Weekday().String()) {
+		return "", "", false, nil
+	}
+	title := session.Focus
+	if title == "" {
+		title = session.Weekday
+	}
+	return title, "/app/workouts/" + stored.ID.String(), true, nil
 }
 
 func (s *Service) LatestIntake(ctx context.Context, userID uuid.UUID) (StoredIntake, error) {

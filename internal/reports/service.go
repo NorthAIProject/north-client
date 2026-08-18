@@ -41,6 +41,19 @@ type Service struct {
 	now       func() time.Time
 	cooldown  time.Duration
 	fastModel string
+	notify    Notifier
+	inbox     Inbox
+}
+
+// Inbox records a bell note. Distinct from Notifier: the briefing body is
+// already sent to Telegram; this is the in-app row only.
+type Inbox interface {
+	Note(ctx context.Context, userID uuid.UUID, kind, dedupe, title, body, href string) error
+}
+
+// Notifier delivers a finished daily briefing to a linked chat. Optional.
+type Notifier interface {
+	Notify(ctx context.Context, userID uuid.UUID, text string) error
 }
 
 type Options struct {
@@ -55,6 +68,18 @@ type Options struct {
 	// FastModel generates daily briefings. Empty means the provider default,
 	// which is correct but costs more than a briefing is worth.
 	FastModel string
+
+	// Notify is called after a daily briefing is written, so it can leave the
+	// app. Nil leaves the briefing in-app only.
+	Notify Notifier
+
+	// Inbox records the same briefing in the web bell. Nil skips the row.
+	Inbox Inbox
+}
+
+func (s *Service) WithInbox(in Inbox) *Service {
+	s.inbox = in
+	return s
 }
 
 func NewService(opts Options) *Service {
@@ -67,6 +92,8 @@ func NewService(opts Options) *Service {
 		now:       opts.Now,
 		cooldown:  opts.Cooldown,
 		fastModel: opts.FastModel,
+		notify:    opts.Notify,
+		inbox:     opts.Inbox,
 	}
 	if s.now == nil {
 		s.now = time.Now

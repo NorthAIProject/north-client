@@ -252,7 +252,7 @@ func TestTelegramCardTeachesTheLinkSteps(t *testing.T) {
 	}
 }
 
-func TestTelegramCodeRepeatsTheBotLink(t *testing.T) {
+func TestTelegramCodeOpensAStartDeepLink(t *testing.T) {
 	html := renderTelegram(t, TelegramPanel{
 		Enabled:     true,
 		BotUsername: "duxai_coach_bot",
@@ -261,8 +261,9 @@ func TestTelegramCodeRepeatsTheBotLink(t *testing.T) {
 
 	for _, want := range []string{
 		"K7PQ2MNX",
-		"https://t.me/duxai_coach_bot",
-		"Send the code above",
+		`href="https://t.me/duxai_coach_bot?start=K7PQ2MNX"`,
+		"Open in Telegram",
+		"Tap Open in Telegram",
 		"15 minutes",
 	} {
 		if !strings.Contains(html, want) {

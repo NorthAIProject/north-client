@@ -257,11 +257,11 @@ func (s *Service) seedFirstConversation(ctx context.Context, user users.User, in
 // would make the transcript a lie.
 func openingMessage(in Answers) string {
 	var b strings.Builder
-	b.WriteString("I am starting with North. My focus areas are ")
+	b.WriteString("I am starting with DuxAI. My focus areas are ")
 	b.WriteString(strings.Join(in.FocusAreas, ", "))
 	b.WriteString(". The goal I am working toward is: ")
 	b.WriteString(in.NearTermGoal)
-	b.WriteString(". Where should I start this week?")
+	b.WriteString(". I can send a photo of where I am now, a clip of a lift, or just tell you what equipment and days I have. Where should I start, and what do you need to see?")
 	return b.String()
 }
 

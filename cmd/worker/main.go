@@ -19,6 +19,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 
 	"github.com/NorthAIProject/north-client/internal/activity"
@@ -38,6 +39,8 @@ import (
 	"github.com/NorthAIProject/north-client/internal/meals"
 	"github.com/NorthAIProject/north-client/internal/media"
 	"github.com/NorthAIProject/north-client/internal/memories"
+	"github.com/NorthAIProject/north-client/internal/messaging"
+	"github.com/NorthAIProject/north-client/internal/messaging/telegram"
 	"github.com/NorthAIProject/north-client/internal/mind"
 	"github.com/NorthAIProject/north-client/internal/notifications"
 	"github.com/NorthAIProject/north-client/internal/nudges"
@@ -49,6 +52,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/vault"
 	vaultdb "github.com/NorthAIProject/north-client/internal/vault/db"
+	"github.com/NorthAIProject/north-client/internal/workouts"
 )
 
 func main() {
@@ -234,6 +238,17 @@ func run() error {
 		memories.NewService(memories.NewRepository(pool)),
 	)
 
+	// The briefing is written here; if Telegram is configured it also leaves
+	// the app. Coach is not wired: Notify only needs links and a transport.
+	var briefingNotify reports.Notifier
+	if cfg.Telegram.Enabled() {
+		briefingNotify = messaging.NewService(messaging.Options{
+			Links:     messaging.NewRepository(pool),
+			Transport: telegram.NewClient(cfg.Telegram.BotToken),
+			Log:       log,
+		})
+	}
+
 	reportSvc := reports.NewService(reports.Options{
 		Repository: reports.NewRepository(pool),
 		Users:      userSvc,
@@ -241,6 +256,7 @@ func run() error {
 		Client:     reports.ClientFromRegistry(registry),
 		Context:    reviewContext,
 		FastModel:  cfg.AI.FastModel,
+		Notify:     briefingNotify,
 	})
 	worker.Register(jobs.KindWeeklyReview, reportSvc.HandleGenerateJob)
 
@@ -274,8 +290,26 @@ func run() error {
 		quota.NewService(quota.NewRepository(pool), nil, nil).HandleSweep)
 
 	nudgeSvc := nudges.NewService(nudges.NewRepository(pool), userSvc, checkinSvc, goalSvc).
-		WithPrefs(notificationSvc)
+		WithPrefs(notificationSvc).
+		WithFanout(briefingNotify).
+		WithWeek(nudges.WeekFrom{
+			Chats:  memoryExtract.Conversations,
+			Photos: mediaSvc,
+			Facts:  memoryExtract.Memories,
+		}).
+		WithTraining(workouts.NewService(workouts.Options{
+			Repository: workouts.NewRepository(pool),
+		})).
+		WithSchedules(notificationSvc)
 	worker.Register(jobs.KindSweepNudges, nudges.NewSweeper(nudgeSvc, log).HandleSweep)
+
+	mediaSvc.WithOnReady(func(ctx context.Context, userID, analysisID uuid.UUID) {
+		_ = nudgeSvc.Note(ctx, userID, nudges.KindFormReady, analysisID.String(),
+			"Your form check is ready",
+			"I watched the clip. Open it to see the cues.",
+			"/app/form/"+analysisID.String())
+	})
+	reportSvc.WithInbox(nudgeSvc)
 
 	// Compaction of long threads. The coach enqueues this from the reply pump
 	// once a conversation outgrows the context window; the sweep catches the
