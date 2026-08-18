@@ -64,7 +64,7 @@ func TestCoachPromptStatesGroundingRules(t *testing.T) {
 		"admits a missing memory is unknown":      "if a fact you need is not listed there",
 		"states the growth mission":               "your mission is this person's growth",
 		"refuses off-mission questions":           "refuse off-mission questions",
-		"never discusses hosting":                 "never discuss where north is hosted",
+		"never discusses hosting":                 "never discuss where duxai is hosted",
 	}
 
 	for what, phrase := range required {
@@ -89,7 +89,7 @@ func TestReflectionPromptStatesTheSessionRules(t *testing.T) {
 		"## reflection summary",
 		"{{.questionsasked}}",
 		"refuse off-mission questions",
-		"where north is hosted",
+		"where duxai is hosted",
 	} {
 		if !strings.Contains(lower, phrase) {
 			t.Errorf("reflection prompt missing %q", phrase)

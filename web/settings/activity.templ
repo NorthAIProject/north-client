@@ -9,7 +9,7 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/card"
 )
 
-// ActivityPage answers "what has North actually done to my data?".
+// ActivityPage answers "what has DuxAI actually done to my data?".
 //
 // It sits beside agent connections on purpose: that page hands out the keys
 // that let an outside agent write, and this one shows what those keys did.
@@ -20,7 +20,7 @@ templ ActivityPage(user users.User, executions []toolaudit.Execution) {
 				@ui.MonoLabel("Settings")
 				<h1 class="mt-2 text-2xl font-medium tracking-tight">Activity</h1>
 				<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
-					Everything North has done to your data on your behalf — from the coach
+					Everything DuxAI has done to your data on your behalf — from the coach
 					mid-conversation, and from any agent you have connected. Writes you
 					turned down are listed too, so the record shows what was asked as well
 					as what happened.
@@ -33,7 +33,7 @@ templ ActivityPage(user users.User, executions []toolaudit.Execution) {
 				@card.Card() {
 					@card.Content() {
 						<p class="text-muted-foreground text-sm">
-							Nothing yet. North records here whenever it creates a goal, logs a
+							Nothing yet. DuxAI records here whenever it creates a goal, logs a
 							check-in, or records progress for you.
 						</p>
 					}

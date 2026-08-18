@@ -28,6 +28,6 @@ templ BrandMark(size string) {
 templ BrandLockup(href string, markSize string, textClass string) {
 	<a href={ templ.SafeURL(href) } class="inline-flex items-center gap-2">
 		@BrandMark(markSize)
-		<span class={ textClass }>North</span>
+		<span class={ textClass }>{ ProductName }</span>
 	</a>
 }

@@ -102,7 +102,7 @@ templ muscleDemo() {
 		@sectionHeading(
 			"Fitness intelligence",
 			"See where the work actually lands.",
-			"North reads your plan as anatomy, not as a list of names. Pick a lift and watch the load distribute — the same model that decides what your week is allowed to stack.",
+			"DuxAI reads your plan as anatomy, not as a list of names. Pick a lift and watch the load distribute — the same model that decides what your week is allowed to stack.",
 		)
 		@card.Card(card.Props{Class: "mt-10 overflow-hidden border-hairline bg-surface p-0"}) {
 			@card.Content(card.ContentProps{Class: "grid gap-0 p-0 lg:grid-cols-[1.1fr_1fr]"}) {
@@ -233,7 +233,7 @@ templ goalDemo() {
 		@sectionHeading(
 			"Context-aware coaching",
 			"Say it badly. That is the point.",
-			"Nobody arrives with a well-formed goal. Type the way you would actually type it and watch North turn it into something a training block can be built from.",
+			"Nobody arrives with a well-formed goal. Type the way you would actually type it and watch DuxAI turn it into something a training block can be built from.",
 		)
 		@card.Card(card.Props{Class: "mt-10 border-hairline bg-surface"}) {
 			@card.Content(card.ContentProps{Class: "grid gap-8 lg:grid-cols-2"}) {
@@ -340,7 +340,7 @@ func surfaces() []surface {
 			},
 		},
 		{
-			Key: "telegram", Name: "Telegram", Chrome: "North · online", Icon: icon.Send(icon.Props{Class: "size-3.5"}),
+			Key: "telegram", Name: "Telegram", Chrome: "DuxAI · online", Icon: icon.Send(icon.Props{Class: "size-3.5"}),
 			Gap: "Thursday, 18:40 — from the gym floor",
 			Messages: []threadTurn{
 				{"", "", true, "squatting now. 80 felt heavy"},
@@ -351,12 +351,12 @@ func surfaces() []surface {
 			Key: "discord", Name: "Discord", Chrome: "#training", Icon: icon.Hash(icon.Props{Class: "size-3.5"}),
 			Gap: "Friday, 21:05 — in your accountability server",
 			Messages: []threadTurn{
-				{"", "", true, "@North post my week"},
+				{"", "", true, "@DuxAI post my week"},
 				{"", "", false, "Three sessions, one moved for sleep, 80kg squat for three — a March best. Carry is still the weak link at 40 minutes against a 90 minute target."},
 			},
 		},
 		{
-			Key: "whatsapp", Name: "WhatsApp", Chrome: "North", Icon: icon.MessageCircle(icon.Props{Class: "size-3.5"}),
+			Key: "whatsapp", Name: "WhatsApp", Chrome: "DuxAI", Icon: icon.MessageCircle(icon.Props{Class: "size-3.5"}),
 			Gap: "Sunday, 09:30",
 			Messages: []threadTurn{
 				{"", "", false, "You told me on Monday that five hours of sleep is your line. You have hit it four nights this week. Before we add load, that is the thing worth fixing."},
@@ -372,7 +372,7 @@ templ platformDemo() {
 		@sectionHeading(
 			"Available everywhere",
 			"Four apps. One conversation. Nothing repeated back.",
-			"North is not four bots sharing a name. Move between surfaces and it keeps the thread — including the thing you said on Monday that you have already forgotten.",
+			"DuxAI is not four bots sharing a name. Move between surfaces and it keeps the thread — including the thing you said on Monday that you have already forgotten.",
 		)
 		<div class="mt-10">
 			@tabs.Tabs(tabs.Props{ID: "surface-tabs"}) {
@@ -451,7 +451,7 @@ templ surfaceMessage(m threadTurn) {
 		>
 			if !m.FromUser {
 				<div class="pb-1">
-					<span class="font-mono text-[10px] uppercase tracking-[0.14em] text-agent">North</span>
+					<span class="font-mono text-[10px] uppercase tracking-[0.14em] text-agent">DuxAI</span>
 				</div>
 			}
 			{ m.Body }
