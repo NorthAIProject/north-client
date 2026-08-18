@@ -287,22 +287,7 @@ templ transcript(messages []conversations.Message, conversation conversations.Co
 }
 
 templ beginReflectionExchange(conversationID uuid.UUID) {
-	<div class="flex flex-col items-start gap-1" hx-ext="sse" sse-connect={ beginStreamURL(conversationID) } sse-close="done">
-		<span class="font-mono text-[10px] uppercase tracking-[0.14em] text-agent">North</span>
-		<div
-			class="border-hairline bg-surface max-w-[85%] rounded-2xl rounded-bl-sm border px-4 py-2.5 text-sm whitespace-pre-wrap"
-			sse-swap="token,error"
-			hx-swap="beforeend"
-		></div>
-		<div
-			class="hidden"
-			hx-trigger="sse:done"
-			hx-get={ "/app/chat/" + conversationID.String() }
-			hx-target="#chat-root"
-			hx-select="#chat-root"
-			hx-swap="outerHTML"
-		></div>
-	</div>
+	@streamingCoachBubble(beginStreamURL(conversationID), conversationID)
 }
 
 func beginStreamURL(conversationID uuid.UUID) string {
@@ -476,33 +461,10 @@ templ PendingExchange(conversationID uuid.UUID, message string) {
 			{ message }
 		</div>
 	</div>
-	// The bubble and the refresh are separate elements on purpose. Each needs its
-	// own hx-swap — "beforeend" to append tokens, "outerHTML" to replace the
-	// page — and two hx-swap attributes on one element silently lose one of
-	// them, which appends a whole copy of the page into the chat.
-	//
-	// sse-close="done" ends the connection when the reply does. Without it the
-	// browser reconnects on close and the coach answers again, forever.
-	//
 	// Tokens stream in as plain text; markdown is only rendered once the reply
 	// is complete and the page re-fetches it. Formatting a half-written
 	// sentence would make the text jump around as it arrives.
-	<div class="flex flex-col items-start gap-1" hx-ext="sse" sse-connect={ streamURL(conversationID, message) } sse-close="done">
-		<span class="font-mono text-[10px] uppercase tracking-[0.14em] text-agent">North</span>
-		<div
-			class="border-hairline bg-surface max-w-[85%] rounded-2xl rounded-bl-sm border px-4 py-2.5 text-sm whitespace-pre-wrap"
-			sse-swap="token,error"
-			hx-swap="beforeend"
-		></div>
-		<div
-			class="hidden"
-			hx-trigger="sse:done"
-			hx-get={ "/app/chat/" + conversationID.String() }
-			hx-target="#chat-root"
-			hx-select="#chat-root"
-			hx-swap="outerHTML"
-		></div>
-	</div>
+	@streamingCoachBubble(streamURL(conversationID, message), conversationID)
 }
 
 // streamURL builds the SSE endpoint for a pending message.
@@ -612,13 +574,33 @@ func resolveURL(conversationID, messageID uuid.UUID, decision string) string {
 // approval. It is the same shape as PendingExchange minus the user's bubble,
 // because the question was asked a turn ago and is already on the page.
 templ ResumeExchange(conversationID uuid.UUID) {
-	<div class="flex flex-col items-start gap-1" hx-ext="sse" sse-connect={ "/app/chat/" + conversationID.String() + "/resume" } sse-close="done">
+	@streamingCoachBubble("/app/chat/"+conversationID.String()+"/resume", conversationID)
+}
+
+// streamingCoachBubble is the empty coach turn that opens an SSE stream.
+//
+// Tokens append into the inner span so the caret stays at the end, the way a
+// CLI cursor does. templUI has no caret; this is the same mark the landing
+// demo already uses, in the agent colour because the coach is speaking.
+//
+// The bubble and the refresh are separate elements on purpose. Each needs its
+// own hx-swap — "beforeend" to append tokens, "outerHTML" to replace the
+// page — and two hx-swap attributes on one element silently lose one of
+// them, which appends a whole copy of the page into the chat.
+//
+// sse-close="done" ends the connection when the reply does. Without it the
+// browser reconnects on close and the coach answers again, forever.
+templ streamingCoachBubble(connectURL string, conversationID uuid.UUID) {
+	<div class="flex flex-col items-start gap-1" hx-ext="sse" sse-connect={ connectURL } sse-close="done">
 		<span class="font-mono text-[10px] uppercase tracking-[0.14em] text-agent">North</span>
-		<div
-			class="border-hairline bg-surface max-w-[85%] rounded-2xl rounded-bl-sm border px-4 py-2.5 text-sm whitespace-pre-wrap"
-			sse-swap="token,error"
-			hx-swap="beforeend"
-		></div>
+		<div class="border-hairline bg-surface max-w-[85%] rounded-2xl rounded-bl-sm border px-4 py-2.5 text-sm whitespace-pre-wrap">
+			<span sse-swap="token,error" hx-swap="beforeend"></span>
+			<span
+				data-streaming-caret
+				class="ml-0.5 inline-block h-3.5 w-1.5 -mb-0.5 bg-agent motion-safe:animate-caret"
+				aria-hidden="true"
+			></span>
+		</div>
 		<div
 			class="hidden"
 			hx-trigger="sse:done"
