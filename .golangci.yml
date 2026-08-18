@@ -20,7 +20,12 @@ linters:
         - shadow
 
   exclusions:
+    # templ emit nests `ctx` and a buffer in every child; govet/shadow and
+    # staticcheck SA4006 fire on every page. Those files are gitignored and
+    # rewritten by `templ generate` — lint the .templ, not the dump.
+    generated: lax
     paths:
+      - '.*_templ\.go$'
       # Huge auto-generated Lucide icon dumps from templUI.
       - web/shared/ui/icon/icon_data\.go
       - web/shared/ui/icon/icon_defs\.go
@@ -29,6 +34,8 @@ formatters:
   enable:
     - gofumpt
   exclusions:
+    generated: lax
     paths:
+      - '.*_templ\.go$'
       - web/shared/ui/icon/icon_data\.go
       - web/shared/ui/icon/icon_defs\.go
