@@ -23,6 +23,13 @@ type Prefs struct {
 	NudgeMissedCheckIn bool
 	NudgeGoalDeadline  bool
 
+	// CoachActivity covers first-week notes, form-ready, and Telegram replies
+	// showing up in the web bell. On by default: that is the product.
+	CoachActivity bool
+
+	// TrainingReminders covers "you have a session today". On by default.
+	TrainingReminders bool
+
 	// WeeklyReportAuto opts in to the sweep that generates the weekly review
 	// once the user's local week closes. Off unless asked for: each run is a
 	// model call.
@@ -51,6 +58,12 @@ func (p Prefs) AllowsNudge(kind string) bool {
 		return p.NudgeMissedCheckIn
 	case "goal_deadline":
 		return p.NudgeGoalDeadline
+	case "workout_today":
+		return p.TrainingReminders
+	case "first_week_check", "first_week_evidence", "first_week_review",
+		"form_ready", "coach_reply", "briefing_ready",
+		"photo_ask", "photo_reminder":
+		return p.CoachActivity
 	default:
 		// An unknown kind is one this build does not offer a switch for.
 		// Silence is not what somebody asked for, so allow it.
@@ -107,6 +120,8 @@ func fromDB(row notificationsdb.UserNotificationPref) Prefs {
 		UserID:             row.UserID,
 		NudgeMissedCheckIn: row.NudgeMissedCheckin,
 		NudgeGoalDeadline:  row.NudgeGoalDeadline,
+		CoachActivity:      row.CoachActivity,
+		TrainingReminders:  row.TrainingReminders,
 		WeeklyReportAuto:   row.WeeklyReportAuto,
 		DailyBriefingAuto:  row.DailyBriefingAuto,
 		QuietHoursEnabled:  row.QuietHoursEnabled,

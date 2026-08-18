@@ -59,6 +59,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/meals"
 	"github.com/NorthAIProject/north-client/internal/memories"
 	"github.com/NorthAIProject/north-client/internal/mind"
+	"github.com/NorthAIProject/north-client/internal/notifications"
 	"github.com/NorthAIProject/north-client/internal/preferences"
 	"github.com/NorthAIProject/north-client/internal/reports"
 	"github.com/NorthAIProject/north-client/internal/shared/database"
@@ -288,15 +289,16 @@ func buildServices(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry
 	auditRecorder := toolaudit.NewRecorder(toolaudit.NewService(toolaudit.NewRepository(pool)))
 
 	agentTools := agent.Build(agent.Services{
-		Exercises:   exercises.NewService(exercises.NewRepository(pool)),
-		Calculator:  calculatorSvc,
-		Goals:       goalSvc,
-		Ingredients: meals.NewIngredientService(mealsRepo),
-		FoodLog:     foodLogSvc,
-		CheckIns:    checkinSvc,
-		Documents:   documentSvc,
-		Workouts:    workoutSvc,
-		Users:       userSvc,
+		Exercises:     exercises.NewService(exercises.NewRepository(pool)),
+		Calculator:    calculatorSvc,
+		Goals:         goalSvc,
+		Ingredients:   meals.NewIngredientService(mealsRepo),
+		FoodLog:       foodLogSvc,
+		CheckIns:      checkinSvc,
+		Documents:     documentSvc,
+		Workouts:      workoutSvc,
+		Users:         userSvc,
+		Notifications: notifications.NewService(notifications.NewRepository(pool)),
 	})
 	agentTools.Record(auditRecorder)
 

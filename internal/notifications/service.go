@@ -21,6 +21,8 @@ func NewService(repo *Repository) *Service {
 type Input struct {
 	NudgeMissedCheckIn bool
 	NudgeGoalDeadline  bool
+	CoachActivity      bool
+	TrainingReminders  bool
 	WeeklyReportAuto   bool
 	DailyBriefingAuto  bool
 	QuietHoursEnabled  bool
@@ -73,6 +75,8 @@ func defaults() Prefs {
 	return Prefs{
 		NudgeMissedCheckIn: true,
 		NudgeGoalDeadline:  true,
+		CoachActivity:      true,
+		TrainingReminders:  true,
 		WeeklyReportAuto:   false,
 		DailyBriefingAuto:  false,
 		QuietHoursEnabled:  false,
@@ -107,4 +111,46 @@ func (s *Service) Upsert(ctx context.Context, userID uuid.UUID, in Input) (Prefs
 		return Prefs{}, err
 	}
 	return s.repo.Upsert(ctx, userID, clean)
+}
+
+// PhotoSchedule is the photo check-in cadence, or the default if they have
+// never set one.
+func (s *Service) PhotoSchedule(ctx context.Context, userID uuid.UUID) (Schedule, error) {
+	got, err := s.repo.GetSchedule(ctx, userID, KindPhoto)
+	if err != nil {
+		if apperr.Is(err, apperr.ErrNotFound) {
+			return DefaultPhoto(userID), nil
+		}
+		return Schedule{}, err
+	}
+	return got, nil
+}
+
+func (s *Service) ListSchedules(ctx context.Context, userID uuid.UUID) ([]Schedule, error) {
+	list, err := s.repo.ListSchedules(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if len(list) == 0 {
+		return []Schedule{DefaultPhoto(userID)}, nil
+	}
+	hasPhoto := false
+	for _, item := range list {
+		if item.Kind == KindPhoto {
+			hasPhoto = true
+			break
+		}
+	}
+	if !hasPhoto {
+		list = append([]Schedule{DefaultPhoto(userID)}, list...)
+	}
+	return list, nil
+}
+
+func (s *Service) UpsertSchedule(ctx context.Context, userID uuid.UUID, in ScheduleInput) (Schedule, error) {
+	clean, err := ValidateSchedule(in)
+	if err != nil {
+		return Schedule{}, err
+	}
+	return s.repo.UpsertSchedule(ctx, userID, clean)
 }

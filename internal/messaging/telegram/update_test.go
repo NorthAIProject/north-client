@@ -104,6 +104,41 @@ func TestACallbackFromAPrivateChatIsAnswered(t *testing.T) {
 	}
 }
 
+func TestAPrivatePhotoIsAnswered(t *testing.T) {
+	raw := []byte(`{"update_id":9,"message":{"chat":{"id":884422,"type":"private"},"caption":"how's my squat?","photo":[{"file_id":"small","width":90,"height":90},{"file_id":"large","width":1280,"height":1280}],"date":1755300000}}`)
+
+	u, ok := decodeUpdate(raw)
+	if !ok {
+		t.Fatal("update did not parse")
+	}
+	msg, _, got := u.inbound()
+	if got != answerUpdate {
+		t.Fatalf("intent = %v, want answerUpdate", got)
+	}
+	if msg.Text != "how's my squat?" {
+		t.Fatalf("caption = %q", msg.Text)
+	}
+	if msg.Attachment == nil || msg.Attachment.FileID != "large" {
+		t.Fatalf("attachment = %+v, want the largest photo", msg.Attachment)
+	}
+}
+
+func TestAPhotoWithNoCaptionIsStillAQuestion(t *testing.T) {
+	raw := []byte(`{"update_id":10,"message":{"chat":{"id":884422,"type":"private"},"photo":[{"file_id":"p1","width":100,"height":100}]}}`)
+
+	u, ok := decodeUpdate(raw)
+	if !ok {
+		t.Fatal("update did not parse")
+	}
+	msg, _, got := u.inbound()
+	if got != answerUpdate {
+		t.Fatalf("intent = %v, want answerUpdate", got)
+	}
+	if msg.Attachment == nil {
+		t.Fatal("photo was dropped")
+	}
+}
+
 func TestUpdatesWithNothingToAnswerAreIgnored(t *testing.T) {
 	for _, body := range []string{
 		`{"update_id":7,"message":{"chat":{"id":884422,"type":"private"},"date":1755300000}}`,

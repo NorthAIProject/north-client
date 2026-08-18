@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
+
 	"github.com/NorthAIProject/north-client/internal/notifications"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
@@ -79,12 +81,13 @@ func TestToneSelectFallsBackToTheDefault(t *testing.T) {
 }
 
 func TestNotificationsCardRendersEveryToggle(t *testing.T) {
-	html := renderSettings(t, ProfileForm{}, NotificationsFormFor(notifications.Defaults()))
+	html := renderSettings(t, ProfileForm{}, NotificationsFormFor(notifications.Defaults(), notifications.DefaultPhoto(uuid.Nil)))
 
 	for _, name := range []string{
 		"nudge_missed_checkin", "nudge_goal_deadline",
 		"weekly_report_auto", "quiet_hours_enabled",
 		"quiet_start", "quiet_end",
+		"photo_ask_enabled", "photo_every_days", "photo_reminder_days",
 	} {
 		if !strings.Contains(html, `name="`+name+`"`) {
 			t.Errorf("notifications form is missing %q", name)

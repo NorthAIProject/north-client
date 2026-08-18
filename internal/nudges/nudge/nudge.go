@@ -8,8 +8,17 @@ import (
 )
 
 const (
-	KindMissedCheckIn = "missed_checkin"
-	KindGoalDeadline  = "goal_deadline"
+	KindMissedCheckIn     = "missed_checkin"
+	KindGoalDeadline      = "goal_deadline"
+	KindFirstWeekCheck    = "first_week_check"
+	KindFirstWeekEvidence = "first_week_evidence"
+	KindFirstWeekReview   = "first_week_review"
+	KindWorkoutToday      = "workout_today"
+	KindFormReady         = "form_ready"
+	KindCoachReply        = "coach_reply"
+	KindBriefingReady     = "briefing_ready"
+	KindPhotoAsk          = "photo_ask"
+	KindPhotoReminder     = "photo_reminder"
 )
 
 // Nudge is one scheduled accountability note for a person.

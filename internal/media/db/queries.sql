@@ -11,6 +11,15 @@ SELECT * FROM media WHERE id = $1 AND user_id = $2;
 -- signed-in user. Never reachable from a handler.
 SELECT * FROM media WHERE id = $1;
 
+-- name: CountUserMediaByKind :one
+SELECT count(*)::int FROM media WHERE user_id = $1 AND kind = $2;
+
+-- name: LatestUserMediaCreatedAt :one
+SELECT created_at FROM media
+WHERE user_id = $1 AND kind = $2
+ORDER BY created_at DESC
+LIMIT 1;
+
 -- name: CreateAnalysis :one
 INSERT INTO form_analyses (media_id, user_id)
 VALUES ($1, $2)

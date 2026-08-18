@@ -189,6 +189,10 @@ func (m Message) ExerciseSlugs() []string {
 }
 
 // ToAIMessages converts stored history into the form the AI layer expects.
+//
+// Attachments become a short text note here, not the file bytes. Inlining every
+// past photo would blow the context window; the current turn is hydrated by
+// the coach after this, once, from storage.
 func ToAIMessages(messages []Message) []ai.Message {
 	out := make([]ai.Message, 0, len(messages))
 	for _, m := range messages {
@@ -203,14 +207,42 @@ func ToAIMessages(messages []Message) []ai.Message {
 			continue
 		}
 
-		if strings.TrimSpace(m.Content) == "" {
+		parts := messageParts(m)
+		if len(parts) == 0 {
 			// An empty turn carries nothing and some providers reject it.
 			continue
 		}
 		out = append(out, ai.Message{
 			Role:  m.Role,
-			Parts: []ai.Part{ai.TextPart(m.Content)},
+			Parts: parts,
 		})
 	}
 	return out
+}
+
+func messageParts(m Message) []ai.Part {
+	parts := make([]ai.Part, 0, 1+len(m.Parts))
+	if text := strings.TrimSpace(m.Content); text != "" {
+		parts = append(parts, ai.TextPart(text))
+	}
+	for _, a := range m.Parts {
+		parts = append(parts, ai.TextPart(AttachmentNote(a)))
+	}
+	return parts
+}
+
+// AttachmentNote is the stand-in a past file becomes in history: enough for
+// the model to know a photo arrived, not the photo itself.
+func AttachmentNote(a Attachment) string {
+	label := "file"
+	switch a.Kind {
+	case "image":
+		label = "photo"
+	case "video":
+		label = "video"
+	}
+	if name := strings.TrimSpace(a.Name); name != "" {
+		return "[" + label + ": " + name + "]"
+	}
+	return "[" + label + "]"
 }

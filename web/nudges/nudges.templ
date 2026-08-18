@@ -15,7 +15,12 @@ import (
 const BellID = "nudge-bell"
 
 templ Bell(list []nudge.Nudge, unread int) {
-	<div id={ BellID }>
+	<div
+		id={ BellID }
+		data-unread={ strconv.Itoa(unread) }
+		data-title={ newestTitle(list) }
+		data-href={ newestHref(list) }
+	>
 		@dropdown.Dropdown() {
 			@dropdown.Trigger() {
 				@button.Button(button.Props{
@@ -112,6 +117,27 @@ templ Card(list []nudge.Nudge) {
 			}
 		}
 	}
+}
+
+func newestTitle(list []nudge.Nudge) string {
+	for _, n := range list {
+		if n.Unread() {
+			return n.Title
+		}
+	}
+	return ""
+}
+
+func newestHref(list []nudge.Nudge) string {
+	for _, n := range list {
+		if n.Unread() {
+			if n.Href != "" {
+				return n.Href
+			}
+			return "/app"
+		}
+	}
+	return "/app"
 }
 
 func bellLabel(unread int) string {

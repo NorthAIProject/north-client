@@ -74,6 +74,17 @@ func TestAllowsNudge(t *testing.T) {
 	}
 	// A kind with no switch on the settings page is not something anybody
 	// asked to be silent about.
+	if p.AllowsNudge("workout_today") {
+		t.Fatal("zero TrainingReminders should refuse workout_today")
+	}
+	p.TrainingReminders = true
+	if !p.AllowsNudge("workout_today") {
+		t.Fatal("training reminders should allow workout_today")
+	}
+	p.CoachActivity = false
+	if p.AllowsNudge("first_week_check") {
+		t.Fatal("coach activity off should silence first-week notes")
+	}
 	if !p.AllowsNudge("some_future_kind") {
 		t.Error("unknown kind should be allowed")
 	}

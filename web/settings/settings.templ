@@ -20,6 +20,7 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/input"
 	"github.com/NorthAIProject/north-client/web/shared/ui/label"
 	"github.com/NorthAIProject/north-client/web/shared/ui/selectbox"
+	"github.com/NorthAIProject/north-client/web/shared/ui/separator"
 	switchcomp "github.com/NorthAIProject/north-client/web/shared/ui/switch"
 	"github.com/NorthAIProject/north-client/web/shared/ui/textarea"
 )
@@ -56,8 +57,13 @@ func ProfileFormFor(u users.User) ProfileForm {
 type NotificationsForm struct {
 	NudgeMissedCheckIn bool
 	NudgeGoalDeadline  bool
+	CoachActivity      bool
+	TrainingReminders  bool
 	WeeklyReportAuto   bool
 	DailyBriefingAuto  bool
+	PhotoAskEnabled    bool
+	PhotoEveryDays     int
+	PhotoReminderDays  int
 	QuietHoursEnabled  bool
 	QuietStart         string
 	QuietEnd           string
@@ -66,12 +72,17 @@ type NotificationsForm struct {
 
 func (f NotificationsForm) fieldError(name string) string { return f.Errors[name] }
 
-func NotificationsFormFor(p notifications.Prefs) NotificationsForm {
+func NotificationsFormFor(p notifications.Prefs, photo notifications.Schedule) NotificationsForm {
 	return NotificationsForm{
 		NudgeMissedCheckIn: p.NudgeMissedCheckIn,
 		NudgeGoalDeadline:  p.NudgeGoalDeadline,
+		CoachActivity:      p.CoachActivity,
+		TrainingReminders:  p.TrainingReminders,
 		WeeklyReportAuto:   p.WeeklyReportAuto,
 		DailyBriefingAuto:  p.DailyBriefingAuto,
+		PhotoAskEnabled:    photo.Enabled,
+		PhotoEveryDays:     photo.EveryDays,
+		PhotoReminderDays:  photo.ReminderDays,
 		QuietHoursEnabled:  p.QuietHoursEnabled,
 		QuietStart:         p.QuietStart,
 		QuietEnd:           p.QuietEnd,
@@ -84,6 +95,8 @@ func NotificationsFormFrom(in notifications.Input) NotificationsForm {
 	return NotificationsForm{
 		NudgeMissedCheckIn: in.NudgeMissedCheckIn,
 		NudgeGoalDeadline:  in.NudgeGoalDeadline,
+		CoachActivity:      in.CoachActivity,
+		TrainingReminders:  in.TrainingReminders,
 		WeeklyReportAuto:   in.WeeklyReportAuto,
 		DailyBriefingAuto:  in.DailyBriefingAuto,
 		QuietHoursEnabled:  in.QuietHoursEnabled,
@@ -294,6 +307,86 @@ templ notificationsCard(f NotificationsForm) {
 					})
 					@label.Label(label.Props{For: "nudge_goal_deadline"}) {
 						Warn me before a goal is due
+					}
+				}
+				@form.Item() {
+					@switchcomp.Switch(switchcomp.Props{
+						ID: "coach_activity", Name: "coach_activity", Checked: f.CoachActivity,
+					})
+					@label.Label(label.Props{For: "coach_activity"}) {
+						Tell me when the coach has something
+					}
+					@form.Description() {
+						First-week check-ins, a reply from Telegram, a finished form check.
+					}
+				}
+				@form.Item() {
+					@switchcomp.Switch(switchcomp.Props{
+						ID: "training_reminders", Name: "training_reminders", Checked: f.TrainingReminders,
+					})
+					@label.Label(label.Props{For: "training_reminders"}) {
+						Remind me on a training day
+					}
+				}
+				@separator.Separator()
+				<p class="text-sm font-medium">Photo check-ins</p>
+				<p class="text-muted-foreground text-xs">
+					I ask for a photo on this cadence, then remind you if nothing arrives.
+				</p>
+				@form.Item() {
+					@switchcomp.Switch(switchcomp.Props{
+						ID: "photo_ask_enabled", Name: "photo_ask_enabled", Checked: f.PhotoAskEnabled,
+					})
+					@label.Label(label.Props{For: "photo_ask_enabled"}) {
+						Ask me for a photo
+					}
+				}
+				@form.Item() {
+					@label.Label(label.Props{For: "photo_every_days"}) {
+						How often
+					}
+					@selectbox.SelectBox() {
+						@selectbox.Trigger(selectbox.TriggerProps{ID: "photo_every_days", Name: "photo_every_days"}) {
+							@selectbox.Value(selectbox.ValueProps{Placeholder: "Every 2 weeks"})
+						}
+						@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
+							@selectbox.Item(selectbox.ItemProps{Value: "7", Selected: f.PhotoEveryDays == 7}) {
+								Every week
+							}
+							@selectbox.Item(selectbox.ItemProps{Value: "14", Selected: f.PhotoEveryDays == 14 || f.PhotoEveryDays == 0}) {
+								Every 2 weeks
+							}
+							@selectbox.Item(selectbox.ItemProps{Value: "21", Selected: f.PhotoEveryDays == 21}) {
+								Every 3 weeks
+							}
+							@selectbox.Item(selectbox.ItemProps{Value: "28", Selected: f.PhotoEveryDays == 28}) {
+								Every 4 weeks
+							}
+						}
+					}
+				}
+				@form.Item() {
+					@label.Label(label.Props{For: "photo_reminder_days"}) {
+						If I forget
+					}
+					@selectbox.SelectBox() {
+						@selectbox.Trigger(selectbox.TriggerProps{ID: "photo_reminder_days", Name: "photo_reminder_days"}) {
+							@selectbox.Value(selectbox.ValueProps{Placeholder: "Remind me 2 days later"})
+						}
+						@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
+							@selectbox.Item(selectbox.ItemProps{Value: "0", Selected: f.PhotoReminderDays == 0}) {
+								No reminder
+							}
+							@selectbox.Item(selectbox.ItemProps{Value: "2", Selected: f.PhotoReminderDays == 2}) {
+								Remind me 2 days later
+							}
+							@selectbox.Item(selectbox.ItemProps{Value: "3", Selected: f.PhotoReminderDays == 3}) {
+								Remind me 3 days later
+							}
+							@selectbox.Item(selectbox.ItemProps{Value: "7", Selected: f.PhotoReminderDays == 7}) {
+								Remind me a week later
+							}
+						}
 					}
 				}
 				@form.Item() {

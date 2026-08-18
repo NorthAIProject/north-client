@@ -2,6 +2,7 @@ package settings
 
 import (
 	"fmt"
+	"net/url"
 
 	"github.com/NorthAIProject/north-client/internal/ai/providers"
 	"github.com/NorthAIProject/north-client/internal/aicreds"
@@ -109,6 +110,17 @@ func (p TelegramPanel) BotLink() string {
 		return ""
 	}
 	return "https://t.me/" + p.BotUsername
+}
+
+// StartLink opens the bot with the code already attached.
+//
+// Telegram delivers that as "/start CODE", which redeem already accepts.
+// Empty when there is no bot name or no code — there is nothing to deep-link.
+func (p TelegramPanel) StartLink() string {
+	if p.BotUsername == "" || p.Code == "" {
+		return ""
+	}
+	return "https://t.me/" + p.BotUsername + "?start=" + url.QueryEscape(p.Code)
 }
 
 // Handle is the bot's @name. A method rather than an "@" in the markup, where
@@ -375,11 +387,17 @@ templ telegramCard(p TelegramPanel) {
 // this render is the one moment it exists anywhere a person can read it.
 templ telegramCode(p TelegramPanel) {
 	<div class="space-y-4">
-		<div class="border-signal/40 bg-signal/5 rounded-lg border p-4">
-			<p class="text-muted-foreground mb-2 text-sm leading-relaxed">
-				Send this to the bot. It works once, and only for the next 15 minutes.
+		<div class="border-signal/40 bg-signal/5 rounded-lg border p-4 space-y-3">
+			<p class="text-muted-foreground text-sm leading-relaxed">
+				Tap the button. Telegram opens the bot and sends the code for you. It
+				works once, and only for the next 15 minutes.
 			</p>
-			@copyBlock("Link code", "telegram-code", "text", p.Code)
+			if start := p.StartLink(); start != "" {
+				@button.Button(button.Props{Href: start, Target: "_blank"}) {
+					Open in Telegram
+				}
+			}
+			@copyBlock("Or send this code yourself", "telegram-code", "text", p.Code)
 		</div>
 		@telegramHowTo(p, true)
 	</div>
@@ -434,7 +452,7 @@ templ telegramHowTo(p TelegramPanel, hasCode bool) {
 			}
 		</li>
 		if hasCode {
-			<li>Send the code above as a message in that chat. It works once, and only for the next 15 minutes.</li>
+			<li>Tap Open in Telegram. If Telegram does not open, send the code above as a message in that chat.</li>
 		} else {
 			<li>Come back here and press Get a link code. A short code will appear on this page.</li>
 		}

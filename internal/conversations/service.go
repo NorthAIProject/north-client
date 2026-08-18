@@ -120,13 +120,30 @@ func (s *Service) RecentUserMessages(ctx context.Context, userID uuid.UUID, limi
 	return s.repo.RecentUserMessages(ctx, userID, limit)
 }
 
+// UserMessageCount is how many turns the person has written, across threads.
+func (s *Service) UserMessageCount(ctx context.Context, userID uuid.UUID) (int, error) {
+	// A first-week account has a handful of turns. Loading a short tail and
+	// counting it is enough to tell "seed only" from "they came back".
+	msgs, err := s.repo.RecentUserMessages(ctx, userID, 20)
+	if err != nil {
+		return 0, err
+	}
+	return len(msgs), nil
+}
+
 // ValidateMessage checks a user message before anything is stored or sent.
 func ValidateMessage(text string) error {
+	return ValidateTurn(text, false)
+}
+
+// ValidateTurn is ValidateMessage for a turn that may carry a file instead of
+// words. A photo with no caption is a complete question; an empty box is not.
+func ValidateTurn(text string, hasAttachment bool) error {
 	trimmed := strings.TrimSpace(text)
 
 	var errs apperr.FieldErrors
 	switch {
-	case trimmed == "":
+	case trimmed == "" && !hasAttachment:
 		errs = errs.Add("message", "Type something first.")
 	case len(trimmed) > maxMessageLength:
 		errs = errs.Add("message", "That message is too long. Try breaking it up.")
@@ -136,7 +153,7 @@ func ValidateMessage(text string) error {
 
 // AppendUserMessage stores what the user said.
 func (s *Service) AppendUserMessage(ctx context.Context, conversationID uuid.UUID, text string, attachments []Attachment) (Message, error) {
-	if err := ValidateMessage(text); err != nil {
+	if err := ValidateTurn(text, len(attachments) > 0); err != nil {
 		return Message{}, err
 	}
 

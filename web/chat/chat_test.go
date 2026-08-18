@@ -13,6 +13,53 @@ import (
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
+func TestComposerAcceptsAPhoto(t *testing.T) {
+	var buf bytes.Buffer
+	err := Page(
+		users.User{DisplayName: "Fernando"},
+		conversations.Conversation{ID: uuid.MustParse("11111111-1111-1111-1111-111111111111")},
+		nil,
+		nil,
+		CoachStats{},
+		nil,
+		false,
+		"",
+	).Render(context.Background(), &buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := buf.String()
+	for _, want := range []string{
+		`hx-encoding="multipart/form-data"`,
+		`name="attachment"`,
+		`accept="image/jpeg,image/png,image/webp,image/gif"`,
+		`aria-label="Attach a photo"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("composer missing %q", want)
+		}
+	}
+}
+
+func TestBubbleRendersAPhoto(t *testing.T) {
+	var buf bytes.Buffer
+	err := Bubble(conversations.Message{
+		Role: ai.RoleUser,
+		Parts: []conversations.Attachment{{
+			MediaID: uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+			Kind:    "image",
+			Name:    "squat.jpg",
+		}},
+	}).Render(context.Background(), &buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := buf.String()
+	if !strings.Contains(body, "/app/media/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa") {
+		t.Error("user bubble should show the stored photo")
+	}
+}
+
 func TestPageKeepsTheComposerReachableOnAPhone(t *testing.T) {
 	var buf bytes.Buffer
 	err := Page(
@@ -90,7 +137,7 @@ func TestStreamingBubbleKeepsACaret(t *testing.T) {
 	id := uuid.MustParse("11111111-1111-1111-1111-111111111111")
 
 	var pending bytes.Buffer
-	if err := PendingExchange(id, "How did training go?").Render(context.Background(), &pending); err != nil {
+	if err := PendingExchange(id, "How did training go?", uuid.Nil).Render(context.Background(), &pending); err != nil {
 		t.Fatal(err)
 	}
 	var resume bytes.Buffer

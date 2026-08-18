@@ -28,7 +28,12 @@ type InboundMessage struct {
 	ExternalID string
 
 	// Text is what the person wrote, or the value behind a button they tapped.
+	// Empty when they sent a photo with no caption.
 	Text string
+
+	// Attachment is set when the person sent a file. The adapter fills Bytes
+	// before this package sees it, so no other package has to speak Telegram.
+	Attachment *InboundFile
 
 	// UpdateID is the platform's monotonic delivery counter, used to recognise
 	// a redelivery. Zero when the platform has no such notion, which disables
@@ -36,6 +41,17 @@ type InboundMessage struct {
 	UpdateID int64
 
 	ReceivedAt time.Time
+}
+
+// InboundFile is a photo (or other file) that arrived with a message.
+type InboundFile struct {
+	Name     string
+	MIMEType string
+	Kind     string
+	// FileID is the platform's handle. The adapter uses it to fetch Bytes
+	// and may leave it set; this package never calls the platform with it.
+	FileID string
+	Bytes  []byte
 }
 
 // OutboundMessage is North's reply.

@@ -11,8 +11,33 @@ import (
 	"github.com/google/uuid"
 )
 
+const getAlertSchedule = `-- name: GetAlertSchedule :one
+SELECT id, user_id, kind, enabled, every_days, reminder_days, updated_at FROM user_alert_schedules
+WHERE user_id = $1 AND kind = $2
+`
+
+type GetAlertScheduleParams struct {
+	UserID uuid.UUID
+	Kind   string
+}
+
+func (q *Queries) GetAlertSchedule(ctx context.Context, arg GetAlertScheduleParams) (UserAlertSchedule, error) {
+	row := q.db.QueryRow(ctx, getAlertSchedule, arg.UserID, arg.Kind)
+	var i UserAlertSchedule
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Kind,
+		&i.Enabled,
+		&i.EveryDays,
+		&i.ReminderDays,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getUserNotificationPrefs = `-- name: GetUserNotificationPrefs :one
-SELECT id, user_id, nudge_missed_checkin, nudge_goal_deadline, weekly_report_auto, quiet_hours_enabled, quiet_start, quiet_end, updated_at, daily_briefing_auto FROM user_notification_prefs WHERE user_id = $1
+SELECT id, user_id, nudge_missed_checkin, nudge_goal_deadline, weekly_report_auto, quiet_hours_enabled, quiet_start, quiet_end, updated_at, daily_briefing_auto, coach_activity, training_reminders FROM user_notification_prefs WHERE user_id = $1
 `
 
 func (q *Queries) GetUserNotificationPrefs(ctx context.Context, userID uuid.UUID) (UserNotificationPref, error) {
@@ -29,6 +54,82 @@ func (q *Queries) GetUserNotificationPrefs(ctx context.Context, userID uuid.UUID
 		&i.QuietEnd,
 		&i.UpdatedAt,
 		&i.DailyBriefingAuto,
+		&i.CoachActivity,
+		&i.TrainingReminders,
+	)
+	return i, err
+}
+
+const listAlertSchedules = `-- name: ListAlertSchedules :many
+SELECT id, user_id, kind, enabled, every_days, reminder_days, updated_at FROM user_alert_schedules
+WHERE user_id = $1
+ORDER BY kind
+`
+
+func (q *Queries) ListAlertSchedules(ctx context.Context, userID uuid.UUID) ([]UserAlertSchedule, error) {
+	rows, err := q.db.Query(ctx, listAlertSchedules, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []UserAlertSchedule{}
+	for rows.Next() {
+		var i UserAlertSchedule
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Kind,
+			&i.Enabled,
+			&i.EveryDays,
+			&i.ReminderDays,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const upsertAlertSchedule = `-- name: UpsertAlertSchedule :one
+INSERT INTO user_alert_schedules (user_id, kind, enabled, every_days, reminder_days)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (user_id, kind) DO UPDATE
+SET enabled       = EXCLUDED.enabled,
+    every_days    = EXCLUDED.every_days,
+    reminder_days = EXCLUDED.reminder_days,
+    updated_at    = now()
+RETURNING id, user_id, kind, enabled, every_days, reminder_days, updated_at
+`
+
+type UpsertAlertScheduleParams struct {
+	UserID       uuid.UUID
+	Kind         string
+	Enabled      bool
+	EveryDays    int32
+	ReminderDays int32
+}
+
+func (q *Queries) UpsertAlertSchedule(ctx context.Context, arg UpsertAlertScheduleParams) (UserAlertSchedule, error) {
+	row := q.db.QueryRow(ctx, upsertAlertSchedule,
+		arg.UserID,
+		arg.Kind,
+		arg.Enabled,
+		arg.EveryDays,
+		arg.ReminderDays,
+	)
+	var i UserAlertSchedule
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Kind,
+		&i.Enabled,
+		&i.EveryDays,
+		&i.ReminderDays,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -36,9 +137,10 @@ func (q *Queries) GetUserNotificationPrefs(ctx context.Context, userID uuid.UUID
 const upsertUserNotificationPrefs = `-- name: UpsertUserNotificationPrefs :one
 INSERT INTO user_notification_prefs (
     user_id, nudge_missed_checkin, nudge_goal_deadline,
-    weekly_report_auto, daily_briefing_auto, quiet_hours_enabled, quiet_start, quiet_end
+    weekly_report_auto, daily_briefing_auto, quiet_hours_enabled, quiet_start, quiet_end,
+    coach_activity, training_reminders
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 ON CONFLICT (user_id) DO UPDATE
 SET nudge_missed_checkin = EXCLUDED.nudge_missed_checkin,
     nudge_goal_deadline  = EXCLUDED.nudge_goal_deadline,
@@ -47,8 +149,10 @@ SET nudge_missed_checkin = EXCLUDED.nudge_missed_checkin,
     quiet_hours_enabled  = EXCLUDED.quiet_hours_enabled,
     quiet_start          = EXCLUDED.quiet_start,
     quiet_end            = EXCLUDED.quiet_end,
+    coach_activity       = EXCLUDED.coach_activity,
+    training_reminders   = EXCLUDED.training_reminders,
     updated_at           = now()
-RETURNING id, user_id, nudge_missed_checkin, nudge_goal_deadline, weekly_report_auto, quiet_hours_enabled, quiet_start, quiet_end, updated_at, daily_briefing_auto
+RETURNING id, user_id, nudge_missed_checkin, nudge_goal_deadline, weekly_report_auto, quiet_hours_enabled, quiet_start, quiet_end, updated_at, daily_briefing_auto, coach_activity, training_reminders
 `
 
 type UpsertUserNotificationPrefsParams struct {
@@ -60,6 +164,8 @@ type UpsertUserNotificationPrefsParams struct {
 	QuietHoursEnabled  bool
 	QuietStart         string
 	QuietEnd           string
+	CoachActivity      bool
+	TrainingReminders  bool
 }
 
 func (q *Queries) UpsertUserNotificationPrefs(ctx context.Context, arg UpsertUserNotificationPrefsParams) (UserNotificationPref, error) {
@@ -72,6 +178,8 @@ func (q *Queries) UpsertUserNotificationPrefs(ctx context.Context, arg UpsertUse
 		arg.QuietHoursEnabled,
 		arg.QuietStart,
 		arg.QuietEnd,
+		arg.CoachActivity,
+		arg.TrainingReminders,
 	)
 	var i UserNotificationPref
 	err := row.Scan(
@@ -85,6 +193,8 @@ func (q *Queries) UpsertUserNotificationPrefs(ctx context.Context, arg UpsertUse
 		&i.QuietEnd,
 		&i.UpdatedAt,
 		&i.DailyBriefingAuto,
+		&i.CoachActivity,
+		&i.TrainingReminders,
 	)
 	return i, err
 }

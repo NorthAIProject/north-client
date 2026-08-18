@@ -3,6 +3,7 @@ package nudges
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -46,13 +47,40 @@ type notificationPrefs interface {
 	Get(ctx context.Context, userID uuid.UUID) (notifications.Prefs, error)
 }
 
+// fanout delivers a newly created nudge to a linked chat. Optional.
+type fanout interface {
+	Notify(ctx context.Context, userID uuid.UUID, text string) error
+}
+
+// weekSource is what the first-week rules need besides check-ins.
+type weekSource interface {
+	UserMessageCount(ctx context.Context, userID uuid.UUID) (int, error)
+	HasEvidence(ctx context.Context, userID uuid.UUID) (bool, error)
+	LastEvidenceAt(ctx context.Context, userID uuid.UUID) (time.Time, bool, error)
+	HasLifeFocus(ctx context.Context, userID uuid.UUID, areas ...string) (bool, error)
+}
+
+// schedules is the person's configured cadences.
+type schedules interface {
+	PhotoSchedule(ctx context.Context, userID uuid.UUID) (notifications.Schedule, error)
+}
+
+// trainingSource answers whether today is a plan day.
+type trainingSource interface {
+	DueToday(ctx context.Context, user users.User, today time.Time) (title, href string, due bool, err error)
+}
+
 type Service struct {
-	repo     *Repository
-	accounts accounts
-	checkins checkinDays
-	goals    activeGoals
-	prefs    notificationPrefs
-	now      func() time.Time
+	repo      *Repository
+	accounts  accounts
+	checkins  checkinDays
+	goals     activeGoals
+	prefs     notificationPrefs
+	fanout    fanout
+	week      weekSource
+	training  trainingSource
+	schedules schedules
+	now       func() time.Time
 }
 
 func NewService(repo *Repository, accounts accounts, checkins checkinDays, goals activeGoals) *Service {
@@ -77,6 +105,92 @@ func (s *Service) WithClock(now func() time.Time) *Service {
 func (s *Service) WithPrefs(p notificationPrefs) *Service {
 	s.prefs = p
 	return s
+}
+
+func (s *Service) WithFanout(f fanout) *Service {
+	s.fanout = f
+	return s
+}
+
+func (s *Service) WithWeek(w weekSource) *Service {
+	s.week = w
+	return s
+}
+
+func (s *Service) WithTraining(t trainingSource) *Service {
+	s.training = t
+	return s
+}
+
+func (s *Service) WithSchedules(sc schedules) *Service {
+	s.schedules = sc
+	return s
+}
+
+// Raise inserts a nudge if the dedupe key is new, the person allowed this
+// kind, and it is not quiet hours. A successful insert is fanned out to
+// Telegram unless the kind is one they already received there.
+func (s *Service) Raise(ctx context.Context, user users.User, d Draft) (Nudge, bool, error) {
+	prefs, err := s.prefsFor(ctx, user)
+	if err != nil {
+		return Nudge{}, false, err
+	}
+	if !prefs.AllowsNudge(d.Kind) {
+		return Nudge{}, false, nil
+	}
+	if prefs.InQuietHours(s.now().In(user.Location())) {
+		return Nudge{}, false, nil
+	}
+
+	n, created, err := s.CreateIfAbsent(ctx, user.ID, d)
+	if err != nil || !created {
+		return n, created, err
+	}
+
+	if s.fanout != nil && fansOut(d.Kind) {
+		text := n.Title
+		if n.Body != "" {
+			text = n.Title + "\n\n" + n.Body
+		}
+		if notifyErr := s.fanout.Notify(ctx, user.ID, text); notifyErr != nil {
+			// The note is stored. A failed push must not roll it back.
+			slog.Default().Warn("nudges: could not send to linked chat",
+				"error", notifyErr,
+				"user_id", user.ID,
+				"kind", d.Kind)
+		}
+	}
+	return n, true, nil
+}
+
+// Note is Raise when the caller only has a user id. Used by jobs.
+func (s *Service) Note(ctx context.Context, userID uuid.UUID, kind, dedupe, title, body, href string) error {
+	d := Draft{Kind: kind, DedupeKey: dedupe, Title: title, Body: body, Href: href}
+	if s.accounts == nil {
+		_, _, err := s.CreateIfAbsent(ctx, userID, d)
+		return err
+	}
+	user, err := s.accounts.ByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	_, _, err = s.Raise(ctx, user, d)
+	return err
+}
+
+// RaiseFromUser satisfies coach.Inbox.
+func (s *Service) RaiseFromUser(ctx context.Context, user users.User, kind, dedupe, title, body, href string) error {
+	_, _, err := s.Raise(ctx, user, Draft{Kind: kind, DedupeKey: dedupe, Title: title, Body: body, Href: href})
+	return err
+}
+
+func fansOut(kind string) bool {
+	switch kind {
+	case KindCoachReply, KindBriefingReady:
+		return false
+	default:
+		return true
+	}
 }
 
 // CreateIfAbsent stores the draft when the dedupe key is new.
@@ -120,9 +234,6 @@ func (s *Service) Evaluate(ctx context.Context, user users.User) (int, error) {
 
 	now := s.now()
 	today := localDate(user, now)
-	if daysBetween(onboardedLocal(user, today), today) < onboardGraceDays {
-		return 0, nil
-	}
 
 	prefs, err := s.prefsFor(ctx, user)
 	if err != nil {
@@ -137,6 +248,32 @@ func (s *Service) Evaluate(ctx context.Context, user users.User) (int, error) {
 	}
 
 	created := 0
+
+	// First-week notes are the point of a new account. Missed-check-in and
+	// deadlines stay silent for a couple of days so a brand-new person is
+	// not told they are already behind.
+	n, err := s.evalFirstWeek(ctx, user, today)
+	if err != nil {
+		return created, err
+	}
+	created += n
+
+	n, err = s.evalWorkoutToday(ctx, user, today)
+	if err != nil {
+		return created, err
+	}
+	created += n
+
+	n, err = s.evalPhotoSchedule(ctx, user, today)
+	if err != nil {
+		return created, err
+	}
+	created += n
+
+	if daysBetween(onboardedLocal(user, today), today) < onboardGraceDays {
+		return created, nil
+	}
+
 	if prefs.AllowsNudge(KindMissedCheckIn) {
 		n, err := s.evalMissedCheckIn(ctx, user, today)
 		if err != nil {
@@ -186,7 +323,7 @@ func (s *Service) evalMissedCheckIn(ctx context.Context, user users.User, today 
 		body = fmt.Sprintf("It has been %d days since your last check-in.", quiet)
 	}
 
-	_, inserted, err := s.CreateIfAbsent(ctx, user.ID, Draft{
+	_, inserted, err := s.Raise(ctx, user, Draft{
 		Kind:      KindMissedCheckIn,
 		DedupeKey: today.Format("2006-01-02"),
 		Title:     "Check in with yourself",
@@ -228,7 +365,7 @@ func (s *Service) evalGoalDeadlines(ctx context.Context, user users.User, today 
 			body = fmt.Sprintf("Due in %d days.", until)
 		}
 
-		_, inserted, err := s.CreateIfAbsent(ctx, user.ID, Draft{
+		_, inserted, err := s.Raise(ctx, user, Draft{
 			Kind:      KindGoalDeadline,
 			DedupeKey: g.ID.String() + ":" + due.Format("2006-01-02"),
 			Title:     fmt.Sprintf("“%s” is due %s", g.Title, due.Format("Monday")),

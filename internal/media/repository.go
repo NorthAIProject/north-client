@@ -59,6 +59,31 @@ func (r *Repository) CreateMedia(ctx context.Context, m NewMedia) (Media, error)
 	return mediaFromDB(row), nil
 }
 
+func (r *Repository) CountByKind(ctx context.Context, userID uuid.UUID, kind string) (int, error) {
+	n, err := r.q.CountUserMediaByKind(ctx, mediadb.CountUserMediaByKindParams{
+		UserID: userID,
+		Kind:   kind,
+	})
+	if err != nil {
+		return 0, apperr.Wrap(err, "count media")
+	}
+	return int(n), nil
+}
+
+func (r *Repository) LatestCreatedAt(ctx context.Context, userID uuid.UUID, kind string) (time.Time, bool, error) {
+	at, err := r.q.LatestUserMediaCreatedAt(ctx, mediadb.LatestUserMediaCreatedAtParams{
+		UserID: userID,
+		Kind:   kind,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return time.Time{}, false, nil
+		}
+		return time.Time{}, false, apperr.Wrap(err, "latest media")
+	}
+	return at, true, nil
+}
+
 func (r *Repository) GetMedia(ctx context.Context, id, userID uuid.UUID) (Media, error) {
 	row, err := r.q.GetMedia(ctx, mediadb.GetMediaParams{ID: id, UserID: userID})
 	if err != nil {

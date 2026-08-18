@@ -51,6 +51,37 @@ func (a *botAPI) client() *Client {
 	return c
 }
 
+func TestFileDownloadsThePhoto(t *testing.T) {
+	jpeg := []byte{0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/getFile"):
+			_, _ = w.Write([]byte(`{"ok":true,"result":{"file_path":"photos/file_0.jpg"}}`))
+		case strings.Contains(r.URL.Path, "/file/bot"):
+			_, _ = w.Write(jpeg)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	c := NewClient("test-token")
+	c.baseURL = srv.URL
+	c.http = srv.Client()
+
+	data, mime, err := c.File(context.Background(), "AgAC")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mime != "image/jpeg" {
+		t.Fatalf("mime = %q", mime)
+	}
+	if string(data) != string(jpeg) {
+		t.Fatalf("bytes = %d", len(data))
+	}
+}
+
 // decodeBody reads one Bot API request body.
 func decodeBody(r *http.Request) map[string]any {
 	raw, _ := io.ReadAll(r.Body)
@@ -155,6 +186,15 @@ func TestASilentMessageSendsNothing(t *testing.T) {
 	}
 	if got := api.sends(); len(got) != 0 {
 		t.Fatalf("a silent message was sent anyway: %v", got)
+	}
+}
+
+// A client that dies at the same instant Telegram is asked to hold the
+// connection open turns every quiet poll into "getUpdates request failed".
+func TestTheHTTPClientOutlastsALongPoll(t *testing.T) {
+	if requestTimeout <= time.Duration(pollTimeoutSeconds)*time.Second {
+		t.Fatalf("requestTimeout %s must be longer than pollTimeoutSeconds %d",
+			requestTimeout, pollTimeoutSeconds)
 	}
 }
 

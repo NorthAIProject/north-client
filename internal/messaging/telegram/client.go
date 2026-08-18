@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/NorthAIProject/north-client/internal/messaging"
@@ -27,9 +28,12 @@ const apiBase = "https://api.telegram.org"
 // is better served than one reading none of it.
 const maxMessageRunes = 4096
 
-// requestTimeout bounds one Bot API call. Generous for a phone network,
-// bounded so a hung send does not hold a goroutine open forever.
-const requestTimeout = 30 * time.Second
+// requestTimeout bounds one Bot API call.
+//
+// It must outlast pollTimeoutSeconds: getUpdates asks Telegram to hold the
+// connection open for that long, and an HTTP client that dies at the same
+// instant treats every quiet half-minute as a failed poll.
+const requestTimeout = time.Duration(pollTimeoutSeconds+15) * time.Second
 
 // Client talks to the Telegram Bot API. It implements messaging.Transport.
 type Client struct {
@@ -168,6 +172,54 @@ func (c *Client) AnswerCallback(ctx context.Context, callbackID string) error {
 	}, nil)
 }
 
+// maxDownloadBytes bounds a file fetched from Telegram. Photos sit well
+// under this; anything larger is not a chat photo.
+const maxDownloadBytes = 10 << 20
+
+// File downloads a Telegram file by id. The MIME type is sniffed from the
+// bytes, because getFile does not return one.
+func (c *Client) File(ctx context.Context, fileID string) ([]byte, string, error) {
+	var result struct {
+		FilePath string `json:"file_path"`
+	}
+	if err := c.call(ctx, "getFile", map[string]any{"file_id": fileID}, &result); err != nil {
+		return nil, "", err
+	}
+	if result.FilePath == "" {
+		return nil, "", apperr.Wrap(apperr.ErrNotFound, "telegram: empty file path")
+	}
+
+	url := c.baseURL + "/file/bot" + c.token + "/" + result.FilePath
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, "", apperr.Wrap(err, "telegram: build file request")
+	}
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, "", fmt.Errorf("telegram: file request failed")
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, "", fmt.Errorf("telegram: file download status %d", resp.StatusCode)
+	}
+
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxDownloadBytes+1))
+	if err != nil {
+		return nil, "", fmt.Errorf("telegram: read file")
+	}
+	if int64(len(data)) > maxDownloadBytes {
+		return nil, "", apperr.Wrap(apperr.ErrValidation, "that photo is too large")
+	}
+
+	mime := http.DetectContentType(data)
+	if base, _, found := strings.Cut(mime, ";"); found {
+		mime = strings.TrimSpace(base)
+	}
+	return data, mime, nil
+}
+
 // getUpdates long-polls for new updates. Used only in polling mode.
 func (c *Client) getUpdates(ctx context.Context, offset int64, timeoutSeconds int) ([]update, error) {
 	var result []update
@@ -204,7 +256,7 @@ func (c *Client) call(ctx context.Context, method string, body any, out any) err
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return fmt.Errorf("telegram: %s request failed", method)
+		return fmt.Errorf("telegram: %s request failed: %w", method, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 

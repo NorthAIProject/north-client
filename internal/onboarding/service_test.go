@@ -238,6 +238,9 @@ func TestCompleteOpensTheFirstConversation(t *testing.T) {
 	if !strings.Contains(coach.sent, lifedomain.Fitness) {
 		t.Fatalf("opening message does not carry the focus area: %q", coach.sent)
 	}
+	if !strings.Contains(coach.sent, "photo") || !strings.Contains(coach.sent, "what do you need to see") {
+		t.Fatalf("opening message should ask for evidence: %q", coach.sent)
+	}
 }
 
 // A provider having a bad minute must not cost somebody their onboarding. They

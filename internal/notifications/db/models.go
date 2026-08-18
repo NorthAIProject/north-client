@@ -10,6 +10,16 @@ import (
 	"github.com/google/uuid"
 )
 
+type UserAlertSchedule struct {
+	ID           uuid.UUID
+	UserID       uuid.UUID
+	Kind         string
+	Enabled      bool
+	EveryDays    int32
+	ReminderDays int32
+	UpdatedAt    time.Time
+}
+
 type UserNotificationPref struct {
 	ID                 uuid.UUID
 	UserID             uuid.UUID
@@ -21,4 +31,6 @@ type UserNotificationPref struct {
 	QuietEnd           string
 	UpdatedAt          time.Time
 	DailyBriefingAuto  bool
+	CoachActivity      bool
+	TrainingReminders  bool
 }

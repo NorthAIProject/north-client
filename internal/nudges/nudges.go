@@ -8,6 +8,15 @@ import "github.com/NorthAIProject/north-client/internal/nudges/nudge"
 type Nudge = nudge.Nudge
 
 const (
-	KindMissedCheckIn = nudge.KindMissedCheckIn
-	KindGoalDeadline  = nudge.KindGoalDeadline
+	KindMissedCheckIn     = nudge.KindMissedCheckIn
+	KindGoalDeadline      = nudge.KindGoalDeadline
+	KindFirstWeekCheck    = nudge.KindFirstWeekCheck
+	KindFirstWeekEvidence = nudge.KindFirstWeekEvidence
+	KindFirstWeekReview   = nudge.KindFirstWeekReview
+	KindWorkoutToday      = nudge.KindWorkoutToday
+	KindFormReady         = nudge.KindFormReady
+	KindCoachReply        = nudge.KindCoachReply
+	KindBriefingReady     = nudge.KindBriefingReady
+	KindPhotoAsk          = nudge.KindPhotoAsk
+	KindPhotoReminder     = nudge.KindPhotoReminder
 )

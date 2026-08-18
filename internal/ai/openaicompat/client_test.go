@@ -431,3 +431,45 @@ func TestUploadIsUnsupported(t *testing.T) {
 		t.Fatalf("expected ErrValidation, got %v", err)
 	}
 }
+
+func TestChatSendsInlineImagesAsDataURLs(t *testing.T) {
+	t.Parallel()
+
+	c, received := newClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"choices":[{"message":{"content":"ok"}}]}`)
+	})
+
+	_, err := c.Generate(context.Background(), ai.Request{
+		Messages: []ai.Message{{
+			Role: ai.RoleUser,
+			Parts: []ai.Part{
+				ai.TextPart("how's my squat?"),
+				{InlineData: []byte{0xff, 0xd8, 0xff}, MIMEType: "image/jpeg"},
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	messages := (*received)[0]["messages"].([]any)
+	content, ok := messages[0].(map[string]any)["content"].([]any)
+	if !ok {
+		t.Fatalf("content = %T, want a parts array", messages[0].(map[string]any)["content"])
+	}
+	if len(content) != 2 {
+		t.Fatalf("parts = %d, want 2", len(content))
+	}
+	text := content[0].(map[string]any)
+	if text["type"] != "text" || text["text"] != "how's my squat?" {
+		t.Fatalf("text part = %+v", text)
+	}
+	image := content[1].(map[string]any)
+	if image["type"] != "image_url" {
+		t.Fatalf("image type = %v", image["type"])
+	}
+	url := image["image_url"].(map[string]any)["url"].(string)
+	if !strings.HasPrefix(url, "data:image/jpeg;base64,") {
+		t.Fatalf("data url = %q", url)
+	}
+}
