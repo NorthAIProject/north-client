@@ -526,6 +526,10 @@ Production stack:
 
 Development can be run using Docker Compose.
 
+The environment variables a k3s / platform-repo deploy has to set are listed
+in [`docs/env-hosting.md`](docs/env-hosting.md). Do not copy `.env` onto the
+cluster — those defaults are for `localhost`.
+
 ---
 
 # Setting up Telegram
