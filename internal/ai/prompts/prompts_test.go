@@ -62,6 +62,9 @@ func TestCoachPromptStatesGroundingRules(t *testing.T) {
 		"bounds media analysis":                   "stay inside your evidence",
 		"treats approved memories as known facts": "treat \"known about them\" as facts",
 		"admits a missing memory is unknown":      "if a fact you need is not listed there",
+		"states the growth mission":               "your mission is this person's growth",
+		"refuses off-mission questions":           "refuse off-mission questions",
+		"never discusses hosting":                 "never discuss where north is hosted",
 	}
 
 	for what, phrase := range required {
@@ -85,6 +88,8 @@ func TestReflectionPromptStatesTheSessionRules(t *testing.T) {
 		"at least 3 and at most 5",
 		"## reflection summary",
 		"{{.questionsasked}}",
+		"refuse off-mission questions",
+		"where north is hosted",
 	} {
 		if !strings.Contains(lower, phrase) {
 			t.Errorf("reflection prompt missing %q", phrase)

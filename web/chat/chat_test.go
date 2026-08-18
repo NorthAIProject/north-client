@@ -86,6 +86,34 @@ func TestEmptyOffersStarterChips(t *testing.T) {
 	}
 }
 
+func TestStreamingBubbleKeepsACaret(t *testing.T) {
+	id := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+
+	var pending bytes.Buffer
+	if err := PendingExchange(id, "How did training go?").Render(context.Background(), &pending); err != nil {
+		t.Fatal(err)
+	}
+	var resume bytes.Buffer
+	if err := ResumeExchange(id).Render(context.Background(), &resume); err != nil {
+		t.Fatal(err)
+	}
+
+	for name, body := range map[string]string{
+		"pending": pending.String(),
+		"resume":  resume.String(),
+	} {
+		if !strings.Contains(body, `data-streaming-caret`) {
+			t.Errorf("%s stream has no caret", name)
+		}
+		if !strings.Contains(body, "motion-safe:animate-caret") {
+			t.Errorf("%s caret is not the CLI blink", name)
+		}
+		if !strings.Contains(body, `sse-swap="token,error"`) {
+			t.Errorf("%s lost the token target", name)
+		}
+	}
+}
+
 func TestComposerPrefillsADraft(t *testing.T) {
 	var buf bytes.Buffer
 	err := Page(
