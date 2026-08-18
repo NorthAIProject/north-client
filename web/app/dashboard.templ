@@ -239,7 +239,7 @@ templ Dashboard(user users.User, data DashboardData) {
 						Hello, { user.FirstName() }
 					</h1>
 					<p class="text-muted-foreground mt-1 max-w-2xl text-sm leading-relaxed">
-						Everything across North, for { data.Range.Label }.
+						Everything across DuxAI, for { data.Range.Label }.
 					</p>
 				</div>
 				@rangeSelector(data)
@@ -730,7 +730,7 @@ templ coachPanel(data DashboardData) {
 					@startReflectionForm()
 				</div>
 			} else {
-				<p class="text-muted-foreground mb-4 text-sm">North already has your goals and check-ins when they exist.</p>
+				<p class="text-muted-foreground mb-4 text-sm">DuxAI already has your goals and check-ins when they exist.</p>
 				<div class="flex flex-wrap items-center gap-2">
 					@button.Button(button.Props{Href: "/app/chat", Class: "bg-signal text-background hover:bg-signal/90"}) {
 						Start a conversation

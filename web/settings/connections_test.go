@@ -147,14 +147,14 @@ func TestTheGatewayFieldIsDrivenByTheCatalogue(t *testing.T) {
 // replaced their real submitted values with "true"/"false" and left neither one
 // checked on a first load — the card opened with no mode selected at all.
 func TestModeRadiosKeepTheirValuesAndOneIsAlwaysChecked(t *testing.T) {
-	t.Run("no credential opens on North's AI", func(t *testing.T) {
+	t.Run("no credential opens on DuxAI's AI", func(t *testing.T) {
 		html := renderPage(t, ConnectForm{}, enabledPanel())
 
 		if strings.Contains(html, `:value="false"`) || strings.Contains(html, `:value="true"`) {
 			t.Error("a boolean is bound over the radio's value again")
 		}
 		if !strings.Contains(html, `name="mode" value="north" x-model="mode" checked`) {
-			t.Error(`"Use North's AI" is not checked when there is no stored credential`)
+			t.Error(`"Use DuxAI's AI" is not checked when there is no stored credential`)
 		}
 		if !strings.Contains(html, `&#34;mode&#34;:&#34;north&#34;`) {
 			t.Error("Alpine state does not open in north mode")
@@ -210,5 +210,63 @@ func TestProviderCardExplainsItselfWhenDisabled(t *testing.T) {
 	}
 	if !strings.Contains(html, "no encryption key configured") {
 		t.Error("the card does not say why it is unavailable")
+	}
+}
+
+func renderTelegram(t *testing.T, telegram TelegramPanel) string {
+	t.Helper()
+	svc := connections.NewService(nil, nil, "https://north.example.com")
+	previews := make([]connections.Setup, 0, len(connections.ClientKinds))
+	for _, kind := range connections.ClientKinds {
+		previews = append(previews, svc.Preview(kind))
+	}
+	var b strings.Builder
+	page := ConnectionsPage(
+		users.User{DisplayName: "Test"},
+		nil, ConnectForm{}, nil, connections.Setup{}, previews, enabledPanel(),
+		telegram,
+		CalendarPanel{},
+	)
+	if err := page.Render(context.Background(), &b); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	return b.String()
+}
+
+func TestTelegramCardTeachesTheLinkSteps(t *testing.T) {
+	html := renderTelegram(t, TelegramPanel{
+		Enabled:     true,
+		BotUsername: "duxai_coach_bot",
+	})
+
+	for _, want := range []string{
+		"Install Telegram",
+		"https://t.me/duxai_coach_bot",
+		"@duxai_coach_bot",
+		"Get a link code",
+		"press Get a link code",
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("telegram start is missing %q", want)
+		}
+	}
+}
+
+func TestTelegramCodeRepeatsTheBotLink(t *testing.T) {
+	html := renderTelegram(t, TelegramPanel{
+		Enabled:     true,
+		BotUsername: "duxai_coach_bot",
+		Code:        "K7PQ2MNX",
+	})
+
+	for _, want := range []string{
+		"K7PQ2MNX",
+		"https://t.me/duxai_coach_bot",
+		"Send the code above",
+		"15 minutes",
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("telegram code view is missing %q", want)
+		}
 	}
 }

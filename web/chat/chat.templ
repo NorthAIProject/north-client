@@ -45,7 +45,7 @@ const proseClasses = "text-sm " +
 	"[&_td]:py-1"
 
 // starters seed a brand new conversation. A blank box is the hardest thing to
-// answer; these say what North is for better than a paragraph of explanation.
+// answer; these say what DuxAI is for better than a paragraph of explanation.
 var starters = []string{
 	"I want to get stronger but I don't know where to start.",
 	"Help me build a habit I'll actually keep.",
@@ -116,7 +116,7 @@ templ Empty(user users.User, list []conversations.Conversation, stats CoachStats
 			@ui.MonoLabel("Day 1 · no sessions yet")
 			<h1 class="text-xl font-medium tracking-tight">Talk to your coach</h1>
 			<p class="text-muted-foreground max-w-sm text-sm leading-relaxed">
-				North remembers what you tell it. Start with what you are working on.
+				DuxAI remembers what you tell it. Start with what you are working on.
 			</p>
 			<div class="flex flex-wrap items-center justify-center gap-2">
 				<form method="post" action="/app/chat">
@@ -336,7 +336,7 @@ templ conversationStarters() {
 		@ui.MonoLabel("This thread")
 		<h2 class="text-lg font-medium tracking-tight">What's on your mind?</h2>
 		<p class="text-muted-foreground max-w-sm text-sm leading-relaxed">
-			Tell North what you are working on. It remembers, so you only have to
+			Tell DuxAI what you are working on. It remembers, so you only have to
 			explain once.
 		</p>
 		// Clicking a starter fills the composer rather than sending it, so the
@@ -366,7 +366,7 @@ templ Bubble(m conversations.Message) {
 		</div>
 	} else {
 		<div class="group flex flex-col items-start gap-1" x-data="{ copied: false }">
-			<span class="font-mono text-[10px] uppercase tracking-[0.14em] text-agent">North</span>
+			<span class="font-mono text-[10px] uppercase tracking-[0.14em] text-agent">DuxAI</span>
 			<div class={ "border-hairline bg-surface max-w-[85%] rounded-2xl rounded-bl-sm border px-4 py-2.5 " + proseClasses }>
 				@markdown.Render(m.Content)
 			</div>
@@ -527,7 +527,7 @@ type PendingTool struct {
 	Summary   string
 }
 
-// ApprovalCard asks before North changes anything.
+// ApprovalCard asks before DuxAI changes anything.
 //
 // It names the tool and the values it would write, because "log a check-in" and
 // "log a check-in saying the week went badly" are different requests and only
@@ -537,7 +537,7 @@ templ ApprovalCard(conversationID uuid.UUID, pending []PendingTool) {
 		@alert.Alert() {
 			@icon.TriangleAlert(icon.Props{Class: "size-4"})
 			@alert.Title() {
-				North wants to change something
+				DuxAI wants to change something
 			}
 			@alert.Description() {
 				<ul class="mt-1 space-y-1">
@@ -592,7 +592,7 @@ templ ResumeExchange(conversationID uuid.UUID) {
 // browser reconnects on close and the coach answers again, forever.
 templ streamingCoachBubble(connectURL string, conversationID uuid.UUID) {
 	<div class="flex flex-col items-start gap-1" hx-ext="sse" sse-connect={ connectURL } sse-close="done">
-		<span class="font-mono text-[10px] uppercase tracking-[0.14em] text-agent">North</span>
+		<span class="font-mono text-[10px] uppercase tracking-[0.14em] text-agent">DuxAI</span>
 		<div class="border-hairline bg-surface max-w-[85%] rounded-2xl rounded-bl-sm border px-4 py-2.5 text-sm whitespace-pre-wrap">
 			<span sse-swap="token,error" hx-swap="beforeend"></span>
 			<span

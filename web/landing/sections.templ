@@ -23,17 +23,17 @@ func features() []feature {
 		{
 			icon.Brain(icon.Props{Class: "size-4"}),
 			"Persistent memory",
-			"Every goal, session, check-in, and offhand remark stays. North reads back across months, not across the last ten messages, so the injury you mentioned in March still shapes the plan in September.",
+			"Every goal, session, check-in, and offhand remark stays. DuxAI reads back across months, not across the last ten messages, so the injury you mentioned in March still shapes the plan in September.",
 		},
 		{
 			icon.Target(icon.Props{Class: "size-4"}),
 			"Context-aware coaching",
-			"Before it answers, North assembles what it knows: active goals, this week's training, your documents, your calendar, how you have been sleeping. Advice arrives already fitted to your life.",
+			"Before it answers, DuxAI assembles what it knows: active goals, this week's training, your documents, your calendar, how you have been sleeping. Advice arrives already fitted to your life.",
 		},
 		{
 			icon.Plug(icon.Props{Class: "size-4"}),
 			"Everywhere, and inside your tools",
-			"Web, Telegram, Discord, and WhatsApp share one memory. Through MCP, North can also act — reading your notes, filing a check-in, pulling a summary — from whatever agent you already use.",
+			"Web, Telegram, Discord, and WhatsApp share one memory. Through MCP, DuxAI can also act — reading your notes, filing a check-in, pulling a summary — from whatever agent you already use.",
 		},
 		{
 			icon.Dumbbell(icon.Props{Class: "size-4"}),
@@ -43,7 +43,7 @@ func features() []feature {
 		{
 			icon.FileText(icon.Props{Class: "size-4"}),
 			"Knowledge you already have",
-			"Drop in the research, the PDFs, the physio notes. North searches them when they are relevant and cites what it used, instead of pretending to remember.",
+			"Drop in the research, the PDFs, the physio notes. DuxAI searches them when they are relevant and cites what it used, instead of pretending to remember.",
 		},
 	}
 }
@@ -93,10 +93,10 @@ type step struct {
 
 func steps() []step {
 	return []step{
-		{"Minute one", "Say where you are going", "In your own words, badly. North turns it into an objective, a horizon, and a first week."},
+		{"Minute one", "Say where you are going", "In your own words, badly. DuxAI turns it into an objective, a horizon, and a first week."},
 		{"Week one", "It builds the context", "Your equipment, your limits, your calendar, your documents. The plan is assembled from what is true about you, not from a template."},
-		{"Every week after", "You just live", "Check in from whichever app is in your hand. A sentence is enough. North is keeping the ledger."},
-		{"Month three", "It changes the plan first", "When the pattern shifts — sleep, pain, a missed block — North moves before you fall off, and tells you what it saw."},
+		{"Every week after", "You just live", "Check in from whichever app is in your hand. A sentence is enough. DuxAI is keeping the ledger."},
+		{"Month three", "It changes the plan first", "When the pattern shifts — sleep, pain, a missed block — DuxAI moves before you fall off, and tells you what it saw."},
 	}
 }
 
@@ -139,7 +139,7 @@ templ visionSection() {
 					A good coach is not smarter than the internet. A good coach knows that you
 					always quit in week five, that you lie about sleep, and that the last time
 					you tried this you injured yourself doing something you were told not to do.
-					That knowledge takes months to build and it is the entire product. North is
+					That knowledge takes months to build and it is the entire product. DuxAI is
 					not trying to be a better chatbot — it is trying to be the thing that has
 					been paying attention.
 				</p>
@@ -185,7 +185,7 @@ templ pricingSection() {
 				"Pro",
 				"€12",
 				"per month",
-				"For when North stops being a tool you visit and starts being the thing you talk to.",
+				"For when DuxAI stops being a tool you visit and starts being the thing you talk to.",
 				[]string{
 					"Everything in Free",
 					"Telegram, Discord, and WhatsApp",
@@ -294,7 +294,7 @@ templ siteFooter() {
 		<div class="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-4 px-6 py-8 lg:pl-28 lg:pr-8">
 			<div class="flex items-center gap-2 text-muted-foreground">
 				@icon.Compass(icon.Props{Class: "size-3.5"})
-				@monoLabel("North — an operating system for personal growth")
+				@monoLabel("DuxAI — an operating system for personal growth")
 			</div>
 			<a
 				href="https://github.com/NorthAIProject/north-client"
