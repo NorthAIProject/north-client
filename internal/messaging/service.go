@@ -174,7 +174,7 @@ func (s *Service) Handle(ctx context.Context, in InboundMessage) (OutboundMessag
 	// goals and no first conversation, so the coach would answer from nothing.
 	// Better to say where to go than to answer badly.
 	if user.NeedsOnboarding() {
-		return OutboundMessage{Text: "Finish setting up your account in the DuxAI web app first, then message me again."}, nil
+		return OutboundMessage{Text: "Finish setting up your account in the North web app first, then message me again."}, nil
 	}
 
 	// Before the thread is resolved and before anything is metered: a command
@@ -207,13 +207,13 @@ func (s *Service) handleUnlinked(ctx context.Context, in InboundMessage) (Outbou
 			user.Email)}, nil
 
 	case errors.Is(err, apperr.ErrConflict):
-		return OutboundMessage{Text: "This chat is already linked to another DuxAI account."}, nil
+		return OutboundMessage{Text: "This chat is already linked to another North account."}, nil
 
 	case errors.Is(err, apperr.ErrForbidden):
 		return OutboundMessage{Text: "Too many attempts. Wait a minute and try your code again."}, nil
 
 	case errors.Is(err, apperr.ErrNotFound):
-		return OutboundMessage{Text: "I do not know you yet. Open DuxAI, go to Settings → Agent connections, and send me the code it shows."}, nil
+		return OutboundMessage{Text: "I do not know you yet. Open North, go to Settings → Agent connections, and send me the code it shows."}, nil
 
 	default:
 		return OutboundMessage{}, err

@@ -77,15 +77,15 @@ func focusLabel(area string) string {
 }
 
 templ FormPage(f Form) {
-	@layout.AuthWide("Welcome to DuxAI") {
+	@layout.AuthWide("Welcome to North") {
 		@checkbox.Script()
 		@card.Card() {
 			@card.Header() {
 				@card.Title() {
-					Tell DuxAI where to start
+					Tell North where to start
 				}
 				@card.Description() {
-					Three quick answers. DuxAI uses them to coach you from day one — not from a blank slate.
+					Three quick answers. North uses them to coach you from day one — not from a blank slate.
 				}
 			}
 			@card.Content() {
@@ -105,7 +105,7 @@ templ FormPage(f Form) {
 					@ui.CSRFInput()
 					<section class="space-y-3">
 						@label.Label(label.Props{For: "focus-fitness"}) {
-							What do you want DuxAI focused on?
+							What do you want North focused on?
 						}
 						<p class="text-muted-foreground text-sm">Pick one or more.</p>
 						<div class="grid grid-cols-2 gap-3">
@@ -127,7 +127,7 @@ templ FormPage(f Form) {
 					</section>
 					<section class="space-y-3">
 						@label.Label(label.Props{For: "style-direct"}) {
-							How should DuxAI coach you?
+							How should North coach you?
 						}
 						<div class="space-y-2">
 							@styleOption("style-direct", styleDirect, "Direct", "Skip pep talks. Challenge me.", f)
@@ -168,7 +168,7 @@ templ FormPage(f Form) {
 							Class:     "bg-signal text-background hover:bg-signal/90",
 							FullWidth: true,
 						}) {
-							Start with DuxAI
+							Start with North
 						}
 						@button.Button(button.Props{
 							Type:    button.TypeSubmit,
@@ -212,13 +212,13 @@ templ DonePage(user users.User, thread string) {
 		@card.Card() {
 			@card.Header() {
 				@card.Title() {
-					DuxAI knows where to start, { user.FirstName() }
+					North knows where to start, { user.FirstName() }
 				}
 				@card.Description() {
 					if thread != "" {
-						Your focus areas, coaching style, and first goal are in place. DuxAI is already writing back.
+						Your focus areas, coaching style, and first goal are in place. North is already writing back.
 					} else {
-						Your focus areas, coaching style, and first goal are in place. Talk to DuxAI whenever you are ready.
+						Your focus areas, coaching style, and first goal are in place. Talk to North whenever you are ready.
 					}
 				}
 			}
@@ -230,7 +230,7 @@ templ DonePage(user users.User, thread string) {
 							Class:     "bg-signal text-background hover:bg-signal/90 w-full",
 							FullWidth: true,
 						}) {
-							Read what DuxAI said
+							Read what North said
 						}
 					} else {
 						<form method="post" action="/app/chat">
@@ -240,7 +240,7 @@ templ DonePage(user users.User, thread string) {
 								Class:     "bg-signal text-background hover:bg-signal/90 w-full",
 								FullWidth: true,
 							}) {
-								Talk to DuxAI
+								Talk to North
 							}
 						</form>
 					}

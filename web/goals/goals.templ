@@ -120,7 +120,7 @@ templ IndexPage(user users.User, list []goal.Goal, inst Instruments, f GoalForm)
 					<div>
 						<h1 class="text-2xl font-medium tracking-tight">Goals</h1>
 						<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
-							What you are working toward. DuxAI reads these before every reply.
+							What you are working toward. North reads these before every reply.
 						</p>
 					</div>
 					@button.Button(button.Props{Size: button.SizeSm, Attributes: templ.Attributes{"@click": "open = !open"}}) {
@@ -588,7 +588,7 @@ templ progressForm(g goal.Goal, errMsg string) {
 				How is it going?
 			}
 			@card.Description() {
-				DuxAI reads your most recent note, so this is how the coach stays current.
+				North reads your most recent note, so this is how the coach stays current.
 			}
 		}
 		@card.Content() {

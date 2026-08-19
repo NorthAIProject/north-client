@@ -60,7 +60,7 @@ type ProviderPanel struct {
 
 	Catalog []providers.BYOProvider
 
-	// Current is the stored credential, or nil when the user is on DuxAI's
+	// Current is the stored credential, or nil when the user is on North's
 	// own providers. It cannot carry the key.
 	Current *aicreds.Credential
 
@@ -92,7 +92,7 @@ type TelegramPanel struct {
 	Enabled bool
 
 	// BotUsername is how a person finds the bot. Empty when nobody configured
-	// it, and the card then says to ask whoever runs this DuxAI.
+	// it, and the card then says to ask whoever runs this North.
 	BotUsername string
 
 	// Linked is the existing link, or nil when this account has none.
@@ -277,7 +277,7 @@ templ connectionRow(conn connections.Connection) {
 
 // pollLimit stops the status poll after roughly two minutes.
 // Someone who pasted the config into an agent finds out inside a few seconds.
-// Someone who wandered off leaves a tab polling forever, which is a cost DuxAI
+// Someone who wandered off leaves a tab polling forever, which is a cost North
 // pays and they never see — so it gives up and says so.
 const pollLimit = 24
 
@@ -447,7 +447,7 @@ templ telegramHowTo(p TelegramPanel, hasCode bool) {
 				</a>
 				in Telegram and start a chat. You do not need to type anything yet.
 			} else {
-				Open the DuxAI bot in Telegram and start a chat. The bot name is not
+				Open the North bot in Telegram and start a chat. The bot name is not
 				configured on this server, so ask the person who set it up.
 			}
 		</li>
@@ -510,19 +510,19 @@ templ providerCard(p ProviderPanel) {
 				Model provider
 			}
 			@card.Description() {
-				By default DuxAI supplies the AI. Point this account at your own key — or at your own Hermes gateway — if you have one.
+				By default North supplies the AI. Point this account at your own key — or at your own Hermes gateway — if you have one.
 			}
 		}
 		@card.Content() {
 			if !p.Enabled {
 				<p class="text-muted-foreground text-sm leading-relaxed">
-					Not available on this server — it has no encryption key configured, and DuxAI
+					Not available on this server — it has no encryption key configured, and North
 					will not store a provider key it cannot encrypt.
 				</p>
 			} else {
 				if p.Current != nil && p.Current.Failing() {
 					@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
-						{ p.Current.LastError } DuxAI's own model is answering in the meantime.
+						{ p.Current.LastError } North's own model is answering in the meantime.
 					}
 				}
 				<form
@@ -536,7 +536,7 @@ templ providerCard(p ProviderPanel) {
 						<label class="flex items-start gap-2 text-sm">
 							<input type="radio" name="mode" value="north" x-model="mode" checked?={ p.Current == nil } class="mt-1"/>
 							<span>
-								<span class="font-medium">Use DuxAI's AI</span>
+								<span class="font-medium">Use North's AI</span>
 								<span class="text-muted-foreground block text-xs leading-relaxed">
 									Nothing to set up. Free accounts are served by models that cost nothing to run.
 								</span>
@@ -547,7 +547,7 @@ templ providerCard(p ProviderPanel) {
 							<span>
 								<span class="font-medium">Use my own API key</span>
 								<span class="text-muted-foreground block text-xs leading-relaxed">
-									Your account pays for the tokens, and DuxAI stops paying for yours.
+									Your account pays for the tokens, and North stops paying for yours.
 								</span>
 							</span>
 						</label>
@@ -620,7 +620,7 @@ templ providerCard(p ProviderPanel) {
 								if p.Current != nil {
 									A key ending { p.Current.KeyHint } is stored. Leave this blank to keep it.
 								} else {
-									DuxAI stores this encrypted and can never show it back to you.
+									North stores this encrypted and can never show it back to you.
 								}
 							}
 						}
@@ -794,7 +794,7 @@ templ connectCard(f ConnectForm, previews []connections.Setup) {
 			@tabs.Tabs(tabs.Props{ID: "surface-tabs"}) {
 				@tabs.List(tabs.ListProps{Class: "w-full"}) {
 					@tabs.Trigger(tabs.TriggerProps{Value: "hosted", IsActive: true}) {
-						This DuxAI
+						This North
 					}
 					@tabs.Trigger(tabs.TriggerProps{Value: "self"}) {
 						Self-hosted
@@ -915,7 +915,7 @@ templ agentPanel(f ConnectForm, p connections.Setup) {
 templ selfHostedPanel() {
 	<div class="space-y-4 text-sm leading-relaxed">
 		<p class="text-muted-foreground">
-			DuxAI also ships a standalone MCP server (<code class="font-mono">cmd/mcp-server</code>)
+			North also ships a standalone MCP server (<code class="font-mono">cmd/mcp-server</code>)
 			built to serve a single private deployment. It is a different surface with
 			different rules, and no key you create here will reach it.
 		</p>
@@ -926,18 +926,18 @@ templ selfHostedPanel() {
 			<li>It listens on <code class="font-mono">MCP_LISTEN_ADDR</code> — <code class="font-mono">127.0.0.1:8093</code> by default. Keep it on a tailnet or a loopback; it has no per-user isolation to lose.</li>
 		</ul>
 		<p class="text-muted-foreground">
-			Prefer the hosted surface unless you are the only person using this DuxAI. Its
+			Prefer the hosted surface unless you are the only person using this North. Its
 			keys are per person and revocable without a restart.
 		</p>
 	</div>
 }
 
-// calendarCard connects DuxAI to somebody's own calendar over MCP.
+// calendarCard connects North to somebody's own calendar over MCP.
 //
 // The outbound direction, unlike everything else on this page: the tokens above
-// are ones DuxAI issues so an agent can call in, this is a credential DuxAI
+// are ones North issues so an agent can call in, this is a credential North
 // uses to call out. Kept on the same page because from the reader's side both
-// answer "what is DuxAI joined up to".
+// answer "what is North joined up to".
 templ calendarCard(p CalendarPanel) {
 	if p.Enabled {
 		@card.Card(card.Props{Class: "border-hairline bg-surface"}) {

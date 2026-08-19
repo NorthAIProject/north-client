@@ -53,7 +53,7 @@ func ProfileFormFor(u users.User) ProfileForm {
 	}
 }
 
-// NotificationsForm carries what DuxAI may say without being asked.
+// NotificationsForm carries what North may say without being asked.
 type NotificationsForm struct {
 	NudgeMissedCheckIn bool
 	NudgeGoalDeadline  bool
@@ -279,7 +279,7 @@ templ profileCard(f ProfileForm) {
 	}
 }
 
-// notificationsCard is what DuxAI may say when nobody asked it anything.
+// notificationsCard is what North may say when nobody asked it anything.
 templ notificationsCard(f NotificationsForm) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface", ID: "notifications"}) {
 		@card.Header() {
@@ -287,7 +287,7 @@ templ notificationsCard(f NotificationsForm) {
 				Notifications
 			}
 			@card.Description() {
-				When DuxAI speaks first. Quiet hours follow your timezone.
+				When North speaks first. Quiet hours follow your timezone.
 			}
 		}
 		@card.Content() {
@@ -608,7 +608,7 @@ templ yourDataCard(user users.User, deleteErr string) {
 				Your data
 			}
 			@card.Description() {
-				Take a copy of everything DuxAI holds, or close the account for good.
+				Take a copy of everything North holds, or close the account for good.
 			}
 		}
 		@card.Content() {
@@ -616,8 +616,8 @@ templ yourDataCard(user users.User, deleteErr string) {
 				<div class="space-y-3">
 					<p class="text-muted-foreground text-sm leading-relaxed">
 						The export is a zip of plain text and your own original files: your profile,
-						goals, check-ins, what DuxAI remembers, your documents, and every conversation.
-						Nothing in it needs DuxAI to read it.
+						goals, check-ins, what North remembers, your documents, and every conversation.
+						Nothing in it needs North to read it.
 					</p>
 					@button.Button(button.Props{Href: "/app/settings/export.zip", Variant: button.VariantOutline}) {
 						Download my data
@@ -627,7 +627,7 @@ templ yourDataCard(user users.User, deleteErr string) {
 					<p class="text-muted-foreground text-sm leading-relaxed">
 						Deleting removes your account and everything in it straight away — goals,
 						check-ins, conversations, documents, and the files behind them. It cannot be
-						undone, and DuxAI keeps no copy to restore from. Download your data first if
+						undone, and North keeps no copy to restore from. Download your data first if
 						you want it.
 					</p>
 					if deleteErr != "" {
@@ -660,7 +660,7 @@ templ deleteAccountDialog(user users.User) {
 						Delete your account?
 					}
 					@dialog.Description() {
-						This erases everything DuxAI holds for you and signs you out everywhere.
+						This erases everything North holds for you and signs you out everywhere.
 						There is no undo and no grace period.
 					}
 				}

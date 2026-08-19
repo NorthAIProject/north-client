@@ -57,10 +57,10 @@ func passwordResetEmail(displayName, resetURL string) Message {
 		greeting = "Hi " + displayName
 	}
 	return Message{
-		Subject: "Reset your DuxAI password",
+		Subject: "Reset your North password",
 		Body: fmt.Sprintf(`%s,
 
-Someone asked to reset the password on your DuxAI account.
+Someone asked to reset the password on your North account.
 
 Open this link to choose a new password (it expires in one hour):
 
@@ -68,7 +68,7 @@ Open this link to choose a new password (it expires in one hour):
 
 If you did not ask for this, you can ignore this email. Your password will stay the same.
 
-— DuxAI
+— North
 `, greeting, resetURL),
 	}
 }
