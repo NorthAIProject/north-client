@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	mealsdb "github.com/NorthAIProject/north-client/internal/meals/db"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
@@ -95,8 +96,19 @@ func (r *Repository) UpdateIngredient(ctx context.Context, id, userID uuid.UUID,
 	return ingredientFromDB(row), nil
 }
 
+// foreignKeyViolation is Postgres' SQLSTATE for a FK constraint breach.
+const foreignKeyViolation = "23503"
+
 func (r *Repository) DeleteIngredient(ctx context.Context, id, userID uuid.UUID) error {
-	return apperr.Wrap(r.q.DeleteIngredient(ctx, mealsdb.DeleteIngredientParams{ID: id, UserID: &userID}), "delete ingredient")
+	err := r.q.DeleteIngredient(ctx, mealsdb.DeleteIngredientParams{ID: id, UserID: &userID})
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == foreignKeyViolation {
+			return apperr.Wrap(apperr.ErrConflict, "ingredient is used in a meal and cannot be deleted")
+		}
+		return apperr.Wrap(err, "delete ingredient")
+	}
+	return nil
 }
 
 func ingredientFromDB(row mealsdb.Ingredient) Ingredient {
