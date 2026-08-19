@@ -276,3 +276,20 @@ func TestOfflinePageIsPublic(t *testing.T) {
 		t.Error("offline page does not say it is the offline page")
 	}
 }
+
+// The base layout's icon links cover browsers. This covers everything else that
+// asks for /favicon.ico directly and would otherwise get North's 404 page.
+func TestFaviconIcoRedirectsToTheBrandIcon(t *testing.T) {
+	handler := testRoutes(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/favicon.ico", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusMovedPermanently {
+		t.Fatalf("status = %d, want 301", rec.Code)
+	}
+	if loc := rec.Header().Get("Location"); loc != "/assets/brand/favicon.svg" {
+		t.Errorf("Location = %q, want /assets/brand/favicon.svg", loc)
+	}
+}
