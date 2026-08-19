@@ -71,15 +71,16 @@ func TestSendIncomingShowsThePhotoToTheModel(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	req := client.LastCall()
 	var saw []byte
-	for _, m := range req.Messages {
-		if m.Role != ai.RoleUser {
-			continue
-		}
-		for _, p := range m.Parts {
-			if len(p.InlineData) > 0 {
-				saw = p.InlineData
+	for _, req := range client.Calls() {
+		for _, m := range req.Messages {
+			if m.Role != ai.RoleUser {
+				continue
+			}
+			for _, p := range m.Parts {
+				if len(p.InlineData) > 0 {
+					saw = p.InlineData
+				}
 			}
 		}
 	}
