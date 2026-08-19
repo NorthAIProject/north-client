@@ -22,9 +22,6 @@ const (
 
 	// Inclusive window of local days from today. Due today through today+7.
 	goalDeadlineWindow = 7
-
-	// Brand-new accounts are silent for today and yesterday.
-	onboardGraceDays = 2
 )
 
 type accounts interface {
@@ -270,7 +267,7 @@ func (s *Service) Evaluate(ctx context.Context, user users.User) (int, error) {
 	}
 	created += n
 
-	if daysBetween(onboardedLocal(user, today), today) < onboardGraceDays {
+	if daysBetween(onboardedLocal(user, today), today) < firstWeekDays {
 		return created, nil
 	}
 
