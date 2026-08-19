@@ -885,6 +885,13 @@ func mountAssets(r chi.Router, cfg *config.Config) {
 		fs = http.FileServer(http.Dir("./web/assets"))
 	}
 
+	// Browsers follow the <link rel="icon"> tags in the base layout, which point
+	// at the brand directory. This is for the clients that ignore them and ask
+	// for the well-known path anyway — crawlers, feed readers, link unfurlers.
+	r.Get("/favicon.ico", func(w http.ResponseWriter, req *http.Request) {
+		http.Redirect(w, req, "/assets/brand/favicon.svg", http.StatusMovedPermanently)
+	})
+
 	r.Handle("/assets/*", http.StripPrefix("/assets/", http.HandlerFunc(
 		func(w http.ResponseWriter, req *http.Request) {
 			if isProd {

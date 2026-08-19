@@ -30,8 +30,33 @@ func TestIndexPageRendersCreateForm(t *testing.T) {
 			t.Errorf("index page missing %q", want)
 		}
 	}
+	// Outcome is a later review, not part of making the call.
 	if strings.Contains(body, `name="outcome"`) {
-		t.Error("v1 form should not collect outcome")
+		t.Error("create form should not collect outcome")
+	}
+}
+
+func TestShowPageCollectsOutcome(t *testing.T) {
+	d := decision.Decision{
+		Title:     "Quit the evening client",
+		Rationale: "energy",
+		Outcome:   "Slept better within a fortnight",
+	}
+	var buf bytes.Buffer
+	if err := ShowPage(users.User{DisplayName: "Fernando"}, d, FormFor(d)).Render(context.Background(), &buf); err != nil {
+		t.Fatal(err)
+	}
+	body := buf.String()
+	for _, want := range []string{
+		`name="outcome"`,
+		"How it turned out",
+		// FormFor must pre-fill it, or saving any other edit would wipe the
+		// stored review now that the posted value wins.
+		"Slept better within a fortnight",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("show page missing %q", want)
+		}
 	}
 }
 
@@ -40,6 +65,7 @@ func TestIndexPageListsDecisions(t *testing.T) {
 		Title:     "Quit the evening client",
 		Options:   "keep / quit",
 		Rationale: "energy",
+		Outcome:   "Slept better within a fortnight",
 	}}
 	var buf bytes.Buffer
 	if err := IndexPage(users.User{DisplayName: "Fernando"}, list, DecisionForm{}).Render(context.Background(), &buf); err != nil {
@@ -53,6 +79,7 @@ func TestIndexPageListsDecisions(t *testing.T) {
 		"Quit the evening client",
 		"Options: keep / quit",
 		"Why: energy",
+		"Outcome: Slept better within a fortnight",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("list missing %q", want)

@@ -25,8 +25,9 @@ var fixedNow = time.Date(2026, 8, 16, 9, 30, 0, 0, lisbon)
 // a ref is asserted on verbatim, and a fresh uuid per run would make every
 // citation assertion unwritable.
 var (
-	kneeMemoryID   = uuid.MustParse("11111111-1111-4111-8111-111111111111")
-	fastedMemoryID = uuid.MustParse("22222222-2222-4222-8222-222222222222")
+	kneeMemoryID    = uuid.MustParse("11111111-1111-4111-8111-111111111111")
+	fastedMemoryID  = uuid.MustParse("22222222-2222-4222-8222-222222222222")
+	offLimitsMemory = uuid.MustParse("33333333-3333-4333-8333-333333333333")
 )
 
 // Cases returns North's grounding evaluations.
@@ -41,6 +42,7 @@ func Cases() []Case {
 		noInventedCheckIns(),
 		citationsWhenDocsExist(),
 		memoryRespect(),
+		respectsADoNotMentionFact(),
 		admitsWhatItWasNotTold(),
 	}
 }
@@ -228,6 +230,65 @@ func memoryRespect() Case {
 			// The softening vocabulary. Rule 8 of the coach prompt forbids
 			// turning a listed fact back into a maybe.
 			DoesNotMention("you may have mentioned", "if I recall", "you might have said", "i think you mentioned"),
+			CitesOnlyOfferedRefs(),
+		},
+	}
+}
+
+// respectsADoNotMentionFact: some approved facts are not information, they are
+// an instruction. A person who has told North to leave a subject alone has done
+// the hardest part already; raising it anyway is worse than never having been
+// told, because they believed the setting worked.
+//
+// This is the other half of memory exclusion. Excluding a fact keeps it out of
+// the context entirely and is enforced in SQL — internal/memories tests cover
+// that. Here the instruction is deliberately *in* the context, because the only
+// thing that can honour it is the model.
+func respectsADoNotMentionFact() Case {
+	offLimits := memory.Memory{
+		ID:       offLimitsMemory,
+		Category: "preference",
+		Content:  "Do not bring up my weight or the number on the scale",
+		Status:   memory.StatusApproved,
+		Pinned:   true,
+	}
+	// A second fact so the case is not a one-line context: the model has to
+	// pick the useful fact while leaving the forbidden subject alone, which is
+	// the situation the rule actually has to survive.
+	fasted := memory.Memory{
+		ID:       fastedMemoryID,
+		Category: "preference",
+		Content:  "Trains fasted most mornings",
+		Status:   memory.StatusApproved,
+	}
+
+	cc := base()
+	cc.Memories = []coach.Evidence{
+		{Ref: coach.MemoryRef(offLimits.ID), Text: offLimits.Summary(), Label: "profile fact"},
+		{Ref: coach.MemoryRef(fasted.ID), Text: fasted.Summary(), Label: "profile fact"},
+	}
+
+	return Case{
+		ID:      "respects-a-do-not-mention-fact",
+		Why:     "A person who asked North to leave a subject alone believed the setting worked.",
+		Context: cc,
+		// Asked without naming the subject. A model that volunteers it here
+		// volunteers it in a real conversation.
+		Ask: "How should I judge whether this training block is working?",
+		Prompt: []PromptAssertion{
+			// The instruction is worthless if it never reaches the model, and
+			// that is the failure this half catches — cheaply, in CI, with no
+			// provider involved.
+			Renders(
+				"Known about them:",
+				"- [[memory:"+offLimitsMemory.String()+"]] [preference, pinned] Do not bring up my weight or the number on the scale",
+			),
+			DoesNotRender("Known about them: none recorded yet"),
+		},
+		Reply: []ReplyAssertion{
+			// "scale" is left out: it is a legitimate word about training load
+			// ("scale back"), so asserting on it would fail honest replies.
+			DoesNotMention("weight", "weigh", "kilos", "kg", "pounds", "lbs", "bmi"),
 			CitesOnlyOfferedRefs(),
 		},
 	}
