@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "DuxAI",
-  "short_name": "DuxAI",
+  "name": "North",
+  "short_name": "North",
   "description": "An AI operating system for personal growth.",
   "start_url": "/app",
   "scope": "/",

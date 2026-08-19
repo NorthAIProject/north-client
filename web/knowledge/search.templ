@@ -28,7 +28,7 @@ templ SearchPage(user users.User, view SearchView) {
 				</a>
 				<h1 class="mt-2 text-2xl font-medium tracking-tight">Search passages</h1>
 				<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
-					Find what DuxAI has read across your notes and files.
+					Find what North has read across your notes and files.
 				</p>
 			</header>
 			<div class="mt-6">
@@ -61,7 +61,7 @@ templ searchForm(view SearchView) {
 			Placeholder: "Search passages…",
 			Attributes: templ.Attributes{
 				"autocomplete": "off",
-				"aria-label":   "Search what DuxAI has read",
+				"aria-label":   "Search what North has read",
 			},
 		})
 		<div id="knowledge-search-indicator" class="htmx-indicator text-muted-foreground absolute right-3 top-1/2 -translate-y-1/2 text-xs">
@@ -94,11 +94,11 @@ templ searchPanel(view SearchView) {
 templ searchResultsBody(view SearchView) {
 	if view.Query == "" {
 		<p class="text-muted-foreground text-sm">
-			Type a phrase to search what DuxAI has read.
+			Type a phrase to search what North has read.
 		</p>
 	} else if len(view.Hits) == 0 && !view.Append {
 		<p class="text-muted-foreground text-sm">
-			Nothing matched. DuxAI can only find what it has read.
+			Nothing matched. North can only find what it has read.
 		</p>
 	} else {
 		if !view.Append {

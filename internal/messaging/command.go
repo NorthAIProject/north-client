@@ -88,7 +88,7 @@ func (s *Service) runCommand(ctx context.Context, user users.User, in InboundMes
 			return OutboundMessage{}, true, err
 		}
 		if !unlinked {
-			return OutboundMessage{Text: "This chat is not linked to a DuxAI account."}, true, nil
+			return OutboundMessage{Text: "This chat is not linked to a North account."}, true, nil
 		}
 
 		s.log.Info("messaging unlinked a chat", "platform", in.Platform, "user_id", user.ID)

@@ -33,7 +33,7 @@ func TestBaseRendersTheDocumentShell(t *testing.T) {
 	for _, want := range []string{
 		"<!doctype html>",
 		`<html lang="en"`,
-		"<title>Settings · DuxAI</title>",
+		"<title>Settings · North</title>",
 		"<main>hello</main>",
 	} {
 		if !strings.Contains(strings.ToLower(out), strings.ToLower(want)) {

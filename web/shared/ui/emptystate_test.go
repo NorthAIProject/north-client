@@ -21,12 +21,12 @@ func TestEmptyRendersTitleBodyAndChildCTA(t *testing.T) {
 	html := renderEmpty(t, Empty(EmptyProps{
 		Eyebrow: "Start here",
 		Title:   "Name one thing you are working toward",
-		Body:    "DuxAI reads your goals before every reply. One is enough.",
+		Body:    "North reads your goals before every reply. One is enough.",
 	}))
 	for _, want := range []string{
 		"Start here",
 		"Name one thing you are working toward",
-		"DuxAI reads your goals before every reply. One is enough.",
+		"North reads your goals before every reply. One is enough.",
 	} {
 		if !strings.Contains(html, want) {
 			t.Errorf("missing %q", want)
