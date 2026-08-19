@@ -134,6 +134,7 @@ func TestPhotoAskFiresWhenTheCadenceElapses(t *testing.T) {
 	ctx := context.Background()
 	now := time.Date(2026, 8, 29, 12, 0, 0, 0, time.UTC)
 	user := mustOnboard(t, pool, seedUser(t, pool, "photo-ask@north.test"), time.Date(2026, 8, 15, 9, 0, 0, 0, time.UTC))
+	writeCheckIn(t, pool, user.ID, time.Date(2026, 8, 28, 0, 0, 0, 0, time.UTC))
 
 	svc := evalService(pool, now).
 		WithWeek(&stubWeek{count: 4}).
@@ -143,8 +144,8 @@ func TestPhotoAskFiresWhenTheCadenceElapses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n < 1 {
-		t.Fatalf("created = %d, want a photo ask", n)
+	if n != 1 {
+		t.Fatalf("created = %d, want 1", n)
 	}
 	list, err := svc.ListOpen(ctx, user.ID, 20)
 	if err != nil {
@@ -166,6 +167,7 @@ func TestPhotoReminderFiresAfterTheGrace(t *testing.T) {
 	ctx := context.Background()
 	now := time.Date(2026, 8, 31, 12, 0, 0, 0, time.UTC)
 	user := mustOnboard(t, pool, seedUser(t, pool, "photo-remind@north.test"), time.Date(2026, 8, 15, 9, 0, 0, 0, time.UTC))
+	writeCheckIn(t, pool, user.ID, time.Date(2026, 8, 30, 0, 0, 0, 0, time.UTC))
 
 	svc := evalService(pool, now).
 		WithWeek(&stubWeek{count: 4}).
@@ -175,8 +177,8 @@ func TestPhotoReminderFiresAfterTheGrace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n < 2 {
-		t.Fatalf("created = %d, want ask + reminder", n)
+	if n != 2 {
+		t.Fatalf("created = %d, want 2 (ask + reminder)", n)
 	}
 }
 
@@ -184,6 +186,7 @@ func TestPhotoAskStaysOffWhenDisabled(t *testing.T) {
 	pool := testdb.New(t)
 	now := time.Date(2026, 8, 29, 12, 0, 0, 0, time.UTC)
 	user := mustOnboard(t, pool, seedUser(t, pool, "photo-off@north.test"), time.Date(2026, 8, 15, 9, 0, 0, 0, time.UTC))
+	writeCheckIn(t, pool, user.ID, time.Date(2026, 8, 28, 0, 0, 0, 0, time.UTC))
 
 	n, err := evalService(pool, now).
 		WithWeek(&stubWeek{count: 4}).
