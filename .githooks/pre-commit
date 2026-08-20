@@ -36,10 +36,10 @@ if [[ -n "${staged_go}" ]]; then
   echo "pre-commit: re-staged previously staged .go files after gofumpt"
 fi
 
-# Same command CI runs (golangci/golangci-lint-action, version v2.12.2).
+# Same command CI runs (golangci/golangci-lint-action, version v2.13.0).
 # Fail closed if the binary is missing — a skipped lint is not a pass.
 if ! command -v golangci-lint >/dev/null 2>&1; then
-  echo "pre-commit: golangci-lint not on PATH. Install v2.12.2 to match CI:" >&2
+  echo "pre-commit: golangci-lint not on PATH. Install v2.13.0 to match CI:" >&2
   echo "  https://golangci-lint.run/welcome/install/" >&2
   exit 1
 fi
