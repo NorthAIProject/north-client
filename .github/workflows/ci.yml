@@ -130,5 +130,5 @@ jobs:
         uses: golangci/golangci-lint-action@v9
         with:
           # Keep roughly in lockstep with norviq-web (v2.x series).
-          version: v2.12.2
+          version: v2.13.0
           working-directory: .
