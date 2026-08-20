@@ -56,8 +56,7 @@ func (m *Middleware) LoadUser(next http.Handler) http.Handler {
 			return
 		}
 
-		ctx := context.WithValue(r.Context(), userContextKey{}, session.User)
-		next.ServeHTTP(w, r.WithContext(ctx))
+		next.ServeHTTP(w, r.WithContext(ContextWithUser(r.Context(), session.User)))
 	})
 }
 
@@ -81,6 +80,13 @@ func (m *Middleware) RequireAuth(next http.Handler) http.Handler {
 
 		http.Redirect(w, r, loginRedirect(r), http.StatusSeeOther)
 	})
+}
+
+// ContextWithUser carries a signed-in user. LoadUser is the only caller in the
+// application; it is exported so a template that changes shape for a signed-in
+// visitor can be tested without standing up a session and a database.
+func ContextWithUser(ctx context.Context, u users.User) context.Context {
+	return context.WithValue(ctx, userContextKey{}, u)
 }
 
 // UserFrom returns the signed-in user, if any.
