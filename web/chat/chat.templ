@@ -10,6 +10,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/conversations"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/mascot"
 	"github.com/NorthAIProject/north-client/web/shared/markdown"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/ui/alert"
@@ -102,6 +103,7 @@ templ Page(user users.User, conversation conversations.Conversation, messages []
 				}
 			</div>
 		</div>
+		@mascot.Script()
 	}
 }
 
@@ -114,6 +116,7 @@ templ Empty(user users.User, list []conversations.Conversation, stats CoachStats
 			</div>
 		}
 		<div class="flex h-full flex-col items-center justify-center gap-4 p-8 text-center">
+			@mascot.Mascot(mascot.Props{Size: mascot.SizeLg})
 			@ui.MonoLabel("Day 1 · no sessions yet")
 			<h1 class="text-xl font-medium tracking-tight">Talk to your coach</h1>
 			<p class="text-muted-foreground max-w-sm text-sm leading-relaxed">
@@ -131,6 +134,7 @@ templ Empty(user users.User, list []conversations.Conversation, stats CoachStats
 			</div>
 			@emptyStarterChips()
 		</div>
+		@mascot.Script()
 	}
 }
 
@@ -140,6 +144,11 @@ templ Empty(user users.User, list []conversations.Conversation, stats CoachStats
 templ chatHeader(c conversations.Conversation) {
 	<header class="border-border flex h-12 shrink-0 items-center justify-between gap-2 border-b px-3">
 		<div class="flex min-w-0 items-center gap-2">
+			// The one mascot that reacts to the coach. It lives in the header
+			// rather than in the transcript because sse-close="done" swaps
+			// #chat-root outerHTML — a mascot inside the reply would be
+			// destroyed at the moment it is supposed to nod.
+			@mascot.Mascot(mascot.Props{ID: "chat-mascot", Size: mascot.SizeSm})
 			<button
 				type="button"
 				@click="threads = !threads"
@@ -334,6 +343,7 @@ templ emptyStarterChips() {
 // a blank box is the hardest part of talking to a coach for the first time.
 templ conversationStarters() {
 	<div class="flex flex-col items-center gap-4 py-12 text-center">
+		@mascot.Mascot(mascot.Props{Size: mascot.SizeMd, State: mascot.StateListening})
 		@ui.MonoLabel("This thread")
 		<h2 class="text-lg font-medium tracking-tight">What's on your mind?</h2>
 		<p class="text-muted-foreground max-w-sm text-sm leading-relaxed">

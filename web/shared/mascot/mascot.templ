@@ -38,6 +38,13 @@ const (
 	StateListening State = "listening"
 )
 
+// Gestures play once and hand back. They are valid for Props.Gesture, never
+// for Props.State.
+const (
+	StateCelebrate State = "celebrate"
+	StateNod       State = "nod"
+)
+
 type Props struct {
 	// ID namespaces one mascot so NorthMascot.setState(name, {id}) can address
 	// it alone. Optional — without it, the mascot follows broadcast state.
@@ -45,6 +52,11 @@ type Props struct {
 
 	Size  Size
 	State State
+
+	// Gesture plays once, on this mascot only, as soon as it mounts — the
+	// "you finished onboarding" celebrate. It is not broadcast: a greeting is
+	// about the page you just landed on, not about every mascot on it.
+	Gesture State
 
 	// Class is appended to the wrapper, for page-level spacing only.
 	Class string
@@ -72,12 +84,25 @@ func stateOrDefault(s State) State {
 	}
 }
 
+// gestureOrEmpty drops anything that is not actually a gesture, so a State
+// passed here by mistake mounts silently rather than pinning a pose that never
+// unwinds.
+func gestureOrEmpty(s State) string {
+	switch s {
+	case StateCelebrate, StateNod:
+		return string(s)
+	default:
+		return ""
+	}
+}
+
 // alpineData serializes Props into the object literal northMascot() expects.
 // templ HTML-escapes the { expr } attribute value automatically.
 func alpineData(p Props) string {
 	data, _ := json.Marshal(map[string]any{
-		"state": string(stateOrDefault(p.State)),
-		"id":    p.ID,
+		"state":   string(stateOrDefault(p.State)),
+		"id":      p.ID,
+		"gesture": gestureOrEmpty(p.Gesture),
 	})
 	return "northMascot(" + string(data) + ")"
 }

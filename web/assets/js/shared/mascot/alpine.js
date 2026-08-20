@@ -110,6 +110,7 @@
       observer: null,
       id: props.id || "",
       initial: isKnown(props.state) ? props.state : "idle",
+      gesture: GESTURES.includes(props.gesture) ? props.gesture : "",
 
       init() {
         // A mascot that declares a sustained state is also saying what the page
@@ -141,9 +142,13 @@
           });
           this.ready = true;
 
-          // Catch up with anything that happened while this mascot did not
-          // exist — the chat swap case described at the top of this file.
-          if (lastGesture && Date.now() - lastGestureAt < GESTURE_REPLAY_MS) {
+          // A greeting belongs to the page that rendered it, so it plays on
+          // this mascot alone and is never broadcast.
+          if (this.gesture) {
+            this.mascot.setState(this.gesture);
+          } else if (lastGesture && Date.now() - lastGestureAt < GESTURE_REPLAY_MS) {
+            // Otherwise catch up with anything that happened while this mascot
+            // did not exist — the chat swap case described at the top.
             this.mascot.setState(lastGesture);
           }
         } catch (err) {
