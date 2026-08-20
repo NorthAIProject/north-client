@@ -167,28 +167,31 @@ templ FormPage(f Form) {
 							<p class="text-destructive text-sm">{ f.fieldError("goal_title") }</p>
 						}
 					</section>
-					<div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-						@button.Button(button.Props{
-							Type:      button.TypeSubmit,
-							Class:     "bg-signal text-background hover:bg-signal/90",
-							FullWidth: true,
-						}) {
-							Start with North
-						}
-						@button.Button(button.Props{
-							Type:    button.TypeSubmit,
-							Variant: button.VariantGhost,
-							Class:   "text-muted-foreground",
-							Attributes: templ.Attributes{
-								"formaction": "/app/onboarding/skip",
-							},
-						}) {
-							Skip for now
-						}
-					</div>
+					@button.Button(button.Props{
+						Type:      button.TypeSubmit,
+						Class:     "bg-signal text-background hover:bg-signal/90",
+						FullWidth: true,
+					}) {
+						Start with North
+					}
 				</form>
 			}
 		}
+		// Its own form, and outside the card: skipping ignores every field
+		// above it (see internal/onboarding.Handler.skip), and a form cannot be
+		// nested inside another. Below the card rather than beside the primary
+		// action, so the choice reads as leaving rather than as an alternative
+		// way to finish.
+		<form method="post" action="/app/onboarding/skip" class="mt-4 flex justify-center">
+			@ui.CSRFInput()
+			@button.Button(button.Props{
+				Type:    button.TypeSubmit,
+				Variant: button.VariantGhost,
+				Class:   "text-muted-foreground",
+			}) {
+				Skip for now
+			}
+		</form>
 	}
 }
 
