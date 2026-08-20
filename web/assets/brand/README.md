@@ -17,7 +17,7 @@ surrounding theme shows through — never place these on a plate.
 | `pwa-512-maskable.png` | Manifest `maskable` 512. Same plate, star inset for Android adaptive crop. |
 | `north-wordmark.png` | App name. Dark ink. **Currently unused** — see below. |
 | `north-logo-wordmark.png` | Symbol + name lockup. **Currently unused** — see below. |
-| `north-mascot.png` | Companion cutout. Loaded by the landing scroll-world (`scroll-world/panel.js`). |
+| `north-mascot.png` | Companion cutout. Billboard in the landing scroll-world (`scroll-world/panel.js`), and the no-WebGL fallback for the 3D companion (`shared/mascot/`). |
 
 Originals with backgrounds live in `source/` for design reference only — never serve them.
 
@@ -52,10 +52,13 @@ the tip. Width collapses long before radius does, which is a needle laid over an
 rather than a star with one long point. Modelling it as a single polygon gives a blunt
 asterisk; pulling the flanks concave to compensate gives a rounded blob. Both were tried.
 
-**`web/assets/js/landing/scroll-world/star.js` builds the landing page's 3D star from the same
-four numbers.** They had already drifted once — that file modelled a symmetric star with long
+**`web/assets/js/shared/north-star-geometry.js` builds the 3D star from the same four
+numbers.** They had already drifted once — that file modelled a symmetric star with long
 cardinal points, which the mark has never been. If the mark is redrawn, both files change or
 they diverge again.
+
+Two scenes draw that geometry: the landing scroll-world's waypoints, and the glyph on the
+mascot's forehead. Redrawing the mark moves all three surfaces at once.
 
 ## Serving
 
