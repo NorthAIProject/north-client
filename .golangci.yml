@@ -4,7 +4,16 @@
 version: "2"
 
 run:
-  timeout: 5m
+  # Generous because a cold run is slow, not because the analysis is: the run
+  # that forced this printed "0 issues." and only then failed on elapsed time,
+  # having taken ~34 minutes on a CI runner with no build cache. A warm run is
+  # seconds. Five minutes was fine until the module moved to Go 1.27 and the
+  # linter to 2.13.0, which together made the first, uncached typecheck of the
+  # whole module far more expensive.
+  #
+  # If a warm run ever approaches this, that is a regression worth chasing
+  # rather than a number worth raising again.
+  timeout: 45m
 
 linters:
   enable:
