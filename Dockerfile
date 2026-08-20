@@ -1,7 +1,7 @@
 # Build stage:
 # We install everything we need here, build the CSS, generate templ code,
 # and compile the app binary.
-FROM golang:1.25 AS build
+FROM golang:1.27 AS build
 WORKDIR /app
 
 # Copy Go dependency files first so Docker can cache downloads better.
