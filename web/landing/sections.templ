@@ -228,12 +228,12 @@ templ planCard(name string, price string, period string, blurb string, lines []s
 				}
 			</ul>
 			@button.Button(button.Props{
-				Href:      "/signup",
+				Href:      ctaHref(ctx),
 				FullWidth: true,
 				Variant:   planCardVariant(featured),
 				Class:     "mt-7 " + planCardButton(featured),
 			}) {
-				{ cta }
+				{ planCTA(ctx, cta) }
 			}
 		}
 	}
@@ -277,12 +277,14 @@ templ finalCTA() {
 				you will ever have with it.
 			</p>
 			<div class="mt-8 flex flex-wrap justify-center gap-3">
-				@button.Button(button.Props{Href: "/signup", Size: button.SizeLg, Class: "bg-signal text-background hover:bg-signal/90"}) {
-					Create your account
+				@button.Button(button.Props{Href: ctaHref(ctx), Size: button.SizeLg, Class: "bg-signal text-background hover:bg-signal/90"}) {
+					{ ctaLabel(ctx) }
 					@icon.ArrowRight(icon.Props{Class: "size-4"})
 				}
-				@button.Button(button.Props{Href: "/login", Size: button.SizeLg, Variant: button.VariantOutline, Class: "border-hairline"}) {
-					Sign in
+				if !signedIn(ctx) {
+					@button.Button(button.Props{Href: "/login", Size: button.SizeLg, Variant: button.VariantOutline, Class: "border-hairline"}) {
+						Sign in
+					}
 				}
 			</div>
 		</div>

@@ -2,22 +2,31 @@ package ui
 
 import "github.com/NorthAIProject/north-client/web/shared/ui/button"
 
-// Navbar is the signed-out header. The application shell has its own sidebar,
-// so this is only ever seen by visitors who are not logged in.
+// Navbar is the marketing header. It used to assume it was only ever seen by
+// visitors who are not logged in — but `/` is public and renders for everyone,
+// so a returning user was told to sign in and to create an account they already
+// had. signedIn is passed in rather than read from the request context: this
+// package cannot import internal/auth without a cycle through the auth pages.
 //
 // max-w-6xl matches the landing content column so the mark sits on the same
 // vertical as the bearing rail and demos.
-templ Navbar() {
+templ Navbar(signedIn bool) {
 	<nav class="border-hairline/80 sticky top-0 z-40 border-b bg-background/80 backdrop-blur">
 		<div class="mx-auto flex h-14 max-w-6xl items-center justify-between px-6 lg:pl-28 lg:pr-8">
 			@BrandLockup("/", "size-6", "text-base font-medium tracking-tight")
 			<div class="flex items-center gap-1">
 				@ThemeSwitcher()
-				@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Href: "/login"}) {
-					Sign in
-				}
-				@button.Button(button.Props{Size: button.SizeSm, Href: "/signup", Class: "bg-signal text-background hover:bg-signal/90"}) {
-					Get started
+				if signedIn {
+					@button.Button(button.Props{Size: button.SizeSm, Href: "/app", Class: "bg-signal text-background hover:bg-signal/90"}) {
+						Open North
+					}
+				} else {
+					@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Href: "/login"}) {
+						Sign in
+					}
+					@button.Button(button.Props{Size: button.SizeSm, Href: "/signup", Class: "bg-signal text-background hover:bg-signal/90"}) {
+						Get started
+					}
 				}
 			</div>
 		</div>
