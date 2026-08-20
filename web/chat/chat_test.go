@@ -181,3 +181,42 @@ func TestComposerPrefillsADraft(t *testing.T) {
 		t.Fatal("composer did not prefill the draft")
 	}
 }
+
+// The mascot in the chat header is the one that reacts to the coach, and it
+// only survives the sse-close swap because it is in the header rather than in
+// the transcript. A refactor that moves it into the reply would still render,
+// and would silently stop nodding.
+func TestChatHeaderCarriesTheReactiveMascot(t *testing.T) {
+	var buf bytes.Buffer
+	err := Page(
+		users.User{DisplayName: "Fernando"},
+		conversations.Conversation{ID: uuid.MustParse("11111111-1111-1111-1111-111111111111")},
+		nil,
+		nil,
+		CoachStats{},
+		nil,
+		false,
+		"",
+	).Render(context.Background(), &buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+
+	// The app shell renders a header of its own first, so anchor on the chat
+	// header's own markup rather than on the first </header> in the document.
+	_, afterOpen, found := strings.Cut(out, `<header class="border-border flex h-12`)
+	if !found {
+		t.Fatal("no chat header rendered")
+	}
+	header, _, found := strings.Cut(afterOpen, "</header>")
+	if !found {
+		t.Fatal("chat header is not closed")
+	}
+	if !strings.Contains(header, `id="chat-mascot"`) {
+		t.Errorf("reactive mascot is not inside the header:\n%s", header)
+	}
+	if got := strings.Count(out, "/assets/js/shared/mascot/alpine.js"); got != 1 {
+		t.Errorf("mascot script rendered %d times, want 1", got)
+	}
+}

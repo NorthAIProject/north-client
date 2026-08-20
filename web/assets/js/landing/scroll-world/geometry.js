@@ -11,7 +11,7 @@
  * nobody has to know this file exists.
  */
 import * as THREE from "/assets/js/vendor/three.module.min.js";
-import { createStarGeometry } from "./star.js";
+import { createStarGeometry } from "../../shared/north-star-geometry.js";
 
 // World units. The camera covers all of it over one full page scroll, so this is
 // really a statement about how fast travel feels: longer reads as faster.

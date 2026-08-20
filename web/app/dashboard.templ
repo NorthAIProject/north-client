@@ -14,6 +14,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/workouts/plan"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/mascot"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
 	"github.com/NorthAIProject/north-client/web/shared/ui/card"
@@ -253,6 +254,9 @@ templ Dashboard(user users.User, data DashboardData) {
 		</div>
 		@progress.Script()
 		@ui.ChartScripts()
+		if data.HasNextStep {
+			@mascot.Script()
+		}
 	}
 }
 
@@ -297,6 +301,9 @@ templ rangeSelector(data DashboardData) {
 templ nextStepCard(step NextStep) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 		@card.Content() {
+			<div class="flex justify-center">
+				@mascot.Mascot(mascot.Props{Size: mascot.SizeMd})
+			</div>
 			@ui.Empty(ui.EmptyProps{
 				Eyebrow: step.Eyebrow,
 				Title:   step.Title,
