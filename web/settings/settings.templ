@@ -11,6 +11,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/preferences"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/mascot"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
 	"github.com/NorthAIProject/north-client/web/shared/ui/card"
@@ -154,11 +155,33 @@ templ Page(user users.User, summary SettingsSummary, profileForm ProfileForm, pr
 			@dietsCard(allDiets, selectedDietIDs)
 			@connectionsCard()
 			@yourDataCard(user, deleteErr)
+			@aboutCard()
 		</div>
 		@label.Script()
 		@selectbox.Script()
 		@checkbox.Script()
 		@dialog.Script()
+		@mascot.Script()
+	}
+}
+
+// aboutCard is the one place in the product that is about North rather than
+// about the person using it, which makes it the natural home for the mascot at
+// rest. It sits last: everything above it is something you can change.
+templ aboutCard() {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Content() {
+			<div class="flex items-center gap-4">
+				@mascot.Mascot(mascot.Props{ID: "settings-mascot", Size: mascot.SizeMd})
+				<div class="space-y-1">
+					@ui.MonoLabel("About")
+					<p class="text-sm leading-relaxed">
+						{ ui.ProductName } is an operating system for personal growth. It
+						remembers what you tell it, so you only have to explain once.
+					</p>
+				</div>
+			</div>
+		}
 	}
 }
 

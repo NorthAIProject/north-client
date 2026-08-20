@@ -4,6 +4,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/shared/lifedomain"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/mascot"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/ui/alert"
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
@@ -79,8 +80,12 @@ func focusLabel(area string) string {
 templ FormPage(f Form) {
 	@layout.AuthWide("Welcome to North") {
 		@checkbox.Script()
+		@mascot.Script()
 		@card.Card() {
 			@card.Header() {
+				<div class="flex justify-center pb-2">
+					@mascot.Mascot(mascot.Props{Size: mascot.SizeMd, State: mascot.StateListening})
+				</div>
 				@card.Title() {
 					Tell North where to start
 				}
@@ -209,8 +214,16 @@ templ styleOption(id, value, title, desc string, f Form) {
 // opened — a deployment with no AI provider, or a provider that was down.
 templ DonePage(user users.User, thread string) {
 	@layout.AuthWide("You are set up") {
+		@mascot.Script()
 		@card.Card() {
 			@card.Header() {
+				// The one place a gesture fires on mount: finishing setup is the
+				// only moment in the product that is unambiguously worth a
+				// celebrate, and it belongs to this page rather than to every
+				// mascot on it.
+				<div class="flex justify-center pb-2">
+					@mascot.Mascot(mascot.Props{Size: mascot.SizeLg, Gesture: mascot.StateCelebrate})
+				</div>
 				@card.Title() {
 					North knows where to start, { user.FirstName() }
 				}
