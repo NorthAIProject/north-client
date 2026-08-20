@@ -1,0 +1,124 @@
+// Package mascot is the 3D North companion (NOR-51).
+//
+// It renders a canvas driven by web/assets/js/shared/mascot/{alpine,scene,model}.js.
+// The model is built from geometry rather than loaded from a GLB — see model.js
+// for why — so embedding one costs a lazy import of three and nothing else:
+//
+//	@mascot.Mascot(mascot.Props{ID: "onboarding", Size: mascot.SizeLg, State: mascot.StateListening})
+//
+// Reactive state comes from the module-level API, not from props. Anything can
+// call window.NorthMascot.setState("thinking"), and the coach stream already
+// does (see alpine.js's bridge). Props only say how a mascot starts.
+//
+// Three is a progressive enhancement here: with no WebGL the component renders
+// the flat brand PNG and never fetches the module.
+package mascot
+
+import "encoding/json"
+
+// Size is how much room the mascot takes. There are three because there are
+// three jobs: a hero on an otherwise empty page, a companion beside a block of
+// text, and a small presence in a header.
+type Size string
+
+const (
+	SizeSm Size = "sm"
+	SizeMd Size = "md"
+	SizeLg Size = "lg"
+)
+
+// State is the pose a mascot starts in. Gestures (celebrate, nod) are not
+// valid initial states: they play once and hand back, so starting in one means
+// starting in a pose that immediately unwinds.
+type State string
+
+const (
+	StateIdle      State = "idle"
+	StateThinking  State = "thinking"
+	StateListening State = "listening"
+)
+
+type Props struct {
+	// ID namespaces one mascot so NorthMascot.setState(name, {id}) can address
+	// it alone. Optional — without it, the mascot follows broadcast state.
+	ID string
+
+	Size  Size
+	State State
+
+	// Class is appended to the wrapper, for page-level spacing only.
+	Class string
+}
+
+// boxClass maps a Size onto the canvas box. Square, because the model is
+// framed square and a non-square canvas would letterbox it.
+func boxClass(size Size) string {
+	switch size {
+	case SizeLg:
+		return "size-40 sm:size-48"
+	case SizeSm:
+		return "size-8"
+	default:
+		return "size-24"
+	}
+}
+
+func stateOrDefault(s State) State {
+	switch s {
+	case StateThinking, StateListening:
+		return s
+	default:
+		return StateIdle
+	}
+}
+
+// alpineData serializes Props into the object literal northMascot() expects.
+// templ HTML-escapes the { expr } attribute value automatically.
+func alpineData(p Props) string {
+	data, _ := json.Marshal(map[string]any{
+		"state": string(stateOrDefault(p.State)),
+		"id":    p.ID,
+	})
+	return "northMascot(" + string(data) + ")"
+}
+
+templ Mascot(p Props) {
+	<div
+		if p.ID != "" {
+			id={ p.ID }
+		}
+		x-data={ alpineData(p) }
+		class={ "relative shrink-0 " + boxClass(p.Size) + " " + p.Class }
+	>
+		// Hand-rolled: a WebGL surface has no counterpart in the component
+		// library — same rationale as web/shared/muscleviewer/muscleviewer.templ.
+		<canvas
+			x-ref="canvas"
+			aria-hidden="true"
+			class="size-full"
+			x-show="!failed"
+		></canvas>
+		// The mascot is decoration beside real copy on every surface it appears
+		// on, so the fallback carries no alt text: a screen reader announcing
+		// "North" here would add a second name to a page that already says it.
+		<img
+			x-show="failed"
+			x-cloak
+			src="/assets/brand/north-mascot.png"
+			alt=""
+			aria-hidden="true"
+			class="size-full object-contain"
+		/>
+	</div>
+}
+
+var scriptOnce = templ.NewOnceHandle()
+
+// Script must be included on any page that renders a Mascot; it registers the
+// Alpine component before alpine:init fires and installs the coach-stream
+// bridge. Safe to call more than once.
+templ Script() {
+	@scriptOnce.Once() {
+		<script src="/assets/js/shared/mascot/alpine.js"></script>
+	}
+}
