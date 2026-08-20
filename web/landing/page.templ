@@ -18,7 +18,7 @@ import (
 // line — because the claim North is sold on is that it is still useful in month
 // eight.
 templ Page() {
-	@layout.Public("") {
+	@layout.Public("", signedIn(ctx)) {
 		<div x-data="northBearing" class="relative">
 			// Host for the 3D scroll world. Empty on purpose: landing.js builds the
 			// canvas into it, so a visitor with no JavaScript, no WebGL, or a viewport
@@ -111,8 +111,8 @@ templ hero() {
 					your documents, and every check-in you have ever written.
 				</p>
 				<div class="mt-9 flex flex-wrap items-center gap-3">
-					@button.Button(button.Props{Href: "/signup", Size: button.SizeLg, Class: "bg-signal text-background hover:bg-signal/90"}) {
-						Create your account
+					@button.Button(button.Props{Href: ctaHref(ctx), Size: button.SizeLg, Class: "bg-signal text-background hover:bg-signal/90"}) {
+						{ ctaLabel(ctx) }
 						@icon.ArrowRight(icon.Props{Class: "size-4"})
 					}
 					@button.Button(button.Props{Href: "#product-film", Size: button.SizeLg, Variant: button.VariantOutline, Class: "border-hairline"}) {
