@@ -2,16 +2,18 @@ package layout
 
 import "github.com/NorthAIProject/north-client/web/shared/ui"
 
-// Public is the layout for signed-out marketing pages: top navigation and a
-// full-height content area.
+// Public is the layout for marketing pages: top navigation and a full-height
+// content area. It is not signed-out-only — `/` renders for everyone — so
+// signedIn is threaded through to the navbar, which changes its calls to
+// action rather than inviting a returning user to sign up again.
 //
 // Base deliberately renders no chrome of its own, because the application shell
 // and the auth pages each want something different. Pages that do want the
 // marketing navbar opt in here.
-templ Public(title string) {
+templ Public(title string, signedIn bool) {
 	@Base(title) {
 		<div class="flex h-full flex-col">
-			@ui.Navbar()
+			@ui.Navbar(signedIn)
 			<main class="flex-1">
 				{ children... }
 			</main>
