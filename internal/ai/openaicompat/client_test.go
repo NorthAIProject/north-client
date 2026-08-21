@@ -119,7 +119,7 @@ func TestChatRequestsUsageAndMapsRoles(t *testing.T) {
 	if body["stream"] != true {
 		t.Error("stream should be true")
 	}
-	// Without include_usage the final usage frame never arrives and North
+	// Without include_usage the final usage frame never arrives and Khepri
 	// cannot account for what a conversation cost.
 	opts, ok := body["stream_options"].(map[string]any)
 	if !ok || opts["include_usage"] != true {
@@ -151,7 +151,7 @@ func TestNameAndHeadersComeFromOptions(t *testing.T) {
 		o.Name = "openrouter"
 		o.Headers = map[string]string{
 			"HTTP-Referer": "https://north.example",
-			"X-Title":      "North",
+			"X-Title":      "Khepri",
 			"X-Empty":      "",
 		}
 	}, func(w http.ResponseWriter, r *http.Request) {
@@ -173,7 +173,7 @@ func TestNameAndHeadersComeFromOptions(t *testing.T) {
 	if got := gotHeaders.Get("HTTP-Referer"); got != "https://north.example" {
 		t.Errorf("HTTP-Referer = %q", got)
 	}
-	if got := gotHeaders.Get("X-Title"); got != "North" {
+	if got := gotHeaders.Get("X-Title"); got != "Khepri" {
 		t.Errorf("X-Title = %q", got)
 	}
 	// An empty configured value should not become an empty header.

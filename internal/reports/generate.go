@@ -24,21 +24,34 @@ type Generator interface {
 	Generate(ctx context.Context, req ai.Request) (*ai.Response, error)
 }
 
-type registryGenerator struct {
-	registry *ai.Registry
+type chainGenerator struct {
+	runner *ai.Runner
 }
 
-// ClientFromRegistry uses whichever provider is currently the default.
-func ClientFromRegistry(registry *ai.Registry) Generator {
-	return registryGenerator{registry: registry}
+// ClientFromChain walks the provider chain until one of them answers.
+//
+// A weekly review is generated once and read for a week. Failing it because the
+// head provider happened to be overloaded that minute is the kind of outage
+// nobody notices until the review is missing, so it falls through like the
+// coach does. Reviews run in the worker with no user in hand, so the tier is
+// empty and the default chain serves.
+func ClientFromChain(runner *ai.Runner) Generator {
+	return chainGenerator{runner: runner}
 }
 
-func (g registryGenerator) Generate(ctx context.Context, req ai.Request) (*ai.Response, error) {
-	client, err := g.registry.Default()
+func (g chainGenerator) Generate(ctx context.Context, req ai.Request) (*ai.Response, error) {
+	var resp *ai.Response
+
+	_, err := g.runner.Run(ctx, ai.RunOptions{}, func(c ai.Client) error {
+		r, err := c.Generate(ctx, req)
+		resp = r
+		return err
+	})
 	if err != nil {
 		return nil, err
 	}
-	return client.Generate(ctx, req)
+
+	return resp, nil
 }
 
 // ReviewContext is the week, in the person's own recorded words.

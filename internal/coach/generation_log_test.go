@@ -45,7 +45,7 @@ func TestAGenerationIsLoggedWithItsCostAndLatency(t *testing.T) {
 	}
 }
 
-// A conversation with a coach is the most sensitive thing North holds, and an
+// A conversation with a coach is the most sensitive thing Khepri holds, and an
 // observability change is exactly where it leaks by accident.
 func TestAGenerationLogNeverCarriesMessageContent(t *testing.T) {
 	var buf bytes.Buffer

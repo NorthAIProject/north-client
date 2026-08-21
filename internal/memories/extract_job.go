@@ -24,19 +24,19 @@ type Extractor interface {
 	Extract(ctx context.Context, transcript string) ([]extract.Candidate, error)
 }
 
-// AIExtractor calls a registered AI client with the memory extraction schema.
+// AIExtractor calls the provider chain with the memory extraction schema.
+//
+// Memory is the product, and an extraction that is skipped is a thing the coach
+// will not know months from now — so this walks the chain rather than accepting
+// whatever the default provider says today.
 type AIExtractor struct {
-	Registry *ai.Registry
-	Model    string
+	Runner *ai.Runner
+	Model  string
 }
 
 func (e *AIExtractor) Extract(ctx context.Context, transcript string) ([]extract.Candidate, error) {
-	if e == nil || e.Registry == nil {
+	if e == nil || e.Runner == nil {
 		return nil, apperr.New("memory extraction is not configured")
-	}
-	client, err := e.Registry.Default()
-	if err != nil {
-		return nil, err
 	}
 
 	prompt, err := prompts.Render(prompts.MemoryExtraction, map[string]string{
@@ -46,17 +46,26 @@ func (e *AIExtractor) Extract(ctx context.Context, transcript string) ([]extract
 		return nil, err
 	}
 
-	model := e.Model
-	if model == "" {
-		model = client.Name()
-	}
-
 	temp := float32(0.1)
-	resp, err := client.Generate(ctx, ai.Request{
-		Model:          model,
-		Messages:       []ai.Message{ai.UserText(prompt)},
-		ResponseSchema: extract.Schema(),
-		Temperature:    &temp,
+
+	var resp *ai.Response
+	_, err = e.Runner.Run(ctx, ai.RunOptions{}, func(client ai.Client) error {
+		// Resolved per provider: an empty model means "whatever this client is
+		// configured with", and the client that answers may not be the one the
+		// chain started on.
+		model := e.Model
+		if model == "" {
+			model = client.Name()
+		}
+
+		r, genErr := client.Generate(ctx, ai.Request{
+			Model:          model,
+			Messages:       []ai.Message{ai.UserText(prompt)},
+			ResponseSchema: extract.Schema(),
+			Temperature:    &temp,
+		})
+		resp = r
+		return genErr
 	})
 	if err != nil {
 		return nil, apperr.Wrap(err, "extract memories")

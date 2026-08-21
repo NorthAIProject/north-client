@@ -30,7 +30,7 @@ var (
 	offLimitsMemory = uuid.MustParse("33333333-3333-4333-8333-333333333333")
 )
 
-// Cases returns North's grounding evaluations.
+// Cases returns Khepri's grounding evaluations.
 //
 // Ordered from "did the fact arrive" to "did the model respect it", because
 // that is the order they fail in: a model cannot honour a goal it was never
@@ -236,7 +236,7 @@ func memoryRespect() Case {
 }
 
 // respectsADoNotMentionFact: some approved facts are not information, they are
-// an instruction. A person who has told North to leave a subject alone has done
+// an instruction. A person who has told Khepri to leave a subject alone has done
 // the hardest part already; raising it anyway is worse than never having been
 // told, because they believed the setting worked.
 //
@@ -270,7 +270,7 @@ func respectsADoNotMentionFact() Case {
 
 	return Case{
 		ID:      "respects-a-do-not-mention-fact",
-		Why:     "A person who asked North to leave a subject alone believed the setting worked.",
+		Why:     "A person who asked Khepri to leave a subject alone believed the setting worked.",
 		Context: cc,
 		// Asked without naming the subject. A model that volunteers it here
 		// volunteers it in a real conversation.

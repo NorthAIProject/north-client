@@ -4,4 +4,4 @@ package ui
 //
 // One constant so a rename is a single edit, not eighty string literals. The
 // repository, Go module, and asset filenames stay as they are.
-const ProductName = "North"
+const ProductName = "Khepri"

@@ -47,7 +47,7 @@ func TestServiceWorkerHasAFetchHandler(t *testing.T) {
 // rule was never that caching is wrong — it was that a stale check-in form or
 // a replayed coach stream is worse than a failed request. That reason still
 // holds and is what these cases pin; what changed is that the stylesheet and
-// the vendored scripts are not state, and refusing to cache them cost North
+// the vendored scripts are not state, and refusing to cache them cost Khepri
 // any offline shell at all.
 func TestServiceWorkerNeverCachesState(t *testing.T) {
 	body := swSource(t)

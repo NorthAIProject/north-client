@@ -68,7 +68,7 @@ func (s *Service) GoogleAuthCodeURL(state string) (string, error) {
 }
 
 // CompleteGoogleOAuth exchanges the authorization code, loads the Google
-// profile, finds or creates a North account, and issues a session token.
+// profile, finds or creates a Khepri account, and issues a session token.
 func (s *Service) CompleteGoogleOAuth(ctx context.Context, code string, meta Metadata) (users.User, string, error) {
 	if !s.GoogleEnabled() {
 		return users.User{}, "", apperr.New("google oauth is not configured")
@@ -95,7 +95,7 @@ func (s *Service) CompleteGoogleOAuth(ctx context.Context, code string, meta Met
 	return user, token, nil
 }
 
-// FindOrCreateGoogleUser resolves a Google profile to a North user:
+// FindOrCreateGoogleUser resolves a Google profile to a Khepri user:
 //  1. existing auth_identities row for provider+subject
 //  2. else existing user by email (link identity)
 //  3. else create user with null password_hash + identity
@@ -116,7 +116,7 @@ func (s *Service) FindOrCreateGoogleUser(ctx context.Context, profile GoogleProf
 		if local, _, ok := strings.Cut(profile.Email, "@"); ok && local != "" {
 			profile.Name = local
 		} else {
-			profile.Name = "North user"
+			profile.Name = "Khepri user"
 		}
 	}
 

@@ -118,7 +118,7 @@ func run() error {
 
 	log.Info("connected to database")
 
-	registry, err := providers.Build(ctx, cfg.AI.ProviderOptions())
+	registry, err := providers.Build(ctx, cfg.AI.ProviderOptions(cfg.Env))
 	if err != nil {
 		return err
 	}
@@ -262,6 +262,12 @@ func routes(
 	// Wiring happens once, here. Every dependency is constructed explicitly and
 	// passed down, so the shape of the application is readable in one place
 	// rather than discovered through package-level initialisation.
+
+	// One runner for the process. Everything that calls a model goes through
+	// it, so a provider that is out of credit or overloaded costs a fallback
+	// rather than a failed request.
+	runner := ai.NewRunner(registry, cfg.AI.ChainSet())
+
 	userRepo := users.NewRepository(pool)
 	userSvc := users.NewService(userRepo)
 
@@ -358,7 +364,7 @@ func routes(
 
 	workoutSvc := workouts.NewService(workouts.Options{
 		Repository: workouts.NewRepository(pool),
-		Registry:   registry,
+		Runner:     runner,
 		Catalog:    exerciseSvc,
 		Model:      cfg.AI.Model,
 	})
@@ -535,7 +541,7 @@ func routes(
 		Repository: reports.NewRepository(pool),
 		Users:      userSvc,
 		Queue:      queue,
-		Client:     reports.ClientFromRegistry(registry),
+		Client:     reports.ClientFromChain(runner),
 		Context:    reports.NewInsightsContext(insightsSvc, mealProgressSvc, memorySvc),
 		FastModel:  cfg.AI.FastModel,
 	})

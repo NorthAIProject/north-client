@@ -49,7 +49,7 @@ func TestVaultPageShowsConnectedState(t *testing.T) {
 func TestVaultPageShowsPathValidationError(t *testing.T) {
 	html := render(t, Page(users.User{DisplayName: "Test"}, View{}, Form{
 		RootPath: "/missing",
-		Errors:   map[string]string{"path": "North could not find that folder on this machine."},
+		Errors:   map[string]string{"path": "Khepri could not find that folder on this machine."},
 	}))
 
 	if !strings.Contains(html, "could not find that folder") {

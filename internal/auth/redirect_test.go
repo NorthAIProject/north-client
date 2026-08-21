@@ -3,7 +3,7 @@ package auth
 import "testing"
 
 // The `next` parameter comes straight from a URL, so this is the check standing
-// between North's login page and being a working phishing redirector.
+// between Khepri's login page and being a working phishing redirector.
 func TestSafeRedirect(t *testing.T) {
 	t.Parallel()
 

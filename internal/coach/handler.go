@@ -521,7 +521,7 @@ func friendly(err error) string {
 	case apperr.Is(err, apperr.ErrUnavailable):
 		return "The coach is busy right now. Try again in a moment."
 	case apperr.Is(err, apperr.ErrForbidden):
-		return "North cannot reach its AI provider. Check the server configuration."
+		return "Khepri cannot reach its AI provider. Check the server configuration."
 	case apperr.Is(err, apperr.ErrConflict):
 		return "This reflection has ended."
 	default:

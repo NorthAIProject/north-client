@@ -80,10 +80,11 @@ func newServiceWithCatalog(t *testing.T, client *fake.Client, catalog workouts.C
 
 	registry := ai.NewRegistry()
 	registry.Register(client)
+	runtime := ai.NewRunner(registry, ai.NewChainSet([]string{client.Name()}, nil))
 
 	return workouts.NewService(workouts.Options{
 		Repository: workouts.NewRepository(pool),
-		Registry:   registry,
+		Runner:     runtime,
 		Catalog:    catalog,
 		Model:      "test-model",
 	}), user

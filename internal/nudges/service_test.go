@@ -312,14 +312,21 @@ func TestEvaluateMissedCheckInIsDedupedOnTheSameLocalDay(t *testing.T) {
 func TestEvaluateDeadlineWithinSevenDays(t *testing.T) {
 	pool := testdb.New(t)
 	ctx := context.Background()
-	now := time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC)
-	user := mustOnboard(t, pool, seedUser(t, pool, "eval-due@north.test"), time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC))
-	writeCheckIn(t, pool, user.ID, time.Date(2026, 8, 15, 0, 0, 0, 0, time.UTC))
+	// Anchored to today rather than to fixed dates. The nudge service runs on a
+	// frozen clock, but goals.Create validates the target against the real one
+	// and refuses a date in the past — so a literal target date turns this test
+	// into a time bomb that starts failing the morning it goes by.
+	day := time.Now().UTC().Truncate(24 * time.Hour)
+	now := day.Add(12 * time.Hour)
+	target := day.AddDate(0, 0, 5)
+
+	user := mustOnboard(t, pool, seedUser(t, pool, "eval-due@north.test"), day.AddDate(0, 0, -14))
+	writeCheckIn(t, pool, user.ID, day)
 
 	g, err := goals.NewService(goals.NewRepository(pool)).Create(ctx, user.ID, goals.Input{
 		Title:      "Run a 10K",
 		Category:   goals.CategoryFitness,
-		TargetDate: time.Date(2026, 8, 20, 0, 0, 0, 0, time.UTC),
+		TargetDate: target,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -339,8 +346,8 @@ func TestEvaluateDeadlineWithinSevenDays(t *testing.T) {
 	if len(list) != 1 || list[0].Kind != nudges.KindGoalDeadline {
 		t.Fatalf("open = %#v", list)
 	}
-	if list[0].DedupeKey != g.ID.String()+":2026-08-20" {
-		t.Fatalf("dedupe key = %q", list[0].DedupeKey)
+	if want := g.ID.String() + ":" + target.Format("2006-01-02"); list[0].DedupeKey != want {
+		t.Fatalf("dedupe key = %q, want %q", list[0].DedupeKey, want)
 	}
 }
 

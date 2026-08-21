@@ -75,7 +75,7 @@ func TestLoadEmptyUser(t *testing.T) {
 }
 
 // The hub is where a person checks whether their device is actually feeding
-// North anything. Readings that exist in the database but never reach the
+// Khepri anything. Readings that exist in the database but never reach the
 // snapshot are invisible to them.
 func TestLoadSurfacesRecentDeviceReadings(t *testing.T) {
 	pool := testdb.New(t)

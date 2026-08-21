@@ -47,7 +47,7 @@ func Validate(in Input) (Input, error) {
 	in.Content = strings.TrimSpace(in.Content)
 	switch {
 	case in.Content == "":
-		errs = errs.Add("content", "Write the fact you want North to remember.")
+		errs = errs.Add("content", "Write the fact you want Khepri to remember.")
 	case len(in.Content) < 8:
 		errs = errs.Add("content", "Make it specific — a few more words help.")
 	case len(in.Content) > maxContentLen:

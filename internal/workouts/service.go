@@ -46,15 +46,15 @@ type Catalog interface {
 }
 
 type Service struct {
-	repo     *Repository
-	registry *ai.Registry
-	catalog  Catalog
-	model    string
+	repo    *Repository
+	runner  *ai.Runner
+	catalog Catalog
+	model   string
 }
 
 type Options struct {
 	Repository *Repository
-	Registry   *ai.Registry
+	Runner     *ai.Runner
 
 	// Catalog may be nil, which turns the candidate list off and leaves the
 	// model to name exercises freely — the behaviour before the catalog
@@ -67,10 +67,10 @@ type Options struct {
 
 func NewService(opts Options) *Service {
 	return &Service{
-		repo:     opts.Repository,
-		registry: opts.Registry,
-		catalog:  opts.Catalog,
-		model:    opts.Model,
+		repo:    opts.Repository,
+		runner:  opts.Runner,
+		catalog: opts.Catalog,
+		model:   opts.Model,
 	}
 }
 
@@ -79,7 +79,7 @@ func ValidateIntake(in Intake) error {
 	var errs apperr.FieldErrors
 
 	if strings.TrimSpace(in.Goal) == "" {
-		errs = errs.Add("goal", "Tell North what you are training for.")
+		errs = errs.Add("goal", "Tell Khepri what you are training for.")
 	} else if len(in.Goal) > 500 {
 		errs = errs.Add("goal", "Keep this under 500 characters.")
 	}
@@ -111,11 +111,6 @@ func (s *Service) Generate(ctx context.Context, user users.User, in Intake) (Pla
 
 	log := middleware.FromContext(ctx)
 
-	client, err := s.registry.Default()
-	if err != nil {
-		return Plan{}, "", err
-	}
-
 	system, err := prompts.Raw(prompts.WorkoutPlan)
 	if err != nil {
 		return Plan{}, "", err
@@ -131,56 +126,77 @@ func (s *Service) Generate(ctx context.Context, user users.User, in Intake) (Pla
 		system += "\n\n## EXERCISE CATALOG\n\n" + catalogContext(candidates)
 	}
 
-	messages := []ai.Message{ai.UserText(intakeRequest(in))}
+	var (
+		plan         Plan
+		lastProblems []string
+	)
 
-	var lastProblems []string
+	client, err := s.runner.Run(ctx, ai.RunOptions{Tier: string(user.Tier)}, func(client ai.Client) error {
+		// Each provider opens its own correction dialogue. Carrying another
+		// model's rejected drafts across would ask this one to repair words it
+		// never wrote, and the correction only works because it quotes the
+		// exact plan that broke.
+		messages := []ai.Message{ai.UserText(intakeRequest(in))}
+		lastProblems = nil
 
-	for attempt := 1; attempt <= generationAttempts; attempt++ {
-		resp, err := client.Generate(ctx, ai.Request{
-			Model:          s.model,
-			System:         system,
-			Messages:       messages,
-			ResponseSchema: PlanSchema(),
-			Temperature:    &planTemperature,
-		})
-		if err != nil {
-			return Plan{}, "", apperr.Wrap(err, "generate plan")
-		}
+		for attempt := 1; attempt <= generationAttempts; attempt++ {
+			resp, genErr := client.Generate(ctx, ai.Request{
+				Model:          s.model,
+				System:         system,
+				Messages:       messages,
+				ResponseSchema: PlanSchema(),
+				Temperature:    &planTemperature,
+			})
+			if genErr != nil {
+				return apperr.Wrap(genErr, "generate plan")
+			}
 
-		var plan Plan
-		if err := json.Unmarshal([]byte(resp.Text), &plan); err != nil {
-			lastProblems = []string{"the reply was not valid JSON for the required shape"}
-			log.Warn("plan did not decode", slog.Int("attempt", attempt), slog.Any("error", err))
+			var candidate Plan
+			if decErr := json.Unmarshal([]byte(resp.Text), &candidate); decErr != nil {
+				lastProblems = []string{"the reply was not valid JSON for the required shape"}
+				log.Warn("plan did not decode", slog.Int("attempt", attempt), slog.Any("error", decErr))
+				messages = append(messages,
+					ai.ModelText(resp.Text),
+					ai.UserText("That was not valid JSON matching the schema. Return the plan again, correctly."),
+				)
+				continue
+			}
+
+			problems := Validate(candidate, in)
+			if len(problems) == 0 {
+				plan = candidate
+				return nil
+			}
+
+			lastProblems = problems
+			log.Warn("generated plan broke the intake constraints",
+				slog.Int("attempt", attempt),
+				slog.Any("problems", problems))
+
+			// Naming the specific violation is what makes the retry work. "Try
+			// again" produces the same plan; "you used a barbell and they only
+			// have dumbbells" produces a correct one.
 			messages = append(messages,
 				ai.ModelText(resp.Text),
-				ai.UserText("That was not valid JSON matching the schema. Return the plan again, correctly."),
+				ai.UserText("That plan breaks the constraints:\n- "+strings.Join(problems, "\n- ")+
+					"\n\nReturn a corrected plan that satisfies every constraint."),
 			)
-			continue
 		}
 
-		problems := Validate(plan, in)
-		if len(problems) == 0 {
-			s.applyCatalog(ctx, &plan)
-			return plan, client.Name(), nil
-		}
-
-		lastProblems = problems
-		log.Warn("generated plan broke the intake constraints",
-			slog.Int("attempt", attempt),
-			slog.Any("problems", problems))
-
-		// Naming the specific violation is what makes the retry work. "Try
-		// again" produces the same plan; "you used a barbell and they only have
-		// dumbbells" produces a correct one.
-		messages = append(messages,
-			ai.ModelText(resp.Text),
-			ai.UserText("That plan breaks the constraints:\n- "+strings.Join(problems, "\n- ")+
-				"\n\nReturn a corrected plan that satisfies every constraint."),
-		)
+		// ErrUnavailable rather than a plain error so the chain moves on: a
+		// model that broke the constraints twice with the violations spelled
+		// out is unlikely to succeed on a third pass, and a different model
+		// might on its first. If every provider fails the same way the user
+		// sees this same message, just later.
+		return apperr.Wrap(apperr.ErrUnavailable,
+			"could not produce a plan that fits those constraints: %s", strings.Join(lastProblems, "; "))
+	})
+	if err != nil {
+		return Plan{}, "", err
 	}
 
-	return Plan{}, "", apperr.Wrap(apperr.ErrUnavailable,
-		"could not produce a plan that fits those constraints: %s", strings.Join(lastProblems, "; "))
+	s.applyCatalog(ctx, &plan)
+	return plan, client.Name(), nil
 }
 
 // CreatePlan records an intake, generates a plan against it, and stores both.

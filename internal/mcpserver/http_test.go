@@ -100,10 +100,10 @@ func TestOriginGuardRejectsAnUnknownBrowserOrigin(t *testing.T) {
 
 func TestOriginGuardAllowsAConfiguredOrigin(t *testing.T) {
 	var reached bool
-	h := guardOrigin(Config{AllowedOrigins: []string{"https://north.example"}}, discardLog(), okHandler(&reached))
+	h := guardOrigin(Config{AllowedOrigins: []string{"https://khepri.example"}}, discardLog(), okHandler(&reached))
 
 	req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
-	req.Header.Set("Origin", "HTTPS://North.Example")
+	req.Header.Set("Origin", "HTTPS://Khepri.Example")
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)

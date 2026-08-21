@@ -32,7 +32,7 @@ func TestPDFExtractsTextWithPageHeadings(t *testing.T) {
 }
 
 // The invariant every citation depends on has to hold for PDFs too, even though
-// the lines are North's extraction rather than the file's own.
+// the lines are Khepri's extraction rather than the file's own.
 func TestPDFChunksQuoteTheirOwnLineRange(t *testing.T) {
 	doc, err := parse.PDF("physio-report.pdf", readPDF(t, "physio-report.pdf"))
 	if err != nil {
@@ -55,7 +55,7 @@ func TestPDFChunksQuoteTheirOwnLineRange(t *testing.T) {
 	}
 
 	// The heading trail is what makes a PDF citation usable: "Page 2" is
-	// something a person can act on, a line number into North's extraction is
+	// something a person can act on, a line number into Khepri's extraction is
 	// not.
 	var withPage int
 	for _, c := range chunks {
@@ -71,7 +71,7 @@ func TestPDFChunksQuoteTheirOwnLineRange(t *testing.T) {
 }
 
 // A scan is a photograph of a page. Telling the person that specifically beats
-// "this document produced nothing to search", which sounds like North is broken.
+// "this document produced nothing to search", which sounds like Khepri is broken.
 func TestPDFWithNoTextLayerSaysSo(t *testing.T) {
 	_, err := parse.PDF("scan.pdf", readPDF(t, "scan-no-text.pdf"))
 	if !errors.Is(err, parse.ErrNoText) {

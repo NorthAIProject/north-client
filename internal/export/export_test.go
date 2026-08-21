@@ -39,7 +39,7 @@ const note = `# Physio notes
 Wide-grip overhead pressing aggravates the left shoulder.
 `
 
-// The claim this whole feature makes is that you can delete North tomorrow and
+// The claim this whole feature makes is that you can delete Khepri tomorrow and
 // still have what you put in. That is worth checking rather than asserting.
 func TestExportCarriesEverythingAPersonPutIn(t *testing.T) {
 	pool := testdb.New(t)
@@ -115,7 +115,7 @@ func TestExportCarriesEverythingAPersonPutIn(t *testing.T) {
 	}
 
 	// The account record itself, the goals, and the days logged against them.
-	// Each was in North and absent from the archive until this ticket, which is
+	// Each was in Khepri and absent from the archive until this ticket, which is
 	// the gap worth a test rather than the presence of a file.
 	for _, tc := range []struct{ file, want string }{
 		{"profile.md", "export@north.test"},
@@ -205,7 +205,7 @@ func TestExportIsReadableWithoutNorth(t *testing.T) {
 		Conversations: conversations.NewService(conversations.NewRepository(pool)),
 	}), user)
 
-	// Nothing in the archive should be a format that needs North to read it.
+	// Nothing in the archive should be a format that needs Khepri to read it.
 	for name, body := range files {
 		if strings.HasSuffix(name, ".json") {
 			continue
@@ -215,7 +215,7 @@ func TestExportIsReadableWithoutNorth(t *testing.T) {
 		}
 	}
 
-	// And the derived state must not be in there: it is North's working
+	// And the derived state must not be in there: it is Khepri's working
 	// state, rebuildable from the files above, and not the person's.
 	for name := range files {
 		if strings.Contains(name, "chunk") || strings.Contains(name, "index") {

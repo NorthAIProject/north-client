@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "North",
-  "short_name": "North",
+  "name": "Khepri",
+  "short_name": "Khepri",
   "description": "An AI operating system for personal growth.",
   "start_url": "/app",
   "scope": "/",

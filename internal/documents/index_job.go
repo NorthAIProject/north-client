@@ -151,12 +151,12 @@ func (ix *Indexer) indexOne(ctx context.Context, doc Document, run *IndexRun) {
 	run.ChunksWritten += written
 	run.ChunksRemoved += removed
 	if err != nil {
-		ix.fail(ctx, doc, run, "North could not store this document's contents")
+		ix.fail(ctx, doc, run, "Khepri could not store this document's contents")
 		return
 	}
 
 	if err := ix.repo.MarkIndexed(ctx, doc.ID, sha, fingerprint, parsed.LineCount()); err != nil {
-		ix.fail(ctx, doc, run, "North could not record that this document was indexed")
+		ix.fail(ctx, doc, run, "Khepri could not record that this document was indexed")
 		return
 	}
 

@@ -1,10 +1,10 @@
-// Package mcpserver exposes North's coaching capabilities over the Model
+// Package mcpserver exposes Khepri's coaching capabilities over the Model
 // Context Protocol, so an outside agent — Hermes on the VPS, Claude Code, any
 // MCP client — can use them as tools.
 //
 // What is exposed is business capability, not schema: "log a check-in", not
 // "insert a row into check_ins". A tool that leaked internal identifiers or
-// table shapes would tie every consumer to North's storage, which is the thing
+// table shapes would tie every consumer to Khepri's storage, which is the thing
 // the layering exists to prevent.
 //
 // This is a transport, so the handlers here obey the same rule as the HTTP
@@ -191,7 +191,7 @@ func registerKnowledge(s *mcp.Server, svc Services, user users.User) {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name: "search_knowledge",
-		Description: "Search what North has remembered about the user — the durable facts, preferences, and " +
+		Description: "Search what Khepri has remembered about the user — the durable facts, preferences, and " +
 			"constraints the coach reasons from. Only approved memories are returned.",
 		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true},
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, args searchArgs) (*mcp.CallToolResult, any, error) {
@@ -224,9 +224,9 @@ func registerKnowledge(s *mcp.Server, svc Services, user users.User) {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name: "knowledge_status",
-		Description: "Report what North has actually read: document counts by state, how many passages " +
+		Description: "Report what Khepri has actually read: document counts by state, how many passages " +
 			"are indexed, which documents have changed since they were last read, and what the last " +
-			"indexing pass did. Use it before concluding the user has not told North something.",
+			"indexing pass did. Use it before concluding the user has not told Khepri something.",
 		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true},
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
 		if svc.Documents == nil {
@@ -317,7 +317,7 @@ func registerCoach(s *mcp.Server, svc Services, user users.User) {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name: "ask_coach",
-		Description: "Ask North's coach a question. The reply is grounded in the user's goals, check-ins, " +
+		Description: "Ask Khepri's coach a question. The reply is grounded in the user's goals, check-ins, " +
 			"training, and remembered facts, and the exchange is saved to their history like any other conversation.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, args askArgs) (*mcp.CallToolResult, any, error) {
 		conversation, err := svc.Coach.StartConversation(ctx, user.ID)

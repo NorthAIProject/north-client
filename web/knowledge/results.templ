@@ -13,7 +13,7 @@ templ SearchResults(query string, hits []document.Hit, hasMore bool) {
 		<!-- nothing typed yet; an empty region reads better than a prompt -->
 	} else if len(hits) == 0 {
 		<p class="text-muted-foreground mt-3 text-sm">
-			Nothing matched. North can only find what it has read — check the list below for
+			Nothing matched. Khepri can only find what it has read — check the list below for
 			anything still waiting.
 		</p>
 	} else {

@@ -45,7 +45,7 @@ func (s *stubSource) noted() []string {
 	return append([]string(nil), s.failures...)
 }
 
-// byokHarness builds a coach whose chain is North's providers, with a
+// byokHarness builds a coach whose chain is Khepri's providers, with a
 // ClientSource in front.
 func byokHarness(t *testing.T, own coach.ClientSource, chain ...ai.Client) harness {
 	t.Helper()
@@ -95,7 +95,7 @@ func ask(t *testing.T, h harness) string {
 
 // The point of BYOK: somebody who supplied a key is served by it.
 func TestOwnProviderIsTriedBeforeNorthsChain(t *testing.T) {
-	north := renamed{Client: fake.Text("from North"), name: "north"}
+	north := renamed{Client: fake.Text("from Khepri"), name: "north"}
 	mine := renamed{Client: fake.Text("from my own key"), name: "mine"}
 
 	source := &stubSource{client: mine}
@@ -105,7 +105,7 @@ func TestOwnProviderIsTriedBeforeNorthsChain(t *testing.T) {
 		t.Fatalf("reply = %q, want the user's own provider", reply)
 	}
 	if len(north.Calls()) != 0 {
-		t.Errorf("North's provider was called %d time(s) despite a working user key", len(north.Calls()))
+		t.Errorf("Khepri's provider was called %d time(s) despite a working user key", len(north.Calls()))
 	}
 	if noted := source.noted(); len(noted) != 0 {
 		t.Errorf("a working key was reported as failing: %v", noted)
@@ -115,14 +115,14 @@ func TestOwnProviderIsTriedBeforeNorthsChain(t *testing.T) {
 // A mistyped key must not take the product away. It falls back — and says so,
 // because a silent fallback leaves somebody believing their key is in use.
 func TestARejectedKeyFallsBackAndIsReported(t *testing.T) {
-	north := renamed{Client: fake.Text("from North"), name: "north"}
+	north := renamed{Client: fake.Text("from Khepri"), name: "north"}
 	mine := refusing("mine", apperr.Wrap(apperr.ErrForbidden, "invalid api key"))
 
 	source := &stubSource{client: mine}
 	h := byokHarness(t, source, north)
 
-	if reply := ask(t, h); !strings.Contains(reply, "from North") {
-		t.Fatalf("reply = %q, want North's chain to have answered", reply)
+	if reply := ask(t, h); !strings.Contains(reply, "from Khepri") {
+		t.Fatalf("reply = %q, want Khepri's chain to have answered", reply)
 	}
 
 	// One turn makes more than one model call — the reply, and the cheap one
@@ -144,30 +144,30 @@ func TestARejectedKeyFallsBackAndIsReported(t *testing.T) {
 }
 
 func TestAnExhaustedKeyIsReportedAsBilling(t *testing.T) {
-	north := renamed{Client: fake.Text("from North"), name: "north"}
+	north := renamed{Client: fake.Text("from Khepri"), name: "north"}
 	mine := refusing("mine", apperr.Wrap(apperr.ErrPaymentRequired, "out of credit"))
 
 	source := &stubSource{client: mine}
 	h := byokHarness(t, source, north)
 
-	if reply := ask(t, h); !strings.Contains(reply, "from North") {
-		t.Fatalf("reply = %q, want North's chain to have answered", reply)
+	if reply := ask(t, h); !strings.Contains(reply, "from Khepri") {
+		t.Fatalf("reply = %q, want Khepri's chain to have answered", reply)
 	}
 	if noted := source.noted(); len(noted) == 0 || !strings.Contains(noted[0], "credit") {
 		t.Fatalf("reason = %v, want it to name the billing cause", noted)
 	}
 }
 
-// A credential that cannot be decrypted or built is North's problem, not a
+// A credential that cannot be decrypted or built is Khepri's problem, not a
 // reason to refuse the user their coach.
 func TestAnUnbuildableCredentialFallsBackSilently(t *testing.T) {
-	north := renamed{Client: fake.Text("from North"), name: "north"}
+	north := renamed{Client: fake.Text("from Khepri"), name: "north"}
 
 	source := &stubSource{err: apperr.New("sealed value cannot be opened")}
 	h := byokHarness(t, source, north)
 
-	if reply := ask(t, h); !strings.Contains(reply, "from North") {
-		t.Fatalf("reply = %q, want North's chain to have answered", reply)
+	if reply := ask(t, h); !strings.Contains(reply, "from Khepri") {
+		t.Fatalf("reply = %q, want Khepri's chain to have answered", reply)
 	}
 	// Nothing to tell the user: they did not do anything wrong, and a message
 	// about decryption would only alarm them.
@@ -179,13 +179,13 @@ func TestAnUnbuildableCredentialFallsBackSilently(t *testing.T) {
 // A user with no key of their own is the normal case, and (nil, nil) is how
 // the source says so. It must not read as an error.
 func TestNoCredentialIsNotAnError(t *testing.T) {
-	north := renamed{Client: fake.Text("from North"), name: "north"}
+	north := renamed{Client: fake.Text("from Khepri"), name: "north"}
 
 	source := &stubSource{}
 	h := byokHarness(t, source, north)
 
-	if reply := ask(t, h); !strings.Contains(reply, "from North") {
-		t.Fatalf("reply = %q, want North's chain to have answered", reply)
+	if reply := ask(t, h); !strings.Contains(reply, "from Khepri") {
+		t.Fatalf("reply = %q, want Khepri's chain to have answered", reply)
 	}
 	if source.asked == 0 {
 		t.Error("the credential source was never consulted")
@@ -195,19 +195,19 @@ func TestNoCredentialIsNotAnError(t *testing.T) {
 // The regression guard for every existing caller: cmd/worker and the tests
 // pass no source at all.
 func TestANilSourceChangesNothing(t *testing.T) {
-	north := renamed{Client: fake.Text("from North"), name: "north"}
+	north := renamed{Client: fake.Text("from Khepri"), name: "north"}
 
 	h := byokHarness(t, nil, north)
 
-	if reply := ask(t, h); !strings.Contains(reply, "from North") {
-		t.Fatalf("reply = %q, want North's chain to have answered", reply)
+	if reply := ask(t, h); !strings.Contains(reply, "from Khepri") {
+		t.Fatalf("reply = %q, want Khepri's chain to have answered", reply)
 	}
 }
 
 // A user key that refuses for a caller-side reason fails the same way
-// everywhere, so walking on to North's provider only delays the same error.
+// everywhere, so walking on to Khepri's provider only delays the same error.
 func TestACallerErrorFromTheUserKeyDoesNotWalkTheChain(t *testing.T) {
-	north := renamed{Client: fake.Text("from North"), name: "north"}
+	north := renamed{Client: fake.Text("from Khepri"), name: "north"}
 	mine := refusing("mine", apperr.Wrap(apperr.ErrValidation, "malformed request"))
 
 	source := &stubSource{client: mine}
@@ -222,10 +222,10 @@ func TestACallerErrorFromTheUserKeyDoesNotWalkTheChain(t *testing.T) {
 	stream, err := h.coach.SendMessage(ctx, h.user, conversation.ID, "what next?")
 	if err == nil {
 		if _, drainErr := drain(stream); drainErr == nil {
-			t.Fatal("a malformed request was retried against North's provider")
+			t.Fatal("a malformed request was retried against Khepri's provider")
 		}
 	}
 	if len(north.Calls()) != 0 {
-		t.Errorf("North's provider was called %d time(s) for a caller-side error", len(north.Calls()))
+		t.Errorf("Khepri's provider was called %d time(s) for a caller-side error", len(north.Calls()))
 	}
 }

@@ -80,7 +80,6 @@ const toolRounds = 5
 // Telegram and MCP adapters, all call SendMessage. None of them builds a prompt
 // or touches a provider.
 type Service struct {
-	registry      *ai.Registry
 	conversations *conversations.Service
 	contextB      *ContextBuilder
 	promptB       *PromptBuilder
@@ -88,8 +87,9 @@ type Service struct {
 	tools         ToolRunner
 	declines      DeclineRecorder
 
-	// chains decides which providers serve a given user, in what order.
-	chains ai.ChainSet
+	// runner walks the providers that serve a given tier, in order, until one
+	// answers. Shared with every other part of Khepri that calls a model.
+	runner *ai.Runner
 
 	// own yields a user's bring-your-own provider. Nil disables the path
 	// entirely, which is what every process without a sealer gets.
@@ -167,7 +167,7 @@ type Options struct {
 	Declines DeclineRecorder
 
 	// Own yields a user's own provider, tried ahead of Chains. Nil leaves
-	// every user on North's providers, which is what a deployment with no
+	// every user on Khepri's providers, which is what a deployment with no
 	// encryption key gets.
 	Own ClientSource
 
@@ -199,12 +199,11 @@ func (s *Service) WithInbox(in Inbox) *Service {
 
 func NewService(opts Options) *Service {
 	return &Service{
-		registry:      opts.Registry,
 		conversations: opts.Conversations,
 		contextB:      opts.ContextBuilder,
 		promptB:       opts.PromptBuilder,
 		queue:         opts.Queue,
-		chains:        opts.Chains,
+		runner:        ai.NewRunner(opts.Registry, opts.Chains),
 		tools:         opts.Tools,
 		declines:      opts.Declines,
 		own:           opts.Own,
@@ -423,70 +422,50 @@ func (s *Service) generate(ctx context.Context, user users.User, req ai.Request)
 func (s *Service) eachProvider(ctx context.Context, user users.User, attempt func(ai.Client) error) (ai.Client, error) {
 	log := middleware.FromContext(ctx)
 
-	clients := s.registry.Resolve(s.chains.For(string(user.Tier)))
-
-	// A user's own key goes in front of North's chain rather than replacing
+	// A user's own key goes in front of Khepri's chain rather than replacing
 	// it, which is docs/byok-plan.md's "the user's own credential, else the
 	// platform provider" expressed with the failover machinery that already
 	// exists: a key that is out of credit or rejected produces
-	// ErrPaymentRequired or ErrForbidden, ai.Failover says so, and the loop
-	// below walks on by itself. No second fallback concept, and nobody loses
-	// their coach to a mistyped key.
+	// ErrPaymentRequired or ErrForbidden, ai.Failover says so, and the runner
+	// walks on by itself. No second fallback concept, and nobody loses their
+	// coach to a mistyped key.
 	//
 	// The registry is untouched. It is built once at startup and read without
 	// locking, and registering a per-user client into it would be exactly the
 	// bug that comment warns about.
-	// True when clients[0] is the user's own provider rather than North's.
-	ownIsFirst := false
+	var own ai.Client
 	if s.own != nil {
-		own, err := s.own.For(ctx, user.ID)
+		built, err := s.own.For(ctx, user.ID)
 		switch {
 		case err != nil:
-			log.Warn("the user's own provider could not be built; serving from North's chain",
+			log.Warn("the user's own provider could not be built; serving from Khepri's chain",
 				slog.String("user_id", user.ID.String()), slog.Any("error", err))
-		case own != nil:
-			ownIsFirst = true
-			clients = append([]ai.Client{own}, clients...)
+		case built != nil:
+			own = built
 		}
 	}
 
-	if len(clients) == 0 {
-		return nil, apperr.Wrap(apperr.ErrUnavailable, "coach: no AI provider is configured")
-	}
-
-	var lastErr error
-	for i, client := range clients {
-		err := attempt(client)
-		if err == nil {
-			// The user's own key worked, so any complaint recorded against it
-			// is stale. Clearing it is the settings page's job on the next
-			// save; nothing to do here but stop blaming it.
-			return client, nil
-		}
-		lastErr = err
+	opts := ai.RunOptions{Tier: string(user.Tier)}
+	if own != nil {
+		opts.Prepend = []ai.Client{own}
 
 		// The user's key is the only one they can do anything about, so its
 		// refusal is recorded where they will see it. Everything else is
-		// North's problem and stays in the log.
-		if i == 0 && ownIsFirst {
-			s.own.NoteFailure(ctx, user.ID, ownFailureReason(err))
+		// Khepri's problem and stays in the log.
+		//
+		// Compared by identity rather than by name: a user's provider carries
+		// the same name as the platform's when they picked the same vendor.
+		opts.OnError = func(c ai.Client, err error) {
+			if c == own {
+				s.own.NoteFailure(ctx, user.ID, ownFailureReason(err))
+			}
 		}
-
-		// A request the provider refused on its own account is worth asking
-		// someone else. A malformed one is not: it would fail identically
-		// everywhere, and walking the chain only delays the same error.
-		if !ai.Failover(err) || i == len(clients)-1 {
-			break
-		}
-
-		log.Warn("ai provider refused; falling back to the next in the chain",
-			slog.String("provider", client.Name()),
-			slog.String("next", clients[i+1].Name()),
-			slog.Any("error", err),
-		)
 	}
 
-	return nil, lastErr
+	// A successful call over the user's own key leaves any complaint recorded
+	// against it stale. Clearing it is the settings page's job on the next
+	// save; nothing to do here but stop blaming it.
+	return s.runner.Run(ctx, opts, attempt)
 }
 
 // ownFailureReason summarises why a user's provider refused, in words meant
@@ -683,7 +662,7 @@ func (s *Service) pump(
 			// Nothing is sent to the caller here. The handler asks
 			// PendingApproval once the stream closes and renders the card from
 			// that, which keeps the provider-facing ai.StreamChunk free of a
-			// field only North's own UI would ever read.
+			// field only Khepri's own UI would ever read.
 			break
 		}
 
