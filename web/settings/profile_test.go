@@ -29,7 +29,7 @@ func renderSettings(t *testing.T, profile ProfileForm, notif NotificationsForm) 
 	return b.String()
 }
 
-// The timezone is a select, not a free-text field: a value North cannot
+// The timezone is a select, not a free-text field: a value Khepri cannot
 // resolve is stored as UTC without complaint, so typing must not be possible.
 func TestTimezoneRendersAsASelect(t *testing.T) {
 	html := renderSettings(t, ProfileForm{Timezone: "Europe/Lisbon"}, NotificationsForm{})

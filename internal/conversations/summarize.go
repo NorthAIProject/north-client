@@ -180,22 +180,34 @@ func Transcript(msgs []Message) string {
 	return strings.TrimSpace(b.String())
 }
 
-type registryGenerator struct {
-	registry *ai.Registry
+type chainGenerator struct {
+	runner *ai.Runner
 }
 
-// ClientFromRegistry uses whichever provider is currently the default.
+// ClientFromChain walks the provider chain until one of them answers.
 //
 // Compaction runs in the worker, where there is no request and so no
-// bring-your-own provider to inherit. Same trade-off reports makes.
-func ClientFromRegistry(registry *ai.Registry) Generator {
-	return registryGenerator{registry: registry}
+// bring-your-own provider to inherit — hence the empty tier, which selects the
+// default chain. Same trade-off reports makes.
+//
+// It walks the chain rather than taking the registry default because a
+// compaction that gives up when the head provider is rate limited leaves the
+// conversation ungrown, and the job is retried against the same busy provider.
+func ClientFromChain(runner *ai.Runner) Generator {
+	return chainGenerator{runner: runner}
 }
 
-func (g registryGenerator) Generate(ctx context.Context, req ai.Request) (*ai.Response, error) {
-	client, err := g.registry.Default()
+func (g chainGenerator) Generate(ctx context.Context, req ai.Request) (*ai.Response, error) {
+	var resp *ai.Response
+
+	_, err := g.runner.Run(ctx, ai.RunOptions{}, func(c ai.Client) error {
+		r, err := c.Generate(ctx, req)
+		resp = r
+		return err
+	})
 	if err != nil {
 		return nil, err
 	}
-	return client.Generate(ctx, req)
+
+	return resp, nil
 }

@@ -1,8 +1,8 @@
-// Package export writes everything North knows about a person as a folder of
+// Package export writes everything Khepri knows about a person as a folder of
 // plain text they can take anywhere.
 //
 // Its own package rather than a method on any one slice, because it is the only
-// thing in North that legitimately reads across all of them — memories,
+// thing in Khepri that legitimately reads across all of them — memories,
 // documents, and conversations — and putting it inside one would make that
 // slice import its peers for a reason unrelated to what it does.
 package export
@@ -35,7 +35,7 @@ const conversationLimit = 5000
 // decade of them.
 const checkInLimit = 5000
 
-// Exporter writes everything North knows about a person as a zip of Markdown
+// Exporter writes everything Khepri knows about a person as a zip of Markdown
 // and their own original files.
 //
 // This is the answer to the question worth asking of any system that keeps your
@@ -53,7 +53,7 @@ type Exporter struct {
 }
 
 // Options names what an export reads. A struct rather than six positional
-// arguments: the list grows every time North learns to keep something new, and
+// arguments: the list grows every time Khepri learns to keep something new, and
 // six services of similar shape in a row is an easy thing to get subtly wrong.
 type Options struct {
 	Documents     *documents.Service
@@ -133,10 +133,10 @@ func (e *Exporter) writeManifest(zw *zip.Writer, user users.User) error {
 		"exported_at": time.Now().UTC().Format(time.RFC3339),
 		"account":     user.Email,
 		"contents": []string{
-			"profile.md — your account as North holds it",
+			"profile.md — your account as Khepri holds it",
 			"goals.md — what you set out to do, open and closed",
 			"check-ins.md — how the days went, newest first",
-			"memories.md — the facts North was told it may use",
+			"memories.md — the facts Khepri was told it may use",
 			"documents/ — your notes and uploads, unchanged",
 			"conversations/ — one Markdown file per conversation",
 		},
@@ -154,30 +154,30 @@ func (e *Exporter) writeManifest(zw *zip.Writer, user users.User) error {
 }
 
 func (e *Exporter) writeReadme(zw *zip.Writer, user users.User) error {
-	return writeFile(zw, "README.md", fmt.Sprintf(`# What North knows about %s
+	return writeFile(zw, "README.md", fmt.Sprintf(`# What Khepri knows about %s
 
 Everything in this archive is plain text. It opens in any editor, and it stays
-readable whether or not North exists.
+readable whether or not Khepri exists.
 
 - `+"`profile.md`"+` — your account: name, email, timezone, how you asked to be coached.
 - `+"`goals.md`"+` — everything you set out to do, including the ones you stopped.
 - `+"`check-ins.md`"+` — every day you logged, newest first.
-- `+"`memories.md`"+` — the durable facts North was told it may use in coaching.
+- `+"`memories.md`"+` — the durable facts Khepri was told it may use in coaching.
 - `+"`documents/`"+` — your notes and uploaded files, exactly as you gave them.
 - `+"`conversations/`"+` — one file per conversation, oldest message first.
 
 The search index is not here on purpose. It is built from the files above and
-can be rebuilt from them, so it is North's working state rather than anything
+can be rebuilt from them, so it is Khepri's working state rather than anything
 of yours.
 
 Exported %s.
 `, user.DisplayName, time.Now().UTC().Format("2 January 2006")))
 }
 
-// writeProfile is the account itself: who North thinks you are.
+// writeProfile is the account itself: who Khepri thinks you are.
 //
 // No query behind it — every field is already on the user the caller is
-// exporting for. It is here because an archive of everything North holds that
+// exporting for. It is here because an archive of everything Khepri holds that
 // omitted the record at the centre of it would be a strange kind of everything.
 func (e *Exporter) writeProfile(zw *zip.Writer, user users.User) error {
 	var b strings.Builder
@@ -288,7 +288,7 @@ func (e *Exporter) writeMemories(ctx context.Context, zw *zip.Writer, user users
 	}
 
 	var b strings.Builder
-	b.WriteString("# What North remembers\n\n")
+	b.WriteString("# What Khepri remembers\n\n")
 	if len(facts) == 0 {
 		b.WriteString("Nothing recorded yet.\n")
 		return writeFile(zw, "memories.md", b.String())
@@ -337,7 +337,7 @@ func (e *Exporter) writeDocuments(ctx context.Context, zw *zip.Writer, user user
 			// One unreadable blob must not cost the person the rest of their
 			// export; the note in its place says what happened.
 			if writeErr := writeFile(zw, name+".missing.txt",
-				"North could not read this file back from storage.\n"); writeErr != nil {
+				"Khepri could not read this file back from storage.\n"); writeErr != nil {
 				return writeErr
 			}
 			continue
@@ -382,7 +382,7 @@ func (e *Exporter) writeConversations(ctx context.Context, zw *zip.Writer, user 
 		fmt.Fprintf(&b, "# %s\n\n_%s_\n\n", title, c.CreatedAt.Format("2 January 2006"))
 
 		for _, m := range messages {
-			who := "North"
+			who := "Khepri"
 			if m.IsUser() {
 				who = user.DisplayName
 			}

@@ -106,7 +106,7 @@ func (h *Handler) submitIntake(w http.ResponseWriter, r *http.Request) {
 
 		// The intake was kept, so this is recoverable by trying again rather
 		// than by re-entering everything.
-		form.Error = "North could not build a plan that fits those constraints. Try widening them slightly, or try again."
+		form.Error = "Khepri could not build a plan that fits those constraints. Try widening them slightly, or try again."
 		if apperr.Is(err, apperr.ErrUnavailable) {
 			form.Error = "The coach is busy right now. Your answers were saved — try again in a moment."
 		}

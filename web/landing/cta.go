@@ -34,7 +34,7 @@ func ctaHref(ctx context.Context) string {
 // someone who has one.
 func ctaLabel(ctx context.Context) string {
 	if signedIn(ctx) {
-		return "Open North"
+		return "Open Khepri"
 	}
 	return "Create your account"
 }
@@ -44,7 +44,7 @@ func ctaLabel(ctx context.Context) string {
 // button otherwise reads like a second signup.
 func planCTA(ctx context.Context, cta string) string {
 	if signedIn(ctx) {
-		return "Open North"
+		return "Open Khepri"
 	}
 	return cta
 }

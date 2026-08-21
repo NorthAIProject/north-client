@@ -79,7 +79,7 @@ func post(t *testing.T, hook *Webhook, secret, body string) *httptest.ResponseRe
 	return rec
 }
 
-// Real deliveries always carry chat.type, and North fails closed without it —
+// Real deliveries always carry chat.type, and Khepri fails closed without it —
 // a chat whose kind is unknown is not assumed to be one person.
 const messageUpdate = `{"update_id":11,"message":{"message_id":1,"chat":{"id":884422,"type":"private"},"text":"how am I doing?","date":1755300000}}`
 

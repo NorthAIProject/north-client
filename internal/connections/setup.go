@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// Setup is everything a user needs to point one agent at North: the config a
+// Setup is everything a user needs to point one agent at Khepri: the config a
 // person edits, and the prompt a person hands to the agent instead.
 //
 // Both carry a live credential, so a Setup is built only in the response to the
@@ -137,7 +137,7 @@ bearer_token_env_var = "NORTH_MCP_TOKEN"`, url)
 # Authorization: Bearer %s`, url, token)
 
 	default:
-		// Anything else speaks the protocol but not a config format North can
+		// Anything else speaks the protocol but not a config format Khepri can
 		// guess, so give it the two facts every MCP client needs and stop.
 		setup.ConfigLabel = "connection details"
 		setup.ConfigLang = "text"
@@ -162,7 +162,7 @@ func setupPrompt(url, token string) string {
 	//
 	// This text is displayed in a narrow column that soft-wraps it, so hard
 	// breaks sized for an 80-column terminal wrapped a second time and left
-	// orphans mid-sentence — "Do not" alone on a line, then "register North a
+	// orphans mid-sentence — "Do not" alone on a line, then "register Khepri a
 	// second time…". Nothing downstream wants the breaks either: the string is
 	// pasted into an agent, where line length carries no meaning.
 	//
@@ -175,7 +175,7 @@ func setupPrompt(url, token string) string {
 		`  URL:       ` + url,
 		`  Header:    Authorization: Bearer ` + token,
 		``,
-		`Put the credential in a header, never in the URL — URLs end up in logs. Do not register North a second time under another name; duplicate tool names across MCP servers make tool selection unpredictable.`,
+		`Put the credential in a header, never in the URL — URLs end up in logs. Do not register Khepri a second time under another name; duplicate tool names across MCP servers make tool selection unpredictable.`,
 		``,
 		`Then verify by listing the tools: you should see search_goals, list_check_ins, search_knowledge and ask_coach. Report what you found. Do not call any tool that writes (create_check_in, add_goal_update, ask_coach, calculate_macros) as part of this check.`,
 		``,

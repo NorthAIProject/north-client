@@ -124,7 +124,7 @@ func (s *Service) UploadVideo(ctx context.Context, userID uuid.UUID, filename st
 		Allowed:  allowedVideoTypes,
 		Field:    "video",
 		TooBig:   fmt.Sprintf("That file is over %d MB. Trim the clip to the working set.", MaxVideoBytes>>20),
-		BadType:  "That does not look like a video North can read. Upload an MP4, MOV, or WebM.",
+		BadType:  "That does not look like a video Khepri can read. Upload an MP4, MOV, or WebM.",
 	})
 	if err != nil {
 		return analysis.Analysis{}, err
@@ -190,6 +190,11 @@ func (s *Service) runAnalysis(ctx context.Context, mediaID uuid.UUID) (analysis.
 	// upload API, and the OpenAI-dialect backends have none. Taking whatever
 	// happens to head the chain would break video analysis every time the
 	// coach was pointed at OpenRouter, NVIDIA, xAI, or Hermes.
+	//
+	// This is the one AI call in Khepri that does not go through ai.Runner, for
+	// the same reason: the chain is a list of providers that can substitute for
+	// one another, and here only one can do the job at all. There is nothing to
+	// fall back to.
 	client, err := s.registry.Get(s.provider)
 	if err != nil {
 		return analysis.FormAnalysis{}, "", "", apperr.Wrap(err,
@@ -202,7 +207,7 @@ func (s *Service) runAnalysis(ctx context.Context, mediaID uuid.UUID) (analysis.
 	}
 	defer func() { _ = object.Close() }()
 
-	// Uploaded to the provider from North's own copy every time, rather than
+	// Uploaded to the provider from Khepri's own copy every time, rather than
 	// stored provider-side: Gemini deletes uploads within days, so the durable
 	// copy has to be ours.
 	file, err := client.UploadFile(ctx, ai.UploadRequest{
@@ -460,9 +465,9 @@ func isWebP(header []byte) bool {
 func userFacing(err error) string {
 	switch {
 	case apperr.Is(err, apperr.ErrUnavailable):
-		return "North could not reach its AI provider. This will be retried automatically."
+		return "Khepri could not reach its AI provider. This will be retried automatically."
 	case apperr.Is(err, apperr.ErrValidation):
-		return "North could not read that video. Try re-recording or converting it to MP4."
+		return "Khepri could not read that video. Try re-recording or converting it to MP4."
 	default:
 		return "Something went wrong analysing that video."
 	}

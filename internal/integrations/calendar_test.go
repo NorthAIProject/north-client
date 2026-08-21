@@ -16,9 +16,9 @@ import (
 
 // stubServer is a real MCP server over real HTTP, exposing one calendar tool.
 //
-// A stub rather than a mock: the point of these tests is that North's client
+// A stub rather than a mock: the point of these tests is that Khepri's client
 // speaks the protocol correctly, and a hand-written fake of the transport would
-// only prove North agrees with itself.
+// only prove Khepri agrees with itself.
 func stubServer(t *testing.T, toolName, reply string, wantToken string) string {
 	t.Helper()
 
@@ -122,7 +122,7 @@ func TestUpcomingFailsCleanlyOnADeadServer(t *testing.T) {
 	}
 }
 
-// One external server must not be able to crowd out North's own context.
+// One external server must not be able to crowd out Khepri's own context.
 func TestUpcomingBoundsWhatOneServerCanContribute(t *testing.T) {
 	var many strings.Builder
 	for i := range 200 {

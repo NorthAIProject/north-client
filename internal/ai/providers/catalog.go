@@ -64,7 +64,7 @@ type BYOProvider struct {
 
 	// RequiresBaseURL means this backend has no public address: the user
 	// names theirs (their Hermes gateway). The URL is validated before
-	// North will dial it; see ParseGatewayURL.
+	// Khepri will dial it; see ParseGatewayURL.
 	RequiresBaseURL bool
 }
 
@@ -72,7 +72,7 @@ type BYOProvider struct {
 //
 // That one answers "which providers can this server build from its own
 // environment", and includes the fake client and the self-hosted Hermes
-// gateway — both of which belong to North rather than to a user. This one
+// gateway — both of which belong to Khepri rather than to a user. This one
 // answers "which providers may a person point their own key at".
 var Catalog = []BYOProvider{
 	{
@@ -96,7 +96,7 @@ var Catalog = []BYOProvider{
 		Name: "nvidia", Label: "NVIDIA",
 		BaseURL: "https://integrate.api.nvidia.com/v1", DefaultModel: "meta/llama-3.3-70b-instruct",
 		KeyHint: "nvapi-…",
-		Note:    "Free models, and what North's own free tier already runs on.",
+		Note:    "Free models, and what Khepri's own free tier already runs on.",
 	},
 	{
 		// No VerifyPath: Gemini is not an OpenAI-dialect backend and has no
@@ -120,7 +120,7 @@ var Catalog = []BYOProvider{
 // Anthropic is deliberately absent. Its native API is a different dialect, and
 // its OpenAI-compatibility endpoint is a documented shim with parity caveats —
 // not something to ship on the strength of a plan. Claude is reachable today
-// through OpenRouter with a model beginning "anthropic/", which is how North
+// through OpenRouter with a model beginning "anthropic/", which is how Khepri
 // reaches it already.
 func ByName(name string) (BYOProvider, bool) {
 	for _, p := range Catalog {

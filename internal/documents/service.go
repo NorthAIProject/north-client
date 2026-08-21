@@ -31,7 +31,7 @@ const (
 	// searchPageLimit is the default page size on the dedicated search page.
 	searchPageLimit = 20
 
-	// maxUploadBytes is what North will read from an upload. Text documents are
+	// maxUploadBytes is what Khepri will read from an upload. Text documents are
 	// small; anything larger is a file somebody chose by mistake, and reading
 	// it costs memory before anything has looked at what it is.
 	maxUploadBytes = 8 << 20 // 8 MiB
@@ -71,7 +71,7 @@ type Service struct {
 	opts Options
 
 	// embeddings is nil unless a provider is configured. Retrieval then runs
-	// full-text only, which is what North did before embeddings existed.
+	// full-text only, which is what Khepri did before embeddings existed.
 	embeddings QueryEmbedder
 	logger     *slog.Logger
 }
@@ -91,7 +91,7 @@ func (s *Service) WithEmbeddings(embedder QueryEmbedder, log *slog.Logger) *Serv
 	return s
 }
 
-// CreateNote stores a document written inside North.
+// CreateNote stores a document written inside Khepri.
 func (s *Service) CreateNote(ctx context.Context, userID uuid.UUID, title, body string) (Document, error) {
 	title = strings.TrimSpace(title)
 	body = strings.TrimSpace(body)
@@ -104,7 +104,7 @@ func (s *Service) CreateNote(ctx context.Context, userID uuid.UUID, title, body 
 	}
 	switch {
 	case body == "":
-		errs = errs.Add("body", "Write something for North to remember.")
+		errs = errs.Add("body", "Write something for Khepri to remember.")
 	case len(body) > maxNoteLen:
 		errs = errs.Add("body", "This note is too long. Split it into a few.")
 	}
@@ -131,14 +131,14 @@ func (s *Service) CreateNote(ctx context.Context, userID uuid.UUID, title, body 
 //
 // The bytes go to object storage and are never copied into the database: the
 // file the person handed over stays exactly as they handed it over, and
-// everything North derives from it can be thrown away and rebuilt.
+// everything Khepri derives from it can be thrown away and rebuilt.
 func (s *Service) Upload(ctx context.Context, userID uuid.UUID, filename, mime string, body io.Reader) (Document, error) {
 	filename = filepath.Base(strings.TrimSpace(filename))
 
 	ext := strings.ToLower(filepath.Ext(filename))
 	if !acceptedExtensions[ext] {
 		return Document{}, apperr.FieldErrors{}.Add("file",
-			"North can read Markdown, plain text, and PDF files.").OrNil()
+			"Khepri can read Markdown, plain text, and PDF files.").OrNil()
 	}
 	if s.storage == nil {
 		return Document{}, fmt.Errorf("documents: no object storage configured")
@@ -407,7 +407,7 @@ func (s *Service) Attention(ctx context.Context, userID uuid.UUID) ([]Problem, e
 			p.Kind = ProblemFailed
 			p.Detail = d.ParseError
 			if p.Detail == "" {
-				p.Detail = "North could not read this one."
+				p.Detail = "Khepri could not read this one."
 			}
 
 		case d.Status == StatusPending && time.Since(d.CreatedAt) > stuckAfter:
@@ -416,15 +416,15 @@ func (s *Service) Attention(ctx context.Context, userID uuid.UUID) ([]Problem, e
 
 		case d.Status == StatusReady && d.LineCount == 0:
 			p.Kind = ProblemEmpty
-			p.Detail = "North read this and found no text in it."
+			p.Detail = "Khepri read this and found no text in it."
 
 		case d.IsStale():
 			p.Kind = ProblemStale
-			p.Detail = "This changed after North last read it."
+			p.Detail = "This changed after Khepri last read it."
 
 		case d.ReadByAnotherChunker(fingerprint):
 			p.Kind = ProblemOldReader
-			p.Detail = "North reads documents differently now. Re-reading this will improve what it finds."
+			p.Detail = "Khepri reads documents differently now. Re-reading this will improve what it finds."
 
 		default:
 			continue
@@ -474,7 +474,7 @@ func (s *Service) Reindex(ctx context.Context, userID uuid.UUID) error {
 // ReindexDocument rebuilds one document's chunks.
 //
 // The per-document form of Reindex, for the case the attention list names: a
-// single file North read badly, or read under bounds it no longer uses. Fetches
+// single file Khepri read badly, or read under bounds it no longer uses. Fetches
 // the row first so that a request naming somebody else's document, or one that
 // has been deleted, enqueues nothing.
 func (s *Service) ReindexDocument(ctx context.Context, id, userID uuid.UUID) error {
@@ -544,7 +544,7 @@ func classifyUpload(ext string, content []byte) (string, error) {
 	if ext == ".pdf" {
 		if sniffed != "application/pdf" && !bytes.HasPrefix(content, []byte("%PDF")) {
 			return "", apperr.FieldErrors{}.Add("file",
-				"That does not look like a PDF North can read.").OrNil()
+				"That does not look like a PDF Khepri can read.").OrNil()
 		}
 		return "application/pdf", nil
 	}

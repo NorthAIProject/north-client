@@ -21,7 +21,7 @@ templ IndexPage(user users.User, analyses []analysis.Analysis, errMsg string) {
 			<header class="mb-6">
 				<h1 class="text-2xl font-semibold tracking-tight">Form check</h1>
 				<p class="text-muted-foreground mt-1 text-sm">
-					Upload a clip of a working set. North watches it and points at the
+					Upload a clip of a working set. Khepri watches it and points at the
 					moments worth fixing — you can see each one for yourself.
 				</p>
 			</header>
@@ -151,7 +151,7 @@ templ StatusFragment(item analysis.Analysis) {
 				@card.Content() {
 					<div class="text-muted-foreground flex items-center gap-3 py-6 text-sm">
 						<span class="border-muted-foreground/30 border-t-muted-foreground size-4 animate-spin rounded-full border-2"></span>
-						North is watching your set. This usually takes under a minute.
+						Khepri is watching your set. This usually takes under a minute.
 					</div>
 				}
 			}
@@ -183,7 +183,7 @@ templ result(a analysis.FormAnalysis) {
 		@card.Header() {
 			<div class="flex items-center justify-between gap-3">
 				@card.Title(card.TitleProps{Class: "text-base"}) {
-					What North saw
+					What Khepri saw
 				}
 				@confidenceBadge(a.Confidence)
 			</div>
@@ -198,7 +198,7 @@ templ result(a analysis.FormAnalysis) {
 		// faults, and the fix is a better camera angle.
 		@alert.Alert() {
 			@alert.Description() {
-				North could not see the movement clearly enough to judge it. Try
+				Khepri could not see the movement clearly enough to judge it. Try
 				filming from the side, further back, with your whole body in frame.
 			}
 		}

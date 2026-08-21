@@ -198,7 +198,7 @@ func TestTheHTTPClientOutlastsALongPoll(t *testing.T) {
 	}
 }
 
-// Telegram rejects an over-long message rather than truncating it, so North
+// Telegram rejects an over-long message rather than truncating it, so Khepri
 // splits — and the buttons ride on the last part, where somebody has finished
 // reading before being asked to decide.
 func TestALongReplyIsSplitWithButtonsOnTheLastPart(t *testing.T) {

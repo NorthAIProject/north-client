@@ -29,7 +29,7 @@
   },
   {
     "name": "ask_coach",
-    "description": "Ask North's coach a question. The reply is grounded in the user's goals, check-ins, training, and remembered facts, and the exchange is saved to their history like any other conversation.",
+    "description": "Ask Khepri's coach a question. The reply is grounded in the user's goals, check-ins, training, and remembered facts, and the exchange is saved to their history like any other conversation.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -207,7 +207,7 @@
   },
   {
     "name": "knowledge_status",
-    "description": "Report what North has actually read: document counts by state, how many passages are indexed, which documents have changed since they were last read, and what the last indexing pass did. Use it before concluding the user has not told North something.",
+    "description": "Report what Khepri has actually read: document counts by state, how many passages are indexed, which documents have changed since they were last read, and what the last indexing pass did. Use it before concluding the user has not told Khepri something.",
     "inputSchema": {
       "additionalProperties": false,
       "type": "object"
@@ -266,7 +266,7 @@
   },
   {
     "name": "search_exercises",
-    "description": "Find exercises in North's catalog, by name, by the muscle they train, or by the equipment they need. Use this before recommending an exercise, so the muscles you describe are the catalog's and not your own recollection.",
+    "description": "Find exercises in Khepri's catalog, by name, by the muscle they train, or by the equipment they need. Use this before recommending an exercise, so the muscles you describe are the catalog's and not your own recollection.",
     "inputSchema": {
       "additionalProperties": false,
       "description": "search terms; all are optional, but give at least one",
@@ -333,7 +333,7 @@
   },
   {
     "name": "search_ingredients",
-    "description": "Look up foods in North's ingredient database and read their nutrition per 100g. Use this rather than quoting figures from memory, so the numbers match what the person would see if they logged it.",
+    "description": "Look up foods in Khepri's ingredient database and read their nutrition per 100g. Use this rather than quoting figures from memory, so the numbers match what the person would see if they logged it.",
     "inputSchema": {
       "additionalProperties": false,
       "description": "what to look for",
@@ -352,7 +352,7 @@
   },
   {
     "name": "search_knowledge",
-    "description": "Search what North has remembered about the user — the durable facts, preferences, and constraints the coach reasons from. Only approved memories are returned.",
+    "description": "Search what Khepri has remembered about the user — the durable facts, preferences, and constraints the coach reasons from. Only approved memories are returned.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {

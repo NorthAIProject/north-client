@@ -54,7 +54,7 @@ func TestPrivateChatsAreAnswered(t *testing.T) {
 	}
 }
 
-// Fail closed. A chat whose type North does not recognise is not assumed to be
+// Fail closed. A chat whose type Khepri does not recognise is not assumed to be
 // private, and is not left either — leaving a chat that cannot be identified
 // would be its own kind of wrong.
 func TestAnUnknownChatTypeIsIgnored(t *testing.T) {

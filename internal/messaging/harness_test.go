@@ -19,7 +19,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
-// harness is one North, one account, one fake model.
+// harness is one Khepri, one account, one fake model.
 //
 // Built on a real database for the reason testdb gives: the identity this
 // package is about is a unique index and a single-use UPDATE, and a fake
@@ -59,7 +59,7 @@ func newHarness(t *testing.T, client *fake.Client, opts harnessOptions) harness 
 	}
 	// Register leaves an account that still needs onboarding, and the adapter
 	// refuses those on purpose. Every test here is about somebody already using
-	// North, so mark it done rather than repeating the questionnaire.
+	// Khepri, so mark it done rather than repeating the questionnaire.
 	user, err = userSvc.MarkOnboarded(ctx, user.ID)
 	if err != nil {
 		t.Fatalf("mark onboarded: %v", err)

@@ -64,7 +64,7 @@ func TestARejectedKeyIsNotStored(t *testing.T) {
 }
 
 // A provider having a bad minute says nothing about the key. Refusing then
-// would make North's settings page depend on somebody else's uptime.
+// would make Khepri's settings page depend on somebody else's uptime.
 func TestAnUnreachableProviderDoesNotBlockTheSave(t *testing.T) {
 	svc, _, user := newService(t, sealer(t, 1))
 	svc = svc.WithVerifier(&stubVerifier{err: errors.New("dial tcp: no route to host")})

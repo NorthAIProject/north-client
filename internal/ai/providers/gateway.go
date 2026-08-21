@@ -35,7 +35,7 @@ func ParseGatewayURL(raw string) (string, error) {
 
 	host := strings.ToLower(parsed.Hostname())
 	if host == "" || blockedHost(host) {
-		return "", fmt.Errorf("that host is not a Hermes gateway North will call")
+		return "", fmt.Errorf("that host is not a Hermes gateway Khepri will call")
 	}
 
 	path := strings.TrimRight(parsed.Path, "/")
@@ -118,7 +118,7 @@ func allowedGatewayIP(ip net.IP) bool {
 	if tailscaleIP(ip) {
 		return true
 	}
-	// LAN Hermes next to a self-hosted North.
+	// LAN Hermes next to a self-hosted Khepri.
 	if ip.IsPrivate() {
 		return true
 	}

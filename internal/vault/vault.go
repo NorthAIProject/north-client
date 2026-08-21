@@ -52,7 +52,7 @@ func (s *Service) Connect(ctx context.Context, userID uuid.UUID, rootPath string
 	}
 	info, err := os.Stat(rootPath)
 	if err != nil || !info.IsDir() {
-		return Connection{}, apperr.FieldErrors{}.Add("path", "North could not find that folder on this machine.").OrNil()
+		return Connection{}, apperr.FieldErrors{}.Add("path", "Khepri could not find that folder on this machine.").OrNil()
 	}
 
 	conn, err := s.repo.Upsert(ctx, userID, rootPath)

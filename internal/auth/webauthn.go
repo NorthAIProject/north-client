@@ -41,7 +41,7 @@ func newPasskeyAuth(sessions *SessionStore, opts ServiceOptions, baseURL string,
 	}
 	display := strings.TrimSpace(opts.WebAuthnDisplayName)
 	if display == "" {
-		display = "North"
+		display = "Khepri"
 	}
 
 	wa, err := webauthn.New(&webauthn.Config{
@@ -521,7 +521,7 @@ func credentialFromDB(row authdb.WebauthnCredential) webauthn.Credential {
 	}
 }
 
-// webAuthnUser implements webauthn.User for a North account.
+// webAuthnUser implements webauthn.User for a Khepri account.
 type webAuthnUser struct {
 	id          []byte
 	name        string

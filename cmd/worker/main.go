@@ -23,6 +23,7 @@ import (
 	"github.com/joho/godotenv"
 
 	"github.com/NorthAIProject/north-client/internal/activity"
+	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/ai/providers"
 	"github.com/NorthAIProject/north-client/internal/biometrics"
 	"github.com/NorthAIProject/north-client/internal/calculator"
@@ -87,11 +88,16 @@ func run() error {
 	}
 	defer pool.Close()
 
-	registry, err := providers.Build(ctx, cfg.AI.ProviderOptions())
+	registry, err := providers.Build(ctx, cfg.AI.ProviderOptions(cfg.Env))
 	if err != nil {
 		return err
 	}
 	cfg.AI.LogReady(log, registry)
+
+	// One runner for the process. Every AI call the worker makes goes through
+	// it, so a provider that is rate limited costs a fallback rather than a
+	// failed job.
+	runner := ai.NewRunner(registry, cfg.AI.ChainSet())
 
 	storage, err := media.NewS3Storage(ctx, media.S3Options{
 		Endpoint:     cfg.Storage.Endpoint,
@@ -120,8 +126,8 @@ func run() error {
 		Memories:      memories.NewService(memories.NewRepository(pool)),
 		Conversations: conversations.NewService(conversations.NewRepository(pool)),
 		Extractor: &memories.AIExtractor{
-			Registry: registry,
-			Model:    cfg.AI.FastModel,
+			Runner: runner,
+			Model:  cfg.AI.FastModel,
 		},
 		Log: log,
 	}
@@ -253,7 +259,7 @@ func run() error {
 		Repository: reports.NewRepository(pool),
 		Users:      userSvc,
 		Queue:      queue,
-		Client:     reports.ClientFromRegistry(registry),
+		Client:     reports.ClientFromChain(runner),
 		Context:    reviewContext,
 		FastModel:  cfg.AI.FastModel,
 		Notify:     briefingNotify,
@@ -317,7 +323,7 @@ func run() error {
 	// lost to a restart.
 	summarizer := conversations.NewSummarizer(conversations.SummarizerOptions{
 		Conversations: memoryExtract.Conversations,
-		Client:        conversations.ClientFromRegistry(registry),
+		Client:        conversations.ClientFromChain(runner),
 		Model:         cfg.AI.FastModel,
 		Log:           log,
 	})

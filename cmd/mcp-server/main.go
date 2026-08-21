@@ -115,7 +115,7 @@ func run() error {
 	}
 	defer pool.Close()
 
-	registry, err := providers.Build(ctx, cfg.AI.ProviderOptions())
+	registry, err := providers.Build(ctx, cfg.AI.ProviderOptions(cfg.Env))
 	if err != nil {
 		return err
 	}

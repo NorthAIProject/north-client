@@ -25,6 +25,14 @@ type Options struct {
 	// head becomes the registry default.
 	Chain []string
 
+	// AllowFakeHead lets a chain that resolves to nothing fall back to the fake
+	// client instead of failing the boot. Set outside production, where a
+	// checkout with no credentials at all should still start and be clickable.
+	//
+	// In production the same state is a misconfiguration: a server that boots
+	// and answers every user as the fake coach looks alive and is not.
+	AllowFakeHead bool
+
 	GeminiAPIKey string
 	GeminiModel  string
 
@@ -93,15 +101,33 @@ func Build(ctx context.Context, opts Options) (*ai.Registry, error) {
 	))
 
 	// The chain may name providers whose keys are absent; those were skipped
-	// above and Resolve drops them. What cannot be tolerated is a chain with
-	// nothing left in it, because every AI call would then fail at runtime
-	// rather than at boot.
+	// above and Resolve drops them. A chain with nothing left in it is the one
+	// state worth deciding about, because every AI call would otherwise fail at
+	// runtime rather than at boot.
+	//
+	// Outside production that is a laptop with no credentials, and refusing to
+	// start makes the whole application unrunnable over a feature the developer
+	// may not be working on. The fake client is always registered, so there is
+	// something to fall back to; LogReady says so loudly. In production the
+	// same state means a deployment shipped without its keys, and a server
+	// answering every user as the fake coach is worse than one that never
+	// started.
 	usable := r.Resolve(opts.Chain)
 	if len(usable) == 0 {
-		return nil, fmt.Errorf(
-			"providers: no provider in AI_PROVIDER_CHAIN %v has its credentials set (registered: %v)",
-			opts.Chain, r.Names(),
-		)
+		if !opts.AllowFakeHead {
+			return nil, fmt.Errorf(
+				"providers: no provider in AI_PROVIDER_CHAIN %v has its credentials set (registered: %v)",
+				opts.Chain, r.Names(),
+			)
+		}
+		// Named explicitly rather than taken from the registry default, which
+		// is whichever client registered first — possibly a real provider the
+		// chain deliberately left out.
+		fakeClient, err := r.Get("fake")
+		if err != nil {
+			return nil, fmt.Errorf("providers: no usable provider and no fake to fall back to: %w", err)
+		}
+		usable = []ai.Client{fakeClient}
 	}
 
 	if err := r.SetDefault(usable[0].Name()); err != nil {

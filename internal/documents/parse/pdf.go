@@ -18,7 +18,7 @@ const KindPDF = "pdf"
 // does not do OCR. Its own error so the person can be told that specifically,
 // rather than "this document produced nothing to search", which sounds like a
 // bug in North rather than a property of their file.
-var ErrNoText = errors.New("this PDF has no text in it — it looks like a scan, and North cannot read images yet")
+var ErrNoText = errors.New("this PDF has no text in it — it looks like a scan, and Khepri cannot read images yet")
 
 // PDF extracts a PDF's text into the same shape as any other document.
 //
@@ -55,6 +55,14 @@ func PDF(filename string, data []byte) (Document, error) {
 		if err != nil {
 			// One unreadable page must not cost the whole document. The gap is
 			// recorded where a reader will see it rather than silently skipped.
+			//
+			// Still "North" after the rename to Khepri, deliberately. This
+			// string is written into stored document text and compared against
+			// on the way out (see the outline pass below), so it is a data
+			// format, not brand copy. Renaming it would strand every page
+			// already indexed under the old wording: they would stop being
+			// recognised as gaps and start being read as content. Changing it
+			// means migrating the extracted text of every stored document.
 			text = "[North could not read this page]"
 		}
 

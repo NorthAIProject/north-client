@@ -25,7 +25,7 @@ var (
 		Kind:    stepKindGoal,
 		Eyebrow: "Start here",
 		Title:   "Name one thing you are working toward",
-		Body:    "North reads your goals before every reply. One is enough.",
+		Body:    "Khepri reads your goals before every reply. One is enough.",
 		CTA:     "Add a goal",
 		Href:    "/app/goals",
 	}
@@ -40,7 +40,7 @@ var (
 	stepChat = NextStep{
 		Kind:    stepKindChat,
 		Eyebrow: "Coach",
-		Title:   "Talk to North about the week",
+		Title:   "Talk to Khepri about the week",
 		Body:    "It already has your goals. Start with what is in the way.",
 		CTA:     "Open the coach",
 		Href:    "/app/chat",

@@ -32,7 +32,7 @@ templ Base(title string) {
 			// htmx throws away 4xx responses rather than swapping them, which makes
 			// a validated form silently do nothing: the server answers 422 with the
 			// form re-rendered around its error messages, and the browser discards
-			// it. 422 is how North reports a rejected form, so it is swapped like a
+			// it. 422 is how Khepri reports a rejected form, so it is swapped like a
 			// success and not logged as a transport error. 429 is here for the same
 			// reason: a rate-limit refusal carries the panel explaining itself, and
 			// discarding it would leave the button looking like it did nothing. The

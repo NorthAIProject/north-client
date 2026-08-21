@@ -15,7 +15,7 @@ import (
 // Its argument is continuity rather than capability, so it is built around
 // demonstrations a visitor can operate instead of a list of features they have
 // to take on trust. The sections are laid out along a time axis — the bearing
-// line — because the claim North is sold on is that it is still useful in month
+// line — because the claim Khepri is sold on is that it is still useful in month
 // eight.
 templ Page() {
 	@layout.Public("", signedIn(ctx)) {
@@ -103,7 +103,7 @@ templ hero() {
 				}
 				<h1 class="mt-7 text-[clamp(2.5rem,6vw,4.25rem)] font-medium leading-[0.98] tracking-[-0.035em] text-balance">
 					Most AI forgets you by Tuesday.
-					<span class="block text-muted-foreground">North has been keeping notes since March.</span>
+					<span class="block text-muted-foreground">Khepri has been keeping notes since March.</span>
 				</h1>
 				<p class="mt-7 max-w-[54ch] text-lg leading-relaxed text-muted-foreground">
 					One coach with one memory — on the web, in Telegram, and inside any tool
@@ -157,7 +157,7 @@ templ heroFilm() {
 				playsinline
 				preload="metadata"
 				poster="/assets/video/north-hero-poster.webp"
-				aria-label="North product film: persistent coaching memory across web and messaging surfaces"
+				aria-label="Khepri product film: persistent coaching memory across web and messaging surfaces"
 			>
 				<source src="/assets/video/north-hero.mp4" type="video/mp4"/>
 			</video>
@@ -212,7 +212,7 @@ templ threadEntry(t threadTurn, index int) {
 			<span class="text-hairline" aria-hidden="true">·</span>
 			@monoLabel(t.Surface)
 			if !t.FromUser {
-				<span class="font-mono text-[10px] uppercase tracking-[0.14em] text-agent">North</span>
+				<span class="font-mono text-[10px] uppercase tracking-[0.14em] text-agent">Khepri</span>
 			}
 		</div>
 		<p class="mt-1.5 text-sm leading-relaxed text-foreground/90">{ t.Body }</p>

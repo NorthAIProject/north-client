@@ -94,6 +94,15 @@ type AIConfig struct {
 	// self-hosted backends carry them by default.
 	FreeChain []string
 
+	// Variants are the chain entries written as "provider=model": the same
+	// backend as their base provider, pinned to a different model.
+	//
+	// They exist because a chain entry names a provider and a provider carries
+	// exactly one model, which leaves "OpenRouter on Sonnet, then OpenRouter on
+	// a free model" inexpressible. Derived from Chain and FreeChain during
+	// Load; ProviderOptions turns each one into its own registered client.
+	Variants []ProviderVariant
+
 	// Model overrides the head provider's default model. Empty means each
 	// provider uses its own configured model.
 	Model     string
@@ -115,6 +124,28 @@ type AIConfig struct {
 	// OpenRouter's attribution headers. Its convention, not the dialect's.
 	OpenRouterSiteURL  string
 	OpenRouterSiteName string
+
+	// OpenRouterFreeAPIKey funds the free floor — the tail of every chain,
+	// reached by users with no key of their own and by deployments with no key
+	// at all. Optional: unset, the free variants inherit OpenRouter's ordinary
+	// key.
+	//
+	// It is separate so North's own floor can sit on a different account from
+	// an operator's paid credit, and because a key handed to every user needs a
+	// spend ceiling. That ceiling is enforced in Load: with this set, every
+	// OpenRouter variant must name a ":free" model.
+	OpenRouterFreeAPIKey string
+}
+
+// ProviderVariant is one chain entry of the form "provider=model".
+//
+// Entry is also the registry key. A variant registers under the exact string
+// that named it, so Registry.Resolve finds it without a lookup table and the
+// chain, the logs, and the registry all say the same thing.
+type ProviderVariant struct {
+	Entry string
+	Base  string
+	Model string
 }
 
 // EmbeddingConfig turns on semantic retrieval.
@@ -303,7 +334,7 @@ func Load() (*Config, error) {
 		MCPAllowedOrigins: commaList("MCP_ALLOWED_ORIGINS"),
 
 		WebAuthnRPID:        optional("WEBAUTHN_RP_ID", ""),
-		WebAuthnDisplayName: optional("WEBAUTHN_RP_DISPLAY_NAME", "North"),
+		WebAuthnDisplayName: optional("WEBAUTHN_RP_DISPLAY_NAME", "Khepri"),
 
 		Telegram: TelegramConfig{
 			BotToken:      strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN")),
@@ -349,7 +380,9 @@ func Load() (*Config, error) {
 			},
 
 			OpenRouterSiteURL:  os.Getenv("OPENROUTER_SITE_URL"),
-			OpenRouterSiteName: optional("OPENROUTER_SITE_NAME", "North"),
+			OpenRouterSiteName: optional("OPENROUTER_SITE_NAME", "Khepri"),
+
+			OpenRouterFreeAPIKey: strings.TrimSpace(os.Getenv("OPENROUTER_FREE_API_KEY")),
 		},
 
 		Storage: StorageConfig{
@@ -447,11 +480,15 @@ func Load() (*Config, error) {
 
 	// AI_PROVIDER is the older single-provider form. Honouring it as a
 	// one-element chain keeps existing .env files and deployments working.
+	//
+	// The free floor is appended only when nothing was configured. An operator
+	// who wrote a chain gets the chain they wrote — silently extending an
+	// explicit list would send requests to a provider they did not name.
 	if len(cfg.AI.Chain) == 0 {
-		cfg.AI.Chain = []string{optional("AI_PROVIDER", "gemini")}
+		cfg.AI.Chain = append([]string{optional("AI_PROVIDER", "gemini")}, freeFloor...)
 	}
 	if len(cfg.AI.FreeChain) == 0 {
-		cfg.AI.FreeChain = cfg.AI.Chain
+		cfg.AI.FreeChain = append([]string{}, freeFloor...)
 	}
 
 	// Only the names are checked here. Whether a named provider has its
@@ -462,13 +499,50 @@ func Load() (*Config, error) {
 	// Reported once per distinct name: the free chain defaults to the main one,
 	// so a single typo would otherwise be listed twice.
 	reported := make(map[string]bool)
-	for _, name := range append(append([]string{}, cfg.AI.Chain...), cfg.AI.FreeChain...) {
-		if knownProviders[name] || reported[name] {
+	seenVariant := make(map[string]bool)
+	for _, entry := range append(append([]string{}, cfg.AI.Chain...), cfg.AI.FreeChain...) {
+		base, model := parseChainEntry(entry)
+
+		if !knownProviders[base] {
+			if !reported[base] {
+				reported[base] = true
+				problems = append(problems, fmt.Sprintf(
+					"%q is not a known AI provider (%s)", base, strings.Join(knownProviderNames(), ", ")))
+			}
 			continue
 		}
-		reported[name] = true
-		problems = append(problems, fmt.Sprintf(
-			"%q is not a known AI provider (%s)", name, strings.Join(knownProviderNames(), ", ")))
+
+		if model == "" || seenVariant[entry] {
+			continue
+		}
+		seenVariant[entry] = true
+
+		// Only the OpenAI-dialect backends are one client with a swappable
+		// model. Gemini is a different SDK, and nothing needs a pinned Gemini
+		// model yet, so asking for one is a typo worth reporting rather than a
+		// branch worth writing.
+		if !compatibleProviders[base] {
+			problems = append(problems, fmt.Sprintf(
+				"%q pins a model to %q, which is not an OpenAI-dialect provider; only %s accept provider=model",
+				entry, base, strings.Join(compatibleProviderNames(), ", ")))
+			continue
+		}
+
+		cfg.AI.Variants = append(cfg.AI.Variants, ProviderVariant{Entry: entry, Base: base, Model: model})
+	}
+
+	// The free key is North's own, offered to every user who has nothing else.
+	// Restricting it to models that bill nothing is what makes that safe by
+	// construction rather than by convention: a paid model on this key would
+	// charge North for anonymous traffic.
+	if cfg.AI.OpenRouterFreeAPIKey != "" {
+		for _, v := range cfg.AI.Variants {
+			if v.Base == "openrouter" && !strings.HasSuffix(v.Model, ":free") {
+				problems = append(problems, fmt.Sprintf(
+					"OPENROUTER_FREE_API_KEY is set, so %q must name a %q model; as written it would bill Khepri's own account",
+					v.Entry, ":free"))
+			}
+		}
 	}
 
 	if len(problems) > 0 {
@@ -500,6 +574,17 @@ func (c AIConfig) LogReady(log *slog.Logger, r *ai.Registry) {
 		slog.String("default", r.DefaultName()),
 		slog.Any("registered", r.Names()),
 	)
+
+	// providers.Build falls back to the fake client outside production rather
+	// than refusing to start. That is a deliberate convenience and an easy
+	// thing to spend an afternoon confused by, so it is stated in as many words
+	// rather than left to be inferred from default=fake above.
+	if r.DefaultName() == "fake" {
+		log.Warn("no AI provider has its credentials set; the coach will reply with canned text",
+			slog.Any("chain", c.Chain),
+			slog.String("fix", "set OPENROUTER_API_KEY, or any other provider key named in AI_PROVIDER_CHAIN"),
+		)
+	}
 
 	have := make(map[string]bool, len(r.Names()))
 	for _, name := range r.Names() {
@@ -534,11 +619,16 @@ func (c AIConfig) ChainSet() ai.ChainSet {
 //
 // The dependency runs config -> providers, never the reverse: providers stays
 // ignorant of how North reads its environment.
-func (c AIConfig) ProviderOptions() providers.Options {
-	return providers.Options{
-		Chain:        c.Chain,
-		GeminiAPIKey: c.GeminiAPIKey,
-		GeminiModel:  c.GeminiModel,
+//
+// The environment is a parameter rather than a field on AIConfig because it
+// decides one thing only: whether a chain that resolves to nothing is a warning
+// or a refusal to start.
+func (c AIConfig) ProviderOptions(env Environment) providers.Options {
+	opts := providers.Options{
+		Chain:         c.Chain,
+		AllowFakeHead: !env.IsProduction(),
+		GeminiAPIKey:  c.GeminiAPIKey,
+		GeminiModel:   c.GeminiModel,
 		Compatible: []providers.Compatible{
 			{
 				Name:    "openrouter",
@@ -579,6 +669,42 @@ func (c AIConfig) ProviderOptions() providers.Options {
 			},
 		},
 	}
+
+	// A variant is its base backend with one field changed. Copying the base
+	// spec keeps the address, the credential, and the dialect quirks in one
+	// place: nothing about OpenRouter is stated twice, so nothing about it can
+	// drift.
+	for _, v := range c.Variants {
+		spec, ok := findCompatible(opts.Compatible, v.Base)
+		if !ok {
+			continue
+		}
+
+		spec.Name = v.Entry
+		spec.Model = v.Model
+
+		// Load has already established that with a free key set, every
+		// OpenRouter variant is a ":free" model.
+		if v.Base == "openrouter" && c.OpenRouterFreeAPIKey != "" {
+			spec.APIKey = c.OpenRouterFreeAPIKey
+		}
+
+		opts.Compatible = append(opts.Compatible, spec)
+	}
+
+	return opts
+}
+
+// findCompatible returns the base spec a variant is derived from. Missing is
+// not an error: Load has already rejected variants on providers that have no
+// OpenAI-dialect spec.
+func findCompatible(specs []providers.Compatible, name string) (providers.Compatible, bool) {
+	for _, spec := range specs {
+		if spec.Name == name {
+			return spec, true
+		}
+	}
+	return providers.Compatible{}, false
 }
 
 func optional(key, fallback string) string {
@@ -602,12 +728,61 @@ var knownProviders = map[string]bool{
 }
 
 func knownProviderNames() []string {
-	names := make([]string, 0, len(knownProviders))
-	for name := range knownProviders {
+	return sortedNames(knownProviders)
+}
+
+// compatibleProviders is the subset of knownProviders that speak the OpenAI
+// chat dialect, and so are one client with an interchangeable model. Only these
+// can carry a "provider=model" variant.
+var compatibleProviders = map[string]bool{
+	"openrouter": true,
+	"nvidia":     true,
+	"xai":        true,
+	"hermes":     true,
+}
+
+func compatibleProviderNames() []string {
+	return sortedNames(compatibleProviders)
+}
+
+func sortedNames(set map[string]bool) []string {
+	names := make([]string, 0, len(set))
+	for name := range set {
 		names = append(names, name)
 	}
 	sort.Strings(names)
 	return names
+}
+
+// freeFloor is the last resort of every chain: OpenRouter models that cost
+// nothing to call.
+//
+// It is the answer to "the coach must work on any machine". A checkout with one
+// OpenRouter key — or a user with no key of their own, or an account that ran
+// out of credit mid-conversation — still reaches a model, because these two
+// cannot refuse on billing grounds. They are slower than the paid models above
+// them in the chain, which is why they are last and not first.
+//
+// Free-tier slugs are retired and renamed by OpenRouter from time to time. When
+// one stops resolving, the symptom is a 404 that ai.Failover walks past, not an
+// outage.
+var freeFloor = []string{
+	"openrouter=z-ai/glm-5.2:free",
+	"openrouter=nvidia/nemotron-3-ultra-550b-a55b:free",
+}
+
+// parseChainEntry splits a chain entry into its provider and its optional model
+// override, returning an empty model for a plain provider name.
+//
+// The split is on the first "=" only. A model slug carries its own punctuation
+// — "z-ai/glm-5.2:free" is a single name, not a nested key — so everything
+// after the first separator belongs to the model.
+func parseChainEntry(entry string) (base, model string) {
+	base, model, found := strings.Cut(entry, "=")
+	if !found {
+		return strings.TrimSpace(entry), ""
+	}
+	return strings.TrimSpace(base), strings.TrimSpace(model)
 }
 
 // providerChain reads a comma-separated preference list, discarding blanks so

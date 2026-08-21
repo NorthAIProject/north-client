@@ -147,14 +147,14 @@ func TestTheGatewayFieldIsDrivenByTheCatalogue(t *testing.T) {
 // replaced their real submitted values with "true"/"false" and left neither one
 // checked on a first load — the card opened with no mode selected at all.
 func TestModeRadiosKeepTheirValuesAndOneIsAlwaysChecked(t *testing.T) {
-	t.Run("no credential opens on North's AI", func(t *testing.T) {
+	t.Run("no credential opens on Khepri's AI", func(t *testing.T) {
 		html := renderPage(t, ConnectForm{}, enabledPanel())
 
 		if strings.Contains(html, `:value="false"`) || strings.Contains(html, `:value="true"`) {
 			t.Error("a boolean is bound over the radio's value again")
 		}
 		if !strings.Contains(html, `name="mode" value="north" x-model="mode" checked`) {
-			t.Error(`"Use North's AI" is not checked when there is no stored credential`)
+			t.Error(`"Use Khepri's AI" is not checked when there is no stored credential`)
 		}
 		if !strings.Contains(html, `&#34;mode&#34;:&#34;north&#34;`) {
 			t.Error("Alpine state does not open in north mode")

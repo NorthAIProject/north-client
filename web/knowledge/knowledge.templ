@@ -1,6 +1,6 @@
 // Package knowledge renders what the coach can actually see.
 //
-// The page answers a question North could not answer before: of everything you
+// The page answers a question Khepri could not answer before: of everything you
 // have given it, what has it read, what is it still working on, and what did it
 // fail on. A memory system nobody can inspect is one nobody has reason to
 // trust.
@@ -26,7 +26,7 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/textarea"
 )
 
-// NoteForm is a note written directly in North.
+// NoteForm is a note written directly in Khepri.
 type NoteForm struct {
 	Title  string
 	Body   string
@@ -169,7 +169,7 @@ templ libraryToolbar(view View) {
 							"hx-target":    "#knowledge-search-results",
 							"hx-swap":      "innerHTML",
 							"autocomplete": "off",
-							"aria-label":   "Search what North has read",
+							"aria-label":   "Search what Khepri has read",
 						},
 					})
 				</div>
@@ -303,7 +303,7 @@ templ addNote(f NoteForm) {
 					ID:          "body",
 					Name:        "body",
 					Rows:        5,
-					Placeholder: "Markdown headings help North quote the right part.",
+					Placeholder: "Markdown headings help Khepri quote the right part.",
 					HasError:    f.fieldError("body") != "",
 				}) {
 					{ f.Body }
@@ -367,7 +367,7 @@ templ documentLibrary(view View) {
 	if len(view.Documents) == 0 {
 		@ui.Empty(ui.EmptyProps{
 			Title: "The coach has nothing to quote yet",
-			Body:  "Add a note, or drop a PDF, Markdown, or text file. North only uses what it has read here.",
+			Body:  "Add a note, or drop a PDF, Markdown, or text file. Khepri only uses what it has read here.",
 		}) {
 			@button.Button(button.Props{Href: "#add-note", Class: "bg-signal text-background hover:bg-signal/90"}) {
 				Write a note
@@ -494,7 +494,7 @@ templ statusBadge(d document.Document) {
 templ exportSection() {
 	<div class="border-hairline border-t pt-4">
 		<p class="text-muted-foreground text-xs leading-relaxed">
-			Take everything North knows about you — Markdown and original files.
+			Take everything Khepri knows about you — Markdown and original files.
 		</p>
 		<div class="mt-2">
 			@button.Button(button.Props{

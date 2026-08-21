@@ -88,7 +88,7 @@ func (s *Service) runCommand(ctx context.Context, user users.User, in InboundMes
 			return OutboundMessage{}, true, err
 		}
 		if !unlinked {
-			return OutboundMessage{Text: "This chat is not linked to a North account."}, true, nil
+			return OutboundMessage{Text: "This chat is not linked to a Khepri account."}, true, nil
 		}
 
 		s.log.Info("messaging unlinked a chat", "platform", in.Platform, "user_id", user.ID)
@@ -101,7 +101,7 @@ func (s *Service) runCommand(ctx context.Context, user users.User, in InboundMes
 	}
 }
 
-// helpText is deliberately about what North does rather than what it is.
+// helpText is deliberately about what Khepri does rather than what it is.
 //
 // The two things worth saying are the ones somebody cannot discover by trying:
 // that writes are confirmed before they happen, and that this is the same

@@ -54,7 +54,7 @@ type Services struct {
 	Users *users.Service
 }
 
-// Build registers every capability North exposes to a model.
+// Build registers every capability Khepri exposes to a model.
 //
 // One list, read by both the coach's chat loop and the MCP server. A tool
 // added here appears in both without anything else being touched, which is the
@@ -110,7 +110,7 @@ func searchExercises(svc *exercises.Service) Capability {
 	return Capability{
 		Tool: ai.Tool{
 			Name: "search_exercises",
-			Description: "Find exercises in North's catalog, by name, by the muscle they train, or by the equipment they need. " +
+			Description: "Find exercises in Khepri's catalog, by name, by the muscle they train, or by the equipment they need. " +
 				"Use this before recommending an exercise, so the muscles you describe are the catalog's and not your own recollection.",
 			Parameters: ai.Object("search terms; all are optional, but give at least one", map[string]*ai.Schema{
 				"query":     ai.String("part of an exercise name, such as 'squat'"),
@@ -273,7 +273,7 @@ func searchIngredients(svc *meals.IngredientService) Capability {
 	return Capability{
 		Tool: ai.Tool{
 			Name: "search_ingredients",
-			Description: "Look up foods in North's ingredient database and read their nutrition per 100g. " +
+			Description: "Look up foods in Khepri's ingredient database and read their nutrition per 100g. " +
 				"Use this rather than quoting figures from memory, so the numbers match what the person would see if they logged it.",
 			Parameters: ai.Object("what to look for", map[string]*ai.Schema{
 				"query": ai.String("part of a food's name, such as 'chicken'"),

@@ -78,7 +78,7 @@ func focusLabel(area string) string {
 }
 
 templ FormPage(f Form) {
-	@layout.AuthWide("Welcome to North") {
+	@layout.AuthWide("Welcome to Khepri") {
 		@checkbox.Script()
 		@mascot.Script()
 		@card.Card() {
@@ -87,10 +87,10 @@ templ FormPage(f Form) {
 					@mascot.Mascot(mascot.Props{Size: mascot.SizeMd, State: mascot.StateListening})
 				</div>
 				@card.Title() {
-					Tell North where to start
+					Tell Khepri where to start
 				}
 				@card.Description() {
-					Three quick answers. North uses them to coach you from day one — not from a blank slate.
+					Three quick answers. Khepri uses them to coach you from day one — not from a blank slate.
 				}
 			}
 			@card.Content() {
@@ -110,7 +110,7 @@ templ FormPage(f Form) {
 					@ui.CSRFInput()
 					<section class="space-y-3">
 						@label.Label(label.Props{For: "focus-fitness"}) {
-							What do you want North focused on?
+							What do you want Khepri focused on?
 						}
 						<p class="text-muted-foreground text-sm">Pick one or more.</p>
 						<div class="grid grid-cols-2 gap-3">
@@ -132,7 +132,7 @@ templ FormPage(f Form) {
 					</section>
 					<section class="space-y-3">
 						@label.Label(label.Props{For: "style-direct"}) {
-							How should North coach you?
+							How should Khepri coach you?
 						}
 						<div class="space-y-2">
 							@styleOption("style-direct", styleDirect, "Direct", "Skip pep talks. Challenge me.", f)
@@ -172,7 +172,7 @@ templ FormPage(f Form) {
 						Class:     "bg-signal text-background hover:bg-signal/90",
 						FullWidth: true,
 					}) {
-						Start with North
+						Start with Khepri
 					}
 				</form>
 			}
@@ -228,13 +228,13 @@ templ DonePage(user users.User, thread string) {
 					@mascot.Mascot(mascot.Props{Size: mascot.SizeLg, Gesture: mascot.StateCelebrate})
 				</div>
 				@card.Title() {
-					North knows where to start, { user.FirstName() }
+					Khepri knows where to start, { user.FirstName() }
 				}
 				@card.Description() {
 					if thread != "" {
-						Your focus areas, coaching style, and first goal are in place. North is already writing back.
+						Your focus areas, coaching style, and first goal are in place. Khepri is already writing back.
 					} else {
-						Your focus areas, coaching style, and first goal are in place. Talk to North whenever you are ready.
+						Your focus areas, coaching style, and first goal are in place. Talk to Khepri whenever you are ready.
 					}
 				}
 			}
@@ -246,7 +246,7 @@ templ DonePage(user users.User, thread string) {
 							Class:     "bg-signal text-background hover:bg-signal/90 w-full",
 							FullWidth: true,
 						}) {
-							Read what North said
+							Read what Khepri said
 						}
 					} else {
 						<form method="post" action="/app/chat">
@@ -256,7 +256,7 @@ templ DonePage(user users.User, thread string) {
 								Class:     "bg-signal text-background hover:bg-signal/90 w-full",
 								FullWidth: true,
 							}) {
-								Talk to North
+								Talk to Khepri
 							}
 						</form>
 					}

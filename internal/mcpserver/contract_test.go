@@ -28,7 +28,7 @@ var update = flag.Bool("update", false, "rewrite the tool contract golden file")
 
 // toolContract is the part of a tool an outside agent depends on. Deliberately
 // not the whole mcp.Tool: fields the SDK adds later should not fail this test,
-// only changes to what North actually promises.
+// only changes to what Khepri actually promises.
 type toolContract struct {
 	Name        string          `json:"name"`
 	Description string          `json:"description"`

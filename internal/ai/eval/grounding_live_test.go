@@ -47,7 +47,7 @@ func TestGroundingLive(t *testing.T) {
 			// Naming the provider on every failure matters more than it looks:
 			// the same case passes on one model and fails on another, and a
 			// bare assertion message sends the reader looking for a bug in
-			// North that is not there.
+			// Khepri that is not there.
 			for _, failure := range c.GradeReply(reply) {
 				t.Errorf("case %s [%s]: %s\n\nwhy this case exists: %s\n\nreply:\n%s",
 					c.ID, client.Name(), failure, c.Why, reply)
@@ -57,7 +57,7 @@ func TestGroundingLive(t *testing.T) {
 }
 
 // Structured output must be parseable and must respect the constraints the
-// person stated. This is the guarantee that lets North store a plan in a typed
+// person stated. This is the guarantee that lets Khepri store a plan in a typed
 // column instead of guessing at prose.
 func TestWorkoutPlanRespectsEquipmentAndDayCount(t *testing.T) {
 	client := eval.Provider(t)

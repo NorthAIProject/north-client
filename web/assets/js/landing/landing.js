@@ -393,15 +393,15 @@
       get reading() {
         const n = this.bmi;
         if (this.raw < 18.5) {
-          return `At ${this.height}cm and ${this.weight}kg the index reads ${n}, which usually means eating is the training. North would put food and sleep ahead of any programme for the first month.`;
+          return `At ${this.height}cm and ${this.weight}kg the index reads ${n}, which usually means eating is the training. Khepri would put food and sleep ahead of any programme for the first month.`;
         }
         if (this.raw < 25) {
-          return `${n} sits inside the range everyone chases, and it still tells you nothing about whether you can carry a pack for ninety minutes. North tracks that instead.`;
+          return `${n} sits inside the range everyone chases, and it still tells you nothing about whether you can carry a pack for ninety minutes. Khepri tracks that instead.`;
         }
         if (this.raw < 30) {
-          return `The index says ${n} and cannot tell muscle from anything else. North watches waist, resting heart rate, and whether your lifts still climb while you eat less — those three disagree with BMI often enough to be the ones worth measuring.`;
+          return `The index says ${n} and cannot tell muscle from anything else. Khepri watches waist, resting heart rate, and whether your lifts still climb while you eat less — those three disagree with BMI often enough to be the ones worth measuring.`;
         }
-        return `At ${n} the number is loud, and it is still one weak signal. The first thing North would change is not your weight but how many sessions in a row you finish.`;
+        return `At ${n} the number is loud, and it is still one weak signal. The first thing Khepri would change is not your weight but how many sessions in a row you finish.`;
       },
     }));
 
@@ -449,7 +449,7 @@
           endurance: "lasting longer",
           pain: "training without pain",
         }[this.goal];
-        return `${this.days} ${this.days === 1 ? "day" : "days"} a week, ${objective}, with ${this.owned}. North would spend the first three weeks proving you can hold the schedule before adding any load.`;
+        return `${this.days} ${this.days === 1 ? "day" : "days"} a week, ${objective}, with ${this.owned}. Khepri would spend the first three weeks proving you can hold the schedule before adding any load.`;
       },
 
       get split() {

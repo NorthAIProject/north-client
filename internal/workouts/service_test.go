@@ -31,10 +31,11 @@ func newService(t *testing.T, client *fake.Client) (*workouts.Service, users.Use
 
 	registry := ai.NewRegistry()
 	registry.Register(client)
+	runtime := ai.NewRunner(registry, ai.NewChainSet([]string{client.Name()}, nil))
 
 	svc := workouts.NewService(workouts.Options{
 		Repository: workouts.NewRepository(pool),
-		Registry:   registry,
+		Runner:     runtime,
 		Model:      "test-model",
 	})
 
