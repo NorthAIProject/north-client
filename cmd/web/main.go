@@ -66,6 +66,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/shared/metrics"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/NorthAIProject/north-client/internal/sleep"
+	"github.com/NorthAIProject/north-client/internal/spend"
 	"github.com/NorthAIProject/north-client/internal/toolaudit"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/vault"
@@ -228,7 +229,15 @@ func run() error {
 
 	log.Info("connected to database")
 
-	registry, err := providers.Build(ctx, cfg.AI.ProviderOptions(cfg.Env))
+	// Every provider client is wrapped so a call cannot reach a model without
+	// being recorded. Built before the registry because the registry only
+	// wraps what is registered after it is told where to write.
+	spendMeter := spend.NewMeter(spend.NewRepository(pool).WithLogger(log))
+
+	aiOpts := cfg.AI.ProviderOptions(cfg.Env)
+	aiOpts.Meter = spendMeter
+
+	registry, err := providers.Build(ctx, aiOpts)
 	if err != nil {
 		return err
 	}
@@ -569,7 +578,11 @@ func routes(
 	// Bring-your-own-key, when the deployment has somewhere safe to put one.
 	// Without ENCRYPTION_KEY the sealer is nil and the feature reports itself
 	// unavailable, rather than storing somebody's credential in the clear.
-	aicredSvc := aicreds.NewService(aicreds.NewRepository(pool), sealer, slog.Default())
+	// A second meter over the same pool rather than one threaded through
+	// routes(): it is a repository handle, not a resource, and the alternative
+	// is another parameter on a function that already takes seven.
+	aicredSvc := aicreds.NewService(aicreds.NewRepository(pool), sealer, slog.Default()).
+		WithMeter(spend.NewMeter(spend.NewRepository(pool)))
 
 	// North as an MCP *client*: the calendar somebody connected, reached over
 	// somebody else's server. The opposite direction from the /mcp route below,

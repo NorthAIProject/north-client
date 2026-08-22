@@ -10,7 +10,9 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/ai/prompts"
+	"github.com/NorthAIProject/north-client/internal/shared/aiattr"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/spend"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
@@ -118,7 +120,15 @@ func (s *Service) Generate(ctx context.Context, id, userID uuid.UUID) error {
 		req.MaxTokens = briefingMaxTokens
 	}
 
-	resp, err := s.client.Generate(ctx, req)
+	// The single largest unattributed cost before the ledger existed: a weekly
+	// review reads a whole week of context and runs for every active account,
+	// on a schedule nobody asked for individually.
+	surface := spend.SurfaceWeeklyReview
+	if report.Kind == KindDaily {
+		surface = spend.SurfaceDailyBriefing
+	}
+
+	resp, err := s.client.Generate(aiattr.WithUser(ctx, userID, surface), req)
 	if err != nil {
 		return s.fail(ctx, id, userID, err)
 	}

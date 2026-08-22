@@ -11,9 +11,11 @@ import (
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/conversations"
 	"github.com/NorthAIProject/north-client/internal/jobs"
+	"github.com/NorthAIProject/north-client/internal/shared/aiattr"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/NorthAIProject/north-client/internal/shared/toolsurface"
+	"github.com/NorthAIProject/north-client/internal/spend"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
@@ -465,7 +467,11 @@ func (s *Service) eachProvider(ctx context.Context, user users.User, attempt fun
 	// A successful call over the user's own key leaves any complaint recorded
 	// against it stale. Clearing it is the settings page's job on the next
 	// save; nothing to do here but stop blaming it.
-	return s.runner.Run(ctx, opts, attempt)
+	//
+	// Attribution is attached here rather than at each caller because this is
+	// the one point every coach turn passes through, whichever provider ends up
+	// answering and however many tool rounds it takes.
+	return s.runner.Run(aiattr.WithUser(ctx, user.ID, spend.SurfaceCoach), opts, attempt)
 }
 
 // ownFailureReason summarises why a user's provider refused, in words meant

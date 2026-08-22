@@ -65,7 +65,14 @@ func (c *Client) Generate(ctx context.Context, req ai.Request) (*ai.Response, er
 		return nil, apperr.Wrap(classify(err), "gemini: generate")
 	}
 
-	out := &ai.Response{Text: resp.Text(), ToolCalls: fromFunctionCalls(resp.Candidates)}
+	// ModelVersion is what actually served the request, which need not be what
+	// was asked for — an alias resolves to a dated build. A price is keyed on
+	// it, so prefer it and fall back to the requested name.
+	out := &ai.Response{
+		Text:      resp.Text(),
+		ToolCalls: fromFunctionCalls(resp.Candidates),
+		Model:     firstNonEmpty(resp.ModelVersion, c.model(req)),
+	}
 	if usage := resp.UsageMetadata; usage != nil {
 		out.Usage = ai.Usage{
 			InputTokens:  int(usage.PromptTokenCount),
@@ -77,6 +84,17 @@ func (c *Client) Generate(ctx context.Context, req ai.Request) (*ai.Response, er
 	}
 
 	return out, nil
+}
+
+// firstNonEmpty returns the first non-empty string, so an unreported model
+// falls back to the requested one rather than to nothing.
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 func (c *Client) Chat(ctx context.Context, req ai.Request) (<-chan ai.StreamChunk, error) {
@@ -91,6 +109,10 @@ func (c *Client) Chat(ctx context.Context, req ai.Request) (<-chan ai.StreamChun
 		// yield function returns false, which is how a disconnected client
 		// cancels an in-flight generation instead of paying for the rest of it.
 		var usage *ai.Usage
+
+		// The model can appear on any frame; the usage frame is the one the
+		// meter reads, so keep the last one seen.
+		var streamModel string
 
 		// Accumulated rather than sent per chunk: a half-decoded argument
 		// object cannot be acted on, so the calls go out once, complete,
@@ -110,6 +132,10 @@ func (c *Client) Chat(ctx context.Context, req ai.Request) (<-chan ai.StreamChun
 				}
 			}
 
+			if resp.ModelVersion != "" {
+				streamModel = resp.ModelVersion
+			}
+
 			calls = append(calls, fromFunctionCalls(resp.Candidates)...)
 
 			if text := resp.Text(); text != "" {
@@ -126,7 +152,7 @@ func (c *Client) Chat(ctx context.Context, req ai.Request) (<-chan ai.StreamChun
 		}
 
 		if usage != nil {
-			send(ctx, out, ai.StreamChunk{Usage: usage})
+			send(ctx, out, ai.StreamChunk{Usage: usage, Model: firstNonEmpty(streamModel, c.model(req))})
 		}
 	}()
 

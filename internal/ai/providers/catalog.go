@@ -143,6 +143,10 @@ type UserSpec struct {
 	// Catalogue URLs are used otherwise; a value here for OpenRouter is ignored.
 	BaseURL string
 
+	// Meter records what this client spends, marked as the user's own rather
+	// than ours. Optional; nil leaves the client unwrapped.
+	Meter ai.Meter
+
 	// HTTPClient is shared across every user's client so a per-user provider
 	// gets connection reuse rather than a TLS handshake per coach turn.
 	// openaicompat.New builds a fresh Transport when this is nil, which is the
@@ -185,7 +189,10 @@ func User(ctx context.Context, spec UserSpec) (ai.Client, error) {
 			// Not wrapped with the spec: it holds the key.
 			return nil, fmt.Errorf("providers: cannot build a gemini client for this credential")
 		}
-		return client, nil
+		// byok: the tokens are real and worth recording, but the bill is the
+		// user's. Pricing them with our rates would overstate what we spend on
+		// precisely the accounts that cost us least.
+		return ai.Metered(client, spec.Meter, true), nil
 	}
 
 	client, err := openaicompat.New(openaicompat.Options{
@@ -199,5 +206,5 @@ func User(ctx context.Context, spec UserSpec) (ai.Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("providers: cannot build a %s client for this credential", entry.Name)
 	}
-	return client, nil
+	return ai.Metered(client, spec.Meter, true), nil
 }

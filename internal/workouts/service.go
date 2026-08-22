@@ -13,8 +13,10 @@ import (
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/ai/prompts"
 	"github.com/NorthAIProject/north-client/internal/exercises/exercise"
+	"github.com/NorthAIProject/north-client/internal/shared/aiattr"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
+	"github.com/NorthAIProject/north-client/internal/spend"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
@@ -130,6 +132,11 @@ func (s *Service) Generate(ctx context.Context, user users.User, in Intake) (Pla
 		plan         Plan
 		lastProblems []string
 	)
+
+	// A plan can take up to three generations per provider, each carrying the
+	// rejected drafts before it, so this is the most expensive single request
+	// in the product and was entirely unrecorded.
+	ctx = aiattr.WithUser(ctx, user.ID, spend.SurfaceWorkoutPlan)
 
 	client, err := s.runner.Run(ctx, ai.RunOptions{Tier: string(user.Tier)}, func(client ai.Client) error {
 		// Each provider opens its own correction dialogue. Carrying another

@@ -59,6 +59,10 @@ type Service struct {
 	// in production; WithVerifier replaces it in tests.
 	verifier KeyVerifier
 
+	// meter records what a user's own key spends, marked as theirs. Nil leaves
+	// per-user clients unwrapped, which is what a process with no ledger wants.
+	meter ai.Meter
+
 	mu    sync.RWMutex
 	cache map[uuid.UUID]cached
 }
@@ -84,6 +88,13 @@ func NewService(repo *Repository, sealer *secret.Sealer, log *slog.Logger) *Serv
 // real calls to five vendors. Follows documents.Service.WithEmbeddings.
 func (s *Service) WithVerifier(v KeyVerifier) *Service {
 	s.verifier = v
+	return s
+}
+
+// WithMeter records what per-user clients spend, marked as the user's own bill
+// rather than ours. Follows WithVerifier.
+func (s *Service) WithMeter(m ai.Meter) *Service {
+	s.meter = m
 	return s
 }
 
@@ -226,7 +237,7 @@ func (s *Service) For(ctx context.Context, userID uuid.UUID) (ai.Client, error) 
 
 	client, err := providers.User(ctx, providers.UserSpec{
 		Provider: cred.Provider, APIKey: string(key), Model: cred.Model,
-		BaseURL: cred.BaseURL, HTTPClient: s.http,
+		BaseURL: cred.BaseURL, HTTPClient: s.http, Meter: s.meter,
 	})
 	if err != nil {
 		return nil, err
