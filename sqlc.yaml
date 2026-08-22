@@ -371,3 +371,15 @@ sql:
         package: accountdb
         out: internal/account/db
         overrides: *overrides
+
+  # The AI spend ledger. Its own slice because it is written by the metering
+  # decorator around every provider client and read by nothing else.
+  - engine: postgresql
+    schema: migrations
+    queries: internal/spend/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: spenddb
+        out: internal/spend/db
+        overrides: *overrides
