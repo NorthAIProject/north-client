@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -104,6 +105,19 @@ func main() {
 		return
 	}
 
+	// `main spend --from ... --to ...` reports what the AI actually cost.
+	//
+	// A subcommand rather than a route because this describes the business, not
+	// a user's account: the same reasoning that keeps the metrics listener off
+	// the public router.
+	if len(os.Args) > 1 && os.Args[1] == "spend" {
+		if err := runSpend(os.Args[2:]); err != nil {
+			fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	if err := run(); err != nil {
 		// The logger may not exist yet when configuration fails, so this one
 		// message goes straight to stderr.
@@ -194,6 +208,142 @@ func tierNames() []string {
 		out = append(out, string(t))
 	}
 	return out
+}
+
+// runSpend prints what the model calls in a window cost.
+func runSpend(args []string) error {
+	fs := flag.NewFlagSet("spend", flag.ContinueOnError)
+	var (
+		from    = fs.String("from", "", "start date, inclusive (YYYY-MM-DD)")
+		to      = fs.String("to", "", "end date, exclusive (YYYY-MM-DD)")
+		email   = fs.String("user", "", "restrict to one account, by email")
+		withOwn = fs.Bool("include-byok", false, "count spend paid for by users' own keys")
+	)
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	window, err := parseWindow(*from, *to)
+	if err != nil {
+		return err
+	}
+
+	_ = godotenv.Load()
+
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	slog.SetDefault(newLogger(cfg))
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	pool, err := database.Connect(ctx, cfg.DatabaseURL)
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+
+	repo := spend.NewRepository(pool)
+	billableOnly := !*withOwn
+
+	// Reported first, not last. A missing price makes every total below it an
+	// understatement, and a number that is quietly wrong is worse than one
+	// that is obviously incomplete.
+	unpriced, err := repo.CountUnpriced(ctx, window)
+	if err != nil {
+		return err
+	}
+	if unpriced > 0 {
+		fmt.Printf("WARNING: %d call(s) had no price. Totals below are understated.\n"+
+			"Fill the model in at internal/ai/pricing/pricing.json.\n\n", unpriced)
+	}
+
+	fmt.Printf("%s to %s", window.From.Format(time.DateOnly), window.To.Format(time.DateOnly))
+	if billableOnly {
+		fmt.Print("  (excluding BYOK)")
+	}
+	fmt.Print("\n\n")
+
+	bySurface, err := repo.BySurface(ctx, window, billableOnly)
+	if err != nil {
+		return err
+	}
+	fmt.Println("BY SURFACE")
+	for _, row := range bySurface {
+		fmt.Printf("  %-22s %8d calls  %12s\n", row.Surface, row.Generations, spend.Euros(row.CostMicros))
+	}
+
+	byModel, err := repo.ByModel(ctx, window, billableOnly)
+	if err != nil {
+		return err
+	}
+	fmt.Println("\nBY MODEL")
+	for _, row := range byModel {
+		name := row.Model
+		if name == "" {
+			name = "(model not reported)"
+		}
+		fmt.Printf("  %-22s %-34s %8d calls  %12s\n",
+			row.Provider, name, row.Generations, spend.Euros(row.CostMicros))
+	}
+
+	byUser, err := repo.ByUser(ctx, window, billableOnly)
+	if err != nil {
+		return err
+	}
+
+	userSvc := users.NewService(users.NewRepository(pool))
+	var total int64
+
+	fmt.Println("\nBY ACCOUNT")
+	for _, row := range byUser {
+		total += row.CostMicros
+
+		label := "(unattributed)"
+		if row.UserID != nil {
+			if u, uErr := userSvc.ByID(ctx, *row.UserID); uErr == nil {
+				label = u.Email
+			} else {
+				label = row.UserID.String()
+			}
+		}
+		if *email != "" && label != *email {
+			continue
+		}
+		fmt.Printf("  %-38s %8d calls  %12s\n", label, row.Generations, spend.Euros(row.CostMicros))
+	}
+
+	fmt.Printf("\nTOTAL %s\n", spend.Euros(total))
+	return nil
+}
+
+// parseWindow defaults to the last 30 days, which is the question anyone
+// running this is usually asking.
+func parseWindow(from, to string) (spend.Range, error) {
+	now := time.Now().UTC()
+	window := spend.Range{From: now.AddDate(0, 0, -30), To: now.AddDate(0, 0, 1)}
+
+	if from != "" {
+		t, err := time.Parse(time.DateOnly, from)
+		if err != nil {
+			return window, fmt.Errorf("--from must be YYYY-MM-DD: %w", err)
+		}
+		window.From = t
+	}
+	if to != "" {
+		t, err := time.Parse(time.DateOnly, to)
+		if err != nil {
+			return window, fmt.Errorf("--to must be YYYY-MM-DD: %w", err)
+		}
+		window.To = t
+	}
+	if !window.To.After(window.From) {
+		return window, fmt.Errorf("--to (%s) must be after --from (%s)",
+			window.To.Format(time.DateOnly), window.From.Format(time.DateOnly))
+	}
+	return window, nil
 }
 
 // run owns the process lifecycle. Keeping it separate from main means every

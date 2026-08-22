@@ -63,9 +63,14 @@ type Generation struct {
 	OutputTokens int
 
 	// CostMicros is micros of the accounting currency. An integer, because
-	// money in floating point is how rounding errors become invoices. Zero when
-	// pricing had no rate for the model — a gap to fix, not a free call.
+	// money in floating point is how rounding errors become invoices.
 	CostMicros int64
+
+	// Priced records whether a rate was found. A cost of zero means one of two
+	// very different things — the free floor genuinely costs nothing, and an
+	// unpriced model costs something nobody has written down — and only this
+	// tells them apart.
+	Priced bool
 
 	// BYOK marks a call the user's own key paid for. Their spend is not our
 	// cost, and counting it would overstate COGS for precisely the users who

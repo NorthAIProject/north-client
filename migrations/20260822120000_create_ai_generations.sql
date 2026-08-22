@@ -44,6 +44,13 @@ CREATE TABLE ai_generations (
     -- in the table, which is a gap to fix rather than a call that was free.
     cost_micros   bigint      NOT NULL DEFAULT 0,
 
+    -- Whether a rate was found at all. Without this, a model priced at zero is
+    -- indistinguishable from one nobody has priced: both store a cost of zero.
+    -- The free floor really does cost nothing, so counting it as a pricing gap
+    -- would cry wolf on every report and train the reader to ignore the
+    -- warning that matters.
+    priced        boolean     NOT NULL DEFAULT false,
+
     -- True when the user's own key paid for it. Their spend is not our cost, and
     -- counting it would overstate COGS for exactly the users who cost least.
     byok          boolean     NOT NULL DEFAULT false,

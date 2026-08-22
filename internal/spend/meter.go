@@ -37,10 +37,14 @@ func (m *Meter) Record(ctx context.Context, provider, model string, usage ai.Usa
 	}
 
 	// A user's own key is their bill. Pricing it with our rates would be a
-	// number about nothing, so BYOK calls carry tokens and no cost.
-	var cost int64
+	// number about nothing, so BYOK calls carry tokens and no cost — and count
+	// as priced, because there is no gap here to go and fix.
+	var (
+		cost   int64
+		priced = true
+	)
 	if !byok {
-		cost, _ = pricing.Cost(provider, model, usage.InputTokens, usage.OutputTokens)
+		cost, priced = pricing.Cost(provider, model, usage.InputTokens, usage.OutputTokens)
 	}
 
 	m.recorder.Record(ctx, Generation{
@@ -51,6 +55,7 @@ func (m *Meter) Record(ctx context.Context, provider, model string, usage ai.Usa
 		InputTokens:  usage.InputTokens,
 		OutputTokens: usage.OutputTokens,
 		CostMicros:   cost,
+		Priced:       priced,
 		BYOK:         byok,
 	})
 }

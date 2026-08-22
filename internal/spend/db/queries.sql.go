@@ -17,7 +17,7 @@ SELECT count(*) FROM ai_generations
 WHERE created_at >= $1
   AND created_at < $2
   AND byok = false
-  AND cost_micros = 0
+  AND priced = false
   AND (input_tokens > 0 OR output_tokens > 0)
 `
 
@@ -26,8 +26,11 @@ type CountUnpricedGenerationsParams struct {
 	ToTime   time.Time
 }
 
-// Calls recorded with no price. A non-zero answer means the pricing table is
-// missing a model and every total below is an understatement.
+// Calls for which no rate was found. A non-zero answer means the pricing table
+// is missing a model and every total is an understatement.
+//
+// Keyed on `priced`, not on a zero cost: the free floor is priced at zero on
+// purpose, and treating that as a gap would cry wolf on every report.
 func (q *Queries) CountUnpricedGenerations(ctx context.Context, arg CountUnpricedGenerationsParams) (int64, error) {
 	row := q.db.QueryRow(ctx, countUnpricedGenerations, arg.FromTime, arg.ToTime)
 	var count int64
@@ -38,10 +41,10 @@ func (q *Queries) CountUnpricedGenerations(ctx context.Context, arg CountUnprice
 const recordGeneration = `-- name: RecordGeneration :exec
 INSERT INTO ai_generations (
     user_id, surface, provider, model,
-    input_tokens, output_tokens, cost_micros, byok
+    input_tokens, output_tokens, cost_micros, priced, byok
 ) VALUES (
     $1, $2, $3, $4,
-    $5, $6, $7, $8
+    $5, $6, $7, $8, $9
 )
 `
 
@@ -53,6 +56,7 @@ type RecordGenerationParams struct {
 	InputTokens  int32
 	OutputTokens int32
 	CostMicros   int64
+	Priced       bool
 	Byok         bool
 }
 
@@ -68,6 +72,7 @@ func (q *Queries) RecordGeneration(ctx context.Context, arg RecordGenerationPara
 		arg.InputTokens,
 		arg.OutputTokens,
 		arg.CostMicros,
+		arg.Priced,
 		arg.Byok,
 	)
 	return err
