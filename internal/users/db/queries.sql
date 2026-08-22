@@ -35,6 +35,15 @@ SET password_hash = $2,
     updated_at    = now()
 WHERE id = $1;
 
+-- name: UpdateUserTier :one
+-- Moves an account between plans. Whatever manages subscriptions owns when this
+-- is called; the column only records the current state, with no history.
+UPDATE users
+SET tier       = $2,
+    updated_at = now()
+WHERE id = $1
+RETURNING *;
+
 -- name: MarkUserOnboarded :one
 -- Sets the first-run flag once. A second call returns the row unchanged.
 UPDATE users

@@ -295,7 +295,7 @@ func run() error {
 	// again. Daily rather than hourly because the rows are tiny and keeping a
 	// day of them is what lets an operator explain a refusal after the fact.
 	worker.Register(jobs.KindSweepQuotas,
-		quota.NewService(quota.NewRepository(pool), nil, nil).HandleSweep)
+		quota.NewService(quota.NewRepository(pool), quota.Limits{}, nil).HandleSweep)
 
 	nudgeSvc := nudges.NewService(nudges.NewRepository(pool), userSvc, checkinSvc, goalSvc).
 		WithPrefs(notificationSvc).

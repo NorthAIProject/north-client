@@ -282,3 +282,37 @@ func (q *Queries) UpdateUserProfile(ctx context.Context, arg UpdateUserProfilePa
 	)
 	return i, err
 }
+
+const updateUserTier = `-- name: UpdateUserTier :one
+UPDATE users
+SET tier       = $2,
+    updated_at = now()
+WHERE id = $1
+RETURNING id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at, tier, onboarded_at, coaching_tone
+`
+
+type UpdateUserTierParams struct {
+	ID   uuid.UUID
+	Tier string
+}
+
+// Moves an account between plans. Whatever manages subscriptions owns when this
+// is called; the column only records the current state, with no history.
+func (q *Queries) UpdateUserTier(ctx context.Context, arg UpdateUserTierParams) (User, error) {
+	row := q.db.QueryRow(ctx, updateUserTier, arg.ID, arg.Tier)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.PasswordHash,
+		&i.DisplayName,
+		&i.Timezone,
+		&i.CoachingStyle,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Tier,
+		&i.OnboardedAt,
+		&i.CoachingTone,
+	)
+	return i, err
+}

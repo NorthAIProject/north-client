@@ -12,6 +12,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/ai/providers"
+	"github.com/NorthAIProject/north-client/internal/quota"
 	"github.com/NorthAIProject/north-client/internal/shared/secret"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
@@ -61,6 +62,7 @@ type Config struct {
 	Encryption EncryptionConfig
 	PostHog    PostHogConfig
 	Quota      QuotaConfig
+	QuotaPro   QuotaConfig
 
 	// MCPListenAddr is where cmd/mcp-server listens. It defaults to the
 	// loopback interface rather than all of them: the MCP surface authenticates
@@ -231,6 +233,14 @@ type PostHogConfig struct {
 // refuses everything. Deliberately not a map keyed by action name: an
 // unrecognised key in an env var would be silent, and a misspelled limit that
 // looks configured is worse than one that plainly is not.
+//
+// The same shape serves both tiers. Config.Quota holds the fallback, which is
+// what free accounts and anything without a tier of its own get; Config.QuotaPro
+// holds the paid ceilings. The variables an operator already sets are the
+// fallback, so introducing a paid tier changed nobody's existing limits.
+//
+// Only the counts differ between tiers, never the window — see quota.NewLimits
+// for why a per-tier window would hand a user a fresh budget for upgrading.
 type QuotaConfig struct {
 	CoachMessages     int
 	DocumentUploads   int
@@ -238,6 +248,31 @@ type QuotaConfig struct {
 	ReportGenerations int
 	MediaAnalyses     int
 	AccountExports    int
+}
+
+// Limits renders the config as the per-action budgets the quota package wants.
+// The window is left at zero so quota.NewLimits applies its own default and
+// stays the single owner of that decision.
+func (q QuotaConfig) Limits() map[quota.Action]quota.Limit {
+	return map[quota.Action]quota.Limit{
+		quota.CoachMessage:    {PerWindow: q.CoachMessages},
+		quota.DocumentUpload:  {PerWindow: q.DocumentUploads},
+		quota.DocumentReindex: {PerWindow: q.DocumentReindexes},
+		quota.ReportGenerate:  {PerWindow: q.ReportGenerations},
+		quota.MediaAnalysis:   {PerWindow: q.MediaAnalyses},
+		quota.AccountExport:   {PerWindow: q.AccountExports},
+	}
+}
+
+// QuotaLimits maps tiers to their budgets, ready for quota.NewService.
+//
+// Only the free tier gets an entry of its own, for the same reason ChainSet
+// does it that way: anything else — "pro" today, whatever billing invents
+// later — falls back rather than resolving to no budget at all.
+func (c *Config) QuotaLimits() quota.Limits {
+	return quota.NewLimits(c.Quota.Limits(), map[string]map[quota.Action]quota.Limit{
+		string(users.TierPro): c.QuotaPro.Limits(),
+	})
 }
 
 // TelegramConfig configures the Telegram messaging adapter.
@@ -437,6 +472,19 @@ func Load() (*Config, error) {
 		// the bucket included — and nobody needs their entire history four times
 		// in an hour.
 		{"QUOTA_ACCOUNT_EXPORTS_PER_HOUR", 3, &cfg.Quota.AccountExports},
+
+		// Paid ceilings. Generous multiples rather than "unlimited": these are
+		// an abuse stop, not a product limit, and a paying account that somehow
+		// runs a retry loop should still hit something.
+		{"QUOTA_PRO_COACH_MESSAGES_PER_HOUR", 300, &cfg.QuotaPro.CoachMessages},
+		{"QUOTA_PRO_DOCUMENT_UPLOADS_PER_HOUR", 300, &cfg.QuotaPro.DocumentUploads},
+		{"QUOTA_PRO_DOCUMENT_REINDEX_PER_HOUR", 60, &cfg.QuotaPro.DocumentReindexes},
+		{"QUOTA_PRO_REPORT_GENERATIONS_PER_HOUR", 60, &cfg.QuotaPro.ReportGenerations},
+		{"QUOTA_PRO_MEDIA_ANALYSES_PER_HOUR", 100, &cfg.QuotaPro.MediaAnalyses},
+		// Not raised as far as the rest: an export reads every document in the
+		// account out of the bucket, and paying for the product does not make
+		// that cheap.
+		{"QUOTA_PRO_ACCOUNT_EXPORTS_PER_HOUR", 10, &cfg.QuotaPro.AccountExports},
 	} {
 		v, quotaErr := intValue(q.key, q.def)
 		if quotaErr != nil {

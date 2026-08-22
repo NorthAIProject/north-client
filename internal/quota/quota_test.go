@@ -25,7 +25,7 @@ func newService(t *testing.T, limits map[quota.Action]quota.Limit) (*quota.Servi
 
 	pool := testdb.New(t)
 
-	return quota.NewService(quota.NewRepository(pool), limits, nil), register(t, pool, "fernando@north.test", "Fernando Correia"), pool
+	return quota.NewService(quota.NewRepository(pool), quota.NewLimits(limits, nil), nil), register(t, pool, "fernando@north.test", "Fernando Correia"), pool
 }
 
 func register(t *testing.T, pool *pgxpool.Pool, email, name string) users.User {
@@ -50,7 +50,7 @@ func TestABudgetIsSpentAndThenRefused(t *testing.T) {
 	ctx := context.Background()
 
 	for i := range 3 {
-		decision, err := svc.Consume(ctx, user.ID, testAction)
+		decision, err := svc.Consume(ctx, user.ID, "", testAction)
 		if err != nil {
 			t.Fatalf("consume %d: %v", i+1, err)
 		}
@@ -59,7 +59,7 @@ func TestABudgetIsSpentAndThenRefused(t *testing.T) {
 		}
 	}
 
-	decision, err := svc.Consume(ctx, user.ID, testAction)
+	decision, err := svc.Consume(ctx, user.ID, "", testAction)
 	if err != nil {
 		t.Fatalf("consume 4: %v", err)
 	}
@@ -78,11 +78,11 @@ func TestOneAccountExhaustedLeavesAnotherAccountUntouched(t *testing.T) {
 	quiet := register(t, pool, "someone.else@north.test", "Someone Else")
 
 	for range 2 {
-		if _, err := svc.Consume(ctx, noisy.ID, testAction); err != nil {
+		if _, err := svc.Consume(ctx, noisy.ID, "", testAction); err != nil {
 			t.Fatalf("setup consume: %v", err)
 		}
 	}
-	decision, err := svc.Consume(ctx, noisy.ID, testAction)
+	decision, err := svc.Consume(ctx, noisy.ID, "", testAction)
 	if err != nil {
 		t.Fatalf("consume: %v", err)
 	}
@@ -90,7 +90,7 @@ func TestOneAccountExhaustedLeavesAnotherAccountUntouched(t *testing.T) {
 		t.Fatal("setup failed: the noisy account was not actually exhausted")
 	}
 
-	decision, err = svc.Consume(ctx, quiet.ID, testAction)
+	decision, err = svc.Consume(ctx, quiet.ID, "", testAction)
 	if err != nil {
 		t.Fatalf("consume for the quiet account: %v", err)
 	}
@@ -110,10 +110,10 @@ func TestExhaustingOneActionLeavesAnotherActionAvailable(t *testing.T) {
 	})
 	ctx := context.Background()
 
-	if _, err := svc.Consume(ctx, user.ID, testAction); err != nil {
+	if _, err := svc.Consume(ctx, user.ID, "", testAction); err != nil {
 		t.Fatalf("setup consume: %v", err)
 	}
-	decision, err := svc.Consume(ctx, user.ID, testAction)
+	decision, err := svc.Consume(ctx, user.ID, "", testAction)
 	if err != nil {
 		t.Fatalf("consume: %v", err)
 	}
@@ -121,7 +121,7 @@ func TestExhaustingOneActionLeavesAnotherActionAvailable(t *testing.T) {
 		t.Fatal("setup failed: the first action was not exhausted")
 	}
 
-	decision, err = svc.Consume(ctx, user.ID, other)
+	decision, err = svc.Consume(ctx, user.ID, "", other)
 	if err != nil {
 		t.Fatalf("consume other action: %v", err)
 	}
@@ -138,11 +138,11 @@ func TestARefusalSaysWhenTheBudgetReturns(t *testing.T) {
 	})
 	ctx := context.Background()
 
-	if _, err := svc.Consume(ctx, user.ID, testAction); err != nil {
+	if _, err := svc.Consume(ctx, user.ID, "", testAction); err != nil {
 		t.Fatalf("setup consume: %v", err)
 	}
 
-	decision, err := svc.Consume(ctx, user.ID, testAction)
+	decision, err := svc.Consume(ctx, user.ID, "", testAction)
 	if err != nil {
 		t.Fatalf("consume: %v", err)
 	}
@@ -164,7 +164,7 @@ func TestAnActionWithNoConfiguredBudgetIsAllowed(t *testing.T) {
 	ctx := context.Background()
 
 	for i := range 5 {
-		decision, err := svc.Consume(ctx, user.ID, "never_configured")
+		decision, err := svc.Consume(ctx, user.ID, "", "never_configured")
 		if err != nil {
 			t.Fatalf("consume %d: %v", i+1, err)
 		}
@@ -178,11 +178,11 @@ func TestAnActionWithNoConfiguredBudgetIsAllowed(t *testing.T) {
 // cannot be read, the request goes through and the operator finds out from the
 // log, rather than every guarded page failing at once.
 func TestACounterFailureFailsOpen(t *testing.T) {
-	svc := quota.NewService(brokenCounter{}, map[quota.Action]quota.Limit{
+	svc := quota.NewService(brokenCounter{}, quota.NewLimits(map[quota.Action]quota.Limit{
 		testAction: {PerWindow: 1, Window: time.Hour},
-	}, nil)
+	}, nil), nil)
 
-	decision, err := svc.Consume(context.Background(), uuid.New(), testAction)
+	decision, err := svc.Consume(context.Background(), uuid.New(), "", testAction)
 	if err != nil {
 		t.Fatalf("a counter failure surfaced as an error instead of failing open: %v", err)
 	}
@@ -199,4 +199,77 @@ func (brokenCounter) Consume(context.Context, uuid.UUID, quota.Action, time.Dura
 
 func (brokenCounter) Sweep(context.Context, time.Time) error {
 	return errors.New("counter unavailable")
+}
+
+// The point of the whole exercise: a paid account gets a bigger budget than a
+// free one for the same action. Without this the tier is a column nobody feels.
+func TestAPaidTierGetsABiggerBudgetThanTheFallback(t *testing.T) {
+	pool := testdb.New(t)
+	svc := quota.NewService(quota.NewRepository(pool), quota.NewLimits(
+		map[quota.Action]quota.Limit{testAction: {PerWindow: 1, Window: time.Hour}},
+		map[string]map[quota.Action]quota.Limit{
+			string(users.TierPro): {testAction: {PerWindow: 3, Window: time.Hour}},
+		},
+	), nil)
+
+	free := register(t, pool, "free@north.test", "Free Account")
+	paid := register(t, pool, "paid@north.test", "Paid Account")
+	ctx := context.Background()
+
+	// The free account is done after one.
+	if _, err := svc.Consume(ctx, free.ID, string(users.TierFree), testAction); err != nil {
+		t.Fatalf("free first: %v", err)
+	}
+	decision, err := svc.Consume(ctx, free.ID, string(users.TierFree), testAction)
+	if err != nil {
+		t.Fatalf("free second: %v", err)
+	}
+	if decision.Allowed {
+		t.Error("the free account was allowed a second request against a budget of one")
+	}
+
+	// The paid account gets three on the same action.
+	for i := range 3 {
+		paidDecision, paidErr := svc.Consume(ctx, paid.ID, string(users.TierPro), testAction)
+		if paidErr != nil {
+			t.Fatalf("paid %d: %v", i+1, paidErr)
+		}
+		if !paidDecision.Allowed {
+			t.Fatalf("the paid account was refused at request %d of a budget of three", i+1)
+		}
+	}
+	decision, err = svc.Consume(ctx, paid.ID, string(users.TierPro), testAction)
+	if err != nil {
+		t.Fatalf("paid fourth: %v", err)
+	}
+	if decision.Allowed {
+		t.Error("the paid account was allowed a fourth request against a budget of three")
+	}
+}
+
+// A tier nobody configured falls back rather than resolving to no budget. An
+// unconfigured action is unbounded, so a tier that resolved to an empty map
+// would quietly remove every limit for whoever landed on it.
+func TestAnUnknownTierFallsBackToTheSharedBudget(t *testing.T) {
+	pool := testdb.New(t)
+	svc := quota.NewService(quota.NewRepository(pool), quota.NewLimits(
+		map[quota.Action]quota.Limit{testAction: {PerWindow: 1, Window: time.Hour}},
+		map[string]map[quota.Action]quota.Limit{
+			string(users.TierPro): {testAction: {PerWindow: 50, Window: time.Hour}},
+		},
+	), nil)
+
+	user := register(t, pool, "unknown@north.test", "Unknown Tier")
+	ctx := context.Background()
+
+	if _, err := svc.Consume(ctx, user.ID, "enterprise", testAction); err != nil {
+		t.Fatalf("first: %v", err)
+	}
+	decision, err := svc.Consume(ctx, user.ID, "enterprise", testAction)
+	if err != nil {
+		t.Fatalf("second: %v", err)
+	}
+	if decision.Allowed {
+		t.Error("an unrecognised tier was served an unbounded budget instead of the fallback")
+	}
 }

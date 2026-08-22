@@ -23,7 +23,7 @@ import (
 func (s *Service) Guard(action Action) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			userID, ok := s.identify(r.Context())
+			who, ok := s.identify(r.Context())
 			if !ok {
 				// Unreachable behind RequireAuth. Refusing rather than allowing,
 				// because an unidentified caller on a guarded route means the
@@ -33,7 +33,7 @@ func (s *Service) Guard(action Action) func(http.Handler) http.Handler {
 				return
 			}
 
-			decision, err := s.Consume(r.Context(), userID, action)
+			decision, err := s.Consume(r.Context(), who.UserID, who.Tier, action)
 			if err != nil {
 				// Consume already fails open, so this is defensive.
 				s.log.Error("quota check failed",

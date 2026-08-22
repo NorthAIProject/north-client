@@ -52,7 +52,7 @@ type Users interface {
 //
 // An interface only so a test can put a budget at its limit without a clock.
 type Quotas interface {
-	Consume(ctx context.Context, userID uuid.UUID, action quota.Action) (quota.Decision, error)
+	Consume(ctx context.Context, userID uuid.UUID, tier string, action quota.Action) (quota.Decision, error)
 }
 
 // threadSearchDepth is how far back to look for a chat thread to continue.
@@ -384,7 +384,7 @@ func (s *Service) meter(ctx context.Context, user users.User) (OutboundMessage, 
 		return OutboundMessage{}, true, nil
 	}
 
-	decision, err := s.quotas.Consume(ctx, user.ID, quota.CoachMessage)
+	decision, err := s.quotas.Consume(ctx, user.ID, string(user.Tier), quota.CoachMessage)
 	if err != nil {
 		// Consume fails open by design; an error here is a counter problem,
 		// not a person's problem.

@@ -124,6 +124,23 @@ func (s *Service) MarkOnboarded(ctx context.Context, id uuid.UUID) (User, error)
 	return s.repo.MarkOnboarded(ctx, id)
 }
 
+// UpdateTier moves an account between plans.
+//
+// This is the single entitlement write. Whatever grants a plan — a billing
+// webhook, an app-store receipt, the tier subcommand — comes through here, so
+// adding a second payment source later is a new caller rather than a second
+// notion of what "paid" means.
+//
+// An unknown tier is refused rather than written. The column has a CHECK
+// constraint that would catch it anyway, but a constraint violation surfacing
+// from the repository reads as a bug in the query, not as bad input.
+func (s *Service) UpdateTier(ctx context.Context, id uuid.UUID, tier Tier) (User, error) {
+	if !tier.Valid() {
+		return User{}, apperr.FieldErrors{}.Add("tier", "Unknown plan.")
+	}
+	return s.repo.UpdateTier(ctx, id, tier)
+}
+
 func (s *Service) UpdateProfile(ctx context.Context, id uuid.UUID, p Profile) (User, error) {
 	var errs apperr.FieldErrors
 
