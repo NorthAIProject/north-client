@@ -395,6 +395,31 @@ agree.
 | `QUOTA_MEDIA_ANALYSES_PER_HOUR` | `20` |
 | `QUOTA_ACCOUNT_EXPORTS_PER_HOUR` | `3` |
 
+Those are the fallback: what a free account gets, and what any tier without an
+entry of its own gets. The paid ceilings are separate, and are an abuse stop
+rather than a product limit.
+
+| Variable | Default |
+|---|---|
+| `QUOTA_PRO_COACH_MESSAGES_PER_HOUR` | `300` |
+| `QUOTA_PRO_DOCUMENT_UPLOADS_PER_HOUR` | `300` |
+| `QUOTA_PRO_DOCUMENT_REINDEX_PER_HOUR` | `60` |
+| `QUOTA_PRO_REPORT_GENERATIONS_PER_HOUR` | `60` |
+| `QUOTA_PRO_MEDIA_ANALYSES_PER_HOUR` | `100` |
+| `QUOTA_PRO_ACCOUNT_EXPORTS_PER_HOUR` | `10` |
+
+Only the counts differ between tiers, never the window. `quota_counters` is
+keyed on the window floor, so a tier with a different window length puts the
+same account on a different row — a mid-window tier change would reset the count
+and hand the user a fresh budget for upgrading. A window configured per tier is
+ignored; the code pins it to the shared one.
+
+Nothing sets `users.tier` yet. Until billing exists it is moved by hand:
+
+```
+main tier someone@example.com pro
+```
+
 ---
 
 ## Do not set on the cluster

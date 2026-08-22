@@ -24,10 +24,10 @@ func streamRouter(t *testing.T, h harness, perHour int) (http.Handler, []*http.C
 
 	quotas := quota.NewService(
 		quota.NewRepository(h.pool),
-		map[quota.Action]quota.Limit{quota.CoachMessage: {PerWindow: perHour, Window: time.Hour}},
-		func(ctx context.Context) (uuid.UUID, bool) {
+		quota.NewLimits(map[quota.Action]quota.Limit{quota.CoachMessage: {PerWindow: perHour, Window: time.Hour}}, nil),
+		func(ctx context.Context) (quota.Identity, bool) {
 			u, ok := auth.UserFrom(ctx)
-			return u.ID, ok
+			return quota.Identity{UserID: u.ID, Tier: string(u.Tier)}, ok
 		},
 	)
 

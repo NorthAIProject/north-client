@@ -71,17 +71,28 @@ type Counter interface {
 	Sweep(ctx context.Context, before time.Time) error
 }
 
+// Identity is who a request acts as, and on which plan.
+//
+// The tier travels with the account rather than being looked up here: the
+// caller already holds it — every /app request has it on the session user, and
+// the messaging path has it on the user it resolved from a link — so a lookup
+// would be a second query for a value that is already in hand.
+type Identity struct {
+	UserID uuid.UUID
+	Tier   string
+}
+
 // Identify names the account a request acts as.
 //
 // Passed in rather than read from internal/auth directly, so this package does
 // not depend on the session machinery to count. That keeps the dependency
 // pointing the way the architecture says it should, and it is what lets the
 // middleware be tested without building a session.
-type Identify func(ctx context.Context) (uuid.UUID, bool)
+type Identify func(ctx context.Context) (Identity, bool)
 
 type Service struct {
 	counter  Counter
-	limits   map[Action]Limit
+	limits   Limits
 	identify Identify
 	now      func() time.Time
 	log      *slog.Logger
@@ -91,19 +102,18 @@ type Service struct {
 //
 // identify may be nil for a service that is only used through Consume, where
 // the caller already knows the account; Guard requires it.
-func NewService(counter Counter, limits map[Action]Limit, identify Identify) *Service {
-	copied := make(map[Action]Limit, len(limits))
-	for action, limit := range limits {
-		if limit.Window <= 0 {
-			limit.Window = DefaultWindow
-		}
-		copied[action] = limit
-	}
-	return &Service{counter: counter, limits: copied, identify: identify, now: time.Now, log: slog.Default()}
+func NewService(counter Counter, limits Limits, identify Identify) *Service {
+	return &Service{counter: counter, limits: limits, identify: identify, now: time.Now, log: slog.Default()}
 }
 
 // Consume counts one request against an action's budget and reports whether it
 // may proceed.
+//
+// The tier selects which budget applies. It is a parameter rather than
+// something read from the context because the two callers that matter reach
+// this from different places — an HTTP request and a Telegram update — and a
+// context-carried tier would resolve to the empty string on the second, quietly
+// serving a paying customer the free ceiling.
 //
 // # Why a failure is allowed through
 //
@@ -118,8 +128,8 @@ func NewService(counter Counter, limits map[Action]Limit, identify Identify) *Se
 // the total further past the limit rather than sitting at it. Against a retry
 // loop — the case this is built for — that is the behaviour you want: the loop
 // does not get a free probe on every iteration.
-func (s *Service) Consume(ctx context.Context, userID uuid.UUID, action Action) (Decision, error) {
-	limit, ok := s.limits[action]
+func (s *Service) Consume(ctx context.Context, userID uuid.UUID, tier string, action Action) (Decision, error) {
+	limit, ok := s.limits.For(tier)[action]
 	if !ok || limit.PerWindow <= 0 {
 		// No configured budget is not a budget of zero. Guarding a route must
 		// never be what takes it offline.
@@ -130,6 +140,7 @@ func (s *Service) Consume(ctx context.Context, userID uuid.UUID, action Action) 
 	if err != nil {
 		s.log.Error("quota counter unavailable; allowing the request",
 			slog.String("action", string(action)),
+			slog.String("tier", tier),
 			slog.String("user_id", userID.String()),
 			slog.Any("error", err))
 		return Decision{Allowed: true}, nil
@@ -149,8 +160,9 @@ func (s *Service) Consume(ctx context.Context, userID uuid.UUID, action Action) 
 	return Decision{Allowed: false, RetryAfter: retryAfter}, nil
 }
 
-// Limit reports the configured budget for an action, and whether one exists.
-func (s *Service) Limit(action Action) (Limit, bool) {
-	limit, ok := s.limits[action]
+// Limit reports the configured budget for a tier's action, and whether one
+// exists.
+func (s *Service) Limit(tier string, action Action) (Limit, bool) {
+	limit, ok := s.limits.For(tier)[action]
 	return limit, ok
 }

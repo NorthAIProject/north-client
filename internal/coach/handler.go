@@ -385,7 +385,7 @@ func (h *Handler) stream(w http.ResponseWriter, r *http.Request) {
 	// response has already been committed as an event stream by this point. It
 	// takes the same path a provider failure takes, which the page already knows
 	// how to display.
-	decision, err := h.quotas.Consume(r.Context(), user.ID, quota.CoachMessage)
+	decision, err := h.quotas.Consume(r.Context(), user.ID, string(user.Tier), quota.CoachMessage)
 	if err == nil && !decision.Allowed {
 		log.Warn("coach message refused by quota",
 			slog.String("user_id", user.ID.String()),

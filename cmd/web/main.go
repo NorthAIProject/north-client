@@ -90,6 +90,19 @@ func main() {
 		return
 	}
 
+	// `main tier <email> free|pro` moves an account between plans.
+	//
+	// A subcommand rather than a route because billing owns this transition and
+	// billing does not exist yet; an admin endpoint would be a surface to secure
+	// for a job that is currently done once, by hand, by the operator.
+	if len(os.Args) > 1 && os.Args[1] == "tier" {
+		if err := runTier(os.Args[2:]); err != nil {
+			fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	if err := run(); err != nil {
 		// The logger may not exist yet when configuration fails, so this one
 		// message goes straight to stderr.
@@ -122,6 +135,64 @@ func runMigrate() error {
 	log.Info("database migrations applied")
 
 	return nil
+}
+
+// runTier changes one account's plan and reports what it did.
+func runTier(args []string) error {
+	if len(args) != 2 {
+		return fmt.Errorf("usage: main tier <email> %s", strings.Join(tierNames(), "|"))
+	}
+	email, want := args[0], users.Tier(strings.TrimSpace(args[1]))
+	if !want.Valid() {
+		return fmt.Errorf("unknown tier %q; want one of %s", args[1], strings.Join(tierNames(), ", "))
+	}
+
+	_ = godotenv.Load()
+
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	slog.SetDefault(newLogger(cfg))
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	pool, err := database.Connect(ctx, cfg.DatabaseURL)
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+
+	svc := users.NewService(users.NewRepository(pool))
+
+	user, err := svc.ByEmail(ctx, email)
+	if err != nil {
+		return fmt.Errorf("look up %s: %w", email, err)
+	}
+	if user.Tier == want {
+		fmt.Printf("%s is already on %s\n", user.Email, want)
+		return nil
+	}
+
+	was := user.Tier
+	user, err = svc.UpdateTier(ctx, user.ID, want)
+	if err != nil {
+		return fmt.Errorf("update tier: %w", err)
+	}
+
+	fmt.Printf("%s moved from %s to %s\n", user.Email, was, user.Tier)
+	return nil
+}
+
+// tierNames lists the tiers for a usage message, so adding one does not leave
+// the help text behind.
+func tierNames() []string {
+	out := make([]string, 0, len(users.Tiers))
+	for _, t := range users.Tiers {
+		out = append(out, string(t))
+	}
+	return out
 }
 
 // run owns the process lifecycle. Keeping it separate from main means every
@@ -359,17 +430,10 @@ func routes(
 	// package: quota counts, it does not decide who is signed in.
 	quotaSvc := quota.NewService(
 		quota.NewRepository(pool),
-		map[quota.Action]quota.Limit{
-			quota.CoachMessage:    {PerWindow: cfg.Quota.CoachMessages, Window: time.Hour},
-			quota.DocumentUpload:  {PerWindow: cfg.Quota.DocumentUploads, Window: time.Hour},
-			quota.DocumentReindex: {PerWindow: cfg.Quota.DocumentReindexes, Window: time.Hour},
-			quota.ReportGenerate:  {PerWindow: cfg.Quota.ReportGenerations, Window: time.Hour},
-			quota.MediaAnalysis:   {PerWindow: cfg.Quota.MediaAnalyses, Window: time.Hour},
-			quota.AccountExport:   {PerWindow: cfg.Quota.AccountExports, Window: time.Hour},
-		},
-		func(ctx context.Context) (uuid.UUID, bool) {
+		cfg.QuotaLimits(),
+		func(ctx context.Context) (quota.Identity, bool) {
 			user, ok := auth.UserFrom(ctx)
-			return user.ID, ok
+			return quota.Identity{UserID: user.ID, Tier: string(user.Tier)}, ok
 		},
 	)
 

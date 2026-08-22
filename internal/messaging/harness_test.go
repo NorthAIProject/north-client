@@ -182,9 +182,13 @@ type stubQuotas struct {
 	allowed    bool
 	retryAfter time.Duration
 	consumed   int
+	// tiers records the tier each call metered against, so a test can prove the
+	// messaging path passes the account's real plan rather than defaulting it.
+	tiers []string
 }
 
-func (s *stubQuotas) Consume(_ context.Context, _ uuid.UUID, _ quota.Action) (quota.Decision, error) {
+func (s *stubQuotas) Consume(_ context.Context, _ uuid.UUID, tier string, _ quota.Action) (quota.Decision, error) {
 	s.consumed++
+	s.tiers = append(s.tiers, tier)
 	return quota.Decision{Allowed: s.allowed, RetryAfter: s.retryAfter}, nil
 }

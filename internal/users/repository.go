@@ -166,6 +166,22 @@ func (r *Repository) ListOnboarded(ctx context.Context, after uuid.UUID, limit i
 	return out, nil
 }
 
+// UpdateTier moves an account to a plan. The service validates the tier; this
+// only writes it.
+func (r *Repository) UpdateTier(ctx context.Context, id uuid.UUID, tier Tier) (User, error) {
+	row, err := r.q.UpdateUserTier(ctx, usersdb.UpdateUserTierParams{
+		ID:   id,
+		Tier: string(tier),
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return User{}, apperr.ErrNotFound
+		}
+		return User{}, apperr.Wrap(err, "update tier")
+	}
+	return fromDB(row), nil
+}
+
 func (r *Repository) MarkOnboarded(ctx context.Context, id uuid.UUID) (User, error) {
 	row, err := r.q.MarkUserOnboarded(ctx, id)
 	if err != nil {

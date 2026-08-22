@@ -21,9 +21,11 @@ func guarded(t *testing.T, limit quota.Limit, counter quota.Counter) (http.Handl
 	t.Helper()
 
 	user := users.User{ID: uuid.New()}
-	svc := quota.NewService(counter, map[quota.Action]quota.Limit{
+	svc := quota.NewService(counter, quota.NewLimits(map[quota.Action]quota.Limit{
 		quota.ReportGenerate: limit,
-	}, func(context.Context) (uuid.UUID, bool) { return user.ID, true })
+	}, nil), func(context.Context) (quota.Identity, bool) {
+		return quota.Identity{UserID: user.ID, Tier: string(user.Tier)}, true
+	})
 
 	reached := 0
 	handler := svc.Guard(quota.ReportGenerate)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

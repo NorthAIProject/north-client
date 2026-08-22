@@ -67,10 +67,10 @@ func newHarness(t *testing.T) harness {
 		// far above anything a test spends.
 		quotas := quota.NewService(
 			quota.NewRepository(pool),
-			map[quota.Action]quota.Limit{quota.ReportGenerate: {PerWindow: 1000, Window: time.Hour}},
-			func(ctx context.Context) (uuid.UUID, bool) {
+			quota.NewLimits(map[quota.Action]quota.Limit{quota.ReportGenerate: {PerWindow: 1000, Window: time.Hour}}, nil),
+			func(ctx context.Context) (quota.Identity, bool) {
 				u, ok := auth.UserFrom(ctx)
-				return u.ID, ok
+				return quota.Identity{UserID: u.ID, Tier: string(u.Tier)}, ok
 			},
 		)
 		reports.NewHandler(svc, quotas).Routes(r)

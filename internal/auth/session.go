@@ -170,6 +170,7 @@ func userFromDB(row authdb.User) users.User {
 	if row.CoachingStyle != nil {
 		u.CoachingStyle = *row.CoachingStyle
 	}
+	u.CoachingTone = users.Tone(row.CoachingTone)
 	u.OnboardedAt = row.OnboardedAt
 	return u
 }

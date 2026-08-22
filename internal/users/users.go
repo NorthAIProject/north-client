@@ -25,7 +25,30 @@ type Tier string
 const (
 	TierFree Tier = "free"
 	TierPro  Tier = "pro"
+
+	// TierDefault matches the column default in the migration.
+	TierDefault = TierFree
 )
+
+// Tiers is every tier an account may hold, free first.
+var Tiers = []Tier{TierFree, TierPro}
+
+// Label is the human name for the tier.
+func (t Tier) Label() string {
+	if t == TierPro {
+		return "Pro"
+	}
+	return "Free"
+}
+
+// Valid reports whether the tier is one this build knows.
+//
+// Checked in Go as well as by the column's CHECK constraint, so a bad value is
+// a clear error from the service rather than a constraint violation surfacing
+// from three layers down.
+func (t Tier) Valid() bool {
+	return slices.Contains(Tiers, t)
+}
 
 // Tone is the voice the coach speaks in. A closed set, unlike CoachingStyle,
 // so the prompt builder always has something to render and a new account has a

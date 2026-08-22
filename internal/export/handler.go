@@ -39,7 +39,7 @@ func (h *Handler) download(w http.ResponseWriter, r *http.Request) {
 	// code left to send. An export reads the entire account and pulls every
 	// stored file back out of the bucket, which is worth bounding.
 	if h.quotas != nil {
-		decision, err := h.quotas.Consume(r.Context(), user.ID, quota.AccountExport)
+		decision, err := h.quotas.Consume(r.Context(), user.ID, string(user.Tier), quota.AccountExport)
 		if err != nil {
 			middleware.FromContext(r.Context()).Error("export quota check failed",
 				slog.Any("error", err), slog.String("user_id", user.ID.String()))
