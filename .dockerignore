@@ -1,0 +1,53 @@
+# Nothing here is needed to build the image, and the first entry is a security
+# control rather than a size optimisation: the Dockerfile does `COPY . .`, so
+# without this file the live credentials in .env land in a build layer and in
+# the `type=gha` build cache. The runtime stage copies only the binaries, so the
+# leak is invisible in `docker history` on the final image.
+.env
+.env.*
+!.env.example
+
+# VCS and agent tooling.
+.git
+.gitignore
+.githooks
+.github
+.claude
+.cursor
+.cursorrules
+.templui.json
+.posthog-wizard-cache
+skills/
+
+# Local build outputs. `mcp-server` and `templ` are stray binaries, not source
+# (see .gitignore) — the real MCP source is cmd/mcp-server. No trailing slash on
+# those two: they are files, and `templ/` matches only a directory, which is how
+# 67 MB of Mach-O reached the build context unnoticed.
+tmp/
+bin/
+main
+worker
+mcp-server
+templ
+*.exe
+*.test
+*.out
+
+# Node tooling that runs by hand and is never deployed.
+node_modules/
+package-lock.json
+tools/
+
+# Generated inside the image by scripts/build-css.sh and `templ generate`.
+# Copying a host-built copy in would mask a broken build step.
+web/assets/css/output.css
+web/assets/css/sources.generated.css
+**/*_templ.go
+
+# Docs and infra config. Deployment manifests live in LuminaVaultInfra;
+# charts/ and terraform/ here hold only a .gitkeep.
+docs/
+charts/
+terraform/
+*.md
+docker-compose.yml

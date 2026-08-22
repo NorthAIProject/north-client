@@ -77,10 +77,12 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if migrateErr := database.Migrate(ctx, cfg.DatabaseURL); migrateErr != nil {
-		return fmt.Errorf("database migrations: %w", migrateErr)
+	if cfg.AutoMigrate {
+		if migrateErr := database.Migrate(ctx, cfg.DatabaseURL); migrateErr != nil {
+			return fmt.Errorf("database migrations: %w", migrateErr)
+		}
+		log.Info("database migrations applied")
 	}
-	log.Info("database migrations applied")
 
 	pool, err := database.Connect(ctx, cfg.DatabaseURL)
 	if err != nil {

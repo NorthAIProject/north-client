@@ -1,13 +1,17 @@
-name: Deploy to k3s (staging)
+name: Deploy to k3s (production)
 
-# Manual path for the k3s/ArgoCD deploy. Builds + pushes the image to GHCR,
-# then writes the tag into north-infra so ArgoCD deploys web to the k3s
-# staging namespace. Production is promoted via the infra promote workflow
-# once staging is verified.
+# Manual path for the k3s/ArgoCD deploy. Builds + pushes one image carrying both
+# the web and worker binaries to GHCR, then opens a PR against the infra repo
+# bumping the tag in the Khepri values files. ArgoCD syncs once that PR merges.
+#
+# The PR is the gate, deliberately: image tags reach values-production.yaml only
+# through a merged promote PR, which is the same rule norviq runs under. Nothing
+# here pushes to the infra default branch.
 #
 # Requires:
-#   - INFRA_TOKEN secret (PAT with contents:write on NorthAIProject/north-infra)
-#   - north-infra apps/web/values-staging.yaml with an image.tag field
+#   - INFRA_TOKEN secret (PAT with contents:write AND pull-requests:write on
+#     LuminaVault/LuminaVaultInfra)
+#   - apps/khepri/{web,worker}/values-production.yaml with an image.tag field
 
 on:
   workflow_dispatch:
@@ -56,29 +60,60 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  bump-staging:
-    name: Bump k3s staging tag in north-infra
+  promote:
+    name: Open promote PR against the infra repo
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout north-infra
+      - name: Checkout LuminaVaultInfra
         uses: actions/checkout@v4
         with:
-          repository: NorthAIProject/north-infra
-          token: ${{ secrets.INFRA_TOKEN }} # PAT with contents:write on north-infra
+          repository: LuminaVault/LuminaVaultInfra
+          token: ${{ secrets.INFRA_TOKEN }}
           ref: main
 
       - name: Install yq
         run: sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 && sudo chmod +x /usr/local/bin/yq
 
-      - name: Write staging image tag
-        run: yq -i ".image.tag = \"${{ needs.build.outputs.sha_tag }}\"" apps/web/values-staging.yaml
-
-      - name: Commit and push
+      - name: Write image tag
         run: |
-          git config user.name "north-client-ci"
-          git config user.email "ci@north.ai"
-          if git diff --quiet; then echo "no tag change"; exit 0; fi
-          git add apps/web/values-staging.yaml
-          git commit -m "chore(web): bump k3s staging image to ${{ needs.build.outputs.sha_tag }}"
-          git push origin main
+          tag="${{ needs.build.outputs.sha_tag }}"
+          # Both releases run the same image. Bumping only one would put a web
+          # pod and a worker pod from different commits against one database.
+          for f in apps/khepri/web/values-production.yaml apps/khepri/worker/values-production.yaml; do
+            yq -i ".image.tag = \"${tag}\"" "$f"
+          done
+
+      - name: Open pull request
+        env:
+          GH_TOKEN: ${{ secrets.INFRA_TOKEN }}
+        run: |
+          tag="${{ needs.build.outputs.sha_tag }}"
+          short="${tag:0:7}"
+          branch="promote/khepri-${short}"
+
+          if git diff --quiet; then
+            echo "no tag change; nothing to promote"
+            exit 0
+          fi
+
+          git config user.name "khepri-ci"
+          git config user.email "ci@khepri.local"
+          git checkout -b "${branch}"
+          git add apps/khepri/web/values-production.yaml apps/khepri/worker/values-production.yaml
+          git commit -m "chore(khepri): promote image to ${short}"
+          git push origin "${branch}"
+
+          cat > /tmp/pr-body.md <<EOF
+          Promotes Khepri web and worker to \`${tag}\`.
+
+          Built from ${{ github.repository }}@${{ github.sha }} by the deploy workflow.
+          Merging this makes ArgoCD sync both releases in the \`horus\` namespace.
+          EOF
+
+          gh pr create \
+            --repo LuminaVault/LuminaVaultInfra \
+            --base main \
+            --head "${branch}" \
+            --title "chore(khepri): promote image to ${short}" \
+            --body-file /tmp/pr-body.md

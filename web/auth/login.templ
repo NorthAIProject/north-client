@@ -25,6 +25,10 @@ func googleAuthHref(next string) string {
 type AuthOptions struct {
 	GoogleEnabled  bool
 	PasskeyEnabled bool
+
+	// PasswordResetEnabled is false when no mailer can deliver a reset link.
+	// The link is hidden rather than left to lead to a 404.
+	PasswordResetEnabled bool
 }
 
 // LoginForm carries the state of a submitted attempt back to the page, so a
@@ -88,9 +92,11 @@ templ LoginPage(f LoginForm) {
 							@label.Label(label.Props{For: "password"}) {
 								Password
 							}
-							<a href="/forgot-password" class="text-muted-foreground hover:text-foreground text-xs font-medium underline-offset-4 hover:underline">
-								Forgot password?
-							</a>
+							if f.Options.PasswordResetEnabled {
+								<a href="/forgot-password" class="text-muted-foreground hover:text-foreground text-xs font-medium underline-offset-4 hover:underline">
+									Forgot password?
+								</a>
+							}
 						</div>
 						@input.Input(input.Props{
 							ID:       "password",

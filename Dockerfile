@@ -32,13 +32,20 @@ RUN bash scripts/build-css.sh
 # Generate Go files from .templ files.
 RUN go tool templ generate
 
-# Build one static Linux binary for the final image.
+# Build both static Linux binaries for the final image.
+#
+# The worker is a separate process, not a mode of the web binary: it owns the
+# job queue and the periodic sweeps (memory extraction, document indexing,
+# embeddings, nudges, reports). One image carries both so a deploy can never
+# run a worker built from a different commit than the web app.
+#
 # Goose SQL is embedded via migrations.FS, so the runtime image needs no
-# separate migrations directory — schema updates on process start.
+# separate migrations directory — `main migrate` applies the schema.
 RUN CGO_ENABLED=0 GOOS=linux go build -o main ./cmd/web
+RUN CGO_ENABLED=0 GOOS=linux go build -o worker ./cmd/worker
 
 # Runtime stage:
-# This image stays small and only contains the final app binary.
+# This image stays small and only contains the final app binaries.
 FROM alpine:3.20.2
 WORKDIR /app
 
@@ -48,11 +55,15 @@ RUN apk add --no-cache ca-certificates
 # Run the app in production mode.
 ENV GO_ENV=production
 
-# Copy the built binary from the build stage.
+# Copy the built binaries from the build stage.
 COPY --from=build /app/main .
+COPY --from=build /app/worker .
 
 # The app listens on port 8090.
 EXPOSE 8090
 
-# Start the app (applies pending goose migrations before serving).
-CMD ["./main"]
+# ENTRYPOINT rather than CMD so the deployment can pass a subcommand as `args`
+# without replacing the binary: the migration hook runs `main migrate`. The
+# worker overrides `command` with /app/worker instead.
+ENTRYPOINT ["/app/main"]
+CMD []

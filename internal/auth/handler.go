@@ -54,8 +54,9 @@ func (h *Handler) Routes(r chi.Router) {
 
 func (h *Handler) formOpts() authpages.AuthOptions {
 	return authpages.AuthOptions{
-		GoogleEnabled:  h.svc.GoogleEnabled(),
-		PasskeyEnabled: h.svc.PasskeyEnabled(),
+		GoogleEnabled:        h.svc.GoogleEnabled(),
+		PasskeyEnabled:       h.svc.PasskeyEnabled(),
+		PasswordResetEnabled: h.svc.PasswordResetEnabled(),
 	}
 }
 
@@ -421,6 +422,10 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 }
 
 func (h *Handler) showForgotPassword(w http.ResponseWriter, r *http.Request) {
+	if !h.svc.PasswordResetEnabled() {
+		http.NotFound(w, r)
+		return
+	}
 	if _, ok := UserFrom(r.Context()); ok {
 		http.Redirect(w, r, h.home, http.StatusSeeOther)
 		return
@@ -429,6 +434,10 @@ func (h *Handler) showForgotPassword(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) submitForgotPassword(w http.ResponseWriter, r *http.Request) {
+	if !h.svc.PasswordResetEnabled() {
+		http.NotFound(w, r)
+		return
+	}
 	if err := r.ParseForm(); err != nil {
 		render(w, r, http.StatusBadRequest, authpages.ForgotPasswordPage(authpages.ForgotPasswordForm{
 			Error: "That form could not be read. Please try again.",
@@ -457,6 +466,10 @@ func (h *Handler) submitForgotPassword(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) showResetPassword(w http.ResponseWriter, r *http.Request) {
+	if !h.svc.PasswordResetEnabled() {
+		http.NotFound(w, r)
+		return
+	}
 	if _, ok := UserFrom(r.Context()); ok {
 		http.Redirect(w, r, h.home, http.StatusSeeOther)
 		return
@@ -474,6 +487,10 @@ func (h *Handler) showResetPassword(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) submitResetPassword(w http.ResponseWriter, r *http.Request) {
+	if !h.svc.PasswordResetEnabled() {
+		http.NotFound(w, r)
+		return
+	}
 	if err := r.ParseForm(); err != nil {
 		render(w, r, http.StatusBadRequest, authpages.ResetPasswordPage(authpages.ResetPasswordForm{
 			Error: "That form could not be read. Please try again.",

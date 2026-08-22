@@ -30,6 +30,15 @@ type Config struct {
 
 	SessionLifetime time.Duration
 
+	// AutoMigrate controls whether a process applies pending goose migrations
+	// as it starts. True is right everywhere a single process owns the
+	// database — local development, docker compose, `task dev`.
+	//
+	// It is false in Kubernetes, where the web and worker Deployments would
+	// otherwise race goose against each other on every rollout. There the
+	// migration runs once, as `main migrate`, in a PreSync hook ahead of both.
+	AutoMigrate bool
+
 	// Google OAuth (optional). Empty credentials disable the feature.
 	GoogleClientID     string
 	GoogleClientSecret string
@@ -477,6 +486,12 @@ func Load() (*Config, error) {
 		problems = append(problems, err.Error())
 	}
 	cfg.Storage.UsePathStyle = pathStyle
+
+	autoMigrate, err := boolValue("AUTO_MIGRATE", true)
+	if err != nil {
+		problems = append(problems, err.Error())
+	}
+	cfg.AutoMigrate = autoMigrate
 
 	// AI_PROVIDER is the older single-provider form. Honouring it as a
 	// one-element chain keeps existing .env files and deployments working.
