@@ -22,6 +22,11 @@ bin/
 /worker
 /mcp-server
 
+# `go build ./cmd/...`-adjacent strays. `templ` is the templ CLI itself, which
+# `go tool templ` never writes here but a manual `go build` of the tool does —
+# 20 MB of Mach-O reached main that way.
+/templ
+
 # tools/model is a build-time Node tool, run by hand and never deployed
 node_modules/
 package-lock.json

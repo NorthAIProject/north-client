@@ -559,6 +559,40 @@ Application code should never depend on Kubernetes.
 
 The application should run equally well locally using Docker Compose.
 
+## Where the infrastructure lives
+
+Cluster configuration is not in this repository. It is at:
+
+```
+~/Work/production/platform/infra
+```
+
+Terraform for the nodes, ArgoCD app-of-apps under `argocd/apps/`, Helm values
+under `apps/<name>/`, SealedSecrets under `secrets/<namespace>/`. Deployment
+questions are answered there, not here.
+
+There is no `north` namespace. It was reserved under the old one-namespace-per-app
+rule and removed unused — see `cluster/namespaces.yaml` and
+`docs/hosted-projects-namespaces.md` in the infra repo. **New apps go in `horus`**,
+which already holds the shared pgvector Postgres and its NetworkPolicies.
+
+Khepri deploys as two ArgoCD releases of `charts/norviq-app` — `khepri-web-production`
+and `khepri-worker-production` — with values under `apps/khepri/` and SealedSecrets
+under `secrets/khepri/`. One image carries both binaries; the worker release
+overrides `command` with `/app/worker`.
+
+Two rules that are easy to get wrong:
+
+- **The worker runs exactly one replica.** `internal/jobs/worker.go` has no leader
+  election, so every extra replica enqueues another copy of every periodic sweep.
+- **`AUTO_MIGRATE=false` in the cluster.** Both binaries migrate on boot by
+  default, which is right locally and a race on rollout. In Kubernetes the schema
+  is applied once by `main migrate`, in the chart's PreSync hook.
+
+`.github/workflows/deploy-k3s.yml` builds the image and opens a promote PR against
+`LuminaVault/LuminaVaultInfra`. Tags reach `values-production.yaml` only through a
+merged PR — the same gate norviq runs under.
+
 ---
 
 # Security

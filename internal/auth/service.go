@@ -36,6 +36,8 @@ type Service struct {
 
 	google   *googleOAuth
 	webauthn *passkeyAuth
+
+	passwordResetEnabled bool
 }
 
 // ServiceOptions wires optional infrastructure for auth journeys that need it
@@ -55,6 +57,11 @@ type ServiceOptions struct {
 	WebAuthnRPID        string
 	WebAuthnRPOrigins   []string
 	WebAuthnDisplayName string
+
+	// Production tightens the defaults that are deliberately loose in
+	// development. Today it governs one thing: whether the password reset
+	// journey is allowed to run on a LogMailer. See PasswordResetEnabled.
+	Production bool
 }
 
 // NewService builds the auth service. opts may be zero; a LogMailer is used
@@ -82,8 +89,24 @@ func NewService(userSvc *users.Service, sessions *SessionStore, opts ServiceOpti
 	}
 	s.google = newGoogleOAuth(opts.GoogleClientID, opts.GoogleClientSecret, baseURL)
 	s.webauthn = newPasskeyAuth(sessions, opts, baseURL, log)
+
+	// A LogMailer writes the message body — reset URL included — to the process
+	// log. In development that is the point: the log is the developer's inbox.
+	// In production it would turn read access to logs into account takeover for
+	// every user, so the journey is switched off entirely rather than left to
+	// half-work. Passkeys and Google sign-in still get people in.
+	_, logOnly := mailer.(LogMailer)
+	s.passwordResetEnabled = true
+	if logOnly && opts.Production {
+		s.passwordResetEnabled = false
+	}
+
 	return s
 }
+
+// PasswordResetEnabled reports whether a reset link can actually reach a user.
+// When false the reset routes return 404 and the sign-in page omits the link.
+func (s *Service) PasswordResetEnabled() bool { return s.passwordResetEnabled }
 
 // GoogleEnabled reports whether Google OAuth credentials are configured.
 func (s *Service) GoogleEnabled() bool { return s.google != nil && s.google.enabled() }

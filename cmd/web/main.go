@@ -79,12 +79,49 @@ import (
 )
 
 func main() {
+	// `main migrate` applies the schema and exits. Kubernetes runs it as a
+	// PreSync hook so exactly one process migrates, ahead of the web and
+	// worker Deployments that both have AUTO_MIGRATE=false.
+	if len(os.Args) > 1 && os.Args[1] == "migrate" {
+		if err := runMigrate(); err != nil {
+			fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	if err := run(); err != nil {
 		// The logger may not exist yet when configuration fails, so this one
 		// message goes straight to stderr.
 		fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// runMigrate applies pending migrations and returns. It deliberately does not
+// open the application pool or build any service: a migration hook that can
+// fail on an unrelated dependency is a migration hook that blocks deploys for
+// the wrong reason.
+func runMigrate() error {
+	_ = godotenv.Load()
+
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+
+	log := newLogger(cfg)
+	slog.SetDefault(log)
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	if err := database.Migrate(ctx, cfg.DatabaseURL); err != nil {
+		return fmt.Errorf("database migrations: %w", err)
+	}
+	log.Info("database migrations applied")
+
+	return nil
 }
 
 // run owns the process lifecycle. Keeping it separate from main means every
@@ -105,10 +142,12 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if migrateErr := database.Migrate(ctx, cfg.DatabaseURL); migrateErr != nil {
-		return fmt.Errorf("database migrations: %w", migrateErr)
+	if cfg.AutoMigrate {
+		if migrateErr := database.Migrate(ctx, cfg.DatabaseURL); migrateErr != nil {
+			return fmt.Errorf("database migrations: %w", migrateErr)
+		}
+		log.Info("database migrations applied")
 	}
-	log.Info("database migrations applied")
 
 	pool, err := database.Connect(ctx, cfg.DatabaseURL)
 	if err != nil {
@@ -274,8 +313,11 @@ func routes(
 	sessions := auth.NewSessionStore(pool, cfg.SessionLifetime)
 	authSvc := auth.NewService(userSvc, sessions, auth.ServiceOptions{
 		BaseURL: cfg.BaseURL,
-		// LogMailer until a real SMTP provider is wired; reset links show in logs.
+		// LogMailer until a real SMTP provider is wired; reset links show in
+		// logs. Production turns the reset journey off rather than leaking
+		// those links into a shared log — see Service.PasswordResetEnabled.
 		Mailer:              auth.LogMailer{},
+		Production:          cfg.Env.IsProduction(),
 		GoogleClientID:      cfg.GoogleClientID,
 		GoogleClientSecret:  cfg.GoogleClientSecret,
 		WebAuthnRPID:        cfg.WebAuthnRPID,
@@ -338,7 +380,7 @@ func routes(
 		Documents:  documentSvc,
 		Queue:      queue,
 	})
-	vaultHandler := vault.NewHandler(vaultSvc)
+	vaultHandler := vault.NewHandler(vaultSvc, !cfg.Env.IsProduction())
 
 	// account and export are the two halves of the same promise — leaving with
 	// your data, and being able to leave at all — so they are built together and

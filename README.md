@@ -530,6 +530,49 @@ The environment variables a k3s / platform-repo deploy has to set are listed
 in [`docs/env-hosting.md`](docs/env-hosting.md). Do not copy `.env` onto the
 cluster — those defaults are for `localhost`.
 
+## The infrastructure repository
+
+Everything cluster-side lives in a separate repository:
+
+```
+~/Work/production/platform/infra
+```
+
+Terraform provisions the nodes, ArgoCD syncs an app-of-apps from `argocd/apps/`,
+Helm values live under `apps/<name>/`, and secrets are Bitnami SealedSecrets
+committed under `secrets/<namespace>/`. Nothing in this repository configures
+the cluster; nothing in that one contains application code.
+
+There is **no `north` namespace**. It was reserved under the old
+one-namespace-per-app rule and removed unused; see `cluster/namespaces.yaml` and
+`docs/hosted-projects-namespaces.md`. New apps go in **`horus`**, which already
+holds the shared pgvector Postgres and the NetworkPolicies that isolate its
+tenants by podSelector.
+
+Khepri deploys as two ArgoCD releases of `charts/norviq-app`:
+
+| Release | What it runs | Notes |
+|---|---|---|
+| `khepri-web-production` | `/app/main` | Ingress + TLS, migrations via the chart's PreSync hook |
+| `khepri-worker-production` | `/app/worker` | No ingress. **One replica, always** |
+
+Both come from one image, so a deploy can never pair a web pod with a worker
+built from a different commit. Values live under `apps/khepri/`, secrets under
+`secrets/khepri/`, MinIO under `apps/khepri/data/`.
+
+Two settings that are easy to get wrong:
+
+- **`AUTO_MIGRATE=false` in the cluster.** Both binaries migrate on boot by
+  default — right locally, a race on rollout. In Kubernetes the schema is applied
+  once by `main migrate` in the PreSync hook, ahead of both Deployments.
+- **The worker must not scale past one replica.** `internal/jobs/worker.go` has
+  no leader election, so a second replica enqueues a second copy of every
+  periodic sweep.
+
+`.github/workflows/deploy-k3s.yml` builds the image and opens a promote PR
+against `LuminaVault/LuminaVaultInfra`. Image tags reach `values-production.yaml`
+only through a merged PR, which is the same gate norviq runs under.
+
 ---
 
 # Setting up Telegram
