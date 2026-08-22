@@ -135,6 +135,7 @@ func (c *Client) Generate(ctx context.Context, req ai.Request) (*ai.Response, er
 		Text:         payload.Choices[0].Message.Content,
 		ToolCalls:    fromToolCallPayload(payload.Choices[0].Message.ToolCalls),
 		FinishReason: payload.Choices[0].FinishReason,
+		Model:        payload.Model,
 		Usage: ai.Usage{
 			InputTokens:  payload.Usage.PromptTokens,
 			OutputTokens: payload.Usage.CompletionTokens,
@@ -177,6 +178,11 @@ func (c *Client) Chat(ctx context.Context, req ai.Request) (<-chan ai.StreamChun
 			return send(ctx, out, ai.StreamChunk{ToolCalls: calls})
 		}
 
+		// The model rides on every frame, but the usage frame is the one the
+		// meter reads, and a provider is not obliged to repeat it there. Keep
+		// the last one seen.
+		var streamModel string
+
 		for scanner.Scan() {
 			line := strings.TrimSpace(scanner.Text())
 
@@ -201,12 +207,16 @@ func (c *Client) Chat(ctx context.Context, req ai.Request) (<-chan ai.StreamChun
 				continue
 			}
 
+			if chunk.Model != "" {
+				streamModel = chunk.Model
+			}
+
 			if chunk.Usage != nil {
 				usage := ai.Usage{
 					InputTokens:  chunk.Usage.PromptTokens,
 					OutputTokens: chunk.Usage.CompletionTokens,
 				}
-				if !send(ctx, out, ai.StreamChunk{Usage: &usage}) {
+				if !send(ctx, out, ai.StreamChunk{Usage: &usage, Model: streamModel}) {
 					return
 				}
 			}
@@ -526,6 +536,11 @@ type completionResponse struct {
 		FinishReason string `json:"finish_reason"`
 	} `json:"choices"`
 	Usage usagePayload `json:"usage"`
+
+	// The model that actually answered. Worth reading even though the request
+	// named one: AI_MODEL ships empty so the provider picks, and a price is
+	// keyed on what it picked.
+	Model string `json:"model"`
 }
 
 type streamChunk struct {
@@ -537,6 +552,7 @@ type streamChunk struct {
 		FinishReason string `json:"finish_reason"`
 	} `json:"choices"`
 	Usage *usagePayload `json:"usage"`
+	Model string        `json:"model"`
 }
 
 type usagePayload struct {

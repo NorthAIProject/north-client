@@ -50,6 +50,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/shared/database"
 	"github.com/NorthAIProject/north-client/internal/shared/metrics"
 	"github.com/NorthAIProject/north-client/internal/sleep"
+	"github.com/NorthAIProject/north-client/internal/spend"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/vault"
 	vaultdb "github.com/NorthAIProject/north-client/internal/vault/db"
@@ -90,7 +91,15 @@ func run() error {
 	}
 	defer pool.Close()
 
-	registry, err := providers.Build(ctx, cfg.AI.ProviderOptions(cfg.Env))
+	// Every provider client is wrapped so a call cannot reach a model without
+	// being recorded. Built before the registry because the registry only
+	// wraps what is registered after it is told where to write.
+	spendMeter := spend.NewMeter(spend.NewRepository(pool).WithLogger(log))
+
+	aiOpts := cfg.AI.ProviderOptions(cfg.Env)
+	aiOpts.Meter = spendMeter
+
+	registry, err := providers.Build(ctx, aiOpts)
 	if err != nil {
 		return err
 	}

@@ -15,10 +15,26 @@ import (
 type Registry struct {
 	clients     map[string]Client
 	defaultName string
+	meter       Meter
 }
 
 func NewRegistry() *Registry {
 	return &Registry{clients: make(map[string]Client)}
+}
+
+// WithMeter records every call made through clients registered afterwards.
+//
+// Set on the registry rather than at the call sites because there are seven
+// paths that reach a provider and an eighth will be added by someone who does
+// not know metering exists. The only way to spend money is to hold a client,
+// and every client the registry hands out has been through here — so a new path
+// is metered by construction rather than by remembering.
+//
+// Call it before Register. Clients already registered are left alone, which
+// keeps the zero-meter case — every test outside internal/spend — unchanged.
+func (r *Registry) WithMeter(m Meter) *Registry {
+	r.meter = m
+	return r
 }
 
 // Register adds a client. The first one registered becomes the default until
@@ -27,9 +43,13 @@ func (r *Registry) Register(c Client) {
 	if c == nil {
 		return
 	}
-	r.clients[c.Name()] = c
+	// Name() is read before wrapping: the decorator delegates it, but reading
+	// it from the original makes it obvious that metering cannot rename a
+	// provider and so cannot move it in a chain.
+	name := c.Name()
+	r.clients[name] = Metered(c, r.meter, false)
 	if r.defaultName == "" {
-		r.defaultName = c.Name()
+		r.defaultName = name
 	}
 }
 

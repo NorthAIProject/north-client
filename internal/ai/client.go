@@ -123,6 +123,13 @@ type Response struct {
 	Text  string
 	Usage Usage
 
+	// Model is what the provider reported answering with, which is not
+	// necessarily what was asked for: AI_MODEL ships empty so each provider
+	// picks its own, and a chain entry may pin one the caller never sees.
+	// Empty when the provider reported nothing, and that must stay visible as
+	// unknown rather than be filled in with a guess — a price is keyed on it.
+	Model string
+
 	// ToolCalls is non-empty when the model asked for tools instead of
 	// answering. Text is usually empty then, and a caller that ignores this
 	// field sees a reply that stopped mid-thought.
@@ -136,8 +143,8 @@ type Response struct {
 // Usage reports token consumption, for cost tracking and for noticing when a
 // context window is filling up.
 type Usage struct {
-	InputTokens  int
-	OutputTokens int
+	InputTokens  int `json:"InputTokens"`
+	OutputTokens int `json:"OutputTokens"`
 }
 
 // StreamChunk is one piece of a streamed reply.
@@ -148,6 +155,10 @@ type StreamChunk struct {
 	Text  string
 	Usage *Usage
 	Err   error
+
+	// Model rides along with the chunk that carries Usage, for the reason
+	// given on Response.Model. Empty on the ordinary text chunks.
+	Model string
 
 	// ToolCalls arrives as a single chunk once the model has finished asking.
 	// Not streamed piecewise: a half-decoded argument object is of no use to

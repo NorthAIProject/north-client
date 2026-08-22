@@ -17,8 +17,10 @@ import (
 	"github.com/NorthAIProject/north-client/internal/coach"
 	"github.com/NorthAIProject/north-client/internal/jobs"
 	"github.com/NorthAIProject/north-client/internal/media/analysis"
+	"github.com/NorthAIProject/north-client/internal/shared/aiattr"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
+	"github.com/NorthAIProject/north-client/internal/spend"
 )
 
 // MaxVideoBytes bounds an upload. Generous enough for a phone clip of a working
@@ -185,6 +187,11 @@ func (s *Service) runAnalysis(ctx context.Context, mediaID uuid.UUID) (analysis.
 	if err != nil {
 		return analysis.FormAnalysis{}, "", "", err
 	}
+
+	// Video is the most expensive thing per call that Khepri sends anywhere.
+	// This is also the one AI path that bypasses ai.Runner, which is exactly
+	// why metering lives on the client rather than in the runner.
+	ctx = aiattr.WithUser(ctx, record.UserID, spend.SurfaceFormAnalysis)
 
 	// Named rather than default: form analysis needs a provider with a real
 	// upload API, and the OpenAI-dialect backends have none. Taking whatever

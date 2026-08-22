@@ -14,7 +14,9 @@ import (
 	"github.com/NorthAIProject/north-client/internal/conversations"
 	"github.com/NorthAIProject/north-client/internal/jobs"
 	"github.com/NorthAIProject/north-client/internal/memories/extract"
+	"github.com/NorthAIProject/north-client/internal/shared/aiattr"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/spend"
 )
 
 // Extractor runs structured extraction against a transcript.
@@ -113,7 +115,10 @@ func (s *ExtractionService) HandleExtractJob(ctx context.Context, payload json.R
 	}
 
 	transcript := formatTranscript(msgs)
-	candidates, err := s.Extractor.Extract(ctx, transcript)
+	// Attribution goes on here rather than inside Extract: the job payload is
+	// where the account is known, and the extractor deliberately takes only a
+	// transcript so it can be tested without one.
+	candidates, err := s.Extractor.Extract(aiattr.WithUser(ctx, p.UserID, spend.SurfaceMemory), transcript)
 	if err != nil {
 		// Deliberately not marked: the thread was not read, the provider
 		// failed. Marking here would lose it silently.
