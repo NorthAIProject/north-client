@@ -4,10 +4,10 @@
 -- successful reply into an error.
 INSERT INTO ai_generations (
     user_id, surface, provider, model,
-    input_tokens, output_tokens, cost_micros, byok
+    input_tokens, output_tokens, cost_micros, priced, byok
 ) VALUES (
     @user_id, @surface, @provider, @model,
-    @input_tokens, @output_tokens, @cost_micros, @byok
+    @input_tokens, @output_tokens, @cost_micros, @priced, @byok
 );
 
 -- name: SpendByUser :many
@@ -60,11 +60,14 @@ GROUP BY surface
 ORDER BY sum(cost_micros) DESC;
 
 -- name: CountUnpricedGenerations :one
--- Calls recorded with no price. A non-zero answer means the pricing table is
--- missing a model and every total below is an understatement.
+-- Calls for which no rate was found. A non-zero answer means the pricing table
+-- is missing a model and every total is an understatement.
+--
+-- Keyed on `priced`, not on a zero cost: the free floor is priced at zero on
+-- purpose, and treating that as a gap would cry wolf on every report.
 SELECT count(*) FROM ai_generations
 WHERE created_at >= @from_time
   AND created_at < @to_time
   AND byok = false
-  AND cost_micros = 0
+  AND priced = false
   AND (input_tokens > 0 OR output_tokens > 0);

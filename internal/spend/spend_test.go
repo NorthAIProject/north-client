@@ -119,18 +119,25 @@ func TestUnpricedCallsAreCounted(t *testing.T) {
 	repo := spend.NewRepository(pool)
 	ctx := context.Background()
 
+	// No rate found: the real gap.
 	repo.Record(ctx, spend.Generation{
 		Surface: spend.SurfaceCoach, Provider: "mystery", Model: "",
-		InputTokens: 100, OutputTokens: 50, CostMicros: 0,
+		InputTokens: 100, OutputTokens: 50, CostMicros: 0, Priced: false,
 	})
 	repo.Record(ctx, spend.Generation{
 		Surface: spend.SurfaceCoach, Provider: "openrouter", Model: "m",
-		InputTokens: 100, OutputTokens: 50, CostMicros: 1_000,
+		InputTokens: 100, OutputTokens: 50, CostMicros: 1_000, Priced: true,
 	})
 	// A BYOK call is not our gap even when it carries no price.
 	repo.Record(ctx, spend.Generation{
 		Surface: spend.SurfaceCoach, Provider: "openrouter", Model: "m",
-		InputTokens: 100, OutputTokens: 50, CostMicros: 0, BYOK: true,
+		InputTokens: 100, OutputTokens: 50, CostMicros: 0, Priced: true, BYOK: true,
+	})
+	// The free floor: priced, and the price is zero. Counting this as a gap
+	// would cry wolf on every report, because it is on the tail of every chain.
+	repo.Record(ctx, spend.Generation{
+		Surface: spend.SurfaceCoach, Provider: "openrouter", Model: "z-ai/glm-5.2:free",
+		InputTokens: 900, OutputTokens: 200, CostMicros: 0, Priced: true,
 	})
 
 	n, err := repo.CountUnpriced(ctx, window())
@@ -138,7 +145,7 @@ func TestUnpricedCallsAreCounted(t *testing.T) {
 		t.Fatalf("count unpriced: %v", err)
 	}
 	if n != 1 {
-		t.Errorf("unpriced = %d, want 1", n)
+		t.Errorf("unpriced = %d, want 1; a zero-priced model was counted as a gap", n)
 	}
 }
 

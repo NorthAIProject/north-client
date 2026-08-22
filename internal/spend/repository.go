@@ -45,6 +45,7 @@ func (r *Repository) Record(ctx context.Context, g Generation) {
 		InputTokens:  int32(g.InputTokens),
 		OutputTokens: int32(g.OutputTokens),
 		CostMicros:   g.CostMicros,
+		Priced:       g.Priced,
 		Byok:         g.BYOK,
 	}); err != nil {
 		r.log.ErrorContext(ctx, "could not record ai spend",

@@ -87,6 +87,14 @@ func TestGenerateIsRecordedWithTheProvidersOwnModel(t *testing.T) {
 	if g.InputTokens != 1000 || g.OutputTokens != 400 {
 		t.Errorf("tokens = %d/%d, want 1000/400", g.InputTokens, g.OutputTokens)
 	}
+	// The stub answers on the free floor, which has a rate of zero. That is a
+	// price, not a missing one, and the ledger has to be able to tell.
+	if !g.Priced {
+		t.Error("Priced = false for a model with a rate of zero; it will be reported as a pricing gap")
+	}
+	if g.CostMicros != 0 {
+		t.Errorf("CostMicros = %d, want 0", g.CostMicros)
+	}
 }
 
 // The stream carries usage in a final frame. Recording has to wait for it, and
