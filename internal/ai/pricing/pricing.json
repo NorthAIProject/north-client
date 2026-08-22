@@ -1,0 +1,38 @@
+{
+  "_comment": [
+    "Rates are micros of the accounting currency per 1,000,000 tokens.",
+    "1000000 micros = 1.00. So 3000000 means 3.00 per million tokens.",
+    "",
+    "Keys are '<provider>/<model>'. The provider is the registry name — the",
+    "plain one, not a 'provider=model' chain entry — and the model is what the",
+    "provider reported answering with.",
+    "",
+    "A model listed in 'unpriced' is one nobody has filled a rate in for yet.",
+    "Its calls are recorded with a cost of zero and counted by",
+    "spend.Repository.CountUnpriced, so the gap shows up at the top of the",
+    "spend report rather than quietly understating every total. The test in",
+    "this package fails if a model is neither priced nor acknowledged here, so",
+    "adding a provider cannot silently produce free customers."
+  ],
+
+  "models": {
+    "openrouter/z-ai/glm-5.2:free": {
+      "input": 0,
+      "output": 0,
+      "note": "Free floor. Costs nothing by construction; a rate here would be wrong, not missing."
+    },
+    "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free": {
+      "input": 0,
+      "output": 0,
+      "note": "Free floor, as above."
+    }
+  },
+
+  "unpriced": [
+    "openrouter/anthropic/claude-sonnet-4.5",
+    "gemini/gemini-2.5-pro",
+    "nvidia/meta/llama-3.3-70b-instruct",
+    "xai/grok-4.5",
+    "hermes/hermes-3"
+  ]
+}
