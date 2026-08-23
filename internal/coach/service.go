@@ -389,6 +389,11 @@ func (s *Service) startChat(
 ) (<-chan ai.StreamChunk, ai.Client, error) {
 	var stream <-chan ai.StreamChunk
 
+	// On genCtx, because that is the context the client is handed. Attributing
+	// ctx here would be invisible to the meter.
+
+	genCtx = aiattr.WithUser(genCtx, user.ID, spend.SurfaceCoach)
+
 	client, err := s.eachProvider(ctx, user, func(c ai.Client) error {
 		opened, err := c.Chat(genCtx, req)
 		stream = opened
@@ -404,8 +409,10 @@ func (s *Service) startChat(
 // generate is startChat's one-shot counterpart, for the side work that does not
 // stream. It also returns the client that answered, so a caller reporting the
 // call to analytics can attribute it to the real provider.
-func (s *Service) generate(ctx context.Context, user users.User, req ai.Request) (*ai.Response, ai.Client, error) {
+func (s *Service) generate(ctx context.Context, user users.User, surface string, req ai.Request) (*ai.Response, ai.Client, error) {
 	var resp *ai.Response
+
+	ctx = aiattr.WithUser(ctx, user.ID, surface)
 
 	client, err := s.eachProvider(ctx, user, func(c ai.Client) error {
 		r, err := c.Generate(ctx, req)
@@ -468,10 +475,11 @@ func (s *Service) eachProvider(ctx context.Context, user users.User, attempt fun
 	// against it stale. Clearing it is the settings page's job on the next
 	// save; nothing to do here but stop blaming it.
 	//
-	// Attribution is attached here rather than at each caller because this is
-	// the one point every coach turn passes through, whichever provider ends up
-	// answering and however many tool rounds it takes.
-	return s.runner.Run(aiattr.WithUser(ctx, user.ID, spend.SurfaceCoach), opts, attempt)
+	// Attribution is deliberately NOT attached here. ai.Runner.Run passes no
+	// context to attempt, so the closure runs on whatever context its caller
+	// captured — wrapping this one would look right and record nothing. It goes
+	// on the exact context each caller hands the client instead.
+	return s.runner.Run(ctx, opts, attempt)
 }
 
 // ownFailureReason summarises why a user's provider refused, in words meant
@@ -965,7 +973,7 @@ func (s *Service) titleConversation(ctx context.Context, user users.User, conver
 	// when the head provider runs dry. The fast model: naming a thread is not
 	// worth the expensive one.
 	started := time.Now()
-	resp, client, err := s.generate(ctx, user, ai.Request{
+	resp, client, err := s.generate(ctx, user, spend.SurfaceTitle, ai.Request{
 		Model:     s.fastModel,
 		Messages:  []ai.Message{ai.UserText(prompt)},
 		MaxTokens: 40,
