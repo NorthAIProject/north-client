@@ -16,8 +16,10 @@ import (
 	"github.com/NorthAIProject/north-client/internal/documents/parse"
 	"github.com/NorthAIProject/north-client/internal/jobs"
 	"github.com/NorthAIProject/north-client/internal/search"
+	"github.com/NorthAIProject/north-client/internal/shared/aiattr"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/limits"
+	"github.com/NorthAIProject/north-client/internal/spend"
 )
 
 const (
@@ -339,7 +341,10 @@ func (s *Service) vectorSearch(ctx context.Context, userID uuid.UUID, query stri
 		return nil
 	}
 
-	vector, err := s.embeddings.EmbedQuery(ctx, query)
+	// A search embeds the query too. Small next to indexing, but it happens on
+	// every search, so leaving it unattributed would put a per-request cost in
+	// the unattributed bucket forever.
+	vector, err := s.embeddings.EmbedQuery(aiattr.WithUser(ctx, userID, spend.SurfaceEmbedding), query)
 	if err != nil {
 		s.log().Warn("semantic search skipped: could not embed the query", slog.Any("error", err))
 		return nil

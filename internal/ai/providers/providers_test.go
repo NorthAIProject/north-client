@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/ai/providers"
 )
 
@@ -96,5 +97,53 @@ func TestBuildPrefersTheChainHeadOverTheFirstRegistered(t *testing.T) {
 	}
 	if r.DefaultName() != "xai" {
 		t.Errorf("default = %q, want xai", r.DefaultName())
+	}
+}
+
+// noopMeter satisfies ai.Meter without recording, so a test can build a
+// registry that wraps its clients the way production does.
+type noopMeter struct{}
+
+func (noopMeter) Record(context.Context, string, string, ai.Usage, bool) {}
+
+// Embeddings must still resolve when the registry meters its clients.
+//
+// Embedder reaches past the Client interface with a type assertion to
+// *openaicompat.Client, because the embeddings endpoint is not on the
+// interface. Metering wraps every registered client, so that assertion sees a
+// wrapper unless it unwraps first — and it only sees one where a meter is
+// configured. That makes this the worst shape of bug available: embeddings work
+// on a laptop, and the boot fails in production with "does not serve an
+// embeddings endpoint" pointing at a provider that plainly does.
+func TestEmbedderResolvesThroughAMeteredRegistry(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		meter ai.Meter
+	}{
+		{"unmetered", nil},
+		{"metered", noopMeter{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r, err := providers.Build(context.Background(), providers.Options{
+				Chain:      []string{"nvidia"},
+				Meter:      tc.meter,
+				Compatible: []providers.Compatible{compatSpec("nvidia", "meta/llama-3.3-70b-instruct")},
+			})
+			if err != nil {
+				t.Fatalf("build: %v", err)
+			}
+
+			embedder, err := providers.Embedder(r, providers.EmbedderOptions{
+				Provider:   "nvidia",
+				Model:      "nvidia/nv-embed-v1",
+				Dimensions: 1024,
+			})
+			if err != nil {
+				t.Fatalf("embedder: %v", err)
+			}
+			if embedder == nil {
+				t.Fatal("embedder is nil despite a configured provider and model")
+			}
+		})
 	}
 }

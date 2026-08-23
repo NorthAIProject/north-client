@@ -9,7 +9,9 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/ai"
+	"github.com/NorthAIProject/north-client/internal/shared/aiattr"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/spend"
 )
 
 // embeddingDims is the width of chunk_embeddings.embedding. A vector of any
@@ -58,6 +60,10 @@ func (e *Embedder) Enabled() bool { return e != nil && e.client != nil }
 // picks up where it stopped, and the alternative is a person whose library
 // never finishes because one batch keeps failing.
 func (e *Embedder) EmbedPending(ctx context.Context, userID uuid.UUID) (int, error) {
+	// Indexing a library is the largest embedding cost there is, and it runs on
+	// a schedule rather than a request, so nothing else would attribute it.
+	ctx = aiattr.WithUser(ctx, userID, spend.SurfaceEmbedding)
+
 	if !e.Enabled() {
 		return 0, nil
 	}
