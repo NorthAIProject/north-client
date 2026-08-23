@@ -12,6 +12,11 @@ type EmbedderOptions struct {
 	Provider   string
 	Model      string
 	Dimensions int
+
+	// Meter records what embedding calls consume. Passed separately from the
+	// registry's meter because this path unwraps the registered client to reach
+	// the embeddings endpoint, so the wrapper that meters chat is left behind.
+	Meter ai.Meter
 }
 
 // Embedder returns the client that will produce vectors, or nil when
@@ -31,7 +36,9 @@ func Embedder(registry *ai.Registry, opts EmbedderOptions) (ai.Embedder, error) 
 		return nil, fmt.Errorf("providers: embedding provider %q: %w", opts.Provider, err)
 	}
 
-	compat, ok := client.(*openaicompat.Client)
+	// Unwrapped: the registry wraps clients for metering, and this assertion
+	// reaches for a concrete type rather than the Client interface.
+	compat, ok := ai.Unwrap(client).(*openaicompat.Client)
 	if !ok {
 		return nil, fmt.Errorf(
 			"providers: %q does not serve an embeddings endpoint; use an OpenAI-dialect provider such as nvidia",
@@ -41,5 +48,6 @@ func Embedder(registry *ai.Registry, opts EmbedderOptions) (ai.Embedder, error) 
 	return compat.WithEmbeddings(openaicompat.EmbedOptions{
 		Model:      opts.Model,
 		Dimensions: opts.Dimensions,
+		Meter:      opts.Meter,
 	}), nil
 }

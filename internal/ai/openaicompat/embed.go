@@ -26,6 +26,15 @@ type EmbedOptions struct {
 	// rather than on the first insert of a reindex.
 	Dimensions int
 
+	// Meter records what embedding calls consume.
+	//
+	// Metering sits here rather than in the ai.Metered decorator that covers
+	// chat, because the ai.Embedder contract returns only vectors — there is no
+	// usage in the return values for a wrapper to observe, and the providers
+	// path unwraps this client to reach the embeddings endpoint at all. The
+	// token count exists only on the wire, so it is read where the wire is.
+	Meter ai.Meter
+
 	// MaxBatch bounds one request. Providers cap inputs per call; exceeding it
 	// fails the whole batch, so the client splits rather than finding out.
 	MaxBatch int
@@ -106,10 +115,19 @@ func (c *Client) embedBatch(ctx context.Context, texts []string) ([][]float32, e
 			Index     int       `json:"index"`
 			Embedding []float32 `json:"embedding"`
 		} `json:"data"`
+		// Embedding responses report prompt tokens and nothing else — there is
+		// no completion. Previously discarded, which is why embedding spend was
+		// the one cost in the product with no record anywhere.
+		Usage struct {
+			PromptTokens int `json:"prompt_tokens"`
+		} `json:"usage"`
+		Model string `json:"model"`
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 32<<20)).Decode(&decoded); err != nil {
 		return nil, apperr.Wrap(err, "%s: decode embeddings", c.name)
 	}
+
+	c.recordEmbedUsage(ctx, decoded.Model, decoded.Usage.PromptTokens)
 
 	sort.Slice(decoded.Data, func(i, j int) bool { return decoded.Data[i].Index < decoded.Data[j].Index })
 
@@ -152,10 +170,16 @@ func (c *Client) EmbedQuery(ctx context.Context, query string) ([]float32, error
 		Data []struct {
 			Embedding []float32 `json:"embedding"`
 		} `json:"data"`
+		Usage struct {
+			PromptTokens int `json:"prompt_tokens"`
+		} `json:"usage"`
+		Model string `json:"model"`
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 8<<20)).Decode(&decoded); err != nil {
 		return nil, apperr.Wrap(err, "%s: decode query embedding", c.name)
 	}
+
+	c.recordEmbedUsage(ctx, decoded.Model, decoded.Usage.PromptTokens)
 	if len(decoded.Data) == 0 {
 		return nil, fmt.Errorf("%s: no embedding returned for the query", c.name)
 	}
@@ -163,3 +187,21 @@ func (c *Client) EmbedQuery(ctx context.Context, query string) ([]float32, error
 }
 
 var _ ai.Embedder = (*Client)(nil)
+
+// recordEmbedUsage reports one embeddings call to the meter.
+//
+// Output tokens are always zero: an embeddings response has no completion, only
+// the prompt it consumed. Recording the zero explicitly is the honest shape —
+// the call really did produce no output tokens, which is different from a chat
+// call whose usage went unreported.
+//
+// A batch counts once, not once per input. The provider bills the request.
+func (c *Client) recordEmbedUsage(ctx context.Context, model string, promptTokens int) {
+	if c.embed.Meter == nil || promptTokens == 0 {
+		return
+	}
+	if model == "" {
+		model = c.embed.Model
+	}
+	c.embed.Meter.Record(ctx, c.name, model, ai.Usage{InputTokens: promptTokens}, false)
+}

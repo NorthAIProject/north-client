@@ -178,6 +178,7 @@ func run() error {
 		Provider:   cfg.Embedding.Provider,
 		Model:      cfg.Embedding.Model,
 		Dimensions: cfg.Embedding.Dimensions,
+		Meter:      spendMeter,
 	})
 	if err != nil {
 		return err

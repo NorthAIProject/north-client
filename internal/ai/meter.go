@@ -44,6 +44,15 @@ type meteredClient struct {
 
 func (c *meteredClient) Name() string { return c.inner.Name() }
 
+// Unwrap returns the client underneath.
+//
+// Needed because a Client is not always used through the interface: the
+// embeddings path type-asserts to *openaicompat.Client to reach a method the
+// Client interface does not carry. Without this the assertion fails against the
+// wrapper — and fails only where a meter is configured, so it would work on a
+// laptop and break the boot in production.
+func (c *meteredClient) Unwrap() Client { return c.inner }
+
 // UploadFile consumes no tokens, so there is nothing to record.
 func (c *meteredClient) UploadFile(ctx context.Context, req UploadRequest) (*File, error) {
 	return c.inner.UploadFile(ctx, req)
@@ -139,4 +148,18 @@ func (c *meteredClient) resolveModel(reported string, req Request) string {
 		return reported
 	}
 	return req.Model
+}
+
+// Unwrap returns the client underneath any metering wrappers, or c itself.
+//
+// For the callers that need a concrete type rather than the interface. Prefer
+// the interface; reach for this only where a capability is not on it.
+func Unwrap(c Client) Client {
+	for {
+		u, ok := c.(interface{ Unwrap() Client })
+		if !ok {
+			return c
+		}
+		c = u.Unwrap()
+	}
 }
