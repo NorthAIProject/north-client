@@ -40,6 +40,11 @@ type Config struct {
 	// migration runs once, as `main migrate`, in a PreSync hook ahead of both.
 	AutoMigrate bool
 
+	// SMTP delivers transactional email. Optional, like the credentials below
+	// it: without a host the password reset journey turns itself off rather
+	// than pretending to send.
+	SMTP SMTPConfig
+
 	// Google OAuth (optional). Empty credentials disable the feature.
 	GoogleClientID     string
 	GoogleClientSecret string
@@ -225,6 +230,35 @@ type PostHogConfig struct {
 	Host   string
 }
 
+// SMTPConfig points at a mail submission endpoint.
+//
+// SMTP rather than a provider SDK because every transactional provider speaks
+// it, so switching from one to another is an environment change rather than a
+// code change — and it keeps a dependency out of go.mod for something the
+// standard library already does.
+type SMTPConfig struct {
+	Host string
+	Port int
+
+	// Username and Password may be empty for a relay that authenticates by IP.
+	// Hosted providers all want them.
+	Username string
+	Password string
+
+	// From must be an address the provider has been configured to send for.
+	// They reject anything else, so this is not free-form.
+	From     string
+	FromName string
+}
+
+// Enabled reports whether mail can actually be delivered.
+//
+// Host and From are the two that cannot be guessed. Everything else has a
+// working default or is genuinely optional.
+func (c SMTPConfig) Enabled() bool {
+	return c.Host != "" && c.From != ""
+}
+
 // QuotaConfig bounds how often one account may take an action that costs money
 // or real work. Every value is per hour.
 //
@@ -361,6 +395,14 @@ func Load() (*Config, error) {
 		LogLevel: optional("LOG_LEVEL", "info"),
 
 		DatabaseURL: require("DATABASE_URL"),
+
+		SMTP: SMTPConfig{
+			Host:     strings.TrimSpace(os.Getenv("SMTP_HOST")),
+			Username: strings.TrimSpace(os.Getenv("SMTP_USERNAME")),
+			Password: os.Getenv("SMTP_PASSWORD"),
+			From:     strings.TrimSpace(os.Getenv("SMTP_FROM")),
+			FromName: optional("SMTP_FROM_NAME", "Khepri"),
+		},
 
 		GoogleClientID:     strings.TrimSpace(os.Getenv("GOOGLE_CLIENT_ID")),
 		GoogleClientSecret: strings.TrimSpace(os.Getenv("GOOGLE_CLIENT_SECRET")),
@@ -540,6 +582,25 @@ func Load() (*Config, error) {
 		problems = append(problems, err.Error())
 	}
 	cfg.AutoMigrate = autoMigrate
+
+	// 587 is the submission port, upgraded with STARTTLS. 465 is implicit TLS
+	// and the mailer dials it encrypted; anything else is treated as 587-like.
+	smtpPort, err := intValue("SMTP_PORT", 587)
+	if err != nil {
+		problems = append(problems, err.Error())
+	}
+	cfg.SMTP.Port = smtpPort
+
+	// A half-configured mailer is refused rather than left to fail on the first
+	// reset request. Somebody who set SMTP_HOST has said they want mail; a
+	// missing SMTP_FROM at that point is a typo, not a decision, and finding
+	// out at boot is cheaper than finding out from a locked-out user.
+	if cfg.SMTP.Host != "" && cfg.SMTP.From == "" {
+		problems = append(problems, "SMTP_FROM is required when SMTP_HOST is set")
+	}
+	if cfg.SMTP.From != "" && cfg.SMTP.Host == "" {
+		problems = append(problems, "SMTP_HOST is required when SMTP_FROM is set")
+	}
 
 	// AI_PROVIDER is the older single-provider form. Honouring it as a
 	// one-element chain keeps existing .env files and deployments working.

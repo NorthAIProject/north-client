@@ -380,6 +380,29 @@ env. See `docs/gateways.md` and `skills/north-connect/SKILL.md`.
 
 ---
 
+## Email
+
+Optional in development, required before signups open.
+
+| Variable | Default | Notes |
+|---|---|---|
+| `SMTP_HOST` | — | Empty disables mail. Any provider; SMTP is the common interface. |
+| `SMTP_PORT` | `587` | 587 STARTTLS, 465 implicit TLS. Neither offered = refused, not downgraded. |
+| `SMTP_USERNAME` | — | Optional for an IP-authenticated relay; hosted providers want it. |
+| `SMTP_PASSWORD` | — | Belongs in the sealed secret, not in values. |
+| `SMTP_FROM` | — | Must be an address the provider sends for. Required with `SMTP_HOST`. |
+| `SMTP_FROM_NAME` | `Khepri` | Display name only. |
+
+`SMTP_HOST` and `SMTP_FROM` are required together — setting one without the
+other fails the boot rather than failing on the first reset request.
+
+With no host configured, password reset **turns itself off in production**
+rather than writing recovery links into the pod log. The routes 404 and the
+sign-in page omits the link; passkeys and Google sign-in are unaffected. A
+password-only account cannot recover until this is set.
+
+---
+
 ## Quotas
 
 Working defaults. Zero or a missing name means "use the default", never
