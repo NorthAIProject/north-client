@@ -511,6 +511,27 @@ func run() error {
 	return nil
 }
 
+// mailer picks how transactional email leaves the process.
+//
+// LogMailer is the right answer in development: the reset link lands in the
+// terminal the developer is already watching, and no local SMTP is needed to
+// exercise the journey. It is the wrong answer in production, which is why
+// auth refuses to run the reset routes on it there rather than writing account
+// recovery links into a shared log.
+func mailer(cfg *config.Config) auth.Mailer {
+	if !cfg.SMTP.Enabled() {
+		return auth.LogMailer{}
+	}
+	return auth.SMTPMailer{
+		Host:     cfg.SMTP.Host,
+		Port:     cfg.SMTP.Port,
+		Username: cfg.SMTP.Username,
+		Password: cfg.SMTP.Password,
+		From:     cfg.SMTP.From,
+		FromName: cfg.SMTP.FromName,
+	}
+}
+
 // background is work that outlives any one request.
 //
 // Today there is exactly one: the Telegram poller, which has to keep asking
@@ -544,10 +565,10 @@ func routes(
 	sessions := auth.NewSessionStore(pool, cfg.SessionLifetime)
 	authSvc := auth.NewService(userSvc, sessions, auth.ServiceOptions{
 		BaseURL: cfg.BaseURL,
-		// LogMailer until a real SMTP provider is wired; reset links show in
-		// logs. Production turns the reset journey off rather than leaking
-		// those links into a shared log — see Service.PasswordResetEnabled.
-		Mailer:              auth.LogMailer{},
+		// A real mailer when one is configured, the log otherwise. Nothing else
+		// has to change: Service.PasswordResetEnabled turns the reset journey
+		// back on by itself once delivery stops being a log line.
+		Mailer:              mailer(cfg),
 		Production:          cfg.Env.IsProduction(),
 		GoogleClientID:      cfg.GoogleClientID,
 		GoogleClientSecret:  cfg.GoogleClientSecret,
