@@ -9,10 +9,20 @@ import (
 	"github.com/NorthAIProject/north-client/internal/workouts/plan"
 )
 
-// defaultLimit bounds a browse page. Large enough that the common filters
-// return everything they match, small enough that an unfiltered request does
-// not render the whole catalog into one page.
-const defaultLimit = 60
+// PageSize is how many exercises one browse page shows.
+//
+// Exported because the handler turns ?page= into an offset and the template
+// renders the page links, so both need the same number; a second constant in
+// either would page the list at one size and label it at another.
+//
+// 24 rather than the 60 this used to be: since migrations/20260827150000 every
+// row carries a three-frame illustration, so a page is also 3x this many asset
+// requests. It was already a truncating limit with no way past it — 60 of 186 —
+// which is what paging is here to fix.
+const PageSize = 24
+
+// defaultLimit is PageSize under the name the non-browse callers use.
+const defaultLimit = PageSize
 
 // maxLimit caps what a caller can ask for, including the plan generator's
 // candidate list.
@@ -44,6 +54,11 @@ func (s *Service) GetBySlug(ctx context.Context, slug string) (Exercise, error) 
 
 // Search runs a browse query, returning the matches and the total count. The
 // count is separate because the page shows "showing 60 of 143".
+// Search returns one page of matching exercises and the total number that
+// matched, which is what the browse page needs to draw its page links.
+//
+// The total counts every match, not the page — CountExercises deliberately
+// carries no LIMIT or OFFSET.
 func (s *Service) Search(ctx context.Context, f Filter) ([]Exercise, int, error) {
 	f = normalize(f)
 
@@ -129,6 +144,12 @@ func normalize(f Filter) Filter {
 	}
 	if f.Limit > maxLimit {
 		f.Limit = maxLimit
+	}
+
+	// A negative offset is a malformed request, not a request for the end of
+	// the list, and Postgres rejects it outright.
+	if f.Offset < 0 {
+		f.Offset = 0
 	}
 
 	return f

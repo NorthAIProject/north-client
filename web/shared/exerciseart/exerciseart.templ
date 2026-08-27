@@ -1,0 +1,150 @@
+// Package exerciseart renders the pose artwork for a catalog exercise.
+//
+// Three frames of one movement, cycled, given nothing but a slug:
+//
+//	@exerciseart.Frames(exerciseart.Props{
+//		ID:   "exercise-" + e.Slug,
+//		Slug: e.IllustrationSlug,
+//		Name: e.Name,
+//	})
+//
+// The artwork is CC BY-SA 4.0 and requires visible credit wherever it appears.
+// Credit() renders that line; a page using Frames must also render Credit()
+// once. See web/assets/exercises/NOTICE.
+//
+// # Why a mask rather than an <img>
+//
+// The frames are drawn white on transparent. Loaded through <img> they would
+// be invisible on the light theme, and `fill="currentColor"` does not help:
+// inside an <img> the SVG is its own document, so currentColor resolves against
+// that document's initial colour — black, in both themes — rather than against
+// the page.
+//
+// Used as a CSS mask only the alpha channel is read, and the colour comes from
+// the element underneath, which is `bg-current`. One asset then serves both
+// themes with the file left byte-identical to upstream, which also keeps the
+// list of changes the licence obliges North to declare down to the packaging.
+package exerciseart
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/NorthAIProject/north-client/web/shared/ui/aspectratio"
+)
+
+// Props is the whole contract: a slug naming a directory under
+// web/assets/exercises, and the exercise name for the alt text.
+type Props struct {
+	// ID must be unique on the page. Two exercises rendered together would
+	// otherwise share Alpine state and cycle as one.
+	ID string
+
+	// Slug is exercise.Exercise.IllustrationSlug — the artwork's own name for
+	// the movement, which is not always the catalog's. Empty renders nothing.
+	Slug string
+
+	Name string
+
+	// Class is merged onto the outer box, for callers sizing a thumbnail
+	// differently from a detail illustration.
+	Class string
+}
+
+// frameCount is what upstream ships for every exercise: a start, a midpoint,
+// and an end. All 302 carry exactly three.
+const frameCount = 3
+
+templ Frames(p Props) {
+	if p.Slug != "" {
+		@aspectratio.AspectRatio(aspectratio.Props{
+			Ratio: aspectratio.RatioSquare,
+			Class: p.Class,
+		}) {
+			<div
+				id={ p.ID }
+				x-data={ alpineData(p) }
+				x-init="start()"
+				class="text-foreground relative h-full w-full"
+				role="img"
+				aria-label={ fmt.Sprintf("Illustration of %s", p.Name) }
+			>
+				for frame := 1; frame <= frameCount; frame++ {
+					// Stacked rather than swapping one element's mask URL, so
+					// every frame is fetched on first paint and the cycle never
+					// flashes an empty box waiting on a request.
+					<span
+						aria-hidden="true"
+						class="absolute inset-0 bg-current transition-opacity duration-150 ease-linear"
+						style={ maskFor(p.Slug, frame) }
+						x-bind:class={ fmt.Sprintf("frame === %d ? 'opacity-100' : 'opacity-0'", frame) }
+					></span>
+				}
+			</div>
+		}
+	}
+}
+
+// Credit is the attribution CC BY-SA 4.0 requires on any page showing the
+// artwork. Rendering the frames without it is a licence breach, not a missing
+// nicety, which is why it lives in this package next to them rather than being
+// left to each caller to remember.
+templ Credit() {
+	<p class="text-muted-foreground text-xs">
+		Exercise illustrations by
+		<a href="https://bryllim.com" class="underline underline-offset-2" target="_blank" rel="noopener noreferrer">Bryl Lim</a>
+		and
+		<a href="https://github.com/everkinetic/data" class="underline underline-offset-2" target="_blank" rel="noopener noreferrer">Everkinetic</a>,
+		licensed
+		<a href="https://creativecommons.org/licenses/by-sa/4.0/" class="underline underline-offset-2" target="_blank" rel="noopener noreferrer">CC BY-SA 4.0</a>.
+	</p>
+}
+
+// alpineData drives the cycle.
+//
+// Reduced motion is honoured by simply not starting the interval: the first
+// frame is a complete, legible drawing of the movement on its own, so there is
+// nothing to replace it with.
+func alpineData(p Props) string {
+	return fmt.Sprintf(`{ frame: 1, frames: %d, start() {
+		if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+		setInterval(() => { this.frame = this.frame %% this.frames + 1 }, 900)
+	} }`, frameCount)
+}
+
+// maskFor builds the mask declaration for one frame.
+//
+// The URL asks for .svg; the file on disk is .svg.gz. mountAssets in
+// cmd/web/main.go bridges the two, so that whether the frames are stored
+// compressed stays a serving decision and never reaches the markup.
+//
+// The -webkit- prefixes are still required: Safari has not unprefixed
+// mask-image.
+func maskFor(slug string, frame int) templ.SafeCSS {
+	url := fmt.Sprintf("url(/assets/exercises/%s/frame-%d.svg)", safeSlug(slug), frame)
+	return templ.SafeCSS(fmt.Sprintf(
+		"-webkit-mask-image:%s;mask-image:%s;"+
+			"-webkit-mask-size:contain;mask-size:contain;"+
+			"-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;"+
+			"-webkit-mask-position:center;mask-position:center",
+		url, url))
+}
+
+// safeSlug strips anything that could close the url() and inject a second
+// declaration.
+//
+// templ.SafeCSS is an assertion that the string is already safe, so it skips
+// the escaping every other interpolation gets. The slug reaches here from a
+// database column, and a column is not a guarantee — the generator only ever
+// writes [a-z0-9-], so anything else means something upstream of this went
+// wrong and should render nothing rather than whatever it says.
+func safeSlug(slug string) string {
+	var b strings.Builder
+	for _, r := range slug {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '-':
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}

@@ -76,6 +76,25 @@ type Exercise struct {
 	// Muscle keys from internal/workouts/plan.MuscleGroups.
 	Primary   []string
 	Secondary []string
+
+	// IllustrationSlug names the directory under web/assets/exercises holding
+	// this movement's three pose frames, or is empty when there is no artwork
+	// for it.
+	//
+	// Its own field rather than a reuse of Slug because the two vocabularies
+	// disagree: the catalog came from FitMe and calls the bench press
+	// "barbell-bench-press-medium-grip", where the artwork's source calls it
+	// "bench-press". See migrations/20260827150000 and scripts/workout-guide-art.
+	IllustrationSlug string
+}
+
+// HasIllustration reports whether this exercise has pose artwork to render.
+//
+// Most of the catalog does not: the artwork covers 302 movements and the
+// catalog carries more, so an absent illustration is ordinary rather than a
+// missing file.
+func (e Exercise) HasIllustration() bool {
+	return e.IllustrationSlug != ""
 }
 
 // NeedsEquipment reports whether this exercise requires anything to perform.

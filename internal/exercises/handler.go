@@ -3,6 +3,7 @@ package exercises
 import (
 	"log/slog"
 	"net/http"
+	"strconv"
 
 	"github.com/go-chi/chi/v5"
 
@@ -41,22 +42,70 @@ func (h *Handler) browse(w http.ResponseWriter, r *http.Request) {
 		filter.Equipment = []string{equipment}
 	}
 
+	// The catalog is 455 rows and a page is PageSize of them, so the list has
+	// to be paged: before this it rendered the first 60 and there was no way
+	// to reach the rest.
+	requested := pageParam(r)
+	filter.Limit = PageSize
+	filter.Offset = (requested - 1) * PageSize
+
 	found, total, err := h.svc.Search(ctx, filter)
 	if err != nil {
 		h.fail(w, r, err)
 		return
 	}
 
+	// A page past the end renders empty, which looks like a filter that matched
+	// nothing rather than a number that was too big. Re-run at the last real
+	// page instead. Only ever one extra query, and only for an out-of-range
+	// request.
+	if last := lastPage(total); requested > last {
+		requested = last
+		filter.Offset = (requested - 1) * PageSize
+		if found, total, err = h.svc.Search(ctx, filter); err != nil {
+			h.fail(w, r, err)
+			return
+		}
+	}
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	page := exercisepages.Browse(user, found, total, exercisepages.Filters{
+	page := exercisepages.Browse(user, found, exercisepages.Filters{
 		Query:     filter.Query,
 		Muscle:    r.URL.Query().Get("muscle"),
 		Category:  r.URL.Query().Get("category"),
 		Equipment: r.URL.Query().Get("equipment"),
+	}, exercisepages.Page{
+		Number:   requested,
+		Last:     lastPage(total),
+		Total:    total,
+		FirstRow: filter.Offset + 1,
 	})
 	if err := page.Render(ctx, w); err != nil {
 		middleware.FromContext(ctx).Error("render exercise browse", slog.Any("error", err))
 	}
+}
+
+// pageParam reads ?page=, 1-based.
+//
+// Anything unparseable or below 1 is page 1 rather than an error: the number
+// arrives from a URL someone may have typed or truncated, and the first page is
+// a better answer than a 400 on a page that is only a list.
+func pageParam(r *http.Request) int {
+	page, err := strconv.Atoi(r.URL.Query().Get("page"))
+	if err != nil || page < 1 {
+		return 1
+	}
+	return page
+}
+
+// lastPage is never 0: an empty result still has a page 1 to render the "nothing
+// matched" message on, and a 0 would make the clamp above ask for a negative
+// offset.
+func lastPage(total int) int {
+	if total <= 0 {
+		return 1
+	}
+	return (total + PageSize - 1) / PageSize
 }
 
 func (h *Handler) detail(w http.ResponseWriter, r *http.Request) {

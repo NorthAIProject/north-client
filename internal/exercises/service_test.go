@@ -251,3 +251,98 @@ func contains(haystack []string, needle string) bool {
 	}
 	return false
 }
+
+// Paging must cover the catalog exactly once: every row reachable, none twice.
+//
+// The browse page shows PageSize of 455 rows, so a gap or a repeat is invisible
+// on any single page and only shows up by walking the whole list. Before paging
+// existed the page rendered the first 60 and there was no way to reach the rest.
+func TestPagingWalksTheWholeCatalogWithoutGapsOrRepeats(t *testing.T) {
+	t.Parallel()
+
+	svc := newService(t)
+	ctx := context.Background()
+
+	_, total, err := svc.Search(ctx, exercises.Filter{})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if total < 400 {
+		t.Fatalf("the catalog looks unseeded or unmigrated: %d rows", total)
+	}
+
+	seen := map[string]bool{}
+	pages := 0
+	for offset := 0; offset < total; offset += exercises.PageSize {
+		found, pageTotal, err := svc.Search(ctx, exercises.Filter{
+			Limit:  exercises.PageSize,
+			Offset: offset,
+		})
+		if err != nil {
+			t.Fatalf("page at offset %d: %v", offset, err)
+		}
+		pages++
+
+		// The total must not drift between pages, or the page links would
+		// renumber themselves as someone walks the list.
+		if pageTotal != total {
+			t.Fatalf("total changed from %d to %d at offset %d", total, pageTotal, offset)
+		}
+		if len(found) == 0 {
+			t.Fatalf("offset %d returned nothing while %d rows remain", offset, total-offset)
+		}
+		for _, e := range found {
+			if seen[e.Slug] {
+				t.Errorf("%q appeared on more than one page", e.Slug)
+			}
+			seen[e.Slug] = true
+		}
+	}
+
+	if len(seen) != total {
+		t.Errorf("walked %d distinct exercises across %d pages, want all %d", len(seen), pages, total)
+	}
+}
+
+// An offset past the end is a page number someone typed. It must come back
+// empty rather than erroring, so the handler can clamp and re-run.
+func TestAnOffsetPastTheEndReturnsNothingRatherThanFailing(t *testing.T) {
+	t.Parallel()
+
+	svc := newService(t)
+	found, total, err := svc.Search(context.Background(), exercises.Filter{Limit: 10, Offset: 100000})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(found) != 0 {
+		t.Errorf("got %d rows past the end of the catalog", len(found))
+	}
+	if total == 0 {
+		t.Error("total should still count every match, not the empty page")
+	}
+}
+
+// A filtered page must be counted against the filter, not the whole catalog,
+// or the page links would offer pages that render nothing.
+func TestTheTotalTracksTheFilterNotTheCatalog(t *testing.T) {
+	t.Parallel()
+
+	svc := newService(t)
+	ctx := context.Background()
+
+	_, all, err := svc.Search(ctx, exercises.Filter{})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	_, filtered, err := svc.Search(ctx, exercises.Filter{Muscle: "chest"})
+	if err != nil {
+		t.Fatalf("filtered search: %v", err)
+	}
+
+	if filtered == 0 {
+		t.Fatal("no exercises train the chest, which cannot be right")
+	}
+	if filtered >= all {
+		t.Errorf("filtered total %d is not smaller than the catalog's %d", filtered, all)
+	}
+}

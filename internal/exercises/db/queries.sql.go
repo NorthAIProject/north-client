@@ -41,7 +41,7 @@ func (q *Queries) CountExercises(ctx context.Context, arg CountExercisesParams) 
 }
 
 const getExercise = `-- name: GetExercise :one
-SELECT id, slug, name, category, equipment, difficulty, instructions, video_url, primary_muscles, secondary_muscles, created_at, updated_at FROM exercises WHERE id = $1
+SELECT id, slug, name, category, equipment, difficulty, instructions, video_url, primary_muscles, secondary_muscles, created_at, updated_at, illustration_slug FROM exercises WHERE id = $1
 `
 
 func (q *Queries) GetExercise(ctx context.Context, id uuid.UUID) (Exercise, error) {
@@ -60,12 +60,13 @@ func (q *Queries) GetExercise(ctx context.Context, id uuid.UUID) (Exercise, erro
 		&i.SecondaryMuscles,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.IllustrationSlug,
 	)
 	return i, err
 }
 
 const getExerciseBySlug = `-- name: GetExerciseBySlug :one
-SELECT id, slug, name, category, equipment, difficulty, instructions, video_url, primary_muscles, secondary_muscles, created_at, updated_at FROM exercises WHERE slug = $1
+SELECT id, slug, name, category, equipment, difficulty, instructions, video_url, primary_muscles, secondary_muscles, created_at, updated_at, illustration_slug FROM exercises WHERE slug = $1
 `
 
 func (q *Queries) GetExerciseBySlug(ctx context.Context, slug string) (Exercise, error) {
@@ -84,12 +85,13 @@ func (q *Queries) GetExerciseBySlug(ctx context.Context, slug string) (Exercise,
 		&i.SecondaryMuscles,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.IllustrationSlug,
 	)
 	return i, err
 }
 
 const listExercisesBySlugs = `-- name: ListExercisesBySlugs :many
-SELECT id, slug, name, category, equipment, difficulty, instructions, video_url, primary_muscles, secondary_muscles, created_at, updated_at FROM exercises WHERE slug = ANY($1::text[])
+SELECT id, slug, name, category, equipment, difficulty, instructions, video_url, primary_muscles, secondary_muscles, created_at, updated_at, illustration_slug FROM exercises WHERE slug = ANY($1::text[])
 `
 
 func (q *Queries) ListExercisesBySlugs(ctx context.Context, slugs []string) ([]Exercise, error) {
@@ -114,6 +116,7 @@ func (q *Queries) ListExercisesBySlugs(ctx context.Context, slugs []string) ([]E
 			&i.SecondaryMuscles,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.IllustrationSlug,
 		); err != nil {
 			return nil, err
 		}
@@ -126,7 +129,7 @@ func (q *Queries) ListExercisesBySlugs(ctx context.Context, slugs []string) ([]E
 }
 
 const listExercisesForEquipment = `-- name: ListExercisesForEquipment :many
-SELECT id, slug, name, category, equipment, difficulty, instructions, video_url, primary_muscles, secondary_muscles, created_at, updated_at FROM exercises
+SELECT id, slug, name, category, equipment, difficulty, instructions, video_url, primary_muscles, secondary_muscles, created_at, updated_at, illustration_slug FROM exercises
 WHERE equipment = ANY($1::text[])
 ORDER BY category, name
 LIMIT $2::int
@@ -162,6 +165,7 @@ func (q *Queries) ListExercisesForEquipment(ctx context.Context, arg ListExercis
 			&i.SecondaryMuscles,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.IllustrationSlug,
 		); err != nil {
 			return nil, err
 		}
@@ -174,32 +178,39 @@ func (q *Queries) ListExercisesForEquipment(ctx context.Context, arg ListExercis
 }
 
 const searchExercises = `-- name: SearchExercises :many
-SELECT id, slug, name, category, equipment, difficulty, instructions, video_url, primary_muscles, secondary_muscles, created_at, updated_at FROM exercises
+SELECT id, slug, name, category, equipment, difficulty, instructions, video_url, primary_muscles, secondary_muscles, created_at, updated_at, illustration_slug FROM exercises
 WHERE ($1::text = '' OR name ILIKE '%' || $1::text || '%')
   AND ($2::text = '' OR $2::text = ANY(primary_muscles) OR $2::text = ANY(secondary_muscles))
   AND ($3::text = '' OR category = $3::text)
   AND (cardinality($4::text[]) = 0 OR equipment = ANY($4::text[]))
 ORDER BY name
-LIMIT $5::int
+LIMIT $6::int OFFSET $5::int
 `
 
 type SearchExercisesParams struct {
-	Query       string
-	Muscle      string
-	Category    string
-	Equipment   []string
-	ResultLimit int32
+	Query        string
+	Muscle       string
+	Category     string
+	Equipment    []string
+	ResultOffset int32
+	ResultLimit  int32
 }
 
 // SearchExercises is the browse page's one query. Every filter is optional:
 // an empty query, muscle, category, or equipment list means "no constraint",
 // which keeps this to a single statement rather than a builder.
+//
+// Paged by offset rather than a keyset cursor. The ORDER BY is name, which is
+// stable and unique enough here, and the catalog is 455 rows — an offset deep
+// into it costs nothing a keyset would save. Page links also need to jump to an
+// arbitrary page, which a cursor cannot do.
 func (q *Queries) SearchExercises(ctx context.Context, arg SearchExercisesParams) ([]Exercise, error) {
 	rows, err := q.db.Query(ctx, searchExercises,
 		arg.Query,
 		arg.Muscle,
 		arg.Category,
 		arg.Equipment,
+		arg.ResultOffset,
 		arg.ResultLimit,
 	)
 	if err != nil {
@@ -222,6 +233,7 @@ func (q *Queries) SearchExercises(ctx context.Context, arg SearchExercisesParams
 			&i.SecondaryMuscles,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.IllustrationSlug,
 		); err != nil {
 			return nil, err
 		}

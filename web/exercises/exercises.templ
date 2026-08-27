@@ -4,11 +4,14 @@ package exercises
 
 import (
 	"fmt"
+	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/NorthAIProject/north-client/internal/exercises/exercise"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/workouts/plan"
+	"github.com/NorthAIProject/north-client/web/shared/exerciseart"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
 	"github.com/NorthAIProject/north-client/web/shared/muscleviewer"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
@@ -16,6 +19,7 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
 	"github.com/NorthAIProject/north-client/web/shared/ui/card"
 	"github.com/NorthAIProject/north-client/web/shared/ui/input"
+	"github.com/NorthAIProject/north-client/web/shared/ui/pagination"
 	"github.com/NorthAIProject/north-client/web/shared/ui/selectbox"
 )
 
@@ -28,6 +32,69 @@ type Filters struct {
 	Muscle    string
 	Category  string
 	Equipment string
+}
+
+// Page is where the browse list sits in the catalog.
+//
+// The catalog reached 455 rows in one migration, so the list has to be paged.
+// Offset paging with page links rather than a cursor: a page link has to jump
+// to an arbitrary page, and it has to survive being bookmarked — the same
+// reason the filter form below is a GET.
+type Page struct {
+	// Number is 1-based, and already clamped to Last by the handler, so the
+	// template never has to reason about a page past the end.
+	Number int
+	Last   int
+
+	// Total is every row matching the filter, not this page's worth.
+	Total int
+
+	// FirstRow is the 1-based index of this page's first row within the whole
+	// result, for the "Showing 25-48 of 455" line.
+	FirstRow int
+}
+
+// pageURL rebuilds the current filter at a different page.
+//
+// Every filter travels with the link. Dropping them would quietly reset the
+// filter on page two, which reads as a page of results that do not match what
+// was asked for.
+//
+// Page 1 omits the parameter, so the first page of a filter has one canonical
+// URL rather than two that render identically.
+func (f Filters) pageURL(page int) string {
+	q := url.Values{}
+	for key, value := range map[string]string{
+		"q":         f.Query,
+		"muscle":    f.Muscle,
+		"category":  f.Category,
+		"equipment": f.Equipment,
+	} {
+		if value != "" {
+			q.Set(key, value)
+		}
+	}
+	if page > 1 {
+		q.Set("page", strconv.Itoa(page))
+	}
+	if len(q) == 0 {
+		return "/app/exercises"
+	}
+	return "/app/exercises?" + q.Encode()
+}
+
+// anyIllustrated reports whether the credit line is owed on this page.
+//
+// The artwork covers 302 movements and the catalog carries 455, so a filtered
+// view can legitimately show none of it — and crediting artwork that is not on
+// the page is its own kind of wrong.
+func anyIllustrated(found []exercise.Exercise) bool {
+	for _, e := range found {
+		if e.HasIllustration() {
+			return true
+		}
+	}
+	return false
 }
 
 // equipmentOptions are the values the catalog actually contains. Kept here
@@ -57,14 +124,19 @@ func humanize(value string) string {
 	return strings.ToUpper(spaced[:1]) + spaced[1:]
 }
 
-func summary(shown, total int) string {
-	if shown == total {
-		return fmt.Sprintf("%d exercises", total)
+// summary says which slice of the results is on screen.
+//
+// It used to say "Showing 60 of 186", which was true and useless: there was no
+// way to reach the other 126. Now that page links exist it names the range, so
+// the count on screen and the number of pages agree.
+func summary(shown int, p Page) string {
+	if shown == p.Total {
+		return fmt.Sprintf("%d exercises", p.Total)
 	}
-	return fmt.Sprintf("Showing %d of %d exercises", shown, total)
+	return fmt.Sprintf("Showing %d-%d of %d exercises", p.FirstRow, p.FirstRow+shown-1, p.Total)
 }
 
-templ Browse(user users.User, found []exercise.Exercise, total int, f Filters) {
+templ Browse(user users.User, found []exercise.Exercise, f Filters, p Page) {
 	@layout.App("Exercises", user, layout.BuildNav("/app/fitness")) {
 		<div class="mx-auto w-full max-w-4xl space-y-6 p-6 md:p-8">
 			<header>
@@ -76,7 +148,7 @@ templ Browse(user users.User, found []exercise.Exercise, total int, f Filters) {
 			</header>
 			@filterForm(f)
 			<p class="text-muted-foreground font-mono text-[10px] uppercase tracking-[0.14em]">
-				{ summary(len(found), total) }
+				{ summary(len(found), p) }
 			</p>
 			if len(found) == 0 {
 				<p class="border-hairline text-muted-foreground rounded-lg border border-dashed px-4 py-8 text-center text-sm">
@@ -88,6 +160,10 @@ templ Browse(user users.User, found []exercise.Exercise, total int, f Filters) {
 						@row(e)
 					}
 				</ul>
+				@pageLinks(f, p)
+				if anyIllustrated(found) {
+					@exerciseart.Credit()
+				}
 			}
 		</div>
 		@selectbox.Script()
@@ -157,6 +233,15 @@ templ row(e exercise.Exercise) {
 			href={ templ.SafeURL("/app/exercises/" + e.Slug) }
 			class="border-hairline bg-surface hover:border-signal/40 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border px-4 py-3 transition-colors"
 		>
+			if e.HasIllustration() {
+				<span class="w-10 shrink-0">
+					@exerciseart.Frames(exerciseart.Props{
+						ID:   "art-row-" + e.Slug,
+						Slug: e.IllustrationSlug,
+						Name: e.Name,
+					})
+				</span>
+			}
 			<span class="min-w-0 flex-1 text-sm font-medium">{ e.Name }</span>
 			for _, key := range e.Primary {
 				@badge.Badge(badge.Props{Variant: badge.VariantDefault}) {
@@ -202,6 +287,14 @@ templ Detail(user users.User, e exercise.Exercise) {
 					ExerciseName: e.Name,
 				})
 				<div class="space-y-4">
+					if e.HasIllustration() {
+						@exerciseart.Frames(exerciseart.Props{
+							ID:    "art-" + e.Slug,
+							Slug:  e.IllustrationSlug,
+							Name:  e.Name,
+							Class: "border-hairline bg-surface rounded-lg border p-4",
+						})
+					}
 					@muscleCard("Primary", e.Primary)
 					@muscleCard("Secondary", e.Secondary)
 					if e.VideoURL != "" {
@@ -222,6 +315,9 @@ templ Detail(user users.User, e exercise.Exercise) {
 						<p class="text-sm leading-relaxed">{ e.Instructions }</p>
 					}
 				}
+			}
+			if e.HasIllustration() {
+				@exerciseart.Credit()
 			}
 		</div>
 		@muscleviewer.Script()
@@ -247,6 +343,72 @@ templ MusclePartial(e exercise.Exercise) {
 		</figcaption>
 	</figure>
 	@muscleviewer.Script()
+}
+
+// pageLinks renders the numbered navigation.
+//
+// The window of visible numbers comes from pagination.CreatePagination rather
+// than being computed here: it already clamps the current page and picks which
+// numbers to show around it.
+templ pageLinks(f Filters, p Page) {
+	if p.Last > 1 {
+		{{ window := pagination.CreatePagination(p.Number, p.Last, 5) }}
+		@pagination.Pagination(pagination.Props{Class: "pt-2"}) {
+			@pagination.Content() {
+				@pagination.Item() {
+					@pagination.Previous(pagination.PreviousProps{
+						Href:     f.pageURL(p.Number - 1),
+						Disabled: !window.HasPrevious,
+						Label:    "Previous",
+					})
+				}
+				// A window that does not reach page 1 gets an explicit link to
+				// it: from page 12 of 19 the first page is otherwise
+				// unreachable without editing the URL.
+				if len(window.Pages) > 0 && window.Pages[0] > 1 {
+					@pagination.Item() {
+						@pagination.Link(pagination.LinkProps{Href: f.pageURL(1)}) {
+							1
+						}
+					}
+					if window.Pages[0] > 2 {
+						@pagination.Item() {
+							@pagination.Ellipsis()
+						}
+					}
+				}
+				for _, number := range window.Pages {
+					@pagination.Item() {
+						@pagination.Link(pagination.LinkProps{
+							Href:     f.pageURL(number),
+							IsActive: number == p.Number,
+						}) {
+							{ strconv.Itoa(number) }
+						}
+					}
+				}
+				if len(window.Pages) > 0 && window.Pages[len(window.Pages)-1] < p.Last {
+					if window.Pages[len(window.Pages)-1] < p.Last-1 {
+						@pagination.Item() {
+							@pagination.Ellipsis()
+						}
+					}
+					@pagination.Item() {
+						@pagination.Link(pagination.LinkProps{Href: f.pageURL(p.Last)}) {
+							{ strconv.Itoa(p.Last) }
+						}
+					}
+				}
+				@pagination.Item() {
+					@pagination.Next(pagination.NextProps{
+						Href:     f.pageURL(p.Number + 1),
+						Disabled: !window.HasNext,
+						Label:    "Next",
+					})
+				}
+			}
+		}
+	}
 }
 
 templ muscleCard(label string, keys []string) {

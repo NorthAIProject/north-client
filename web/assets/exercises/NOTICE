@@ -1,0 +1,24 @@
+Exercise illustrations
+======================
+
+Source:  https://github.com/bryllim/workout-guide
+Artwork: Copyright (c) 2026 Bryl Lim  <https://bryllim.com>
+Origin:  The original pose artwork comes from Everkinetic
+         <https://github.com/everkinetic/data>
+License: Creative Commons Attribution-ShareAlike 4.0 International
+         https://creativecommons.org/licenses/by-sa/4.0/
+
+Note that upstream's LICENSE covers its code and is MIT. The artwork in this
+directory is governed by its LICENSE-ASSETS, which is CC BY-SA 4.0. Adaptations
+must be shared under the same licence.
+
+Changes made by North, as CC BY-SA requires them to be stated:
+
+  - Each frame is stored gzipped and served with Content-Encoding: gzip.
+  - Upstream's PNG copies of each frame were not imported.
+  - The artwork itself is unmodified: not redrawn, recoloured, cropped, or
+    rescaled. North paints it by using each frame as a CSS mask, which reads
+    only its alpha channel, so the files did not need editing to work on both
+    the light and dark themes.
+
+Regenerate with scripts/workout-guide-art. Do not hand-edit these files.
