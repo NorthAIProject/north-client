@@ -12,9 +12,22 @@ type (
 	PlanDay  = plan.PlanDay
 	Exercise = plan.Exercise
 	Intake   = plan.Intake
+
+	// Movement is the part of an exercise a swap replaces — the lift itself,
+	// not the sets and reps prescribed of it.
+	Movement = plan.Movement
 )
 
 var (
 	PlanSchema = plan.PlanSchema
 	Validate   = plan.Validate
+
+	// Swap and its siblings are pure: a plan in, a new plan out. The service
+	// wraps them with loading, validation and storage; see applyEdit.
+	Swap            = plan.Swap
+	Insert          = plan.Insert
+	Remove          = plan.Remove
+	Move            = plan.Move
+	SetPrescription = plan.SetPrescription
+	NewExercise     = plan.NewExercise
 )

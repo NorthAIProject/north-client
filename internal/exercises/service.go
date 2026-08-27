@@ -75,6 +75,23 @@ func (s *Service) Search(ctx context.Context, f Filter) ([]Exercise, int, error)
 	return found, total, nil
 }
 
+// SearchByName finds catalog exercises by name, optionally narrowed to
+// equipment someone has.
+//
+// A narrower door than Search for callers outside this slice: the workouts
+// swap panel needs "find me exercises called X that I can do", not the browse
+// page's whole filter vocabulary. Keeping the Filter type out of the workouts
+// Catalog interface is what lets that package depend on "somewhere to look
+// exercises up" rather than on this one.
+func (s *Service) SearchByName(ctx context.Context, query string, equipment []string, limit int) ([]Exercise, error) {
+	found, _, err := s.Search(ctx, Filter{
+		Query:     query,
+		Equipment: equipment,
+		Limit:     limit,
+	})
+	return found, err
+}
+
 // Candidates returns exercises someone with this equipment could perform, for
 // the plan generator to choose from.
 //

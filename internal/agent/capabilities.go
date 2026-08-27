@@ -82,6 +82,20 @@ func Build(svc Services) *Registry {
 	}
 	if svc.Workouts != nil {
 		r.Register(getWorkoutPlan(svc.Workouts))
+
+		// Editing the plan by conversation. Users as well, for the same reason
+		// createCheckIn needs it: the edit methods take the whole record, so
+		// registered without it these would exist and fail on every call.
+		//
+		// None is ReadOnly, so each shows an approval card carrying the call
+		// and its arguments before it runs — see internal/agent/workout_edits.go.
+		if svc.Users != nil {
+			r.Register(
+				swapWorkoutExercise(svc.Workouts, svc.Users),
+				addWorkoutExercise(svc.Workouts, svc.Users),
+				removeWorkoutExercise(svc.Workouts, svc.Users),
+			)
+		}
 	}
 	if svc.Ingredients != nil {
 		r.Register(searchIngredients(svc.Ingredients))

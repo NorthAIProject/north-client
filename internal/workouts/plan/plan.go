@@ -63,6 +63,19 @@ type Exercise struct {
 	// wrong attaches the wrong muscles to the movement.
 	CatalogSlug string `json:"catalog_slug"`
 
+	// IllustrationSlug names the pose artwork for this movement, copied from
+	// the catalog row CatalogSlug resolved to. Empty when the model improvised
+	// past the catalog, or when the catalog row has no artwork.
+	//
+	// Derived, never generated: PlanSchema deliberately does not ask the model
+	// for it. A model naming an asset directory would be inventing a filename,
+	// and a wrong one renders a picture of the wrong exercise.
+	//
+	// omitempty because plans are stored as JSONB and most predate this field;
+	// see Service.PlanForDisplay, which fills it in on the way to the page
+	// rather than leaving every existing plan without pictures.
+	IllustrationSlug string `json:"illustration_slug,omitempty"`
+
 	// Primary, Secondary, and Stabilizers are muscle keys from MuscleGroups
 	// (NOR-8) — what the 3D viewer highlights for this exercise. Constrained
 	// by PlanSchema's enum, so these never need fuzzy-matching against the
@@ -111,6 +124,15 @@ func PlanSchema() *ai.Schema {
 		"weeks_total": ai.Integer("how many weeks to run this before reassessing"),
 		"days":        ai.Array("training days, exactly as many as the person can train", day),
 	}, "name", "rationale", "weeks_total", "days")
+}
+
+// HasIllustration reports whether this exercise has pose artwork to render.
+//
+// Most plans have some exercises with and some without: the artwork covers 302
+// movements, the catalog carries more, and the model may have improvised past
+// the catalog entirely.
+func (e Exercise) HasIllustration() bool {
+	return e.IllustrationSlug != ""
 }
 
 // Intake is what the person told us about their training.

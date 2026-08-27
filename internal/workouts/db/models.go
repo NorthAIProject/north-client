@@ -23,12 +23,14 @@ type WorkoutIntake struct {
 }
 
 type WorkoutPlan struct {
-	ID        uuid.UUID
-	UserID    uuid.UUID
-	IntakeID  uuid.UUID
-	Name      string
-	Plan      []byte
-	Model     string
-	Provider  string
-	CreatedAt time.Time
+	ID         uuid.UUID
+	UserID     uuid.UUID
+	IntakeID   uuid.UUID
+	Name       string
+	Plan       []byte
+	Model      string
+	Provider   string
+	CreatedAt  time.Time
+	Source     string
+	EditedFrom *uuid.UUID
 }
