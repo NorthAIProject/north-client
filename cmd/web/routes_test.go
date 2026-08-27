@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/ai/fake"
 	"github.com/NorthAIProject/north-client/internal/config"
@@ -35,6 +37,15 @@ func testRoutes(t *testing.T) http.Handler {
 func testRoutesWith(t *testing.T, configure func(*config.Config)) http.Handler {
 	t.Helper()
 
+	handler, _ := testRoutesAndPool(t, configure)
+	return handler
+}
+
+// testRoutesAndPool also hands back the database, for tests that need to put a
+// signed-in user behind the cookie.
+func testRoutesAndPool(t *testing.T, configure func(*config.Config)) (http.Handler, *pgxpool.Pool) {
+	t.Helper()
+
 	pool := testdb.New(t)
 
 	registry := ai.NewRegistry()
@@ -50,7 +61,7 @@ func testRoutesWith(t *testing.T, configure func(*config.Config)) http.Handler {
 	// nil metrics: these tests exercise routing, and a nil registry is a
 	// supported configuration that counts nothing.
 	handler, _ := routes(cfg, pool, registry, stubStorage{}, nil, nil, nil)
-	return handler
+	return handler, pool
 }
 
 // The MCP endpoint must not sit behind the CSRF middleware.

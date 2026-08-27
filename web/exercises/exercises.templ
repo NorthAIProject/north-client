@@ -332,14 +332,37 @@ templ Detail(user users.User, e exercise.Exercise) {
 // repeat harmless on a page that already had one.
 templ MusclePartial(e exercise.Exercise) {
 	<figure class="mt-3 w-full max-w-[85%]">
-		@muscleviewer.Viewer(muscleviewer.Props{
-			ID:           "coach-muscles-" + e.Slug,
-			Primary:      e.Primary,
-			Secondary:    e.Secondary,
-			ExerciseName: e.Name,
-		})
+		if e.HasIllustration() {
+			<div class="grid grid-cols-2 gap-2">
+				@exerciseart.Frames(exerciseart.Props{
+					ID:    "coach-art-" + e.Slug,
+					Slug:  e.IllustrationSlug,
+					Name:  e.Name,
+					Class: "border-hairline bg-surface rounded-lg border p-2",
+				})
+				@muscleviewer.Viewer(muscleviewer.Props{
+					ID:           "coach-muscles-" + e.Slug,
+					Primary:      e.Primary,
+					Secondary:    e.Secondary,
+					ExerciseName: e.Name,
+				})
+			</div>
+		} else {
+			@muscleviewer.Viewer(muscleviewer.Props{
+				ID:           "coach-muscles-" + e.Slug,
+				Primary:      e.Primary,
+				Secondary:    e.Secondary,
+				ExerciseName: e.Name,
+			})
+		}
 		<figcaption class="text-muted-foreground mt-2 text-xs">
 			What <a href={ templ.SafeURL("/app/exercises/" + e.Slug) } class="underline underline-offset-2">{ e.Name }</a> trains.
+			// The licence wants credit wherever the artwork appears, and a
+			// transcript can hold many of these — so it goes in the caption
+			// that is already here rather than adding a block per message.
+			if e.HasIllustration() {
+				@exerciseart.Credit()
+			}
 		</figcaption>
 	</figure>
 	@muscleviewer.Script()

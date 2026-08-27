@@ -5,9 +5,13 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/google/uuid"
+
+	"github.com/NorthAIProject/north-client/internal/exercises/exercise"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/workouts/plan"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/exerciseart"
 	"github.com/NorthAIProject/north-client/web/shared/muscleviewer"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/ui/alert"
@@ -192,19 +196,181 @@ templ IntakePage(user users.User, f IntakeForm) {
 	}
 }
 
-templ PlanPage(user users.User, p plan.Plan, createdAt time.Time) {
-	@layout.App(p.Name, user, layout.BuildNav("/app/fitness")) {
-		<div class="mx-auto w-full max-w-3xl p-6 md:p-8">
-			<header class="mb-6 flex items-start justify-between gap-4">
+// PlanSummary is one row of the plans list.
+//
+// Deliberately not a StoredPlan: the list needs a name and a shape, not a plan
+// body, and handing the template the whole thing would invite it to render
+// exercises on a page that is a list of links.
+type PlanSummary struct {
+	ID        uuid.UUID
+	Name      string
+	Weeks     int
+	Days      int
+	CreatedAt time.Time
+}
+
+// PlansPage lists the plans someone has built.
+//
+// A <ul> of anchors rather than a table, following the exercises browse list:
+// every row is a link and none of it is tabular.
+//
+// The first row is the plan /app/training resolves to, because the query hands
+// them back most-recently-touched first. Saying so is the difference between a
+// list of plans and a list where one of them is the one you are following.
+templ PlansPage(user users.User, plans []PlanSummary) {
+	@layout.App("Training plans", user, layout.BuildNav("/app/fitness")) {
+		<div class="mx-auto w-full max-w-3xl space-y-6 p-6 md:p-8">
+			<header class="flex items-start justify-between gap-4">
 				<div>
-					<h1 class="text-2xl font-semibold tracking-tight">{ p.Name }</h1>
-					<p class="text-muted-foreground mt-1 text-sm">
-						{ strconv.Itoa(p.WeeksTotal) } weeks · { strconv.Itoa(len(p.Days)) } days a week · built { createdAt.Format("2 January 2006") }
+					@ui.MonoLabel("Fitness")
+					<h1 class="mt-2 text-2xl font-medium tracking-tight">Training plans</h1>
+					<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
+						Every plan you have built. Opening one shows it as it stands now, including any changes you have made.
 					</p>
 				</div>
 				@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Href: "/app/training/new"}) {
 					New plan
 				}
+			</header>
+			<ul class="space-y-2">
+				for i, p := range plans {
+					@planRow(p, i == 0)
+				}
+			</ul>
+		</div>
+	}
+}
+
+templ planRow(p PlanSummary, current bool) {
+	<li>
+		<a
+			href={ templ.SafeURL(fmt.Sprintf("/app/training/%s", p.ID)) }
+			class="border-hairline bg-surface hover:border-signal/40 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border px-4 py-3 transition-colors"
+		>
+			<span class="min-w-0 flex-1 text-sm font-medium">{ p.Name }</span>
+			if current {
+				@badge.Badge(badge.Props{Variant: badge.VariantDefault}) {
+					Following
+				}
+			}
+			<span class="text-muted-foreground shrink-0 font-mono text-[10px] uppercase tracking-[0.14em]">
+				{ strconv.Itoa(p.Weeks) } weeks · { strconv.Itoa(p.Days) }/week · { p.CreatedAt.Format("2 Jan 2006") }
+			</span>
+		</a>
+	</li>
+}
+
+// PlanView is everything the plan page needs about the plan it is rendering.
+//
+// A struct rather than more parameters because editing added two things the
+// page did not need before: the plan's own id, which every edit URL is built
+// from, and the validation problems an edit may have introduced.
+type PlanView struct {
+	ID        uuid.UUID
+	Plan      plan.Plan
+	CreatedAt time.Time
+
+	// Problems are plan.Validate's complaints. They are shown, not enforced:
+	// the intake describes a typical week rather than a contract, and someone
+	// who answered "dumbbells" may be in a hotel gym today. See
+	// Service.applyEdit.
+	Problems []string
+}
+
+// Picker is the panel that chooses a catalog exercise. Swapping one and adding
+// one differ only in their heading and where they post, so they share it.
+type Picker struct {
+	// Heading names what is being chosen.
+	Heading string
+	// Note is the line under it; empty renders nothing.
+	Note string
+
+	Query       string
+	Suggestions []exercise.Exercise
+	Matches     []exercise.Exercise
+
+	// PostURL receives catalog_slug when an option is chosen. SearchURL
+	// re-fetches this panel with ?q=. CancelURL puts the day back.
+	//
+	// Built here rather than in the handler so route shapes stay in one place;
+	// the handler fills in the contents.
+	PostURL   string
+	SearchURL string
+	CancelURL string
+}
+
+// SwapPicker configures the panel for replacing one exercise.
+func SwapPicker(v PlanView, dayIndex, index int, currentName string) Picker {
+	return Picker{
+		Heading:   "Replacing " + currentName,
+		Note:      "Sets, reps and rest stay as they are — only the movement changes.",
+		PostURL:   swapURL(v.ID, dayIndex, index),
+		SearchURL: swapURL(v.ID, dayIndex, index),
+		CancelURL: dayURL(v.ID, dayIndex),
+	}
+}
+
+// AddPicker configures the panel for adding one to the end of a day.
+func AddPicker(v PlanView, dayIndex int, weekday string) Picker {
+	return Picker{
+		Heading:   "Add to " + weekday,
+		Note:      fmt.Sprintf("Starts at %d×%s with %ds rest. Change it after.", plan.DefaultSets, plan.DefaultReps, plan.DefaultRestSeconds),
+		PostURL:   exercisesURL(v.ID, dayIndex),
+		SearchURL: addURL(v.ID, dayIndex),
+		CancelURL: dayURL(v.ID, dayIndex),
+	}
+}
+
+// The day card is the HTMX swap target for every edit, so its id has to be
+// derivable from the day index alone on both sides.
+func dayDOMID(dayIndex int) string { return fmt.Sprintf("plan-day-%d", dayIndex) }
+
+func dayURL(id uuid.UUID, dayIndex int) string {
+	return fmt.Sprintf("/app/training/%s/days/%d", id, dayIndex)
+}
+
+func swapURL(id uuid.UUID, dayIndex, index int) string {
+	return fmt.Sprintf("/app/training/%s/days/%d/exercises/%d/swap", id, dayIndex, index)
+}
+
+func moveURL(id uuid.UUID, dayIndex, index int) string {
+	return fmt.Sprintf("/app/training/%s/days/%d/exercises/%d/move", id, dayIndex, index)
+}
+
+func setsURL(id uuid.UUID, dayIndex, index int) string {
+	return fmt.Sprintf("/app/training/%s/days/%d/exercises/%d/sets", id, dayIndex, index)
+}
+
+func removeURL(id uuid.UUID, dayIndex, index int) string {
+	return fmt.Sprintf("/app/training/%s/days/%d/exercises/%d/remove", id, dayIndex, index)
+}
+
+func addURL(id uuid.UUID, dayIndex int) string {
+	return fmt.Sprintf("/app/training/%s/days/%d/add", id, dayIndex)
+}
+
+func exercisesURL(id uuid.UUID, dayIndex int) string {
+	return fmt.Sprintf("/app/training/%s/days/%d/exercises", id, dayIndex)
+}
+
+templ PlanPage(user users.User, v PlanView) {
+	@layout.App(v.Plan.Name, user, layout.BuildNav("/app/fitness")) {
+		<div class="mx-auto w-full max-w-3xl p-6 md:p-8">
+			<header class="mb-6 flex items-start justify-between gap-4">
+				<div>
+					<h1 class="text-2xl font-semibold tracking-tight">{ v.Plan.Name }</h1>
+					<p class="text-muted-foreground mt-1 text-sm">
+						{ strconv.Itoa(v.Plan.WeeksTotal) } weeks · { strconv.Itoa(len(v.Plan.Days)) } days a week · built { v.CreatedAt.Format("2 January 2006") }
+					</p>
+				</div>
+				<div class="flex shrink-0 gap-2">
+					@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Href: "/app/training/plans"}) {
+						All plans
+					}
+					@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Href: "/app/training/new"}) {
+						New plan
+					}
+				</div>
 			</header>
 			@card.Card(card.Props{Class: "mb-6"}) {
 				@card.Header() {
@@ -213,83 +379,435 @@ templ PlanPage(user users.User, p plan.Plan, createdAt time.Time) {
 					}
 				}
 				@card.Content() {
-					<p class="text-muted-foreground text-sm">{ p.Rationale }</p>
+					<p class="text-muted-foreground text-sm">{ v.Plan.Rationale }</p>
 				}
 			}
-			<div class="space-y-4">
-				for i, day := range p.Days {
-					@dayCard(i, day)
-				}
-			</div>
+			@PlanBody(v)
 		</div>
 		@dialog.Script()
 		@muscleviewer.Script()
 	}
 }
 
-templ dayCard(dayIndex int, day plan.PlanDay) {
-	@card.Card() {
-		@card.Header() {
-			<div class="flex items-center gap-3">
-				@card.Title(card.TitleProps{Class: "text-base"}) {
-					{ day.Weekday }
-				}
-				@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
-					{ day.Focus }
-				}
-			</div>
+// DayCard is exported because it is the fragment every edit swaps back in.
+// Re-rendering the whole day rather than one row keeps the exercise indices in
+// the edit URLs correct after a move or a removal.
+templ DayCard(v PlanView, dayIndex int, day plan.PlanDay) {
+	@dayShell(v, dayIndex, day) {
+		for j, ex := range day.Exercises {
+			@exerciseRow(v, dayIndex, j, ex, len(day.Exercises))
 		}
-		@card.Content() {
-			<ul class="divide-border divide-y">
-				for j, ex := range day.Exercises {
-					@exerciseRow(fmt.Sprintf("exercise-%d-%d", dayIndex, j), ex)
+	}
+}
+
+// DayCardSwapping is the same card with one exercise replaced by the picker.
+// Expanding in place rather than opening a dialog: there is no dialog state to
+// keep in step with HTMX, and the row it replaces stays where it was.
+templ DayCardSwapping(v PlanView, dayIndex int, day plan.PlanDay, swapping int, p Picker) {
+	@dayShell(v, dayIndex, day) {
+		for j, ex := range day.Exercises {
+			if j == swapping {
+				@pickerPanel(p)
+			} else {
+				@exerciseRow(v, dayIndex, j, ex, len(day.Exercises))
+			}
+		}
+	}
+}
+
+// PlanBody is everything an edit can change, and the fragment an applied edit
+// responds with.
+//
+// The whole body rather than the one day card that was edited. An edit inserts
+// a new plan row, so every day card's edit URLs — which embed the plan id —
+// become stale the moment one of them is used. Re-rendering a single card left
+// the others pointing at a superseded plan, and the refusal that produced
+// re-rendered the same stale id, so the second day could never be edited at
+// all. The validation notice and the credit line live out here too, and neither
+// could be reached by a day-card swap.
+//
+// Five day cards is a cheap thing to re-render, and it is one target rather
+// than a card plus two out-of-band regions.
+templ PlanBody(v PlanView) {
+	<div id="plan-body">
+		if len(v.Problems) > 0 {
+			@planProblems(v.Problems)
+		}
+		<div class="space-y-4">
+			for i, day := range v.Plan.Days {
+				@DayCard(v, i, day)
+			}
+		</div>
+		@CreditRegion(v)
+	</div>
+}
+
+// DayCardAdding is the day with the picker appended, for choosing a new
+// exercise to put at the end of it.
+templ DayCardAdding(v PlanView, dayIndex int, day plan.PlanDay, p Picker) {
+	@dayShell(v, dayIndex, day) {
+		for j, ex := range day.Exercises {
+			@exerciseRow(v, dayIndex, j, ex, len(day.Exercises))
+		}
+		@pickerPanel(p)
+	}
+}
+
+templ dayShell(v PlanView, dayIndex int, day plan.PlanDay) {
+	<div id={ dayDOMID(dayIndex) } class="plan-day">
+		@card.Card() {
+			@card.Header() {
+				<div class="flex items-center gap-3">
+					@card.Title(card.TitleProps{Class: "text-base"}) {
+						{ day.Weekday }
+					}
+					@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
+						{ day.Focus }
+					}
+				</div>
+			}
+			@card.Content() {
+				if len(day.Exercises) == 0 {
+					<p class="text-muted-foreground border-hairline rounded-lg border border-dashed px-4 py-6 text-center text-sm">
+						Nothing in this session yet.
+					</p>
+				}
+				<ul class="divide-border divide-y">
+					{ children... }
+				</ul>
+				@button.Button(button.Props{
+					Variant: button.VariantOutline,
+					Size:    button.SizeSm,
+					Class:   "mt-3",
+					Attributes: templ.Attributes{
+						"hx-get":    addURL(v.ID, dayIndex),
+						"hx-target": "#" + dayDOMID(dayIndex),
+						"hx-swap":   "outerHTML",
+					},
+				}) {
+					@icon.Plus(icon.Props{Class: "size-3.5"})
+					Add exercise
+				}
+			}
+		}
+	</div>
+}
+
+// CreditRegion renders the CC BY-SA credit when the plan shows any artwork.
+//
+// Inside PlanBody rather than swapped out of band: an edit re-renders the whole
+// body, so a swap that brings the page its first illustrated exercise brings
+// the credit with it by construction.
+templ CreditRegion(v PlanView) {
+	<div class="mt-6">
+		if anyIllustrated(v.Plan) {
+			@exerciseart.Credit()
+		}
+	</div>
+}
+
+// planProblems shows what plan.Validate objected to without preventing
+// anything. Someone who edits their plan into something the intake did not
+// describe has usually changed their mind, not made a mistake.
+templ planProblems(problems []string) {
+	// VariantDefault, not Destructive: this is a note about what changed, not
+	// an error. Nothing was rejected.
+	@alert.Alert(alert.Props{Variant: alert.VariantDefault, Class: "mb-6"}) {
+		@alert.Title() {
+			This plan no longer matches your intake
+		}
+		@alert.Description() {
+			<ul class="list-disc space-y-1 pl-4">
+				for _, problem := range problems {
+					<li>{ problem }</li>
 				}
 			</ul>
 		}
 	}
 }
 
-templ exerciseRow(id string, ex plan.Exercise) {
-	<li class="py-3 first:pt-0 last:pb-0">
-		<div class="flex items-baseline justify-between gap-4">
-			<span class="font-medium">{ ex.Name }</span>
-			<span class="text-muted-foreground shrink-0 font-mono text-sm">
-				{ strconv.Itoa(ex.Sets) }×{ ex.Reps }
-			</span>
-		</div>
-		<p class="text-muted-foreground mt-1 text-sm">{ ex.FormCues }</p>
-		<p class="text-muted-foreground/70 mt-1 text-xs">
-			Rest { strconv.Itoa(ex.RestSeconds) }s · { ex.Equipment }
-			if ex.Substitute != "" {
-				· No equipment? { ex.Substitute }
-			}
-		</p>
-		// Older plans generated before NOR-8 have no muscle data at all — the
-		// trigger only appears once there's something for it to show.
-		if len(ex.Primary) > 0 || len(ex.Secondary) > 0 || len(ex.Stabilizers) > 0 {
-			@dialog.Dialog(dialog.Props{ID: id}) {
-				@dialog.Trigger(dialog.TriggerProps{For: id, Class: "mt-2 inline-flex"}) {
-					@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm}) {
-						@icon.Dumbbell(icon.Props{Class: "size-3.5"})
-						View muscles
-					}
-				}
-				@dialog.Content() {
-					@dialog.Header() {
-						@dialog.Title() {
-							{ ex.Name }
-						}
-					}
-					@muscleviewer.Viewer(muscleviewer.Props{
-						ID:           id + "-viewer",
-						Primary:      ex.Primary,
-						Secondary:    ex.Secondary,
-						Stabilizers:  ex.Stabilizers,
-						ExerciseName: ex.Name,
-					})
-				}
+// anyIllustrated reports whether this plan shows artwork anywhere, and so
+// whether the CC BY-SA credit is owed on the page. A plan whose exercises the
+// model all improvised shows none.
+func anyIllustrated(p plan.Plan) bool {
+	for _, day := range p.Days {
+		for _, ex := range day.Exercises {
+			if ex.HasIllustration() {
+				return true
 			}
 		}
+	}
+	return false
+}
+
+templ exerciseRow(v PlanView, dayIndex, index int, ex plan.Exercise, dayLength int) {
+	{{ id := fmt.Sprintf("exercise-%d-%d", dayIndex, index) }}
+	<li class="py-3 first:pt-0 last:pb-0">
+		<div class="flex gap-3">
+			// The thumbnail is the point of the artwork on this page: this is
+			// the screen someone reads mid-session, where "what does this
+			// movement look like" is an actual question rather than browsing.
+			if ex.HasIllustration() {
+				<span class="w-12 shrink-0">
+					@exerciseart.Frames(exerciseart.Props{
+						ID:   id + "-art",
+						Slug: ex.IllustrationSlug,
+						Name: ex.Name,
+					})
+				</span>
+			}
+			<div class="min-w-0 flex-1">
+				// Collapsed-or-expanded is local UI state, which is exactly what
+				// Alpine is for here; the edit itself still goes to the server.
+				// An expand-in-place form also avoids a GET route and a third
+				// day-card variant just to show three inputs.
+				<div x-data="{ editing: false }">
+					<div class="flex items-baseline justify-between gap-4">
+						<span class="font-medium">{ ex.Name }</span>
+						<button
+							type="button"
+							x-on:click="editing = !editing"
+							class="text-muted-foreground hover:text-foreground shrink-0 font-mono text-sm underline decoration-dotted underline-offset-4"
+							title="Change sets, reps and rest"
+						>
+							{ strconv.Itoa(ex.Sets) }×{ ex.Reps }
+						</button>
+					</div>
+					<form
+						x-show="editing"
+						x-cloak
+						class="mt-2 flex flex-wrap items-end gap-2"
+						hx-post={ setsURL(v.ID, dayIndex, index) }
+						hx-target="#plan-body"
+						hx-swap="outerHTML"
+					>
+						<label class="text-muted-foreground text-xs">
+							Sets
+							@input.Input(input.Props{
+								Name: "sets", Type: input.TypeNumber,
+								Value: strconv.Itoa(ex.Sets), Class: "w-16",
+							})
+						</label>
+						<label class="text-muted-foreground text-xs">
+							Reps
+							@input.Input(input.Props{Name: "reps", Value: ex.Reps, Class: "w-24"})
+						</label>
+						<label class="text-muted-foreground text-xs">
+							Rest (s)
+							@input.Input(input.Props{
+								Name: "rest_seconds", Type: input.TypeNumber,
+								Value: strconv.Itoa(ex.RestSeconds), Class: "w-20",
+							})
+						</label>
+						@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm}) {
+							Save
+						}
+						@button.Button(button.Props{
+							Variant:    button.VariantGhost,
+							Size:       button.SizeSm,
+							Attributes: templ.Attributes{"x-on:click.prevent": "editing = false"},
+						}) {
+							Cancel
+						}
+					</form>
+				</div>
+				// A swap clears the cue rather than carrying one that described
+				// the previous movement, so this is legitimately empty.
+				if ex.FormCues != "" {
+					<p class="text-muted-foreground mt-1 text-sm">{ ex.FormCues }</p>
+				}
+				<p class="text-muted-foreground/70 mt-1 text-xs">
+					Rest { strconv.Itoa(ex.RestSeconds) }s · { ex.Equipment }
+					if ex.Substitute != "" {
+						· No equipment? { ex.Substitute }
+					}
+				</p>
+				<div class="mt-2 flex flex-wrap items-center gap-2">
+					// Order is training information — the lift you care about
+					// goes while you are fresh — so the ends simply have no
+					// button rather than a disabled one that does nothing.
+					if index > 0 {
+						@button.Button(button.Props{
+							Variant: button.VariantGhost,
+							Size:    button.SizeIcon,
+							Attributes: templ.Attributes{
+								"hx-post":   moveURL(v.ID, dayIndex, index),
+								"hx-vals":   `{"direction": "up"}`,
+								"hx-target": "#plan-body",
+								"hx-swap":   "outerHTML",
+								"aria-label": "Move earlier in the session",
+							},
+						}) {
+							@icon.ArrowUp(icon.Props{Class: "size-3.5"})
+						}
+					}
+					if index < dayLength-1 {
+						@button.Button(button.Props{
+							Variant: button.VariantGhost,
+							Size:    button.SizeIcon,
+							Attributes: templ.Attributes{
+								"hx-post":   moveURL(v.ID, dayIndex, index),
+								"hx-vals":   `{"direction": "down"}`,
+								"hx-target": "#plan-body",
+								"hx-swap":   "outerHTML",
+								"aria-label": "Move later in the session",
+							},
+						}) {
+							@icon.ArrowDown(icon.Props{Class: "size-3.5"})
+						}
+					}
+					@button.Button(button.Props{
+						Variant: button.VariantOutline,
+						Size:    button.SizeSm,
+						Attributes: templ.Attributes{
+							"hx-get":    swapURL(v.ID, dayIndex, index),
+							"hx-target": "#" + dayDOMID(dayIndex),
+							"hx-swap":   "outerHTML",
+						},
+					}) {
+						@icon.Repeat(icon.Props{Class: "size-3.5"})
+						Swap
+					}
+					// Confirmed because there is no undo in the interface yet.
+					// The previous plan is still stored — editing only ever
+					// inserts — but nothing on screen offers it back, so an
+					// accidental click would need a database to recover from.
+					@button.Button(button.Props{
+						Variant: button.VariantGhost,
+						Size:    button.SizeSm,
+						Attributes: templ.Attributes{
+							"hx-post":    removeURL(v.ID, dayIndex, index),
+							"hx-target":  "#plan-body",
+							"hx-swap":    "outerHTML",
+							"hx-confirm": fmt.Sprintf("Remove %s from this session?", ex.Name),
+						},
+					}) {
+						@icon.Trash2(icon.Props{Class: "size-3.5"})
+						Remove
+					}
+				</div>
+				// Older plans generated before NOR-8 have no muscle data at all — the
+				// trigger only appears once there's something for it to show.
+				if len(ex.Primary) > 0 || len(ex.Secondary) > 0 || len(ex.Stabilizers) > 0 {
+					@dialog.Dialog(dialog.Props{ID: id}) {
+						@dialog.Trigger(dialog.TriggerProps{For: id, Class: "mt-2 inline-flex"}) {
+							@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm}) {
+								@icon.Dumbbell(icon.Props{Class: "size-3.5"})
+								View muscles
+							}
+						}
+						@dialog.Content() {
+							@dialog.Header() {
+								@dialog.Title() {
+									{ ex.Name }
+								}
+							}
+						@muscleviewer.Viewer(muscleviewer.Props{
+							ID:           id + "-viewer",
+							Primary:      ex.Primary,
+							Secondary:    ex.Secondary,
+							Stabilizers:  ex.Stabilizers,
+							ExerciseName: ex.Name,
+						})
+					}
+				}
+			}
+			</div>
+		</div>
+	</li>
+}
+
+// pickerPanel chooses a catalog exercise: a few ranked suggestions, then a
+// search over the rest of the catalog.
+//
+// Suggestions are ranked without a model call — the catalog carries muscles and
+// equipment as columns, so "trains the same thing with gear they have" is
+// arithmetic. See Service.SuggestReplacements.
+//
+// Shared by swapping and adding, which differ only in their heading and where
+// they post.
+templ pickerPanel(p Picker) {
+	<li class="bg-surface -mx-4 px-4 py-4">
+		<div class="flex items-baseline justify-between gap-4">
+			<p class="text-sm font-medium">{ p.Heading }</p>
+			@button.Button(button.Props{
+				Variant: button.VariantGhost,
+				Size:    button.SizeSm,
+				Attributes: templ.Attributes{
+					"hx-get":    p.CancelURL,
+					"hx-target": "closest .plan-day",
+					"hx-swap":   "outerHTML",
+				},
+			}) {
+				Cancel
+			}
+		</div>
+		if p.Note != "" {
+			<p class="text-muted-foreground mt-1 text-xs">{ p.Note }</p>
+		}
+		<form
+			class="mt-3"
+			hx-get={ p.SearchURL }
+			hx-target="closest .plan-day"
+			hx-swap="outerHTML"
+			hx-trigger="input changed delay:300ms from:find input, submit"
+		>
+			@input.Input(input.Props{
+				Name:        "q",
+				Value:       p.Query,
+				Type:        input.TypeSearch,
+				Placeholder: "Search the catalog",
+			})
+		</form>
+		if p.Query == "" && len(p.Suggestions) > 0 {
+			@ui.MonoLabel("Suggested")
+			<ul class="mt-2 space-y-1">
+				for _, option := range p.Suggestions {
+					@pickerOption(p, option)
+				}
+			</ul>
+		}
+		if p.Query != "" {
+			@ui.MonoLabel("Matches")
+			if len(p.Matches) == 0 {
+				<p class="text-muted-foreground mt-2 text-sm">Nothing matched. Try a shorter search.</p>
+			} else {
+				<ul class="mt-2 space-y-1">
+					for _, option := range p.Matches {
+						@pickerOption(p, option)
+					}
+				</ul>
+			}
+		}
+	</li>
+}
+
+templ pickerOption(p Picker, option exercise.Exercise) {
+	<li>
+		<button
+			type="button"
+			class="border-hairline hover:border-signal/40 flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left transition-colors"
+			hx-post={ p.PostURL }
+			hx-vals={ fmt.Sprintf(`{"catalog_slug": %q}`, option.Slug) }
+			hx-target="#plan-body"
+			hx-swap="outerHTML"
+		>
+			if option.HasIllustration() {
+				<span class="w-8 shrink-0">
+					@exerciseart.Frames(exerciseart.Props{
+						ID:   "pick-" + option.Slug,
+						Slug: option.IllustrationSlug,
+						Name: option.Name,
+					})
+				</span>
+			}
+			<span class="min-w-0 flex-1 text-sm">{ option.Name }</span>
+			if option.NeedsEquipment() {
+				<span class="text-muted-foreground shrink-0 font-mono text-[10px] uppercase tracking-[0.14em]">
+					{ option.Equipment }
+				</span>
+			}
+		</button>
 	</li>
 }
 

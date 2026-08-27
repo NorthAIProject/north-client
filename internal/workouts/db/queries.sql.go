@@ -53,20 +53,25 @@ func (q *Queries) CreateIntake(ctx context.Context, arg CreateIntakeParams) (Wor
 }
 
 const createPlan = `-- name: CreatePlan :one
-INSERT INTO workout_plans (user_id, intake_id, name, plan, model, provider)
-VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, user_id, intake_id, name, plan, model, provider, created_at
+INSERT INTO workout_plans (user_id, intake_id, name, plan, model, provider, source, edited_from)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+RETURNING id, user_id, intake_id, name, plan, model, provider, created_at, source, edited_from
 `
 
 type CreatePlanParams struct {
-	UserID   uuid.UUID
-	IntakeID uuid.UUID
-	Name     string
-	Plan     []byte
-	Model    string
-	Provider string
+	UserID     uuid.UUID
+	IntakeID   uuid.UUID
+	Name       string
+	Plan       []byte
+	Model      string
+	Provider   string
+	Source     string
+	EditedFrom *uuid.UUID
 }
 
+// CreatePlan inserts both a freshly generated plan and an edited one: an edit
+// is a new row carrying its parent's intake and generation, not an UPDATE. See
+// migrations/20260827190000.
 func (q *Queries) CreatePlan(ctx context.Context, arg CreatePlanParams) (WorkoutPlan, error) {
 	row := q.db.QueryRow(ctx, createPlan,
 		arg.UserID,
@@ -75,6 +80,8 @@ func (q *Queries) CreatePlan(ctx context.Context, arg CreatePlanParams) (Workout
 		arg.Plan,
 		arg.Model,
 		arg.Provider,
+		arg.Source,
+		arg.EditedFrom,
 	)
 	var i WorkoutPlan
 	err := row.Scan(
@@ -86,6 +93,8 @@ func (q *Queries) CreatePlan(ctx context.Context, arg CreatePlanParams) (Workout
 		&i.Model,
 		&i.Provider,
 		&i.CreatedAt,
+		&i.Source,
+		&i.EditedFrom,
 	)
 	return i, err
 }
@@ -117,7 +126,7 @@ func (q *Queries) GetIntake(ctx context.Context, arg GetIntakeParams) (WorkoutIn
 }
 
 const getPlan = `-- name: GetPlan :one
-SELECT id, user_id, intake_id, name, plan, model, provider, created_at FROM workout_plans WHERE id = $1 AND user_id = $2
+SELECT id, user_id, intake_id, name, plan, model, provider, created_at, source, edited_from FROM workout_plans WHERE id = $1 AND user_id = $2
 `
 
 type GetPlanParams struct {
@@ -137,6 +146,8 @@ func (q *Queries) GetPlan(ctx context.Context, arg GetPlanParams) (WorkoutPlan, 
 		&i.Model,
 		&i.Provider,
 		&i.CreatedAt,
+		&i.Source,
+		&i.EditedFrom,
 	)
 	return i, err
 }
@@ -166,7 +177,7 @@ func (q *Queries) LatestIntake(ctx context.Context, userID uuid.UUID) (WorkoutIn
 }
 
 const latestPlan = `-- name: LatestPlan :one
-SELECT id, user_id, intake_id, name, plan, model, provider, created_at FROM workout_plans
+SELECT id, user_id, intake_id, name, plan, model, provider, created_at, source, edited_from FROM workout_plans
 WHERE user_id = $1
 ORDER BY created_at DESC
 LIMIT 1
@@ -186,12 +197,111 @@ func (q *Queries) LatestPlan(ctx context.Context, userID uuid.UUID) (WorkoutPlan
 		&i.Model,
 		&i.Provider,
 		&i.CreatedAt,
+		&i.Source,
+		&i.EditedFrom,
 	)
 	return i, err
 }
 
+const latestPlanForIntake = `-- name: LatestPlanForIntake :one
+SELECT id, user_id, intake_id, name, plan, model, provider, created_at, source, edited_from FROM workout_plans
+WHERE user_id = $1 AND intake_id = $2
+ORDER BY created_at DESC
+LIMIT 1
+`
+
+type LatestPlanForIntakeParams struct {
+	UserID   uuid.UUID
+	IntakeID uuid.UUID
+}
+
+// LatestPlanForIntake is the newest version of one plan.
+//
+// The optimistic-concurrency check for editing. Scoped to the intake rather
+// than the account: "superseded" has to mean this plan changed under me, not
+// that a different plan was generated since. Comparing against the account's
+// newest row made every plan but the most recent one permanently uneditable,
+// which the plans list turned into a page of buttons that could only fail.
+func (q *Queries) LatestPlanForIntake(ctx context.Context, arg LatestPlanForIntakeParams) (WorkoutPlan, error) {
+	row := q.db.QueryRow(ctx, latestPlanForIntake, arg.UserID, arg.IntakeID)
+	var i WorkoutPlan
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.IntakeID,
+		&i.Name,
+		&i.Plan,
+		&i.Model,
+		&i.Provider,
+		&i.CreatedAt,
+		&i.Source,
+		&i.EditedFrom,
+	)
+	return i, err
+}
+
+const listCurrentPlans = `-- name: ListCurrentPlans :many
+SELECT id, user_id, intake_id, name, plan, model, provider, created_at, source, edited_from FROM (
+    SELECT DISTINCT ON (intake_id) id, user_id, intake_id, name, plan, model, provider, created_at, source, edited_from
+    FROM workout_plans
+    WHERE user_id = $1
+    ORDER BY intake_id, created_at DESC
+) AS current_plans
+ORDER BY created_at DESC
+LIMIT $2
+`
+
+type ListCurrentPlansParams struct {
+	UserID uuid.UUID
+	Limit  int32
+}
+
+// ListCurrentPlans returns one row per plan: the version the person is
+// currently following.
+//
+// A "plan" is an intake, not a row. Every generation creates a new
+// workout_intakes row, and an edit carries its parent's intake_id forward (see
+// Service.applyEdit), so all versions of a plan share it. Grouping on intake_id
+// is what avoids walking edited_from recursively, and avoids a column that
+// would have to be kept in step.
+//
+// DISTINCT ON picks each plan's latest version; the wrapper re-sorts, because
+// DISTINCT ON requires its own expression to lead the ORDER BY. The LIMIT has
+// to sit outside for the same reason: applied to a result ordered by intake_id
+// it would keep an arbitrary set of plans rather than the most recent.
+func (q *Queries) ListCurrentPlans(ctx context.Context, arg ListCurrentPlansParams) ([]WorkoutPlan, error) {
+	rows, err := q.db.Query(ctx, listCurrentPlans, arg.UserID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []WorkoutPlan{}
+	for rows.Next() {
+		var i WorkoutPlan
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.IntakeID,
+			&i.Name,
+			&i.Plan,
+			&i.Model,
+			&i.Provider,
+			&i.CreatedAt,
+			&i.Source,
+			&i.EditedFrom,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPlans = `-- name: ListPlans :many
-SELECT id, user_id, intake_id, name, plan, model, provider, created_at FROM workout_plans
+SELECT id, user_id, intake_id, name, plan, model, provider, created_at, source, edited_from FROM workout_plans
 WHERE user_id = $1
 ORDER BY created_at DESC
 LIMIT $2
@@ -220,6 +330,8 @@ func (q *Queries) ListPlans(ctx context.Context, arg ListPlansParams) ([]Workout
 			&i.Model,
 			&i.Provider,
 			&i.CreatedAt,
+			&i.Source,
+			&i.EditedFrom,
 		); err != nil {
 			return nil, err
 		}

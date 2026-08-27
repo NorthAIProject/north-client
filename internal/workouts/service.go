@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strings"
 	"time"
 
@@ -45,6 +46,11 @@ type Catalog interface {
 	// Resolve returns the catalog rows for the slugs it recognises. Slugs it
 	// does not recognise are simply absent, not an error.
 	Resolve(ctx context.Context, slugs []string) (map[string]exercise.Exercise, error)
+
+	// SearchByName finds exercises by name, for the swap panel's picker. Kept
+	// narrower than the browse page's filter so this package kept depending on
+	// "somewhere to look exercises up" rather than on the exercises slice.
+	SearchByName(ctx context.Context, query string, equipment []string, limit int) ([]exercise.Exercise, error)
 }
 
 type Service struct {
@@ -237,8 +243,366 @@ func (s *Service) CreatePlan(ctx context.Context, user users.User, in Intake) (S
 	})
 }
 
+// ErrPlanSuperseded means the plan an edit was made against is no longer the
+// user's newest.
+//
+// Two tabs, or a double-submitted button, would otherwise each fork from the
+// same parent and one edit would silently disappear. Editing is append-only, so
+// nothing is corrupted — but a fork means the change someone just watched
+// happen is not the plan they are following, which is worse than being told to
+// look again.
+var ErrPlanSuperseded = apperr.New("this plan has been edited since it was loaded")
+
+// SwapExercise replaces one movement in a plan, keeping its prescription.
+func (s *Service) SwapExercise(ctx context.Context, user users.User, planID uuid.UUID, day, index int, catalogSlug string) (StoredPlan, error) {
+	replacement, err := s.movement(ctx, catalogSlug)
+	if err != nil {
+		return StoredPlan{}, err
+	}
+
+	return s.applyEdit(ctx, user, planID, func(p Plan) (Plan, error) {
+		return Swap(p, day, index, replacement)
+	})
+}
+
+// AddExercise appends a catalog exercise to the end of a day.
+//
+// Appended rather than inserted at a chosen position: order matters in training
+// — compounds before accessories — but choosing where is what reordering is
+// for, and building both at once would mean two half-designed controls instead
+// of one finished each.
+func (s *Service) AddExercise(ctx context.Context, user users.User, planID uuid.UUID, day int, catalogSlug string) (StoredPlan, error) {
+	movement, err := s.movement(ctx, catalogSlug)
+	if err != nil {
+		return StoredPlan{}, err
+	}
+
+	return s.applyEdit(ctx, user, planID, func(p Plan) (Plan, error) {
+		if day < 0 || day >= len(p.Days) {
+			return Plan{}, fmt.Errorf("day %d is outside this plan's %d days", day, len(p.Days))
+		}
+		return Insert(p, day, len(p.Days[day].Exercises), NewExercise(movement))
+	})
+}
+
+// RemoveExercise drops one exercise from a day.
+func (s *Service) RemoveExercise(ctx context.Context, user users.User, planID uuid.UUID, day, index int) (StoredPlan, error) {
+	return s.applyEdit(ctx, user, planID, func(p Plan) (Plan, error) {
+		return Remove(p, day, index)
+	})
+}
+
+// MoveExercise reorders one exercise within its day.
+func (s *Service) MoveExercise(ctx context.Context, user users.User, planID uuid.UUID, day, from, to int) (StoredPlan, error) {
+	return s.applyEdit(ctx, user, planID, func(p Plan) (Plan, error) {
+		return Move(p, day, from, to)
+	})
+}
+
+// SetPrescription changes how much of an exercise to do, leaving the movement
+// alone.
+func (s *Service) SetPrescription(ctx context.Context, user users.User, planID uuid.UUID, day, index, sets int, reps string, restSeconds int) (StoredPlan, error) {
+	return s.applyEdit(ctx, user, planID, func(p Plan) (Plan, error) {
+		return SetPrescription(p, day, index, sets, reps, restSeconds)
+	})
+}
+
+// SuggestForDay offers exercises to add to a day.
+//
+// Unlike a swap there is no movement to match against, so the useful filter is
+// simply "things you can do that are not already in this session" — repeating
+// an exercise the day already contains is the one suggestion that is certainly
+// wrong.
+func (s *Service) SuggestForDay(ctx context.Context, user users.User, planID uuid.UUID, day int) ([]exercise.Exercise, error) {
+	stored, err := s.repo.GetPlan(ctx, planID, user.ID)
+	if err != nil {
+		return nil, err
+	}
+	if day < 0 || day >= len(stored.Plan.Days) {
+		return nil, apperr.ErrValidation
+	}
+
+	already := map[string]bool{}
+	for _, ex := range stored.Plan.Days[day].Exercises {
+		if ex.CatalogSlug != "" {
+			already[ex.CatalogSlug] = true
+		}
+	}
+
+	var equipment []string
+	if intake, err := s.repo.LatestIntake(ctx, user.ID); err == nil {
+		equipment = intake.Intake.Equipment
+	}
+
+	out := make([]exercise.Exercise, 0, suggestionCount)
+	for _, row := range s.candidates(ctx, Intake{Equipment: equipment}) {
+		if len(out) == suggestionCount {
+			break
+		}
+		if already[row.Slug] {
+			continue
+		}
+		out = append(out, row)
+	}
+	return out, nil
+}
+
+// suggestionCount is how many replacements the swap panel pins above the full
+// catalog. Short enough to scan without reading; the picker is right below it
+// for anything else.
+const suggestionCount = 5
+
+// SuggestReplacements ranks catalog exercises that could stand in for the one
+// at day/index.
+//
+// Deliberately not a model call. The catalog carries primary_muscles,
+// secondary_muscles and equipment as structured columns, so "trains the same
+// thing, with gear they have" is arithmetic — and this runs every time the swap
+// panel opens, on a screen that should feel instant. North meters every model
+// call precisely so that spending one is a decision; revisit only if the
+// ordering proves insufficient in use.
+func (s *Service) SuggestReplacements(ctx context.Context, user users.User, planID uuid.UUID, day, index int) ([]exercise.Exercise, error) {
+	stored, err := s.repo.GetPlan(ctx, planID, user.ID)
+	if err != nil {
+		return nil, err
+	}
+	if day < 0 || day >= len(stored.Plan.Days) {
+		return nil, apperr.ErrValidation
+	}
+	if index < 0 || index >= len(stored.Plan.Days[day].Exercises) {
+		return nil, apperr.ErrValidation
+	}
+	current := stored.Plan.Days[day].Exercises[index]
+
+	// The intake's equipment, so a suggestion is something they can actually
+	// perform. A missing intake is not fatal: an unfiltered list of movements
+	// that train the right muscle still beats no suggestions.
+	var equipment []string
+	if intake, err := s.repo.LatestIntake(ctx, user.ID); err == nil {
+		equipment = intake.Intake.Equipment
+	}
+
+	candidates := s.candidates(ctx, Intake{Equipment: equipment})
+
+	type scored struct {
+		row   exercise.Exercise
+		score int
+	}
+	var ranked []scored
+	for _, row := range candidates {
+		// The lift already in the plan is not a replacement for itself.
+		if row.Slug == current.CatalogSlug {
+			continue
+		}
+		score := 2*overlap(row.Primary, current.Primary) + overlap(row.Secondary, current.Secondary)
+		if score == 0 {
+			continue
+		}
+		ranked = append(ranked, scored{row: row, score: score})
+	}
+
+	// Score first, then name, so the same plan always offers the same order —
+	// a list that reshuffles between opens is one nobody learns to trust.
+	sort.SliceStable(ranked, func(i, j int) bool {
+		if ranked[i].score != ranked[j].score {
+			return ranked[i].score > ranked[j].score
+		}
+		return ranked[i].row.Name < ranked[j].row.Name
+	})
+
+	out := make([]exercise.Exercise, 0, suggestionCount)
+	for _, candidate := range ranked {
+		if len(out) == suggestionCount {
+			break
+		}
+		out = append(out, candidate.row)
+	}
+	return out, nil
+}
+
+// overlap counts the muscle keys two lists share.
+func overlap(a, b []string) int {
+	set := make(map[string]bool, len(a))
+	for _, key := range a {
+		set[key] = true
+	}
+
+	count := 0
+	for _, key := range b {
+		if set[key] {
+			count++
+		}
+	}
+	return count
+}
+
+// SearchCatalog backs the swap panel's picker: anything in the catalog matching
+// what was typed, narrowed to equipment the intake recorded.
+//
+// Narrowed rather than unrestricted because the panel exists to answer "what
+// else could I do here", and offering a machine to someone training at home is
+// not an answer. Someone who wants the whole catalog has the browse page.
+func (s *Service) SearchCatalog(ctx context.Context, user users.User, query string) ([]exercise.Exercise, error) {
+	if s.catalog == nil {
+		return nil, nil
+	}
+
+	var equipment []string
+	if intake, err := s.repo.LatestIntake(ctx, user.ID); err == nil {
+		equipment = withBodyweight(intake.Intake.Equipment)
+	}
+
+	found, err := s.catalog.SearchByName(ctx, query, equipment, suggestionCount*4)
+	if err != nil {
+		return nil, apperr.Wrap(err, "search the catalog")
+	}
+	return found, nil
+}
+
+// withBodyweight adds "none" to an equipment list, so a search narrowed to what
+// someone owns still offers movements that need nothing at all.
+//
+// exercises.Service.Candidates does this for the generator already; SearchByName
+// goes through the browse filter instead, where an equipment list is a strict
+// match and a push-up would be filtered out for someone who owns dumbbells.
+//
+// An empty list stays empty: there it means "no constraint", and turning it
+// into {"none"} would narrow an unknown intake all the way down to bodyweight.
+func withBodyweight(equipment []string) []string {
+	if len(equipment) == 0 {
+		return nil
+	}
+	for _, item := range equipment {
+		if item == exercise.EquipmentNone {
+			return equipment
+		}
+	}
+	return append([]string{exercise.EquipmentNone}, equipment...)
+}
+
+// movement resolves a catalog slug into the fields a swap writes.
+//
+// The slug arrives from a form, so an unknown one is a bad request rather than
+// a server fault — and must never be written through as a plan exercise naming
+// a catalog row that does not exist.
+func (s *Service) movement(ctx context.Context, slug string) (Movement, error) {
+	if s.catalog == nil {
+		return Movement{}, apperr.ErrUnavailable
+	}
+
+	slug = strings.TrimSpace(strings.ToLower(slug))
+	if slug == "" {
+		return Movement{}, apperr.ErrValidation
+	}
+
+	found, err := s.catalog.Resolve(ctx, []string{slug})
+	if err != nil {
+		return Movement{}, apperr.Wrap(err, "resolve replacement exercise")
+	}
+	row, ok := found[slug]
+	if !ok {
+		return Movement{}, apperr.ErrNotFound
+	}
+
+	return Movement{
+		Name:             row.Name,
+		Equipment:        row.Equipment,
+		CatalogSlug:      row.Slug,
+		IllustrationSlug: row.IllustrationSlug,
+		Primary:          row.Primary,
+		Secondary:        row.Secondary,
+	}, nil
+}
+
+// applyEdit is the one path every plan edit takes: load, apply, store as a new
+// row.
+//
+// A new row rather than an UPDATE. That keeps the model's original readable,
+// keeps intake_id and the generation columns satisfiable without inventing an
+// intake, and means /app/training — which already resolves to the newest plan —
+// shows the edit with no routing change. See migrations/20260827190000.
+//
+// Validation runs but does not block. The intake describes a typical week
+// rather than a contract, and someone who answered "dumbbells" may be standing
+// in a hotel gym today; refusing their edit because a form said otherwise is
+// the software being more confident than the person. The generation path keeps
+// blocking, where a broken constraint is a model defect rather than a choice.
+// Callers surface Plan.Problems as a notice.
+func (s *Service) applyEdit(ctx context.Context, user users.User, planID uuid.UUID, edit func(Plan) (Plan, error)) (StoredPlan, error) {
+	current, err := s.repo.GetPlan(ctx, planID, user.ID)
+	if err != nil {
+		return StoredPlan{}, err
+	}
+
+	// Scoped to this plan, not the account. Generating a second plan is not a
+	// conflict with editing the first — the race worth catching is two tabs on
+	// the same plan. Comparing against the account's newest row instead made
+	// every older plan permanently uneditable.
+	newest, err := s.repo.LatestPlanForIntake(ctx, user.ID, current.IntakeID)
+	if err != nil {
+		return StoredPlan{}, err
+	}
+	if newest.ID != current.ID {
+		return StoredPlan{}, ErrPlanSuperseded
+	}
+
+	edited, err := edit(current.Plan)
+	if err != nil {
+		// The day and exercise indices come from a URL, so out of range is a
+		// bad request rather than a server fault.
+		return StoredPlan{}, apperr.Wrap(apperr.ErrValidation, "%v", err)
+	}
+
+	return s.repo.CreatePlan(ctx, StoredPlan{
+		UserID:   user.ID,
+		IntakeID: current.IntakeID,
+		Plan:     edited,
+
+		// Carried from the plan this descends from: they record which
+		// generation it came out of, which stays true after an edit. Source is
+		// what says a person touched it.
+		Model:      current.Model,
+		Provider:   current.Provider,
+		Source:     SourceEdited,
+		EditedFrom: &current.ID,
+	})
+}
+
 func (s *Service) GetPlan(ctx context.Context, id, userID uuid.UUID) (StoredPlan, error) {
 	return s.repo.GetPlan(ctx, id, userID)
+}
+
+// PlanForDisplay is GetPlan with the catalog re-applied, for the page that
+// renders a plan's exercises.
+//
+// Separate from GetPlan because the catalog lookup is a query nobody else
+// needs: the dashboard only wants the next session's name, and the coach's
+// context only wants Plan.Summary(). Putting it in GetPlan would add a query to
+// both.
+//
+// Re-applying on read rather than trusting what was stored is what gives older
+// plans their artwork. applyCatalog runs at generation, so a plan built before
+// the catalog carried illustrations has no illustration_slug in its JSONB and
+// never would. It also keeps the catalog the single source of truth: a
+// corrected muscle or a newly added illustration reaches plans that already
+// exist.
+func (s *Service) PlanForDisplay(ctx context.Context, id, userID uuid.UUID) (StoredPlan, []string, error) {
+	stored, err := s.repo.GetPlan(ctx, id, userID)
+	if err != nil {
+		return StoredPlan{}, nil, err
+	}
+	s.applyCatalog(ctx, &stored.Plan)
+
+	// What the plan no longer satisfies about the intake it was built from.
+	// Reported, never enforced — an edit that breaks a stated constraint is
+	// usually someone changing their mind. A missing intake is not worth
+	// failing the page over; it just means nothing to compare against.
+	var problems []string
+	if intake, err := s.repo.GetIntake(ctx, stored.IntakeID, userID); err == nil {
+		problems = Validate(stored.Plan, intake.Intake)
+	}
+
+	return stored, problems, nil
 }
 
 func (s *Service) LatestPlan(ctx context.Context, userID uuid.UUID) (StoredPlan, error) {
@@ -272,11 +636,39 @@ func (s *Service) LatestIntake(ctx context.Context, userID uuid.UUID) (StoredInt
 	return s.repo.LatestIntake(ctx, userID)
 }
 
+// ListPlans returns every stored plan row, newest first — which since editing
+// means every *version* of every plan. handler.index uses it to answer "is
+// there anything at all"; anything showing plans to a person wants
+// ListCurrentPlans instead.
 func (s *Service) ListPlans(ctx context.Context, userID uuid.UUID, limit int) ([]StoredPlan, error) {
 	if limit <= 0 || limit > 50 {
 		limit = 20
 	}
 	return s.repo.ListPlans(ctx, userID, limit)
+}
+
+// CurrentVersionOf resolves the newest version of the plan a stale request
+// named, so a refused edit can re-render what is actually there.
+func (s *Service) CurrentVersionOf(ctx context.Context, user users.User, planID uuid.UUID) (StoredPlan, error) {
+	stale, err := s.repo.GetPlan(ctx, planID, user.ID)
+	if err != nil {
+		return StoredPlan{}, err
+	}
+	return s.repo.LatestPlanForIntake(ctx, user.ID, stale.IntakeID)
+}
+
+// ListCurrentPlans returns one row per plan: the version the person is
+// currently following, most recently touched first.
+//
+// The distinction from ListPlans is invisible in the names alone, which is why
+// both carry it in a comment. A plan is an intake — every edit of it shares
+// that intake_id — so this collapses a plan's edit history down to the version
+// that matters and leaves the rest stored.
+func (s *Service) ListCurrentPlans(ctx context.Context, userID uuid.UUID, limit int) ([]StoredPlan, error) {
+	if limit <= 0 || limit > 50 {
+		limit = 20
+	}
+	return s.repo.ListCurrentPlans(ctx, userID, limit)
 }
 
 // candidates fetches the catalog rows the model may pick from.
@@ -366,6 +758,7 @@ func (s *Service) applyCatalog(ctx context.Context, p *Plan) {
 			matched++
 			ex.Primary = catalogued.Primary
 			ex.Secondary = catalogued.Secondary
+			ex.IllustrationSlug = catalogued.IllustrationSlug
 			// The catalog carries no stabilizers, so the model's stand.
 		}
 	}

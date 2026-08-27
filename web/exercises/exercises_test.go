@@ -219,3 +219,46 @@ func TestEveryIllustratedRowGetsItsOwnComponentID(t *testing.T) {
 		}
 	}
 }
+
+// The coach's transcript renders MusclePartial for an exercise it looked up.
+// The artwork belongs there too — but a transcript can hold many of these, so
+// the credit rides in the caption that already exists rather than adding a
+// block per message.
+func TestMusclePartialShowsTheIllustrationAndCreditsIt(t *testing.T) {
+	t.Parallel()
+
+	var b strings.Builder
+	if err := MusclePartial(illustrated()).Render(context.Background(), &b); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	html := b.String()
+
+	if !strings.Contains(html, "/assets/exercises/bench-press/frame-1.svg") {
+		t.Error("the coach partial shows no illustration")
+	}
+	if !strings.Contains(html, "creativecommons.org/licenses/by-sa/4.0") {
+		t.Error("the coach partial shows artwork with no licence credit")
+	}
+	// The viewer must survive alongside it; the artwork adds to the answer
+	// rather than replacing what the muscle model says.
+	if !strings.Contains(html, "coach-muscles-"+illustrated().Slug) {
+		t.Error("the muscle viewer disappeared when artwork was added")
+	}
+}
+
+func TestMusclePartialWithoutArtworkStillRendersTheViewer(t *testing.T) {
+	t.Parallel()
+
+	var b strings.Builder
+	if err := MusclePartial(plainRow()).Render(context.Background(), &b); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	html := b.String()
+
+	if strings.Contains(html, "/assets/exercises/") {
+		t.Error("rendered artwork for an exercise that has none")
+	}
+	if !strings.Contains(html, "coach-muscles-"+plainRow().Slug) {
+		t.Error("the muscle viewer did not render")
+	}
+}

@@ -23,6 +23,17 @@ type StoredIntake struct {
 }
 
 // StoredPlan is a persisted, already-validated plan.
+// A plan's provenance. Stored in workout_plans.source.
+const (
+	// SourceAI marks a plan exactly as the model produced it.
+	SourceAI = "ai"
+
+	// SourceEdited marks a plan a person changed. Editing inserts a new row
+	// rather than updating one, so a chain of edits keeps every step — see
+	// migrations/20260827190000.
+	SourceEdited = "edited"
+)
+
 type StoredPlan struct {
 	ID       uuid.UUID
 	UserID   uuid.UUID
@@ -30,6 +41,15 @@ type StoredPlan struct {
 	Plan     Plan
 	Model    string
 	Provider string
+
+	// Source is SourceAI or SourceEdited. Model and Provider stay populated on
+	// an edited plan — they record the generation it descends from, which is
+	// still true after someone changes a lift; Source is what says a person
+	// touched it.
+	Source string
+
+	// EditedFrom is the plan this one was edited from, nil for a generated one.
+	EditedFrom *uuid.UUID
 
 	CreatedAt time.Time
 }
@@ -58,6 +78,21 @@ func (r *Repository) CreateIntake(ctx context.Context, userID uuid.UUID, in Inta
 	return intakeFromDB(row), nil
 }
 
+// GetIntake fetches the intake a plan was built from, so the plan page can say
+// what it no longer satisfies. The plan's own intake rather than the newest:
+// "this no longer matches what you asked for" is only true against the answers
+// it was actually built from.
+func (r *Repository) GetIntake(ctx context.Context, id, userID uuid.UUID) (StoredIntake, error) {
+	row, err := r.q.GetIntake(ctx, workoutsdb.GetIntakeParams{ID: id, UserID: userID})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return StoredIntake{}, apperr.ErrNotFound
+		}
+		return StoredIntake{}, apperr.Wrap(err, "get intake")
+	}
+	return intakeFromDB(row), nil
+}
+
 func (r *Repository) LatestIntake(ctx context.Context, userID uuid.UUID) (StoredIntake, error) {
 	row, err := r.q.LatestIntake(ctx, userID)
 	if err != nil {
@@ -75,6 +110,13 @@ func (r *Repository) CreatePlan(ctx context.Context, p StoredPlan) (StoredPlan, 
 		return StoredPlan{}, apperr.Wrap(err, "encode plan")
 	}
 
+	// Callers that predate editing do not set Source, and a plan with an empty
+	// provenance is worse than one that says where it came from.
+	source := p.Source
+	if source == "" {
+		source = SourceAI
+	}
+
 	row, err := r.q.CreatePlan(ctx, workoutsdb.CreatePlanParams{
 		UserID:   p.UserID,
 		IntakeID: p.IntakeID,
@@ -82,6 +124,9 @@ func (r *Repository) CreatePlan(ctx context.Context, p StoredPlan) (StoredPlan, 
 		Plan:     body,
 		Model:    p.Model,
 		Provider: p.Provider,
+
+		Source:     source,
+		EditedFrom: p.EditedFrom,
 	})
 	if err != nil {
 		return StoredPlan{}, apperr.Wrap(err, "create plan")
@@ -109,6 +154,37 @@ func (r *Repository) LatestPlan(ctx context.Context, userID uuid.UUID) (StoredPl
 		return StoredPlan{}, apperr.Wrap(err, "latest plan")
 	}
 	return planFromDB(row)
+}
+
+// LatestPlanForIntake is the newest version of one plan, for the edit guard.
+func (r *Repository) LatestPlanForIntake(ctx context.Context, userID, intakeID uuid.UUID) (StoredPlan, error) {
+	row, err := r.q.LatestPlanForIntake(ctx, workoutsdb.LatestPlanForIntakeParams{UserID: userID, IntakeID: intakeID})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return StoredPlan{}, apperr.ErrNotFound
+		}
+		return StoredPlan{}, apperr.Wrap(err, "latest plan for intake")
+	}
+	return planFromDB(row)
+}
+
+// ListCurrentPlans returns one row per plan — the version being followed —
+// where ListPlans returns every version of every plan.
+func (r *Repository) ListCurrentPlans(ctx context.Context, userID uuid.UUID, limit int) ([]StoredPlan, error) {
+	rows, err := r.q.ListCurrentPlans(ctx, workoutsdb.ListCurrentPlansParams{UserID: userID, Limit: int32(limit)})
+	if err != nil {
+		return nil, apperr.Wrap(err, "list current plans")
+	}
+
+	out := make([]StoredPlan, 0, len(rows))
+	for _, row := range rows {
+		plan, err := planFromDB(row)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, plan)
+	}
+	return out, nil
 }
 
 func (r *Repository) ListPlans(ctx context.Context, userID uuid.UUID, limit int) ([]StoredPlan, error) {
@@ -153,12 +229,14 @@ func planFromDB(row workoutsdb.WorkoutPlan) (StoredPlan, error) {
 	}
 
 	return StoredPlan{
-		ID:        row.ID,
-		UserID:    row.UserID,
-		IntakeID:  row.IntakeID,
-		Plan:      plan,
-		Model:     row.Model,
-		Provider:  row.Provider,
-		CreatedAt: row.CreatedAt,
+		ID:         row.ID,
+		UserID:     row.UserID,
+		IntakeID:   row.IntakeID,
+		Plan:       plan,
+		Model:      row.Model,
+		Provider:   row.Provider,
+		Source:     row.Source,
+		EditedFrom: row.EditedFrom,
+		CreatedAt:  row.CreatedAt,
 	}, nil
 }
