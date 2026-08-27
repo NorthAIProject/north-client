@@ -1198,9 +1198,39 @@ func mountAssets(r chi.Router, cfg *config.Config) {
 			} else {
 				w.Header().Set("Cache-Control", "no-store")
 			}
+			serveExerciseFrame(w, req)
 			fs.ServeHTTP(w, req)
 		},
 	)))
+}
+
+// exercisePrefix is the one asset tree stored pre-compressed.
+const exercisePrefix = "exercises/"
+
+// serveExerciseFrame rewrites a request for an exercise frame onto the .svg.gz
+// actually on disk, and declares the encoding the browser will need to undo.
+//
+// The frames are 24.7 MB of SVG raw and 11 MB gzipped, and they are embedded
+// into the binary, so storing them compressed is 14 MB off every build and
+// every image layer. Nothing here mounts compression middleware, so it is also
+// the only thing keeping them from going out uncompressed at ~28 KB each.
+//
+// Templates ask for the .svg. Keeping .gz out of the markup means the storage
+// decision stays in this function: if these ever move to object storage or the
+// server grows a compressor, no template changes.
+//
+// The rewrite is unconditional rather than guarded by an existence check —
+// every frame under this prefix is gzipped, and a slug that does not exist
+// should 404, which it does either way. Content-Type has to be set here
+// because the path now ends in .gz, and http.ServeContent keeps a Content-Type
+// the caller already set rather than sniffing one from the extension.
+func serveExerciseFrame(w http.ResponseWriter, req *http.Request) {
+	if !strings.HasPrefix(req.URL.Path, exercisePrefix) || !strings.HasSuffix(req.URL.Path, ".svg") {
+		return
+	}
+	req.URL.Path += ".gz"
+	w.Header().Set("Content-Type", "image/svg+xml")
+	w.Header().Set("Content-Encoding", "gzip")
 }
 
 // newPostHogClient builds the client the coach reports LLM calls through.

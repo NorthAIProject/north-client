@@ -10,5 +10,10 @@ import "embed"
 // build in a way that has nothing to do with the change being made. Naming the
 // directory embeds it recursively and skips empty subtrees quietly.
 //
-//go:embed brand css fonts js models video
+// exercises is 906 gzipped SVG frames, about 11 MB. They are stored .svg.gz
+// rather than .svg because nothing here mounts compression middleware: see
+// mountAssets in cmd/web/main.go, which serves those bytes verbatim under
+// Content-Encoding: gzip. Raw they would be 24.7 MB, on disk and on the wire.
+//
+//go:embed brand css exercises fonts js models video
 var Assets embed.FS

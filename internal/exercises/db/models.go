@@ -23,4 +23,5 @@ type Exercise struct {
 	SecondaryMuscles []string
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
+	IllustrationSlug string
 }

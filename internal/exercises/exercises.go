@@ -47,4 +47,9 @@ type Filter struct {
 	Equipment []string
 
 	Limit int
+
+	// Offset is how many matching rows to skip, for the browse page's paging.
+	// Derived from ?page= in the handler rather than accepted from the URL, so
+	// there is one definition of a page's size.
+	Offset int
 }

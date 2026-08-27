@@ -66,11 +66,12 @@ func (r *Repository) BySlugs(ctx context.Context, slugs []string) (map[string]Ex
 
 func (r *Repository) Search(ctx context.Context, f Filter) ([]Exercise, error) {
 	rows, err := r.q.SearchExercises(ctx, exercisesdb.SearchExercisesParams{
-		Query:       f.Query,
-		Muscle:      f.Muscle,
-		Category:    f.Category,
-		Equipment:   f.Equipment,
-		ResultLimit: int32(f.Limit),
+		Query:        f.Query,
+		Muscle:       f.Muscle,
+		Category:     f.Category,
+		Equipment:    f.Equipment,
+		ResultLimit:  int32(f.Limit),
+		ResultOffset: int32(f.Offset),
 	})
 	if err != nil {
 		return nil, apperr.Wrap(err, "search exercises")
@@ -126,5 +127,7 @@ func fromDB(row exercisesdb.Exercise) Exercise {
 		VideoURL:     row.VideoUrl,
 		Primary:      row.PrimaryMuscles,
 		Secondary:    row.SecondaryMuscles,
+
+		IllustrationSlug: row.IllustrationSlug,
 	}
 }
