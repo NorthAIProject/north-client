@@ -186,9 +186,17 @@ edge in the tree. Extract the row into `web/shared/exercisepicker` and have both
 call it — a smaller change than it sounds, since `exerciseart.Frames` already
 carries the part that used to be page-specific.
 
-**Not done.** The picker lives in `web/workouts` and has one caller, so the
-duplication the extraction would prevent does not exist yet. Move it when the
-second caller appears rather than before.
+**Done, smaller than proposed.** Extracted as `web/shared/exerciserow` rather
+than `exercisepicker`: both callers render a row and only one of them is
+picking. And what was actually identical turned out to be less than a row — the
+outer element differs (`<a href>` on browse, `<button hx-post>` in the picker)
+and browse carries muscle badges the picker does not, so a single Row component
+would have needed a parameter per difference.
+
+What moved is the guarded artwork block and the equipment label. Each page keeps
+its own element and layout. The artwork block is the piece worth sharing: it
+holds the HasIllustration guard and the Alpine id composition, and two rows
+sharing an id cycle their frames as one illustration.
 
 **Start the ranking heuristic, not generated.** The catalog carries
 `primary_muscles`, `secondary_muscles` and `equipment` as structured columns, so

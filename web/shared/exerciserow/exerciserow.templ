@@ -1,0 +1,62 @@
+// Package exerciserow holds the parts of an exercise list row that more than
+// one page renders.
+//
+// Two pages list catalog exercises: the browse page in web/exercises, where a
+// row is a link to the exercise, and the swap/add picker in web/workouts, where
+// a row is a button that posts a choice. The outer element differs, and so do
+// the extras — browse shows muscle badges, the picker does not — so there is no
+// single Row component that fits both without a parameter for every difference.
+//
+// What is genuinely identical is smaller than a row: the artwork block and the
+// equipment label. Those live here; each page keeps its own element and layout.
+//
+// It is a shared package rather than one page importing the other's templates.
+// web/exercises owns the browse page and web/workouts owns the plan page, and a
+// template reaching into another page package would be the first such edge in
+// the tree.
+//
+// Named exerciserow rather than the exercisepicker the design doc proposed:
+// both callers render a row, only one of them is picking anything.
+package exerciserow
+
+import (
+	"github.com/NorthAIProject/north-client/internal/exercises/exercise"
+	"github.com/NorthAIProject/north-client/web/shared/exerciseart"
+)
+
+// Thumbnail renders an exercise's pose artwork at row scale, or nothing when it
+// has none.
+//
+// idPrefix namespaces the component's Alpine state. It must differ per list on
+// a page and per row within one: two rows sharing an id cycle their frames as
+// though they were one illustration, which looks like a rendering bug rather
+// than a duplicate id. The slug is appended here so a caller only has to supply
+// what distinguishes the list.
+//
+// class sizes the box, since a browse row and a picker option want different
+// widths, and Tailwind classes cannot be computed from a number.
+templ Thumbnail(e exercise.Exercise, idPrefix, class string) {
+	if e.HasIllustration() {
+		<span class={ "shrink-0", class }>
+			@exerciseart.Frames(exerciseart.Props{
+				ID:   idPrefix + e.Slug,
+				Slug: e.IllustrationSlug,
+				Name: e.Name,
+			})
+		</span>
+	}
+}
+
+// Equipment labels what an exercise needs, or renders nothing when it needs
+// nothing at all.
+//
+// NeedsEquipment rather than a check against the empty string: the catalog
+// stores "none" for bodyweight movements and "other" for the sleds and tyres,
+// and the domain decides which of those is worth printing.
+templ Equipment(e exercise.Exercise) {
+	if e.NeedsEquipment() {
+		<span class="text-muted-foreground shrink-0 font-mono text-[10px] uppercase tracking-[0.14em]">
+			{ e.Equipment }
+		</span>
+	}
+}

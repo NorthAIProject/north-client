@@ -28,6 +28,30 @@
     "readOnly": false
   },
   {
+    "name": "add_workout_exercise",
+    "description": "Add an exercise to the end of a training day. Use search_exercises first to find its slug. It starts at 3×8-12 with 90s rest, which the person can change afterwards.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "description": "what to add, and where",
+      "properties": {
+        "day": {
+          "description": "the training day, such as 'Monday'",
+          "type": "string"
+        },
+        "slug": {
+          "description": "the exercise's slug, as returned by search_exercises",
+          "type": "string"
+        }
+      },
+      "required": [
+        "day",
+        "slug"
+      ],
+      "type": "object"
+    },
+    "readOnly": false
+  },
+  {
     "name": "ask_coach",
     "description": "Ask Khepri's coach a question. The reply is grounded in the user's goals, check-ins, training, and remembered facts, and the exchange is saved to their history like any other conversation.",
     "inputSchema": {
@@ -242,6 +266,30 @@
     "readOnly": true
   },
   {
+    "name": "remove_workout_exercise",
+    "description": "Take an exercise off a training day. The previous version of the plan is kept, so this is recoverable, but prefer swapping when they want the work done differently rather than not at all.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "description": "which exercise to remove",
+      "properties": {
+        "day": {
+          "description": "the training day, such as 'Monday'",
+          "type": "string"
+        },
+        "exercise": {
+          "description": "the exercise to remove, as it is named in the plan",
+          "type": "string"
+        }
+      },
+      "required": [
+        "day",
+        "exercise"
+      ],
+      "type": "object"
+    },
+    "readOnly": false
+  },
+  {
     "name": "search_documents",
     "description": "Search the passages of the user's own notes and uploaded documents. Returns each passage with the document it came from, the heading above it, its line range, and a citable chunk id. Quote the chunk id when using a passage.",
     "inputSchema": {
@@ -368,6 +416,35 @@
       "type": "object"
     },
     "readOnly": true
+  },
+  {
+    "name": "swap_workout_exercise",
+    "description": "Replace one exercise in this person's training plan with a different one, keeping its sets, reps and rest. Use search_exercises first to find the replacement's slug. Good for when equipment is unavailable, something aggravates an injury, or they simply dislike a movement.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "description": "which exercise to replace, and with what",
+      "properties": {
+        "day": {
+          "description": "the training day, such as 'Monday'",
+          "type": "string"
+        },
+        "exercise": {
+          "description": "the exercise to replace, as it is named in the plan",
+          "type": "string"
+        },
+        "slug": {
+          "description": "the replacement's slug, as returned by search_exercises",
+          "type": "string"
+        }
+      },
+      "required": [
+        "day",
+        "exercise",
+        "slug"
+      ],
+      "type": "object"
+    },
+    "readOnly": false
   },
   {
     "name": "todays_nutrition",

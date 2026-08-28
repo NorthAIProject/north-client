@@ -92,6 +92,13 @@ func TestEveryToolDeclaresWhetherItWrites(t *testing.T) {
 		"create_goal":      true,
 		"ask_coach":        true,
 		"calculate_macros": true,
+
+		// Editing a training plan. Each inserts a new plan row, and the coach
+		// holds every one of them behind an approval card for exactly that
+		// reason — see internal/agent/workout_edits.go.
+		"swap_workout_exercise":   true,
+		"add_workout_exercise":    true,
+		"remove_workout_exercise": true,
 	}
 
 	for _, tool := range describeTools(t) {

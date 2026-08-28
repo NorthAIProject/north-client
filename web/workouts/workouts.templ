@@ -12,6 +12,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/workouts/plan"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
 	"github.com/NorthAIProject/north-client/web/shared/exerciseart"
+	"github.com/NorthAIProject/north-client/web/shared/exerciserow"
 	"github.com/NorthAIProject/north-client/web/shared/muscleviewer"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/ui/alert"
@@ -792,21 +793,9 @@ templ pickerOption(p Picker, option exercise.Exercise) {
 			hx-target="#plan-body"
 			hx-swap="outerHTML"
 		>
-			if option.HasIllustration() {
-				<span class="w-8 shrink-0">
-					@exerciseart.Frames(exerciseart.Props{
-						ID:   "pick-" + option.Slug,
-						Slug: option.IllustrationSlug,
-						Name: option.Name,
-					})
-				</span>
-			}
+			@exerciserow.Thumbnail(option, "pick-", "w-8")
 			<span class="min-w-0 flex-1 text-sm">{ option.Name }</span>
-			if option.NeedsEquipment() {
-				<span class="text-muted-foreground shrink-0 font-mono text-[10px] uppercase tracking-[0.14em]">
-					{ option.Equipment }
-				</span>
-			}
+			@exerciserow.Equipment(option)
 		</button>
 	</li>
 }
