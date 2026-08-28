@@ -12,6 +12,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/workouts/plan"
 	"github.com/NorthAIProject/north-client/web/shared/exerciseart"
+	"github.com/NorthAIProject/north-client/web/shared/exerciserow"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
 	"github.com/NorthAIProject/north-client/web/shared/muscleviewer"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
@@ -233,26 +234,14 @@ templ row(e exercise.Exercise) {
 			href={ templ.SafeURL("/app/exercises/" + e.Slug) }
 			class="border-hairline bg-surface hover:border-signal/40 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border px-4 py-3 transition-colors"
 		>
-			if e.HasIllustration() {
-				<span class="w-10 shrink-0">
-					@exerciseart.Frames(exerciseart.Props{
-						ID:   "art-row-" + e.Slug,
-						Slug: e.IllustrationSlug,
-						Name: e.Name,
-					})
-				</span>
-			}
+			@exerciserow.Thumbnail(e, "art-row-", "w-10")
 			<span class="min-w-0 flex-1 text-sm font-medium">{ e.Name }</span>
 			for _, key := range e.Primary {
 				@badge.Badge(badge.Props{Variant: badge.VariantDefault}) {
 					{ humanize(key) }
 				}
 			}
-			if e.NeedsEquipment() {
-				<span class="text-muted-foreground font-mono text-[10px] uppercase tracking-[0.14em]">
-					{ e.Equipment }
-				</span>
-			}
+			@exerciserow.Equipment(e)
 		</a>
 	</li>
 }
