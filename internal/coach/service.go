@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/ai"
+	"github.com/NorthAIProject/north-client/internal/analytics"
 	"github.com/NorthAIProject/north-client/internal/conversations"
 	"github.com/NorthAIProject/north-client/internal/jobs"
 	"github.com/NorthAIProject/north-client/internal/shared/aiattr"
@@ -101,6 +102,11 @@ type Service struct {
 	// every call a no-op — see Analytics.
 	analytics *Analytics
 
+	// funnel reports the product event. Distinct from analytics above: that
+	// one answers what the model cost, this one answers whether anybody came
+	// back. Nil is a no-op.
+	funnel *analytics.Funnel
+
 	// attachments loads a stored photo so the current turn can show it to the
 	// model. Nil leaves files as text notes only, which is what every test
 	// that does not send a photo gets.
@@ -177,6 +183,9 @@ type Options struct {
 	// coach exactly as it was before AI Observability existed.
 	Analytics *Analytics
 
+	// Funnel reports the product event for a completed reply. Nil is a no-op.
+	Funnel *analytics.Funnel
+
 	// Attachments loads a stored photo onto the current turn. Nil leaves
 	// files as a text note in history, which is correct for every caller
 	// that does not send one.
@@ -210,6 +219,7 @@ func NewService(opts Options) *Service {
 		declines:      opts.Declines,
 		own:           opts.Own,
 		analytics:     opts.Analytics,
+		funnel:        opts.Funnel,
 		attachments:   opts.Attachments,
 		inbox:         opts.Inbox,
 		model:         opts.Model,
@@ -768,6 +778,10 @@ func (s *Service) pump(
 			slog.String("conversation_id", target.conversation.ID.String()))
 		return
 	}
+
+	// A completed, persisted reply — the funnel's only honest definition of
+	// the coach having answered. Activation is two of these on different days.
+	s.funnel.CoachReplied(saveCtx, target.user.ID, string(target.source))
 
 	s.noteTelegramReply(saveCtx, target, text)
 

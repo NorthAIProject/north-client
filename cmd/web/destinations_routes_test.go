@@ -187,3 +187,25 @@ func TestASignedInPageServesThePalette(t *testing.T) {
 		}
 	}
 }
+
+// The policies have to be readable by somebody who has not signed up, because
+// deciding whether to hand over health data is a decision made before the
+// account exists — not after. Mounting them inside /app would have made the
+// only way to read the privacy policy be to first accept it.
+func TestThePoliciesArePublic(t *testing.T) {
+	handler := testRoutes(t)
+
+	for _, path := range []string{"/privacy", "/terms"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("GET %s without a session answered %d, want 200", path, rec.Code)
+			continue
+		}
+		if strings.TrimSpace(rec.Body.String()) == "" {
+			t.Errorf("GET %s answered 200 with an empty body", path)
+		}
+	}
+}

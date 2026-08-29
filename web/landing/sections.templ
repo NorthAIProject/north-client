@@ -298,13 +298,21 @@ templ siteFooter() {
 				@icon.Compass(icon.Props{Class: "size-3.5"})
 				@monoLabel("Khepri — an operating system for personal growth")
 			</div>
-			<a
-				href="https://github.com/NorthAIProject/north-client"
-				class="flex items-center gap-2 rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-signal"
-			>
-				@icon.Github(icon.Props{Class: "size-3.5"})
-				@monoLabel("Source")
-			</a>
+			<div class="flex items-center gap-5">
+				<a href="/privacy" class="rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-signal">
+					@monoLabel("Privacy")
+				</a>
+				<a href="/terms" class="rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-signal">
+					@monoLabel("Terms")
+				</a>
+				<a
+					href="https://github.com/NorthAIProject/north-client"
+					class="flex items-center gap-2 rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-signal"
+				>
+					@icon.Github(icon.Props{Class: "size-3.5"})
+					@monoLabel("Source")
+				</a>
+			</div>
 		</div>
 		<div class="mx-auto w-full max-w-6xl px-6 pb-8 lg:pl-28 lg:pr-8">
 			<p class="font-mono text-[10px] leading-relaxed text-muted-foreground/70">

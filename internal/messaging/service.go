@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/ai"
+	"github.com/NorthAIProject/north-client/internal/analytics"
 	"github.com/NorthAIProject/north-client/internal/coach"
 	"github.com/NorthAIProject/north-client/internal/conversations"
 	"github.com/NorthAIProject/north-client/internal/media"
@@ -82,6 +83,7 @@ type Service struct {
 	images    Images
 	transport Transport
 	log       *slog.Logger
+	funnel    *analytics.Funnel
 
 	redeemLimit *ratelimit.Limiters
 
@@ -111,6 +113,9 @@ type Options struct {
 
 	Log *slog.Logger
 
+	// Funnel records a linked chat as a connected source. Nil is a no-op.
+	Funnel *analytics.Funnel
+
 	// Now defaults to time.Now.
 	Now func() time.Time
 }
@@ -125,6 +130,7 @@ func NewService(opts Options) *Service {
 		images:      opts.Images,
 		transport:   opts.Transport,
 		log:         opts.Log,
+		funnel:      opts.Funnel,
 		redeemLimit: ratelimit.New(redeemAttemptsPerMinute),
 		now:         opts.Now,
 	}
@@ -202,6 +208,7 @@ func (s *Service) handleUnlinked(ctx context.Context, in InboundMessage) (Outbou
 			return OutboundMessage{}, apperr.Wrap(loadErr, "messaging: load linked user")
 		}
 		s.log.Info("messaging linked a chat", "platform", in.Platform, "user_id", userID)
+		s.funnel.SourceConnected(ctx, userID, analytics.SourceTelegram)
 		return OutboundMessage{Text: fmt.Sprintf(
 			"Linked to %s. Message me whenever — I have the same memory and goals as the web app.",
 			user.Email)}, nil

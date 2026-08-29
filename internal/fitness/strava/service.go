@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/activity"
+	"github.com/NorthAIProject/north-client/internal/analytics"
 	"github.com/NorthAIProject/north-client/internal/biometrics"
 	"github.com/NorthAIProject/north-client/internal/jobs"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
@@ -46,6 +47,15 @@ type Service struct {
 	activity   *activity.Service
 	biometrics BiometricsLookup
 	queue      Enqueuer
+
+	// funnel records the connection as a product event. Nil is a no-op.
+	funnel *analytics.Funnel
+}
+
+// WithFunnel attaches product analytics.
+func (s *Service) WithFunnel(f *analytics.Funnel) *Service {
+	s.funnel = f
+	return s
 }
 
 type Options struct {
@@ -149,6 +159,10 @@ func (s *Service) Connect(ctx context.Context, userID uuid.UUID, code string) er
 		token.AccessToken, token.RefreshToken, time.Unix(token.ExpiresAt, 0), strings.Join(s.oauth.cfg.Scopes, ",")); err != nil {
 		return err
 	}
+
+	// The first real signal in the funnel: nothing about North works before a
+	// source exists, so this is the step people drop at.
+	s.funnel.SourceConnected(ctx, userID, analytics.SourceStrava)
 
 	s.queueSync(ctx, userID)
 	return nil

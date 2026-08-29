@@ -16,6 +16,8 @@ import (
 	authdb "github.com/NorthAIProject/north-client/internal/auth/db"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/users"
+
+	"github.com/NorthAIProject/north-client/internal/analytics"
 )
 
 // passwordResetTTL is how long a reset link stays valid. Short enough that a
@@ -38,6 +40,17 @@ type Service struct {
 	webauthn *passkeyAuth
 
 	passwordResetEnabled bool
+
+	// funnel records the top of the product funnel. Nil is a supported state:
+	// a deployment with no PostHog key signs people up exactly as before.
+	funnel *analytics.Funnel
+}
+
+// WithFunnel attaches product analytics. Returns the service so it can be
+// wired in one expression at startup.
+func (s *Service) WithFunnel(p *analytics.Funnel) *Service {
+	s.funnel = p
+	return s
 }
 
 // ServiceOptions wires optional infrastructure for auth journeys that need it
@@ -186,6 +199,8 @@ func (s *Service) Signup(ctx context.Context, in SignupInput, meta Metadata) (us
 	if err != nil {
 		return users.User{}, "", err
 	}
+
+	s.funnel.Registered(ctx, user.ID)
 
 	return user, token, nil
 }
