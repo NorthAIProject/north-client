@@ -27,11 +27,13 @@ func (q *Queries) CountPendingMemories(ctx context.Context, userID uuid.UUID) (i
 
 const createMemory = `-- name: CreateMemory :one
 INSERT INTO user_memories (
-    user_id, category, content, status, pinned, excluded, source, source_conversation_id, confidence
+    user_id, category, content, status, pinned, excluded, source, source_conversation_id, confidence,
+    supersedes_id
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9
+    $1, $2, $3, $4, $5, $6, $7, $8, $9,
+    $10
 )
-RETURNING id, user_id, category, content, status, pinned, source, source_conversation_id, confidence, created_at, updated_at, deleted_at, excluded
+RETURNING id, user_id, category, content, status, pinned, source, source_conversation_id, confidence, created_at, updated_at, deleted_at, excluded, valid_to, supersedes_id
 `
 
 type CreateMemoryParams struct {
@@ -44,6 +46,7 @@ type CreateMemoryParams struct {
 	Source               string
 	SourceConversationID *uuid.UUID
 	Confidence           *float32
+	SupersedesID         *uuid.UUID
 }
 
 func (q *Queries) CreateMemory(ctx context.Context, arg CreateMemoryParams) (UserMemory, error) {
@@ -57,6 +60,7 @@ func (q *Queries) CreateMemory(ctx context.Context, arg CreateMemoryParams) (Use
 		arg.Source,
 		arg.SourceConversationID,
 		arg.Confidence,
+		arg.SupersedesID,
 	)
 	var i UserMemory
 	err := row.Scan(
@@ -73,12 +77,14 @@ func (q *Queries) CreateMemory(ctx context.Context, arg CreateMemoryParams) (Use
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.Excluded,
+		&i.ValidTo,
+		&i.SupersedesID,
 	)
 	return i, err
 }
 
 const getMemory = `-- name: GetMemory :one
-SELECT id, user_id, category, content, status, pinned, source, source_conversation_id, confidence, created_at, updated_at, deleted_at, excluded FROM user_memories
+SELECT id, user_id, category, content, status, pinned, source, source_conversation_id, confidence, created_at, updated_at, deleted_at, excluded, valid_to, supersedes_id FROM user_memories
 WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
 `
 
@@ -104,6 +110,8 @@ func (q *Queries) GetMemory(ctx context.Context, arg GetMemoryParams) (UserMemor
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.Excluded,
+		&i.ValidTo,
+		&i.SupersedesID,
 	)
 	return i, err
 }
@@ -114,9 +122,15 @@ FROM user_memories
 WHERE user_id = $1
   AND deleted_at IS NULL
   AND status IN ('pending', 'approved')
+  AND valid_to IS NULL
 `
 
 // Used to deduplicate extractions against what is already known or proposed.
+//
+// Retired facts are deliberately not in this set. People revert: someone who
+// went back to training three days a week should be able to have that fact
+// proposed again, and excluding superseded rows here is what allows it. The
+// cost is that a fact can cycle, which is correct — it is what happened.
 func (q *Queries) ListActiveContents(ctx context.Context, userID uuid.UUID) ([]string, error) {
 	rows, err := q.db.Query(ctx, listActiveContents, userID)
 	if err != nil {
@@ -138,11 +152,12 @@ func (q *Queries) ListActiveContents(ctx context.Context, userID uuid.UUID) ([]s
 }
 
 const listApprovedForContext = `-- name: ListApprovedForContext :many
-SELECT id, user_id, category, content, status, pinned, source, source_conversation_id, confidence, created_at, updated_at, deleted_at, excluded FROM user_memories
+SELECT id, user_id, category, content, status, pinned, source, source_conversation_id, confidence, created_at, updated_at, deleted_at, excluded, valid_to, supersedes_id FROM user_memories
 WHERE user_id = $1
   AND deleted_at IS NULL
   AND status = 'approved'
   AND NOT excluded
+  AND valid_to IS NULL
 ORDER BY pinned DESC, updated_at DESC
 LIMIT $2
 `
@@ -152,6 +167,9 @@ type ListApprovedForContextParams struct {
 	Limit  int32
 }
 
+// valid_to IS NULL keeps retired facts out of the prompt. A superseded fact is
+// not deleted — it is history, and the review page still shows it — but the
+// coach must never be told two contradicting things and left to pick.
 func (q *Queries) ListApprovedForContext(ctx context.Context, arg ListApprovedForContextParams) ([]UserMemory, error) {
 	rows, err := q.db.Query(ctx, listApprovedForContext, arg.UserID, arg.Limit)
 	if err != nil {
@@ -175,6 +193,69 @@ func (q *Queries) ListApprovedForContext(ctx context.Context, arg ListApprovedFo
 			&i.UpdatedAt,
 			&i.DeletedAt,
 			&i.Excluded,
+			&i.ValidTo,
+			&i.SupersedesID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCurrentForSupersession = `-- name: ListCurrentForSupersession :many
+SELECT id, category, content, pinned, updated_at
+FROM user_memories
+WHERE user_id = $1
+  AND deleted_at IS NULL
+  AND status = 'approved'
+  AND NOT excluded
+  AND valid_to IS NULL
+ORDER BY category, updated_at DESC
+LIMIT $2
+`
+
+type ListCurrentForSupersessionParams struct {
+	UserID uuid.UUID
+	Limit  int32
+}
+
+type ListCurrentForSupersessionRow struct {
+	ID        uuid.UUID
+	Category  string
+	Content   string
+	Pinned    bool
+	UpdatedAt time.Time
+}
+
+// The facts an extraction is allowed to propose replacing.
+//
+// Approved and current only. A pending fact is not yet believed, and a retired
+// one is already gone; offering either to the model would invite it to
+// supersede something that was never there.
+//
+// Pinned facts are included, because the model should still be able to say "this
+// one is out of date" about them — SupersedeMemory is what refuses to act on it
+// without a human. Leaving them out would instead teach the model that the fact
+// does not exist, and it would file a contradicting duplicate.
+func (q *Queries) ListCurrentForSupersession(ctx context.Context, arg ListCurrentForSupersessionParams) ([]ListCurrentForSupersessionRow, error) {
+	rows, err := q.db.Query(ctx, listCurrentForSupersession, arg.UserID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListCurrentForSupersessionRow{}
+	for rows.Next() {
+		var i ListCurrentForSupersessionRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Category,
+			&i.Content,
+			&i.Pinned,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -187,7 +268,7 @@ func (q *Queries) ListApprovedForContext(ctx context.Context, arg ListApprovedFo
 }
 
 const listMemories = `-- name: ListMemories :many
-SELECT id, user_id, category, content, status, pinned, source, source_conversation_id, confidence, created_at, updated_at, deleted_at, excluded FROM user_memories
+SELECT id, user_id, category, content, status, pinned, source, source_conversation_id, confidence, created_at, updated_at, deleted_at, excluded, valid_to, supersedes_id FROM user_memories
 WHERE user_id = $1
   AND deleted_at IS NULL
 ORDER BY
@@ -226,6 +307,8 @@ func (q *Queries) ListMemories(ctx context.Context, arg ListMemoriesParams) ([]U
 			&i.UpdatedAt,
 			&i.DeletedAt,
 			&i.Excluded,
+			&i.ValidTo,
+			&i.SupersedesID,
 		); err != nil {
 			return nil, err
 		}
@@ -238,7 +321,7 @@ func (q *Queries) ListMemories(ctx context.Context, arg ListMemoriesParams) ([]U
 }
 
 const listMemoriesByStatus = `-- name: ListMemoriesByStatus :many
-SELECT id, user_id, category, content, status, pinned, source, source_conversation_id, confidence, created_at, updated_at, deleted_at, excluded FROM user_memories
+SELECT id, user_id, category, content, status, pinned, source, source_conversation_id, confidence, created_at, updated_at, deleted_at, excluded, valid_to, supersedes_id FROM user_memories
 WHERE user_id = $1
   AND deleted_at IS NULL
   AND status = $2
@@ -275,6 +358,8 @@ func (q *Queries) ListMemoriesByStatus(ctx context.Context, arg ListMemoriesBySt
 			&i.UpdatedAt,
 			&i.DeletedAt,
 			&i.Excluded,
+			&i.ValidTo,
+			&i.SupersedesID,
 		); err != nil {
 			return nil, err
 		}
@@ -287,7 +372,7 @@ func (q *Queries) ListMemoriesByStatus(ctx context.Context, arg ListMemoriesBySt
 }
 
 const listPendingForConversation = `-- name: ListPendingForConversation :many
-SELECT id, user_id, category, content, status, pinned, source, source_conversation_id, confidence, created_at, updated_at, deleted_at, excluded FROM user_memories
+SELECT id, user_id, category, content, status, pinned, source, source_conversation_id, confidence, created_at, updated_at, deleted_at, excluded, valid_to, supersedes_id FROM user_memories
 WHERE user_id = $1
   AND source_conversation_id = $2
   AND status = 'pending'
@@ -323,6 +408,8 @@ func (q *Queries) ListPendingForConversation(ctx context.Context, arg ListPendin
 			&i.UpdatedAt,
 			&i.DeletedAt,
 			&i.Excluded,
+			&i.ValidTo,
+			&i.SupersedesID,
 		); err != nil {
 			return nil, err
 		}
@@ -359,6 +446,9 @@ WHERE m.user_id = $1
   AND m.deleted_at IS NULL
   AND m.status = 'approved'
   AND NOT m.excluded
+  -- See ListApprovedForContext: retired facts stay out of the prompt, and this
+  -- has to match, or which query ran would decide what the coach believes.
+  AND m.valid_to IS NULL
   AND (
       m.pinned
       OR to_tsvector('english', m.content) @@ q.tsq
@@ -439,7 +529,7 @@ SET excluded   = $3,
     pinned     = false,
     updated_at = now()
 WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL AND status = 'approved'
-RETURNING id, user_id, category, content, status, pinned, source, source_conversation_id, confidence, created_at, updated_at, deleted_at, excluded
+RETURNING id, user_id, category, content, status, pinned, source, source_conversation_id, confidence, created_at, updated_at, deleted_at, excluded, valid_to, supersedes_id
 `
 
 type SetMemoryExcludedParams struct {
@@ -465,6 +555,8 @@ func (q *Queries) SetMemoryExcluded(ctx context.Context, arg SetMemoryExcludedPa
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.Excluded,
+		&i.ValidTo,
+		&i.SupersedesID,
 	)
 	return i, err
 }
@@ -475,7 +567,7 @@ SET pinned     = $3,
     excluded   = false,
     updated_at = now()
 WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL AND status = 'approved'
-RETURNING id, user_id, category, content, status, pinned, source, source_conversation_id, confidence, created_at, updated_at, deleted_at, excluded
+RETURNING id, user_id, category, content, status, pinned, source, source_conversation_id, confidence, created_at, updated_at, deleted_at, excluded, valid_to, supersedes_id
 `
 
 type SetMemoryPinnedParams struct {
@@ -501,6 +593,8 @@ func (q *Queries) SetMemoryPinned(ctx context.Context, arg SetMemoryPinnedParams
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.Excluded,
+		&i.ValidTo,
+		&i.SupersedesID,
 	)
 	return i, err
 }
@@ -510,7 +604,7 @@ UPDATE user_memories
 SET status     = $3,
     updated_at = now()
 WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
-RETURNING id, user_id, category, content, status, pinned, source, source_conversation_id, confidence, created_at, updated_at, deleted_at, excluded
+RETURNING id, user_id, category, content, status, pinned, source, source_conversation_id, confidence, created_at, updated_at, deleted_at, excluded, valid_to, supersedes_id
 `
 
 type SetMemoryStatusParams struct {
@@ -536,6 +630,8 @@ func (q *Queries) SetMemoryStatus(ctx context.Context, arg SetMemoryStatusParams
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.Excluded,
+		&i.ValidTo,
+		&i.SupersedesID,
 	)
 	return i, err
 }
@@ -560,13 +656,61 @@ func (q *Queries) SoftDeleteMemory(ctx context.Context, arg SoftDeleteMemoryPara
 	return result.RowsAffected(), nil
 }
 
+const supersedeMemory = `-- name: SupersedeMemory :one
+UPDATE user_memories
+SET valid_to   = now(),
+    updated_at = now()
+WHERE id = $1
+  AND user_id = $2
+  AND deleted_at IS NULL
+  AND status = 'approved'
+  AND valid_to IS NULL
+  AND NOT pinned
+RETURNING id, user_id, category, content, status, pinned, source, source_conversation_id, confidence, created_at, updated_at, deleted_at, excluded, valid_to, supersedes_id
+`
+
+type SupersedeMemoryParams struct {
+	ID     uuid.UUID
+	UserID uuid.UUID
+}
+
+// Retires one fact, at the moment its replacement was approved.
+//
+// Guards rather than trusts the caller. status = 'approved' because a pending
+// fact was never believed and has nothing to retire; valid_to IS NULL so a
+// second approval cannot move a date already set; and NOT pinned because a
+// pinned fact is one the person said always matters, and retiring that on a
+// model's suggestion is not a call this code gets to make.
+func (q *Queries) SupersedeMemory(ctx context.Context, arg SupersedeMemoryParams) (UserMemory, error) {
+	row := q.db.QueryRow(ctx, supersedeMemory, arg.ID, arg.UserID)
+	var i UserMemory
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Category,
+		&i.Content,
+		&i.Status,
+		&i.Pinned,
+		&i.Source,
+		&i.SourceConversationID,
+		&i.Confidence,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+		&i.Excluded,
+		&i.ValidTo,
+		&i.SupersedesID,
+	)
+	return i, err
+}
+
 const updateMemory = `-- name: UpdateMemory :one
 UPDATE user_memories
 SET category   = $3,
     content    = $4,
     updated_at = now()
 WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
-RETURNING id, user_id, category, content, status, pinned, source, source_conversation_id, confidence, created_at, updated_at, deleted_at, excluded
+RETURNING id, user_id, category, content, status, pinned, source, source_conversation_id, confidence, created_at, updated_at, deleted_at, excluded, valid_to, supersedes_id
 `
 
 type UpdateMemoryParams struct {
@@ -598,6 +742,8 @@ func (q *Queries) UpdateMemory(ctx context.Context, arg UpdateMemoryParams) (Use
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.Excluded,
+		&i.ValidTo,
+		&i.SupersedesID,
 	)
 	return i, err
 }

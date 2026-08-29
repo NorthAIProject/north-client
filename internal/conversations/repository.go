@@ -319,12 +319,36 @@ func messagesFromDB(rows []conversationsdb.Message) []Message {
 	return out
 }
 
+// SetMessageHelpful records whether a coach reply helped, or clears the answer
+// when helpful is nil.
+//
+// Reports false when nothing was updated, which covers all three ways this can
+// legitimately miss: the message does not exist, it belongs to somebody else, or
+// it is the person's own turn rather than the coach's. The caller turns that
+// into a not-found; distinguishing them for the client would confirm that a
+// message id exists in an account the caller cannot see.
+func (r *Repository) SetMessageHelpful(ctx context.Context, messageID, userID uuid.UUID, helpful *bool) (Message, bool, error) {
+	row, err := r.q.SetMessageHelpful(ctx, conversationsdb.SetMessageHelpfulParams{
+		MessageID: messageID,
+		UserID:    userID,
+		Helpful:   helpful,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Message{}, false, nil
+	}
+	if err != nil {
+		return Message{}, false, apperr.Wrap(err, "set message helpful")
+	}
+	return messageFromDB(row), true, nil
+}
+
 func messageFromDB(row conversationsdb.Message) Message {
 	m := Message{
 		ID:             row.ID,
 		ConversationID: row.ConversationID,
 		Role:           ai.Role(row.Role),
 		Content:        row.Content,
+		Helpful:        row.Helpful,
 		CreatedAt:      row.CreatedAt,
 	}
 

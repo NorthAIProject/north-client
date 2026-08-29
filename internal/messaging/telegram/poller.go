@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"time"
 )
@@ -63,7 +64,12 @@ func NewPoller(cfg PollerConfig) *Poller {
 func (p *Poller) Run(ctx context.Context) error {
 	p.log.Info("telegram poller started")
 
-	var offset int64
+	var (
+		offset int64
+		// Latched so the conflict is reported once rather than on every poll.
+		// Reset by any different failure, so a later recurrence is heard again.
+		conflictReported bool
+	)
 	for {
 		if ctx.Err() != nil {
 			p.log.Info("telegram poller stopped")
@@ -76,7 +82,24 @@ func (p *Poller) Run(ctx context.Context) error {
 				p.log.Info("telegram poller stopped")
 				return nil
 			}
-			p.log.Warn("telegram poll failed", "error", err)
+
+			// A registered webhook is a configuration mistake, not an outage:
+			// Telegram will refuse every poll for as long as it is set. Said
+			// once at error level with the fix in it, because the alternative
+			// is a warning every five seconds forever that reads like a network
+			// problem and never names the cause.
+			if errors.Is(err, ErrWebhookActive) {
+				if !conflictReported {
+					conflictReported = true
+					p.log.Error("telegram polling is blocked by a registered webhook",
+						"error", err,
+						"fix", "delete the webhook (deleteWebhook) to poll, or run in webhook mode instead",
+					)
+				}
+			} else {
+				conflictReported = false
+				p.log.Warn("telegram poll failed", "error", err)
+			}
 			select {
 			case <-ctx.Done():
 				return nil

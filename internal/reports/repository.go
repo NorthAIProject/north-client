@@ -173,6 +173,23 @@ func fromDate(d pgtype.Date) time.Time {
 	return d.Time
 }
 
+// SetHelpful records whether a report was worth reading, or clears the answer
+// when helpful is nil.
+func (r *Repository) SetHelpful(ctx context.Context, id, userID uuid.UUID, helpful *bool) (Report, error) {
+	row, err := r.q.SetReportHelpful(ctx, reportsdb.SetReportHelpfulParams{
+		ID:      id,
+		UserID:  userID,
+		Helpful: helpful,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Report{}, apperr.ErrNotFound
+	}
+	if err != nil {
+		return Report{}, apperr.Wrap(err, "set report helpful")
+	}
+	return fromDB(row), nil
+}
+
 func fromDB(row reportsdb.Report) Report {
 	r := Report{
 		ID:          row.ID,
@@ -186,6 +203,7 @@ func fromDB(row reportsdb.Report) Report {
 		LastError:   row.LastError,
 		GeneratedAt: row.GeneratedAt,
 		ArchivedAt:  row.ArchivedAt,
+		Helpful:     row.Helpful,
 		CreatedAt:   row.CreatedAt,
 		UpdatedAt:   row.UpdatedAt,
 	}

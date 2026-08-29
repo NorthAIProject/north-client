@@ -41,6 +41,19 @@ import (
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
+// MetricSleepAsleep is the total time a device recorded a person as asleep,
+// in minutes.
+//
+// A named constant, unlike the metric names in summary.go, because this is the
+// one metric two packages have to agree on rather than merely render: the
+// sleep-truth comparison reads it and the simulator writes it, and a typo on
+// either side would show up as "no bias detected" rather than as an error.
+//
+// The name itself is still a guess, per the package note above — no real bridge
+// payload has arrived yet. When the first one does and it disagrees, this
+// constant is the single place to correct.
+const MetricSleepAsleep = "sleep_asleep"
+
 // Reading is one measurement arriving from a provider.
 //
 // The unit travels with the value rather than being assumed from the metric

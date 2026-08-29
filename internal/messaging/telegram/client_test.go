@@ -3,6 +3,7 @@ package telegram
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -286,5 +287,205 @@ func TestAFailedCallNeverNamesTheToken(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "chat not found") {
 		t.Fatalf("the error should carry Telegram's reason, got %v", err)
+	}
+}
+
+func TestGetMeReportsWhoTheTokenBelongsTo(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/getMe") {
+			t.Errorf("called %s, want getMe", r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"ok":true,"result":{"id":42,"username":"north_test_bot","first_name":"Khepri","can_read_all_group_messages":false}}`))
+	}))
+	defer srv.Close()
+
+	client := NewClient("test-token")
+	client.baseURL = srv.URL
+
+	info, err := client.GetMe(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Username != "north_test_bot" || info.ID != 42 || info.FirstName != "Khepri" {
+		t.Errorf("got %+v", info)
+	}
+}
+
+func TestGetMeSurfacesAnUnauthorizedToken(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"ok":false,"description":"Unauthorized"}`))
+	}))
+	defer srv.Close()
+
+	client := NewClient("bad-token")
+	client.baseURL = srv.URL
+
+	_, err := client.GetMe(context.Background())
+	if err == nil {
+		t.Fatal("a rejected token returned no error")
+	}
+	// Telegram's own description is what makes the failure diagnosable, and it
+	// carries nothing secret.
+	if !strings.Contains(err.Error(), "Unauthorized") {
+		t.Errorf("error does not carry the reason: %v", err)
+	}
+	// The token must never appear in an error that gets logged.
+	if strings.Contains(err.Error(), "bad-token") {
+		t.Error("the bot token leaked into an error message")
+	}
+}
+
+func TestGetWebhookInfoReportsWhereUpdatesGo(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"ok":true,"result":{"url":"https://north.example/webhooks/telegram","pending_update_count":3,"last_error_message":"Wrong response from the webhook: 502 Bad Gateway","last_error_date":1787000000}}`))
+	}))
+	defer srv.Close()
+
+	client := NewClient("test-token")
+	client.baseURL = srv.URL
+
+	hook, err := client.GetWebhookInfo(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hook.Set() {
+		t.Error("Set() is false for a registered webhook")
+	}
+	if hook.PendingUpdateCount != 3 {
+		t.Errorf("PendingUpdateCount = %d, want 3", hook.PendingUpdateCount)
+	}
+	if hook.LastErrorMessage == "" {
+		t.Error("the last delivery error was dropped; it is the fastest answer to 'why is nothing arriving'")
+	}
+}
+
+func TestGetWebhookInfoOnAPollingBot(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"ok":true,"result":{"url":"","pending_update_count":0}}`))
+	}))
+	defer srv.Close()
+
+	client := NewClient("test-token")
+	client.baseURL = srv.URL
+
+	hook, err := client.GetWebhookInfo(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hook.Set() {
+		t.Error("Set() is true for an empty url")
+	}
+}
+
+// The one polling failure that never resolves by waiting. It has to be
+// distinguishable, or the poller retries a configuration mistake forever and
+// logs it as if it were a network blip.
+func TestGetUpdatesIdentifiesAWebhookConflict(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusConflict)
+		_, _ = w.Write([]byte(`{"ok":false,"description":"Conflict: can't use getUpdates method while webhook is active"}`))
+	}))
+	defer srv.Close()
+
+	client := NewClient("test-token")
+	client.baseURL = srv.URL
+
+	_, err := client.getUpdates(context.Background(), 0, 1)
+	if !errors.Is(err, ErrWebhookActive) {
+		t.Fatalf("got %v, want it to wrap ErrWebhookActive", err)
+	}
+	// Telegram's own wording is kept, because it is what someone will search for.
+	if !strings.Contains(err.Error(), "webhook is active") {
+		t.Errorf("the original description was dropped: %v", err)
+	}
+}
+
+// Any other refusal must stay an ordinary error, or the poller would stop
+// retrying things that are worth retrying.
+func TestGetUpdatesLeavesOtherFailuresAlone(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"ok":false,"description":"Bad Gateway"}`))
+	}))
+	defer srv.Close()
+
+	client := NewClient("test-token")
+	client.baseURL = srv.URL
+
+	_, err := client.getUpdates(context.Background(), 0, 1)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if errors.Is(err, ErrWebhookActive) {
+		t.Error("an unrelated failure was classified as a webhook conflict")
+	}
+}
+
+// A bot token is the entire authentication for a bot, so a token in a log file
+// is the bot. Telegram puts it in the request path, and net/http prints the
+// whole URL in every transport error — so the leak is on the path that only
+// happens when Telegram cannot be reached at all, which is exactly the path no
+// httptest-based test exercises.
+//
+// This was a real leak, found by running the app rather than the suite:
+//
+//	msg="could not publish the telegram command menu"
+//	error="... Post \"https://api.telegram.org/bot<TOKEN>/setMyCommands\": context canceled"
+func TestATransportFailureDoesNotLeakTheToken(t *testing.T) {
+	const token = "8111737206:AAsupersecretvaluethatmustnotappear"
+
+	// A server that is closed before use, so the request cannot connect and the
+	// failure happens in the transport rather than in Telegram's envelope.
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	closedURL := srv.URL
+	srv.Close()
+
+	client := NewClient(token)
+	client.baseURL = closedURL
+
+	_, err := client.GetMe(context.Background())
+	if err == nil {
+		t.Fatal("expected a transport error")
+	}
+	if strings.Contains(err.Error(), token) {
+		t.Fatalf("the bot token leaked into an error:\n%v", err)
+	}
+	if strings.Contains(err.Error(), "AAsupersecret") {
+		t.Fatalf("part of the bot token leaked into an error:\n%v", err)
+	}
+	// Still has to be diagnosable: naming the method is what makes the log line
+	// worth having at all.
+	if !strings.Contains(err.Error(), "getMe") {
+		t.Errorf("error does not say which call failed: %v", err)
+	}
+}
+
+// Cancellation must stay recognisable after the URL is stripped, or a shutdown
+// reads as an outage and the poller logs it as a failure on the way down.
+//
+// Unwrapping *url.Error rather than scrubbing its text is what preserves this:
+// the string form would still say "context canceled", but errors.Is would not.
+func TestACancelledRequestStaysRecognisable(t *testing.T) {
+	const token = "8111737206:AAtokenthatmustnotappear"
+
+	api := newBotAPI(t)
+	client := api.client()
+	client.token = token
+
+	// Cancelled before the call, so the transport fails immediately and
+	// deterministically. A handler that blocks until the client disconnects
+	// deadlocks against httptest.Server.Close, which waits for it.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := client.GetMe(ctx)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("cancellation is no longer recognisable: %v", err)
+	}
+	if strings.Contains(err.Error(), token) {
+		t.Errorf("the token leaked: %v", err)
 	}
 }

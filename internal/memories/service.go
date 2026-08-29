@@ -98,8 +98,29 @@ func (s *Service) Update(ctx context.Context, id, userID uuid.UUID, in Input) (M
 	return s.repo.Update(ctx, id, userID, clean.Category, clean.Content)
 }
 
+// Approve believes a pending fact, and retires the one it replaces.
+//
+// The order matters: the new fact is approved first, so a failure to retire the
+// old one leaves both current rather than neither. Two facts the coach can see
+// is a duplicate somebody notices; zero is a fact silently lost.
+//
+// A refused retirement is not an error. The target may have been deleted,
+// already retired by an earlier approval, or pinned — and pinned is refused
+// deliberately, because a fact the person said always matters is not something a
+// model's suggestion gets to overrule. In every one of those cases the new fact
+// still stands and the human still sees both.
 func (s *Service) Approve(ctx context.Context, id, userID uuid.UUID) (Memory, error) {
-	return s.repo.SetStatus(ctx, id, userID, StatusApproved)
+	approved, err := s.repo.SetStatus(ctx, id, userID, StatusApproved)
+	if err != nil {
+		return Memory{}, err
+	}
+
+	if approved.SupersedesID != nil {
+		if _, _, err := s.repo.Supersede(ctx, *approved.SupersedesID, userID); err != nil {
+			return approved, err
+		}
+	}
+	return approved, nil
 }
 
 func (s *Service) Reject(ctx context.Context, id, userID uuid.UUID) (Memory, error) {
@@ -157,8 +178,35 @@ func (s *Service) recentForContext(ctx context.Context, userID uuid.UUID) ([]Ret
 }
 
 // InsertExtractions stores sanitised candidates as pending, skipping duplicates.
-func (s *Service) InsertExtractions(ctx context.Context, userID, conversationID uuid.UUID, candidates []extract.Candidate) (int, error) {
-	if len(candidates) == 0 {
+// Proposal is a sanitised extraction candidate with its supersession target
+// resolved from an index to an id.
+//
+// The two halves are kept apart on purpose. Candidate is what a model returned
+// and is validated as untrusted input; SupersedesID is a real row this code
+// resolved. Merging them into one struct would put a model-supplied integer and
+// a database identity in the same field set and invite one to be mistaken for
+// the other.
+type Proposal struct {
+	extract.Candidate
+
+	// SupersedesID is the fact approving this one would retire, or nil.
+	SupersedesID *uuid.UUID
+}
+
+// CurrentForSupersession returns the believed facts an extraction may propose
+// replacing.
+func (s *Service) CurrentForSupersession(ctx context.Context, userID uuid.UUID, limit int) ([]CurrentFact, error) {
+	return s.repo.ListCurrentForSupersession(ctx, userID, limit)
+}
+
+// InsertExtractions files proposed facts as pending.
+//
+// A proposed supersession is recorded on the new row and not acted on: retiring
+// the old fact happens when a human approves the new one. Doing it here would
+// mean a rejected extraction had already deleted something true, and the whole
+// reason extraction lands in a review queue is that it is not trusted yet.
+func (s *Service) InsertExtractions(ctx context.Context, userID, conversationID uuid.UUID, proposals []Proposal) (int, error) {
+	if len(proposals) == 0 {
 		return 0, nil
 	}
 
@@ -173,19 +221,20 @@ func (s *Service) InsertExtractions(ctx context.Context, userID, conversationID 
 	}
 
 	inserted := 0
-	for _, c := range candidates {
-		key := strings.ToLower(strings.TrimSpace(c.Content))
+	for _, pr := range proposals {
+		key := strings.ToLower(strings.TrimSpace(pr.Content))
 		if key == "" || existing[key] {
 			continue
 		}
-		conf := c.Confidence
+		conf := pr.Confidence
 		if _, err := s.repo.Create(ctx, userID, NewMemory{
-			Category:             c.Category,
-			Content:              strings.TrimSpace(c.Content),
+			Category:             pr.Category,
+			Content:              strings.TrimSpace(pr.Content),
 			Status:               StatusPending,
 			Source:               SourceExtraction,
 			SourceConversationID: convPtr,
 			Confidence:           &conf,
+			SupersedesID:         pr.SupersedesID,
 		}); err != nil {
 			return inserted, err
 		}

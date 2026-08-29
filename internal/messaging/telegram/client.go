@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -154,6 +155,63 @@ func (c *Client) RegisterCommands(ctx context.Context) error {
 // Used for groups and channels, which North refuses: a group has one chat id
 // shared by everybody in it, so staying would leave an id available to be
 // linked to somebody's account.
+// BotInfo is who the token belongs to.
+type BotInfo struct {
+	ID        int64  `json:"id"`
+	Username  string `json:"username"`
+	FirstName string `json:"first_name"`
+
+	// CanReadAllGroupMessages reflects BotFather's privacy setting. Worth
+	// reporting because the symptom of getting it wrong — the bot silently not
+	// seeing messages — looks exactly like a broken integration.
+	CanReadAllGroupMessages bool `json:"can_read_all_group_messages"`
+}
+
+// GetMe asks Telegram who this token belongs to.
+//
+// The cheapest possible proof that a deployment can actually talk to Telegram:
+// it exercises the token, the outbound HTTPS path and the response envelope in
+// one call, and it changes nothing if it fails.
+func (c *Client) GetMe(ctx context.Context) (BotInfo, error) {
+	var info BotInfo
+	if err := c.call(ctx, "getMe", map[string]any{}, &info); err != nil {
+		return BotInfo{}, err
+	}
+	return info, nil
+}
+
+// WebhookInfo is what Telegram believes about where to deliver updates.
+type WebhookInfo struct {
+	URL string `json:"url"`
+
+	// PendingUpdateCount is how many updates are queued. A number that only
+	// grows is the signature of a webhook pointing somewhere that is not
+	// answering.
+	PendingUpdateCount int `json:"pending_update_count"`
+
+	// LastErrorMessage is Telegram's own description of the last failed
+	// delivery, which is usually the fastest answer to "why is nothing
+	// arriving".
+	LastErrorMessage string `json:"last_error_message"`
+	LastErrorDate    int64  `json:"last_error_date"`
+}
+
+// Set reports whether Telegram has a webhook registered.
+//
+// This is the state that decides which mode works: while a webhook is set,
+// getUpdates is refused outright, so a leftover webhook makes polling look
+// broken for a reason nothing in the polling path can see.
+func (w WebhookInfo) Set() bool { return w.URL != "" }
+
+// GetWebhookInfo asks Telegram where it is currently delivering updates.
+func (c *Client) GetWebhookInfo(ctx context.Context) (WebhookInfo, error) {
+	var info WebhookInfo
+	if err := c.call(ctx, "getWebhookInfo", map[string]any{}, &info); err != nil {
+		return WebhookInfo{}, err
+	}
+	return info, nil
+}
+
 func (c *Client) Leave(ctx context.Context, externalID string) error {
 	chat, err := chatIDFromString(externalID)
 	if err != nil {
@@ -221,6 +279,26 @@ func (c *Client) File(ctx context.Context, fileID string) ([]byte, string, error
 }
 
 // getUpdates long-polls for new updates. Used only in polling mode.
+// ErrWebhookActive is returned when getUpdates is refused because a webhook is
+// registered.
+//
+// Its own error because it is the one polling failure with a specific cause and
+// a specific fix, and because it never resolves on its own: retrying forever is
+// the wrong response, and telling somebody to delete the webhook is the right
+// one. Telegram signals it as a 409 with a description rather than a code, so
+// matching the text is the only option available.
+var ErrWebhookActive = errors.New("telegram: a webhook is registered, so getUpdates is refused")
+
+func isWebhookConflict(err error) bool {
+	if err == nil {
+		return false
+	}
+	// Telegram's wording has been stable for years, but match loosely on the
+	// two parts that carry the meaning rather than the whole sentence.
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "conflict") && strings.Contains(msg, "webhook")
+}
+
 func (c *Client) getUpdates(ctx context.Context, offset int64, timeoutSeconds int) ([]update, error) {
 	var result []update
 	body := map[string]any{
@@ -231,6 +309,12 @@ func (c *Client) getUpdates(ctx context.Context, offset int64, timeoutSeconds in
 		body["offset"] = offset
 	}
 	if err := c.call(ctx, "getUpdates", body, &result); err != nil {
+		// Wrapped so the poller can recognise the one failure that will never
+		// resolve by waiting, while callers that only log keep the original
+		// description.
+		if isWebhookConflict(err) {
+			return nil, fmt.Errorf("%w: %s", ErrWebhookActive, err)
+		}
 		return nil, err
 	}
 	return result, nil
@@ -250,13 +334,13 @@ func (c *Client) call(ctx context.Context, method string, body any, out any) err
 	url := c.baseURL + "/bot" + c.token + "/" + method
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
 	if err != nil {
-		return apperr.Wrap(err, "telegram: build %s request", method)
+		return apperr.Wrap(withoutURL(err), "telegram: build %s request", method)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return fmt.Errorf("telegram: %s request failed: %w", method, err)
+		return fmt.Errorf("telegram: %s request failed: %w", method, withoutURL(err))
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -288,6 +372,28 @@ func (c *Client) call(ctx context.Context, method string, body any, out any) err
 		return apperr.Wrap(err, "telegram: decode %s result", method)
 	}
 	return nil
+}
+
+// withoutURL strips the request URL out of a transport error.
+//
+// Telegram puts the bot token in the path — /bot<token>/getMe — and net/http
+// wraps every transport failure in a *url.Error whose Error() prints the whole
+// URL. Logging that error logs the credential, which CLAUDE.md forbids and which
+// is worse here than it looks: a bot token is the entire authentication, so a
+// token in a log file is the bot.
+//
+// Unwrapping to the inner cause rather than scrubbing the string keeps
+// errors.Is working for context.Canceled and net.Error, which callers rely on to
+// tell a shutdown apart from an outage.
+//
+// This is only reachable when the request never got an answer. A refusal *from*
+// Telegram is read out of the response envelope and never carries the URL.
+func withoutURL(err error) error {
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) && urlErr.Err != nil {
+		return urlErr.Err
+	}
+	return err
 }
 
 func inlineKeyboard(options []messaging.Option) map[string]any {

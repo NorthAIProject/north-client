@@ -17,7 +17,7 @@ func TestSanitiseDropsWeakAndKeepsStrong(t *testing.T) {
 		{Category: "nonsense", Content: "Has a dog named Max", Confidence: 0.9},             // bad category
 		{Category: memory.CategoryHabit, Content: "Feeling good today", Confidence: 0.9},    // ephemeral
 		{Category: memory.CategoryEquipment, Content: "Only owns a pair of dumbbells", Confidence: 0.8},
-	}})
+	}}, 0)
 
 	if len(got) != 2 {
 		t.Fatalf("got %d candidates, want 2: %+v", len(got), got)
@@ -32,7 +32,7 @@ func TestSanitiseDropsWeakAndKeepsStrong(t *testing.T) {
 
 func TestSanitiseEmptyIsOK(t *testing.T) {
 	t.Parallel()
-	if got := extract.Sanitise(extract.Result{}); len(got) != 0 {
+	if got := extract.Sanitise(extract.Result{}, 0); len(got) != 0 {
 		t.Fatalf("empty input should stay empty, got %+v", got)
 	}
 }
@@ -51,7 +51,7 @@ func TestSanitiseCapsAtFive(t *testing.T) {
 	for i := range facts {
 		facts[i].Content = "Durable fact number " + string(rune('a'+i)) + " about the person clearly stated"
 	}
-	got := extract.Sanitise(extract.Result{Facts: facts})
+	got := extract.Sanitise(extract.Result{Facts: facts}, 0)
 	if len(got) != 5 {
 		t.Fatalf("got %d, want 5", len(got))
 	}

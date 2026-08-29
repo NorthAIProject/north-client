@@ -117,8 +117,20 @@ type Message struct {
 	ToolCalls   []ai.ToolCall
 	ToolResults []ai.ToolResult
 
+	// Helpful is whether the person said this reply helped. Nil means they did
+	// not say, which is the common case and deliberately distinct from "no".
+	Helpful *bool
+
 	CreatedAt time.Time
 }
+
+// Rated reports whether the person answered either way about this reply.
+func (m Message) Rated() bool { return m.Helpful != nil }
+
+// RatedHelpful and RatedUnhelpful are the two answered states, kept as separate
+// questions so a template never has to dereference the pointer itself.
+func (m Message) RatedHelpful() bool   { return m.Helpful != nil && *m.Helpful }
+func (m Message) RatedUnhelpful() bool { return m.Helpful != nil && !*m.Helpful }
 
 // Attachment is a file referenced by a message.
 type Attachment struct {

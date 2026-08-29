@@ -25,4 +25,6 @@ type Report struct {
 	ArchivedAt  *time.Time
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+	// Did the person find this report useful? NULL means they did not say.
+	Helpful *bool
 }

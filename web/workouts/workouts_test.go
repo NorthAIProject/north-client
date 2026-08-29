@@ -211,9 +211,9 @@ func TestSwapPickerOffersSuggestionsAndCanBeCancelled(t *testing.T) {
 	if !strings.Contains(html, "Dumbbell Front Squat") {
 		t.Error("the suggestion did not render")
 	}
-	// templ escapes the quotes in the attribute value; the browser un-escapes
-	// them before HTMX parses the JSON.
-	if !strings.Contains(html, `hx-vals="{&#34;catalog_slug&#34;: &#34;dumbbell-front-squat&#34;}"`) {
+	// The slug travels as a form field rather than hx-vals, so it can carry the
+	// CSRF token with it — see TestThePickerOptionPostsAsAFormWithTheSlugAndToken.
+	if !strings.Contains(html, `name="catalog_slug" value="dumbbell-front-squat"`) {
 		t.Error("the suggestion does not post a catalog slug")
 	}
 	if !strings.Contains(html, `hx-post="/app/training/11111111-1111-1111-1111-111111111111/days/0/exercises/0/swap"`) {
@@ -450,11 +450,13 @@ func TestReorderControlsAppearOnlyWhereAMoveIsPossible(t *testing.T) {
 	if !strings.Contains(html, `/days/0/exercises/1/move`) {
 		t.Error("the second exercise cannot be moved at all")
 	}
-	// Two exercises: one "up" (on index 1) and one "down" (on index 0).
-	if got := strings.Count(html, `&#34;direction&#34;: &#34;up&#34;`); got != 1 {
+	// Two exercises: one "up" (on index 1) and one "down" (on index 0). The
+	// direction is a hidden form field rather than hx-vals, so that the control
+	// can carry the CSRF token.
+	if got := strings.Count(html, `name="direction" value="up"`); got != 1 {
 		t.Errorf("found %d up controls, want 1 — the first exercise has nothing above it", got)
 	}
-	if got := strings.Count(html, `&#34;direction&#34;: &#34;down&#34;`); got != 1 {
+	if got := strings.Count(html, `name="direction" value="down"`); got != 1 {
 		t.Errorf("found %d down controls, want 1 — the last exercise has nothing below it", got)
 	}
 }
@@ -569,5 +571,81 @@ func TestThePlanPageLinksToTheList(t *testing.T) {
 	html := renderPlan(t, planWith(gobletSquat()))
 	if !strings.Contains(html, `href="/app/training/plans"`) {
 		t.Error("the plan page does not reach the plans list")
+	}
+}
+
+// Regression: every state-changing control must carry the CSRF token.
+//
+// This is the bug the render tests could not see. The routes require the token
+// — cmd/web proves that — and the markup existed, but the controls were bare
+// hx-post buttons with no hidden field, so every edit was answered 403 in a
+// real browser. Service tests bypass HTTP; the cmd/web test set the header by
+// hand. Nothing connected the two until someone clicked Swap.
+//
+// A safe method needs no token, which is why the Swap and Add controls that
+// only open a panel are hx-get and are not counted here.
+func TestEveryStateChangingControlCarriesTheCSRFToken(t *testing.T) {
+	t.Parallel()
+
+	p := plan.Plan{
+		Name: "Two days", WeeksTotal: 4,
+		Days: []plan.PlanDay{{
+			Weekday: "Monday", Focus: "lower",
+			// Two exercises, so a move control exists in both directions.
+			Exercises: []plan.Exercise{gobletSquat(), improvised()},
+		}},
+	}
+
+	html := render(t, PlanBody(planView(p)))
+
+	posts := strings.Count(html, "hx-post=")
+	tokens := strings.Count(html, `name="csrf_token"`)
+
+	if posts == 0 {
+		t.Fatal("no state-changing controls rendered; this test is not checking anything")
+	}
+	if tokens < posts {
+		t.Errorf("%d hx-post controls but only %d csrf_token fields — the shortfall is answered 403", posts, tokens)
+	}
+}
+
+// The picker option is the control that was broken. It has to post the slug as
+// a form field now rather than through hx-vals, so the token can ride with it.
+func TestThePickerOptionPostsAsAFormWithTheSlugAndToken(t *testing.T) {
+	t.Parallel()
+
+	v := planView(planWith(gobletSquat()))
+	picker := SwapPicker(v, 0, 0, "Dumbbell Goblet Squat")
+	picker.Suggestions = []exercise.Exercise{{
+		Slug: "dumbbell-front-squat", Name: "Dumbbell Front Squat", Equipment: "dumbbell",
+	}}
+
+	html := render(t, DayCardSwapping(v, 0, v.Plan.Days[0], 0, picker))
+
+	if !strings.Contains(html, `<input type="hidden" name="catalog_slug" value="dumbbell-front-squat">`) {
+		t.Error("the slug is not a form field, so it cannot travel with the token")
+	}
+	if strings.Contains(html, "hx-vals") {
+		t.Error("hx-vals is still used; a bare hx-post cannot carry the CSRF field")
+	}
+	if !strings.Contains(html, `name="csrf_token"`) {
+		t.Error("the picker option carries no CSRF token")
+	}
+}
+
+// Progressive enhancement falls out of using forms: each control names its
+// endpoint in action, so it still works if HTMX has not loaded.
+func TestStateChangingControlsWorkWithoutJavaScript(t *testing.T) {
+	t.Parallel()
+
+	html := renderPlan(t, planWith(gobletSquat(), improvised()))
+
+	for _, want := range []string{
+		`action="/app/training/11111111-1111-1111-1111-111111111111/days/0/exercises/0/remove"`,
+		`action="/app/training/11111111-1111-1111-1111-111111111111/days/0/exercises/0/move"`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("missing no-JS fallback: %s", want)
+		}
 	}
 }

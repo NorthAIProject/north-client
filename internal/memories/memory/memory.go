@@ -56,9 +56,31 @@ type Memory struct {
 	SourceConversationID *uuid.UUID
 	Confidence           *float64
 
+	// ValidTo is when this fact stopped being true. Nil means it still is.
+	//
+	// A retired fact is history, not rubbish: the review page still shows it and
+	// nothing deletes it, because "they used to train five days a week" is worth
+	// knowing. It simply stops reaching the coach.
+	ValidTo *time.Time
+
+	// SupersedesID is the fact this one replaces. Set by extraction as a
+	// proposal and acted on when this memory is approved, never before — a
+	// rejected extraction must not have retired something true.
+	SupersedesID *uuid.UUID
+
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
+
+// IsCurrent reports whether this fact is still true.
+func (m Memory) IsCurrent() bool { return m.ValidTo == nil }
+
+// IsSuperseded reports whether a newer fact replaced this one.
+func (m Memory) IsSuperseded() bool { return m.ValidTo != nil }
+
+// ProposesSupersession reports whether approving this memory would retire
+// another one.
+func (m Memory) ProposesSupersession() bool { return m.SupersedesID != nil }
 
 // Summary is the coach-facing bullet.
 func (m Memory) Summary() string {

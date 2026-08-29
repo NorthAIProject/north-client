@@ -17,7 +17,9 @@ import (
 	"github.com/NorthAIProject/north-client/internal/conversations"
 	"github.com/NorthAIProject/north-client/internal/quota"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/htmx"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
+	"github.com/NorthAIProject/north-client/internal/shared/types"
 	chatpages "github.com/NorthAIProject/north-client/web/chat"
 )
 
@@ -69,6 +71,9 @@ func (h *Handler) Routes(r chi.Router) {
 	// second one.
 	r.Get("/chat/{id}/resume", h.resume)
 	r.Post("/chat/{id}/tools/{messageID}/{decision}", h.resolveTool)
+
+	// Rating a reply spends no quota and calls no model: it is a column write.
+	r.Post("/chat/{id}/messages/{messageID}/helpful", h.rateMessage)
 
 	r.Post("/chat/{id}/delete", h.deleteConversation)
 }
@@ -177,6 +182,49 @@ func (h *Handler) pendingTools(r *http.Request, conversationID uuid.UUID) ([]cha
 
 // resolveTool records the person's answer and sends them back to the page,
 // where the resumed reply streams in.
+// rateMessage records whether a coach reply helped.
+//
+// The conversation id in the path is not used to authorise anything — the update
+// statement scopes itself to the owner through the message's own thread. It stays
+// in the route because every other chat action is addressed that way and a lone
+// exception is the kind of inconsistency that gets "fixed" later by someone
+// adding the check in the handler instead, where it can be forgotten.
+func (h *Handler) rateMessage(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+
+	conversationID, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		h.fail(w, r, apperr.ErrNotFound)
+		return
+	}
+	messageID, err := uuid.Parse(chi.URLParam(r, "messageID"))
+	if err != nil {
+		h.fail(w, r, apperr.ErrNotFound)
+		return
+	}
+
+	helpful, err := types.ParseHelpful(r.FormValue("answer"))
+	if err != nil {
+		h.fail(w, r, apperr.ErrNotFound)
+		return
+	}
+
+	msg, err := h.svc.Conversations().SetMessageHelpful(r.Context(), messageID, user.ID, helpful)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+
+	// Swap just the control back. Without JavaScript the form posts normally and
+	// the redirect reloads the thread, which is why the template keeps an action
+	// alongside its hx-post.
+	if htmx.IsRequest(r) {
+		render(w, r, http.StatusOK, chatpages.MessageFeedback(msg))
+		return
+	}
+	http.Redirect(w, r, "/app/chat/"+conversationID.String(), http.StatusSeeOther)
+}
+
 func (h *Handler) resolveTool(w http.ResponseWriter, r *http.Request) {
 	user := auth.MustUser(r.Context())
 

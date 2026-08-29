@@ -103,25 +103,65 @@ covers only what belongs in a gateway register.
 
 ### Verification status
 
-**The live end-to-end has never been run.** No bot has ever been created for
-this project, so nothing in North has spoken to Telegram's real API.
+**Partly verified, 2026-08-29.** The Bot API has answered a real token and has
+delivered a real message. `main telegram-check` ran `getMe`, `getWebhookInfo`,
+`setMyCommands` and `sendMessage` against `@Khepri_app_Bot` successfully.
 
-What that means concretely:
+Outbound is therefore proven: North can reach a person on Telegram. What has
+**not** happened is anything *inbound* — no person has redeemed a link code, no
+message has travelled from a phone into the coach, and no generated reply has
+been through the HTML parser on a real client. So the adapter is no longer
+unproven, and it is not shipped either.
 
-| Covered by tests | Not covered |
+| Verified against the real API | Still only covered by tests |
 |---|---|
-| Adapter logic, link codes, thread continuity | Telegram's API behaving as documented |
-| Group rejection and the leave-chat path | `setWebhook` / `getWebhookInfo` round trip |
-| Confirmation round-trip, including typed answers | Inline keyboards rendering on a real client |
-| Markdown conversion **and** its plain-text fallback | Whether real replies trip the HTML parser |
-| Quota metering, redelivery dedupe | Long-poll behaviour against the live endpoint |
+| Token authenticates (`getMe`) | The link-code flow, end to end |
+| Delivery mode matches the config (`getWebhookInfo`) | Inline keyboards on a real client |
+| Command menu publishes (`setMyCommands`) | Whether real replies trip the HTML parser |
+| **Outbound delivery to a real chat (`sendMessage`)** | Long-poll receiving a real update |
+| Error envelope on a rejected token | Confirmation round-trip from a phone |
 
-The tests run against an `httptest` stand-in for the Bot API. They prove the
-adapter is correct; they cannot prove the bot works, because no bot exists.
+One bug came out of that first live run, and it is the kind no stand-in could
+have caught: the bot token was being logged in plaintext. Telegram puts the token
+in the URL path, and `net/http` wraps every *transport* failure in a `*url.Error`
+whose `Error()` prints the whole URL — so any network-level failure wrote the
+credential into the log. Fixed in `client.call` by unwrapping to the inner cause;
+see `TestATransportFailureDoesNotLeakTheToken`. Every test until then had used an
+`httptest` server, which always answers, so the transport path never failed.
 
-Closing this gap needs a token from `@BotFather` and one pass through the
-6-step manual check in the README. Until somebody does that, treat Telegram as
-**implemented and unproven** rather than shipped.
+The remaining tests run against an `httptest` stand-in. They prove the adapter is
+correct; they cannot prove a person can use it.
+
+**Closing the rest** needs one pass through the Part 2 flow in the README, from a
+real phone, against a bot that belongs to this project. Then update this table.
+
+#### `main telegram-check`
+
+The preflight. Read-only by default, safe against production:
+
+```
+go run ./cmd/web telegram-check
+```
+
+It answers three questions and then says what it has *not* proven, which is the
+point of it existing:
+
+- **Whose token is this?** `getMe`, and a warning if `TELEGRAM_BOT_USERNAME`
+  names a different bot than the token belongs to — a mismatch sends people from
+  Settings to the wrong bot, which looks exactly like the link code being broken.
+- **Where does Telegram think updates go?** `getWebhookInfo`, compared against
+  what North is configured to do. The two modes are mutually exclusive at
+  Telegram's end, and getting it wrong is silent in both directions:
+  - webhook secret set but no webhook registered → nothing ever arrives;
+  - no webhook secret but a webhook still registered → every poll is refused,
+    because Telegram will not serve `getUpdates` while a webhook exists.
+- **Are deliveries failing?** Pending update count and Telegram's own
+  last-delivery error, which is usually the fastest answer to "why is nothing
+  arriving".
+
+Two flags write, and are off by default: `--register-commands` publishes the
+command menu, `--send-to <chat id>` delivers a test message. Do not point either
+at a bot belonging to another project.
 
 ---
 

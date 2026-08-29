@@ -220,3 +220,82 @@ func TestChatHeaderCarriesTheReactiveMascot(t *testing.T) {
 		t.Errorf("mascot script rendered %d times, want 1", got)
 	}
 }
+
+func renderFeedback(t *testing.T, m conversations.Message) string {
+	t.Helper()
+
+	var buf bytes.Buffer
+	if err := MessageFeedback(m).Render(context.Background(), &buf); err != nil {
+		t.Fatal(err)
+	}
+	return buf.String()
+}
+
+func TestUnratedReplyAsksTheQuestion(t *testing.T) {
+	messageID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
+	conversationID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+
+	body := renderFeedback(t, conversations.Message{
+		ID:             messageID,
+		ConversationID: conversationID,
+		Role:           ai.RoleModel,
+	})
+
+	for _, want := range []string{
+		"Did this help?",
+		`id="feedback-22222222-2222-2222-2222-222222222222"`,
+		`hx-post="/app/chat/11111111-1111-1111-1111-111111111111/messages/22222222-2222-2222-2222-222222222222/helpful"`,
+		`hx-swap="outerHTML"`,
+		`value="helpful"`,
+		`value="unhelpful"`,
+		// The action attribute is what makes this work with JavaScript off, so
+		// it is part of the contract rather than decoration.
+		`action="/app/chat/11111111-1111-1111-1111-111111111111/messages/22222222-2222-2222-2222-222222222222/helpful"`,
+		`name="csrf_token"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("missing %q in:\n%s", want, body)
+		}
+	}
+}
+
+func TestRatedReplyShowsTheAnswerAndOffersUndo(t *testing.T) {
+	yes := true
+	no := false
+	id := uuid.MustParse("22222222-2222-2222-2222-222222222222")
+
+	helpful := renderFeedback(t, conversations.Message{ID: id, Role: ai.RoleModel, Helpful: &yes})
+	if !strings.Contains(helpful, "Marked helpful") {
+		t.Errorf("a helpful rating does not say so:\n%s", helpful)
+	}
+	if strings.Contains(helpful, "Did this help?") {
+		t.Error("an answered reply still asks the question")
+	}
+	// Undo has to be reachable, or a mistaken tap is permanent in the one
+	// labelled column the product has.
+	if !strings.Contains(helpful, `value="clear"`) || !strings.Contains(helpful, "Undo") {
+		t.Errorf("no way to undo the answer:\n%s", helpful)
+	}
+
+	unhelpful := renderFeedback(t, conversations.Message{ID: id, Role: ai.RoleModel, Helpful: &no})
+	if !strings.Contains(unhelpful, "Marked not helpful") {
+		t.Errorf("an unhelpful rating does not say so:\n%s", unhelpful)
+	}
+}
+
+// The person's own turns get no rating control: rating your own message is
+// meaningless, and the server refuses it anyway.
+func TestUserBubbleHasNoRatingControl(t *testing.T) {
+	var buf bytes.Buffer
+	err := Bubble(conversations.Message{
+		ID:      uuid.MustParse("33333333-3333-3333-3333-333333333333"),
+		Role:    ai.RoleUser,
+		Content: "How should I train this week?",
+	}).Render(context.Background(), &buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(buf.String(), "Did this help?") {
+		t.Error("a user message is offering a rating control")
+	}
+}

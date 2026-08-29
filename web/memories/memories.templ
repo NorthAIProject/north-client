@@ -223,8 +223,19 @@ templ pendingCard(m memory.Memory) {
 				@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
 					proposed
 				}
+				if m.ProposesSupersession() {
+					@badge.Badge(badge.Props{Class: "border-signal/40 bg-signal/12 text-signal", Variant: badge.VariantOutline}) {
+						replaces a known fact
+					}
+				}
 			</div>
 			<p class="text-sm">{ m.Content }</p>
+			if m.ProposesSupersession() {
+				<p class="text-xs text-muted-foreground">
+					Approving this retires an existing fact, so the coach stops being told the older one.
+					A pinned fact is never retired this way.
+				</p>
+			}
 			<div class="flex flex-wrap gap-2">
 				<form method="post" action={ templ.SafeURL("/app/memories/" + m.ID.String() + "/approve") } { panelSwapAttrs()... }>
 					@ui.CSRFInput()
@@ -300,7 +311,17 @@ templ approvedCard(m memory.Memory) {
 						hidden from coach
 					}
 				}
+				if m.IsSuperseded() {
+					@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
+						no longer current
+					}
+				}
 			</div>
+			if m.IsSuperseded() {
+				<p class="text-xs text-muted-foreground">
+					A newer fact replaced this one. It is kept as history and is not shown to the coach.
+				</p>
+			}
 			<p class="text-sm">{ m.Content }</p>
 			<div class="flex flex-wrap gap-2" x-data="{ editing: false }">
 				<button
@@ -332,7 +353,12 @@ templ approvedCard(m memory.Memory) {
 					</form>
 				</div>
 				<div x-show="!editing" class="flex flex-wrap gap-2">
-					if !m.Excluded {
+					if m.IsSuperseded() {
+						<!-- No pin or hide controls on a retired fact. Both would
+						     appear to work and change nothing: the context queries
+						     filter on validity before they ever look at pinned or
+						     excluded. -->
+					} else if !m.Excluded {
 						if m.Pinned {
 							<form method="post" action={ templ.SafeURL("/app/memories/" + m.ID.String() + "/unpin") }>
 								@ui.CSRFInput()

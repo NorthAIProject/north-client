@@ -234,7 +234,7 @@ templ row(e exercise.Exercise) {
 			href={ templ.SafeURL("/app/exercises/" + e.Slug) }
 			class="border-hairline bg-surface hover:border-signal/40 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border px-4 py-3 transition-colors"
 		>
-			@exerciserow.Thumbnail(e, "art-row-", "w-10")
+			@exerciserow.Thumbnail(e, "art-row-", "w-16")
 			<span class="min-w-0 flex-1 text-sm font-medium">{ e.Name }</span>
 			for _, key := range e.Primary {
 				@badge.Badge(badge.Props{Variant: badge.VariantDefault}) {

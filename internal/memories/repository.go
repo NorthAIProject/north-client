@@ -31,6 +31,9 @@ type NewMemory struct {
 	Source               string
 	SourceConversationID *uuid.UUID
 	Confidence           *float64
+
+	// SupersedesID is the fact this row proposes to replace, or nil.
+	SupersedesID *uuid.UUID
 }
 
 func (r *Repository) Create(ctx context.Context, userID uuid.UUID, m NewMemory) (Memory, error) {
@@ -49,6 +52,7 @@ func (r *Repository) Create(ctx context.Context, userID uuid.UUID, m NewMemory) 
 		Source:               m.Source,
 		SourceConversationID: m.SourceConversationID,
 		Confidence:           conf,
+		SupersedesID:         m.SupersedesID,
 	})
 	if err != nil {
 		return Memory{}, apperr.Wrap(err, "create memory")
@@ -265,6 +269,56 @@ func (r *Repository) ListPendingForConversation(ctx context.Context, userID, con
 	return fromDBList(rows), nil
 }
 
+// Supersede retires one fact, at the moment its replacement was approved.
+//
+// Reports false when nothing was retired, which is a normal outcome rather than
+// an error: the target may have been deleted, already retired by an earlier
+// approval, or pinned. Pinned is the interesting one — the query refuses it on
+// purpose, because a pinned fact is one the person said always matters and a
+// model's suggestion is not enough to overrule that.
+func (r *Repository) Supersede(ctx context.Context, id, userID uuid.UUID) (Memory, bool, error) {
+	row, err := r.q.SupersedeMemory(ctx, memoriesdb.SupersedeMemoryParams{ID: id, UserID: userID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Memory{}, false, nil
+	}
+	if err != nil {
+		return Memory{}, false, apperr.Wrap(err, "supersede memory")
+	}
+	return fromDB(row), true, nil
+}
+
+// CurrentFact is one believed fact, as offered to an extraction so it can say
+// which of them a new fact replaces.
+type CurrentFact struct {
+	ID       uuid.UUID
+	Category string
+	Content  string
+	Pinned   bool
+}
+
+// ListCurrentForSupersession returns the facts an extraction may propose
+// replacing, oldest-updated last within each category.
+func (r *Repository) ListCurrentForSupersession(ctx context.Context, userID uuid.UUID, limit int) ([]CurrentFact, error) {
+	rows, err := r.q.ListCurrentForSupersession(ctx, memoriesdb.ListCurrentForSupersessionParams{
+		UserID: userID,
+		Limit:  int32(limit),
+	})
+	if err != nil {
+		return nil, apperr.Wrap(err, "list current facts")
+	}
+
+	out := make([]CurrentFact, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, CurrentFact{
+			ID:       row.ID,
+			Category: row.Category,
+			Content:  row.Content,
+			Pinned:   row.Pinned,
+		})
+	}
+	return out, nil
+}
+
 func fromDBList(rows []memoriesdb.UserMemory) []Memory {
 	out := make([]Memory, 0, len(rows))
 	for _, row := range rows {
@@ -284,6 +338,8 @@ func fromDB(row memoriesdb.UserMemory) Memory {
 		Excluded:             row.Excluded,
 		Source:               row.Source,
 		SourceConversationID: row.SourceConversationID,
+		ValidTo:              row.ValidTo,
+		SupersedesID:         row.SupersedesID,
 		CreatedAt:            row.CreatedAt,
 		UpdatedAt:            row.UpdatedAt,
 	}
