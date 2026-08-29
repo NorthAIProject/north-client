@@ -549,7 +549,10 @@ templ exerciseRow(v PlanView, dayIndex, index int, ex plan.Exercise, dayLength i
 			// the screen someone reads mid-session, where "what does this
 			// movement look like" is an actual question rather than browsing.
 			if ex.HasIllustration() {
-				<span class="w-12 shrink-0">
+				// The largest of the three, because this is the screen read
+				// mid-session: here "which movement is this" is the actual
+				// question rather than an aid to scanning a list.
+				<span class="w-16 shrink-0">
 					@exerciseart.Frames(exerciseart.Props{
 						ID:   id + "-art",
 						Slug: ex.IllustrationSlug,
@@ -582,6 +585,7 @@ templ exerciseRow(v PlanView, dayIndex, index int, ex plan.Exercise, dayLength i
 						hx-target="#plan-body"
 						hx-swap="outerHTML"
 					>
+						@ui.CSRFInput()
 						<label class="text-muted-foreground text-xs">
 							Sets
 							@input.Input(input.Props{
@@ -628,32 +632,12 @@ templ exerciseRow(v PlanView, dayIndex, index int, ex plan.Exercise, dayLength i
 					// goes while you are fresh — so the ends simply have no
 					// button rather than a disabled one that does nothing.
 					if index > 0 {
-						@button.Button(button.Props{
-							Variant: button.VariantGhost,
-							Size:    button.SizeIcon,
-							Attributes: templ.Attributes{
-								"hx-post":   moveURL(v.ID, dayIndex, index),
-								"hx-vals":   `{"direction": "up"}`,
-								"hx-target": "#plan-body",
-								"hx-swap":   "outerHTML",
-								"aria-label": "Move earlier in the session",
-							},
-						}) {
+						@moveForm(v, dayIndex, index, "up", "Move earlier in the session") {
 							@icon.ArrowUp(icon.Props{Class: "size-3.5"})
 						}
 					}
 					if index < dayLength-1 {
-						@button.Button(button.Props{
-							Variant: button.VariantGhost,
-							Size:    button.SizeIcon,
-							Attributes: templ.Attributes{
-								"hx-post":   moveURL(v.ID, dayIndex, index),
-								"hx-vals":   `{"direction": "down"}`,
-								"hx-target": "#plan-body",
-								"hx-swap":   "outerHTML",
-								"aria-label": "Move later in the session",
-							},
-						}) {
+						@moveForm(v, dayIndex, index, "down", "Move later in the session") {
 							@icon.ArrowDown(icon.Props{Class: "size-3.5"})
 						}
 					}
@@ -673,19 +657,24 @@ templ exerciseRow(v PlanView, dayIndex, index int, ex plan.Exercise, dayLength i
 					// The previous plan is still stored — editing only ever
 					// inserts — but nothing on screen offers it back, so an
 					// accidental click would need a database to recover from.
-					@button.Button(button.Props{
-						Variant: button.VariantGhost,
-						Size:    button.SizeSm,
-						Attributes: templ.Attributes{
-							"hx-post":    removeURL(v.ID, dayIndex, index),
-							"hx-target":  "#plan-body",
-							"hx-swap":    "outerHTML",
-							"hx-confirm": fmt.Sprintf("Remove %s from this session?", ex.Name),
-						},
-					}) {
-						@icon.Trash2(icon.Props{Class: "size-3.5"})
-						Remove
-					}
+					<form
+						method="post"
+						action={ templ.SafeURL(removeURL(v.ID, dayIndex, index)) }
+						hx-post={ removeURL(v.ID, dayIndex, index) }
+						hx-target="#plan-body"
+						hx-swap="outerHTML"
+						hx-confirm={ fmt.Sprintf("Remove %s from this session?", ex.Name) }
+					>
+						@ui.CSRFInput()
+						@button.Button(button.Props{
+							Variant: button.VariantGhost,
+							Size:    button.SizeSm,
+							Type:    button.TypeSubmit,
+						}) {
+							@icon.Trash2(icon.Props{Class: "size-3.5"})
+							Remove
+						}
+					</form>
 				</div>
 				// Older plans generated before NOR-8 have no muscle data at all — the
 				// trigger only appears once there's something for it to show.
@@ -716,6 +705,33 @@ templ exerciseRow(v PlanView, dayIndex, index int, ex plan.Exercise, dayLength i
 			</div>
 		</div>
 	</li>
+}
+
+// moveForm is the reorder control.
+//
+// A form for the same reason as every other state-changing request here: the
+// CSRF token is a hidden field, so a bare hx-post button is answered 403. The
+// direction rides as a hidden input rather than hx-vals, which also leaves it
+// working with no JavaScript.
+templ moveForm(v PlanView, dayIndex, index int, direction, label string) {
+	<form
+		method="post"
+		action={ templ.SafeURL(moveURL(v.ID, dayIndex, index)) }
+		hx-post={ moveURL(v.ID, dayIndex, index) }
+		hx-target="#plan-body"
+		hx-swap="outerHTML"
+	>
+		@ui.CSRFInput()
+		<input type="hidden" name="direction" value={ direction }/>
+		@button.Button(button.Props{
+			Variant:    button.VariantGhost,
+			Size:       button.SizeIcon,
+			Type:       button.TypeSubmit,
+			Attributes: templ.Attributes{"aria-label": label},
+		}) {
+			{ children... }
+		}
+	</form>
 }
 
 // pickerPanel chooses a catalog exercise: a few ranked suggestions, then a
@@ -785,18 +801,30 @@ templ pickerPanel(p Picker) {
 
 templ pickerOption(p Picker, option exercise.Exercise) {
 	<li>
-		<button
-			type="button"
-			class="border-hairline hover:border-signal/40 flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left transition-colors"
+		// A form rather than a bare hx-post button: every state-changing
+		// request has to carry the CSRF token, and the token is a hidden field
+		// (ui.CSRFInput). A bare button is answered 403 — which is how this was
+		// found, in a browser, after the render tests had all passed. Same
+		// reason the nudge dismiss control is a form; action also keeps it
+		// working with no JavaScript.
+		<form
+			method="post"
+			action={ templ.SafeURL(p.PostURL) }
 			hx-post={ p.PostURL }
-			hx-vals={ fmt.Sprintf(`{"catalog_slug": %q}`, option.Slug) }
 			hx-target="#plan-body"
 			hx-swap="outerHTML"
 		>
-			@exerciserow.Thumbnail(option, "pick-", "w-8")
-			<span class="min-w-0 flex-1 text-sm">{ option.Name }</span>
-			@exerciserow.Equipment(option)
-		</button>
+			@ui.CSRFInput()
+			<input type="hidden" name="catalog_slug" value={ option.Slug }/>
+			<button
+				type="submit"
+				class="border-hairline hover:border-signal/40 flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left transition-colors"
+			>
+				@exerciserow.Thumbnail(option, "pick-", "w-12")
+				<span class="min-w-0 flex-1 text-sm">{ option.Name }</span>
+				@exerciserow.Equipment(option)
+			</button>
+		</form>
 	</li>
 }
 

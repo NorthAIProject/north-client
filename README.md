@@ -734,6 +734,30 @@ refuses to serve `getUpdates` while a webhook is registered:
 curl -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/deleteWebhook"
 ```
 
+### 5. Check it before you trust it
+
+```bash
+go run ./cmd/web telegram-check
+```
+
+Read-only, so it is safe to run against production. It confirms the token
+authenticates, prints which bot it belongs to, and — the part worth having —
+compares how North is configured to deliver updates against how Telegram is
+actually set up:
+
+| Symptom | What the check says |
+|---|---|
+| Nothing ever arrives in webhook mode | Telegram has no webhook registered |
+| Every poll fails in polling mode | A webhook is still registered; Telegram refuses `getUpdates` while one exists |
+| Wrong bot opens from Settings | `TELEGRAM_BOT_USERNAME` names a different bot than the token |
+
+Both failure modes are silent otherwise: the tests pass either way, because they
+run against a stand-in for the Bot API rather than the real one.
+
+Two flags write and are off by default — `--register-commands` publishes the
+command menu, and `--send-to <chat id>` sends a test message. Point neither at a
+bot belonging to another project.
+
 ## Part 2 — link your account (once per person)
 
 Each person does this for themselves. There is nothing to configure.

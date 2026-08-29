@@ -118,6 +118,32 @@ func main() {
 		return
 	}
 
+	// `main simulate` invents accounts with months of behaviour behind them.
+	//
+	// A subcommand for the same reason as the two above, plus one of its own:
+	// an endpoint that can manufacture accounts is a surface nobody wants to
+	// have to secure. It refuses to run against a production environment.
+	if len(os.Args) > 1 && os.Args[1] == "simulate" {
+		if err := runSimulate(os.Args[2:]); err != nil {
+			fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	// `main telegram-check` verifies the bot token against the real Bot API.
+	//
+	// A subcommand because it deliberately builds no pool and no services: the
+	// question is "can this deployment reach Telegram", and a check that can
+	// fail on an unrelated dependency answers a different one.
+	if len(os.Args) > 1 && os.Args[1] == "telegram-check" {
+		if err := runTelegramCheck(os.Args[2:]); err != nil {
+			fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	if err := run(); err != nil {
 		// The logger may not exist yet when configuration fails, so this one
 		// message goes straight to stderr.

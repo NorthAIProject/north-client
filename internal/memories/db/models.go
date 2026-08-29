@@ -24,4 +24,8 @@ type UserMemory struct {
 	UpdatedAt            time.Time
 	DeletedAt            *time.Time
 	Excluded             bool
+	// When this fact stopped being true. NULL means it still is.
+	ValidTo *time.Time
+	// The memory this one replaces. Set at extraction as a proposal; acted on when this row is approved.
+	SupersedesID *uuid.UUID
 }

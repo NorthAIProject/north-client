@@ -151,3 +151,26 @@ LIMIT @result_limit::int;
 -- Who owns a thread. For background jobs, which have a conversation id and no
 -- user to check it against.
 SELECT user_id FROM conversations WHERE id = $1;
+
+-- name: SetMessageHelpful :one
+-- Records whether a reply helped.
+--
+-- The ownership check runs through the conversation, because messages carry no
+-- user_id of their own. Doing it in the statement rather than as a prior SELECT
+-- means there is no window between the check and the write, and no code path
+-- that can forget the check — a message id is guessable enough that "somebody
+-- else's thread" has to be impossible rather than merely unlikely.
+--
+-- Only the coach's own turns can be rated. Rating your own message is
+-- meaningless, and allowing it would put noise in the one labelled column the
+-- product has.
+UPDATE messages m
+SET helpful = sqlc.narg('helpful')::boolean
+WHERE m.id = @message_id
+  AND m.role = 'model'
+  AND EXISTS (
+      SELECT 1 FROM conversations c
+      WHERE c.id = m.conversation_id
+        AND c.user_id = @user_id
+  )
+RETURNING m.*;

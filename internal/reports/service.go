@@ -286,3 +286,8 @@ func (s *Service) LatestReady(ctx context.Context, userID uuid.UUID) (Report, er
 func (s *Service) LatestBriefing(ctx context.Context, userID uuid.UUID) (Report, error) {
 	return s.repo.LatestReady(ctx, userID, KindDaily)
 }
+
+// SetHelpful records whether a report was worth reading.
+func (s *Service) SetHelpful(ctx context.Context, id, userID uuid.UUID, helpful *bool) (Report, error) {
+	return s.repo.SetHelpful(ctx, id, userID, helpful)
+}

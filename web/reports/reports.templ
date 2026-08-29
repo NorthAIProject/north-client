@@ -1,7 +1,10 @@
 package reports
 
 import (
+	"github.com/google/uuid"
+
 	"github.com/NorthAIProject/north-client/internal/reports/report"
+	"github.com/NorthAIProject/north-client/internal/shared/types"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
 	"github.com/NorthAIProject/north-client/web/shared/markdown"
@@ -131,9 +134,61 @@ templ DetailPage(user users.User, item report.Report, notice string) {
 				<div class="prose prose-neutral dark:prose-invert max-w-none text-sm leading-relaxed">
 					@markdown.Render(item.Body)
 				</div>
+				@Feedback(item)
 			}
 		</div>
 	}
+}
+
+// FeedbackID is the swap target for one report's rating control.
+func FeedbackID(reportID uuid.UUID) string {
+	return "report-feedback-" + reportID.String()
+}
+
+// Feedback asks whether the report was worth reading.
+//
+// Below the body rather than beside the title, because the question only means
+// anything once somebody has read the thing. Asked plainly and once: a report
+// generated on a timer that nobody finds useful is the most expensive silence in
+// the product, since it costs a model call every week either way.
+templ Feedback(item report.Report) {
+	<div id={ FeedbackID(item.ID) } class="border-hairline flex flex-wrap items-center gap-3 border-t pt-4">
+		if item.Rated() {
+			<span class="text-muted-foreground text-sm">
+				if item.RatedHelpful() {
+					Marked useful. Thank you.
+				} else {
+					Marked not useful.
+				}
+			</span>
+			@feedbackForm(item, types.HelpfulClear, "Undo")
+		} else {
+			<span class="text-sm">Was this useful?</span>
+			@feedbackForm(item, types.HelpfulYes, "Yes")
+			@feedbackForm(item, types.HelpfulNo, "No")
+		}
+	</div>
+}
+
+templ feedbackForm(item report.Report, answer, label string) {
+	<form
+		method="post"
+		action={ templ.SafeURL(feedbackURL(item)) }
+		hx-post={ feedbackURL(item) }
+		hx-target={ "#" + FeedbackID(item.ID) }
+		hx-swap="outerHTML"
+		class="inline"
+	>
+		@ui.CSRFInput()
+		<input type="hidden" name="answer" value={ answer }/>
+		@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Variant: button.VariantOutline}) {
+			{ label }
+		}
+	</form>
+}
+
+func feedbackURL(item report.Report) string {
+	return "/app/reports/" + item.ID.String() + "/helpful"
 }
 
 func statusLabel(item report.Report) string {

@@ -47,7 +47,7 @@ type stubExtractor struct {
 	calls      int
 }
 
-func (e *stubExtractor) Extract(_ context.Context, _ string) ([]extract.Candidate, error) {
+func (e *stubExtractor) Extract(_ context.Context, _ string, _ []memories.CurrentFact) ([]extract.Candidate, error) {
 	e.calls++
 	return e.candidates, nil
 }

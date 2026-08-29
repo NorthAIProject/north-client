@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/conversations"
+	"github.com/NorthAIProject/north-client/internal/shared/types"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
 	"github.com/NorthAIProject/north-client/web/shared/mascot"
@@ -386,16 +387,85 @@ templ Bubble(m conversations.Message) {
 			</div>
 			@muscles(m)
 			@sources(m)
-			<button
-				type="button"
-				@click={ "navigator.clipboard.writeText(" + jsString(m.Content) + "); copied = true; setTimeout(() => copied = false, 1500)" }
-				class="text-muted-foreground hover:text-foreground ml-1 text-xs opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100"
-			>
-				<span x-show="!copied">Copy</span>
-				<span x-show="copied" x-cloak>Copied</span>
-			</button>
+			<div class="ml-1 flex flex-wrap items-center gap-3">
+				<button
+					type="button"
+					@click={ "navigator.clipboard.writeText(" + jsString(m.Content) + "); copied = true; setTimeout(() => copied = false, 1500)" }
+					class="text-muted-foreground hover:text-foreground text-xs opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100"
+				>
+					<span x-show="!copied">Copy</span>
+					<span x-show="copied" x-cloak>Copied</span>
+				</button>
+				@MessageFeedback(m)
+			</div>
 		</div>
 	}
+}
+
+// FeedbackID is the swap target for one reply's rating control.
+func FeedbackID(messageID uuid.UUID) string {
+	return "feedback-" + messageID.String()
+}
+
+// MessageFeedback asks whether a reply helped, and shows the answer once given.
+//
+// Its own template because the POST swaps it in place: re-rendering the whole
+// bubble would redraw the markdown and lose the copy button's Alpine state for
+// the sake of two words changing.
+//
+// Answered state stays subtle and always offers a way back. Somebody who taps
+// the wrong thumb and cannot undo it leaves a wrong label behind in the one
+// column the product will later check its own judgement against.
+templ MessageFeedback(m conversations.Message) {
+	<div id={ FeedbackID(m.ID) } class="flex flex-wrap items-center gap-2">
+		if m.Rated() {
+			<span class="text-muted-foreground text-xs">
+				if m.RatedHelpful() {
+					Marked helpful
+				} else {
+					Marked not helpful
+				}
+			</span>
+			@feedbackForm(m, types.HelpfulClear, "Undo")
+		} else {
+			<span class="text-muted-foreground text-xs opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
+				Did this help?
+			</span>
+			<span class="flex gap-2 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100">
+				@feedbackForm(m, types.HelpfulYes, "Yes")
+				@feedbackForm(m, types.HelpfulNo, "No")
+			</span>
+		}
+	</div>
+}
+
+// feedbackForm is one answer.
+//
+// A real form with an action as well as hx-post, matching how the nudge bell
+// does it: the rating still records with JavaScript off, it just reloads the
+// thread instead of swapping the control.
+templ feedbackForm(m conversations.Message, answer, label string) {
+	<form
+		method="post"
+		action={ templ.SafeURL(feedbackURL(m)) }
+		hx-post={ feedbackURL(m) }
+		hx-target={ "#" + FeedbackID(m.ID) }
+		hx-swap="outerHTML"
+		class="inline"
+	>
+		@ui.CSRFInput()
+		<input type="hidden" name="answer" value={ answer }/>
+		<button
+			type="submit"
+			class="text-muted-foreground hover:text-foreground text-xs underline-offset-2 hover:underline"
+		>
+			{ label }
+		</button>
+	</form>
+}
+
+func feedbackURL(m conversations.Message) string {
+	return "/app/chat/" + m.ConversationID.String() + "/messages/" + m.ID.String() + "/helpful"
 }
 
 // muscles draws what a recommended movement trains (NOR-8).

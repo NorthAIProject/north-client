@@ -48,6 +48,10 @@ type Props struct {
 
 	// Class is merged onto the outer box, for callers sizing a thumbnail
 	// differently from a detail illustration.
+	//
+	// Size these generously. The source art is a detailed 512px line drawing,
+	// and below roughly 56px its strokes fall under a pixel and the pose turns
+	// into grey noise — legible as "a figure", useless as "which movement".
 	Class string
 }
 
@@ -73,9 +77,15 @@ templ Frames(p Props) {
 					// Stacked rather than swapping one element's mask URL, so
 					// every frame is fetched on first paint and the cycle never
 					// flashes an empty box waiting on a request.
+					//
+					// A hard cut, not a crossfade. Fading between two poses of
+					// detailed line art shows both at once, which reads as a
+					// double exposure rather than movement — visible in a
+					// browser, invisible to any assertion about the markup. An
+					// instant swap reads as a flipbook, which is what this is.
 					<span
 						aria-hidden="true"
-						class="absolute inset-0 bg-current transition-opacity duration-150 ease-linear"
+						class="absolute inset-0 bg-current"
 						style={ maskFor(p.Slug, frame) }
 						x-bind:class={ fmt.Sprintf("frame === %d ? 'opacity-100' : 'opacity-0'", frame) }
 					></span>

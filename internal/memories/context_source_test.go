@@ -109,8 +109,8 @@ func TestContextSourceOmitsPendingAndExcluded(t *testing.T) {
 	user := seedUser(t, pool, "source-filter@north.test")
 	svc := memories.NewService(memories.NewRepository(pool))
 
-	if _, err := svc.InsertExtractions(ctx, user.ID, uuid.Nil, []extract.Candidate{
-		{Category: memory.CategoryHabit, Content: "Sleeps by 22:00 on weeknights", Confidence: 0.9},
+	if _, err := svc.InsertExtractions(ctx, user.ID, uuid.Nil, []memories.Proposal{
+		{Candidate: extract.Candidate{Category: memory.CategoryHabit, Content: "Sleeps by 22:00 on weeknights", Confidence: 0.9}},
 	}); err != nil {
 		t.Fatal(err)
 	}

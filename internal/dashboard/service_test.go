@@ -155,8 +155,8 @@ func TestLoadAssemblesToday(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err = memorySvc.InsertExtractions(ctx, user.ID, thread.ID, []extract.Candidate{
-		{Category: memory.CategoryHabit, Content: "Trains early before work hours", Confidence: 0.9},
+	if _, err = memorySvc.InsertExtractions(ctx, user.ID, thread.ID, []memories.Proposal{
+		{Candidate: extract.Candidate{Category: memory.CategoryHabit, Content: "Trains early before work hours", Confidence: 0.9}},
 	}); err != nil {
 		t.Fatal(err)
 	}

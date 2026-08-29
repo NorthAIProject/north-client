@@ -237,6 +237,23 @@ func (s *Service) AwaitingExtraction(ctx context.Context, idleBefore time.Time, 
 }
 
 // MarkExtracted records that extraction ran over a thread, found or not.
+// SetMessageHelpful records whether a coach reply helped.
+//
+// A miss is a not-found rather than a distinct error. The three ways it can miss
+// — no such message, somebody else's thread, or the person's own turn — are all
+// answered the same way on purpose: telling them apart would let a caller probe
+// which message ids exist in accounts they cannot see.
+func (s *Service) SetMessageHelpful(ctx context.Context, messageID, userID uuid.UUID, helpful *bool) (Message, error) {
+	msg, ok, err := s.repo.SetMessageHelpful(ctx, messageID, userID, helpful)
+	if err != nil {
+		return Message{}, err
+	}
+	if !ok {
+		return Message{}, apperr.ErrNotFound
+	}
+	return msg, nil
+}
+
 func (s *Service) MarkExtracted(ctx context.Context, id uuid.UUID) error {
 	return s.repo.MarkExtracted(ctx, id)
 }

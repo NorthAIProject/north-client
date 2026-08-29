@@ -61,3 +61,15 @@ WHERE user_id = $1
   AND archived_at IS NULL
 ORDER BY period_start DESC
 LIMIT 1;
+
+-- name: SetReportHelpful :one
+-- Records whether a report was worth reading.
+--
+-- Scoped by user_id in the statement, like ArchiveReport above, so a report id
+-- from somebody else's account updates nothing rather than being caught by a
+-- check somewhere up the call stack.
+UPDATE reports
+SET helpful    = sqlc.narg('helpful')::boolean,
+    updated_at = now()
+WHERE id = @id AND user_id = @user_id
+RETURNING *;

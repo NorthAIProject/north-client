@@ -15,7 +15,7 @@ import (
 const appendMessage = `-- name: AppendMessage :one
 INSERT INTO messages (conversation_id, role, content, parts, usage, model, provider, evidence_refs, tool_calls, tool_results)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-RETURNING id, conversation_id, role, content, parts, usage, model, provider, created_at, evidence_refs, tool_calls, tool_results
+RETURNING id, conversation_id, role, content, parts, usage, model, provider, created_at, evidence_refs, tool_calls, tool_results, helpful
 `
 
 type AppendMessageParams struct {
@@ -58,6 +58,7 @@ func (q *Queries) AppendMessage(ctx context.Context, arg AppendMessageParams) (M
 		&i.EvidenceRefs,
 		&i.ToolCalls,
 		&i.ToolResults,
+		&i.Helpful,
 	)
 	return i, err
 }
@@ -307,7 +308,7 @@ func (q *Queries) ListConversations(ctx context.Context, arg ListConversationsPa
 }
 
 const listMessages = `-- name: ListMessages :many
-SELECT id, conversation_id, role, content, parts, usage, model, provider, created_at, evidence_refs, tool_calls, tool_results FROM messages
+SELECT id, conversation_id, role, content, parts, usage, model, provider, created_at, evidence_refs, tool_calls, tool_results, helpful FROM messages
 WHERE conversation_id = $1
 ORDER BY created_at
 LIMIT $2
@@ -340,6 +341,7 @@ func (q *Queries) ListMessages(ctx context.Context, arg ListMessagesParams) ([]M
 			&i.EvidenceRefs,
 			&i.ToolCalls,
 			&i.ToolResults,
+			&i.Helpful,
 		); err != nil {
 			return nil, err
 		}
@@ -365,7 +367,7 @@ func (q *Queries) MarkConversationExtracted(ctx context.Context, id uuid.UUID) e
 }
 
 const messagesBefore = `-- name: MessagesBefore :many
-SELECT id, conversation_id, role, content, parts, usage, model, provider, created_at, evidence_refs, tool_calls, tool_results FROM messages
+SELECT id, conversation_id, role, content, parts, usage, model, provider, created_at, evidence_refs, tool_calls, tool_results, helpful FROM messages
 WHERE conversation_id = $1
   AND created_at <= $2
 ORDER BY created_at
@@ -403,6 +405,7 @@ func (q *Queries) MessagesBefore(ctx context.Context, arg MessagesBeforeParams) 
 			&i.EvidenceRefs,
 			&i.ToolCalls,
 			&i.ToolResults,
+			&i.Helpful,
 		); err != nil {
 			return nil, err
 		}
@@ -415,7 +418,7 @@ func (q *Queries) MessagesBefore(ctx context.Context, arg MessagesBeforeParams) 
 }
 
 const messagesBetween = `-- name: MessagesBetween :many
-SELECT id, conversation_id, role, content, parts, usage, model, provider, created_at, evidence_refs, tool_calls, tool_results FROM messages
+SELECT id, conversation_id, role, content, parts, usage, model, provider, created_at, evidence_refs, tool_calls, tool_results, helpful FROM messages
 WHERE conversation_id = $1
   AND created_at > $2::timestamptz
   AND created_at <= $3::timestamptz
@@ -463,6 +466,7 @@ func (q *Queries) MessagesBetween(ctx context.Context, arg MessagesBetweenParams
 			&i.EvidenceRefs,
 			&i.ToolCalls,
 			&i.ToolResults,
+			&i.Helpful,
 		); err != nil {
 			return nil, err
 		}
@@ -475,7 +479,7 @@ func (q *Queries) MessagesBetween(ctx context.Context, arg MessagesBetweenParams
 }
 
 const recentMessages = `-- name: RecentMessages :many
-SELECT id, conversation_id, role, content, parts, usage, model, provider, created_at, evidence_refs, tool_calls, tool_results FROM messages
+SELECT id, conversation_id, role, content, parts, usage, model, provider, created_at, evidence_refs, tool_calls, tool_results, helpful FROM messages
 WHERE conversation_id = $1
 ORDER BY created_at DESC
 LIMIT $2
@@ -512,6 +516,7 @@ func (q *Queries) RecentMessages(ctx context.Context, arg RecentMessagesParams) 
 			&i.EvidenceRefs,
 			&i.ToolCalls,
 			&i.ToolResults,
+			&i.Helpful,
 		); err != nil {
 			return nil, err
 		}
@@ -524,7 +529,7 @@ func (q *Queries) RecentMessages(ctx context.Context, arg RecentMessagesParams) 
 }
 
 const recentUserMessages = `-- name: RecentUserMessages :many
-SELECT m.id, m.conversation_id, m.role, m.content, m.parts, m.usage, m.model, m.provider, m.created_at, m.evidence_refs, m.tool_calls, m.tool_results
+SELECT m.id, m.conversation_id, m.role, m.content, m.parts, m.usage, m.model, m.provider, m.created_at, m.evidence_refs, m.tool_calls, m.tool_results, m.helpful
 FROM messages m
 JOIN conversations c ON c.id = m.conversation_id
 WHERE c.user_id = $1 AND m.role = 'user'
@@ -561,6 +566,7 @@ func (q *Queries) RecentUserMessages(ctx context.Context, arg RecentUserMessages
 			&i.EvidenceRefs,
 			&i.ToolCalls,
 			&i.ToolResults,
+			&i.Helpful,
 		); err != nil {
 			return nil, err
 		}
@@ -624,6 +630,57 @@ type SetConversationTitleParams struct {
 func (q *Queries) SetConversationTitle(ctx context.Context, arg SetConversationTitleParams) error {
 	_, err := q.db.Exec(ctx, setConversationTitle, arg.ID, arg.Title)
 	return err
+}
+
+const setMessageHelpful = `-- name: SetMessageHelpful :one
+UPDATE messages m
+SET helpful = $1::boolean
+WHERE m.id = $2
+  AND m.role = 'model'
+  AND EXISTS (
+      SELECT 1 FROM conversations c
+      WHERE c.id = m.conversation_id
+        AND c.user_id = $3
+  )
+RETURNING m.id, m.conversation_id, m.role, m.content, m.parts, m.usage, m.model, m.provider, m.created_at, m.evidence_refs, m.tool_calls, m.tool_results, m.helpful
+`
+
+type SetMessageHelpfulParams struct {
+	Helpful   *bool
+	MessageID uuid.UUID
+	UserID    uuid.UUID
+}
+
+// Records whether a reply helped.
+//
+// The ownership check runs through the conversation, because messages carry no
+// user_id of their own. Doing it in the statement rather than as a prior SELECT
+// means there is no window between the check and the write, and no code path
+// that can forget the check — a message id is guessable enough that "somebody
+// else's thread" has to be impossible rather than merely unlikely.
+//
+// Only the coach's own turns can be rated. Rating your own message is
+// meaningless, and allowing it would put noise in the one labelled column the
+// product has.
+func (q *Queries) SetMessageHelpful(ctx context.Context, arg SetMessageHelpfulParams) (Message, error) {
+	row := q.db.QueryRow(ctx, setMessageHelpful, arg.Helpful, arg.MessageID, arg.UserID)
+	var i Message
+	err := row.Scan(
+		&i.ID,
+		&i.ConversationID,
+		&i.Role,
+		&i.Content,
+		&i.Parts,
+		&i.Usage,
+		&i.Model,
+		&i.Provider,
+		&i.CreatedAt,
+		&i.EvidenceRefs,
+		&i.ToolCalls,
+		&i.ToolResults,
+		&i.Helpful,
+	)
+	return i, err
 }
 
 const touchConversation = `-- name: TouchConversation :exec

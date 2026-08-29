@@ -13,7 +13,9 @@ import (
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/quota"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/htmx"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
+	"github.com/NorthAIProject/north-client/internal/shared/types"
 	reportpages "github.com/NorthAIProject/north-client/web/reports"
 )
 
@@ -33,6 +35,9 @@ func (h *Handler) Routes(r chi.Router) {
 	r.With(h.quotas.Guard(quota.ReportGenerate)).Post("/reports/briefing", h.briefing)
 	r.Get("/reports/{id}", h.show)
 	r.Post("/reports/{id}/archive", h.archive)
+
+	// No quota guard: rating a report is a column write, not a generation.
+	r.Post("/reports/{id}/helpful", h.rate)
 	r.With(h.quotas.Guard(quota.ReportGenerate)).Post("/reports/{id}/regenerate", h.regenerate)
 }
 
@@ -97,6 +102,34 @@ func (h *Handler) briefing(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/app", http.StatusSeeOther)
+}
+
+// rate records whether a report was worth reading.
+func (h *Handler) rate(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		h.fail(w, r, apperr.ErrNotFound)
+		return
+	}
+
+	helpful, err := types.ParseHelpful(r.FormValue("answer"))
+	if err != nil {
+		h.fail(w, r, apperr.ErrNotFound)
+		return
+	}
+
+	item, err := h.svc.SetHelpful(r.Context(), id, user.ID, helpful)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+
+	if htmx.IsRequest(r) {
+		render(w, r, http.StatusOK, reportpages.Feedback(item))
+		return
+	}
+	http.Redirect(w, r, "/app/reports/"+id.String(), http.StatusSeeOther)
 }
 
 func (h *Handler) archive(w http.ResponseWriter, r *http.Request) {

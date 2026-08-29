@@ -42,9 +42,20 @@ type Report struct {
 	LastError   string
 	GeneratedAt *time.Time
 	ArchivedAt  *time.Time
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+
+	// Helpful is whether the person said this report was worth reading. Nil
+	// means they did not say.
+	Helpful *bool
+
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
+
+// Rated reports whether the person answered either way about this report.
+func (r Report) Rated() bool { return r.Helpful != nil }
+
+func (r Report) RatedHelpful() bool   { return r.Helpful != nil && *r.Helpful }
+func (r Report) RatedUnhelpful() bool { return r.Helpful != nil && !*r.Helpful }
 
 func (r Report) Archived() bool { return r.ArchivedAt != nil }
 

@@ -16,7 +16,7 @@ const archiveReport = `-- name: ArchiveReport :one
 UPDATE reports
 SET archived_at = now(), updated_at = now()
 WHERE id = $1 AND user_id = $2 AND archived_at IS NULL
-RETURNING id, user_id, kind, period_start, period_end, title, body, status, last_error, generated_at, archived_at, created_at, updated_at
+RETURNING id, user_id, kind, period_start, period_end, title, body, status, last_error, generated_at, archived_at, created_at, updated_at, helpful
 `
 
 type ArchiveReportParams struct {
@@ -41,6 +41,7 @@ func (q *Queries) ArchiveReport(ctx context.Context, arg ArchiveReportParams) (R
 		&i.ArchivedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Helpful,
 	)
 	return i, err
 }
@@ -48,7 +49,7 @@ func (q *Queries) ArchiveReport(ctx context.Context, arg ArchiveReportParams) (R
 const createReport = `-- name: CreateReport :one
 INSERT INTO reports (user_id, kind, period_start, period_end, title, status)
 VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, user_id, kind, period_start, period_end, title, body, status, last_error, generated_at, archived_at, created_at, updated_at
+RETURNING id, user_id, kind, period_start, period_end, title, body, status, last_error, generated_at, archived_at, created_at, updated_at, helpful
 `
 
 type CreateReportParams struct {
@@ -84,12 +85,13 @@ func (q *Queries) CreateReport(ctx context.Context, arg CreateReportParams) (Rep
 		&i.ArchivedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Helpful,
 	)
 	return i, err
 }
 
 const getActiveReportForWeek = `-- name: GetActiveReportForWeek :one
-SELECT id, user_id, kind, period_start, period_end, title, body, status, last_error, generated_at, archived_at, created_at, updated_at FROM reports
+SELECT id, user_id, kind, period_start, period_end, title, body, status, last_error, generated_at, archived_at, created_at, updated_at, helpful FROM reports
 WHERE user_id = $1
   AND kind = $2
   AND period_start = $3
@@ -119,12 +121,13 @@ func (q *Queries) GetActiveReportForWeek(ctx context.Context, arg GetActiveRepor
 		&i.ArchivedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Helpful,
 	)
 	return i, err
 }
 
 const getReport = `-- name: GetReport :one
-SELECT id, user_id, kind, period_start, period_end, title, body, status, last_error, generated_at, archived_at, created_at, updated_at FROM reports WHERE id = $1 AND user_id = $2
+SELECT id, user_id, kind, period_start, period_end, title, body, status, last_error, generated_at, archived_at, created_at, updated_at, helpful FROM reports WHERE id = $1 AND user_id = $2
 `
 
 type GetReportParams struct {
@@ -149,12 +152,13 @@ func (q *Queries) GetReport(ctx context.Context, arg GetReportParams) (Report, e
 		&i.ArchivedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Helpful,
 	)
 	return i, err
 }
 
 const latestReadyReport = `-- name: LatestReadyReport :one
-SELECT id, user_id, kind, period_start, period_end, title, body, status, last_error, generated_at, archived_at, created_at, updated_at FROM reports
+SELECT id, user_id, kind, period_start, period_end, title, body, status, last_error, generated_at, archived_at, created_at, updated_at, helpful FROM reports
 WHERE user_id = $1
   AND kind = $2
   AND status = 'ready'
@@ -185,12 +189,13 @@ func (q *Queries) LatestReadyReport(ctx context.Context, arg LatestReadyReportPa
 		&i.ArchivedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Helpful,
 	)
 	return i, err
 }
 
 const listReports = `-- name: ListReports :many
-SELECT id, user_id, kind, period_start, period_end, title, body, status, last_error, generated_at, archived_at, created_at, updated_at FROM reports
+SELECT id, user_id, kind, period_start, period_end, title, body, status, last_error, generated_at, archived_at, created_at, updated_at, helpful FROM reports
 WHERE user_id = $1
   AND ($3::boolean OR archived_at IS NULL)
   AND ($4::text IS NULL OR kind = $4::text)
@@ -233,6 +238,7 @@ func (q *Queries) ListReports(ctx context.Context, arg ListReportsParams) ([]Rep
 			&i.ArchivedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Helpful,
 		); err != nil {
 			return nil, err
 		}
@@ -250,7 +256,7 @@ SET status     = 'failed',
     last_error = $3,
     updated_at = now()
 WHERE id = $1 AND user_id = $2
-RETURNING id, user_id, kind, period_start, period_end, title, body, status, last_error, generated_at, archived_at, created_at, updated_at
+RETURNING id, user_id, kind, period_start, period_end, title, body, status, last_error, generated_at, archived_at, created_at, updated_at, helpful
 `
 
 type MarkReportFailedParams struct {
@@ -276,6 +282,7 @@ func (q *Queries) MarkReportFailed(ctx context.Context, arg MarkReportFailedPara
 		&i.ArchivedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Helpful,
 	)
 	return i, err
 }
@@ -286,7 +293,7 @@ SET status      = 'pending',
     last_error  = '',
     updated_at  = now()
 WHERE id = $1 AND user_id = $2
-RETURNING id, user_id, kind, period_start, period_end, title, body, status, last_error, generated_at, archived_at, created_at, updated_at
+RETURNING id, user_id, kind, period_start, period_end, title, body, status, last_error, generated_at, archived_at, created_at, updated_at, helpful
 `
 
 type MarkReportPendingParams struct {
@@ -311,6 +318,7 @@ func (q *Queries) MarkReportPending(ctx context.Context, arg MarkReportPendingPa
 		&i.ArchivedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Helpful,
 	)
 	return i, err
 }
@@ -323,7 +331,7 @@ SET status       = 'ready',
     generated_at = now(),
     updated_at   = now()
 WHERE id = $1 AND user_id = $2
-RETURNING id, user_id, kind, period_start, period_end, title, body, status, last_error, generated_at, archived_at, created_at, updated_at
+RETURNING id, user_id, kind, period_start, period_end, title, body, status, last_error, generated_at, archived_at, created_at, updated_at, helpful
 `
 
 type SaveGeneratedReportParams struct {
@@ -349,6 +357,48 @@ func (q *Queries) SaveGeneratedReport(ctx context.Context, arg SaveGeneratedRepo
 		&i.ArchivedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Helpful,
+	)
+	return i, err
+}
+
+const setReportHelpful = `-- name: SetReportHelpful :one
+UPDATE reports
+SET helpful    = $1::boolean,
+    updated_at = now()
+WHERE id = $2 AND user_id = $3
+RETURNING id, user_id, kind, period_start, period_end, title, body, status, last_error, generated_at, archived_at, created_at, updated_at, helpful
+`
+
+type SetReportHelpfulParams struct {
+	Helpful *bool
+	ID      uuid.UUID
+	UserID  uuid.UUID
+}
+
+// Records whether a report was worth reading.
+//
+// Scoped by user_id in the statement, like ArchiveReport above, so a report id
+// from somebody else's account updates nothing rather than being caught by a
+// check somewhere up the call stack.
+func (q *Queries) SetReportHelpful(ctx context.Context, arg SetReportHelpfulParams) (Report, error) {
+	row := q.db.QueryRow(ctx, setReportHelpful, arg.Helpful, arg.ID, arg.UserID)
+	var i Report
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Kind,
+		&i.PeriodStart,
+		&i.PeriodEnd,
+		&i.Title,
+		&i.Body,
+		&i.Status,
+		&i.LastError,
+		&i.GeneratedAt,
+		&i.ArchivedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Helpful,
 	)
 	return i, err
 }

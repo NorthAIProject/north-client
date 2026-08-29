@@ -1,8 +1,10 @@
 -- name: CreateMemory :one
 INSERT INTO user_memories (
-    user_id, category, content, status, pinned, excluded, source, source_conversation_id, confidence
+    user_id, category, content, status, pinned, excluded, source, source_conversation_id, confidence,
+    supersedes_id
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9
+    $1, $2, $3, $4, $5, $6, $7, $8, $9,
+    $10
 )
 RETURNING *;
 
@@ -30,11 +32,15 @@ ORDER BY pinned DESC, excluded ASC, updated_at DESC
 LIMIT $3;
 
 -- name: ListApprovedForContext :many
+-- valid_to IS NULL keeps retired facts out of the prompt. A superseded fact is
+-- not deleted — it is history, and the review page still shows it — but the
+-- coach must never be told two contradicting things and left to pick.
 SELECT * FROM user_memories
 WHERE user_id = $1
   AND deleted_at IS NULL
   AND status = 'approved'
   AND NOT excluded
+  AND valid_to IS NULL
 ORDER BY pinned DESC, updated_at DESC
 LIMIT $2;
 
@@ -85,6 +91,9 @@ WHERE m.user_id = @user_id
   AND m.deleted_at IS NULL
   AND m.status = 'approved'
   AND NOT m.excluded
+  -- See ListApprovedForContext: retired facts stay out of the prompt, and this
+  -- has to match, or which query ran would decide what the coach believes.
+  AND m.valid_to IS NULL
   AND (
       m.pinned
       OR to_tsvector('english', m.content) @@ q.tsq
@@ -94,11 +103,17 @@ LIMIT @result_limit;
 
 -- name: ListActiveContents :many
 -- Used to deduplicate extractions against what is already known or proposed.
+--
+-- Retired facts are deliberately not in this set. People revert: someone who
+-- went back to training three days a week should be able to have that fact
+-- proposed again, and excluding superseded rows here is what allows it. The
+-- cost is that a fact can cycle, which is correct — it is what happened.
 SELECT lower(trim(content)) AS content
 FROM user_memories
 WHERE user_id = $1
   AND deleted_at IS NULL
-  AND status IN ('pending', 'approved');
+  AND status IN ('pending', 'approved')
+  AND valid_to IS NULL;
 
 -- name: UpdateMemory :one
 UPDATE user_memories
@@ -149,3 +164,43 @@ WHERE user_id = $1
   AND status = 'pending'
   AND deleted_at IS NULL
 ORDER BY created_at DESC;
+
+-- name: SupersedeMemory :one
+-- Retires one fact, at the moment its replacement was approved.
+--
+-- Guards rather than trusts the caller. status = 'approved' because a pending
+-- fact was never believed and has nothing to retire; valid_to IS NULL so a
+-- second approval cannot move a date already set; and NOT pinned because a
+-- pinned fact is one the person said always matters, and retiring that on a
+-- model's suggestion is not a call this code gets to make.
+UPDATE user_memories
+SET valid_to   = now(),
+    updated_at = now()
+WHERE id = $1
+  AND user_id = $2
+  AND deleted_at IS NULL
+  AND status = 'approved'
+  AND valid_to IS NULL
+  AND NOT pinned
+RETURNING *;
+
+-- name: ListCurrentForSupersession :many
+-- The facts an extraction is allowed to propose replacing.
+--
+-- Approved and current only. A pending fact is not yet believed, and a retired
+-- one is already gone; offering either to the model would invite it to
+-- supersede something that was never there.
+--
+-- Pinned facts are included, because the model should still be able to say "this
+-- one is out of date" about them — SupersedeMemory is what refuses to act on it
+-- without a human. Leaving them out would instead teach the model that the fact
+-- does not exist, and it would file a contradicting duplicate.
+SELECT id, category, content, pinned, updated_at
+FROM user_memories
+WHERE user_id = $1
+  AND deleted_at IS NULL
+  AND status = 'approved'
+  AND NOT excluded
+  AND valid_to IS NULL
+ORDER BY category, updated_at DESC
+LIMIT $2;

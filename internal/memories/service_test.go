@@ -62,8 +62,8 @@ func TestPendingNotInContextUntilApproved(t *testing.T) {
 	user := seedUser(t, pool, "pending@north.test")
 	svc := memories.NewService(memories.NewRepository(pool))
 
-	n, err := svc.InsertExtractions(ctx, user.ID, uuid.Nil, []extract.Candidate{
-		{Category: memory.CategoryEquipment, Content: "Only owns a pair of dumbbells", Confidence: 0.9},
+	n, err := svc.InsertExtractions(ctx, user.ID, uuid.Nil, []memories.Proposal{
+		{Candidate: extract.Candidate{Category: memory.CategoryEquipment, Content: "Only owns a pair of dumbbells", Confidence: 0.9}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -145,8 +145,8 @@ func TestOwnershipIsolation(t *testing.T) {
 	} else {
 		assertNotFound("stranger exclude", err)
 	}
-	pending, err := svc.InsertExtractions(ctx, owner.ID, uuid.Nil, []extract.Candidate{
-		{Category: memory.CategoryHabit, Content: "Another private habit for isolation", Confidence: 0.9},
+	pending, err := svc.InsertExtractions(ctx, owner.ID, uuid.Nil, []memories.Proposal{
+		{Candidate: extract.Candidate{Category: memory.CategoryHabit, Content: "Another private habit for isolation", Confidence: 0.9}},
 	})
 	if err != nil || pending != 1 {
 		t.Fatalf("seed pending: n=%d err=%v", pending, err)
@@ -268,9 +268,9 @@ func TestDedupExtractions(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	n, err := svc.InsertExtractions(ctx, user.ID, uuid.Nil, []extract.Candidate{
-		{Category: memory.CategoryHabit, Content: "Runs before breakfast", Confidence: 0.95},
-		{Category: memory.CategoryHabit, Content: "Sleeps by 22:00 on weeknights", Confidence: 0.9},
+	n, err := svc.InsertExtractions(ctx, user.ID, uuid.Nil, []memories.Proposal{
+		{Candidate: extract.Candidate{Category: memory.CategoryHabit, Content: "Runs before breakfast", Confidence: 0.95}},
+		{Candidate: extract.Candidate{Category: memory.CategoryHabit, Content: "Sleeps by 22:00 on weeknights", Confidence: 0.9}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -304,13 +304,13 @@ func TestListPendingForConversation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err = svc.InsertExtractions(ctx, user.ID, thisThread.ID, []extract.Candidate{
-		{Category: memory.CategoryHabit, Content: "Sleeps badly before deadlines", Confidence: 0.9},
+	if _, err = svc.InsertExtractions(ctx, user.ID, thisThread.ID, []memories.Proposal{
+		{Candidate: extract.Candidate{Category: memory.CategoryHabit, Content: "Sleeps badly before deadlines", Confidence: 0.9}},
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = svc.InsertExtractions(ctx, user.ID, otherThread.ID, []extract.Candidate{
-		{Category: memory.CategoryPreference, Content: "Prefers evening training sessions", Confidence: 0.8},
+	if _, err = svc.InsertExtractions(ctx, user.ID, otherThread.ID, []memories.Proposal{
+		{Candidate: extract.Candidate{Category: memory.CategoryPreference, Content: "Prefers evening training sessions", Confidence: 0.8}},
 	}); err != nil {
 		t.Fatal(err)
 	}
