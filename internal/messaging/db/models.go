@@ -18,4 +18,6 @@ type MessagingLink struct {
 	LastUpdateID int64
 	CreatedAt    time.Time
 	LastSeenAt   *time.Time
+	// The platform account (Telegram bot id) whose sequence last_update_id belongs to. Empty when the platform has no such notion.
+	AccountID string
 }

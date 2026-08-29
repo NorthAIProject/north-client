@@ -148,6 +148,35 @@ func (r *Repository) MarkSynced(ctx context.Context, userID uuid.UUID, at time.T
 	return nil
 }
 
+// MarkSyncFailed records why the last run did not import anything, so the
+// interface can say so instead of rendering a failure as a fresh connection.
+//
+// It does not move last_synced_at: that is the window the next import starts
+// from, and advancing it here would skip whatever this run never fetched.
+func (r *Repository) MarkSyncFailed(ctx context.Context, userID uuid.UUID, reason string) error {
+	err := r.q.MarkStravaSyncFailed(ctx, stravadb.MarkStravaSyncFailedParams{
+		UserID:        userID,
+		LastSyncError: reason,
+	})
+	if err != nil {
+		return apperr.Wrap(err, "mark strava sync failed")
+	}
+	return nil
+}
+
+// DueForSync returns the users whose connection has not synced since before,
+// oldest first, capped at limit.
+func (r *Repository) DueForSync(ctx context.Context, before time.Time, limit int) ([]uuid.UUID, error) {
+	ids, err := r.q.ListStravaConnectionsDueForSync(ctx, stravadb.ListStravaConnectionsDueForSyncParams{
+		Before:  before,
+		MaxRows: int32(limit),
+	})
+	if err != nil {
+		return nil, apperr.Wrap(err, "list strava connections due for sync")
+	}
+	return ids, nil
+}
+
 func (r *Repository) Delete(ctx context.Context, userID uuid.UUID) error {
 	if err := r.q.DeleteStravaConnection(ctx, userID); err != nil {
 		return apperr.Wrap(err, "delete strava connection")
@@ -250,5 +279,8 @@ func (r *Repository) fromDB(row stravadb.StravaConnection) (Connection, error) {
 		LastSyncedAt: row.LastSyncedAt,
 		CreatedAt:    row.CreatedAt,
 		UpdatedAt:    row.UpdatedAt,
+
+		LastSyncError:       row.LastSyncError,
+		LastSyncAttemptedAt: row.LastSyncAttemptedAt,
 	}, nil
 }

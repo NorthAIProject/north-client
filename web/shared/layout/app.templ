@@ -4,6 +4,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/dialog"
 	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
 	"github.com/NorthAIProject/north-client/web/shared/ui/sidebar"
 )
@@ -65,7 +66,8 @@ templ App(title string, user users.User, nav []NavGroup) {
 					<span class="md:hidden">
 						@ui.BrandLockup("/app", "size-5", "text-sm font-medium tracking-tight")
 					</span>
-					<div class="ml-auto">
+					<div class="ml-auto flex items-center gap-2">
+						@commandPalette()
 						<div
 							hx-get="/app/nudges/bell"
 							hx-trigger="load, every 20s"
@@ -100,6 +102,8 @@ templ App(title string, user users.User, nav []NavGroup) {
 			}
 		}
 		@sidebar.Script()
+		@dialog.Script()
+		@PaletteScripts()
 	}
 }
 

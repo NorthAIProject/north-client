@@ -1,0 +1,44 @@
+package legal
+
+// A trap worth knowing before editing either policy: inside a templ element,
+// the text immediately after a { expression } starts a new node, and templ
+// reads a leading "for", "if" or "switch" there as the start of a control
+// statement rather than as prose. "{ OperatorName } for the use of Khepri"
+// fails to parse with a message that points at the enclosing component and
+// names no keyword. Rephrase, or put a word in between.
+//
+// document is the shared shell for both policies.
+//
+// Hand-rolled prose styling rather than a component: templUI has no long-form
+// document primitive, these are the only two pages in the application built
+// from running text, and a policy nobody can read is a policy nobody read.
+templ document(title string) {
+	<article class="mx-auto w-full max-w-2xl px-6 py-16">
+		<header class="mb-10">
+			<h1 class="text-3xl font-medium tracking-tight">{ title }</h1>
+			<p class="text-muted-foreground mt-2 font-mono text-xs">
+				Last updated { LastUpdated }
+			</p>
+		</header>
+		<div
+			class="[&_p]:text-muted-foreground [&_li]:text-muted-foreground [&_strong]:text-foreground [&_em]:text-foreground space-y-6 text-sm leading-relaxed [&_a]:underline [&_a:hover]:text-foreground [&_li]:leading-relaxed [&_p.lead]:text-base [&_p.lead]:text-foreground [&_ul]:list-disc [&_ul]:space-y-2 [&_ul]:pl-5"
+		>
+			{ children... }
+		</div>
+		<footer class="border-hairline text-muted-foreground mt-12 border-t pt-6 font-mono text-[10px]">
+			<a href="/privacy" class="hover:text-foreground">Privacy</a>
+			<span class="px-2">·</span>
+			<a href="/terms" class="hover:text-foreground">Terms</a>
+			<span class="px-2">·</span>
+			<a href="/" class="hover:text-foreground">Home</a>
+		</footer>
+	</article>
+}
+
+// section is one titled block of a policy.
+templ section(heading string) {
+	<section class="space-y-3">
+		<h2 class="text-foreground text-base font-medium tracking-tight">{ heading }</h2>
+		{ children... }
+	</section>
+}

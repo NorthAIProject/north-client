@@ -54,6 +54,24 @@ func NewClient(token string) *Client {
 
 func (c *Client) Platform() string { return messaging.PlatformTelegram }
 
+// BotID is the numeric account id this token belongs to.
+//
+// Read off the token rather than fetched, because a Telegram token is literally
+// "<bot id>:<secret>" and the id half is not a secret — it is the same number
+// getMe returns. Parsing it costs nothing and, unlike a call, cannot fail at the
+// moment an update needs answering.
+//
+// It scopes the redelivery watermark. Update ids count up per bot, so two bots
+// produce two sequences, and a deployment pointed at a new bot must not compare
+// its ids against the old bot's high-water mark.
+func (c *Client) BotID() string {
+	id, _, found := strings.Cut(c.token, ":")
+	if !found {
+		return ""
+	}
+	return id
+}
+
 // Send delivers a reply, splitting it if Telegram will not take it whole.
 //
 // Buttons ride on the last part only: an inline keyboard attached to the first

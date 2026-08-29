@@ -65,6 +65,10 @@ func (b *bridge) dispatchRaw(ctx context.Context, raw []byte) {
 func (b *bridge) dispatch(ctx context.Context, u update) {
 	in, callbackID, what := u.inbound()
 
+	// Stamped here rather than in inbound(): the update carries no idea which
+	// bot received it, and the client is the only thing that knows.
+	in.AccountID = b.client.BotID()
+
 	switch what {
 	case ignoreUpdate:
 		// A sticker, someone joining. Not an error and not a question.

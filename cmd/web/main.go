@@ -77,6 +77,8 @@ import (
 	"github.com/NorthAIProject/north-client/web/landing"
 	"github.com/NorthAIProject/north-client/web/pwa"
 
+	"github.com/NorthAIProject/north-client/internal/analytics"
+	"github.com/NorthAIProject/north-client/web/legal"
 	"github.com/a-h/templ"
 )
 
@@ -585,6 +587,10 @@ func routes(
 	// rather than a failed request.
 	runner := ai.NewRunner(registry, cfg.AI.ChainSet())
 
+	// One funnel for the process. Every event below flows through it, and a
+	// deployment with no PostHog key makes each call a no-op.
+	funnel := analytics.New(posthogClient)
+
 	userRepo := users.NewRepository(pool)
 	userSvc := users.NewService(userRepo)
 
@@ -601,7 +607,7 @@ func routes(
 		WebAuthnRPID:        cfg.WebAuthnRPID,
 		WebAuthnDisplayName: cfg.WebAuthnDisplayName,
 		Log:                 slog.Default(),
-	})
+	}).WithFunnel(funnel)
 	authMW := auth.NewMiddleware(sessions, cfg.Env.IsProduction())
 	authHandler := auth.NewHandler(authSvc, authMW, "/app")
 
@@ -731,7 +737,7 @@ func routes(
 		ClientID:     cfg.StravaClientID,
 		ClientSecret: cfg.StravaClientSecret,
 		BaseURL:      cfg.BaseURL,
-	})
+	}).WithFunnel(funnel)
 
 	mealsRepo := meals.NewRepository(pool)
 	mealIngredientSvc := meals.NewIngredientService(mealsRepo)
@@ -926,6 +932,7 @@ func routes(
 		// served by it and a user who did not is unaffected.
 		Own:         aicredSvc,
 		Analytics:   coach.NewAnalytics(posthogClient).WithMetrics(metricsReg),
+		Funnel:      funnel,
 		Attachments: mediaSvc,
 		Model:       cfg.AI.Model,
 		FastModel:   cfg.AI.FastModel,
@@ -964,6 +971,7 @@ func routes(
 	// settings page needs it to issue link codes; whether anything can reach it
 	// depends on a bot token, below.
 	messagingSvc := messaging.NewService(messaging.Options{
+		Funnel:  funnel,
 		Coach:   coachSvc,
 		Threads: conversationSvc,
 		Users:   userSvc,
@@ -988,7 +996,8 @@ func routes(
 	// being answered, rather than an empty chat box the person has to think of
 	// something to say to.
 	onboardingSvc := onboarding.NewService(userSvc, memorySvc, goalSvc).
-		WithCoach(coachSvc, slog.Default())
+		WithCoach(coachSvc, slog.Default()).
+		WithFunnel(funnel)
 	onboardingHandler := onboarding.NewHandler(onboardingSvc)
 
 	if telegramClient != nil {
@@ -1109,6 +1118,12 @@ func routes(
 
 		r.Get("/healthz", healthz(pool))
 		r.Method(http.MethodGet, "/", templ.Handler(landing.Page()))
+
+		// Public and outside /app on purpose: somebody deciding whether to
+		// trust the product with their health data has to be able to read the
+		// policy before creating the account that would let them read it.
+		r.Method(http.MethodGet, "/privacy", templ.Handler(legal.Privacy()))
+		r.Method(http.MethodGet, "/terms", templ.Handler(legal.Terms()))
 
 		authHandler.Routes(r)
 

@@ -21,8 +21,11 @@ type Link struct {
 	Platform     string
 	ExternalID   string
 	LastUpdateID int64
-	CreatedAt    time.Time
-	LastSeenAt   *time.Time
+
+	// AccountID is the platform account whose sequence LastUpdateID belongs to.
+	AccountID  string
+	CreatedAt  time.Time
+	LastSeenAt *time.Time
 }
 
 type Repository struct {
@@ -42,13 +45,14 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 //
 // updateID of 0 means the platform has no delivery counter, so the watermark
 // is skipped and this is a plain lookup with a touch.
-func (r *Repository) ClaimUpdate(ctx context.Context, platform, externalID string, updateID int64) (Link, error) {
+func (r *Repository) ClaimUpdate(ctx context.Context, platform, externalID string, updateID int64, accountID string) (Link, error) {
 	if updateID == 0 {
 		return r.Get(ctx, platform, externalID)
 	}
 
 	row, err := r.q.ClaimMessagingUpdate(ctx, messagingdb.ClaimMessagingUpdateParams{
 		Platform: platform, ExternalID: externalID, LastUpdateID: updateID,
+		AccountID: accountID,
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -182,6 +186,7 @@ func linkFromDB(row messagingdb.MessagingLink) Link {
 		Platform:     row.Platform,
 		ExternalID:   row.ExternalID,
 		LastUpdateID: row.LastUpdateID,
+		AccountID:    row.AccountID,
 		CreatedAt:    row.CreatedAt,
 		LastSeenAt:   row.LastSeenAt,
 	}

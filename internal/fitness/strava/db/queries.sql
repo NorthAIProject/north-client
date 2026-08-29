@@ -34,10 +34,36 @@ SET access_token         = $2,
 WHERE user_id = $1
 RETURNING *;
 
+-- Success clears the error as well as moving the watermark: a card that keeps
+-- showing yesterday's failure after today's sync worked is worse than one that
+-- shows nothing.
 -- name: MarkStravaSynced :exec
 UPDATE strava_connections
-SET last_synced_at = $2, updated_at = now()
+SET last_synced_at         = $2,
+    last_sync_attempted_at = now(),
+    last_sync_error        = '',
+    updated_at             = now()
 WHERE user_id = $1;
+
+-- last_synced_at is deliberately untouched. It is the window the next import
+-- starts from, and advancing it on a failure would skip whatever that run
+-- never managed to fetch.
+-- name: MarkStravaSyncFailed :exec
+UPDATE strava_connections
+SET last_sync_attempted_at = now(),
+    last_sync_error        = $2,
+    updated_at             = now()
+WHERE user_id = $1;
+
+-- Connections the periodic sweep should re-sync: never synced, or not since
+-- the cutoff. Ordered oldest first so a backlog drains fairly rather than
+-- starving whoever sorts last by id.
+-- name: ListStravaConnectionsDueForSync :many
+SELECT user_id FROM strava_connections
+WHERE last_synced_at IS NULL
+   OR last_synced_at < sqlc.arg(before)::timestamptz
+ORDER BY last_synced_at ASC NULLS FIRST
+LIMIT sqlc.arg(max_rows)::int;
 
 -- name: GetStravaConnection :one
 SELECT * FROM strava_connections WHERE user_id = $1;

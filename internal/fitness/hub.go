@@ -2,6 +2,7 @@ package fitness
 
 import (
 	"context"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -127,7 +128,14 @@ func (s *Service) Load(ctx context.Context, user users.User) (Snapshot, error) {
 	if s.strava != nil {
 		status, err := s.strava.Status(ctx, user.ID)
 		if err != nil {
-			status = strava.Status{Configured: s.strava.Configured()}
+			// Marked unavailable rather than rendered as "not connected". A
+			// decrypt failure and a never-connected account used to look
+			// identical here, and the button that state offers is Connect —
+			// which would overwrite a working credential to fix a problem
+			// that was never a missing connection.
+			slog.Default().Error("read strava status",
+				slog.Any("error", err), slog.String("user_id", user.ID.String()))
+			status = strava.Status{Configured: s.strava.Configured(), Unavailable: true}
 		}
 		snap.StravaStatus = status
 	}

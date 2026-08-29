@@ -1,70 +1,70 @@
 package layout
 
-// BuildNav is the one place the application's sidebar is assembled.
+// BuildNav assembles the application's sidebar.
 //
-// Every page previously defined its own private nav(active) copy of this
-// same list, and the copies had already drifted (some were missing items
-// others had). One shared list means a new section is added once, here, and
-// every page picks it up automatically.
+// Every page previously defined its own private nav(active) copy of this same
+// list, and the copies had already drifted (some were missing items others
+// had). One shared list means a new section is added once and every page picks
+// it up automatically.
+//
+// That list now lives in destinations.go, and this function is a fold over it
+// rather than a second copy beside it. The sidebar shows a deliberate subset —
+// thirteen of thirty-one destinations — because a rail listing everything
+// stops being a map. The command palette is where the rest are reachable, and
+// deriving both from one registry is what stops the two from disagreeing.
 //
 // The list is grouped rather than flat because it has outgrown a single
 // column: eleven undifferentiated links read as a pile, whereas five short
 // groups read as a map of the product. The group headings disappear when the
 // rail is collapsed to icons, so they cost nothing in that mode.
 func BuildNav(active string) []NavGroup {
-	groups := []NavGroup{
-		{
-			Label: "Today",
-			Items: []NavItem{
-				{Label: "Overview", Href: "/app", Icon: "layout-dashboard"},
-				{Label: "Check-ins", Href: "/app/check-ins", Icon: "smile"},
-				{Label: "Coach", Href: "/app/chat", Icon: "message-circle"},
-			},
-		},
-		{
-			Label: "Body",
-			Items: []NavItem{
-				{Label: "Fitness", Href: "/app/fitness", Icon: "dumbbell"},
-				{Label: "Care", Href: "/app/care", Icon: "heart-pulse"},
-			},
-		},
-		{
-			Label: "Mind",
-			Items: []NavItem{
-				{Label: "Mind", Href: "/app/mind", Icon: "brain"},
-				{Label: "Memory", Href: "/app/memories", Icon: "sparkles"},
-				{Label: "Decisions", Href: "/app/decisions", Icon: "scale"},
-			},
-		},
-		{
-			Label: "Progress",
-			Items: []NavItem{
-				{Label: "Goals", Href: "/app/goals", Icon: "target"},
-				{Label: "Reports", Href: "/app/reports", Icon: "notebook"},
-				{
-					Label: "Insights",
-					Href:  "/app/insights/timeline",
-					Icon:  "chart-line",
-					// The one nested entry. Insights is five views over the
-					// same data, and promoting all five to the top level would
-					// undo the grouping this list exists to provide.
-					Children: []NavItem{
-						{Label: "Activity", Href: "/app/insights/timeline"},
-						{Label: "Body", Href: "/app/insights/body"},
-						{Label: "Mind", Href: "/app/insights/mind"},
-						{Label: "Progress", Href: "/app/insights/progress"},
-						{Label: "Training", Href: "/app/insights/training"},
-					},
-				},
-			},
-		},
-		{
-			Label: "System",
-			Items: []NavItem{
-				{Label: "Knowledge", Href: "/app/knowledge", Icon: "book-open"},
-				{Label: "Settings", Href: "/app/settings", Icon: "settings"},
-			},
-		},
+	var groups []NavGroup
+
+	for _, groupName := range GroupOrder() {
+		group := NavGroup{Label: groupName}
+
+		// Two passes: parents first, so a child can always find the item it
+		// nests under regardless of registry order.
+		byHref := map[string]int{}
+		for _, d := range Destinations() {
+			if d.Group != groupName || !d.Nav.Show || d.Nav.Under != "" {
+				continue
+			}
+
+			item := NavItem{Label: navLabel(d), Href: d.Href, Icon: d.Icon}
+			if d.Nav.SelfChildLabel != "" {
+				// A section landing page that is also its own first view. The
+				// child points at the same href on purpose: it is one page
+				// wearing two labels, not two destinations.
+				item.Children = append(item.Children, NavItem{
+					Label: d.Nav.SelfChildLabel,
+					Href:  d.Href,
+				})
+			}
+
+			byHref[d.Href] = len(group.Items)
+			group.Items = append(group.Items, item)
+		}
+
+		for _, d := range Destinations() {
+			if d.Group != groupName || !d.Nav.Show || d.Nav.Under == "" {
+				continue
+			}
+			parent, ok := byHref[d.Nav.Under]
+			if !ok {
+				// Unreachable in practice: destinations_test asserts every
+				// Under resolves. Skipping beats panicking in a layout.
+				continue
+			}
+			group.Items[parent].Children = append(group.Items[parent].Children, NavItem{
+				Label: navLabel(d),
+				Href:  d.Href,
+			})
+		}
+
+		if len(group.Items) > 0 {
+			groups = append(groups, group)
+		}
 	}
 
 	for gi := range groups {
@@ -84,4 +84,14 @@ func BuildNav(active string) []NavGroup {
 		}
 	}
 	return groups
+}
+
+// navLabel is the rail's name for a destination, which is sometimes shorter
+// than the palette's. "Body insights" has to stand alone in a flat search
+// result; under an Insights heading it is just "Body".
+func navLabel(d Destination) string {
+	if d.Nav.Label != "" {
+		return d.Nav.Label
+	}
+	return d.Label
 }

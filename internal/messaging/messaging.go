@@ -38,7 +38,18 @@ type InboundMessage struct {
 	// UpdateID is the platform's monotonic delivery counter, used to recognise
 	// a redelivery. Zero when the platform has no such notion, which disables
 	// the check rather than rejecting everything.
+	//
+	// Monotonic only *within* AccountID. A Telegram update id counts up per bot,
+	// so ids from two different bots are two sequences rather than one, and
+	// comparing across them is meaningless.
 	UpdateID int64
+
+	// AccountID identifies the platform account the update arrived through —
+	// the bot, not the person. It scopes UpdateID.
+	//
+	// Empty when the platform has no such notion, which leaves the watermark
+	// behaving exactly as it did before this field existed.
+	AccountID string
 
 	ReceivedAt time.Time
 }

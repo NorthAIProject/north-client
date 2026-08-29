@@ -38,9 +38,17 @@ const (
 
 	// KindSyncStrava imports recent activities from a linked Strava account.
 	//
-	// Enqueued when someone connects and when they ask for a sync — never on
-	// a timer, because North has no scheduler.
+	// Enqueued when someone connects, when they ask for a sync, and by
+	// KindSweepStrava once a connection goes stale.
 	KindSyncStrava Kind = "sync_strava"
+
+	// KindSweepStrava enqueues a sync for connections that have gone stale.
+	//
+	// Strava has no webhook here and North has no other timer over it, so
+	// without this an athlete's activities only ever arrive on the day they
+	// press a button — and the coach reasons about a training week that
+	// stopped updating whenever they last thought to click.
+	KindSweepStrava Kind = "sweep_strava"
 
 	// KindIndexDocument parses and chunks one uploaded document or note.
 	KindIndexDocument Kind = "index_document"

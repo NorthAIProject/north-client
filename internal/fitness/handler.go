@@ -61,7 +61,7 @@ func (h *Handler) activities(w http.ResponseWriter, r *http.Request) {
 	status, err := h.strava.Status(ctx, user.ID)
 	if err != nil {
 		middleware.FromContext(ctx).Error("read strava status", slog.Any("error", err))
-		status = strava.Status{Configured: h.strava.Configured()}
+		status = strava.Status{Configured: h.strava.Configured(), Unavailable: true}
 	}
 
 	var recent []strava.Activity
@@ -69,9 +69,11 @@ func (h *Handler) activities(w http.ResponseWriter, r *http.Request) {
 		recent, err = h.strava.RecentActivities(ctx, user.ID, activityLimit)
 		if err != nil {
 			middleware.FromContext(ctx).Error("list strava activities", slog.Any("error", err))
-			// An empty set renders as "nothing imported yet", which is wrong
-			// but harmless; failing the page would be worse.
+			// Still not worth failing the page, but the empty set must not
+			// claim nothing was ever imported. Unavailable makes the template
+			// say the activities could not be read.
 			recent = nil
+			status.Unavailable = true
 		}
 	}
 

@@ -11,26 +11,34 @@ import (
 	"github.com/NorthAIProject/north-client/internal/workouts/plan"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/alert"
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
 	"github.com/NorthAIProject/north-client/web/shared/ui/card"
 	"github.com/NorthAIProject/north-client/web/shared/ui/chart"
 )
 
-type tile struct {
-	Title       string
-	Description string
-	Href        string
-}
-
-var tiles = []tile{
-	{"Training", "AI-generated workout plans.", "/app/training"},
-	{"Exercises", "What each movement trains, on the model.", "/app/exercises"},
-	{"Form check", "Upload a clip, get feedback.", "/app/form"},
-	{"Activity", "Track a session, see calories burned.", "/app/activity"},
-	{"Calculator", "BMR, TDEE, and a macro target.", "/app/calculator"},
-	{"Ingredients", "Shared and your own foods.", "/app/nutrition/ingredients"},
-	{"Meal plans", "Build plans, track totals.", "/app/nutrition/plans"},
-	{"Food log", "Log today, see progress.", "/app/nutrition/log"},
+// tiles are the Body pages the sidebar does not carry, which is exactly what
+// this hub exists to be an entrance to.
+//
+// Derived from the destination registry rather than listed again here. This
+// was a second hardcoded copy of eight pages, and it was the only way to reach
+// most of them — so it drifted from the rail silently and there was no third
+// place that knew about all of them. layout.Destinations() is now that place.
+func tiles() []layout.Destination {
+	var out []layout.Destination
+	for _, d := range layout.Destinations() {
+		if d.Group != layout.GroupBody || d.Nav.Show {
+			continue
+		}
+		// The 3D view is offered by the Strava card below, in the state where
+		// it has something to show. A tile for it here would be a dead end for
+		// anyone who has not connected.
+		if d.Href == "/app/fitness/activities" {
+			continue
+		}
+		out = append(out, d)
+	}
+	return out
 }
 
 // Instruments holds chart configs and KPI values for the fitness hub header.
@@ -78,7 +86,7 @@ templ Hub(user users.User, data HubData) {
 			@kpiStrip(data)
 			@calorieInstrument(data)
 			<div class="grid gap-4 sm:grid-cols-2">
-				for _, t := range tiles {
+				for _, t := range tiles() {
 					@tileCard(t)
 				}
 			</div>
@@ -196,10 +204,16 @@ templ stravaCard(status strava.Status) {
 			@card.Description() {
 				if !status.Configured {
 					Not configured on this server.
+				} else if status.Unavailable {
+					Could not read your connection.
 				} else if status.Connected {
 					Connected.
-					if status.LastSyncedAt != nil {
+					if status.SyncPending {
+						Sync queued.
+					} else if status.LastSyncedAt != nil {
 						Last synced { status.LastSyncedAt.Format("2 Jan, 15:04") }.
+					} else if status.LastSyncAttemptedAt != nil {
+						No activities imported yet.
 					} else {
 						No sync yet.
 					}
@@ -213,7 +227,28 @@ templ stravaCard(status strava.Status) {
 				<p class="text-muted-foreground text-xs leading-relaxed">
 					Set STRAVA_CLIENT_ID and STRAVA_CLIENT_SECRET to enable this.
 				</p>
+			} else if status.Unavailable {
+				// Deliberately offers no Connect button. The connection may
+				// well exist and be fine; reconnecting to fix a read error
+				// would replace a working credential for no reason.
+				@alert.Alert(alert.Props{Variant: alert.VariantDestructive}) {
+					@alert.Title() {
+						Strava is temporarily unreadable
+					}
+					@alert.Description() {
+						Your connection could not be loaded. Nothing has been lost — try again shortly.
+					}
+				}
 			} else if status.Connected {
+				if status.LastSyncError != "" {
+					@stravaSyncError(status)
+				}
+				if status.SyncPending && status.LastSyncedAt == nil {
+					<p class="text-muted-foreground mb-4 text-xs leading-relaxed">
+						A sync is waiting in the queue. If nothing arrives, the background
+						worker is not running — start it with <code>task worker</code>.
+					</p>
+				}
 				<div class="flex flex-wrap gap-2">
 					@button.Button(button.Props{Href: "/app/fitness/activities", Class: "bg-signal text-background hover:bg-signal/90"}) {
 						View activities in 3D
@@ -240,12 +275,35 @@ templ stravaCard(status strava.Status) {
 	}
 }
 
-templ tileCard(t tile) {
+// stravaSyncError reports why the last import did not happen.
+//
+// The message is a wrapped Go error, never a Strava response body: the client
+// discards those and keeps the status code, so nothing token-shaped can reach
+// this template.
+templ stravaSyncError(status strava.Status) {
+	<div class="mb-4">
+		@alert.Alert(alert.Props{Variant: alert.VariantDestructive}) {
+			@alert.Title() {
+				Last sync failed
+			}
+			@alert.Description() {
+				<span class="block">{ status.LastSyncError }</span>
+				if status.LastSyncAttemptedAt != nil {
+					<span class="block text-xs opacity-80">
+						Tried { status.LastSyncAttemptedAt.Format("2 Jan, 15:04") }. Sync now to retry.
+					</span>
+				}
+			}
+		}
+	</div>
+}
+
+templ tileCard(t layout.Destination) {
 	<a href={ templ.SafeURL(t.Href) } class="block">
 		@card.Card(card.Props{Class: "border-hairline bg-surface hover:border-muted-foreground/30 transition-colors"}) {
 			@card.Header() {
 				@card.Title() {
-					{ t.Title }
+					{ t.Label }
 				}
 				@card.Description() {
 					{ t.Description }

@@ -1,0 +1,187 @@
+package legal
+
+import "github.com/NorthAIProject/north-client/web/shared/layout"
+
+templ Privacy() {
+	@layout.Public("Privacy", signedIn(ctx)) {
+		@document("Privacy policy") {
+			<p class="lead">
+				Khepri holds an unusual amount of information about the people who
+				use it — what they weigh, how they slept, where they ran, and what
+				they wrote in a journal at eleven at night. This page says exactly
+				what is stored, where it goes, and how to get it back or delete it.
+			</p>
+			<p>
+				{ OperatorName } ({ OperatorAddress }) is the controller of that
+				data. Questions, requests and complaints:
+				<a href={ templ.SafeURL("mailto:" + ContactEmail) }>{ ContactEmail }</a>.
+			</p>
+			@section("What is stored") {
+				<p>
+					Only what you or an integration you connected put there.
+					Nothing is bought from a data broker and nothing is inferred
+					from third-party tracking.
+				</p>
+				<ul>
+					<li>
+						<strong>Account</strong> — email address, display name, a
+						password hash (never the password), timezone, coaching-tone
+						preference. If you sign in with Google or a passkey, the
+						identifier that provider gives us.
+					</li>
+					<li>
+						<strong>Health and body data</strong> — weight, body
+						measurements, sleep, hydration, and any biometric readings
+						you record or a connected device pushes.
+					</li>
+					<li>
+						<strong>Activity and location</strong> — workouts, training
+						plans, activity sessions, and, if you connect Strava, your
+						activities including the route traces they carry. A route
+						trace is location data about where you actually were.
+					</li>
+					<li><strong>Nutrition</strong> — foods, meal plans and what you logged.</li>
+					<li>
+						<strong>Your writing</strong> — check-ins, journal entries,
+						decisions, goals, and every message you exchange with the
+						coach.
+					</li>
+					<li>
+						<strong>Memory</strong> — durable facts the system derives
+						from your conversations so it does not have to ask twice.
+						You can see, edit, pin and delete these.
+					</li>
+					<li>
+						<strong>Documents</strong> — files you upload, the text
+						extracted from them, and numeric embeddings of that text
+						used for search.
+					</li>
+					<li>
+						<strong>Integrations</strong> — access tokens for services
+						you connect, encrypted at rest; your Telegram chat
+						identifier if you link it; tokens issued to agents you
+						authorise.
+					</li>
+					<li>
+						<strong>Operational records</strong> — sign-in events,
+						account activity, model usage and cost, and error logs.
+					</li>
+				</ul>
+			}
+			@section("Health data needs your explicit consent") {
+				<p>
+					Most of the list above is ordinary personal data. Weight,
+					sleep, biometrics and anything health-related in your journal
+					are <em>special category</em> data under Article 9 of the UK
+					and EU GDPR, and are processed <strong>only on your explicit
+					consent</strong>, given when you create an account and record
+					it.
+				</p>
+				<p>
+					You can withdraw that consent at any time by deleting the data
+					or your account. Withdrawal does not undo processing that
+					already happened, and Khepri stops working in any meaningful
+					way without it — a coach with no health data is a chat window.
+				</p>
+			}
+			@section("Where your data goes") {
+				<p>
+					Khepri is not advertising-funded and sells nothing to anyone.
+					Data reaches other companies only where the product cannot
+					work otherwise:
+				</p>
+				<ul>
+					<li>
+						<strong>AI providers.</strong> This is the disclosure that
+						matters most. To answer you, the coach sends the model your
+						message together with the context it assembled — which can
+						include your goals, recent conversations, check-ins,
+						training and nutrition summaries, and passages from your
+						own documents. Which company receives it depends on the
+						provider configured for your account, and you may supply
+						your own API key instead, in which case your data goes to
+						your provider under your own agreement with them.
+					</li>
+					<li>
+						<strong>Strava</strong> — only if you connect it, and only
+						to read your activities.
+					</li>
+					<li>
+						<strong>Telegram</strong> — only if you link a chat. Your
+						messages and the coach's replies pass through Telegram's
+						servers, under Telegram's own policy.
+					</li>
+					<li>
+						<strong>Product analytics.</strong> A small number of
+						events — account created, onboarding finished, a source
+						connected, the coach answered — recorded against your
+						account identifier to see whether the product works. No
+						health data, no message content, no document text.
+					</li>
+					<li>
+						<strong>Hosting, storage and email</strong> — the servers
+						the application runs on, object storage for files you
+						upload, and a mail provider for account email such as
+						password resets.
+					</li>
+				</ul>
+			}
+			@section("How long it is kept") {
+				<p>
+					Until you delete it. Long conversations are summarised rather
+					than discarded, because the point of the product is that it
+					remembers — so a thread you had months ago may survive as a
+					summary after its individual messages are compacted.
+				</p>
+				<p>
+					Deleting your account removes your data. Backups and logs
+					containing incidental records may persist for a short period
+					before rotating out.
+				</p>
+			}
+			@section("What you can do") {
+				<p>
+					Under the UK and EU GDPR you may access, correct, delete,
+					export, restrict or object to the processing of your data, and
+					withdraw consent. Two of these need no request at all:
+				</p>
+				<ul>
+					<li>
+						<strong>Export</strong> — Settings → a complete archive of
+						your data, downloaded immediately.
+					</li>
+					<li>
+						<strong>Deletion</strong> — Settings → delete account.
+					</li>
+				</ul>
+				<p>
+					For anything else, write to
+					<a href={ templ.SafeURL("mailto:" + ContactEmail) }>{ ContactEmail }</a>.
+					If you are unhappy with the response you may complain to your
+					data protection authority — in the UK, the Information
+					Commissioner's Office.
+				</p>
+			}
+			@section("Security, honestly stated") {
+				<p>
+					Passwords are hashed. Integration tokens are encrypted at rest.
+					Sessions are protected against cross-site request forgery, and
+					you can see your account's sign-in history.
+				</p>
+				<p>
+					Khepri is built and run by a very small team. It is not
+					independently audited and holds no security certification. If
+					that is not an acceptable custodian for your health data, the
+					honest advice is not to store it here.
+				</p>
+			}
+			@section("Changes") {
+				<p>
+					Material changes will be announced in the application before
+					they take effect. The date at the top of this page is when it
+					last changed.
+				</p>
+			}
+		}
+	}
+}

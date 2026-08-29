@@ -154,6 +154,7 @@ templ SignupPage(f SignupForm) {
 					@button.Button(button.Props{Type: button.TypeSubmit, FullWidth: true, Class: "bg-signal text-background hover:bg-signal/90"}) {
 						Create account
 					}
+					@consent()
 				</form>
 				<p id="passkey-error" class="text-destructive mt-3 hidden text-sm" role="alert"></p>
 			}
@@ -184,4 +185,23 @@ templ field(name, labelText, errMsg string) {
 			}
 		}
 	}
+}
+
+// consent is the notice shown under the signup button.
+//
+// Khepri stores weight, sleep, biometrics and journal text, which are special
+// category data under Article 9 — so consent has to be explicit, informed and
+// recorded, not buried in a footer link. Whether this notice is sufficient on
+// its own or has to become a ticked box is a question for the lawyer who
+// reviews the policy; the copy is written so that either shape reads correctly.
+templ consent() {
+	<p class="text-muted-foreground mt-4 text-center text-xs leading-relaxed">
+		By creating an account you agree to the
+		<a href="/terms" class="underline underline-offset-4 hover:text-foreground">terms</a>
+		and the
+		<a href="/privacy" class="underline underline-offset-4 hover:text-foreground">privacy policy</a>
+		, and you explicitly consent to Khepri storing and processing the health
+		data you choose to record — weight, sleep, activity and anything
+		health-related you write. You can export or delete all of it at any time.
+	</p>
 }

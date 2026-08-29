@@ -28,15 +28,17 @@ type StravaActivity struct {
 }
 
 type StravaConnection struct {
-	UserID             uuid.UUID
-	AthleteID          int64
-	AccessToken        string
-	RefreshToken       string
-	ExpiresAt          time.Time
-	Scopes             string
-	LastSyncedAt       *time.Time
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
-	AccessTokenSealed  []byte
-	RefreshTokenSealed []byte
+	UserID              uuid.UUID
+	AthleteID           int64
+	AccessToken         string
+	RefreshToken        string
+	ExpiresAt           time.Time
+	Scopes              string
+	LastSyncedAt        *time.Time
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+	AccessTokenSealed   []byte
+	RefreshTokenSealed  []byte
+	LastSyncError       string
+	LastSyncAttemptedAt *time.Time
 }
