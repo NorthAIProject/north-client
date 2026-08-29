@@ -2,11 +2,13 @@ package main
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/NorthAIProject/north-client/internal/config"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
 )
 
@@ -139,4 +141,49 @@ func TestTheDestinationRegistryMatchesTheRouter(t *testing.T) {
 			}
 		}
 	})
+}
+
+// The layout package proves the palette renders. This proves it survives the
+// journey to a browser: through RequireAuth, RequireOnboarded, the CSRF and
+// body-limit middleware, and out of a real ResponseWriter.
+//
+// Worth its own test because a templ component that renders correctly in
+// isolation and a page that arrives correctly over HTTP have failed apart
+// before — templ flushes nothing on error, so the difference between the two
+// is a 200 with an empty body.
+func TestASignedInPageServesThePalette(t *testing.T) {
+	handler, pool := testRoutesAndPool(t, func(*config.Config) {})
+	session := signIn(t, pool)
+
+	req := httptest.NewRequest(http.MethodGet, "/app", nil)
+	req.AddCookie(session)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /app answered %d, want 200", rec.Code)
+	}
+
+	body := rec.Body.String()
+	if strings.TrimSpace(body) == "" {
+		t.Fatal("GET /app answered 200 with an empty body")
+	}
+
+	for _, want := range []string{
+		`id="command-palette"`,
+		`x-data="commandPalette"`,
+		`/assets/js/shared/command-palette.js`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the served page does not contain %s", want)
+		}
+	}
+
+	// Every destination has to be in the markup the browser filters, or the
+	// page it points at is unreachable from the palette.
+	for _, d := range layout.Destinations() {
+		if !strings.Contains(body, `href="`+d.Href+`"`) {
+			t.Errorf("%q (%s) is missing from the served palette", d.Label, d.Href)
+		}
+	}
 }

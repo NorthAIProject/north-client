@@ -186,6 +186,16 @@ tasks:
     desc: Run the offline test suite
     cmds:
       - go test ./...
+      - task: test:js
+
+  # The command palette is the only navigation route to most of the
+  # application, and its matching, ranking and keyboard model are the one part
+  # of it Go cannot reach. Node's built-in runner, so this stays dependency-free
+  # and there is no package.json.
+  test:js:
+    desc: Run the browser-side tests
+    cmds:
+      - node --test web/assets/js/_tests/*.test.js
 
   test:eval:
     desc: Run the grounding evals, offline tier (no API key, no database)
