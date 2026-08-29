@@ -18,6 +18,8 @@ import (
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/lifedomain"
 	"github.com/NorthAIProject/north-client/internal/users"
+
+	"github.com/NorthAIProject/north-client/internal/analytics"
 )
 
 // Coaching style presets map to the free-text coaching_style column settings
@@ -81,6 +83,15 @@ type Service struct {
 	// questionnaire still works; the person simply starts their own thread.
 	coach Coach
 	log   *slog.Logger
+
+	// funnel is nil-safe, like coach: no PostHog key, no events, same journey.
+	funnel *analytics.Funnel
+}
+
+// WithFunnel attaches product analytics.
+func (s *Service) WithFunnel(p *analytics.Funnel) *Service {
+	s.funnel = p
+	return s
 }
 
 func NewService(u *users.Service, m *memories.Service, g *goals.Service) *Service {
@@ -217,6 +228,11 @@ func (s *Service) Complete(ctx context.Context, user users.User, in Answers) (us
 	if err != nil {
 		return user, uuid.Nil, err
 	}
+
+	// Recorded here rather than in Skip: the funnel asks how many people
+	// answered the questions, and counting a skip would answer it wrongly in
+	// the flattering direction.
+	s.funnel.OnboardingCompleted(ctx, onboarded.ID)
 
 	// Seeded last, and deliberately after MarkOnboarded: the context builder
 	// reads the goal and memories written above, so the first reply is only

@@ -22,7 +22,7 @@ func (q *Queries) DeleteStravaConnection(ctx context.Context, userID uuid.UUID) 
 }
 
 const getStravaConnection = `-- name: GetStravaConnection :one
-SELECT user_id, athlete_id, access_token, refresh_token, expires_at, scopes, last_synced_at, created_at, updated_at, access_token_sealed, refresh_token_sealed FROM strava_connections WHERE user_id = $1
+SELECT user_id, athlete_id, access_token, refresh_token, expires_at, scopes, last_synced_at, created_at, updated_at, access_token_sealed, refresh_token_sealed, last_sync_error, last_sync_attempted_at FROM strava_connections WHERE user_id = $1
 `
 
 func (q *Queries) GetStravaConnection(ctx context.Context, userID uuid.UUID) (StravaConnection, error) {
@@ -40,6 +40,8 @@ func (q *Queries) GetStravaConnection(ctx context.Context, userID uuid.UUID) (St
 		&i.UpdatedAt,
 		&i.AccessTokenSealed,
 		&i.RefreshTokenSealed,
+		&i.LastSyncError,
+		&i.LastSyncAttemptedAt,
 	)
 	return i, err
 }
@@ -91,9 +93,69 @@ func (q *Queries) ListStravaActivities(ctx context.Context, arg ListStravaActivi
 	return items, nil
 }
 
+const listStravaConnectionsDueForSync = `-- name: ListStravaConnectionsDueForSync :many
+SELECT user_id FROM strava_connections
+WHERE last_synced_at IS NULL
+   OR last_synced_at < $1::timestamptz
+ORDER BY last_synced_at ASC NULLS FIRST
+LIMIT $2::int
+`
+
+type ListStravaConnectionsDueForSyncParams struct {
+	Before  time.Time
+	MaxRows int32
+}
+
+// Connections the periodic sweep should re-sync: never synced, or not since
+// the cutoff. Ordered oldest first so a backlog drains fairly rather than
+// starving whoever sorts last by id.
+func (q *Queries) ListStravaConnectionsDueForSync(ctx context.Context, arg ListStravaConnectionsDueForSyncParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listStravaConnectionsDueForSync, arg.Before, arg.MaxRows)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []uuid.UUID{}
+	for rows.Next() {
+		var user_id uuid.UUID
+		if err := rows.Scan(&user_id); err != nil {
+			return nil, err
+		}
+		items = append(items, user_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const markStravaSyncFailed = `-- name: MarkStravaSyncFailed :exec
+UPDATE strava_connections
+SET last_sync_attempted_at = now(),
+    last_sync_error        = $2,
+    updated_at             = now()
+WHERE user_id = $1
+`
+
+type MarkStravaSyncFailedParams struct {
+	UserID        uuid.UUID
+	LastSyncError string
+}
+
+// last_synced_at is deliberately untouched. It is the window the next import
+// starts from, and advancing it on a failure would skip whatever that run
+// never managed to fetch.
+func (q *Queries) MarkStravaSyncFailed(ctx context.Context, arg MarkStravaSyncFailedParams) error {
+	_, err := q.db.Exec(ctx, markStravaSyncFailed, arg.UserID, arg.LastSyncError)
+	return err
+}
+
 const markStravaSynced = `-- name: MarkStravaSynced :exec
 UPDATE strava_connections
-SET last_synced_at = $2, updated_at = now()
+SET last_synced_at         = $2,
+    last_sync_attempted_at = now(),
+    last_sync_error        = '',
+    updated_at             = now()
 WHERE user_id = $1
 `
 
@@ -102,6 +164,9 @@ type MarkStravaSyncedParams struct {
 	LastSyncedAt *time.Time
 }
 
+// Success clears the error as well as moving the watermark: a card that keeps
+// showing yesterday's failure after today's sync worked is worse than one that
+// shows nothing.
 func (q *Queries) MarkStravaSynced(ctx context.Context, arg MarkStravaSyncedParams) error {
 	_, err := q.db.Exec(ctx, markStravaSynced, arg.UserID, arg.LastSyncedAt)
 	return err
@@ -148,7 +213,7 @@ SET access_token         = $2,
     expires_at           = $6,
     updated_at           = now()
 WHERE user_id = $1
-RETURNING user_id, athlete_id, access_token, refresh_token, expires_at, scopes, last_synced_at, created_at, updated_at, access_token_sealed, refresh_token_sealed
+RETURNING user_id, athlete_id, access_token, refresh_token, expires_at, scopes, last_synced_at, created_at, updated_at, access_token_sealed, refresh_token_sealed, last_sync_error, last_sync_attempted_at
 `
 
 type UpdateStravaTokensParams struct {
@@ -182,6 +247,8 @@ func (q *Queries) UpdateStravaTokens(ctx context.Context, arg UpdateStravaTokens
 		&i.UpdatedAt,
 		&i.AccessTokenSealed,
 		&i.RefreshTokenSealed,
+		&i.LastSyncError,
+		&i.LastSyncAttemptedAt,
 	)
 	return i, err
 }
@@ -256,7 +323,7 @@ ON CONFLICT (user_id) DO UPDATE SET
     expires_at           = EXCLUDED.expires_at,
     scopes               = EXCLUDED.scopes,
     updated_at           = now()
-RETURNING user_id, athlete_id, access_token, refresh_token, expires_at, scopes, last_synced_at, created_at, updated_at, access_token_sealed, refresh_token_sealed
+RETURNING user_id, athlete_id, access_token, refresh_token, expires_at, scopes, last_synced_at, created_at, updated_at, access_token_sealed, refresh_token_sealed, last_sync_error, last_sync_attempted_at
 `
 
 type UpsertStravaConnectionParams struct {
@@ -299,6 +366,8 @@ func (q *Queries) UpsertStravaConnection(ctx context.Context, arg UpsertStravaCo
 		&i.UpdatedAt,
 		&i.AccessTokenSealed,
 		&i.RefreshTokenSealed,
+		&i.LastSyncError,
+		&i.LastSyncAttemptedAt,
 	)
 	return i, err
 }

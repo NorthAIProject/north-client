@@ -44,10 +44,15 @@ tasks:
           > ./web/assets/css/sources.generated.css && \
         tailwindcss -i ./web/assets/css/input.css -o ./web/assets/css/output.css --watch
 
+  # The worker runs alongside the web process, not on request. Every async
+  # feature — Strava sync, memory extraction, thread summaries, the daily
+  # briefing, document indexing — is a job, and a job nobody claims is a
+  # feature that silently does nothing. Leaving the worker as a separate
+  # command people had to remember cost eleven days of "Strava is broken".
   dev:
-    desc: Start development server with hot reload (expects DB already up)
+    desc: Start development server, background worker, and hot reload (expects DB already up)
     cmds:
-      - task --parallel tailwind templ
+      - task --parallel tailwind templ worker
 
   # Full local stack: containers, wait for Postgres, then hot-reload app.
   # Schema migrations run automatically when the web process starts.
@@ -181,6 +186,16 @@ tasks:
     desc: Run the offline test suite
     cmds:
       - go test ./...
+      - task: test:js
+
+  # The command palette is the only navigation route to most of the
+  # application, and its matching, ranking and keyboard model are the one part
+  # of it Go cannot reach. Node's built-in runner, so this stays dependency-free
+  # and there is no package.json.
+  test:js:
+    desc: Run the browser-side tests
+    cmds:
+      - node --test web/assets/js/_tests/*.test.js
 
   test:eval:
     desc: Run the grounding evals, offline tier (no API key, no database)

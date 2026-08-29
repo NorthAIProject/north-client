@@ -15,17 +15,19 @@ import (
 const claimMessagingUpdate = `-- name: ClaimMessagingUpdate :one
 UPDATE messaging_links
 SET last_update_id = $3,
+    account_id     = $4,
     last_seen_at   = now()
 WHERE platform = $1
   AND external_id = $2
-  AND $3 > last_update_id
-RETURNING id, user_id, platform, external_id, last_update_id, created_at, last_seen_at
+  AND ($3 > last_update_id OR account_id IS DISTINCT FROM $4)
+RETURNING id, user_id, platform, external_id, last_update_id, created_at, last_seen_at, account_id
 `
 
 type ClaimMessagingUpdateParams struct {
 	Platform     string
 	ExternalID   string
 	LastUpdateID int64
+	AccountID    string
 }
 
 // ClaimMessagingUpdate resolves the sender and rejects a redelivery in one
@@ -40,8 +42,21 @@ type ClaimMessagingUpdateParams struct {
 // No rows means one of two things — not linked, or already seen — and the
 // caller distinguishes them with GetMessagingLink. Cheap, because that only
 // happens off the common path.
+// The account check is what makes a bot change safe. Update ids are a sequence
+// per bot, so a different bot's ids are not comparable with this row's
+// watermark at all — they are a new sequence that happens to start lower.
+// Without this, swapping bots makes every existing link permanently deaf, and
+// silently, because a lower id is indistinguishable from a redelivery.
+//
+// IS DISTINCT FROM rather than <>: it is the form that treats a first-ever
+// claim on a legacy row the same as a genuine change.
 func (q *Queries) ClaimMessagingUpdate(ctx context.Context, arg ClaimMessagingUpdateParams) (MessagingLink, error) {
-	row := q.db.QueryRow(ctx, claimMessagingUpdate, arg.Platform, arg.ExternalID, arg.LastUpdateID)
+	row := q.db.QueryRow(ctx, claimMessagingUpdate,
+		arg.Platform,
+		arg.ExternalID,
+		arg.LastUpdateID,
+		arg.AccountID,
+	)
 	var i MessagingLink
 	err := row.Scan(
 		&i.ID,
@@ -51,6 +66,7 @@ func (q *Queries) ClaimMessagingUpdate(ctx context.Context, arg ClaimMessagingUp
 		&i.LastUpdateID,
 		&i.CreatedAt,
 		&i.LastSeenAt,
+		&i.AccountID,
 	)
 	return i, err
 }
@@ -128,7 +144,7 @@ func (q *Queries) DeleteMessagingLinkCodesForUser(ctx context.Context, arg Delet
 }
 
 const getMessagingLink = `-- name: GetMessagingLink :one
-SELECT id, user_id, platform, external_id, last_update_id, created_at, last_seen_at FROM messaging_links
+SELECT id, user_id, platform, external_id, last_update_id, created_at, last_seen_at, account_id FROM messaging_links
 WHERE platform = $1 AND external_id = $2
 `
 
@@ -148,6 +164,7 @@ func (q *Queries) GetMessagingLink(ctx context.Context, arg GetMessagingLinkPara
 		&i.LastUpdateID,
 		&i.CreatedAt,
 		&i.LastSeenAt,
+		&i.AccountID,
 	)
 	return i, err
 }
@@ -155,7 +172,7 @@ func (q *Queries) GetMessagingLink(ctx context.Context, arg GetMessagingLinkPara
 const insertMessagingLink = `-- name: InsertMessagingLink :one
 INSERT INTO messaging_links (user_id, platform, external_id, last_seen_at)
 VALUES ($1, $2, $3, now())
-RETURNING id, user_id, platform, external_id, last_update_id, created_at, last_seen_at
+RETURNING id, user_id, platform, external_id, last_update_id, created_at, last_seen_at, account_id
 `
 
 type InsertMessagingLinkParams struct {
@@ -182,12 +199,13 @@ func (q *Queries) InsertMessagingLink(ctx context.Context, arg InsertMessagingLi
 		&i.LastUpdateID,
 		&i.CreatedAt,
 		&i.LastSeenAt,
+		&i.AccountID,
 	)
 	return i, err
 }
 
 const listMessagingLinksByUser = `-- name: ListMessagingLinksByUser :many
-SELECT id, user_id, platform, external_id, last_update_id, created_at, last_seen_at FROM messaging_links
+SELECT id, user_id, platform, external_id, last_update_id, created_at, last_seen_at, account_id FROM messaging_links
 WHERE user_id = $1
 ORDER BY created_at
 `
@@ -209,6 +227,7 @@ func (q *Queries) ListMessagingLinksByUser(ctx context.Context, userID uuid.UUID
 			&i.LastUpdateID,
 			&i.CreatedAt,
 			&i.LastSeenAt,
+			&i.AccountID,
 		); err != nil {
 			return nil, err
 		}

@@ -155,8 +155,9 @@ func run() error {
 	// so a slow or rate-limited provider never holds a page open.
 	biometricSvc := biometrics.NewService(biometrics.NewRepository(pool))
 	activitySvc := activity.NewService(activity.NewRepository(pool), biometricSvc)
+	stravaRepo := strava.NewRepository(pool, sealer)
 	stravaSvc := strava.NewService(strava.Options{
-		Repository:   strava.NewRepository(pool, sealer),
+		Repository:   stravaRepo,
 		Activity:     activitySvc,
 		Biometrics:   biometricSvc,
 		Queue:        queue,
@@ -164,6 +165,11 @@ func run() error {
 		ClientSecret: cfg.StravaClientSecret,
 		BaseURL:      cfg.BaseURL,
 	})
+
+	// Strava has no webhook and nothing else puts a sync on a timer, so
+	// without this sweep an athlete's activities arrive only on the day they
+	// remember to press Sync now.
+	stravaSweeper := strava.NewSweeper(stravaRepo, queue, 0, log)
 
 	// Documents are parsed and chunked here rather than during the upload:
 	// indexing one file is bounded work, rebuilding a library is not, and
@@ -221,6 +227,7 @@ func run() error {
 	worker.Register(jobs.KindAnalyzeFormVideo, mediaSvc.AnalyzeVideo)
 	worker.Register(jobs.KindExtractMemories, memoryExtract.HandleExtractJob)
 	worker.Register(jobs.KindSyncStrava, syncStravaHandler(stravaSvc))
+	worker.Register(jobs.KindSweepStrava, stravaSweeper.HandleSweep)
 	worker.Register(jobs.KindIndexDocument, documentIndexer.HandleIndexDocument)
 	worker.Register(jobs.KindReindexUser, documentIndexer.HandleReindexUser)
 	worker.Register(jobs.KindEmbedChunks, documentEmbedder.HandleEmbedJob)
@@ -349,6 +356,7 @@ func run() error {
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepReports, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepBriefings, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepSummaries, struct{}{})
+	worker.RegisterPeriodic(time.Hour, jobs.KindSweepStrava, struct{}{})
 	worker.RegisterPeriodic(24*time.Hour, jobs.KindSweepQuotas, struct{}{})
 
 	log.Info("worker ready",
