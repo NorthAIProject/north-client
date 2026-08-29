@@ -10,13 +10,22 @@
 -- No rows means one of two things — not linked, or already seen — and the
 -- caller distinguishes them with GetMessagingLink. Cheap, because that only
 -- happens off the common path.
+-- The account check is what makes a bot change safe. Update ids are a sequence
+-- per bot, so a different bot's ids are not comparable with this row's
+-- watermark at all — they are a new sequence that happens to start lower.
+-- Without this, swapping bots makes every existing link permanently deaf, and
+-- silently, because a lower id is indistinguishable from a redelivery.
+--
+-- IS DISTINCT FROM rather than <>: it is the form that treats a first-ever
+-- claim on a legacy row the same as a genuine change.
 -- name: ClaimMessagingUpdate :one
 UPDATE messaging_links
 SET last_update_id = $3,
+    account_id     = $4,
     last_seen_at   = now()
 WHERE platform = $1
   AND external_id = $2
-  AND $3 > last_update_id
+  AND ($3 > last_update_id OR account_id IS DISTINCT FROM $4)
 RETURNING *;
 
 -- name: GetMessagingLink :one

@@ -31,8 +31,13 @@ type BiometricsLookup interface {
 
 // Enqueuer is the queue as this package needs it, so a sync can be handed to
 // the worker without importing the whole jobs surface.
+//
+// HasPendingJobForUser is here for Status, not for enqueueing: a sync that was
+// queued and never claimed is the failure this integration actually suffered,
+// and it is invisible in the connection row because nothing ever wrote to it.
 type Enqueuer interface {
 	Enqueue(ctx context.Context, kind jobs.Kind, payload any) (jobs.Job, error)
+	HasPendingJobForUser(ctx context.Context, kind jobs.Kind, userID uuid.UUID) (bool, error)
 }
 
 type Service struct {
@@ -103,6 +108,22 @@ func (s *Service) Status(ctx context.Context, userID uuid.UUID) (Status, error) 
 	out.Connected = true
 	out.AthleteID = conn.AthleteID
 	out.LastSyncedAt = conn.LastSyncedAt
+	out.LastSyncError = conn.LastSyncError
+	out.LastSyncAttemptedAt = conn.LastSyncAttemptedAt
+
+	// A queued sync is worth saying out loud. Without it, "we asked and
+	// nothing has run it" is indistinguishable from "we never asked", which
+	// is the state a real account sat in for eleven days.
+	if s.queue != nil {
+		pending, err := s.queue.HasPendingJobForUser(ctx, jobs.KindSyncStrava, userID)
+		if err != nil {
+			// Not worth failing the card over: the rest of the status is
+			// already correct without it.
+			slog.Default().Warn("could not check for a queued strava sync",
+				slog.Any("error", err), slog.String("user_id", userID.String()))
+		}
+		out.SyncPending = pending
+	}
 	return out, nil
 }
 
@@ -188,6 +209,14 @@ func (s *Service) queueSync(ctx context.Context, userID uuid.UUID) {
 // nobody asked for. The window starts from the last successful sync, or a
 // fixed backfill for the first one.
 func (s *Service) Sync(ctx context.Context, userID uuid.UUID) (SyncResult, error) {
+	// Checked here as well as in Connect because the two run in different
+	// processes. A worker deployment missing the credentials the web one has
+	// would otherwise reach refresh with a nil oauth config and panic, which
+	// the job runner turns into a bare stack trace nobody can act on.
+	if !s.Configured() {
+		return SyncResult{}, apperr.New("strava is not configured")
+	}
+
 	conn, err := s.repo.Get(ctx, userID)
 	if err != nil {
 		return SyncResult{}, err
@@ -345,6 +374,17 @@ func (s *Service) HandleSyncJob(ctx context.Context, userID uuid.UUID) error {
 			// Disconnected between enqueue and run. Nothing to do, and
 			// retrying will not help.
 			return nil
+		}
+
+		// Recorded before the error is returned, so the reason is on screen
+		// while the job is still working through its retries rather than only
+		// after the last one has failed.
+		//
+		// A failure to record must not mask the failure being recorded: it is
+		// logged and the original error is what the job runner sees.
+		if markErr := s.repo.MarkSyncFailed(ctx, userID, err.Error()); markErr != nil {
+			slog.Default().Error("could not record strava sync failure",
+				slog.Any("error", markErr), slog.String("user_id", userID.String()))
 		}
 		return err
 	}

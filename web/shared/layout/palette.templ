@@ -1,0 +1,184 @@
+package layout
+
+import (
+	"strconv"
+	"strings"
+
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/dialog"
+	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
+	"github.com/NorthAIProject/north-client/web/shared/ui/input"
+)
+
+// paletteID is the dialog root the ⌘K handler opens.
+const paletteID = "command-palette"
+
+// paletteOrder is the row's resting position: its index in the registry.
+//
+// Ranking is done with CSS order rather than by rebuilding the list, so a
+// keystroke assigns thirty-one integers instead of touching the DOM. This is
+// the server-rendered starting value, which is also the correct order for an
+// empty query.
+func paletteOrder(index int) templ.Attributes {
+	return templ.Attributes{"style": "order:" + strconv.Itoa(index)}
+}
+
+// haystack is everything a query is matched against, lowercased once here so
+// the browser never has to build it.
+//
+// Rendering it as an attribute rather than shipping a JSON copy of the registry
+// means the DOM is the data: there is one list, it is already on the page, and
+// filtering is reading attributes off nodes that exist.
+func haystack(d Destination) string {
+	parts := append([]string{d.Label, d.Description, d.Group}, d.Keywords...)
+	return strings.ToLower(strings.Join(parts, " "))
+}
+
+// commandPalette is the topbar search button and the dialog it opens.
+//
+// Filtering happens in the browser rather than over HTMX, which is the one
+// place this codebase's "prefer HTMX" rule does not apply: there are thirty-one
+// fixed rows, no server state, no user data and no authorization decision, and
+// a palette that waited 300ms plus a round trip per keystroke would be a worse
+// palette than no palette. The knowledge search debounces because it queries an
+// unbounded corpus; this does not.
+templ commandPalette() {
+	<div x-data="commandPalette" x-on:keydown.window="hotkey($event)" class="contents">
+		@dialog.Trigger(dialog.TriggerProps{For: paletteID}) {
+			@button.Button(button.Props{
+				Variant: button.VariantOutline,
+				Size:    button.SizeSm,
+				Class:   "text-muted-foreground gap-2 font-normal",
+				Attributes: templ.Attributes{
+					"type":       "button",
+					"aria-label": "Search pages",
+				},
+			}) {
+				@icon.Icon("search")(icon.Props{Class: "size-4"})
+				<span class="hidden sm:inline">Search</span>
+				<kbd
+					class="border-border bg-muted text-muted-foreground hidden rounded border px-1.5 py-0.5 font-mono text-[10px] sm:inline"
+					x-text="hotkeyLabel"
+				>⌘K</kbd>
+			}
+		}
+		@dialog.Dialog(dialog.Props{ID: paletteID}) {
+			@dialog.Content(dialog.ContentProps{
+				HideCloseButton: true,
+				Class:           "top-[12%] translate-y-0 gap-0 overflow-hidden p-0 sm:max-w-xl",
+				Attributes:      templ.Attributes{"x-on:close": "reset()"},
+			}) {
+				@dialog.Title(dialog.TitleProps{Class: "sr-only"}) {
+					Go to page
+				}
+				<div class="border-border relative border-b">
+					<span class="text-muted-foreground pointer-events-none absolute top-1/2 left-4 -translate-y-1/2">
+						@icon.Icon("search")(icon.Props{Class: "size-4"})
+					</span>
+					@input.Input(input.Props{
+						ID:          "command-palette-query",
+						Type:        input.TypeSearch,
+						Placeholder: "Search pages…",
+						Class:       "h-12 rounded-none border-0 pl-11 shadow-none focus-visible:ring-0",
+						Attributes: templ.Attributes{
+							"x-model":              "q",
+							"x-on:keydown":         "nav($event)",
+							"role":                 "combobox",
+							"aria-expanded":        "true",
+							"aria-controls":        "command-palette-list",
+							"aria-autocomplete":    "list",
+							":aria-activedescendant": "activeID",
+							"autocomplete":         "off",
+							"autocorrect":          "off",
+							"spellcheck":           "false",
+							"autofocus":            "true",
+						},
+					})
+				</div>
+				<div
+					id="command-palette-list"
+					role="listbox"
+					aria-label="Pages"
+					class="flex max-h-[60vh] flex-col overflow-y-auto p-2"
+				>
+					{{ index := 0 }}
+					for _, group := range GroupOrder() {
+						<div
+							role="presentation"
+							class="text-muted-foreground px-2 pt-3 pb-1 text-xs font-medium tracking-wide first:pt-1"
+							x-show="!q"
+							{ paletteOrder(index)... }
+						>
+							{ group }
+						</div>
+						{{ index++ }}
+						for _, d := range Destinations() {
+							if d.Group == group {
+								@paletteRow(d, index)
+								{{ index++ }}
+							}
+						}
+					}
+				</div>
+				<p
+					class="text-muted-foreground px-4 py-6 text-center text-sm"
+					x-show="count === 0"
+					x-cloak
+				>
+					No pages match <span class="text-foreground font-medium" x-text="q"></span>.
+				</p>
+				<span class="sr-only" aria-live="polite" x-text="announce"></span>
+				<div class="border-border text-muted-foreground flex gap-4 border-t px-4 py-2 text-[11px]">
+					<span>↑↓ navigate</span>
+					<span>⏎ open</span>
+					<span>esc close</span>
+				</div>
+			}
+		}
+	</div>
+}
+
+// paletteRow is one destination.
+//
+// A real anchor, not a div with a click handler: ⌘-click, middle-click and
+// "copy link address" all keep working, and Enter is implemented as a click on
+// this element so the browser owns what navigation means.
+templ paletteRow(d Destination, index int) {
+	<a
+		href={ templ.SafeURL(d.Href) }
+		role="option"
+		id={ "command-palette-row-" + strconv.Itoa(index) }
+		data-palette-row
+		data-index={ strconv.Itoa(index) }
+		data-label={ strings.ToLower(d.Label) }
+		data-haystack={ haystack(d) }
+		class="text-foreground flex items-center gap-3 rounded-md px-2 py-2 text-sm no-underline"
+		x-show="matches($el)"
+		x-on:mouseenter="activate($el)"
+		:class="isActive($el) ? 'bg-accent' : ''"
+		:aria-selected="isActive($el)"
+		:style="'order:' + rank($el)"
+		{ paletteOrder(index)... }
+	>
+		<span class="text-muted-foreground shrink-0">
+			@icon.Icon(d.Icon)(icon.Props{Class: "size-4"})
+		</span>
+		<span class="min-w-0 flex-1 truncate">{ d.Label }</span>
+		<span class="text-muted-foreground hidden truncate text-xs sm:block sm:max-w-[55%]">
+			{ d.Description }
+		</span>
+	</a>
+}
+
+var paletteScriptOnce = templ.NewOnceHandle()
+
+// PaletteScripts loads the palette behaviour once per page.
+//
+// A plain script tag rather than utils.ComponentScript: that helper resolves to
+// a .min.js twin and belongs to the vendored templUI tree, which this is not
+// part of.
+templ PaletteScripts() {
+	@paletteScriptOnce.Once() {
+		<script src="/assets/js/shared/command-palette.js" defer></script>
+	}
+}

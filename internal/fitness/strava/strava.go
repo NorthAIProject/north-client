@@ -37,6 +37,11 @@ type Connection struct {
 	LastSyncedAt *time.Time
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
+
+	// LastSyncError is empty on success and after a first connection. It is a
+	// wrapped Go error, never a Strava response body, so it carries no token.
+	LastSyncError       string
+	LastSyncAttemptedAt *time.Time
 }
 
 // Expired reports whether the access token needs refreshing before use. The
@@ -52,6 +57,23 @@ type Status struct {
 	Connected    bool
 	AthleteID    int64
 	LastSyncedAt *time.Time
+
+	// LastSyncError and LastSyncAttemptedAt exist so a failed sync reads as a
+	// failure. Without them a broken token, an unreachable Strava and a job
+	// nobody ran all render identically to a connection that is simply new.
+	LastSyncError       string
+	LastSyncAttemptedAt *time.Time
+
+	// SyncPending means a sync job is queued or running. A queued job that
+	// nothing claims is what a stopped worker looks like from here, and it
+	// used to be completely invisible.
+	SyncPending bool
+
+	// Unavailable means the connection could not be read at all — a decrypt
+	// failure or a database error. Distinct from Connected: "we do not know"
+	// must not be shown as "not connected", which invites a reconnect that
+	// overwrites a working credential.
+	Unavailable bool
 }
 
 // Activity is Strava's own view of one recorded activity.

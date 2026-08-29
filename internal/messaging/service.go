@@ -146,7 +146,7 @@ func NewService(opts Options) *Service {
 func (s *Service) Handle(ctx context.Context, in InboundMessage) (OutboundMessage, error) {
 	in.Text = strings.TrimSpace(in.Text)
 
-	link, err := s.links.ClaimUpdate(ctx, in.Platform, in.ExternalID, in.UpdateID)
+	link, err := s.links.ClaimUpdate(ctx, in.Platform, in.ExternalID, in.UpdateID, in.AccountID)
 	switch {
 	case err == nil:
 		// Linked, and this delivery is new.
