@@ -23,11 +23,18 @@ and this script fits the second around the first.
 cd tools/model
 npm install
 
+# If the skin is the Sketchfab T-pose base mesh, fold the arms first:
+node prepare-skin.mjs \
+  --in  ~/Downloads/human_body_base_mesh_male.glb \
+  --out /tmp/north-model-src/skin-arms-down.glb
+
 node build-body.mjs \
-  --muscles ~/Downloads/z-anatomy-body.glb \
-  --skin    ~/Downloads/athletic-body.glb \
-  --out     ../../web/assets/models/body.glb
+  --muscles /tmp/north-model-src/z-anatomy-body.glb \
+  --skin    /tmp/north-model-src/skin-arms-down.glb \
+  --out     web/assets/models/body.glb
 ```
+
+`--out` is relative to the repository root, not to `tools/model`.
 
 | flag | default | what it does |
 |---|---|---|

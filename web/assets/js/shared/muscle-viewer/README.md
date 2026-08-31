@@ -67,14 +67,6 @@ wrong, and both are easy to break by "simplifying":
 source meshes in `body.glb` actually fit each other, and lists any mesh in the
 asset that no muscle key claims. See `tools/model/README.md`.
 
-## Placeholder arms
-
-`addPlaceholderArms()` is temporary. The shipped `body.glb` has no arms on its
-outer body — they were cropped off to dodge a T-pose clash — which leaves hollow
-shoulders and arm muscles that can never glow. It stands a capsule in for each
-arm until the real body arrives, and disables itself as soon as the skin has
-textures. **Delete it when `body.glb` is rebuilt.**
-
 ## Adding a new exercise
 
 Nothing to register. Exercise names are free text written by the AI plan

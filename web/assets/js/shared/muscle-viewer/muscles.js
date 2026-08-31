@@ -111,12 +111,16 @@ export const MUSCLE_ALIASES = {
   // Surface layers only: the internal oblique and transversus abdominis sit under
   // these two and cover the same area.
   abs: ["rectus abdominis muscle", "external abdominal oblique muscle", "abdominals", "abs"],
-  // Deliberately empty: body.glb has no pectoralis mesh, so setLoads finds nothing to
-  // colour and skips the key. The group is still canonical — see UnmodelledGroups in
-  // internal/workouts/plan/muscle.go, and the note the viewer component renders so a
-  // bench press does not appear to train nothing. Fill this in when the model gains
-  // pec major/minor.
-  chest: [],
+  // Surface heads of pec major plus pec minor, from the Z-Anatomy atlas.
+  chest: [
+    "pectoralis major muscle",
+    "pectoralis minor muscle",
+    "clavicular head of pectoralis major muscle",
+    "sternocostal head of pectoralis major muscle",
+    "abdominal part of pectoralis major muscle",
+    "pectorals",
+    "pecs",
+  ],
   // The cervical heads of the erector columns, kept out of `erectors` above. Not a
   // sternocleidomastoid — body.glb has none — so this highlights neck extension,
   // which is what the neck-trained exercises in the catalog actually are.

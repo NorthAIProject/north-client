@@ -68,6 +68,18 @@ func exercises() []exercise {
 			},
 		},
 		{
+			Key:  "bench",
+			Name: "Bench press",
+			Cue:  "Shoulder blades set. The bar touches the chest, not the neck.",
+			Loads: []muscleLoad{
+				{"chest", "Pectorals", "Primary", 42},
+				{"triceps", "Triceps", "Primary", 22},
+				{"delts", "Anterior deltoid", "Secondary", 18},
+				{"serratus", "Serratus anterior", "Stabiliser", 10},
+				{"abs", "Abdominals", "Stabiliser", 8},
+			},
+		},
+		{
 			Key:  "press",
 			Name: "Overhead press",
 			Cue:  "Ribs down. The bar finishes over the ears, not in front of them.",
