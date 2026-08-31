@@ -54,7 +54,7 @@ func TestBaseLinksBothFavicons(t *testing.T) {
 	// SVG first so a browser that understands it takes the sharp one; the PNG
 	// is the tab fallback. Install icons are linked separately as apple-touch-icon.
 	svg := strings.Index(out, `href="/assets/brand/favicon.svg"`)
-	png := strings.Index(out, `href="/assets/brand/north-logo-mark.png"`)
+	png := strings.Index(out, `href="/assets/brand/khepri-logo-mark.png"`)
 
 	switch {
 	case svg < 0:

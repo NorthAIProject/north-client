@@ -1,20 +1,13 @@
 package ui
 
-// BrandMark is the north-star symbol used in marketing, auth, and app chrome so
+// BrandMark is the Khepri scarab used in marketing, auth, and app chrome so
 // the product is recognizable after login — not only on the landing page.
 //
-// Size is the rendered box; the mark is transparent and works on light and dark
-// because its colour is fixed brand gradient rather than inherited.
-//
-// An <img> rather than an inlined SVG, deliberately. Inlining exists to let a
-// mark pick up currentColor, and this one must not: the gradient is the brand.
-// Inlining would also repeat the gradient's id at every call site, and ids in
-// SVG are document-global — four marks in one page would leave three of them
-// referencing the first one's gradient. See north-logo-mark-mono.svg for the
-// variant that is meant to be inlined.
+// Size is the rendered box. The mark is a transparent PNG of the approved
+// gold-and-navy scarab; its colour is the artwork, not inherited.
 templ BrandMark(size string) {
 	<img
-		src="/assets/brand/north-logo-mark.svg"
+		src="/assets/brand/khepri-logo-mark.png"
 		alt=""
 		width="32"
 		height="32"

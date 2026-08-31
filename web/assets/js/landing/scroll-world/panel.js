@@ -127,9 +127,8 @@ export function createFilmPanel(position, palette, reduced, onReady = () => {}) 
 /**
  * The companion, as a billboard.
  *
- * `brand/README.md` describes north-mascot.png as a "Three.js-ready silhouette"
- * for a living companion, which is this. It is 416KB, so it is loaded on demand
- * — see world.js, which only asks for it once the camera is most of the way to
+ * The live companion is the Khepri scarab PNG. It is loaded on demand — see
+ * world.js, which only asks for it once the camera is most of the way to
  * where it stands.
  *
  * @returns {Promise<{sprite: THREE.Sprite, dispose: () => void} | null>}
@@ -137,7 +136,7 @@ export function createFilmPanel(position, palette, reduced, onReady = () => {}) 
 export function createMascot(position, scale = 3.4) {
   return new Promise((resolve) => {
     new THREE.TextureLoader().load(
-      "/assets/brand/north-mascot.png",
+      "/assets/brand/khepri-mascot.png",
       (texture) => {
         texture.colorSpace = THREE.SRGBColorSpace;
         const material = new THREE.SpriteMaterial({

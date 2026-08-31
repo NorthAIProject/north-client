@@ -12,7 +12,7 @@
 // Bumping this name is what retires the previous cache. Old caches are deleted
 // on activate, so a deploy that changes an asset cannot leave somebody pinned
 // to the previous one.
-const CACHE = "north-shell-v1";
+const CACHE = "north-shell-v2";
 
 const OFFLINE_URL = "/offline.html";
 

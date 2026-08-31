@@ -46,8 +46,8 @@ Everything is already embedded and served from `/assets/`. Nothing new was added
   download. Removing that id silently costs the panel its film and leaves the poster.
 - **`video/north-hero-poster.webp`** — the panel before the video has a frame, and the
   only thing it ever shows under `prefers-reduced-motion`.
-- **`brand/north-mascot.png`** — a billboard sprite, loaded on demand once the camera is
-  within 0.2 of it. 416KB, never on first paint.
+- **`brand/khepri-mascot.png`** — a billboard sprite of the Khepri scarab, loaded on
+  demand once the camera is within 0.2 of it. Never on first paint.
 
 ### Not used, and why
 

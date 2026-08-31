@@ -1,39 +1,28 @@
 # The mascot companion
 
-Three files, one component: `web/shared/mascot/mascot.templ` renders a canvas,
-`alpine.js` decides when it lives, `scene.js` runs it, `model.js` is the mascot.
+Two files, one component: `web/shared/mascot/mascot.templ` renders the Khepri
+scarab PNG, `alpine.js` writes `data-state`, and CSS in `web/assets/css/input.css`
+is what actually moves it.
 
-## Why there is no GLB
+## Why there is no Three.js path
 
-The ticket (NOR-51) assumed a Blender-authored `mascot.glb` under 500KB. There
-was no modeller, and the shape — a soft cube, a capsule torso, four capsule
-limbs, two spheres — is simple enough that building it in code costs ~10KB and
-stays editable by whoever is already in the repo.
+NOR-51 built a procedural cube in WebGL because the only approved still was a
+soft-cube head. The live mascot is now Khepri, shipped as
+`brand/khepri-mascot.png`. Rebuilding a scarab from primitives would not match
+the still, and would keep the WebGL tax on chat, onboarding, dashboard, and
+settings. The still is the mascot.
 
-Skipping the asset also skips `GLTFLoader`, `AnimationMixer`, the `tools/model`
-build step, and any new service-worker cache weight.
-
-`buildMascot()` in `model.js` is the seam. A real GLB later means rewriting that
-one function: `scene.js` only ever addresses parts by name, and no templ file
-knows the model exists.
-
-The one thing that must not be re-derived is the forehead glyph. It is the North
-mark, and it comes from `shared/north-star-geometry.js`, whose constants were
-measured off `brand/north-logo-mark.png`. See `brand/README.md`.
+Landing still uses Three.js for the scroll-world. Its companion is the same PNG,
+loaded as a `THREE.Sprite` in `scroll-world/panel.js`.
 
 ## States are poses, not clips
 
 `idle`, `thinking`, `listening` are sustained. `celebrate` and `nod` are
-gestures: they play once and hand control back to whatever was showing.
+gestures: they play once (`animationend`) and hand control back to whatever was
+showing.
 
-Each state is a table of scalars (head tilt, eyelid, arm raise, glow), and a
-critically-damped spring drives current toward target every frame. That is what
-lets a state interrupt another mid-motion without popping, and it is why there
-is no mixer here — a mixer needs clips, clips need a rig, a rig needs the GLB.
-
-On top of the pose sits a function of time: the breathe, the float, the hop, the
-nod. The pose says where the mascot is; the time function is what makes it look
-alive.
+Each state is a CSS animation on the `<img>`. Under `prefers-reduced-motion` the
+animations are not applied, and alpine.js skips gestures entirely.
 
 ## Who drives it
 
@@ -63,23 +52,14 @@ adopts the sustained state and replays a gesture asked for in the last second.
 
 ## Performance contract
 
-- three is imported only when a mascot nears the viewport (`IntersectionObserver`,
-  `rootMargin: 300px`), and the WebGL context is freed when it leaves. The app
-  shell never pays for it.
-- `devicePixelRatio` capped at 1.5.
-- No frame while `document.hidden`.
-- Under `prefers-reduced-motion`: no rAF loop at all. The springs settle
-  instantly and one frame is drawn per state change. Gestures are not played —
-  they are motion and nothing else.
-- No environment map. `RoomEnvironment` is vendored, but a PMREM render per
-  mount is disproportionate for a ~2k-triangle model that may appear more than
-  once on a page.
-- Every failure path ends with the flat `brand/north-mascot.png`, and the module
-  is never fetched when WebGL is missing.
+- No Three.js, no canvas, no IntersectionObserver. The page pays for a PNG.
+- Under `prefers-reduced-motion`: no animation at all. Gestures are not played.
+- The image is decorative (`alt=""`, `aria-hidden`) because every surface that
+  mounts it already names the product in copy.
 
 ## Placement
 
-Not on every page — that is the performance tax the ticket warned about. The
-mascot appears where the page is otherwise empty or is explicitly about North:
-onboarding, empty chat, the empty dashboard card, settings, and small in the
-chat header, which is the one that reacts to the coach.
+Not on every page. The mascot appears where the page is otherwise empty or is
+explicitly about the coach: onboarding, empty chat, the empty dashboard card,
+settings, and small in the chat header, which is the one that reacts to the
+coach.

@@ -1,4 +1,4 @@
-// Command pwa-icons paints the North mark onto opaque dark plates at the
+// Command pwa-icons paints the Khepri mark onto opaque dark plates at the
 // sizes an installable PWA needs.
 //
 // iOS apple-touch-icon and Android maskable icons treat transparency as
@@ -25,7 +25,7 @@ import (
 var bg = color.RGBA{R: 0x1C, G: 0x1C, B: 0x1F, A: 0xFF}
 
 func main() {
-	src := mustDecode(filepath.Join("web", "assets", "brand", "north-logo-mark.png"))
+	src := mustDecode(filepath.Join("web", "assets", "brand", "khepri-logo-mark.png"))
 	write(filepath.Join("web", "assets", "brand", "pwa-180.png"), composite(src, 180, 0.12))
 	write(filepath.Join("web", "assets", "brand", "pwa-192.png"), composite(src, 192, 0.12))
 	write(filepath.Join("web", "assets", "brand", "pwa-512.png"), composite(src, 512, 0.12))

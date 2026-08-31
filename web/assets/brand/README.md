@@ -7,25 +7,27 @@ surrounding theme shows through — never place these on a plate.
 
 | File | Use |
 |------|-----|
-| `north-logo-mark.svg` | **The mark.** Fixed brand gradient, works on light and dark. What `ui.BrandMark` serves. |
-| `north-logo-mark-mono.svg` | Single-colour mark, `fill="currentColor"`. For inlining where the surrounding text colour should drive it. |
-| `favicon.svg` | Tab icon. Flat fill, opaque, `prefers-color-scheme` for dark tab strips. |
-| `north-logo-mark.png` | Raster fallback, and the source the PWA plates are generated from (`go run ./scripts/pwa-icons`). |
+| `khepri-logo-mark.png` | **The mark.** Gold-and-navy scarab with sun. What `ui.BrandMark` serves, and the PNG tab fallback. |
+| `north-logo-mark.svg` | Retired North star. Kept for the landing scroll-world geometry, not used in chrome. |
+| `north-logo-mark-mono.svg` | Retired single-colour star. Unused. |
+| `favicon.svg` | Tab icon. Simplified scarab silhouette, opaque, `prefers-color-scheme` for dark tab strips. |
+| `north-logo-mark.png` | Retired star raster. Unused in chrome. |
 | `pwa-180.png` | iOS apple-touch-icon. Opaque `#1C1C1F` plate. |
 | `pwa-192.png` | Manifest `any` 192. Opaque `#1C1C1F` plate. |
 | `pwa-512.png` | Manifest `any` 512. Opaque `#1C1C1F` plate. |
-| `pwa-512-maskable.png` | Manifest `maskable` 512. Same plate, star inset for Android adaptive crop. |
+| `pwa-512-maskable.png` | Manifest `maskable` 512. Same plate, scarab inset for Android adaptive crop. |
 | `north-wordmark.png` | App name. Dark ink. **Currently unused** — see below. |
 | `north-logo-wordmark.png` | Symbol + name lockup. **Currently unused** — see below. |
-| `north-mascot.png` | Companion cutout. Billboard in the landing scroll-world (`scroll-world/panel.js`), and the no-WebGL fallback for the 3D companion (`shared/mascot/`). |
+| `khepri-mascot.png` | Companion cutout. Live companion (`shared/mascot/`) and the landing scroll-world billboard (`scroll-world/panel.js`). |
+| `khepri-mark.png` | Scarab + sun emblem. Stored, not wired into chrome. |
+| `khepri-app-icon.png` | Rounded-square app icon cropped from the lockup. Stored, not swapped onto PWA plates. |
 
-Originals with backgrounds live in `source/` for design reference only — never serve them.
+Originals with backgrounds live in `source/` for design reference only — never serve them. The retired cube companion is `source/north-mascot-cube.png`. Khepri source stills: `khepri-mascot-original.jpg`, `khepri-emblem-original.jpg`, `khepri-app-icon-lockup.jpg`, `khepri-brand-board.png`.
 
 ## Theme strategy
 
-**The mark carries fixed brand colour on both themes.** Its gradient runs from a light core
-through mint to near-black navy, which reads on white and on the dark shell without changing.
-Nothing needs to swap it, and nothing should.
+**The mark carries fixed brand colour on both themes.** The scarab is gold on navy,
+which reads on the dark shell and on a light surface without a theme swap.
 
 **The wordmark is live text, not an asset.** `ui.BrandLockup` renders the mark beside the
 literal word *North* in a Tailwind class, so it inherits `text-foreground` and themes for free.
@@ -57,8 +59,8 @@ numbers.** They had already drifted once — that file modelled a symmetric star
 cardinal points, which the mark has never been. If the mark is redrawn, both files change or
 they diverge again.
 
-Two scenes draw that geometry: the landing scroll-world's waypoints, and the glyph on the
-mascot's forehead. Redrawing the mark moves all three surfaces at once.
+The landing scroll-world's waypoints draw that geometry. Redrawing the mark moves the
+SVG, the PNG, and the 3D star together.
 
 ## Serving
 
@@ -66,11 +68,11 @@ Embedded via `web/assets` (`//go:embed brand …`); new files are picked up with
 Go's `http.FileServer` returns `image/svg+xml` from its built-in MIME table, so SVGs need no
 handler change.
 
-- `/assets/brand/north-logo-mark.svg`
-- `/assets/brand/north-logo-mark-mono.svg`
 - `/assets/brand/favicon.svg`
-- `/assets/brand/north-logo-mark.png`
-- `/assets/brand/north-mascot.png`
+- `/assets/brand/khepri-logo-mark.png`
+- `/assets/brand/khepri-mascot.png`
+- `/assets/brand/khepri-mark.png`
+- `/assets/brand/khepri-app-icon.png`
 - `/assets/brand/pwa-180.png`
 - `/assets/brand/pwa-192.png`
 - `/assets/brand/pwa-512.png`
@@ -86,7 +88,7 @@ today, so nothing is blocked.
 
 ## Design notes
 
-- **Logo**: geometric north star, calm OS / guidance — not playful, not corporate.
-- **Mascot**: small intelligent companion; Three.js-ready silhouette.
+- **Logo**: Khepri scarab, gold on navy, sun overhead.
+- **Mascot**: Khepri, the navy-and-gold scarab companion. Poses are CSS, not WebGL.
 - The PNGs' drop shadow is a raster effect and is deliberately absent from the SVGs. A logo
   carrying its own shadow cannot sit on an arbitrary surface.
