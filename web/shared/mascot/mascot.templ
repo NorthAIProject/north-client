@@ -1,17 +1,15 @@
-// Package mascot is the 3D Khepri companion (NOR-51).
+// Package mascot is the Khepri companion (NOR-51).
 //
-// It renders a canvas driven by web/assets/js/shared/mascot/{alpine,scene,model}.js.
-// The model is built from geometry rather than loaded from a GLB — see model.js
-// for why — so embedding one costs a lazy import of three and nothing else:
+// It renders the brand scarab PNG. Alpine owns the pose (idle, thinking,
+// listening, plus the celebrate/nod gestures) and the coach-stream bridge;
+// CSS in web/assets/css/input.css is what actually moves it. There is no
+// WebGL path: the still is the mascot.
 //
 //	@mascot.Mascot(mascot.Props{ID: "onboarding", Size: mascot.SizeLg, State: mascot.StateListening})
 //
 // Reactive state comes from the module-level API, not from props. Anything can
 // call window.NorthMascot.setState("thinking"), and the coach stream already
 // does (see alpine.js's bridge). Props only say how a mascot starts.
-//
-// Three is a progressive enhancement here: with no WebGL the component renders
-// the flat brand PNG and never fetches the module.
 package mascot
 
 import "encoding/json"
@@ -62,8 +60,9 @@ type Props struct {
 	Class string
 }
 
-// boxClass maps a Size onto the canvas box. Square, because the model is
-// framed square and a non-square canvas would letterbox it.
+// boxClass maps a Size onto the image box. Square so the three sizes stay
+// interchangeable; the scarab is taller than it is wide and letterboxes
+// inside with object-contain.
 func boxClass(size Size) string {
 	switch size {
 	case SizeLg:
@@ -113,26 +112,20 @@ templ Mascot(p Props) {
 			id={ p.ID }
 		}
 		x-data={ alpineData(p) }
-		class={ "relative shrink-0 " + boxClass(p.Size) + " " + p.Class }
+		class={ "north-mascot relative shrink-0 " + boxClass(p.Size) + " " + p.Class }
+		data-state={ string(stateOrDefault(p.State)) }
+		:data-state="state"
 	>
-		// Hand-rolled: a WebGL surface has no counterpart in the component
-		// library — same rationale as web/shared/muscleviewer/muscleviewer.templ.
-		<canvas
-			x-ref="canvas"
-			aria-hidden="true"
-			class="size-full"
-			x-show="!failed"
-		></canvas>
 		// The mascot is decoration beside real copy on every surface it appears
-		// on, so the fallback carries no alt text: a screen reader announcing
-		// "Khepri" here would add a second name to a page that already says it.
+		// on, so it carries no alt text: a screen reader announcing "Khepri"
+		// here would add a second name to a page that already says it.
 		<img
-			x-show="failed"
-			x-cloak
-			src="/assets/brand/north-mascot.png"
+			x-ref="img"
+			src="/assets/brand/khepri-mascot.png"
 			alt=""
 			aria-hidden="true"
 			class="size-full object-contain"
+			@animationend="onAnimationEnd($event)"
 		/>
 	</div>
 }

@@ -78,6 +78,24 @@ func TestEveryFrameIndexTheComponentRendersExists(t *testing.T) {
 
 // The rewrite is scoped to the exercises tree. Claiming gzip on an asset that
 // is stored plain would hand the browser bytes it cannot decode.
+func TestKhepriMascotIsServedAsPNG(t *testing.T) {
+	t.Parallel()
+
+	req := httptest.NewRequest(http.MethodGet, "/assets/brand/khepri-mascot.png", nil)
+	rec := httptest.NewRecorder()
+	assetRouter(t, config.EnvProduction).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 — is web/assets/brand/khepri-mascot.png embedded?", rec.Code)
+	}
+	if got := rec.Header().Get("Content-Type"); !strings.HasPrefix(got, "image/png") {
+		t.Errorf("Content-Type = %q, want image/png", got)
+	}
+	if rec.Body.Len() < 1024 {
+		t.Errorf("body is %d bytes, want a real PNG", rec.Body.Len())
+	}
+}
+
 func TestOtherAssetsAreNotClaimedToBeGzipped(t *testing.T) {
 	t.Parallel()
 

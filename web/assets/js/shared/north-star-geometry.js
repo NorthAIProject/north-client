@@ -8,10 +8,10 @@
  * like a JPEG at the other. Geometry costs nothing to download and is exact at
  * every distance.
  *
- * Two scenes draw it: the landing scroll-world's waypoints
- * (landing/scroll-world/geometry.js) and the glyph on the mascot's forehead
- * (shared/mascot/model.js). It lives here rather than beside either of them
- * because a module under shared/ must not import from landing/.
+ * The landing scroll-world's waypoints draw it
+ * (landing/scroll-world/geometry.js). It lives under shared/ so landing is not
+ * the only place that can import it, and so a module here never imports from
+ * landing/.
  *
  * If the brand mark is ever redrawn, this is the file that has to follow it.
  */

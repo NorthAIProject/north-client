@@ -1,13 +1,12 @@
 /**
- * Alpine wrapper and public state API for the mascot (NOR-51).
+ * Alpine wrapper and public state API for the Khepri companion (NOR-51).
  *
- * Registers `northMascot(props)` — `props` is `{state: string, id: string}`,
- * matching web/shared/mascot/mascot.templ's Props.
+ * Registers `northMascot(props)` — `props` is `{state: string, id: string,
+ * gesture: string}`, matching web/shared/mascot/mascot.templ's Props.
  *
- * Loading is driven by IntersectionObserver exactly as the muscle viewer does
- * (shared/muscle-viewer/alpine.js): three is imported when a mascot nears the
- * viewport and the WebGL context is freed when it leaves, so the app shell
- * never pays for a scene nobody is looking at.
+ * The still is the mascot: alpine.js only writes `data-state` on the wrapper,
+ * and CSS in input.css is what actually moves it. There is no WebGL path and
+ * no lazy module import, so the app shell pays for a PNG and this file.
  *
  * The state lives on this module, not on the component. That is deliberate.
  * In chat, `sse-close="done"` fires a trigger that re-GETs the page and swaps
@@ -23,16 +22,6 @@
 (function () {
   "use strict";
 
-  // Mirrors muscle-viewer/alpine.js: reuse this script's own cache-bust param
-  // for the dynamically imported module. It has to read document.currentScript,
-  // which is why it is copied rather than imported.
-  function assetURL(path) {
-    const src = document.currentScript && document.currentScript.src;
-    const version = src ? new URL(src, location.href).searchParams.get("v") : null;
-    return version ? `${path}?v=${version}` : path;
-  }
-
-  const sceneModuleURL = assetURL("/assets/js/shared/mascot/scene.js");
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   const SUSTAINED = ["idle", "thinking", "listening"];
@@ -104,78 +93,55 @@
 
   document.addEventListener("alpine:init", () => {
     window.Alpine.data("northMascot", (props = {}) => ({
-      ready: false,
-      failed: false,
-      mascot: null,
-      observer: null,
       id: props.id || "",
       initial: isKnown(props.state) ? props.state : "idle",
       gesture: GESTURES.includes(props.gesture) ? props.gesture : "",
+      state: "idle",
 
       init() {
         // A mascot that declares a sustained state is also saying what the page
         // means — onboarding is listening, an empty dashboard is idle — so it
         // sets the module state rather than diverging from it.
-        if (SUSTAINED.includes(this.initial)) sustained = this.initial;
+        if (SUSTAINED.includes(this.initial)) {
+          sustained = this.initial;
+          this.state = this.initial;
+        } else {
+          this.state = sustained;
+        }
 
         instances.add(this);
 
-        this.observer = new IntersectionObserver(
-          (entries) => {
-            const visible = entries.some((e) => e.isIntersecting);
-            if (visible) this.load();
-            else this.teardown();
-          },
-          { rootMargin: "300px" },
-        );
-        this.observer.observe(this.$refs.canvas);
-      },
+        if (reduced) return;
 
-      async load() {
-        if (this.mascot || this.ready) return;
-
-        try {
-          const module = await import(sceneModuleURL);
-          this.mascot = module.createMascot(this.$refs.canvas, {
-            reduced,
-            state: sustained,
-          });
-          this.ready = true;
-
-          // A greeting belongs to the page that rendered it, so it plays on
-          // this mascot alone and is never broadcast.
-          if (this.gesture) {
-            this.mascot.setState(this.gesture);
-          } else if (lastGesture && Date.now() - lastGestureAt < GESTURE_REPLAY_MS) {
-            // Otherwise catch up with anything that happened while this mascot
-            // did not exist — the chat swap case described at the top.
-            this.mascot.setState(lastGesture);
-          }
-        } catch (err) {
-          // No WebGL, or the module failed to load. The template shows the
-          // static PNG; there is nothing to report and nothing to retry.
-          this.failed = true;
-          this.ready = true;
+        // A greeting belongs to the page that rendered it, so it plays on
+        // this mascot alone and is never broadcast.
+        if (this.gesture) {
+          this.state = this.gesture;
+        } else if (lastGesture && Date.now() - lastGestureAt < GESTURE_REPLAY_MS) {
+          // Otherwise catch up with anything that happened while this mascot
+          // did not exist — the chat swap case described at the top.
+          this.state = lastGesture;
         }
       },
 
       apply(name) {
-        if (this.mascot) this.mascot.setState(name);
+        if (!isKnown(name)) return;
+        if (reduced && GESTURES.includes(name)) return;
+        this.state = name;
       },
 
-      // Frees the WebGL context without discarding component state, so
-      // scrolling back into view reloads clean.
-      teardown() {
-        if (this.mascot) this.mascot.destroy();
-        this.mascot = null;
-        this.ready = false;
-        this.failed = false;
+      onAnimationEnd(event) {
+        if (event.target !== this.$refs.img) return;
+        if (!GESTURES.includes(this.state)) return;
+        // A cancelled hop can fire animationend after a newer pose has already
+        // taken data-state. Only hand back when this event belongs to the
+        // pose that is currently showing.
+        if (event.animationName !== "khepri-" + this.state) return;
+        this.state = sustained;
       },
 
       destroy() {
         instances.delete(this);
-        if (this.observer) this.observer.disconnect();
-        this.teardown();
       },
     }));
   });

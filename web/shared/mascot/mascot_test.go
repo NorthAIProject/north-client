@@ -18,22 +18,28 @@ func render(t *testing.T, p Props) string {
 	return b.String()
 }
 
-// The canvas is the component. Everything else — the Alpine binding, the
-// fallback — hangs off it, so this is the assertion that fails loudest if the
+// The image is the component. Everything else — the Alpine binding, the pose
+// attribute — hangs off it, so this is the assertion that fails loudest if the
 // template is ever restructured.
-func TestMascotRendersACanvasBoundToAlpine(t *testing.T) {
+func TestMascotRendersTheScarabBoundToAlpine(t *testing.T) {
 	out := render(t, Props{ID: "onboarding", Size: SizeLg, State: StateListening})
 
 	for _, want := range []string{
-		`x-ref="canvas"`,
+		`x-ref="img"`,
 		`id="onboarding"`,
 		"northMascot(",
 		`&#34;state&#34;:&#34;listening&#34;`,
 		`&#34;id&#34;:&#34;onboarding&#34;`,
+		`src="/assets/brand/khepri-mascot.png"`,
+		`class="north-mascot`,
+		`data-state="listening"`,
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q in:\n%s", want, out)
 		}
+	}
+	if strings.Contains(out, "<canvas") {
+		t.Errorf("WebGL canvas should be gone:\n%s", out)
 	}
 }
 
@@ -49,22 +55,16 @@ func TestMascotFallsBackToIdleForAnUnsupportedState(t *testing.T) {
 	}
 }
 
-// Without WebGL the component still has to say something on the page, and the
-// brand PNG is what it says. If this asset path drifts, the no-WebGL path
-// silently renders a broken image.
-func TestMascotFallsBackToTheBrandImage(t *testing.T) {
+func TestMascotImageIsDecorative(t *testing.T) {
 	out := render(t, Props{})
 
-	if !strings.Contains(out, `src="/assets/brand/north-mascot.png"`) {
-		t.Errorf("fallback image missing:\n%s", out)
-	}
-	if !strings.Contains(out, `x-show="failed"`) {
-		t.Errorf("fallback is not gated on the failed state:\n%s", out)
+	if !strings.Contains(out, `src="/assets/brand/khepri-mascot.png"`) {
+		t.Errorf("khepri image missing:\n%s", out)
 	}
 	// The mascot sits beside copy that already names the product on every
 	// surface it appears on; announcing it again is noise, not access.
 	if !strings.Contains(out, `alt=""`) {
-		t.Errorf("fallback should be decorative:\n%s", out)
+		t.Errorf("image should be decorative:\n%s", out)
 	}
 }
 

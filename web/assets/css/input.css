@@ -225,3 +225,103 @@ html.lenis body {
   width: 2.75rem;
   height: 2.75rem;
 }
+
+/* Khepri companion poses. Attribute selectors sit outside @layer so they are
+   not fighting utilities; alpine.js only writes data-state. */
+.north-mascot {
+  perspective: 28rem;
+}
+
+.north-mascot img {
+  transform-origin: 50% 62%;
+}
+
+.north-mascot[data-state="idle"] img {
+  animation: khepri-idle 3.6s ease-in-out infinite;
+}
+
+.north-mascot[data-state="thinking"] img {
+  animation: khepri-thinking 2.4s ease-in-out infinite;
+}
+
+.north-mascot[data-state="listening"] img {
+  animation: khepri-listening 3.2s ease-in-out infinite;
+}
+
+.north-mascot[data-state="celebrate"] img {
+  animation: khepri-celebrate 1.15s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.north-mascot[data-state="nod"] img {
+  animation: khepri-nod 0.85s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes khepri-idle {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6%);
+  }
+}
+
+@keyframes khepri-thinking {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-7deg);
+    filter: drop-shadow(0 0 0.4rem rgb(201 162 39 / 0.35));
+  }
+  50% {
+    transform: translateY(-5%) rotate(-10deg);
+    filter: drop-shadow(0 0 0.7rem rgb(201 162 39 / 0.55));
+  }
+}
+
+@keyframes khepri-listening {
+  0%,
+  100% {
+    transform: translateY(-2%) scale(1.03);
+    filter: brightness(1.06);
+  }
+  50% {
+    transform: translateY(-7%) scale(1.03);
+    filter: brightness(1.1);
+  }
+}
+
+@keyframes khepri-celebrate {
+  0% {
+    transform: translateY(0) scale(1);
+  }
+  28% {
+    transform: translateY(-18%) scale(1.08);
+  }
+  48% {
+    transform: translateY(0) scale(1);
+  }
+  68% {
+    transform: translateY(-11%) scale(1.04);
+  }
+  100% {
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes khepri-nod {
+  0%,
+  100% {
+    transform: rotateX(0);
+  }
+  40% {
+    transform: rotateX(18deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .north-mascot img {
+    animation: none !important;
+    filter: none;
+    transform: none;
+  }
+}
