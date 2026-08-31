@@ -21,22 +21,12 @@ groups — every anatomical head and both sides, named as in the source (e.g.
 **Skin** — the outer body. Opaque since NOR-6; the muscles are sealed inside it and
 only surface as a glow where an exercise works them.
 
-> **Current state (NOR-6, in progress).** The skin is still the interim asset:
+> **Current state.** The skin is still
 > [Human Body Base Mesh Male](https://sketchfab.com/3d-models/human-body-base-mesh-male-3678451d8ccb435e833f8a10729c09f5)
-> by [ferrumiron6](https://sketchfab.com/ferrumiron6), CC BY 4.0. It is a rigless
-> T-pose with no UVs and no textures, so the pipeline crops its arms off at the
-> shoulders (`|x| > 0.32m`) to avoid a pose clash, and the runtime falls back to flat
-> shading. That is why the figure reads as clay rather than skin.
->
-> The missing arms are filled at runtime by `addPlaceholderArms()` in `viewer.js` —
-> a capsule per side, sized from the arm muscles it has to cover. Without it the
-> figure has hollow stumps at the deltoids *and* its arm muscles can never light up,
-> since the glow only draws where there is skin in front of it. It looks like a
-> mannequin, on purpose. It switches itself off when the skin has textures, so
-> dropping in the real body retires it; delete the function at that point.
->
-> Replacing this mesh with an arms-down, textured export is the remaining half of
-> NOR-6 — see `tools/model/README.md` for the requirements.
+> by [ferrumiron6](https://sketchfab.com/ferrumiron6), CC BY 4.0. `prepare-skin.mjs`
+> folds its T-pose arms down around the shoulders and stamps a skin-tone albedo
+> so the glow has surface in front of the arm and chest muscles. A purpose-made
+> arms-down PBR body would still look better — see `tools/model/README.md`.
 
 Per CC BY-SA's ShareAlike clause the combined asset is licensed **CC BY-SA 4.0**,
 whatever the skin's own licence. Attribution for every source lives in the site

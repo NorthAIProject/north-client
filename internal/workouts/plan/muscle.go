@@ -6,7 +6,7 @@ package plan
 //
 // This list must stay in sync with two client-side copies, in this order
 // when adding a new key:
-//  1. MUSCLE_ALIASES in web/assets/js/shared/muscle-viewer/viewer.js — maps
+//  1. MUSCLE_ALIASES in web/assets/js/shared/muscle-viewer/muscles.js — maps
 //     the key to the body.glb mesh names it colours.
 //  2. MUSCLE_INFO in the same file — the display name + description shown
 //     in the click-to-inspect panel.
@@ -37,16 +37,11 @@ var MuscleGroups = []string{
 
 // UnmodelledGroups are canonical keys the 3D model cannot draw yet.
 //
-// body.glb ships no pectoralis major or minor mesh — all 231 of its node
-// names were checked, and the "CHEST" node in the file is a camera-preset
-// label alongside HEAD, HIP, and KNEE, not anatomy. So "chest" is a real
-// muscle group that exercises may legitimately target, and the viewer has
-// nothing to colour for it.
-//
-// Callers must say so rather than silently dropping the key: a bench press
-// whose muscle list omits the chest reads as a data bug, not as a missing
-// asset. Remove a key from here the moment the model gains its mesh.
-var UnmodelledGroups = []string{"chest"}
+// Empty as of the pec mapping: body.glb now keeps the Z-Anatomy pectoralis
+// heads under the "chest" key. Keep the slice (and IsUnmodelled) so a future
+// hole in the atlas has somewhere to be recorded without inventing a new
+// apology path.
+var UnmodelledGroups = []string{}
 
 var unmodelledSet = func() map[string]bool {
 	set := make(map[string]bool, len(UnmodelledGroups))

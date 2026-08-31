@@ -22,7 +22,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { NodeIO } from "@gltf-transform/core";
-import { ALL_EXTENSIONS, EXTMeshoptCompression } from "@gltf-transform/extensions";
+import { ALL_EXTENSIONS, KHRDracoMeshCompression } from "@gltf-transform/extensions";
 import {
   dedup,
   mergeDocuments,
@@ -30,6 +30,7 @@ import {
   quantize,
   simplify,
   textureCompress,
+  unpartition,
   weld,
 } from "@gltf-transform/functions";
 import draco3d from "draco3dgltf";
@@ -110,6 +111,7 @@ async function createIO() {
       // The Z-Anatomy source ships Draco-compressed, so reading it needs the decoder
       // even though nothing this script writes uses Draco.
       "draco3d.decoder": await draco3d.createDecoderModule(),
+      "draco3d.encoder": await draco3d.createEncoderModule(),
       "meshopt.decoder": MeshoptDecoder,
       "meshopt.encoder": MeshoptEncoder,
     });
@@ -280,20 +282,22 @@ async function main() {
   }
 
   console.log("compressing");
+  // The atlas ships Draco-compressed. Decode has already happened; drop the
+  // extension so the written GLB is Meshopt-only (the runtime does not vendor
+  // a Draco decoder).
+  for (const ext of muscleDoc.getRoot().listExtensionsUsed()) {
+    if (ext.extensionName === KHRDracoMeshCompression.EXTENSION_NAME) ext.dispose();
+  }
   await muscleDoc.transform(
     dedup(),
     prune(),
     textureCompress({ encoder: sharp, targetFormat: "jpeg", resize: [args.textureSize, args.textureSize] }),
     weld(),
     quantize(),
+    // mergeDocuments leaves the skin's buffer beside the muscle one; a GLB
+    // may only carry a single buffer.
+    unpartition(),
   );
-  // Meshopt rather than Draco: the vendored GLTFLoader's header explains why (Draco's
-  // decoder is a much larger download, and the runtime already ships the Meshopt one).
-  muscleDoc
-    .createExtension(EXTMeshoptCompression)
-    .setRequired(true)
-    .setEncoderOptions({ method: EXTMeshoptCompression.EncoderMethod.QUANTIZE });
-
   const outPath = resolve(REPO_ROOT, args.out);
   await mkdir(dirname(outPath), { recursive: true });
   await writeFile(outPath, await io.writeBinary(muscleDoc));
