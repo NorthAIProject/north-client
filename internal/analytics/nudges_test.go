@@ -23,8 +23,9 @@ func TestTheNudgeEventsCarryKindAndChannel(t *testing.T) {
 	f.PushSubscribed(ctx, user)
 	f.NudgeDelivered(ctx, user, "missed_checkin", analytics.ChannelPush)
 	f.NudgeOpened(ctx, user, "missed_checkin", analytics.ChannelBell)
+	f.MomentShown(ctx, user, "streak")
 
-	want := []string{"push_subscribed", "nudge_delivered", "nudge_opened"}
+	want := []string{"push_subscribed", "nudge_delivered", "nudge_opened", "moment_shown"}
 	if len(rec.captures) != len(want) {
 		t.Fatalf("captured %d events, want %d", len(rec.captures), len(want))
 	}
@@ -46,6 +47,9 @@ func TestTheNudgeEventsCarryKindAndChannel(t *testing.T) {
 	if got := rec.captures[2].Properties["channel"]; got != "bell" {
 		t.Errorf("nudge_opened channel = %v, want bell", got)
 	}
+	if got := rec.captures[3].Properties["kind"]; got != "streak" {
+		t.Errorf("moment_shown kind = %v, want streak", got)
+	}
 }
 
 func TestTheNudgeEventsAreSilentWithoutAClient(t *testing.T) {
@@ -61,6 +65,7 @@ func TestTheNudgeEventsAreSilentWithoutAClient(t *testing.T) {
 			f.PushSubscribed(ctx, user)
 			f.NudgeDelivered(ctx, user, "k", analytics.ChannelBell)
 			f.NudgeOpened(ctx, user, "k", analytics.ChannelPush)
+			f.MomentShown(ctx, user, "k")
 		})
 	}
 }

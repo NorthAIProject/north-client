@@ -62,6 +62,11 @@ const (
 	// return rate; that number is what says whether a native app is worth
 	// building.
 	EventNudgeOpened = "nudge_opened"
+
+	// EventMomentShown is a card of recognition rendered: a streak threshold,
+	// a goal achieved, a milestone completed. Whether accounts that hit the
+	// first one retain better is the question internal/moments exists to ask.
+	EventMomentShown = "moment_shown"
 )
 
 // Sources for EventSourceConnected.
@@ -154,6 +159,12 @@ func (p *Funnel) NudgeDelivered(ctx context.Context, userID uuid.UUID, kind, cha
 // brought them.
 func (p *Funnel) NudgeOpened(ctx context.Context, userID uuid.UUID, kind, channel string) {
 	p.capture(ctx, userID, EventNudgeOpened, posthog.Properties{"kind": kind, "channel": channel})
+}
+
+// MomentShown records a recognition card being rendered. kind is one of the
+// internal/moments kinds.
+func (p *Funnel) MomentShown(ctx context.Context, userID uuid.UUID, kind string) {
+	p.capture(ctx, userID, EventMomentShown, posthog.Properties{"kind": kind})
 }
 
 // capture is the one place an event reaches PostHog.

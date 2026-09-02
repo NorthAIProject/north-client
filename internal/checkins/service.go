@@ -204,6 +204,13 @@ func (s *Service) withGoalTitles(ctx context.Context, userID uuid.UUID, list []C
 // Streak is consecutive local days with a check-in, ending today or yesterday.
 // Zero is not failure — it is "not started", and the UI should stay quiet.
 func (s *Service) Streak(ctx context.Context, user users.User) (int, error) {
+	return s.StreakAt(ctx, user, time.Now())
+}
+
+// StreakAt is Streak as of a given instant. The nudge sweep passes its own
+// clock so "is the streak about to break tonight" can be tested without
+// waiting for tonight.
+func (s *Service) StreakAt(ctx context.Context, user users.User, now time.Time) (int, error) {
 	dates, err := s.repo.Dates(ctx, user.ID, streakLook)
 	if err != nil {
 		return 0, err
@@ -212,7 +219,7 @@ func (s *Service) Streak(ctx context.Context, user users.User) (int, error) {
 		return 0, nil
 	}
 
-	today := LocalDate(user, time.Now())
+	today := LocalDate(user, now)
 	// Normalise stored dates to comparable date-only in the same location.
 	have := make(map[string]bool, len(dates))
 	for _, d := range dates {

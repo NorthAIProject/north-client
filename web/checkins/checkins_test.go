@@ -63,6 +63,7 @@ func renderIndex(t *testing.T) string {
 		nil,
 		0,
 		false,
+		nil,
 		Instruments{},
 	).Render(context.Background(), &buf)
 	if err != nil {

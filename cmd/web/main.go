@@ -642,10 +642,10 @@ func routes(
 	queue := jobs.NewQueue(pool)
 
 	goalSvc := goals.NewService(goals.NewRepository(pool))
-	goalHandler := goals.NewHandler(goalSvc)
+	goalHandler := goals.NewHandler(goalSvc).WithFunnel(funnel)
 
 	checkinSvc := checkins.NewService(checkins.NewRepository(pool), goalSvc)
-	checkinHandler := checkins.NewHandler(checkinSvc, goalSvc)
+	checkinHandler := checkins.NewHandler(checkinSvc, goalSvc).WithFunnel(funnel)
 
 	notificationSvc := notifications.NewService(notifications.NewRepository(pool))
 

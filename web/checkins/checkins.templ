@@ -6,8 +6,10 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/checkins/checkin"
 	"github.com/NorthAIProject/north-client/internal/goals/goal"
+	"github.com/NorthAIProject/north-client/internal/moments"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/moment"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
 	"github.com/NorthAIProject/north-client/web/shared/ui/card"
@@ -100,11 +102,13 @@ func FormFor(c checkin.CheckIn) CheckInForm {
 	return f
 }
 
-templ IndexPage(user users.User, list []checkin.CheckIn, form CheckInForm, activeGoals []goal.Goal, streak int, saved bool, inst Instruments) {
+templ IndexPage(user users.User, list []checkin.CheckIn, form CheckInForm, activeGoals []goal.Goal, streak int, saved bool, m *moments.Moment, inst Instruments) {
 	@layout.App("Check-ins", user, layout.BuildNav("/app/check-ins")) {
 		<div class="mx-auto flex w-full max-w-6xl flex-col gap-8 p-4 md:p-8">
 			@header()
-			if saved {
+			if saved && m != nil {
+				@moment.Card(*m)
+			} else if saved {
 				<p class="rounded-lg border border-signal/30 bg-signal/10 px-4 py-3 text-sm">Saved for today.</p>
 			}
 			@Panel(list, form, activeGoals)
@@ -231,8 +235,13 @@ templ Panel(list []checkin.CheckIn, form CheckInForm, activeGoals []goal.Goal) {
 
 // SavedPanel replaces the form once the check-in is stored. Same element id, so
 // it swaps into the same place, and it carries the refreshed history with it.
-templ SavedPanel(c checkin.CheckIn, list []checkin.CheckIn, streak int) {
+// SavedPanel confirms the save. When the streak just landed on a threshold the
+// moment card comes first: the mascot celebrates once, above the receipt.
+templ SavedPanel(c checkin.CheckIn, list []checkin.CheckIn, streak int, m *moments.Moment) {
 	<div id={ PanelID } class="space-y-8">
+		if m != nil {
+			@moment.Card(*m)
+		}
 		@card.Card(card.Props{Class: "border-signal/30 bg-signal/5"}) {
 			@card.Content() {
 				<p class="font-mono text-[10px] uppercase tracking-[0.14em] text-signal">Logged</p>

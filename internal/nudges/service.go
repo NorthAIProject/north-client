@@ -24,6 +24,15 @@ const (
 
 	// Inclusive window of local days from today. Due today through today+7.
 	goalDeadlineWindow = 7
+
+	// A streak short enough that losing it is not a loss is not worth a
+	// warning. Three is where the check-in page first celebrates it.
+	streakAtRiskMin = 3
+
+	// The local hour from which "your streak ends at midnight" may be raised.
+	// Evening, so there is still time to act; before the default quiet hours
+	// at 22:00, so the hourly sweep gets four chances.
+	streakAtRiskHour = 18
 )
 
 type accounts interface {
@@ -33,6 +42,9 @@ type accounts interface {
 
 type checkinDays interface {
 	LatestLocalDate(ctx context.Context, userID uuid.UUID) (date time.Time, ok bool, err error)
+	// StreakAt is the check-in streak as of now, with the same one-day grace
+	// the check-in page shows: yesterday still counts until today is missed.
+	StreakAt(ctx context.Context, user users.User, now time.Time) (int, error)
 }
 
 type activeGoals interface {
@@ -358,6 +370,17 @@ func (s *Service) Evaluate(ctx context.Context, user users.User) (int, error) {
 		return created, nil
 	}
 
+	// The evening before a streak breaks, then the days after it did. The
+	// two share a switch on the settings page, so the same permission gates
+	// both.
+	if prefs.AllowsNudge(KindStreakAtRisk) {
+		n, err := s.evalStreakAtRisk(ctx, user, today, now)
+		if err != nil {
+			return created, err
+		}
+		created += n
+	}
+
 	if prefs.AllowsNudge(KindMissedCheckIn) {
 		n, err := s.evalMissedCheckIn(ctx, user, today)
 		if err != nil {
@@ -384,6 +407,52 @@ func (s *Service) prefsFor(ctx context.Context, user users.User) (notifications.
 		return notifications.Defaults(), nil
 	}
 	return s.prefs.Get(ctx, user.ID)
+}
+
+// evalStreakAtRisk warns, once, on the evening a check-in streak would break.
+//
+// This is the gap the missed-check-in rule leaves: that one waits two quiet
+// days and so always arrives after the streak is already gone. Loss is a
+// stronger motive than absence, and it only works before the loss.
+func (s *Service) evalStreakAtRisk(ctx context.Context, user users.User, today, now time.Time) (int, error) {
+	if s.checkins == nil {
+		return 0, nil
+	}
+	if now.In(user.Location()).Hour() < streakAtRiskHour {
+		return 0, nil
+	}
+
+	last, ok, err := s.checkins.LatestLocalDate(ctx, user.ID)
+	if err != nil {
+		return 0, err
+	}
+	if ok && daysBetween(last, today) == 0 {
+		// Already checked in today. Nothing is at risk.
+		return 0, nil
+	}
+
+	streak, err := s.checkins.StreakAt(ctx, user, now)
+	if err != nil {
+		return 0, err
+	}
+	if streak < streakAtRiskMin {
+		return 0, nil
+	}
+
+	_, inserted, err := s.Raise(ctx, user, Draft{
+		Kind:      KindStreakAtRisk,
+		DedupeKey: today.Format("2006-01-02"),
+		Title:     fmt.Sprintf("Your %d-day streak ends at midnight", streak),
+		Body:      "One check-in keeps it. Thirty seconds.",
+		Href:      "/app/check-ins",
+	})
+	if err != nil {
+		return 0, err
+	}
+	if inserted {
+		return 1, nil
+	}
+	return 0, nil
 }
 
 func (s *Service) evalMissedCheckIn(ctx context.Context, user users.User, today time.Time) (int, error) {

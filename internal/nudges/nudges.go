@@ -11,6 +11,7 @@ type Nudge = nudge.Nudge
 
 const (
 	KindMissedCheckIn     = nudge.KindMissedCheckIn
+	KindStreakAtRisk      = nudge.KindStreakAtRisk
 	KindGoalDeadline      = nudge.KindGoalDeadline
 	KindFirstWeekCheck    = nudge.KindFirstWeekCheck
 	KindFirstWeekEvidence = nudge.KindFirstWeekEvidence
