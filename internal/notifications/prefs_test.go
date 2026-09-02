@@ -69,6 +69,14 @@ func TestAllowsNudge(t *testing.T) {
 	if !p.AllowsNudge("missed_checkin") {
 		t.Error("missed_checkin should be allowed")
 	}
+	// The evening-before warning rides on the same switch as the days-after
+	// reminder: one preference about check-ins, both directions.
+	if !p.AllowsNudge("streak_at_risk") {
+		t.Error("streak_at_risk should follow the missed check-in switch")
+	}
+	if (notifications.Prefs{}).AllowsNudge("streak_at_risk") {
+		t.Error("streak_at_risk should be silenced with the missed check-in switch")
+	}
 	if p.AllowsNudge("goal_deadline") {
 		t.Error("goal_deadline should be refused")
 	}

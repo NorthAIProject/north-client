@@ -12,17 +12,30 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/NorthAIProject/north-client/internal/analytics"
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/goals/goal"
+	"github.com/NorthAIProject/north-client/internal/moments"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
+	"github.com/NorthAIProject/north-client/internal/users"
 	goalpages "github.com/NorthAIProject/north-client/web/goals"
 )
 
 type Handler struct {
 	svc *Service
+
+	// funnel reports moments shown. Nil is a no-op.
+	funnel *analytics.Funnel
 }
 
 func NewHandler(svc *Service) *Handler { return &Handler{svc: svc} }
+
+// WithFunnel reports moments shown. A nil funnel is a no-op.
+func (h *Handler) WithFunnel(f *analytics.Funnel) *Handler {
+	h.funnel = f
+	return h
+}
 
 // Routes mounts the goal endpoints. Must be behind RequireAuth.
 func (h *Handler) Routes(r chi.Router) {
@@ -120,7 +133,44 @@ func (h *Handler) show(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	render(w, r, http.StatusOK, goalpages.DetailPage(user, goal, updates, goalpages.FormFor(goal)))
+	render(w, r, http.StatusOK, goalpages.DetailPage(user, goal, updates, goalpages.FormFor(goal), h.momentFrom(r, user, goal)))
+}
+
+// momentFrom reads the ?done= marker a status change redirects with and turns
+// it into the card the page shows once. The URL is the flash: there is no
+// store to clear, and a reload shows the card again, which is the harmless
+// outcome. The funnel event fires only when a card is actually rendered.
+//
+// A milestone id that is not on this goal is ignored rather than failed; the
+// person marked something done and landed on the right page, which is what
+// matters.
+func (h *Handler) momentFrom(r *http.Request, user users.User, g goal.Goal) *moments.Moment {
+	done := r.URL.Query().Get("done")
+	var m moments.Moment
+	switch {
+	case done == "goal":
+		m = moments.ForGoalAchieved(g.Title)
+	case strings.HasPrefix(done, "milestone:"):
+		mid, err := uuid.Parse(strings.TrimPrefix(done, "milestone:"))
+		if err != nil {
+			return nil
+		}
+		var found *goal.Milestone
+		for i := range g.Milestones {
+			if g.Milestones[i].ID == mid {
+				found = &g.Milestones[i]
+				break
+			}
+		}
+		if found == nil {
+			return nil
+		}
+		m = moments.ForMilestoneCompleted(g.Title, found.Title)
+	default:
+		return nil
+	}
+	h.funnel.MomentShown(r.Context(), user.ID, m.Kind)
+	return &m
 }
 
 func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
@@ -149,7 +199,7 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 
 			form.Errors = fieldErrs.Messages()
 			form.Open = true
-			render(w, r, http.StatusUnprocessableEntity, goalpages.DetailPage(user, goal, updates, form))
+			render(w, r, http.StatusUnprocessableEntity, goalpages.DetailPage(user, goal, updates, form, nil))
 			return
 		}
 		h.fail(w, r, err)
@@ -172,12 +222,17 @@ func (h *Handler) setStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := h.svc.SetStatus(r.Context(), id, user.ID, r.PostFormValue("status")); err != nil {
+	status := r.PostFormValue("status")
+	if _, err := h.svc.SetStatus(r.Context(), id, user.ID, status); err != nil {
 		h.fail(w, r, err)
 		return
 	}
 
-	http.Redirect(w, r, "/app/goals/"+id.String(), http.StatusSeeOther)
+	dest := "/app/goals/" + id.String()
+	if status == goal.StatusAchieved {
+		dest += "?done=goal"
+	}
+	http.Redirect(w, r, dest, http.StatusSeeOther)
 }
 
 func (h *Handler) addUpdate(w http.ResponseWriter, r *http.Request) {
@@ -211,7 +266,7 @@ func (h *Handler) addUpdate(w http.ResponseWriter, r *http.Request) {
 
 			form := goalpages.FormFor(goal)
 			form.UpdateError = fieldErrs.Messages()["note"]
-			render(w, r, http.StatusUnprocessableEntity, goalpages.DetailPage(user, goal, updates, form))
+			render(w, r, http.StatusUnprocessableEntity, goalpages.DetailPage(user, goal, updates, form, nil))
 			return
 		}
 		h.fail(w, r, err)
@@ -248,7 +303,7 @@ func (h *Handler) addMilestone(w http.ResponseWriter, r *http.Request) {
 			form.MilestoneDate = submitted.MilestoneDate
 			form.MilestoneErrors = fieldErrs.Messages()
 			form.MilestoneOpen = true
-			render(w, r, http.StatusUnprocessableEntity, goalpages.DetailPage(user, goal, updates, form))
+			render(w, r, http.StatusUnprocessableEntity, goalpages.DetailPage(user, goal, updates, form, nil))
 			return
 		}
 		h.fail(w, r, err)
@@ -284,7 +339,7 @@ func (h *Handler) updateMilestone(w http.ResponseWriter, r *http.Request) {
 			form.MilestoneDate = submitted.MilestoneDate
 			form.MilestoneErrors = fieldErrs.Messages()
 			form.EditingMilestone = mid.String()
-			render(w, r, http.StatusUnprocessableEntity, goalpages.DetailPage(user, goal, updates, form))
+			render(w, r, http.StatusUnprocessableEntity, goalpages.DetailPage(user, goal, updates, form, nil))
 			return
 		}
 		h.fail(w, r, err)
@@ -306,12 +361,17 @@ func (h *Handler) setMilestoneStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := h.svc.SetMilestoneStatus(r.Context(), mid, user.ID, r.PostFormValue("status")); err != nil {
+	status := r.PostFormValue("status")
+	if _, err := h.svc.SetMilestoneStatus(r.Context(), mid, user.ID, status); err != nil {
 		h.fail(w, r, err)
 		return
 	}
 
-	http.Redirect(w, r, "/app/goals/"+id.String(), http.StatusSeeOther)
+	dest := "/app/goals/" + id.String()
+	if status == goal.MilestoneCompleted {
+		dest += "?done=milestone:" + mid.String()
+	}
+	http.Redirect(w, r, dest, http.StatusSeeOther)
 }
 
 func (h *Handler) deleteMilestone(w http.ResponseWriter, r *http.Request) {

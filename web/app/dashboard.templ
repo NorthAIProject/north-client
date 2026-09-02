@@ -66,6 +66,10 @@ type DashboardData struct {
 
 // NextStep is the one action a fresh account should take next.
 type NextStep struct {
+	// Kind is the step's identity from internal/dashboard. The template reads
+	// it for exactly one case: NextStepKindPush hides itself when the browser
+	// cannot deliver notifications, which only script can know.
+	Kind    string
 	Eyebrow string
 	Title   string
 	Body    string
@@ -298,7 +302,29 @@ templ rangeSelector(data DashboardData) {
 // JavaScript is in here: Chart.js picks up swapped canvases through a
 // MutationObserver and ECharts through echarts-init.js's htmx:afterSwap
 // listener, and both libraries are loaded once by the page around this.
+// NextStepKindPush matches dashboard.StepKindPush. Repeated here rather than
+// imported so the view package does not depend on the slice that renders it.
+const NextStepKindPush = "push"
+
 templ nextStepCard(step NextStep) {
+	if step.Kind == NextStepKindPush {
+		// Hidden until push.js has confirmed this browser can deliver: an
+		// offer to turn on notifications that the browser will refuse is
+		// worse than no card. "Not now" is remembered in this browser only.
+		<div data-push data-push-card hidden>
+			@nextStepBody(step) {
+				@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Attributes: templ.Attributes{"data-push-dismiss": "true"}}) {
+					Not now
+				}
+			}
+		</div>
+		<script src="/assets/js/shared/push.js" defer></script>
+	} else {
+		@nextStepBody(step)
+	}
+}
+
+templ nextStepBody(step NextStep) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 		@card.Content() {
 			<div class="flex justify-center">
@@ -312,6 +338,7 @@ templ nextStepCard(step NextStep) {
 				@button.Button(button.Props{Href: step.Href, Class: "bg-signal text-background hover:bg-signal/90"}) {
 					{ step.CTA }
 				}
+				{ children... }
 			}
 		}
 	}

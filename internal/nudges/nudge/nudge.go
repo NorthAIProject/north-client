@@ -9,6 +9,7 @@ import (
 
 const (
 	KindMissedCheckIn     = "missed_checkin"
+	KindStreakAtRisk      = "streak_at_risk"
 	KindGoalDeadline      = "goal_deadline"
 	KindFirstWeekCheck    = "first_week_check"
 	KindFirstWeekEvidence = "first_week_evidence"

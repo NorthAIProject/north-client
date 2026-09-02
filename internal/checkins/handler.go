@@ -10,8 +10,10 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/NorthAIProject/north-client/internal/analytics"
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/goals"
+	"github.com/NorthAIProject/north-client/internal/moments"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -19,8 +21,17 @@ import (
 )
 
 type Handler struct {
+	// funnel reports moments shown. Nil is a no-op.
+	funnel *analytics.Funnel
+
 	svc   *Service
 	goals *goals.Service
+}
+
+// WithFunnel reports the streak moments this handler shows.
+func (h *Handler) WithFunnel(f *analytics.Funnel) *Handler {
+	h.funnel = f
+	return h
 }
 
 func NewHandler(svc *Service, goals *goals.Service) *Handler {
@@ -168,7 +179,11 @@ func (h *Handler) renderForm(w http.ResponseWriter, r *http.Request, user users.
 	// Only the post-redirect landing carries saved=1. A rejected POST has no
 	// query string, so the confirmation cannot appear above an error.
 	saved := r.URL.Query().Get("saved") == "1"
-	render(w, r, status, checkinpages.IndexPage(user, list, form, active, streak, saved, inst))
+	var moment *moments.Moment
+	if saved {
+		moment = h.momentFor(r, user, streak)
+	}
+	render(w, r, status, checkinpages.IndexPage(user, list, form, active, streak, saved, moment, inst))
 }
 
 // renderSaved confirms a stored check-in in place for htmx, and falls back to
@@ -186,7 +201,18 @@ func (h *Handler) renderSaved(w http.ResponseWriter, r *http.Request, user users
 	}
 	streak, _ := h.svc.Streak(r.Context(), user)
 
-	render(w, r, http.StatusOK, checkinpages.SavedPanel(saved, list, streak))
+	render(w, r, http.StatusOK, checkinpages.SavedPanel(saved, list, streak, h.momentFor(r, user, streak)))
+}
+
+// momentFor is the card a just-saved check-in earns, if its streak landed on
+// a threshold, and the funnel event that says it was shown. Nil otherwise.
+func (h *Handler) momentFor(r *http.Request, user users.User, streak int) *moments.Moment {
+	m, ok := moments.ForStreak(streak)
+	if !ok {
+		return nil
+	}
+	h.funnel.MomentShown(r.Context(), user.ID, m.Kind)
+	return &m
 }
 
 func formFrom(r *http.Request) checkinpages.CheckInForm {

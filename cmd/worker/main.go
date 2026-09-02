@@ -25,6 +25,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/activity"
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/ai/providers"
+	"github.com/NorthAIProject/north-client/internal/analytics"
 	"github.com/NorthAIProject/north-client/internal/biometrics"
 	"github.com/NorthAIProject/north-client/internal/calculator"
 	"github.com/NorthAIProject/north-client/internal/checkins"
@@ -45,6 +46,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/mind"
 	"github.com/NorthAIProject/north-client/internal/notifications"
 	"github.com/NorthAIProject/north-client/internal/nudges"
+	"github.com/NorthAIProject/north-client/internal/push"
 	"github.com/NorthAIProject/north-client/internal/quota"
 	"github.com/NorthAIProject/north-client/internal/reports"
 	"github.com/NorthAIProject/north-client/internal/shared/database"
@@ -314,9 +316,24 @@ func run() error {
 	worker.Register(jobs.KindSweepQuotas,
 		quota.NewService(quota.NewRepository(pool), quota.Limits{}, nil).HandleSweep)
 
+	// The nudges this process raises are the ones the funnel needs to count,
+	// so the worker reports to PostHog under the same rules as the web binary.
+	posthogClient, posthogErr := analytics.NewClient(cfg.PostHog, cfg.Env.IsProduction())
+	if posthogErr != nil {
+		return posthogErr
+	}
+	defer func() { _ = posthogClient.Close() }()
+	funnel := analytics.New(posthogClient)
+
+	// Web Push. Without keys, Send delivers to nobody and reports zero.
+	vapid := push.VAPIDFrom(cfg.Push)
+	pushSvc := push.NewService(push.NewRepository(pool), push.NewSender(vapid), vapid, log)
+
 	nudgeSvc := nudges.NewService(nudges.NewRepository(pool), userSvc, checkinSvc, goalSvc).
 		WithPrefs(notificationSvc).
 		WithFanout(briefingNotify).
+		WithPush(pushSvc).
+		WithFunnel(funnel).
 		WithWeek(nudges.WeekFrom{
 			Chats:  memoryExtract.Conversations,
 			Photos: mediaSvc,

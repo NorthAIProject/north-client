@@ -23,6 +23,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/messaging"
 	"github.com/NorthAIProject/north-client/internal/notifications"
 	"github.com/NorthAIProject/north-client/internal/preferences"
+	"github.com/NorthAIProject/north-client/internal/push"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/NorthAIProject/north-client/internal/toolaudit"
@@ -58,6 +59,10 @@ type Handler struct {
 	// the whole of it to say one thing back.
 	account *account.Service
 	mw      *auth.Middleware
+
+	// push is Web Push. Nil, or a service without keys, leaves the row off
+	// the notifications card.
+	push *push.Service
 }
 
 // WithIntegrations wires the calendar connection card.
@@ -66,6 +71,12 @@ type Handler struct {
 // takes nine.
 func (h *Handler) WithIntegrations(svc *integrations.Service) *Handler {
 	h.integrations = svc
+	return h
+}
+
+// WithPush wires the "nudges on this device" row.
+func (h *Handler) WithPush(svc *push.Service) *Handler {
+	h.push = svc
 	return h
 }
 
@@ -683,6 +694,19 @@ func (h *Handler) render(
 		}
 		f := settingspages.NotificationsFormFor(n, photo)
 		notifForm = &f
+	}
+
+	// Filled in on every render, including a rejected submission: the push row
+	// is not part of the form, so it must not vanish when the form is wrong.
+	if h.push != nil && h.push.Enabled() {
+		devices, err := h.push.Count(ctx, user.ID)
+		if err != nil {
+			h.fail(w, r, err)
+			return
+		}
+		notifForm.PushEnabled = true
+		notifForm.PushPublicKey = h.push.PublicKey()
+		notifForm.PushDevices = devices
 	}
 
 	allDiets, err := h.diets.ListDiets(ctx)

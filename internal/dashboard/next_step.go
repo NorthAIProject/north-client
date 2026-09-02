@@ -18,6 +18,11 @@ const (
 	stepKindGoal    = "goal"
 	stepKindCheckIn = "checkin"
 	stepKindChat    = "chat"
+
+	// StepKindPush is the one step past activation: let North reach this
+	// phone. Exported because the template treats it differently — the card
+	// hides itself when the browser cannot deliver, which only script can know.
+	StepKindPush = "push"
 )
 
 var (
@@ -45,10 +50,24 @@ var (
 		CTA:     "Open the coach",
 		Href:    "/app/chat",
 	}
+	stepPush = NextStep{
+		Kind:    StepKindPush,
+		Eyebrow: "Stay on track",
+		Title:   "Let Khepri reach you",
+		Body:    "A short note on this device when you have not checked in, a goal is due, or it is a training day.",
+		CTA:     "Turn on nudges",
+		Href:    "/app/settings#notifications",
+	}
 )
 
 // PickNextStep returns the first missing activation step. Goal, then today's
-// check-in, then a coach thread. Returning users who have all three see nothing.
+// check-in, then a coach thread, then — once all three are there — the offer
+// to be nudged on this device. Returning users who have everything see nothing.
+//
+// Push comes last rather than first because a nudge is only worth receiving
+// once there is something to be nudged about, and because asking for
+// notification permission before somebody has seen the product is how the
+// permission gets refused for good.
 func PickNextStep(s Snapshot) (NextStep, bool) {
 	switch {
 	case len(s.Goals) == 0:
@@ -57,6 +76,8 @@ func PickNextStep(s Snapshot) (NextStep, bool) {
 		return stepCheckIn, true
 	case s.LastThread == nil:
 		return stepChat, true
+	case s.PushOffered:
+		return stepPush, true
 	default:
 		return NextStep{}, false
 	}

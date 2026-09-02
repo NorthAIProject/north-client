@@ -128,6 +128,24 @@ func TestOfflinePageReferencesNoOtherFiles(t *testing.T) {
 	}
 }
 
+// A nudge arrives as a push event and leaves as a tap on /open, which is what
+// attributes the return to the channel. Both halves have to be in the worker
+// for the measurement to mean anything.
+func TestServiceWorkerHandlesPushAndTheTap(t *testing.T) {
+	body := swSource(t)
+	for _, want := range []string{
+		`addEventListener("push"`,
+		`showNotification(`,
+		`addEventListener("notificationclick"`,
+		`clients.openWindow(`,
+		`/assets/js/shared/push.js`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("sw.js missing %q", want)
+		}
+	}
+}
+
 func swSource(t *testing.T) string {
 	t.Helper()
 	raw, err := Files.ReadFile("sw.js")

@@ -4,8 +4,10 @@ import (
 	"strconv"
 
 	"github.com/NorthAIProject/north-client/internal/goals/goal"
+	"github.com/NorthAIProject/north-client/internal/moments"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/moment"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/ui/badge"
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
@@ -272,13 +274,20 @@ templ statusBadge(g goal.Goal) {
 	}
 }
 
-templ DetailPage(user users.User, g goal.Goal, updates []goal.Update, f GoalForm) {
+// DetailPage is one goal. m is the card shown once after the goal or one of its
+// milestones was just marked done; nil on every other visit.
+templ DetailPage(user users.User, g goal.Goal, updates []goal.Update, f GoalForm, m *moments.Moment) {
 	@layout.App(g.Title, user, layout.BuildNav("/app/goals")) {
 		<div class="mx-auto w-full max-w-3xl p-6 md:p-8" x-data={ "{ editing: " + boolJS(f.Open) + " }" }>
 			<a href="/app/goals" class="text-muted-foreground hover:text-foreground mb-4 inline-flex items-center gap-1 text-sm">
 				@icon.ArrowLeft(icon.Props{Class: "size-4"})
 				All goals
 			</a>
+			if m != nil {
+				<div class="mb-6">
+					@moment.Card(*m)
+				</div>
+			}
 			<header class="mb-6">
 				<div class="flex items-start justify-between gap-4">
 					<h1 class="text-2xl font-semibold tracking-tight">{ g.Title }</h1>
