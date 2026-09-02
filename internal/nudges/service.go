@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"time"
 
 	"github.com/google/uuid"
 
+	"github.com/NorthAIProject/north-client/internal/analytics"
 	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/notifications"
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -22,6 +24,15 @@ const (
 
 	// Inclusive window of local days from today. Due today through today+7.
 	goalDeadlineWindow = 7
+
+	// A streak short enough that losing it is not a loss is not worth a
+	// warning. Three is where the check-in page first celebrates it.
+	streakAtRiskMin = 3
+
+	// The local hour from which "your streak ends at midnight" may be raised.
+	// Evening, so there is still time to act; before the default quiet hours
+	// at 22:00, so the hourly sweep gets four chances.
+	streakAtRiskHour = 18
 )
 
 type accounts interface {
@@ -31,6 +42,9 @@ type accounts interface {
 
 type checkinDays interface {
 	LatestLocalDate(ctx context.Context, userID uuid.UUID) (date time.Time, ok bool, err error)
+	// StreakAt is the check-in streak as of now, with the same one-day grace
+	// the check-in page shows: yesterday still counts until today is missed.
+	StreakAt(ctx context.Context, user users.User, now time.Time) (int, error)
 }
 
 type activeGoals interface {
@@ -47,6 +61,21 @@ type notificationPrefs interface {
 // fanout delivers a newly created nudge to a linked chat. Optional.
 type fanout interface {
 	Notify(ctx context.Context, userID uuid.UUID, text string) error
+}
+
+// pusher delivers a newly created nudge to the browsers this person subscribed
+// (internal/push). Optional. It reports how many accepted the message so
+// delivery is counted only where something actually arrived.
+type pusher interface {
+	Send(ctx context.Context, userID uuid.UUID, title, body, href string) (delivered int, err error)
+}
+
+// funnel reports deliveries and opens to the product funnel. Optional. These
+// two events, per channel, are what say whether a nudge on the lock screen
+// brings anybody back.
+type funnel interface {
+	NudgeDelivered(ctx context.Context, userID uuid.UUID, kind, channel string)
+	NudgeOpened(ctx context.Context, userID uuid.UUID, kind, channel string)
 }
 
 // weekSource is what the first-week rules need besides check-ins.
@@ -74,6 +103,8 @@ type Service struct {
 	goals     activeGoals
 	prefs     notificationPrefs
 	fanout    fanout
+	push      pusher
+	funnel    funnel
 	week      weekSource
 	training  trainingSource
 	schedules schedules
@@ -109,6 +140,18 @@ func (s *Service) WithFanout(f fanout) *Service {
 	return s
 }
 
+// WithPush sends new nudges to the person's subscribed browsers as well.
+func (s *Service) WithPush(p pusher) *Service {
+	s.push = p
+	return s
+}
+
+// WithFunnel reports deliveries and opens to the product funnel.
+func (s *Service) WithFunnel(f funnel) *Service {
+	s.funnel = f
+	return s
+}
+
 func (s *Service) WithWeek(w weekSource) *Service {
 	s.week = w
 	return s
@@ -126,7 +169,8 @@ func (s *Service) WithSchedules(sc schedules) *Service {
 
 // Raise inserts a nudge if the dedupe key is new, the person allowed this
 // kind, and it is not quiet hours. A successful insert is fanned out to
-// Telegram unless the kind is one they already received there.
+// Telegram and to subscribed browsers, unless the kind is one they already
+// received there.
 func (s *Service) Raise(ctx context.Context, user users.User, d Draft) (Nudge, bool, error) {
 	prefs, err := s.prefsFor(ctx, user)
 	if err != nil {
@@ -144,20 +188,75 @@ func (s *Service) Raise(ctx context.Context, user users.User, d Draft) (Nudge, b
 		return n, created, err
 	}
 
-	if s.fanout != nil && fansOut(d.Kind) {
+	s.deliver(ctx, user, n)
+	return n, true, nil
+}
+
+// deliver takes a nudge that is already stored out to every channel that will
+// carry it. Nothing here can fail the Raise: the note is in the bell, and a
+// channel that did not work is logged and counted as not delivered.
+func (s *Service) deliver(ctx context.Context, user users.User, n Nudge) {
+	// The bell is the one channel that always has it, by virtue of the insert.
+	s.delivered(ctx, user.ID, n.Kind, analytics.ChannelBell)
+
+	if !fansOut(n.Kind) {
+		return
+	}
+
+	if s.fanout != nil {
 		text := n.Title
 		if n.Body != "" {
 			text = n.Title + "\n\n" + n.Body
 		}
 		if notifyErr := s.fanout.Notify(ctx, user.ID, text); notifyErr != nil {
-			// The note is stored. A failed push must not roll it back.
 			slog.Default().Warn("nudges: could not send to linked chat",
 				"error", notifyErr,
 				"user_id", user.ID,
-				"kind", d.Kind)
+				"kind", n.Kind)
 		}
 	}
-	return n, true, nil
+
+	if s.push != nil {
+		// The link goes through /open so the click is attributed to push
+		// before the person lands on the page the nudge is about.
+		count, pushErr := s.push.Send(ctx, user.ID, n.Title, n.Body, OpenPath(n.ID, analytics.ChannelPush))
+		if pushErr != nil {
+			slog.Default().Warn("nudges: could not send to browsers",
+				"error", pushErr,
+				"user_id", user.ID,
+				"kind", n.Kind)
+		}
+		if count > 0 {
+			s.delivered(ctx, user.ID, n.Kind, analytics.ChannelPush)
+		}
+	}
+}
+
+func (s *Service) delivered(ctx context.Context, userID uuid.UUID, kind, channel string) {
+	if s.funnel != nil {
+		s.funnel.NudgeDelivered(ctx, userID, kind, channel)
+	}
+}
+
+// OpenPath is the link a channel outside the app hands a person: it marks the
+// nudge read, records which channel brought them, and sends them on to the
+// page the nudge is about.
+func OpenPath(id uuid.UUID, channel string) string {
+	return "/app/nudges/" + id.String() + "/open?from=" + url.QueryEscape(channel)
+}
+
+// Open marks a nudge read and records the channel that brought the person to
+// it. It is MarkRead with attribution; the bell's own read button uses it too,
+// so every open is counted on the same footing.
+func (s *Service) Open(ctx context.Context, id, userID uuid.UUID, channel string) (Nudge, error) {
+	n, err := s.repo.MarkRead(ctx, id, userID)
+	if err != nil {
+		return Nudge{}, err
+	}
+	if s.funnel != nil {
+		s.funnel.NudgeOpened(ctx, userID, n.Kind, channel)
+	}
+	return n, nil
 }
 
 // Note is Raise when the caller only has a user id. Used by jobs.
@@ -271,6 +370,17 @@ func (s *Service) Evaluate(ctx context.Context, user users.User) (int, error) {
 		return created, nil
 	}
 
+	// The evening before a streak breaks, then the days after it did. The
+	// two share a switch on the settings page, so the same permission gates
+	// both.
+	if prefs.AllowsNudge(KindStreakAtRisk) {
+		n, err := s.evalStreakAtRisk(ctx, user, today, now)
+		if err != nil {
+			return created, err
+		}
+		created += n
+	}
+
 	if prefs.AllowsNudge(KindMissedCheckIn) {
 		n, err := s.evalMissedCheckIn(ctx, user, today)
 		if err != nil {
@@ -297,6 +407,52 @@ func (s *Service) prefsFor(ctx context.Context, user users.User) (notifications.
 		return notifications.Defaults(), nil
 	}
 	return s.prefs.Get(ctx, user.ID)
+}
+
+// evalStreakAtRisk warns, once, on the evening a check-in streak would break.
+//
+// This is the gap the missed-check-in rule leaves: that one waits two quiet
+// days and so always arrives after the streak is already gone. Loss is a
+// stronger motive than absence, and it only works before the loss.
+func (s *Service) evalStreakAtRisk(ctx context.Context, user users.User, today, now time.Time) (int, error) {
+	if s.checkins == nil {
+		return 0, nil
+	}
+	if now.In(user.Location()).Hour() < streakAtRiskHour {
+		return 0, nil
+	}
+
+	last, ok, err := s.checkins.LatestLocalDate(ctx, user.ID)
+	if err != nil {
+		return 0, err
+	}
+	if ok && daysBetween(last, today) == 0 {
+		// Already checked in today. Nothing is at risk.
+		return 0, nil
+	}
+
+	streak, err := s.checkins.StreakAt(ctx, user, now)
+	if err != nil {
+		return 0, err
+	}
+	if streak < streakAtRiskMin {
+		return 0, nil
+	}
+
+	_, inserted, err := s.Raise(ctx, user, Draft{
+		Kind:      KindStreakAtRisk,
+		DedupeKey: today.Format("2006-01-02"),
+		Title:     fmt.Sprintf("Your %d-day streak ends at midnight", streak),
+		Body:      "One check-in keeps it. Thirty seconds.",
+		Href:      "/app/check-ins",
+	})
+	if err != nil {
+		return 0, err
+	}
+	if inserted {
+		return 1, nil
+	}
+	return 0, nil
 }
 
 func (s *Service) evalMissedCheckIn(ctx context.Context, user users.User, today time.Time) (int, error) {

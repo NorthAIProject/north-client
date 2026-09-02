@@ -1,18 +1,23 @@
-// North's service worker: an offline shell, and nothing more.
+// North's service worker: an offline shell, and the ear for Web Push.
 //
-// The rule this file is built around has not changed. HTML, POSTs and SSE must
-// never be served from a cache: a stale check-in form or a replayed coach
-// stream is worse than a failed request. What is cached is only the static
-// shell — the stylesheet, the vendored scripts, the fonts and the icons — plus
-// one offline page to show when a navigation cannot reach the server.
+// The caching rule this file is built around has not changed. HTML, POSTs and
+// SSE must never be served from a cache: a stale check-in form or a replayed
+// coach stream is worse than a failed request. What is cached is only the
+// static shell — the stylesheet, the vendored scripts, the fonts and the icons
+// — plus one offline page to show when a navigation cannot reach the server.
 //
 // So the worker can answer "what does North look like" without a network, and
 // still cannot answer "what did I say to my coach" from anything but the server.
+//
+// The push handlers at the bottom are the other reason this file exists. A
+// nudge the worker process decided on reaches the phone's lock screen through
+// them, and a tap goes through /app/nudges/{id}/open so the server can record
+// which channel brought the person back.
 
 // Bumping this name is what retires the previous cache. Old caches are deleted
 // on activate, so a deploy that changes an asset cannot leave somebody pinned
 // to the previous one.
-const CACHE = "north-shell-v2";
+const CACHE = "north-shell-v3";
 
 const OFFLINE_URL = "/offline.html";
 
@@ -27,6 +32,7 @@ const SHELL = [
   "/assets/js/vendor/htmx-ext-sse.js",
   "/assets/js/vendor/alpine.min.js",
   "/assets/js/shared/pwa.js",
+  "/assets/js/shared/push.js",
   "/assets/fonts/geist/geist-variable.woff2",
   "/assets/fonts/geist/geist-mono-variable.woff2",
   "/assets/brand/favicon.svg",
@@ -143,4 +149,60 @@ self.addEventListener("fetch", (event) => {
 
   // Everything else — API reads, anything unrecognised — is left to the
   // browser, which is the safe default.
+});
+
+// A nudge arriving. The payload is the JSON internal/push encrypted for this
+// browser: a title, a body, and the /open link that attributes the tap. A push
+// with no readable payload still shows something — a silent push is how a
+// subscription gets revoked on some platforms, so the worker must always
+// display when it is woken.
+self.addEventListener("push", (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    data = { title: "Khepri", body: event.data ? event.data.text() : "" };
+  }
+
+  const title = data.title || "Khepri";
+  const options = {
+    body: data.body || "",
+    icon: "/assets/brand/pwa-192.png",
+    badge: "/assets/brand/pwa-192.png",
+    data: { href: data.href || "/app" },
+    // One notification per href: a person who has not opened the app sees the
+    // latest note about a thing, not a stack of them.
+    tag: data.href || "north-nudge",
+    renotify: false,
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+// A tap. Focus a window that already has Khepri open and send it to the link,
+// or open one. The link is /app/nudges/{id}/open, which redirects to the page
+// the nudge was about once the server has counted the open.
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const href = (event.notification.data && event.notification.data.href) || "/app";
+  const target = new URL(href, self.location.origin).href;
+
+  event.waitUntil(
+    (async () => {
+      const windows = await self.clients.matchAll({
+        type: "window",
+        includeUncontrolled: true,
+      });
+      for (const client of windows) {
+        if ("focus" in client) {
+          await client.focus();
+          if ("navigate" in client) {
+            await client.navigate(target);
+            return;
+          }
+        }
+      }
+      await self.clients.openWindow(target);
+    })(),
+  );
 });

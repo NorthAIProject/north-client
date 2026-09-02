@@ -341,6 +341,16 @@ sql:
 
   - engine: postgresql
     schema: migrations
+    queries: internal/push/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: pushdb
+        out: internal/push/db
+        overrides: *overrides
+
+  - engine: postgresql
+    schema: migrations
     queries: internal/notifications/db/queries.sql
     gen:
       go:

@@ -1,0 +1,25 @@
+// Package moment renders one beat of recognition: the mascot celebrating, a
+// title, a line. Shared by the check-in panel and the goal page so the two
+// places a person earns one look the same.
+package moment
+
+import (
+	"github.com/NorthAIProject/north-client/internal/moments"
+	"github.com/NorthAIProject/north-client/web/shared/mascot"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+)
+
+// Card is the moment. One card, no modal, no confetti, no sound: the mascot
+// does the celebrating and the copy says what for.
+templ Card(m moments.Moment) {
+	@card.Card(card.Props{Class: "border-signal/30 bg-signal/5", Attributes: templ.Attributes{"data-moment": m.Kind}}) {
+		@card.Content(card.ContentProps{Class: "flex items-center gap-4"}) {
+			@mascot.Mascot(mascot.Props{Size: mascot.SizeMd, Gesture: mascot.StateCelebrate})
+			<div>
+				<p class="font-mono text-[10px] uppercase tracking-[0.14em] text-signal">Moment</p>
+				<p class="mt-1 text-lg font-medium tracking-tight">{ m.Title }</p>
+				<p class="text-muted-foreground mt-1 text-sm">{ m.Body }</p>
+			</div>
+		}
+	}
+}

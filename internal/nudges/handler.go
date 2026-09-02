@@ -7,6 +7,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/NorthAIProject/north-client/internal/analytics"
 	"github.com/NorthAIProject/north-client/internal/auth"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/htmx"
@@ -20,11 +21,13 @@ type Handler struct {
 
 func NewHandler(svc *Service) *Handler { return &Handler{svc: svc} }
 
-// Routes mounts the bell and the read/dismiss actions. Must be behind RequireAuth.
+// Routes mounts the bell and the read/dismiss/open actions. Must be behind
+// RequireAuth.
 func (h *Handler) Routes(r chi.Router) {
 	r.Get("/nudges/bell", h.bell)
 	r.Post("/nudges/{id}/read", h.read)
 	r.Post("/nudges/{id}/dismiss", h.dismiss)
+	r.Get("/nudges/{id}/open", h.open)
 }
 
 func (h *Handler) bell(w http.ResponseWriter, r *http.Request) {
@@ -39,7 +42,7 @@ func (h *Handler) read(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	n, err := h.svc.MarkRead(r.Context(), id, user.ID)
+	n, err := h.svc.Open(r.Context(), id, user.ID, analytics.ChannelBell)
 	if err != nil {
 		h.fail(w, r, err)
 		return
@@ -50,11 +53,54 @@ func (h *Handler) read(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	dest := n.Href
-	if dest == "" {
-		dest = "/app"
+	http.Redirect(w, r, destination(n), http.StatusSeeOther)
+}
+
+// open is the link a push notification carries. A GET because a notification
+// tap can only navigate; the state it changes — read_at, and one funnel event
+// — is idempotent, so a bookmark or a reload does no further harm. A nudge
+// that was dismissed in the meantime sends the person home rather than to an
+// error: they tapped something North sent them, and that should land somewhere.
+func (h *Handler) open(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		http.Redirect(w, r, "/app", http.StatusSeeOther)
+		return
 	}
-	http.Redirect(w, r, dest, http.StatusSeeOther)
+
+	n, err := h.svc.Open(r.Context(), id, user.ID, channelFrom(r))
+	if err != nil {
+		if apperr.Is(err, apperr.ErrNotFound) {
+			http.Redirect(w, r, "/app", http.StatusSeeOther)
+			return
+		}
+		h.fail(w, r, err)
+		return
+	}
+
+	http.Redirect(w, r, destination(n), http.StatusSeeOther)
+}
+
+// channelFrom reads which channel brought the person here. Only channels this
+// build knows are accepted; anything else is counted as the bell rather than
+// letting a query string invent a channel in the analytics.
+func channelFrom(r *http.Request) string {
+	switch r.URL.Query().Get("from") {
+	case analytics.ChannelPush:
+		return analytics.ChannelPush
+	default:
+		return analytics.ChannelBell
+	}
+}
+
+// destination is where a nudge sends the person, or home for one without a
+// page of its own.
+func destination(n Nudge) string {
+	if n.Href == "" {
+		return "/app"
+	}
+	return n.Href
 }
 
 func (h *Handler) dismiss(w http.ResponseWriter, r *http.Request) {

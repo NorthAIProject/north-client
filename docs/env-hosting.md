@@ -62,7 +62,8 @@ this list before the first public cutover.
 | `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` | Google Cloud OAuth client | "Continue with Google". Empty hides the button |
 | `STRAVA_CLIENT_ID` + `STRAVA_CLIENT_SECRET` | Strava API application | Fitness connect. Empty makes the integration report itself unavailable |
 | `TELEGRAM_BOT_TOKEN` + `TELEGRAM_BOT_USERNAME` + `TELEGRAM_WEBHOOK_SECRET` | @BotFather token, bot name, `openssl rand -hex 32` | Messaging gateway. Empty builds no adapter. Production uses webhook mode, not polling |
-| `POSTHOG_API_KEY` | PostHog project key | Coach LLM observability. Empty in production is a silent no-op dashboard |
+| `POSTHOG_API_KEY` | PostHog project key | Coach LLM observability and the product funnel. Empty in production is a silent no-op dashboard |
+| `VAPID_PUBLIC_KEY` + `VAPID_PRIVATE_KEY` | `main vapid-keygen`, once | Web Push for nudges. Empty hides the "nudges on this device" row and the dashboard offer; nudges stay in the bell and on Telegram. See [Web Push](#web-push) |
 | `EMBEDDING_PROVIDER` + `EMBEDDING_MODEL` | `nvidia` + `nvidia/nv-embedqa-e5-v5` | Semantic document retrieval. Empty leaves full-text only. NVIDIA NIM is the backend that actually serves `/embeddings` |
 
 `PORT` can stay at `8090`. TLS and the hostname belong on the Ingress. The
@@ -162,6 +163,10 @@ TELEGRAM_BOT_TOKEN=
 TELEGRAM_WEBHOOK_SECRET=            # openssl rand -hex 32; selects webhook mode
 
 POSTHOG_API_KEY=
+
+VAPID_PUBLIC_KEY=                   # main vapid-keygen, once per deployment
+VAPID_PRIVATE_KEY=
+VAPID_SUBJECT=                      # mailto:… or https://…; defaults to BASE_URL
 ```
 
 ---
@@ -345,6 +350,38 @@ curl -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
 ```
 
 ---
+
+## Web Push
+
+Nudges — a missed check-in, a goal due this week, a training day — reach a
+phone's lock screen through the browser's push service when the person has
+turned it on under Settings → Notifications. Both processes need the same
+keys: the web binary stores subscriptions and serves the page, the worker
+raises most nudges and does the sending.
+
+| Variable | Default | Notes |
+|---|---|---|
+| `VAPID_PUBLIC_KEY` | empty | Embedded in the page; every browser that subscribes stores it |
+| `VAPID_PRIVATE_KEY` | empty | Signs each push request. Secret |
+| `VAPID_SUBJECT` | `BASE_URL` | `mailto:` or `https://` contact the push services can reach |
+
+Generate the pair once:
+
+```sh
+go run ./cmd/web vapid-keygen
+```
+
+and put both lines in the SealedSecret. **Do not rotate casually.** A new
+public key does not fail loudly — every existing subscription simply stops
+receiving, and each browser has to opt in again.
+
+Setting one key without the other refuses to boot. Setting neither is fine:
+`Enabled()` is false, the settings row and the dashboard offer are not
+rendered, the subscribe endpoint answers 404, and the nudge engine carries on
+with the bell and Telegram.
+
+iOS delivers Web Push only to a PWA on the Home Screen (16.4+). The settings
+row says so instead of showing a button that cannot work.
 
 ## MCP (the public one)
 

@@ -143,6 +143,7 @@ func buildDashboardData(snap Snapshot) (app.DashboardData, error) {
 		HasBriefing:      snap.Briefing != nil && snap.Briefing.Ready(),
 		HasNextStep:      hasStep,
 		NextStep: app.NextStep{
+			Kind:    step.Kind,
 			Eyebrow: step.Eyebrow,
 			Title:   step.Title,
 			Body:    step.Body,
