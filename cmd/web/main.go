@@ -60,6 +60,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/nudges"
 	"github.com/NorthAIProject/north-client/internal/onboarding"
 	"github.com/NorthAIProject/north-client/internal/preferences"
+	"github.com/NorthAIProject/north-client/internal/push"
 	"github.com/NorthAIProject/north-client/internal/quota"
 	"github.com/NorthAIProject/north-client/internal/reports"
 	"github.com/NorthAIProject/north-client/internal/settings"
@@ -146,12 +147,38 @@ func main() {
 		return
 	}
 
+	// `main vapid-keygen` prints a fresh Web Push key pair and exits.
+	//
+	// A subcommand because the keys are generated once per deployment and
+	// pasted into a secret, never derived at boot: a process that minted its
+	// own pair on start would orphan every subscription on every restart.
+	if len(os.Args) > 1 && os.Args[1] == "vapid-keygen" {
+		if err := runVAPIDKeygen(); err != nil {
+			fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	if err := run(); err != nil {
 		// The logger may not exist yet when configuration fails, so this one
 		// message goes straight to stderr.
 		fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// runVAPIDKeygen prints a key pair in the form .env and the SealedSecret take.
+// It reads no configuration and opens no pool: there is nothing to check
+// against, and a keygen that could fail on a missing DATABASE_URL would fail
+// for the wrong reason.
+func runVAPIDKeygen() error {
+	public, private, err := push.GenerateKeys()
+	if err != nil {
+		return err
+	}
+	fmt.Printf("VAPID_PUBLIC_KEY=%s\nVAPID_PRIVATE_KEY=%s\n", public, private)
+	return nil
 }
 
 // runMigrate applies pending migrations and returns. It deliberately does not
@@ -459,7 +486,7 @@ func run() error {
 		return err
 	}
 
-	posthogClient, err := newPostHogClient(cfg)
+	posthogClient, err := analytics.NewClient(cfg.PostHog, cfg.Env.IsProduction())
 	if err != nil {
 		return err
 	}
@@ -622,8 +649,18 @@ func routes(
 
 	notificationSvc := notifications.NewService(notifications.NewRepository(pool))
 
+	// Web Push to the browsers a person subscribed. Built whether or not keys
+	// exist: without them Enabled is false, the settings page shows no row, the
+	// dashboard offers no step, and Send delivers to nobody.
+	vapid := push.VAPIDFrom(cfg.Push)
+	pushSvc := push.NewService(push.NewRepository(pool), push.NewSender(vapid), vapid, slog.Default()).
+		WithFunnel(funnel)
+	pushHandler := push.NewHandler(pushSvc)
+
 	nudgeSvc := nudges.NewService(nudges.NewRepository(pool), userSvc, checkinSvc, goalSvc).
-		WithPrefs(notificationSvc)
+		WithPrefs(notificationSvc).
+		WithPush(pushSvc).
+		WithFunnel(funnel)
 	nudgeHandler := nudges.NewHandler(nudgeSvc)
 
 	memorySvc := memories.NewService(memories.NewRepository(pool))
@@ -839,6 +876,7 @@ func routes(
 		Activity:      activitySvc,
 		Mind:          mindSvc,
 		Nudges:        nudgeSvc,
+		Push:          pushSvc,
 	})
 	dashboardHandler := dashboard.NewHandler(dashboardSvc)
 
@@ -990,7 +1028,7 @@ func routes(
 	settingsHandler := settings.NewHandler(
 		userSvc, preferencesSvc, notificationSvc, mealDietSvc, connectionSvc, aicredSvc,
 		auditSvc, messagingSvc, cfg.Telegram, accountSvc, authMW,
-	).WithIntegrations(integrationSvc)
+	).WithIntegrations(integrationSvc).WithPush(pushSvc)
 
 	// Given the coach so the questionnaire ends in a thread that is already
 	// being answered, rather than an empty chat box the person has to think of
@@ -1143,6 +1181,7 @@ func routes(
 				coachHandler.Routes(r)
 				checkinHandler.Routes(r)
 				nudgeHandler.Routes(r)
+				pushHandler.Routes(r)
 				goalHandler.Routes(r)
 				memoryHandler.Routes(r)
 				documentHandler.Routes(r)
@@ -1272,26 +1311,6 @@ func serveExerciseFrame(w http.ResponseWriter, req *http.Request) {
 	req.URL.Path += ".gz"
 	w.Header().Set("Content-Type", "image/svg+xml")
 	w.Header().Set("Content-Encoding", "gzip")
-}
-
-// newPostHogClient builds the client the coach reports LLM calls through.
-//
-// An absent key is a silently missed dashboard, not a broken app, so it is
-// never fatal — except in development, where a quiet gap in analytics is
-// worth a loud failure at boot rather than a puzzled look at an empty
-// project weeks later. Production gets posthog-go's own no-op client, which
-// answers every call without sending anything.
-func newPostHogClient(cfg *config.Config) (posthog.Client, error) {
-	if cfg.PostHog.APIKey == "" {
-		if !cfg.Env.IsProduction() {
-			return nil, fmt.Errorf("POSTHOG_API_KEY variable required by PostHog is missing or un-configured, this causes events to be silently missed. This error stops appearing once POSTHOG_API_KEY is configured")
-		}
-		return posthog.NewWithConfig("", posthog.Config{})
-	}
-
-	return posthog.NewWithConfig(cfg.PostHog.APIKey, posthog.Config{
-		Endpoint: cfg.PostHog.Host,
-	})
 }
 
 func newLogger(cfg *config.Config) *slog.Logger {

@@ -22,6 +22,10 @@ func TestPickNextStep(t *testing.T) {
 		{name: "has goal, no check-in today", snap: dashboard.Snapshot{Goals: []goals.Goal{goal}}, ok: true, kind: "checkin"},
 		{name: "checked in, no thread", snap: dashboard.Snapshot{Goals: []goals.Goal{goal}, CheckedInToday: true}, ok: true, kind: "chat"},
 		{name: "activated account hides the card", snap: dashboard.Snapshot{Goals: []goals.Goal{goal}, CheckedInToday: true, LastThread: thread}, ok: false},
+		// Push waits its turn: an account still missing a goal or a thread is
+		// asked for those first, and never for notification permission.
+		{name: "push is not offered before activation", snap: dashboard.Snapshot{Goals: []goals.Goal{goal}, PushOffered: true}, ok: true, kind: "checkin"},
+		{name: "activated account without a subscription is offered push", snap: dashboard.Snapshot{Goals: []goals.Goal{goal}, CheckedInToday: true, LastThread: thread, PushOffered: true}, ok: true, kind: dashboard.StepKindPush},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

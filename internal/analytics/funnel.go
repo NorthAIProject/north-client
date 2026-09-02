@@ -7,18 +7,22 @@
 // only events the application emitted were $ai_generation and $ai_span, so a
 // launch would have produced excellent traces of an empty room.
 //
-// Five events, deliberately. A funnel with thirty steps is a funnel nobody
-// reads, and every event that is not on the path from stranger to activation is
-// a decision deferred rather than made.
+// A handful of events, deliberately. A funnel with thirty steps is a funnel
+// nobody reads, and every event that is not on the path from stranger to
+// activation is a decision deferred rather than made. The nudge events are the
+// one addition past activation, because they answer the next question the
+// funnel cannot: once somebody has activated, does North bring them back?
 package analytics
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"github.com/google/uuid"
 	"github.com/posthog/posthog-go"
 
+	"github.com/NorthAIProject/north-client/internal/config"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 )
 
@@ -41,6 +45,23 @@ const (
 	// PostHog rather than computed here: the second day is a property of the
 	// history, not of the reply.
 	EventCoachReplied = "coach_replied"
+
+	// EventPushSubscribed is a browser agreeing to receive nudges on the lock
+	// screen. The opt-in rate is the first number the native-app decision
+	// needs: nobody will install an app for notifications they refused here.
+	EventPushSubscribed = "push_subscribed"
+
+	// EventNudgeDelivered is a nudge reaching a surface: the bell on insert,
+	// a browser when the push service accepted it. Telegram is deliberately
+	// not attributed — its Notify treats "no linked chat" as success, so it
+	// cannot say whether anything arrived.
+	EventNudgeDelivered = "nudge_delivered"
+
+	// EventNudgeOpened is a person acting on a nudge, with the channel they
+	// arrived from. Opened within a day of delivered, per channel, is the
+	// return rate; that number is what says whether a native app is worth
+	// building.
+	EventNudgeOpened = "nudge_opened"
 )
 
 // Sources for EventSourceConnected.
@@ -50,6 +71,32 @@ const (
 	SourceDocument = "document"
 	SourceCalendar = "calendar"
 )
+
+// Channels for the nudge events.
+const (
+	ChannelBell = "bell"
+	ChannelPush = "push"
+)
+
+// NewClient builds the PostHog client both binaries report through.
+//
+// An absent key is a silently missed dashboard, not a broken app, so it is
+// never fatal — except in development, where a quiet gap in analytics is
+// worth a loud failure at boot rather than a puzzled look at an empty
+// project weeks later. Production gets posthog-go's own no-op client, which
+// answers every call without sending anything.
+func NewClient(cfg config.PostHogConfig, production bool) (posthog.Client, error) {
+	if cfg.APIKey == "" {
+		if !production {
+			return nil, fmt.Errorf("POSTHOG_API_KEY variable required by PostHog is missing or un-configured, this causes events to be silently missed. This error stops appearing once POSTHOG_API_KEY is configured")
+		}
+		return posthog.NewWithConfig("", posthog.Config{})
+	}
+
+	return posthog.NewWithConfig(cfg.APIKey, posthog.Config{
+		Endpoint: cfg.Host,
+	})
+}
 
 // Funnel reports the product funnel.
 //
@@ -90,6 +137,23 @@ func (p *Funnel) SourceConnected(ctx context.Context, userID uuid.UUID, source s
 // different when the second day happened in a messaging app.
 func (p *Funnel) CoachReplied(ctx context.Context, userID uuid.UUID, surface string) {
 	p.capture(ctx, userID, EventCoachReplied, posthog.Properties{"surface": surface})
+}
+
+// PushSubscribed records a browser opting in to nudges.
+func (p *Funnel) PushSubscribed(ctx context.Context, userID uuid.UUID) {
+	p.capture(ctx, userID, EventPushSubscribed, nil)
+}
+
+// NudgeDelivered records a nudge reaching a channel. kind is the nudge kind
+// internal/nudges stores; channel is one of the Channel constants.
+func (p *Funnel) NudgeDelivered(ctx context.Context, userID uuid.UUID, kind, channel string) {
+	p.capture(ctx, userID, EventNudgeDelivered, posthog.Properties{"kind": kind, "channel": channel})
+}
+
+// NudgeOpened records a person following a nudge, from whichever channel
+// brought them.
+func (p *Funnel) NudgeOpened(ctx context.Context, userID uuid.UUID, kind, channel string) {
+	p.capture(ctx, userID, EventNudgeOpened, posthog.Properties{"kind": kind, "channel": channel})
 }
 
 // capture is the one place an event reaches PostHog.

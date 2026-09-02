@@ -64,6 +64,17 @@ type Options struct {
 
 	// Briefings is optional for the same reason.
 	Briefings Briefings
+
+	// Push is optional too. It decides whether the dashboard offers "turn on
+	// nudges" as the step after activation.
+	Push Push
+}
+
+// Push is the dashboard's view of Web Push: whether this deployment can send,
+// and whether any browser of this person's already listens.
+type Push interface {
+	Enabled() bool
+	HasSubscription(ctx context.Context, userID uuid.UUID) (bool, error)
 }
 
 // Briefings is the dashboard's view of the morning briefing. Narrow on purpose:
@@ -90,6 +101,7 @@ type Service struct {
 	mind          *mind.Service
 	nudges        Nudges
 	briefings     Briefings
+	push          Push
 }
 
 func NewService(opts Options) *Service {
@@ -106,6 +118,7 @@ func NewService(opts Options) *Service {
 		mind:          opts.Mind,
 		nudges:        opts.Nudges,
 		briefings:     opts.Briefings,
+		push:          opts.Push,
 	}
 }
 
@@ -154,6 +167,10 @@ type Snapshot struct {
 	// Briefing is this morning's note. Nil when none has been generated, when
 	// the latest one is not for today, or when Briefings was not wired.
 	Briefing *report.Report
+
+	// PushOffered is true when this deployment can send Web Push and none of
+	// this person's browsers has subscribed yet. False when Push was not wired.
+	PushOffered bool
 }
 
 // Load gathers the overview.
@@ -239,6 +256,17 @@ func (s *Service) Load(ctx context.Context, user users.User, rg timerange.Range)
 				return nil
 			}
 			snap.Briefing = &latest
+			return nil
+		})
+	}
+
+	if s.push != nil && s.push.Enabled() {
+		g.Go(func() error {
+			has, err := s.push.HasSubscription(gctx, user.ID)
+			if err != nil {
+				return err
+			}
+			snap.PushOffered = !has
 			return nil
 		})
 	}

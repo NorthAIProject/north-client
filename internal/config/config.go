@@ -61,6 +61,10 @@ type Config struct {
 
 	Telegram TelegramConfig
 
+	// Push signs Web Push requests. Optional: without a key pair the settings
+	// page offers no button and nudges stay in the bell and on Telegram.
+	Push PushConfig
+
 	AI         AIConfig
 	Storage    StorageConfig
 	Embedding  EmbeddingConfig
@@ -340,6 +344,27 @@ func (c TelegramConfig) Enabled() bool { return c.BotToken != "" }
 // UsesWebhook reports which inbound edge to run.
 func (c TelegramConfig) UsesWebhook() bool { return c.WebhookSecret != "" }
 
+// PushConfig is the VAPID key pair that identifies this deployment to the
+// browsers' push services.
+//
+// Generated once with `main vapid-keygen`. The public key is embedded in the
+// page and stored by every browser that subscribes, so replacing it silently
+// orphans every existing subscription — treat the pair like a signing key,
+// not like a password that is rotated on a schedule.
+type PushConfig struct {
+	VAPIDPublicKey  string
+	VAPIDPrivateKey string
+
+	// Subject is how a push service operator reaches whoever runs this
+	// server: a mailto: address or an https URL. Defaults to BASE_URL.
+	Subject string
+}
+
+// Enabled reports whether push can be sent at all.
+func (c PushConfig) Enabled() bool {
+	return c.VAPIDPublicKey != "" && c.VAPIDPrivateKey != ""
+}
+
 // OpenAICompatConfig configures one backend speaking the OpenAI chat dialect.
 type OpenAICompatConfig struct {
 	APIKey  string
@@ -426,6 +451,12 @@ func Load() (*Config, error) {
 			BotToken:      strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN")),
 			WebhookSecret: strings.TrimSpace(os.Getenv("TELEGRAM_WEBHOOK_SECRET")),
 			BotUsername:   strings.TrimPrefix(strings.TrimSpace(os.Getenv("TELEGRAM_BOT_USERNAME")), "@"),
+		},
+
+		Push: PushConfig{
+			VAPIDPublicKey:  strings.TrimSpace(os.Getenv("VAPID_PUBLIC_KEY")),
+			VAPIDPrivateKey: strings.TrimSpace(os.Getenv("VAPID_PRIVATE_KEY")),
+			Subject:         strings.TrimSpace(os.Getenv("VAPID_SUBJECT")),
 		},
 
 		AI: AIConfig{
@@ -600,6 +631,21 @@ func Load() (*Config, error) {
 	}
 	if cfg.SMTP.From != "" && cfg.SMTP.Host == "" {
 		problems = append(problems, "SMTP_HOST is required when SMTP_FROM is set")
+	}
+
+	// Half a key pair is a typo, not a decision, for the same reason as SMTP.
+	// The subject defaults to the site itself, which is what a push service
+	// operator would look up anyway.
+	if (cfg.Push.VAPIDPublicKey == "") != (cfg.Push.VAPIDPrivateKey == "") {
+		problems = append(problems, "VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY must be set together")
+	}
+	if cfg.Push.Subject == "" {
+		cfg.Push.Subject = cfg.BaseURL
+	}
+	if cfg.Push.Enabled() &&
+		!strings.HasPrefix(cfg.Push.Subject, "mailto:") &&
+		!strings.HasPrefix(cfg.Push.Subject, "https://") {
+		problems = append(problems, "VAPID_SUBJECT must be a mailto: address or an https URL")
 	}
 
 	// AI_PROVIDER is the older single-provider form. Honouring it as a
