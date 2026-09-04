@@ -2,7 +2,6 @@ package auth
 
 import (
 	"crypto/subtle"
-	"encoding/json"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -11,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	authpages "github.com/NorthAIProject/north-client/web/auth"
 )
@@ -312,7 +312,7 @@ func (h *Handler) passkeyRegisterBegin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in PasskeyRegisterBeginInput
-	if err := decodeJSON(r, &in); err != nil {
+	if err := decodeJSON(w, r, &in); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body."})
 		return
 	}
@@ -330,7 +330,7 @@ func (h *Handler) passkeyRegisterFinish(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	var in PasskeyRegisterFinishInput
-	if err := decodeJSON(r, &in); err != nil {
+	if err := decodeJSON(w, r, &in); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body."})
 		return
 	}
@@ -351,7 +351,7 @@ func (h *Handler) passkeyLoginBegin(w http.ResponseWriter, r *http.Request) {
 	}
 	var in PasskeyLoginBeginInput
 	// Empty body is fine (discoverable login).
-	_ = decodeJSON(r, &in)
+	_ = decodeJSON(w, r, &in)
 	ceremony, err := h.svc.PasskeyLoginBegin(r.Context(), in)
 	if err != nil {
 		writePasskeyError(w, r, err)
@@ -366,7 +366,7 @@ func (h *Handler) passkeyLoginFinish(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in PasskeyLoginFinishInput
-	if err := decodeJSON(r, &in); err != nil {
+	if err := decodeJSON(w, r, &in); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body."})
 		return
 	}
@@ -408,17 +408,19 @@ func writePasskeyError(w http.ResponseWriter, r *http.Request, err error) {
 	writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Something went wrong with the passkey. Please try again."})
 }
 
-func decodeJSON(r *http.Request, dst any) error {
-	defer func() { _ = r.Body.Close() }()
-	dec := json.NewDecoder(r.Body)
-	dec.DisallowUnknownFields()
-	return dec.Decode(dst)
+// maxCeremonyBytes bounds a passkey ceremony body.
+//
+// The bound is new: this decoder used to read an unbounded body, which the
+// shared reader made visible by asking for the cap explicitly. A WebAuthn
+// ceremony is a few kilobytes of base64url, so 64 KiB is generous.
+const maxCeremonyBytes = 64 << 10
+
+func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) error {
+	return httpx.ReadJSON(w, r, dst, httpx.ReadOptions{MaxBytes: maxCeremonyBytes})
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+	httpx.WriteJSON(w, status, v)
 }
 
 func (h *Handler) showForgotPassword(w http.ResponseWriter, r *http.Request) {

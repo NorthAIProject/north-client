@@ -7,19 +7,24 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/NorthAIProject/north-client/internal/agent"
+	"github.com/NorthAIProject/north-client/internal/biometrics"
 	"github.com/NorthAIProject/north-client/internal/calculator"
 	"github.com/NorthAIProject/north-client/internal/checkins"
 	"github.com/NorthAIProject/north-client/internal/documents"
 	"github.com/NorthAIProject/north-client/internal/exercises"
 	"github.com/NorthAIProject/north-client/internal/goals"
+	"github.com/NorthAIProject/north-client/internal/habits"
+	"github.com/NorthAIProject/north-client/internal/hydration"
 	"github.com/NorthAIProject/north-client/internal/mcpserver"
 	"github.com/NorthAIProject/north-client/internal/meals"
+	"github.com/NorthAIProject/north-client/internal/sleep"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/workouts"
 )
@@ -99,6 +104,14 @@ func TestEveryToolDeclaresWhetherItWrites(t *testing.T) {
 		"swap_workout_exercise":   true,
 		"add_workout_exercise":    true,
 		"remove_workout_exercise": true,
+
+		// The day's logs. Each writes a row a person would otherwise have
+		// typed into a form — see internal/agent/logging.go.
+		"log_water":      true,
+		"log_sleep":      true,
+		"complete_habit": true,
+		"record_weight":  true,
+		"log_food":       true,
 	}
 
 	for _, tool := range describeTools(t) {
@@ -216,5 +229,32 @@ func testRegistry() *agent.Registry {
 		Documents:   documents.NewService(documents.NewRepository(nil), nil, nil),
 		Workouts:    workouts.NewService(workouts.Options{Repository: workouts.NewRepository(nil)}),
 		Users:       users.NewService(users.NewRepository(nil)),
+
+		// The logging services, for the reason in the comment above: a nil one
+		// is skipped by Build, so leaving these out would publish the five
+		// logging tools nowhere and let their schemas drift unpinned.
+		Hydration:  hydration.NewService(hydration.NewRepository(nil)),
+		Sleep:      sleep.NewService(sleep.NewRepository(nil)),
+		Habits:     habits.NewService(habits.NewRepository(nil)),
+		Biometrics: biometrics.NewService(biometrics.NewRepository(nil)),
 	})
+}
+
+// Quick capture must never become a tool.
+//
+// It parses free text into writes, so a capture tool would let the model hand
+// a sentence to another model and write whatever came back — with the coach's
+// approval card showing one opaque blob instead of the values. The whole reason
+// internal/capture splits parse from commit is that a person reads the items in
+// between; a tool would delete that person from the loop.
+//
+// The capabilities it shares with the coach are the individual writes —
+// log_water, log_sleep, complete_habit, record_weight, log_food — each of which
+// carries its own arguments onto its own card.
+func TestCaptureIsNotPublishedAsATool(t *testing.T) {
+	for _, tool := range describeTools(t) {
+		if strings.HasPrefix(tool.Name, "capture") || strings.Contains(tool.Name, "quick_capture") {
+			t.Errorf("%s publishes quick capture as a tool; see internal/capture's package doc", tool.Name)
+		}
+	}
 }

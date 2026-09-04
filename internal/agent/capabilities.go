@@ -10,15 +10,19 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/ai"
+	"github.com/NorthAIProject/north-client/internal/biometrics"
 	"github.com/NorthAIProject/north-client/internal/calculator"
 	"github.com/NorthAIProject/north-client/internal/checkins"
 	"github.com/NorthAIProject/north-client/internal/coach"
 	"github.com/NorthAIProject/north-client/internal/documents"
 	"github.com/NorthAIProject/north-client/internal/exercises"
 	"github.com/NorthAIProject/north-client/internal/goals"
+	"github.com/NorthAIProject/north-client/internal/habits"
+	"github.com/NorthAIProject/north-client/internal/hydration"
 	"github.com/NorthAIProject/north-client/internal/meals"
 	"github.com/NorthAIProject/north-client/internal/notifications"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/sleep"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/workouts"
 	"github.com/NorthAIProject/north-client/internal/workouts/plan"
@@ -43,6 +47,13 @@ type Services struct {
 	Documents     *documents.Service
 	Workouts      *workouts.Service
 	Notifications *notifications.Service
+
+	// The day's logs. Each is the slice that already owns the table; this
+	// package adds no persistence of its own.
+	Hydration  *hydration.Service
+	Sleep      *sleep.Service
+	Habits     *habits.Service
+	Biometrics *biometrics.Service
 
 	// Users resolves the account a call runs as.
 	//
@@ -105,6 +116,28 @@ func Build(svc Services) *Registry {
 	}
 	if svc.Notifications != nil {
 		r.Register(listAlerts(svc.Notifications), setAlert(svc.Notifications))
+	}
+
+	// The day's logs. Users as well for the three that file against a local
+	// date, for the same reason createCheckIn needs it: registered without the
+	// user record these would exist and fail on every call.
+	if svc.Users != nil {
+		if svc.Hydration != nil {
+			r.Register(logWater(svc.Hydration, svc.Users))
+		}
+		if svc.Sleep != nil {
+			r.Register(logSleep(svc.Sleep, svc.Users))
+		}
+		if svc.Habits != nil {
+			r.Register(completeHabit(svc.Habits, svc.Users))
+		}
+	}
+	if svc.Biometrics != nil {
+		// No Users: a weight is not filed against a local date.
+		r.Register(recordWeight(svc.Biometrics))
+	}
+	if svc.FoodLog != nil && svc.Ingredients != nil {
+		r.Register(logFood(svc.FoodLog, svc.Ingredients))
 	}
 
 	return r

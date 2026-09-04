@@ -28,5 +28,28 @@
       "type": "image/png",
       "purpose": "maskable"
     }
+  ],
+  "share_target": {
+    "action": "/app/capture",
+    "method": "GET",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  },
+  "shortcuts": [
+    {
+      "name": "Quick capture",
+      "short_name": "Capture",
+      "description": "Write your day in one line.",
+      "url": "/app/capture",
+      "icons": [
+        {
+          "src": "/assets/brand/pwa-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
   ]
 }

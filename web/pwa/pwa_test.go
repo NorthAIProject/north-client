@@ -154,3 +154,60 @@ func swSource(t *testing.T) string {
 	}
 	return string(raw)
 }
+
+// The share target has to stay a GET. A POST one arrives without a CSRF token,
+// and the fetch handler above passes non-GET straight to the network, so
+// nothing would intercept it — the request would reach the session group and be
+// answered 403. GET is a safe method, so it needs no exemption at all.
+func TestShareTargetIsAGetOntoCapture(t *testing.T) {
+	raw, err := Files.ReadFile("manifest.webmanifest")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m struct {
+		ShareTarget struct {
+			Action string            `json:"action"`
+			Method string            `json:"method"`
+			Params map[string]string `json:"params"`
+		} `json:"share_target"`
+		Shortcuts []struct {
+			Name string `json:"name"`
+			URL  string `json:"url"`
+		} `json:"shortcuts"`
+	}
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatal(err)
+	}
+
+	if m.ShareTarget.Action != "/app/capture" {
+		t.Errorf("share_target.action = %q, want /app/capture", m.ShareTarget.Action)
+	}
+	if m.ShareTarget.Method != "GET" {
+		t.Errorf("share_target.method = %q, want GET; a POST target would be answered 403 by CSRF", m.ShareTarget.Method)
+	}
+	if m.ShareTarget.Params["text"] != "text" {
+		t.Errorf("share_target must map the shared text onto ?text=, got %v", m.ShareTarget.Params)
+	}
+
+	var found bool
+	for _, s := range m.Shortcuts {
+		if s.URL == "/app/capture" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("no jumplist shortcut onto /app/capture")
+	}
+}
+
+// A nudge exists to bring somebody back to log something; the action is what
+// removes the taps between the reminder and the box.
+func TestNotificationOffersTheCaptureAction(t *testing.T) {
+	body := swSource(t)
+
+	for _, want := range []string{`action: "capture"`, `"/app/capture"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("service worker is missing %s", want)
+		}
+	}
+}

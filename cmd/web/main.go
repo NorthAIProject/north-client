@@ -29,6 +29,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/biometrics"
 	"github.com/NorthAIProject/north-client/internal/calculator"
+	"github.com/NorthAIProject/north-client/internal/capture"
 	"github.com/NorthAIProject/north-client/internal/care"
 	"github.com/NorthAIProject/north-client/internal/checkins"
 	"github.com/NorthAIProject/north-client/internal/coach"
@@ -864,6 +865,24 @@ func routes(
 		Habits:    habitSvc,
 	})
 
+	// Quick capture composes the six logging slices behind one box. It owns no
+	// table; the parse is a model call and the commit is the same writes the
+	// care page makes.
+	captureHandler := capture.NewHandler(capture.NewService(capture.Options{
+		// FastModel for the same reason the daily briefing uses it: this is
+		// transcription, not writing.
+		Parser:      capture.NewAIParser(runner, cfg.AI.FastModel),
+		Hydration:   hydrationSvc,
+		Sleep:       sleepSvc,
+		Habits:      habitSvc,
+		Biometrics:  biometricSvc,
+		FoodLog:     foodLogSvc,
+		Ingredients: mealIngredientSvc,
+		CheckIns:    checkinSvc,
+	}), quotaSvc)
+
+	captureAPI := capture.NewAPI(captureHandler.Service(), connectionSvc, quotaSvc, slog.Default())
+
 	dashboardSvc := dashboard.NewService(dashboard.Options{
 		CheckIns:      checkinSvc,
 		Goals:         goalSvc,
@@ -926,6 +945,12 @@ func routes(
 		Workouts:      workoutSvc,
 		Users:         userSvc,
 		Notifications: notificationSvc,
+
+		// The day's logs, through the slices that already own them.
+		Hydration:  hydrationSvc,
+		Sleep:      sleepSvc,
+		Habits:     habitSvc,
+		Biometrics: biometricSvc,
 	})
 
 	agentTools.Record(auditRecorder)
@@ -1107,6 +1132,21 @@ func routes(
 		r.Handle("/mcp", mcpEndpoint)
 	})
 
+	// /api/v1 sits beside /mcp for the same three reasons: no cookie, no form,
+	// and a bearer a browser never attaches on its own.
+	//
+	// It authenticates with the connections token that already stands behind
+	// /mcp and /ingest/health rather than a new credential. docs/IOS.md
+	// proposes bearer *sessions* for a native client, and when that arrives
+	// this mount composes both authenticators — the same widening the document
+	// already predicts for health ingest. Nothing about the handler or the JSON
+	// shapes changes, which is why waiting for a phone was not worth it: the
+	// callers who hold an nk_ token today are the ones who want this.
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.MaxBody(1 << 20))
+		r.Route("/api", captureAPI.Routes)
+	})
+
 	// Health ingest sits beside /mcp for exactly the reasons above: the caller is
 	// a background process on somebody's phone, holding the same revocable
 	// bearer token and carrying neither a cookie nor a CSRF token.
@@ -1194,6 +1234,7 @@ func routes(
 				mindHandler.Routes(r)
 				decisionHandler.Routes(r)
 				careHandler.Routes(r)
+				captureHandler.Routes(r)
 				activityHandler.Routes(r)
 				calculatorHandler.Routes(r)
 				mealsHandler.Routes(r)

@@ -30,7 +30,11 @@ const defaultRequestsPerMinute = 120
 //
 // 0.2.0: every tool declares whether it writes, and results carry structured
 // content as well as text.
-const Version = "0.2.0"
+//
+// 0.3.0: the day's logs joined the surface — log_water, log_sleep,
+// complete_habit, record_weight and log_food — so a connected agent can record
+// what a person did, not only read it.
+const Version = "0.3.0"
 
 // Authenticator resolves a presented bearer token to the account it acts as.
 //

@@ -37,6 +37,7 @@ const (
 	DailyBriefing       = "daily_briefing.md"
 	ReflectionSession   = "reflection_session.md"
 	ConversationSummary = "conversation_summary.md"
+	QuickCapture        = "quick_capture.md"
 )
 
 // Render executes a prompt template with the given data.

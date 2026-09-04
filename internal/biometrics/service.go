@@ -72,6 +72,38 @@ func (s *Service) Record(ctx context.Context, userID uuid.UUID, in Input) (Biome
 	return s.repo.RecordCurrent(ctx, userID, clean)
 }
 
+// ErrNoBaseline is a weight recorded before there is anything to attach it to.
+//
+// Its own error because the fix is a specific one a caller can explain: a
+// measurement carries height, date of birth and sex as well as weight, and
+// those three come from the calculator page once rather than from every log.
+var ErrNoBaseline = apperr.Wrap(apperr.ErrValidation,
+	"no measurement to update; record height, date of birth and sex once first")
+
+// RecordWeight stores a new weight, carrying the rest of the current
+// measurement forward unchanged.
+//
+// Record needs a whole Input — weight, height, date of birth and sex — because
+// that is what the calculator needs to mean anything. But somebody saying
+// "78kg" is updating one number, not re-declaring their body, so this overlays
+// it on what is already there and refuses when there is nothing to overlay.
+func (s *Service) RecordWeight(ctx context.Context, userID uuid.UUID, weightKg float64) (Biometric, error) {
+	current, err := s.repo.Current(ctx, userID)
+	if err != nil {
+		if apperr.Is(err, apperr.ErrNotFound) {
+			return Biometric{}, ErrNoBaseline
+		}
+		return Biometric{}, apperr.Wrap(err, "load the current measurement")
+	}
+
+	return s.Record(ctx, userID, Input{
+		WeightKg:    weightKg,
+		HeightCm:    current.HeightCm,
+		DateOfBirth: current.DateOfBirth,
+		Sex:         current.Sex,
+	})
+}
+
 // Current returns the most recent measurement. apperr.ErrNotFound until the
 // user has recorded one.
 func (s *Service) Current(ctx context.Context, userID uuid.UUID) (Biometric, error) {

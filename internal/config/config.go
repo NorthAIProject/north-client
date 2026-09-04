@@ -286,6 +286,12 @@ type QuotaConfig struct {
 	ReportGenerations int
 	MediaAnalyses     int
 	AccountExports    int
+
+	// QuickCaptures bounds the parse, which is a model call. The commit that
+	// follows costs a transaction and is deliberately unguarded: refusing it
+	// after somebody has already paid for the parse is the worst possible
+	// place to stop them.
+	QuickCaptures int
 }
 
 // Limits renders the config as the per-action budgets the quota package wants.
@@ -299,6 +305,7 @@ func (q QuotaConfig) Limits() map[quota.Action]quota.Limit {
 		quota.ReportGenerate:  {PerWindow: q.ReportGenerations},
 		quota.MediaAnalysis:   {PerWindow: q.MediaAnalyses},
 		quota.AccountExport:   {PerWindow: q.AccountExports},
+		quota.QuickCapture:    {PerWindow: q.QuickCaptures},
 	}
 }
 
@@ -541,6 +548,7 @@ func Load() (*Config, error) {
 		{"QUOTA_DOCUMENT_REINDEX_PER_HOUR", 10, &cfg.Quota.DocumentReindexes},
 		{"QUOTA_REPORT_GENERATIONS_PER_HOUR", 10, &cfg.Quota.ReportGenerations},
 		{"QUOTA_MEDIA_ANALYSES_PER_HOUR", 20, &cfg.Quota.MediaAnalyses},
+		{"QUOTA_QUICK_CAPTURES_PER_HOUR", 60, &cfg.Quota.QuickCaptures},
 		// Low because an export reads the whole account — every document out of
 		// the bucket included — and nobody needs their entire history four times
 		// in an hour.
@@ -554,6 +562,7 @@ func Load() (*Config, error) {
 		{"QUOTA_PRO_DOCUMENT_REINDEX_PER_HOUR", 60, &cfg.QuotaPro.DocumentReindexes},
 		{"QUOTA_PRO_REPORT_GENERATIONS_PER_HOUR", 60, &cfg.QuotaPro.ReportGenerations},
 		{"QUOTA_PRO_MEDIA_ANALYSES_PER_HOUR", 100, &cfg.QuotaPro.MediaAnalyses},
+		{"QUOTA_PRO_QUICK_CAPTURES_PER_HOUR", 600, &cfg.QuotaPro.QuickCaptures},
 		// Not raised as far as the rest: an export reads every document in the
 		// account out of the bucket, and paying for the product does not make
 		// that cheap.

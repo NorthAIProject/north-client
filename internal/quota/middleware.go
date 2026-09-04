@@ -84,6 +84,8 @@ func describe(action Action) string {
 		return "report generation"
 	case MediaAnalysis:
 		return "video analysis"
+	case QuickCapture:
+		return "quick capture"
 	default:
 		return string(action)
 	}

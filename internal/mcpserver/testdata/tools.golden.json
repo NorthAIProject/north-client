@@ -116,6 +116,26 @@
     "readOnly": false
   },
   {
+    "name": "complete_habit",
+    "description": "Mark one of the user's habits as done today, naming it as they do. This never creates a habit: if they name something they do not keep, tell them so and point them at the habits section rather than inventing one.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "description": "the habit they kept",
+      "properties": {
+        "name": {
+          "description": "the habit's name, such as 'read 20 pages'",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "readOnly": false,
+    "idempotent": true
+  },
+  {
     "name": "create_check_in",
     "description": "Record today's check-in. Writing again on the same day replaces that day's entry rather than adding a second one, so this is safe to call twice.",
     "inputSchema": {
@@ -264,6 +284,99 @@
       "type": "object"
     },
     "readOnly": true
+  },
+  {
+    "name": "log_food",
+    "description": "Record something the user ate, by name and weight in grams. The name is looked up in the ingredient catalog, so use a plain one such as 'chicken breast' rather than a brand or a recipe.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "description": "what they ate",
+      "properties": {
+        "food": {
+          "description": "the ingredient's name",
+          "type": "string"
+        },
+        "grams": {
+          "description": "how much they ate, in grams",
+          "type": "number"
+        }
+      },
+      "required": [
+        "food",
+        "grams"
+      ],
+      "type": "object"
+    },
+    "readOnly": false
+  },
+  {
+    "name": "log_sleep",
+    "description": "Record last night's sleep, in minutes. Writing again for the same night replaces that night's entry rather than adding a second one, so this is safe to call twice.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "description": "last night",
+      "properties": {
+        "minutes": {
+          "description": "how long they slept, in minutes; 6 hours is 360",
+          "type": "integer"
+        },
+        "notes": {
+          "description": "anything they said about the night; empty if nothing",
+          "type": "string"
+        },
+        "quality": {
+          "description": "how well they slept, 1 (worst) to 5 (best); 0 if they did not say",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "minutes",
+        "quality",
+        "notes"
+      ],
+      "type": "object"
+    },
+    "readOnly": false,
+    "idempotent": true
+  },
+  {
+    "name": "log_water",
+    "description": "Record that the user drank water. Amounts are in millilitres: a glass is about 250, a large bottle about 750. Call this once per drink.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "description": "the drink",
+      "properties": {
+        "amount_ml": {
+          "description": "how much they drank, in millilitres, between 1 and 5000",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "amount_ml"
+      ],
+      "type": "object"
+    },
+    "readOnly": false
+  },
+  {
+    "name": "record_weight",
+    "description": "Record the user's bodyweight in kilograms. Convert pounds yourself before calling. This updates their current measurement and keeps the previous one as history.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "description": "the reading",
+      "properties": {
+        "kg": {
+          "description": "bodyweight in kilograms, between 20 and 400",
+          "type": "number"
+        }
+      },
+      "required": [
+        "kg"
+      ],
+      "type": "object"
+    },
+    "readOnly": false,
+    "idempotent": true
   },
   {
     "name": "remove_workout_exercise",

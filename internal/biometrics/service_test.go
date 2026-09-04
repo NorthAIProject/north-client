@@ -149,3 +149,67 @@ func TestBMIAndAgeAreComputedFromStoredValues(t *testing.T) {
 		t.Fatalf("age = %d, want 30", age)
 	}
 }
+
+func TestRecordWeightCarriesTheRestForward(t *testing.T) {
+	svc, user := newService(t)
+	ctx := context.Background()
+
+	baseline := validInput()
+	if _, err := svc.Record(ctx, user.ID, baseline); err != nil {
+		t.Fatalf("record baseline: %v", err)
+	}
+
+	updated, err := svc.RecordWeight(ctx, user.ID, 78.4)
+	if err != nil {
+		t.Fatalf("record weight: %v", err)
+	}
+
+	if updated.WeightKg != 78.4 {
+		t.Fatalf("weight = %v, want 78.4", updated.WeightKg)
+	}
+	if updated.HeightCm != baseline.HeightCm {
+		t.Fatalf("height = %v, want the baseline %v", updated.HeightCm, baseline.HeightCm)
+	}
+	if updated.Sex != baseline.Sex {
+		t.Fatalf("sex = %q, want the baseline %q", updated.Sex, baseline.Sex)
+	}
+	if !updated.DateOfBirth.Equal(baseline.DateOfBirth.UTC().Truncate(24*time.Hour)) &&
+		updated.DateOfBirth.IsZero() {
+		t.Fatalf("date of birth was not carried forward: %v", updated.DateOfBirth)
+	}
+
+	current, err := svc.Current(ctx, user.ID)
+	if err != nil {
+		t.Fatalf("current: %v", err)
+	}
+	if current.WeightKg != 78.4 {
+		t.Fatalf("current weight = %v, want 78.4", current.WeightKg)
+	}
+}
+
+func TestRecordWeightRefusesWithoutABaseline(t *testing.T) {
+	svc, user := newService(t)
+
+	_, err := svc.RecordWeight(context.Background(), user.ID, 78.4)
+	if !apperr.Is(err, biometrics.ErrNoBaseline) {
+		t.Fatalf("want ErrNoBaseline, got %v", err)
+	}
+	// It must read as a validation failure, so the HTTP edge answers 422
+	// rather than 500 for something the person can fix.
+	if !apperr.Is(err, apperr.ErrValidation) {
+		t.Fatalf("ErrNoBaseline should wrap ErrValidation, got %v", err)
+	}
+}
+
+func TestRecordWeightStillValidatesTheWeight(t *testing.T) {
+	svc, user := newService(t)
+	ctx := context.Background()
+
+	if _, err := svc.Record(ctx, user.ID, validInput()); err != nil {
+		t.Fatalf("record baseline: %v", err)
+	}
+
+	if _, err := svc.RecordWeight(ctx, user.ID, 900); !apperr.Is(err, apperr.ErrValidation) {
+		t.Fatalf("want a validation error for 900 kg, got %v", err)
+	}
+}

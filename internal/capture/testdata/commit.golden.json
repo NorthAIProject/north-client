@@ -1,0 +1,36 @@
+{
+  "written": 1,
+  "failed": 1,
+  "outcomes": [
+    {
+      "item": {
+        "kind": "water",
+        "source": "2L water",
+        "water": {
+          "amount_ml": 2000
+        }
+      },
+      "summary": "Logged 2000 ml of water."
+    },
+    {
+      "item": {
+        "kind": "weight",
+        "source": "78kg",
+        "weight": {
+          "kg": 78
+        }
+      },
+      "error": "No measurement to update; record height, date of birth and sex once first."
+    }
+  ],
+  "skipped": [
+    {
+      "kind": "habit",
+      "source": "meditated",
+      "problem": "You are not keeping a habit called \"Meditate\".",
+      "habit": {
+        "name": "Meditate"
+      }
+    }
+  ]
+}
