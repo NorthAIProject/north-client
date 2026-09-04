@@ -273,7 +273,7 @@ func statusFor(err error) int {
 // person can act on through.
 func message(err error) string {
 	if apperr.Is(err, apperr.ErrValidation) || apperr.Is(err, apperr.ErrNotFound) {
-		return capitalise(err.Error()) + "."
+		return Sentence(err)
 	}
 	return "Something went wrong reading that. Try again."
 }

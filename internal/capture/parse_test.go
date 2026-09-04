@@ -255,3 +255,70 @@ func TestWritableRefusesUnresolvedNames(t *testing.T) {
 func errf(format string, args ...any) error {
 	return fmt.Errorf(format, args...)
 }
+
+// apperr.Wrap composes "message: sentinel", which is right for a log and wrong
+// for a screen. This was found by reading the real receipt in a browser, where
+// a fixable problem read "record height, date of birth and sex once first:
+// validation failed".
+func TestSentenceDropsTheSentinel(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct {
+		err  error
+		want string
+	}{
+		"validation": {
+			apperr.Wrap(apperr.ErrValidation, "record your height once first"),
+			"Record your height once first.",
+		},
+		"not found": {
+			apperr.Wrap(apperr.ErrNotFound, "no habit called %q", "Meditate"),
+			`No habit called "Meditate".`,
+		},
+		"wrapped twice": {
+			apperr.Wrap(apperr.Wrap(apperr.ErrValidation, "water 99000 is outside 1-5000"), "entry 2"),
+			"Entry 2: water 99000 is outside 1-5000.",
+		},
+		"already punctuated": {
+			apperr.Wrap(apperr.ErrValidation, "That is not valid."),
+			"That is not valid.",
+		},
+		"nothing but a sentinel": {
+			apperr.ErrValidation,
+			"That did not work.",
+		},
+		"nil": {nil, ""},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			if got := Sentence(tc.err); got != tc.want {
+				t.Fatalf("Sentence() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// The guarantee, rather than a list of examples: nothing a person reads may end
+// in one of apperr's sentinel texts.
+func TestNoUserFacingSentenceCarriesASentinel(t *testing.T) {
+	t.Parallel()
+
+	errs := []error{
+		apperr.Wrap(apperr.ErrValidation, "water 99000 is outside 1-5000"),
+		apperr.Wrap(apperr.ErrNotFound, "nothing matches"),
+		apperr.Wrap(apperr.ErrConflict, "already logged"),
+		apperr.Wrap(apperr.ErrUnavailable, "the model did not answer"),
+		apperr.Wrap(apperr.ErrPaymentRequired, "out of budget"),
+	}
+
+	for _, err := range errs {
+		got := Sentence(err)
+		for _, suffix := range sentinelSuffixes {
+			if strings.Contains(strings.ToLower(got), suffix) {
+				t.Errorf("%q still carries the sentinel %q", got, suffix)
+			}
+		}
+	}
+}
