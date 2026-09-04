@@ -29,6 +29,21 @@ type Parser interface {
 // the same sentence should not disagree about how much water it mentions.
 var parseTemperature float32 = 0
 
+// parseAttempts is how many times one provider may be asked before the walk
+// moves on.
+//
+// Two, and no more. A malformed reply is not a provider refusing — ai.Failover
+// answers false for a decode failure, so without this the walk stops dead and
+// one bad reply costs the whole request. It matters unevenly: providers
+// registered without JSON-schema support have the shape asked for in the prompt
+// rather than enforced by the API (see internal/ai/openaicompat), so a reply
+// that does not decode is an ordinary event there and nearly unreachable
+// elsewhere.
+//
+// Not higher, because a capture is a cheap call with a person waiting on it,
+// not a training plan.
+const parseAttempts = 2
+
 // modelResult is the shape the model answers in.
 //
 // Flat, with every field required and zero standing in for "not this kind".
@@ -89,6 +104,31 @@ func Schema() *ai.Schema {
 	}, "items", "unparsed")
 }
 
+// RenderPrompt builds the system prompt for one capture.
+//
+// Exported so the evals in internal/capture/eval grade what production sends.
+// internal/ai/eval's package doc gives the reason: a harness that hand-writes
+// its own version of the prompt ends up grading a format the application no
+// longer uses, and the drift is invisible until somebody trusts a passing
+// suite.
+func RenderPrompt(user users.User, text string, known []habits.Habit, now time.Time) (string, error) {
+	names := make([]string, 0, len(known))
+	for _, h := range known {
+		names = append(names, h.Name)
+	}
+
+	system, err := prompts.Render(prompts.QuickCapture, map[string]any{
+		"Now":      now.Format("Monday 2 January 2006, 15:04"),
+		"Timezone": user.Timezone,
+		"Habits":   names,
+		"Text":     text,
+	})
+	if err != nil {
+		return "", apperr.Wrap(err, "render the capture prompt")
+	}
+	return system, nil
+}
+
 // AIParser is the production Parser.
 type AIParser struct {
 	runner *ai.Runner
@@ -114,43 +154,52 @@ func (p *AIParser) Parse(ctx context.Context, user users.User, text string, know
 		return Draft{}, apperr.Wrap(apperr.ErrValidation, "that is longer than %d characters", MaxText)
 	}
 
-	names := make([]string, 0, len(known))
-	for _, h := range known {
-		names = append(names, h.Name)
-	}
-
 	now := time.Now().In(user.Location())
-	system, err := prompts.Render(prompts.QuickCapture, map[string]any{
-		"Now":      now.Format("Monday 2 January 2006, 15:04"),
-		"Timezone": user.Timezone,
-		"Habits":   names,
-		"Text":     text,
-	})
+	system, err := RenderPrompt(user, text, known, now)
 	if err != nil {
-		return Draft{}, apperr.Wrap(err, "render the capture prompt")
+		return Draft{}, err
 	}
 
 	ctx = aiattr.WithUser(ctx, user.ID, spend.SurfaceQuickCapture)
 
 	var result modelResult
 	_, err = p.runner.Run(ctx, ai.RunOptions{Tier: string(user.Tier)}, func(client ai.Client) error {
-		resp, genErr := client.Generate(ctx, ai.Request{
-			Model:          p.model,
-			System:         system,
-			Messages:       []ai.Message{ai.UserText(text)},
-			ResponseSchema: Schema(),
-			Temperature:    &parseTemperature,
-		})
-		if genErr != nil {
-			return apperr.Wrap(genErr, "parse the capture")
-		}
+		// Each provider opens its own correction dialogue, for the reason
+		// workouts does: carrying another model's malformed reply across would
+		// ask this one to repair words it never wrote.
+		messages := []ai.Message{ai.UserText(text)}
 
-		var candidate modelResult
-		if decErr := json.Unmarshal([]byte(resp.Text), &candidate); decErr != nil {
-			return apperr.Wrap(decErr, "the reply was not valid JSON for the required shape")
-		}
+		for attempt := 1; attempt <= parseAttempts; attempt++ {
+			resp, genErr := client.Generate(ctx, ai.Request{
+				Model:          p.model,
+				System:         system,
+				Messages:       messages,
+				ResponseSchema: Schema(),
+				Temperature:    &parseTemperature,
+			})
+			if genErr != nil {
+				return apperr.Wrap(genErr, "parse the capture")
+			}
 
-		result = candidate
+			var candidate modelResult
+			decErr := json.Unmarshal([]byte(resp.Text), &candidate)
+			if decErr == nil {
+				result = candidate
+				return nil
+			}
+
+			if attempt == parseAttempts {
+				return apperr.Wrap(decErr, "the reply was not valid JSON for the required shape")
+			}
+
+			// Naming the failure is what makes the retry work; "try again"
+			// produces the same reply. The model's own words go back with it,
+			// because the correction only means anything against them.
+			messages = append(messages,
+				ai.ModelText(resp.Text),
+				ai.UserText("That was not valid JSON matching the schema. Return the entries again, correctly."),
+			)
+		}
 		return nil
 	})
 	if err != nil {
