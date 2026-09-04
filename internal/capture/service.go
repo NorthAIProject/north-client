@@ -233,9 +233,62 @@ func order(items []Item) []Item {
 // table name reaches a screen.
 func userFacing(err error) string {
 	if apperr.Is(err, apperr.ErrValidation) || apperr.Is(err, apperr.ErrNotFound) {
-		return capitalise(err.Error())
+		return Sentence(err)
 	}
 	return "That did not save. Try again."
+}
+
+// sentinelSuffixes are the sentinel texts apperr.Wrap leaves on the end of an
+// error message.
+//
+// Wrap composes "%s: %w", which is right for a log and wrong for a screen: the
+// reason it exists is that errors.Is keeps matching after several layers, and
+// nobody reading "record your height first: validation failed" needed the
+// second half. This is the list of second halves.
+var sentinelSuffixes = []string{
+	apperr.ErrValidation.Error(),
+	apperr.ErrNotFound.Error(),
+	apperr.ErrConflict.Error(),
+	apperr.ErrUnauthenticated.Error(),
+	apperr.ErrForbidden.Error(),
+	apperr.ErrUnavailable.Error(),
+	apperr.ErrPaymentRequired.Error(),
+}
+
+// Sentence renders an error as one line a person can read: the message without
+// the sentinel apperr appended, capitalised, ending in a full stop.
+func Sentence(err error) string {
+	if err == nil {
+		return ""
+	}
+
+	text := err.Error()
+	// Repeatedly, because an error wrapped twice carries the sentinel once but
+	// may still end in a wrapped clause of its own.
+	for {
+		trimmed := text
+		for _, suffix := range sentinelSuffixes {
+			trimmed = strings.TrimSuffix(trimmed, suffix)
+			trimmed = strings.TrimRight(trimmed, " :")
+		}
+		if trimmed == text {
+			break
+		}
+		text = trimmed
+	}
+
+	text = strings.TrimSpace(text)
+	if text == "" {
+		// Every layer was a sentinel. Better a vague sentence than an empty
+		// one, which renders as a blank row nobody can act on.
+		return "That did not work."
+	}
+
+	text = capitalise(text)
+	if !strings.HasSuffix(text, ".") && !strings.HasSuffix(text, "!") && !strings.HasSuffix(text, "?") {
+		text += "."
+	}
+	return text
 }
 
 func capitalise(s string) string {

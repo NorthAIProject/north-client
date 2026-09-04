@@ -98,6 +98,13 @@ templ composer(data Data) {
 	</form>
 }
 
+// preview shows what the parse produced, for a person to correct and agree to.
+//
+// The Alpine block counts ticked rows for the Save label and does nothing else.
+// It uses $root rather than $el on purpose: inside a method reached from a
+// checkbox's @change, $el is the checkbox, so the query matched nothing and the
+// count fell to zero on the first tick. Only a browser shows that — the HTTP
+// tests were green throughout.
 templ preview(data Data) {
 	<form
 		hx-post="/app/capture/commit"
@@ -107,7 +114,7 @@ templ preview(data Data) {
 		method="post"
 		action="/app/capture/commit"
 		class="space-y-4"
-		x-data="{ count: 0, init() { this.recount() }, recount() { this.count = this.$el.querySelectorAll('input[data-include]:checked').length } }"
+		x-data="{ count: 0, init() { this.recount() }, recount() { this.count = this.$root.querySelectorAll('input[data-include]:checked').length } }"
 	>
 		@ui.CSRFInput()
 		<input type="hidden" name="text" value={ data.Text }/>

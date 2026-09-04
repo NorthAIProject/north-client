@@ -158,7 +158,7 @@ func (a *API) fail(w http.ResponseWriter, err error, message string) {
 		return
 	}
 	// A validation failure carries a sentence the caller can act on.
-	httpx.Error(w, err, capitalise(err.Error())+".")
+	httpx.Error(w, err, Sentence(err))
 }
 
 type apiUserKey struct{}

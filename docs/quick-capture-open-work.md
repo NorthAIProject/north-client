@@ -5,10 +5,11 @@ logging capabilities in `internal/agent/logging.go`, and the JSON twin at
 `/api/v1/capture`). This is a decision record and a starting point, not a build
 order.
 
-> **Updated 2026-09-04, later the same day.** Sections 1 and 2 are **done**, and
-> the corpus is green against `openrouter/anthropic/claude-sonnet-4.5` — read
-> the caveats at the end of section 1 before treating the parse as settled on
-> every model. Section 3 is untouched and still gated. Running the evals also
+> **Updated 2026-09-04, later the same day.** Sections 1 and 2 are **done**. The
+> corpus is green on both a strong model (`anthropic/claude-sonnet-4.5`) and a
+> free one (`nvidia/nemotron-3-ultra-550b-a55b:free`) — read the caveats at the
+> end of section 1, which are now about rate limits and the untested retry
+> rather than about the prompt. Section 3 is untouched and still gated. Running the evals also
 > turned up a bug with nothing to do with capture: `meta/llama-3.3-70b-instruct`
 > is dead and North still defaults to it, recorded in section 4.
 
@@ -147,17 +148,24 @@ does not invent the other half of a check-in, does not name a habit the person
 does not keep, does not log a run as sleep, does not score a passing thought,
 and does not swallow the dentist.
 
-**What it does not prove**, and both are worth keeping in view:
+**The free tier, same day, `openrouter/nvidia/nemotron-3-ultra-550b-a55b:free`:**
+all nine cases pass. Eight in one run; `words-not-numbers` was refused there
+("response contained no choices") and passed on a retry, so the nine have not
+all passed in a *single* run, but every one has been graded green on a free
+model. This is the more reassuring of the two results — the free chain is what
+most people will actually hit, and the refusal cases are where a weaker model
+gets tempted.
 
-- **Only one model has been graded, and it is a strong one.** The free tier does
-  not run sonnet. A weaker model is a much harsher test of instruction
-  following, and the refusal cases are exactly where a weak model gets tempted.
-  Run the corpus against whatever the free chain actually resolves to before
-  trusting it there. That is one command: `EVAL_PROVIDER=openrouter
-  EVAL_MODEL=<model> task test:live`.
-- **The correction retry from section 2 was never exercised.** A strict-schema
-  provider rarely returns undecodable JSON, so those 27 calls all decoded first
-  time. Section 2 remains covered by unit tests and unproven in the field.
+**What neither result proves:**
+
+- **The correction retry from section 2 was never exercised.** Every call that
+  decoded, decoded first time. Section 2 stays covered by unit tests and
+  unproven in the field.
+- **Free models are rate-limited hard enough to be their own obstacle.**
+  OpenRouter caps free models at 20 calls per minute and the upstream pools have
+  their own limits, so a 27-call run (nine cases × three) reliably 429s partway.
+  Use `EVAL_RUNS=1` on a free model. `z-ai/glm-5.2:free`, the documented head of
+  the free chain, was rate-limited throughout and never graded at all.
 
 Getting here also took two failed attempts, which is why section 4 exists: the
 NVIDIA default is a dead model, and the one model that account could call was
@@ -174,11 +182,14 @@ it:
   live tier now counts `graded` and `refused` separately, computes the rate over
   graded runs only, and skips a case that never reached the model, with the
   refusal count in the message.
-- **But an entirely skipped suite must not report ok.** That is the same lie as
-  a database test skipping when `TEST_DATABASE_URL` is unset. If no case
-  anywhere was graded, the parent test now fails outright: somebody who typed
-  `task test:live` wanted an answer, and a green tick over nothing is worse than
-  a red one.
+- **But a mostly skipped suite must not report ok.** That is the same lie as a
+  database test skipping when `TEST_DATABASE_URL` is unset. The parent now fails
+  unless at least half the cases it attempted actually reached the model —
+  "attempted", not "exist", because `go test -run` narrowing to one case is
+  legitimate and an earlier version of this guard failed every such run. Both
+  halves were found by running it: the first version only caught a total
+  blackout, and a run where eight of nine cases were rate-limited away still
+  came back green.
 
 ---
 
@@ -354,6 +365,53 @@ picking:
   A model appearing in `GET /v1/models` does not mean it is provisioned.
 - That model is slow enough to exceed the two-minute per-call bound in
   `internal/ai/eval`, which may matter for the chain's timeouts too.
+
+---
+
+## 5. What running the app in a browser found
+
+The plan's verification list ended with "run the app and check by hand". That
+step was skipped when the feature shipped — everything was verified at the HTTP
+level — and doing it afterwards found two things the tests could not.
+
+**The Save counter was broken.** The preview's Alpine block counts ticked rows
+for the Save label. It read the right number on load and then fell to **zero**
+on the first tick of any checkbox:
+
+```
+recount() { this.count = this.$el.querySelectorAll(...).length }   // wrong
+recount() { this.count = this.$root.querySelectorAll(...).length } // right
+```
+
+Inside a method reached from a checkbox's `@change`, Alpine's `$el` is the
+element evaluating the expression — the checkbox — not the element holding
+`x-data`. So the query ran against a node with no children. `init()` worked
+because there `$el` really is the form, which is why it looked correct until
+somebody touched it. `$root` is the component's root. Fixed, with the reason in
+a comment above the template so it does not come back, and verified in the
+browser: 3 → 2 → 1 → 2 across unchecking and rechecking.
+
+No HTTP test could have caught this. The form posts exactly the same fields
+either way; only the label was wrong.
+
+**A sentinel was leaking into user-facing copy.** The receipt read:
+
+> No measurement to update; record height, date of birth and sex once first**:
+> validation failed**
+
+`apperr.Wrap` composes `"%s: %w"`, which is right for a log and wrong for a
+screen. `capture.Sentence` now strips the sentinel texts, capitalises, and
+punctuates; `userFacing`, the handler and the API all go through it. There is a
+test asserting the *property* — that nothing a person reads ends in one of
+apperr's sentinels — rather than a list of examples.
+
+**One thing left alone, worth knowing:** on the free chain a parse takes 30-60
+seconds (the free models are slow and the first one in the chain was
+rate-limited, so it fails over), and the only feedback is the Save button going
+grey via `hx-disabled-elt`. The plan mentioned an `hx-indicator` and it was
+never added. On a paid model the wait is 2-4 seconds and it does not matter; on
+the free tier it reads as a dead button. Worth a skeleton or a spinner before
+anybody uses this on the free tier.
 
 ---
 

@@ -48,14 +48,23 @@ func TestParseLive(t *testing.T) {
 	// chosen and logged.
 	parser := capture.NewAIParser(runner, os.Getenv("EVAL_MODEL"))
 
-	// Counted across every case, because a run in which nothing reached the
-	// model must not report ok. Somebody who typed `task test:live` wanted an
-	// answer, and a green tick over an entirely skipped suite is the same lie
-	// as a database test that skips when its URL is unset.
-	var gradedAnywhere atomic.Int64
+	// Counted across every case, because a run that graded almost nothing must
+	// not report ok. Somebody who typed `task test:live` wanted an answer, and
+	// a green tick over a mostly skipped suite is the same lie as a database
+	// test that skips when its URL is unset.
+	//
+	// A threshold rather than "at least one": the first version of this guard
+	// only caught a total blackout, and a run where eight of nine cases were
+	// rate-limited away still came back green.
+	var gradedCases, attemptedCases atomic.Int64
 
 	for _, c := range eval.Cases() {
 		t.Run(c.ID, func(t *testing.T) {
+			// Counted here rather than in the loop above: a case filtered out
+			// by `go test -run` never enters this body, and comparing against
+			// the whole corpus would fail every deliberately narrowed run.
+			attemptedCases.Add(1)
+
 			var passed, graded, refused int
 
 			for run := 1; run <= attempts(t); run++ {
@@ -90,7 +99,7 @@ func TestParseLive(t *testing.T) {
 				t.Skipf("no run reached the model (%d refused); the prompt was not graded", refused)
 			}
 
-			gradedAnywhere.Add(int64(graded))
+			gradedCases.Add(1)
 
 			if rate := float64(passed) / float64(graded); rate < passRate {
 				t.Errorf("passed %d of %d graded runs (%.0f%%), want at least %.0f%% [%d refused by the provider]\nwhy this matters: %s",
@@ -99,8 +108,14 @@ func TestParseLive(t *testing.T) {
 		})
 	}
 
-	if gradedAnywhere.Load() == 0 {
-		t.Fatal("no case reached the model: every run was refused by the provider, so nothing was graded")
+	// Half is the line. Below it the run says more about the provider than
+	// about the prompt, and reporting a pass would invite somebody to trust a
+	// corpus that mostly did not execute.
+	attempted, graded := int(attemptedCases.Load()), int(gradedCases.Load())
+	if attempted > 0 && graded*2 < attempted {
+		t.Fatalf("only %d of %d attempted cases reached the model; the corpus did not really run.\n"+
+			"Free models are rate-limited per minute — try EVAL_RUNS=1, or a paid model.",
+			graded, attempted)
 	}
 }
 
