@@ -304,3 +304,54 @@ func TestFaviconIcoRedirectsToTheBrandIcon(t *testing.T) {
 		t.Errorf("Location = %q, want /assets/brand/favicon.svg", loc)
 	}
 }
+
+// The capture API is the fourth endpoint that must sit outside CSRF and the
+// session middleware, for the same reason as /mcp and /ingest/health: the
+// caller holds a bearer token, not a cookie, and there is no form to carry a
+// CSRF token back. The composition is what breaks — moving the mount inside the
+// session group turns every call into a 403 with an HTML body no client can
+// read — so the invariant is pinned here rather than in the slice.
+func TestCaptureAPIIsNotBehindCSRF(t *testing.T) {
+	handler := testRoutes(t)
+
+	for _, path := range []string{"/api/v1/capture/parse", "/api/v1/capture/commit"} {
+		t.Run(path, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"text":"2L water"}`))
+			req.Header.Set("Content-Type", "application/json")
+
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+
+			if rec.Code == http.StatusForbidden {
+				t.Fatalf("POST %s was answered 403: the endpoint is behind CSRF again", path)
+			}
+			// 401 proves the request reached the API's own authentication
+			// rather than being turned away before it.
+			if rec.Code != http.StatusUnauthorized {
+				t.Fatalf("status = %d, want 401 from the capture authenticator", rec.Code)
+			}
+			if rec.Header().Get("WWW-Authenticate") == "" {
+				t.Error("no WWW-Authenticate challenge")
+			}
+		})
+	}
+}
+
+// A session cookie is not a capture token. If the API ever accepted one it
+// would be reachable from a browser, and the reason it can skip CSRF would stop
+// being true.
+func TestCaptureAPIDoesNotAcceptASessionCookie(t *testing.T) {
+	handler, pool := testRoutesAndPool(t, func(*config.Config) {})
+	session := signIn(t, pool)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/capture/parse", strings.NewReader(`{"text":"2L water"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(session)
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401: a session cookie must not authenticate the capture API", rec.Code)
+	}
+}

@@ -335,6 +335,22 @@ Shared plumbing, once: `internal/shared/httpx` with `WriteJSON`, `ReadJSON`
 (size-limited, as `internal/push/handler.go` does), and one `apperr` → status
 mapping so every slice answers validation, not-found, and quota the same way.
 
+> **Partly built, 2026-09-04.** `internal/shared/httpx` exists, and `/api/v1`
+> is mounted — but only `/api/v1/capture/parse` and `/api/v1/capture/commit`,
+> served by `internal/capture/api.go` beside its handler exactly as described
+> above. Everything else in the tables below is still unwritten.
+>
+> **It authenticates with the `internal/connections` personal access token, not
+> with a bearer session.** The gate at the top of this document has not been
+> passed and no phone exists, so building the session half would have been
+> speculative; the `nk_` token is per-user, revocable, already stands behind
+> `/mcp` and `/ingest/health`, and is held today by the scripts and agents that
+> actually want to log something. When bearer sessions do arrive, step 1 below
+> **widens** this mount rather than creating it — the same composition this
+> document already predicts for `/ingest/health` — and neither the handler nor
+> the JSON shapes change. Those shapes are pinned by
+> `internal/capture/testdata/*.golden.json`.
+
 ### Phase 1 (shell)
 
 | Purpose | Method + path | Notes |

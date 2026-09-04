@@ -1,7 +1,6 @@
 package push
 
 import (
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -10,6 +9,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 )
 
@@ -97,18 +97,21 @@ func (h *Handler) unsubscribe(w http.ResponseWriter, r *http.Request) {
 // expirationTime today and whatever the spec adds tomorrow, and a decoder
 // that refused them would refuse every real browser.
 func (h *Handler) decode(w http.ResponseWriter, r *http.Request, dst any) bool {
-	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBytes)
-	dec := json.NewDecoder(r.Body)
-	if err := dec.Decode(dst); err != nil {
-		var tooBig *http.MaxBytesError
-		if errors.As(err, &tooBig) {
-			http.Error(w, "That request is too large.", http.StatusRequestEntityTooLarge)
-			return false
-		}
+	err := httpx.ReadJSON(w, r, dst, httpx.ReadOptions{
+		MaxBytes: maxRequestBytes,
+
+		// See the note above: the browser's own shape, not ours.
+		AllowUnknownFields: true,
+	})
+	switch {
+	case err == nil:
+		return true
+	case errors.Is(err, httpx.ErrTooLarge):
+		http.Error(w, "That request is too large.", http.StatusRequestEntityTooLarge)
+	default:
 		http.Error(w, "The request body must be a JSON subscription.", http.StatusBadRequest)
-		return false
 	}
-	return true
+	return false
 }
 
 func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {

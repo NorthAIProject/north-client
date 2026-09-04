@@ -102,6 +102,12 @@ func Destinations() []Destination {
 			Nav:         NavPlacement{Show: true},
 		},
 		{
+			Label: "Quick capture", Href: "/app/capture", Icon: "zap", Group: GroupToday,
+			Description: "Write your day in one line.",
+			Keywords:    []string{"log", "add", "quick", "capture", "water", "sleep", "weight", "habit", "note"},
+			Nav:         NavPlacement{Show: true},
+		},
+		{
 			Label: "Check-ins", Href: "/app/check-ins", Icon: "smile", Group: GroupToday,
 			Description: "How you are doing, in your words.",
 			Keywords:    []string{"mood", "daily", "log", "feeling"},

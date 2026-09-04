@@ -1,0 +1,33 @@
+{
+  "items": [
+    {
+      "kind": "water",
+      "source": "2L water",
+      "water": {
+        "amount_ml": 2000
+      }
+    },
+    {
+      "kind": "food",
+      "source": "a bit of chicken",
+      "uncertain": true,
+      "food": {
+        "query": "chicken breast",
+        "grams": 150,
+        "ingredient_id": "11111111-1111-1111-1111-111111111111",
+        "matched_name": "Chicken breast, raw"
+      }
+    },
+    {
+      "kind": "habit",
+      "source": "meditated",
+      "problem": "You are not keeping a habit called \"Meditate\".",
+      "habit": {
+        "name": "Meditate"
+      }
+    }
+  ],
+  "unparsed": [
+    "went for a long walk by the river"
+  ]
+}

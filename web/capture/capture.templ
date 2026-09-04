@@ -1,0 +1,342 @@
+package capture
+
+import (
+	"fmt"
+	"strconv"
+
+	"github.com/NorthAIProject/north-client/internal/capture/captured"
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/alert"
+	"github.com/NorthAIProject/north-client/web/shared/ui/badge"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/checkbox"
+	"github.com/NorthAIProject/north-client/web/shared/ui/input"
+	"github.com/NorthAIProject/north-client/web/shared/ui/textarea"
+)
+
+// PanelID is the HTMX-swappable region. One target for the whole flow: the box
+// becomes the preview, and the preview becomes the receipt.
+const PanelID = "capture-panel"
+
+// Data is everything the page renders.
+type Data struct {
+	// Text is what the person typed, kept across a re-render so a failed parse
+	// never costs them the sentence.
+	Text string
+
+	Draft    captured.Draft
+	Receipt  captured.Receipt
+	HasDraft bool
+	HasSaved bool
+
+	// Error is a whole-request failure, shown above the box.
+	Error string
+}
+
+templ Page(user users.User, data Data) {
+	@layout.App("Quick capture", user, layout.BuildNav("/app/capture")) {
+		<div id={ PanelID }>
+			@Panel(data)
+		</div>
+	}
+}
+
+templ Panel(data Data) {
+	<div class="mx-auto w-full max-w-2xl px-4 py-6 space-y-6">
+		<header class="space-y-1">
+			<h1 class="text-2xl font-semibold tracking-tight">Quick capture</h1>
+			<p class="text-sm text-muted-foreground">
+				Write your day the way you would say it. Nothing is saved until you check it.
+			</p>
+		</header>
+		if data.Error != "" {
+			@alert.Alert(alert.Props{Variant: alert.VariantDestructive}) {
+				@alert.Description() {
+					{ data.Error }
+				}
+			}
+		}
+		if data.HasSaved {
+			@receiptCard(data.Receipt)
+		}
+		if data.HasDraft {
+			@preview(data)
+		} else {
+			@composer(data)
+		}
+	</div>
+}
+
+templ composer(data Data) {
+	<form
+		hx-post="/app/capture/parse"
+		hx-target={ "#" + PanelID }
+		hx-swap="innerHTML"
+		hx-disabled-elt="find button"
+		method="post"
+		action="/app/capture/parse"
+		class="space-y-3"
+	>
+		@ui.CSRFInput()
+		@textarea.Textarea(textarea.Props{
+			Name:        "text",
+			Value:       data.Text,
+			Rows:        4,
+			Placeholder: "slept 6h, 2L water, read 20 pages, 78kg, mood 4 energy 3",
+			Class:       "text-base",
+			Attributes:  templ.Attributes{"autofocus": true, "maxlength": strconv.Itoa(captured.MaxText)},
+		})
+		<div class="flex items-center justify-between gap-3">
+			<p class="text-xs text-muted-foreground">Reading it costs a moment. Saving is one tap.</p>
+			@button.Button(button.Props{Type: button.TypeSubmit, Class: "min-h-11"}) {
+				Read it
+			}
+		</div>
+	</form>
+}
+
+templ preview(data Data) {
+	<form
+		hx-post="/app/capture/commit"
+		hx-target={ "#" + PanelID }
+		hx-swap="innerHTML"
+		hx-disabled-elt="find button"
+		method="post"
+		action="/app/capture/commit"
+		class="space-y-4"
+		x-data="{ count: 0, init() { this.recount() }, recount() { this.count = this.$el.querySelectorAll('input[data-include]:checked').length } }"
+	>
+		@ui.CSRFInput()
+		<input type="hidden" name="text" value={ data.Text }/>
+		if len(data.Draft.Items) > 0 {
+			<div class="space-y-2">
+				for i, item := range data.Draft.Items {
+					@itemRow(i, item)
+				}
+			</div>
+		}
+		if len(data.Draft.Unparsed) > 0 {
+			@leftovers(data.Draft.Unparsed)
+		}
+		<div class="sticky bottom-0 flex items-center justify-between gap-3 border-t bg-background py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+			@button.Button(button.Props{
+				Variant:    button.VariantGhost,
+				Type:       button.TypeSubmit,
+				Class:      "min-h-11",
+				Attributes: templ.Attributes{"formaction": "/app/capture", "formmethod": "get", "hx-get": "/app/capture", "hx-target": "#" + PanelID},
+			}) {
+				Start over
+			}
+			if data.Draft.AnyWritable() {
+				@button.Button(button.Props{Type: button.TypeSubmit, Class: "min-h-11"}) {
+					Save <span x-text="count" class="ml-1 tabular-nums"></span>
+				}
+			}
+		</div>
+	</form>
+}
+
+templ itemRow(index int, item captured.Item) {
+	{{ writable := captured.Writable(item) }}
+	@card.Card(card.Props{Class: "p-3"}) {
+		<div class="flex items-start gap-3">
+			if writable {
+				@checkbox.Checkbox(checkbox.Props{
+					Name:       fmt.Sprintf("items[%d].include", index),
+					Value:      "1",
+					Checked:    true,
+					Class:      "mt-1",
+					Attributes: templ.Attributes{"data-include": "true", "@change": "recount()"},
+				})
+			} else {
+				<span class="mt-1 inline-block size-4 shrink-0 rounded border border-dashed" aria-hidden="true"></span>
+			}
+			<div class="min-w-0 flex-1 space-y-1">
+				<div class="flex flex-wrap items-center gap-2">
+					@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
+						{ kindLabel(item.Kind) }
+					}
+					if item.Uncertain {
+						@badge.Badge(badge.Props{Variant: badge.VariantOutline}) {
+							estimated
+						}
+					}
+				</div>
+				@valueFields(index, item)
+				if item.Source != "" {
+					<p class="truncate text-xs text-muted-foreground">&ldquo;{ item.Source }&rdquo;</p>
+				}
+				if item.Problem != "" {
+					<p class="text-xs text-destructive">{ item.Problem }</p>
+				}
+			</div>
+		</div>
+		@hiddenPayload(index, item)
+	}
+}
+
+// valueFields renders the numbers as editable inputs. Correcting "2L" to
+// "1.5L" must not mean retyping the sentence.
+templ valueFields(index int, item captured.Item) {
+	switch item.Kind {
+		case captured.KindWater:
+			<div class="flex items-center gap-2">
+				@numberInput(fmt.Sprintf("items[%d].amount_ml", index), strconv.Itoa(item.Water.AmountML))
+				<span class="text-sm text-muted-foreground">ml of water</span>
+			</div>
+		case captured.KindSleep:
+			<div class="flex items-center gap-2">
+				@numberInput(fmt.Sprintf("items[%d].minutes", index), strconv.Itoa(item.Sleep.Minutes))
+				<span class="text-sm text-muted-foreground">minutes asleep</span>
+			</div>
+		case captured.KindWeight:
+			<div class="flex items-center gap-2">
+				@numberInput(fmt.Sprintf("items[%d].kg", index), strconv.FormatFloat(item.Weight.KG, 'f', -1, 64))
+				<span class="text-sm text-muted-foreground">kg</span>
+			</div>
+		case captured.KindCheckIn:
+			<div class="flex flex-wrap items-center gap-2">
+				@numberInput(fmt.Sprintf("items[%d].mood", index), strconv.Itoa(item.CheckIn.Mood))
+				<span class="text-sm text-muted-foreground">mood</span>
+				@numberInput(fmt.Sprintf("items[%d].energy", index), strconv.Itoa(item.CheckIn.Energy))
+				<span class="text-sm text-muted-foreground">energy</span>
+			</div>
+		case captured.KindFood:
+			<div class="flex items-center gap-2">
+				@numberInput(fmt.Sprintf("items[%d].grams", index), strconv.FormatFloat(item.Food.Grams, 'f', -1, 64))
+				<span class="text-sm text-muted-foreground">g of { foodName(item) }</span>
+			</div>
+		case captured.KindHabit:
+			<p class="text-sm">{ item.Habit.Name }</p>
+	}
+}
+
+templ numberInput(name, value string) {
+	@input.Input(input.Props{
+		Name:       name,
+		Value:      value,
+		Type:       input.TypeNumber,
+		Class:      "h-10 w-24",
+		Attributes: templ.Attributes{"inputmode": "decimal", "step": "any"},
+	})
+}
+
+// hiddenPayload round-trips what the person cannot edit. Nothing here is
+// trusted on the way back: the server re-validates every field and re-checks
+// that the ids belong to this account before anything is written.
+templ hiddenPayload(index int, item captured.Item) {
+	<input type="hidden" name={ fmt.Sprintf("items[%d].kind", index) } value={ string(item.Kind) }/>
+	<input type="hidden" name={ fmt.Sprintf("items[%d].source", index) } value={ item.Source }/>
+	if item.Kind == captured.KindHabit {
+		<input type="hidden" name={ fmt.Sprintf("items[%d].habit_id", index) } value={ item.Habit.ID.String() }/>
+		<input type="hidden" name={ fmt.Sprintf("items[%d].habit_name", index) } value={ item.Habit.Name }/>
+	}
+	if item.Kind == captured.KindFood {
+		<input type="hidden" name={ fmt.Sprintf("items[%d].ingredient_id", index) } value={ item.Food.IngredientID.String() }/>
+		<input type="hidden" name={ fmt.Sprintf("items[%d].food", index) } value={ item.Food.Query }/>
+		<input type="hidden" name={ fmt.Sprintf("items[%d].matched_name", index) } value={ item.Food.MatchedName }/>
+	}
+	if item.Kind == captured.KindSleep {
+		<input type="hidden" name={ fmt.Sprintf("items[%d].quality", index) } value={ strconv.Itoa(item.Sleep.Quality) }/>
+		<input type="hidden" name={ fmt.Sprintf("items[%d].date", index) } value={ sleepDate(item) }/>
+	}
+	if item.Kind == captured.KindCheckIn {
+		<input type="hidden" name={ fmt.Sprintf("items[%d].notes", index) } value={ item.CheckIn.Notes }/>
+	}
+	if item.Problem != "" {
+		<input type="hidden" name={ fmt.Sprintf("items[%d].problem", index) } value={ item.Problem }/>
+	}
+}
+
+// leftovers shows what became nothing. A dead end is worse than a signpost, so
+// each one offers the two places it could still go.
+templ leftovers(list []string) {
+	@card.Card(card.Props{Class: "p-3 border-dashed"}) {
+		<p class="text-sm font-medium">Not logged</p>
+		<p class="mt-1 text-xs text-muted-foreground">
+			I could not read these as entries, so nothing was saved for them.
+		</p>
+		<ul class="mt-2 space-y-1">
+			for _, text := range list {
+				<li class="text-sm">&ldquo;{ text }&rdquo;</li>
+			}
+		</ul>
+		<div class="mt-3 flex flex-wrap gap-2">
+			@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Href: "/app/chat"}) {
+				Ask the coach
+			}
+			@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Href: "/app/mind"}) {
+				Save as a journal note
+			}
+		</div>
+	}
+}
+
+templ receiptCard(receipt captured.Receipt) {
+	@alert.Alert() {
+		@alert.Title() {
+			{ writtenLine(receipt) }
+		}
+		@alert.Description() {
+			<ul class="mt-1 space-y-1">
+				for _, outcome := range receipt.Outcomes {
+					<li class="text-sm">
+						if outcome.Error == "" {
+							{ outcome.Summary }
+						} else {
+							<span class="text-destructive">{ outcome.Error }</span>
+						}
+					</li>
+				}
+			</ul>
+		}
+	}
+}
+
+func writtenLine(receipt captured.Receipt) string {
+	written := receipt.Written()
+	switch {
+	case receipt.Failed() == 0 && written == 1:
+		return "Logged 1 thing."
+	case receipt.Failed() == 0:
+		return fmt.Sprintf("Logged %d things.", written)
+	default:
+		return fmt.Sprintf("Logged %d of %d.", written, len(receipt.Outcomes))
+	}
+}
+
+func kindLabel(kind captured.Kind) string {
+	switch kind {
+	case captured.KindWater:
+		return "Water"
+	case captured.KindSleep:
+		return "Sleep"
+	case captured.KindHabit:
+		return "Habit"
+	case captured.KindWeight:
+		return "Weight"
+	case captured.KindCheckIn:
+		return "Check-in"
+	case captured.KindFood:
+		return "Food"
+	default:
+		return string(kind)
+	}
+}
+
+func foodName(item captured.Item) string {
+	if item.Food.MatchedName != "" {
+		return item.Food.MatchedName
+	}
+	return item.Food.Query
+}
+
+func sleepDate(item captured.Item) string {
+	if item.Sleep.Date.IsZero() {
+		return ""
+	}
+	return item.Sleep.Date.Format("2006-01-02")
+}

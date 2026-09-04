@@ -668,6 +668,7 @@ internal/shared/
 
     database/    pgxpool construction
     errors/      sentinel errors mapped to HTTP status in one place
+    httpx/       JSON in, JSON out, and that error mapping applied once
     middleware/  request id, logging, recover, CSRF, RequireAuth
     types/       types shared by more than one slice
 ```

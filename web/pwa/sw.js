@@ -174,6 +174,10 @@ self.addEventListener("push", (event) => {
     // latest note about a thing, not a stack of them.
     tag: data.href || "north-nudge",
     renotify: false,
+    // Answering a nudge from the lock screen. The whole point of a nudge is to
+    // bring somebody back to log something, and this removes the two taps
+    // between the reminder and the box.
+    actions: [{ action: "capture", title: "Log it" }],
   };
 
   event.waitUntil(self.registration.showNotification(title, options));
@@ -184,7 +188,10 @@ self.addEventListener("push", (event) => {
 // the nudge was about once the server has counted the open.
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const href = (event.notification.data && event.notification.data.href) || "/app";
+  const href =
+    event.action === "capture"
+      ? "/app/capture"
+      : (event.notification.data && event.notification.data.href) || "/app";
   const target = new URL(href, self.location.origin).href;
 
   event.waitUntil(

@@ -105,3 +105,29 @@ func toIngredient(in IngredientInput) Ingredient {
 		CholesterolMgPer100g: in.CholesterolMgPer100g,
 	}
 }
+
+// MatchIngredient picks the one row a spoken food name refers to.
+//
+// The counterpart of habits.Match, and here for the same reason: the coach and
+// quick capture both turn "chicken breast" into a row, and if they disagree the
+// same sentence logs different macros depending on where it was typed.
+//
+// An exact name wins, then a lone candidate. Anything else is handed back for
+// somebody to choose, because logging the wrong ingredient silently moves a
+// person's totals.
+func MatchIngredient(candidates []Ingredient, query string) (match Ingredient, ambiguous []Ingredient) {
+	want := strings.ToLower(strings.TrimSpace(query))
+	if want == "" || len(candidates) == 0 {
+		return Ingredient{}, nil
+	}
+
+	for _, ing := range candidates {
+		if strings.ToLower(ing.Name) == want {
+			return ing, nil
+		}
+	}
+	if len(candidates) == 1 {
+		return candidates[0], nil
+	}
+	return Ingredient{}, candidates
+}
