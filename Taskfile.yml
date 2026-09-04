@@ -205,7 +205,9 @@ tasks:
   test:live:
     desc: Run tests that call real AI providers (costs money, needs API keys)
     cmds:
-      - go test -tags live -count=1 -v ./internal/ai/...
+      # Both eval packages. internal/capture/eval is not under internal/ai, and
+      # a live tier that is never run passes for the worst possible reason.
+      - go test -tags live -count=1 -v ./internal/ai/... ./internal/capture/eval/...
 
   vet:
     desc: Run go vet
