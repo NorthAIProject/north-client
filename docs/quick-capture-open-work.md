@@ -252,81 +252,159 @@ grade.
 
 ## 3. Voice
 
-**Deferred, and the box was built so that this stays cheap.**
+**Built, 2026-09-06.** This section was a deferral with a three-part gate. The
+gate was retired rather than met, and the reasoning below is kept so that
+decision is legible rather than buried in a diff.
 
-There is no audio anywhere in the repo today: no `MediaRecorder`, no
-`getUserMedia`, no transcription client, nothing in `internal/ai` that takes a
-waveform. `internal/media` handles *video* for form checks — multipart upload,
-object storage in parts (`internal/media/storage.go`), and an async
-`analyze_form_video` job (`internal/jobs/jobs.go:34`). That is the pipeline
-voice would follow, not a new one.
+### What was gated, and why it was let go
 
-### Why it was not built with the feature
+The gate asked for three things before starting: a parse proven trustworthy by
+the section 1 evals, evidence the box was used unprompted, and evidence that
+typing was the bottleneck. The first is now true — 9/9 across three runs on
+`anthropic/claude-sonnet-4.5`, 8/9 on the free chain. The other two were never
+going to become true on their own, because nobody outside the project has used
+North at all. Waiting for usage data from zero users is waiting for a number
+that cannot arrive.
 
-Typing is the friction quick capture exists to remove, and voice removes more of
-it than anything else — on a phone, talking beats typing decisively. That is a
-real argument and it is why this document exists rather than a shrug.
+So the argument inverted. Voice was gated as supply-side polish — more surface
+on a product nobody had tried. It is better read as the opposite: on a phone,
+talking beats typing decisively, and a box you can talk into is the version of
+this that is worth showing somebody. Voice is not what North adds once it has
+users; it is part of why anyone would become one.
 
-It lost on sequencing, not on merit:
+That is a judgement about demand, not a discovery about the code, and it should
+be reversible. If people install North and never hold the button, the honest
+reading is that this section was right the first time.
 
-1. **Voice is a second input into the same pipe, not a second feature.** Speech
-   becomes text, text goes to `Service.Parse`, and everything after that — the
-   preview, the coverage check, the commit fan-out, the receipt — is already
-   built and tested. Nothing about adding voice later invalidates any of it.
-   That is the whole reason the parser takes a `string` rather than owning its
-   own input.
-2. **It doubles the surface before anyone has typed into the box once.**
-   Transcription is a provider integration, a cost centre, a permission prompt,
-   a recording UI, and a new failure mode ("it heard 'seventy' as 'seventeen'"),
-   all in service of a parse whose accuracy is — see section 1 — currently
-   unmeasured. Voice on top of an unverified parser is two unknowns multiplied.
-3. **The cheap 80% already shipped.** The PWA share target
-   (`web/pwa/manifest.webmanifest`) means dictating into the phone's own notes
-   app and sharing it to Khepri already works, using the platform's
-   transcription rather than one North pays for. That is worth watching before
-   buying anything: if nobody shares into the box, nobody will hold a mic
-   button either.
+### What shipped
 
-### The gate
+Deliberately small, and deliberately not a conversation.
 
-Do not start until all three are true:
+- **Client**: `web/assets/js/shared/capture-recorder.js`, a delegated listener
+  rather than an Alpine component so it survives every panel swap with no
+  re-initialisation and cannot race Alpine's own deferred start. `MediaRecorder`
+  in whatever container the browser offers, hard-capped at 60 seconds by a timer
+  the person does not control. No waveform, no playback, no pause.
 
-| Number | Read from | Threshold |
-|---|---|---|
-| The parse is trustworthy | the eval rate from section 1 | Instruction-following cases pass consistently, not just the unit conversions |
-| The box is used | captures per active account per week | People are typing into it unprompted, not only from a nudge |
-| Text is the bottleneck | share-target arrivals vs typed captures, and capture length | Shares are a real share of use, or typed captures are short enough to suggest people are giving up on long ones |
+  **The clip is re-encoded to 16 kHz mono WAV before it is uploaded**, using
+  `decodeAudioData` and an `OfflineAudioContext` — no dependency, since the
+  browser already decodes every container it can record. This is not a nicety.
+  `MediaRecorder` produces webm, ogg or mp4 depending on the browser, and the
+  OpenAI dialect that every non-Gemini provider speaks names exactly two audio
+  formats: `wav` and `mp3`. Uploading the browser's own container would make
+  voice notes work on one provider and fail on the rest, which is the opposite
+  of what a replaceable AI layer is for. A minute lands around 1.9 MB.
 
-If the box is not used, voice is a faster road to a place nobody goes.
+  Tap to start and tap to stop, not press-and-hold as this document originally
+  sketched. Holding a button cannot be done from a keyboard, and a minute is
+  long enough that holding a phone still is the worse gesture. The button is
+  `hidden` until the script confirms `MediaRecorder` and `getUserMedia` exist,
+  so an unsupported browser sees the typed box exactly as it was.
 
-### What it would look like
+- **Server**: `POST /app/capture/voice`
+  (`internal/capture/voice_handler.go`), guarded by its own
+  `quota.VoiceCapture`. It renders **the composer with the transcript in the
+  textarea**, never the preview. The person reads what was heard before it is
+  parsed. A mis-heard number that goes straight into a preview is a value nobody
+  typed and nobody will notice, and that review step is the whole safety
+  argument of the feature.
 
-Deliberately small, and deliberately not a conversation:
+- **The container is sniffed, never declared** (`internal/capture/voice.go`).
+  `http.DetectContentType` answers `video/webm` and `video/mp4` for containers
+  holding only an audio track — which is precisely what `MediaRecorder`
+  produces — so taking its word would mean either refusing every real recording
+  or widening an audio endpoint's allow-list to video. Five signatures are
+  matched directly instead. The client's `Content-Type` is a claim; the bytes
+  are the fact.
 
-- **Client**: `MediaRecorder` behind a press-and-hold button next to the
-  textarea, `audio/webm;codecs=opus`, hard-capped at ~60 seconds. Alpine for the
-  button state only; the upload is a form post. No waveform, no playback UI, no
-  pause. The one non-obvious requirement: `getUserMedia` needs a secure context,
-  which the installed PWA has and `http://localhost` has, so local development
-  is unaffected.
-- **Server**: `POST /app/capture/voice` accepting one audio part under the same
-  `MaxText`-shaped ceiling, transcribing it, and then rendering **the composer
-  with the transcript in the textarea** — not the preview. The person reads what
-  was heard before it is parsed. A mis-heard number that goes straight into a
-  preview is a value nobody ever typed and nobody will notice.
-- **Transcription**: behind an interface in `internal/ai` beside the existing
-  clients, for the reason the whole AI layer is replaceable. One method,
-  `Transcribe(ctx, io.Reader, mime string) (string, error)`. A new
-  `spend.Surface`, and its own `quota.Action` — audio is the most expensive
-  thing a person can hand North per second of their effort.
-- **Storage**: none. Transcribe and discard. A voice note is not a document, the
+- **Transcription**: `ai.Transcriber` in `internal/ai/transcribe.go`, separate
+  from `ai.Client` and type-asserted for, the same shape `ai.Embedder` has and
+  for the same reason. The production implementation, `RunnerTranscriber`, asks
+  a multimodal chat model through the ordinary provider chain: `ai.Part` already
+  carries `InlineData` and a MIME type, Gemini ingests audio natively, and going
+  through a registered client means the chain walk and the spend meter both
+  apply with nothing new written. Zero new vendors, zero new credentials.
+
+  Getting there needed one fix outside this feature.
+  `internal/ai/openaicompat` rendered **every** inline part as `image_url` with
+  a data URL, because until now every inline part was a photo. Audio sent that
+  way reaches the provider as a picture: no error naming audio, just a model
+  that saw nothing. It now emits `input_audio` for any `audio/` MIME, with the
+  bare format word the dialect wants rather than a MIME type.
+
+  The interface exists anyway, because the two ways to buy transcription are
+  genuinely different products. A dedicated speech endpoint — `gpt-transcribe`
+  at $0.0045/min, Deepgram Nova-3 at $0.0043/min, ElevenLabs Scribe v2 at
+  $0.22/hr — is a different request shape at a different price with different
+  accuracy. Swapping to one should be a new implementation of one method, not an
+  edit to the handler.
+
+- **Storage: none.** Transcribe and discard. A voice note is not a document, the
   transcript is the artefact, and keeping raw audio of somebody saying "mood 2,
-  argued with my partner" creates a retention question that buys nothing. If
-  that is ever revisited, it is a settings toggle and a deletion path, not a
-  default.
+  argued with my partner" creates a retention question that buys nothing. The
+  temporary file `ParseMultipartForm` may spill is removed on the way out of the
+  handler.
 
 Synchronous, not a job. `analyze_form_video` is async because a video takes
 minutes; a 20-second clip is a few seconds, and a person is standing there.
+
+### Do we need ElevenLabs?
+
+No. ElevenLabs sells voice *output* — synthesis quality and a hosted agent
+pipeline. What quick capture needs is voice *input* becoming text, which is the
+other end of the problem. It becomes a real question only if North ever wants a
+branded coach voice reading replies aloud, and that belongs with speech-to-speech,
+not here.
+
+### What this does not close
+
+- **Audio tokens are priced as text.** `internal/ai/pricing` is per-model, not
+  per-modality, and Gemini bills audio input at its own rate. Voice spend is
+  therefore recorded against the right surface and the right model but at the
+  text rate, so the figure is directionally right and not exact. Worth fixing
+  when the ledger next matters; not worth a modality dimension today.
+- **Duration is not measured server-side.** The 60-second cap is enforced by the
+  client and bounded on the server only by `MaxAudioBytes`. Counting frames
+  would mean decoding the container, which is a codec dependency bought to
+  re-check something a byte ceiling already bounds.
+- **The chain's models are named for the wrong provider.** `.env` carries
+  `AI_MODEL=gemini-2.5-pro` and `AI_FAST_MODEL=gemini-2.5-flash` alongside
+  `AI_PROVIDER_CHAIN=openrouter,nvidia,fake` and an empty `GEMINI_API_KEY`.
+  OpenRouter wants `google/gemini-2.5-flash`. Predates voice and affects the
+  parse too; the local verification below was run with the slugs overridden.
+- **Coach chat still takes images only.** `hydrateCurrentTurn` filters on
+  `part.Kind != "image"`, and Telegram's update struct decodes no `voice` field,
+  so a voice note sent from Telegram is still silently dropped. Both are the
+  next phase, and both raise a retention question this phase answered by not
+  storing anything — chat attachments already persist in object storage, so the
+  two surfaces must not drift into different behaviour by accident.
+
+### Verified, 2026-09-06
+
+Against the running app on a real provider, not a stub:
+
+| What | Result |
+|---|---|
+| `internal/capture` suite with `TEST_DATABASE_URL` set | 35 pass, 0 skipped |
+| macOS `say` WAV -> `POST /app/capture/voice` -> OpenRouter | `"Slept 6 hours, 2 liters of water, 78 kilos, mood four energy three."` in 2.2s |
+| that transcript -> `/capture/parse` | sleep 360 min, water 2000 ml, weight 78 kg, check-in mood 4 energy 3 |
+| the reply is the composer, not the preview | confirmed |
+| a PNG posted as `audio/wav` | 422, "That did not arrive as a recording." |
+| an empty part | 422, "That recording was empty." |
+| no CSRF header or field | 403 |
+| the button in a browser | visible after feature detection, still visible after an htmx panel swap, no recorder errors in the console |
+
+Not verified by machine: holding the button. That needs a microphone and a
+person, and it is the one step where `getUserMedia`, the re-encode and the
+upload meet.
+
+### The anti-patterns this refuses
+
+- Voice that goes straight to the preview, skipping the transcript.
+- A conversation instead of a capture. Holding the button must not open a
+  dialogue with the coach; `/app/chat` already streams. Capture transcribes and
+  stops.
+- Keeping the audio because it might be useful later.
 
 ---
 

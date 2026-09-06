@@ -375,11 +375,13 @@ North treats uploaded content as knowledge.
 Supported formats:
 
 - PDF
-- Images
-- Video
-- Audio
 - Markdown
 - Text
+- CSV
+
+Images and video are not knowledge documents. They travel through the media
+pipeline instead, and audio is transcribed at the point of capture rather than
+indexed — see Quick capture.
 
 Pipeline:
 
@@ -589,7 +591,9 @@ Stores:
 - PDFs
 - Images
 - Videos
-- Audio
+
+Voice notes are deliberately absent: they are transcribed and discarded, so
+there is nothing to keep.
 
 Production:
 

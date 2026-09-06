@@ -17,7 +17,7 @@
 // Bumping this name is what retires the previous cache. Old caches are deleted
 // on activate, so a deploy that changes an asset cannot leave somebody pinned
 // to the previous one.
-const CACHE = "north-shell-v3";
+const CACHE = "north-shell-v4";
 
 const OFFLINE_URL = "/offline.html";
 
@@ -33,6 +33,7 @@ const SHELL = [
   "/assets/js/vendor/alpine.min.js",
   "/assets/js/shared/pwa.js",
   "/assets/js/shared/push.js",
+  "/assets/js/shared/capture-recorder.js",
   "/assets/fonts/geist/geist-variable.woff2",
   "/assets/fonts/geist/geist-mono-variable.woff2",
   "/assets/brand/favicon.svg",

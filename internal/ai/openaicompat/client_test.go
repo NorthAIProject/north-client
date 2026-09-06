@@ -2,6 +2,7 @@ package openaicompat_test
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -471,5 +472,86 @@ func TestChatSendsInlineImagesAsDataURLs(t *testing.T) {
 	url := image["image_url"].(map[string]any)["url"].(string)
 	if !strings.HasPrefix(url, "data:image/jpeg;base64,") {
 		t.Fatalf("data url = %q", url)
+	}
+}
+
+// Audio is a different part type from an image in this dialect, unlike Gemini
+// where both are inline data with a MIME type. Sending a waveform behind a
+// data: URL the provider parses as a picture fails in the least useful way
+// available: no error naming audio, just a model that saw nothing.
+func TestChatSendsInlineAudioAsInputAudio(t *testing.T) {
+	t.Parallel()
+
+	c, received := newClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"choices":[{"message":{"content":"slept 6h"}}]}`)
+	})
+
+	_, err := c.Generate(context.Background(), ai.Request{
+		Messages: []ai.Message{{
+			Role:  ai.RoleUser,
+			Parts: []ai.Part{{InlineData: []byte("RIFF____WAVE"), MIMEType: "audio/wav"}},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	messages := (*received)[0]["messages"].([]any)
+	content, ok := messages[0].(map[string]any)["content"].([]any)
+	if !ok {
+		t.Fatalf("content = %T, want a parts array", messages[0].(map[string]any)["content"])
+	}
+	part := content[0].(map[string]any)
+	if part["type"] != "input_audio" {
+		t.Fatalf("type = %v, want input_audio", part["type"])
+	}
+	audio := part["input_audio"].(map[string]any)
+	if audio["format"] != "wav" {
+		t.Fatalf("format = %v, want wav", audio["format"])
+	}
+	decoded, decErr := base64.StdEncoding.DecodeString(audio["data"].(string))
+	if decErr != nil {
+		t.Fatalf("data was not base64: %v", decErr)
+	}
+	if string(decoded) != "RIFF____WAVE" {
+		t.Fatalf("data = %q", decoded)
+	}
+}
+
+// The dialect names two formats and carries them as a bare word, not a MIME
+// type. Anything else keeps its subtype so the provider refuses it by name
+// rather than by silently seeing nothing.
+func TestAudioFormatNamesWhatTheDialectKnows(t *testing.T) {
+	t.Parallel()
+
+	for mime, want := range map[string]string{
+		"audio/wav":              "wav",
+		"audio/x-wav":            "wav",
+		"audio/wave":             "wav",
+		"audio/mpeg":             "mp3",
+		"audio/mp3":              "mp3",
+		"audio/webm;codecs=opus": "webm",
+		"audio/ogg":              "ogg",
+	} {
+		c, received := newClient(t, func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = io.WriteString(w, `{"choices":[{"message":{"content":"ok"}}]}`)
+		})
+
+		_, err := c.Generate(context.Background(), ai.Request{
+			Messages: []ai.Message{{
+				Role:  ai.RoleUser,
+				Parts: []ai.Part{{InlineData: []byte("audio"), MIMEType: mime}},
+			}},
+		})
+		if err != nil {
+			t.Fatalf("generate %s: %v", mime, err)
+		}
+
+		messages := (*received)[0]["messages"].([]any)
+		content := messages[0].(map[string]any)["content"].([]any)
+		audio := content[0].(map[string]any)["input_audio"].(map[string]any)
+		if audio["format"] != want {
+			t.Errorf("format for %q = %v, want %q", mime, audio["format"], want)
+		}
 	}
 }

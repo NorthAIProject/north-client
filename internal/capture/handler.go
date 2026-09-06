@@ -33,12 +33,14 @@ func NewHandler(svc *Service, quotas *quota.Service) *Handler {
 
 // Routes registers the page.
 //
-// Only the parse is metered: it is the half that reaches a model. The commit
-// costs a transaction, and refusing it after somebody has already paid for the
-// parse is the worst possible place to stop them.
+// The parse and the transcription are metered: they are the halves that reach a
+// model, and they are counted apart because a voice note pays for both. The
+// commit costs a transaction, and refusing it after somebody has already paid
+// for the parse is the worst possible place to stop them.
 func (h *Handler) Routes(r chi.Router) {
 	r.Get("/capture", h.show)
 	r.With(h.quotas.Guard(quota.QuickCapture)).Post("/capture/parse", h.parse)
+	r.With(h.quotas.Guard(quota.VoiceCapture)).Post("/capture/voice", h.voice)
 	r.Post("/capture/commit", h.commit)
 }
 

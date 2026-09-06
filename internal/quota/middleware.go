@@ -86,6 +86,8 @@ func describe(action Action) string {
 		return "video analysis"
 	case QuickCapture:
 		return "quick capture"
+	case VoiceCapture:
+		return "voice notes"
 	default:
 		return string(action)
 	}

@@ -448,9 +448,37 @@ func fromToolCallPayload(payload []toolCallPayload) []ai.ToolCall {
 	return calls
 }
 
-// openAIContent is a string for a text-only turn and a parts array when a
-// photo is attached. The dialect rejects a mixed object, and sending only
-// m.Text() would silently drop the image.
+// audioFormat names a recording the way the dialect does.
+//
+// The dialect carries audio as a bare format word beside the base64, not as a
+// MIME type, and it only names two: "wav" and "mp3". An unrecognised audio type
+// keeps its subtype so the provider can refuse it by name — which is a clearer
+// failure than the alternative below, where audio was labelled an image.
+func audioFormat(mime string) string {
+	base, _, _ := strings.Cut(mime, ";")
+	switch strings.TrimSpace(base) {
+	case "audio/wav", "audio/x-wav", "audio/wave":
+		return "wav"
+	case "audio/mpeg", "audio/mp3":
+		return "mp3"
+	default:
+		_, subtype, found := strings.Cut(base, "/")
+		if !found {
+			return base
+		}
+		return subtype
+	}
+}
+
+// openAIContent is a string for a text-only turn and a parts array when a file
+// is attached. The dialect rejects a mixed object, and sending only m.Text()
+// would silently drop the attachment.
+//
+// Audio and images are different part types here, unlike Gemini where both are
+// inline data with a MIME type. Sending audio as image_url — which this did
+// until voice notes existed — puts a base64 waveform behind a data: URL the
+// provider parses as a picture. That fails in the least useful way available:
+// no error naming audio, just a model that saw nothing.
 func openAIContent(m ai.Message) any {
 	hasBinary := false
 	for _, p := range m.Parts {
@@ -472,6 +500,16 @@ func openAIContent(m ai.Message) any {
 			mime := p.MIMEType
 			if mime == "" {
 				mime = "image/jpeg"
+			}
+			if strings.HasPrefix(mime, "audio/") {
+				parts = append(parts, map[string]any{
+					"type": "input_audio",
+					"input_audio": map[string]any{
+						"data":   base64.StdEncoding.EncodeToString(p.InlineData),
+						"format": audioFormat(mime),
+					},
+				})
+				continue
 			}
 			parts = append(parts, map[string]any{
 				"type": "image_url",
