@@ -376,11 +376,22 @@ func (q *Queries) DeleteUserDiets(ctx context.Context, userID uuid.UUID) error {
 }
 
 const getIngredient = `-- name: GetIngredient :one
-SELECT id, user_id, name, brand, category, serving_size_grams, calories_per_100g, protein_g_per_100g, fat_g_per_100g, carbs_g_per_100g, fiber_g_per_100g, sugar_g_per_100g, sodium_mg_per_100g, potassium_mg_per_100g, cholesterol_mg_per_100g, created_at, updated_at, saturated_fat_g_per_100g FROM ingredients WHERE id = $1
+SELECT id, user_id, name, brand, category, serving_size_grams, calories_per_100g, protein_g_per_100g, fat_g_per_100g, carbs_g_per_100g, fiber_g_per_100g, sugar_g_per_100g, sodium_mg_per_100g, potassium_mg_per_100g, cholesterol_mg_per_100g, created_at, updated_at, saturated_fat_g_per_100g FROM ingredients
+WHERE id = $1 AND (user_id IS NULL OR user_id = $2)
 `
 
-func (q *Queries) GetIngredient(ctx context.Context, id uuid.UUID) (Ingredient, error) {
-	row := q.db.QueryRow(ctx, getIngredient, id)
+type GetIngredientParams struct {
+	ID     uuid.UUID
+	UserID *uuid.UUID
+}
+
+// Visible ingredients are the shared/global set plus the user's own, the same
+// rule SearchIngredients applies. Reading one by id used to skip that check,
+// which let a hand-crafted ingredient_id on the food-log, meal-plan and capture
+// commit forms snapshot another account's private food into the caller's own
+// row — leaking its name and full macro profile.
+func (q *Queries) GetIngredient(ctx context.Context, arg GetIngredientParams) (Ingredient, error) {
+	row := q.db.QueryRow(ctx, getIngredient, arg.ID, arg.UserID)
 	var i Ingredient
 	err := row.Scan(
 		&i.ID,

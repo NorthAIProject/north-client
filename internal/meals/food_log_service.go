@@ -53,7 +53,7 @@ func (s *FoodLogService) LogIngredient(ctx context.Context, userID uuid.UUID, in
 		return FoodLogEntry{}, apperr.Wrap(apperr.ErrValidation, "enter a quantity greater than zero")
 	}
 
-	ingredient, err := s.repo.GetIngredient(ctx, in.IngredientID)
+	ingredient, err := s.repo.GetIngredient(ctx, in.IngredientID, userID)
 	if err != nil {
 		return FoodLogEntry{}, err
 	}

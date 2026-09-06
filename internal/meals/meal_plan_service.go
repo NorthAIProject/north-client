@@ -124,7 +124,7 @@ func (s *MealPlanService) AddIngredient(ctx context.Context, mealID, userID uuid
 		return MealIngredient{}, err
 	}
 
-	ingredient, err := s.repo.GetIngredient(ctx, clean.IngredientID)
+	ingredient, err := s.repo.GetIngredient(ctx, clean.IngredientID, userID)
 	if err != nil {
 		return MealIngredient{}, err
 	}

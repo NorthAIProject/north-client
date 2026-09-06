@@ -10,7 +10,13 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 RETURNING *;
 
 -- name: GetIngredient :one
-SELECT * FROM ingredients WHERE id = $1;
+-- Visible ingredients are the shared/global set plus the user's own, the same
+-- rule SearchIngredients applies. Reading one by id used to skip that check,
+-- which let a hand-crafted ingredient_id on the food-log, meal-plan and capture
+-- commit forms snapshot another account's private food into the caller's own
+-- row — leaking its name and full macro profile.
+SELECT * FROM ingredients
+WHERE id = $1 AND (user_id IS NULL OR user_id = $2);
 
 -- name: SearchIngredients :many
 -- Visible ingredients are the shared/global set plus the user's own.

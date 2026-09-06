@@ -33,12 +33,21 @@ func TestCreateAndGetIngredient(t *testing.T) {
 		t.Fatalf("serving size default = %v, want 100", created.ServingSizeGrams)
 	}
 
-	fetched, err := svc.Get(ctx, created.ID)
+	fetched, err := svc.Get(ctx, created.ID, user.ID)
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
 	if fetched.Name != "Chicken breast" {
 		t.Fatalf("name = %q", fetched.Name)
+	}
+
+	// A private ingredient belongs to the account that made it. Reading one by
+	// id used to skip that check, which let a hand-crafted ingredient_id on the
+	// food-log, meal-plan and capture-commit forms copy somebody else's food —
+	// its name and its whole macro profile — into the caller's own row.
+	stranger := newUser(t, pool, "stranger@north.test")
+	if _, err := svc.Get(ctx, created.ID, stranger.ID); !apperr.Is(err, apperr.ErrNotFound) {
+		t.Fatalf("another account read a private ingredient: err = %v, want ErrNotFound", err)
 	}
 }
 

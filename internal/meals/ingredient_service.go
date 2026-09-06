@@ -71,8 +71,8 @@ func (s *IngredientService) Create(ctx context.Context, userID uuid.UUID, in Ing
 	return s.repo.CreateIngredient(ctx, userID, toIngredient(clean))
 }
 
-func (s *IngredientService) Get(ctx context.Context, id uuid.UUID) (Ingredient, error) {
-	return s.repo.GetIngredient(ctx, id)
+func (s *IngredientService) Get(ctx context.Context, id, userID uuid.UUID) (Ingredient, error) {
+	return s.repo.GetIngredient(ctx, id, userID)
 }
 
 // Search returns the shared/global set plus the user's own.
