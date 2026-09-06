@@ -36,8 +36,11 @@ func (r *Repository) CreateIngredient(ctx context.Context, userID uuid.UUID, in 
 	return ingredientFromDB(row), nil
 }
 
-func (r *Repository) GetIngredient(ctx context.Context, id uuid.UUID) (Ingredient, error) {
-	row, err := r.q.GetIngredient(ctx, id)
+// GetIngredient reads one ingredient the user is allowed to see: their own, or
+// one from the shared library. A row belonging to somebody else reads as
+// ErrNotFound, which is what it is from here.
+func (r *Repository) GetIngredient(ctx context.Context, id, userID uuid.UUID) (Ingredient, error) {
+	row, err := r.q.GetIngredient(ctx, mealsdb.GetIngredientParams{ID: id, UserID: &userID})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return Ingredient{}, apperr.ErrNotFound

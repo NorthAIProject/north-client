@@ -451,20 +451,27 @@ func (h *Handler) stream(w http.ResponseWriter, r *http.Request) {
 		stream, err = h.svc.BeginReflection(r.Context(), user, conversation.ID)
 	} else {
 		in := Incoming{Text: pending}
-		if mediaID != uuid.Nil {
-			in.Attachments = []conversations.Attachment{{
-				MediaID: mediaID,
-				Kind:    "image",
-			}}
-			if h.images != nil {
-				if rec, recErr := h.images.LoadChatImage(r.Context(), mediaID, user.ID); recErr == nil {
-					in.Attachments[0] = conversations.Attachment{
-						MediaID:  rec.ID,
-						Kind:     rec.Kind,
-						MIMEType: rec.MIMEType,
-						Name:     rec.OriginalName,
-					}
-				}
+		// The attachment is built only from a record this account owns.
+		//
+		// It used to be seeded from the query parameter first and overwritten
+		// on a successful lookup, so a failed lookup left the caller's chosen
+		// id on the turn and AppendUserMessage persisted it. Nothing leaked —
+		// every path that reads the bytes goes through GetMedia, which filters
+		// on the user — but it wrote a dangling reference to somebody else's
+		// row into this conversation's history.
+		if mediaID != uuid.Nil && h.images != nil {
+			rec, recErr := h.images.LoadChatImage(r.Context(), mediaID, user.ID)
+			if recErr != nil {
+				// Not fatal: the message is still worth sending without it.
+				middleware.FromContext(r.Context()).Warn("chat attachment not available to this account",
+					slog.String("media_id", mediaID.String()))
+			} else {
+				in.Attachments = []conversations.Attachment{{
+					MediaID:  rec.ID,
+					Kind:     rec.Kind,
+					MIMEType: rec.MIMEType,
+					Name:     rec.OriginalName,
+				}}
 			}
 		}
 		stream, err = h.svc.SendIncoming(r.Context(), user, conversation.ID, in)
