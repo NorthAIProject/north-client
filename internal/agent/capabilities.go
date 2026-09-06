@@ -16,6 +16,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/coach"
 	"github.com/NorthAIProject/north-client/internal/documents"
 	"github.com/NorthAIProject/north-client/internal/exercises"
+	"github.com/NorthAIProject/north-client/internal/exercises/exercise"
 	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/habits"
 	"github.com/NorthAIProject/north-client/internal/hydration"
@@ -55,6 +56,15 @@ type Services struct {
 	Habits     *habits.Service
 	Biometrics *biometrics.Service
 
+	// SiteURL is the public origin, used to build the absolute asset URLs a
+	// tool hands back. Environment-specific on purpose: an agent talking to a
+	// laptop should be given that laptop's addresses, not production's.
+	//
+	// Passed in rather than read from a brand constant so this package keeps
+	// pointing only at internal/ — the tool registry is service layer, and the
+	// canonical-origin constant in web/shared/ui belongs to the pages.
+	SiteURL string
+
 	// Users resolves the account a call runs as.
 	//
 	// Needed because some services take the whole users.User rather than an id:
@@ -74,7 +84,7 @@ func Build(svc Services) *Registry {
 	r := NewRegistry()
 
 	if svc.Exercises != nil {
-		r.Register(searchExercises(svc.Exercises), getExercise(svc.Exercises))
+		r.Register(searchExercises(svc.Exercises), getExercise(svc.Exercises, svc.SiteURL))
 	}
 	if svc.Calculator != nil {
 		r.Register(calculateMacros(svc.Calculator))
@@ -195,7 +205,7 @@ func searchExercises(svc *exercises.Service) Capability {
 	}
 }
 
-func getExercise(svc *exercises.Service) Capability {
+func getExercise(svc *exercises.Service, siteURL string) Capability {
 	type args = coach.ExerciseArgs
 
 	return Capability{
@@ -218,19 +228,50 @@ func getExercise(svc *exercises.Service) Capability {
 				return "", err
 			}
 
-			var b strings.Builder
-			fmt.Fprintf(&b, "%s (%s, %s)\n", e.Name, e.Category, e.Difficulty)
-			fmt.Fprintf(&b, "Equipment: %s\n", e.Equipment)
-			fmt.Fprintf(&b, "Primary muscles: %s\n", join(e.Primary))
-			if len(e.Secondary) > 0 {
-				fmt.Fprintf(&b, "Secondary muscles: %s\n", join(e.Secondary))
-			}
-			if e.Instructions != "" {
-				fmt.Fprintf(&b, "How to perform it: %s\n", e.Instructions)
-			}
-			return b.String(), nil
+			return describeExercise(e, siteURL), nil
 		},
 	}
+}
+
+// describeExercise renders one catalogue row for a model to read.
+//
+// Pulled out of the capability so it can be tested without a database, and
+// because it is the whole product surface of get_exercise: what this function
+// omits, no model on any channel can tell anyone.
+func describeExercise(e exercise.Exercise, siteURL string) string {
+	var b strings.Builder
+
+	fmt.Fprintf(&b, "%s (%s, %s)\n", e.Name, e.Category, e.Difficulty)
+	fmt.Fprintf(&b, "Equipment: %s\n", e.Equipment)
+	fmt.Fprintf(&b, "Primary muscles: %s\n", join(e.Primary))
+	if len(e.Secondary) > 0 {
+		fmt.Fprintf(&b, "Secondary muscles: %s\n", join(e.Secondary))
+	}
+
+	if e.Instructions != "" {
+		fmt.Fprintf(&b, "How to perform it: %s\n", e.Instructions)
+	} else {
+		// Said out loud so the model reports the gap rather than filling it.
+		// 269 of 455 rows arrived with artwork and no text, and invented form
+		// advice is the one failure here with physical consequences.
+		b.WriteString("How to perform it: not recorded in the catalogue. Say so rather than inventing cues.\n")
+	}
+
+	// The two things this tool held and never handed over.
+	//
+	// Both are public URLs — assets mount outside RequireAuth — so they are
+	// safe to give an agent holding no session, and they are what makes an
+	// answer showable rather than merely readable. Telegram auto-links a bare
+	// URL and an MCP client gets something it can open.
+	if e.VideoURL != "" {
+		fmt.Fprintf(&b, "Video: %s\n", e.VideoURL)
+	}
+	if e.HasIllustration() && siteURL != "" {
+		fmt.Fprintf(&b, "Illustration: %s/assets/exercises/%s/frame-1.svg\n",
+			strings.TrimRight(siteURL, "/"), e.IllustrationSlug)
+	}
+
+	return b.String()
 }
 
 // ---------------------------------------------------------------------------

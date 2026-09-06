@@ -147,3 +147,94 @@ func TestARefusedFormattedMessageIsResentAsPlainText(t *testing.T) {
 		t.Fatalf("the retry should be stripped plain text, got %q", text)
 	}
 }
+
+// A URL survives the emphasis passes intact.
+//
+// Underscores are ordinary in an address and a markdown marker in prose, and
+// the emphasis passes used to run first: https://youtu.be/a_b_c arrived as
+// https://youtu.be/a<i>b</i>c, which is a link to nowhere. The catalogue is
+// about to start emitting YouTube links, whose ids routinely contain
+// underscores, so this is the regression that would have reached people first.
+func TestAURLWithUnderscoresIsNotMangled(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range map[string]struct{ in, want string }{
+		"bare url": {
+			"Watch https://youtu.be/a_b_c for the form",
+			"Watch https://youtu.be/a_b_c for the form",
+		},
+		"markdown link": {
+			"[the movement](https://youtu.be/a_b_c)",
+			`<a href="https://youtu.be/a_b_c">the movement</a>`,
+		},
+		"asset url": {
+			"https://kheprios.com/assets/exercises/pull_up/loop.gif",
+			"https://kheprios.com/assets/exercises/pull_up/loop.gif",
+		},
+		"two underscores still not italic": {
+			"see https://x.test/a_b_c_d now",
+			"see https://x.test/a_b_c_d now",
+		},
+		"emphasis outside a url still works": {
+			"_really_ see https://youtu.be/a_b_c",
+			"<i>really</i> see https://youtu.be/a_b_c",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := markdownToHTML(tc.in); got != tc.want {
+				t.Errorf("markdownToHTML(%q)\n got %q\nwant %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+// The plain-text fallback runs after Telegram has already refused the formatted
+// message, so it is the link's last chance.
+func TestStripMarkdownKeepsAURLIntact(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range map[string]struct{ in, want string }{
+		"bare":     {"see https://youtu.be/a_b_c", "see https://youtu.be/a_b_c"},
+		"link":     {"[form](https://youtu.be/a_b_c)", "form (https://youtu.be/a_b_c)"},
+		"emphasis": {"_really_ https://youtu.be/a_b_c", "really https://youtu.be/a_b_c"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := stripMarkdown(tc.in); got != tc.want {
+				t.Errorf("stripMarkdown(%q)\n got %q\nwant %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+// A query string reaches Telegram's parser as an entity unless '&' is escaped,
+// and the URL skipped the escape pass by being stashed.
+func TestAQueryStringIsEscapedOnTheWayBack(t *testing.T) {
+	t.Parallel()
+
+	got := markdownToHTML("https://www.youtube.com/watch?v=uonlYQn7F1s&t=30")
+	want := "https://www.youtube.com/watch?v=uonlYQn7F1s&amp;t=30"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+// Trailing punctuation belongs to the sentence, not the address.
+func TestASentenceEndingInAURLDoesNotLinkTheFullStop(t *testing.T) {
+	t.Parallel()
+
+	got := markdownToHTML("Watch https://youtu.be/a_b_c.")
+	if want := "Watch https://youtu.be/a_b_c."; got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+// A URL inside a code span was already safe and must stay that way: the code
+// stash runs first, so the URL stash should never see it.
+func TestAURLInsideCodeIsLeftAlone(t *testing.T) {
+	t.Parallel()
+
+	got := markdownToHTML("run `curl https://x.test/a_b_c` now")
+	if want := "run <code>curl https://x.test/a_b_c</code> now"; got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}

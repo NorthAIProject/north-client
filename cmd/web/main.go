@@ -948,6 +948,7 @@ func routes(
 	// MCP server. Two definitions of "calculate my macros" would drift, and
 	// the drift would show as the coach and Telegram disagreeing.
 	agentTools := agent.Build(agent.Services{
+		SiteURL:       cfg.BaseURL,
 		Exercises:     exerciseSvc,
 		Calculator:    calculatorSvc,
 		Goals:         goalSvc,
