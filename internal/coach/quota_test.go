@@ -32,7 +32,7 @@ func streamRouter(t *testing.T, h harness, perHour int) (http.Handler, []*http.C
 	)
 
 	sessions := auth.NewSessionStore(h.pool, time.Hour)
-	mw := auth.NewMiddleware(sessions, false)
+	mw := auth.NewMiddleware(sessions, false, nil)
 
 	r := chi.NewRouter()
 	r.Use(mw.LoadUser)

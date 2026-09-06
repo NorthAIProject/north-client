@@ -2,13 +2,13 @@ package auth
 
 import (
 	"context"
-	"net"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
@@ -23,13 +23,17 @@ type userContextKey struct{}
 type Middleware struct {
 	sessions *SessionStore
 	secure   bool
+	trusted  middleware.TrustedProxies
 }
 
 // NewMiddleware builds the auth middleware. secure should be true in
 // production; it is false locally because http://localhost cannot set Secure
 // cookies.
-func NewMiddleware(sessions *SessionStore, secure bool) *Middleware {
-	return &Middleware{sessions: sessions, secure: secure}
+//
+// trusted decides whether X-Forwarded-For may be believed when recording where
+// a session was created from. Empty means record the peer address.
+func NewMiddleware(sessions *SessionStore, secure bool, trusted middleware.TrustedProxies) *Middleware {
+	return &Middleware{sessions: sessions, secure: secure, trusted: trusted}
 }
 
 // LoadUser attaches the signed-in user to the request context when there is a
@@ -136,8 +140,11 @@ func (m *Middleware) ClearCookie(w http.ResponseWriter) {
 }
 
 // RequestMetadata captures the client details stored alongside a session.
-func RequestMetadata(r *http.Request) Metadata {
-	return Metadata{UserAgent: r.UserAgent(), IP: clientIP(r)}
+//
+// A method rather than a function because the address is only meaningful
+// against the trusted-proxy list: see clientIP.
+func (m *Middleware) RequestMetadata(r *http.Request) Metadata {
+	return Metadata{UserAgent: r.UserAgent(), IP: middleware.ClientIP(r, m.trusted)}
 }
 
 // loginRedirect sends the user to the login page, remembering where they were
@@ -174,19 +181,12 @@ func SafeRedirect(next string) bool {
 	return err == nil && u.Scheme == "" && u.Host == ""
 }
 
-func clientIP(r *http.Request) string {
-	// X-Forwarded-For is trusted only because North sits behind an ingress that
-	// sets it. Exposed directly to the internet this would be client-controlled.
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		if first, _, found := strings.Cut(xff, ","); found {
-			return strings.TrimSpace(first)
-		}
-		return strings.TrimSpace(xff)
-	}
-
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
-}
+// clientIP is deliberately absent.
+//
+// It used to take the leftmost X-Forwarded-For entry, which is precisely the
+// part a client writes: a proxy appends the address it observed to the right of
+// whatever arrived. So the IP recorded against every session was chosen by
+// whoever created it, and a person reviewing where their account had been
+// signed in from was reading a value an attacker supplied. Sessions now record
+// middleware.ClientIP, which consults the header only when the peer is a
+// trusted proxy and reads the hops from the right.

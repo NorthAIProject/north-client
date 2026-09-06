@@ -448,6 +448,7 @@ func run() error {
 		return err
 	}
 	cfg.AI.LogReady(log, registry)
+	cfg.LogSecurityPosture(log)
 
 	// Said out loud at boot because the alternative is silence. A deployment
 	// that forgot ENCRYPTION_KEY still starts and still works — it just cannot
@@ -636,8 +637,13 @@ func routes(
 		WebAuthnDisplayName: cfg.WebAuthnDisplayName,
 		Log:                 slog.Default(),
 	}).WithFunnel(funnel)
-	authMW := auth.NewMiddleware(sessions, cfg.Env.IsProduction())
-	authHandler := auth.NewHandler(authSvc, authMW, "/app")
+	authMW := auth.NewMiddleware(sessions, cfg.Env.IsProduction(), cfg.TrustedProxies)
+	authThrottle := auth.NewThrottle(auth.ThrottleConfig{
+		PerMinute:         cfg.AuthAttemptsPerMinute,
+		PerEmailPerMinute: cfg.AuthAttemptsPerEmailPerMinute,
+		TrustedProxies:    cfg.TrustedProxies,
+	}, slog.Default())
+	authHandler := auth.NewHandler(authSvc, authMW, "/app", authThrottle)
 
 	conversationSvc := conversations.NewService(conversations.NewRepository(pool))
 	queue := jobs.NewQueue(pool)
@@ -1110,6 +1116,7 @@ func routes(
 		// page, and a web page is not the intended caller.
 		AllowedOrigins:    cfg.MCPAllowedOrigins,
 		RequestsPerMinute: cfg.MCPRequestsPerMinute,
+		TrustedProxies:    cfg.TrustedProxies,
 		Version:           mcpserver.Version,
 		Log:               slog.Default(),
 	})
@@ -1173,7 +1180,8 @@ func routes(
 			// because a call there can reach a paid model and an operator may
 			// need to tighten it; a write here costs a transaction, so there is
 			// nothing yet for a knob to protect against.
-			Log: slog.Default(),
+			TrustedProxies: cfg.TrustedProxies,
+			Log:            slog.Default(),
 		})))
 	})
 

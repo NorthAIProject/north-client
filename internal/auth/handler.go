@@ -21,35 +21,54 @@ import (
 // a valid profile is lives in the service layer, so the same rules apply when
 // Telegram or MCP creates a session later.
 type Handler struct {
-	svc  *Service
-	mw   *Middleware
-	home string
+	svc      *Service
+	mw       *Middleware
+	home     string
+	throttle *Throttle
 }
 
 // NewHandler builds the auth handler. home is where a successful sign-in lands.
-func NewHandler(svc *Service, mw *Middleware, home string) *Handler {
-	return &Handler{svc: svc, mw: mw, home: home}
+//
+// throttle may be nil, which leaves the credential routes unbounded. That is
+// only ever right in a test.
+func NewHandler(svc *Service, mw *Middleware, home string, throttle *Throttle) *Handler {
+	return &Handler{svc: svc, mw: mw, home: home, throttle: throttle}
 }
 
 // Routes mounts the auth endpoints.
+//
+// The throttle covers every route that accepts a credential or sends a mail,
+// and nothing else. Rendering a form is not bounded: reloading the login page
+// is something a person does, and a limit there would only ever be met by a
+// person who had already been refused.
+//
+// /logout is unbounded on purpose. Refusing to end a session is a worse outcome
+// than any abuse of it.
 func (h *Handler) Routes(r chi.Router) {
 	r.Get("/signup", h.showSignup)
-	r.Post("/signup", h.submitSignup)
 	r.Get("/login", h.showLogin)
-	r.Post("/login", h.submitLogin)
 	r.Get("/forgot-password", h.showForgotPassword)
-	r.Post("/forgot-password", h.submitForgotPassword)
 	r.Get("/reset-password", h.showResetPassword)
-	r.Post("/reset-password", h.submitResetPassword)
 	r.Post("/logout", h.logout)
 
 	r.Get("/auth/google", h.googleStart)
 	r.Get("/auth/google/callback", h.googleCallback)
 
-	r.Post("/auth/passkey/register/begin", h.passkeyRegisterBegin)
-	r.Post("/auth/passkey/register/finish", h.passkeyRegisterFinish)
-	r.Post("/auth/passkey/login/begin", h.passkeyLoginBegin)
-	r.Post("/auth/passkey/login/finish", h.passkeyLoginFinish)
+	r.Group(func(r chi.Router) {
+		if h.throttle != nil {
+			r.Use(h.throttle.Guard)
+		}
+
+		r.Post("/signup", h.submitSignup)
+		r.Post("/login", h.submitLogin)
+		r.Post("/forgot-password", h.submitForgotPassword)
+		r.Post("/reset-password", h.submitResetPassword)
+
+		r.Post("/auth/passkey/register/begin", h.passkeyRegisterBegin)
+		r.Post("/auth/passkey/register/finish", h.passkeyRegisterFinish)
+		r.Post("/auth/passkey/login/begin", h.passkeyLoginBegin)
+		r.Post("/auth/passkey/login/finish", h.passkeyLoginFinish)
+	})
 }
 
 func (h *Handler) formOpts() authpages.AuthOptions {
@@ -91,7 +110,7 @@ func (h *Handler) submitSignup(w http.ResponseWriter, r *http.Request) {
 		Password:             r.PostFormValue("password"),
 		PasswordConfirmation: r.PostFormValue("password_confirmation"),
 		Timezone:             r.PostFormValue("timezone"),
-	}, RequestMetadata(r))
+	}, h.mw.RequestMetadata(r))
 	if err != nil {
 		var fieldErrs apperr.FieldErrors
 		if apperr.As(err, &fieldErrs) {
@@ -142,7 +161,7 @@ func (h *Handler) submitLogin(w http.ResponseWriter, r *http.Request) {
 	user, token, err := h.svc.Login(r.Context(), LoginInput{
 		Email:    r.PostFormValue("email"),
 		Password: r.PostFormValue("password"),
-	}, RequestMetadata(r))
+	}, h.mw.RequestMetadata(r))
 	if err != nil {
 		if apperr.Is(err, ErrInvalidCredentials) {
 			// 401 rather than 422: the credentials were readable and wrong.
@@ -265,7 +284,7 @@ func (h *Handler) googleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, token, err := h.svc.CompleteGoogleOAuth(r.Context(), r.URL.Query().Get("code"), RequestMetadata(r))
+	user, token, err := h.svc.CompleteGoogleOAuth(r.Context(), r.URL.Query().Get("code"), h.mw.RequestMetadata(r))
 	if err != nil {
 		middleware.FromContext(r.Context()).Error("google oauth failed", slog.Any("error", err))
 		render(w, r, http.StatusBadGateway, authpages.LoginPage(authpages.LoginForm{
@@ -334,7 +353,7 @@ func (h *Handler) passkeyRegisterFinish(w http.ResponseWriter, r *http.Request) 
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body."})
 		return
 	}
-	user, token, err := h.svc.PasskeyRegisterFinish(r.Context(), in, RequestMetadata(r))
+	user, token, err := h.svc.PasskeyRegisterFinish(r.Context(), in, h.mw.RequestMetadata(r))
 	if err != nil {
 		writePasskeyError(w, r, err)
 		return
@@ -370,7 +389,7 @@ func (h *Handler) passkeyLoginFinish(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body."})
 		return
 	}
-	user, token, err := h.svc.PasskeyLoginFinish(r.Context(), in, RequestMetadata(r))
+	user, token, err := h.svc.PasskeyLoginFinish(r.Context(), in, h.mw.RequestMetadata(r))
 	if err != nil {
 		writePasskeyError(w, r, err)
 		return
@@ -505,7 +524,7 @@ func (h *Handler) submitResetPassword(w http.ResponseWriter, r *http.Request) {
 		Token:                form.Token,
 		Password:             r.PostFormValue("password"),
 		PasswordConfirmation: r.PostFormValue("password_confirmation"),
-	}, RequestMetadata(r))
+	}, h.mw.RequestMetadata(r))
 	if err != nil {
 		if apperr.Is(err, ErrInvalidResetToken) {
 			form.Error = "This reset link is invalid or has expired. Request a new one."

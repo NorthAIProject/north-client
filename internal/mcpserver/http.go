@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/subtle"
 	"log/slog"
-	"net"
 	"net/http"
 	"strings"
 
@@ -12,6 +11,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/NorthAIProject/north-client/internal/shared/ratelimit"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
@@ -95,6 +95,11 @@ type Config struct {
 
 	// RequestsPerMinute bounds one account's call rate. Zero uses the default.
 	RequestsPerMinute int
+
+	// TrustedProxies decide whether X-Forwarded-For may be believed when
+	// keying the pre-authentication throttle. Empty keys on the peer, which
+	// behind an ingress is the ingress — one bucket for the whole internet.
+	TrustedProxies middleware.TrustedProxies
 
 	Version string
 	Log     *slog.Logger
@@ -222,14 +227,14 @@ const anonymousPerMinute = 600
 // identity available before the token has been checked, and its weakness — a
 // caller can change ports, or arrive from many hosts — is why this is a floor
 // rather than the real limit.
-func throttleAnonymous(_ Config, log *slog.Logger, next http.Handler) http.Handler {
+func throttleAnonymous(cfg Config, log *slog.Logger, next http.Handler) http.Handler {
 	buckets := ratelimit.New(anonymousPerMinute)
+	trusted := cfg.TrustedProxies
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		addr := r.RemoteAddr
-		if host, _, err := net.SplitHostPort(addr); err == nil {
-			addr = host
-		}
+		// Not RemoteAddr: behind an ingress that is the proxy, and every
+		// caller would then share one bucket that any one of them can empty.
+		addr := middleware.ClientIP(r, trusted)
 
 		if !buckets.Allow(addr) {
 			log.Warn("mcp request throttled before authentication", slog.String("remote", r.RemoteAddr))

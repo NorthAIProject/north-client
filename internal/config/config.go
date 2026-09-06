@@ -13,6 +13,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/ai/providers"
 	"github.com/NorthAIProject/north-client/internal/quota"
+	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/NorthAIProject/north-client/internal/shared/secret"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
@@ -26,6 +27,21 @@ type Config struct {
 	Port     int
 	BaseURL  string
 	LogLevel string
+
+	// TrustedProxies are the networks whose X-Forwarded-For may be believed.
+	//
+	// Empty by default, and that default is the safe one: with nothing set,
+	// every rate limiter keys on the address it can actually see. Behind an
+	// ingress that address is the proxy, so leaving this unset in a cluster
+	// silently collapses every limiter into one shared bucket — set it to the
+	// pod network CIDR there. See internal/shared/middleware.ClientIP.
+	TrustedProxies middleware.TrustedProxies
+
+	// AuthAttemptsPerMinute bounds sign-in, sign-up and password-reset attempts
+	// from one address; AuthAttemptsPerEmailPerMinute bounds them against one
+	// account from every address at once.
+	AuthAttemptsPerMinute         int
+	AuthAttemptsPerEmailPerMinute int
 
 	DatabaseURL string
 
@@ -542,6 +558,30 @@ func Load() (*Config, error) {
 	}
 	cfg.MCPRequestsPerMinute = mcpRate
 
+	// Zero means the auth package's own default, the same contract
+	// MCP_REQUESTS_PER_MINUTE has: the number belongs beside the code that
+	// enforces it, not here.
+	authRate, err := intValue("AUTH_ATTEMPTS_PER_MINUTE", 0)
+	if err != nil {
+		problems = append(problems, err.Error())
+	}
+	cfg.AuthAttemptsPerMinute = authRate
+
+	authEmailRate, err := intValue("AUTH_ATTEMPTS_PER_EMAIL_PER_MINUTE", 0)
+	if err != nil {
+		problems = append(problems, err.Error())
+	}
+	cfg.AuthAttemptsPerEmailPerMinute = authEmailRate
+
+	// A malformed CIDR is a boot failure rather than a warning. Silently
+	// believing nobody would leave every limiter keyed on the ingress address,
+	// which is the exact failure this setting exists to prevent.
+	trusted, err := middleware.ParseTrustedProxies(os.Getenv("TRUSTED_PROXIES"))
+	if err != nil {
+		problems = append(problems, err.Error())
+	}
+	cfg.TrustedProxies = trusted
+
 	// Per hour, not per minute: these are human actions with bursty shapes, and
 	// three coach messages in a row is somebody thinking out loud rather than
 	// somebody abusing the service.
@@ -747,6 +787,35 @@ func (c *Config) Addr() string { return ":" + strconv.Itoa(c.Port) }
 // Only the free tier gets an entry of its own. Anything else — "pro" today,
 // whatever billing invents later — falls back to the main chain, so adding a
 // tier does not silently leave its users with no provider at all.
+// LogSecurityPosture names the settings that fail open when they are unset.
+//
+// Every one of these is deliberately optional, because a laptop must run
+// without them. That same tolerance is a trap in production, where the symptom
+// is not an error but a control that quietly does nothing. Boot is the only
+// moment anyone is looking, so it is where this is said.
+func (c *Config) LogSecurityPosture(log *slog.Logger) {
+	if log == nil {
+		return
+	}
+
+	if len(c.TrustedProxies) == 0 {
+		// Worse than it sounds. With no trusted proxy, every limiter keys on
+		// the address the process can see, which behind an ingress is the
+		// ingress — so all callers share one bucket and the first few to
+		// arrive spend the budget for everybody.
+		msg := "TRUSTED_PROXIES is unset; rate limits will key on the peer address"
+		if c.Env.IsProduction() {
+			log.Error(msg + " — behind an ingress this collapses every limiter into one shared bucket. Set it to the pod network CIDR.")
+		} else {
+			log.Info(msg + " (correct with no proxy in front)")
+		}
+	}
+
+	if c.Env.IsProduction() && !c.Encryption.Enabled() {
+		log.Error("ENCRYPTION_KEY is unset in production; features that store a user's own credential will report themselves unavailable")
+	}
+}
+
 // LogReady writes which providers will answer, and names any the chain asked
 // for that were skipped because their credentials are missing.
 //
