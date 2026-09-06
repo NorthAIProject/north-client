@@ -871,7 +871,14 @@ func routes(
 	captureHandler := capture.NewHandler(capture.NewService(capture.Options{
 		// FastModel for the same reason the daily briefing uses it: this is
 		// transcription, not writing.
-		Parser:      capture.NewAIParser(runner, cfg.AI.FastModel),
+		Parser: capture.NewAIParser(runner, cfg.AI.FastModel),
+
+		// Voice notes ride the same chain and the same fast model: reading
+		// words back is not reasoning. A deployment whose chain holds no
+		// multimodal provider still gets a working typed box — the button is
+		// hidden and the endpoint says so.
+		Transcriber: ai.NewRunnerTranscriber(runner, cfg.AI.FastModel),
+
 		Hydration:   hydrationSvc,
 		Sleep:       sleepSvc,
 		Habits:      habitSvc,

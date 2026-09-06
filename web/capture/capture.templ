@@ -41,6 +41,10 @@ templ Page(user users.User, data Data) {
 		<div id={ PanelID }>
 			@Panel(data)
 		</div>
+		// Loaded on the page rather than in the panel: the panel is swapped on
+		// every parse, and re-fetching a script on each swap would be work for
+		// a definition that has not changed.
+		<script src="/assets/js/shared/capture-recorder.js" defer></script>
 	}
 }
 
@@ -89,11 +93,31 @@ templ composer(data Data) {
 			Class:       "text-base",
 			Attributes:  templ.Attributes{"autofocus": true, "maxlength": strconv.Itoa(captured.MaxText)},
 		})
+		// Hidden until the recorder script has confirmed this browser can
+		// record. A button that opens a permission prompt and then fails is
+		// worse than one that was never offered, so the typed path is what an
+		// unsupported browser sees — unchanged.
+		<p data-voice-error class="text-xs text-destructive" hidden></p>
 		<div class="flex items-center justify-between gap-3">
 			<p class="text-xs text-muted-foreground">Reading it costs a moment. Saving is one tap.</p>
-			@button.Button(button.Props{Type: button.TypeSubmit, Class: "min-h-11"}) {
-				Read it
-			}
+			<div class="flex items-center gap-2">
+				@button.Button(button.Props{
+					Type:    button.TypeButton,
+					Variant: button.VariantOutline,
+					Class:   "min-h-11 data-[recording]:border-destructive data-[recording]:text-destructive",
+					Attributes: templ.Attributes{
+						"data-voice-record": true,
+						"hidden":            true,
+						"aria-pressed":      "false",
+						"aria-label":        "Record a voice note",
+					},
+				}) {
+					<span data-voice-label>Say it</span>
+				}
+				@button.Button(button.Props{Type: button.TypeSubmit, Class: "min-h-11"}) {
+					Read it
+				}
+			</div>
 		</div>
 	</form>
 }

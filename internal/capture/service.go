@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/biometrics"
 	"github.com/NorthAIProject/north-client/internal/checkins"
 	"github.com/NorthAIProject/north-client/internal/habits"
@@ -25,6 +26,11 @@ const searchLimit = 8
 type Options struct {
 	Parser Parser
 
+	// Transcriber is optional. Nil switches voice notes off and leaves every
+	// typed path untouched, which is what a deployment without a multimodal
+	// provider gets rather than a broken button.
+	Transcriber ai.Transcriber
+
 	Hydration   *hydration.Service
 	Sleep       *sleep.Service
 	Habits      *habits.Service
@@ -36,7 +42,8 @@ type Options struct {
 
 // Service parses a sentence and, separately, writes what a person agreed to.
 type Service struct {
-	parser Parser
+	parser      Parser
+	transcriber ai.Transcriber
 
 	hydration   *hydration.Service
 	sleep       *sleep.Service
@@ -50,6 +57,7 @@ type Service struct {
 func NewService(opts Options) *Service {
 	return &Service{
 		parser:      opts.Parser,
+		transcriber: opts.Transcriber,
 		hydration:   opts.Hydration,
 		sleep:       opts.Sleep,
 		habits:      opts.Habits,

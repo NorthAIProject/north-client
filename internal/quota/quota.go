@@ -34,6 +34,7 @@ const (
 	MediaAnalysis   Action = "media_analysis"
 	AccountExport   Action = "account_export"
 	QuickCapture    Action = "quick_capture"
+	VoiceCapture    Action = "voice_capture"
 )
 
 // Limit is one account's allowance for one action.

@@ -146,14 +146,16 @@ North understands more than chat.
 Users can upload:
 
 - PDF documents
-- Images
-- Videos
-- Audio
-- Voice notes
-- Markdown
+- Markdown and plain text
+- CSV
 - Research papers
 
 The AI can search, summarize and reference these documents when relevant.
+
+Images and video are handled separately, by the media pipeline: a photo attached
+to a coach message, or a clip sent for form analysis. Voice goes to quick
+capture, where a recording becomes a transcript the person reads before anything
+is logged from it — the audio itself is never stored.
 
 ---
 

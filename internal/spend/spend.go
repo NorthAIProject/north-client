@@ -37,6 +37,7 @@ const (
 	SurfaceFormAnalysis  = "form_analysis"
 	SurfaceWorkoutPlan   = "workout_plan"
 	SurfaceQuickCapture  = "quick_capture"
+	SurfaceVoiceCapture  = "voice_capture"
 	SurfaceEmbedding     = "embedding"
 
 	// SurfaceUnknown labels a call that reached a provider without anyone
