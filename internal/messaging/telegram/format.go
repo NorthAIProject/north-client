@@ -37,7 +37,50 @@ var (
 	headingMarkdown = regexp.MustCompile(`(?m)^#{1,6}\s+(.+)$`)
 	bulletMarkdown  = regexp.MustCompile(`(?m)^[ \t]*[-*][ \t]+`)
 	linkMarkdown    = regexp.MustCompile(`\[([^\]\n]+)\]\(([^)\s]+)\)`)
+
+	// A URL, so it can be set aside before the emphasis passes run.
+	//
+	// Underscores are ordinary in a URL and a marker in markdown, and
+	// italicUnderscore ran first: https://youtu.be/a_b_c came out as
+	// https://youtu.be/a<i>b</i>c, a link to nowhere. Wrapping it in [](…) did
+	// not help, because linkMarkdown runs after the emphasis passes and by then
+	// the address was already broken.
+	//
+	// Parentheses and brackets are excluded so that the address inside a
+	// markdown link is matched without its surrounding punctuation, leaving
+	// [label](<sentinel>) for linkMarkdown to find later.
+	urlPattern = regexp.MustCompile(`https?://[^\s<>()\[\]]+`)
 )
+
+// trailingPunctuation is dropped from a matched URL and put back after it. A
+// sentence ending "see https://kheprios.com." should not link the full stop.
+const trailingPunctuation = ".,;:!?"
+
+// stashURLs replaces every URL with a placeholder, returning the addresses in
+// the order they were found.
+//
+// The placeholder uses the same \x00 sentinel shape as the code stash: it
+// cannot occur in prose, it survives escapeHTML untouched, and it contains
+// neither ')' nor whitespace, so linkMarkdown still matches around it.
+func stashURLs(text string) (string, []string) {
+	var urls []string
+
+	replaced := urlPattern.ReplaceAllStringFunc(text, func(match string) string {
+		address := strings.TrimRight(match, trailingPunctuation)
+		urls = append(urls, address)
+		return "\x00URL" + strconv.Itoa(len(urls)-1) + "\x00" + match[len(address):]
+	})
+
+	return replaced, urls
+}
+
+// restoreURLs puts the addresses back, passing each through transform first.
+func restoreURLs(text string, urls []string, transform func(string) string) string {
+	for i, address := range urls {
+		text = strings.ReplaceAll(text, "\x00URL"+strconv.Itoa(i)+"\x00", transform(address))
+	}
+	return text
+}
 
 // markdownToHTML renders a coach reply as the HTML subset Telegram accepts.
 func markdownToHTML(text string) string {
@@ -59,6 +102,12 @@ func markdownToHTML(text string) string {
 		return stash("<code>" + escapeHTML(inlineCode.FindStringSubmatch(m)[1]) + "</code>")
 	})
 
+	// URLs go the same way as code, and for the same reason: the emphasis
+	// passes below would otherwise read the underscores in an address as
+	// markers. Set aside after code so an address inside a code span is left
+	// alone, and restored after linkMarkdown so [label](…) still resolves.
+	text, urls := stashURLs(text)
+
 	// Everything that is not markup is escaped before any tag is introduced,
 	// so a reply containing "5 < 7" cannot break the parser.
 	text = escapeHTML(text)
@@ -69,6 +118,11 @@ func markdownToHTML(text string) string {
 	text = italicUnderscore.ReplaceAllString(text, "<i>$1</i>")
 	text = bulletMarkdown.ReplaceAllString(text, "• ")
 	text = linkMarkdown.ReplaceAllString(text, `<a href="$2">$1</a>`)
+
+	// Escaped on the way back in: an address skipped the escapeHTML pass above,
+	// and a bare '&' between query parameters would otherwise reach Telegram's
+	// parser as the start of an entity.
+	text = restoreURLs(text, urls, escapeHTML)
 
 	for i, html := range code {
 		text = strings.ReplaceAll(text, "\x00CODE"+strconv.Itoa(i)+"\x00", html)
@@ -84,6 +138,13 @@ func markdownToHTML(text string) string {
 func stripMarkdown(text string) string {
 	text = fencedCode.ReplaceAllString(text, "$1")
 	text = inlineCode.ReplaceAllString(text, "$1")
+
+	// Same reason as markdownToHTML: the emphasis passes below would eat the
+	// underscores out of an address. This path matters more, not less — it is
+	// the fallback used after Telegram has already refused the formatted
+	// version, so it is the last chance the link has.
+	text, urls := stashURLs(text)
+
 	text = headingMarkdown.ReplaceAllString(text, "$1")
 	text = boldMarkdown.ReplaceAllString(text, "$1")
 	text = italicStar.ReplaceAllString(text, "$1")
@@ -92,6 +153,11 @@ func stripMarkdown(text string) string {
 	// The address is kept: a link whose target vanished is worse than a clumsy
 	// one, because there is no way to ask for it back.
 	text = linkMarkdown.ReplaceAllString(text, "$1 ($2)")
+
+	// No escaping here: this path sends without parse_mode, so the text is
+	// delivered literally and an escaped '&' would show up as "&amp;".
+	text = restoreURLs(text, urls, func(address string) string { return address })
+
 	return strings.TrimSpace(text)
 }
 
