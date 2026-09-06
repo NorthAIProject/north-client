@@ -205,7 +205,7 @@
   },
   {
     "name": "get_exercise",
-    "description": "Read one catalog exercise in full: how to perform it, what it needs, and every muscle it trains.",
+    "description": "Read one catalog exercise in full: how to perform it, what it needs, and every muscle it trains. Call this before describing how a movement is performed rather than answering from memory, and pass on the video and illustration it returns.",
     "inputSchema": {
       "additionalProperties": false,
       "description": "which exercise",
