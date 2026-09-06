@@ -56,7 +56,7 @@ func newHarness(t *testing.T) harness {
 	})
 
 	sessions := auth.NewSessionStore(pool, time.Hour)
-	mw := auth.NewMiddleware(sessions, false)
+	mw := auth.NewMiddleware(sessions, false, nil)
 
 	r := chi.NewRouter()
 	r.Use(mw.LoadUser)

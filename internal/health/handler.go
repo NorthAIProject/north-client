@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
-	"net"
 	"net/http"
 	"regexp"
 	"strings"
 	"time"
 
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/NorthAIProject/north-client/internal/shared/ratelimit"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
@@ -38,6 +38,11 @@ type HandlerConfig struct {
 	// AnonymousPerMinute bounds unauthenticated attempts from one address.
 	// Zero uses the package default.
 	AnonymousPerMinute int
+
+	// TrustedProxies decide whether X-Forwarded-For may be believed when
+	// keying that throttle. Empty keys on the peer, which behind an ingress
+	// is the ingress.
+	TrustedProxies middleware.TrustedProxies
 
 	Log *slog.Logger
 }
@@ -225,14 +230,15 @@ func throttleAnonymous(cfg HandlerConfig, log *slog.Logger, next http.Handler) h
 	}
 	buckets := ratelimit.New(perMinute)
 
+	trusted := cfg.TrustedProxies
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		addr := r.RemoteAddr
-		if host, _, err := net.SplitHostPort(addr); err == nil {
-			addr = host
-		}
+		// Not RemoteAddr: behind an ingress that is the proxy, and every
+		// caller would then share one bucket that any one of them can empty.
+		addr := middleware.ClientIP(r, trusted)
 
 		if !buckets.Allow(addr) {
-			log.Warn("health ingest throttled before authentication", slog.String("remote", r.RemoteAddr))
+			log.Warn("health ingest throttled before authentication", slog.String("client_ip", addr))
 			tooManyRequests(w)
 			return
 		}
