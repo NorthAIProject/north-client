@@ -67,6 +67,16 @@ func TestCoachPromptStatesGroundingRules(t *testing.T) {
 		"never discusses hosting":                 "never discuss where khepri is hosted",
 		"starts the first week with evidence":     "ask for one piece of evidence",
 		"commits to a next check":                 "when you will check",
+
+		// Added after production showed 7 model turns with zero tool calls:
+		// the prompt named tools once, negatively, so the coach answered "how
+		// do I do a pullup" from memory and the catalogue's cues, video and
+		// illustration were never fetched.
+		"grounds form advice in the catalogue": "comes from the catalogue, not from memory",
+		"names the lookup to make":             "call `get_exercise`",
+		"asks for the links to be passed on":   "pass the links on",
+		"admits when cues are missing":         "not recorded",
+		"leaves programming to judgement":      "does not apply to programming",
 	}
 
 	for what, phrase := range required {

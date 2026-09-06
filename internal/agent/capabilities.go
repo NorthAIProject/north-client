@@ -210,8 +210,12 @@ func getExercise(svc *exercises.Service, siteURL string) Capability {
 
 	return Capability{
 		Tool: ai.Tool{
-			Name:        coach.ToolGetExercise,
-			Description: "Read one catalog exercise in full: how to perform it, what it needs, and every muscle it trains.",
+			Name: coach.ToolGetExercise,
+			// Says when to call it, not just what it does. An MCP client never
+			// sees Khepri's system prompt, so for that surface this sentence is
+			// the only thing that will ever ask for the lookup.
+			Description: "Read one catalog exercise in full: how to perform it, what it needs, and every muscle it trains. " +
+				"Call this before describing how a movement is performed rather than answering from memory, and pass on the video and illustration it returns.",
 			Parameters: ai.Object("which exercise", map[string]*ai.Schema{
 				"slug": ai.String("the exercise's slug, as returned by search_exercises"),
 			}, "slug"),
