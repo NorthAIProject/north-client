@@ -1215,6 +1215,14 @@ func routes(
 		// account's own setting. The other order would let a laptop's browser
 		// settings override what somebody chose in Khepri.
 		r.Use(middleware.Locale)
+		// Before LoadUser for the same reason as Locale: the snippet this feeds
+		// is rendered for signed-out visitors too, and the landing page is the
+		// one page whose numbers it exists to collect. LoadUser then adds the
+		// account id on top, for the identify call.
+		r.Use(middleware.Analytics(middleware.AnalyticsConfig{
+			APIKey: cfg.PostHog.APIKey,
+			Host:   cfg.PostHog.Host,
+		}))
 		r.Use(authMW.LoadUser)
 
 		mountAssets(r, cfg)

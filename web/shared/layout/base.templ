@@ -1,6 +1,9 @@
 package layout
 
-import "github.com/NorthAIProject/north-client/web/shared/ui"
+import (
+	"github.com/NorthAIProject/north-client/web/shared/analytics"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+)
 
 // Base is the outermost HTML document. Every page renders inside it.
 //
@@ -91,11 +94,30 @@ templ Base(title string) {
 			<script src="/assets/js/vendor/hx-sse.min.js"></script>
 			<script defer src="/assets/js/vendor/alpine.min.js"></script>
 			<script src="/assets/js/shared/pwa.js" defer></script>
+			@analyticsSnippet()
 		</head>
 		<body class="h-full bg-background text-foreground antialiased">
 			{ children... }
 		</body>
 	</html>
+}
+
+// analyticsSnippet reports the page to PostHog, when a key is configured.
+//
+// Two scripts and a JSON island rather than an inline configuration object.
+// The island is templ-escaped data, so nothing here can be turned into script
+// by a value that reaches it; the decisions it carries are made in
+// web/shared/analytics and tested there.
+//
+// Not deferred, and before the reader: posthog.init has to have run before the
+// first captured pageview, and a deferred pair would miss visitors who leave
+// quickly — which on a landing page is most of them.
+templ analyticsSnippet() {
+	if cfg := analytics.Resolve(ctx); cfg.Enabled() {
+		@templ.JSONScript("analytics-config", cfg)
+		<script src="/assets/js/vendor/posthog.min.js"></script>
+		<script src="/assets/js/shared/analytics.js"></script>
+	}
 }
 
 // pageTitle suffixes the product name so a browser tab is identifiable among a
