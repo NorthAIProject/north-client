@@ -21,6 +21,10 @@ type stubSource struct {
 	client ai.Client
 	err    error
 
+	// noTools makes this stand for a provider that accepts a tools array and
+	// answers without calling anything.
+	noTools bool
+
 	mu       sync.Mutex
 	asked    int
 	failures []string
@@ -38,6 +42,8 @@ func (s *stubSource) NoteFailure(_ context.Context, _ uuid.UUID, reason string) 
 	defer s.mu.Unlock()
 	s.failures = append(s.failures, reason)
 }
+
+func (s *stubSource) UsableWithTools(context.Context, uuid.UUID) bool { return !s.noTools }
 
 func (s *stubSource) noted() []string {
 	s.mu.Lock()
@@ -228,4 +234,70 @@ func TestACallerErrorFromTheUserKeyDoesNotWalkTheChain(t *testing.T) {
 	if len(north.Calls()) != 0 {
 		t.Errorf("Khepri's provider was called %d time(s) for a caller-side error", len(north.Calls()))
 	}
+}
+
+// A provider that ignores the tools array must not serve a turn that needs
+// one.
+//
+// Found in production: a gateway answered every coach turn in fluent prose
+// while calling nothing, so every write capability was gone and the model
+// asserted the catalogue had no pull-up cues about a row holding 368
+// characters of them. Nothing logged, and the only trace was in the spend
+// ledger.
+func TestAProviderThatIgnoresToolsDoesNotServeAToolTurn(t *testing.T) {
+	own := fake.Text("answered from the user's own provider")
+	chain := fake.Text("answered from Khepri's chain")
+
+	source := &stubSource{client: own, noTools: true}
+	h := byokHarnessWithTools(t, source, chain)
+
+	got := ask(t, h)
+	if !strings.Contains(got, "Khepri's chain") {
+		t.Errorf("a tool-incapable provider served a turn that needed tools: %q", got)
+	}
+}
+
+// The same provider is still used when the turn needs no tools: the limitation
+// is narrow, and refusing it everywhere would throw away a key somebody pays
+// for.
+func TestAProviderThatIgnoresToolsStillServesAPlainTurn(t *testing.T) {
+	own := fake.Text("answered from the user's own provider")
+	chain := fake.Text("answered from Khepri's chain")
+
+	source := &stubSource{client: own, noTools: true}
+	h := byokHarness(t, source, chain) // no ToolRunner, so no tools are sent
+
+	got := ask(t, h)
+	if !strings.Contains(got, "own provider") {
+		t.Errorf("a plain turn was taken away from the user's provider: %q", got)
+	}
+}
+
+// byokHarnessWithTools is byokHarness with a ToolRunner, so toolsFor returns a
+// non-empty list and the guard has something to react to.
+func byokHarnessWithTools(t *testing.T, own coach.ClientSource, chain ...ai.Client) harness {
+	t.Helper()
+
+	h := newHarness(t, fake.Text("unused"))
+
+	registry := ai.NewRegistry()
+	names := make([]string, 0, len(chain))
+	for _, c := range chain {
+		registry.Register(c)
+		names = append(names, c.Name())
+	}
+
+	convos := conversations.NewService(conversations.NewRepository(h.pool))
+	h.coach = coach.NewService(coach.Options{
+		Registry:       registry,
+		Conversations:  convos,
+		ContextBuilder: coach.NewContextBuilder(convos),
+		PromptBuilder:  coach.NewPromptBuilder(),
+		Chains:         ai.NewChainSet(names, nil),
+		Own:            own,
+		Tools:          &stubTools{tools: []ai.Tool{{Name: "get_exercise", Description: "read one"}}},
+	})
+	h.convos = convos
+
+	return h
 }

@@ -24,7 +24,7 @@ func (q *Queries) DeleteUserAICredential(ctx context.Context, userID uuid.UUID) 
 }
 
 const getUserAICredential = `-- name: GetUserAICredential :one
-SELECT user_id, provider, api_key, key_hint, model, last_error, last_error_at, created_at, updated_at, base_url FROM user_ai_credentials WHERE user_id = $1
+SELECT user_id, provider, api_key, key_hint, model, last_error, last_error_at, created_at, updated_at, base_url, supports_tools FROM user_ai_credentials WHERE user_id = $1
 `
 
 func (q *Queries) GetUserAICredential(ctx context.Context, userID uuid.UUID) (UserAiCredential, error) {
@@ -41,6 +41,7 @@ func (q *Queries) GetUserAICredential(ctx context.Context, userID uuid.UUID) (Us
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.BaseUrl,
+		&i.SupportsTools,
 	)
 	return i, err
 }
@@ -61,11 +62,30 @@ func (q *Queries) RecordUserAICredentialError(ctx context.Context, arg RecordUse
 	return err
 }
 
+const recordUserAICredentialToolSupport = `-- name: RecordUserAICredentialToolSupport :exec
+UPDATE user_ai_credentials
+SET supports_tools = $2, updated_at = now()
+WHERE user_id = $1
+`
+
+type RecordUserAICredentialToolSupportParams struct {
+	UserID        uuid.UUID
+	SupportsTools *bool
+}
+
+// RecordUserAICredentialToolSupport stores what the tools probe found.
+// Separate from the error path: a provider that cannot call tools is not a
+// broken credential, it is a working one with a limitation worth showing.
+func (q *Queries) RecordUserAICredentialToolSupport(ctx context.Context, arg RecordUserAICredentialToolSupportParams) error {
+	_, err := q.db.Exec(ctx, recordUserAICredentialToolSupport, arg.UserID, arg.SupportsTools)
+	return err
+}
+
 const updateUserAICredentialSettings = `-- name: UpdateUserAICredentialSettings :one
 UPDATE user_ai_credentials
 SET model = $2, base_url = $3, last_error = '', last_error_at = NULL, updated_at = now()
 WHERE user_id = $1
-RETURNING user_id, provider, api_key, key_hint, model, last_error, last_error_at, created_at, updated_at, base_url
+RETURNING user_id, provider, api_key, key_hint, model, last_error, last_error_at, created_at, updated_at, base_url, supports_tools
 `
 
 type UpdateUserAICredentialSettingsParams struct {
@@ -90,6 +110,7 @@ func (q *Queries) UpdateUserAICredentialSettings(ctx context.Context, arg Update
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.BaseUrl,
+		&i.SupportsTools,
 	)
 	return i, err
 }
@@ -102,7 +123,7 @@ SET provider = $2, api_key = $3, key_hint = $4, model = $5, base_url = $6,
     -- A new key clears the old complaint. Leaving it would leave the page
     -- saying the credential was rejected after it had been replaced.
     last_error = '', last_error_at = NULL, updated_at = now()
-RETURNING user_id, provider, api_key, key_hint, model, last_error, last_error_at, created_at, updated_at, base_url
+RETURNING user_id, provider, api_key, key_hint, model, last_error, last_error_at, created_at, updated_at, base_url, supports_tools
 `
 
 type UpsertUserAICredentialParams struct {
@@ -135,6 +156,7 @@ func (q *Queries) UpsertUserAICredential(ctx context.Context, arg UpsertUserAICr
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.BaseUrl,
+		&i.SupportsTools,
 	)
 	return i, err
 }

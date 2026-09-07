@@ -65,6 +65,10 @@ type Service struct {
 
 	mu    sync.RWMutex
 	cache map[uuid.UUID]cached
+
+	// probe answers whether the stored provider calls tools. Nil leaves it
+	// unknown.
+	probe ToolProbe
 }
 
 func NewService(repo *Repository, sealer *secret.Sealer, log *slog.Logger) *Service {
@@ -317,4 +321,76 @@ func entryLabel(entry providers.BYOProvider, fallback string) string {
 		return entry.Label
 	}
 	return fallback
+}
+
+// UsableWithTools reports whether this user's own provider will call the tools
+// the coach gives it.
+//
+// True unless a probe has established otherwise. Unknown answers true on
+// purpose: refusing to use somebody's paid provider on a guess is the worse of
+// the two mistakes, and an unprobed credential is only unknown, not suspect.
+func (s *Service) UsableWithTools(ctx context.Context, userID uuid.UUID) bool {
+	if !s.Enabled() {
+		return true
+	}
+
+	cred, err := s.repo.Get(ctx, userID)
+	if err != nil {
+		// Including ErrNotFound, which means there is no own provider to
+		// refuse — the coach will not be prepending one anyway.
+		return true
+	}
+	return cred.SupportsTools == nil || *cred.SupportsTools
+}
+
+// ProbeTools finds out whether a user's provider honours a tools array and
+// records the answer.
+//
+// Run after a save rather than during one: the probe waits on a model, and a
+// self-hosted gateway can take a minute. Nobody should watch a settings form
+// spin for that, and the answer is not needed until the next coach turn.
+//
+// Silent on every failure. A probe that could not be made leaves the column
+// NULL, which reads as unknown and changes nothing.
+func (s *Service) ProbeTools(ctx context.Context, userID uuid.UUID) {
+	if !s.Enabled() || s.probe == nil {
+		return
+	}
+
+	client, err := s.For(ctx, userID)
+	if err != nil || client == nil {
+		return
+	}
+
+	cred, err := s.repo.Get(ctx, userID)
+	if err != nil {
+		return
+	}
+
+	supported, err := s.probe.SupportsTools(ctx, client, cred.Model)
+	if err != nil {
+		s.log.Info("could not establish whether the user's provider calls tools",
+			slog.String("user_id", userID.String()), slog.Any("error", err))
+		return
+	}
+
+	if err := s.repo.RecordToolSupport(ctx, userID, supported); err != nil {
+		s.log.Warn("could not record provider tool support",
+			slog.String("user_id", userID.String()), slog.Any("error", err))
+		return
+	}
+
+	if !supported {
+		// Worth a line at boot-volume: this is the condition that silently
+		// removes every write capability from the coach.
+		s.log.Warn("a user's own provider ignores the tools array; the coach will use Khepri's chain for turns that need one",
+			slog.String("user_id", userID.String()), slog.String("provider", cred.Provider))
+	}
+}
+
+// WithToolProbe supplies the probe. Nil leaves tool support unknown, which is
+// what every test that does not care about it gets.
+func (s *Service) WithToolProbe(p ToolProbe) *Service {
+	s.probe = p
+	return s
 }

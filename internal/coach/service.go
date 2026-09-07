@@ -58,6 +58,12 @@ type ClientSource interface {
 	// summary written by the coach, never the provider's response body, which
 	// can echo the key back.
 	NoteFailure(ctx context.Context, userID uuid.UUID, reason string)
+
+	// UsableWithTools reports whether the user's provider will actually call
+	// the tools it is given. False only when that has been established; nil or
+	// unknown answers true, because refusing to use somebody's paid provider
+	// on a guess is the worse mistake.
+	UsableWithTools(ctx context.Context, userID uuid.UUID) bool
 }
 
 // generationTimeout bounds a detached generation. Long, because a large model
@@ -404,7 +410,7 @@ func (s *Service) startChat(
 
 	genCtx = aiattr.WithUser(genCtx, user.ID, spend.SurfaceCoach)
 
-	client, err := s.eachProvider(ctx, user, func(c ai.Client) error {
+	client, err := s.eachProvider(ctx, user, len(req.Tools) > 0, func(c ai.Client) error {
 		opened, err := c.Chat(genCtx, req)
 		stream = opened
 		return err
@@ -424,7 +430,7 @@ func (s *Service) generate(ctx context.Context, user users.User, surface string,
 
 	ctx = aiattr.WithUser(ctx, user.ID, surface)
 
-	client, err := s.eachProvider(ctx, user, func(c ai.Client) error {
+	client, err := s.eachProvider(ctx, user, len(req.Tools) > 0, func(c ai.Client) error {
 		r, err := c.Generate(ctx, req)
 		resp = r
 		return err
@@ -438,7 +444,7 @@ func (s *Service) generate(ctx context.Context, user users.User, surface string,
 
 // eachProvider tries the user's chain in order until attempt succeeds, and
 // returns the client that managed it.
-func (s *Service) eachProvider(ctx context.Context, user users.User, attempt func(ai.Client) error) (ai.Client, error) {
+func (s *Service) eachProvider(ctx context.Context, user users.User, needsTools bool, attempt func(ai.Client) error) (ai.Client, error) {
 	log := middleware.FromContext(ctx)
 
 	// A user's own key goes in front of Khepri's chain rather than replacing
@@ -462,6 +468,17 @@ func (s *Service) eachProvider(ctx context.Context, user users.User, attempt fun
 		case built != nil:
 			own = built
 		}
+	}
+
+	// A provider that ignores the tools array is worse than no provider at all
+	// when the turn needs one: every write capability disappears, the grounding
+	// rules go with them, and the model answers in confident prose about a
+	// catalogue it never read. Khepri's own chain is the better answer for
+	// exactly these turns, and the user keeps their provider everywhere else.
+	if own != nil && needsTools && !s.own.UsableWithTools(ctx, user.ID) {
+		log.Info("the user's own provider cannot call tools; serving this turn from Khepri's chain",
+			slog.String("user_id", user.ID.String()))
+		own = nil
 	}
 
 	opts := ai.RunOptions{Tier: string(user.Tier)}
