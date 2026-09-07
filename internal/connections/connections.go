@@ -79,6 +79,40 @@ type Connection struct {
 	// connection that was set up is told apart from one that was issued and
 	// forgotten. Written lazily, so it lags real use by up to five minutes.
 	LastUsedAt *time.Time
+
+	// Scopes is what the token may do, as the string the MCP surface
+	// enforces. Empty means full access, which is every token issued by hand.
+	Scopes string
+
+	// ExpiresAt is nil for a token issued by hand, which does not expire. An
+	// OAuth access token expires within the hour and is replaced in place, so
+	// a time in the past means "needs refreshing", not "gone".
+	ExpiresAt *time.Time
+
+	// Issuance is how the credential came to exist: pasted from the settings
+	// page, or granted through the OAuth consent screen. Distinct from Kind,
+	// which is which client the setup was written for.
+	Issuance Issuance
+}
+
+// Issuance is how a connection's credential was issued.
+type Issuance string
+
+const (
+	// IssuancePAT is a token generated on the settings page and pasted into a
+	// configuration file by hand.
+	IssuancePAT Issuance = "pat"
+
+	// IssuanceOAuth is a grant approved on the consent screen, which the
+	// person never sees the token for.
+	IssuanceOAuth Issuance = "oauth"
+)
+
+// Expired reports whether the current access token has aged out. Only an
+// OAuth grant can be expired, and an expired one is still a live connection:
+// the next refresh replaces the token.
+func (c Connection) Expired() bool {
+	return c.ExpiresAt != nil && c.ExpiresAt.Before(time.Now())
 }
 
 // Used reports whether this connection has ever authenticated a request.

@@ -362,3 +362,110 @@ func TestHealthChecksNeedNoCredential(t *testing.T) {
 		}
 	}
 }
+
+// stubScopedAuth also reports a scope, so the optional interface is exercised.
+type stubScopedAuth struct {
+	user  users.User
+	token string
+	scope string
+}
+
+func (a stubScopedAuth) Authenticate(ctx context.Context, token string) (users.User, error) {
+	user, _, err := a.AuthenticateScoped(ctx, token)
+	return user, err
+}
+
+func (a stubScopedAuth) AuthenticateScoped(_ context.Context, token string) (users.User, string, error) {
+	if token != a.token {
+		return users.User{}, "", apperr.ErrUnauthenticated
+	}
+	return a.user, a.scope, nil
+}
+
+// ScopedAuthenticator is optional, and StaticAuthenticator does not implement
+// it. That is what keeps cmd/mcp-server — the tailnet deployment in
+// skills/north-connect/SKILL.md — working with no change: a token from an
+// environment variable has always meant full access to the one configured
+// account, and authenticate must fall back to the plain interface rather than
+// assume the richer one.
+func TestScopedAuthenticationIsOptional(t *testing.T) {
+	user := newUser()
+
+	t.Run("a plain authenticator still authenticates", func(t *testing.T) {
+		// The compile-time half of the claim: if StaticAuthenticator ever
+		// grows AuthenticateScoped, this stops building and the fallback path
+		// stops being exercised anywhere.
+		var _ Authenticator = StaticAuthenticator{}
+		if _, ok := any(StaticAuthenticator{}).(ScopedAuthenticator); ok {
+			t.Fatal("StaticAuthenticator implements ScopedAuthenticator; " +
+				"the unscoped fallback in authenticate is now dead code")
+		}
+
+		static := StaticAuthenticator{
+			Token:  "tailnet-token",
+			UserID: user.ID,
+			Users:  stubUsers{user: user},
+		}
+
+		var reached bool
+		h := authenticate(Config{Auth: static}, discardLog(), okHandler(&reached))
+
+		req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+		req.Header.Set("Authorization", "Bearer tailnet-token")
+		h.ServeHTTP(httptest.NewRecorder(), req)
+
+		if !reached {
+			t.Fatal("a static token was rejected")
+		}
+	})
+
+	t.Run("a scoped authenticator's scope reaches the context", func(t *testing.T) {
+		for _, scope := range []string{"", ScopeRead, ScopeReadWrite} {
+			auth := stubScopedAuth{user: user, token: "tok", scope: scope}
+
+			var got string
+			var seen bool
+			h := authenticate(Config{Auth: auth}, discardLog(),
+				http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+					seen = true
+					got = scopeFrom(r.Context())
+				}))
+
+			req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+			req.Header.Set("Authorization", "Bearer tok")
+			h.ServeHTTP(httptest.NewRecorder(), req)
+
+			if !seen {
+				t.Fatalf("scope %q: the request did not reach the handler", scope)
+			}
+			if got != scope {
+				t.Errorf("scope on the context is %q, want %q", got, scope)
+			}
+		}
+	})
+}
+
+// writesAllowed is the one place that decides whether a token may change
+// anything, so its table is worth stating outright.
+func TestWritesAreAllowedOnlyForAFullScope(t *testing.T) {
+	for scope, want := range map[string]bool{
+		// Every token issued before scopes existed. The migration adding the
+		// column deliberately did not backfill it, so this must stay true.
+		"": true,
+
+		ScopeReadWrite: true,
+		ScopeRead:      false,
+
+		// Unrecognised. Fewer tools is the safe direction for a scope this
+		// build cannot honour.
+		"north:admin":                 false,
+		"NORTH:READ_WRITE":            false,
+		" north:read_write":           false,
+		"north:read_write x":          false,
+		"north:read north:read_write": false,
+	} {
+		if got := writesAllowed(scope); got != want {
+			t.Errorf("writesAllowed(%q) = %t, want %t", scope, got, want)
+		}
+	}
+}

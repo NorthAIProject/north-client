@@ -126,8 +126,19 @@ func (s *Service) Revoke(ctx context.Context, id, userID uuid.UUID) error {
 // indistinguishable to the caller, because telling them apart would confirm
 // that a guessed token once existed.
 func (s *Service) Authenticate(ctx context.Context, token string) (users.User, error) {
+	user, _, err := s.AuthenticateScoped(ctx, token)
+	return user, err
+}
+
+// AuthenticateScoped is Authenticate, and also reports what the token may do.
+//
+// It satisfies mcpserver.ScopedAuthenticator. The scope is returned verbatim
+// as stored, including the empty string every token issued before scopes
+// existed carries; what empty means is the MCP surface's decision, not this
+// package's, and duplicating that judgement here would give it two homes.
+func (s *Service) AuthenticateScoped(ctx context.Context, token string) (users.User, string, error) {
 	if !strings.HasPrefix(token, tokenPrefix) {
-		return users.User{}, apperr.ErrUnauthenticated
+		return users.User{}, "", apperr.ErrUnauthenticated
 	}
 
 	// The lookup is by SHA-256 of the whole token, so the comparison happens
@@ -138,14 +149,14 @@ func (s *Service) Authenticate(ctx context.Context, token string) (users.User, e
 	conn, err := s.repo.ByTokenHash(ctx, sum[:])
 	if err != nil {
 		if apperr.Is(err, apperr.ErrNotFound) {
-			return users.User{}, apperr.ErrUnauthenticated
+			return users.User{}, "", apperr.ErrUnauthenticated
 		}
-		return users.User{}, err
+		return users.User{}, "", err
 	}
 
 	user, err := s.users.ByID(ctx, conn.UserID)
 	if err != nil {
-		return users.User{}, apperr.Wrap(err, "load user for agent connection")
+		return users.User{}, "", apperr.Wrap(err, "load user for agent connection")
 	}
 
 	// Best-effort: a failed touch must not fail the request it is describing.
@@ -153,7 +164,7 @@ func (s *Service) Authenticate(ctx context.Context, token string) (users.User, e
 	// worth refusing an otherwise valid call over.
 	_ = s.repo.Touch(ctx, conn.ID)
 
-	return user, nil
+	return user, conn.Scopes, nil
 }
 
 // newToken returns a token with tokenBytes of entropy, URL-safe and unpadded

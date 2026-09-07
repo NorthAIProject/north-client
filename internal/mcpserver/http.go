@@ -49,6 +49,48 @@ type Authenticator interface {
 	Authenticate(ctx context.Context, token string) (users.User, error)
 }
 
+// Scopes an access token can carry.
+//
+// Two, deliberately. Read and write as one credential is what every token
+// issued by hand is, and is honestly a lot to hand a third party; anything
+// finer than this needs a vocabulary, and a vocabulary needs a reason.
+const (
+	ScopeRead      = "north:read"
+	ScopeReadWrite = "north:read_write"
+)
+
+// ScopedAuthenticator is an Authenticator that also reports what the token is
+// allowed to do.
+//
+// Optional. StaticAuthenticator does not implement it, which is why
+// cmd/mcp-server needs no change — a token from an environment variable has
+// always meant full access to the one configured account.
+//
+// It returns the scope as a string rather than a richer type so that
+// implementing it costs an implementation nothing but the column it already
+// stores. A shared struct would mean this package importing the one that
+// stores it, and not importing it is the entire point of Authenticator.
+type ScopedAuthenticator interface {
+	AuthenticateScoped(ctx context.Context, token string) (users.User, string, error)
+}
+
+// writesAllowed reports whether a scope may call the tools that change
+// something.
+//
+// Empty means full access, because that is what every token issued before
+// scopes existed stores, and the migration that added the column deliberately
+// did not backfill it. Anything unrecognised is refused instead: a scope this
+// build does not know is a scope it cannot honour, and the safe direction for
+// an unknown is fewer tools rather than all of them.
+func writesAllowed(scope string) bool {
+	switch scope {
+	case "", ScopeReadWrite:
+		return true
+	default:
+		return false
+	}
+}
+
 // UserLoader is the slice of users.Service StaticAuthenticator needs.
 type UserLoader interface {
 	ByID(ctx context.Context, id uuid.UUID) (users.User, error)
@@ -164,7 +206,7 @@ func Endpoint(cfg Config) http.Handler {
 			return s
 		}
 
-		Register(s, cfg.Services, user)
+		Register(s, cfg.Services, user, scopeFrom(req.Context()))
 		return s
 	}, nil)
 
@@ -286,6 +328,15 @@ func userFrom(ctx context.Context) (users.User, bool) {
 	return u, ok
 }
 
+// scopeKey rides beside userKey rather than being folded into it, so the
+// existing userFrom callers are untouched by scopes existing.
+type scopeKey struct{}
+
+func scopeFrom(ctx context.Context) string {
+	s, _ := ctx.Value(scopeKey{}).(string)
+	return s
+}
+
 // authenticate resolves the bearer token to an account and puts it on the
 // request context for everything downstream.
 func authenticate(cfg Config, log *slog.Logger, next http.Handler) http.Handler {
@@ -296,7 +347,19 @@ func authenticate(cfg Config, log *slog.Logger, next http.Handler) http.Handler 
 			return
 		}
 
-		user, err := cfg.Auth.Authenticate(r.Context(), token)
+		// One call, whichever interface the configured authenticator satisfies.
+		// A ScopedAuthenticator reports the scope alongside the account; a
+		// plain one reports no scope, which writesAllowed reads as full access.
+		var (
+			user  users.User
+			scope string
+			err   error
+		)
+		if scoped, ok := cfg.Auth.(ScopedAuthenticator); ok {
+			user, scope, err = scoped.AuthenticateScoped(r.Context(), token)
+		} else {
+			user, err = cfg.Auth.Authenticate(r.Context(), token)
+		}
 		if err != nil {
 			if apperr.Is(err, apperr.ErrUnauthenticated) || apperr.Is(err, apperr.ErrNotFound) {
 				unauthorized(w, log, r)
@@ -311,7 +374,9 @@ func authenticate(cfg Config, log *slog.Logger, next http.Handler) http.Handler 
 			return
 		}
 
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), userKey{}, user)))
+		ctx := context.WithValue(r.Context(), userKey{}, user)
+		ctx = context.WithValue(ctx, scopeKey{}, scope)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
