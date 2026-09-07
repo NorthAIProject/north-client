@@ -133,6 +133,15 @@
     return data;
   }
 
+  // withNext carries the page's next field through to a finish endpoint.
+  // Both ceremonies use it: the server validates whatever arrives with
+  // SafeRedirect, so an absent or hostile field falls back to the home page.
+  function withNext(path) {
+    var nextInput = document.querySelector('input[name="next"]');
+    var next = nextInput ? nextInput.value : "";
+    return next ? path + "?next=" + encodeURIComponent(next) : path;
+  }
+
   async function registerWithPasskey() {
     var email = (document.getElementById("email") || {}).value || "";
     var displayName =
@@ -152,7 +161,7 @@
 
     var publicKey = preparePublicKeyOptions(begin.publicKey);
     var cred = await navigator.credentials.create({ publicKey: publicKey });
-    var finish = await api("/auth/passkey/register/finish", {
+    var finish = await api(withNext("/auth/passkey/register/finish"), {
       challenge_id: begin.challenge_id,
       credential: credentialToJSON(cred),
     });
@@ -161,12 +170,7 @@
 
   async function loginWithPasskey() {
     var email = (document.getElementById("email") || {}).value || "";
-    var nextInput = document.querySelector('input[name="next"]');
-    var next = nextInput ? nextInput.value : "";
-    var finishPath = "/auth/passkey/login/finish";
-    if (next) {
-      finishPath += "?next=" + encodeURIComponent(next);
-    }
+    var finishPath = withNext("/auth/passkey/login/finish");
 
     var begin = await api("/auth/passkey/login/begin", {
       email: email.trim(),
