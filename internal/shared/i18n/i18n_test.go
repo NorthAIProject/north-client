@@ -62,6 +62,11 @@ func TestUntranslatedStringsAreAccountedFor(t *testing.T) {
 	allowed := map[string]bool{
 		"nav.fitness":         true, // borrowed unchanged into all three
 		"palette.empty.after": true, // a full stop
+
+		// "Imperial (lb, in)" — the system's name and both unit abbreviations
+		// are international. "Métrico (kg, cm)" is not on this list because the
+		// accent makes it differ.
+		"settings.prefs.imperial": true,
 	}
 
 	for locale, catalogue := range catalogues {
