@@ -1109,6 +1109,12 @@ func routes(
 	mcpAuthSvc := mcpauth.NewService(mcpauth.NewRepository(pool), connectionSvc, cfg.BaseURL)
 	mcpAuthMachine := mcpauth.NewMachineHandler(mcpAuthSvc, slog.Default(), cfg.TrustedProxies)
 
+	// The consent screen. It creates accounts, so it holds the auth service and
+	// the onboarding service rather than reimplementing either.
+	mcpAuthBrowser := mcpauth.NewBrowserHandler(
+		mcpAuthSvc, authSvc, authMW, onboardingSvc, slog.Default(), cfg.Env.IsProduction(),
+	)
+
 	// The MCP endpoint an outside agent connects to.
 	//
 	// Every token resolves to its own owner, which is what makes this safe to
@@ -1276,6 +1282,15 @@ func routes(
 		r.Post("/locale", setLocale)
 
 		authHandler.Routes(r)
+
+		// The consent screen, inside this group rather than beside /mcp.
+		//
+		// It is a browser page: it reads the session cookie, resolves a locale,
+		// and renders a form with a CSRF token. Its machine half — discovery,
+		// registration, tokens — is mounted above, outside the group, because
+		// those need permissive CORS and no cookie. Chi routes exact paths, so
+		// splitting /oauth across the two groups is legal.
+		mcpAuthBrowser.Routes(r)
 
 		// Everything under /app requires a session.
 		r.Route("/app", func(r chi.Router) {

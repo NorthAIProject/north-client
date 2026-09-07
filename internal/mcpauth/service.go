@@ -575,6 +575,10 @@ func invalidGrant(description string) error {
 	return apperr.Wrap(apperr.ErrUnauthenticated, "%s", description)
 }
 
+// scopeRead is the read-only scope, named here so the handler does not have to
+// import internal/mcpserver to spell it.
+func scopeRead() string { return mcpserver.ScopeRead }
+
 // normaliseScope validates what a client asked for, defaulting to full access.
 func normaliseScope(requested string) (string, error) {
 	fields := strings.Fields(requested)
