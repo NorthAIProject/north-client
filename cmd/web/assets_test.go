@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"compress/gzip"
 	"io"
 	"net/http"
@@ -123,5 +124,33 @@ func TestAnUnknownExerciseFrameIsNotFound(t *testing.T) {
 
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("status = %d, want 404", rec.Code)
+	}
+}
+
+// The loops are what Telegram is sent, since it cannot render an SVG. They are
+// already compressed, so serveExerciseFrame — which rewrites .svg to .svg.gz —
+// must leave them alone; a Content-Encoding: gzip on a plain GIF would arrive
+// as a broken image.
+func TestAnExerciseLoopIsServedAsAPlainGIF(t *testing.T) {
+	t.Parallel()
+
+	req := httptest.NewRequest(http.MethodGet, "/assets/exercises/pull-up/loop.gif", nil)
+	rec := httptest.NewRecorder()
+	assetRouter(t, config.EnvProduction).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 — did scripts/exercise-loops run?", rec.Code)
+	}
+	if got := rec.Header().Get("Content-Encoding"); got != "" {
+		t.Errorf("Content-Encoding = %q, want empty — a GIF is already compressed", got)
+	}
+	body := rec.Body.Bytes()
+	if len(body) < 6 || string(body[:6]) != "GIF89a" {
+		t.Fatalf("body does not start with a GIF89a header: %q", body[:min(6, len(body))])
+	}
+	// Animated, not a still: the point of the loop is that it shows the
+	// movement rather than one position.
+	if !bytes.Contains(body, []byte("NETSCAPE2.0")) {
+		t.Error("no NETSCAPE2.0 application extension — the GIF is not looping")
 	}
 }

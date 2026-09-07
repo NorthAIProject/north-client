@@ -37,9 +37,19 @@ type Coach interface {
 	PendingApproval(ctx context.Context, user users.User, conversationID uuid.UUID) (coach.PendingCall, bool, error)
 	ResolvePending(ctx context.Context, user users.User, conversationID, messageID uuid.UUID, approve bool) error
 	Resume(ctx context.Context, user users.User, conversationID uuid.UUID) (<-chan ai.StreamChunk, error)
+	LatestExerciseRefs(ctx context.Context, user users.User, conversationID uuid.UUID) ([]string, error)
 }
 
 // Threads is how a platform message finds the thread it belongs in.
+// Art resolves a catalogue slug to the slug its illustration is filed under.
+//
+// One method, because that is all the reply path needs and the mapping lives
+// in a column: the catalogue and the artwork use different vocabularies, so a
+// path cannot be built from the slug the coach looked up.
+type Art interface {
+	IllustrationFor(ctx context.Context, slug string) (string, bool)
+}
+
 type Threads interface {
 	List(ctx context.Context, userID uuid.UUID, limit int) ([]conversations.Conversation, error)
 }
@@ -84,6 +94,8 @@ type Service struct {
 	transport Transport
 	log       *slog.Logger
 	funnel    *analytics.Funnel
+	art       Art
+	siteURL   string
 
 	redeemLimit *ratelimit.Limiters
 
@@ -116,6 +128,12 @@ type Options struct {
 	// Funnel records a linked chat as a connected source. Nil is a no-op.
 	Funnel *analytics.Funnel
 
+	// Art and SiteURL together turn an exercise the coach looked up into a
+	// picture the platform can show. Either one empty means replies stay text
+	// only, which is the correct degradation rather than a broken link.
+	Art     Art
+	SiteURL string
+
 	// Now defaults to time.Now.
 	Now func() time.Time
 }
@@ -131,6 +149,8 @@ func NewService(opts Options) *Service {
 		transport:   opts.Transport,
 		log:         opts.Log,
 		funnel:      opts.Funnel,
+		art:         opts.Art,
+		siteURL:     opts.SiteURL,
 		redeemLimit: ratelimit.New(redeemAttemptsPerMinute),
 		now:         opts.Now,
 	}
@@ -382,7 +402,48 @@ func (s *Service) reply(ctx context.Context, user users.User, conversation conve
 		s.log.Warn("messaging reply ended early", "error", streamErr, "conversation_id", conversation.ID)
 		text += "\n\n(That answer got cut short. The full thread is in the web app.)"
 	}
-	return OutboundMessage{Text: text}, nil
+
+	out := OutboundMessage{Text: text}
+	if url, credit, ok := s.illustration(ctx, user, conversation); ok {
+		out.Animation = url
+		out.AnimationCredit = credit
+	}
+	return out, nil
+}
+
+// illustration finds the looping artwork for whatever exercise the coach just
+// looked up, if it looked one up and there is any.
+//
+// Read after the stream rather than from it, for the same reason
+// PendingApproval is: the coach's pump does not forward tool calls to its
+// caller, so out here the only trace of the lookup is what was persisted.
+//
+// Every failure is a quiet no-op. A missing picture is a reply without a
+// picture; it is never worth losing the words over.
+func (s *Service) illustration(ctx context.Context, user users.User, conversation conversations.Conversation) (url, credit string, ok bool) {
+	if s.art == nil || s.siteURL == "" {
+		return "", "", false
+	}
+
+	slugs, err := s.coach.LatestExerciseRefs(ctx, user, conversation.ID)
+	if err != nil {
+		s.log.Warn("could not read the exercises this reply looked up",
+			"error", err, "conversation_id", conversation.ID)
+		return "", "", false
+	}
+
+	// The first is the one the answer is about. A reply that looked up three
+	// movements is a comparison, and picking one of them to illustrate would
+	// be arbitrary.
+	for _, slug := range slugs {
+		illustration, found := s.art.IllustrationFor(ctx, slug)
+		if !found {
+			continue
+		}
+		return strings.TrimRight(s.siteURL, "/") + "/assets/exercises/" + illustration + "/loop.gif",
+			artworkCredit, true
+	}
+	return "", "", false
 }
 
 // meter spends one coach message against the same budget the web chat uses.

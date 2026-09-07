@@ -46,6 +46,12 @@ func newBotAPI(t *testing.T) *botAPI {
 	return api
 }
 
+func (a *botAPI) sent() []botCall {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return append([]botCall(nil), a.calls...)
+}
+
 func (a *botAPI) client() *Client {
 	c := NewClient("test-token")
 	c.baseURL = a.srv.URL
@@ -488,4 +494,92 @@ func TestACancelledRequestStaysRecognisable(t *testing.T) {
 	if strings.Contains(err.Error(), token) {
 		t.Errorf("the token leaked: %v", err)
 	}
+}
+
+// The picture goes before the words, so it is on screen while they are read.
+func TestAnIllustrationIsSentAsAnAnimationBeforeTheText(t *testing.T) {
+	api := newBotAPI(t)
+
+	err := api.client().Send(context.Background(), "884422", messaging.OutboundMessage{
+		Text:            "Full hang, shoulders packed down.",
+		Animation:       "https://kheprios.com/assets/exercises/pull-up/loop.gif",
+		AnimationCredit: "Illustration: Bryl Lim / Everkinetic, CC BY-SA 4.0",
+	})
+	if err != nil {
+		t.Fatalf("send: %v", err)
+	}
+
+	calls := api.sent()
+	if len(calls) != 2 {
+		t.Fatalf("expected an animation then the text, got %d call(s): %v", len(calls), methodsOf(calls))
+	}
+	if calls[0].method != "sendAnimation" {
+		t.Errorf("first call = %q, want sendAnimation — the picture should arrive first", calls[0].method)
+	}
+	if calls[1].method != "sendMessage" {
+		t.Errorf("second call = %q, want sendMessage", calls[1].method)
+	}
+	if got := calls[0].body["animation"]; got != "https://kheprios.com/assets/exercises/pull-up/loop.gif" {
+		t.Errorf("animation = %v", got)
+	}
+	// The licence obligation, not decoration.
+	if got, _ := calls[0].body["caption"].(string); !strings.Contains(got, "CC BY-SA 4.0") {
+		t.Errorf("caption = %q, want the credit", got)
+	}
+	// The reply itself must not be crammed into the caption: the cap there is
+	// 1024 runes, and Telegram refuses the whole call rather than truncating.
+	if got, _ := calls[0].body["caption"].(string); strings.Contains(got, "Full hang") {
+		t.Errorf("the reply text was put in the caption: %q", got)
+	}
+	if got, _ := calls[1].body["text"].(string); !strings.Contains(got, "Full hang") {
+		t.Errorf("the reply text did not go out as a message: %q", got)
+	}
+}
+
+// A reply with no artwork must not gain an extra call.
+func TestWithoutAnIllustrationOnlyTheTextIsSent(t *testing.T) {
+	api := newBotAPI(t)
+
+	if err := api.client().Send(context.Background(), "884422", messaging.OutboundMessage{
+		Text: "Two sets of five.",
+	}); err != nil {
+		t.Fatalf("send: %v", err)
+	}
+
+	calls := api.sent()
+	if len(calls) != 1 || calls[0].method != "sendMessage" {
+		t.Fatalf("expected one sendMessage, got %v", methodsOf(calls))
+	}
+}
+
+// Shipping CC BY-SA artwork without attribution is a licence breach, so the
+// transport refuses rather than sending it bare.
+func TestArtworkWithNoCreditIsRefusedButTheTextStillGoes(t *testing.T) {
+	api := newBotAPI(t)
+
+	if err := api.client().Send(context.Background(), "884422", messaging.OutboundMessage{
+		Text:      "Full hang.",
+		Animation: "https://kheprios.com/assets/exercises/pull-up/loop.gif",
+		// AnimationCredit deliberately empty.
+	}); err != nil {
+		t.Fatalf("send: %v", err)
+	}
+
+	calls := api.sent()
+	for _, c := range calls {
+		if c.method == "sendAnimation" {
+			t.Fatal("uncredited artwork was sent to Telegram")
+		}
+	}
+	if len(calls) != 1 || calls[0].method != "sendMessage" {
+		t.Fatalf("the reply should still have been sent, got %v", methodsOf(calls))
+	}
+}
+
+func methodsOf(calls []botCall) []string {
+	out := make([]string, 0, len(calls))
+	for _, c := range calls {
+		out = append(out, c.method)
+	}
+	return out
 }

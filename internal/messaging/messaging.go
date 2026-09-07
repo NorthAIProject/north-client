@@ -79,6 +79,22 @@ type OutboundMessage struct {
 	// was already answered. Distinct from an empty Text so a genuinely empty
 	// reply is still a bug rather than a silent no-op.
 	Silent bool
+
+	// Animation is a public HTTPS URL for a looping illustration of whatever
+	// the reply is about, or empty for the ordinary case.
+	//
+	// A URL rather than bytes: every platform worth supporting will fetch it
+	// itself, which keeps multipart uploads out of the transports entirely.
+	//
+	// Platform-neutral on purpose. A transport that cannot show a picture
+	// ignores this and loses nothing, because Text stands alone — the address
+	// is also written into it.
+	Animation string
+
+	// AnimationCredit is the attribution the artwork's licence requires, to be
+	// shown wherever Animation is. Not optional: the illustrations are
+	// CC BY-SA 4.0 and a caption without this is a licence breach.
+	AnimationCredit string
 }
 
 // Option is one answer a person can tap instead of typing.
@@ -111,3 +127,8 @@ type Transport interface {
 	// Send delivers one message to one conversation.
 	Send(ctx context.Context, externalID string, msg OutboundMessage) error
 }
+
+// artworkCredit is the attribution CC BY-SA 4.0 requires on the exercise
+// illustrations. See web/assets/exercises/NOTICE — the licence obligation is
+// the reason this string is not optional and not shortenable.
+const artworkCredit = "Illustration: Bryl Lim / Everkinetic, CC BY-SA 4.0"

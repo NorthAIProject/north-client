@@ -1,6 +1,7 @@
 package coach
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"regexp"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/conversations"
+	"github.com/NorthAIProject/north-client/internal/users"
 )
 
 // Evidence kinds. The prefix is part of the ref because the two kinds resolve
@@ -247,4 +249,49 @@ func ParseRef(ref string) (kind, id string, err error) {
 		return "", "", fmt.Errorf("unknown evidence kind %q", kind)
 	}
 	return kind, id, nil
+}
+
+// LatestExerciseRefs returns the catalogue slugs the coach looked up on its
+// most recent turn in this conversation.
+//
+// The refs are already recorded — appendExerciseLookups writes them from the
+// tool call arguments and they are persisted on the message — and the web chat
+// already renders artwork from them. This exposes the same list to the
+// messaging adapters, which had no way to reach it: their reply path reads the
+// stream's text and nothing else, so everything the coach knew about what it
+// had looked up was dropped at the transport boundary.
+//
+// Shaped like PendingApproval, and called from the same place for the same
+// reason: both are things the caller can only learn after the stream closes.
+func (s *Service) LatestExerciseRefs(ctx context.Context, user users.User, conversationID uuid.UUID) ([]string, error) {
+	// Get is what enforces ownership, exactly as in PendingApproval.
+	if _, err := s.conversations.Get(ctx, conversationID, user.ID); err != nil {
+		return nil, err
+	}
+
+	history, err := s.conversations.History(ctx, conversationID)
+	if err != nil {
+		return nil, err
+	}
+
+	for i := len(history) - 1; i >= 0; i-- {
+		m := history[i]
+		if !m.IsModel() {
+			continue
+		}
+
+		var slugs []string
+		for _, ref := range m.EvidenceRefs {
+			kind, value, found := strings.Cut(ref, ":")
+			if found && kind == EvidenceKindExercise && value != "" {
+				slugs = append(slugs, value)
+			}
+		}
+		// The newest model turn is the answer being sent right now. Stop
+		// there rather than walking further back: an exercise looked up three
+		// replies ago is not what this message is about, and attaching its
+		// picture would be baffling.
+		return slugs, nil
+	}
+	return nil, nil
 }

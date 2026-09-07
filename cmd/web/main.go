@@ -1048,6 +1048,8 @@ func routes(
 	// settings page needs it to issue link codes; whether anything can reach it
 	// depends on a bot token, below.
 	messagingSvc := messaging.NewService(messaging.Options{
+		Art:     exerciseSvc,
+		SiteURL: cfg.BaseURL,
 		Funnel:  funnel,
 		Coach:   coachSvc,
 		Threads: conversationSvc,
