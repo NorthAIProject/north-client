@@ -30,7 +30,7 @@ func (f PlanForm) fieldError(name string) string {
 }
 
 templ PlansIndexPage(user users.User, plans []meal.MealPlan, f PlanForm) {
-	@layout.App("Meal plans", user, nav()) {
+	@layout.App("Meal plans", user, nav(ctx)) {
 		<div class="mx-auto w-full max-w-2xl space-y-6 p-6 md:p-8">
 			<header>
 				@ui.MonoLabel("Nutrition")
@@ -121,7 +121,7 @@ func (f MealIngredientForm) fieldError(name string) string {
 }
 
 templ PlanDetailPage(user users.User, plan meal.MealPlan, allIngredients []meal.Ingredient, mealForm MealForm, ingredientForm MealIngredientForm) {
-	@layout.App(plan.Name, user, nav()) {
+	@layout.App(plan.Name, user, nav(ctx)) {
 		<div class="mx-auto w-full max-w-2xl space-y-6 p-6 md:p-8">
 			<a href="/app/nutrition/plans" class="text-muted-foreground hover:text-foreground text-sm">← All plans</a>
 			<header class="flex items-start justify-between gap-4">

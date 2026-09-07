@@ -20,7 +20,7 @@ type SearchView struct {
 }
 
 templ SearchPage(user users.User, view SearchView) {
-	@layout.App("Search knowledge", user, layout.BuildNav("/app/knowledge")) {
+	@layout.App("Search knowledge", user, layout.BuildNav(ctx, "/app/knowledge")) {
 		<div class="mx-auto w-full max-w-3xl p-6 md:p-8">
 			<header class="border-b border-hairline pb-6">
 				<a href="/app/knowledge" class="text-muted-foreground hover:text-foreground font-mono text-[10px] uppercase tracking-[0.14em]">

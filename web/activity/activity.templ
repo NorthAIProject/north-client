@@ -15,7 +15,7 @@ import (
 )
 
 templ Page(user users.User, active activity.Session, hasActive bool, recent []activity.Session, todayCalories float64, errMsg string) {
-	@layout.App("Activity", user, layout.BuildNav("/app/fitness")) {
+	@layout.App("Activity", user, layout.BuildNav(ctx, "/app/fitness")) {
 		<div class="mx-auto w-full max-w-2xl space-y-6 p-6 md:p-8">
 			<header>
 				@ui.MonoLabel("Fitness")

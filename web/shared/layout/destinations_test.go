@@ -166,7 +166,7 @@ func TestBuildNavMatchesTheSidebarAsShipped(t *testing.T) {
 		}},
 	}
 
-	got := BuildNav("/app")
+	got := BuildNav(context.Background(), "/app")
 	if len(got) != len(want) {
 		t.Fatalf("BuildNav returned %d groups, want %d", len(got), len(want))
 	}
@@ -208,7 +208,7 @@ func TestAChildPageLightsItsParentSection(t *testing.T) {
 	t.Parallel()
 
 	var insights NavItem
-	for _, g := range BuildNav("/app/insights/body") {
+	for _, g := range BuildNav(context.Background(), "/app/insights/body") {
 		for _, item := range g.Items {
 			if item.Href == "/app/insights/timeline" {
 				insights = item
@@ -239,7 +239,7 @@ func TestAChildPageLightsItsParentSection(t *testing.T) {
 func TestSettingsSubPagesLightTheSettingsItem(t *testing.T) {
 	t.Parallel()
 
-	for _, g := range BuildNav("/app/settings") {
+	for _, g := range BuildNav(context.Background(), "/app/settings") {
 		for _, item := range g.Items {
 			if item.Href == "/app/settings" && !item.Active {
 				t.Error("Settings is not active on its own page")

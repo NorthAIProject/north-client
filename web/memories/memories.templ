@@ -51,7 +51,7 @@ templ IndexPage(user users.User, pending, approved []memory.Memory, inst Instrum
 }
 
 templ Page(user users.User, pending, approved []memory.Memory, inst Instruments, form MemoryForm, edit *MemoryForm) {
-	@layout.App("Memory", user, layout.BuildNav("/app/memories")) {
+	@layout.App("Memory", user, layout.BuildNav(ctx, "/app/memories")) {
 		@Panel(user, pending, approved, inst, form, edit)
 		@textarea.Script()
 		@label.Script()

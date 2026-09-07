@@ -14,7 +14,7 @@ import (
 // It sits beside agent connections on purpose: that page hands out the keys
 // that let an outside agent write, and this one shows what those keys did.
 templ ActivityPage(user users.User, executions []toolaudit.Execution) {
-	@layout.App("Activity", user, layout.BuildNav("/app/settings")) {
+	@layout.App("Activity", user, layout.BuildNav(ctx, "/app/settings")) {
 		<div class="mx-auto w-full max-w-2xl space-y-6 p-6 md:p-8">
 			<header>
 				@ui.MonoLabel("Settings")

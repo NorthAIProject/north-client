@@ -155,7 +155,7 @@ func panelSwapAttrs() templ.Attributes {
 }
 
 templ Page(user users.User, data Data, forms Forms) {
-	@layout.App("Care", user, layout.BuildNav("/app/care")) {
+	@layout.App("Care", user, layout.BuildNav(ctx, "/app/care")) {
 		@Panel(user, data, forms)
 		@label.Script()
 		@checkbox.Script()

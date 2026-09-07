@@ -139,7 +139,7 @@ func (p TelegramPanel) Handle() string { return "@" + p.BotUsername }
 // looks like before a key exists — the alternative being that somebody issues a
 // live credential to find out whether they want one.
 templ ConnectionsPage(user users.User, list []connections.Connection, f ConnectForm, issued *connections.Issued, setup connections.Setup, previews []connections.Setup, provider ProviderPanel, telegram TelegramPanel, calendar CalendarPanel) {
-	@layout.App("Agent connections", user, layout.BuildNav("/app/settings")) {
+	@layout.App("Agent connections", user, layout.BuildNav(ctx, "/app/settings")) {
 		<div class="mx-auto w-full max-w-2xl space-y-6 p-6 md:p-8">
 			<header>
 				@ui.MonoLabel("Settings")

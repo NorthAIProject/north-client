@@ -37,7 +37,7 @@ func (f IngredientForm) fieldError(name string) string {
 }
 
 templ IngredientsPage(user users.User, query string, results []meal.Ingredient, f IngredientForm) {
-	@layout.App("Ingredients", user, nav()) {
+	@layout.App("Ingredients", user, nav(ctx)) {
 		<div class="mx-auto w-full max-w-2xl space-y-6 p-6 md:p-8">
 			<header>
 				@ui.MonoLabel("Nutrition")

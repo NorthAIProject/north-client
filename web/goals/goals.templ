@@ -114,7 +114,7 @@ func statusLabel(status string) string {
 }
 
 templ IndexPage(user users.User, list []goal.Goal, inst Instruments, f GoalForm) {
-	@layout.App("Goals", user, layout.BuildNav("/app/goals")) {
+	@layout.App("Goals", user, layout.BuildNav(ctx, "/app/goals")) {
 		<div class="mx-auto w-full max-w-6xl space-y-6 p-6 md:p-8" x-data={ "{ open: " + boolJS(f.Open) + " }" }>
 			<header>
 				@ui.MonoLabel("Direction")
@@ -277,7 +277,7 @@ templ statusBadge(g goal.Goal) {
 // DetailPage is one goal. m is the card shown once after the goal or one of its
 // milestones was just marked done; nil on every other visit.
 templ DetailPage(user users.User, g goal.Goal, updates []goal.Update, f GoalForm, m *moments.Moment) {
-	@layout.App(g.Title, user, layout.BuildNav("/app/goals")) {
+	@layout.App(g.Title, user, layout.BuildNav(ctx, "/app/goals")) {
 		<div class="mx-auto w-full max-w-3xl p-6 md:p-8" x-data={ "{ editing: " + boolJS(f.Open) + " }" }>
 			<a href="/app/goals" class="text-muted-foreground hover:text-foreground mb-4 inline-flex items-center gap-1 text-sm">
 				@icon.ArrowLeft(icon.Props{Class: "size-4"})

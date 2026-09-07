@@ -37,7 +37,7 @@ type Data struct {
 }
 
 templ Page(user users.User, data Data) {
-	@layout.App("Quick capture", user, layout.BuildNav("/app/capture")) {
+	@layout.App("Quick capture", user, layout.BuildNav(ctx, "/app/capture")) {
 		<div id={ PanelID }>
 			@Panel(data)
 		</div>

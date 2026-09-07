@@ -88,7 +88,7 @@ func currentMeasurements(bio biometrics.Biometric, units string) string {
 }
 
 templ Page(user users.User, bio biometrics.Biometric, hasBio bool, plan macroplan.MacroPlan, hasPlan bool, bioForm BiometricsForm, planForm PlanForm, units string) {
-	@layout.App("Calculator", user, layout.BuildNav("/app/fitness")) {
+	@layout.App("Calculator", user, layout.BuildNav(ctx, "/app/fitness")) {
 		<div class="mx-auto w-full max-w-2xl space-y-6 p-6 md:p-8">
 			<header>
 				@ui.MonoLabel("Fitness")

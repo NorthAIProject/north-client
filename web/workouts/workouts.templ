@@ -71,7 +71,7 @@ var equipmentOptions = []struct{ Value, Label string }{
 }
 
 templ IntakePage(user users.User, f IntakeForm) {
-	@layout.App("Build a plan", user, layout.BuildNav("/app/fitness")) {
+	@layout.App("Build a plan", user, layout.BuildNav(ctx, "/app/fitness")) {
 		<div class="mx-auto w-full max-w-2xl p-6 md:p-8">
 			<header class="mb-6">
 				<h1 class="text-2xl font-semibold tracking-tight">Build your training plan</h1>
@@ -219,7 +219,7 @@ type PlanSummary struct {
 // them back most-recently-touched first. Saying so is the difference between a
 // list of plans and a list where one of them is the one you are following.
 templ PlansPage(user users.User, plans []PlanSummary) {
-	@layout.App("Training plans", user, layout.BuildNav("/app/fitness")) {
+	@layout.App("Training plans", user, layout.BuildNav(ctx, "/app/fitness")) {
 		<div class="mx-auto w-full max-w-3xl space-y-6 p-6 md:p-8">
 			<header class="flex items-start justify-between gap-4">
 				<div>
@@ -355,7 +355,7 @@ func exercisesURL(id uuid.UUID, dayIndex int) string {
 }
 
 templ PlanPage(user users.User, v PlanView) {
-	@layout.App(v.Plan.Name, user, layout.BuildNav("/app/fitness")) {
+	@layout.App(v.Plan.Name, user, layout.BuildNav(ctx, "/app/fitness")) {
 		<div class="mx-auto w-full max-w-3xl p-6 md:p-8">
 			<header class="mb-6 flex items-start justify-between gap-4">
 				<div>
