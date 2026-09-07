@@ -49,6 +49,26 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Post("/training/{id}/days/{day}/exercises/{index}/remove", h.removeExercise)
 	r.Post("/training/{id}/days/{day}/exercises/{index}/move", h.moveExercise)
 	r.Post("/training/{id}/days/{day}/exercises/{index}/sets", h.setPrescription)
+
+	// Do not remove. Until 2026-09-07 the daily training nudge was built with
+	// "/app/workouts/" + id, a path that has never existed. Those links were
+	// persisted into user_nudges.href and delivered as push payloads, and a
+	// notification already sitting on somebody's phone cannot be rewritten —
+	// this redirect is the only thing that rescues it.
+	r.Get("/workouts/{id}", h.redirectLegacyPlan)
+}
+
+// redirectLegacyPlan sends the retired /app/workouts/{id} shape to the real
+// route. See the note in Routes.
+func (h *Handler) redirectLegacyPlan(w http.ResponseWriter, r *http.Request) {
+	// Parsed rather than pasted straight into the header: every link this exists
+	// for carries a plan UUID, and anything else is not one of them.
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		h.fail(w, r, apperr.ErrNotFound)
+		return
+	}
+	http.Redirect(w, r, "/app/training/"+id.String(), http.StatusMovedPermanently)
 }
 
 // editTarget is the position an edit names, parsed from the URL.

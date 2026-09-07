@@ -629,7 +629,11 @@ func (s *Service) DueToday(ctx context.Context, user users.User, today time.Time
 	if title == "" {
 		title = session.Weekday
 	}
-	return title, "/app/workouts/" + stored.ID.String(), true, nil
+	// The training routes live under /training, not /workouts — see
+	// Handler.Routes. This link is persisted into user_nudges.href and sent as
+	// a push payload, so getting it wrong strands people on a 404 long after
+	// the row is written.
+	return title, "/app/training/" + stored.ID.String(), true, nil
 }
 
 func (s *Service) LatestIntake(ctx context.Context, userID uuid.UUID) (StoredIntake, error) {
