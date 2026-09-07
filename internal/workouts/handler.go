@@ -51,10 +51,11 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Post("/training/{id}/days/{day}/exercises/{index}/sets", h.setPrescription)
 
 	// Do not remove. Until 2026-09-07 the daily training nudge was built with
-	// "/app/workouts/" + id, a path that has never existed. Those links were
-	// persisted into user_nudges.href and delivered as push payloads, and a
-	// notification already sitting on somebody's phone cannot be rewritten —
-	// this redirect is the only thing that rescues it.
+	// "/app/workouts/" + id, a path that has never existed, and user_nudges.href
+	// persisted it — so the bell, the "read" redirect and a push payload all
+	// carried a 404. A migration repaired the stored rows, but href is also sent
+	// as the push OpenPath, and a notification already delivered to a device
+	// cannot be rewritten by anything on the server. This is what those land on.
 	r.Get("/workouts/{id}", h.redirectLegacyPlan)
 }
 
