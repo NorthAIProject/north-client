@@ -1,8 +1,11 @@
 package goals
 
 import (
+	"context"
+	"slices"
 	"strconv"
 
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/goals/goal"
 	"github.com/NorthAIProject/north-client/internal/moments"
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -83,46 +86,37 @@ func FormFor(g goal.Goal) GoalForm {
 	return f
 }
 
-func categoryLabel(category string) string {
-	switch category {
-	case goal.CategoryFitness:
-		return "Fitness"
-	case goal.CategoryHealth:
-		return "Health"
-	case goal.CategoryWork:
-		return "Work"
-	case goal.CategoryLearning:
-		return "Learning"
-	case goal.CategoryPersonal:
-		return "Personal"
-	default:
-		return "Other"
+// The stored values are lowercase identifiers ("fitness", "achieved"), so the
+// catalogue key is derivable and the switch that used to hold the English is
+// gone. A value this build does not know still reads as something: the
+// categories fall back to "Other" and the statuses to "Active", which is what
+// the switches did.
+func categoryLabel(ctx context.Context, category string) string {
+	if !slices.Contains(goal.Categories, category) {
+		category = goal.CategoryOther
 	}
+	return i18n.T(ctx, "goal.category."+category)
 }
 
-func statusLabel(status string) string {
+func statusLabel(ctx context.Context, status string) string {
 	switch status {
-	case goal.StatusAchieved:
-		return "Achieved"
-	case goal.StatusPaused:
-		return "Paused"
-	case goal.StatusAbandoned:
-		return "Let go"
+	case goal.StatusAchieved, goal.StatusPaused, goal.StatusAbandoned:
 	default:
-		return "Active"
+		status = goal.StatusActive
 	}
+	return i18n.T(ctx, "goal.status."+status)
 }
 
 templ IndexPage(user users.User, list []goal.Goal, inst Instruments, f GoalForm) {
-	@layout.App("Goals", user, layout.BuildNav(ctx, "/app/goals")) {
+	@layout.App(i18n.T(ctx, "nav.goals"), user, layout.BuildNav(ctx, "/app/goals")) {
 		<div class="mx-auto w-full max-w-6xl space-y-6 p-6 md:p-8" x-data={ "{ open: " + boolJS(f.Open) + " }" }>
 			<header>
-				@ui.MonoLabel("Direction")
+				@ui.MonoLabel(i18n.T(ctx, "goals.mono"))
 				<div class="mt-2 flex items-start justify-between gap-4">
 					<div>
 						<h1 class="text-2xl font-medium tracking-tight">Goals</h1>
 						<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
-							What you are working toward. Khepri reads these before every reply.
+							{ i18n.T(ctx, "goals.intro") }
 						</p>
 					</div>
 					@button.Button(button.Props{Size: button.SizeSm, Attributes: templ.Attributes{"@click": "open = !open"}}) {
@@ -148,15 +142,15 @@ templ IndexPage(user users.User, list []goal.Goal, inst Instruments, f GoalForm)
 			</div>
 			if len(list) == 0 {
 				@ui.Empty(ui.EmptyProps{
-					Eyebrow: "Direction",
-					Title:   "Nothing to aim at yet",
-					Body:    "The coach works better once it knows what you are aiming at. One goal is enough to start.",
+					Eyebrow: i18n.T(ctx, "goals.mono"),
+					Title:   i18n.T(ctx, "goals.empty.title"),
+					Body:    i18n.T(ctx, "goals.empty.body"),
 				}) {
 					@button.Button(button.Props{
 						Class:      "bg-signal text-background hover:bg-signal/90",
 						Attributes: templ.Attributes{"@click": "open = true"},
 					}) {
-						Add a goal
+						{ i18n.T(ctx, "goals.add") }
 					}
 				}
 			} else {
@@ -178,9 +172,9 @@ templ IndexPage(user users.User, list []goal.Goal, inst Instruments, f GoalForm)
 
 templ kpiStrip(inst Instruments) {
 	@ui.KpiStrip() {
-		@kpiCell("Active", strconv.Itoa(inst.ActiveCount), "", "")
-		@kpiCell("Avg progress", avgProgressKPI(inst), "", "")
-		@kpiCell("Overdue milestones", overdueMilestonesKPI(inst), "", "")
+		@kpiCell(i18n.T(ctx, "goals.kpi.active"), strconv.Itoa(inst.ActiveCount), "", "")
+		@kpiCell(i18n.T(ctx, "goals.kpi.progress"), avgProgressKPI(inst), "", "")
+		@kpiCell(i18n.T(ctx, "goals.kpi.overdue"), overdueMilestonesKPI(ctx, inst), "", "")
 	}
 }
 
@@ -195,9 +189,9 @@ func avgProgressKPI(inst Instruments) string {
 	return strconv.Itoa(inst.AvgProgress) + "%"
 }
 
-func overdueMilestonesKPI(inst Instruments) string {
+func overdueMilestonesKPI(ctx context.Context, inst Instruments) string {
 	if inst.OverdueMilestones == 0 {
-		return "None"
+		return i18n.T(ctx, "goals.kpi.none")
 	}
 	return strconv.Itoa(inst.OverdueMilestones)
 }
@@ -206,7 +200,7 @@ templ categoryDonut(inst Instruments) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 		@card.Header() {
 			@card.Title() {
-				Active by category
+				{ i18n.T(ctx, "goals.bycategory") }
 			}
 		}
 		@card.Content() {
@@ -235,7 +229,7 @@ templ goalCard(g goal.Goal) {
 						<p class="text-muted-foreground mt-1 text-sm">{ g.Motivation }</p>
 					}
 					<div class="text-muted-foreground mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-						<span>{ categoryLabel(g.Category) }</span>
+						<span>{ categoryLabel(ctx, g.Category) }</span>
 						<span>·</span>
 						<span class={ templ.KV("text-destructive", g.Overdue()) }>{ g.Deadline() }</span>
 						if hasProgress(g) {
@@ -261,15 +255,15 @@ templ goalCard(g goal.Goal) {
 templ statusBadge(g goal.Goal) {
 	if g.Status == goal.StatusAchieved {
 		@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
-			Achieved
+			{ i18n.T(ctx, "goals.achieved") }
 		}
 	} else if g.Overdue() {
 		@badge.Badge(badge.Props{Variant: badge.VariantDestructive}) {
-			Overdue
+			{ i18n.T(ctx, "goals.overdue") }
 		}
 	} else if !g.IsActive() {
 		@badge.Badge(badge.Props{Variant: badge.VariantOutline}) {
-			{ statusLabel(g.Status) }
+			{ statusLabel(ctx, g.Status) }
 		}
 	}
 }
@@ -296,15 +290,15 @@ templ DetailPage(user users.User, g goal.Goal, updates []goal.Update, f GoalForm
 						Size:       button.SizeSm,
 						Attributes: templ.Attributes{"@click": "editing = !editing"},
 					}) {
-						Edit
+						{ i18n.T(ctx, "goals.edit") }
 					}
 				</div>
 				<div class="text-muted-foreground mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-					<span>{ categoryLabel(g.Category) }</span>
+					<span>{ categoryLabel(ctx, g.Category) }</span>
 					<span>·</span>
 					<span class={ templ.KV("text-destructive", g.Overdue()) }>{ g.Deadline() }</span>
 					<span>·</span>
-					<span>{ statusLabel(g.Status) }</span>
+					<span>{ statusLabel(ctx, g.Status) }</span>
 					if hasProgress(g) {
 						<span>·</span>
 						<span>{ g.ProgressLabel() }</span>
@@ -319,13 +313,13 @@ templ DetailPage(user users.User, g goal.Goal, updates []goal.Update, f GoalForm
 							@goalFields(f)
 							<div class="flex gap-2">
 								@button.Button(button.Props{Type: button.TypeSubmit}) {
-									Save
+									{ i18n.T(ctx, "goals.save") }
 								}
 								@button.Button(button.Props{
 									Variant:    button.VariantGhost,
 									Attributes: templ.Attributes{"@click.prevent": "editing = false"},
 								}) {
-									Cancel
+									{ i18n.T(ctx, "goals.cancel") }
 								}
 							</div>
 						</form>
@@ -384,11 +378,11 @@ templ goalDetails(g goal.Goal) {
 templ statusActions(g goal.Goal) {
 	<div class="mb-6 flex flex-wrap gap-2">
 		if g.IsActive() {
-			@statusButton(g, goal.StatusAchieved, "Mark achieved", button.VariantDefault)
-			@statusButton(g, goal.StatusPaused, "Pause", button.VariantOutline)
-			@statusButton(g, goal.StatusAbandoned, "Let this one go", button.VariantGhost)
+			@statusButton(g, goal.StatusAchieved, i18n.T(ctx, "goals.action.achieved"), button.VariantDefault)
+			@statusButton(g, goal.StatusPaused, i18n.T(ctx, "goals.action.pause"), button.VariantOutline)
+			@statusButton(g, goal.StatusAbandoned, i18n.T(ctx, "goals.action.letgo"), button.VariantGhost)
 		} else {
-			@statusButton(g, goal.StatusActive, "Make active again", button.VariantOutline)
+			@statusButton(g, goal.StatusActive, i18n.T(ctx, "goals.action.reactivate"), button.VariantOutline)
 		}
 	</div>
 }
@@ -407,11 +401,11 @@ templ milestonesCard(g goal.Goal, f GoalForm) {
 	@card.Card(card.Props{Class: "mb-6"}) {
 		@card.Header() {
 			@card.Title(card.TitleProps{Class: "text-base"}) {
-				Milestones
+				{ i18n.T(ctx, "goals.milestones") }
 			}
 			@card.Description() {
 				if len(g.Milestones) == 0 {
-					The steps that make this goal feel alive. Optional, but the coach can see them.
+					{ i18n.T(ctx, "goals.milestones.desc") }
 				} else {
 					{ g.ProgressLabel() } complete.
 				}
@@ -451,16 +445,16 @@ templ milestoneRow(g goal.Goal, m goal.Milestone, f GoalForm) {
 			</div>
 			<div class="flex shrink-0 flex-wrap items-center justify-end gap-1">
 				if m.IsComplete() {
-					@milestoneStatusButton(g, m, goal.MilestoneOpen, "Reopen", button.VariantGhost)
+					@milestoneStatusButton(g, m, goal.MilestoneOpen, i18n.T(ctx, "goals.ms.reopen"), button.VariantGhost)
 				} else {
-					@milestoneStatusButton(g, m, goal.MilestoneCompleted, "Complete", button.VariantOutline)
+					@milestoneStatusButton(g, m, goal.MilestoneCompleted, i18n.T(ctx, "goals.ms.complete"), button.VariantOutline)
 				}
 				@button.Button(button.Props{
 					Variant:    button.VariantGhost,
 					Size:       button.SizeSm,
 					Attributes: templ.Attributes{"@click": "editing = true", "type": "button"},
 				}) {
-					Edit
+					{ i18n.T(ctx, "goals.edit") }
 				}
 				@milestoneDeleteButton(g, m)
 			</div>
@@ -489,7 +483,7 @@ templ milestoneDeleteButton(g goal.Goal, m goal.Milestone) {
 	>
 		@ui.CSRFInput()
 		@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Variant: button.VariantGhost}) {
-			Remove
+			{ i18n.T(ctx, "goals.remove") }
 		}
 	</form>
 }
@@ -497,7 +491,7 @@ templ milestoneDeleteButton(g goal.Goal, m goal.Milestone) {
 templ editMilestoneForm(g goal.Goal, m goal.Milestone, f GoalForm) {
 	<form method="post" action={ templ.SafeURL("/app/goals/" + g.ID.String() + "/milestones/" + m.ID.String()) } class="space-y-3">
 		@ui.CSRFInput()
-		@field("milestone_title", "Milestone", f.milestoneError("title")) {
+		@field("milestone_title", i18n.T(ctx, "goals.ms.title"), f.milestoneError("title")) {
 			@input.Input(input.Props{
 				ID:       "milestone_title_" + m.ID.String(),
 				Name:     "milestone_title",
@@ -506,7 +500,7 @@ templ editMilestoneForm(g goal.Goal, m goal.Milestone, f GoalForm) {
 				HasError: f.EditingMilestone == m.ID.String() && f.milestoneError("title") != "",
 			})
 		}
-		@field("milestone_date", "Target date", "") {
+		@field("milestone_date", i18n.T(ctx, "goals.ms.date"), "") {
 			@input.Input(input.Props{
 				ID:    "milestone_date_" + m.ID.String(),
 				Name:  "milestone_date",
@@ -516,14 +510,14 @@ templ editMilestoneForm(g goal.Goal, m goal.Milestone, f GoalForm) {
 		}
 		<div class="flex gap-2">
 			@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm}) {
-				Save
+				{ i18n.T(ctx, "goals.save") }
 			}
 			@button.Button(button.Props{
 				Variant:    button.VariantGhost,
 				Size:       button.SizeSm,
 				Attributes: templ.Attributes{"@click.prevent": "editing = false"},
 			}) {
-				Cancel
+				{ i18n.T(ctx, "goals.cancel") }
 			}
 		</div>
 	</form>
@@ -533,17 +527,17 @@ templ addMilestoneForm(g goal.Goal, f GoalForm) {
 	<form method="post" action={ templ.SafeURL("/app/goals/" + g.ID.String() + "/milestones") } class="space-y-3">
 		@ui.CSRFInput()
 		<div class="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
-			@field("milestone_title", "Add a milestone", f.milestoneError("title")) {
+			@field("milestone_title", i18n.T(ctx, "goals.ms.add"), f.milestoneError("title")) {
 				@input.Input(input.Props{
 					ID:          "milestone_title",
 					Name:        "milestone_title",
 					Value:       addMilestoneTitle(f),
-					Placeholder: "Run 5k without stopping",
+					Placeholder: i18n.T(ctx, "goals.ms.title.ph"),
 					HasError:    f.EditingMilestone == "" && f.milestoneError("title") != "",
 				})
 			}
 			<div class="w-full sm:w-40">
-				@field("milestone_date", "Target date", "") {
+				@field("milestone_date", i18n.T(ctx, "goals.ms.date"), "") {
 					@input.Input(input.Props{
 						ID:    "milestone_date",
 						Name:  "milestone_date",
@@ -594,10 +588,10 @@ templ progressForm(g goal.Goal, errMsg string) {
 	@card.Card() {
 		@card.Header() {
 			@card.Title(card.TitleProps{Class: "text-base"}) {
-				How is it going?
+				{ i18n.T(ctx, "goals.progress.q") }
 			}
 			@card.Description() {
-				Khepri reads your most recent note, so this is how the coach stays current.
+				{ i18n.T(ctx, "goals.progress.desc") }
 			}
 		}
 		@card.Content() {
@@ -606,7 +600,7 @@ templ progressForm(g goal.Goal, errMsg string) {
 				@textarea.Textarea(textarea.Props{
 					ID:          "note",
 					Name:        "note",
-					Placeholder: "Ran 5k three times this week without stopping.",
+					Placeholder: i18n.T(ctx, "goals.progress.ph"),
 					Rows:        2,
 					HasError:    errMsg != "",
 				})
@@ -659,7 +653,7 @@ templ dangerZone(g goal.Goal) {
 		>
 			@ui.CSRFInput()
 			<button type="submit" class="text-muted-foreground hover:text-destructive text-sm transition-colors">
-				Delete this goal
+				{ i18n.T(ctx, "goals.delete") }
 			</button>
 		</form>
 	</div>
@@ -667,52 +661,52 @@ templ dangerZone(g goal.Goal) {
 
 // goalFields is shared by create and edit, so the two cannot drift apart.
 templ goalFields(f GoalForm) {
-	@field("title", "What is the goal?", f.fieldError("title")) {
+	@field("title", i18n.T(ctx, "goals.f.title"), f.fieldError("title")) {
 		@input.Input(input.Props{
 			ID:          "title",
 			Name:        "title",
 			Value:       f.Title,
-			Placeholder: "Run 10k without stopping",
+			Placeholder: i18n.T(ctx, "goals.f.title.ph"),
 			Required:    true,
 			HasError:    f.fieldError("title") != "",
 		})
 	}
-	@field("motivation", "Why does it matter?", f.fieldError("motivation")) {
+	@field("motivation", i18n.T(ctx, "goals.f.motivation"), f.fieldError("motivation")) {
 		@textarea.Textarea(textarea.Props{
 			ID:          "motivation",
 			Name:        "motivation",
 			Value:       f.Motivation,
-			Placeholder: "I want to stop feeling out of breath on the stairs.",
+			Placeholder: i18n.T(ctx, "goals.f.motivation.ph"),
 			Rows:        2,
 			HasError:    f.fieldError("motivation") != "",
 		})
 	}
-	@field("success", "How will you know it happened?", f.fieldError("success")) {
+	@field("success", i18n.T(ctx, "goals.f.success"), f.fieldError("success")) {
 		@textarea.Textarea(textarea.Props{
 			ID:          "success",
 			Name:        "success",
 			Value:       f.Success,
-			Placeholder: "I run 10k, at any pace, without walking.",
+			Placeholder: i18n.T(ctx, "goals.f.success.ph"),
 			Rows:        2,
 			HasError:    f.fieldError("success") != "",
 		})
 	}
 	<div class="grid gap-4 sm:grid-cols-2">
-		@field("category", "Category", f.fieldError("category")) {
+		@field("category", i18n.T(ctx, "goals.f.category"), f.fieldError("category")) {
 			@selectbox.SelectBox() {
 				@selectbox.Trigger(selectbox.TriggerProps{ID: "category", Name: "category"}) {
-					@selectbox.Value(selectbox.ValueProps{Placeholder: "Choose one"})
+					@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "goals.f.category.ph")})
 				}
 				@selectbox.Content() {
 					for _, c := range goal.Categories {
 						@selectbox.Item(selectbox.ItemProps{Value: c, Selected: f.Category == c}) {
-							{ categoryLabel(c) }
+							{ categoryLabel(ctx, c) }
 						}
 					}
 				}
 			}
 		}
-		@field("target_date", "Target date", f.fieldError("target_date")) {
+		@field("target_date", i18n.T(ctx, "goals.f.date"), f.fieldError("target_date")) {
 			@input.Input(input.Props{
 				ID:       "target_date",
 				Name:     "target_date",
@@ -722,7 +716,7 @@ templ goalFields(f GoalForm) {
 			})
 			if f.fieldError("target_date") == "" {
 				@form.Description() {
-					Optional. Plenty of goals do not have one.
+					{ i18n.T(ctx, "goals.f.date.desc") }
 				}
 			}
 		}
