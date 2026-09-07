@@ -49,7 +49,7 @@ type toolContract struct {
 //
 // The package had no tests at all before this, and CI only compiled the binary.
 func TestToolContractIsUnchanged(t *testing.T) {
-	got := describeTools(t)
+	got := describeTools(t, "")
 
 	encoded, err := json.MarshalIndent(got, "", "  ")
 	if err != nil {
@@ -84,6 +84,125 @@ func TestToolContractIsUnchanged(t *testing.T) {
 	}
 }
 
+// A read-only token is shown only the tools it can call.
+//
+// Its own golden, rather than a derived assertion, because this is a published
+// surface too: a client that asked for north:read plans from this list, and a
+// tool appearing or vanishing from it is as visible a change as one appearing
+// in the full contract.
+func TestTheReadOnlyToolContractIsUnchanged(t *testing.T) {
+	got := describeTools(t, mcpserver.ScopeRead)
+
+	encoded, err := json.MarshalIndent(got, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded = append(encoded, '\n')
+
+	golden := filepath.Join("testdata", "tools.readonly.golden.json")
+
+	if *update {
+		if err = os.MkdirAll("testdata", 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err = os.WriteFile(golden, encoded, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("wrote %s", golden)
+		return
+	}
+
+	want, err := os.ReadFile(golden)
+	if err != nil {
+		t.Fatalf("%v\n\nRun `go test ./internal/mcpserver/ -update` to create it.", err)
+	}
+
+	if string(encoded) != string(want) {
+		t.Errorf("the read-only tool contract changed.\n\n"+
+			"If the change is intended, run:\n"+
+			"    go test ./internal/mcpserver/ -update\n"+
+			"and review the diff.\n\ngot:\n%s\nwant:\n%s", encoded, want)
+	}
+}
+
+// The read-only surface must be exactly the read-only half of the full one.
+//
+// Derived rather than listed, so the two goldens cannot drift apart: if a new
+// write tool is added and the read-only golden is regenerated carelessly, this
+// fails.
+func TestTheReadOnlySurfaceIsTheReadOnlyHalfOfTheFullOne(t *testing.T) {
+	full := describeTools(t, "")
+	readOnly := describeTools(t, mcpserver.ScopeRead)
+
+	inReadOnly := make(map[string]bool, len(readOnly))
+	for _, tool := range readOnly {
+		inReadOnly[tool.Name] = true
+		if !tool.ReadOnly {
+			t.Errorf("%s is published to a read-only token but declares readOnly=false", tool.Name)
+		}
+	}
+
+	for _, tool := range full {
+		switch {
+		case tool.ReadOnly && !inReadOnly[tool.Name]:
+			t.Errorf("%s only reads but is hidden from a read-only token", tool.Name)
+		case !tool.ReadOnly && inReadOnly[tool.Name]:
+			t.Errorf("%s writes but is published to a read-only token", tool.Name)
+		}
+	}
+
+	if len(readOnly) >= len(full) {
+		t.Errorf("the read-only surface has %d tools and the full one %d; it must be smaller",
+			len(readOnly), len(full))
+	}
+}
+
+// An unrecognised scope gets the read-only surface, not the full one.
+//
+// A scope this build does not know is a scope it cannot honour, and the safe
+// direction for an unknown is fewer tools. The empty scope is the deliberate
+// exception, because it is what every token issued before scopes existed
+// stores and those must keep working.
+func TestAnUnknownScopeIsTreatedAsReadOnly(t *testing.T) {
+	readOnly := len(describeTools(t, mcpserver.ScopeRead))
+
+	for _, scope := range []string{"north:admin", "read", "nonsense", "north:read_write extra"} {
+		if got := len(describeTools(t, scope)); got != readOnly {
+			t.Errorf("scope %q published %d tools, want the %d a read-only token sees",
+				scope, got, readOnly)
+		}
+	}
+
+	// And the two that must be full access.
+	full := len(describeTools(t, ""))
+	if got := len(describeTools(t, mcpserver.ScopeReadWrite)); got != full {
+		t.Errorf("north:read_write published %d tools, want the full %d", got, full)
+	}
+}
+
+// The number of published tools, stated outright.
+//
+// The golden files would catch a change too, but a regenerated golden is a
+// diff somebody can wave through. A count is a number in the test that has to
+// be edited deliberately.
+//
+// It is what this test wires, not what production serves: Services here
+// carries only Agent, so the tools that need Notifications — list_alerts and
+// set_alert — do not register. See internal/agent/capabilities.go.
+func TestTheToolCountIsWhatWeThinkItIs(t *testing.T) {
+	const (
+		wantFull     = 25
+		wantReadOnly = 12
+	)
+
+	if got := len(describeTools(t, "")); got != wantFull {
+		t.Errorf("the full surface publishes %d tools, want %d", got, wantFull)
+	}
+	if got := len(describeTools(t, mcpserver.ScopeRead)); got != wantReadOnly {
+		t.Errorf("the read-only surface publishes %d tools, want %d", got, wantReadOnly)
+	}
+}
+
 // Every tool must say whether it writes.
 //
 // The five read-only registry capabilities used to arrive with no annotations
@@ -114,7 +233,7 @@ func TestEveryToolDeclaresWhetherItWrites(t *testing.T) {
 		"log_food":       true,
 	}
 
-	for _, tool := range describeTools(t) {
+	for _, tool := range describeTools(t, "") {
 		if tool.ReadOnly == writers[tool.Name] {
 			t.Errorf("%s reports readOnly=%t; it %s",
 				tool.Name, tool.ReadOnly,
@@ -126,7 +245,7 @@ func TestEveryToolDeclaresWhetherItWrites(t *testing.T) {
 // The registry's schemas are hand-marshalled into MCP rather than inferred by
 // the SDK, so nothing else checks that the conversion produced usable JSON.
 func TestRegistrySchemasSurviveTheConversion(t *testing.T) {
-	for _, tool := range describeTools(t) {
+	for _, tool := range describeTools(t, "") {
 		if len(tool.InputSchema) == 0 {
 			continue
 		}
@@ -144,7 +263,7 @@ func TestRegistrySchemasSurviveTheConversion(t *testing.T) {
 
 // describeTools registers every tool onto a server and reads back what a client
 // would be shown.
-func describeTools(t *testing.T) []toolContract {
+func describeTools(t *testing.T, scope string) []toolContract {
 	t.Helper()
 
 	server := mcp.NewServer(&mcp.Implementation{Name: "north", Version: "test"}, nil)
@@ -152,7 +271,7 @@ func describeTools(t *testing.T) []toolContract {
 	// Nil services: registration only declares tools, and no tool is invoked
 	// here. A tool that touched a service at registration time would be doing
 	// work at the wrong moment, and this would catch that too.
-	mcpserver.Register(server, mcpserver.Services{Agent: testRegistry()}, users.User{ID: uuid.New()})
+	mcpserver.Register(server, mcpserver.Services{Agent: testRegistry()}, users.User{ID: uuid.New()}, scope)
 
 	client := mcp.NewClient(&mcp.Implementation{Name: "contract-test", Version: "test"}, nil)
 
@@ -252,7 +371,7 @@ func testRegistry() *agent.Registry {
 // log_water, log_sleep, complete_habit, record_weight, log_food — each of which
 // carries its own arguments onto its own card.
 func TestCaptureIsNotPublishedAsATool(t *testing.T) {
-	for _, tool := range describeTools(t) {
+	for _, tool := range describeTools(t, "") {
 		if strings.HasPrefix(tool.Name, "capture") || strings.Contains(tool.Name, "quick_capture") {
 			t.Errorf("%s publishes quick capture as a tool; see internal/capture's package doc", tool.Name)
 		}

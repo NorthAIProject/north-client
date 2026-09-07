@@ -66,6 +66,12 @@ func (m *Middleware) LoadUser(next http.Handler) http.Handler {
 		// have to resolve the session again to find it.
 		ctx := ContextWithUser(r.Context(), session.User)
 		ctx = i18n.WithLocale(ctx, string(session.User.Locale))
+
+		// The same string the server sends as PostHog's DistinctId. Without it
+		// the browser's anonymous session and the account are two unrelated
+		// people, and no funnel crosses the signup.
+		ctx = middleware.WithIdentity(ctx, session.User.ID.String())
+
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

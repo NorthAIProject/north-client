@@ -141,10 +141,13 @@ func TestAuthenticateRejectsAWrongOrMissingToken(t *testing.T) {
 			if rec.Code != http.StatusUnauthorized {
 				t.Errorf("status = %d, want 401", rec.Code)
 			}
-			// Phase-2 OAuth extends this header with a metadata pointer; a bare
-			// 403 would leave a client with nowhere to go.
-			if got := rec.Header().Get("WWW-Authenticate"); got == "" {
-				t.Error("no WWW-Authenticate header on a 401")
+			// Byte equality, not merely non-empty. The header is the same
+			// string for every rejection, and a "helpful" distinction between
+			// expired and unknown would confirm that a guessed token once
+			// existed.
+			const want = `Bearer realm="north-mcp"`
+			if got := rec.Header().Get("WWW-Authenticate"); got != want {
+				t.Errorf("WWW-Authenticate is %q, want exactly %q", got, want)
 			}
 		})
 	}
@@ -359,6 +362,201 @@ func TestHealthChecksNeedNoCredential(t *testing.T) {
 		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
 		if rec.Code != http.StatusOK {
 			t.Errorf("%s = %d, want 200", path, rec.Code)
+		}
+	}
+}
+
+// stubScopedAuth also reports a scope, so the optional interface is exercised.
+type stubScopedAuth struct {
+	user  users.User
+	token string
+	scope string
+}
+
+func (a stubScopedAuth) Authenticate(ctx context.Context, token string) (users.User, error) {
+	user, _, err := a.AuthenticateScoped(ctx, token)
+	return user, err
+}
+
+func (a stubScopedAuth) AuthenticateScoped(_ context.Context, token string) (users.User, string, error) {
+	if token != a.token {
+		return users.User{}, "", apperr.ErrUnauthenticated
+	}
+	return a.user, a.scope, nil
+}
+
+// ScopedAuthenticator is optional, and StaticAuthenticator does not implement
+// it. That is what keeps cmd/mcp-server — the tailnet deployment in
+// skills/north-connect/SKILL.md — working with no change: a token from an
+// environment variable has always meant full access to the one configured
+// account, and authenticate must fall back to the plain interface rather than
+// assume the richer one.
+func TestScopedAuthenticationIsOptional(t *testing.T) {
+	user := newUser()
+
+	t.Run("a plain authenticator still authenticates", func(t *testing.T) {
+		// The compile-time half of the claim: if StaticAuthenticator ever
+		// grows AuthenticateScoped, this stops building and the fallback path
+		// stops being exercised anywhere.
+		var _ Authenticator = StaticAuthenticator{}
+		if _, ok := any(StaticAuthenticator{}).(ScopedAuthenticator); ok {
+			t.Fatal("StaticAuthenticator implements ScopedAuthenticator; " +
+				"the unscoped fallback in authenticate is now dead code")
+		}
+
+		static := StaticAuthenticator{
+			Token:  "tailnet-token",
+			UserID: user.ID,
+			Users:  stubUsers{user: user},
+		}
+
+		var reached bool
+		h := authenticate(Config{Auth: static}, discardLog(), okHandler(&reached))
+
+		req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+		req.Header.Set("Authorization", "Bearer tailnet-token")
+		h.ServeHTTP(httptest.NewRecorder(), req)
+
+		if !reached {
+			t.Fatal("a static token was rejected")
+		}
+	})
+
+	t.Run("a scoped authenticator's scope reaches the context", func(t *testing.T) {
+		for _, scope := range []string{"", ScopeRead, ScopeReadWrite} {
+			auth := stubScopedAuth{user: user, token: "tok", scope: scope}
+
+			var got string
+			var seen bool
+			h := authenticate(Config{Auth: auth}, discardLog(),
+				http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+					seen = true
+					got = scopeFrom(r.Context())
+				}))
+
+			req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+			req.Header.Set("Authorization", "Bearer tok")
+			h.ServeHTTP(httptest.NewRecorder(), req)
+
+			if !seen {
+				t.Fatalf("scope %q: the request did not reach the handler", scope)
+			}
+			if got != scope {
+				t.Errorf("scope on the context is %q, want %q", got, scope)
+			}
+		}
+	})
+}
+
+// writesAllowed is the one place that decides whether a token may change
+// anything, so its table is worth stating outright.
+func TestWritesAreAllowedOnlyForAFullScope(t *testing.T) {
+	for scope, want := range map[string]bool{
+		// Every token issued before scopes existed. The migration adding the
+		// column deliberately did not backfill it, so this must stay true.
+		"": true,
+
+		ScopeReadWrite: true,
+		ScopeRead:      false,
+
+		// Unrecognised. Fewer tools is the safe direction for a scope this
+		// build cannot honour.
+		"north:admin":                 false,
+		"NORTH:READ_WRITE":            false,
+		" north:read_write":           false,
+		"north:read_write x":          false,
+		"north:read north:read_write": false,
+	} {
+		if got := writesAllowed(scope); got != want {
+			t.Errorf("writesAllowed(%q) = %t, want %t", scope, got, want)
+		}
+	}
+}
+
+// The 401 carries a pointer to the RFC 9728 document when there is an
+// authorization server to discover, and does not when there is not.
+//
+// The empty case is cmd/mcp-server: a static token on a tailnet, whose header
+// must stay byte-for-byte what it was before OAuth existed.
+func TestTheChallengeHeaderPointsAtTheMetadataOnlyWhenConfigured(t *testing.T) {
+	const metadata = "https://north.test/.well-known/oauth-protected-resource/mcp"
+
+	for name, tc := range map[string]struct {
+		cfg  Config
+		want string
+	}{
+		"no authorization server": {
+			cfg:  Config{},
+			want: `Bearer realm="north-mcp"`,
+		},
+		"an authorization server": {
+			cfg:  Config{ResourceMetadataURL: metadata},
+			want: `Bearer realm="north-mcp", resource_metadata="` + metadata + `"`,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := challengeHeader(tc.cfg); got != tc.want {
+				t.Errorf("challengeHeader = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// Every rejection returns the identical header and status, whatever went
+// wrong. An expired token must be indistinguishable from one that never
+// existed.
+func TestEveryRejectionIsByteIdentical(t *testing.T) {
+	user := newUser()
+	auth := &stubScopedAuth{user: user, token: "correct-horse", scope: ScopeReadWrite}
+
+	cfg := Config{
+		Auth:                auth,
+		ResourceMetadataURL: "https://north.test/.well-known/oauth-protected-resource/mcp",
+	}
+
+	headers := map[string]string{}
+	bodies := map[string]string{}
+
+	for name, header := range map[string]string{
+		"absent":      "",
+		"wrong":       "Bearer nope",
+		"not bearer":  "Basic c2VjcmV0",
+		"empty":       "Bearer ",
+		"nk prefixed": "Bearer nk_looks_real_but_is_not",
+	} {
+		var reached bool
+		h := authenticate(cfg, discardLog(), okHandler(&reached))
+
+		req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+		if header != "" {
+			req.Header.Set("Authorization", header)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+
+		if reached {
+			t.Fatalf("%s reached the handler", name)
+		}
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("%s returned %d, want 401", name, rec.Code)
+		}
+		headers[name] = rec.Header().Get("WWW-Authenticate")
+		bodies[name] = rec.Body.String()
+	}
+
+	var firstName, firstHeader, firstBody string
+	for name := range headers {
+		if firstName == "" {
+			firstName, firstHeader, firstBody = name, headers[name], bodies[name]
+			continue
+		}
+		if headers[name] != firstHeader {
+			t.Errorf("%s answers with header %q but %s answers %q; they must match",
+				name, headers[name], firstName, firstHeader)
+		}
+		if bodies[name] != firstBody {
+			t.Errorf("%s answers with body %q but %s answers %q; they must match",
+				name, bodies[name], firstName, firstBody)
 		}
 	}
 }

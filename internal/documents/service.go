@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/NorthAIProject/north-client/internal/analytics"
 	"github.com/NorthAIProject/north-client/internal/documents/parse"
 	"github.com/NorthAIProject/north-client/internal/jobs"
 	"github.com/NorthAIProject/north-client/internal/search"
@@ -76,6 +77,15 @@ type Service struct {
 	// full-text only, which is what Khepri did before embeddings existed.
 	embeddings QueryEmbedder
 	logger     *slog.Logger
+
+	// funnel records a document arriving as a product event. Nil is a no-op.
+	funnel *analytics.Funnel
+}
+
+// WithFunnel attaches product analytics.
+func (s *Service) WithFunnel(f *analytics.Funnel) *Service {
+	s.funnel = f
+	return s
 }
 
 func NewService(repo *Repository, storage Storage, queue *jobs.Queue) *Service {
@@ -126,6 +136,7 @@ func (s *Service) CreateNote(ctx context.Context, userID uuid.UUID, title, body 
 	}
 
 	s.enqueueIndex(ctx, doc)
+	s.noteSource(ctx, userID)
 	return doc, nil
 }
 
@@ -189,6 +200,7 @@ func (s *Service) Upload(ctx context.Context, userID uuid.UUID, filename, mime s
 	}
 
 	s.enqueueIndex(ctx, doc)
+	s.noteSource(ctx, userID)
 	return doc, nil
 }
 
@@ -368,6 +380,17 @@ func (s *Service) log() *slog.Logger {
 		return s.logger
 	}
 	return slog.Default()
+}
+
+// noteSource records that the person has knowledge for the coach to quote.
+//
+// Emitted per document rather than only for the first one. Strava and Telegram
+// connect once, so their event is naturally singular; a document *is* the
+// source, and there is no connection moment to hang a single event on. Asking
+// "was this their first" would cost two queries on every upload to save a
+// property the funnel derives from first-occurrence anyway.
+func (s *Service) noteSource(ctx context.Context, userID uuid.UUID) {
+	s.funnel.SourceConnected(ctx, userID, analytics.SourceDocument)
 }
 
 // Counts and LatestRun back the knowledge page and the MCP status tool.

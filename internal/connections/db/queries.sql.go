@@ -7,15 +7,21 @@ package connectionsdb
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
 
 const getAgentConnectionByTokenHash = `-- name: GetAgentConnectionByTokenHash :one
-SELECT id, user_id, name, client_kind, token_hash, token_prefix, created_at, last_used_at, revoked_at FROM agent_connections
-WHERE token_hash = $1 AND revoked_at IS NULL
+SELECT id, user_id, name, client_kind, token_hash, token_prefix, created_at, last_used_at, revoked_at, scopes, expires_at, issuance, resource, oauth_client_id FROM agent_connections
+WHERE token_hash = $1
+  AND revoked_at IS NULL
+  AND (expires_at IS NULL OR expires_at > now())
 `
 
+// The expiry predicate covers OAuth access tokens, which last an hour. A
+// hand-issued token has a NULL expires_at and is unaffected, which is what
+// keeps every connection issued before OAuth existed working unchanged.
 func (q *Queries) GetAgentConnectionByTokenHash(ctx context.Context, tokenHash []byte) (AgentConnection, error) {
 	row := q.db.QueryRow(ctx, getAgentConnectionByTokenHash, tokenHash)
 	var i AgentConnection
@@ -29,6 +35,11 @@ func (q *Queries) GetAgentConnectionByTokenHash(ctx context.Context, tokenHash [
 		&i.CreatedAt,
 		&i.LastUsedAt,
 		&i.RevokedAt,
+		&i.Scopes,
+		&i.ExpiresAt,
+		&i.Issuance,
+		&i.Resource,
+		&i.OauthClientID,
 	)
 	return i, err
 }
@@ -36,7 +47,7 @@ func (q *Queries) GetAgentConnectionByTokenHash(ctx context.Context, tokenHash [
 const insertAgentConnection = `-- name: InsertAgentConnection :one
 INSERT INTO agent_connections (user_id, name, client_kind, token_hash, token_prefix)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, user_id, name, client_kind, token_hash, token_prefix, created_at, last_used_at, revoked_at
+RETURNING id, user_id, name, client_kind, token_hash, token_prefix, created_at, last_used_at, revoked_at, scopes, expires_at, issuance, resource, oauth_client_id
 `
 
 type InsertAgentConnectionParams struct {
@@ -66,16 +77,87 @@ func (q *Queries) InsertAgentConnection(ctx context.Context, arg InsertAgentConn
 		&i.CreatedAt,
 		&i.LastUsedAt,
 		&i.RevokedAt,
+		&i.Scopes,
+		&i.ExpiresAt,
+		&i.Issuance,
+		&i.Resource,
+		&i.OauthClientID,
+	)
+	return i, err
+}
+
+const insertOAuthGrant = `-- name: InsertOAuthGrant :one
+INSERT INTO agent_connections (
+    user_id, name, client_kind, token_hash, token_prefix,
+    scopes, expires_at, issuance, resource, oauth_client_id
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, 'oauth', $8, $9)
+RETURNING id, user_id, name, client_kind, token_hash, token_prefix, created_at, last_used_at, revoked_at, scopes, expires_at, issuance, resource, oauth_client_id
+`
+
+type InsertOAuthGrantParams struct {
+	UserID        uuid.UUID
+	Name          string
+	ClientKind    string
+	TokenHash     []byte
+	TokenPrefix   string
+	Scopes        string
+	ExpiresAt     *time.Time
+	Resource      string
+	OauthClientID *string
+}
+
+// InsertOAuthGrant creates the connection row for an approved consent.
+//
+// Same table as a hand-issued token, so one revoke button covers both kinds
+// and the settings page needs no second list. token_prefix is set once here
+// from the first access token and never updated by a rotation, so the page has
+// something stable to show; it stops being a prefix of the live token after
+// the first refresh, which is fine because it was only ever a label.
+func (q *Queries) InsertOAuthGrant(ctx context.Context, arg InsertOAuthGrantParams) (AgentConnection, error) {
+	row := q.db.QueryRow(ctx, insertOAuthGrant,
+		arg.UserID,
+		arg.Name,
+		arg.ClientKind,
+		arg.TokenHash,
+		arg.TokenPrefix,
+		arg.Scopes,
+		arg.ExpiresAt,
+		arg.Resource,
+		arg.OauthClientID,
+	)
+	var i AgentConnection
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Name,
+		&i.ClientKind,
+		&i.TokenHash,
+		&i.TokenPrefix,
+		&i.CreatedAt,
+		&i.LastUsedAt,
+		&i.RevokedAt,
+		&i.Scopes,
+		&i.ExpiresAt,
+		&i.Issuance,
+		&i.Resource,
+		&i.OauthClientID,
 	)
 	return i, err
 }
 
 const listAgentConnections = `-- name: ListAgentConnections :many
-SELECT id, user_id, name, client_kind, token_hash, token_prefix, created_at, last_used_at, revoked_at FROM agent_connections
+SELECT id, user_id, name, client_kind, token_hash, token_prefix, created_at, last_used_at, revoked_at, scopes, expires_at, issuance, resource, oauth_client_id FROM agent_connections
 WHERE user_id = $1 AND revoked_at IS NULL
 ORDER BY created_at DESC
 `
 
+// No expiry predicate here, deliberately. One row is one *grant*, not one
+// access token: an OAuth row's token_hash is rotated in place every hour, so a
+// past expires_at means "the access token needs refreshing", not "this
+// connection is gone". Filtering on it would make the settings page hide a
+// working connection an hour after it was made. The page renders the expired
+// state instead.
 func (q *Queries) ListAgentConnections(ctx context.Context, userID uuid.UUID) ([]AgentConnection, error) {
 	rows, err := q.db.Query(ctx, listAgentConnections, userID)
 	if err != nil {
@@ -95,6 +177,11 @@ func (q *Queries) ListAgentConnections(ctx context.Context, userID uuid.UUID) ([
 			&i.CreatedAt,
 			&i.LastUsedAt,
 			&i.RevokedAt,
+			&i.Scopes,
+			&i.ExpiresAt,
+			&i.Issuance,
+			&i.Resource,
+			&i.OauthClientID,
 		); err != nil {
 			return nil, err
 		}
@@ -121,6 +208,53 @@ type RevokeAgentConnectionParams struct {
 // second predicate a guessed id would revoke somebody else's connection.
 func (q *Queries) RevokeAgentConnection(ctx context.Context, arg RevokeAgentConnectionParams) (int64, error) {
 	result, err := q.db.Exec(ctx, revokeAgentConnection, arg.ID, arg.UserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const revokeGrantByID = `-- name: RevokeGrantByID :execrows
+UPDATE agent_connections
+SET revoked_at = now()
+WHERE id = $1 AND revoked_at IS NULL
+`
+
+// RevokeGrantByID turns off a connection without naming its owner.
+//
+// Deliberately unscoped, and safe only because of who calls it: the OAuth
+// revocation endpoint, where the caller has already proved possession of a
+// token belonging to this exact row, and the replay path, where the id came
+// from a code row rather than from a request. Never call it with an id that
+// came from a form — that is what RevokeAgentConnection below is for.
+func (q *Queries) RevokeGrantByID(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, revokeGrantByID, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const rotateAgentConnectionToken = `-- name: RotateAgentConnectionToken :execrows
+UPDATE agent_connections
+SET token_hash = $2,
+    expires_at = $3
+WHERE id = $1 AND revoked_at IS NULL AND issuance = 'oauth'
+`
+
+type RotateAgentConnectionTokenParams struct {
+	ID        uuid.UUID
+	TokenHash []byte
+	ExpiresAt *time.Time
+}
+
+// RotateAgentConnectionToken swaps in a freshly issued access token.
+//
+// An update rather than an insert, because a row per hourly token would grow
+// the settings list by twenty-four entries a day and turn one revoke button
+// into a chore. created_at stays the date the grant was approved.
+func (q *Queries) RotateAgentConnectionToken(ctx context.Context, arg RotateAgentConnectionTokenParams) (int64, error) {
+	result, err := q.db.Exec(ctx, rotateAgentConnectionToken, arg.ID, arg.TokenHash, arg.ExpiresAt)
 	if err != nil {
 		return 0, err
 	}

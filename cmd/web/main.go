@@ -50,6 +50,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/insights"
 	"github.com/NorthAIProject/north-client/internal/integrations"
 	"github.com/NorthAIProject/north-client/internal/jobs"
+	"github.com/NorthAIProject/north-client/internal/mcpauth"
 	"github.com/NorthAIProject/north-client/internal/mcpserver"
 	"github.com/NorthAIProject/north-client/internal/meals"
 	"github.com/NorthAIProject/north-client/internal/media"
@@ -676,7 +677,8 @@ func routes(
 
 	// Notes and uploaded documents. Bytes go to the same object storage as
 	// media; parsing and chunking happen on the worker, never here.
-	documentSvc := documents.NewService(documents.NewRepository(pool), storage, queue)
+	documentSvc := documents.NewService(documents.NewRepository(pool), storage, queue).
+		WithFunnel(funnel)
 
 	if embedder != nil {
 		documentSvc = documentSvc.WithEmbeddings(embedder, slog.Default())
@@ -840,7 +842,7 @@ func routes(
 	integrationSvc := integrations.NewService(
 		integrations.NewRepository(pool, sealer),
 		integrations.NewCalendarAdapter(integrations.NewClient()),
-	)
+	).WithFunnel(funnel)
 
 	// One account of what North has done, kept by both surfaces: the registry
 	// reports every capability it runs, and the coach reports the writes people
@@ -1098,6 +1100,22 @@ func routes(
 		}
 	}
 
+	// OAuth in front of /mcp, so connecting an agent is one pasted URL rather
+	// than a token copied into a configuration file.
+	//
+	// Built before the endpoint because the endpoint's 401 has to point at this
+	// server's discovery document: that pointer is how an unauthenticated
+	// client bootstraps itself instead of simply failing.
+	mcpAuthSvc := mcpauth.NewService(mcpauth.NewRepository(pool), connectionSvc, cfg.BaseURL).
+		WithFunnel(funnel)
+	mcpAuthMachine := mcpauth.NewMachineHandler(mcpAuthSvc, slog.Default(), cfg.TrustedProxies)
+
+	// The consent screen. It creates accounts, so it holds the auth service and
+	// the onboarding service rather than reimplementing either.
+	mcpAuthBrowser := mcpauth.NewBrowserHandler(
+		mcpAuthSvc, authSvc, authMW, onboardingSvc, slog.Default(), cfg.Env.IsProduction(),
+	).WithFunnel(funnel)
+
 	// The MCP endpoint an outside agent connects to.
 	//
 	// Every token resolves to its own owner, which is what makes this safe to
@@ -1124,6 +1142,13 @@ func routes(
 		TrustedProxies:    cfg.TrustedProxies,
 		Version:           mcpserver.Version,
 		Log:               slog.Default(),
+
+		Funnel: funnel,
+
+		// What the 401 points at. cmd/mcp-server leaves this empty and keeps
+		// the header it always had: a static token on a tailnet has no
+		// authorization server to discover.
+		ResourceMetadataURL: mcpAuthSvc.ResourceMetadataURL(),
 	})
 
 	r := chi.NewRouter()
@@ -1149,6 +1174,20 @@ func routes(
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.MaxBody(1 << 20))
 		r.Handle("/mcp", mcpEndpoint)
+	})
+
+	// OAuth's machine half sits beside /mcp for the same reasons and one more.
+	//
+	// A client fetching discovery has no session, a token request authenticates
+	// with a code rather than a cookie, and both need permissive CORS so a
+	// browser-based client can call them from its own page — which is the
+	// opposite of what the consent screen needs. The consent screen is
+	// therefore mounted in the session group further down, not here.
+	//
+	// A smaller cap than /mcp: everything here is a handful of short strings.
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.MaxBody(64 << 10))
+		mcpAuthMachine.Routes(r)
 	})
 
 	// /api/v1 sits beside /mcp for the same three reasons: no cookie, no form,
@@ -1214,6 +1253,14 @@ func routes(
 		// account's own setting. The other order would let a laptop's browser
 		// settings override what somebody chose in Khepri.
 		r.Use(middleware.Locale)
+		// Before LoadUser for the same reason as Locale: the snippet this feeds
+		// is rendered for signed-out visitors too, and the landing page is the
+		// one page whose numbers it exists to collect. LoadUser then adds the
+		// account id on top, for the identify call.
+		r.Use(middleware.Analytics(middleware.AnalyticsConfig{
+			APIKey: cfg.PostHog.APIKey,
+			Host:   cfg.PostHog.Host,
+		}))
 		r.Use(authMW.LoadUser)
 
 		mountAssets(r, cfg)
@@ -1238,6 +1285,15 @@ func routes(
 		r.Post("/locale", setLocale)
 
 		authHandler.Routes(r)
+
+		// The consent screen, inside this group rather than beside /mcp.
+		//
+		// It is a browser page: it reads the session cookie, resolves a locale,
+		// and renders a form with a CSRF token. Its machine half — discovery,
+		// registration, tokens — is mounted above, outside the group, because
+		// those need permissive CORS and no cookie. Chi routes exact paths, so
+		// splitting /oauth across the two groups is legal.
+		mcpAuthBrowser.Routes(r)
 
 		// Everything under /app requires a session.
 		r.Route("/app", func(r chi.Router) {

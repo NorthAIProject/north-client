@@ -197,7 +197,16 @@ func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.mw.ClearCookie(w)
-	http.Redirect(w, r, "/login", http.StatusSeeOther)
+
+	// Honouring next, the way submitLogin and the Google paths do. The consent
+	// screen's "not you?" needs it: signing out has to come back to the
+	// authorization request rather than stranding somebody on /login with an
+	// agent still waiting. SafeRedirect keeps it a local path.
+	redirect := "/login"
+	if next := r.PostFormValue("next"); SafeRedirect(next) {
+		redirect = next
+	}
+	http.Redirect(w, r, redirect, http.StatusSeeOther)
 }
 
 // ---------------------------------------------------------------------------
@@ -360,7 +369,15 @@ func (h *Handler) passkeyRegisterFinish(w http.ResponseWriter, r *http.Request) 
 	}
 	h.mw.SetCookie(w, token, tokenExpiry(h.svc))
 	middleware.FromContext(r.Context()).Info("account created with passkey", slog.String("user_id", user.ID.String()))
-	writeJSON(w, http.StatusOK, map[string]string{"redirect": h.home})
+
+	// Same as passkeyLoginFinish. Registering with a passkey landed on the
+	// home page even when the request asked to go somewhere else, which made
+	// the two ceremonies disagree about a parameter both accept.
+	redirect := h.home
+	if next := r.URL.Query().Get("next"); SafeRedirect(next) {
+		redirect = next
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"redirect": redirect})
 }
 
 func (h *Handler) passkeyLoginBegin(w http.ResponseWriter, r *http.Request) {

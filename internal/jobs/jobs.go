@@ -83,6 +83,17 @@ const (
 	// it, which is what this sweep exists to catch.
 	KindSweepMemories Kind = "sweep_memories"
 
+	// KindSweepOAuth removes the short-lived rows the agent connector leaves
+	// behind: spent authorization requests and codes, dead refresh tokens, and
+	// client registrations that never produced a grant.
+	//
+	// That last one is the load-bearing part. Dynamic registration is open,
+	// because a gate in the middle of the flow would undo the one thing it
+	// exists for — and a native client registers a new row on every launch,
+	// since its callback port changes each time. Without this sweep the table
+	// grows for as long as anybody uses the feature.
+	KindSweepOAuth Kind = "sweep_oauth"
+
 	// KindSweepQuotas drops rate-limit windows that have already closed.
 	//
 	// Nothing reads a closed window — a request always lands in the current one

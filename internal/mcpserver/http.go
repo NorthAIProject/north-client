@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/NorthAIProject/north-client/internal/analytics"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/NorthAIProject/north-client/internal/shared/ratelimit"
@@ -47,6 +48,48 @@ type Authenticator interface {
 	// failure must be indistinguishable to the caller: naming which part was
 	// wrong tells an unauthenticated client something it has not earned.
 	Authenticate(ctx context.Context, token string) (users.User, error)
+}
+
+// Scopes an access token can carry.
+//
+// Two, deliberately. Read and write as one credential is what every token
+// issued by hand is, and is honestly a lot to hand a third party; anything
+// finer than this needs a vocabulary, and a vocabulary needs a reason.
+const (
+	ScopeRead      = "north:read"
+	ScopeReadWrite = "north:read_write"
+)
+
+// ScopedAuthenticator is an Authenticator that also reports what the token is
+// allowed to do.
+//
+// Optional. StaticAuthenticator does not implement it, which is why
+// cmd/mcp-server needs no change — a token from an environment variable has
+// always meant full access to the one configured account.
+//
+// It returns the scope as a string rather than a richer type so that
+// implementing it costs an implementation nothing but the column it already
+// stores. A shared struct would mean this package importing the one that
+// stores it, and not importing it is the entire point of Authenticator.
+type ScopedAuthenticator interface {
+	AuthenticateScoped(ctx context.Context, token string) (users.User, string, error)
+}
+
+// writesAllowed reports whether a scope may call the tools that change
+// something.
+//
+// Empty means full access, because that is what every token issued before
+// scopes existed stores, and the migration that added the column deliberately
+// did not backfill it. Anything unrecognised is refused instead: a scope this
+// build does not know is a scope it cannot honour, and the safe direction for
+// an unknown is fewer tools rather than all of them.
+func writesAllowed(scope string) bool {
+	switch scope {
+	case "", ScopeReadWrite:
+		return true
+	default:
+		return false
+	}
 }
 
 // UserLoader is the slice of users.Service StaticAuthenticator needs.
@@ -95,6 +138,21 @@ type Config struct {
 
 	// RequestsPerMinute bounds one account's call rate. Zero uses the default.
 	RequestsPerMinute int
+
+	// Funnel records that an outside agent actually called something, which
+	// is what separates a token that was stored from one that is used. Nil is
+	// a no-op, like everywhere else.
+	Funnel *analytics.Funnel
+
+	// ResourceMetadataURL points a client at the RFC 9728 document describing
+	// which authorization server guards this endpoint. Appended to the
+	// WWW-Authenticate header on a 401, which is how an unauthenticated client
+	// bootstraps itself instead of simply failing.
+	//
+	// Empty leaves the header exactly as it was before OAuth existed. That is
+	// what cmd/mcp-server gets: a static token from an environment variable on
+	// a tailnet, with no authorization server to discover.
+	ResourceMetadataURL string
 
 	// TrustedProxies decide whether X-Forwarded-For may be believed when
 	// keying the pre-authentication throttle. Empty keys on the peer, which
@@ -164,7 +222,7 @@ func Endpoint(cfg Config) http.Handler {
 			return s
 		}
 
-		Register(s, cfg.Services, user)
+		RegisterWithFunnel(s, cfg.Services, user, scopeFrom(req.Context()), cfg.Funnel)
 		return s
 	}, nil)
 
@@ -286,20 +344,58 @@ func userFrom(ctx context.Context) (users.User, bool) {
 	return u, ok
 }
 
+// scopeKey rides beside userKey rather than being folded into it, so the
+// existing userFrom callers are untouched by scopes existing.
+type scopeKey struct{}
+
+func scopeFrom(ctx context.Context) string {
+	s, _ := ctx.Value(scopeKey{}).(string)
+	return s
+}
+
+// challengeHeader is the WWW-Authenticate value every 401 from this endpoint
+// carries.
+//
+// One constant string for every failure — absent, malformed, unknown, revoked
+// and expired alike. RFC 6750 permits adding error="invalid_token" or
+// error="expired_token", and clients would accept it; it must not be used,
+// because an expired-versus-unknown distinction confirms that a guessed token
+// once existed. There is a test pinning the byte equality.
+func challengeHeader(cfg Config) string {
+	if cfg.ResourceMetadataURL == "" {
+		return `Bearer realm="north-mcp"`
+	}
+	return `Bearer realm="north-mcp", resource_metadata="` + cfg.ResourceMetadataURL + `"`
+}
+
 // authenticate resolves the bearer token to an account and puts it on the
 // request context for everything downstream.
 func authenticate(cfg Config, log *slog.Logger, next http.Handler) http.Handler {
+	challenge := challengeHeader(cfg)
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token, ok := bearer(r)
 		if !ok {
-			unauthorized(w, log, r)
+			unauthorized(w, log, r, challenge)
 			return
 		}
 
-		user, err := cfg.Auth.Authenticate(r.Context(), token)
+		// One call, whichever interface the configured authenticator satisfies.
+		// A ScopedAuthenticator reports the scope alongside the account; a
+		// plain one reports no scope, which writesAllowed reads as full access.
+		var (
+			user  users.User
+			scope string
+			err   error
+		)
+		if scoped, ok := cfg.Auth.(ScopedAuthenticator); ok {
+			user, scope, err = scoped.AuthenticateScoped(r.Context(), token)
+		} else {
+			user, err = cfg.Auth.Authenticate(r.Context(), token)
+		}
 		if err != nil {
 			if apperr.Is(err, apperr.ErrUnauthenticated) || apperr.Is(err, apperr.ErrNotFound) {
-				unauthorized(w, log, r)
+				unauthorized(w, log, r, challenge)
 				return
 			}
 			// A lookup that failed for any other reason is North's problem, not
@@ -311,13 +407,15 @@ func authenticate(cfg Config, log *slog.Logger, next http.Handler) http.Handler 
 			return
 		}
 
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), userKey{}, user)))
+		ctx := context.WithValue(r.Context(), userKey{}, user)
+		ctx = context.WithValue(ctx, scopeKey{}, scope)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
-func unauthorized(w http.ResponseWriter, log *slog.Logger, r *http.Request) {
+func unauthorized(w http.ResponseWriter, log *slog.Logger, r *http.Request, challenge string) {
 	log.Warn("mcp request rejected", slog.String("remote", r.RemoteAddr))
-	w.Header().Set("WWW-Authenticate", `Bearer realm="north-mcp"`)
+	w.Header().Set("WWW-Authenticate", challenge)
 	http.Error(w, "unauthorized", http.StatusUnauthorized)
 }
 

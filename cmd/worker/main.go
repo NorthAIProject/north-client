@@ -38,6 +38,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/hydration"
 	"github.com/NorthAIProject/north-client/internal/insights"
 	"github.com/NorthAIProject/north-client/internal/jobs"
+	"github.com/NorthAIProject/north-client/internal/mcpauth"
 	"github.com/NorthAIProject/north-client/internal/meals"
 	"github.com/NorthAIProject/north-client/internal/media"
 	"github.com/NorthAIProject/north-client/internal/memories"
@@ -313,6 +314,9 @@ func run() error {
 	// Reclaiming space, nothing more: a closed rate-limit window is never read
 	// again. Daily rather than hourly because the rows are tiny and keeping a
 	// day of them is what lets an operator explain a refusal after the fact.
+	worker.Register(jobs.KindSweepOAuth,
+		mcpauth.NewService(mcpauth.NewRepository(pool), nil, cfg.BaseURL).
+			WithLogger(log).HandleSweep)
 	worker.Register(jobs.KindSweepQuotas,
 		quota.NewService(quota.NewRepository(pool), quota.Limits{}, nil).HandleSweep)
 
@@ -375,6 +379,11 @@ func run() error {
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepSummaries, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepStrava, struct{}{})
 	worker.RegisterPeriodic(24*time.Hour, jobs.KindSweepQuotas, struct{}{})
+
+	// Daily. Nothing here is urgent — the rows it removes are already expired
+	// and unusable — and one replica runs this, so a shorter interval would
+	// buy nothing but writes.
+	worker.RegisterPeriodic(24*time.Hour, jobs.KindSweepOAuth, struct{}{})
 
 	log.Info("worker ready",
 		slog.String("ai_provider", registry.DefaultName()),

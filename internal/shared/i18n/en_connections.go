@@ -16,10 +16,20 @@ var englishConnections = map[string]string{
 	"conn.issued.prompt.note": "Or paste this into the agent itself and let it do the setup. It sends the key to whichever model that agent runs on, so use it with an agent you would trust with your coaching data — and revoke the key here if you change your mind.",
 	"conn.issued.prompt":      "Setup prompt",
 
+	// The one-URL card, which now leads the page. The manual key below it is
+	// a fallback rather than a peer — headless machines have no browser, so it
+	// stays, but presenting the two as equals is what made people reach for
+	// the file-editing one first.
+	"conn.url.title":  "Paste this into your agent",
+	"conn.url.desc":   "Claude Code, Claude Desktop, Codex — anything that speaks MCP. It opens a browser, you approve once, and it never sees a key.",
+	"conn.url.label":  "Connector URL",
+	"conn.url.manual": "No browser on that machine?",
+
 	"conn.list.title":   "Connected agents",
 	"conn.list.desc":    "Every one of these can read and write your coaching data. Revoke anything you do not recognise.",
 	"conn.list.empty":   "Nothing connected yet.",
 	"conn.list.waiting": "waiting for first use…",
+	"conn.list.expired": "will refresh on next use",
 
 	"conn.revoke":       "Revoke",
 	"conn.revoke.title": "Revoke %[1]s?",
