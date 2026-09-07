@@ -186,8 +186,17 @@ func TestTheErrorPageRendersTheReason(t *testing.T) {
 	if !strings.Contains(out, reason) {
 		t.Error("the error page does not say what went wrong")
 	}
-	// Nothing on it may lead back to the untrusted destination.
+
+	// Nothing on the page leads back to the untrusted destination. Note that
+	// this component renders no request URL of its own — the layout's language
+	// switcher does, from middleware.Path, which is why the handler renders
+	// this page with that path neutralised. See BrowserHandler.neutralPath;
+	// without it, an attacker-supplied redirect_uri ends up in a form action
+	// on our own page.
 	if strings.Contains(out, "redirect_uri") {
 		t.Error("the error page mentions the redirect uri")
+	}
+	if strings.Contains(out, "evil.example") {
+		t.Error("the error page reflects a destination it was given")
 	}
 }
