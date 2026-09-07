@@ -1,6 +1,9 @@
 package ui
 
-import "github.com/NorthAIProject/north-client/web/shared/ui/button"
+import (
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+)
 
 // Navbar is the marketing header. It used to assume it was only ever seen by
 // visitors who are not logged in — but `/` is public and renders for everyone,
@@ -18,14 +21,14 @@ templ Navbar(signedIn bool) {
 				@ThemeSwitcher()
 				if signedIn {
 					@button.Button(button.Props{Size: button.SizeSm, Href: "/app", Class: "bg-signal text-background hover:bg-signal/90"}) {
-						Open Khepri
+						{ i18n.T(ctx, "land.cta.open") }
 					}
 				} else {
 					@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Href: "/login"}) {
-						Sign in
+						{ i18n.T(ctx, "land.cta.signin") }
 					}
 					@button.Button(button.Props{Size: button.SizeSm, Href: "/signup", Class: "bg-signal text-background hover:bg-signal/90"}) {
-						Get started
+						{ i18n.T(ctx, "land.nav.started") }
 					}
 				}
 			</div>

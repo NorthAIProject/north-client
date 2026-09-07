@@ -1,8 +1,10 @@
 package landing
 
 import (
+	"context"
 	"fmt"
 
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/ui/badge"
@@ -92,23 +94,21 @@ templ sectionHeading(eyebrow string, title string, body string) {
 
 templ hero() {
 	<section class="relative pb-24 pt-16 md:pt-24">
-		@waypoint("Day 1")
+		@waypoint(i18n.T(ctx, "land.waypoint.day1"))
 		<div class="grid items-start gap-14 lg:grid-cols-[minmax(0,1fr)_25rem] lg:gap-16">
 			<div>
 				@badge.Badge(badge.Props{Variant: badge.VariantOutline, Class: "h-auto max-w-full gap-2 whitespace-normal border-hairline bg-surface/60 py-1 pl-1.5 pr-3 text-left"}) {
 					<span class="flex size-5 items-center justify-center rounded-full bg-signal/15 text-signal">
 						@icon.Compass(icon.Props{Class: "size-3"})
 					</span>
-					@monoLabel("An operating system for personal growth")
+					@monoLabel(i18n.T(ctx, "land.hero.badge"))
 				}
 				<h1 class="mt-7 text-[clamp(2.5rem,6vw,4.25rem)] font-medium leading-[0.98] tracking-[-0.035em] text-balance">
-					Most AI forgets you by Tuesday.
-					<span class="block text-muted-foreground">Khepri has been keeping notes since March.</span>
+					{ i18n.T(ctx, "land.hero.h1a") }
+					<span class="block text-muted-foreground">{ i18n.T(ctx, "land.hero.h1b") }</span>
 				</h1>
 				<p class="mt-7 max-w-[54ch] text-lg leading-relaxed text-muted-foreground">
-					One coach with one memory — on the web, in Telegram, and inside any tool
-					that speaks MCP. It holds your goals, your training, the photos you send,
-					your documents, and every check-in you have ever written.
+					{ i18n.T(ctx, "land.hero.lede") }
 				</p>
 				<div class="mt-9 flex flex-wrap items-center gap-3">
 					@button.Button(button.Props{Href: ctaHref(ctx), Size: button.SizeLg, Class: "bg-signal text-background hover:bg-signal/90"}) {
@@ -116,12 +116,12 @@ templ hero() {
 						@icon.ArrowRight(icon.Props{Class: "size-4"})
 					}
 					@button.Button(button.Props{Href: "#product-film", Size: button.SizeLg, Variant: button.VariantOutline, Class: "border-hairline"}) {
-						See it work
+						{ i18n.T(ctx, "land.hero.see") }
 					}
 				</div>
 				<p class="mt-5 flex items-center gap-2 text-sm text-muted-foreground">
 					@icon.Check(icon.Props{Class: "size-3.5 text-signal"})
-					Free while you find out whether it sticks. No card.
+					{ i18n.T(ctx, "land.hero.free") }
 				</p>
 			</div>
 			@heroThread()
@@ -137,12 +137,12 @@ templ heroFilm() {
 	<div id="product-film" class="mt-16">
 		<div class="mb-4 flex flex-wrap items-end justify-between gap-3">
 			<div>
-				@monoLabel("Product film · 4s")
+				@monoLabel(i18n.T(ctx, "land.film.label"))
 				<p class="mt-2 max-w-[54ch] text-sm leading-relaxed text-muted-foreground">
-					One memory across surfaces — coaching thread, goals, training anatomy, check-ins.
+					{ i18n.T(ctx, "land.film.desc") }
 				</p>
 			</div>
-			@monoLabel("Autoplay · silent loop")
+			@monoLabel(i18n.T(ctx, "land.film.autoplay"))
 		</div>
 		<div class="overflow-hidden rounded-xl border border-hairline bg-surface shadow-[0_0_0_1px_color-mix(in_oklab,var(--north-signal)_12%,transparent)]">
 			// The id is not styling: the 3D world binds a VideoTexture to this exact
@@ -157,7 +157,7 @@ templ heroFilm() {
 				playsinline
 				preload="metadata"
 				poster="/assets/video/north-hero-poster.webp"
-				aria-label="Khepri product film: persistent coaching memory across web and messaging surfaces"
+				aria-label={ i18n.T(ctx, "land.film.aria") }
 			>
 				<source src="/assets/video/north-hero.mp4" type="video/mp4"/>
 			</video>
@@ -171,11 +171,11 @@ templ heroFilm() {
 templ heroThread() {
 	<div class="rounded-xl border border-hairline bg-surface p-5 md:p-6">
 		<div class="flex items-center justify-between pb-5">
-			@monoLabel("One thread")
-			@monoLabel("Mar — Aug")
+			@monoLabel(i18n.T(ctx, "land.thread.one"))
+			@monoLabel(i18n.T(ctx, "land.thread.span"))
 		</div>
 		<ol class="space-y-5 border-l border-hairline pl-5">
-			for i, e := range heroThreadEntries() {
+			for i, e := range heroThreadEntries(ctx) {
 				@threadEntry(e, i)
 			}
 		</ol>
@@ -190,13 +190,17 @@ type threadTurn struct {
 	Body     string
 }
 
-func heroThreadEntries() []threadTurn {
+// Surface names are product names and stay as they are. The dates and the
+// messages come from the catalogue, and each language names its own mountain:
+// a Portuguese national park in the Spanish copy is the clearest possible sign
+// that the page was written for somebody else.
+func heroThreadEntries(ctx context.Context) []threadTurn {
 	return []threadTurn{
-		{"Mar 14", "Web", true, "Starting over. Bad back, three days a week, and I want to hike Peneda-Gerês in September."},
-		{"Mar 14", "Web", false, "Then we build around the back first. Six weeks of hinge tolerance before anything gets heavy."},
-		{"Apr 02", "Telegram", true, "Deadlifted 60kg today. Nothing hurt."},
-		{"May 19", "WhatsApp", false, "Fourth session in a row with no pain. That is the signal I was waiting for — moving you into the loading block."},
-		{"Aug 03", "Discord", false, "Gerês is five weeks out. Your longest carry so far is 40 minutes. We should get that to 90."},
+		{i18n.T(ctx, "land.thread.1.date"), "Web", true, i18n.T(ctx, "land.thread.1.body")},
+		{i18n.T(ctx, "land.thread.2.date"), "Web", false, i18n.T(ctx, "land.thread.2.body")},
+		{i18n.T(ctx, "land.thread.3.date"), "Telegram", true, i18n.T(ctx, "land.thread.3.body")},
+		{i18n.T(ctx, "land.thread.4.date"), "WhatsApp", false, i18n.T(ctx, "land.thread.4.body")},
+		{i18n.T(ctx, "land.thread.5.date"), "Discord", false, i18n.T(ctx, "land.thread.5.body")},
 	}
 }
 

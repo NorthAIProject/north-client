@@ -1,0 +1,116 @@
+package i18n
+
+// portugueseBrazilianLanding is the marketing page in Brazilian Portuguese.
+//
+// Not pt-PT with the accents moved. "Você" throughout, the gerund where
+// European Portuguese uses "a" + infinitive, and the hike is the Serra da
+// Mantiqueira rather than Peneda-Gerês: a Brazilian reader should recognise the
+// example, and a Portuguese national park in the example sentence is the
+// clearest possible sign that the copy was written for somebody else.
+var portugueseBrazilianLanding = map[string]string{
+	"land.waypoint.day1":   "Dia 1",
+	"land.waypoint.month8": "Mês 8",
+	"land.waypoint.year2":  "Ano 2",
+
+	"land.hero.badge": "Um sistema operacional para crescimento pessoal",
+	"land.hero.h1a":   "A maior parte das IAs já esqueceu você na terça.",
+	"land.hero.h1b":   "O Khepri vem anotando desde março.",
+	"land.hero.lede":  "Um treinador com uma memória — na web, no Telegram e dentro de qualquer ferramenta que fale MCP. Ele guarda seus objetivos, seus treinos, as fotos que você manda, seus documentos e todos os registros que você já escreveu.",
+	"land.hero.see":   "Veja funcionando",
+	"land.hero.free":  "Grátis enquanto você descobre se pega. Sem cartão.",
+
+	"land.film.label":    "Filme do produto · 4s",
+	"land.film.desc":     "Uma memória em várias telas — conversa com o treinador, objetivos, anatomia do treino, registros.",
+	"land.film.autoplay": "Reprodução automática · sem som",
+	"land.film.aria":     "Filme do produto Khepri: memória de treino persistente na web e nos apps de mensagem",
+
+	"land.thread.one":  "Uma conversa",
+	"land.thread.span": "Mar — Ago",
+
+	"land.thread.1.date": "14 mar",
+	"land.thread.1.body": "Começando de novo. Coluna ruim, três dias por semana, e quero encarar a Serra da Mantiqueira em setembro.",
+	"land.thread.2.date": "14 mar",
+	"land.thread.2.body": "Então a gente constrói em volta da coluna primeiro. Seis semanas de tolerância ao movimento de quadril antes de colocar carga.",
+	"land.thread.3.date": "02 abr",
+	"land.thread.3.body": "Fiz levantamento terra com 60kg hoje. Não doeu nada.",
+	"land.thread.4.date": "19 mai",
+	"land.thread.4.body": "Quarto treino seguido sem dor. Esse é o sinal que eu estava esperando — vou te passar para o bloco de carga.",
+	"land.thread.5.date": "03 ago",
+	"land.thread.5.body": "Faltam cinco semanas para a Mantiqueira. Sua caminhada mais longa até agora foi de 40 minutos. Precisamos chegar aos 90.",
+
+	"land.feat.eyebrow": "O que você recebe",
+	"land.feat.title":   "Feito para continuar útil no oitavo mês.",
+	"land.feat.1.name":  "Memória persistente",
+	"land.feat.1.body":  "Cada objetivo, treino, registro e comentário solto fica guardado. O Khepri lê meses atrás, não as últimas dez mensagens, então a lesão que você mencionou em março continua moldando o plano em setembro.",
+	"land.feat.2.name":  "Treino que entende o contexto",
+	"land.feat.2.body":  "Antes de responder, o Khepri junta o que sabe: objetivos ativos, o treino desta semana, seus documentos, sua agenda, como você tem dormido. O conselho chega já ajustado à sua vida.",
+	"land.feat.3.name":  "Em todo lugar, e dentro das suas ferramentas",
+	"land.feat.3.body":  "A web e o Telegram compartilham uma memória. Mande uma foto por qualquer um dos dois. Via MCP, o Khepri também consegue agir — ler suas notas, criar um registro, puxar um resumo — a partir do agente que você já usa.",
+	"land.feat.4.name":  "Inteligência de treino",
+	"land.feat.4.body":  "O Strava entra como resumo, não como despejo de atividades. Os planos respeitam o equipamento que você realmente tem. Manda um vídeo da execução ou uma foto e você recebe correções, não sermão.",
+	"land.feat.5.name":  "O conhecimento que você já tem",
+	"land.feat.5.body":  "Joga ali os estudos, os PDFs, as anotações do fisioterapeuta. O Khepri busca neles quando são relevantes e cita o que usou, em vez de fingir que lembra.",
+
+	"land.how.eyebrow": "Como funciona",
+	"land.how.title":   "Acontecem quatro coisas.",
+	"land.how.1.when":  "Minuto um",
+	"land.how.1.name":  "Diga para onde você vai",
+	"land.how.1.body":  "Com as suas palavras, mesmo mal. O Khepri transforma isso em um objetivo, um horizonte e uma primeira semana.",
+	"land.how.2.when":  "Semana um",
+	"land.how.2.name":  "Ele constrói o contexto",
+	"land.how.2.body":  "Seu equipamento, seus limites, sua agenda, seus documentos. O plano é montado a partir do que é verdade sobre você, não de um modelo.",
+	"land.how.3.when":  "Toda semana depois disso",
+	"land.how.3.name":  "Você só vive",
+	"land.how.3.body":  "Registre pelo app que estiver na sua mão. Uma frase basta. O Khepri está mantendo a conta.",
+	"land.how.4.when":  "Mês três",
+	"land.how.4.name":  "Ele muda o plano primeiro",
+	"land.how.4.body":  "Quando o padrão muda — sono, dor, um bloco perdido — o Khepri se move antes de você desistir, e conta o que viu.",
+
+	"land.vision.eyebrow": "Por que estamos construindo isso",
+	"land.vision.quote":   "O que era útil nunca foi a resposta. Era alguém ter olhado por tempo suficiente para notar o padrão.",
+	"land.vision.body":    "Um bom treinador não é mais inteligente que a internet. Um bom treinador sabe que você sempre desiste na quinta semana, que você mente sobre o sono, e que na última vez que tentou isso você se machucou fazendo algo que te disseram para não fazer. Esse conhecimento leva meses para construir e é o produto inteiro. O Khepri não está tentando ser um chatbot melhor — está tentando ser aquilo que vem prestando atenção.",
+	"land.vision.1.value": "Seis meses",
+	"land.vision.1.body":  "O horizonte contra o qual os planos são escritos, não o treino que está na sua frente.",
+	"land.vision.2.value": "Duas telas",
+	"land.vision.2.body":  "Web e Telegram — e uma memória atrás das duas.",
+	"land.vision.3.value": "Zero",
+	"land.vision.3.body":  "Vezes que você explica de novo sua lesão, seu equipamento, ou para o que está treinando.",
+
+	"land.price.eyebrow":     "Preços",
+	"land.price.title":       "Um plano hoje. O outro quando for real.",
+	"land.price.free":        "Grátis",
+	"land.price.free.amount": "€ 0",
+	"land.price.free.period": "hoje",
+	"land.price.free.blurb":  "O produto inteiro. Não tem nada guardado atrás de um plano que ainda não existe.",
+	"land.price.free.1":      "O treinador na web e no Telegram, uma memória atrás dos dois",
+	"land.price.free.2":      "Planos de treino, com ilustrações animadas na maioria dos movimentos",
+	"land.price.free.3":      "Análise de execução — manda um vídeo, recebe correções",
+	"land.price.free.4":      "Notas de voz na web, transcritas e arquivadas",
+	"land.price.free.5":      "Strava, Google Calendar e os seus PDFs",
+	"land.price.free.6":      "Acesso MCP a partir dos seus agentes e editores",
+	"land.price.free.cta":    "Começar de graça",
+	"land.price.pro":         "Pro",
+	"land.price.pro.amount":  "€ 15",
+	"land.price.pro.period":  "por mês, algum dia",
+	"land.price.pro.blurb":   "Ainda não está disponível, e nada na sua conta depende disso. Quando manter o Khepri começar a custar dinheiro de verdade, é aqui que ficam os limites — não os recursos.",
+	"land.price.pro.1":       "Tudo do plano grátis, continua lá",
+	"land.price.pro.2":       "Limites mais altos na análise de execução e nos documentos",
+	"land.price.pro.3":       "A cadeia de modelos mais forte para planejar e revisar",
+	"land.price.pro.badge":   "Em breve",
+	"land.price.pro.nothing": "Ainda não tem nada para fazer aqui",
+	"land.price.footnote":    "Não tem nada para pagar e nada para cancelar. Sua memória é exportável, e é sua.",
+
+	"land.cta.title":   "Em seis meses ele vai saber coisas sobre você que você já esqueceu.",
+	"land.cta.body":    "Isso só funciona se começar agora. A primeira conversa é a mais curta que você vai ter com ele.",
+	"land.cta.signin":  "Entrar",
+	"land.cta.create":  "Criar sua conta",
+	"land.cta.open":    "Abrir o Khepri",
+	"land.nav.started": "Começar",
+
+	"land.footer.tagline": "Khepri — um sistema operacional para crescimento pessoal",
+	"land.footer.privacy": "Privacidade",
+	"land.footer.terms":   "Termos",
+	"land.footer.source":  "Código",
+
+	"legal.english": "Esta página está disponível somente em inglês. O texto em inglês é a versão que vale.",
+}
