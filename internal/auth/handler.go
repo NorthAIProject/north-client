@@ -197,7 +197,16 @@ func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.mw.ClearCookie(w)
-	http.Redirect(w, r, "/login", http.StatusSeeOther)
+
+	// Honouring next, the way submitLogin and the Google paths do. The consent
+	// screen's "not you?" needs it: signing out has to come back to the
+	// authorization request rather than stranding somebody on /login with an
+	// agent still waiting. SafeRedirect keeps it a local path.
+	redirect := "/login"
+	if next := r.PostFormValue("next"); SafeRedirect(next) {
+		redirect = next
+	}
+	http.Redirect(w, r, redirect, http.StatusSeeOther)
 }
 
 // ---------------------------------------------------------------------------

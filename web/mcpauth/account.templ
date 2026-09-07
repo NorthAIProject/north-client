@@ -1,0 +1,226 @@
+package mcpauth
+
+import (
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/alert"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/form"
+	"github.com/NorthAIProject/north-client/web/shared/ui/input"
+	"github.com/NorthAIProject/north-client/web/shared/ui/label"
+)
+
+// AccountForm is the inline signup or sign-in state.
+//
+// It lives inside the consent card rather than on /signup, and that is the
+// whole novelty: the OAuth window is the window the account is created in, so
+// nothing has to survive a trip to another page and back.
+type AccountForm struct {
+	// Mode is "signup" or "login". Signup is the default, because the person
+	// this screen exists for does not have an account yet.
+	Mode string
+
+	DisplayName string
+	Email       string
+
+	// Error is a single form-level message, and FieldErrors are the per-field
+	// ones. Both come back from internal/auth rather than being re-derived
+	// here — this handler delegates registration, it does not reimplement it.
+	Error       string
+	FieldErrors map[string]string
+
+	GoogleEnabled  bool
+	PasskeyEnabled bool
+}
+
+func (a AccountForm) isLogin() bool { return a.Mode == "login" }
+
+// Account renders the create-account block, or the sign-in block behind its
+// toggle.
+templ Account(f ConsentForm) {
+	<div class="space-y-5">
+		<div>
+			<h2 class="text-sm font-medium">
+				if f.Account.isLogin() {
+					{ i18n.T(ctx, "oauth.signin.title") }
+				} else {
+					{ i18n.T(ctx, "oauth.new.title") }
+				}
+			</h2>
+			if !f.Account.isLogin() {
+				<p class="mt-1 text-xs text-muted-foreground">
+					{ i18n.T(ctx, "oauth.new.desc") }
+				</p>
+			}
+		</div>
+		if f.Account.Error != "" {
+			@alert.Alert(alert.Props{Variant: alert.VariantDestructive}) {
+				@alert.Description() {
+					{ f.Account.Error }
+				}
+			}
+		}
+		@altAuth(f)
+		<form
+			hx-post={ "/oauth/authorize/account?request_id=" + f.RequestID }
+			hx-target="#consent-card"
+			hx-swap="outerHTML"
+			class="space-y-4"
+		>
+			@ui.CSRFInput()
+			<input type="hidden" name="mode" value={ f.Account.Mode }/>
+			if !f.Account.isLogin() {
+				@form.Item() {
+					@label.Label(label.Props{For: "display_name"}) {
+						{ i18n.T(ctx, "oauth.new.name") }
+					}
+					@input.Input(input.Props{
+						ID:          "display_name",
+						Name:        "display_name",
+						Value:       f.Account.DisplayName,
+						Required:    true,
+						Attributes:  templ.Attributes{"autocomplete": "name"},
+						HasError:    f.Account.FieldErrors["display_name"] != "",
+					})
+					if msg := f.Account.FieldErrors["display_name"]; msg != "" {
+						@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+							{ msg }
+						}
+					}
+				}
+			}
+			@form.Item() {
+				@label.Label(label.Props{For: "email"}) {
+					{ i18n.T(ctx, "oauth.new.email") }
+				}
+				@input.Input(input.Props{
+					ID:         "email",
+					Name:       "email",
+					Type:       "email",
+					Value:      f.Account.Email,
+					Required:   true,
+					Attributes: templ.Attributes{"autocomplete": "email"},
+					HasError:   f.Account.FieldErrors["email"] != "",
+				})
+				if msg := f.Account.FieldErrors["email"]; msg != "" {
+					@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+						{ msg }
+					}
+				}
+			}
+			@form.Item() {
+				@label.Label(label.Props{For: "password"}) {
+					{ i18n.T(ctx, "oauth.new.password") }
+				}
+				// One password field, not two. This is a conversion surface
+				// with an agent waiting on the other side of it: a mistyped
+				// password is recoverable by reset, and a mistyped email is
+				// not — so type=email and autocomplete carry more weight here
+				// than a confirmation box would.
+				@input.Input(input.Props{
+					ID:       "password",
+					Name:     "password",
+					Type:     "password",
+					Required: true,
+					Attributes: templ.Attributes{
+						"autocomplete": templ.KV("new-password", !f.Account.isLogin()),
+					},
+					HasError: f.Account.FieldErrors["password"] != "",
+				})
+				if msg := f.Account.FieldErrors["password"]; msg != "" {
+					@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+						{ msg }
+					}
+				}
+			}
+			// Posted from the browser, because the server cannot know it and a
+			// coach that schedules anything needs it. The one Alpine directive
+			// on this page, which is exactly what Alpine is for.
+			<input
+				type="hidden"
+				id="timezone"
+				name="timezone"
+				x-data
+				x-init="$el.value = Intl.DateTimeFormat().resolvedOptions().timeZone"
+			/>
+			@button.Button(button.Props{
+				Type:      button.TypeSubmit,
+				FullWidth: true,
+				Class:     "bg-signal text-background hover:bg-signal/90",
+			}) {
+				if f.Account.isLogin() {
+					{ i18n.T(ctx, "oauth.signin.submit") }
+				} else {
+					{ i18n.T(ctx, "oauth.new.submit") }
+				}
+			}
+		</form>
+		@modeToggle(f)
+	</div>
+}
+
+// modeToggle swaps between creating an account and signing in, without leaving
+// the consent screen.
+templ modeToggle(f ConsentForm) {
+	<p class="text-center text-xs text-muted-foreground">
+		if f.Account.isLogin() {
+			{ i18n.T(ctx, "oauth.signin.new") }
+		} else {
+			{ i18n.T(ctx, "oauth.new.haveone") }
+		}
+		<button
+			type="button"
+			class="ml-1 underline hover:text-foreground"
+			hx-get={ toggleHref(f) }
+			hx-target="#consent-card"
+			hx-swap="outerHTML"
+		>
+			if f.Account.isLogin() {
+				{ i18n.T(ctx, "oauth.new.submit") }
+			} else {
+				{ i18n.T(ctx, "oauth.signin.submit") }
+			}
+		</button>
+	</p>
+}
+
+// altAuth offers Google and passkeys.
+//
+// Both need a full-page round trip, so they carry next= back to the resume
+// endpoint rather than swapping a fragment. The hidden next field is what
+// web/assets/js/auth/passkey.js already looks for.
+templ altAuth(f ConsentForm) {
+	if f.Account.GoogleEnabled || f.Account.PasskeyEnabled {
+		<div class="space-y-2">
+			<input type="hidden" name="next" value={ resumePath(f.RequestID) }/>
+			if f.Account.GoogleEnabled {
+				@button.Button(button.Props{
+					Href:      "/auth/google?next=" + resumeQueryEscaped(f.RequestID),
+					Variant:   button.VariantOutline,
+					FullWidth: true,
+				}) {
+					{ i18n.T(ctx, "oauth.google") }
+				}
+			}
+			if f.Account.PasskeyEnabled {
+				@button.Button(button.Props{
+					Type:      button.TypeButton,
+					Variant:   button.VariantOutline,
+					FullWidth: true,
+					Attributes: templ.Attributes{
+						"data-passkey": passkeyMode(f.Account),
+					},
+				}) {
+					{ i18n.T(ctx, "oauth.passkey") }
+				}
+			}
+		</div>
+		<div class="flex items-center gap-3">
+			<span class="h-px flex-1 bg-hairline"></span>
+			<span class="text-xs uppercase tracking-wide text-muted-foreground">
+				{ i18n.T(ctx, "oauth.or") }
+			</span>
+			<span class="h-px flex-1 bg-hairline"></span>
+		</div>
+	}
+}
