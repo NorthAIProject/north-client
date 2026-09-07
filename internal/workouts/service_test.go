@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/ai/fake"
@@ -321,5 +322,43 @@ func TestIntakeValidation(t *testing.T) {
 				t.Fatalf("%s should be rejected", tt.name)
 			}
 		})
+	}
+}
+
+// The link DueToday emits is persisted into user_nudges.href and sent as a push
+// payload, so a wrong path strands people on a 404 long after the row is
+// written — which is exactly what happened: it read "/app/workouts/" while the
+// routes have always been mounted under /training. Pinned here because nothing
+// else fails when it drifts.
+func TestDueTodayLinksToTheRegisteredTrainingRoute(t *testing.T) {
+	client := fake.Text("")
+	client.Responses = []fake.Response{{Text: planJSON(t, goodPlan())}}
+
+	svc, user := newService(t, client)
+	ctx := context.Background()
+
+	stored, err := svc.CreatePlan(ctx, user, dumbbellIntake())
+	if err != nil {
+		t.Fatalf("create plan: %v", err)
+	}
+
+	// A Monday, which goodPlan programmes.
+	monday := time.Date(2026, time.September, 7, 9, 0, 0, 0, time.UTC)
+	if monday.Weekday() != time.Monday {
+		t.Fatalf("fixture date is a %s", monday.Weekday())
+	}
+
+	title, href, due, err := svc.DueToday(ctx, user, monday)
+	if err != nil {
+		t.Fatalf("due today: %v", err)
+	}
+	if !due {
+		t.Fatal("Monday session was not reported due")
+	}
+	if title != "full body" {
+		t.Errorf("title = %q", title)
+	}
+	if want := "/app/training/" + stored.ID.String(); href != want {
+		t.Errorf("href = %q, want %q", href, want)
 	}
 }

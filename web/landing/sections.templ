@@ -165,18 +165,18 @@ templ visionStat(value string, body string) {
 // ---------------------------------------------------------------------------
 templ pricingSection() {
 	<section class="relative border-t border-hairline py-24">
-		@sectionHeading("Pricing", "Two plans. No seat maths.", "")
+		@sectionHeading("Pricing", "One plan today. The other when it is real.", "")
 		<div class="mt-10 grid gap-5 lg:grid-cols-2">
 			@planCard(
 				"Free",
 				"€0",
-				"forever",
-				"Enough to find out whether a coach with memory changes anything for you.",
+				"today",
+				"The whole product. Nothing is held back behind a plan that does not exist yet.",
 				[]string{
-					"The coach on the web, with full memory",
-					"One active training plan",
-					"Three form checks a month",
-					"Daily check-ins and weekly summaries",
+					"The coach on the web and on Telegram, with full memory",
+					"Training plans, form checks, and document knowledge",
+					"MCP access from your own agents and editors",
+					"Daily check-ins, weekly summaries, and Strava",
 				},
 				"Create your account",
 				false,
@@ -184,21 +184,19 @@ templ pricingSection() {
 			@planCard(
 				"Pro",
 				"€15",
-				"per month",
-				"For when Khepri stops being a tool you visit and starts being the thing you talk to.",
+				"per month, eventually",
+				"Not available yet, and nothing about your account is waiting on it. When running Khepri starts costing real money, this is where the ceilings go — not the features.",
 				[]string{
-					"Everything in Free",
-					"Telegram, with photos",
-					"MCP access from your own agents and editors",
-					"Unlimited form checks and document knowledge",
-					"Strava",
+					"Everything in Free, still there",
+					"Higher limits on form checks and document knowledge",
+					"The stronger model chain for planning and review",
 				},
-				"Start with Pro",
+				"",
 				true,
 			)
 		</div>
 		<p class="mt-6 text-xs text-muted-foreground">
-			Cancel from the settings page in two clicks. Your memory is exportable, and it is yours.
+			There is nothing to pay for and nothing to cancel. Your memory is exportable, and it is yours.
 		</p>
 	</section>
 }
@@ -210,7 +208,7 @@ templ planCard(name string, price string, period string, blurb string, lines []s
 				@monoLabel(name)
 				if featured {
 					@badge.Badge(badge.Props{Class: "border-signal/40 bg-signal/12 text-signal", Variant: badge.VariantOutline}) {
-						Most of the product
+						Coming soon
 					}
 				}
 			</div>
@@ -227,13 +225,18 @@ templ planCard(name string, price string, period string, blurb string, lines []s
 					</li>
 				}
 			</ul>
-			@button.Button(button.Props{
-				Href:      ctaHref(ctx),
-				FullWidth: true,
-				Variant:   planCardVariant(featured),
-				Class:     "mt-7 " + planCardButton(featured),
-			}) {
-				{ planCTA(ctx, cta) }
+			// No CTA means the plan cannot be bought. Rendering a button that only
+			// leads to the free signup would be the dishonest half of the problem
+			// this section had.
+			if cta != "" {
+				@button.Button(button.Props{
+					Href:      ctaHref(ctx),
+					FullWidth: true,
+					Variant:   planCardVariant(featured),
+					Class:     "mt-7 " + planCardButton(featured),
+				}) {
+					{ planCTA(ctx, cta) }
+				}
 			}
 		}
 	}

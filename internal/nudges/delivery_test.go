@@ -150,7 +150,7 @@ func TestOpenMarksReadAndAttributesTheChannel(t *testing.T) {
 	svc := newStore(pool).WithClock(freeze(noon)).WithFunnel(funnel)
 
 	n, _, err := svc.Raise(ctx, user, nudges.Draft{
-		Kind: nudges.KindWorkoutToday, DedupeKey: "2026-09-02", Title: "Leg day", Href: "/app/workouts",
+		Kind: nudges.KindWorkoutToday, DedupeKey: "2026-09-02", Title: "Leg day", Href: "/app/training",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -163,7 +163,7 @@ func TestOpenMarksReadAndAttributesTheChannel(t *testing.T) {
 	if opened.ReadAt == nil {
 		t.Fatal("open did not mark the nudge read")
 	}
-	if opened.Href != "/app/workouts" {
+	if opened.Href != "/app/training" {
 		t.Fatalf("open returned href %q", opened.Href)
 	}
 	if strings.Join(funnel.opened, ",") != "workout_today/push" {
