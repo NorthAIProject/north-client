@@ -1,6 +1,7 @@
 package mcpauth
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/onboarding"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
+	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/NorthAIProject/north-client/internal/users"
 	consent "github.com/NorthAIProject/north-client/web/mcpauth"
 )
@@ -368,7 +370,7 @@ func (h *BrowserHandler) writeAuthorizeError(w http.ResponseWriter, r *http.Requ
 	var fatal FatalAuthorizeError
 	if errors.As(err, &fatal) {
 		w.WriteHeader(http.StatusBadRequest)
-		if renderErr := consent.ErrorPage(fatal.Reason).Render(r.Context(), w); renderErr != nil {
+		if renderErr := consent.ErrorPage(fatal.Reason).Render(h.neutralPath(r), w); renderErr != nil {
 			h.log.Error("could not render the consent error", slog.Any("error", renderErr))
 		}
 		return
@@ -387,7 +389,7 @@ func (h *BrowserHandler) writeAuthorizeError(w http.ResponseWriter, r *http.Requ
 func (h *BrowserHandler) renderExpired(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusBadRequest)
 	reason := i18n.T(r.Context(), "oauth.error.expired")
-	if err := consent.ErrorPage(reason).Render(r.Context(), w); err != nil {
+	if err := consent.ErrorPage(reason).Render(h.neutralPath(r), w); err != nil {
 		h.log.Error("could not render the consent error", slog.Any("error", err))
 	}
 }
@@ -410,6 +412,17 @@ func (h *BrowserHandler) load(w http.ResponseWriter, r *http.Request, rawID stri
 		return Request{}, false
 	}
 	return req, true
+}
+
+// neutralPath strips this request's own URL from the render context.
+//
+// The error page is rendered for a request whose query string carries an
+// unvalidated redirect_uri, and the layout's language switcher posts back to
+// whatever middleware.Path reports. That would put an attacker-supplied URI
+// into a form action on our own page — escaped, same-origin, and not a
+// redirect, but there is no reason to reflect it at all.
+func (h *BrowserHandler) neutralPath(r *http.Request) context.Context {
+	return middleware.WithPath(r.Context(), "/")
 }
 
 func (h *BrowserHandler) verifier(r *http.Request) string {
