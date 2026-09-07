@@ -207,7 +207,7 @@ func (s *Service) Signup(ctx context.Context, in SignupInput, meta Metadata) (us
 		return users.User{}, "", err
 	}
 
-	s.funnel.Registered(ctx, user.ID)
+	s.funnel.Registered(ctx, user.ID, analytics.ViaPassword)
 
 	return user, token, nil
 }

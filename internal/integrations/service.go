@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/NorthAIProject/north-client/internal/analytics"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
@@ -21,6 +22,15 @@ type Service struct {
 	repo     *Repository
 	calendar Calendar
 	now      func() time.Time
+
+	// funnel records the connection as a product event. Nil is a no-op.
+	funnel *analytics.Funnel
+}
+
+// WithFunnel attaches product analytics.
+func (s *Service) WithFunnel(f *analytics.Funnel) *Service {
+	s.funnel = f
+	return s
 }
 
 func NewService(repo *Repository, calendar Calendar) *Service {
@@ -70,7 +80,16 @@ func (s *Service) Connect(ctx context.Context, userID uuid.UUID, endpoint, token
 		return apperr.Wrap(apperr.ErrUnavailable, "connected, but that server did not answer")
 	}
 
-	return s.repo.MarkChecked(ctx, userID, ProviderCalendar, StatusOK, "")
+	if err := s.repo.MarkChecked(ctx, userID, ProviderCalendar, StatusOK, ""); err != nil {
+		return err
+	}
+
+	// Only the verified path. The branch above keeps a row whose server did
+	// not answer, and a calendar the coach cannot read is not a source the
+	// funnel should count.
+	s.funnel.SourceConnected(ctx, userID, analytics.SourceCalendar)
+
+	return nil
 }
 
 func (s *Service) Disconnect(ctx context.Context, userID uuid.UUID) error {

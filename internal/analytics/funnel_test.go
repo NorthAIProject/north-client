@@ -43,7 +43,7 @@ func TestTheFunnelEmitsTheEventNamesTheInsightsAreBuiltOn(t *testing.T) {
 	user := uuid.New()
 	ctx := context.Background()
 
-	f.Registered(ctx, user)
+	f.Registered(ctx, user, analytics.ViaPassword)
 	f.OnboardingCompleted(ctx, user)
 	f.SourceConnected(ctx, user, analytics.SourceStrava)
 	f.CoachReplied(ctx, user, "telegram")
@@ -78,6 +78,13 @@ func TestTheFunnelEmitsTheEventNamesTheInsightsAreBuiltOn(t *testing.T) {
 	if got := rec.captures[3].Properties["surface"]; got != "telegram" {
 		t.Errorf("coach_replied carried surface=%v, want telegram", got)
 	}
+
+	// Literal again, for the same reason as the event names: the door an
+	// account came through is what says whether the connector is acquiring
+	// anybody, and a rename that silently changed it would read as zero.
+	if got := rec.captures[0].Properties["via"]; got != "password" {
+		t.Errorf("user_registered carried via=%v, want password", got)
+	}
 }
 
 // A deployment with no PostHog key must behave exactly as it did before this
@@ -95,7 +102,7 @@ func TestAFunnelWithoutAClientIsSilentRatherThanFatal(t *testing.T) {
 		"nil client": analytics.New(nil),
 	} {
 		t.Run(name, func(t *testing.T) {
-			f.Registered(ctx, user)
+			f.Registered(ctx, user, analytics.ViaPassword)
 			f.OnboardingCompleted(ctx, user)
 			f.SourceConnected(ctx, user, analytics.SourceTelegram)
 			f.CoachReplied(ctx, user, "web")
@@ -108,7 +115,7 @@ func TestAFailingClientDoesNotPanicOrPropagate(t *testing.T) {
 	t.Parallel()
 
 	rec := &recorder{err: errors.New("posthog is down")}
-	analytics.New(rec).Registered(context.Background(), uuid.New())
+	analytics.New(rec).Registered(context.Background(), uuid.New(), analytics.ViaPassword)
 }
 
 // An event with no user cannot be joined to anything and would pollute the
@@ -117,7 +124,7 @@ func TestAnEventWithoutAUserIsDropped(t *testing.T) {
 	t.Parallel()
 
 	rec := &recorder{}
-	analytics.New(rec).Registered(context.Background(), uuid.Nil)
+	analytics.New(rec).Registered(context.Background(), uuid.Nil, analytics.ViaPassword)
 
 	if len(rec.captures) != 0 {
 		t.Fatalf("captured %d events for a nil user, want none", len(rec.captures))

@@ -325,7 +325,12 @@ func registerCoach(s *mcp.Server, svc Services, user users.User) {
 			return fail(err), nil, nil
 		}
 
-		stream, err := svc.Coach.SendMessage(ctx, user, conversation.ID, args.Message)
+		// SendIncoming rather than SendMessage: the latter builds an Incoming
+		// with no Source, which records this reply against an empty surface.
+		stream, err := svc.Coach.SendIncoming(ctx, user, conversation.ID, coach.Incoming{
+			Text:   args.Message,
+			Source: coach.SourceMCP,
+		})
 		if err != nil {
 			return fail(err), nil, nil
 		}
