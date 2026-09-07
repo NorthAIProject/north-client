@@ -52,13 +52,6 @@ var spanishGoals = map[string]string{
 	"goals.f.date":          "Fecha prevista",
 	"goals.f.date.desc":     "Opcional. Muchos objetivos no tienen ninguna.",
 
-	"goal.category.fitness":  "Fitness",
-	"goal.category.health":   "Salud",
-	"goal.category.work":     "Trabajo",
-	"goal.category.learning": "Aprendizaje",
-	"goal.category.personal": "Personal",
-	"goal.category.other":    "Otro",
-
 	"goal.status.achieved":  "Logrado",
 	"goal.status.paused":    "En pausa",
 	"goal.status.abandoned": "Abandonado",

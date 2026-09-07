@@ -1,10 +1,12 @@
 package care
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
 
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/habits"
 	"github.com/NorthAIProject/north-client/internal/hydration"
 	"github.com/NorthAIProject/north-client/internal/meals"
@@ -122,16 +124,24 @@ func dayChecked(days []int, day int) bool {
 	return false
 }
 
-var weekdayLabels = []string{"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"}
-
-func daysSummary(days []int) string {
-	if len(days) == 7 {
-		return "Every day"
+// weekdayLabel is the three-letter abbreviation for a Go time.Weekday index.
+// Abbreviations rather than full names because seven of them sit in one row on
+// a phone.
+func weekdayLabel(ctx context.Context, d int) string {
+	if d < 0 || d > 6 {
+		return ""
 	}
-	labels := make([]string, len(days))
-	for i, d := range days {
-		if d >= 0 && d < len(weekdayLabels) {
-			labels[i] = weekdayLabels[d]
+	return i18n.T(ctx, "weekday.short."+strconv.Itoa(d))
+}
+
+func daysSummary(ctx context.Context, days []int) string {
+	if len(days) == 7 {
+		return i18n.T(ctx, "care.rem.everyday")
+	}
+	labels := make([]string, 0, len(days))
+	for _, d := range days {
+		if label := weekdayLabel(ctx, d); label != "" {
+			labels = append(labels, label)
 		}
 	}
 	return strings.Join(labels, ", ")
@@ -155,7 +165,7 @@ func panelSwapAttrs() templ.Attributes {
 }
 
 templ Page(user users.User, data Data, forms Forms) {
-	@layout.App("Care", user, layout.BuildNav(ctx, "/app/care")) {
+	@layout.App(i18n.T(ctx, "care.mono"), user, layout.BuildNav(ctx, "/app/care")) {
 		@Panel(user, data, forms)
 		@label.Script()
 		@checkbox.Script()
@@ -169,10 +179,10 @@ templ Page(user users.User, data Data, forms Forms) {
 templ Panel(user users.User, data Data, forms Forms) {
 	<div id={ PanelID } class="mx-auto w-full max-w-6xl space-y-6 p-6 md:p-8">
 		<header>
-			@ui.MonoLabel("Care")
-			<h1 class="mt-2 text-2xl font-medium tracking-tight">Today</h1>
+			@ui.MonoLabel(i18n.T(ctx, "care.mono"))
+			<h1 class="mt-2 text-2xl font-medium tracking-tight">{ i18n.T(ctx, "care.heading") }</h1>
 			<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
-				What the app is looking out for you about, in one place.
+				{ i18n.T(ctx, "care.intro") }
 			</p>
 		</header>
 		@kpiStrip(data)
@@ -188,11 +198,11 @@ templ Panel(user users.User, data Data, forms Forms) {
 
 templ kpiStrip(data Data) {
 	@ui.KpiStrip() {
-		@kpiCell("Water", waterKPI(data), "", "")
-		@kpiCell("Sleep", sleepKPI(data), "", "")
-		@kpiCell("Habits", habitKPI(data), "", "")
-		@kpiCell("Due", dueKPI(data), "", "")
-		@kpiCell("Check-in", checkInKPI(data), "/app/check-ins", checkInCTA(data))
+		@kpiCell(i18n.T(ctx, "care.kpi.water"), waterKPI(data), "", "")
+		@kpiCell(i18n.T(ctx, "care.kpi.sleep"), sleepKPI(data), "", "")
+		@kpiCell(i18n.T(ctx, "care.kpi.habits"), habitKPI(data), "", "")
+		@kpiCell(i18n.T(ctx, "care.kpi.due"), dueKPI(ctx, data), "", "")
+		@kpiCell(i18n.T(ctx, "care.kpi.checkin"), checkInKPI(ctx, data), "/app/check-ins", checkInCTA(ctx, data))
 	}
 }
 
@@ -218,25 +228,25 @@ func habitKPI(data Data) string {
 	return strconv.Itoa(data.Instruments.HabitRate) + "%"
 }
 
-func dueKPI(data Data) string {
+func dueKPI(ctx context.Context, data Data) string {
 	if data.Instruments.DueCount == 0 {
-		return "None"
+		return i18n.T(ctx, "care.kpi.none")
 	}
 	return strconv.Itoa(data.Instruments.DueCount)
 }
 
-func checkInKPI(data Data) string {
+func checkInKPI(ctx context.Context, data Data) string {
 	if data.CheckedInToday {
-		return "Done"
+		return i18n.T(ctx, "care.kpi.done")
 	}
-	return "Pending"
+	return i18n.T(ctx, "care.kpi.pending")
 }
 
-func checkInCTA(data Data) string {
+func checkInCTA(ctx context.Context, data Data) string {
 	if data.CheckedInToday {
-		return "Edit"
+		return i18n.T(ctx, "care.kpi.edit")
 	}
-	return "Check in"
+	return i18n.T(ctx, "care.kpi.checkcta")
 }
 
 templ instrumentsRow(data Data) {
@@ -251,14 +261,14 @@ templ hydrationInstrument(data Data) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 		@card.Header() {
 			@card.Title() {
-				Hydration 7d 
+				{ i18n.T(ctx, "care.inst.hydration") }
 			}
 		}
 		@card.Content() {
 			if data.Instruments.HasHydration {
 				@chart.Chart(data.Instruments.HydrationChart)
 			} else {
-				<p class="text-muted-foreground text-sm">No water logged this week.</p>
+				<p class="text-muted-foreground text-sm">{ i18n.T(ctx, "care.inst.hydration.empty") }</p>
 			}
 		}
 	}
@@ -268,14 +278,14 @@ templ sleepInstrument(data Data) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 		@card.Header() {
 			@card.Title() {
-				Sleep 7d 
+				{ i18n.T(ctx, "care.inst.sleep") }
 			}
 		}
 		@card.Content() {
 			if data.Instruments.HasSleep {
 				@chart.Chart(data.Instruments.SleepChart)
 			} else {
-				<p class="text-muted-foreground text-sm">Log last night below.</p>
+				<p class="text-muted-foreground text-sm">{ i18n.T(ctx, "care.inst.sleep.empty") }</p>
 			}
 		}
 	}
@@ -285,7 +295,7 @@ templ habitInstrument(data Data) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 		@card.Header() {
 			@card.Title() {
-				Habits 
+				{ i18n.T(ctx, "care.inst.habits") }
 			}
 		}
 		@card.Content() {
@@ -293,7 +303,7 @@ templ habitInstrument(data Data) {
 				@templ.JSONScript("care-habit-gauge-option", data.Instruments.HabitGauge)
 				@ui.EChartsMount("care-habit-gauge", "care-habit-gauge-option", "min-h-40 w-full")
 			} else {
-				<p class="text-muted-foreground text-sm">Add a habit below.</p>
+				<p class="text-muted-foreground text-sm">{ i18n.T(ctx, "care.inst.habits.empty") }</p>
 			}
 		}
 	}
@@ -303,20 +313,20 @@ templ checkInCard(checkedInToday bool) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 		@card.Header() {
 			@card.Title() {
-				Check-in
+				{ i18n.T(ctx, "care.checkin.title") }
 			}
 			@card.Description() {
 				if checkedInToday {
-					Done for today.
+					{ i18n.T(ctx, "care.checkin.done") }
 				} else {
-					You haven't checked in yet today.
+					{ i18n.T(ctx, "care.checkin.pending") }
 				}
 			}
 		}
 		if !checkedInToday {
 			@card.Content() {
 				@button.Button(button.Props{Href: "/app/check-ins", Class: "bg-signal text-background hover:bg-signal/90"}) {
-					Check in
+					{ i18n.T(ctx, "care.kpi.checkcta") }
 				}
 			}
 		}
@@ -327,10 +337,10 @@ templ waterCard(day hydration.Day, entries []hydration.Entry, f WaterForm) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 		@card.Header() {
 			@card.Title() {
-				Water
+				{ i18n.T(ctx, "care.water.title") }
 			}
 			@card.Description() {
-				{ litres(day.TotalML) } of { litres(day.TargetML) } today
+				{ i18n.Tf(ctx, "care.water.desc", litres(day.TotalML), litres(day.TargetML)) }
 			}
 		}
 		@card.Content() {
@@ -359,7 +369,7 @@ templ waterCard(day hydration.Day, entries []hydration.Entry, f WaterForm) {
 							<form method="post" action={ templ.SafeURL("/app/care/water/" + e.ID.String() + "/undo") } { panelSwapAttrs()... }>
 								@ui.CSRFInput()
 								@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm}) {
-									Undo
+									{ i18n.T(ctx, "care.water.undo") }
 								}
 							</form>
 						</li>
@@ -374,16 +384,16 @@ templ sleepCard(last sleep.Log, logged bool, f SleepForm) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 		@card.Header() {
 			@card.Title() {
-				Sleep
+				{ i18n.T(ctx, "care.sleep.title") }
 			}
 			@card.Description() {
 				if logged {
-					Last night: { last.Duration() }
+					{ i18n.Tf(ctx, "care.sleep.last", last.Duration()) }
 					if last.Quality != nil {
-						, quality { strconv.Itoa(*last.Quality) }/5
+						{ i18n.Tf(ctx, "care.sleep.quality.suffix", strconv.Itoa(*last.Quality)) }
 					}
 				} else {
-					Nothing logged for last night.
+					{ i18n.T(ctx, "care.sleep.empty") }
 				}
 			}
 		}
@@ -393,7 +403,7 @@ templ sleepCard(last sleep.Log, logged bool, f SleepForm) {
 				<div class="flex flex-wrap gap-4">
 					@form.Item() {
 						@label.Label(label.Props{For: "hours"}) {
-							Hours
+							{ i18n.T(ctx, "care.sleep.hours") }
 						}
 						@input.Input(input.Props{
 							ID: "hours", Name: "hours", Type: input.TypeNumber,
@@ -404,7 +414,7 @@ templ sleepCard(last sleep.Log, logged bool, f SleepForm) {
 					}
 					@form.Item() {
 						@label.Label(label.Props{For: "minutes"}) {
-							Minutes
+							{ i18n.T(ctx, "care.sleep.minutes") }
 						}
 						@input.Input(input.Props{
 							ID: "minutes", Name: "minutes", Type: input.TypeNumber,
@@ -414,11 +424,11 @@ templ sleepCard(last sleep.Log, logged bool, f SleepForm) {
 					}
 					@form.Item() {
 						@label.Label(label.Props{For: "quality"}) {
-							Quality
+							{ i18n.T(ctx, "care.sleep.quality") }
 						}
 						@selectbox.SelectBox() {
 							@selectbox.Trigger(selectbox.TriggerProps{ID: "quality", Name: "quality"}) {
-								@selectbox.Value(selectbox.ValueProps{Placeholder: "Optional"})
+								@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "care.sleep.quality.ph")})
 							}
 							@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
 								for _, q := range []string{"1", "2", "3", "4", "5"} {
@@ -438,22 +448,22 @@ templ sleepCard(last sleep.Log, logged bool, f SleepForm) {
 				<div class="flex flex-wrap gap-4">
 					@form.Item() {
 						@label.Label(label.Props{For: "bedtime"}) {
-							Bedtime
+							{ i18n.T(ctx, "care.sleep.bedtime") }
 						}
 						@input.Input(input.Props{ID: "bedtime", Name: "bedtime", Type: input.TypeTime, Value: f.Bedtime, HasError: f.fieldError("bedtime") != ""})
 					}
 					@form.Item() {
 						@label.Label(label.Props{For: "wake_time"}) {
-							Woke up
+							{ i18n.T(ctx, "care.sleep.woke") }
 						}
 						@input.Input(input.Props{ID: "wake_time", Name: "wake_time", Type: input.TypeTime, Value: f.WakeTime, HasError: f.fieldError("wake_time") != ""})
 					}
 				</div>
 				@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90"}) {
 					if logged {
-						Update last night
+						{ i18n.T(ctx, "care.sleep.update") }
 					} else {
-						Log last night
+						{ i18n.T(ctx, "care.sleep.log") }
 					}
 				}
 			</form>
@@ -465,10 +475,10 @@ templ habitsCard(stats []habits.Stats, f HabitForm) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 		@card.Header() {
 			@card.Title() {
-				Habits
+				{ i18n.T(ctx, "care.habits.title") }
 			}
 			@card.Description() {
-				Recurring things you meant to keep doing.
+				{ i18n.T(ctx, "care.habits.desc") }
 			}
 		}
 		@card.Content() {
@@ -484,26 +494,26 @@ templ habitsCard(stats []habits.Stats, f HabitForm) {
 				<div class="flex flex-wrap gap-4">
 					@form.Item() {
 						@label.Label(label.Props{For: "name"}) {
-							New habit
+							{ i18n.T(ctx, "care.habits.new") }
 						}
 						@input.Input(input.Props{
 							ID: "name", Name: "name", Value: f.Name,
-							Placeholder: "Ten minutes of reading",
+							Placeholder: i18n.T(ctx, "care.habits.new.ph"),
 							HasError:    f.fieldError("name") != "",
 						})
 					}
 					@form.Item() {
 						@label.Label(label.Props{For: "domain"}) {
-							Area
+							{ i18n.T(ctx, "care.habits.area") }
 						}
 						@selectbox.SelectBox() {
 							@selectbox.Trigger(selectbox.TriggerProps{ID: "domain", Name: "domain"}) {
-								@selectbox.Value(selectbox.ValueProps{Placeholder: "Personal"})
+								@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "lifedomain.personal")})
 							}
 							@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
 								for _, d := range lifedomain.Domains {
 									@selectbox.Item(selectbox.ItemProps{Value: d, Selected: f.Domain == d}) {
-										{ strings.ToUpper(d[:1]) + d[1:] }
+										{ i18n.T(ctx, "lifedomain."+d) }
 									}
 								}
 							}
@@ -517,13 +527,13 @@ templ habitsCard(stats []habits.Stats, f HabitForm) {
 				}
 				<div>
 					@label.Label() {
-						Days
+						{ i18n.T(ctx, "care.habits.days") }
 					}
 					<div class="mt-2 flex flex-wrap gap-3">
 						for d := 0; d < 7; d++ {
 							<label class="flex items-center gap-1 text-sm">
 								@checkbox.Checkbox(checkbox.Props{Name: "days_of_week", Value: strconv.Itoa(d), Checked: f.dayChecked(d)})
-								{ weekdayLabels[d] }
+								{ weekdayLabel(ctx, d) }
 							</label>
 						}
 					</div>
@@ -534,7 +544,7 @@ templ habitsCard(stats []habits.Stats, f HabitForm) {
 					}
 				</div>
 				@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90"}) {
-					Add habit
+					{ i18n.T(ctx, "care.habits.add") }
 				}
 			</form>
 		}
@@ -569,7 +579,7 @@ templ habitRow(s habits.Stats) {
 					<input type="hidden" name="done" value={ doneValue(s.DoneToday) }/>
 					if s.DoneToday {
 						@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Size: button.SizeSm}) {
-							Done
+							{ i18n.T(ctx, "care.habits.done") }
 						}
 					} else {
 						@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Class: "bg-signal text-background hover:bg-signal/90"}) {
@@ -585,7 +595,7 @@ templ habitRow(s habits.Stats) {
 			<form method="post" action={ templ.SafeURL("/app/care/habits/" + s.Habit.ID.String() + "/delete") } { panelSwapAttrs()... }>
 				@ui.CSRFInput()
 				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm}) {
-					Delete
+					{ i18n.T(ctx, "care.habits.delete") }
 				}
 			</form>
 		</div>
@@ -596,13 +606,13 @@ templ remindersCard(due []meals.Reminder) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 		@card.Header() {
 			@card.Title() {
-				Reminders
+				{ i18n.T(ctx, "care.rem.title") }
 			}
 			@card.Description() {
 				if len(due) > 0 {
-					Due now.
+					{ i18n.T(ctx, "care.rem.due") }
 				} else {
-					Nothing due right now.
+					{ i18n.T(ctx, "care.rem.none") }
 				}
 			}
 		}
@@ -625,7 +635,7 @@ templ manageRemindersCard(all []meals.Reminder, f ReminderForm) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 		@card.Header() {
 			@card.Title() {
-				Manage reminders
+				{ i18n.T(ctx, "care.rem.manage") }
 			}
 		}
 		@card.Content() {
@@ -641,32 +651,32 @@ templ manageRemindersCard(all []meals.Reminder, f ReminderForm) {
 				<div class="flex gap-4">
 					@form.Item() {
 						@label.Label(label.Props{For: "label"}) {
-							Label
+							{ i18n.T(ctx, "care.rem.label") }
 						}
-						@input.Input(input.Props{ID: "label", Name: "label", Value: f.Label, Placeholder: "Log lunch", Required: true, HasError: f.fieldError("label") != ""})
+						@input.Input(input.Props{ID: "label", Name: "label", Value: f.Label, Placeholder: i18n.T(ctx, "care.rem.label.ph"), Required: true, HasError: f.fieldError("label") != ""})
 					}
 					@form.Item() {
 						@label.Label(label.Props{For: "time_of_day"}) {
-							Time
+							{ i18n.T(ctx, "care.rem.time") }
 						}
 						@input.Input(input.Props{ID: "time_of_day", Name: "time_of_day", Type: input.TypeTime, Value: f.TimeOfDay, Required: true, HasError: f.fieldError("time_of_day") != ""})
 					}
 				</div>
 				<div>
 					@label.Label() {
-						Days
+						{ i18n.T(ctx, "care.rem.days") }
 					}
 					<div class="mt-2 flex flex-wrap gap-3">
 						for d := 0; d < 7; d++ {
 							<label class="flex items-center gap-1 text-sm">
 								@checkbox.Checkbox(checkbox.Props{Name: "days_of_week", Value: strconv.Itoa(d), Checked: f.dayChecked(d)})
-								{ weekdayLabels[d] }
+								{ weekdayLabel(ctx, d) }
 							</label>
 						}
 					</div>
 				</div>
 				@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90"}) {
-					Add reminder
+					{ i18n.T(ctx, "care.rem.add") }
 				}
 			</form>
 		}
@@ -677,7 +687,7 @@ templ reminderRow(r meals.Reminder) {
 	<li class="border-hairline flex items-center justify-between rounded-lg border px-3 py-2 text-sm">
 		<div>
 			<span class="font-medium">{ r.Label }</span>
-			<span class="text-muted-foreground ml-2">{ r.TimeOfDay } · { daysSummary(r.DaysOfWeek) }</span>
+			<span class="text-muted-foreground ml-2">{ r.TimeOfDay } · { daysSummary(ctx, r.DaysOfWeek) }</span>
 		</div>
 		<div class="flex items-center gap-2">
 			<form method="post" action={ templ.SafeURL("/app/care/reminders/" + r.ID.String() + "/toggle") } { panelSwapAttrs()... }>
@@ -685,16 +695,16 @@ templ reminderRow(r meals.Reminder) {
 				<input type="hidden" name="enabled" value={ toggleValue(r.Enabled) }/>
 				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Size: button.SizeSm}) {
 					if r.Enabled {
-						Disable
+						{ i18n.T(ctx, "care.rem.disable") }
 					} else {
-						Enable
+						{ i18n.T(ctx, "care.rem.enable") }
 					}
 				}
 			</form>
 			<form method="post" action={ templ.SafeURL("/app/care/reminders/" + r.ID.String() + "/delete") } { panelSwapAttrs()... }>
 				@ui.CSRFInput()
 				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm}) {
-					Delete
+					{ i18n.T(ctx, "care.rem.delete") }
 				}
 			</form>
 		</div>

@@ -56,12 +56,6 @@ var englishGoals = map[string]string{
 
 	// goal.Category and goal.Status. Keyed off the stored value, which stays an
 	// identifier.
-	"goal.category.fitness":  "Fitness",
-	"goal.category.health":   "Health",
-	"goal.category.work":     "Work",
-	"goal.category.learning": "Learning",
-	"goal.category.personal": "Personal",
-	"goal.category.other":    "Other",
 
 	"goal.status.achieved":  "Achieved",
 	"goal.status.paused":    "Paused",
