@@ -87,6 +87,9 @@ var portugueseBrazilianNav = map[string]string{
 	"nav.activity-log":           "Registro de atividade",
 	"nav.activity-log.desc":      "O que aconteceu na sua conta.",
 
+	"nav.agentpill.new": "Novo",
+	"nav.agentpill":     "Conecte seu agente",
+
 	"palette.trigger":     "Buscar",
 	"palette.aria":        "Buscar páginas",
 	"palette.title":       "Ir para a página",

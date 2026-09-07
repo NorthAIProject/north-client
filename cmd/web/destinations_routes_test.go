@@ -26,6 +26,7 @@ var knownNonDestinations = map[string]string{
 	// HTMX partials. Fragments of a page, not pages.
 	"/app/panels":                 "dashboard range swap",
 	"/app/nudges/bell":            "topbar poll",
+	"/app/connections/pill":       "topbar prompt to connect an agent",
 	"/app/knowledge/passages":     "document passage fragment",
 	"/app/insights/timeline/body": "insights range swap",
 	"/app/insights/body/body":     "insights range swap",

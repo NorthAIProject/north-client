@@ -90,6 +90,9 @@ var englishNav = map[string]string{
 	"nav.activity-log.desc":      "What happened on your account.",
 
 	// Command palette.
+	"nav.agentpill.new": "New",
+	"nav.agentpill":     "Connect your Agent",
+
 	"palette.trigger":     "Search",
 	"palette.aria":        "Search pages",
 	"palette.title":       "Go to page",

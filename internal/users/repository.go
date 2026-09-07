@@ -39,12 +39,22 @@ type NewRecord struct {
 	PasswordHash string
 	DisplayName  string
 	Timezone     string
+
+	// Locale is the language the visitor was reading when they signed up. Empty
+	// stores the column default rather than an empty string, which would read
+	// back as English anyway but is not what the column means.
+	Locale Locale
 }
 
 func (r *Repository) Create(ctx context.Context, rec NewRecord) (User, error) {
 	email := normalizeEmail(rec.Email)
 	name := strings.TrimSpace(rec.DisplayName)
 	passwordHash := optionalHash(rec.PasswordHash)
+
+	locale := rec.Locale
+	if locale == "" {
+		locale = LocaleDefault
+	}
 
 	var (
 		row usersdb.User
@@ -57,6 +67,7 @@ func (r *Repository) Create(ctx context.Context, rec NewRecord) (User, error) {
 			PasswordHash: passwordHash,
 			DisplayName:  name,
 			Timezone:     rec.Timezone,
+			Locale:       string(locale),
 		})
 	} else {
 		row, err = r.q.CreateUser(ctx, usersdb.CreateUserParams{
@@ -64,6 +75,7 @@ func (r *Repository) Create(ctx context.Context, rec NewRecord) (User, error) {
 			PasswordHash: passwordHash,
 			DisplayName:  name,
 			Timezone:     rec.Timezone,
+			Locale:       string(locale),
 		})
 	}
 	if err != nil {

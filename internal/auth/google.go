@@ -17,6 +17,7 @@ import (
 
 	authdb "github.com/NorthAIProject/north-client/internal/auth/db"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
@@ -143,6 +144,10 @@ func (s *Service) FindOrCreateGoogleUser(ctx context.Context, profile GoogleProf
 		Email:       profile.Email,
 		DisplayName: profile.Name,
 		Timezone:    "UTC",
+		// The language the visitor was reading when they pressed Continue with
+		// Google. The callback is a request like any other, so middleware.Locale
+		// has already resolved one.
+		Locale: users.ResolveLocale(i18n.LocaleFrom(ctx)),
 		// No password: this account signs in with Google (or a later passkey).
 	})
 	if err != nil {

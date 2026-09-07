@@ -88,6 +88,9 @@ var spanishNav = map[string]string{
 	"nav.activity-log":           "Registro de actividad",
 	"nav.activity-log.desc":      "Qué ha pasado en tu cuenta.",
 
+	"nav.agentpill.new": "Nuevo",
+	"nav.agentpill":     "Conecta tu agente",
+
 	"palette.trigger":     "Buscar",
 	"palette.aria":        "Buscar páginas",
 	"palette.title":       "Ir a la página",

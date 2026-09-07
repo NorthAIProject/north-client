@@ -88,6 +88,9 @@ var portugueseEuropeanNav = map[string]string{
 	"nav.activity-log":           "Registo de atividade",
 	"nav.activity-log.desc":      "O que aconteceu na tua conta.",
 
+	"nav.agentpill.new": "Novo",
+	"nav.agentpill":     "Liga o teu agente",
+
 	"palette.trigger":     "Pesquisar",
 	"palette.aria":        "Pesquisar páginas",
 	"palette.title":       "Ir para a página",
