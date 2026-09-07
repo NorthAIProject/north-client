@@ -1,5 +1,7 @@
 package legal
 
+import "github.com/NorthAIProject/north-client/internal/shared/i18n"
+
 // A trap worth knowing before editing either policy: inside a templ element,
 // the text immediately after a { expression } starts a new node, and templ
 // reads a leading "for", "if" or "switch" there as the start of a control
@@ -19,6 +21,18 @@ templ document(title string) {
 			<p class="text-muted-foreground mt-2 font-mono text-xs">
 				Last updated { LastUpdated }
 			</p>
+			// The policies themselves stay in English, in every language.
+			//
+			// They are statements of legal obligation rather than copy: "we do
+			// not sell your data" mistranslated is a compliance artefact, and
+			// one authoritative language is the ordinary practice. This line is
+			// translated, because somebody reading Khepri in Portuguese should
+			// be told why the page in front of them is not.
+			if i18n.LocaleFrom(ctx) != i18n.DefaultLocale {
+				<p class="border-hairline text-muted-foreground mt-4 border-l-2 pl-3 text-xs leading-relaxed">
+					{ i18n.T(ctx, "legal.english") }
+				</p>
+			}
 		</header>
 		<div
 			class="[&_p]:text-muted-foreground [&_li]:text-muted-foreground [&_strong]:text-foreground [&_em]:text-foreground space-y-6 text-sm leading-relaxed [&_a]:underline [&_a:hover]:text-foreground [&_li]:leading-relaxed [&_p.lead]:text-base [&_p.lead]:text-foreground [&_ul]:list-disc [&_ul]:space-y-2 [&_ul]:pl-5"

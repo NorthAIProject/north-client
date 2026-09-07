@@ -1,6 +1,8 @@
 package landing
 
 import (
+	"context"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/ui/badge"
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
@@ -19,48 +21,28 @@ type feature struct {
 	Body string
 }
 
-func features() []feature {
+func features(ctx context.Context) []feature {
 	return []feature{
-		{
-			icon.Brain(icon.Props{Class: "size-4"}),
-			"Persistent memory",
-			"Every goal, session, check-in, and offhand remark stays. Khepri reads back across months, not across the last ten messages, so the injury you mentioned in March still shapes the plan in September.",
-		},
-		{
-			icon.Target(icon.Props{Class: "size-4"}),
-			"Context-aware coaching",
-			"Before it answers, Khepri assembles what it knows: active goals, this week's training, your documents, your calendar, how you have been sleeping. Advice arrives already fitted to your life.",
-		},
-		{
-			icon.Plug(icon.Props{Class: "size-4"}),
-			"Everywhere, and inside your tools",
-			"Web and Telegram share one memory. Send a photo from either. Through MCP, Khepri can also act — reading your notes, filing a check-in, pulling a summary — from whatever agent you already use.",
-		},
-		{
-			icon.Dumbbell(icon.Props{Class: "size-4"}),
-			"Fitness intelligence",
-			"Strava flows in as summaries rather than raw activity dumps. Plans respect the equipment you actually own. Send a form clip or a photo and you get cues, not a lecture.",
-		},
-		{
-			icon.FileText(icon.Props{Class: "size-4"}),
-			"Knowledge you already have",
-			"Drop in the research, the PDFs, the physio notes. Khepri searches them when they are relevant and cites what it used, instead of pretending to remember.",
-		},
+		{icon.Brain(icon.Props{Class: "size-4"}), i18n.T(ctx, "land.feat.1.name"), i18n.T(ctx, "land.feat.1.body")},
+		{icon.Target(icon.Props{Class: "size-4"}), i18n.T(ctx, "land.feat.2.name"), i18n.T(ctx, "land.feat.2.body")},
+		{icon.Plug(icon.Props{Class: "size-4"}), i18n.T(ctx, "land.feat.3.name"), i18n.T(ctx, "land.feat.3.body")},
+		{icon.Dumbbell(icon.Props{Class: "size-4"}), i18n.T(ctx, "land.feat.4.name"), i18n.T(ctx, "land.feat.4.body")},
+		{icon.FileText(icon.Props{Class: "size-4"}), i18n.T(ctx, "land.feat.5.name"), i18n.T(ctx, "land.feat.5.body")},
 	}
 }
 
 templ featuresSection() {
 	<section class="relative border-t border-hairline py-24">
-		@waypoint("Month 8")
+		@waypoint(i18n.T(ctx, "land.waypoint.month8"))
 		@sectionHeading(
-			"What you get",
-			"Built to still be useful in month eight.",
+			i18n.T(ctx, "land.feat.eyebrow"),
+			i18n.T(ctx, "land.feat.title"),
 			"",
 		)
 		// Six columns rather than three: five cards over two rows leaves a hole
 		// on a three-column grid, so the last two are widened to close it.
 		<div class="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
-			for i, f := range features() {
+			for i, f := range features(ctx) {
 				@card.Card(card.Props{Class: "border-hairline bg-surface " + featureSpan(i)}) {
 					@card.Content(card.ContentProps{}) {
 						<span class="flex size-8 items-center justify-center rounded-md bg-signal/12 text-signal">
@@ -92,20 +74,20 @@ type step struct {
 	Body string
 }
 
-func steps() []step {
+func steps(ctx context.Context) []step {
 	return []step{
-		{"Minute one", "Say where you are going", "In your own words, badly. Khepri turns it into an objective, a horizon, and a first week."},
-		{"Week one", "It builds the context", "Your equipment, your limits, your calendar, your documents. The plan is assembled from what is true about you, not from a template."},
-		{"Every week after", "You just live", "Check in from whichever app is in your hand. A sentence is enough. Khepri is keeping the ledger."},
-		{"Month three", "It changes the plan first", "When the pattern shifts — sleep, pain, a missed block — Khepri moves before you fall off, and tells you what it saw."},
+		{i18n.T(ctx, "land.how.1.when"), i18n.T(ctx, "land.how.1.name"), i18n.T(ctx, "land.how.1.body")},
+		{i18n.T(ctx, "land.how.2.when"), i18n.T(ctx, "land.how.2.name"), i18n.T(ctx, "land.how.2.body")},
+		{i18n.T(ctx, "land.how.3.when"), i18n.T(ctx, "land.how.3.name"), i18n.T(ctx, "land.how.3.body")},
+		{i18n.T(ctx, "land.how.4.when"), i18n.T(ctx, "land.how.4.name"), i18n.T(ctx, "land.how.4.body")},
 	}
 }
 
 templ howItWorksSection() {
 	<section class="relative border-t border-hairline py-24">
-		@sectionHeading("How it works", "Four things happen.", "")
+		@sectionHeading(i18n.T(ctx, "land.how.eyebrow"), i18n.T(ctx, "land.how.title"), "")
 		<ol class="mt-10 space-y-0">
-			for i, s := range steps() {
+			for i, s := range steps(ctx) {
 				<li class="grid gap-2 py-6 md:grid-cols-[10rem_1fr] md:gap-8">
 					<div class="pt-0.5">
 						@monoLabel(s.When)
@@ -115,7 +97,7 @@ templ howItWorksSection() {
 						<p class="mt-2 max-w-[62ch] text-sm leading-relaxed text-muted-foreground">{ s.Body }</p>
 					</div>
 				</li>
-				if i < len(steps())-1 {
+				if i < len(steps(ctx))-1 {
 					@separator.Separator(separator.Props{Class: "bg-hairline"})
 				}
 			}
@@ -128,27 +110,21 @@ templ howItWorksSection() {
 // ---------------------------------------------------------------------------
 templ visionSection() {
 	<section class="relative border-t border-hairline py-24">
-		@waypoint("Year 2")
+		@waypoint(i18n.T(ctx, "land.waypoint.year2"))
 		<div class="grid gap-12 lg:grid-cols-[1.3fr_1fr] lg:gap-16">
 			<div>
-				@monoLabel("Why we are building it")
+				@monoLabel(i18n.T(ctx, "land.vision.eyebrow"))
 				<blockquote class="mt-5 text-2xl font-medium leading-[1.25] tracking-[-0.025em] text-balance md:text-3xl">
-					“The useful thing was never the answer. It was that somebody had been
-					watching long enough to notice the pattern.”
+					“{ i18n.T(ctx, "land.vision.quote") }”
 				</blockquote>
 				<p class="mt-6 max-w-[58ch] text-base leading-relaxed text-muted-foreground">
-					A good coach is not smarter than the internet. A good coach knows that you
-					always quit in week five, that you lie about sleep, and that the last time
-					you tried this you injured yourself doing something you were told not to do.
-					That knowledge takes months to build and it is the entire product. Khepri is
-					not trying to be a better chatbot — it is trying to be the thing that has
-					been paying attention.
+					{ i18n.T(ctx, "land.vision.body") }
 				</p>
 			</div>
 			<div class="space-y-4">
-				@visionStat("Six months", "The horizon plans are written against, not the session in front of you.")
-				@visionStat("Two surfaces", "Web and Telegram — and one memory behind both.")
-				@visionStat("Zero", "Times you re-explain your injury, your equipment, or what you are training for.")
+				@visionStat(i18n.T(ctx, "land.vision.1.value"), i18n.T(ctx, "land.vision.1.body"))
+				@visionStat(i18n.T(ctx, "land.vision.2.value"), i18n.T(ctx, "land.vision.2.body"))
+				@visionStat(i18n.T(ctx, "land.vision.3.value"), i18n.T(ctx, "land.vision.3.body"))
 			</div>
 		</div>
 	</section>
@@ -166,40 +142,40 @@ templ visionStat(value string, body string) {
 // ---------------------------------------------------------------------------
 templ pricingSection() {
 	<section class="relative border-t border-hairline py-24">
-		@sectionHeading("Pricing", "One plan today. The other when it is real.", "")
+		@sectionHeading(i18n.T(ctx, "land.price.eyebrow"), i18n.T(ctx, "land.price.title"), "")
 		<div class="mt-10 grid gap-5 lg:grid-cols-2">
 			@planCard(
-				"Free",
-				"€0",
-				"today",
-				"The whole product. Nothing is held back behind a plan that does not exist yet.",
+				i18n.T(ctx, "land.price.free"),
+				i18n.T(ctx, "land.price.free.amount"),
+				i18n.T(ctx, "land.price.free.period"),
+				i18n.T(ctx, "land.price.free.blurb"),
 				[]string{
-					"The coach on the web and on Telegram, one memory behind both",
-					"Training plans, with looping illustrations on most movements",
-					"Form checks — upload a clip, get cues back",
-					"Voice notes on the web, transcribed and filed",
-					"Strava, Google Calendar, and your own PDFs",
-					"MCP access from your own agents and editors",
+					i18n.T(ctx, "land.price.free.1"),
+					i18n.T(ctx, "land.price.free.2"),
+					i18n.T(ctx, "land.price.free.3"),
+					i18n.T(ctx, "land.price.free.4"),
+					i18n.T(ctx, "land.price.free.5"),
+					i18n.T(ctx, "land.price.free.6"),
 				},
-				"Start free",
+				i18n.T(ctx, "land.price.free.cta"),
 				false,
 			)
 			@planCard(
-				"Pro",
-				"€15",
-				"per month, eventually",
-				"Not available yet, and nothing about your account is waiting on it. When running Khepri starts costing real money, this is where the ceilings go — not the features.",
+				i18n.T(ctx, "land.price.pro"),
+				i18n.T(ctx, "land.price.pro.amount"),
+				i18n.T(ctx, "land.price.pro.period"),
+				i18n.T(ctx, "land.price.pro.blurb"),
 				[]string{
-					"Everything in Free, still there",
-					"Higher limits on form checks and document knowledge",
-					"The stronger model chain for planning and review",
+					i18n.T(ctx, "land.price.pro.1"),
+					i18n.T(ctx, "land.price.pro.2"),
+					i18n.T(ctx, "land.price.pro.3"),
 				},
 				"",
 				true,
 			)
 		</div>
 		<p class="mt-6 text-xs text-muted-foreground">
-			There is nothing to pay for and nothing to cancel. Your memory is exportable, and it is yours.
+			{ i18n.T(ctx, "land.price.footnote") }
 		</p>
 	</section>
 }
@@ -211,7 +187,7 @@ templ planCard(name string, price string, period string, blurb string, lines []s
 				@monoLabel(name)
 				if featured {
 					@badge.Badge(badge.Props{Class: "border-signal/40 bg-signal/12 text-signal", Variant: badge.VariantOutline}) {
-						Coming soon
+						{ i18n.T(ctx, "land.price.pro.badge") }
 					}
 				}
 			</div>
@@ -243,7 +219,7 @@ templ planCard(name string, price string, period string, blurb string, lines []s
 				}
 			} else {
 				<p class="mt-7 rounded-md border border-dashed border-hairline px-4 py-2.5 text-center text-sm text-muted-foreground">
-					Nothing to do here yet
+					{ i18n.T(ctx, "land.price.pro.nothing") }
 				</p>
 			}
 		}
@@ -281,11 +257,10 @@ templ finalCTA() {
 				@icon.Compass(icon.Props{Class: "size-5"})
 			</span>
 			<h2 class="mt-7 text-3xl font-medium tracking-[-0.03em] text-balance md:text-4xl">
-				In six months it will know things about you that you have forgotten.
+				{ i18n.T(ctx, "land.cta.title") }
 			</h2>
 			<p class="mx-auto mt-5 max-w-[48ch] text-base leading-relaxed text-muted-foreground">
-				That only works if it starts now. The first conversation is the shortest one
-				you will ever have with it.
+				{ i18n.T(ctx, "land.cta.body") }
 			</p>
 			<div class="mt-8 flex flex-wrap justify-center gap-3">
 				@button.Button(button.Props{Href: ctaHref(ctx), Size: button.SizeLg, Class: "bg-signal text-background hover:bg-signal/90"}) {
@@ -294,7 +269,7 @@ templ finalCTA() {
 				}
 				if !signedIn(ctx) {
 					@button.Button(button.Props{Href: "/login", Size: button.SizeLg, Variant: button.VariantOutline, Class: "border-hairline"}) {
-						Sign in
+						{ i18n.T(ctx, "land.cta.signin") }
 					}
 				}
 			</div>
@@ -307,21 +282,21 @@ templ siteFooter() {
 		<div class="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-4 px-6 py-8 lg:pl-28 lg:pr-8">
 			<div class="flex items-center gap-2 text-muted-foreground">
 				@icon.Compass(icon.Props{Class: "size-3.5"})
-				@monoLabel("Khepri — an operating system for personal growth")
+				@monoLabel(i18n.T(ctx, "land.footer.tagline"))
 			</div>
 			<div class="flex items-center gap-5">
 				<a href="/privacy" class="rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-signal">
-					@monoLabel("Privacy")
+					@monoLabel(i18n.T(ctx, "land.footer.privacy"))
 				</a>
 				<a href="/terms" class="rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-signal">
-					@monoLabel("Terms")
+					@monoLabel(i18n.T(ctx, "land.footer.terms"))
 				</a>
 				<a
 					href="https://github.com/NorthAIProject/north-client"
 					class="flex items-center gap-2 rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-signal"
 				>
 					@icon.Github(icon.Props{Class: "size-3.5"})
-					@monoLabel("Source")
+					@monoLabel(i18n.T(ctx, "land.footer.source"))
 				</a>
 				// Only for visitors. A signed-in user's language lives on their
 				// account, and a second control here would write a cookie that

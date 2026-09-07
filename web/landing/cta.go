@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 )
 
 // The landing page is public, but it is not only seen by strangers. `/` is
@@ -34,9 +35,9 @@ func ctaHref(ctx context.Context) string {
 // someone who has one.
 func ctaLabel(ctx context.Context) string {
 	if signedIn(ctx) {
-		return "Open Khepri"
+		return i18n.T(ctx, "land.cta.open")
 	}
-	return "Create your account"
+	return i18n.T(ctx, "land.cta.create")
 }
 
 // planCTA keeps a pricing card's own wording for strangers — "Start free",
@@ -44,7 +45,7 @@ func ctaLabel(ctx context.Context) string {
 // button otherwise reads like a second signup.
 func planCTA(ctx context.Context, cta string) string {
 	if signedIn(ctx) {
-		return "Open Khepri"
+		return i18n.T(ctx, "land.cta.open")
 	}
 	return cta
 }
