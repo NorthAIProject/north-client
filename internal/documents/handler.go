@@ -204,7 +204,7 @@ func (h *Handler) search(w http.ResponseWriter, r *http.Request) {
 	user := auth.MustUser(r.Context())
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
 
-	if htmx.IsRequest(r) && r.Header.Get("HX-Target") == "knowledge-search-results" {
+	if htmx.IsRequest(r) && htmx.TargetID(r) == "knowledge-search-results" {
 		h.renderInlineSearch(w, r, user, query)
 		return
 	}

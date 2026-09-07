@@ -350,8 +350,11 @@
 	document.addEventListener("DOMContentLoaded", function () {
 		reveal(document);
 	});
-	document.addEventListener("htmx:afterSwap", function (event) {
-		reveal(event.target || document);
+	// htmx 2 dispatched this on the swapped element, so event.target was the new
+	// content. htmx 4 dispatches it on the element that made the request and
+	// carries the swapped node on the request context instead.
+	document.addEventListener("htmx:after:swap", function (event) {
+		reveal(event.detail?.ctx?.target || document);
 	});
 	if (document.readyState !== "loading") {
 		reveal(document);

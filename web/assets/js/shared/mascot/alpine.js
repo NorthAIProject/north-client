@@ -9,7 +9,7 @@
  * no lazy module import, so the app shell pays for a PNG and this file.
  *
  * The state lives on this module, not on the component. That is deliberate.
- * In chat, `sse-close="done"` fires a trigger that re-GETs the page and swaps
+ * In chat, `hx-sse:close="done"` fires a trigger that re-GETs the page and swaps
  * `#chat-root` outerHTML — destroying the mascot at the exact moment the reply
  * finishes and the nod should play. An htmx swap does not reload this script,
  * so a mascot that mounts into the new DOM adopts the sustained state and
@@ -81,12 +81,13 @@
   // --- coach stream bridge ---------------------------------------------------
   //
   // Chat has no app-authored generation events: the stream is declarative htmx
-  // (web/chat/chat.templ) and the server emits only token/error/done. So the
-  // mascot listens to the events htmx already bubbles to document. Nothing
-  // about the stream protocol changes, and no Go handler knows this exists.
-  document.addEventListener("htmx:sseOpen", () => setState("thinking"));
-  document.addEventListener("htmx:sseError", () => setState("idle"));
-  document.addEventListener("htmx:sseClose", () => {
+  // (web/chat/chat.templ) and the server emits unnamed content frames plus a
+  // named "done". So the mascot listens to the events the SSE extension already
+  // bubbles to document. Nothing about the stream protocol changes, and no Go
+  // handler knows this exists.
+  document.addEventListener("htmx:sse:after:connection", () => setState("thinking"));
+  document.addEventListener("htmx:sse:error", () => setState("idle"));
+  document.addEventListener("htmx:sse:close", () => {
     setState("idle");
     setState("nod");
   });

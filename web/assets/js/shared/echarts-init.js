@@ -56,10 +56,12 @@
 
   window.addEventListener("resize", onResize, { passive: true });
 
-  document.body.addEventListener("htmx:afterSwap", function (evt) {
-    initAll(evt.detail.target);
+  // htmx 4 renamed both events and moved the swapped element: detail.target is
+  // gone, and the target now hangs off the request context.
+  document.body.addEventListener("htmx:after:swap", function (evt) {
+    initAll(evt.detail.ctx.target);
   });
-  document.body.addEventListener("htmx:afterSettle", function (evt) {
-    initAll(evt.detail.target);
+  document.body.addEventListener("htmx:after:settle", function (evt) {
+    initAll(evt.detail.ctx.target);
   });
 })();

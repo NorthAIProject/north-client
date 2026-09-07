@@ -67,12 +67,19 @@ templ App(title string, user users.User, nav []NavGroup) {
 						@ui.BrandLockup("/app", "size-5", "text-sm font-medium tracking-tight")
 					</span>
 					<div class="ml-auto flex items-center gap-2">
+						// Fetched once, not polled: whether an agent is connected
+						// does not change while a page is open, and the bell's
+						// twenty-second cycle exists for something that does.
+						//
+						// The response is empty once one is connected, so this div
+						// simply stays empty and the header closes up around it.
+						<div hx-get="/app/connections/pill" hx-trigger="load" hx-swap="innerHTML"></div>
 						@commandPalette()
 						<div
 							hx-get="/app/nudges/bell"
 							hx-trigger="load, every 20s"
 							hx-swap="innerHTML"
-							hx-on::after-swap="
+							hx-on::after:swap="
 								const el = this.querySelector('[data-unread]');
 								const n = el ? parseInt(el.dataset.unread, 10) || 0 : 0;
 								const title = el ? (el.dataset.title || '') : '';

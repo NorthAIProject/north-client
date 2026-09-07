@@ -278,24 +278,24 @@ func (h *Handler) resume(w http.ResponseWriter, r *http.Request) {
 
 	stream, err := h.svc.Resume(r.Context(), user, conversationID)
 	if err != nil {
-		writeEvent(w, rc, "error", chatpages.StreamErrorHTML(friendly(err)))
-		writeEvent(w, rc, "done", "")
+		writeContent(w, rc, chatpages.StreamErrorHTML(friendly(err)))
+		writeSignal(w, rc, "done")
 		return
 	}
 
 	for chunk := range stream {
 		if chunk.Err != nil {
 			log.Error("resumed coach stream failed", slog.Any("error", chunk.Err))
-			writeEvent(w, rc, "error", chatpages.StreamErrorHTML(friendly(chunk.Err)))
+			writeContent(w, rc, chatpages.StreamErrorHTML(friendly(chunk.Err)))
 			break
 		}
 		if chunk.Text == "" {
 			continue
 		}
-		writeEvent(w, rc, "token", chatpages.TokenHTML(chunk.Text))
+		writeContent(w, rc, chatpages.TokenHTML(chunk.Text))
 	}
 
-	writeEvent(w, rc, "done", "")
+	writeSignal(w, rc, "done")
 }
 
 // sendMessage stores the message and returns the two bubbles that HTMX appends:
@@ -438,8 +438,8 @@ func (h *Handler) stream(w http.ResponseWriter, r *http.Request) {
 		log.Warn("coach message refused by quota",
 			slog.String("user_id", user.ID.String()),
 			slog.Duration("retry_after", decision.RetryAfter))
-		writeEvent(w, rc, "error", chatpages.StreamErrorHTML(quotaMessage(decision)))
-		writeEvent(w, rc, "done", "")
+		writeContent(w, rc, chatpages.StreamErrorHTML(quotaMessage(decision)))
+		writeSignal(w, rc, "done")
 		return
 	}
 
@@ -477,26 +477,26 @@ func (h *Handler) stream(w http.ResponseWriter, r *http.Request) {
 		stream, err = h.svc.SendIncoming(r.Context(), user, conversation.ID, in)
 	}
 	if err != nil {
-		writeEvent(w, rc, "error", chatpages.StreamErrorHTML(friendly(err)))
-		writeEvent(w, rc, "done", "")
+		writeContent(w, rc, chatpages.StreamErrorHTML(friendly(err)))
+		writeSignal(w, rc, "done")
 		return
 	}
 
 	for chunk := range stream {
 		if chunk.Err != nil {
 			log.Error("coach stream failed", slog.Any("error", chunk.Err))
-			writeEvent(w, rc, "error", chatpages.StreamErrorHTML(friendly(chunk.Err)))
+			writeContent(w, rc, chatpages.StreamErrorHTML(friendly(chunk.Err)))
 			break
 		}
 		if chunk.Text == "" {
 			continue
 		}
-		writeEvent(w, rc, "token", chatpages.TokenHTML(chunk.Text))
+		writeContent(w, rc, chatpages.TokenHTML(chunk.Text))
 	}
 
 	// Tells the client to swap the streamed bubble for the stored message and
 	// close the connection. Without it the browser reconnects forever.
-	writeEvent(w, rc, "done", "")
+	writeSignal(w, rc, "done")
 }
 
 func (h *Handler) deleteConversation(w http.ResponseWriter, r *http.Request) {
@@ -543,14 +543,30 @@ func (h *Handler) load(r *http.Request) (conversations.Conversation, []conversat
 	return conversation, messages, list, nil
 }
 
-// writeEvent emits one SSE frame.
+// writeContent emits one SSE frame carrying HTML for the page.
+//
+// The frame is deliberately unnamed. htmx 4 swaps unnamed SSE messages into the
+// connecting element's target and dispatches named ones as DOM events instead,
+// so anything meant to appear in the transcript — a token or an error panel —
+// has to arrive without an event name. Naming these would silently stop the
+// coach from ever appearing.
 //
 // HTML fragments are sent rather than JSON, so the browser needs no rendering
-// logic — HTMX drops each frame straight into the page. Newlines are escaped
+// logic — htmx drops each frame straight into the page. Newlines are escaped
 // because a bare newline inside data: would terminate the frame early and
 // truncate the coach mid-sentence.
-func writeEvent(w http.ResponseWriter, rc *http.ResponseController, event, data string) {
-	_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, strings.ReplaceAll(data, "\n", "\\n"))
+func writeContent(w http.ResponseWriter, rc *http.ResponseController, data string) {
+	_, _ = fmt.Fprintf(w, "data: %s\n\n", strings.ReplaceAll(data, "\n", "\\n"))
+	_ = rc.Flush()
+}
+
+// writeSignal emits one named SSE frame.
+//
+// Named frames are signals rather than content: htmx 4 dispatches them as DOM
+// events on the connecting element, which is how "done" both closes the stream
+// and triggers the refresh that replaces it with the saved conversation.
+func writeSignal(w http.ResponseWriter, rc *http.ResponseController, event string) {
+	_, _ = fmt.Fprintf(w, "event: %s\ndata: \n\n", event)
 	_ = rc.Flush()
 }
 

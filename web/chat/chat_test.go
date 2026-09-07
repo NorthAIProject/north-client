@@ -155,8 +155,29 @@ func TestStreamingBubbleKeepsACaret(t *testing.T) {
 		if !strings.Contains(body, "motion-safe:animate-caret") {
 			t.Errorf("%s caret is not the CLI blink", name)
 		}
-		if !strings.Contains(body, `sse-swap="token,error"`) {
-			t.Errorf("%s lost the token target", name)
+		// htmx 4 swaps unnamed SSE frames into the target the *connecting*
+		// element resolves, so the wiring is split across two elements and
+		// every piece has to be present for a token to reach the page.
+		if !strings.Contains(body, `data-stream-sink`) {
+			t.Errorf("%s lost the token sink", name)
+		}
+		if !strings.Contains(body, `hx-target="find [data-stream-sink]"`) {
+			t.Errorf("%s does not point the stream at the sink", name)
+		}
+		if !strings.Contains(body, `hx-swap="beforeend"`) {
+			t.Errorf("%s does not append tokens", name)
+		}
+		if !strings.Contains(body, `hx-sse:close="done"`) {
+			t.Errorf("%s would reconnect forever after the reply ends", name)
+		}
+		// The refresh has to name the connecting element: "done" is dispatched
+		// there, and without from: this hidden div never hears it.
+		if !strings.Contains(body, `done from:#coach-stream-`+id.String()) {
+			t.Errorf("%s does not refresh when the stream closes", name)
+		}
+		// sse-swap is removed in htmx 4; it would be silently ignored.
+		if strings.Contains(body, "sse-swap") {
+			t.Errorf("%s still carries sse-swap, which htmx 4 ignores", name)
 		}
 	}
 }
