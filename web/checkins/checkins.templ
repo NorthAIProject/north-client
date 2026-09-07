@@ -325,7 +325,7 @@ templ todayForm(f CheckInForm, activeGoals []goal.Goal, first bool) {
 				hx-post="/app/check-ins"
 				hx-target={ "#" + PanelID }
 				hx-swap="outerHTML"
-				hx-disabled-elt="find button[type='submit']"
+				hx-disable="find button[type='submit']"
 				x-data={ "{ step: " + strconv.Itoa(f.FirstErrorStep()) + ", mood: " + strconv.Itoa(f.Mood) + ", energy: " + strconv.Itoa(f.Energy) + " }" }
 			>
 				@ui.CSRFInput()

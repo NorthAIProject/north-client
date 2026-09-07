@@ -25,8 +25,9 @@ grep -oE 'from"[^".][^"]*"' web/assets/js/vendor/<file> | grep -v 'from"\.'
 | `three-meshopt-decoder.module.js` | three (`examples/jsm/libs/meshopt_decoder.module.js`) | r169 † | MIT | not recorded |
 | `three-room-environment.module.js` | three (`examples/jsm/environments/RoomEnvironment.js`) | r169 † | MIT | not recorded |
 | `alpine.min.js` | alpinejs | 3.15.0 | MIT | not recorded |
-| `htmx.min.js` | htmx.org | 2.0.7 | Zero-Clause BSD | not recorded |
-| `htmx-ext-sse.js` | htmx-ext-sse | not recorded | Zero-Clause BSD | not recorded |
+| `htmx.min.js` | htmx.org | 4.0.0 | Zero-Clause BSD | `dist/htmx.min.js` at tag v4.0.0 |
+| `hx-alpine-compat.min.js` | htmx.org | 4.0.0 | Zero-Clause BSD | `dist/ext/hx-alpine-compat.min.js` at tag v4.0.0 |
+| `hx-sse.min.js` | htmx.org | 4.0.0 | Zero-Clause BSD | `dist/ext/hx-sse.min.js` at tag v4.0.0 |
 | `echarts.min.js` | echarts | 5.5.1 | Apache-2.0 | `https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js` |
 
 † The three.js files predate this README and carry no version string. r169 is **inferred**

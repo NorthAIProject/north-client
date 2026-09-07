@@ -81,7 +81,7 @@ templ composer(data Data) {
 		hx-post="/app/capture/parse"
 		hx-target={ "#" + PanelID }
 		hx-swap="innerHTML"
-		hx-disabled-elt="find button"
+		hx-disable="find button"
 		method="post"
 		action="/app/capture/parse"
 		class="space-y-3"
@@ -149,7 +149,7 @@ templ preview(data Data) {
 		hx-post="/app/capture/commit"
 		hx-target={ "#" + PanelID }
 		hx-swap="innerHTML"
-		hx-disabled-elt="find button"
+		hx-disable="find button"
 		method="post"
 		action="/app/capture/commit"
 		class="space-y-4"

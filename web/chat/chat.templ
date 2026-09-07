@@ -599,7 +599,7 @@ templ composer(conversationID uuid.UUID, draft string) {
 			hx-encoding="multipart/form-data"
 			hx-target="#transcript > div"
 			hx-swap="beforeend"
-			hx-on::after-request="if(event.detail.successful) { this.reset(); preview = '' }"
+			hx-on::after:request="if(ctx.response.status < 400) { this.reset(); preview = '' }"
 		>
 			@ui.CSRFInput()
 			<img
@@ -731,13 +731,29 @@ templ ResumeExchange(conversationID uuid.UUID) {
 // page — and two hx-swap attributes on one element silently lose one of
 // them, which appends a whole copy of the page into the chat.
 //
-// sse-close="done" ends the connection when the reply does. Without it the
+// hx-sse:close="done" ends the connection when the reply does. Without it the
 // browser reconnects on close and the coach answers again, forever.
+//
+// htmx 4 removed sse-swap. Named SSE events are dispatched as DOM events and
+// are no longer swapped; only unnamed messages swap, into the target and with
+// the swap the connecting element resolves. So the stream now carries its
+// tokens and its error HTML as unnamed frames — both append to the same place
+// anyway — and keeps a named "done" frame for the two things that are signals
+// rather than content: closing the connection, and triggering the refresh
+// below. The target is declared here rather than on the sink because the
+// connecting element is the one that makes the request.
 templ streamingCoachBubble(connectURL string, conversationID uuid.UUID) {
-	<div class="flex flex-col items-start gap-1" hx-ext="sse" sse-connect={ connectURL } sse-close="done">
+	<div
+		id={ "coach-stream-" + conversationID.String() }
+		class="flex flex-col items-start gap-1"
+		hx-sse:connect={ connectURL }
+		hx-sse:close="done"
+		hx-target="find [data-stream-sink]"
+		hx-swap="beforeend"
+	>
 		<span class="font-mono text-[10px] uppercase tracking-[0.14em] text-agent">Khepri</span>
 		<div class="border-hairline bg-surface max-w-[85%] rounded-2xl rounded-bl-sm border px-4 py-2.5 text-sm whitespace-pre-wrap">
-			<span sse-swap="token,error" hx-swap="beforeend"></span>
+			<span data-stream-sink></span>
 			<span
 				data-streaming-caret
 				class="ml-0.5 inline-block h-3.5 w-1.5 -mb-0.5 bg-agent motion-safe:animate-caret"
@@ -746,7 +762,7 @@ templ streamingCoachBubble(connectURL string, conversationID uuid.UUID) {
 		</div>
 		<div
 			class="hidden"
-			hx-trigger="sse:done"
+			hx-trigger={ "done from:#coach-stream-" + conversationID.String() }
 			hx-get={ "/app/chat/" + conversationID.String() }
 			hx-target="#chat-root"
 			hx-select="#chat-root"

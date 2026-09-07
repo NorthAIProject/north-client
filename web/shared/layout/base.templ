@@ -50,28 +50,45 @@ templ Base(title string) {
 			<link rel="icon" type="image/svg+xml" href="/assets/brand/favicon.svg"/>
 			<link rel="icon" type="image/png" href="/assets/brand/khepri-logo-mark.png"/>
 			<link href="/assets/css/output.css" rel="stylesheet"/>
-			// htmx throws away 4xx responses rather than swapping them, which makes
-			// a validated form silently do nothing: the server answers 422 with the
-			// form re-rendered around its error messages, and the browser discards
-			// it. 422 is how Khepri reports a rejected form, so it is swapped like a
-			// success and not logged as a transport error. 429 is here for the same
-			// reason: a rate-limit refusal carries the panel explaining itself, and
-			// discarding it would leave the button looking like it did nothing. The
-			// other entries repeat htmx's defaults — the array replaces them
-			// wholesale rather than merging, so dropping one would change unrelated
-			// behaviour.
+			// 422 is how Khepri reports a rejected form: the server answers with the
+			// form re-rendered around its error messages, and that has to be swapped
+			// like a success or a validated form silently does nothing. 429 is here
+			// for the same reason — a rate-limit refusal carries the panel explaining
+			// itself, and discarding it would leave the button looking like it did
+			// nothing. Everything else in 4xx and 5xx is a plain-text http.Error and
+			// does not belong in the page.
+			//
+			// htmx 4 replaced responseHandling with noSwap, and inverted the default:
+			// every response now swaps except 204 and 304. noSwap is a flat list of
+			// codes and wildcards matched most-specific-first ("422", then "42x",
+			// then "4xx"), so "swap everything in 4xx except 422 and 429" has to be
+			// spelled out as the decades either side of them plus the individual
+			// codes that share the 42x decade. It is verbose, but it is the same
+			// contract the responseHandling array used to state, and a shorter "4xx"
+			// entry here would swallow the two codes this app depends on.
+			//
+			// One htmx 2 capability is simply gone: responseHandling could mark a
+			// status "swap, but not an error", and htmx 4 fires htmx:response:error
+			// for every response over 400 regardless. Nothing in this app listens
+			// for that event, so there is no consumer to lose.
 			//
 			// Declared as meta rather than a script so it is set before htmx reads
 			// its configuration, with no ordering to get wrong.
 			<meta
 				name="htmx-config"
-				content={ `{"responseHandling":[{"code":"204","swap":false},{"code":"[23]..","swap":true},{"code":"422","swap":true,"error":false},{"code":"429","swap":true,"error":false},{"code":"[45]..","swap":false,"error":true}]}` }
+				content={ `{"noSwap": [204, 304, "40x", "41x", 420, 421, 423, 424, 425, 426, 427, 428, "43x", "44x", "45x", "46x", "47x", "48x", "49x", "5xx"]}` }
 			/>
 			// Vendored rather than loaded from a CDN: the production binary embeds
 			// its assets, so the application keeps working with no third-party
 			// origin to trust, block, or outlive us.
 			<script src="/assets/js/vendor/htmx.min.js"></script>
-			<script src="/assets/js/vendor/htmx-ext-sse.js"></script>
+			// hx-alpine-compat is permanent, not a migration bridge: htmx 4 can morph
+			// rather than replace, and a morph discards Alpine component state.
+			<script src="/assets/js/vendor/hx-alpine-compat.min.js"></script>
+			// htmx 4's SSE extension, replacing htmx-ext-sse. Loading the script is
+			// all it takes now — hx-ext is gone, and the extension registers itself
+			// under the name "sse".
+			<script src="/assets/js/vendor/hx-sse.min.js"></script>
 			<script defer src="/assets/js/vendor/alpine.min.js"></script>
 			<script src="/assets/js/shared/pwa.js" defer></script>
 		</head>
