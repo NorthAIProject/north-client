@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"sort"
 	"strings"
@@ -69,6 +70,14 @@ type Service struct {
 	baseURL string
 
 	now func() time.Time
+
+	logger *slog.Logger
+}
+
+// WithLogger attaches a logger, for the sweep's own line.
+func (s *Service) WithLogger(log *slog.Logger) *Service {
+	s.logger = log
+	return s
 }
 
 func NewService(repo *Repository, grants Grants, baseURL string) *Service {
