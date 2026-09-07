@@ -676,7 +676,8 @@ func routes(
 
 	// Notes and uploaded documents. Bytes go to the same object storage as
 	// media; parsing and chunking happen on the worker, never here.
-	documentSvc := documents.NewService(documents.NewRepository(pool), storage, queue)
+	documentSvc := documents.NewService(documents.NewRepository(pool), storage, queue).
+		WithFunnel(funnel)
 
 	if embedder != nil {
 		documentSvc = documentSvc.WithEmbeddings(embedder, slog.Default())
@@ -840,7 +841,7 @@ func routes(
 	integrationSvc := integrations.NewService(
 		integrations.NewRepository(pool, sealer),
 		integrations.NewCalendarAdapter(integrations.NewClient()),
-	)
+	).WithFunnel(funnel)
 
 	// One account of what North has done, kept by both surfaces: the registry
 	// reports every capability it runs, and the coach reports the writes people

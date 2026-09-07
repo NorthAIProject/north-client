@@ -77,6 +77,19 @@ const (
 	SourceCalendar = "calendar"
 )
 
+// Ways an account can come into existence, for EventRegistered.
+//
+// The property exists because the three paths are not interchangeable
+// questions: ViaOAuthConsent is an account created inside the MCP consent
+// screen, which is the only one of these that arrives with an agent already
+// waiting on the other side of it.
+const (
+	ViaPassword     = "password"
+	ViaGoogle       = "google"
+	ViaPasskey      = "passkey"
+	ViaOAuthConsent = "oauth_consent"
+)
+
 // Channels for the nudge events.
 const (
 	ChannelBell = "bell"
@@ -118,9 +131,11 @@ func New(client posthog.Client) *Funnel {
 	return &Funnel{client: client}
 }
 
-// Registered records a new account.
-func (p *Funnel) Registered(ctx context.Context, userID uuid.UUID) {
-	p.capture(ctx, userID, EventRegistered, nil)
+// Registered records a new account. via is one of the Via constants, and says
+// which door the account came through — without it the funnel counts only the
+// password path, which is the smallest of the four.
+func (p *Funnel) Registered(ctx context.Context, userID uuid.UUID, via string) {
+	p.capture(ctx, userID, EventRegistered, posthog.Properties{"via": via})
 }
 
 // OnboardingCompleted records onboarding finished. Skipping is deliberately

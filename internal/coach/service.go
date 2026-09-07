@@ -143,13 +143,21 @@ type Incoming struct {
 	Text        string
 	Attachments []conversations.Attachment
 
-	// Source is "telegram" when the turn arrived from a linked chat. The
-	// web bell is told about those replies; Telegram is not, because it
-	// already has the answer.
+	// Source names the surface the turn arrived from, and is empty for the
+	// web chat. The web bell is told about Telegram replies; Telegram is not,
+	// because it already has the answer.
 	Source string
 }
 
-const SourceTelegram = "telegram"
+const (
+	SourceTelegram = "telegram"
+
+	// SourceMCP is a turn from an outside agent through ask_coach. It exists
+	// so the funnel can tell an agent-driven conversation from a typed one:
+	// before it, every MCP reply recorded an empty surface, which is the one
+	// surface CoachReplied claims to distinguish.
+	SourceMCP = "mcp"
+)
 
 // AttachmentLoader reads a stored file so the current turn can be shown to
 // the model. The media service satisfies it; a test stubs it.
