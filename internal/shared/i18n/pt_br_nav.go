@@ -6,7 +6,7 @@ package i18n
 // reader notices in the first sentence: "academia" not "ginásio", "você" rather
 // than the second-person "tu" forms, "cronômetro" not "cronómetro", and the
 // gerund where European Portuguese uses "a" + infinitive.
-var portugueseBrazilian = map[string]string{
+var portugueseBrazilianNav = map[string]string{
 	"nav.group.today":    "Hoje",
 	"nav.group.body":     "Corpo",
 	"nav.group.mind":     "Mente",

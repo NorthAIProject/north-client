@@ -87,6 +87,18 @@ func (t Tone) Valid() bool {
 	return slices.Contains(Tones, t)
 }
 
+// Key names the tone in the message catalogue.
+//
+// A method rather than an i18n call, because internal/shared/i18n imports this
+// package for users.Locale and cannot be imported back. The web layer, which
+// imports both, does the lookup.
+func (t Tone) Key() string {
+	if !t.Valid() {
+		return "tone." + string(ToneDefault)
+	}
+	return "tone." + string(t)
+}
+
 // Locale is the language Khepri speaks to a user in.
 //
 // A closed set, like Tone: the prompt builder and every template need a value

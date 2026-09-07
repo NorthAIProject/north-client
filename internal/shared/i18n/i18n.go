@@ -41,6 +41,39 @@ var catalogues = map[users.Locale]map[string]string{
 	users.LocaleES:   spanish,
 }
 
+// Catalogues are written one surface at a time and merged here, rather than as
+// one map per language. Four files of a thousand entries would be unreviewable
+// and every translation would collide in the same lines of every diff; one file
+// per surface per language keeps a change to the settings page a change to four
+// small files.
+var (
+	english             = merge(englishNav, englishSettings)
+	portugueseEuropean  = merge(portugueseEuropeanNav, portugueseEuropeanSettings)
+	portugueseBrazilian = merge(portugueseBrazilianNav, portugueseBrazilianSettings)
+	spanish             = merge(spanishNav, spanishSettings)
+)
+
+// merge folds the per-surface maps into one catalogue, and panics on a
+// duplicate key.
+//
+// Panicking at init is right here: a key defined twice means one surface is
+// silently overriding another's copy, which is invisible in review and would
+// surface as the wrong sentence on a page nobody was editing. Every caller of
+// this is a package-level var, so the panic happens at startup in every
+// environment including the test binary — it cannot reach a user.
+func merge(maps ...map[string]string) map[string]string {
+	out := map[string]string{}
+	for _, m := range maps {
+		for k, v := range m {
+			if _, clash := out[k]; clash {
+				panic("i18n: duplicate catalogue key " + k)
+			}
+			out[k] = v
+		}
+	}
+	return out
+}
+
 type localeKey struct{}
 
 // WithLocale carries the locale for this request. Set once by middleware; every

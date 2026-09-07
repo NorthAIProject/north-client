@@ -7,7 +7,7 @@ package i18n
 // nobody has asked about would buy four more catalogues to maintain and no
 // clearer reading. Second person is "tú": the coach is a person you talk to, and
 // "usted" would make it a form you fill in.
-var spanish = map[string]string{
+var spanishNav = map[string]string{
 	"nav.group.today":    "Hoy",
 	"nav.group.body":     "Cuerpo",
 	"nav.group.mind":     "Mente",

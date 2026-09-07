@@ -7,7 +7,7 @@ package i18n
 // "ginásio"/"academia", "pequeno-almoço"/"café da manhã" and the second-person
 // forms are not, and a Brazilian reading these strings would place them
 // immediately. See users.Locale for why that is worth two files.
-var portugueseEuropean = map[string]string{
+var portugueseEuropeanNav = map[string]string{
 	"nav.group.today":    "Hoje",
 	"nav.group.body":     "Corpo",
 	"nav.group.mind":     "Mente",

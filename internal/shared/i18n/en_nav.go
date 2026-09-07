@@ -6,7 +6,7 @@ package i18n
 //
 // Keys are grouped by surface and kept in the order the surface renders them,
 // which makes a missing one visible by reading rather than by searching.
-var english = map[string]string{
+var englishNav = map[string]string{
 	// Sidebar group headings. The Group* constants stay identifiers; these are
 	// what a person reads.
 	"nav.group.today":    "Today",

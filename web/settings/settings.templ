@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -9,6 +10,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/meals"
 	"github.com/NorthAIProject/north-client/internal/notifications"
 	"github.com/NorthAIProject/north-client/internal/preferences"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
@@ -92,11 +94,14 @@ type NotificationsForm struct {
 
 func (f NotificationsForm) fieldError(name string) string { return f.Errors[name] }
 
-func (f NotificationsForm) devicesLine() string {
+// Two catalogue strings rather than one with a number: the singular is not
+// "1 devices" in any of these languages, and a plural rule per locale is more
+// machinery than one branch deserves.
+func (f NotificationsForm) devicesLine(ctx context.Context) string {
 	if f.PushDevices == 1 {
-		return "1 device gets nudges."
+		return i18n.T(ctx, "settings.push.devices.one")
 	}
-	return fmt.Sprintf("%d devices get nudges.", f.PushDevices)
+	return i18n.Tf(ctx, "settings.push.devices.many", f.PushDevices)
 }
 
 func NotificationsFormFor(p notifications.Prefs, photo notifications.Schedule) NotificationsForm {
@@ -165,10 +170,10 @@ templ Page(user users.User, summary SettingsSummary, profileForm ProfileForm, pr
 	@layout.App("Settings", user, layout.BuildNav(ctx, "/app/settings")) {
 		<div class="mx-auto w-full max-w-6xl space-y-6 p-6 md:p-8">
 			<header>
-				@ui.MonoLabel("Settings")
-				<h1 class="mt-2 text-2xl font-medium tracking-tight">Account</h1>
+				@ui.MonoLabel(i18n.T(ctx, "settings.mono"))
+				<h1 class="mt-2 text-2xl font-medium tracking-tight">{ i18n.T(ctx, "settings.heading") }</h1>
 				<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
-					How the coach addresses you, what it defaults to, and what it should never suggest.
+					{ i18n.T(ctx, "settings.intro") }
 				</p>
 			</header>
 			@settingsKpiStrip(summary)
@@ -200,10 +205,9 @@ templ aboutCard() {
 			<div class="flex items-center gap-4">
 				@mascot.Mascot(mascot.Props{ID: "settings-mascot", Size: mascot.SizeMd})
 				<div class="space-y-1">
-					@ui.MonoLabel("About")
+					@ui.MonoLabel(i18n.T(ctx, "settings.about.label"))
 					<p class="text-sm leading-relaxed">
-						{ ui.ProductName } is an operating system for personal growth. It
-						remembers what you tell it, so you only have to explain once.
+						{ i18n.Tf(ctx, "settings.about.body", ui.ProductName) }
 					</p>
 				</div>
 			</div>
@@ -213,10 +217,10 @@ templ aboutCard() {
 
 templ settingsKpiStrip(summary SettingsSummary) {
 	@ui.KpiStrip() {
-		@ui.KpiCell(ui.KpiCellProps{Label: "Timezone", Value: summary.Timezone})
-		@ui.KpiCell(ui.KpiCellProps{Label: "Units", Value: summary.Units})
-		@ui.KpiCell(ui.KpiCellProps{Label: "Diets", Value: fmt.Sprintf("%d", summary.DietCount), Href: "#diets", CTA: "Edit"})
-		@ui.KpiCell(ui.KpiCellProps{Label: "Connections", Value: fmt.Sprintf("%d", summary.ConnectionCount), Href: "/app/settings/connections", CTA: "Manage"})
+		@ui.KpiCell(ui.KpiCellProps{Label: i18n.T(ctx, "settings.kpi.timezone"), Value: summary.Timezone})
+		@ui.KpiCell(ui.KpiCellProps{Label: i18n.T(ctx, "settings.kpi.units"), Value: summary.Units})
+		@ui.KpiCell(ui.KpiCellProps{Label: i18n.T(ctx, "settings.kpi.diets"), Value: fmt.Sprintf("%d", summary.DietCount), Href: "#diets", CTA: i18n.T(ctx, "settings.kpi.edit")})
+		@ui.KpiCell(ui.KpiCellProps{Label: i18n.T(ctx, "settings.kpi.connections"), Value: fmt.Sprintf("%d", summary.ConnectionCount), Href: "/app/settings/connections", CTA: i18n.T(ctx, "settings.kpi.manage")})
 	}
 }
 
@@ -224,10 +228,10 @@ templ profileCard(f ProfileForm) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 		@card.Header() {
 			@card.Title() {
-				Profile
+				{ i18n.T(ctx, "settings.profile.title") }
 			}
 			@card.Description() {
-				Your name, timezone, and how you want to be coached.
+				{ i18n.T(ctx, "settings.profile.desc") }
 			}
 		}
 		@card.Content() {
@@ -235,7 +239,7 @@ templ profileCard(f ProfileForm) {
 				@ui.CSRFInput()
 				@form.Item() {
 					@label.Label(label.Props{For: "display_name"}) {
-						Name
+						{ i18n.T(ctx, "settings.profile.name") }
 					}
 					@input.Input(input.Props{
 						ID: "display_name", Name: "display_name", Value: f.DisplayName, Required: true,
@@ -249,16 +253,16 @@ templ profileCard(f ProfileForm) {
 				}
 				@form.Item() {
 					@label.Label(label.Props{For: "timezone"}) {
-						Timezone
+						{ i18n.T(ctx, "settings.profile.timezone") }
 					}
 					// A select rather than a text field: an unrecognised zone is
 					// stored as UTC without complaint, so a typo here would move
 					// somebody's whole day and tell them nothing.
 					@selectbox.SelectBox() {
 						@selectbox.Trigger(selectbox.TriggerProps{ID: "timezone", Name: "timezone", HasError: f.fieldError("timezone") != ""}) {
-							@selectbox.Value(selectbox.ValueProps{Placeholder: "Choose a timezone"})
+							@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "settings.profile.timezone.choose")})
 						}
-						@selectbox.Content(selectbox.ContentProps{SearchPlaceholder: "Search timezones..."}) {
+						@selectbox.Content(selectbox.ContentProps{SearchPlaceholder: i18n.T(ctx, "settings.profile.timezone.search")}) {
 							for _, group := range users.ZoneGroupsIncluding(f.Timezone) {
 								@selectbox.Group() {
 									@selectbox.Label() {
@@ -281,14 +285,14 @@ templ profileCard(f ProfileForm) {
 				}
 				@form.Item() {
 					@label.Label(label.Props{For: "locale"}) {
-						Language
+						{ i18n.T(ctx, "settings.profile.language") }
 					}
 					// Each language is named in itself. Somebody who has ended
 					// up in the wrong one cannot read "Portuguese (Brazil)" to
 					// find their way out.
 					@selectbox.SelectBox() {
 						@selectbox.Trigger(selectbox.TriggerProps{ID: "locale", Name: "locale", HasError: f.fieldError("locale") != ""}) {
-							@selectbox.Value(selectbox.ValueProps{Placeholder: "Choose a language"})
+							@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "settings.profile.language.choose")})
 						}
 						@selectbox.Content(selectbox.ContentProps{}) {
 							for _, l := range users.Locales {
@@ -299,27 +303,27 @@ templ profileCard(f ProfileForm) {
 						}
 					}
 					@form.Description() {
-						Khepri answers you in this language. The exercise catalogue stays in English for now.
+						{ i18n.T(ctx, "settings.profile.language.desc") }
 					}
 				}
 				@form.Item() {
 					@label.Label(label.Props{For: "coaching_tone"}) {
-						Coaching tone
+						{ i18n.T(ctx, "settings.profile.tone") }
 					}
 					@selectbox.SelectBox() {
 						@selectbox.Trigger(selectbox.TriggerProps{ID: "coaching_tone", Name: "coaching_tone"}) {
-							@selectbox.Value(selectbox.ValueProps{Placeholder: "Direct"})
+							@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, users.ToneDefault.Key())})
 						}
 						@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
 							for _, tone := range users.Tones {
 								@selectbox.Item(selectbox.ItemProps{Value: string(tone), Selected: f.tone() == tone}) {
-									{ tone.Label() }
+									{ i18n.T(ctx, tone.Key()) }
 								}
 							}
 						}
 					}
 					@form.Description() {
-						The voice the coach uses. The note below refines it.
+						{ i18n.T(ctx, "settings.profile.tone.desc") }
 					}
 					if f.fieldError("coaching_tone") != "" {
 						@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
@@ -329,11 +333,11 @@ templ profileCard(f ProfileForm) {
 				}
 				@form.Item() {
 					@label.Label(label.Props{For: "coaching_style"}) {
-						How you want to be coached
+						{ i18n.T(ctx, "settings.profile.style") }
 					}
 					@textarea.Textarea(textarea.Props{
 						ID: "coaching_style", Name: "coaching_style", Rows: 3,
-						Placeholder: "Optional. E.g. \"Don't let me skip leg day twice.\"",
+						Placeholder: i18n.T(ctx, "settings.profile.style.placeholder"),
 					}) {
 						{ f.CoachingStyle }
 					}
@@ -344,7 +348,7 @@ templ profileCard(f ProfileForm) {
 					}
 				}
 				@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90"}) {
-					Save profile
+					{ i18n.T(ctx, "settings.profile.save") }
 				}
 			</form>
 		}
@@ -356,10 +360,10 @@ templ notificationsCard(f NotificationsForm) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface", ID: "notifications"}) {
 		@card.Header() {
 			@card.Title() {
-				Notifications
+				{ i18n.T(ctx, "settings.notif.title") }
 			}
 			@card.Description() {
-				When Khepri speaks first. Quiet hours follow your timezone.
+				{ i18n.T(ctx, "settings.notif.desc") }
 			}
 		}
 		@card.Content() {
@@ -370,7 +374,7 @@ templ notificationsCard(f NotificationsForm) {
 						ID: "nudge_missed_checkin", Name: "nudge_missed_checkin", Checked: f.NudgeMissedCheckIn,
 					})
 					@label.Label(label.Props{For: "nudge_missed_checkin"}) {
-						Remind me when I stop checking in
+						{ i18n.T(ctx, "settings.notif.missed") }
 					}
 				}
 				@form.Item() {
@@ -378,7 +382,7 @@ templ notificationsCard(f NotificationsForm) {
 						ID: "nudge_goal_deadline", Name: "nudge_goal_deadline", Checked: f.NudgeGoalDeadline,
 					})
 					@label.Label(label.Props{For: "nudge_goal_deadline"}) {
-						Warn me before a goal is due
+						{ i18n.T(ctx, "settings.notif.goal") }
 					}
 				}
 				@form.Item() {
@@ -386,10 +390,10 @@ templ notificationsCard(f NotificationsForm) {
 						ID: "coach_activity", Name: "coach_activity", Checked: f.CoachActivity,
 					})
 					@label.Label(label.Props{For: "coach_activity"}) {
-						Tell me when the coach has something
+						{ i18n.T(ctx, "settings.notif.coach") }
 					}
 					@form.Description() {
-						First-week check-ins, a reply from Telegram, a finished form check.
+						{ i18n.T(ctx, "settings.notif.coach.desc") }
 					}
 				}
 				@form.Item() {
@@ -397,66 +401,66 @@ templ notificationsCard(f NotificationsForm) {
 						ID: "training_reminders", Name: "training_reminders", Checked: f.TrainingReminders,
 					})
 					@label.Label(label.Props{For: "training_reminders"}) {
-						Remind me on a training day
+						{ i18n.T(ctx, "settings.notif.training") }
 					}
 				}
 				@separator.Separator()
 				<p class="text-sm font-medium">Photo check-ins</p>
 				<p class="text-muted-foreground text-xs">
-					I ask for a photo on this cadence, then remind you if nothing arrives.
+					{ i18n.T(ctx, "settings.notif.photo.desc") }
 				</p>
 				@form.Item() {
 					@switchcomp.Switch(switchcomp.Props{
 						ID: "photo_ask_enabled", Name: "photo_ask_enabled", Checked: f.PhotoAskEnabled,
 					})
 					@label.Label(label.Props{For: "photo_ask_enabled"}) {
-						Ask me for a photo
+						{ i18n.T(ctx, "settings.notif.photo.ask") }
 					}
 				}
 				@form.Item() {
 					@label.Label(label.Props{For: "photo_every_days"}) {
-						How often
+						{ i18n.T(ctx, "settings.notif.photo.often") }
 					}
 					@selectbox.SelectBox() {
 						@selectbox.Trigger(selectbox.TriggerProps{ID: "photo_every_days", Name: "photo_every_days"}) {
-							@selectbox.Value(selectbox.ValueProps{Placeholder: "Every 2 weeks"})
+							@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "settings.notif.photo.week2")})
 						}
 						@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
 							@selectbox.Item(selectbox.ItemProps{Value: "7", Selected: f.PhotoEveryDays == 7}) {
-								Every week
+								{ i18n.T(ctx, "settings.notif.photo.week1") }
 							}
 							@selectbox.Item(selectbox.ItemProps{Value: "14", Selected: f.PhotoEveryDays == 14 || f.PhotoEveryDays == 0}) {
-								Every 2 weeks
+								{ i18n.T(ctx, "settings.notif.photo.week2") }
 							}
 							@selectbox.Item(selectbox.ItemProps{Value: "21", Selected: f.PhotoEveryDays == 21}) {
-								Every 3 weeks
+								{ i18n.T(ctx, "settings.notif.photo.week3") }
 							}
 							@selectbox.Item(selectbox.ItemProps{Value: "28", Selected: f.PhotoEveryDays == 28}) {
-								Every 4 weeks
+								{ i18n.T(ctx, "settings.notif.photo.week4") }
 							}
 						}
 					}
 				}
 				@form.Item() {
 					@label.Label(label.Props{For: "photo_reminder_days"}) {
-						If I forget
+						{ i18n.T(ctx, "settings.notif.photo.forget") }
 					}
 					@selectbox.SelectBox() {
 						@selectbox.Trigger(selectbox.TriggerProps{ID: "photo_reminder_days", Name: "photo_reminder_days"}) {
-							@selectbox.Value(selectbox.ValueProps{Placeholder: "Remind me 2 days later"})
+							@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "settings.notif.photo.days2")})
 						}
 						@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
 							@selectbox.Item(selectbox.ItemProps{Value: "0", Selected: f.PhotoReminderDays == 0}) {
-								No reminder
+								{ i18n.T(ctx, "settings.notif.photo.none") }
 							}
 							@selectbox.Item(selectbox.ItemProps{Value: "2", Selected: f.PhotoReminderDays == 2}) {
-								Remind me 2 days later
+								{ i18n.T(ctx, "settings.notif.photo.days2") }
 							}
 							@selectbox.Item(selectbox.ItemProps{Value: "3", Selected: f.PhotoReminderDays == 3}) {
-								Remind me 3 days later
+								{ i18n.T(ctx, "settings.notif.photo.days3") }
 							}
 							@selectbox.Item(selectbox.ItemProps{Value: "7", Selected: f.PhotoReminderDays == 7}) {
-								Remind me a week later
+								{ i18n.T(ctx, "settings.notif.photo.days7") }
 							}
 						}
 					}
@@ -466,10 +470,10 @@ templ notificationsCard(f NotificationsForm) {
 						ID: "weekly_report_auto", Name: "weekly_report_auto", Checked: f.WeeklyReportAuto,
 					})
 					@label.Label(label.Props{For: "weekly_report_auto"}) {
-						Write my weekly review automatically
+						{ i18n.T(ctx, "settings.notif.weekly") }
 					}
 					@form.Description() {
-						Generated on Monday morning, your time, for the week that just ended.
+						{ i18n.T(ctx, "settings.notif.weekly.desc") }
 					}
 				}
 				@form.Item() {
@@ -477,10 +481,10 @@ templ notificationsCard(f NotificationsForm) {
 						ID: "daily_briefing_auto", Name: "daily_briefing_auto", Checked: f.DailyBriefingAuto,
 					})
 					@label.Label(label.Props{For: "daily_briefing_auto"}) {
-						Write my morning briefing automatically
+						{ i18n.T(ctx, "settings.notif.briefing") }
 					}
 					@form.Description() {
-						A few sentences each morning, your time, from your goals and last check-in.
+						{ i18n.T(ctx, "settings.notif.briefing.desc") }
 					}
 				}
 				@form.Item() {
@@ -488,13 +492,13 @@ templ notificationsCard(f NotificationsForm) {
 						ID: "quiet_hours_enabled", Name: "quiet_hours_enabled", Checked: f.QuietHoursEnabled,
 					})
 					@label.Label(label.Props{For: "quiet_hours_enabled"}) {
-						Stay quiet at night
+						{ i18n.T(ctx, "settings.notif.quiet") }
 					}
 				}
 				<div class="grid grid-cols-2 gap-3 sm:max-w-xs">
 					@form.Item() {
 						@label.Label(label.Props{For: "quiet_start"}) {
-							From
+							{ i18n.T(ctx, "settings.notif.quiet.from") }
 						}
 						// A native time input rather than the timepicker component:
 						// this posts "HH:MM", which is exactly what the column's
@@ -511,7 +515,7 @@ templ notificationsCard(f NotificationsForm) {
 					}
 					@form.Item() {
 						@label.Label(label.Props{For: "quiet_end"}) {
-							To
+							{ i18n.T(ctx, "settings.notif.quiet.to") }
 						}
 						@input.Input(input.Props{
 							ID: "quiet_end", Name: "quiet_end", Type: input.TypeTime, Value: f.QuietEnd,
@@ -525,7 +529,7 @@ templ notificationsCard(f NotificationsForm) {
 					}
 				</div>
 				@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90"}) {
-					Save notifications
+					{ i18n.T(ctx, "settings.notif.save") }
 				}
 			</form>
 			if f.PushEnabled {
@@ -552,30 +556,30 @@ templ pushRow(f NotificationsForm) {
 		class="space-y-3"
 	>
 		<div>
-			<p class="text-sm font-medium">Nudges on this device</p>
-			<p class="text-muted-foreground text-xs" data-push-hint>Checking what this browser supports…</p>
+			<p class="text-sm font-medium">{ i18n.T(ctx, "settings.push.title") }</p>
+			<p class="text-muted-foreground text-xs" data-push-hint>{ i18n.T(ctx, "settings.push.checking") }</p>
 		</div>
 		<div hidden data-push-state="ready">
 			@button.Button(button.Props{Variant: button.VariantOutline, Attributes: templ.Attributes{"data-push-enable": "true"}}) {
-				Turn on for this device
+				{ i18n.T(ctx, "settings.push.enable") }
 			}
 		</div>
 		<div hidden data-push-state="subscribed" class="flex flex-wrap items-center gap-3">
 			@badge.Badge(badge.Props{Variant: badge.VariantOutline, Class: "border-signal/40 bg-signal/12 text-signal"}) {
-				On
+				{ i18n.T(ctx, "settings.push.on") }
 			}
 			@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Attributes: templ.Attributes{"data-push-disable": "true"}}) {
-				Turn off
+				{ i18n.T(ctx, "settings.push.disable") }
 			}
 		</div>
 		<div hidden data-push-state="working"></div>
 		<div hidden data-push-state="failed">
 			@button.Button(button.Props{Variant: button.VariantOutline, Attributes: templ.Attributes{"data-push-enable": "true"}}) {
-				Try again
+				{ i18n.T(ctx, "settings.push.retry") }
 			}
 		</div>
 		if f.PushDevices > 0 {
-			<p class="text-muted-foreground text-xs">{ f.devicesLine() }</p>
+			<p class="text-muted-foreground text-xs">{ f.devicesLine(ctx) }</p>
 		}
 	</div>
 	<script src="/assets/js/shared/push.js" defer></script>
@@ -585,10 +589,10 @@ templ preferencesCard(f PreferencesForm) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 		@card.Header() {
 			@card.Title() {
-				Fitness defaults
+				{ i18n.T(ctx, "settings.prefs.title") }
 			}
 			@card.Description() {
-				Pre-fills the calculator; you can still override per calculation.
+				{ i18n.T(ctx, "settings.prefs.desc") }
 			}
 		}
 		@card.Content() {
@@ -596,66 +600,66 @@ templ preferencesCard(f PreferencesForm) {
 				@ui.CSRFInput()
 				@form.Item() {
 					@label.Label() {
-						Units
+						{ i18n.T(ctx, "settings.prefs.units") }
 					}
 					@selectbox.SelectBox() {
 						@selectbox.Trigger(selectbox.TriggerProps{ID: "units_system", Name: "units_system"}) {
-							@selectbox.Value(selectbox.ValueProps{Placeholder: "Metric"})
+							@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "settings.prefs.metric")})
 						}
 						@selectbox.Content() {
 							@selectbox.Item(selectbox.ItemProps{Value: preferences.UnitsMetric, Selected: f.UnitsSystem == preferences.UnitsMetric}) {
-								Metric (kg, cm)
+								{ i18n.T(ctx, "settings.prefs.metric") }
 							}
 							@selectbox.Item(selectbox.ItemProps{Value: preferences.UnitsImperial, Selected: f.UnitsSystem == preferences.UnitsImperial}) {
-								Imperial (lb, in)
+								{ i18n.T(ctx, "settings.prefs.imperial") }
 							}
 						}
 					}
 				}
 				@form.Item() {
 					@label.Label() {
-						Default objective
+						{ i18n.T(ctx, "settings.prefs.objective") }
 					}
 					@selectbox.SelectBox() {
 						@selectbox.Trigger(selectbox.TriggerProps{ID: "default_goal", Name: "default_goal"}) {
-							@selectbox.Value(selectbox.ValueProps{Placeholder: "Maintenance"})
+							@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "settings.prefs.maintenance")})
 						}
 						@selectbox.Content() {
 							@selectbox.Item(selectbox.ItemProps{Value: calculator.GoalCutting, Selected: f.DefaultGoal == calculator.GoalCutting}) {
-								Cutting
+								{ i18n.T(ctx, "settings.prefs.cutting") }
 							}
 							@selectbox.Item(selectbox.ItemProps{Value: calculator.GoalMaintenance, Selected: f.DefaultGoal == calculator.GoalMaintenance}) {
-								Maintenance
+								{ i18n.T(ctx, "settings.prefs.maintenance") }
 							}
 							@selectbox.Item(selectbox.ItemProps{Value: calculator.GoalBulking, Selected: f.DefaultGoal == calculator.GoalBulking}) {
-								Bulking
+								{ i18n.T(ctx, "settings.prefs.bulking") }
 							}
 						}
 					}
 				}
 				@form.Item() {
 					@label.Label() {
-						Default macro split
+						{ i18n.T(ctx, "settings.prefs.macro") }
 					}
 					@selectbox.SelectBox() {
 						@selectbox.Trigger(selectbox.TriggerProps{ID: "default_macro_split", Name: "default_macro_split"}) {
-							@selectbox.Value(selectbox.ValueProps{Placeholder: "Moderate carb"})
+							@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "settings.prefs.modcarb")})
 						}
 						@selectbox.Content() {
 							@selectbox.Item(selectbox.ItemProps{Value: calculator.SplitHighCarb, Selected: f.DefaultMacroSplit == calculator.SplitHighCarb}) {
-								High carb
+								{ i18n.T(ctx, "settings.prefs.highcarb") }
 							}
 							@selectbox.Item(selectbox.ItemProps{Value: calculator.SplitModerateCarb, Selected: f.DefaultMacroSplit == calculator.SplitModerateCarb}) {
-								Moderate carb
+								{ i18n.T(ctx, "settings.prefs.modcarb") }
 							}
 							@selectbox.Item(selectbox.ItemProps{Value: calculator.SplitLowCarb, Selected: f.DefaultMacroSplit == calculator.SplitLowCarb}) {
-								Low carb
+								{ i18n.T(ctx, "settings.prefs.lowcarb") }
 							}
 						}
 					}
 				}
 				@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90"}) {
-					Save defaults
+					{ i18n.T(ctx, "settings.prefs.save") }
 				}
 			</form>
 		}
@@ -666,10 +670,10 @@ templ dietsCard(allDiets []meals.Diet, selected map[uuid.UUID]bool) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface", ID: "diets"}) {
 		@card.Header() {
 			@card.Title() {
-				Dietary preferences
+				{ i18n.T(ctx, "settings.diets.title") }
 			}
 			@card.Description() {
-				The coach won't suggest meals outside of these.
+				{ i18n.T(ctx, "settings.diets.desc") }
 			}
 		}
 		@card.Content() {
@@ -684,7 +688,7 @@ templ dietsCard(allDiets []meals.Diet, selected map[uuid.UUID]bool) {
 					}
 				</div>
 				@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90"}) {
-					Save preferences
+					{ i18n.T(ctx, "settings.diets.save") }
 				}
 			</form>
 		}
@@ -698,21 +702,21 @@ templ connectionsCard() {
 	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 		@card.Header() {
 			@card.Title() {
-				Agent connections
+				{ i18n.T(ctx, "settings.agents.title") }
 			}
 			@card.Description() {
-				Let Claude Code, Codex, or Hermes work with your goals, check-ins, and coach.
+				{ i18n.T(ctx, "settings.agents.desc") }
 			}
 		}
 		@card.Content() {
 			<div class="flex flex-wrap gap-2">
 				@button.Button(button.Props{Href: "/app/settings/connections", Variant: button.VariantOutline}) {
-					Manage connections
+					{ i18n.T(ctx, "settings.agents.manage") }
 				}
 				// Next to the keys that grant the access, because this is what
 				// those keys have actually done.
 				@button.Button(button.Props{Href: "/app/settings/activity", Variant: button.VariantOutline}) {
-					View activity
+					{ i18n.T(ctx, "settings.agents.activity") }
 				}
 			</div>
 		}
@@ -726,30 +730,25 @@ templ yourDataCard(user users.User, deleteErr string) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 		@card.Header() {
 			@card.Title() {
-				Your data
+				{ i18n.T(ctx, "settings.data.title") }
 			}
 			@card.Description() {
-				Take a copy of everything Khepri holds, or close the account for good.
+				{ i18n.T(ctx, "settings.data.desc") }
 			}
 		}
 		@card.Content() {
 			<div class="space-y-6">
 				<div class="space-y-3">
 					<p class="text-muted-foreground text-sm leading-relaxed">
-						The export is a zip of plain text and your own original files: your profile,
-						goals, check-ins, what Khepri remembers, your documents, and every conversation.
-						Nothing in it needs Khepri to read it.
+						{ i18n.T(ctx, "settings.data.export.desc") }
 					</p>
 					@button.Button(button.Props{Href: "/app/settings/export.zip", Variant: button.VariantOutline}) {
-						Download my data
+						{ i18n.T(ctx, "settings.data.download") }
 					}
 				</div>
 				<div class="border-hairline space-y-3 border-t pt-6">
 					<p class="text-muted-foreground text-sm leading-relaxed">
-						Deleting removes your account and everything in it straight away — goals,
-						check-ins, conversations, documents, and the files behind them. It cannot be
-						undone, and Khepri keeps no copy to restore from. Download your data first if
-						you want it.
+						{ i18n.T(ctx, "settings.delete.desc") }
 					</p>
 					if deleteErr != "" {
 						@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
@@ -769,7 +768,7 @@ templ yourDataCard(user users.User, deleteErr string) {
 templ deleteAccountDialog(user users.User) {
 	@dialog.Trigger(dialog.TriggerProps{For: "delete-account"}) {
 		@button.Button(button.Props{Variant: button.VariantDestructive, Type: button.TypeButton}) {
-			Delete my account
+			{ i18n.T(ctx, "settings.delete.button") }
 		}
 	}
 	@dialog.Dialog(dialog.Props{ID: "delete-account"}) {
@@ -778,17 +777,16 @@ templ deleteAccountDialog(user users.User) {
 				@ui.CSRFInput()
 				@dialog.Header() {
 					@dialog.Title() {
-						Delete your account?
+						{ i18n.T(ctx, "settings.delete.title") }
 					}
 					@dialog.Description() {
-						This erases everything Khepri holds for you and signs you out everywhere.
-						There is no undo and no grace period.
+						{ i18n.T(ctx, "settings.delete.dialog") }
 					}
 				}
 				<div class="py-4">
 					@form.Item() {
 						@label.Label(label.Props{For: "confirm_email"}) {
-							Type { user.Email } to confirm
+							{ i18n.Tf(ctx, "settings.delete.confirm", user.Email) }
 						}
 						@input.Input(input.Props{
 							ID: "confirm_email", Name: "confirm_email", Type: "email",
@@ -799,11 +797,11 @@ templ deleteAccountDialog(user users.User) {
 				@dialog.Footer() {
 					@dialog.Close() {
 						@button.Button(button.Props{Variant: button.VariantOutline, Type: button.TypeButton}) {
-							Keep my account
+							{ i18n.T(ctx, "settings.delete.keep") }
 						}
 					}
 					@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantDestructive}) {
-						Delete everything
+						{ i18n.T(ctx, "settings.delete.go") }
 					}
 				}
 			</form>
