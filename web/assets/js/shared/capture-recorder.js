@@ -72,6 +72,15 @@
 		}
 	}
 
+	// Copy comes from the server, on data- attributes of the record button, so
+	// this script holds no English of its own. The fallback is the English
+	// anyway: a missing attribute must not blank a label or swallow an error.
+	function copy(name, fallback) {
+		var button = document.querySelector("[data-voice-record]");
+		var value = button && button.getAttribute("data-voice-" + name);
+		return value || fallback;
+	}
+
 	function setLabel(el, text) {
 		var label = el.querySelector("[data-voice-label]");
 		if (label) {
@@ -86,7 +95,7 @@
 		el.setAttribute("aria-pressed", "false");
 		el.removeAttribute("data-recording");
 		el.disabled = false;
-		setLabel(el, "Say it");
+		setLabel(el, copy("say", "Say it"));
 	}
 
 	function releaseStream() {
@@ -212,12 +221,12 @@
 	function send(blob) {
 		if (blob.size === 0) {
 			idle(button);
-			fail("That recording was empty.");
+			fail(copy("empty", "That recording was empty."));
 			return;
 		}
 		if (blob.size > MAX_BYTES) {
 			idle(button);
-			fail("That recording is too long.");
+			fail(copy("toolong", "That recording is too long."));
 			return;
 		}
 
@@ -255,7 +264,7 @@
 			})
 			.catch(function () {
 				idle(button);
-				fail("That did not reach Khepri. Try again.");
+				fail(copy("unreachable", "That did not reach Khepri. Try again."));
 			});
 	}
 
@@ -293,11 +302,11 @@
 					chunks = [];
 					if (button) {
 						button.disabled = true;
-						setLabel(button, "Reading it…");
+						setLabel(button, copy("reading", "Reading it\u2026"));
 					}
 					toWav(blob).then(send, function () {
 						idle(button);
-						fail("Khepri could not read that recording. Try again.");
+						fail(copy("unreadable", "Khepri could not read that recording. Try again."));
 					});
 				});
 
@@ -305,7 +314,7 @@
 
 				el.setAttribute("aria-pressed", "true");
 				el.setAttribute("data-recording", "true");
-				setLabel(el, "Stop");
+				setLabel(el, copy("stop", "Stop"));
 
 				// The cap is enforced here rather than trusted to the person.
 				// A pocket can hold a button for an hour.
@@ -313,7 +322,7 @@
 			})
 			.catch(function () {
 				idle(el);
-				fail("Khepri could not reach the microphone. Check the permission and try again.");
+				fail(copy("mic", "Khepri could not reach the microphone. Check the permission and try again."));
 			});
 	}
 
@@ -325,7 +334,7 @@
 		event.preventDefault();
 
 		if (!supported()) {
-			fail("This browser cannot record audio.");
+			fail(copy("unsupported", "This browser cannot record audio."));
 			return;
 		}
 

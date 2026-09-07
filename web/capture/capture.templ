@@ -1,9 +1,11 @@
 package capture
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/capture/captured"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
@@ -37,7 +39,7 @@ type Data struct {
 }
 
 templ Page(user users.User, data Data) {
-	@layout.App("Quick capture", user, layout.BuildNav(ctx, "/app/capture")) {
+	@layout.App(i18n.T(ctx, "capture.heading"), user, layout.BuildNav(ctx, "/app/capture")) {
 		<div id={ PanelID }>
 			@Panel(data)
 		</div>
@@ -51,9 +53,9 @@ templ Page(user users.User, data Data) {
 templ Panel(data Data) {
 	<div class="mx-auto w-full max-w-2xl px-4 py-6 space-y-6">
 		<header class="space-y-1">
-			<h1 class="text-2xl font-semibold tracking-tight">Quick capture</h1>
+			<h1 class="text-2xl font-semibold tracking-tight">{ i18n.T(ctx, "capture.heading") }</h1>
 			<p class="text-sm text-muted-foreground">
-				Write your day the way you would say it. Nothing is saved until you check it.
+				{ i18n.T(ctx, "capture.intro") }
 			</p>
 		</header>
 		if data.Error != "" {
@@ -89,7 +91,7 @@ templ composer(data Data) {
 			Name:        "text",
 			Value:       data.Text,
 			Rows:        4,
-			Placeholder: "slept 6h, 2L water, read 20 pages, 78kg, mood 4 energy 3",
+			Placeholder: i18n.T(ctx, "capture.ph"),
 			Class:       "text-base",
 			Attributes:  templ.Attributes{"autofocus": true, "maxlength": strconv.Itoa(captured.MaxText)},
 		})
@@ -109,13 +111,26 @@ templ composer(data Data) {
 						"data-voice-record": true,
 						"hidden":            true,
 						"aria-pressed":      "false",
-						"aria-label":        "Record a voice note",
+						"aria-label":        i18n.T(ctx, "capture.voice.aria"),
+
+						// capture-recorder.js reads its copy from here. It keeps
+						// the English as a fallback, so a key going missing
+						// cannot blank a label or swallow an error message.
+						"data-voice-say":         i18n.T(ctx, "capture.voice.say"),
+						"data-voice-stop":        i18n.T(ctx, "capture.voice.stop"),
+						"data-voice-reading":     i18n.T(ctx, "capture.voice.reading"),
+						"data-voice-empty":       i18n.T(ctx, "capture.voice.empty"),
+						"data-voice-toolong":     i18n.T(ctx, "capture.voice.toolong"),
+						"data-voice-unreachable": i18n.T(ctx, "capture.voice.unreachable"),
+						"data-voice-unreadable":  i18n.T(ctx, "capture.voice.unreadable"),
+						"data-voice-mic":         i18n.T(ctx, "capture.voice.mic"),
+						"data-voice-unsupported": i18n.T(ctx, "capture.voice.unsupported"),
 					},
 				}) {
-					<span data-voice-label>Say it</span>
+					<span data-voice-label>{ i18n.T(ctx, "capture.voice.say") }</span>
 				}
 				@button.Button(button.Props{Type: button.TypeSubmit, Class: "min-h-11"}) {
-					Read it
+					{ i18n.T(ctx, "capture.read") }
 				}
 			</div>
 		</div>
@@ -188,7 +203,7 @@ templ itemRow(index int, item captured.Item) {
 			<div class="min-w-0 flex-1 space-y-1">
 				<div class="flex flex-wrap items-center gap-2">
 					@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
-						{ kindLabel(item.Kind) }
+						{ kindLabel(ctx, item.Kind) }
 					}
 					if item.Uncertain {
 						@badge.Badge(badge.Props{Variant: badge.VariantOutline}) {
@@ -286,9 +301,9 @@ templ hiddenPayload(index int, item captured.Item) {
 // each one offers the two places it could still go.
 templ leftovers(list []string) {
 	@card.Card(card.Props{Class: "p-3 border-dashed"}) {
-		<p class="text-sm font-medium">Not logged</p>
+		<p class="text-sm font-medium">{ i18n.T(ctx, "capture.left.title") }</p>
 		<p class="mt-1 text-xs text-muted-foreground">
-			I could not read these as entries, so nothing was saved for them.
+			{ i18n.T(ctx, "capture.left.body") }
 		</p>
 		<ul class="mt-2 space-y-1">
 			for _, text := range list {
@@ -297,10 +312,10 @@ templ leftovers(list []string) {
 		</ul>
 		<div class="mt-3 flex flex-wrap gap-2">
 			@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Href: "/app/chat"}) {
-				Ask the coach
+				{ i18n.T(ctx, "capture.left.ask") }
 			}
 			@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Href: "/app/mind"}) {
-				Save as a journal note
+				{ i18n.T(ctx, "capture.left.note") }
 			}
 		</div>
 	}
@@ -309,7 +324,7 @@ templ leftovers(list []string) {
 templ receiptCard(receipt captured.Receipt) {
 	@alert.Alert() {
 		@alert.Title() {
-			{ writtenLine(receipt) }
+			{ writtenLine(ctx, receipt) }
 		}
 		@alert.Description() {
 			<ul class="mt-1 space-y-1">
@@ -327,35 +342,27 @@ templ receiptCard(receipt captured.Receipt) {
 	}
 }
 
-func writtenLine(receipt captured.Receipt) string {
+func writtenLine(ctx context.Context, receipt captured.Receipt) string {
 	written := receipt.Written()
 	switch {
 	case receipt.Failed() == 0 && written == 1:
-		return "Logged 1 thing."
+		return i18n.T(ctx, "capture.logged.one")
 	case receipt.Failed() == 0:
-		return fmt.Sprintf("Logged %d things.", written)
+		return i18n.Tf(ctx, "capture.logged.many", written)
 	default:
-		return fmt.Sprintf("Logged %d of %d.", written, len(receipt.Outcomes))
+		return i18n.Tf(ctx, "capture.logged.partial", written, len(receipt.Outcomes))
 	}
 }
 
-func kindLabel(kind captured.Kind) string {
-	switch kind {
-	case captured.KindWater:
-		return "Water"
-	case captured.KindSleep:
-		return "Sleep"
-	case captured.KindHabit:
-		return "Habit"
-	case captured.KindWeight:
-		return "Weight"
-	case captured.KindCheckIn:
-		return "Check-in"
-	case captured.KindFood:
-		return "Food"
-	default:
-		return string(kind)
+// A kind this build does not name renders as the stored value, exactly as it
+// did before: it is a diagnostic, not copy, and inventing a translation for it
+// would hide the fact that something new arrived.
+func kindLabel(ctx context.Context, kind captured.Kind) string {
+	key := "capture.kind." + string(kind)
+	if got := i18n.T(ctx, key); got != key {
+		return got
 	}
+	return string(kind)
 }
 
 func foodName(item captured.Item) string {
