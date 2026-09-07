@@ -50,6 +50,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/insights"
 	"github.com/NorthAIProject/north-client/internal/integrations"
 	"github.com/NorthAIProject/north-client/internal/jobs"
+	"github.com/NorthAIProject/north-client/internal/mcpauth"
 	"github.com/NorthAIProject/north-client/internal/mcpserver"
 	"github.com/NorthAIProject/north-client/internal/meals"
 	"github.com/NorthAIProject/north-client/internal/media"
@@ -1099,6 +1100,15 @@ func routes(
 		}
 	}
 
+	// OAuth in front of /mcp, so connecting an agent is one pasted URL rather
+	// than a token copied into a configuration file.
+	//
+	// Built before the endpoint because the endpoint's 401 has to point at this
+	// server's discovery document: that pointer is how an unauthenticated
+	// client bootstraps itself instead of simply failing.
+	mcpAuthSvc := mcpauth.NewService(mcpauth.NewRepository(pool), connectionSvc, cfg.BaseURL)
+	mcpAuthMachine := mcpauth.NewMachineHandler(mcpAuthSvc, slog.Default(), cfg.TrustedProxies)
+
 	// The MCP endpoint an outside agent connects to.
 	//
 	// Every token resolves to its own owner, which is what makes this safe to
@@ -1125,6 +1135,11 @@ func routes(
 		TrustedProxies:    cfg.TrustedProxies,
 		Version:           mcpserver.Version,
 		Log:               slog.Default(),
+
+		// What the 401 points at. cmd/mcp-server leaves this empty and keeps
+		// the header it always had: a static token on a tailnet has no
+		// authorization server to discover.
+		ResourceMetadataURL: mcpAuthSvc.ResourceMetadataURL(),
 	})
 
 	r := chi.NewRouter()
@@ -1150,6 +1165,20 @@ func routes(
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.MaxBody(1 << 20))
 		r.Handle("/mcp", mcpEndpoint)
+	})
+
+	// OAuth's machine half sits beside /mcp for the same reasons and one more.
+	//
+	// A client fetching discovery has no session, a token request authenticates
+	// with a code rather than a cookie, and both need permissive CORS so a
+	// browser-based client can call them from its own page — which is the
+	// opposite of what the consent screen needs. The consent screen is
+	// therefore mounted in the session group further down, not here.
+	//
+	// A smaller cap than /mcp: everything here is a handful of short strings.
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.MaxBody(64 << 10))
+		mcpAuthMachine.Routes(r)
 	})
 
 	// /api/v1 sits beside /mcp for the same three reasons: no cookie, no form,

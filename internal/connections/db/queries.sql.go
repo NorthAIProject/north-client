@@ -214,6 +214,27 @@ func (q *Queries) RevokeAgentConnection(ctx context.Context, arg RevokeAgentConn
 	return result.RowsAffected(), nil
 }
 
+const revokeGrantByID = `-- name: RevokeGrantByID :execrows
+UPDATE agent_connections
+SET revoked_at = now()
+WHERE id = $1 AND revoked_at IS NULL
+`
+
+// RevokeGrantByID turns off a connection without naming its owner.
+//
+// Deliberately unscoped, and safe only because of who calls it: the OAuth
+// revocation endpoint, where the caller has already proved possession of a
+// token belonging to this exact row, and the replay path, where the id came
+// from a code row rather than from a request. Never call it with an id that
+// came from a form — that is what RevokeAgentConnection below is for.
+func (q *Queries) RevokeGrantByID(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, revokeGrantByID, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const rotateAgentConnectionToken = `-- name: RotateAgentConnectionToken :execrows
 UPDATE agent_connections
 SET token_hash = $2,

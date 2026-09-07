@@ -33,6 +33,18 @@ SET last_used_at = now()
 WHERE id = $1
   AND (last_used_at IS NULL OR last_used_at < now() - interval '5 minutes');
 
+-- RevokeGrantByID turns off a connection without naming its owner.
+--
+-- Deliberately unscoped, and safe only because of who calls it: the OAuth
+-- revocation endpoint, where the caller has already proved possession of a
+-- token belonging to this exact row, and the replay path, where the id came
+-- from a code row rather than from a request. Never call it with an id that
+-- came from a form — that is what RevokeAgentConnection below is for.
+-- name: RevokeGrantByID :execrows
+UPDATE agent_connections
+SET revoked_at = now()
+WHERE id = $1 AND revoked_at IS NULL;
+
 -- Scoped by user_id as well as id: the id comes from a form, and without the
 -- second predicate a guessed id would revoke somebody else's connection.
 -- name: RevokeAgentConnection :execrows
