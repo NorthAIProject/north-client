@@ -22,8 +22,10 @@ func TestResolveLocaleNormalises(t *testing.T) {
 		" es ":  users.LocaleES,
 		"pt-PT": users.LocalePTPT,
 
-		// A bare "pt" is ambiguous, and answering it beats refusing.
-		"pt": users.LocalePTPT,
+		// A bare "pt" is ambiguous. Brazilian, matching CLDR's likely-subtags
+		// data and what x/text gives Accept-Language negotiation for the same
+		// input — see i18n.Negotiate.
+		"pt": users.LocalePTBR,
 
 		// Anything this build does not serve reads as English.
 		"":         users.LocaleEN,

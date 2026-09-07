@@ -1,6 +1,7 @@
 package landing
 
 import (
+	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/ui/badge"
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
 	"github.com/NorthAIProject/north-client/web/shared/ui/card"
@@ -322,6 +323,12 @@ templ siteFooter() {
 					@icon.Github(icon.Props{Class: "size-3.5"})
 					@monoLabel("Source")
 				</a>
+				// Only for visitors. A signed-in user's language lives on their
+				// account, and a second control here would write a cookie that
+				// LoadUser ignores — a switch that visibly does nothing.
+				if !signedIn(ctx) {
+					@ui.LanguageSwitcher()
+				}
 			</div>
 		</div>
 		<div class="mx-auto w-full max-w-6xl px-6 pb-8 lg:pl-28 lg:pr-8">
