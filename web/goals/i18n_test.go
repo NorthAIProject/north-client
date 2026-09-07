@@ -51,7 +51,7 @@ func TestEveryGoalCategoryIsTranslated(t *testing.T) {
 		ctx := i18n.WithLocale(context.Background(), string(locale))
 		for _, c := range goal.Categories {
 			got := categoryLabel(ctx, c)
-			if got == "" || strings.HasPrefix(got, "goal.category.") {
+			if got == "" || strings.HasPrefix(got, "lifedomain.") {
 				t.Errorf("%s: category %q renders as %q", locale, c, got)
 			}
 		}

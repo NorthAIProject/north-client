@@ -59,10 +59,10 @@ const DefaultLocale = "en"
 // per surface per language keeps a change to the settings page a change to four
 // small files.
 var (
-	english             = merge(englishNav, englishSettings, englishErrors, englishDashboard, englishCheckins, englishChat, englishGoals, englishCapture)
-	portugueseEuropean  = merge(portugueseEuropeanNav, portugueseEuropeanSettings, portugueseEuropeanErrors, portugueseEuropeanDashboard, portugueseEuropeanCheckins, portugueseEuropeanChat, portugueseEuropeanGoals, portugueseEuropeanCapture)
-	portugueseBrazilian = merge(portugueseBrazilianNav, portugueseBrazilianSettings, portugueseBrazilianErrors, portugueseBrazilianDashboard, portugueseBrazilianCheckins, portugueseBrazilianChat, portugueseBrazilianGoals, portugueseBrazilianCapture)
-	spanish             = merge(spanishNav, spanishSettings, spanishErrors, spanishDashboard, spanishCheckins, spanishChat, spanishGoals, spanishCapture)
+	english             = merge(englishNav, englishSettings, englishErrors, englishDashboard, englishCheckins, englishChat, englishGoals, englishCapture, englishLifedomain, englishCare)
+	portugueseEuropean  = merge(portugueseEuropeanNav, portugueseEuropeanSettings, portugueseEuropeanErrors, portugueseEuropeanDashboard, portugueseEuropeanCheckins, portugueseEuropeanChat, portugueseEuropeanGoals, portugueseEuropeanCapture, portugueseEuropeanLifedomain, portugueseEuropeanCare)
+	portugueseBrazilian = merge(portugueseBrazilianNav, portugueseBrazilianSettings, portugueseBrazilianErrors, portugueseBrazilianDashboard, portugueseBrazilianCheckins, portugueseBrazilianChat, portugueseBrazilianGoals, portugueseBrazilianCapture, portugueseBrazilianLifedomain, portugueseBrazilianCare)
+	spanish             = merge(spanishNav, spanishSettings, spanishErrors, spanishDashboard, spanishCheckins, spanishChat, spanishGoals, spanishCapture, spanishLifedomain, spanishCare)
 )
 
 // merge folds the per-surface maps into one catalogue, and panics on a

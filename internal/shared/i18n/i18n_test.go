@@ -52,13 +52,13 @@ func TestUntranslatedStringsAreAccountedFor(t *testing.T) {
 	allowed := map[string]map[string]bool{
 		"pt-PT": {
 			"nav.fitness":             true,
-			"goal.category.fitness":   true, // same borrowing as nav.fitness // borrowed unchanged
+			"lifedomain.fitness":      true, // same borrowing as nav.fitness // borrowed unchanged
 			"palette.empty.after":     true, // a full stop
 			"settings.prefs.imperial": true, // the system's name and both unit abbreviations are international
 		},
 		"pt-BR": {
 			"nav.fitness":             true,
-			"goal.category.fitness":   true, // same borrowing as nav.fitness
+			"lifedomain.fitness":      true, // same borrowing as nav.fitness
 			"palette.empty.after":     true,
 			"settings.prefs.imperial": true,
 		},
@@ -68,8 +68,8 @@ func TestUntranslatedStringsAreAccountedFor(t *testing.T) {
 			"settings.prefs.imperial": true,
 			"chat.feedback.no":        true, // "No" is "No" in Spanish
 			"chat.approval.no":        true,
-			"goal.category.fitness":   true, // borrowed unchanged
-			"goal.category.personal":  true, // "Personal" is spelled the same
+			"lifedomain.fitness":      true, // borrowed unchanged
+			"lifedomain.personal":     true, // "Personal" is spelled the same
 		},
 	}
 

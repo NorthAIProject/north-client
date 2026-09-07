@@ -52,13 +52,6 @@ var portugueseBrazilianGoals = map[string]string{
 	"goals.f.date":          "Data prevista",
 	"goals.f.date.desc":     "Opcional. Muitos objetivos não têm nenhuma.",
 
-	"goal.category.fitness":  "Fitness",
-	"goal.category.health":   "Saúde",
-	"goal.category.work":     "Trabalho",
-	"goal.category.learning": "Aprendizado",
-	"goal.category.personal": "Pessoal",
-	"goal.category.other":    "Outro",
-
 	"goal.status.achieved":  "Alcançado",
 	"goal.status.paused":    "Pausado",
 	"goal.status.abandoned": "Abandonado",

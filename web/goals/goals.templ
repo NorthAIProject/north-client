@@ -95,7 +95,7 @@ func categoryLabel(ctx context.Context, category string) string {
 	if !slices.Contains(goal.Categories, category) {
 		category = goal.CategoryOther
 	}
-	return i18n.T(ctx, "goal.category."+category)
+	return i18n.T(ctx, "lifedomain."+category)
 }
 
 func statusLabel(ctx context.Context, status string) string {
