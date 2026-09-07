@@ -15,5 +15,10 @@ import "embed"
 // mountAssets in cmd/web/main.go, which serves those bytes verbatim under
 // Content-Encoding: gzip. Raw they would be 24.7 MB, on disk and on the wire.
 //
+// Alongside them are 302 loop.gif animations, about 9.5 MB, one per exercise.
+// They exist for Telegram, which cannot render an SVG and would show the
+// transparent original as a blank rectangle. Already compressed, so
+// serveExerciseFrame leaves them alone — it rewrites only .svg.
+//
 //go:embed brand css exercises fonts js models video
 var Assets embed.FS

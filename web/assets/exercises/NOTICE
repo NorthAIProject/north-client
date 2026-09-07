@@ -14,11 +14,22 @@ must be shared under the same licence.
 
 Changes made by North, as CC BY-SA requires them to be stated:
 
-  - Each frame is stored gzipped and served with Content-Encoding: gzip.
-  - Upstream's PNG copies of each frame were not imported.
-  - The artwork itself is unmodified: not redrawn, recoloured, cropped, or
+  - Each SVG frame is stored gzipped and served with Content-Encoding: gzip.
+  - Upstream's PNG copies of each frame were not imported as PNGs.
+  - The SVG artwork itself is unmodified: not redrawn, recoloured, cropped, or
     rescaled. North paints it by using each frame as a CSS mask, which reads
     only its alpha channel, so the files did not need editing to work on both
     the light and dark themes.
+  - loop.gif in each directory IS an adaptation, and is the one thing here that
+    is. It is built from upstream's PNG frames, composited onto an opaque
+    #1C1C1F background and quantised to an 8-step grey ramp, so the three poses
+    can be sent as one animation to channels that cannot render an SVG —
+    Telegram rejects SVG, and the transparent original would arrive as a blank
+    rectangle on its light background. Under ShareAlike these files are
+    themselves CC BY-SA 4.0.
 
-Regenerate with scripts/workout-guide-art. Do not hand-edit these files.
+Any surface that shows this artwork must carry the credit above. That includes
+a chat message: a caption without it is a licence breach, not an omission.
+
+Regenerate the SVG frames with scripts/workout-guide-art and the loops with
+scripts/exercise-loops. Do not hand-edit these files.

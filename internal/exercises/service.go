@@ -180,3 +180,21 @@ func isCategory(value string) bool {
 	}
 	return false
 }
+
+// IllustrationFor resolves a catalogue slug to the slug its artwork is filed
+// under, and reports whether there is any.
+//
+// The two vocabularies disagree: North's catalogue came from FitMe and names
+// the bench press barbell-bench-press-medium-grip, where the artwork upstream
+// calls it bench-press. Only a column knows the mapping, so a caller that
+// wants a picture cannot build the path from the slug it has.
+//
+// Exists for the messaging adapters, which send a URL rather than rendering a
+// template and so cannot go through exerciseart.
+func (s *Service) IllustrationFor(ctx context.Context, slug string) (string, bool) {
+	e, err := s.GetBySlug(ctx, slug)
+	if err != nil || !e.HasIllustration() {
+		return "", false
+	}
+	return e.IllustrationSlug, true
+}

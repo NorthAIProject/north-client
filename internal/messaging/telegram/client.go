@@ -29,6 +29,11 @@ const apiBase = "https://api.telegram.org"
 // is better served than one reading none of it.
 const maxMessageRunes = 4096
 
+// maxCaptionRunes is the cap on a caption attached to media, which is a
+// quarter of what a plain message allows. Getting this wrong is not a
+// truncation — Telegram refuses the whole sendAnimation call.
+const maxCaptionRunes = 1024
+
 // requestTimeout bounds one Bot API call.
 //
 // It must outlast pollTimeoutSeconds: getUpdates asks Telegram to hold the
@@ -87,6 +92,20 @@ func (c *Client) Send(ctx context.Context, externalID string, msg messaging.Outb
 		return err
 	}
 
+	// The illustration goes first, so it is on screen while the words are
+	// read rather than arriving under them.
+	//
+	// A failure here is swallowed on purpose: the written cues are the
+	// substance of the answer and the picture supports them, so a rejected
+	// animation must not cost the reply. Logged rather than returned, because
+	// nothing upstream can act on it.
+	if msg.Animation != "" {
+		if err := c.sendAnimation(ctx, chat, msg); err != nil {
+			c.log().Warn("telegram refused the illustration; sending the text alone",
+				"error", err, "animation", msg.Animation)
+		}
+	}
+
 	// Split on the raw text, then format each piece: the limit Telegram
 	// enforces is on what a person reads, and tags do not count towards it.
 	parts := splitMessage(msg.Text, maxMessageRunes)
@@ -118,6 +137,41 @@ func (c *Client) Send(ctx context.Context, externalID string, msg messaging.Outb
 		}
 	}
 	return nil
+}
+
+// sendAnimation delivers a looping illustration with the credit its licence
+// requires.
+//
+// Telegram fetches the URL itself, so there is no multipart upload here and
+// c.call is used unchanged. That is the whole reason OutboundMessage carries an
+// address rather than bytes.
+//
+// Sent before the text rather than as its caption, which also means a refusal
+// here is recoverable: the words go out regardless.
+//
+// The caption is the credit and nothing else. Putting the reply in it was the
+// obvious first shape and it is wrong twice over: the cap is 1024 runes rather
+// than 4096, so a normal answer would be refused outright, and a caption is
+// not selectable text on every client. The words go in the message that
+// follows, where they always fit and can be copied.
+func (c *Client) sendAnimation(ctx context.Context, chat int64, msg messaging.OutboundMessage) error {
+	caption := msg.AnimationCredit
+	if caption == "" {
+		// Should be unreachable: messaging sets the credit whenever it sets
+		// the animation. Belt and braces, because shipping the artwork without
+		// attribution breaches CC BY-SA and a silent empty string is exactly
+		// how that would happen.
+		return fmt.Errorf("telegram: refusing to send artwork with no credit")
+	}
+	if len([]rune(caption)) > maxCaptionRunes {
+		return fmt.Errorf("telegram: credit is longer than a caption allows")
+	}
+
+	return c.call(ctx, "sendAnimation", map[string]any{
+		"chat_id":   chat,
+		"animation": msg.Animation,
+		"caption":   caption,
+	}, nil)
 }
 
 // log is the client's logger, defaulted rather than required: a Client is
