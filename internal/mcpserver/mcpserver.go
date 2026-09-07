@@ -23,6 +23,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/activity"
 	"github.com/NorthAIProject/north-client/internal/agent"
 	"github.com/NorthAIProject/north-client/internal/ai"
+	"github.com/NorthAIProject/north-client/internal/analytics"
 	"github.com/NorthAIProject/north-client/internal/checkins"
 	"github.com/NorthAIProject/north-client/internal/coach"
 	"github.com/NorthAIProject/north-client/internal/documents"
@@ -69,9 +70,18 @@ type Services struct {
 // An agent plans from that list; one that advertises a tool and then rejects
 // every call to it is worse than one that never offered it.
 func Register(s *mcp.Server, svc Services, user users.User, scope string) {
+	RegisterWithFunnel(s, svc, user, scope, nil)
+}
+
+// RegisterWithFunnel is Register, reporting each call to the product funnel.
+//
+// A separate entry point rather than a sixth parameter on Register, because
+// every existing caller — the contract test, cmd/mcp-server's shape — wants
+// the plain one and analytics is not part of what those are testing.
+func RegisterWithFunnel(s *mcp.Server, svc Services, user users.User, scope string, funnel *analytics.Funnel) {
 	writes := writesAllowed(scope)
 
-	registerAgentCapabilities(s, svc.Agent, user, writes)
+	registerAgentCapabilities(s, svc.Agent, user, writes, scope, funnel)
 	registerGoals(s, svc, user)
 	registerCheckIns(s, svc, user)
 	registerKnowledge(s, svc, user)
@@ -91,7 +101,14 @@ func Register(s *mcp.Server, svc Services, user users.User, scope string) {
 // already described by ai.Schema, and going through a Go type just to have the
 // SDK infer the schema back would mean two descriptions of every tool's
 // arguments — the duplication internal/agent exists to avoid.
-func registerAgentCapabilities(s *mcp.Server, registry *agent.Registry, user users.User, writes bool) {
+func registerAgentCapabilities(
+	s *mcp.Server,
+	registry *agent.Registry,
+	user users.User,
+	writes bool,
+	scope string,
+	funnel *analytics.Funnel,
+) {
 	if registry == nil {
 		return
 	}
@@ -125,6 +142,8 @@ func registerAgentCapabilities(s *mcp.Server, registry *agent.Registry, user use
 				IdempotentHint: registry.IsIdempotent(tool.Name),
 			},
 		}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			funnel.MCPToolCalled(ctx, user.ID, tool.Name, issuanceOf(scope))
+
 			// The user was fixed when the session authenticated. Nothing in the
 			// request can change it.
 			result := registry.Invoke(toolsurface.With(ctx, toolsurface.MCP), user.ID, ai.ToolCall{
@@ -447,4 +466,17 @@ func textResult(text string, isError bool) *mcp.CallToolResult {
 // something else.
 func fail(err error) *mcp.CallToolResult {
 	return textResult(err.Error(), true)
+}
+
+// issuanceOf reports how the presented token was issued, from its scope alone.
+//
+// An empty scope is a token issued by hand: the column was added by the OAuth
+// migration with an empty default and deliberately not backfilled, and every
+// OAuth grant carries one of the two scopes explicitly. So the scope is an
+// exact proxy for the issuance without this package having to read the row.
+func issuanceOf(scope string) string {
+	if scope == "" {
+		return "pat"
+	}
+	return "oauth"
 }

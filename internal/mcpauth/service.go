@@ -14,6 +14,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/NorthAIProject/north-client/internal/analytics"
 	"github.com/NorthAIProject/north-client/internal/connections"
 	"github.com/NorthAIProject/north-client/internal/mcpserver"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
@@ -58,6 +59,10 @@ type Service struct {
 	repo   *Repository
 	grants Grants
 
+	// funnel is nil-safe, like everywhere else: no PostHog key, no events,
+	// same flow.
+	funnel *analytics.Funnel
+
 	// baseURL is this deployment's own origin. It is what the RFC 8707
 	// audience is built from, so a token issued here cannot be replayed
 	// against another MCP server the same client talks to.
@@ -73,6 +78,12 @@ func NewService(repo *Repository, grants Grants, baseURL string) *Service {
 		baseURL: strings.TrimSuffix(baseURL, "/"),
 		now:     time.Now,
 	}
+}
+
+// WithFunnel attaches product analytics.
+func (s *Service) WithFunnel(f *analytics.Funnel) *Service {
+	s.funnel = f
+	return s
 }
 
 // WithClock fixes now, for tests.
@@ -163,13 +174,23 @@ func (s *Service) RegisterClient(ctx context.Context, in Registration) (Client, 
 		return Client{}, err
 	}
 
-	return s.repo.InsertClient(ctx, Client{
+	client, err := s.repo.InsertClient(ctx, Client{
 		ID:           id,
 		Name:         name,
 		RedirectURIs: in.RedirectURIs,
 		GrantTypes:   grantTypes,
 		SoftwareID:   in.SoftwareID,
 	}, key)
+	if err != nil {
+		return Client{}, err
+	}
+
+	// Anonymous: anybody can register, and there is no account behind this.
+	// Registrations far outrunning authorize attempts is the guardrail signal
+	// for open registration being farmed.
+	s.funnel.MCPClientRegistered(ctx, client.ID, client.Name, client.SoftwareID)
+
+	return client, nil
 }
 
 // --- authorization ---------------------------------------------------------
@@ -214,7 +235,7 @@ func (e RedirectableError) URL() string {
 // The returned verifier is the value for the north_oauth_req cookie. It is
 // what binds the parked request to this browser: without it, a guessed request
 // id would let somebody have a victim approve a request they started.
-func (s *Service) BeginAuthorization(ctx context.Context, in AuthorizeParams) (Request, string, error) {
+func (s *Service) BeginAuthorization(ctx context.Context, in AuthorizeParams, signedIn bool) (Request, string, error) {
 	// Fatal, in order. Neither an unknown client nor an unregistered callback
 	// gives us anywhere safe to redirect to.
 	if strings.TrimSpace(in.ClientID) == "" {
@@ -288,6 +309,13 @@ func (s *Service) BeginAuthorization(ctx context.Context, in AuthorizeParams) (R
 	}
 
 	parked.ClientName = client.Name
+
+	// Keyed on the request id, because the interesting case is somebody with
+	// no account yet: that is the denominator of the conversion rate this
+	// whole feature is scored by. A later identify stitches it to whatever
+	// account the visit becomes.
+	s.funnel.MCPAuthorizeStarted(ctx, parked.ID.String(), client.Name, scope, signedIn)
+
 	return parked, verifier, nil
 }
 
@@ -438,6 +466,8 @@ func (s *Service) ExchangeCode(ctx context.Context, in CodeExchange) (Tokens, er
 		return Tokens{}, consumeErr
 	}
 	_ = s.repo.TouchClient(ctx, client.ID)
+
+	s.funnel.MCPTokenIssued(ctx, stored.UserID, client.Name, stored.Scope)
 
 	refresh, _, err := s.issueRefreshToken(ctx, issued.ID)
 	if err != nil {

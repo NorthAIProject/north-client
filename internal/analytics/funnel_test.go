@@ -130,3 +130,74 @@ func TestAnEventWithoutAUserIsDropped(t *testing.T) {
 		t.Fatalf("captured %d events for a nil user, want none", len(rec.captures))
 	}
 }
+
+// The two most important events in the connector funnel happen before there is
+// an account: a client registering, and somebody reaching the consent screen.
+// capture drops those on purpose — a nil user cannot be joined to anything —
+// so captureAnon is what keeps the denominator of every conversion rate from
+// being empty.
+func TestTheAnonymousEventsAreRecordedWithoutAnAccount(t *testing.T) {
+	t.Parallel()
+
+	rec := &recorder{}
+	f := analytics.New(rec)
+	ctx := context.Background()
+
+	f.MCPClientRegistered(ctx, "mcpc_abc", "Claude Code", "claude-code")
+	f.MCPAuthorizeStarted(ctx, "11111111-2222-3333-4444-555555555555", "Claude Code", "north:read_write", false)
+
+	if len(rec.captures) != 2 {
+		t.Fatalf("captured %d anonymous events, want 2", len(rec.captures))
+	}
+
+	// Literals, for the same reason the other event names are literals here:
+	// the PostHog insights are defined against these exact strings.
+	if rec.captures[0].Event != "mcp_client_registered" {
+		t.Errorf("first event is %q", rec.captures[0].Event)
+	}
+	if rec.captures[1].Event != "mcp_authorize_started" {
+		t.Errorf("second event is %q", rec.captures[1].Event)
+	}
+
+	// The distinct id is the thing a later identify call stitches to an
+	// account. A registration is keyed on the client; a consent visit on the
+	// authorization request it belongs to.
+	if rec.captures[0].DistinctId != "mcpc_abc" {
+		t.Errorf("a registration is attributed to %q, want the client id", rec.captures[0].DistinctId)
+	}
+	if rec.captures[1].DistinctId != "11111111-2222-3333-4444-555555555555" {
+		t.Errorf("a consent visit is attributed to %q, want the request id", rec.captures[1].DistinctId)
+	}
+	if rec.captures[1].Properties["signed_in"] != false {
+		t.Errorf("signed_in is %v, want false", rec.captures[1].Properties["signed_in"])
+	}
+}
+
+// An anonymous event with no distinct id at all cannot be joined to anything
+// either, so it is dropped the way a nil user is.
+func TestAnAnonymousEventWithNoIdentityIsDropped(t *testing.T) {
+	t.Parallel()
+
+	rec := &recorder{}
+	analytics.New(rec).MCPClientRegistered(context.Background(), "", "Claude Code", "")
+
+	if len(rec.captures) != 0 {
+		t.Fatalf("captured %d events with no distinct id, want none", len(rec.captures))
+	}
+}
+
+// A nil funnel and a nil client stay silent for the anonymous path too.
+func TestTheAnonymousPathIsAlsoSilentWithoutAClient(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	for name, f := range map[string]*analytics.Funnel{
+		"nil funnel": nil,
+		"nil client": analytics.New(nil),
+	} {
+		t.Run(name, func(t *testing.T) {
+			f.MCPClientRegistered(ctx, "mcpc_abc", "Claude Code", "")
+			f.MCPAuthorizeStarted(ctx, "req", "Claude Code", "", true)
+		})
+	}
+}

@@ -1106,14 +1106,15 @@ func routes(
 	// Built before the endpoint because the endpoint's 401 has to point at this
 	// server's discovery document: that pointer is how an unauthenticated
 	// client bootstraps itself instead of simply failing.
-	mcpAuthSvc := mcpauth.NewService(mcpauth.NewRepository(pool), connectionSvc, cfg.BaseURL)
+	mcpAuthSvc := mcpauth.NewService(mcpauth.NewRepository(pool), connectionSvc, cfg.BaseURL).
+		WithFunnel(funnel)
 	mcpAuthMachine := mcpauth.NewMachineHandler(mcpAuthSvc, slog.Default(), cfg.TrustedProxies)
 
 	// The consent screen. It creates accounts, so it holds the auth service and
 	// the onboarding service rather than reimplementing either.
 	mcpAuthBrowser := mcpauth.NewBrowserHandler(
 		mcpAuthSvc, authSvc, authMW, onboardingSvc, slog.Default(), cfg.Env.IsProduction(),
-	)
+	).WithFunnel(funnel)
 
 	// The MCP endpoint an outside agent connects to.
 	//
@@ -1141,6 +1142,8 @@ func routes(
 		TrustedProxies:    cfg.TrustedProxies,
 		Version:           mcpserver.Version,
 		Log:               slog.Default(),
+
+		Funnel: funnel,
 
 		// What the 401 points at. cmd/mcp-server leaves this empty and keeps
 		// the header it always had: a static token on a tailnet has no

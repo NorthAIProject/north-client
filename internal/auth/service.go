@@ -136,6 +136,12 @@ type SignupInput struct {
 	Password             string
 	PasswordConfirmation string
 	Timezone             string
+
+	// Via is the door this account came through, for the funnel. Empty means
+	// the signup form, which is what every caller but the OAuth consent
+	// screen is — and that screen is the one whose count decides whether the
+	// connector acquires anybody.
+	Via string
 }
 
 // Signup creates an account and immediately issues a session, so a new user
@@ -207,7 +213,11 @@ func (s *Service) Signup(ctx context.Context, in SignupInput, meta Metadata) (us
 		return users.User{}, "", err
 	}
 
-	s.funnel.Registered(ctx, user.ID, analytics.ViaPassword)
+	via := in.Via
+	if via == "" {
+		via = analytics.ViaPassword
+	}
+	s.funnel.Registered(ctx, user.ID, via)
 
 	return user, token, nil
 }

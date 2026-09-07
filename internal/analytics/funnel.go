@@ -63,6 +63,40 @@ const (
 	// building.
 	EventNudgeOpened = "nudge_opened"
 
+	// The agent connector, from the first sight of the URL to the first tool
+	// call. Two of these happen before there is an account to attribute them
+	// to, which is why captureAnon exists.
+	//
+	// EventMCPClientRegistered is a client self-registering under RFC 7591.
+	// Anonymous, and the guardrail against open registration being farmed:
+	// registrations far outrunning authorize attempts is the signal.
+	EventMCPClientRegistered = "mcp_client_registered"
+
+	// EventMCPAuthorizeStarted is somebody reaching the consent screen.
+	// Anonymous when signed out, which is the interesting case: the ratio of
+	// these to approvals says whether the screen works.
+	EventMCPAuthorizeStarted = "mcp_authorize_started"
+
+	// EventMCPConsentApproved carries account_created, the property that
+	// decides whether the connector is an acquisition path or a convenience
+	// for people who had already signed up.
+	EventMCPConsentApproved = "mcp_consent_approved"
+
+	// EventMCPConsentDenied is somebody reading the screen and saying no.
+	// Worth counting separately from abandonment: a refusal is a decision.
+	EventMCPConsentDenied = "mcp_consent_denied"
+
+	// EventMCPTokenIssued is a code exchanged for a working token.
+	EventMCPTokenIssued = "mcp_token_issued"
+
+	// EventMCPToolCalled is an outside agent actually using the connection.
+	// The number that separates a stored token from a used one.
+	EventMCPToolCalled = "mcp_tool_called"
+
+	// EventMCPConnectorURLCopied is somebody taking the URL from the settings
+	// page or the landing page, which is the step before all of the above.
+	EventMCPConnectorURLCopied = "mcp_connector_url_copied"
+
 	// EventAgentAccountSeeded is an account created inside the OAuth consent
 	// screen and given the smallest honest profile.
 	//
@@ -192,10 +226,99 @@ func (p *Funnel) AgentAccountSeeded(ctx context.Context, userID uuid.UUID, clien
 	p.capture(ctx, userID, EventAgentAccountSeeded, posthog.Properties{"client": client})
 }
 
+// MCPClientRegistered records a client registering itself. There is no account
+// yet — anybody can register — so this is keyed on the client id.
+func (p *Funnel) MCPClientRegistered(ctx context.Context, clientID, clientName, softwareID string) {
+	p.captureAnon(ctx, clientID, EventMCPClientRegistered, posthog.Properties{
+		"client_name": clientName,
+		"software_id": softwareID,
+	})
+}
+
+// MCPAuthorizeStarted records somebody reaching the consent screen.
+//
+// distinctID is the authorization request's own id when nobody is signed in,
+// which is what a later identify call stitches to the account they become. A
+// signed-in visitor is attributed to their account instead.
+func (p *Funnel) MCPAuthorizeStarted(ctx context.Context, distinctID, clientName, scope string, signedIn bool) {
+	p.captureAnon(ctx, distinctID, EventMCPAuthorizeStarted, posthog.Properties{
+		"client_name": clientName,
+		"scope":       scope,
+		"signed_in":   signedIn,
+	})
+}
+
+// MCPConsentApproved records a granted consent. accountCreated is the verdict
+// row of the scoreboard.
+func (p *Funnel) MCPConsentApproved(ctx context.Context, userID uuid.UUID, clientName, scope string, accountCreated bool) {
+	p.capture(ctx, userID, EventMCPConsentApproved, posthog.Properties{
+		"client_name":     clientName,
+		"scope":           scope,
+		"account_created": accountCreated,
+	})
+}
+
+// MCPConsentDenied records a refusal.
+func (p *Funnel) MCPConsentDenied(ctx context.Context, userID uuid.UUID, clientName string) {
+	p.capture(ctx, userID, EventMCPConsentDenied, posthog.Properties{"client_name": clientName})
+}
+
+// MCPTokenIssued records a code exchanged for a working token.
+func (p *Funnel) MCPTokenIssued(ctx context.Context, userID uuid.UUID, clientName, scope string) {
+	p.capture(ctx, userID, EventMCPTokenIssued, posthog.Properties{
+		"client_name": clientName,
+		"scope":       scope,
+	})
+}
+
+// MCPToolCalled records an outside agent using the connection. issuance tells a
+// pasted token from an OAuth grant, which is how "did the new flow get used"
+// is answered without a second event.
+func (p *Funnel) MCPToolCalled(ctx context.Context, userID uuid.UUID, tool, issuance string) {
+	p.capture(ctx, userID, EventMCPToolCalled, posthog.Properties{
+		"tool":     tool,
+		"issuance": issuance,
+	})
+}
+
 // MomentShown records a recognition card being rendered. kind is one of the
 // internal/moments kinds.
 func (p *Funnel) MomentShown(ctx context.Context, userID uuid.UUID, kind string) {
 	p.capture(ctx, userID, EventMomentShown, posthog.Properties{"kind": kind})
+}
+
+// captureAnon records an event that has no account behind it yet.
+//
+// capture drops a nil user on purpose — an event with no identity cannot be
+// joined to anything and would pollute the funnel with an anonymous row. But
+// the two most important events in the connector funnel happen *before* the
+// account exists: a client registering, and somebody reaching the consent
+// screen. Dropping those would leave the denominator of every conversion rate
+// empty.
+//
+// The distinct id is therefore something stable and non-personal — a client id,
+// or the authorization request's own id — which a later identify call stitches
+// to whatever account the visit became.
+func (p *Funnel) captureAnon(ctx context.Context, distinctID, event string, props posthog.Properties) {
+	if p == nil || p.client == nil || distinctID == "" {
+		return
+	}
+
+	if props == nil {
+		props = posthog.Properties{}
+	}
+	if requestID := middleware.RequestIDFrom(ctx); requestID != "" {
+		props.Set("request_id", requestID)
+	}
+
+	if err := p.client.Enqueue(posthog.Capture{
+		DistinctId: distinctID,
+		Event:      event,
+		Properties: props,
+	}); err != nil {
+		middleware.FromContext(ctx).Warn("could not record an anonymous product event",
+			slog.String("event", event), slog.Any("error", err))
+	}
 }
 
 // capture is the one place an event reaches PostHog.
