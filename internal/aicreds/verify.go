@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/ai/providers"
 )
 
@@ -90,4 +91,69 @@ func (v httpVerifier) Verify(ctx context.Context, entry providers.BYOProvider, k
 		// and nothing here needs it.
 		return nil
 	}
+}
+
+// ToolProbe asks whether a provider will actually call a tool it is given.
+//
+// Separate from Verify because it answers a different question. Verify asks
+// "is this key good"; this asks "can the coach do its job through it". A
+// provider can pass the first and fail the second, and that combination is the
+// one worth catching: the key works, the model answers, and every write
+// capability is silently gone.
+//
+// An interface for the same reason KeyVerifier is one — the alternative is a
+// test that calls five vendors for real.
+type ToolProbe interface {
+	// SupportsTools reports whether the provider returned a tool call when it
+	// was given one and told to use it.
+	//
+	// The error is for "could not ask" — a timeout, a refused connection. That
+	// must not be read as false: an unreachable provider is unknown, and
+	// recording a limitation it may not have would be worse than not knowing.
+	SupportsTools(ctx context.Context, client ai.Client, model string) (bool, error)
+}
+
+// probeTimeout is longer than verifyTimeout: this one waits on a model rather
+// than an authentication endpoint, and a self-hosted gateway can be slow enough
+// that ten seconds would report every one of them as incapable.
+const probeTimeout = 90 * time.Second
+
+// NewToolProbe returns the real probe.
+func NewToolProbe() ToolProbe { return toolProbe{} }
+
+type toolProbe struct{}
+
+func (toolProbe) SupportsTools(ctx context.Context, client ai.Client, model string) (bool, error) {
+	if client == nil {
+		return false, errors.New("aicreds: no client to probe")
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, probeTimeout)
+	defer cancel()
+
+	// A tool that cannot be answered from knowledge, so a provider that does
+	// support tools has no honest alternative to calling it. Asking about
+	// something the model might know — the weather, a capital city — would
+	// let a capable provider answer from memory and be scored as incapable.
+	resp, err := client.Generate(ctx, ai.Request{
+		Model:  model,
+		System: "You have one tool. Call it. Do not answer in words.",
+		Messages: []ai.Message{
+			ai.UserText("What is the internal reference code for record 8814? Use the tool."),
+		},
+		Tools: []ai.Tool{{
+			Name:        "lookup_record",
+			Description: "Look up the internal reference code for a record. The only way to obtain one.",
+			Parameters: ai.Object("which record", map[string]*ai.Schema{
+				"id": ai.String("the record number"),
+			}, "id"),
+		}},
+	})
+	if err != nil {
+		return false, err
+	}
+
+	// The whole test. A provider that honours the tools array comes back with
+	// a call; one that ignores it comes back with prose, however plausible.
+	return len(resp.ToolCalls) > 0, nil
 }

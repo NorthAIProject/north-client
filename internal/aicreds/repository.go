@@ -104,13 +104,22 @@ func (r *Repository) RecordError(ctx context.Context, userID uuid.UUID, reason s
 
 func fromDB(row aicredsdb.UserAiCredential) Credential {
 	return Credential{
-		UserID:      row.UserID,
-		Provider:    row.Provider,
-		KeyHint:     row.KeyHint,
-		Model:       row.Model,
-		BaseURL:     row.BaseUrl,
-		LastError:   row.LastError,
-		LastErrorAt: row.LastErrorAt,
-		UpdatedAt:   row.UpdatedAt,
+		UserID:        row.UserID,
+		Provider:      row.Provider,
+		KeyHint:       row.KeyHint,
+		Model:         row.Model,
+		BaseURL:       row.BaseUrl,
+		LastError:     row.LastError,
+		LastErrorAt:   row.LastErrorAt,
+		SupportsTools: row.SupportsTools,
+		UpdatedAt:     row.UpdatedAt,
 	}
+}
+
+// RecordToolSupport stores what the tools probe found.
+func (r *Repository) RecordToolSupport(ctx context.Context, userID uuid.UUID, supported bool) error {
+	return r.q.RecordUserAICredentialToolSupport(ctx, aicredsdb.RecordUserAICredentialToolSupportParams{
+		UserID:        userID,
+		SupportsTools: &supported,
+	})
 }

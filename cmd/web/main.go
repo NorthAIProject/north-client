@@ -829,7 +829,8 @@ func routes(
 	// A second meter over the same pool rather than one threaded through
 	// routes(): it is a repository handle, not a resource, and the alternative
 	// is another parameter on a function that already takes seven.
-	aicredSvc := aicreds.NewService(aicreds.NewRepository(pool), sealer, slog.Default()).
+	aicredSvc := aicreds.NewService(aicreds.NewRepository(pool), sealer, slog.Default())
+	aicredSvc = aicredSvc.WithToolProbe(aicreds.NewToolProbe()).
 		WithMeter(spend.NewMeter(spend.NewRepository(pool)))
 
 	// North as an MCP *client*: the calendar somebody connected, reached over

@@ -38,11 +38,23 @@ type Credential struct {
 	LastError   string
 	LastErrorAt *time.Time
 
+	// SupportsTools is nil until probed. False means the provider accepted a
+	// tools array and answered without calling anything — a working key that
+	// cannot run the coach's capabilities, which is worth saying out loud
+	// because nothing else about it looks wrong.
+	SupportsTools *bool
+
 	UpdatedAt time.Time
 }
 
 // Failing reports whether the last attempt to use this key was refused.
 func (c Credential) Failing() bool { return c.LastError != "" }
+
+// ToolsUnsupported reports a provider established not to call tools.
+//
+// Only an explicit false counts. Unprobed is not a complaint, and rendering
+// one for it would put a warning on every credential the moment it is saved.
+func (c Credential) ToolsUnsupported() bool { return c.SupportsTools != nil && !*c.SupportsTools }
 
 // Input is a settings-page submission.
 type Input struct {

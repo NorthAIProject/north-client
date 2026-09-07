@@ -5,10 +5,12 @@
 package settings
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -30,6 +32,10 @@ import (
 	"github.com/NorthAIProject/north-client/internal/users"
 	settingspages "github.com/NorthAIProject/north-client/web/settings"
 )
+
+// probeBudget bounds the background check of a newly saved provider. Longer
+// than the probe's own timeout so a slow gateway is given its full chance.
+const probeBudget = 2 * time.Minute
 
 type Handler struct {
 	users         *users.Service
@@ -254,6 +260,19 @@ func (h *Handler) updateAICredential(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
+
+	// Find out whether this provider will actually call the coach's tools, in
+	// the background: the probe waits on a model and a self-hosted gateway can
+	// take a minute, which is not something to make somebody watch a form do.
+	//
+	// Detached from the request context on purpose — the answer outlives the
+	// response, and cancelling it when the page renders would mean it never
+	// completed. Bounded by the probe's own timeout.
+	go func(userID uuid.UUID) {
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), probeBudget)
+		defer cancel()
+		h.aicreds.ProbeTools(ctx, userID)
+	}(user.ID)
 
 	http.Redirect(w, r, "/app/settings/connections", http.StatusSeeOther)
 }

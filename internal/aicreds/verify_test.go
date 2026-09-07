@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/NorthAIProject/north-client/internal/ai"
+
 	"github.com/NorthAIProject/north-client/internal/ai/providers"
 	"github.com/NorthAIProject/north-client/internal/aicreds"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
@@ -178,5 +180,69 @@ func TestSaveStillWorksWithNoVerifier(t *testing.T) {
 
 	if _, err := svc.Save(context.Background(), user.ID, aicreds.Input{Provider: "openrouter", APIKey: testKey}); err != nil {
 		t.Fatalf("save: %v", err)
+	}
+}
+
+// stubClient answers Generate with whatever it is told to.
+type stubToolClient struct {
+	calls []ai.ToolCall
+	err   error
+	saw   ai.Request
+}
+
+func (s *stubToolClient) Name() string { return "stub" }
+func (s *stubToolClient) Chat(context.Context, ai.Request) (<-chan ai.StreamChunk, error) {
+	return nil, nil
+}
+
+func (s *stubToolClient) Generate(_ context.Context, req ai.Request) (*ai.Response, error) {
+	s.saw = req
+	if s.err != nil {
+		return nil, s.err
+	}
+	return &ai.Response{Text: "here you go", ToolCalls: s.calls}, nil
+}
+
+func (s *stubToolClient) UploadFile(context.Context, ai.UploadRequest) (*ai.File, error) {
+	return nil, nil
+}
+
+// The whole test: a provider that honours the tools array comes back with a
+// call, one that ignores it comes back with prose however plausible.
+func TestSupportsToolsIsTrueOnlyWhenAToolIsActuallyCalled(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range map[string]struct {
+		calls []ai.ToolCall
+		want  bool
+	}{
+		"called a tool":     {[]ai.ToolCall{{ID: "1", Name: "lookup_record"}}, true},
+		"answered in prose": {nil, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			client := &stubToolClient{calls: tc.calls}
+			got, err := aicreds.NewToolProbe().SupportsTools(context.Background(), client, "some-model")
+			if err != nil {
+				t.Fatalf("probe: %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("SupportsTools = %v, want %v", got, tc.want)
+			}
+			if len(client.saw.Tools) == 0 {
+				t.Error("the probe sent no tools, so it proved nothing")
+			}
+		})
+	}
+}
+
+// "Could not ask" must never be recorded as "cannot": an unreachable gateway
+// is unknown, and marking a limitation it may not have is the worse error.
+func TestAFailedProbeIsAnErrorRatherThanAFalse(t *testing.T) {
+	t.Parallel()
+
+	_, err := aicreds.NewToolProbe().SupportsTools(context.Background(),
+		&stubToolClient{err: errors.New("dial tcp: connection refused")}, "m")
+	if err == nil {
+		t.Fatal("a probe that could not be made reported a definite answer")
 	}
 }

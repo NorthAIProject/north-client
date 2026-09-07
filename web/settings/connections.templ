@@ -525,6 +525,17 @@ templ providerCard(p ProviderPanel) {
 						{ p.Current.LastError } Khepri's own model is answering in the meantime.
 					}
 				}
+				// A working key that cannot run the coach's tools. Said plainly
+				// because nothing else about it looks wrong: replies still
+				// arrive, they just quietly stop being able to log anything or
+				// read the catalogue.
+				if p.Current != nil && p.Current.ToolsUnsupported() {
+					@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+						This provider answers, but it does not call Khepri's tools — so it cannot log
+						a session, edit your plan, or read the exercise catalogue. Khepri's own model
+						handles those turns instead. Everything else still uses your provider.
+					}
+				}
 				<form
 					method="post"
 					action="/app/settings/ai"

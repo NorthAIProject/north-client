@@ -26,3 +26,11 @@ DELETE FROM user_ai_credentials WHERE user_id = $1;
 UPDATE user_ai_credentials
 SET last_error = $2, last_error_at = now()
 WHERE user_id = $1;
+
+-- RecordUserAICredentialToolSupport stores what the tools probe found.
+-- Separate from the error path: a provider that cannot call tools is not a
+-- broken credential, it is a working one with a limitation worth showing.
+-- name: RecordUserAICredentialToolSupport :exec
+UPDATE user_ai_credentials
+SET supports_tools = $2, updated_at = now()
+WHERE user_id = $1;

@@ -21,4 +21,6 @@ type UserAiCredential struct {
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 	BaseUrl     string
+	// NULL = unprobed, true = returns tool_calls, false = ignores the tools array
+	SupportsTools *bool
 }
