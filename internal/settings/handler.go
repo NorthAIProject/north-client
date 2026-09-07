@@ -698,7 +698,8 @@ func (h *Handler) renderConnections(
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := settingspages.ConnectionsPage(user, list, form, issued, setup, previews, provider, telegram, calendar).Render(ctx, w); err != nil {
+	if err := settingspages.ConnectionsPage(user, list, form, issued, setup, previews, provider, telegram, calendar,
+		h.connections.ConnectorURL()).Render(ctx, w); err != nil {
 		middleware.FromContext(ctx).Error("render connections", slog.Any("error", err))
 	}
 }

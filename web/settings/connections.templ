@@ -15,6 +15,7 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
 	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/collapsible"
 	"github.com/NorthAIProject/north-client/web/shared/ui/copybutton"
 	"github.com/NorthAIProject/north-client/web/shared/ui/dialog"
 	"github.com/NorthAIProject/north-client/web/shared/ui/form"
@@ -139,7 +140,7 @@ func (p TelegramPanel) Handle() string { return "@" + p.BotUsername }
 // with connections.PlaceholderToken. It is what lets the page show what setup
 // looks like before a key exists — the alternative being that somebody issues a
 // live credential to find out whether they want one.
-templ ConnectionsPage(user users.User, list []connections.Connection, f ConnectForm, issued *connections.Issued, setup connections.Setup, previews []connections.Setup, provider ProviderPanel, telegram TelegramPanel, calendar CalendarPanel) {
+templ ConnectionsPage(user users.User, list []connections.Connection, f ConnectForm, issued *connections.Issued, setup connections.Setup, previews []connections.Setup, provider ProviderPanel, telegram TelegramPanel, calendar CalendarPanel, connectorURL string) {
 	@layout.App(i18n.T(ctx, "nav.agent-connections"), user, layout.BuildNav(ctx, "/app/settings")) {
 		<div class="mx-auto w-full max-w-2xl space-y-6 p-6 md:p-8">
 			<header>
@@ -155,8 +156,16 @@ templ ConnectionsPage(user users.User, list []connections.Connection, f ConnectF
 			if issued != nil {
 				@issuedCard(*issued, setup)
 			}
+			@connectorURLCard(connectorURL)
 			@connectionListCard(list)
-			@connectCard(f, previews)
+			@collapsible.Collapsible(collapsible.Props{ID: "manual-key"}) {
+				@collapsible.Trigger(collapsible.TriggerProps{ID: "manual-key"}) {
+					{ i18n.T(ctx, "conn.url.manual") }
+				}
+				@collapsible.Content(collapsible.ContentProps{ID: "manual-key"}) {
+					@connectCard(f, previews)
+				}
+			}
 			if telegram.Enabled {
 				@telegramCard(telegram)
 				@calendarCard(calendar)
@@ -166,7 +175,46 @@ templ ConnectionsPage(user users.User, list []connections.Connection, f ConnectF
 		@label.Script()
 		@dialog.Script()
 		@copybutton.Script()
+		@collapsible.Script()
 		@tabs.Script()
+	}
+}
+
+// connectorURLCard is the whole point of the OAuth work: one value to paste.
+//
+// It leads the page, and manual key issuance is collapsed beneath it. Both
+// still exist — a headless machine has no browser to approve in — but
+// presenting them as peers is what made people reach for the file-editing one
+// first, and docs/mcp-oauth-plan.md is right that two ways to connect is a
+// design problem rather than an engineering one.
+templ connectorURLCard(connectorURL string) {
+	@card.Card(card.Props{Class: "border-signal/40 bg-signal/5"}) {
+		@card.Header() {
+			@card.Title() {
+				{ i18n.T(ctx, "conn.url.title") }
+			}
+			@card.Description() {
+				{ i18n.T(ctx, "conn.url.desc") }
+			}
+		}
+		@card.Content() {
+			<div class="flex items-center gap-2">
+				<code
+					id="connector-url"
+					class="border-hairline bg-background min-w-0 flex-1 truncate rounded-md border px-3 py-2 font-mono text-sm"
+				>
+					{ connectorURL }
+				</code>
+				// The copy is the step before every number on the connector
+				// scoreboard, so it is worth one client-side event.
+				@copybutton.CopyButton(copybutton.Props{
+					TargetID: "connector-url",
+					Attrs: templ.Attributes{
+						"onclick": "window.posthog && window.posthog.capture('mcp_connector_url_copied', {surface: 'settings'})",
+					},
+				})
+			</div>
+		}
 	}
 }
 
@@ -264,6 +312,12 @@ templ connectionRow(conn connections.Connection) {
 			<p class="text-muted-foreground mt-0.5 text-xs">
 				Added { conn.CreatedAt.Format("2 Jan 2006") } ·
 				@ConnectionStatus(conn, 0)
+				// An OAuth access token lasts an hour and is replaced in
+				// place, so a past expiry means "needs refreshing", not
+				// "gone". Saying so is why the list does not filter on it.
+				if conn.Expired() {
+					<span class="text-muted-foreground"> · { i18n.T(ctx, "conn.list.expired") }</span>
+				}
 			</p>
 		</div>
 		@revokeDialog(conn)

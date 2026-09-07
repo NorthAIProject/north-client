@@ -11,6 +11,11 @@ var spanishConnections = map[string]string{
 	"conn.issued.prompt.note": "O pega esto en el propio agente y deja que haga la configuración. Envía la clave al modelo con el que ese agente funciona, así que úsalo solo con un agente al que confiarías tus datos de entrenamiento — y revoca la clave aquí si cambias de opinión.",
 	"conn.issued.prompt":      "Instrucciones de configuración",
 
+	"conn.url.title":    "Pega esto en tu agente",
+	"conn.url.desc":     "Claude Code, Claude Desktop, Codex — cualquier cosa que hable MCP. Abre un navegador, lo apruebas una vez, y nunca ve una clave.",
+	"conn.url.label":    "URL de conexión",
+	"conn.url.manual":   "¿Sin navegador en esa máquina?",
+	"conn.list.expired": "se renovará en el próximo uso",
 	"conn.list.title":   "Agentes conectados",
 	"conn.list.desc":    "Cualquiera de estos puede leer y escribir en tus datos de entrenamiento. Revoca todo lo que no reconozcas.",
 	"conn.list.empty":   "Todavía no hay nada conectado.",

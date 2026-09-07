@@ -168,6 +168,15 @@ func (s *Service) AuthenticateScoped(ctx context.Context, token string) (users.U
 	return user, conn.Scopes, nil
 }
 
+// ConnectorURL is the one value a person pastes into their agent.
+//
+// The same string the MCP endpoint is served at, which is also the string the
+// OAuth discovery documents describe. One source for it, so the settings page
+// cannot show a URL the discovery documents disagree with.
+func (s *Service) ConnectorURL() string {
+	return strings.TrimSuffix(s.baseURL, "/") + "/mcp"
+}
+
 // RevokeByToken turns off the connection a presented access token belongs to.
 //
 // For RFC 7009, where a client disconnecting hands back whichever token it

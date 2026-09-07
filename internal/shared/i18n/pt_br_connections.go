@@ -11,6 +11,11 @@ var portugueseBrazilianConnections = map[string]string{
 	"conn.issued.prompt.note": "Ou cole isto no próprio agente e deixe ele fazer a configuração. Isso manda a chave para o modelo em que aquele agente roda, então use só com um agente em quem você confiaria seus dados de treino — e revogue a chave aqui se mudar de ideia.",
 	"conn.issued.prompt":      "Instruções de configuração",
 
+	"conn.url.title":    "Cole isto no seu agente",
+	"conn.url.desc":     "Claude Code, Claude Desktop, Codex — qualquer coisa que fale MCP. Abre um navegador, você aprova uma vez, e ele nunca vê uma chave.",
+	"conn.url.label":    "URL de conexão",
+	"conn.url.manual":   "Sem navegador nessa máquina?",
+	"conn.list.expired": "vai renovar no próximo uso",
 	"conn.list.title":   "Agentes conectados",
 	"conn.list.desc":    "Qualquer um destes pode ler e escrever nos seus dados de treino. Revogue tudo o que você não reconhecer.",
 	"conn.list.empty":   "Ainda não tem nada conectado.",
