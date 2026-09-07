@@ -50,6 +50,15 @@ type Range struct {
 	loc *time.Location
 }
 
+// LabelKey names the range in the message catalogue.
+//
+// A method beside the English Label rather than a translated Label, because
+// Parse takes no context: it is called from handlers, from the worker, and from
+// tests, and threading a request through all of them to name five fixed spans
+// would cost more than it buys. The view layer holds the context and does the
+// lookup, exactly as it does for a navigation destination.
+func (r Range) LabelKey() string { return "range." + r.Key }
+
 // Parse resolves a query value into a range. It never fails: an unknown key is
 // today, because a hand-edited `?range=` in the address bar must not be able to
 // take a page down.

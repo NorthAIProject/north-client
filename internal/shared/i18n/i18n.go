@@ -27,19 +27,31 @@ package i18n
 import (
 	"context"
 	"fmt"
-
-	"github.com/NorthAIProject/north-client/internal/users"
 )
 
 // catalogues holds every locale this build serves. English is the reference:
 // TestEveryCatalogueCoversEnglish asserts the others match its key set, so a
 // string added in English cannot ship untranslated without a red test.
-var catalogues = map[users.Locale]map[string]string{
-	users.LocaleEN:   english,
-	users.LocalePTPT: portugueseEuropean,
-	users.LocalePTBR: portugueseBrazilian,
-	users.LocaleES:   spanish,
+// Keyed by BCP 47 tag as a plain string, not by users.Locale.
+//
+// This package is a leaf on purpose. internal/users needs it for validation
+// messages, and internal/coach for the prompt, so it cannot depend on either of
+// them; a tag is a string, and users.Locale is a string type, so the conversion
+// at the boundary costs a cast and buys the whole dependency direction.
+//
+// Tags returned by users.ResolveLocale are the only ones that reach here in
+// practice, and TestEveryOfferedLocaleHasACatalogue in internal/users asserts
+// the two lists agree.
+var catalogues = map[string]map[string]string{
+	"en":    english,
+	"pt-PT": portugueseEuropean,
+	"pt-BR": portugueseBrazilian,
+	"es":    spanish,
 }
+
+// DefaultLocale is the tag served when nothing else resolves. It matches
+// users.LocaleDefault, which internal/users asserts.
+const DefaultLocale = "en"
 
 // Catalogues are written one surface at a time and merged here, rather than as
 // one map per language. Four files of a thousand entries would be unreviewable
@@ -47,10 +59,10 @@ var catalogues = map[users.Locale]map[string]string{
 // per surface per language keeps a change to the settings page a change to four
 // small files.
 var (
-	english             = merge(englishNav, englishSettings)
-	portugueseEuropean  = merge(portugueseEuropeanNav, portugueseEuropeanSettings)
-	portugueseBrazilian = merge(portugueseBrazilianNav, portugueseBrazilianSettings)
-	spanish             = merge(spanishNav, spanishSettings)
+	english             = merge(englishNav, englishSettings, englishErrors, englishDashboard)
+	portugueseEuropean  = merge(portugueseEuropeanNav, portugueseEuropeanSettings, portugueseEuropeanErrors, portugueseEuropeanDashboard)
+	portugueseBrazilian = merge(portugueseBrazilianNav, portugueseBrazilianSettings, portugueseBrazilianErrors, portugueseBrazilianDashboard)
+	spanish             = merge(spanishNav, spanishSettings, spanishErrors, spanishDashboard)
 )
 
 // merge folds the per-surface maps into one catalogue, and panics on a
@@ -78,8 +90,8 @@ type localeKey struct{}
 
 // WithLocale carries the locale for this request. Set once by middleware; every
 // template reads it from the context templ already threads through.
-func WithLocale(ctx context.Context, l users.Locale) context.Context {
-	return context.WithValue(ctx, localeKey{}, l)
+func WithLocale(ctx context.Context, tag string) context.Context {
+	return context.WithValue(ctx, localeKey{}, tag)
 }
 
 // LocaleFrom returns the request's locale, English when nothing set one.
@@ -87,11 +99,13 @@ func WithLocale(ctx context.Context, l users.Locale) context.Context {
 // A missing locale is normal rather than exceptional: a background job
 // rendering a template, or a test calling a component directly, has no request
 // behind it. Those should read English, not panic.
-func LocaleFrom(ctx context.Context) users.Locale {
-	if l, ok := ctx.Value(localeKey{}).(users.Locale); ok && l.Valid() {
-		return l
+func LocaleFrom(ctx context.Context) string {
+	if tag, ok := ctx.Value(localeKey{}).(string); ok {
+		if _, served := catalogues[tag]; served {
+			return tag
+		}
 	}
-	return users.LocaleDefault
+	return DefaultLocale
 }
 
 // T returns the translation of key for the request's locale.
@@ -114,8 +128,8 @@ func Tf(ctx context.Context, key string, args ...any) string {
 // Translate looks a key up in one locale, without a request. Exported for the
 // worker, which renders nudge and briefing copy for a user it loaded rather
 // than one who is calling.
-func Translate(l users.Locale, key string) string {
-	if s, ok := catalogues[l][key]; ok && s != "" {
+func Translate(tag, key string) string {
+	if s, ok := catalogues[tag][key]; ok && s != "" {
 		return s
 	}
 	if s, ok := english[key]; ok {

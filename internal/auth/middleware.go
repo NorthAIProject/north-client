@@ -65,7 +65,7 @@ func (m *Middleware) LoadUser(next http.Handler) http.Handler {
 		// middleware: it is a property of the account, and a second pass would
 		// have to resolve the session again to find it.
 		ctx := ContextWithUser(r.Context(), session.User)
-		ctx = i18n.WithLocale(ctx, session.User.Locale)
+		ctx = i18n.WithLocale(ctx, string(session.User.Locale))
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
