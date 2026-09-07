@@ -1,0 +1,102 @@
+package i18n
+
+// portugueseEuropean is European Portuguese (pt-PT).
+//
+// Kept apart from pt-BR rather than shared, because the divergence lands
+// squarely on this product's vocabulary: "treino" against "treino" is fine, but
+// "ginásio"/"academia", "pequeno-almoço"/"café da manhã" and the second-person
+// forms are not, and a Brazilian reading these strings would place them
+// immediately. See users.Locale for why that is worth two files.
+var portugueseEuropean = map[string]string{
+	"nav.group.today":    "Hoje",
+	"nav.group.body":     "Corpo",
+	"nav.group.mind":     "Mente",
+	"nav.group.progress": "Progresso",
+	"nav.group.system":   "Sistema",
+
+	"nav.overview":           "Resumo",
+	"nav.overview.desc":      "Como está o dia de hoje.",
+	"nav.quick-capture":      "Registo rápido",
+	"nav.quick-capture.desc": "Escreve o teu dia numa linha.",
+	"nav.check-ins":          "Registos diários",
+	"nav.check-ins.desc":     "Como te sentes, nas tuas palavras.",
+	"nav.coach":              "Treinador",
+	"nav.coach.desc":         "Fala sobre isso.",
+
+	"nav.fitness":                "Fitness",
+	"nav.fitness.desc":           "Treino, atividade e nutrição num só lugar.",
+	"nav.training":               "Treino",
+	"nav.training.desc":          "Planos de treino gerados por IA.",
+	"nav.new-training-plan":      "Novo plano de treino",
+	"nav.new-training-plan.desc": "Gera um plano a partir dos teus objetivos.",
+	"nav.training-plans":         "Planos de treino",
+	"nav.training-plans.desc":    "Todos os planos que guardaste.",
+	"nav.exercises":              "Exercícios",
+	"nav.exercises.desc":         "O que cada movimento treina, no modelo.",
+	"nav.form-check":             "Análise de técnica",
+	"nav.form-check.desc":        "Envia um vídeo, recebe correções.",
+	"nav.activity-timer":         "Cronómetro",
+	"nav.activity-timer.desc":    "Marca uma sessão, vê as calorias gastas.",
+	"nav.calculator":             "Calculadora",
+	"nav.calculator.desc":        "TMB, GET e um objetivo de macros.",
+	"nav.ingredients":            "Ingredientes",
+	"nav.ingredients.desc":       "Alimentos partilhados e os teus.",
+	"nav.meal-plans":             "Planos alimentares",
+	"nav.meal-plans.desc":        "Cria planos, acompanha os totais.",
+	"nav.food-log":               "Diário alimentar",
+	"nav.food-log.desc":          "Regista hoje, vê o progresso.",
+	"nav.strava-activities":      "Atividades do Strava",
+	"nav.strava-activities.desc": "As tuas corridas e saídas de bicicleta, em 3D.",
+	"nav.care":                   "Cuidado",
+	"nav.care.desc":              "Água, sono e hábitos.",
+
+	"nav.mind":           "Mente",
+	"nav.mind.desc":      "Escreve e reflete.",
+	"nav.memory":         "Memória",
+	"nav.memory.desc":    "O que o North se lembra sobre ti.",
+	"nav.decisions":      "Decisões",
+	"nav.decisions.desc": "As escolhas que fizeste, e porquê.",
+
+	"nav.goals":                  "Objetivos",
+	"nav.goals.desc":             "Aquilo para que estás a trabalhar.",
+	"nav.reports":                "Relatórios",
+	"nav.reports.desc":           "Revisões semanais e resumos diários.",
+	"nav.insights":               "Análises",
+	"nav.insights.desc":          "A tua atividade ao longo do tempo.",
+	"nav.insights.self":          "Atividade",
+	"nav.body-insights":          "Análises do corpo",
+	"nav.body-insights.desc":     "Peso, medidas e carga de treino.",
+	"nav.body-insights.nav":      "Corpo",
+	"nav.mind-insights":          "Análises da mente",
+	"nav.mind-insights.desc":     "Humor e reflexão ao longo do tempo.",
+	"nav.mind-insights.nav":      "Mente",
+	"nav.progress-insights":      "Análises de progresso",
+	"nav.progress-insights.desc": "Como os teus objetivos estão a evoluir.",
+	"nav.progress-insights.nav":  "Progresso",
+	"nav.training-insights":      "Análises de treino",
+	"nav.training-insights.desc": "Volume, frequência e cumprimento.",
+	"nav.training-insights.nav":  "Treino",
+
+	"nav.knowledge":              "Conhecimento",
+	"nav.knowledge.desc":         "Documentos e notas de que o North se pode servir.",
+	"nav.search-knowledge":       "Pesquisar conhecimento",
+	"nav.search-knowledge.desc":  "Encontra uma passagem em tudo o que adicionaste.",
+	"nav.settings":               "Definições",
+	"nav.settings.desc":          "Perfil, preferências e notificações.",
+	"nav.agent-connections":      "Ligações de agentes",
+	"nav.agent-connections.desc": "Tokens para agentes que se ligam por MCP.",
+	"nav.activity-log":           "Registo de atividade",
+	"nav.activity-log.desc":      "O que aconteceu na tua conta.",
+
+	"palette.trigger":     "Pesquisar",
+	"palette.aria":        "Pesquisar páginas",
+	"palette.title":       "Ir para a página",
+	"palette.placeholder": "Pesquisar páginas…",
+
+	"palette.empty.before": "Nenhuma página corresponde a",
+	"palette.empty.after":  ".",
+
+	"palette.hint.navigate": "navegar",
+	"palette.hint.open":     "abrir",
+	"palette.hint.close":    "fechar",
+}

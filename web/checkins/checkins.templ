@@ -103,7 +103,7 @@ func FormFor(c checkin.CheckIn) CheckInForm {
 }
 
 templ IndexPage(user users.User, list []checkin.CheckIn, form CheckInForm, activeGoals []goal.Goal, streak int, saved bool, m *moments.Moment, inst Instruments) {
-	@layout.App("Check-ins", user, layout.BuildNav("/app/check-ins")) {
+	@layout.App("Check-ins", user, layout.BuildNav(ctx, "/app/check-ins")) {
 		<div class="mx-auto flex w-full max-w-6xl flex-col gap-8 p-4 md:p-8">
 			@header()
 			if saved && m != nil {

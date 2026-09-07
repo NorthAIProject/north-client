@@ -68,7 +68,7 @@ func formatPace(a strava.Activity) string {
 }
 
 templ ActivitiesPage(user users.User, status strava.Status, activities []strava.Activity) {
-	@layout.App("Activities", user, layout.BuildNav("/app/fitness")) {
+	@layout.App("Activities", user, layout.BuildNav(ctx, "/app/fitness")) {
 		<div class="mx-auto w-full max-w-5xl space-y-6 p-6 md:p-8" x-data="northStravaActivities">
 			<header class="flex flex-wrap items-start justify-between gap-4">
 				<div>

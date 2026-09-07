@@ -138,7 +138,7 @@ func summary(shown int, p Page) string {
 }
 
 templ Browse(user users.User, found []exercise.Exercise, f Filters, p Page) {
-	@layout.App("Exercises", user, layout.BuildNav("/app/fitness")) {
+	@layout.App("Exercises", user, layout.BuildNav(ctx, "/app/fitness")) {
 		<div class="mx-auto w-full max-w-4xl space-y-6 p-6 md:p-8">
 			<header>
 				@ui.MonoLabel("Fitness")
@@ -247,7 +247,7 @@ templ row(e exercise.Exercise) {
 }
 
 templ Detail(user users.User, e exercise.Exercise) {
-	@layout.App(e.Name, user, layout.BuildNav("/app/fitness")) {
+	@layout.App(e.Name, user, layout.BuildNav(ctx, "/app/fitness")) {
 		<div class="mx-auto w-full max-w-4xl space-y-6 p-6 md:p-8">
 			<header>
 				<a href="/app/exercises" class="text-muted-foreground hover:text-foreground font-mono text-[10px] uppercase tracking-[0.14em]">

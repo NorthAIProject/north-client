@@ -33,7 +33,7 @@ func (f Form) fieldError(name string) string {
 }
 
 templ Page(user users.User, conn View, form Form) {
-	@layout.App("Vault sync", user, layout.BuildNav("/app/settings/vault")) {
+	@layout.App("Vault sync", user, layout.BuildNav(ctx, "/app/settings/vault")) {
 		<div class="mx-auto w-full max-w-2xl space-y-8 p-6 md:p-8">
 			<header>
 				<a href="/app/settings" class="text-muted-foreground hover:text-foreground font-mono text-[10px] uppercase tracking-[0.14em]">

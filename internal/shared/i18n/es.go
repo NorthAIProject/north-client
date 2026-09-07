@@ -1,0 +1,102 @@
+package i18n
+
+// spanish is Spanish (es).
+//
+// One Spanish, not five. Latin American and peninsular Spanish diverge far less
+// than the two Portugueses do in this vocabulary, and splitting on a difference
+// nobody has asked about would buy four more catalogues to maintain and no
+// clearer reading. Second person is "tú": the coach is a person you talk to, and
+// "usted" would make it a form you fill in.
+var spanish = map[string]string{
+	"nav.group.today":    "Hoy",
+	"nav.group.body":     "Cuerpo",
+	"nav.group.mind":     "Mente",
+	"nav.group.progress": "Progreso",
+	"nav.group.system":   "Sistema",
+
+	"nav.overview":           "Resumen",
+	"nav.overview.desc":      "Cómo va el día de hoy.",
+	"nav.quick-capture":      "Registro rápido",
+	"nav.quick-capture.desc": "Escribe tu día en una línea.",
+	"nav.check-ins":          "Registros diarios",
+	"nav.check-ins.desc":     "Cómo estás, en tus palabras.",
+	"nav.coach":              "Entrenador",
+	"nav.coach.desc":         "Háblalo con él.",
+
+	"nav.fitness":                "Fitness",
+	"nav.fitness.desc":           "Entrenamiento, actividad y nutrición en un solo lugar.",
+	"nav.training":               "Entrenamiento",
+	"nav.training.desc":          "Planes de entrenamiento generados por IA.",
+	"nav.new-training-plan":      "Nuevo plan de entrenamiento",
+	"nav.new-training-plan.desc": "Genera un plan a partir de tus objetivos.",
+	"nav.training-plans":         "Planes de entrenamiento",
+	"nav.training-plans.desc":    "Todos los planes que has guardado.",
+	"nav.exercises":              "Ejercicios",
+	"nav.exercises.desc":         "Qué trabaja cada movimiento, sobre el modelo.",
+	"nav.form-check":             "Revisión de técnica",
+	"nav.form-check.desc":        "Sube un vídeo y recibe correcciones.",
+	"nav.activity-timer":         "Cronómetro",
+	"nav.activity-timer.desc":    "Cronometra una sesión y mira las calorías.",
+	"nav.calculator":             "Calculadora",
+	"nav.calculator.desc":        "TMB, GET y un objetivo de macros.",
+	"nav.ingredients":            "Ingredientes",
+	"nav.ingredients.desc":       "Alimentos compartidos y los tuyos.",
+	"nav.meal-plans":             "Planes de comidas",
+	"nav.meal-plans.desc":        "Crea planes y controla los totales.",
+	"nav.food-log":               "Diario de comidas",
+	"nav.food-log.desc":          "Registra hoy y mira el progreso.",
+	"nav.strava-activities":      "Actividades de Strava",
+	"nav.strava-activities.desc": "Tus carreras y salidas en bici importadas, en 3D.",
+	"nav.care":                   "Cuidado",
+	"nav.care.desc":              "Agua, sueño y hábitos.",
+
+	"nav.mind":           "Mente",
+	"nav.mind.desc":      "Escribe y reflexiona.",
+	"nav.memory":         "Memoria",
+	"nav.memory.desc":    "Lo que North recuerda sobre ti.",
+	"nav.decisions":      "Decisiones",
+	"nav.decisions.desc": "Las decisiones que tomaste, y por qué.",
+
+	"nav.goals":                  "Objetivos",
+	"nav.goals.desc":             "Aquello hacia lo que trabajas.",
+	"nav.reports":                "Informes",
+	"nav.reports.desc":           "Revisiones semanales y resúmenes diarios.",
+	"nav.insights":               "Análisis",
+	"nav.insights.desc":          "Tu actividad a lo largo del tiempo.",
+	"nav.insights.self":          "Actividad",
+	"nav.body-insights":          "Análisis del cuerpo",
+	"nav.body-insights.desc":     "Peso, medidas y carga de entrenamiento.",
+	"nav.body-insights.nav":      "Cuerpo",
+	"nav.mind-insights":          "Análisis de la mente",
+	"nav.mind-insights.desc":     "Ánimo y reflexión a lo largo del tiempo.",
+	"nav.mind-insights.nav":      "Mente",
+	"nav.progress-insights":      "Análisis de progreso",
+	"nav.progress-insights.desc": "Cómo avanzan tus objetivos.",
+	"nav.progress-insights.nav":  "Progreso",
+	"nav.training-insights":      "Análisis de entrenamiento",
+	"nav.training-insights.desc": "Volumen, frecuencia y constancia.",
+	"nav.training-insights.nav":  "Entrenamiento",
+
+	"nav.knowledge":              "Conocimiento",
+	"nav.knowledge.desc":         "Documentos y notas que North puede usar.",
+	"nav.search-knowledge":       "Buscar en el conocimiento",
+	"nav.search-knowledge.desc":  "Encuentra un pasaje en todo lo que has añadido.",
+	"nav.settings":               "Ajustes",
+	"nav.settings.desc":          "Perfil, preferencias y notificaciones.",
+	"nav.agent-connections":      "Conexiones de agentes",
+	"nav.agent-connections.desc": "Tokens para agentes que se conectan por MCP.",
+	"nav.activity-log":           "Registro de actividad",
+	"nav.activity-log.desc":      "Qué ha pasado en tu cuenta.",
+
+	"palette.trigger":     "Buscar",
+	"palette.aria":        "Buscar páginas",
+	"palette.title":       "Ir a la página",
+	"palette.placeholder": "Buscar páginas…",
+
+	"palette.empty.before": "Ninguna página coincide con",
+	"palette.empty.after":  ".",
+
+	"palette.hint.navigate": "navegar",
+	"palette.hint.open":     "abrir",
+	"palette.hint.close":    "cerrar",
+}

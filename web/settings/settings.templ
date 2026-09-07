@@ -162,7 +162,7 @@ type SettingsSummary struct {
 // struct because there is one field and one message, and inventing a
 // view-model for that would be more machinery than the failure deserves.
 templ Page(user users.User, summary SettingsSummary, profileForm ProfileForm, prefsForm PreferencesForm, notifForm NotificationsForm, allDiets []meals.Diet, selectedDietIDs map[uuid.UUID]bool, saved string, deleteErr string) {
-	@layout.App("Settings", user, layout.BuildNav("/app/settings")) {
+	@layout.App("Settings", user, layout.BuildNav(ctx, "/app/settings")) {
 		<div class="mx-auto w-full max-w-6xl space-y-6 p-6 md:p-8">
 			<header>
 				@ui.MonoLabel("Settings")

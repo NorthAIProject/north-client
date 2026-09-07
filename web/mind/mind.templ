@@ -43,7 +43,7 @@ func (f JournalForm) fieldError(name string) string {
 func (f JournalForm) moodSelected(n int) bool { return f.Mood != nil && *f.Mood == n }
 
 templ IndexPage(user users.User, entries []journal.Entry, inst Instruments, f JournalForm) {
-	@layout.App("Mind", user, layout.BuildNav("/app/mind")) {
+	@layout.App("Mind", user, layout.BuildNav(ctx, "/app/mind")) {
 		<div class="mx-auto w-full max-w-6xl space-y-6 p-6 md:p-8">
 			<header>
 				@ui.MonoLabel("Mind")

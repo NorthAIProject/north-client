@@ -41,7 +41,7 @@ func (v DocumentView) isHighlighted(line int) bool {
 }
 
 templ DocumentPage(user users.User, view DocumentView) {
-	@layout.App(view.Document.Title, user, layout.BuildNav("/app/knowledge")) {
+	@layout.App(view.Document.Title, user, layout.BuildNav(ctx, "/app/knowledge")) {
 		<div class="mx-auto w-full max-w-4xl space-y-6 p-6 md:p-8">
 			<header class="space-y-3">
 				<a href="/app/knowledge" class="text-muted-foreground hover:text-foreground font-mono text-[10px] uppercase tracking-[0.14em]">

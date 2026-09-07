@@ -69,7 +69,7 @@ type Instruments struct {
 }
 
 templ IndexPage(user users.User, view View, form NoteForm) {
-	@layout.App("Knowledge", user, layout.BuildNav("/app/knowledge")) {
+	@layout.App("Knowledge", user, layout.BuildNav(ctx, "/app/knowledge")) {
 		<div class="mx-auto w-full max-w-7xl p-6 md:p-8">
 			@pageHeader(view)
 			if len(view.Problems) > 0 || view.EmbeddingGap > 0 {

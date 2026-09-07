@@ -8,6 +8,7 @@ import (
 	"time"
 
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
@@ -60,7 +61,12 @@ func (m *Middleware) LoadUser(next http.Handler) http.Handler {
 			return
 		}
 
-		next.ServeHTTP(w, r.WithContext(ContextWithUser(r.Context(), session.User)))
+		// The locale rides along with the user rather than in its own
+		// middleware: it is a property of the account, and a second pass would
+		// have to resolve the session again to find it.
+		ctx := ContextWithUser(r.Context(), session.User)
+		ctx = i18n.WithLocale(ctx, session.User.Locale)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 

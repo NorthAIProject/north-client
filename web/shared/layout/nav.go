@@ -1,5 +1,7 @@
 package layout
 
+import "context"
+
 // BuildNav assembles the application's sidebar.
 //
 // Every page previously defined its own private nav(active) copy of this same
@@ -17,11 +19,15 @@ package layout
 // column: eleven undifferentiated links read as a pile, whereas five short
 // groups read as a map of the product. The group headings disappear when the
 // rail is collapsed to icons, so they cost nothing in that mode.
-func BuildNav(active string) []NavGroup {
+// ctx carries the request's locale, so the rail is assembled already
+// translated rather than translated at render time in the template. Everything
+// a person reads here comes from the message catalogue; Href, Icon and Group
+// do not move when the language does.
+func BuildNav(ctx context.Context, active string) []NavGroup {
 	var groups []NavGroup
 
 	for _, groupName := range GroupOrder() {
-		group := NavGroup{Label: groupName}
+		group := NavGroup{Label: GroupLabel(ctx, groupName)}
 
 		// Two passes: parents first, so a child can always find the item it
 		// nests under regardless of registry order.
@@ -31,13 +37,13 @@ func BuildNav(active string) []NavGroup {
 				continue
 			}
 
-			item := NavItem{Label: navLabel(d), Href: d.Href, Icon: d.Icon}
+			item := NavItem{Label: d.NavLabelIn(ctx), Href: d.Href, Icon: d.Icon}
 			if d.Nav.SelfChildLabel != "" {
 				// A section landing page that is also its own first view. The
 				// child points at the same href on purpose: it is one page
 				// wearing two labels, not two destinations.
 				item.Children = append(item.Children, NavItem{
-					Label: d.Nav.SelfChildLabel,
+					Label: d.SelfChildLabelIn(ctx),
 					Href:  d.Href,
 				})
 			}
@@ -57,7 +63,7 @@ func BuildNav(active string) []NavGroup {
 				continue
 			}
 			group.Items[parent].Children = append(group.Items[parent].Children, NavItem{
-				Label: navLabel(d),
+				Label: d.NavLabelIn(ctx),
 				Href:  d.Href,
 			})
 		}
@@ -84,14 +90,4 @@ func BuildNav(active string) []NavGroup {
 		}
 	}
 	return groups
-}
-
-// navLabel is the rail's name for a destination, which is sometimes shorter
-// than the palette's. "Body insights" has to stand alone in a flat search
-// result; under an Insights heading it is just "Body".
-func navLabel(d Destination) string {
-	if d.Nav.Label != "" {
-		return d.Nav.Label
-	}
-	return d.Label
 }

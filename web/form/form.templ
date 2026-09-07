@@ -16,7 +16,7 @@ import (
 )
 
 templ IndexPage(user users.User, analyses []analysis.Analysis, errMsg string) {
-	@layout.App("Form check", user, layout.BuildNav("/app/fitness")) {
+	@layout.App("Form check", user, layout.BuildNav(ctx, "/app/fitness")) {
 		<div class="mx-auto w-full max-w-2xl p-6 md:p-8">
 			<header class="mb-6">
 				<h1 class="text-2xl font-semibold tracking-tight">Form check</h1>
@@ -105,7 +105,7 @@ templ issueCountBadge(result analysis.FormAnalysis) {
 }
 
 templ AnalysisPage(user users.User, item analysis.Analysis, playbackURL string) {
-	@layout.App("Form check", user, layout.BuildNav("/app/fitness")) {
+	@layout.App("Form check", user, layout.BuildNav(ctx, "/app/fitness")) {
 		<div
 			class="mx-auto w-full max-w-3xl p-6 md:p-8"
 			x-data="{ seek(seconds) { const v = $refs.clip; if (v) { v.currentTime = seconds; v.play(); } } }"

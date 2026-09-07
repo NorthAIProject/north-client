@@ -21,7 +21,7 @@ type MealOption struct {
 }
 
 templ LogPage(user users.User, entries []meal.FoodLogEntry, progressSummary string, hasProgress bool, recommendationMsg string, hasRecommendation bool, allIngredients []meal.Ingredient, mealOptions []MealOption) {
-	@layout.App("Food log", user, nav()) {
+	@layout.App("Food log", user, nav(ctx)) {
 		<div class="mx-auto w-full max-w-2xl space-y-6 p-6 md:p-8">
 			<header>
 				@ui.MonoLabel("Nutrition")

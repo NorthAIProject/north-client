@@ -21,7 +21,7 @@ func renderApp(t *testing.T) string {
 		return err
 	})
 
-	page := App("Overview", users.User{DisplayName: "Test"}, BuildNav("/app"))
+	page := App("Overview", users.User{DisplayName: "Test"}, BuildNav(context.Background(), "/app"))
 	if err := page.Render(templ.WithChildren(context.Background(), child), &b); err != nil {
 		t.Fatalf("render App: %v", err)
 	}
@@ -67,7 +67,7 @@ func TestEveryDestinationIsInThePalette(t *testing.T) {
 		if !strings.Contains(html, `href="`+d.Href+`"`) {
 			t.Errorf("%q (%s) is missing from the rendered palette", d.Label, d.Href)
 		}
-		if !strings.Contains(html, `data-haystack="`+haystack(d)+`"`) {
+		if !strings.Contains(html, `data-haystack="`+haystack(context.Background(), d)+`"`) {
 			t.Errorf("%q has no haystack attribute, so nothing will ever match it", d.Label)
 		}
 	}
@@ -80,7 +80,7 @@ func TestTheHaystackIsLowercasedAndCarriesTheKeywords(t *testing.T) {
 	t.Parallel()
 
 	for _, d := range Destinations() {
-		hay := haystack(d)
+		hay := haystack(context.Background(), d)
 		if hay != strings.ToLower(hay) {
 			t.Errorf("%q has an uppercase haystack: %q", d.Label, hay)
 		}
