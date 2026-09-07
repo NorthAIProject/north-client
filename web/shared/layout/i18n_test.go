@@ -27,7 +27,7 @@ func TestEveryDestinationHasACatalogueKey(t *testing.T) {
 // deliberate trade — a caller with no request still reads a sentence — and this
 // is the test that stops the two copies drifting.
 func TestNavCatalogueMatchesTheEnglish(t *testing.T) {
-	ctx := i18n.WithLocale(context.Background(), users.LocaleEN)
+	ctx := i18n.WithLocale(context.Background(), string(users.LocaleEN))
 
 	for _, d := range Destinations() {
 		if got := d.LabelIn(ctx); got != d.Label {
@@ -53,7 +53,7 @@ func TestNavCatalogueMatchesTheEnglish(t *testing.T) {
 // renders all five on every page.
 func TestEveryGroupHeadingIsTranslated(t *testing.T) {
 	for _, locale := range users.Locales {
-		ctx := i18n.WithLocale(context.Background(), locale)
+		ctx := i18n.WithLocale(context.Background(), string(locale))
 		for _, group := range GroupOrder() {
 			got := GroupLabel(ctx, group)
 			if got == "" || strings.HasPrefix(got, "nav.group.") {
@@ -66,7 +66,7 @@ func TestEveryGroupHeadingIsTranslated(t *testing.T) {
 // The rail is assembled already translated. This is the end-to-end check that
 // the locale on the context actually reaches it.
 func TestBuildNavRendersInTheRequestLocale(t *testing.T) {
-	ctx := i18n.WithLocale(context.Background(), users.LocalePTBR)
+	ctx := i18n.WithLocale(context.Background(), string(users.LocalePTBR))
 
 	groups := BuildNav(ctx, "/app")
 	if len(groups) == 0 {
@@ -96,7 +96,7 @@ func TestBuildNavRendersInTheRequestLocale(t *testing.T) {
 // docs, from a URL, from a colleague. Typing the English must not come up
 // empty, so the haystack carries both.
 func TestTheHaystackIsSearchableInBothLanguages(t *testing.T) {
-	ctx := i18n.WithLocale(context.Background(), users.LocalePTBR)
+	ctx := i18n.WithLocale(context.Background(), string(users.LocalePTBR))
 
 	for _, d := range Destinations() {
 		if d.Href != "/app/settings" {

@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 )
 
 // Service holds account rules. It is the only place that decides what a valid
@@ -57,22 +58,27 @@ type Registration struct {
 // It exists so a caller can collect account problems alongside problems it
 // found itself (a rejected password, say) and report them in one pass, without
 // that collection having the side effect of creating an account.
+// Messages here are looked up in English explicitly rather than written inline.
+// Signup happens before there is an account, so there is no chosen language to
+// honour yet and English is the only honest answer — but the string still lives
+// in one place, so the day logged-out pages resolve a locale this becomes a
+// one-line change instead of a hunt.
 func (s *Service) ValidateRegistration(reg Registration) (Registration, error) {
 	var errs apperr.FieldErrors
 
 	email := strings.TrimSpace(reg.Email)
 	if email == "" {
-		errs = errs.Add("email", "Email is required.")
+		errs = errs.Add("email", i18n.Translate(i18n.DefaultLocale, "users.err.email.required"))
 	} else if !validEmail(email) {
-		errs = errs.Add("email", "That does not look like a valid email address.")
+		errs = errs.Add("email", i18n.Translate(i18n.DefaultLocale, "users.err.email.invalid"))
 	}
 
 	name := strings.TrimSpace(reg.DisplayName)
 	switch {
 	case name == "":
-		errs = errs.Add("display_name", "Name is required.")
+		errs = errs.Add("display_name", i18n.Translate(i18n.DefaultLocale, "users.err.name.required"))
 	case len(name) > 100:
-		errs = errs.Add("display_name", "Name must be 100 characters or fewer.")
+		errs = errs.Add("display_name", i18n.Translate(i18n.DefaultLocale, "users.err.name.toolong"))
 	}
 
 	// An unrecognised zone falls back to UTC rather than refusing the account.
@@ -147,9 +153,9 @@ func (s *Service) UpdateProfile(ctx context.Context, id uuid.UUID, p Profile) (U
 	name := strings.TrimSpace(p.DisplayName)
 	switch {
 	case name == "":
-		errs = errs.Add("display_name", "Name is required.")
+		errs = errs.Add("display_name", i18n.T(ctx, "users.err.name.required"))
 	case len(name) > 100:
-		errs = errs.Add("display_name", "Name must be 100 characters or fewer.")
+		errs = errs.Add("display_name", i18n.T(ctx, "users.err.name.toolong"))
 	}
 
 	// Falls back to UTC rather than refusing, as registration does. A zone this
@@ -168,13 +174,13 @@ func (s *Service) UpdateProfile(ctx context.Context, id uuid.UUID, p Profile) (U
 	case tone == "":
 		tone = ToneDefault
 	case !tone.Valid():
-		errs = errs.Add("coaching_tone", "Choose one of the listed tones.")
+		errs = errs.Add("coaching_tone", i18n.T(ctx, "users.err.tone.invalid"))
 	}
 
 	// Long enough to describe a coaching preference, short enough that it
 	// cannot crowd out real context in the prompt budget.
 	if len(p.CoachingStyle) > 1000 {
-		errs = errs.Add("coaching_style", "Keep this under 1000 characters.")
+		errs = errs.Add("coaching_style", i18n.T(ctx, "users.err.style.toolong"))
 	}
 
 	// Locale gets timezone's treatment rather than tone's. The set of languages

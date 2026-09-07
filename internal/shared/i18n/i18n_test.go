@@ -5,8 +5,6 @@ import (
 	"sort"
 	"strings"
 	"testing"
-
-	"github.com/NorthAIProject/north-client/internal/users"
 )
 
 // The whole point of the package. A string added to English without a
@@ -14,7 +12,7 @@ import (
 // of somebody, and a key deleted from English must not linger in three files.
 func TestEveryCatalogueCoversEnglish(t *testing.T) {
 	for locale, catalogue := range catalogues {
-		if locale == users.LocaleEN {
+		if locale == DefaultLocale {
 			continue
 		}
 
@@ -41,16 +39,6 @@ func TestEveryCatalogueCoversEnglish(t *testing.T) {
 	}
 }
 
-// Every locale users.Locales offers must have a catalogue, or choosing it in
-// settings would silently serve English.
-func TestEveryOfferedLocaleHasACatalogue(t *testing.T) {
-	for _, l := range users.Locales {
-		if len(catalogues[l]) == 0 {
-			t.Errorf("locale %q is offered in settings but has no catalogue", l)
-		}
-	}
-}
-
 // A translation that is still the English is either a real cognate or an
 // oversight, and there is no way to tell them apart mechanically. This lists
 // them so the count is a deliberate number somebody looked at, rather than
@@ -70,7 +58,7 @@ func TestUntranslatedStringsAreAccountedFor(t *testing.T) {
 	}
 
 	for locale, catalogue := range catalogues {
-		if locale == users.LocaleEN {
+		if locale == DefaultLocale {
 			continue
 		}
 		for key, en := range english {
@@ -89,7 +77,7 @@ func TestUntranslatedStringsAreAccountedFor(t *testing.T) {
 // it cannot find anything, which is the visible-failure of last resort; this
 // asserts it never fires for a key English actually defines.
 func TestTranslateNeverReturnsAKeyForAKnownString(t *testing.T) {
-	for _, l := range users.Locales {
+	for l := range catalogues {
 		for key := range english {
 			if got := Translate(l, key); got == key && !strings.HasSuffix(key, ".after") {
 				t.Errorf("locale %q, key %q: fell through to the key", l, key)
@@ -101,8 +89,8 @@ func TestTranslateNeverReturnsAKeyForAKnownString(t *testing.T) {
 // An empty context is normal — a background job or a direct component call has
 // no request behind it — and must read English rather than panic.
 func TestLocaleFromEmptyContextIsEnglish(t *testing.T) {
-	if got := LocaleFrom(context.Background()); got != users.LocaleEN {
-		t.Errorf("LocaleFrom(empty) = %q, want %q", got, users.LocaleEN)
+	if got := LocaleFrom(context.Background()); got != DefaultLocale {
+		t.Errorf("LocaleFrom(empty) = %q, want %q", got, DefaultLocale)
 	}
 	if got := T(context.Background(), "palette.trigger"); got != "Search" {
 		t.Errorf("T(empty, palette.trigger) = %q, want the English", got)
@@ -111,17 +99,17 @@ func TestLocaleFromEmptyContextIsEnglish(t *testing.T) {
 
 // A locale this build has retired reads English rather than the key.
 func TestUnknownLocaleFallsBackToEnglish(t *testing.T) {
-	ctx := WithLocale(context.Background(), users.Locale("kl-GL"))
+	ctx := WithLocale(context.Background(), "kl-GL")
 	if got := T(ctx, "palette.trigger"); got != "Search" {
 		t.Errorf("unknown locale: T = %q, want the English", got)
 	}
 }
 
 func TestTranslationsAreServedForRealLocales(t *testing.T) {
-	cases := map[users.Locale]string{
-		users.LocalePTPT: "Definições",
-		users.LocalePTBR: "Configurações",
-		users.LocaleES:   "Ajustes",
+	cases := map[string]string{
+		"pt-PT": "Definições",
+		"pt-BR": "Configurações",
+		"es":    "Ajustes",
 	}
 	for locale, want := range cases {
 		ctx := WithLocale(context.Background(), locale)

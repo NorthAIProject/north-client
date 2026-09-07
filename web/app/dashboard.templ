@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/conversations"
 	"github.com/NorthAIProject/north-client/internal/goals/goal"
 	"github.com/NorthAIProject/north-client/internal/nudges/nudge"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/web/shared/markdown"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/workouts/plan"
@@ -84,10 +86,34 @@ type RangeOption struct {
 	Selected bool
 }
 
+// LabelIn is the option's label in the request's language. Key is
+// timerange.Key, so the catalogue entry is derivable rather than carried.
+func (o RangeOption) LabelIn(ctx context.Context) string {
+	return rangeLabel(ctx, o.Key, o.Label)
+}
+
 type RangeView struct {
 	Key     string
 	Label   string
 	Options []RangeOption
+}
+
+// LabelIn is the selected range's label in the request's language.
+func (v RangeView) LabelIn(ctx context.Context) string {
+	return rangeLabel(ctx, v.Key, v.Label)
+}
+
+// rangeLabel translates a range key, falling back to the English the handler
+// carried rather than to the key: a range this build stops naming should still
+// read as a period, not as "range.fortnight".
+func rangeLabel(ctx context.Context, key, english string) string {
+	if key == "" {
+		return english
+	}
+	if got := i18n.T(ctx, "range."+key); got != "range."+key {
+		return got
+	}
+	return english
 }
 
 // DeltaView is a metric's change against the previous window of equal length.
@@ -235,16 +261,16 @@ func relativeTime(t time.Time) string {
 }
 
 templ Dashboard(user users.User, data DashboardData) {
-	@layout.App("Overview", user, layout.BuildNav(ctx, "/app")) {
+	@layout.App(i18n.T(ctx, "nav.overview"), user, layout.BuildNav(ctx, "/app")) {
 		<div class="mx-auto w-full max-w-6xl space-y-6 p-6 md:p-8">
 			<header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
 				<div>
-					@ui.MonoLabel("Command center")
+					@ui.MonoLabel(i18n.T(ctx, "dash.mono"))
 					<h1 class="mt-2 text-2xl font-medium tracking-tight">
-						Hello, { user.FirstName() }
+						{ i18n.Tf(ctx, "dash.hello", user.FirstName()) }
 					</h1>
 					<p class="text-muted-foreground mt-1 max-w-2xl text-sm leading-relaxed">
-						Everything across Khepri, for { data.Range.Label }.
+						{ i18n.Tf(ctx, "dash.intro", data.Range.LabelIn(ctx)) }
 					</p>
 				</div>
 				@rangeSelector(data)
@@ -270,7 +296,7 @@ templ Dashboard(user users.User, data DashboardData) {
 // with JavaScript off — the href reloads, the hx-get swaps.
 templ rangeSelector(data DashboardData) {
 	<nav
-		aria-label="Time period"
+		aria-label={ i18n.T(ctx, "dash.range") }
 		class="border-hairline bg-surface/60 -mx-1 flex shrink-0 gap-1 overflow-x-auto rounded-lg border p-1"
 	>
 		for _, opt := range data.Range.Options {
@@ -287,7 +313,7 @@ templ rangeSelector(data DashboardData) {
 					class="text-muted-foreground hover:bg-accent/60 hover:text-foreground rounded-md px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors"
 				}
 			>
-				{ opt.Label }
+				{ opt.LabelIn(ctx) }
 			</a>
 		}
 	</nav>
@@ -314,7 +340,7 @@ templ nextStepCard(step NextStep) {
 		<div data-push data-push-card hidden>
 			@nextStepBody(step) {
 				@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Attributes: templ.Attributes{"data-push-dismiss": "true"}}) {
-					Not now
+					{ i18n.T(ctx, "dash.notnow") }
 				}
 			}
 		</div>
@@ -367,13 +393,13 @@ templ briefingPrompt() {
 				<div>
 					<p class="text-muted-foreground text-xs tracking-wide uppercase">Today</p>
 					<p class="mt-1 text-sm leading-relaxed">
-						No briefing yet this morning.
+						{ i18n.T(ctx, "dash.briefing.empty") }
 					</p>
 				</div>
 				<form method="post" action="/app/reports/briefing">
 					@ui.CSRFInput()
 					@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm}) {
-						Write today's briefing
+						{ i18n.T(ctx, "dash.briefing.write") }
 					}
 				</form>
 			</div>
@@ -412,16 +438,16 @@ templ DashboardPanels(data DashboardData) {
 templ kpiStrip(data DashboardData) {
 	@ui.KpiStrip() {
 		@ui.KpiCell(ui.KpiCellProps{
-			Label: "Check-in", Value: checkInKPI(data),
-			Href: "/app/check-ins", CTA: checkInCTA(data),
+			Label: i18n.T(ctx, "dash.kpi.checkin"), Value: checkInKPI(ctx, data),
+			Href: "/app/check-ins", CTA: checkInCTA(ctx, data),
 		})
 		@ui.KpiCell(ui.KpiCellProps{
-			Label: "Streak", Value: streakKPI(data),
-			Href: "/app/check-ins", CTA: "Check in",
+			Label: i18n.T(ctx, "dash.kpi.streak"), Value: streakKPI(ctx, data),
+			Href: "/app/check-ins", CTA: i18n.T(ctx, "dash.kpi.checkcta"),
 		})
-		@kpiCellWithDelta("Water", waterKPI(data), "/app/care", "Log water", data.Deltas.Hydration)
-		@kpiCellWithDelta("Sleep", sleepKPI(data), "/app/care", "Log sleep", data.Deltas.SleepHours)
-		@kpiCellWithDelta("Burned", caloriesKPI(data), "/app/fitness", "Activity", data.Deltas.Calories)
+		@kpiCellWithDelta(i18n.T(ctx, "dash.kpi.water"), waterKPI(data), "/app/care", i18n.T(ctx, "dash.kpi.logwater"), data.Deltas.Hydration)
+		@kpiCellWithDelta(i18n.T(ctx, "dash.kpi.sleep"), sleepKPI(data), "/app/care", i18n.T(ctx, "dash.kpi.logsleep"), data.Deltas.SleepHours)
+		@kpiCellWithDelta(i18n.T(ctx, "dash.kpi.burned"), caloriesKPI(data), "/app/fitness", i18n.T(ctx, "dash.kpi.activity"), data.Deltas.Calories)
 	}
 }
 
@@ -468,25 +494,31 @@ func formatPct(pct float64) string {
 	return fmt.Sprintf("%.0f%%", pct)
 }
 
-func checkInKPI(data DashboardData) string {
+func checkInKPI(ctx context.Context, data DashboardData) string {
 	if data.CheckedInToday {
-		return "Done"
+		return i18n.T(ctx, "dash.kpi.done")
 	}
-	return "Pending"
+	return i18n.T(ctx, "dash.kpi.pending")
 }
 
-func checkInCTA(data DashboardData) string {
+func checkInCTA(ctx context.Context, data DashboardData) string {
 	if data.CheckedInToday {
-		return "Edit"
+		return i18n.T(ctx, "dash.kpi.edit")
 	}
-	return "Check in"
+	return i18n.T(ctx, "dash.kpi.checkcta")
 }
 
-func streakKPI(data DashboardData) string {
-	if data.Streak <= 0 {
+// An em dash for no streak, and two catalogue strings for the rest: "1 days"
+// is wrong in every language here.
+func streakKPI(ctx context.Context, data DashboardData) string {
+	switch {
+	case data.Streak <= 0:
 		return "—"
+	case data.Streak == 1:
+		return i18n.T(ctx, "dash.kpi.streak.one")
+	default:
+		return i18n.Tf(ctx, "dash.kpi.streak.many", data.Streak)
 	}
-	return strconv.Itoa(data.Streak) + " days"
 }
 
 func goalActivityLabel(n int) string {
@@ -531,17 +563,17 @@ templ timelinePanel(data DashboardData) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface h-full"}) {
 		@card.Header() {
 			@card.Title() {
-				Activity
+				{ i18n.T(ctx, "dash.timeline.title") }
 			}
 			@card.Description() {
-				Everything you did, { data.Range.Label }.
+				{ i18n.Tf(ctx, "dash.timeline.desc", data.Range.LabelIn(ctx)) }
 			}
 		}
 		@card.Content() {
 			if len(data.Timeline) == 0 {
-				<p class="text-muted-foreground mb-4 text-sm">Nothing logged in this window yet.</p>
+				<p class="text-muted-foreground mb-4 text-sm">{ i18n.T(ctx, "dash.timeline.empty") }</p>
 				@button.Button(button.Props{Href: "/app/check-ins", Class: "bg-signal text-background hover:bg-signal/90"}) {
-					Check in
+					{ i18n.T(ctx, "dash.kpi.checkcta") }
 				}
 			} else {
 				<ul class="divide-border -my-2 divide-y">
@@ -584,10 +616,10 @@ templ splitPanel(data DashboardData) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface h-full"}) {
 		@card.Header() {
 			@card.Title() {
-				Where it went
+				{ i18n.T(ctx, "dash.activity.title") }
 			}
 			@card.Description() {
-				Your logged activity by kind.
+				{ i18n.T(ctx, "dash.activity.desc") }
 			}
 		}
 		@card.Content() {
@@ -605,10 +637,10 @@ templ checkInPanel(data DashboardData) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface h-full"}) {
 		@card.Header() {
 			@card.Title() {
-				Mood & energy
+				{ i18n.T(ctx, "dash.mood.title") }
 			}
 			@card.Description() {
-				The trailing fortnight from your check-ins.
+				{ i18n.T(ctx, "dash.mood.desc") }
 			}
 		}
 		@card.Content() {
@@ -619,9 +651,9 @@ templ checkInPanel(data DashboardData) {
 					@ui.EChartsMount("dashboard-checkin-heatmap", "dashboard-checkin-heatmap-option", "border-hairline mt-4 min-h-32 w-full rounded-md border")
 				}
 			} else {
-				<p class="text-muted-foreground mb-4 text-sm">No check-ins yet in this window.</p>
+				<p class="text-muted-foreground mb-4 text-sm">{ i18n.T(ctx, "dash.mood.empty") }</p>
 				@button.Button(button.Props{Href: "/app/check-ins", Class: "bg-signal text-background hover:bg-signal/90"}) {
-					Check in
+					{ i18n.T(ctx, "dash.kpi.checkcta") }
 				}
 			}
 		}
@@ -632,13 +664,13 @@ templ habitsPanel(data DashboardData) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface h-full"}) {
 		@card.Header() {
 			@card.Title() {
-				Habits
+				{ i18n.T(ctx, "dash.habits.title") }
 			}
 			@card.Description() {
 				if data.Habits.HasHabits {
-					Seven-day adherence across active habits.
+					{ i18n.T(ctx, "dash.habits.desc") }
 				} else {
-					Recurring intentions you can keep or miss.
+					{ i18n.T(ctx, "dash.habits.empty") }
 				}
 			}
 		}
@@ -657,7 +689,7 @@ templ habitsPanel(data DashboardData) {
 			} else {
 				<p class="text-muted-foreground mb-4 text-sm">No habits yet.</p>
 				@button.Button(button.Props{Href: "/app/care", Class: "bg-signal text-background hover:bg-signal/90"}) {
-					Add a habit
+					{ i18n.T(ctx, "dash.habits.cta") }
 				}
 			}
 		}
@@ -668,13 +700,13 @@ templ hydrationPanel(data DashboardData) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface h-full"}) {
 		@card.Header() {
 			@card.Title() {
-				Hydration
+				{ i18n.T(ctx, "dash.hydration.title") }
 			}
 			@card.Description() {
 				if data.Hydration.HasData() {
-					Daily intake in millilitres.
+					{ i18n.T(ctx, "dash.hydration.desc") }
 				} else {
-					Water logged from Care.
+					{ i18n.T(ctx, "dash.hydration.empty") }
 				}
 			}
 		}
@@ -687,7 +719,7 @@ templ hydrationPanel(data DashboardData) {
 			} else {
 				<p class="text-muted-foreground mb-4 text-sm">No water logged in this window.</p>
 				@button.Button(button.Props{Href: "/app/care", Class: "bg-signal text-background hover:bg-signal/90"}) {
-					Log water
+					{ i18n.T(ctx, "dash.hydration.cta") }
 				}
 			}
 		}
@@ -698,7 +730,7 @@ templ goalsPanel(data DashboardData) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface h-full"}) {
 		@card.Header() {
 			@card.Title() {
-				Goals
+				{ i18n.T(ctx, "dash.goals.title") }
 			}
 			if label := goalActivityLabel(data.GoalActivity7d); label != "" {
 				@card.Description() {
@@ -710,7 +742,7 @@ templ goalsPanel(data DashboardData) {
 			if len(data.Goals) == 0 {
 				<p class="text-muted-foreground mb-4 text-sm">The coach works better once it knows what you are aiming at.</p>
 				@button.Button(button.Props{Href: "/app/goals", Class: "bg-signal text-background hover:bg-signal/90"}) {
-					Add a goal
+					{ i18n.T(ctx, "dash.goals.cta") }
 				}
 			} else {
 				<ul class="space-y-3">
@@ -729,7 +761,7 @@ templ goalsPanel(data DashboardData) {
 				</ul>
 				<div class="mt-4">
 					@button.Button(button.Props{Href: "/app/goals", Variant: button.VariantOutline, Size: button.SizeSm}) {
-						All goals
+						{ i18n.T(ctx, "dash.goals.all") }
 					}
 				</div>
 			}
@@ -742,7 +774,7 @@ templ startReflectionForm() {
 		@ui.CSRFInput()
 		<input type="hidden" name="kind" value="reflection"/>
 		@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
-			Reflect
+			{ i18n.T(ctx, "dash.reflect") }
 		}
 	</form>
 }
@@ -751,7 +783,7 @@ templ coachPanel(data DashboardData) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface h-full"}) {
 		@card.Header() {
 			@card.Title() {
-				Coach
+				{ i18n.T(ctx, "dash.coach.title") }
 			}
 		}
 		@card.Content() {
@@ -759,7 +791,7 @@ templ coachPanel(data DashboardData) {
 				<p class="mb-3 text-sm font-medium">{ data.LastThread.DisplayTitle() }</p>
 				<div class="flex flex-wrap items-center gap-2">
 					@button.Button(button.Props{Href: "/app/chat/" + data.LastThread.ID.String(), Class: "bg-signal text-background hover:bg-signal/90"}) {
-						Continue
+						{ i18n.T(ctx, "dash.coach.cont") }
 					}
 					@startReflectionForm()
 				</div>
@@ -767,7 +799,7 @@ templ coachPanel(data DashboardData) {
 				<p class="text-muted-foreground mb-4 text-sm">Khepri already has your goals and check-ins when they exist.</p>
 				<div class="flex flex-wrap items-center gap-2">
 					@button.Button(button.Props{Href: "/app/chat", Class: "bg-signal text-background hover:bg-signal/90"}) {
-						Start a conversation
+						{ i18n.T(ctx, "dash.coach.start") }
 					}
 					@startReflectionForm()
 				</div>
@@ -780,7 +812,7 @@ templ trainingPanel(data DashboardData) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface h-full"}) {
 		@card.Header() {
 			@card.Title() {
-				Training
+				{ i18n.T(ctx, "dash.training.title") }
 			}
 		}
 		@card.Content() {
@@ -790,16 +822,16 @@ templ trainingPanel(data DashboardData) {
 					{ strconv.Itoa(len(data.NextSession.Exercises)) } exercises
 				</p>
 				@button.Button(button.Props{Href: "/app/training/" + data.PlanID.String(), Class: "bg-signal text-background hover:bg-signal/90"}) {
-					Open session
+					{ i18n.T(ctx, "dash.training.session") }
 				}
 			} else if data.HasPlan() {
 				@button.Button(button.Props{Href: "/app/training/" + data.PlanID.String(), Variant: button.VariantOutline}) {
-					Open plan
+					{ i18n.T(ctx, "dash.training.plan") }
 				}
 			} else {
 				<p class="text-muted-foreground mb-4 text-sm">A plan the coach can follow, not a paragraph of sets.</p>
 				@button.Button(button.Props{Href: "/app/training", Class: "bg-signal text-background hover:bg-signal/90"}) {
-					Build a training plan
+					{ i18n.T(ctx, "dash.training.build") }
 				}
 			}
 			if data.ActivityCalories > 0 {

@@ -24,7 +24,7 @@ func renderSettingsIn(t *testing.T, locale users.Locale) string {
 		NotificationsForm{PushEnabled: true, PushPublicKey: "test-key", PushDevices: 2},
 		nil, nil, "", "",
 	)
-	ctx := i18n.WithLocale(context.Background(), locale)
+	ctx := i18n.WithLocale(context.Background(), string(locale))
 	if err := page.Render(ctx, &b); err != nil {
 		t.Fatalf("render %s: %v", locale, err)
 	}
