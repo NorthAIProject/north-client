@@ -118,6 +118,19 @@ func (r *Repository) Touch(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
+// RevokeGrant turns a connection off by id alone. See the query's comment for
+// why that is safe here and nowhere near a form.
+func (r *Repository) RevokeGrant(ctx context.Context, id uuid.UUID) error {
+	rows, err := r.q.RevokeGrantByID(ctx, id)
+	if err != nil {
+		return apperr.Wrap(err, "revoke grant")
+	}
+	if rows == 0 {
+		return apperr.ErrNotFound
+	}
+	return nil
+}
+
 // Revoke turns a connection off. Scoped by user as well as id, so an id
 // guessed from someone else's page revokes nothing.
 func (r *Repository) Revoke(ctx context.Context, id, userID uuid.UUID) error {

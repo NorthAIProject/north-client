@@ -168,6 +168,35 @@ func (s *Service) AuthenticateScoped(ctx context.Context, token string) (users.U
 	return user, conn.Scopes, nil
 }
 
+// RevokeByToken turns off the connection a presented access token belongs to.
+//
+// For RFC 7009, where a client disconnecting hands back whichever token it
+// holds. Returns ErrNotFound for a token that matches nothing, which the
+// revocation endpoint deliberately reports as success: a different answer for
+// an unknown token would confirm which tokens are real.
+func (s *Service) RevokeByToken(ctx context.Context, token string) error {
+	if !strings.HasPrefix(token, tokenPrefix) {
+		return apperr.ErrNotFound
+	}
+
+	sum := sha256.Sum256([]byte(token))
+	conn, err := s.repo.ByTokenHash(ctx, sum[:])
+	if err != nil {
+		return err
+	}
+	return s.repo.Revoke(ctx, conn.ID, conn.UserID)
+}
+
+// RevokeGrant turns off a connection by id, without a user to scope it to.
+//
+// For the OAuth paths that have already established the right to do it: the
+// revocation endpoint, where the caller presented a token belonging to this
+// row, and the replay path, where the id came from a code row. Anything
+// driven by a form must use Revoke.
+func (s *Service) RevokeGrant(ctx context.Context, connectionID uuid.UUID) error {
+	return s.repo.RevokeGrant(ctx, connectionID)
+}
+
 // GrantInput describes a consent the person has just approved.
 type GrantInput struct {
 	UserID uuid.UUID

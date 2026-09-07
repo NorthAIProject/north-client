@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"net/url"
 	"sort"
@@ -49,6 +50,8 @@ type Grants interface {
 	IssueGrant(ctx context.Context, in connections.GrantInput) (connections.Issued, error)
 	RotateGrantToken(ctx context.Context, connectionID uuid.UUID, ttl time.Duration) (string, error)
 	Revoke(ctx context.Context, id, userID uuid.UUID) error
+	RevokeByToken(ctx context.Context, token string) error
+	RevokeGrant(ctx context.Context, connectionID uuid.UUID) error
 }
 
 type Service struct {
@@ -405,7 +408,7 @@ func (s *Service) ExchangeCode(ctx context.Context, in CodeExchange) (Tokens, er
 		return Tokens{}, invalidGrant("redirect_uri does not match the authorization request")
 	}
 	if resource := strings.TrimSpace(in.Resource); resource != "" && resource != stored.Resource {
-		return Tokens{}, apperr.Wrap(apperr.ErrValidation, "invalid_target")
+		return Tokens{}, ErrInvalidTarget
 	}
 
 	if verifyErr := VerifyChallenge(stored.CodeChallenge, stored.CodeChallengeMethod, in.CodeVerifier); verifyErr != nil {
@@ -506,6 +509,26 @@ func (s *Service) Refresh(ctx context.Context, in RefreshExchange) (Tokens, erro
 	}, nil
 }
 
+// RevokeToken turns off a grant, given either of the tokens it issued.
+//
+// RFC 7009 lets a client hand back whichever token it holds, so both are
+// tried. Revoking either kills the whole grant: they are two halves of one
+// connection, and leaving the other alive would mean a "disconnect" that did
+// not disconnect.
+func (s *Service) RevokeToken(ctx context.Context, token string) error {
+	// A refresh token first, because this package owns those and the lookup is
+	// one indexed read.
+	if stored, err := s.repo.RefreshToken(ctx, hash(token)); err == nil {
+		_ = s.repo.ConsumeAllRefreshTokens(ctx, stored.ConnectionID)
+		return s.grants.RevokeGrant(ctx, stored.ConnectionID)
+	} else if !apperr.Is(err, apperr.ErrNotFound) {
+		return err
+	}
+
+	// Otherwise an access token, which internal/connections stores.
+	return s.grants.RevokeByToken(ctx, token)
+}
+
 // Sweep removes what has aged out. Called from the worker.
 func (s *Service) Sweep(ctx context.Context) (Swept, error) {
 	return s.repo.Sweep(ctx)
@@ -535,6 +558,13 @@ func (s *Service) revokeGrant(ctx context.Context, code storedCode) {
 }
 
 // --- helpers ---------------------------------------------------------------
+
+// ErrInvalidTarget is an RFC 8707 audience this server will not issue for.
+//
+// Its own sentinel because the token endpoint has to answer invalid_target
+// rather than invalid_grant for it, and matching on an error's text to decide
+// that would break the first time the wording changed.
+var ErrInvalidTarget = errors.New("invalid_target")
 
 // invalidGrant is the RFC 6749 error every token-endpoint refusal returns.
 //

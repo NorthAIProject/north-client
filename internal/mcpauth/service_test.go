@@ -714,3 +714,69 @@ func TestTheRequestReportsWhereTheGrantIsGoing(t *testing.T) {
 		t.Errorf("a web callback reads as %q, want claude.ai", got)
 	}
 }
+
+// RFC 7009 lets a client hand back whichever token it holds. Either kills the
+// whole grant: they are two halves of one connection, and a "disconnect" that
+// left the other alive would not have disconnected.
+func TestRevokingEitherTokenKillsTheGrant(t *testing.T) {
+	issue := func(t *testing.T) (harness, mcpauth.Tokens) {
+		t.Helper()
+		h := newHarness(t)
+		client := h.client(t)
+		req, verifier := h.authorize(t, client, "")
+		redirect, err := h.svc.Approve(context.Background(), req.ID, verifier, h.user.ID, "")
+		if err != nil {
+			t.Fatalf("approve: %v", err)
+		}
+		tokens, err := h.svc.ExchangeCode(context.Background(), mcpauth.CodeExchange{
+			Code:         codeFrom(t, redirect),
+			ClientID:     client.ID,
+			RedirectURI:  client.RedirectURIs[0],
+			CodeVerifier: testVerifier,
+		})
+		if err != nil {
+			t.Fatalf("exchange: %v", err)
+		}
+		return h, tokens
+	}
+
+	t.Run("the access token", func(t *testing.T) {
+		h, tokens := issue(t)
+		ctx := context.Background()
+
+		if err := h.svc.RevokeToken(ctx, tokens.AccessToken); err != nil {
+			t.Fatalf("revoke: %v", err)
+		}
+		if _, _, err := h.conns.AuthenticateScoped(ctx, tokens.AccessToken); err == nil {
+			t.Error("the access token still authenticates after revocation")
+		}
+		if _, err := h.svc.Refresh(ctx, mcpauth.RefreshExchange{RefreshToken: tokens.RefreshToken}); err == nil {
+			t.Error("the refresh token survived revoking the access token")
+		}
+	})
+
+	t.Run("the refresh token", func(t *testing.T) {
+		h, tokens := issue(t)
+		ctx := context.Background()
+
+		if err := h.svc.RevokeToken(ctx, tokens.RefreshToken); err != nil {
+			t.Fatalf("revoke: %v", err)
+		}
+		if _, _, err := h.conns.AuthenticateScoped(ctx, tokens.AccessToken); err == nil {
+			t.Error("the access token survived revoking the refresh token")
+		}
+		if _, err := h.svc.Refresh(ctx, mcpauth.RefreshExchange{RefreshToken: tokens.RefreshToken}); err == nil {
+			t.Error("the refresh token still works after revocation")
+		}
+	})
+
+	// An unknown token is not an error the endpoint reports: telling a caller
+	// apart from a real one would confirm which tokens exist.
+	t.Run("an unknown token is not found rather than fatal", func(t *testing.T) {
+		h := newHarness(t)
+		err := h.svc.RevokeToken(context.Background(), "nk_nothing_like_a_real_token")
+		if err != nil && !apperr.Is(err, apperr.ErrNotFound) {
+			t.Errorf("revoking an unknown token returned %v, want ErrNotFound or nil", err)
+		}
+	})
+}

@@ -138,6 +138,16 @@ type Config struct {
 	// RequestsPerMinute bounds one account's call rate. Zero uses the default.
 	RequestsPerMinute int
 
+	// ResourceMetadataURL points a client at the RFC 9728 document describing
+	// which authorization server guards this endpoint. Appended to the
+	// WWW-Authenticate header on a 401, which is how an unauthenticated client
+	// bootstraps itself instead of simply failing.
+	//
+	// Empty leaves the header exactly as it was before OAuth existed. That is
+	// what cmd/mcp-server gets: a static token from an environment variable on
+	// a tailnet, with no authorization server to discover.
+	ResourceMetadataURL string
+
 	// TrustedProxies decide whether X-Forwarded-For may be believed when
 	// keying the pre-authentication throttle. Empty keys on the peer, which
 	// behind an ingress is the ingress — one bucket for the whole internet.
@@ -337,13 +347,30 @@ func scopeFrom(ctx context.Context) string {
 	return s
 }
 
+// challengeHeader is the WWW-Authenticate value every 401 from this endpoint
+// carries.
+//
+// One constant string for every failure — absent, malformed, unknown, revoked
+// and expired alike. RFC 6750 permits adding error="invalid_token" or
+// error="expired_token", and clients would accept it; it must not be used,
+// because an expired-versus-unknown distinction confirms that a guessed token
+// once existed. There is a test pinning the byte equality.
+func challengeHeader(cfg Config) string {
+	if cfg.ResourceMetadataURL == "" {
+		return `Bearer realm="north-mcp"`
+	}
+	return `Bearer realm="north-mcp", resource_metadata="` + cfg.ResourceMetadataURL + `"`
+}
+
 // authenticate resolves the bearer token to an account and puts it on the
 // request context for everything downstream.
 func authenticate(cfg Config, log *slog.Logger, next http.Handler) http.Handler {
+	challenge := challengeHeader(cfg)
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token, ok := bearer(r)
 		if !ok {
-			unauthorized(w, log, r)
+			unauthorized(w, log, r, challenge)
 			return
 		}
 
@@ -362,7 +389,7 @@ func authenticate(cfg Config, log *slog.Logger, next http.Handler) http.Handler 
 		}
 		if err != nil {
 			if apperr.Is(err, apperr.ErrUnauthenticated) || apperr.Is(err, apperr.ErrNotFound) {
-				unauthorized(w, log, r)
+				unauthorized(w, log, r, challenge)
 				return
 			}
 			// A lookup that failed for any other reason is North's problem, not
@@ -380,9 +407,9 @@ func authenticate(cfg Config, log *slog.Logger, next http.Handler) http.Handler 
 	})
 }
 
-func unauthorized(w http.ResponseWriter, log *slog.Logger, r *http.Request) {
+func unauthorized(w http.ResponseWriter, log *slog.Logger, r *http.Request, challenge string) {
 	log.Warn("mcp request rejected", slog.String("remote", r.RemoteAddr))
-	w.Header().Set("WWW-Authenticate", `Bearer realm="north-mcp"`)
+	w.Header().Set("WWW-Authenticate", challenge)
 	http.Error(w, "unauthorized", http.StatusUnauthorized)
 }
 
