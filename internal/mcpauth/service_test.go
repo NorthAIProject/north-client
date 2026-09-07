@@ -5,10 +5,12 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/NorthAIProject/north-client/internal/connections"
 	"github.com/NorthAIProject/north-client/internal/mcpauth"
@@ -46,6 +48,10 @@ type harness struct {
 	conns  *connections.Service
 	grants *grantSpy
 	user   users.User
+
+	// pool is for the assertions that have to look at a row directly — an
+	// aged registration, mostly, which no service method can create.
+	pool *pgxpool.Pool
 }
 
 func newHarness(t *testing.T) harness {
@@ -72,6 +78,7 @@ func newHarness(t *testing.T) harness {
 		conns:  conns,
 		grants: grants,
 		user:   user,
+		pool:   pool,
 	}
 }
 
@@ -779,4 +786,85 @@ func TestRevokingEitherTokenKillsTheGrant(t *testing.T) {
 			t.Errorf("revoking an unknown token returned %v, want ErrNotFound or nil", err)
 		}
 	})
+}
+
+// The sweep is the other half of open registration. A native client registers
+// a new row on every launch because its callback port changes, so without this
+// the table grows for as long as anybody uses the feature.
+func TestTheSweepRemovesUnusedRegistrationsAndKeepsUsedOnes(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+
+	// One registration that produced a grant, and one that never did.
+	used := h.client(t, "http://127.0.0.1:41000/cb")
+	req, verifier := h.authorize(t, used, "")
+	redirect, err := h.svc.Approve(ctx, req.ID, verifier, h.user.ID, "")
+	if err != nil {
+		t.Fatalf("approve: %v", err)
+	}
+	if _, exchangeErr := h.svc.ExchangeCode(ctx, mcpauth.CodeExchange{
+		Code:         codeFrom(t, redirect),
+		ClientID:     used.ID,
+		RedirectURI:  used.RedirectURIs[0],
+		CodeVerifier: testVerifier,
+	}); exchangeErr != nil {
+		t.Fatalf("exchange: %v", exchangeErr)
+	}
+
+	abandoned, err := h.svc.RegisterClient(ctx, mcpauth.Registration{
+		ClientName:   "Claude Code",
+		RedirectURIs: []string{"http://127.0.0.1:52222/cb"},
+	})
+	if err != nil {
+		t.Fatalf("register the abandoned client: %v", err)
+	}
+
+	// Both are new, so a sweep now must remove neither: the cutoff is thirty
+	// days, and a sweep that deleted a registration somebody is mid-flow with
+	// would break the flow.
+	if _, earlyErr := h.svc.Sweep(ctx); earlyErr != nil {
+		t.Fatalf("sweep: %v", earlyErr)
+	}
+	for _, id := range []string{used.ID, abandoned.ID} {
+		_, _, authErr := h.svc.BeginAuthorization(ctx, mcpauth.AuthorizeParams{
+			ClientID:            id,
+			RedirectURI:         "http://127.0.0.1:1/cb",
+			ResponseType:        "code",
+			CodeChallenge:       testChallenge(),
+			CodeChallengeMethod: mcpauth.ChallengeMethodS256,
+		}, false)
+
+		// A rejected redirect_uri is expected here — the point is only that
+		// the *client* is still known, which a fatal error would deny.
+		var fatal mcpauth.FatalAuthorizeError
+		if apperr.As(authErr, &fatal) && strings.Contains(fatal.Reason, "not registered with Khepri") {
+			t.Errorf("a fresh registration was swept away: %s", id)
+		}
+	}
+
+	// Age both past the cutoff. Only the one with no grant behind it goes.
+	if _, ageErr := h.pool.Exec(ctx,
+		`UPDATE mcp_oauth_clients SET created_at = now() - interval '60 days'`,
+	); ageErr != nil {
+		t.Fatalf("age the registrations: %v", ageErr)
+	}
+
+	swept, err := h.svc.Sweep(ctx)
+	if err != nil {
+		t.Fatalf("sweep: %v", err)
+	}
+	if swept.Clients != 1 {
+		t.Errorf("the sweep removed %d registrations, want exactly the unused one", swept.Clients)
+	}
+
+	// The used one is still there, because a grant still points at it.
+	var remaining int
+	if err := h.pool.QueryRow(ctx,
+		`SELECT count(*) FROM mcp_oauth_clients WHERE id = $1`, used.ID,
+	).Scan(&remaining); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if remaining != 1 {
+		t.Error("the sweep removed a registration that a live grant points at")
+	}
 }
