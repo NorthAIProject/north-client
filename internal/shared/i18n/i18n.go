@@ -59,10 +59,10 @@ const DefaultLocale = "en"
 // per surface per language keeps a change to the settings page a change to four
 // small files.
 var (
-	english             = merge(englishNav, englishSettings, englishErrors, englishDashboard, englishCheckins, englishChat, englishGoals, englishCapture, englishLifedomain, englishCare, englishFooter, englishLanding)
-	portugueseEuropean  = merge(portugueseEuropeanNav, portugueseEuropeanSettings, portugueseEuropeanErrors, portugueseEuropeanDashboard, portugueseEuropeanCheckins, portugueseEuropeanChat, portugueseEuropeanGoals, portugueseEuropeanCapture, portugueseEuropeanLifedomain, portugueseEuropeanCare, portugueseEuropeanFooter, portugueseEuropeanLanding)
-	portugueseBrazilian = merge(portugueseBrazilianNav, portugueseBrazilianSettings, portugueseBrazilianErrors, portugueseBrazilianDashboard, portugueseBrazilianCheckins, portugueseBrazilianChat, portugueseBrazilianGoals, portugueseBrazilianCapture, portugueseBrazilianLifedomain, portugueseBrazilianCare, portugueseBrazilianFooter, portugueseBrazilianLanding)
-	spanish             = merge(spanishNav, spanishSettings, spanishErrors, spanishDashboard, spanishCheckins, spanishChat, spanishGoals, spanishCapture, spanishLifedomain, spanishCare, spanishFooter, spanishLanding)
+	english             = merge(englishNav, englishSettings, englishErrors, englishDashboard, englishCheckins, englishChat, englishGoals, englishCapture, englishLifedomain, englishCare, englishFooter, englishLanding, englishConnections, englishTelegram)
+	portugueseEuropean  = merge(portugueseEuropeanNav, portugueseEuropeanSettings, portugueseEuropeanErrors, portugueseEuropeanDashboard, portugueseEuropeanCheckins, portugueseEuropeanChat, portugueseEuropeanGoals, portugueseEuropeanCapture, portugueseEuropeanLifedomain, portugueseEuropeanCare, portugueseEuropeanFooter, portugueseEuropeanLanding, portugueseEuropeanConnections, portugueseEuropeanTelegram)
+	portugueseBrazilian = merge(portugueseBrazilianNav, portugueseBrazilianSettings, portugueseBrazilianErrors, portugueseBrazilianDashboard, portugueseBrazilianCheckins, portugueseBrazilianChat, portugueseBrazilianGoals, portugueseBrazilianCapture, portugueseBrazilianLifedomain, portugueseBrazilianCare, portugueseBrazilianFooter, portugueseBrazilianLanding, portugueseBrazilianConnections, portugueseBrazilianTelegram)
+	spanish             = merge(spanishNav, spanishSettings, spanishErrors, spanishDashboard, spanishCheckins, spanishChat, spanishGoals, spanishCapture, spanishLifedomain, spanishCare, spanishFooter, spanishLanding, spanishConnections, spanishTelegram)
 )
 
 // merge folds the per-surface maps into one catalogue, and panics on a

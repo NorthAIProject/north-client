@@ -51,6 +51,7 @@ func TestUntranslatedStringsAreAccountedFor(t *testing.T) {
 	// Keep this short: each entry is a string nobody will notice going stale.
 	allowed := map[string]map[string]bool{
 		"pt-PT": {
+			"conn.tg.title":           true, // Telegram is a product name
 			"nav.fitness":             true,
 			"land.price.pro":          true, // the plan's name, not a word
 			"land.vision.3.value":     true, // "Zero" is Portuguese for zero
@@ -59,6 +60,7 @@ func TestUntranslatedStringsAreAccountedFor(t *testing.T) {
 			"settings.prefs.imperial": true, // the system's name and both unit abbreviations are international
 		},
 		"pt-BR": {
+			"conn.tg.title":           true, // Telegram is a product name
 			"nav.fitness":             true,
 			"land.price.pro":          true, // the plan's name, not a word
 			"land.vision.3.value":     true, // "Zero" is Portuguese for zero
@@ -67,11 +69,13 @@ func TestUntranslatedStringsAreAccountedFor(t *testing.T) {
 			"settings.prefs.imperial": true,
 		},
 		"es": {
+			"conn.tg.title":           true, // Telegram is a product name
 			"nav.fitness":             true,
 			"palette.empty.after":     true,
 			"settings.prefs.imperial": true,
 			"chat.feedback.no":        true, // "No" is "No" in Spanish
 			"chat.approval.no":        true,
+			"tg.confirm.no":           true,
 			"lifedomain.fitness":      true, // borrowed unchanged
 			"lifedomain.personal":     true, // "Personal" is spelled the same
 			"land.price.pro":          true, // the plan's name, not a word

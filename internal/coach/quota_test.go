@@ -88,8 +88,14 @@ func TestARefusedCoachMessageArrivesAsAStreamError(t *testing.T) {
 	rec := openStream(t, r, cookies, conversation.ID)
 	body := rec.Body.String()
 
-	if !strings.Contains(body, "event: error") {
+	// The error panel is content, not a signal, so since the htmx 4 migration it
+	// goes out unnamed like the tokens do — a named frame would be dispatched
+	// as a DOM event and never swapped, leaving the refusal invisible.
+	if !strings.Contains(body, "data: ") {
 		t.Errorf("the refused stream sent no error frame; body = %q", body)
+	}
+	if strings.Contains(body, "event: error") {
+		t.Errorf("the refusal went out as a named frame, which htmx 4 will not swap; body = %q", body)
 	}
 	if !strings.Contains(body, "event: done") {
 		t.Error("the refused stream never sent done; the browser reconnects forever")
