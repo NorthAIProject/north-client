@@ -90,5 +90,8 @@ func fromDB(row connectionsdb.AgentConnection) Connection {
 		TokenPrefix: row.TokenPrefix,
 		CreatedAt:   row.CreatedAt,
 		LastUsedAt:  row.LastUsedAt,
+		Scopes:      row.Scopes,
+		ExpiresAt:   row.ExpiresAt,
+		Issuance:    Issuance(row.Issuance),
 	}
 }

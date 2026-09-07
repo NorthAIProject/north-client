@@ -61,13 +61,28 @@ type Services struct {
 // The user is fixed for the life of the session rather than passed per call:
 // letting a caller name the user it wants to act as would make the bearer token
 // an authorisation bypass.
-func Register(s *mcp.Server, svc Services, user users.User) {
-	registerAgentCapabilities(s, svc.Agent, user)
+// scope is what the presented token may do. An empty scope means full access,
+// which is what every token issued before scopes existed carries.
+//
+// A read-only token has its write tools left unregistered rather than
+// refused at call time, so tools/list shows exactly what the token can do.
+// An agent plans from that list; one that advertises a tool and then rejects
+// every call to it is worse than one that never offered it.
+func Register(s *mcp.Server, svc Services, user users.User, scope string) {
+	writes := writesAllowed(scope)
+
+	registerAgentCapabilities(s, svc.Agent, user, writes)
 	registerGoals(s, svc, user)
 	registerCheckIns(s, svc, user)
 	registerKnowledge(s, svc, user)
 	registerFitness(s, svc, user)
-	registerCoach(s, svc, user)
+
+	// ask_coach is the only tool in this file that changes anything: it saves
+	// a conversation and spends money on a model call. The other five declare
+	// ReadOnlyHint and are safe for either scope.
+	if writes {
+		registerCoach(s, svc, user)
+	}
 }
 
 // registerAgentCapabilities publishes the shared registry over MCP.
@@ -76,12 +91,19 @@ func Register(s *mcp.Server, svc Services, user users.User) {
 // already described by ai.Schema, and going through a Go type just to have the
 // SDK infer the schema back would mean two descriptions of every tool's
 // arguments — the duplication internal/agent exists to avoid.
-func registerAgentCapabilities(s *mcp.Server, registry *agent.Registry, user users.User) {
+func registerAgentCapabilities(s *mcp.Server, registry *agent.Registry, user users.User, writes bool) {
 	if registry == nil {
 		return
 	}
 
 	for _, tool := range registry.Tools() {
+		// The registry already knows which capabilities only read — it is the
+		// same answer the ReadOnlyHint annotation below carries, so a
+		// read-only session needs no second list to maintain.
+		if !writes && !registry.IsReadOnly(tool.Name) {
+			continue
+		}
+
 		schema, err := json.Marshal(ai.JSONSchema(tool.Parameters))
 		if err != nil {
 			// Only reachable if a capability declares a schema that cannot be
