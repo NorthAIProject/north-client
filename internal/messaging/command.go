@@ -2,9 +2,9 @@ package messaging
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
@@ -74,13 +74,10 @@ func (s *Service) runCommand(ctx context.Context, user users.User, in InboundMes
 
 	switch name {
 	case commandStart:
-		return OutboundMessage{Text: fmt.Sprintf(
-			"You are linked to %s. Ask me anything you would ask in the web app — "+
-				"I have the same memory, goals and check-ins.\n\nSend /help to see what I can do.",
-			user.Email)}, true, nil
+		return OutboundMessage{Text: i18n.Tf(ctx, "tg.start", user.Email)}, true, nil
 
 	case commandHelp:
-		return OutboundMessage{Text: helpText}, true, nil
+		return OutboundMessage{Text: i18n.T(ctx, "tg.help")}, true, nil
 
 	case commandUnlink:
 		unlinked, err := s.Unlink(ctx, user.ID, in.Platform)
@@ -88,28 +85,20 @@ func (s *Service) runCommand(ctx context.Context, user users.User, in InboundMes
 			return OutboundMessage{}, true, err
 		}
 		if !unlinked {
-			return OutboundMessage{Text: "This chat is not linked to a Khepri account."}, true, nil
+			return OutboundMessage{Text: i18n.T(ctx, "tg.notlinked")}, true, nil
 		}
 
 		s.log.Info("messaging unlinked a chat", "platform", in.Platform, "user_id", user.ID)
-		return OutboundMessage{Text: "Disconnected. Nothing you have said is deleted — the whole " +
-			"conversation is still in the web app. To connect again, get a new code from " +
-			"Settings → Agent connections."}, true, nil
+		return OutboundMessage{Text: i18n.T(ctx, "tg.unlinked")}, true, nil
 
 	default:
 		return OutboundMessage{}, false, nil
 	}
 }
 
-// helpText is deliberately about what Khepri does rather than what it is.
-//
-// The two things worth saying are the ones somebody cannot discover by trying:
-// that writes are confirmed before they happen, and that this is the same
-// conversation as the web app rather than a second one.
-const helpText = "Ask me anything you would ask in the web app — how a goal is going, " +
-	"what your week looked like, whether to train today.\n\n" +
-	"This is the same conversation as the web chat. Ask here, and the answer is there too.\n\n" +
-	"Before I write anything down — a check-in, a goal — I will show you what I am about to " +
-	"do and wait for a yes.\n\n" +
-	"/help — this message\n" +
-	"/unlink — disconnect this chat from your account"
+// The help text lives in the message catalogue as "tg.help", with the same
+// reasoning it always had: it is deliberately about what Khepri does rather
+// than what it is, and the two things worth saying are the ones somebody
+// cannot discover by trying — that writes are confirmed before they happen,
+// and that this is the same conversation as the web app rather than a second
+// one.

@@ -198,8 +198,15 @@ func TestTheResumeRouteStreamsTheRestOfTheReply(t *testing.T) {
 	}
 
 	body := rec.Body.String()
-	if !strings.Contains(body, "event: token") {
+	// Tokens are unnamed frames since the htmx 4 migration: named SSE events
+	// are dispatched as DOM events and never swapped, so only content that
+	// arrives unnamed reaches the page. "done" stays named because it is a
+	// signal rather than content.
+	if !strings.Contains(body, "data: ") {
 		t.Errorf("the resumed stream sent no tokens; body = %q", body)
+	}
+	if strings.Contains(body, "event: token") {
+		t.Errorf("tokens went out as a named frame, which htmx 4 will not swap; body = %q", body)
 	}
 	if !strings.Contains(body, "event: done") {
 		t.Error("the resumed stream never sent done; the browser reconnects forever")

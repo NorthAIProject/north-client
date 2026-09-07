@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/NorthAIProject/north-client/internal/connections"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
@@ -105,6 +106,36 @@ func TestToneOptionsAreTranslated(t *testing.T) {
 	for _, want := range []string{"Directo", "Cercano", "Analítico", "Exigente"} {
 		if !strings.Contains(html, want) {
 			t.Errorf("Spanish tone %q is missing", want)
+		}
+	}
+}
+
+// The page the topbar pill leads to. Somebody who follows a Portuguese prompt
+// should not arrive at an English page.
+func TestConnectionsRendersInTheChosenLanguage(t *testing.T) {
+	cases := map[users.Locale][]string{
+		users.LocaleEN:   {"Agent connections", "Connected agents", "Connect an agent"},
+		users.LocalePTPT: {"Ligações de agentes", "Agentes ligados", "Ligar um agente"},
+		users.LocalePTBR: {"Conexões de agentes", "Agentes conectados", "Conectar um agente"},
+		users.LocaleES:   {"Conexiones de agentes", "Agentes conectados", "Conectar un agente"},
+	}
+
+	for locale, wants := range cases {
+		ctx := i18n.WithLocale(context.Background(), string(locale))
+		var b strings.Builder
+		page := ConnectionsPage(
+			users.User{DisplayName: "Ana", Locale: locale},
+			nil, ConnectForm{}, nil, connections.Setup{}, nil, ProviderPanel{},
+			TelegramPanel{}, CalendarPanel{},
+		)
+		if err := page.Render(ctx, &b); err != nil {
+			t.Fatalf("render %s: %v", locale, err)
+		}
+		html := b.String()
+		for _, want := range wants {
+			if !strings.Contains(html, want) {
+				t.Errorf("%s: page does not contain %q", locale, want)
+			}
 		}
 	}
 }

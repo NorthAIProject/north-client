@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/url"
 
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/ai/providers"
 	"github.com/NorthAIProject/north-client/internal/aicreds"
 	"github.com/NorthAIProject/north-client/internal/connections"
@@ -139,18 +140,16 @@ func (p TelegramPanel) Handle() string { return "@" + p.BotUsername }
 // looks like before a key exists — the alternative being that somebody issues a
 // live credential to find out whether they want one.
 templ ConnectionsPage(user users.User, list []connections.Connection, f ConnectForm, issued *connections.Issued, setup connections.Setup, previews []connections.Setup, provider ProviderPanel, telegram TelegramPanel, calendar CalendarPanel) {
-	@layout.App("Agent connections", user, layout.BuildNav(ctx, "/app/settings")) {
+	@layout.App(i18n.T(ctx, "nav.agent-connections"), user, layout.BuildNav(ctx, "/app/settings")) {
 		<div class="mx-auto w-full max-w-2xl space-y-6 p-6 md:p-8">
 			<header>
-				@ui.MonoLabel("Settings")
-				<h1 class="mt-2 text-2xl font-medium tracking-tight">Agent connections</h1>
+				@ui.MonoLabel(i18n.T(ctx, "settings.mono"))
+				<h1 class="mt-2 text-2xl font-medium tracking-tight">{ i18n.T(ctx, "nav.agent-connections") }</h1>
 				<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
-					Let an agent you already use — Claude Code, Codex, Hermes — read your goals,
-					log check-ins, and ask your coach. Each connection gets its own key, so you
-					can turn one off without touching the others.
+					{ i18n.T(ctx, "conn.intro") }
 				</p>
 				<a href="/app/settings" class="text-muted-foreground hover:text-foreground mt-3 inline-block text-sm underline underline-offset-4">
-					Back to account settings
+					{ i18n.T(ctx, "conn.back") }
 				</a>
 			</header>
 			if issued != nil {
@@ -180,16 +179,15 @@ templ issuedCard(issued connections.Issued, setup connections.Setup) {
 	@card.Card(card.Props{Class: "border-signal/40 bg-signal/5"}) {
 		@card.Header() {
 			@card.Title() {
-				{ issued.Name } is ready
+				{ i18n.Tf(ctx, "conn.issued.ready", issued.Name) }
 			}
 			@card.Description() {
-				Copy this now. It is not stored, so it cannot be shown again — if you lose it,
-				revoke this connection and make another.
+				{ i18n.T(ctx, "conn.issued.desc") }
 			}
 		}
 		@card.Content() {
 			<div class="space-y-5">
-				@copyBlock("Key", "issued-token", "text", issued.Token)
+				@copyBlock(i18n.T(ctx, "conn.issued.key"), "issued-token", "text", issued.Token)
 				@copyBlock(setup.ConfigLabel, "issued-config", setup.ConfigLang, setup.Config)
 				if setup.Safe != "" {
 					<div>
@@ -197,16 +195,14 @@ templ issuedCard(issued connections.Issued, setup connections.Setup) {
 							{ setup.SafeNote }
 						</p>
 						@copyBlock(setup.SafeLabel, "issued-safe", setup.SafeLang, setup.Safe)
-						@copyBlock("Environment", "issued-export", "bash", setup.Export)
+						@copyBlock(i18n.T(ctx, "conn.issued.env"), "issued-export", "bash", setup.Export)
 					</div>
 				}
 				<div>
 					<p class="text-muted-foreground mb-2 text-sm leading-relaxed">
-						Or paste this into the agent itself and let it do the setup. It sends the key
-						to whichever model that agent runs on, so use it with an agent you would
-						trust with your coaching data — and revoke the key here if you change your mind.
+						{ i18n.T(ctx, "conn.issued.prompt.note") }
 					</p>
-					@copyBlock("Setup prompt", "issued-prompt", "text", setup.Prompt)
+					@copyBlock(i18n.T(ctx, "conn.issued.prompt"), "issued-prompt", "text", setup.Prompt)
 				</div>
 			</div>
 		}
@@ -236,17 +232,16 @@ templ connectionListCard(list []connections.Connection) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 		@card.Header() {
 			@card.Title() {
-				Connected agents
+				{ i18n.T(ctx, "conn.list.title") }
 			}
 			@card.Description() {
-				Every one of these can read and write your coaching data. Revoke anything you
-				do not recognise.
+				{ i18n.T(ctx, "conn.list.desc") }
 			}
 		}
 		@card.Content() {
 			if len(list) == 0 {
 				<p class="text-muted-foreground text-sm leading-relaxed">
-					Nothing connected yet.
+					{ i18n.T(ctx, "conn.list.empty") }
 				</p>
 			} else {
 				<ul class="divide-hairline divide-y">
@@ -303,7 +298,7 @@ templ ConnectionStatus(conn connections.Connection, tries int) {
 			hx-trigger="load delay:5s"
 			hx-swap="outerHTML"
 		>
-			waiting for first use…
+			{ i18n.T(ctx, "conn.list.waiting") }
 		</span>
 	}
 }
@@ -321,30 +316,29 @@ templ revokeDialog(conn connections.Connection) {
 	{{ dialogID := "revoke-" + conn.ID.String() }}
 	@dialog.Trigger(dialog.TriggerProps{For: dialogID}) {
 		@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Type: button.TypeButton}) {
-			Revoke
+			{ i18n.T(ctx, "conn.revoke") }
 		}
 	}
 	@dialog.Dialog(dialog.Props{ID: dialogID}) {
 		@dialog.Content() {
 			@dialog.Header() {
 				@dialog.Title() {
-					Revoke { conn.Name }?
+					{ i18n.Tf(ctx, "conn.revoke.title", conn.Name) }
 				}
 				@dialog.Description() {
-					That agent stops being able to read or change anything straight away. The
-					key cannot be turned back on; you would connect the agent again with a new one.
+					{ i18n.T(ctx, "conn.revoke.desc") }
 				}
 			}
 			@dialog.Footer() {
 				@dialog.Close() {
 					@button.Button(button.Props{Variant: button.VariantOutline, Type: button.TypeButton}) {
-						Keep it
+						{ i18n.T(ctx, "conn.keep") }
 					}
 				}
 				<form method="post" action={ templ.SafeURL("/app/settings/connections/" + conn.ID.String() + "/revoke") }>
 					@ui.CSRFInput()
 					@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantDestructive}) {
-						Revoke
+						{ i18n.T(ctx, "conn.revoke") }
 					}
 				</form>
 			}
@@ -361,11 +355,10 @@ templ telegramCard(p TelegramPanel) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 		@card.Header() {
 			@card.Title() {
-				Telegram
+				{ i18n.T(ctx, "conn.tg.title") }
 			}
 			@card.Description() {
-				Message your coach from your phone. Same memory, same goals, same conversation —
-				what you ask in Telegram carries on in the web chat, and the other way round.
+				{ i18n.T(ctx, "conn.tg.desc") }
 			}
 		}
 		@card.Content() {
@@ -389,12 +382,11 @@ templ telegramCode(p TelegramPanel) {
 	<div class="space-y-4">
 		<div class="border-signal/40 bg-signal/5 rounded-lg border p-4 space-y-3">
 			<p class="text-muted-foreground text-sm leading-relaxed">
-				Tap the button. Telegram opens the bot and sends the code for you. It
-				works once, and only for the next 15 minutes.
+				{ i18n.T(ctx, "conn.tg.tap") }
 			</p>
 			if start := p.StartLink(); start != "" {
 				@button.Button(button.Props{Href: start, Target: "_blank"}) {
-					Open in Telegram
+					{ i18n.T(ctx, "conn.tg.open") }
 				}
 			}
 			@copyBlock("Or send this code yourself", "telegram-code", "text", p.Code)
@@ -408,7 +400,7 @@ templ telegramLinked(link messaging.Link) {
 		<div class="min-w-0">
 			<p class="text-signal text-sm font-medium">Connected</p>
 			<p class="text-muted-foreground mt-0.5 text-xs">
-				Linked { link.CreatedAt.Format("2 Jan 2006") }
+				{ i18n.Tf(ctx, "conn.tg.linked", link.CreatedAt.Format("2 Jan 2006")) }
 				if link.LastSeenAt != nil {
 					· last message { link.LastSeenAt.Format("2 Jan, 15:04") }
 				} else {
@@ -426,7 +418,7 @@ templ telegramStart(p TelegramPanel) {
 		<form method="post" action="/app/settings/messaging/telegram">
 			@ui.CSRFInput()
 			@button.Button(button.Props{Type: button.TypeSubmit}) {
-				Get a link code
+				{ i18n.T(ctx, "conn.tg.code") }
 			}
 		</form>
 	</div>
@@ -441,14 +433,13 @@ templ telegramHowTo(p TelegramPanel, hasCode bool) {
 		<li>Install Telegram on your phone if you do not have it.</li>
 		<li>
 			if link := p.BotLink(); link != "" {
-				Open
+				{ i18n.T(ctx, "conn.tg.openbot") }
 				<a href={ templ.SafeURL(link) } target="_blank" rel="noopener noreferrer" class="text-foreground underline underline-offset-4">
 					{ p.Handle() }
 				</a>
 				in Telegram and start a chat. You do not need to type anything yet.
 			} else {
-				Open the Khepri bot in Telegram and start a chat. The bot name is not
-				configured on this server, so ask the person who set it up.
+				{ i18n.T(ctx, "conn.tg.manual") }
 			}
 		</li>
 		if hasCode {
@@ -466,18 +457,17 @@ templ telegramDisconnectDialog() {
 	{{ dialogID := "disconnect-telegram" }}
 	@dialog.Trigger(dialog.TriggerProps{For: dialogID}) {
 		@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Type: button.TypeButton}) {
-			Disconnect
+			{ i18n.T(ctx, "conn.tg.disconnect") }
 		}
 	}
 	@dialog.Dialog(dialog.Props{ID: dialogID}) {
 		@dialog.Content() {
 			@dialog.Header() {
 				@dialog.Title() {
-					Disconnect Telegram?
+					{ i18n.T(ctx, "conn.tg.disconnect.title") }
 				}
 				@dialog.Description() {
-					The bot stops answering that chat straight away. Nothing you have already
-					said is deleted — the conversation stays in the web app. To connect again
+					{ i18n.T(ctx, "conn.tg.disconnect.desc") } To connect again
 					you would get a new code.
 				}
 			}
@@ -490,7 +480,7 @@ templ telegramDisconnectDialog() {
 				<form method="post" action="/app/settings/messaging/telegram/disconnect">
 					@ui.CSRFInput()
 					@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantDestructive}) {
-						Disconnect
+						{ i18n.T(ctx, "conn.tg.disconnect") }
 					}
 				</form>
 			}
@@ -507,17 +497,16 @@ templ providerCard(p ProviderPanel) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 		@card.Header() {
 			@card.Title() {
-				Model provider
+				{ i18n.T(ctx, "conn.ai.title") }
 			}
 			@card.Description() {
-				By default Khepri supplies the AI. Point this account at your own key — or at your own Hermes gateway — if you have one.
+				{ i18n.T(ctx, "conn.ai.desc") }
 			}
 		}
 		@card.Content() {
 			if !p.Enabled {
 				<p class="text-muted-foreground text-sm leading-relaxed">
-					Not available on this server — it has no encryption key configured, and Khepri
-					will not store a provider key it cannot encrypt.
+					{ i18n.T(ctx, "conn.ai.noenc") }
 				</p>
 			} else {
 				if p.Current != nil && p.Current.Failing() {
@@ -531,9 +520,7 @@ templ providerCard(p ProviderPanel) {
 				// read the catalogue.
 				if p.Current != nil && p.Current.ToolsUnsupported() {
 					@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
-						This provider answers, but it does not call Khepri's tools — so it cannot log
-						a session, edit your plan, or read the exercise catalogue. Khepri's own model
-						handles those turns instead. Everything else still uses your provider.
+						{ i18n.T(ctx, "conn.ai.notools") }
 					}
 				}
 				<form
@@ -549,7 +536,7 @@ templ providerCard(p ProviderPanel) {
 							<span>
 								<span class="font-medium">Use Khepri's AI</span>
 								<span class="text-muted-foreground block text-xs leading-relaxed">
-									Nothing to set up. Free accounts are served by models that cost nothing to run.
+									{ i18n.T(ctx, "conn.ai.free") }
 								</span>
 							</span>
 						</label>
@@ -558,7 +545,7 @@ templ providerCard(p ProviderPanel) {
 							<span>
 								<span class="font-medium">Use my own API key</span>
 								<span class="text-muted-foreground block text-xs leading-relaxed">
-									Your account pays for the tokens, and Khepri stops paying for yours.
+									{ i18n.T(ctx, "conn.ai.pays") }
 								</span>
 							</span>
 						</label>
@@ -566,7 +553,7 @@ templ providerCard(p ProviderPanel) {
 					<div x-show="mode === 'own'" x-cloak class="space-y-4 pt-2">
 						@form.Item() {
 							@label.Label() {
-								Provider
+								{ i18n.T(ctx, "conn.ai.provider") }
 							}
 							<div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
 								for _, entry := range p.Catalog {
@@ -588,7 +575,7 @@ templ providerCard(p ProviderPanel) {
 						<div x-show="needsURL.includes(provider)" x-cloak>
 							@form.Item() {
 								@label.Label(label.Props{For: "base_url"}) {
-									Gateway URL
+									{ i18n.T(ctx, "conn.ai.gateway") }
 								}
 								@input.Input(input.Props{
 									ID: "base_url", Name: "base_url", Value: p.Form.BaseURL,
@@ -601,13 +588,13 @@ templ providerCard(p ProviderPanel) {
 									}
 								}
 								@form.Description() {
-									Each account runs its own instance — tailnet, LAN, or public HTTPS.
+									{ i18n.T(ctx, "conn.ai.instance") }
 								}
 							}
 						</div>
 						@form.Item() {
 							@label.Label(label.Props{For: "api_key"}) {
-								API key
+								{ i18n.T(ctx, "conn.ai.apikey") }
 							}
 							// Placeholder twice over: server-rendered for the
 							// current selection so it is right without
@@ -629,15 +616,15 @@ templ providerCard(p ProviderPanel) {
 							}
 							@form.Description() {
 								if p.Current != nil {
-									A key ending { p.Current.KeyHint } is stored. Leave this blank to keep it.
+									{ i18n.Tf(ctx, "conn.ai.stored", p.Current.KeyHint) }
 								} else {
-									Khepri stores this encrypted and can never show it back to you.
+									{ i18n.T(ctx, "conn.ai.encrypted") }
 								}
 							}
 						}
 						@form.Item() {
 							@label.Label(label.Props{For: "model"}) {
-								Model
+								{ i18n.T(ctx, "conn.ai.model") }
 							}
 							@input.Input(input.Props{
 								ID: "model", Name: "model", Value: p.Form.Model,
@@ -652,15 +639,14 @@ templ providerCard(p ProviderPanel) {
 								}
 							}
 							@form.Description() {
-								Leave blank for this provider's default. Free text rather than a list,
-								because a hardcoded list of models goes stale within weeks.
+								{ i18n.T(ctx, "conn.ai.model.desc") }
 							}
 						}
 						@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90"}) {
-							Save provider
+							{ i18n.T(ctx, "conn.ai.save") }
 						}
 						<p class="text-muted-foreground text-xs leading-relaxed">
-							Want Claude? Use an OpenRouter key and a model beginning
+							{ i18n.T(ctx, "conn.ai.claude") }
 							<code class="font-mono">anthropic/</code>.
 						</p>
 					</div>
@@ -669,7 +655,7 @@ templ providerCard(p ProviderPanel) {
 					<form method="post" action="/app/settings/ai/remove" class="border-hairline mt-4 border-t pt-4">
 						@ui.CSRFInput()
 						@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Size: button.SizeSm}) {
-							Remove my key
+							{ i18n.T(ctx, "conn.ai.remove") }
 						}
 					</form>
 				}
@@ -794,21 +780,20 @@ templ connectCard(f ConnectForm, previews []connections.Setup) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 		@card.Header() {
 			@card.Title() {
-				Connect an agent
+				{ i18n.T(ctx, "conn.connect.title") }
 			}
 			@card.Description() {
-				Pick the agent you use. This shows what you will paste; nothing is created
-				until you ask for a key.
+				{ i18n.T(ctx, "conn.connect.desc") }
 			}
 		}
 		@card.Content() {
 			@tabs.Tabs(tabs.Props{ID: "surface-tabs"}) {
 				@tabs.List(tabs.ListProps{Class: "w-full"}) {
 					@tabs.Trigger(tabs.TriggerProps{Value: "hosted", IsActive: true}) {
-						This Khepri
+						{ i18n.T(ctx, "conn.connect.this") }
 					}
 					@tabs.Trigger(tabs.TriggerProps{Value: "self"}) {
-						Self-hosted
+						{ i18n.T(ctx, "conn.connect.selfhosted") }
 					}
 				}
 				@tabs.Content(tabs.ContentProps{Value: "hosted", IsActive: true, Class: "pt-4"}) {
@@ -825,7 +810,7 @@ templ connectCard(f ConnectForm, previews []connections.Setup) {
 			<noscript>
 				<div class="mt-4 space-y-6">
 					<p class="text-muted-foreground text-sm leading-relaxed">
-						Every client's setup, since the tabs above need JavaScript to switch.
+						{ i18n.T(ctx, "conn.connect.nojs") }
 					</p>
 					for _, p := range previews {
 						<div>
@@ -881,7 +866,7 @@ templ agentPanel(f ConnectForm, p connections.Setup) {
 		}
 		<div>
 			<p class="text-muted-foreground mb-2 text-sm leading-relaxed">
-				Or hand this to the agent and let it configure itself.
+				{ i18n.T(ctx, "conn.connect.handoff") }
 			</p>
 			@copyBlock("Setup prompt", "preview-prompt-"+string(p.Kind), "text", p.Prompt)
 		</div>
@@ -893,11 +878,11 @@ templ agentPanel(f ConnectForm, p connections.Setup) {
 			<input type="hidden" name="client_kind" value={ string(p.Kind) }/>
 			@form.Item() {
 				@label.Label(label.Props{For: "name-" + string(p.Kind)}) {
-					Name this connection
+					{ i18n.T(ctx, "conn.name") }
 				}
 				@input.Input(input.Props{
 					ID: "name-" + string(p.Kind), Name: "name", Value: f.Name, Required: true,
-					Placeholder: "Laptop", HasError: f.fieldError("name") != "",
+					Placeholder: i18n.T(ctx, "conn.name.ph"), HasError: f.fieldError("name") != "",
 				})
 				if f.fieldError("name") != "" {
 					@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
@@ -905,12 +890,11 @@ templ agentPanel(f ConnectForm, p connections.Setup) {
 					}
 				}
 				@form.Description() {
-					Name it after the machine it will live on, so you know which one to
-					revoke later.
+					{ i18n.T(ctx, "conn.name.desc") }
 				}
 			}
 			@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90"}) {
-				Create a key for { p.Kind.Label() }
+				{ i18n.Tf(ctx, "conn.connect.create", p.Kind.Label()) }
 			}
 		</form>
 	</div>
@@ -937,8 +921,7 @@ templ selfHostedPanel() {
 			<li>It listens on <code class="font-mono">MCP_LISTEN_ADDR</code> — <code class="font-mono">127.0.0.1:8093</code> by default. Keep it on a tailnet or a loopback; it has no per-user isolation to lose.</li>
 		</ul>
 		<p class="text-muted-foreground">
-			Prefer the hosted surface unless you are the only person using this Khepri. Its
-			keys are per person and revocable without a restart.
+			{ i18n.T(ctx, "conn.hosted") }
 		</p>
 	</div>
 }
@@ -954,11 +937,10 @@ templ calendarCard(p CalendarPanel) {
 		@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 			@card.Header() {
 				@card.Title() {
-					Calendar
+					{ i18n.T(ctx, "conn.cal.title") }
 				}
 				@card.Description() {
-					Connect a calendar MCP server and your coach can see the next seven days —
-					so it stops suggesting a Thursday session when you are already booked.
+					{ i18n.T(ctx, "conn.cal.desc") }
 				}
 			}
 			@card.Content() {
@@ -986,7 +968,7 @@ templ calendarConnected(c integrations.Connection) {
 			<form method="post" action="/app/settings/integrations/calendar/disconnect">
 				@ui.CSRFInput()
 				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Size: button.SizeSm}) {
-					Disconnect
+					{ i18n.T(ctx, "conn.tg.disconnect") }
 				}
 			</form>
 		</div>
@@ -1003,30 +985,30 @@ templ calendarConnect(errMsg string) {
 		}
 		@form.Item() {
 			@form.Label(form.LabelProps{For: "endpoint"}) {
-				Server address
+				{ i18n.T(ctx, "conn.cal.endpoint") }
 			}
 			@input.Input(input.Props{
 				ID: "endpoint", Name: "endpoint", Type: input.TypeText,
 				Placeholder: "https://calendar.example.com/mcp",
 			})
 			@form.Description() {
-				The MCP endpoint of a server that can list your calendar events.
+				{ i18n.T(ctx, "conn.cal.endpoint.desc") }
 			}
 		}
 		@form.Item() {
 			@form.Label(form.LabelProps{For: "token"}) {
-				Access token
+				{ i18n.T(ctx, "conn.cal.token") }
 			}
 			@input.Input(input.Props{
 				ID: "token", Name: "token", Type: input.TypePassword,
-				Placeholder: "Leave empty if the server needs no token",
+				Placeholder: i18n.T(ctx, "conn.cal.token.ph"),
 			})
 			@form.Description() {
-				Stored encrypted. It is never shown again after you save it.
+				{ i18n.T(ctx, "conn.cal.token.desc") }
 			}
 		}
 		@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90"}) {
-			Connect calendar
+			{ i18n.T(ctx, "conn.cal.connect") }
 		}
 	</form>
 }

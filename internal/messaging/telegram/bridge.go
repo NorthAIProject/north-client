@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/NorthAIProject/north-client/internal/messaging"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 )
 
 // replyTimeout bounds one detached turn.
@@ -184,7 +185,14 @@ func (b *bridge) answer(ctx context.Context, in messaging.InboundMessage, callba
 		// Say something rather than nothing. A person who gets silence assumes
 		// the bot is broken and stops using it; one who gets an apology tries
 		// again, and the failure is in the logs either way.
-		out = messaging.OutboundMessage{Text: "Something went wrong on my side. Try again in a moment."}
+		//
+		// This one is usually English whatever the account's language is, and
+		// that is honest rather than lazy: Handle is what puts the locale on the
+		// context, and the errors that land here include "could not load the
+		// linked user" — the case where there is no language to know yet. It
+		// still goes through the catalogue so the string lives in one place and
+		// starts working the day the locale is resolved earlier.
+		out = messaging.OutboundMessage{Text: i18n.T(ctx, "tg.wrong")}
 	}
 
 	if err := b.client.Send(ctx, in.ExternalID, out); err != nil {

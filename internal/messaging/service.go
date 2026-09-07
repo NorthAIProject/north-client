@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"log/slog"
 	"strings"
@@ -20,6 +19,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/media"
 	"github.com/NorthAIProject/north-client/internal/quota"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/ratelimit"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
@@ -196,11 +196,20 @@ func (s *Service) Handle(ctx context.Context, in InboundMessage) (OutboundMessag
 		return OutboundMessage{}, apperr.Wrap(err, "messaging: load linked user")
 	}
 
+	// Telegram has no HTTP middleware to resolve a language, so this is where
+	// the account's own setting joins the request. Everything below — the
+	// approval prompt, the quota refusals, the link and unlink replies — reads
+	// it from here.
+	//
+	// Set after the user is loaded and before any reply is composed, which is
+	// the same order auth.LoadUser establishes for the web app.
+	ctx = i18n.WithLocale(ctx, string(user.Locale))
+
 	// An account that has not finished onboarding has no coaching style, no
 	// goals and no first conversation, so the coach would answer from nothing.
 	// Better to say where to go than to answer badly.
 	if user.NeedsOnboarding() {
-		return OutboundMessage{Text: "Finish setting up your account in the Khepri web app first, then message me again."}, nil
+		return OutboundMessage{Text: i18n.T(ctx, "tg.onboard")}, nil
 	}
 
 	// Before the thread is resolved and before anything is metered: a command
@@ -229,15 +238,18 @@ func (s *Service) handleUnlinked(ctx context.Context, in InboundMessage) (Outbou
 		}
 		s.log.Info("messaging linked a chat", "platform", in.Platform, "user_id", userID)
 		s.funnel.SourceConnected(ctx, userID, analytics.SourceTelegram)
-		return OutboundMessage{Text: fmt.Sprintf(
-			"Linked to %s. Message me whenever — I have the same memory and goals as the web app.",
-			user.Email)}, nil
+		// The account has a language from signup, and this is the first thing
+		// the bot ever says to it — so it is worth answering in that language
+		// rather than in whatever the previous line happened to leave on ctx.
+		return OutboundMessage{
+			Text: i18n.Tf(i18n.WithLocale(ctx, string(user.Locale)), "tg.linked", user.Email),
+		}, nil
 
 	case errors.Is(err, apperr.ErrConflict):
-		return OutboundMessage{Text: "This chat is already linked to another Khepri account."}, nil
+		return OutboundMessage{Text: i18n.T(ctx, "tg.takenlink")}, nil
 
 	case errors.Is(err, apperr.ErrForbidden):
-		return OutboundMessage{Text: "Too many attempts. Wait a minute and try your code again."}, nil
+		return OutboundMessage{Text: i18n.T(ctx, "tg.toomany")}, nil
 
 	case errors.Is(err, apperr.ErrNotFound):
 		return OutboundMessage{Text: "I do not know you yet. Open Khepri, go to Settings → Agent connections, and send me the code it shows."}, nil
@@ -307,7 +319,7 @@ func (s *Service) incomingFrom(ctx context.Context, userID uuid.UUID, in Inbound
 		if apperr.As(err, &fieldErrs) {
 			msg := fieldErrs.Messages()["attachment"]
 			if msg == "" {
-				msg = "That photo could not be stored."
+				msg = i18n.T(ctx, "tg.photofailed")
 			}
 			return coach.Incoming{}, msg, nil
 		}
@@ -357,7 +369,7 @@ func (s *Service) answerPending(ctx context.Context, user users.User, conversati
 	if !understood {
 		// Re-asking rather than treating it as a new question: an ambiguous
 		// reply must not silently abandon a write the person was asked about.
-		return confirmationMessage(pending, "I still need a yes or a no first.\n\n"), nil
+		return confirmationMessage(ctx, pending, i18n.T(ctx, "tg.confirm.again")+"\n\n"), nil
 	}
 
 	if err := s.coach.ResolvePending(ctx, user, conversation.ID, pending.MessageID, approve); err != nil {
@@ -386,7 +398,7 @@ func (s *Service) reply(ctx context.Context, user users.User, conversation conve
 		return OutboundMessage{}, err
 	}
 	if waiting {
-		return confirmationMessage(pending, text), nil
+		return confirmationMessage(ctx, pending, text), nil
 	}
 
 	if strings.TrimSpace(text) == "" {
@@ -464,7 +476,7 @@ func (s *Service) meter(ctx context.Context, user users.User) (OutboundMessage, 
 	}
 
 	s.log.Warn("messaging turn refused by quota", "user_id", user.ID)
-	return OutboundMessage{Text: quotaMessage(decision)}, false, nil
+	return OutboundMessage{Text: quotaMessage(ctx, decision)}, false, nil
 }
 
 // resolveThread finds the conversation a platform message belongs in.
@@ -512,13 +524,13 @@ func collect(stream <-chan ai.StreamChunk) (string, error) {
 // The call is described in words rather than named, for the reason the web
 // card does it: "log a check-in" is a very different request from "log a
 // check-in saying the week went badly".
-func confirmationMessage(pending coach.PendingCall, prefix string) OutboundMessage {
+func confirmationMessage(ctx context.Context, pending coach.PendingCall, prefix string) OutboundMessage {
 	var b strings.Builder
 	b.WriteString(prefix)
 	if prefix != "" && !strings.HasSuffix(prefix, "\n") {
 		b.WriteString("\n\n")
 	}
-	b.WriteString("Before I do this, can you confirm?\n")
+	b.WriteString(i18n.T(ctx, "tg.confirm") + "\n")
 	for _, call := range pending.Calls {
 		b.WriteString("\n• ")
 		b.WriteString(describeCall(call))
@@ -527,8 +539,8 @@ func confirmationMessage(pending coach.PendingCall, prefix string) OutboundMessa
 	return OutboundMessage{
 		Text: b.String(),
 		Options: []Option{
-			{Label: "Yes, do it", Value: AnswerApprove},
-			{Label: "No", Value: AnswerDecline},
+			{Label: i18n.T(ctx, "tg.confirm.yes"), Value: AnswerApprove},
+			{Label: i18n.T(ctx, "tg.confirm.no"), Value: AnswerDecline},
 		},
 	}
 }
@@ -601,13 +613,13 @@ var (
 
 // quotaMessage names a wait rather than a limit, matching the web chat's
 // refusal: the number a person needs is when they can carry on.
-func quotaMessage(decision quota.Decision) string {
+func quotaMessage(ctx context.Context, decision quota.Decision) string {
 	switch {
 	case decision.RetryAfter < time.Minute:
-		return "You have reached your coach message limit. Try again in less than a minute."
+		return i18n.T(ctx, "tg.quota.minute")
 	case decision.RetryAfter < time.Hour:
-		return fmt.Sprintf("You have reached your coach message limit. Try again in %d minutes.", int(decision.RetryAfter.Minutes()))
+		return i18n.Tf(ctx, "tg.quota.n", int(decision.RetryAfter.Minutes()))
 	default:
-		return "You have reached your coach message limit. Try again in about an hour."
+		return i18n.T(ctx, "tg.quota.hour")
 	}
 }
