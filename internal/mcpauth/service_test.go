@@ -104,7 +104,7 @@ func (h harness) authorize(t *testing.T, client mcpauth.Client, scope string) (m
 		Scope:               scope,
 		CodeChallenge:       testChallenge(),
 		CodeChallengeMethod: mcpauth.ChallengeMethodS256,
-	})
+	}, false)
 	if err != nil {
 		t.Fatalf("begin authorization: %v", err)
 	}
@@ -518,7 +518,7 @@ func TestAnUntrustedDestinationIsNeverRedirectedTo(t *testing.T) {
 
 	for name, params := range cases {
 		t.Run(name, func(t *testing.T) {
-			_, _, err := h.svc.BeginAuthorization(ctx, params)
+			_, _, err := h.svc.BeginAuthorization(ctx, params, false)
 			if err == nil {
 				t.Fatal("the request was accepted")
 			}
@@ -559,7 +559,7 @@ func TestAValidatedCallbackReceivesTheError(t *testing.T) {
 			params := base
 			mutate(&params)
 
-			_, _, err := h.svc.BeginAuthorization(ctx, params)
+			_, _, err := h.svc.BeginAuthorization(ctx, params, false)
 			var redirectable mcpauth.RedirectableError
 			if !apperr.As(err, &redirectable) {
 				t.Fatalf("error is %T (%v); it must be redirectable", err, err)

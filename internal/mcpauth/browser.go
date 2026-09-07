@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/NorthAIProject/north-client/internal/analytics"
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/onboarding"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
@@ -40,6 +41,10 @@ type BrowserHandler struct {
 	onboarding *onboarding.Service
 	log        *slog.Logger
 
+	// funnel is nil-safe. Held here rather than reached through the service
+	// because these two events belong to the screen, not to the flow.
+	funnel *analytics.Funnel
+
 	production bool
 }
 
@@ -62,6 +67,12 @@ func NewBrowserHandler(
 		log:        log,
 		production: production,
 	}
+}
+
+// WithFunnel attaches product analytics.
+func (h *BrowserHandler) WithFunnel(f *analytics.Funnel) *BrowserHandler {
+	h.funnel = f
+	return h
 }
 
 func (h *BrowserHandler) Routes(r chi.Router) {
@@ -106,7 +117,9 @@ func (h *BrowserHandler) authorize(w http.ResponseWriter, r *http.Request) {
 		Resource:            r.URL.Query().Get("resource"),
 	}
 
-	req, verifier, err := h.svc.BeginAuthorization(r.Context(), params)
+	_, signedIn := auth.UserFrom(r.Context())
+
+	req, verifier, err := h.svc.BeginAuthorization(r.Context(), params, signedIn)
 	if err != nil {
 		h.writeAuthorizeError(w, r, err)
 		return
@@ -176,6 +189,10 @@ func (h *BrowserHandler) account(w http.ResponseWriter, r *http.Request) {
 			PasswordConfirmation: password,
 
 			Timezone: r.PostFormValue("timezone"),
+
+			// The one number that decides whether this feature acquired
+			// anybody or merely convenienced people who had already signed up.
+			Via: analytics.ViaOAuthConsent,
 		}, h.authMW.RequestMetadata(r))
 	}
 	if err != nil {
@@ -240,6 +257,10 @@ func (h *BrowserHandler) decide(w http.ResponseWriter, r *http.Request) {
 			h.renderExpired(w, r)
 			return
 		}
+		// Counted separately from abandonment: a refusal is a decision, and a
+		// screen people read and decline is a different problem from one they
+		// close.
+		h.funnel.MCPConsentDenied(r.Context(), user.ID, req.ClientName)
 		h.clearRequestCookie(w)
 		http.Redirect(w, r, redirect, http.StatusSeeOther)
 		return
@@ -261,6 +282,15 @@ func (h *BrowserHandler) decide(w http.ResponseWriter, r *http.Request) {
 	h.log.Info("mcp oauth consent approved",
 		slog.String("client_id", req.ClientID),
 		slog.Bool("account_created", req.AccountCreated))
+
+	// account_created is the verdict row of the scoreboard: whether this
+	// feature acquires anybody, or only convenienced people who had already
+	// signed up.
+	granted := req.Scope
+	if scope != "" {
+		granted = scope
+	}
+	h.funnel.MCPConsentApproved(r.Context(), user.ID, req.ClientName, granted, req.AccountCreated)
 
 	h.clearRequestCookie(w)
 	http.Redirect(w, r, redirect, http.StatusSeeOther)

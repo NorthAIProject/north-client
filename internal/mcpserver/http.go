@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/NorthAIProject/north-client/internal/analytics"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/NorthAIProject/north-client/internal/shared/ratelimit"
@@ -138,6 +139,11 @@ type Config struct {
 	// RequestsPerMinute bounds one account's call rate. Zero uses the default.
 	RequestsPerMinute int
 
+	// Funnel records that an outside agent actually called something, which
+	// is what separates a token that was stored from one that is used. Nil is
+	// a no-op, like everywhere else.
+	Funnel *analytics.Funnel
+
 	// ResourceMetadataURL points a client at the RFC 9728 document describing
 	// which authorization server guards this endpoint. Appended to the
 	// WWW-Authenticate header on a 401, which is how an unauthenticated client
@@ -216,7 +222,7 @@ func Endpoint(cfg Config) http.Handler {
 			return s
 		}
 
-		Register(s, cfg.Services, user, scopeFrom(req.Context()))
+		RegisterWithFunnel(s, cfg.Services, user, scopeFrom(req.Context()), cfg.Funnel)
 		return s
 	}, nil)
 
