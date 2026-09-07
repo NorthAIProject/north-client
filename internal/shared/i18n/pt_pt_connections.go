@@ -11,6 +11,11 @@ var portugueseEuropeanConnections = map[string]string{
 	"conn.issued.prompt.note": "Ou cola isto no próprio agente e deixa-o fazer a configuração. Envia a chave para o modelo em que esse agente corre, por isso usa-o só com um agente a quem confiarias os teus dados de treino — e revoga a chave aqui se mudares de ideias.",
 	"conn.issued.prompt":      "Instruções de configuração",
 
+	"conn.url.title":    "Cola isto no teu agente",
+	"conn.url.desc":     "Claude Code, Claude Desktop, Codex — qualquer coisa que fale MCP. Abre um browser, aprovas uma vez, e nunca vê uma chave.",
+	"conn.url.label":    "URL de ligação",
+	"conn.url.manual":   "Sem browser nessa máquina?",
+	"conn.list.expired": "vai renovar no próximo uso",
 	"conn.list.title":   "Agentes ligados",
 	"conn.list.desc":    "Qualquer um destes pode ler e escrever nos teus dados de treino. Revoga tudo o que não reconheceres.",
 	"conn.list.empty":   "Ainda não há nada ligado.",

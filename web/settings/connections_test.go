@@ -4,6 +4,9 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/ai/providers"
 	"github.com/NorthAIProject/north-client/internal/aicreds"
@@ -30,6 +33,7 @@ func renderPage(t *testing.T, f ConnectForm, provider ProviderPanel) string {
 		// Likewise disabled: a process with no encryption key cannot store an
 		// integration token, so it renders no calendar card.
 		CalendarPanel{},
+		"https://north.example.com/mcp",
 	)
 	if err := page.Render(context.Background(), &b); err != nil {
 		t.Fatalf("render: %v", err)
@@ -226,6 +230,7 @@ func renderTelegram(t *testing.T, telegram TelegramPanel) string {
 		nil, ConnectForm{}, nil, connections.Setup{}, previews, enabledPanel(),
 		telegram,
 		CalendarPanel{},
+		"https://north.example.com/mcp",
 	)
 	if err := page.Render(context.Background(), &b); err != nil {
 		t.Fatalf("render: %v", err)
@@ -269,5 +274,75 @@ func TestTelegramCodeOpensAStartDeepLink(t *testing.T) {
 		if !strings.Contains(html, want) {
 			t.Errorf("telegram code view is missing %q", want)
 		}
+	}
+}
+
+// The one-URL card is the whole point of the OAuth work, so it has to be on
+// the page and it has to carry the real endpoint.
+func TestTheConnectorURLIsOfferedForCopying(t *testing.T) {
+	out := renderPage(t, ConnectForm{}, ProviderPanel{})
+
+	if !strings.Contains(out, "https://north.example.com/mcp") {
+		t.Error("the connector URL is not on the page")
+	}
+	if !strings.Contains(out, `id="connector-url"`) {
+		t.Error("the connector URL has no copy target")
+	}
+	// The copy is the step before every number on the connector scoreboard.
+	if !strings.Contains(out, "mcp_connector_url_copied") {
+		t.Error("copying the URL is not counted")
+	}
+}
+
+// A grant whose access token has aged out is still a live connection: the next
+// refresh replaces the token. Saying so is why the list does not filter on
+// expiry — hiding it would make a working connection vanish an hour after it
+// was made.
+func TestAnExpiredGrantSaysItWillRefresh(t *testing.T) {
+	past := time.Now().Add(-time.Hour)
+	live := time.Now().Add(time.Hour)
+
+	expired := []connections.Connection{{
+		ID:          uuid.New(),
+		Name:        "Claude Code",
+		Kind:        connections.ClientClaudeCode,
+		TokenPrefix: "nk_abc",
+		CreatedAt:   time.Now().Add(-48 * time.Hour),
+		ExpiresAt:   &past,
+		Issuance:    connections.IssuanceOAuth,
+		Scopes:      "north:read_write",
+	}}
+
+	var b strings.Builder
+	page := ConnectionsPage(
+		users.User{DisplayName: "Test"}, expired, ConnectForm{}, nil,
+		connections.Setup{}, nil, ProviderPanel{}, TelegramPanel{}, CalendarPanel{},
+		"https://north.example.com/mcp",
+	)
+	if err := page.Render(context.Background(), &b); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	out := b.String()
+
+	if !strings.Contains(out, "Claude Code") {
+		t.Fatal("an expired grant is not listed at all; it is still a live connection")
+	}
+	if !strings.Contains(out, "will refresh on next use") {
+		t.Error("an expired grant does not say it will refresh")
+	}
+
+	// And a live one does not carry that line.
+	live2 := expired
+	live2[0].ExpiresAt = &live
+	var c strings.Builder
+	if err := ConnectionsPage(
+		users.User{DisplayName: "Test"}, live2, ConnectForm{}, nil,
+		connections.Setup{}, nil, ProviderPanel{}, TelegramPanel{}, CalendarPanel{},
+		"https://north.example.com/mcp",
+	).Render(context.Background(), &c); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if strings.Contains(c.String(), "will refresh on next use") {
+		t.Error("a live grant claims it will refresh")
 	}
 }
