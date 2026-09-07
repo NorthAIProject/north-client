@@ -59,10 +59,10 @@ const DefaultLocale = "en"
 // per surface per language keeps a change to the settings page a change to four
 // small files.
 var (
-	english             = merge(englishNav, englishSettings, englishErrors, englishDashboard)
-	portugueseEuropean  = merge(portugueseEuropeanNav, portugueseEuropeanSettings, portugueseEuropeanErrors, portugueseEuropeanDashboard)
-	portugueseBrazilian = merge(portugueseBrazilianNav, portugueseBrazilianSettings, portugueseBrazilianErrors, portugueseBrazilianDashboard)
-	spanish             = merge(spanishNav, spanishSettings, spanishErrors, spanishDashboard)
+	english             = merge(englishNav, englishSettings, englishErrors, englishDashboard, englishCheckins, englishChat)
+	portugueseEuropean  = merge(portugueseEuropeanNav, portugueseEuropeanSettings, portugueseEuropeanErrors, portugueseEuropeanDashboard, portugueseEuropeanCheckins, portugueseEuropeanChat)
+	portugueseBrazilian = merge(portugueseBrazilianNav, portugueseBrazilianSettings, portugueseBrazilianErrors, portugueseBrazilianDashboard, portugueseBrazilianCheckins, portugueseBrazilianChat)
+	spanish             = merge(spanishNav, spanishSettings, spanishErrors, spanishDashboard, spanishCheckins, spanishChat)
 )
 
 // merge folds the per-surface maps into one catalogue, and panics on a

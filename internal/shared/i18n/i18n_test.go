@@ -44,17 +44,29 @@ func TestEveryCatalogueCoversEnglish(t *testing.T) {
 // them so the count is a deliberate number somebody looked at, rather than
 // drifting upward unnoticed.
 func TestUntranslatedStringsAreAccountedFor(t *testing.T) {
-	// Genuine cognates: identical in every target language, verified rather
-	// than assumed. Keep this list short — each entry is a string nobody will
-	// notice going stale, so it should have to earn its place.
-	allowed := map[string]bool{
-		"nav.fitness":         true, // borrowed unchanged into all three
-		"palette.empty.after": true, // a full stop
-
-		// "Imperial (lb, in)" — the system's name and both unit abbreviations
-		// are international. "Métrico (kg, cm)" is not on this list because the
-		// accent makes it differ.
-		"settings.prefs.imperial": true,
+	// Genuine cognates, per language rather than per key. A word that is
+	// identical in Spanish is usually not identical in Portuguese, and a
+	// key-only exemption would quietly stop checking the other three.
+	//
+	// Keep this short: each entry is a string nobody will notice going stale.
+	allowed := map[string]map[string]bool{
+		"pt-PT": {
+			"nav.fitness":             true, // borrowed unchanged
+			"palette.empty.after":     true, // a full stop
+			"settings.prefs.imperial": true, // the system's name and both unit abbreviations are international
+		},
+		"pt-BR": {
+			"nav.fitness":             true,
+			"palette.empty.after":     true,
+			"settings.prefs.imperial": true,
+		},
+		"es": {
+			"nav.fitness":             true,
+			"palette.empty.after":     true,
+			"settings.prefs.imperial": true,
+			"chat.feedback.no":        true, // "No" is "No" in Spanish
+			"chat.approval.no":        true,
+		},
 	}
 
 	for locale, catalogue := range catalogues {
@@ -62,7 +74,7 @@ func TestUntranslatedStringsAreAccountedFor(t *testing.T) {
 			continue
 		}
 		for key, en := range english {
-			if allowed[key] {
+			if allowed[locale][key] {
 				continue
 			}
 			if catalogue[key] == en {

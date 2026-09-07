@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"strings"
@@ -8,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/conversations"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/types"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
@@ -49,11 +51,17 @@ const proseClasses = "text-sm " +
 
 // starters seed a brand new conversation. A blank box is the hardest thing to
 // answer; these say what Khepri is for better than a paragraph of explanation.
-var starters = []string{
-	"I want to get stronger but I don't know where to start.",
-	"Help me build a habit I'll actually keep.",
-	"I've been training for a month and feel stuck.",
-	"I keep starting things and not finishing them.",
+//
+// Read from the catalogue rather than held here as English: they are the first
+// sentences a new user reads, and leaving them in English would undo the
+// language setting on the one screen where it matters most.
+func starters(ctx context.Context) []string {
+	return []string{
+		i18n.T(ctx, "chat.starter.1"),
+		i18n.T(ctx, "chat.starter.2"),
+		i18n.T(ctx, "chat.starter.3"),
+		i18n.T(ctx, "chat.starter.4"),
+	}
 }
 
 // CoachStats is sidebar instrumentation for the coach page.
@@ -110,7 +118,7 @@ templ Page(user users.User, conversation conversations.Conversation, messages []
 
 // Empty is what a user with no conversations sees.
 templ Empty(user users.User, list []conversations.Conversation, stats CoachStats) {
-	@layout.App("Coach", user, layout.BuildNav(ctx, "/app/chat")) {
+	@layout.App(i18n.T(ctx, "nav.coach"), user, layout.BuildNav(ctx, "/app/chat")) {
 		if len(list) > 0 {
 			<div class="border-border border-b px-3 py-2 lg:hidden">
 				@coachKpiStrip(stats)
@@ -118,17 +126,17 @@ templ Empty(user users.User, list []conversations.Conversation, stats CoachStats
 		}
 		<div class="flex h-full flex-col items-center justify-center gap-4 p-8 text-center">
 			@mascot.Mascot(mascot.Props{Size: mascot.SizeLg})
-			@ui.MonoLabel("Day 1 · no sessions yet")
-			<h1 class="text-xl font-medium tracking-tight">Talk to your coach</h1>
+			@ui.MonoLabel(i18n.T(ctx, "chat.empty.mono"))
+			<h1 class="text-xl font-medium tracking-tight">{ i18n.T(ctx, "chat.empty.heading") }</h1>
 			<p class="text-muted-foreground max-w-sm text-sm leading-relaxed">
-				Khepri remembers what you tell it. Start with what you are working on.
+				{ i18n.T(ctx, "chat.empty.body") }
 			</p>
 			<div class="flex flex-wrap items-center justify-center gap-2">
 				<form method="post" action="/app/chat">
 					@ui.CSRFInput()
 					@button.Button(button.Props{Type: button.TypeSubmit, Class: signalCTA}) {
 						@icon.Plus(icon.Props{Class: "size-4"})
-						New conversation
+						{ i18n.T(ctx, "chat.new") }
 					}
 				</form>
 				@startReflectionForm(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline})
@@ -154,14 +162,14 @@ templ chatHeader(c conversations.Conversation) {
 				type="button"
 				@click="threads = !threads"
 				class="hover:bg-accent flex min-h-11 min-w-11 items-center justify-center rounded-md p-0 lg:hidden"
-				aria-label="Show conversations"
+				aria-label={ i18n.T(ctx, "chat.threads.aria") }
 			>
 				@icon.PanelLeft(icon.Props{Class: "size-4"})
 			</button>
 			<span class="truncate text-sm font-medium">{ c.DisplayTitle() }</span>
 			if c.IsReflection() {
 				@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
-					Reflection
+					{ i18n.T(ctx, "chat.reflection") }
 				}
 			}
 		</div>
@@ -170,13 +178,13 @@ templ chatHeader(c conversations.Conversation) {
 		<form
 			method="post"
 			action={ templ.SafeURL("/app/chat/" + c.ID.String() + "/delete") }
-			@submit="if (!confirm('Delete this conversation? Everything in it is lost.')) $event.preventDefault()"
+			@submit={ "if (!confirm(" + jsString(i18n.T(ctx, "chat.delete.confirm")) + ")) $event.preventDefault()" }
 		>
 			@ui.CSRFInput()
 			<button
 				type="submit"
 				class="text-muted-foreground hover:bg-accent hover:text-destructive flex min-h-11 min-w-11 items-center justify-center rounded-md p-0 transition-colors"
-				aria-label="Delete conversation"
+				aria-label={ i18n.T(ctx, "chat.delete.aria") }
 			>
 				@icon.Trash2(icon.Props{Class: "size-4"})
 			</button>
@@ -198,7 +206,7 @@ templ threadList(list []conversations.Conversation, current uuid.UUID, stats Coa
 					@ui.CSRFInput()
 					@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, FullWidth: true, Size: button.SizeSm}) {
 						@icon.Plus(icon.Props{Class: "size-4"})
-						New conversation
+						{ i18n.T(ctx, "chat.new") }
 					}
 				</form>
 				@startReflectionForm(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, FullWidth: true, Size: button.SizeSm})
@@ -220,8 +228,8 @@ templ threadList(list []conversations.Conversation, current uuid.UUID, stats Coa
 
 templ coachKpiStrip(stats CoachStats) {
 	@ui.KpiStrip() {
-		@ui.KpiCell(ui.KpiCellProps{Label: "Threads", Value: fmt.Sprintf("%d", stats.ThreadCount)})
-		@ui.KpiCell(ui.KpiCellProps{Label: "Messages", Value: fmt.Sprintf("%d", stats.MessagesThisWeek)})
+		@ui.KpiCell(ui.KpiCellProps{Label: i18n.T(ctx, "chat.kpi.threads"), Value: fmt.Sprintf("%d", stats.ThreadCount)})
+		@ui.KpiCell(ui.KpiCellProps{Label: i18n.T(ctx, "chat.kpi.messages"), Value: fmt.Sprintf("%d", stats.MessagesThisWeek)})
 	}
 }
 
@@ -235,7 +243,7 @@ templ threadLink(c conversations.Conversation, active bool) {
 			<span class="min-w-0 truncate">{ c.DisplayTitle() }</span>
 			if c.IsReflection() {
 				@badge.Badge(badge.Props{Variant: badge.VariantSecondary, Class: "shrink-0"}) {
-					Reflection
+					{ i18n.T(ctx, "chat.reflection") }
 				}
 			}
 		</a>
@@ -247,7 +255,7 @@ templ threadLink(c conversations.Conversation, active bool) {
 			<span class="min-w-0 truncate">{ c.DisplayTitle() }</span>
 			if c.IsReflection() {
 				@badge.Badge(badge.Props{Variant: badge.VariantSecondary, Class: "shrink-0"}) {
-					Reflection
+					{ i18n.T(ctx, "chat.reflection") }
 				}
 			}
 		</a>
@@ -259,7 +267,7 @@ templ startReflectionForm(props button.Props) {
 		@ui.CSRFInput()
 		<input type="hidden" name="kind" value="reflection"/>
 		@button.Button(props) {
-			Start a reflection
+			{ i18n.T(ctx, "chat.reflection.start") }
 		}
 	</form>
 }
@@ -328,7 +336,7 @@ templ reflectionClose(c conversations.Conversation) {
 // composer on this page, so filling #message is not an option.
 templ emptyStarterChips() {
 	<div class="mt-2 grid w-full max-w-lg gap-2 sm:grid-cols-2">
-		for _, starter := range starters {
+		for _, starter := range starters(ctx) {
 			<form method="post" action="/app/chat">
 				@ui.CSRFInput()
 				<input type="hidden" name="draft" value={ starter }/>
@@ -345,16 +353,15 @@ templ emptyStarterChips() {
 templ conversationStarters() {
 	<div class="flex flex-col items-center gap-4 py-12 text-center">
 		@mascot.Mascot(mascot.Props{Size: mascot.SizeMd, State: mascot.StateListening})
-		@ui.MonoLabel("This thread")
-		<h2 class="text-lg font-medium tracking-tight">What's on your mind?</h2>
+		@ui.MonoLabel(i18n.T(ctx, "chat.thread.mono"))
+		<h2 class="text-lg font-medium tracking-tight">{ i18n.T(ctx, "chat.thread.heading") }</h2>
 		<p class="text-muted-foreground max-w-sm text-sm leading-relaxed">
-			Tell Khepri what you are working on. It remembers, so you only have to
-			explain once.
+			{ i18n.T(ctx, "chat.thread.body") }
 		</p>
 		// Clicking a starter fills the composer rather than sending it, so the
 		// person still edits it into their own words before committing.
 		<div class="mt-2 grid w-full max-w-lg gap-2 sm:grid-cols-2">
-			for _, starter := range starters {
+			for _, starter := range starters(ctx) {
 				<button
 					type="button"
 					@click={ "document.getElementById('message').value = " + jsString(starter) + "; document.getElementById('message').focus()" }
@@ -421,19 +428,19 @@ templ MessageFeedback(m conversations.Message) {
 		if m.Rated() {
 			<span class="text-muted-foreground text-xs">
 				if m.RatedHelpful() {
-					Marked helpful
+					{ i18n.T(ctx, "chat.feedback.helpful") }
 				} else {
-					Marked not helpful
+					{ i18n.T(ctx, "chat.feedback.nothelpful") }
 				}
 			</span>
-			@feedbackForm(m, types.HelpfulClear, "Undo")
+			@feedbackForm(m, types.HelpfulClear, i18n.T(ctx, "chat.feedback.undo"))
 		} else {
 			<span class="text-muted-foreground text-xs opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
-				Did this help?
+				{ i18n.T(ctx, "chat.feedback.ask") }
 			</span>
 			<span class="flex gap-2 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100">
-				@feedbackForm(m, types.HelpfulYes, "Yes")
-				@feedbackForm(m, types.HelpfulNo, "No")
+				@feedbackForm(m, types.HelpfulYes, i18n.T(ctx, "chat.feedback.yes"))
+				@feedbackForm(m, types.HelpfulNo, i18n.T(ctx, "chat.feedback.no"))
 			</span>
 		}
 	</div>
@@ -620,7 +627,7 @@ templ composer(conversationID uuid.UUID, draft string) {
 					Class: "min-h-11 min-w-11",
 					Attributes: templ.Attributes{
 						"@click":         "$refs.file.click()",
-						"aria-label":     "Attach a photo",
+						"aria-label":     i18n.T(ctx, "chat.attach"),
 					},
 				}) {
 					@icon.Paperclip(icon.Props{Class: "size-4"})
@@ -628,7 +635,7 @@ templ composer(conversationID uuid.UUID, draft string) {
 				@textarea.Textarea(textarea.Props{
 					ID:          "message",
 					Name:        "message",
-					Placeholder: "What are you working on?",
+					Placeholder: i18n.T(ctx, "chat.placeholder"),
 					Value:       draft,
 					Rows:        1,
 					AutoResize:  true,
@@ -673,7 +680,7 @@ templ ApprovalCard(conversationID uuid.UUID, pending []PendingTool) {
 		@alert.Alert() {
 			@icon.TriangleAlert(icon.Props{Class: "size-4"})
 			@alert.Title() {
-				Khepri wants to change something
+				{ i18n.T(ctx, "chat.approval.title") }
 			}
 			@alert.Description() {
 				<ul class="mt-1 space-y-1">
@@ -687,7 +694,7 @@ templ ApprovalCard(conversationID uuid.UUID, pending []PendingTool) {
 			<form method="post" action={ templ.SafeURL(resolveURL(conversationID, pending[0].MessageID, "approve")) } class="flex-1">
 				@ui.CSRFInput()
 				@button.Button(button.Props{Type: "submit", Class: "min-h-11 w-full"}) {
-					Yes, go ahead
+					{ i18n.T(ctx, "chat.approval.yes") }
 				}
 			</form>
 			<form method="post" action={ templ.SafeURL(resolveURL(conversationID, pending[0].MessageID, "decline")) } class="flex-1">

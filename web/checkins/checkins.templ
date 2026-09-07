@@ -1,12 +1,14 @@
 package checkins
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 
 	"github.com/NorthAIProject/north-client/internal/checkins/checkin"
 	"github.com/NorthAIProject/north-client/internal/goals/goal"
 	"github.com/NorthAIProject/north-client/internal/moments"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
 	"github.com/NorthAIProject/north-client/web/shared/moment"
@@ -103,13 +105,13 @@ func FormFor(c checkin.CheckIn) CheckInForm {
 }
 
 templ IndexPage(user users.User, list []checkin.CheckIn, form CheckInForm, activeGoals []goal.Goal, streak int, saved bool, m *moments.Moment, inst Instruments) {
-	@layout.App("Check-ins", user, layout.BuildNav(ctx, "/app/check-ins")) {
+	@layout.App(i18n.T(ctx, "nav.check-ins"), user, layout.BuildNav(ctx, "/app/check-ins")) {
 		<div class="mx-auto flex w-full max-w-6xl flex-col gap-8 p-4 md:p-8">
 			@header()
 			if saved && m != nil {
 				@moment.Card(*m)
 			} else if saved {
-				<p class="rounded-lg border border-signal/30 bg-signal/10 px-4 py-3 text-sm">Saved for today.</p>
+				<p class="rounded-lg border border-signal/30 bg-signal/10 px-4 py-3 text-sm">{ i18n.T(ctx, "checkins.saved") }</p>
 			}
 			@Panel(list, form, activeGoals)
 			@kpiStrip(streak, inst)
@@ -124,20 +126,20 @@ templ IndexPage(user users.User, list []checkin.CheckIn, form CheckInForm, activ
 
 templ header() {
 	<header>
-		<p class="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Daily loop</p>
-		<h1 class="mt-2 text-2xl font-medium tracking-tight">Check-in</h1>
+		<p class="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">{ i18n.T(ctx, "checkins.mono") }</p>
+		<h1 class="mt-2 text-2xl font-medium tracking-tight">{ i18n.T(ctx, "checkins.heading") }</h1>
 		<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
-			Thirty seconds. Mood, energy, what went well, what was hard.
+			{ i18n.T(ctx, "checkins.intro") }
 		</p>
 	</header>
 }
 
 templ kpiStrip(streak int, inst Instruments) {
 	@ui.KpiStrip() {
-		@kpiCell("Streak", streakKPI(streak), "/app/check-ins", "Check in")
-		@kpiCell("Avg mood", avgMoodKPI(inst), "", "")
-		@kpiCell("Avg energy", avgEnergyKPI(inst), "", "")
-		@kpiCell("Logged", checkInCountKPI(inst), "", "")
+		@kpiCell(i18n.T(ctx, "checkins.kpi.streak"), streakKPI(ctx, streak), "/app/check-ins", i18n.T(ctx, "checkins.kpi.checkcta"))
+		@kpiCell(i18n.T(ctx, "checkins.kpi.avgmood"), avgMoodKPI(inst), "", "")
+		@kpiCell(i18n.T(ctx, "checkins.kpi.avgenergy"), avgEnergyKPI(inst), "", "")
+		@kpiCell(i18n.T(ctx, "checkins.kpi.logged"), checkInCountKPI(ctx, inst), "", "")
 	}
 }
 
@@ -145,11 +147,15 @@ templ kpiCell(label, value, href, cta string) {
 	@ui.KpiCell(ui.KpiCellProps{Label: label, Value: value, Href: href, CTA: cta})
 }
 
-func streakKPI(streak int) string {
-	if streak <= 0 {
+func streakKPI(ctx context.Context, streak int) string {
+	switch {
+	case streak <= 0:
 		return "—"
+	case streak == 1:
+		return i18n.T(ctx, "checkins.kpi.streak.one")
+	default:
+		return i18n.Tf(ctx, "checkins.kpi.streak.many", streak)
 	}
-	return strconv.Itoa(streak) + " days"
 }
 
 func avgMoodKPI(inst Instruments) string {
@@ -166,11 +172,15 @@ func avgEnergyKPI(inst Instruments) string {
 	return fmt.Sprintf("%.1f/5", inst.AvgEnergy)
 }
 
-func checkInCountKPI(inst Instruments) string {
-	if inst.CheckInCount <= 0 {
+func checkInCountKPI(ctx context.Context, inst Instruments) string {
+	switch {
+	case inst.CheckInCount <= 0:
 		return "—"
+	case inst.CheckInCount == 1:
+		return i18n.T(ctx, "checkins.kpi.count.one")
+	default:
+		return i18n.Tf(ctx, "checkins.kpi.count.many", inst.CheckInCount)
 	}
-	return strconv.Itoa(inst.CheckInCount) + " in 14d"
 }
 
 templ instrumentsRow(inst Instruments) {
@@ -184,17 +194,17 @@ templ moodChart(inst Instruments) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 		@card.Header() {
 			@card.Title() {
-				Mood & energy
+				{ i18n.T(ctx, "checkins.mood.title") }
 			}
 			@card.Description() {
-				Trailing fourteen days.
+				{ i18n.T(ctx, "checkins.mood.desc") }
 			}
 		}
 		@card.Content() {
 			if inst.HasData {
 				@chart.Chart(inst.MoodChart)
 			} else {
-				<p class="text-muted-foreground text-sm">No check-ins yet in this window.</p>
+				<p class="text-muted-foreground text-sm">{ i18n.T(ctx, "checkins.mood.empty") }</p>
 			}
 		}
 	}
@@ -204,10 +214,10 @@ templ moodHeatmap(inst Instruments) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 		@card.Header() {
 			@card.Title() {
-				Mood heatmap
+				{ i18n.T(ctx, "checkins.heatmap.title") }
 			}
 			@card.Description() {
-				Days you checked in, coloured by mood.
+				{ i18n.T(ctx, "checkins.heatmap.desc") }
 			}
 		}
 		@card.Content() {
@@ -263,10 +273,10 @@ templ SavedPanel(c checkin.CheckIn, list []checkin.CheckIn, streak int, m *momen
 							"hx-swap":   "outerHTML",
 						},
 					}) {
-						Edit today's check-in
+						{ i18n.T(ctx, "checkins.edit") }
 					}
 					@button.Button(button.Props{Href: "/app", Variant: button.VariantOutline, Class: "min-h-11 flex-1"}) {
-						Back to dashboard
+						{ i18n.T(ctx, "checkins.back") }
 					}
 				</div>
 			}
@@ -278,7 +288,7 @@ templ SavedPanel(c checkin.CheckIn, list []checkin.CheckIn, streak int, m *momen
 templ recent(list []checkin.CheckIn) {
 	if len(list) > 0 {
 		<section class="space-y-3">
-			<h2 class="text-sm font-medium">Recent</h2>
+			<h2 class="text-sm font-medium">{ i18n.T(ctx, "checkins.recent") }</h2>
 			for _, c := range list {
 				@historyCard(c)
 			}
@@ -290,13 +300,13 @@ templ todayForm(f CheckInForm, activeGoals []goal.Goal, first bool) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 		@card.Header() {
 			@card.Title() {
-				Today
+				{ i18n.T(ctx, "checkins.today") }
 			}
 			@card.Description() {
 				if first {
-					Your first check-in. Thirty seconds. Khepri will remember this.
+					{ i18n.T(ctx, "checkins.first") }
 				} else {
-					Same-day edits replace the earlier entry. One reflection per day.
+					{ i18n.T(ctx, "checkins.again") }
 				}
 			}
 		}
@@ -322,24 +332,24 @@ templ todayForm(f CheckInForm, activeGoals []goal.Goal, first bool) {
 				@stepStrip()
 				<div x-show="step === 1" class="space-y-3">
 					@label.Label() {
-						How is your mood?
+						{ i18n.T(ctx, "checkins.q.mood") }
 					}
-					@scalePicker("mood", "Mood", f.Mood)
+					@scalePicker("mood", i18n.T(ctx, "checkins.field.mood"), f.Mood)
 					@fieldMessage(f.fieldError("mood"))
 					@stepNav(0, 2)
 				</div>
 				<div x-show="step === 2" x-cloak class="space-y-3">
 					@label.Label() {
-						How is your energy?
+						{ i18n.T(ctx, "checkins.q.energy") }
 					}
-					@scalePicker("energy", "Energy", f.Energy)
+					@scalePicker("energy", i18n.T(ctx, "checkins.field.energy"), f.Energy)
 					@fieldMessage(f.fieldError("energy"))
 					@stepNav(1, 3)
 				</div>
 				<div x-show="step === 3" x-cloak class="space-y-3">
 					@form.Item() {
 						@label.Label(label.Props{For: "wins"}) {
-							What went well?
+							{ i18n.T(ctx, "checkins.q.wins") }
 						}
 						// Value, not children: the component renders p.Value and drops
 						// anything passed as children, so text handed to it that way
@@ -348,7 +358,7 @@ templ todayForm(f CheckInForm, activeGoals []goal.Goal, first bool) {
 							ID:          "wins",
 							Name:        "wins",
 							Rows:        3,
-							Placeholder: "Optional. A small win counts.",
+							Placeholder: i18n.T(ctx, "checkins.ph.wins"),
 							Value:       f.Wins,
 							HasError:    f.fieldError("wins") != "",
 						})
@@ -359,13 +369,13 @@ templ todayForm(f CheckInForm, activeGoals []goal.Goal, first bool) {
 				<div x-show="step === 4" x-cloak class="space-y-3">
 					@form.Item() {
 						@label.Label(label.Props{For: "challenges"}) {
-							What was hard?
+							{ i18n.T(ctx, "checkins.q.hard") }
 						}
 						@textarea.Textarea(textarea.Props{
 							ID:          "challenges",
 							Name:        "challenges",
 							Rows:        3,
-							Placeholder: "Optional.",
+							Placeholder: i18n.T(ctx, "checkins.ph.hard"),
 							Value:       f.Challenges,
 							HasError:    f.fieldError("challenges") != "",
 						})
@@ -376,13 +386,13 @@ templ todayForm(f CheckInForm, activeGoals []goal.Goal, first bool) {
 				<div x-show="step === 5" x-cloak class="space-y-3">
 					@form.Item() {
 						@label.Label(label.Props{For: "notes"}) {
-							Anything else?
+							{ i18n.T(ctx, "checkins.q.notes") }
 						}
 						@textarea.Textarea(textarea.Props{
 							ID:          "notes",
 							Name:        "notes",
 							Rows:        3,
-							Placeholder: "Optional notes for your coach.",
+							Placeholder: i18n.T(ctx, "checkins.ph.notes"),
 							Value:       f.Notes,
 							HasError:    f.fieldError("notes") != "",
 						})
@@ -391,15 +401,15 @@ templ todayForm(f CheckInForm, activeGoals []goal.Goal, first bool) {
 					if len(activeGoals) > 0 {
 						@form.Item() {
 							@label.Label() {
-								Related goal (optional)
+								{ i18n.T(ctx, "checkins.goal") }
 							}
 							@selectbox.SelectBox() {
 								@selectbox.Trigger(selectbox.TriggerProps{ID: "related_goal_id", Name: "related_goal_id"}) {
-									@selectbox.Value(selectbox.ValueProps{Placeholder: "None"})
+									@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "checkins.goal.none")})
 								}
 								@selectbox.Content() {
 									@selectbox.Item(selectbox.ItemProps{Value: "", Selected: f.GoalID == ""}) {
-										None
+										{ i18n.T(ctx, "checkins.goal.none") }
 									}
 									for _, g := range activeGoals {
 										@selectbox.Item(selectbox.ItemProps{Value: g.ID.String(), Selected: f.GoalID == g.ID.String()}) {
@@ -423,11 +433,11 @@ templ todayForm(f CheckInForm, activeGoals []goal.Goal, first bool) {
 // default to a valid value, so jumping ahead can never submit an empty pane.
 templ stepStrip() {
 	<div class="flex flex-wrap gap-1.5">
-		@stepChip(1, "Mood")
-		@stepChip(2, "Energy")
-		@stepChip(3, "Wins")
-		@stepChip(4, "Hard")
-		@stepChip(5, "Notes")
+		@stepChip(1, i18n.T(ctx, "checkins.field.mood"))
+		@stepChip(2, i18n.T(ctx, "checkins.field.energy"))
+		@stepChip(3, i18n.T(ctx, "checkins.step.wins"))
+		@stepChip(4, i18n.T(ctx, "checkins.step.hard"))
+		@stepChip(5, i18n.T(ctx, "checkins.step.notes"))
 	</div>
 }
 
@@ -455,7 +465,7 @@ templ stepNav(back int, next int) {
 				Class:      "min-h-11 flex-1",
 				Attributes: templ.Attributes{"@click": "step = " + strconv.Itoa(back)},
 			}) {
-				Back
+				{ i18n.T(ctx, "checkins.nav.back") }
 			}
 		}
 		if next > 0 {
@@ -464,11 +474,11 @@ templ stepNav(back int, next int) {
 				Class:      "min-h-11 flex-1",
 				Attributes: templ.Attributes{"@click": "step = " + strconv.Itoa(next)},
 			}) {
-				Next
+				{ i18n.T(ctx, "checkins.nav.next") }
 			}
 		} else {
 			@button.Button(button.Props{Type: button.TypeSubmit, Class: "min-h-11 flex-1 bg-signal text-background hover:bg-signal/90"}) {
-				Save check-in
+				{ i18n.T(ctx, "checkins.nav.save") }
 			}
 		}
 	</div>
@@ -489,7 +499,7 @@ templ fieldMessage(msg string) {
 // boots and on the no-JavaScript path.
 templ scalePicker(name string, legend string, current int) {
 	<fieldset class="space-y-1.5">
-		<legend class="sr-only">{ legend } on a scale of 1 to 5</legend>
+		<legend class="sr-only">{ i18n.Tf(ctx, "checkins.scale.legend", legend) }</legend>
 		<div class="flex gap-2">
 			for i := 1; i <= 5; i++ {
 				<label class="flex-1 cursor-pointer">
@@ -498,7 +508,7 @@ templ scalePicker(name string, legend string, current int) {
 						name={ name }
 						value={ strconv.Itoa(i) }
 						class="peer sr-only"
-						aria-label={ legend + " " + strconv.Itoa(i) + " of 5" }
+						aria-label={ i18n.Tf(ctx, "checkins.scale.option", legend, i) }
 						checked?={ i == current }
 						x-model.number={ name }
 					/>
@@ -509,8 +519,8 @@ templ scalePicker(name string, legend string, current int) {
 			}
 		</div>
 		<div class="text-muted-foreground flex justify-between text-[10px]">
-			<span>Low</span>
-			<span>High</span>
+			<span>{ i18n.T(ctx, "checkins.scale.low") }</span>
+			<span>{ i18n.T(ctx, "checkins.scale.high") }</span>
 		</div>
 	</fieldset>
 }
