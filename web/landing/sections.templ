@@ -173,12 +173,14 @@ templ pricingSection() {
 				"today",
 				"The whole product. Nothing is held back behind a plan that does not exist yet.",
 				[]string{
-					"The coach on the web and on Telegram, with full memory",
-					"Training plans, form checks, and document knowledge",
+					"The coach on the web and on Telegram, one memory behind both",
+					"Training plans, with looping illustrations on most movements",
+					"Form checks — upload a clip, get cues back",
+					"Voice notes on the web, transcribed and filed",
+					"Strava, Google Calendar, and your own PDFs",
 					"MCP access from your own agents and editors",
-					"Daily check-ins, weekly summaries, and Strava",
 				},
-				"Create your account",
+				"Start free",
 				false,
 			)
 			@planCard(
@@ -227,7 +229,8 @@ templ planCard(name string, price string, period string, blurb string, lines []s
 			</ul>
 			// No CTA means the plan cannot be bought. Rendering a button that only
 			// leads to the free signup would be the dishonest half of the problem
-			// this section had.
+			// this section had. The line that replaces it keeps the two cards the
+			// same height, so the absence reads as deliberate rather than broken.
 			if cta != "" {
 				@button.Button(button.Props{
 					Href:      ctaHref(ctx),
@@ -237,6 +240,10 @@ templ planCard(name string, price string, period string, blurb string, lines []s
 				}) {
 					{ planCTA(ctx, cta) }
 				}
+			} else {
+				<p class="mt-7 rounded-md border border-dashed border-hairline px-4 py-2.5 text-center text-sm text-muted-foreground">
+					Nothing to do here yet
+				</p>
 			}
 		}
 	}
