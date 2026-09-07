@@ -63,6 +63,15 @@ const (
 	// building.
 	EventNudgeOpened = "nudge_opened"
 
+	// EventAgentAccountSeeded is an account created inside the OAuth consent
+	// screen and given the smallest honest profile.
+	//
+	// Not EventOnboardingCompleted, deliberately. These people answered no
+	// questions, and the same honesty that keeps a skip out of that event
+	// keeps this out of it. Counted separately because "did the connector
+	// acquire anybody" is a different question from "did anybody answer".
+	EventAgentAccountSeeded = "agent_account_seeded"
+
 	// EventMomentShown is a card of recognition rendered: a streak threshold,
 	// a goal achieved, a milestone completed. Whether accounts that hit the
 	// first one retain better is the question internal/moments exists to ask.
@@ -174,6 +183,13 @@ func (p *Funnel) NudgeDelivered(ctx context.Context, userID uuid.UUID, kind, cha
 // brought them.
 func (p *Funnel) NudgeOpened(ctx context.Context, userID uuid.UUID, kind, channel string) {
 	p.capture(ctx, userID, EventNudgeOpened, posthog.Properties{"kind": kind, "channel": channel})
+}
+
+// AgentAccountSeeded records an account created inside the OAuth consent
+// screen. client is the agent it was connected to, for the breakdown of which
+// clients actually bring people.
+func (p *Funnel) AgentAccountSeeded(ctx context.Context, userID uuid.UUID, client string) {
+	p.capture(ctx, userID, EventAgentAccountSeeded, posthog.Properties{"client": client})
 }
 
 // MomentShown records a recognition card being rendered. kind is one of the

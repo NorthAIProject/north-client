@@ -8,6 +8,8 @@ import (
 	"log/slog"
 	"slices"
 	"strings"
+	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 
@@ -86,6 +88,16 @@ type Service struct {
 
 	// funnel is nil-safe, like coach: no PostHog key, no events, same journey.
 	funnel *analytics.Funnel
+
+	// now is fixed by tests. Only SeedForAgent reads it, to date the memory
+	// recording how an account arrived.
+	now func() time.Time
+}
+
+// WithClock fixes now, for tests.
+func (s *Service) WithClock(now func() time.Time) *Service {
+	s.now = now
+	return s
 }
 
 // WithFunnel attaches product analytics.
@@ -95,7 +107,7 @@ func (s *Service) WithFunnel(p *analytics.Funnel) *Service {
 }
 
 func NewService(u *users.Service, m *memories.Service, g *goals.Service) *Service {
-	return &Service{users: u, memories: m, goals: g, log: slog.Default()}
+	return &Service{users: u, memories: m, goals: g, log: slog.Default(), now: time.Now}
 }
 
 // WithCoach seeds a first conversation from the answers. Follows
@@ -279,6 +291,103 @@ func openingMessage(in Answers) string {
 	b.WriteString(in.NearTermGoal)
 	b.WriteString(". I can send a photo of where I am now, a clip of a lift, or just tell you what equipment and days I have. Where should I start, and what do you need to see?")
 	return b.String()
+}
+
+// SeedForAgent prepares an account created inside the OAuth consent screen.
+//
+// It sits between Complete and Skip, and neither of those would do.
+//
+// Skip is disproven by its own evidence. It seeds nothing, and the framing
+// that a skipped account "lands on a dashboard of zeros" is worse here: on the
+// dashboard a person sees the zeros and can act on them. Here an *agent* reads
+// them — search_goals returns [], search_knowledge returns nothing — and
+// reports back that Khepri is empty. That is the persistent-memory claim
+// failing on the first tool call, which is the one moment the connector exists
+// to win.
+//
+// Running the wizard would break the one-URL promise. The browser showing the
+// consent screen *is* the OAuth window, and the redirect back to the client
+// has to happen from it; a client's callback listener does not wait for three
+// questions.
+//
+// So: the smallest honest profile, and onboarded. Two pinned memories and no
+// goal.
+func (s *Service) SeedForAgent(ctx context.Context, user users.User, clientName string) (users.User, error) {
+	if !user.NeedsOnboarding() {
+		return user, nil
+	}
+
+	// A defensible prior rather than a guess: this person arrived through a
+	// coding agent. Editable in Settings like any other preference.
+	style := StyleText(StyleDirect)
+	if _, err := s.users.UpdateProfile(ctx, user.ID, users.Profile{
+		DisplayName:   user.DisplayName,
+		Timezone:      user.Timezone,
+		CoachingStyle: style,
+	}); err != nil {
+		return user, err
+	}
+	if err := s.pin(ctx, user.ID, memories.CategoryCoaching, style); err != nil {
+		return user, err
+	}
+
+	// The load-bearing item. It records how the account came to exist and,
+	// more importantly, tells the coach what it does *not* know — so the first
+	// ask_coach is a coach that knows one true thing and asks for the rest,
+	// which is a better first impression than a wizard and needs no new
+	// machinery to produce.
+	provenance := "Connected Khepri to " + agentLabel(clientName) +
+		" as an agent connector on " + s.now().Format("2 January 2006") +
+		". Has not answered the onboarding questions yet — ask about focus areas " +
+		"and one near-term goal before assuming any."
+	if err := s.pin(ctx, user.ID, memories.CategoryPreference, provenance); err != nil {
+		return user, err
+	}
+
+	onboarded, err := s.users.MarkOnboarded(ctx, user.ID)
+	if err != nil {
+		return user, err
+	}
+
+	// Not OnboardingCompleted. They answered nothing, and the same honesty
+	// that excludes Skip from that event excludes this.
+	s.funnel.AgentAccountSeeded(ctx, onboarded.ID, agentLabel(clientName))
+
+	// Deliberately no goal and no first conversation. Inventing a goal would
+	// put something in search_goals that the person never set, which is worse
+	// than an empty list — an agent reading a goal its user cannot explain is
+	// a bug with no cause. And there are no answers to write an opening
+	// message from; seedFirstConversation writes in the person's own voice for
+	// the reason openingMessage's comment gives, and their agent is about to
+	// start the conversation anyway.
+	return onboarded, nil
+}
+
+// pin creates a memory and pins it, which every seeding path does in pairs.
+func (s *Service) pin(ctx context.Context, userID uuid.UUID, category, content string) error {
+	m, err := s.memories.Create(ctx, userID, memories.Input{
+		Category: category,
+		Content:  content,
+	})
+	if err != nil {
+		return err
+	}
+	_, err = s.memories.SetPinned(ctx, m.ID, userID, true)
+	return err
+}
+
+// agentLabel is a client's self-chosen name, bounded for a memory the coach
+// reads aloud. Registration is open, so the name is attacker-chosen.
+func agentLabel(clientName string) string {
+	name := strings.TrimSpace(clientName)
+	if name == "" {
+		return "an agent"
+	}
+	const maxLabel = 60
+	if utf8.RuneCountInString(name) > maxLabel {
+		return strings.TrimSpace(string([]rune(name)[:maxLabel]))
+	}
+	return name
 }
 
 // Skip marks onboarding finished without seeding data.
