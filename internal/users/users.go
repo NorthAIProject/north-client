@@ -173,10 +173,14 @@ func ResolveLocale(s string) Locale {
 			return l
 		}
 	}
-	// A bare "pt" is ambiguous by design, but refusing to answer it would be
-	// worse than picking: European Portuguese is the older tag's usual meaning.
+	// A bare "pt" is ambiguous, and picking beats refusing. Brazilian, not
+	// European: that is what CLDR's likely-subtags data says, on the grounds
+	// that Brazil has roughly twenty times Portugal's Portuguese speakers, and
+	// it is the answer golang.org/x/text/language gives the same input during
+	// Accept-Language negotiation. Two code paths disagreeing about "pt" would
+	// be a bug waiting for a browser to send it.
 	if strings.EqualFold(normalised, "pt") {
-		return LocalePTPT
+		return LocalePTBR
 	}
 	return LocaleDefault
 }

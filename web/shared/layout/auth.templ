@@ -39,6 +39,13 @@ templ authShell(title string, widthClass string) {
 					</div>
 				</div>
 				{ children... }
+				// The auth pages have no footer of their own, and they are where
+				// somebody the header guessed wrong ends up: they came from the
+				// landing page in the wrong language and are now typing an email
+				// address into it. One row under the card is enough.
+				<div class="mt-8 flex justify-center">
+					@ui.LanguageSwitcher()
+				</div>
 			</div>
 		</div>
 	}

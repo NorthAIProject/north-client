@@ -1,0 +1,55 @@
+package ui
+
+import (
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
+	"github.com/NorthAIProject/north-client/internal/shared/middleware"
+	"github.com/NorthAIProject/north-client/internal/users"
+)
+
+// LanguageSwitcher lets a visitor with no account choose a language.
+//
+// It exists because Accept-Language is a guess. A browser configured in
+// Portuguese by an employer, or a shared machine, or somebody who simply
+// prefers to read software in English, all produce a header that says the wrong
+// thing — and without a way out, the guess becomes a trap on the one page where
+// a stranger decides whether to bother.
+//
+// Deliberately absent for signed-in users: Settings owns their language, and a
+// second control that wrote a cookie LoadUser then ignored would be a switch
+// that visibly does nothing.
+//
+// A form rather than links: it writes a cookie, and a GET that changes state is
+// a GET a link prefetcher can fire on hover. `next` returns the visitor to the
+// page they were reading, from middleware.Path; the handler validates it.
+templ LanguageSwitcher() {
+	<form method="post" action="/locale" class="flex items-center gap-2">
+		@CSRFInput()
+		<input type="hidden" name="next" value={ middleware.Path(ctx) }/>
+		<label for="footer-locale" class="sr-only">
+			{ i18n.T(ctx, "footer.language") }
+		</label>
+		// A native select and a submit button, not the component library's
+		// selectbox: this sits in the footer of pages that load no JavaScript,
+		// and a language switcher that needs a script to change the language is
+		// the wrong way round.
+		<select
+			id="footer-locale"
+			name="locale"
+			class="border-hairline bg-surface text-muted-foreground rounded-md border px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em]"
+			onchange="this.form.requestSubmit()"
+		>
+			for _, tag := range i18n.Served() {
+				<option value={ tag } selected?={ tag == i18n.LocaleFrom(ctx) }>
+					{ users.Locale(tag).Label() }
+				</option>
+			}
+		</select>
+		// Shown only without JavaScript. With it, onchange submits and a button
+		// beside the select is one more thing to explain.
+		<noscript>
+			<button type="submit" class="border-hairline text-muted-foreground rounded-md border px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em]">
+				{ i18n.T(ctx, "footer.language.go") }
+			</button>
+		</noscript>
+	</form>
+}

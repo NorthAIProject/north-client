@@ -66,6 +66,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/reports"
 	"github.com/NorthAIProject/north-client/internal/settings"
 	"github.com/NorthAIProject/north-client/internal/shared/database"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/metrics"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/NorthAIProject/north-client/internal/sleep"
@@ -1208,6 +1209,11 @@ func routes(
 		// connection error.
 		r.Use(middleware.MaxBody(media.MaxVideoBytes + (16 << 20)))
 		r.Use(middleware.CSRF(cfg.Env.IsProduction()))
+		// Locale before LoadUser, deliberately: this one can only guess from a
+		// cookie or Accept-Language, and LoadUser overwrites the guess with the
+		// account's own setting. The other order would let a laptop's browser
+		// settings override what somebody chose in Khepri.
+		r.Use(middleware.Locale)
 		r.Use(authMW.LoadUser)
 
 		mountAssets(r, cfg)
@@ -1221,6 +1227,15 @@ func routes(
 		// policy before creating the account that would let them read it.
 		r.Method(http.MethodGet, "/privacy", templ.Handler(legal.Privacy()))
 		r.Method(http.MethodGet, "/terms", templ.Handler(legal.Terms()))
+
+		// The footer language switcher, for visitors who have no account to
+		// store a preference on. A POST rather than a link: it writes a cookie,
+		// and a GET that changes state is a GET a prefetcher can fire.
+		//
+		// Signed-in users never see the switcher — Settings owns their language
+		// — and this route would not help them if they found it, because
+		// LoadUser overwrites the cookie with the account's own setting.
+		r.Post("/locale", setLocale)
 
 		authHandler.Routes(r)
 
@@ -1285,6 +1300,30 @@ func routes(
 // healthz reports whether the process can serve traffic. It checks the database
 // because an instance that cannot reach Postgres should be taken out of a load
 // balancer rather than left accepting requests it will fail.
+// setLocale remembers a visitor's language and sends them back where they were.
+//
+// The redirect target is validated by auth.SafeRedirect for the same reason the
+// login form's is: a `next` this handler will follow is an open redirect
+// otherwise, and a language switcher is a perfectly ordinary thing to put a
+// crafted link behind.
+func setLocale(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+
+	// Through users.ResolveLocale rather than straight to the cookie: it already
+	// normalises case and separator ("pt_BR", "PT-BR") and answers a bare "pt",
+	// so a hand-made request cannot store a tag the catalogues will ignore.
+	i18n.SetCookie(w, r, string(users.ResolveLocale(r.PostFormValue("locale"))))
+
+	next := r.PostFormValue("next")
+	if !auth.SafeRedirect(next) {
+		next = "/"
+	}
+	http.Redirect(w, r, next, http.StatusSeeOther)
+}
+
 func healthz(pool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
