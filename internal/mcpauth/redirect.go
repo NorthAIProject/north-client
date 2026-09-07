@@ -158,3 +158,27 @@ func hasTraversal(path string) bool {
 	}
 	return false
 }
+
+// redirectHost is the host an authorization code will be delivered to, as the
+// consent screen shows it.
+//
+// The consent screen's anti-phishing line. A client names itself at
+// registration, so the name beside it is attacker-chosen and can claim
+// anything; the host is the one thing a hostile registration cannot fake,
+// because it is where the grant actually goes.
+//
+// Loopback is written as "this computer": "localhost" reads as jargon, and the
+// distinction a person needs is between something running on their own machine
+// and something on the internet.
+func redirectHost(raw string) string {
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Host == "" {
+		// Unreachable for a stored URI, which was validated before it was
+		// stored. Rendering the raw string would be worse than saying nothing.
+		return "an unknown destination"
+	}
+	if isLoopback(parsed) {
+		return "this computer"
+	}
+	return parsed.Hostname()
+}
