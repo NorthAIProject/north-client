@@ -177,6 +177,12 @@ func (s *Service) UpdateProfile(ctx context.Context, id uuid.UUID, p Profile) (U
 		errs = errs.Add("coaching_style", "Keep this under 1000 characters.")
 	}
 
+	// Locale gets timezone's treatment rather than tone's. The set of languages
+	// this build serves will change, and someone whose stored language was
+	// retired between releases should land back in English on their next save,
+	// not be blocked from editing their name.
+	locale := ResolveLocale(string(p.Locale))
+
 	if err := errs.OrNil(); err != nil {
 		return User{}, err
 	}
@@ -184,6 +190,7 @@ func (s *Service) UpdateProfile(ctx context.Context, id uuid.UUID, p Profile) (U
 	return s.repo.UpdateProfile(ctx, id, Profile{
 		DisplayName:   name,
 		Timezone:      tz,
+		Locale:        locale,
 		CoachingStyle: strings.TrimSpace(p.CoachingStyle),
 		CoachingTone:  tone,
 	})

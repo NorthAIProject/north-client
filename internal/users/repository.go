@@ -120,6 +120,7 @@ func (r *Repository) CredentialsByEmail(ctx context.Context, email string) (User
 type Profile struct {
 	DisplayName   string
 	Timezone      string
+	Locale        Locale
 	CoachingStyle string
 	CoachingTone  Tone
 }
@@ -135,12 +136,18 @@ func (r *Repository) UpdateProfile(ctx context.Context, id uuid.UUID, p Profile)
 		tone = ToneDefault
 	}
 
+	locale := p.Locale
+	if locale == "" {
+		locale = LocaleDefault
+	}
+
 	row, err := r.q.UpdateUserProfile(ctx, usersdb.UpdateUserProfileParams{
 		ID:            id,
 		DisplayName:   strings.TrimSpace(p.DisplayName),
 		Timezone:      p.Timezone,
 		CoachingStyle: style,
 		CoachingTone:  string(tone),
+		Locale:        string(locale),
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

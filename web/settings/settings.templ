@@ -32,6 +32,7 @@ import (
 type ProfileForm struct {
 	DisplayName   string
 	Timezone      string
+	Locale        users.Locale
 	CoachingStyle string
 	CoachingTone  users.Tone
 	Errors        map[string]string
@@ -48,10 +49,19 @@ func (f ProfileForm) tone() users.Tone {
 	return users.ToneDefault
 }
 
+// locale is the language to show as selected, defaulting for an account that
+// predates the field or a form built from a rejected submission.
+func (f ProfileForm) locale() users.Locale {
+	if f.Locale.Valid() {
+		return f.Locale
+	}
+	return users.LocaleDefault
+}
+
 // ProfileFormFor pre-fills from the signed-in user.
 func ProfileFormFor(u users.User) ProfileForm {
 	return ProfileForm{
-		DisplayName: u.DisplayName, Timezone: u.Timezone,
+		DisplayName: u.DisplayName, Timezone: u.Timezone, Locale: u.Locale,
 		CoachingStyle: u.CoachingStyle, CoachingTone: u.CoachingTone,
 	}
 }
@@ -267,6 +277,29 @@ templ profileCard(f ProfileForm) {
 						@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
 							{ f.fieldError("timezone") }
 						}
+					}
+				}
+				@form.Item() {
+					@label.Label(label.Props{For: "locale"}) {
+						Language
+					}
+					// Each language is named in itself. Somebody who has ended
+					// up in the wrong one cannot read "Portuguese (Brazil)" to
+					// find their way out.
+					@selectbox.SelectBox() {
+						@selectbox.Trigger(selectbox.TriggerProps{ID: "locale", Name: "locale", HasError: f.fieldError("locale") != ""}) {
+							@selectbox.Value(selectbox.ValueProps{Placeholder: "Choose a language"})
+						}
+						@selectbox.Content(selectbox.ContentProps{}) {
+							for _, l := range users.Locales {
+								@selectbox.Item(selectbox.ItemProps{Value: string(l), Selected: f.locale() == l}) {
+									{ l.Label() }
+								}
+							}
+						}
+					}
+					@form.Description() {
+						Khepri answers you in this language. The exercise catalogue stays in English for now.
 					}
 				}
 				@form.Item() {

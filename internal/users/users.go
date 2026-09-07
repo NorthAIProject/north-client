@@ -87,6 +87,88 @@ func (t Tone) Valid() bool {
 	return slices.Contains(Tones, t)
 }
 
+// Locale is the language Khepri speaks to a user in.
+//
+// A closed set, like Tone: the prompt builder and every template need a value
+// they can render, and an unrecognised tag has to resolve to something rather
+// than render nothing.
+//
+// Portuguese is carried as two locales rather than one. pt-PT and pt-BR diverge
+// most in exactly the vocabulary this product uses all day — a Brazilian
+// reading European gym copy notices in the first sentence — so folding them
+// into "pt" would make the feature worse for whichever half lost the coin toss.
+type Locale string
+
+const (
+	LocaleEN   Locale = "en"
+	LocalePTPT Locale = "pt-PT"
+	LocalePTBR Locale = "pt-BR"
+	LocaleES   Locale = "es"
+
+	// LocaleDefault matches the column default in the migration.
+	LocaleDefault = LocaleEN
+)
+
+// Locales is every language a user may choose, in the order settings shows them.
+var Locales = []Locale{LocaleEN, LocalePTPT, LocalePTBR, LocaleES}
+
+// Label is the language's own name for itself, which is the only name a person
+// looking for it will recognise. Someone who has landed in the wrong language
+// cannot read "Portuguese (Brazil)" to escape it.
+func (l Locale) Label() string {
+	switch l {
+	case LocalePTPT:
+		return "Português (Portugal)"
+	case LocalePTBR:
+		return "Português (Brasil)"
+	case LocaleES:
+		return "Español"
+	default:
+		return "English"
+	}
+}
+
+// Language is the name of the language for a prompt, in English, so the model
+// is told plainly which variety to answer in.
+func (l Locale) Language() string {
+	switch l {
+	case LocalePTPT:
+		return "European Portuguese (pt-PT)"
+	case LocalePTBR:
+		return "Brazilian Portuguese (pt-BR)"
+	case LocaleES:
+		return "Spanish (es)"
+	default:
+		return "English (en)"
+	}
+}
+
+// Valid reports whether the locale is one this build knows.
+func (l Locale) Valid() bool {
+	return slices.Contains(Locales, l)
+}
+
+// ResolveLocale maps anything stored or submitted onto a locale this build
+// serves, falling back to English.
+//
+// Case and separator are both normalised: browsers and hand-written requests
+// send "pt-br", "pt_BR" and "PT-BR" for the same thing, and a person should not
+// lose their language to a hyphen.
+func ResolveLocale(s string) Locale {
+	normalised := strings.ReplaceAll(strings.TrimSpace(s), "_", "-")
+	for _, l := range Locales {
+		if strings.EqualFold(normalised, string(l)) {
+			return l
+		}
+	}
+	// A bare "pt" is ambiguous by design, but refusing to answer it would be
+	// worse than picking: European Portuguese is the older tag's usual meaning.
+	if strings.EqualFold(normalised, "pt") {
+		return LocalePTPT
+	}
+	return LocaleDefault
+}
+
 // User is the domain view of an account. It excludes the password hash: nothing
 // outside internal/auth has any business reading it, and leaving it off the
 // type means it cannot be leaked into a template or a log line by accident.
@@ -95,6 +177,9 @@ type User struct {
 	Email       string
 	DisplayName string
 	Timezone    string
+
+	// Locale is the language every surface renders in and the coach answers in.
+	Locale Locale
 
 	// CoachingStyle is the user's own description of how they want to be
 	// coached. Empty until they set one.
@@ -144,10 +229,13 @@ func (u User) FirstName() string {
 
 func fromDB(row usersdb.User) User {
 	u := User{
-		ID:           row.ID,
-		Email:        row.Email,
-		DisplayName:  row.DisplayName,
-		Timezone:     row.Timezone,
+		ID:          row.ID,
+		Email:       row.Email,
+		DisplayName: row.DisplayName,
+		Timezone:    row.Timezone,
+		// Resolved rather than cast: a tag this build no longer serves must
+		// still render as something, and English is the safe read.
+		Locale:       ResolveLocale(row.Locale),
 		CoachingTone: Tone(row.CoachingTone),
 		Tier:         Tier(row.Tier),
 		CreatedAt:    row.CreatedAt,

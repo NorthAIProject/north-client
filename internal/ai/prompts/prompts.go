@@ -29,6 +29,7 @@ var (
 const (
 	CoachSystem         = "coach_system.md"
 	CoachTone           = "coach_tone.md"
+	CoachLanguage       = "coach_language.md"
 	WorkoutPlan         = "workout_plan.md"
 	FormAnalysis        = "form_analysis.md"
 	ConversationTitle   = "conversation_title.md"

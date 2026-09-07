@@ -91,3 +91,62 @@ func TestReflectionPromptCarriesTheTone(t *testing.T) {
 		t.Fatal("reflection prompt ignored the chosen tone")
 	}
 }
+
+// Each language reaches the model as its own instruction, above the facts, and
+// names the variety rather than just "Portuguese".
+func TestCoachPromptCarriesTheChosenLanguage(t *testing.T) {
+	cases := map[users.Locale]string{
+		users.LocaleEN:   "English (en)",
+		users.LocalePTPT: "European Portuguese (pt-PT)",
+		users.LocalePTBR: "Brazilian Portuguese (pt-BR)",
+		users.LocaleES:   "Spanish (es)",
+	}
+
+	for locale, want := range cases {
+		prompt := promptFor(t, users.User{DisplayName: "Ana", Locale: locale})
+
+		if !strings.Contains(prompt, "Answer in "+want) {
+			t.Errorf("locale %q: prompt does not ask for %q", locale, want)
+		}
+
+		langAt := strings.Index(prompt, "## Language")
+		contextAt := strings.Index(prompt, "## CONTEXT")
+		switch {
+		case langAt < 0:
+			t.Errorf("locale %q: no language section", locale)
+		case contextAt < 0:
+			t.Errorf("locale %q: no context block", locale)
+		case langAt > contextAt:
+			t.Errorf("locale %q: language section sits inside the context block", locale)
+		}
+	}
+}
+
+// The catalogue is English-only, so a translated exercise name cannot be looked
+// up again by anyone. Every non-English locale has to be told to leave them be.
+func TestNonEnglishPromptKeepsCatalogueNamesInEnglish(t *testing.T) {
+	for _, locale := range []users.Locale{users.LocalePTPT, users.LocalePTBR, users.LocaleES} {
+		prompt := promptFor(t, users.User{DisplayName: "Ana", Locale: locale})
+		if !strings.Contains(prompt, "stay in English") {
+			t.Errorf("locale %q: nothing pins catalogue names to English", locale)
+		}
+	}
+
+	// English does not need the caveat, and carrying it would spend prompt
+	// budget telling the model to leave English names in English.
+	prompt := promptFor(t, users.User{DisplayName: "Ana", Locale: users.LocaleEN})
+	if strings.Contains(prompt, "stay in English") {
+		t.Error("the English prompt carries the translation caveat it cannot need")
+	}
+}
+
+// An account from before the column existed, or one holding a language this
+// build has retired, still gets answered rather than getting an empty section.
+func TestCoachPromptFallsBackToEnglish(t *testing.T) {
+	for _, locale := range []users.Locale{"", "kl-GL"} {
+		prompt := promptFor(t, users.User{DisplayName: "Ana", Locale: locale})
+		if !strings.Contains(prompt, "Answer in English (en)") {
+			t.Errorf("locale %q: expected English as the fallback", locale)
+		}
+	}
+}

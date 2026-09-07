@@ -332,7 +332,7 @@ func (q *Queries) GetPasswordResetToken(ctx context.Context, tokenHash []byte) (
 }
 
 const getSessionUser = `-- name: GetSessionUser :one
-SELECT u.id, u.email, u.password_hash, u.display_name, u.timezone, u.coaching_style, u.created_at, u.updated_at, u.tier, u.onboarded_at, u.coaching_tone, s.expires_at, s.last_seen_at
+SELECT u.id, u.email, u.password_hash, u.display_name, u.timezone, u.coaching_style, u.created_at, u.updated_at, u.tier, u.onboarded_at, u.coaching_tone, u.locale, s.expires_at, s.last_seen_at
 FROM sessions s
 JOIN users u ON u.id = s.user_id
 WHERE s.token_hash = $1
@@ -363,6 +363,7 @@ func (q *Queries) GetSessionUser(ctx context.Context, tokenHash []byte) (GetSess
 		&i.User.Tier,
 		&i.User.OnboardedAt,
 		&i.User.CoachingTone,
+		&i.User.Locale,
 		&i.ExpiresAt,
 		&i.LastSeenAt,
 	)
