@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/NorthAIProject/north-client/internal/analytics"
 	authdb "github.com/NorthAIProject/north-client/internal/auth/db"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
@@ -231,6 +232,9 @@ func (s *Service) PasskeyRegisterFinish(ctx context.Context, in PasskeyRegisterF
 	if err != nil {
 		return users.User{}, "", err
 	}
+
+	s.funnel.Registered(ctx, user.ID, analytics.ViaPasskey)
+
 	return user, token, nil
 }
 

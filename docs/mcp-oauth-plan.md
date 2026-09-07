@@ -1,7 +1,34 @@
 # Phase 3 — OAuth for the MCP endpoint
 
-Written 2026-08-14, after phases 1 and 2 shipped. This is a decision record and
-a starting point, not a build order. Nothing here is implemented.
+> **Superseded 2026-09-07.** Built. `internal/mcpauth` is the authorization
+> server, `web/mcpauth` is the consent screen, and `/mcp`'s 401 now carries a
+> `resource_metadata` pointer. The four open decisions this document ends on
+> are answered at the bottom, along with the scoreboard the work is judged by.
+>
+> **The recommendation below was overridden, and the reason matters.** It says
+> not yet, because this is supply-side work and the measurement that matters is
+> the strangers count. That was correct for the flow described here, where the
+> user is *already signed in* before consent (see "The flow OAuth replaces it
+> with", below): under that assumption OAuth only removes friction for people
+> who are already users, which is polish.
+>
+> What was built inverts it. **The consent screen creates the account.** That
+> makes it the top of the funnel rather than a step after it — one URL in a
+> tweet is simultaneously the advertisement, the signup and the install — and
+> that is the only reason it was worth building before the strangers count
+> moved. If the `account_created` row of the scoreboard comes back near zero,
+> this document was right and it was polish after all.
+>
+> Three departures from the design here, each recorded where it applies:
+> `issuance` is its own column rather than a fifth `client_kind`; refresh
+> tokens are hashed rather than sealed; and one `agent_connections` row is one
+> *grant* rather than one access token.
+
+Written 2026-08-14, after phases 1 and 2 shipped. This was a decision record
+and a starting point, not a build order — everything below the superseding note
+is as it was written then, when nothing here was implemented. It is kept in the
+present tense it was written in, because the reasoning is what the note above
+is arguing with.
 
 Read `docs/byok-plan.md` first if you want the reasoning behind the outbound
 half; this document is only about the inbound one.
@@ -141,3 +168,85 @@ Build this when a non-technical person has tried to connect an agent and
 failed. That is a real signal, it is cheap to wait for, and it will also tell
 you which client they were using — which decides more of the design than
 anything in this document.
+
+---
+
+## The four decisions, answered
+
+Written 2026-09-07, when the work shipped. The questions are this document's
+own, from "Decisions to make before starting".
+
+| Decision | Answer | Why |
+| --- | --- | --- |
+| **Do scopes ship with OAuth, or after it?** | **With it. Two:** `north:read` and `north:read_write`, defaulting to read-write. | The machinery already existed — `Registry.IsReadOnly` was consumed for the `ReadOnlyHint` annotation — so enforcement was a filter at registration rather than new logic. And retrofitting later would have meant a *second* migration against live credentials, which is exactly the phase-1 regret recorded above. Read-write is the default because every hand-issued token is that, and a connector that cannot log a check-in is not the product. Nothing finer: a vocabulary needs a reason. |
+| **How long is an access token good for?** | **One hour.** Refresh: 30 days, single use, rotating, sliding. | The usual answer, and right. An hour bounds a leak. Sliding means an actively used connection never expires and an abandoned one dies in a month, which is also the natural sweep. |
+| **Does dynamic client registration stay open?** | **Yes.** Bounded six ways. | Gating it would put a human step in the middle of the one-URL flow, which is the whole feature. The bounds: a per-IP rate limit; public clients only, so there is never a secret to leak; field bounds on everything a client names itself; a dedupe key, so a stable callback registers once; a sweep for registrations that never produced a grant; and a hard ceiling that fails loudly rather than evicting silently. |
+| **What happens to the pasted-token path?** | **Kept, and demoted.** | Headless machines have no browser, and `cmd/mcp-server`'s tailnet deployment depends on it. This document calls the two-ways-to-connect problem "a design problem rather than an engineering one", and the design answer was to stop presenting them as peers: the settings page leads with the URL and puts manual issuance behind "No browser on that machine?". |
+
+## What this document got right, and one thing it got wrong
+
+Right, and load-bearing: every phase-1 invariant in "What phase 1 got right,
+and must stay right" held. The byte-identical 401 survived — with one
+correction, below. `/mcp` staying outside the CSRF group was the right place
+for discovery and the token endpoint. No token→user cache meant short-lived
+tokens needed no invalidation. Per-account throttling meant OAuth multiplying
+tokens per user changed nothing.
+
+Wrong, and happily so: it predicts "an OAuth token verifier is a third
+implementation next to `StaticAuthenticator` and `connections.Service`". It is
+not. Because grants live in `agent_connections` and their access tokens carry
+the same `nk_` prefix, `connections.Service.Authenticate` authenticates them
+with no change beyond one query predicate. What was actually missing was the
+*scope*, so `Authenticate` became a wrapper over a new `AuthenticateScoped`.
+The seam held better than its author expected.
+
+Three things this document does not mention, which cost real time:
+
+- **CORS.** Claude's web client performs discovery and the token exchange from
+  its own page. Without permissive CORS on the machine endpoints it fails with
+  nothing visible in the response. `MCP_ALLOWED_ORIGINS` is still empty, so
+  the browser client is deliberately not supported yet — Claude Code, Claude
+  Desktop and Codex send no `Origin` and work unchanged.
+- **Clickjacking.** There is no CSP anywhere in this application, so every
+  page is framable, and a framable consent screen is a textbook target. The
+  consent routes set `X-Frame-Options` and `frame-ancestors 'none'`. **The
+  broader absence is still a follow-up.**
+- **The 401 invariant was never actually tested.** The existing test asserted
+  only that `WWW-Authenticate` was non-empty. It now asserts byte equality
+  across every failure mode.
+
+## The scoreboard
+
+House style follows `advanced-gamification.md`: a number, where it is read
+from, and a threshold. Two thresholds per row here, because a demand test has
+to be able to say *failed* as clearly as it says *worked*.
+
+**Window: four weeks from the first public link.**
+
+| Number | Read from | Worked | Failed |
+|---|---|---|---|
+| Strangers who reached consent | `mcp_authorize_started` where the distinct id has no prior `user_registered` | ≥ 20 | < 5 — nobody saw the URL. The problem is distribution, and no amount of OAuth work fixes it |
+| Consent conversion | `mcp_consent_approved` ÷ `mcp_authorize_started` | ≥ 60% | < 30% — the screen is scaring people, or the form inside it is too long |
+| **Accounts created inside consent** | `mcp_consent_approved{account_created:true}` | ≥ 8, and ≥ 40% of approvals | ~0 — everyone who connects already had an account. This was supply-side polish and the recommendation above was right |
+| Share of all new accounts | `user_registered{via:oauth_consent}` vs every other `via` | ≥ 25% | < 5% — the acquisition claim is unsupported; `/signup` is still the front door |
+| Tokens that get used | distinct connections with `mcp_tool_called` within 24h of `mcp_token_issued` | ≥ 80% | < 50% — the client stored a token and the tools are not discoverable or not useful |
+| Second-day agent use | connections with `mcp_tool_called` on two distinct local days | ≥ 5 accounts | ≤ 1 — a novelty, not a habit |
+| Return to the web app | `$pageview` on `/app/*` within 7 days, for `via:oauth_consent` | ≥ 30% | < 10% — the account is an API key with a login page attached; revisit the onboarding decision in `onboarding.SeedForAgent` |
+| **Guardrail:** registration abuse | `mcp_client_registered` per day vs `mcp_authorize_started` per day | ratio under ~3:1 | > 200/day with no matching authorizes — open registration is being farmed; lower the ceiling and the rate limit |
+
+Two rows are the verdict. **Accounts created inside consent** decides whether
+overriding the recommendation above was justified. **Consent conversion**
+decides whether the screen is any good. Everything else is diagnosis.
+
+## Still outstanding
+
+- **claude.ai as a client.** Needs `https://claude.ai` in
+  `MCP_ALLOWED_ORIGINS`, which is a one-line values change and should be a
+  deliberate one rather than an accident.
+- **A general CSP.** The consent screen is covered; nothing else is.
+- **Audit attribution.** An OAuth token's writes reach `toolaudit` with
+  `SurfaceMCP`, but not *which* connection did it. `/app/settings/activity`
+  could name the agent.
+- **The six tools defined in `internal/mcpserver`** are not audited and do not
+  emit `mcp_tool_called`; only the shared registry's are. Moving them into the
+  registry is the follow-up that removes the split, as that file already says.

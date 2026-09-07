@@ -31,6 +31,16 @@ func Locale(next http.Handler) http.Handler {
 	})
 }
 
+// WithPath overrides the path a component links back to.
+//
+// For a page rendered in response to a request whose own URL should not be
+// reflected back into it — the OAuth error page, where the query string
+// contains an unvalidated redirect_uri that the language switcher would
+// otherwise carry in a form action.
+func WithPath(ctx context.Context, path string) context.Context {
+	return pathKey.set(ctx, path)
+}
+
 // Path is the request's path and query, for a component that has to link or
 // post back to it. Empty when nothing set it, which a caller should treat as
 // "no known page" rather than as the root.

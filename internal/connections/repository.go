@@ -3,6 +3,7 @@ package connections
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -30,6 +31,55 @@ func (r *Repository) Insert(ctx context.Context, userID uuid.UUID, name string, 
 		return Connection{}, apperr.Wrap(err, "insert agent connection")
 	}
 	return fromDB(row), nil
+}
+
+// InsertGrant stores a connection approved through the OAuth consent screen.
+//
+// The same table as a pasted token, which is what keeps one revoke button
+// covering both kinds and the settings page free of a second list.
+func (r *Repository) InsertGrant(ctx context.Context, in GrantRow) (Connection, error) {
+	// NULL rather than the empty string. The column is a foreign key, and ""
+	// is a value that satisfies no row — it fails the constraint instead of
+	// meaning "no client recorded", which is what an absent id means.
+	var clientID *string
+	if in.OAuthClientID != "" {
+		clientID = &in.OAuthClientID
+	}
+
+	row, err := r.q.InsertOAuthGrant(ctx, connectionsdb.InsertOAuthGrantParams{
+		UserID:        in.UserID,
+		Name:          in.Name,
+		ClientKind:    string(in.Kind),
+		TokenHash:     in.TokenHash,
+		TokenPrefix:   in.TokenPrefix,
+		Scopes:        in.Scopes,
+		ExpiresAt:     &in.ExpiresAt,
+		Resource:      in.Resource,
+		OauthClientID: clientID,
+	})
+	if err != nil {
+		return Connection{}, apperr.Wrap(err, "insert oauth grant")
+	}
+	return fromDB(row), nil
+}
+
+// RotateToken swaps in a freshly issued access token for an existing grant.
+//
+// Returns ErrNotFound when the grant is revoked, missing, or was issued by
+// hand — a pasted token has no refresh flow and must not acquire one here.
+func (r *Repository) RotateToken(ctx context.Context, id uuid.UUID, tokenHash []byte, expiresAt time.Time) error {
+	rows, err := r.q.RotateAgentConnectionToken(ctx, connectionsdb.RotateAgentConnectionTokenParams{
+		ID:        id,
+		TokenHash: tokenHash,
+		ExpiresAt: &expiresAt,
+	})
+	if err != nil {
+		return apperr.Wrap(err, "rotate agent connection token")
+	}
+	if rows == 0 {
+		return apperr.ErrNotFound
+	}
+	return nil
 }
 
 func (r *Repository) List(ctx context.Context, userID uuid.UUID) ([]Connection, error) {
@@ -68,6 +118,19 @@ func (r *Repository) Touch(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
+// RevokeGrant turns a connection off by id alone. See the query's comment for
+// why that is safe here and nowhere near a form.
+func (r *Repository) RevokeGrant(ctx context.Context, id uuid.UUID) error {
+	rows, err := r.q.RevokeGrantByID(ctx, id)
+	if err != nil {
+		return apperr.Wrap(err, "revoke grant")
+	}
+	if rows == 0 {
+		return apperr.ErrNotFound
+	}
+	return nil
+}
+
 // Revoke turns a connection off. Scoped by user as well as id, so an id
 // guessed from someone else's page revokes nothing.
 func (r *Repository) Revoke(ctx context.Context, id, userID uuid.UUID) error {
@@ -90,5 +153,8 @@ func fromDB(row connectionsdb.AgentConnection) Connection {
 		TokenPrefix: row.TokenPrefix,
 		CreatedAt:   row.CreatedAt,
 		LastUsedAt:  row.LastUsedAt,
+		Scopes:      row.Scopes,
+		ExpiresAt:   row.ExpiresAt,
+		Issuance:    Issuance(row.Issuance),
 	}
 }

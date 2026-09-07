@@ -126,7 +126,7 @@ func TestConnectionsRendersInTheChosenLanguage(t *testing.T) {
 		page := ConnectionsPage(
 			users.User{DisplayName: "Ana", Locale: locale},
 			nil, ConnectForm{}, nil, connections.Setup{}, nil, ProviderPanel{},
-			TelegramPanel{}, CalendarPanel{},
+			TelegramPanel{}, CalendarPanel{}, "https://north.example.com/mcp",
 		)
 		if err := page.Render(ctx, &b); err != nil {
 			t.Fatalf("render %s: %v", locale, err)

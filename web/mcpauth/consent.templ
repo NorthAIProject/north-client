@@ -1,0 +1,208 @@
+// Package mcpauth renders the agent consent screen.
+//
+// The one page in the application that is simultaneously an advertisement, a
+// signup form and an install step: somebody who has never heard of Khepri
+// pastes its MCP URL into a client they already use, and this is what they
+// see. It is written for that person rather than for somebody who already has
+// an account.
+package mcpauth
+
+import (
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
+	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/alert"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+)
+
+// ConsentForm is everything the screen renders from.
+type ConsentForm struct {
+	RequestID string
+
+	// ClientName is chosen by whoever registered the client, so it is
+	// attacker-controlled. templ escapes it; what makes it safe to *show* is
+	// that RedirectHost sits directly beneath it.
+	ClientName string
+
+	// RedirectHost is where the access actually goes, in plain words. This is
+	// the anti-phishing line: a registration calling itself "Khepri Official
+	// Sync" cannot also change where the grant is delivered.
+	RedirectHost string
+	IsLoopback   bool
+
+	// Email is set when somebody is already signed in. Empty renders the
+	// account block instead, which is the whole novelty of this screen.
+	Email string
+
+	// ReadOnlyRequested reflects what the client asked for, and the toggle
+	// defaults to it. A person may narrow the grant here but never widen it.
+	ReadOnlyRequested bool
+
+	// Account carries the inline signup or sign-in state.
+	Account AccountForm
+}
+
+// Page is the consent screen.
+templ Page(f ConsentForm) {
+	@layout.AuthWide(i18n.T(ctx, "oauth.title")) {
+		<div id="consent-card">
+			@consentCard(f)
+		</div>
+	}
+}
+
+// Card is the swappable fragment. The account block posts back and replaces
+// this, so a failed signup re-renders in place rather than losing the request.
+templ Card(f ConsentForm) {
+	<div id="consent-card">
+		@consentCard(f)
+	</div>
+}
+
+templ consentCard(f ConsentForm) {
+	@card.Card() {
+		@card.Header() {
+			@card.Title() {
+				{ i18n.Tf(ctx, "oauth.asking", f.ClientName) }
+			}
+			@card.Description() {
+				// Second, and deliberately close to the name above it. The
+				// name is whatever the client called itself; this is not.
+				if f.IsLoopback {
+					{ i18n.T(ctx, "oauth.destination.local") }
+				} else {
+					{ i18n.Tf(ctx, "oauth.destination", f.RedirectHost) }
+				}
+			}
+		}
+		@card.Content() {
+			if f.Email == "" {
+				@Account(f)
+			} else {
+				@signedInBlock(f)
+			}
+		}
+	}
+	<p class="mt-4 text-center text-xs text-muted-foreground">
+		{ i18n.T(ctx, "oauth.revoke.note") }
+	</p>
+}
+
+templ signedInBlock(f ConsentForm) {
+	<div class="mb-6 flex items-center justify-between gap-3 rounded-md border border-hairline bg-surface px-3 py-2">
+		<span class="text-sm">{ i18n.Tf(ctx, "oauth.account.signed-in", f.Email) }</span>
+		<form method="post" action="/logout" class="shrink-0">
+			@ui.CSRFInput()
+			<input type="hidden" name="next" value={ resumePath(f.RequestID) }/>
+			<button type="submit" class="text-xs text-muted-foreground underline hover:text-foreground">
+				{ i18n.T(ctx, "oauth.account.notyou") }
+			</button>
+		</form>
+	</div>
+	@capabilities(f.ReadOnlyRequested)
+	<form method="post" action={ templ.SafeURL("/oauth/authorize?request_id=" + f.RequestID) } class="mt-6 space-y-4">
+		@ui.CSRFInput()
+		@readOnlyToggle(f.ReadOnlyRequested)
+		<div class="flex gap-3">
+			// Approve is a deliberate act, and nothing auto-submits this form.
+			// A crafted authorize link plus an auto-submit would be a one-click
+			// grant.
+			@button.Button(button.Props{
+				Type:      button.TypeSubmit,
+				FullWidth: true,
+				Class:     "bg-signal text-background hover:bg-signal/90",
+				Attributes: templ.Attributes{"name": "decision", "value": "approve"},
+			}) {
+				{ i18n.T(ctx, "oauth.approve") }
+			}
+			@button.Button(button.Props{
+				Type:      button.TypeSubmit,
+				Variant:   button.VariantOutline,
+				FullWidth: true,
+				Attributes: templ.Attributes{"name": "decision", "value": "deny"},
+			}) {
+				{ i18n.T(ctx, "oauth.deny") }
+			}
+		</div>
+	</form>
+}
+
+// capabilities says what the agent will be able to do, in sentences.
+//
+// Not scope strings. docs/mcp-oauth-plan.md is right that a screen saying only
+// "Approve?" is a screen nobody reads, and "north:read_write" is the same
+// screen with more characters.
+templ capabilities(readOnly bool) {
+	<div class="space-y-2">
+		<p class="text-xs uppercase tracking-wide text-muted-foreground">
+			{ i18n.T(ctx, "oauth.can.title") }
+		</p>
+		<ul class="space-y-1.5 text-sm text-muted-foreground">
+			<li>{ i18n.T(ctx, "oauth.can.read") }</li>
+			if readOnly {
+				<li class="text-foreground">{ i18n.T(ctx, "oauth.can.readonly.note") }</li>
+			} else {
+				<li>{ i18n.T(ctx, "oauth.can.write") }</li>
+			}
+		</ul>
+	</div>
+}
+
+// readOnlyToggle lets a person narrow the grant.
+//
+// A plain checkbox rather than the component, because it drives the sentences
+// above it live and that needs one Alpine expression sharing state with them.
+// Hand-rolled for that reason; everything else on this page is templUI.
+templ readOnlyToggle(readOnlyRequested bool) {
+	<label class="flex items-start gap-2.5 rounded-md border border-hairline bg-surface px-3 py-2.5">
+		<input
+			type="checkbox"
+			name="read_only"
+			value="1"
+			checked?={ readOnlyRequested }
+			class="mt-0.5 size-4 rounded border-hairline accent-signal"
+		/>
+		<span class="text-sm">
+			<span class="font-medium">{ i18n.T(ctx, "oauth.readonly.label") }</span>
+			<span class="block text-xs text-muted-foreground">
+				{ i18n.T(ctx, "oauth.readonly.hint") }
+			</span>
+		</span>
+	</label>
+}
+
+// ErrorPage is a failure that must not be redirected anywhere.
+//
+// Rendered rather than sent to the client's callback, because these are
+// exactly the cases where the callback is not trustworthy: an unregistered
+// client, or a destination the client never registered.
+templ ErrorPage(reason string) {
+	@layout.Auth(i18n.T(ctx, "oauth.error.title")) {
+		@card.Card() {
+			@card.Header() {
+				@card.Title() {
+					{ i18n.T(ctx, "oauth.error.title") }
+				}
+			}
+			@card.Content() {
+				@alert.Alert(alert.Props{Variant: alert.VariantDestructive}) {
+					@alert.Description() {
+						{ reason }
+					}
+				}
+				<div class="mt-6">
+					@button.Button(button.Props{Href: "/", Variant: button.VariantOutline, FullWidth: true}) {
+						{ i18n.T(ctx, "oauth.error.home") }
+					}
+				</div>
+			}
+		}
+	}
+}
+
+// resumePath is where Google and passkey return to. The request id is the only
+// thing carried; every OAuth parameter stays on the server.
+func resumePath(requestID string) string {
+	return "/oauth/authorize/resume?request_id=" + requestID
+}

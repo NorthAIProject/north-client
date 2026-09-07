@@ -15,6 +15,7 @@ import (
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 
+	"github.com/NorthAIProject/north-client/internal/analytics"
 	authdb "github.com/NorthAIProject/north-client/internal/auth/db"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
@@ -168,6 +169,13 @@ func (s *Service) FindOrCreateGoogleUser(ctx context.Context, profile GoogleProf
 	if err := s.linkGoogleIdentity(ctx, user.ID, profile); err != nil {
 		return users.User{}, err
 	}
+
+	// Only here. Every earlier return in this function resolved to an account
+	// that already existed — a linked identity, an email match, or the
+	// ErrConflict race below the Register call — and counting those would
+	// overstate the top of the funnel in exchange for fixing the undercount.
+	s.funnel.Registered(ctx, user.ID, analytics.ViaGoogle)
+
 	return user, nil
 }
 

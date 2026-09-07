@@ -11,13 +11,18 @@ import (
 )
 
 type AgentConnection struct {
-	ID          uuid.UUID
-	UserID      uuid.UUID
-	Name        string
-	ClientKind  string
-	TokenHash   []byte
-	TokenPrefix string
-	CreatedAt   time.Time
-	LastUsedAt  *time.Time
-	RevokedAt   *time.Time
+	ID            uuid.UUID
+	UserID        uuid.UUID
+	Name          string
+	ClientKind    string
+	TokenHash     []byte
+	TokenPrefix   string
+	CreatedAt     time.Time
+	LastUsedAt    *time.Time
+	RevokedAt     *time.Time
+	Scopes        string
+	ExpiresAt     *time.Time
+	Issuance      string
+	Resource      string
+	OauthClientID *string
 }

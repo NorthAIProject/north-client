@@ -29,6 +29,7 @@ grep -oE 'from"[^".][^"]*"' web/assets/js/vendor/<file> | grep -v 'from"\.'
 | `hx-alpine-compat.min.js` | htmx.org | 4.0.0 | Zero-Clause BSD | `dist/ext/hx-alpine-compat.min.js` at tag v4.0.0 |
 | `hx-sse.min.js` | htmx.org | 4.0.0 | Zero-Clause BSD | `dist/ext/hx-sse.min.js` at tag v4.0.0 |
 | `echarts.min.js` | echarts | 5.5.1 | Apache-2.0 | `https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js` |
+| `posthog.min.js` | posthog-js | 1.428.2 | Apache-2.0 | `https://cdn.jsdelivr.net/npm/posthog-js@1.428.2/dist/array.full.js` |
 
 † The three.js files predate this README and carry no version string. r169 is **inferred**
 from a revision constant in the bundle and its `Copyright 2010-2024` header — treat it as
@@ -72,3 +73,17 @@ is why the ESM bundle has no imports at all. Set `window.gsap = gsap` before cal
 **GSAP core + ScrollTrigger** are free under the GreenSock standard license for the use
 North makes of them. That license does have terms — read it before using GSAP in anything
 sold as a product with its own end users.
+
+**posthog-js** must stay the `array.full.js` build. The default `array.js` loads
+`recorder.js`, `surveys.js` and other bundles from PostHog's asset CDN the first time a
+feature needs one, which is exactly the runtime third-party request this directory exists
+to prevent. `array.full.js` inlines them, at the cost of being large.
+
+One external loader survives even in the full build — the one that fetches the PostHog
+toolbar — so the configuration in `web/shared/layout/base.templ` sets
+`disable_external_dependency_loading: true`. With it, a request for the toolbar logs a
+warning instead of injecting a script. **Keep that flag** through any upgrade.
+
+Analytics ingestion itself does leave the browser, to `POSTHOG_HOST`. That is a request
+North deliberately makes rather than a dependency it failed to vendor, and the privacy
+policy names it.

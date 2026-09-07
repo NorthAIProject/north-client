@@ -321,3 +321,129 @@ func TestValidateAnswers(t *testing.T) {
 		t.Fatalf("category = %q", answers.GoalCategory)
 	}
 }
+
+// An account created inside the OAuth consent screen gets the smallest honest
+// profile. This test is mostly about what it does NOT write: an agent reads
+// this account, and anything invented here is something the person cannot
+// explain.
+func TestSeedForAgentWritesTheSmallestHonestProfile(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	user := seedUser(t, pool, "seed-for-agent@north.test")
+	svc := newSvc(pool)
+
+	seeded, err := svc.SeedForAgent(ctx, user, "Claude Code")
+	if err != nil {
+		t.Fatalf("seed for agent: %v", err)
+	}
+
+	if seeded.NeedsOnboarding() {
+		t.Error("the account still needs onboarding; its agent would be sent to a wizard")
+	}
+	if seeded.CoachingStyle != onboarding.StyleText(onboarding.StyleDirect) {
+		t.Errorf("coaching style is %q, want the direct preset", seeded.CoachingStyle)
+	}
+
+	// No goal. Inventing one would put something in search_goals the person
+	// never set, which is worse for an agent than an empty list.
+	list, err := goals.NewService(goals.NewRepository(pool)).List(ctx, user.ID)
+	if err != nil {
+		t.Fatalf("list goals: %v", err)
+	}
+	if len(list) != 0 {
+		t.Errorf("seeding created %d goals, want none", len(list))
+	}
+
+	// Two pinned memories, and one has to tell the coach what it does not
+	// know — otherwise the first ask_coach reports an empty account.
+	mems, err := memories.NewService(memories.NewRepository(pool)).List(ctx, user.ID, 50)
+	if err != nil {
+		t.Fatalf("list memories: %v", err)
+	}
+	if len(mems) != 2 {
+		t.Fatalf("seeding created %d memories, want 2", len(mems))
+	}
+
+	var provenance string
+	for _, m := range mems {
+		if !m.Pinned {
+			t.Errorf("memory %q is not pinned; it would lose its claim on the context budget", m.Content)
+		}
+		if strings.Contains(m.Content, "Claude Code") {
+			provenance = m.Content
+		}
+	}
+	if provenance == "" {
+		t.Fatal("no memory records which agent the account was connected to")
+	}
+	if !strings.Contains(provenance, "ask about focus areas") {
+		t.Errorf("the provenance memory does not tell the coach to ask what it does "+
+			"not know, which is the whole point of it: %q", provenance)
+	}
+}
+
+// A client names itself at registration, so a name reaching a memory the coach
+// reads aloud is attacker-chosen and has to be bounded.
+func TestSeedForAgentBoundsTheClientName(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	user := seedUser(t, pool, "seed-bounds@north.test")
+
+	if _, err := newSvc(pool).SeedForAgent(ctx, user, strings.Repeat("A", 500)); err != nil {
+		t.Fatalf("seed for agent: %v", err)
+	}
+
+	mems, err := memories.NewService(memories.NewRepository(pool)).List(ctx, user.ID, 50)
+	if err != nil {
+		t.Fatalf("list memories: %v", err)
+	}
+	for _, m := range mems {
+		if len(m.Content) > 400 {
+			t.Errorf("a seeded memory is %d characters long", len(m.Content))
+		}
+	}
+}
+
+// The consent screen can be reached by somebody who signed up months ago, so
+// seeding an account that has already been onboarded must change nothing.
+func TestSeedForAgentLeavesAnOnboardedAccountAlone(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	user := seedUser(t, pool, "seed-already-onboarded@north.test")
+	svc := newSvc(pool)
+
+	completed, _, err := svc.Complete(ctx, user, onboarding.Answers{
+		FocusAreas:    []string{lifedomain.Fitness},
+		CoachingStyle: onboarding.StyleText(onboarding.StyleSupportive),
+		NearTermGoal:  "Run 5k",
+	})
+	if err != nil {
+		t.Fatalf("complete: %v", err)
+	}
+
+	memSvc := memories.NewService(memories.NewRepository(pool))
+	before, err := memSvc.List(ctx, user.ID, 50)
+	if err != nil {
+		t.Fatalf("list memories: %v", err)
+	}
+
+	if _, seedErr := svc.SeedForAgent(ctx, completed, "Claude Code"); seedErr != nil {
+		t.Fatalf("seed for agent: %v", seedErr)
+	}
+
+	after, err := memSvc.List(ctx, user.ID, 50)
+	if err != nil {
+		t.Fatalf("list memories: %v", err)
+	}
+	if len(after) != len(before) {
+		t.Errorf("seeding an onboarded account wrote %d new memories", len(after)-len(before))
+	}
+
+	reloaded, err := users.NewService(users.NewRepository(pool)).ByID(ctx, user.ID)
+	if err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if reloaded.CoachingStyle != completed.CoachingStyle {
+		t.Error("seeding overwrote a coaching style the person had chosen")
+	}
+}

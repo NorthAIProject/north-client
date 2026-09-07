@@ -58,6 +58,7 @@ func TestUntranslatedStringsAreAccountedFor(t *testing.T) {
 			"lifedomain.fitness":      true, // same borrowing as nav.fitness
 			"palette.empty.after":     true, // a full stop
 			"settings.prefs.imperial": true, // the system's name and both unit abbreviations are international
+			"oauth.new.email":         true, // "Email" is the ordinary pt-PT spelling; pt-BR uses "E-mail"
 		},
 		"pt-BR": {
 			"conn.tg.title":           true, // Telegram is a product name

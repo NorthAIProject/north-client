@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/a-h/templ"
+
+	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 )
 
 // Base is the outermost document, so anything wrong in it is wrong on every
@@ -91,5 +93,51 @@ func TestBaseDeclaresPWAChrome(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("document is missing %q", want)
 		}
+	}
+}
+
+// The analytics snippet is the one part of the document that must be able to
+// not be there. A deployment with no PostHog key renders nothing, and a
+// deployment with one renders its configuration as a JSON island rather than
+// as an inline object — because every value in it came from a request.
+func TestBaseRendersTheAnalyticsSnippetOnlyWhenConfigured(t *testing.T) {
+	render := func(ctx context.Context) string {
+		var b strings.Builder
+		child := templ.ComponentFunc(func(_ context.Context, _ io.Writer) error { return nil })
+		if err := Base("Home").Render(templ.WithChildren(ctx, child), &b); err != nil {
+			t.Fatalf("render: %v", err)
+		}
+		return b.String()
+	}
+
+	// Nothing mounted the middleware: no script, and no empty config island
+	// for a browser to trip over.
+	out := render(context.Background())
+	for _, unwanted := range []string{"posthog", "analytics-config"} {
+		if strings.Contains(strings.ToLower(out), unwanted) {
+			t.Errorf("an unconfigured document mentions %q", unwanted)
+		}
+	}
+
+	out = render(middleware.WithAnalytics(context.Background(), middleware.AnalyticsConfig{
+		APIKey: "phc_test",
+		Host:   "https://ph.example",
+	}))
+	for _, want := range []string{
+		`id="analytics-config"`,
+		"application/json",
+		"/assets/js/vendor/posthog.min.js",
+		"/assets/js/shared/analytics.js",
+		"phc_test",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("a configured document is missing %q", want)
+		}
+	}
+
+	// The configuration belongs in the JSON island. An inline init call would
+	// mean a request value had been spliced into a script body.
+	if strings.Contains(out, "posthog.init(") {
+		t.Error("the document inlines a posthog.init call; it belongs in analytics.js")
 	}
 }

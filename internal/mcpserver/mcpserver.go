@@ -23,6 +23,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/activity"
 	"github.com/NorthAIProject/north-client/internal/agent"
 	"github.com/NorthAIProject/north-client/internal/ai"
+	"github.com/NorthAIProject/north-client/internal/analytics"
 	"github.com/NorthAIProject/north-client/internal/checkins"
 	"github.com/NorthAIProject/north-client/internal/coach"
 	"github.com/NorthAIProject/north-client/internal/documents"
@@ -61,13 +62,37 @@ type Services struct {
 // The user is fixed for the life of the session rather than passed per call:
 // letting a caller name the user it wants to act as would make the bearer token
 // an authorisation bypass.
-func Register(s *mcp.Server, svc Services, user users.User) {
-	registerAgentCapabilities(s, svc.Agent, user)
+// scope is what the presented token may do. An empty scope means full access,
+// which is what every token issued before scopes existed carries.
+//
+// A read-only token has its write tools left unregistered rather than
+// refused at call time, so tools/list shows exactly what the token can do.
+// An agent plans from that list; one that advertises a tool and then rejects
+// every call to it is worse than one that never offered it.
+func Register(s *mcp.Server, svc Services, user users.User, scope string) {
+	RegisterWithFunnel(s, svc, user, scope, nil)
+}
+
+// RegisterWithFunnel is Register, reporting each call to the product funnel.
+//
+// A separate entry point rather than a sixth parameter on Register, because
+// every existing caller — the contract test, cmd/mcp-server's shape — wants
+// the plain one and analytics is not part of what those are testing.
+func RegisterWithFunnel(s *mcp.Server, svc Services, user users.User, scope string, funnel *analytics.Funnel) {
+	writes := writesAllowed(scope)
+
+	registerAgentCapabilities(s, svc.Agent, user, writes, scope, funnel)
 	registerGoals(s, svc, user)
 	registerCheckIns(s, svc, user)
 	registerKnowledge(s, svc, user)
 	registerFitness(s, svc, user)
-	registerCoach(s, svc, user)
+
+	// ask_coach is the only tool in this file that changes anything: it saves
+	// a conversation and spends money on a model call. The other five declare
+	// ReadOnlyHint and are safe for either scope.
+	if writes {
+		registerCoach(s, svc, user)
+	}
 }
 
 // registerAgentCapabilities publishes the shared registry over MCP.
@@ -76,12 +101,26 @@ func Register(s *mcp.Server, svc Services, user users.User) {
 // already described by ai.Schema, and going through a Go type just to have the
 // SDK infer the schema back would mean two descriptions of every tool's
 // arguments — the duplication internal/agent exists to avoid.
-func registerAgentCapabilities(s *mcp.Server, registry *agent.Registry, user users.User) {
+func registerAgentCapabilities(
+	s *mcp.Server,
+	registry *agent.Registry,
+	user users.User,
+	writes bool,
+	scope string,
+	funnel *analytics.Funnel,
+) {
 	if registry == nil {
 		return
 	}
 
 	for _, tool := range registry.Tools() {
+		// The registry already knows which capabilities only read — it is the
+		// same answer the ReadOnlyHint annotation below carries, so a
+		// read-only session needs no second list to maintain.
+		if !writes && !registry.IsReadOnly(tool.Name) {
+			continue
+		}
+
 		schema, err := json.Marshal(ai.JSONSchema(tool.Parameters))
 		if err != nil {
 			// Only reachable if a capability declares a schema that cannot be
@@ -103,6 +142,8 @@ func registerAgentCapabilities(s *mcp.Server, registry *agent.Registry, user use
 				IdempotentHint: registry.IsIdempotent(tool.Name),
 			},
 		}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			funnel.MCPToolCalled(ctx, user.ID, tool.Name, issuanceOf(scope))
+
 			// The user was fixed when the session authenticated. Nothing in the
 			// request can change it.
 			result := registry.Invoke(toolsurface.With(ctx, toolsurface.MCP), user.ID, ai.ToolCall{
@@ -325,7 +366,12 @@ func registerCoach(s *mcp.Server, svc Services, user users.User) {
 			return fail(err), nil, nil
 		}
 
-		stream, err := svc.Coach.SendMessage(ctx, user, conversation.ID, args.Message)
+		// SendIncoming rather than SendMessage: the latter builds an Incoming
+		// with no Source, which records this reply against an empty surface.
+		stream, err := svc.Coach.SendIncoming(ctx, user, conversation.ID, coach.Incoming{
+			Text:   args.Message,
+			Source: coach.SourceMCP,
+		})
 		if err != nil {
 			return fail(err), nil, nil
 		}
@@ -420,4 +466,17 @@ func textResult(text string, isError bool) *mcp.CallToolResult {
 // something else.
 func fail(err error) *mcp.CallToolResult {
 	return textResult(err.Error(), true)
+}
+
+// issuanceOf reports how the presented token was issued, from its scope alone.
+//
+// An empty scope is a token issued by hand: the column was added by the OAuth
+// migration with an empty default and deliberately not backfilled, and every
+// OAuth grant carries one of the two scopes explicitly. So the scope is an
+// exact proxy for the issuance without this package having to read the row.
+func issuanceOf(scope string) string {
+	if scope == "" {
+		return "pat"
+	}
+	return "oauth"
 }
