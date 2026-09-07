@@ -12,8 +12,8 @@ import (
 )
 
 const createUser = `-- name: CreateUser :one
-INSERT INTO users (email, password_hash, display_name, timezone)
-VALUES ($1, $2, $3, $4)
+INSERT INTO users (email, password_hash, display_name, timezone, locale)
+VALUES ($1, $2, $3, $4, $5)
 RETURNING id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at, tier, onboarded_at, coaching_tone, locale
 `
 
@@ -22,6 +22,7 @@ type CreateUserParams struct {
 	PasswordHash *string
 	DisplayName  string
 	Timezone     string
+	Locale       string
 }
 
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
@@ -30,6 +31,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		arg.PasswordHash,
 		arg.DisplayName,
 		arg.Timezone,
+		arg.Locale,
 	)
 	var i User
 	err := row.Scan(
@@ -50,8 +52,8 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 }
 
 const createUserWithID = `-- name: CreateUserWithID :one
-INSERT INTO users (id, email, password_hash, display_name, timezone)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO users (id, email, password_hash, display_name, timezone, locale)
+VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at, tier, onboarded_at, coaching_tone, locale
 `
 
@@ -61,6 +63,7 @@ type CreateUserWithIDParams struct {
 	PasswordHash *string
 	DisplayName  string
 	Timezone     string
+	Locale       string
 }
 
 // Used when a passkey registration ceremony needs a stable user handle
@@ -72,6 +75,7 @@ func (q *Queries) CreateUserWithID(ctx context.Context, arg CreateUserWithIDPara
 		arg.PasswordHash,
 		arg.DisplayName,
 		arg.Timezone,
+		arg.Locale,
 	)
 	var i User
 	err := row.Scan(

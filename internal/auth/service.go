@@ -15,6 +15,7 @@ import (
 
 	authdb "github.com/NorthAIProject/north-client/internal/auth/db"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
 
 	"github.com/NorthAIProject/north-client/internal/analytics"
@@ -151,6 +152,12 @@ func (s *Service) Signup(ctx context.Context, in SignupInput, meta Metadata) (us
 		Email:       in.Email,
 		DisplayName: in.DisplayName,
 		Timezone:    in.Timezone,
+		// The language the visitor was reading, carried onto the account. Read
+		// from the context rather than taken as a form field: it was already
+		// resolved by middleware.Locale, from an explicit choice or from
+		// Accept-Language, and asking the browser to post it back would let a
+		// hand-made request set it to anything.
+		Locale: users.ResolveLocale(i18n.LocaleFrom(ctx)),
 	}
 	if _, err := s.users.ValidateRegistration(registration); err != nil {
 		var fieldErrs apperr.FieldErrors

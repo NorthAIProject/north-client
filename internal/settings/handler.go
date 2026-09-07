@@ -112,6 +112,12 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Post("/settings/notifications", h.updateNotifications)
 	r.Post("/settings/diets", h.updateDiets)
 
+	// Outside the /settings tree on purpose: this is topbar chrome, fetched by
+	// HTMX from every signed-in page. It lives on this handler because this is
+	// where the connections service already is, and a package for one fragment
+	// would be more machinery than the fragment.
+	r.Get("/connections/pill", h.agentPill)
+
 	r.Get("/settings/connections", h.showConnections)
 	r.Post("/settings/connections", h.createConnection)
 	r.Post("/settings/connections/{id}/revoke", h.revokeConnection)
@@ -475,6 +481,30 @@ func (h *Handler) showActivity(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := settingspages.ActivityPage(user, executions).Render(r.Context(), w); err != nil {
 		middleware.FromContext(r.Context()).Error("render activity", slog.Any("error", err))
+	}
+}
+
+// agentPill renders the topbar prompt to connect an agent, or nothing.
+//
+// Nothing is the answer in two cases, and they are different. Once an agent is
+// connected the prompt has done its job and would become furniture. If the
+// lookup fails, the topbar is not the place to report it: an empty response
+// leaves the header exactly as it was, and the same failure will be visible
+// with an explanation on the connections page itself.
+func (h *Handler) agentPill(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+
+	existing, err := h.connections.List(r.Context(), user.ID)
+	if err != nil {
+		middleware.FromContext(r.Context()).Warn("agent pill: listing connections", slog.Any("error", err))
+		return
+	}
+	if len(existing) > 0 {
+		return
+	}
+
+	if err := settingspages.AgentPill().Render(r.Context(), w); err != nil {
+		middleware.FromContext(r.Context()).Error("agent pill: render", slog.Any("error", err))
 	}
 }
 

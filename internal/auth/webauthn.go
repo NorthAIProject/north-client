@@ -17,6 +17,7 @@ import (
 
 	authdb "github.com/NorthAIProject/north-client/internal/auth/db"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
@@ -206,6 +207,11 @@ func (s *Service) PasskeyRegisterFinish(ctx context.Context, in PasskeyRegisterF
 		Email:       payload.Email,
 		DisplayName: payload.DisplayName,
 		Timezone:    payload.Timezone,
+		// Resolved here rather than carried on the challenge payload, because
+		// this is the request that writes the row and it went through
+		// middleware.Locale like any other. Begin and Finish are seconds apart
+		// in the same browser, so there is nothing for the payload to preserve.
+		Locale: users.ResolveLocale(i18n.LocaleFrom(ctx)),
 	})
 	if err != nil {
 		if apperr.Is(err, apperr.ErrConflict) {

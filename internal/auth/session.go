@@ -163,9 +163,12 @@ func userFromDB(row authdb.User) users.User {
 		Email:       row.Email,
 		DisplayName: row.DisplayName,
 		Timezone:    row.Timezone,
-		Tier:        users.Tier(row.Tier),
-		CreatedAt:   row.CreatedAt,
-		UpdatedAt:   row.UpdatedAt,
+		// Resolved rather than cast, matching users.fromDB: a tag this build no
+		// longer serves must read as English rather than as itself.
+		Locale:    users.ResolveLocale(row.Locale),
+		Tier:      users.Tier(row.Tier),
+		CreatedAt: row.CreatedAt,
+		UpdatedAt: row.UpdatedAt,
 	}
 	if row.CoachingStyle != nil {
 		u.CoachingStyle = *row.CoachingStyle

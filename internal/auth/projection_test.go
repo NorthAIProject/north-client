@@ -2,6 +2,7 @@ package auth_test
 
 import (
 	"context"
+	"reflect"
 	"testing"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
@@ -43,6 +44,7 @@ func TestTheSessionUserMatchesTheStoredUser(t *testing.T) {
 		Timezone:      "Europe/Lisbon",
 		CoachingStyle: "short answers, no preamble",
 		CoachingTone:  users.ToneToughLove,
+		Locale:        users.LocalePTBR,
 	})
 	if err != nil {
 		t.Fatalf("update profile: %v", err)
@@ -63,28 +65,38 @@ func TestTheSessionUserMatchesTheStoredUser(t *testing.T) {
 
 	got := session.User
 
-	if got.Tier != stored.Tier {
-		t.Errorf("Tier = %q, want %q", got.Tier, stored.Tier)
-	}
-	if got.CoachingTone != stored.CoachingTone {
-		t.Errorf("CoachingTone = %q, want %q", got.CoachingTone, stored.CoachingTone)
-	}
-	if got.CoachingStyle != stored.CoachingStyle {
-		t.Errorf("CoachingStyle = %q, want %q", got.CoachingStyle, stored.CoachingStyle)
-	}
-	if got.DisplayName != stored.DisplayName {
-		t.Errorf("DisplayName = %q, want %q", got.DisplayName, stored.DisplayName)
-	}
-	if got.Timezone != stored.Timezone {
-		t.Errorf("Timezone = %q, want %q", got.Timezone, stored.Timezone)
-	}
-	if got.Email != stored.Email {
-		t.Errorf("Email = %q, want %q", got.Email, stored.Email)
-	}
-	if got.ID != stored.ID {
-		t.Errorf("ID = %v, want %v", got.ID, stored.ID)
-	}
-	if (got.OnboardedAt == nil) != (stored.OnboardedAt == nil) {
-		t.Errorf("OnboardedAt presence = %v, want %v", got.OnboardedAt != nil, stored.OnboardedAt != nil)
+	// Compared field by field through reflection rather than by a list of
+	// checks somebody has to remember to extend.
+	//
+	// The list was the problem. This projection has now silently dropped three
+	// fields in turn — Tier, then CoachingTone, then Locale — each time because
+	// a field was added to users.User and to users.fromDB and not to this one,
+	// and each time the test passed because it did not know to look. Every
+	// field above has been moved away from its zero value, so any assignment
+	// missing from userFromDB shows up here as a difference.
+	storedValue, gotValue := reflect.ValueOf(stored), reflect.ValueOf(got)
+	for i := range storedValue.NumField() {
+		field := storedValue.Type().Field(i)
+		want, have := storedValue.Field(i).Interface(), gotValue.Field(i).Interface()
+
+		// OnboardedAt is a pointer to a time, and a signup that has not been
+		// through onboarding leaves it nil on both sides. Presence is the only
+		// thing worth comparing.
+		if field.Name == "OnboardedAt" {
+			if (stored.OnboardedAt == nil) != (got.OnboardedAt == nil) {
+				t.Errorf("OnboardedAt presence = %v, want %v", got.OnboardedAt != nil, stored.OnboardedAt != nil)
+			}
+			continue
+		}
+
+		if !reflect.DeepEqual(want, have) {
+			t.Errorf("%s = %v, want %v — add it to auth.userFromDB", field.Name, have, want)
+		}
+
+		// A field still at its zero value proves nothing: two zeroes agree with
+		// each other whether or not the projection assigns anything.
+		if reflect.DeepEqual(want, reflect.Zero(field.Type).Interface()) {
+			t.Errorf("%s is still at its zero value, so this check cannot fail — set it above", field.Name)
+		}
 	}
 }

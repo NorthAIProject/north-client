@@ -51,6 +51,15 @@ type Registration struct {
 	PasswordHash string
 	DisplayName  string
 	Timezone     string
+
+	// Locale is the language the person was reading when they signed up.
+	//
+	// It matters because the marketing page, the switcher and Accept-Language
+	// all resolve a language for a visitor, and without carrying it here the
+	// account starts in English regardless — so somebody who read the whole
+	// Portuguese landing page and pressed "Criar a tua conta" would land in an
+	// English app. Empty falls back to the column default.
+	Locale Locale
 }
 
 // ValidateRegistration checks the account fields without touching the database.
@@ -96,12 +105,16 @@ func (s *Service) ValidateRegistration(reg Registration) (Registration, error) {
 	}
 
 	// Returned normalised so the caller persists exactly what was validated.
+	//
+	// Field by field, which means a field added to Registration and not added
+	// here is silently dropped on every signup. Locale was, briefly.
 	return Registration{
 		ID:           reg.ID,
 		Email:        email,
 		PasswordHash: reg.PasswordHash,
 		DisplayName:  name,
 		Timezone:     tz,
+		Locale:       ResolveLocale(string(reg.Locale)),
 	}, nil
 }
 

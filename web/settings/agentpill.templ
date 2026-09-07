@@ -1,0 +1,44 @@
+package settings
+
+import (
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
+	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
+)
+
+// AgentPill is the topbar prompt to connect an agent over MCP.
+//
+// It exists because the MCP server is the most distinctive thing Khepri does
+// and the least discoverable: it lives four clicks deep, under Settings →
+// Agent connections, and nothing on any page a person actually uses mentions
+// that it is there.
+//
+// Rendered into the topbar by HTMX rather than passed through layout.App,
+// which would have meant threading a connection count through thirty-three
+// call sites for one badge. The bell already works this way, so this is the
+// established shape rather than a new one.
+//
+// The handler renders nothing at all once an agent is connected. A permanent
+// "New · Connect your Agent" beside somebody who connected one in March is not
+// a prompt, it is furniture — and it teaches people that the topbar contains
+// things worth ignoring.
+templ AgentPill() {
+	<a
+		href="/app/settings/connections"
+		class="border-hairline text-muted-foreground hover:text-foreground hover:border-border hidden h-8 items-center gap-2 rounded-full border pr-3 pl-1.5 text-xs transition-colors sm:inline-flex"
+	>
+		<span class="bg-signal text-background rounded-full px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em]">
+			{ i18n.T(ctx, "nav.agentpill.new") }
+		</span>
+		<span class="whitespace-nowrap">{ i18n.T(ctx, "nav.agentpill") }</span>
+		@icon.ArrowRight(icon.Props{Class: "size-3.5"})
+	</a>
+	// Below sm the topbar has room for the icon and nothing else, and a truncated
+	// call to action is worse than none: the label is what makes it legible.
+	<a
+		href="/app/settings/connections"
+		aria-label={ i18n.T(ctx, "nav.agentpill") }
+		class="border-hairline text-muted-foreground hover:text-foreground flex size-8 items-center justify-center rounded-full border sm:hidden"
+	>
+		@icon.Plug(icon.Props{Class: "size-3.5"})
+	</a>
+}
