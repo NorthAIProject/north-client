@@ -261,6 +261,16 @@ sql:
 
   - engine: postgresql
     schema: migrations
+    queries: internal/mcpauth/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: mcpauthdb
+        out: internal/mcpauth/db
+        overrides: *overrides
+
+  - engine: postgresql
+    schema: migrations
     queries: internal/aicreds/db/queries.sql
     gen:
       go:
