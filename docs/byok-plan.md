@@ -19,8 +19,9 @@ BYOK yet**, and the reasoning matters more than the schema.
 > What was **not** taken from here: the OpenRouter PKCE flow. Keys are pasted
 > for every provider, deliberately — PKCE is one provider's mechanism, and
 > shipping it first would have left the other four with nothing. See
-> `docs/mcp-oauth-plan.md` for the OAuth work that is still outstanding, which
-> is about the inbound MCP endpoint rather than this.
+> `docs/mcp-oauth-plan.md` for the OAuth work on the inbound MCP endpoint,
+> which shipped 2026-09-07 — with a consent screen that creates the account,
+> which is what made it worth building before the strangers count moved.
 
 ## The question
 
