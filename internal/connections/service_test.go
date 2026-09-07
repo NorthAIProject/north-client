@@ -479,3 +479,135 @@ func TestAnExpiredConnectionIsStillListed(t *testing.T) {
 		t.Fatalf("listed %d connections, want the expired one to still be there", len(list))
 	}
 }
+
+// A grant is stored in the same table as a pasted token and authenticates
+// through the same path, which is what lets one revoke button cover both and
+// keeps mcpserver.Authenticator a single implementation.
+func TestAnOAuthGrantAuthenticatesAndCarriesItsScope(t *testing.T) {
+	svc, _, user := newService(t)
+	ctx := context.Background()
+
+	issued, err := svc.IssueGrant(ctx, connections.GrantInput{
+		UserID:        user.ID,
+		ClientName:    "Claude Code",
+		Scopes:        "north:read",
+		Resource:      "https://north.test/mcp",
+		OAuthClientID: "",
+		TTL:           time.Hour,
+	})
+	if err != nil {
+		t.Fatalf("issue grant: %v", err)
+	}
+
+	if !strings.HasPrefix(issued.Token, "nk_") {
+		t.Errorf("an OAuth access token is %q; it must carry the nk_ prefix so "+
+			"AuthenticateScoped accepts it like any other", issued.Token)
+	}
+	if issued.Issuance != connections.IssuanceOAuth {
+		t.Errorf("issuance is %q, want oauth", issued.Issuance)
+	}
+	if issued.Kind != connections.ClientClaudeCode {
+		t.Errorf("kind is %q, want claude_code from the client name", issued.Kind)
+	}
+	if issued.ExpiresAt == nil {
+		t.Error("an OAuth grant stored no expiry; access tokens must expire")
+	}
+
+	gotUser, scope, err := svc.AuthenticateScoped(ctx, issued.Token)
+	if err != nil {
+		t.Fatalf("authenticate a granted token: %v", err)
+	}
+	if gotUser.ID != user.ID {
+		t.Errorf("token authenticated as %s, want %s", gotUser.ID, user.ID)
+	}
+	if scope != "north:read" {
+		t.Errorf("scope is %q, want north:read", scope)
+	}
+}
+
+// Refreshing replaces the token in place. One row is one grant, so the
+// settings page shows one entry however many hours it has been alive — and the
+// old token must stop working the moment the new one exists.
+func TestRotatingAGrantTokenReplacesTheOldOne(t *testing.T) {
+	svc, _, user := newService(t)
+	ctx := context.Background()
+
+	issued, err := svc.IssueGrant(ctx, connections.GrantInput{
+		UserID:     user.ID,
+		ClientName: "Claude Code",
+		Scopes:     "north:read_write",
+		TTL:        time.Hour,
+	})
+	if err != nil {
+		t.Fatalf("issue grant: %v", err)
+	}
+
+	rotated, err := svc.RotateGrantToken(ctx, issued.ID, time.Hour)
+	if err != nil {
+		t.Fatalf("rotate: %v", err)
+	}
+	if rotated == issued.Token {
+		t.Fatal("rotation returned the same token")
+	}
+
+	if _, _, authErr := svc.AuthenticateScoped(ctx, rotated); authErr != nil {
+		t.Errorf("the rotated token does not authenticate: %v", authErr)
+	}
+	if _, _, staleErr := svc.AuthenticateScoped(ctx, issued.Token); !apperr.Is(staleErr, apperr.ErrUnauthenticated) {
+		t.Errorf("the superseded token still authenticates (%v); rotation must retire it", staleErr)
+	}
+
+	// Still one row, and still the same one.
+	list, err := svc.List(ctx, user.ID)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(list) != 1 {
+		t.Fatalf("rotation left %d connections, want 1", len(list))
+	}
+	if list[0].ID != issued.ID {
+		t.Errorf("rotation replaced the row (%s, was %s)", list[0].ID, issued.ID)
+	}
+	if list[0].CreatedAt != issued.CreatedAt {
+		t.Error("rotation moved created_at; it must stay the date consent was given")
+	}
+}
+
+// A pasted token has no refresh flow and must not acquire one: rotation is
+// scoped to grants.
+func TestRotatingRefusesAHandIssuedToken(t *testing.T) {
+	svc, _, user := newService(t)
+	ctx := context.Background()
+
+	issued, err := svc.Issue(ctx, user.ID, "Laptop", connections.ClientClaudeCode)
+	if err != nil {
+		t.Fatalf("issue: %v", err)
+	}
+
+	if _, err := svc.RotateGrantToken(ctx, issued.ID, time.Hour); !apperr.Is(err, apperr.ErrNotFound) {
+		t.Errorf("rotating a pasted token returned %v, want ErrNotFound", err)
+	}
+	if _, _, err := svc.AuthenticateScoped(ctx, issued.Token); err != nil {
+		t.Errorf("the pasted token stopped working after a refused rotation: %v", err)
+	}
+}
+
+// The kind is derived from a name the client chose for itself, so this is the
+// one place a hostile registration reaches presentation. It must land on an
+// existing kind rather than widen the vocabulary.
+func TestClientKindForMapsOntoTheExistingVocabulary(t *testing.T) {
+	for name, want := range map[string]connections.ClientKind{
+		"Claude Code":      connections.ClientClaudeCode,
+		"claude-code":      connections.ClientClaudeCode,
+		"Codex CLI":        connections.ClientCodex,
+		"hermes":           connections.ClientHermes,
+		"Claude Desktop":   connections.ClientOther,
+		"claude.ai":        connections.ClientOther,
+		"":                 connections.ClientOther,
+		"<script>alert(1)": connections.ClientOther,
+	} {
+		if got := connections.ClientKindFor(name); got != want {
+			t.Errorf("ClientKindFor(%q) = %q, want %q", name, got, want)
+		}
+	}
+}

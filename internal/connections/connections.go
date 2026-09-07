@@ -13,6 +13,7 @@
 package connections
 
 import (
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -31,6 +32,31 @@ const (
 	ClientHermes     ClientKind = "hermes"
 	ClientOther      ClientKind = "other"
 )
+
+// ClientKindFor maps a self-registered OAuth client's name onto the existing
+// vocabulary.
+//
+// A dynamically registered client names itself, so there is no dropdown to
+// read the kind from. Mapping onto the four kinds that already exist — rather
+// than adding a fifth for "arrived over OAuth" — is what lets Label and every
+// branch on the settings page keep working with no new case. How the
+// credential was issued is a separate question, answered by Issuance.
+func ClientKindFor(clientName string) ClientKind {
+	name := strings.ToLower(clientName)
+	switch {
+	case strings.Contains(name, "claude code"), strings.Contains(name, "claude-code"):
+		return ClientClaudeCode
+	case strings.Contains(name, "codex"):
+		return ClientCodex
+	case strings.Contains(name, "hermes"):
+		return ClientHermes
+	default:
+		// Claude Desktop and claude.ai land here, deliberately. They are real
+		// clients with no config snippet to show, which is exactly what
+		// ClientOther means.
+		return ClientOther
+	}
+}
 
 // ClientKinds is the list the settings page offers, in the order it offers it.
 var ClientKinds = []ClientKind{ClientClaudeCode, ClientCodex, ClientHermes, ClientOther}
@@ -117,6 +143,22 @@ func (c Connection) Expired() bool {
 
 // Used reports whether this connection has ever authenticated a request.
 func (c Connection) Used() bool { return c.LastUsedAt != nil }
+
+// GrantRow is what the repository needs to store an approved OAuth consent.
+//
+// A struct rather than nine positional arguments, because four of them are
+// strings and swapping two would be a silent bug.
+type GrantRow struct {
+	UserID        uuid.UUID
+	Name          string
+	Kind          ClientKind
+	TokenHash     []byte
+	TokenPrefix   string
+	Scopes        string
+	ExpiresAt     time.Time
+	Resource      string
+	OAuthClientID string
+}
 
 // Issued is a newly created connection together with its plaintext token.
 //

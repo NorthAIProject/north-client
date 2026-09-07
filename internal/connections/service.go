@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
@@ -165,6 +166,94 @@ func (s *Service) AuthenticateScoped(ctx context.Context, token string) (users.U
 	_ = s.repo.Touch(ctx, conn.ID)
 
 	return user, conn.Scopes, nil
+}
+
+// GrantInput describes a consent the person has just approved.
+type GrantInput struct {
+	UserID uuid.UUID
+
+	// ClientName is what the client called itself at registration, and is
+	// therefore chosen by whoever registered it. It becomes the connection's
+	// name, which is what the settings page shows next to the revoke button.
+	ClientName string
+
+	Scopes   string
+	Resource string
+
+	// OAuthClientID ties the grant back to the registration, so the settings
+	// page can say which client holds it and a code replay can find the grant
+	// to revoke.
+	OAuthClientID string
+
+	// TTL is how long the access token is good for. Short, because a leaked
+	// bearer token is only as dangerous as its remaining life.
+	TTL time.Duration
+}
+
+// IssueGrant mints an access token for an approved consent and stores the
+// connection.
+//
+// Token minting lives here rather than in internal/mcpauth so the nk_ prefix
+// and the entropy have one home: an access token is presented to /mcp exactly
+// like a pasted one, and AuthenticateScoped must accept it without knowing
+// which flow produced it.
+func (s *Service) IssueGrant(ctx context.Context, in GrantInput) (Issued, error) {
+	token, err := newToken()
+	if err != nil {
+		return Issued{}, err
+	}
+
+	sum := sha256.Sum256([]byte(token))
+	conn, err := s.repo.InsertGrant(ctx, GrantRow{
+		UserID:      in.UserID,
+		Name:        connectionName(in.ClientName),
+		Kind:        ClientKindFor(in.ClientName),
+		TokenHash:   sum[:],
+		TokenPrefix: token[:displayPrefixLen],
+		Scopes:      in.Scopes,
+		ExpiresAt:   time.Now().Add(in.TTL),
+		Resource:    in.Resource,
+
+		OAuthClientID: in.OAuthClientID,
+	})
+	if err != nil {
+		return Issued{}, err
+	}
+	return Issued{Connection: conn, Token: token}, nil
+}
+
+// RotateGrantToken issues a replacement access token for an existing grant.
+//
+// An update rather than a new row: one row is one grant, so the settings page
+// shows one entry per connected agent however many hours it has been alive,
+// and revoking that entry still kills everything the grant holds. token_prefix
+// is deliberately not updated — it was only ever a label, and a stable one is
+// worth more than one that tracks a token nobody can see.
+func (s *Service) RotateGrantToken(ctx context.Context, connectionID uuid.UUID, ttl time.Duration) (string, error) {
+	token, err := newToken()
+	if err != nil {
+		return "", err
+	}
+
+	sum := sha256.Sum256([]byte(token))
+	if err := s.repo.RotateToken(ctx, connectionID, sum[:], time.Now().Add(ttl)); err != nil {
+		return "", err
+	}
+	return token, nil
+}
+
+// connectionName keeps a client's self-chosen name to something a settings
+// page can render on one line. The full name is not load-bearing anywhere;
+// the redirect host is what identifies a client that matters.
+func connectionName(clientName string) string {
+	name := strings.TrimSpace(clientName)
+	if name == "" {
+		return "Connected agent"
+	}
+	if utf8.RuneCountInString(name) > maxNameLen {
+		return strings.TrimSpace(string([]rune(name)[:maxNameLen]))
+	}
+	return name
 }
 
 // newToken returns a token with tokenBytes of entropy, URL-safe and unpadded
