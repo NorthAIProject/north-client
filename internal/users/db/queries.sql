@@ -25,6 +25,7 @@ SET display_name   = $2,
     timezone       = $3,
     coaching_style = $4,
     coaching_tone  = $5,
+    locale         = $6,
     updated_at     = now()
 WHERE id = $1
 RETURNING *;

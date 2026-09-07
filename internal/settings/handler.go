@@ -304,12 +304,13 @@ func (h *Handler) updateProfile(w http.ResponseWriter, r *http.Request) {
 	form := settingspages.ProfileForm{
 		DisplayName:   strings.TrimSpace(r.PostFormValue("display_name")),
 		Timezone:      strings.TrimSpace(r.PostFormValue("timezone")),
+		Locale:        users.ResolveLocale(r.PostFormValue("locale")),
 		CoachingStyle: strings.TrimSpace(r.PostFormValue("coaching_style")),
 		CoachingTone:  users.Tone(strings.TrimSpace(r.PostFormValue("coaching_tone"))),
 	}
 
 	if _, err := h.users.UpdateProfile(r.Context(), user.ID, users.Profile{
-		DisplayName: form.DisplayName, Timezone: form.Timezone,
+		DisplayName: form.DisplayName, Timezone: form.Timezone, Locale: form.Locale,
 		CoachingStyle: form.CoachingStyle, CoachingTone: form.CoachingTone,
 	}); err != nil {
 		var fieldErrs apperr.FieldErrors

@@ -37,7 +37,11 @@ func (p *PromptBuilder) Coach(cc *Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return base + tone + contextHeading + cc.Render(), nil
+	lang, err := languageSection(cc)
+	if err != nil {
+		return "", err
+	}
+	return base + tone + lang + contextHeading + cc.Render(), nil
 }
 
 // Reflection is the system prompt for a structured reflection session.
@@ -52,7 +56,11 @@ func (p *PromptBuilder) Reflection(cc *Context, questionsAsked int) (string, err
 	if err != nil {
 		return "", err
 	}
-	return base + tone + contextHeading + cc.Render(), nil
+	lang, err := languageSection(cc)
+	if err != nil {
+		return "", err
+	}
+	return base + tone + lang + contextHeading + cc.Render(), nil
 }
 
 // toneSection renders the chosen tone as an instruction.
@@ -68,6 +76,31 @@ func toneSection(cc *Context) (string, error) {
 	}
 
 	rendered, err := prompts.Render(prompts.CoachTone, map[string]any{"Tone": string(tone)})
+	if err != nil {
+		return "", err
+	}
+	return "\n\n" + rendered, nil
+}
+
+// languageSection renders the chosen language as an instruction.
+//
+// Beside the tone rather than in the context for the same reason: which language
+// to answer in is an instruction to the model, not a fact about the person.
+//
+// English renders too, and deliberately. Leaving the section out entirely for
+// the default would mean the one case nobody tests is the one everybody runs,
+// and a model that has just been handed Portuguese context from a document has
+// been known to follow it.
+func languageSection(cc *Context) (string, error) {
+	locale := users.LocaleDefault
+	if cc != nil && cc.User.Locale.Valid() {
+		locale = cc.User.Locale
+	}
+
+	rendered, err := prompts.Render(prompts.CoachLanguage, map[string]any{
+		"Language": locale.Language(),
+		"Locale":   string(locale),
+	})
 	if err != nil {
 		return "", err
 	}

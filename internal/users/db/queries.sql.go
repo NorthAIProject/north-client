@@ -14,7 +14,7 @@ import (
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (email, password_hash, display_name, timezone)
 VALUES ($1, $2, $3, $4)
-RETURNING id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at, tier, onboarded_at, coaching_tone
+RETURNING id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at, tier, onboarded_at, coaching_tone, locale
 `
 
 type CreateUserParams struct {
@@ -44,6 +44,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.Tier,
 		&i.OnboardedAt,
 		&i.CoachingTone,
+		&i.Locale,
 	)
 	return i, err
 }
@@ -51,7 +52,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 const createUserWithID = `-- name: CreateUserWithID :one
 INSERT INTO users (id, email, password_hash, display_name, timezone)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at, tier, onboarded_at, coaching_tone
+RETURNING id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at, tier, onboarded_at, coaching_tone, locale
 `
 
 type CreateUserWithIDParams struct {
@@ -85,6 +86,7 @@ func (q *Queries) CreateUserWithID(ctx context.Context, arg CreateUserWithIDPara
 		&i.Tier,
 		&i.OnboardedAt,
 		&i.CoachingTone,
+		&i.Locale,
 	)
 	return i, err
 }
@@ -101,7 +103,7 @@ func (q *Queries) EmailExists(ctx context.Context, email string) (bool, error) {
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at, tier, onboarded_at, coaching_tone FROM users WHERE email = $1
+SELECT id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at, tier, onboarded_at, coaching_tone, locale FROM users WHERE email = $1
 `
 
 func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
@@ -119,12 +121,13 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.Tier,
 		&i.OnboardedAt,
 		&i.CoachingTone,
+		&i.Locale,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at, tier, onboarded_at, coaching_tone FROM users WHERE id = $1
+SELECT id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at, tier, onboarded_at, coaching_tone, locale FROM users WHERE id = $1
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
@@ -142,12 +145,13 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 		&i.Tier,
 		&i.OnboardedAt,
 		&i.CoachingTone,
+		&i.Locale,
 	)
 	return i, err
 }
 
 const listOnboardedUsers = `-- name: ListOnboardedUsers :many
-SELECT id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at, tier, onboarded_at, coaching_tone FROM users
+SELECT id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at, tier, onboarded_at, coaching_tone, locale FROM users
 WHERE onboarded_at IS NOT NULL
   AND ($1::uuid = '00000000-0000-0000-0000-000000000000' OR id > $1)
 ORDER BY id
@@ -182,6 +186,7 @@ func (q *Queries) ListOnboardedUsers(ctx context.Context, arg ListOnboardedUsers
 			&i.Tier,
 			&i.OnboardedAt,
 			&i.CoachingTone,
+			&i.Locale,
 		); err != nil {
 			return nil, err
 		}
@@ -199,7 +204,7 @@ SET onboarded_at = now(),
     updated_at   = now()
 WHERE id = $1
   AND onboarded_at IS NULL
-RETURNING id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at, tier, onboarded_at, coaching_tone
+RETURNING id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at, tier, onboarded_at, coaching_tone, locale
 `
 
 // Sets the first-run flag once. A second call returns the row unchanged.
@@ -218,6 +223,7 @@ func (q *Queries) MarkUserOnboarded(ctx context.Context, id uuid.UUID) (User, er
 		&i.Tier,
 		&i.OnboardedAt,
 		&i.CoachingTone,
+		&i.Locale,
 	)
 	return i, err
 }
@@ -245,9 +251,10 @@ SET display_name   = $2,
     timezone       = $3,
     coaching_style = $4,
     coaching_tone  = $5,
+    locale         = $6,
     updated_at     = now()
 WHERE id = $1
-RETURNING id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at, tier, onboarded_at, coaching_tone
+RETURNING id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at, tier, onboarded_at, coaching_tone, locale
 `
 
 type UpdateUserProfileParams struct {
@@ -256,6 +263,7 @@ type UpdateUserProfileParams struct {
 	Timezone      string
 	CoachingStyle *string
 	CoachingTone  string
+	Locale        string
 }
 
 func (q *Queries) UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) (User, error) {
@@ -265,6 +273,7 @@ func (q *Queries) UpdateUserProfile(ctx context.Context, arg UpdateUserProfilePa
 		arg.Timezone,
 		arg.CoachingStyle,
 		arg.CoachingTone,
+		arg.Locale,
 	)
 	var i User
 	err := row.Scan(
@@ -279,6 +288,7 @@ func (q *Queries) UpdateUserProfile(ctx context.Context, arg UpdateUserProfilePa
 		&i.Tier,
 		&i.OnboardedAt,
 		&i.CoachingTone,
+		&i.Locale,
 	)
 	return i, err
 }
@@ -288,7 +298,7 @@ UPDATE users
 SET tier       = $2,
     updated_at = now()
 WHERE id = $1
-RETURNING id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at, tier, onboarded_at, coaching_tone
+RETURNING id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at, tier, onboarded_at, coaching_tone, locale
 `
 
 type UpdateUserTierParams struct {
@@ -313,6 +323,7 @@ func (q *Queries) UpdateUserTier(ctx context.Context, arg UpdateUserTierParams) 
 		&i.Tier,
 		&i.OnboardedAt,
 		&i.CoachingTone,
+		&i.Locale,
 	)
 	return i, err
 }

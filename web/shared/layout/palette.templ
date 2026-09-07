@@ -45,10 +45,13 @@ func haystack(d Destination) string {
 templ commandPalette() {
 	<div x-data="commandPalette" x-on:keydown.window="hotkey($event)" class="contents">
 		@dialog.Trigger(dialog.TriggerProps{For: paletteID}) {
+			// Widths are set from sm: up only. Below that the label and the hotkey
+			// are both hidden and the trigger is a bare icon button, so a fixed
+			// width would leave an icon floating in dead space.
 			@button.Button(button.Props{
 				Variant: button.VariantOutline,
 				Size:    button.SizeSm,
-				Class:   "text-muted-foreground gap-2 font-normal",
+				Class:   "text-muted-foreground gap-2 font-normal sm:w-64 sm:justify-start lg:w-80",
 				Attributes: templ.Attributes{
 					"type":       "button",
 					"aria-label": "Search pages",
@@ -57,7 +60,7 @@ templ commandPalette() {
 				@icon.Icon("search")(icon.Props{Class: "size-4"})
 				<span class="hidden sm:inline">Search</span>
 				<kbd
-					class="border-border bg-muted text-muted-foreground hidden rounded border px-1.5 py-0.5 font-mono text-[10px] sm:inline"
+					class="border-border bg-muted text-muted-foreground hidden rounded border px-1.5 py-0.5 font-mono text-[10px] sm:ml-auto sm:inline"
 					x-text="hotkeyLabel"
 				>⌘K</kbd>
 			}
@@ -65,7 +68,7 @@ templ commandPalette() {
 		@dialog.Dialog(dialog.Props{ID: paletteID}) {
 			@dialog.Content(dialog.ContentProps{
 				HideCloseButton: true,
-				Class:           "top-[12%] translate-y-0 gap-0 overflow-hidden p-0 sm:max-w-xl",
+				Class:           "top-[12%] translate-y-0 gap-0 overflow-hidden p-0 sm:max-w-2xl",
 				Attributes:      templ.Attributes{"x-on:close": "reset()"},
 			}) {
 				@dialog.Title(dialog.TitleProps{Class: "sr-only"}) {
