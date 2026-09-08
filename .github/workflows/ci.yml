@@ -108,7 +108,18 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-          cache: false
+
+          # Cached, like the test job above. golangci-lint typechecks the whole
+          # module, which compiles the dependency tree into GOCACHE — so with
+          # caching off it did that from cold on every run: ~29 minutes to
+          # reach "0 issues.", and ~50 on a bad day, which is how this job
+          # started failing on elapsed time alone.
+          #
+          # cache: false is the usual workaround for setup-go and
+          # golangci-lint-action fighting over the same directory. They do not:
+          # the action caches only golangci-lint's own analysis results, which
+          # the log shows restoring and hitting independently of this.
+          cache-dependency-path: go.sum
 
       - name: Install Tailwind CSS
         run: |
