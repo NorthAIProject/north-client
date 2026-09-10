@@ -137,6 +137,66 @@ func (s *Service) ListBetween(ctx context.Context, userID uuid.UUID, rg timerang
 	return s.repo.ListBetween(ctx, userID, rg.Since, rg.Until)
 }
 
+// LogInput is a finished session the person is entering after the fact:
+// "ran 5 km in 28 minutes this morning."
+type LogInput struct {
+	ActivityCode string
+
+	// StartedAt zero means the session has just finished, so it is placed
+	// to end now.
+	StartedAt time.Time
+	Duration  time.Duration
+
+	// DistanceM is optional. Zero means not recorded, not zero metres.
+	DistanceM float64
+}
+
+// Bounds on a logged session. Generous, because a person entering their own
+// day is not the threat; they exist so a typo of 300 minutes as 3000 does not
+// become a training week.
+const (
+	maxLogDuration = 24 * time.Hour
+	maxLogDistance = 500_000.0 // metres; nobody logs more than an ultra by hand
+
+	// futureSlack tolerates a phone clock a few minutes ahead of the server.
+	futureSlack = 5 * time.Minute
+)
+
+// Log records a session that already happened, costed exactly as Stop costs
+// one: MET * weight * hours. It does not care whether a timer session is open,
+// because logging yesterday's run has nothing to do with the one in progress.
+func (s *Service) Log(ctx context.Context, userID uuid.UUID, in LogInput) (Session, error) {
+	met, ok := LookupMET(in.ActivityCode)
+	if !ok {
+		return Session{}, apperr.Wrap(apperr.ErrValidation, "unknown activity %q", in.ActivityCode)
+	}
+	if in.Duration < time.Minute || in.Duration > maxLogDuration {
+		return Session{}, apperr.Wrap(apperr.ErrValidation, "a session lasts between a minute and a day")
+	}
+	if in.DistanceM < 0 || in.DistanceM > maxLogDistance {
+		return Session{}, apperr.Wrap(apperr.ErrValidation, "distance must be between 0 and %.0f km", maxLogDistance/1000)
+	}
+
+	now := time.Now()
+	if in.StartedAt.IsZero() {
+		in.StartedAt = now.Add(-in.Duration)
+	}
+	if in.StartedAt.Add(in.Duration).After(now.Add(futureSlack)) {
+		return Session{}, apperr.Wrap(apperr.ErrValidation, "a session cannot end in the future")
+	}
+
+	bio, err := s.biometrics.Current(ctx, userID)
+	if err != nil {
+		if apperr.Is(err, apperr.ErrNotFound) {
+			return Session{}, apperr.Wrap(apperr.ErrValidation, "record your biometrics before logging activity")
+		}
+		return Session{}, err
+	}
+
+	calories := met.Value * bio.WeightKg * in.Duration.Hours()
+	return s.repo.Log(ctx, userID, in, bio.WeightKg, calories)
+}
+
 // ImportInput is one finished session arriving from a provider sync.
 //
 // It carries its own weight rather than looking one up: the caller is the

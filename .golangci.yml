@@ -4,16 +4,15 @@
 version: "2"
 
 run:
-  # Generous because a cold run is slow, not because the analysis is: the run
-  # that forced this printed "0 issues." and only then failed on elapsed time,
-  # having taken ~34 minutes on a CI runner with no build cache. A warm run is
-  # seconds. Five minutes was fine until the module moved to Go 1.27 and the
-  # linter to 2.13.0, which together made the first, uncached typecheck of the
-  # whole module far more expensive.
+  # A cold run of the whole module is seconds locally and about two minutes
+  # on a CI runner. The 45 minutes this once said was a misdiagnosis: the runs
+  # that never finished were golangci-lint v2.13.0's staticcheck release
+  # candidate failing to converge on templ-generated pages, not a slow
+  # typecheck — see the version pin in .github/workflows/ci.yml. "0 issues."
+  # followed by a timeout means the analysis was cut off, not that it passed.
   #
-  # If a warm run ever approaches this, that is a regression worth chasing
-  # rather than a number worth raising again.
-  timeout: 45m
+  # If a run approaches this again, find out why rather than raising it.
+  timeout: 10m
 
 linters:
   enable:

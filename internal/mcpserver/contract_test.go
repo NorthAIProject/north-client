@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/NorthAIProject/north-client/internal/activity"
 	"github.com/NorthAIProject/north-client/internal/agent"
 	"github.com/NorthAIProject/north-client/internal/biometrics"
 	"github.com/NorthAIProject/north-client/internal/calculator"
@@ -191,7 +192,7 @@ func TestAnUnknownScopeIsTreatedAsReadOnly(t *testing.T) {
 // set_alert — do not register. See internal/agent/capabilities.go.
 func TestTheToolCountIsWhatWeThinkItIs(t *testing.T) {
 	const (
-		wantFull     = 25
+		wantFull     = 26
 		wantReadOnly = 12
 	)
 
@@ -231,6 +232,7 @@ func TestEveryToolDeclaresWhetherItWrites(t *testing.T) {
 		"complete_habit": true,
 		"record_weight":  true,
 		"log_food":       true,
+		"log_activity":   true,
 	}
 
 	for _, tool := range describeTools(t, "") {
@@ -356,6 +358,7 @@ func testRegistry() *agent.Registry {
 		Sleep:      sleep.NewService(sleep.NewRepository(nil)),
 		Habits:     habits.NewService(habits.NewRepository(nil)),
 		Biometrics: biometrics.NewService(biometrics.NewRepository(nil)),
+		Activity:   activity.NewService(activity.NewRepository(nil), nil),
 	})
 }
 

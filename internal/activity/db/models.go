@@ -25,4 +25,5 @@ type ActivitySession struct {
 	ExternalID         *string
 	CreatedAt          time.Time
 	UpdatedAt          time.Time
+	DistanceM          *float64
 }

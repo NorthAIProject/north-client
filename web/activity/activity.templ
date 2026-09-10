@@ -2,6 +2,7 @@ package activity
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/NorthAIProject/north-client/internal/activity/activity"
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -10,6 +11,7 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
 	"github.com/NorthAIProject/north-client/web/shared/ui/card"
 	"github.com/NorthAIProject/north-client/web/shared/ui/form"
+	"github.com/NorthAIProject/north-client/web/shared/ui/input"
 	"github.com/NorthAIProject/north-client/web/shared/ui/label"
 	"github.com/NorthAIProject/north-client/web/shared/ui/selectbox"
 )
@@ -37,6 +39,7 @@ templ Page(user users.User, active activity.Session, hasActive bool, recent []ac
 			} else {
 				@startCard()
 			}
+			@logCard()
 			if len(recent) > 0 {
 				<section class="space-y-3">
 					<h2 class="text-sm font-medium">Recent</h2>
@@ -80,6 +83,68 @@ templ startCard() {
 				}
 				@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90"}) {
 					Start
+				}
+			</form>
+		}
+	}
+}
+
+// logCard records a session that already happened: the run someone did this
+// morning without opening the timer. Distance is optional because a yoga
+// session has none; start time is optional because "just now" is the common
+// case and a blank field means exactly that.
+templ logCard() {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Title() {
+				Log a finished session
+			}
+			@card.Description() {
+				A run you already did, with its distance. Leave the start blank if it just ended.
+			}
+		}
+		@card.Content() {
+			<form method="post" action="/app/activity/log" class="space-y-4">
+				@ui.CSRFInput()
+				@form.Item() {
+					@label.Label() {
+						Activity
+					}
+					@selectbox.SelectBox() {
+						@selectbox.Trigger(selectbox.TriggerProps{ID: "log_activity_code", Name: "activity_code"}) {
+							@selectbox.Value(selectbox.ValueProps{Placeholder: "Choose one"})
+						}
+						@selectbox.Content() {
+							for _, m := range activity.METTable {
+								@selectbox.Item(selectbox.ItemProps{Value: m.Code}) {
+									{ m.Name }
+								}
+							}
+						}
+					}
+				}
+				<div class="grid gap-4 sm:grid-cols-2">
+					@form.Item() {
+						@label.Label(label.Props{For: "log_minutes"}) {
+							Minutes
+						}
+						@input.Input(input.Props{ID: "log_minutes", Name: "minutes", Type: input.TypeNumber, Required: true, Attributes: templ.Attributes{"min": "1", "max": "1440", "step": "1"}})
+					}
+					@form.Item() {
+						@label.Label(label.Props{For: "log_distance_km"}) {
+							Distance (km, optional)
+						}
+						@input.Input(input.Props{ID: "log_distance_km", Name: "distance_km", Type: input.TypeNumber, Attributes: templ.Attributes{"min": "0", "step": "0.01"}})
+					}
+				</div>
+				@form.Item() {
+					@label.Label(label.Props{For: "log_started_at"}) {
+						Started (optional)
+					}
+					@input.Input(input.Props{ID: "log_started_at", Name: "started_at", Type: input.TypeDateTime})
+				}
+				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
+					Log session
 				}
 			</form>
 		}
@@ -140,14 +205,40 @@ templ sessionCard(s activity.Session) {
 			<div class="flex items-center justify-between text-sm">
 				<span>{ activityName(s.ActivityCode) }</span>
 				<span class="text-muted-foreground">
-					{ s.StartedAt.Format("2 Jan") }
-					if s.CaloriesBurned != nil {
-						{ fmt.Sprintf(" · ~%.0f kcal", *s.CaloriesBurned) }
-					}
+					{ sessionSummary(s) }
 				</span>
 			</div>
 		}
 	}
+}
+
+// sessionSummary is the one line a finished session reads as: when, how
+// long, how far and at what pace when known, and the burn.
+func sessionSummary(s activity.Session) string {
+	out := s.StartedAt.Format("2 Jan")
+	if s.EndedAt != nil {
+		out += " · " + formatMinutes(s.Elapsed(*s.EndedAt))
+	}
+	if s.DistanceM != nil && *s.DistanceM > 0 {
+		out += fmt.Sprintf(" · %.1f km", *s.DistanceM/1000)
+		if pace, ok := s.Pace(); ok {
+			out += " · " + formatPace(pace) + " /km"
+		}
+	}
+	if s.CaloriesBurned != nil {
+		out += fmt.Sprintf(" · ~%.0f kcal", *s.CaloriesBurned)
+	}
+	return out
+}
+
+func formatMinutes(d time.Duration) string {
+	return fmt.Sprintf("%d min", int(d.Round(time.Minute)/time.Minute))
+}
+
+// formatPace reads as runners say it: "5:32".
+func formatPace(d time.Duration) string {
+	d = d.Round(time.Second)
+	return fmt.Sprintf("%d:%02d", int(d/time.Minute), int(d%time.Minute/time.Second))
 }
 
 func activityName(code string) string {

@@ -3,6 +3,8 @@ package activity
 import (
 	"log/slog"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -23,6 +25,7 @@ func NewHandler(svc *Service) *Handler { return &Handler{svc: svc} }
 func (h *Handler) Routes(r chi.Router) {
 	r.Get("/activity", h.show)
 	r.Post("/activity/start", h.start)
+	r.Post("/activity/log", h.log)
 	r.Post("/activity/{id}/pause", h.pause)
 	r.Post("/activity/{id}/resume", h.resume)
 	r.Post("/activity/{id}/stop", h.stop)
@@ -51,6 +54,67 @@ func (h *Handler) start(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Redirect(w, r, "/app/activity", http.StatusSeeOther)
+}
+
+// log records a session that already happened, from the "log a finished
+// session" form. The form speaks in minutes, kilometres, and the person's
+// local clock; the service speaks in durations, metres, and instants.
+func (h *Handler) log(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+
+	if err := r.ParseForm(); err != nil {
+		h.fail(w, r, apperr.ErrValidation)
+		return
+	}
+
+	in, err := parseLogForm(r, user.Location())
+	if err != nil {
+		h.render(w, r, err.Error())
+		return
+	}
+
+	if _, err := h.svc.Log(r.Context(), user.ID, in); err != nil {
+		if apperr.Is(err, apperr.ErrValidation) {
+			h.render(w, r, err.Error())
+			return
+		}
+		h.fail(w, r, err)
+		return
+	}
+
+	http.Redirect(w, r, "/app/activity", http.StatusSeeOther)
+}
+
+// datetimeLocal is the format a <input type="datetime-local"> submits: no
+// zone, because the browser reports the person's wall clock.
+const datetimeLocal = "2006-01-02T15:04"
+
+func parseLogForm(r *http.Request, loc *time.Location) (LogInput, error) {
+	in := LogInput{ActivityCode: r.PostFormValue("activity_code")}
+
+	minutes, err := strconv.Atoi(strings.TrimSpace(r.PostFormValue("minutes")))
+	if err != nil || minutes <= 0 {
+		return LogInput{}, apperr.Wrap(apperr.ErrValidation, "say how many minutes the session lasted")
+	}
+	in.Duration = time.Duration(minutes) * time.Minute
+
+	if raw := strings.TrimSpace(r.PostFormValue("distance_km")); raw != "" {
+		km, err := strconv.ParseFloat(raw, 64)
+		if err != nil {
+			return LogInput{}, apperr.Wrap(apperr.ErrValidation, "distance must be a number of kilometres")
+		}
+		in.DistanceM = km * 1000
+	}
+
+	if raw := strings.TrimSpace(r.PostFormValue("started_at")); raw != "" {
+		started, err := time.ParseInLocation(datetimeLocal, raw, loc)
+		if err != nil {
+			return LogInput{}, apperr.Wrap(apperr.ErrValidation, "start time must be a date and time")
+		}
+		in.StartedAt = started
+	}
+
+	return in, nil
 }
 
 func (h *Handler) pause(w http.ResponseWriter, r *http.Request) {

@@ -49,9 +49,12 @@ type TrainingWindow struct {
 	TopSports []string
 
 	// Route is nil unless a GPS provider is connected and recorded something.
-	// Distance and climb are not on North's own sessions, so a manual logger
-	// legitimately has none.
 	Route *RouteTotals
+
+	// LoggedDistanceM is the distance on sessions people entered by hand. Kept
+	// apart from Route because the two can overlap: someone who logs a run and
+	// also has Strava syncing it has told us about the same kilometres twice.
+	LoggedDistanceM float64
 }
 
 // NewTrainingWindow rolls completed sessions up into the window they fall in.
@@ -83,6 +86,10 @@ func NewTrainingWindow(sessions []Session, since time.Time, days int, loc *time.
 		// Keyed on the end, matching the window the sessions were selected by.
 		// Keying on the start would let a session that began before the window
 		// count as a rest day inside it.
+		if s.DistanceM != nil {
+			w.LoggedDistanceM += *s.DistanceM
+		}
+
 		trained[s.EndedAt.In(loc).Format(time.DateOnly)] = true
 		counts[s.ActivityCode]++
 	}
@@ -209,8 +216,14 @@ func (w TrainingWindow) loadTrend() string {
 	return fmt.Sprintf("training load down %.0f%% on the week before", -change)
 }
 
+// routeLine prefers the provider's figure, which carries climb, and falls
+// back to what the person logged themselves. Never both: the overlap
+// LoggedDistanceM describes would count the same run twice.
 func (w TrainingWindow) routeLine() string {
 	if w.Route == nil || w.Route.DistanceM <= 0 {
+		if w.LoggedDistanceM > 0 {
+			return fmt.Sprintf("Logged distance: %.1f km", w.LoggedDistanceM/1000)
+		}
 		return ""
 	}
 

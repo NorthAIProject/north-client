@@ -71,3 +71,15 @@ INSERT INTO activity_sessions (
 )
 ON CONFLICT (source, external_id) WHERE external_id IS NOT NULL DO NOTHING
 RETURNING *;
+
+-- name: LogActivitySession :one
+-- A finished session written in one shot by the person who did it, rather
+-- than a provider. No external id: there is nothing to dedupe against, and
+-- two identical runs on the same day are two runs.
+INSERT INTO activity_sessions (
+    user_id, activity_code, source, status, weight_kg_snapshot,
+    started_at, ended_at, calories_burned, distance_m
+) VALUES (
+    $1, $2, 'manual', 'completed', $3, $4, $5, $6, $7
+)
+RETURNING *;

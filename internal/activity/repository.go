@@ -171,6 +171,7 @@ func fromDB(row activitydb.ActivitySession) Session {
 		TotalPausedSeconds: int(row.TotalPausedSeconds),
 		EndedAt:            row.EndedAt,
 		CaloriesBurned:     row.CaloriesBurned,
+		DistanceM:          row.DistanceM,
 		ExternalID:         row.ExternalID,
 		CreatedAt:          row.CreatedAt,
 		UpdatedAt:          row.UpdatedAt,
@@ -218,4 +219,34 @@ func (r *Repository) Import(ctx context.Context, in ImportInput) (Session, bool,
 		return Session{}, false, apperr.Wrap(err, "import activity session")
 	}
 	return fromDB(row), true, nil
+}
+
+// Log writes a finished session the person entered themselves.
+//
+// Distinct from Import because there is no external id to dedupe on and the
+// source is always manual; distinct from Create because the session arrives
+// complete. Distance is stored as NULL rather than zero when it was not
+// given: a yoga session did not go nowhere, it just was not measured.
+func (r *Repository) Log(ctx context.Context, userID uuid.UUID, in LogInput, weightKg, calories float64) (Session, error) {
+	endedAt := in.StartedAt.Add(in.Duration)
+
+	var distance *float64
+	if in.DistanceM > 0 {
+		d := in.DistanceM
+		distance = &d
+	}
+
+	row, err := r.q.LogActivitySession(ctx, activitydb.LogActivitySessionParams{
+		UserID:           userID,
+		ActivityCode:     in.ActivityCode,
+		WeightKgSnapshot: weightKg,
+		StartedAt:        in.StartedAt,
+		EndedAt:          &endedAt,
+		CaloriesBurned:   &calories,
+		DistanceM:        distance,
+	})
+	if err != nil {
+		return Session{}, apperr.Wrap(err, "log activity session")
+	}
+	return fromDB(row), nil
 }
