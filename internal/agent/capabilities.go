@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/NorthAIProject/north-client/internal/activity"
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/biometrics"
 	"github.com/NorthAIProject/north-client/internal/calculator"
@@ -55,6 +56,10 @@ type Services struct {
 	Sleep      *sleep.Service
 	Habits     *habits.Service
 	Biometrics *biometrics.Service
+
+	// Activity logs a finished workout — the run someone did this morning.
+	// Needs Users too, for the timezone a spoken start time is read in.
+	Activity *activity.Service
 
 	// SiteURL is the public origin, used to build the absolute asset URLs a
 	// tool hands back. Environment-specific on purpose: an agent talking to a
@@ -140,6 +145,9 @@ func Build(svc Services) *Registry {
 		}
 		if svc.Habits != nil {
 			r.Register(completeHabit(svc.Habits, svc.Users))
+		}
+		if svc.Activity != nil {
+			r.Register(logActivity(svc.Activity, svc.Users))
 		}
 	}
 	if svc.Biometrics != nil {

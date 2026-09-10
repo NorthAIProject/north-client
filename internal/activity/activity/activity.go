@@ -169,6 +169,11 @@ type Session struct {
 	EndedAt            *time.Time
 	CaloriesBurned     *float64
 
+	// DistanceM is how far the session went, when the person said. Nil for
+	// a timer session and for a provider import, whose distance lives with
+	// the provider's own record.
+	DistanceM *float64
+
 	ExternalID *string
 
 	CreatedAt time.Time
@@ -191,6 +196,19 @@ func (s Session) Elapsed(at time.Time) time.Duration {
 		return 0
 	}
 	return elapsed
+}
+
+// Pace is the time per kilometre, and false when there is no distance to
+// divide by. A run is judged by its pace far more than by its calories.
+func (s Session) Pace() (time.Duration, bool) {
+	if s.DistanceM == nil || *s.DistanceM <= 0 || s.EndedAt == nil {
+		return 0, false
+	}
+	elapsed := s.Elapsed(*s.EndedAt)
+	if elapsed <= 0 {
+		return 0, false
+	}
+	return time.Duration(float64(elapsed) / (*s.DistanceM / 1000)), true
 }
 
 // IsOpen reports whether the session is still active or paused, i.e. not yet

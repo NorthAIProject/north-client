@@ -286,6 +286,40 @@
     "readOnly": true
   },
   {
+    "name": "log_activity",
+    "description": "Record a workout the user has already finished: a run, a walk, a ride, a swim, a gym session. Give the activity in their own words and the duration in minutes. Add the distance when they said one, so a run is stored with its pace. Leave started_at empty when it just finished; otherwise give the local date and time they started, such as '2026-09-10 07:30'. Convert miles to kilometres yourself. Do not use this for a session still in progress.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "description": "the finished session",
+      "properties": {
+        "activity": {
+          "description": "what they did, in their words: 'run', 'brisk walk', 'swim', 'strength training'",
+          "type": "string"
+        },
+        "distance_km": {
+          "description": "how far they went, in kilometres; 0 if they did not say or it does not apply",
+          "type": "number"
+        },
+        "minutes": {
+          "description": "how long it lasted, in minutes",
+          "type": "integer"
+        },
+        "started_at": {
+          "description": "when it started, as 'YYYY-MM-DD HH:MM' in the user's local time; empty if it just finished",
+          "type": "string"
+        }
+      },
+      "required": [
+        "activity",
+        "minutes",
+        "distance_km",
+        "started_at"
+      ],
+      "type": "object"
+    },
+    "readOnly": false
+  },
+  {
     "name": "log_food",
     "description": "Record something the user ate, by name and weight in grams. The name is looked up in the ingredient catalog, so use a plain one such as 'chicken breast' rather than a brand or a recipe.",
     "inputSchema": {

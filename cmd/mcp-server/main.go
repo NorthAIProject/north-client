@@ -299,6 +299,7 @@ func buildServices(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry
 		Workouts:      workoutSvc,
 		Users:         userSvc,
 		Notifications: notifications.NewService(notifications.NewRepository(pool)),
+		Activity:      activitySvc,
 	})
 	agentTools.Record(auditRecorder)
 
