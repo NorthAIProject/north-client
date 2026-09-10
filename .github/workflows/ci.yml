@@ -109,11 +109,14 @@ jobs:
         with:
           go-version-file: go.mod
 
-          # Cached, like the test job above. golangci-lint typechecks the whole
-          # module, which compiles the dependency tree into GOCACHE — so with
-          # caching off it did that from cold on every run: ~29 minutes to
-          # reach "0 issues.", and ~50 on a bad day, which is how this job
-          # started failing on elapsed time alone.
+          # Cached, like the test job above, so golangci-lint's typecheck of
+          # the module reuses the dependency tree the test job already
+          # compiled.
+          #
+          # This was once believed to be why the job took 30-50 minutes. It
+          # was not — the run after enabling it restored the cache and still
+          # timed out. The cause was the staticcheck release candidate bundled
+          # in golangci-lint v2.13.0; see the version pin below.
           #
           # cache: false is the usual workaround for setup-go and
           # golangci-lint-action fighting over the same directory. They do not:
@@ -147,5 +150,12 @@ jobs:
           # Go it was built with. v2.12.2 was built with go1.26 and started
           # failing the moment the module moved to 1.27. Raising the go
           # directive means raising this too.
-          version: v2.13.0
+          #
+          # Not v2.13.0: it bundles staticcheck v0.8.0-rc.1, whose new nilness
+          # dataflow analysis never converges on templ-generated page functions
+          # once they carry a few hundred i18n.T calls. The job printed
+          # "0 issues." only when the 45-minute timeout cut it off
+          # (dominikh/go-tools#1735, golangci/golangci-lint#6732). v2.13.2
+          # bundles the fixed v0.8.1, and a cold run of this module is seconds.
+          version: v2.13.2
           working-directory: .

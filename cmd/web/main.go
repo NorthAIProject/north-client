@@ -969,6 +969,7 @@ func routes(
 		Sleep:      sleepSvc,
 		Habits:     habitSvc,
 		Biometrics: biometricSvc,
+		Activity:   activitySvc,
 	})
 
 	agentTools.Record(auditRecorder)

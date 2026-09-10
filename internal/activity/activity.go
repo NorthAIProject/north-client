@@ -31,6 +31,7 @@ const (
 var (
 	METTable          = activity.METTable
 	LookupMET         = activity.LookupMET
+	Match             = activity.Match
 	METCodes          = activity.METCodes
 	NewTrainingWindow = activity.NewTrainingWindow
 )
