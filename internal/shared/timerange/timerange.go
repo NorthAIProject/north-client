@@ -67,7 +67,7 @@ func Parse(q string, loc *time.Location) Range {
 		loc = time.UTC
 	}
 	now := time.Now().In(loc)
-	today := startOfDay(now)
+	today := StartOfDay(now)
 
 	switch q {
 	case KeyYesterday:
@@ -177,8 +177,8 @@ func (r Range) Contains(t time.Time) bool {
 // days rather than by dividing the duration, so a window crossing a DST change
 // is still seven days and not six-and-23-hours.
 func (r Range) Days() int {
-	since := startOfDay(r.Since)
-	until := startOfDay(r.Until)
+	since := StartOfDay(r.Since)
+	until := StartOfDay(r.Until)
 	n := 0
 	for d := since; d.Before(until); d = d.AddDate(0, 0, 1) {
 		n++
@@ -240,7 +240,7 @@ func (r Range) hourBuckets() []Bucket {
 
 func (r Range) dayBuckets() []Bucket {
 	out := make([]Bucket, 0, r.Days())
-	for d := startOfDay(r.Since); d.Before(r.Until); d = d.AddDate(0, 0, 1) {
+	for d := StartOfDay(r.Since); d.Before(r.Until); d = d.AddDate(0, 0, 1) {
 		out = append(out, Bucket{
 			Label: d.Format("2 Jan"),
 			Start: d,
@@ -252,7 +252,7 @@ func (r Range) dayBuckets() []Bucket {
 
 func (r Range) weekBuckets() []Bucket {
 	out := make([]Bucket, 0, r.Days()/7+1)
-	for d := startOfDay(r.Since); d.Before(r.Until); d = d.AddDate(0, 0, 7) {
+	for d := StartOfDay(r.Since); d.Before(r.Until); d = d.AddDate(0, 0, 7) {
 		end := d.AddDate(0, 0, 7)
 		if end.After(r.Until) {
 			end = r.Until
@@ -293,11 +293,4 @@ func (r Range) Labels() []string {
 func (r Range) String() string {
 	return fmt.Sprintf("%s[%s..%s)", r.Key,
 		r.Since.Format(time.RFC3339), r.Until.Format(time.RFC3339))
-}
-
-// startOfDay is midnight local time. Constructed from the calendar fields
-// rather than by truncating, because truncation works in absolute time and a
-// day is not always 24 hours long.
-func startOfDay(t time.Time) time.Time {
-	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
 }

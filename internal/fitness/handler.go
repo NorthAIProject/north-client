@@ -18,11 +18,6 @@ import (
 const (
 	stravaStateCookie = "north_strava_oauth"
 	stravaStateTTL    = 10 * time.Minute
-
-	// activityLimit bounds both the scene and the list beside it. Enough to
-	// show a training block; past that the tiles are too small to read and
-	// the page is shipping polylines nobody looks at.
-	activityLimit = 24
 )
 
 type Handler struct {
@@ -46,6 +41,8 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Get("/fitness", h.hub)
 
 	r.Get("/fitness/activities", h.activities)
+	r.Get("/fitness/activities/terrain", h.terrain)
+	r.Get("/fitness/activities/list", h.terrainList)
 
 	r.Get("/fitness/strava/connect", h.stravaConnect)
 	r.Get("/fitness/strava/callback", h.stravaCallback)
@@ -53,7 +50,7 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Post("/fitness/strava/disconnect", h.stravaDisconnect)
 }
 
-// activities renders the 3D landscape of recent Strava activities.
+// activities renders the calendar terrain.
 func (h *Handler) activities(w http.ResponseWriter, r *http.Request) {
 	user := auth.MustUser(r.Context())
 	ctx := r.Context()
@@ -64,21 +61,22 @@ func (h *Handler) activities(w http.ResponseWriter, r *http.Request) {
 		status = strava.Status{Configured: h.strava.Configured(), Unavailable: true}
 	}
 
-	var recent []strava.Activity
+	var page strava.TerrainPage
 	if status.Connected {
-		recent, err = h.strava.RecentActivities(ctx, user.ID, activityLimit)
+		page, err = h.strava.Terrain(ctx, user.ID, user.Location(), time.Time{}, 0)
 		if err != nil {
-			middleware.FromContext(ctx).Error("list strava activities", slog.Any("error", err))
-			// Still not worth failing the page, but the empty set must not
-			// claim nothing was ever imported. Unavailable makes the template
-			// say the activities could not be read.
-			recent = nil
+			middleware.FromContext(ctx).Error("build activity terrain", slog.Any("error", err))
+			// Not worth failing the page, but the empty landscape must not
+			// claim nothing was ever imported. Unavailable is what makes the
+			// template say the activities could not be read — which it now
+			// actually does.
+			page = strava.TerrainPage{}
 			status.Unavailable = true
 		}
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := fitnesspages.ActivitiesPage(user, status, recent).Render(ctx, w); err != nil {
+	if err := fitnesspages.ActivitiesPage(user, status, page).Render(ctx, w); err != nil {
 		middleware.FromContext(ctx).Error("render activities", slog.Any("error", err))
 	}
 }

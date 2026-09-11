@@ -172,19 +172,15 @@ func (s *Service) Disconnect(ctx context.Context, userID uuid.UUID) error {
 	return s.repo.Delete(ctx, userID)
 }
 
-// RecentActivities is what the 3D view draws. Reads from North's own copy
-// rather than calling Strava, so opening the page is fast, works when Strava
-// is down, and costs nothing against the rate limit.
-func (s *Service) RecentActivities(ctx context.Context, userID uuid.UUID, limit int) ([]Activity, error) {
-	if limit <= 0 || limit > 100 {
-		limit = 30
-	}
-	return s.repo.RecentActivities(ctx, userID, limit)
+// OldestActivityBefore reports where an account's history ends, walking
+// backwards from a cursor. A nil time means there is nothing older.
+func (s *Service) OldestActivityBefore(ctx context.Context, userID uuid.UUID, before time.Time) (*time.Time, error) {
+	return s.repo.OldestBefore(ctx, userID, before)
 }
 
 // RouteTotals is the distance and climb recorded over a window, for the coach's
-// weekly training picture. Like RecentActivities it reads North's own copy, so
-// it costs nothing against the rate limit and keeps working while Strava is
+// weekly training picture. Like the terrain it reads North's own copy, so it
+// costs nothing against the rate limit and keeps working while Strava is
 // down — the coach never blocks on a third party to describe someone's week.
 //
 // This is what satisfies activity.RouteLookup. The signature is fixed by that
