@@ -34,6 +34,11 @@ var knownNonDestinations = map[string]string{
 	"/app/insights/progress/body": "insights range swap",
 	"/app/insights/training/body": "insights range swap",
 
+	// The terrain scene's own feed. JSON for a WebGL surface, not a page:
+	// opening it in a tab shows a wall of coordinates.
+	"/app/fitness/activities/terrain": "activity terrain page feed",
+	"/app/fitness/activities/list":    "activity strip page fragment",
+
 	// Actions with side effects. "Go to page" must not start an export.
 	"/app/settings/export.zip": "quota-consuming download",
 
