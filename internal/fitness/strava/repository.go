@@ -207,14 +207,20 @@ func (r *Repository) SaveActivity(ctx context.Context, userID uuid.UUID, a Activ
 	return nil
 }
 
-// RecentActivities returns the newest activities first, for the 3D view.
-func (r *Repository) RecentActivities(ctx context.Context, userID uuid.UUID, limit int) ([]Activity, error) {
-	rows, err := r.q.ListStravaActivities(ctx, stravadb.ListStravaActivitiesParams{
+// ActivitiesBetween returns the activities in a half-open window, oldest
+// first.
+//
+// The window is absolute time. Turning "the last eight weeks" into two
+// instants is the caller's job, because only the caller knows whose timezone
+// the weeks belong to.
+func (r *Repository) ActivitiesBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]Activity, error) {
+	rows, err := r.q.ListStravaActivitiesBetween(ctx, stravadb.ListStravaActivitiesBetweenParams{
 		UserID: userID,
-		Limit:  int32(limit),
+		Since:  since,
+		Until:  until,
 	})
 	if err != nil {
-		return nil, apperr.Wrap(err, "list strava activities")
+		return nil, apperr.Wrap(err, "list strava activities between")
 	}
 
 	out := make([]Activity, 0, len(rows))
@@ -233,6 +239,26 @@ func (r *Repository) RecentActivities(ctx context.Context, userID uuid.UUID, lim
 		})
 	}
 	return out, nil
+}
+
+// OldestBefore reports where an account's history ends, walking backwards.
+//
+// A nil time is the answer "there is nothing older", not a failure: an
+// account that has been synced for a week genuinely has no eighth week, and
+// the scene needs to be able to stop travelling rather than request pages
+// that will always be empty.
+func (r *Repository) OldestBefore(ctx context.Context, userID uuid.UUID, before time.Time) (*time.Time, error) {
+	oldest, err := r.q.OldestStravaActivityBefore(ctx, stravadb.OldestStravaActivityBeforeParams{
+		UserID: userID,
+		Before: before,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, apperr.Wrap(err, "oldest strava activity before")
+	}
+	return &oldest, nil
 }
 
 // RouteTotals sums distance and climb over a half-open window.
