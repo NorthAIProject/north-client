@@ -428,6 +428,14 @@ It lives in the service rather than the adapter because what a recording costs,
 how long is too long, and what to say when it cannot be heard are product
 behaviour. In the adapter, the second platform copies them.
 
+### Superseded the same day — see §3c
+
+Everything in this subsection about ffmpeg was true for about six hours. The
+cluster grew its own speech-to-text service, which takes Opus as-is, and the
+transcode step it describes was deleted. The reasoning is kept because the
+*discovery* still matters — a chat model cannot be handed a container it cannot
+read, and the failure is silent — but do not go looking for `audio.FFmpeg`.
+
 ### What was actually in the way: Opus
 
 A Telegram voice note is Opus in an Ogg container. `audioFormat` in
@@ -666,3 +674,108 @@ something worse.
 - **A regex fast-path** in front of the model for "obvious" inputs. It handles
   "2L water" and misses "half a litre", which is precisely the input the feature
   exists for, and leaves two parsers to disagree.
+
+---
+
+## 3c. Transcription moved to the cluster's own service
+
+**Built, 2026-09-11**, hours after §3b, and it deletes most of it.
+
+The shared rules at `~/Work/production/CLAUDE.md` forbid a paid speech API by
+name — "Not Groq, not Gemini, not OpenAI Whisper, not Deepgram" — and North was
+transcribing through Gemini/OpenRouter chat models, which is exactly that. The
+cluster now runs `speaches` in `horus`, free per request, no key, and no audio
+leaving the cluster.
+
+### What this deleted, and why that is the interesting part
+
+**ffmpeg, entirely.** It existed for one reason: the chat dialect names `wav`
+and `mp3`, and a Telegram voice note is Opus. The recogniser takes Ogg, webm,
+m4a, mp3 and wav as-is, so a recording now goes from the phone to the model
+untouched. The infra doc is blunt about it: "there is no ffmpeg anywhere in this
+cluster — if you find yourself needing a transcode step, you have taken a wrong
+turn." That also removed the only `os/exec` in the repository.
+
+**`RunnerTranscriber` and the `AudioReader` guard.** The guard had been added
+that same afternoon, because the provider chain could fall through to `fake`,
+whose canned sentence then became somebody's transcript — no error, stored as
+their own words. Deleting it is not a reversal. The protection moved from a
+runtime check into the type system: `openaicompat.TranscriptionClient` has no
+`Generate` and no `Name`, so it cannot be registered as a provider, so there is
+no chain to fall through and `fake` is unreachable from it. A test asserts it.
+
+A guard you can delete because the shape no longer permits the failure is the
+better version of the guard. Worth remembering the next time one looks
+load-bearing.
+
+**`audio.ChainSafe`.** It encoded which containers the chat dialect could read.
+Nothing sends audio to a chat model any more. `audio.Sniff` stays with a smaller
+job: deciding whether bytes are a recording worth uploading, and naming the
+container for the multipart request.
+
+### What the numbers changed
+
+`voice.MaxSeconds` dropped from 240 to 120. The recogniser is faster-whisper
+int8 on two CPU threads and runs **slightly slower than real time** — a 4.6
+second clip took 5.4 to 6.1 seconds across three consecutive runs against the
+deployed service. It is also a single replica shared with Norviq, so a long clip
+is not merely its own latency; it is time nobody else's recording is being
+transcribed. Four minutes would have been five minutes of a shared pod held by
+one person.
+
+The old 240 was arithmetic about decoding to 16 kHz PCM — a step that no longer
+happens here, so the number had to be re-derived rather than kept.
+
+### Languages
+
+`Systran/faster-whisper-small.en` is English-only and North ships four locales.
+A Portuguese note through it comes back as gibberish — measured, not assumed.
+The multilingual sibling was added to the pod alongside it, and the account's
+language now picks between them and is sent with the request, which also stops
+the recogniser guessing. Both stay resident; that is what the pod's memory bump
+paid for.
+
+`.en` is kept rather than replaced because it is smaller and better at English
+than the multilingual model of the same size.
+
+### Naming
+
+`TranscriptionClient`, not `WhisperTranscriber`. Both CLAUDE.md and the infra doc
+insist on naming the provider for the wire format rather than the vendor, and
+Norviq's `OpenAICompatibleTranscriptionProvider` is the worked example. A hosted
+API and the cluster's server are the same request with a different base URL, and
+only one of them needs a key — so an empty key sends no `Authorization` header
+at all rather than an empty one.
+
+### What this does not close
+
+- **Voice now depends on one CPU pod, single replica, with no fallback.** While
+  it restarts or is chewing through someone's clip, voice is down for everyone.
+  That is the accepted price of free, private and vendorless, and it is a
+  decision rather than a discovery. A second replica is the cheap insurance if
+  queueing ever shows up.
+- **It is shared with Norviq**, in both directions.
+- **Spend rows for voice are gone**, correctly: it is free, and a zero cost and
+  an unpriced call are different things. The `surface` parameter stays so the
+  ledger is instantly right again if a hosted endpoint is ever configured.
+- **The vocabulary hint is wired but unused.** `prompt` is the single
+  highest-leverage accuracy lever according to the infra doc, and North's
+  equivalent of Norviq's watchlist is goal titles, habit names and exercise
+  names. The field ships; the source does not yet.
+- **Recordings are still downloaded before they are refused.** Telegram sends a
+  duration and a size in the update, and Norviq refuses an oversized clip before
+  a byte moves. North checks after `fillAttachment` has already pulled it.
+
+### Verified, 2026-09-11
+
+| What | Result |
+|---|---|
+| `go test ./...` | 115 packages, 0 failures |
+| `internal/messaging/voice_test.go` | **passed untouched** — the backend was swapped and the surface could not tell |
+| NetworkPolicy, pod-to-pod from `khepri-web` | `OK` — port-forward would not have proved this, it goes via the API server |
+| `main voice-check`, English | `"I slept 6 hours last night, drank 2 liters of water, and my mood is a 4."` in 5.7s |
+| `main voice-check --language pt-BR` | `"Dormi seis horas ontem e a noite, bebi dois litros de água e o meu humor está aí quatro."` in 6.6s |
+| the same Portuguese clip through `small.en` | gibberish — which is why the multilingual model was added |
+| `docker compose config` | valid; local dev runs the same image |
+
+Not verified by machine, still: a real voice note from a real phone.
