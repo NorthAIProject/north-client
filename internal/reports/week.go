@@ -3,6 +3,8 @@ package reports
 import (
 	"fmt"
 	"time"
+
+	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 )
 
 // Period is the span one report covers, already titled.
@@ -31,11 +33,7 @@ func WeekContaining(at time.Time, loc *time.Location) Week {
 	if loc == nil {
 		loc = time.UTC
 	}
-	t := at.In(loc)
-	day := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, loc)
-	// Sunday is 0 in Go; shift so Monday is 0.
-	offset := (int(day.Weekday()) + 6) % 7
-	start := day.AddDate(0, 0, -offset)
+	start := timerange.StartOfWeek(at.In(loc))
 	return Week{Start: start, End: start.AddDate(0, 0, 7)}
 }
 
