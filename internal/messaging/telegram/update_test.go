@@ -159,3 +159,88 @@ func TestMalformedJSONDoesNotParse(t *testing.T) {
 		t.Fatal("malformed JSON parsed")
 	}
 }
+
+// A voice note is the whole point of decoding this field: somebody on a phone
+// says a sentence instead of typing it, and the answer must be the one they
+// would have got for typing it.
+func TestAVoiceNoteBecomesAnInboundFile(t *testing.T) {
+	raw := []byte(`{"update_id":9,"message":{"chat":{"id":884422,"type":"private"},"date":1755300000,` +
+		`"voice":{"file_id":"AwACAgQAAx","duration":7,"mime_type":"audio/ogg","file_size":8123}}}`)
+
+	u, ok := decodeUpdate(raw)
+	if !ok {
+		t.Fatal("update did not parse")
+	}
+
+	msg, _, got := u.inbound()
+	if got != answerUpdate {
+		t.Fatalf("intent = %v, want answerUpdate", got)
+	}
+	if msg.Attachment == nil {
+		t.Fatal("no attachment; a voice note was dropped")
+	}
+	if msg.Attachment.Kind != messaging.KindVoice {
+		t.Fatalf("kind = %q, want %q", msg.Attachment.Kind, messaging.KindVoice)
+	}
+	if msg.Attachment.FileID != "AwACAgQAAx" {
+		t.Fatalf("file id = %q", msg.Attachment.FileID)
+	}
+	if msg.Attachment.MIMEType != "audio/ogg" {
+		t.Fatalf("mime = %q, want the declared audio/ogg as a hint", msg.Attachment.MIMEType)
+	}
+	if msg.Attachment.DurationSeconds != 7 {
+		t.Fatalf("duration = %d, want 7", msg.Attachment.DurationSeconds)
+	}
+}
+
+// A voice note carries no text, and that must not make it look like an empty
+// message. Before this field was decoded, exactly this update was ignored.
+func TestAVoiceNoteWithNoTextIsNotIgnored(t *testing.T) {
+	raw := []byte(`{"update_id":10,"message":{"chat":{"id":884422,"type":"private"},"date":1755300000,` +
+		`"voice":{"file_id":"AwACAgQAAx","duration":3,"mime_type":"audio/ogg"}}}`)
+
+	u, _ := decodeUpdate(raw)
+	if _, _, got := u.inbound(); got != answerUpdate {
+		t.Fatalf("intent = %v, want answerUpdate", got)
+	}
+}
+
+// Fail closed, the way intentFor does. A forwarded song is not dictation, and
+// an hour of it would be an hour of transcription bought by one tap.
+func TestAForwardedAudioFileIsIgnored(t *testing.T) {
+	raw := []byte(`{"update_id":11,"message":{"chat":{"id":884422,"type":"private"},"date":1755300000,` +
+		`"audio":{"file_id":"CQACAgQAAx","duration":420,"mime_type":"audio/mpeg","title":"a whole album"}}}`)
+
+	u, _ := decodeUpdate(raw)
+	msg, _, got := u.inbound()
+	if got != ignoreUpdate {
+		t.Fatalf("intent = %v, want ignoreUpdate", got)
+	}
+	if msg.Attachment != nil {
+		t.Fatalf("attachment = %+v, want none", msg.Attachment)
+	}
+}
+
+// A video note is a round video, not a dictation. Same reasoning.
+func TestAVideoNoteIsIgnored(t *testing.T) {
+	raw := []byte(`{"update_id":12,"message":{"chat":{"id":884422,"type":"private"},"date":1755300000,` +
+		`"video_note":{"file_id":"DQACAgQAAx","duration":9}}}`)
+
+	u, _ := decodeUpdate(raw)
+	if _, _, got := u.inbound(); got != ignoreUpdate {
+		t.Fatalf("intent = %v, want ignoreUpdate", got)
+	}
+}
+
+// A voice note sent to a group is still a group message, and the bot leaves.
+// The chat is checked before the content, and this proves the new field did not
+// slip in front of that.
+func TestAVoiceNoteInAGroupIsStillLeft(t *testing.T) {
+	raw := []byte(`{"update_id":13,"message":{"chat":{"id":-100999,"type":"group"},"date":1755300000,` +
+		`"voice":{"file_id":"AwACAgQAAx","duration":4,"mime_type":"audio/ogg"}}}`)
+
+	u, _ := decodeUpdate(raw)
+	if _, _, got := u.inbound(); got != leaveChat {
+		t.Fatalf("intent = %v, want leaveChat", got)
+	}
+}

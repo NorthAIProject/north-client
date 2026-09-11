@@ -49,8 +49,15 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o worker ./cmd/worker
 FROM alpine:3.20.2
 WORKDIR /app
 
-# Install runtime certificates.
-RUN apk add --no-cache ca-certificates
+# Install runtime certificates, and ffmpeg.
+#
+# ffmpeg is here because a Telegram voice note arrives as Opus and every
+# provider in the chain but Gemini names only wav and mp3, so the container is
+# decoded before it reaches a model — the same 16 kHz mono WAV the browser
+# already produces for the web recorder. It costs around 60-100 MB of the image.
+# Without it the app still boots, still serves every typed path, and refuses
+# compressed voice notes in words rather than forwarding bytes no model can read.
+RUN apk add --no-cache ca-certificates ffmpeg
 
 # Run the app in production mode.
 ENV GO_ENV=production

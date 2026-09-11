@@ -3,6 +3,7 @@ package telegram
 import (
 	"context"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -80,5 +81,72 @@ func TestTypingStopsOnceTheReplyIsReady(t *testing.T) {
 
 	if got := len(api.method("sendChatAction")); got != settled {
 		t.Fatalf("typing kept going after the reply: %d then %d", settled, got)
+	}
+}
+
+// okHandler answers immediately, for tests about what happens before the coach.
+type okHandler struct{}
+
+func (okHandler) Handle(_ context.Context, _ messaging.InboundMessage) (messaging.OutboundMessage, error) {
+	return messaging.OutboundMessage{Text: "answered"}, nil
+}
+
+// A download that fails must apologise for the thing the person actually sent.
+// Telling somebody who recorded their voice that a photo failed is a second
+// bug on top of the first, and the one they will report.
+func TestAFailedVoiceDownloadDoesNotMentionAPhoto(t *testing.T) {
+	// No getFile route: every download fails.
+	api := newBotAPI(t)
+
+	b := &bridge{
+		messages:    okHandler{},
+		client:      api.client(),
+		log:         slog.Default(),
+		typingEvery: time.Hour,
+	}
+
+	b.answer(context.Background(), messaging.InboundMessage{
+		Platform:   messaging.PlatformTelegram,
+		ExternalID: "884422",
+		Attachment: &messaging.InboundFile{Kind: messaging.KindVoice, FileID: "AwACAgQAAx"},
+	}, "")
+
+	sends := api.sends()
+	if len(sends) != 1 {
+		t.Fatalf("expected one reply, got %d", len(sends))
+	}
+	text, _ := sends[0].body["text"].(string)
+	if text == "" {
+		t.Fatal("a failed download said nothing")
+	}
+	if strings.Contains(strings.ToLower(text), "photo") {
+		t.Fatalf("a failed voice note apologised for a photo: %q", text)
+	}
+}
+
+// And a photo still says photo. The fix must not make every failure generic.
+func TestAFailedPhotoDownloadStillMentionsAPhoto(t *testing.T) {
+	api := newBotAPI(t)
+
+	b := &bridge{
+		messages:    okHandler{},
+		client:      api.client(),
+		log:         slog.Default(),
+		typingEvery: time.Hour,
+	}
+
+	b.answer(context.Background(), messaging.InboundMessage{
+		Platform:   messaging.PlatformTelegram,
+		ExternalID: "884422",
+		Attachment: &messaging.InboundFile{Kind: messaging.KindImage, FileID: "AgACAgQAAx"},
+	}, "")
+
+	sends := api.sends()
+	if len(sends) != 1 {
+		t.Fatalf("expected one reply, got %d", len(sends))
+	}
+	text, _ := sends[0].body["text"].(string)
+	if !strings.Contains(strings.ToLower(text), "photo") {
+		t.Fatalf("a failed photo download did not mention a photo: %q", text)
 	}
 }

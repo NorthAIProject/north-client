@@ -30,6 +30,7 @@ type update struct {
 		Date     int64     `json:"date"`
 		Photo    []tgPhoto `json:"photo"`
 		Document *tgDoc    `json:"document"`
+		Voice    *tgVoice  `json:"voice"`
 	} `json:"message"`
 
 	// CallbackQuery is a tapped inline-keyboard button. Its Data is the
@@ -56,6 +57,16 @@ type tgDoc struct {
 	FileID   string `json:"file_id"`
 	FileName string `json:"file_name"`
 	MIMEType string `json:"mime_type"`
+}
+
+// tgVoice is a voice note: what the microphone button produces, always Opus in
+// an Ogg container. Distinct from `audio`, which is a music file somebody
+// forwarded, and from `video_note`, which is a round video.
+type tgVoice struct {
+	FileID   string `json:"file_id"`
+	Duration int    `json:"duration"`
+	MIMEType string `json:"mime_type"`
+	FileSize int64  `json:"file_size"`
 }
 
 // chat is where a message came from.
@@ -160,7 +171,7 @@ func (u update) inbound() (messaging.InboundMessage, string, intent) {
 		// The chat is checked before the text is: a group must be left whether
 		// or not the message that revealed it happened to carry words.
 		what := intentFor(from)
-		attachment := photoAttachment(u.Message.Photo, u.Message.Document)
+		attachment := attachmentFrom(u.Message.Voice, u.Message.Photo, u.Message.Document)
 		text := u.Message.Text
 		if text == "" {
 			text = u.Message.Caption
@@ -193,7 +204,31 @@ func chatID(id int64) string {
 	return strconv.FormatInt(id, 10)
 }
 
-func photoAttachment(photos []tgPhoto, doc *tgDoc) *messaging.InboundFile {
+// attachmentFrom picks the one file this message is about.
+//
+// Voice first, because a voice note never arrives alongside a photo and
+// checking it first keeps the common case — dictation — at the top.
+//
+// Only the `voice` field. Telegram also carries `audio` (a music file) and
+// `video_note` (a round video), and neither is somebody dictating: a forwarded
+// album would buy an hour of transcription with one tap. Failing closed here
+// matches what intentFor does with a chat type it does not recognise, and
+// widening it later is this function plus an allow-list.
+func attachmentFrom(voice *tgVoice, photos []tgPhoto, doc *tgDoc) *messaging.InboundFile {
+	if voice != nil && voice.FileID != "" {
+		return &messaging.InboundFile{
+			Kind:   messaging.KindVoice,
+			FileID: voice.FileID,
+			// Telegram's own label, kept as a hint. It is a claim like any
+			// other declared type — internal/voice sniffs the bytes and lets
+			// them win — but it is a useful one, because Go's own sniffer
+			// answers "application/ogg" for this container and an allow-list
+			// keyed on audio types would refuse it.
+			MIMEType:        voice.MIMEType,
+			DurationSeconds: voice.Duration,
+			Name:            "voice.ogg",
+		}
+	}
 	if n := len(photos); n > 0 {
 		// Last size is the largest. The others are Telegram's thumbnails.
 		return &messaging.InboundFile{
