@@ -362,13 +362,20 @@ func (s *Service) Terrain(ctx context.Context, userID uuid.UUID, loc *time.Locat
 		weeks = defaultTerrainWeeks
 	}
 
-	// The window ends at the start of the week after the cursor, so the week
-	// the cursor falls in is drawn whole rather than truncated at today.
+	// Where the window ends depends on which page this is.
+	//
+	// The first page runs to the end of the current week, so the week being
+	// lived in is drawn whole rather than truncated at today. A later page is
+	// asked for by naming the oldest week already drawn, and must stop where
+	// that week starts — ending it a week later instead would hand back a week
+	// the caller already has, which the scene would build twice at the same
+	// position.
 	end := before
 	if end.IsZero() {
-		end = time.Now()
+		end = startOfNextWeek(time.Now().In(loc))
+	} else {
+		end = timerange.StartOfWeek(end.In(loc))
 	}
-	end = startOfNextWeek(end.In(loc))
 
 	y, m, d := end.Date()
 	start := timerange.StartOfDay(time.Date(y, m, d-daysPerWeek*weeks, 12, 0, 0, 0, loc))
