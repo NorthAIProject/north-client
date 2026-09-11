@@ -324,12 +324,12 @@ See [Setting up Telegram](#setting-up-telegram) below.
 ## Local prerequisites
 
 - Go, Docker, and `go-task`
-- `ffmpeg` — `brew install ffmpeg`
 
-  Voice notes arrive in containers no provider but Gemini can read, so they are
-  decoded to 16 kHz mono WAV first. Without ffmpeg everything else works and
-  compressed voice notes are refused in words. `main voice-check` says which
-  parts are available on a given machine.
+`task db:up` starts Postgres, MinIO and a local speech-to-text service — the same
+image the cluster runs, so a voice note that works locally works deployed. Its
+first boot downloads two models and takes a few minutes; until it is ready, voice
+is refused in words and everything else works. `main voice-check` says whether a
+given machine can hear.
 
 ## Infrastructure
 
