@@ -113,10 +113,23 @@ type TerrainDay struct {
 	Mix      []SportShare
 
 	Routes []TerrainRoute
+
+	// Future marks a day that has not happened yet.
+	//
+	// The current week is drawn whole rather than truncated at today, because
+	// a week is the unit the terrain is laid out in and half a row of missing
+	// ground reads as damage. But the days after today are not rest days — no
+	// one chose to rest on a Sunday that has not arrived — and colouring them
+	// as rest would put a small lie in the middle of a scene whose whole
+	// argument is that its shapes mean something.
+	Future bool
 }
 
-// Rest reports whether nothing was recorded on this day.
-func (d TerrainDay) Rest() bool { return d.Sessions == 0 }
+// Rest reports whether a day that has happened recorded nothing.
+//
+// A future day is not rest. Callers that draw rest days, and callers that
+// count them, both want that distinction.
+func (d TerrainDay) Rest() bool { return d.Sessions == 0 && !d.Future }
 
 // TerrainWeek is one row of the terrain, Monday first.
 type TerrainWeek struct {
@@ -175,9 +188,16 @@ func loadMETMin(a Activity) float64 {
 // local weeks they are. The window is half-open, matching the query that
 // produced the activities.
 func buildTerrain(activities []Activity, loc *time.Location, from, to time.Time) []TerrainWeek {
+	return buildTerrainAt(activities, loc, from, to, time.Now())
+}
+
+// buildTerrainAt is buildTerrain with the present handed in, so the tests can
+// say where "today" falls rather than depending on the day they run.
+func buildTerrainAt(activities []Activity, loc *time.Location, from, to, now time.Time) []TerrainWeek {
 	if loc == nil {
 		loc = time.UTC
 	}
+	today := timerange.StartOfDay(now.In(loc))
 
 	// Index by local calendar date. A map key of the formatted date rather
 	// than the time itself: two time.Time values for the same midnight can
@@ -202,6 +222,7 @@ func buildTerrain(activities []Activity, loc *time.Location, from, to time.Time)
 			date := timerange.StartOfDay(time.Date(y, m, d+i, 12, 0, 0, 0, loc))
 
 			day := buildDay(date, byDay[date.Format(time.DateOnly)])
+			day.Future = date.After(today)
 			week.Days[i] = day
 			week.LoadMETMin += day.LoadMETMin
 		}

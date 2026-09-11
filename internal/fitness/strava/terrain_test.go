@@ -48,8 +48,11 @@ func TestBuildTerrainFillsEveryDayOfAQuietWindow(t *testing.T) {
 			t.Errorf("week starts on %s, want Monday", week.Start.Weekday())
 		}
 		for i, day := range week.Days {
-			if !day.Rest() {
-				t.Errorf("day %d of %s is not a rest day", i, week.Start.Format(time.DateOnly))
+			// Sessions rather than Rest(): this window runs into the future,
+			// where a day with nothing on it is not a day anyone rested on.
+			if day.Sessions != 0 {
+				t.Errorf("day %d of %s recorded %d sessions, want none",
+					i, week.Start.Format(time.DateOnly), day.Sessions)
 			}
 			if day.Date.IsZero() {
 				t.Errorf("day %d of %s has no date", i, week.Start.Format(time.DateOnly))
@@ -445,5 +448,74 @@ func TestTerrainPagesDoNotOverlap(t *testing.T) {
 			t.Errorf("week %s appears in both pages", key)
 		}
 		seen[key] = true
+	}
+}
+
+// The current week is drawn whole, so days after today are in the terrain.
+// They are not rest days: nobody chose to rest on a Sunday that has not
+// arrived, and colouring them as rest would put a small lie in the middle of
+// a scene whose whole argument is that its shapes mean something.
+func TestFutureDaysAreDrawnButAreNotRest(t *testing.T) {
+	t.Parallel()
+	lisbon := loc(t, "Europe/Lisbon")
+
+	// A Friday. The week runs Monday the 7th to Sunday the 13th.
+	now := time.Date(2026, 9, 11, 14, 50, 0, 0, lisbon)
+	from := time.Date(2026, 9, 7, 0, 0, 0, 0, lisbon)
+	to := from.AddDate(0, 0, 7)
+
+	weeks := buildTerrainAt(nil, lisbon, from, to, now)
+
+	if len(weeks) != 1 {
+		t.Fatalf("got %d weeks, want 1", len(weeks))
+	}
+
+	for i, day := range weeks[0].Days {
+		future := i > 4 // Saturday and Sunday
+		if day.Future != future {
+			t.Errorf("%s: Future = %v, want %v", day.Date.Format(time.DateOnly), day.Future, future)
+		}
+		if future && day.Rest() {
+			t.Errorf("%s has not happened yet but reports as a rest day", day.Date.Format(time.DateOnly))
+		}
+		if !future && !day.Rest() {
+			t.Errorf("%s is past with no sessions but does not report as rest", day.Date.Format(time.DateOnly))
+		}
+	}
+}
+
+// Today itself is not the future, however late in the day it is read.
+func TestTodayIsNotAFutureDay(t *testing.T) {
+	t.Parallel()
+	lisbon := loc(t, "Europe/Lisbon")
+
+	now := time.Date(2026, 9, 11, 23, 59, 0, 0, lisbon)
+	from := time.Date(2026, 9, 7, 0, 0, 0, 0, lisbon)
+
+	weeks := buildTerrainAt(nil, lisbon, from, from.AddDate(0, 0, 7), now)
+
+	friday := weeks[0].Days[4]
+	if friday.Future {
+		t.Errorf("%s is today but reports as future", friday.Date.Format(time.DateOnly))
+	}
+	if !friday.Rest() {
+		t.Error("today recorded nothing and should read as rest")
+	}
+}
+
+// A past week has no future days in it at all, whatever the clock says.
+func TestAnOlderWeekHasNoFutureDays(t *testing.T) {
+	t.Parallel()
+	lisbon := loc(t, "Europe/Lisbon")
+
+	now := time.Date(2026, 9, 11, 14, 0, 0, 0, lisbon)
+	from := time.Date(2026, 8, 3, 0, 0, 0, 0, lisbon)
+
+	weeks := buildTerrainAt(nil, lisbon, from, from.AddDate(0, 0, 7), now)
+
+	for _, day := range weeks[0].Days {
+		if day.Future {
+			t.Errorf("%s is in the past but reports as future", day.Date.Format(time.DateOnly))
+		}
 	}
 }
