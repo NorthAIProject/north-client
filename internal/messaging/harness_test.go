@@ -32,6 +32,7 @@ type harness struct {
 	client    *fake.Client
 	tools     *stubTools
 	quotas    *stubQuotas
+	voice     *stubVoice
 	user      users.User
 	pool      *pgxpool.Pool
 }
@@ -39,6 +40,7 @@ type harness struct {
 type harnessOptions struct {
 	tools  *stubTools
 	quotas *stubQuotas
+	voice  *stubVoice
 }
 
 func newHarness(t *testing.T, client *fake.Client, opts harnessOptions) harness {
@@ -93,6 +95,9 @@ func newHarness(t *testing.T, client *fake.Client, opts harnessOptions) harness 
 	if opts.quotas != nil {
 		msgOpts.Quotas = opts.quotas
 	}
+	if opts.voice != nil {
+		msgOpts.Voice = opts.voice
+	}
 
 	return harness{
 		messaging: messaging.NewService(msgOpts),
@@ -101,6 +106,7 @@ func newHarness(t *testing.T, client *fake.Client, opts harnessOptions) harness 
 		client:    client,
 		tools:     opts.tools,
 		quotas:    opts.quotas,
+		voice:     opts.voice,
 		user:      user,
 		pool:      pool,
 	}
@@ -185,10 +191,23 @@ type stubQuotas struct {
 	// tiers records the tier each call metered against, so a test can prove the
 	// messaging path passes the account's real plan rather than defaulting it.
 	tiers []string
+
+	// actions records what was metered, in order. A voice turn spends two
+	// different budgets and the order matters: a recording refused for size
+	// must not have cost a dictation first.
+	actions []quota.Action
+
+	// refuse names the one action to refuse, so a test can exhaust a voice
+	// budget without touching the coach's.
+	refuse quota.Action
 }
 
-func (s *stubQuotas) Consume(_ context.Context, _ uuid.UUID, tier string, _ quota.Action) (quota.Decision, error) {
+func (s *stubQuotas) Consume(_ context.Context, _ uuid.UUID, tier string, action quota.Action) (quota.Decision, error) {
 	s.consumed++
 	s.tiers = append(s.tiers, tier)
+	s.actions = append(s.actions, action)
+	if s.refuse != "" {
+		return quota.Decision{Allowed: action != s.refuse, RetryAfter: s.retryAfter}, nil
+	}
 	return quota.Decision{Allowed: s.allowed, RetryAfter: s.retryAfter}, nil
 }

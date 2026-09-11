@@ -38,6 +38,14 @@ const (
 	SurfaceWorkoutPlan   = "workout_plan"
 	SurfaceQuickCapture  = "quick_capture"
 	SurfaceVoiceCapture  = "voice_capture"
+
+	// SurfaceTelegramVoice is dictation on a phone, kept apart from
+	// SurfaceVoiceCapture because they are different products with different
+	// costs: the web recorder uploads a minute of WAV the browser prepared,
+	// and this one arrives as whatever Telegram sent, gets converted, and is
+	// followed immediately by a coach turn. Rolling them together would hide
+	// which surface the audio spend actually comes from.
+	SurfaceTelegramVoice = "telegram_voice"
 	SurfaceEmbedding     = "embedding"
 
 	// SurfaceUnknown labels a call that reached a provider without anyone

@@ -11,7 +11,14 @@ var portugueseEuropeanTelegram = map[string]string{
 	"tg.takenlink":   "Este chat já está ligado a outra conta Khepri.",
 	"tg.toomany":     "Demasiadas tentativas. Espera um minuto e tenta o teu código outra vez.",
 	"tg.photofailed": "Não foi possível guardar essa foto.",
-	"tg.wrong":       "Correu alguma coisa mal do meu lado. Tenta outra vez daqui a pouco.",
+
+	"tg.voice.unavailable": "Ainda não consigo ouvir mensagens de voz neste servidor. Escreve e eu respondo na mesma.",
+	"tg.voice.toolong":     "Essa mensagem de voz é mais longa do que consigo ouvir. Tenta uma mais curta, ou escreve.",
+	"tg.voice.toobig":      "Essa gravação é maior do que consigo processar. Tenta uma mais curta.",
+	"tg.voice.failed":      "Não consegui perceber essa mensagem de voz. Tenta outra vez, ou escreve.",
+	"tg.voice.silent":      "Não ouvi nada aí. Tentas outra vez?",
+	"tg.voice.download":    "Não consegui descarregar essa mensagem de voz. Envias outra vez?",
+	"tg.wrong":             "Correu alguma coisa mal do meu lado. Tenta outra vez daqui a pouco.",
 
 	"tg.confirm.again": "Ainda preciso de um sim ou de um não primeiro.",
 	"tg.confirm":       "Antes de fazer isto, confirmas?",

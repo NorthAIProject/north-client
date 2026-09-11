@@ -20,7 +20,17 @@ var englishTelegram = map[string]string{
 	"tg.takenlink":   "This chat is already linked to another Khepri account.",
 	"tg.toomany":     "Too many attempts. Wait a minute and try your code again.",
 	"tg.photofailed": "That photo could not be stored.",
-	"tg.wrong":       "Something went wrong on my side. Try again in a moment.",
+
+	// Voice notes. Each one names what actually happened, because "something
+	// went wrong" after somebody has spoken a sentence tells them nothing about
+	// whether saying it again would work.
+	"tg.voice.unavailable": "I cannot listen to voice notes on this server yet. Type it and I will answer the same way.",
+	"tg.voice.toolong":     "That voice note is longer than I can listen to. Try a shorter one, or type it.",
+	"tg.voice.toobig":      "That recording is bigger than I can handle. Try a shorter one.",
+	"tg.voice.failed":      "I could not make out that voice note. Try again, or type it.",
+	"tg.voice.silent":      "I did not hear anything in that. Try again?",
+	"tg.voice.download":    "I could not download that voice note. Try sending it again?",
+	"tg.wrong":             "Something went wrong on my side. Try again in a moment.",
 
 	// The consent gate. Asking permission in a language somebody did not choose
 	// is the one place where falling back to English is not merely untidy.

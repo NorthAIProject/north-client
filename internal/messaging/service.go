@@ -91,6 +91,7 @@ type Service struct {
 	links     *Repository
 	quotas    Quotas
 	images    Images
+	voice     Voice
 	transport Transport
 	log       *slog.Logger
 	funnel    *analytics.Funnel
@@ -117,6 +118,11 @@ type Options struct {
 	// Images stores a photo from a platform. Nil refuses the file and asks
 	// the person to use the web app.
 	Images Images
+
+	// Voice turns a voice note into words before the coach sees it. Nil
+	// refuses voice notes in words, which is what a deployment with no
+	// multimodal provider — or no ffmpeg — should do.
+	Voice Voice
 
 	// Transport delivers unsolicited messages (the morning briefing). Nil
 	// makes Notify a no-op, which is what every process without a bot token
@@ -146,6 +152,7 @@ func NewService(opts Options) *Service {
 		links:       opts.Links,
 		quotas:      opts.Quotas,
 		images:      opts.Images,
+		voice:       opts.Voice,
 		transport:   opts.Transport,
 		log:         opts.Log,
 		funnel:      opts.Funnel,
@@ -275,6 +282,16 @@ func (s *Service) coachTurn(ctx context.Context, user users.User, in InboundMess
 	}
 	if waiting {
 		return s.answerPending(ctx, user, conversation, pending, in.Text)
+	}
+
+	// A voice note becomes its words here, before anything is metered as a
+	// coach message, so what follows is an ordinary typed turn.
+	said, heard, err := s.transcribeVoice(ctx, user, &in)
+	if err != nil {
+		return OutboundMessage{}, err
+	}
+	if !heard {
+		return said, nil
 	}
 
 	refusal, allowed, err := s.meter(ctx, user)

@@ -54,11 +54,32 @@ type InboundMessage struct {
 	ReceivedAt time.Time
 }
 
-// InboundFile is a photo (or other file) that arrived with a message.
+// Attachment kinds. The field below is a free string so a platform can name
+// something these do not, but naming the two North acts on keeps the adapters
+// and the service agreeing about the spelling.
+//
+// Not the same string space as conversations.Message.Parts[].Kind, which
+// describes something stored. These describe something that arrived.
+const (
+	KindImage = "image"
+	KindVoice = "voice"
+)
+
+// InboundFile is a photo, a voice note, or another file that arrived with a
+// message.
 type InboundFile struct {
 	Name     string
 	MIMEType string
 	Kind     string
+
+	// DurationSeconds is how long a recording runs, as the platform reported
+	// it. Zero when the platform said nothing, which disables the check rather
+	// than rejecting everything — the same stance UpdateID takes.
+	//
+	// A hint, not a fact: it is the sender's client talking. It is worth having
+	// because it is the one bound that can be applied before downloading
+	// anything, and the bytes are checked afterwards regardless.
+	DurationSeconds int
 	// FileID is the platform's handle. The adapter uses it to fetch Bytes
 	// and may leave it set; this package never calls the platform with it.
 	FileID string

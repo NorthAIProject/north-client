@@ -11,7 +11,14 @@ var spanishTelegram = map[string]string{
 	"tg.takenlink":   "Este chat ya está conectado a otra cuenta de Khepri.",
 	"tg.toomany":     "Demasiados intentos. Espera un minuto y prueba tu código otra vez.",
 	"tg.photofailed": "No se ha podido guardar esa foto.",
-	"tg.wrong":       "Algo ha ido mal por mi lado. Inténtalo de nuevo en un momento.",
+
+	"tg.voice.unavailable": "Todavía no puedo escuchar notas de voz en este servidor. Escríbelo y te respondo igual.",
+	"tg.voice.toolong":     "Esa nota de voz es más larga de lo que puedo escuchar. Prueba con una más corta, o escríbelo.",
+	"tg.voice.toobig":      "Esa grabación es más grande de lo que puedo procesar. Prueba con una más corta.",
+	"tg.voice.failed":      "No he podido entender esa nota de voz. Inténtalo otra vez, o escríbelo.",
+	"tg.voice.silent":      "No he oído nada ahí. ¿Lo intentas otra vez?",
+	"tg.voice.download":    "No he podido descargar esa nota de voz. ¿Me la envías otra vez?",
+	"tg.wrong":             "Algo ha ido mal por mi lado. Inténtalo de nuevo en un momento.",
 
 	"tg.confirm.again": "Todavía necesito un sí o un no primero.",
 	"tg.confirm":       "Antes de hacer esto, ¿me lo confirmas?",
