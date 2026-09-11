@@ -76,6 +76,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/vault"
 	vaultdb "github.com/NorthAIProject/north-client/internal/vault/db"
+	"github.com/NorthAIProject/north-client/internal/voice"
 	"github.com/NorthAIProject/north-client/internal/workouts"
 	"github.com/NorthAIProject/north-client/web/assets"
 	"github.com/NorthAIProject/north-client/web/landing"
@@ -875,6 +876,17 @@ func routes(
 		Habits:    habitSvc,
 	})
 
+	// Voice is built once and shared. Two surfaces accept speech — the web
+	// recorder and, further down, Telegram voice notes — and they must hand a
+	// model the same shape, so they get the same service rather than two
+	// configurations that can drift apart.
+	//
+	// FastModel for the same reason the daily briefing uses it: reading words
+	// back is not reasoning.
+	voiceSvc := voice.NewService(voice.Options{
+		Transcriber: ai.NewRunnerTranscriber(runner, cfg.AI.FastModel),
+	})
+
 	// Quick capture composes the six logging slices behind one box. It owns no
 	// table; the parse is a model call and the commit is the same writes the
 	// care page makes.
@@ -883,11 +895,9 @@ func routes(
 		// transcription, not writing.
 		Parser: capture.NewAIParser(runner, cfg.AI.FastModel),
 
-		// Voice notes ride the same chain and the same fast model: reading
-		// words back is not reasoning. A deployment whose chain holds no
-		// multimodal provider still gets a working typed box — the button is
-		// hidden and the endpoint says so.
-		Transcriber: ai.NewRunnerTranscriber(runner, cfg.AI.FastModel),
+		// A deployment whose chain holds no multimodal provider still gets a
+		// working typed box — the button is hidden and the endpoint says so.
+		Voice: voiceSvc,
 
 		Hydration:   hydrationSvc,
 		Sleep:       sleepSvc,
