@@ -488,6 +488,42 @@ coach an empty turn to invent a subject for.
 Only the `voice` field is decoded. Not `audio` — a forwarded album would buy an
 hour of transcription with one tap — and not `video_note`.
 
+### A provider that cannot hear must not answer
+
+Found by asking what happens when the paid provider runs out of credit, and
+worth writing down because the answer was not what anyone expected.
+
+The chain failed over correctly — that is what it is for — and then kept walking
+until something answered. `fake` is registered unconditionally in every
+environment, answers anything, and was in the chain. So its canned sentence
+became the transcript, with no error, and the coach was handed it as though the
+person had said it. A voice note about sleep came back as a reply about API
+keys.
+
+That is worse than a wrong reply, and the difference is the whole reason this
+has its own section. A transcript is not an answer; it is entered as the user's
+own words. It reaches the coach, it is stored in the conversation, and memory
+extraction can later treat it as something the person said about their life. A
+wrong answer is visible. Words put into somebody's mouth are not.
+
+So transcription now requires a client to say it can hear — `ai.AudioReader`,
+declared true on Gemini and on the OpenAI-dialect client, false on `fake`, and
+assumed false for anything that stays silent. The asymmetry is deliberate:
+guessing that a client can hear risks inventing a sentence nobody said, while
+guessing that it cannot costs somebody being asked to type.
+
+A client that cannot hear is stepped over with `ErrUnavailable`, which is a
+failover error, so the walk continues by the ordinary path. A chain where nobody
+can listen therefore ends as `ErrUnavailable` rather than as a fabricated
+sentence — and both surfaces now tell that apart from a failure: "I cannot
+listen right now, type it instead" rather than "try again", because retrying a
+missing capability never works.
+
+This is a statement about the client, not the model behind it. A text-only model
+reached through the OpenAI dialect refuses a request carrying audio, which is an
+honest failure the chain walks past. What it rules out is the other thing: a
+client that quietly answers anyway.
+
 ### What this does not close
 
 - **Nothing catches a mis-heard fact.** The transcript is not echoed: the reply

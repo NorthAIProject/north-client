@@ -52,6 +52,41 @@ type TranscribeResult struct {
 	Model    string
 }
 
+// AudioReader is a Client that can be handed a recording.
+//
+// Declared rather than assumed, and assumed false when a client stays silent.
+// That direction is the whole point. Every Client answers Generate, so a client
+// that cannot actually hear still answers a transcription request — with
+// whatever it would have said to the prompt alone. The fake client is the
+// clearest case: it answers anything, so when the chain walked past a provider
+// that was out of credit and reached it, its canned sentence became the
+// transcript. No error, nothing to notice.
+//
+// That failure is worse than a refusal, because a transcript is not a reply.
+// It is entered as the user's own words: the coach answers it, it is stored in
+// the conversation, and memory extraction can later treat it as something the
+// person said about their life. A wrong answer is visible; words put into
+// somebody's mouth are not.
+//
+// So the cost of the two mistakes is not symmetric. Guessing that a client can
+// hear risks inventing a sentence nobody said. Guessing that it cannot costs
+// somebody being asked to type instead. A new provider must therefore opt in.
+type AudioReader interface {
+	// ReadsAudio reports whether a recording can be sent to this client.
+	ReadsAudio() bool
+}
+
+// canHear reports whether this client may be handed a recording.
+//
+// Unwrapped because the registry wraps clients for metering, and an assertion
+// against the wrapper would fail only where a meter is configured — working on
+// a laptop and failing safe in production, which is the worst place to discover
+// the difference.
+func canHear(c Client) bool {
+	reader, ok := Unwrap(c).(AudioReader)
+	return ok && reader.ReadsAudio()
+}
+
 // transcribeTemperature is zero. Two runs over the same recording should not
 // disagree about how much water it mentions.
 var transcribeTemperature float32 = 0
@@ -96,6 +131,16 @@ func (t *RunnerTranscriber) Transcribe(ctx context.Context, req TranscribeReques
 
 	var out TranscribeResult
 	client, err := t.runner.Run(ctx, RunOptions{Tier: req.Tier}, func(c Client) error {
+		// Stepped over rather than asked. ErrUnavailable is a failover error,
+		// so the walk continues to the next provider by the ordinary path, and
+		// a chain with nobody able to listen ends as ErrUnavailable — which is
+		// what lets a caller offer typing instead of apologising for a failure
+		// that was really a missing capability.
+		if !canHear(c) {
+			return apperr.Wrap(apperr.ErrUnavailable,
+				"ai: %s cannot be handed a recording", c.Name())
+		}
+
 		resp, genErr := c.Generate(ctx, Request{
 			Model:  t.model,
 			System: system,

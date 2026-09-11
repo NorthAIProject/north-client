@@ -10,6 +10,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/ai/fake"
 	"github.com/NorthAIProject/north-client/internal/messaging"
 	"github.com/NorthAIProject/north-client/internal/quota"
+	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
@@ -258,5 +259,38 @@ func TestATypedMessageDoesNotReachTheTranscriber(t *testing.T) {
 
 	if voice.calls != 0 {
 		t.Fatalf("a typed message was transcribed %d times", voice.calls)
+	}
+}
+
+// A chain with nobody able to listen is a different thing from a chain that
+// tried and failed, and the person should be told the difference: one is worth
+// retrying, the other is worth typing.
+//
+// This is the path a deployment reaches when its paid provider runs out of
+// credit and everything behind it in the chain is deaf.
+func TestNobodyAbleToListenAsksThemToTypeRatherThanToRetry(t *testing.T) {
+	unavailable := &stubVoice{err: apperr.Wrap(apperr.ErrUnavailable, "ai: nothing in the chain can hear")}
+	h := newHarness(t, fake.Text("should not be reached"), harnessOptions{voice: unavailable})
+	h.link(t, "700010")
+
+	before := len(h.client.Calls())
+	out := h.sendVoice(t, "700010", recording(), 5)
+
+	if out.Text == "" {
+		t.Fatal("a voice note reached a deaf chain and got silence")
+	}
+	if len(h.client.Calls()) != before {
+		t.Fatal("the coach was called without a transcript")
+	}
+
+	// The same words a deployment with no transcriber at all gives, because it
+	// is the same situation from where the person is standing.
+	withNothing := newHarness(t, fake.Text("should not be reached"), harnessOptions{})
+	withNothing.link(t, "700011")
+	expected := withNothing.sendVoice(t, "700011", recording(), 5)
+
+	if out.Text != expected.Text {
+		t.Fatalf("said %q, want the same offer to type that a server with no transcriber gives: %q",
+			out.Text, expected.Text)
 	}
 }

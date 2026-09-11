@@ -59,6 +59,9 @@ func New(ctx context.Context, opts Options) (*Client, error) {
 
 func (c *Client) Name() string { return "gemini" }
 
+// ReadsAudio is true: Gemini ingests audio natively, as one more kind of part.
+func (c *Client) ReadsAudio() bool { return true }
+
 func (c *Client) Generate(ctx context.Context, req ai.Request) (*ai.Response, error) {
 	resp, err := c.client.Models.GenerateContent(ctx, c.model(req), toContents(req.Messages), toConfig(req))
 	if err != nil {
