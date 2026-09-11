@@ -169,10 +169,16 @@ func (b *bridge) answer(ctx context.Context, in messaging.InboundMessage, callba
 	}
 
 	if err := b.fillAttachment(ctx, &in); err != nil {
-		b.log.Warn("telegram could not download a photo", "error", err)
-		_ = b.client.Send(ctx, in.ExternalID, messaging.OutboundMessage{
-			Text: "I could not download that photo. Try sending it again?",
-		})
+		kind := in.Attachment.Kind
+		b.log.Warn("telegram could not download an attachment", "error", err, "kind", kind)
+		// Named rather than generic. Somebody who recorded their voice and is
+		// told a photo failed will report that as the bug, and it is: it says
+		// the bot did not understand what they sent.
+		text := "I could not download that photo. Try sending it again?"
+		if kind == messaging.KindVoice {
+			text = i18n.T(ctx, "tg.voice.download")
+		}
+		_ = b.client.Send(ctx, in.ExternalID, messaging.OutboundMessage{Text: text})
 		return
 	}
 

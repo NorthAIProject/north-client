@@ -372,12 +372,9 @@ not here.
   `AI_PROVIDER_CHAIN=openrouter,nvidia,fake` and an empty `GEMINI_API_KEY`.
   OpenRouter wants `google/gemini-2.5-flash`. Predates voice and affects the
   parse too; the local verification below was run with the slugs overridden.
-- **Coach chat still takes images only.** `hydrateCurrentTurn` filters on
-  `part.Kind != "image"`, and Telegram's update struct decodes no `voice` field,
-  so a voice note sent from Telegram is still silently dropped. Both are the
-  next phase, and both raise a retention question this phase answered by not
-  storing anything — chat attachments already persist in object storage, so the
-  two surfaces must not drift into different behaviour by accident.
+- ~~**Coach chat still takes images only.**~~ Closed by the Telegram phase
+  below, and half of it turned out to be the wrong problem. See "Voice on
+  Telegram".
 
 ### Verified, 2026-09-06
 
@@ -405,6 +402,126 @@ upload meet.
   dialogue with the coach; `/app/chat` already streams. Capture transcribes and
   stops.
 - Keeping the audio because it might be useful later.
+
+---
+
+## 3b. Voice on Telegram
+
+**Built, 2026-09-11.** Send the bot a voice note, get the answer you would have
+got for typing the same sentence.
+
+### The filter was not the blocker
+
+The bullet above named two things: `hydrateCurrentTurn` filtering on
+`part.Kind != "image"`, and the update struct decoding no `voice` field. Only
+the second was real.
+
+The filter matters if the audio is persisted and replayed to the model. Doing
+that would have created exactly the retention question this section refused to
+create, re-billed audio tokens on every later turn that re-inlined the part, and
+made conversation history differ depending on which surface a message arrived
+through. So the transcription happens in `messaging.Service`, which replaces the
+recording with its words and clears the attachment. Everything downstream sees
+an ordinary typed turn, and `internal/coach` was not touched.
+
+It lives in the service rather than the adapter because what a recording costs,
+how long is too long, and what to say when it cannot be heard are product
+behaviour. In the adapter, the second platform copies them.
+
+### What was actually in the way: Opus
+
+A Telegram voice note is Opus in an Ogg container. `audioFormat` in
+`internal/ai/openaicompat` names exactly `wav` and `mp3` — the two the dialect
+carries — so Opus reaches every provider but Gemini as a format it refuses, and
+the deployed chain is `openrouter,nvidia,fake` with an empty `GEMINI_API_KEY`.
+
+It is worse than a refusal. `Client.File` sniffs a download with
+`http.DetectContentType`, which answers `application/ogg` for this container.
+That has no `audio/` prefix, so `openAIContent` would have taken the `image_url`
+branch and sent a base64 waveform behind a data URL — the precise failure that
+function's own comment says it was rewritten to prevent. Verified rather than
+assumed: `http.DetectContentType` on a real voice note returns
+`"application/ogg"`.
+
+The web recorder never met any of this because the browser re-encodes to 16 kHz
+mono WAV before uploading (see above). A phone has no browser to do that, so the
+conversion moved to the server, and **ffmpeg is now a runtime dependency**. Both
+surfaces go through `internal/voice` and `internal/shared/audio` so they cannot
+drift: `audio.ChainSafe` is the rule written down, commented with the line in
+`openaicompat` it is keyed to.
+
+The alternatives were priced and rejected. Requiring Gemini makes one vendor
+mandatory for a feature and would have shipped dead against the current config.
+A dedicated speech endpoint (`gpt-transcribe` $0.0045/min, Deepgram Nova-3
+$0.0043/min, Scribe v2 $0.22/hr) takes Opus directly and is the better eventual
+answer — `ai.Transcriber` exists so it is one implementation, not an edit here —
+but it is a new vendor, a new credential, and a per-minute bill. ffmpeg is a
+package in the image that costs nothing per call.
+
+This is the first `os/exec` in the tree, in the web pod's request path. Fixed
+argv, never a shell, stdin to stdout with no temp file and no path derived from
+anything a person sent, no `-f` guessed from a declared type, bounded output,
+bounded stderr, a 30 s timeout, a `WaitDelay`, and a semaphore of four so a
+burst of voice notes cannot fork-bomb a pod. Resolved once at boot: without
+ffmpeg the app starts, typed paths work, the web recorder works, and a
+compressed recording is refused in words rather than forwarded as bytes no model
+can read.
+
+### Bounds, budgets and what is said
+
+Four minutes, and the number is arithmetic: decoded to 16 kHz mono 16-bit PCM,
+speech is 32 KB/s, so the 8 MiB ceiling is 262 seconds. Confirmed in practice —
+a 14 KB Opus note converts to 147 KB of WAV.
+
+Duration and size are both checked **before** the quota, so a recording refused
+for its length does not also cost a dictation. Voice spends the same
+`quota.VoiceCapture` budget as the web recorder, because it is the same act and
+a per-person allowance should not double because somebody opened a different
+app. It gets its own spend surface, `telegram_voice`, because the ledger should
+be able to say which product the audio money went to.
+
+Transcription failures are answered, never returned: an error returned from here
+reaches the bridge as the generic apology, which is true and useless to somebody
+who just spoke into their phone. Silence asks again rather than handing the
+coach an empty turn to invent a subject for.
+
+Only the `voice` field is decoded. Not `audio` — a forwarded album would buy an
+hour of transcription with one tap — and not `video_note`.
+
+### What this does not close
+
+- **Nothing catches a mis-heard fact.** The transcript is not echoed: the reply
+  is the reply. Mis-heard *writes* are still caught, and better than on the web
+  — the `PendingApproval` gate spells the values back before anything is
+  persisted, which shows the number about to be written rather than the sentence
+  that produced it. But "I did not train" heard as "I did train" changes the
+  coaching and nothing sees it. Accepted, not overlooked. The hedge is two lines
+  in `transcribeVoice`, deliberately.
+- **Spoken replies are not built.** The blocker was never ffmpeg: OpenRouter
+  does not serve `/audio/speech` and neither does NVIDIA, so voice-out means a
+  second vendor, a second credential, and a provider with no failover. The seam
+  is in `internal/voice` so it stays additive.
+- **Audio is still priced as text**, as above. This adds a second surface to
+  that inaccuracy without changing its shape.
+- **The model slugs are still named for the wrong provider**, as above. The
+  verification below was run with `AI_FAST_MODEL` overridden, for the same
+  reason the 2026-09-06 run was.
+
+### Verified, 2026-09-11
+
+| What | Result |
+|---|---|
+| `internal/shared/audio`, real ffmpeg: Ogg/Opus -> WAV | 16000 Hz, 1 channel, 16-bit |
+| the WAV it writes to a pipe, read back by ffmpeg | valid; the unknown RIFF size field is tolerated |
+| `internal/voice`, `internal/messaging`, `internal/capture` suites | pass, messaging against real Postgres |
+| whole tree, `go test ./...` | 115 packages, 0 failures |
+| `main voice-check` | ogg 3987 B -> wav 32078 B, chain-safe |
+| macOS `say` -> Opus -> `voice-check --file --transcribe` -> OpenRouter | `"I slept 6 hours last night, drank 2L of water, and my mood is a four."` |
+| `http.DetectContentType` on that voice note | `"application/ogg"` — the reason the declared type is kept as a hint and the bytes are sniffed |
+
+Not verified by machine: a real voice note from a real phone to a real bot. That
+needs a bot token and a person holding a microphone, and it is the one step
+where Telegram's own encoding, the download and the conversion meet.
 
 ---
 
