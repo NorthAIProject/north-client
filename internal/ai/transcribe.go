@@ -36,8 +36,26 @@ type TranscribeRequest struct {
 	Audio    []byte
 	MIMEType string
 
-	// Tier selects the provider chain, as it does everywhere else. A plain
-	// string, so this package still knows nothing about accounts.
+	// Language is the speaker's language, as the account records it ("en",
+	// "pt-BR"). It does two jobs: it picks the model, and it is sent to the
+	// server so a multilingual model does not have to guess — and guessing is
+	// how Portuguese comes back as Spanish.
+	//
+	// Empty means unknown, which is honest: nothing is sent and the recogniser
+	// detects. Better than asserting a language nobody chose.
+	Language string
+
+	// Vocabulary biases the recogniser toward words this person actually uses
+	// — their goals, their habits, the exercises they do. Speech recognisers
+	// mangle proper nouns, and this is the cheapest correction available.
+	//
+	// The implementation decides how to carry it; empty sends nothing at all,
+	// because an empty hint is still an input rather than the absence of one.
+	Vocabulary []string
+
+	// Tier selects the provider chain where an implementation has one. Nothing
+	// reads it today — the cluster's own service is not a chain and has no
+	// tiers — but it is the seam a hosted fallback would need, so it stays.
 	Tier string
 }
 
