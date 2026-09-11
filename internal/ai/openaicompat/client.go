@@ -116,14 +116,6 @@ func New(opts Options) (*Client, error) {
 
 func (c *Client) Name() string { return c.name }
 
-// ReadsAudio is true: the dialect carries a recording as an input_audio part.
-//
-// A statement about the wire format, not about the model behind it. A text-only
-// model reached through this dialect refuses a request carrying audio, which is
-// an honest failure the chain can walk past. What this rules out is the other
-// thing — a client that quietly answers anyway.
-func (c *Client) ReadsAudio() bool { return true }
-
 func (c *Client) Generate(ctx context.Context, req ai.Request) (*ai.Response, error) {
 	resp, err := c.post(ctx, c.body(req, false))
 	if err != nil {

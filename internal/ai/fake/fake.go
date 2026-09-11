@@ -89,16 +89,6 @@ func Text(reply string) *Client {
 
 func (c *Client) Name() string { return "fake" }
 
-// ReadsAudio is false, and this is the most important false in the package.
-//
-// The fake answers anything, which is exactly what makes it usable as a stand-in
-// for a coach and unusable as a stand-in for hearing. Asked to transcribe, it
-// returns its script, and the caller cannot tell that from a real transcript —
-// so the scripted line is entered as the user's own words. Saying no here is
-// what keeps a chain that has fallen all the way through from putting sentences
-// into somebody's mouth.
-func (c *Client) ReadsAudio() bool { return false }
-
 func (c *Client) Generate(ctx context.Context, req ai.Request) (*ai.Response, error) {
 	resp, err := c.next(ctx, req)
 	if err != nil {
