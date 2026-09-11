@@ -17,8 +17,15 @@ import (
 // the scene needs a route, a climb and a label, and shipping the rest would
 // be sending someone's training history to the client for no reason.
 type viewerActivity struct {
-	Name           string  `json:"name"`
-	SportType      string  `json:"sport_type"`
+	Name      string `json:"name"`
+	SportType string `json:"sport_type"`
+
+	// Family is the colour grouping, decided by the server. The viewer used
+	// to work it out itself from SportType with a set of substring tests,
+	// which is how Treadmill came to be drawn as neither a run nor anything
+	// else. One table, in Go, and the scene is told the answer.
+	Family strava.SportFamily `json:"family"`
+
 	Polyline       string  `json:"polyline"`
 	ElevationGainM float64 `json:"elevation_gain_m"`
 	DistanceKm     float64 `json:"distance_km"`
@@ -37,6 +44,7 @@ func viewerActivities(activities []strava.Activity, loc *time.Location) []viewer
 		out = append(out, viewerActivity{
 			Name:           a.Name,
 			SportType:      a.SportType,
+			Family:         strava.Family(a.SportType, ""),
 			Polyline:       a.SummaryPolyline,
 			ElevationGainM: a.ElevationGainM,
 			DistanceKm:     a.DistanceKm(),
@@ -162,18 +170,39 @@ templ ActivitiesPage(user users.User, status strava.Status, activities []strava.
 	}
 }
 
-// Kept in step with SPORT_COLORS in the viewer by hand. Two lists rather than
-// one because the swatches are Tailwind classes and the scene needs hex
-// numbers; the pairing is asserted nowhere, so change both together.
+// The legend walks strava.Families, so it cannot show a swatch for a family
+// the server does not know about, or quietly omit one it does.
+//
+// The swatch classes are written out rather than built from the family name.
+// Tailwind finds a utility by scanning source text for the literal string, so
+// "bg-sport-" + family compiles fine and renders unstyled — a failure with no
+// build error and nothing to grep for.
 templ legend() {
 	<div class="flex flex-wrap items-center gap-3">
-		@legendKey("Run", "bg-ember")
-		@legendKey("Ride", "bg-[#4ea1ff]")
-		@legendKey("Swim", "bg-[#36d1c4]")
-		@legendKey("Walk", "bg-[#7bc86c]")
-		@legendKey("Strength", "bg-[#b98cf0]")
-		@legendKey("Other", "bg-[#9aa4b2]")
+		for _, f := range strava.Families {
+			@legendKey(f.Label(), sportSwatch(f))
+		}
 	</div>
+}
+
+// sportSwatch is the Tailwind class for a family's colour. The colours live in
+// web/assets/css/input.css as --north-sport-* tokens, which the scene reads
+// too; web/fitness/palette_test.go asserts the three stay in step.
+func sportSwatch(f strava.SportFamily) string {
+	switch f {
+	case strava.FamilyRun:
+		return "bg-sport-run"
+	case strava.FamilyRide:
+		return "bg-sport-ride"
+	case strava.FamilySwim:
+		return "bg-sport-swim"
+	case strava.FamilyWalk:
+		return "bg-sport-walk"
+	case strava.FamilyStrength:
+		return "bg-sport-strength"
+	default:
+		return "bg-sport-other"
+	}
 }
 
 templ legendKey(name string, swatch string) {
