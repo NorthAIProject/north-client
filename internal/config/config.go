@@ -116,6 +116,14 @@ type Config struct {
 	// to anyone who asks for them. /healthz is public because it answers one
 	// bit; this answers rather more.
 	MetricsListenAddr string
+
+	// FFmpegPath is where to find ffmpeg. Empty means look on PATH.
+	//
+	// North needs it to read the containers a model cannot: a Telegram voice
+	// note is Opus, and every provider in the chain but Gemini names only wav
+	// and mp3. A deployment without it keeps every typed path and refuses voice
+	// notes in words, which is why this is a path rather than a required key.
+	FFmpegPath string
 }
 
 // AIConfig selects and configures the AI providers. Provider names must match a
@@ -467,6 +475,8 @@ func Load() (*Config, error) {
 
 		MCPListenAddr:     optional("MCP_LISTEN_ADDR", "127.0.0.1:8093"),
 		MetricsListenAddr: optional("METRICS_LISTEN_ADDR", "127.0.0.1:9090"),
+
+		FFmpegPath: optional("FFMPEG_PATH", ""),
 
 		Embedding: EmbeddingConfig{
 			Provider: optional("EMBEDDING_PROVIDER", ""),
