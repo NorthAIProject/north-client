@@ -44,19 +44,9 @@ func voiceFixture(t *testing.T, stub *stubTranscriber) (*capture.Service, users.
 	return svc, users.User{ID: uuid.New(), Tier: users.TierFree}
 }
 
-// newVoice wraps the stub the way cmd/web does, including a transcoder, so
-// these tests exercise the path the browser actually reaches.
+// newVoice wraps the stub the way cmd/web does.
 func newVoice(stub *stubTranscriber) *voice.Service {
-	return voice.NewService(voice.Options{Transcriber: stub, Transcode: wavTranscoder{}})
-}
-
-// wavTranscoder stands in for ffmpeg. It relabels rather than converts, which
-// is all these tests need: what they assert is that a container the provider
-// chain cannot read never reaches it, not how the conversion is done.
-type wavTranscoder struct{}
-
-func (wavTranscoder) ToWAV(_ context.Context, in []byte) ([]byte, error) {
-	return append(wavHeader(), in...), nil
+	return voice.NewService(voice.Options{Transcriber: stub})
 }
 
 // Real leading bytes for each container, because the point of the sniff is that
@@ -75,22 +65,17 @@ func wavHeader() []byte {
 }
 func mp3Header() []byte { return append([]byte("ID3\x03\x00"), bytes.Repeat([]byte{0}, 64)...) }
 
-// Every container is accepted, and every one of them reaches the model as a
-// type the whole provider chain can read.
-//
-// This last part is a change: the sniffed container used to be forwarded as it
-// was, which worked because the browser re-encodes to WAV before uploading and
-// hid the fact that webm reaches an OpenAI-dialect provider as nothing at all.
-// An older browser, or a failed re-encode, met that silently. See
-// internal/shared/audio.ChainSafe.
+// Every container a browser records is accepted, and every one of them reaches
+// the recogniser as itself. Nothing converts anything on the way: the service
+// takes each of these as-is, which is what let the transcode step go.
 func TestTranscribeAcceptsEveryContainerABrowserRecords(t *testing.T) {
 	cases := map[string]struct {
 		audio []byte
 		mime  string
 	}{
-		"webm from chrome and firefox": {webmHeader(), "audio/wav"},
-		"mp4 from safari and ios":      {mp4Header(), "audio/wav"},
-		"ogg":                          {oggHeader(), "audio/wav"},
+		"webm from chrome and firefox": {webmHeader(), "audio/webm"},
+		"mp4 from safari and ios":      {mp4Header(), "audio/mp4"},
+		"ogg":                          {oggHeader(), "audio/ogg"},
 		"wav":                          {wavHeader(), "audio/wav"},
 		"mp3 with an id3 tag":          {mp3Header(), "audio/mpeg"},
 	}
@@ -108,7 +93,7 @@ func TestTranscribeAcceptsEveryContainerABrowserRecords(t *testing.T) {
 				t.Fatalf("text = %q", text)
 			}
 			if stub.sawMIME != tc.mime {
-				t.Fatalf("the model saw %q, want %q", stub.sawMIME, tc.mime)
+				t.Fatalf("the recogniser saw %q, want %q", stub.sawMIME, tc.mime)
 			}
 		})
 	}

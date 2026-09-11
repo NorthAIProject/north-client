@@ -117,14 +117,38 @@ type Config struct {
 	// bit; this answers rather more.
 	MetricsListenAddr string
 
-	// FFmpegPath is where to find ffmpeg. Empty means look on PATH.
-	//
-	// North needs it to read the containers a model cannot: a Telegram voice
-	// note is Opus, and every provider in the chain but Gemini names only wav
-	// and mp3. A deployment without it keeps every typed path and refuses voice
-	// notes in words, which is why this is a path rather than a required key.
-	FFmpegPath string
+	// Transcription points at the speech-to-text service. Empty switches voice
+	// off, and both surfaces say so.
+	Transcription TranscriptionConfig
 }
+
+// TranscriptionConfig points at a service speaking OpenAI's
+// /v1/audio/transcriptions shape.
+//
+// Its own group rather than a member of AIConfig, deliberately: this is not a
+// chat provider and must never end up in a chain. A chat model handed a
+// recording answers the prompt instead of the audio, and its answer is then
+// stored as the user's own words.
+type TranscriptionConfig struct {
+	// BaseURL is the API root including the version segment. Empty means voice
+	// is off: both surfaces refuse in words and every typed path is untouched.
+	BaseURL string
+
+	// APIKey is empty for the cluster's own service, which sits behind a
+	// NetworkPolicy rather than a credential.
+	APIKey string
+
+	// Model handles every language that is not English.
+	Model string
+
+	// EnglishModel is an English-only model, which is smaller and better at
+	// English than a multilingual one of the same size. Empty means Model
+	// answers everything.
+	EnglishModel string
+}
+
+// Enabled reports whether there is anywhere to send a recording.
+func (c TranscriptionConfig) Enabled() bool { return strings.TrimSpace(c.BaseURL) != "" }
 
 // AIConfig selects and configures the AI providers. Provider names must match a
 // client registered in internal/ai.
@@ -476,7 +500,14 @@ func Load() (*Config, error) {
 		MCPListenAddr:     optional("MCP_LISTEN_ADDR", "127.0.0.1:8093"),
 		MetricsListenAddr: optional("METRICS_LISTEN_ADDR", "127.0.0.1:9090"),
 
-		FFmpegPath: optional("FFMPEG_PATH", ""),
+		// Named for the wire format rather than the vendor, matching Norviq's
+		// variables so one grep finds every app pointed at the same service.
+		Transcription: TranscriptionConfig{
+			BaseURL:      optional("TRANSCRIBE_PROVIDER_OPENAI_BASEURL", ""),
+			APIKey:       optional("TRANSCRIBE_PROVIDER_OPENAI_APIKEY", ""),
+			Model:        optional("TRANSCRIBE_PROVIDER_OPENAI_MODEL", ""),
+			EnglishModel: optional("TRANSCRIBE_PROVIDER_OPENAI_MODEL_EN", ""),
+		},
 
 		Embedding: EmbeddingConfig{
 			Provider: optional("EMBEDDING_PROVIDER", ""),
