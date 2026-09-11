@@ -1101,8 +1101,15 @@ func routes(
 		// The same budget the web chat spends, deliberately. A surface that
 		// reached the coach without this would be a way around the limits
 		// rather than a second way in — the gap ask_coach still has.
-		Quotas:    quotaSvc,
-		Images:    mediaSvc,
+		Quotas: quotaSvc,
+		Images: mediaSvc,
+
+		// The same service the web recorder uses. A voice note becomes the
+		// sentence the person would have typed, and the coach answers that —
+		// so dictating and typing reach the same place, which is the whole
+		// point of the feature.
+		Voice: voiceSvc,
+
 		Transport: telegramClient,
 		Log:       slog.Default(),
 	})

@@ -302,8 +302,12 @@ func (c *Client) AnswerCallback(ctx context.Context, callbackID string) error {
 	}, nil)
 }
 
-// maxDownloadBytes bounds a file fetched from Telegram. Photos sit well
-// under this; anything larger is not a chat photo.
+// maxDownloadBytes bounds a file fetched from Telegram.
+//
+// Photos sit well under this. So do voice notes by a wide margin — Opus at the
+// bitrate Telegram uses is about a megabyte per eight minutes, which puts this
+// ceiling somewhere past an hour of talking, long after internal/voice has
+// refused it on duration. It is the wall, not the policy.
 const maxDownloadBytes = 10 << 20
 
 // File downloads a Telegram file by id. The MIME type is sniffed from the
@@ -340,7 +344,9 @@ func (c *Client) File(ctx context.Context, fileID string) ([]byte, string, error
 		return nil, "", fmt.Errorf("telegram: read file")
 	}
 	if int64(len(data)) > maxDownloadBytes {
-		return nil, "", apperr.Wrap(apperr.ErrValidation, "that photo is too large")
+		// Kind-neutral: this path downloads voice notes as well as photos, and
+		// naming the wrong one is how a person concludes the bot misread them.
+		return nil, "", apperr.Wrap(apperr.ErrValidation, "that file is too large")
 	}
 
 	mime := http.DetectContentType(data)
