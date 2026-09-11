@@ -54,7 +54,7 @@ func hasAnySession(page strava.TerrainPage) bool {
 
 func weekHasSessions(week strava.TerrainWeek) bool {
 	for _, day := range week.Days {
-		if !day.Rest() {
+		if day.Sessions > 0 {
 			return true
 		}
 	}
@@ -100,11 +100,31 @@ func totalClimbM(page strava.TerrainPage) float64 {
 	return m
 }
 
+// activeDays counts the days something was recorded on.
+//
+// Deliberately not !Rest(): a day that has not happened is neither rest nor
+// active, and counting it as active would report a week as busier than it was
+// every time the page is opened before Sunday.
 func activeDays(page strava.TerrainPage) int {
 	var n int
 	for _, week := range page.Weeks {
 		for _, day := range week.Days {
-			if !day.Rest() {
+			if day.Sessions > 0 {
+				n++
+			}
+		}
+	}
+	return n
+}
+
+// countedDays is the denominator beside activeDays: the days that have had a
+// chance to happen. Counting the whole grid would make every week read as
+// worse than it was until it ended.
+func countedDays(page strava.TerrainPage) int {
+	var n int
+	for _, week := range page.Weeks {
+		for _, day := range week.Days {
+			if !day.Future {
 				n++
 			}
 		}

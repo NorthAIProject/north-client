@@ -64,6 +64,10 @@ type TerrainDayPayload struct {
 	Mixed    bool                  `json:"mixed"`
 	Mix      []TerrainSharePayload `json:"mix,omitempty"`
 
+	// Future days are drawn, because the current week is laid out whole, but
+	// they are not rest: nobody rested on a Sunday that has not arrived.
+	Future bool `json:"future,omitempty"`
+
 	Routes []TerrainRoutePayload `json:"routes,omitempty"`
 }
 
@@ -136,11 +140,12 @@ func newDayPayload(day strava.TerrainDay) TerrainDayPayload {
 		MovingTimeS: day.MovingTimeS,
 		Dominant:    string(day.Dominant),
 		Mixed:       day.Mixed,
+		Future:      day.Future,
 	}
 
 	// A rest day carries no mix and no routes. Sending empty arrays for the
 	// majority of days in most accounts is a lot of bytes to say nothing.
-	if day.Rest() {
+	if day.Sessions == 0 {
 		return d
 	}
 

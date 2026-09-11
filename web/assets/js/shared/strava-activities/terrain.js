@@ -61,6 +61,9 @@ export function buildWeek(week, offset, { palette, geometry, material, lineMater
 
     if (day.sessions === 0) {
       color.copy(palette.rest);
+      // A day that has not happened is drawn fainter still. It is ground the
+      // week needs in order to be a week, not a choice anybody made.
+      if (day.future) color.lerp(palette.background, 0.55);
     } else {
       color.copy(colorFor(palette, day.dominant));
       if (day.mixed) {
