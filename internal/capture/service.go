@@ -7,7 +7,6 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/biometrics"
 	"github.com/NorthAIProject/north-client/internal/checkins"
 	"github.com/NorthAIProject/north-client/internal/habits"
@@ -16,6 +15,7 @@ import (
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/sleep"
 	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/internal/voice"
 )
 
 // searchLimit caps ingredient candidates offered for one food.
@@ -26,10 +26,10 @@ const searchLimit = 8
 type Options struct {
 	Parser Parser
 
-	// Transcriber is optional. Nil switches voice notes off and leaves every
-	// typed path untouched, which is what a deployment without a multimodal
-	// provider gets rather than a broken button.
-	Transcriber ai.Transcriber
+	// Voice is optional. Nil switches voice notes off and leaves every typed
+	// path untouched, which is what a deployment without a multimodal provider
+	// gets rather than a broken button.
+	Voice *voice.Service
 
 	Hydration   *hydration.Service
 	Sleep       *sleep.Service
@@ -42,8 +42,8 @@ type Options struct {
 
 // Service parses a sentence and, separately, writes what a person agreed to.
 type Service struct {
-	parser      Parser
-	transcriber ai.Transcriber
+	parser Parser
+	voice  *voice.Service
 
 	hydration   *hydration.Service
 	sleep       *sleep.Service
@@ -57,7 +57,7 @@ type Service struct {
 func NewService(opts Options) *Service {
 	return &Service{
 		parser:      opts.Parser,
-		transcriber: opts.Transcriber,
+		voice:       opts.Voice,
 		hydration:   opts.Hydration,
 		sleep:       opts.Sleep,
 		habits:      opts.Habits,
