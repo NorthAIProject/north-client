@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
+	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	capturepages "github.com/NorthAIProject/north-client/web/capture"
 )
 
@@ -66,6 +67,16 @@ func (h *Handler) voice(w http.ResponseWriter, r *http.Request) {
 
 	text, err := h.svc.Transcribe(r.Context(), user, audio)
 	if err != nil {
+		// "Try again" is the wrong advice when nothing on this deployment can
+		// listen — no ffmpeg for the container, or a chain whose providers are
+		// all deaf or out of credit. Retrying will fail identically, and the
+		// typed box on the same page works.
+		if apperr.Is(err, apperr.ErrUnavailable) {
+			h.render(w, r, statusFor(err), capturepages.Data{
+				Error: "I cannot listen to recordings right now. Type it instead and everything else works as usual.",
+			})
+			return
+		}
 		h.render(w, r, statusFor(err), capturepages.Data{Error: message(err)})
 		return
 	}

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/NorthAIProject/north-client/internal/quota"
+	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/spend"
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -78,9 +79,18 @@ func (s *Service) transcribeVoice(ctx context.Context, user users.User, in *Inbo
 	text, err := s.voice.Transcribe(ctx, user, in.Attachment.Bytes, spend.SurfaceTelegramVoice)
 	if err != nil {
 		// Logged with the cause, answered without it. What went wrong is an
-		// operator's business; what the person needs is to know they were not
-		// heard and can try again.
+		// operator's business; what the person needs is to know what to do next.
 		s.log.Warn("messaging could not transcribe a voice note", "error", err, "user_id", user.ID)
+
+		// Two different situations, and telling them apart is the difference
+		// between useful advice and a shrug. Unavailable means nothing on this
+		// deployment can listen — no ffmpeg, or a chain whose providers are all
+		// deaf or out of credit — and no amount of retrying will change that, so
+		// say what will work instead. Anything else is a failure worth a second
+		// attempt.
+		if apperr.Is(err, apperr.ErrUnavailable) {
+			return OutboundMessage{Text: i18n.T(ctx, "tg.voice.unavailable")}, false, nil
+		}
 		return OutboundMessage{Text: i18n.T(ctx, "tg.voice.failed")}, false, nil
 	}
 	// Trimmed here rather than trusted from the other side of an interface.
