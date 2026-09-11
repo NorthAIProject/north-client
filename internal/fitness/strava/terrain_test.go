@@ -3,6 +3,8 @@ package strava
 import (
 	"testing"
 	"time"
+
+	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 )
 
 // buildTerrain is the whole reason the bucketing is a pure function: every
@@ -399,5 +401,49 @@ func TestLoadScaleOfAnEmptyTerrainIsTheFloor(t *testing.T) {
 
 	if got := loadScale(nil); got != minLoadScale {
 		t.Errorf("loadScale(nil) = %v, want %v", got, minLoadScale)
+	}
+}
+
+// Pages must tile, not overlap.
+//
+// A later page is asked for by naming the oldest week already drawn, so it has
+// to stop where that week starts. Ending it a week later hands back a week the
+// caller already has — which the scene would build twice at the same position,
+// two meshes deep, with every week behind it shifted by one.
+func TestTerrainPagesDoNotOverlap(t *testing.T) {
+	t.Parallel()
+	utc := time.UTC
+
+	// Page 0 runs to the end of the week being lived in.
+	firstEnd := startOfNextWeek(time.Date(2026, 9, 11, 10, 0, 0, 0, utc))
+	y, m, d := firstEnd.Date()
+	firstStart := timerange.StartOfDay(time.Date(y, m, d-daysPerWeek*8, 12, 0, 0, 0, utc))
+	first := buildTerrain(nil, utc, firstStart, firstEnd)
+
+	// The cursor the client is handed: the start of the oldest week drawn.
+	cursor := first[0].Start
+
+	// Page 1 ends there.
+	y, m, d = cursor.Date()
+	secondStart := timerange.StartOfDay(time.Date(y, m, d-daysPerWeek*8, 12, 0, 0, 0, utc))
+	second := buildTerrain(nil, utc, secondStart, cursor)
+
+	if len(second) == 0 {
+		t.Fatal("the older page is empty")
+	}
+
+	newestOfSecond := second[len(second)-1].Start
+	if !newestOfSecond.Before(cursor) {
+		t.Errorf("the older page's newest week starts %s, at or after the cursor %s: the pages overlap",
+			newestOfSecond.Format(time.DateOnly), cursor.Format(time.DateOnly))
+	}
+
+	seen := map[string]bool{}
+	for _, w := range append(append([]TerrainWeek{}, second...), first...) {
+		key := w.Start.Format(time.DateOnly)
+		if seen[key] {
+			t.Errorf("week %s appears in both pages", key)
+		}
+		seen[key] = true
 	}
 }
