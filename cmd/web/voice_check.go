@@ -34,7 +34,8 @@ import (
 // --transcribe is the flag that spends money, and it says so.
 func runVoiceCheck(args []string) error {
 	fs := flag.NewFlagSet("voice-check", flag.ContinueOnError)
-	transcribe := fs.Bool("transcribe", false, "send the generated tone to the provider chain (spends money)")
+	transcribe := fs.Bool("transcribe", false, "send the recording to the provider chain (spends money)")
+	file := fs.String("file", "", "a recording to use instead of the built-in tone — the one that failed, for instance")
 	timeout := fs.Duration("timeout", 60*time.Second, "how long to allow for the whole check")
 
 	fs.Usage = func() {
@@ -80,9 +81,27 @@ flags:
 	fmt.Println("ffmpeg:      installed")
 	fmt.Printf("opus encode: %v\n", ff.CanEncodeOpus())
 
-	fmt.Printf("test tone:   %d bytes, sniffed as %s\n", len(toneOggOpus), audio.Sniff(toneOggOpus))
+	// A real recording when one is given. This is the flag somebody reaches for
+	// when a particular voice note came back wrong: it answers "can this
+	// machine read that file" without involving Telegram, an account, or a
+	// database.
+	sample, label := toneOggOpus, "test tone"
+	if *file != "" {
+		sample, err = os.ReadFile(*file)
+		if err != nil {
+			return fmt.Errorf("read %s: %w", *file, err)
+		}
+		label = "recording"
+	}
 
-	converted, err := ff.ToWAV(ctx, toneOggOpus)
+	sniffed := audio.Sniff(sample)
+	if sniffed == "" {
+		fmt.Printf("%-12s %d bytes, NOT A RECOGNISED RECORDING\n", label+":", len(sample))
+		return fmt.Errorf("voice-check: those bytes are not a container North accepts")
+	}
+	fmt.Printf("%-12s %d bytes, sniffed as %s\n", label+":", len(sample), sniffed)
+
+	converted, err := ff.ToWAV(ctx, sample)
 	if err != nil {
 		return fmt.Errorf("convert the test recording: %w", err)
 	}
@@ -91,8 +110,8 @@ flags:
 
 	if !*transcribe {
 		fmt.Println()
-		fmt.Println("Conversion works. Add --transcribe to send this tone to the provider")
-		fmt.Println("chain and prove the other half, which costs one model call.")
+		fmt.Println("Conversion works. Add --transcribe to send this to the provider chain")
+		fmt.Println("and prove the other half, which costs one model call.")
 		return nil
 	}
 
@@ -109,15 +128,17 @@ flags:
 		Transcode:   ff,
 	})
 
-	text, err := svc.Transcribe(ctx, users.User{ID: uuid.New(), Tier: users.TierFree}, toneOggOpus, spend.SurfaceVoiceCapture)
+	text, err := svc.Transcribe(ctx, users.User{ID: uuid.New(), Tier: users.TierFree}, sample, spend.SurfaceVoiceCapture)
 	if err != nil {
 		return fmt.Errorf("transcribe the test recording: %w", err)
 	}
 
-	// A sine tone has no words in it, so an empty answer is the correct one.
-	// What is being proved here is that the audio reached a model at all — the
-	// failure this catches returns nothing *and* no error either way, so the
-	// distinction that matters is error versus no error.
+	// A sine tone has no words in it, so an empty answer is the correct one
+	// there. What is being proved is that the audio reached a model at all,
+	// and the failure this catches — a container the provider cannot read —
+	// returns no words and no error, so error versus no error is the
+	// distinction that matters. Give --file a recording of speech to see the
+	// other half.
 	if text == "" {
 		fmt.Println("transcribe:  a provider answered, with no words — correct for a tone")
 	} else {
