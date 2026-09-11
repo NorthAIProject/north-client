@@ -172,14 +172,45 @@ func (s *Service) Disconnect(ctx context.Context, userID uuid.UUID) error {
 	return s.repo.Delete(ctx, userID)
 }
 
-// RecentActivities is what the 3D view draws. Reads from North's own copy
-// rather than calling Strava, so opening the page is fast, works when Strava
-// is down, and costs nothing against the rate limit.
+// recentLookback bounds how far back RecentActivities will look. Long enough
+// that an account which trains twice a week still fills the view, short enough
+// that a dormant account does not read a decade of rows to find twelve.
+const recentLookback = 26 * 7 * 24 * time.Hour
+
+// RecentActivities is what the activity view draws. Reads from North's own
+// copy rather than calling Strava, so opening the page is fast, works when
+// Strava is down, and costs nothing against the rate limit.
+//
+// Newest first, which is the order the list beside the scene reads in. The
+// repository hands back oldest-first because that is the order the terrain
+// builder wants; reversing a couple of dozen rows here is cheaper than a
+// second query, and cheaper than making the repository answer two orders.
 func (s *Service) RecentActivities(ctx context.Context, userID uuid.UUID, limit int) ([]Activity, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 30
 	}
-	return s.repo.RecentActivities(ctx, userID, limit)
+
+	now := time.Now()
+	all, err := s.repo.ActivitiesBetween(ctx, userID, now.Add(-recentLookback), now)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(all) > limit {
+		all = all[len(all)-limit:]
+	}
+
+	out := make([]Activity, 0, len(all))
+	for i := len(all) - 1; i >= 0; i-- {
+		out = append(out, all[i])
+	}
+	return out, nil
+}
+
+// OldestActivityBefore reports where an account's history ends, walking
+// backwards from a cursor. A nil time means there is nothing older.
+func (s *Service) OldestActivityBefore(ctx context.Context, userID uuid.UUID, before time.Time) (*time.Time, error) {
+	return s.repo.OldestBefore(ctx, userID, before)
 }
 
 // RouteTotals is the distance and climb recorded over a window, for the coach's

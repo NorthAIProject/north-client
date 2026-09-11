@@ -91,11 +91,40 @@ ON CONFLICT (user_id, strava_id) DO UPDATE SET
     summary_polyline       = EXCLUDED.summary_polyline,
     updated_at             = now();
 
--- name: ListStravaActivities :many
+-- name: ListStravaActivitiesBetween :many
+-- Half-open window in absolute time, matching SumStravaActivitiesBetween.
+--
+-- The caller has already turned local week boundaries into instants using the
+-- reader's own location, so this query knows nothing about timezones and
+-- cannot disagree with the bucketing that happens above it.
+--
+-- Ascending, unlike a "most recent first" list: the terrain builder walks
+-- weeks in the order it lays them out, and sorting the same rows twice to get
+-- there would be silly. The (user_id, start_date DESC) index still serves
+-- this — Postgres reads an index backwards as happily as forwards.
 SELECT * FROM strava_activities
 WHERE user_id = $1
-ORDER BY start_date DESC
-LIMIT $2;
+  AND start_date >= sqlc.arg(since)::timestamptz
+  AND start_date <  sqlc.arg(until)::timestamptz
+ORDER BY start_date ASC;
+
+-- name: OldestStravaActivityBefore :one
+-- The start of the oldest activity older than the cursor, if there is one.
+--
+-- This is what stops the terrain asking for another page forever. Returning a
+-- row or not is the whole signal: no row means no more ground, which the
+-- repository turns into a nil *time.Time.
+--
+-- Deliberately not count(*) + min(). Both would read every older row to
+-- answer "is there anything older", where this reads exactly one index entry
+-- — the (user_id, start_date DESC) index scanned backwards. It also sidesteps
+-- min() over the empty set being NULL, which sqlc types as non-nullable once
+-- the aggregate is cast and pgx then refuses to scan.
+SELECT start_date FROM strava_activities
+WHERE user_id = $1
+  AND start_date < sqlc.arg(before)::timestamptz
+ORDER BY start_date ASC
+LIMIT 1;
 
 -- name: SumStravaActivitiesBetween :one
 -- Half-open window, matching timerange.Range. Both summed columns are NOT NULL,

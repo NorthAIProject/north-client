@@ -46,20 +46,32 @@ func (q *Queries) GetStravaConnection(ctx context.Context, userID uuid.UUID) (St
 	return i, err
 }
 
-const listStravaActivities = `-- name: ListStravaActivities :many
+const listStravaActivitiesBetween = `-- name: ListStravaActivitiesBetween :many
 SELECT id, user_id, strava_id, name, sport_type, start_date, distance_m, moving_time_s, elapsed_time_s, total_elevation_gain_m, average_speed_ms, summary_polyline, created_at, updated_at FROM strava_activities
 WHERE user_id = $1
-ORDER BY start_date DESC
-LIMIT $2
+  AND start_date >= $2::timestamptz
+  AND start_date <  $3::timestamptz
+ORDER BY start_date ASC
 `
 
-type ListStravaActivitiesParams struct {
+type ListStravaActivitiesBetweenParams struct {
 	UserID uuid.UUID
-	Limit  int32
+	Since  time.Time
+	Until  time.Time
 }
 
-func (q *Queries) ListStravaActivities(ctx context.Context, arg ListStravaActivitiesParams) ([]StravaActivity, error) {
-	rows, err := q.db.Query(ctx, listStravaActivities, arg.UserID, arg.Limit)
+// Half-open window in absolute time, matching SumStravaActivitiesBetween.
+//
+// The caller has already turned local week boundaries into instants using the
+// reader's own location, so this query knows nothing about timezones and
+// cannot disagree with the bucketing that happens above it.
+//
+// Ascending, unlike a "most recent first" list: the terrain builder walks
+// weeks in the order it lays them out, and sorting the same rows twice to get
+// there would be silly. The (user_id, start_date DESC) index still serves
+// this — Postgres reads an index backwards as happily as forwards.
+func (q *Queries) ListStravaActivitiesBetween(ctx context.Context, arg ListStravaActivitiesBetweenParams) ([]StravaActivity, error) {
+	rows, err := q.db.Query(ctx, listStravaActivitiesBetween, arg.UserID, arg.Since, arg.Until)
 	if err != nil {
 		return nil, err
 	}
@@ -170,6 +182,37 @@ type MarkStravaSyncedParams struct {
 func (q *Queries) MarkStravaSynced(ctx context.Context, arg MarkStravaSyncedParams) error {
 	_, err := q.db.Exec(ctx, markStravaSynced, arg.UserID, arg.LastSyncedAt)
 	return err
+}
+
+const oldestStravaActivityBefore = `-- name: OldestStravaActivityBefore :one
+SELECT start_date FROM strava_activities
+WHERE user_id = $1
+  AND start_date < $2::timestamptz
+ORDER BY start_date ASC
+LIMIT 1
+`
+
+type OldestStravaActivityBeforeParams struct {
+	UserID uuid.UUID
+	Before time.Time
+}
+
+// The start of the oldest activity older than the cursor, if there is one.
+//
+// This is what stops the terrain asking for another page forever. Returning a
+// row or not is the whole signal: no row means no more ground, which the
+// repository turns into a nil *time.Time.
+//
+// Deliberately not count(*) + min(). Both would read every older row to
+// answer "is there anything older", where this reads exactly one index entry
+// — the (user_id, start_date DESC) index scanned backwards. It also sidesteps
+// min() over the empty set being NULL, which sqlc types as non-nullable once
+// the aggregate is cast and pgx then refuses to scan.
+func (q *Queries) OldestStravaActivityBefore(ctx context.Context, arg OldestStravaActivityBeforeParams) (time.Time, error) {
+	row := q.db.QueryRow(ctx, oldestStravaActivityBefore, arg.UserID, arg.Before)
+	var start_date time.Time
+	err := row.Scan(&start_date)
+	return start_date, err
 }
 
 const sumStravaActivitiesBetween = `-- name: SumStravaActivitiesBetween :one
