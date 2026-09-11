@@ -321,6 +321,16 @@ See [Setting up Telegram](#setting-up-telegram) below.
 - Gemini
 - xAI
 
+## Local prerequisites
+
+- Go, Docker, and `go-task`
+- `ffmpeg` — `brew install ffmpeg`
+
+  Voice notes arrive in containers no provider but Gemini can read, so they are
+  decoded to 16 kHz mono WAV first. Without ffmpeg everything else works and
+  compressed voice notes are refused in words. `main voice-check` says which
+  parts are available on a given machine.
+
 ## Infrastructure
 
 - Docker

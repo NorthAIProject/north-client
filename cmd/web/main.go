@@ -66,6 +66,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/quota"
 	"github.com/NorthAIProject/north-client/internal/reports"
 	"github.com/NorthAIProject/north-client/internal/settings"
+	"github.com/NorthAIProject/north-client/internal/shared/audio"
 	"github.com/NorthAIProject/north-client/internal/shared/database"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/metrics"
@@ -145,6 +146,17 @@ func main() {
 	// fail on an unrelated dependency answers a different one.
 	if len(os.Args) > 1 && os.Args[1] == "telegram-check" {
 		if err := runTelegramCheck(os.Args[2:]); err != nil {
+			fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	// `main voice-check` says whether this machine can turn a recording into
+	// words. Here for the reason telegram-check is: the tests prove the code,
+	// and only a real binary in a real image can prove the codecs.
+	if len(os.Args) > 1 && os.Args[1] == "voice-check" {
+		if err := runVoiceCheck(os.Args[2:]); err != nil {
 			fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
 			os.Exit(1)
 		}
@@ -876,6 +888,20 @@ func routes(
 		Habits:    habitSvc,
 	})
 
+	// ffmpeg is resolved once, here, rather than per recording. A deployment
+	// without it is a line in the boot log and a feature that says it is off —
+	// not a mystery discovered by whoever sends the first voice note.
+	//
+	// Recordings the provider chain can already read still work without it; the
+	// ones it cannot are refused rather than forwarded, because forwarding them
+	// reaches the model as nothing at all.
+	var transcoder voice.Transcoder
+	if ff, err := audio.NewFFmpeg(cfg.FFmpegPath); err != nil {
+		slog.Warn("no ffmpeg: voice notes in a compressed container will be refused", "error", err)
+	} else {
+		transcoder = ff
+	}
+
 	// Voice is built once and shared. Two surfaces accept speech — the web
 	// recorder and, further down, Telegram voice notes — and they must hand a
 	// model the same shape, so they get the same service rather than two
@@ -885,6 +911,7 @@ func routes(
 	// back is not reasoning.
 	voiceSvc := voice.NewService(voice.Options{
 		Transcriber: ai.NewRunnerTranscriber(runner, cfg.AI.FastModel),
+		Transcode:   transcoder,
 	})
 
 	// Quick capture composes the six logging slices behind one box. It owns no
