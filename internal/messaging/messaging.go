@@ -115,6 +115,17 @@ type OutboundMessage struct {
 	// Platform-neutral on purpose. A transport that cannot show a picture
 	// ignores this and loses nothing, because Text stands alone — the address
 	// is also written into it.
+	// Photo is an image to send with the message, uploaded rather than
+	// linked. Animation takes a URL because Telegram fetches those itself;
+	// a digest card is private health data, so its bytes go up the wire
+	// instead of being left somewhere a URL could reach.
+	//
+	// PhotoCaption rides with the image and is capped by the platform, so a
+	// message longer than a caption sends the picture first and the words
+	// after.
+	Photo        []byte
+	PhotoCaption string
+
 	Animation string
 
 	// AnimationCredit is the attribution the artwork's licence requires, to be

@@ -40,6 +40,12 @@ type Prefs struct {
 	// this one is a model call every morning rather than every Monday.
 	DailyBriefingAuto bool
 
+	// StatsDigestCadence is how often the insights digest is pushed: off,
+	// daily, weekly or monthly. Off until asked for, like the two report
+	// flags above — not because a digest is expensive, but because turning
+	// one on for somebody is sending them a message they did not ask for.
+	StatsDigestCadence string
+
 	QuietHoursEnabled bool
 	// QuietStart and QuietEnd are "HH:MM" in the user's own timezone. The
 	// window may wrap midnight, which is what makes InQuietHours worth having.
@@ -126,9 +132,39 @@ func fromDB(row notificationsdb.UserNotificationPref) Prefs {
 		TrainingReminders:  row.TrainingReminders,
 		WeeklyReportAuto:   row.WeeklyReportAuto,
 		DailyBriefingAuto:  row.DailyBriefingAuto,
+		StatsDigestCadence: row.StatsDigestCadence,
 		QuietHoursEnabled:  row.QuietHoursEnabled,
 		QuietStart:         row.QuietStart,
 		QuietEnd:           row.QuietEnd,
 		UpdatedAt:          row.UpdatedAt,
 	}
 }
+
+// Digest cadences. Stored as text rather than an integer so a row is readable
+// in psql and a new cadence is a migration rather than a silent renumbering.
+const (
+	CadenceOff     = "off"
+	CadenceDaily   = "daily"
+	CadenceWeekly  = "weekly"
+	CadenceMonthly = "monthly"
+)
+
+// DefaultCadence is what a person gets until they choose.
+//
+// Off, so the sweep says nothing to anybody who has not opened the setting.
+// Weekly is the cadence to pick when you do want one — often enough to be a
+// habit, rare enough that nobody mutes it — but that is a choice to offer
+// rather than one to make on somebody's behalf.
+const DefaultCadence = CadenceOff
+
+// Cadence is the stored cadence, falling back to the default for a row written
+// before the column existed.
+func (p Prefs) Cadence() string {
+	if p.StatsDigestCadence == "" {
+		return DefaultCadence
+	}
+	return p.StatsDigestCadence
+}
+
+// WantsDigest reports whether this person has the digest switched on at all.
+func (p Prefs) WantsDigest() bool { return p.Cadence() != CadenceOff }

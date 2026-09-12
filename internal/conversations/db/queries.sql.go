@@ -693,3 +693,61 @@ func (q *Queries) TouchConversation(ctx context.Context, id uuid.UUID) error {
 	_, err := q.db.Exec(ctx, touchConversation, id)
 	return err
 }
+
+const userMessagesBetween = `-- name: UserMessagesBetween :many
+SELECT m.created_at, m.role, m.helpful
+FROM messages m
+JOIN conversations c ON c.id = m.conversation_id
+WHERE c.user_id = $1
+  AND m.created_at >= $2
+  AND m.created_at < $3
+ORDER BY m.created_at
+LIMIT $4::int
+`
+
+type UserMessagesBetweenParams struct {
+	UserID      uuid.UUID
+	FromTime    time.Time
+	ToTime      time.Time
+	ResultLimit int32
+}
+
+type UserMessagesBetweenRow struct {
+	CreatedAt time.Time
+	Role      string
+	Helpful   *bool
+}
+
+// Every message this person exchanged in a window, newest last.
+//
+// Rows rather than a per-day aggregate because the reader's timezone decides
+// which day a message belongs to, and the Go side already knows it. Grouping
+// by date here would need the zone passed down and would still be wrong at the
+// hour grain a single-day range asks for.
+//
+// Bounded, because a year of a heavy conversation is not a page. The caller
+// reports the truncation rather than quietly charting a partial window.
+func (q *Queries) UserMessagesBetween(ctx context.Context, arg UserMessagesBetweenParams) ([]UserMessagesBetweenRow, error) {
+	rows, err := q.db.Query(ctx, userMessagesBetween,
+		arg.UserID,
+		arg.FromTime,
+		arg.ToTime,
+		arg.ResultLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []UserMessagesBetweenRow{}
+	for rows.Next() {
+		var i UserMessagesBetweenRow
+		if err := rows.Scan(&i.CreatedAt, &i.Role, &i.Helpful); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

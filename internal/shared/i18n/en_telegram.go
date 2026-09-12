@@ -10,10 +10,13 @@ package i18n
 // mid-thread, and the approval prompt is the worst possible place for that,
 // since it is the consent gate before Khepri writes anything.
 var englishTelegram = map[string]string{
-	"tg.start":     "You are linked to %[1]s. Ask me anything you would ask in the web app — I have the same memory, goals and check-ins.\n\nSend /help to see what I can do.",
-	"tg.help":      "Ask me anything you would ask in the web app — how a goal is going, what your week looked like, whether to train today.\n\nThis is the same conversation as the web chat. Ask here, and the answer is there too.\n\nBefore I write anything down — a check-in, a goal — I will show you what I am about to do and wait for a yes.\n\n/help — this message\n/unlink — disconnect this chat from your account",
-	"tg.notlinked": "This chat is not linked to a Khepri account.",
-	"tg.unlinked":  "Disconnected. Nothing you have said is deleted — the whole conversation is still in the web app. To connect again, get a new code from Settings → Agent connections.",
+	"tg.start":             "You are linked to %[1]s. Ask me anything you would ask in the web app — I have the same memory, goals and check-ins.\n\nSend /help to see what I can do.",
+	"tg.help":              "Ask me anything you would ask in the web app — how a goal is going, what your week looked like, whether to train today.\n\nThis is the same conversation as the web chat. Ask here, and the answer is there too.\n\nBefore I write anything down — a check-in, a goal — I will show you what I am about to do and wait for a yes.\n\n/help — this message\n/stats — how things are going (add week, month or year)\n/unlink — disconnect this chat from your account",
+	"tg.notlinked":         "This chat is not linked to a Khepri account.",
+	"tg.stats.unavailable": "I cannot read your numbers on this server yet. They are all in the web app.",
+	"tg.stats.failed":      "I could not read your numbers just now. Try again in a moment.",
+	"tg.stats.empty":       "Nothing logged in that window yet.",
+	"tg.unlinked":          "Disconnected. Nothing you have said is deleted — the whole conversation is still in the web app. To connect again, get a new code from Settings → Agent connections.",
 
 	"tg.onboard":     "Finish setting up your account in the Khepri web app first, then message me again.",
 	"tg.linked":      "Linked to %[1]s. Message me whenever — I have the same memory and goals as the web app.",

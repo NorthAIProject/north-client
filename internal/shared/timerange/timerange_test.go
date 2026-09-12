@@ -218,7 +218,7 @@ func TestAllReturnsEverySelectorOption(t *testing.T) {
 	loc := mustLoad(t, "Europe/Lisbon")
 	all := All(loc)
 
-	want := []string{KeyToday, KeyYesterday, KeyWeek, KeyMonth, KeyQuarter}
+	want := []string{KeyToday, KeyYesterday, KeyWeek, KeyMonth, KeyQuarter, KeyYear}
 	if len(all) != len(want) {
 		t.Fatalf("All() = %d ranges, want %d", len(all), len(want))
 	}

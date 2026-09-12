@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"net/url"
 
-	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/ai/providers"
 	"github.com/NorthAIProject/north-client/internal/aicreds"
 	"github.com/NorthAIProject/north-client/internal/connections"
 	"github.com/NorthAIProject/north-client/internal/integrations"
 	"github.com/NorthAIProject/north-client/internal/messaging"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
@@ -316,7 +316,7 @@ templ connectionRow(conn connections.Connection) {
 				// place, so a past expiry means "needs refreshing", not
 				// "gone". Saying so is why the list does not filter on it.
 				if conn.Expired() {
-					<span class="text-muted-foreground"> · { i18n.T(ctx, "conn.list.expired") }</span>
+					<span class="text-muted-foreground">· { i18n.T(ctx, "conn.list.expired") }</span>
 				}
 			</p>
 		</div>
@@ -416,7 +416,7 @@ templ telegramCard(p TelegramPanel) {
 			}
 		}
 		@card.Content() {
-			switch {
+			switch  {
 				case p.Linked != nil:
 					@telegramLinked(*p.Linked)
 				case p.Code != "":

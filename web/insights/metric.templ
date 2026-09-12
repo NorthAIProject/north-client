@@ -1,0 +1,148 @@
+package insights
+
+import (
+	"fmt"
+
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/chart"
+	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
+)
+
+// TrendView is the row that says which way a metric is going.
+//
+// Direction is separate from Word so the arrow and the sentence cannot
+// disagree, and HasPrior gates both: a first window is not an improvement on
+// anything, and saying "steady" about it would be a claim with no evidence.
+type TrendView struct {
+	Direction int
+	Pct       float64
+	Word      string
+	HasPrior  bool
+}
+
+// ComparisonView is this window against the one before it, as two bars.
+// Percentages are of the larger of the two, so the longer bar always fills.
+type ComparisonView struct {
+	CurrentLabel string
+	CurrentValue string
+	CurrentPct   int
+
+	PriorLabel string
+	PriorValue string
+	PriorPct   int
+
+	HasPrior bool
+}
+
+// MetricView is one metric's page.
+type MetricView struct {
+	Range RangeView
+
+	// Key is the metric's URL segment, needed so the range selector swaps
+	// this metric's fragment rather than whichever one the range is called.
+	Key      string
+	Label    string
+	Headline string
+	Note     string
+
+	// Href is the domain page this metric belongs to.
+	Href      string
+	HrefLabel string
+
+	Chart      chart.Props
+	Trend      TrendView
+	Comparison ComparisonView
+	Highlights []string
+
+	HasData bool
+}
+
+templ Metric(user users.User, view MetricView) {
+	@page(view.Label, "", "/app/insights/metric/"+view.Key+"/body", user, view.Range) {
+		@MetricBody(view)
+	}
+}
+
+templ MetricBody(view MetricView) {
+	if !view.HasData {
+		@emptyState("Nothing logged for this in the window you picked.", "Back to the summary", "/app/insights")
+	} else {
+		<div class="space-y-6">
+			<div class="border-hairline bg-surface/60 space-y-4 rounded-lg border p-4">
+				<div class="flex items-baseline justify-between gap-3">
+					<div>
+						@ui.MonoLabel(view.Label)
+						<p class="mt-1 text-3xl font-medium tabular-nums">{ view.Headline }</p>
+						if view.Note != "" {
+							<p class="text-muted-foreground mt-1 text-xs">{ view.Note }</p>
+						}
+					</div>
+					<a href={ templ.SafeURL(view.Href) } class="text-signal shrink-0 text-xs hover:underline">
+						{ view.HrefLabel }
+					</a>
+				</div>
+				@chart.Chart(view.Chart)
+			</div>
+			@trendRow(view.Trend)
+			if view.Comparison.HasPrior {
+				@comparison(view.Comparison)
+			}
+			if len(view.Highlights) > 0 {
+				@highlights(view.Highlights)
+			}
+		</div>
+	}
+}
+
+// trendRow mirrors the single "Trend" line a watch shows under its chart:
+// one word, and nothing at all when there is no window to compare against.
+templ trendRow(t TrendView) {
+	<div class="border-hairline bg-surface/60 flex items-center justify-between rounded-lg border px-4 py-3">
+		<p class="text-muted-foreground font-mono text-[10px] uppercase tracking-[0.14em]">Trend</p>
+		if t.HasPrior {
+			<span
+				class={ "inline-flex items-center gap-1 text-sm font-medium",
+					templ.KV("text-signal", t.Direction > 0),
+					templ.KV("text-muted-foreground", t.Direction <= 0) }
+			>
+				if t.Direction > 0 {
+					@icon.Icon("trending-up")(icon.Props{Class: "size-3.5"})
+				} else if t.Direction < 0 {
+					@icon.Icon("trending-down")(icon.Props{Class: "size-3.5"})
+				}
+				{ t.Word }
+			</span>
+		} else {
+			<span class="text-muted-foreground text-sm">Not enough history</span>
+		}
+	</div>
+}
+
+templ comparison(c ComparisonView) {
+	<section class="space-y-3">
+		@ui.MonoLabel("Against the window before")
+		<div class="border-hairline bg-surface/60 space-y-3 rounded-lg border p-4">
+			@comparisonBar(c.CurrentLabel, c.CurrentValue, c.CurrentPct, true)
+			@comparisonBar(c.PriorLabel, c.PriorValue, c.PriorPct, false)
+		</div>
+	</section>
+}
+
+// comparisonBar is hand-rolled rather than the progress component: this is a
+// pair of bars read against each other, not progress toward a goal, and the
+// component's track and aria semantics say the wrong thing here.
+templ comparisonBar(label, value string, pct int, current bool) {
+	<div class="space-y-1">
+		<div class="flex items-baseline justify-between text-xs">
+			<span class="text-muted-foreground">{ label }</span>
+			<span class="tabular-nums">{ value }</span>
+		</div>
+		<div class="bg-accent/40 h-2 w-full overflow-hidden rounded-full">
+			<div
+				class={ "h-full rounded-full", templ.KV("bg-signal", current), templ.KV("bg-muted-foreground/40", !current) }
+				style={ fmt.Sprintf("width: %d%%", pct) }
+			></div>
+		</div>
+	</div>
+}

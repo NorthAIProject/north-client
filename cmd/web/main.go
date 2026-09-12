@@ -662,6 +662,11 @@ func routes(
 	authHandler := auth.NewHandler(authSvc, authMW, "/app", authThrottle)
 
 	conversationSvc := conversations.NewService(conversations.NewRepository(pool))
+
+	// A second handle on the generations table, read-only. run() owns the one
+	// the meter writes through; this one only ever answers "what did this
+	// account spend", for the insights section.
+	spendRepo := spend.NewRepository(pool)
 	queue := jobs.NewQueue(pool)
 
 	goalSvc := goals.NewService(goals.NewRepository(pool))
@@ -981,6 +986,13 @@ func routes(
 		Goals:     goalSvc,
 		Mind:      mindSvc,
 		Activity:  activitySvc,
+
+		Food:       foodLogSvc,
+		MacroGoals: calculatorSvc,
+
+		Conversations: conversationSvc,
+		Spend:         spendRepo,
+		SiteURL:       cfg.BaseURL,
 	})
 	insightsHandler := insights.NewHandler(insightsSvc)
 
@@ -1109,6 +1121,10 @@ func routes(
 	messagingOpts := messaging.Options{
 		Art:     exerciseSvc,
 		SiteURL: cfg.BaseURL,
+
+		// Answers /stats from the same deterministic view the insights page
+		// renders, so the two can never disagree.
+		Stats:   insightsSvc,
 		Funnel:  funnel,
 		Coach:   coachSvc,
 		Threads: conversationSvc,

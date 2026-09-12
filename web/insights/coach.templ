@@ -1,0 +1,73 @@
+package insights
+
+import (
+	"fmt"
+
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/chart"
+)
+
+// CoachView is the coaching-activity section.
+//
+// There is no score ring here, unlike every other section. How much somebody
+// talks to their coach is not a thing to be graded: a quiet week can be a good
+// week, and a number that fell would read as a reprimand for living.
+type CoachView struct {
+	Range RangeView
+
+	Turns        int
+	YourMessages int
+	CoachReplies int
+
+	// HelpfulRate is over rated replies alone. An unrated reply is not a
+	// thumbs-down, and counting it as one would make the coach look worse the
+	// more it was used.
+	HasRatings  bool
+	HelpfulRate int
+	Rated       int
+
+	Chart      chart.Props
+	Highlights []string
+
+	Truncated bool
+	HasData   bool
+}
+
+templ Coach(user users.User, view CoachView) {
+	@page("Coaching", "coach", "/app/insights/coach/body", user, view.Range) {
+		@CoachBody(view)
+	}
+}
+
+templ CoachBody(view CoachView) {
+	if !view.HasData {
+		@emptyState("No coaching conversation in this window.", "Open the chat", "/app/chat")
+	} else {
+		<div class="space-y-6">
+			<div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+				@statTile("Turns", formatCount(view.Turns), "messages either way", DeltaView{})
+				@statTile("You wrote", formatCount(view.YourMessages), "", DeltaView{})
+				@statTile("The coach replied", formatCount(view.CoachReplies), "", DeltaView{})
+				if view.HasRatings {
+					@statTile("Marked useful", fmt.Sprintf("%d%%", view.HelpfulRate),
+						fmt.Sprintf("of %d rated", view.Rated), DeltaView{})
+				} else {
+					@statTile("Marked useful", "—", "nothing rated yet", DeltaView{})
+				}
+			</div>
+			<div class="border-hairline bg-surface/60 space-y-3 rounded-lg border p-4">
+				@ui.MonoLabel("Conversation")
+				@chart.Chart(view.Chart)
+			</div>
+			if view.Truncated {
+				<p class="text-muted-foreground text-xs">
+					This window holds more turns than one page reads. The chart shows the earliest of them.
+				</p>
+			}
+			if len(view.Highlights) > 0 {
+				@highlights(view.Highlights)
+			}
+		</div>
+	}
+}

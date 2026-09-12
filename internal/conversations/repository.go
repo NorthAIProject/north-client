@@ -407,3 +407,43 @@ func orEmpty(parts []Attachment) []Attachment {
 	}
 	return parts
 }
+
+// MessageStat is one message reduced to what an activity chart needs: when it
+// happened, who wrote it, and whether the reader marked it useful.
+//
+// Deliberately not a Message: the engagement charts count turns, and carrying
+// the content of a year of conversations through the view layer to count them
+// would be a great deal of text nobody renders.
+type MessageStat struct {
+	At      time.Time
+	Role    ai.Role
+	Helpful *bool
+}
+
+// IsUser and IsModel mirror Message's own predicates.
+//
+// They exist so no caller has to know how a role is spelled. The stored value
+// is "model", not "assistant", and a counter that guessed wrong would report
+// zero coach replies without failing anything.
+func (m MessageStat) IsUser() bool  { return m.Role == ai.RoleUser }
+func (m MessageStat) IsModel() bool { return m.Role == ai.RoleModel }
+
+// UserMessagesBetween returns the turns this person exchanged in a window,
+// oldest first, capped at limit.
+func (r *Repository) UserMessagesBetween(ctx context.Context, userID uuid.UUID, since, until time.Time, limit int) ([]MessageStat, error) {
+	rows, err := r.q.UserMessagesBetween(ctx, conversationsdb.UserMessagesBetweenParams{
+		UserID:      userID,
+		FromTime:    since,
+		ToTime:      until,
+		ResultLimit: int32(limit),
+	})
+	if err != nil {
+		return nil, apperr.Wrap(err, "user messages between")
+	}
+
+	out := make([]MessageStat, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, MessageStat{At: row.CreatedAt, Role: ai.Role(row.Role), Helpful: row.Helpful})
+	}
+	return out, nil
+}

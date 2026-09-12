@@ -64,4 +64,5 @@ var portugueseBrazilianDashboard = map[string]string{
 	"range.week":      "Últimos 7 dias",
 	"range.month":     "Últimos 30 dias",
 	"range.quarter":   "Últimos 90 dias",
+	"range.year":      "Últimos 12 meses",
 }

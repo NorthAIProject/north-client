@@ -59,6 +59,7 @@ func TestUntranslatedStringsAreAccountedFor(t *testing.T) {
 			"palette.empty.after":     true, // a full stop
 			"settings.prefs.imperial": true, // the system's name and both unit abbreviations are international
 			"oauth.new.email":         true, // "Email" is the ordinary pt-PT spelling; pt-BR uses "E-mail"
+			"nav.coach-insights.nav":  true, // "coaching" is borrowed unchanged, like nav.fitness
 		},
 		"pt-BR": {
 			"conn.tg.title":           true, // Telegram is a product name
@@ -68,6 +69,7 @@ func TestUntranslatedStringsAreAccountedFor(t *testing.T) {
 			"lifedomain.fitness":      true, // same borrowing as nav.fitness
 			"palette.empty.after":     true,
 			"settings.prefs.imperial": true,
+			"nav.coach-insights.nav":  true, // "coaching" is borrowed unchanged, like nav.fitness
 		},
 		"es": {
 			"conn.tg.title":           true, // Telegram is a product name
@@ -80,6 +82,7 @@ func TestUntranslatedStringsAreAccountedFor(t *testing.T) {
 			"lifedomain.fitness":      true, // borrowed unchanged
 			"lifedomain.personal":     true, // "Personal" is spelled the same
 			"land.price.pro":          true, // the plan's name, not a word
+			"nav.coach-insights.nav":  true, // "coaching" is borrowed unchanged, like nav.fitness
 		},
 	}
 
