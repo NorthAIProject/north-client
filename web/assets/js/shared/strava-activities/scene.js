@@ -29,8 +29,13 @@ import { createLabels } from "./labels.js";
 // How much terrain exists on the GPU at once, measured from the camera.
 // Deliberately asymmetric and not a FIFO: travel back forty weeks and a
 // queue would either evict everything behind you or hold all forty.
-const KEEP_BEHIND = 4;
-const KEEP_AHEAD = 16;
+//
+// KEEP_BEHIND is small because those weeks sit between the camera and what it
+// is looking at, close enough to be cut by the bottom of the frame. KEEP_AHEAD
+// covers the weeks the rig now frames — the fog, not an empty edge, is what
+// ends the landscape.
+const KEEP_BEHIND = 2;
+const KEEP_AHEAD = 24;
 
 // Ask for more weeks this far before running out of them.
 const LOAD_AHEAD = 3;
@@ -66,6 +71,11 @@ export async function createScene(canvas, options) {
   // Fog on the page colour, so weeks at the edge of the residency window
   // dissolve into the background instead of popping out of existence. This is
   // what makes disposal invisible.
+  //
+  // The range is set in resize(), from the distance the rig has settled on. It
+  // was fixed at 12–34 against a camera that stood at 9.5; a camera that backs
+  // off to frame a short canvas would otherwise start the haze in front of the
+  // ground it is aimed at.
   scene.fog = new THREE.Fog(palette.background, 12, 34);
 
   scene.add(new THREE.HemisphereLight(0xffffff, 0x202830, 0.55));
@@ -242,6 +252,11 @@ export async function createScene(canvas, options) {
     if (!width || !height) return;
     renderer.setSize(width, height, false);
     rig.resize(width, height);
+
+    const reach = rig.distanceToTarget();
+    scene.fog.near = reach + 2;
+    scene.fog.far = reach + KEEP_AHEAD * 0.9;
+
     needsRender = true;
   }
 

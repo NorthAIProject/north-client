@@ -114,6 +114,17 @@ export function fitToCap(projected, size) {
   return projected.map(([x, y]) => [(x - offsetX) * scale, (y - offsetY) * scale]);
 }
 
+// ------------------------------------------------------------------
+// The layout grid.
+//
+// Here rather than in terrain.js because these are numbers, and terrain.js
+// needs three.js to do anything with them. Re-exported from there, which is
+// still where anyone building geometry will look for them.
+
+export const COLUMN_SIZE = 0.8; // world units, one day
+export const DAY_PITCH = 1.0; // centre to centre across the week
+export const WEEK_PITCH = 1.0; // centre to centre between weeks
+
 // The height curve.
 //
 // PLATE_HEIGHT is what a rest day stands at: not zero, because a rest day is
@@ -122,7 +133,12 @@ export function fitToCap(projected, size) {
 export const PLATE_HEIGHT = 0.06;
 
 // MAX_HEIGHT is what a day at the top of the scale reaches.
-export const MAX_HEIGHT = 5.0;
+//
+// Read against WEEK_PITCH, which is 1: a ceiling of five meant the hardest day
+// stood five weeks tall, and a single one of them hid everything behind it. The
+// curve below is unchanged — only the ceiling moved — so two columns still
+// compare the way they always did.
+export const MAX_HEIGHT = 3.2;
 
 /**
  * Turns a day's MET-minutes into a column height.
@@ -154,4 +170,61 @@ export function loadToHeight(loadMETMin, scale) {
 /** clipped reports whether a day is above the scale and should say so. */
 export function clipped(loadMETMin, scale) {
   return scale > 0 && loadMETMin > scale;
+}
+
+// ------------------------------------------------------------------
+// Framing.
+//
+// The camera used to stand at two written-down numbers — 9.5 back and 6.2 up —
+// chosen against a canvas that filled the viewport. They were wrong even
+// there: the top of the frame sat about 17 degrees below the horizon while a
+// full-height column reached 8, so every hard day was cut off above the
+// shoulder. And a fixed rig cannot be right for two canvas shapes at once.
+//
+// PITCH is how far above the horizon the camera sits, and it decides how much
+// of the landscape can be read. Shallow, a tall Tuesday hides every Tuesday
+// behind it. AIM is what it looks at: the ground put half the frame on empty
+// floor and pushed the columns into the top of it.
+
+export const FOV = 38; // vertical field of view, degrees
+export const PITCH = 0.75; // ~43° above the horizon
+export const AIM = MAX_HEIGHT * 0.4;
+
+// VISIBLE_WEEKS is how much history should be in shot at once. A page of
+// terrain is eight weeks, and framing for that opens the page on the whole of
+// what was fetched rather than on a corner of it.
+export const VISIBLE_WEEKS = 8;
+
+// MARGIN is breathing room around the content. At 1 the tallest column sits
+// exactly on the frame edge, which reads as clipping even when it is not.
+const MARGIN = 1.12;
+
+// The content box, measured from the aim point.
+const HALF_WIDTH = 3.5 * DAY_PITCH + COLUMN_SIZE / 2;
+const HALF_HEIGHT =
+  (MAX_HEIGHT * Math.cos(PITCH) + VISIBLE_WEEKS * WEEK_PITCH * Math.sin(PITCH)) / 2;
+
+/**
+ * The distance at which the content box fits the frustum.
+ *
+ * Solved twice — once against the vertical field of view, once against the
+ * horizontal one, which depends on the aspect — and the larger wins. A short
+ * wide banner is bound by its height; a narrow one by its width.
+ */
+export function frame(aspect) {
+  const halfV = (FOV * Math.PI) / 360;
+  const tanV = Math.tan(halfV);
+  const tanH = tanV * Math.max(aspect, 0.1);
+
+  return Math.max((HALF_HEIGHT * MARGIN) / tanV, (HALF_WIDTH * MARGIN) / tanH);
+}
+
+/** Where the camera stands for a given aspect, as height and ground distance. */
+export function cameraStance(aspect) {
+  const distance = frame(aspect);
+  return {
+    distance,
+    height: AIM + distance * Math.sin(PITCH),
+    ground: distance * Math.cos(PITCH),
+  };
 }

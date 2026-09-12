@@ -167,3 +167,122 @@ func TestStripOmitsRestDays(t *testing.T) {
 		t.Errorf("strip rendered %d day rows, want only the one with a session", n)
 	}
 }
+
+// The regression this page shipped with. The tail carried
+// hx-select="#activity-strip-tail", so HTMX took the tail out of a response
+// full of weeks and threw the weeks away: clicking "Load earlier weeks"
+// advanced the cursor and rendered nothing. The response has to be swapped
+// whole — rows, then the next tail.
+func TestPagingKeepsTheWeeksItFetched(t *testing.T) {
+	t.Parallel()
+
+	monday := time.Date(2026, 9, 7, 0, 0, 0, 0, time.UTC)
+	page := strava.TerrainPage{
+		Weeks:    []strava.TerrainWeek{week(t, monday.AddDate(0, 0, -7), 1), week(t, monday, 1)},
+		HasOlder: true,
+	}
+
+	var buf strings.Builder
+	if err := ActivityStripPage(page, time.UTC).Render(context.Background(), &buf); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	html := buf.String()
+
+	if strings.Contains(html, "hx-select") {
+		t.Error("the tail selects a fragment out of its own response, discarding the weeks in it")
+	}
+	if n := strings.Count(html, "Week of "); n != 2 {
+		t.Errorf("fragment carries %d weeks, want 2:\n%s", n, html)
+	}
+	if !strings.Contains(html, `id="activity-strip-tail"`) {
+		t.Error("fragment has no tail, so paging stops after one page")
+	}
+	// The wrapper belongs to the page, not to the fragment swapped in over the
+	// tail. Two of them in one document and every later hx-target is ambiguous.
+	if strings.Contains(html, `id="activity-strip"`) {
+		t.Error("the paging fragment brings a second #activity-strip with it")
+	}
+}
+
+// Older pages are appended below, so the list only reads correctly if it
+// already runs newest to oldest. The terrain's own order is the opposite —
+// scene.js pins offset 0 to the newest week — and that must not change.
+func TestStripRunsNewestFirst(t *testing.T) {
+	t.Parallel()
+
+	monday := time.Date(2026, 9, 7, 0, 0, 0, 0, time.UTC)
+	older := monday.AddDate(0, 0, -7)
+	page := strava.TerrainPage{Weeks: []strava.TerrainWeek{week(t, older, 1), week(t, monday, 1)}}
+
+	var buf strings.Builder
+	if err := ActivityStripPage(page, time.UTC).Render(context.Background(), &buf); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	html := buf.String()
+
+	newest := strings.Index(html, "Week of 7 September 2026")
+	oldest := strings.Index(html, "Week of 31 August 2026")
+	if newest < 0 || oldest < 0 {
+		t.Fatalf("both weeks should render:\n%s", html)
+	}
+	if newest > oldest {
+		t.Error("the list opens on the oldest week; older pages appended below would read backwards")
+	}
+
+	// The scene reads page.Weeks directly and must still see oldest first.
+	if !page.Weeks[0].Start.Equal(older) {
+		t.Error("reversing the list reversed the landscape")
+	}
+}
+
+// A session used to be decoration inside a day-sized button: there was no way
+// to reach one, and no way to open it where the rest of its detail lives.
+func TestSessionRowsAreReachable(t *testing.T) {
+	t.Parallel()
+
+	monday := time.Date(2026, 9, 7, 0, 0, 0, 0, time.UTC)
+	w := week(t, monday, 1)
+	w.Days[0].Routes = []strava.TerrainRoute{{
+		StravaID:    987654,
+		Name:        "Morning loop",
+		Sport:       "Run",
+		DistanceM:   10000,
+		MovingTimeS: 3000,
+		StartedAt:   monday.Add(7 * time.Hour),
+	}}
+	page := strava.TerrainPage{Weeks: []strava.TerrainWeek{w}}
+
+	var buf strings.Builder
+	if err := ActivityStripPage(page, time.UTC).Render(context.Background(), &buf); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	html := buf.String()
+
+	for _, want := range []string{
+		"Morning loop",
+		"https://www.strava.com/activities/987654",
+		"07:00",
+		"10.0 km",
+		`id="day-2026-09-07"`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("session row is missing %q:\n%s", want, html)
+		}
+	}
+}
+
+// A route with no Strava id is not a link to nowhere.
+func TestSessionWithoutAStravaIDIsNotLinked(t *testing.T) {
+	t.Parallel()
+
+	route := strava.TerrainRoute{Name: "Logged by hand", Sport: "Workout"}
+
+	var buf strings.Builder
+	if err := sessionRow(route, time.UTC).Render(context.Background(), &buf); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+
+	if html := buf.String(); strings.Contains(html, "strava.com/activities") {
+		t.Errorf("linked a session that has no Strava id:\n%s", html)
+	}
+}

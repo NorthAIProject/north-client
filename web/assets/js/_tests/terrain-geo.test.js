@@ -174,3 +174,59 @@ test("clipped marks the days that ran off the top of the scale", async () => {
   assert.strictEqual(clipped(400, 500), false);
   assert.strictEqual(clipped(600, 0), false);
 });
+
+// The bug the terrain shipped with, in the one form a test can hold onto.
+//
+// The camera stood at two written-down numbers: 9.5 back, 6.2 up, aimed at the
+// ground, 38° vertical field of view. That put the top edge of the frame about
+// 17° below the horizon while a full-height column reached only 8 — so every
+// hard day was sliced off above the shoulder, and no canvas shape fixed it
+// because the numbers never moved.
+test("a full-height column stays inside the frame at every canvas shape", async () => {
+  const { cameraStance, FOV, PITCH, MAX_HEIGHT } = await geo;
+
+  // The banner is wide and short; a narrow window is close to square. Both,
+  // and the extremes either side of them.
+  for (const aspect of [0.8, 1, 1.6, 2.5, 4, 6]) {
+    const { height, ground } = cameraStance(aspect);
+
+    // Angles below the horizon, measured from the camera. Larger is lower.
+    const frameTop = PITCH - (FOV * Math.PI) / 360;
+    const columnTop = Math.atan((height - MAX_HEIGHT) / ground);
+
+    assert.ok(
+      columnTop > frameTop,
+      `aspect ${aspect}: a full-height column reaches ${columnTop.toFixed(3)} rad, ` +
+        `above the top of the frame at ${frameTop.toFixed(3)} rad — it is cut off`,
+    );
+  }
+});
+
+// And the other half of framing: the week the camera is aimed at has to be in
+// shot, not under the bottom edge.
+test("the aimed-at week is inside the frame at every canvas shape", async () => {
+  const { cameraStance, FOV, PITCH } = await geo;
+
+  for (const aspect of [0.8, 1, 1.6, 2.5, 4, 6]) {
+    const { height, ground } = cameraStance(aspect);
+
+    const frameBottom = PITCH + (FOV * Math.PI) / 360;
+    const groundAtTarget = Math.atan(height / ground);
+
+    assert.ok(
+      groundAtTarget < frameBottom,
+      `aspect ${aspect}: the ground under the target sits at ${groundAtTarget.toFixed(3)} rad, ` +
+        `below the frame at ${frameBottom.toFixed(3)} rad`,
+    );
+  }
+});
+
+// A wide canvas is bound by its height and a narrow one by its width, so the
+// camera has to back off as the canvas narrows. If this inverts, one of the
+// two solves has been dropped.
+test("framing backs the camera off as the canvas narrows", async () => {
+  const { frame } = await geo;
+
+  assert.ok(frame(1) >= frame(4), "a square canvas should not sit closer than a wide one");
+  assert.ok(frame(0.6) > frame(1), "a tall narrow canvas needs the most distance");
+});

@@ -10,16 +10,17 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/ui/badge"
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
 	"github.com/NorthAIProject/north-client/web/shared/ui/separator"
 	"github.com/NorthAIProject/north-client/web/shared/utils"
 )
 
-// ActivitiesPage draws the calendar terrain.
+// ActivitiesPage draws the record, with the calendar terrain above it.
 //
-// The scene is the page now, not a square beside a list. It used to sit in an
-// aspect-square box next to an equally wide column of rows, which gave the
-// visualisation about a quarter of the available space and left the rest to a
-// list that repeated everything it showed.
+// The scene used to be the page: a 68vh hero that pushed the weeks below the
+// fold, which made a page about someone's training history open on no history
+// at all. It is a banner now. The list is the content, the terrain is the
+// shape of it, and both are on screen at once.
 templ ActivitiesPage(user users.User, status strava.Status, page strava.TerrainPage) {
 	@layout.App("Activities", user, layout.BuildNav(ctx, "/app/fitness")) {
 		<div class="mx-auto w-full max-w-5xl space-y-6 p-6 md:p-8" x-data="northActivityTerrain">
@@ -91,13 +92,15 @@ templ ActivitiesPage(user users.User, status strava.Status, page strava.TerrainP
 }
 
 // hero is the scene. Full-bleed: it breaks out of the reading column rather
-// than sitting inside it, because the terrain is the page's content and a
-// landscape needs width to read as one.
+// than sitting inside it, because a landscape needs width to read as one.
+//
+// Its height is capped low enough that the first week of the list is on screen
+// with it. A banner that fills the viewport is a banner nobody scrolls past.
 templ hero() {
 	<div class="-mx-6 md:-mx-8">
-		<div class="border-hairline bg-background/40 relative h-[min(68vh,720px)] min-h-[420px] overflow-hidden border-y">
+		<div class="border-hairline bg-background/40 relative h-[clamp(220px,32vh,340px)] overflow-hidden border-y">
 			// Hand-rolled: a WebGL surface has no counterpart in the component
-			// library. Everything it shows is also in the strip below, so it
+			// library. Everything it shows is also in the list below, so it
 			// is hidden from assistive technology rather than described twice.
 			<canvas
 				x-ref="canvas"
@@ -150,25 +153,34 @@ templ kpis(page strava.TerrainPage, loc *time.Location) {
 	}
 }
 
-// ActivityStrip is the accessible equivalent of the scene, and the thing that
-// pages alongside it.
+// ActivityStrip is the record itself, and the accessible equivalent of the
+// scene. A reader using it instead of the canvas should be able to rebuild the
+// landscape from it: which days, how much load, what kind of work.
 //
-// Grouped by day rather than a flat list of sessions, because the scene now
-// shows a per-day figure that a flat list could not reconstruct. A reader
-// using it instead of the canvas should be able to rebuild the landscape from
-// it: which days, how much load, what kind of work.
+// The container is the stable element on the page. The after-swap listener
+// lives here rather than on the tail because the tail is what gets replaced —
+// a listener on it is racing its own removal.
 templ ActivityStrip(page strava.TerrainPage, loc *time.Location) {
-	<div id="activity-strip">
-		for _, week := range page.Weeks {
-			if weekHasSessions(week) {
-				@weekGroup(week)
-			}
-		}
-		@stripTail(page)
+	<div id="activity-strip" x-on:htmx:after-swap.window="onOlderWeeks()">
+		@ActivityStripPage(page, loc)
 	</div>
 }
 
-templ weekGroup(week strava.TerrainWeek) {
+// ActivityStripPage is one page of weeks plus the tail that fetches the next.
+//
+// Separate from ActivityStrip because this is what the paging endpoint returns:
+// rows followed by a fresh tail, swapped in over the old tail. The wrapper must
+// not come with it, or the document would end up with two #activity-strip.
+templ ActivityStripPage(page strava.TerrainPage, loc *time.Location) {
+	for _, week := range weeksNewestFirst(page) {
+		if weekHasSessions(week) {
+			@weekGroup(week, loc)
+		}
+	}
+	@stripTail(page)
+}
+
+templ weekGroup(week strava.TerrainWeek, loc *time.Location) {
 	<section class="mt-6">
 		<div class="flex items-baseline justify-between gap-3">
 			<h2 class="text-sm font-medium tracking-tight">
@@ -178,68 +190,111 @@ templ weekGroup(week strava.TerrainWeek) {
 		</div>
 		@separator.Separator()
 		<ul class="mt-3 space-y-3">
-			for _, day := range week.Days {
+			for _, day := range daysNewestFirst(week) {
 				if day.Sessions > 0 {
-					@dayRow(day)
+					@dayRow(day, loc)
 				}
 			}
 		</ul>
 	</section>
 }
 
-templ dayRow(day strava.TerrainDay) {
+// dayRow is a day and the sessions in it.
+//
+// The day used to be one enormous button with the sessions rendered inside it,
+// which made every activity a decoration on a click target: there was no way to
+// reach a single session, and no way to open one on Strava. The card is now
+// ordinary content, and selecting the day on the terrain is its own small
+// control beside the heading.
+templ dayRow(day strava.TerrainDay, loc *time.Location) {
 	<li>
-		<button
-			type="button"
-			class="border-hairline hover:border-muted-foreground/40 w-full rounded-lg border px-3 py-2 text-left transition-colors"
-			x-bind:class={ fmt.Sprintf("isSelected(%q) ? 'border-signal/60 bg-signal/5' : ''", day.Date.Format(time.DateOnly)) }
-			x-bind:aria-pressed={ fmt.Sprintf("isSelected(%q)", day.Date.Format(time.DateOnly)) }
-			x-on:click={ fmt.Sprintf("pick(%q)", day.Date.Format(time.DateOnly)) }
-		>
-			<div class="flex items-baseline justify-between gap-2">
+		@card.Card(card.Props{
+			ID:    dayElementID(day),
+			Class: "border-hairline bg-transparent shadow-none transition-colors",
+			Attributes: templ.Attributes{
+				"x-bind:class": fmt.Sprintf("isSelected(%q) ? 'border-signal/60 bg-signal/5' : ''", dayKey(day)),
+			},
+		}) {
+			<div class="flex flex-wrap items-baseline justify-between gap-2 px-4 pt-3">
 				<h3 class="text-sm font-medium">{ day.Date.Format("Mon 2 Jan") }</h3>
-				<span class="text-muted-foreground shrink-0 font-mono text-[10px]">
-					{ fmt.Sprintf("%.0f MET-min", day.LoadMETMin) }
-				</span>
+				<div class="flex items-center gap-2">
+					<span class="text-muted-foreground shrink-0 font-mono text-[10px]">
+						{ fmt.Sprintf("%.0f MET-min", day.LoadMETMin) }
+					</span>
+					@button.Button(button.Props{
+						Variant: button.VariantGhost,
+						Size:    button.SizeSm,
+						Class:   "h-6 px-2 font-mono text-[10px] uppercase tracking-[0.14em]",
+						Attributes: templ.Attributes{
+							"x-on:click":          fmt.Sprintf("pick(%q)", dayKey(day)),
+							"x-bind:aria-pressed": fmt.Sprintf("isSelected(%q)", dayKey(day)),
+						},
+					}) {
+						Show
+					}
+				</div>
 			</div>
-			<ul class="mt-2 space-y-1.5">
+			<ul class="space-y-1.5 px-4 pb-3 pt-2">
 				for _, route := range day.Routes {
-					<li class="flex flex-wrap items-center gap-2">
-						@badge.Badge(badge.Props{Variant: badge.VariantSecondary, Class: "text-[10px]"}) {
-							{ route.Sport }
-						}
-						<span class="truncate text-xs">{ route.Name }</span>
-						<span class="text-muted-foreground font-mono text-[11px]">
-							{ routeSummary(route) }
-						</span>
-					</li>
+					@sessionRow(route, loc)
 				}
 			</ul>
-		</button>
+		}
+	</li>
+}
+
+// sessionRow is one activity: when it started, what it was, and its numbers.
+templ sessionRow(route strava.TerrainRoute, loc *time.Location) {
+	<li class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+		if clock := routeClock(route, loc); clock != "" {
+			<span class="text-muted-foreground w-10 shrink-0 font-mono text-[11px]">{ clock }</span>
+		}
+		@badge.Badge(badge.Props{Variant: badge.VariantSecondary, Class: "text-[10px]"}) {
+			{ route.Sport }
+		}
+		if url := stravaActivityURL(route); url != "" {
+			<a
+				href={ templ.SafeURL(url) }
+				target="_blank"
+				rel="noopener noreferrer"
+				class="truncate text-xs hover:underline"
+			>{ route.Name }</a>
+		} else {
+			<span class="truncate text-xs">{ route.Name }</span>
+		}
+		<span class="text-muted-foreground font-mono text-[11px]">
+			{ routeSummary(route) }
+		</span>
 	</li>
 }
 
 // stripTail is where the next page of weeks arrives.
 //
-// The scene asks for this over HTMX as it travels, so the rows exist in one
-// .templ file and are never re-implemented in a client template. It is also
-// the whole keyboard route into the past: the camera is driven by dragging,
-// which has no keyboard equivalent, so without this button older weeks would
-// be unreachable without a pointer.
+// It used to carry hx-select="#activity-strip-tail", which selected the tail
+// out of a response containing a page of weeks and threw the weeks away: the
+// link advanced the cursor and rendered nothing. Swapping the whole response
+// over the tail is the point — rows, then the next tail.
+//
+// It travels on reveal as well as on click, so scrolling the list is enough to
+// keep reading backwards. The click route stays because the camera is driven by
+// dragging, which has no keyboard equivalent; without it older weeks would be
+// unreachable without a pointer.
 templ stripTail(page strava.TerrainPage) {
 	<div id="activity-strip-tail" class="mt-6">
 		if page.HasOlder && len(page.Weeks) > 0 {
-			<a
-				href={ templ.SafeURL(olderURL(page)) }
-				class="text-sm font-medium hover:underline"
-				hx-get={ olderURL(page) }
-				hx-target="#activity-strip-tail"
-				hx-swap="outerHTML"
-				hx-select="#activity-strip-tail"
-				x-on:htmx:after-swap.window="onOlderWeeks()"
-			>
+			@button.Button(button.Props{
+				Href:    olderURL(page),
+				Variant: button.VariantOutline,
+				Size:    button.SizeSm,
+				Attributes: templ.Attributes{
+					"hx-get":     olderURL(page),
+					"hx-target":  "#activity-strip-tail",
+					"hx-swap":    "outerHTML",
+					"hx-trigger": "click, revealed",
+				},
+			}) {
 				Load earlier weeks
-			</a>
+			}
 		} else if page.OldestAt != nil {
 			@ui.MonoLabel(fmt.Sprintf("Nothing recorded before %s", page.OldestAt.Format("2 January 2006")))
 		} else {
