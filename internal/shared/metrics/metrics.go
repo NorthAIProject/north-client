@@ -24,6 +24,12 @@ import (
 const (
 	OutcomeSuccess = "success"
 	OutcomeError   = "error"
+
+	// OutcomeEmpty is a recording the recogniser heard nothing in. Its own
+	// outcome rather than a success, because it is the one that tells you
+	// whether people are holding the button by accident or the microphone is
+	// picking up nothing — and neither of those is a failure to report.
+	OutcomeEmpty = "empty"
 )
 
 // Registry holds North's collectors.
@@ -39,6 +45,10 @@ type Registry struct {
 	sourceFailures *prometheus.CounterVec
 	jobRuns        *prometheus.CounterVec
 	jobDuration    *prometheus.HistogramVec
+
+	voiceTranscriptions *prometheus.CounterVec
+	voiceDuration       *prometheus.HistogramVec
+	voiceBytes          *prometheus.CounterVec
 }
 
 // New builds the collectors and registers them.
@@ -75,7 +85,34 @@ func New() *Registry {
 		Buckets: []float64{0.1, 0.5, 1, 5, 15, 60, 300, 900},
 	}, []string{"kind"})
 
-	r.reg.MustRegister(r.coachDuration, r.coachTokens, r.sourceFailures, r.jobRuns, r.jobDuration)
+	r.voiceTranscriptions = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "north_voice_transcriptions_total",
+		Help: "Recordings sent to the recogniser, by surface and outcome.",
+	}, []string{"surface", "outcome"})
+
+	r.voiceDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Name: "north_voice_transcription_duration_seconds",
+		Help: "How long one transcription took, by surface.",
+		// This histogram is the closest thing North has to a bill. Transcription
+		// costs nothing per request, so what a recording actually spends is time
+		// on a CPU pod that runs one replica and is shared with another
+		// application — and the wall clock here is very nearly that number,
+		// because the recogniser is busy for the whole of it.
+		//
+		// Buckets reach past the 120s cap in internal/voice: the recogniser runs
+		// slightly slower than real time, so a clip at the ceiling lands above
+		// it, and a last bucket that swallows every slow request could not
+		// answer the only question anyone will ask of this.
+		Buckets: []float64{1, 2.5, 5, 10, 20, 40, 80, 160},
+	}, []string{"surface"})
+
+	r.voiceBytes = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "north_voice_audio_bytes_total",
+		Help: "Audio sent to the recogniser, by surface.",
+	}, []string{"surface"})
+
+	r.reg.MustRegister(r.coachDuration, r.coachTokens, r.sourceFailures, r.jobRuns, r.jobDuration,
+		r.voiceTranscriptions, r.voiceDuration, r.voiceBytes)
 	return r
 }
 
@@ -146,4 +183,23 @@ func (r *Registry) Handler() http.Handler {
 		return http.NotFoundHandler()
 	}
 	return promhttp.HandlerFor(r.reg, promhttp.HandlerOpts{})
+}
+
+// VoiceTranscription records one recording reaching the recogniser.
+//
+// Surface rather than provider, because the interesting split is which product
+// the speech came from — the web recorder or a messaging platform — and there is
+// only ever one recogniser.
+//
+// Bytes rather than seconds of speech: nothing here decodes a recording, so its
+// duration is only ever the sender's claim, and on the web path not even that.
+// Bytes are the one measure that is always true.
+func (r *Registry) VoiceTranscription(surface string, d time.Duration, bytes int, outcome string) {
+	if r == nil {
+		return
+	}
+
+	r.voiceTranscriptions.WithLabelValues(surface, outcome).Inc()
+	r.voiceDuration.WithLabelValues(surface).Observe(d.Seconds())
+	r.voiceBytes.WithLabelValues(surface).Add(float64(bytes))
 }

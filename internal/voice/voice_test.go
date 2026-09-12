@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -11,6 +14,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/shared/aiattr"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/metrics"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/voice"
 )
@@ -247,5 +251,67 @@ func TestNoVocabularySourceIsFine(t *testing.T) {
 	}
 	if len(stub.sawVocabulary) != 0 {
 		t.Fatalf("sent %v with no source wired", stub.sawVocabulary)
+	}
+}
+
+// scrapeMetrics renders the registry the way Prometheus would read it.
+func scrapeMetrics(t *testing.T, r *metrics.Registry) string {
+	t.Helper()
+
+	rec := httptest.NewRecorder()
+	r.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	return rec.Body.String()
+}
+
+// What a recording costs is time on a shared CPU pod, and this is the only
+// place that sees it for both surfaces.
+func TestATranscriptionIsMeasured(t *testing.T) {
+	reg := metrics.New()
+	stub := &stubTranscriber{text: "ran five kilometres"}
+	svc := voice.NewService(voice.Options{Transcriber: stub}).WithMetrics(reg)
+
+	if _, err := svc.Transcribe(context.Background(), newUser(), oggHeader(), "telegram_voice"); err != nil {
+		t.Fatalf("transcribe: %v", err)
+	}
+
+	body := scrapeMetrics(t, reg)
+	for _, want := range []string{
+		`north_voice_transcriptions_total{outcome="success",surface="telegram_voice"} 1`,
+		`north_voice_transcription_duration_seconds_count{surface="telegram_voice"} 1`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("missing %s", want)
+		}
+	}
+}
+
+// Silence is not a failure and not a success. Counting it apart is what shows
+// somebody holding the button by accident.
+func TestSilenceIsMeasuredAsItsOwnOutcome(t *testing.T) {
+	reg := metrics.New()
+	stub := &stubTranscriber{text: "   "}
+	svc := voice.NewService(voice.Options{Transcriber: stub}).WithMetrics(reg)
+
+	if _, err := svc.Transcribe(context.Background(), newUser(), oggHeader(), "telegram_voice"); err != nil {
+		t.Fatalf("transcribe: %v", err)
+	}
+
+	if want := `north_voice_transcriptions_total{outcome="empty",surface="telegram_voice"} 1`; !strings.Contains(scrapeMetrics(t, reg), want) {
+		t.Errorf("missing %s", want)
+	}
+}
+
+// A failed call still consumed the pod's time, so it is still measured.
+func TestAFailedTranscriptionIsStillMeasured(t *testing.T) {
+	reg := metrics.New()
+	stub := &stubTranscriber{err: errors.New("the recogniser fell over")}
+	svc := voice.NewService(voice.Options{Transcriber: stub}).WithMetrics(reg)
+
+	if _, err := svc.Transcribe(context.Background(), newUser(), oggHeader(), "voice_capture"); err == nil {
+		t.Fatal("err = nil")
+	}
+
+	if want := `north_voice_transcriptions_total{outcome="error",surface="voice_capture"} 1`; !strings.Contains(scrapeMetrics(t, reg), want) {
+		t.Errorf("missing %s", want)
 	}
 }
