@@ -169,16 +169,14 @@ func (b *bridge) answer(ctx context.Context, in messaging.InboundMessage, callba
 	}
 
 	if err := b.fillAttachment(ctx, &in); err != nil {
-		kind := in.Attachment.Kind
-		b.log.Warn("telegram could not download an attachment", "error", err, "kind", kind)
-		// Named rather than generic. Somebody who recorded their voice and is
-		// told a photo failed will report that as the bug, and it is: it says
-		// the bot did not understand what they sent.
-		text := "I could not download that photo. Try sending it again?"
-		if kind == messaging.KindVoice {
-			text = i18n.T(ctx, "tg.voice.download")
-		}
-		_ = b.client.Send(ctx, in.ExternalID, messaging.OutboundMessage{Text: text})
+		// Only photos are fetched here now, so this copy is about a photo. A
+		// recording that cannot be downloaded is answered by the messaging
+		// service instead, in the person's own language, because that is where
+		// the download moved to.
+		b.log.Warn("telegram could not download an attachment", "error", err, "kind", in.Attachment.Kind)
+		_ = b.client.Send(ctx, in.ExternalID, messaging.OutboundMessage{
+			Text: "I could not download that photo. Try sending it again?",
+		})
 		return
 	}
 
@@ -208,6 +206,18 @@ func (b *bridge) answer(ctx context.Context, in messaging.InboundMessage, callba
 
 func (b *bridge) fillAttachment(ctx context.Context, in *messaging.InboundMessage) error {
 	if in.Attachment == nil || in.Attachment.FileID == "" || len(in.Attachment.Bytes) > 0 {
+		return nil
+	}
+	// A recording is left where it is. The messaging service refuses an
+	// over-long one on the duration Telegram already sent, and downloading here
+	// would mean pulling it across the network only to throw it away — on
+	// behalf of a recogniser that is a single replica shared with another
+	// application. It fetches the bytes itself, through messaging.Files, once
+	// the recording has earned them.
+	//
+	// Photos are still fetched here: there is no equivalent cheap refusal, and
+	// the media service needs the bytes in order to store them.
+	if in.Attachment.Kind == messaging.KindVoice {
 		return nil
 	}
 	data, mime, err := b.client.File(ctx, in.Attachment.FileID)

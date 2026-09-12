@@ -191,6 +191,10 @@ func TestAVoiceNoteBecomesAnInboundFile(t *testing.T) {
 	if msg.Attachment.DurationSeconds != 7 {
 		t.Fatalf("duration = %d, want 7", msg.Attachment.DurationSeconds)
 	}
+	// Carried so an oversized recording can be refused before it is fetched.
+	if msg.Attachment.SizeBytes != 8123 {
+		t.Fatalf("size = %d, want 8123", msg.Attachment.SizeBytes)
+	}
 }
 
 // A voice note carries no text, and that must not make it look like an empty

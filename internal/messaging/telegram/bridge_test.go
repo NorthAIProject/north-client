@@ -91,11 +91,10 @@ func (okHandler) Handle(_ context.Context, _ messaging.InboundMessage) (messagin
 	return messaging.OutboundMessage{Text: "answered"}, nil
 }
 
-// A download that fails must apologise for the thing the person actually sent.
-// Telling somebody who recorded their voice that a photo failed is a second
-// bug on top of the first, and the one they will report.
-func TestAFailedVoiceDownloadDoesNotMentionAPhoto(t *testing.T) {
-	// No getFile route: every download fails.
+// A voice note is no longer downloaded here at all: the messaging service
+// refuses an over-long one before the bytes move, and fetches them itself when
+// the recording has earned it. So the bridge must leave it alone.
+func TestAVoiceNoteIsNotDownloadedByTheBridge(t *testing.T) {
 	api := newBotAPI(t)
 
 	b := &bridge{
@@ -111,16 +110,13 @@ func TestAFailedVoiceDownloadDoesNotMentionAPhoto(t *testing.T) {
 		Attachment: &messaging.InboundFile{Kind: messaging.KindVoice, FileID: "AwACAgQAAx"},
 	}, "")
 
-	sends := api.sends()
-	if len(sends) != 1 {
-		t.Fatalf("expected one reply, got %d", len(sends))
+	for _, call := range api.sent() {
+		if call.method == "getFile" {
+			t.Fatal("the bridge downloaded a voice note; that belongs to the service now")
+		}
 	}
-	text, _ := sends[0].body["text"].(string)
-	if text == "" {
-		t.Fatal("a failed download said nothing")
-	}
-	if strings.Contains(strings.ToLower(text), "photo") {
-		t.Fatalf("a failed voice note apologised for a photo: %q", text)
+	if len(api.sends()) != 1 {
+		t.Fatalf("expected the reply to go out anyway, got %d sends", len(api.sends()))
 	}
 }
 

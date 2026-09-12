@@ -41,6 +41,7 @@ type harnessOptions struct {
 	tools  *stubTools
 	quotas *stubQuotas
 	voice  *stubVoice
+	files  *stubFiles
 }
 
 func newHarness(t *testing.T, client *fake.Client, opts harnessOptions) harness {
@@ -97,6 +98,9 @@ func newHarness(t *testing.T, client *fake.Client, opts harnessOptions) harness 
 	}
 	if opts.voice != nil {
 		msgOpts.Voice = opts.voice
+	}
+	if opts.files != nil {
+		msgOpts.Files = opts.files
 	}
 
 	return harness{

@@ -92,6 +92,7 @@ type Service struct {
 	quotas    Quotas
 	images    Images
 	voice     Voice
+	files     Files
 	transport Transport
 	log       *slog.Logger
 	funnel    *analytics.Funnel
@@ -121,8 +122,12 @@ type Options struct {
 
 	// Voice turns a voice note into words before the coach sees it. Nil
 	// refuses voice notes in words, which is what a deployment with no
-	// multimodal provider — or no ffmpeg — should do.
+	// transcription endpoint should do.
 	Voice Voice
+
+	// Files fetches a recording's bytes when the adapter has left them on the
+	// platform. Nil is correct for an adapter that downloads eagerly.
+	Files Files
 
 	// Transport delivers unsolicited messages (the morning briefing). Nil
 	// makes Notify a no-op, which is what every process without a bot token
@@ -153,6 +158,7 @@ func NewService(opts Options) *Service {
 		quotas:      opts.Quotas,
 		images:      opts.Images,
 		voice:       opts.Voice,
+		files:       opts.Files,
 		transport:   opts.Transport,
 		log:         opts.Log,
 		funnel:      opts.Funnel,
