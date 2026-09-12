@@ -50,6 +50,17 @@ const MaxBytes = 8 << 20
 // anything; the byte ceiling is what catches the rest.
 const MaxSeconds = 120
 
+// Vocabulary supplies words this person uses that a recogniser would otherwise
+// mangle.
+//
+// An interface with one method so this package keeps importing nothing but the
+// AI layer: everything that knows about goals and habits lives in
+// internal/voice/vocab, on the other side of it. Nil sends no hint, which costs
+// accuracy and nothing else.
+type Vocabulary interface {
+	VoiceTerms(ctx context.Context, user users.User) ([]string, error)
+}
+
 // Options are what a Service needs.
 type Options struct {
 	// Transcriber is nil on a deployment with no transcription endpoint
@@ -57,12 +68,17 @@ type Options struct {
 	// is untouched.
 	Transcriber ai.Transcriber
 
+	// Vocabulary biases the recogniser toward this account's own words. Nil is
+	// a working deployment with slightly worse transcripts.
+	Vocabulary Vocabulary
+
 	Log *slog.Logger
 }
 
 // Service turns a recording into words.
 type Service struct {
 	transcriber ai.Transcriber
+	vocabulary  Vocabulary
 	log         *slog.Logger
 }
 
@@ -73,6 +89,7 @@ func NewService(opts Options) *Service {
 	}
 	return &Service{
 		transcriber: opts.Transcriber,
+		vocabulary:  opts.Vocabulary,
 		log:         log,
 	}
 }
@@ -112,6 +129,19 @@ func (s *Service) Transcribe(ctx context.Context, user users.User, recording []b
 	// refusing something that is not a recording at all before it is uploaded,
 	// and naming the container for the request.
 
+	// Gathered before the call and never allowed to fail it. The hint is worth
+	// a couple of indexed queries against a transcription that takes seconds,
+	// and worth nothing at all if it costs somebody their sentence.
+	var vocabulary []string
+	if s.vocabulary != nil {
+		terms, err := s.vocabulary.VoiceTerms(ctx, user)
+		if err != nil {
+			s.log.Warn("voice: could not build a vocabulary hint", "error", err, "user_id", user.ID)
+		} else {
+			vocabulary = terms
+		}
+	}
+
 	ctx = aiattr.WithUser(ctx, user.ID, surface)
 
 	result, err := s.transcriber.Transcribe(ctx, ai.TranscribeRequest{
@@ -120,8 +150,9 @@ func (s *Service) Transcribe(ctx context.Context, user users.User, recording []b
 		// The account's language, which picks the model and stops a
 		// multilingual recogniser guessing. Taken from the user rather than the
 		// context so background work behaves the same as a request.
-		Language: string(user.Locale),
-		Tier:     string(user.Tier),
+		Language:   string(user.Locale),
+		Vocabulary: vocabulary,
+		Tier:       string(user.Tier),
 	})
 	if err != nil {
 		return "", err

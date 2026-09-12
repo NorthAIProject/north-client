@@ -33,9 +33,40 @@ func (s *stubVoice) Transcribe(_ context.Context, _ users.User, audio []byte, su
 	return s.text, s.err
 }
 
-// sendVoice delivers a voice note the way the Telegram adapter does: bytes
-// already downloaded, no text at all.
+// stubFiles stands in for the platform's file API, and counts. The point of
+// several tests below is that it is never called.
+type stubFiles struct {
+	bytes []byte
+	mime  string
+	err   error
+
+	calls int
+}
+
+func (s *stubFiles) File(_ context.Context, _ string) ([]byte, string, error) {
+	s.calls++
+	if s.err != nil {
+		return nil, "", s.err
+	}
+	return s.bytes, s.mime, nil
+}
+
+// sendVoice delivers a voice note the way the Telegram adapter does: a file id
+// and the hints that came with the update, with the bytes still on the platform.
 func (h harness) sendVoice(t *testing.T, chat string, audio []byte, seconds int) messaging.OutboundMessage {
+	t.Helper()
+	return h.sendVoiceNote(t, chat, messaging.InboundFile{
+		Kind:            messaging.KindVoice,
+		Name:            "voice.ogg",
+		MIMEType:        "audio/ogg",
+		DurationSeconds: seconds,
+		SizeBytes:       int64(len(audio)),
+		FileID:          "AwACAgQAAx",
+		Bytes:           audio,
+	})
+}
+
+func (h harness) sendVoiceNote(t *testing.T, chat string, file messaging.InboundFile) messaging.OutboundMessage {
 	t.Helper()
 
 	out, err := h.messaging.Handle(context.Background(), messaging.InboundMessage{
@@ -43,13 +74,7 @@ func (h harness) sendVoice(t *testing.T, chat string, audio []byte, seconds int)
 		ExternalID: chat,
 		UpdateID:   nextUpdateID(),
 		ReceivedAt: time.Now(),
-		Attachment: &messaging.InboundFile{
-			Kind:            messaging.KindVoice,
-			Name:            "voice.ogg",
-			MIMEType:        "audio/ogg",
-			DurationSeconds: seconds,
-			Bytes:           audio,
-		},
+		Attachment: &file,
 	})
 	if err != nil {
 		t.Fatalf("handle a voice note: %v", err)
@@ -292,5 +317,133 @@ func TestNobodyAbleToListenAsksThemToTypeRatherThanToRetry(t *testing.T) {
 	if out.Text != expected.Text {
 		t.Fatalf("said %q, want the same offer to type that a server with no transcriber gives: %q",
 			out.Text, expected.Text)
+	}
+}
+
+// The recogniser is a single CPU replica shared with another application, so an
+// over-long clip is refused on the duration the platform already sent — before
+// any of it crosses the network, and before it costs the person a dictation.
+func TestAnOverLongVoiceNoteIsNeverDownloaded(t *testing.T) {
+	files := &stubFiles{bytes: recording(), mime: "audio/ogg"}
+	quotas := &stubQuotas{allowed: true}
+	transcriber := &stubVoice{text: "should not be reached"}
+	h := newHarness(t, fake.Text("should not be reached"), harnessOptions{
+		quotas: quotas, voice: transcriber, files: files,
+	})
+	h.link(t, "700020")
+
+	quotas.actions = nil
+	out := h.sendVoiceNote(t, "700020", messaging.InboundFile{
+		Kind:            messaging.KindVoice,
+		FileID:          "AwACAgQAAx",
+		MIMEType:        "audio/ogg",
+		DurationSeconds: 60 * 60,
+	})
+
+	if out.Text == "" {
+		t.Fatal("an over-long voice note said nothing")
+	}
+	if files.calls != 0 {
+		t.Fatalf("downloaded %d times a recording that was refused on its duration", files.calls)
+	}
+	if transcriber.calls != 0 {
+		t.Fatalf("transcribed %d times", transcriber.calls)
+	}
+	if len(quotas.actions) != 0 {
+		t.Fatalf("metered %v for a recording that never moved", quotas.actions)
+	}
+}
+
+// Same for the size the platform reports. It is a claim rather than a fact,
+// which is why the bytes are checked again afterwards — but it is a free claim,
+// and acting on it costs nothing.
+func TestAnOversizedVoiceNoteIsNeverDownloaded(t *testing.T) {
+	files := &stubFiles{bytes: recording(), mime: "audio/ogg"}
+	transcriber := &stubVoice{text: "should not be reached"}
+	h := newHarness(t, fake.Text("should not be reached"), harnessOptions{
+		voice: transcriber, files: files,
+	})
+	h.link(t, "700021")
+
+	out := h.sendVoiceNote(t, "700021", messaging.InboundFile{
+		Kind:      messaging.KindVoice,
+		FileID:    "AwACAgQAAx",
+		MIMEType:  "audio/ogg",
+		SizeBytes: 64 << 20,
+	})
+
+	if out.Text == "" {
+		t.Fatal("an oversized voice note said nothing")
+	}
+	if files.calls != 0 {
+		t.Fatalf("downloaded %d times a recording refused on its size", files.calls)
+	}
+}
+
+// The ordinary path: the bytes are fetched once, and only once the recording has
+// earned it.
+func TestAnAcceptedVoiceNoteIsDownloadedOnce(t *testing.T) {
+	files := &stubFiles{bytes: recording(), mime: "audio/ogg"}
+	transcriber := &stubVoice{text: "ran five kilometres"}
+	h := newHarness(t, fake.Text("Nice one."), harnessOptions{voice: transcriber, files: files})
+	h.link(t, "700022")
+
+	out := h.sendVoiceNote(t, "700022", messaging.InboundFile{
+		Kind:            messaging.KindVoice,
+		FileID:          "AwACAgQAAx",
+		MIMEType:        "audio/ogg",
+		DurationSeconds: 6,
+	})
+
+	if out.Text != "Nice one." {
+		t.Fatalf("reply = %q", out.Text)
+	}
+	if files.calls != 1 {
+		t.Fatalf("downloaded %d times, want once", files.calls)
+	}
+	if transcriber.sawBytes != len(recording()) {
+		t.Fatalf("the transcriber saw %d bytes, want the downloaded %d", transcriber.sawBytes, len(recording()))
+	}
+}
+
+// A download that fails is its own message. It is not a transcription failure
+// and should not be dressed as one.
+func TestAFailedDownloadSaysSoWithoutTranscribing(t *testing.T) {
+	files := &stubFiles{err: errors.New("telegram said no")}
+	transcriber := &stubVoice{text: "should not be reached"}
+	h := newHarness(t, fake.Text("should not be reached"), harnessOptions{
+		voice: transcriber, files: files,
+	})
+	h.link(t, "700023")
+
+	out := h.sendVoiceNote(t, "700023", messaging.InboundFile{
+		Kind:            messaging.KindVoice,
+		FileID:          "AwACAgQAAx",
+		DurationSeconds: 5,
+	})
+
+	if out.Text == "" {
+		t.Fatal("a failed download said nothing")
+	}
+	if transcriber.calls != 0 {
+		t.Fatalf("transcribed %d times after a failed download", transcriber.calls)
+	}
+}
+
+// A platform that hands over the bytes itself still works, and is not asked to
+// download them again.
+func TestBytesAlreadyInHandAreNotFetchedAgain(t *testing.T) {
+	files := &stubFiles{bytes: []byte("different bytes entirely"), mime: "audio/ogg"}
+	transcriber := &stubVoice{text: "slept six hours"}
+	h := newHarness(t, fake.Text("Right."), harnessOptions{voice: transcriber, files: files})
+	h.link(t, "700024")
+
+	h.sendVoice(t, "700024", recording(), 5)
+
+	if files.calls != 0 {
+		t.Fatalf("downloaded %d times when the bytes had already arrived", files.calls)
+	}
+	if transcriber.sawBytes != len(recording()) {
+		t.Fatalf("the transcriber saw %d bytes, want the %d that arrived", transcriber.sawBytes, len(recording()))
 	}
 }
