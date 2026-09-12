@@ -758,13 +758,18 @@ at all rather than an empty one.
 - **Spend rows for voice are gone**, correctly: it is free, and a zero cost and
   an unpriced call are different things. The `surface` parameter stays so the
   ledger is instantly right again if a hosted endpoint is ever configured.
-- **The vocabulary hint is wired but unused.** `prompt` is the single
-  highest-leverage accuracy lever according to the infra doc, and North's
-  equivalent of Norviq's watchlist is goal titles, habit names and exercise
-  names. The field ships; the source does not yet.
-- **Recordings are still downloaded before they are refused.** Telegram sends a
-  duration and a size in the update, and Norviq refuses an oversized clip before
-  a byte moves. North checks after `fillAttachment` has already pulled it.
+- ~~The vocabulary hint is wired but unused.~~ Done: `internal/voice/vocab`
+  sends the account's goal titles and habit names, deduped and capped at 40
+  terms. Measured against the live service — "my Norvik review" became "my
+  Norviq review" — which is exactly the class of error it exists for, since a
+  recogniser mangles proper nouns and nothing else notices when it does.
+- ~~Recordings are still downloaded before they are refused.~~ Done: the
+  duration and size Telegram already sends are checked first, and the bytes are
+  fetched by the service only once the recording has earned them.
+- **Exercise names are not in the vocabulary.** Goals and habits are. The
+  exercise catalogue is large and shared rather than personal, so it would need
+  a different rule than "everything this account contains" — probably the ones
+  they have actually logged.
 
 ### Verified, 2026-09-11
 
