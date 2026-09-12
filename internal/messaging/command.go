@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
+	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
@@ -17,6 +18,7 @@ import (
 const (
 	commandStart  = "/start"
 	commandHelp   = "/help"
+	commandStats  = "/stats"
 	commandUnlink = "/unlink"
 )
 
@@ -27,6 +29,7 @@ const (
 func Commands() []Command {
 	return []Command{
 		{Name: strings.TrimPrefix(commandHelp, "/"), Description: "what I can do"},
+		{Name: strings.TrimPrefix(commandStats, "/"), Description: "how things are going — add week, month or year"},
 		{Name: strings.TrimPrefix(commandUnlink, "/"), Description: "disconnect this chat from your account"},
 	}
 }
@@ -67,7 +70,7 @@ func parseCommand(text string) (name, args string, ok bool) {
 // "/summarise my week" means it as a sentence, and the useful thing to do with
 // a sentence is answer it — so anything unknown falls through to the coach.
 func (s *Service) runCommand(ctx context.Context, user users.User, in InboundMessage) (OutboundMessage, bool, error) {
-	name, _, ok := parseCommand(in.Text)
+	name, args, ok := parseCommand(in.Text)
 	if !ok {
 		return OutboundMessage{}, false, nil
 	}
@@ -78,6 +81,9 @@ func (s *Service) runCommand(ctx context.Context, user users.User, in InboundMes
 
 	case commandHelp:
 		return OutboundMessage{Text: i18n.T(ctx, "tg.help")}, true, nil
+
+	case commandStats:
+		return s.statsReply(ctx, user, args), true, nil
 
 	case commandUnlink:
 		unlinked, err := s.Unlink(ctx, user.ID, in.Platform)
@@ -102,3 +108,36 @@ func (s *Service) runCommand(ctx context.Context, user users.User, in InboundMes
 // cannot discover by trying — that writes are confirmed before they happen,
 // and that this is the same conversation as the web app rather than a second
 // one.
+
+// statsReply answers /stats for whichever window the argument names.
+//
+// The argument is handed straight to the range parser, which resolves anything
+// it does not recognise to today. That is deliberate: somebody typing
+// "/stats lsat week" should get a number, not a lecture about spelling, and
+// the parser already takes the same position for a hand-edited URL.
+//
+// Errors are answered rather than returned. A failure to read the numbers is
+// not a failure to handle the command, and returning it here would surface a
+// database error to somebody who asked how their week went.
+func (s *Service) statsReply(ctx context.Context, user users.User, args string) OutboundMessage {
+	if s.stats == nil {
+		return OutboundMessage{Text: i18n.T(ctx, "tg.stats.unavailable")}
+	}
+
+	rg := timerange.Parse(strings.ToLower(args), user.Location())
+
+	text, photo, err := s.stats.Digest(ctx, user, rg)
+	if err != nil {
+		s.log.Error("messaging stats digest failed", "user_id", user.ID, "error", err)
+		return OutboundMessage{Text: i18n.T(ctx, "tg.stats.failed")}
+	}
+	if strings.TrimSpace(text) == "" {
+		return OutboundMessage{Text: i18n.T(ctx, "tg.stats.empty")}
+	}
+
+	out := OutboundMessage{Text: text, Photo: photo}
+	if len(photo) > 0 {
+		out.PhotoCaption = rg.Label
+	}
+	return out
+}

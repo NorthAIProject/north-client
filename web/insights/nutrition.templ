@@ -1,0 +1,77 @@
+package insights
+
+import (
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/chart"
+)
+
+// NutritionView is the nutrition section.
+type NutritionView struct {
+	Range RangeView
+
+	AvgCalories string
+	AvgProtein  string
+	DaysLogged  int
+	Entries     int
+
+	// Goal figures are empty for somebody who has not run the calculator.
+	// Their intake is still charted; it is simply not judged against
+	// anything, because there is nothing to judge it against.
+	HasGoal      bool
+	GoalCalories string
+	GoalProtein  string
+
+	CaloriesChart chart.Props
+	MacroSplit    map[string]any
+	HasSplit      bool
+
+	Highlights []string
+	HasData    bool
+}
+
+templ Nutrition(user users.User, view NutritionView) {
+	@page("Nutrition", "nutrition", "/app/insights/nutrition/body", user, view.Range) {
+		@NutritionBody(view)
+	}
+}
+
+templ NutritionBody(view NutritionView) {
+	if !view.HasData {
+		@emptyState("No food logged in this window.", "Log a meal", "/app/nutrition")
+	} else {
+		<div class="space-y-6">
+			<div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+				@statTile("Average day", view.AvgCalories, goalNote(view.HasGoal, view.GoalCalories), DeltaView{})
+				@statTile("Average protein", view.AvgProtein, goalNote(view.HasGoal, view.GoalProtein), DeltaView{})
+				@statTile("Days logged", formatCount(view.DaysLogged), "in this window", DeltaView{})
+				@statTile("Entries", formatCount(view.Entries), "meals and ingredients", DeltaView{})
+			</div>
+			<div class="grid gap-3 lg:grid-cols-3">
+				<div class="border-hairline bg-surface/60 space-y-3 rounded-lg border p-4 lg:col-span-2">
+					@ui.MonoLabel("Calories")
+					@chart.Chart(view.CaloriesChart)
+				</div>
+				if view.HasSplit {
+					<div class="border-hairline bg-surface/60 space-y-3 rounded-lg border p-4">
+						@ui.MonoLabel("Where they came from")
+						@templ.JSONScript("insights-nutrition-split-option", view.MacroSplit)
+						@ui.EChartsMount("insights-nutrition-split", "insights-nutrition-split-option", "min-h-48 w-full")
+					</div>
+				}
+			</div>
+			if len(view.Highlights) > 0 {
+				@highlights(view.Highlights)
+			}
+		</div>
+	}
+}
+
+// goalNote states the target beside the average, or says there is none. A
+// blank note would leave the reader unsure whether they had met anything.
+func goalNote(hasGoal bool, goal string) string {
+	if !hasGoal {
+		return "no plan set"
+	}
+	return "goal " + goal
+}

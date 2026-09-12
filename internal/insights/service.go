@@ -8,13 +8,16 @@ import (
 	activitysvc "github.com/NorthAIProject/north-client/internal/activity"
 	"github.com/NorthAIProject/north-client/internal/activity/activity"
 	"github.com/NorthAIProject/north-client/internal/checkins"
+	"github.com/NorthAIProject/north-client/internal/conversations"
 	"github.com/NorthAIProject/north-client/internal/dashboard"
 	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/habits"
 	"github.com/NorthAIProject/north-client/internal/hydration"
+	"github.com/NorthAIProject/north-client/internal/meals"
 	"github.com/NorthAIProject/north-client/internal/mind"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/sleep"
+	"github.com/NorthAIProject/north-client/internal/spend"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
@@ -35,6 +38,23 @@ type Options struct {
 	Goals     *goals.Service
 	Mind      *mind.Service
 	Activity  *activitysvc.Service
+
+	// Food and MacroGoals power the nutrition section. Both optional: a
+	// build without them renders the section empty rather than failing, the
+	// way every other optional dependency here behaves.
+	Food       *meals.FoodLogService
+	MacroGoals meals.MacroGoalLookup
+
+	// Conversations powers the coaching-activity section.
+	Conversations *conversations.Service
+
+	// Spend powers the model-cost section, for this account only.
+	Spend *spend.Repository
+
+	// SiteURL is the base a digest links back to. Empty sends the numbers
+	// without a link, which is the right degradation for a deployment that
+	// has not been told its own address.
+	SiteURL string
 }
 
 type Service struct {
@@ -46,6 +66,13 @@ type Service struct {
 	goals     *goals.Service
 	mind      *mind.Service
 	activity  *activitysvc.Service
+
+	food       *meals.FoodLogService
+	macroGoals meals.MacroGoalLookup
+
+	conversations *conversations.Service
+	spend         *spend.Repository
+	siteURL       string
 }
 
 func NewService(opts Options) *Service {
@@ -58,6 +85,13 @@ func NewService(opts Options) *Service {
 		goals:     opts.Goals,
 		mind:      opts.Mind,
 		activity:  opts.Activity,
+
+		food:       opts.Food,
+		macroGoals: opts.MacroGoals,
+
+		conversations: opts.Conversations,
+		spend:         opts.Spend,
+		siteURL:       opts.SiteURL,
 	}
 }
 

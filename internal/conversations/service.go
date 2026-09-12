@@ -5,6 +5,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/NorthAIProject/north-client/internal/shared/timerange"
+
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/ai"
@@ -261,4 +263,14 @@ func (s *Service) MarkExtracted(ctx context.Context, id uuid.UUID) error {
 // NeedsTitle reports whether a conversation is still unnamed.
 func (s *Service) NeedsTitle(ctx context.Context, c Conversation) bool {
 	return strings.TrimSpace(c.Title) == ""
+}
+
+// MessageStatLimit is the most turns one window's charts will read. A heavier
+// year than this is charted from its first rows and reported as truncated,
+// which is what the insights timeline already does for the same reason.
+const MessageStatLimit = 5000
+
+// StatsBetween returns the turns this person exchanged in a window.
+func (s *Service) StatsBetween(ctx context.Context, userID uuid.UUID, rg timerange.Range) ([]MessageStat, error) {
+	return s.repo.UserMessagesBetween(ctx, userID, rg.Since, rg.Until, MessageStatLimit)
 }

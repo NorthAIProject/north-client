@@ -21,6 +21,10 @@ const (
 	GrainHour Grain = iota
 	GrainDay
 	GrainWeek
+
+	// GrainMonth reads a year. Twelve bars is the most a year can carry and
+	// still be read at a glance; 365 would be a texture, not a chart.
+	GrainMonth
 )
 
 // Keys, in the order the selector shows them.
@@ -30,6 +34,7 @@ const (
 	KeyWeek      = "week"
 	KeyMonth     = "month"
 	KeyQuarter   = "quarter"
+	KeyYear      = "year"
 )
 
 // DefaultKey is what an absent or unrecognised query value resolves to.
@@ -98,6 +103,19 @@ func Parse(q string, loc *time.Location) Range {
 			Grain: GrainDay,
 			loc:   loc,
 		}
+	case KeyYear:
+		// Whole calendar months, so every bucket is a month somebody
+		// recognises and no month name appears twice in the axis. Anchoring
+		// to "this day last year" instead would leave a stub month at each
+		// end and two bars both labelled September.
+		return Range{
+			Key:   KeyYear,
+			Label: "Last 12 months",
+			Since: StartOfMonth(today.AddDate(0, -11, 0)),
+			Until: today.AddDate(0, 0, 1),
+			Grain: GrainMonth,
+			loc:   loc,
+		}
 	case KeyQuarter:
 		return Range{
 			Key:   KeyQuarter,
@@ -151,7 +169,7 @@ func Between(since, until time.Time) Range {
 
 // All is every range the selector offers, resolved in one location.
 func All(loc *time.Location) []Range {
-	keys := []string{KeyToday, KeyYesterday, KeyWeek, KeyMonth, KeyQuarter}
+	keys := []string{KeyToday, KeyYesterday, KeyWeek, KeyMonth, KeyQuarter, KeyYear}
 	out := make([]Range, len(keys))
 	for i, k := range keys {
 		out[i] = Parse(k, loc)
@@ -221,6 +239,8 @@ func (r Range) Buckets() []Bucket {
 		return r.hourBuckets()
 	case GrainWeek:
 		return r.weekBuckets()
+	case GrainMonth:
+		return r.monthBuckets()
 	default:
 		return r.dayBuckets()
 	}
@@ -246,6 +266,28 @@ func (r Range) dayBuckets() []Bucket {
 			Start: d,
 			End:   d.AddDate(0, 0, 1),
 		})
+	}
+	return out
+}
+
+// monthBuckets walks calendar months rather than fixed blocks of days.
+//
+// Stepping by AddDate(0, 1, 0) from the window's own start would drift: a
+// window opening on the 31st skips the months that have no 31st entirely, so
+// April would simply be missing from the axis.
+func (r Range) monthBuckets() []Bucket {
+	out := make([]Bucket, 0, 12)
+	for d := StartOfDay(r.Since); d.Before(r.Until); {
+		end := startOfNextMonth(d)
+		if end.After(r.Until) {
+			end = r.Until
+		}
+		out = append(out, Bucket{
+			Label: d.Format("Jan"),
+			Start: d,
+			End:   end,
+		})
+		d = end
 	}
 	return out
 }

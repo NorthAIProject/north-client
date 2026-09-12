@@ -24,15 +24,19 @@ import (
 // registry, which is what makes it reachable.
 var knownNonDestinations = map[string]string{
 	// HTMX partials. Fragments of a page, not pages.
-	"/app/panels":                 "dashboard range swap",
-	"/app/nudges/bell":            "topbar poll",
-	"/app/connections/pill":       "topbar prompt to connect an agent",
-	"/app/knowledge/passages":     "document passage fragment",
-	"/app/insights/timeline/body": "insights range swap",
-	"/app/insights/body/body":     "insights range swap",
-	"/app/insights/mind/body":     "insights range swap",
-	"/app/insights/progress/body": "insights range swap",
-	"/app/insights/training/body": "insights range swap",
+	"/app/panels":                  "dashboard range swap",
+	"/app/nudges/bell":             "topbar poll",
+	"/app/connections/pill":        "topbar prompt to connect an agent",
+	"/app/knowledge/passages":      "document passage fragment",
+	"/app/insights/panels":         "insights range swap",
+	"/app/insights/timeline/body":  "insights range swap",
+	"/app/insights/body/body":      "insights range swap",
+	"/app/insights/mind/body":      "insights range swap",
+	"/app/insights/progress/body":  "insights range swap",
+	"/app/insights/training/body":  "insights range swap",
+	"/app/insights/nutrition/body": "insights range swap",
+	"/app/insights/coach/body":     "insights range swap",
+	"/app/insights/spend/body":     "insights range swap",
 
 	// The terrain scene's own feed. JSON for a WebGL surface, not a page:
 	// opening it in a tab shows a wall of coordinates.
@@ -53,7 +57,6 @@ var knownNonDestinations = map[string]string{
 	"/app/settings/vault": "development-only feature",
 
 	// Redirects to /app/insights/timeline rather than rendering.
-	"/app/insights": "redirect",
 
 	// Onboarding is a gate, reached by being new rather than by navigating.
 	"/app/onboarding":      "onboarding gate",

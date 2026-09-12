@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/NorthAIProject/north-client/internal/shared/timerange"
+
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -42,6 +44,23 @@ type harnessOptions struct {
 	quotas *stubQuotas
 	voice  *stubVoice
 	files  *stubFiles
+	stats  *stubStats
+}
+
+// stubStats stands in for the insights service, recording the window it was
+// asked about so a test can assert the command parsed its argument.
+type stubStats struct {
+	text   string
+	photo  []byte
+	err    error
+	gotKey string
+	calls  int
+}
+
+func (s *stubStats) Digest(_ context.Context, _ users.User, rg timerange.Range) (string, []byte, error) {
+	s.calls++
+	s.gotKey = rg.Key
+	return s.text, s.photo, s.err
 }
 
 func newHarness(t *testing.T, client *fake.Client, opts harnessOptions) harness {
@@ -98,6 +117,9 @@ func newHarness(t *testing.T, client *fake.Client, opts harnessOptions) harness 
 	}
 	if opts.voice != nil {
 		msgOpts.Voice = opts.voice
+	}
+	if opts.stats != nil {
+		msgOpts.Stats = opts.stats
 	}
 	if opts.files != nil {
 		msgOpts.Files = opts.files

@@ -71,3 +71,39 @@ WHERE created_at >= @from_time
   AND byok = false
   AND priced = false
   AND (input_tokens > 0 OR output_tokens > 0);
+
+-- name: SpendByUserSurface :many
+-- One person's spend, split by the part of the product that spent it.
+--
+-- Separate from SpendBySurface rather than a nullable filter on it: that one
+-- answers an operator's question across every account, and a query that
+-- silently returned the whole cluster when a user id was missing is the kind
+-- of mistake that only shows up in front of somebody else's data.
+SELECT
+    surface,
+    count(*)                    AS generations,
+    sum(input_tokens)::bigint   AS input_tokens,
+    sum(output_tokens)::bigint  AS output_tokens,
+    sum(cost_micros)::bigint    AS cost_micros
+FROM ai_generations
+WHERE user_id = @user_id
+  AND created_at >= @from_time
+  AND created_at < @to_time
+GROUP BY surface
+ORDER BY sum(cost_micros) DESC;
+
+-- name: SpendByUserModel :many
+-- One person's spend, split by the model that answered.
+SELECT
+    provider,
+    model,
+    count(*)                    AS generations,
+    sum(input_tokens)::bigint   AS input_tokens,
+    sum(output_tokens)::bigint  AS output_tokens,
+    sum(cost_micros)::bigint    AS cost_micros
+FROM ai_generations
+WHERE user_id = @user_id
+  AND created_at >= @from_time
+  AND created_at < @to_time
+GROUP BY provider, model
+ORDER BY sum(cost_micros) DESC;

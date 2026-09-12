@@ -121,6 +121,15 @@ const (
 	// every timezone.
 	KindSweepBriefings Kind = "sweep_briefings"
 
+	// KindSweepDigests pushes the insights digest to accounts whose cadence
+	// says it is due. Hourly for the same reason the two above are: "their
+	// Monday morning" is a different absolute time in every timezone.
+	//
+	// Unlike those, this sweep sends inline rather than enqueueing a job per
+	// account. A briefing is a model call worth retrying on its own; a digest
+	// is a handful of queries, so a failure simply waits for the next hour.
+	KindSweepDigests Kind = "sweep_digests"
+
 	// KindSummarizeConversation compacts the older turns of one long thread so
 	// its beginning survives past the context window.
 	KindSummarizeConversation Kind = "summarize_conversation"

@@ -97,6 +97,7 @@ type Service struct {
 	log       *slog.Logger
 	funnel    *analytics.Funnel
 	art       Art
+	stats     Stats
 	siteURL   string
 
 	redeemLimit *ratelimit.Limiters
@@ -139,6 +140,11 @@ type Options struct {
 	// Funnel records a linked chat as a connected source. Nil is a no-op.
 	Funnel *analytics.Funnel
 
+	// Stats answers /stats. Nil points the reader at the web app instead,
+	// which is the right answer for a build with no insights service rather
+	// than handing a slash command to the coach as prose.
+	Stats Stats
+
 	// Art and SiteURL together turn an exercise the coach looked up into a
 	// picture the platform can show. Either one empty means replies stay text
 	// only, which is the correct degradation rather than a broken link.
@@ -163,6 +169,7 @@ func NewService(opts Options) *Service {
 		log:         opts.Log,
 		funnel:      opts.Funnel,
 		art:         opts.Art,
+		stats:       opts.Stats,
 		siteURL:     opts.SiteURL,
 		redeemLimit: ratelimit.New(redeemAttemptsPerMinute),
 		now:         opts.Now,
@@ -358,12 +365,30 @@ func (s *Service) incomingFrom(ctx context.Context, userID uuid.UUID, in Inbound
 	return out, "", nil
 }
 
-// Notify sends an unsolicited message to every linked chat for this account.
+// Notify sends an unsolicited line of text to every linked chat for this
+// account.
 //
-// Used by the morning briefing. A missing transport or no linked chat is
-// success: there is nobody to tell, not a failed generation.
+// Used by the morning briefing and the nudges, both of which have only words
+// to send. A missing transport or no linked chat is success: there is nobody
+// to tell, not a failed generation.
 func (s *Service) Notify(ctx context.Context, userID uuid.UUID, text string) error {
-	if s.transport == nil || s.links == nil || strings.TrimSpace(text) == "" {
+	return s.NotifyMessage(ctx, userID, OutboundMessage{Text: text})
+}
+
+// NotifyMessage is Notify for a message that is more than a line of text.
+//
+// The insights digest carries a rendered card, and the string-only signature
+// above would have dropped it on the floor with nothing to show for it. Kept
+// as two functions rather than one because two of the three callers genuinely
+// have only a string, and making them construct a message to pass it would be
+// ceremony for its own sake.
+func (s *Service) NotifyMessage(ctx context.Context, userID uuid.UUID, msg OutboundMessage) error {
+	if s.transport == nil || s.links == nil {
+		return nil
+	}
+	// Nothing to say is not a failure. A message with neither words nor a
+	// picture is what a caller sends when a window turned out to be empty.
+	if strings.TrimSpace(msg.Text) == "" && len(msg.Photo) == 0 {
 		return nil
 	}
 
@@ -376,7 +401,7 @@ func (s *Service) Notify(ctx context.Context, userID uuid.UUID, text string) err
 		if link.Platform != s.transport.Platform() {
 			continue
 		}
-		if err := s.transport.Send(ctx, link.ExternalID, OutboundMessage{Text: text}); err != nil {
+		if err := s.transport.Send(ctx, link.ExternalID, msg); err != nil {
 			s.log.Warn("messaging notify failed",
 				"error", err,
 				"user_id", userID,
