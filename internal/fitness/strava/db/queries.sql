@@ -137,3 +137,25 @@ FROM strava_activities
 WHERE user_id = $1
   AND start_date >= sqlc.arg(since)::timestamptz
   AND start_date <  sqlc.arg(until)::timestamptz;
+
+-- name: ListStravaActivitiesPage :many
+-- One page of somebody's sessions, newest first.
+--
+-- Descending, unlike ListStravaActivitiesBetween: that one feeds the terrain
+-- builder, which walks weeks in the order it lays them out. This one feeds a
+-- list somebody reads, and a training log is read from the last session
+-- backwards. The (user_id, start_date DESC) index serves it directly.
+--
+-- Keyset paging would be cheaper at depth, but the list needs numbered pages —
+-- "page 7 of 31" cannot be built from a cursor — and the offset is bounded by
+-- how far anyone actually clicks.
+SELECT * FROM strava_activities
+WHERE user_id = $1
+ORDER BY start_date DESC
+LIMIT sqlc.arg(row_limit)::int
+OFFSET sqlc.arg(row_offset)::int;
+
+-- name: CountStravaActivities :one
+-- How many sessions there are in total, which is what turns a page number into
+-- "of 31" and stops the pager offering a page with nothing on it.
+SELECT count(*)::bigint FROM strava_activities WHERE user_id = $1;

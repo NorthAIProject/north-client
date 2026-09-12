@@ -12,6 +12,19 @@ import (
 	"github.com/google/uuid"
 )
 
+const countStravaActivities = `-- name: CountStravaActivities :one
+SELECT count(*)::bigint FROM strava_activities WHERE user_id = $1
+`
+
+// How many sessions there are in total, which is what turns a page number into
+// "of 31" and stops the pager offering a page with nothing on it.
+func (q *Queries) CountStravaActivities(ctx context.Context, userID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countStravaActivities, userID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const deleteStravaConnection = `-- name: DeleteStravaConnection :exec
 DELETE FROM strava_connections WHERE user_id = $1
 `
@@ -72,6 +85,65 @@ type ListStravaActivitiesBetweenParams struct {
 // this — Postgres reads an index backwards as happily as forwards.
 func (q *Queries) ListStravaActivitiesBetween(ctx context.Context, arg ListStravaActivitiesBetweenParams) ([]StravaActivity, error) {
 	rows, err := q.db.Query(ctx, listStravaActivitiesBetween, arg.UserID, arg.Since, arg.Until)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []StravaActivity{}
+	for rows.Next() {
+		var i StravaActivity
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.StravaID,
+			&i.Name,
+			&i.SportType,
+			&i.StartDate,
+			&i.DistanceM,
+			&i.MovingTimeS,
+			&i.ElapsedTimeS,
+			&i.TotalElevationGainM,
+			&i.AverageSpeedMs,
+			&i.SummaryPolyline,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listStravaActivitiesPage = `-- name: ListStravaActivitiesPage :many
+SELECT id, user_id, strava_id, name, sport_type, start_date, distance_m, moving_time_s, elapsed_time_s, total_elevation_gain_m, average_speed_ms, summary_polyline, created_at, updated_at FROM strava_activities
+WHERE user_id = $1
+ORDER BY start_date DESC
+LIMIT $3::int
+OFFSET $2::int
+`
+
+type ListStravaActivitiesPageParams struct {
+	UserID    uuid.UUID
+	RowOffset int32
+	RowLimit  int32
+}
+
+// One page of somebody's sessions, newest first.
+//
+// Descending, unlike ListStravaActivitiesBetween: that one feeds the terrain
+// builder, which walks weeks in the order it lays them out. This one feeds a
+// list somebody reads, and a training log is read from the last session
+// backwards. The (user_id, start_date DESC) index serves it directly.
+//
+// Keyset paging would be cheaper at depth, but the list needs numbered pages —
+// "page 7 of 31" cannot be built from a cursor — and the offset is bounded by
+// how far anyone actually clicks.
+func (q *Queries) ListStravaActivitiesPage(ctx context.Context, arg ListStravaActivitiesPageParams) ([]StravaActivity, error) {
+	rows, err := q.db.Query(ctx, listStravaActivitiesPage, arg.UserID, arg.RowOffset, arg.RowLimit)
 	if err != nil {
 		return nil, err
 	}

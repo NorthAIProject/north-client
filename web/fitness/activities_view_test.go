@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/a-h/templ"
+
 	"github.com/NorthAIProject/north-client/internal/fitness/strava"
 )
 
@@ -87,183 +89,35 @@ func TestQuietWindowWithOlderHistoryIsNotEmpty(t *testing.T) {
 	}
 }
 
-// The tail is the only keyboard route into the past — the camera is driven by
-// dragging, which has no keyboard equivalent. If this link stops rendering,
-// older weeks become unreachable without a pointer.
-func TestStripTailOffersTheWayBackWhenThereIsMore(t *testing.T) {
+// The list is a flat log now, so every row has to carry its own date: there is
+// no day heading above it to inherit one from.
+func TestSessionRowsCarryTheirOwnDateAndLoad(t *testing.T) {
 	t.Parallel()
 
-	monday := time.Date(2026, 9, 7, 0, 0, 0, 0, time.UTC)
-	page := strava.TerrainPage{Weeks: []strava.TerrainWeek{week(t, monday, 1)}, HasOlder: true}
-
-	var buf strings.Builder
-	if err := stripTail(page).Render(context.Background(), &buf); err != nil {
-		t.Fatalf("render: %v", err)
-	}
-	html := buf.String()
-
-	if !strings.Contains(html, "Load earlier weeks") {
-		t.Error("no way to reach older weeks without a pointer")
-	}
-	if !strings.Contains(html, "before=2026-09-07") {
-		t.Errorf("tail does not carry the cursor for the page before it:\n%s", html)
-	}
-}
-
-func TestStripTailSaysWhereTheRecordEnds(t *testing.T) {
-	t.Parallel()
-
-	monday := time.Date(2026, 9, 7, 0, 0, 0, 0, time.UTC)
-	oldest := time.Date(2025, 6, 14, 0, 0, 0, 0, time.UTC)
-	page := strava.TerrainPage{Weeks: []strava.TerrainWeek{week(t, monday, 1)}, OldestAt: &oldest}
-
-	var buf strings.Builder
-	if err := stripTail(page).Render(context.Background(), &buf); err != nil {
-		t.Fatalf("render: %v", err)
+	started := time.Date(2026, 9, 9, 7, 0, 0, 0, time.UTC)
+	page := strava.SessionPage{
+		Page: 1, PerPage: 10, TotalPages: 1, Total: 1,
+		Sessions: []strava.TerrainRoute{{
+			StravaID:    987654,
+			Name:        "Morning loop",
+			Sport:       "Run",
+			DistanceM:   10200,
+			MovingTimeS: 3000,
+			LoadMETMin:  412,
+			StartedAt:   started,
+		}},
 	}
 
-	if html := buf.String(); strings.Contains(html, "Load earlier weeks") {
-		t.Error("the tail offers more weeks when there are none")
-	}
-}
-
-// The rows are the accessible equivalent of the scene, so they have to carry
-// the per-day figure the scene draws. A flat list of sessions could not be
-// used to rebuild the landscape.
-func TestStripCarriesThePerDayLoad(t *testing.T) {
-	t.Parallel()
-
-	monday := time.Date(2026, 9, 7, 0, 0, 0, 0, time.UTC)
-	page := strava.TerrainPage{Weeks: []strava.TerrainWeek{week(t, monday, 1)}}
-
-	var buf strings.Builder
-	if err := ActivityStrip(page, time.UTC).Render(context.Background(), &buf); err != nil {
-		t.Fatalf("render: %v", err)
-	}
-	html := buf.String()
-
-	if !strings.Contains(html, "MET-min") {
-		t.Error("a day row does not state its load")
-	}
-	if !strings.Contains(html, "Mon 7 Sep") {
-		t.Errorf("a day row does not name its date:\n%s", html)
-	}
-}
-
-// Rest days are drawn in the scene but must not become empty rows in the
-// strip: a reader would be scrolling past five blanks a week.
-func TestStripOmitsRestDays(t *testing.T) {
-	t.Parallel()
-
-	monday := time.Date(2026, 9, 7, 0, 0, 0, 0, time.UTC)
-	page := strava.TerrainPage{Weeks: []strava.TerrainWeek{week(t, monday, 1)}}
-
-	var buf strings.Builder
-	if err := ActivityStrip(page, time.UTC).Render(context.Background(), &buf); err != nil {
-		t.Fatalf("render: %v", err)
-	}
-
-	if n := strings.Count(buf.String(), "aria-pressed"); n != 1 {
-		t.Errorf("strip rendered %d day rows, want only the one with a session", n)
-	}
-}
-
-// The regression this page shipped with. The tail carried
-// hx-select="#activity-strip-tail", so HTMX took the tail out of a response
-// full of weeks and threw the weeks away: clicking "Load earlier weeks"
-// advanced the cursor and rendered nothing. The response has to be swapped
-// whole — rows, then the next tail.
-func TestPagingKeepsTheWeeksItFetched(t *testing.T) {
-	t.Parallel()
-
-	monday := time.Date(2026, 9, 7, 0, 0, 0, 0, time.UTC)
-	page := strava.TerrainPage{
-		Weeks:    []strava.TerrainWeek{week(t, monday.AddDate(0, 0, -7), 1), week(t, monday, 1)},
-		HasOlder: true,
-	}
-
-	var buf strings.Builder
-	if err := ActivityStripPage(page, time.UTC).Render(context.Background(), &buf); err != nil {
-		t.Fatalf("render: %v", err)
-	}
-	html := buf.String()
-
-	if strings.Contains(html, "hx-select") {
-		t.Error("the tail selects a fragment out of its own response, discarding the weeks in it")
-	}
-	if n := strings.Count(html, "Week of "); n != 2 {
-		t.Errorf("fragment carries %d weeks, want 2:\n%s", n, html)
-	}
-	if !strings.Contains(html, `id="activity-strip-tail"`) {
-		t.Error("fragment has no tail, so paging stops after one page")
-	}
-	// The wrapper belongs to the page, not to the fragment swapped in over the
-	// tail. Two of them in one document and every later hx-target is ambiguous.
-	if strings.Contains(html, `id="activity-strip"`) {
-		t.Error("the paging fragment brings a second #activity-strip with it")
-	}
-}
-
-// Older pages are appended below, so the list only reads correctly if it
-// already runs newest to oldest. The terrain's own order is the opposite —
-// scene.js pins offset 0 to the newest week — and that must not change.
-func TestStripRunsNewestFirst(t *testing.T) {
-	t.Parallel()
-
-	monday := time.Date(2026, 9, 7, 0, 0, 0, 0, time.UTC)
-	older := monday.AddDate(0, 0, -7)
-	page := strava.TerrainPage{Weeks: []strava.TerrainWeek{week(t, older, 1), week(t, monday, 1)}}
-
-	var buf strings.Builder
-	if err := ActivityStripPage(page, time.UTC).Render(context.Background(), &buf); err != nil {
-		t.Fatalf("render: %v", err)
-	}
-	html := buf.String()
-
-	newest := strings.Index(html, "Week of 7 September 2026")
-	oldest := strings.Index(html, "Week of 31 August 2026")
-	if newest < 0 || oldest < 0 {
-		t.Fatalf("both weeks should render:\n%s", html)
-	}
-	if newest > oldest {
-		t.Error("the list opens on the oldest week; older pages appended below would read backwards")
-	}
-
-	// The scene reads page.Weeks directly and must still see oldest first.
-	if !page.Weeks[0].Start.Equal(older) {
-		t.Error("reversing the list reversed the landscape")
-	}
-}
-
-// A session used to be decoration inside a day-sized button: there was no way
-// to reach one, and no way to open it where the rest of its detail lives.
-func TestSessionRowsAreReachable(t *testing.T) {
-	t.Parallel()
-
-	monday := time.Date(2026, 9, 7, 0, 0, 0, 0, time.UTC)
-	w := week(t, monday, 1)
-	w.Days[0].Routes = []strava.TerrainRoute{{
-		StravaID:    987654,
-		Name:        "Morning loop",
-		Sport:       "Run",
-		DistanceM:   10000,
-		MovingTimeS: 3000,
-		StartedAt:   monday.Add(7 * time.Hour),
-	}}
-	page := strava.TerrainPage{Weeks: []strava.TerrainWeek{w}}
-
-	var buf strings.Builder
-	if err := ActivityStripPage(page, time.UTC).Render(context.Background(), &buf); err != nil {
-		t.Fatalf("render: %v", err)
-	}
-	html := buf.String()
+	html := render(t, ActivitySessions(page, time.UTC))
 
 	for _, want := range []string{
 		"Morning loop",
+		"Wed 9 Sep 07:00",
+		"10.2 km",
+		"412 MET-min",
 		"https://www.strava.com/activities/987654",
-		"07:00",
-		"10.0 km",
-		`id="day-2026-09-07"`,
+		`data-day="2026-09-09"`,
+		"1\u20131 of 1",
 	} {
 		if !strings.Contains(html, want) {
 			t.Errorf("session row is missing %q:\n%s", want, html)
@@ -277,12 +131,131 @@ func TestSessionWithoutAStravaIDIsNotLinked(t *testing.T) {
 
 	route := strava.TerrainRoute{Name: "Logged by hand", Sport: "Workout"}
 
-	var buf strings.Builder
-	if err := sessionRow(route, time.UTC).Render(context.Background(), &buf); err != nil {
-		t.Fatalf("render: %v", err)
-	}
-
-	if html := buf.String(); strings.Contains(html, "strava.com/activities") {
+	if html := render(t, sessionRow(route, time.UTC)); strings.Contains(html, "strava.com/activities") {
 		t.Errorf("linked a session that has no Strava id:\n%s", html)
 	}
+}
+
+// The list renders the order the service handed it. The query sorts newest
+// first; the template must not quietly reverse it.
+func TestSessionsRenderInTheOrderGiven(t *testing.T) {
+	t.Parallel()
+
+	page := strava.SessionPage{
+		Page: 1, PerPage: 10, TotalPages: 1, Total: 2,
+		Sessions: []strava.TerrainRoute{
+			{Name: "Newer", Sport: "Run", StartedAt: time.Date(2026, 9, 10, 7, 0, 0, 0, time.UTC)},
+			{Name: "Older", Sport: "Run", StartedAt: time.Date(2026, 9, 9, 7, 0, 0, 0, time.UTC)},
+		},
+	}
+
+	html := render(t, ActivitySessions(page, time.UTC))
+	if strings.Index(html, "Newer") > strings.Index(html, "Older") {
+		t.Error("the list reordered the page it was given")
+	}
+}
+
+// Turning a page must not rebuild the terrain: the scene is a WebGL context
+// with weeks resident on the GPU. Every control swaps the list alone, and
+// still carries a real href for a reader without JavaScript.
+func TestPagerSwapsOnlyTheListAndStaysLinkable(t *testing.T) {
+	t.Parallel()
+
+	page := strava.SessionPage{Page: 2, PerPage: 10, TotalPages: 4, Total: 37}
+	html := render(t, sessionsPager(page))
+
+	for _, want := range []string{
+		`hx-target="#activity-sessions"`,
+		`hx-get="/app/fitness/activities/sessions?page=3"`,
+		`hx-push-url="/app/fitness/activities?page=3"`,
+		`href="/app/fitness/activities?page=3"`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("pager is missing %q:\n%s", want, html)
+		}
+	}
+}
+
+// The ends of the run have nowhere to go, and a control that looks live but
+// reloads the same page is worse than one that says it is spent.
+func TestPagerStopsAtBothEnds(t *testing.T) {
+	t.Parallel()
+
+	first := strava.SessionPage{Page: 1, PerPage: 10, TotalPages: 3, Total: 25}
+	if !strings.Contains(render(t, sessionsPager(first)), "disabled") {
+		t.Error("page one offers a newer page")
+	}
+	if first.HasPrevious() {
+		t.Error("page one reports a previous page")
+	}
+
+	last := strava.SessionPage{Page: 3, PerPage: 10, TotalPages: 3, Total: 25}
+	if last.HasNext() {
+		t.Error("the last page reports an older page")
+	}
+}
+
+func TestSessionPageArithmetic(t *testing.T) {
+	t.Parallel()
+
+	// 37 sessions, ten to a page: the last page holds seven, and says so.
+	last := strava.SessionPage{
+		Page: 4, PerPage: 10, TotalPages: 4, Total: 37,
+		Sessions: make([]strava.TerrainRoute, 7),
+	}
+	if got := last.First(); got != 31 {
+		t.Errorf("First() = %d, want 31", got)
+	}
+	if got := last.Last(); got != 37 {
+		t.Errorf("Last() = %d, want 37", got)
+	}
+
+	// An empty page counts from nothing rather than from one.
+	empty := strava.SessionPage{Page: 1, PerPage: 10}
+	if empty.First() != 0 || empty.Last() != 0 {
+		t.Errorf("an empty page reported rows %d–%d", empty.First(), empty.Last())
+	}
+}
+
+// The run of numbers: short runs whole, long runs elided around the current
+// page, and never a gap of exactly one — an ellipsis hiding a single number is
+// wider than the number.
+func TestSessionPageNumbers(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		page strava.SessionPage
+		want []int
+	}{
+		{"one page needs no pager", strava.SessionPage{Page: 1, TotalPages: 1}, nil},
+		{"short runs show whole", strava.SessionPage{Page: 3, TotalPages: 5}, []int{1, 2, 3, 4, 5}},
+		{"near the start", strava.SessionPage{Page: 2, TotalPages: 20}, []int{1, 2, 3, ellipsis, 20}},
+		{"in the middle", strava.SessionPage{Page: 10, TotalPages: 20}, []int{1, ellipsis, 9, 10, 11, ellipsis, 20}},
+		{"near the end", strava.SessionPage{Page: 19, TotalPages: 20}, []int{1, ellipsis, 18, 19, 20}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := sessionPageNumbers(tt.page)
+			if len(got) != len(tt.want) {
+				t.Fatalf("pages = %v, want %v", got, tt.want)
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Fatalf("pages = %v, want %v", got, tt.want)
+				}
+			}
+		})
+	}
+}
+
+func render(t *testing.T, c templ.Component) string {
+	t.Helper()
+	var buf strings.Builder
+	if err := c.Render(context.Background(), &buf); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	return buf.String()
 }
