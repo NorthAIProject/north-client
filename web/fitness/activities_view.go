@@ -7,27 +7,28 @@ import (
 	"time"
 
 	"github.com/NorthAIProject/north-client/internal/fitness/strava"
+	"github.com/NorthAIProject/north-client/internal/shared/viz"
 )
 
-// terrainState is which of the page's five shapes to render.
+// trendStateKind is which of the page's five shapes to render.
 //
-// An explicit state rather than a chain of if/else in the template. The old
-// page had four conditions and only three branches: Unavailable was set by the
+// An explicit state rather than a chain of if/else in the template. The page
+// once had four conditions and only three branches: Unavailable was set by the
 // handler, documented in a comment as making the template "say the activities
 // could not be read", and never tested for — so a failed read rendered as
 // "nothing imported yet", telling someone their history was empty when it was
 // merely unreadable.
-type terrainStateKind int
+type trendStateKind int
 
 const (
-	stateTerrain terrainStateKind = iota
+	stateChart trendStateKind = iota
 	stateUnconfigured
 	stateDisconnected
 	stateUnavailable
 	stateEmpty
 )
 
-func terrainState(status strava.Status, page strava.TerrainPage) terrainStateKind {
+func trendState(status strava.Status, trend strava.Trend) trendStateKind {
 	switch {
 	case !status.Configured:
 		return stateUnconfigured
@@ -35,116 +36,192 @@ func terrainState(status strava.Status, page strava.TerrainPage) terrainStateKin
 		return stateDisconnected
 	case status.Unavailable:
 		return stateUnavailable
-	case !hasAnySession(page):
+	case trend.Sessions == 0:
 		return stateEmpty
 	default:
-		return stateTerrain
+		return stateChart
 	}
 }
 
-func hasAnySession(page strava.TerrainPage) bool {
-	for _, week := range page.Weeks {
-		if weekHasSessions(week) {
-			return true
-		}
-	}
-	// An account whose only history is older than this window still has
-	// something to show, and the strip offers the way back to it.
-	return page.HasOlder
-}
-
-func weekHasSessions(week strava.TerrainWeek) bool {
-	for _, day := range week.Days {
-		if day.Sessions > 0 {
-			return true
-		}
-	}
-	return false
-}
-
-// currentWeekLoad is the load of the most recent week drawn, which is the one
-// the reader is standing in.
-func currentWeekLoad(page strava.TerrainPage) float64 {
-	if len(page.Weeks) == 0 {
-		return 0
-	}
-	return page.Weeks[len(page.Weeks)-1].LoadMETMin
-}
-
-func totalSessions(page strava.TerrainPage) int {
-	var n int
-	for _, week := range page.Weeks {
-		for _, day := range week.Days {
-			n += day.Sessions
-		}
-	}
-	return n
-}
-
-func totalDistanceKm(page strava.TerrainPage) float64 {
-	var m float64
-	for _, week := range page.Weeks {
-		for _, day := range week.Days {
-			m += day.DistanceM
-		}
-	}
-	return m / 1000
-}
-
-func totalClimbM(page strava.TerrainPage) float64 {
-	var m float64
-	for _, week := range page.Weeks {
-		for _, day := range week.Days {
-			m += day.ElevationM
-		}
-	}
-	return m
-}
-
-// activeDays counts the days something was recorded on.
+// ---------------------------------------------------------------------------
+// The sentence.
 //
-// Deliberately not !Rest(): a day that has not happened is neither rest nor
-// active, and counting it as active would report a week as busier than it was
-// every time the page is opened before Sunday.
-func activeDays(page strava.TerrainPage) int {
-	var n int
-	for _, week := range page.Weeks {
-		for _, day := range week.Days {
-			if day.Sessions > 0 {
-				n++
-			}
-		}
+// strava.TrendShape is the judgement — which band the last seven days fall in
+// against what is normal. This is the wording, and it lives here because the
+// domain layer has no business holding a vocabulary. The split is the one
+// trendState already uses: decide in Go, phrase at the edge.
+
+// trendSentence is what the chart means, in one line.
+func trendSentence(trend strava.Trend) string {
+	switch trend.Shape {
+	case strava.ShapeNoHistory:
+		return "Nothing recorded in this window yet."
+	case strava.ShapeTooNew:
+		// Deliberately not a verdict. There is training here, but not yet
+		// enough of it to say whether this week is a lot or a little, and
+		// inventing a trend out of a fortnight would be a confident lie.
+		return fmt.Sprintf(
+			"%s so far this week. A few more weeks and this will start comparing them.",
+			humanMinutes(trend.RecentMinutes),
+		)
+	default:
+		return fmt.Sprintf("%s this week — %s.", humanMinutes(trend.RecentMinutes), comparison(trend))
 	}
-	return n
 }
 
-// countedDays is the denominator beside activeDays: the days that have had a
-// chance to happen. Counting the whole grid would make every week read as
-// worse than it was until it ended.
-func countedDays(page strava.TerrainPage) int {
-	var n int
-	for _, week := range page.Weeks {
-		for _, day := range week.Days {
-			if !day.Future {
-				n++
+// comparison is the clause that puts this week next to a normal one.
+func comparison(trend strava.Trend) string {
+	switch trend.Shape {
+	case strava.ShapeBigWeek:
+		return fmt.Sprintf("%s more than you normally do", proportion(trend.Ratio))
+	case strava.ShapeBuilding:
+		return fmt.Sprintf("%s above your normal", proportion(trend.Ratio))
+	case strava.ShapeSteady:
+		return "about what you normally do"
+	case strava.ShapeEasier:
+		return fmt.Sprintf("%s below your normal, an easier week", proportion(trend.Ratio))
+	default:
+		return "well below your normal"
+	}
+}
+
+// proportion says how far off normal in the words people use, rather than as a
+// percentage nobody reads aloud. "A third above" lands; "up 34.2%" does not.
+func proportion(ratio float64) string {
+	off := ratio - 1
+	if off < 0 {
+		off = -off
+	}
+
+	switch {
+	case off >= 0.9:
+		return "nearly double"
+	case off >= 0.6:
+		return "half again"
+	case off >= 0.4:
+		return "a half"
+	case off >= 0.28:
+		return "a third"
+	case off >= 0.2:
+		return "a quarter"
+	default:
+		return "a little"
+	}
+}
+
+// streakSentence is the second line: how long this has been kept up.
+//
+// Only shown once it is worth saying. One week is not a streak, it is a week,
+// and congratulating somebody for it reads as a machine trying to be
+// encouraging.
+func streakSentence(trend strava.Trend) string {
+	if trend.StreakWeeks < 2 {
+		return ""
+	}
+	return fmt.Sprintf("%d weeks running without a gap.", trend.StreakWeeks)
+}
+
+// ---------------------------------------------------------------------------
+// The chart.
+
+// trendChartOption builds the ECharts option for the training chart.
+//
+// The bands walk strava.Families, so the chart cannot show a colour for a
+// family the server does not know about, or quietly omit one it does. The
+// colours are the same --north-sport-* tokens the legend uses, which
+// web/fitness/palette_test.go pins to the stylesheet.
+func trendChartOption(trend strava.Trend) ([]byte, error) {
+	labels := make([]string, 0, len(trend.Days))
+	for _, day := range trend.Days {
+		labels = append(labels, day.Date.Format("2 Jan"))
+	}
+
+	bands := make([]viz.TrendBand, 0, len(strava.Families))
+	for _, family := range strava.Families {
+		values := make([]float64, len(trend.Days))
+		for i, day := range trend.Days {
+			for _, session := range day.Sessions {
+				if session.Family == family {
+					values[i] += session.Minutes()
+				}
 			}
 		}
+		bands = append(bands, viz.TrendBand{
+			Label:  family.Label(),
+			Color:  sportColorVar(family),
+			Values: round1s(values),
+		})
 	}
-	return n
+
+	return viz.TrainingTrendJSON(labels, bands, "Your normal", round1s(trend.Normal))
 }
+
+// sportColorVar is the CSS custom property holding a family's colour.
+//
+// Written out rather than built from the family name, for the same reason the
+// legend's Tailwind classes are: a token name built at runtime cannot be
+// checked, and one that does not exist renders as nothing, with no error
+// anywhere and nothing to grep for.
+func sportColorVar(f strava.SportFamily) string {
+	switch f {
+	case strava.FamilyRun:
+		return "var(--north-sport-run)"
+	case strava.FamilyRide:
+		return "var(--north-sport-ride)"
+	case strava.FamilySwim:
+		return "var(--north-sport-swim)"
+	case strava.FamilyWalk:
+		return "var(--north-sport-walk)"
+	case strava.FamilyStrength:
+		return "var(--north-sport-strength)"
+	default:
+		return "var(--north-sport-other)"
+	}
+}
+
+func round1s(in []float64) []float64 {
+	out := make([]float64, len(in))
+	for i, v := range in {
+		out[i] = float64(int(v*10+0.5)) / 10
+	}
+	return out
+}
+
+// ---------------------------------------------------------------------------
+// Figures.
+
+// humanMinutes is a duration the way somebody says it. The chart's axis is in
+// minutes because that is what one bar holds; a week's total is hours.
+func humanMinutes(minutes float64) string {
+	total := int(minutes + 0.5)
+	h, m := total/60, total%60
+	switch {
+	case h == 0:
+		return fmt.Sprintf("%dm", m)
+	case m == 0:
+		return fmt.Sprintf("%dh", h)
+	default:
+		return fmt.Sprintf("%dh %02dm", h, m)
+	}
+}
+
+func totalDistanceKm(trend strava.Trend) float64 { return trend.DistanceM / 1000 }
+
+// ---------------------------------------------------------------------------
+// The session list.
 
 // routeSummary is one session's numbers, in the order they are read: how far,
 // how long, how fast, how much up.
-func routeSummary(route strava.TerrainRoute) string {
-	out := formatDuration(route.MovingTimeS)
-	if route.DistanceM > 0 {
-		out = fmt.Sprintf("%.1f km · %s", route.DistanceM/1000, out)
-		if pace := paceMinPerKm(route); pace != "" {
+func routeSummary(session strava.Session) string {
+	out := formatDuration(session.MovingTimeS)
+	if session.DistanceM > 0 {
+		out = fmt.Sprintf("%.1f km · %s", session.DistanceM/1000, out)
+		if pace := paceMinPerKm(session); pace != "" {
 			out += " · " + pace
 		}
 	}
-	if route.ElevationM > 0 {
-		out += fmt.Sprintf(" · %.0f m", route.ElevationM)
+	if session.ElevationM > 0 {
+		out += fmt.Sprintf(" · %.0f m", session.ElevationM)
 	}
 	return out
 }
@@ -159,11 +236,11 @@ func formatDuration(seconds int) string {
 	return fmt.Sprintf("%dm", m)
 }
 
-func paceMinPerKm(route strava.TerrainRoute) string {
-	if route.DistanceM <= 0 || route.MovingTimeS <= 0 {
+func paceMinPerKm(session strava.Session) string {
+	if session.DistanceM <= 0 || session.MovingTimeS <= 0 {
 		return ""
 	}
-	pace := (float64(route.MovingTimeS) / 60) / (route.DistanceM / 1000)
+	pace := (float64(session.MovingTimeS) / 60) / (session.DistanceM / 1000)
 	if pace <= 0 {
 		return ""
 	}
@@ -173,37 +250,36 @@ func paceMinPerKm(route strava.TerrainRoute) string {
 }
 
 // stravaActivityURL is where a session can be read in full. Empty for an
-// activity with no Strava id, which is what a manually built TerrainRoute has.
-func stravaActivityURL(route strava.TerrainRoute) string {
-	if route.StravaID <= 0 {
+// activity with no Strava id, which is what a hand-built Session has.
+func stravaActivityURL(session strava.Session) string {
+	if session.StravaID <= 0 {
 		return ""
 	}
-	return fmt.Sprintf("https://www.strava.com/activities/%d", route.StravaID)
+	return fmt.Sprintf("https://www.strava.com/activities/%d", session.StravaID)
 }
 
 // routeWhen is when a session happened, as the list reads it: the day, then
 // the time. The flat list has no day heading to inherit a date from, so every
 // row carries its own.
-func routeWhen(route strava.TerrainRoute, loc *time.Location) string {
-	if route.StartedAt.IsZero() {
+func routeWhen(session strava.Session, loc *time.Location) string {
+	if session.StartedAt.IsZero() {
 		return ""
 	}
 	if loc == nil {
 		loc = time.UTC
 	}
-	return route.StartedAt.In(loc).Format("Mon 2 Jan 15:04")
+	return session.StartedAt.In(loc).Format("Mon 2 Jan 15:04")
 }
 
 // routeDayKey is the calendar day a session belongs to, in the reader's zone.
-// It is how a row in the list names the column the scene should highlight.
-func routeDayKey(route strava.TerrainRoute, loc *time.Location) string {
+func routeDayKey(session strava.Session, loc *time.Location) string {
 	if loc == nil {
 		loc = time.UTC
 	}
-	if route.StartedAt.IsZero() {
+	if session.StartedAt.IsZero() {
 		return ""
 	}
-	return route.StartedAt.In(loc).Format(time.DateOnly)
+	return session.StartedAt.In(loc).Format(time.DateOnly)
 }
 
 // sessionsPageURL is where a page of the list lives as a whole document, and
@@ -211,7 +287,7 @@ func routeDayKey(route strava.TerrainRoute, loc *time.Location) string {
 //
 // Two URLs rather than one because they answer different readers: the href is
 // a real page somebody can bookmark or open without JavaScript, and the hx-get
-// is the fragment that leaves the WebGL scene standing.
+// is the fragment that leaves the chart above it standing.
 func sessionsPageURL(page int) string {
 	return "/app/fitness/activities?" + pageQuery(page)
 }

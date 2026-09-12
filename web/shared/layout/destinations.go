@@ -251,7 +251,7 @@ func Destinations() []Destination {
 		},
 		{
 			Key: "nav.strava-activities", Label: "Strava activities", Href: "/app/fitness/activities", Icon: "map", Group: GroupBody,
-			Description: "Your imported runs and rides, in 3D.",
+			Description: "Every session, and whether you are keeping it up.",
 			Keywords:    []string{"strava", "runs", "rides", "routes", "map", "gps"},
 		},
 		{

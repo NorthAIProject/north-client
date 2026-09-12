@@ -1,6 +1,7 @@
 package fitness
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -11,7 +12,6 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/badge"
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
 	"github.com/NorthAIProject/north-client/web/shared/ui/pagination"
-	"github.com/NorthAIProject/north-client/web/shared/utils"
 )
 
 // ActivitiesPage draws the record, with the calendar terrain above it.
@@ -20,24 +20,19 @@ import (
 // fold, which made a page about someone's training history open on no history
 // at all. It is a banner now. The list is the content, the terrain is the
 // shape of it, and both are on screen at once.
-templ ActivitiesPage(user users.User, status strava.Status, page strava.TerrainPage, sessions strava.SessionPage) {
+templ ActivitiesPage(user users.User, status strava.Status, trend strava.Trend, sessions strava.SessionPage) {
 	@layout.App("Activities", user, layout.BuildNav(ctx, "/app/fitness")) {
-		<div class="mx-auto w-full max-w-5xl space-y-6 p-6 md:p-8" x-data="northActivityTerrain">
+		<div class="mx-auto w-full max-w-5xl space-y-6 p-6 md:p-8">
 			<header class="flex flex-wrap items-start justify-between gap-4">
 				<div>
 					@ui.MonoLabel("Strava")
-					<h1 class="mt-2 text-2xl font-medium tracking-tight">Your training, as ground</h1>
-					<p class="text-muted-foreground mt-1 max-w-xl text-sm leading-relaxed">
-						Each column is a day, each row a week, and the height is the effort
-						you put in — measured in MET-minutes, so a gym session and a run
-						stand next to each other. Drag to travel back through the weeks.
-					</p>
+					<h1 class="mt-2 text-2xl font-medium tracking-tight">Your training</h1>
 				</div>
 				@button.Button(button.Props{Href: "/app/fitness", Variant: button.VariantOutline, Size: button.SizeSm}) {
 					Back to Fitness
 				}
 			</header>
-			switch terrainState(status, page) {
+			switch trendState(status, trend) {
 				case stateUnconfigured:
 					@ui.Empty(ui.EmptyProps{
 						Eyebrow: "Strava",
@@ -48,7 +43,7 @@ templ ActivitiesPage(user users.User, status strava.Status, page strava.TerrainP
 					@ui.Empty(ui.EmptyProps{
 						Eyebrow: "Strava",
 						Title:   "Not connected",
-						Body:    "Connect Strava and your rides, runs and gym sessions will build the landscape below.",
+						Body:    "Connect Strava and your rides, runs and gym sessions will start filling this in.",
 					}) {
 						@button.Button(button.Props{Href: "/app/fitness/strava/connect", Class: "bg-signal text-background hover:bg-signal/90"}) {
 							Connect Strava
@@ -72,83 +67,69 @@ templ ActivitiesPage(user users.User, status strava.Status, page strava.TerrainP
 					@ui.Empty(ui.EmptyProps{
 						Eyebrow: "Strava",
 						Title:   "Nothing imported yet",
-						Body:    "Connected, but no activities have arrived. Run a sync from the Fitness page and the ground will fill in.",
+						Body:    "Connected, but no activities have arrived. Run a sync from the Fitness page and this will fill in.",
 					}) {
 						@button.Button(button.Props{Href: "/app/fitness", Variant: button.VariantOutline}) {
 							Go to Fitness
 						}
 					}
 				default:
-					@templ.JSONScript("activity-terrain-data", NewTerrainPayload(page))
-					@kpis(page, user.Location())
-					@hero()
-					@legend()
+					@kpis(trend)
+					@verdict(trend)
+					@trendChart(trend)
 					@ActivitySessions(sessions, user.Location())
 			}
 		</div>
-		@activitiesBehaviour()
+		@ui.ChartScripts()
 	}
 }
 
-// hero is the scene. Full-bleed: it breaks out of the reading column rather
-// than sitting inside it, because a landscape needs width to read as one.
+// kpis is the window in numbers.
 //
-// Its height is capped low enough that the first week of the list is on screen
-// with it. A banner that fills the viewport is a banner nobody scrolls past.
-templ hero() {
-	<div class="-mx-6 md:-mx-8">
-		<div class="border-hairline bg-background/40 relative h-[clamp(220px,32vh,340px)] overflow-hidden border-y">
-			// Hand-rolled: a WebGL surface has no counterpart in the component
-			// library. Everything it shows is also in the list below, so it
-			// is hidden from assistive technology rather than described twice.
-			<canvas
-				x-ref="canvas"
-				aria-hidden="true"
-				class="size-full cursor-grab touch-none active:cursor-grabbing"
-			></canvas>
-			// Axis labels, projected from world space by the scene.
-			<div x-ref="labels" aria-hidden="true" class="pointer-events-none absolute inset-0"></div>
-			// The day readout. Deliberately not ui.HoverCard: that anchors to
-			// a DOM element, and a day here is an instanced mesh with no node
-			// to anchor to. The scene hands back a projected screen position.
-			<div
-				x-show="hovered"
-				x-cloak
-				x-ref="tooltip"
-				class="border-hairline bg-surface/95 pointer-events-none absolute z-10 max-w-xs rounded-md border p-3 backdrop-blur"
-			>
-				<p class="text-sm font-medium" x-text="hovered && hovered.label"></p>
-				<p class="text-muted-foreground mt-0.5 font-mono text-[11px]" x-text="hovered && daySummary(hovered)"></p>
-				<template x-if="hovered && hovered.mixed">
-					<p class="text-muted-foreground mt-1 font-mono text-[10px] uppercase tracking-[0.14em]" x-text="mixSummary(hovered)"></p>
-				</template>
-			</div>
-			<div
-				x-show="!ready || failed"
-				class="pointer-events-none absolute inset-0 flex items-center justify-center p-6 text-center"
-			>
-				<span
-					class="text-muted-foreground font-mono text-[10px] uppercase tracking-[0.14em]"
-					x-text="failed ? 'The landscape needs WebGL — your weeks are listed below' : 'Building the landscape'"
-				>Building the landscape</span>
-			</div>
-		</div>
-	</div>
-}
-
-// kpis is the week in numbers, above the scene.
-templ kpis(page strava.TerrainPage, loc *time.Location) {
+// "Load this week" used to head this strip, in MET-minutes. It was the same
+// arithmetic the old 3D scene was built on, and the same problem: a unit
+// nobody has a feel for, standing where the most-read number on the page goes.
+// Time is what somebody actually spent.
+templ kpis(trend strava.Trend) {
 	@ui.KpiStrip() {
-		@ui.KpiCell(ui.KpiCellProps{Label: "Load this week", Value: fmt.Sprintf("%.0f MET-min", currentWeekLoad(page))})
-		@ui.KpiCell(ui.KpiCellProps{Label: "Sessions", Value: fmt.Sprintf("%d", totalSessions(page))})
-		@ui.KpiCell(ui.KpiCellProps{Label: "Distance", Value: fmt.Sprintf("%.0f km", totalDistanceKm(page))})
-		@ui.KpiCell(ui.KpiCellProps{Label: "Climb", Value: fmt.Sprintf("%.0f m", totalClimbM(page))})
+		@ui.KpiCell(ui.KpiCellProps{Label: "This week", Value: humanMinutes(trend.RecentMinutes)})
+		@ui.KpiCell(ui.KpiCellProps{Label: "Sessions", Value: fmt.Sprintf("%d", trend.Sessions)})
+		@ui.KpiCell(ui.KpiCellProps{Label: "Distance", Value: fmt.Sprintf("%.0f km", totalDistanceKm(trend))})
+		@ui.KpiCell(ui.KpiCellProps{Label: "Climb", Value: fmt.Sprintf("%.0f m", trend.ElevationM)})
 		@ui.KpiCell(ui.KpiCellProps{
 			Label: "Active days",
-			Value: fmt.Sprintf("%d of %d", activeDays(page), countedDays(page)),
+			Value: fmt.Sprintf("%d of %d", trend.ActiveDays, trend.CountedDays),
 			Href:  "/app/fitness",
 			CTA:   "Sync",
 		})
+	}
+}
+
+// verdict is the sentence that makes the chart mean something.
+//
+// The chart shows the shape; this says what the shape amounts to. Without it
+// the page is a record again — which was the whole complaint about the thing
+// this replaced.
+templ verdict(trend strava.Trend) {
+	<div class="space-y-1">
+		<p class="text-base leading-relaxed">{ trendSentence(trend) }</p>
+		if line := streakSentence(trend); line != "" {
+			@ui.MonoLabel(line)
+		}
+	</div>
+}
+
+// trendChart is the training chart: a stacked bar per day, coloured by sport,
+// with a dashed line for what a normal day holds.
+//
+// It replaced a WebGL landscape whose vertical axis was MET-minutes. Bars and a
+// line, in minutes, because the question being asked of this page is "am I
+// keeping it up", and that question is answered by putting what you did this
+// week next to what you usually do — not by rendering it in three dimensions.
+templ trendChart(trend strava.Trend) {
+	if option, err := trendChartOption(trend); err == nil {
+		@templ.JSONScript("activity-trend-option", json.RawMessage(option))
+		@ui.EChartsMount("activity-trend", "activity-trend-option", "h-64 w-full sm:h-72")
 	}
 }
 
@@ -184,37 +165,34 @@ templ ActivitySessions(page strava.SessionPage, loc *time.Location) {
 // reach one and no way to open it where the rest of its detail lives. The name
 // is the link to Strava; selecting the day on the terrain is its own control,
 // so the two do not fight over the same click.
-templ sessionRow(route strava.TerrainRoute, loc *time.Location) {
+templ sessionRow(session strava.Session, loc *time.Location) {
 	<li
 		class="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-2.5"
-		if day := routeDayKey(route, loc); day != "" {
+		if day := routeDayKey(session, loc); day != "" {
 			data-day={ day }
 			x-bind:class={ fmt.Sprintf("isSelected(%q) ? 'bg-signal/5' : ''", day) }
 		}
 	>
 		<span class="text-muted-foreground w-28 shrink-0 font-mono text-[11px]">
-			{ routeWhen(route, loc) }
+			{ routeWhen(session, loc) }
 		</span>
 		@badge.Badge(badge.Props{Variant: badge.VariantSecondary, Class: "text-[10px]"}) {
-			{ route.Sport }
+			{ session.Sport }
 		}
-		if url := stravaActivityURL(route); url != "" {
+		if url := stravaActivityURL(session); url != "" {
 			<a
 				href={ templ.SafeURL(url) }
 				target="_blank"
 				rel="noopener noreferrer"
 				class="min-w-0 flex-1 truncate text-sm hover:underline"
-			>{ route.Name }</a>
+			>{ session.Name }</a>
 		} else {
-			<span class="min-w-0 flex-1 truncate text-sm">{ route.Name }</span>
+			<span class="min-w-0 flex-1 truncate text-sm">{ session.Name }</span>
 		}
 		<span class="text-muted-foreground font-mono text-[11px]">
-			{ routeSummary(route) }
+			{ routeSummary(session) }
 		</span>
-		<span class="text-muted-foreground shrink-0 font-mono text-[10px]">
-			{ fmt.Sprintf("%.0f MET-min", route.LoadMETMin) }
-		</span>
-		if day := routeDayKey(route, loc); day != "" {
+		if day := routeDayKey(session, loc); day != "" {
 			@button.Button(button.Props{
 				Variant: button.VariantGhost,
 				Size:    button.SizeSm,
@@ -293,74 +271,4 @@ func pagerSwap(page int) templ.Attributes {
 		"hx-swap":     "outerHTML",
 		"hx-push-url": sessionsPageURL(page),
 	}
-}
-
-// The legend walks strava.Families, so it cannot show a swatch for a family
-// the server does not know about, or quietly omit one it does.
-//
-// The swatch classes are written out rather than built from the family name.
-// Tailwind finds a utility by scanning source text for the literal string, so
-// "bg-sport-" + family compiles fine and renders unstyled — a failure with no
-// build error and nothing to grep for.
-templ legend() {
-	<div class="mt-4 flex flex-wrap items-center gap-3">
-		for _, f := range strava.Families {
-			@legendKey(f.Label(), sportSwatch(f))
-		}
-	</div>
-}
-
-// sportSwatch is the Tailwind class for a family's colour. The colours live in
-// web/assets/css/input.css as --north-sport-* tokens, which the scene reads
-// too; web/fitness/palette_test.go asserts the three stay in step.
-func sportSwatch(f strava.SportFamily) string {
-	switch f {
-	case strava.FamilyRun:
-		return "bg-sport-run"
-	case strava.FamilyRide:
-		return "bg-sport-ride"
-	case strava.FamilySwim:
-		return "bg-sport-swim"
-	case strava.FamilyWalk:
-		return "bg-sport-walk"
-	case strava.FamilyStrength:
-		return "bg-sport-strength"
-	default:
-		return "bg-sport-other"
-	}
-}
-
-templ legendKey(name string, swatch string) {
-	<span class="flex items-center gap-1.5">
-		<span class={ "size-2 rounded-[2px]", swatch }></span>
-		<span class="text-muted-foreground font-mono text-[10px] uppercase tracking-[0.14em]">{ name }</span>
-	</span>
-}
-
-var activitiesScriptOnce = templ.NewOnceHandle()
-
-// activitiesBehaviour loads the page script.
-//
-// Deliberately not deferred, for the reason the landing page states: Alpine is
-// deferred from the head, and a deferred script runs after the parser finishes
-// — by which point Alpine has already dispatched alpine:init. Loading this
-// synchronously at the end of the body registers the component before that
-// event. It blocks nothing; the document is parsed by then.
-//
-// Routed through utils.ScriptURL so a rebuild is picked up despite the
-// immutable cache header in production. The old tag did not do this, which
-// meant the ?v= that alpine.js forwards to its dynamic import was always
-// absent and the scene module was never busted at all.
-templ activitiesBehaviour() {
-	@activitiesScriptOnce.Once() {
-		if nonce := templ.GetNonce(ctx); nonce != "" {
-			<script nonce={ nonce } src={ activitiesScriptURL() }></script>
-		} else {
-			<script src={ activitiesScriptURL() }></script>
-		}
-	}
-}
-
-func activitiesScriptURL() string {
-	return utils.ScriptURL("/assets/js/shared/strava-activities/alpine.js")
 }
