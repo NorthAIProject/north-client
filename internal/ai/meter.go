@@ -152,8 +152,10 @@ func (c *meteredClient) resolveModel(reported string, req Request) string {
 
 // Unwrap returns the client underneath any metering wrappers, or c itself.
 //
-// For the callers that need a concrete type rather than the interface. Prefer
-// the interface; reach for this only where a capability is not on it.
+// For the callers that need a concrete type rather than the interface: the
+// embeddings path asserts to *openaicompat.Client to reach a method the Client
+// interface does not carry. Prefer the interface; reach for this only where a
+// capability is not on it.
 func Unwrap(c Client) Client {
 	for {
 		u, ok := c.(interface{ Unwrap() Client })

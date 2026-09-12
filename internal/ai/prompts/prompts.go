@@ -39,7 +39,6 @@ const (
 	ReflectionSession   = "reflection_session.md"
 	ConversationSummary = "conversation_summary.md"
 	QuickCapture        = "quick_capture.md"
-	Transcribe          = "transcribe.md"
 )
 
 // Render executes a prompt template with the given data.

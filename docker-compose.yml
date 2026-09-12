@@ -53,6 +53,35 @@ services:
       echo 'bucket ready'
       "
 
+  # The same image and settings the cluster runs
+  # (platform/infra/apps/whisper/values-common.yaml), so a voice note that works
+  # here works deployed. CPU int8: seconds, not milliseconds.
+  #
+  # First boot pulls the image and downloads both models — a few hundred MB and
+  # several minutes, during which voice fails and says so. Nothing else waits
+  # for it.
+  whisper:
+    image: ghcr.io/speaches-ai/speaches:0.7.0-cpu
+    ports:
+      - "8000:8000"
+    environment:
+      # Loaded at startup. The container exits if a name is wrong, so a typo is
+      # a crashloop rather than a silent fallback. Two models because .en is
+      # English-only and is the better choice when English is what was spoken.
+      PRELOAD_MODELS: '["Systran/faster-whisper-small.en","Systran/faster-whisper-small"]'
+      # Never unload. The default drops a model after five idle minutes and the
+      # next recording pays the whole load cost again.
+      STT_MODEL_TTL: "-1"
+      WHISPER__INFERENCE_DEVICE: cpu
+      WHISPER__COMPUTE_TYPE: int8
+      WHISPER__CPU_THREADS: "2"
+      LOG_LEVEL: info
+    volumes:
+      # The same path the chart mounts its PVC at. Named, so `task db:down` does
+      # not throw away a download measured in hundreds of megabytes.
+      - whisper-models:/home/ubuntu/.cache/huggingface/hub
+
 volumes:
   postgres-data:
   minio-data:
+  whisper-models:

@@ -24,6 +24,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/activity"
 	"github.com/NorthAIProject/north-client/internal/agent"
 	"github.com/NorthAIProject/north-client/internal/ai"
+	"github.com/NorthAIProject/north-client/internal/ai/openaicompat"
 	"github.com/NorthAIProject/north-client/internal/ai/providers"
 	"github.com/NorthAIProject/north-client/internal/aicreds"
 	"github.com/NorthAIProject/north-client/internal/auth"
@@ -66,7 +67,6 @@ import (
 	"github.com/NorthAIProject/north-client/internal/quota"
 	"github.com/NorthAIProject/north-client/internal/reports"
 	"github.com/NorthAIProject/north-client/internal/settings"
-	"github.com/NorthAIProject/north-client/internal/shared/audio"
 	"github.com/NorthAIProject/north-client/internal/shared/database"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/metrics"
@@ -888,31 +888,38 @@ func routes(
 		Habits:    habitSvc,
 	})
 
-	// ffmpeg is resolved once, here, rather than per recording. A deployment
-	// without it is a line in the boot log and a feature that says it is off —
-	// not a mystery discovered by whoever sends the first voice note.
+	// Speech to text: a dedicated endpoint, not a chat model.
 	//
-	// Recordings the provider chain can already read still work without it; the
-	// ones it cannot are refused rather than forwarded, because forwarding them
-	// reaches the model as nothing at all.
-	var transcoder voice.Transcoder
-	if ff, err := audio.NewFFmpeg(cfg.FFmpegPath); err != nil {
-		slog.Warn("no ffmpeg: voice notes in a compressed container will be refused", "error", err)
+	// The cluster runs its own, which is free per request and keeps the audio
+	// inside it. There is no chain and no failover here on purpose — the
+	// alternative to this service is silence, not a guess, and a chat provider
+	// that cannot actually hear answers the prompt instead of the recording.
+	// That answer would then be stored as the user's own words.
+	//
+	// No base URL means no transcriber, which means voice is off and says so in
+	// words on both surfaces. Every typed path is untouched.
+	var transcriber ai.Transcriber
+	if cfg.Transcription.Enabled() {
+		client, err := openaicompat.NewTranscriptionClient(openaicompat.TranscriptionOptions{
+			BaseURL:      cfg.Transcription.BaseURL,
+			APIKey:       cfg.Transcription.APIKey,
+			Model:        cfg.Transcription.Model,
+			EnglishModel: cfg.Transcription.EnglishModel,
+		})
+		if err != nil {
+			// A misconfigured endpoint is a boot failure rather than something
+			// the first person to hold the microphone discovers.
+			panic(err)
+		}
+		transcriber = client
 	} else {
-		transcoder = ff
+		slog.Warn("no transcription endpoint configured; voice notes will be refused in words")
 	}
 
 	// Voice is built once and shared. Two surfaces accept speech — the web
-	// recorder and, further down, Telegram voice notes — and they must hand a
-	// model the same shape, so they get the same service rather than two
-	// configurations that can drift apart.
-	//
-	// FastModel for the same reason the daily briefing uses it: reading words
-	// back is not reasoning.
-	voiceSvc := voice.NewService(voice.Options{
-		Transcriber: ai.NewRunnerTranscriber(runner, cfg.AI.FastModel),
-		Transcode:   transcoder,
-	})
+	// recorder and, further down, Telegram voice notes — and the bounds and
+	// refusals that go with a recording should not be written twice.
+	voiceSvc := voice.NewService(voice.Options{Transcriber: transcriber})
 
 	// Quick capture composes the six logging slices behind one box. It owns no
 	// table; the parse is a model call and the commit is the same writes the

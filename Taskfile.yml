@@ -64,7 +64,7 @@ tasks:
       - task: dev
 
   dev:down:
-    desc: Stop Postgres/MinIO (alias for db:down; keeps volumes)
+    desc: Stop Postgres/MinIO/whisper (alias for db:down; keeps volumes)
     cmds:
       - task: db:down
 
@@ -77,7 +77,7 @@ tasks:
   # Infrastructure
   # ---------------------------------------------------------------------------
   db:up:
-    desc: Start Postgres and MinIO
+    desc: Start Postgres, MinIO and whisper (speech to text)
     cmds:
       # --remove-orphans: drop services that left this compose file.
       # Free fixed host ports if a stale container from another project still holds them.
@@ -92,7 +92,7 @@ tasks:
       - docker compose ps
 
   db:down:
-    desc: Stop Postgres and MinIO (keeps volumes)
+    desc: Stop Postgres, MinIO and whisper (keeps volumes)
     cmds:
       - docker compose down --remove-orphans
 

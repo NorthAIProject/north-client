@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	_ "embed"
-	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -12,8 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 
-	"github.com/NorthAIProject/north-client/internal/ai"
-	"github.com/NorthAIProject/north-client/internal/ai/providers"
+	"github.com/NorthAIProject/north-client/internal/ai/openaicompat"
 	"github.com/NorthAIProject/north-client/internal/config"
 	"github.com/NorthAIProject/north-client/internal/shared/audio"
 	"github.com/NorthAIProject/north-client/internal/spend"
@@ -21,28 +19,31 @@ import (
 	"github.com/NorthAIProject/north-client/internal/voice"
 )
 
-// runVoiceCheck says which parts of the voice path this machine actually has.
+// runVoiceCheck proves this deployment can turn a recording into words.
 //
-// It exists for the same reason telegram-check does. Every test in the tree
-// proves the conversion is correct against a stub or against ffmpeg on a
-// developer's laptop, and none of them can prove the container image shipped a
-// binary with the codecs it needs. The gap is invisible from a green build and
-// shows up as voice notes that go quiet, which is the least debuggable failure
-// this feature has.
+// It exists for the reason telegram-check does, and for one more. The tests
+// prove the client against an httptest server, which cannot prove that the real
+// service is reachable — and in the cluster it usually is not reachable for a
+// reason that looks nothing like itself: `horus` is default-deny ingress, so a
+// consumer that is not named in `allow-whisper` sees a hang or a refused
+// connection that reads exactly like the service being down.
 //
-// Read-only and free by default: it generates a tone, converts it, and reports.
-// --transcribe is the flag that spends money, and it says so.
+// So this is the command to run from inside the pod. It either hands back a
+// transcript or names the policy.
+//
+// Reads no database and needs no AI credentials. Transcription costs nothing
+// per request, so there is no flag to hold it back.
 func runVoiceCheck(args []string) error {
 	fs := flag.NewFlagSet("voice-check", flag.ContinueOnError)
-	transcribe := fs.Bool("transcribe", false, "send the recording to the provider chain (spends money)")
-	file := fs.String("file", "", "a recording to use instead of the built-in tone — the one that failed, for instance")
-	timeout := fs.Duration("timeout", 60*time.Second, "how long to allow for the whole check")
+	file := fs.String("file", "", "a recording to send instead of the built-in tone — the one that failed, for instance")
+	language := fs.String("language", "en", "the account language to test, which selects the model (en, pt-PT, pt-BR, es)")
+	timeout := fs.Duration("timeout", 200*time.Second, "how long to allow for the whole check")
 
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, `usage: main voice-check [flags]
 
-Reports whether this deployment can turn a recording into words. Generates its
-own audio; reads no database. Free unless --transcribe is given.
+Sends a recording to the configured transcription service and reports what came
+back. Carries its own audio; reads no database; costs nothing.
 
 flags:
 `)
@@ -62,98 +63,90 @@ flags:
 		return err
 	}
 
-	// ffmpeg first, because everything below depends on it and its absence is
-	// the most likely reason somebody is running this.
-	ff, err := audio.NewFFmpeg(cfg.FFmpegPath)
-	if err != nil {
-		if errors.Is(err, audio.ErrNotInstalled) {
-			fmt.Println("ffmpeg:      NOT INSTALLED")
-			fmt.Println()
-			fmt.Println("Voice notes in a compressed container — which is every voice note")
-			fmt.Println("Telegram sends — will be refused. Typed paths are unaffected, and the")
-			fmt.Println("web recorder still works because the browser uploads WAV.")
-			fmt.Println()
-			fmt.Println("Install it with `brew install ffmpeg`, or set FFMPEG_PATH.")
-			return nil
-		}
-		return err
+	if !cfg.Transcription.Enabled() {
+		fmt.Println("endpoint:    NOT CONFIGURED")
+		fmt.Println()
+		fmt.Println("TRANSCRIBE_PROVIDER_OPENAI_BASEURL is empty, so voice is switched off.")
+		fmt.Println("Both surfaces refuse voice notes in words and every typed path works.")
+		fmt.Println()
+		fmt.Println("In the cluster this should be:")
+		fmt.Println("  http://whisper.horus.svc.cluster.local:8000/v1")
+		return nil
 	}
-	fmt.Println("ffmpeg:      installed")
-	fmt.Printf("opus encode: %v\n", ff.CanEncodeOpus())
 
-	// A real recording when one is given. This is the flag somebody reaches for
-	// when a particular voice note came back wrong: it answers "can this
-	// machine read that file" without involving Telegram, an account, or a
-	// database.
-	sample, label := toneOggOpus, "test tone"
+	// The key is reported as present or absent and never printed. The service
+	// this was written for has none at all.
+	key := "not set (correct for the in-cluster service, which uses a NetworkPolicy)"
+	if cfg.Transcription.APIKey != "" {
+		key = "set"
+	}
+	fmt.Printf("endpoint:    %s\n", cfg.Transcription.BaseURL)
+	fmt.Printf("key:         %s\n", key)
+	fmt.Printf("model:       %s\n", cfg.Transcription.Model)
+	fmt.Printf("model (en):  %s\n", cfg.Transcription.EnglishModel)
+
+	sample, label := toneOggOpus, "built-in tone"
 	if *file != "" {
 		sample, err = os.ReadFile(*file)
 		if err != nil {
 			return fmt.Errorf("read %s: %w", *file, err)
 		}
-		label = "recording"
+		label = *file
 	}
 
 	sniffed := audio.Sniff(sample)
 	if sniffed == "" {
-		fmt.Printf("%-12s %d bytes, NOT A RECOGNISED RECORDING\n", label+":", len(sample))
+		fmt.Printf("recording:   %d bytes, NOT A RECOGNISED CONTAINER\n", len(sample))
 		return fmt.Errorf("voice-check: those bytes are not a container North accepts")
 	}
-	fmt.Printf("%-12s %d bytes, sniffed as %s\n", label+":", len(sample), sniffed)
+	fmt.Printf("recording:   %s, %d bytes, %s\n", label, len(sample), sniffed)
 
-	converted, err := ff.ToWAV(ctx, sample)
-	if err != nil {
-		return fmt.Errorf("convert the test recording: %w", err)
-	}
-	fmt.Printf("converted:   %d bytes, sniffed as %s, chain-safe %v\n",
-		len(converted), audio.Sniff(converted), audio.ChainSafe(audio.Sniff(converted)))
-
-	if !*transcribe {
-		fmt.Println()
-		fmt.Println("Conversion works. Add --transcribe to send this to the provider chain")
-		fmt.Println("and prove the other half, which costs one model call.")
-		return nil
-	}
-
-	// No meter and no pool: a check that can fail on an unrelated dependency is
-	// a check that answers the wrong question. The call is still real.
-	registry, err := providers.Build(ctx, cfg.AI.ProviderOptions(cfg.Env))
+	client, err := openaicompat.NewTranscriptionClient(openaicompat.TranscriptionOptions{
+		BaseURL:      cfg.Transcription.BaseURL,
+		APIKey:       cfg.Transcription.APIKey,
+		Model:        cfg.Transcription.Model,
+		EnglishModel: cfg.Transcription.EnglishModel,
+	})
 	if err != nil {
 		return err
 	}
-	runner := ai.NewRunner(registry, cfg.AI.ChainSet())
 
-	svc := voice.NewService(voice.Options{
-		Transcriber: ai.NewRunnerTranscriber(runner, cfg.AI.FastModel),
-		Transcode:   ff,
-	})
+	svc := voice.NewService(voice.Options{Transcriber: client})
+	user := users.User{ID: uuid.New(), Tier: users.TierFree, Locale: users.Locale(*language)}
 
-	text, err := svc.Transcribe(ctx, users.User{ID: uuid.New(), Tier: users.TierFree}, sample, spend.SurfaceVoiceCapture)
+	started := time.Now()
+	text, err := svc.Transcribe(ctx, user, sample, spend.SurfaceVoiceCapture)
+	elapsed := time.Since(started)
+
 	if err != nil {
-		return fmt.Errorf("transcribe the test recording: %w", err)
+		fmt.Printf("transcribe:  FAILED after %s\n", elapsed.Round(time.Millisecond))
+		fmt.Println()
+		fmt.Printf("  %v\n", err)
+		fmt.Println()
+		fmt.Println("If that was a hang or a refused connection, check the NetworkPolicy")
+		fmt.Println("before anything else. `horus` is default-deny ingress, so a consumer")
+		fmt.Println("that is not named in allow-whisper in the infra repo's")
+		fmt.Println("cluster/network-policies/horus.yaml cannot reach the service — and the")
+		fmt.Println("failure looks exactly like the service being down.")
+		return err
 	}
 
-	// A sine tone has no words in it, so an empty answer is the correct one
-	// there. What is being proved is that the audio reached a model at all,
-	// and the failure this catches — a container the provider cannot read —
-	// returns no words and no error, so error versus no error is the
-	// distinction that matters. Give --file a recording of speech to see the
-	// other half.
+	// The wall-clock matters as much as the words. The service is CPU-bound and
+	// shared, and this number is what voice.MaxSeconds should be set against.
+	fmt.Printf("transcribe:  %s (language %s)\n", elapsed.Round(time.Millisecond), *language)
 	if text == "" {
-		fmt.Println("transcribe:  a provider answered, with no words — correct for a tone")
-	} else {
-		fmt.Printf("transcribe:  a provider answered %q\n", text)
+		fmt.Println("transcript:  empty — correct for a tone, suspicious for speech")
+		return nil
 	}
+	fmt.Printf("transcript:  %q\n", text)
 	return nil
 }
 
 // toneOggOpus is one second of a 440 Hz sine, as Opus in an Ogg container.
 //
-// Embedded rather than generated, because generating it would need an encoder
-// and the thing being checked is the decoder — a machine whose ffmpeg cannot
-// encode Opus can still read Telegram perfectly well, and this check must not
-// fail on it. It is also exactly the shape a voice note arrives in, which a
-// locally produced WAV would not be.
+// Embedded rather than generated: it is exactly the shape a Telegram voice note
+// arrives in, and it now travels to the server unmodified, so it proves the one
+// thing this whole change rests on — that the service takes the container as-is.
 //
 //go:embed voicedata/tone.ogg
 var toneOggOpus []byte
