@@ -134,3 +134,81 @@ func nullableSeries(values []int) []any {
 	}
 	return out
 }
+
+// Sparkline is a bar chart stripped to its shape, for a summary card that
+// already states the number beside it.
+//
+// Everything Bar shows and this does not — axes, grid, legend — would repeat
+// the card's own headline and leave the bars too short to read.
+func Sparkline(id string, labels []string, values []float64) chart.Props {
+	beginZero := true
+	return chart.Props{
+		ID:      id,
+		Variant: chart.VariantBar,
+		Class:   "h-12 w-full",
+		Data: chart.Data{
+			Labels: labels,
+			Datasets: []chart.Dataset{
+				{
+					Label:           "",
+					Data:            values,
+					BorderWidth:     0,
+					BackgroundColor: "var(--north-signal)",
+				},
+			},
+		},
+		ShowLegend:  false,
+		ShowXGrid:   false,
+		ShowYGrid:   false,
+		ShowXLabels: false,
+		ShowYLabels: false,
+		BeginAtZero: &beginZero,
+	}
+}
+
+// BarSeries is one named run of values in a grouped bar chart.
+type BarSeries struct {
+	Label  string
+	Values []float64
+}
+
+// barSeriesColours are the fills a grouped chart cycles through. Two series in
+// one colour is one series with a confusing shape, so this is the palette the
+// legend is read against rather than a decoration.
+var barSeriesColours = []string{
+	"var(--north-signal)",
+	"var(--muted-foreground)",
+	"var(--north-ember)",
+}
+
+// GroupedBar draws several named series over shared labels.
+//
+// Grouped rather than stacked: the question these charts answer is how two
+// runs compare bar by bar, and a stack answers how they sum, which is a
+// different question and hides the smaller of the two.
+func GroupedBar(id string, labels []string, series []BarSeries) chart.Props {
+	beginZero := true
+
+	datasets := make([]chart.Dataset, 0, len(series))
+	for i, s := range series {
+		datasets = append(datasets, chart.Dataset{
+			Label:           s.Label,
+			Data:            s.Values,
+			BorderWidth:     0,
+			BackgroundColor: barSeriesColours[i%len(barSeriesColours)],
+		})
+	}
+
+	return chart.Props{
+		ID:          id,
+		Variant:     chart.VariantBar,
+		Class:       "min-h-48 w-full",
+		Data:        chart.Data{Labels: labels, Datasets: datasets},
+		ShowLegend:  true,
+		ShowXGrid:   false,
+		ShowYGrid:   true,
+		ShowXLabels: true,
+		ShowYLabels: true,
+		BeginAtZero: &beginZero,
+	}
+}

@@ -156,8 +156,9 @@ func TestBuildNavMatchesTheSidebarAsShipped(t *testing.T) {
 		{"Progress", []item{
 			{"Goals", "/app/goals", nil},
 			{"Reports", "/app/reports", nil},
-			{"Insights", "/app/insights/timeline", []string{
-				"Activity", "Body", "Mind", "Progress", "Training",
+			{"Insights", "/app/insights", []string{
+				"Summary", "Activity", "Body", "Mind", "Progress", "Training", "Nutrition",
+				"Coaching", "Spend",
 			}},
 		}},
 		{"System", []item{
@@ -210,7 +211,7 @@ func TestAChildPageLightsItsParentSection(t *testing.T) {
 	var insights NavItem
 	for _, g := range BuildNav(context.Background(), "/app/insights/body") {
 		for _, item := range g.Items {
-			if item.Href == "/app/insights/timeline" {
+			if item.Href == "/app/insights" {
 				insights = item
 			}
 		}

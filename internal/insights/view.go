@@ -65,37 +65,34 @@ func buildTimelineView(data TimelineData) insightpages.TimelineView {
 }
 
 func buildBodyView(data BodyData) (insightpages.BodyView, error) {
-	buckets := data.Range.Buckets()
-	labels := make([]string, len(buckets))
-	water := make([]float64, len(buckets))
-	sleepHours := make([]float64, len(buckets))
-
-	for i, b := range buckets {
-		labels[i] = b.Label
-	}
-
 	loc := data.Range.Location()
-	byDay := make(map[string]int, len(data.Hydration))
-	for _, d := range data.Hydration {
-		byDay[d.Date.In(loc).Format("2006-01-02")] = d.TotalML
-	}
-	for i, b := range buckets {
-		water[i] = float64(byDay[b.Start.Format("2006-01-02")])
-	}
+	labels := bucketLabels(data.Range)
 
-	nightsByDay := make(map[string]int, len(data.Nights))
+	// Both series are daily measurements, so a bucket wider than a day holds
+	// their average rather than their sum: a week of eight-hour nights is an
+	// eight-hour week, and the axis has to keep its meaning across ranges.
+	waterPoints := make([]point, 0, len(data.Hydration))
+	totalWaterML := 0
+	for _, d := range data.Hydration {
+		waterPoints = append(waterPoints, point{At: d.Date.In(loc), Value: float64(d.TotalML)})
+		totalWaterML += d.TotalML
+	}
+	water := bucketedMean(data.Range, waterPoints)
+
+	sleepPoints := make([]point, 0, len(data.Nights))
 	for _, n := range data.Nights {
-		nightsByDay[n.LocalDate.In(loc).Format("2006-01-02")] = n.DurationMinutes
+		sleepPoints = append(sleepPoints, point{
+			At:    n.LocalDate.In(loc),
+			Value: float64(n.DurationMinutes) / 60,
+		})
 	}
-	for i, b := range buckets {
-		sleepHours[i] = float64(nightsByDay[b.Start.Format("2006-01-02")]) / 60
-	}
+	sleepHours := bucketedMean(data.Range, sleepPoints)
 
 	view := insightpages.BodyView{
 		Range:        rangeView(data.Range),
 		WaterChart:   viz.Bar("insights-body-water", "Water (ml)", labels, water),
 		SleepChart:   viz.SingleLine("insights-body-sleep", "Hours slept", labels, sleepHours, nil, nil),
-		TotalWaterML: sumInts(water),
+		TotalWaterML: totalWaterML,
 		Nights:       len(data.Nights),
 		AvgSleep:     data.SleepTrend.AverageMinutes,
 		AvgQuality:   data.SleepTrend.AverageQuality,
@@ -138,31 +135,27 @@ func buildBodyView(data BodyData) (insightpages.BodyView, error) {
 }
 
 func buildMindView(data MindData) (insightpages.MindView, error) {
+	loc := data.Range.Location()
 	buckets := data.Range.Buckets()
-	labels := make([]string, len(buckets))
+	labels := bucketLabels(data.Range)
+
 	mood := make([]int, len(buckets))
 	energy := make([]int, len(buckets))
-	journalCount := make([]float64, len(buckets))
 	cells := make([]viz.HeatmapCell, len(buckets))
 
-	loc := data.Range.Location()
-	byDay := make(map[string]int, len(buckets))
-	for i, b := range buckets {
-		labels[i] = b.Label
-		byDay[b.Start.Format("2006-01-02")] = i
-	}
-
 	for _, c := range data.CheckIns {
-		if i, ok := byDay[c.LocalDate.In(loc).Format("2006-01-02")]; ok {
+		if i := data.Range.Index(buckets, c.LocalDate.In(loc)); i >= 0 {
 			mood[i] = c.Mood
 			energy[i] = c.Energy
 		}
 	}
+
+	journalPoints := make([]point, 0, len(data.Journal))
 	for _, e := range data.Journal {
-		if i, ok := byDay[e.CreatedAt.In(loc).Format("2006-01-02")]; ok {
-			journalCount[i]++
-		}
+		journalPoints = append(journalPoints, point{At: e.CreatedAt.In(loc), Value: 1})
 	}
+	journalCount := bucketed(data.Range, journalPoints)
+
 	for i, b := range buckets {
 		cells[i] = viz.HeatmapCell{Label: b.Label, Value: mood[i]}
 	}
@@ -189,21 +182,14 @@ func buildMindView(data MindData) (insightpages.MindView, error) {
 }
 
 func buildProgressView(data ProgressData) (insightpages.ProgressView, error) {
-	buckets := data.Range.Buckets()
-	labels := make([]string, len(buckets))
-	notes := make([]float64, len(buckets))
-
 	loc := data.Range.Location()
-	byDay := make(map[string]int, len(buckets))
-	for i, b := range buckets {
-		labels[i] = b.Label
-		byDay[b.Start.Format("2006-01-02")] = i
-	}
+	labels := bucketLabels(data.Range)
+
+	notePoints := make([]point, 0, len(data.Notes))
 	for _, n := range data.Notes {
-		if i, ok := byDay[n.CreatedAt.In(loc).Format("2006-01-02")]; ok {
-			notes[i]++
-		}
+		notePoints = append(notePoints, point{At: n.CreatedAt.In(loc), Value: 1})
 	}
+	notes := bucketed(data.Range, notePoints)
 
 	var (
 		active      int
@@ -266,16 +252,9 @@ func buildProgressView(data ProgressData) (insightpages.ProgressView, error) {
 }
 
 func buildTrainingView(data TrainingData) (insightpages.TrainingView, error) {
-	buckets := data.Range.Buckets()
-	labels := make([]string, len(buckets))
-	burn := make([]float64, len(buckets))
-
 	loc := data.Range.Location()
-	byDay := make(map[string]int, len(buckets))
-	for i, b := range buckets {
-		labels[i] = b.Label
-		byDay[b.Start.Format("2006-01-02")] = i
-	}
+	labels := bucketLabels(data.Range)
+	burnPoints := make([]point, 0, len(data.Sessions))
 
 	var (
 		totalSeconds int
@@ -288,8 +267,8 @@ func buildTrainingView(data TrainingData) (insightpages.TrainingView, error) {
 			continue
 		}
 		ended := sess.EndedAt.In(loc)
-		if i, ok := byDay[ended.Format("2006-01-02")]; ok && sess.CaloriesBurned != nil {
-			burn[i] += *sess.CaloriesBurned
+		if sess.CaloriesBurned != nil {
+			burnPoints = append(burnPoints, point{At: ended, Value: *sess.CaloriesBurned})
 		}
 
 		name := sess.ActivityCode
@@ -315,6 +294,9 @@ func buildTrainingView(data TrainingData) (insightpages.TrainingView, error) {
 			Name: name, At: ended, Duration: formatDuration(seconds), Calories: kcal,
 		})
 	}
+
+	// Calories are a total, not a daily measurement, so a wider bucket sums.
+	burn := bucketed(data.Range, burnPoints)
 
 	segments := make([]viz.DonutSegment, 0, len(kindOrder))
 	for _, k := range kindOrder {
@@ -388,14 +370,6 @@ func averageMoodEnergy(mood, energy []int) (float64, float64, int) {
 		return 0, 0, 0
 	}
 	return float64(sumMood) / float64(n), float64(sumEnergy) / float64(n), n
-}
-
-func sumInts(values []float64) int {
-	total := 0.0
-	for _, v := range values {
-		total += v
-	}
-	return int(total)
 }
 
 func anyPositive(values []float64) bool {

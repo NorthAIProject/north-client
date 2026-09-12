@@ -2,6 +2,7 @@ package insights
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -42,11 +43,15 @@ type section struct {
 
 func sections() []section {
 	return []section{
+		{Key: "summary", Label: "Summary", Href: "/app/insights", Icon: "gauge"},
 		{Key: "timeline", Label: "Activity", Href: "/app/insights/timeline", Icon: "list"},
 		{Key: "body", Label: "Body", Href: "/app/insights/body", Icon: "heart-pulse"},
 		{Key: "mind", Label: "Mind", Href: "/app/insights/mind", Icon: "brain"},
 		{Key: "progress", Label: "Progress", Href: "/app/insights/progress", Icon: "target"},
 		{Key: "training", Label: "Training", Href: "/app/insights/training", Icon: "dumbbell"},
+		{Key: "nutrition", Label: "Nutrition", Href: "/app/insights/nutrition", Icon: "utensils"},
+		{Key: "coach", Label: "Coaching", Href: "/app/insights/coach", Icon: "messages-square"},
+		{Key: "spend", Label: "Spend", Href: "/app/insights/spend", Icon: "receipt"},
 	}
 }
 
@@ -56,7 +61,7 @@ func sections() []section {
 // bodyHref is the endpoint that renders just the panels, so switching the
 // range costs one fragment instead of a whole document.
 templ page(title, active, bodyHref string, user users.User, rg RangeView) {
-	@layout.App(title, user, layout.BuildNav(ctx, "/app/insights/timeline")) {
+	@layout.App(title, user, layout.BuildNav(ctx, "/app/insights")) {
 		<div class="mx-auto w-full max-w-6xl space-y-6 p-6 md:p-8">
 			<header class="space-y-4">
 				<div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
@@ -126,12 +131,21 @@ templ rangeSelector(bodyHref string, rg RangeView) {
 	</nav>
 }
 
-// pageHref turns a body endpoint back into its page URL by dropping the
-// trailing "/body", so the no-JavaScript link lands on a whole document.
+// pageHref turns a fragment endpoint back into its page URL, so the
+// no-JavaScript link lands on a whole document rather than on a bare panel.
+//
+// Two suffixes because the summary's fragment cannot be called "/body": that
+// path is already the Body section's own page.
 func pageHref(bodyHref, key string) string {
 	page := bodyHref
-	if len(page) > 5 && page[len(page)-5:] == "/body" {
-		page = page[:len(page)-5]
+	for _, suffix := range []string{"/body", "/panels"} {
+		if trimmed, found := strings.CutSuffix(page, suffix); found {
+			page = trimmed
+			break
+		}
+	}
+	if page == "" {
+		page = "/app/insights"
 	}
 	return page + "?range=" + key
 }

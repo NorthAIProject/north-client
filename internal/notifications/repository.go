@@ -3,9 +3,11 @@ package notifications
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	notificationsdb "github.com/NorthAIProject/north-client/internal/notifications/db"
@@ -38,6 +40,7 @@ func (r *Repository) Upsert(ctx context.Context, userID uuid.UUID, in Input) (Pr
 		NudgeGoalDeadline:  in.NudgeGoalDeadline,
 		WeeklyReportAuto:   in.WeeklyReportAuto,
 		DailyBriefingAuto:  in.DailyBriefingAuto,
+		StatsDigestCadence: in.StatsDigestCadence,
 		CoachActivity:      in.CoachActivity,
 		TrainingReminders:  in.TrainingReminders,
 		QuietHoursEnabled:  in.QuietHoursEnabled,
@@ -88,4 +91,26 @@ func (r *Repository) UpsertSchedule(ctx context.Context, userID uuid.UUID, in Sc
 		return Schedule{}, apperr.Wrap(err, "upsert alert schedule")
 	}
 	return scheduleFromDB(row), nil
+}
+
+// ClaimDigest records that a digest for this window is going out, and reports
+// whether this caller is the one that gets to send it.
+//
+// The insert is the lock: two sweeps racing on the same window both try, one
+// inserts, and the other is told it lost. Reading first and then writing would
+// leave a gap between the two in which both could decide to send.
+func (r *Repository) ClaimDigest(ctx context.Context, userID uuid.UUID, cadence string, periodStart time.Time) (bool, error) {
+	_, err := r.q.ClaimStatsDigest(ctx, notificationsdb.ClaimStatsDigestParams{
+		UserID:      userID,
+		Cadence:     cadence,
+		PeriodStart: pgtype.Date{Time: periodStart, Valid: true},
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		// The conflict did nothing, so somebody has already sent this one.
+		return false, nil
+	}
+	if err != nil {
+		return false, apperr.Wrap(err, "claim stats digest")
+	}
+	return true, nil
 }

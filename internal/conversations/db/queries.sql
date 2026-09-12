@@ -174,3 +174,22 @@ WHERE m.id = @message_id
         AND c.user_id = @user_id
   )
 RETURNING m.*;
+
+-- name: UserMessagesBetween :many
+-- Every message this person exchanged in a window, newest last.
+--
+-- Rows rather than a per-day aggregate because the reader's timezone decides
+-- which day a message belongs to, and the Go side already knows it. Grouping
+-- by date here would need the zone passed down and would still be wrong at the
+-- hour grain a single-day range asks for.
+--
+-- Bounded, because a year of a heavy conversation is not a page. The caller
+-- reports the truncation rather than quietly charting a partial window.
+SELECT m.created_at, m.role, m.helpful
+FROM messages m
+JOIN conversations c ON c.id = m.conversation_id
+WHERE c.user_id = @user_id
+  AND m.created_at >= @from_time
+  AND m.created_at < @to_time
+ORDER BY m.created_at
+LIMIT @result_limit::int;

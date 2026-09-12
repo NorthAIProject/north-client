@@ -69,4 +69,5 @@ var englishDashboard = map[string]string{
 	"range.week":      "Last 7 days",
 	"range.month":     "Last 30 days",
 	"range.quarter":   "Last 90 days",
+	"range.year":      "Last 12 months",
 }
