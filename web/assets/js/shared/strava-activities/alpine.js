@@ -144,12 +144,6 @@
         }
       },
 
-      // The strip pages independently, over HTMX. When it lands, the scene
-      // takes the same weeks so the two never disagree about what exists.
-      onOlderWeeks() {
-        this.loadOlder();
-      },
-
       pick(date) {
         this.selected = date;
         if (this.scene) this.scene.select(date);
@@ -159,11 +153,14 @@
         return this.selected === date;
       },
 
-      // The list carries an id per day. This used to search the markup for an
-      // Alpine attribute containing the date, which tied the scene's scrolling
-      // to the spelling of a template.
+      // Each row carries the day it belongs to. This used to search the markup
+      // for an Alpine attribute containing the date, which tied the scene's
+      // scrolling to the spelling of a template.
+      //
+      // The day may be on another page of the list, in which case there is
+      // nothing to scroll to and the selection simply shows on the terrain.
       scrollToDay(date) {
-        const row = document.getElementById(`day-${date}`);
+        const row = document.querySelector(`[data-day="${date}"]`);
         if (row) row.scrollIntoView({ block: "nearest" });
       },
 

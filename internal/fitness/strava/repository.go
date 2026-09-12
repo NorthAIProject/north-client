@@ -241,6 +241,50 @@ func (r *Repository) ActivitiesBetween(ctx context.Context, userID uuid.UUID, si
 	return out, nil
 }
 
+// ActivitiesPage is one page of somebody's sessions, newest first.
+//
+// Offset paging rather than a cursor because the list it feeds shows numbered
+// pages, and "page 7 of 31" cannot be built from a cursor. The depth anybody
+// actually clicks to is small; the terrain, which walks the whole history,
+// still pages by week cursor.
+func (r *Repository) ActivitiesPage(ctx context.Context, userID uuid.UUID, limit, offset int) ([]Activity, error) {
+	rows, err := r.q.ListStravaActivitiesPage(ctx, stravadb.ListStravaActivitiesPageParams{
+		UserID:    userID,
+		RowLimit:  int32(limit),
+		RowOffset: int32(offset),
+	})
+	if err != nil {
+		return nil, apperr.Wrap(err, "list strava activities page")
+	}
+
+	out := make([]Activity, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, Activity{
+			StravaID:        row.StravaID,
+			Name:            row.Name,
+			SportType:       row.SportType,
+			StartDate:       row.StartDate,
+			DistanceM:       row.DistanceM,
+			MovingTimeS:     int(row.MovingTimeS),
+			ElapsedTimeS:    int(row.ElapsedTimeS),
+			ElevationGainM:  row.TotalElevationGainM,
+			AverageSpeedMS:  row.AverageSpeedMs,
+			SummaryPolyline: row.SummaryPolyline,
+		})
+	}
+	return out, nil
+}
+
+// CountActivities is how many sessions an account has, which is what turns a
+// page number into "of 31".
+func (r *Repository) CountActivities(ctx context.Context, userID uuid.UUID) (int, error) {
+	n, err := r.q.CountStravaActivities(ctx, userID)
+	if err != nil {
+		return 0, apperr.Wrap(err, "count strava activities")
+	}
+	return int(n), nil
+}
+
 // OldestBefore reports where an account's history ends, walking backwards.
 //
 // A nil time is the answer "there is nothing older", not a failure: an

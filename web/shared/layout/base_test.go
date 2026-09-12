@@ -141,3 +141,31 @@ func TestBaseRendersTheAnalyticsSnippetOnlyWhenConfigured(t *testing.T) {
 		t.Error("the document inlines a posthog.init call; it belongs in analytics.js")
 	}
 }
+
+// Every /assets/* response in production carries
+// "max-age=31536000, immutable", which is safe only because the URLs move.
+// The stylesheet's did not, so a returning browser held the CSS it first
+// downloaded for a year: any deploy that introduced a new Tailwind utility
+// shipped markup referring to a rule that reader did not have. The class did
+// nothing, with no error anywhere and nothing to grep for.
+//
+// It cost the activities page its terrain — a new height utility on the canvas
+// frame never arrived, the frame collapsed to no height, and the landscape
+// vanished from under the heading.
+func TestStylesheetURLIsCacheBusted(t *testing.T) {
+	t.Parallel()
+
+	var buf strings.Builder
+	c := Base("Anything")
+	if err := c.Render(middleware.WithRequestID(context.Background(), "test"), &buf); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	html := buf.String()
+
+	if strings.Contains(html, `href="/assets/css/output.css"`) {
+		t.Error("the stylesheet is served unversioned under an immutable, year-long cache header")
+	}
+	if !strings.Contains(html, "/assets/css/output.css?v=") {
+		t.Errorf("no cache-busted stylesheet in the document:\n%s", html)
+	}
+}
