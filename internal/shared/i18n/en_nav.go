@@ -47,7 +47,7 @@ var englishNav = map[string]string{
 	"nav.food-log":               "Food log",
 	"nav.food-log.desc":          "Log today, see progress.",
 	"nav.strava-activities":      "Strava activities",
-	"nav.strava-activities.desc": "Your imported runs and rides, in 3D.",
+	"nav.strava-activities.desc": "Every session, and whether you are keeping it up.",
 	"nav.care":                   "Care",
 	"nav.care.desc":              "Water, sleep, and habits.",
 

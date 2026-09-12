@@ -45,7 +45,7 @@ var portugueseBrazilianNav = map[string]string{
 	"nav.food-log":               "Diário alimentar",
 	"nav.food-log.desc":          "Registre hoje, veja o progresso.",
 	"nav.strava-activities":      "Atividades do Strava",
-	"nav.strava-activities.desc": "Suas corridas e pedaladas importadas, em 3D.",
+	"nav.strava-activities.desc": "Cada sessão, e se você está mantendo o ritmo.",
 	"nav.care":                   "Cuidado",
 	"nav.care.desc":              "Água, sono e hábitos.",
 

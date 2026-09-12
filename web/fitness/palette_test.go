@@ -1,7 +1,6 @@
 package fitness
 
 import (
-	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -51,48 +50,23 @@ func TestEveryFamilyHasAColourTokenInBothThemes(t *testing.T) {
 	}
 }
 
-func TestEveryFamilyHasAColourInTheScenePalette(t *testing.T) {
+// The chart's colours are CSS custom properties, and a property name built at
+// runtime — "var(--north-sport-" + family + ")" — compiles and renders as
+// nothing: ECharts is handed a string it cannot parse, with no build error and
+// nothing to grep for. This is the same trap the Tailwind swatch classes had,
+// moved to where the colours now live.
+func TestChartColoursAreWrittenOutAndExist(t *testing.T) {
 	t.Parallel()
 
-	palette := readAsset(t, "js/shared/strava-activities/palette.js")
+	css := readAsset(t, "css/input.css")
 
 	for _, f := range strava.Families {
-		if !strings.Contains(palette, fmt.Sprintf("  %s: 0x", f)) {
-			t.Errorf("palette.js has no fallback for family %q", f)
+		want := fmt.Sprintf("var(--north-sport-%s)", f)
+		if got := sportColorVar(f); got != want {
+			t.Errorf("sportColorVar(%q) = %q, want %q", f, got, want)
 		}
-	}
-}
-
-func TestLegendShowsEveryFamilyExactlyOnce(t *testing.T) {
-	t.Parallel()
-
-	var buf strings.Builder
-	if err := legend().Render(context.Background(), &buf); err != nil {
-		t.Fatalf("render legend: %v", err)
-	}
-	html := buf.String()
-
-	for _, f := range strava.Families {
-		if n := strings.Count(html, f.Label()); n != 1 {
-			t.Errorf("legend names %q %d times, want 1", f.Label(), n)
-		}
-		swatch := fmt.Sprintf("bg-sport-%s", f)
-		if n := strings.Count(html, swatch); n != 1 {
-			t.Errorf("legend uses %q %d times, want 1", swatch, n)
-		}
-	}
-}
-
-// Tailwind finds a utility by scanning source text for the literal class
-// string. A class assembled at runtime — "bg-sport-" + family — compiles, and
-// renders with no colour at all, with no build error and nothing to grep for.
-func TestSwatchClassesAreWrittenOutNotBuilt(t *testing.T) {
-	t.Parallel()
-
-	for _, f := range strava.Families {
-		want := fmt.Sprintf("bg-sport-%s", f)
-		if got := sportSwatch(f); got != want {
-			t.Errorf("sportSwatch(%q) = %q, want %q", f, got, want)
+		if !strings.Contains(css, fmt.Sprintf("--north-sport-%s:", f)) {
+			t.Errorf("%s names a token input.css does not define", want)
 		}
 	}
 }

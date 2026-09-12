@@ -43,7 +43,6 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Get("/fitness", h.hub)
 
 	r.Get("/fitness/activities", h.activities)
-	r.Get("/fitness/activities/terrain", h.terrain)
 	r.Get("/fitness/activities/sessions", h.activitySessions)
 
 	r.Get("/fitness/strava/connect", h.stravaConnect)
@@ -52,7 +51,7 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Post("/fitness/strava/disconnect", h.stravaDisconnect)
 }
 
-// activities renders the calendar terrain.
+// activities renders the training chart and the session list.
 func (h *Handler) activities(w http.ResponseWriter, r *http.Request) {
 	user := auth.MustUser(r.Context())
 	ctx := r.Context()
@@ -64,18 +63,17 @@ func (h *Handler) activities(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var (
-		page     strava.TerrainPage
+		trend    strava.Trend
 		sessions strava.SessionPage
 	)
 	if status.Connected {
-		page, err = h.strava.Terrain(ctx, user.ID, user.Location(), time.Time{}, 0)
+		trend, err = h.strava.Trend(ctx, user.ID, user.Location(), 0)
 		if err != nil {
-			middleware.FromContext(ctx).Error("build activity terrain", slog.Any("error", err))
-			// Not worth failing the page, but the empty landscape must not
-			// claim nothing was ever imported. Unavailable is what makes the
-			// template say the activities could not be read — which it now
-			// actually does.
-			page = strava.TerrainPage{}
+			middleware.FromContext(ctx).Error("build training trend", slog.Any("error", err))
+			// Not worth failing the page, but an empty chart must not claim
+			// nothing was ever imported. Unavailable is what makes the template
+			// say the activities could not be read — which it now actually does.
+			trend = strava.Trend{}
 			status.Unavailable = true
 		}
 
@@ -88,7 +86,7 @@ func (h *Handler) activities(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := fitnesspages.ActivitiesPage(user, status, page, sessions).Render(ctx, w); err != nil {
+	if err := fitnesspages.ActivitiesPage(user, status, trend, sessions).Render(ctx, w); err != nil {
 		middleware.FromContext(ctx).Error("render activities", slog.Any("error", err))
 	}
 }

@@ -11,20 +11,6 @@ import (
 	"github.com/NorthAIProject/north-client/internal/fitness/strava"
 )
 
-func week(t *testing.T, start time.Time, sessions int) strava.TerrainWeek {
-	t.Helper()
-	w := strava.TerrainWeek{Start: start}
-	for i := range w.Days {
-		w.Days[i] = strava.TerrainDay{Date: start.AddDate(0, 0, i), Weekday: start.AddDate(0, 0, i).Weekday()}
-	}
-	if sessions > 0 {
-		w.Days[0].Sessions = sessions
-		w.Days[0].LoadMETMin = 300
-		w.LoadMETMin = 300
-	}
-	return w
-}
-
 // The bug this page shipped with: the handler set Unavailable, a comment
 // promised the template would say the activities could not be read, and the
 // template never tested for it. A failed read rendered as "nothing imported
@@ -33,7 +19,7 @@ func week(t *testing.T, start time.Time, sessions int) strava.TerrainWeek {
 func TestUnavailableIsNotMistakenForEmpty(t *testing.T) {
 	t.Parallel()
 
-	got := terrainState(strava.Status{Configured: true, Connected: true, Unavailable: true}, strava.TerrainPage{})
+	got := trendState(strava.Status{Configured: true, Connected: true, Unavailable: true}, strava.Trend{})
 
 	if got == stateEmpty {
 		t.Fatal("an unreadable history rendered as an empty one")
@@ -43,49 +29,122 @@ func TestUnavailableIsNotMistakenForEmpty(t *testing.T) {
 	}
 }
 
-func TestTerrainStates(t *testing.T) {
+func TestTrendStates(t *testing.T) {
 	t.Parallel()
 
-	monday := time.Date(2026, 9, 7, 0, 0, 0, 0, time.UTC)
-	busy := strava.TerrainPage{Weeks: []strava.TerrainWeek{week(t, monday, 2)}}
-	quiet := strava.TerrainPage{Weeks: []strava.TerrainWeek{week(t, monday, 0)}}
+	busy := strava.Trend{Sessions: 3}
+	quiet := strava.Trend{}
 
 	tests := []struct {
 		name   string
 		status strava.Status
-		page   strava.TerrainPage
-		want   terrainStateKind
+		trend  strava.Trend
+		want   trendStateKind
 	}{
 		{"no credentials on the server", strava.Status{}, busy, stateUnconfigured},
 		{"configured but not connected", strava.Status{Configured: true}, busy, stateDisconnected},
-		{"connected with activities", strava.Status{Configured: true, Connected: true}, busy, stateTerrain},
+		{"connected with activities", strava.Status{Configured: true, Connected: true}, busy, stateChart},
 		{"connected with nothing imported", strava.Status{Configured: true, Connected: true}, quiet, stateEmpty},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if got := terrainState(tt.status, tt.page); got != tt.want {
+			if got := trendState(tt.status, tt.trend); got != tt.want {
 				t.Errorf("state = %v, want %v", got, tt.want)
 			}
 		})
 	}
 }
 
-// An account whose only training is older than the window is not empty. The
-// window is eight weeks; someone who stopped three months ago still has a
-// history, and the strip is the way back to it.
-func TestQuietWindowWithOlderHistoryIsNotEmpty(t *testing.T) {
+// The sentence is the thing that makes the chart mean anything. These pin what
+// it actually says, because "shows no progress or change" was the complaint
+// that started this.
+func TestTheSentenceSaysWhatIsHappening(t *testing.T) {
 	t.Parallel()
 
-	monday := time.Date(2026, 9, 7, 0, 0, 0, 0, time.UTC)
-	page := strava.TerrainPage{
-		Weeks:    []strava.TerrainWeek{week(t, monday, 0)},
-		HasOlder: true,
+	tests := []struct {
+		name  string
+		trend strava.Trend
+		want  string
+	}{
+		{
+			"a build week",
+			strava.Trend{Shape: strava.ShapeBuilding, RecentMinutes: 400, Ratio: 1.33},
+			"6h 40m this week — a third above your normal.",
+		},
+		{
+			"steady",
+			strava.Trend{Shape: strava.ShapeSteady, RecentMinutes: 300, Ratio: 1.02},
+			"5h this week — about what you normally do.",
+		},
+		{
+			"backed off",
+			strava.Trend{Shape: strava.ShapeEasier, RecentMinutes: 150, Ratio: 0.6},
+			"2h 30m this week — a half below your normal, an easier week.",
+		},
+		{
+			"nothing at all",
+			strava.Trend{Shape: strava.ShapeNoHistory},
+			"Nothing recorded in this window yet.",
+		},
 	}
 
-	if got := terrainState(strava.Status{Configured: true, Connected: true}, page); got != stateTerrain {
-		t.Errorf("state = %v, want stateTerrain: there is history, just not in this window", got)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := trendSentence(tt.trend); got != tt.want {
+				t.Errorf("sentence = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// A first fortnight gets a statement, never a verdict.
+func TestAShortHistoryIsToldTheTruth(t *testing.T) {
+	t.Parallel()
+
+	got := trendSentence(strava.Trend{Shape: strava.ShapeTooNew, RecentMinutes: 95})
+
+	if strings.Contains(got, "normal") && !strings.Contains(got, "start comparing") {
+		t.Errorf("a two-week account was compared to a normal it does not have: %q", got)
+	}
+	if !strings.Contains(got, "1h 35m") {
+		t.Errorf("sentence does not state what was actually done: %q", got)
+	}
+}
+
+// One week is not a streak, it is a week.
+func TestTheStreakLineOnlyAppearsWhenItIsWorthSaying(t *testing.T) {
+	t.Parallel()
+
+	if got := streakSentence(strava.Trend{StreakWeeks: 1}); got != "" {
+		t.Errorf("a single week was announced as a streak: %q", got)
+	}
+	if got := streakSentence(strava.Trend{StreakWeeks: 9}); got != "9 weeks running without a gap." {
+		t.Errorf("streak line = %q", got)
+	}
+}
+
+// The unit that started all of this. MET-minutes were the vertical axis of the
+// scene this replaced and the one figure on every row of the list, and nobody
+// could read either. They are an internal idea now, if they are anything, and
+// they must not reach a reader.
+func TestMETMinutesNeverReachTheReader(t *testing.T) {
+	t.Parallel()
+
+	session := strava.Session{
+		StravaID: 1, Name: "Morning loop", Sport: "Run",
+		DistanceM: 10000, MovingTimeS: 3000,
+		StartedAt: time.Date(2026, 9, 9, 7, 0, 0, 0, time.UTC),
+	}
+	page := strava.SessionPage{Page: 1, PerPage: 10, TotalPages: 1, Total: 1, Sessions: []strava.Session{session}}
+
+	html := render(t, ActivitySessions(page, time.UTC))
+	for _, banned := range []string{"MET", "met_min", "MET-min"} {
+		if strings.Contains(html, banned) {
+			t.Errorf("%q reached the page:\n%s", banned, html)
+		}
 	}
 }
 
@@ -97,13 +156,12 @@ func TestSessionRowsCarryTheirOwnDateAndLoad(t *testing.T) {
 	started := time.Date(2026, 9, 9, 7, 0, 0, 0, time.UTC)
 	page := strava.SessionPage{
 		Page: 1, PerPage: 10, TotalPages: 1, Total: 1,
-		Sessions: []strava.TerrainRoute{{
+		Sessions: []strava.Session{{
 			StravaID:    987654,
 			Name:        "Morning loop",
 			Sport:       "Run",
 			DistanceM:   10200,
 			MovingTimeS: 3000,
-			LoadMETMin:  412,
 			StartedAt:   started,
 		}},
 	}
@@ -114,7 +172,6 @@ func TestSessionRowsCarryTheirOwnDateAndLoad(t *testing.T) {
 		"Morning loop",
 		"Wed 9 Sep 07:00",
 		"10.2 km",
-		"412 MET-min",
 		"https://www.strava.com/activities/987654",
 		`data-day="2026-09-09"`,
 		"1\u20131 of 1",
@@ -129,7 +186,7 @@ func TestSessionRowsCarryTheirOwnDateAndLoad(t *testing.T) {
 func TestSessionWithoutAStravaIDIsNotLinked(t *testing.T) {
 	t.Parallel()
 
-	route := strava.TerrainRoute{Name: "Logged by hand", Sport: "Workout"}
+	route := strava.Session{Name: "Logged by hand", Sport: "Workout"}
 
 	if html := render(t, sessionRow(route, time.UTC)); strings.Contains(html, "strava.com/activities") {
 		t.Errorf("linked a session that has no Strava id:\n%s", html)
@@ -143,7 +200,7 @@ func TestSessionsRenderInTheOrderGiven(t *testing.T) {
 
 	page := strava.SessionPage{
 		Page: 1, PerPage: 10, TotalPages: 1, Total: 2,
-		Sessions: []strava.TerrainRoute{
+		Sessions: []strava.Session{
 			{Name: "Newer", Sport: "Run", StartedAt: time.Date(2026, 9, 10, 7, 0, 0, 0, time.UTC)},
 			{Name: "Older", Sport: "Run", StartedAt: time.Date(2026, 9, 9, 7, 0, 0, 0, time.UTC)},
 		},
@@ -201,7 +258,7 @@ func TestSessionPageArithmetic(t *testing.T) {
 	// 37 sessions, ten to a page: the last page holds seven, and says so.
 	last := strava.SessionPage{
 		Page: 4, PerPage: 10, TotalPages: 4, Total: 37,
-		Sessions: make([]strava.TerrainRoute, 7),
+		Sessions: make([]strava.Session, 7),
 	}
 	if got := last.First(); got != 31 {
 		t.Errorf("First() = %d, want 31", got)
