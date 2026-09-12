@@ -159,8 +159,11 @@
         return this.selected === date;
       },
 
+      // The list carries an id per day. This used to search the markup for an
+      // Alpine attribute containing the date, which tied the scene's scrolling
+      // to the spelling of a template.
       scrollToDay(date) {
-        const row = document.querySelector(`[x-on\\:click*="${date}"]`);
+        const row = document.getElementById(`day-${date}`);
         if (row) row.scrollIntoView({ block: "nearest" });
       },
 

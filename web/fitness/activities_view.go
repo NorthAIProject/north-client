@@ -183,3 +183,65 @@ func paceMinPerKm(route strava.TerrainRoute) string {
 	seconds := int((pace - float64(minutes)) * 60)
 	return fmt.Sprintf("%d:%02d /km", minutes, seconds)
 }
+
+// weeksNewestFirst is page.Weeks in the order a reader travels them.
+//
+// The terrain is laid out oldest-first — scene.js pins offset 0 to the newest
+// week so that prepending an older page moves nothing already drawn — but a
+// list that grows downward as older pages arrive only reads correctly running
+// newest to oldest. Reversed into a copy rather than in place: the same page
+// goes to the scene's JSON payload, and reversing that would put the landscape
+// back to front.
+func weeksNewestFirst(page strava.TerrainPage) []strava.TerrainWeek {
+	out := make([]strava.TerrainWeek, len(page.Weeks))
+	for i, week := range page.Weeks {
+		out[len(page.Weeks)-1-i] = week
+	}
+	return out
+}
+
+// daysNewestFirst is a week's days, latest first, for the same reason.
+func daysNewestFirst(week strava.TerrainWeek) []strava.TerrainDay {
+	out := make([]strava.TerrainDay, 0, len(week.Days))
+	for i := len(week.Days) - 1; i >= 0; i-- {
+		out = append(out, week.Days[i])
+	}
+	return out
+}
+
+// dayKey is how a day is named on the wire between the list and the scene.
+func dayKey(day strava.TerrainDay) string {
+	return day.Date.Format(time.DateOnly)
+}
+
+// dayElementID is the day's anchor in the document.
+//
+// The scene scrolls the list to the day somebody clicked. It used to find the
+// row by searching the markup for an Alpine attribute containing the date,
+// which tied a behaviour to the spelling of a template. An id is the thing
+// that survives the next edit to this file.
+func dayElementID(day strava.TerrainDay) string {
+	return "day-" + dayKey(day)
+}
+
+// routeClock is when a session started, in the reader's own zone. Empty when
+// the import carried no start time, so the row omits the column rather than
+// claiming midnight.
+func routeClock(route strava.TerrainRoute, loc *time.Location) string {
+	if route.StartedAt.IsZero() {
+		return ""
+	}
+	if loc == nil {
+		loc = time.UTC
+	}
+	return route.StartedAt.In(loc).Format("15:04")
+}
+
+// stravaActivityURL is where a session can be read in full. Empty for an
+// activity with no Strava id, which is what a manually built TerrainRoute has.
+func stravaActivityURL(route strava.TerrainRoute) string {
+	if route.StravaID <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("https://www.strava.com/activities/%d", route.StravaID)
+}

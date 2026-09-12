@@ -16,13 +16,14 @@
  */
 import * as THREE from "/assets/js/vendor/three.module.min.js";
 
-import { loadToHeight, clipped, PLATE_HEIGHT } from "./geo.js";
+import { loadToHeight, clipped, COLUMN_SIZE, DAY_PITCH, PLATE_HEIGHT, WEEK_PITCH } from "./geo.js";
 import { colorFor } from "./palette.js";
 import * as routes from "./routes.js";
 
-export const COLUMN_SIZE = 0.8; // world units, one day
-export const DAY_PITCH = 1.0; // centre to centre across the week
-export const WEEK_PITCH = 1.0; // centre to centre between weeks
+// The grid itself lives in geo.js, with the rest of the arithmetic that has no
+// business importing a renderer. Re-exported here because this is where anyone
+// building geometry looks for it.
+export { COLUMN_SIZE, DAY_PITCH, WEEK_PITCH } from "./geo.js";
 
 const DAYS = 7;
 
