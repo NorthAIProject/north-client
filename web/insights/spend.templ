@@ -1,0 +1,94 @@
+package insights
+
+import (
+	"fmt"
+
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+)
+
+// SpendRow is one line of a cost breakdown.
+type SpendRow struct {
+	Label       string
+	Cost        string
+	Generations int64
+	Tokens      int64
+
+	// Pct is this row's share of the window's cost, for the inline bar. Zero
+	// across the board in a window that cost nothing, which is a real state
+	// now that transcription runs on the cluster's own service.
+	Pct int
+}
+
+// SpendView is the model-cost section.
+type SpendView struct {
+	Range RangeView
+
+	TotalCost   string
+	TotalTokens int64
+	Generations int64
+
+	Surfaces []SpendRow
+	Models   []SpendRow
+
+	HasData bool
+}
+
+templ Spend(user users.User, view SpendView) {
+	@page("Model spend", "spend", "/app/insights/spend/body", user, view.Range) {
+		@SpendBody(view)
+	}
+}
+
+templ SpendBody(view SpendView) {
+	if !view.HasData {
+		@emptyState("No model calls in this window.", "", "")
+	} else {
+		<div class="space-y-6">
+			<div class="grid gap-3 sm:grid-cols-3">
+				@statTile("Cost", view.TotalCost, "this window", DeltaView{})
+				@statTile("Generations", fmt.Sprintf("%d", view.Generations), "model calls", DeltaView{})
+				@statTile("Tokens", formatTokens(view.TotalTokens), "in and out", DeltaView{})
+			</div>
+			@spendTable("Where it went", view.Surfaces)
+			@spendTable("Which model answered", view.Models)
+		</div>
+	}
+}
+
+templ spendTable(title string, rows []SpendRow) {
+	if len(rows) > 0 {
+		<section class="space-y-3">
+			@ui.MonoLabel(title)
+			<div class="border-hairline bg-surface/60 divide-hairline divide-y rounded-lg border">
+				for _, r := range rows {
+					<div class="space-y-1.5 p-4">
+						<div class="flex items-baseline justify-between gap-3 text-sm">
+							<span class="truncate">{ r.Label }</span>
+							<span class="shrink-0 tabular-nums">{ r.Cost }</span>
+						</div>
+						<div class="bg-accent/40 h-1.5 w-full overflow-hidden rounded-full">
+							<div class="bg-signal h-full rounded-full" style={ fmt.Sprintf("width: %d%%", r.Pct) }></div>
+						</div>
+						<p class="text-muted-foreground text-xs tabular-nums">
+							{ fmt.Sprintf("%d calls · %s tokens", r.Generations, formatTokens(r.Tokens)) }
+						</p>
+					</div>
+				}
+			</div>
+		</section>
+	}
+}
+
+// formatTokens keeps a six-figure token count readable. Exact numbers matter
+// to nobody here; the order of magnitude is the whole message.
+func formatTokens(n int64) string {
+	switch {
+	case n >= 1_000_000:
+		return fmt.Sprintf("%.1fM", float64(n)/1_000_000)
+	case n >= 1_000:
+		return fmt.Sprintf("%.0fk", float64(n)/1_000)
+	default:
+		return fmt.Sprintf("%d", n)
+	}
+}

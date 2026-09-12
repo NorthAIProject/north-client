@@ -251,3 +251,123 @@ func (q *Queries) SpendByUser(ctx context.Context, arg SpendByUserParams) ([]Spe
 	}
 	return items, nil
 }
+
+const spendByUserModel = `-- name: SpendByUserModel :many
+SELECT
+    provider,
+    model,
+    count(*)                    AS generations,
+    sum(input_tokens)::bigint   AS input_tokens,
+    sum(output_tokens)::bigint  AS output_tokens,
+    sum(cost_micros)::bigint    AS cost_micros
+FROM ai_generations
+WHERE user_id = $1
+  AND created_at >= $2
+  AND created_at < $3
+GROUP BY provider, model
+ORDER BY sum(cost_micros) DESC
+`
+
+type SpendByUserModelParams struct {
+	UserID   *uuid.UUID
+	FromTime time.Time
+	ToTime   time.Time
+}
+
+type SpendByUserModelRow struct {
+	Provider     string
+	Model        *string
+	Generations  int64
+	InputTokens  int64
+	OutputTokens int64
+	CostMicros   int64
+}
+
+// One person's spend, split by the model that answered.
+func (q *Queries) SpendByUserModel(ctx context.Context, arg SpendByUserModelParams) ([]SpendByUserModelRow, error) {
+	rows, err := q.db.Query(ctx, spendByUserModel, arg.UserID, arg.FromTime, arg.ToTime)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SpendByUserModelRow{}
+	for rows.Next() {
+		var i SpendByUserModelRow
+		if err := rows.Scan(
+			&i.Provider,
+			&i.Model,
+			&i.Generations,
+			&i.InputTokens,
+			&i.OutputTokens,
+			&i.CostMicros,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const spendByUserSurface = `-- name: SpendByUserSurface :many
+SELECT
+    surface,
+    count(*)                    AS generations,
+    sum(input_tokens)::bigint   AS input_tokens,
+    sum(output_tokens)::bigint  AS output_tokens,
+    sum(cost_micros)::bigint    AS cost_micros
+FROM ai_generations
+WHERE user_id = $1
+  AND created_at >= $2
+  AND created_at < $3
+GROUP BY surface
+ORDER BY sum(cost_micros) DESC
+`
+
+type SpendByUserSurfaceParams struct {
+	UserID   *uuid.UUID
+	FromTime time.Time
+	ToTime   time.Time
+}
+
+type SpendByUserSurfaceRow struct {
+	Surface      string
+	Generations  int64
+	InputTokens  int64
+	OutputTokens int64
+	CostMicros   int64
+}
+
+// One person's spend, split by the part of the product that spent it.
+//
+// Separate from SpendBySurface rather than a nullable filter on it: that one
+// answers an operator's question across every account, and a query that
+// silently returned the whole cluster when a user id was missing is the kind
+// of mistake that only shows up in front of somebody else's data.
+func (q *Queries) SpendByUserSurface(ctx context.Context, arg SpendByUserSurfaceParams) ([]SpendByUserSurfaceRow, error) {
+	rows, err := q.db.Query(ctx, spendByUserSurface, arg.UserID, arg.FromTime, arg.ToTime)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SpendByUserSurfaceRow{}
+	for rows.Next() {
+		var i SpendByUserSurfaceRow
+		if err := rows.Scan(
+			&i.Surface,
+			&i.Generations,
+			&i.InputTokens,
+			&i.OutputTokens,
+			&i.CostMicros,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

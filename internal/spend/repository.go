@@ -4,6 +4,8 @@ import (
 	"context"
 	"log/slog"
 
+	"github.com/google/uuid"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
@@ -165,3 +167,55 @@ func deref(s *string) string {
 // Assert the repository satisfies the interface the metering decorator depends
 // on, so a signature change breaks the build here rather than at wiring time.
 var _ Recorder = (*Repository)(nil)
+
+// UserSurfaces is one person's spend split by the part of the product that
+// spent it.
+//
+// Deliberately has no billableOnly flag. That switch exists so an operator can
+// exclude generations somebody paid for with their own key; a person reading
+// their own page wants to see everything their account did, whoever paid.
+func (r *Repository) UserSurfaces(ctx context.Context, userID uuid.UUID, window Range) ([]SurfaceSpend, error) {
+	rows, err := r.q.SpendByUserSurface(ctx, spenddb.SpendByUserSurfaceParams{
+		UserID:   &userID,
+		FromTime: window.From,
+		ToTime:   window.To,
+	})
+	if err != nil {
+		return nil, apperr.Wrap(err, "spend by user surface")
+	}
+	out := make([]SurfaceSpend, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, SurfaceSpend{
+			Surface:      row.Surface,
+			Generations:  row.Generations,
+			InputTokens:  row.InputTokens,
+			OutputTokens: row.OutputTokens,
+			CostMicros:   row.CostMicros,
+		})
+	}
+	return out, nil
+}
+
+// UserModels is one person's spend split by the model that answered.
+func (r *Repository) UserModels(ctx context.Context, userID uuid.UUID, window Range) ([]ModelSpend, error) {
+	rows, err := r.q.SpendByUserModel(ctx, spenddb.SpendByUserModelParams{
+		UserID:   &userID,
+		FromTime: window.From,
+		ToTime:   window.To,
+	})
+	if err != nil {
+		return nil, apperr.Wrap(err, "spend by user model")
+	}
+	out := make([]ModelSpend, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, ModelSpend{
+			Provider:     row.Provider,
+			Model:        deref(row.Model),
+			Generations:  row.Generations,
+			InputTokens:  row.InputTokens,
+			OutputTokens: row.OutputTokens,
+			CostMicros:   row.CostMicros,
+		})
+	}
+	return out, nil
+}

@@ -252,29 +252,50 @@ func run() error {
 	calculatorSvc := calculator.NewService(calculator.NewRepository(pool), biometricSvc)
 	mealsRepo := meals.NewRepository(pool)
 
+	// Named because two things read it now: the weekly review's context, and
+	// the digest sweep below. Food and MacroGoals are here for the digest's
+	// nutrition score — the review context does not ask for them, but a
+	// second insights service built to add two fields would be a second set
+	// of connections and a second place for the two to drift.
+	insightsSvc := insights.NewService(insights.Options{
+		CheckIns:   checkinSvc,
+		Hydration:  hydration.NewService(hydration.NewRepository(pool)),
+		Sleep:      sleep.NewService(sleep.NewRepository(pool)),
+		Habits:     habits.NewService(habits.NewRepository(pool)),
+		Goals:      goalSvc,
+		Mind:       mind.NewService(mind.NewRepository(pool), checkinSvc),
+		Activity:   activitySvc,
+		Food:       meals.NewFoodLogService(mealsRepo),
+		MacroGoals: calculatorSvc,
+		SiteURL:    cfg.BaseURL,
+	})
+
 	reviewContext := reports.NewInsightsContext(
-		insights.NewService(insights.Options{
-			CheckIns:  checkinSvc,
-			Hydration: hydration.NewService(hydration.NewRepository(pool)),
-			Sleep:     sleep.NewService(sleep.NewRepository(pool)),
-			Habits:    habits.NewService(habits.NewRepository(pool)),
-			Goals:     goalSvc,
-			Mind:      mind.NewService(mind.NewRepository(pool), checkinSvc),
-			Activity:  activitySvc,
-		}),
+		insightsSvc,
 		meals.NewTrackMealProgressService(meals.NewFoodLogService(mealsRepo), calculatorSvc),
 		memories.NewService(memories.NewRepository(pool)),
 	)
 
 	// The briefing is written here; if Telegram is configured it also leaves
 	// the app. Coach is not wired: Notify only needs links and a transport.
-	var briefingNotify reports.Notifier
+	// Held as the concrete service rather than as reports.Notifier: the
+	// briefing has only words to send, while the digest carries a rendered
+	// card, and the two need different methods off the same fan-out.
+	var messagingSvc *messaging.Service
 	if cfg.Telegram.Enabled() {
-		briefingNotify = messaging.NewService(messaging.Options{
+		messagingSvc = messaging.NewService(messaging.Options{
 			Links:     messaging.NewRepository(pool),
 			Transport: telegram.NewClient(cfg.Telegram.BotToken),
 			Log:       log,
 		})
+	}
+
+	// A nil *messaging.Service is not a nil reports.Notifier, so the interface
+	// is only given a value when there is really one to give. Without this the
+	// briefing would call through a nil pointer instead of doing nothing.
+	var briefingNotify reports.Notifier
+	if messagingSvc != nil {
+		briefingNotify = messagingSvc
 	}
 
 	reportSvc := reports.NewService(reports.Options{
@@ -303,6 +324,28 @@ func run() error {
 	// And the same again for the morning briefing, hourly for the same reason.
 	worker.Register(jobs.KindSweepBriefings,
 		reports.NewBriefingSweeper(reportSvc, userSvc, notificationSvc, log).HandleSweep)
+
+	// The numbers, on whatever cadence each person asked for. Hourly like the
+	// two above, and for the third time for the same reason: everybody's
+	// morning is a different instant.
+	//
+	// This one sends inline rather than enqueueing per account, because it
+	// costs queries rather than a generation. That is also why it may default
+	// to on where the two above must not.
+	var digestNotify insights.DigestNotifier
+	if messagingSvc != nil {
+		digestNotify = messagingSvc
+	}
+
+	worker.Register(jobs.KindSweepDigests,
+		insights.NewDigestSweeper(insights.DigestSweeperOptions{
+			Accounts: userSvc,
+			Prefs:    notificationSvc,
+			Ledger:   notifications.NewRepository(pool),
+			Digester: insightsSvc,
+			Notify:   digestNotify,
+			Log:      log,
+		}).HandleSweep)
 
 	// The coach enqueues extraction only once a thread reaches four messages,
 	// from inside the reply pump. This catches the rest: conversations that
@@ -376,6 +419,7 @@ func run() error {
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepNudges, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepReports, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepBriefings, struct{}{})
+	worker.RegisterPeriodic(time.Hour, jobs.KindSweepDigests, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepSummaries, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepStrava, struct{}{})
 	worker.RegisterPeriodic(24*time.Hour, jobs.KindSweepQuotas, struct{}{})

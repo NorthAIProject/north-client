@@ -25,6 +25,7 @@ type Input struct {
 	TrainingReminders  bool
 	WeeklyReportAuto   bool
 	DailyBriefingAuto  bool
+	StatsDigestCadence string
 	QuietHoursEnabled  bool
 	QuietStart         string
 	QuietEnd           string
@@ -38,6 +39,8 @@ type Input struct {
 func Validate(in Input) (Input, error) {
 	var errs apperr.FieldErrors
 
+	in.StatsDigestCadence = normalizeCadence(in.StatsDigestCadence, &errs)
+
 	in.QuietStart = normalizeHourMinute(in.QuietStart, defaultQuietStart, &errs, "quiet_start")
 	in.QuietEnd = normalizeHourMinute(in.QuietEnd, defaultQuietEnd, &errs, "quiet_end")
 
@@ -49,6 +52,21 @@ func Validate(in Input) (Input, error) {
 	}
 
 	return in, errs.OrNil()
+}
+
+// normalizeCadence fills in the default and refuses anything the column would
+// bounce. A stale form from a build that offered a cadence this one no longer
+// does would otherwise surface a constraint violation as a 500.
+func normalizeCadence(value string, errs *apperr.FieldErrors) string {
+	switch value {
+	case "":
+		return DefaultCadence
+	case CadenceOff, CadenceDaily, CadenceWeekly, CadenceMonthly:
+		return value
+	default:
+		*errs = errs.Add("stats_digest_cadence", "Choose how often you want your numbers.")
+		return value
+	}
 }
 
 func normalizeHourMinute(value, fallback string, errs *apperr.FieldErrors, field string) string {

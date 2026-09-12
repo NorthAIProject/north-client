@@ -71,3 +71,25 @@ func StartOfWeek(t time.Time) time.Time {
 	// no transition has ever moved the clock far enough to swallow midday.
 	return StartOfDay(time.Date(y, m, d-offset, 12, 0, 0, 0, day.Location()))
 }
+
+// StartOfMonth is the first instant of the month t falls in, local to t's own
+// location.
+//
+// Built the same way as StartOfWeek: move to the calendar date, then let
+// StartOfDay find where that day actually begins. Subtracting days from an
+// instant would be wrong for the same reason it is wrong there — a month is
+// not a fixed number of hours, and the first of the month is a day that can
+// itself have no midnight.
+func StartOfMonth(t time.Time) time.Time {
+	y, m, _ := t.Date()
+	return StartOfDay(time.Date(y, m, 1, 12, 0, 0, 0, t.Location()))
+}
+
+// startOfNextMonth is the first instant of the month after the one t falls in.
+//
+// time.Date normalises a thirteenth month into the following January, so this
+// needs no year arithmetic of its own.
+func startOfNextMonth(t time.Time) time.Time {
+	y, m, _ := t.Date()
+	return StartOfDay(time.Date(y, m+1, 1, 12, 0, 0, 0, t.Location()))
+}

@@ -106,6 +106,22 @@ func (c *Client) Send(ctx context.Context, externalID string, msg messaging.Outb
 		}
 	}
 
+	// The card goes first for the same reason the illustration does, and its
+	// failure is swallowed for the same reason: the words are the substance
+	// and a refused upload must not cost them.
+	if len(msg.Photo) > 0 {
+		if err := c.sendPhoto(ctx, chat, msg.Photo, msg.PhotoCaption); err != nil {
+			c.log().Warn("telegram refused the card; sending the text alone", "error", err)
+		}
+	}
+
+	// A message whose whole story is in the caption has no text to follow it,
+	// and splitMessage returns one empty part rather than none — which would
+	// post a blank message Telegram refuses.
+	if strings.TrimSpace(msg.Text) == "" {
+		return nil
+	}
+
 	// Split on the raw text, then format each piece: the limit Telegram
 	// enforces is on what a person reads, and tags do not count towards it.
 	parts := splitMessage(msg.Text, maxMessageRunes)
@@ -408,13 +424,22 @@ func (c *Client) call(ctx context.Context, method string, body any, out any) err
 	if err != nil {
 		return apperr.Wrap(err, "telegram: encode %s", method)
 	}
+	return c.do(ctx, method, "application/json", bytes.NewReader(payload), out)
+}
 
+// do performs one Bot API call.
+//
+// Split out of call when uploads arrived: every method here is a POST whose
+// response is the same envelope, and the only thing an upload changes is the
+// body and one header. Two copies of the envelope handling would be two places
+// to get "ok": false wrong.
+func (c *Client) do(ctx context.Context, method, contentType string, body io.Reader, out any) error {
 	url := c.baseURL + "/bot" + c.token + "/" + method
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, body)
 	if err != nil {
 		return apperr.Wrap(withoutURL(err), "telegram: build %s request", method)
 	}
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", contentType)
 
 	resp, err := c.http.Do(req)
 	if err != nil {

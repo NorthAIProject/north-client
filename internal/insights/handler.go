@@ -30,7 +30,8 @@ func NewHandler(svc *Service) *Handler {
 // JavaScript — the same arrangement the overview uses.
 func (h *Handler) Routes(r chi.Router) {
 	r.Route("/insights", func(r chi.Router) {
-		r.Get("/", h.redirectToTimeline)
+		r.Get("/", h.summary)
+		r.Get("/panels", h.summaryPanels)
 
 		r.Get("/timeline", h.timeline)
 		r.Get("/timeline/body", h.timelineBody)
@@ -46,11 +47,54 @@ func (h *Handler) Routes(r chi.Router) {
 
 		r.Get("/training", h.training)
 		r.Get("/training/body", h.trainingBody)
+
+		r.Get("/nutrition", h.nutrition)
+		r.Get("/nutrition/body", h.nutritionBody)
+
+		r.Get("/coach", h.coach)
+		r.Get("/coach/body", h.coachBody)
+
+		r.Get("/spend", h.spend)
+		r.Get("/spend/body", h.spendBody)
+
+		// Parameterised, so the route test skips it rather than demanding a
+		// registry row per metric. Nine detail pages in the sidebar would
+		// bury the five sections that matter.
+		r.Get("/metric/{key}", h.metric)
+		r.Get("/metric/{key}/body", h.metricBody)
 	})
 }
 
-func (h *Handler) redirectToTimeline(w http.ResponseWriter, r *http.Request) {
-	http.Redirect(w, r, "/app/insights/timeline", http.StatusSeeOther)
+// summary is the section's landing page: every domain's score at once, with
+// each ring a link into the detail page it summarises.
+func (h *Handler) summary(w http.ResponseWriter, r *http.Request) {
+	user, rg := h.context(r)
+	data, err := h.svc.Summary(r.Context(), user, rg)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	view, err := buildSummaryView(data)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	h.render(w, r, insightpages.Summary(user, view))
+}
+
+func (h *Handler) summaryPanels(w http.ResponseWriter, r *http.Request) {
+	user, rg := h.context(r)
+	data, err := h.svc.Summary(r.Context(), user, rg)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	view, err := buildSummaryView(data)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	h.render(w, r, insightpages.SummaryPanels(view))
 }
 
 func (h *Handler) timeline(w http.ResponseWriter, r *http.Request) {
@@ -195,6 +239,130 @@ func (h *Handler) trainingBody(w http.ResponseWriter, r *http.Request) {
 
 // context resolves the reader and the window they asked for. Parse never
 // fails, so a hand-typed ?range= cannot take a page down.
+func (h *Handler) nutrition(w http.ResponseWriter, r *http.Request) {
+	user, rg := h.context(r)
+	data, err := h.svc.Nutrition(r.Context(), user, rg)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	view, err := buildNutritionView(data)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	h.render(w, r, insightpages.Nutrition(user, view))
+}
+
+func (h *Handler) nutritionBody(w http.ResponseWriter, r *http.Request) {
+	user, rg := h.context(r)
+	data, err := h.svc.Nutrition(r.Context(), user, rg)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	view, err := buildNutritionView(data)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	h.render(w, r, insightpages.NutritionBody(view))
+}
+
+func (h *Handler) coach(w http.ResponseWriter, r *http.Request) {
+	user, rg := h.context(r)
+	data, err := h.svc.Coach(r.Context(), user, rg)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	view, err := buildCoachView(data)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	h.render(w, r, insightpages.Coach(user, view))
+}
+
+func (h *Handler) coachBody(w http.ResponseWriter, r *http.Request) {
+	user, rg := h.context(r)
+	data, err := h.svc.Coach(r.Context(), user, rg)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	view, err := buildCoachView(data)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	h.render(w, r, insightpages.CoachBody(view))
+}
+
+func (h *Handler) spend(w http.ResponseWriter, r *http.Request) {
+	user, rg := h.context(r)
+	data, err := h.svc.Spend(r.Context(), user, rg)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	view, err := buildSpendView(data)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	h.render(w, r, insightpages.Spend(user, view))
+}
+
+func (h *Handler) spendBody(w http.ResponseWriter, r *http.Request) {
+	user, rg := h.context(r)
+	data, err := h.svc.Spend(r.Context(), user, rg)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	view, err := buildSpendView(data)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	h.render(w, r, insightpages.SpendBody(view))
+}
+
+func (h *Handler) metric(w http.ResponseWriter, r *http.Request) {
+	view, ok := h.metricView(w, r)
+	if !ok {
+		return
+	}
+	h.render(w, r, insightpages.Metric(auth.MustUser(r.Context()), view))
+}
+
+func (h *Handler) metricBody(w http.ResponseWriter, r *http.Request) {
+	view, ok := h.metricView(w, r)
+	if !ok {
+		return
+	}
+	h.render(w, r, insightpages.MetricBody(view))
+}
+
+// metricView loads and builds the view both metric handlers render, reporting
+// whether it already answered the request with an error.
+func (h *Handler) metricView(w http.ResponseWriter, r *http.Request) (insightpages.MetricView, bool) {
+	user, rg := h.context(r)
+
+	data, err := h.svc.Metric(r.Context(), user, rg, chi.URLParam(r, "key"))
+	if err != nil {
+		h.fail(w, r, err)
+		return insightpages.MetricView{}, false
+	}
+	view, err := buildMetricView(data)
+	if err != nil {
+		h.fail(w, r, err)
+		return insightpages.MetricView{}, false
+	}
+	return view, true
+}
+
 func (h *Handler) context(r *http.Request) (users.User, timerange.Range) {
 	user := auth.MustUser(r.Context())
 	return user, timerange.Parse(r.URL.Query().Get("range"), user.Location())

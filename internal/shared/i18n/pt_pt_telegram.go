@@ -1,10 +1,13 @@
 package i18n
 
 var portugueseEuropeanTelegram = map[string]string{
-	"tg.start":     "Estás ligado a %[1]s. Pergunta-me o que perguntarias na app web — tenho a mesma memória, os mesmos objetivos e os mesmos registos.\n\nEnvia /help para veres o que consigo fazer.",
-	"tg.help":      "Pergunta-me o que perguntarias na app web — como vai um objetivo, como foi a tua semana, se deves treinar hoje.\n\nEsta é a mesma conversa do chat da web. Pergunta aqui, e a resposta também está lá.\n\nAntes de escrever seja o que for — um registo, um objetivo — mostro-te o que vou fazer e espero por um sim.\n\n/help — esta mensagem\n/unlink — desligar este chat da tua conta",
-	"tg.notlinked": "Este chat não está ligado a nenhuma conta Khepri.",
-	"tg.unlinked":  "Desligado. Nada do que disseste é apagado — a conversa inteira continua na app web. Para voltares a ligar, pede um código novo em Definições → Ligações de agentes.",
+	"tg.start":             "Estás ligado a %[1]s. Pergunta-me o que perguntarias na app web — tenho a mesma memória, os mesmos objetivos e os mesmos registos.\n\nEnvia /help para veres o que consigo fazer.",
+	"tg.help":              "Pergunta-me o que perguntarias na app web — como vai um objetivo, como foi a tua semana, se deves treinar hoje.\n\nEsta é a mesma conversa do chat da web. Pergunta aqui, e a resposta também está lá.\n\nAntes de escrever seja o que for — um registo, um objetivo — mostro-te o que vou fazer e espero por um sim.\n\n/help — esta mensagem\n/stats — como as coisas estão a correr (acrescenta week, month ou year)\n/unlink — desligar este chat da tua conta",
+	"tg.notlinked":         "Este chat não está ligado a nenhuma conta Khepri.",
+	"tg.stats.unavailable": "Ainda não consigo ler os teus números neste servidor. Estão todos na aplicação web.",
+	"tg.stats.failed":      "Não consegui ler os teus números agora. Tenta outra vez daqui a pouco.",
+	"tg.stats.empty":       "Ainda não há nada registado nesse período.",
+	"tg.unlinked":          "Desligado. Nada do que disseste é apagado — a conversa inteira continua na app web. Para voltares a ligar, pede um código novo em Definições → Ligações de agentes.",
 
 	"tg.onboard":     "Acaba primeiro de configurar a tua conta na app web do Khepri, e depois fala comigo outra vez.",
 	"tg.linked":      "Ligado a %[1]s. Fala comigo quando quiseres — tenho a mesma memória e os mesmos objetivos que a app web.",
