@@ -1096,7 +1096,7 @@ func routes(
 	// The second mouth on the same brain. Built unconditionally because the
 	// settings page needs it to issue link codes; whether anything can reach it
 	// depends on a bot token, below.
-	messagingSvc := messaging.NewService(messaging.Options{
+	messagingOpts := messaging.Options{
 		Art:     exerciseSvc,
 		SiteURL: cfg.BaseURL,
 		Funnel:  funnel,
@@ -1117,9 +1117,24 @@ func routes(
 		// point of the feature.
 		Voice: voiceSvc,
 
-		Transport: telegramClient,
-		Log:       slog.Default(),
-	})
+		Log: slog.Default(),
+	}
+
+	// Set here rather than in the literal above, and only when there is a
+	// client, because a nil *telegram.Client assigned to an interface field is
+	// not a nil interface: every `== nil` guard inside the service silently
+	// stops working and the first call dereferences it. A deployment with no
+	// bot token leaves both of these genuinely nil.
+	//
+	// Files is the same client, and it is what lets the service decide when a
+	// recording is worth downloading rather than the adapter fetching every one
+	// on arrival.
+	if telegramClient != nil {
+		messagingOpts.Transport = telegramClient
+		messagingOpts.Files = telegramClient
+	}
+
+	messagingSvc := messaging.NewService(messagingOpts)
 	nudgeSvc.WithFanout(messagingSvc)
 
 	settingsHandler := settings.NewHandler(

@@ -226,6 +226,7 @@ func attachmentFrom(voice *tgVoice, photos []tgPhoto, doc *tgDoc) *messaging.Inb
 			// keyed on audio types would refuse it.
 			MIMEType:        voice.MIMEType,
 			DurationSeconds: voice.Duration,
+			SizeBytes:       voice.FileSize,
 			Name:            "voice.ogg",
 		}
 	}
