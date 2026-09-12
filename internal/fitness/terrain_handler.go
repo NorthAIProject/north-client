@@ -81,7 +81,10 @@ func (h *Handler) terrainList(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Cache-Control", "private, no-store")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := fitnesspages.ActivityStrip(page, user.Location()).Render(ctx, w); err != nil {
+	// The page fragment, not ActivityStrip: this response is swapped in over
+	// the tail of a strip that already exists, so bringing the #activity-strip
+	// wrapper with it would put a second one in the document.
+	if err := fitnesspages.ActivityStripPage(page, user.Location()).Render(ctx, w); err != nil {
 		middleware.FromContext(ctx).Error("render activity strip", slog.Any("error", err))
 	}
 }
