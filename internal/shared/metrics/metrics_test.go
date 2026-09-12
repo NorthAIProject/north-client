@@ -130,3 +130,47 @@ func TestNoCollectorCarriesAnUnboundedLabel(t *testing.T) {
 		}
 	}
 }
+
+// Transcription is free per request, so what is worth counting is not money but
+// time on a shared CPU pod. The histogram's _sum is exactly that: how many
+// seconds of one replica North's recordings consumed.
+func TestATranscriptionIsCountedBySurfaceAndOutcome(t *testing.T) {
+	r := metrics.New()
+
+	r.VoiceTranscription("telegram_voice", 6*time.Second, 14083, metrics.OutcomeSuccess)
+	r.VoiceTranscription("telegram_voice", 5*time.Second, 9000, metrics.OutcomeEmpty)
+	r.VoiceTranscription("voice_capture", 2*time.Second, 1000, metrics.OutcomeError)
+
+	body := scrape(t, r)
+	for _, want := range []string{
+		`north_voice_transcriptions_total{outcome="success",surface="telegram_voice"} 1`,
+		`north_voice_transcriptions_total{outcome="empty",surface="telegram_voice"} 1`,
+		`north_voice_transcriptions_total{outcome="error",surface="voice_capture"} 1`,
+		`north_voice_transcription_duration_seconds_count{surface="telegram_voice"} 2`,
+		`north_voice_transcription_duration_seconds_sum{surface="telegram_voice"} 11`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("missing %s", want)
+		}
+	}
+}
+
+// Bytes rather than seconds of speech, because the server never decodes a
+// recording and so never learns how long it was.
+func TestAudioBytesAreCountedBySurface(t *testing.T) {
+	r := metrics.New()
+
+	r.VoiceTranscription("telegram_voice", time.Second, 14083, metrics.OutcomeSuccess)
+	r.VoiceTranscription("telegram_voice", time.Second, 917, metrics.OutcomeSuccess)
+
+	if want := `north_voice_audio_bytes_total{surface="telegram_voice"} 15000`; !strings.Contains(scrape(t, r), want) {
+		t.Errorf("missing %s", want)
+	}
+}
+
+// A process with metrics switched off runs the same code paths as one with them
+// on, so every method has to tolerate a nil receiver.
+func TestVoiceMetricsTolerateNoRegistry(t *testing.T) {
+	var r *metrics.Registry
+	r.VoiceTranscription("telegram_voice", time.Second, 100, metrics.OutcomeSuccess)
+}
