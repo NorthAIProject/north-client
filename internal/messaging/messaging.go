@@ -80,6 +80,11 @@ type InboundFile struct {
 	// because it is the one bound that can be applied before downloading
 	// anything, and the bytes are checked afterwards regardless.
 	DurationSeconds int
+
+	// SizeBytes is how large the platform says the file is, for the same reason
+	// and with the same caveat. Zero when the platform said nothing, which
+	// disables the check rather than rejecting everything.
+	SizeBytes int64
 	// FileID is the platform's handle. The adapter uses it to fetch Bytes
 	// and may leave it set; this package never calls the platform with it.
 	FileID string
@@ -134,6 +139,20 @@ const (
 	AnswerApprove = "approve"
 	AnswerDecline = "decline"
 )
+
+// Files fetches an attachment's bytes from the platform it arrived from.
+//
+// Declared here so this package decides *when* to download rather than the
+// adapter deciding for it. A recording refused for its length should not first
+// be pulled across the network — and the recogniser behind it is a single
+// shared replica, so bytes that were never going to be transcribed are worth
+// not moving at all.
+//
+// Nil means the adapter has already filled Bytes, which is what every platform
+// did before this existed and what an image still does.
+type Files interface {
+	File(ctx context.Context, fileID string) (data []byte, mimeType string, err error)
+}
 
 // Transport delivers a reply back to a platform.
 //

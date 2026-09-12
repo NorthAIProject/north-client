@@ -367,11 +367,19 @@ not here.
   client and bounded on the server only by `MaxAudioBytes`. Counting frames
   would mean decoding the container, which is a codec dependency bought to
   re-check something a byte ceiling already bounds.
-- **The chain's models are named for the wrong provider.** `.env` carries
-  `AI_MODEL=gemini-2.5-pro` and `AI_FAST_MODEL=gemini-2.5-flash` alongside
-  `AI_PROVIDER_CHAIN=openrouter,nvidia,fake` and an empty `GEMINI_API_KEY`.
-  OpenRouter wants `google/gemini-2.5-flash`. Predates voice and affects the
-  parse too; the local verification below was run with the slugs overridden.
+- ~~**The chain's models are named for the wrong provider.**~~ Closed
+  2026-09-12, and it was only ever a local problem. Production has always
+  carried `AI_FAST_MODEL=google/gemini-2.5-flash` against
+  `AI_PROVIDER_CHAIN=openrouter,nvidia` — checked by reading the running pod's
+  environment rather than inferred from the sealed values, which cannot be read.
+  The local `.env` had the Gemini-native spellings against an OpenRouter chain,
+  which is why the verification runs above needed the slug overridden. Fixed
+  there, and `.env.example` now says why the two are coupled.
+
+  Worth keeping the shape of this in mind: the wrong spelling is not a startup
+  error. Each call is refused at request time, the chain walks on, and the
+  symptom is slowness or a different model answering — never anything that names
+  the cause.
 - ~~**Coach chat still takes images only.**~~ Closed by the Telegram phase
   below, and half of it turned out to be the wrong problem. See "Voice on
   Telegram".
@@ -507,6 +515,12 @@ environment, answers anything, and was in the chain. So its canned sentence
 became the transcript, with no error, and the coach was handed it as though the
 person had said it. A voice note about sleep came back as a reply about API
 keys.
+
+One correction, from reading the deployed environment afterwards rather than the
+local `.env`: production's chain is `openrouter,nvidia` and has never contained
+`fake`, so this was reachable in development and not in production. The bug in
+the code was real and the reasoning below still holds — a chat model that cannot
+hear answers the prompt either way — but it was not live.
 
 That is worse than a wrong reply, and the difference is the whole reason this
 has its own section. A transcript is not an answer; it is entered as the user's
@@ -758,13 +772,18 @@ at all rather than an empty one.
 - **Spend rows for voice are gone**, correctly: it is free, and a zero cost and
   an unpriced call are different things. The `surface` parameter stays so the
   ledger is instantly right again if a hosted endpoint is ever configured.
-- **The vocabulary hint is wired but unused.** `prompt` is the single
-  highest-leverage accuracy lever according to the infra doc, and North's
-  equivalent of Norviq's watchlist is goal titles, habit names and exercise
-  names. The field ships; the source does not yet.
-- **Recordings are still downloaded before they are refused.** Telegram sends a
-  duration and a size in the update, and Norviq refuses an oversized clip before
-  a byte moves. North checks after `fillAttachment` has already pulled it.
+- ~~The vocabulary hint is wired but unused.~~ Done: `internal/voice/vocab`
+  sends the account's goal titles and habit names, deduped and capped at 40
+  terms. Measured against the live service — "my Norvik review" became "my
+  Norviq review" — which is exactly the class of error it exists for, since a
+  recogniser mangles proper nouns and nothing else notices when it does.
+- ~~Recordings are still downloaded before they are refused.~~ Done: the
+  duration and size Telegram already sends are checked first, and the bytes are
+  fetched by the service only once the recording has earned them.
+- **Exercise names are not in the vocabulary.** Goals and habits are. The
+  exercise catalogue is large and shared rather than personal, so it would need
+  a different rule than "everything this account contains" — probably the ones
+  they have actually logged.
 
 ### Verified, 2026-09-11
 

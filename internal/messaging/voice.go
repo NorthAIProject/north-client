@@ -48,16 +48,18 @@ func (s *Service) transcribeVoice(ctx context.Context, user users.User, in *Inbo
 		return OutboundMessage{Text: i18n.T(ctx, "tg.voice.unavailable")}, false, nil
 	}
 
-	// Bounds first, and both of them before the quota: a recording refused for
-	// its length must not also cost the person a dictation. The duration is the
-	// platform's claim, which is why the bytes are checked too.
-	if seconds := in.Attachment.DurationSeconds; seconds > voice.MaxSeconds {
+	// The platform's own numbers first, because they arrived free with the
+	// update and acting on them costs nothing. A recording refused here has not
+	// crossed the network, has not cost the person a dictation, and has not
+	// taken a turn on a recogniser that is one replica shared with another
+	// application.
+	//
+	// Both are claims made by the sender's client rather than facts, which is
+	// why the bytes are measured again once they are here.
+	if in.Attachment.DurationSeconds > voice.MaxSeconds {
 		return OutboundMessage{Text: i18n.T(ctx, "tg.voice.toolong")}, false, nil
 	}
-	if len(in.Attachment.Bytes) == 0 {
-		return OutboundMessage{Text: i18n.T(ctx, "tg.voice.silent")}, false, nil
-	}
-	if len(in.Attachment.Bytes) > voice.MaxBytes {
+	if in.Attachment.SizeBytes > voice.MaxBytes {
 		return OutboundMessage{Text: i18n.T(ctx, "tg.voice.toobig")}, false, nil
 	}
 
@@ -74,6 +76,33 @@ func (s *Service) transcribeVoice(ctx context.Context, user users.User, in *Inbo
 			s.log.Warn("messaging voice note refused by quota", "user_id", user.ID)
 			return OutboundMessage{Text: quotaMessage(ctx, decision)}, false, nil
 		}
+	}
+
+	// Only now are the bytes worth moving.
+	if len(in.Attachment.Bytes) == 0 {
+		if s.files == nil || in.Attachment.FileID == "" {
+			return OutboundMessage{Text: i18n.T(ctx, "tg.voice.silent")}, false, nil
+		}
+		data, mime, err := s.files.File(ctx, in.Attachment.FileID)
+		if err != nil {
+			// Its own message rather than the transcription one. A download
+			// that failed is not a recording nobody could make out, and saying
+			// so sends the person to the wrong remedy.
+			s.log.Warn("messaging could not download a voice note", "error", err, "user_id", user.ID)
+			return OutboundMessage{Text: i18n.T(ctx, "tg.voice.download")}, false, nil
+		}
+		in.Attachment.Bytes = data
+		if in.Attachment.MIMEType == "" {
+			in.Attachment.MIMEType = mime
+		}
+	}
+
+	// Measured, now that they are real numbers rather than the sender's claims.
+	if len(in.Attachment.Bytes) == 0 {
+		return OutboundMessage{Text: i18n.T(ctx, "tg.voice.silent")}, false, nil
+	}
+	if len(in.Attachment.Bytes) > voice.MaxBytes {
+		return OutboundMessage{Text: i18n.T(ctx, "tg.voice.toobig")}, false, nil
 	}
 
 	text, err := s.voice.Transcribe(ctx, user, in.Attachment.Bytes, spend.SurfaceTelegramVoice)
