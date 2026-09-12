@@ -3,6 +3,7 @@ package layout
 import (
 	"github.com/NorthAIProject/north-client/web/shared/analytics"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/utils"
 )
 
 // Base is the outermost HTML document. Every page renders inside it.
@@ -52,7 +53,25 @@ templ Base(title string) {
 			// the opaque plates in web/assets/brand/pwa-*.png.
 			<link rel="icon" type="image/svg+xml" href="/assets/brand/favicon.svg"/>
 			<link rel="icon" type="image/png" href="/assets/brand/khepri-logo-mark.png"/>
-			<link href="/assets/css/output.css" rel="stylesheet"/>
+			// Cache-busted, like the scripts are.
+			//
+			// Every /assets/* response in production carries
+			// "max-age=31536000, immutable" — safe only because the URLs move.
+			// This one did not: the stylesheet was pinned in a returning
+			// browser for a year, so any deploy that introduced a new Tailwind
+			// utility shipped markup referring to a rule that reader's CSS did
+			// not contain. The class simply did nothing, with no error anywhere
+			// and nothing to grep for.
+			//
+			// It cost the activities page its terrain: a new height utility on
+			// the canvas frame never arrived, the frame collapsed to no height,
+			// and the landscape vanished from under the heading.
+			//
+			// ScriptVersion is fixed at process start, so a rollout busts it
+			// once. Two replicas answer with two versions until both are on the
+			// same image, which costs one extra fetch and never a wrong
+			// stylesheet.
+			<link href={ utils.ScriptURL("/assets/css/output.css") } rel="stylesheet"/>
 			// 422 is how Khepri reports a rejected form: the server answers with the
 			// form re-rendered around its error messages, and that has to be swapped
 			// like a success or a validated form silently does nothing. 429 is here

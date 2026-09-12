@@ -268,23 +268,35 @@ func buildDay(date time.Time, activities []Activity) TerrainDay {
 		byFamily[family] += load
 		movingByFamily[family] += a.MovingTimeS
 
-		day.Routes = append(day.Routes, TerrainRoute{
-			StravaID:    a.StravaID,
-			Name:        a.Name,
-			Sport:       a.SportType,
-			Family:      family,
-			Polyline:    a.SummaryPolyline,
-			DistanceM:   a.DistanceM,
-			ElevationM:  a.ElevationGainM,
-			MovingTimeS: a.MovingTimeS,
-			LoadMETMin:  load,
-			StartedAt:   a.StartDate.In(date.Location()),
-		})
+		day.Routes = append(day.Routes, routeOf(a, date.Location()))
 	}
 
 	day.Mix = sortedShares(byFamily, movingByFamily)
 	day.Dominant, day.Mixed = dominant(day.Mix, movingByFamily, day.LoadMETMin)
 	return day
+}
+
+// routeOf is one stored activity as the shape the interface reads.
+//
+// Shared by the terrain and by the session list rather than written twice:
+// two mappings of the same row drift, and the one that drifts is always the
+// one with no test pinning it to the other.
+func routeOf(a Activity, loc *time.Location) TerrainRoute {
+	if loc == nil {
+		loc = time.UTC
+	}
+	return TerrainRoute{
+		StravaID:    a.StravaID,
+		Name:        a.Name,
+		Sport:       a.SportType,
+		Family:      Family(a.SportType, ""),
+		Polyline:    a.SummaryPolyline,
+		DistanceM:   a.DistanceM,
+		ElevationM:  a.ElevationGainM,
+		MovingTimeS: a.MovingTimeS,
+		LoadMETMin:  loadMETMin(a),
+		StartedAt:   a.StartDate.In(loc),
+	}
 }
 
 // sortedShares orders a day's families by load, descending.
