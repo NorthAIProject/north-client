@@ -3,6 +3,7 @@ package voice_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/google/uuid"
@@ -20,12 +21,13 @@ type stubTranscriber struct {
 	text string
 	err  error
 
-	sawMIME     string
-	sawTier     string
-	sawLanguage string
-	sawSize     int
-	sawSurface  string
-	calls       int
+	sawMIME       string
+	sawTier       string
+	sawLanguage   string
+	sawSize       int
+	sawSurface    string
+	sawVocabulary []string
+	calls         int
 }
 
 func (s *stubTranscriber) Transcribe(ctx context.Context, req ai.TranscribeRequest) (ai.TranscribeResult, error) {
@@ -33,6 +35,7 @@ func (s *stubTranscriber) Transcribe(ctx context.Context, req ai.TranscribeReque
 	s.sawMIME = req.MIMEType
 	s.sawTier = req.Tier
 	s.sawLanguage = req.Language
+	s.sawVocabulary = req.Vocabulary
 	s.sawSize = len(req.Audio)
 	s.sawSurface = aiattr.From(ctx).Surface
 	return ai.TranscribeResult{Text: s.text}, s.err
@@ -188,5 +191,61 @@ func TestAnEmptyTranscriptIsNotAnError(t *testing.T) {
 	}
 	if text != "" {
 		t.Fatalf("text = %q, want empty", text)
+	}
+}
+
+// stubVocabulary stands in for internal/voice/vocab.
+type stubVocabulary struct {
+	terms []string
+	err   error
+	calls int
+}
+
+func (s *stubVocabulary) VoiceTerms(_ context.Context, _ users.User) ([]string, error) {
+	s.calls++
+	return s.terms, s.err
+}
+
+func TestTheVocabularyHintReachesTheRecogniser(t *testing.T) {
+	stub := &stubTranscriber{text: "kettlebell swings"}
+	words := &stubVocabulary{terms: []string{"Kettlebell swings", "Yerba mate"}}
+	svc := voice.NewService(voice.Options{Transcriber: stub, Vocabulary: words})
+
+	if _, err := svc.Transcribe(context.Background(), newUser(), oggHeader(), surface); err != nil {
+		t.Fatalf("transcribe: %v", err)
+	}
+	if len(stub.sawVocabulary) != 2 {
+		t.Fatalf("the recogniser saw %v", stub.sawVocabulary)
+	}
+}
+
+// A hint is an accuracy improvement. Losing it must never cost the person the
+// sentence they just spoke.
+func TestAFailedVocabularyStillTranscribes(t *testing.T) {
+	stub := &stubTranscriber{text: "ran five kilometres"}
+	words := &stubVocabulary{err: errors.New("the database is having a moment")}
+	svc := voice.NewService(voice.Options{Transcriber: stub, Vocabulary: words})
+
+	text, err := svc.Transcribe(context.Background(), newUser(), oggHeader(), surface)
+	if err != nil {
+		t.Fatalf("transcribe: %v", err)
+	}
+	if text != "ran five kilometres" {
+		t.Fatalf("text = %q", text)
+	}
+	if len(stub.sawVocabulary) != 0 {
+		t.Fatalf("a failed hint still sent %v", stub.sawVocabulary)
+	}
+}
+
+func TestNoVocabularySourceIsFine(t *testing.T) {
+	stub := &stubTranscriber{text: "slept six hours"}
+	svc := voice.NewService(voice.Options{Transcriber: stub})
+
+	if _, err := svc.Transcribe(context.Background(), newUser(), oggHeader(), surface); err != nil {
+		t.Fatalf("transcribe: %v", err)
+	}
+	if len(stub.sawVocabulary) != 0 {
+		t.Fatalf("sent %v with no source wired", stub.sawVocabulary)
 	}
 }

@@ -78,6 +78,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/vault"
 	vaultdb "github.com/NorthAIProject/north-client/internal/vault/db"
 	"github.com/NorthAIProject/north-client/internal/voice"
+	"github.com/NorthAIProject/north-client/internal/voice/vocab"
 	"github.com/NorthAIProject/north-client/internal/workouts"
 	"github.com/NorthAIProject/north-client/web/assets"
 	"github.com/NorthAIProject/north-client/web/landing"
@@ -919,7 +920,16 @@ func routes(
 	// Voice is built once and shared. Two surfaces accept speech — the web
 	// recorder and, further down, Telegram voice notes — and the bounds and
 	// refusals that go with a recording should not be written twice.
-	voiceSvc := voice.NewService(voice.Options{Transcriber: transcriber})
+	voiceSvc := voice.NewService(voice.Options{
+		Transcriber: transcriber,
+
+		// The recogniser mangles proper nouns, and the cheapest correction
+		// available is telling it which ones this account already contains —
+		// goal titles and habit names. The infra doc calls this the highest
+		// leverage thing in the feature, and it is two indexed queries against
+		// a transcription that takes seconds.
+		Vocabulary: vocab.New(goalSvc, habitSvc),
+	})
 
 	// Quick capture composes the six logging slices behind one box. It owns no
 	// table; the parse is a model call and the commit is the same writes the
