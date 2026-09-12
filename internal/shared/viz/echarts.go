@@ -196,14 +196,17 @@ func TrainingTrendJSON(labels []string, bands []TrendBand, normalLabel string, n
 	})
 
 	option := map[string]any{
-		"grid": map[string]any{"left": 44, "right": 12, "top": 28, "bottom": 28},
+		// The bottom margin has to clear two things stacked under the plot:
+		// the date labels, and the legend sitting on the floor of the canvas.
+		// At 28 they landed in the same strip and overlapped.
+		"grid": map[string]any{"left": 44, "right": 12, "top": 28, "bottom": 64},
 		"tooltip": map[string]any{
 			"trigger":     "axis",
 			"axisPointer": map[string]any{"type": "shadow"},
 		},
 		"legend": map[string]any{
 			"show":       true,
-			"bottom":     0,
+			"bottom":     4,
 			"itemWidth":  8,
 			"itemHeight": 8,
 			"textStyle":  map[string]any{"color": "var(--muted-foreground)", "fontSize": 10},
@@ -213,7 +216,7 @@ func TrainingTrendJSON(labels []string, bands []TrendBand, normalLabel string, n
 			"data":      labels,
 			"axisLine":  map[string]any{"lineStyle": map[string]any{"color": "var(--border)"}},
 			"axisTick":  map[string]any{"show": false},
-			"axisLabel": map[string]any{"color": "var(--muted-foreground)", "fontSize": 10, "interval": "auto"},
+			"axisLabel": map[string]any{"color": "var(--muted-foreground)", "fontSize": 10, "interval": "auto", "margin": 10},
 		},
 		"yAxis": map[string]any{
 			"type":          "value",

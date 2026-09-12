@@ -129,7 +129,7 @@ templ verdict(trend strava.Trend) {
 templ trendChart(trend strava.Trend) {
 	if option, err := trendChartOption(trend); err == nil {
 		@templ.JSONScript("activity-trend-option", json.RawMessage(option))
-		@ui.EChartsMount("activity-trend", "activity-trend-option", "h-64 w-full sm:h-72")
+		@ui.EChartsMount("activity-trend", "activity-trend-option", "h-72 w-full sm:h-80")
 	}
 }
 
