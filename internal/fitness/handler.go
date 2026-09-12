@@ -4,6 +4,7 @@ import (
 	"crypto/subtle"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -11,6 +12,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/fitness/strava"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	fitnesspages "github.com/NorthAIProject/north-client/web/fitness"
 )
@@ -42,7 +44,7 @@ func (h *Handler) Routes(r chi.Router) {
 
 	r.Get("/fitness/activities", h.activities)
 	r.Get("/fitness/activities/terrain", h.terrain)
-	r.Get("/fitness/activities/list", h.terrainList)
+	r.Get("/fitness/activities/sessions", h.activitySessions)
 
 	r.Get("/fitness/strava/connect", h.stravaConnect)
 	r.Get("/fitness/strava/callback", h.stravaCallback)
@@ -61,7 +63,10 @@ func (h *Handler) activities(w http.ResponseWriter, r *http.Request) {
 		status = strava.Status{Configured: h.strava.Configured(), Unavailable: true}
 	}
 
-	var page strava.TerrainPage
+	var (
+		page     strava.TerrainPage
+		sessions strava.SessionPage
+	)
 	if status.Connected {
 		page, err = h.strava.Terrain(ctx, user.ID, user.Location(), time.Time{}, 0)
 		if err != nil {
@@ -73,12 +78,58 @@ func (h *Handler) activities(w http.ResponseWriter, r *http.Request) {
 			page = strava.TerrainPage{}
 			status.Unavailable = true
 		}
+
+		sessions, err = h.strava.Sessions(ctx, user.ID, user.Location(), sessionPageParam(r), 0)
+		if err != nil {
+			middleware.FromContext(ctx).Error("read activity sessions", slog.Any("error", err))
+			sessions = strava.SessionPage{}
+			status.Unavailable = true
+		}
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := fitnesspages.ActivitiesPage(user, status, page).Render(ctx, w); err != nil {
+	if err := fitnesspages.ActivitiesPage(user, status, page, sessions).Render(ctx, w); err != nil {
 		middleware.FromContext(ctx).Error("render activities", slog.Any("error", err))
 	}
+}
+
+// activitySessions serves one page of the session list, as the markup the
+// pager swaps in.
+//
+// A fragment rather than a whole page because turning a page must not rebuild
+// the terrain: the scene is a WebGL context with weeks resident on the GPU,
+// and throwing it away to read the next ten rows would be both slow and
+// jarring. The pager's links carry real hrefs, so this endpoint is also what a
+// reader without JavaScript lands on.
+func (h *Handler) activitySessions(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+	ctx := r.Context()
+
+	sessions, err := h.strava.Sessions(ctx, user.ID, user.Location(), sessionPageParam(r), 0)
+	if err != nil {
+		middleware.FromContext(ctx).Error("read activity sessions", slog.Any("error", err))
+		http.Error(w, "Your activities could not be read just now.", httpx.Status(err))
+		return
+	}
+
+	// Somebody's training history. Never a shared cache, never a disk copy.
+	w.Header().Set("Cache-Control", "private, no-store")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := fitnesspages.ActivitySessions(sessions, user.Location()).Render(ctx, w); err != nil {
+		middleware.FromContext(ctx).Error("render activity sessions", slog.Any("error", err))
+	}
+}
+
+// sessionPageParam reads ?page=. Anything that is not a positive number is
+// page one: a pager is navigation, and navigation that answers a fat-fingered
+// URL with a 422 is worse than one that answers it with the first page. The
+// service clamps the upper end against how many pages there actually are.
+func sessionPageParam(r *http.Request) int {
+	n, err := strconv.Atoi(r.URL.Query().Get("page"))
+	if err != nil || n < 1 {
+		return 1
+	}
+	return n
 }
 
 func (h *Handler) hub(w http.ResponseWriter, r *http.Request) {

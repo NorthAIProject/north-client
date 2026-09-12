@@ -26,6 +26,9 @@ import (
 // This never serves the first page. That one is rendered into the document,
 // so the scene draws without a round trip and the page still works when this
 // endpoint is down.
+//
+// The list beside the scene no longer pages by week. It is a flat, numbered
+// list of sessions with its own endpoint; see activitySessions in handler.go.
 
 // terrainWeeksParam is how many weeks one request may ask for. The service
 // clamps it too; this is the earlier, cheaper no.
@@ -55,38 +58,6 @@ func (h *Handler) terrain(w http.ResponseWriter, r *http.Request) {
 	// Somebody's training history. Never a shared cache, never a disk copy.
 	w.Header().Set("Cache-Control", "private, no-store")
 	httpx.WriteJSON(w, http.StatusOK, fitnesspages.NewTerrainPayload(page))
-}
-
-// terrainList serves a page of weeks as the markup the strip swaps in.
-//
-// The same service call as the JSON endpoint, rendered instead of marshalled.
-// Row markup then exists in one .templ file rather than in a template and a
-// client-side renderer that have to agree.
-func (h *Handler) terrainList(w http.ResponseWriter, r *http.Request) {
-	user := auth.MustUser(r.Context())
-	ctx := r.Context()
-
-	before, weeks, err := terrainQuery(r, user.Location())
-	if err != nil {
-		http.Error(w, "That is not a date this page can start from.", http.StatusUnprocessableEntity)
-		return
-	}
-
-	page, err := h.strava.Terrain(ctx, user.ID, user.Location(), before, weeks)
-	if err != nil {
-		middleware.FromContext(ctx).Error("build activity strip", slog.Any("error", err))
-		http.Error(w, "Your activities could not be read just now.", httpx.Status(err))
-		return
-	}
-
-	w.Header().Set("Cache-Control", "private, no-store")
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	// The page fragment, not ActivityStrip: this response is swapped in over
-	// the tail of a strip that already exists, so bringing the #activity-strip
-	// wrapper with it would put a second one in the document.
-	if err := fitnesspages.ActivityStripPage(page, user.Location()).Render(ctx, w); err != nil {
-		middleware.FromContext(ctx).Error("render activity strip", slog.Any("error", err))
-	}
 }
 
 // terrainQuery reads the cursor and the page size.

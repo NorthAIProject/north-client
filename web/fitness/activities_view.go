@@ -3,6 +3,7 @@ package fitness
 import (
 	"fmt"
 	"net/url"
+	"strconv"
 	"time"
 
 	"github.com/NorthAIProject/north-client/internal/fitness/strava"
@@ -132,19 +133,6 @@ func countedDays(page strava.TerrainPage) int {
 	return n
 }
 
-// olderURL is the link to the page of weeks before this one.
-//
-// Built here rather than in the template so the cursor format lives next to
-// the code that parses it.
-func olderURL(page strava.TerrainPage) string {
-	if len(page.Weeks) == 0 {
-		return "/app/fitness/activities"
-	}
-	q := url.Values{}
-	q.Set("before", page.Weeks[0].Start.Format(time.DateOnly))
-	return "/app/fitness/activities/list?" + q.Encode()
-}
-
 // routeSummary is one session's numbers, in the order they are read: how far,
 // how long, how fast, how much up.
 func routeSummary(route strava.TerrainRoute) string {
@@ -184,59 +172,6 @@ func paceMinPerKm(route strava.TerrainRoute) string {
 	return fmt.Sprintf("%d:%02d /km", minutes, seconds)
 }
 
-// weeksNewestFirst is page.Weeks in the order a reader travels them.
-//
-// The terrain is laid out oldest-first — scene.js pins offset 0 to the newest
-// week so that prepending an older page moves nothing already drawn — but a
-// list that grows downward as older pages arrive only reads correctly running
-// newest to oldest. Reversed into a copy rather than in place: the same page
-// goes to the scene's JSON payload, and reversing that would put the landscape
-// back to front.
-func weeksNewestFirst(page strava.TerrainPage) []strava.TerrainWeek {
-	out := make([]strava.TerrainWeek, len(page.Weeks))
-	for i, week := range page.Weeks {
-		out[len(page.Weeks)-1-i] = week
-	}
-	return out
-}
-
-// daysNewestFirst is a week's days, latest first, for the same reason.
-func daysNewestFirst(week strava.TerrainWeek) []strava.TerrainDay {
-	out := make([]strava.TerrainDay, 0, len(week.Days))
-	for i := len(week.Days) - 1; i >= 0; i-- {
-		out = append(out, week.Days[i])
-	}
-	return out
-}
-
-// dayKey is how a day is named on the wire between the list and the scene.
-func dayKey(day strava.TerrainDay) string {
-	return day.Date.Format(time.DateOnly)
-}
-
-// dayElementID is the day's anchor in the document.
-//
-// The scene scrolls the list to the day somebody clicked. It used to find the
-// row by searching the markup for an Alpine attribute containing the date,
-// which tied a behaviour to the spelling of a template. An id is the thing
-// that survives the next edit to this file.
-func dayElementID(day strava.TerrainDay) string {
-	return "day-" + dayKey(day)
-}
-
-// routeClock is when a session started, in the reader's own zone. Empty when
-// the import carried no start time, so the row omits the column rather than
-// claiming midnight.
-func routeClock(route strava.TerrainRoute, loc *time.Location) string {
-	if route.StartedAt.IsZero() {
-		return ""
-	}
-	if loc == nil {
-		loc = time.UTC
-	}
-	return route.StartedAt.In(loc).Format("15:04")
-}
-
 // stravaActivityURL is where a session can be read in full. Empty for an
 // activity with no Strava id, which is what a manually built TerrainRoute has.
 func stravaActivityURL(route strava.TerrainRoute) string {
@@ -244,4 +179,96 @@ func stravaActivityURL(route strava.TerrainRoute) string {
 		return ""
 	}
 	return fmt.Sprintf("https://www.strava.com/activities/%d", route.StravaID)
+}
+
+// routeWhen is when a session happened, as the list reads it: the day, then
+// the time. The flat list has no day heading to inherit a date from, so every
+// row carries its own.
+func routeWhen(route strava.TerrainRoute, loc *time.Location) string {
+	if route.StartedAt.IsZero() {
+		return ""
+	}
+	if loc == nil {
+		loc = time.UTC
+	}
+	return route.StartedAt.In(loc).Format("Mon 2 Jan 15:04")
+}
+
+// routeDayKey is the calendar day a session belongs to, in the reader's zone.
+// It is how a row in the list names the column the scene should highlight.
+func routeDayKey(route strava.TerrainRoute, loc *time.Location) string {
+	if loc == nil {
+		loc = time.UTC
+	}
+	if route.StartedAt.IsZero() {
+		return ""
+	}
+	return route.StartedAt.In(loc).Format(time.DateOnly)
+}
+
+// sessionsPageURL is where a page of the list lives as a whole document, and
+// sessionsFragmentURL is the same page as the markup the pager swaps in.
+//
+// Two URLs rather than one because they answer different readers: the href is
+// a real page somebody can bookmark or open without JavaScript, and the hx-get
+// is the fragment that leaves the WebGL scene standing.
+func sessionsPageURL(page int) string {
+	return "/app/fitness/activities?" + pageQuery(page)
+}
+
+func sessionsFragmentURL(page int) string {
+	return "/app/fitness/activities/sessions?" + pageQuery(page)
+}
+
+func pageQuery(page int) string {
+	q := url.Values{}
+	q.Set("page", strconv.Itoa(page))
+	return q.Encode()
+}
+
+// ellipsis is the gap in a page list, as a page number no page can have.
+const ellipsis = 0
+
+// sessionPageNumbers is the pager's run of numbers: the first page, the last
+// page, the ones either side of the current one, and an ellipsis wherever that
+// leaves a gap.
+//
+// Built here rather than in the template because it is a loop with three edge
+// cases, and a template is the wrong place to read one.
+func sessionPageNumbers(page strava.SessionPage) []int {
+	if page.TotalPages <= 1 {
+		return nil
+	}
+
+	// Few enough to show whole: a pager that elides two numbers is just a
+	// pager that made itself harder to read.
+	const showAll = 7
+	if page.TotalPages <= showAll {
+		out := make([]int, 0, page.TotalPages)
+		for n := 1; n <= page.TotalPages; n++ {
+			out = append(out, n)
+		}
+		return out
+	}
+
+	want := map[int]bool{1: true, page.TotalPages: true}
+	for n := page.Page - 1; n <= page.Page+1; n++ {
+		if n >= 1 && n <= page.TotalPages {
+			want[n] = true
+		}
+	}
+
+	out := make([]int, 0, len(want)+2)
+	previous := 0
+	for n := 1; n <= page.TotalPages; n++ {
+		if !want[n] {
+			continue
+		}
+		if previous != 0 && n != previous+1 {
+			out = append(out, ellipsis)
+		}
+		out = append(out, n)
+		previous = n
+	}
+	return out
 }
