@@ -60,19 +60,3 @@ func TestSniffRefusesWhatIsNotARecording(t *testing.T) {
 		})
 	}
 }
-
-// ChainSafe is the codec gap written down. internal/ai/openaicompat names
-// exactly two audio formats, so anything else must be transcoded before it
-// reaches a provider that is not Gemini.
-func TestOnlyWavAndMpegAreChainSafe(t *testing.T) {
-	for _, mime := range []string{"audio/wav", "audio/mpeg"} {
-		if !audio.ChainSafe(mime) {
-			t.Fatalf("ChainSafe(%q) = false, want true", mime)
-		}
-	}
-	for _, mime := range []string{"audio/ogg", "audio/webm", "audio/mp4", "application/ogg", ""} {
-		if audio.ChainSafe(mime) {
-			t.Fatalf("ChainSafe(%q) = true, want false", mime)
-		}
-	}
-}

@@ -1,14 +1,16 @@
-// Package audio names the container a recording arrived in, and says whether
-// every provider North talks to can read it.
+// Package audio names the container a recording arrived in.
 //
-// It sits in shared rather than beside either caller because both surfaces that
-// accept speech — the web recorder in internal/capture and Telegram voice notes
-// in internal/messaging — must hand a model the same shape. Two copies of this
-// would drift, and the drift would be invisible: a container one surface accepts
-// and the other silently mis-reads.
+// It answers one question — is this a recording, and of what kind — and two
+// things depend on the answer: whether bytes are worth uploading at all, and
+// what to call the file when they are. The recogniser takes every container
+// named here as-is, so nothing in North converts audio; this is a gate and a
+// label, not a codec.
+//
+// It sits in shared because both surfaces that accept speech — the web recorder
+// in internal/capture and Telegram voice notes in internal/messaging — must
+// agree about what counts as a recording. Two copies would drift, and the drift
+// would be invisible: a container one surface accepts and the other refuses.
 package audio
-
-import "strings"
 
 // sniff is one container signature and the type it means.
 type sniff struct {
@@ -62,26 +64,4 @@ func Sniff(header []byte) string {
 		}
 	}
 	return ""
-}
-
-// ChainSafe reports whether every provider in North's chain can read this
-// container directly.
-//
-// Only two, and the number is not arbitrary: the OpenAI dialect carries audio
-// as a bare format word and names exactly "wav" and "mp3" — see audioFormat in
-// internal/ai/openaicompat/client.go. Gemini ingests far more than that, but a
-// deployment whose chain has no Gemini key is the ordinary case, so the floor is
-// what the dialect accepts.
-//
-// Anything else must be transcoded before it reaches a model. Sending it anyway
-// fails in the least useful way available: no error naming audio, just a model
-// that saw nothing.
-func ChainSafe(mime string) bool {
-	base, _, _ := strings.Cut(mime, ";")
-	switch strings.TrimSpace(base) {
-	case "audio/wav", "audio/mpeg":
-		return true
-	default:
-		return false
-	}
 }
