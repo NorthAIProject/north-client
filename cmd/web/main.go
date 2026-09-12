@@ -934,7 +934,7 @@ func routes(
 		// leverage thing in the feature, and it is two indexed queries against
 		// a transcription that takes seconds.
 		Vocabulary: vocab.New(goalSvc, habitSvc),
-	})
+	}).WithMetrics(metricsReg)
 
 	// Quick capture composes the six logging slices behind one box. It owns no
 	// table; the parse is a model call and the commit is the same writes the

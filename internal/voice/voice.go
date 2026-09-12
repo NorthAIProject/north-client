@@ -16,11 +16,13 @@ import (
 	"context"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/shared/aiattr"
 	"github.com/NorthAIProject/north-client/internal/shared/audio"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/metrics"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
@@ -79,6 +81,7 @@ type Options struct {
 type Service struct {
 	transcriber ai.Transcriber
 	vocabulary  Vocabulary
+	metrics     *metrics.Registry
 	log         *slog.Logger
 }
 
@@ -92,6 +95,17 @@ func NewService(opts Options) *Service {
 		vocabulary:  opts.Vocabulary,
 		log:         log,
 	}
+}
+
+// WithMetrics records what recordings cost.
+//
+// Not money — transcription is free per request. What a recording spends is
+// time on a CPU pod with one replica, shared with another application, so the
+// wall clock is the number worth having and this is the only place that sees
+// it for both surfaces.
+func (s *Service) WithMetrics(r *metrics.Registry) *Service {
+	s.metrics = r
+	return s
 }
 
 // Available reports whether this deployment can transcribe at all. Callers use
@@ -144,6 +158,7 @@ func (s *Service) Transcribe(ctx context.Context, user users.User, recording []b
 
 	ctx = aiattr.WithUser(ctx, user.ID, surface)
 
+	started := time.Now()
 	result, err := s.transcriber.Transcribe(ctx, ai.TranscribeRequest{
 		Audio:    recording,
 		MIMEType: mime,
@@ -155,7 +170,20 @@ func (s *Service) Transcribe(ctx context.Context, user users.User, recording []b
 		Tier:       string(user.Tier),
 	})
 	if err != nil {
+		s.metrics.VoiceTranscription(surface, time.Since(started), len(recording), metrics.OutcomeError)
 		return "", err
 	}
-	return strings.TrimSpace(result.Text), nil
+
+	text := strings.TrimSpace(result.Text)
+
+	// Silence counts as its own outcome rather than a success. It is what tells
+	// you whether people are tapping the button by accident, and that is worth
+	// seeing without it being buried in the successes.
+	outcome := metrics.OutcomeSuccess
+	if text == "" {
+		outcome = metrics.OutcomeEmpty
+	}
+	s.metrics.VoiceTranscription(surface, time.Since(started), len(recording), outcome)
+
+	return text, nil
 }
