@@ -143,3 +143,95 @@ func clampPercent(v int) int {
 		return v
 	}
 }
+
+// TrendBand is one stacked band of the training chart: a sport family, its
+// colour, and its minutes on each drawn day.
+type TrendBand struct {
+	Label  string
+	Color  string
+	Values []float64
+}
+
+// TrainingTrendJSON returns the option for the training chart: a stacked bar
+// per day, and a line for what a normal day holds.
+//
+// Built as a plain option map rather than through go-echarts. The chart is a
+// stack of a variable number of bar series with a line overlaid on the same
+// axes, and expressing that through Overlap costs more code than it saves
+// while hiding which keys actually reach ECharts. Everything here is ordinary
+// JSON, which is all the mount consumes.
+//
+// Colours arrive as CSS custom properties. echarts-init.js resolves them
+// against the document before handing the option to ECharts, so one option
+// serves both themes and follows the theme switch.
+func TrainingTrendJSON(labels []string, bands []TrendBand, normalLabel string, normal []float64) ([]byte, error) {
+	series := make([]map[string]any, 0, len(bands)+1)
+
+	for _, band := range bands {
+		if !anyAbove(band.Values, 0) {
+			// A family nobody trains is not drawn, and does not take a slot in
+			// the legend either. Six empty bands would make every chart look
+			// like it was mostly missing.
+			continue
+		}
+		series = append(series, map[string]any{
+			"name":        band.Label,
+			"type":        "bar",
+			"stack":       "minutes",
+			"data":        band.Values,
+			"itemStyle":   map[string]any{"color": band.Color, "borderRadius": []int{2, 2, 0, 0}},
+			"barMaxWidth": 18,
+		})
+	}
+
+	series = append(series, map[string]any{
+		"name":       normalLabel,
+		"type":       "line",
+		"data":       normal,
+		"smooth":     true,
+		"showSymbol": false,
+		"lineStyle":  map[string]any{"color": "var(--foreground)", "width": 2, "type": "dashed"},
+		"itemStyle":  map[string]any{"color": "var(--foreground)"},
+		"z":          3,
+	})
+
+	option := map[string]any{
+		"grid": map[string]any{"left": 44, "right": 12, "top": 28, "bottom": 28},
+		"tooltip": map[string]any{
+			"trigger":     "axis",
+			"axisPointer": map[string]any{"type": "shadow"},
+		},
+		"legend": map[string]any{
+			"show":       true,
+			"bottom":     0,
+			"itemWidth":  8,
+			"itemHeight": 8,
+			"textStyle":  map[string]any{"color": "var(--muted-foreground)", "fontSize": 10},
+		},
+		"xAxis": map[string]any{
+			"type":      "category",
+			"data":      labels,
+			"axisLine":  map[string]any{"lineStyle": map[string]any{"color": "var(--border)"}},
+			"axisTick":  map[string]any{"show": false},
+			"axisLabel": map[string]any{"color": "var(--muted-foreground)", "fontSize": 10, "interval": "auto"},
+		},
+		"yAxis": map[string]any{
+			"type":          "value",
+			"name":          "minutes",
+			"nameTextStyle": map[string]any{"color": "var(--muted-foreground)", "fontSize": 10, "align": "left"},
+			"axisLabel":     map[string]any{"color": "var(--muted-foreground)", "fontSize": 10},
+			"splitLine":     map[string]any{"lineStyle": map[string]any{"color": "var(--border)", "opacity": 0.4}},
+		},
+		"series": series,
+	}
+	return json.Marshal(option)
+}
+
+func anyAbove(values []float64, floor float64) bool {
+	for _, v := range values {
+		if v > floor {
+			return true
+		}
+	}
+	return false
+}

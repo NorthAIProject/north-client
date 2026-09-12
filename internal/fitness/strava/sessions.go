@@ -28,7 +28,7 @@ const (
 // SessionPage is one page of the list, and everything the pager needs to draw
 // itself: which page this is, how many there are, and the rows.
 type SessionPage struct {
-	Sessions []TerrainRoute
+	Sessions []Session
 
 	// Page is 1-based, as it is written in the interface and in the URL.
 	Page       int
@@ -101,9 +101,9 @@ func (s *Service) Sessions(ctx context.Context, userID uuid.UUID, loc *time.Loca
 		return SessionPage{}, err
 	}
 
-	out.Sessions = make([]TerrainRoute, 0, len(activities))
+	out.Sessions = make([]Session, 0, len(activities))
 	for _, a := range activities {
-		out.Sessions = append(out.Sessions, routeOf(a, loc))
+		out.Sessions = append(out.Sessions, sessionOf(a, loc))
 	}
 	return out, nil
 }
