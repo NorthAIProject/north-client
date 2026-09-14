@@ -71,6 +71,15 @@ type ClientSource interface {
 // must not leak a goroutine forever.
 const generationTimeout = 5 * time.Minute
 
+// replyMaxTokens caps a coach turn.
+//
+// OpenRouter (and anything else that pre-authorizes max_tokens × price)
+// refuses a request whose reservation exceeds remaining credit even when the
+// actual reply would be a few hundred tokens. A turn with no cap inherits the
+// model's default output window — 64k for Claude 4.5 — which is how Telegram
+// started answering "something went wrong" with credits still in the account.
+const replyMaxTokens = 8192
+
 // persistTimeout bounds the write that saves a completed reply.
 const persistTimeout = 15 * time.Second
 
@@ -418,6 +427,8 @@ func (s *Service) startChat(
 
 	genCtx = aiattr.WithUser(genCtx, user.ID, spend.SurfaceCoach)
 
+	req = capReplyTokens(req)
+
 	client, err := s.eachProvider(ctx, user, len(req.Tools) > 0, func(c ai.Client) error {
 		opened, err := c.Chat(genCtx, req)
 		stream = opened
@@ -517,6 +528,15 @@ func (s *Service) eachProvider(ctx context.Context, user users.User, needsTools 
 	return s.runner.Run(ctx, opts, attempt)
 }
 
+// capReplyTokens fills MaxTokens when the caller left it at the zero value,
+// which otherwise means "the model's whole output window".
+func capReplyTokens(req ai.Request) ai.Request {
+	if req.MaxTokens <= 0 {
+		req.MaxTokens = replyMaxTokens
+	}
+	return req
+}
+
 // ownFailureReason summarises why a user's provider refused, in words meant
 // for the person who owns the key.
 //
@@ -611,7 +631,11 @@ func (s *Service) pump(
 	// One pass per round-trip to the model. A pass that ends in tool calls
 	// runs them, appends what they returned, and asks again; a pass that ends
 	// in prose is the answer.
-	request := target.request
+	//
+	// Capped here as well as in startChat: the first Chat already ran, but
+	// every follow-up after tools uses this copy, and an uncapped reservation
+	// is how OpenRouter 402s a turn that would otherwise fit.
+	request := capReplyTokens(target.request)
 
 	for round := 0; ; round++ {
 		var calls []ai.ToolCall
