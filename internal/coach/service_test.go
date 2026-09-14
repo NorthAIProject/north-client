@@ -142,6 +142,41 @@ func TestSendMessageStreamsAndStoresBothTurns(t *testing.T) {
 	}
 }
 
+// OpenRouter pre-authorizes max_tokens × price. A turn with no cap inherits
+// the model's 64k output window and 402s when remaining credit cannot cover
+// that reservation — which is how Telegram started answering with an apology
+// while credits were still in the account. 8192 is the bound startChat applies.
+func TestAReplyAsksForABoundedNumberOfTokens(t *testing.T) {
+	h := newHarness(t, fake.Text("Keep the load the same."))
+	ctx := context.Background()
+
+	conversation, err := h.coach.StartConversation(ctx, h.user.ID)
+	if err != nil {
+		t.Fatalf("start conversation: %v", err)
+	}
+	stream, err := h.coach.SendMessage(ctx, h.user, conversation.ID, "What should I do next session?")
+	if err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	if _, err := drain(stream); err != nil {
+		t.Fatalf("stream: %v", err)
+	}
+
+	// Title generation also calls the client, with a 40-token cap. The reply
+	// is the call that carried the person's question.
+	var got int
+	for _, req := range h.client.Calls() {
+		for _, m := range req.Messages {
+			if strings.Contains(m.Text(), "What should I do next session?") {
+				got = req.MaxTokens
+			}
+		}
+	}
+	if got != 8192 {
+		t.Fatalf("reply MaxTokens = %d, want 8192 so OpenRouter does not reserve the model's whole window", got)
+	}
+}
+
 // The behaviour the detached-context design exists for. A user who closes the
 // tab mid-answer loses the live view, not the answer.
 func TestReplyIsStoredEvenWhenTheUserDisconnects(t *testing.T) {

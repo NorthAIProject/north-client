@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/NorthAIProject/north-client/internal/messaging"
+	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 )
 
@@ -196,7 +197,11 @@ func (b *bridge) answer(ctx context.Context, in messaging.InboundMessage, callba
 		// linked user" — the case where there is no language to know yet. It
 		// still goes through the catalogue so the string lives in one place and
 		// starts working the day the locale is resolved earlier.
-		out = messaging.OutboundMessage{Text: i18n.T(ctx, "tg.wrong")}
+		key := "tg.wrong"
+		if apperr.Is(err, apperr.ErrPaymentRequired) {
+			key = "tg.nocredit"
+		}
+		out = messaging.OutboundMessage{Text: i18n.T(ctx, key)}
 	}
 
 	if err := b.client.Send(ctx, in.ExternalID, out); err != nil {

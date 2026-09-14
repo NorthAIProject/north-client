@@ -34,6 +34,7 @@ var englishTelegram = map[string]string{
 	"tg.voice.silent":      "I did not hear anything in that. Try again?",
 	"tg.voice.download":    "I could not download that voice note. Try sending it again?",
 	"tg.wrong":             "Something went wrong on my side. Try again in a moment.",
+	"tg.nocredit":          "I cannot reach a model right now — the service is out of credit. Try again in a moment.",
 
 	// The consent gate. Asking permission in a language somebody did not choose
 	// is the one place where falling back to English is not merely untidy.
