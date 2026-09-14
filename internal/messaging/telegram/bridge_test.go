@@ -2,12 +2,14 @@ package telegram
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/NorthAIProject/north-client/internal/messaging"
+	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
 // slowHandler answers only once released, so a test can hold a turn open for
@@ -144,5 +146,66 @@ func TestAFailedPhotoDownloadStillMentionsAPhoto(t *testing.T) {
 	text, _ := sends[0].body["text"].(string)
 	if !strings.Contains(strings.ToLower(text), "photo") {
 		t.Fatalf("a failed photo download did not mention a photo: %q", text)
+	}
+}
+
+type errHandler struct{ err error }
+
+func (h errHandler) Handle(_ context.Context, _ messaging.InboundMessage) (messaging.OutboundMessage, error) {
+	return messaging.OutboundMessage{}, h.err
+}
+
+func TestAPaymentRefusalSaysTheServiceIsOutOfCredit(t *testing.T) {
+	api := newBotAPI(t)
+
+	b := &bridge{
+		messages:    errHandler{err: apperr.Wrap(apperr.ErrPaymentRequired, "openrouter")},
+		client:      api.client(),
+		log:         slog.Default(),
+		typingEvery: time.Hour,
+	}
+
+	b.answer(context.Background(), messaging.InboundMessage{
+		Platform:   messaging.PlatformTelegram,
+		ExternalID: "884422",
+		Text:       "how am I doing?",
+	}, "")
+
+	sends := api.sends()
+	if len(sends) != 1 {
+		t.Fatalf("expected one reply, got %d", len(sends))
+	}
+	text, _ := sends[0].body["text"].(string)
+	if !strings.Contains(strings.ToLower(text), "credit") {
+		t.Fatalf("a payment refusal did not mention credit: %q", text)
+	}
+	if strings.Contains(text, "Something went wrong on my side") {
+		t.Fatalf("a payment refusal used the generic apology: %q", text)
+	}
+}
+
+func TestAnyOtherFailureStillApologises(t *testing.T) {
+	api := newBotAPI(t)
+
+	b := &bridge{
+		messages:    errHandler{err: errors.New("could not load the linked user")},
+		client:      api.client(),
+		log:         slog.Default(),
+		typingEvery: time.Hour,
+	}
+
+	b.answer(context.Background(), messaging.InboundMessage{
+		Platform:   messaging.PlatformTelegram,
+		ExternalID: "884422",
+		Text:       "hi",
+	}, "")
+
+	sends := api.sends()
+	if len(sends) != 1 {
+		t.Fatalf("expected one reply, got %d", len(sends))
+	}
+	text, _ := sends[0].body["text"].(string)
+	if text != "Something went wrong on my side. Try again in a moment." {
+		t.Fatalf("generic failure = %q", text)
 	}
 }

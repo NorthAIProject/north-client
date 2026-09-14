@@ -22,6 +22,7 @@ var portugueseEuropeanTelegram = map[string]string{
 	"tg.voice.silent":      "Não ouvi nada aí. Tentas outra vez?",
 	"tg.voice.download":    "Não consegui descarregar essa mensagem de voz. Envias outra vez?",
 	"tg.wrong":             "Correu alguma coisa mal do meu lado. Tenta outra vez daqui a pouco.",
+	"tg.nocredit":          "Não consigo chegar a um modelo agora — o serviço está sem crédito. Tenta outra vez daqui a pouco.",
 
 	"tg.confirm.again": "Ainda preciso de um sim ou de um não primeiro.",
 	"tg.confirm":       "Antes de fazer isto, confirmas?",

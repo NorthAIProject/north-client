@@ -22,6 +22,7 @@ var spanishTelegram = map[string]string{
 	"tg.voice.silent":      "No he oído nada ahí. ¿Lo intentas otra vez?",
 	"tg.voice.download":    "No he podido descargar esa nota de voz. ¿Me la envías otra vez?",
 	"tg.wrong":             "Algo ha ido mal por mi lado. Inténtalo de nuevo en un momento.",
+	"tg.nocredit":          "No puedo llegar a un modelo ahora mismo — el servicio se ha quedado sin crédito. Inténtalo de nuevo en un momento.",
 
 	"tg.confirm.again": "Todavía necesito un sí o un no primero.",
 	"tg.confirm":       "Antes de hacer esto, ¿me lo confirmas?",
