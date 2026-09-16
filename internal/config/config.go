@@ -45,6 +45,10 @@ type Config struct {
 
 	DatabaseURL string
 
+	// MetricsSecret guards the /internal/metrics endpoint used by the
+	// portfolio dashboard at facorreia.com/apps. Empty disables the route.
+	MetricsSecret string
+
 	SessionLifetime time.Duration
 
 	// AutoMigrate controls whether a process applies pending goose migrations
@@ -481,7 +485,8 @@ func Load() (*Config, error) {
 		BaseURL:  optional("BASE_URL", "http://localhost:8090"),
 		LogLevel: optional("LOG_LEVEL", "info"),
 
-		DatabaseURL: require("DATABASE_URL"),
+		DatabaseURL:   require("DATABASE_URL"),
+		MetricsSecret: optional("METRICS_SECRET", ""),
 
 		SMTP: SMTPConfig{
 			Host:     strings.TrimSpace(os.Getenv("SMTP_HOST")),

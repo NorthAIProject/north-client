@@ -1360,6 +1360,12 @@ func routes(
 		pwa.Mount(r)
 
 		r.Get("/healthz", healthz(pool))
+
+		// Internal operator endpoint: total user count for the portfolio
+		// dashboard at facorreia.com/apps. Guarded by METRICS_SECRET.
+		if cfg.MetricsSecret != "" {
+			r.Get("/internal/metrics", metricsHandler(pool, cfg.MetricsSecret))
+		}
 		r.Method(http.MethodGet, "/", templ.Handler(landing.Page()))
 
 		// Public and outside /app on purpose: somebody deciding whether to
