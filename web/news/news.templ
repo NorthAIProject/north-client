@@ -1,0 +1,183 @@
+package newspages
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/NorthAIProject/north-client/internal/news/item"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/form"
+	"github.com/NorthAIProject/north-client/web/shared/ui/input"
+	"github.com/NorthAIProject/north-client/web/shared/ui/label"
+	switchcomp "github.com/NorthAIProject/north-client/web/shared/ui/switch"
+)
+
+// TickerShell lazy-loads the strip and refreshes it every five minutes. The
+// partial renders nothing when the ticker is off, so the shell collapses.
+templ TickerShell() {
+	<div
+		id="news-ticker"
+		hx-get="/app/news-ticker"
+		hx-trigger="load, every 300s"
+		hx-swap="innerHTML"
+	></div>
+}
+
+// TickerPanel is the strip: headline, source, time, link out. No bodies.
+templ TickerPanel(items []item.Item, now time.Time) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header(card.HeaderProps{Class: "flex flex-row items-start justify-between gap-4"}) {
+			<div>
+				@card.Title() {
+					{ i18n.T(ctx, "news.ticker.title") }
+				}
+				@card.Description() {
+					{ i18n.T(ctx, "news.ticker.attribution") }
+				}
+			</div>
+			@button.Button(button.Props{Href: "/app/settings/news-ticker", Variant: button.VariantGhost, Size: button.SizeSm}) {
+				{ i18n.T(ctx, "news.ticker.manage") }
+			}
+		}
+		@card.Content() {
+			if len(items) == 0 {
+				<p class="text-muted-foreground text-sm">{ i18n.T(ctx, "news.ticker.empty") }</p>
+			} else {
+				<ul class="divide-y divide-border" role="list">
+					for _, it := range items {
+						<li class="py-2">
+							<a href={ templ.SafeURL(it.URL) } target="_blank" rel="noopener" class="block hover:underline">
+								<span class="text-muted-foreground block text-xs">
+									if it.Source != "" {
+										{ it.Source }
+										{ " · " }
+									}
+									{ timeAgo(ctx, it.PublishedAt, now) }
+								</span>
+								<span class="text-sm font-medium">{ it.Title }</span>
+							</a>
+						</li>
+					}
+				</ul>
+			}
+		}
+	}
+}
+
+// FeedForm carries the "follow a feed" field and its error.
+type FeedForm struct {
+	URL    string
+	Errors map[string]string
+}
+
+func (f FeedForm) fieldError(name string) string { return f.Errors[name] }
+
+// SettingsData drives the settings page.
+type SettingsData struct {
+	Enabled  bool
+	Feeds    []item.UserFeed
+	MaxFeeds int
+	Form     FeedForm
+}
+
+templ SettingsPage(user users.User, data SettingsData) {
+	@layout.App(i18n.T(ctx, "news.settings.title"), user, layout.BuildNav(ctx, "/app/settings")) {
+		<div class="mx-auto max-w-2xl space-y-6">
+			<div>
+				<h1 class="text-2xl font-semibold tracking-tight">{ i18n.T(ctx, "news.settings.title") }</h1>
+				<p class="text-muted-foreground mt-1 text-sm">{ i18n.T(ctx, "news.settings.intro") }</p>
+			</div>
+			@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+				@card.Content(card.ContentProps{Class: "pt-6"}) {
+					<form method="post" action="/app/settings/news-ticker" class="flex items-center justify-between gap-4">
+						@ui.CSRFInput()
+						<div>
+							<p class="font-medium">{ i18n.T(ctx, "news.settings.toggle") }</p>
+							<p class="text-muted-foreground text-sm">{ i18n.T(ctx, "news.settings.toggle.desc") }</p>
+						</div>
+						@switchcomp.Switch(switchcomp.Props{ID: "news-ticker-enabled", Name: "enabled", Checked: data.Enabled, Attributes: templ.Attributes{"onchange": "this.form.requestSubmit()"}})
+						<noscript>
+							@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Size: button.SizeSm}) {
+								{ i18n.T(ctx, "news.settings.save") }
+							}
+						</noscript>
+					</form>
+				}
+			}
+			@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+				@card.Header() {
+					@card.Title() {
+						{ i18n.T(ctx, "news.settings.feeds") }
+					}
+					@card.Description() {
+						{ i18n.T(ctx, "news.settings.feeds.desc") }
+						{ " " }
+						{ fmt.Sprintf(i18n.T(ctx, "news.settings.feeds.used"), len(data.Feeds), data.MaxFeeds) }
+					}
+				}
+				@card.Content() {
+					if len(data.Feeds) > 0 {
+						<ul class="divide-y divide-border mb-4" role="list">
+							for _, feed := range data.Feeds {
+								<li class="flex items-center justify-between gap-3 py-2 text-sm">
+									<div class="min-w-0">
+										if feed.Title != "" {
+											<p class="truncate font-medium">{ feed.Title }</p>
+										}
+										<p class="text-muted-foreground truncate">{ feed.URL }</p>
+									</div>
+									<form method="post" action={ templ.SafeURL("/app/settings/news-ticker/feeds/" + feed.ID.String() + "/delete") }>
+										@ui.CSRFInput()
+										@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm}) {
+											{ i18n.T(ctx, "news.settings.remove") }
+										}
+									</form>
+								</li>
+							}
+						</ul>
+					}
+					if len(data.Feeds) < data.MaxFeeds {
+						<form method="post" action="/app/settings/news-ticker/feeds" class="space-y-3">
+							@ui.CSRFInput()
+							@form.Item() {
+								@label.Label(label.Props{For: "news-feed-url"}) {
+									{ i18n.T(ctx, "news.settings.url") }
+								}
+								@input.Input(input.Props{ID: "news-feed-url", Name: "url", Type: input.TypeURL, Value: data.Form.URL, Placeholder: "https://", HasError: data.Form.fieldError("url") != ""})
+								if msg := data.Form.fieldError("url"); msg != "" {
+									@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+										{ msg }
+									}
+								}
+							}
+							@button.Button(button.Props{Type: button.TypeSubmit}) {
+								{ i18n.T(ctx, "news.settings.add") }
+							}
+						</form>
+					}
+				}
+			}
+		</div>
+	}
+}
+
+// timeAgo is coarse on purpose: a ticker says "2h", not a timestamp.
+func timeAgo(ctx context.Context, at, now time.Time) string {
+	d := now.Sub(at)
+	switch {
+	case d < time.Minute:
+		return i18n.T(ctx, "news.ticker.now")
+	case d < time.Hour:
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh", int(d.Hours()))
+	default:
+		return fmt.Sprintf("%dd", int(d.Hours()/24))
+	}
+}

@@ -201,6 +201,16 @@ sql:
 
   - engine: postgresql
     schema: migrations
+    queries: internal/news/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: newsdb
+        out: internal/news/db
+        overrides: *overrides
+
+  - engine: postgresql
+    schema: migrations
     queries: internal/mind/db/queries.sql
     gen:
       go:

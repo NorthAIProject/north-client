@@ -17,4 +17,5 @@ type UserPreference struct {
 	DefaultGoal       string
 	DefaultMacroSplit string
 	UpdatedAt         time.Time
+	NewsTickerEnabled bool
 }

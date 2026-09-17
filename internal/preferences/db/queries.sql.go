@@ -12,7 +12,7 @@ import (
 )
 
 const getUserPreferences = `-- name: GetUserPreferences :one
-SELECT id, user_id, units_system, default_goal, default_macro_split, updated_at FROM user_preferences WHERE user_id = $1
+SELECT id, user_id, units_system, default_goal, default_macro_split, updated_at, news_ticker_enabled FROM user_preferences WHERE user_id = $1
 `
 
 func (q *Queries) GetUserPreferences(ctx context.Context, userID uuid.UUID) (UserPreference, error) {
@@ -25,6 +25,35 @@ func (q *Queries) GetUserPreferences(ctx context.Context, userID uuid.UUID) (Use
 		&i.DefaultGoal,
 		&i.DefaultMacroSplit,
 		&i.UpdatedAt,
+		&i.NewsTickerEnabled,
+	)
+	return i, err
+}
+
+const setNewsTickerEnabled = `-- name: SetNewsTickerEnabled :one
+INSERT INTO user_preferences (user_id, news_ticker_enabled)
+VALUES ($1, $2)
+ON CONFLICT (user_id) DO UPDATE
+SET news_ticker_enabled = $2, updated_at = now()
+RETURNING id, user_id, units_system, default_goal, default_macro_split, updated_at, news_ticker_enabled
+`
+
+type SetNewsTickerEnabledParams struct {
+	UserID            uuid.UUID
+	NewsTickerEnabled bool
+}
+
+func (q *Queries) SetNewsTickerEnabled(ctx context.Context, arg SetNewsTickerEnabledParams) (UserPreference, error) {
+	row := q.db.QueryRow(ctx, setNewsTickerEnabled, arg.UserID, arg.NewsTickerEnabled)
+	var i UserPreference
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.UnitsSystem,
+		&i.DefaultGoal,
+		&i.DefaultMacroSplit,
+		&i.UpdatedAt,
+		&i.NewsTickerEnabled,
 	)
 	return i, err
 }
@@ -34,7 +63,7 @@ INSERT INTO user_preferences (user_id, units_system, default_goal, default_macro
 VALUES ($1, $2, $3, $4)
 ON CONFLICT (user_id) DO UPDATE
 SET units_system = $2, default_goal = $3, default_macro_split = $4, updated_at = now()
-RETURNING id, user_id, units_system, default_goal, default_macro_split, updated_at
+RETURNING id, user_id, units_system, default_goal, default_macro_split, updated_at, news_ticker_enabled
 `
 
 type UpsertUserPreferencesParams struct {
@@ -59,6 +88,7 @@ func (q *Queries) UpsertUserPreferences(ctx context.Context, arg UpsertUserPrefe
 		&i.DefaultGoal,
 		&i.DefaultMacroSplit,
 		&i.UpdatedAt,
+		&i.NewsTickerEnabled,
 	)
 	return i, err
 }
