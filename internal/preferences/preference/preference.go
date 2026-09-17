@@ -32,6 +32,9 @@ type Preferences struct {
 	DefaultGoal       string
 	DefaultMacroSplit string
 
+	// NewsTickerEnabled is the dashboard's breaking-news strip. On by default.
+	NewsTickerEnabled bool
+
 	UpdatedAt time.Time
 }
 

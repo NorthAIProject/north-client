@@ -41,10 +41,21 @@ func (r *Repository) Upsert(ctx context.Context, userID uuid.UUID, in Input) (Pr
 	return fromDB(row), nil
 }
 
+// SetNewsTickerEnabled flips only the ticker switch, leaving the calculator
+// defaults untouched (or at their column defaults for a brand-new row).
+func (r *Repository) SetNewsTickerEnabled(ctx context.Context, userID uuid.UUID, enabled bool) (Preferences, error) {
+	row, err := r.q.SetNewsTickerEnabled(ctx, preferencesdb.SetNewsTickerEnabledParams{UserID: userID, NewsTickerEnabled: enabled})
+	if err != nil {
+		return Preferences{}, apperr.Wrap(err, "set news ticker enabled")
+	}
+	return fromDB(row), nil
+}
+
 func fromDB(row preferencesdb.UserPreference) Preferences {
 	return Preferences{
 		UserID: row.UserID, UnitsSystem: row.UnitsSystem,
 		DefaultGoal: row.DefaultGoal, DefaultMacroSplit: row.DefaultMacroSplit,
-		UpdatedAt: row.UpdatedAt,
+		NewsTickerEnabled: row.NewsTickerEnabled,
+		UpdatedAt:         row.UpdatedAt,
 	}
 }
