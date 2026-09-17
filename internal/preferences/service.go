@@ -63,7 +63,14 @@ func Validate(in Input) (Input, error) {
 func defaults() Preferences {
 	return Preferences{
 		UnitsSystem: UnitsMetric, DefaultGoal: calculator.GoalMaintenance, DefaultMacroSplit: calculator.SplitModerateCarb,
+		NewsTickerEnabled: true,
 	}
+}
+
+// SetNewsTickerEnabled is the dashboard ticker's per-user switch.
+func (s *Service) SetNewsTickerEnabled(ctx context.Context, userID uuid.UUID, enabled bool) error {
+	_, err := s.repo.SetNewsTickerEnabled(ctx, userID, enabled)
+	return err
 }
 
 // Get returns the user's saved preferences, or sane defaults if they have

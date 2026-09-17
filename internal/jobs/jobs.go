@@ -42,6 +42,11 @@ const (
 	// KindSweepStrava once a connection goes stale.
 	KindSyncStrava Kind = "sync_strava"
 
+	// KindSweepNewsTicker pulls the breaking-news headlines from the shared
+	// feed aggregator into news_ticker_items. One idempotent upsert every five
+	// minutes; the dashboard only ever reads the table.
+	KindSweepNewsTicker Kind = "sweep_news_ticker"
+
 	// KindSweepStrava enqueues a sync for connections that have gone stale.
 	//
 	// Strava has no webhook here and North has no other timer over it, so
