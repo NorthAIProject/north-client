@@ -59,6 +59,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/messaging"
 	"github.com/NorthAIProject/north-client/internal/messaging/telegram"
 	"github.com/NorthAIProject/north-client/internal/mind"
+	"github.com/NorthAIProject/north-client/internal/news"
 	"github.com/NorthAIProject/north-client/internal/notifications"
 	"github.com/NorthAIProject/north-client/internal/nudges"
 	"github.com/NorthAIProject/north-client/internal/onboarding"
@@ -778,6 +779,13 @@ func routes(
 	// Preferences owns the units system, which the calculator renders in.
 	preferencesSvc := preferences.NewService(preferences.NewRepository(pool))
 
+	// Breaking-news ticker. Off entirely when FEEDS_BASE_URL is unset: no
+	// strip, no settings routes, and the dashboard never asks.
+	var newsSvc *news.Service
+	if cfg.News.Enabled() {
+		newsSvc = news.NewService(news.NewRepository(pool), news.NewClient(cfg.News.FeedsBaseURL, nil), preferencesSvc, cfg.News.CuratedFeeds)
+	}
+
 	calculatorHandler := calculator.NewHandler(calculatorSvc, biometricSvc, preferencesSvc)
 
 	// Built once and shared by everything that stores a user's secret: the
@@ -959,7 +967,7 @@ func routes(
 
 	captureAPI := capture.NewAPI(captureHandler.Service(), connectionSvc, quotaSvc, slog.Default())
 
-	dashboardSvc := dashboard.NewService(dashboard.Options{
+	dashboardOpts := dashboard.Options{
 		CheckIns:      checkinSvc,
 		Goals:         goalSvc,
 		Conversations: conversationSvc,
@@ -972,7 +980,11 @@ func routes(
 		Mind:          mindSvc,
 		Nudges:        nudgeSvc,
 		Push:          pushSvc,
-	})
+	}
+	if newsSvc != nil {
+		dashboardOpts.NewsTicker = newsSvc
+	}
+	dashboardSvc := dashboard.NewService(dashboardOpts)
 	dashboardHandler := dashboard.NewHandler(dashboardSvc)
 
 	// Insights reuses the dashboard's timeline rather than reimplementing the
@@ -1404,6 +1416,9 @@ func routes(
 				r.Use(onboarding.RequireOnboarded)
 
 				dashboardHandler.Routes(r)
+				if newsSvc != nil {
+					news.NewHandler(newsSvc).Routes(r)
+				}
 				insightsHandler.Routes(r)
 				reportHandler.Routes(r)
 

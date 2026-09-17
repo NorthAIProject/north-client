@@ -45,6 +45,11 @@ type Config struct {
 
 	DatabaseURL string
 
+	// News is the breaking-news ticker's source: the cluster's shared feed
+	// aggregator plus the curated feed list. Empty base URL disables the
+	// ticker everywhere (no sweep, no strip, settings page says so).
+	News NewsConfig
+
 	// MetricsSecret guards the /internal/metrics endpoint used by the
 	// portfolio dashboard at facorreia.com/apps. Empty disables the route.
 	MetricsSecret string
@@ -487,6 +492,13 @@ func Load() (*Config, error) {
 
 		DatabaseURL:   require("DATABASE_URL"),
 		MetricsSecret: optional("METRICS_SECRET", ""),
+
+		// Named for the wire format's provider, matching Norviq's variables so
+		// one grep finds every app pointed at the same service.
+		News: NewsConfig{
+			FeedsBaseURL: strings.TrimSpace(os.Getenv("FEEDS_BASE_URL")),
+			CuratedFeeds: splitList(os.Getenv("NEWS_TICKER_FEEDS")),
+		},
 
 		SMTP: SMTPConfig{
 			Host:     strings.TrimSpace(os.Getenv("SMTP_HOST")),
@@ -1145,4 +1157,24 @@ func durationValue(key string, fallback time.Duration) (time.Duration, error) {
 		return fallback, fmt.Errorf("%s must be a duration such as 720h, got %q", key, raw)
 	}
 	return v, nil
+}
+
+// NewsConfig points the breaking-news ticker at the shared feed aggregator.
+type NewsConfig struct {
+	FeedsBaseURL string
+	CuratedFeeds []string
+}
+
+// Enabled reports whether the ticker can run at all on this deployment.
+func (c NewsConfig) Enabled() bool { return c.FeedsBaseURL != "" }
+
+// splitList parses a comma-separated list, trimming and dropping empties.
+func splitList(raw string) []string {
+	var out []string
+	for _, part := range strings.Split(raw, ",") {
+		if p := strings.TrimSpace(part); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }

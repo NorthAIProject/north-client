@@ -68,6 +68,15 @@ type Options struct {
 	// Push is optional too. It decides whether the dashboard offers "turn on
 	// nudges" as the step after activation.
 	Push Push
+
+	// NewsTicker is optional: whether this person wants the breaking-news
+	// strip. Nil means the deployment has no ticker at all.
+	NewsTicker NewsTicker
+}
+
+// NewsTicker is the dashboard's view of the news slice: just the switch.
+type NewsTicker interface {
+	Enabled(ctx context.Context, user users.User) (bool, error)
 }
 
 // Push is the dashboard's view of Web Push: whether this deployment can send,
@@ -102,6 +111,7 @@ type Service struct {
 	nudges        Nudges
 	briefings     Briefings
 	push          Push
+	newsTicker    NewsTicker
 }
 
 func NewService(opts Options) *Service {
@@ -119,6 +129,7 @@ func NewService(opts Options) *Service {
 		nudges:        opts.Nudges,
 		briefings:     opts.Briefings,
 		push:          opts.Push,
+		newsTicker:    opts.NewsTicker,
 	}
 }
 
@@ -135,6 +146,9 @@ func (s *Service) WithBriefings(b Briefings) *Service {
 
 // Snapshot is the command center for one person over one window.
 type Snapshot struct {
+	// NewsTickerEnabled is whether to render the breaking-news strip.
+	NewsTickerEnabled bool
+
 	// Range is the window the reader selected. Charts may cover more (see
 	// minChartDays); the tiles and the feed cover exactly this.
 	Range timerange.Range
@@ -185,6 +199,17 @@ func (s *Service) Load(ctx context.Context, user users.User, rg timerange.Range)
 	prev := rg.Previous()
 
 	g, gctx := errgroup.WithContext(ctx)
+
+	if s.newsTicker != nil {
+		g.Go(func() error {
+			enabled, err := s.newsTicker.Enabled(gctx, user)
+			if err != nil {
+				return err
+			}
+			snap.NewsTickerEnabled = enabled
+			return nil
+		})
+	}
 
 	g.Go(func() error {
 		_, err := s.checkins.Today(gctx, user)

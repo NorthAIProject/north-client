@@ -45,8 +45,10 @@ import (
 	"github.com/NorthAIProject/north-client/internal/messaging"
 	"github.com/NorthAIProject/north-client/internal/messaging/telegram"
 	"github.com/NorthAIProject/north-client/internal/mind"
+	"github.com/NorthAIProject/north-client/internal/news"
 	"github.com/NorthAIProject/north-client/internal/notifications"
 	"github.com/NorthAIProject/north-client/internal/nudges"
+	"github.com/NorthAIProject/north-client/internal/preferences"
 	"github.com/NorthAIProject/north-client/internal/push"
 	"github.com/NorthAIProject/north-client/internal/quota"
 	"github.com/NorthAIProject/north-client/internal/reports"
@@ -428,6 +430,19 @@ func run() error {
 	// and unusable — and one replica runs this, so a shorter interval would
 	// buy nothing but writes.
 	worker.RegisterPeriodic(24*time.Hour, jobs.KindSweepOAuth, struct{}{})
+
+	// Breaking-news ticker: one idempotent upsert from the shared feed
+	// aggregator every five minutes. Skipped entirely without FEEDS_BASE_URL.
+	if cfg.News.Enabled() {
+		newsSvc := news.NewService(
+			news.NewRepository(pool),
+			news.NewClient(cfg.News.FeedsBaseURL, nil),
+			preferences.NewService(preferences.NewRepository(pool)),
+			cfg.News.CuratedFeeds,
+		)
+		worker.Register(jobs.KindSweepNewsTicker, news.NewSweeper(newsSvc, log).HandleSweep)
+		worker.RegisterPeriodic(5*time.Minute, jobs.KindSweepNewsTicker, struct{}{})
+	}
 
 	log.Info("worker ready",
 		slog.String("ai_provider", registry.DefaultName()),

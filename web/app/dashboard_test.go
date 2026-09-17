@@ -60,3 +60,14 @@ func TestDashboardNextStepSitsOutsideTheRangeSwap(t *testing.T) {
 		t.Fatal("next step is inside the range-swap fragment")
 	}
 }
+
+func TestDashboardShowsNewsTickerShellOnlyWhenEnabled(t *testing.T) {
+	on := renderDashboard(t, DashboardData{NewsTickerEnabled: true})
+	if !strings.Contains(on, `hx-get="/app/news-ticker"`) {
+		t.Error("enabled ticker should render its lazy shell")
+	}
+	off := renderDashboard(t, DashboardData{NewsTickerEnabled: false})
+	if strings.Contains(off, `hx-get="/app/news-ticker"`) {
+		t.Error("disabled ticker should render nothing")
+	}
+}

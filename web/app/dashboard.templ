@@ -23,11 +23,15 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/chart"
 	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
 	"github.com/NorthAIProject/north-client/web/shared/ui/progress"
+	newspages "github.com/NorthAIProject/north-client/web/news"
 	nudgepages "github.com/NorthAIProject/north-client/web/nudges"
 )
 
 // DashboardData is the command-center snapshot.
 type DashboardData struct {
+	// NewsTickerEnabled renders the breaking-news strip's lazy shell.
+	NewsTickerEnabled bool
+
 	Range RangeView
 
 	CheckedInToday   bool
@@ -416,6 +420,9 @@ templ DashboardPanels(data DashboardData) {
 		}
 		@nudgepages.Card(data.Nudges)
 		@kpiStrip(data)
+		if data.NewsTickerEnabled {
+			@newspages.TickerShell()
+		}
 		<div class="grid gap-4 lg:grid-cols-3">
 			<div class="lg:col-span-2">
 				@checkInPanel(data)

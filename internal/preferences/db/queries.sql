@@ -7,3 +7,10 @@ VALUES ($1, $2, $3, $4)
 ON CONFLICT (user_id) DO UPDATE
 SET units_system = $2, default_goal = $3, default_macro_split = $4, updated_at = now()
 RETURNING *;
+
+-- name: SetNewsTickerEnabled :one
+INSERT INTO user_preferences (user_id, news_ticker_enabled)
+VALUES ($1, $2)
+ON CONFLICT (user_id) DO UPDATE
+SET news_ticker_enabled = $2, updated_at = now()
+RETURNING *;
