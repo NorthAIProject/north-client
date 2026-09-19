@@ -162,10 +162,14 @@ func TestAReplyAsksForABoundedNumberOfTokens(t *testing.T) {
 		t.Fatalf("stream: %v", err)
 	}
 
-	// Title generation also calls the client, with a 40-token cap. The reply
-	// is the call that carried the person's question.
+	// Title generation also calls the client, with a 40-token cap and the same
+	// question embedded in its prompt. The reply call is the one that uses the
+	// primary model.
 	var got int
 	for _, req := range h.client.Calls() {
+		if req.Model != "test-model" {
+			continue
+		}
 		for _, m := range req.Messages {
 			if strings.Contains(m.Text(), "What should I do next session?") {
 				got = req.MaxTokens
