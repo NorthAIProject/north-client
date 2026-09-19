@@ -77,11 +77,12 @@ type CommitResponse struct {
 	Skipped  []Item    `json:"skipped,omitempty"`
 }
 
-// Routes mounts the API. It carries its own authentication because it is not
-// behind the browser session middleware: the caller is a script or an agent
-// holding a personal access token, not a cookie.
+// Routes mounts capture endpoints relative to the API version boundary. It
+// carries its own authentication because it is not behind the browser session
+// middleware: the caller is a script or an agent holding a personal access
+// token, not a cookie.
 func (a *API) Routes(r chi.Router) {
-	r.Route("/v1/capture", func(r chi.Router) {
+	r.Route("/capture", func(r chi.Router) {
 		r.Use(a.authenticate)
 		r.Post("/parse", a.parse)
 		r.Post("/commit", a.commit)
