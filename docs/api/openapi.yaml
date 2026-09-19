@@ -1,0 +1,268 @@
+openapi: 3.1.0
+info:
+  title: North API
+  version: 1.0.0
+  description: JSON API for North clients, including the iOS application.
+servers:
+  - url: https://kheprios.com/api/v1
+    description: Primary application host
+  - url: https://api.khepri.com/api/v1
+    description: API host
+security:
+  - bearerAuth: []
+paths:
+  /capture/parse:
+    post:
+      operationId: parseCapture
+      summary: Parse a quick capture into proposed entries
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ParseRequest'
+      responses:
+        '200':
+          description: Proposed entries
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ParseResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '413':
+          $ref: '#/components/responses/ContentTooLarge'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /capture/commit:
+    post:
+      operationId: commitCapture
+      summary: Commit selected capture entries
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommitRequest'
+      responses:
+        '200':
+          description: Commit outcomes
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommitResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '413':
+          $ref: '#/components/responses/ContentTooLarge'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: North personal access token issued for the calling account.
+  responses:
+    Unauthorized:
+      description: Missing or invalid bearer token
+      headers:
+        WWW-Authenticate:
+          schema:
+            type: string
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
+    ContentTooLarge:
+      description: Request body exceeds the endpoint limit
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
+    ValidationError:
+      description: Request body failed validation
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
+    RateLimited:
+      description: Request quota exceeded
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
+    InternalError:
+      description: Unexpected server failure
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
+  schemas:
+    ParseRequest:
+      type: object
+      required: [text]
+      additionalProperties: false
+      properties:
+        text:
+          type: string
+    ParseResponse:
+      type: object
+      required: [items, unparsed]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CaptureItem'
+        unparsed:
+          type: array
+          items:
+            type: string
+    CommitRequest:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CaptureItem'
+    CommitResponse:
+      type: object
+      required: [written, failed, outcomes]
+      properties:
+        written:
+          type: integer
+        failed:
+          type: integer
+        outcomes:
+          type: array
+          items:
+            $ref: '#/components/schemas/Outcome'
+        skipped:
+          type: array
+          items:
+            $ref: '#/components/schemas/CaptureItem'
+    CaptureItem:
+      type: object
+      required: [kind, source]
+      additionalProperties: false
+      properties:
+        kind:
+          type: string
+          description: Capture kind identifying the populated payload.
+          enum: [water, sleep, habit, weight, check_in, food]
+        source:
+          type: string
+        uncertain:
+          type: boolean
+        problem:
+          type: string
+        water:
+          $ref: '#/components/schemas/Water'
+        sleep:
+          $ref: '#/components/schemas/Sleep'
+        habit:
+          $ref: '#/components/schemas/Habit'
+        weight:
+          $ref: '#/components/schemas/Weight'
+        check_in:
+          $ref: '#/components/schemas/CheckIn'
+        food:
+          $ref: '#/components/schemas/Food'
+    Outcome:
+      type: object
+      required: [item]
+      additionalProperties: false
+      properties:
+        item:
+          $ref: '#/components/schemas/CaptureItem'
+        summary:
+          type: string
+        error:
+          type: string
+    Water:
+      type: object
+      required: [amount_ml]
+      additionalProperties: false
+      properties:
+        amount_ml:
+          type: integer
+    Sleep:
+      type: object
+      required: [minutes, date]
+      additionalProperties: false
+      properties:
+        minutes:
+          type: integer
+        date:
+          type: string
+          format: date-time
+        quality:
+          type: integer
+    Habit:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+        id:
+          type: string
+          format: uuid
+    Weight:
+      type: object
+      required: [kg]
+      additionalProperties: false
+      properties:
+        kg:
+          type: number
+    CheckIn:
+      type: object
+      required: [mood, energy]
+      additionalProperties: false
+      properties:
+        mood:
+          type: integer
+        energy:
+          type: integer
+        notes:
+          type: string
+    Food:
+      type: object
+      required: [query, grams]
+      additionalProperties: false
+      properties:
+        query:
+          type: string
+        grams:
+          type: number
+        ingredient_id:
+          type: string
+          format: uuid
+        matched_name:
+          type: string
+    ErrorBody:
+      type: object
+      required: [error]
+      properties:
+        error:
+          $ref: '#/components/schemas/ErrorDetail'
+    ErrorDetail:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+        fields:
+          type: object
+          additionalProperties:
+            type: string
