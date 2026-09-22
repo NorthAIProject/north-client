@@ -19,7 +19,7 @@ const (
 	listDefault = 20
 
 	// Quiet for two full local days: a check-in on day D is first eligible
-	// on D+3.
+	// on D+3. After that first note the schedule in missedCheckInDue applies.
 	missedCheckInDays = 2
 
 	// Inclusive window of local days from today. Due today through today+7.
@@ -465,15 +465,19 @@ func (s *Service) evalMissedCheckIn(ctx context.Context, user users.User, today 
 		return 0, err
 	}
 
+	// Nobody who has never checked in has a last one to count from, so the
+	// day they joined stands in: the schedule below then runs from there.
 	var body string
-	if !ok {
-		body = "You have not checked in since joining."
-	} else {
-		quiet := daysBetween(last, today)
-		if quiet <= missedCheckInDays {
-			return 0, nil
-		}
+	var quiet int
+	if ok {
+		quiet = daysBetween(last, today)
 		body = fmt.Sprintf("It has been %d days since your last check-in.", quiet)
+	} else {
+		quiet = daysBetween(onboardedLocal(user, today), today)
+		body = "You have not checked in since joining."
+	}
+	if !missedCheckInDue(quiet) {
+		return 0, nil
 	}
 
 	_, inserted, err := s.Raise(ctx, user, Draft{
@@ -490,6 +494,31 @@ func (s *Service) evalMissedCheckIn(ctx context.Context, user users.User, today 
 		return 1, nil
 	}
 	return 0, nil
+}
+
+// missedCheckInDue reports whether a silence of this many local days is one
+// to mention: the third day, the seventh, the fourteenth, then every seventh.
+//
+// Not daily. Production sent one person the same note sixteen mornings in a
+// row, the number in it going up by one each time, and by the third morning a
+// note like that is furniture. Absence does not become more true overnight;
+// the days it is worth saying are the ones where the silence has changed
+// shape — a slipped habit, a lost week, a lost fortnight.
+//
+// A day the sweep misses altogether (the worker down all day) skips to the
+// next date rather than catching up. Dedupe is already per local day, so this
+// only decides which days are candidates.
+func missedCheckInDue(quiet int) bool {
+	switch {
+	case quiet <= missedCheckInDays:
+		return false
+	case quiet == missedCheckInDays+1, quiet == 7:
+		return true
+	case quiet >= 14:
+		return (quiet-14)%7 == 0
+	default:
+		return false
+	}
 }
 
 func (s *Service) evalGoalDeadlines(ctx context.Context, user users.User, today time.Time) (int, error) {

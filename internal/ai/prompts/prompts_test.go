@@ -77,6 +77,18 @@ func TestCoachPromptStatesGroundingRules(t *testing.T) {
 		"asks for the links to be passed on":   "pass the links on",
 		"admits when cues are missing":         "not recorded",
 		"leaves programming to judgement":      "does not apply to programming",
+
+		// Added after production showed sixteen days of daily "it has been N
+		// days since your last check-in" nudges to a person who had been
+		// telling the Telegram coach how their day went the whole time. The
+		// coach called log_water and log_activity in that window and
+		// create_check_in never once: nothing said a reported mood was a
+		// record to make, so it was answered as conversation and no
+		// check_ins row was written.
+		"records a check-in rather than discussing it": "a check-in is recorded, not just discussed",
+		"names the check-in tool to call":              "call `create_check_in`",
+		"asks for the two numbers it needs":            "mood and energy",
+		"says what an unrecorded check-in costs":       "reminded again tomorrow",
 	}
 
 	for what, phrase := range required {
