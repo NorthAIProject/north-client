@@ -2,6 +2,7 @@ package nudges_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -432,5 +433,72 @@ func TestEvaluateDoesNotCreateForNotOnboarded(t *testing.T) {
 	}
 	if n != 0 {
 		t.Fatalf("not-onboarded user created = %d", n)
+	}
+}
+
+// Added after production sent one person sixteen consecutive daily
+// "It has been N days since your last check-in" notes. Absence does not get
+// more true each morning; a note that repeats daily is muted, not answered.
+func TestMissedCheckInBacksOffAfterTheFirstNote(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	now := time.Date(2026, 8, 31, 12, 0, 0, 0, time.UTC)
+	onboarded := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+
+	cases := []struct {
+		quiet int
+		want  int
+	}{
+		{quiet: 2, want: 0},
+		{quiet: 3, want: 1},
+		{quiet: 4, want: 0},
+		{quiet: 6, want: 0},
+		{quiet: 7, want: 1},
+		{quiet: 10, want: 0},
+		{quiet: 14, want: 1},
+		{quiet: 16, want: 0},
+		{quiet: 21, want: 1},
+		{quiet: 28, want: 1},
+	}
+	for _, tc := range cases {
+		email := fmt.Sprintf("eval-backoff-%d@north.test", tc.quiet)
+		user := mustOnboard(t, pool, seedUser(t, pool, email), onboarded)
+		writeCheckIn(t, pool, user.ID, now.AddDate(0, 0, -tc.quiet).Truncate(24*time.Hour))
+
+		n, err := evalService(pool, now).Evaluate(ctx, user)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n != tc.want {
+			t.Errorf("quiet for %d days: created = %d, want %d", tc.quiet, n, tc.want)
+		}
+	}
+}
+
+func TestNeverCheckedInFollowsTheSameSchedule(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	now := time.Date(2026, 8, 31, 12, 0, 0, 0, time.UTC)
+
+	cases := []struct {
+		sinceJoining int
+		want         int
+	}{
+		{sinceJoining: 7, want: 1},
+		{sinceJoining: 8, want: 0},
+		{sinceJoining: 14, want: 1},
+		{sinceJoining: 15, want: 0},
+	}
+	for _, tc := range cases {
+		email := fmt.Sprintf("eval-never-%d@north.test", tc.sinceJoining)
+		user := mustOnboard(t, pool, seedUser(t, pool, email), now.AddDate(0, 0, -tc.sinceJoining))
+
+		n, err := evalService(pool, now).Evaluate(ctx, user)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n != tc.want {
+			t.Errorf("%d days since joining, never checked in: created = %d, want %d", tc.sinceJoining, n, tc.want)
+		}
 	}
 }
