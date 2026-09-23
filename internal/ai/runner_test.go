@@ -193,3 +193,63 @@ func TestRunFailsWhenNothingIsConfigured(t *testing.T) {
 		t.Errorf("err = %v, want ErrUnavailable", err)
 	}
 }
+
+// deaf is a client that ignores the tools array, the way a Hermes gateway
+// does: it answers, but nothing the caller declared can ever be called.
+type deaf struct{ stub }
+
+func (deaf) CallsTools() bool { return false }
+
+func runnerOver(clients ...ai.Client) *ai.Runner {
+	r := ai.NewRegistry()
+	names := make([]string, 0, len(clients))
+	for _, c := range clients {
+		r.Register(c)
+		names = append(names, c.Name())
+	}
+	return ai.NewRunner(r, ai.NewChainSet(names, nil))
+}
+
+// Added after production put a Hermes gateway first in the chain. Its API
+// server never reads the request's tools field, so for sixteen days the
+// coach asked the check-in questions, then wrote "Check-in logged" with no
+// call made and no row written. A provider that cannot call tools is not a
+// provider for a turn that needs them.
+func TestRunSkipsProvidersThatIgnoreToolsWhenTheTurnNeedsThem(t *testing.T) {
+	var seen []string
+	client, err := runnerOver(deaf{stub{name: "hermes"}}, stub{name: "nvidia"}).
+		Run(context.Background(), ai.RunOptions{NeedsTools: true}, tried(&seen, func(string) error { return nil }))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if client.Name() != "nvidia" {
+		t.Errorf("answered by %q, want nvidia", client.Name())
+	}
+	if len(seen) != 1 || seen[0] != "nvidia" {
+		t.Errorf("walked %v, want only nvidia", seen)
+	}
+}
+
+func TestRunStillUsesAToolDeafProviderWhenTheTurnCarriesNoTools(t *testing.T) {
+	var seen []string
+	client, err := runnerOver(deaf{stub{name: "hermes"}}, stub{name: "nvidia"}).
+		Run(context.Background(), ai.RunOptions{}, tried(&seen, func(string) error { return nil }))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if client.Name() != "hermes" {
+		t.Errorf("answered by %q, want hermes", client.Name())
+	}
+}
+
+func TestRunFailsWhenEveryProviderIgnoresTools(t *testing.T) {
+	var seen []string
+	_, err := runnerOver(deaf{stub{name: "hermes"}}).
+		Run(context.Background(), ai.RunOptions{NeedsTools: true}, tried(&seen, func(string) error { return nil }))
+	if !apperr.Is(err, apperr.ErrUnavailable) {
+		t.Fatalf("err = %v, want ErrUnavailable", err)
+	}
+	if len(seen) != 0 {
+		t.Errorf("walked %v, want nobody", seen)
+	}
+}

@@ -208,3 +208,30 @@ func TestProviderOptionsAllowsTheFakeHeadOutsideProductionOnly(t *testing.T) {
 		t.Error("production must not boot onto the fake coach")
 	}
 }
+
+// Hermes fronts an agent, not a model: its API server never reads the tools
+// field. Sixteen days of "Check-in logged" with nothing logged is what it
+// looks like when this flag is missing.
+func TestProviderOptionsMarksHermesAsIgnoringTools(t *testing.T) {
+	cfg, err := loadWith(t, map[string]string{})
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+
+	var found bool
+	for _, spec := range cfg.AI.ProviderOptions(EnvProduction).Compatible {
+		if spec.Name != "hermes" {
+			if spec.IgnoresTools {
+				t.Errorf("%s is marked as ignoring tools; only hermes does", spec.Name)
+			}
+			continue
+		}
+		found = true
+		if !spec.IgnoresTools {
+			t.Error("hermes must be marked as ignoring tools, or the coach will route writes through it")
+		}
+	}
+	if !found {
+		t.Fatal("hermes is not among the compatible backends")
+	}
+}

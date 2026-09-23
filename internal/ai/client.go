@@ -215,6 +215,25 @@ type Client interface {
 // four providers to implement a method that answers "not supported", and every
 // caller would still have to handle that — the same check, moved somewhere it
 // reads worse.
+// ToolCaller is implemented by a Client that knows whether the service
+// behind it honours a request's tools array. A client that does not implement
+// it is assumed to: every first-party provider does, and refusing to use one
+// on a guess would be the worse mistake.
+//
+// The case this exists for is a gateway that fronts an agent rather than a
+// model. It answers, so nothing fails, but the tools the caller declared are
+// never offered to anything, and a model asked to write will say it has.
+type ToolCaller interface {
+	CallsTools() bool
+}
+
+// CallsTools reports whether a client will offer the request's tools to the
+// model. See ToolCaller for the default.
+func CallsTools(c Client) bool {
+	tc, ok := c.(ToolCaller)
+	return !ok || tc.CallsTools()
+}
+
 type Embedder interface {
 	// Name identifies the provider, so a stored vector can record what
 	// produced it.
