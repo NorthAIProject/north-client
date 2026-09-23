@@ -18,3 +18,21 @@ func jsString(s string) string {
 	}
 	return string(encoded)
 }
+
+// chatRootData is the Alpine scope on #chat-root.
+//
+// status is the second line of the Muse header's name pill. It lives on the
+// root rather than on the pill so the stream bridge (Stage B) can set it from
+// anywhere inside the page, and it is seeded with the translated "Ready" so
+// the pill reads correctly before Alpine boots and after every sse-close swap.
+func chatRootData(ready string) string {
+	return `{
+		threads: false,
+		status: ` + jsString(ready) + `,
+		fit() {
+			const vv = window.visualViewport
+			if (!vv) return
+			this.$el.style.height = vv.height + 'px'
+		}
+	}`
+}

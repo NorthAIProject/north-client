@@ -58,6 +58,12 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  /* Muse chat (see _reviews/muse-chat-contract.md): bg-muse-canvas, etc. */
+  --color-muse-canvas: var(--muse-canvas);
+  --color-muse-agent: var(--muse-agent-bubble);
+  --color-muse-user: var(--muse-user-bubble);
+  --color-muse-user-text: var(--muse-user-text);
+  --color-muse-pill: var(--muse-pill);
 
   /* North role accents — product-wide, not landing-only. Each has one job:
      signal = bearing / continuity / primary CTA
@@ -152,6 +158,15 @@
   --north-sport-strength: var(--north-agent);
   --north-sport-other: oklch(0.58 0.02 250);
   --north-sport-rest: var(--north-hairline);
+
+  /* Muse chat tokens. Aliases, not new colours: the contract maps each role
+     onto a token North already has. Repeated under .dark so they resolve
+     against the dark values rather than inheriting the light ones. */
+  --muse-canvas: var(--background);
+  --muse-agent-bubble: var(--card);
+  --muse-user-bubble: var(--north-signal);
+  --muse-user-text: oklch(0.99 0.002 250);
+  --muse-pill: var(--secondary);
 }
 
 .dark {
@@ -196,6 +211,13 @@
   --north-sport-strength: var(--north-agent);
   --north-sport-other: oklch(0.68 0.02 250);
   --north-sport-rest: var(--north-hairline);
+
+  --muse-canvas: var(--background);
+  --muse-agent-bubble: var(--card);
+  --muse-user-bubble: var(--north-signal);
+  /* Dark signal is a light blue; white on it fails contrast, void passes. */
+  --muse-user-text: var(--background);
+  --muse-pill: var(--secondary);
 }
 
 @layer base {
@@ -355,4 +377,79 @@ html.lenis body {
     filter: none;
     transform: none;
   }
+}
+
+/* Muse chat header (web/chat/chat.templ chatHeader). Plain CSS rather than
+   utilities because the geometry is one unit — bar, scrim, avatar and pill
+   are sized against each other — and the mascot's own size-40 box has to be
+   overridden from outside, which only an unlayered rule can do. */
+.muse-scrim {
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  /* 56px bar held solid, then the contract's 120px fade to transparent.
+     The fade holds full canvas for its first 40px (behind the avatar's
+     widest part) and eases out, so a reply scrolled under the name pill is
+     muted rather than read through. */
+  height: calc(3.5rem + 120px);
+  background: linear-gradient(
+    to bottom,
+    var(--muse-canvas) calc(3.5rem + 40px),
+    color-mix(in oklch, var(--muse-canvas) 70%, transparent) calc(3.5rem + 90px),
+    transparent 100%
+  );
+  pointer-events: none;
+}
+
+.muse-identity {
+  position: absolute;
+  left: 50%;
+  /* The 110px avatar hangs off the bar, overlapping the transcript by ~55px. */
+  top: 1px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+}
+
+.muse-avatar {
+  display: grid;
+  place-items: center;
+  width: 110px;
+  height: 110px;
+  border-radius: 999px;
+  background: var(--muse-agent-bubble);
+  box-shadow: 0 1px 2px oklch(0 0 0 / 8%), 0 8px 24px oklch(0 0 0 / 10%);
+  overflow: hidden;
+}
+
+.muse-avatar .north-mascot {
+  width: 84px;
+  height: 84px;
+}
+
+.muse-pill {
+  margin-top: -10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  border-radius: 999px;
+  background: var(--muse-pill);
+  padding: 4px 16px 5px;
+  white-space: nowrap;
+}
+
+.muse-pill-name {
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.muse-pill-status {
+  font-size: 13px;
+  line-height: 17px;
+  font-weight: 400;
+  color: var(--muted-foreground);
 }

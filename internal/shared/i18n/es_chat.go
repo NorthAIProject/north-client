@@ -9,6 +9,8 @@ var spanishChat = map[string]string{
 	"chat.reflection":       "Reflexión",
 	"chat.reflection.start": "Empezar una reflexión",
 	"chat.threads.aria":     "Mostrar conversaciones",
+	"chat.header.new":       "Nuevo chat",
+	"chat.status.ready":     "Listo",
 	"chat.delete.aria":      "Eliminar conversación",
 	"chat.delete.confirm":   "¿Eliminar esta conversación? Todo lo que hay en ella se pierde.",
 	"chat.kpi.threads":      "Conversaciones",
