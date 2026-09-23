@@ -656,8 +656,9 @@ func (s *Service) pump(
 				roundUsage = chunk.Usage
 			}
 			if len(chunk.ToolCalls) > 0 {
-				// Not forwarded to the caller: the browser renders prose, and
-				// a tool call is machinery the person did not ask to watch.
+				// Held here rather than forwarded as they arrive: the round
+				// may still end in a write that has to wait for approval,
+				// and only calls that are about to run are announced (below).
 				calls = append(calls, chunk.ToolCalls...)
 				continue
 			}
@@ -737,6 +738,15 @@ func (s *Service) pump(
 			// that, which keeps the provider-facing ai.StreamChunk free of a
 			// field only Khepri's own UI would ever read.
 			break
+		}
+
+		// Announced before they run, so the web header can say "is checking
+		// your goals" for as long as the lookup takes. Every other caller
+		// reads Text and skips a chunk that has none, so this costs them
+		// nothing. The field already exists for the provider's side of the
+		// same call; nothing Khepri-specific is added to ai.StreamChunk.
+		if listening && !trySend(callerCtx, out, ai.StreamChunk{ToolCalls: calls}) {
+			listening = false
 		}
 
 		results := s.tools.InvokeAll(toolsurface.With(genCtx, toolsurface.Coach), target.user.ID, calls)

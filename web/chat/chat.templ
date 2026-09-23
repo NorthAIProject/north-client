@@ -87,10 +87,18 @@ type CoachStats struct {
 // Page is a conversation with its history and composer.
 templ Page(user users.User, conversation conversations.Conversation, messages []conversations.Message, list []conversations.Conversation, stats CoachStats, pending []PendingTool, resuming bool, draft string) {
 	@layout.App(conversation.DisplayTitle(), user, layout.BuildNav(ctx, "/app/chat")) {
+		// data-status-* is the header's status copy, read by the mascot bridge
+		// (alpine.js) so the translated lines stay in the i18n catalogue
+		// rather than in a script. The tool line comes from the server per call.
 		<div
 			id="chat-root"
 			class="bg-muse-canvas flex h-full min-h-0"
 			x-data={ chatRootData(i18n.T(ctx, "chat.status.ready")) }
+			data-status-ready={ i18n.T(ctx, "chat.status.ready") }
+			data-status-listening={ i18n.T(ctx, "chat.status.listening") }
+			data-status-thinking={ i18n.T(ctx, "chat.status.thinking") }
+			data-status-writing={ i18n.T(ctx, "chat.status.writing") }
+			data-status-snag={ i18n.T(ctx, "chat.status.snag") }
 			x-init="
 				fit()
 				if (window.visualViewport) {
@@ -179,8 +187,11 @@ templ Empty(user users.User, list []conversations.Conversation, stats CoachStats
 // alpine.js replays the last gesture on remount, and it needs exactly one
 // mascot to hand it to. TestChatHeaderCarriesTheReactiveMascot guards this.
 //
-// The status line is static in Stage A. Stage B drives `status` on the
-// #chat-root scope from the stream bridge; the markup already reads it.
+// The status line and the ring read `status` and `phase` from the #chat-root
+// scope, which the stream bridge in alpine.js drives (see chatRootData). The
+// ring is a sibling of the avatar rather than a border on it: .muse-avatar
+// clips its contents so the mascot's hop stays inside the circle, and a ring
+// drawn inside that clip would be cut in half.
 //
 // The bar's buttons are the contract's 40px circles; an after: box grows each
 // hit area to 44px so thumbs still land (NOR-39).
@@ -231,7 +242,8 @@ templ chatHeader(c conversations.Conversation) {
 				}
 			</form>
 		</div>
-		<div class="muse-identity">
+		<div class="muse-identity" data-phase="idle" :data-phase="phase">
+			<span class="muse-ring" aria-hidden="true"></span>
 			<div class="muse-avatar">
 				@mascot.Mascot(mascot.Props{ID: "chat-mascot", Size: mascot.SizeLg})
 			</div>
@@ -707,6 +719,9 @@ templ composer(conversationID uuid.UUID, draft string) {
 						// Enter sends, shift+Enter makes a new line: what every
 						// chat interface does, and what fingers expect.
 						"@keydown.enter.prevent": "if (!$event.shiftKey) $el.form.requestSubmit()",
+						// Focus here is what "Khepri is listening" means; the
+						// mascot bridge (alpine.js) listens for it by this mark.
+						"data-muse-listen": "",
 					},
 				})
 				@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeIcon, Class: "min-h-11 min-w-11"}) {

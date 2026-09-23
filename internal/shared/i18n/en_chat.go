@@ -42,4 +42,31 @@ var englishChat = map[string]string{
 	"chat.approval.title": "Khepri wants to change something",
 	"chat.approval.yes":   "Yes, go ahead",
 	"chat.approval.no":    "No",
+
+	// The Muse header's status line under the name pill
+	// (_reviews/muse-chat-contract.md). Each reads after "Khepri", so they
+	// are verb phrases, not sentences.
+	"chat.status.listening": "is listening",
+	"chat.status.thinking":  "is thinking",
+	"chat.status.writing":   "is writing",
+	"chat.status.snag":      "hit a snag",
+	"chat.status.tool":      "is %[1]s",
+
+	// What a running tool is doing, slotted into chat.status.tool. The
+	// contract caps each at 32 characters; TestToolStatusLabelsFitTheHeader
+	// holds every language to it.
+	"chat.tool.default":       "looking things up",
+	"chat.tool.exercises":     "looking up exercises",
+	"chat.tool.macros":        "working out your macros",
+	"chat.tool.goals":         "checking your goals",
+	"chat.tool.goals.write":   "updating your goals",
+	"chat.tool.checkin":       "logging your check-in",
+	"chat.tool.checkin.read":  "reading your check-ins",
+	"chat.tool.documents":     "searching your documents",
+	"chat.tool.workout":       "reading your workout plan",
+	"chat.tool.workout.write": "editing your workout plan",
+	"chat.tool.nutrition":     "checking your nutrition",
+	"chat.tool.alerts":        "checking your reminders",
+	"chat.tool.alerts.write":  "setting a reminder",
+	"chat.tool.log":           "logging that for you",
 }

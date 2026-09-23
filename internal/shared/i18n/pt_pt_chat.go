@@ -38,4 +38,27 @@ var portugueseEuropeanChat = map[string]string{
 	"chat.approval.title": "O Khepri quer alterar algo",
 	"chat.approval.yes":   "Sim, avança",
 	"chat.approval.no":    "Não",
+
+	// pt-PT builds the progressive with "a" + infinitive, so the labels are
+	// infinitives and chat.status.tool carries the "a".
+	"chat.status.listening": "está a ouvir",
+	"chat.status.thinking":  "está a pensar",
+	"chat.status.writing":   "está a escrever",
+	"chat.status.snag":      "encontrou um problema",
+	"chat.status.tool":      "está a %[1]s",
+
+	"chat.tool.default":       "procurar informação",
+	"chat.tool.exercises":     "procurar exercícios",
+	"chat.tool.macros":        "calcular os teus macros",
+	"chat.tool.goals":         "ver os teus objetivos",
+	"chat.tool.goals.write":   "atualizar os teus objetivos",
+	"chat.tool.checkin":       "guardar o teu registo",
+	"chat.tool.checkin.read":  "ler os teus registos",
+	"chat.tool.documents":     "procurar nos teus documentos",
+	"chat.tool.workout":       "ler o teu plano de treino",
+	"chat.tool.workout.write": "editar o teu plano de treino",
+	"chat.tool.nutrition":     "ver a tua nutrição",
+	"chat.tool.alerts":        "ver os teus lembretes",
+	"chat.tool.alerts.write":  "criar um lembrete",
+	"chat.tool.log":           "anotar isso por ti",
 }
