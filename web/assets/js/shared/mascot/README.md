@@ -34,15 +34,27 @@ window.NorthMascot.setState("nod", {id: "chat"})   // one of them
 or, from a server-rendered response, a `north:mascot-state` CustomEvent on
 `document` with `{state, id}` in its detail.
 
-The coach stream drives it automatically. Chat has no app-authored generation
-events — the stream is declarative htmx and the server emits only
-`token`/`error`/`done` — so `alpine.js` listens to what htmx already bubbles:
+The coach stream drives it automatically, along with the Muse chat header's
+phase (the working ring) and status line (see
+`_reviews/muse-chat-contract.md`). The stream is declarative htmx; the server
+sends unnamed content frames plus named `status` (a translated tool line),
+`failed` and `done` signals, and `alpine.js` listens to what htmx already
+bubbles:
 
-| htmx event | state |
-| --- | --- |
-| `htmx:sseOpen` | `thinking` |
-| `htmx:sseClose` | `nod`, then `idle` |
-| `htmx:sseError` | `idle` |
+| event | pose | header |
+| --- | --- | --- |
+| composer focus (`[data-muse-listen]`) | `listening` | listening, "is listening" |
+| `htmx:sse:after:connection` | `working` | working + ring, "is thinking" |
+| unnamed frame (a token) | — | working, "is writing" |
+| `status` frame | — | working, "is {tool}" |
+| `failed` frame / `htmx:sse:error` | `idle` | failed, "hit a snag" |
+| `htmx:sse:close` after working | `celebrate`, then `idle` | celebrating 1.2s, then "Ready" |
+
+`working` wears the idle pose; there is no working art, and the ring carries
+the state. Contract names are aliases: `celebrating` → `celebrate`,
+`failed` → `idle`. #chat-root hands its Alpine scope over with
+`NorthMascot.bindChat(scope, el)` and carries the translated copy as
+`data-status-*`.
 
 **The state lives on the module, not on the component.** In chat,
 `sse-close="done"` re-GETs the page and swaps `#chat-root` outerHTML, destroying

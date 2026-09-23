@@ -11,6 +11,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/conversations"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
@@ -304,6 +305,50 @@ func TestChatRootSeedsTheStatus(t *testing.T) {
 	}
 	if !strings.Contains(buf.String(), "status: &#34;Ready&#34;") {
 		t.Error("#chat-root x-data does not seed status")
+	}
+}
+
+// Stage B: the bridge in alpine.js drives the header from the #chat-root
+// scope. That needs the scope to hand itself over, the translated copy to be
+// on the element, the ring to read phase, and the composer to be marked as
+// the thing whose focus means "listening".
+func TestChatPageWiresTheStatusBridge(t *testing.T) {
+	var buf bytes.Buffer
+	if err := Page(users.User{}, conversations.Conversation{ID: uuid.New()}, nil, nil, CoachStats{}, nil, false, "").
+		Render(context.Background(), &buf); err != nil {
+		t.Fatal(err)
+	}
+	page := buf.String()
+
+	for _, want := range []string{
+		"NorthMascot.bindChat(this, this.$el)",
+		"phase: &#39;idle&#39;",
+		`data-status-ready="Ready"`,
+		`data-status-listening="is listening"`,
+		`data-status-thinking="is thinking"`,
+		`data-status-writing="is writing"`,
+		`data-status-snag="hit a snag"`,
+		`class="muse-ring"`,
+		`:data-phase="phase"`,
+		`data-phase="idle"`,
+		"data-muse-listen",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("chat page missing %q", want)
+		}
+	}
+}
+
+// The copy is the reader's language, not English baked into a script.
+func TestStatusCopyFollowsTheLocale(t *testing.T) {
+	var buf bytes.Buffer
+	ctx := i18n.WithLocale(context.Background(), "pt-PT")
+	if err := Page(users.User{}, conversations.Conversation{ID: uuid.New()}, nil, nil, CoachStats{}, nil, false, "").
+		Render(ctx, &buf); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), `data-status-thinking="está a pensar"`) {
+		t.Error("pt-PT page does not carry the pt-PT status copy")
 	}
 }
 
