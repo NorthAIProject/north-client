@@ -194,3 +194,36 @@ func TestOpenPathCarriesTheChannel(t *testing.T) {
 		t.Fatalf("OpenPath = %q, want %q", got, want)
 	}
 }
+
+type fanoutSpy struct{ texts []string }
+
+func (f *fanoutSpy) Notify(_ context.Context, _ uuid.UUID, text string) error {
+	f.texts = append(f.texts, text)
+	return nil
+}
+
+// A standing task's result reached nobody yet, so RaiseProactive sends the
+// same coach_reply kind to Telegram and to browsers as well as the bell.
+func TestRaiseProactiveFansACoachReplyOutEverywhere(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	user := seedUser(t, pool, "nudge-proactive@north.test")
+	pushes := &pushSpy{delivered: 1}
+	chat := &fanoutSpy{}
+	funnel := &funnelSpy{}
+	svc := newStore(pool).WithClock(freeze(noon)).WithPush(pushes).WithFanout(chat).WithFunnel(funnel)
+
+	if err := svc.RaiseProactive(ctx, user, nudges.KindCoachReply, "msg-1",
+		"Standing task · your sleep", "You slept 6h10.", "/app/chat/abc"); err != nil {
+		t.Fatal(err)
+	}
+	if len(chat.texts) != 1 || !strings.Contains(chat.texts[0], "You slept 6h10.") {
+		t.Errorf("telegram got %v", chat.texts)
+	}
+	if len(pushes.sent) != 1 {
+		t.Errorf("push sent %d times, want 1", len(pushes.sent))
+	}
+	if strings.Join(funnel.delivered, ",") != "coach_reply/bell,coach_reply/push" {
+		t.Errorf("funnel saw %v", funnel.delivered)
+	}
+}

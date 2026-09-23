@@ -10,6 +10,8 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/ai/prompts"
+	"github.com/NorthAIProject/north-client/internal/conversations"
+	"github.com/NorthAIProject/north-client/internal/nudges/nudge"
 	"github.com/NorthAIProject/north-client/internal/shared/aiattr"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/spend"
@@ -151,13 +153,25 @@ func (s *Service) Generate(ctx context.Context, id, userID uuid.UUID) error {
 				slog.Default().Warn("reports: could not send briefing", "error", notifyErr, "user_id", userID)
 			}
 		}
+		href := "/app/reports/" + report.ID.String()
+		if s.chats != nil {
+			// Into the latest chat, as the coach speaking first. A failure
+			// here leaves the briefing where it always was, on its own page,
+			// and the bell points there instead.
+			msg, postErr := s.chats.PostProactive(ctx, userID, uuid.Nil, body, conversations.SourceDailyBriefing)
+			if postErr != nil {
+				slog.Default().Warn("reports: could not post briefing to chat", "error", postErr, "user_id", userID)
+			} else {
+				href = "/app/chat/" + msg.ConversationID.String()
+			}
+		}
 		if s.inbox != nil {
 			preview := body
-			if len(preview) > 140 {
-				preview = strings.TrimSpace(preview[:140]) + "…"
+			if r := []rune(preview); len(r) > 140 {
+				preview = strings.TrimSpace(string(r[:140])) + "…"
 			}
-			_ = s.inbox.Note(ctx, userID, "briefing_ready", report.ID.String(),
-				"Today's briefing", preview, "/app/reports/"+report.ID.String())
+			_ = s.inbox.Note(ctx, userID, nudge.KindBriefingReady, report.ID.String(),
+				"Today's briefing", preview, href)
 		}
 	}
 	return nil

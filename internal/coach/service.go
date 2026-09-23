@@ -749,7 +749,8 @@ func (s *Service) pump(
 			listening = false
 		}
 
-		results := s.tools.InvokeAll(toolsurface.With(genCtx, toolsurface.Coach), target.user.ID, calls)
+		toolCtx := toolsurface.WithThread(toolsurface.With(genCtx, toolsurface.Coach), target.conversation.ID)
+		results := s.tools.InvokeAll(toolCtx, target.user.ID, calls)
 		for _, result := range results {
 			log.Info("coach ran a tool",
 				slog.String("tool", result.Name),
@@ -831,7 +832,7 @@ func (s *Service) pump(
 	defer cancel()
 
 	if _, err := s.conversations.AppendModelMessage(
-		saveCtx, target.conversation.ID, text, usage, s.model, target.provider, evidenceRefs,
+		saveCtx, target.conversation.ID, text, usage, s.model, target.provider, evidenceRefs, conversations.Provenance{},
 	); err != nil {
 		log.Error("could not save the coach's reply", slog.Any("error", err),
 			slog.String("conversation_id", target.conversation.ID.String()))

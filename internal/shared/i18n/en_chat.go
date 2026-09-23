@@ -69,4 +69,26 @@ var englishChat = map[string]string{
 	"chat.tool.alerts":        "checking your reminders",
 	"chat.tool.alerts.write":  "setting a reminder",
 	"chat.tool.log":           "logging that for you",
+
+	// Captions above a proactive bubble (_reviews/muse-chat-contract.md,
+	// "Proactive messages"). Rendered uppercase by CSS, written in sentence
+	// case here so screen readers do not spell them out.
+	"chat.caption.briefing":  "Briefing · %[1]s",
+	"chat.caption.standing":  "Standing task",
+	"chat.caption.from":      "From %[1]s",
+	"chat.caption.proactive": "Unprompted",
+
+	// The standing-task card (create_watch).
+	"chat.watch.daily":   "Every day at %[1]s",
+	"chat.watch.weekly":  "Every %[1]s at %[2]s",
+	"chat.watch.when":    "Pings you when %[1]s",
+	"chat.watch.confirm": "Confirm",
+	"chat.watch.notnow":  "Not now",
+	"chat.watch.day.0":   "Sunday",
+	"chat.watch.day.1":   "Monday",
+	"chat.watch.day.2":   "Tuesday",
+	"chat.watch.day.3":   "Wednesday",
+	"chat.watch.day.4":   "Thursday",
+	"chat.watch.day.5":   "Friday",
+	"chat.watch.day.6":   "Saturday",
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/types"
 	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/internal/watches"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
 	"github.com/NorthAIProject/north-client/web/shared/markdown"
 	"github.com/NorthAIProject/north-client/web/shared/mascot"
@@ -61,6 +63,10 @@ const proseBody = "[&>*:first-child]:mt-0 [&>*:last-child]:mb-0 " +
 const (
 	museUserBubble  = "bg-muse-user text-muse-user-text max-w-[85%] rounded-[24px] px-4 py-2.5 text-[15px] leading-normal whitespace-pre-wrap"
 	museAgentBubble = "bg-muse-agent text-foreground border-hairline max-w-[94%] rounded-[24px] border px-4 py-3 text-[15px] leading-normal dark:border-transparent"
+
+	// museCaption is the line above a proactive bubble and the standing-task
+	// card: 11px uppercase, the contract's caption.
+	museCaption = "text-muted-foreground text-[11px] font-medium tracking-wider uppercase"
 )
 
 // starters seed a brand new conversation. A blank box is the hardest thing to
@@ -112,7 +118,7 @@ templ Page(user users.User, conversation conversations.Conversation, messages []
 			// scroll up under its scrim instead of stopping at a hard edge.
 			<div class="relative flex min-w-0 flex-1 flex-col">
 				@chatHeader(conversation)
-				@transcript(messages, conversation)
+				@transcript(messages, conversation, user.Location())
 				// The card takes the composer's place while it is up. A person
 				// answering "should I run this?" is not also mid-sentence on
 				// something else, and leaving both would invite a second turn
@@ -346,7 +352,7 @@ templ startReflectionForm(props button.Props) {
 
 // transcript holds the message history. New turns are appended into it by HTMX,
 // and Alpine keeps it scrolled to the bottom as content arrives.
-templ transcript(messages []conversations.Message, conversation conversations.Conversation) {
+templ transcript(messages []conversations.Message, conversation conversations.Conversation, loc *time.Location) {
 	<div
 		id="transcript"
 		class="min-h-0 flex-1 overflow-y-auto"
@@ -368,7 +374,7 @@ templ transcript(messages []conversations.Message, conversation conversations.Co
 					// not the one the person reads. Rendered, they would be
 					// empty bubbles between a question and its answer.
 					if !m.IsToolTurn() {
-						@Bubble(m)
+						@Bubble(m, loc)
 					}
 				}
 			}
@@ -451,7 +457,9 @@ templ conversationStarters() {
 
 // Bubble is one stored turn. The coach is named once, in the header pill, not
 // on every reply: a label per message was noise the Muse contract removed.
-templ Bubble(m conversations.Message) {
+//
+// loc is the reader's timezone, for the time in a briefing's caption.
+templ Bubble(m conversations.Message, loc *time.Location) {
 	if m.IsUser() {
 		<div class="flex justify-end">
 			<div class={ museUserBubble }>
@@ -463,6 +471,9 @@ templ Bubble(m conversations.Message) {
 		</div>
 	} else {
 		<div class="group flex flex-col items-start gap-1" x-data="{ copied: false }">
+			if m.IsProactive() {
+				@proactiveCaption(m, loc)
+			}
 			<div class={ museAgentBubble + " " + proseBody }>
 				@markdown.Render(m.Content)
 			</div>
@@ -480,6 +491,36 @@ templ Bubble(m conversations.Message) {
 				@MessageFeedback(m)
 			</div>
 		</div>
+	}
+}
+
+// proactiveCaption says why a message nobody asked for is here: "Briefing ·
+// 07:00", "Standing task", "From {skill}" (_reviews/muse-chat-contract.md,
+// "Proactive messages"). 11px uppercase above the same agent bubble; the
+// bubble itself does not change, so a proactive turn reads as the coach
+// speaking, not as a system notice.
+templ proactiveCaption(m conversations.Message, loc *time.Location) {
+	<p class={ museCaption + " ml-1" } data-proactive-caption>
+		{ captionText(ctx, m, loc) }
+	</p>
+}
+
+// captionText maps the stored source label onto the reader's language. A
+// label this build does not know is shown as "From {label}", which is the
+// contract's shape for anything a skill sends.
+func captionText(ctx context.Context, m conversations.Message, loc *time.Location) string {
+	if loc == nil {
+		loc = time.UTC
+	}
+	switch strings.TrimSpace(m.SourceLabel) {
+	case conversations.SourceDailyBriefing:
+		return i18n.Tf(ctx, "chat.caption.briefing", m.CreatedAt.In(loc).Format("15:04"))
+	case conversations.SourceStandingTask:
+		return i18n.T(ctx, "chat.caption.standing")
+	case "":
+		return i18n.T(ctx, "chat.caption.proactive")
+	default:
+		return i18n.Tf(ctx, "chat.caption.from", m.SourceLabel)
 	}
 }
 
@@ -746,6 +787,22 @@ type PendingTool struct {
 	MessageID uuid.UUID
 	Name      string
 	Summary   string
+
+	// Watch is set when the call is create_watch and its arguments parse:
+	// the card then reads as a standing task (title, schedule in words,
+	// instruction) instead of as a tool call.
+	Watch *watches.Proposal
+}
+
+// standingTask is the proposal to show as a standing-task card, when the
+// waiting turn is exactly one create_watch. Anything else — several calls, or
+// arguments that did not parse — keeps the generic card, which shows the raw
+// call so nothing is hidden from the person approving it.
+func standingTask(pending []PendingTool) *watches.Proposal {
+	if len(pending) != 1 || pending[0].Watch == nil {
+		return nil
+	}
+	return pending[0].Watch
 }
 
 // ApprovalCard asks before Khepri changes anything.
@@ -754,6 +811,75 @@ type PendingTool struct {
 // "log a check-in saying the week went badly" are different requests and only
 // one of them is what was meant.
 templ ApprovalCard(conversationID uuid.UUID, pending []PendingTool) {
+	if watch := standingTask(pending); watch != nil {
+		@StandingTaskCard(conversationID, pending[0].MessageID, *watch)
+	} else {
+		@toolApprovalCard(conversationID, pending)
+	}
+}
+
+// StandingTaskCard is the confirmation for create_watch
+// (_reviews/muse-chat-contract.md, "Standing-task card"): agent-bubble
+// styled, with the title, the schedule in words, the instruction, and
+// Confirm / Not now. Confirm stores the watch and the coach answers "Got it —
+// I'll watch X and ping you when Y" under a "Standing task" caption.
+templ StandingTaskCard(conversationID, messageID uuid.UUID, p watches.Proposal) {
+	<div class="px-4 pb-4 sm:px-6" data-standing-task-card>
+		<div class="mx-auto flex w-full max-w-3xl flex-col items-start gap-1">
+			<p class={ museCaption + " ml-1" }>{ i18n.T(ctx, "chat.caption.standing") }</p>
+			@card.Card(card.Props{Class: "bg-muse-agent text-foreground border-hairline max-w-[94%] rounded-2xl shadow-none dark:border-transparent"}) {
+				@card.Header(card.HeaderProps{Class: "space-y-1 p-4 pb-0"}) {
+					@card.Title(card.TitleProps{Class: "text-[15px] leading-snug font-semibold"}) {
+						{ capitalise(p.Title) }
+					}
+					@card.Description(card.DescriptionProps{Class: "text-[13px]"}) {
+						{ humanSchedule(ctx, p.Schedule) }
+					}
+				}
+				@card.Content(card.ContentProps{Class: "space-y-1 px-4 pt-3 pb-0 text-[15px] leading-normal"}) {
+					<p>{ p.Spec }</p>
+					<p class="text-muted-foreground text-[13px]">{ i18n.Tf(ctx, "chat.watch.when", p.Condition) }</p>
+				}
+				@card.Footer(card.FooterProps{Class: "flex-wrap gap-2 p-4"}) {
+					<form method="post" action={ templ.SafeURL(resolveURL(conversationID, messageID, "approve")) }>
+						@ui.CSRFInput()
+						@button.Button(button.Props{Type: "submit", Class: "min-h-11 rounded-full px-5"}) {
+							{ i18n.T(ctx, "chat.watch.confirm") }
+						}
+					</form>
+					<form method="post" action={ templ.SafeURL(resolveURL(conversationID, messageID, "decline")) }>
+						@ui.CSRFInput()
+						@button.Button(button.Props{Type: "submit", Variant: button.VariantGhost, Class: "min-h-11 rounded-full px-5"}) {
+							{ i18n.T(ctx, "chat.watch.notnow") }
+						}
+					</form>
+				}
+			}
+		</div>
+	</div>
+}
+
+// humanSchedule is a watch's schedule the way a person says it: "Every day at
+// 8:00", "Every Monday at 18:30".
+func humanSchedule(ctx context.Context, s watches.Schedule) string {
+	if s.Cadence == watches.CadenceWeekly {
+		day := i18n.T(ctx, fmt.Sprintf("chat.watch.day.%d", int(s.Weekday)))
+		return i18n.Tf(ctx, "chat.watch.weekly", day, s.Clock())
+	}
+	return i18n.Tf(ctx, "chat.watch.daily", s.Clock())
+}
+
+func capitalise(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return s
+	}
+	r := []rune(s)
+	return strings.ToUpper(string(r[0])) + string(r[1:])
+}
+
+// toolApprovalCard is the generic confirmation for any other write.
+templ toolApprovalCard(conversationID uuid.UUID, pending []PendingTool) {
 	<div class="border-border border-t p-4">
 		@alert.Alert() {
 			@icon.TriangleAlert(icon.Props{Class: "size-4"})

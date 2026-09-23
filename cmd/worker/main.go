@@ -29,6 +29,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/biometrics"
 	"github.com/NorthAIProject/north-client/internal/calculator"
 	"github.com/NorthAIProject/north-client/internal/checkins"
+	"github.com/NorthAIProject/north-client/internal/coach"
 	"github.com/NorthAIProject/north-client/internal/config"
 	"github.com/NorthAIProject/north-client/internal/conversations"
 	"github.com/NorthAIProject/north-client/internal/documents"
@@ -59,6 +60,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/vault"
 	vaultdb "github.com/NorthAIProject/north-client/internal/vault/db"
+	"github.com/NorthAIProject/north-client/internal/watches"
 	"github.com/NorthAIProject/north-client/internal/workouts"
 )
 
@@ -378,6 +380,10 @@ func run() error {
 	vapid := push.VAPIDFrom(cfg.Push)
 	pushSvc := push.NewService(push.NewRepository(pool), push.NewSender(vapid), vapid, log)
 
+	workoutSvc := workouts.NewService(workouts.Options{
+		Repository: workouts.NewRepository(pool),
+	})
+
 	nudgeSvc := nudges.NewService(nudges.NewRepository(pool), userSvc, checkinSvc, goalSvc).
 		WithPrefs(notificationSvc).
 		WithFanout(briefingNotify).
@@ -388,9 +394,7 @@ func run() error {
 			Photos: mediaSvc,
 			Facts:  memoryExtract.Memories,
 		}).
-		WithTraining(workouts.NewService(workouts.Options{
-			Repository: workouts.NewRepository(pool),
-		})).
+		WithTraining(workoutSvc).
 		WithSchedules(notificationSvc)
 	worker.Register(jobs.KindSweepNudges, nudges.NewSweeper(nudgeSvc, log).HandleSweep)
 
@@ -400,7 +404,45 @@ func run() error {
 			"I watched the clip. Open it to see the cues.",
 			"/app/form/"+analysisID.String())
 	})
-	reportSvc.WithInbox(nudgeSvc)
+	// The morning briefing also lands in the latest chat, captioned
+	// "Briefing", and the bell note opens that thread.
+	reportSvc.WithInbox(nudgeSvc).WithChats(memoryExtract.Conversations)
+
+	// Standing tasks: every fifteen minutes, each due watch runs through the
+	// coach and what it says is posted into its thread, then raised as a
+	// coach_reply on every channel (bell, Telegram, Web Push).
+	standingCoach := coach.NewService(coach.Options{
+		Registry:      registry,
+		Conversations: memoryExtract.Conversations,
+		// The record a watch reads, from the slices this process already
+		// builds. Documents, media, health and integrations are left to the
+		// web coach: a scheduled check is about what was logged, and
+		// building those here would drag in their clients for no reader.
+		ContextBuilder: coach.NewContextBuilder(memoryExtract.Conversations,
+			goals.NewContextSource(goalSvc),
+			checkins.NewContextSource(checkinSvc),
+			memories.NewContextSource(memoryExtract.Memories),
+			workouts.NewContextSource(workoutSvc),
+			calculator.NewContextSource(calculatorSvc),
+			activity.NewContextSource(activitySvc, stravaSvc),
+			meals.NewContextSource(
+				meals.NewTrackMealProgressService(meals.NewFoodLogService(mealsRepo), calculatorSvc),
+				meals.NewDietPreferenceService(mealsRepo)),
+			preferences.NewContextSource(preferences.NewService(preferences.NewRepository(pool))),
+			mind.NewContextSource(mind.NewService(mind.NewRepository(pool), checkinSvc)),
+			hydration.NewContextSource(hydration.NewService(hydration.NewRepository(pool))),
+			sleep.NewContextSource(sleep.NewService(sleep.NewRepository(pool))),
+			habits.NewContextSource(habits.NewService(habits.NewRepository(pool))),
+			reports.NewContextSource(reportSvc),
+		).WithMetrics(metricsReg),
+		PromptBuilder: coach.NewPromptBuilder(),
+		Chains:        cfg.AI.ChainSet(),
+		Model:         cfg.AI.Model,
+		FastModel:     cfg.AI.FastModel,
+	})
+	watchSvc := watches.NewService(watches.NewRepository(pool), userSvc)
+	worker.Register(jobs.KindSweepWatches,
+		watches.NewSweeper(watchSvc, standingCoach, nudgeSvc, log).HandleSweep)
 
 	// Compaction of long threads. The coach enqueues this from the reply pump
 	// once a conversation outgrows the context window; the sweep catches the
@@ -421,6 +463,7 @@ func run() error {
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepNudges, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepReports, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepBriefings, struct{}{})
+	worker.RegisterPeriodic(15*time.Minute, jobs.KindSweepWatches, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepDigests, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepSummaries, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepStrava, struct{}{})

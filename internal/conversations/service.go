@@ -167,9 +167,10 @@ func (s *Service) AppendUserMessage(ctx context.Context, conversationID uuid.UUI
 	})
 }
 
-// AppendModelMessage stores the coach's reply along with what it cost and what
-// it was built from.
-func (s *Service) AppendModelMessage(ctx context.Context, conversationID uuid.UUID, text string, usage *ai.Usage, model, provider string, evidenceRefs []string) (Message, error) {
+// AppendModelMessage stores the coach's turn along with what it cost, what it
+// was built from, and whether anybody asked for it. A reply passes
+// Provenance{}; a briefing or a standing task passes Proactive(label).
+func (s *Service) AppendModelMessage(ctx context.Context, conversationID uuid.UUID, text string, usage *ai.Usage, model, provider string, evidenceRefs []string, from Provenance) (Message, error) {
 	return s.repo.Append(ctx, NewMessage{
 		ConversationID: conversationID,
 		Role:           ai.RoleModel,
@@ -178,7 +179,84 @@ func (s *Service) AppendModelMessage(ctx context.Context, conversationID uuid.UU
 		Model:          model,
 		Provider:       provider,
 		EvidenceRefs:   evidenceRefs,
+		Provenance:     from,
 	})
+}
+
+// ProactiveTarget picks the thread a message nobody asked for is posted into.
+//
+// preferred is tried first (a standing task posts where it was set up), then
+// the most recently active chat, and a new thread when neither will do. A
+// reflection is never chosen: it is a structured session with an end, not a
+// place for the morning briefing to land. Nor is a thread waiting on an
+// approval card — a text turn between a tool call and its result would make
+// the conversation unreplayable to every provider.
+func (s *Service) ProactiveTarget(ctx context.Context, userID, preferred uuid.UUID) (Conversation, error) {
+	if preferred != uuid.Nil {
+		c, err := s.repo.Get(ctx, preferred, userID)
+		switch {
+		case err == nil:
+			if ok, okErr := s.acceptsProactive(ctx, c); okErr != nil {
+				return Conversation{}, okErr
+			} else if ok {
+				return c, nil
+			}
+		case !apperr.Is(err, apperr.ErrNotFound):
+			return Conversation{}, err
+		}
+	}
+
+	recent, err := s.repo.List(ctx, userID, proactiveCandidates, 0)
+	if err != nil {
+		return Conversation{}, err
+	}
+	for _, c := range recent {
+		ok, okErr := s.acceptsProactive(ctx, c)
+		if okErr != nil {
+			return Conversation{}, okErr
+		}
+		if ok {
+			return c, nil
+		}
+	}
+
+	return s.Start(ctx, userID)
+}
+
+// proactiveCandidates bounds how far back ProactiveTarget looks for a thread.
+// Past a handful, a new thread is a better home than an old one.
+const proactiveCandidates = 5
+
+func (s *Service) acceptsProactive(ctx context.Context, c Conversation) (bool, error) {
+	if c.IsReflection() {
+		return false, nil
+	}
+	history, err := s.repo.Recent(ctx, c.ID, 1)
+	if err != nil {
+		return false, err
+	}
+	return !AwaitingTool(history), nil
+}
+
+// AwaitingTool reports whether a conversation's last turn is a tool call with
+// no result after it — the state an approval card is shown in.
+func AwaitingTool(history []Message) bool {
+	return len(history) > 0 && len(history[len(history)-1].ToolCalls) > 0
+}
+
+// PostProactive appends a turn nobody asked for to the thread
+// ProactiveTarget picks, and returns it (its ConversationID is the link a
+// notification should open).
+func (s *Service) PostProactive(ctx context.Context, userID, preferred uuid.UUID, text, sourceLabel string) (Message, error) {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return Message{}, apperr.Wrap(apperr.ErrValidation, "a proactive message needs text")
+	}
+	target, err := s.ProactiveTarget(ctx, userID, preferred)
+	if err != nil {
+		return Message{}, err
+	}
+	return s.AppendModelMessage(ctx, target.ID, text, nil, "", "", nil, Proactive(sourceLabel))
 }
 
 // AppendToolCalls stores the tools a model asked for on this turn.
