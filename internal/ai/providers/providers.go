@@ -55,6 +55,7 @@ type Compatible struct {
 	Model              string
 	Headers            map[string]string
 	SupportsJSONSchema bool
+	IgnoresTools       bool
 }
 
 // Build constructs every provider whose credentials are present and makes the
@@ -94,6 +95,7 @@ func Build(ctx context.Context, opts Options) (*ai.Registry, error) {
 			DefaultModel:       spec.Model,
 			Headers:            spec.Headers,
 			SupportsJSONSchema: spec.SupportsJSONSchema,
+			IgnoresTools:       spec.IgnoresTools,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("providers: build %s: %w", spec.Name, err)

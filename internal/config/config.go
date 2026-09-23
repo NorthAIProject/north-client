@@ -981,6 +981,12 @@ func (c AIConfig) ProviderOptions(env Environment) providers.Options {
 				// Depends on whichever model the gateway is fronting, so the
 				// safe assumption is the weaker one.
 				SupportsJSONSchema: false,
+				// The gateway's API server (gateway/platforms/api_server.py)
+				// runs the Hermes agent with its own toolset and never reads
+				// the request's tools field. With Hermes first in the chain
+				// the coach spent sixteen days saying "Check-in logged" and
+				// logging nothing. Tool turns skip it.
+				IgnoresTools: true,
 			},
 		},
 	}
