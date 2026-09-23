@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/a-h/templ"
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/ai"
@@ -80,7 +81,10 @@ func TestPageKeepsTheComposerReachableOnAPhone(t *testing.T) {
 		`id="chat-root"`,
 		"visualViewport",
 		"env(safe-area-inset-bottom)",
-		"min-h-11 min-w-11",
+		// Checked separately: TwMerge reorders a component's classes, so
+		// the pair is never adjacent on a templUI button.
+		"min-h-11",
+		"min-w-11",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("chat page missing %q", want)
@@ -226,7 +230,7 @@ func TestChatHeaderCarriesTheReactiveMascot(t *testing.T) {
 
 	// The app shell renders a header of its own first, so anchor on the chat
 	// header's own markup rather than on the first </header> in the document.
-	_, afterOpen, found := strings.Cut(out, `<header class="border-border flex h-12`)
+	_, afterOpen, found := strings.Cut(out, `<header class="muse-header`)
 	if !found {
 		t.Fatal("no chat header rendered")
 	}
@@ -239,6 +243,110 @@ func TestChatHeaderCarriesTheReactiveMascot(t *testing.T) {
 	}
 	if got := strings.Count(out, "/assets/js/shared/mascot/alpine.js"); got != 1 {
 		t.Errorf("mascot script rendered %d times, want 1", got)
+	}
+}
+
+// chatHeaderHTML renders a thread page and returns just the Muse header.
+func chatHeaderHTML(t *testing.T, c conversations.Conversation) string {
+	t.Helper()
+
+	var buf bytes.Buffer
+	if err := Page(users.User{DisplayName: "Fernando"}, c, nil, nil, CoachStats{}, nil, false, "").
+		Render(context.Background(), &buf); err != nil {
+		t.Fatal(err)
+	}
+	_, afterOpen, found := strings.Cut(buf.String(), `<header class="muse-header`)
+	if !found {
+		t.Fatal("no Muse header rendered")
+	}
+	header, _, found := strings.Cut(afterOpen, "</header>")
+	if !found {
+		t.Fatal("Muse header is not closed")
+	}
+	return header
+}
+
+// The Muse header is the one place the coach is named: avatar, name, and a
+// status line the stream can drive. Stage B only has to write `status`.
+func TestMuseHeaderCarriesAvatarNameAndStatus(t *testing.T) {
+	header := chatHeaderHTML(t, conversations.Conversation{ID: uuid.MustParse("11111111-1111-1111-1111-111111111111")})
+
+	for _, want := range []string{
+		`class="muse-avatar"`,
+		`id="chat-mascot"`,
+		// SizeLg: the 110px avatar, not the old 32px header chip.
+		"size-40",
+		`class="muse-scrim"`,
+		`<span class="muse-pill-name">`,
+		"Khepri",
+		`x-text="status"`,
+		">Ready</span>",
+		"New chat",
+		`aria-label="Show conversations"`,
+		`aria-label="Delete conversation"`,
+	} {
+		if !strings.Contains(header, want) {
+			t.Errorf("Muse header missing %q:\n%s", want, header)
+		}
+	}
+	if strings.Contains(header, "size-8") {
+		t.Error("header mascot is still the small chip")
+	}
+}
+
+// x-text="status" needs a status in scope, or Alpine blanks the pill and
+// throws. The root scope seeds it with the translated "Ready".
+func TestChatRootSeedsTheStatus(t *testing.T) {
+	var buf bytes.Buffer
+	if err := Page(users.User{}, conversations.Conversation{ID: uuid.New()}, nil, nil, CoachStats{}, nil, false, "").
+		Render(context.Background(), &buf); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), "status: &#34;Ready&#34;") {
+		t.Error("#chat-root x-data does not seed status")
+	}
+}
+
+// The coach is named once, in the header. Replies carry no avatar and no
+// "Khepri" caption, stored or streaming.
+func TestBubbleHasNoInlineAvatar(t *testing.T) {
+	id := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	renders := map[string]templ.Component{
+		"stored":  Bubble(conversations.Message{Role: ai.RoleModel, Content: "A reply."}),
+		"user":    Bubble(conversations.Message{Role: ai.RoleUser, Content: "A question."}),
+		"pending": PendingExchange(id, "How did training go?", uuid.Nil),
+		"resume":  ResumeExchange(id),
+	}
+	for name, c := range renders {
+		var buf bytes.Buffer
+		if err := c.Render(context.Background(), &buf); err != nil {
+			t.Fatal(err)
+		}
+		body := buf.String()
+		if strings.Contains(body, "north-mascot") || strings.Contains(body, "khepri-mascot.png") {
+			t.Errorf("%s bubble renders an inline avatar", name)
+		}
+		if strings.Contains(body, ">Khepri<") {
+			t.Errorf("%s bubble still carries the Khepri caption", name)
+		}
+		if !strings.Contains(body, "rounded-[24px]") {
+			t.Errorf("%s bubble is not the Muse radius", name)
+		}
+	}
+
+	var agent bytes.Buffer
+	if err := Bubble(conversations.Message{Role: ai.RoleModel, Content: "A reply."}).Render(context.Background(), &agent); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(agent.String(), "max-w-[94%] ") || !strings.Contains(agent.String(), "bg-muse-agent") {
+		t.Error("agent bubble is not the 94% muse agent bubble")
+	}
+	var user bytes.Buffer
+	if err := Bubble(conversations.Message{Role: ai.RoleUser, Content: "Hi"}).Render(context.Background(), &user); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(user.String(), "max-w-[85%]") || !strings.Contains(user.String(), "bg-muse-user") {
+		t.Error("user bubble is not the 85% muse user bubble")
 	}
 }
 

@@ -10,6 +10,8 @@ var englishChat = map[string]string{
 	"chat.reflection":       "Reflection",
 	"chat.reflection.start": "Start a reflection",
 	"chat.threads.aria":     "Show conversations",
+	"chat.header.new":       "New chat",
+	"chat.status.ready":     "Ready",
 	"chat.delete.aria":      "Delete conversation",
 	"chat.delete.confirm":   "Delete this conversation? Everything in it is lost.",
 	"chat.kpi.threads":      "Threads",
