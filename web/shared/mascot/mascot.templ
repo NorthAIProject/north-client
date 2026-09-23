@@ -1,7 +1,7 @@
 // Package mascot is the Khepri companion (NOR-51).
 //
 // It renders the brand scarab PNG. Alpine owns the pose (idle, thinking,
-// listening, plus the celebrate/nod gestures) and the coach-stream bridge;
+// listening, working, plus the celebrate/nod gestures) and the coach-stream bridge;
 // CSS in web/assets/css/input.css is what actually moves it. There is no
 // WebGL path: the still is the mascot.
 //
@@ -34,6 +34,12 @@ const (
 	StateIdle      State = "idle"
 	StateThinking  State = "thinking"
 	StateListening State = "listening"
+
+	// StateWorking is the chat contract's name for a reply in flight
+	// (_reviews/muse-chat-contract.md). It wears the idle pose: there is no
+	// working art, and the host draws a ring around the avatar instead (see
+	// .muse-ring in input.css).
+	StateWorking State = "working"
 )
 
 // Gestures play once and hand back. They are valid for Props.Gesture, never
@@ -41,6 +47,10 @@ const (
 const (
 	StateCelebrate State = "celebrate"
 	StateNod       State = "nod"
+
+	// StateCelebrating is the contract's name for the beat after a reply
+	// lands. Same gesture; alpine.js maps the name the same way.
+	StateCelebrating = StateCelebrate
 )
 
 type Props struct {
@@ -76,7 +86,7 @@ func boxClass(size Size) string {
 
 func stateOrDefault(s State) State {
 	switch s {
-	case StateThinking, StateListening:
+	case StateThinking, StateListening, StateWorking:
 		return s
 	default:
 		return StateIdle

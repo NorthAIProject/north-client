@@ -278,22 +278,14 @@ func (h *Handler) resume(w http.ResponseWriter, r *http.Request) {
 
 	stream, err := h.svc.Resume(r.Context(), user, conversationID)
 	if err != nil {
-		writeContent(w, rc, chatpages.StreamErrorHTML(friendly(err)))
+		writeFailure(w, rc, friendly(err))
 		writeSignal(w, rc, "done")
 		return
 	}
 
-	for chunk := range stream {
-		if chunk.Err != nil {
-			log.Error("resumed coach stream failed", slog.Any("error", chunk.Err))
-			writeContent(w, rc, chatpages.StreamErrorHTML(friendly(chunk.Err)))
-			break
-		}
-		if chunk.Text == "" {
-			continue
-		}
-		writeContent(w, rc, chatpages.TokenHTML(chunk.Text))
-	}
+	relay(r.Context(), w, rc, stream, func(err error) {
+		log.Error("resumed coach stream failed", slog.Any("error", err))
+	})
 
 	writeSignal(w, rc, "done")
 }
@@ -438,7 +430,7 @@ func (h *Handler) stream(w http.ResponseWriter, r *http.Request) {
 		log.Warn("coach message refused by quota",
 			slog.String("user_id", user.ID.String()),
 			slog.Duration("retry_after", decision.RetryAfter))
-		writeContent(w, rc, chatpages.StreamErrorHTML(quotaMessage(decision)))
+		writeFailure(w, rc, quotaMessage(decision))
 		writeSignal(w, rc, "done")
 		return
 	}
@@ -477,22 +469,14 @@ func (h *Handler) stream(w http.ResponseWriter, r *http.Request) {
 		stream, err = h.svc.SendIncoming(r.Context(), user, conversation.ID, in)
 	}
 	if err != nil {
-		writeContent(w, rc, chatpages.StreamErrorHTML(friendly(err)))
+		writeFailure(w, rc, friendly(err))
 		writeSignal(w, rc, "done")
 		return
 	}
 
-	for chunk := range stream {
-		if chunk.Err != nil {
-			log.Error("coach stream failed", slog.Any("error", chunk.Err))
-			writeContent(w, rc, chatpages.StreamErrorHTML(friendly(chunk.Err)))
-			break
-		}
-		if chunk.Text == "" {
-			continue
-		}
-		writeContent(w, rc, chatpages.TokenHTML(chunk.Text))
-	}
+	relay(r.Context(), w, rc, stream, func(err error) {
+		log.Error("coach stream failed", slog.Any("error", err))
+	})
 
 	// Tells the client to swap the streamed bubble for the stored message and
 	// close the connection. Without it the browser reconnects forever.
@@ -568,6 +552,52 @@ func writeContent(w http.ResponseWriter, rc *http.ResponseController, data strin
 func writeSignal(w http.ResponseWriter, rc *http.ResponseController, event string) {
 	_, _ = fmt.Fprintf(w, "event: %s\ndata: \n\n", event)
 	_ = rc.Flush()
+}
+
+// relay writes a coach stream out as SSE frames until it ends or fails.
+//
+// Text goes out as content. A round of tool calls goes out as a status frame
+// naming what is running, because the page cannot see tool calls any other
+// way and "is thinking" for the length of a lookup reads as stuck. A failure
+// is written once and ends the relay; the caller still owes the "done".
+func relay(ctx context.Context, w http.ResponseWriter, rc *http.ResponseController, stream <-chan ai.StreamChunk, logFailure func(error)) {
+	for chunk := range stream {
+		if chunk.Err != nil {
+			logFailure(chunk.Err)
+			writeFailure(w, rc, friendly(chunk.Err))
+			return
+		}
+		if len(chunk.ToolCalls) > 0 {
+			writeStatus(w, rc, toolStatus(ctx, chunk.ToolCalls))
+			continue
+		}
+		if chunk.Text == "" {
+			continue
+		}
+		writeContent(w, rc, chatpages.TokenHTML(chunk.Text))
+	}
+}
+
+// writeStatus emits a named "status" frame carrying the header's status line
+// ("is checking your goals"), already in the reader's language.
+//
+// Named, so htmx 4 dispatches it as a DOM event rather than swapping it into
+// the transcript; the mascot bridge in web/assets/js/shared/mascot/alpine.js
+// reads it from htmx:sse:after:message.
+func writeStatus(w http.ResponseWriter, rc *http.ResponseController, line string) {
+	_, _ = fmt.Fprintf(w, "event: status\ndata: %s\n\n", sseLine(line))
+	_ = rc.Flush()
+}
+
+// writeFailure says a turn failed: a named "failed" signal for the header
+// ("hit a snag"), then the error panel as content for the transcript.
+//
+// The signal goes first so the header never reads "is writing" over an error
+// panel — the panel is an unnamed frame, and the bridge takes any unnamed
+// frame for a token.
+func writeFailure(w http.ResponseWriter, rc *http.ResponseController, message string) {
+	writeSignal(w, rc, "failed")
+	writeContent(w, rc, chatpages.StreamErrorHTML(message))
 }
 
 func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {

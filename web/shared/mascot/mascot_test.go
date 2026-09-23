@@ -109,3 +109,18 @@ func TestScriptEmitsOnlyOncePerRequest(t *testing.T) {
 		t.Errorf("script rendered %d times, want 1", got)
 	}
 }
+
+// The chat contract's names. working is a sustained pose a mascot can start
+// in; celebrating is the celebrate gesture under another name.
+func TestContractAliasesMapOntoPoses(t *testing.T) {
+	out := render(t, Props{State: StateWorking})
+	if !strings.Contains(out, `data-state="working"`) {
+		t.Errorf("working did not render as a sustained state:\n%s", out)
+	}
+	if StateCelebrating != StateCelebrate {
+		t.Errorf("StateCelebrating = %q, want the celebrate gesture", StateCelebrating)
+	}
+	if got := gestureOrEmpty(StateCelebrating); got != "celebrate" {
+		t.Errorf("gestureOrEmpty(StateCelebrating) = %q", got)
+	}
+}
