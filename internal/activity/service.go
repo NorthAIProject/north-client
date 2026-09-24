@@ -231,6 +231,14 @@ func (s *Service) Import(ctx context.Context, in ImportInput) (Session, bool, er
 		return Session{}, false, apperr.Wrap(apperr.ErrValidation, "an imported session needs an external id")
 	}
 
+	duplicate, found, err := s.sameWorkoutFromAnotherSource(ctx, in)
+	if err != nil {
+		return Session{}, false, err
+	}
+	if found {
+		return duplicate, false, nil
+	}
+
 	if in.Calories <= 0 {
 		hours := in.EndedAt.Sub(in.StartedAt).Hours()
 		if hours < 0 {
@@ -240,4 +248,47 @@ func (s *Service) Import(ctx context.Context, in ImportInput) (Session, bool, er
 	}
 
 	return s.repo.Import(ctx, in)
+}
+
+// sameWorkoutFromAnotherSource finds a completed session that is this import
+// seen by a different provider: a watch run that also syncs to Strava, or a
+// session timed in the app and written to Apple Health, which then syncs back.
+//
+// UNIQUE (source, external_id) cannot catch these, because each provider has
+// its own id for the same hour. They are recognised by time instead: sharing
+// at least half of the shorter session. Back-to-back workouts, which touch or
+// overlap by a few minutes, stay two workouts.
+func (s *Service) sameWorkoutFromAnotherSource(ctx context.Context, in ImportInput) (Session, bool, error) {
+	// A session overlapping this one must end after it starts, and one that
+	// ends more than a day after this one finishes is not a workout.
+	candidates, err := s.repo.ListBetween(ctx, in.UserID, in.StartedAt, in.EndedAt.Add(24*time.Hour))
+	if err != nil {
+		return Session{}, false, err
+	}
+
+	for _, c := range candidates {
+		if c.Source == in.Source || c.EndedAt == nil {
+			continue
+		}
+		overlap := minTime(*c.EndedAt, in.EndedAt).Sub(maxTime(c.StartedAt, in.StartedAt))
+		shorter := min(c.EndedAt.Sub(c.StartedAt), in.EndedAt.Sub(in.StartedAt))
+		if overlap > 0 && 2*overlap >= shorter {
+			return c, true, nil
+		}
+	}
+	return Session{}, false, nil
+}
+
+func minTime(a, b time.Time) time.Time {
+	if a.Before(b) {
+		return a
+	}
+	return b
+}
+
+func maxTime(a, b time.Time) time.Time {
+	if a.After(b) {
+		return a
+	}
+	return b
 }
