@@ -1,0 +1,40 @@
+{
+  "conversation": {
+    "id": "33333333-3333-3333-3333-333333333333",
+    "title": "Push-up form",
+    "kind": "chat",
+    "ended": false,
+    "updatedAt": "2026-09-24T07:15:00Z"
+  },
+  "messages": [
+    {
+      "id": "77777777-7777-7777-7777-777777777771",
+      "role": "user",
+      "text": "How do I do a push-up?",
+      "attachments": [],
+      "exercises": [],
+      "createdAt": "2026-09-24T07:15:00Z"
+    },
+    {
+      "id": "77777777-7777-7777-7777-777777777773",
+      "role": "coach",
+      "text": "Hands under shoulders, body in one line, lower until your chest nearly touches.",
+      "attachments": [],
+      "exercises": [
+        "push-up"
+      ],
+      "helpful": true,
+      "createdAt": "2026-09-24T07:15:01Z"
+    }
+  ],
+  "pendingApproval": {
+    "messageId": "99999999-9999-9999-9999-999999999999",
+    "calls": [
+      {
+        "name": "log_check_in",
+        "summary": "log_check_in"
+      }
+    ]
+  },
+  "awaitingResume": false
+}
