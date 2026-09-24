@@ -307,6 +307,13 @@ func (s *Service) SetPrescription(ctx context.Context, user users.User, planID u
 	})
 }
 
+// SetStartTime sets or clears when a day's session starts.
+func (s *Service) SetStartTime(ctx context.Context, user users.User, planID uuid.UUID, day int, startTime string) (StoredPlan, error) {
+	return s.applyEdit(ctx, user, planID, func(p Plan) (Plan, error) {
+		return SetStartTime(p, day, startTime)
+	})
+}
+
 // SuggestForDay offers exercises to add to a day.
 //
 // Unlike a swap there is no movement to match against, so the useful filter is

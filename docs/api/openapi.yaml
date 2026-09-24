@@ -724,6 +724,554 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '422':
           $ref: '#/components/responses/ValidationError'
+  /training/plans:
+    get:
+      operationId: listPlans
+      summary: The plans the person is following, newest first
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: createPlan
+      summary: Generate a plan from a training intake (waits on the model)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrainingIntake'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /training/intake:
+    get:
+      operationId: getLatestIntake
+      summary: The last intake, for prefilling a new one
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrainingIntake'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /training/plans/{planID}:
+    parameters:
+      - name: planID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getPlan
+      summary: A plan with every day and exercise
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /training/plans/{planID}/days/{day}/start-time:
+    parameters:
+      - name: planID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: day
+        in: path
+        required: true
+        schema:
+          type: integer
+    put:
+      operationId: setDayStartTime
+      summary: Set or clear when a day's session starts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartTimeRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanDetail'
+        '409':
+          description: The plan was edited elsewhere; this is the newest version
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /training/plans/{planID}/days/{day}/suggestions:
+    parameters:
+      - name: planID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: day
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      operationId: suggestExercisesForDay
+      summary: Exercises that would fit this day
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExerciseList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /training/plans/{planID}/days/{day}/exercises:
+    parameters:
+      - name: planID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: day
+        in: path
+        required: true
+        schema:
+          type: integer
+    post:
+      operationId: addExerciseToDay
+      summary: Append a catalog exercise to a day
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CatalogChoice'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanDetail'
+        '409':
+          description: The plan was edited elsewhere; this is the newest version
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /training/plans/{planID}/days/{day}/exercises/{index}:
+    parameters:
+      - name: planID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: day
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: index
+        in: path
+        required: true
+        schema:
+          type: integer
+    put:
+      operationId: swapExercise
+      summary: Replace an exercise, keeping its sets and reps
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CatalogChoice'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanDetail'
+        '409':
+          description: The plan was edited elsewhere; this is the newest version
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      operationId: removeExercise
+      summary: Remove an exercise from a day
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanDetail'
+        '409':
+          description: The plan was edited elsewhere; this is the newest version
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /training/plans/{planID}/days/{day}/exercises/{index}/move:
+    parameters:
+      - name: planID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: day
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: index
+        in: path
+        required: true
+        schema:
+          type: integer
+    post:
+      operationId: moveExercise
+      summary: Move an exercise up or down its day
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MoveRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanDetail'
+        '409':
+          description: The plan was edited elsewhere; this is the newest version
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /training/plans/{planID}/days/{day}/exercises/{index}/prescription:
+    parameters:
+      - name: planID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: day
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: index
+        in: path
+        required: true
+        schema:
+          type: integer
+    put:
+      operationId: setPrescription
+      summary: Change sets, reps and rest
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PrescriptionRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanDetail'
+        '409':
+          description: The plan was edited elsewhere; this is the newest version
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /training/plans/{planID}/days/{day}/exercises/{index}/replacements:
+    parameters:
+      - name: planID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: day
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: index
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      operationId: suggestReplacements
+      summary: Exercises that could replace this one
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExerciseList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /exercises:
+    get:
+      operationId: searchExercises
+      summary: Search the exercise library
+      parameters:
+      - {name: q, in: query, schema: {type: string}}
+      - {name: muscle, in: query, schema: {type: string}}
+      - {name: category, in: query, schema: {type: string}}
+      - {name: equipment, in: query, schema: {type: array, items: {type: string}}, explode: true}
+      - {name: limit, in: query, schema: {type: integer}}
+      - {name: offset, in: query, schema: {type: integer}}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExerciseList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /activity:
+    get:
+      operationId: getActivity
+      summary: The open session, recent sessions, and the activities that can be timed
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivityOverview'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /activity/start:
+    post:
+      operationId: startActivity
+      summary: Start timing an activity
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartActivityRequest'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivitySession'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /activity/log:
+    post:
+      operationId: logActivity
+      summary: Record an activity after the fact
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LogActivityRequest'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivitySession'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /activity/{sessionID}/pause:
+    parameters:
+      - name: sessionID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: pauseActivity
+      summary: Pause the open session
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivitySession'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /activity/{sessionID}/resume:
+    parameters:
+      - name: sessionID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: resumeActivity
+      summary: Resume a paused session
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivitySession'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /activity/{sessionID}/stop:
+    parameters:
+      - name: sessionID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: stopActivity
+      summary: Finish the session and record its calories
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivitySession'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /activity/{sessionID}:
+    parameters:
+      - name: sessionID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      operationId: cancelActivity
+      summary: Discard the open session
+      responses:
+        '204':
+          description: Done
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /me:
     get:
       operationId: getMe
@@ -1936,3 +2484,275 @@ components:
       properties:
         confirmEmail:
           type: string
+    PlanList:
+      type: object
+      required: [plans]
+      properties:
+        plans:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlanSummary'
+    PlanSummary:
+      type: object
+      required: [id, name, weeksTotal, days, source, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        weeksTotal:
+          type: integer
+        days:
+          type: array
+          items:
+            $ref: '#/components/schemas/DaySummary'
+        source:
+          type: string
+          enum: [ai, edited]
+        createdAt:
+          type: string
+          format: date-time
+    DaySummary:
+      type: object
+      required: [weekday, focus, exerciseCount]
+      properties:
+        weekday:
+          type: string
+        startTime:
+          type: string
+        focus:
+          type: string
+        exerciseCount:
+          type: integer
+    PlanDetail:
+      type: object
+      required: [id, name, rationale, weeksTotal, days, problems, source, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: This version's id. Every edit returns a new one.
+        name:
+          type: string
+        rationale:
+          type: string
+        weeksTotal:
+          type: integer
+        days:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrainingDay'
+        problems:
+          type: array
+          description: Where the plan no longer fits its intake, in words for the person.
+          items:
+            type: string
+        source:
+          type: string
+          enum: [ai, edited]
+        createdAt:
+          type: string
+          format: date-time
+    TrainingDay:
+      type: object
+      required: [weekday, focus, exercises]
+      properties:
+        weekday:
+          type: string
+          description: English weekday name, e.g. Monday.
+        startTime:
+          type: string
+          description: HH:MM in the person's time zone; absent means no set time.
+        focus:
+          type: string
+        exercises:
+          type: array
+          items:
+            $ref: '#/components/schemas/DayExercise'
+    DayExercise:
+      type: object
+      required: [name, sets, reps, restSeconds, equipment, hasArt, primaryMuscles, secondaryMuscles]
+      properties:
+        name:
+          type: string
+        sets:
+          type: integer
+        reps:
+          type: string
+        restSeconds:
+          type: integer
+        equipment:
+          type: string
+        formCues:
+          type: string
+        substitute:
+          type: string
+        catalogSlug:
+          type: string
+        hasArt:
+          type: boolean
+        primaryMuscles:
+          type: array
+          items:
+            type: string
+        secondaryMuscles:
+          type: array
+          items:
+            type: string
+    TrainingIntake:
+      type: object
+      required: [goal, experience, daysPerWeek, sessionMinutes, equipment]
+      properties:
+        goal:
+          type: string
+        experience:
+          type: string
+        daysPerWeek:
+          type: integer
+        sessionMinutes:
+          type: integer
+        equipment:
+          type: array
+          items:
+            type: string
+        limitations:
+          type: string
+    StartTimeRequest:
+      type: object
+      required: [startTime]
+      properties:
+        startTime:
+          type: string
+          description: HH:MM on a 24-hour clock, or empty to clear.
+    CatalogChoice:
+      type: object
+      required: [catalogSlug]
+      properties:
+        catalogSlug:
+          type: string
+    MoveRequest:
+      type: object
+      required: [direction]
+      properties:
+        direction:
+          type: string
+          enum: [up, down]
+    PrescriptionRequest:
+      type: object
+      required: [sets, reps, restSeconds]
+      properties:
+        sets:
+          type: integer
+        reps:
+          type: string
+        restSeconds:
+          type: integer
+    ExerciseList:
+      type: object
+      required: [exercises, total]
+      properties:
+        exercises:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExerciseSummary'
+        total:
+          type: integer
+          description: How many match, for paging. 0 on suggestion lists.
+    ExerciseSummary:
+      type: object
+      required: [slug, name, category, equipment, difficulty, primaryMuscles, hasArt]
+      properties:
+        slug:
+          type: string
+        name:
+          type: string
+        category:
+          type: string
+        equipment:
+          type: string
+        difficulty:
+          type: string
+        primaryMuscles:
+          type: array
+          items:
+            type: string
+        hasArt:
+          type: boolean
+    ActivityOverview:
+      type: object
+      required: [recent, kinds]
+      properties:
+        active:
+          $ref: '#/components/schemas/ActivitySession'
+        recent:
+          type: array
+          items:
+            $ref: '#/components/schemas/ActivitySession'
+        kinds:
+          type: array
+          items:
+            $ref: '#/components/schemas/ActivityKind'
+    ActivitySession:
+      type: object
+      required: [id, activityCode, activityName, source, status, startedAt, totalPausedSeconds, elapsedSeconds]
+      properties:
+        id:
+          type: string
+          format: uuid
+        activityCode:
+          type: string
+        activityName:
+          type: string
+        source:
+          type: string
+        status:
+          type: string
+          enum: [active, paused, completed, cancelled]
+        startedAt:
+          type: string
+          format: date-time
+        pausedAt:
+          type: string
+          format: date-time
+        totalPausedSeconds:
+          type: integer
+        endedAt:
+          type: string
+          format: date-time
+        elapsedSeconds:
+          type: integer
+          description: Moving time when this response was written.
+        caloriesBurned:
+          type: number
+        distanceM:
+          type: number
+    ActivityKind:
+      type: object
+      required: [code, name, category]
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        category:
+          type: string
+    StartActivityRequest:
+      type: object
+      required: [activityCode]
+      properties:
+        activityCode:
+          type: string
+    LogActivityRequest:
+      type: object
+      required: [activityCode, durationMinutes]
+      properties:
+        activityCode:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+        durationMinutes:
+          type: integer
+        distanceKm:
+          type: number

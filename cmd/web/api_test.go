@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/NorthAIProject/north-client/internal/activity"
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/capture"
 	"github.com/NorthAIProject/north-client/internal/coach"
@@ -16,6 +17,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/exercises"
 	"github.com/NorthAIProject/north-client/internal/onboarding"
 	"github.com/NorthAIProject/north-client/internal/settings"
+	"github.com/NorthAIProject/north-client/internal/workouts"
 )
 
 // resolverThatMustNotRun fails the test if a request without a bearer token
@@ -42,6 +44,8 @@ func apiRouter(t *testing.T) chi.Router {
 		coach:      coach.NewAPI(nil, nil, nil),
 		exercises:  exercises.NewAPI(nil, nil),
 		settings:   settings.NewAPI(nil),
+		training:   workouts.NewAPI(nil),
+		activity:   activity.NewAPI(nil),
 	})
 	return r
 }

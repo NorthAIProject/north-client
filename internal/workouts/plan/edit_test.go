@@ -437,3 +437,44 @@ func TestSetPrescriptionDoesNotDisturbTheOriginalPlan(t *testing.T) {
 		t.Errorf("the original's sets are now %d", got)
 	}
 }
+
+func TestSetStartTime(t *testing.T) {
+	t.Parallel()
+
+	p := Plan{Days: []PlanDay{{Weekday: "Monday"}, {Weekday: "Thursday"}}}
+
+	got, err := SetStartTime(p, 1, "7:05")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Days[1].StartTime != "07:05" {
+		t.Errorf("start time = %q, want it normalised to 07:05", got.Days[1].StartTime)
+	}
+	if p.Days[1].StartTime != "" {
+		t.Error("the original plan was modified")
+	}
+
+	cleared, err := SetStartTime(got, 1, "")
+	if err != nil || cleared.Days[1].StartTime != "" {
+		t.Errorf("clearing: %q, %v", cleared.Days[1].StartTime, err)
+	}
+
+	for _, bad := range []string{"25:00", "7pm", "07:00:30"} {
+		if _, err := SetStartTime(p, 0, bad); err == nil {
+			t.Errorf("%q was accepted", bad)
+		}
+	}
+	if _, err := SetStartTime(p, 2, "07:00"); err == nil {
+		t.Error("a day outside the plan was accepted")
+	}
+}
+
+// The coach reads the plan through Summary; a start time is part of the plan.
+func TestSummaryMentionsStartTime(t *testing.T) {
+	t.Parallel()
+
+	p := Plan{Name: "Strength", WeeksTotal: 8, Days: []PlanDay{{Weekday: "Monday", StartTime: "07:00", Focus: "Lower"}}}
+	if !strings.Contains(p.Summary(), "Monday at 07:00 — Lower") {
+		t.Errorf("summary = %q", p.Summary())
+	}
+}
