@@ -500,7 +500,7 @@ func (s *Service) eachProvider(ctx context.Context, user users.User, needsTools 
 		own = nil
 	}
 
-	opts := ai.RunOptions{Tier: string(user.Tier)}
+	opts := ai.RunOptions{Tier: string(user.Tier), NeedsTools: needsTools}
 	if own != nil {
 		opts.Prepend = []ai.Client{own}
 
