@@ -189,3 +189,27 @@ func sentAt(t *testing.T, api *fakeAPI, i int) []map[string]any {
 	}
 	return out
 }
+
+// The API takes four image types. A HEIC photo from an iPhone sent as an image
+// block would fail the whole request, and every later turn in the thread with
+// it, since the row is stored.
+func TestAnImageTypeClaudeCannotReadIsNamedNotSent(t *testing.T) {
+	api, client := newFakeAPI(t, textMessage("ok"))
+	_, err := client.Generate(context.Background(), ai.Request{Messages: []ai.Message{{
+		Role: ai.RoleUser,
+		Parts: []ai.Part{
+			{InlineData: []byte{0, 0, 0, 24}, MIMEType: "image/heic"},
+			{InlineData: []byte{0x89, 'P', 'N', 'G'}, MIMEType: "image/png"},
+		},
+	}}})
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	got := blocks(sent(t, api)[0])
+	if len(got) != 2 || got[0]["type"] != "text" || !strings.Contains(got[0]["text"].(string), "image/heic") {
+		t.Errorf("heic sent as %v, want a text note naming it", got[0])
+	}
+	if got[1]["type"] != "image" {
+		t.Errorf("png sent as %v, want an image block", got[1])
+	}
+}
