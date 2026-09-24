@@ -269,7 +269,7 @@ func (s *Service) LatestExerciseRefs(ctx context.Context, user users.User, conve
 		return nil, err
 	}
 
-	history, err := s.conversations.History(ctx, conversationID)
+	history, err := s.latestTurn(ctx, conversationID)
 	if err != nil {
 		return nil, err
 	}

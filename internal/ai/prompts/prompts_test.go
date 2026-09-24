@@ -74,7 +74,8 @@ func TestCoachPromptStatesGroundingRules(t *testing.T) {
 		// illustration were never fetched.
 		"grounds form advice in the catalogue": "comes from the catalogue, not from memory",
 		"names the lookup to make":             "call `get_exercise`",
-		"asks for the links to be passed on":   "pass the links on",
+		"asks for the video to be passed on":   "pass the video link on",
+		"keeps the illustration address out":   "do not paste the illustration's address",
 		"admits when cues are missing":         "not recorded",
 		"leaves programming to judgement":      "does not apply to programming",
 
