@@ -158,8 +158,14 @@ func (a *API) fail(w http.ResponseWriter, err error, message string) {
 		httpx.Error(w, err, message)
 		return
 	}
-	// A validation failure carries a sentence the caller can act on.
-	httpx.Error(w, err, Sentence(err))
+	// A validation failure carries a sentence the caller can act on. Nothing
+	// else does: a provider's 402 or 403 surfaces here below 500, and its text
+	// names the model and quotes the provider's own response body.
+	if apperr.Is(err, apperr.ErrValidation) || apperr.Is(err, apperr.ErrNotFound) {
+		httpx.Error(w, err, Sentence(err))
+		return
+	}
+	httpx.Error(w, err, message)
 }
 
 type apiUserKey struct{}

@@ -136,7 +136,7 @@ func TestUnpricedCallsAreCounted(t *testing.T) {
 	// The free floor: priced, and the price is zero. Counting this as a gap
 	// would cry wolf on every report, because it is on the tail of every chain.
 	repo.Record(ctx, spend.Generation{
-		Surface: spend.SurfaceCoach, Provider: "openrouter", Model: "z-ai/glm-5.2:free",
+		Surface: spend.SurfaceCoach, Provider: "openrouter", Model: "nvidia/nemotron-3-super-120b-a12b:free",
 		InputTokens: 900, OutputTokens: 200, CostMicros: 0, Priced: true,
 	})
 

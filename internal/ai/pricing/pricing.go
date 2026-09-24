@@ -74,7 +74,7 @@ func load() (table, error) {
 // Key is how a provider and model are named in the table.
 //
 // The provider is normalised first: a chain entry may be written
-// "openrouter=z-ai/glm-5.2:free", and the client built from it reports that
+// "openrouter=nvidia/nemotron-3-super-120b-a12b:free", and the client built from it reports that
 // whole string as its name. Only the part before the first "=" identifies the
 // backend, and the split is on the first "=" alone because a model slug carries
 // its own punctuation.

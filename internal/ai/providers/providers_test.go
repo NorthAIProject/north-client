@@ -23,13 +23,13 @@ func compatSpec(name, model string) providers.Compatible {
 func TestBuildRegistersAVariantUnderItsChainEntry(t *testing.T) {
 	// The entry string is the registry key. That is what lets Resolve find a
 	// variant with no lookup table, so it is worth pinning down.
-	const entry = "openrouter=z-ai/glm-5.2:free"
+	const entry = "openrouter=nvidia/nemotron-3-super-120b-a12b:free"
 
 	r, err := providers.Build(context.Background(), providers.Options{
 		Chain: []string{"openrouter", entry},
 		Compatible: []providers.Compatible{
 			compatSpec("openrouter", "anthropic/claude-sonnet-4.5"),
-			compatSpec(entry, "z-ai/glm-5.2:free"),
+			compatSpec(entry, "nvidia/nemotron-3-super-120b-a12b:free"),
 		},
 	})
 	if err != nil {
