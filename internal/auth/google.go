@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
+	"google.golang.org/api/idtoken"
 
 	"github.com/NorthAIProject/north-client/internal/analytics"
 	authdb "github.com/NorthAIProject/north-client/internal/auth/db"
@@ -39,10 +40,11 @@ type GoogleProfile struct {
 }
 
 type googleOAuth struct {
-	cfg *oauth2.Config
+	cfg          *oauth2.Config
+	nativeClient string
 }
 
-func newGoogleOAuth(clientID, clientSecret, baseURL string) *googleOAuth {
+func newGoogleOAuth(clientID, clientSecret, nativeClient, baseURL string) *googleOAuth {
 	clientID = strings.TrimSpace(clientID)
 	clientSecret = strings.TrimSpace(clientSecret)
 	if clientID == "" || clientSecret == "" {
@@ -56,7 +58,27 @@ func newGoogleOAuth(clientID, clientSecret, baseURL string) *googleOAuth {
 			Scopes:       []string{"openid", "email", "profile"},
 			Endpoint:     google.Endpoint,
 		},
+		nativeClient: strings.TrimSpace(nativeClient),
 	}
+}
+
+func (s *Service) CompleteGoogleIDToken(ctx context.Context, rawToken string, meta Metadata) (users.User, string, time.Time, error) {
+	if s.google == nil || s.google.nativeClient == "" {
+		return users.User{}, "", time.Time{}, apperr.New("google native sign-in is not configured")
+	}
+	payload, err := idtoken.Validate(ctx, strings.TrimSpace(rawToken), s.google.nativeClient)
+	if err != nil || payload.Claims["email_verified"] != true {
+		return users.User{}, "", time.Time{}, apperr.ErrUnauthenticated
+	}
+	subject, _ := payload.Claims["sub"].(string)
+	email, _ := payload.Claims["email"].(string)
+	name, _ := payload.Claims["name"].(string)
+	user, err := s.FindOrCreateGoogleUser(ctx, GoogleProfile{Subject: subject, Email: email, Name: name})
+	if err != nil {
+		return users.User{}, "", time.Time{}, err
+	}
+	token, expiresAt, err := s.sessions.Create(ctx, user.ID, meta)
+	return user, token, expiresAt, err
 }
 
 func (g *googleOAuth) enabled() bool { return g != nil && g.cfg != nil }

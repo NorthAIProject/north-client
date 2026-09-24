@@ -110,6 +110,8 @@ func routes(
 		Production:          cfg.Env.IsProduction(),
 		GoogleClientID:      cfg.GoogleClientID,
 		GoogleClientSecret:  cfg.GoogleClientSecret,
+		GoogleIOSClientID:   cfg.GoogleIOSClientID,
+		AppleBundleID:       cfg.AppleBundleID,
 		WebAuthnRPID:        cfg.WebAuthnRPID,
 		WebAuthnDisplayName: cfg.WebAuthnDisplayName,
 		Log:                 slog.Default(),
@@ -426,6 +428,7 @@ func routes(
 	}), quotaSvc)
 
 	captureAPI := capture.NewAPI(captureHandler.Service(), connectionSvc, quotaSvc, slog.Default())
+	authAPI := auth.NewAPI(sessions).WithAuthService(authSvc, authMW)
 
 	dashboardOpts := dashboard.Options{
 		CheckIns:      checkinSvc,
@@ -446,6 +449,7 @@ func routes(
 	}
 	dashboardSvc := dashboard.NewService(dashboardOpts)
 	dashboardHandler := dashboard.NewHandler(dashboardSvc)
+	dashboardAPI := dashboard.NewAPI(dashboardSvc, sessions)
 
 	// Insights reuses the dashboard's timeline rather than reimplementing the
 	// merge across eight slices. Two copies of that would drift.
@@ -647,6 +651,7 @@ func routes(
 		WithCoach(coachSvc, slog.Default()).
 		WithFunnel(funnel)
 	onboardingHandler := onboarding.NewHandler(onboardingSvc)
+	onboardingAPI := onboarding.NewAPI(onboardingSvc, sessions)
 
 	if telegramClient != nil {
 		if cfg.Telegram.UsesWebhook() {
@@ -767,7 +772,7 @@ func routes(
 	// callers who hold an nk_ token today are the ones who want this.
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.MaxBody(1 << 20))
-		mountAPI(r, captureAPI)
+		mountAPI(r, captureAPI, authAPI, onboardingAPI, dashboardAPI)
 	})
 
 	// Health ingest sits beside /mcp for exactly the reasons above: the caller is

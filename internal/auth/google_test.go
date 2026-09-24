@@ -8,6 +8,22 @@ import (
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
+func TestCompleteGoogleIDTokenRejectsMalformedToken(t *testing.T) {
+	svc := auth.NewService(nil, nil, auth.ServiceOptions{GoogleClientID: "web", GoogleClientSecret: "secret", GoogleIOSClientID: "ios"})
+	_, _, _, err := svc.CompleteGoogleIDToken(context.Background(), "not-a-google-token", auth.Metadata{})
+	if !apperr.Is(err, apperr.ErrUnauthenticated) {
+		t.Fatalf("error = %v, want unauthenticated", err)
+	}
+}
+
+func TestCompleteAppleSignInRejectsMissingTokenAndNonce(t *testing.T) {
+	svc := auth.NewService(nil, nil, auth.ServiceOptions{AppleBundleID: "com.example.north"})
+	_, _, _, err := svc.CompleteAppleSignIn(context.Background(), auth.AppleSignInInput{}, auth.Metadata{})
+	if !apperr.Is(err, apperr.ErrUnauthenticated) {
+		t.Fatalf("error = %v, want unauthenticated", err)
+	}
+}
+
 func TestFindOrCreateGoogleUserCreatesAccountWithoutPassword(t *testing.T) {
 	svc, sessions, pool, _ := newService(t)
 	ctx := context.Background()
