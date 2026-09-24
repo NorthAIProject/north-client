@@ -9,7 +9,6 @@ package anthropic
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -72,10 +71,6 @@ func (c *Client) Generate(ctx context.Context, req ai.Request) (*ai.Response, er
 	return fromMessage(msg), nil
 }
 
-func (c *Client) Chat(ctx context.Context, req ai.Request) (<-chan ai.StreamChunk, error) {
-	return nil, errors.New("anthropic: streaming is not implemented yet")
-}
-
 // UploadFile returns an empty URI: images go inline as base64 blocks, which
 // every caller already does for providers with no upload step.
 func (c *Client) UploadFile(context.Context, ai.UploadRequest) (*ai.File, error) {
@@ -119,16 +114,12 @@ func fromMessage(msg *sdk.Message) *ai.Response {
 	}
 	var text strings.Builder
 	for _, block := range msg.Content {
-		switch b := block.AsAny().(type) {
-		case sdk.TextBlock:
+		if b, ok := block.AsAny().(sdk.TextBlock); ok {
 			text.WriteString(b.Text)
-		case sdk.ToolUseBlock:
-			resp.ToolCalls = append(resp.ToolCalls, ai.ToolCall{
-				ID: b.ID, Name: b.Name, Arguments: json.RawMessage(b.JSON.Input.Raw()),
-			})
 		}
 	}
 	resp.Text = text.String()
+	resp.ToolCalls = toolCalls(msg.Content)
 	return resp
 }
 
