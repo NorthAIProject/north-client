@@ -89,6 +89,40 @@ func TestWavReachesTheRecogniserAsWav(t *testing.T) {
 	}
 }
 
+// Every container a browser records, as the recorder in web/assets/js/shared
+// can send it. Moved here from quick capture when its recorder became the
+// shared dictation button: the sniff is this package's, so the table is too.
+func TestEveryContainerABrowserRecordsReachesTheRecogniserAsItself(t *testing.T) {
+	cases := map[string]struct {
+		audio []byte
+		mime  string
+	}{
+		"webm from chrome and firefox": {append([]byte{0x1A, 0x45, 0xDF, 0xA3}, bytes.Repeat([]byte{0}, 64)...), "audio/webm"},
+		"mp4 from safari and ios":      {append([]byte("\x00\x00\x00\x20ftypM4A "), bytes.Repeat([]byte{0}, 64)...), "audio/mp4"},
+		"ogg":                          {oggHeader(), "audio/ogg"},
+		"wav":                          {wavHeader(), "audio/wav"},
+		"mp3 with an id3 tag":          {append([]byte("ID3\x03\x00"), bytes.Repeat([]byte{0}, 64)...), "audio/mpeg"},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			stub := &stubTranscriber{text: "slept 6h, 2L water"}
+			svc := voice.NewService(voice.Options{Transcriber: stub})
+
+			text, err := svc.Transcribe(context.Background(), newUser(), tc.audio, surface)
+			if err != nil {
+				t.Fatalf("transcribe: %v", err)
+			}
+			if text != "slept 6h, 2L water" {
+				t.Fatalf("text = %q", text)
+			}
+			if stub.sawMIME != tc.mime {
+				t.Fatalf("the recogniser saw %q, want %q", stub.sawMIME, tc.mime)
+			}
+		})
+	}
+}
+
 // The account's language picks the model and suppresses the recogniser's own
 // guess. Dropping it is how a Portuguese note comes back as Spanish.
 func TestTheAccountsLanguageReachesTheRecogniser(t *testing.T) {
