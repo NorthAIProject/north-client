@@ -798,6 +798,8 @@ func routes(
 			insights:   insights.NewAPI(insightsSvc),
 			goals:      goals.NewAPI(goalSvc),
 			checkins:   checkins.NewAPI(checkinSvc),
+			reports:    reports.NewAPI(reportSvc),
+			memories:   memories.NewAPI(memorySvc),
 		})
 	})
 
