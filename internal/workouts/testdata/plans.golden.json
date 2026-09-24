@@ -1,0 +1,24 @@
+{
+  "plans": [
+    {
+      "id": "abababab-abab-abab-abab-abababababab",
+      "name": "Strength base",
+      "weeksTotal": 8,
+      "days": [
+        {
+          "weekday": "Monday",
+          "startTime": "07:00",
+          "focus": "Lower body",
+          "exerciseCount": 1
+        },
+        {
+          "weekday": "Thursday",
+          "focus": "Upper body",
+          "exerciseCount": 0
+        }
+      ],
+      "source": "edited",
+      "createdAt": "2026-09-24T07:15:00Z"
+    }
+  ]
+}

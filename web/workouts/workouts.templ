@@ -338,6 +338,10 @@ func moveURL(id uuid.UUID, dayIndex, index int) string {
 	return fmt.Sprintf("/app/training/%s/days/%d/exercises/%d/move", id, dayIndex, index)
 }
 
+func startTimeURL(id uuid.UUID, dayIndex int) string {
+	return fmt.Sprintf("/app/training/%s/days/%d/start-time", id, dayIndex)
+}
+
 func setsURL(id uuid.UUID, dayIndex, index int) string {
 	return fmt.Sprintf("/app/training/%s/days/%d/exercises/%d/sets", id, dayIndex, index)
 }
@@ -466,6 +470,7 @@ templ dayShell(v PlanView, dayIndex int, day plan.PlanDay) {
 						{ day.Focus }
 					}
 				</div>
+				@startTimeControl(v, dayIndex, day)
 			}
 			@card.Content() {
 				if len(day.Exercises) == 0 {
@@ -491,6 +496,50 @@ templ dayShell(v PlanView, dayIndex int, day plan.PlanDay) {
 				}
 			}
 		}
+	</div>
+}
+
+// startTimeControl shows when the session starts and edits it in place. The
+// phone reminds the person shortly before this time.
+templ startTimeControl(v PlanView, dayIndex int, day plan.PlanDay) {
+	<div x-data="{ editing: false }" class="mt-1">
+		<button
+			type="button"
+			x-show="!editing"
+			x-on:click="editing = true"
+			class="text-muted-foreground hover:text-foreground text-sm underline decoration-dotted underline-offset-4"
+			title="Set when this session starts"
+		>
+			if day.StartTime != "" {
+				Starts at { day.StartTime }
+			} else {
+				Set a start time
+			}
+		</button>
+		<form
+			x-show="editing"
+			x-cloak
+			class="flex flex-wrap items-end gap-2"
+			hx-post={ startTimeURL(v.ID, dayIndex) }
+			hx-target="#plan-body"
+			hx-swap="outerHTML"
+		>
+			@ui.CSRFInput()
+			<label class="text-muted-foreground text-xs">
+				Starts at
+				@input.Input(input.Props{Name: "start_time", Type: input.TypeTime, Value: day.StartTime, Class: "w-28"})
+			</label>
+			@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm}) {
+				Save
+			}
+			@button.Button(button.Props{
+				Variant:    button.VariantGhost,
+				Size:       button.SizeSm,
+				Attributes: templ.Attributes{"x-on:click.prevent": "editing = false"},
+			}) {
+				Cancel
+			}
+		</form>
 	</div>
 }
 

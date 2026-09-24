@@ -1,0 +1,41 @@
+{
+  "id": "abababab-abab-abab-abab-abababababab",
+  "name": "Strength base",
+  "rationale": "Three full-body days to build the habit first.",
+  "weeksTotal": 8,
+  "days": [
+    {
+      "weekday": "Monday",
+      "startTime": "07:00",
+      "focus": "Lower body",
+      "exercises": [
+        {
+          "name": "Goblet squat",
+          "sets": 3,
+          "reps": "8-12",
+          "restSeconds": 90,
+          "equipment": "dumbbell",
+          "formCues": "Knees track over toes.",
+          "catalogSlug": "goblet-squat",
+          "hasArt": true,
+          "primaryMuscles": [
+            "quads"
+          ],
+          "secondaryMuscles": [
+            "glutes"
+          ]
+        }
+      ]
+    },
+    {
+      "weekday": "Thursday",
+      "focus": "Upper body",
+      "exercises": []
+    }
+  ],
+  "problems": [
+    "Thursday has no exercises."
+  ],
+  "source": "edited",
+  "createdAt": "2026-09-24T07:15:00Z"
+}

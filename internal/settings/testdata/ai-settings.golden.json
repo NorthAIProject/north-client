@@ -1,0 +1,19 @@
+{
+  "enabled": true,
+  "providers": [
+    {
+      "name": "openrouter",
+      "label": "OpenRouter",
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "defaultModel": "openai/gpt-4o-mini",
+      "keyHint": "sk-or-…"
+    }
+  ],
+  "current": {
+    "provider": "openrouter",
+    "keyHint": "…9f2c",
+    "model": "openai/gpt-4o-mini",
+    "supportsTools": true,
+    "updatedAt": "2026-09-24T07:15:00Z"
+  }
+}

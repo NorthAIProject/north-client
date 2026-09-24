@@ -32,7 +32,14 @@ type Plan struct {
 }
 
 type PlanDay struct {
-	Weekday   string     `json:"weekday"`
+	Weekday string `json:"weekday"`
+
+	// StartTime is when the person means to train on this day, "HH:MM" in
+	// their own time zone, or empty for "whenever". Set by them, never by the
+	// model: the schema leaves it out, so a generated plan has none. The
+	// phone schedules its "about to start" reminder from it.
+	StartTime string `json:"start_time,omitempty"`
+
 	Focus     string     `json:"focus"`
 	Exercises []Exercise `json:"exercises"`
 }
@@ -153,7 +160,11 @@ func (p Plan) Summary() string {
 
 	fmt.Fprintf(&b, "%s (%d weeks)\n", p.Name, p.WeeksTotal)
 	for _, d := range p.Days {
-		fmt.Fprintf(&b, "  %s — %s: ", d.Weekday, d.Focus)
+		if d.StartTime != "" {
+			fmt.Fprintf(&b, "  %s at %s — %s: ", d.Weekday, d.StartTime, d.Focus)
+		} else {
+			fmt.Fprintf(&b, "  %s — %s: ", d.Weekday, d.Focus)
+		}
 		for i, e := range d.Exercises {
 			if i > 0 {
 				b.WriteString(", ")

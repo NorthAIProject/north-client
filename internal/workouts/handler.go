@@ -49,6 +49,7 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Post("/training/{id}/days/{day}/exercises/{index}/remove", h.removeExercise)
 	r.Post("/training/{id}/days/{day}/exercises/{index}/move", h.moveExercise)
 	r.Post("/training/{id}/days/{day}/exercises/{index}/sets", h.setPrescription)
+	r.Post("/training/{id}/days/{day}/start-time", h.setStartTime)
 
 	// Do not remove. Until 2026-09-07 the daily training nudge was built with
 	// "/app/workouts/" + id, a path that has never existed, and user_nudges.href
@@ -324,6 +325,30 @@ func (h *Handler) setPrescription(w http.ResponseWriter, r *http.Request) {
 		r.PostFormValue("reps"),
 		atoiOr(r.PostFormValue("rest_seconds"), -1),
 	)
+	if err != nil {
+		h.afterEditError(w, r, user, target.planID, err)
+		return
+	}
+
+	h.afterEdit(w, r, edited.ID)
+}
+
+// setStartTime sets or clears when a day's session starts. An empty field
+// clears it: "whenever" is a real answer.
+func (h *Handler) setStartTime(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+
+	target, err := parseTarget(r, false)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	if err = r.ParseForm(); err != nil {
+		h.fail(w, r, apperr.ErrValidation)
+		return
+	}
+
+	edited, err := h.svc.SetStartTime(r.Context(), user, target.planID, target.day, r.PostFormValue("start_time"))
 	if err != nil {
 		h.afterEditError(w, r, user, target.planID, err)
 		return

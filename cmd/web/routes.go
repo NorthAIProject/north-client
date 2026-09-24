@@ -70,6 +70,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/voice/vocab"
 	"github.com/NorthAIProject/north-client/internal/watches"
 	"github.com/NorthAIProject/north-client/internal/workouts"
+	"github.com/NorthAIProject/north-client/web/assets"
 	"github.com/NorthAIProject/north-client/web/landing"
 	"github.com/NorthAIProject/north-client/web/legal"
 	"github.com/NorthAIProject/north-client/web/pwa"
@@ -111,6 +112,8 @@ func routes(
 		Production:          cfg.Env.IsProduction(),
 		GoogleClientID:      cfg.GoogleClientID,
 		GoogleClientSecret:  cfg.GoogleClientSecret,
+		GoogleIOSClientID:   cfg.GoogleIOSClientID,
+		AppleBundleID:       cfg.AppleBundleID,
 		WebAuthnRPID:        cfg.WebAuthnRPID,
 		WebAuthnDisplayName: cfg.WebAuthnDisplayName,
 		Log:                 slog.Default(),
@@ -427,6 +430,7 @@ func routes(
 	}), quotaSvc)
 
 	captureAPI := capture.NewAPI(captureHandler.Service(), connectionSvc, quotaSvc, slog.Default())
+	authAPI := auth.NewAPI(sessions).WithAuthService(authSvc, authMW)
 
 	dashboardOpts := dashboard.Options{
 		CheckIns:      checkinSvc,
@@ -447,6 +451,7 @@ func routes(
 	}
 	dashboardSvc := dashboard.NewService(dashboardOpts)
 	dashboardHandler := dashboard.NewHandler(dashboardSvc)
+	dashboardAPI := dashboard.NewAPI(dashboardSvc)
 
 	// Insights reuses the dashboard's timeline rather than reimplementing the
 	// merge across eight slices. Two copies of that would drift.
@@ -653,6 +658,7 @@ func routes(
 		WithCoach(coachSvc, slog.Default()).
 		WithFunnel(funnel)
 	onboardingHandler := onboarding.NewHandler(onboardingSvc)
+	onboardingAPI := onboarding.NewAPI(onboardingSvc)
 
 	if telegramClient != nil {
 		if cfg.Telegram.UsesWebhook() {
@@ -773,7 +779,17 @@ func routes(
 	// callers who hold an nk_ token today are the ones who want this.
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.MaxBody(1 << 20))
-		mountAPI(r, captureAPI)
+		mountAPI(r, sessions, apiSet{
+			auth:       authAPI,
+			capture:    captureAPI,
+			onboarding: onboardingAPI,
+			dashboard:  dashboardAPI,
+			coach:      coach.NewAPI(coachSvc, quotaSvc, mediaSvc),
+			exercises:  exercises.NewAPI(exerciseSvc, assets.Assets),
+			settings:   settings.NewAPI(settingsHandler),
+			training:   workouts.NewAPI(workoutSvc),
+			activity:   activity.NewAPI(activitySvc),
+		})
 	})
 
 	// Health ingest sits beside /mcp for exactly the reasons above: the caller is
@@ -838,6 +854,7 @@ func routes(
 		pwa.Mount(r)
 
 		r.Get("/healthz", healthz(pool))
+		r.Get("/.well-known/apple-app-site-association", auth.AppleAppSiteAssociation(cfg.AppleTeamID, cfg.AppleBundleID))
 
 		// Internal operator endpoint: total user count for the portfolio
 		// dashboard at facorreia.com/apps. Guarded by METRICS_SECRET.

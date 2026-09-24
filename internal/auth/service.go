@@ -39,6 +39,7 @@ type Service struct {
 
 	google   *googleOAuth
 	webauthn *passkeyAuth
+	apple    *appleAuth
 
 	passwordResetEnabled bool
 
@@ -65,6 +66,8 @@ type ServiceOptions struct {
 	// disabled and its routes return 404.
 	GoogleClientID     string
 	GoogleClientSecret string
+	GoogleIOSClientID  string
+	AppleBundleID      string
 
 	// WebAuthn relying party. RP ID defaults to the host of BaseURL; Origins
 	// defaults to BaseURL. Display name defaults to "North".
@@ -101,7 +104,8 @@ func NewService(userSvc *users.Service, sessions *SessionStore, opts ServiceOpti
 		baseURL:  baseURL,
 		log:      log,
 	}
-	s.google = newGoogleOAuth(opts.GoogleClientID, opts.GoogleClientSecret, baseURL)
+	s.google = newGoogleOAuth(opts.GoogleClientID, opts.GoogleClientSecret, opts.GoogleIOSClientID, baseURL)
+	s.apple = newAppleAuth(opts.AppleBundleID)
 	s.webauthn = newPasskeyAuth(sessions, opts, baseURL, log)
 
 	// A LogMailer writes the message body — reset URL included — to the process
