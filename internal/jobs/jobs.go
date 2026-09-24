@@ -126,6 +126,12 @@ const (
 	// every timezone.
 	KindSweepBriefings Kind = "sweep_briefings"
 
+	// KindSweepWatches runs the standing tasks (internal/watches) whose slot
+	// has arrived, through the coach, and posts what it says into the thread.
+	// Every fifteen minutes: the resolution a person can set a watch to is a
+	// minute, but "at 8:00" arriving by 8:15 is what a standing task promises.
+	KindSweepWatches Kind = "sweep_watches"
+
 	// KindSweepDigests pushes the insights digest to accounts whose cadence
 	// says it is due. Hourly for the same reason the two above are: "their
 	// Monday morning" is a different absolute time in every timezone.

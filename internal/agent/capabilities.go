@@ -26,6 +26,7 @@ import (
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/sleep"
 	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/internal/watches"
 	"github.com/NorthAIProject/north-client/internal/workouts"
 	"github.com/NorthAIProject/north-client/internal/workouts/plan"
 )
@@ -56,6 +57,11 @@ type Services struct {
 	Sleep      *sleep.Service
 	Habits     *habits.Service
 	Biometrics *biometrics.Service
+
+	// Watches stores standing tasks (create_watch). Left nil on surfaces with
+	// nobody to confirm the card and no thread to post results into — the MCP
+	// server — so the tool simply does not exist there.
+	Watches *watches.Service
 
 	// Activity logs a finished workout — the run someone did this morning.
 	// Needs Users too, for the timezone a spoken start time is read in.
@@ -149,6 +155,9 @@ func Build(svc Services) *Registry {
 		if svc.Activity != nil {
 			r.Register(logActivity(svc.Activity, svc.Users))
 		}
+	}
+	if svc.Watches != nil {
+		r.Register(createWatch(svc.Watches))
 	}
 	if svc.Biometrics != nil {
 		// No Users: a weight is not filed against a local date.

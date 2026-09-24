@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -12,9 +13,10 @@ import (
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/types"
 	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/internal/watches"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
-	"github.com/NorthAIProject/north-client/web/shared/mascot"
 	"github.com/NorthAIProject/north-client/web/shared/markdown"
+	"github.com/NorthAIProject/north-client/web/shared/mascot"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/ui/alert"
 	"github.com/NorthAIProject/north-client/web/shared/ui/badge"
@@ -31,8 +33,11 @@ const signalCTA = "bg-signal text-background hover:bg-signal/90"
 //
 // Written as arbitrary variants rather than a stylesheet rule so the styling
 // travels with the component and nothing has to be kept in sync in input.css.
-const proseClasses = "text-sm " +
-	"[&>*:first-child]:mt-0 [&>*:last-child]:mb-0 " +
+const proseClasses = "text-sm " + proseBody
+
+// proseBody is proseClasses without a type size, for surfaces that set their
+// own — the Muse bubbles read at 15px, the contract's web body size.
+const proseBody = "[&>*:first-child]:mt-0 [&>*:last-child]:mb-0 " +
 	"[&_p]:my-2 [&_p]:leading-relaxed " +
 	"[&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:space-y-1 " +
 	"[&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:space-y-1 " +
@@ -48,6 +53,21 @@ const proseClasses = "text-sm " +
 	"[&_table]:my-2 [&_table]:w-full [&_table]:text-left " +
 	"[&_th]:border-b [&_th]:border-current/20 [&_th]:pb-1 [&_th]:font-medium " +
 	"[&_td]:py-1"
+
+// The Muse bubbles (see _reviews/muse-chat-contract.md). Radius 24, no inline
+// avatar, no per-message name: the header already says who is speaking.
+//
+// The agent bubble keeps a hairline in light mode only. There --card and
+// --background are a hair apart and the fill alone does not read as a shape;
+// in dark mode the fill does, and the border would be noise.
+const (
+	museUserBubble  = "bg-muse-user text-muse-user-text max-w-[85%] rounded-[24px] px-4 py-2.5 text-[15px] leading-normal whitespace-pre-wrap"
+	museAgentBubble = "bg-muse-agent text-foreground border-hairline max-w-[94%] rounded-[24px] border px-4 py-3 text-[15px] leading-normal dark:border-transparent"
+
+	// museCaption is the line above a proactive bubble and the standing-task
+	// card: 11px uppercase, the contract's caption.
+	museCaption = "text-muted-foreground text-[11px] font-medium tracking-wider uppercase"
+)
 
 // starters seed a brand new conversation. A blank box is the hardest thing to
 // answer; these say what Khepri is for better than a paragraph of explanation.
@@ -73,17 +93,18 @@ type CoachStats struct {
 // Page is a conversation with its history and composer.
 templ Page(user users.User, conversation conversations.Conversation, messages []conversations.Message, list []conversations.Conversation, stats CoachStats, pending []PendingTool, resuming bool, draft string) {
 	@layout.App(conversation.DisplayTitle(), user, layout.BuildNav(ctx, "/app/chat")) {
+		// data-status-* is the header's status copy, read by the mascot bridge
+		// (alpine.js) so the translated lines stay in the i18n catalogue
+		// rather than in a script. The tool line comes from the server per call.
 		<div
 			id="chat-root"
-			class="flex h-full min-h-0"
-			x-data="{
-				threads: false,
-				fit() {
-					const vv = window.visualViewport
-					if (!vv) return
-					this.$el.style.height = vv.height + 'px'
-				}
-			}"
+			class="bg-muse-canvas flex h-full min-h-0"
+			x-data={ chatRootData(i18n.T(ctx, "chat.status.ready")) }
+			data-status-ready={ i18n.T(ctx, "chat.status.ready") }
+			data-status-listening={ i18n.T(ctx, "chat.status.listening") }
+			data-status-thinking={ i18n.T(ctx, "chat.status.thinking") }
+			data-status-writing={ i18n.T(ctx, "chat.status.writing") }
+			data-status-snag={ i18n.T(ctx, "chat.status.snag") }
 			x-init="
 				fit()
 				if (window.visualViewport) {
@@ -93,9 +114,11 @@ templ Page(user users.User, conversation conversations.Conversation, messages []
 			"
 		>
 			@threadList(list, conversation.ID, stats)
-			<div class="flex min-w-0 flex-1 flex-col">
+			// relative: the Muse header floats over the transcript so bubbles
+			// scroll up under its scrim instead of stopping at a hard edge.
+			<div class="relative flex min-w-0 flex-1 flex-col">
 				@chatHeader(conversation)
-				@transcript(messages, conversation)
+				@transcript(messages, conversation, user.Location())
 				// The card takes the composer's place while it is up. A person
 				// answering "should I run this?" is not also mid-sentence on
 				// something else, and leaving both would invite a second turn
@@ -147,48 +170,103 @@ templ Empty(user users.User, list []conversations.Conversation, stats CoachStats
 	}
 }
 
-// chatHeader carries the title and the actions that belong to this thread. On
-// small screens it also owns the toggle for the thread list, which has nowhere
-// else to live once the sidebar is hidden.
+// chatHeader is the Muse header (see _reviews/muse-chat-contract.md): a 56px
+// bar with the thread-list toggle on the left and "New chat" on the right, and
+// Khepri's 110px avatar hanging off the bar over the transcript, with a
+// name-and-status pill under it.
+//
+// The header floats over the transcript (absolute, inside the relative chat
+// column) so replies scroll up under it. The scrim is what keeps them from
+// showing through behind the avatar; it is a gradient rather than a blur so it
+// also holds up under reduce-transparency and on low-power devices. Everything
+// but the controls ignores the pointer, so the transcript under the scrim still
+// scrolls and selects.
+//
+// Delete is not in the contract's bar, but a conversation has nowhere else to
+// be deleted from, so it stays as a quiet ghost icon beside the list toggle —
+// on the left, because the avatar owns the centre and "New chat" the right.
+//
+// Invariant: the one mascot that reacts to the coach lives here and only here.
+// The stream's sse-close="done" swaps #chat-root outerHTML, and a mascot inside
+// the streamed reply (the transcript) would be destroyed at the moment it is
+// supposed to nod. The header is re-rendered by that same swap, which is fine:
+// alpine.js replays the last gesture on remount, and it needs exactly one
+// mascot to hand it to. TestChatHeaderCarriesTheReactiveMascot guards this.
+//
+// The status line and the ring read `status` and `phase` from the #chat-root
+// scope, which the stream bridge in alpine.js drives (see chatRootData). The
+// ring is a sibling of the avatar rather than a border on it: .muse-avatar
+// clips its contents so the mascot's hop stays inside the circle, and a ring
+// drawn inside that clip would be cut in half.
+//
+// The bar's buttons are the contract's 40px circles; an after: box grows each
+// hit area to 44px so thumbs still land (NOR-39).
 templ chatHeader(c conversations.Conversation) {
-	<header class="border-border flex h-12 shrink-0 items-center justify-between gap-2 border-b px-3">
-		<div class="flex min-w-0 items-center gap-2">
-			// The one mascot that reacts to the coach. It lives in the header
-			// rather than in the transcript because sse-close="done" swaps
-			// #chat-root outerHTML — a mascot inside the reply would be
-			// destroyed at the moment it is supposed to nod.
-			@mascot.Mascot(mascot.Props{ID: "chat-mascot", Size: mascot.SizeSm})
-			<button
-				type="button"
-				@click="threads = !threads"
-				class="hover:bg-accent flex min-h-11 min-w-11 items-center justify-center rounded-md p-0 lg:hidden"
-				aria-label={ i18n.T(ctx, "chat.threads.aria") }
-			>
-				@icon.PanelLeft(icon.Props{Class: "size-4"})
-			</button>
-			<span class="truncate text-sm font-medium">{ c.DisplayTitle() }</span>
-			if c.IsReflection() {
-				@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
-					{ i18n.T(ctx, "chat.reflection") }
+	<header class="muse-header pointer-events-none absolute inset-x-0 top-0 z-20">
+		<div class="muse-scrim" aria-hidden="true"></div>
+		<div class="relative flex h-14 items-center justify-between gap-2 px-3">
+			<div class="pointer-events-auto flex items-center gap-1">
+				@button.Button(button.Props{
+					Type:    button.TypeButton,
+					Variant: button.VariantSecondary,
+					Size:    button.SizeIcon,
+					Class:   "size-10 rounded-full shadow-none lg:hidden relative after:absolute after:-inset-0.5 after:content-['']",
+					Attributes: templ.Attributes{
+						"@click":     "threads = !threads",
+						"aria-label": i18n.T(ctx, "chat.threads.aria"),
+					},
+				}) {
+					@icon.PanelLeft(icon.Props{Class: "size-4"})
 				}
-			}
+				// A conversation is memory. Deleting one takes a deliberate
+				// second action rather than a stray tap on a small screen.
+				<form
+					method="post"
+					action={ templ.SafeURL("/app/chat/" + c.ID.String() + "/delete") }
+					@submit={ "if (!confirm(" + jsString(i18n.T(ctx, "chat.delete.confirm")) + ")) $event.preventDefault()" }
+				>
+					@ui.CSRFInput()
+					@button.Button(button.Props{
+						Type:    button.TypeSubmit,
+						Variant: button.VariantGhost,
+						Size:    button.SizeIcon,
+						Class:   "text-muted-foreground hover:text-destructive size-10 rounded-full relative after:absolute after:-inset-0.5 after:content-['']",
+						Attributes: templ.Attributes{
+							"aria-label": i18n.T(ctx, "chat.delete.aria"),
+						},
+					}) {
+						@icon.Trash2(icon.Props{Class: "size-4"})
+					}
+				</form>
+			</div>
+			<form method="post" action="/app/chat" class="pointer-events-auto">
+				@ui.CSRFInput()
+				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantSecondary, Size: button.SizeSm, Class: "h-10 rounded-full px-4 shadow-none"}) {
+					// The icon drops on phones: the avatar needs the width.
+					@icon.Plus(icon.Props{Class: "size-4 max-sm:hidden"})
+					{ i18n.T(ctx, "chat.header.new") }
+				}
+			</form>
 		</div>
-		// A conversation is memory. Deleting one takes a deliberate second
-		// action rather than a stray tap on a small screen.
-		<form
-			method="post"
-			action={ templ.SafeURL("/app/chat/" + c.ID.String() + "/delete") }
-			@submit={ "if (!confirm(" + jsString(i18n.T(ctx, "chat.delete.confirm")) + ")) $event.preventDefault()" }
-		>
-			@ui.CSRFInput()
-			<button
-				type="submit"
-				class="text-muted-foreground hover:bg-accent hover:text-destructive flex min-h-11 min-w-11 items-center justify-center rounded-md p-0 transition-colors"
-				aria-label={ i18n.T(ctx, "chat.delete.aria") }
-			>
-				@icon.Trash2(icon.Props{Class: "size-4"})
-			</button>
-		</form>
+		<div class="muse-identity" data-phase="idle" :data-phase="phase">
+			<span class="muse-ring" aria-hidden="true"></span>
+			<div class="muse-avatar">
+				@mascot.Mascot(mascot.Props{ID: "chat-mascot", Size: mascot.SizeLg})
+			</div>
+			<div class="muse-pill">
+				<span class="muse-pill-name">
+					Khepri
+					// A reflection ends differently from a chat, so the mode
+					// stays visible now that the thread title lives in the list.
+					if c.IsReflection() {
+						@badge.Badge(badge.Props{Variant: badge.VariantSecondary, Class: "ml-1.5 align-middle"}) {
+							{ i18n.T(ctx, "chat.reflection") }
+						}
+					}
+				</span>
+				<span id="chat-status" class="muse-pill-status" x-text="status" aria-live="polite">{ i18n.T(ctx, "chat.status.ready") }</span>
+			</div>
+		</div>
 	</header>
 }
 
@@ -274,7 +352,7 @@ templ startReflectionForm(props button.Props) {
 
 // transcript holds the message history. New turns are appended into it by HTMX,
 // and Alpine keeps it scrolled to the bottom as content arrives.
-templ transcript(messages []conversations.Message, conversation conversations.Conversation) {
+templ transcript(messages []conversations.Message, conversation conversations.Conversation, loc *time.Location) {
 	<div
 		id="transcript"
 		class="min-h-0 flex-1 overflow-y-auto"
@@ -283,7 +361,9 @@ templ transcript(messages []conversations.Message, conversation conversations.Co
 		}"
 		x-init="pin(); new MutationObserver(() => pin()).observe($el, { childList: true, subtree: true, characterData: true })"
 	>
-		<div class="mx-auto w-full max-w-3xl space-y-6 p-6">
+		// pt-[156px] is the contract's ~150px top inset: the first reply starts
+		// below the avatar and its pill rather than behind them.
+		<div class="mx-auto w-full max-w-3xl space-y-4 px-4 pt-[156px] pb-6 sm:px-6">
 			if conversation.IsReflection() && len(messages) == 0 && !conversation.Ended() {
 				@beginReflectionExchange(conversation.ID)
 			} else if len(messages) == 0 {
@@ -294,7 +374,7 @@ templ transcript(messages []conversations.Message, conversation conversations.Co
 					// not the one the person reads. Rendered, they would be
 					// empty bubbles between a question and its answer.
 					if !m.IsToolTurn() {
-						@Bubble(m)
+						@Bubble(m, loc)
 					}
 				}
 			}
@@ -351,8 +431,9 @@ templ emptyStarterChips() {
 // conversationStarters fills an empty thread with something to click. Answering
 // a blank box is the hardest part of talking to a coach for the first time.
 templ conversationStarters() {
-	<div class="flex flex-col items-center gap-4 py-12 text-center">
-		@mascot.Mascot(mascot.Props{Size: mascot.SizeMd, State: mascot.StateListening})
+	// No mascot here: the header avatar sits directly above, and a second
+	// scarab stacked under it reads as a rendering bug.
+	<div class="flex flex-col items-center gap-4 py-8 text-center">
 		@ui.MonoLabel(i18n.T(ctx, "chat.thread.mono"))
 		<h2 class="text-lg font-medium tracking-tight">{ i18n.T(ctx, "chat.thread.heading") }</h2>
 		<p class="text-muted-foreground max-w-sm text-sm leading-relaxed">
@@ -374,12 +455,14 @@ templ conversationStarters() {
 	</div>
 }
 
-// Bubble is one stored turn. Coach turns carry agent attribution so the
-// product thread matches the landing hero grammar (signal path, agent voice).
-templ Bubble(m conversations.Message) {
+// Bubble is one stored turn. The coach is named once, in the header pill, not
+// on every reply: a label per message was noise the Muse contract removed.
+//
+// loc is the reader's timezone, for the time in a briefing's caption.
+templ Bubble(m conversations.Message, loc *time.Location) {
 	if m.IsUser() {
 		<div class="flex justify-end">
-			<div class="bg-primary text-primary-foreground max-w-[85%] rounded-2xl rounded-br-sm px-4 py-2.5 text-sm whitespace-pre-wrap">
+			<div class={ museUserBubble }>
 				@attachmentThumbs(m.Parts)
 				if strings.TrimSpace(m.Content) != "" {
 					{ m.Content }
@@ -388,8 +471,10 @@ templ Bubble(m conversations.Message) {
 		</div>
 	} else {
 		<div class="group flex flex-col items-start gap-1" x-data="{ copied: false }">
-			<span class="font-mono text-[10px] uppercase tracking-[0.14em] text-agent">Khepri</span>
-			<div class={ "border-hairline bg-surface max-w-[85%] rounded-2xl rounded-bl-sm border px-4 py-2.5 " + proseClasses }>
+			if m.IsProactive() {
+				@proactiveCaption(m, loc)
+			}
+			<div class={ museAgentBubble + " " + proseBody }>
 				@markdown.Render(m.Content)
 			</div>
 			@muscles(m)
@@ -406,6 +491,36 @@ templ Bubble(m conversations.Message) {
 				@MessageFeedback(m)
 			</div>
 		</div>
+	}
+}
+
+// proactiveCaption says why a message nobody asked for is here: "Briefing ·
+// 07:00", "Standing task", "From {skill}" (_reviews/muse-chat-contract.md,
+// "Proactive messages"). 11px uppercase above the same agent bubble; the
+// bubble itself does not change, so a proactive turn reads as the coach
+// speaking, not as a system notice.
+templ proactiveCaption(m conversations.Message, loc *time.Location) {
+	<p class={ museCaption + " ml-1" } data-proactive-caption>
+		{ captionText(ctx, m, loc) }
+	</p>
+}
+
+// captionText maps the stored source label onto the reader's language. A
+// label this build does not know is shown as "From {label}", which is the
+// contract's shape for anything a skill sends.
+func captionText(ctx context.Context, m conversations.Message, loc *time.Location) string {
+	if loc == nil {
+		loc = time.UTC
+	}
+	switch strings.TrimSpace(m.SourceLabel) {
+	case conversations.SourceDailyBriefing:
+		return i18n.Tf(ctx, "chat.caption.briefing", m.CreatedAt.In(loc).Format("15:04"))
+	case conversations.SourceStandingTask:
+		return i18n.T(ctx, "chat.caption.standing")
+	case "":
+		return i18n.T(ctx, "chat.caption.proactive")
+	default:
+		return i18n.Tf(ctx, "chat.caption.from", m.SourceLabel)
 	}
 }
 
@@ -508,7 +623,7 @@ templ muscles(m conversations.Message) {
 // this work. It has been possible to show these since the column was added.
 templ sources(m conversations.Message) {
 	if refs := m.ChunkIDs(); len(refs) > 0 {
-		<div class="ml-1 w-full max-w-[85%]">
+		<div class="ml-1 w-full max-w-[94%]">
 			<button
 				type="button"
 				hx-get={ sourcesURL(m.EvidenceRefs) }
@@ -548,7 +663,7 @@ func sourceLabel(n int) string {
 // their own words immediately instead of after a round trip.
 templ PendingExchange(conversationID uuid.UUID, message string, mediaID uuid.UUID) {
 	<div class="flex justify-end">
-		<div class="bg-primary text-primary-foreground max-w-[85%] space-y-2 rounded-2xl rounded-br-sm px-4 py-2.5 text-sm whitespace-pre-wrap">
+		<div class={ museUserBubble + " space-y-2" }>
 			if mediaID != uuid.Nil {
 				<img src={ "/app/media/" + mediaID.String() } alt="" class="max-h-48 rounded-lg object-cover"/>
 			}
@@ -588,7 +703,7 @@ templ attachmentThumbs(parts []conversations.Attachment) {
 }
 
 templ composer(conversationID uuid.UUID, draft string) {
-	<div class="border-border border-t pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+	<div class="pb-[max(0.75rem,env(safe-area-inset-bottom))]">
 		// x-data is required even though it holds nothing: Alpine only processes
 		// directives inside a scope, so without it the Enter-to-send binding on
 		// the textarea below is silently ignored.
@@ -626,8 +741,8 @@ templ composer(conversationID uuid.UUID, draft string) {
 					Size:  button.SizeIcon,
 					Class: "min-h-11 min-w-11",
 					Attributes: templ.Attributes{
-						"@click":         "$refs.file.click()",
-						"aria-label":     i18n.T(ctx, "chat.attach"),
+						"@click":     "$refs.file.click()",
+						"aria-label": i18n.T(ctx, "chat.attach"),
 					},
 				}) {
 					@icon.Paperclip(icon.Props{Class: "size-4"})
@@ -639,11 +754,15 @@ templ composer(conversationID uuid.UUID, draft string) {
 					Value:       draft,
 					Rows:        1,
 					AutoResize:  true,
-					Class:       "max-h-48 min-h-[2.5rem] resize-none",
+					// Muse pill fill, radius 24; behaviour is unchanged.
+					Class: "bg-muse-pill max-h-48 min-h-11 resize-none rounded-[24px] border-transparent px-4 py-2.5 text-[15px] shadow-none md:text-[15px] dark:bg-muse-pill",
 					Attributes: templ.Attributes{
 						// Enter sends, shift+Enter makes a new line: what every
 						// chat interface does, and what fingers expect.
 						"@keydown.enter.prevent": "if (!$event.shiftKey) $el.form.requestSubmit()",
+						// Focus here is what "Khepri is listening" means; the
+						// mascot bridge (alpine.js) listens for it by this mark.
+						"data-muse-listen": "",
 					},
 				})
 				@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeIcon, Class: "min-h-11 min-w-11"}) {
@@ -668,6 +787,22 @@ type PendingTool struct {
 	MessageID uuid.UUID
 	Name      string
 	Summary   string
+
+	// Watch is set when the call is create_watch and its arguments parse:
+	// the card then reads as a standing task (title, schedule in words,
+	// instruction) instead of as a tool call.
+	Watch *watches.Proposal
+}
+
+// standingTask is the proposal to show as a standing-task card, when the
+// waiting turn is exactly one create_watch. Anything else — several calls, or
+// arguments that did not parse — keeps the generic card, which shows the raw
+// call so nothing is hidden from the person approving it.
+func standingTask(pending []PendingTool) *watches.Proposal {
+	if len(pending) != 1 || pending[0].Watch == nil {
+		return nil
+	}
+	return pending[0].Watch
 }
 
 // ApprovalCard asks before Khepri changes anything.
@@ -676,6 +811,75 @@ type PendingTool struct {
 // "log a check-in saying the week went badly" are different requests and only
 // one of them is what was meant.
 templ ApprovalCard(conversationID uuid.UUID, pending []PendingTool) {
+	if watch := standingTask(pending); watch != nil {
+		@StandingTaskCard(conversationID, pending[0].MessageID, *watch)
+	} else {
+		@toolApprovalCard(conversationID, pending)
+	}
+}
+
+// StandingTaskCard is the confirmation for create_watch
+// (_reviews/muse-chat-contract.md, "Standing-task card"): agent-bubble
+// styled, with the title, the schedule in words, the instruction, and
+// Confirm / Not now. Confirm stores the watch and the coach answers "Got it —
+// I'll watch X and ping you when Y" under a "Standing task" caption.
+templ StandingTaskCard(conversationID, messageID uuid.UUID, p watches.Proposal) {
+	<div class="px-4 pb-4 sm:px-6" data-standing-task-card>
+		<div class="mx-auto flex w-full max-w-3xl flex-col items-start gap-1">
+			<p class={ museCaption + " ml-1" }>{ i18n.T(ctx, "chat.caption.standing") }</p>
+			@card.Card(card.Props{Class: "bg-muse-agent text-foreground border-hairline max-w-[94%] rounded-2xl shadow-none dark:border-transparent"}) {
+				@card.Header(card.HeaderProps{Class: "space-y-1 p-4 pb-0"}) {
+					@card.Title(card.TitleProps{Class: "text-[15px] leading-snug font-semibold"}) {
+						{ capitalise(p.Title) }
+					}
+					@card.Description(card.DescriptionProps{Class: "text-[13px]"}) {
+						{ humanSchedule(ctx, p.Schedule) }
+					}
+				}
+				@card.Content(card.ContentProps{Class: "space-y-1 px-4 pt-3 pb-0 text-[15px] leading-normal"}) {
+					<p>{ p.Spec }</p>
+					<p class="text-muted-foreground text-[13px]">{ i18n.Tf(ctx, "chat.watch.when", p.Condition) }</p>
+				}
+				@card.Footer(card.FooterProps{Class: "flex-wrap gap-2 p-4"}) {
+					<form method="post" action={ templ.SafeURL(resolveURL(conversationID, messageID, "approve")) }>
+						@ui.CSRFInput()
+						@button.Button(button.Props{Type: "submit", Class: "min-h-11 rounded-full px-5"}) {
+							{ i18n.T(ctx, "chat.watch.confirm") }
+						}
+					</form>
+					<form method="post" action={ templ.SafeURL(resolveURL(conversationID, messageID, "decline")) }>
+						@ui.CSRFInput()
+						@button.Button(button.Props{Type: "submit", Variant: button.VariantGhost, Class: "min-h-11 rounded-full px-5"}) {
+							{ i18n.T(ctx, "chat.watch.notnow") }
+						}
+					</form>
+				}
+			}
+		</div>
+	</div>
+}
+
+// humanSchedule is a watch's schedule the way a person says it: "Every day at
+// 8:00", "Every Monday at 18:30".
+func humanSchedule(ctx context.Context, s watches.Schedule) string {
+	if s.Cadence == watches.CadenceWeekly {
+		day := i18n.T(ctx, fmt.Sprintf("chat.watch.day.%d", int(s.Weekday)))
+		return i18n.Tf(ctx, "chat.watch.weekly", day, s.Clock())
+	}
+	return i18n.Tf(ctx, "chat.watch.daily", s.Clock())
+}
+
+func capitalise(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return s
+	}
+	r := []rune(s)
+	return strings.ToUpper(string(r[0])) + string(r[1:])
+}
+
+// toolApprovalCard is the generic confirmation for any other write.
+templ toolApprovalCard(conversationID uuid.UUID, pending []PendingTool) {
 	<div class="border-border border-t p-4">
 		@alert.Alert() {
 			@icon.TriangleAlert(icon.Props{Class: "size-4"})
@@ -751,8 +955,7 @@ templ streamingCoachBubble(connectURL string, conversationID uuid.UUID) {
 		hx-target="find [data-stream-sink]"
 		hx-swap="beforeend"
 	>
-		<span class="font-mono text-[10px] uppercase tracking-[0.14em] text-agent">Khepri</span>
-		<div class="border-hairline bg-surface max-w-[85%] rounded-2xl rounded-bl-sm border px-4 py-2.5 text-sm whitespace-pre-wrap">
+		<div class={ museAgentBubble + " whitespace-pre-wrap" }>
 			<span data-stream-sink></span>
 			<span
 				data-streaming-caret

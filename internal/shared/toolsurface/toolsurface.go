@@ -7,7 +7,11 @@
 // depending on the other.
 package toolsurface
 
-import "context"
+import (
+	"context"
+
+	"github.com/google/uuid"
+)
 
 const (
 	Coach = "coach"
@@ -32,4 +36,23 @@ func With(ctx context.Context, surface string) context.Context {
 func From(ctx context.Context) string {
 	surface, _ := ctx.Value(key{}).(string)
 	return surface
+}
+
+type threadKey struct{}
+
+// WithThread records the conversation a tool call was made in.
+//
+// A capability is handed only a user id, by design. A few need to know where
+// they were asked from — create_watch posts its results back into that thread
+// — and the thread is not something the model should be able to name, for the
+// same reason the user id is not.
+func WithThread(ctx context.Context, conversationID uuid.UUID) context.Context {
+	return context.WithValue(ctx, threadKey{}, conversationID)
+}
+
+// Thread is the conversation the call was made in, or uuid.Nil when the call
+// did not come from a conversation (MCP, a test).
+func Thread(ctx context.Context) uuid.UUID {
+	id, _ := ctx.Value(threadKey{}).(uuid.UUID)
+	return id
 }

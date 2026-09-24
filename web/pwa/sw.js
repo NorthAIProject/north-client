@@ -185,33 +185,59 @@ self.addEventListener("push", (event) => {
   event.waitUntil(self.registration.showNotification(title, options));
 });
 
-// A tap. Focus a window that already has Khepri open and send it to the link,
-// or open one. The link is /app/nudges/{id}/open, which redirects to the page
-// the nudge was about once the server has counted the open.
+// Where a tap on a notification goes. The "Log it" action always opens the
+// capture box; a tap on the body follows the link the push carried, which is
+// /app/nudges/{id}/open — the server counts the open there and redirects to the
+// page the nudge was about (a chat thread for a coach reply or a briefing).
+// Anything that is not a same-origin path falls back to /app, so a malformed
+// payload cannot send somebody off-site.
+function notificationTarget(action, data, origin) {
+  const href =
+    action === "capture" ? "/app/capture" : (data && data.href) || "/app";
+  let url;
+  try {
+    url = new URL(href, origin);
+  } catch {
+    url = new URL("/app", origin);
+  }
+  if (url.origin !== new URL(origin).origin) {
+    url = new URL("/app", origin);
+  }
+  return url.href;
+}
+
+// Focus a window that already has Khepri open and send it to target, or open a
+// new one. A window the worker does not control cannot be navigated (navigate
+// rejects), and one that cannot be focused is no use either; both fall
+// through to the next window and finally to a fresh one, so a tap always lands
+// somewhere.
+async function openNotificationTarget(clients, target) {
+  const windows = await clients.matchAll({
+    type: "window",
+    includeUncontrolled: true,
+  });
+  for (const client of windows) {
+    if (!("focus" in client) || !("navigate" in client)) {
+      continue;
+    }
+    try {
+      const focused = await client.focus();
+      await (focused || client).navigate(target);
+      return;
+    } catch {
+      // Try the next window, then a new one.
+    }
+  }
+  await clients.openWindow(target);
+}
+
+// A tap. Close the notification, then take the person to what it was about.
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const href =
-    event.action === "capture"
-      ? "/app/capture"
-      : (event.notification.data && event.notification.data.href) || "/app";
-  const target = new URL(href, self.location.origin).href;
-
-  event.waitUntil(
-    (async () => {
-      const windows = await self.clients.matchAll({
-        type: "window",
-        includeUncontrolled: true,
-      });
-      for (const client of windows) {
-        if ("focus" in client) {
-          await client.focus();
-          if ("navigate" in client) {
-            await client.navigate(target);
-            return;
-          }
-        }
-      }
-      await self.clients.openWindow(target);
-    })(),
+  const target = notificationTarget(
+    event.action,
+    event.notification.data,
+    self.location.origin,
   );
+  event.waitUntil(openNotificationTarget(self.clients, target));
 });

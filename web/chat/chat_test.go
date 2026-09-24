@@ -5,12 +5,16 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/a-h/templ"
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/conversations"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/internal/watches"
 )
 
 func TestComposerAcceptsAPhoto(t *testing.T) {
@@ -50,7 +54,7 @@ func TestBubbleRendersAPhoto(t *testing.T) {
 			Kind:    "image",
 			Name:    "squat.jpg",
 		}},
-	}).Render(context.Background(), &buf)
+	}, time.UTC).Render(context.Background(), &buf)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +84,10 @@ func TestPageKeepsTheComposerReachableOnAPhone(t *testing.T) {
 		`id="chat-root"`,
 		"visualViewport",
 		"env(safe-area-inset-bottom)",
-		"min-h-11 min-w-11",
+		// Checked separately: TwMerge reorders a component's classes, so
+		// the pair is never adjacent on a templUI button.
+		"min-h-11",
+		"min-w-11",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("chat page missing %q", want)
@@ -93,7 +100,7 @@ func TestCopyIsVisibleOnTouch(t *testing.T) {
 	err := Bubble(conversations.Message{
 		Role:    ai.RoleModel,
 		Content: "A reply.",
-	}).Render(context.Background(), &buf)
+	}, time.UTC).Render(context.Background(), &buf)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +233,7 @@ func TestChatHeaderCarriesTheReactiveMascot(t *testing.T) {
 
 	// The app shell renders a header of its own first, so anchor on the chat
 	// header's own markup rather than on the first </header> in the document.
-	_, afterOpen, found := strings.Cut(out, `<header class="border-border flex h-12`)
+	_, afterOpen, found := strings.Cut(out, `<header class="muse-header`)
 	if !found {
 		t.Fatal("no chat header rendered")
 	}
@@ -239,6 +246,154 @@ func TestChatHeaderCarriesTheReactiveMascot(t *testing.T) {
 	}
 	if got := strings.Count(out, "/assets/js/shared/mascot/alpine.js"); got != 1 {
 		t.Errorf("mascot script rendered %d times, want 1", got)
+	}
+}
+
+// chatHeaderHTML renders a thread page and returns just the Muse header.
+func chatHeaderHTML(t *testing.T, c conversations.Conversation) string {
+	t.Helper()
+
+	var buf bytes.Buffer
+	if err := Page(users.User{DisplayName: "Fernando"}, c, nil, nil, CoachStats{}, nil, false, "").
+		Render(context.Background(), &buf); err != nil {
+		t.Fatal(err)
+	}
+	_, afterOpen, found := strings.Cut(buf.String(), `<header class="muse-header`)
+	if !found {
+		t.Fatal("no Muse header rendered")
+	}
+	header, _, found := strings.Cut(afterOpen, "</header>")
+	if !found {
+		t.Fatal("Muse header is not closed")
+	}
+	return header
+}
+
+// The Muse header is the one place the coach is named: avatar, name, and a
+// status line the stream can drive. Stage B only has to write `status`.
+func TestMuseHeaderCarriesAvatarNameAndStatus(t *testing.T) {
+	header := chatHeaderHTML(t, conversations.Conversation{ID: uuid.MustParse("11111111-1111-1111-1111-111111111111")})
+
+	for _, want := range []string{
+		`class="muse-avatar"`,
+		`id="chat-mascot"`,
+		// SizeLg: the 110px avatar, not the old 32px header chip.
+		"size-40",
+		`class="muse-scrim"`,
+		`<span class="muse-pill-name">`,
+		"Khepri",
+		`x-text="status"`,
+		">Ready</span>",
+		"New chat",
+		`aria-label="Show conversations"`,
+		`aria-label="Delete conversation"`,
+	} {
+		if !strings.Contains(header, want) {
+			t.Errorf("Muse header missing %q:\n%s", want, header)
+		}
+	}
+	if strings.Contains(header, "size-8") {
+		t.Error("header mascot is still the small chip")
+	}
+}
+
+// x-text="status" needs a status in scope, or Alpine blanks the pill and
+// throws. The root scope seeds it with the translated "Ready".
+func TestChatRootSeedsTheStatus(t *testing.T) {
+	var buf bytes.Buffer
+	if err := Page(users.User{}, conversations.Conversation{ID: uuid.New()}, nil, nil, CoachStats{}, nil, false, "").
+		Render(context.Background(), &buf); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), "status: &#34;Ready&#34;") {
+		t.Error("#chat-root x-data does not seed status")
+	}
+}
+
+// Stage B: the bridge in alpine.js drives the header from the #chat-root
+// scope. That needs the scope to hand itself over, the translated copy to be
+// on the element, the ring to read phase, and the composer to be marked as
+// the thing whose focus means "listening".
+func TestChatPageWiresTheStatusBridge(t *testing.T) {
+	var buf bytes.Buffer
+	if err := Page(users.User{}, conversations.Conversation{ID: uuid.New()}, nil, nil, CoachStats{}, nil, false, "").
+		Render(context.Background(), &buf); err != nil {
+		t.Fatal(err)
+	}
+	page := buf.String()
+
+	for _, want := range []string{
+		"NorthMascot.bindChat(this, this.$el)",
+		"phase: &#39;idle&#39;",
+		`data-status-ready="Ready"`,
+		`data-status-listening="is listening"`,
+		`data-status-thinking="is thinking"`,
+		`data-status-writing="is writing"`,
+		`data-status-snag="hit a snag"`,
+		`class="muse-ring"`,
+		`:data-phase="phase"`,
+		`data-phase="idle"`,
+		"data-muse-listen",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("chat page missing %q", want)
+		}
+	}
+}
+
+// The copy is the reader's language, not English baked into a script.
+func TestStatusCopyFollowsTheLocale(t *testing.T) {
+	var buf bytes.Buffer
+	ctx := i18n.WithLocale(context.Background(), "pt-PT")
+	if err := Page(users.User{}, conversations.Conversation{ID: uuid.New()}, nil, nil, CoachStats{}, nil, false, "").
+		Render(ctx, &buf); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), `data-status-thinking="está a pensar"`) {
+		t.Error("pt-PT page does not carry the pt-PT status copy")
+	}
+}
+
+// The coach is named once, in the header. Replies carry no avatar and no
+// "Khepri" caption, stored or streaming.
+func TestBubbleHasNoInlineAvatar(t *testing.T) {
+	id := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	renders := map[string]templ.Component{
+		"stored":  Bubble(conversations.Message{Role: ai.RoleModel, Content: "A reply."}, time.UTC),
+		"user":    Bubble(conversations.Message{Role: ai.RoleUser, Content: "A question."}, time.UTC),
+		"pending": PendingExchange(id, "How did training go?", uuid.Nil),
+		"resume":  ResumeExchange(id),
+	}
+	for name, c := range renders {
+		var buf bytes.Buffer
+		if err := c.Render(context.Background(), &buf); err != nil {
+			t.Fatal(err)
+		}
+		body := buf.String()
+		if strings.Contains(body, "north-mascot") || strings.Contains(body, "khepri-mascot.png") {
+			t.Errorf("%s bubble renders an inline avatar", name)
+		}
+		if strings.Contains(body, ">Khepri<") {
+			t.Errorf("%s bubble still carries the Khepri caption", name)
+		}
+		if !strings.Contains(body, "rounded-[24px]") {
+			t.Errorf("%s bubble is not the Muse radius", name)
+		}
+	}
+
+	var agent bytes.Buffer
+	if err := Bubble(conversations.Message{Role: ai.RoleModel, Content: "A reply."}, time.UTC).Render(context.Background(), &agent); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(agent.String(), "max-w-[94%] ") || !strings.Contains(agent.String(), "bg-muse-agent") {
+		t.Error("agent bubble is not the 94% muse agent bubble")
+	}
+	var user bytes.Buffer
+	if err := Bubble(conversations.Message{Role: ai.RoleUser, Content: "Hi"}, time.UTC).Render(context.Background(), &user); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(user.String(), "max-w-[85%]") || !strings.Contains(user.String(), "bg-muse-user") {
+		t.Error("user bubble is not the 85% muse user bubble")
 	}
 }
 
@@ -312,11 +467,145 @@ func TestUserBubbleHasNoRatingControl(t *testing.T) {
 		ID:      uuid.MustParse("33333333-3333-3333-3333-333333333333"),
 		Role:    ai.RoleUser,
 		Content: "How should I train this week?",
-	}).Render(context.Background(), &buf)
+	}, time.UTC).Render(context.Background(), &buf)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(buf.String(), "Did this help?") {
 		t.Error("a user message is offering a rating control")
+	}
+}
+
+// A message nobody asked for carries an 11px uppercase caption above the same
+// agent bubble (_reviews/muse-chat-contract.md, "Proactive messages"). The
+// briefing's shows the local time it arrived.
+func TestProactiveBubbleShowsCaption(t *testing.T) {
+	lisbon, err := time.LoadLocation("Europe/Lisbon")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 06:00 UTC in July is 07:00 in Lisbon.
+	at := time.Date(2026, 7, 14, 6, 0, 0, 0, time.UTC)
+
+	cases := map[string]struct {
+		label string
+		want  string
+	}{
+		"briefing": {conversations.SourceDailyBriefing, "Briefing · 07:00"},
+		"standing": {conversations.SourceStandingTask, "Standing task"},
+		"skill":    {"Sleep coach", "From Sleep coach"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			var buf bytes.Buffer
+			err := Bubble(conversations.Message{
+				ID:          uuid.New(),
+				Role:        ai.RoleModel,
+				Content:     "You slept 6h10 — shortest this week.",
+				Origin:      conversations.OriginProactive,
+				SourceLabel: tc.label,
+				CreatedAt:   at,
+			}, lisbon).Render(context.Background(), &buf)
+			if err != nil {
+				t.Fatal(err)
+			}
+			body := buf.String()
+			if !strings.Contains(body, "data-proactive-caption") {
+				t.Fatal("proactive bubble has no caption")
+			}
+			if !strings.Contains(body, tc.want) {
+				t.Errorf("caption missing %q", tc.want)
+			}
+			for _, class := range []string{"text-[11px]", "uppercase"} {
+				if !strings.Contains(body, class) {
+					t.Errorf("caption missing class %q", class)
+				}
+			}
+			// Caption first, then the same bubble a reply uses.
+			if strings.Index(body, tc.want) > strings.Index(body, "bg-muse-agent") {
+				t.Error("caption should sit above the bubble")
+			}
+		})
+	}
+}
+
+func TestReplyBubbleHasNoCaption(t *testing.T) {
+	var buf bytes.Buffer
+	err := Bubble(conversations.Message{Role: ai.RoleModel, Content: "A reply."}, time.UTC).
+		Render(context.Background(), &buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(buf.String(), "data-proactive-caption") {
+		t.Error("an ordinary reply is captioned as proactive")
+	}
+}
+
+func TestProactiveCaptionIsTranslated(t *testing.T) {
+	ctx := i18n.WithLocale(context.Background(), string(users.LocalePTPT))
+	var buf bytes.Buffer
+	err := Bubble(conversations.Message{
+		Role:        ai.RoleModel,
+		Content:     "Olá.",
+		Origin:      conversations.OriginProactive,
+		SourceLabel: conversations.SourceStandingTask,
+	}, time.UTC).Render(ctx, &buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), "Tarefa recorrente") {
+		t.Error("standing-task caption is not in pt-PT")
+	}
+}
+
+// create_watch's approval is the standing-task card: title, schedule in
+// words, the instruction, and Confirm / Not now posting to the same resolve
+// routes as any other approval.
+func TestApprovalCardForAWatchIsTheStandingTaskCard(t *testing.T) {
+	conversationID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	messageID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
+
+	var buf bytes.Buffer
+	err := ApprovalCard(conversationID, []PendingTool{{
+		MessageID: messageID,
+		Name:      "create_watch",
+		Summary:   `create_watch {"watch":"your sleep"}`,
+		Watch: &watches.Proposal{
+			Title:     "your sleep",
+			Condition: "it drops under seven hours",
+			Spec:      "Check last night's sleep and tell me if it was under seven hours.",
+			Schedule:  watches.Schedule{Cadence: watches.CadenceDaily, Minute: 8 * 60},
+		},
+	}}).Render(context.Background(), &buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := buf.String()
+	for _, want := range []string{
+		"data-standing-task-card",
+		"Your sleep",
+		"Every day at 8:00",
+		"Check last night&#39;s sleep",
+		"Pings you when it drops under seven hours",
+		"Confirm",
+		"Not now",
+		resolveURL(conversationID, messageID, "approve"),
+		resolveURL(conversationID, messageID, "decline"),
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("standing-task card missing %q", want)
+		}
+	}
+	if strings.Contains(body, "create_watch {") {
+		t.Error("standing-task card leaked the raw tool call")
+	}
+}
+
+func TestWeeklyScheduleReadsAsADay(t *testing.T) {
+	got := humanSchedule(context.Background(), watches.Schedule{
+		Cadence: watches.CadenceWeekly, Weekday: time.Monday, Minute: 18*60 + 30,
+	})
+	if got != "Every Monday at 18:30" {
+		t.Errorf("weekly schedule = %q", got)
 	}
 }

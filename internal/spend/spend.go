@@ -34,6 +34,7 @@ const (
 	SurfaceMemory        = "memory_extraction"
 	SurfaceWeeklyReview  = "weekly_review"
 	SurfaceDailyBriefing = "daily_briefing"
+	SurfaceStandingTask  = "standing_task"
 	SurfaceFormAnalysis  = "form_analysis"
 	SurfaceWorkoutPlan   = "workout_plan"
 	SurfaceQuickCapture  = "quick_capture"

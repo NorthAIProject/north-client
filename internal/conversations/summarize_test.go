@@ -65,7 +65,7 @@ func fill(t *testing.T, convos *conversations.Service, id uuid.UUID, n int) {
 		if i%2 == 0 {
 			_, err = convos.AppendUserMessage(ctx, id, fmt.Sprintf("user turn %d", i), nil)
 		} else {
-			_, err = convos.AppendModelMessage(ctx, id, fmt.Sprintf("coach turn %d", i), nil, "m", "p", nil)
+			_, err = convos.AppendModelMessage(ctx, id, fmt.Sprintf("coach turn %d", i), nil, "m", "p", nil, conversations.Provenance{})
 		}
 		if err != nil {
 			t.Fatalf("append %d: %v", i, err)
