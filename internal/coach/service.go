@@ -58,12 +58,6 @@ type ClientSource interface {
 	// summary written by the coach, never the provider's response body, which
 	// can echo the key back.
 	NoteFailure(ctx context.Context, userID uuid.UUID, reason string)
-
-	// UsableWithTools reports whether the user's provider will actually call
-	// the tools it is given. False only when that has been established; nil or
-	// unknown answers true, because refusing to use somebody's paid provider
-	// on a guess is the worse mistake.
-	UsableWithTools(ctx context.Context, userID uuid.UUID) bool
 }
 
 // generationTimeout bounds a detached generation. Long, because a large model
@@ -104,6 +98,7 @@ type Service struct {
 	queue         *jobs.Queue
 	tools         ToolRunner
 	declines      DeclineRecorder
+	external      ExternalLookups
 
 	// runner walks the providers that serve a given tier, in order, until one
 	// answers. Shared with every other part of Khepri that calls a model.
@@ -197,6 +192,11 @@ type Options struct {
 	// nothing; the refusal still reaches the model either way.
 	Declines DeclineRecorder
 
+	// ExternalLookups reports the exercises an agent read over MCP on this
+	// person's behalf. Nil means a reply only ever shows what the coach looked
+	// up itself.
+	ExternalLookups ExternalLookups
+
 	// Own yields a user's own provider, tried ahead of Chains. Nil leaves
 	// every user on Khepri's providers, which is what a deployment with no
 	// encryption key gets.
@@ -240,6 +240,7 @@ func NewService(opts Options) *Service {
 		runner:        ai.NewRunner(opts.Registry, opts.Chains),
 		tools:         opts.Tools,
 		declines:      opts.Declines,
+		external:      opts.ExternalLookups,
 		own:           opts.Own,
 		analytics:     opts.Analytics,
 		funnel:        opts.Funnel,
@@ -317,6 +318,7 @@ func (s *Service) SendIncoming(ctx context.Context, user users.User, conversatio
 		Tools:    s.toolsFor(conversation),
 	}
 
+	startedAt := time.Now()
 	stream, client, err := s.startChat(ctx, genCtx, user, req)
 	if err != nil {
 		cancelGen()
@@ -338,6 +340,7 @@ func (s *Service) SendIncoming(ctx context.Context, user users.User, conversatio
 		request:      req,
 		offeredRefs:  coachCtx.OfferedRefs(),
 		traceID:      uuid.New().String(),
+		startedAt:    startedAt,
 	})
 
 	return out, nil
@@ -429,7 +432,7 @@ func (s *Service) startChat(
 
 	req = capReplyTokens(req)
 
-	client, err := s.eachProvider(ctx, user, len(req.Tools) > 0, func(c ai.Client) error {
+	client, err := s.eachProvider(ctx, user, func(c ai.Client) error {
 		opened, err := c.Chat(genCtx, req)
 		stream = opened
 		return err
@@ -449,7 +452,7 @@ func (s *Service) generate(ctx context.Context, user users.User, surface string,
 
 	ctx = aiattr.WithUser(ctx, user.ID, surface)
 
-	client, err := s.eachProvider(ctx, user, len(req.Tools) > 0, func(c ai.Client) error {
+	client, err := s.eachProvider(ctx, user, func(c ai.Client) error {
 		r, err := c.Generate(ctx, req)
 		resp = r
 		return err
@@ -463,7 +466,7 @@ func (s *Service) generate(ctx context.Context, user users.User, surface string,
 
 // eachProvider tries the user's chain in order until attempt succeeds, and
 // returns the client that managed it.
-func (s *Service) eachProvider(ctx context.Context, user users.User, needsTools bool, attempt func(ai.Client) error) (ai.Client, error) {
+func (s *Service) eachProvider(ctx context.Context, user users.User, attempt func(ai.Client) error) (ai.Client, error) {
 	log := middleware.FromContext(ctx)
 
 	// A user's own key goes in front of Khepri's chain rather than replacing
@@ -489,18 +492,11 @@ func (s *Service) eachProvider(ctx context.Context, user users.User, needsTools 
 		}
 	}
 
-	// A provider that ignores the tools array is worse than no provider at all
-	// when the turn needs one: every write capability disappears, the grounding
-	// rules go with them, and the model answers in confident prose about a
-	// catalogue it never read. Khepri's own chain is the better answer for
-	// exactly these turns, and the user keeps their provider everywhere else.
-	if own != nil && needsTools && !s.own.UsableWithTools(ctx, user.ID) {
-		log.Info("the user's own provider cannot call tools; serving this turn from Khepri's chain",
-			slog.String("user_id", user.ID.String()))
-		own = nil
-	}
-
-	opts := ai.RunOptions{Tier: string(user.Tier), NeedsTools: needsTools}
+	// What the person connected answers first on every turn, tools or not.
+	// A gateway that ignores the tools array still reaches Khepri over MCP,
+	// and what it looks up there is picked up after the reply — see
+	// externalExercises. Khepri's chain is the fallback, never the override.
+	opts := ai.RunOptions{Tier: string(user.Tier)}
 	if own != nil {
 		opts.Prepend = []ai.Client{own}
 
@@ -588,6 +584,10 @@ type pumpTarget struct {
 	// traceID groups every generation and tool span this turn produces, so
 	// they land in PostHog as one trace rather than one per model call.
 	traceID string
+
+	// startedAt is when the provider was first asked, which bounds the MCP
+	// lookups that can belong to this turn.
+	startedAt time.Time
 }
 
 // pump forwards the provider's stream to the caller while accumulating the full
@@ -808,6 +808,9 @@ func (s *Service) pump(
 	// what this reply was built from. The chat draws the muscles worked from
 	// these rather than asking the model to describe them in a shape a template
 	// could parse — the catalogue already knows, and the model already looked.
+	if len(exerciseSlugs) == 0 && !ai.CallsTools(target.client) {
+		exerciseSlugs = s.externalExercises(genCtx, target)
+	}
 	for _, slug := range exerciseSlugs {
 		evidenceRefs = append(evidenceRefs, ExerciseRef(slug))
 	}
@@ -951,6 +954,7 @@ func (s *Service) BeginReflection(ctx context.Context, user users.User, conversa
 		Messages: []ai.Message{ai.UserText("Begin the reflection.")},
 	}
 
+	startedAt := time.Now()
 	stream, client, err := s.startChat(ctx, genCtx, user, req)
 	if err != nil {
 		cancelGen()
@@ -967,6 +971,7 @@ func (s *Service) BeginReflection(ctx context.Context, user users.User, conversa
 		request:      req,
 		offeredRefs:  coachCtx.OfferedRefs(),
 		traceID:      uuid.New().String(),
+		startedAt:    startedAt,
 	})
 	return out, nil
 }

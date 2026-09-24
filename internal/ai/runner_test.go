@@ -210,27 +210,11 @@ func runnerOver(clients ...ai.Client) *ai.Runner {
 	return ai.NewRunner(r, ai.NewChainSet(names, nil))
 }
 
-// Added after production put a Hermes gateway first in the chain. Its API
-// server never reads the request's tools field, so for sixteen days the
-// coach asked the check-in questions, then wrote "Check-in logged" with no
-// call made and no row written. A provider that cannot call tools is not a
-// provider for a turn that needs them.
-func TestRunSkipsProvidersThatIgnoreToolsWhenTheTurnNeedsThem(t *testing.T) {
-	var seen []string
-	client, err := runnerOver(deaf{stub{name: "hermes"}}, stub{name: "nvidia"}).
-		Run(context.Background(), ai.RunOptions{NeedsTools: true}, tried(&seen, func(string) error { return nil }))
-	if err != nil {
-		t.Fatalf("run: %v", err)
-	}
-	if client.Name() != "nvidia" {
-		t.Errorf("answered by %q, want nvidia", client.Name())
-	}
-	if len(seen) != 1 || seen[0] != "nvidia" {
-		t.Errorf("walked %v, want only nvidia", seen)
-	}
-}
-
-func TestRunStillUsesAToolDeafProviderWhenTheTurnCarriesNoTools(t *testing.T) {
+// Added after the owner asked for Hermes to answer first on every turn. A
+// gateway that ignores the tools array still reaches Khepri's capabilities
+// over MCP, so it is not a provider to route around: the chain order is the
+// owner's decision, and the runner keeps it.
+func TestRunKeepsAToolDeafProviderFirst(t *testing.T) {
 	var seen []string
 	client, err := runnerOver(deaf{stub{name: "hermes"}}, stub{name: "nvidia"}).
 		Run(context.Background(), ai.RunOptions{}, tried(&seen, func(string) error { return nil }))
@@ -242,39 +226,22 @@ func TestRunStillUsesAToolDeafProviderWhenTheTurnCarriesNoTools(t *testing.T) {
 	}
 }
 
-func TestRunFailsWhenEveryProviderIgnoresTools(t *testing.T) {
-	var seen []string
-	_, err := runnerOver(deaf{stub{name: "hermes"}}).
-		Run(context.Background(), ai.RunOptions{NeedsTools: true}, tried(&seen, func(string) error { return nil }))
-	if !apperr.Is(err, apperr.ErrUnavailable) {
-		t.Fatalf("err = %v, want ErrUnavailable", err)
-	}
-	if len(seen) != 0 {
-		t.Errorf("walked %v, want nobody", seen)
-	}
-}
-
 type noMeter struct{}
 
 func (noMeter) Record(context.Context, string, string, ai.Usage, bool) {}
 
-// Added after production kept serving tool turns from Hermes the day the skip
-// above shipped. Production registers every client behind a meter, and the
-// meter's wrapper did not say whether the client underneath calls tools, so
-// the check assumed it did. The tests above build an unmetered registry and
-// passed throughout.
-func TestRunSkipsAToolDeafProviderBehindAMeter(t *testing.T) {
+// Production registers every client behind a meter, and the coach asks the
+// client that answered whether it calls tools to know when to look for lookups
+// made over MCP instead. The meter must pass that question through.
+func TestAMeteredClientStillSaysWhetherItCallsTools(t *testing.T) {
 	r := ai.NewRegistry().WithMeter(noMeter{})
 	r.Register(deaf{stub{name: "hermes"}})
-	r.Register(stub{name: "nvidia"})
 
-	var seen []string
-	client, err := ai.NewRunner(r, ai.NewChainSet([]string{"hermes", "nvidia"}, nil)).
-		Run(context.Background(), ai.RunOptions{NeedsTools: true}, tried(&seen, func(string) error { return nil }))
+	client, err := r.Get("hermes")
 	if err != nil {
-		t.Fatalf("run: %v", err)
+		t.Fatalf("get hermes: %v", err)
 	}
-	if client.Name() != "nvidia" {
-		t.Errorf("answered by %q, want nvidia", client.Name())
+	if ai.CallsTools(client) {
+		t.Error("the meter reported a tool-deaf client as calling tools")
 	}
 }

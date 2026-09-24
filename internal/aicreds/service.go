@@ -323,26 +323,6 @@ func entryLabel(entry providers.BYOProvider, fallback string) string {
 	return fallback
 }
 
-// UsableWithTools reports whether this user's own provider will call the tools
-// the coach gives it.
-//
-// True unless a probe has established otherwise. Unknown answers true on
-// purpose: refusing to use somebody's paid provider on a guess is the worse of
-// the two mistakes, and an unprobed credential is only unknown, not suspect.
-func (s *Service) UsableWithTools(ctx context.Context, userID uuid.UUID) bool {
-	if !s.Enabled() {
-		return true
-	}
-
-	cred, err := s.repo.Get(ctx, userID)
-	if err != nil {
-		// Including ErrNotFound, which means there is no own provider to
-		// refuse — the coach will not be prepending one anyway.
-		return true
-	}
-	return cred.SupportsTools == nil || *cred.SupportsTools
-}
-
 // ProbeTools finds out whether a user's provider honours a tools array and
 // records the answer.
 //

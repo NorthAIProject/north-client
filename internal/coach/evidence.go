@@ -7,11 +7,13 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/conversations"
+	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
@@ -79,6 +81,39 @@ func appendExerciseLookups(into []string, calls []ai.ToolCall) []string {
 		into = append(into, slug)
 	}
 	return into
+}
+
+// ExternalLookups is the tool audit, as seen from the coach: which catalogue
+// exercises were read over MCP for this person since a given moment.
+//
+// Declared here and implemented by internal/toolaudit, which already imports
+// this package for DeclineRecorder.
+type ExternalLookups interface {
+	ExercisesLookedUpSince(ctx context.Context, userID uuid.UUID, since time.Time) ([]string, error)
+}
+
+// externalExercises finds the exercises a turn read without the coach seeing it.
+//
+// A gateway that fronts an agent, such as Hermes, never calls the tools the
+// coach declares; it calls Khepri's MCP server with its own. Those calls go
+// through the same capabilities and land in the tool audit, so a lookup made
+// during this turn is the lookup this reply is about. Without this a reply
+// from such a provider names the exercise and shows nothing.
+//
+// Every failure is a quiet empty list: a missing picture is a reply without a
+// picture, never a reply lost.
+func (s *Service) externalExercises(ctx context.Context, target pumpTarget) []string {
+	if s.external == nil || target.startedAt.IsZero() {
+		return nil
+	}
+
+	slugs, err := s.external.ExercisesLookedUpSince(ctx, target.user.ID, target.startedAt)
+	if err != nil {
+		middleware.FromContext(ctx).Warn("could not read the exercises looked up over MCP",
+			"error", err, "conversation_id", target.conversation.ID)
+		return nil
+	}
+	return slugs
 }
 
 // refRemoval matches a citation plus the usual leading space.

@@ -989,9 +989,9 @@ func (c AIConfig) ProviderOptions(env Environment) providers.Options {
 				SupportsJSONSchema: false,
 				// The gateway's API server (gateway/platforms/api_server.py)
 				// runs the Hermes agent with its own toolset and never reads
-				// the request's tools field. With Hermes first in the chain
-				// the coach spent sixteen days saying "Check-in logged" and
-				// logging nothing. Tool turns skip it.
+				// the request's tools field; it reaches Khepri's capabilities
+				// through the MCP server instead. It keeps its place in the
+				// chain, and the coach reads its MCP lookups from the audit.
 				IgnoresTools: true,
 			},
 		},
