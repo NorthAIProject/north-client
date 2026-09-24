@@ -12,6 +12,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/activity"
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/capture"
+	"github.com/NorthAIProject/north-client/internal/care"
 	"github.com/NorthAIProject/north-client/internal/checkins"
 	"github.com/NorthAIProject/north-client/internal/coach"
 	"github.com/NorthAIProject/north-client/internal/dashboard"
@@ -23,6 +24,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/insights"
 	"github.com/NorthAIProject/north-client/internal/media"
 	"github.com/NorthAIProject/north-client/internal/memories"
+	"github.com/NorthAIProject/north-client/internal/mind"
 	"github.com/NorthAIProject/north-client/internal/onboarding"
 	"github.com/NorthAIProject/north-client/internal/reports"
 	"github.com/NorthAIProject/north-client/internal/settings"
@@ -64,6 +66,8 @@ func apiRouter(t *testing.T) chi.Router {
 		memories:   memories.NewAPI(nil),
 		knowledge:  documents.NewAPI(nil, nil),
 		formChecks: media.NewAPI(nil, nil),
+		care:       care.NewAPI(care.Options{}),
+		mind:       mind.NewAPI(nil),
 	})
 	return r
 }

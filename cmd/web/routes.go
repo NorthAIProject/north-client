@@ -358,13 +358,14 @@ func routes(
 	sleepSvc := sleep.NewService(sleep.NewRepository(pool))
 	habitSvc := habits.NewService(habits.NewRepository(pool))
 
-	careHandler := care.NewHandler(care.Options{
+	careOpts := care.Options{
 		Reminders: mealReminderSvc,
 		CheckIns:  checkinSvc,
 		Hydration: hydrationSvc,
 		Sleep:     sleepSvc,
 		Habits:    habitSvc,
-	})
+	}
+	careHandler := care.NewHandler(careOpts)
 
 	// Speech to text: a dedicated endpoint, not a chat model.
 	//
@@ -795,6 +796,8 @@ func routes(
 			memories:   memories.NewAPI(memorySvc),
 			knowledge:  documents.NewAPI(documentSvc, quotaSvc),
 			formChecks: media.NewAPI(mediaSvc, quotaSvc),
+			care:       care.NewAPI(careOpts),
+			mind:       mind.NewAPI(mindSvc),
 		})
 	})
 
