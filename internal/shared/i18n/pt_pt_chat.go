@@ -61,4 +61,22 @@ var portugueseEuropeanChat = map[string]string{
 	"chat.tool.alerts":        "ver os teus lembretes",
 	"chat.tool.alerts.write":  "criar um lembrete",
 	"chat.tool.log":           "anotar isso por ti",
+
+	"chat.caption.briefing":  "Resumo · %[1]s",
+	"chat.caption.standing":  "Tarefa recorrente",
+	"chat.caption.from":      "De %[1]s",
+	"chat.caption.proactive": "Sem pedires",
+
+	"chat.watch.daily":   "Todos os dias às %[1]s",
+	"chat.watch.weekly":  "Todas as semanas, %[1]s às %[2]s",
+	"chat.watch.when":    "Avisa-te quando %[1]s",
+	"chat.watch.confirm": "Confirmar",
+	"chat.watch.notnow":  "Agora não",
+	"chat.watch.day.0":   "domingo",
+	"chat.watch.day.1":   "segunda-feira",
+	"chat.watch.day.2":   "terça-feira",
+	"chat.watch.day.3":   "quarta-feira",
+	"chat.watch.day.4":   "quinta-feira",
+	"chat.watch.day.5":   "sexta-feira",
+	"chat.watch.day.6":   "sábado",
 }

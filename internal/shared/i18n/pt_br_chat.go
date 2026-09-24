@@ -59,4 +59,22 @@ var portugueseBrazilianChat = map[string]string{
 	"chat.tool.alerts":        "verificando seus lembretes",
 	"chat.tool.alerts.write":  "criando um lembrete",
 	"chat.tool.log":           "anotando isso para você",
+
+	"chat.caption.briefing":  "Resumo · %[1]s",
+	"chat.caption.standing":  "Tarefa recorrente",
+	"chat.caption.from":      "De %[1]s",
+	"chat.caption.proactive": "Sem você pedir",
+
+	"chat.watch.daily":   "Todo dia às %[1]s",
+	"chat.watch.weekly":  "Toda semana, %[1]s às %[2]s",
+	"chat.watch.when":    "Avisa você quando %[1]s",
+	"chat.watch.confirm": "Confirmar",
+	"chat.watch.notnow":  "Agora não",
+	"chat.watch.day.0":   "domingo",
+	"chat.watch.day.1":   "segunda-feira",
+	"chat.watch.day.2":   "terça-feira",
+	"chat.watch.day.3":   "quarta-feira",
+	"chat.watch.day.4":   "quinta-feira",
+	"chat.watch.day.5":   "sexta-feira",
+	"chat.watch.day.6":   "sábado",
 }

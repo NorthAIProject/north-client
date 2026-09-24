@@ -201,6 +201,16 @@ sql:
 
   - engine: postgresql
     schema: migrations
+    queries: internal/watches/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: watchesdb
+        out: internal/watches/db
+        overrides: *overrides
+
+  - engine: postgresql
+    schema: migrations
     queries: internal/news/db/queries.sql
     gen:
       go:
