@@ -1,0 +1,29 @@
+{
+  "today": {
+    "id": "e5e5e5e5-e5e5-e5e5-e5e5-e5e5e5e5e5e5",
+    "localDate": "2026-09-24",
+    "mood": 4,
+    "energy": 3,
+    "wins": "Long run done.",
+    "challenges": "Slept badly.",
+    "notes": "",
+    "relatedGoalId": "b2b2b2b2-b2b2-b2b2-b2b2-b2b2b2b2b2b2",
+    "relatedGoalTitle": "Run a half marathon",
+    "updatedAt": "2026-09-24T20:00:00Z"
+  },
+  "recent": [
+    {
+      "id": "e5e5e5e5-e5e5-e5e5-e5e5-e5e5e5e5e5e5",
+      "localDate": "2026-09-24",
+      "mood": 4,
+      "energy": 3,
+      "wins": "Long run done.",
+      "challenges": "Slept badly.",
+      "notes": "",
+      "relatedGoalId": "b2b2b2b2-b2b2-b2b2-b2b2-b2b2b2b2b2b2",
+      "relatedGoalTitle": "Run a half marathon",
+      "updatedAt": "2026-09-24T20:00:00Z"
+    }
+  ],
+  "streak": 6
+}

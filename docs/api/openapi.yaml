@@ -1272,6 +1272,339 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+  /goals:
+    get:
+      operationId: listGoals
+      summary: Every goal, newest first, and the life areas a goal can belong to
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GoalList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: createGoal
+      summary: Create a goal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoalRequest'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GoalDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /goals/{goalID}:
+    parameters:
+      - name: goalID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getGoal
+      summary: A goal with its milestones and recent progress notes
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GoalDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      operationId: updateGoal
+      summary: Edit a goal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoalRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GoalDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      operationId: deleteGoal
+      summary: Delete a goal
+      responses:
+        '204':
+          description: Done
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /goals/{goalID}/status:
+    parameters:
+      - name: goalID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      operationId: setGoalStatus
+      summary: Mark a goal active, achieved, paused or abandoned
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoalStatusRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GoalDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /goals/{goalID}/updates:
+    parameters:
+      - name: goalID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: addGoalUpdate
+      summary: Add a progress note, optionally with a percentage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoalUpdateRequest'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GoalUpdate'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /goals/{goalID}/milestones:
+    parameters:
+      - name: goalID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: addMilestone
+      summary: Add a milestone
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MilestoneRequest'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Milestone'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /goals/{goalID}/milestones/{milestoneID}:
+    parameters:
+      - name: goalID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: milestoneID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      operationId: updateMilestone
+      summary: Rename or re-date a milestone
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MilestoneRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Milestone'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      operationId: deleteMilestone
+      summary: Delete a milestone
+      responses:
+        '204':
+          description: Done
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /goals/{goalID}/milestones/{milestoneID}/status:
+    parameters:
+      - name: goalID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: milestoneID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      operationId: setMilestoneStatus
+      summary: Mark a milestone open or completed
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoalStatusRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Milestone'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /check-ins:
+    get:
+      operationId: listCheckIns
+      summary: Today's check-in, the recent ones and the streak
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckInList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /check-ins/today:
+    put:
+      operationId: saveTodayCheckIn
+      summary: File or replace today's check-in
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CheckInRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckIn'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /check-ins/{checkInID}:
+    parameters:
+      - name: checkInID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      operationId: updateCheckIn
+      summary: Edit a past check-in
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CheckInRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckIn'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      operationId: deleteCheckIn
+      summary: Delete a check-in
+      responses:
+        '204':
+          description: Done
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /insights:
     get:
       operationId: getInsights
@@ -2896,6 +3229,193 @@ components:
       properties:
         activityCode:
           type: string
+    GoalUpdate:
+      type: object
+      required: [id, note, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        note:
+          type: string
+        progress:
+          type: integer
+          description: 0-100, when the note carried one.
+        createdAt:
+          type: string
+          format: date-time
+    Milestone:
+      type: object
+      required: [id, title, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        status:
+          type: string
+          enum: [open, completed]
+        targetDate:
+          type: string
+          description: A calendar day, YYYY-MM-DD.
+        completedAt:
+          type: string
+          format: date-time
+    GoalSummary:
+      type: object
+      required: [id, title, category, status, milestoneTotal, milestoneDone, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        category:
+          type: string
+        status:
+          type: string
+          enum: [active, achieved, paused, abandoned]
+        targetDate:
+          type: string
+          description: A calendar day, YYYY-MM-DD.
+        milestoneTotal:
+          type: integer
+        milestoneDone:
+          type: integer
+        latestUpdate:
+          $ref: '#/components/schemas/GoalUpdate'
+        createdAt:
+          type: string
+          format: date-time
+    GoalList:
+      type: object
+      required: [goals, categories]
+      properties:
+        goals:
+          type: array
+          items:
+            $ref: '#/components/schemas/GoalSummary'
+        categories:
+          type: array
+          items:
+            type: string
+    GoalDetail:
+      allOf:
+        - $ref: '#/components/schemas/GoalSummary'
+        - type: object
+          required: [motivation, success, milestones, updates]
+          properties:
+            motivation:
+              type: string
+            success:
+              type: string
+            milestones:
+              type: array
+              items:
+                $ref: '#/components/schemas/Milestone'
+            updates:
+              type: array
+              items:
+                $ref: '#/components/schemas/GoalUpdate'
+    GoalRequest:
+      type: object
+      required: [title, motivation, success, category]
+      properties:
+        title:
+          type: string
+        motivation:
+          type: string
+        success:
+          type: string
+        category:
+          type: string
+        targetDate:
+          type: string
+          description: A calendar day, YYYY-MM-DD; omit for none.
+    GoalStatusRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+    GoalUpdateRequest:
+      type: object
+      required: [note]
+      properties:
+        note:
+          type: string
+        progress:
+          type: integer
+    MilestoneRequest:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+        targetDate:
+          type: string
+    CheckIn:
+      type: object
+      required: [id, localDate, mood, energy, wins, challenges, notes, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        localDate:
+          type: string
+          description: The day in the person's own time zone, YYYY-MM-DD.
+        mood:
+          type: integer
+          minimum: 1
+          maximum: 5
+        energy:
+          type: integer
+          minimum: 1
+          maximum: 5
+        wins:
+          type: string
+        challenges:
+          type: string
+        notes:
+          type: string
+        relatedGoalId:
+          type: string
+          format: uuid
+        relatedGoalTitle:
+          type: string
+        updatedAt:
+          type: string
+          format: date-time
+    CheckInList:
+      type: object
+      required: [recent, streak]
+      properties:
+        today:
+          $ref: '#/components/schemas/CheckIn'
+        recent:
+          type: array
+          items:
+            $ref: '#/components/schemas/CheckIn'
+        streak:
+          type: integer
+    CheckInRequest:
+      type: object
+      required: [mood, energy]
+      properties:
+        mood:
+          type: integer
+        energy:
+          type: integer
+        wins:
+          type: string
+        challenges:
+          type: string
+        notes:
+          type: string
+        relatedGoalId:
+          type: string
+          format: uuid
     InsightsRange:
       type: object
       required: [key, label, options]

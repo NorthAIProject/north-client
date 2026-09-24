@@ -6,10 +6,12 @@ import (
 	"github.com/NorthAIProject/north-client/internal/activity"
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/capture"
+	"github.com/NorthAIProject/north-client/internal/checkins"
 	"github.com/NorthAIProject/north-client/internal/coach"
 	"github.com/NorthAIProject/north-client/internal/dashboard"
 	"github.com/NorthAIProject/north-client/internal/exercises"
 	"github.com/NorthAIProject/north-client/internal/fitness"
+	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/health"
 	"github.com/NorthAIProject/north-client/internal/insights"
 	"github.com/NorthAIProject/north-client/internal/onboarding"
@@ -44,6 +46,8 @@ func mountAPI(r chi.Router, sessions auth.SessionResolver, apis apiSet) {
 			apis.health.Routes(r)
 			apis.fitness.Routes(r)
 			apis.insights.Routes(r)
+			apis.goals.Routes(r)
+			apis.checkins.Routes(r)
 		})
 	})
 }
@@ -63,4 +67,6 @@ type apiSet struct {
 	health     *health.API
 	fitness    *fitness.API
 	insights   *insights.API
+	goals      *goals.API
+	checkins   *checkins.API
 }
