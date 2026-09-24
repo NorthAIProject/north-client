@@ -1087,16 +1087,22 @@ func sortedNames(set map[string]bool) []string {
 // Free-tier slugs are retired and renamed by OpenRouter from time to time. When
 // one stops resolving, the symptom is a 404 that ai.Failover walks past, not an
 // outage.
+//
+// Only models that take tool calls and a long context belong here. The coach
+// sends both, and a floor model that rejects either is not a floor. That is why
+// z-ai/glm-5.2:free is gone: 32k context, no tools, and OpenRouter has already
+// retired its free tier once, answering 404 "This model is unavailable for
+// free" to every request.
 var freeFloor = []string{
-	"openrouter=z-ai/glm-5.2:free",
 	"openrouter=nvidia/nemotron-3-ultra-550b-a55b:free",
+	"openrouter=nvidia/nemotron-3-super-120b-a12b:free",
 }
 
 // parseChainEntry splits a chain entry into its provider and its optional model
 // override, returning an empty model for a plain provider name.
 //
 // The split is on the first "=" only. A model slug carries its own punctuation
-// — "z-ai/glm-5.2:free" is a single name, not a nested key — so everything
+// — "nvidia/nemotron-3-super-120b-a12b:free" is a single name, not a nested key — so everything
 // after the first separator belongs to the model.
 func parseChainEntry(entry string) (base, model string) {
 	base, model, found := strings.Cut(entry, "=")
