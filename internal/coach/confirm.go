@@ -63,7 +63,7 @@ func (s *Service) PendingApproval(ctx context.Context, user users.User, conversa
 		return PendingCall{}, false, err
 	}
 
-	history, err := s.conversations.History(ctx, conversationID)
+	history, err := s.latestTurn(ctx, conversationID)
 	if err != nil {
 		return PendingCall{}, false, err
 	}
@@ -80,6 +80,21 @@ func (s *Service) PendingApproval(ctx context.Context, user users.User, conversa
 		}
 	}
 	return PendingCall{}, false, nil
+}
+
+// latestTurnWindow is how many messages from the end of a conversation are
+// enough to hold its latest turn: the person's message, a call and a result
+// for every tool round, and the reply.
+const latestTurnWindow = 2*toolRounds + 2
+
+// latestTurn reads the end of a conversation, in reading order.
+//
+// Not History: that is the first page, oldest first, for display. A linked
+// Telegram chat is one thread that runs for weeks, and reading its latest turn
+// off the first page found a turn from the beginning of it — so replies lost
+// their animation and suspended writes were never offered for approval.
+func (s *Service) latestTurn(ctx context.Context, conversationID uuid.UUID) ([]conversations.Message, error) {
+	return s.conversations.Recent(ctx, conversationID, latestTurnWindow)
 }
 
 // ResolvePending runs or refuses the waiting call and continues the reply.
