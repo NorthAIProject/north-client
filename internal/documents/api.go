@@ -77,8 +77,16 @@ type SearchHit struct {
 	DocumentID  uuid.UUID `json:"documentId"`
 	Title       string    `json:"title"`
 	HeadingPath []string  `json:"headingPath"`
-	Snippet     string    `json:"snippet"`
-	StartLine   int       `json:"startLine"`
+	// Snippet is the excerpt as plain text; Segments is the same excerpt
+	// split into runs, with the ones the search matched marked.
+	Snippet   string           `json:"snippet"`
+	Segments  []SnippetSegment `json:"segments"`
+	StartLine int              `json:"startLine"`
+}
+
+type SnippetSegment struct {
+	Text    string `json:"text"`
+	Matched bool   `json:"matched"`
 }
 
 type SearchResults struct {
@@ -126,11 +134,7 @@ func (a *API) search(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		for _, h := range hits {
-			path := h.HeadingPath
-			if path == nil {
-				path = []string{}
-			}
-			out.Hits = append(out.Hits, SearchHit{DocumentID: h.DocumentID, Title: h.Title, HeadingPath: path, Snippet: h.Snippet, StartLine: h.StartLine})
+			out.Hits = append(out.Hits, projectHit(h))
 		}
 	}
 	httpx.WriteJSON(w, http.StatusOK, out)
@@ -221,6 +225,23 @@ func (a *API) destroy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// projectHit resolves the raw snippet's ts_headline markers, which are control
+// characters, into plain text and matched segments, as the web page does.
+func projectHit(h Hit) SearchHit {
+	path := h.HeadingPath
+	if path == nil {
+		path = []string{}
+	}
+	hit := SearchHit{DocumentID: h.DocumentID, Title: h.Title, HeadingPath: path, Segments: []SnippetSegment{}, StartLine: h.StartLine}
+	var plain strings.Builder
+	for _, seg := range h.Segments() {
+		plain.WriteString(seg.Text)
+		hit.Segments = append(hit.Segments, SnippetSegment{Text: seg.Text, Matched: seg.Matched})
+	}
+	hit.Snippet = plain.String()
+	return hit
 }
 
 func project(d Document) DocumentView {
