@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"slices"
@@ -71,4 +72,58 @@ func mountedAPIOperations(t *testing.T) []string {
 		t.Fatal(err)
 	}
 	return ops
+}
+
+// A $ref to a component that does not exist is invisible to the route check
+// above and only fails when the iOS build runs the generator. Resolve every
+// reference here instead, so the web repository catches it first.
+func TestOpenAPISpecReferencesResolve(t *testing.T) {
+	raw, err := os.ReadFile(specPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	if err := yaml.Unmarshal(raw, &doc); err != nil {
+		t.Fatalf("parse %s: %v", specPath, err)
+	}
+
+	var walk func(node any, at string)
+	walk = func(node any, at string) {
+		switch v := node.(type) {
+		case map[string]any:
+			for key, child := range v {
+				if key == "$ref" {
+					ref, _ := child.(string)
+					if !resolves(doc, ref) {
+						t.Errorf("%s: $ref %q points at nothing", at, ref)
+					}
+					continue
+				}
+				walk(child, at+"."+key)
+			}
+		case []any:
+			for i, child := range v {
+				walk(child, fmt.Sprintf("%s[%d]", at, i))
+			}
+		}
+	}
+	walk(doc, "")
+}
+
+func resolves(doc map[string]any, ref string) bool {
+	parts, found := strings.CutPrefix(ref, "#/")
+	if !found {
+		return false
+	}
+	var node any = doc
+	for _, part := range strings.Split(parts, "/") {
+		m, ok := node.(map[string]any)
+		if !ok {
+			return false
+		}
+		if node, ok = m[part]; !ok {
+			return false
+		}
+	}
+	return true
 }

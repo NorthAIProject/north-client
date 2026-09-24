@@ -528,7 +528,35 @@ components:
       type: http
       scheme: bearer
       description: An `nk_` connection token from Settings → Connections.
+  parameters:
+    ConversationID:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    MessageID:
+      name: messageID
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
   responses:
+    ReplyStream:
+      description: Server-Sent Events carrying the reply; see the operation description
+      content:
+        text/event-stream:
+          schema:
+            type: string
+            format: binary
+    NotFound:
+      description: No such resource for this account
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
     Authenticated:
       description: Signed in; the token authenticates later requests
       content:
