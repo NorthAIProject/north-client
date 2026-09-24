@@ -11,9 +11,13 @@ package toolaudit
 import (
 	"context"
 	"encoding/json"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/NorthAIProject/north-client/internal/coach"
 )
 
 // Surface names where a call came from.
@@ -75,6 +79,34 @@ type Service struct {
 }
 
 func NewService(repo *Repository) *Service { return &Service{repo: repo} }
+
+// ExercisesLookedUpSince lists the catalogue exercises read over MCP for this
+// person since a moment, oldest first and each once.
+//
+// Implements coach.ExternalLookups. An agent that answers a coach turn from
+// its own toolset reads the catalogue through the MCP server, and this table
+// is the only place that read is visible; the coach asks here so the reply can
+// show the exercise it was about.
+func (s *Service) ExercisesLookedUpSince(ctx context.Context, userID uuid.UUID, since time.Time) ([]string, error) {
+	calls, err := s.repo.ArgumentsSince(ctx, userID, coach.ToolGetExercise, SurfaceMCP, since)
+	if err != nil {
+		return nil, err
+	}
+
+	var slugs []string
+	for _, raw := range calls {
+		var args coach.ExerciseArgs
+		if err := json.Unmarshal(raw, &args); err != nil {
+			continue
+		}
+		slug := strings.TrimSpace(args.Slug)
+		if slug == "" || slices.Contains(slugs, slug) {
+			continue
+		}
+		slugs = append(slugs, slug)
+	}
+	return slugs, nil
+}
 
 // Record stores one execution.
 func (s *Service) Record(ctx context.Context, e Execution) error {

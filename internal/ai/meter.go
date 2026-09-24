@@ -55,9 +55,9 @@ func (c *meteredClient) Unwrap() Client { return c.inner }
 
 // CallsTools implements ToolCaller by asking the client underneath.
 //
-// Without it the wrapper would answer the runner's check with the default,
-// "yes", and a gateway that ignores tools would be handed every tool turn —
-// but only where a meter is configured, which is production and no test.
+// Without it the wrapper would answer with the default, "yes", and the coach
+// would never look for what a gateway did over MCP — but only where a meter is
+// configured, which is production and no test.
 func (c *meteredClient) CallsTools() bool { return CallsTools(c.inner) }
 
 // UploadFile consumes no tokens, so there is nothing to record.

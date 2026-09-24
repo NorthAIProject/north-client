@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -259,6 +260,7 @@ func (s *Service) Resume(ctx context.Context, user users.User, conversationID uu
 		Tools:    s.toolDeclarations(),
 	}
 
+	startedAt := time.Now()
 	stream, client, err := s.startChat(ctx, genCtx, user, req)
 	if err != nil {
 		cancelGen()
@@ -274,6 +276,7 @@ func (s *Service) Resume(ctx context.Context, user users.User, conversationID uu
 		request:      req,
 		offeredRefs:  coachCtx.OfferedRefs(),
 		traceID:      uuid.New().String(),
+		startedAt:    startedAt,
 	})
 
 	return out, nil
