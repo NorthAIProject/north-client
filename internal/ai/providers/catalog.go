@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/NorthAIProject/north-client/internal/ai"
+	"github.com/NorthAIProject/north-client/internal/ai/anthropic"
 	"github.com/NorthAIProject/north-client/internal/ai/gemini"
 	"github.com/NorthAIProject/north-client/internal/ai/openaicompat"
 )
@@ -71,6 +72,14 @@ type BYOProvider struct {
 	// it to the model; see openaicompat.Options.IgnoresTools. The coach then
 	// learns what it looked up from the MCP audit instead.
 	IgnoresTools bool
+
+	// KeyHeader names the header the key goes in. Empty means the OpenAI
+	// convention, "Authorization: Bearer <key>". Anthropic uses x-api-key.
+	KeyHeader string
+
+	// VerifyHeaders are sent with the verification request as-is, for a
+	// provider that refuses one without them (Anthropic's version header).
+	VerifyHeaders map[string]string
 }
 
 // Catalog is deliberately a different list from config.knownProviders.
@@ -118,15 +127,20 @@ var Catalog = []BYOProvider{
 		VerifyPath: "/models", RequiresBaseURL: true, IgnoresTools: true,
 		Note: "Your own Hermes instance — tailnet, LAN, or public. URL and key stay on this account.",
 	},
+	{
+		// Native Messages API through the official SDK; see internal/ai/anthropic.
+		Name: "anthropic", Label: "Anthropic (Claude)",
+		BaseURL: "https://api.anthropic.com", DefaultModel: "claude-opus-5",
+		KeyHint: "sk-ant-…", VerifyPath: "/v1/models", KeyHeader: "x-api-key",
+		VerifyHeaders: map[string]string{"anthropic-version": "2023-06-01"},
+		Note:          "Claude on your own Anthropic account. Billed to that account.",
+	},
 }
 
 // ByName finds a catalogue entry.
 //
-// Anthropic is deliberately absent. Its native API is a different dialect, and
-// its OpenAI-compatibility endpoint is a documented shim with parity caveats —
-// not something to ship on the strength of a plan. Claude is reachable today
-// through OpenRouter with a model beginning "anthropic/", which is how Khepri
-// reaches it already.
+// Anthropic speaks its own dialect, so it has its own client
+// (internal/ai/anthropic) rather than going through openaicompat.
 func ByName(name string) (BYOProvider, bool) {
 	for _, p := range Catalog {
 		if p.Name == name {
@@ -186,6 +200,17 @@ func User(ctx context.Context, spec UserSpec) (ai.Client, error) {
 		}
 		baseURL = parsed
 		httpClient = GatewayHTTPClient(spec.HTTPClient)
+	}
+
+	if entry.Name == "anthropic" {
+		client, err := anthropic.New(anthropic.Options{
+			APIKey: spec.APIKey, DefaultModel: model, HTTPClient: spec.HTTPClient,
+		})
+		if err != nil {
+			// Not wrapped with the spec: it holds the key.
+			return nil, fmt.Errorf("providers: cannot build an anthropic client for this credential")
+		}
+		return ai.Metered(client, spec.Meter, true), nil
 	}
 
 	if entry.Name == "gemini" {

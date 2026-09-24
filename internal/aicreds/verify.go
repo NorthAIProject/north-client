@@ -66,7 +66,14 @@ func (v httpVerifier) Verify(ctx context.Context, entry providers.BYOProvider, k
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Authorization", "Bearer "+key)
+	if entry.KeyHeader != "" {
+		req.Header.Set(entry.KeyHeader, key)
+	} else {
+		req.Header.Set("Authorization", "Bearer "+key)
+	}
+	for name, value := range entry.VerifyHeaders {
+		req.Header.Set(name, value)
+	}
 
 	res, err := v.client.Do(req)
 	if err != nil {
