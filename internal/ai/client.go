@@ -222,7 +222,8 @@ type Client interface {
 //
 // The case this exists for is a gateway that fronts an agent rather than a
 // model. It answers, so nothing fails, but the tools the caller declared are
-// never offered to anything, and a model asked to write will say it has.
+// never offered to anything: whatever it does, it does through its own tools.
+// The coach uses this to know when to look for those calls elsewhere.
 type ToolCaller interface {
 	CallsTools() bool
 }

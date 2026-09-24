@@ -70,8 +70,9 @@ type Options struct {
 
 	// IgnoresTools marks a service that accepts a tools array and never
 	// offers it to the model. A Hermes gateway is one: its API server fronts
-	// an agent with its own toolset and does not read the field. The runner
-	// leaves such a client out of any turn that carries tools.
+	// an agent with its own toolset and does not read the field. It still
+	// answers first when it is first; the coach reads what it looked up over
+	// MCP from the tool audit afterwards.
 	IgnoresTools bool
 
 	HTTPClient *http.Client
