@@ -561,6 +561,7 @@ func routes(
 		Tools:           agentTools,
 		Declines:        auditRecorder,
 		ExternalLookups: auditSvc,
+		ExerciseLinks:   exerciseSvc,
 		// Tried ahead of the chain above, so a user who supplied a key is
 		// served by it and a user who did not is unaffected.
 		Own:         aicredSvc,
