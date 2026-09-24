@@ -1,0 +1,97 @@
+{
+  "user": {
+    "id": "22222222-2222-2222-2222-222222222222",
+    "email": "ana@example.com",
+    "displayName": "Ana",
+    "timezone": "Europe/Lisbon",
+    "needsOnboarding": false
+  },
+  "snapshot": {
+    "range": "today",
+    "checkedInToday": true,
+    "streak": 6,
+    "goalActivity7d": 3,
+    "pendingMemories": 2,
+    "goals": [
+      {
+        "id": "44444444-4444-4444-4444-444444444444",
+        "title": "Run a half marathon",
+        "category": "fitness",
+        "status": "active",
+        "targetDate": "2026-12-31T00:00:00Z",
+        "milestoneTotal": 5,
+        "milestoneDone": 2,
+        "progress": 40
+      }
+    ],
+    "lastThread": {
+      "id": "33333333-3333-3333-3333-333333333333",
+      "title": "Long run pacing",
+      "kind": "coach",
+      "updatedAt": "2026-09-24T07:15:00Z"
+    },
+    "nextStep": {
+      "kind": "check_in",
+      "eyebrow": "Today",
+      "title": "How are you arriving?",
+      "body": "A 20-second check-in keeps your streak.",
+      "cta": "Check in",
+      "href": "/app/check-ins"
+    },
+    "hydration": {
+      "todayML": 1250,
+      "targetML": 2500,
+      "percent": 50
+    },
+    "sleep": {
+      "logged": true,
+      "durationMinutes": 452,
+      "quality": 4
+    },
+    "activityCalories": 312.5,
+    "timeline": [
+      {
+        "kind": "workout",
+        "label": "Morning",
+        "at": "2026-09-24T07:15:00Z",
+        "title": "Easy run",
+        "detail": "6.2 km",
+        "href": "/app/fitness",
+        "icon": "footprints"
+      }
+    ],
+    "deltas": {
+      "hydration": {
+        "pct": 12.5,
+        "direction": 1,
+        "hasPrior": true
+      },
+      "sleepHours": {
+        "pct": -4,
+        "direction": -1,
+        "hasPrior": true
+      },
+      "calories": {
+        "pct": 0,
+        "direction": 0,
+        "hasPrior": false
+      },
+      "checkIns": {
+        "pct": 0,
+        "direction": 0,
+        "hasPrior": true
+      }
+    },
+    "nudges": [
+      {
+        "id": "55555555-5555-5555-5555-555555555555",
+        "kind": "missed_check_in",
+        "title": "Yesterday went unrecorded",
+        "body": "Want to add a quick note?",
+        "href": "/app/check-ins",
+        "createdAt": "2026-09-24T07:15:00Z"
+      }
+    ],
+    "briefing": "Easy day. Hydrate before the evening session."
+  }
+}

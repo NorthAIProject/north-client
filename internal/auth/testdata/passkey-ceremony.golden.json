@@ -1,0 +1,9 @@
+{
+  "challengeId": "66666666-6666-6666-6666-666666666666",
+  "publicKey": {
+    "challenge": "dGhlLWNoYWxsZW5nZQ",
+    "rpId": "kheprios.com",
+    "timeout": 60000,
+    "userVerification": "preferred"
+  }
+}

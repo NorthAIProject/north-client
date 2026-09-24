@@ -33,7 +33,10 @@ func (f fakeSessionResolver) Resolve(_ context.Context, token string) (auth.Sess
 
 func testRouter(resolver auth.SessionResolver) http.Handler {
 	r := chi.NewRouter()
-	auth.NewAPI(resolver).Routes(r)
+	r.Group(func(r chi.Router) {
+		r.Use(auth.RequireBearer(resolver))
+		auth.NewAPI(resolver).Routes(r)
+	})
 	return r
 }
 

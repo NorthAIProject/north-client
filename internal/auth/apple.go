@@ -26,13 +26,16 @@ import (
 
 const appleJWKSURL = "https://appleid.apple.com/auth/keys"
 
-// appleAuth verifies identity tokens issued for the native bundle ID.
+// appleAuth verifies identity tokens issued for any of the app's bundle IDs.
+// The Beta build is a separate app with its own bundle ID, and Apple puts the
+// bundle ID in the token's audience.
 type appleAuth struct {
-	bundleID string
+	bundleIDs []string
 }
 
-func newAppleAuth(bundleID string) *appleAuth {
-	return &appleAuth{bundleID: strings.TrimSpace(bundleID)}
+// newAppleAuth takes a comma-separated list of bundle IDs.
+func newAppleAuth(bundleIDs string) *appleAuth {
+	return &appleAuth{bundleIDs: splitList(bundleIDs)}
 }
 
 type appleClaims struct {
@@ -53,7 +56,7 @@ type appleKey struct {
 }
 
 func (s *Service) CompleteAppleSignIn(ctx context.Context, in AppleSignInInput, meta Metadata) (users.User, string, time.Time, error) {
-	if s.apple == nil || s.apple.bundleID == "" {
+	if s.apple == nil || len(s.apple.bundleIDs) == 0 {
 		return users.User{}, "", time.Time{}, apperr.New("apple sign-in is not configured")
 	}
 	claims, err := s.apple.verify(ctx, in.IdentityToken, in.Nonce)
@@ -100,7 +103,7 @@ func (a *appleAuth) verify(ctx context.Context, rawToken, rawNonce string) (appl
 			}
 		}
 		return nil, errors.New("apple signing key not found")
-	}, jwt.WithIssuer("https://appleid.apple.com"), jwt.WithAudience(a.bundleID))
+	}, jwt.WithIssuer("https://appleid.apple.com"), jwt.WithAudience(a.bundleIDs...))
 	if err != nil || claims.Subject == "" {
 		return appleClaims{}, apperr.ErrUnauthenticated
 	}
@@ -190,4 +193,15 @@ func (s *Service) findOrCreateAppleUser(ctx context.Context, subject, email, ful
 		}
 	}
 	return user, nil
+}
+
+// splitList reads a comma-separated setting, dropping blanks.
+func splitList(value string) []string {
+	var out []string
+	for part := range strings.SplitSeq(value, ",") {
+		if part = strings.TrimSpace(part); part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
 }

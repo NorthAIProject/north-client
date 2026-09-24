@@ -449,7 +449,7 @@ func routes(
 	}
 	dashboardSvc := dashboard.NewService(dashboardOpts)
 	dashboardHandler := dashboard.NewHandler(dashboardSvc)
-	dashboardAPI := dashboard.NewAPI(dashboardSvc, sessions)
+	dashboardAPI := dashboard.NewAPI(dashboardSvc)
 
 	// Insights reuses the dashboard's timeline rather than reimplementing the
 	// merge across eight slices. Two copies of that would drift.
@@ -651,7 +651,7 @@ func routes(
 		WithCoach(coachSvc, slog.Default()).
 		WithFunnel(funnel)
 	onboardingHandler := onboarding.NewHandler(onboardingSvc)
-	onboardingAPI := onboarding.NewAPI(onboardingSvc, sessions)
+	onboardingAPI := onboarding.NewAPI(onboardingSvc)
 
 	if telegramClient != nil {
 		if cfg.Telegram.UsesWebhook() {
@@ -772,7 +772,7 @@ func routes(
 	// callers who hold an nk_ token today are the ones who want this.
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.MaxBody(1 << 20))
-		mountAPI(r, captureAPI, authAPI, onboardingAPI, dashboardAPI)
+		mountAPI(r, sessions, captureAPI, authAPI, onboardingAPI, dashboardAPI)
 	})
 
 	// Health ingest sits beside /mcp for exactly the reasons above: the caller is
@@ -837,6 +837,7 @@ func routes(
 		pwa.Mount(r)
 
 		r.Get("/healthz", healthz(pool))
+		r.Get("/.well-known/apple-app-site-association", auth.AppleAppSiteAssociation(cfg.AppleTeamID, cfg.AppleBundleID))
 
 		// Internal operator endpoint: total user count for the portfolio
 		// dashboard at facorreia.com/apps. Guarded by METRICS_SECRET.
