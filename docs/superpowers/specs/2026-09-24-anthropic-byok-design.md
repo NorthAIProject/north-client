@@ -106,16 +106,22 @@ thinking blocks back unchanged.
 
 - `ai.Message` gains `ProviderState json.RawMessage`, documented as opaque and
   owned by the client that produced it; every other client ignores it.
-- `Chat` puts the response's thinking blocks, serialised, on the tool-call
-  chunk (`StreamChunk.ProviderState`), and `ai.ToolCallMessage` carries it into
-  the next request, so a turn's in-memory tool loop keeps its thinking.
-- A tool-call message rebuilt from the database after an approval has no
-  state. For that request only, the client sends `thinking: disabled` (allowed
-  on Opus 5 at effort `high` or below, which is the default).
+- The Anthropic client records the whole tool-calling turn in order (thinking,
+  redacted thinking, text, and each tool call by id) and puts it on the
+  tool-call chunk (`StreamChunk.ProviderState`). On replay it rebuilds that turn
+  exactly, taking the calls from `ToolCalls` by id. The API refuses a
+  continuation whose thinking was edited, reordered or partly dropped, and
+  newer models treat a dropped text block as an edit too.
+- The coach carries the state onto the tool-call message of its in-memory loop
+  and stores it with the calls (`messages.provider_state`, jsonb), so a turn
+  resumed after an approval replays it as well.
+- A tool call in the turn in progress with no recorded state (a row from before
+  the column existed) is the one case sent with `thinking: disabled`. Earlier
+  turns' tool rounds never trigger it.
 
-The exact replay requirement is confirmed against the live documentation as the
-first implementation step; if thinking blocks turn out to be optional on replay,
-`ProviderState` is dropped and this section with it.
+Confirmed against the live docs ("Preserving thinking blocks"): within a
+tool-use turn thinking blocks are required back, unmodified and in order;
+outside tool use they may be omitted.
 
 ### Catalogue and verification
 

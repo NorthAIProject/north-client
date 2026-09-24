@@ -6,6 +6,7 @@
 package conversations
 
 import (
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -116,6 +117,10 @@ type Message struct {
 	// from the database when they do.
 	ToolCalls   []ai.ToolCall
 	ToolResults []ai.ToolResult
+
+	// ProviderState travels with ToolCalls so a resumed turn replays what the
+	// provider needs; see ai.Message.ProviderState.
+	ProviderState json.RawMessage
 
 	// Helpful is whether the person said this reply helped. Nil means they did
 	// not say, which is the common case and deliberately distinct from "no".
@@ -250,7 +255,9 @@ func ToAIMessages(messages []Message) []ai.Message {
 		// exactly the turns a resumed request needs. Passed through first.
 		switch {
 		case len(m.ToolCalls) > 0:
-			out = append(out, ai.ToolCallMessage(m.ToolCalls))
+			call := ai.ToolCallMessage(m.ToolCalls)
+			call.ProviderState = m.ProviderState
+			out = append(out, call)
 			continue
 		case len(m.ToolResults) > 0:
 			out = append(out, ai.ToolResultMessage(m.ToolResults))

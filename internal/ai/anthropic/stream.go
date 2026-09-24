@@ -44,7 +44,7 @@ func (c *Client) Chat(ctx context.Context, req ai.Request) (<-chan ai.StreamChun
 		}
 
 		if calls := toolCalls(msg.Content); len(calls) > 0 {
-			if !send(ctx, out, ai.StreamChunk{ToolCalls: calls, ProviderState: thinkingState(msg.Content)}) {
+			if !send(ctx, out, ai.StreamChunk{ToolCalls: calls, ProviderState: turnState(msg.Content)}) {
 				return
 			}
 		}

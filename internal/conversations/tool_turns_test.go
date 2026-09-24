@@ -3,6 +3,7 @@ package conversations_test
 import (
 	"context"
 	"encoding/json"
+	"reflect"
 	"testing"
 
 	"github.com/NorthAIProject/north-client/internal/ai"
@@ -47,7 +48,7 @@ func TestAToolCallSurvivesARoundTrip(t *testing.T) {
 		Arguments: []byte(`{"mood":4,"energy":3}`),
 	}}
 
-	if _, err := svc.AppendToolCalls(ctx, conversation.ID, calls); err != nil {
+	if _, err := svc.AppendToolCalls(ctx, conversation.ID, calls, nil); err != nil {
 		t.Fatalf("append tool calls: %v", err)
 	}
 
@@ -140,5 +141,37 @@ func TestToAIMessagesKeepsToolTurnsAndStillDropsEmptyOnes(t *testing.T) {
 	}
 	if out[3].Parts[0].Text != "Logged it." {
 		t.Errorf("last message = %+v, want the final answer", out[3])
+	}
+}
+
+// A provider's opaque state for a tool call has to survive the database too:
+// a turn resumed after an approval is rebuilt from here, and Anthropic refuses
+// a replayed call without the thinking that led to it.
+func TestAToolCallsProviderStateSurvivesARoundTrip(t *testing.T) {
+	svc, conversation := newConversation(t)
+	ctx := context.Background()
+
+	calls := []ai.ToolCall{{ID: "call_1", Name: "create_check_in", Arguments: []byte(`{"mood":4}`)}}
+	state := json.RawMessage(`[{"kind":"thinking","signature":"sig-1"},{"kind":"tool_use","tool_use_id":"call_1"}]`)
+
+	if _, err := svc.AppendToolCalls(ctx, conversation.ID, calls, state); err != nil {
+		t.Fatalf("append tool calls: %v", err)
+	}
+	history, err := svc.History(ctx, conversation.ID)
+	if err != nil {
+		t.Fatalf("history: %v", err)
+	}
+
+	rebuilt := conversations.ToAIMessages(history)
+	if len(rebuilt) != 1 || len(rebuilt[0].ToolCalls) != 1 {
+		t.Fatalf("rebuilt = %+v, want the one tool-call message", rebuilt)
+	}
+	var got, want any
+	_ = json.Unmarshal(state, &want)
+	if err := json.Unmarshal(rebuilt[0].ProviderState, &got); err != nil {
+		t.Fatalf("rebuilt state is not JSON: %v (%q)", err, rebuilt[0].ProviderState)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("state = %s, want %s", rebuilt[0].ProviderState, state)
 	}
 }

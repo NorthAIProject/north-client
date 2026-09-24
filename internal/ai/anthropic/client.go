@@ -98,9 +98,10 @@ func (c *Client) params(req ai.Request) sdk.MessageNewParams {
 	if len(req.Tools) > 0 {
 		p.Tools = toTools(req.Tools)
 	}
-	// A tool call rebuilt from the database has lost its thinking, and a
-	// replayed call without it is refused. That one request runs without
-	// thinking; everything else keeps the model's default.
+	// A tool call in this turn with no record of the turn that made it (a row
+	// from before provider_state, or another provider's call) cannot have its
+	// thinking replayed, and a replay without it is refused. That request runs
+	// without thinking; everything else keeps the model's default.
 	if lostThinking(req.Messages) {
 		p.Thinking = sdk.ThinkingConfigParamUnion{OfDisabled: &sdk.ThinkingConfigDisabledParam{}}
 	}

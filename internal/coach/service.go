@@ -733,7 +733,7 @@ func (s *Service) pump(
 		// Running the read-only half first would mean a declined turn had
 		// already done something, which is not what "declined" reads as.
 		if writes := writingCalls(s.tools, calls); len(writes) > 0 {
-			if _, err := s.conversations.AppendToolCalls(genCtx, target.conversation.ID, calls); err != nil {
+			if _, err := s.conversations.AppendToolCalls(genCtx, target.conversation.ID, calls, providerState); err != nil {
 				log.Error("could not store a tool call awaiting approval",
 					slog.String("conversation_id", target.conversation.ID.String()),
 					slog.Any("error", err))
@@ -786,7 +786,7 @@ func (s *Service) pump(
 		// here is logged rather than fatal: the reply in flight is still worth
 		// finishing, and the cost of losing these rows is a turn that cannot be
 		// resumed — not a turn that is wrong.
-		if _, err := s.conversations.AppendToolCalls(genCtx, target.conversation.ID, calls); err != nil {
+		if _, err := s.conversations.AppendToolCalls(genCtx, target.conversation.ID, calls, providerState); err != nil {
 			log.Error("could not store the coach's tool calls",
 				slog.String("conversation_id", target.conversation.ID.String()),
 				slog.Any("error", err))

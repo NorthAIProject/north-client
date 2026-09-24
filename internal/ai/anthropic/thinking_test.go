@@ -92,3 +92,102 @@ func TestAnEarlierTurnsToolRoundLeavesThinkingOn(t *testing.T) {
 		t.Errorf("thinking = %v, want the model's default for a new turn", api.body(t, 0)["thinking"])
 	}
 }
+
+// The replayed assistant turn must be the one the model produced: every block,
+// in order. Dropping the text between the thinking and the call, or moving a
+// second thinking block to the front, is an edited history, which newer models
+// refuse.
+func TestAReplayedToolTurnKeepsEveryBlockInOrder(t *testing.T) {
+	api, client := newFakeAPI(t,
+		sse(evStart,
+			`{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"","signature":""}}`,
+			`{"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"sig-a"}}`,
+			evStop0,
+			`{"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}`,
+			`{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"Let me check."}}`,
+			`{"type":"content_block_stop","index":1}`,
+			`{"type":"content_block_start","index":2,"content_block":{"type":"thinking","thinking":"","signature":""}}`,
+			`{"type":"content_block_delta","index":2,"delta":{"type":"signature_delta","signature":"sig-b"}}`,
+			`{"type":"content_block_stop","index":2}`,
+			`{"type":"content_block_start","index":3,"content_block":{"type":"tool_use","id":"toolu_1","name":"get_exercise","input":{}}}`,
+			`{"type":"content_block_delta","index":3,"delta":{"type":"input_json_delta","partial_json":"{}"}}`,
+			`{"type":"content_block_stop","index":3}`,
+			evMsgDelta("tool_use", 5), evMsgStop),
+		textMessage("done"),
+	)
+
+	ch, err := client.Chat(context.Background(), ai.Request{Messages: []ai.Message{ai.UserText("squat?")}})
+	if err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+	var calls []ai.ToolCall
+	var state json.RawMessage
+	for _, c := range collect(t, ch) {
+		if len(c.ToolCalls) > 0 {
+			calls, state = c.ToolCalls, c.ProviderState
+		}
+	}
+	callMsg := ai.ToolCallMessage(calls)
+	callMsg.ProviderState = state
+	if _, err := client.Generate(context.Background(), ai.Request{Messages: []ai.Message{
+		ai.UserText("squat?"), callMsg,
+		ai.ToolResultMessage([]ai.ToolResult{{ID: "toolu_1", Content: "Barbell Full Squat"}}),
+	}}); err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	got := blocks(sentAt(t, api, 1)[1])
+	want := []string{"thinking:sig-a", "text:Let me check.", "thinking:sig-b", "tool_use:toolu_1"}
+	if len(got) != len(want) {
+		t.Fatalf("assistant turn = %v, want %v", got, want)
+	}
+	for i, b := range got {
+		var label string
+		switch b["type"] {
+		case "thinking":
+			label = "thinking:" + b["signature"].(string)
+		case "text":
+			label = "text:" + b["text"].(string)
+		case "tool_use":
+			label = "tool_use:" + b["id"].(string)
+		}
+		if label != want[i] {
+			t.Errorf("block %d = %v, want %s", i, b, want[i])
+		}
+	}
+}
+
+// Adaptive thinking may skip thinking on a simple call. The turn is still
+// recorded, so its replay is not mistaken for one whose thinking was lost:
+// switching thinking off is a 400 on some models and never needed here.
+func TestAToolTurnWithoutThinkingIsNotTreatedAsLost(t *testing.T) {
+	api, client := newFakeAPI(t,
+		sse(evStart,
+			`{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_1","name":"get_exercise","input":{}}}`,
+			`{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{}"}}`,
+			evStop0, evMsgDelta("tool_use", 5), evMsgStop),
+		textMessage("done"),
+	)
+	ch, err := client.Chat(context.Background(), ai.Request{Messages: []ai.Message{ai.UserText("squat?")}})
+	if err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+	var calls []ai.ToolCall
+	var state json.RawMessage
+	for _, c := range collect(t, ch) {
+		if len(c.ToolCalls) > 0 {
+			calls, state = c.ToolCalls, c.ProviderState
+		}
+	}
+	callMsg := ai.ToolCallMessage(calls)
+	callMsg.ProviderState = state
+	if _, err := client.Generate(context.Background(), ai.Request{Messages: []ai.Message{
+		ai.UserText("squat?"), callMsg,
+		ai.ToolResultMessage([]ai.ToolResult{{ID: "toolu_1", Content: "Barbell Full Squat"}}),
+	}}); err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	if th, ok := api.body(t, 1)["thinking"]; ok {
+		t.Errorf("thinking = %v on the replay of a turn that simply did not think", th)
+	}
+}

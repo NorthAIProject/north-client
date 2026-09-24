@@ -96,7 +96,7 @@ func TestProactiveTargetSkipsReflectionsAndPendingApprovals(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = svc.AppendToolCalls(ctx, waiting.ID, []ai.ToolCall{{ID: "c1", Name: "create_watch"}}); err != nil {
+	if _, err = svc.AppendToolCalls(ctx, waiting.ID, []ai.ToolCall{{ID: "c1", Name: "create_watch"}}, nil); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = svc.StartKind(ctx, chat.UserID, conversations.KindReflection); err != nil {
