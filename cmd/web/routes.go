@@ -302,14 +302,15 @@ func routes(
 		Meals:    mealProgressSvc,
 		Health:   healthSvc,
 	}, cfg.Env.IsProduction())
-	mealsHandler := meals.NewHandler(meals.HandlerOptions{
+	mealsOpts := meals.HandlerOptions{
 		Ingredients: mealIngredientSvc,
 		Diets:       mealDietSvc,
 		Plans:       mealPlanSvc,
 		FoodLog:     foodLogSvc,
 		Progress:    mealProgressSvc,
 		Recommend:   mealRecommendSvc,
-	})
+	}
+	mealsHandler := meals.NewHandler(mealsOpts)
 
 	// Personal access tokens for outside agents. The base URL comes from
 	// configuration and not from the request, because the setup instructions
@@ -798,6 +799,7 @@ func routes(
 			formChecks: media.NewAPI(mediaSvc, quotaSvc),
 			care:       care.NewAPI(careOpts),
 			mind:       mind.NewAPI(mindSvc),
+			nutrition:  meals.NewAPI(mealsOpts),
 		})
 	})
 

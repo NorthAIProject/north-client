@@ -1,0 +1,17 @@
+{
+  "ingredients": [
+    {
+      "id": "11111111-aaaa-aaaa-aaaa-111111111111",
+      "name": "Rolled oats",
+      "category": "grains",
+      "own": false,
+      "servingSizeGrams": 40,
+      "per100g": {
+        "calories": 379,
+        "proteinG": 13.2,
+        "fatG": 6.5,
+        "carbG": 67.7
+      }
+    }
+  ]
+}

@@ -2336,6 +2336,303 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '422':
           $ref: '#/components/responses/ValidationError'
+  /nutrition/ingredients:
+    get:
+      operationId: searchIngredients
+      summary: The shared ingredient library and your own additions
+      parameters:
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngredientList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: createIngredient
+      summary: Add an ingredient of your own
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IngredientRequest'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ingredient'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /nutrition/ingredients/{ingredientID}:
+    parameters:
+      - name: ingredientID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      operationId: deleteIngredient
+      summary: Delete one of your ingredients
+      responses:
+        '204':
+          description: Done
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /nutrition/plans:
+    get:
+      operationId: listMealPlans
+      summary: Your meal plans
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MealPlanList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: createMealPlan
+      summary: Create a meal plan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MealPlanRequest'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MealPlanDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /nutrition/plans/{planID}:
+    parameters:
+      - name: planID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getMealPlan
+      summary: A meal plan with its meals and portions
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MealPlanDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: deleteMealPlan
+      summary: Delete a meal plan
+      responses:
+        '204':
+          description: Done
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /nutrition/plans/{planID}/meals:
+    parameters:
+      - name: planID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: addPlanMeal
+      summary: Add a meal; answers with the plan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MealRequest'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MealPlanDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /nutrition/meals/{mealID}:
+    parameters:
+      - name: mealID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      operationId: removePlanMeal
+      summary: Remove a meal from its plan
+      responses:
+        '204':
+          description: Done
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /nutrition/meals/{mealID}/ingredients:
+    parameters:
+      - name: mealID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: addMealPortion
+      summary: Add an ingredient to a meal, by weight
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PortionRequest'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MealPortion'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /nutrition/meal-ingredients/{mealIngredientID}:
+    parameters:
+      - name: mealIngredientID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      operationId: removeMealPortion
+      summary: Remove an ingredient from a meal
+      responses:
+        '204':
+          description: Done
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /nutrition/log:
+    get:
+      operationId: getFoodLog
+      summary: Today's food log, totals and progress against the macro goal
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FoodLog'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /nutrition/log/ingredients:
+    post:
+      operationId: logFood
+      summary: Log an ingredient eaten today, by weight; answers with the day
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PortionRequest'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FoodLog'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /nutrition/log/meals:
+    post:
+      operationId: logPlanMeal
+      summary: Log a meal from a plan eaten today; answers with the day
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LogMealRequest'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FoodLog'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /nutrition/log/{entryID}:
+    parameters:
+      - name: entryID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      operationId: deleteFoodLogEntry
+      summary: Remove an entry; answers with the day
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FoodLog'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /insights:
     get:
       operationId: getInsights
@@ -4610,6 +4907,206 @@ components:
           type: string
         mood:
           type: integer
+    Macros:
+      type: object
+      required: [calories, proteinG, fatG, carbG]
+      properties:
+        calories:
+          type: number
+        proteinG:
+          type: number
+        fatG:
+          type: number
+        carbG:
+          type: number
+    Ingredient:
+      type: object
+      required: [id, name, own, servingSizeGrams, per100g]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        brand:
+          type: string
+        category:
+          type: string
+        own:
+          type: boolean
+          description: True for ingredients you added; the rest are the shared library.
+        servingSizeGrams:
+          type: number
+        per100g:
+          $ref: '#/components/schemas/Macros'
+    IngredientList:
+      type: object
+      required: [ingredients]
+      properties:
+        ingredients:
+          type: array
+          items:
+            $ref: '#/components/schemas/Ingredient'
+    IngredientRequest:
+      type: object
+      required: [name, per100g]
+      properties:
+        name:
+          type: string
+        brand:
+          type: string
+        category:
+          type: string
+        servingSizeGrams:
+          type: number
+        per100g:
+          $ref: '#/components/schemas/Macros'
+    MealPortion:
+      type: object
+      required: [id, ingredientId, name, quantityGrams, macros]
+      properties:
+        id:
+          type: string
+          format: uuid
+        ingredientId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        quantityGrams:
+          type: number
+        macros:
+          $ref: '#/components/schemas/Macros'
+    MealPlanSummary:
+      type: object
+      required: [id, name, description, totalMacros, mealCount]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        totalMacros:
+          $ref: '#/components/schemas/Macros'
+        mealCount:
+          type: integer
+    MealPlanList:
+      type: object
+      required: [plans]
+      properties:
+        plans:
+          type: array
+          items:
+            $ref: '#/components/schemas/MealPlanSummary'
+    MealPlanDetail:
+      allOf:
+        - $ref: '#/components/schemas/MealPlanSummary'
+        - type: object
+          required: [objective, activityLevel, gender, meals]
+          properties:
+            objective:
+              type: string
+            activityLevel:
+              type: string
+            gender:
+              type: string
+            meals:
+              type: array
+              items:
+                type: object
+                required: [id, mealNumber, name, totalMacros, ingredients]
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  mealNumber:
+                    type: integer
+                  name:
+                    type: string
+                  totalMacros:
+                    $ref: '#/components/schemas/Macros'
+                  ingredients:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MealPortion'
+    MealPlanRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        objective:
+          type: string
+        activityLevel:
+          type: string
+        gender:
+          type: string
+    MealRequest:
+      type: object
+      required: [name, mealNumber]
+      properties:
+        name:
+          type: string
+        mealNumber:
+          type: integer
+    PortionRequest:
+      type: object
+      required: [ingredientId, quantityGrams]
+      properties:
+        ingredientId:
+          type: string
+          format: uuid
+        quantityGrams:
+          type: number
+    LogMealRequest:
+      type: object
+      required: [mealId]
+      properties:
+        mealId:
+          type: string
+          format: uuid
+    FoodLog:
+      type: object
+      required: [date, entries, totals]
+      properties:
+        date:
+          type: string
+        entries:
+          type: array
+          items:
+            type: object
+            required: [id, label, macros, loggedAt]
+            properties:
+              id:
+                type: string
+                format: uuid
+              label:
+                type: string
+              quantityGrams:
+                type: number
+              macros:
+                $ref: '#/components/schemas/Macros'
+              loggedAt:
+                type: string
+                format: date-time
+        totals:
+          $ref: '#/components/schemas/Macros'
+        progress:
+          type: object
+          required: [goal, logged, summary]
+          properties:
+            goal:
+              $ref: '#/components/schemas/Macros'
+            logged:
+              $ref: '#/components/schemas/Macros'
+            summary:
+              type: string
+            recommendation:
+              type: string
     InsightsRange:
       type: object
       required: [key, label, options]
