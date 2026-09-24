@@ -3,7 +3,6 @@ package anthropic
 import (
 	"encoding/base64"
 	"encoding/json"
-	"strings"
 
 	sdk "github.com/anthropics/anthropic-sdk-go"
 
@@ -54,13 +53,20 @@ func toMessages(in []ai.Message) []sdk.MessageParam {
 	return out
 }
 
+// readableImage is every image type the Messages API accepts. Anything else,
+// such as an iPhone's HEIC, is named in text rather than sent: an image block
+// it cannot read fails the whole request.
+var readableImage = map[string]bool{
+	"image/jpeg": true, "image/png": true, "image/gif": true, "image/webp": true,
+}
+
 func contentBlocks(m ai.Message) []sdk.ContentBlockParamUnion {
 	var blocks []sdk.ContentBlockParamUnion
 	for _, part := range m.Parts {
 		switch {
 		case part.Text != "":
 			blocks = append(blocks, sdk.NewTextBlock(part.Text))
-		case len(part.InlineData) > 0 && strings.HasPrefix(part.MIMEType, "image/"):
+		case len(part.InlineData) > 0 && readableImage[part.MIMEType]:
 			blocks = append(blocks, sdk.NewImageBlockBase64(part.MIMEType,
 				base64.StdEncoding.EncodeToString(part.InlineData)))
 		case len(part.InlineData) > 0 || part.FileURI != "":
