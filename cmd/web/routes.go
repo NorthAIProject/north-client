@@ -555,11 +555,12 @@ func routes(
 			reports.NewContextSource(reportSvc),
 			integrations.NewContextSource(integrationSvc),
 		).WithMetrics(metricsReg),
-		PromptBuilder: coach.NewPromptBuilder(),
-		Queue:         queue,
-		Chains:        cfg.AI.ChainSet(),
-		Tools:         agentTools,
-		Declines:      auditRecorder,
+		PromptBuilder:   coach.NewPromptBuilder(),
+		Queue:           queue,
+		Chains:          cfg.AI.ChainSet(),
+		Tools:           agentTools,
+		Declines:        auditRecorder,
+		ExternalLookups: auditSvc,
 		// Tried ahead of the chain above, so a user who supplied a key is
 		// served by it and a user who did not is unaffected.
 		Own:         aicredSvc,

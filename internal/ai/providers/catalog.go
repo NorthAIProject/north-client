@@ -66,6 +66,11 @@ type BYOProvider struct {
 	// names theirs (their Hermes gateway). The URL is validated before
 	// Khepri will dial it; see ParseGatewayURL.
 	RequiresBaseURL bool
+
+	// IgnoresTools marks a backend that accepts a tools array and never offers
+	// it to the model; see openaicompat.Options.IgnoresTools. The coach then
+	// learns what it looked up from the MCP audit instead.
+	IgnoresTools bool
 }
 
 // Catalog is deliberately a different list from config.knownProviders.
@@ -110,7 +115,7 @@ var Catalog = []BYOProvider{
 		// gateway. The catalogue cannot name one address.
 		Name: "hermes", Label: "Hermes (your gateway)",
 		DefaultModel: "hermes-3", KeyHint: "gateway API_SERVER_KEY",
-		VerifyPath: "/models", RequiresBaseURL: true,
+		VerifyPath: "/models", RequiresBaseURL: true, IgnoresTools: true,
 		Note: "Your own Hermes instance — tailnet, LAN, or public. URL and key stay on this account.",
 	},
 }
@@ -201,6 +206,7 @@ func User(ctx context.Context, spec UserSpec) (ai.Client, error) {
 		APIKey:             spec.APIKey,
 		DefaultModel:       model,
 		SupportsJSONSchema: entry.SupportsJSONSchema,
+		IgnoresTools:       entry.IgnoresTools,
 		HTTPClient:         httpClient,
 	})
 	if err != nil {

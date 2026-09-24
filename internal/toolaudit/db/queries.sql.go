@@ -7,6 +7,7 @@ package toolauditdb
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -89,4 +90,49 @@ func (q *Queries) RecordToolExecution(ctx context.Context, arg RecordToolExecuti
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const toolArgumentsSince = `-- name: ToolArgumentsSince :many
+SELECT arguments FROM tool_executions
+WHERE user_id = $1
+  AND tool = $2
+  AND surface = $3
+  AND outcome = 'executed'
+  AND created_at >= $4
+ORDER BY created_at
+`
+
+type ToolArgumentsSinceParams struct {
+	UserID  uuid.UUID
+	Tool    string
+	Surface string
+	Since   time.Time
+}
+
+// The arguments of one tool's successful runs on one surface since a moment,
+// oldest first. How the coach learns what an agent read over MCP during a turn
+// it answered without calling tools itself.
+func (q *Queries) ToolArgumentsSince(ctx context.Context, arg ToolArgumentsSinceParams) ([][]byte, error) {
+	rows, err := q.db.Query(ctx, toolArgumentsSince,
+		arg.UserID,
+		arg.Tool,
+		arg.Surface,
+		arg.Since,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := [][]byte{}
+	for rows.Next() {
+		var arguments []byte
+		if err := rows.Scan(&arguments); err != nil {
+			return nil, err
+		}
+		items = append(items, arguments)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
