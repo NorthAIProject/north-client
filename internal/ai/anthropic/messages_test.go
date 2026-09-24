@@ -3,6 +3,7 @@ package anthropic_test
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/NorthAIProject/north-client/internal/ai"
@@ -150,5 +151,31 @@ func TestAToolCallInTheReplyIsReturned(t *testing.T) {
 	var args map[string]string
 	if err := json.Unmarshal(resp.ToolCalls[0].Arguments, &args); err != nil || args["slug"] != "squat" {
 		t.Errorf("arguments = %s", resp.ToolCalls[0].Arguments)
+	}
+}
+
+func TestAPhotoIsSentInlineAndOtherAttachmentsAreNamed(t *testing.T) {
+	api, client := newFakeAPI(t, textMessage("Nice depth."))
+	_, err := client.Generate(context.Background(), ai.Request{Messages: []ai.Message{{
+		Role: ai.RoleUser,
+		Parts: []ai.Part{
+			{InlineData: []byte{0xff, 0xd8, 0xff}, MIMEType: "image/jpeg"},
+			{InlineData: []byte("OggS"), MIMEType: "audio/ogg"},
+			ai.TextPart("how is my squat?"),
+		},
+	}}})
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	got := blocks(sent(t, api)[0])
+	if len(got) != 3 {
+		t.Fatalf("blocks = %v", got)
+	}
+	source, _ := got[0]["source"].(map[string]any)
+	if got[0]["type"] != "image" || source["type"] != "base64" || source["media_type"] != "image/jpeg" || source["data"] != "/9j/" {
+		t.Errorf("image block = %v", got[0])
+	}
+	if got[1]["type"] != "text" || !strings.Contains(got[1]["text"].(string), "audio/ogg") {
+		t.Errorf("voice note sent as %v, want a text note naming it", got[1])
 	}
 }

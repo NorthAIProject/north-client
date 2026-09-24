@@ -65,3 +65,19 @@ func TestUploadFileAsksCallersToInlineTheBytes(t *testing.T) {
 		t.Fatalf("upload = %+v, %v; want an empty URI and no error", f, err)
 	}
 }
+
+func TestAResponseSchemaAsksForJSON(t *testing.T) {
+	api, client := newFakeAPI(t, textMessage(`{"days":3}`))
+	_, err := client.Generate(context.Background(), ai.Request{
+		Messages:       []ai.Message{ai.UserText("plan")},
+		ResponseSchema: ai.Object("plan", map[string]*ai.Schema{"days": ai.Integer("days")}, "days"),
+	})
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	cfg, _ := api.body(t, 0)["output_config"].(map[string]any)
+	format, _ := cfg["format"].(map[string]any)
+	if format["type"] != "json_schema" || format["schema"] == nil {
+		t.Errorf("output_config = %v, want a json_schema format", api.body(t, 0)["output_config"])
+	}
+}
