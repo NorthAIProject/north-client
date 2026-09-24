@@ -99,6 +99,7 @@ type Service struct {
 	tools         ToolRunner
 	declines      DeclineRecorder
 	external      ExternalLookups
+	links         ExerciseLinks
 
 	// runner walks the providers that serve a given tier, in order, until one
 	// answers. Shared with every other part of Khepri that calls a model.
@@ -197,6 +198,10 @@ type Options struct {
 	// up itself.
 	ExternalLookups ExternalLookups
 
+	// ExerciseLinks turns the catalogue links in a reply back into exercises,
+	// for a provider whose lookups the audit did not see. Nil skips it.
+	ExerciseLinks ExerciseLinks
+
 	// Own yields a user's own provider, tried ahead of Chains. Nil leaves
 	// every user on Khepri's providers, which is what a deployment with no
 	// encryption key gets.
@@ -241,6 +246,7 @@ func NewService(opts Options) *Service {
 		tools:         opts.Tools,
 		declines:      opts.Declines,
 		external:      opts.ExternalLookups,
+		links:         opts.ExerciseLinks,
 		own:           opts.Own,
 		analytics:     opts.Analytics,
 		funnel:        opts.Funnel,
@@ -809,7 +815,7 @@ func (s *Service) pump(
 	// these rather than asking the model to describe them in a shape a template
 	// could parse — the catalogue already knows, and the model already looked.
 	if len(exerciseSlugs) == 0 && !ai.CallsTools(target.client) {
-		exerciseSlugs = s.externalExercises(genCtx, target)
+		exerciseSlugs = s.externalExercises(genCtx, target, text)
 	}
 	for _, slug := range exerciseSlugs {
 		evidenceRefs = append(evidenceRefs, ExerciseRef(slug))
