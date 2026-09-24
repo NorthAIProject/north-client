@@ -1,7 +1,9 @@
 package anthropic
 
 import (
+	"encoding/base64"
 	"encoding/json"
+	"strings"
 
 	sdk "github.com/anthropics/anthropic-sdk-go"
 
@@ -55,8 +57,16 @@ func toMessages(in []ai.Message) []sdk.MessageParam {
 func contentBlocks(m ai.Message) []sdk.ContentBlockParamUnion {
 	var blocks []sdk.ContentBlockParamUnion
 	for _, part := range m.Parts {
-		if part.Text != "" {
+		switch {
+		case part.Text != "":
 			blocks = append(blocks, sdk.NewTextBlock(part.Text))
+		case len(part.InlineData) > 0 && strings.HasPrefix(part.MIMEType, "image/"):
+			blocks = append(blocks, sdk.NewImageBlockBase64(part.MIMEType,
+				base64.StdEncoding.EncodeToString(part.InlineData)))
+		case len(part.InlineData) > 0 || part.FileURI != "":
+			// Claude cannot take this kind of file inline. Naming it keeps
+			// the turn honest without failing the whole request.
+			blocks = append(blocks, sdk.NewTextBlock("[attachment: "+part.MIMEType+" not shown]"))
 		}
 	}
 	for _, call := range m.ToolCalls {

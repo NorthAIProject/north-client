@@ -98,6 +98,11 @@ func (c *Client) params(req ai.Request) sdk.MessageNewParams {
 	if len(req.Tools) > 0 {
 		p.Tools = toTools(req.Tools)
 	}
+	if req.ResponseSchema != nil {
+		p.OutputConfig = sdk.OutputConfigParam{
+			Format: sdk.JSONOutputFormatParam{Schema: ai.JSONSchema(req.ResponseSchema)},
+		}
+	}
 	if req.System != "" {
 		// Cached because Khepri's context block is most of every request, and
 		// it is identical between the rounds of one turn.
