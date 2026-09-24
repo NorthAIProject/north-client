@@ -7,6 +7,20 @@
         "Marathon plan"
       ],
       "snippet": "Week 1: three easy runs.",
+      "segments": [
+        {
+          "text": "Week 1: three ",
+          "matched": false
+        },
+        {
+          "text": "easy runs",
+          "matched": true
+        },
+        {
+          "text": ".",
+          "matched": false
+        }
+      ],
       "startLine": 2
     }
   ]

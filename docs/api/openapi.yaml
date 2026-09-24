@@ -4074,7 +4074,7 @@ components:
           type: array
           items:
             type: object
-            required: [documentId, title, headingPath, snippet, startLine]
+            required: [documentId, title, headingPath, snippet, segments, startLine]
             properties:
               documentId:
                 type: string
@@ -4087,6 +4087,18 @@ components:
                   type: string
               snippet:
                 type: string
+                description: The excerpt as plain text.
+              segments:
+                type: array
+                description: The same excerpt in runs, with the matched ones marked.
+                items:
+                  type: object
+                  required: [text, matched]
+                  properties:
+                    text:
+                      type: string
+                    matched:
+                      type: boolean
               startLine:
                 type: integer
     KnowledgeNoteRequest:
