@@ -1272,6 +1272,45 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+  /insights:
+    get:
+      operationId: getInsights
+      summary: Every domain's score for a window, the pinned metrics and highlights
+      parameters:
+        - $ref: '#/components/parameters/InsightsRange'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InsightsSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /insights/metrics/{key}:
+    parameters:
+      - name: key
+        in: path
+        required: true
+        schema:
+          type: string
+        description: e.g. sleep, water, mood, energy, burn, sessions, steps, active-energy, resting-heart-rate, hrv
+    get:
+      operationId: getInsightMetric
+      summary: One metric over a window, beside the window before it
+      parameters:
+        - $ref: '#/components/parameters/InsightsRange'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InsightMetric'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /fitness/strava:
     get:
       operationId: getStravaStatus
@@ -1508,6 +1547,13 @@ components:
       scheme: bearer
       description: An `nk_` connection token from Settings → Connections.
   parameters:
+    InsightsRange:
+      name: range
+      in: query
+      required: false
+      schema:
+        type: string
+      description: "A range key from the response's range.options (today, yesterday, week, month, quarter or year). Defaults to today."
     ConversationID:
       name: id
       in: path
@@ -2850,6 +2896,172 @@ components:
       properties:
         activityCode:
           type: string
+    InsightsRange:
+      type: object
+      required: [key, label, options]
+      properties:
+        key:
+          type: string
+        label:
+          type: string
+        options:
+          type: array
+          items:
+            type: object
+            required: [key, label]
+            properties:
+              key:
+                type: string
+              label:
+                type: string
+    InsightsChart:
+      type: object
+      required: [labels, series]
+      properties:
+        labels:
+          type: array
+          items:
+            type: string
+        series:
+          type: array
+          items:
+            type: object
+            required: [label, values]
+            properties:
+              label:
+                type: string
+              values:
+                type: array
+                items:
+                  type: number
+    InsightsSummary:
+      type: object
+      required: [range, scores, pinned, highlights, onTrack, judged, empty]
+      properties:
+        range:
+          $ref: '#/components/schemas/InsightsRange'
+        scores:
+          type: array
+          items:
+            type: object
+            required: [key, label, points, verdict, reason, coverage, hasData, components]
+            properties:
+              key:
+                type: string
+              label:
+                type: string
+              points:
+                type: integer
+              verdict:
+                type: string
+              reason:
+                type: string
+              coverage:
+                type: integer
+              hasData:
+                type: boolean
+              components:
+                type: array
+                items:
+                  type: object
+                  required: [label, earned, weight, known]
+                  properties:
+                    label:
+                      type: string
+                    earned:
+                      type: integer
+                    weight:
+                      type: integer
+                    known:
+                      type: boolean
+        pinned:
+          type: array
+          items:
+            type: object
+            required: [label, value, note, delta]
+            properties:
+              label:
+                type: string
+              value:
+                type: string
+              note:
+                type: string
+              metricKey:
+                type: string
+              delta:
+                type: object
+                required: [direction, pct, hasPrior]
+                properties:
+                  direction:
+                    type: integer
+                  pct:
+                    type: number
+                  hasPrior:
+                    type: boolean
+              chart:
+                $ref: '#/components/schemas/InsightsChart'
+        highlights:
+          type: array
+          items:
+            type: string
+        onTrack:
+          type: integer
+        judged:
+          type: integer
+        empty:
+          type: boolean
+    InsightMetric:
+      type: object
+      required: [range, key, label, headline, note, chart, trend, comparison, highlights, hasData]
+      properties:
+        range:
+          $ref: '#/components/schemas/InsightsRange'
+        key:
+          type: string
+        label:
+          type: string
+        headline:
+          type: string
+        note:
+          type: string
+        chart:
+          $ref: '#/components/schemas/InsightsChart'
+        trend:
+          type: object
+          required: [direction, pct, word, hasPrior]
+          properties:
+            direction:
+              type: integer
+            pct:
+              type: number
+            word:
+              type: string
+            hasPrior:
+              type: boolean
+        comparison:
+          type: object
+          required: [currentLabel, currentValue, currentPct, priorLabel, priorValue, priorPct, hasPrior]
+          properties:
+            currentLabel:
+              type: string
+            currentValue:
+              type: string
+            currentPct:
+              type: integer
+            priorLabel:
+              type: string
+            priorValue:
+              type: string
+            priorPct:
+              type: integer
+            hasPrior:
+              type: boolean
+        highlights:
+          type: array
+          items:
+            type: string
+        hasData:
+          type: boolean
     StravaStatus:
       type: object
       required: [configured, connected, syncPending]

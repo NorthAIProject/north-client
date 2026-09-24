@@ -471,6 +471,7 @@ func routes(
 
 		Conversations: conversationSvc,
 		Spend:         spendRepo,
+		Health:        healthSvc,
 		SiteURL:       cfg.BaseURL,
 	})
 	insightsHandler := insights.NewHandler(insightsSvc)
@@ -792,6 +793,7 @@ func routes(
 			activity:   activity.NewAPI(activitySvc),
 			health:     health.NewAPI(healthSvc),
 			fitness:    fitness.NewAPI(stravaSvc, cfg.BaseURL),
+			insights:   insights.NewAPI(insightsSvc),
 		})
 	})
 
