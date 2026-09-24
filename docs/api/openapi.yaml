@@ -1868,6 +1868,222 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+  /knowledge:
+    get:
+      operationId: listKnowledge
+      summary: Documents and notes the coach can search, with index counts
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgeList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /knowledge/search:
+    get:
+      operationId: searchKnowledge
+      summary: Search the library the way the coach does
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgeSearchResults'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /knowledge/notes:
+    post:
+      operationId: createKnowledgeNote
+      summary: Write a note into the library
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KnowledgeNoteRequest'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgeDocument'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /knowledge/uploads:
+    post:
+      operationId: uploadKnowledge
+      summary: Add a file (PDF, Markdown or text, up to 8 MB)
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: The document, with its own Content-Type.
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgeDocument'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /knowledge/reindex:
+    post:
+      operationId: reindexKnowledge
+      summary: Re-read every document
+      responses:
+        '202':
+          description: Queued
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /knowledge/{documentID}:
+    parameters:
+      - name: documentID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getKnowledgeDocument
+      summary: A document as the coach reads it
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgeDocumentDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: deleteKnowledgeDocument
+      summary: Remove a document
+      responses:
+        '204':
+          description: Done
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /knowledge/{documentID}/reindex:
+    parameters:
+      - name: documentID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: reindexKnowledgeDocument
+      summary: Re-read one document
+      responses:
+        '202':
+          description: Queued
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /form-checks:
+    get:
+      operationId: listFormChecks
+      summary: Filmed sets and what the coach saw in them
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FormCheckList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: uploadFormCheck
+      summary: Upload a clip of a set to be analysed
+      description: Answers 202 with the check; poll it until done or failed.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [video]
+              properties:
+                video:
+                  type: string
+                  format: binary
+                  description: A video up to 200 MB.
+      responses:
+        '202':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FormCheck'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /form-checks/{analysisID}:
+    parameters:
+      - name: analysisID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getFormCheck
+      summary: One form check, with its result once done
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FormCheck'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /insights:
     get:
       operationId: getInsights
@@ -2165,6 +2381,12 @@ components:
         type: string
         format: uuid
   responses:
+    TooManyRequests:
+      description: This kind of request's quota is spent for now; see Retry-After.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
     ReplyStream:
       description: Server-Sent Events carrying the reply; see the operation description
       content:
@@ -3789,6 +4011,140 @@ components:
       properties:
         value:
           type: boolean
+    KnowledgeDocument:
+      type: object
+      required: [id, title, kind, mime, byteSize, status, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        kind:
+          type: string
+        mime:
+          type: string
+        byteSize:
+          type: integer
+          format: int64
+        status:
+          type: string
+          enum: [pending, ready, failed]
+        parseError:
+          type: string
+        indexedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+    KnowledgeDocumentDetail:
+      allOf:
+        - $ref: '#/components/schemas/KnowledgeDocument'
+        - type: object
+          required: [text]
+          properties:
+            text:
+              type: string
+    KnowledgeList:
+      type: object
+      required: [documents, counts]
+      properties:
+        documents:
+          type: array
+          items:
+            $ref: '#/components/schemas/KnowledgeDocument'
+        counts:
+          type: object
+          required: [ready, pending, failed, stale]
+          properties:
+            ready:
+              type: integer
+            pending:
+              type: integer
+            failed:
+              type: integer
+            stale:
+              type: integer
+    KnowledgeSearchResults:
+      type: object
+      required: [hits]
+      properties:
+        hits:
+          type: array
+          items:
+            type: object
+            required: [documentId, title, headingPath, snippet, startLine]
+            properties:
+              documentId:
+                type: string
+                format: uuid
+              title:
+                type: string
+              headingPath:
+                type: array
+                items:
+                  type: string
+              snippet:
+                type: string
+              startLine:
+                type: integer
+    KnowledgeNoteRequest:
+      type: object
+      required: [title, body]
+      properties:
+        title:
+          type: string
+        body:
+          type: string
+    FormCheck:
+      type: object
+      required: [id, status, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [pending, running, done, failed]
+        result:
+          type: object
+          required: [exercise, confidence, summary, issues]
+          properties:
+            exercise:
+              type: string
+            confidence:
+              type: string
+            summary:
+              type: string
+            issues:
+              type: array
+              items:
+                type: object
+                required: [at, severity, observation, correction]
+                properties:
+                  at:
+                    type: number
+                    description: Seconds into the clip.
+                  severity:
+                    type: string
+                  observation:
+                    type: string
+                  correction:
+                    type: string
+        error:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    FormCheckList:
+      type: object
+      required: [checks]
+      properties:
+        checks:
+          type: array
+          items:
+            $ref: '#/components/schemas/FormCheck'
     InsightsRange:
       type: object
       required: [key, label, options]

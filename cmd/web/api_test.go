@@ -15,11 +15,13 @@ import (
 	"github.com/NorthAIProject/north-client/internal/checkins"
 	"github.com/NorthAIProject/north-client/internal/coach"
 	"github.com/NorthAIProject/north-client/internal/dashboard"
+	"github.com/NorthAIProject/north-client/internal/documents"
 	"github.com/NorthAIProject/north-client/internal/exercises"
 	"github.com/NorthAIProject/north-client/internal/fitness"
 	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/health"
 	"github.com/NorthAIProject/north-client/internal/insights"
+	"github.com/NorthAIProject/north-client/internal/media"
 	"github.com/NorthAIProject/north-client/internal/memories"
 	"github.com/NorthAIProject/north-client/internal/onboarding"
 	"github.com/NorthAIProject/north-client/internal/reports"
@@ -60,6 +62,8 @@ func apiRouter(t *testing.T) chi.Router {
 		checkins:   checkins.NewAPI(nil),
 		reports:    reports.NewAPI(nil),
 		memories:   memories.NewAPI(nil),
+		knowledge:  documents.NewAPI(nil, nil),
+		formChecks: media.NewAPI(nil, nil),
 	})
 	return r
 }

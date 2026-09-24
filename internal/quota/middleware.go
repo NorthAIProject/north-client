@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 	quotapages "github.com/NorthAIProject/north-client/web/quota"
 )
 
@@ -21,6 +22,18 @@ import (
 // sentence everywhere, and threading a new sentinel through six handlers to say
 // it would be more code for the same words.
 func (s *Service) Guard(action Action) func(http.Handler) http.Handler {
+	return s.guard(action, s.refuse)
+}
+
+// GuardJSON is Guard for the native app's API: the same budget and the same
+// sentence, answered as the API's JSON error body instead of a page.
+func (s *Service) GuardJSON(action Action) func(http.Handler) http.Handler {
+	return s.guard(action, s.refuseJSON)
+}
+
+type refusal func(w http.ResponseWriter, r *http.Request, action Action, decision Decision)
+
+func (s *Service) guard(action Action, refuse refusal) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			who, ok := s.identify(r.Context())
@@ -48,7 +61,7 @@ func (s *Service) Guard(action Action) func(http.Handler) http.Handler {
 				return
 			}
 
-			s.refuse(w, r, action, decision)
+			refuse(w, r, action, decision)
 		})
 	}
 }
@@ -56,18 +69,29 @@ func (s *Service) Guard(action Action) func(http.Handler) http.Handler {
 // refuse writes the 429 and the panel that replaces whatever asked for the
 // work.
 func (s *Service) refuse(w http.ResponseWriter, r *http.Request, action Action, decision Decision) {
-	seconds := int(decision.RetryAfter.Round(time.Second) / time.Second)
-	if seconds < 1 {
-		seconds = 1
-	}
-
-	w.Header().Set("Retry-After", strconv.Itoa(seconds))
+	w.Header().Set("Retry-After", strconv.Itoa(retrySeconds(decision)))
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusTooManyRequests)
 
 	if err := quotapages.Refused(describe(action), humanDelay(decision.RetryAfter)).Render(r.Context(), w); err != nil {
 		s.log.Error("rendering the quota refusal failed", slog.Any("error", err))
 	}
+}
+
+// refuseJSON is refuse's 429 for the API, with the sentence as its message.
+func (s *Service) refuseJSON(w http.ResponseWriter, _ *http.Request, action Action, decision Decision) {
+	w.Header().Set("Retry-After", strconv.Itoa(retrySeconds(decision)))
+	httpx.WriteJSON(w, http.StatusTooManyRequests, httpx.ErrorBody{Error: httpx.ErrorDetail{
+		Message: "You have used all your " + describe(action) + " for now. Try again " + humanDelay(decision.RetryAfter) + ".",
+	}})
+}
+
+func retrySeconds(decision Decision) int {
+	seconds := int(decision.RetryAfter.Round(time.Second) / time.Second)
+	if seconds < 1 {
+		seconds = 1
+	}
+	return seconds
 }
 
 // describe names an action the way a person would, since the wire name appears
