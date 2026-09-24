@@ -53,6 +53,13 @@ func (c *meteredClient) Name() string { return c.inner.Name() }
 // laptop and break the boot in production.
 func (c *meteredClient) Unwrap() Client { return c.inner }
 
+// CallsTools implements ToolCaller by asking the client underneath.
+//
+// Without it the wrapper would answer the runner's check with the default,
+// "yes", and a gateway that ignores tools would be handed every tool turn —
+// but only where a meter is configured, which is production and no test.
+func (c *meteredClient) CallsTools() bool { return CallsTools(c.inner) }
+
 // UploadFile consumes no tokens, so there is nothing to record.
 func (c *meteredClient) UploadFile(ctx context.Context, req UploadRequest) (*File, error) {
 	return c.inner.UploadFile(ctx, req)

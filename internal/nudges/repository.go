@@ -27,6 +27,17 @@ type Draft struct {
 	Title     string
 	Body      string
 	Href      string
+
+	// Everywhere sends the nudge to Telegram and Web Push even for a kind
+	// that normally stays in the bell. Not stored: it is how this one is
+	// delivered, not what it is.
+	Everywhere bool
+
+	// Push sends the nudge to Web Push, but not Telegram, even for a kind that
+	// normally stays in the bell. For a message whose body already reached
+	// Telegram by another route (the daily briefing) and so would arrive there
+	// twice, but has not reached the lock screen. Not stored, like Everywhere.
+	Push bool
 }
 
 func (r *Repository) Insert(ctx context.Context, userID uuid.UUID, d Draft) (Nudge, bool, error) {

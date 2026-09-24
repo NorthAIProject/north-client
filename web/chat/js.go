@@ -18,3 +18,30 @@ func jsString(s string) string {
 	}
 	return string(encoded)
 }
+
+// chatRootData is the Alpine scope on #chat-root.
+//
+// status is the second line of the Muse header's name pill, and phase is what
+// draws the working ring around the avatar. They live on the root rather than
+// on the pill so the stream bridge in web/assets/js/shared/mascot/alpine.js can
+// drive them, and init hands this scope to the bridge. That hand-off runs again
+// after every "done" swap, which is how the celebrating beat and a "hit a snag"
+// survive the refresh that replaces this element.
+//
+// status is seeded with the translated "Ready" so the pill reads correctly
+// before Alpine boots or if the bridge script never loads.
+func chatRootData(ready string) string {
+	return `{
+		threads: false,
+		status: ` + jsString(ready) + `,
+		phase: 'idle',
+		init() {
+			if (window.NorthMascot && window.NorthMascot.bindChat) window.NorthMascot.bindChat(this, this.$el)
+		},
+		fit() {
+			const vv = window.visualViewport
+			if (!vv) return
+			this.$el.style.height = vv.height + 'px'
+		}
+	}`
+}

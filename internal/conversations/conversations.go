@@ -121,8 +121,46 @@ type Message struct {
 	// not say, which is the common case and deliberately distinct from "no".
 	Helpful *bool
 
+	// Origin says whether this turn answered the person or arrived on its own,
+	// and SourceLabel names what sent it ("Daily briefing", "Standing task").
+	// A reply leaves the label empty.
+	Origin      Origin
+	SourceLabel string
+
 	CreatedAt time.Time
 }
+
+// Origin is why a message exists: somebody asked, or something scheduled
+// spoke first.
+type Origin string
+
+const (
+	OriginReply     Origin = "reply"
+	OriginProactive Origin = "proactive"
+)
+
+// Source labels this build writes. Stored as words rather than codes (see the
+// message_origin migration); the chat maps these onto translated captions and
+// shows anything else as "From {label}".
+const (
+	SourceDailyBriefing = "Daily briefing"
+	SourceStandingTask  = "Standing task"
+)
+
+// Provenance is where a model turn came from. The zero value is an ordinary
+// reply, so every caller that is answering somebody passes Provenance{}.
+type Provenance struct {
+	Origin      Origin
+	SourceLabel string
+}
+
+// Proactive is the provenance of a turn nobody asked for.
+func Proactive(sourceLabel string) Provenance {
+	return Provenance{Origin: OriginProactive, SourceLabel: sourceLabel}
+}
+
+// IsProactive reports whether this turn arrived without being asked for.
+func (m Message) IsProactive() bool { return m.Origin == OriginProactive }
 
 // Rated reports whether the person answered either way about this reply.
 func (m Message) Rated() bool { return m.Helpful != nil }
@@ -224,12 +262,59 @@ func ToAIMessages(messages []Message) []ai.Message {
 			// An empty turn carries nothing and some providers reject it.
 			continue
 		}
+
+		if m.IsProactive() && m.IsModel() {
+			out = appendProactive(out, m, parts)
+			continue
+		}
+
 		out = append(out, ai.Message{
 			Role:  m.Role,
 			Parts: parts,
 		})
 	}
 	return out
+}
+
+// proactiveOpening stands in for the question nobody asked when a thread
+// begins with a message Khepri sent on its own.
+const proactiveOpening = "[No message from the person yet: Khepri started this thread.]"
+
+// appendProactive adds a turn nobody asked for without breaking the
+// alternation every provider expects.
+//
+// A proactive message follows whatever came before it, which is usually the
+// coach's own last reply: two model turns in a row, which some providers
+// reject. So it is folded into the model turn before it when there is one,
+// and a thread that opens with one gets a short user turn in front. Either
+// way it is marked, so the model reads it as something it sent unprompted
+// rather than as an answer to the last question.
+func appendProactive(out []ai.Message, m Message, parts []ai.Part) []ai.Message {
+	label := strings.TrimSpace(m.SourceLabel)
+	if label == "" {
+		label = "Proactive message"
+	}
+	marked := append([]ai.Part{ai.TextPart("[Sent unprompted — " + label + "]")}, parts...)
+
+	if n := len(out); n > 0 {
+		last := out[n-1]
+		if last.Role == ai.RoleModel && len(last.ToolCalls) == 0 {
+			out[n-1].Parts = append(append([]ai.Part{}, last.Parts...), marked...)
+			return out
+		}
+		if last.Role == ai.RoleModel {
+			// A tool call is never left dangling in stored history (see
+			// ProactiveTarget), but if one were, a text turn cannot be
+			// merged into it and must not follow it either.
+			return out
+		}
+		return append(out, ai.Message{Role: ai.RoleModel, Parts: marked})
+	}
+
+	return append(out,
+		ai.UserText(proactiveOpening),
+		ai.Message{Role: ai.RoleModel, Parts: marked},
+	)
 }
 
 func messageParts(m Message) []ai.Part {

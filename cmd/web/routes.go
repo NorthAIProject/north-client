@@ -68,6 +68,7 @@ import (
 	vaultdb "github.com/NorthAIProject/north-client/internal/vault/db"
 	"github.com/NorthAIProject/north-client/internal/voice"
 	"github.com/NorthAIProject/north-client/internal/voice/vocab"
+	"github.com/NorthAIProject/north-client/internal/watches"
 	"github.com/NorthAIProject/north-client/internal/workouts"
 	"github.com/NorthAIProject/north-client/web/assets"
 	"github.com/NorthAIProject/north-client/web/landing"
@@ -494,8 +495,13 @@ func routes(
 	// One registry of capabilities, shared by the coach's chat loop and the
 	// MCP server. Two definitions of "calculate my macros" would drift, and
 	// the drift would show as the coach and Telegram disagreeing.
+	// Standing tasks. The web process only creates them — create_watch runs
+	// when somebody confirms the card; the worker's sweep runs them.
+	watchSvc := watches.NewService(watches.NewRepository(pool), userSvc)
+
 	agentTools := agent.Build(agent.Services{
 		SiteURL:       cfg.BaseURL,
+		Watches:       watchSvc,
 		Exercises:     exerciseSvc,
 		Calculator:    calculatorSvc,
 		Goals:         goalSvc,
@@ -578,7 +584,7 @@ func routes(
 			"I watched the clip. Open it to see the cues.",
 			"/app/form/"+analysisID.String())
 	})
-	reportSvc.WithInbox(nudgeSvc)
+	reportSvc.WithInbox(nudgeSvc).WithChats(conversationSvc)
 
 	// Which Telegram edge runs follows from the configuration rather than from
 	// a switch, so there is no combination that serves a webhook with no

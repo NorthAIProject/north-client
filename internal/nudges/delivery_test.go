@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/NorthAIProject/north-client/internal/notifications"
 	"github.com/NorthAIProject/north-client/internal/nudges"
 	"github.com/NorthAIProject/north-client/internal/shared/database/testdb"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
@@ -192,5 +193,168 @@ func TestOpenPathCarriesTheChannel(t *testing.T) {
 	want := "/app/nudges/11111111-2222-3333-4444-555555555555/open?from=push"
 	if got != want {
 		t.Fatalf("OpenPath = %q, want %q", got, want)
+	}
+}
+
+type fanoutSpy struct{ texts []string }
+
+func (f *fanoutSpy) Notify(_ context.Context, _ uuid.UUID, text string) error {
+	f.texts = append(f.texts, text)
+	return nil
+}
+
+// A standing task's result reached nobody yet, so RaiseProactive sends the
+// same coach_reply kind to Telegram and to browsers as well as the bell.
+func TestRaiseProactiveFansACoachReplyOutEverywhere(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	user := seedUser(t, pool, "nudge-proactive@north.test")
+	pushes := &pushSpy{delivered: 1}
+	chat := &fanoutSpy{}
+	funnel := &funnelSpy{}
+	svc := newStore(pool).WithClock(freeze(noon)).WithPush(pushes).WithFanout(chat).WithFunnel(funnel)
+
+	if err := svc.RaiseProactive(ctx, user, nudges.KindCoachReply, "msg-1",
+		"Standing task · your sleep", "You slept 6h10.", "/app/chat/abc"); err != nil {
+		t.Fatal(err)
+	}
+	if len(chat.texts) != 1 || !strings.Contains(chat.texts[0], "You slept 6h10.") {
+		t.Errorf("telegram got %v", chat.texts)
+	}
+	if len(pushes.sent) != 1 {
+		t.Errorf("push sent %d times, want 1", len(pushes.sent))
+	}
+	if strings.Join(funnel.delivered, ",") != "coach_reply/bell,coach_reply/push" {
+		t.Errorf("funnel saw %v", funnel.delivered)
+	}
+}
+
+// A standing task's push carries the /open link, and opening it lands on the
+// thread the result was posted into.
+func TestRaiseProactivePushOpensTheThread(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	user := seedUser(t, pool, "nudge-proactive-href@north.test")
+	pushes := &pushSpy{delivered: 1}
+	svc := newStore(pool).WithClock(freeze(noon)).WithPush(pushes)
+
+	thread := "/app/chat/" + uuid.NewString()
+	if err := svc.RaiseProactive(ctx, user, nudges.KindCoachReply, "msg-href",
+		"Standing task", "Done.", thread); err != nil {
+		t.Fatal(err)
+	}
+	assertPushOpens(t, ctx, svc, user.ID, pushes, thread)
+}
+
+// The daily briefing's body already went to Telegram, so NoteWithPush sends it
+// to the bell and the lock screen but not to Telegram a second time, and the
+// tap opens the chat it was posted into.
+func TestNoteWithPushSendsABriefingToBrowsersButNotTelegram(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	user := seedUser(t, pool, "nudge-briefing-push@north.test")
+	pushes := &pushSpy{delivered: 1}
+	chat := &fanoutSpy{}
+	funnel := &funnelSpy{}
+	svc := prefsService(pool, noon).WithPush(pushes).WithFanout(chat).WithFunnel(funnel)
+
+	thread := "/app/chat/" + uuid.NewString()
+	if err := svc.NoteWithPush(ctx, user.ID, nudges.KindBriefingReady, "report-1",
+		"Today's briefing", "Sleep more. Lift today.", thread); err != nil {
+		t.Fatal(err)
+	}
+	if len(chat.texts) != 0 {
+		t.Errorf("telegram got the briefing twice: %v", chat.texts)
+	}
+	if len(pushes.sent) != 1 || pushes.sent[0].title != "Today's briefing" {
+		t.Fatalf("push sent %+v, want the briefing once", pushes.sent)
+	}
+	if strings.Join(funnel.delivered, ",") != "briefing_ready/bell,briefing_ready/push" {
+		t.Errorf("funnel saw %v", funnel.delivered)
+	}
+	assertPushOpens(t, ctx, svc, user.ID, pushes, thread)
+
+	// The same report again is a no-op: no second push.
+	if err := svc.NoteWithPush(ctx, user.ID, nudges.KindBriefingReady, "report-1",
+		"Today's briefing", "again", thread); err != nil {
+		t.Fatal(err)
+	}
+	if len(pushes.sent) != 1 {
+		t.Errorf("duplicate briefing pushed again: %d sends", len(pushes.sent))
+	}
+}
+
+// Switching coach activity off silences the briefing push along with the bell.
+func TestNoteWithPushRespectsTheSwitch(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	user := seedUser(t, pool, "nudge-briefing-off@north.test")
+	savePrefs(t, pool, user.ID, notifications.Input{
+		NudgeMissedCheckIn: true,
+		NudgeGoalDeadline:  true,
+		CoachActivity:      false,
+		QuietStart:         "22:00",
+		QuietEnd:           "07:00",
+	})
+	pushes := &pushSpy{delivered: 1}
+	svc := prefsService(pool, noon).WithPush(pushes)
+
+	if err := svc.NoteWithPush(ctx, user.ID, nudges.KindBriefingReady, "report-off",
+		"Today's briefing", "x", "/app/chat/x"); err != nil {
+		t.Fatal(err)
+	}
+	if len(pushes.sent) != 0 {
+		t.Fatalf("switched-off briefing was pushed: %+v", pushes.sent)
+	}
+}
+
+// Quiet hours hold the briefing push too.
+func TestNoteWithPushRespectsQuietHours(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	user := seedUser(t, pool, "nudge-briefing-quiet@north.test")
+	savePrefs(t, pool, user.ID, notifications.Input{
+		NudgeMissedCheckIn: true,
+		NudgeGoalDeadline:  true,
+		CoachActivity:      true,
+		QuietHoursEnabled:  true,
+		QuietStart:         "22:00",
+		QuietEnd:           "07:00",
+	})
+	pushes := &pushSpy{delivered: 1}
+	// 06:00 UTC is inside the 22:00–07:00 window.
+	svc := prefsService(pool, time.Date(2026, 9, 2, 6, 0, 0, 0, time.UTC)).WithPush(pushes)
+
+	if err := svc.NoteWithPush(ctx, user.ID, nudges.KindBriefingReady, "report-quiet",
+		"Today's briefing", "x", "/app/chat/x"); err != nil {
+		t.Fatal(err)
+	}
+	if len(pushes.sent) != 0 {
+		t.Fatalf("briefing was pushed in quiet hours: %+v", pushes.sent)
+	}
+}
+
+// assertPushOpens checks the one push sent carries /open?from=push for its
+// nudge, and that opening that nudge sends the person to want.
+func assertPushOpens(t *testing.T, ctx context.Context, svc *nudges.Service, userID uuid.UUID, pushes *pushSpy, want string) {
+	t.Helper()
+	if len(pushes.sent) == 0 {
+		t.Fatal("nothing was pushed")
+	}
+	href := pushes.sent[len(pushes.sent)-1].href
+	prefix, suffix := "/app/nudges/", "/open?from=push"
+	if !strings.HasPrefix(href, prefix) || !strings.HasSuffix(href, suffix) {
+		t.Fatalf("push href = %q, want an attributed /open link", href)
+	}
+	id, err := uuid.Parse(strings.TrimSuffix(strings.TrimPrefix(href, prefix), suffix))
+	if err != nil {
+		t.Fatalf("push href %q has no nudge id: %v", href, err)
+	}
+	n, err := svc.Open(ctx, id, userID, "push")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n.Href != want {
+		t.Fatalf("opening the push lands on %q, want %q", n.Href, want)
 	}
 }

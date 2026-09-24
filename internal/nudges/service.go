@@ -188,22 +188,19 @@ func (s *Service) Raise(ctx context.Context, user users.User, d Draft) (Nudge, b
 		return n, created, err
 	}
 
-	s.deliver(ctx, user, n)
+	telegram := fansOut(n.Kind) || d.Everywhere
+	s.deliver(ctx, user, n, telegram, telegram || d.Push)
 	return n, true, nil
 }
 
 // deliver takes a nudge that is already stored out to every channel that will
 // carry it. Nothing here can fail the Raise: the note is in the bell, and a
 // channel that did not work is logged and counted as not delivered.
-func (s *Service) deliver(ctx context.Context, user users.User, n Nudge) {
+func (s *Service) deliver(ctx context.Context, user users.User, n Nudge, telegram, push bool) {
 	// The bell is the one channel that always has it, by virtue of the insert.
 	s.delivered(ctx, user.ID, n.Kind, analytics.ChannelBell)
 
-	if !fansOut(n.Kind) {
-		return
-	}
-
-	if s.fanout != nil {
+	if telegram && s.fanout != nil {
 		text := n.Title
 		if n.Body != "" {
 			text = n.Title + "\n\n" + n.Body
@@ -216,7 +213,7 @@ func (s *Service) deliver(ctx context.Context, user users.User, n Nudge) {
 		}
 	}
 
-	if s.push != nil {
+	if push && s.push != nil {
 		// The link goes through /open so the click is attributed to push
 		// before the person lands on the page the nudge is about.
 		count, pushErr := s.push.Send(ctx, user.ID, n.Title, n.Body, OpenPath(n.ID, analytics.ChannelPush))
@@ -261,7 +258,20 @@ func (s *Service) Open(ctx context.Context, id, userID uuid.UUID, channel string
 
 // Note is Raise when the caller only has a user id. Used by jobs.
 func (s *Service) Note(ctx context.Context, userID uuid.UUID, kind, dedupe, title, body, href string) error {
-	d := Draft{Kind: kind, DedupeKey: dedupe, Title: title, Body: body, Href: href}
+	return s.note(ctx, userID, Draft{Kind: kind, DedupeKey: dedupe, Title: title, Body: body, Href: href})
+}
+
+// NoteWithPush is Note that also reaches the lock screen, for a message whose
+// body its caller already sent to Telegram. The daily briefing is the case:
+// its full text goes to the linked chat directly, so the nudge must not repeat
+// it there, but a person with only the installed PWA would otherwise never
+// hear that it arrived. The same switch and quiet hours as every other nudge
+// decide whether it is raised at all.
+func (s *Service) NoteWithPush(ctx context.Context, userID uuid.UUID, kind, dedupe, title, body, href string) error {
+	return s.note(ctx, userID, Draft{Kind: kind, DedupeKey: dedupe, Title: title, Body: body, Href: href, Push: true})
+}
+
+func (s *Service) note(ctx context.Context, userID uuid.UUID, d Draft) error {
 	if s.accounts == nil {
 		_, _, err := s.CreateIfAbsent(ctx, userID, d)
 		return err
@@ -277,6 +287,17 @@ func (s *Service) Note(ctx context.Context, userID uuid.UUID, kind, dedupe, titl
 // RaiseFromUser satisfies coach.Inbox.
 func (s *Service) RaiseFromUser(ctx context.Context, user users.User, kind, dedupe, title, body, href string) error {
 	_, _, err := s.Raise(ctx, user, Draft{Kind: kind, DedupeKey: dedupe, Title: title, Body: body, Href: href})
+	return err
+}
+
+// RaiseProactive is RaiseFromUser for a message nobody has seen anywhere yet.
+//
+// coach_reply normally stays in the bell, because the reply it points at was
+// already delivered where it was asked for (Telegram). A standing task's
+// result was asked for by nobody, so it goes out on every channel — bell,
+// Telegram and Web Push — under the same kind and the same switch.
+func (s *Service) RaiseProactive(ctx context.Context, user users.User, kind, dedupe, title, body, href string) error {
+	_, _, err := s.Raise(ctx, user, Draft{Kind: kind, DedupeKey: dedupe, Title: title, Body: body, Href: href, Everywhere: true})
 	return err
 }
 
