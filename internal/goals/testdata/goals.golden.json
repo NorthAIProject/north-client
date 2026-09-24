@@ -1,0 +1,28 @@
+{
+  "goals": [
+    {
+      "id": "b2b2b2b2-b2b2-b2b2-b2b2-b2b2b2b2b2b2",
+      "title": "Run a half marathon",
+      "category": "fitness",
+      "status": "active",
+      "targetDate": "2026-12-06",
+      "milestoneTotal": 2,
+      "milestoneDone": 1,
+      "latestUpdate": {
+        "id": "a1a1a1a1-a1a1-a1a1-a1a1-a1a1a1a1a1a1",
+        "note": "Ran 12 km, felt easy.",
+        "progress": 40,
+        "createdAt": "2026-09-11T08:00:00Z"
+      },
+      "createdAt": "2026-09-01T08:00:00Z"
+    }
+  ],
+  "categories": [
+    "fitness",
+    "health",
+    "work",
+    "learning",
+    "personal",
+    "other"
+  ]
+}

@@ -772,17 +772,10 @@ func routes(
 	})
 
 	// /api/v1 sits beside /mcp for the same three reasons: no cookie, no form,
-	// and a bearer a browser never attaches on its own.
-	//
-	// It authenticates with the connections token that already stands behind
-	// /mcp and /ingest/health rather than a new credential. docs/IOS.md
-	// proposes bearer *sessions* for a native client, and when that arrives
-	// this mount composes both authenticators — the same widening the document
-	// already predicts for health ingest. Nothing about the handler or the JSON
-	// shapes changes, which is why waiting for a phone was not worth it: the
-	// callers who hold an nk_ token today are the ones who want this.
+	// and a bearer a browser never attaches on its own. The native app signs
+	// in for a bearer session; capture keeps its nk_ connection token. Body
+	// caps are set per group inside mountAPI.
 	r.Group(func(r chi.Router) {
-		r.Use(middleware.MaxBody(1 << 20))
 		mountAPI(r, sessions, apiSet{
 			auth:       authAPI,
 			capture:    captureAPI,
@@ -796,6 +789,12 @@ func routes(
 			health:     health.NewAPI(healthSvc),
 			fitness:    fitness.NewAPI(stravaSvc, cfg.BaseURL),
 			insights:   insights.NewAPI(insightsSvc),
+			goals:      goals.NewAPI(goalSvc),
+			checkins:   checkins.NewAPI(checkinSvc),
+			reports:    reports.NewAPI(reportSvc),
+			memories:   memories.NewAPI(memorySvc),
+			knowledge:  documents.NewAPI(documentSvc, quotaSvc),
+			formChecks: media.NewAPI(mediaSvc, quotaSvc),
 		})
 	})
 

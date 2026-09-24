@@ -1272,6 +1272,818 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+  /goals:
+    get:
+      operationId: listGoals
+      summary: Every goal, newest first, and the life areas a goal can belong to
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GoalList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: createGoal
+      summary: Create a goal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoalRequest'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GoalDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /goals/{goalID}:
+    parameters:
+      - name: goalID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getGoal
+      summary: A goal with its milestones and recent progress notes
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GoalDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      operationId: updateGoal
+      summary: Edit a goal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoalRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GoalDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      operationId: deleteGoal
+      summary: Delete a goal
+      responses:
+        '204':
+          description: Done
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /goals/{goalID}/status:
+    parameters:
+      - name: goalID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      operationId: setGoalStatus
+      summary: Mark a goal active, achieved, paused or abandoned
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoalStatusRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GoalDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /goals/{goalID}/updates:
+    parameters:
+      - name: goalID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: addGoalUpdate
+      summary: Add a progress note, optionally with a percentage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoalUpdateRequest'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GoalUpdate'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /goals/{goalID}/milestones:
+    parameters:
+      - name: goalID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: addMilestone
+      summary: Add a milestone
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MilestoneRequest'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Milestone'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /goals/{goalID}/milestones/{milestoneID}:
+    parameters:
+      - name: goalID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: milestoneID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      operationId: updateMilestone
+      summary: Rename or re-date a milestone
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MilestoneRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Milestone'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      operationId: deleteMilestone
+      summary: Delete a milestone
+      responses:
+        '204':
+          description: Done
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /goals/{goalID}/milestones/{milestoneID}/status:
+    parameters:
+      - name: goalID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: milestoneID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      operationId: setMilestoneStatus
+      summary: Mark a milestone open or completed
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoalStatusRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Milestone'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /check-ins:
+    get:
+      operationId: listCheckIns
+      summary: Today's check-in, the recent ones and the streak
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckInList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /check-ins/today:
+    put:
+      operationId: saveTodayCheckIn
+      summary: File or replace today's check-in
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CheckInRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckIn'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /check-ins/{checkInID}:
+    parameters:
+      - name: checkInID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      operationId: updateCheckIn
+      summary: Edit a past check-in
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CheckInRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckIn'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      operationId: deleteCheckIn
+      summary: Delete a check-in
+      responses:
+        '204':
+          description: Done
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /reports:
+    get:
+      operationId: listReports
+      summary: Weekly reports and daily briefings, newest first
+      parameters:
+        - name: archived
+          in: query
+          required: false
+          schema:
+            type: boolean
+          description: Include archived reports.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /reports/{reportID}:
+    parameters:
+      - name: reportID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getReport
+      summary: A report's text
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /reports/{reportID}/archive:
+    parameters:
+      - name: reportID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: archiveReport
+      summary: Archive a report
+      responses:
+        '204':
+          description: Done
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /reports/{reportID}/helpful:
+    parameters:
+      - name: reportID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      operationId: rateReport
+      summary: Say whether a report helped; null clears the rating
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReportHelpfulRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /memories:
+    get:
+      operationId: listMemories
+      summary: Memories waiting for a verdict, and the ones the coach uses
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemoryList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: createMemory
+      summary: Tell the coach something to remember
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MemoryRequest'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Memory'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /memories/{memoryID}:
+    parameters:
+      - name: memoryID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      operationId: updateMemory
+      summary: Reword or recategorise a memory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MemoryRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Memory'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      operationId: deleteMemory
+      summary: Forget a memory
+      responses:
+        '204':
+          description: Done
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /memories/{memoryID}/approve:
+    parameters:
+      - name: memoryID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: approveMemory
+      summary: Keep a memory the coach proposed
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Memory'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /memories/{memoryID}/reject:
+    parameters:
+      - name: memoryID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: rejectMemory
+      summary: Discard a memory the coach proposed
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Memory'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /memories/{memoryID}/pinned:
+    parameters:
+      - name: memoryID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      operationId: setMemoryPinned
+      summary: Pin a memory so it always reaches the coach
+      description: Pinned and excluded are exclusive; setting either clears the other.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MemoryToggleRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Memory'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /memories/{memoryID}/excluded:
+    parameters:
+      - name: memoryID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      operationId: setMemoryExcluded
+      summary: Keep a memory but never show it to the coach
+      description: Pinned and excluded are exclusive; setting either clears the other.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MemoryToggleRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Memory'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /knowledge:
+    get:
+      operationId: listKnowledge
+      summary: Documents and notes the coach can search, with index counts
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgeList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /knowledge/search:
+    get:
+      operationId: searchKnowledge
+      summary: Search the library the way the coach does
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgeSearchResults'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /knowledge/notes:
+    post:
+      operationId: createKnowledgeNote
+      summary: Write a note into the library
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KnowledgeNoteRequest'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgeDocument'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /knowledge/uploads:
+    post:
+      operationId: uploadKnowledge
+      summary: Add a file (PDF, Markdown or text, up to 8 MB)
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: The document, with its own Content-Type.
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgeDocument'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /knowledge/reindex:
+    post:
+      operationId: reindexKnowledge
+      summary: Re-read every document
+      responses:
+        '202':
+          description: Queued
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /knowledge/{documentID}:
+    parameters:
+      - name: documentID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getKnowledgeDocument
+      summary: A document as the coach reads it
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgeDocumentDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: deleteKnowledgeDocument
+      summary: Remove a document
+      responses:
+        '204':
+          description: Done
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /knowledge/{documentID}/reindex:
+    parameters:
+      - name: documentID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: reindexKnowledgeDocument
+      summary: Re-read one document
+      responses:
+        '202':
+          description: Queued
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /form-checks:
+    get:
+      operationId: listFormChecks
+      summary: Filmed sets and what the coach saw in them
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FormCheckList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: uploadFormCheck
+      summary: Upload a clip of a set to be analysed
+      description: Answers 202 with the check; poll it until done or failed.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [video]
+              properties:
+                video:
+                  type: string
+                  format: binary
+                  description: A video up to 200 MB.
+      responses:
+        '202':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FormCheck'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /form-checks/{analysisID}:
+    parameters:
+      - name: analysisID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getFormCheck
+      summary: One form check, with its result once done
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FormCheck'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /insights:
     get:
       operationId: getInsights
@@ -1569,6 +2381,12 @@ components:
         type: string
         format: uuid
   responses:
+    TooManyRequests:
+      description: This kind of request's quota is spent for now; see Retry-After.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
     ReplyStream:
       description: Server-Sent Events carrying the reply; see the operation description
       content:
@@ -2896,6 +3714,449 @@ components:
       properties:
         activityCode:
           type: string
+    GoalUpdate:
+      type: object
+      required: [id, note, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        note:
+          type: string
+        progress:
+          type: integer
+          description: 0-100, when the note carried one.
+        createdAt:
+          type: string
+          format: date-time
+    Milestone:
+      type: object
+      required: [id, title, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        status:
+          type: string
+          enum: [open, completed]
+        targetDate:
+          type: string
+          description: A calendar day, YYYY-MM-DD.
+        completedAt:
+          type: string
+          format: date-time
+    GoalSummary:
+      type: object
+      required: [id, title, category, status, milestoneTotal, milestoneDone, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        category:
+          type: string
+        status:
+          type: string
+          enum: [active, achieved, paused, abandoned]
+        targetDate:
+          type: string
+          description: A calendar day, YYYY-MM-DD.
+        milestoneTotal:
+          type: integer
+        milestoneDone:
+          type: integer
+        latestUpdate:
+          $ref: '#/components/schemas/GoalUpdate'
+        createdAt:
+          type: string
+          format: date-time
+    GoalList:
+      type: object
+      required: [goals, categories]
+      properties:
+        goals:
+          type: array
+          items:
+            $ref: '#/components/schemas/GoalSummary'
+        categories:
+          type: array
+          items:
+            type: string
+    GoalDetail:
+      allOf:
+        - $ref: '#/components/schemas/GoalSummary'
+        - type: object
+          required: [motivation, success, milestones, updates]
+          properties:
+            motivation:
+              type: string
+            success:
+              type: string
+            milestones:
+              type: array
+              items:
+                $ref: '#/components/schemas/Milestone'
+            updates:
+              type: array
+              items:
+                $ref: '#/components/schemas/GoalUpdate'
+    GoalRequest:
+      type: object
+      required: [title, motivation, success, category]
+      properties:
+        title:
+          type: string
+        motivation:
+          type: string
+        success:
+          type: string
+        category:
+          type: string
+        targetDate:
+          type: string
+          description: A calendar day, YYYY-MM-DD; omit for none.
+    GoalStatusRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+    GoalUpdateRequest:
+      type: object
+      required: [note]
+      properties:
+        note:
+          type: string
+        progress:
+          type: integer
+    MilestoneRequest:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+        targetDate:
+          type: string
+    CheckIn:
+      type: object
+      required: [id, localDate, mood, energy, wins, challenges, notes, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        localDate:
+          type: string
+          description: The day in the person's own time zone, YYYY-MM-DD.
+        mood:
+          type: integer
+          minimum: 1
+          maximum: 5
+        energy:
+          type: integer
+          minimum: 1
+          maximum: 5
+        wins:
+          type: string
+        challenges:
+          type: string
+        notes:
+          type: string
+        relatedGoalId:
+          type: string
+          format: uuid
+        relatedGoalTitle:
+          type: string
+        updatedAt:
+          type: string
+          format: date-time
+    CheckInList:
+      type: object
+      required: [recent, streak]
+      properties:
+        today:
+          $ref: '#/components/schemas/CheckIn'
+        recent:
+          type: array
+          items:
+            $ref: '#/components/schemas/CheckIn'
+        streak:
+          type: integer
+    CheckInRequest:
+      type: object
+      required: [mood, energy]
+      properties:
+        mood:
+          type: integer
+        energy:
+          type: integer
+        wins:
+          type: string
+        challenges:
+          type: string
+        notes:
+          type: string
+        relatedGoalId:
+          type: string
+          format: uuid
+    ReportSummary:
+      type: object
+      required: [id, kind, title, periodStart, periodEnd, status, archived]
+      properties:
+        id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum: [weekly, daily]
+        title:
+          type: string
+        periodStart:
+          type: string
+          description: YYYY-MM-DD
+        periodEnd:
+          type: string
+          description: YYYY-MM-DD
+        status:
+          type: string
+          enum: [pending, ready, failed]
+        generatedAt:
+          type: string
+          format: date-time
+        archived:
+          type: boolean
+        helpful:
+          type: boolean
+    ReportList:
+      type: object
+      required: [reports]
+      properties:
+        reports:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReportSummary'
+    ReportDetail:
+      allOf:
+        - $ref: '#/components/schemas/ReportSummary'
+        - type: object
+          required: [body]
+          properties:
+            body:
+              type: string
+              description: Markdown.
+            lastError:
+              type: string
+    ReportHelpfulRequest:
+      type: object
+      required: [helpful]
+      properties:
+        helpful:
+          type: [boolean, 'null']
+    Memory:
+      type: object
+      required: [id, category, content, status, pinned, excluded, source, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        category:
+          type: string
+        content:
+          type: string
+        status:
+          type: string
+          enum: [pending, approved, rejected]
+        pinned:
+          type: boolean
+        excluded:
+          type: boolean
+        source:
+          type: string
+          description: user (written by hand) or extraction (proposed from a conversation)
+        sourceConversationId:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+    MemoryList:
+      type: object
+      required: [pending, approved, categories]
+      properties:
+        pending:
+          type: array
+          items:
+            $ref: '#/components/schemas/Memory'
+        approved:
+          type: array
+          items:
+            $ref: '#/components/schemas/Memory'
+        categories:
+          type: array
+          items:
+            type: string
+    MemoryRequest:
+      type: object
+      required: [category, content]
+      properties:
+        category:
+          type: string
+        content:
+          type: string
+    MemoryToggleRequest:
+      type: object
+      required: [value]
+      properties:
+        value:
+          type: boolean
+    KnowledgeDocument:
+      type: object
+      required: [id, title, kind, mime, byteSize, status, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        kind:
+          type: string
+        mime:
+          type: string
+        byteSize:
+          type: integer
+          format: int64
+        status:
+          type: string
+          enum: [pending, ready, failed]
+        parseError:
+          type: string
+        indexedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+    KnowledgeDocumentDetail:
+      allOf:
+        - $ref: '#/components/schemas/KnowledgeDocument'
+        - type: object
+          required: [text]
+          properties:
+            text:
+              type: string
+    KnowledgeList:
+      type: object
+      required: [documents, counts]
+      properties:
+        documents:
+          type: array
+          items:
+            $ref: '#/components/schemas/KnowledgeDocument'
+        counts:
+          type: object
+          required: [ready, pending, failed, stale]
+          properties:
+            ready:
+              type: integer
+            pending:
+              type: integer
+            failed:
+              type: integer
+            stale:
+              type: integer
+    KnowledgeSearchResults:
+      type: object
+      required: [hits]
+      properties:
+        hits:
+          type: array
+          items:
+            type: object
+            required: [documentId, title, headingPath, snippet, segments, startLine]
+            properties:
+              documentId:
+                type: string
+                format: uuid
+              title:
+                type: string
+              headingPath:
+                type: array
+                items:
+                  type: string
+              snippet:
+                type: string
+                description: The excerpt as plain text.
+              segments:
+                type: array
+                description: The same excerpt in runs, with the matched ones marked.
+                items:
+                  type: object
+                  required: [text, matched]
+                  properties:
+                    text:
+                      type: string
+                    matched:
+                      type: boolean
+              startLine:
+                type: integer
+    KnowledgeNoteRequest:
+      type: object
+      required: [title, body]
+      properties:
+        title:
+          type: string
+        body:
+          type: string
+    FormCheck:
+      type: object
+      required: [id, status, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [pending, running, done, failed]
+        result:
+          type: object
+          required: [exercise, confidence, summary, issues]
+          properties:
+            exercise:
+              type: string
+            confidence:
+              type: string
+            summary:
+              type: string
+            issues:
+              type: array
+              items:
+                type: object
+                required: [at, severity, observation, correction]
+                properties:
+                  at:
+                    type: number
+                    description: Seconds into the clip.
+                  severity:
+                    type: string
+                  observation:
+                    type: string
+                  correction:
+                    type: string
+        error:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    FormCheckList:
+      type: object
+      required: [checks]
+      properties:
+        checks:
+          type: array
+          items:
+            $ref: '#/components/schemas/FormCheck'
     InsightsRange:
       type: object
       required: [key, label, options]
