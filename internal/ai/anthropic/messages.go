@@ -69,6 +69,11 @@ func contentBlocks(m ai.Message) []sdk.ContentBlockParamUnion {
 			blocks = append(blocks, sdk.NewTextBlock("[attachment: "+part.MIMEType+" not shown]"))
 		}
 	}
+	if len(m.ToolCalls) > 0 {
+		// The thinking that led to a call has to come back ahead of it,
+		// unchanged, or the API refuses the continuation.
+		blocks = append(thinkingBlocks(m.ProviderState), blocks...)
+	}
 	for _, call := range m.ToolCalls {
 		var input any = map[string]any{}
 		if len(call.Arguments) > 0 {
@@ -97,4 +102,66 @@ func toTools(tools []ai.Tool) []sdk.ToolUnionParam {
 		out = append(out, sdk.ToolUnionParam{OfTool: &param})
 	}
 	return out
+}
+
+// thinkingBlock is the part of a thinking or redacted-thinking block the API
+// needs back. Serialised into ProviderState and nowhere else.
+type thinkingBlock struct {
+	Thinking  string `json:"thinking,omitempty"`
+	Signature string `json:"signature,omitempty"`
+	Redacted  string `json:"redacted,omitempty"`
+}
+
+func thinkingState(content []sdk.ContentBlockUnion) json.RawMessage {
+	var kept []thinkingBlock
+	for _, block := range content {
+		switch b := block.AsAny().(type) {
+		case sdk.ThinkingBlock:
+			kept = append(kept, thinkingBlock{Thinking: b.Thinking, Signature: b.Signature})
+		case sdk.RedactedThinkingBlock:
+			kept = append(kept, thinkingBlock{Redacted: b.Data})
+		}
+	}
+	if len(kept) == 0 {
+		return nil
+	}
+	raw, _ := json.Marshal(kept)
+	return raw
+}
+
+func thinkingBlocks(state json.RawMessage) []sdk.ContentBlockParamUnion {
+	var kept []thinkingBlock
+	if len(state) == 0 || json.Unmarshal(state, &kept) != nil {
+		return nil
+	}
+	out := make([]sdk.ContentBlockParamUnion, 0, len(kept))
+	for _, k := range kept {
+		if k.Redacted != "" {
+			out = append(out, sdk.NewRedactedThinkingBlock(k.Redacted))
+		} else {
+			out = append(out, sdk.NewThinkingBlock(k.Signature, k.Thinking))
+		}
+	}
+	return out
+}
+
+// lostThinking reports a tool call in the turn in progress replayed without
+// the thinking that led to it, which happens when a turn is rebuilt from the
+// database after an approval.
+//
+// Only the current turn counts: the API requires thinking back within a
+// tool-use turn and allows it to be omitted from earlier ones, so a tool round
+// from yesterday, stored without state, must not switch thinking off today.
+// The current turn is everything after the person's last own message.
+func lostThinking(in []ai.Message) bool {
+	for i := len(in) - 1; i >= 0; i-- {
+		m := in[i]
+		if m.Role == ai.RoleUser && len(m.ToolResults) == 0 {
+			return false
+		}
+		if len(m.ToolCalls) > 0 && len(m.ProviderState) == 0 {
+			return true
+		}
+	}
+	return false
 }

@@ -98,6 +98,12 @@ func (c *Client) params(req ai.Request) sdk.MessageNewParams {
 	if len(req.Tools) > 0 {
 		p.Tools = toTools(req.Tools)
 	}
+	// A tool call rebuilt from the database has lost its thinking, and a
+	// replayed call without it is refused. That one request runs without
+	// thinking; everything else keeps the model's default.
+	if lostThinking(req.Messages) {
+		p.Thinking = sdk.ThinkingConfigParamUnion{OfDisabled: &sdk.ThinkingConfigDisabledParam{}}
+	}
 	if req.ResponseSchema != nil {
 		p.OutputConfig = sdk.OutputConfigParam{
 			Format: sdk.JSONOutputFormatParam{Schema: ai.JSONSchema(req.ResponseSchema)},
