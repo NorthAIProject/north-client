@@ -19,7 +19,7 @@ type noteCall struct{ kind, dedupe, href string }
 
 type stubInbox struct{ notes []noteCall }
 
-func (s *stubInbox) Note(_ context.Context, _ uuid.UUID, kind, dedupe, _, _, href string) error {
+func (s *stubInbox) NoteWithPush(_ context.Context, _ uuid.UUID, kind, dedupe, _, _, href string) error {
 	s.notes = append(s.notes, noteCall{kind, dedupe, href})
 	return nil
 }

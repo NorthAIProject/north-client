@@ -53,10 +53,12 @@ type Chats interface {
 	PostProactive(ctx context.Context, userID, preferred uuid.UUID, text, sourceLabel string) (conversations.Message, error)
 }
 
-// Inbox records a bell note. Distinct from Notifier: the briefing body is
-// already sent to Telegram; this is the in-app row only.
+// Inbox records a bell note and puts it on the lock screen. Distinct from
+// Notifier: the briefing body is already sent to Telegram, so this is the
+// in-app row plus Web Push, never a second Telegram message.
+// nudges.Service satisfies it.
 type Inbox interface {
-	Note(ctx context.Context, userID uuid.UUID, kind, dedupe, title, body, href string) error
+	NoteWithPush(ctx context.Context, userID uuid.UUID, kind, dedupe, title, body, href string) error
 }
 
 // Notifier delivers a finished daily briefing to a linked chat. Optional.
@@ -81,7 +83,8 @@ type Options struct {
 	// app. Nil leaves the briefing in-app only.
 	Notify Notifier
 
-	// Inbox records the same briefing in the web bell. Nil skips the row.
+	// Inbox records the same briefing in the web bell and sends it to the
+	// person's subscribed browsers. Nil skips both.
 	Inbox Inbox
 
 	// Chats puts the briefing into the latest chat, captioned "Briefing",
