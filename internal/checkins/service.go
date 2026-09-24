@@ -106,7 +106,12 @@ func (s *Service) Get(ctx context.Context, id, userID uuid.UUID) (CheckIn, error
 }
 
 func (s *Service) Today(ctx context.Context, user users.User) (CheckIn, error) {
-	return s.repo.GetByDate(ctx, user.ID, LocalDate(user, time.Now()))
+	c, err := s.repo.GetByDate(ctx, user.ID, LocalDate(user, time.Now()))
+	if err != nil {
+		return CheckIn{}, err
+	}
+	// The goal's title, as List fills it, so today's check-in reads the same.
+	return s.withGoalTitles(ctx, user.ID, []CheckIn{c})[0], nil
 }
 
 // ListBetween returns every check-in inside a window, newest first. Unlike

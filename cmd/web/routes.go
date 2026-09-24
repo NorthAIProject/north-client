@@ -796,6 +796,8 @@ func routes(
 			health:     health.NewAPI(healthSvc),
 			fitness:    fitness.NewAPI(stravaSvc, cfg.BaseURL),
 			insights:   insights.NewAPI(insightsSvc),
+			goals:      goals.NewAPI(goalSvc),
+			checkins:   checkins.NewAPI(checkinSvc),
 		})
 	})
 
