@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -133,6 +134,9 @@ func (c *Client) Send(ctx context.Context, externalID string, msg messaging.Outb
 		}
 		if last := i == len(parts)-1; last && len(msg.Options) > 0 {
 			body["reply_markup"] = inlineKeyboard(msg.Options)
+		}
+		if video := videoLink.FindString(part); video != "" {
+			body["link_preview_options"] = map[string]any{"url": video, "prefer_large_media": true}
 		}
 
 		err := c.call(ctx, "sendMessage", body, nil)
@@ -511,6 +515,15 @@ func inlineKeyboard(options []messaging.Option) map[string]any {
 	// read as a list.
 	return map[string]any{"inline_keyboard": [][]map[string]string{row}}
 }
+
+// videoLink finds a YouTube address in a reply.
+//
+// Telegram previews one link per message, the first by default, and a coach
+// answer about a movement names the illustration before the video often
+// enough. The illustration is an SVG, which Telegram cannot preview, so the
+// video the person should watch was left as a bare link. Naming it in
+// link_preview_options puts the player in the chat instead.
+var videoLink = regexp.MustCompile(`https://(?:www\.|m\.)?(?:youtube\.com/(?:watch\?v=|shorts/)|youtu\.be/)[\w-]+(?:[?&][\w=&%-]*)?`)
 
 // splitMessage cuts text into pieces Telegram will accept, preferring to break
 // at a blank line, then a newline, then a space, and only splitting mid-word

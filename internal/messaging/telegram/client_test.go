@@ -583,3 +583,46 @@ func methodsOf(calls []botCall) []string {
 	}
 	return out
 }
+
+// Telegram previews one link per message, and by default the first. A reply
+// that named the illustration's SVG before the video got a preview of neither:
+// Telegram cannot draw an SVG, and the video was never the one it tried.
+func TestAVideoLinkIsTheOneTelegramPreviews(t *testing.T) {
+	api := newBotAPI(t)
+
+	err := api.client().Send(context.Background(), "884422", messaging.OutboundMessage{
+		Text: "Illustration: https://kheprios.com/assets/exercises/squat/frame-1.svg\n" +
+			"Video: https://youtu.be/aclHkVaku9U",
+	})
+	if err != nil {
+		t.Fatalf("send: %v", err)
+	}
+
+	sends := api.sends()
+	if len(sends) != 1 {
+		t.Fatalf("expected one sendMessage, got %d", len(sends))
+	}
+	options, _ := sends[0].body["link_preview_options"].(map[string]any)
+	if options["url"] != "https://youtu.be/aclHkVaku9U" {
+		t.Errorf("preview url = %v, want the video", options["url"])
+	}
+	if options["prefer_large_media"] != true {
+		t.Errorf("prefer_large_media = %v, want true", options["prefer_large_media"])
+	}
+}
+
+// Without a video nothing is chosen for Telegram: its default preview stays.
+func TestTextWithoutAVideoLeavesThePreviewAlone(t *testing.T) {
+	api := newBotAPI(t)
+
+	err := api.client().Send(context.Background(), "884422", messaging.OutboundMessage{
+		Text: "Read https://kheprios.com/insights when you have a minute.",
+	})
+	if err != nil {
+		t.Fatalf("send: %v", err)
+	}
+
+	if _, ok := api.sends()[0].body["link_preview_options"]; ok {
+		t.Error("a message with no video should not set link_preview_options")
+	}
+}
