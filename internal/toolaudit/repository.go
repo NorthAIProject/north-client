@@ -2,6 +2,8 @@ package toolaudit
 
 import (
 	"context"
+	"encoding/json"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -65,4 +67,22 @@ func nilIfEmpty(s string) *string {
 		return nil
 	}
 	return &s
+}
+
+func (r *Repository) ArgumentsSince(ctx context.Context, userID uuid.UUID, tool string, surface Surface, since time.Time) ([]json.RawMessage, error) {
+	rows, err := r.q.ToolArgumentsSince(ctx, toolauditdb.ToolArgumentsSinceParams{
+		UserID:  userID,
+		Tool:    tool,
+		Surface: string(surface),
+		Since:   since,
+	})
+	if err != nil {
+		return nil, apperr.Wrap(err, "list %q arguments since %s", tool, since)
+	}
+
+	out := make([]json.RawMessage, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, row)
+	}
+	return out, nil
 }

@@ -3,8 +3,11 @@ package toolaudit_test
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"testing"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/NorthAIProject/north-client/internal/shared/database/testdb"
@@ -191,5 +194,47 @@ func TestExecutionsComeBackNewestFirst(t *testing.T) {
 	}
 	if list[0].Tool != "third" {
 		t.Errorf("first row = %q, want the most recent", list[0].Tool)
+	}
+}
+
+// The coach asks this after a reply from an agent that read the catalogue over
+// MCP instead of through the coach's own tools. Only that agent's successful
+// get_exercise runs for this person, during this turn, belong to the reply.
+func TestExercisesLookedUpOverMCPSinceAMoment(t *testing.T) {
+	svc, user, pool := newService(t)
+	ctx := context.Background()
+
+	record := func(userID uuid.UUID, tool, args string, surface toolaudit.Surface, outcome toolaudit.Outcome) {
+		t.Helper()
+		if err := svc.Record(ctx, toolaudit.Execution{
+			UserID: userID, Tool: tool, Arguments: json.RawMessage(args),
+			Surface: surface, Outcome: outcome,
+		}); err != nil {
+			t.Fatalf("record %s: %v", tool, err)
+		}
+	}
+
+	// An hour ago: a lookup from some earlier turn.
+	record(user.ID, "get_exercise", `{"slug":"deadlift"}`, toolaudit.SurfaceMCP, toolaudit.OutcomeExecuted)
+	if _, err := pool.Exec(ctx, `UPDATE tool_executions SET created_at = now() - interval '1 hour'`); err != nil {
+		t.Fatalf("backdate: %v", err)
+	}
+	since := time.Now().Add(-time.Minute)
+
+	other := register(t, pool, "someone@north.test")
+	record(user.ID, "get_exercise", `{"slug":"squat"}`, toolaudit.SurfaceMCP, toolaudit.OutcomeExecuted)
+	record(user.ID, "get_exercise", `{"slug":"squat"}`, toolaudit.SurfaceMCP, toolaudit.OutcomeExecuted)
+	record(user.ID, "get_exercise", `{"slug":"goblet-squat"}`, toolaudit.SurfaceMCP, toolaudit.OutcomeExecuted)
+	record(user.ID, "get_exercise", `{"slug":"lunge"}`, toolaudit.SurfaceMCP, toolaudit.OutcomeFailed)
+	record(user.ID, "get_exercise", `{"slug":"push-up"}`, toolaudit.SurfaceCoach, toolaudit.OutcomeExecuted)
+	record(user.ID, "search_exercises", `{"query":"squat"}`, toolaudit.SurfaceMCP, toolaudit.OutcomeExecuted)
+	record(other.ID, "get_exercise", `{"slug":"pull-up"}`, toolaudit.SurfaceMCP, toolaudit.OutcomeExecuted)
+
+	got, err := svc.ExercisesLookedUpSince(ctx, user.ID, since)
+	if err != nil {
+		t.Fatalf("exercises looked up: %v", err)
+	}
+	if want := []string{"squat", "goblet-squat"}; !slices.Equal(got, want) {
+		t.Errorf("exercises = %v, want %v", got, want)
 	}
 }
