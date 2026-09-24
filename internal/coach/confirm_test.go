@@ -11,6 +11,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/ai/fake"
 	"github.com/NorthAIProject/north-client/internal/coach"
+	"github.com/NorthAIProject/north-client/internal/conversations"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
@@ -421,4 +422,97 @@ type stubAudit struct{ declined []coach.DeclinedCall }
 
 func (s *stubAudit) RecordDeclinedCall(_ context.Context, c coach.DeclinedCall) {
 	s.declined = append(s.declined, c)
+}
+
+// fillThread gives a conversation more history than one page of it holds.
+//
+// A linked Telegram chat is a single thread that runs for weeks, and anything
+// reading "the latest turn" off a first page of it reads a turn from the
+// start of the conversation instead.
+func fillThread(t *testing.T, h harness, conversationID uuid.UUID, pairs int) {
+	t.Helper()
+
+	ctx := context.Background()
+	for i := range pairs {
+		if _, err := h.convos.AppendUserMessage(ctx, conversationID, "morning", nil); err != nil {
+			t.Fatalf("seed user message %d: %v", i, err)
+		}
+		if _, err := h.convos.AppendModelMessage(ctx, conversationID, "morning to you",
+			nil, "test-model", "fake", nil, conversations.Provenance{}); err != nil {
+			t.Fatalf("seed model message %d: %v", i, err)
+		}
+	}
+}
+
+// Added after Telegram sent "show me how to do a squat" into a thread of
+// several hundred messages: get_exercise ran and the reply went out without
+// its animation, because the lookup was read back off the oldest page of the
+// thread rather than off the reply that made it.
+func TestTheLatestExerciseIsFoundOnALongThread(t *testing.T) {
+	t.Parallel()
+
+	tools := &stubTools{
+		tools:    []ai.Tool{{Name: coach.ToolGetExercise, Description: "Read one exercise."}},
+		results:  map[string]string{coach.ToolGetExercise: "Squat (strength, beginner)"},
+		readOnly: map[string]bool{coach.ToolGetExercise: true},
+	}
+	client := &fake.Client{Responses: []fake.Response{
+		fake.Calling(fake.ToolCall(coach.ToolGetExercise, `{"slug":"squat"}`)),
+		{Text: "Feet shoulder-width, sit back and down."},
+	}}
+
+	h := newToolHarness(t, client, tools)
+	conversationID := newConversation(t, h)
+	fillThread(t, h, conversationID, 150)
+
+	stream, err := h.coach.SendMessage(context.Background(), h.user, conversationID, "show me how to do a squat")
+	if err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	if _, drainErr := drain(stream); drainErr != nil {
+		t.Fatalf("drain: %v", drainErr)
+	}
+
+	slugs, err := h.coach.LatestExerciseRefs(context.Background(), h.user, conversationID)
+	if err != nil {
+		t.Fatalf("latest exercise refs: %v", err)
+	}
+	if len(slugs) != 1 || slugs[0] != "squat" {
+		t.Errorf("latest exercises = %v, want [squat]", slugs)
+	}
+}
+
+// The same page, read for the same reason: a write suspended at the end of a
+// long thread must still be found, or the person is never asked to approve it.
+func TestAWriteSuspendedOnALongThreadIsStillPending(t *testing.T) {
+	t.Parallel()
+
+	tools := &stubTools{
+		tools:    []ai.Tool{writeTool},
+		results:  map[string]string{"create_check_in": "logged"},
+		readOnly: map[string]bool{"create_check_in": false},
+	}
+	client := &fake.Client{Responses: []fake.Response{
+		fake.Calling(fake.ToolCall("create_check_in", `{"mood":4}`)),
+	}}
+
+	h := newToolHarness(t, client, tools)
+	conversationID := newConversation(t, h)
+	fillThread(t, h, conversationID, 150)
+
+	stream, err := h.coach.SendMessage(context.Background(), h.user, conversationID, "log my check-in")
+	if err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	if _, drainErr := drain(stream); drainErr != nil {
+		t.Fatalf("drain: %v", drainErr)
+	}
+
+	_, ok, err := h.coach.PendingApproval(context.Background(), h.user, conversationID)
+	if err != nil {
+		t.Fatalf("pending approval: %v", err)
+	}
+	if !ok {
+		t.Error("nothing is awaiting approval; the write at the end of a long thread was missed")
+	}
 }
