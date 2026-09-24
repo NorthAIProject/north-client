@@ -6,6 +6,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/activity"
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/capture"
+	"github.com/NorthAIProject/north-client/internal/care"
 	"github.com/NorthAIProject/north-client/internal/checkins"
 	"github.com/NorthAIProject/north-client/internal/coach"
 	"github.com/NorthAIProject/north-client/internal/dashboard"
@@ -17,6 +18,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/insights"
 	"github.com/NorthAIProject/north-client/internal/media"
 	"github.com/NorthAIProject/north-client/internal/memories"
+	"github.com/NorthAIProject/north-client/internal/mind"
 	"github.com/NorthAIProject/north-client/internal/onboarding"
 	"github.com/NorthAIProject/north-client/internal/reports"
 	"github.com/NorthAIProject/north-client/internal/settings"
@@ -85,6 +87,8 @@ func mountJSON(r chi.Router, sessions auth.SessionResolver, apis apiSet) {
 		apis.memories.Routes(r)
 		apis.knowledge.Routes(r)
 		apis.formChecks.Routes(r)
+		apis.care.Routes(r)
+		apis.mind.Routes(r)
 	})
 }
 
@@ -109,4 +113,6 @@ type apiSet struct {
 	memories   *memories.API
 	knowledge  *documents.API
 	formChecks *media.API
+	care       *care.API
+	mind       *mind.API
 }

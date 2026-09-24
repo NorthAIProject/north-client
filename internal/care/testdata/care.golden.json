@@ -1,0 +1,69 @@
+{
+  "water": {
+    "totalMl": 1250,
+    "targetMl": 2500,
+    "entries": [
+      {
+        "id": "e1e1e1e1-e1e1-e1e1-e1e1-e1e1e1e1e1e1",
+        "amountMl": 500,
+        "loggedAt": "2026-09-24T09:00:00Z"
+      }
+    ]
+  },
+  "lastNight": {
+    "localDate": "2026-09-24",
+    "durationMinutes": 452,
+    "quality": 4,
+    "bedtime": "23:10",
+    "wakeTime": "06:45"
+  },
+  "habits": [
+    {
+      "id": "f2f2f2f2-f2f2-f2f2-f2f2-f2f2f2f2f2f2",
+      "name": "Stretch 10 minutes",
+      "domain": "health",
+      "daysOfWeek": [
+        1,
+        3,
+        5
+      ],
+      "streak": 4,
+      "kept": 5,
+      "scheduled": 6,
+      "doneToday": true,
+      "scheduledToday": true
+    }
+  ],
+  "reminders": [
+    {
+      "id": "a3a3a3a3-a3a3-a3a3-a3a3-a3a3a3a3a3a3",
+      "label": "Protein after training",
+      "timeOfDay": "19:30",
+      "daysOfWeek": [],
+      "enabled": true,
+      "due": true
+    }
+  ],
+  "checkedInToday": true,
+  "waterWeek": [
+    {
+      "label": "Mon",
+      "value": 2100
+    },
+    {
+      "label": "Tue",
+      "value": 1250
+    }
+  ],
+  "sleepWeek": [
+    {
+      "label": "Mon",
+      "value": 7.1
+    },
+    {
+      "label": "Tue",
+      "value": 7.5
+    }
+  ],
+  "habitRate": 83
+}

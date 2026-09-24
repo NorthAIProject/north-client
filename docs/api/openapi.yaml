@@ -2084,6 +2084,258 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+  /care:
+    get:
+      operationId: getCare
+      summary: Water, last night, habits and reminders for today
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Care'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /care/water:
+    post:
+      operationId: logWater
+      summary: Log a drink; answers with the page as it now stands
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WaterRequest'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Care'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /care/water/{entryID}:
+    parameters:
+      - name: entryID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      operationId: undoWater
+      summary: Undo a logged drink
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Care'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /care/sleep:
+    put:
+      operationId: logSleep
+      summary: Log last night; logging again replaces it
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SleepRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Care'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /care/habits:
+    post:
+      operationId: createHabit
+      summary: Start a habit
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HabitRequest'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Care'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /care/habits/{habitID}:
+    parameters:
+      - name: habitID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      operationId: deleteHabit
+      summary: Stop a habit
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Care'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /care/habits/{habitID}/done:
+    parameters:
+      - name: habitID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      operationId: setHabitDone
+      summary: Mark a habit done or not done today
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CareFlagRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Care'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /care/reminders:
+    post:
+      operationId: createCareReminder
+      summary: Add a reminder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CareReminderRequest'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Care'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /care/reminders/{reminderID}:
+    parameters:
+      - name: reminderID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      operationId: deleteCareReminder
+      summary: Remove a reminder
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Care'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /care/reminders/{reminderID}/enabled:
+    parameters:
+      - name: reminderID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      operationId: setCareReminderEnabled
+      summary: Turn a reminder on or off
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CareFlagRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Care'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /mind/journal:
+    get:
+      operationId: getJournal
+      summary: Recent journal entries and the mood trend beside them
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Journal'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: writeJournal
+      summary: Write a journal entry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JournalRequest'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JournalEntry'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
   /insights:
     get:
       operationId: getInsights
@@ -4157,6 +4409,207 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/FormCheck'
+    CarePoint:
+      type: object
+      required: [label, value]
+      properties:
+        label:
+          type: string
+        value:
+          type: number
+    Care:
+      type: object
+      required: [water, habits, reminders, checkedInToday, waterWeek, sleepWeek, habitRate]
+      properties:
+        water:
+          type: object
+          required: [totalMl, targetMl, entries]
+          properties:
+            totalMl:
+              type: integer
+            targetMl:
+              type: integer
+            entries:
+              type: array
+              items:
+                type: object
+                required: [id, amountMl, loggedAt]
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  amountMl:
+                    type: integer
+                  loggedAt:
+                    type: string
+                    format: date-time
+        lastNight:
+          type: object
+          required: [localDate, durationMinutes]
+          properties:
+            localDate:
+              type: string
+            durationMinutes:
+              type: integer
+            quality:
+              type: integer
+            bedtime:
+              type: string
+            wakeTime:
+              type: string
+            notes:
+              type: string
+        habits:
+          type: array
+          items:
+            type: object
+            required: [id, name, domain, daysOfWeek, streak, kept, scheduled, doneToday, scheduledToday]
+            properties:
+              id:
+                type: string
+                format: uuid
+              name:
+                type: string
+              domain:
+                type: string
+              daysOfWeek:
+                type: array
+                description: 0 (Sunday) to 6; at least one.
+                items:
+                  type: integer
+              streak:
+                type: integer
+              kept:
+                type: integer
+              scheduled:
+                type: integer
+              doneToday:
+                type: boolean
+              scheduledToday:
+                type: boolean
+        reminders:
+          type: array
+          items:
+            type: object
+            required: [id, label, timeOfDay, daysOfWeek, enabled, due]
+            properties:
+              id:
+                type: string
+                format: uuid
+              label:
+                type: string
+              timeOfDay:
+                type: string
+              daysOfWeek:
+                type: array
+                items:
+                  type: integer
+              enabled:
+                type: boolean
+              due:
+                type: boolean
+        checkedInToday:
+          type: boolean
+        waterWeek:
+          type: array
+          items:
+            $ref: '#/components/schemas/CarePoint'
+        sleepWeek:
+          type: array
+          items:
+            $ref: '#/components/schemas/CarePoint'
+        habitRate:
+          type: integer
+    WaterRequest:
+      type: object
+      required: [amountMl]
+      properties:
+        amountMl:
+          type: integer
+    SleepRequest:
+      type: object
+      required: [durationMinutes]
+      properties:
+        durationMinutes:
+          type: integer
+        quality:
+          type: integer
+        bedtime:
+          type: string
+        wakeTime:
+          type: string
+        notes:
+          type: string
+    HabitRequest:
+      type: object
+      required: [name, domain, daysOfWeek]
+      properties:
+        name:
+          type: string
+        domain:
+          type: string
+        daysOfWeek:
+          type: array
+          items:
+            type: integer
+    CareReminderRequest:
+      type: object
+      required: [label, timeOfDay, daysOfWeek]
+      properties:
+        label:
+          type: string
+        timeOfDay:
+          type: string
+        daysOfWeek:
+          type: array
+          items:
+            type: integer
+    CareFlagRequest:
+      type: object
+      required: [value]
+      properties:
+        value:
+          type: boolean
+    JournalEntry:
+      type: object
+      required: [id, content, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        content:
+          type: string
+        mood:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+    Journal:
+      type: object
+      required: [entries, trend]
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/JournalEntry'
+        trend:
+          type: object
+          required: [averageMood, averageEnergy, count]
+          properties:
+            averageMood:
+              type: number
+            averageEnergy:
+              type: number
+            count:
+              type: integer
+    JournalRequest:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+        mood:
+          type: integer
     InsightsRange:
       type: object
       required: [key, label, options]
