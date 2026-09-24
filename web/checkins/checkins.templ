@@ -16,6 +16,7 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
 	"github.com/NorthAIProject/north-client/web/shared/ui/card"
 	"github.com/NorthAIProject/north-client/web/shared/ui/chart"
+	"github.com/NorthAIProject/north-client/web/shared/ui/dictate"
 	"github.com/NorthAIProject/north-client/web/shared/ui/form"
 	"github.com/NorthAIProject/north-client/web/shared/ui/label"
 	"github.com/NorthAIProject/north-client/web/shared/ui/selectbox"
@@ -121,6 +122,7 @@ templ IndexPage(user users.User, list []checkin.CheckIn, form CheckInForm, activ
 		@label.Script()
 		@selectbox.Script()
 		@ui.ChartScripts()
+		@dictate.Script()
 	}
 }
 
@@ -354,14 +356,16 @@ templ todayForm(f CheckInForm, activeGoals []goal.Goal, first bool) {
 						// Value, not children: the component renders p.Value and drops
 						// anything passed as children, so text handed to it that way
 						// vanished silently on every re-render.
-						@textarea.Textarea(textarea.Props{
-							ID:          "wins",
-							Name:        "wins",
-							Rows:        3,
-							Placeholder: i18n.T(ctx, "checkins.ph.wins"),
-							Value:       f.Wins,
-							HasError:    f.fieldError("wins") != "",
-						})
+						@dictate.Field(dictate.Props{Target: "wins"}) {
+							@textarea.Textarea(textarea.Props{
+								ID:          "wins",
+								Name:        "wins",
+								Rows:        3,
+								Placeholder: i18n.T(ctx, "checkins.ph.wins"),
+								Value:       f.Wins,
+								HasError:    f.fieldError("wins") != "",
+							})
+						}
 						@fieldMessage(f.fieldError("wins"))
 					}
 					@stepNav(2, 4)
@@ -371,14 +375,16 @@ templ todayForm(f CheckInForm, activeGoals []goal.Goal, first bool) {
 						@label.Label(label.Props{For: "challenges"}) {
 							{ i18n.T(ctx, "checkins.q.hard") }
 						}
-						@textarea.Textarea(textarea.Props{
-							ID:          "challenges",
-							Name:        "challenges",
-							Rows:        3,
-							Placeholder: i18n.T(ctx, "checkins.ph.hard"),
-							Value:       f.Challenges,
-							HasError:    f.fieldError("challenges") != "",
-						})
+						@dictate.Field(dictate.Props{Target: "challenges"}) {
+							@textarea.Textarea(textarea.Props{
+								ID:          "challenges",
+								Name:        "challenges",
+								Rows:        3,
+								Placeholder: i18n.T(ctx, "checkins.ph.hard"),
+								Value:       f.Challenges,
+								HasError:    f.fieldError("challenges") != "",
+							})
+						}
 						@fieldMessage(f.fieldError("challenges"))
 					}
 					@stepNav(3, 5)
@@ -388,14 +394,16 @@ templ todayForm(f CheckInForm, activeGoals []goal.Goal, first bool) {
 						@label.Label(label.Props{For: "notes"}) {
 							{ i18n.T(ctx, "checkins.q.notes") }
 						}
-						@textarea.Textarea(textarea.Props{
-							ID:          "notes",
-							Name:        "notes",
-							Rows:        3,
-							Placeholder: i18n.T(ctx, "checkins.ph.notes"),
-							Value:       f.Notes,
-							HasError:    f.fieldError("notes") != "",
-						})
+						@dictate.Field(dictate.Props{Target: "notes"}) {
+							@textarea.Textarea(textarea.Props{
+								ID:          "notes",
+								Name:        "notes",
+								Rows:        3,
+								Placeholder: i18n.T(ctx, "checkins.ph.notes"),
+								Value:       f.Notes,
+								HasError:    f.fieldError("notes") != "",
+							})
+						}
 						@fieldMessage(f.fieldError("notes"))
 					}
 					if len(activeGoals) > 0 {

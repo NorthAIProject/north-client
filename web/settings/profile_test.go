@@ -114,3 +114,14 @@ func TestNotificationsCardShowsFieldErrors(t *testing.T) {
 		t.Error("the rejected value was not returned to the form")
 	}
 }
+
+// The saved style has to be in the box. It is posted back with every profile
+// save, so a box rendered empty quietly erased it the next time anybody
+// changed their timezone.
+func TestTheSavedCoachingStyleIsInTheBox(t *testing.T) {
+	html := renderSettings(t, ProfileForm{CoachingStyle: "Be blunt about sleep."}, NotificationsForm{})
+
+	if !strings.Contains(html, "Be blunt about sleep.</textarea>") {
+		t.Error("the coaching style box renders empty, so saving the profile would erase it")
+	}
+}

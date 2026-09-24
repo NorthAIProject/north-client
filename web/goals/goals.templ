@@ -5,9 +5,9 @@ import (
 	"slices"
 	"strconv"
 
-	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/goals/goal"
 	"github.com/NorthAIProject/north-client/internal/moments"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
 	"github.com/NorthAIProject/north-client/web/shared/moment"
@@ -15,6 +15,7 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/badge"
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
 	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/dictate"
 	"github.com/NorthAIProject/north-client/web/shared/ui/form"
 	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
 	"github.com/NorthAIProject/north-client/web/shared/ui/input"
@@ -167,6 +168,7 @@ templ IndexPage(user users.User, list []goal.Goal, inst Instruments, f GoalForm)
 		@selectbox.Script()
 		@progress.Script()
 		@ui.ChartScripts()
+		@dictate.Script()
 	}
 }
 
@@ -347,6 +349,7 @@ templ DetailPage(user users.User, g goal.Goal, updates []goal.Update, f GoalForm
 		@textarea.Script()
 		@selectbox.Script()
 		@progress.Script()
+		@dictate.Script()
 	}
 }
 
@@ -597,13 +600,15 @@ templ progressForm(g goal.Goal, errMsg string) {
 		@card.Content() {
 			<form method="post" action={ templ.SafeURL("/app/goals/" + g.ID.String() + "/updates") } class="space-y-3">
 				@ui.CSRFInput()
-				@textarea.Textarea(textarea.Props{
-					ID:          "note",
-					Name:        "note",
-					Placeholder: i18n.T(ctx, "goals.progress.ph"),
-					Rows:        2,
-					HasError:    errMsg != "",
-				})
+				@dictate.Field(dictate.Props{Target: "note"}) {
+					@textarea.Textarea(textarea.Props{
+						ID:          "note",
+						Name:        "note",
+						Placeholder: i18n.T(ctx, "goals.progress.ph"),
+						Rows:        2,
+						HasError:    errMsg != "",
+					})
+				}
 				if errMsg != "" {
 					@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
 						{ errMsg }
@@ -672,24 +677,28 @@ templ goalFields(f GoalForm) {
 		})
 	}
 	@field("motivation", i18n.T(ctx, "goals.f.motivation"), f.fieldError("motivation")) {
-		@textarea.Textarea(textarea.Props{
-			ID:          "motivation",
-			Name:        "motivation",
-			Value:       f.Motivation,
-			Placeholder: i18n.T(ctx, "goals.f.motivation.ph"),
-			Rows:        2,
-			HasError:    f.fieldError("motivation") != "",
-		})
+		@dictate.Field(dictate.Props{Target: "motivation"}) {
+			@textarea.Textarea(textarea.Props{
+				ID:          "motivation",
+				Name:        "motivation",
+				Value:       f.Motivation,
+				Placeholder: i18n.T(ctx, "goals.f.motivation.ph"),
+				Rows:        2,
+				HasError:    f.fieldError("motivation") != "",
+			})
+		}
 	}
 	@field("success", i18n.T(ctx, "goals.f.success"), f.fieldError("success")) {
-		@textarea.Textarea(textarea.Props{
-			ID:          "success",
-			Name:        "success",
-			Value:       f.Success,
-			Placeholder: i18n.T(ctx, "goals.f.success.ph"),
-			Rows:        2,
-			HasError:    f.fieldError("success") != "",
-		})
+		@dictate.Field(dictate.Props{Target: "success"}) {
+			@textarea.Textarea(textarea.Props{
+				ID:          "success",
+				Name:        "success",
+				Value:       f.Success,
+				Placeholder: i18n.T(ctx, "goals.f.success.ph"),
+				Rows:        2,
+				HasError:    f.fieldError("success") != "",
+			})
+		}
 	}
 	<div class="grid gap-4 sm:grid-cols-2">
 		@field("category", i18n.T(ctx, "goals.f.category"), f.fieldError("category")) {

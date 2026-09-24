@@ -10,6 +10,7 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
 	"github.com/NorthAIProject/north-client/web/shared/ui/card"
 	"github.com/NorthAIProject/north-client/web/shared/ui/checkbox"
+	"github.com/NorthAIProject/north-client/web/shared/ui/dictate"
 	"github.com/NorthAIProject/north-client/web/shared/ui/input"
 	"github.com/NorthAIProject/north-client/web/shared/ui/label"
 	"github.com/NorthAIProject/north-client/web/shared/ui/radio"
@@ -141,13 +142,15 @@ templ FormPage(f Form) {
 							@styleOption("style-custom", styleCustom, "Custom", "Describe it in your own words.", f)
 						</div>
 						<div x-show="preset === 'custom'" x-cloak class="space-y-2">
-							@textarea.Textarea(textarea.Props{
-								ID:          "coaching_style_custom",
-								Name:        "coaching_style_custom",
-								Rows:        3,
-								Placeholder: "E.g. \"Be direct, skip the pep talks.\"",
-								Value:       f.StyleCustom,
-							})
+							@dictate.Field(dictate.Props{Target: "coaching_style_custom"}) {
+								@textarea.Textarea(textarea.Props{
+									ID:          "coaching_style_custom",
+									Name:        "coaching_style_custom",
+									Rows:        3,
+									Placeholder: "E.g. \"Be direct, skip the pep talks.\"",
+									Value:       f.StyleCustom,
+								})
+							}
 						</div>
 						if f.fieldError("coaching_style") != "" {
 							<p class="text-destructive text-sm">{ f.fieldError("coaching_style") }</p>
@@ -192,6 +195,7 @@ templ FormPage(f Form) {
 				Skip for now
 			}
 		</form>
+		@dictate.Script()
 	}
 }
 

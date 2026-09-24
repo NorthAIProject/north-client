@@ -47,7 +47,14 @@ const (
 	// followed immediately by a coach turn. Rolling them together would hide
 	// which surface the audio spend actually comes from.
 	SurfaceTelegramVoice = "telegram_voice"
-	SurfaceEmbedding     = "embedding"
+
+	// SurfaceDictation is the microphone beside every other text box on the
+	// web: the chat composer, check-ins, goals and the rest. Apart from
+	// SurfaceVoiceCapture because quick capture is one box with a parse behind
+	// it, and this is words typed by voice into whatever the person was
+	// already writing.
+	SurfaceDictation = "dictation"
+	SurfaceEmbedding = "embedding"
 
 	// SurfaceUnknown labels a call that reached a provider without anyone
 	// saying what it was for. Recorded rather than guessed: an unlabelled call

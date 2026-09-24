@@ -17,6 +17,7 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/alert"
 	"github.com/NorthAIProject/north-client/web/shared/ui/badge"
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/dictate"
 	"github.com/NorthAIProject/north-client/web/shared/ui/form"
 	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
 	"github.com/NorthAIProject/north-client/web/shared/ui/input"
@@ -93,6 +94,7 @@ templ IndexPage(user users.User, view View, form NoteForm) {
 		</div>
 		@textarea.Script()
 		@label.Script()
+		@dictate.Script()
 	}
 }
 
@@ -299,14 +301,17 @@ templ addNote(f NoteForm) {
 				}
 			}
 			@form.Item() {
-				@textarea.Textarea(textarea.Props{
-					ID:          "body",
-					Name:        "body",
-					Rows:        5,
-					Placeholder: "Markdown headings help Khepri quote the right part.",
-					HasError:    f.fieldError("body") != "",
-				}) {
-					{ f.Body }
+				// Value, not children: children are dropped, so a note sent back
+				// with a validation error came back without its body.
+				@dictate.Field(dictate.Props{Target: "body"}) {
+					@textarea.Textarea(textarea.Props{
+						ID:          "body",
+						Name:        "body",
+						Rows:        5,
+						Placeholder: "Markdown headings help Khepri quote the right part.",
+						Value:       f.Body,
+						HasError:    f.fieldError("body") != "",
+					})
 				}
 				if f.fieldError("body") != "" {
 					@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {

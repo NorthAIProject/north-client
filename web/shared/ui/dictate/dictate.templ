@@ -1,0 +1,144 @@
+// Package dictate is the microphone beside a text box.
+//
+// Written in the templUI style but not from it: templUI has no recorder. It
+// composes the vendored button and icons, so it restyles with them.
+//
+// The words it hears go into the box and nowhere else. Nothing is submitted:
+// the person reads what was heard, edits it, and sends it themselves, exactly
+// as they would have after typing.
+package dictate
+
+import (
+	"context"
+	"strconv"
+
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
+	"github.com/NorthAIProject/north-client/internal/voice"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
+	"github.com/NorthAIProject/north-client/web/shared/utils"
+)
+
+type Props struct {
+	// Target is the id of the textarea the transcript is written into.
+	Target string
+
+	// Surface names the spend label the recording is recorded against. Empty
+	// is dictation; the endpoint ignores anything it does not list.
+	Surface string
+
+	// ShowLabel adds the word beside the icon, for a page where the microphone
+	// is one of the main ways in rather than a shortcut beside a box.
+	ShowLabel bool
+
+	Variant button.Variant
+	Class   string
+}
+
+// Button renders the microphone, or nothing on a deployment that cannot
+// transcribe.
+//
+// It starts hidden even then, until dictate.js has confirmed this browser can
+// record. A button that opens a permission prompt and then fails is worse than
+// one that was never offered, so an unsupported browser sees the typed box,
+// unchanged.
+templ Button(props Props) {
+	if voice.DictationAvailable(ctx) {
+		<span class={ utils.TwMerge("relative inline-flex shrink-0", props.Class) }>
+			@button.Button(button.Props{
+				Type:       button.TypeButton,
+				Variant:    props.Variant,
+				Size:       utils.If(!props.ShowLabel, button.SizeIcon),
+				Class:      "group min-h-11 min-w-11 data-[state=recording]:border-destructive data-[state=recording]:text-destructive",
+				Attributes: attributes(ctx, props),
+			}) {
+				<span class="inline-flex group-data-[state=reading]:hidden group-data-[state=recording]:hidden">
+					@icon.Mic(icon.Props{Class: "size-4"})
+				</span>
+				<span class="hidden group-data-[state=recording]:inline-flex">
+					@icon.Square(icon.Props{Class: "size-4 fill-current"})
+				</span>
+				<span class="hidden group-data-[state=reading]:inline-flex">
+					@icon.LoaderCircle(icon.Props{Class: "size-4 animate-spin"})
+				</span>
+				if props.ShowLabel {
+					<span data-dictate-label>{ i18n.T(ctx, "dictate.say") }</span>
+				}
+			}
+			// Floats above the button rather than taking a line of its own, so
+			// the box it sits beside does not jump when a message appears.
+			<span
+				data-dictate-error
+				role="status"
+				hidden
+				class="bg-popover text-destructive border-border absolute right-0 bottom-full z-20 mb-1 w-max max-w-64 rounded-md border px-2 py-1 text-xs shadow-md"
+			></span>
+		</span>
+	}
+}
+
+// Field puts the microphone in the bottom corner of the textarea it wraps.
+//
+// For a labelled form field, where there is no row of buttons to join. The
+// padding keeps the last line of text from running under the button.
+templ Field(props Props) {
+	if voice.DictationAvailable(ctx) {
+		<div class="relative [&_textarea]:pr-12">
+			{ children... }
+			@Button(Props{
+				Target:  props.Target,
+				Surface: props.Surface,
+				Variant: button.VariantGhost,
+				Class:   utils.TwMerge("absolute right-0.5 bottom-0.5", props.Class),
+			})
+		</div>
+	} else {
+		{ children... }
+	}
+}
+
+var scriptOnce = templ.NewOnceHandle()
+
+// Script loads the recorder once per page. It renders nothing where Button
+// would render nothing.
+templ Script() {
+	if voice.DictationAvailable(ctx) {
+		@scriptOnce.Once() {
+			<script src={ utils.ScriptURL("/assets/js/shared/dictate.js") } defer></script>
+		}
+	}
+}
+
+// attributes carries everything dictate.js needs, so the script holds no
+// English and no limits of its own. The copy keeps an English fallback in the
+// script anyway: a key going missing must not blank a label or swallow an
+// error.
+func attributes(ctx context.Context, p Props) templ.Attributes {
+	attrs := templ.Attributes{
+		"data-dictate":        true,
+		"data-dictate-target": p.Target,
+		"aria-controls":       p.Target,
+		"aria-pressed":        "false",
+		"aria-label":          i18n.T(ctx, "dictate.aria"),
+		"title":               i18n.T(ctx, "dictate.aria"),
+		"hidden":              true,
+
+		"data-dictate-max-seconds": strconv.Itoa(voice.MaxSeconds),
+		"data-dictate-max-bytes":   strconv.Itoa(voice.MaxBytes),
+
+		"data-dictate-say":         i18n.T(ctx, "dictate.say"),
+		"data-dictate-stop":        i18n.T(ctx, "dictate.stop"),
+		"data-dictate-reading":     i18n.T(ctx, "dictate.reading"),
+		"data-dictate-empty":       i18n.T(ctx, "dictate.empty"),
+		"data-dictate-toolong":     i18n.T(ctx, "dictate.toolong"),
+		"data-dictate-unreachable": i18n.T(ctx, "dictate.unreachable"),
+		"data-dictate-unreadable":  i18n.T(ctx, "dictate.unreadable"),
+		"data-dictate-mic":         i18n.T(ctx, "dictate.mic"),
+		"data-dictate-unsupported": i18n.T(ctx, "dictate.unsupported"),
+		"data-dictate-limit":       i18n.T(ctx, "dictate.limit"),
+	}
+	if p.Surface != "" {
+		attrs["data-dictate-surface"] = p.Surface
+	}
+	return attrs
+}

@@ -280,6 +280,17 @@ reading is that this section was right the first time.
 
 Deliberately small, and deliberately not a conversation.
 
+> **Since moved.** The recorder below became the shared dictation button that
+> sits beside every AI-facing text box: `web/shared/ui/dictate/` and
+> `web/assets/js/shared/dictate.js`, posting to `POST /app/voice/transcribe`
+> (`internal/voice/handler.go`), which answers JSON and still spends
+> `quota.VoiceCapture`. Quick capture sends `surface=capture`, so its spend is
+> still recorded as `voice_capture`; everything else is `dictation`. The words
+> are now written in at the cursor instead of re-rendering the composer, and
+> the cap is `voice.MaxSeconds` (two minutes) rather than 60 seconds. The
+> review-before-parse rule is unchanged. The paths and numbers below are the
+> history.
+
 - **Client**: `web/assets/js/shared/capture-recorder.js`, a delegated listener
   rather than an Alpine component so it survives every panel swap with no
   re-initialisation and cannot race Alpine's own deferred start. `MediaRecorder`
