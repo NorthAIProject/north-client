@@ -58,6 +58,10 @@ type Response struct {
 	// provider that decides on its own whether to call anything.
 	ToolCalls []ai.ToolCall
 
+	// ProviderState is emitted with ToolCalls, standing in for a provider
+	// that needs opaque data replayed with its calls.
+	ProviderState json.RawMessage
+
 	// Err is returned instead of a reply.
 	Err error
 
@@ -135,7 +139,7 @@ func (c *Client) Chat(ctx context.Context, req ai.Request) (<-chan ai.StreamChun
 		}
 
 		if len(resp.ToolCalls) > 0 {
-			if !send(ctx, out, ai.StreamChunk{ToolCalls: resp.ToolCalls}) {
+			if !send(ctx, out, ai.StreamChunk{ToolCalls: resp.ToolCalls, ProviderState: resp.ProviderState}) {
 				return
 			}
 		}

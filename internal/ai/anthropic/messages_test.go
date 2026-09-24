@@ -179,3 +179,13 @@ func TestAPhotoIsSentInlineAndOtherAttachmentsAreNamed(t *testing.T) {
 		t.Errorf("voice note sent as %v, want a text note naming it", got[1])
 	}
 }
+
+func sentAt(t *testing.T, api *fakeAPI, i int) []map[string]any {
+	t.Helper()
+	raw, _ := api.body(t, i)["messages"].([]any)
+	out := make([]map[string]any, len(raw))
+	for j, m := range raw {
+		out[j] = m.(map[string]any)
+	}
+	return out
+}

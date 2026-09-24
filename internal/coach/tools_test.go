@@ -2,6 +2,7 @@ package coach_test
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -408,5 +409,42 @@ func TestToolTurnsArePersisted(t *testing.T) {
 	}
 	if !sawResultAfterCall {
 		t.Error("a rebuilt request did not carry the call followed by its result")
+	}
+}
+
+// The coach hands a provider's opaque state back with the tool call it came
+// from, so a provider that needs its thinking replayed gets it.
+func TestProviderStateTravelsWithTheToolCall(t *testing.T) {
+	t.Parallel()
+
+	tools := &stubTools{
+		tools:    []ai.Tool{searchTool},
+		results:  map[string]string{"search_exercises": "- barbell-full-squat"},
+		readOnly: map[string]bool{"search_exercises": true},
+	}
+	client := &fake.Client{Responses: []fake.Response{
+		{ToolCalls: []ai.ToolCall{fake.ToolCall("search_exercises", `{"query":"squat"}`)}, ProviderState: json.RawMessage(`[{"signature":"s"}]`)},
+		{Text: "Barbell full squat."},
+	}}
+	h := newToolHarness(t, client, tools)
+	conversationID := newConversation(t, h)
+
+	stream, err := h.coach.SendMessage(context.Background(), h.user, conversationID, "squat?")
+	if err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	if _, drainErr := drain(stream); drainErr != nil {
+		t.Fatalf("drain: %v", drainErr)
+	}
+
+	second := client.Calls()[1]
+	var found bool
+	for _, m := range second.Messages {
+		if len(m.ToolCalls) > 0 && string(m.ProviderState) == `[{"signature":"s"}]` {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("the follow-up request lost the provider state of the tool call")
 	}
 }

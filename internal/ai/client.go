@@ -12,6 +12,7 @@ package ai
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"time"
 )
@@ -67,6 +68,12 @@ type Message struct {
 
 	// ToolResults is set on the user turn carrying their answers back.
 	ToolResults []ToolResult
+
+	// ProviderState is opaque data the client that produced this turn needs
+	// to see again, such as Anthropic's thinking blocks, which must precede a
+	// replayed tool call unchanged. Owned by that client; every other client
+	// ignores it. Not persisted: a turn rebuilt from the database has none.
+	ProviderState json.RawMessage
 }
 
 func UserText(text string) Message {
@@ -164,6 +171,9 @@ type StreamChunk struct {
 	// Not streamed piecewise: a half-decoded argument object is of no use to
 	// anyone, and every provider only makes the call actionable when complete.
 	ToolCalls []ToolCall
+
+	// ProviderState rides on the ToolCalls chunk; see Message.ProviderState.
+	ProviderState json.RawMessage
 }
 
 // File is a provider-side upload.

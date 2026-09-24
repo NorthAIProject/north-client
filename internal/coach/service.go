@@ -2,6 +2,7 @@ package coach
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"strings"
 	"time"
@@ -645,6 +646,9 @@ func (s *Service) pump(
 
 	for round := 0; ; round++ {
 		var calls []ai.ToolCall
+		// The provider's opaque state for this round's calls, handed back
+		// with them on the next request; see ai.Message.ProviderState.
+		var providerState json.RawMessage
 		var roundUsage *ai.Usage
 		roundStart := time.Now()
 
@@ -666,6 +670,7 @@ func (s *Service) pump(
 				// may still end in a write that has to wait for approval,
 				// and only calls that are about to run are announced (below).
 				calls = append(calls, chunk.ToolCalls...)
+				providerState = chunk.ProviderState
 				continue
 			}
 			if chunk.Text != "" {
@@ -769,8 +774,10 @@ func (s *Service) pump(
 
 		// Both turns, in this order: every provider rejects a result whose
 		// call it has not been shown.
+		callMsg := ai.ToolCallMessage(calls)
+		callMsg.ProviderState = providerState
 		request.Messages = append(request.Messages,
-			ai.ToolCallMessage(calls),
+			callMsg,
 			ai.ToolResultMessage(results),
 		)
 
