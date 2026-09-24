@@ -11,6 +11,7 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
 	"github.com/NorthAIProject/north-client/web/shared/ui/card"
 	"github.com/NorthAIProject/north-client/web/shared/ui/chart"
+	"github.com/NorthAIProject/north-client/web/shared/ui/dictate"
 	"github.com/NorthAIProject/north-client/web/shared/ui/form"
 	"github.com/NorthAIProject/north-client/web/shared/ui/label"
 	"github.com/NorthAIProject/north-client/web/shared/ui/selectbox"
@@ -67,6 +68,7 @@ templ IndexPage(user users.User, entries []journal.Entry, inst Instruments, f Jo
 		@label.Script()
 		@selectbox.Script()
 		@ui.ChartScripts()
+		@dictate.Script()
 	}
 }
 
@@ -146,14 +148,16 @@ templ journalFormCard(f JournalForm) {
 					// Value, not children: the component renders p.Value and has no
 					// children block, so a reflection handed to it that way was
 					// dropped and the writer lost it on every rejected submission.
-					@textarea.Textarea(textarea.Props{
-						ID:          "content",
-						Name:        "content",
-						Rows:        4,
-						Placeholder: "What's on your mind?",
-						Value:       f.Content,
-						HasError:    f.fieldError("content") != "",
-					})
+					@dictate.Field(dictate.Props{Target: "content"}) {
+						@textarea.Textarea(textarea.Props{
+							ID:          "content",
+							Name:        "content",
+							Rows:        4,
+							Placeholder: "What's on your mind?",
+							Value:       f.Content,
+							HasError:    f.fieldError("content") != "",
+						})
+					}
 					if f.fieldError("content") != "" {
 						@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
 							{ f.fieldError("content") }

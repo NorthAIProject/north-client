@@ -13,6 +13,7 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
 	"github.com/NorthAIProject/north-client/web/shared/ui/card"
 	"github.com/NorthAIProject/north-client/web/shared/ui/dialog"
+	"github.com/NorthAIProject/north-client/web/shared/ui/dictate"
 	"github.com/NorthAIProject/north-client/web/shared/ui/form"
 	"github.com/NorthAIProject/north-client/web/shared/ui/label"
 	"github.com/NorthAIProject/north-client/web/shared/ui/selectbox"
@@ -58,6 +59,7 @@ templ Page(user users.User, pending, approved []memory.Memory, inst Instruments,
 		@selectbox.Script()
 		@dialog.Script()
 		@ui.ChartScripts()
+		@dictate.Script()
 	}
 }
 
@@ -166,14 +168,16 @@ templ addForm(f MemoryForm) {
 					@label.Label(label.Props{For: "content", Error: f.fieldError("content")}) {
 						Fact
 					}
-					@textarea.Textarea(textarea.Props{
-						ID:          "content",
-						Name:        "content",
-						Rows:        3,
-						Placeholder: "e.g. Prefers morning training before 8am",
-						Value:       f.Content,
-						HasError:    f.fieldError("content") != "",
-					})
+					@dictate.Field(dictate.Props{Target: "content"}) {
+						@textarea.Textarea(textarea.Props{
+							ID:          "content",
+							Name:        "content",
+							Rows:        3,
+							Placeholder: "e.g. Prefers morning training before 8am",
+							Value:       f.Content,
+							HasError:    f.fieldError("content") != "",
+						})
+					}
 					if f.fieldError("content") != "" {
 						@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
 							{ f.fieldError("content") }
@@ -336,12 +340,14 @@ templ approvedCard(m memory.Memory) {
 					<form method="post" action={ templ.SafeURL("/app/memories/" + m.ID.String()) } class="space-y-3">
 						@ui.CSRFInput()
 						@categoryField("category-"+m.ID.String(), m.Category, "")
-						@textarea.Textarea(textarea.Props{
-							ID:    "content-" + m.ID.String(),
-							Name:  "content",
-							Rows:  3,
-							Value: m.Content,
-						})
+						@dictate.Field(dictate.Props{Target: "content-" + m.ID.String()}) {
+							@textarea.Textarea(textarea.Props{
+								ID:    "content-" + m.ID.String(),
+								Name:  "content",
+								Rows:  3,
+								Value: m.Content,
+							})
+						}
 						<div class="flex flex-wrap gap-2">
 							@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Class: "bg-signal text-background hover:bg-signal/90"}) {
 								Save
@@ -406,13 +412,15 @@ templ approvedCardEdit(m memory.Memory, f MemoryForm) {
 					@label.Label(label.Props{For: "content-" + m.ID.String(), Error: f.fieldError("content")}) {
 						Fact
 					}
-					@textarea.Textarea(textarea.Props{
-						ID:       "content-" + m.ID.String(),
-						Name:     "content",
-						Rows:     3,
-						Value:    f.Content,
-						HasError: f.fieldError("content") != "",
-					})
+					@dictate.Field(dictate.Props{Target: "content-" + m.ID.String()}) {
+						@textarea.Textarea(textarea.Props{
+							ID:       "content-" + m.ID.String(),
+							Name:     "content",
+							Rows:     3,
+							Value:    f.Content,
+							HasError: f.fieldError("content") != "",
+						})
+					}
 					if f.fieldError("content") != "" {
 						@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
 							{ f.fieldError("content") }

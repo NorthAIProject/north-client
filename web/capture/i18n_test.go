@@ -7,13 +7,18 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/internal/voice"
 )
 
 func renderCaptureIn(t *testing.T, locale users.Locale) string {
 	t.Helper()
+	return renderCapture(t, i18n.WithLocale(voice.WithDictation(context.Background(), true), string(locale)), locale)
+}
+
+func renderCapture(t *testing.T, ctx context.Context, locale users.Locale) string {
+	t.Helper()
 
 	var b strings.Builder
-	ctx := i18n.WithLocale(context.Background(), string(locale))
 	user := users.User{DisplayName: "Ana", Locale: locale}
 	if err := Page(user, Data{}).Render(ctx, &b); err != nil {
 		t.Fatalf("render %s: %v", locale, err)
@@ -41,26 +46,43 @@ func TestCaptureRendersInTheChosenLanguage(t *testing.T) {
 	}
 }
 
-// capture-recorder.js used to hold its own English. Every string it shows is
-// now handed to it on the record button, so the voice path is translated too —
-// including the errors, which are the only thing a person sees when the
-// microphone fails.
+// The recorder holds no English of its own. Every string it shows is handed to
+// it on the microphone button, so the voice path is translated too — including
+// the errors, which are the only thing a person sees when the microphone fails.
 func TestTheRecorderIsHandedItsCopy(t *testing.T) {
 	html := renderCaptureIn(t, users.LocalePTPT)
 
 	for _, want := range []string{
-		`data-voice-say="Diz"`,
-		`data-voice-stop="Parar"`,
-		"data-voice-mic=",
+		`data-dictate-say="Diz"`,
+		`data-dictate-stop="Parar"`,
+		"data-dictate-mic=",
 		"microfone",
+		// The box has a parse behind it, so it is metered as a voice note
+		// rather than as dictation.
+		`data-dictate-surface="capture"`,
+		`data-dictate-target="capture-text"`,
+		`id="capture-text"`,
 	} {
 		if !strings.Contains(html, want) {
-			t.Errorf("expected %q on the record button", want)
+			t.Errorf("expected %q on the page", want)
 		}
 	}
 
 	// The English must not also be sitting there.
-	if strings.Contains(html, `data-voice-say="Say it"`) {
+	if strings.Contains(html, `data-dictate-say="Say it"`) {
 		t.Error("the record button still carries the English label")
+	}
+}
+
+// A deployment that cannot transcribe offers the typed box and nothing else: no
+// button, and no script to load for it.
+func TestNoMicrophoneWhereNothingCanListen(t *testing.T) {
+	ctx := i18n.WithLocale(voice.WithDictation(context.Background(), false), string(users.LocaleEN))
+	html := renderCapture(t, ctx, users.LocaleEN)
+
+	for _, unwanted := range []string{"data-dictate", "dictate.js"} {
+		if strings.Contains(html, unwanted) {
+			t.Errorf("page contains %q with dictation off", unwanted)
+		}
 	}
 }

@@ -22,6 +22,7 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/badge"
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
 	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/dictate"
 	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
 	"github.com/NorthAIProject/north-client/web/shared/ui/textarea"
 )
@@ -747,6 +748,9 @@ templ composer(conversationID uuid.UUID, draft string) {
 				}) {
 					@icon.Paperclip(icon.Props{Class: "size-4"})
 				}
+				// Fills the box and stops there. Enter still sends, and the
+				// person presses it after reading what was heard.
+				@dictate.Button(dictate.Props{Target: "message"})
 				@textarea.Textarea(textarea.Props{
 					ID:          "message",
 					Name:        "message",
@@ -772,6 +776,7 @@ templ composer(conversationID uuid.UUID, draft string) {
 		</form>
 	</div>
 	@textarea.Script()
+	@dictate.Script()
 }
 
 // ComposerError re-renders the composer with what was typed and why it was

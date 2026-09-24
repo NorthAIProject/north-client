@@ -87,6 +87,7 @@ var surfaceLabels = map[string]string{
 	"quick_capture":        "Quick capture",
 	"voice_capture":        "Voice notes",
 	"telegram_voice":       "Telegram voice notes",
+	"dictation":            "Dictation",
 	"embedding":            "Indexing knowledge",
 	"unknown":              "Unattributed",
 }

@@ -6,17 +6,6 @@ var portugueseEuropeanCapture = map[string]string{
 	"capture.ph":      "dormi 6h, 2L de água, li 20 páginas, 78kg, humor 4 energia 3",
 	"capture.read":    "Ler",
 
-	"capture.voice.aria":        "Gravar uma nota de voz",
-	"capture.voice.say":         "Diz",
-	"capture.voice.stop":        "Parar",
-	"capture.voice.reading":     "A ler…",
-	"capture.voice.empty":       "Essa gravação estava vazia.",
-	"capture.voice.toolong":     "Essa gravação é demasiado longa.",
-	"capture.voice.unreachable": "Isso não chegou ao Khepri. Tenta outra vez.",
-	"capture.voice.unreadable":  "O Khepri não conseguiu ler essa gravação. Tenta outra vez.",
-	"capture.voice.mic":         "O Khepri não conseguiu chegar ao microfone. Verifica a permissão e tenta outra vez.",
-	"capture.voice.unsupported": "Este navegador não consegue gravar áudio.",
-
 	"capture.left.title": "Não registado",
 	"capture.left.body":  "Não consegui ler isto como entradas, por isso nada foi guardado.",
 	"capture.left.ask":   "Perguntar ao treinador",

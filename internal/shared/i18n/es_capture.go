@@ -6,17 +6,6 @@ var spanishCapture = map[string]string{
 	"capture.ph":      "dormí 6h, 2L de agua, leí 20 páginas, 78kg, ánimo 4 energía 3",
 	"capture.read":    "Leerlo",
 
-	"capture.voice.aria":        "Grabar una nota de voz",
-	"capture.voice.say":         "Dilo",
-	"capture.voice.stop":        "Parar",
-	"capture.voice.reading":     "Leyéndolo…",
-	"capture.voice.empty":       "Esa grabación estaba vacía.",
-	"capture.voice.toolong":     "Esa grabación es demasiado larga.",
-	"capture.voice.unreachable": "Eso no llegó a Khepri. Inténtalo de nuevo.",
-	"capture.voice.unreadable":  "Khepri no pudo leer esa grabación. Inténtalo de nuevo.",
-	"capture.voice.mic":         "Khepri no pudo acceder al micrófono. Revisa el permiso e inténtalo de nuevo.",
-	"capture.voice.unsupported": "Este navegador no puede grabar audio.",
-
 	"capture.left.title": "Sin registrar",
 	"capture.left.body":  "No pude leer esto como entradas, así que no se guardó nada.",
 	"capture.left.ask":   "Preguntar al entrenador",
