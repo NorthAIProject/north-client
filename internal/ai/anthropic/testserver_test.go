@@ -89,3 +89,5 @@ func textMessage(text string) cannedResponse {
 	})
 	return cannedResponse{body: string(b)}
 }
+
+func jsonUnmarshal(s string, v any) error { return json.Unmarshal([]byte(s), v) }
