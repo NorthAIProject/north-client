@@ -60,6 +60,8 @@ this list before the first public cutover.
 | `STORAGE_REGION` | bucket region, e.g. `auto` on R2 | Default `us-east-1` |
 | At least one provider key that appears in `AI_PROVIDER_CHAIN` | see [AI](#ai) | Otherwise the registry has only `fake`, and the coach replies with the fake string |
 | `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` | Google Cloud OAuth client | "Continue with Google". Empty hides the button |
+| `GOOGLE_IOS_CLIENT_ID` | Google Cloud iOS OAuth client ID | Native iOS Google ID-token audience. Empty disables native Google sign-in |
+| `APPLE_BUNDLE_ID` | Apple App ID bundle identifier | Native Sign in with Apple audience. Empty disables native Apple sign-in |
 | `STRAVA_CLIENT_ID` + `STRAVA_CLIENT_SECRET` | Strava API application | Fitness connect. Empty makes the integration report itself unavailable |
 | `TELEGRAM_BOT_TOKEN` + `TELEGRAM_BOT_USERNAME` + `TELEGRAM_WEBHOOK_SECRET` | @BotFather token, bot name, `openssl rand -hex 32` | Messaging gateway. Empty builds no adapter. Production uses webhook mode, not polling |
 | `POSTHOG_API_KEY` | PostHog project key | Coach LLM observability and the product funnel. Empty in production is a silent no-op dashboard |
