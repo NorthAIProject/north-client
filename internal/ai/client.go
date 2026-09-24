@@ -72,7 +72,8 @@ type Message struct {
 	// ProviderState is opaque data the client that produced this turn needs
 	// to see again, such as Anthropic's thinking blocks, which must precede a
 	// replayed tool call unchanged. Owned by that client; every other client
-	// ignores it. Not persisted: a turn rebuilt from the database has none.
+	// ignores it. Stored with the tool calls (messages.provider_state), so a
+	// turn resumed after an approval replays it too.
 	ProviderState json.RawMessage
 }
 

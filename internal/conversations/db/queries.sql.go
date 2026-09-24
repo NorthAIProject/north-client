@@ -13,9 +13,9 @@ import (
 )
 
 const appendMessage = `-- name: AppendMessage :one
-INSERT INTO messages (conversation_id, role, content, parts, usage, model, provider, evidence_refs, tool_calls, tool_results, origin, source_label)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-RETURNING id, conversation_id, role, content, parts, usage, model, provider, created_at, evidence_refs, tool_calls, tool_results, helpful, origin, source_label
+INSERT INTO messages (conversation_id, role, content, parts, usage, model, provider, evidence_refs, tool_calls, tool_results, origin, source_label, provider_state)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+RETURNING id, conversation_id, role, content, parts, usage, model, provider, created_at, evidence_refs, tool_calls, tool_results, helpful, origin, source_label, provider_state
 `
 
 type AppendMessageParams struct {
@@ -31,6 +31,7 @@ type AppendMessageParams struct {
 	ToolResults    []byte
 	Origin         string
 	SourceLabel    string
+	ProviderState  []byte
 }
 
 func (q *Queries) AppendMessage(ctx context.Context, arg AppendMessageParams) (Message, error) {
@@ -47,6 +48,7 @@ func (q *Queries) AppendMessage(ctx context.Context, arg AppendMessageParams) (M
 		arg.ToolResults,
 		arg.Origin,
 		arg.SourceLabel,
+		arg.ProviderState,
 	)
 	var i Message
 	err := row.Scan(
@@ -65,6 +67,7 @@ func (q *Queries) AppendMessage(ctx context.Context, arg AppendMessageParams) (M
 		&i.Helpful,
 		&i.Origin,
 		&i.SourceLabel,
+		&i.ProviderState,
 	)
 	return i, err
 }
@@ -314,7 +317,7 @@ func (q *Queries) ListConversations(ctx context.Context, arg ListConversationsPa
 }
 
 const listMessages = `-- name: ListMessages :many
-SELECT id, conversation_id, role, content, parts, usage, model, provider, created_at, evidence_refs, tool_calls, tool_results, helpful, origin, source_label FROM messages
+SELECT id, conversation_id, role, content, parts, usage, model, provider, created_at, evidence_refs, tool_calls, tool_results, helpful, origin, source_label, provider_state FROM messages
 WHERE conversation_id = $1
 ORDER BY created_at
 LIMIT $2
@@ -350,6 +353,7 @@ func (q *Queries) ListMessages(ctx context.Context, arg ListMessagesParams) ([]M
 			&i.Helpful,
 			&i.Origin,
 			&i.SourceLabel,
+			&i.ProviderState,
 		); err != nil {
 			return nil, err
 		}
@@ -375,7 +379,7 @@ func (q *Queries) MarkConversationExtracted(ctx context.Context, id uuid.UUID) e
 }
 
 const messagesBefore = `-- name: MessagesBefore :many
-SELECT id, conversation_id, role, content, parts, usage, model, provider, created_at, evidence_refs, tool_calls, tool_results, helpful, origin, source_label FROM messages
+SELECT id, conversation_id, role, content, parts, usage, model, provider, created_at, evidence_refs, tool_calls, tool_results, helpful, origin, source_label, provider_state FROM messages
 WHERE conversation_id = $1
   AND created_at <= $2
 ORDER BY created_at
@@ -416,6 +420,7 @@ func (q *Queries) MessagesBefore(ctx context.Context, arg MessagesBeforeParams) 
 			&i.Helpful,
 			&i.Origin,
 			&i.SourceLabel,
+			&i.ProviderState,
 		); err != nil {
 			return nil, err
 		}
@@ -428,7 +433,7 @@ func (q *Queries) MessagesBefore(ctx context.Context, arg MessagesBeforeParams) 
 }
 
 const messagesBetween = `-- name: MessagesBetween :many
-SELECT id, conversation_id, role, content, parts, usage, model, provider, created_at, evidence_refs, tool_calls, tool_results, helpful, origin, source_label FROM messages
+SELECT id, conversation_id, role, content, parts, usage, model, provider, created_at, evidence_refs, tool_calls, tool_results, helpful, origin, source_label, provider_state FROM messages
 WHERE conversation_id = $1
   AND created_at > $2::timestamptz
   AND created_at <= $3::timestamptz
@@ -479,6 +484,7 @@ func (q *Queries) MessagesBetween(ctx context.Context, arg MessagesBetweenParams
 			&i.Helpful,
 			&i.Origin,
 			&i.SourceLabel,
+			&i.ProviderState,
 		); err != nil {
 			return nil, err
 		}
@@ -491,7 +497,7 @@ func (q *Queries) MessagesBetween(ctx context.Context, arg MessagesBetweenParams
 }
 
 const recentMessages = `-- name: RecentMessages :many
-SELECT id, conversation_id, role, content, parts, usage, model, provider, created_at, evidence_refs, tool_calls, tool_results, helpful, origin, source_label FROM messages
+SELECT id, conversation_id, role, content, parts, usage, model, provider, created_at, evidence_refs, tool_calls, tool_results, helpful, origin, source_label, provider_state FROM messages
 WHERE conversation_id = $1
 ORDER BY created_at DESC
 LIMIT $2
@@ -531,6 +537,7 @@ func (q *Queries) RecentMessages(ctx context.Context, arg RecentMessagesParams) 
 			&i.Helpful,
 			&i.Origin,
 			&i.SourceLabel,
+			&i.ProviderState,
 		); err != nil {
 			return nil, err
 		}
@@ -543,7 +550,7 @@ func (q *Queries) RecentMessages(ctx context.Context, arg RecentMessagesParams) 
 }
 
 const recentUserMessages = `-- name: RecentUserMessages :many
-SELECT m.id, m.conversation_id, m.role, m.content, m.parts, m.usage, m.model, m.provider, m.created_at, m.evidence_refs, m.tool_calls, m.tool_results, m.helpful, m.origin, m.source_label
+SELECT m.id, m.conversation_id, m.role, m.content, m.parts, m.usage, m.model, m.provider, m.created_at, m.evidence_refs, m.tool_calls, m.tool_results, m.helpful, m.origin, m.source_label, m.provider_state
 FROM messages m
 JOIN conversations c ON c.id = m.conversation_id
 WHERE c.user_id = $1 AND m.role = 'user'
@@ -583,6 +590,7 @@ func (q *Queries) RecentUserMessages(ctx context.Context, arg RecentUserMessages
 			&i.Helpful,
 			&i.Origin,
 			&i.SourceLabel,
+			&i.ProviderState,
 		); err != nil {
 			return nil, err
 		}
@@ -658,7 +666,7 @@ WHERE m.id = $2
       WHERE c.id = m.conversation_id
         AND c.user_id = $3
   )
-RETURNING m.id, m.conversation_id, m.role, m.content, m.parts, m.usage, m.model, m.provider, m.created_at, m.evidence_refs, m.tool_calls, m.tool_results, m.helpful, m.origin, m.source_label
+RETURNING m.id, m.conversation_id, m.role, m.content, m.parts, m.usage, m.model, m.provider, m.created_at, m.evidence_refs, m.tool_calls, m.tool_results, m.helpful, m.origin, m.source_label, m.provider_state
 `
 
 type SetMessageHelpfulParams struct {
@@ -697,6 +705,7 @@ func (q *Queries) SetMessageHelpful(ctx context.Context, arg SetMessageHelpfulPa
 		&i.Helpful,
 		&i.Origin,
 		&i.SourceLabel,
+		&i.ProviderState,
 	)
 	return i, err
 }

@@ -2,6 +2,7 @@ package conversations
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -264,11 +265,15 @@ func (s *Service) PostProactive(ctx context.Context, userID, preferred uuid.UUID
 // A model turn, because that is whose turn it is: ai.ToolCallMessage builds the
 // same shape for the request. Every provider rejects a result whose call it has
 // not been shown, so this is what makes a resumed conversation replayable.
-func (s *Service) AppendToolCalls(ctx context.Context, conversationID uuid.UUID, calls []ai.ToolCall) (Message, error) {
+//
+// state is the provider's opaque data for these calls (ai.Message.ProviderState),
+// or nil. Kept with them because a resumed turn must replay it.
+func (s *Service) AppendToolCalls(ctx context.Context, conversationID uuid.UUID, calls []ai.ToolCall, state json.RawMessage) (Message, error) {
 	return s.repo.Append(ctx, NewMessage{
 		ConversationID: conversationID,
 		Role:           ai.RoleModel,
 		ToolCalls:      calls,
+		ProviderState:  state,
 	})
 }
 

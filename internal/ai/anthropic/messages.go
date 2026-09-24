@@ -76,16 +76,14 @@ func contentBlocks(m ai.Message) []sdk.ContentBlockParamUnion {
 		}
 	}
 	if len(m.ToolCalls) > 0 {
-		// The thinking that led to a call has to come back ahead of it,
-		// unchanged, or the API refuses the continuation.
-		blocks = append(thinkingBlocks(m.ProviderState), blocks...)
+		// The turn that made these calls has to come back as the model wrote
+		// it, thinking and all, or the API refuses the continuation.
+		if replayed, ok := replayTurn(m); ok {
+			return append(blocks, replayed...)
+		}
 	}
 	for _, call := range m.ToolCalls {
-		var input any = map[string]any{}
-		if len(call.Arguments) > 0 {
-			_ = json.Unmarshal(call.Arguments, &input)
-		}
-		blocks = append(blocks, sdk.NewToolUseBlock(call.ID, input, call.Name))
+		blocks = append(blocks, toolUse(call))
 	}
 	for _, result := range m.ToolResults {
 		blocks = append(blocks, sdk.NewToolResultBlock(result.ID, result.Content, result.IsError))
@@ -110,22 +108,43 @@ func toTools(tools []ai.Tool) []sdk.ToolUnionParam {
 	return out
 }
 
-// thinkingBlock is the part of a thinking or redacted-thinking block the API
-// needs back. Serialised into ProviderState and nowhere else.
-type thinkingBlock struct {
+// stateBlock is one block of an assistant turn that made tool calls, as the
+// API needs it back: thinking, redacted thinking and text in full, a tool call
+// by its id alone (the call itself travels in ai.Message.ToolCalls).
+// Serialised into ProviderState and nowhere else.
+type stateBlock struct {
+	Kind      string `json:"kind"`
 	Thinking  string `json:"thinking,omitempty"`
 	Signature string `json:"signature,omitempty"`
-	Redacted  string `json:"redacted,omitempty"`
+	Data      string `json:"data,omitempty"`
+	Text      string `json:"text,omitempty"`
+	ToolUseID string `json:"tool_use_id,omitempty"`
 }
 
-func thinkingState(content []sdk.ContentBlockUnion) json.RawMessage {
-	var kept []thinkingBlock
+const (
+	kindThinking = "thinking"
+	kindRedacted = "redacted_thinking"
+	kindText     = "text"
+	kindToolUse  = "tool_use"
+)
+
+// turnState records a tool-calling turn's blocks in the order the model wrote
+// them. The API refuses a continuation whose thinking was edited, reordered or
+// partly dropped, so the whole turn is kept rather than a projection of it.
+// Kept even when the model did not think, so that a replay can tell "recorded,
+// nothing to add" from "lost" (see lostThinking).
+func turnState(content []sdk.ContentBlockUnion) json.RawMessage {
+	var kept []stateBlock
 	for _, block := range content {
 		switch b := block.AsAny().(type) {
 		case sdk.ThinkingBlock:
-			kept = append(kept, thinkingBlock{Thinking: b.Thinking, Signature: b.Signature})
+			kept = append(kept, stateBlock{Kind: kindThinking, Thinking: b.Thinking, Signature: b.Signature})
 		case sdk.RedactedThinkingBlock:
-			kept = append(kept, thinkingBlock{Redacted: b.Data})
+			kept = append(kept, stateBlock{Kind: kindRedacted, Data: b.Data})
+		case sdk.TextBlock:
+			kept = append(kept, stateBlock{Kind: kindText, Text: b.Text})
+		case sdk.ToolUseBlock:
+			kept = append(kept, stateBlock{Kind: kindToolUse, ToolUseID: b.ID})
 		}
 	}
 	if len(kept) == 0 {
@@ -135,25 +154,59 @@ func thinkingState(content []sdk.ContentBlockUnion) json.RawMessage {
 	return raw
 }
 
-func thinkingBlocks(state json.RawMessage) []sdk.ContentBlockParamUnion {
-	var kept []thinkingBlock
-	if len(state) == 0 || json.Unmarshal(state, &kept) != nil {
-		return nil
+// replayTurn rebuilds a tool-calling turn from its state, in the original
+// order, taking each call from ToolCalls by id. False when there is no usable
+// state, and the caller builds the turn from ToolCalls alone.
+func replayTurn(m ai.Message) ([]sdk.ContentBlockParamUnion, bool) {
+	var kept []stateBlock
+	if len(m.ProviderState) == 0 || json.Unmarshal(m.ProviderState, &kept) != nil || len(kept) == 0 {
+		return nil, false
 	}
+
+	calls := make(map[string]ai.ToolCall, len(m.ToolCalls))
+	for _, call := range m.ToolCalls {
+		calls[call.ID] = call
+	}
+
 	out := make([]sdk.ContentBlockParamUnion, 0, len(kept))
 	for _, k := range kept {
-		if k.Redacted != "" {
-			out = append(out, sdk.NewRedactedThinkingBlock(k.Redacted))
-		} else {
+		switch k.Kind {
+		case kindThinking:
 			out = append(out, sdk.NewThinkingBlock(k.Signature, k.Thinking))
+		case kindRedacted:
+			out = append(out, sdk.NewRedactedThinkingBlock(k.Data))
+		case kindText:
+			if k.Text != "" {
+				out = append(out, sdk.NewTextBlock(k.Text))
+			}
+		case kindToolUse:
+			if call, ok := calls[k.ToolUseID]; ok {
+				out = append(out, toolUse(call))
+				delete(calls, k.ToolUseID)
+			}
 		}
 	}
-	return out
+	// A call the state does not mention still has to be sent, or its result
+	// would answer nothing. In ToolCalls order, after the recorded blocks.
+	for _, call := range m.ToolCalls {
+		if _, left := calls[call.ID]; left {
+			out = append(out, toolUse(call))
+		}
+	}
+	return out, true
 }
 
-// lostThinking reports a tool call in the turn in progress replayed without
-// the thinking that led to it, which happens when a turn is rebuilt from the
-// database after an approval.
+func toolUse(call ai.ToolCall) sdk.ContentBlockParamUnion {
+	var input any = map[string]any{}
+	if len(call.Arguments) > 0 {
+		_ = json.Unmarshal(call.Arguments, &input)
+	}
+	return sdk.NewToolUseBlock(call.ID, input, call.Name)
+}
+
+// lostThinking reports a tool call in the turn in progress replayed with no
+// record of the turn that made it: a row stored before provider_state existed,
+// or a call made by another provider earlier in the same turn.
 //
 // Only the current turn counts: the API requires thinking back within a
 // tool-use turn and allows it to be omitted from earlier ones, so a tool round

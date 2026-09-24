@@ -166,6 +166,10 @@ type NewMessage struct {
 	ToolCalls   []ai.ToolCall
 	ToolResults []ai.ToolResult
 
+	// ProviderState is the opaque data the provider needs back with ToolCalls;
+	// see ai.Message.ProviderState. Nil on every other row.
+	ProviderState json.RawMessage
+
 	// Provenance marks a turn nobody asked for. The zero value is a reply.
 	Provenance Provenance
 }
@@ -210,6 +214,7 @@ func (r *Repository) Append(ctx context.Context, msg NewMessage) (Message, error
 		EvidenceRefs:   orEmptyStrings(msg.EvidenceRefs),
 		Origin:         string(originOrReply(msg.Provenance.Origin)),
 		SourceLabel:    strings.TrimSpace(msg.Provenance.SourceLabel),
+		ProviderState:  msg.ProviderState,
 	})
 	if err != nil {
 		return Message{}, apperr.Wrap(err, "append message")
@@ -383,6 +388,9 @@ func messageFromDB(row conversationsdb.Message) Message {
 	}
 	if len(row.ToolResults) > 0 {
 		_ = json.Unmarshal(row.ToolResults, &m.ToolResults)
+	}
+	if len(row.ProviderState) > 0 {
+		m.ProviderState = json.RawMessage(row.ProviderState)
 	}
 
 	return m

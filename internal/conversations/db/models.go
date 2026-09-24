@@ -37,7 +37,8 @@ type Message struct {
 	ToolCalls      []byte
 	ToolResults    []byte
 	// Did the person find this reply useful? NULL means they did not say.
-	Helpful     *bool
-	Origin      string
-	SourceLabel string
+	Helpful       *bool
+	Origin        string
+	SourceLabel   string
+	ProviderState []byte
 }
