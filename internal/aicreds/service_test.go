@@ -256,7 +256,7 @@ func TestSaveValidates(t *testing.T) {
 		in    aicreds.Input
 		field string
 	}{
-		"unknown provider":   {aicreds.Input{Provider: "anthropic", APIKey: testKey}, "provider"},
+		"unknown provider":   {aicreds.Input{Provider: "mistral", APIKey: testKey}, "provider"},
 		"no key at all":      {aicreds.Input{Provider: "openrouter"}, "api_key"},
 		"absurd key":         {aicreds.Input{Provider: "openrouter", APIKey: strings.Repeat("k", 5000)}, "api_key"},
 		"absurd model":       {aicreds.Input{Provider: "openrouter", APIKey: testKey, Model: strings.Repeat("m", 300)}, "model"},

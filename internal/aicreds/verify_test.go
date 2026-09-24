@@ -246,3 +246,25 @@ func TestAFailedProbeIsAnErrorRatherThanAFalse(t *testing.T) {
 		t.Fatal("a probe that could not be made reported a definite answer")
 	}
 }
+
+// Anthropic takes its key in x-api-key and wants a version header; the bearer
+// form it would otherwise get is a 401 for any key, good or bad.
+func TestHTTPVerifierUsesTheProvidersKeyHeader(t *testing.T) {
+	var gotKey, gotBearer, gotVersion string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotKey, gotBearer, gotVersion = r.Header.Get("x-api-key"), r.Header.Get("Authorization"), r.Header.Get("anthropic-version")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	entry := providers.BYOProvider{
+		Name: "anthropic", BaseURL: srv.URL, VerifyPath: "/v1/models",
+		KeyHeader: "x-api-key", VerifyHeaders: map[string]string{"anthropic-version": "2023-06-01"},
+	}
+	if err := aicreds.NewHTTPVerifier(srv.Client()).Verify(context.Background(), entry, testKey); err != nil {
+		t.Fatalf("verify: %v", err)
+	}
+	if gotKey != testKey || gotBearer != "" || gotVersion != "2023-06-01" {
+		t.Errorf("x-api-key=%q Authorization=%q anthropic-version=%q", gotKey, gotBearer, gotVersion)
+	}
+}
