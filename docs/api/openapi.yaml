@@ -1272,6 +1272,79 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+  /fitness/strava:
+    get:
+      operationId: getStravaStatus
+      summary: Whether Strava is connected, and how its last sync went
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StravaStatus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    delete:
+      operationId: disconnectStrava
+      summary: Disconnect Strava; imported activities stay
+      responses:
+        '204':
+          description: Done
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /fitness/strava/connect:
+    post:
+      operationId: connectStrava
+      summary: Begin connecting Strava from the app
+      description: >-
+        Returns Strava's consent URL. Open it in an authentication session
+        whose callback scheme is khepri; Strava returns through the server to
+        khepri://fitness/strava?result=connected|cancelled|expired|failed.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StravaConnect'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /fitness/strava/sync:
+    post:
+      operationId: syncStrava
+      summary: Queue a Strava sync now
+      responses:
+        '202':
+          description: Queued
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /fitness/strava/callback:
+    get:
+      operationId: stravaCallback
+      summary: Strava's OAuth return for connections begun in the app
+      description: Public, called by Strava; always redirects to khepri://fitness/strava.
+      security: []
+      parameters:
+        - name: state
+          in: query
+          schema:
+            type: string
+        - name: code
+          in: query
+          schema:
+            type: string
+        - name: error
+          in: query
+          schema:
+            type: string
+      responses:
+        '302':
+          description: Back to the app
   /health/samples:
     post:
       operationId: syncHealth
@@ -2776,6 +2849,30 @@ components:
       required: [activityCode]
       properties:
         activityCode:
+          type: string
+    StravaStatus:
+      type: object
+      required: [configured, connected, syncPending]
+      properties:
+        configured:
+          type: boolean
+        connected:
+          type: boolean
+        lastSyncedAt:
+          type: string
+          format: date-time
+        lastSyncAttemptedAt:
+          type: string
+          format: date-time
+        lastSyncError:
+          type: string
+        syncPending:
+          type: boolean
+    StravaConnect:
+      type: object
+      required: [authorizeUrl]
+      properties:
+        authorizeUrl:
           type: string
     HealthSyncRequest:
       type: object

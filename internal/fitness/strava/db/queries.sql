@@ -159,3 +159,16 @@ OFFSET sqlc.arg(row_offset)::int;
 -- How many sessions there are in total, which is what turns a page number into
 -- "of 31" and stops the pager offering a page with nothing on it.
 SELECT count(*)::bigint FROM strava_activities WHERE user_id = $1;
+
+-- name: CreateStravaOAuthState :exec
+INSERT INTO strava_oauth_states (state_hash, user_id, expires_at)
+VALUES ($1, $2, $3);
+
+-- name: TakeStravaOAuthState :one
+-- Single use: the row is gone whether or not the connection then succeeds.
+DELETE FROM strava_oauth_states
+WHERE state_hash = $1 AND expires_at > now()
+RETURNING user_id;
+
+-- name: DeleteExpiredStravaOAuthStates :exec
+DELETE FROM strava_oauth_states WHERE expires_at <= now();
