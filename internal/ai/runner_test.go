@@ -253,3 +253,28 @@ func TestRunFailsWhenEveryProviderIgnoresTools(t *testing.T) {
 		t.Errorf("walked %v, want nobody", seen)
 	}
 }
+
+type noMeter struct{}
+
+func (noMeter) Record(context.Context, string, string, ai.Usage, bool) {}
+
+// Added after production kept serving tool turns from Hermes the day the skip
+// above shipped. Production registers every client behind a meter, and the
+// meter's wrapper did not say whether the client underneath calls tools, so
+// the check assumed it did. The tests above build an unmetered registry and
+// passed throughout.
+func TestRunSkipsAToolDeafProviderBehindAMeter(t *testing.T) {
+	r := ai.NewRegistry().WithMeter(noMeter{})
+	r.Register(deaf{stub{name: "hermes"}})
+	r.Register(stub{name: "nvidia"})
+
+	var seen []string
+	client, err := ai.NewRunner(r, ai.NewChainSet([]string{"hermes", "nvidia"}, nil)).
+		Run(context.Background(), ai.RunOptions{NeedsTools: true}, tried(&seen, func(string) error { return nil }))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if client.Name() != "nvidia" {
+		t.Errorf("answered by %q, want nvidia", client.Name())
+	}
+}
