@@ -126,6 +126,31 @@ func metrics() []metric {
 				return sessionMetric(ctx, s, user, rg, true)
 			},
 		},
+		// Synced from Apple Health on the phone, one daily aggregate per
+		// metric: a day's steps or active energy, the day's resting heart
+		// rate as Apple computes it, the day's mean HRV. Averaged across days
+		// in wider buckets, like every other per-day measurement here.
+		{
+			Key: "steps", Decimals: 0, Label: "Steps", Mean: true, Better: 1,
+			Href: "/app/insights/training",
+			load: healthMetric("steps"),
+		},
+		{
+			Key: "active-energy", Decimals: 0, Label: "Active energy", Unit: "kcal", Mean: true, Better: 1,
+			Href: "/app/insights/training",
+			load: healthMetric("active_calories"),
+		},
+		{
+			// Lower is fitter, which is why Better is -1.
+			Key: "resting-heart-rate", Decimals: 0, Label: "Resting heart rate", Unit: "bpm", Mean: true, Better: -1,
+			Href: "/app/insights/body",
+			load: healthMetric("resting_heart_rate"),
+		},
+		{
+			Key: "hrv", Decimals: 0, Label: "Heart rate variability", Unit: "ms", Mean: true, Better: 1,
+			Href: "/app/insights/body",
+			load: healthMetric("hrv_sdnn"),
+		},
 		{
 			Key: "notes", Label: "Goal notes", Better: 1,
 			Href: "/app/insights/progress",
@@ -182,6 +207,25 @@ func sessionMetric(ctx context.Context, s *Service, user users.User, rg timerang
 		out = append(out, point{At: *sess.EndedAt, Value: v})
 	}
 	return out, nil
+}
+
+// healthMetric loads one synced health reading per point, dated by when the
+// reading starts. A deployment without health data shows the metric empty.
+func healthMetric(name string) func(ctx context.Context, s *Service, user users.User, rg timerange.Range) ([]point, error) {
+	return func(ctx context.Context, s *Service, user users.User, rg timerange.Range) ([]point, error) {
+		if s.health == nil {
+			return nil, nil
+		}
+		rows, err := s.health.Between(ctx, user.ID, name, rg.Since, rg.Until)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]point, 0, len(rows))
+		for _, r := range rows {
+			out = append(out, point{At: r.StartedAt, Value: r.Value})
+		}
+		return out, nil
+	}
 }
 
 // lookupMetric finds a metric by its URL key.

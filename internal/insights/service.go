@@ -2,6 +2,9 @@ package insights
 
 import (
 	"context"
+	"time"
+
+	"github.com/google/uuid"
 
 	"golang.org/x/sync/errgroup"
 
@@ -12,6 +15,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/dashboard"
 	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/habits"
+	"github.com/NorthAIProject/north-client/internal/health"
 	"github.com/NorthAIProject/north-client/internal/hydration"
 	"github.com/NorthAIProject/north-client/internal/meals"
 	"github.com/NorthAIProject/north-client/internal/mind"
@@ -51,6 +55,10 @@ type Options struct {
 	// Spend powers the model-cost section, for this account only.
 	Spend *spend.Repository
 
+	// Health supplies readings synced from Apple Health on the phone, for
+	// the steps, heart-rate and HRV metrics. Optional, like the rest.
+	Health HealthReadings
+
 	// SiteURL is the base a digest links back to. Empty sends the numbers
 	// without a link, which is the right degradation for a deployment that
 	// has not been told its own address.
@@ -72,7 +80,13 @@ type Service struct {
 
 	conversations *conversations.Service
 	spend         *spend.Repository
+	health        HealthReadings
 	siteURL       string
+}
+
+// HealthReadings is the slice of health.Service the metrics need.
+type HealthReadings interface {
+	Between(ctx context.Context, userID uuid.UUID, metric string, since, until time.Time) ([]health.Stored, error)
 }
 
 func NewService(opts Options) *Service {
@@ -91,6 +105,7 @@ func NewService(opts Options) *Service {
 
 		conversations: opts.Conversations,
 		spend:         opts.Spend,
+		health:        opts.Health,
 		siteURL:       opts.SiteURL,
 	}
 }

@@ -15,6 +15,9 @@ import (
 	"github.com/NorthAIProject/north-client/internal/coach"
 	"github.com/NorthAIProject/north-client/internal/dashboard"
 	"github.com/NorthAIProject/north-client/internal/exercises"
+	"github.com/NorthAIProject/north-client/internal/fitness"
+	"github.com/NorthAIProject/north-client/internal/health"
+	"github.com/NorthAIProject/north-client/internal/insights"
 	"github.com/NorthAIProject/north-client/internal/onboarding"
 	"github.com/NorthAIProject/north-client/internal/settings"
 	"github.com/NorthAIProject/north-client/internal/workouts"
@@ -46,6 +49,9 @@ func apiRouter(t *testing.T) chi.Router {
 		settings:   settings.NewAPI(nil),
 		training:   workouts.NewAPI(nil),
 		activity:   activity.NewAPI(nil),
+		health:     health.NewAPI(nil),
+		fitness:    fitness.NewAPI(nil, ""),
+		insights:   insights.NewAPI(nil),
 	})
 	return r
 }
@@ -54,7 +60,14 @@ func apiRouter(t *testing.T) chi.Router {
 // signing in, and capture, which checks its own nk_ connection token.
 var publicAPIPrefixes = []string{"/api/v1/auth/", "/api/v1/capture/"}
 
+// publicAPIRoutes are single public routes, named exactly so their siblings
+// stay guarded: Strava's OAuth return, which proves itself by its state.
+var publicAPIRoutes = map[string]bool{"/api/v1/fitness/strava/callback": true}
+
 func isPublicAPIRoute(route string) bool {
+	if publicAPIRoutes[route] {
+		return true
+	}
 	for _, prefix := range publicAPIPrefixes {
 		if strings.HasPrefix(route, prefix) {
 			return true

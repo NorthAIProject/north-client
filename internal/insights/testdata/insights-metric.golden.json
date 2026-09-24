@@ -1,0 +1,56 @@
+{
+  "range": {
+    "key": "week",
+    "label": "Last 7 days",
+    "options": [
+      {
+        "key": "week",
+        "label": "Last 7 days"
+      },
+      {
+        "key": "month",
+        "label": "Last 30 days"
+      }
+    ]
+  },
+  "key": "sleep",
+  "label": "Sleep",
+  "headline": "7.3 h a night",
+  "note": "From your sleep log.",
+  "chart": {
+    "labels": [
+      "Mon",
+      "Tue",
+      "Wed"
+    ],
+    "series": [
+      {
+        "label": "Sleep",
+        "values": [
+          7.2,
+          6.8,
+          7.9
+        ]
+      }
+    ]
+  },
+  "trend": {
+    "direction": 1,
+    "pct": 4.5,
+    "word": "up",
+    "hasPrior": true
+  },
+  "comparison": {
+    "currentLabel": "This week",
+    "currentValue": "7.3 h",
+    "currentPct": 100,
+    "priorLabel": "Last week",
+    "priorValue": "7.0 h",
+    "priorPct": 96,
+    "hasPrior": true
+  },
+  "highlights": [
+    "Up 4.5% on last week."
+  ],
+  "hasData": true
+}
