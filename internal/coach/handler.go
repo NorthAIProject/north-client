@@ -20,6 +20,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/shared/htmx"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/NorthAIProject/north-client/internal/shared/types"
+	"github.com/NorthAIProject/north-client/internal/watches"
 	chatpages "github.com/NorthAIProject/north-client/web/chat"
 )
 
@@ -171,11 +172,20 @@ func (h *Handler) pendingTools(r *http.Request, conversationID uuid.UUID) ([]cha
 
 	out := make([]chatpages.PendingTool, 0, len(waiting.Calls))
 	for _, call := range waiting.Calls {
-		out = append(out, chatpages.PendingTool{
+		tool := chatpages.PendingTool{
 			MessageID: waiting.MessageID,
 			Name:      call.Name,
 			Summary:   describeCall(call),
-		})
+		}
+		// A standing task is shown as one: title, schedule in words, the
+		// instruction. Arguments that do not parse keep the generic card,
+		// and approving them lets create_watch explain what was wrong.
+		if call.Name == watches.ToolName {
+			if p, err := watches.ParseProposal(call.Arguments); err == nil {
+				tool.Watch = &p
+			}
+		}
+		out = append(out, tool)
 	}
 	return out, nil
 }

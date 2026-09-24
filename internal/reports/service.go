@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/NorthAIProject/north-client/internal/conversations"
 	"github.com/NorthAIProject/north-client/internal/jobs"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -43,6 +44,13 @@ type Service struct {
 	fastModel string
 	notify    Notifier
 	inbox     Inbox
+	chats     Chats
+}
+
+// Chats posts the finished briefing into the person's latest chat as a
+// proactive message. conversations.Service satisfies it.
+type Chats interface {
+	PostProactive(ctx context.Context, userID, preferred uuid.UUID, text, sourceLabel string) (conversations.Message, error)
 }
 
 // Inbox records a bell note. Distinct from Notifier: the briefing body is
@@ -75,10 +83,21 @@ type Options struct {
 
 	// Inbox records the same briefing in the web bell. Nil skips the row.
 	Inbox Inbox
+
+	// Chats puts the briefing into the latest chat, captioned "Briefing",
+	// and the bell note then opens that thread. Nil leaves it on the reports
+	// page only, which is where the bell points instead.
+	Chats Chats
 }
 
 func (s *Service) WithInbox(in Inbox) *Service {
 	s.inbox = in
+	return s
+}
+
+// WithChats posts each briefing into the latest chat. See Options.Chats.
+func (s *Service) WithChats(c Chats) *Service {
+	s.chats = c
 	return s
 }
 
@@ -94,6 +113,7 @@ func NewService(opts Options) *Service {
 		fastModel: opts.FastModel,
 		notify:    opts.Notify,
 		inbox:     opts.Inbox,
+		chats:     opts.Chats,
 	}
 	if s.now == nil {
 		s.now = time.Now

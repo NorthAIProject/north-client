@@ -81,6 +81,7 @@ var surfaceLabels = map[string]string{
 	"memory_extraction":    "Extracting memories",
 	"weekly_review":        "Weekly review",
 	"daily_briefing":       "Daily briefing",
+	"standing_task":        "Standing tasks",
 	"form_analysis":        "Form analysis",
 	"workout_plan":         "Workout plans",
 	"quick_capture":        "Quick capture",

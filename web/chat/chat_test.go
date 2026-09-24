@@ -5,6 +5,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/a-h/templ"
 	"github.com/google/uuid"
@@ -13,6 +14,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/conversations"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/internal/watches"
 )
 
 func TestComposerAcceptsAPhoto(t *testing.T) {
@@ -52,7 +54,7 @@ func TestBubbleRendersAPhoto(t *testing.T) {
 			Kind:    "image",
 			Name:    "squat.jpg",
 		}},
-	}).Render(context.Background(), &buf)
+	}, time.UTC).Render(context.Background(), &buf)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +100,7 @@ func TestCopyIsVisibleOnTouch(t *testing.T) {
 	err := Bubble(conversations.Message{
 		Role:    ai.RoleModel,
 		Content: "A reply.",
-	}).Render(context.Background(), &buf)
+	}, time.UTC).Render(context.Background(), &buf)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -357,8 +359,8 @@ func TestStatusCopyFollowsTheLocale(t *testing.T) {
 func TestBubbleHasNoInlineAvatar(t *testing.T) {
 	id := uuid.MustParse("11111111-1111-1111-1111-111111111111")
 	renders := map[string]templ.Component{
-		"stored":  Bubble(conversations.Message{Role: ai.RoleModel, Content: "A reply."}),
-		"user":    Bubble(conversations.Message{Role: ai.RoleUser, Content: "A question."}),
+		"stored":  Bubble(conversations.Message{Role: ai.RoleModel, Content: "A reply."}, time.UTC),
+		"user":    Bubble(conversations.Message{Role: ai.RoleUser, Content: "A question."}, time.UTC),
 		"pending": PendingExchange(id, "How did training go?", uuid.Nil),
 		"resume":  ResumeExchange(id),
 	}
@@ -380,14 +382,14 @@ func TestBubbleHasNoInlineAvatar(t *testing.T) {
 	}
 
 	var agent bytes.Buffer
-	if err := Bubble(conversations.Message{Role: ai.RoleModel, Content: "A reply."}).Render(context.Background(), &agent); err != nil {
+	if err := Bubble(conversations.Message{Role: ai.RoleModel, Content: "A reply."}, time.UTC).Render(context.Background(), &agent); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(agent.String(), "max-w-[94%] ") || !strings.Contains(agent.String(), "bg-muse-agent") {
 		t.Error("agent bubble is not the 94% muse agent bubble")
 	}
 	var user bytes.Buffer
-	if err := Bubble(conversations.Message{Role: ai.RoleUser, Content: "Hi"}).Render(context.Background(), &user); err != nil {
+	if err := Bubble(conversations.Message{Role: ai.RoleUser, Content: "Hi"}, time.UTC).Render(context.Background(), &user); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(user.String(), "max-w-[85%]") || !strings.Contains(user.String(), "bg-muse-user") {
@@ -465,11 +467,145 @@ func TestUserBubbleHasNoRatingControl(t *testing.T) {
 		ID:      uuid.MustParse("33333333-3333-3333-3333-333333333333"),
 		Role:    ai.RoleUser,
 		Content: "How should I train this week?",
-	}).Render(context.Background(), &buf)
+	}, time.UTC).Render(context.Background(), &buf)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(buf.String(), "Did this help?") {
 		t.Error("a user message is offering a rating control")
+	}
+}
+
+// A message nobody asked for carries an 11px uppercase caption above the same
+// agent bubble (_reviews/muse-chat-contract.md, "Proactive messages"). The
+// briefing's shows the local time it arrived.
+func TestProactiveBubbleShowsCaption(t *testing.T) {
+	lisbon, err := time.LoadLocation("Europe/Lisbon")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 06:00 UTC in July is 07:00 in Lisbon.
+	at := time.Date(2026, 7, 14, 6, 0, 0, 0, time.UTC)
+
+	cases := map[string]struct {
+		label string
+		want  string
+	}{
+		"briefing": {conversations.SourceDailyBriefing, "Briefing · 07:00"},
+		"standing": {conversations.SourceStandingTask, "Standing task"},
+		"skill":    {"Sleep coach", "From Sleep coach"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			var buf bytes.Buffer
+			err := Bubble(conversations.Message{
+				ID:          uuid.New(),
+				Role:        ai.RoleModel,
+				Content:     "You slept 6h10 — shortest this week.",
+				Origin:      conversations.OriginProactive,
+				SourceLabel: tc.label,
+				CreatedAt:   at,
+			}, lisbon).Render(context.Background(), &buf)
+			if err != nil {
+				t.Fatal(err)
+			}
+			body := buf.String()
+			if !strings.Contains(body, "data-proactive-caption") {
+				t.Fatal("proactive bubble has no caption")
+			}
+			if !strings.Contains(body, tc.want) {
+				t.Errorf("caption missing %q", tc.want)
+			}
+			for _, class := range []string{"text-[11px]", "uppercase"} {
+				if !strings.Contains(body, class) {
+					t.Errorf("caption missing class %q", class)
+				}
+			}
+			// Caption first, then the same bubble a reply uses.
+			if strings.Index(body, tc.want) > strings.Index(body, "bg-muse-agent") {
+				t.Error("caption should sit above the bubble")
+			}
+		})
+	}
+}
+
+func TestReplyBubbleHasNoCaption(t *testing.T) {
+	var buf bytes.Buffer
+	err := Bubble(conversations.Message{Role: ai.RoleModel, Content: "A reply."}, time.UTC).
+		Render(context.Background(), &buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(buf.String(), "data-proactive-caption") {
+		t.Error("an ordinary reply is captioned as proactive")
+	}
+}
+
+func TestProactiveCaptionIsTranslated(t *testing.T) {
+	ctx := i18n.WithLocale(context.Background(), string(users.LocalePTPT))
+	var buf bytes.Buffer
+	err := Bubble(conversations.Message{
+		Role:        ai.RoleModel,
+		Content:     "Olá.",
+		Origin:      conversations.OriginProactive,
+		SourceLabel: conversations.SourceStandingTask,
+	}, time.UTC).Render(ctx, &buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), "Tarefa recorrente") {
+		t.Error("standing-task caption is not in pt-PT")
+	}
+}
+
+// create_watch's approval is the standing-task card: title, schedule in
+// words, the instruction, and Confirm / Not now posting to the same resolve
+// routes as any other approval.
+func TestApprovalCardForAWatchIsTheStandingTaskCard(t *testing.T) {
+	conversationID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	messageID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
+
+	var buf bytes.Buffer
+	err := ApprovalCard(conversationID, []PendingTool{{
+		MessageID: messageID,
+		Name:      "create_watch",
+		Summary:   `create_watch {"watch":"your sleep"}`,
+		Watch: &watches.Proposal{
+			Title:     "your sleep",
+			Condition: "it drops under seven hours",
+			Spec:      "Check last night's sleep and tell me if it was under seven hours.",
+			Schedule:  watches.Schedule{Cadence: watches.CadenceDaily, Minute: 8 * 60},
+		},
+	}}).Render(context.Background(), &buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := buf.String()
+	for _, want := range []string{
+		"data-standing-task-card",
+		"Your sleep",
+		"Every day at 8:00",
+		"Check last night&#39;s sleep",
+		"Pings you when it drops under seven hours",
+		"Confirm",
+		"Not now",
+		resolveURL(conversationID, messageID, "approve"),
+		resolveURL(conversationID, messageID, "decline"),
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("standing-task card missing %q", want)
+		}
+	}
+	if strings.Contains(body, "create_watch {") {
+		t.Error("standing-task card leaked the raw tool call")
+	}
+}
+
+func TestWeeklyScheduleReadsAsADay(t *testing.T) {
+	got := humanSchedule(context.Background(), watches.Schedule{
+		Cadence: watches.CadenceWeekly, Weekday: time.Monday, Minute: 18*60 + 30,
+	})
+	if got != "Every Monday at 18:30" {
+		t.Errorf("weekly schedule = %q", got)
 	}
 }

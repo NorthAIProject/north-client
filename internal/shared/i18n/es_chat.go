@@ -59,4 +59,22 @@ var spanishChat = map[string]string{
 	"chat.tool.alerts":        "revisando tus recordatorios",
 	"chat.tool.alerts.write":  "creando un recordatorio",
 	"chat.tool.log":           "anotándolo por ti",
+
+	"chat.caption.briefing":  "Resumen · %[1]s",
+	"chat.caption.standing":  "Tarea programada",
+	"chat.caption.from":      "De %[1]s",
+	"chat.caption.proactive": "Sin preguntar",
+
+	"chat.watch.daily":   "Todos los días a las %[1]s",
+	"chat.watch.weekly":  "Cada %[1]s a las %[2]s",
+	"chat.watch.when":    "Te avisa cuando %[1]s",
+	"chat.watch.confirm": "Confirmar",
+	"chat.watch.notnow":  "Ahora no",
+	"chat.watch.day.0":   "domingo",
+	"chat.watch.day.1":   "lunes",
+	"chat.watch.day.2":   "martes",
+	"chat.watch.day.3":   "miércoles",
+	"chat.watch.day.4":   "jueves",
+	"chat.watch.day.5":   "viernes",
+	"chat.watch.day.6":   "sábado",
 }

@@ -165,6 +165,9 @@ type NewMessage struct {
 	// both nil and the columns stay null.
 	ToolCalls   []ai.ToolCall
 	ToolResults []ai.ToolResult
+
+	// Provenance marks a turn nobody asked for. The zero value is a reply.
+	Provenance Provenance
 }
 
 func (r *Repository) Append(ctx context.Context, msg NewMessage) (Message, error) {
@@ -205,6 +208,8 @@ func (r *Repository) Append(ctx context.Context, msg NewMessage) (Message, error
 		Model:          nilIfEmpty(msg.Model),
 		Provider:       nilIfEmpty(msg.Provider),
 		EvidenceRefs:   orEmptyStrings(msg.EvidenceRefs),
+		Origin:         string(originOrReply(msg.Provenance.Origin)),
+		SourceLabel:    strings.TrimSpace(msg.Provenance.SourceLabel),
 	})
 	if err != nil {
 		return Message{}, apperr.Wrap(err, "append message")
@@ -349,6 +354,8 @@ func messageFromDB(row conversationsdb.Message) Message {
 		Role:           ai.Role(row.Role),
 		Content:        row.Content,
 		Helpful:        row.Helpful,
+		Origin:         Origin(row.Origin),
+		SourceLabel:    row.SourceLabel,
 		CreatedAt:      row.CreatedAt,
 	}
 
@@ -390,6 +397,15 @@ func orEmptyStrings(v []string) []string {
 		return []string{}
 	}
 	return v
+}
+
+// originOrReply writes the column's default explicitly, so a caller that left
+// Provenance empty stores exactly what the migration backfilled.
+func originOrReply(o Origin) Origin {
+	if o == OriginProactive {
+		return OriginProactive
+	}
+	return OriginReply
 }
 
 func nilIfEmpty(s string) *string {

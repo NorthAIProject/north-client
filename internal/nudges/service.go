@@ -188,18 +188,18 @@ func (s *Service) Raise(ctx context.Context, user users.User, d Draft) (Nudge, b
 		return n, created, err
 	}
 
-	s.deliver(ctx, user, n)
+	s.deliver(ctx, user, n, fansOut(n.Kind) || d.Everywhere)
 	return n, true, nil
 }
 
 // deliver takes a nudge that is already stored out to every channel that will
 // carry it. Nothing here can fail the Raise: the note is in the bell, and a
 // channel that did not work is logged and counted as not delivered.
-func (s *Service) deliver(ctx context.Context, user users.User, n Nudge) {
+func (s *Service) deliver(ctx context.Context, user users.User, n Nudge, fanOut bool) {
 	// The bell is the one channel that always has it, by virtue of the insert.
 	s.delivered(ctx, user.ID, n.Kind, analytics.ChannelBell)
 
-	if !fansOut(n.Kind) {
+	if !fanOut {
 		return
 	}
 
@@ -277,6 +277,17 @@ func (s *Service) Note(ctx context.Context, userID uuid.UUID, kind, dedupe, titl
 // RaiseFromUser satisfies coach.Inbox.
 func (s *Service) RaiseFromUser(ctx context.Context, user users.User, kind, dedupe, title, body, href string) error {
 	_, _, err := s.Raise(ctx, user, Draft{Kind: kind, DedupeKey: dedupe, Title: title, Body: body, Href: href})
+	return err
+}
+
+// RaiseProactive is RaiseFromUser for a message nobody has seen anywhere yet.
+//
+// coach_reply normally stays in the bell, because the reply it points at was
+// already delivered where it was asked for (Telegram). A standing task's
+// result was asked for by nobody, so it goes out on every channel — bell,
+// Telegram and Web Push — under the same kind and the same switch.
+func (s *Service) RaiseProactive(ctx context.Context, user users.User, kind, dedupe, title, body, href string) error {
+	_, _, err := s.Raise(ctx, user, Draft{Kind: kind, DedupeKey: dedupe, Title: title, Body: body, Href: href, Everywhere: true})
 	return err
 }
 

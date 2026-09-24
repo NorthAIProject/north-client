@@ -68,7 +68,7 @@ func TestSweepFindsAThreadThatStoppedShortOfTheCoachTrigger(t *testing.T) {
 	if _, err = convos.AppendUserMessage(ctx, thread.ID, "I train best at 6am", nil); err != nil {
 		t.Fatalf("append user message: %v", err)
 	}
-	if _, err = convos.AppendModelMessage(ctx, thread.ID, "Noted.", nil, "m", "p", nil); err != nil {
+	if _, err = convos.AppendModelMessage(ctx, thread.ID, "Noted.", nil, "m", "p", nil, conversations.Provenance{}); err != nil {
 		t.Fatalf("append model message: %v", err)
 	}
 
@@ -105,7 +105,7 @@ func TestAnEmptyExtractionStillMarksTheThreadRead(t *testing.T) {
 	if _, err = convos.AppendUserMessage(ctx, thread.ID, "hello", nil); err != nil {
 		t.Fatalf("append user message: %v", err)
 	}
-	if _, err = convos.AppendModelMessage(ctx, thread.ID, "hi", nil, "m", "p", nil); err != nil {
+	if _, err = convos.AppendModelMessage(ctx, thread.ID, "hi", nil, "m", "p", nil, conversations.Provenance{}); err != nil {
 		t.Fatalf("append model message: %v", err)
 	}
 
@@ -150,7 +150,7 @@ func TestSweepSkipsAPersonWithExtractionAlreadyQueued(t *testing.T) {
 	if _, err = convos.AppendUserMessage(ctx, thread.ID, "one", nil); err != nil {
 		t.Fatalf("append user message: %v", err)
 	}
-	if _, err = convos.AppendModelMessage(ctx, thread.ID, "two", nil, "m", "p", nil); err != nil {
+	if _, err = convos.AppendModelMessage(ctx, thread.ID, "two", nil, "m", "p", nil, conversations.Provenance{}); err != nil {
 		t.Fatalf("append model message: %v", err)
 	}
 

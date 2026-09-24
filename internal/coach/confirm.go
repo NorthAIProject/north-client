@@ -12,6 +12,7 @@ import (
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/toolsurface"
 	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/internal/watches"
 )
 
 // DeclinedCall is a write somebody refused.
@@ -108,7 +109,8 @@ func (s *Service) ResolvePending(ctx context.Context, user users.User, conversat
 
 	results := make([]ai.ToolResult, 0, len(pending.Calls))
 	if approve {
-		results = s.tools.InvokeAll(toolsurface.With(ctx, toolsurface.Coach), user.ID, pending.Calls)
+		toolCtx := toolsurface.WithThread(toolsurface.With(ctx, toolsurface.Coach), conversationID)
+		results = s.tools.InvokeAll(toolCtx, user.ID, pending.Calls)
 	} else {
 		for _, call := range pending.Calls {
 			results = append(results, ai.ToolResult{
@@ -133,7 +135,40 @@ func (s *Service) ResolvePending(ctx context.Context, user users.User, conversat
 	if _, err = s.conversations.AppendToolResults(ctx, conversationID, results); err != nil {
 		return apperr.Wrap(err, "record the resolved tool call")
 	}
+
+	// A confirmed standing task is answered here rather than by resuming the
+	// model: the contract fixes the sentence ("Got it — I'll watch X and ping
+	// you when Y", captioned "Standing task"), and create_watch already
+	// returned it. With a text turn after the results the page no longer
+	// derives a resume, so nothing else is generated for this turn.
+	if approve {
+		if confirmations, ok := standingTaskConfirmations(results); ok {
+			for _, text := range confirmations {
+				if _, err = s.conversations.AppendModelMessage(ctx, conversationID, text, nil, "", "", nil,
+					conversations.Proactive(conversations.SourceStandingTask)); err != nil {
+					return apperr.Wrap(err, "record the standing task confirmation")
+				}
+			}
+		}
+	}
 	return nil
+}
+
+// standingTaskConfirmations returns the confirmation sentences when every
+// result in a turn is a create_watch that succeeded. A mixed or failed turn
+// answers false and is resumed as usual, so the model can explain it.
+func standingTaskConfirmations(results []ai.ToolResult) ([]string, bool) {
+	if len(results) == 0 {
+		return nil, false
+	}
+	out := make([]string, 0, len(results))
+	for _, r := range results {
+		if r.Name != watches.ToolName || r.IsError || r.Content == "" {
+			return nil, false
+		}
+		out = append(out, r.Content)
+	}
+	return out, true
 }
 
 // toolNames lists what a set of calls would run, for a log line.

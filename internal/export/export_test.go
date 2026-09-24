@@ -89,7 +89,7 @@ func TestExportCarriesEverythingAPersonPutIn(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := convoSvc.AppendModelMessage(ctx, convo.ID, "Narrow grip only.", nil, "m", "p",
-		[]string{"memory:6f2c81a4-0000-4000-8000-000000000001"}); err != nil {
+		[]string{"memory:6f2c81a4-0000-4000-8000-000000000001"}, conversations.Provenance{}); err != nil {
 		t.Fatal(err)
 	}
 

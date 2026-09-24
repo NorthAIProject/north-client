@@ -50,7 +50,7 @@ func exchange(t *testing.T, svc *conversations.Service, userID uuid.UUID) (conve
 		t.Fatal(err)
 	}
 	reply, err := svc.AppendModelMessage(ctx, thread.ID,
-		"Three sessions, and keep Wednesday light.", nil, "fake", "fake", nil)
+		"Three sessions, and keep Wednesday light.", nil, "fake", "fake", nil, conversations.Provenance{})
 	if err != nil {
 		t.Fatal(err)
 	}
