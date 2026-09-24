@@ -1,0 +1,15 @@
+{
+  "executions": [
+    {
+      "id": "12121212-1212-1212-1212-121212121212",
+      "tool": "log_check_in",
+      "arguments": {
+        "mood": 4,
+        "energy": 3
+      },
+      "surface": "coach",
+      "outcome": "executed",
+      "createdAt": "2026-09-24T07:15:00Z"
+    }
+  ]
+}

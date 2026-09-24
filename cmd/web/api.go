@@ -9,6 +9,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/dashboard"
 	"github.com/NorthAIProject/north-client/internal/exercises"
 	"github.com/NorthAIProject/north-client/internal/onboarding"
+	"github.com/NorthAIProject/north-client/internal/settings"
 )
 
 // mountAPI owns the public JSON API boundary. Feature APIs register paths
@@ -31,6 +32,7 @@ func mountAPI(r chi.Router, sessions auth.SessionResolver, apis apiSet) {
 			apis.dashboard.Routes(r)
 			apis.coach.Routes(r)
 			apis.exercises.Routes(r)
+			apis.settings.Routes(r)
 		})
 	})
 }
@@ -44,4 +46,5 @@ type apiSet struct {
 	dashboard  *dashboard.API
 	coach      *coach.API
 	exercises  *exercises.API
+	settings   *settings.API
 }
