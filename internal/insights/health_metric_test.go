@@ -2,6 +2,7 @@ package insights
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -11,12 +12,17 @@ import (
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
+// fakeHealth is called concurrently: Metric loads the window and the one
+// before it at the same time.
 type fakeHealth struct {
+	mu     sync.Mutex
 	asked  string
 	stored []health.Stored
 }
 
 func (f *fakeHealth) Between(_ context.Context, _ uuid.UUID, metric string, _, _ time.Time) ([]health.Stored, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.asked = metric
 	return f.stored, nil
 }
