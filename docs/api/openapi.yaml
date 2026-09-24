@@ -1272,6 +1272,40 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+  /health/samples:
+    post:
+      operationId: syncHealth
+      summary: Store readings and workouts read from Apple Health on the phone
+      description: >-
+        Replaying a batch is safe: readings are stored as sent and workouts are
+        deduplicated by their Apple Health id, and a workout another provider
+        already sent (the same run from Strava) is recognised by its time and
+        not counted twice.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HealthSyncRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthSyncResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      operationId: forgetHealth
+      summary: Delete every reading Apple Health sent; workouts stay in activity history
+      responses:
+        '204':
+          description: Done
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /me:
     get:
       operationId: getMe
@@ -2743,6 +2777,59 @@ components:
       properties:
         activityCode:
           type: string
+    HealthSyncRequest:
+      type: object
+      properties:
+        readings:
+          type: array
+          items:
+            $ref: '#/components/schemas/HealthReading'
+        workouts:
+          type: array
+          items:
+            $ref: '#/components/schemas/HealthWorkout'
+    HealthReading:
+      type: object
+      required: [metric, value, unit, startedAt]
+      properties:
+        metric:
+          type: string
+          description: e.g. resting_heart_rate, hrv_sdnn, steps, active_calories, sleep_asleep, body_mass
+        value:
+          type: number
+        unit:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: string
+          format: date-time
+          description: Set for an interval (a day's steps, a block of sleep); absent for an instant.
+    HealthWorkout:
+      type: object
+      required: [activityCode, externalId, startedAt, endedAt]
+      properties:
+        activityCode:
+          type: string
+        externalId:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: string
+          format: date-time
+        calories:
+          type: number
+    HealthSyncResult:
+      type: object
+      required: [readings, workouts]
+      properties:
+        readings:
+          type: integer
+        workouts:
+          type: integer
     LogActivityRequest:
       type: object
       required: [activityCode, durationMinutes]

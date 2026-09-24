@@ -790,6 +790,7 @@ func routes(
 			settings:   settings.NewAPI(settingsHandler),
 			training:   workouts.NewAPI(workoutSvc),
 			activity:   activity.NewAPI(activitySvc),
+			health:     health.NewAPI(healthSvc),
 		})
 	})
 
