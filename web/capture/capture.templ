@@ -15,6 +15,7 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
 	"github.com/NorthAIProject/north-client/web/shared/ui/card"
 	"github.com/NorthAIProject/north-client/web/shared/ui/checkbox"
+	"github.com/NorthAIProject/north-client/web/shared/ui/dictate"
 	"github.com/NorthAIProject/north-client/web/shared/ui/input"
 	"github.com/NorthAIProject/north-client/web/shared/ui/textarea"
 )
@@ -22,6 +23,9 @@ import (
 // PanelID is the HTMX-swappable region. One target for the whole flow: the box
 // becomes the preview, and the preview becomes the receipt.
 const PanelID = "capture-panel"
+
+// TextID is the composer's textarea, which the microphone writes into.
+const TextID = "capture-text"
 
 // Data is everything the page renders.
 type Data struct {
@@ -43,10 +47,10 @@ templ Page(user users.User, data Data) {
 		<div id={ PanelID }>
 			@Panel(data)
 		</div>
-		// Loaded on the page rather than in the panel: the panel is swapped on
-		// every parse, and re-fetching a script on each swap would be work for
-		// a definition that has not changed.
-		<script src="/assets/js/shared/capture-recorder.js" defer></script>
+		// On the page rather than in the panel: the panel is swapped on every
+		// parse, and re-fetching a script on each swap would be work for a
+		// definition that has not changed.
+		@dictate.Script()
 	}
 }
 
@@ -88,6 +92,7 @@ templ composer(data Data) {
 	>
 		@ui.CSRFInput()
 		@textarea.Textarea(textarea.Props{
+			ID:          TextID,
 			Name:        "text",
 			Value:       data.Text,
 			Rows:        4,
@@ -95,40 +100,20 @@ templ composer(data Data) {
 			Class:       "text-base",
 			Attributes:  templ.Attributes{"autofocus": true, "maxlength": strconv.Itoa(captured.MaxText)},
 		})
-		// Hidden until the recorder script has confirmed this browser can
-		// record. A button that opens a permission prompt and then fails is
-		// worse than one that was never offered, so the typed path is what an
-		// unsupported browser sees — unchanged.
-		<p data-voice-error class="text-xs text-destructive" hidden></p>
 		<div class="flex items-center justify-between gap-3">
 			<p class="text-xs text-muted-foreground">Reading it costs a moment. Saving is one tap.</p>
 			<div class="flex items-center gap-2">
-				@button.Button(button.Props{
-					Type:    button.TypeButton,
-					Variant: button.VariantOutline,
-					Class:   "min-h-11 data-[recording]:border-destructive data-[recording]:text-destructive",
-					Attributes: templ.Attributes{
-						"data-voice-record": true,
-						"hidden":            true,
-						"aria-pressed":      "false",
-						"aria-label":        i18n.T(ctx, "capture.voice.aria"),
-
-						// capture-recorder.js reads its copy from here. It keeps
-						// the English as a fallback, so a key going missing
-						// cannot blank a label or swallow an error message.
-						"data-voice-say":         i18n.T(ctx, "capture.voice.say"),
-						"data-voice-stop":        i18n.T(ctx, "capture.voice.stop"),
-						"data-voice-reading":     i18n.T(ctx, "capture.voice.reading"),
-						"data-voice-empty":       i18n.T(ctx, "capture.voice.empty"),
-						"data-voice-toolong":     i18n.T(ctx, "capture.voice.toolong"),
-						"data-voice-unreachable": i18n.T(ctx, "capture.voice.unreachable"),
-						"data-voice-unreadable":  i18n.T(ctx, "capture.voice.unreadable"),
-						"data-voice-mic":         i18n.T(ctx, "capture.voice.mic"),
-						"data-voice-unsupported": i18n.T(ctx, "capture.voice.unsupported"),
-					},
-				}) {
-					<span data-voice-label>{ i18n.T(ctx, "capture.voice.say") }</span>
-				}
+				// The transcript lands in the box above, not in a preview: the
+				// person reads what was heard before anything is parsed from it,
+				// so a mis-heard number is caught by the one party who knows what
+				// they said. Recorded as voice_capture rather than dictation,
+				// because this box has a parse behind it.
+				@dictate.Button(dictate.Props{
+					Target:    TextID,
+					Surface:   "capture",
+					ShowLabel: true,
+					Variant:   button.VariantOutline,
+				})
 				@button.Button(button.Props{Type: button.TypeSubmit, Class: "min-h-11"}) {
 					{ i18n.T(ctx, "capture.read") }
 				}

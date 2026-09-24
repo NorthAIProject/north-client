@@ -408,6 +408,11 @@ func routes(
 		Vocabulary: vocab.New(goalSvc, habitSvc),
 	}).WithMetrics(metricsReg)
 
+	// Dictation: the microphone beside every text box that reaches the coach.
+	// It answers with words for the box and nothing else — the person still
+	// sends what they said, the same way they would have after typing.
+	voiceHandler := voice.NewHandler(voiceSvc, quotaSvc)
+
 	// Quick capture composes the six logging slices behind one box. It owns no
 	// table; the parse is a model call and the commit is the same writes the
 	// care page makes.
@@ -415,10 +420,6 @@ func routes(
 		// FastModel for the same reason the daily briefing uses it: this is
 		// transcription, not writing.
 		Parser: capture.NewAIParser(runner, cfg.AI.FastModel),
-
-		// A deployment whose chain holds no multimodal provider still gets a
-		// working typed box — the button is hidden and the endpoint says so.
-		Voice: voiceSvc,
 
 		Hydration:   hydrationSvc,
 		Sleep:       sleepSvc,
@@ -892,8 +893,14 @@ func routes(
 		// Everything under /app requires a session.
 		r.Route("/app", func(r chi.Router) {
 			r.Use(authMW.RequireAuth)
+			// Before any page renders, so each text box knows whether to offer
+			// a microphone without every handler passing that along.
+			r.Use(voiceHandler.Advertise)
 
 			onboardingHandler.Routes(r)
+			// Outside RequireOnboarded: the onboarding form offers dictation
+			// too, for the coaching style written in the person's own words.
+			voiceHandler.Routes(r)
 
 			r.Group(func(r chi.Router) {
 				r.Use(onboarding.RequireOnboarded)

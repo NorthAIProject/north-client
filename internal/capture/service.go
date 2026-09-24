@@ -15,7 +15,6 @@ import (
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/sleep"
 	"github.com/NorthAIProject/north-client/internal/users"
-	"github.com/NorthAIProject/north-client/internal/voice"
 )
 
 // searchLimit caps ingredient candidates offered for one food.
@@ -25,11 +24,6 @@ const searchLimit = 8
 // already owns the table; this package adds no persistence of its own.
 type Options struct {
 	Parser Parser
-
-	// Voice is optional. Nil switches voice notes off and leaves every typed
-	// path untouched, which is what a deployment without a multimodal provider
-	// gets rather than a broken button.
-	Voice *voice.Service
 
 	Hydration   *hydration.Service
 	Sleep       *sleep.Service
@@ -43,7 +37,6 @@ type Options struct {
 // Service parses a sentence and, separately, writes what a person agreed to.
 type Service struct {
 	parser Parser
-	voice  *voice.Service
 
 	hydration   *hydration.Service
 	sleep       *sleep.Service
@@ -57,7 +50,6 @@ type Service struct {
 func NewService(opts Options) *Service {
 	return &Service{
 		parser:      opts.Parser,
-		voice:       opts.Voice,
 		hydration:   opts.Hydration,
 		sleep:       opts.Sleep,
 		habits:      opts.Habits,
