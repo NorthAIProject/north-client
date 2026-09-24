@@ -29,5 +29,6 @@ var (
 	Remove          = plan.Remove
 	Move            = plan.Move
 	SetPrescription = plan.SetPrescription
+	SetStartTime    = plan.SetStartTime
 	NewExercise     = plan.NewExercise
 )

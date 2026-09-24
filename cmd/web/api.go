@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/go-chi/chi/v5"
 
+	"github.com/NorthAIProject/north-client/internal/activity"
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/capture"
 	"github.com/NorthAIProject/north-client/internal/coach"
@@ -10,6 +11,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/exercises"
 	"github.com/NorthAIProject/north-client/internal/onboarding"
 	"github.com/NorthAIProject/north-client/internal/settings"
+	"github.com/NorthAIProject/north-client/internal/workouts"
 )
 
 // mountAPI owns the public JSON API boundary. Feature APIs register paths
@@ -33,6 +35,8 @@ func mountAPI(r chi.Router, sessions auth.SessionResolver, apis apiSet) {
 			apis.coach.Routes(r)
 			apis.exercises.Routes(r)
 			apis.settings.Routes(r)
+			apis.training.Routes(r)
+			apis.activity.Routes(r)
 		})
 	})
 }
@@ -47,4 +51,6 @@ type apiSet struct {
 	coach      *coach.API
 	exercises  *exercises.API
 	settings   *settings.API
+	training   *workouts.API
+	activity   *activity.API
 }

@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"net/http"
 	"regexp"
+	"strconv"
 
 	"github.com/go-chi/chi/v5"
 
@@ -37,7 +38,59 @@ func NewAPI(svc *Service, art fs.FS) *API {
 }
 
 func (a *API) Routes(r chi.Router) {
+	r.Get("/exercises", a.browse)
 	r.Get("/exercises/{slug}", a.show)
+}
+
+// ExerciseSummary is a catalog entry in a list: enough to choose one.
+type ExerciseSummary struct {
+	Slug       string   `json:"slug"`
+	Name       string   `json:"name"`
+	Category   string   `json:"category"`
+	Equipment  string   `json:"equipment"`
+	Difficulty string   `json:"difficulty"`
+	Primary    []string `json:"primaryMuscles"`
+	HasArt     bool     `json:"hasArt"`
+}
+
+type ExerciseList struct {
+	Exercises []ExerciseSummary `json:"exercises"`
+	// Total is how many match, for paging; a suggestion list leaves it 0.
+	Total int `json:"total"`
+}
+
+// ProjectList is the list shape, shared with training's suggestion routes.
+func ProjectList(found []Exercise) ExerciseList {
+	out := ExerciseList{Exercises: make([]ExerciseSummary, 0, len(found))}
+	for _, e := range found {
+		out.Exercises = append(out.Exercises, ExerciseSummary{
+			Slug: e.Slug, Name: e.Name, Category: e.Category, Equipment: e.Equipment,
+			Difficulty: e.Difficulty, Primary: nonNil(e.Primary), HasArt: e.HasIllustration(),
+		})
+	}
+	return out
+}
+
+// browse searches the catalog: ?q=, ?muscle=, ?category=, ?equipment= (may
+// repeat), ?limit= (default 30, at most 100) and ?offset=.
+func (a *API) browse(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	limit, _ := strconv.Atoi(q.Get("limit"))
+	if limit <= 0 || limit > 100 {
+		limit = 30
+	}
+	offset, _ := strconv.Atoi(q.Get("offset"))
+	found, total, err := a.svc.Search(r.Context(), Filter{
+		Query: q.Get("q"), Muscle: q.Get("muscle"), Category: q.Get("category"),
+		Equipment: q["equipment"], Limit: limit, Offset: max(offset, 0),
+	})
+	if err != nil {
+		httpx.Error(w, err, "The exercise library could not be searched.")
+		return
+	}
+	out := ProjectList(found)
+	out.Total = total
+	httpx.WriteJSON(w, http.StatusOK, out)
 }
 
 // ExerciseDetail is one catalog entry with its artwork.

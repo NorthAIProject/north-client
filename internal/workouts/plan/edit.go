@@ -3,6 +3,7 @@ package plan
 import (
 	"fmt"
 	"strings"
+	"time"
 )
 
 // Editing a plan. Pure functions: a plan in, a new plan out, no database and no
@@ -219,5 +220,26 @@ func copyFor(p Plan, day, index int) (Plan, error) {
 	out := p
 	out.Days = append([]PlanDay(nil), p.Days...)
 	out.Days[day].Exercises = append([]Exercise(nil), p.Days[day].Exercises...)
+	return out, nil
+}
+
+// SetStartTime sets when a day's session starts, "HH:MM" on a 24-hour clock,
+// or clears it with "". Minutes are kept as given; seconds are not accepted.
+func SetStartTime(p Plan, day int, startTime string) (Plan, error) {
+	startTime = strings.TrimSpace(startTime)
+	if startTime != "" {
+		parsed, err := time.Parse("15:04", startTime)
+		if err != nil {
+			return Plan{}, fmt.Errorf("a start time is HH:MM on a 24-hour clock, not %q", startTime)
+		}
+		startTime = parsed.Format("15:04")
+	}
+	if day < 0 || day >= len(p.Days) {
+		return Plan{}, fmt.Errorf("day %d is outside this plan's %d days", day, len(p.Days))
+	}
+
+	out := p
+	out.Days = append([]PlanDay(nil), p.Days...)
+	out.Days[day].StartTime = startTime
 	return out, nil
 }

@@ -63,3 +63,14 @@ func TestEveryMovementsArtIsOnePathInASquare(t *testing.T) {
 		t.Fatalf("checked %d movements, want the full set of about 302", checked)
 	}
 }
+
+func TestExerciseListShape(t *testing.T) {
+	t.Parallel()
+
+	list := ProjectList([]Exercise{{
+		Slug: "push-up", Name: "Push-Up", Category: "strength", Equipment: "none", Difficulty: "beginner",
+		Primary: []string{"chest"}, IllustrationSlug: "push-up",
+	}})
+	list.Total = 42
+	apitest.AssertGolden(t, "exercises.golden.json", list)
+}
