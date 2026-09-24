@@ -145,6 +145,10 @@ func JSONSchema(s *Schema) map[string]any {
 			for name := range s.Properties {
 				required = append(required, name)
 			}
+			// Sorted because map order is random and providers cache on the
+			// exact bytes of the tools block: an unordered list would change
+			// every request and no prompt would ever be read from cache.
+			sortStrings(required)
 		}
 		out["required"] = required
 	} else if s.Type == TypeObject {
