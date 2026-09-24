@@ -11,7 +11,9 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/capture"
+	"github.com/NorthAIProject/north-client/internal/coach"
 	"github.com/NorthAIProject/north-client/internal/dashboard"
+	"github.com/NorthAIProject/north-client/internal/exercises"
 	"github.com/NorthAIProject/north-client/internal/onboarding"
 )
 
@@ -31,12 +33,14 @@ func apiRouter(t *testing.T) chi.Router {
 	t.Helper()
 	sessions := resolverThatMustNotRun{t: t}
 	r := chi.NewRouter()
-	mountAPI(r, sessions,
-		capture.NewAPI(nil, nil, nil, nil),
-		auth.NewAPI(sessions).WithAuthService(&auth.Service{}, &auth.Middleware{}),
-		onboarding.NewAPI(nil),
-		dashboard.NewAPI(nil),
-	)
+	mountAPI(r, sessions, apiSet{
+		auth:       auth.NewAPI(sessions).WithAuthService(&auth.Service{}, &auth.Middleware{}),
+		capture:    capture.NewAPI(nil, nil, nil, nil),
+		onboarding: onboarding.NewAPI(nil),
+		dashboard:  dashboard.NewAPI(nil),
+		coach:      coach.NewAPI(nil, nil, nil),
+		exercises:  exercises.NewAPI(nil, nil),
+	})
 	return r
 }
 

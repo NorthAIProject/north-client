@@ -69,6 +69,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/voice"
 	"github.com/NorthAIProject/north-client/internal/voice/vocab"
 	"github.com/NorthAIProject/north-client/internal/workouts"
+	"github.com/NorthAIProject/north-client/web/assets"
 	"github.com/NorthAIProject/north-client/web/landing"
 	"github.com/NorthAIProject/north-client/web/legal"
 	"github.com/NorthAIProject/north-client/web/pwa"
@@ -772,7 +773,14 @@ func routes(
 	// callers who hold an nk_ token today are the ones who want this.
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.MaxBody(1 << 20))
-		mountAPI(r, sessions, captureAPI, authAPI, onboardingAPI, dashboardAPI)
+		mountAPI(r, sessions, apiSet{
+			auth:       authAPI,
+			capture:    captureAPI,
+			onboarding: onboardingAPI,
+			dashboard:  dashboardAPI,
+			coach:      coach.NewAPI(coachSvc, quotaSvc, mediaSvc),
+			exercises:  exercises.NewAPI(exerciseSvc, assets.Assets),
+		})
 	})
 
 	// Health ingest sits beside /mcp for exactly the reasons above: the caller is

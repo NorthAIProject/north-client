@@ -219,6 +219,187 @@ paths:
           $ref: '#/components/responses/PasskeysUnavailable'
         '503':
           $ref: '#/components/responses/Unavailable'
+  /conversations:
+    get:
+      operationId: listConversations
+      summary: The signed-in user's coach conversations, newest first
+      responses:
+        '200':
+          description: Up to 50 conversations
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: startConversation
+      summary: Start a conversation
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartConversationRequest'
+      responses:
+        '201':
+          description: The new conversation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /conversations/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ConversationID'
+    get:
+      operationId: getConversation
+      summary: One conversation with its messages and any pending approval
+      responses:
+        '200':
+          description: The conversation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: deleteConversation
+      summary: Delete a conversation
+      responses:
+        '204':
+          description: Deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /conversations/{id}/reply:
+    parameters:
+      - $ref: '#/components/parameters/ConversationID'
+    post:
+      operationId: replyInConversation
+      summary: Send a message and stream the coach's reply
+      description: |
+        Stores the message, then answers with Server-Sent Events. Each event's
+        data is one line of JSON:
+
+        | event       | data                         |
+        |-------------|------------------------------|
+        | `token`     | `ReplyTokenEvent`            |
+        | `exercises` | `ReplyExercisesEvent`        |
+        | `approval`  | `Approval`                   |
+        | `error`     | `ReplyErrorEvent`            |
+        | `done`      | `ReplyDoneEvent`, always last |
+
+        Refusals that need no model (bad input, ended reflection, spent quota)
+        come back as ordinary JSON errors before any event is sent.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReplyRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/ReplyStream'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /conversations/{id}/resume:
+    parameters:
+      - $ref: '#/components/parameters/ConversationID'
+    post:
+      operationId: resumeConversation
+      summary: Stream the rest of a reply after an approval was answered
+      description: Same events as replyInConversation. Spends no message quota.
+      responses:
+        '200':
+          $ref: '#/components/responses/ReplyStream'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /conversations/{id}/tools/{messageID}:
+    parameters:
+      - $ref: '#/components/parameters/ConversationID'
+      - $ref: '#/components/parameters/MessageID'
+    post:
+      operationId: decideToolCalls
+      summary: Allow or refuse the writes the coach asked to make
+      description: The tools run inside this request. Then call resumeConversation for the reply.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DecisionRequest'
+      responses:
+        '204':
+          description: Answered
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /conversations/{id}/messages/{messageID}/helpful:
+    parameters:
+      - $ref: '#/components/parameters/ConversationID'
+      - $ref: '#/components/parameters/MessageID'
+    put:
+      operationId: rateMessage
+      summary: Say whether a coach reply helped
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HelpfulRequest'
+      responses:
+        '200':
+          description: The rated message
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatMessage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /exercises/{slug}:
+    parameters:
+      - name: slug
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getExercise
+      summary: A catalog exercise with its pose artwork as path data
+      responses:
+        '200':
+          description: The exercise
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExerciseDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /me:
     get:
       operationId: getMe
@@ -915,3 +1096,205 @@ components:
           type: object
           additionalProperties: true
           description: The PublicKeyCredential as JSON, binary fields base64url.
+    ConversationSummary:
+      type: object
+      required: [id, title, kind, ended, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        kind:
+          type: string
+          enum: [chat, reflection]
+        ended:
+          type: boolean
+          description: A reflection that has written its closing summary.
+        updatedAt:
+          type: string
+          format: date-time
+    ConversationList:
+      type: object
+      required: [conversations]
+      properties:
+        conversations:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConversationSummary'
+    StartConversationRequest:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum: [chat, reflection]
+    ConversationDetail:
+      type: object
+      required: [conversation, messages, awaitingResume]
+      properties:
+        conversation:
+          $ref: '#/components/schemas/ConversationSummary'
+        summary:
+          type: string
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatMessage'
+        pendingApproval:
+          $ref: '#/components/schemas/Approval'
+        awaitingResume:
+          type: boolean
+          description: An approval was answered and the reply is owed; call resumeConversation.
+    ChatMessage:
+      type: object
+      required: [id, role, text, attachments, exercises, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum: [user, coach]
+        text:
+          type: string
+        attachments:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatAttachment'
+        exercises:
+          type: array
+          description: Catalog slugs the coach looked up for this reply.
+          items:
+            type: string
+        helpful:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+    ChatAttachment:
+      type: object
+      required: [mediaId, kind, mimeType, name]
+      properties:
+        mediaId:
+          type: string
+          format: uuid
+        kind:
+          type: string
+        mimeType:
+          type: string
+        name:
+          type: string
+    Approval:
+      type: object
+      required: [messageId, calls]
+      properties:
+        messageId:
+          type: string
+          format: uuid
+        calls:
+          type: array
+          items:
+            $ref: '#/components/schemas/ApprovalCall'
+    ApprovalCall:
+      type: object
+      required: [name, summary]
+      properties:
+        name:
+          type: string
+        summary:
+          type: string
+          description: The call in words a person can judge.
+    ReplyRequest:
+      type: object
+      properties:
+        text:
+          type: string
+        mediaId:
+          type: string
+          format: uuid
+        begin:
+          type: boolean
+          description: Open a new reflection with the coach's first question.
+    DecisionRequest:
+      type: object
+      required: [approve]
+      properties:
+        approve:
+          type: boolean
+    HelpfulRequest:
+      type: object
+      required: [helpful]
+      properties:
+        helpful:
+          type: [boolean, 'null']
+          description: true, false, or null to clear.
+    ReplyTokenEvent:
+      type: object
+      required: [text]
+      properties:
+        text:
+          type: string
+    ReplyErrorEvent:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+    ReplyExercisesEvent:
+      type: object
+      required: [slugs]
+      properties:
+        slugs:
+          type: array
+          items:
+            type: string
+    ReplyDoneEvent:
+      type: object
+      properties:
+        messageId:
+          type: string
+          format: uuid
+          description: The stored reply. Absent when the turn stopped for approval.
+    ExerciseDetail:
+      type: object
+      required: [slug, name, category, equipment, difficulty, instructions, primaryMuscles, secondaryMuscles]
+      properties:
+        slug:
+          type: string
+        name:
+          type: string
+        category:
+          type: string
+        equipment:
+          type: string
+        difficulty:
+          type: string
+        instructions:
+          type: string
+        videoUrl:
+          type: string
+        primaryMuscles:
+          type: array
+          items:
+            type: string
+        secondaryMuscles:
+          type: array
+          items:
+            type: string
+        art:
+          $ref: '#/components/schemas/ExerciseArt'
+    ExerciseArt:
+      type: object
+      required: [size, frames, credit]
+      properties:
+        size:
+          type: integer
+          description: The frames are drawn in a size×size square.
+        frames:
+          type: array
+          description: SVG path data, one path per pose. Fill with the even-odd rule.
+          items:
+            type: string
+        credit:
+          type: string
+          description: Attribution the artwork's licence requires wherever it is shown.
