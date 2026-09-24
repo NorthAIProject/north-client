@@ -36,6 +36,7 @@ type Client struct {
 	defaultModel       string
 	headers            map[string]string
 	supportsJSONSchema bool
+	ignoresTools       bool
 
 	// embed is zero unless WithEmbeddings was called. A zero value means this
 	// client speaks chat only, and asserting ai.Embedder on it should fail.
@@ -66,6 +67,12 @@ type Options struct {
 	// weaker, and callers wanting structured output from such a provider need
 	// to tolerate a malformed first attempt.
 	SupportsJSONSchema bool
+
+	// IgnoresTools marks a service that accepts a tools array and never
+	// offers it to the model. A Hermes gateway is one: its API server fronts
+	// an agent with its own toolset and does not read the field. The runner
+	// leaves such a client out of any turn that carries tools.
+	IgnoresTools bool
 
 	HTTPClient *http.Client
 }
@@ -111,10 +118,14 @@ func New(opts Options) (*Client, error) {
 		defaultModel:       opts.DefaultModel,
 		headers:            headers,
 		supportsJSONSchema: opts.SupportsJSONSchema,
+		ignoresTools:       opts.IgnoresTools,
 	}, nil
 }
 
 func (c *Client) Name() string { return c.name }
+
+// CallsTools implements ai.ToolCaller.
+func (c *Client) CallsTools() bool { return !c.ignoresTools }
 
 func (c *Client) Generate(ctx context.Context, req ai.Request) (*ai.Response, error) {
 	resp, err := c.post(ctx, c.body(req, false))

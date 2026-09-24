@@ -41,6 +41,12 @@ type RunOptions struct {
 	// upon.
 	Prepend []Client
 
+	// NeedsTools says the request carries tools the model must be able to
+	// call. A provider that ignores the tools array is left out of the walk
+	// rather than tried: it would answer, and its answer would be a model
+	// describing a write it could not make.
+	NeedsTools bool
+
 	// OnError is called for every provider that refuses, including the last.
 	// The coach uses it to record a bad key against the user who owns it;
 	// callers with nothing to report leave it nil.
@@ -61,6 +67,22 @@ func (r *Runner) Run(ctx context.Context, opts RunOptions, attempt func(Client) 
 	clients := append(append([]Client{}, opts.Prepend...), r.registry.Resolve(r.chains.For(opts.Tier))...)
 	if len(clients) == 0 {
 		return nil, apperr.Wrap(apperr.ErrUnavailable, "ai: no provider is configured")
+	}
+
+	if opts.NeedsTools {
+		able := clients[:0:0]
+		for _, client := range clients {
+			if CallsTools(client) {
+				able = append(able, client)
+				continue
+			}
+			log.Info("ai provider ignores the tools array; left out of a turn that needs them",
+				slog.String("provider", client.Name()))
+		}
+		if len(able) == 0 {
+			return nil, apperr.Wrap(apperr.ErrUnavailable, "ai: no configured provider will call tools")
+		}
+		clients = able
 	}
 
 	var lastErr error
