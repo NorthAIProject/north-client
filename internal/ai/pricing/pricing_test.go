@@ -26,8 +26,8 @@ func TestEveryShippedModelIsPricedOrAcknowledged(t *testing.T) {
 		{"hermes", "hermes-3"},
 		// The free floor, reached as provider=model chain entries. Named here
 		// by the base provider, which is what Key normalises a variant to.
-		{"openrouter", "z-ai/glm-5.2:free"},
 		{"openrouter", "nvidia/nemotron-3-ultra-550b-a55b:free"},
+		{"openrouter", "nvidia/nemotron-3-super-120b-a12b:free"},
 	}
 
 	for _, m := range shipped {
@@ -43,19 +43,19 @@ func TestEveryShippedModelIsPricedOrAcknowledged(t *testing.T) {
 	}
 }
 
-// A chain entry names a variant — "openrouter=z-ai/glm-5.2:free" — and the
+// A chain entry names a variant — "openrouter=nvidia/nemotron-3-super-120b-a12b:free" — and the
 // client built from it reports that whole string as its provider name. Pricing
 // has to see through that to the backend, or every variant call is unpriced.
 func TestAVariantProviderResolvesToItsBase(t *testing.T) {
 	t.Parallel()
 
-	got := pricing.Key("openrouter=z-ai/glm-5.2:free", "z-ai/glm-5.2:free")
-	want := "openrouter/z-ai/glm-5.2:free"
+	got := pricing.Key("openrouter=nvidia/nemotron-3-super-120b-a12b:free", "nvidia/nemotron-3-super-120b-a12b:free")
+	want := "openrouter/nvidia/nemotron-3-super-120b-a12b:free"
 	if got != want {
 		t.Errorf("Key = %q, want %q", got, want)
 	}
 
-	if _, ok := pricing.Cost("openrouter=z-ai/glm-5.2:free", "z-ai/glm-5.2:free", 1000, 1000); !ok {
+	if _, ok := pricing.Cost("openrouter=nvidia/nemotron-3-super-120b-a12b:free", "nvidia/nemotron-3-super-120b-a12b:free", 1000, 1000); !ok {
 		t.Error("a variant chain entry did not resolve to a known rate")
 	}
 }
@@ -66,7 +66,7 @@ func TestAVariantProviderResolvesToItsBase(t *testing.T) {
 func TestTheFreeFloorIsPricedAtZero(t *testing.T) {
 	t.Parallel()
 
-	micros, ok := pricing.Cost("openrouter", "z-ai/glm-5.2:free", 1_000_000, 1_000_000)
+	micros, ok := pricing.Cost("openrouter", "nvidia/nemotron-3-super-120b-a12b:free", 1_000_000, 1_000_000)
 	if !ok {
 		t.Fatal("the free floor has no rate; it should be priced at zero, not unpriced")
 	}
@@ -94,7 +94,7 @@ func TestASmallCallDoesNotRoundToZero(t *testing.T) {
 	// through the shipped zero-rate model's arithmetic path instead: the
 	// calculation must not panic or overflow on realistic token counts, and a
 	// priced-zero model must stay zero.
-	if micros, ok := pricing.Cost("openrouter", "z-ai/glm-5.2:free", 1234, 567); !ok || micros != 0 {
+	if micros, ok := pricing.Cost("openrouter", "nvidia/nemotron-3-super-120b-a12b:free", 1234, 567); !ok || micros != 0 {
 		t.Errorf("cost = %d, ok = %v; want 0, true", micros, ok)
 	}
 }

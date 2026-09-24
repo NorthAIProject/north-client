@@ -16,12 +16,12 @@
   ],
 
   "models": {
-    "openrouter/z-ai/glm-5.2:free": {
+    "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free": {
       "input": 0,
       "output": 0,
       "note": "Free floor. Costs nothing by construction; a rate here would be wrong, not missing."
     },
-    "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free": {
+    "openrouter/nvidia/nemotron-3-super-120b-a12b:free": {
       "input": 0,
       "output": 0,
       "note": "Free floor, as above."

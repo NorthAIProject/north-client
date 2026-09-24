@@ -55,7 +55,7 @@ func metered(t *testing.T, byok bool) (ai.Client, *captureRecorder) {
 	rec := &captureRecorder{}
 	client := ai.Metered(stubClient{
 		name:   "openrouter",
-		model:  "z-ai/glm-5.2:free",
+		model:  "nvidia/nemotron-3-super-120b-a12b:free",
 		usage:  ai.Usage{InputTokens: 1000, OutputTokens: 400},
 		chunks: 3,
 	}, spend.NewMeter(rec), byok)
@@ -75,7 +75,7 @@ func TestGenerateIsRecordedWithTheProvidersOwnModel(t *testing.T) {
 		t.Fatalf("recorded %d generations, want 1", len(rec.got))
 	}
 	g := rec.got[0]
-	if g.Model != "z-ai/glm-5.2:free" {
+	if g.Model != "nvidia/nemotron-3-super-120b-a12b:free" {
 		t.Errorf("Model = %q; the provider's reported model was dropped", g.Model)
 	}
 	if g.Surface != spend.SurfaceWeeklyReview {
