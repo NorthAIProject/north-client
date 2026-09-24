@@ -1,0 +1,15 @@
+{
+  "nudgeMissedCheckIn": true,
+  "nudgeGoalDeadline": false,
+  "coachActivity": false,
+  "trainingReminders": true,
+  "weeklyReportAuto": false,
+  "dailyBriefingAuto": false,
+  "statsDigestCadence": "weekly",
+  "quietHoursEnabled": true,
+  "quietStart": "22:00",
+  "quietEnd": "07:00",
+  "photoAskEnabled": true,
+  "photoEveryDays": 14,
+  "photoReminderDays": 2
+}

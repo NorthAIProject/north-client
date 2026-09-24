@@ -400,6 +400,330 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+  /settings/profile:
+    get:
+      operationId: getProfile
+      summary: Name, time zone, language and how the coach talks
+      tags: [settings]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Profile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      operationId: updateProfile
+      summary: Save the profile and coaching style
+      tags: [settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Profile'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Profile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /settings/preferences:
+    get:
+      operationId: getPreferences
+      summary: Units and nutrition defaults
+      tags: [settings]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Preferences'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      operationId: updatePreferences
+      summary: Save units and nutrition defaults
+      tags: [settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Preferences'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Preferences'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /settings/notifications:
+    get:
+      operationId: getNotificationSettings
+      summary: What North may say unprompted, and quiet hours
+      tags: [settings]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationSettings'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      operationId: updateNotificationSettings
+      summary: Save notification settings
+      tags: [settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationSettings'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationSettings'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /settings/ai:
+    get:
+      operationId: getAISettings
+      summary: The providers a person may bring a key for, and the one in use
+      tags: [settings]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AISettings'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      operationId: saveAIProvider
+      summary: Use your own AI provider key
+      tags: [settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AIProviderRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AISettings'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+    delete:
+      operationId: removeAIProvider
+      summary: Go back to Khepri's providers
+      tags: [settings]
+      responses:
+        '204':
+          description: Done
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /settings/connections:
+    get:
+      operationId: listConnections
+      summary: Agents allowed to reach this account over MCP
+      tags: [settings]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectionList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: createConnection
+      summary: Issue a token for an agent; the token appears only in this response
+      tags: [settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateConnectionRequest'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatedConnection'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /settings/connections/{connectionID}:
+    parameters:
+      - name: connectionID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      operationId: revokeConnection
+      summary: Revoke an agent's token
+      tags: [settings]
+      responses:
+        '204':
+          description: Done
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /settings/activity:
+    get:
+      operationId: listActivity
+      summary: What North did on this person's behalf
+      tags: [settings]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivityList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /settings/telegram:
+    get:
+      operationId: getTelegramSettings
+      summary: Whether Telegram is linked
+      tags: [settings]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TelegramSettings'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    delete:
+      operationId: unlinkTelegram
+      summary: Disconnect Telegram
+      tags: [settings]
+      responses:
+        '204':
+          description: Done
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /settings/telegram/code:
+    post:
+      operationId: issueTelegramCode
+      summary: A single-use code linking a Telegram account
+      tags: [settings]
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TelegramCode'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /settings/calendar:
+    get:
+      operationId: getCalendarSettings
+      summary: The calendar reached over MCP, if connected
+      tags: [settings]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalendarSettings'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      operationId: connectCalendar
+      summary: Connect a calendar's MCP server
+      tags: [settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CalendarRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalendarSettings'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      operationId: disconnectCalendar
+      summary: Disconnect the calendar
+      tags: [settings]
+      responses:
+        '204':
+          description: Done
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /account/delete:
+    post:
+      operationId: deleteAccount
+      summary: Erase the account; typing the email address is the confirmation
+      tags: [settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeleteAccountRequest'
+      responses:
+        '204':
+          description: Done
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
   /me:
     get:
       operationId: getMe
@@ -1326,3 +1650,289 @@ components:
         credit:
           type: string
           description: Attribution the artwork's licence requires wherever it is shown.
+    Profile:
+      type: object
+      required: [email, displayName, timezone, locale, coachingStyle, coachingTone]
+      properties:
+        email:
+          type: string
+          readOnly: true
+        displayName:
+          type: string
+        timezone:
+          type: string
+        locale:
+          type: string
+        coachingStyle:
+          type: string
+          description: Free text the coach follows, e.g. "Be direct. Skip pep talks."
+        coachingTone:
+          type: string
+          enum: [direct, warm, analytical, tough_love]
+    Preferences:
+      type: object
+      required: [unitsSystem, defaultGoal, defaultMacroSplit]
+      properties:
+        unitsSystem:
+          type: string
+          enum: [metric, imperial]
+        defaultGoal:
+          type: string
+        defaultMacroSplit:
+          type: string
+    NotificationSettings:
+      type: object
+      required: [nudgeMissedCheckIn, nudgeGoalDeadline, coachActivity, trainingReminders, weeklyReportAuto, dailyBriefingAuto, statsDigestCadence, quietHoursEnabled, quietStart, quietEnd, photoAskEnabled, photoEveryDays, photoReminderDays]
+      properties:
+        nudgeMissedCheckIn:
+          type: boolean
+        nudgeGoalDeadline:
+          type: boolean
+        coachActivity:
+          type: boolean
+        trainingReminders:
+          type: boolean
+        weeklyReportAuto:
+          type: boolean
+        dailyBriefingAuto:
+          type: boolean
+        statsDigestCadence:
+          type: string
+          enum: ['off', daily, weekly, monthly]
+        quietHoursEnabled:
+          type: boolean
+        quietStart:
+          type: string
+          description: HH:MM in the person's time zone.
+        quietEnd:
+          type: string
+        photoAskEnabled:
+          type: boolean
+        photoEveryDays:
+          type: integer
+        photoReminderDays:
+          type: integer
+    AISettings:
+      type: object
+      required: [enabled, providers]
+      properties:
+        enabled:
+          type: boolean
+          description: False on a server that cannot store a credential.
+        providers:
+          type: array
+          items:
+            $ref: '#/components/schemas/AIProvider'
+        current:
+          $ref: '#/components/schemas/AICurrent'
+    AIProvider:
+      type: object
+      required: [name, label]
+      properties:
+        name:
+          type: string
+        label:
+          type: string
+        baseUrl:
+          type: string
+        defaultModel:
+          type: string
+        keyHint:
+          type: string
+          description: What a key for this provider looks like.
+    AICurrent:
+      type: object
+      required: [provider, keyHint, updatedAt]
+      properties:
+        provider:
+          type: string
+        keyHint:
+          type: string
+          description: The stored key's last characters. The key itself is never returned.
+        model:
+          type: string
+        baseUrl:
+          type: string
+        lastError:
+          type: string
+        lastErrorAt:
+          type: string
+          format: date-time
+        supportsTools:
+          type: boolean
+          description: Absent until the background check has run.
+        updatedAt:
+          type: string
+          format: date-time
+    AIProviderRequest:
+      type: object
+      required: [provider, apiKey]
+      properties:
+        provider:
+          type: string
+        apiKey:
+          type: string
+          writeOnly: true
+        model:
+          type: string
+        baseUrl:
+          type: string
+    Connection:
+      type: object
+      required: [id, name, kind, tokenPrefix, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        kind:
+          type: string
+          enum: [claude_code, codex, hermes, other]
+        tokenPrefix:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        lastUsedAt:
+          type: string
+          format: date-time
+    ConnectionList:
+      type: object
+      required: [connections, connectorUrl]
+      properties:
+        connections:
+          type: array
+          items:
+            $ref: '#/components/schemas/Connection'
+        connectorUrl:
+          type: string
+    CreateConnectionRequest:
+      type: object
+      required: [name, kind]
+      properties:
+        name:
+          type: string
+        kind:
+          type: string
+          enum: [claude_code, codex, hermes, other]
+    CreatedConnection:
+      type: object
+      required: [connection, token, setup]
+      properties:
+        connection:
+          $ref: '#/components/schemas/Connection'
+        token:
+          type: string
+          description: Shown once. Store it in the agent now.
+        setup:
+          $ref: '#/components/schemas/ConnectionSetup'
+    ConnectionSetup:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+        configLabel:
+          type: string
+        configLang:
+          type: string
+        config:
+          type: string
+        export:
+          type: string
+        prompt:
+          type: string
+    ActivityList:
+      type: object
+      required: [executions]
+      properties:
+        executions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Execution'
+    Execution:
+      type: object
+      required: [id, tool, arguments, surface, outcome, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tool:
+          type: string
+        arguments:
+          type: object
+          additionalProperties: true
+        surface:
+          type: string
+        outcome:
+          type: string
+          enum: [executed, failed, declined]
+        detail:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    TelegramSettings:
+      type: object
+      required: [enabled, linked]
+      properties:
+        enabled:
+          type: boolean
+        botUsername:
+          type: string
+        linked:
+          type: boolean
+        linkedAt:
+          type: string
+          format: date-time
+        lastSeenAt:
+          type: string
+          format: date-time
+    TelegramCode:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+        deepLink:
+          type: string
+          description: Opens the bot with the code filled in.
+    CalendarSettings:
+      type: object
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
+        connected:
+          $ref: '#/components/schemas/CalendarConnection'
+    CalendarConnection:
+      type: object
+      required: [provider, endpoint, status]
+      properties:
+        provider:
+          type: string
+        endpoint:
+          type: string
+        status:
+          type: string
+        lastError:
+          type: string
+        lastCheckedAt:
+          type: string
+          format: date-time
+    CalendarRequest:
+      type: object
+      required: [endpoint]
+      properties:
+        endpoint:
+          type: string
+        token:
+          type: string
+          writeOnly: true
+    DeleteAccountRequest:
+      type: object
+      required: [confirmEmail]
+      properties:
+        confirmEmail:
+          type: string

@@ -1,0 +1,16 @@
+{
+  "connection": {
+    "id": "12121212-1212-1212-1212-121212121212",
+    "name": "Laptop",
+    "kind": "claude_code",
+    "tokenPrefix": "nk_live_ab12",
+    "createdAt": "2026-09-24T07:15:00Z"
+  },
+  "token": "nk_live_ab12-example-token",
+  "setup": {
+    "url": "https://kheprios.com/mcp",
+    "configLabel": "Terminal",
+    "configLang": "sh",
+    "config": "claude mcp add khepri …"
+  }
+}

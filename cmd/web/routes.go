@@ -780,6 +780,7 @@ func routes(
 			dashboard:  dashboardAPI,
 			coach:      coach.NewAPI(coachSvc, quotaSvc, mediaSvc),
 			exercises:  exercises.NewAPI(exerciseSvc, assets.Assets),
+			settings:   settings.NewAPI(settingsHandler),
 		})
 	})
 
