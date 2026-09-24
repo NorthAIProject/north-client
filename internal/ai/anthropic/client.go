@@ -9,6 +9,7 @@ package anthropic
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -96,6 +97,9 @@ func (c *Client) params(req ai.Request) sdk.MessageNewParams {
 		MaxTokens: maxTokens,
 		Messages:  toMessages(req.Messages),
 	}
+	if len(req.Tools) > 0 {
+		p.Tools = toTools(req.Tools)
+	}
 	if req.System != "" {
 		// Cached because Khepri's context block is most of every request, and
 		// it is identical between the rounds of one turn.
@@ -107,25 +111,6 @@ func (c *Client) params(req ai.Request) sdk.MessageNewParams {
 	return p
 }
 
-// toMessages is filled in by Task 2; for now, text only.
-func toMessages(in []ai.Message) []sdk.MessageParam {
-	out := make([]sdk.MessageParam, 0, len(in))
-	for _, m := range in {
-		var blocks []sdk.ContentBlockParamUnion
-		for _, part := range m.Parts {
-			if part.Text != "" {
-				blocks = append(blocks, sdk.NewTextBlock(part.Text))
-			}
-		}
-		if m.Role == ai.RoleModel {
-			out = append(out, sdk.NewAssistantMessage(blocks...))
-		} else {
-			out = append(out, sdk.NewUserMessage(blocks...))
-		}
-	}
-	return out
-}
-
 func fromMessage(msg *sdk.Message) *ai.Response {
 	resp := &ai.Response{
 		Model:        string(msg.Model),
@@ -134,8 +119,13 @@ func fromMessage(msg *sdk.Message) *ai.Response {
 	}
 	var text strings.Builder
 	for _, block := range msg.Content {
-		if b, ok := block.AsAny().(sdk.TextBlock); ok {
+		switch b := block.AsAny().(type) {
+		case sdk.TextBlock:
 			text.WriteString(b.Text)
+		case sdk.ToolUseBlock:
+			resp.ToolCalls = append(resp.ToolCalls, ai.ToolCall{
+				ID: b.ID, Name: b.Name, Arguments: json.RawMessage(b.JSON.Input.Raw()),
+			})
 		}
 	}
 	resp.Text = text.String()
