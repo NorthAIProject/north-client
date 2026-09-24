@@ -41,3 +41,18 @@ SELECT * FROM exercises
 WHERE equipment = ANY(@equipment::text[])
 ORDER BY category, name
 LIMIT @result_limit::int;
+
+-- name: SlugForIllustration :one
+-- The catalogue exercise drawn by one artwork directory. Several can share
+-- one; the one named the same as the artwork wins, then the first by name.
+SELECT slug FROM exercises
+WHERE illustration_slug = @illustration::text
+ORDER BY (slug = @illustration::text) DESC, slug
+LIMIT 1;
+
+-- name: SlugForVideo :one
+-- The catalogue exercise a demonstration video belongs to.
+SELECT slug FROM exercises
+WHERE video_url = @video_url::text
+ORDER BY slug
+LIMIT 1;

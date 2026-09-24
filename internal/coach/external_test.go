@@ -2,6 +2,7 @@ package coach_test
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -153,6 +154,58 @@ func TestTheCoachsOwnLookupWinsOverMCPTraffic(t *testing.T) {
 	}
 	if len(slugs) != 1 || slugs[0] != "squat" {
 		t.Errorf("latest exercises = %v, want [squat]", slugs)
+	}
+}
+
+// stubLinks stands in for the catalogue's link resolver.
+type stubLinks map[string]string
+
+func (l stubLinks) SlugsLinkedIn(_ context.Context, text string) []string {
+	var out []string
+	for link, slug := range l {
+		if strings.Contains(text, link) {
+			out = append(out, slug)
+		}
+	}
+	return out
+}
+
+// Added after Hermes answered "show me how to do a squat" with the catalogue's
+// own text and links but made no MCP call the audit could see — it had them
+// from somewhere else. The artwork address in the reply is still Khepri's, and
+// it names the exercise exactly.
+func TestAnExerciseLinkedInAGatewaysReplyIsShownWithIt(t *testing.T) {
+	t.Parallel()
+
+	answer := fake.Text("Barbell Full Squat\nSVG illustration: https://kheprios.com/assets/exercises/squat/frame-1.svg")
+	h := newExternalHarnessOver(t, gateway{answer}, answer, &stubLookups{})
+	h.coach = coach.NewService(coach.Options{
+		Registry:        registryOf(gateway{answer}),
+		Conversations:   h.convos,
+		ContextBuilder:  coach.NewContextBuilder(h.convos),
+		PromptBuilder:   coach.NewPromptBuilder(),
+		ExternalLookups: &stubLookups{},
+		ExerciseLinks:   stubLinks{"/assets/exercises/squat/": "barbell-full-squat"},
+		Chains:          ai.NewChainSet([]string{answer.Name()}, nil),
+		Model:           "test-model",
+		FastModel:       "test-fast-model",
+	})
+	conversationID := newConversation(t, h)
+
+	stream, err := h.coach.SendMessage(context.Background(), h.user, conversationID, "show me how to do a squat")
+	if err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	if _, drainErr := drain(stream); drainErr != nil {
+		t.Fatalf("drain: %v", drainErr)
+	}
+
+	slugs, err := h.coach.LatestExerciseRefs(context.Background(), h.user, conversationID)
+	if err != nil {
+		t.Fatalf("latest exercise refs: %v", err)
+	}
+	if len(slugs) != 1 || slugs[0] != "barbell-full-squat" {
+		t.Errorf("latest exercises = %v, want [barbell-full-squat]", slugs)
 	}
 }
 

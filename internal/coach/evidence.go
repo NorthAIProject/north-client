@@ -92,6 +92,12 @@ type ExternalLookups interface {
 	ExercisesLookedUpSince(ctx context.Context, userID uuid.UUID, since time.Time) ([]string, error)
 }
 
+// ExerciseLinks is the catalogue, as seen from the coach: which exercises a
+// piece of text links to. Implemented by internal/exercises.
+type ExerciseLinks interface {
+	SlugsLinkedIn(ctx context.Context, text string) []string
+}
+
 // externalExercises finds the exercises a turn read without the coach seeing it.
 //
 // A gateway that fronts an agent, such as Hermes, never calls the tools the
@@ -100,20 +106,29 @@ type ExternalLookups interface {
 // during this turn is the lookup this reply is about. Without this a reply
 // from such a provider names the exercise and shows nothing.
 //
+// When the audit has nothing — the gateway had the catalogue text from its own
+// memory or from earlier in the thread, and made no call this turn — the links
+// in the reply are the last trace: Khepri's artwork address and the catalogue's
+// video name the exercise exactly.
+//
 // Every failure is a quiet empty list: a missing picture is a reply without a
 // picture, never a reply lost.
-func (s *Service) externalExercises(ctx context.Context, target pumpTarget) []string {
-	if s.external == nil || target.startedAt.IsZero() {
-		return nil
+func (s *Service) externalExercises(ctx context.Context, target pumpTarget, reply string) []string {
+	if s.external != nil && !target.startedAt.IsZero() {
+		slugs, err := s.external.ExercisesLookedUpSince(ctx, target.user.ID, target.startedAt)
+		if err != nil {
+			middleware.FromContext(ctx).Warn("could not read the exercises looked up over MCP",
+				"error", err, "conversation_id", target.conversation.ID)
+		}
+		if len(slugs) > 0 {
+			return slugs
+		}
 	}
 
-	slugs, err := s.external.ExercisesLookedUpSince(ctx, target.user.ID, target.startedAt)
-	if err != nil {
-		middleware.FromContext(ctx).Warn("could not read the exercises looked up over MCP",
-			"error", err, "conversation_id", target.conversation.ID)
+	if s.links == nil {
 		return nil
 	}
-	return slugs
+	return s.links.SlugsLinkedIn(ctx, reply)
 }
 
 // refRemoval matches a citation plus the usual leading space.

@@ -2,6 +2,8 @@ package exercises
 
 import (
 	"context"
+	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/google/uuid"
@@ -197,4 +199,39 @@ func (s *Service) IllustrationFor(ctx context.Context, slug string) (string, boo
 		return "", false
 	}
 	return e.IllustrationSlug, true
+}
+
+// artworkLink matches Khepri's own address for a movement's pose frames, and
+// captures the artwork directory.
+var artworkLink = regexp.MustCompile(`/assets/exercises/([a-z0-9-]+)/(?:frame-\d\.svg|loop\.gif)`)
+
+// videoLink matches a demonstration video address as the catalogue stores it.
+var videoLink = regexp.MustCompile(`https://(?:www\.)?(?:youtu\.be/|youtube\.com/watch\?v=)[\w-]+`)
+
+// SlugsLinkedIn finds the catalogue exercises a piece of text links to, in
+// the order they first appear.
+//
+// For replies written by a provider that answers through its own agent, such
+// as a Hermes gateway: it reads the catalogue however it reads it and passes
+// the links on, so the links are the only trace of which exercise the reply is
+// about. Artwork addresses are resolved through the illustration column,
+// because the artwork and the catalogue name movements differently.
+//
+// A link that resolves to nothing is skipped; so is a lookup that fails. A
+// reply missing its picture is better than a reply that fails.
+func (s *Service) SlugsLinkedIn(ctx context.Context, text string) []string {
+	var slugs []string
+	add := func(slug string, err error) {
+		if err == nil && slug != "" && !slices.Contains(slugs, slug) {
+			slugs = append(slugs, slug)
+		}
+	}
+
+	for _, m := range artworkLink.FindAllStringSubmatch(text, -1) {
+		add(s.repo.SlugForIllustration(ctx, m[1]))
+	}
+	for _, url := range videoLink.FindAllString(text, -1) {
+		add(s.repo.SlugForVideo(ctx, url))
+	}
+	return slugs
 }
