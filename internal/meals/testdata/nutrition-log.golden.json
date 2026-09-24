@@ -1,0 +1,39 @@
+{
+  "date": "2026-09-24",
+  "entries": [
+    {
+      "id": "55555555-aaaa-aaaa-aaaa-555555555555",
+      "label": "Rolled oats",
+      "quantityGrams": 80,
+      "macros": {
+        "calories": 303.2,
+        "proteinG": 10.6,
+        "fatG": 5.2,
+        "carbG": 54.2
+      },
+      "loggedAt": "2026-09-24T08:00:00Z"
+    }
+  ],
+  "totals": {
+    "calories": 303.2,
+    "proteinG": 10.6,
+    "fatG": 5.2,
+    "carbG": 54.2
+  },
+  "progress": {
+    "goal": {
+      "calories": 2200,
+      "proteinG": 130,
+      "fatG": 70,
+      "carbG": 260
+    },
+    "logged": {
+      "calories": 303.2,
+      "proteinG": 10.6,
+      "fatG": 5.2,
+      "carbG": 54.2
+    },
+    "summary": "1897 kcal under your goal",
+    "recommendation": "Your goal fits a maintenance phase."
+  }
+}

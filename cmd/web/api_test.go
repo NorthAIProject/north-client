@@ -22,6 +22,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/health"
 	"github.com/NorthAIProject/north-client/internal/insights"
+	"github.com/NorthAIProject/north-client/internal/meals"
 	"github.com/NorthAIProject/north-client/internal/media"
 	"github.com/NorthAIProject/north-client/internal/memories"
 	"github.com/NorthAIProject/north-client/internal/mind"
@@ -68,6 +69,7 @@ func apiRouter(t *testing.T) chi.Router {
 		formChecks: media.NewAPI(nil, nil),
 		care:       care.NewAPI(care.Options{}),
 		mind:       mind.NewAPI(nil),
+		nutrition:  meals.NewAPI(meals.HandlerOptions{}),
 	})
 	return r
 }
