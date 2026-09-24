@@ -1,9 +1,7 @@
 package dashboard
 
 import (
-	"context"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -14,23 +12,17 @@ import (
 	"github.com/NorthAIProject/north-client/internal/goals/goal"
 	"github.com/NorthAIProject/north-client/internal/nudges/nudge"
 	"github.com/NorthAIProject/north-client/internal/reports/report"
-	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
-	"github.com/NorthAIProject/north-client/internal/users"
 )
 
-type SessionResolver interface {
-	Resolve(context.Context, string) (auth.Session, error)
-}
-
 type API struct {
-	svc      *Service
-	sessions SessionResolver
+	svc *Service
 }
 
-func NewAPI(svc *Service, sessions SessionResolver) *API {
-	return &API{svc: svc, sessions: sessions}
+// NewAPI builds the routes; mount them behind auth.RequireBearer.
+func NewAPI(svc *Service) *API {
+	return &API{svc: svc}
 }
 
 func (a *API) Routes(r chi.Router) {
@@ -132,10 +124,7 @@ type NudgeResponse struct {
 }
 
 func (a *API) today(w http.ResponseWriter, r *http.Request) {
-	user, ok := a.user(w, r)
-	if !ok {
-		return
-	}
+	user := auth.MustUser(r.Context())
 
 	rg := timerange.Parse(r.URL.Query().Get("range"), user.Location())
 	snapshot, err := a.svc.Load(r.Context(), user, rg)
@@ -148,26 +137,6 @@ func (a *API) today(w http.ResponseWriter, r *http.Request) {
 		User:     auth.ProjectUser(user),
 		Snapshot: projectSnapshot(snapshot),
 	})
-}
-
-func (a *API) user(w http.ResponseWriter, r *http.Request) (users.User, bool) {
-	token, found := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-	token = strings.TrimSpace(token)
-	if !found || token == "" {
-		httpx.Error(w, apperr.ErrUnauthenticated, "A bearer token is required.")
-		return users.User{}, false
-	}
-
-	session, err := a.sessions.Resolve(r.Context(), token)
-	if err != nil {
-		if apperr.Is(err, apperr.ErrUnauthenticated) || apperr.Is(err, apperr.ErrNotFound) {
-			httpx.Error(w, apperr.ErrUnauthenticated, "That token is not valid.")
-		} else {
-			httpx.Error(w, apperr.ErrUnavailable, "Something went wrong.")
-		}
-		return users.User{}, false
-	}
-	return session.User, true
 }
 
 func projectSnapshot(snapshot Snapshot) TodaySnapshot {

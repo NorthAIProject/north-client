@@ -3,7 +3,6 @@ package auth
 import (
 	"context"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -40,9 +39,9 @@ func (a *API) WithAuthService(service *Service, mw *Middleware) *API {
 	return a
 }
 
-// Routes mounts routes relative to /api/v1.
-func (a *API) Routes(r chi.Router) {
-	r.Get("/me", a.me)
+// PublicRoutes mounts the credential routes relative to /api/v1. They run
+// before a session exists, so they sit outside RequireBearer.
+func (a *API) PublicRoutes(r chi.Router) {
 	if a.service == nil || a.mw == nil {
 		return
 	}
@@ -52,6 +51,16 @@ func (a *API) Routes(r chi.Router) {
 	r.Post("/auth/apple", a.apple)
 	r.Post("/auth/logout", a.logout)
 	r.Post("/auth/forgot-password", a.forgotPassword)
+	r.Post("/auth/passkey/register/begin", a.passkeyRegisterBegin)
+	r.Post("/auth/passkey/register/finish", a.passkeyRegisterFinish)
+	r.Post("/auth/passkey/login/begin", a.passkeyLoginBegin)
+	r.Post("/auth/passkey/login/finish", a.passkeyLoginFinish)
+}
+
+// Routes mounts the signed-in routes relative to /api/v1. Mount them behind
+// RequireBearer.
+func (a *API) Routes(r chi.Router) {
+	r.Get("/me", a.me)
 }
 
 type LoginRequest struct {
@@ -104,23 +113,7 @@ type MeResponse struct {
 }
 
 func (a *API) me(w http.ResponseWriter, r *http.Request) {
-	token, ok := bearerToken(r)
-	if !ok {
-		httpx.Error(w, apperr.ErrUnauthenticated, "A bearer token is required.")
-		return
-	}
-
-	session, err := a.sessions.Resolve(r.Context(), token)
-	if err != nil {
-		if apperr.Is(err, apperr.ErrUnauthenticated) || apperr.Is(err, apperr.ErrNotFound) {
-			httpx.Error(w, apperr.ErrUnauthenticated, "That token is not valid.")
-			return
-		}
-		httpx.Error(w, apperr.ErrUnavailable, "Something went wrong.")
-		return
-	}
-
-	httpx.WriteJSON(w, http.StatusOK, MeResponse{User: ProjectUser(session.User)})
+	httpx.WriteJSON(w, http.StatusOK, MeResponse{User: ProjectUser(MustUser(r.Context()))})
 }
 
 func (a *API) signup(w http.ResponseWriter, r *http.Request) {
@@ -247,10 +240,4 @@ func ProjectUser(user users.User) APIUser {
 		Timezone:        user.Timezone,
 		NeedsOnboarding: user.NeedsOnboarding(),
 	}
-}
-
-func bearerToken(r *http.Request) (string, bool) {
-	token, found := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-	token = strings.TrimSpace(token)
-	return token, found && token != ""
 }

@@ -1,0 +1,10 @@
+{
+  "user": {
+    "id": "22222222-2222-2222-2222-222222222222",
+    "email": "ana@example.com",
+    "displayName": "Ana",
+    "timezone": "Europe/Lisbon",
+    "needsOnboarding": false
+  },
+  "threadId": "33333333-3333-3333-3333-333333333333"
+}

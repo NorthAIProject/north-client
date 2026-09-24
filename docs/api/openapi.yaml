@@ -2,19 +2,289 @@ openapi: 3.1.0
 info:
   title: North API
   version: 1.0.0
-  description: JSON API for North clients, including the iOS application.
+  description: |
+    JSON API for North's native clients. The iOS app generates its client from
+    this file (swift-openapi-generator), so this file is the contract: a route
+    under /api/v1 that is not described here fails cmd/web's contract test.
+
+    Authentication, by route group:
+    - `/auth/*` sign-in routes take no credentials and return a session token.
+    - Everything else takes that session token as `Authorization: Bearer`.
+    - `/capture/*` takes an `nk_` connection token instead, issued from
+      Settings → Connections for agents and shortcuts.
+
+    A browser session cookie authenticates none of these.
 servers:
   - url: https://kheprios.com/api/v1
-    description: Primary application host
-  - url: https://api.khepri.com/api/v1
-    description: API host
+    description: Production
+  - url: http://localhost:8090/api/v1
+    description: Local development
 security:
   - bearerAuth: []
 paths:
+  /auth/signup:
+    post:
+      operationId: signUp
+      summary: Create an account with email and password
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignupRequest'
+      responses:
+        '201':
+          $ref: '#/components/responses/Authenticated'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /auth/login:
+    post:
+      operationId: logIn
+      summary: Sign in with email and password
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Authenticated'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /auth/google:
+    post:
+      operationId: signInWithGoogle
+      summary: Sign in with a Google ID token from the native SDK
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoogleRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Authenticated'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /auth/apple:
+    post:
+      operationId: signInWithApple
+      summary: Sign in with an Apple identity token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AppleRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Authenticated'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /auth/logout:
+    post:
+      operationId: logOut
+      summary: Revoke the session token sent in the Authorization header
+      description: Idempotent. An unknown or already revoked token still gets 204.
+      security: []
+      responses:
+        '204':
+          description: Session revoked
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /auth/forgot-password:
+    post:
+      operationId: requestPasswordReset
+      summary: Email a password reset link
+      description: Always 202, whether or not the address has an account.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForgotPasswordRequest'
+      responses:
+        '202':
+          description: Accepted
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /auth/passkey/register/begin:
+    post:
+      operationId: beginPasskeyRegistration
+      summary: Start creating an account with a passkey
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasskeyRegisterBeginRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/PasskeyCeremony'
+        '404':
+          $ref: '#/components/responses/PasskeysUnavailable'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /auth/passkey/register/finish:
+    post:
+      operationId: finishPasskeyRegistration
+      summary: Create the account from the device's attestation
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasskeyFinishRequest'
+      responses:
+        '201':
+          $ref: '#/components/responses/Authenticated'
+        '400':
+          $ref: '#/components/responses/PasskeyExpired'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/PasskeysUnavailable'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /auth/passkey/login/begin:
+    post:
+      operationId: beginPasskeyLogin
+      summary: Start signing in with a passkey
+      description: Omit the body, or the email, for a discoverable sign-in.
+      security: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasskeyLoginBeginRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/PasskeyCeremony'
+        '404':
+          $ref: '#/components/responses/PasskeysUnavailable'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /auth/passkey/login/finish:
+    post:
+      operationId: finishPasskeyLogin
+      summary: Sign in with the device's assertion
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasskeyFinishRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Authenticated'
+        '400':
+          $ref: '#/components/responses/PasskeyExpired'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/PasskeysUnavailable'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /me:
+    get:
+      operationId: getMe
+      summary: The signed-in user
+      responses:
+        '200':
+          description: The signed-in user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /onboarding:
+    post:
+      operationId: completeOnboarding
+      summary: Save first-run answers and open the first coach thread
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OnboardingRequest'
+      responses:
+        '200':
+          description: Onboarding saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OnboardingResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /today:
+    get:
+      operationId: getToday
+      summary: The Today dashboard for a time range
+      parameters:
+        - name: range
+          in: query
+          required: false
+          description: Range key, e.g. `today`, `7d`, `30d`. Defaults to today.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Today snapshot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TodayResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /capture/parse:
     post:
       operationId: parseCapture
       summary: Parse a quick capture into proposed entries
+      security:
+        - connectionToken: []
       requestBody:
         required: true
         content:
@@ -42,6 +312,8 @@ paths:
     post:
       operationId: commitCapture
       summary: Commit selected capture entries
+      security:
+        - connectionToken: []
       requestBody:
         required: true
         content:
@@ -70,8 +342,48 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
-      description: North personal access token issued for the calling account.
+      description: Session token returned by the /auth routes.
+    connectionToken:
+      type: http
+      scheme: bearer
+      description: An `nk_` connection token from Settings → Connections.
   responses:
+    Authenticated:
+      description: Signed in; the token authenticates later requests
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AuthResponse'
+    PasskeyCeremony:
+      description: WebAuthn options for the device
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PasskeyCeremonyResponse'
+    PasskeyExpired:
+      description: The challenge expired or was already used; begin again
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
+    PasskeysUnavailable:
+      description: Passkeys are not configured on this server
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
+    Unavailable:
+      description: A dependency failed; retrying may succeed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
+    Conflict:
+      description: The resource already exists
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
     Unauthorized:
       description: Missing or invalid bearer token
       headers:
@@ -167,17 +479,17 @@ components:
         problem:
           type: string
         water:
-          $ref: '#/components/schemas/Water'
+          $ref: '#/components/schemas/CaptureWater'
         sleep:
-          $ref: '#/components/schemas/Sleep'
+          $ref: '#/components/schemas/CaptureSleep'
         habit:
-          $ref: '#/components/schemas/Habit'
+          $ref: '#/components/schemas/CaptureHabit'
         weight:
-          $ref: '#/components/schemas/Weight'
+          $ref: '#/components/schemas/CaptureWeight'
         check_in:
-          $ref: '#/components/schemas/CheckIn'
+          $ref: '#/components/schemas/CaptureCheckIn'
         food:
-          $ref: '#/components/schemas/Food'
+          $ref: '#/components/schemas/CaptureFood'
     Outcome:
       type: object
       required: [item]
@@ -189,14 +501,14 @@ components:
           type: string
         error:
           type: string
-    Water:
+    CaptureWater:
       type: object
       required: [amount_ml]
       additionalProperties: false
       properties:
         amount_ml:
           type: integer
-    Sleep:
+    CaptureSleep:
       type: object
       required: [minutes, date]
       additionalProperties: false
@@ -208,7 +520,7 @@ components:
           format: date-time
         quality:
           type: integer
-    Habit:
+    CaptureHabit:
       type: object
       required: [name]
       additionalProperties: false
@@ -218,14 +530,14 @@ components:
         id:
           type: string
           format: uuid
-    Weight:
+    CaptureWeight:
       type: object
       required: [kg]
       additionalProperties: false
       properties:
         kg:
           type: number
-    CheckIn:
+    CaptureCheckIn:
       type: object
       required: [mood, energy]
       additionalProperties: false
@@ -236,7 +548,7 @@ components:
           type: integer
         notes:
           type: string
-    Food:
+    CaptureFood:
       type: object
       required: [query, grams]
       additionalProperties: false
@@ -266,3 +578,340 @@ components:
           type: object
           additionalProperties:
             type: string
+    SignupRequest:
+      type: object
+      required: [email, password, passwordConfirmation]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+        passwordConfirmation:
+          type: string
+        displayName:
+          type: string
+        timezone:
+          type: string
+          description: IANA zone, e.g. Europe/Lisbon. Defaults to UTC.
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+    GoogleRequest:
+      type: object
+      required: [idToken]
+      properties:
+        idToken:
+          type: string
+    AppleRequest:
+      type: object
+      required: [identityToken, nonce]
+      properties:
+        identityToken:
+          type: string
+        authorizationCode:
+          type: string
+        nonce:
+          type: string
+          description: The raw nonce whose SHA-256 was sent to Apple.
+        fullName:
+          type: string
+          description: Apple sends the name only on the first sign-in.
+        email:
+          type: string
+    ForgotPasswordRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+    AuthResponse:
+      type: object
+      required: [token, expiresAt, user]
+      properties:
+        token:
+          type: string
+          description: "Opaque session token. Send as `Authorization: Bearer`."
+        expiresAt:
+          type: string
+          format: date-time
+        user:
+          $ref: '#/components/schemas/User'
+    User:
+      type: object
+      required: [id, email, displayName, timezone, needsOnboarding]
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        displayName:
+          type: string
+        timezone:
+          type: string
+        needsOnboarding:
+          type: boolean
+    MeResponse:
+      type: object
+      required: [user]
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+    OnboardingRequest:
+      type: object
+      required: [focusAreas, coachingStyle]
+      properties:
+        focusAreas:
+          type: array
+          items:
+            type: string
+        coachingStyle:
+          type: string
+          description: direct, supportive, socratic or custom. Free text is treated as custom.
+        coachingStyleCustom:
+          type: string
+        nearTermGoal:
+          type: string
+    OnboardingResponse:
+      type: object
+      required: [user]
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        threadId:
+          type: string
+          format: uuid
+          description: The coach thread opened for the first conversation.
+    TodayResponse:
+      type: object
+      required: [user, snapshot]
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        snapshot:
+          $ref: '#/components/schemas/TodaySnapshot'
+    TodaySnapshot:
+      type: object
+      required: [range, checkedInToday, streak, goalActivity7d, pendingMemories, goals, hydration, sleep, activityCalories, timeline, deltas, nudges]
+      properties:
+        range:
+          type: string
+        checkedInToday:
+          type: boolean
+        streak:
+          type: integer
+        goalActivity7d:
+          type: integer
+        pendingMemories:
+          type: integer
+        goals:
+          type: array
+          items:
+            $ref: '#/components/schemas/TodayGoal'
+        lastThread:
+          $ref: '#/components/schemas/TodayThread'
+        nextStep:
+          $ref: '#/components/schemas/NextStep'
+        hydration:
+          $ref: '#/components/schemas/Hydration'
+        sleep:
+          $ref: '#/components/schemas/SleepSummary'
+        activityCalories:
+          type: number
+        timeline:
+          type: array
+          items:
+            $ref: '#/components/schemas/TimelineEntry'
+        deltas:
+          $ref: '#/components/schemas/Deltas'
+        nudges:
+          type: array
+          items:
+            $ref: '#/components/schemas/Nudge'
+        briefing:
+          type: string
+    TodayGoal:
+      type: object
+      required: [id, title, category, status, milestoneTotal, milestoneDone]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        category:
+          type: string
+        status:
+          type: string
+        targetDate:
+          type: string
+          format: date-time
+        milestoneTotal:
+          type: integer
+        milestoneDone:
+          type: integer
+        progress:
+          type: integer
+          description: Percent, when the goal tracks a measurable target.
+    TodayThread:
+      type: object
+      required: [id, title, kind, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        kind:
+          type: string
+        updatedAt:
+          type: string
+          format: date-time
+    NextStep:
+      type: object
+      required: [kind, eyebrow, title, body, cta, href]
+      properties:
+        kind:
+          type: string
+        eyebrow:
+          type: string
+        title:
+          type: string
+        body:
+          type: string
+        cta:
+          type: string
+        href:
+          type: string
+          description: A web path; native clients map it to a screen.
+    Hydration:
+      type: object
+      required: [todayML, targetML, percent]
+      properties:
+        todayML:
+          type: integer
+        targetML:
+          type: integer
+        percent:
+          type: integer
+    SleepSummary:
+      type: object
+      required: [logged, durationMinutes]
+      properties:
+        logged:
+          type: boolean
+        durationMinutes:
+          type: integer
+        quality:
+          type: integer
+    TimelineEntry:
+      type: object
+      required: [kind, label, at, title, icon]
+      properties:
+        kind:
+          type: string
+        label:
+          type: string
+        at:
+          type: string
+          format: date-time
+        title:
+          type: string
+        detail:
+          type: string
+        href:
+          type: string
+        icon:
+          type: string
+    Delta:
+      type: object
+      required: [pct, direction, hasPrior]
+      properties:
+        pct:
+          type: number
+        direction:
+          type: integer
+          description: -1 down, 0 flat, 1 up.
+        hasPrior:
+          type: boolean
+    Deltas:
+      type: object
+      required: [hydration, sleepHours, calories, checkIns]
+      properties:
+        hydration:
+          $ref: '#/components/schemas/Delta'
+        sleepHours:
+          $ref: '#/components/schemas/Delta'
+        calories:
+          $ref: '#/components/schemas/Delta'
+        checkIns:
+          $ref: '#/components/schemas/Delta'
+    Nudge:
+      type: object
+      required: [id, kind, title, body, href, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+        title:
+          type: string
+        body:
+          type: string
+        href:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    PasskeyRegisterBeginRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+        displayName:
+          type: string
+        timezone:
+          type: string
+    PasskeyLoginBeginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+    PasskeyCeremonyResponse:
+      type: object
+      required: [challengeId, publicKey]
+      properties:
+        challengeId:
+          type: string
+          format: uuid
+        publicKey:
+          type: object
+          additionalProperties: true
+          description: |
+            WebAuthn PublicKeyCredentialCreationOptions (register) or
+            PublicKeyCredentialRequestOptions (login), binary fields base64url.
+            Register with `publicKey.user.id` as the user handle: discoverable
+            login maps it back to the account.
+    PasskeyFinishRequest:
+      type: object
+      required: [challengeId, credential]
+      properties:
+        challengeId:
+          type: string
+          format: uuid
+        credential:
+          type: object
+          additionalProperties: true
+          description: The PublicKeyCredential as JSON, binary fields base64url.

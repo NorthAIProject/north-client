@@ -1,7 +1,6 @@
 package onboarding
 
 import (
-	"context"
 	"net/http"
 	"strings"
 
@@ -9,25 +8,17 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
-	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
-	"github.com/NorthAIProject/north-client/internal/users"
 )
-
-// SessionResolver is the narrow bearer-session boundary needed by native
-// onboarding requests.
-type SessionResolver interface {
-	Resolve(context.Context, string) (auth.Session, error)
-}
 
 // API exposes the questionnaire without coupling it to browser forms.
 type API struct {
-	svc      *Service
-	sessions SessionResolver
+	svc *Service
 }
 
-func NewAPI(svc *Service, sessions SessionResolver) *API {
-	return &API{svc: svc, sessions: sessions}
+// NewAPI builds the routes; mount them behind auth.RequireBearer.
+func NewAPI(svc *Service) *API {
+	return &API{svc: svc}
 }
 
 func (a *API) Routes(r chi.Router) {
@@ -47,10 +38,7 @@ type Response struct {
 }
 
 func (a *API) complete(w http.ResponseWriter, r *http.Request) {
-	user, ok := a.user(w, r)
-	if !ok {
-		return
-	}
+	user := auth.MustUser(r.Context())
 
 	var req Request
 	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 64 << 10}); err != nil {
@@ -83,24 +71,4 @@ func (a *API) complete(w http.ResponseWriter, r *http.Request) {
 		response.ThreadID = thread.String()
 	}
 	httpx.WriteJSON(w, http.StatusOK, response)
-}
-
-func (a *API) user(w http.ResponseWriter, r *http.Request) (users.User, bool) {
-	token, found := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-	token = strings.TrimSpace(token)
-	if !found || token == "" {
-		httpx.Error(w, apperr.ErrUnauthenticated, "A bearer token is required.")
-		return users.User{}, false
-	}
-
-	session, err := a.sessions.Resolve(r.Context(), token)
-	if err != nil {
-		if apperr.Is(err, apperr.ErrUnauthenticated) || apperr.Is(err, apperr.ErrNotFound) {
-			httpx.Error(w, apperr.ErrUnauthenticated, "That token is not valid.")
-		} else {
-			httpx.Error(w, apperr.ErrUnavailable, "Something went wrong.")
-		}
-		return users.User{}, false
-	}
-	return session.User, true
 }

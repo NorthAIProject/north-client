@@ -40,33 +40,38 @@ type GoogleProfile struct {
 }
 
 type googleOAuth struct {
-	cfg          *oauth2.Config
-	nativeClient string
+	cfg *oauth2.Config
+	// nativeClients are the iOS OAuth client IDs a native ID token may be
+	// issued for. Google binds an iOS client to one bundle ID, so the Beta and
+	// App Store builds each have their own.
+	nativeClients []string
 }
 
-func newGoogleOAuth(clientID, clientSecret, nativeClient, baseURL string) *googleOAuth {
+// newGoogleOAuth configures the web redirect flow and native ID-token sign-in
+// independently: either works without the other. nativeClients is a
+// comma-separated list.
+func newGoogleOAuth(clientID, clientSecret, nativeClients, baseURL string) *googleOAuth {
 	clientID = strings.TrimSpace(clientID)
 	clientSecret = strings.TrimSpace(clientSecret)
+	g := &googleOAuth{nativeClients: splitList(nativeClients)}
 	if clientID == "" || clientSecret == "" {
-		return &googleOAuth{}
+		return g
 	}
-	return &googleOAuth{
-		cfg: &oauth2.Config{
-			ClientID:     clientID,
-			ClientSecret: clientSecret,
-			RedirectURL:  strings.TrimRight(baseURL, "/") + "/auth/google/callback",
-			Scopes:       []string{"openid", "email", "profile"},
-			Endpoint:     google.Endpoint,
-		},
-		nativeClient: strings.TrimSpace(nativeClient),
+	g.cfg = &oauth2.Config{
+		ClientID:     clientID,
+		ClientSecret: clientSecret,
+		RedirectURL:  strings.TrimRight(baseURL, "/") + "/auth/google/callback",
+		Scopes:       []string{"openid", "email", "profile"},
+		Endpoint:     google.Endpoint,
 	}
+	return g
 }
 
 func (s *Service) CompleteGoogleIDToken(ctx context.Context, rawToken string, meta Metadata) (users.User, string, time.Time, error) {
-	if s.google == nil || s.google.nativeClient == "" {
+	if s.google == nil || len(s.google.nativeClients) == 0 {
 		return users.User{}, "", time.Time{}, apperr.New("google native sign-in is not configured")
 	}
-	payload, err := idtoken.Validate(ctx, strings.TrimSpace(rawToken), s.google.nativeClient)
+	payload, err := s.google.validateNative(ctx, strings.TrimSpace(rawToken))
 	if err != nil || payload.Claims["email_verified"] != true {
 		return users.User{}, "", time.Time{}, apperr.ErrUnauthenticated
 	}
@@ -79,6 +84,19 @@ func (s *Service) CompleteGoogleIDToken(ctx context.Context, rawToken string, me
 	}
 	token, expiresAt, err := s.sessions.Create(ctx, user.ID, meta)
 	return user, token, expiresAt, err
+}
+
+// validateNative accepts an ID token issued for any configured iOS client.
+func (g *googleOAuth) validateNative(ctx context.Context, rawToken string) (*idtoken.Payload, error) {
+	var err error
+	for _, audience := range g.nativeClients {
+		var payload *idtoken.Payload
+		payload, err = idtoken.Validate(ctx, rawToken, audience)
+		if err == nil {
+			return payload, nil
+		}
+	}
+	return nil, err
 }
 
 func (g *googleOAuth) enabled() bool { return g != nil && g.cfg != nil }

@@ -75,6 +75,7 @@ type Config struct {
 	GoogleClientSecret string
 	GoogleIOSClientID  string
 	AppleBundleID      string
+	AppleTeamID        string
 
 	// Strava credentials are optional, like Google's: without them the
 	// integration reports itself unavailable rather than failing the boot,
@@ -514,6 +515,7 @@ func Load() (*Config, error) {
 		GoogleClientSecret: strings.TrimSpace(os.Getenv("GOOGLE_CLIENT_SECRET")),
 		GoogleIOSClientID:  strings.TrimSpace(os.Getenv("GOOGLE_IOS_CLIENT_ID")),
 		AppleBundleID:      strings.TrimSpace(os.Getenv("APPLE_BUNDLE_ID")),
+		AppleTeamID:        strings.TrimSpace(os.Getenv("APPLE_TEAM_ID")),
 
 		StravaClientID:     strings.TrimSpace(os.Getenv("STRAVA_CLIENT_ID")),
 		StravaClientSecret: strings.TrimSpace(os.Getenv("STRAVA_CLIENT_SECRET")),
