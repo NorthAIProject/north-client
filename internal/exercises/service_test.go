@@ -346,3 +346,39 @@ func TestTheTotalTracksTheFilterNotTheCatalog(t *testing.T) {
 		t.Errorf("filtered total %d is not smaller than the catalog's %d", filtered, all)
 	}
 }
+
+// A reply from a provider that answers through its own agent names the
+// exercise only by its links: Khepri's artwork address and the catalogue's
+// video. The two vocabularies differ — the squat's artwork lives under
+// "squat", the catalogue calls it "barbell-full-squat" — so a link has to be
+// turned back into the catalogue's slug before anything can draw it.
+func TestAnExerciseIsFoundFromItsLinks(t *testing.T) {
+	svc := newService(t)
+	ctx := context.Background()
+
+	squat, err := svc.GetBySlug(ctx, "barbell-full-squat")
+	if err != nil {
+		t.Fatalf("get squat: %v", err)
+	}
+
+	cases := []struct {
+		name, text, want string
+	}{
+		{"artwork address", "SVG illustration: https://kheprios.com/assets/exercises/squat/frame-1.svg", "barbell-full-squat"},
+		{"video link", "Video: " + squat.VideoURL, "barbell-full-squat"},
+		{"an artwork whose name is its slug", "https://kheprios.com/assets/exercises/goblet-squat/frame-2.svg", "goblet-squat"},
+		{"no link", "Sit back and down, knees out.", ""},
+		{"artwork that does not exist", "https://kheprios.com/assets/exercises/not-a-move/frame-1.svg", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := svc.SlugsLinkedIn(ctx, tc.text)
+			switch {
+			case tc.want == "" && len(got) != 0:
+				t.Errorf("found %v, want nothing", got)
+			case tc.want != "" && (len(got) != 1 || got[0] != tc.want):
+				t.Errorf("found %v, want [%s]", got, tc.want)
+			}
+		})
+	}
+}

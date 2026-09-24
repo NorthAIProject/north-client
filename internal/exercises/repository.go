@@ -131,3 +131,21 @@ func fromDB(row exercisesdb.Exercise) Exercise {
 		IllustrationSlug: row.IllustrationSlug,
 	}
 }
+
+// SlugForIllustration is the catalogue exercise drawn by one artwork directory.
+func (r *Repository) SlugForIllustration(ctx context.Context, illustration string) (string, error) {
+	slug, err := r.q.SlugForIllustration(ctx, illustration)
+	if err != nil {
+		return "", apperr.Wrap(err, "exercise for illustration %q", illustration)
+	}
+	return slug, nil
+}
+
+// SlugForVideo is the catalogue exercise a demonstration video belongs to.
+func (r *Repository) SlugForVideo(ctx context.Context, videoURL string) (string, error) {
+	slug, err := r.q.SlugForVideo(ctx, videoURL)
+	if err != nil {
+		return "", apperr.Wrap(err, "exercise for video")
+	}
+	return slug, nil
+}
