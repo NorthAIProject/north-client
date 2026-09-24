@@ -10,9 +10,9 @@ import (
 	"github.com/NorthAIProject/north-client/internal/exercises/exercise"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/workouts/plan"
-	"github.com/NorthAIProject/north-client/web/shared/layout"
 	"github.com/NorthAIProject/north-client/web/shared/exerciseart"
 	"github.com/NorthAIProject/north-client/web/shared/exerciserow"
+	"github.com/NorthAIProject/north-client/web/shared/layout"
 	"github.com/NorthAIProject/north-client/web/shared/muscleviewer"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/ui/alert"
@@ -21,6 +21,7 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/card"
 	"github.com/NorthAIProject/north-client/web/shared/ui/checkbox"
 	"github.com/NorthAIProject/north-client/web/shared/ui/dialog"
+	"github.com/NorthAIProject/north-client/web/shared/ui/dictate"
 	"github.com/NorthAIProject/north-client/web/shared/ui/form"
 	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
 	"github.com/NorthAIProject/north-client/web/shared/ui/input"
@@ -92,14 +93,16 @@ templ IntakePage(user users.User, f IntakeForm) {
 					<form method="post" action="/app/training/new" class="space-y-5 pt-6">
 						@ui.CSRFInput()
 						@field("goal", "What are you training for?", f.fieldError("goal")) {
-							@textarea.Textarea(textarea.Props{
-								ID:          "goal",
-								Name:        "goal",
-								Value:       f.Goal,
-								Placeholder: "Get stronger overall, and be able to do 10 pull-ups by the spring.",
-								Rows:        3,
-								HasError:    f.fieldError("goal") != "",
-							})
+							@dictate.Field(dictate.Props{Target: "goal"}) {
+								@textarea.Textarea(textarea.Props{
+									ID:          "goal",
+									Name:        "goal",
+									Value:       f.Goal,
+									Placeholder: "Get stronger overall, and be able to do 10 pull-ups by the spring.",
+									Rows:        3,
+									HasError:    f.fieldError("goal") != "",
+								})
+							}
 						}
 						@field("experience", "How much have you trained before?", f.fieldError("experience")) {
 							@selectbox.SelectBox() {
@@ -170,14 +173,16 @@ templ IntakePage(user users.User, f IntakeForm) {
 							</div>
 						}
 						@field("limitations", "Injuries or anything to work around?", f.fieldError("limitations")) {
-							@textarea.Textarea(textarea.Props{
-								ID:          "limitations",
-								Name:        "limitations",
-								Value:       f.Limitations,
-								Placeholder: "Left shoulder is fine pressing but not overhead. Optional.",
-								Rows:        2,
-								HasError:    f.fieldError("limitations") != "",
-							})
+							@dictate.Field(dictate.Props{Target: "limitations"}) {
+								@textarea.Textarea(textarea.Props{
+									ID:          "limitations",
+									Name:        "limitations",
+									Value:       f.Limitations,
+									Placeholder: "Left shoulder is fine pressing but not overhead. Optional.",
+									Rows:        2,
+									HasError:    f.fieldError("limitations") != "",
+								})
+							}
 						}
 						@button.Button(button.Props{Type: button.TypeSubmit, FullWidth: true}) {
 							Build my plan
@@ -194,11 +199,11 @@ templ IntakePage(user users.User, f IntakeForm) {
 		@textarea.Script()
 		@checkbox.Script()
 		@selectbox.Script()
+		@dictate.Script()
 	}
 }
 
 // PlanSummary is one row of the plans list.
-//
 // Deliberately not a StoredPlan: the list needs a name and a shape, not a plan
 // body, and handing the template the whole thing would invite it to render
 // exercises on a page that is a list of links.
@@ -262,7 +267,6 @@ templ planRow(p PlanSummary, current bool) {
 }
 
 // PlanView is everything the plan page needs about the plan it is rendering.
-//
 // A struct rather than more parameters because editing added two things the
 // page did not need before: the plan's own id, which every edit URL is built
 // from, and the validation problems an edit may have introduced.
@@ -741,16 +745,16 @@ templ exerciseRow(v PlanView, dayIndex, index int, ex plan.Exercise, dayLength i
 									{ ex.Name }
 								}
 							}
-						@muscleviewer.Viewer(muscleviewer.Props{
-							ID:           id + "-viewer",
-							Primary:      ex.Primary,
-							Secondary:    ex.Secondary,
-							Stabilizers:  ex.Stabilizers,
-							ExerciseName: ex.Name,
-						})
+							@muscleviewer.Viewer(muscleviewer.Props{
+								ID:           id + "-viewer",
+								Primary:      ex.Primary,
+								Secondary:    ex.Secondary,
+								Stabilizers:  ex.Stabilizers,
+								ExerciseName: ex.Name,
+							})
+						}
 					}
 				}
-			}
 			</div>
 		</div>
 	</li>
