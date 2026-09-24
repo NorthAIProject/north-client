@@ -68,6 +68,9 @@ func (c *Client) Generate(ctx context.Context, req ai.Request) (*ai.Response, er
 	if err != nil {
 		return nil, classify(err)
 	}
+	if err := stopError(msg.StopReason); err != nil {
+		return nil, err
+	}
 	return fromMessage(msg), nil
 }
 
@@ -131,8 +134,5 @@ func usage(u sdk.Usage) ai.Usage {
 		OutputTokens: int(u.OutputTokens),
 	}
 }
-
-// classify is filled in by Task 4.
-func classify(err error) error { return err }
 
 var _ ai.Client = (*Client)(nil)

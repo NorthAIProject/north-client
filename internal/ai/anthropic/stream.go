@@ -74,6 +74,3 @@ func send(ctx context.Context, out chan<- ai.StreamChunk, chunk ai.StreamChunk) 
 		return false
 	}
 }
-
-// stopError is filled in by Task 4.
-func stopError(sdk.StopReason) error { return nil }
