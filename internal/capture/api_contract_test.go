@@ -1,28 +1,19 @@
 package capture_test
 
 import (
-	"encoding/json"
-	"flag"
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/capture"
+	"github.com/NorthAIProject/north-client/internal/shared/apitest"
 )
 
-var update = flag.Bool("update", false, "rewrite the capture API contract golden files")
-
-// The JSON a client sees is a contract, and the failure that matters is a field
-// renamed or dropped in a refactor. Per-field assertions miss exactly that,
-// because nobody writes an assertion for a field they deleted — so the whole
-// shape is pinned instead, built from fixed values with no database and no
-// model involved.
+// See package apitest for why whole shapes are pinned.
 func TestParseResponseShape(t *testing.T) {
 	t.Parallel()
 
-	assertGolden(t, "parse.golden.json", capture.ParseResponse{
+	apitest.AssertGolden(t, "parse.golden.json", capture.ParseResponse{
 		Items: []capture.Item{
 			{
 				Kind:   capture.KindWater,
@@ -54,7 +45,7 @@ func TestParseResponseShape(t *testing.T) {
 func TestCommitResponseShape(t *testing.T) {
 	t.Parallel()
 
-	assertGolden(t, "commit.golden.json", capture.CommitResponse{
+	apitest.AssertGolden(t, "commit.golden.json", capture.CommitResponse{
 		Written: 1,
 		Failed:  1,
 		Outcomes: []capture.Outcome{
@@ -76,31 +67,4 @@ func TestCommitResponseShape(t *testing.T) {
 			},
 		},
 	})
-}
-
-func assertGolden(t *testing.T, name string, value any) {
-	t.Helper()
-
-	encoded, err := json.MarshalIndent(value, "", "  ")
-	if err != nil {
-		t.Fatalf("encode: %v", err)
-	}
-	encoded = append(encoded, '\n')
-
-	path := filepath.Join("testdata", name)
-	if *update {
-		if writeErr := os.WriteFile(path, encoded, 0o644); writeErr != nil {
-			t.Fatalf("write %s: %v", path, writeErr)
-		}
-		t.Logf("wrote %s", path)
-		return
-	}
-
-	want, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read %s (run with -update to create it): %v", path, err)
-	}
-	if string(want) != string(encoded) {
-		t.Errorf("the capture API shape changed. Review the diff — it is what every client sees.\n\nwant:\n%s\n\ngot:\n%s", want, encoded)
-	}
 }

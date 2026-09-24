@@ -1,0 +1,16 @@
+{
+  "exercises": [
+    {
+      "slug": "push-up",
+      "name": "Push-Up",
+      "category": "strength",
+      "equipment": "none",
+      "difficulty": "beginner",
+      "primaryMuscles": [
+        "chest"
+      ],
+      "hasArt": true
+    }
+  ],
+  "total": 42
+}

@@ -1,0 +1,18 @@
+{
+  "conversations": [
+    {
+      "id": "33333333-3333-3333-3333-333333333333",
+      "title": "Push-up form",
+      "kind": "chat",
+      "ended": false,
+      "updatedAt": "2026-09-24T07:15:00Z"
+    },
+    {
+      "id": "44444444-4444-4444-4444-444444444444",
+      "title": "Reflection",
+      "kind": "reflection",
+      "ended": true,
+      "updatedAt": "2026-09-24T07:15:00Z"
+    }
+  ]
+}

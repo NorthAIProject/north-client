@@ -2,19 +2,1342 @@ openapi: 3.1.0
 info:
   title: North API
   version: 1.0.0
-  description: JSON API for North clients, including the iOS application.
+  description: |
+    JSON API for North's native clients. The iOS app generates its client from
+    this file (swift-openapi-generator), so this file is the contract: a route
+    under /api/v1 that is not described here fails cmd/web's contract test.
+
+    Authentication, by route group:
+    - `/auth/*` sign-in routes take no credentials and return a session token.
+    - Everything else takes that session token as `Authorization: Bearer`.
+    - `/capture/*` takes an `nk_` connection token instead, issued from
+      Settings → Connections for agents and shortcuts.
+
+    A browser session cookie authenticates none of these.
 servers:
   - url: https://kheprios.com/api/v1
-    description: Primary application host
-  - url: https://api.khepri.com/api/v1
-    description: API host
+    description: Production
+  - url: http://localhost:8090/api/v1
+    description: Local development
 security:
   - bearerAuth: []
 paths:
+  /auth/signup:
+    post:
+      operationId: signUp
+      summary: Create an account with email and password
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignupRequest'
+      responses:
+        '201':
+          $ref: '#/components/responses/Authenticated'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /auth/login:
+    post:
+      operationId: logIn
+      summary: Sign in with email and password
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Authenticated'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /auth/google:
+    post:
+      operationId: signInWithGoogle
+      summary: Sign in with a Google ID token from the native SDK
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoogleRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Authenticated'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /auth/apple:
+    post:
+      operationId: signInWithApple
+      summary: Sign in with an Apple identity token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AppleRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Authenticated'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /auth/logout:
+    post:
+      operationId: logOut
+      summary: Revoke the session token sent in the Authorization header
+      description: Idempotent. An unknown or already revoked token still gets 204.
+      security: []
+      responses:
+        '204':
+          description: Session revoked
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /auth/forgot-password:
+    post:
+      operationId: requestPasswordReset
+      summary: Email a password reset link
+      description: Always 202, whether or not the address has an account.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForgotPasswordRequest'
+      responses:
+        '202':
+          description: Accepted
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /auth/passkey/register/begin:
+    post:
+      operationId: beginPasskeyRegistration
+      summary: Start creating an account with a passkey
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasskeyRegisterBeginRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/PasskeyCeremony'
+        '404':
+          $ref: '#/components/responses/PasskeysUnavailable'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /auth/passkey/register/finish:
+    post:
+      operationId: finishPasskeyRegistration
+      summary: Create the account from the device's attestation
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasskeyFinishRequest'
+      responses:
+        '201':
+          $ref: '#/components/responses/Authenticated'
+        '400':
+          $ref: '#/components/responses/PasskeyExpired'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/PasskeysUnavailable'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /auth/passkey/login/begin:
+    post:
+      operationId: beginPasskeyLogin
+      summary: Start signing in with a passkey
+      description: Omit the body, or the email, for a discoverable sign-in.
+      security: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasskeyLoginBeginRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/PasskeyCeremony'
+        '404':
+          $ref: '#/components/responses/PasskeysUnavailable'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /auth/passkey/login/finish:
+    post:
+      operationId: finishPasskeyLogin
+      summary: Sign in with the device's assertion
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasskeyFinishRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Authenticated'
+        '400':
+          $ref: '#/components/responses/PasskeyExpired'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/PasskeysUnavailable'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /conversations:
+    get:
+      operationId: listConversations
+      summary: The signed-in user's coach conversations, newest first
+      responses:
+        '200':
+          description: Up to 50 conversations
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: startConversation
+      summary: Start a conversation
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartConversationRequest'
+      responses:
+        '201':
+          description: The new conversation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /conversations/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ConversationID'
+    get:
+      operationId: getConversation
+      summary: One conversation with its messages and any pending approval
+      responses:
+        '200':
+          description: The conversation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: deleteConversation
+      summary: Delete a conversation
+      responses:
+        '204':
+          description: Deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /conversations/{id}/reply:
+    parameters:
+      - $ref: '#/components/parameters/ConversationID'
+    post:
+      operationId: replyInConversation
+      summary: Send a message and stream the coach's reply
+      description: |
+        Stores the message, then answers with Server-Sent Events. Each event's
+        data is one line of JSON:
+
+        | event       | data                         |
+        |-------------|------------------------------|
+        | `token`     | `ReplyTokenEvent`            |
+        | `exercises` | `ReplyExercisesEvent`        |
+        | `approval`  | `Approval`                   |
+        | `error`     | `ReplyErrorEvent`            |
+        | `done`      | `ReplyDoneEvent`, always last |
+
+        Refusals that need no model (bad input, ended reflection, spent quota)
+        come back as ordinary JSON errors before any event is sent.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReplyRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/ReplyStream'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /conversations/{id}/resume:
+    parameters:
+      - $ref: '#/components/parameters/ConversationID'
+    post:
+      operationId: resumeConversation
+      summary: Stream the rest of a reply after an approval was answered
+      description: Same events as replyInConversation. Spends no message quota.
+      responses:
+        '200':
+          $ref: '#/components/responses/ReplyStream'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /conversations/{id}/tools/{messageID}:
+    parameters:
+      - $ref: '#/components/parameters/ConversationID'
+      - $ref: '#/components/parameters/MessageID'
+    post:
+      operationId: decideToolCalls
+      summary: Allow or refuse the writes the coach asked to make
+      description: The tools run inside this request. Then call resumeConversation for the reply.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DecisionRequest'
+      responses:
+        '204':
+          description: Answered
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /conversations/{id}/messages/{messageID}/helpful:
+    parameters:
+      - $ref: '#/components/parameters/ConversationID'
+      - $ref: '#/components/parameters/MessageID'
+    put:
+      operationId: rateMessage
+      summary: Say whether a coach reply helped
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HelpfulRequest'
+      responses:
+        '200':
+          description: The rated message
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatMessage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /exercises/{slug}:
+    parameters:
+      - name: slug
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getExercise
+      summary: A catalog exercise with its pose artwork as path data
+      responses:
+        '200':
+          description: The exercise
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExerciseDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /settings/profile:
+    get:
+      operationId: getProfile
+      summary: Name, time zone, language and how the coach talks
+      tags: [settings]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Profile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      operationId: updateProfile
+      summary: Save the profile and coaching style
+      tags: [settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Profile'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Profile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /settings/preferences:
+    get:
+      operationId: getPreferences
+      summary: Units and nutrition defaults
+      tags: [settings]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Preferences'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      operationId: updatePreferences
+      summary: Save units and nutrition defaults
+      tags: [settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Preferences'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Preferences'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /settings/notifications:
+    get:
+      operationId: getNotificationSettings
+      summary: What North may say unprompted, and quiet hours
+      tags: [settings]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationSettings'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      operationId: updateNotificationSettings
+      summary: Save notification settings
+      tags: [settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationSettings'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationSettings'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /settings/ai:
+    get:
+      operationId: getAISettings
+      summary: The providers a person may bring a key for, and the one in use
+      tags: [settings]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AISettings'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      operationId: saveAIProvider
+      summary: Use your own AI provider key
+      tags: [settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AIProviderRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AISettings'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+    delete:
+      operationId: removeAIProvider
+      summary: Go back to Khepri's providers
+      tags: [settings]
+      responses:
+        '204':
+          description: Done
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /settings/connections:
+    get:
+      operationId: listConnections
+      summary: Agents allowed to reach this account over MCP
+      tags: [settings]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectionList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: createConnection
+      summary: Issue a token for an agent; the token appears only in this response
+      tags: [settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateConnectionRequest'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatedConnection'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /settings/connections/{connectionID}:
+    parameters:
+      - name: connectionID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      operationId: revokeConnection
+      summary: Revoke an agent's token
+      tags: [settings]
+      responses:
+        '204':
+          description: Done
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /settings/activity:
+    get:
+      operationId: listActivity
+      summary: What North did on this person's behalf
+      tags: [settings]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivityList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /settings/telegram:
+    get:
+      operationId: getTelegramSettings
+      summary: Whether Telegram is linked
+      tags: [settings]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TelegramSettings'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    delete:
+      operationId: unlinkTelegram
+      summary: Disconnect Telegram
+      tags: [settings]
+      responses:
+        '204':
+          description: Done
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /settings/telegram/code:
+    post:
+      operationId: issueTelegramCode
+      summary: A single-use code linking a Telegram account
+      tags: [settings]
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TelegramCode'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /settings/calendar:
+    get:
+      operationId: getCalendarSettings
+      summary: The calendar reached over MCP, if connected
+      tags: [settings]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalendarSettings'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      operationId: connectCalendar
+      summary: Connect a calendar's MCP server
+      tags: [settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CalendarRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalendarSettings'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      operationId: disconnectCalendar
+      summary: Disconnect the calendar
+      tags: [settings]
+      responses:
+        '204':
+          description: Done
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /account/delete:
+    post:
+      operationId: deleteAccount
+      summary: Erase the account; typing the email address is the confirmation
+      tags: [settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeleteAccountRequest'
+      responses:
+        '204':
+          description: Done
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /training/plans:
+    get:
+      operationId: listPlans
+      summary: The plans the person is following, newest first
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: createPlan
+      summary: Generate a plan from a training intake (waits on the model)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrainingIntake'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /training/intake:
+    get:
+      operationId: getLatestIntake
+      summary: The last intake, for prefilling a new one
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrainingIntake'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /training/plans/{planID}:
+    parameters:
+      - name: planID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getPlan
+      summary: A plan with every day and exercise
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /training/plans/{planID}/days/{day}/start-time:
+    parameters:
+      - name: planID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: day
+        in: path
+        required: true
+        schema:
+          type: integer
+    put:
+      operationId: setDayStartTime
+      summary: Set or clear when a day's session starts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartTimeRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanDetail'
+        '409':
+          description: The plan was edited elsewhere; this is the newest version
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /training/plans/{planID}/days/{day}/suggestions:
+    parameters:
+      - name: planID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: day
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      operationId: suggestExercisesForDay
+      summary: Exercises that would fit this day
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExerciseList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /training/plans/{planID}/days/{day}/exercises:
+    parameters:
+      - name: planID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: day
+        in: path
+        required: true
+        schema:
+          type: integer
+    post:
+      operationId: addExerciseToDay
+      summary: Append a catalog exercise to a day
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CatalogChoice'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanDetail'
+        '409':
+          description: The plan was edited elsewhere; this is the newest version
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /training/plans/{planID}/days/{day}/exercises/{index}:
+    parameters:
+      - name: planID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: day
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: index
+        in: path
+        required: true
+        schema:
+          type: integer
+    put:
+      operationId: swapExercise
+      summary: Replace an exercise, keeping its sets and reps
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CatalogChoice'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanDetail'
+        '409':
+          description: The plan was edited elsewhere; this is the newest version
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      operationId: removeExercise
+      summary: Remove an exercise from a day
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanDetail'
+        '409':
+          description: The plan was edited elsewhere; this is the newest version
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /training/plans/{planID}/days/{day}/exercises/{index}/move:
+    parameters:
+      - name: planID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: day
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: index
+        in: path
+        required: true
+        schema:
+          type: integer
+    post:
+      operationId: moveExercise
+      summary: Move an exercise up or down its day
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MoveRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanDetail'
+        '409':
+          description: The plan was edited elsewhere; this is the newest version
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /training/plans/{planID}/days/{day}/exercises/{index}/prescription:
+    parameters:
+      - name: planID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: day
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: index
+        in: path
+        required: true
+        schema:
+          type: integer
+    put:
+      operationId: setPrescription
+      summary: Change sets, reps and rest
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PrescriptionRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanDetail'
+        '409':
+          description: The plan was edited elsewhere; this is the newest version
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /training/plans/{planID}/days/{day}/exercises/{index}/replacements:
+    parameters:
+      - name: planID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: day
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: index
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      operationId: suggestReplacements
+      summary: Exercises that could replace this one
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExerciseList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /exercises:
+    get:
+      operationId: searchExercises
+      summary: Search the exercise library
+      parameters:
+      - {name: q, in: query, schema: {type: string}}
+      - {name: muscle, in: query, schema: {type: string}}
+      - {name: category, in: query, schema: {type: string}}
+      - {name: equipment, in: query, schema: {type: array, items: {type: string}}, explode: true}
+      - {name: limit, in: query, schema: {type: integer}}
+      - {name: offset, in: query, schema: {type: integer}}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExerciseList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /activity:
+    get:
+      operationId: getActivity
+      summary: The open session, recent sessions, and the activities that can be timed
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivityOverview'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /activity/start:
+    post:
+      operationId: startActivity
+      summary: Start timing an activity
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartActivityRequest'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivitySession'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /activity/log:
+    post:
+      operationId: logActivity
+      summary: Record an activity after the fact
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LogActivityRequest'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivitySession'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /activity/{sessionID}/pause:
+    parameters:
+      - name: sessionID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: pauseActivity
+      summary: Pause the open session
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivitySession'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /activity/{sessionID}/resume:
+    parameters:
+      - name: sessionID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: resumeActivity
+      summary: Resume a paused session
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivitySession'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /activity/{sessionID}/stop:
+    parameters:
+      - name: sessionID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: stopActivity
+      summary: Finish the session and record its calories
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivitySession'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /activity/{sessionID}:
+    parameters:
+      - name: sessionID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      operationId: cancelActivity
+      summary: Discard the open session
+      responses:
+        '204':
+          description: Done
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /me:
+    get:
+      operationId: getMe
+      summary: The signed-in user
+      responses:
+        '200':
+          description: The signed-in user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /onboarding:
+    post:
+      operationId: completeOnboarding
+      summary: Save first-run answers and open the first coach thread
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OnboardingRequest'
+      responses:
+        '200':
+          description: Onboarding saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OnboardingResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /today:
+    get:
+      operationId: getToday
+      summary: The Today dashboard for a time range
+      parameters:
+        - name: range
+          in: query
+          required: false
+          description: Range key, e.g. `today`, `7d`, `30d`. Defaults to today.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Today snapshot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TodayResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /capture/parse:
     post:
       operationId: parseCapture
       summary: Parse a quick capture into proposed entries
+      security:
+        - connectionToken: []
       requestBody:
         required: true
         content:
@@ -42,6 +1365,8 @@ paths:
     post:
       operationId: commitCapture
       summary: Commit selected capture entries
+      security:
+        - connectionToken: []
       requestBody:
         required: true
         content:
@@ -70,8 +1395,76 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
-      description: North personal access token issued for the calling account.
+      description: Session token returned by the /auth routes.
+    connectionToken:
+      type: http
+      scheme: bearer
+      description: An `nk_` connection token from Settings → Connections.
+  parameters:
+    ConversationID:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    MessageID:
+      name: messageID
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
   responses:
+    ReplyStream:
+      description: Server-Sent Events carrying the reply; see the operation description
+      content:
+        text/event-stream:
+          schema:
+            type: string
+            format: binary
+    NotFound:
+      description: No such resource for this account
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
+    Authenticated:
+      description: Signed in; the token authenticates later requests
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AuthResponse'
+    PasskeyCeremony:
+      description: WebAuthn options for the device
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PasskeyCeremonyResponse'
+    PasskeyExpired:
+      description: The challenge expired or was already used; begin again
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
+    PasskeysUnavailable:
+      description: Passkeys are not configured on this server
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
+    Unavailable:
+      description: A dependency failed; retrying may succeed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
+    Conflict:
+      description: The resource already exists
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
     Unauthorized:
       description: Missing or invalid bearer token
       headers:
@@ -167,17 +1560,17 @@ components:
         problem:
           type: string
         water:
-          $ref: '#/components/schemas/Water'
+          $ref: '#/components/schemas/CaptureWater'
         sleep:
-          $ref: '#/components/schemas/Sleep'
+          $ref: '#/components/schemas/CaptureSleep'
         habit:
-          $ref: '#/components/schemas/Habit'
+          $ref: '#/components/schemas/CaptureHabit'
         weight:
-          $ref: '#/components/schemas/Weight'
+          $ref: '#/components/schemas/CaptureWeight'
         check_in:
-          $ref: '#/components/schemas/CheckIn'
+          $ref: '#/components/schemas/CaptureCheckIn'
         food:
-          $ref: '#/components/schemas/Food'
+          $ref: '#/components/schemas/CaptureFood'
     Outcome:
       type: object
       required: [item]
@@ -189,14 +1582,14 @@ components:
           type: string
         error:
           type: string
-    Water:
+    CaptureWater:
       type: object
       required: [amount_ml]
       additionalProperties: false
       properties:
         amount_ml:
           type: integer
-    Sleep:
+    CaptureSleep:
       type: object
       required: [minutes, date]
       additionalProperties: false
@@ -208,7 +1601,7 @@ components:
           format: date-time
         quality:
           type: integer
-    Habit:
+    CaptureHabit:
       type: object
       required: [name]
       additionalProperties: false
@@ -218,14 +1611,14 @@ components:
         id:
           type: string
           format: uuid
-    Weight:
+    CaptureWeight:
       type: object
       required: [kg]
       additionalProperties: false
       properties:
         kg:
           type: number
-    CheckIn:
+    CaptureCheckIn:
       type: object
       required: [mood, energy]
       additionalProperties: false
@@ -236,7 +1629,7 @@ components:
           type: integer
         notes:
           type: string
-    Food:
+    CaptureFood:
       type: object
       required: [query, grams]
       additionalProperties: false
@@ -266,3 +1659,1100 @@ components:
           type: object
           additionalProperties:
             type: string
+    SignupRequest:
+      type: object
+      required: [email, password, passwordConfirmation]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+        passwordConfirmation:
+          type: string
+        displayName:
+          type: string
+        timezone:
+          type: string
+          description: IANA zone, e.g. Europe/Lisbon. Defaults to UTC.
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+    GoogleRequest:
+      type: object
+      required: [idToken]
+      properties:
+        idToken:
+          type: string
+    AppleRequest:
+      type: object
+      required: [identityToken, nonce]
+      properties:
+        identityToken:
+          type: string
+        authorizationCode:
+          type: string
+        nonce:
+          type: string
+          description: The raw nonce whose SHA-256 was sent to Apple.
+        fullName:
+          type: string
+          description: Apple sends the name only on the first sign-in.
+        email:
+          type: string
+    ForgotPasswordRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+    AuthResponse:
+      type: object
+      required: [token, expiresAt, user]
+      properties:
+        token:
+          type: string
+          description: "Opaque session token. Send as `Authorization: Bearer`."
+        expiresAt:
+          type: string
+          format: date-time
+        user:
+          $ref: '#/components/schemas/User'
+    User:
+      type: object
+      required: [id, email, displayName, timezone, needsOnboarding]
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        displayName:
+          type: string
+        timezone:
+          type: string
+        needsOnboarding:
+          type: boolean
+    MeResponse:
+      type: object
+      required: [user]
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+    OnboardingRequest:
+      type: object
+      required: [focusAreas, coachingStyle]
+      properties:
+        focusAreas:
+          type: array
+          items:
+            type: string
+        coachingStyle:
+          type: string
+          description: direct, supportive, socratic or custom. Free text is treated as custom.
+        coachingStyleCustom:
+          type: string
+        nearTermGoal:
+          type: string
+    OnboardingResponse:
+      type: object
+      required: [user]
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        threadId:
+          type: string
+          format: uuid
+          description: The coach thread opened for the first conversation.
+    TodayResponse:
+      type: object
+      required: [user, snapshot]
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        snapshot:
+          $ref: '#/components/schemas/TodaySnapshot'
+    TodaySnapshot:
+      type: object
+      required: [range, checkedInToday, streak, goalActivity7d, pendingMemories, goals, hydration, sleep, activityCalories, timeline, deltas, nudges]
+      properties:
+        range:
+          type: string
+        checkedInToday:
+          type: boolean
+        streak:
+          type: integer
+        goalActivity7d:
+          type: integer
+        pendingMemories:
+          type: integer
+        goals:
+          type: array
+          items:
+            $ref: '#/components/schemas/TodayGoal'
+        lastThread:
+          $ref: '#/components/schemas/TodayThread'
+        nextStep:
+          $ref: '#/components/schemas/NextStep'
+        hydration:
+          $ref: '#/components/schemas/Hydration'
+        sleep:
+          $ref: '#/components/schemas/SleepSummary'
+        activityCalories:
+          type: number
+        timeline:
+          type: array
+          items:
+            $ref: '#/components/schemas/TimelineEntry'
+        deltas:
+          $ref: '#/components/schemas/Deltas'
+        nudges:
+          type: array
+          items:
+            $ref: '#/components/schemas/Nudge'
+        briefing:
+          type: string
+    TodayGoal:
+      type: object
+      required: [id, title, category, status, milestoneTotal, milestoneDone]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        category:
+          type: string
+        status:
+          type: string
+        targetDate:
+          type: string
+          format: date-time
+        milestoneTotal:
+          type: integer
+        milestoneDone:
+          type: integer
+        progress:
+          type: integer
+          description: Percent, when the goal tracks a measurable target.
+    TodayThread:
+      type: object
+      required: [id, title, kind, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        kind:
+          type: string
+        updatedAt:
+          type: string
+          format: date-time
+    NextStep:
+      type: object
+      required: [kind, eyebrow, title, body, cta, href]
+      properties:
+        kind:
+          type: string
+        eyebrow:
+          type: string
+        title:
+          type: string
+        body:
+          type: string
+        cta:
+          type: string
+        href:
+          type: string
+          description: A web path; native clients map it to a screen.
+    Hydration:
+      type: object
+      required: [todayML, targetML, percent]
+      properties:
+        todayML:
+          type: integer
+        targetML:
+          type: integer
+        percent:
+          type: integer
+    SleepSummary:
+      type: object
+      required: [logged, durationMinutes]
+      properties:
+        logged:
+          type: boolean
+        durationMinutes:
+          type: integer
+        quality:
+          type: integer
+    TimelineEntry:
+      type: object
+      required: [kind, label, at, title, icon]
+      properties:
+        kind:
+          type: string
+        label:
+          type: string
+        at:
+          type: string
+          format: date-time
+        title:
+          type: string
+        detail:
+          type: string
+        href:
+          type: string
+        icon:
+          type: string
+    Delta:
+      type: object
+      required: [pct, direction, hasPrior]
+      properties:
+        pct:
+          type: number
+        direction:
+          type: integer
+          description: -1 down, 0 flat, 1 up.
+        hasPrior:
+          type: boolean
+    Deltas:
+      type: object
+      required: [hydration, sleepHours, calories, checkIns]
+      properties:
+        hydration:
+          $ref: '#/components/schemas/Delta'
+        sleepHours:
+          $ref: '#/components/schemas/Delta'
+        calories:
+          $ref: '#/components/schemas/Delta'
+        checkIns:
+          $ref: '#/components/schemas/Delta'
+    Nudge:
+      type: object
+      required: [id, kind, title, body, href, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+        title:
+          type: string
+        body:
+          type: string
+        href:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    PasskeyRegisterBeginRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+        displayName:
+          type: string
+        timezone:
+          type: string
+    PasskeyLoginBeginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+    PasskeyCeremonyResponse:
+      type: object
+      required: [challengeId, publicKey]
+      properties:
+        challengeId:
+          type: string
+          format: uuid
+        publicKey:
+          type: object
+          additionalProperties: true
+          description: |
+            WebAuthn PublicKeyCredentialCreationOptions (register) or
+            PublicKeyCredentialRequestOptions (login), binary fields base64url.
+            Register with `publicKey.user.id` as the user handle: discoverable
+            login maps it back to the account.
+    PasskeyFinishRequest:
+      type: object
+      required: [challengeId, credential]
+      properties:
+        challengeId:
+          type: string
+          format: uuid
+        credential:
+          type: object
+          additionalProperties: true
+          description: The PublicKeyCredential as JSON, binary fields base64url.
+    ConversationSummary:
+      type: object
+      required: [id, title, kind, ended, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        kind:
+          type: string
+          enum: [chat, reflection]
+        ended:
+          type: boolean
+          description: A reflection that has written its closing summary.
+        updatedAt:
+          type: string
+          format: date-time
+    ConversationList:
+      type: object
+      required: [conversations]
+      properties:
+        conversations:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConversationSummary'
+    StartConversationRequest:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum: [chat, reflection]
+    ConversationDetail:
+      type: object
+      required: [conversation, messages, awaitingResume]
+      properties:
+        conversation:
+          $ref: '#/components/schemas/ConversationSummary'
+        summary:
+          type: string
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatMessage'
+        pendingApproval:
+          $ref: '#/components/schemas/Approval'
+        awaitingResume:
+          type: boolean
+          description: An approval was answered and the reply is owed; call resumeConversation.
+    ChatMessage:
+      type: object
+      required: [id, role, text, attachments, exercises, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum: [user, coach]
+        text:
+          type: string
+        attachments:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatAttachment'
+        exercises:
+          type: array
+          description: Catalog slugs the coach looked up for this reply.
+          items:
+            type: string
+        helpful:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+    ChatAttachment:
+      type: object
+      required: [mediaId, kind, mimeType, name]
+      properties:
+        mediaId:
+          type: string
+          format: uuid
+        kind:
+          type: string
+        mimeType:
+          type: string
+        name:
+          type: string
+    Approval:
+      type: object
+      required: [messageId, calls]
+      properties:
+        messageId:
+          type: string
+          format: uuid
+        calls:
+          type: array
+          items:
+            $ref: '#/components/schemas/ApprovalCall'
+    ApprovalCall:
+      type: object
+      required: [name, summary]
+      properties:
+        name:
+          type: string
+        summary:
+          type: string
+          description: The call in words a person can judge.
+    ReplyRequest:
+      type: object
+      properties:
+        text:
+          type: string
+        mediaId:
+          type: string
+          format: uuid
+        begin:
+          type: boolean
+          description: Open a new reflection with the coach's first question.
+    DecisionRequest:
+      type: object
+      required: [approve]
+      properties:
+        approve:
+          type: boolean
+    HelpfulRequest:
+      type: object
+      required: [helpful]
+      properties:
+        helpful:
+          type: [boolean, 'null']
+          description: true, false, or null to clear.
+    ReplyTokenEvent:
+      type: object
+      required: [text]
+      properties:
+        text:
+          type: string
+    ReplyErrorEvent:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+    ReplyExercisesEvent:
+      type: object
+      required: [slugs]
+      properties:
+        slugs:
+          type: array
+          items:
+            type: string
+    ReplyDoneEvent:
+      type: object
+      properties:
+        messageId:
+          type: string
+          format: uuid
+          description: The stored reply. Absent when the turn stopped for approval.
+    ExerciseDetail:
+      type: object
+      required: [slug, name, category, equipment, difficulty, instructions, primaryMuscles, secondaryMuscles]
+      properties:
+        slug:
+          type: string
+        name:
+          type: string
+        category:
+          type: string
+        equipment:
+          type: string
+        difficulty:
+          type: string
+        instructions:
+          type: string
+        videoUrl:
+          type: string
+        primaryMuscles:
+          type: array
+          items:
+            type: string
+        secondaryMuscles:
+          type: array
+          items:
+            type: string
+        art:
+          $ref: '#/components/schemas/ExerciseArt'
+    ExerciseArt:
+      type: object
+      required: [size, frames, credit]
+      properties:
+        size:
+          type: integer
+          description: The frames are drawn in a size×size square.
+        frames:
+          type: array
+          description: SVG path data, one path per pose. Fill with the even-odd rule.
+          items:
+            type: string
+        credit:
+          type: string
+          description: Attribution the artwork's licence requires wherever it is shown.
+    Profile:
+      type: object
+      required: [email, displayName, timezone, locale, coachingStyle, coachingTone]
+      properties:
+        email:
+          type: string
+          readOnly: true
+        displayName:
+          type: string
+        timezone:
+          type: string
+        locale:
+          type: string
+        coachingStyle:
+          type: string
+          description: Free text the coach follows, e.g. "Be direct. Skip pep talks."
+        coachingTone:
+          type: string
+          enum: [direct, warm, analytical, tough_love]
+    Preferences:
+      type: object
+      required: [unitsSystem, defaultGoal, defaultMacroSplit]
+      properties:
+        unitsSystem:
+          type: string
+          enum: [metric, imperial]
+        defaultGoal:
+          type: string
+        defaultMacroSplit:
+          type: string
+    NotificationSettings:
+      type: object
+      required: [nudgeMissedCheckIn, nudgeGoalDeadline, coachActivity, trainingReminders, weeklyReportAuto, dailyBriefingAuto, statsDigestCadence, quietHoursEnabled, quietStart, quietEnd, photoAskEnabled, photoEveryDays, photoReminderDays]
+      properties:
+        nudgeMissedCheckIn:
+          type: boolean
+        nudgeGoalDeadline:
+          type: boolean
+        coachActivity:
+          type: boolean
+        trainingReminders:
+          type: boolean
+        weeklyReportAuto:
+          type: boolean
+        dailyBriefingAuto:
+          type: boolean
+        statsDigestCadence:
+          type: string
+          enum: ['off', daily, weekly, monthly]
+        quietHoursEnabled:
+          type: boolean
+        quietStart:
+          type: string
+          description: HH:MM in the person's time zone.
+        quietEnd:
+          type: string
+        photoAskEnabled:
+          type: boolean
+        photoEveryDays:
+          type: integer
+        photoReminderDays:
+          type: integer
+    AISettings:
+      type: object
+      required: [enabled, providers]
+      properties:
+        enabled:
+          type: boolean
+          description: False on a server that cannot store a credential.
+        providers:
+          type: array
+          items:
+            $ref: '#/components/schemas/AIProvider'
+        current:
+          $ref: '#/components/schemas/AICurrent'
+    AIProvider:
+      type: object
+      required: [name, label]
+      properties:
+        name:
+          type: string
+        label:
+          type: string
+        baseUrl:
+          type: string
+        defaultModel:
+          type: string
+        keyHint:
+          type: string
+          description: What a key for this provider looks like.
+    AICurrent:
+      type: object
+      required: [provider, keyHint, updatedAt]
+      properties:
+        provider:
+          type: string
+        keyHint:
+          type: string
+          description: The stored key's last characters. The key itself is never returned.
+        model:
+          type: string
+        baseUrl:
+          type: string
+        lastError:
+          type: string
+        lastErrorAt:
+          type: string
+          format: date-time
+        supportsTools:
+          type: boolean
+          description: Absent until the background check has run.
+        updatedAt:
+          type: string
+          format: date-time
+    AIProviderRequest:
+      type: object
+      required: [provider, apiKey]
+      properties:
+        provider:
+          type: string
+        apiKey:
+          type: string
+          writeOnly: true
+        model:
+          type: string
+        baseUrl:
+          type: string
+    Connection:
+      type: object
+      required: [id, name, kind, tokenPrefix, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        kind:
+          type: string
+          enum: [claude_code, codex, hermes, other]
+        tokenPrefix:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        lastUsedAt:
+          type: string
+          format: date-time
+    ConnectionList:
+      type: object
+      required: [connections, connectorUrl]
+      properties:
+        connections:
+          type: array
+          items:
+            $ref: '#/components/schemas/Connection'
+        connectorUrl:
+          type: string
+    CreateConnectionRequest:
+      type: object
+      required: [name, kind]
+      properties:
+        name:
+          type: string
+        kind:
+          type: string
+          enum: [claude_code, codex, hermes, other]
+    CreatedConnection:
+      type: object
+      required: [connection, token, setup]
+      properties:
+        connection:
+          $ref: '#/components/schemas/Connection'
+        token:
+          type: string
+          description: Shown once. Store it in the agent now.
+        setup:
+          $ref: '#/components/schemas/ConnectionSetup'
+    ConnectionSetup:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+        configLabel:
+          type: string
+        configLang:
+          type: string
+        config:
+          type: string
+        export:
+          type: string
+        prompt:
+          type: string
+    ActivityList:
+      type: object
+      required: [executions]
+      properties:
+        executions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Execution'
+    Execution:
+      type: object
+      required: [id, tool, arguments, surface, outcome, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tool:
+          type: string
+        arguments:
+          type: object
+          additionalProperties: true
+        surface:
+          type: string
+        outcome:
+          type: string
+          enum: [executed, failed, declined]
+        detail:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    TelegramSettings:
+      type: object
+      required: [enabled, linked]
+      properties:
+        enabled:
+          type: boolean
+        botUsername:
+          type: string
+        linked:
+          type: boolean
+        linkedAt:
+          type: string
+          format: date-time
+        lastSeenAt:
+          type: string
+          format: date-time
+    TelegramCode:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+        deepLink:
+          type: string
+          description: Opens the bot with the code filled in.
+    CalendarSettings:
+      type: object
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
+        connected:
+          $ref: '#/components/schemas/CalendarConnection'
+    CalendarConnection:
+      type: object
+      required: [provider, endpoint, status]
+      properties:
+        provider:
+          type: string
+        endpoint:
+          type: string
+        status:
+          type: string
+        lastError:
+          type: string
+        lastCheckedAt:
+          type: string
+          format: date-time
+    CalendarRequest:
+      type: object
+      required: [endpoint]
+      properties:
+        endpoint:
+          type: string
+        token:
+          type: string
+          writeOnly: true
+    DeleteAccountRequest:
+      type: object
+      required: [confirmEmail]
+      properties:
+        confirmEmail:
+          type: string
+    PlanList:
+      type: object
+      required: [plans]
+      properties:
+        plans:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlanSummary'
+    PlanSummary:
+      type: object
+      required: [id, name, weeksTotal, days, source, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        weeksTotal:
+          type: integer
+        days:
+          type: array
+          items:
+            $ref: '#/components/schemas/DaySummary'
+        source:
+          type: string
+          enum: [ai, edited]
+        createdAt:
+          type: string
+          format: date-time
+    DaySummary:
+      type: object
+      required: [weekday, focus, exerciseCount]
+      properties:
+        weekday:
+          type: string
+        startTime:
+          type: string
+        focus:
+          type: string
+        exerciseCount:
+          type: integer
+    PlanDetail:
+      type: object
+      required: [id, name, rationale, weeksTotal, days, problems, source, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: This version's id. Every edit returns a new one.
+        name:
+          type: string
+        rationale:
+          type: string
+        weeksTotal:
+          type: integer
+        days:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrainingDay'
+        problems:
+          type: array
+          description: Where the plan no longer fits its intake, in words for the person.
+          items:
+            type: string
+        source:
+          type: string
+          enum: [ai, edited]
+        createdAt:
+          type: string
+          format: date-time
+    TrainingDay:
+      type: object
+      required: [weekday, focus, exercises]
+      properties:
+        weekday:
+          type: string
+          description: English weekday name, e.g. Monday.
+        startTime:
+          type: string
+          description: HH:MM in the person's time zone; absent means no set time.
+        focus:
+          type: string
+        exercises:
+          type: array
+          items:
+            $ref: '#/components/schemas/DayExercise'
+    DayExercise:
+      type: object
+      required: [name, sets, reps, restSeconds, equipment, hasArt, primaryMuscles, secondaryMuscles]
+      properties:
+        name:
+          type: string
+        sets:
+          type: integer
+        reps:
+          type: string
+        restSeconds:
+          type: integer
+        equipment:
+          type: string
+        formCues:
+          type: string
+        substitute:
+          type: string
+        catalogSlug:
+          type: string
+        hasArt:
+          type: boolean
+        primaryMuscles:
+          type: array
+          items:
+            type: string
+        secondaryMuscles:
+          type: array
+          items:
+            type: string
+    TrainingIntake:
+      type: object
+      required: [goal, experience, daysPerWeek, sessionMinutes, equipment]
+      properties:
+        goal:
+          type: string
+        experience:
+          type: string
+        daysPerWeek:
+          type: integer
+        sessionMinutes:
+          type: integer
+        equipment:
+          type: array
+          items:
+            type: string
+        limitations:
+          type: string
+    StartTimeRequest:
+      type: object
+      required: [startTime]
+      properties:
+        startTime:
+          type: string
+          description: HH:MM on a 24-hour clock, or empty to clear.
+    CatalogChoice:
+      type: object
+      required: [catalogSlug]
+      properties:
+        catalogSlug:
+          type: string
+    MoveRequest:
+      type: object
+      required: [direction]
+      properties:
+        direction:
+          type: string
+          enum: [up, down]
+    PrescriptionRequest:
+      type: object
+      required: [sets, reps, restSeconds]
+      properties:
+        sets:
+          type: integer
+        reps:
+          type: string
+        restSeconds:
+          type: integer
+    ExerciseList:
+      type: object
+      required: [exercises, total]
+      properties:
+        exercises:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExerciseSummary'
+        total:
+          type: integer
+          description: How many match, for paging. 0 on suggestion lists.
+    ExerciseSummary:
+      type: object
+      required: [slug, name, category, equipment, difficulty, primaryMuscles, hasArt]
+      properties:
+        slug:
+          type: string
+        name:
+          type: string
+        category:
+          type: string
+        equipment:
+          type: string
+        difficulty:
+          type: string
+        primaryMuscles:
+          type: array
+          items:
+            type: string
+        hasArt:
+          type: boolean
+    ActivityOverview:
+      type: object
+      required: [recent, kinds]
+      properties:
+        active:
+          $ref: '#/components/schemas/ActivitySession'
+        recent:
+          type: array
+          items:
+            $ref: '#/components/schemas/ActivitySession'
+        kinds:
+          type: array
+          items:
+            $ref: '#/components/schemas/ActivityKind'
+    ActivitySession:
+      type: object
+      required: [id, activityCode, activityName, source, status, startedAt, totalPausedSeconds, elapsedSeconds]
+      properties:
+        id:
+          type: string
+          format: uuid
+        activityCode:
+          type: string
+        activityName:
+          type: string
+        source:
+          type: string
+        status:
+          type: string
+          enum: [active, paused, completed, cancelled]
+        startedAt:
+          type: string
+          format: date-time
+        pausedAt:
+          type: string
+          format: date-time
+        totalPausedSeconds:
+          type: integer
+        endedAt:
+          type: string
+          format: date-time
+        elapsedSeconds:
+          type: integer
+          description: Moving time when this response was written.
+        caloriesBurned:
+          type: number
+        distanceM:
+          type: number
+    ActivityKind:
+      type: object
+      required: [code, name, category]
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        category:
+          type: string
+    StartActivityRequest:
+      type: object
+      required: [activityCode]
+      properties:
+        activityCode:
+          type: string
+    LogActivityRequest:
+      type: object
+      required: [activityCode, durationMinutes]
+      properties:
+        activityCode:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+        durationMinutes:
+          type: integer
+        distanceKm:
+          type: number
