@@ -352,12 +352,14 @@ templ profileCard(f ProfileForm) {
 						{ i18n.T(ctx, "settings.profile.style") }
 					}
 					@dictate.Field(dictate.Props{Target: "coaching_style"}) {
+						// Value, not children: the component renders p.Value and drops
+						// children, so the saved style never appeared here and every
+						// profile save posted an empty box over it.
 						@textarea.Textarea(textarea.Props{
 							ID: "coaching_style", Name: "coaching_style", Rows: 3,
 							Placeholder: i18n.T(ctx, "settings.profile.style.placeholder"),
-						}) {
-							{ f.CoachingStyle }
-						}
+							Value:       f.CoachingStyle,
+						})
 					}
 					if f.fieldError("coaching_style") != "" {
 						@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
