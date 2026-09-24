@@ -21,6 +21,7 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/card"
 	"github.com/NorthAIProject/north-client/web/shared/ui/checkbox"
 	"github.com/NorthAIProject/north-client/web/shared/ui/dialog"
+	"github.com/NorthAIProject/north-client/web/shared/ui/dictate"
 	"github.com/NorthAIProject/north-client/web/shared/ui/form"
 	"github.com/NorthAIProject/north-client/web/shared/ui/input"
 	"github.com/NorthAIProject/north-client/web/shared/ui/label"
@@ -207,6 +208,7 @@ templ Page(user users.User, summary SettingsSummary, profileForm ProfileForm, pr
 		@checkbox.Script()
 		@dialog.Script()
 		@mascot.Script()
+		@dictate.Script()
 	}
 }
 
@@ -349,11 +351,13 @@ templ profileCard(f ProfileForm) {
 					@label.Label(label.Props{For: "coaching_style"}) {
 						{ i18n.T(ctx, "settings.profile.style") }
 					}
-					@textarea.Textarea(textarea.Props{
-						ID: "coaching_style", Name: "coaching_style", Rows: 3,
-						Placeholder: i18n.T(ctx, "settings.profile.style.placeholder"),
-					}) {
-						{ f.CoachingStyle }
+					@dictate.Field(dictate.Props{Target: "coaching_style"}) {
+						@textarea.Textarea(textarea.Props{
+							ID: "coaching_style", Name: "coaching_style", Rows: 3,
+							Placeholder: i18n.T(ctx, "settings.profile.style.placeholder"),
+						}) {
+							{ f.CoachingStyle }
+						}
 					}
 					if f.fieldError("coaching_style") != "" {
 						@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
@@ -764,9 +768,9 @@ templ connectionsCard() {
 				// those keys have actually done.
 				@button.Button(button.Props{Href: "/app/settings/activity", Variant: button.VariantOutline}) {
 					{ i18n.T(ctx, "settings.agents.activity") }
-				@button.Button(button.Props{Href: "/app/settings/news-ticker", Variant: button.VariantOutline}) {
-					{ i18n.T(ctx, "news.settings.title") }
-				}
+					@button.Button(button.Props{Href: "/app/settings/news-ticker", Variant: button.VariantOutline}) {
+						{ i18n.T(ctx, "news.settings.title") }
+					}
 				}
 			</div>
 		}

@@ -7,6 +7,7 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
 	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/dictate"
 	"github.com/NorthAIProject/north-client/web/shared/ui/form"
 	"github.com/NorthAIProject/north-client/web/shared/ui/input"
 	"github.com/NorthAIProject/north-client/web/shared/ui/label"
@@ -62,6 +63,7 @@ templ IndexPage(user users.User, list []decision.Decision, f DecisionForm) {
 			}
 		</div>
 		@label.Script()
+		@dictate.Script()
 	}
 }
 
@@ -89,6 +91,7 @@ templ ShowPage(user users.User, d decision.Decision, f DecisionForm) {
 			</p>
 		</div>
 		@label.Script()
+		@dictate.Script()
 	}
 }
 
@@ -126,14 +129,16 @@ templ decisionFormCard(action, heading, submit string, f DecisionForm, withOutco
 					@label.Label(label.Props{For: "options", Error: f.fieldError("options")}) {
 						Options considered
 					}
-					@textarea.Textarea(textarea.Props{
-						ID:          "options",
-						Name:        "options",
-						Rows:        3,
-						Placeholder: "What else was on the table?",
-						Value:       f.Options,
-						HasError:    f.fieldError("options") != "",
-					})
+					@dictate.Field(dictate.Props{Target: "options"}) {
+						@textarea.Textarea(textarea.Props{
+							ID:          "options",
+							Name:        "options",
+							Rows:        3,
+							Placeholder: "What else was on the table?",
+							Value:       f.Options,
+							HasError:    f.fieldError("options") != "",
+						})
+					}
 					if f.fieldError("options") != "" {
 						@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
 							{ f.fieldError("options") }
@@ -144,14 +149,16 @@ templ decisionFormCard(action, heading, submit string, f DecisionForm, withOutco
 					@label.Label(label.Props{For: "rationale", Error: f.fieldError("rationale")}) {
 						Why this one
 					}
-					@textarea.Textarea(textarea.Props{
-						ID:          "rationale",
-						Name:        "rationale",
-						Rows:        3,
-						Placeholder: "What tipped it?",
-						Value:       f.Rationale,
-						HasError:    f.fieldError("rationale") != "",
-					})
+					@dictate.Field(dictate.Props{Target: "rationale"}) {
+						@textarea.Textarea(textarea.Props{
+							ID:          "rationale",
+							Name:        "rationale",
+							Rows:        3,
+							Placeholder: "What tipped it?",
+							Value:       f.Rationale,
+							HasError:    f.fieldError("rationale") != "",
+						})
+					}
 					if f.fieldError("rationale") != "" {
 						@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
 							{ f.fieldError("rationale") }
@@ -163,14 +170,16 @@ templ decisionFormCard(action, heading, submit string, f DecisionForm, withOutco
 						@label.Label(label.Props{For: "outcome", Error: f.fieldError("outcome")}) {
 							How it turned out
 						}
-						@textarea.Textarea(textarea.Props{
-							ID:          "outcome",
-							Name:        "outcome",
-							Rows:        3,
-							Placeholder: "Looking back — what actually happened?",
-							Value:       f.Outcome,
-							HasError:    f.fieldError("outcome") != "",
-						})
+						@dictate.Field(dictate.Props{Target: "outcome"}) {
+							@textarea.Textarea(textarea.Props{
+								ID:          "outcome",
+								Name:        "outcome",
+								Rows:        3,
+								Placeholder: "Looking back — what actually happened?",
+								Value:       f.Outcome,
+								HasError:    f.fieldError("outcome") != "",
+							})
+						}
 						if f.fieldError("outcome") != "" {
 							@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
 								{ f.fieldError("outcome") }
