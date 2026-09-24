@@ -59,3 +59,50 @@ func TestHealthAPISyncIsReplayableAndForgettable(t *testing.T) {
 		t.Errorf("forgetting readings removed the workout from activity history")
 	}
 }
+
+// Steps synced from the phone reach the insights metric the app charts, and
+// an account with nothing logged gets the empty overview, not an error.
+func TestInsightsAPIShowsSyncedHealth(t *testing.T) {
+	handler, pool := testRoutesAndPool(t, func(*config.Config) {})
+	api := apiClient{t: t, handler: handler, bearer: "Bearer " + signIn(t, pool).Value}
+
+	var summary struct{ Empty bool }
+	rec := api.call(http.MethodGet, "/api/v1/insights", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("insights: %d %s", rec.Code, rec.Body)
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &summary)
+	if !summary.Empty {
+		t.Error("a new account's overview is not empty")
+	}
+
+	day := time.Now().Add(-26 * time.Hour).UTC().Truncate(time.Hour)
+	body := fmt.Sprintf(`{"readings":[{"metric":"steps","value":9120,"unit":"count","startedAt":%q,"endedAt":%q}]}`,
+		day.Format(time.RFC3339), day.Add(time.Hour).Format(time.RFC3339))
+	if synced := api.call(http.MethodPost, "/api/v1/health/samples", body); synced.Code != http.StatusOK {
+		t.Fatalf("sync: %d %s", synced.Code, synced.Body)
+	}
+
+	var metric struct {
+		HasData bool
+		Chart   struct{ Series []struct{ Values []float64 } }
+	}
+	rec = api.call(http.MethodGet, "/api/v1/insights/metrics/steps?range=week", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("steps: %d %s", rec.Code, rec.Body)
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &metric)
+	found := false
+	for _, s := range metric.Chart.Series {
+		for _, v := range s.Values {
+			found = found || v == 9120
+		}
+	}
+	if !metric.HasData || !found {
+		t.Errorf("steps metric = %s, want the synced 9120", rec.Body)
+	}
+
+	if unknown := api.call(http.MethodGet, "/api/v1/insights/metrics/banana", ""); unknown.Code != http.StatusNotFound {
+		t.Errorf("unknown metric: %d, want 404", unknown.Code)
+	}
+}

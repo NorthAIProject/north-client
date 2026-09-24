@@ -17,6 +17,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/exercises"
 	"github.com/NorthAIProject/north-client/internal/fitness"
 	"github.com/NorthAIProject/north-client/internal/health"
+	"github.com/NorthAIProject/north-client/internal/insights"
 	"github.com/NorthAIProject/north-client/internal/onboarding"
 	"github.com/NorthAIProject/north-client/internal/settings"
 	"github.com/NorthAIProject/north-client/internal/workouts"
@@ -50,6 +51,7 @@ func apiRouter(t *testing.T) chi.Router {
 		activity:   activity.NewAPI(nil),
 		health:     health.NewAPI(nil),
 		fitness:    fitness.NewAPI(nil, ""),
+		insights:   insights.NewAPI(nil),
 	})
 	return r
 }

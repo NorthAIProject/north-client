@@ -11,6 +11,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/exercises"
 	"github.com/NorthAIProject/north-client/internal/fitness"
 	"github.com/NorthAIProject/north-client/internal/health"
+	"github.com/NorthAIProject/north-client/internal/insights"
 	"github.com/NorthAIProject/north-client/internal/onboarding"
 	"github.com/NorthAIProject/north-client/internal/settings"
 	"github.com/NorthAIProject/north-client/internal/workouts"
@@ -42,6 +43,7 @@ func mountAPI(r chi.Router, sessions auth.SessionResolver, apis apiSet) {
 			apis.activity.Routes(r)
 			apis.health.Routes(r)
 			apis.fitness.Routes(r)
+			apis.insights.Routes(r)
 		})
 	})
 }
@@ -60,4 +62,5 @@ type apiSet struct {
 	activity   *activity.API
 	health     *health.API
 	fitness    *fitness.API
+	insights   *insights.API
 }

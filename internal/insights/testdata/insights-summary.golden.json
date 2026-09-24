@@ -1,0 +1,71 @@
+{
+  "range": {
+    "key": "week",
+    "label": "Last 7 days",
+    "options": [
+      {
+        "key": "week",
+        "label": "Last 7 days"
+      },
+      {
+        "key": "month",
+        "label": "Last 30 days"
+      }
+    ]
+  },
+  "scores": [
+    {
+      "key": "body",
+      "label": "Body",
+      "points": 72,
+      "verdict": "Good",
+      "reason": "Sleep steady, water short on two days.",
+      "coverage": 80,
+      "hasData": true,
+      "components": [
+        {
+          "label": "Sleep",
+          "earned": 30,
+          "weight": 40,
+          "known": true
+        }
+      ]
+    }
+  ],
+  "pinned": [
+    {
+      "label": "Sleep",
+      "value": "7.3 h",
+      "note": "average a night",
+      "metricKey": "sleep",
+      "delta": {
+        "direction": 1,
+        "pct": 4.5,
+        "hasPrior": true
+      },
+      "chart": {
+        "labels": [
+          "Mon",
+          "Tue",
+          "Wed"
+        ],
+        "series": [
+          {
+            "label": "Sleep",
+            "values": [
+              7.2,
+              6.8,
+              7.9
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "highlights": [
+    "Best night: Wednesday, 7.9 h."
+  ],
+  "onTrack": 1,
+  "judged": 1,
+  "empty": false
+}
