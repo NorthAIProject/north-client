@@ -31,13 +31,13 @@ func loadWith(t *testing.T, env map[string]string) (*Config, error) {
 
 func TestParseChainEntrySplitsOnTheFirstEqualsOnly(t *testing.T) {
 	// The model slug is the interesting case: it carries both a slash and a
-	// colon, and an over-eager split would truncate it to "z-ai/glm-5.2".
-	base, model := parseChainEntry("openrouter=z-ai/glm-5.2:free")
+	// colon, and an over-eager split would truncate it to "nvidia/nemotron-3-super-120b-a12b".
+	base, model := parseChainEntry("openrouter=nvidia/nemotron-3-super-120b-a12b:free")
 	if base != "openrouter" {
 		t.Errorf("base = %q, want openrouter", base)
 	}
-	if model != "z-ai/glm-5.2:free" {
-		t.Errorf("model = %q, want z-ai/glm-5.2:free", model)
+	if model != "nvidia/nemotron-3-super-120b-a12b:free" {
+		t.Errorf("model = %q, want nvidia/nemotron-3-super-120b-a12b:free", model)
 	}
 }
 
@@ -53,8 +53,8 @@ func TestParseChainEntryLeavesAPlainProviderWithoutAModel(t *testing.T) {
 
 func TestChainVariantsAreCollectedFromBothChains(t *testing.T) {
 	cfg, err := loadWith(t, map[string]string{
-		"AI_PROVIDER_CHAIN":      "xai,openrouter=z-ai/glm-5.2:free",
-		"AI_PROVIDER_CHAIN_FREE": "openrouter=z-ai/glm-5.2:free,nvidia=meta/llama-3.3-70b-instruct",
+		"AI_PROVIDER_CHAIN":      "xai,openrouter=nvidia/nemotron-3-super-120b-a12b:free",
+		"AI_PROVIDER_CHAIN_FREE": "openrouter=nvidia/nemotron-3-super-120b-a12b:free,nvidia=meta/llama-3.3-70b-instruct",
 	})
 	if err != nil {
 		t.Fatalf("load: %v", err)
@@ -65,10 +65,10 @@ func TestChainVariantsAreCollectedFromBothChains(t *testing.T) {
 	if len(cfg.AI.Variants) != 2 {
 		t.Fatalf("variants = %+v, want 2", cfg.AI.Variants)
 	}
-	if cfg.AI.Variants[0].Entry != "openrouter=z-ai/glm-5.2:free" {
+	if cfg.AI.Variants[0].Entry != "openrouter=nvidia/nemotron-3-super-120b-a12b:free" {
 		t.Errorf("first variant = %+v", cfg.AI.Variants[0])
 	}
-	if cfg.AI.Variants[0].Model != "z-ai/glm-5.2:free" {
+	if cfg.AI.Variants[0].Model != "nvidia/nemotron-3-super-120b-a12b:free" {
 		t.Errorf("first variant model = %q", cfg.AI.Variants[0].Model)
 	}
 	if cfg.AI.Variants[1].Base != "nvidia" {
@@ -161,7 +161,7 @@ func TestFreeKeyAcceptsTheFreeFloor(t *testing.T) {
 
 func TestVariantsInheritTheirBaseSpecAndTheFreeKey(t *testing.T) {
 	cfg, err := loadWith(t, map[string]string{
-		"AI_PROVIDER_CHAIN":       "openrouter,openrouter=z-ai/glm-5.2:free",
+		"AI_PROVIDER_CHAIN":       "openrouter,openrouter=nvidia/nemotron-3-super-120b-a12b:free",
 		"OPENROUTER_API_KEY":      "sk-or-paid",
 		"OPENROUTER_FREE_API_KEY": "sk-or-free",
 	})
@@ -171,11 +171,11 @@ func TestVariantsInheritTheirBaseSpecAndTheFreeKey(t *testing.T) {
 
 	opts := cfg.AI.ProviderOptions(EnvDevelopment)
 
-	spec, ok := findCompatible(opts.Compatible, "openrouter=z-ai/glm-5.2:free")
+	spec, ok := findCompatible(opts.Compatible, "openrouter=nvidia/nemotron-3-super-120b-a12b:free")
 	if !ok {
 		t.Fatal("variant was not rendered as a provider spec")
 	}
-	if spec.Model != "z-ai/glm-5.2:free" {
+	if spec.Model != "nvidia/nemotron-3-super-120b-a12b:free" {
 		t.Errorf("model = %q", spec.Model)
 	}
 	if spec.APIKey != "sk-or-free" {
@@ -233,5 +233,24 @@ func TestProviderOptionsMarksHermesAsIgnoringTools(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("hermes is not among the compatible backends")
+	}
+}
+
+// The free floor is what a user without their own key reaches, so its order is
+// a product decision: the larger Nemotron first, the smaller one behind it.
+// Neither may be a model without tool calls or a long context, which is how
+// z-ai/glm-5.2:free came to be dropped.
+func TestTheFreeFloorIsNemotronUltraThenSuper(t *testing.T) {
+	want := []string{
+		"openrouter=nvidia/nemotron-3-ultra-550b-a55b:free",
+		"openrouter=nvidia/nemotron-3-super-120b-a12b:free",
+	}
+	if len(freeFloor) != len(want) {
+		t.Fatalf("freeFloor = %v, want %v", freeFloor, want)
+	}
+	for i := range want {
+		if freeFloor[i] != want[i] {
+			t.Errorf("freeFloor[%d] = %q, want %q", i, freeFloor[i], want[i])
+		}
 	}
 }

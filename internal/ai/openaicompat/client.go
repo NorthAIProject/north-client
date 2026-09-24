@@ -557,6 +557,14 @@ func (c *Client) statusError(status int, detail string) error {
 		return fmt.Errorf("%w: %s returned %d: %s", apperr.ErrPaymentRequired, c.name, status, detail)
 	case status == http.StatusTooManyRequests, status >= 500:
 		return fmt.Errorf("%w: %s returned %d: %s", apperr.ErrUnavailable, c.name, status, detail)
+	// A 404 from a chat endpoint is this provider not serving the model, not a
+	// malformed request: OpenRouter answers it when a free tier is retired
+	// ("This model is unavailable for free"). The next link in the chain names
+	// a different model or backend and may well succeed, so it is the
+	// provider's problem, and a chain whose floor was retired must walk past it
+	// rather than stop there.
+	case status == http.StatusNotFound:
+		return fmt.Errorf("%w: %s returned %d (model not served): %s", apperr.ErrUnavailable, c.name, status, detail)
 	case status == http.StatusUnauthorized, status == http.StatusForbidden:
 		return fmt.Errorf("%w: %s returned %d: %s", apperr.ErrForbidden, c.name, status, detail)
 	default:

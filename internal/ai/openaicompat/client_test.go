@@ -325,6 +325,10 @@ func TestErrorStatusesMapToSentinels(t *testing.T) {
 	}{
 		{http.StatusTooManyRequests, apperr.ErrUnavailable},
 		{http.StatusInternalServerError, apperr.ErrUnavailable},
+		// A retired or unknown model: OpenRouter's "This model is unavailable
+		// for free". The next chain link names another model, so it must fail
+		// over rather than end the chain.
+		{http.StatusNotFound, apperr.ErrUnavailable},
 		{http.StatusUnauthorized, apperr.ErrForbidden},
 		{http.StatusForbidden, apperr.ErrForbidden},
 		// Billing has to be its own sentinel: a chain that treats an exhausted
@@ -347,6 +351,23 @@ func TestErrorStatusesMapToSentinels(t *testing.T) {
 				t.Fatalf("status %d produced %v, want %v", tt.status, err, tt.want)
 			}
 		})
+	}
+}
+
+// The exact response OpenRouter sent when it retired a free tier. It has to
+// reach ai.Failover as a reason to move on, or a free-floor chain stops at its
+// first dead slug and the user gets an error instead of the next model.
+func TestARetiredFreeModelFailsOver(t *testing.T) {
+	t.Parallel()
+
+	c, _ := newClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = io.WriteString(w, `{"error":{"message":"This model is unavailable for free","code":404}}`)
+	})
+
+	_, err := c.Generate(context.Background(), ai.Request{})
+	if !ai.Failover(err) {
+		t.Fatalf("a 404 from a retired free model should fail over, got %v", err)
 	}
 }
 
