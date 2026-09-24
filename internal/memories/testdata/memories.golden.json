@@ -1,0 +1,37 @@
+{
+  "pending": [
+    {
+      "id": "a7a7a7a7-a7a7-a7a7-a7a7-a7a7a7a7a7a7",
+      "category": "injury",
+      "content": "Left knee aches on long downhill runs.",
+      "status": "pending",
+      "pinned": false,
+      "excluded": false,
+      "source": "extraction",
+      "sourceConversationId": "33333333-3333-3333-3333-333333333333",
+      "createdAt": "2026-09-22T09:00:00Z"
+    }
+  ],
+  "approved": [
+    {
+      "id": "b8b8b8b8-b8b8-b8b8-b8b8-b8b8b8b8b8b8",
+      "category": "preference",
+      "content": "Trains before work, around 07:00.",
+      "status": "approved",
+      "pinned": true,
+      "excluded": false,
+      "source": "user",
+      "createdAt": "2026-09-22T09:00:00Z"
+    }
+  ],
+  "categories": [
+    "preference",
+    "constraint",
+    "habit",
+    "injury",
+    "equipment",
+    "schedule",
+    "coaching",
+    "general"
+  ]
+}
