@@ -25,6 +25,31 @@ func (q *Queries) CountStravaActivities(ctx context.Context, userID uuid.UUID) (
 	return column_1, err
 }
 
+const createStravaOAuthState = `-- name: CreateStravaOAuthState :exec
+INSERT INTO strava_oauth_states (state_hash, user_id, expires_at)
+VALUES ($1, $2, $3)
+`
+
+type CreateStravaOAuthStateParams struct {
+	StateHash []byte
+	UserID    uuid.UUID
+	ExpiresAt time.Time
+}
+
+func (q *Queries) CreateStravaOAuthState(ctx context.Context, arg CreateStravaOAuthStateParams) error {
+	_, err := q.db.Exec(ctx, createStravaOAuthState, arg.StateHash, arg.UserID, arg.ExpiresAt)
+	return err
+}
+
+const deleteExpiredStravaOAuthStates = `-- name: DeleteExpiredStravaOAuthStates :exec
+DELETE FROM strava_oauth_states WHERE expires_at <= now()
+`
+
+func (q *Queries) DeleteExpiredStravaOAuthStates(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, deleteExpiredStravaOAuthStates)
+	return err
+}
+
 const deleteStravaConnection = `-- name: DeleteStravaConnection :exec
 DELETE FROM strava_connections WHERE user_id = $1
 `
@@ -317,6 +342,20 @@ func (q *Queries) SumStravaActivitiesBetween(ctx context.Context, arg SumStravaA
 	var i SumStravaActivitiesBetweenRow
 	err := row.Scan(&i.Activities, &i.DistanceM, &i.ElevationM)
 	return i, err
+}
+
+const takeStravaOAuthState = `-- name: TakeStravaOAuthState :one
+DELETE FROM strava_oauth_states
+WHERE state_hash = $1 AND expires_at > now()
+RETURNING user_id
+`
+
+// Single use: the row is gone whether or not the connection then succeeds.
+func (q *Queries) TakeStravaOAuthState(ctx context.Context, stateHash []byte) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, takeStravaOAuthState, stateHash)
+	var user_id uuid.UUID
+	err := row.Scan(&user_id)
+	return user_id, err
 }
 
 const updateStravaTokens = `-- name: UpdateStravaTokens :one

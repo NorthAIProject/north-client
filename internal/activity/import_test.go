@@ -133,3 +133,66 @@ func TestImportValidatesItsInput(t *testing.T) {
 		t.Errorf("import with an unknown code = %v, want validation error", err)
 	}
 }
+
+// One workout recorded by two providers — a watch run that also syncs to
+// Strava, or a session timed in the app and written to Apple Health — is one
+// workout. Counting it twice doubles the calories the coach reports.
+func TestImportSkipsTheSameWorkoutFromAnotherSource(t *testing.T) {
+	svc, user := newService(t, withWeight(80))
+	ctx := context.Background()
+
+	strava := importInput("strava-1")
+	strava.UserID = user.ID
+	if _, imported, err := svc.Import(ctx, strava); err != nil || !imported {
+		t.Fatalf("strava import = %v, %v", imported, err)
+	}
+
+	// The watch's copy starts two minutes early and ends one minute late.
+	watch := strava
+	watch.Source = "apple_health"
+	watch.ExternalID = "hk-1"
+	watch.StartedAt = strava.StartedAt.Add(-2 * time.Minute)
+	watch.EndedAt = strava.EndedAt.Add(time.Minute)
+	existing, imported, err := svc.Import(ctx, watch)
+	if err != nil {
+		t.Fatalf("watch import: %v", err)
+	}
+	if imported {
+		t.Error("the watch's copy of the Strava run was imported as a second workout")
+	}
+	if existing.Source != activity.SourceStrava {
+		t.Errorf("returned %q, want the Strava session it duplicates", existing.Source)
+	}
+
+	sessions, err := svc.List(ctx, user.ID, 50)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(sessions) != 1 {
+		t.Errorf("stored %d sessions, want 1", len(sessions))
+	}
+}
+
+// Back-to-back workouts are two workouts, even from different providers: a
+// run logged on Strava, then a strength session from the watch that starts as
+// the run ends and overlaps it by a few minutes at most.
+func TestImportKeepsWorkoutsThatOnlyTouch(t *testing.T) {
+	svc, user := newService(t, withWeight(80))
+	ctx := context.Background()
+
+	run := importInput("strava-2")
+	run.UserID = user.ID
+	if _, _, err := svc.Import(ctx, run); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+
+	lift := run
+	lift.Source = "apple_health"
+	lift.ExternalID = "hk-2"
+	lift.ActivityCode = "strength_training"
+	lift.StartedAt = run.EndedAt.Add(-5 * time.Minute)
+	lift.EndedAt = lift.StartedAt.Add(45 * time.Minute)
+	if _, imported, err := svc.Import(ctx, lift); err != nil || !imported {
+		t.Fatalf("lift import = %v, %v; want imported", imported, err)
+	}
+}

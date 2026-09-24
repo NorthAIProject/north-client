@@ -1272,6 +1272,152 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+  /insights:
+    get:
+      operationId: getInsights
+      summary: Every domain's score for a window, the pinned metrics and highlights
+      parameters:
+        - $ref: '#/components/parameters/InsightsRange'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InsightsSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /insights/metrics/{key}:
+    parameters:
+      - name: key
+        in: path
+        required: true
+        schema:
+          type: string
+        description: e.g. sleep, water, mood, energy, burn, sessions, steps, active-energy, resting-heart-rate, hrv
+    get:
+      operationId: getInsightMetric
+      summary: One metric over a window, beside the window before it
+      parameters:
+        - $ref: '#/components/parameters/InsightsRange'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InsightMetric'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /fitness/strava:
+    get:
+      operationId: getStravaStatus
+      summary: Whether Strava is connected, and how its last sync went
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StravaStatus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    delete:
+      operationId: disconnectStrava
+      summary: Disconnect Strava; imported activities stay
+      responses:
+        '204':
+          description: Done
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /fitness/strava/connect:
+    post:
+      operationId: connectStrava
+      summary: Begin connecting Strava from the app
+      description: >-
+        Returns Strava's consent URL. Open it in an authentication session
+        whose callback scheme is khepri; Strava returns through the server to
+        khepri://fitness/strava?result=connected|cancelled|expired|failed.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StravaConnect'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /fitness/strava/sync:
+    post:
+      operationId: syncStrava
+      summary: Queue a Strava sync now
+      responses:
+        '202':
+          description: Queued
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /fitness/strava/callback:
+    get:
+      operationId: stravaCallback
+      summary: Strava's OAuth return for connections begun in the app
+      description: Public, called by Strava; always redirects to khepri://fitness/strava.
+      security: []
+      parameters:
+        - name: state
+          in: query
+          schema:
+            type: string
+        - name: code
+          in: query
+          schema:
+            type: string
+        - name: error
+          in: query
+          schema:
+            type: string
+      responses:
+        '302':
+          description: Back to the app
+  /health/samples:
+    post:
+      operationId: syncHealth
+      summary: Store readings and workouts read from Apple Health on the phone
+      description: >-
+        Replaying a batch is safe: readings are stored as sent and workouts are
+        deduplicated by their Apple Health id, and a workout another provider
+        already sent (the same run from Strava) is recognised by its time and
+        not counted twice.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HealthSyncRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthSyncResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      operationId: forgetHealth
+      summary: Delete every reading Apple Health sent; workouts stay in activity history
+      responses:
+        '204':
+          description: Done
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /me:
     get:
       operationId: getMe
@@ -1401,6 +1547,13 @@ components:
       scheme: bearer
       description: An `nk_` connection token from Settings → Connections.
   parameters:
+    InsightsRange:
+      name: range
+      in: query
+      required: false
+      schema:
+        type: string
+      description: "A range key from the response's range.options (today, yesterday, week, month, quarter or year). Defaults to today."
     ConversationID:
       name: id
       in: path
@@ -2743,6 +2896,249 @@ components:
       properties:
         activityCode:
           type: string
+    InsightsRange:
+      type: object
+      required: [key, label, options]
+      properties:
+        key:
+          type: string
+        label:
+          type: string
+        options:
+          type: array
+          items:
+            type: object
+            required: [key, label]
+            properties:
+              key:
+                type: string
+              label:
+                type: string
+    InsightsChart:
+      type: object
+      required: [labels, series]
+      properties:
+        labels:
+          type: array
+          items:
+            type: string
+        series:
+          type: array
+          items:
+            type: object
+            required: [label, values]
+            properties:
+              label:
+                type: string
+              values:
+                type: array
+                items:
+                  type: number
+    InsightsSummary:
+      type: object
+      required: [range, scores, pinned, highlights, onTrack, judged, empty]
+      properties:
+        range:
+          $ref: '#/components/schemas/InsightsRange'
+        scores:
+          type: array
+          items:
+            type: object
+            required: [key, label, points, verdict, reason, coverage, hasData, components]
+            properties:
+              key:
+                type: string
+              label:
+                type: string
+              points:
+                type: integer
+              verdict:
+                type: string
+              reason:
+                type: string
+              coverage:
+                type: integer
+              hasData:
+                type: boolean
+              components:
+                type: array
+                items:
+                  type: object
+                  required: [label, earned, weight, known]
+                  properties:
+                    label:
+                      type: string
+                    earned:
+                      type: integer
+                    weight:
+                      type: integer
+                    known:
+                      type: boolean
+        pinned:
+          type: array
+          items:
+            type: object
+            required: [label, value, note, delta]
+            properties:
+              label:
+                type: string
+              value:
+                type: string
+              note:
+                type: string
+              metricKey:
+                type: string
+              delta:
+                type: object
+                required: [direction, pct, hasPrior]
+                properties:
+                  direction:
+                    type: integer
+                  pct:
+                    type: number
+                  hasPrior:
+                    type: boolean
+              chart:
+                $ref: '#/components/schemas/InsightsChart'
+        highlights:
+          type: array
+          items:
+            type: string
+        onTrack:
+          type: integer
+        judged:
+          type: integer
+        empty:
+          type: boolean
+    InsightMetric:
+      type: object
+      required: [range, key, label, headline, note, chart, trend, comparison, highlights, hasData]
+      properties:
+        range:
+          $ref: '#/components/schemas/InsightsRange'
+        key:
+          type: string
+        label:
+          type: string
+        headline:
+          type: string
+        note:
+          type: string
+        chart:
+          $ref: '#/components/schemas/InsightsChart'
+        trend:
+          type: object
+          required: [direction, pct, word, hasPrior]
+          properties:
+            direction:
+              type: integer
+            pct:
+              type: number
+            word:
+              type: string
+            hasPrior:
+              type: boolean
+        comparison:
+          type: object
+          required: [currentLabel, currentValue, currentPct, priorLabel, priorValue, priorPct, hasPrior]
+          properties:
+            currentLabel:
+              type: string
+            currentValue:
+              type: string
+            currentPct:
+              type: integer
+            priorLabel:
+              type: string
+            priorValue:
+              type: string
+            priorPct:
+              type: integer
+            hasPrior:
+              type: boolean
+        highlights:
+          type: array
+          items:
+            type: string
+        hasData:
+          type: boolean
+    StravaStatus:
+      type: object
+      required: [configured, connected, syncPending]
+      properties:
+        configured:
+          type: boolean
+        connected:
+          type: boolean
+        lastSyncedAt:
+          type: string
+          format: date-time
+        lastSyncAttemptedAt:
+          type: string
+          format: date-time
+        lastSyncError:
+          type: string
+        syncPending:
+          type: boolean
+    StravaConnect:
+      type: object
+      required: [authorizeUrl]
+      properties:
+        authorizeUrl:
+          type: string
+    HealthSyncRequest:
+      type: object
+      properties:
+        readings:
+          type: array
+          items:
+            $ref: '#/components/schemas/HealthReading'
+        workouts:
+          type: array
+          items:
+            $ref: '#/components/schemas/HealthWorkout'
+    HealthReading:
+      type: object
+      required: [metric, value, unit, startedAt]
+      properties:
+        metric:
+          type: string
+          description: e.g. resting_heart_rate, hrv_sdnn, steps, active_calories, sleep_asleep, body_mass
+        value:
+          type: number
+        unit:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: string
+          format: date-time
+          description: Set for an interval (a day's steps, a block of sleep); absent for an instant.
+    HealthWorkout:
+      type: object
+      required: [activityCode, externalId, startedAt, endedAt]
+      properties:
+        activityCode:
+          type: string
+        externalId:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: string
+          format: date-time
+        calories:
+          type: number
+    HealthSyncResult:
+      type: object
+      required: [readings, workouts]
+      properties:
+        readings:
+          type: integer
+        workouts:
+          type: integer
     LogActivityRequest:
       type: object
       required: [activityCode, durationMinutes]

@@ -354,3 +354,30 @@ func (r *Repository) fromDB(row stravadb.StravaConnection) (Connection, error) {
 		LastSyncAttemptedAt: row.LastSyncAttemptedAt,
 	}, nil
 }
+
+// SaveOAuthState records a pending native connection, and clears any that
+// have expired so the table never holds more than the connections in flight.
+func (r *Repository) SaveOAuthState(ctx context.Context, stateHash []byte, userID uuid.UUID, expiresAt time.Time) error {
+	if err := r.q.DeleteExpiredStravaOAuthStates(ctx); err != nil {
+		return apperr.Wrap(err, "clear expired strava states")
+	}
+	if err := r.q.CreateStravaOAuthState(ctx, stravadb.CreateStravaOAuthStateParams{
+		StateHash: stateHash, UserID: userID, ExpiresAt: expiresAt,
+	}); err != nil {
+		return apperr.Wrap(err, "save strava state")
+	}
+	return nil
+}
+
+// TakeOAuthState returns the person a state was issued to and removes it.
+// ErrNotFound covers unknown, expired and already-used states alike.
+func (r *Repository) TakeOAuthState(ctx context.Context, stateHash []byte) (uuid.UUID, error) {
+	userID, err := r.q.TakeStravaOAuthState(ctx, stateHash)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return uuid.Nil, apperr.ErrNotFound
+	}
+	if err != nil {
+		return uuid.Nil, apperr.Wrap(err, "take strava state")
+	}
+	return userID, nil
+}
