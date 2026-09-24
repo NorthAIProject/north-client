@@ -16,11 +16,10 @@ import (
 // the package note).
 const SourceAppleHealth = "apple_health"
 
-// maxSyncBytes bounds one sync from the phone. The app sends at most a few
-// thousand readings per request, well under this; the bound matches the
-// /ingest/health group's, for the same reason: a week of heart-rate samples is
-// megabytes, not kilobytes.
-const maxSyncBytes = 8 << 20
+// maxSyncBytes bounds one sync from the phone, and matches the JSON group's
+// cap in cmd/web. The phone sends daily aggregates, a few kilobytes a sync;
+// raw per-beat samples, which would need more, go to /ingest/health instead.
+const maxSyncBytes = 1 << 20
 
 // API is health ingest for the native app: the same Ingest and IngestWorkouts
 // the /ingest/health bridge endpoint uses, behind the app's session token

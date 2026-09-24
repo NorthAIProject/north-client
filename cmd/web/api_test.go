@@ -12,13 +12,19 @@ import (
 	"github.com/NorthAIProject/north-client/internal/activity"
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/capture"
+	"github.com/NorthAIProject/north-client/internal/checkins"
 	"github.com/NorthAIProject/north-client/internal/coach"
 	"github.com/NorthAIProject/north-client/internal/dashboard"
+	"github.com/NorthAIProject/north-client/internal/documents"
 	"github.com/NorthAIProject/north-client/internal/exercises"
 	"github.com/NorthAIProject/north-client/internal/fitness"
+	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/health"
 	"github.com/NorthAIProject/north-client/internal/insights"
+	"github.com/NorthAIProject/north-client/internal/media"
+	"github.com/NorthAIProject/north-client/internal/memories"
 	"github.com/NorthAIProject/north-client/internal/onboarding"
+	"github.com/NorthAIProject/north-client/internal/reports"
 	"github.com/NorthAIProject/north-client/internal/settings"
 	"github.com/NorthAIProject/north-client/internal/workouts"
 )
@@ -52,6 +58,12 @@ func apiRouter(t *testing.T) chi.Router {
 		health:     health.NewAPI(nil),
 		fitness:    fitness.NewAPI(nil, ""),
 		insights:   insights.NewAPI(nil),
+		goals:      goals.NewAPI(nil),
+		checkins:   checkins.NewAPI(nil),
+		reports:    reports.NewAPI(nil),
+		memories:   memories.NewAPI(nil),
+		knowledge:  documents.NewAPI(nil, nil),
+		formChecks: media.NewAPI(nil, nil),
 	})
 	return r
 }

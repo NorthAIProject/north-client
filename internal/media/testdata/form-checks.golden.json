@@ -1,0 +1,22 @@
+{
+  "checks": [
+    {
+      "id": "d0d0d0d0-d0d0-d0d0-d0d0-d0d0d0d0d0d0",
+      "status": "done",
+      "result": {
+        "exercise": "Goblet squat",
+        "confidence": "high",
+        "summary": "Depth is good; knees drift in on the way up.",
+        "issues": [
+          {
+            "at": 4.5,
+            "severity": "medium",
+            "observation": "Knees move inward as you stand.",
+            "correction": "Push the knees out over the toes."
+          }
+        ]
+      },
+      "createdAt": "2026-09-23T18:00:00Z"
+    }
+  ]
+}
