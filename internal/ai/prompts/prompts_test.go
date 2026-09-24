@@ -78,6 +78,14 @@ func TestCoachPromptStatesGroundingRules(t *testing.T) {
 		"admits when cues are missing":         "not recorded",
 		"leaves programming to judgement":      "does not apply to programming",
 
+		// Added after Telegram answered "show me how to do a squat" with "I
+		// don't coach generic exercise form": the off-mission rule was read as
+		// covering any question with no personal context. The retry passed on
+		// a video link and no animation went out, and the animation follows
+		// only a get_exercise call made in that same turn.
+		"keeps exercise technique in scope":   "how to perform an exercise is always in scope",
+		"looks up again on every description": "call it every time you describe a movement",
+
 		// Added after production showed sixteen days of daily "it has been N
 		// days since your last check-in" nudges to a person who had been
 		// telling the Telegram coach how their day went the whole time. The
