@@ -170,7 +170,7 @@ func (s *Service) Generate(ctx context.Context, id, userID uuid.UUID) error {
 			if r := []rune(preview); len(r) > 140 {
 				preview = strings.TrimSpace(string(r[:140])) + "…"
 			}
-			_ = s.inbox.Note(ctx, userID, nudge.KindBriefingReady, report.ID.String(),
+			_ = s.inbox.NoteWithPush(ctx, userID, nudge.KindBriefingReady, report.ID.String(),
 				"Today's briefing", preview, href)
 		}
 	}
