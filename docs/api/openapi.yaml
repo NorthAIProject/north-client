@@ -5136,6 +5136,10 @@ components:
         createdAt:
           type: string
           format: date-time
+        playbackUrl:
+          type: string
+          format: uri
+          description: Short-lived signed link to the clip. Set by GET /form-checks/{analysisID} only; seek to each issue's at.
     FormCheckList:
       type: object
       required: [checks]
