@@ -4,6 +4,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/NorthAIProject/north-client/internal/activity"
+	"github.com/NorthAIProject/north-client/internal/apns"
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/calculator"
 	"github.com/NorthAIProject/north-client/internal/capture"
@@ -98,6 +99,7 @@ func mountJSON(r chi.Router, sessions auth.SessionResolver, apis apiSet) {
 		apis.nutrition.Routes(r)
 		apis.decisions.Routes(r)
 		apis.nudges.Routes(r)
+		apis.devices.Routes(r)
 		apis.export.APIRoutes(r)
 		apis.calculator.Routes(r)
 		apis.news.Routes(r)
@@ -130,6 +132,7 @@ type apiSet struct {
 	nutrition  *meals.API
 	decisions  *decisions.API
 	nudges     *nudges.API
+	devices    *apns.API
 	export     *export.Handler
 	calculator *calculator.API
 	news       *news.API

@@ -64,14 +64,19 @@ func (a *API) list(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, out)
 }
 
-// open records that the nudge was followed from the bell, as the web bell
-// does, and marks it read.
+// open records which channel the nudge was followed from and marks it read.
+// The bell is the default; ?from=push is the app opening a notification tap,
+// so the funnel credits the lock screen and not the bell.
 func (a *API) open(w http.ResponseWriter, r *http.Request) {
 	id, ok := nudgeID(w, r)
 	if !ok {
 		return
 	}
-	n, err := a.svc.Open(r.Context(), id, auth.MustUser(r.Context()).ID, analytics.ChannelBell)
+	channel := analytics.ChannelBell
+	if r.URL.Query().Get("from") == analytics.ChannelPush {
+		channel = analytics.ChannelPush
+	}
+	n, err := a.svc.Open(r.Context(), id, auth.MustUser(r.Context()).ID, channel)
 	a.respond(w, n, err)
 }
 

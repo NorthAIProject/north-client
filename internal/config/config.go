@@ -2,6 +2,9 @@
 package config
 
 import (
+	"crypto/ecdsa"
+	"crypto/x509"
+	"encoding/pem"
 	"fmt"
 	"log/slog"
 	"os"
@@ -92,6 +95,7 @@ type Config struct {
 	// Push signs Web Push requests. Optional: without a key pair the settings
 	// page offers no button and nudges stay in the bell and on Telegram.
 	Push PushConfig
+	APNs APNsConfig
 
 	AI         AIConfig
 	Storage    StorageConfig
@@ -439,6 +443,25 @@ func (c PushConfig) Enabled() bool {
 	return c.VAPIDPublicKey != "" && c.VAPIDPrivateKey != ""
 }
 
+// APNsConfig is the token-based key that lets this server send to the iOS
+// app through Apple's push service.
+//
+// The key is the .p8 file from the Apple Developer account, pasted whole as
+// PEM. One key signs for every app on the team, so Topics is the allow-list of
+// bundle identifiers a device may register under: the App Store build and the
+// TestFlight beta, which installs beside it with its own identifier.
+type APNsConfig struct {
+	KeyID      string
+	TeamID     string
+	PrivateKey string
+	Topics     []string
+}
+
+// Enabled reports whether APNs can be sent at all.
+func (c APNsConfig) Enabled() bool {
+	return c.KeyID != "" && c.TeamID != "" && c.PrivateKey != "" && len(c.Topics) > 0
+}
+
 // OpenAICompatConfig configures one backend speaking the OpenAI chat dialect.
 type OpenAICompatConfig struct {
 	APIKey  string
@@ -551,6 +574,15 @@ func Load() (*Config, error) {
 			VAPIDPublicKey:  strings.TrimSpace(os.Getenv("VAPID_PUBLIC_KEY")),
 			VAPIDPrivateKey: strings.TrimSpace(os.Getenv("VAPID_PRIVATE_KEY")),
 			Subject:         strings.TrimSpace(os.Getenv("VAPID_SUBJECT")),
+		},
+
+		APNs: APNsConfig{
+			KeyID:  strings.TrimSpace(os.Getenv("APNS_KEY_ID")),
+			TeamID: strings.TrimSpace(os.Getenv("APNS_TEAM_ID")),
+			// A .env file cannot hold the .p8's newlines, so the escaped form is
+			// accepted too.
+			PrivateKey: strings.ReplaceAll(strings.TrimSpace(os.Getenv("APNS_PRIVATE_KEY")), `\n`, "\n"),
+			Topics:     splitList(os.Getenv("APNS_TOPICS")),
 		},
 
 		AI: AIConfig{
@@ -768,6 +800,26 @@ func Load() (*Config, error) {
 		!strings.HasPrefix(cfg.Push.Subject, "mailto:") &&
 		!strings.HasPrefix(cfg.Push.Subject, "https://") {
 		problems = append(problems, "VAPID_SUBJECT must be a mailto: address or an https URL")
+	}
+
+	// Like VAPID, an APNs key with its identifiers half set is a typo.
+	apnsSet := 0
+	for _, v := range []string{cfg.APNs.KeyID, cfg.APNs.TeamID, cfg.APNs.PrivateKey} {
+		if v != "" {
+			apnsSet++
+		}
+	}
+	if apnsSet != 0 && (apnsSet != 3 || len(cfg.APNs.Topics) == 0) {
+		problems = append(problems, "APNS_KEY_ID, APNS_TEAM_ID, APNS_PRIVATE_KEY and APNS_TOPICS must be set together")
+	}
+	if cfg.APNs.Enabled() {
+		if block, _ := pem.Decode([]byte(cfg.APNs.PrivateKey)); block == nil {
+			problems = append(problems, "APNS_PRIVATE_KEY must be the .p8 file's PEM contents")
+		} else if key, err := x509.ParsePKCS8PrivateKey(block.Bytes); err != nil {
+			problems = append(problems, "APNS_PRIVATE_KEY could not be parsed as a PKCS#8 key")
+		} else if _, ok := key.(*ecdsa.PrivateKey); !ok {
+			problems = append(problems, "APNS_PRIVATE_KEY must be an EC key")
+		}
 	}
 
 	// AI_PROVIDER is the older single-provider form. Honouring it as a
