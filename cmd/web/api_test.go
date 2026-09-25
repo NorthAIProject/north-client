@@ -11,18 +11,26 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/activity"
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/calculator"
 	"github.com/NorthAIProject/north-client/internal/capture"
+	"github.com/NorthAIProject/north-client/internal/care"
 	"github.com/NorthAIProject/north-client/internal/checkins"
 	"github.com/NorthAIProject/north-client/internal/coach"
 	"github.com/NorthAIProject/north-client/internal/dashboard"
+	"github.com/NorthAIProject/north-client/internal/decisions"
 	"github.com/NorthAIProject/north-client/internal/documents"
 	"github.com/NorthAIProject/north-client/internal/exercises"
+	"github.com/NorthAIProject/north-client/internal/export"
 	"github.com/NorthAIProject/north-client/internal/fitness"
 	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/health"
 	"github.com/NorthAIProject/north-client/internal/insights"
+	"github.com/NorthAIProject/north-client/internal/meals"
 	"github.com/NorthAIProject/north-client/internal/media"
 	"github.com/NorthAIProject/north-client/internal/memories"
+	"github.com/NorthAIProject/north-client/internal/mind"
+	"github.com/NorthAIProject/north-client/internal/news"
+	"github.com/NorthAIProject/north-client/internal/nudges"
 	"github.com/NorthAIProject/north-client/internal/onboarding"
 	"github.com/NorthAIProject/north-client/internal/reports"
 	"github.com/NorthAIProject/north-client/internal/settings"
@@ -64,6 +72,14 @@ func apiRouter(t *testing.T) chi.Router {
 		memories:   memories.NewAPI(nil),
 		knowledge:  documents.NewAPI(nil, nil),
 		formChecks: media.NewAPI(nil, nil),
+		care:       care.NewAPI(care.Options{}),
+		mind:       mind.NewAPI(nil),
+		nutrition:  meals.NewAPI(meals.HandlerOptions{}),
+		decisions:  decisions.NewAPI(nil),
+		nudges:     nudges.NewAPI(nil),
+		export:     export.NewHandler(nil, nil, nil),
+		calculator: calculator.NewAPI(nil, nil),
+		news:       news.NewAPI(nil),
 	})
 	return r
 }

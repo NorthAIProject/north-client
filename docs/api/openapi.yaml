@@ -2084,6 +2084,805 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+  /care:
+    get:
+      operationId: getCare
+      summary: Water, last night, habits and reminders for today
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Care'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /care/water:
+    post:
+      operationId: logWater
+      summary: Log a drink; answers with the page as it now stands
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WaterRequest'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Care'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /care/water/{entryID}:
+    parameters:
+      - name: entryID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      operationId: undoWater
+      summary: Undo a logged drink
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Care'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /care/sleep:
+    put:
+      operationId: logSleep
+      summary: Log last night; logging again replaces it
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SleepRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Care'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /care/habits:
+    post:
+      operationId: createHabit
+      summary: Start a habit
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HabitRequest'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Care'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /care/habits/{habitID}:
+    parameters:
+      - name: habitID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      operationId: deleteHabit
+      summary: Stop a habit
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Care'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /care/habits/{habitID}/done:
+    parameters:
+      - name: habitID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      operationId: setHabitDone
+      summary: Mark a habit done or not done today
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CareFlagRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Care'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /care/reminders:
+    post:
+      operationId: createCareReminder
+      summary: Add a reminder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CareReminderRequest'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Care'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /care/reminders/{reminderID}:
+    parameters:
+      - name: reminderID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      operationId: deleteCareReminder
+      summary: Remove a reminder
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Care'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /care/reminders/{reminderID}/enabled:
+    parameters:
+      - name: reminderID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      operationId: setCareReminderEnabled
+      summary: Turn a reminder on or off
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CareFlagRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Care'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /mind/journal:
+    get:
+      operationId: getJournal
+      summary: Recent journal entries and the mood trend beside them
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Journal'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: writeJournal
+      summary: Write a journal entry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JournalRequest'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JournalEntry'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /nutrition/ingredients:
+    get:
+      operationId: searchIngredients
+      summary: The shared ingredient library and your own additions
+      parameters:
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngredientList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: createIngredient
+      summary: Add an ingredient of your own
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IngredientRequest'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ingredient'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /nutrition/ingredients/{ingredientID}:
+    parameters:
+      - name: ingredientID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      operationId: deleteIngredient
+      summary: Delete one of your ingredients
+      responses:
+        '204':
+          description: Done
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /nutrition/plans:
+    get:
+      operationId: listMealPlans
+      summary: Your meal plans
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MealPlanList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: createMealPlan
+      summary: Create a meal plan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MealPlanRequest'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MealPlanDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /nutrition/plans/{planID}:
+    parameters:
+      - name: planID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getMealPlan
+      summary: A meal plan with its meals and portions
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MealPlanDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: deleteMealPlan
+      summary: Delete a meal plan
+      responses:
+        '204':
+          description: Done
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /nutrition/plans/{planID}/meals:
+    parameters:
+      - name: planID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: addPlanMeal
+      summary: Add a meal; answers with the plan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MealRequest'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MealPlanDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /nutrition/meals/{mealID}:
+    parameters:
+      - name: mealID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      operationId: removePlanMeal
+      summary: Remove a meal from its plan
+      responses:
+        '204':
+          description: Done
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /nutrition/meals/{mealID}/ingredients:
+    parameters:
+      - name: mealID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: addMealPortion
+      summary: Add an ingredient to a meal, by weight
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PortionRequest'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MealPortion'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /nutrition/meal-ingredients/{mealIngredientID}:
+    parameters:
+      - name: mealIngredientID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      operationId: removeMealPortion
+      summary: Remove an ingredient from a meal
+      responses:
+        '204':
+          description: Done
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /nutrition/log:
+    get:
+      operationId: getFoodLog
+      summary: Today's food log, totals and progress against the macro goal
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FoodLog'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /nutrition/log/ingredients:
+    post:
+      operationId: logFood
+      summary: Log an ingredient eaten today, by weight; answers with the day
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PortionRequest'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FoodLog'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /nutrition/log/meals:
+    post:
+      operationId: logPlanMeal
+      summary: Log a meal from a plan eaten today; answers with the day
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LogMealRequest'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FoodLog'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /nutrition/log/{entryID}:
+    parameters:
+      - name: entryID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      operationId: deleteFoodLogEntry
+      summary: Remove an entry; answers with the day
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FoodLog'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /decisions:
+    get:
+      operationId: listDecisions
+      summary: The decision log, newest first
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DecisionList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: createDecision
+      summary: Record a decision
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DecisionInput'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Decision'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /decisions/{decisionID}:
+    parameters:
+      - name: decisionID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getDecision
+      summary: One decision
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Decision'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      operationId: updateDecision
+      summary: Edit a decision, or add how it turned out
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DecisionInput'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Decision'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      operationId: deleteDecision
+      summary: Delete a decision
+      responses:
+        '204':
+          description: Done
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /nudges:
+    get:
+      operationId: listNudges
+      summary: Open notifications and how many are unread
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NudgeList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /nudges/{nudgeID}/open:
+    parameters:
+      - name: nudgeID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: openNudge
+      summary: Follow a notification; marks it read and answers with where it leads
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BellNudge'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /nudges/{nudgeID}/read:
+    parameters:
+      - name: nudgeID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: readNudge
+      summary: Mark a notification read
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BellNudge'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /nudges/{nudgeID}/dismiss:
+    parameters:
+      - name: nudgeID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: dismissNudge
+      summary: Dismiss a notification
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BellNudge'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /account/export:
+    get:
+      operationId: exportAccount
+      summary: Everything in the account, as a zip archive
+      responses:
+        '200':
+          description: The archive, streamed
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /calculator:
+    get:
+      operationId: getCalculator
+      summary: Body measurements, the current macro goal and the choices for a new one (metric)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Calculator'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /calculator/biometrics:
+    put:
+      operationId: recordBiometrics
+      summary: Record weight, height, date of birth and sex (metric)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BiometricsRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Calculator'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /calculator/plan:
+    post:
+      operationId: generateMacroGoal
+      summary: Work out a macro goal from the current measurements
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MacroGoalRequest'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Calculator'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /news:
+    get:
+      operationId: getNews
+      summary: The latest items from the feeds you follow
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NewsTicker'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /insights:
     get:
       operationId: getInsights
@@ -4157,6 +4956,576 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/FormCheck'
+    CarePoint:
+      type: object
+      required: [label, value]
+      properties:
+        label:
+          type: string
+        value:
+          type: number
+    Care:
+      type: object
+      required: [water, habits, reminders, checkedInToday, waterWeek, sleepWeek, habitRate]
+      properties:
+        water:
+          type: object
+          required: [totalMl, targetMl, entries]
+          properties:
+            totalMl:
+              type: integer
+            targetMl:
+              type: integer
+            entries:
+              type: array
+              items:
+                type: object
+                required: [id, amountMl, loggedAt]
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  amountMl:
+                    type: integer
+                  loggedAt:
+                    type: string
+                    format: date-time
+        lastNight:
+          type: object
+          required: [localDate, durationMinutes]
+          properties:
+            localDate:
+              type: string
+            durationMinutes:
+              type: integer
+            quality:
+              type: integer
+            bedtime:
+              type: string
+            wakeTime:
+              type: string
+            notes:
+              type: string
+        habits:
+          type: array
+          items:
+            type: object
+            required: [id, name, domain, daysOfWeek, streak, kept, scheduled, doneToday, scheduledToday]
+            properties:
+              id:
+                type: string
+                format: uuid
+              name:
+                type: string
+              domain:
+                type: string
+              daysOfWeek:
+                type: array
+                description: 0 (Sunday) to 6; at least one.
+                items:
+                  type: integer
+              streak:
+                type: integer
+              kept:
+                type: integer
+              scheduled:
+                type: integer
+              doneToday:
+                type: boolean
+              scheduledToday:
+                type: boolean
+        reminders:
+          type: array
+          items:
+            type: object
+            required: [id, label, timeOfDay, daysOfWeek, enabled, due]
+            properties:
+              id:
+                type: string
+                format: uuid
+              label:
+                type: string
+              timeOfDay:
+                type: string
+              daysOfWeek:
+                type: array
+                items:
+                  type: integer
+              enabled:
+                type: boolean
+              due:
+                type: boolean
+        checkedInToday:
+          type: boolean
+        waterWeek:
+          type: array
+          items:
+            $ref: '#/components/schemas/CarePoint'
+        sleepWeek:
+          type: array
+          items:
+            $ref: '#/components/schemas/CarePoint'
+        habitRate:
+          type: integer
+    WaterRequest:
+      type: object
+      required: [amountMl]
+      properties:
+        amountMl:
+          type: integer
+    SleepRequest:
+      type: object
+      required: [durationMinutes]
+      properties:
+        durationMinutes:
+          type: integer
+        quality:
+          type: integer
+        bedtime:
+          type: string
+        wakeTime:
+          type: string
+        notes:
+          type: string
+    HabitRequest:
+      type: object
+      required: [name, domain, daysOfWeek]
+      properties:
+        name:
+          type: string
+        domain:
+          type: string
+        daysOfWeek:
+          type: array
+          items:
+            type: integer
+    CareReminderRequest:
+      type: object
+      required: [label, timeOfDay, daysOfWeek]
+      properties:
+        label:
+          type: string
+        timeOfDay:
+          type: string
+        daysOfWeek:
+          type: array
+          items:
+            type: integer
+    CareFlagRequest:
+      type: object
+      required: [value]
+      properties:
+        value:
+          type: boolean
+    JournalEntry:
+      type: object
+      required: [id, content, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        content:
+          type: string
+        mood:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+    Journal:
+      type: object
+      required: [entries, trend]
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/JournalEntry'
+        trend:
+          type: object
+          required: [averageMood, averageEnergy, count]
+          properties:
+            averageMood:
+              type: number
+            averageEnergy:
+              type: number
+            count:
+              type: integer
+    JournalRequest:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+        mood:
+          type: integer
+    Macros:
+      type: object
+      required: [calories, proteinG, fatG, carbG]
+      properties:
+        calories:
+          type: number
+        proteinG:
+          type: number
+        fatG:
+          type: number
+        carbG:
+          type: number
+    Ingredient:
+      type: object
+      required: [id, name, own, servingSizeGrams, per100g]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        brand:
+          type: string
+        category:
+          type: string
+        own:
+          type: boolean
+          description: True for ingredients you added; the rest are the shared library.
+        servingSizeGrams:
+          type: number
+        per100g:
+          $ref: '#/components/schemas/Macros'
+    IngredientList:
+      type: object
+      required: [ingredients]
+      properties:
+        ingredients:
+          type: array
+          items:
+            $ref: '#/components/schemas/Ingredient'
+    IngredientRequest:
+      type: object
+      required: [name, per100g]
+      properties:
+        name:
+          type: string
+        brand:
+          type: string
+        category:
+          type: string
+        servingSizeGrams:
+          type: number
+        per100g:
+          $ref: '#/components/schemas/Macros'
+    MealPortion:
+      type: object
+      required: [id, ingredientId, name, quantityGrams, macros]
+      properties:
+        id:
+          type: string
+          format: uuid
+        ingredientId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        quantityGrams:
+          type: number
+        macros:
+          $ref: '#/components/schemas/Macros'
+    MealPlanSummary:
+      type: object
+      required: [id, name, description, totalMacros, mealCount]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        totalMacros:
+          $ref: '#/components/schemas/Macros'
+        mealCount:
+          type: integer
+    MealPlanList:
+      type: object
+      required: [plans]
+      properties:
+        plans:
+          type: array
+          items:
+            $ref: '#/components/schemas/MealPlanSummary'
+    MealPlanDetail:
+      allOf:
+        - $ref: '#/components/schemas/MealPlanSummary'
+        - type: object
+          required: [objective, activityLevel, gender, meals]
+          properties:
+            objective:
+              type: string
+            activityLevel:
+              type: string
+            gender:
+              type: string
+            meals:
+              type: array
+              items:
+                type: object
+                required: [id, mealNumber, name, totalMacros, ingredients]
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  mealNumber:
+                    type: integer
+                  name:
+                    type: string
+                  totalMacros:
+                    $ref: '#/components/schemas/Macros'
+                  ingredients:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MealPortion'
+    MealPlanRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        objective:
+          type: string
+        activityLevel:
+          type: string
+        gender:
+          type: string
+    MealRequest:
+      type: object
+      required: [name, mealNumber]
+      properties:
+        name:
+          type: string
+        mealNumber:
+          type: integer
+    PortionRequest:
+      type: object
+      required: [ingredientId, quantityGrams]
+      properties:
+        ingredientId:
+          type: string
+          format: uuid
+        quantityGrams:
+          type: number
+    LogMealRequest:
+      type: object
+      required: [mealId]
+      properties:
+        mealId:
+          type: string
+          format: uuid
+    FoodLog:
+      type: object
+      required: [date, entries, totals]
+      properties:
+        date:
+          type: string
+        entries:
+          type: array
+          items:
+            type: object
+            required: [id, label, macros, loggedAt]
+            properties:
+              id:
+                type: string
+                format: uuid
+              label:
+                type: string
+              quantityGrams:
+                type: number
+              macros:
+                $ref: '#/components/schemas/Macros'
+              loggedAt:
+                type: string
+                format: date-time
+        totals:
+          $ref: '#/components/schemas/Macros'
+        progress:
+          type: object
+          required: [goal, logged, summary]
+          properties:
+            goal:
+              $ref: '#/components/schemas/Macros'
+            logged:
+              $ref: '#/components/schemas/Macros'
+            summary:
+              type: string
+            recommendation:
+              type: string
+    Decision:
+      type: object
+      required: [id, title, options, rationale, outcome, decidedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        options:
+          type: string
+        rationale:
+          type: string
+        outcome:
+          type: string
+        decidedAt:
+          type: string
+          format: date-time
+    DecisionList:
+      type: object
+      required: [decisions]
+      properties:
+        decisions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Decision'
+    DecisionInput:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+        options:
+          type: string
+        rationale:
+          type: string
+        outcome:
+          type: string
+    BellNudge:
+      type: object
+      required: [id, kind, title, body, href, unread, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+        title:
+          type: string
+        body:
+          type: string
+        href:
+          type: string
+          description: The web path it leads to.
+        unread:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+    NudgeList:
+      type: object
+      required: [nudges, unread]
+      properties:
+        nudges:
+          type: array
+          items:
+            $ref: '#/components/schemas/BellNudge'
+        unread:
+          type: integer
+    Calculator:
+      type: object
+      required: [options]
+      properties:
+        biometrics:
+          type: object
+          required: [weightKg, heightCm, dateOfBirth, sex]
+          properties:
+            weightKg:
+              type: number
+            heightCm:
+              type: number
+            dateOfBirth:
+              type: string
+            sex:
+              type: string
+        goal:
+          type: object
+          required: [activityLevel, goal, macroSplit, bmr, tdee, calorieGoal, proteinG, fatG, carbG, createdAt]
+          properties:
+            activityLevel:
+              type: string
+            goal:
+              type: string
+            macroSplit:
+              type: string
+            bmr:
+              type: number
+            tdee:
+              type: number
+            calorieGoal:
+              type: number
+            proteinG:
+              type: number
+            fatG:
+              type: number
+            carbG:
+              type: number
+            createdAt:
+              type: string
+              format: date-time
+        options:
+          type: object
+          required: [activityLevels, goals, macroSplits]
+          properties:
+            activityLevels:
+              type: array
+              items:
+                type: string
+            goals:
+              type: array
+              items:
+                type: string
+            macroSplits:
+              type: array
+              items:
+                type: string
+    BiometricsRequest:
+      type: object
+      required: [weightKg, heightCm, dateOfBirth, sex]
+      properties:
+        weightKg:
+          type: number
+        heightCm:
+          type: number
+        dateOfBirth:
+          type: string
+        sex:
+          type: string
+    MacroGoalRequest:
+      type: object
+      required: [activityLevel, goal, macroSplit]
+      properties:
+        activityLevel:
+          type: string
+        goal:
+          type: string
+        macroSplit:
+          type: string
+    NewsTicker:
+      type: object
+      required: [enabled, items]
+      properties:
+        enabled:
+          type: boolean
+        items:
+          type: array
+          items:
+            type: object
+            required: [title, url, source, publishedAt]
+            properties:
+              title:
+                type: string
+              url:
+                type: string
+              source:
+                type: string
+              publishedAt:
+                type: string
+                format: date-time
     InsightsRange:
       type: object
       required: [key, label, options]

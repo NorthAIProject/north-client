@@ -1,0 +1,16 @@
+{
+  "plans": [
+    {
+      "id": "33333333-aaaa-aaaa-aaaa-333333333333",
+      "name": "Training days",
+      "description": "High carb",
+      "totalMacros": {
+        "calories": 303.2,
+        "proteinG": 10.6,
+        "fatG": 5.2,
+        "carbG": 54.2
+      },
+      "mealCount": 1
+    }
+  ]
+}

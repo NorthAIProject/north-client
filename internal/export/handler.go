@@ -10,6 +10,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/account"
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/quota"
+	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 )
 
@@ -29,10 +30,26 @@ func NewHandler(exporter *Exporter, quotas *quota.Service, acct *account.Service
 // account now, and a path that says knowledge would be describing a sixth of
 // what comes out.
 func (h *Handler) Routes(r chi.Router) {
-	r.Get("/settings/export.zip", h.download)
+	r.Get("/settings/export.zip", func(w http.ResponseWriter, r *http.Request) { h.download(w, r, refusePlain) })
 }
 
-func (h *Handler) download(w http.ResponseWriter, r *http.Request) {
+// APIRoutes mounts the same archive for the native app, behind
+// auth.RequireBearer; only the refusal differs, as JSON.
+func (h *Handler) APIRoutes(r chi.Router) {
+	r.Get("/account/export", func(w http.ResponseWriter, r *http.Request) { h.download(w, r, refuseJSON) })
+}
+
+const refusalMessage = "You have exported your data a few times just now. Try again shortly."
+
+func refusePlain(w http.ResponseWriter) {
+	http.Error(w, refusalMessage, http.StatusTooManyRequests)
+}
+
+func refuseJSON(w http.ResponseWriter) {
+	httpx.WriteJSON(w, http.StatusTooManyRequests, httpx.ErrorBody{Error: httpx.ErrorDetail{Message: refusalMessage}})
+}
+
+func (h *Handler) download(w http.ResponseWriter, r *http.Request, refuse func(http.ResponseWriter)) {
 	user := auth.MustUser(r.Context())
 
 	// Before any header, because once the archive starts there is no status
@@ -45,8 +62,7 @@ func (h *Handler) download(w http.ResponseWriter, r *http.Request) {
 				slog.Any("error", err), slog.String("user_id", user.ID.String()))
 		} else if !decision.Allowed {
 			w.Header().Set("Retry-After", strconv.Itoa(int(decision.RetryAfter.Seconds())))
-			http.Error(w, "You have exported your data a few times just now. Try again shortly.",
-				http.StatusTooManyRequests)
+			refuse(w)
 			return
 		}
 	}
