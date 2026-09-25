@@ -58,6 +58,9 @@ type FormCheckView struct {
 	Result    *FormResultView `json:"result,omitempty"`
 	Error     string          `json:"error,omitempty"`
 	CreatedAt time.Time       `json:"createdAt"`
+	// PlaybackURL is a short-lived signed link to the clip, set only on the
+	// single-check route, so the player can seek to each issue's At.
+	PlaybackURL string `json:"playbackUrl,omitempty"`
 }
 
 type FormCheckList struct {
@@ -83,12 +86,25 @@ func (a *API) show(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, apperr.ErrNotFound, "Not found.")
 		return
 	}
-	an, err := a.svc.GetAnalysis(r.Context(), id, auth.MustUser(r.Context()).ID)
+	userID := auth.MustUser(r.Context()).ID
+	an, err := a.svc.GetAnalysis(r.Context(), id, userID)
 	if err != nil {
 		httpx.Error(w, err, "The form check could not be loaded.")
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, project(an))
+	clip, err := a.svc.GetMedia(r.Context(), an.MediaID, userID)
+	if err != nil {
+		httpx.Error(w, err, "The form check could not be loaded.")
+		return
+	}
+	playback, err := a.svc.PlaybackURL(r.Context(), clip)
+	if err != nil {
+		httpx.Error(w, err, "The form check could not be loaded.")
+		return
+	}
+	out := project(an)
+	out.PlaybackURL = playback
+	httpx.WriteJSON(w, http.StatusOK, out)
 }
 
 // upload takes one video as multipart/form-data, field "video", and answers

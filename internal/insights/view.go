@@ -7,6 +7,8 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/activity/activity"
 	"github.com/NorthAIProject/north-client/internal/dashboard"
+	"github.com/NorthAIProject/north-client/internal/goals"
+	"github.com/NorthAIProject/north-client/internal/habits"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/shared/viz"
 	insightpages "github.com/NorthAIProject/north-client/web/insights"
@@ -102,11 +104,8 @@ func buildBodyView(data BodyData) (insightpages.BodyView, error) {
 	}
 
 	if len(data.Habits) > 0 {
-		kept, scheduled := 0, 0
 		rows := make([]insightpages.HabitRow, 0, len(data.Habits))
 		for _, st := range data.Habits {
-			kept += st.Kept
-			scheduled += st.Scheduled
 			rate := 0
 			if st.Scheduled > 0 {
 				rate = st.Kept * 100 / st.Scheduled
@@ -118,11 +117,7 @@ func buildBodyView(data BodyData) (insightpages.BodyView, error) {
 		}
 		sort.SliceStable(rows, func(i, j int) bool { return rows[i].Rate > rows[j].Rate })
 
-		overall := 0
-		if scheduled > 0 {
-			overall = kept * 100 / scheduled
-		}
-		gauge, err := option(viz.GaugeOptionJSON("Adherence", overall))
+		gauge, err := option(viz.GaugeOptionJSON("Adherence", habitAdherence(data.Habits)))
 		if err != nil {
 			return insightpages.BodyView{}, err
 		}
@@ -139,16 +134,8 @@ func buildMindView(data MindData) (insightpages.MindView, error) {
 	buckets := data.Range.Buckets()
 	labels := bucketLabels(data.Range)
 
-	mood := make([]int, len(buckets))
-	energy := make([]int, len(buckets))
+	mood, energy := moodEnergyBuckets(data)
 	cells := make([]viz.HeatmapCell, len(buckets))
-
-	for _, c := range data.CheckIns {
-		if i := data.Range.Index(buckets, c.LocalDate.In(loc)); i >= 0 {
-			mood[i] = c.Mood
-			energy[i] = c.Energy
-		}
-	}
 
 	journalPoints := make([]point, 0, len(data.Journal))
 	for _, e := range data.Journal {
@@ -195,16 +182,9 @@ func buildProgressView(data ProgressData) (insightpages.ProgressView, error) {
 		active      int
 		progressSum int
 		progressN   int
-		byStatus    = map[string]int{}
-		statusOrder []string
 		rows        []insightpages.GoalRow
 	)
 	for _, g := range data.Active {
-		if byStatus[g.Status] == 0 {
-			statusOrder = append(statusOrder, g.Status)
-		}
-		byStatus[g.Status]++
-
 		if !g.IsActive() {
 			continue
 		}
@@ -221,10 +201,7 @@ func buildProgressView(data ProgressData) (insightpages.ProgressView, error) {
 	}
 	sort.SliceStable(rows, func(i, j int) bool { return rows[i].Progress > rows[j].Progress })
 
-	segments := make([]viz.DonutSegment, 0, len(statusOrder))
-	for _, st := range statusOrder {
-		segments = append(segments, viz.DonutSegment{Label: statusLabel(st), Value: byStatus[st]})
-	}
+	segments := goalStatusSegments(data.Active)
 	donut, err := option(viz.DonutOptionJSON(segments))
 	if err != nil {
 		return insightpages.ProgressView{}, err
@@ -258,8 +235,6 @@ func buildTrainingView(data TrainingData) (insightpages.TrainingView, error) {
 
 	var (
 		totalSeconds int
-		byKind       = map[string]int{}
-		kindOrder    []string
 		rows         []insightpages.SessionRow
 	)
 	for _, sess := range data.Sessions {
@@ -271,14 +246,7 @@ func buildTrainingView(data TrainingData) (insightpages.TrainingView, error) {
 			burnPoints = append(burnPoints, point{At: ended, Value: *sess.CaloriesBurned})
 		}
 
-		name := sess.ActivityCode
-		if met, ok := activity.LookupMET(sess.ActivityCode); ok {
-			name = met.Name
-		}
-		if byKind[name] == 0 {
-			kindOrder = append(kindOrder, name)
-		}
-		byKind[name]++
+		name := sessionName(sess)
 
 		seconds := int(sess.EndedAt.Sub(sess.StartedAt).Seconds()) - sess.TotalPausedSeconds
 		if seconds < 0 {
@@ -298,10 +266,7 @@ func buildTrainingView(data TrainingData) (insightpages.TrainingView, error) {
 	// Calories are a total, not a daily measurement, so a wider bucket sums.
 	burn := bucketed(data.Range, burnPoints)
 
-	segments := make([]viz.DonutSegment, 0, len(kindOrder))
-	for _, k := range kindOrder {
-		segments = append(segments, viz.DonutSegment{Label: k, Value: byKind[k]})
-	}
+	segments := sessionKindSegments(data.Sessions)
 	donut, err := option(viz.DonutOptionJSON(segments))
 	if err != nil {
 		return insightpages.TrainingView{}, err
@@ -319,6 +284,85 @@ func buildTrainingView(data TrainingData) (insightpages.TrainingView, error) {
 		TotalTime:    formatDuration(totalSeconds),
 		HasSessions:  len(rows) > 0,
 	}, nil
+}
+
+// The helpers below hold the numbers behind the gauges and donuts. The page
+// turns them into ECharts options and the API sends them as they are, so both
+// clients show the same split without anyone parsing a chart config.
+
+// habitAdherence is kept over scheduled across every habit, 0-100.
+func habitAdherence(stats []habits.Stats) int {
+	kept, scheduled := 0, 0
+	for _, st := range stats {
+		kept += st.Kept
+		scheduled += st.Scheduled
+	}
+	if scheduled == 0 {
+		return 0
+	}
+	return kept * 100 / scheduled
+}
+
+// moodEnergyBuckets places each check-in in its bucket. Zero means no
+// check-in, since both scales start at one.
+func moodEnergyBuckets(data MindData) (mood, energy []int) {
+	loc := data.Range.Location()
+	buckets := data.Range.Buckets()
+	mood = make([]int, len(buckets))
+	energy = make([]int, len(buckets))
+	for _, c := range data.CheckIns {
+		if i := data.Range.Index(buckets, c.LocalDate.In(loc)); i >= 0 {
+			mood[i] = c.Mood
+			energy[i] = c.Energy
+		}
+	}
+	return mood, energy
+}
+
+// goalStatusSegments counts goals by status, in the order each status first
+// appears.
+func goalStatusSegments(gs []goals.Goal) []viz.DonutSegment {
+	byStatus := map[string]int{}
+	var order []string
+	for _, g := range gs {
+		if byStatus[g.Status] == 0 {
+			order = append(order, g.Status)
+		}
+		byStatus[g.Status]++
+	}
+	segments := make([]viz.DonutSegment, 0, len(order))
+	for _, st := range order {
+		segments = append(segments, viz.DonutSegment{Label: statusLabel(st), Value: byStatus[st]})
+	}
+	return segments
+}
+
+// sessionKindSegments counts finished sessions by activity name.
+func sessionKindSegments(sessions []activity.Session) []viz.DonutSegment {
+	byKind := map[string]int{}
+	var order []string
+	for _, sess := range sessions {
+		if sess.EndedAt == nil {
+			continue
+		}
+		name := sessionName(sess)
+		if byKind[name] == 0 {
+			order = append(order, name)
+		}
+		byKind[name]++
+	}
+	segments := make([]viz.DonutSegment, 0, len(order))
+	for _, k := range order {
+		segments = append(segments, viz.DonutSegment{Label: k, Value: byKind[k]})
+	}
+	return segments
+}
+
+func sessionName(sess activity.Session) string {
+	if met, ok := activity.LookupMET(sess.ActivityCode); ok {
+		return met.Name
+	}
+	return sess.ActivityCode
 }
 
 func rangeView(rg timerange.Range) insightpages.RangeView {

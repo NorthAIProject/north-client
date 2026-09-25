@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/NorthAIProject/north-client/internal/meals/meal"
 	"github.com/NorthAIProject/north-client/internal/shared/apitest"
 )
 
@@ -22,6 +23,13 @@ func TestSettingsShapes(t *testing.T) {
 		Email: "ana@example.com", DisplayName: "Ana", Timezone: "Europe/Lisbon", Locale: "en",
 		CoachingStyle: "Be direct. Skip pep talks. Challenge me.", CoachingTone: "direct",
 	})
+	apitest.AssertGolden(t, "diets.golden.json", projectDiets(
+		[]meal.Diet{
+			{ID: id, Code: "vegetarian", Name: "Vegetarian", Description: "No meat or fish."},
+			{ID: uuid.MustParse("34343434-3434-3434-3434-343434343434"), Code: "low_fodmap", Name: "Low FODMAP", Description: "Limits fermentable carbohydrates."},
+		},
+		[]meal.Diet{{ID: id}},
+	))
 	apitest.AssertGolden(t, "notifications.golden.json", Notifications{
 		NudgeMissedCheckIn: true, TrainingReminders: true, StatsDigestCadence: "weekly",
 		QuietHoursEnabled: true, QuietStart: "22:00", QuietEnd: "07:00",

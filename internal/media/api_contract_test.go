@@ -22,4 +22,8 @@ func TestFormCheckShapes(t *testing.T) {
 	}
 	apitest.AssertGolden(t, "form-checks.golden.json", FormCheckList{Checks: []FormCheckView{done}})
 	apitest.AssertGolden(t, "form-check.golden.json", FormCheckView{ID: done.ID, Status: "running", CreatedAt: done.CreatedAt})
+
+	played := done
+	played.PlaybackURL = "https://storage.example/form/d0d0.mp4?X-Amz-Expires=900&X-Amz-Signature=abc"
+	apitest.AssertGolden(t, "form-check-playback.golden.json", played)
 }
