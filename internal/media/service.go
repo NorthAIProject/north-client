@@ -249,7 +249,7 @@ func (s *Service) runAnalysis(ctx context.Context, mediaID uuid.UUID) (analysis.
 	}
 
 	var result analysis.FormAnalysis
-	if err := json.Unmarshal([]byte(resp.Text), &result); err != nil {
+	if err := json.Unmarshal(ai.JSONReply(resp.Text), &result); err != nil {
 		return analysis.FormAnalysis{}, "", "", apperr.Wrap(err, "decode analysis")
 	}
 

@@ -182,7 +182,7 @@ func (p *AIParser) Parse(ctx context.Context, user users.User, text string, know
 			}
 
 			var candidate modelResult
-			decErr := json.Unmarshal([]byte(resp.Text), &candidate)
+			decErr := json.Unmarshal(ai.JSONReply(resp.Text), &candidate)
 			if decErr == nil {
 				result = candidate
 				return nil

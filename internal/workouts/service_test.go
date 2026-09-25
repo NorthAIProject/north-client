@@ -362,3 +362,24 @@ func TestDueTodayLinksToTheRegisteredTrainingRoute(t *testing.T) {
 		t.Errorf("href = %q, want %q", href, want)
 	}
 }
+
+// Hermes and other chat-shaped providers ignore ResponseSchema and wrap the
+// plan in a sentence and a ```json fence. The plan inside is fine, so it is
+// stored on the first attempt instead of failing every retry.
+func TestAPlanWrappedInAFenceIsAccepted(t *testing.T) {
+	client := fake.Text("")
+	svc, user := newService(t, client)
+	calls := 0
+	client.Handler = func(_ context.Context, _ ai.Request) (fake.Response, error) {
+		calls++
+		return fake.Response{Text: "Here is your plan:\n```json\n" + planJSON(t, goodPlan()) + "\n```\nGood luck!"}, nil
+	}
+
+	stored, err := svc.CreatePlan(context.Background(), user, dumbbellIntake())
+	if err != nil {
+		t.Fatalf("create plan: %v", err)
+	}
+	if stored.Plan.Name != "Dumbbell foundations" || calls != 1 {
+		t.Fatalf("plan %q after %d calls, want the fenced plan on the first", stored.Plan.Name, calls)
+	}
+}
