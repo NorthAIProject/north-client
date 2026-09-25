@@ -24,10 +24,11 @@ type pushSpy struct {
 type pushCall struct {
 	userID            uuid.UUID
 	title, body, href string
+	category          string
 }
 
-func (p *pushSpy) Send(_ context.Context, userID uuid.UUID, title, body, href string) (int, error) {
-	p.sent = append(p.sent, pushCall{userID: userID, title: title, body: body, href: href})
+func (p *pushSpy) Send(_ context.Context, userID uuid.UUID, title, body, href, category string) (int, error) {
+	p.sent = append(p.sent, pushCall{userID: userID, title: title, body: body, href: href, category: category})
 	return p.delivered, nil
 }
 
@@ -82,6 +83,10 @@ func TestRaiseSendsToBrowsersThroughTheOpenLink(t *testing.T) {
 	want := "/app/nudges/" + n.ID.String() + "/open?from=push"
 	if got.href != want {
 		t.Fatalf("push href = %q, want %q", got.href, want)
+	}
+	// A check-in nudge carries the category that puts mood buttons under it.
+	if got.category != nudges.CategoryCheckIn {
+		t.Fatalf("push category = %q, want %q", got.category, nudges.CategoryCheckIn)
 	}
 
 	// Delivered once to the bell (the insert) and once to push (accepted).

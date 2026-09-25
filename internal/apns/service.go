@@ -68,6 +68,9 @@ type aps struct {
 	Alert    alert  `json:"alert"`
 	Sound    string `json:"sound"`
 	ThreadID string `json:"thread-id"`
+	// Category names the iOS notification category, which decides the
+	// buttons shown under the banner. The app registers the same names.
+	Category string `json:"category,omitempty"`
 }
 
 type alert struct {
@@ -81,7 +84,7 @@ type alert struct {
 // Its signature matches the browser push service, so the nudge engine treats
 // the two as interchangeable channels. Every path that sends nothing logs why:
 // a banner that never arrives is otherwise impossible to diagnose.
-func (s *Service) Send(ctx context.Context, userID uuid.UUID, title, body, href string) (int, error) {
+func (s *Service) Send(ctx context.Context, userID uuid.UUID, title, body, href, category string) (int, error) {
 	if !s.Enabled() {
 		return 0, nil
 	}
@@ -95,7 +98,7 @@ func (s *Service) Send(ctx context.Context, userID uuid.UUID, title, body, href 
 	}
 
 	raw, err := json.Marshal(payload{
-		APS:  aps{Alert: alert{Title: title, Body: clip(body, maxBodyRunes)}, Sound: "default", ThreadID: "nudges"},
+		APS:  aps{Alert: alert{Title: title, Body: clip(body, maxBodyRunes)}, Sound: "default", ThreadID: "nudges", Category: category},
 		Href: href,
 	})
 	if err != nil {
