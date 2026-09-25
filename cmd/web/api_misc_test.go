@@ -53,3 +53,40 @@ func TestNudgesAndExportAPI(t *testing.T) {
 		t.Errorf("export: %d %q, want a zip", archive.Code, archive.Header().Get("Content-Type"))
 	}
 }
+
+// Measurements first, then a goal from them; the goal is what nutrition's
+// progress and workout calories read.
+func TestCalculatorAPI(t *testing.T) {
+	handler, pool := testRoutesAndPool(t, func(*config.Config) {})
+	api := apiClient{t: t, handler: handler, bearer: "Bearer " + signIn(t, pool).Value}
+
+	var calc struct {
+		Biometrics *struct{ WeightKg float64 }
+		Goal       *struct{ CalorieGoal float64 }
+		Options    struct{ Goals []string }
+	}
+	if rec := api.call(http.MethodPut, "/api/v1/calculator/biometrics", `{"weightKg":72,"heightCm":175,"dateOfBirth":"1990-05-01","sex":"female"}`); rec.Code != http.StatusOK {
+		t.Fatalf("biometrics: %d %s", rec.Code, rec.Body)
+	} else {
+		_ = json.Unmarshal(rec.Body.Bytes(), &calc)
+	}
+	if calc.Biometrics == nil || calc.Biometrics.WeightKg != 72 || len(calc.Options.Goals) == 0 {
+		t.Fatalf("after recording: %+v", calc)
+	}
+	rec := api.call(http.MethodPost, "/api/v1/calculator/plan", `{"activityLevel":"`+"moderate"+`","goal":"`+calc.Options.Goals[0]+`","macroSplit":"moderate_carb"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("goal: %d %s", rec.Code, rec.Body)
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &calc)
+	if calc.Goal == nil || calc.Goal.CalorieGoal <= 0 {
+		t.Errorf("goal = %+v", calc.Goal)
+	}
+	if bad := api.call(http.MethodPut, "/api/v1/calculator/biometrics", `{"weightKg":72,"heightCm":175,"dateOfBirth":"May 1990","sex":"female"}`); bad.Code != http.StatusUnprocessableEntity {
+		t.Errorf("unreadable date: %d, want 422", bad.Code)
+	}
+
+	news := api.call(http.MethodGet, "/api/v1/news", "")
+	if news.Code != http.StatusOK || !strings.Contains(news.Body.String(), `"items":[`) {
+		t.Errorf("news: %d %s", news.Code, news.Body)
+	}
+}

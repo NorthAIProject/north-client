@@ -5,6 +5,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/activity"
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/calculator"
 	"github.com/NorthAIProject/north-client/internal/capture"
 	"github.com/NorthAIProject/north-client/internal/care"
 	"github.com/NorthAIProject/north-client/internal/checkins"
@@ -22,6 +23,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/media"
 	"github.com/NorthAIProject/north-client/internal/memories"
 	"github.com/NorthAIProject/north-client/internal/mind"
+	"github.com/NorthAIProject/north-client/internal/news"
 	"github.com/NorthAIProject/north-client/internal/nudges"
 	"github.com/NorthAIProject/north-client/internal/onboarding"
 	"github.com/NorthAIProject/north-client/internal/reports"
@@ -97,6 +99,8 @@ func mountJSON(r chi.Router, sessions auth.SessionResolver, apis apiSet) {
 		apis.decisions.Routes(r)
 		apis.nudges.Routes(r)
 		apis.export.APIRoutes(r)
+		apis.calculator.Routes(r)
+		apis.news.Routes(r)
 	})
 }
 
@@ -127,4 +131,6 @@ type apiSet struct {
 	decisions  *decisions.API
 	nudges     *nudges.API
 	export     *export.Handler
+	calculator *calculator.API
+	news       *news.API
 }

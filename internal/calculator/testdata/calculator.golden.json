@@ -1,0 +1,39 @@
+{
+  "biometrics": {
+    "weightKg": 72,
+    "heightCm": 175,
+    "dateOfBirth": "1990-05-01",
+    "sex": "female"
+  },
+  "goal": {
+    "activityLevel": "moderate",
+    "goal": "maintenance",
+    "macroSplit": "moderate_carb",
+    "bmr": 1467,
+    "tdee": 2274,
+    "calorieGoal": 2274,
+    "proteinG": 142,
+    "fatG": 76,
+    "carbG": 256,
+    "createdAt": "2026-09-24T12:00:00Z"
+  },
+  "options": {
+    "activityLevels": [
+      "sedentary",
+      "light",
+      "moderate",
+      "heavy",
+      "extra_heavy"
+    ],
+    "goals": [
+      "cutting",
+      "maintenance",
+      "bulking"
+    ],
+    "macroSplits": [
+      "high_carb",
+      "moderate_carb",
+      "low_carb"
+    ]
+  }
+}

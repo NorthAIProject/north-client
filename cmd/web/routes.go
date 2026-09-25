@@ -803,6 +803,8 @@ func routes(
 			decisions:  decisions.NewAPI(decisionSvc),
 			nudges:     nudges.NewAPI(nudgeSvc),
 			export:     exportHandler,
+			calculator: calculator.NewAPI(calculatorSvc, biometricSvc),
+			news:       news.NewAPI(newsSvc),
 		})
 	})
 
