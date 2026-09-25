@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/NorthAIProject/north-client/internal/activity"
+	"github.com/NorthAIProject/north-client/internal/apns"
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/calculator"
 	"github.com/NorthAIProject/north-client/internal/capture"
@@ -77,6 +78,7 @@ func apiRouter(t *testing.T) chi.Router {
 		nutrition:  meals.NewAPI(meals.HandlerOptions{}),
 		decisions:  decisions.NewAPI(nil),
 		nudges:     nudges.NewAPI(nil),
+		devices:    apns.NewAPI(nil),
 		export:     export.NewHandler(nil, nil, nil),
 		calculator: calculator.NewAPI(nil, nil),
 		news:       news.NewAPI(nil),

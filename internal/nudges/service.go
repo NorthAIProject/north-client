@@ -103,7 +103,7 @@ type Service struct {
 	goals     activeGoals
 	prefs     notificationPrefs
 	fanout    fanout
-	push      pusher
+	push      []pusher
 	funnel    funnel
 	week      weekSource
 	training  trainingSource
@@ -140,9 +140,10 @@ func (s *Service) WithFanout(f fanout) *Service {
 	return s
 }
 
-// WithPush sends new nudges to the person's subscribed browsers as well.
+// WithPush sends new nudges through a push channel as well: browsers over
+// Web Push, the iOS app over APNs. Each call adds one channel.
 func (s *Service) WithPush(p pusher) *Service {
-	s.push = p
+	s.push = append(s.push, p)
 	return s
 }
 
@@ -213,17 +214,22 @@ func (s *Service) deliver(ctx context.Context, user users.User, n Nudge, telegra
 		}
 	}
 
-	if push && s.push != nil {
+	if push && len(s.push) > 0 {
 		// The link goes through /open so the click is attributed to push
 		// before the person lands on the page the nudge is about.
-		count, pushErr := s.push.Send(ctx, user.ID, n.Title, n.Body, OpenPath(n.ID, analytics.ChannelPush))
-		if pushErr != nil {
-			slog.Default().Warn("nudges: could not send to browsers",
-				"error", pushErr,
-				"user_id", user.ID,
-				"kind", n.Kind)
+		href := OpenPath(n.ID, analytics.ChannelPush)
+		total := 0
+		for _, p := range s.push {
+			count, pushErr := p.Send(ctx, user.ID, n.Title, n.Body, href)
+			if pushErr != nil {
+				slog.Default().Warn("nudges: could not send push",
+					"error", pushErr,
+					"user_id", user.ID,
+					"kind", n.Kind)
+			}
+			total += count
 		}
-		if count > 0 {
+		if total > 0 {
 			s.delivered(ctx, user.ID, n.Kind, analytics.ChannelPush)
 		}
 	}
