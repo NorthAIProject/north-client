@@ -167,7 +167,7 @@ func TestAServiceWithoutKeysIsOff(t *testing.T) {
 	if _, err := svc.Subscribe(ctx, user.ID, validInput("https://push.example/a")); !apperr.Is(err, apperr.ErrUnavailable) {
 		t.Fatalf("Subscribe err = %v, want unavailable", err)
 	}
-	delivered, err := svc.Send(ctx, user.ID, "Hi", "there", "/app")
+	delivered, err := svc.Send(ctx, user.ID, "Hi", "there", "/app", "")
 	if err != nil || delivered != 0 {
 		t.Fatalf("Send = %d, %v; want 0, nil", delivered, err)
 	}
@@ -189,7 +189,7 @@ func TestSendDeliversToEveryBrowserAndRecordsIt(t *testing.T) {
 		}
 	}
 
-	delivered, err := svc.Send(ctx, user.ID, "Check in with yourself", "It has been 3 days.", "/app/nudges/x/open?from=push")
+	delivered, err := svc.Send(ctx, user.ID, "Check in with yourself", "It has been 3 days.", "/app/nudges/x/open?from=push", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,7 +237,7 @@ func TestSendClipsALongBody(t *testing.T) {
 	}
 
 	long := strings.Repeat("é", 900)
-	if _, err := svc.Send(ctx, user.ID, "t", long, "/app"); err != nil {
+	if _, err := svc.Send(ctx, user.ID, "t", long, "/app", ""); err != nil {
 		t.Fatal(err)
 	}
 	var msg struct {
@@ -268,7 +268,7 @@ func TestSendForgetsASubscriptionThePushServiceDeclaresGone(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		delivered, err := svc.Send(ctx, user.ID, "t", "b", "/app")
+		delivered, err := svc.Send(ctx, user.ID, "t", "b", "/app", "")
 		if err != nil || delivered != 0 {
 			t.Fatalf("status %d: Send = %d, %v; want 0, nil", status, delivered, err)
 		}
@@ -299,7 +299,7 @@ func TestSendKeepsAndMarksASubscriptionThatMerelyFailed(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			delivered, err := svc.Send(ctx, user.ID, "t", "b", "/app")
+			delivered, err := svc.Send(ctx, user.ID, "t", "b", "/app", "")
 			if err != nil {
 				t.Fatalf("a refused send must not fail the caller: %v", err)
 			}
