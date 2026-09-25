@@ -16,10 +16,6 @@
     asterisk, and pulling the flanks concave to compensate produces a rounded
     blob. Both were tried against an overlay of the PNG before this shape was.
 
-    The same numbers build the landing page's 3D star in
-    web/assets/js/landing/scroll-world/star.js. Change one, change both, or they
-    drift apart again — which is what had already happened.
-
     The PNG's drop shadow is deliberately absent: it is a raster effect, and a
     logo carrying its own shadow cannot sit on an arbitrary surface.
   -->

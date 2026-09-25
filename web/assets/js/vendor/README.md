@@ -17,9 +17,6 @@ grep -oE 'from"[^".][^"]*"' web/assets/js/vendor/<file> | grep -v 'from"\.'
 
 | File | Package | Version | License | Source |
 |---|---|---|---|---|
-| `gsap.module.min.js` | gsap | 3.15.0 | [GreenSock standard "no charge"](https://gsap.com/standard-license) | `https://cdn.jsdelivr.net/npm/gsap@3.15.0/+esm` |
-| `gsap-scrolltrigger.module.min.js` | gsap (ScrollTrigger) | 3.15.0 | [GreenSock standard "no charge"](https://gsap.com/standard-license) | `https://cdn.jsdelivr.net/npm/gsap@3.15.0/ScrollTrigger.js/+esm` |
-| `lenis.module.min.js` | lenis | 1.3.26 | MIT | `https://cdn.jsdelivr.net/npm/lenis@1.3.26/+esm` |
 | `three.module.min.js` | three | r169 † | MIT | not recorded |
 | `three-gltf-loader.module.js` | three (`examples/jsm/loaders/GLTFLoader.js`) | r169 † | MIT | not recorded |
 | `three-meshopt-decoder.module.js` | three (`examples/jsm/libs/meshopt_decoder.module.js`) | r169 † | MIT | not recorded |
@@ -54,25 +51,17 @@ module with a different core revision fails in ways that look like scene bugs.
 ## Known caveat: upgrades and the immutable cache
 
 Application scripts are cache-busted with `?v=` (`utils.ScriptURL`), but the modules in
-here are imported by plain absolute path — see `shared/muscle-viewer/viewer.js` and
-`landing/scroll.js`. In production `mountAssets` serves `/assets/*` with
+here are imported by plain absolute path — see `shared/muscle-viewer/viewer.js`.
+In production `mountAssets` serves `/assets/*` with
 `max-age=31536000, immutable`, so **upgrading a file in this directory in place leaves
 returning visitors on the old copy for up to a year.**
 
 Until that is fixed properly, an upgrade needs a new filename — bump the version in the
-name (`gsap-3.16.module.min.js`) and update the importers. Fixing it properly means
+name (`three-r170.module.min.js`) and update the importers. Fixing it properly means
 resolving vendor imports through the `?v=` on `import.meta.url`, and it should be done
 for every importer at once rather than one module at a time.
 
 ## Notes on specific packages
-
-**ScrollTrigger** does not import GSAP. It reads `window.gsap` at registration time, which
-is why the ESM bundle has no imports at all. Set `window.gsap = gsap` before calling
-`gsap.registerPlugin(ScrollTrigger)`. See `web/assets/js/landing/scroll.js`.
-
-**GSAP core + ScrollTrigger** are free under the GreenSock standard license for the use
-North makes of them. That license does have terms — read it before using GSAP in anything
-sold as a product with its own end users.
 
 **posthog-js** must stay the `array.full.js` build. The default `array.js` loads
 `recorder.js`, `surveys.js` and other bundles from PostHog's asset CDN the first time a

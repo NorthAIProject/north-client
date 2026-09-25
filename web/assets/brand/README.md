@@ -8,7 +8,7 @@ surrounding theme shows through — never place these on a plate.
 | File | Use |
 |------|-----|
 | `khepri-logo-mark.png` | **The mark.** Gold-and-navy scarab with sun. What `ui.BrandMark` serves, and the PNG tab fallback. |
-| `north-logo-mark.svg` | Retired North star. Kept for the landing scroll-world geometry, not used in chrome. |
+| `north-logo-mark.svg` | Retired North star. Unused. |
 | `north-logo-mark-mono.svg` | Retired single-colour star. Unused. |
 | `favicon.svg` | Tab icon. Simplified scarab silhouette, opaque, `prefers-color-scheme` for dark tab strips. |
 | `north-logo-mark.png` | Retired star raster. Unused in chrome. |
@@ -18,7 +18,7 @@ surrounding theme shows through — never place these on a plate.
 | `pwa-512-maskable.png` | Manifest `maskable` 512. Same plate, scarab inset for Android adaptive crop. |
 | `north-wordmark.png` | App name. Dark ink. **Currently unused** — see below. |
 | `north-logo-wordmark.png` | Symbol + name lockup. **Currently unused** — see below. |
-| `khepri-mascot.png` | Companion cutout. Live companion (`shared/mascot/`) and the landing scroll-world billboard (`scroll-world/panel.js`). |
+| `khepri-mascot.png` | Companion cutout. Live companion (`shared/mascot/`). |
 | `khepri-mark.png` | Scarab + sun emblem. Stored, not wired into chrome. |
 | `khepri-app-icon.png` | Rounded-square app icon cropped from the lockup. Stored, not swapped onto PWA plates. |
 
@@ -53,14 +53,6 @@ the ray width against radius — 17° a third of the way out, 10° at half, then
 the tip. Width collapses long before radius does, which is a needle laid over an even star
 rather than a star with one long point. Modelling it as a single polygon gives a blunt
 asterisk; pulling the flanks concave to compensate gives a rounded blob. Both were tried.
-
-**`web/assets/js/shared/north-star-geometry.js` builds the 3D star from the same four
-numbers.** They had already drifted once — that file modelled a symmetric star with long
-cardinal points, which the mark has never been. If the mark is redrawn, both files change or
-they diverge again.
-
-The landing scroll-world's waypoints draw that geometry. Redrawing the mark moves the
-SVG, the PNG, and the 3D star together.
 
 ## Serving
 

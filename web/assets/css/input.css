@@ -242,32 +242,16 @@
 
 }
 
-/* Lenis, the smooth-scroll library on the marketing page, requires these.
-   Its contract is a set of classes it writes onto <html> itself, so no utility
-   expresses it — and the rules only bite where Lenis was actually constructed,
-   which is the landing page and nowhere else.
-
-   Deliberately NOT inside @layer base. Tailwind v4 puts utilities in a cascade
-   layer that outranks base, so `h-full` on <html> and <body> wins there and the
-   height override below silently does nothing — which leaves the document
-   exactly one viewport tall, ScrollTrigger measuring an end of zero, and every
-   scroll-linked thing on the page frozen at 0%. Unlayered rules outrank every
-   layer, so this block has to sit outside all of them. */
-html.lenis,
-html.lenis body {
-  height: auto;
+/* Landing anchor links (#muscle, #pricing, ...) glide and stop below the fixed
+   navbar. Scoped to the landing page so app pages keep instant scrolling. */
+html:has([data-landing]) {
+  scroll-padding-top: 5rem;
 }
 
-.lenis.lenis-smooth {
-  scroll-behavior: auto !important;
-}
-
-.lenis.lenis-smooth [data-lenis-prevent] {
-  overscroll-behavior: contain;
-}
-
-.lenis.lenis-stopped {
-  overflow: hidden;
+@media (prefers-reduced-motion: no-preference) {
+  html:has([data-landing]) {
+    scroll-behavior: smooth;
+  }
 }
 
 /* NOR-39: the vendored sidebar trigger is size-7. Thumbs miss it.
