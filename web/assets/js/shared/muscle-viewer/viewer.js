@@ -29,20 +29,16 @@ import { MeshoptDecoder } from "/assets/js/vendor/three-meshopt-decoder.module.j
 import { MUSCLE_ALIASES, MUSCLE_INFO, resolveKey } from "./muscles.js";
 import { readCSSColor } from "../css-color.js";
 
-// The figure has to sit on the panel in both themes. Since NOR-6 the body carries
-// its own baked colour, so a theme is only how brightly it's lit and what colour
-// separates it from the card behind it — not the figure's own palette. The effort
-// colour (ember) is a brand token, read live from CSS below.
+// The figure is a mannequin, not a person: one matte neutral per theme, so the
+// only warm colour on it is the effort colour (ember, a brand token read live from
+// CSS below). A realistic skin tone was tried and lost twice over — ember on tan
+// has no contrast, and a photoreal body beside a hairline UI reads as uncanny.
 const THEME = {
-  dark: { exposure: 1.05, rim: 0x8ec6ff, rimStrength: 0.4 },
-  light: { exposure: 0.85, rim: 0x2b3a52, rimStrength: 0.22 },
+  dark: { exposure: 1.05, rim: 0x8ec6ff, rimStrength: 0.4, skin: 0x4a515c },
+  light: { exposure: 0.9, rim: 0x2b3a52, rimStrength: 0.22, skin: 0x9aa3ae },
 };
 
-// Fallback skin shading for a model with no baked textures. body.glb is expected
-// to ship UVs and PBR maps; if it doesn't (or a future rebuild drops them) the
-// figure still renders as a solid body rather than falling back to the pre-NOR-6
-// translucent shell.
-const SKIN_FALLBACK = { color: 0xb98963, roughness: 0.68 };
+const SKIN_ROUGHNESS = 0.6;
 
 // A soft radial-gradient disc under the figure. Cheaper than a shadow map by a full
 // render pass every frame — the figure never stops rotating (see tick()), so nothing
@@ -113,7 +109,7 @@ function createStudioEnvironment() {
 //
 // Blending is alpha, not additive. Additive is the obvious choice for something
 // called a glow and it's wrong here: the landing page card is white and the skin
-// is a light tan, so adding light to it does nothing except at the few pixels
+// is a light neutral, so adding light to it does nothing except at the few pixels
 // where the body is already dark — the figure ends up looking like it's on fire
 // along its silhouette and flat everywhere else. Compositing ember *over* the skin
 // instead reads the same on a white card and on the dark /app shell.
@@ -161,7 +157,9 @@ function createGlowMaterial(color, depthMid) {
       uColor: { value: color.clone() },
       uIntensity: { value: 0 },
       uDepthMid: { value: depthMid },
-      uDepthFade: { value: 1.1 },
+      // The body is ~0.9 units deep at this scale, so a fade much wider than half
+      // that lets the spine glow through the chest.
+      uDepthFade: { value: 0.25 },
     },
     vertexShader: GLOW_VERTEX,
     fragmentShader: GLOW_FRAGMENT,
@@ -450,7 +448,7 @@ export async function createViewer(canvas, options = {}) {
       palette = dark ? THEME.dark : THEME.light;
       renderer.toneMappingExposure = palette.exposure;
       rim.color.set(palette.rim);
-      skin.setRim(palette);
+      skin.setTheme(palette);
       ember = readCSSColor("--north-ember", 0xe8973c);
       for (const region of Object.values(regions)) {
         region.material.uniforms.uColor.value.copy(ember);
@@ -478,7 +476,7 @@ export async function createViewer(canvas, options = {}) {
       for (const geometry of geometries) geometry.dispose();
       for (const material of materials) material.dispose();
       // Material.dispose() doesn't touch the textures the material points at, and
-      // the skin's baked PBR maps are the only textures in the file that came from
+      // the skin's remaining maps are the only textures in the file that came from
       // the GLTF rather than being generated here.
       skin.disposeTextures();
 
@@ -504,28 +502,26 @@ function isUnderSkinNode(obj) {
 }
 
 /**
- * Builds the skin's material from whatever the asset actually shipped.
- *
- * The intended input is a Tripo/Meshy export with UVs and baked PBR maps, in which
- * case its own material is kept (that's the whole reason for regenerating the
- * model) and only forced opaque. A model with no maps falls back to flat shading
- * so the viewer degrades to "plain body" rather than to a broken one.
+ * Builds the skin's material: the asset's own material, recoloured as a matte
+ * mannequin in the theme's neutral (see THEME). Any baked albedo is dropped — it
+ * is a skin tone, which is exactly what the mannequin is not. Normal and roughness
+ * maps, if a future asset ships them, are kept: they are shape, not colour.
  *
  * The fresnel rim is what stops a dark body dissolving into a dark card. It's
- * injected into the standard material rather than replacing it, so albedo,
- * roughness, normals and the environment map all keep working.
+ * injected into the standard material rather than replacing it, so roughness,
+ * normals and the environment map all keep working.
  */
 function buildSkin(source, palette, debug) {
   const material =
-    source && source.isMeshStandardMaterial
-      ? source
-      : new THREE.MeshStandardMaterial(SKIN_FALLBACK);
+    source && source.isMeshStandardMaterial ? source : new THREE.MeshStandardMaterial();
 
-  material.metalness = 0;
-  if (!material.map) {
-    material.color.setHex(SKIN_FALLBACK.color);
-    material.roughness = SKIN_FALLBACK.roughness;
+  if (material.map) {
+    material.map.dispose();
+    material.map = null;
   }
+  material.metalness = 0;
+  material.roughness = SKIN_ROUGHNESS;
+  material.color.setHex(palette.skin);
 
   // ?muscleDebug=1 only — production skin is opaque, which is what lets the glow
   // pass use GreaterDepth at all.
@@ -556,7 +552,6 @@ function buildSkin(source, palette, debug) {
   material.needsUpdate = true;
 
   const textures = [
-    material.map,
     material.normalMap,
     material.roughnessMap,
     material.metalnessMap,
@@ -565,7 +560,8 @@ function buildSkin(source, palette, debug) {
 
   return {
     material,
-    setRim(next) {
+    setTheme(next) {
+      material.color.setHex(next.skin);
       rimColor.value.set(next.rim);
       rimStrength.value = next.rimStrength;
     },
