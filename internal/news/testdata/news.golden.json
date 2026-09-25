@@ -1,0 +1,11 @@
+{
+  "enabled": true,
+  "items": [
+    {
+      "title": "Short naps and recovery",
+      "url": "https://example.com/naps",
+      "source": "BBC Health",
+      "publishedAt": "2026-09-24T07:00:00Z"
+    }
+  ]
+}

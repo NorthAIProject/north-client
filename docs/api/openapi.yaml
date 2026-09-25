@@ -2815,6 +2815,74 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '429':
           $ref: '#/components/responses/TooManyRequests'
+  /calculator:
+    get:
+      operationId: getCalculator
+      summary: Body measurements, the current macro goal and the choices for a new one (metric)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Calculator'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /calculator/biometrics:
+    put:
+      operationId: recordBiometrics
+      summary: Record weight, height, date of birth and sex (metric)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BiometricsRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Calculator'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /calculator/plan:
+    post:
+      operationId: generateMacroGoal
+      summary: Work out a macro goal from the current measurements
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MacroGoalRequest'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Calculator'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /news:
+    get:
+      operationId: getNews
+      summary: The latest items from the feeds you follow
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NewsTicker'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /insights:
     get:
       operationId: getInsights
@@ -5358,6 +5426,106 @@ components:
             $ref: '#/components/schemas/BellNudge'
         unread:
           type: integer
+    Calculator:
+      type: object
+      required: [options]
+      properties:
+        biometrics:
+          type: object
+          required: [weightKg, heightCm, dateOfBirth, sex]
+          properties:
+            weightKg:
+              type: number
+            heightCm:
+              type: number
+            dateOfBirth:
+              type: string
+            sex:
+              type: string
+        goal:
+          type: object
+          required: [activityLevel, goal, macroSplit, bmr, tdee, calorieGoal, proteinG, fatG, carbG, createdAt]
+          properties:
+            activityLevel:
+              type: string
+            goal:
+              type: string
+            macroSplit:
+              type: string
+            bmr:
+              type: number
+            tdee:
+              type: number
+            calorieGoal:
+              type: number
+            proteinG:
+              type: number
+            fatG:
+              type: number
+            carbG:
+              type: number
+            createdAt:
+              type: string
+              format: date-time
+        options:
+          type: object
+          required: [activityLevels, goals, macroSplits]
+          properties:
+            activityLevels:
+              type: array
+              items:
+                type: string
+            goals:
+              type: array
+              items:
+                type: string
+            macroSplits:
+              type: array
+              items:
+                type: string
+    BiometricsRequest:
+      type: object
+      required: [weightKg, heightCm, dateOfBirth, sex]
+      properties:
+        weightKg:
+          type: number
+        heightCm:
+          type: number
+        dateOfBirth:
+          type: string
+        sex:
+          type: string
+    MacroGoalRequest:
+      type: object
+      required: [activityLevel, goal, macroSplit]
+      properties:
+        activityLevel:
+          type: string
+        goal:
+          type: string
+        macroSplit:
+          type: string
+    NewsTicker:
+      type: object
+      required: [enabled, items]
+      properties:
+        enabled:
+          type: boolean
+        items:
+          type: array
+          items:
+            type: object
+            required: [title, url, source, publishedAt]
+            properties:
+              title:
+                type: string
+              url:
+                type: string
+              source:
+                type: string
+              publishedAt:
+                type: string
+                format: date-time
     InsightsRange:
       type: object
       required: [key, label, options]
