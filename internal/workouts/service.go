@@ -165,7 +165,7 @@ func (s *Service) Generate(ctx context.Context, user users.User, in Intake) (Pla
 			}
 
 			var candidate Plan
-			if decErr := json.Unmarshal([]byte(resp.Text), &candidate); decErr != nil {
+			if decErr := json.Unmarshal(ai.JSONReply(resp.Text), &candidate); decErr != nil {
 				lastProblems = []string{"the reply was not valid JSON for the required shape"}
 				log.Warn("plan did not decode", slog.Int("attempt", attempt), slog.Any("error", decErr))
 				messages = append(messages,
