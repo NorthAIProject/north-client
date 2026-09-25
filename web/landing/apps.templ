@@ -1,0 +1,42 @@
+package landing
+
+import (
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
+)
+
+// iosBetaURL is the public TestFlight invite. Khepri is not on the App Store
+// yet, so this is the only way onto an iPhone. When it ships, swap this for
+// the apps.apple.com listing and drop the Beta tag in appButtons.
+const iosBetaURL = "https://testflight.apple.com/join/MCwG7x6H"
+
+// appButtons is the native-app row under the hero and final calls to action.
+//
+// No Apple or Google artwork: the official store badges say "Download on the
+// App Store", which a TestFlight link is not, and Apple's mark may not be used
+// on its own. Android has no build yet, so it renders as a plain label rather
+// than a link that goes nowhere.
+templ appButtons(centered bool) {
+	<div class={ "mt-4 flex flex-wrap items-center gap-3", templ.KV("justify-center", centered) }>
+		@button.Button(button.Props{
+			Href:       iosBetaURL,
+			Target:     "_blank",
+			Variant:    button.VariantOutline,
+			Class:      "border-hairline",
+			Attributes: templ.Attributes{"rel": "noopener noreferrer", "aria-label": i18n.T(ctx, "land.app.ios.aria")},
+		}) {
+			@icon.Smartphone(icon.Props{Class: "size-4"})
+			{ i18n.T(ctx, "land.app.ios") }
+			<span class="rounded-full bg-signal/15 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-signal">
+				{ i18n.T(ctx, "land.app.beta") }
+			</span>
+		}
+		// Hand-rolled: Button renders a live control, and a disabled button
+		// reads as broken. This is a status label sized to sit beside it.
+		<span class="inline-flex h-9 items-center gap-2 rounded-md border border-dashed border-hairline px-4 text-sm text-muted-foreground">
+			@icon.Smartphone(icon.Props{Class: "size-4"})
+			{ i18n.T(ctx, "land.app.android") }
+		</span>
+	</div>
+}

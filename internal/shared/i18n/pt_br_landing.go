@@ -107,6 +107,11 @@ var portugueseBrazilianLanding = map[string]string{
 	"land.cta.open":    "Abrir o Khepri",
 	"land.nav.started": "Começar",
 
+	"land.app.ios":      "App para iPhone",
+	"land.app.ios.aria": "Participe da beta do Khepri para iPhone no TestFlight",
+	"land.app.beta":     "Beta",
+	"land.app.android":  "Android · em breve",
+
 	"land.footer.tagline": "Khepri — um sistema operacional para crescimento pessoal",
 	"land.footer.privacy": "Privacidade",
 	"land.footer.terms":   "Termos",
