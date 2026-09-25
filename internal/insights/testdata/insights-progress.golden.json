@@ -1,0 +1,60 @@
+{
+  "range": {
+    "key": "week",
+    "label": "Last 7 days",
+    "options": [
+      {
+        "key": "week",
+        "label": "Last 7 days"
+      },
+      {
+        "key": "month",
+        "label": "Last 30 days"
+      }
+    ]
+  },
+  "goals": [
+    {
+      "id": "0b7c6f2e-3f4a-4c1e-9a55-2d8e6b1f0c11",
+      "title": "Run a 10k",
+      "progress": 60,
+      "hasProgress": true,
+      "deadline": "31 Oct",
+      "overdue": false
+    }
+  ],
+  "notes": {
+    "labels": [
+      "Mon",
+      "Tue",
+      "Wed"
+    ],
+    "series": [
+      {
+        "label": "Sleep",
+        "values": [
+          7.2,
+          6.8,
+          7.9
+        ]
+      }
+    ]
+  },
+  "statuses": [
+    {
+      "label": "Active",
+      "value": 2
+    },
+    {
+      "label": "Achieved",
+      "value": 1
+    }
+  ],
+  "activeCount": 2,
+  "avgProgress": 45,
+  "overdue": 0,
+  "streak": 4,
+  "noteCount": 3,
+  "openedCount": 1,
+  "hasNotes": true
+}

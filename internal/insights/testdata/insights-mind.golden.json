@@ -1,0 +1,54 @@
+{
+  "range": {
+    "key": "week",
+    "label": "Last 7 days",
+    "options": [
+      {
+        "key": "week",
+        "label": "Last 7 days"
+      },
+      {
+        "key": "month",
+        "label": "Last 30 days"
+      }
+    ]
+  },
+  "labels": [
+    "Mon",
+    "Tue",
+    "Wed"
+  ],
+  "mood": [
+    4,
+    0,
+    3
+  ],
+  "energy": [
+    3,
+    0,
+    3
+  ],
+  "journal": {
+    "labels": [
+      "Mon",
+      "Tue",
+      "Wed"
+    ],
+    "series": [
+      {
+        "label": "Sleep",
+        "values": [
+          7.2,
+          6.8,
+          7.9
+        ]
+      }
+    ]
+  },
+  "checkInCount": 2,
+  "journalCount": 3,
+  "avgMood": 3.5,
+  "avgEnergy": 3,
+  "hasCheckIns": true,
+  "hasJournal": true
+}

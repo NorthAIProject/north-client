@@ -47,6 +47,11 @@ import (
 // not fit both: JSON is a few kilobytes and a filmed set is up to 200 MB.
 func mountAPI(r chi.Router, sessions auth.SessionResolver, apis apiSet) {
 	r.Route("/api/v1", func(r chi.Router) {
+		// A guess from Accept-Language for the signed-out routes, so an account
+		// created from the app starts in the phone's language. RequireBearer
+		// replaces it with the account's own setting.
+		r.Use(middleware.Locale)
+
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.MaxBody(maxJSONBody))
 			mountJSON(r, sessions, apis)

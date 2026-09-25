@@ -1,0 +1,38 @@
+{
+  "range": {
+    "key": "week",
+    "label": "Last 7 days",
+    "options": [
+      {
+        "key": "week",
+        "label": "Last 7 days"
+      },
+      {
+        "key": "month",
+        "label": "Last 30 days"
+      }
+    ]
+  },
+  "totalCost": "€0.08",
+  "totalTokens": 42000,
+  "generations": 31,
+  "surfaces": [
+    {
+      "label": "Coaching chat",
+      "cost": "€0.06",
+      "generations": 20,
+      "tokens": 30000,
+      "pct": 75
+    }
+  ],
+  "models": [
+    {
+      "label": "claude-sonnet-5",
+      "cost": "€0.06",
+      "generations": 20,
+      "tokens": 30000,
+      "pct": 75
+    }
+  ],
+  "hasData": true
+}
