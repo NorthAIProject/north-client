@@ -2744,6 +2744,14 @@ paths:
     post:
       operationId: openNudge
       summary: Follow a notification; marks it read and answers with where it leads
+      parameters:
+        - name: from
+          in: query
+          required: false
+          description: "`push` when the app opens a notification tap; otherwise the bell is credited."
+          schema:
+            type: string
+            enum: [push]
       responses:
         '200':
           description: OK
@@ -3089,12 +3097,51 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '500':
           $ref: '#/components/responses/InternalError'
+  /devices/apns:
+    put:
+      operationId: registerAPNsDevice
+      summary: Register this install's APNs device token for nudges
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/APNsDeviceInput'
+      responses:
+        '204':
+          description: Registered
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /devices/apns/{token}:
+    parameters:
+      - name: token
+        in: path
+        required: true
+        schema:
+          type: string
+    delete:
+      operationId: unregisterAPNsDevice
+      summary: Forget this install's device token, as on sign-out
+      responses:
+        '204':
+          description: Forgotten, or was never known
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /capture/parse:
     post:
       operationId: parseCapture
       summary: Parse a quick capture into proposed entries
       security:
         - connectionToken: []
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -3124,6 +3171,7 @@ paths:
       summary: Commit selected capture entries
       security:
         - connectionToken: []
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -3270,6 +3318,20 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorBody'
   schemas:
+    APNsDeviceInput:
+      type: object
+      required: [token, topic, environment]
+      properties:
+        token:
+          type: string
+          description: The device token as 64 lowercase hex characters.
+        topic:
+          type: string
+          description: The app's bundle identifier.
+        environment:
+          type: string
+          enum: [production, sandbox]
+          description: "`sandbox` for a build run from Xcode, `production` for TestFlight and the App Store."
     ParseRequest:
       type: object
       required: [text]

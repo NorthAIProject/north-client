@@ -67,6 +67,7 @@ this list before the first public cutover.
 | `TELEGRAM_BOT_TOKEN` + `TELEGRAM_BOT_USERNAME` + `TELEGRAM_WEBHOOK_SECRET` | @BotFather token, bot name, `openssl rand -hex 32` | Messaging gateway. Empty builds no adapter. Production uses webhook mode, not polling |
 | `POSTHOG_API_KEY` | PostHog project key | Coach LLM observability and the product funnel. Empty in production is a silent no-op dashboard |
 | `VAPID_PUBLIC_KEY` + `VAPID_PRIVATE_KEY` | `main vapid-keygen`, once | Web Push for nudges. Empty hides the "nudges on this device" row and the dashboard offer; nudges stay in the bell and on Telegram. See [Web Push](#web-push) |
+| `APNS_KEY_ID` + `APNS_TEAM_ID` + `APNS_PRIVATE_KEY` + `APNS_TOPICS` | Apple Developer → Keys (a .p8 with APNs enabled) | Nudges on the iOS app's lock screen. Empty makes device registration answer 503; nudges stay in the bell. See [APNs](#apns) |
 | `EMBEDDING_PROVIDER` + `EMBEDDING_MODEL` | `nvidia` + `nvidia/nv-embedqa-e5-v5` | Semantic document retrieval. Empty leaves full-text only. NVIDIA NIM is the backend that actually serves `/embeddings` |
 
 `PORT` can stay at `8090`. TLS and the hostname belong on the Ingress. The
@@ -170,6 +171,11 @@ POSTHOG_API_KEY=
 VAPID_PUBLIC_KEY=                   # main vapid-keygen, once per deployment
 VAPID_PRIVATE_KEY=
 VAPID_SUBJECT=                      # mailto:… or https://…; defaults to BASE_URL
+
+APNS_KEY_ID=                        # the .p8 key's ID
+APNS_TEAM_ID=                       # the Apple Developer team ID
+APNS_PRIVATE_KEY=                   # the .p8 contents; \n escapes are accepted
+APNS_TOPICS=                        # bundle IDs, comma-separated: prod and .beta
 ```
 
 ---
@@ -385,6 +391,31 @@ with the bell and Telegram.
 
 iOS delivers Web Push only to a PWA on the Home Screen (16.4+). The settings
 row says so instead of showing a button that cannot work.
+
+## APNs
+
+The iOS app's notifications. Token-based: one .p8 key signs for every app on
+the team, so no certificate expires every year.
+
+| Variable | Default | Notes |
+|---|---|---|
+| `APNS_KEY_ID` | empty | The key's ID, shown beside it in Apple Developer → Keys |
+| `APNS_TEAM_ID` | empty | The team the key belongs to |
+| `APNS_PRIVATE_KEY` | empty | The whole .p8 file, PEM. Secret. A literal `\n` is read as a newline |
+| `APNS_TOPICS` | empty | Bundle IDs a device may register under, e.g. `com.fernandocorreia.khepri,com.fernandocorreia.khepri.beta` |
+
+Set all four or none; a partial set refuses to boot, and so does a key that is
+not an EC PKCS#8 PEM. With none, `PUT /api/v1/devices/apns` answers 503 and
+the nudge engine carries on without it.
+
+The device says which host its token is for: `sandbox` for a build run from
+Xcode, `production` for TestFlight and the App Store. Apple refuses a token on
+the wrong host as `BadDeviceToken`, which the server treats as gone and
+deletes; the app registers again on its next launch. Every send, skip and
+refusal is logged under `apns:` with the device's topic and environment.
+
+Both App IDs need the Push Notifications capability, or the beta's sends are
+refused as `TopicDisallowed`.
 
 ## MCP (the public one)
 

@@ -26,6 +26,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/ai/providers"
 	"github.com/NorthAIProject/north-client/internal/analytics"
+	"github.com/NorthAIProject/north-client/internal/apns"
 	"github.com/NorthAIProject/north-client/internal/biometrics"
 	"github.com/NorthAIProject/north-client/internal/calculator"
 	"github.com/NorthAIProject/north-client/internal/checkins"
@@ -380,6 +381,12 @@ func run() error {
 	vapid := push.VAPIDFrom(cfg.Push)
 	pushSvc := push.NewService(push.NewRepository(pool), push.NewSender(vapid), vapid, log)
 
+	// APNs to the iOS app. Without a key it reaches nobody.
+	apnsSvc, apnsErr := apns.FromConfig(apns.NewRepository(pool), cfg.APNs, log)
+	if apnsErr != nil {
+		return apnsErr
+	}
+
 	workoutSvc := workouts.NewService(workouts.Options{
 		Repository: workouts.NewRepository(pool),
 	})
@@ -388,6 +395,7 @@ func run() error {
 		WithPrefs(notificationSvc).
 		WithFanout(briefingNotify).
 		WithPush(pushSvc).
+		WithPush(apnsSvc).
 		WithFunnel(funnel).
 		WithWeek(nudges.WeekFrom{
 			Chats:  memoryExtract.Conversations,

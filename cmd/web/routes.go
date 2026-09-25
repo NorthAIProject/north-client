@@ -17,6 +17,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/ai/openaicompat"
 	"github.com/NorthAIProject/north-client/internal/aicreds"
 	"github.com/NorthAIProject/north-client/internal/analytics"
+	"github.com/NorthAIProject/north-client/internal/apns"
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/biometrics"
 	"github.com/NorthAIProject/north-client/internal/calculator"
@@ -150,9 +151,17 @@ func routes(
 		WithFunnel(funnel)
 	pushHandler := push.NewHandler(pushSvc)
 
+	// APNs to the iOS app. Without a key it is switched off the same way.
+	apnsSvc, err := apns.FromConfig(apns.NewRepository(pool), cfg.APNs, slog.Default())
+	if err != nil {
+		// Unreachable: config.Load already parsed the key.
+		panic("apns key passed validation but produced no sender: " + err.Error())
+	}
+
 	nudgeSvc := nudges.NewService(nudges.NewRepository(pool), userSvc, checkinSvc, goalSvc).
 		WithPrefs(notificationSvc).
 		WithPush(pushSvc).
+		WithPush(apnsSvc).
 		WithFunnel(funnel)
 	nudgeHandler := nudges.NewHandler(nudgeSvc)
 
@@ -432,7 +441,7 @@ func routes(
 		CheckIns:    checkinSvc,
 	}), quotaSvc)
 
-	captureAPI := capture.NewAPI(captureHandler.Service(), connectionSvc, quotaSvc, slog.Default())
+	captureAPI := capture.NewAPI(captureHandler.Service(), connectionSvc, quotaSvc, slog.Default()).WithSessions(sessions)
 	authAPI := auth.NewAPI(sessions).WithAuthService(authSvc, authMW)
 
 	dashboardOpts := dashboard.Options{
@@ -802,6 +811,7 @@ func routes(
 			nutrition:  meals.NewAPI(mealsOpts),
 			decisions:  decisions.NewAPI(decisionSvc),
 			nudges:     nudges.NewAPI(nudgeSvc),
+			devices:    apns.NewAPI(apnsSvc),
 			export:     exportHandler,
 			calculator: calculator.NewAPI(calculatorSvc, biometricSvc),
 			news:       news.NewAPI(newsSvc),
