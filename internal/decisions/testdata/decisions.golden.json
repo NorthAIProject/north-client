@@ -1,0 +1,12 @@
+{
+  "decisions": [
+    {
+      "id": "66666666-aaaa-aaaa-aaaa-666666666666",
+      "title": "Run the half in December or March",
+      "options": "December: sooner, colder. March: more base.",
+      "rationale": "The knee needs the extra weeks.",
+      "outcome": "",
+      "decidedAt": "2026-09-20T12:00:00Z"
+    }
+  ]
+}

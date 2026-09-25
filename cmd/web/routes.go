@@ -302,14 +302,15 @@ func routes(
 		Meals:    mealProgressSvc,
 		Health:   healthSvc,
 	}, cfg.Env.IsProduction())
-	mealsHandler := meals.NewHandler(meals.HandlerOptions{
+	mealsOpts := meals.HandlerOptions{
 		Ingredients: mealIngredientSvc,
 		Diets:       mealDietSvc,
 		Plans:       mealPlanSvc,
 		FoodLog:     foodLogSvc,
 		Progress:    mealProgressSvc,
 		Recommend:   mealRecommendSvc,
-	})
+	}
+	mealsHandler := meals.NewHandler(mealsOpts)
 
 	// Personal access tokens for outside agents. The base URL comes from
 	// configuration and not from the request, because the setup instructions
@@ -358,13 +359,14 @@ func routes(
 	sleepSvc := sleep.NewService(sleep.NewRepository(pool))
 	habitSvc := habits.NewService(habits.NewRepository(pool))
 
-	careHandler := care.NewHandler(care.Options{
+	careOpts := care.Options{
 		Reminders: mealReminderSvc,
 		CheckIns:  checkinSvc,
 		Hydration: hydrationSvc,
 		Sleep:     sleepSvc,
 		Habits:    habitSvc,
-	})
+	}
+	careHandler := care.NewHandler(careOpts)
 
 	// Speech to text: a dedicated endpoint, not a chat model.
 	//
@@ -795,6 +797,14 @@ func routes(
 			memories:   memories.NewAPI(memorySvc),
 			knowledge:  documents.NewAPI(documentSvc, quotaSvc),
 			formChecks: media.NewAPI(mediaSvc, quotaSvc),
+			care:       care.NewAPI(careOpts),
+			mind:       mind.NewAPI(mindSvc),
+			nutrition:  meals.NewAPI(mealsOpts),
+			decisions:  decisions.NewAPI(decisionSvc),
+			nudges:     nudges.NewAPI(nudgeSvc),
+			export:     exportHandler,
+			calculator: calculator.NewAPI(calculatorSvc, biometricSvc),
+			news:       news.NewAPI(newsSvc),
 		})
 	})
 

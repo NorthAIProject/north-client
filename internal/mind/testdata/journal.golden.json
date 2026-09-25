@@ -1,0 +1,15 @@
+{
+  "entries": [
+    {
+      "id": "b4b4b4b4-b4b4-b4b4-b4b4-b4b4b4b4b4b4",
+      "content": "Hard week, but the long run felt good.",
+      "mood": 4,
+      "createdAt": "2026-09-24T21:00:00Z"
+    }
+  ],
+  "trend": {
+    "averageMood": 3.6,
+    "averageEnergy": 3.2,
+    "count": 9
+  }
+}

@@ -5,18 +5,26 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/activity"
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/calculator"
 	"github.com/NorthAIProject/north-client/internal/capture"
+	"github.com/NorthAIProject/north-client/internal/care"
 	"github.com/NorthAIProject/north-client/internal/checkins"
 	"github.com/NorthAIProject/north-client/internal/coach"
 	"github.com/NorthAIProject/north-client/internal/dashboard"
+	"github.com/NorthAIProject/north-client/internal/decisions"
 	"github.com/NorthAIProject/north-client/internal/documents"
 	"github.com/NorthAIProject/north-client/internal/exercises"
+	"github.com/NorthAIProject/north-client/internal/export"
 	"github.com/NorthAIProject/north-client/internal/fitness"
 	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/health"
 	"github.com/NorthAIProject/north-client/internal/insights"
+	"github.com/NorthAIProject/north-client/internal/meals"
 	"github.com/NorthAIProject/north-client/internal/media"
 	"github.com/NorthAIProject/north-client/internal/memories"
+	"github.com/NorthAIProject/north-client/internal/mind"
+	"github.com/NorthAIProject/north-client/internal/news"
+	"github.com/NorthAIProject/north-client/internal/nudges"
 	"github.com/NorthAIProject/north-client/internal/onboarding"
 	"github.com/NorthAIProject/north-client/internal/reports"
 	"github.com/NorthAIProject/north-client/internal/settings"
@@ -85,6 +93,14 @@ func mountJSON(r chi.Router, sessions auth.SessionResolver, apis apiSet) {
 		apis.memories.Routes(r)
 		apis.knowledge.Routes(r)
 		apis.formChecks.Routes(r)
+		apis.care.Routes(r)
+		apis.mind.Routes(r)
+		apis.nutrition.Routes(r)
+		apis.decisions.Routes(r)
+		apis.nudges.Routes(r)
+		apis.export.APIRoutes(r)
+		apis.calculator.Routes(r)
+		apis.news.Routes(r)
 	})
 }
 
@@ -109,4 +125,12 @@ type apiSet struct {
 	memories   *memories.API
 	knowledge  *documents.API
 	formChecks *media.API
+	care       *care.API
+	mind       *mind.API
+	nutrition  *meals.API
+	decisions  *decisions.API
+	nudges     *nudges.API
+	export     *export.Handler
+	calculator *calculator.API
+	news       *news.API
 }
