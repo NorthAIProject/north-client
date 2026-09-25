@@ -15,6 +15,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/aicreds"
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/connections"
+	"github.com/NorthAIProject/north-client/internal/meals/meal"
 	"github.com/NorthAIProject/north-client/internal/messaging"
 	"github.com/NorthAIProject/north-client/internal/notifications"
 	"github.com/NorthAIProject/north-client/internal/preferences"
@@ -59,6 +60,9 @@ func (a *API) Routes(r chi.Router) {
 	r.Get("/settings/telegram", a.getTelegram)
 	r.Post("/settings/telegram/code", a.telegramCode)
 	r.Delete("/settings/telegram", a.unlinkTelegram)
+
+	r.Get("/settings/diets", a.getDiets)
+	r.Put("/settings/diets", a.putDiets)
 
 	r.Get("/settings/calendar", a.getCalendar)
 	r.Put("/settings/calendar", a.putCalendar)
@@ -517,6 +521,97 @@ func (a *API) unlinkTelegram(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// MARK: Diets
+
+// DietOption is one diet the coach and the meal planner respect, and whether
+// this person follows it.
+type DietOption struct {
+	ID          uuid.UUID `json:"id"`
+	Code        string    `json:"code"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	Selected    bool      `json:"selected"`
+}
+
+type DietSettings struct {
+	Diets []DietOption `json:"diets"`
+}
+
+type DietsRequest struct {
+	// DietIDs replaces the whole selection; empty clears it.
+	DietIDs []uuid.UUID `json:"dietIds"`
+}
+
+func (a *API) getDiets(w http.ResponseWriter, r *http.Request) {
+	out, err := a.diets(r.Context(), auth.MustUser(r.Context()).ID)
+	if err != nil {
+		httpx.Error(w, err, "Your diets could not be loaded.")
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, out)
+}
+
+func (a *API) putDiets(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+	var req DietsRequest
+	if !read(w, r, &req) {
+		return
+	}
+	all, err := a.h.diets.ListDiets(r.Context())
+	if err != nil {
+		httpx.Error(w, err, "Your diets could not be saved.")
+		return
+	}
+	// The web form can only post ids it rendered; a JSON client can send
+	// anything, so an unknown id is named rather than left to the database.
+	known := make(map[uuid.UUID]bool, len(all))
+	for _, d := range all {
+		known[d.ID] = true
+	}
+	for _, id := range req.DietIDs {
+		if !known[id] {
+			httpx.Error(w, apperr.FieldErrors{}.Add("dietIds", "That diet does not exist."), "That diet does not exist.")
+			return
+		}
+	}
+	if err = a.h.diets.SetUserDiets(r.Context(), user.ID, req.DietIDs); err != nil {
+		httpx.Error(w, err, "Your diets could not be saved.")
+		return
+	}
+	out, err := a.diets(r.Context(), user.ID)
+	if err != nil {
+		httpx.Error(w, err, "Your diets could not be loaded.")
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, out)
+}
+
+func (a *API) diets(ctx context.Context, userID uuid.UUID) (DietSettings, error) {
+	all, err := a.h.diets.ListDiets(ctx)
+	if err != nil {
+		return DietSettings{}, err
+	}
+	mine, err := a.h.diets.UserDiets(ctx, userID)
+	if err != nil {
+		return DietSettings{}, err
+	}
+	return projectDiets(all, mine), nil
+}
+
+func projectDiets(all, mine []meal.Diet) DietSettings {
+	selected := make(map[uuid.UUID]bool, len(mine))
+	for _, d := range mine {
+		selected[d.ID] = true
+	}
+	out := DietSettings{Diets: make([]DietOption, 0, len(all))}
+	for _, d := range all {
+		out.Diets = append(out.Diets, DietOption{
+			ID: d.ID, Code: d.Code, Name: d.Name, Description: d.Description, Selected: selected[d.ID],
+		})
+	}
+	return out
 }
 
 // MARK: Calendar

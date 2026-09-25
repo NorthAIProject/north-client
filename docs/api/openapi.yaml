@@ -658,6 +658,48 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+  /settings/diets:
+    get:
+      operationId: getDiets
+      tags: [settings]
+      summary: Every diet the coach and meal planner respect, and which ones you follow
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DietSettings'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      operationId: updateDiets
+      tags: [settings]
+      summary: Replace the diets you follow
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [dietIds]
+              properties:
+                dietIds:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DietSettings'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
   /settings/calendar:
     get:
       operationId: getCalendarSettings
@@ -6206,6 +6248,27 @@ components:
           type: integer
         pct:
           type: integer
+    DietSettings:
+      type: object
+      required: [diets]
+      properties:
+        diets:
+          type: array
+          items:
+            type: object
+            required: [id, code, name, description, selected]
+            properties:
+              id:
+                type: string
+                format: uuid
+              code:
+                type: string
+              name:
+                type: string
+              description:
+                type: string
+              selected:
+                type: boolean
     StravaStatus:
       type: object
       required: [configured, connected, syncPending]

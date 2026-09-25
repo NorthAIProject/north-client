@@ -1,0 +1,18 @@
+{
+  "diets": [
+    {
+      "id": "12121212-1212-1212-1212-121212121212",
+      "code": "vegetarian",
+      "name": "Vegetarian",
+      "description": "No meat or fish.",
+      "selected": true
+    },
+    {
+      "id": "34343434-3434-3434-3434-343434343434",
+      "code": "low_fodmap",
+      "name": "Low FODMAP",
+      "description": "Limits fermentable carbohydrates.",
+      "selected": false
+    }
+  ]
+}
