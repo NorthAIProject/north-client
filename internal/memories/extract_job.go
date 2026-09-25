@@ -92,7 +92,7 @@ func (e *AIExtractor) Extract(ctx context.Context, transcript string, believed [
 	}
 
 	var result extract.Result
-	if err := json.Unmarshal([]byte(resp.Text), &result); err != nil {
+	if err := json.Unmarshal(ai.JSONReply(resp.Text), &result); err != nil {
 		return nil, apperr.Wrap(err, "decode memory extraction")
 	}
 	return extract.Sanitise(result, len(believed)), nil
