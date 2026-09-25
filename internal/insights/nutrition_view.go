@@ -13,13 +13,11 @@ func buildNutritionView(data NutritionData) (insightpages.NutritionView, error) 
 	labels := bucketLabels(data.Range)
 
 	kcal := make([]point, 0, len(data.Days))
-	var totalKcal, totalProtein, fat, carb float64
+	var totalKcal, totalProtein float64
 	for _, d := range data.Days {
 		kcal = append(kcal, point{At: d.Date.In(loc), Value: d.Macros.Calories})
 		totalKcal += d.Macros.Calories
 		totalProtein += d.Macros.ProteinG
-		fat += d.Macros.FatG
-		carb += d.Macros.CarbG
 	}
 
 	// Averaged, not summed: a week bucket holds an average day, because
@@ -47,17 +45,13 @@ func buildNutritionView(data NutritionData) (insightpages.NutritionView, error) 
 
 	// Grams, not calories: the donut answers "what did this come from", and
 	// the three macros are what somebody adjusts.
-	segments := []viz.DonutSegment{
-		{Label: "Protein", Value: int(totalProtein)},
-		{Label: "Fat", Value: int(fat)},
-		{Label: "Carbs", Value: int(carb)},
-	}
+	segments := macroSegments(data.Days)
 	split, err := option(viz.DonutOptionJSON(segments))
 	if err != nil {
 		return insightpages.NutritionView{}, err
 	}
 	view.MacroSplit = split
-	view.HasSplit = totalProtein+fat+carb > 0
+	view.HasSplit = hasGrams(segments)
 
 	view.Highlights = highlight.Find(highlight.Input{
 		Series: []highlight.Series{{
@@ -67,4 +61,28 @@ func buildNutritionView(data NutritionData) (insightpages.NutritionView, error) 
 	}, maxHighlights)
 
 	return view, nil
+}
+
+// macroSegments totals the window's grams of each macro.
+func macroSegments(days []NutritionDay) []viz.DonutSegment {
+	var protein, fat, carb float64
+	for _, d := range days {
+		protein += d.Macros.ProteinG
+		fat += d.Macros.FatG
+		carb += d.Macros.CarbG
+	}
+	return []viz.DonutSegment{
+		{Label: "Protein", Value: int(protein)},
+		{Label: "Fat", Value: int(fat)},
+		{Label: "Carbs", Value: int(carb)},
+	}
+}
+
+func hasGrams(segments []viz.DonutSegment) bool {
+	for _, s := range segments {
+		if s.Value > 0 {
+			return true
+		}
+	}
+	return false
 }

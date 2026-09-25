@@ -1,0 +1,68 @@
+{
+  "range": {
+    "key": "week",
+    "label": "Last 7 days",
+    "options": [
+      {
+        "key": "week",
+        "label": "Last 7 days"
+      },
+      {
+        "key": "month",
+        "label": "Last 30 days"
+      }
+    ]
+  },
+  "water": {
+    "labels": [
+      "Mon",
+      "Tue",
+      "Wed"
+    ],
+    "series": [
+      {
+        "label": "Sleep",
+        "values": [
+          7.2,
+          6.8,
+          7.9
+        ]
+      }
+    ]
+  },
+  "sleep": {
+    "labels": [
+      "Mon",
+      "Tue",
+      "Wed"
+    ],
+    "series": [
+      {
+        "label": "Sleep",
+        "values": [
+          7.2,
+          6.8,
+          7.9
+        ]
+      }
+    ]
+  },
+  "adherence": 71,
+  "habits": [
+    {
+      "name": "Stretch",
+      "kept": 5,
+      "scheduled": 7,
+      "streak": 3,
+      "rate": 71
+    }
+  ],
+  "totalWaterML": 11200,
+  "nights": 7,
+  "avgSleepMinutes": 438,
+  "avgQuality": 3.5,
+  "qualityCount": 4,
+  "hasWater": true,
+  "hasSleep": true,
+  "hasHabits": true
+}

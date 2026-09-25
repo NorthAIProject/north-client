@@ -13,7 +13,8 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/chart"
 )
 
-// API is the insights overview and metric detail for native clients.
+// API is the insights overview, the domain pages and metric detail for
+// native clients.
 //
 // It projects the web's own view models rather than recomputing them: a score,
 // a verdict or a trend word that differed between the phone and the browser
@@ -29,6 +30,14 @@ func NewAPI(svc *Service) *API { return &API{svc: svc} }
 func (a *API) Routes(r chi.Router) {
 	r.Get("/insights", a.summary)
 	r.Get("/insights/metrics/{key}", a.metric)
+	r.Get("/insights/timeline", a.timeline)
+	r.Get("/insights/body", a.body)
+	r.Get("/insights/mind", a.mind)
+	r.Get("/insights/progress", a.progress)
+	r.Get("/insights/training", a.training)
+	r.Get("/insights/nutrition", a.nutrition)
+	r.Get("/insights/coach", a.coach)
+	r.Get("/insights/spend", a.spend)
 }
 
 type Range struct {
