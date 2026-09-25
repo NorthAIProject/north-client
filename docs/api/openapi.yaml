@@ -3095,6 +3095,7 @@ paths:
       summary: Parse a quick capture into proposed entries
       security:
         - connectionToken: []
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -3124,6 +3125,7 @@ paths:
       summary: Commit selected capture entries
       security:
         - connectionToken: []
+        - bearerAuth: []
       requestBody:
         required: true
         content:

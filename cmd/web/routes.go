@@ -432,7 +432,7 @@ func routes(
 		CheckIns:    checkinSvc,
 	}), quotaSvc)
 
-	captureAPI := capture.NewAPI(captureHandler.Service(), connectionSvc, quotaSvc, slog.Default())
+	captureAPI := capture.NewAPI(captureHandler.Service(), connectionSvc, quotaSvc, slog.Default()).WithSessions(sessions)
 	authAPI := auth.NewAPI(sessions).WithAuthService(authSvc, authMW)
 
 	dashboardOpts := dashboard.Options{
