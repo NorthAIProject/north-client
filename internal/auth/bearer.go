@@ -6,6 +6,7 @@ import (
 
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 )
 
 // RequireBearer authenticates native-client requests by the session token in
@@ -35,7 +36,11 @@ func RequireBearer(sessions SessionResolver) func(http.Handler) http.Handler {
 				return
 			}
 
-			next.ServeHTTP(w, r.WithContext(ContextWithUser(r.Context(), session.User)))
+			// The account's language, as LoadUser does for the browser: the
+			// coach, reports and error messages answer in it.
+			ctx := ContextWithUser(r.Context(), session.User)
+			ctx = i18n.WithLocale(ctx, string(session.User.Locale))
+			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }
