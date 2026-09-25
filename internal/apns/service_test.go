@@ -119,22 +119,40 @@ func TestSendDeliversTheNudgeWithItsLink(t *testing.T) {
 	u := seedUser(t, pool, "a@north.test")
 	_, _ = svc.Register(t.Context(), u.ID, input(token("ab")))
 
-	n, err := svc.Send(t.Context(), u.ID, "Check in", "How was today?", "/app/nudges/x/open?from=push")
+	n, err := svc.Send(t.Context(), u.ID, "Check in", "How was today?", "/app/nudges/x/open?from=push", "CHECKIN")
 	if err != nil || n != 1 {
 		t.Fatalf("send = %d, %v", n, err)
 	}
 
 	var got struct {
 		APS struct {
-			Alert struct{ Title, Body string } `json:"alert"`
+			Alert    struct{ Title, Body string } `json:"alert"`
+			Category string                       `json:"category"`
 		} `json:"aps"`
 		Href string `json:"href"`
 	}
 	if err := json.Unmarshal(sender.payloads[0], &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.APS.Alert.Title != "Check in" || got.APS.Alert.Body != "How was today?" || got.Href != "/app/nudges/x/open?from=push" {
+	if got.APS.Alert.Title != "Check in" || got.APS.Alert.Body != "How was today?" || got.Href != "/app/nudges/x/open?from=push" || got.APS.Category != "CHECKIN" {
 		t.Fatalf("payload = %s", sender.payloads[0])
+	}
+}
+
+// A nudge with no buttons leaves the key out: an empty category is a category
+// the app never registered.
+func TestSendOmitsAnEmptyCategory(t *testing.T) {
+	pool := testdb.New(t)
+	sender := &fakeSender{result: apns.Result{Status: 200}}
+	svc, _ := newService(pool, sender)
+	u := seedUser(t, pool, "a@north.test")
+	_, _ = svc.Register(t.Context(), u.ID, input(token("ab")))
+
+	if _, err := svc.Send(t.Context(), u.ID, "Reply ready", "b", "/app/chat", ""); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(sender.payloads[0]), "category") {
+		t.Fatalf("payload = %s, want no category", sender.payloads[0])
 	}
 }
 
@@ -144,7 +162,7 @@ func TestSendForgetsADeviceAppleSaysIsGone(t *testing.T) {
 	u := seedUser(t, pool, "a@north.test")
 	_, _ = svc.Register(t.Context(), u.ID, input(token("ab")))
 
-	if n, err := svc.Send(t.Context(), u.ID, "t", "b", ""); err != nil || n != 0 {
+	if n, err := svc.Send(t.Context(), u.ID, "t", "b", "", ""); err != nil || n != 0 {
 		t.Fatalf("send = %d, %v", n, err)
 	}
 	if left, _ := repo.ListByUser(t.Context(), u.ID); len(left) != 0 {
@@ -158,7 +176,7 @@ func TestSendKeepsADeviceWhenAppleIsUnreachable(t *testing.T) {
 	u := seedUser(t, pool, "a@north.test")
 	_, _ = svc.Register(t.Context(), u.ID, input(token("ab")))
 
-	if n, err := svc.Send(t.Context(), u.ID, "t", "b", ""); err != nil || n != 0 {
+	if n, err := svc.Send(t.Context(), u.ID, "t", "b", "", ""); err != nil || n != 0 {
 		t.Fatalf("send = %d, %v", n, err)
 	}
 	left, _ := repo.ListByUser(t.Context(), u.ID)

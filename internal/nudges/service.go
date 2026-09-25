@@ -67,7 +67,7 @@ type fanout interface {
 // (internal/push). Optional. It reports how many accepted the message so
 // delivery is counted only where something actually arrived.
 type pusher interface {
-	Send(ctx context.Context, userID uuid.UUID, title, body, href string) (delivered int, err error)
+	Send(ctx context.Context, userID uuid.UUID, title, body, href, category string) (delivered int, err error)
 }
 
 // funnel reports deliveries and opens to the product funnel. Optional. These
@@ -220,7 +220,7 @@ func (s *Service) deliver(ctx context.Context, user users.User, n Nudge, telegra
 		href := OpenPath(n.ID, analytics.ChannelPush)
 		total := 0
 		for _, p := range s.push {
-			count, pushErr := p.Send(ctx, user.ID, n.Title, n.Body, href)
+			count, pushErr := p.Send(ctx, user.ID, n.Title, n.Body, href, PushCategory(n.Kind))
 			if pushErr != nil {
 				slog.Default().Warn("nudges: could not send push",
 					"error", pushErr,
