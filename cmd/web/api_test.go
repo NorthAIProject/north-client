@@ -16,8 +16,10 @@ import (
 	"github.com/NorthAIProject/north-client/internal/checkins"
 	"github.com/NorthAIProject/north-client/internal/coach"
 	"github.com/NorthAIProject/north-client/internal/dashboard"
+	"github.com/NorthAIProject/north-client/internal/decisions"
 	"github.com/NorthAIProject/north-client/internal/documents"
 	"github.com/NorthAIProject/north-client/internal/exercises"
+	"github.com/NorthAIProject/north-client/internal/export"
 	"github.com/NorthAIProject/north-client/internal/fitness"
 	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/health"
@@ -26,6 +28,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/media"
 	"github.com/NorthAIProject/north-client/internal/memories"
 	"github.com/NorthAIProject/north-client/internal/mind"
+	"github.com/NorthAIProject/north-client/internal/nudges"
 	"github.com/NorthAIProject/north-client/internal/onboarding"
 	"github.com/NorthAIProject/north-client/internal/reports"
 	"github.com/NorthAIProject/north-client/internal/settings"
@@ -70,6 +73,9 @@ func apiRouter(t *testing.T) chi.Router {
 		care:       care.NewAPI(care.Options{}),
 		mind:       mind.NewAPI(nil),
 		nutrition:  meals.NewAPI(meals.HandlerOptions{}),
+		decisions:  decisions.NewAPI(nil),
+		nudges:     nudges.NewAPI(nil),
+		export:     export.NewHandler(nil, nil, nil),
 	})
 	return r
 }

@@ -1,0 +1,14 @@
+{
+  "nudges": [
+    {
+      "id": "77777777-aaaa-aaaa-aaaa-777777777777",
+      "kind": "checkin_missed",
+      "title": "No check-in for three days",
+      "body": "Thirty seconds keeps the thread.",
+      "href": "/app/check-ins",
+      "unread": true,
+      "createdAt": "2026-09-24T18:00:00Z"
+    }
+  ],
+  "unread": 1
+}
