@@ -381,6 +381,16 @@ sql:
 
   - engine: postgresql
     schema: migrations
+    queries: internal/apns/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: apnsdb
+        out: internal/apns/db
+        overrides: *overrides
+
+  - engine: postgresql
+    schema: migrations
     queries: internal/notifications/db/queries.sql
     gen:
       go:

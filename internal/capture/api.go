@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/quota"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
@@ -44,6 +45,17 @@ type API struct {
 	auth   Authenticator
 	quotas *quota.Service
 	log    *slog.Logger
+
+	// sessions resolves the native app's sign-in session, so the app (and its
+	// App Intents) can capture without minting an nk_ connection token.
+	sessions auth.SessionResolver
+}
+
+// WithSessions lets capture also accept a sign-in session token. Connection
+// tokens are recognised by their nk_ prefix, so each request costs one lookup.
+func (a *API) WithSessions(sessions auth.SessionResolver) *API {
+	a.sessions = sessions
+	return a
 }
 
 func NewAPI(svc *Service, auth Authenticator, quotas *quota.Service, log *slog.Logger) *API {
@@ -178,7 +190,7 @@ func (a *API) authenticate(next http.Handler) http.Handler {
 			return
 		}
 
-		user, err := a.auth.Authenticate(r.Context(), token)
+		user, err := a.caller(r.Context(), token)
 		if err != nil {
 			if apperr.Is(err, apperr.ErrUnauthenticated) || apperr.Is(err, apperr.ErrNotFound) {
 				a.unauthorized(w, r)
@@ -195,6 +207,22 @@ func (a *API) authenticate(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), apiUserKey{}, user)))
 	})
 }
+
+// caller resolves a token to its person: an nk_ connection token for agents
+// and shortcuts, otherwise the app's sign-in session when sessions are wired.
+func (a *API) caller(ctx context.Context, token string) (users.User, error) {
+	if strings.HasPrefix(token, connectionTokenPrefix) || a.sessions == nil {
+		return a.auth.Authenticate(ctx, token)
+	}
+	session, err := a.sessions.Resolve(ctx, token)
+	if err != nil {
+		return users.User{}, err
+	}
+	return session.User, nil
+}
+
+// connectionTokenPrefix marks the tokens Settings → Connections issues.
+const connectionTokenPrefix = "nk_"
 
 func (a *API) unauthorized(w http.ResponseWriter, r *http.Request) {
 	a.log.Warn("capture api rejected", slog.String("remote", r.RemoteAddr))
