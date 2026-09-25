@@ -800,6 +800,9 @@ func routes(
 			care:       care.NewAPI(careOpts),
 			mind:       mind.NewAPI(mindSvc),
 			nutrition:  meals.NewAPI(mealsOpts),
+			decisions:  decisions.NewAPI(decisionSvc),
+			nudges:     nudges.NewAPI(nudgeSvc),
+			export:     exportHandler,
 		})
 	})
 

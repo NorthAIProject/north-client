@@ -10,8 +10,10 @@ import (
 	"github.com/NorthAIProject/north-client/internal/checkins"
 	"github.com/NorthAIProject/north-client/internal/coach"
 	"github.com/NorthAIProject/north-client/internal/dashboard"
+	"github.com/NorthAIProject/north-client/internal/decisions"
 	"github.com/NorthAIProject/north-client/internal/documents"
 	"github.com/NorthAIProject/north-client/internal/exercises"
+	"github.com/NorthAIProject/north-client/internal/export"
 	"github.com/NorthAIProject/north-client/internal/fitness"
 	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/health"
@@ -20,6 +22,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/media"
 	"github.com/NorthAIProject/north-client/internal/memories"
 	"github.com/NorthAIProject/north-client/internal/mind"
+	"github.com/NorthAIProject/north-client/internal/nudges"
 	"github.com/NorthAIProject/north-client/internal/onboarding"
 	"github.com/NorthAIProject/north-client/internal/reports"
 	"github.com/NorthAIProject/north-client/internal/settings"
@@ -91,6 +94,9 @@ func mountJSON(r chi.Router, sessions auth.SessionResolver, apis apiSet) {
 		apis.care.Routes(r)
 		apis.mind.Routes(r)
 		apis.nutrition.Routes(r)
+		apis.decisions.Routes(r)
+		apis.nudges.Routes(r)
+		apis.export.APIRoutes(r)
 	})
 }
 
@@ -118,4 +124,7 @@ type apiSet struct {
 	care       *care.API
 	mind       *mind.API
 	nutrition  *meals.API
+	decisions  *decisions.API
+	nudges     *nudges.API
+	export     *export.Handler
 }

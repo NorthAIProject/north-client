@@ -2633,6 +2633,188 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+  /decisions:
+    get:
+      operationId: listDecisions
+      summary: The decision log, newest first
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DecisionList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: createDecision
+      summary: Record a decision
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DecisionInput'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Decision'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /decisions/{decisionID}:
+    parameters:
+      - name: decisionID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getDecision
+      summary: One decision
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Decision'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      operationId: updateDecision
+      summary: Edit a decision, or add how it turned out
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DecisionInput'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Decision'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      operationId: deleteDecision
+      summary: Delete a decision
+      responses:
+        '204':
+          description: Done
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /nudges:
+    get:
+      operationId: listNudges
+      summary: Open notifications and how many are unread
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NudgeList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /nudges/{nudgeID}/open:
+    parameters:
+      - name: nudgeID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: openNudge
+      summary: Follow a notification; marks it read and answers with where it leads
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BellNudge'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /nudges/{nudgeID}/read:
+    parameters:
+      - name: nudgeID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: readNudge
+      summary: Mark a notification read
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BellNudge'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /nudges/{nudgeID}/dismiss:
+    parameters:
+      - name: nudgeID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: dismissNudge
+      summary: Dismiss a notification
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BellNudge'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /account/export:
+    get:
+      operationId: exportAccount
+      summary: Everything in the account, as a zip archive
+      responses:
+        '200':
+          description: The archive, streamed
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
   /insights:
     get:
       operationId: getInsights
@@ -5107,6 +5289,75 @@ components:
               type: string
             recommendation:
               type: string
+    Decision:
+      type: object
+      required: [id, title, options, rationale, outcome, decidedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        options:
+          type: string
+        rationale:
+          type: string
+        outcome:
+          type: string
+        decidedAt:
+          type: string
+          format: date-time
+    DecisionList:
+      type: object
+      required: [decisions]
+      properties:
+        decisions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Decision'
+    DecisionInput:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+        options:
+          type: string
+        rationale:
+          type: string
+        outcome:
+          type: string
+    BellNudge:
+      type: object
+      required: [id, kind, title, body, href, unread, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+        title:
+          type: string
+        body:
+          type: string
+        href:
+          type: string
+          description: The web path it leads to.
+        unread:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+    NudgeList:
+      type: object
+      required: [nudges, unread]
+      properties:
+        nudges:
+          type: array
+          items:
+            $ref: '#/components/schemas/BellNudge'
+        unread:
+          type: integer
     InsightsRange:
       type: object
       required: [key, label, options]
