@@ -1,0 +1,56 @@
+{
+  "range": {
+    "key": "week",
+    "label": "Last 7 days",
+    "options": [
+      {
+        "key": "week",
+        "label": "Last 7 days"
+      },
+      {
+        "key": "month",
+        "label": "Last 30 days"
+      }
+    ]
+  },
+  "sessions": [
+    {
+      "name": "Running",
+      "at": "2026-09-21T07:30:00Z",
+      "duration": "42m",
+      "calories": 410
+    }
+  ],
+  "burn": {
+    "labels": [
+      "Mon",
+      "Tue",
+      "Wed"
+    ],
+    "series": [
+      {
+        "label": "Sleep",
+        "values": [
+          7.2,
+          6.8,
+          7.9
+        ]
+      }
+    ]
+  },
+  "kinds": [
+    {
+      "label": "Running",
+      "value": 1
+    }
+  ],
+  "calories": 410,
+  "delta": {
+    "direction": 1,
+    "pct": 12.5,
+    "hasPrior": true
+  },
+  "sessionCount": 1,
+  "totalTime": "42m",
+  "hasSessions": true
+}

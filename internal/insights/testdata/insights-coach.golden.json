@@ -1,0 +1,44 @@
+{
+  "range": {
+    "key": "week",
+    "label": "Last 7 days",
+    "options": [
+      {
+        "key": "week",
+        "label": "Last 7 days"
+      },
+      {
+        "key": "month",
+        "label": "Last 30 days"
+      }
+    ]
+  },
+  "turns": 12,
+  "yourMessages": 6,
+  "coachReplies": 6,
+  "hasRatings": true,
+  "helpfulRate": 80,
+  "rated": 5,
+  "chart": {
+    "labels": [
+      "Mon",
+      "Tue",
+      "Wed"
+    ],
+    "series": [
+      {
+        "label": "Sleep",
+        "values": [
+          7.2,
+          6.8,
+          7.9
+        ]
+      }
+    ]
+  },
+  "highlights": [
+    "Most messages: Tuesday."
+  ],
+  "truncated": false,
+  "hasData": true
+}

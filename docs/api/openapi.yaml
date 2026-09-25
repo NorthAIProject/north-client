@@ -2930,6 +2930,132 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+  /insights/timeline:
+    get:
+      operationId: getInsightsTimeline
+      summary: Everything logged in a window, newest first, with a filter per kind
+      parameters:
+        - $ref: '#/components/parameters/InsightsRange'
+        - name: kind
+          in: query
+          required: false
+          schema:
+            type: string
+          description: One entry kind (check_in, hydration, sleep, habit, journal, goal, goal_note, activity); omitted means everything.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InsightsTimeline'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /insights/body:
+    get:
+      operationId: getInsightsBody
+      summary: Water, sleep and habit adherence over a window
+      parameters:
+        - $ref: '#/components/parameters/InsightsRange'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InsightsBody'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /insights/mind:
+    get:
+      operationId: getInsightsMind
+      summary: Mood, energy and journalling over a window
+      parameters:
+        - $ref: '#/components/parameters/InsightsRange'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InsightsMind'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /insights/progress:
+    get:
+      operationId: getInsightsProgress
+      summary: Active goals, their progress and updates over a window
+      parameters:
+        - $ref: '#/components/parameters/InsightsRange'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InsightsProgress'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /insights/training:
+    get:
+      operationId: getInsightsTraining
+      summary: Sessions, calories burned and activity mix over a window
+      parameters:
+        - $ref: '#/components/parameters/InsightsRange'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InsightsTraining'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /insights/nutrition:
+    get:
+      operationId: getInsightsNutrition
+      summary: Calories and macros over a window, against the macro goal when one is set
+      parameters:
+        - $ref: '#/components/parameters/InsightsRange'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InsightsNutrition'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /insights/coach:
+    get:
+      operationId: getInsightsCoach
+      summary: How much you talked to the coach and how helpful its replies were
+      parameters:
+        - $ref: '#/components/parameters/InsightsRange'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InsightsCoach'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /insights/spend:
+    get:
+      operationId: getInsightsSpend
+      summary: What AI generations cost over a window, by surface and by model
+      parameters:
+        - $ref: '#/components/parameters/InsightsRange'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InsightsSpend'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /fitness/strava:
     get:
       operationId: getStravaStatus
@@ -5754,6 +5880,328 @@ components:
             type: string
         hasData:
           type: boolean
+    InsightsSegment:
+      type: object
+      required: [label, value]
+      properties:
+        label:
+          type: string
+        value:
+          type: integer
+    InsightsTimeline:
+      type: object
+      required: [range, entries, filters, overflow]
+      properties:
+        range:
+          $ref: '#/components/schemas/InsightsRange'
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/InsightsTimelineEntry'
+        filters:
+          type: array
+          items:
+            $ref: '#/components/schemas/InsightsTimelineFilter'
+        overflow:
+          type: boolean
+    InsightsTimelineEntry:
+      type: object
+      required: [kind, label, at, title, detail]
+      properties:
+        kind:
+          type: string
+        label:
+          type: string
+        at:
+          type: string
+          format: date-time
+        title:
+          type: string
+        detail:
+          type: string
+    InsightsTimelineFilter:
+      type: object
+      required: [key, label, count, selected]
+      properties:
+        key:
+          type: string
+        label:
+          type: string
+        count:
+          type: integer
+        selected:
+          type: boolean
+    InsightsBody:
+      type: object
+      required: [range, water, sleep, adherence, habits, totalWaterML, nights, avgSleepMinutes, avgQuality, qualityCount, hasWater, hasSleep, hasHabits]
+      properties:
+        range:
+          $ref: '#/components/schemas/InsightsRange'
+        water:
+          $ref: '#/components/schemas/InsightsChart'
+        sleep:
+          $ref: '#/components/schemas/InsightsChart'
+        adherence:
+          type: integer
+        habits:
+          type: array
+          items:
+            $ref: '#/components/schemas/InsightsHabit'
+        totalWaterML:
+          type: integer
+        nights:
+          type: integer
+        avgSleepMinutes:
+          type: number
+        avgQuality:
+          type: number
+        qualityCount:
+          type: integer
+        hasWater:
+          type: boolean
+        hasSleep:
+          type: boolean
+        hasHabits:
+          type: boolean
+    InsightsHabit:
+      type: object
+      required: [name, kept, scheduled, streak, rate]
+      properties:
+        name:
+          type: string
+        kept:
+          type: integer
+        scheduled:
+          type: integer
+        streak:
+          type: integer
+        rate:
+          type: integer
+    InsightsMind:
+      type: object
+      required: [range, labels, mood, energy, journal, checkInCount, journalCount, avgMood, avgEnergy, hasCheckIns, hasJournal]
+      properties:
+        range:
+          $ref: '#/components/schemas/InsightsRange'
+        labels:
+          type: array
+          items:
+            type: string
+        mood:
+          type: array
+          items:
+            type: integer
+        energy:
+          type: array
+          items:
+            type: integer
+        journal:
+          $ref: '#/components/schemas/InsightsChart'
+        checkInCount:
+          type: integer
+        journalCount:
+          type: integer
+        avgMood:
+          type: number
+        avgEnergy:
+          type: number
+        hasCheckIns:
+          type: boolean
+        hasJournal:
+          type: boolean
+    InsightsProgress:
+      type: object
+      required: [range, goals, notes, statuses, activeCount, avgProgress, overdue, streak, noteCount, openedCount, hasNotes]
+      properties:
+        range:
+          $ref: '#/components/schemas/InsightsRange'
+        goals:
+          type: array
+          items:
+            $ref: '#/components/schemas/InsightsGoal'
+        notes:
+          $ref: '#/components/schemas/InsightsChart'
+        statuses:
+          type: array
+          items:
+            $ref: '#/components/schemas/InsightsSegment'
+        activeCount:
+          type: integer
+        avgProgress:
+          type: integer
+        overdue:
+          type: integer
+        streak:
+          type: integer
+        noteCount:
+          type: integer
+        openedCount:
+          type: integer
+        hasNotes:
+          type: boolean
+    InsightsGoal:
+      type: object
+      required: [id, title, progress, hasProgress, deadline, overdue]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        progress:
+          type: integer
+        hasProgress:
+          type: boolean
+        deadline:
+          type: string
+        overdue:
+          type: boolean
+    InsightsTraining:
+      type: object
+      required: [range, sessions, burn, kinds, calories, delta, sessionCount, totalTime, hasSessions]
+      properties:
+        range:
+          $ref: '#/components/schemas/InsightsRange'
+        sessions:
+          type: array
+          items:
+            $ref: '#/components/schemas/InsightsSession'
+        burn:
+          $ref: '#/components/schemas/InsightsChart'
+        kinds:
+          type: array
+          items:
+            $ref: '#/components/schemas/InsightsSegment'
+        calories:
+          type: number
+        delta:
+          $ref: '#/components/schemas/InsightsDelta'
+        sessionCount:
+          type: integer
+        totalTime:
+          type: string
+        hasSessions:
+          type: boolean
+    InsightsSession:
+      type: object
+      required: [name, at, duration, calories]
+      properties:
+        name:
+          type: string
+        at:
+          type: string
+          format: date-time
+        duration:
+          type: string
+        calories:
+          type: number
+    InsightsDelta:
+      type: object
+      required: [direction, pct, hasPrior]
+      properties:
+        direction:
+          type: integer
+        pct:
+          type: number
+        hasPrior:
+          type: boolean
+    InsightsNutrition:
+      type: object
+      required: [range, avgCalories, avgProtein, daysLogged, entries, hasGoal, goalCalories, goalProtein, calories, macros, hasSplit, highlights, hasData]
+      properties:
+        range:
+          $ref: '#/components/schemas/InsightsRange'
+        avgCalories:
+          type: string
+        avgProtein:
+          type: string
+        daysLogged:
+          type: integer
+        entries:
+          type: integer
+        hasGoal:
+          type: boolean
+        goalCalories:
+          type: string
+        goalProtein:
+          type: string
+        calories:
+          $ref: '#/components/schemas/InsightsChart'
+        macros:
+          type: array
+          items:
+            $ref: '#/components/schemas/InsightsSegment'
+        hasSplit:
+          type: boolean
+        highlights:
+          type: array
+          items:
+            type: string
+        hasData:
+          type: boolean
+    InsightsCoach:
+      type: object
+      required: [range, turns, yourMessages, coachReplies, hasRatings, helpfulRate, rated, chart, highlights, truncated, hasData]
+      properties:
+        range:
+          $ref: '#/components/schemas/InsightsRange'
+        turns:
+          type: integer
+        yourMessages:
+          type: integer
+        coachReplies:
+          type: integer
+        hasRatings:
+          type: boolean
+        helpfulRate:
+          type: integer
+        rated:
+          type: integer
+        chart:
+          $ref: '#/components/schemas/InsightsChart'
+        highlights:
+          type: array
+          items:
+            type: string
+        truncated:
+          type: boolean
+        hasData:
+          type: boolean
+    InsightsSpend:
+      type: object
+      required: [range, totalCost, totalTokens, generations, surfaces, models, hasData]
+      properties:
+        range:
+          $ref: '#/components/schemas/InsightsRange'
+        totalCost:
+          type: string
+        totalTokens:
+          type: integer
+        generations:
+          type: integer
+        surfaces:
+          type: array
+          items:
+            $ref: '#/components/schemas/InsightsSpendLine'
+        models:
+          type: array
+          items:
+            $ref: '#/components/schemas/InsightsSpendLine'
+        hasData:
+          type: boolean
+    InsightsSpendLine:
+      type: object
+      required: [label, cost, generations, tokens, pct]
+      properties:
+        label:
+          type: string
+        cost:
+          type: string
+        generations:
+          type: integer
+        tokens:
+          type: integer
+        pct:
+          type: integer
     StravaStatus:
       type: object
       required: [configured, connected, syncPending]

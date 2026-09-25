@@ -1,0 +1,40 @@
+{
+  "range": {
+    "key": "week",
+    "label": "Last 7 days",
+    "options": [
+      {
+        "key": "week",
+        "label": "Last 7 days"
+      },
+      {
+        "key": "month",
+        "label": "Last 30 days"
+      }
+    ]
+  },
+  "entries": [
+    {
+      "kind": "check_in",
+      "label": "Check-in",
+      "at": "2026-09-21T07:30:00Z",
+      "title": "Mood 4, energy 3",
+      "detail": "Slept well."
+    }
+  ],
+  "filters": [
+    {
+      "key": "",
+      "label": "Everything",
+      "count": 1,
+      "selected": true
+    },
+    {
+      "key": "check_in",
+      "label": "Check-ins",
+      "count": 1,
+      "selected": false
+    }
+  ],
+  "overflow": false
+}
