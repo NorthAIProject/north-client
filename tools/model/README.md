@@ -61,10 +61,9 @@ because a group with no geometry can never be highlighted and nothing else would
    reconciled with it without a rig, and the previous version of this asset worked
    around that by cropping the arms off at the shoulders — which is why the figure
    used to have hollow stumps where its deltoids should be.
-2. **UVs and baked PBR textures.** Without them the runtime falls back to flat
-   shading (`SKIN_FALLBACK` in `viewer.js`) and the body looks like clay. This is the
-   main reason to prefer a Tripo AI / Meshy export over a free base mesh: generated
-   models come textured, most free base meshes do not.
+2. **No albedo needed.** The runtime renders the body as a matte mannequin in a
+   theme neutral (`THEME` in `viewer.js`) and drops any baked colour map. A normal
+   map is still worth having: it is shape, and the runtime keeps it.
 3. **Roughly human proportions.** See alignment below.
 
 ## Alignment is the fragile part
