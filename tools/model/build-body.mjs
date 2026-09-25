@@ -37,6 +37,8 @@ import draco3d from "draco3dgltf";
 import { MeshoptDecoder, MeshoptEncoder, MeshoptSimplifier } from "meshoptimizer";
 import sharp from "sharp";
 
+import { assertFit, skinTransform, unionBounds } from "./fit.mjs";
+
 // The one list of muscle names, shared with the browser. Importing it rather than
 // restating it here is the whole reason muscles.js exists as its own module: a mesh
 // this script drops is a mesh the viewer can never light up, so the two must agree
@@ -172,49 +174,28 @@ function prepareSkin(document, muscleBounds, args) {
 
   for (const material of root.listMaterials()) material.setName(args.skinMaterial);
 
-  const bounds = boundsOf(document);
-  const autoScale = (muscleBounds.max[1] - muscleBounds.min[1]) / (bounds.max[1] - bounds.min[1]);
-  const scale = autoScale * args.skinScale;
-
-  const centre = (axis) => ((bounds.min[axis] + bounds.max[axis]) / 2) * scale;
-  const muscleCentre = (axis) => (muscleBounds.min[axis] + muscleBounds.max[axis]) / 2;
-
   // A wrapper node so the transform applies once, whatever the source's own hierarchy
-  // looks like, and so there is a single node to carry the "skin" tag.
+  // looks like, and so there is a single node to carry the "skin" tag. The source is
+  // moved under it before measuring, so the bounds are the wrapper's at identity.
   const wrapper = document.createNode(args.skinNode);
-  wrapper.setScale([scale, scale, scale]);
-  wrapper.setTranslation([
-    muscleCentre(0) - centre(0) + args.skinOffset[0],
-    // Feet on the floor rather than centres aligned: a difference in leg length
-    // should show up at the head, not push the model through the contact shadow.
-    muscleBounds.min[1] - bounds.min[1] * scale + args.skinOffset[1],
-    muscleCentre(2) - centre(2) + args.skinOffset[2],
-  ]);
-
   for (const node of scene.listChildren()) {
     scene.removeChild(node);
     wrapper.addChild(node);
   }
   scene.addChild(wrapper);
 
-  console.log(`  skin: scaled ${scale.toFixed(4)}x, translated [${wrapper.getTranslation().map((n) => n.toFixed(3)).join(", ")}]`);
-  return wrapper;
-}
+  const { scale, translation } = skinTransform(unionBounds([wrapper]), muscleBounds, args);
+  wrapper.setScale([scale, scale, scale]);
+  wrapper.setTranslation(translation);
 
-function boundsOf(document) {
-  const min = [Infinity, Infinity, Infinity];
-  const max = [-Infinity, -Infinity, -Infinity];
-  for (const mesh of document.getRoot().listMeshes()) {
-    for (const primitive of mesh.listPrimitives()) {
-      const position = primitive.getAttribute("POSITION");
-      if (!position) continue;
-      for (let axis = 0; axis < 3; axis += 1) {
-        min[axis] = Math.min(min[axis], position.getMin([])[axis]);
-        max[axis] = Math.max(max[axis], position.getMax([])[axis]);
-      }
-    }
+  try {
+    assertFit(wrapper, muscleBounds);
+  } catch (error) {
+    fail(error.message);
   }
-  return { min, max };
+
+  console.log(`  skin: scaled ${scale.toFixed(4)}x, translated [${translation.map((n) => n.toFixed(3)).join(", ")}]`);
+  return wrapper;
 }
 
 function triangleCount(document) {
@@ -260,7 +241,7 @@ async function main() {
   }
 
   console.log("aligning skin to muscles");
-  prepareSkin(skinDoc, boundsOf(muscleDoc), args);
+  prepareSkin(skinDoc, unionBounds(muscleDoc.getRoot().listScenes()), args);
 
   console.log("merging");
   mergeDocuments(muscleDoc, skinDoc);

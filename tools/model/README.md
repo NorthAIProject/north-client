@@ -85,6 +85,20 @@ it with `--skin-scale` and `--skin-offset` and rebuild — a slightly *larger* s
 always the safe direction, since the glow shader only draws muscle that has skin in
 front of it, and a muscle poking through the surface simply vanishes at that spot.
 
+The fit measures world-space bounds (`fit.mjs`), node transforms included, and the
+build fails if the fitted skin is not within 10% of the muscle height. Fitting against
+raw vertex bounds once shipped a skin ~170× too small, which drew nothing at all:
+no skin, and therefore no glow either.
+
+### Repairing a shipped file without the sources
+
+When only the fit is wrong, you do not need the sources. `refit-skin.mjs` recomputes
+the `skin` node's transform inside the built file and leaves everything else as it is:
+
+```
+node tools/model/refit-skin.mjs [--skin-scale 1.02] [--skin-offset 0,0,0]
+```
+
 ## Budget
 
 Target 2–6 MB, per NOR-6. The script warns above 6 MB. Textures dominate — reduce

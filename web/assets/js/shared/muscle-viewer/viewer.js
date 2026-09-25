@@ -678,6 +678,14 @@ async function loadFigure(ember, depthMid, palette) {
 
   if (!skinSource) {
     console.warn("[muscle-viewer] body.glb has no node tagged \"skin\" — see tools/model/README.md");
+  } else {
+    // A skin that loads but is fitted wrong is worse than a missing one: nothing
+    // errors, and the glow (which only draws behind skin depth) draws nothing.
+    const skinNode = inner.getObjectByName("skin");
+    const skinHeight = new THREE.Box3().setFromObject(skinNode).getSize(new THREE.Vector3()).y;
+    if (skinHeight < TARGET_HEIGHT * 0.5) {
+      console.warn("[muscle-viewer] skin collapsed — fitted skin is far shorter than the figure; run tools/model/refit-skin.mjs");
+    }
   }
   // An orphaned key is a real fault: a muscle North can name but never show. Meshes
   // the other way round are expected until body.glb is rebuilt — the deep abdominal
