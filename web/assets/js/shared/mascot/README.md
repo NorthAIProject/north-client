@@ -12,9 +12,6 @@ soft-cube head. The live mascot is now Khepri, shipped as
 the still, and would keep the WebGL tax on chat, onboarding, dashboard, and
 settings. The still is the mascot.
 
-Landing still uses Three.js for the scroll-world. Its companion is the same PNG,
-loaded as a `THREE.Sprite` in `scroll-world/panel.js`.
-
 ## States are poses, not clips
 
 `idle`, `thinking`, `listening` are sustained. `celebrate` and `nod` are
