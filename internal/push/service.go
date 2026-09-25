@@ -103,7 +103,8 @@ func (s *Service) HasSubscription(ctx context.Context, userID uuid.UUID) (bool, 
 }
 
 // Send delivers one notification to every browser this person subscribed and
-// reports how many accepted it.
+// reports how many accepted it. Browsers have no notification categories, so
+// category is ignored.
 //
 // A subscription the push service declares gone (404 or 410) is deleted on
 // the spot: the browser has unsubscribed or been reset, and every later send
@@ -111,7 +112,7 @@ func (s *Service) HasSubscription(ctx context.Context, userID uuid.UUID) (bool, 
 // row as failed and moves on. The nudge the caller stored is never at stake
 // here, which is why this returns an error only when the subscriptions could
 // not be read.
-func (s *Service) Send(ctx context.Context, userID uuid.UUID, title, body, href string) (int, error) {
+func (s *Service) Send(ctx context.Context, userID uuid.UUID, title, body, href, category string) (int, error) {
 	if !s.Enabled() {
 		return 0, nil
 	}
