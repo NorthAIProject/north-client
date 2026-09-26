@@ -305,11 +305,12 @@ func routes(
 	healthSvc.WithWorkouts(activitySvc, biometricSvc)
 
 	fitnessHandler := fitness.NewHandler(fitness.Options{
-		Activity: activitySvc,
-		Workouts: workoutSvc,
-		Strava:   stravaSvc,
-		Meals:    mealProgressSvc,
-		Health:   healthSvc,
+		Activity:   activitySvc,
+		Workouts:   workoutSvc,
+		Strava:     stravaSvc,
+		Meals:      mealProgressSvc,
+		Health:     healthSvc,
+		Biometrics: biometricSvc,
 	}, cfg.Env.IsProduction())
 	mealsOpts := meals.HandlerOptions{
 		Ingredients: mealIngredientSvc,

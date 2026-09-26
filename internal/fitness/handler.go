@@ -145,13 +145,7 @@ func (h *Handler) render(w http.ResponseWriter, r *http.Request, notice string) 
 		return
 	}
 
-	data := fitnesspages.HubData{
-		StravaStatus:      snap.StravaStatus,
-		Instruments:       buildView(snap),
-		Notice:            notice,
-		DeviceReadings:    snap.DeviceReadings,
-		HasDeviceReadings: snap.HasDeviceReadings,
-	}
+	data := buildHubData(snap, user.Location(), time.Now(), notice)
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := fitnesspages.Hub(user, data).Render(ctx, w); err != nil {

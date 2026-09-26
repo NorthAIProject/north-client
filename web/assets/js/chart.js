@@ -15,6 +15,34 @@ import "./chartjs.js";
     };
   }
 
+  // A canvas cannot read CSS custom properties, so a dataset colour written as
+  // "var(--north-signal)" — which is how the server keeps charts on the theme
+  // — would paint black. Substitute each var() with its current value; the
+  // theme observer below re-runs this when the theme flips.
+  function resolveCssVars(value, style) {
+    if (typeof value === "string") {
+      return value.replace(/var\((--[\w-]+)\)/g, (match, name) => {
+        return style.getPropertyValue(name).trim() || match;
+      });
+    }
+    if (Array.isArray(value)) {
+      return value.map((v) => resolveCssVars(v, style));
+    }
+    return value;
+  }
+
+  function resolveDatasetColors(payload) {
+    const config = payload.rawConfig || payload.generatedConfig || payload;
+    const datasets = config && config.data && config.data.datasets;
+    if (!Array.isArray(datasets)) return;
+    const style = getComputedStyle(document.documentElement);
+    for (const dataset of datasets) {
+      for (const key of ["borderColor", "backgroundColor"]) {
+        if (key in dataset) dataset[key] = resolveCssVars(dataset[key], style);
+      }
+    }
+  }
+
   function buildGeneratedChartConfig(chartConfig, colors) {
     const isComplexChart = ["pie", "doughnut", "bar", "radar"].includes(
       chartConfig.type,
@@ -141,6 +169,7 @@ import "./chartjs.js";
 
     try {
       const chartPayload = JSON.parse(dataElement.textContent);
+      resolveDatasetColors(chartPayload);
       const colors = getThemeColors();
 
       // eslint-disable-next-line no-undef

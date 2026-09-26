@@ -61,3 +61,16 @@ func TestGroupedBarGivesEachSeriesItsOwnColour(t *testing.T) {
 		t.Error("both series share a colour")
 	}
 }
+
+func TestAreaLineIsFilledAndBare(t *testing.T) {
+	p := AreaLine("steps", []string{"a", "b"}, []float64{1, 2}, "var(--north-signal)")
+	if len(p.Data.Datasets) != 1 || !p.Data.Datasets[0].Fill {
+		t.Fatal("area line should be one filled series")
+	}
+	if p.ShowXLabels || p.ShowYLabels || p.ShowXGrid || p.ShowYGrid || p.ShowLegend {
+		t.Fatal("area line should draw no chrome")
+	}
+	if p.Data.Datasets[0].BorderColor != "var(--north-signal)" {
+		t.Fatalf("border colour = %v", p.Data.Datasets[0].BorderColor)
+	}
+}
