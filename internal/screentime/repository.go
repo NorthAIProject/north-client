@@ -46,3 +46,18 @@ func (r *Repository) ForDate(ctx context.Context, userID uuid.UUID, date time.Ti
 func fromDB(row screentimedb.ScreenTimeLog) Day {
 	return Day{LocalDate: row.LocalDate.Time, Minutes: int(row.Minutes), Source: row.Source}
 }
+
+// Between lists days in [since, until), newest first.
+func (r *Repository) Between(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]Day, error) {
+	rows, err := r.q.ListScreenTimeBetween(ctx, screentimedb.ListScreenTimeBetweenParams{
+		UserID: userID, LocalDate: pgtype.Date{Time: since, Valid: true}, LocalDate_2: pgtype.Date{Time: until, Valid: true},
+	})
+	if err != nil {
+		return nil, apperr.Wrap(err, "list screen time")
+	}
+	out := make([]Day, len(rows))
+	for i, row := range rows {
+		out[i] = fromDB(row)
+	}
+	return out, nil
+}

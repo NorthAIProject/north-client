@@ -28,6 +28,8 @@ type NutritionView struct {
 
 	Highlights []string
 	HasData    bool
+
+	Eating EatingView
 }
 
 templ Nutrition(user users.User, view NutritionView) {
@@ -63,6 +65,7 @@ templ NutritionBody(view NutritionView) {
 			if len(view.Highlights) > 0 {
 				@highlights(view.Highlights)
 			}
+			@eating(view.Eating)
 		</div>
 	}
 }

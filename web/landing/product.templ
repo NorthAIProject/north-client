@@ -1,0 +1,285 @@
+package landing
+
+import (
+	"strconv"
+
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
+)
+
+// The product sections: what a day, a month and a conversation look like
+// inside Khepri, drawn as static mock-ups of the real screens. Static on
+// purpose — no data, no script — so they render instantly and never show a
+// visitor someone else's numbers.
+
+// tourLinks is the strip under the hero that jumps to each section.
+templ tourLinks() {
+	<nav aria-label="Product tour" class="-mx-1 mt-12 flex flex-wrap gap-2">
+		@tourLink("#day", "Your day")
+		@tourLink("#patterns", "Stats & patterns")
+		@tourLink("#coach-builds", "Plans by chat")
+		@tourLink("#iphone", "iPhone")
+		@tourLink("#muscle", "Training anatomy")
+	</nav>
+}
+
+templ tourLink(href, label string) {
+	<a href={ templ.SafeURL(href) } class="border-hairline bg-surface/60 text-muted-foreground hover:text-foreground hover:border-signal/40 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors">
+		{ label }
+	</a>
+}
+
+type mockEntry struct {
+	Time, Title, Detail, Color, Icon string
+}
+
+var mockDay = []mockEntry{
+	{"21:10", "Magnesium glycinate", "supplement", "var(--color-day-protein)", "pill"},
+	{"19:40", "Salmon, rice & greens", "640 kcal · 42 g protein", "var(--color-day-food)", "utensils"},
+	{"18:05", "Back squat 5×5", "102.5 kg · new best", "var(--color-day-fat)", "dumbbell"},
+	{"13:10", "Water", "500 ml", "var(--color-day-water)", "droplet"},
+	{"12:30", "Chicken bowl", "650 kcal", "var(--color-day-food)", "utensils"},
+	{"10:05", "Espresso", "63 mg caffeine", "var(--color-day-caffeine)", "coffee"},
+	{"07:10", "Woke up", "7h 25m · 1h 20m deep", "var(--color-day-sleep)", "moon"},
+}
+
+templ dayDemo() {
+	<section id="day" class="border-hairline relative scroll-mt-20 border-t py-24">
+		@sectionHeading(
+			"My Day",
+			"Your whole day on one page.",
+			"Meals, water, caffeine, supplements, sleep stages, workouts and fasts land on one timeline, beside the numbers that matter today. Apple Health fills most of it in; the rest is one tap or one sentence to the coach.",
+		)
+		<div class="mt-10 grid gap-6 lg:grid-cols-[minmax(0,22rem)_1fr]">
+			@card.Card(card.Props{Class: "border-hairline bg-surface overflow-hidden"}) {
+				@card.Content(card.ContentProps{Class: "relative space-y-2 py-5"}) {
+					<div aria-hidden="true" class="absolute inset-y-4 left-[4.6rem] border-l-2 border-dashed border-[var(--color-day-fat)] opacity-60"></div>
+					<p class="text-day-fat relative mb-1 pl-16 text-[10px] font-medium">Fasting · 14h 20m so far</p>
+					for _, e := range mockDay {
+						<div class="relative flex items-center gap-3">
+							<span class="text-muted-foreground w-10 shrink-0 text-right text-[11px] tabular-nums">{ e.Time }</span>
+							<div class="ml-3 flex min-w-0 flex-1 items-center gap-2.5 rounded-xl border border-[color-mix(in_oklch,var(--mock)_22%,transparent)] bg-[color-mix(in_oklch,var(--mock)_11%,var(--color-surface))] px-3 py-1.5" style={ "--mock:" + e.Color }>
+								<span class="shrink-0 text-[var(--mock)]">
+									@icon.Icon(e.Icon)(icon.Props{Class: "size-4"})
+								</span>
+								<span class="min-w-0 leading-tight">
+									<span class="block truncate text-sm font-medium">{ e.Title }</span>
+									<span class="text-muted-foreground block truncate text-[11px]">{ e.Detail }</span>
+								</span>
+							</div>
+						</div>
+					}
+				}
+			}
+			<div class="space-y-6">
+				<div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+					@mockGauge("72", "mg", "Caffeine", "var(--color-day-caffeine)", 18)
+					@mockGauge("68", "%", "Energy", "var(--color-day-move)", 68)
+					@mockGauge("84", "min", "Sunlight", "var(--color-day-sun)", 84)
+					@mockGauge("3h 12m", "", "Screen time", "var(--color-day-screen)", 53)
+				</div>
+				<div class="grid gap-3 sm:grid-cols-3">
+					@mockFact("layers", "Every tracker", "Food and macros, water, caffeine with what is still active, supplements and 15 nutrients, fasting phases, screen time, soreness, blood pressure.")
+					@mockFact("heart-pulse", "Apple Health, synced", "Sleep stages, HRV, resting heart rate, steps, VO2 max, daylight and workouts arrive on their own.")
+					@mockFact("person-standing", "A body that shows it", "A 3D body lights up sore muscles, next to your weight, BMI and the distance to your goal.")
+				</div>
+			</div>
+		</div>
+	</section>
+}
+
+templ mockGauge(value, unit, label, color string, pct int) {
+	<div class="border-hairline bg-surface rounded-2xl border p-4 text-center">
+		<svg viewBox="0 0 100 60" class="mx-auto h-12 w-20" aria-hidden="true">
+			<path d="M10 55 A40 40 0 0 1 90 55" fill="none" stroke="var(--color-hairline)" stroke-width="9" stroke-linecap="round"></path>
+			<path d="M10 55 A40 40 0 0 1 90 55" fill="none" stroke={ color } stroke-width="9" stroke-linecap="round" pathLength="100" stroke-dasharray={ strconv.Itoa(pct) + " 100" }></path>
+		</svg>
+		<p class="mt-1 text-lg font-semibold tabular-nums">
+			{ value }
+			if unit != "" {
+				<span class="text-muted-foreground text-xs font-normal">{ unit }</span>
+			}
+		</p>
+		<p class="text-muted-foreground text-xs">{ label }</p>
+	</div>
+}
+
+templ mockFact(iconName, title, body string) {
+	<div class="border-hairline bg-surface rounded-xl border p-4">
+		<span class="bg-signal/12 text-signal flex size-8 items-center justify-center rounded-md">
+			@icon.Icon(iconName)(icon.Props{Class: "size-4"})
+		</span>
+		<h3 class="mt-3 text-sm font-medium">{ title }</h3>
+		<p class="text-muted-foreground mt-1 text-xs leading-relaxed">{ body }</p>
+	</div>
+}
+
+templ statsDemo() {
+	<section id="patterns" class="border-hairline relative scroll-mt-20 border-t py-24">
+		@sectionHeading(
+			"Stats & patterns",
+			"It notices what you would miss.",
+			"Because everything lives in one place, Khepri can line your days up against each other: what you lift, run, eat and sleep, and what moves together. Stated as what went together, never dressed up as proof.",
+		)
+		<div class="mt-10 grid gap-4 md:grid-cols-2">
+			@mockPattern("You sleep 42 min less after late caffeine", "6h 38m on 8 nights after coffee past 14:00, 7h 20m on 20 other nights.", "After late caffeine (8)", "6h 38m", 90, "Other nights (20)", "7h 20m", 100)
+			@mockPattern("Your energy is 0.8 points higher after 7+ hours", "Check-in energy averages 3.9 after 7+ hours of sleep and 3.1 after less.", "After 7+ hours (19)", "3.9/5", 100, "After less (9)", "3.1/5", 79)
+		</div>
+		<div class="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+			@mockStat("Back squat", "127 kg", "est. 1RM · +9 kg this month")
+			@mockStat("Best 5K", "24:12", "at 4:50 /km")
+			@mockStat("Protein", "1.8 g/kg", "on target 22 of 30 days")
+			@mockStat("Sleep debt", "2h 10m", "short of 8h, last 7 nights")
+		</div>
+	</section>
+}
+
+templ mockPattern(title, detail, aLabel, aValue string, aPct int, bLabel, bValue string, bPct int) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Content(card.ContentProps{Class: "space-y-4 py-5"}) {
+			<div>
+				<h3 class="text-base font-medium">{ title }</h3>
+				<p class="text-muted-foreground mt-1 text-sm">{ detail }</p>
+			</div>
+			@mockBar(aLabel, aValue, aPct, "var(--north-signal)")
+			@mockBar(bLabel, bValue, bPct, "var(--muted-foreground)")
+		}
+	}
+}
+
+templ mockBar(label, value string, pct int, color string) {
+	<div class="text-sm">
+		<div class="flex justify-between gap-2">
+			<span>{ label }</span>
+			<span class="text-muted-foreground tabular-nums">{ value }</span>
+		</div>
+		<div class="bg-muted mt-1 h-1.5 rounded-full">
+			<div class="h-1.5 rounded-full" style={ "width:" + strconv.Itoa(pct) + "%;background:" + color }></div>
+		</div>
+	</div>
+}
+
+templ mockStat(label, value, note string) {
+	<div class="border-hairline bg-surface/60 rounded-lg border p-4">
+		<p class="text-muted-foreground font-mono text-[10px] tracking-[0.14em] uppercase">{ label }</p>
+		<p class="mt-1 text-xl font-medium tabular-nums">{ value }</p>
+		<p class="text-muted-foreground text-xs">{ note }</p>
+	</div>
+}
+
+templ coachBuildsDemo() {
+	<section id="coach-builds" class="border-hairline relative scroll-mt-20 border-t py-24">
+		@sectionHeading(
+			"Plans by chat",
+			"Ask for a plan. Get a plan, saved.",
+			"The coach does not write you an essay to copy. It builds the meal plan or the training block, logs what you tell it, and shows you a card to approve before anything is saved — on the web, in Telegram or on your phone.",
+		)
+		<div class="mt-10 grid gap-4 lg:grid-cols-2">
+			@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+				@card.Content(card.ContentProps{Class: "space-y-3 py-5"}) {
+					@chatBubble(true, "Make me a meal plan for a cut, around 2,100 kcal. No fish, I train in the evening.")
+					@approvalCard("Create meal plan", "Cutting — 2,100 kcal · 4 meals · 31 ingredients from the catalog")
+					@chatBubble(false, "Saved. 2,096 kcal and 168 g protein a day, with the biggest meal after training. It is under Meal plans; tap a meal to log it.")
+				}
+			}
+			@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+				@card.Content(card.ContentProps{Class: "space-y-3 py-5"}) {
+					@chatBubble(true, "did 3x5 squats at 100 today, quads a bit sore. also had a double espresso at 4")
+					@approvalCard("Log 3 sets · record soreness · log caffeine", "Back squat 100 kg × 5 ×3 · quads 2/3 · espresso 126 mg")
+					@chatBubble(false, "Logged. That is 4 kg up on your estimated max since August. The 4pm coffee is past your cutoff — on nights like that you have slept about 40 minutes less.")
+				}
+			}
+		</div>
+	</section>
+}
+
+templ chatBubble(mine bool, text string) {
+	if mine {
+		<div class="flex justify-end">
+			<p class="bg-signal/15 max-w-[85%] rounded-2xl rounded-br-sm px-3.5 py-2 text-sm">{ text }</p>
+		</div>
+	} else {
+		<div class="flex">
+			<p class="bg-muted/60 max-w-[85%] rounded-2xl rounded-bl-sm px-3.5 py-2 text-sm">{ text }</p>
+		</div>
+	}
+}
+
+templ approvalCard(title, body string) {
+	<div class="border-signal/30 bg-signal/5 mx-auto max-w-[90%] rounded-xl border px-4 py-3">
+		<div class="flex items-center gap-2 text-xs font-medium">
+			@icon.Icon("shield-check")(icon.Props{Class: "text-signal size-3.5"})
+			{ title }
+		</div>
+		<p class="text-muted-foreground mt-1 text-xs">{ body }</p>
+		<div class="mt-2 flex gap-2">
+			<span class="bg-signal text-background rounded-md px-2.5 py-1 text-[11px] font-medium">Approve</span>
+			<span class="border-hairline rounded-md border px-2.5 py-1 text-[11px]">Change</span>
+		</div>
+	</div>
+}
+
+templ iphoneSection() {
+	<section id="iphone" class="border-hairline relative scroll-mt-20 border-t py-24">
+		<div class="grid items-center gap-12 lg:grid-cols-[1fr_20rem]">
+			<div>
+				@sectionHeading(
+					"On your iPhone",
+					"The gym is where the numbers happen.",
+					"The iPhone app is the same Khepri, with the parts a phone is for: a workout that asks for the weight before every set, Apple Health synced in the background, and My Day on the Today tab.",
+				)
+				<ul class="mt-8 space-y-4">
+					@phoneFeature("dumbbell", "Every set, weighed", "The weight and reps are asked before the workout moves on, prefilled from your last set or last time. Records and estimated maxes follow on their own.")
+					@phoneFeature("heart-pulse", "Apple Health, both ways", "Sleep stages, HRV, resting heart rate, steps, VO2 max and workouts flow in; finished workouts flow back out.")
+					@phoneFeature("timer", "Rest on the Lock Screen", "A Live Activity counts your rest down and tells you what is next.")
+					@phoneFeature("chart-line", "Stats in your pocket", "Sleep, cardio, eating, lifting and patterns, the same numbers as the web.")
+				</ul>
+				@appButtons(false)
+			</div>
+			@phoneMock()
+		</div>
+	</section>
+}
+
+templ phoneFeature(iconName, title, body string) {
+	<li class="flex gap-3">
+		<span class="bg-signal/12 text-signal flex size-8 shrink-0 items-center justify-center rounded-md">
+			@icon.Icon(iconName)(icon.Props{Class: "size-4"})
+		</span>
+		<div>
+			<h3 class="text-sm font-medium">{ title }</h3>
+			<p class="text-muted-foreground mt-0.5 text-sm leading-relaxed">{ body }</p>
+		</div>
+	</li>
+}
+
+// phoneMock draws the set-entry sheet inside a phone outline.
+templ phoneMock() {
+	<div aria-hidden="true" class="border-hairline bg-background mx-auto w-full max-w-[18rem] rounded-[2.5rem] border-[6px] p-3 shadow-2xl shadow-black/20">
+		<div class="bg-foreground/80 mx-auto mb-4 h-5 w-24 rounded-full"></div>
+		<div class="px-2">
+			<p class="text-muted-foreground font-mono text-[9px] tracking-[0.14em] uppercase">Exercise 1 of 5 · 18:42</p>
+			<p class="mt-2 text-lg font-semibold">Back squat</p>
+			<p class="text-muted-foreground text-xs">Set 2 of 5 · 5 reps</p>
+		</div>
+		<div class="bg-surface border-hairline mt-4 rounded-2xl border p-4">
+			<p class="text-muted-foreground text-center text-[10px] font-medium tracking-[0.1em] uppercase">Weight</p>
+			<div class="mt-2 flex items-center justify-between">
+				<span class="text-signal flex size-8 items-center justify-center rounded-full border border-current">
+					@icon.Icon("minus")(icon.Props{Class: "size-4"})
+				</span>
+				<span class="text-3xl font-semibold tabular-nums">102.5<span class="text-muted-foreground text-sm font-normal"> kg</span></span>
+				<span class="text-signal flex size-8 items-center justify-center rounded-full border border-current">
+					@icon.Icon("plus")(icon.Props{Class: "size-4"})
+				</span>
+			</div>
+			<p class="text-muted-foreground mt-3 text-center text-[11px]">Last time: 100 × 5, 100 × 5, 100 × 4</p>
+			<div class="border-hairline mt-3 flex items-center justify-between border-t pt-3 text-sm">
+				<span>5 reps</span>
+				<span class="text-muted-foreground">− +</span>
+			</div>
+		</div>
+		<div class="bg-signal text-background mt-4 rounded-xl py-2.5 text-center text-sm font-semibold">Log Set</div>
+		<p class="text-muted-foreground mt-3 mb-2 text-center text-[11px]">Rest 2:00 after this set</p>
+	</div>
+}

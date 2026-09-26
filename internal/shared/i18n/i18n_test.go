@@ -51,6 +51,7 @@ func TestUntranslatedStringsAreAccountedFor(t *testing.T) {
 	// Keep this short: each entry is a string nobody will notice going stale.
 	allowed := map[string]map[string]bool{
 		"pt-PT": {
+			"nav.cardio-insights.nav": true, // "Cardio" is the everyday word here too
 			"conn.tg.title":           true, // Telegram is a product name
 			"nav.fitness":             true,
 			"land.price.pro":          true, // the plan's name, not a word
@@ -63,6 +64,7 @@ func TestUntranslatedStringsAreAccountedFor(t *testing.T) {
 			"land.app.beta":           true, // "Beta" is borrowed unchanged
 		},
 		"pt-BR": {
+			"nav.cardio-insights.nav": true, // "Cardio" is the everyday word here too
 			"conn.tg.title":           true, // Telegram is a product name
 			"nav.fitness":             true,
 			"land.price.pro":          true, // the plan's name, not a word
@@ -74,6 +76,7 @@ func TestUntranslatedStringsAreAccountedFor(t *testing.T) {
 			"land.app.beta":           true,
 		},
 		"es": {
+			"nav.cardio-insights.nav": true, // "Cardio" is the everyday word here too
 			"conn.tg.title":           true, // Telegram is a product name
 			"nav.fitness":             true,
 			"palette.empty.after":     true,

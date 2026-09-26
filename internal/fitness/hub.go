@@ -11,9 +11,13 @@ import (
 	"github.com/NorthAIProject/north-client/internal/biometrics"
 	"github.com/NorthAIProject/north-client/internal/fitness/strava"
 	"github.com/NorthAIProject/north-client/internal/health"
+	"github.com/NorthAIProject/north-client/internal/lifts"
+	"github.com/NorthAIProject/north-client/internal/lifts/lift"
 	"github.com/NorthAIProject/north-client/internal/meals"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/shared/viz"
+	"github.com/NorthAIProject/north-client/internal/stats"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/workouts"
 	"github.com/NorthAIProject/north-client/internal/workouts/plan"
@@ -37,6 +41,15 @@ type Options struct {
 	// Biometrics supplies the weight card. Optional: without it the card
 	// shows its empty state.
 	Biometrics *biometrics.Service
+
+	// Lifts and Cardio supply the strength and cardio cards: the last 30
+	// days of logged sets, and of runs and rides. Optional.
+	Lifts interface {
+		Stats(ctx context.Context, user users.User, rg timerange.Range) (lifts.Stats, error)
+	}
+	Cardio interface {
+		Cardio(ctx context.Context, user users.User, rg timerange.Range) (stats.CardioStats, error)
+	}
 }
 
 type Service struct {
@@ -46,6 +59,12 @@ type Service struct {
 	meals    *meals.TrackMealProgressService
 	health   *health.Service
 	bio      *biometrics.Service
+	lifts    interface {
+		Stats(ctx context.Context, user users.User, rg timerange.Range) (lifts.Stats, error)
+	}
+	cardio interface {
+		Cardio(ctx context.Context, user users.User, rg timerange.Range) (stats.CardioStats, error)
+	}
 }
 
 func NewService(opts Options) *Service {
@@ -56,6 +75,8 @@ func NewService(opts Options) *Service {
 		meals:    opts.Meals,
 		health:   opts.Health,
 		bio:      opts.Biometrics,
+		lifts:    opts.Lifts,
+		cardio:   opts.Cardio,
 	}
 }
 
@@ -93,6 +114,11 @@ type Snapshot struct {
 
 	Weight    WeightReading
 	HasWeight bool
+
+	// Lifts and Cardio cover the last 30 days; nil when the service was
+	// built without them.
+	Lifts  *lifts.Stats
+	Cardio *stats.CardioStats
 }
 
 func (s Snapshot) HasCalorieChart() bool {
@@ -193,6 +219,22 @@ func (s *Service) Load(ctx context.Context, user users.User) (Snapshot, error) {
 		snap.Weight, snap.HasWeight = latestWeight(history)
 	}
 
+	month := timerange.Parse(timerange.KeyMonth, loc)
+	if s.lifts != nil {
+		st, err := s.lifts.Stats(ctx, user, month)
+		if err != nil {
+			return Snapshot{}, err
+		}
+		snap.Lifts = &st
+	}
+	if s.cardio != nil {
+		st, err := s.cardio.Cardio(ctx, user, month)
+		if err != nil {
+			return Snapshot{}, err
+		}
+		snap.Cardio = &st
+	}
+
 	return snap, nil
 }
 
@@ -243,6 +285,8 @@ func buildHubData(snap Snapshot, loc *time.Location, now time.Time, notice strin
 		Location:          loc,
 		Now:               now,
 	}
+	data.Strength = strengthView(snap.Lifts)
+	data.Cardio = cardioView(snap.Cardio)
 	if snap.HasWeight {
 		data.Weight = &fitnesspages.Weight{
 			Kg:       snap.Weight.Kg,
@@ -352,4 +396,49 @@ func emptyCalorieSeries(loc *time.Location) []DayPoint {
 
 func trailingDays(loc *time.Location, count int) []time.Time {
 	return trailingDaysAt(loc, time.Now(), count)
+}
+
+// strengthView is the strength card: the month's lifting in a few lines.
+// Nil when nothing was lifted, so the card is left out rather than empty.
+func strengthView(st *lifts.Stats) *fitnesspages.StrengthView {
+	if st == nil || len(st.Sets) == 0 {
+		return nil
+	}
+	view := &fitnesspages.StrengthView{
+		Workouts: lift.Workouts(st.Sets),
+		Sets:     len(st.Sets),
+		VolumeKg: st.VolumeKg(),
+	}
+	for i, e := range st.Exercises {
+		if i == 4 {
+			break
+		}
+		row := fitnesspages.StrengthRow{Name: e.Name, BestKg: e.BestWeightKg, E1RMKg: e.BestE1RM}
+		if n := len(e.Trend); n > 1 {
+			row.ChangeKg = lift.Round(e.Trend[n-1].Value - e.Trend[0].Value)
+		}
+		view.Exercises = append(view.Exercises, row)
+	}
+	if len(st.Records) > 0 {
+		r := st.Records[0]
+		view.Record = &fitnesspages.StrengthRecord{
+			Exercise: r.Set.ExerciseName, WeightKg: r.Set.WeightKg, Reps: r.Set.Reps, E1RMKg: r.E1RM, On: r.Set.LogDate,
+		}
+	}
+	return view
+}
+
+// cardioView is the cardio card. Nil with no sessions and no heart data.
+func cardioView(st *stats.CardioStats) *fitnesspages.CardioView {
+	if st == nil || (st.Sessions == 0 && len(st.RestingHR) == 0) {
+		return nil
+	}
+	view := &fitnesspages.CardioView{
+		Sessions: st.Sessions, Minutes: st.Seconds / 60, DistanceKm: st.DistanceKm,
+		Runs: st.Runs.Count, BestPaceSeconds: st.Runs.BestPace, Best5KSeconds: st.Runs.Best5K, LongestKm: st.Runs.LongestKm,
+	}
+	if n := len(st.RestingHR); n > 0 {
+		view.RestingHR = st.RestingHR[n-1].Value
+	}
+	return view
 }

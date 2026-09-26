@@ -58,6 +58,7 @@ var spanishChat = map[string]string{
 	"chat.tool.mealplan.write": "creando tu plan de comidas",
 	"chat.tool.workout.create": "creando tu plan de entrenamiento",
 	"chat.tool.lifts":          "revisando tus levantamientos",
+	"chat.tool.stats":          "revisando tus estadísticas",
 	"chat.tool.nutrition":      "revisando tu nutrición",
 	"chat.tool.alerts":         "revisando tus recordatorios",
 	"chat.tool.alerts.write":   "creando un recordatorio",

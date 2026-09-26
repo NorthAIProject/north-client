@@ -343,6 +343,24 @@ func Destinations() []Destination {
 			Nav:         NavPlacement{Show: true, Label: "Nutrition", Under: "/app/insights"},
 		},
 		{
+			Key: "nav.sleep-insights", Label: "Sleep insights", Href: "/app/insights/sleep", Icon: "moon", Group: GroupProgress,
+			Description: "Duration, debt, schedule and stages.",
+			Keywords:    []string{"sleep", "bedtime", "hours", "stages", "analytics"},
+			Nav:         NavPlacement{Show: true, Label: "Sleep", Under: "/app/insights"},
+		},
+		{
+			Key: "nav.cardio-insights", Label: "Cardio insights", Href: "/app/insights/cardio", Icon: "footprints", Group: GroupProgress,
+			Description: "Distance, pace, records and heart.",
+			Keywords:    []string{"running", "pace", "distance", "cardio", "heart", "analytics"},
+			Nav:         NavPlacement{Show: true, Label: "Cardio", Under: "/app/insights"},
+		},
+		{
+			Key: "nav.patterns", Label: "Patterns", Href: "/app/insights/patterns", Icon: "sparkles", Group: GroupProgress,
+			Description: "What moves together across your days.",
+			Keywords:    []string{"correlations", "links", "caffeine", "sleep", "analytics"},
+			Nav:         NavPlacement{Show: true, Label: "Patterns", Under: "/app/insights"},
+		},
+		{
 			Key: "nav.coach-insights", Label: "Coaching insights", Href: "/app/insights/coach", Icon: "chart-line", Group: GroupProgress,
 			Description: "How much you and the coach talked.",
 			Keywords:    []string{"charts", "trends", "chat", "messages", "coach", "analytics"},

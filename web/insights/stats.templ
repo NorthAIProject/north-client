@@ -1,0 +1,276 @@
+package insights
+
+import (
+	"strconv"
+
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/chart"
+)
+
+// Row is a label and a value, for the small tables on the stats pages.
+type Row struct {
+	Label string
+	Value string
+	Note  string
+}
+
+// Bar is one horizontal bar: a label, a value, and its width in percent.
+type Bar struct {
+	Label string
+	Value string
+	Pct   int
+}
+
+type SleepView struct {
+	Range   RangeView
+	HasData bool
+	Tiles   []Row // headline numbers
+	Nights  chart.Props
+	// Stages is each stage's share of time asleep.
+	Stages   []Bar
+	Schedule []Row // bedtime, wake, consistency, weekday vs weekend
+	Extremes []Row // best and worst night
+}
+
+type CardioView struct {
+	Range   RangeView
+	HasData bool
+	Tiles       []Row
+	Weekly      chart.Props
+	WeeklyTitle string
+	Kinds       []Bar
+	Runs    []Row
+	HasRuns bool
+	Recent  []Row
+	Heart   []Row
+}
+
+type EatingView struct {
+	HasData bool
+	Tiles   []Row
+	Slots   []Bar
+	Foods   []Row
+	Notes   []Row
+}
+
+type PatternView struct {
+	Title  string
+	Detail string
+	A, B   Bar
+}
+
+type PatternsView struct {
+	Range    RangeView
+	Days     int
+	Findings []PatternView
+}
+
+templ Sleep(user users.User, view SleepView) {
+	@page("Sleep", "sleep", "/app/insights/sleep/body", user, view.Range) {
+		@SleepPanels(view)
+	}
+}
+
+templ SleepPanels(view SleepView) {
+	if !view.HasData {
+		@statsEmpty("No sleep in this window. Sync Apple Health from the app, or log a night on My Day.")
+	} else {
+		<div class="space-y-6" data-testid="insights-sleep">
+			@tiles(view.Tiles)
+			<div class="grid gap-4 lg:grid-cols-3">
+				@card.Card(card.Props{Class: "border-hairline bg-surface lg:col-span-2"}) {
+					@card.Header() {
+						@card.Title() {
+							Each night
+						}
+						@card.Description() {
+							Hours asleep, filed under the morning they ended.
+						}
+					}
+					@card.Content() {
+						@chart.Chart(view.Nights)
+					}
+				}
+				@rowsCard("Schedule", "Consistency matters about as much as length.", view.Schedule)
+			</div>
+			<div class="grid gap-4 lg:grid-cols-2">
+				if len(view.Stages) > 0 {
+					@barsCard("Stages", "Share of time asleep, from Apple Health.", view.Stages)
+				}
+				@rowsCard("Best and worst", "", view.Extremes)
+			</div>
+		</div>
+	}
+}
+
+templ Cardio(user users.User, view CardioView) {
+	@page("Cardio", "cardio", "/app/insights/cardio/body", user, view.Range) {
+		@CardioPanels(view)
+	}
+}
+
+templ CardioPanels(view CardioView) {
+	if !view.HasData && len(view.Heart) == 0 {
+		@statsEmpty("No cardio in this window. Runs, rides and walks from Apple Health, Strava or the app show up here.")
+	} else {
+		<div class="space-y-6" data-testid="insights-cardio">
+			@tiles(view.Tiles)
+			<div class="grid gap-4 lg:grid-cols-3">
+				@card.Card(card.Props{Class: "border-hairline bg-surface lg:col-span-2"}) {
+					@card.Header() {
+						@card.Title() {
+							{ view.WeeklyTitle }
+						}
+					}
+					@card.Content() {
+						@chart.Chart(view.Weekly)
+					}
+				}
+				@barsCard("By activity", "Time spent on each.", view.Kinds)
+			</div>
+			<div class="grid gap-4 lg:grid-cols-3">
+				if view.HasRuns {
+					@rowsCard("Running", "Paces are per kilometre, over runs of at least 1 km.", view.Runs)
+				}
+				if len(view.Heart) > 0 {
+					@rowsCard("Heart", "Latest reading, and the change across this window.", view.Heart)
+				}
+				if len(view.Recent) > 0 {
+					@rowsCard("Recent", "", view.Recent)
+				}
+			</div>
+		</div>
+	}
+}
+
+templ Patterns(user users.User, view PatternsView) {
+	@page("Patterns", "patterns", "/app/insights/patterns/body", user, view.Range) {
+		@PatternsPanels(view)
+	}
+}
+
+templ PatternsPanels(view PatternsView) {
+	<div class="space-y-4" data-testid="insights-patterns">
+		<p class="text-muted-foreground max-w-2xl text-sm leading-relaxed">
+			How the things you log move together, over the last { strconv.Itoa(view.Days) } days. Each compares two groups of days; it shows what went together, not what caused what, and a handful of days either side is a hint rather than a verdict.
+		</p>
+		if len(view.Findings) == 0 {
+			@statsEmpty("Nothing stands out yet. Patterns need at least three days on each side: keep logging sleep, caffeine, meals and check-ins.")
+		}
+		<div class="grid gap-4 md:grid-cols-2">
+			for _, f := range view.Findings {
+				@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+					@card.Header() {
+						@card.Title() {
+							{ f.Title }
+						}
+						@card.Description() {
+							{ f.Detail }
+						}
+					}
+					@card.Content() {
+						<div class="space-y-3">
+							@bar(f.A, "var(--north-signal)")
+							@bar(f.B, "var(--muted-foreground)")
+						</div>
+					}
+				}
+			}
+		</div>
+	</div>
+}
+
+templ eating(view EatingView) {
+	if view.HasData {
+		<section class="space-y-4" data-testid="insights-eating">
+			<h2 class="text-muted-foreground font-mono text-[11px] tracking-[0.14em] uppercase">How you eat</h2>
+			@tiles(view.Tiles)
+			<div class="grid gap-4 lg:grid-cols-3">
+				@barsCard("When the calories land", "Share of the window's calories by time of day.", view.Slots)
+				@rowsCard("Most logged", "", view.Foods)
+				@rowsCard("Habits", "", view.Notes)
+			</div>
+		</section>
+	}
+}
+
+templ tiles(rows []Row) {
+	<div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+		for _, t := range rows {
+			@statTile(t.Label, t.Value, t.Note, DeltaView{})
+		}
+	</div>
+}
+
+templ rowsCard(title, description string, rows []Row) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Title() {
+				{ title }
+			}
+			if description != "" {
+				@card.Description() {
+					{ description }
+				}
+			}
+		}
+		@card.Content() {
+			<dl class="divide-border -my-2 divide-y">
+				for _, r := range rows {
+					<div class="flex items-baseline justify-between gap-3 py-2 text-sm">
+						<dt class="text-muted-foreground">{ r.Label }</dt>
+						<dd class="text-right font-medium tabular-nums">
+							{ r.Value }
+							if r.Note != "" {
+								<span class="text-muted-foreground block text-[11px] font-normal">{ r.Note }</span>
+							}
+						</dd>
+					</div>
+				}
+			</dl>
+		}
+	}
+}
+
+templ barsCard(title, description string, bars []Bar) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Title() {
+				{ title }
+			}
+			if description != "" {
+				@card.Description() {
+					{ description }
+				}
+			}
+		}
+		@card.Content() {
+			<div class="space-y-3">
+				for _, b := range bars {
+					@bar(b, "var(--north-signal)")
+				}
+			</div>
+		}
+	}
+}
+
+templ bar(b Bar, color string) {
+	<div class="text-sm">
+		<div class="flex justify-between gap-2">
+			<span>{ b.Label }</span>
+			<span class="text-muted-foreground tabular-nums">{ b.Value }</span>
+		</div>
+		<div class="bg-muted mt-1 h-1.5 rounded-full">
+			<div class="h-1.5 rounded-full" style={ "width:" + strconv.Itoa(b.Pct) + "%;background:" + color }></div>
+		</div>
+	</div>
+}
+
+templ statsEmpty(message string) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Content() {
+			@emptyState(message, "", "")
+		}
+	}
+}

@@ -150,15 +150,23 @@ func BuildView(ctx context.Context, s Snapshot) daypages.Data {
 	}
 	data.Body = bodyCard(s.Body)
 
+	// The rail reads the wider window when there is one, so the evening
+	// before and the small hours after show beside the date.
+	entries := s.Around
+	if entries == nil {
+		entries = s.Timeline
+	}
 	var items []daypages.RailInput
-	for _, e := range s.Timeline {
-		items = append(items, daypages.RailInput{At: e.At, Title: railTitle(ctx, e), Detail: e.Detail, Href: e.Href, Color: kindColor(e.Kind)})
+	for _, e := range entries {
+		items = append(items, daypages.RailInput{
+			At: e.At, Title: railTitle(ctx, e), Detail: e.Detail, Href: e.Href, Color: kindColor(e.Kind), Icon: e.Icon,
+		})
 	}
 	var markers []daypages.MarkerInput
 	for _, m := range s.Markers {
 		markers = append(markers, daypages.MarkerInput{At: m.At, Kind: string(m.Kind), Passed: m.Passed})
 	}
-	data.Rail = daypages.BuildRail(s.Date, items, markers, s.Now, s.IsToday)
+	data.Rail = daypages.BuildRail(s.Date, items, markers, railBands(ctx, s), s.Now, s.IsToday)
 
 	set := map[day.RuleKind]day.Rule{}
 	for _, r := range s.Rules {
@@ -349,6 +357,31 @@ func railTitle(ctx context.Context, e dashboard.Entry) string {
 		}
 	}
 	return e.Title
+}
+
+// railBands are the spans drawn behind the rail's cards: the night's sleep
+// and every fast in the window.
+func railBands(ctx context.Context, s Snapshot) []daypages.BandInput {
+	var bands []daypages.BandInput
+	if s.Sleep != nil && s.Sleep.Start != nil && s.Sleep.End != nil {
+		bands = append(bands, daypages.BandInput{
+			Start: *s.Sleep.Start, End: s.Sleep.End, Kind: "sleep",
+			Label: i18n.Tf(ctx, "day.rail.sleep", s.Sleep.Duration()),
+		})
+	}
+	for _, f := range s.Fasts {
+		label := i18n.Tf(ctx, "day.rail.fast", f.TargetHours)
+		if f.Open() {
+			label = i18n.Tf(ctx, "day.rail.fast_open", hoursMinutes(f.Elapsed))
+		}
+		bands = append(bands, daypages.BandInput{Start: f.StartedAt, End: f.EndedAt, Kind: "fast", Label: label})
+	}
+	return bands
+}
+
+func hoursMinutes(d time.Duration) string {
+	m := int(d.Minutes())
+	return fmt.Sprintf("%dh %02dm", m/60, m%60)
 }
 
 func kindColor(k dashboard.EntryKind) string {

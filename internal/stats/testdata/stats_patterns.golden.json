@@ -1,0 +1,23 @@
+{
+  "range": "quarter",
+  "days": 90,
+  "findings": [
+    {
+      "key": "sleep_late_caffeine",
+      "title": "You sleep 42 min less after late caffeine",
+      "detail": "6h 38m on 8 nights after caffeine past your cutoff, 7h 20m on 20 other nights.",
+      "unit": "min",
+      "a": {
+        "label": "After caffeine past your cutoff",
+        "mean": 398,
+        "days": 8
+      },
+      "b": {
+        "label": "Other nights",
+        "mean": 440,
+        "days": 20
+      },
+      "diff": -42
+    }
+  ]
+}

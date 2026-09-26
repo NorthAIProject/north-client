@@ -3364,6 +3364,94 @@ paths:
           $ref: '#/components/responses/ValidationError'
         '500':
           $ref: '#/components/responses/InternalError'
+  /stats/sleep:
+    get:
+      operationId: getSleepStats
+      summary: Sleep over a range, with debt, schedule and stages
+      parameters:
+        - name: range
+          in: query
+          required: false
+          schema:
+            type: string
+          description: today, yesterday, week, month, quarter or year. Defaults to today.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatsSleep'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /stats/cardio:
+    get:
+      operationId: getCardioStats
+      summary: Cardio over a range, with paces, records and heart trends
+      parameters:
+        - name: range
+          in: query
+          required: false
+          schema:
+            type: string
+          description: today, yesterday, week, month, quarter or year. Defaults to today.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatsCardio'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /stats/eating:
+    get:
+      operationId: getEatingStats
+      summary: Eating over a range, with adherence, top foods and timing
+      parameters:
+        - name: range
+          in: query
+          required: false
+          schema:
+            type: string
+          description: today, yesterday, week, month, quarter or year. Defaults to today.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatsEating'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /stats/patterns:
+    get:
+      operationId: getPatterns
+      summary: What moves together across days, over at least the last 90
+      parameters:
+        - name: range
+          in: query
+          required: false
+          schema:
+            type: string
+          description: today, yesterday, week, month, quarter or year. Defaults to today.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatsPatterns'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /lifts/stats:
     get:
       operationId: getLiftStats
@@ -4084,6 +4172,265 @@ components:
         loggedAt:
           type: string
           format: date-time
+    StatsDayValue:
+      type: object
+      required: [date, value]
+      properties:
+        date:
+          type: string
+          format: date
+        value:
+          type: number
+    StatsNight:
+      type: object
+      required: [date, minutes, stages]
+      properties:
+        date:
+          type: string
+          format: date
+        minutes:
+          type: integer
+        start:
+          type: string
+          format: date-time
+        end:
+          type: string
+          format: date-time
+        stages:
+          type: object
+          additionalProperties:
+            type: integer
+        quality:
+          type: integer
+    StatsSleep:
+      type: object
+      required: [range, nights, targetMinutes, avgMinutes, debtMinutes, nightsOnTarget, hasTimes, avgBedtime, avgWake, bedtimeSpreadMinutes, wakeSpreadMinutes, weekdayAvgMinutes, weekendAvgMinutes, stageShare]
+      properties:
+        range:
+          type: string
+        nights:
+          type: array
+          items:
+            $ref: '#/components/schemas/StatsNight'
+        targetMinutes:
+          type: integer
+        avgMinutes:
+          type: integer
+        debtMinutes:
+          type: integer
+        nightsOnTarget:
+          type: integer
+        hasTimes:
+          type: boolean
+        avgBedtime:
+          type: string
+        avgWake:
+          type: string
+        bedtimeSpreadMinutes:
+          type: integer
+        wakeSpreadMinutes:
+          type: integer
+        weekdayAvgMinutes:
+          type: integer
+        weekendAvgMinutes:
+          type: integer
+        stageShare:
+          type: object
+          additionalProperties:
+            type: number
+    StatsKind:
+      type: object
+      required: [name, sessions, minutes, distanceKm]
+      properties:
+        name:
+          type: string
+        sessions:
+          type: integer
+        minutes:
+          type: integer
+        distanceKm:
+          type: number
+    StatsRuns:
+      type: object
+      required: [count, distanceKm, avgPaceSeconds, bestPaceSeconds, longestKm, best5kSeconds]
+      properties:
+        count:
+          type: integer
+        distanceKm:
+          type: number
+        avgPaceSeconds:
+          type: number
+        bestPaceSeconds:
+          type: number
+        longestKm:
+          type: number
+        best5kSeconds:
+          type: number
+    StatsSession:
+      type: object
+      required: [name, at, minutes, distanceKm, paceSeconds, kcal]
+      properties:
+        name:
+          type: string
+        at:
+          type: string
+          format: date-time
+        minutes:
+          type: integer
+        distanceKm:
+          type: number
+        paceSeconds:
+          type: number
+        kcal:
+          type: number
+    StatsCardio:
+      type: object
+      required: [range, sessions, minutes, distanceKm, kcal, byKind, weeklyKm, weeklyMinutes, runs, recent, restingHeartRate, hrv, vo2Max]
+      properties:
+        range:
+          type: string
+        sessions:
+          type: integer
+        minutes:
+          type: integer
+        distanceKm:
+          type: number
+        kcal:
+          type: number
+        byKind:
+          type: array
+          items:
+            $ref: '#/components/schemas/StatsKind'
+        weeklyKm:
+          type: array
+          items:
+            $ref: '#/components/schemas/StatsDayValue'
+        weeklyMinutes:
+          type: array
+          items:
+            $ref: '#/components/schemas/StatsDayValue'
+        runs:
+          $ref: '#/components/schemas/StatsRuns'
+        recent:
+          type: array
+          items:
+            $ref: '#/components/schemas/StatsSession'
+        restingHeartRate:
+          type: array
+          items:
+            $ref: '#/components/schemas/StatsDayValue'
+        hrv:
+          type: array
+          items:
+            $ref: '#/components/schemas/StatsDayValue'
+        vo2Max:
+          type: array
+          items:
+            $ref: '#/components/schemas/StatsDayValue'
+    StatsFood:
+      type: object
+      required: [label, count, kcal]
+      properties:
+        label:
+          type: string
+        count:
+          type: integer
+        kcal:
+          type: number
+    StatsSlot:
+      type: object
+      required: [key, kcal, share]
+      properties:
+        key:
+          type: string
+        kcal:
+          type: number
+        share:
+          type: number
+    StatsEating:
+      type: object
+      required: [range, daysLogged, avgKcal, avgProteinG, avgCarbG, avgFatG, goalKcal, goalProteinG, onTargetDays, proteinDays, proteinPerKg, topFoods, bySlot, weekdayKcal, weekendKcal, lateDays, daily]
+      properties:
+        range:
+          type: string
+        daysLogged:
+          type: integer
+        avgKcal:
+          type: number
+        avgProteinG:
+          type: number
+        avgCarbG:
+          type: number
+        avgFatG:
+          type: number
+        goalKcal:
+          type: number
+        goalProteinG:
+          type: number
+        onTargetDays:
+          type: integer
+        proteinDays:
+          type: integer
+        proteinPerKg:
+          type: number
+        topFoods:
+          type: array
+          items:
+            $ref: '#/components/schemas/StatsFood'
+        bySlot:
+          type: array
+          items:
+            $ref: '#/components/schemas/StatsSlot'
+        weekdayKcal:
+          type: number
+        weekendKcal:
+          type: number
+        lateDays:
+          type: integer
+        daily:
+          type: array
+          items:
+            $ref: '#/components/schemas/StatsDayValue'
+    StatsGroup:
+      type: object
+      required: [label, mean, days]
+      properties:
+        label:
+          type: string
+        mean:
+          type: number
+        days:
+          type: integer
+    StatsFinding:
+      type: object
+      required: [key, title, detail, unit, a, b, diff]
+      properties:
+        key:
+          type: string
+        title:
+          type: string
+        detail:
+          type: string
+        unit:
+          type: string
+        a:
+          $ref: '#/components/schemas/StatsGroup'
+        b:
+          $ref: '#/components/schemas/StatsGroup'
+        diff:
+          type: number
+    StatsPatterns:
+      type: object
+      required: [range, days, findings]
+      properties:
+        range:
+          type: string
+        days:
+          type: integer
+        findings:
+          type: array
+          items:
+            $ref: '#/components/schemas/StatsFinding'
     LiftSetInput:
       type: object
       additionalProperties: false

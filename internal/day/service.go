@@ -244,7 +244,21 @@ type Snapshot struct {
 	Timeline []dashboard.Entry
 	Rules    []day.Rule
 	Markers  []day.Marker
+
+	// Around is the timeline from the evening before to the small hours
+	// after, for the rail: a meal at 01:00 belongs to the night it ended,
+	// and the page shows it faded beside the date rather than losing it.
+	Around []dashboard.Entry
+	// Fasts are every fast touching that wider window, for the rail's bands.
+	Fasts []day.Fast
 }
+
+// Rail window around a date: from the evening before to the small hours
+// after.
+const (
+	RailBefore = 6 * time.Hour
+	RailAfter  = 29 * time.Hour
+)
 
 // ParseDate reads a ?date= value in the reader's zone. Empty or malformed is
 // today: a hand-edited URL must not take the page down.
@@ -335,7 +349,28 @@ func (s *Service) Load(ctx context.Context, user users.User, date time.Time) (Sn
 	} else {
 		snap.Nutrients = day.Nutrients{Missing: supplement.Nutrients()}
 	}
+	around := timerange.Between(date.Add(-RailBefore), date.Add(RailAfter))
+	if s.timeline != nil {
+		g.Go(func() (err error) {
+			snap.Around, err = s.timeline.Timeline(gctx, user, around, 0)
+			return
+		})
+	}
 	if s.fasting != nil {
+		g.Go(func() error {
+			fasts, err := s.fasting.Overlapping(gctx, user, around)
+			if err != nil {
+				return err
+			}
+			for _, f := range fasts {
+				elapsed := f.Elapsed(now)
+				snap.Fasts = append(snap.Fasts, day.Fast{
+					StartedAt: f.StartedAt.In(loc), EndedAt: f.EndedAt, TargetHours: f.TargetHours,
+					Elapsed: elapsed, Phase: string(fast.PhaseAt(elapsed)), Fraction: f.Fraction(now),
+				})
+			}
+			return nil
+		})
 		g.Go(func() error {
 			fasts, err := s.fasting.Overlapping(gctx, user, rg)
 			if err != nil || len(fasts) == 0 {

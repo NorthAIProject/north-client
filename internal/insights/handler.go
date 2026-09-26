@@ -51,6 +51,13 @@ func (h *Handler) Routes(r chi.Router) {
 		r.Get("/nutrition", h.nutrition)
 		r.Get("/nutrition/body", h.nutritionBody)
 
+		r.Get("/sleep", h.statsPage("sleep", false))
+		r.Get("/sleep/body", h.statsPage("sleep", true))
+		r.Get("/cardio", h.statsPage("cardio", false))
+		r.Get("/cardio/body", h.statsPage("cardio", true))
+		r.Get("/patterns", h.statsPage("patterns", false))
+		r.Get("/patterns/body", h.statsPage("patterns", true))
+
 		r.Get("/coach", h.coach)
 		r.Get("/coach/body", h.coachBody)
 
@@ -384,5 +391,57 @@ func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 	default:
 		middleware.FromContext(r.Context()).Error("insights request failed", slog.Any("error", err))
 		http.Error(w, "Something went wrong.", http.StatusInternalServerError)
+	}
+}
+
+// statsPage renders one of the stats pages, whole or as the panels a range
+// switch swaps in.
+func (h *Handler) statsPage(kind string, panels bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user, rg := h.context(r)
+		stats := h.svc.stats
+		if stats == nil {
+			h.fail(w, r, apperr.ErrNotFound)
+			return
+		}
+		ctx := r.Context()
+		switch kind {
+		case "sleep":
+			st, err := stats.Sleep(ctx, user, rg)
+			if err != nil {
+				h.fail(w, r, err)
+				return
+			}
+			view := buildSleepView(rg, st)
+			if panels {
+				h.render(w, r, insightpages.SleepPanels(view))
+				return
+			}
+			h.render(w, r, insightpages.Sleep(user, view))
+		case "cardio":
+			st, err := stats.Cardio(ctx, user, rg)
+			if err != nil {
+				h.fail(w, r, err)
+				return
+			}
+			view := buildCardioView(rg, st)
+			if panels {
+				h.render(w, r, insightpages.CardioPanels(view))
+				return
+			}
+			h.render(w, r, insightpages.Cardio(user, view))
+		default:
+			found, days, err := stats.Patterns(ctx, user, rg)
+			if err != nil {
+				h.fail(w, r, err)
+				return
+			}
+			view := buildPatternsView(rg, days, found)
+			if panels {
+				h.render(w, r, insightpages.PatternsPanels(view))
+				return
+			}
+			h.render(w, r, insightpages.Patterns(user, view))
+		}
 	}
 }

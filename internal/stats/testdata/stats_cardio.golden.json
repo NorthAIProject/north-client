@@ -1,0 +1,57 @@
+{
+  "range": "week",
+  "sessions": 1,
+  "minutes": 30,
+  "distanceKm": 6,
+  "kcal": 420,
+  "byKind": [
+    {
+      "name": "Running",
+      "sessions": 1,
+      "minutes": 30,
+      "distanceKm": 6
+    }
+  ],
+  "weeklyKm": [
+    {
+      "date": "2026-09-21",
+      "value": 6
+    }
+  ],
+  "weeklyMinutes": [
+    {
+      "date": "2026-09-21",
+      "value": 30
+    }
+  ],
+  "runs": {
+    "count": 1,
+    "distanceKm": 6,
+    "avgPaceSeconds": 300,
+    "bestPaceSeconds": 300,
+    "longestKm": 6,
+    "best5kSeconds": 1500
+  },
+  "recent": [
+    {
+      "name": "Running",
+      "at": "2026-09-22T07:00:00Z",
+      "minutes": 30,
+      "distanceKm": 6,
+      "paceSeconds": 300,
+      "kcal": 420
+    }
+  ],
+  "restingHeartRate": [
+    {
+      "date": "2026-09-21",
+      "value": 52
+    },
+    {
+      "date": "2026-09-22",
+      "value": 51
+    }
+  ],
+  "hrv": [],
+  "vo2Max": []
+}

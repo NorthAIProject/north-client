@@ -32,6 +32,7 @@ func buildNutritionView(data NutritionData) (insightpages.NutritionView, error) 
 		HasGoal:       data.HasGoal,
 		CaloriesChart: viz.Bar("insights-nutrition-calories", "kcal", labels, series),
 		HasData:       len(data.Days) > 0,
+		Eating:        buildEatingView(data.Eating),
 	}
 
 	if n := float64(len(data.Days)); n > 0 {

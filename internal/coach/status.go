@@ -42,6 +42,7 @@ var toolStatusKeys = map[string]string{
 	"remove_workout_exercise": "chat.tool.workout.write",
 	"create_workout_plan":     "chat.tool.workout.create",
 	"get_lift_stats":          "chat.tool.lifts",
+	"get_stats":               "chat.tool.stats",
 	"create_meal_plan":        "chat.tool.mealplan.write",
 
 	"search_ingredients": "chat.tool.nutrition",

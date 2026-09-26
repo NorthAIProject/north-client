@@ -285,7 +285,7 @@ templ siteFooter() {
 				@icon.Compass(icon.Props{Class: "size-3.5"})
 				@monoLabel(i18n.T(ctx, "land.footer.tagline"))
 			</div>
-			<div class="flex items-center gap-5">
+			<div class="flex flex-wrap items-center gap-x-5 gap-y-3">
 				<a href="/privacy" class="rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-signal">
 					@monoLabel(i18n.T(ctx, "land.footer.privacy"))
 				</a>

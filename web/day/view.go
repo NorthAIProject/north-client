@@ -226,12 +226,14 @@ type RuleRow struct {
 	Enabled bool
 }
 
-// Rail is the day's timeline, latest at the top.
+// Rail is the day's timeline, latest at the top: entries as cards, rules as
+// dashed lines, sleep and fasts as shaded bands behind them, and a now line.
 type Rail struct {
 	HeightPx int
 	Hours    []RailHour
 	Items    []RailItem
 	Markers  []RailMarker
+	Bands    []RailBand
 	ShowNow  bool
 	NowTopPx int
 	NowLabel string
@@ -249,6 +251,10 @@ type RailItem struct {
 	Detail string
 	Href   string
 	Color  string
+	Icon   string
+	// Faded marks an entry from the evening before or the night after: shown
+	// for context, but not part of this date's totals.
+	Faded bool
 }
 
 type RailMarker struct {
@@ -258,13 +264,28 @@ type RailMarker struct {
 	Passed bool
 }
 
-// Rail layout constants: an hour is 60px, and two rows are never closer than
-// railRowPx so labels do not overlap however bunched the entries are.
+// RailBand is a span of time drawn behind the cards.
+type RailBand struct {
+	TopPx    int
+	HeightPx int
+	Kind     string // "sleep" or "fast"
+	Label    string
+	// Open is a band still running, drawn to now with an open end.
+	Open bool
+}
+
+// Rail layout: an hour is 60px, and two cards are never closer than
+// railRowPx so they do not overlap however bunched the entries are.
 const (
 	railPxPerHour = 60
-	railRowPx     = 26
-	railEndHour   = 24
-	railStartHour = 6
+	railRowPx     = 50
+	// The date's own window, in minutes from its midnight.
+	railDayStart = 6 * 60
+	railDayEnd   = 24 * 60
+	// How far past the date the rail may reach: the evening before and the
+	// small hours after.
+	railMinStart = -6 * 60
+	railMaxEnd   = 29 * 60
 )
 
 // RailInput is an entry before layout.
@@ -274,6 +295,7 @@ type RailInput struct {
 	Detail string
 	Href   string
 	Color  string
+	Icon   string
 }
 
 // MarkerInput is a rule before layout.
@@ -283,41 +305,82 @@ type MarkerInput struct {
 	Passed bool
 }
 
-// BuildRail lays a day out from midnight-to-midnight inputs.
+// BandInput is a span before layout. A nil End is still running.
+type BandInput struct {
+	Start time.Time
+	End   *time.Time
+	Kind  string
+	Label string
+}
+
+// BuildRail lays a day out.
 //
-// The rail starts at 06:00 unless something happened earlier, and runs to
-// midnight. Latest is at the top, the way the day reads when you look back on
-// it from the evening.
-func BuildRail(date time.Time, items []RailInput, markers []MarkerInput, now time.Time, isToday bool) Rail {
-	startHour := railStartHour
+// The rail covers 06:00 to midnight of the date, and stretches to take in
+// anything nearby: an entry at 04:00, a meal after midnight, a fast begun
+// the evening before. Entries outside the date itself are faded. Latest is
+// at the top, the way the day reads when you look back on it from the
+// evening.
+func BuildRail(date time.Time, items []RailInput, markers []MarkerInput, bands []BandInput, now time.Time, isToday bool) Rail {
+	minute := func(t time.Time) int { return int(math.Round(t.Sub(date).Minutes())) }
+	clampMin := func(m int) int { return max(railMinStart, min(railMaxEnd, m)) }
+
+	lo, hi := railDayStart, railDayEnd
 	for _, it := range items {
-		if h := it.At.Hour(); h < startHour {
-			startHour = h
+		m := clampMin(minute(it.At))
+		lo, hi = min(lo, m), max(hi, m)
+	}
+	bandEnd := func(b BandInput) time.Time {
+		if b.End != nil {
+			return *b.End
 		}
+		return now
 	}
-	span := railEndHour - startHour
-	rail := Rail{HeightPx: span * railPxPerHour}
+	for _, b := range bands {
+		lo = min(lo, clampMin(minute(b.Start)))
+		hi = max(hi, clampMin(minute(bandEnd(b))))
+	}
+	if isToday {
+		hi = max(hi, clampMin(minute(now)+30))
+	}
+	// Whole hours at both ends.
+	startHour := int(math.Floor(float64(lo) / 60))
+	endHour := int(math.Ceil(float64(hi) / 60))
+	top := endHour * 60
 
+	rail := Rail{HeightPx: (endHour - startHour) * railPxPerHour}
 	y := func(t time.Time) int {
-		mins := t.Sub(date).Minutes()
-		return int(math.Round((float64(railEndHour*60) - mins) / 60 * railPxPerHour))
+		return int(math.Round(float64(top-clampMin(minute(t))) / 60 * railPxPerHour))
 	}
 
-	for h := railEndHour; h >= startHour; h -= 2 {
+	for h := endHour; h >= startHour; h-- {
 		rail.Hours = append(rail.Hours, RailHour{
-			Label: fmt.Sprintf("%02d:00", h%24),
-			TopPx: (railEndHour - h) * railPxPerHour,
+			Label: fmt.Sprintf("%02d:00", ((h%24)+24)%24),
+			TopPx: (endHour - h) * railPxPerHour,
 		})
+	}
+
+	for _, b := range bands {
+		end := bandEnd(b)
+		if !end.After(b.Start) {
+			continue
+		}
+		t, bottom := y(end), y(b.Start)
+		if bottom-t < 4 {
+			continue
+		}
+		rail.Bands = append(rail.Bands, RailBand{TopPx: t, HeightPx: bottom - t, Kind: b.Kind, Label: b.Label, Open: b.End == nil})
 	}
 
 	sorted := append([]RailInput(nil), items...)
 	sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].At.After(sorted[j].At) })
 	last := -railRowPx
 	for _, it := range sorted {
-		top := max(y(it.At), last+railRowPx)
-		last = top
+		at := max(y(it.At), last+railRowPx)
+		last = at
+		m := minute(it.At)
 		rail.Items = append(rail.Items, RailItem{
-			TopPx: top, Time: it.At.Format("15:04"), Title: it.Title, Detail: it.Detail, Href: it.Href, Color: it.Color,
+			TopPx: at, Time: it.At.Format("15:04"), Title: it.Title, Detail: it.Detail, Href: it.Href,
+			Color: it.Color, Icon: it.Icon, Faded: m < 0 || m >= railDayEnd,
 		})
 	}
 
@@ -331,8 +394,8 @@ func BuildRail(date time.Time, items []RailInput, markers []MarkerInput, now tim
 		rail.NowLabel = now.Format("15:04")
 	}
 
-	// Anything spilling below the last hour stretches the rail rather than
-	// being cut off.
+	// Cards spilling below the last hour stretch the rail rather than being
+	// cut off.
 	if len(rail.Items) > 0 {
 		if bottom := rail.Items[len(rail.Items)-1].TopPx + railRowPx; bottom > rail.HeightPx {
 			rail.HeightPx = bottom

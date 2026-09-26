@@ -271,3 +271,8 @@ func (s *Service) NextSetNumber(ctx context.Context, user users.User, slug, name
 	}
 	return min(len(sets)+1, maxSetNo), nil
 }
+
+// Between lists the sets inside a window, newest first.
+func (s *Service) Between(ctx context.Context, user users.User, rg timerange.Range) ([]Set, error) {
+	return s.repo.ListBetween(ctx, user.ID, rg.Since, rg.Until)
+}
