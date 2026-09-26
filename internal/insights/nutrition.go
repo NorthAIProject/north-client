@@ -4,6 +4,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/NorthAIProject/north-client/internal/stats/stat"
+
 	"golang.org/x/sync/errgroup"
 
 	"github.com/NorthAIProject/north-client/internal/calculator"
@@ -33,6 +35,10 @@ type NutritionData struct {
 	// intake is still charted; it simply is not judged, because there is no
 	// target to judge it against.
 	HasGoal bool
+
+	// Eating is the deeper read from stats: adherence, top foods, when in
+	// the day the calories land. Empty without the stats service.
+	Eating stat.EatingStats
 }
 
 // Nutrition loads the window's food logs and the current macro plan.
@@ -64,6 +70,13 @@ func (s *Service) Nutrition(ctx context.Context, user users.User, rg timerange.R
 		out.Goal, out.HasGoal = plan, true
 		return nil
 	})
+
+	if s.stats != nil {
+		g.Go(func() (err error) {
+			out.Eating, err = s.stats.Eating(gctx, user, rg)
+			return
+		})
+	}
 
 	if err := g.Wait(); err != nil {
 		return NutritionData{}, err

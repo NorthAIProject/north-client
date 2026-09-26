@@ -1,0 +1,61 @@
+{
+  "range": "week",
+  "daysLogged": 1,
+  "avgKcal": 840,
+  "avgProteinG": 53,
+  "avgCarbG": 0,
+  "avgFatG": 0,
+  "goalKcal": 2200,
+  "goalProteinG": 160,
+  "onTargetDays": 0,
+  "proteinDays": 0,
+  "proteinPerKg": 0.7,
+  "topFoods": [
+    {
+      "label": "Oats",
+      "count": 1,
+      "kcal": 380
+    },
+    {
+      "label": "Salmon",
+      "count": 1,
+      "kcal": 460
+    }
+  ],
+  "bySlot": [
+    {
+      "key": "morning",
+      "kcal": 380,
+      "share": 0.45
+    },
+    {
+      "key": "midday",
+      "kcal": 0,
+      "share": 0
+    },
+    {
+      "key": "afternoon",
+      "kcal": 0,
+      "share": 0
+    },
+    {
+      "key": "evening",
+      "kcal": 0,
+      "share": 0
+    },
+    {
+      "key": "late",
+      "kcal": 460,
+      "share": 0.55
+    }
+  ],
+  "weekdayKcal": 840,
+  "weekendKcal": 0,
+  "lateDays": 1,
+  "daily": [
+    {
+      "date": "2026-09-21",
+      "value": 840
+    }
+  ]
+}

@@ -23,6 +23,8 @@ import (
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/sleep"
 	"github.com/NorthAIProject/north-client/internal/spend"
+	"github.com/NorthAIProject/north-client/internal/stats"
+	"github.com/NorthAIProject/north-client/internal/stats/stat"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
@@ -64,6 +66,10 @@ type Options struct {
 	// maxes and volume from logged sets. Optional.
 	Lifts LiftStats
 
+	// Stats powers the sleep, cardio and patterns pages and the eating
+	// section of nutrition. Optional: without it those pages say so.
+	Stats StatsReader
+
 	// SiteURL is the base a digest links back to. Empty sends the numbers
 	// without a link, which is the right degradation for a deployment that
 	// has not been told its own address.
@@ -87,7 +93,16 @@ type Service struct {
 	spend         *spend.Repository
 	health        HealthReadings
 	lifts         LiftStats
+	stats         StatsReader
 	siteURL       string
+}
+
+// StatsReader is the slice of stats.Service the stats pages need.
+type StatsReader interface {
+	Sleep(ctx context.Context, user users.User, rg timerange.Range) (stat.SleepStats, error)
+	Cardio(ctx context.Context, user users.User, rg timerange.Range) (stats.CardioStats, error)
+	Eating(ctx context.Context, user users.User, rg timerange.Range) (stat.EatingStats, error)
+	Patterns(ctx context.Context, user users.User, rg timerange.Range) ([]stat.Finding, int, error)
 }
 
 // LiftStats is the slice of lifts.Service the training page needs.
@@ -118,6 +133,7 @@ func NewService(opts Options) *Service {
 		spend:         opts.Spend,
 		health:        opts.Health,
 		lifts:         opts.Lifts,
+		stats:         opts.Stats,
 		siteURL:       opts.SiteURL,
 	}
 }

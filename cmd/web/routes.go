@@ -70,6 +70,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/sleep"
 	"github.com/NorthAIProject/north-client/internal/soreness"
 	"github.com/NorthAIProject/north-client/internal/spend"
+	"github.com/NorthAIProject/north-client/internal/stats"
 	"github.com/NorthAIProject/north-client/internal/supplements"
 	"github.com/NorthAIProject/north-client/internal/toolaudit"
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -515,6 +516,13 @@ func routes(
 
 	// Insights reuses the dashboard's timeline rather than reimplementing the
 	// merge across eight slices. Two copies of that would drift.
+	// Stats reads every slice above over a window; it owns no tables.
+	statsSvc := stats.NewService(stats.Sources{
+		Sleep: sleepSvc, Health: healthSvc, Activity: activitySvc, Food: foodLogSvc,
+		MacroGoals: calculatorSvc, Biometrics: biometricSvc, Caffeine: caffeineSvc,
+		ScreenTime: screenTimeSvc, CheckIns: checkinSvc, Lifts: liftSvc, Rules: daySvc,
+	})
+
 	insightsSvc := insights.NewService(insights.Options{
 		Dashboard: dashboardSvc,
 		CheckIns:  checkinSvc,
@@ -532,6 +540,7 @@ func routes(
 		Spend:         spendRepo,
 		Health:        healthSvc,
 		Lifts:         liftSvc,
+		Stats:         statsSvc,
 		SiteURL:       cfg.BaseURL,
 	})
 	insightsHandler := insights.NewHandler(insightsSvc)
@@ -591,6 +600,7 @@ func routes(
 		Soreness:    sorenessSvc,
 		Lifts:       liftSvc,
 		Health:      healthSvc,
+		Stats:       statsSvc,
 	})
 
 	agentTools.Record(auditRecorder)
@@ -861,6 +871,7 @@ func routes(
 			day:         day.NewAPI(daySvc),
 			caffeine:    caffeine.NewAPI(caffeineSvc),
 			lifts:       lifts.NewAPI(liftSvc),
+			stats:       stats.NewAPI(statsSvc),
 			fasting:     fasting.NewAPI(fastingSvc),
 			supplements: supplements.NewAPI(supplementSvc),
 			screenTime:  screentime.NewAPI(screenTimeSvc),

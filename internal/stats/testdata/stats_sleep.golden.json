@@ -1,0 +1,39 @@
+{
+  "range": "week",
+  "nights": [
+    {
+      "date": "2026-09-21",
+      "minutes": 450,
+      "start": "2026-09-20T23:20:00Z",
+      "end": "2026-09-21T07:10:00Z",
+      "stages": {
+        "awake": 15,
+        "core": 285,
+        "deep": 70,
+        "rem": 95
+      },
+      "quality": 4
+    },
+    {
+      "date": "2026-09-22",
+      "minutes": 390,
+      "stages": {}
+    }
+  ],
+  "targetMinutes": 480,
+  "avgMinutes": 420,
+  "debtMinutes": 120,
+  "nightsOnTarget": 0,
+  "hasTimes": true,
+  "avgBedtime": "23:20",
+  "avgWake": "07:10",
+  "bedtimeSpreadMinutes": 0,
+  "wakeSpreadMinutes": 0,
+  "weekdayAvgMinutes": 420,
+  "weekendAvgMinutes": 0,
+  "stageShare": {
+    "core": 0.63,
+    "deep": 0.16,
+    "rem": 0.21
+  }
+}

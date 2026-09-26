@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/NorthAIProject/north-client/internal/stats"
+
 	"github.com/NorthAIProject/north-client/internal/caffeine"
 	"github.com/NorthAIProject/north-client/internal/fasting"
 	"github.com/NorthAIProject/north-client/internal/health"
@@ -89,6 +91,9 @@ type Services struct {
 	Lifts       *lifts.Service
 	// Health takes a blood pressure reading.
 	Health *health.Service
+
+	// Stats reads the stats pages (sleep, cardio, eating, patterns).
+	Stats *stats.Service
 
 	// SiteURL is the public origin, used to build the absolute asset URLs a
 	// tool hands back. Environment-specific on purpose: an agent talking to a
@@ -217,6 +222,9 @@ func Build(svc Services) *Registry {
 	}
 	if svc.Health != nil {
 		r.Register(recordBloodPressure(svc.Health))
+	}
+	if svc.Stats != nil && svc.Users != nil {
+		r.Register(getStats(svc.Stats, svc.Users))
 	}
 
 	return r
