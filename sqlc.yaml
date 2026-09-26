@@ -433,3 +433,12 @@ sql:
         package: spenddb
         out: internal/spend/db
         overrides: *overrides
+  - engine: postgresql
+    schema: migrations
+    queries: internal/day/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: daydb
+        out: internal/day/db
+        overrides: *overrides

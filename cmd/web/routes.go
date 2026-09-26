@@ -29,6 +29,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/connections"
 	"github.com/NorthAIProject/north-client/internal/conversations"
 	"github.com/NorthAIProject/north-client/internal/dashboard"
+	"github.com/NorthAIProject/north-client/internal/day"
 	"github.com/NorthAIProject/north-client/internal/decisions"
 	"github.com/NorthAIProject/north-client/internal/documents"
 	"github.com/NorthAIProject/north-client/internal/exercises"
@@ -456,6 +457,7 @@ func routes(
 		Sleep:         sleepSvc,
 		Activity:      activitySvc,
 		Mind:          mindSvc,
+		Food:          foodLogSvc,
 		Nudges:        nudgeSvc,
 		Push:          pushSvc,
 	}
@@ -465,6 +467,22 @@ func routes(
 	dashboardSvc := dashboard.NewService(dashboardOpts)
 	dashboardHandler := dashboard.NewHandler(dashboardSvc)
 	dashboardAPI := dashboard.NewAPI(dashboardSvc)
+
+	// My Day reads one date across the slices above and reuses the dashboard's
+	// timeline, now with meals on it, for the day rail.
+	daySvc := day.NewService(day.Options{
+		Rules:      day.NewRepository(pool),
+		Hydration:  hydrationSvc,
+		Sleep:      sleepSvc,
+		Food:       foodLogSvc,
+		MacroGoals: calculatorSvc,
+		Biometrics: biometricSvc,
+		Health:     healthSvc,
+		Activity:   activitySvc,
+		Streaks:    checkinSvc,
+		Timeline:   dashboardSvc,
+	})
+	dayHandler := day.NewHandler(daySvc)
 
 	// Insights reuses the dashboard's timeline rather than reimplementing the
 	// merge across eight slices. Two copies of that would drift.
@@ -793,6 +811,7 @@ func routes(
 			capture:    captureAPI,
 			onboarding: onboardingAPI,
 			dashboard:  dashboardAPI,
+			day:        day.NewAPI(daySvc),
 			coach:      coach.NewAPI(coachSvc, quotaSvc, mediaSvc),
 			exercises:  exercises.NewAPI(exerciseSvc, assets.Assets),
 			settings:   settings.NewAPI(settingsHandler),
@@ -931,6 +950,7 @@ func routes(
 			r.Group(func(r chi.Router) {
 				r.Use(onboarding.RequireOnboarded)
 
+				dayHandler.Routes(r)
 				dashboardHandler.Routes(r)
 				if newsSvc != nil {
 					news.NewHandler(newsSvc).Routes(r)

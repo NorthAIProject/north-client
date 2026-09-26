@@ -1,0 +1,113 @@
+package day
+
+import (
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/checkbox"
+	"github.com/NorthAIProject/north-client/web/shared/ui/dialog"
+	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
+	"github.com/NorthAIProject/north-client/web/shared/ui/input"
+)
+
+templ Page(user users.User, data Data) {
+	@layout.App(i18n.T(ctx, "nav.my-day"), user, layout.BuildNav(ctx, "/app")) {
+		<div class="mx-auto w-full max-w-7xl space-y-5 p-4 pb-28 md:p-6 md:pb-28">
+			@header(data)
+			<div class="grid gap-5 lg:grid-cols-[18rem_minmax(0,1fr)] xl:grid-cols-[18rem_minmax(0,1fr)_17rem]">
+				<div class="order-2 lg:order-1 lg:row-span-2">
+					@rail(data)
+				</div>
+				<div class="order-1 min-w-0 space-y-5 lg:order-2">
+					@vitalsStrip(data.Vitals)
+					@cardGrid(data)
+				</div>
+				<div class="order-3 lg:col-start-2 xl:col-start-3 xl:row-start-1">
+					@bodyPanel(data.Body)
+				</div>
+			</div>
+		</div>
+		@tabBar()
+		@dialog.Script()
+		@checkbox.Script()
+		@input.Script()
+	}
+}
+
+templ header(data Data) {
+	<header class="flex flex-wrap items-end justify-between gap-3">
+		<div>
+			@ui.MonoLabel(i18n.T(ctx, "nav.my-day"))
+			<h1 class="mt-2 text-2xl font-medium tracking-tight">
+				if data.IsToday {
+					{ i18n.T(ctx, "day.today") }
+				} else {
+					{ data.DateLabel }
+				}
+			</h1>
+			if data.IsToday {
+				<p class="text-muted-foreground mt-1 text-sm">{ data.DateLabel }</p>
+			}
+		</div>
+		<nav class="flex items-center gap-2" aria-label={ i18n.T(ctx, "day.nav") }>
+			@button.Button(button.Props{Href: data.PrevHref, Variant: button.VariantOutline, Size: button.SizeIcon, Attributes: templ.Attributes{"aria-label": i18n.T(ctx, "day.prev")}}) {
+				@icon.ChevronLeft(icon.Props{Class: "size-4"})
+			}
+			if !data.IsToday {
+				@button.Button(button.Props{Href: data.TodayHref, Variant: button.VariantOutline, Size: button.SizeSm}) {
+					{ i18n.T(ctx, "day.today") }
+				}
+			}
+			@button.Button(button.Props{Href: data.NextHref, Variant: button.VariantOutline, Size: button.SizeIcon, Attributes: templ.Attributes{"aria-label": i18n.T(ctx, "day.next")}}) {
+				@icon.ChevronRight(icon.Props{Class: "size-4"})
+			}
+			@rulesDialog(data)
+		</nav>
+	</header>
+}
+
+// The strip of small gauges. Hand-rolled SVG: templUI has no radial gauge, and
+// ECharts for five 48px arcs would ship a charting engine to draw circles.
+templ vitalsStrip(vitals []Vital) {
+	<section class="grid grid-cols-5 gap-1.5 sm:gap-2" aria-label={ i18n.T(ctx, "day.vitals") }>
+		for _, v := range vitals {
+			<div class="border-hairline bg-surface flex min-w-0 flex-col items-center rounded-xl border px-1 py-2 sm:px-2 sm:py-3" data-testid={ "vital-" + v.Key }>
+				<svg viewBox="0 0 48 48" class="size-9 sm:size-12" aria-hidden="true">
+					<circle cx="24" cy="24" r="19" fill="none" stroke="currentColor" class="text-hairline" stroke-width="5" stroke-linecap="round" pathLength="100" stroke-dasharray={ ArcTrack() } transform="rotate(135 24 24)"></circle>
+					<circle cx="24" cy="24" r="19" fill="none" stroke={ v.Color } stroke-width="5" stroke-linecap="round" pathLength="100" stroke-dasharray={ v.Arc() } transform="rotate(135 24 24)"></circle>
+				</svg>
+				<p class="mt-1 truncate text-sm font-semibold tabular-nums sm:text-base">
+					if v.Value == "" {
+						—
+					} else {
+						{ v.Value }
+						<span class="text-muted-foreground text-xs font-normal">{ v.Unit }</span>
+					}
+				</p>
+				<p class="text-muted-foreground max-w-full truncate text-[10px] sm:text-xs">{ i18n.T(ctx, "day.vital." + v.Key) }</p>
+			</div>
+		}
+	</section>
+}
+
+templ tabBar() {
+	<nav class="fixed inset-x-0 bottom-4 z-40 flex justify-center px-4" aria-label={ i18n.T(ctx, "day.tabs") }>
+		<div class="bg-background/90 border-hairline flex items-center gap-1 rounded-full border p-1 shadow-lg backdrop-blur">
+			@button.Button(button.Props{Href: "/app", Variant: button.VariantSecondary, Size: button.SizeSm, Class: "rounded-full", Attributes: templ.Attributes{"aria-current": "page"}}) {
+				@icon.CalendarDays(icon.Props{Class: "size-4"})
+				{ i18n.T(ctx, "day.tab.day") }
+			}
+			@button.Button(button.Props{Href: "/app/overview", Variant: button.VariantGhost, Size: button.SizeSm, Class: "rounded-full"}) {
+				@icon.LayoutDashboard(icon.Props{Class: "size-4"})
+				{ i18n.T(ctx, "day.tab.overview") }
+			}
+			@button.Button(button.Props{Href: "/app/insights/timeline", Variant: button.VariantGhost, Size: button.SizeSm, Class: "rounded-full"}) {
+				@icon.FolderOpen(icon.Props{Class: "size-4"})
+				{ i18n.T(ctx, "day.tab.records") }
+			}
+			@quickAdd()
+		</div>
+	</nav>
+}

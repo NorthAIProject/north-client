@@ -239,11 +239,11 @@ func formatSleep(minutes int) string {
 
 // rangeHref keeps the selector working without JavaScript.
 func rangeHref(key string) string {
-	return "/app?range=" + key
+	return "/app/overview?range=" + key
 }
 
 func panelsHref(key string) string {
-	return "/app/panels?range=" + key
+	return "/app/overview/panels?range=" + key
 }
 
 // relativeTime keeps a feed row short. Anything older than a week is a date,
@@ -265,7 +265,7 @@ func relativeTime(t time.Time) string {
 }
 
 templ Dashboard(user users.User, data DashboardData) {
-	@layout.App(i18n.T(ctx, "nav.overview"), user, layout.BuildNav(ctx, "/app")) {
+	@layout.App(i18n.T(ctx, "nav.overview"), user, layout.BuildNav(ctx, "/app/overview")) {
 		<div class="mx-auto w-full max-w-6xl space-y-6 p-6 md:p-8">
 			<header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
 				<div>

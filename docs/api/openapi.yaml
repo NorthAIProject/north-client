@@ -3265,6 +3265,90 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '500':
           $ref: '#/components/responses/InternalError'
+  /day:
+    get:
+      operationId: getDay
+      summary: My Day — one local date across every card
+      parameters:
+        - name: date
+          in: query
+          required: false
+          description: YYYY-MM-DD in the person's zone. Defaults to today; a malformed value is today.
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: The day
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DayResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /day/rules:
+    get:
+      operationId: listDayRules
+      summary: The standing rules a day is read against (kitchen closes, screens off…)
+      responses:
+        '200':
+          description: Rules
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DayRulesResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /day/rules/{kind}:
+    parameters:
+      - name: kind
+        in: path
+        required: true
+        description: caffeine_cutoff, kitchen_closes, last_drink or screens_off.
+        schema:
+          type: string
+    put:
+      operationId: setDayRule
+      summary: Create or replace one rule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DayRuleInput'
+      responses:
+        '200':
+          description: Every rule, after the change
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DayRulesResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      operationId: deleteDayRule
+      summary: Remove one rule
+      responses:
+        '200':
+          description: Every rule, after the change
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DayRulesResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /devices/apns:
     put:
       operationId: registerAPNsDevice
@@ -3486,6 +3570,233 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorBody'
   schemas:
+    DayResponse:
+      type: object
+      required: [date, isToday, now, vitals, food, water, activity, workouts, body, streak, timeline, markers]
+      properties:
+        date:
+          type: string
+          format: date
+        isToday:
+          type: boolean
+        now:
+          type: string
+          format: date-time
+        vitals:
+          $ref: '#/components/schemas/DayVitals'
+        food:
+          $ref: '#/components/schemas/DayFood'
+        water:
+          $ref: '#/components/schemas/DayWater'
+        activity:
+          $ref: '#/components/schemas/DayActivity'
+        sleep:
+          $ref: '#/components/schemas/DaySleep'
+        workouts:
+          $ref: '#/components/schemas/DayWorkouts'
+        body:
+          $ref: '#/components/schemas/DayBody'
+        streak:
+          type: integer
+        timeline:
+          type: array
+          items:
+            $ref: '#/components/schemas/DayTimelineEntry'
+        markers:
+          type: array
+          items:
+            $ref: '#/components/schemas/DayMarker'
+    DayVitals:
+      type: object
+      description: Absent fields were not measured.
+      properties:
+        energyPercent:
+          type: integer
+        daylightMinutes:
+          type: integer
+    DayFood:
+      type: object
+      required: [calories, proteinG, carbG, fatG]
+      properties:
+        calories:
+          type: number
+        proteinG:
+          type: number
+        carbG:
+          type: number
+        fatG:
+          type: number
+        goal:
+          $ref: '#/components/schemas/DayMacroGoal'
+    DayMacroGoal:
+      type: object
+      required: [calories, proteinG, carbG, fatG]
+      properties:
+        calories:
+          type: number
+        proteinG:
+          type: number
+        carbG:
+          type: number
+        fatG:
+          type: number
+    DayWater:
+      type: object
+      required: [totalMl, targetMl]
+      properties:
+        totalMl:
+          type: integer
+        targetMl:
+          type: integer
+    DayRing:
+      type: object
+      required: [value, goal, percent]
+      properties:
+        value:
+          type: number
+        goal:
+          type: number
+        percent:
+          type: integer
+    DayActivity:
+      type: object
+      required: [move, exercise, stand]
+      properties:
+        move:
+          $ref: '#/components/schemas/DayRing'
+        exercise:
+          $ref: '#/components/schemas/DayRing'
+        stand:
+          $ref: '#/components/schemas/DayRing'
+    DaySleepBlock:
+      type: object
+      required: [stage, start, end]
+      properties:
+        stage:
+          type: string
+          enum: [deep, rem, core, awake]
+        start:
+          type: string
+          format: date-time
+        end:
+          type: string
+          format: date-time
+    DaySleep:
+      type: object
+      required: [totalMinutes, stages, blocks, source]
+      properties:
+        totalMinutes:
+          type: integer
+        start:
+          type: string
+          format: date-time
+        end:
+          type: string
+          format: date-time
+        stages:
+          type: object
+          description: Minutes per stage (deep, rem, core, awake). Empty for a manual log.
+          additionalProperties:
+            type: integer
+        blocks:
+          type: array
+          items:
+            $ref: '#/components/schemas/DaySleepBlock'
+        quality:
+          type: integer
+        source:
+          type: string
+    DayWorkouts:
+      type: object
+      required: [count, minutes, calories, labels]
+      properties:
+        count:
+          type: integer
+        minutes:
+          type: integer
+        calories:
+          type: number
+        labels:
+          type: array
+          items:
+            type: string
+    DayBody:
+      type: object
+      properties:
+        weightKg:
+          type: number
+        heightCm:
+          type: number
+        bmi:
+          type: number
+        bmiCategory:
+          type: string
+          enum: [underweight, healthy, overweight, obese]
+    DayTimelineEntry:
+      type: object
+      required: [kind, at, title, icon]
+      properties:
+        kind:
+          type: string
+        at:
+          type: string
+          format: date-time
+        title:
+          type: string
+        detail:
+          type: string
+        href:
+          type: string
+        icon:
+          type: string
+    DayMarker:
+      type: object
+      required: [kind, label, at, passed]
+      properties:
+        kind:
+          type: string
+        label:
+          type: string
+        at:
+          type: string
+          format: date-time
+        passed:
+          type: boolean
+    DayRule:
+      type: object
+      required: [kind, label, at, enabled]
+      properties:
+        kind:
+          type: string
+        label:
+          type: string
+        at:
+          type: string
+          description: HH:MM
+        enabled:
+          type: boolean
+    DayRulesResponse:
+      type: object
+      required: [rules, kinds]
+      properties:
+        rules:
+          type: array
+          items:
+            $ref: '#/components/schemas/DayRule'
+        kinds:
+          type: array
+          items:
+            type: string
+    DayRuleInput:
+      type: object
+      required: [at, enabled]
+      additionalProperties: false
+      properties:
+        at:
+          type: string
+          description: HH:MM
+        enabled:
+          type: boolean
     APNsDeviceInput:
       type: object
       required: [token, topic, environment]

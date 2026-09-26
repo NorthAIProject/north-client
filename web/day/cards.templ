@@ -1,0 +1,267 @@
+package day
+
+import (
+	"strconv"
+
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/dialog"
+	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
+)
+
+templ cardGrid(data Data) {
+	<section class="grid grid-cols-2 gap-3 sm:gap-4" aria-label={ i18n.T(ctx, "day.cards") }>
+		@foodCard(data.Food)
+		@waterCard(data.Water)
+		@activityCard(data.Activity)
+		@sleepCard(data.Sleep)
+		@workoutsCard(data.Workouts)
+		@streakCard(data.Streak)
+	</section>
+}
+
+// dayCard is one tappable tile that opens its detail dialog.
+//
+// Hand-rolled rather than card.Card: the whole tile is the dialog trigger and
+// needs to be a button for keyboard and screen-reader use, which card.Card's
+// div does not give.
+templ dayCard(id, titleKey, color string, ic templ.Component, meta string, detail templ.Component) {
+	@dialog.Dialog(dialog.Props{ID: "day-card-" + id}) {
+		@dialog.Trigger() {
+			<button
+				type="button"
+				data-testid={ "card-" + id }
+				class="border-hairline bg-surface hover:border-ring focus-visible:ring-ring flex min-h-40 w-full flex-col rounded-2xl border p-3 sm:min-h-44 sm:p-4 text-left shadow-sm transition-colors focus-visible:ring-2 focus-visible:outline-none"
+			>
+				<span class="flex w-full items-center justify-between gap-1">
+					<span class="flex min-w-0 items-center gap-1.5 truncate text-sm font-medium" style={ "color:" + color }>
+						@ic
+						{ i18n.T(ctx, titleKey) }
+					</span>
+					<span class="text-muted-foreground text-xs tabular-nums">{ meta }</span>
+				</span>
+				<span class="flex flex-1 items-center">
+					{ children... }
+				</span>
+			</button>
+		}
+		@dialog.Content(dialog.ContentProps{Class: "sm:max-w-md"}) {
+			@dialog.Header() {
+				@dialog.Title() {
+					{ i18n.T(ctx, titleKey) }
+				}
+			}
+			@detail
+		}
+	}
+}
+
+templ foodCard(f FoodCard) {
+	@dayCard("food", "day.card.food", "var(--color-day-food)", icon.Utensils(icon.Props{Class: "size-4"}), f.Calories+" kcal", foodDetail(f)) {
+		<span class="flex w-full items-center justify-between gap-3">
+			<svg viewBox="0 0 80 80" class="size-16 shrink-0 sm:size-20" aria-hidden="true">
+				for _, m := range f.Macros {
+					<circle cx="40" cy="40" r={ strconv.Itoa(m.Radius) } fill="none" stroke={ m.Color } stroke-opacity="0.18" stroke-width="7"></circle>
+					<circle cx="40" cy="40" r={ strconv.Itoa(m.Radius) } fill="none" stroke={ m.Color } stroke-width="7" stroke-linecap="round" pathLength="100" stroke-dasharray={ RingDash(m.Fraction) } transform="rotate(-90 40 40)"></circle>
+				}
+			</svg>
+			<span class="space-y-1 text-right text-sm tabular-nums">
+				for _, m := range f.Macros {
+					<span class="block">
+						<span class="text-muted-foreground text-xs">{ m.Letter }</span>
+						<span class="font-semibold" style={ "color:" + m.Color }>{ m.Grams }</span>
+					</span>
+				}
+			</span>
+		</span>
+	}
+}
+
+templ foodDetail(f FoodCard) {
+	<dl class="grid grid-cols-3 gap-y-2 text-sm tabular-nums">
+		<dt class="text-muted-foreground">{ i18n.T(ctx, "day.food.energy") }</dt>
+		<dd class="font-medium">{ f.Calories } kcal</dd>
+		<dd class="text-muted-foreground text-right">
+			if f.HasGoal {
+				{ f.Goal } kcal
+			}
+		</dd>
+		for _, m := range f.Macros {
+			<dt class="text-muted-foreground">{ i18n.T(ctx, "day.food." + m.Key) }</dt>
+			<dd class="font-medium" style={ "color:" + m.Color }>{ m.Grams } g</dd>
+			<dd class="text-muted-foreground text-right">
+				if f.HasGoal {
+					{ m.Goal } g
+				}
+			</dd>
+		}
+	</dl>
+	if !f.HasGoal {
+		<p class="text-muted-foreground text-sm">{ i18n.T(ctx, "day.food.nogoal") }</p>
+	}
+	@button.Button(button.Props{Href: "/app/nutrition/log", Variant: button.VariantOutline}) {
+		{ i18n.T(ctx, "day.food.log") }
+	}
+}
+
+templ waterCard(w WaterCard) {
+	@dayCard("water", "day.card.water", "var(--color-day-water)", icon.Droplet(icon.Props{Class: "size-4"}), "", waterDetail(w)) {
+		<span class="flex w-full items-end justify-between gap-3">
+			<span>
+				<span class="block text-2xl font-semibold tabular-nums sm:text-3xl">{ w.TotalML }</span>
+				<span class="text-muted-foreground text-xs">{ i18n.T(ctx, "day.water.today") }</span>
+			</span>
+			<svg viewBox="0 0 48 64" class="h-20 w-14 shrink-0" aria-hidden="true">
+				<defs>
+					<clipPath id="day-glass">
+						<path d="M8 8 h32 l-4 50 a4 4 0 0 1 -4 4 h-16 a4 4 0 0 1 -4 -4 z"></path>
+					</clipPath>
+				</defs>
+				<path d="M8 8 h32 l-4 50 a4 4 0 0 1 -4 4 h-16 a4 4 0 0 1 -4 -4 z" fill="var(--color-day-water)" fill-opacity="0.12" stroke="var(--color-day-water)" stroke-opacity="0.4" stroke-width="1.5"></path>
+				<rect x="0" y={ w.FillY() } width="48" height="64" fill="var(--color-day-water)" clip-path="url(#day-glass)"></rect>
+			</svg>
+		</span>
+	}
+}
+
+templ waterDetail(w WaterCard) {
+	<p class="text-sm tabular-nums">
+		<span class="text-2xl font-semibold">{ w.Litres }</span>
+		<span class="text-muted-foreground">/ { w.TargetML } ml</span>
+	</p>
+	<form method="post" action="/app/care/water" class="flex flex-wrap gap-2">
+		@ui.CSRFInput()
+		<input type="hidden" name="return_to" value="/app"/>
+		for _, ml := range []string{"250", "500"} {
+			@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Attributes: templ.Attributes{"name": "amount_ml", "value": ml}}) {
+				+{ ml } ml
+			}
+		}
+	</form>
+}
+
+templ activityCard(a ActivityCard) {
+	@dayCard("activity", "day.card.activity", "var(--color-day-move)", icon.Activity(icon.Props{Class: "size-4"}), "", activityDetail(a)) {
+		<span class="flex w-full items-center justify-between gap-3">
+			<svg viewBox="0 0 80 80" class="size-16 shrink-0 sm:size-20" aria-hidden="true">
+				for _, r := range a.Rings {
+					<circle cx="40" cy="40" r={ strconv.Itoa(r.Radius) } fill="none" stroke={ r.Color } stroke-opacity="0.18" stroke-width="8"></circle>
+					<circle cx="40" cy="40" r={ strconv.Itoa(r.Radius) } fill="none" stroke={ r.Color } stroke-width="8" stroke-linecap="round" pathLength="100" stroke-dasharray={ RingDash(r.Fraction) } transform="rotate(-90 40 40)"></circle>
+				}
+			</svg>
+			<span class="space-y-1 text-right text-sm font-semibold tabular-nums">
+				for _, r := range a.Rings {
+					<span class="block" style={ "color:" + r.Color }>{ r.Value }</span>
+				}
+			</span>
+		</span>
+	}
+}
+
+templ activityDetail(a ActivityCard) {
+	<dl class="grid grid-cols-2 gap-y-2 text-sm tabular-nums">
+		for _, r := range a.Rings {
+			<dt class="text-muted-foreground">{ i18n.T(ctx, "day.activity." + r.Key) }</dt>
+			<dd class="text-right"><span class="font-medium" style={ "color:" + r.Color }>{ r.Value }</span> / { r.Goal } { r.Unit }</dd>
+		}
+	</dl>
+}
+
+templ sleepCard(s SleepCard) {
+	@dayCard("sleep", "day.card.sleep", "var(--color-day-sleep)", icon.Moon(icon.Props{Class: "size-4"}), s.Quality, sleepDetail(s)) {
+		<span class="w-full">
+			if s.Logged {
+				<span class="block text-2xl font-semibold tabular-nums sm:text-3xl">
+					{ s.Hours }<span class="text-muted-foreground text-sm font-normal">h</span>
+					{ s.Minutes }<span class="text-muted-foreground text-sm font-normal">m</span>
+				</span>
+				if s.HasStages {
+					@hypnogram(s.Bars, "h-10")
+				}
+			} else {
+				<span class="text-muted-foreground text-sm">{ i18n.T(ctx, "day.sleep.none") }</span>
+			}
+		</span>
+	}
+}
+
+templ hypnogram(bars []SleepBar, class string) {
+	<svg viewBox="0 0 100 40" preserveAspectRatio="none" class={ "mt-2 w-full", class } aria-hidden="true">
+		for _, b := range bars {
+			<rect x={ b.X } y={ b.Y } width={ b.W } height="8" rx="1.5" fill={ b.Color }></rect>
+		}
+	</svg>
+}
+
+templ sleepDetail(s SleepCard) {
+	if s.Logged {
+		<div>
+			<p class="text-2xl font-semibold tabular-nums">{ s.Hours }h { s.Minutes }m</p>
+			if s.Span != "" {
+				<p class="text-muted-foreground text-sm tabular-nums">{ s.Span }</p>
+			}
+		</div>
+		if s.HasStages {
+			@hypnogram(s.Bars, "h-16")
+			<dl class="grid grid-cols-2 gap-y-2 text-sm tabular-nums" data-testid="sleep-stages">
+				for _, st := range s.Stages {
+					<dt class="flex items-center gap-2">
+						<span class="size-2.5 rounded-full" style={ "background:" + st.Color }></span>
+						{ i18n.T(ctx, "day.sleep." + st.Key) }
+					</dt>
+					<dd class="text-muted-foreground text-right">{ st.Minutes } min</dd>
+				}
+			</dl>
+		}
+	} else {
+		<p class="text-muted-foreground text-sm">{ i18n.T(ctx, "day.sleep.none") }</p>
+	}
+	@button.Button(button.Props{Href: "/app/care", Variant: button.VariantOutline}) {
+		{ i18n.T(ctx, "day.sleep.log") }
+	}
+}
+
+templ workoutsCard(w WorkoutsCard) {
+	@dayCard("workouts", "day.card.workouts", "var(--color-day-fat)", icon.Dumbbell(icon.Props{Class: "size-4"}), strconv.Itoa(w.Count), workoutsDetail(w)) {
+		<span class="w-full">
+			<span class="block text-2xl font-semibold tabular-nums sm:text-3xl">
+				{ w.Minutes }<span class="text-muted-foreground text-sm font-normal"> min</span>
+			</span>
+			if len(w.Labels) > 0 {
+				<span class="text-muted-foreground mt-1 line-clamp-1 text-xs">{ joinLabels(w.Labels) }</span>
+			}
+		</span>
+	}
+}
+
+templ workoutsDetail(w WorkoutsCard) {
+	if len(w.Labels) == 0 {
+		<p class="text-muted-foreground text-sm">{ i18n.T(ctx, "day.workouts.none") }</p>
+	} else {
+		<ul class="space-y-1 text-sm">
+			for _, l := range w.Labels {
+				<li>{ l }</li>
+			}
+		</ul>
+	}
+	@button.Button(button.Props{Href: "/app/fitness/activities", Variant: button.VariantOutline}) {
+		{ i18n.T(ctx, "day.workouts.log") }
+	}
+}
+
+templ streakCard(streak int) {
+	@dayCard("streak", "day.card.streak", "var(--color-ember)", icon.Flame(icon.Props{Class: "size-4"}), "", streakDetail(streak)) {
+		<span class="flex items-center gap-2">
+			@icon.Flame(icon.Props{Class: "size-8 text-ember"})
+			<span class="text-ember text-4xl font-semibold tabular-nums">{ strconv.Itoa(streak) }</span>
+		</span>
+	}
+}
+
+templ streakDetail(streak int) {
+	<p class="text-sm">{ i18n.Tf(ctx, "day.streak.detail", streak) }</p>
+	@button.Button(button.Props{Href: "/app/check-ins", Variant: button.VariantOutline}) {
+		{ i18n.T(ctx, "day.streak.checkin") }
+	}
+}

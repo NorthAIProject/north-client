@@ -1,0 +1,96 @@
+{
+  "date": "2026-09-26",
+  "isToday": true,
+  "now": "2026-09-26T14:46:00Z",
+  "vitals": {
+    "energyPercent": 32,
+    "daylightMinutes": 84
+  },
+  "food": {
+    "calories": 1750,
+    "proteinG": 107,
+    "carbG": 133,
+    "fatG": 80,
+    "goal": {
+      "calories": 2200,
+      "proteinG": 160,
+      "carbG": 220,
+      "fatG": 75
+    }
+  },
+  "water": {
+    "totalMl": 1550,
+    "targetMl": 2500
+  },
+  "activity": {
+    "move": {
+      "value": 501,
+      "goal": 500,
+      "percent": 100
+    },
+    "exercise": {
+      "value": 62,
+      "goal": 30,
+      "percent": 207
+    },
+    "stand": {
+      "value": 12,
+      "goal": 12,
+      "percent": 100
+    }
+  },
+  "sleep": {
+    "totalMinutes": 433,
+    "start": "2026-09-25T23:00:00Z",
+    "end": "2026-09-26T07:13:00Z",
+    "stages": {
+      "awake": 38,
+      "core": 260,
+      "deep": 64,
+      "rem": 109
+    },
+    "blocks": [
+      {
+        "stage": "core",
+        "start": "2026-09-25T23:00:00Z",
+        "end": "2026-09-26T01:00:00Z"
+      }
+    ],
+    "quality": 4,
+    "source": "apple_health"
+  },
+  "workouts": {
+    "count": 2,
+    "minutes": 62,
+    "calories": 410,
+    "labels": [
+      "Dog walk",
+      "Morning run"
+    ]
+  },
+  "body": {
+    "weightKg": 83.9,
+    "heightCm": 181,
+    "bmi": 25.6,
+    "bmiCategory": "overweight"
+  },
+  "streak": 91,
+  "timeline": [
+    {
+      "kind": "food",
+      "at": "2026-09-26T15:30:00Z",
+      "title": "Chicken rice bowl",
+      "detail": "650 kcal",
+      "href": "/app/nutrition/log",
+      "icon": "utensils"
+    }
+  ],
+  "markers": [
+    {
+      "kind": "kitchen_closes",
+      "label": "Kitchen closes",
+      "at": "2026-09-26T20:00:00Z",
+      "passed": false
+    }
+  ]
+}

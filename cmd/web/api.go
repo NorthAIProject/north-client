@@ -12,6 +12,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/checkins"
 	"github.com/NorthAIProject/north-client/internal/coach"
 	"github.com/NorthAIProject/north-client/internal/dashboard"
+	"github.com/NorthAIProject/north-client/internal/day"
 	"github.com/NorthAIProject/north-client/internal/decisions"
 	"github.com/NorthAIProject/north-client/internal/documents"
 	"github.com/NorthAIProject/north-client/internal/exercises"
@@ -85,6 +86,7 @@ func mountJSON(r chi.Router, sessions auth.SessionResolver, apis apiSet) {
 		apis.auth.Routes(r)
 		apis.onboarding.Routes(r)
 		apis.dashboard.Routes(r)
+		apis.day.Routes(r)
 		apis.coach.Routes(r)
 		apis.exercises.Routes(r)
 		apis.settings.Routes(r)
@@ -118,6 +120,7 @@ type apiSet struct {
 	capture    *capture.API
 	onboarding *onboarding.API
 	dashboard  *dashboard.API
+	day        *day.API
 	coach      *coach.API
 	exercises  *exercises.API
 	settings   *settings.API

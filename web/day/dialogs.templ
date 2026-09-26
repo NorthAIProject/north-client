@@ -1,0 +1,94 @@
+package day
+
+import (
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/checkbox"
+	"github.com/NorthAIProject/north-client/web/shared/ui/dialog"
+	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
+	"github.com/NorthAIProject/north-client/web/shared/ui/input"
+)
+
+// quickAdd is the "+" in the tab bar: the fastest way to put something on the
+// day. Each choice goes to the page that already knows how to log it; water,
+// the most frequent, is one tap from here.
+templ quickAdd() {
+	@dialog.Dialog(dialog.Props{ID: "day-quick-add"}) {
+		@dialog.Trigger() {
+			@button.Button(button.Props{Size: button.SizeIcon, Class: "bg-signal text-background hover:bg-signal/90 rounded-full", Attributes: templ.Attributes{"aria-label": i18n.T(ctx, "day.add")}}) {
+				@icon.Plus(icon.Props{Class: "size-4.5"})
+			}
+		}
+		@dialog.Content(dialog.ContentProps{Class: "sm:max-w-sm"}) {
+			@dialog.Header() {
+				@dialog.Title() {
+					{ i18n.T(ctx, "day.add") }
+				}
+			}
+			<form method="post" action="/app/care/water" class="grid grid-cols-2 gap-2">
+				@ui.CSRFInput()
+				<input type="hidden" name="return_to" value="/app"/>
+				for _, ml := range []string{"250", "500"} {
+					@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Attributes: templ.Attributes{"name": "amount_ml", "value": ml}}) {
+						@icon.Droplet(icon.Props{Class: "size-4 text-day-water"})
+						+{ ml } ml
+					}
+				}
+			</form>
+			<div class="grid grid-cols-2 gap-2">
+				@quickLink("/app/nutrition/log", "day.add.food", icon.Utensils(icon.Props{Class: "size-4 text-day-food"}))
+				@quickLink("/app/care", "day.add.sleep", icon.Moon(icon.Props{Class: "size-4 text-day-sleep"}))
+				@quickLink("/app/fitness/activities", "day.add.workout", icon.Dumbbell(icon.Props{Class: "size-4 text-day-fat"}))
+				@quickLink("/app/calculator", "day.add.weight", icon.Scale(icon.Props{Class: "size-4 text-day-stand"}))
+				@quickLink("/app/check-ins", "day.add.checkin", icon.Smile(icon.Props{Class: "size-4 text-ember"}))
+				@quickLink("/app/capture", "day.add.capture", icon.Zap(icon.Props{Class: "size-4 text-signal"}))
+			</div>
+		}
+	}
+}
+
+templ quickLink(href, key string, ic templ.Component) {
+	@button.Button(button.Props{Href: href, Variant: button.VariantOutline, Class: "justify-start"}) {
+		@ic
+		{ i18n.T(ctx, key) }
+	}
+}
+
+// rulesDialog edits the standing rules that draw the dashed markers on the
+// rail. Every kind is listed, set or not, so the form is also the menu.
+templ rulesDialog(data Data) {
+	@dialog.Dialog(dialog.Props{ID: "day-rules"}) {
+		@dialog.Trigger() {
+			@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeIcon, Attributes: templ.Attributes{"aria-label": i18n.T(ctx, "day.rules")}}) {
+				@icon.Clock(icon.Props{Class: "size-4"})
+			}
+		}
+		@dialog.Content(dialog.ContentProps{Class: "sm:max-w-sm"}) {
+			@dialog.Header() {
+				@dialog.Title() {
+					{ i18n.T(ctx, "day.rules") }
+				}
+				@dialog.Description() {
+					{ i18n.T(ctx, "day.rules.intro") }
+				}
+			}
+			<form method="post" action="/app/day/rules" class="space-y-3">
+				@ui.CSRFInput()
+				<input type="hidden" name="date" value={ data.Date }/>
+				for _, r := range data.Rules {
+					<div class="flex items-center gap-3">
+						@checkbox.Checkbox(checkbox.Props{ID: "rule-on-" + r.Kind, Name: "on_" + r.Kind, Value: "true", Checked: r.Enabled})
+						<label for={ "rule-on-" + r.Kind } class="flex-1 text-sm">{ i18n.T(ctx, "day.rule." + r.Kind) }</label>
+						@input.Input(input.Props{Type: input.TypeTime, Name: "at_" + r.Kind, Value: r.At, Class: "w-28"})
+					</div>
+				}
+				@dialog.Footer() {
+					@button.Button(button.Props{Type: button.TypeSubmit}) {
+						{ i18n.T(ctx, "day.rules.save") }
+					}
+				}
+			</form>
+		}
+	}
+}

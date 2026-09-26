@@ -28,6 +28,7 @@ const (
 	KindGoal      EntryKind = "goal"
 	KindGoalNote  EntryKind = "goal-note"
 	KindActivity  EntryKind = "activity"
+	KindFood      EntryKind = "food"
 )
 
 // Entry is one thing that happened, flattened out of whichever slice owns it.
@@ -74,6 +75,8 @@ func (k EntryKind) Label() string {
 		return "Goal note"
 	case KindActivity:
 		return "Activity"
+	case KindFood:
+		return "Food"
 	default:
 		return string(k)
 	}
@@ -87,7 +90,7 @@ func (k EntryKind) Label() string {
 func (s *Service) Timeline(ctx context.Context, user users.User, rg timerange.Range, limit int) ([]Entry, error) {
 	var (
 		g, gctx = errgroup.WithContext(ctx)
-		parts   = make([][]Entry, 8)
+		parts   = make([][]Entry, 9)
 	)
 
 	g.Go(func() (err error) { parts[0], err = s.checkInEntries(gctx, user, rg); return })
@@ -98,6 +101,7 @@ func (s *Service) Timeline(ctx context.Context, user users.User, rg timerange.Ra
 	g.Go(func() (err error) { parts[5], err = s.goalNoteEntries(gctx, user, rg); return })
 	g.Go(func() (err error) { parts[6], err = s.goalEntries(gctx, user, rg); return })
 	g.Go(func() (err error) { parts[7], err = s.activityEntries(gctx, user, rg); return })
+	g.Go(func() (err error) { parts[8], err = s.foodEntries(gctx, user, rg); return })
 
 	if err := g.Wait(); err != nil {
 		return nil, err
@@ -346,6 +350,35 @@ func (s *Service) activityEntries(ctx context.Context, user users.User, rg timer
 			Detail: detail,
 			Href:   "/app/fitness/activities",
 			Icon:   "activity",
+		})
+	}
+	return out, nil
+}
+
+func (s *Service) foodEntries(ctx context.Context, user users.User, rg timerange.Range) ([]Entry, error) {
+	if s.food == nil {
+		return nil, nil
+	}
+	// The food log is keyed by date and queried inclusively, so ask for the
+	// calendar days the window touches and keep what was eaten inside it.
+	last := rg.Until.Add(-time.Nanosecond)
+	list, err := s.food.Range(ctx, user.ID, timerange.StartOfDay(rg.Since), timerange.StartOfDay(last))
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]Entry, 0, len(list))
+	for _, e := range list {
+		if !rg.Contains(e.LoggedAt) {
+			continue
+		}
+		out = append(out, Entry{
+			Kind:   KindFood,
+			At:     e.LoggedAt,
+			Title:  e.Label,
+			Detail: fmt.Sprintf("%.0f kcal", e.Macros.Calories),
+			Href:   "/app/nutrition/log",
+			Icon:   "utensils",
 		})
 	}
 	return out, nil

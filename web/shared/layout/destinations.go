@@ -156,7 +156,7 @@ func (d Destination) translate(ctx context.Context, key, english string) string 
 // Three kinds of route are deliberately absent, and belong in the route test's
 // deny-list rather than here:
 //
-//   - HTMX partials (/app/panels, /app/nudges/bell, /app/insights/*/body),
+//   - HTMX partials (/app/overview/panels, /app/nudges/bell, /app/insights/*/body),
 //     which are fragments of a page rather than a page.
 //   - /app/settings/export.zip, which is a quota-consuming download. "Go to
 //     page" must not start an account export.
@@ -168,9 +168,15 @@ func Destinations() []Destination {
 	return []Destination{
 		// Today
 		{
-			Key: "nav.overview", Label: "Overview", Href: "/app", Icon: "layout-dashboard", Group: GroupToday,
+			Key: "nav.my-day", Label: "My Day", Href: "/app", Icon: "calendar-days", Group: GroupToday,
+			Description: "Your day on one screen: food, water, sleep, movement.",
+			Keywords:    []string{"home", "today", "start", "timeline", "day", "calendar"},
+			Nav:         NavPlacement{Show: true},
+		},
+		{
+			Key: "nav.overview", Label: "Overview", Href: "/app/overview", Icon: "layout-dashboard", Group: GroupToday,
 			Description: "Where today stands.",
-			Keywords:    []string{"dashboard", "home", "today", "start"},
+			Keywords:    []string{"dashboard", "trends", "charts", "briefing"},
 			Nav:         NavPlacement{Show: true},
 		},
 		{

@@ -98,6 +98,7 @@ schedule; it is the thing logs and habits are measured against.
 | Diet preferences (vegan, low-carb…) | `internal/meals` | `user_diet_preferences` |
 | Standing settings (units, default goal) | `internal/preferences` | `user_preferences` |
 | A generated training plan | `internal/workouts` | `workout_plans` |
+| The shape of a day (kitchen closes, no caffeine after, screens off) | `internal/day` | `day_rules` |
 
 ## Where imported data fits
 
@@ -119,6 +120,26 @@ Provider integrations live under `internal/fitness`, which its package doc
 claims for exactly this. They are **not** sign-in: disconnecting a provider must
 never affect someone's ability to log in, which is why Strava has its own table
 rather than a row in `auth_identities`.
+
+## Device metrics and My Day
+
+`internal/health` stores whatever a phone or bridge app sends as
+`health_metrics` rows — no migration per metric. My Day (`internal/day`) reads
+these names; they are the contract with the iOS sync:
+
+| Metric | Unit | Shape |
+|---|---|---|
+| `sleep_deep`, `sleep_rem`, `sleep_core`, `sleep_awake` | min | one row per block, start/end are the block's |
+| `active_calories`, `exercise_minutes`, `stand_hours`, `time_in_daylight` | kcal / min / count / min | one row per day |
+| `dietary_water`, `dietary_energy`, `dietary_protein`, `dietary_carbs`, `dietary_fat` | ml / kcal / g | one row per day |
+| `body_mass` | kg | one row per measurement |
+
+Dietary rows are only what *other* apps logged: the phone never uploads samples
+this app wrote itself, so My Day adds them to North's own logs without counting
+anything twice.
+
+`internal/day` owns no log. It composes one local date across the slices above,
+the same way the dashboard composes a range, and owns only `day_rules`.
 
 ---
 

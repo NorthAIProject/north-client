@@ -13,6 +13,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/habits"
 	"github.com/NorthAIProject/north-client/internal/hydration"
+	"github.com/NorthAIProject/north-client/internal/meals"
 	"github.com/NorthAIProject/north-client/internal/memories"
 	"github.com/NorthAIProject/north-client/internal/mind"
 	"github.com/NorthAIProject/north-client/internal/nudges/nudge"
@@ -58,6 +59,9 @@ type Options struct {
 	Activity      *activity.Service
 	Mind          *mind.Service
 
+	// Food is optional: meals eaten show in the feed when it is wired.
+	Food Food
+
 	// Nudges is optional. The worker process never loads the dashboard, and
 	// a nil here just leaves the card off.
 	Nudges Nudges
@@ -72,6 +76,12 @@ type Options struct {
 	// NewsTicker is optional: whether this person wants the breaking-news
 	// strip. Nil means the deployment has no ticker at all.
 	NewsTicker NewsTicker
+}
+
+// Food is the dashboard's view of the food log: the entries in a date span,
+// inclusive at both ends.
+type Food interface {
+	Range(ctx context.Context, userID uuid.UUID, from, to time.Time) ([]meals.FoodLogEntry, error)
 }
 
 // NewsTicker is the dashboard's view of the news slice: just the switch.
@@ -108,6 +118,7 @@ type Service struct {
 	sleep         *sleep.Service
 	activity      *activity.Service
 	mind          *mind.Service
+	food          Food
 	nudges        Nudges
 	briefings     Briefings
 	push          Push
@@ -126,6 +137,7 @@ func NewService(opts Options) *Service {
 		sleep:         opts.Sleep,
 		activity:      opts.Activity,
 		mind:          opts.Mind,
+		food:          opts.Food,
 		nudges:        opts.Nudges,
 		briefings:     opts.Briefings,
 		push:          opts.Push,

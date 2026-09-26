@@ -14,6 +14,8 @@ var spanishNav = map[string]string{
 	"nav.group.progress": "Progreso",
 	"nav.group.system":   "Sistema",
 
+	"nav.my-day":             "Mi día",
+	"nav.my-day.desc":        "Tu día en una pantalla: comida, agua, sueño, movimiento.",
 	"nav.overview":           "Resumen",
 	"nav.overview.desc":      "Cómo va el día de hoy.",
 	"nav.quick-capture":      "Registro rápido",

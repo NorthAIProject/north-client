@@ -1,0 +1,16 @@
+{
+  "rules": [
+    {
+      "kind": "kitchen_closes",
+      "label": "Kitchen closes",
+      "at": "20:00",
+      "enabled": true
+    }
+  ],
+  "kinds": [
+    "caffeine_cutoff",
+    "kitchen_closes",
+    "last_drink",
+    "screens_off"
+  ]
+}
