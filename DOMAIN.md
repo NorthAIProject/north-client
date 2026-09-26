@@ -48,6 +48,7 @@ be missed, and it is not right or wrong. It only accumulates.
 | A recorded decision | `internal/decisions` | `decisions` |
 | A body measurement | `internal/biometrics` | `user_biometrics` |
 | Caffeine drunk | `internal/caffeine` | `caffeine_logs` |
+| Sets lifted (weight and reps), and the records and estimated maxes read from them | `internal/lifts` | `set_logs` |
 | A fasting window | `internal/fasting` | `fasting_sessions` |
 | A supplement taken | `internal/supplements` | `supplement_logs` |
 | A day's screen time | `internal/screentime` | `screen_time_logs` |
