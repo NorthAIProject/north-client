@@ -62,8 +62,7 @@ func (a *API) log(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, err, "The request body could not be read.")
 		return
 	}
-	in := LogInput{Preset: req.Preset, Name: req.Name, Count: req.Count, Nutrients: req.Nutrients}
-	if _, err := a.svc.Log(r.Context(), auth.MustUser(r.Context()), in); err != nil {
+	if _, err := a.svc.Log(r.Context(), auth.MustUser(r.Context()), LogInput(req)); err != nil {
 		httpx.Error(w, err, "The supplement could not be logged.")
 		return
 	}
