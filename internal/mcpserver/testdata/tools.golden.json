@@ -204,6 +204,58 @@
     "readOnly": false
   },
   {
+    "name": "create_workout_plan",
+    "description": "Generate and save a new training plan from what the person told you: their goal, experience, how many days a week and how long each session, the equipment they have, and any injuries or limits. It replaces the plan they follow now (the old one is kept in history). Ask for anything missing rather than guessing days or equipment. To change one exercise in the current plan, use swap/add/remove_workout_exercise instead.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "description": "what the plan must fit",
+      "properties": {
+        "days_per_week": {
+          "description": "training days a week, 1 to 7",
+          "type": "integer"
+        },
+        "equipment": {
+          "description": "equipment they have, such as barbell, dumbbell, kettlebell, bands, machines, pull-up bar, or none",
+          "items": {
+            "description": "one piece of equipment",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "experience": {
+          "description": "training experience",
+          "enum": [
+            "beginner",
+            "intermediate",
+            "advanced"
+          ],
+          "type": "string"
+        },
+        "goal": {
+          "description": "what they are training for, in their words",
+          "type": "string"
+        },
+        "limitations": {
+          "description": "injuries or movements to avoid; optional",
+          "type": "string"
+        },
+        "session_minutes": {
+          "description": "minutes per session, 10 to 240",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "goal",
+        "experience",
+        "days_per_week",
+        "session_minutes",
+        "equipment"
+      ],
+      "type": "object"
+    },
+    "readOnly": false
+  },
+  {
     "name": "get_exercise",
     "description": "Read one catalog exercise in full: how to perform it, what it needs, and every muscle it trains. Call this before describing how a movement is performed rather than answering from memory, and pass on the video and illustration it returns.",
     "inputSchema": {

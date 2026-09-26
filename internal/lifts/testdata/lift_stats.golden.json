@@ -1,0 +1,49 @@
+{
+  "range": "week",
+  "workouts": 1,
+  "sets": 2,
+  "reps": 10,
+  "volumeKg": 1025,
+  "priorVolumeKg": 900,
+  "exercises": [
+    {
+      "key": "barbell-squat",
+      "name": "Barbell squat",
+      "slug": "barbell-squat",
+      "sets": 2,
+      "reps": 10,
+      "volumeKg": 1025,
+      "bestWeightKg": 105,
+      "bestE1rmKg": 122.5,
+      "lastOn": "2026-09-24",
+      "trend": [
+        {
+          "date": "2026-09-24",
+          "value": 122.5
+        }
+      ]
+    }
+  ],
+  "records": [
+    {
+      "exerciseName": "Barbell squat",
+      "date": "2026-09-24",
+      "weightKg": 105,
+      "reps": 5,
+      "e1rmKg": 122.5,
+      "previousE1rmKg": 116.7
+    }
+  ],
+  "weekly": [
+    {
+      "date": "2026-09-21",
+      "value": 1025
+    }
+  ],
+  "muscles": [
+    {
+      "muscle": "quads",
+      "sets": 2
+    }
+  ]
+}

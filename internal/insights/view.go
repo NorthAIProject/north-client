@@ -287,6 +287,7 @@ func buildTrainingView(data TrainingData) (insightpages.TrainingView, error) {
 		SessionCount: len(rows),
 		TotalTime:    formatDuration(totalSeconds),
 		HasSessions:  len(rows) > 0,
+		Lifting:      buildLiftingView(data.Lifts),
 	}, nil
 }
 

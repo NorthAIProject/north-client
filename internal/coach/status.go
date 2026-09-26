@@ -40,6 +40,9 @@ var toolStatusKeys = map[string]string{
 	"swap_workout_exercise":   "chat.tool.workout.write",
 	"add_workout_exercise":    "chat.tool.workout.write",
 	"remove_workout_exercise": "chat.tool.workout.write",
+	"create_workout_plan":     "chat.tool.workout.create",
+	"get_lift_stats":          "chat.tool.lifts",
+	"create_meal_plan":        "chat.tool.mealplan.write",
 
 	"search_ingredients": "chat.tool.nutrition",
 	"todays_nutrition":   "chat.tool.nutrition",
@@ -53,6 +56,15 @@ var toolStatusKeys = map[string]string{
 	"log_activity":   "chat.tool.log",
 	"record_weight":  "chat.tool.log",
 	"log_food":       "chat.tool.log",
+
+	"log_caffeine":          "chat.tool.log",
+	"log_supplement":        "chat.tool.log",
+	"start_fast":            "chat.tool.log",
+	"stop_fast":             "chat.tool.log",
+	"log_screen_time":       "chat.tool.log",
+	"record_soreness":       "chat.tool.log",
+	"record_blood_pressure": "chat.tool.log",
+	"log_lift_set":          "chat.tool.log",
 }
 
 const defaultToolStatusKey = "chat.tool.default"
