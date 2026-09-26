@@ -212,3 +212,36 @@ func GroupedBar(id string, labels []string, series []BarSeries) chart.Props {
 		BeginAtZero: &beginZero,
 	}
 }
+
+// AreaLine is a filled trend line with no axes or grid, for a card whose
+// headline number and date range are already printed around it.
+//
+// The colour is a CSS custom property so the line follows the theme.
+func AreaLine(id string, labels []string, values []float64, colorVar string) chart.Props {
+	beginZero := false
+	return chart.Props{
+		ID:      id,
+		Variant: chart.VariantLine,
+		Class:   "h-28 w-full",
+		Data: chart.Data{
+			Labels: labels,
+			Datasets: []chart.Dataset{
+				{
+					Label:           "",
+					Data:            values,
+					BorderWidth:     2,
+					Tension:         0.3,
+					BorderColor:     colorVar,
+					BackgroundColor: "color-mix(in oklch, " + colorVar + " 18%, transparent)",
+					Fill:            true,
+				},
+			},
+		},
+		ShowLegend:  false,
+		ShowXGrid:   false,
+		ShowYGrid:   false,
+		ShowXLabels: false,
+		ShowYLabels: false,
+		BeginAtZero: &beginZero,
+	}
+}
