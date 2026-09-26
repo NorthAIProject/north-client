@@ -2,6 +2,8 @@ package fitness
 
 import (
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -15,6 +17,8 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
 	"github.com/NorthAIProject/north-client/web/shared/ui/card"
 	"github.com/NorthAIProject/north-client/web/shared/ui/chart"
+	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
+	"github.com/NorthAIProject/north-client/web/shared/ui/progress"
 )
 
 // tiles are the Body pages the sidebar does not carry, which is exactly what
@@ -41,11 +45,8 @@ func tiles() []layout.Destination {
 	return out
 }
 
-// Instruments holds chart configs and KPI values for the fitness hub header.
+// Instruments holds the plan and nutrition state the side rail reads.
 type Instruments struct {
-	CalorieChart    chart.Props
-	HasCalories     bool
-	Calories7d      float64
 	PlanID          uuid.UUID
 	NextSession     *plan.PlanDay
 	HasMealProgress bool
@@ -58,73 +59,351 @@ type HubData struct {
 	Instruments  Instruments
 	Notice       string
 
+	Week   WeekView
+	Recent []RecentRow
+
+	// Steps and VO2 are nil unless a device has pushed that metric; the page
+	// leaves the card out rather than drawing a flat line of zeros.
+	Steps *Trend
+	VO2   *Trend
+
+	Weight *Weight
+
 	// DeviceReadings is the last week from a wearable or phone, already
 	// rendered as sentences by internal/health. Empty is the normal state.
 	DeviceReadings    []string
 	HasDeviceReadings bool
+
+	Location *time.Location
+	Now      time.Time
 }
 
 func (d HubData) HasPlan() bool {
 	return d.Instruments.PlanID != uuid.Nil
 }
 
+// activitiesHref is where "see all" goes: the Strava view when there is one to
+// show, the activity timer's history otherwise.
+func (d HubData) activitiesHref() string {
+	if d.StravaStatus.Connected {
+		return "/app/fitness/activities"
+	}
+	return "/app/activity"
+}
+
 templ Hub(user users.User, data HubData) {
 	@layout.App("Fitness", user, layout.BuildNav(ctx, "/app/fitness")) {
-		<div class="mx-auto w-full max-w-6xl space-y-6 p-6 md:p-8">
-			<header>
-				@ui.MonoLabel("Fitness")
-				<h1 class="mt-2 text-2xl font-medium tracking-tight">Fitness</h1>
-				<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
-					Training, form, activity, and the numbers behind them.
-				</p>
+		<div class="mx-auto w-full max-w-6xl p-4 md:p-8">
+			<header class="mb-6 flex flex-wrap items-end justify-between gap-4">
+				<div>
+					@ui.MonoLabel("Body")
+					<h1 class="mt-2 text-2xl font-semibold tracking-tight">Fitness</h1>
+					<p class="text-muted-foreground mt-1 text-sm">
+						Training, activity, and the numbers behind them.
+					</p>
+				</div>
+				<div class="flex gap-2">
+					@button.Button(button.Props{Href: "/app/nutrition/log", Variant: button.VariantOutline, Size: button.SizeSm}) {
+						@icon.Utensils(icon.Props{Class: "size-4"})
+						Log food
+					}
+					@button.Button(button.Props{Href: "/app/activity", Size: button.SizeSm, Class: "bg-signal text-background hover:bg-signal/90"}) {
+						@icon.Timer(icon.Props{Class: "size-4"})
+						Track activity
+					}
+				</div>
 			</header>
 			if data.Notice != "" {
-				<div class="border-hairline bg-signal/10 rounded-lg border px-4 py-3 text-sm">
+				<div class="border-hairline bg-signal/10 mb-6 rounded-lg border px-4 py-3 text-sm">
 					{ data.Notice }
 				</div>
 			}
-			@kpiStrip(data)
-			@calorieInstrument(data)
-			<div class="grid gap-4 sm:grid-cols-2">
-				for _, t := range tiles() {
-					@tileCard(t)
-				}
+			<div class="grid gap-6 lg:grid-cols-12">
+				<div class="min-w-0 space-y-6 lg:col-span-8">
+					@weekCard(data)
+					@recentCard(data)
+					@bodyCard(data)
+					if data.Steps != nil {
+						@stepsCard(*data.Steps, data.Location)
+					}
+					if data.VO2 != nil {
+						@vo2Card(*data.VO2)
+					}
+				</div>
+				<aside class="min-w-0 space-y-6 lg:col-span-4">
+					@upNextCard(data)
+					@nutritionCard(data)
+					@stravaCard(data.StravaStatus)
+					@exploreCard()
+					@deviceCard(data)
+				</aside>
 			</div>
-			@stravaCard(data.StravaStatus)
-			@deviceCard(data)
 		</div>
 		@ui.ChartScripts()
 	}
 }
 
-templ kpiStrip(data HubData) {
-	@ui.KpiStrip() {
-		@kpiCell("Burned 7d", burnedKPI(data), "/app/activity", "Track activity")
-		@kpiCell("Training", trainingKPI(data), trainingHref(data), trainingCTA(data))
-		@kpiCell("Nutrition", nutritionKPI(data), "/app/nutrition/log", "Log food")
-		@kpiCell("Strava", stravaKPI(data.StravaStatus), "/app/fitness", stravaCTA(data.StravaStatus))
+// panel is the hub's card: one surface and padding for every section, so the
+// page reads as a single instrument rather than a stack of differently padded
+// boxes.
+templ panel() {
+	@card.Card(card.Props{Class: "border-hairline bg-surface gap-0 overflow-hidden py-0"}) {
+		{ children... }
 	}
 }
 
-templ kpiCell(label, value, href, cta string) {
-	@ui.KpiCell(ui.KpiCellProps{Label: label, Value: value, Href: href, CTA: cta})
+templ panelHeading(label string) {
+	<div class="flex items-center justify-between px-5 pt-5">
+		@ui.MonoLabel(label)
+		{ children... }
+	</div>
 }
 
-func burnedKPI(data HubData) string {
-	if data.Instruments.Calories7d <= 0 {
-		return "—"
+templ weekCard(data HubData) {
+	@panel() {
+		@panelHeading("This week")
+		<div class="grid grid-cols-3 gap-2 px-5 pt-4 text-center">
+			@weekStat(fmt.Sprintf("%.0f", data.Week.Minutes), "min active", data.Week.avgMinutesPerDay()+" / day")
+			@weekStat(compact(data.Week.Calories), "kcal burned", "")
+			@weekStat(oneDecimal(data.Week.DistanceKm), "km", sessionsLabel(data.Week.Sessions))
+		</div>
+		// Hand-rolled rather than chart.Chart: seven proportional bars with no
+		// axes and a marker on today is a few divs, and a canvas would add a
+		// script and a blank frame on load for no extra information.
+		<div class="px-5 pt-6 pb-5" role="img" aria-label={ fmt.Sprintf("Active minutes per day over the last seven days, %.0f in total", data.Week.Minutes) }>
+			<div class="flex h-24 items-end gap-2">
+				for _, b := range data.Week.Bars {
+					<div class="flex h-full flex-1 items-end" title={ fmt.Sprintf("%s: %.0f min", b.Label, b.Minutes) }>
+						<div
+							class={ "w-full rounded-md transition-colors", templ.KV("bg-signal", b.Minutes > 0), templ.KV("bg-muted", b.Minutes <= 0) }
+							style={ "height: " + data.Week.barHeight(b) }
+						></div>
+					</div>
+				}
+			</div>
+			<div class="mt-2 flex gap-2">
+				for _, b := range data.Week.Bars {
+					<div class="flex flex-1 flex-col items-center gap-1">
+						<span class={ "text-[11px]", templ.KV("text-foreground font-semibold", b.IsToday), templ.KV("text-muted-foreground", !b.IsToday) }>{ b.Label }</span>
+						<span class={ "size-1 rounded-full", templ.KV("bg-signal", b.IsToday) }></span>
+					</div>
+				}
+			</div>
+		</div>
+		<a href={ templ.SafeURL(data.activitiesHref()) } class="border-hairline text-muted-foreground hover:text-foreground flex items-center justify-between border-t px-5 py-3 text-xs transition-colors">
+			<span>{ weekSource(data) }</span>
+			@icon.ChevronRight(icon.Props{Class: "size-4"})
+		</a>
 	}
-	return fmt.Sprintf("%.0f kcal", data.Instruments.Calories7d)
 }
 
-func trainingKPI(data HubData) string {
-	if data.Instruments.NextSession != nil {
-		return data.Instruments.NextSession.Weekday
+templ weekStat(value, unit, sub string) {
+	<div>
+		<p class="text-3xl font-semibold tracking-tight tabular-nums">{ value }</p>
+		<p class="text-muted-foreground mt-0.5 text-xs">{ unit }</p>
+		if sub != "" {
+			<p class="text-muted-foreground/80 text-[11px]">{ sub }</p>
+		}
+	</div>
+}
+
+func sessionsLabel(n int) string {
+	if n == 1 {
+		return "1 session"
 	}
-	if data.HasPlan() {
-		return "Plan ready"
+	return fmt.Sprintf("%d sessions", n)
+}
+
+// weekSource says where the week's numbers came from, so an empty strip reads
+// as "nothing is feeding this" rather than "you did nothing".
+func weekSource(data HubData) string {
+	s := data.StravaStatus
+	switch {
+	case s.Connected && s.LastSyncedAt != nil:
+		return "Strava · synced " + ago(*s.LastSyncedAt, data.Now)
+	case s.Connected:
+		return "Strava · waiting for first sync"
+	case data.Week.hasActivity():
+		return "Tracked sessions"
+	default:
+		return "Track a session or connect Strava to fill this in"
 	}
-	return "—"
+}
+
+templ recentCard(data HubData) {
+	@panel() {
+		@panelHeading("Recent") {
+			if len(data.Recent) > 0 {
+				<a href={ templ.SafeURL(data.activitiesHref()) } class="text-muted-foreground hover:text-foreground text-xs">See all</a>
+			}
+		}
+		if len(data.Recent) == 0 {
+			@ui.Empty(ui.EmptyProps{Title: "No sessions yet", Body: "Time a walk, a lift, or a ride and it shows up here with the calories it burned.", Class: "py-8"}) {
+				@button.Button(button.Props{Href: "/app/activity", Variant: button.VariantOutline, Size: button.SizeSm}) {
+					Start a session
+				}
+			}
+		} else {
+			<ul class="divide-hairline mt-2 divide-y">
+				for _, r := range data.Recent {
+					@recentItem(r, data.Location)
+				}
+			</ul>
+		}
+	}
+}
+
+templ recentItem(r RecentRow, loc *time.Location) {
+	<li class="flex items-center gap-3 px-5 py-3.5">
+		<span class="bg-muted text-muted-foreground flex size-9 shrink-0 items-center justify-center rounded-full">
+			@icon.Icon(recentIcon(r))(icon.Props{Class: "size-4"})
+		</span>
+		<div class="min-w-0 flex-1">
+			<p class="truncate text-sm font-medium">{ recentTitle(r) }</p>
+			<p class="text-muted-foreground truncate text-xs tabular-nums">{ strings.Join(recentDetail(r), " · ") }</p>
+		</div>
+		<time class="text-muted-foreground shrink-0 text-xs tabular-nums" datetime={ r.EndedAt.Format(time.RFC3339) }>
+			{ when(r.EndedAt, loc) }
+		</time>
+	</li>
+}
+
+templ bodyCard(data HubData) {
+	@panel() {
+		<div class="flex items-start justify-between gap-4 p-5">
+			<div>
+				@ui.MonoLabel("Weight")
+				if data.Weight != nil {
+					<p class="mt-2 text-2xl font-semibold tracking-tight tabular-nums">
+						{ oneDecimal(data.Weight.Kg) }
+						<span class="text-muted-foreground text-sm font-normal">kg</span>
+					</p>
+					<p class="text-muted-foreground mt-0.5 text-xs">
+						if data.Weight.HasDelta {
+							{ signed(data.Weight.DeltaKg, "%.1f") } kg since last ·
+						}
+						{ data.Weight.At.In(data.Location).Format("2 Jan") }
+					</p>
+				} else {
+					<p class="text-muted-foreground mt-2 text-sm">No weight logged yet.</p>
+				}
+			</div>
+			<a href="/app/calculator" class="text-signal shrink-0 text-xs hover:underline">Log weight</a>
+		</div>
+	}
+}
+
+templ stepsCard(t Trend, loc *time.Location) {
+	@panel() {
+		{{ latest, _ := t.latest() }}
+		@panelHeading("Steps")
+		<div class="flex items-end justify-between gap-4 px-5 pt-3">
+			<p class="text-3xl font-semibold tracking-tight tabular-nums">
+				{ compact(latest.Value) }
+				<span class="text-muted-foreground text-sm font-normal">steps</span>
+			</p>
+			<div class="text-muted-foreground text-right text-xs tabular-nums">
+				<p>{ compact(t.perDay()) } / day</p>
+				<p>{ latest.Day.Format("2 Jan") }</p>
+			</div>
+		</div>
+		<div class="px-3 pt-3">
+			@chart.Chart(t.Chart)
+		</div>
+		@trendAxis(t.first().Day.Format("2 Jan"), fmt.Sprintf("%d days", len(t.Days)), t.last().Day.Format("2 Jan"))
+		<ul class="border-hairline divide-hairline mx-5 mb-5 divide-y overflow-hidden rounded-lg border">
+			for _, row := range t.recentRows(5) {
+				<li class="flex items-center justify-between px-3 py-2.5">
+					<div>
+						<p class="text-sm font-medium tabular-nums">{ compact(row.Value) } steps</p>
+						<p class="text-muted-foreground text-[11px]">{ row.Day.Format("2 Jan") }</p>
+					</div>
+					if row.HasDelta {
+						<span class={ "text-xs tabular-nums", deltaClass(row.Delta) }>{ signed(row.Delta, "%.0f") }</span>
+					}
+				</li>
+			}
+		</ul>
+	}
+}
+
+templ vo2Card(t Trend) {
+	@panel() {
+		{{ latest, _ := t.latest() }}
+		@panelHeading("VO2 max")
+		<div class="flex items-end justify-between gap-4 px-5 pt-3">
+			<p class="text-3xl font-semibold tracking-tight tabular-nums">
+				{ oneDecimal(latest.Value) }
+				<span class="text-muted-foreground text-sm font-normal">ml/kg/min</span>
+			</p>
+			<div class="text-right text-xs tabular-nums">
+				<p class="text-ember">{ vo2Band(latest.Value) }</p>
+				<p class="text-muted-foreground">{ latest.Day.Format("2 Jan") }</p>
+			</div>
+		</div>
+		<div class="px-3 pt-3">
+			@chart.Chart(t.Chart)
+		</div>
+		<div class="pb-4">
+			@trendAxis(t.first().Day.Format("2 Jan"), fmt.Sprintf("%d readings", len(t.Days)), t.last().Day.Format("2 Jan"))
+		</div>
+	}
+}
+
+templ trendAxis(left, middle, right string) {
+	<div class="text-muted-foreground flex justify-between px-5 pt-1 pb-3 text-[11px] tabular-nums">
+		<span>{ left }</span>
+		<span>{ middle }</span>
+		<span>{ right }</span>
+	</div>
+}
+
+templ upNextCard(data HubData) {
+	@panel() {
+		<div class="p-5">
+			@ui.MonoLabel("Up next")
+			if s := data.Instruments.NextSession; s != nil {
+				<p class="mt-2 text-lg font-semibold tracking-tight">
+					{ s.Weekday }
+					if s.StartTime != "" {
+						<span class="text-muted-foreground text-sm font-normal">at { s.StartTime }</span>
+					}
+				</p>
+				if s.Focus != "" {
+					<p class="text-muted-foreground text-sm">{ s.Focus }</p>
+				}
+				<p class="text-muted-foreground mt-1 text-xs">{ exerciseCount(len(s.Exercises)) }</p>
+				<div class="mt-4">
+					@button.Button(button.Props{Href: trainingHref(data), Size: button.SizeSm, FullWidth: true, Class: "bg-signal text-background hover:bg-signal/90"}) {
+						@icon.Dumbbell(icon.Props{Class: "size-4"})
+						Open session
+					}
+				</div>
+			} else if data.HasPlan() {
+				<p class="mt-2 text-sm">Your plan has no session left this week.</p>
+				<div class="mt-4">
+					@button.Button(button.Props{Href: trainingHref(data), Variant: button.VariantOutline, Size: button.SizeSm, FullWidth: true}) {
+						Open plan
+					}
+				</div>
+			} else {
+				<p class="mt-2 text-sm">No training plan yet.</p>
+				<p class="text-muted-foreground text-xs">Generate one from your goals in under a minute.</p>
+				<div class="mt-4">
+					@button.Button(button.Props{Href: "/app/training/new", Variant: button.VariantOutline, Size: button.SizeSm, FullWidth: true}) {
+						Build a plan
+					}
+				</div>
+			}
+		</div>
+	}
+}
+
+func exerciseCount(n int) string {
+	if n == 1 {
+		return "1 exercise"
+	}
+	return fmt.Sprintf("%d exercises", n)
 }
 
 func trainingHref(data HubData) string {
@@ -134,61 +413,71 @@ func trainingHref(data HubData) string {
 	return "/app/training"
 }
 
-func trainingCTA(data HubData) string {
-	if data.Instruments.NextSession != nil {
-		return "Open session"
-	}
-	if data.HasPlan() {
-		return "Open plan"
-	}
-	return "Build plan"
-}
-
-func nutritionKPI(data HubData) string {
-	if !data.Instruments.HasMealProgress || data.Instruments.MealProgress == nil {
-		return "—"
-	}
-	p := data.Instruments.MealProgress
-	return fmt.Sprintf("%.0f / %.0f kcal", p.Logged.Calories, p.Goal.Calories)
-}
-
-func stravaKPI(status strava.Status) string {
-	if !status.Configured {
-		return "Off"
-	}
-	if status.Connected {
-		return "Connected"
-	}
-	return "Not linked"
-}
-
-func stravaCTA(status strava.Status) string {
-	if !status.Configured {
-		return ""
-	}
-	if status.Connected {
-		return "Manage"
-	}
-	return "Connect"
-}
-
-templ calorieInstrument(data HubData) {
-	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
-		@card.Header() {
-			@card.Title() {
-				Activity 7d 
-			}
-			@card.Description() {
-				Calories burned from tracked and imported sessions.
-			}
-		}
-		@card.Content() {
-			if data.Instruments.HasCalories {
-				@chart.Chart(data.Instruments.CalorieChart)
+templ nutritionCard(data HubData) {
+	@panel() {
+		<div class="p-5">
+			<div class="flex items-center justify-between">
+				@ui.MonoLabel("Nutrition today")
+				<a href="/app/nutrition/log" class="text-signal text-xs hover:underline">Log food</a>
+			</div>
+			if p := data.Instruments.MealProgress; data.Instruments.HasMealProgress && p != nil {
+				<p class="mt-2 text-2xl font-semibold tracking-tight tabular-nums">
+					{ fmt.Sprintf("%.0f", p.Logged.Calories) }
+					<span class="text-muted-foreground text-sm font-normal">/ { fmt.Sprintf("%.0f", p.Goal.Calories) } kcal</span>
+				</p>
+				<div class="mt-3">
+					@progress.Progress(progress.Props{Max: 100, Value: percentOf(p.Logged.Calories, p.Goal.Calories), Size: progress.SizeSm, Label: "Calories logged against today's goal"})
+				</div>
+				<div class="mt-4 grid grid-cols-3 gap-2 text-center">
+					@macroStat("Protein", p.Logged.ProteinG, p.Goal.ProteinG)
+					@macroStat("Carbs", p.Logged.CarbG, p.Goal.CarbG)
+					@macroStat("Fat", p.Logged.FatG, p.Goal.FatG)
+				</div>
 			} else {
-				<p class="text-muted-foreground text-sm">No activity logged this week.</p>
+				<p class="text-muted-foreground mt-2 text-sm">
+					Set a macro target in the
+					<a href="/app/calculator" class="text-foreground underline underline-offset-2">calculator</a>
+					to track today against it.
+				</p>
 			}
-		}
+		</div>
+	}
+}
+
+templ macroStat(label string, logged, goal float64) {
+	<div class="bg-muted/50 rounded-md px-2 py-2">
+		<p class="text-sm font-medium tabular-nums">{ fmt.Sprintf("%.0f", logged) }<span class="text-muted-foreground text-[11px]">/{ fmt.Sprintf("%.0fg", goal) }</span></p>
+		<p class="text-muted-foreground text-[11px]">{ label }</p>
+	</div>
+}
+
+func percentOf(v, of float64) int {
+	if of <= 0 {
+		return 0
+	}
+	pct := int(v / of * 100)
+	return min(max(pct, 0), 100)
+}
+
+templ exploreCard() {
+	@panel() {
+		@panelHeading("Explore")
+		<ul class="mt-2 pb-2">
+			for _, t := range tiles() {
+				<li>
+					<a href={ templ.SafeURL(t.Href) } class="hover:bg-muted/50 flex items-center gap-3 px-5 py-2.5 transition-colors">
+						<span class="text-muted-foreground flex size-8 shrink-0 items-center justify-center">
+							@icon.Icon(t.Icon)(icon.Props{Class: "size-4"})
+						</span>
+						<div class="min-w-0 flex-1">
+							<p class="truncate text-sm font-medium">{ t.Label }</p>
+							<p class="text-muted-foreground truncate text-xs">{ t.Description }</p>
+						</div>
+						@icon.ChevronRight(icon.Props{Class: "text-muted-foreground size-4 shrink-0"})
+					</a>
+				</li>
+			}
+		</ul>
 	}
 }
 
@@ -196,12 +485,10 @@ templ calorieInstrument(data HubData) {
 // disconnect, and when it last ran. Nothing about tokens reaches here — the
 // handler is given a Status, which cannot carry them.
 templ stravaCard(status strava.Status) {
-	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
-		@card.Header() {
-			@card.Title() {
-				Strava
-			}
-			@card.Description() {
+	@panel() {
+		<div class="p-5">
+			@ui.MonoLabel("Strava")
+			<p class="mt-2 text-sm">
 				if !status.Configured {
 					Not configured on this server.
 				} else if status.Unavailable {
@@ -220,58 +507,58 @@ templ stravaCard(status strava.Status) {
 				} else {
 					Import your runs and rides automatically.
 				}
-			}
-		}
-		@card.Content() {
-			if !status.Configured {
-				<p class="text-muted-foreground text-xs leading-relaxed">
-					Set STRAVA_CLIENT_ID and STRAVA_CLIENT_SECRET to enable this.
-				</p>
-			} else if status.Unavailable {
-				// Deliberately offers no Connect button. The connection may
-				// well exist and be fine; reconnecting to fix a read error
-				// would replace a working credential for no reason.
-				@alert.Alert(alert.Props{Variant: alert.VariantDestructive}) {
-					@alert.Title() {
-						Strava is temporarily unreadable
-					}
-					@alert.Description() {
-						Your connection could not be loaded. Nothing has been lost — try again shortly.
-					}
-				}
-			} else if status.Connected {
-				if status.LastSyncError != "" {
-					@stravaSyncError(status)
-				}
-				if status.SyncPending && status.LastSyncedAt == nil {
-					<p class="text-muted-foreground mb-4 text-xs leading-relaxed">
-						A sync is waiting in the queue. If nothing arrives, the background
-						worker is not running — start it with <code>task worker</code>.
+			</p>
+			<div class="mt-4">
+				if !status.Configured {
+					<p class="text-muted-foreground text-xs leading-relaxed">
+						Set STRAVA_CLIENT_ID and STRAVA_CLIENT_SECRET to enable this.
 					</p>
-				}
-				<div class="flex flex-wrap gap-2">
-					@button.Button(button.Props{Href: "/app/fitness/activities", Class: "bg-signal text-background hover:bg-signal/90"}) {
-						View activities in 3D
+				} else if status.Unavailable {
+					// Deliberately offers no Connect button. The connection may
+					// well exist and be fine; reconnecting to fix a read error
+					// would replace a working credential for no reason.
+					@alert.Alert(alert.Props{Variant: alert.VariantDestructive}) {
+						@alert.Title() {
+							Strava is temporarily unreadable
+						}
+						@alert.Description() {
+							Your connection could not be loaded. Nothing has been lost — try again shortly.
+						}
 					}
-					<form method="post" action="/app/fitness/strava/sync">
-						@ui.CSRFInput()
-						@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
-							Sync now
+				} else if status.Connected {
+					if status.LastSyncError != "" {
+						@stravaSyncError(status)
+					}
+					if status.SyncPending && status.LastSyncedAt == nil {
+						<p class="text-muted-foreground mb-4 text-xs leading-relaxed">
+							A sync is waiting in the queue. If nothing arrives, the background
+							worker is not running — start it with <code>task worker</code>.
+						</p>
+					}
+					<div class="flex flex-wrap gap-2">
+						@button.Button(button.Props{Href: "/app/fitness/activities", Class: "bg-signal text-background hover:bg-signal/90"}) {
+							View activities in 3D
 						}
-					</form>
-					<form method="post" action="/app/fitness/strava/disconnect">
-						@ui.CSRFInput()
-						@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
-							Disconnect
-						}
-					</form>
-				</div>
-			} else {
-				@button.Button(button.Props{Href: "/app/fitness/strava/connect", Class: "bg-signal text-background hover:bg-signal/90"}) {
-					Connect Strava
+						<form method="post" action="/app/fitness/strava/sync">
+							@ui.CSRFInput()
+							@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
+								Sync now
+							}
+						</form>
+						<form method="post" action="/app/fitness/strava/disconnect">
+							@ui.CSRFInput()
+							@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
+								Disconnect
+							}
+						</form>
+					</div>
+				} else {
+					@button.Button(button.Props{Href: "/app/fitness/strava/connect", Class: "bg-signal text-background hover:bg-signal/90"}) {
+						Connect Strava
+					}
 				}
-			}
-		}
+			</div>
+		</div>
 	}
 }
 
@@ -298,55 +585,38 @@ templ stravaSyncError(status strava.Status) {
 	</div>
 }
 
-templ tileCard(t layout.Destination) {
-	<a href={ templ.SafeURL(t.Href) } class="block">
-		@card.Card(card.Props{Class: "border-hairline bg-surface hover:border-muted-foreground/30 transition-colors"}) {
-			@card.Header() {
-				@card.Title() {
-					{ t.Label }
-				}
-				@card.Description() {
-					{ t.Description }
-				}
-			}
-		}
-	</a>
-}
-
 // deviceCard shows what a wearable or phone has pushed in the last week.
 //
 // It renders even when empty, because the useful answer for most people is
 // "nothing is connected yet, and here is how to change that" — a card that
 // disappeared would leave no route to setting one up.
 templ deviceCard(data HubData) {
-	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
-		@card.Header() {
-			@card.Title() {
-				Device readings
-			}
-			@card.Description() {
+	@panel() {
+		<div class="p-5">
+			@ui.MonoLabel("Device readings")
+			<p class="mt-2 text-sm">
 				if data.HasDeviceReadings {
 					The last 7 days, as your coach sees them.
 				} else {
 					Nothing has been pushed yet.
 				}
-			}
-		}
-		@card.Content() {
-			if data.HasDeviceReadings {
-				<ul class="space-y-1.5">
-					for _, line := range data.DeviceReadings {
-						<li class="text-sm leading-relaxed">{ line }</li>
-					}
-				</ul>
-			} else {
-				<p class="text-muted-foreground text-xs leading-relaxed">
-					Apple Health and Google Health have no web API, so readings have to be
-					pushed from your phone. Issue a token under Settings &rarr; Connections
-					and point a health-export app at
-					<code class="bg-muted rounded px-1 py-0.5">/ingest/health/apple_health</code>.
-				</p>
-			}
-		}
+			</p>
+			<div class="mt-3">
+				if data.HasDeviceReadings {
+					<ul class="space-y-1.5">
+						for _, line := range data.DeviceReadings {
+							<li class="text-muted-foreground text-xs leading-relaxed">{ line }</li>
+						}
+					</ul>
+				} else {
+					<p class="text-muted-foreground text-xs leading-relaxed">
+						Apple Health and Google Health have no web API, so readings have to be
+						pushed from your phone. Issue a token under Settings &rarr; Connections
+						and point a health-export app at
+						<code class="bg-muted rounded px-1 py-0.5">/ingest/health/apple_health</code>.
+					</p>
+				}
+			</div>
+		</div>
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/activity"
+	"github.com/NorthAIProject/north-client/internal/biometrics"
 	"github.com/NorthAIProject/north-client/internal/fitness/strava"
 	"github.com/NorthAIProject/north-client/internal/health"
 	"github.com/NorthAIProject/north-client/internal/meals"
@@ -32,6 +33,10 @@ type Options struct {
 	Strava   *strava.Service
 	Meals    *meals.TrackMealProgressService
 	Health   *health.Service
+
+	// Biometrics supplies the weight card. Optional: without it the card
+	// shows its empty state.
+	Biometrics *biometrics.Service
 }
 
 type Service struct {
@@ -40,6 +45,7 @@ type Service struct {
 	strava   *strava.Service
 	meals    *meals.TrackMealProgressService
 	health   *health.Service
+	bio      *biometrics.Service
 }
 
 func NewService(opts Options) *Service {
@@ -49,6 +55,7 @@ func NewService(opts Options) *Service {
 		strava:   opts.Strava,
 		meals:    opts.Meals,
 		health:   opts.Health,
+		bio:      opts.Biometrics,
 	}
 }
 
@@ -76,6 +83,16 @@ type Snapshot struct {
 	// account with nothing attached.
 	DeviceReadings    []string
 	HasDeviceReadings bool
+
+	Week   Week
+	Recent []RecentSession
+
+	// Steps and VO2 are empty unless a device has pushed that metric.
+	Steps []DailyValue
+	VO2   []DailyValue
+
+	Weight    WeightReading
+	HasWeight bool
 }
 
 func (s Snapshot) HasCalorieChart() bool {
@@ -108,8 +125,11 @@ func (s *Service) Load(ctx context.Context, user users.User) (Snapshot, error) {
 			return Snapshot{}, err
 		}
 		snap.CalorieSeries = buildCalorieSeries(loc, since, sessions)
+		snap.Week = buildWeek(loc, now, sessions)
+		snap.Recent = buildRecent(sessions)
 	} else {
 		snap.CalorieSeries = emptyCalorieSeries(loc)
+		snap.Week = buildWeek(loc, now, nil)
 	}
 
 	if s.workouts != nil {
@@ -159,27 +179,136 @@ func (s *Service) Load(ctx context.Context, user users.User) (Snapshot, error) {
 		}
 		snap.DeviceReadings = lines
 		snap.HasDeviceReadings = len(lines) > 0
+
+		if err := s.loadDeviceTrends(ctx, user, now, &snap); err != nil {
+			return Snapshot{}, err
+		}
+	}
+
+	if s.bio != nil {
+		history, err := s.bio.History(ctx, user.ID, 2)
+		if err != nil {
+			return Snapshot{}, err
+		}
+		snap.Weight, snap.HasWeight = latestWeight(history)
 	}
 
 	return snap, nil
 }
 
-func buildView(snap Snapshot) fitnesspages.Instruments {
-	labels := make([]string, len(snap.CalorieSeries))
-	values := make([]float64, len(snap.CalorieSeries))
-	for i, d := range snap.CalorieSeries {
-		labels[i] = d.Label
-		values[i] = d.Value
+// loadDeviceTrends reads the per-day series behind the steps and VO2 max
+// cards. A metric nobody has pushed leaves its series nil, which the page
+// reads as "no card", not as a row of zeros.
+func (s *Service) loadDeviceTrends(ctx context.Context, user users.User, now time.Time, snap *Snapshot) error {
+	loc := user.Location()
+	until := now.Add(time.Minute)
+
+	steps, err := s.health.Between(ctx, user.ID, "steps", trailingDaysAt(loc, now, stepsWindow)[0], until)
+	if err != nil {
+		return err
+	}
+	if len(steps) > 0 {
+		snap.Steps = dailyTotals(loc, now, stepsWindow, steps)
 	}
 
+	vo2, err := s.health.Between(ctx, user.ID, "vo2max", trailingDaysAt(loc, now, vo2Window)[0], until)
+	if err != nil {
+		return err
+	}
+	snap.VO2 = dailyMeans(loc, vo2)
+	return nil
+}
+
+func buildView(snap Snapshot) fitnesspages.Instruments {
 	return fitnesspages.Instruments{
-		CalorieChart:    viz.Bar("fitness-calories", "Calories (kcal)", labels, values),
-		HasCalories:     snap.HasCalorieChart(),
-		Calories7d:      snap.Calories7d,
 		PlanID:          snap.PlanID,
 		NextSession:     snap.NextSession,
 		HasMealProgress: snap.HasMealProgress,
 		MealProgress:    snap.MealProgress,
+	}
+}
+
+// buildHubData turns a snapshot into the page's view model.
+func buildHubData(snap Snapshot, loc *time.Location, now time.Time, notice string) fitnesspages.HubData {
+	data := fitnesspages.HubData{
+		StravaStatus:      snap.StravaStatus,
+		Instruments:       buildView(snap),
+		Notice:            notice,
+		Week:              weekView(snap),
+		Recent:            recentRows(snap.Recent),
+		Steps:             trendView("fitness-steps", "var(--north-signal)", snap.Steps),
+		VO2:               trendView("fitness-vo2", "var(--north-agent)", snap.VO2),
+		DeviceReadings:    snap.DeviceReadings,
+		HasDeviceReadings: snap.HasDeviceReadings,
+		Location:          loc,
+		Now:               now,
+	}
+	if snap.HasWeight {
+		data.Weight = &fitnesspages.Weight{
+			Kg:       snap.Weight.Kg,
+			DeltaKg:  snap.Weight.DeltaKg,
+			HasDelta: snap.Weight.HasDelta,
+			At:       snap.Weight.At,
+		}
+	}
+	return data
+}
+
+func weekView(snap Snapshot) fitnesspages.WeekView {
+	bars := make([]fitnesspages.WeekBar, len(snap.Week.Days))
+	for i, d := range snap.Week.Days {
+		bars[i] = fitnesspages.WeekBar{Label: d.Label, Minutes: d.Minutes, IsToday: d.IsToday}
+	}
+	return fitnesspages.WeekView{
+		Bars:       bars,
+		Sessions:   snap.Week.Sessions,
+		Minutes:    snap.Week.Minutes,
+		DistanceKm: snap.Week.DistanceKm,
+		Calories:   snap.Calories7d,
+	}
+}
+
+func recentRows(sessions []RecentSession) []fitnesspages.RecentRow {
+	out := make([]fitnesspages.RecentRow, len(sessions))
+	for i, s := range sessions {
+		out[i] = fitnesspages.RecentRow{
+			Name:       s.Name,
+			Category:   s.Category,
+			Code:       s.ActivityCode,
+			Source:     s.Source,
+			EndedAt:    s.EndedAt,
+			Duration:   s.Duration,
+			DistanceKm: s.DistanceKm,
+			Calories:   s.Calories,
+		}
+	}
+	return out
+}
+
+// trendView builds a device metric card, or nil when the series has no
+// reading at all, so the page leaves the card out.
+func trendView(id, colorVar string, series []DailyValue) *fitnesspages.Trend {
+	// Today is usually still counting and often empty; a line that dives to
+	// zero at its right edge reads as a collapse rather than "not synced yet".
+	for len(series) > 0 && series[len(series)-1].Value <= 0 {
+		series = series[:len(series)-1]
+	}
+	var hasData bool
+	labels := make([]string, len(series))
+	values := make([]float64, len(series))
+	days := make([]fitnesspages.TrendDay, len(series))
+	for i, d := range series {
+		labels[i] = d.Day.Format("2 Jan")
+		values[i] = d.Value
+		days[i] = fitnesspages.TrendDay{Day: d.Day, Value: d.Value}
+		hasData = hasData || d.Value > 0
+	}
+	if !hasData {
+		return nil
+	}
+	return &fitnesspages.Trend{
+		Chart: viz.AreaLine(id, labels, values, colorVar),
+		Days:  days,
 	}
 }
 
@@ -222,11 +351,5 @@ func emptyCalorieSeries(loc *time.Location) []DayPoint {
 }
 
 func trailingDays(loc *time.Location, count int) []time.Time {
-	now := time.Now().In(loc)
-	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
-	out := make([]time.Time, count)
-	for i := range count {
-		out[i] = today.AddDate(0, 0, -(count - 1 - i))
-	}
-	return out
+	return trailingDaysAt(loc, time.Now(), count)
 }
