@@ -69,6 +69,10 @@ type HubData struct {
 
 	Weight *Weight
 
+	// Strength and Cardio are the last 30 days; nil leaves the card out.
+	Strength *StrengthView
+	Cardio   *CardioView
+
 	// DeviceReadings is the last week from a wearable or phone, already
 	// rendered as sentences by internal/health. Empty is the normal state.
 	DeviceReadings    []string
@@ -121,6 +125,16 @@ templ Hub(user users.User, data HubData) {
 			<div class="grid gap-6 lg:grid-cols-12">
 				<div class="min-w-0 space-y-6 lg:col-span-8">
 					@weekCard(data)
+					if data.Strength != nil || data.Cardio != nil {
+						<div class="grid gap-6 md:grid-cols-2">
+							if data.Strength != nil {
+								@strengthCard(*data.Strength)
+							}
+							if data.Cardio != nil {
+								@cardioCard(*data.Cardio)
+							}
+						</div>
+					}
 					@recentCard(data)
 					@bodyCard(data)
 					if data.Steps != nil {
@@ -619,4 +633,142 @@ templ deviceCard(data HubData) {
 			</div>
 		</div>
 	}
+}
+
+// StrengthView is the month's lifting, from logged sets.
+type StrengthView struct {
+	Workouts  int
+	Sets      int
+	VolumeKg  float64
+	Exercises []StrengthRow
+	Record    *StrengthRecord
+}
+
+type StrengthRow struct {
+	Name     string
+	BestKg   float64
+	E1RMKg   float64
+	ChangeKg float64
+}
+
+type StrengthRecord struct {
+	Exercise string
+	WeightKg float64
+	Reps     int
+	E1RMKg   float64
+	On       time.Time
+}
+
+// CardioView is the month's runs, rides and walks.
+type CardioView struct {
+	Sessions        int
+	Minutes         int
+	DistanceKm      float64
+	Runs            int
+	BestPaceSeconds float64
+	Best5KSeconds   float64
+	LongestKm       float64
+	RestingHR       float64
+}
+
+func kg(v float64) string {
+	if v == float64(int64(v)) {
+		return fmt.Sprintf("%.0f kg", v)
+	}
+	return fmt.Sprintf("%.1f kg", v)
+}
+
+func paceLabel(seconds float64) string {
+	s := int(seconds + 0.5)
+	return fmt.Sprintf("%d:%02d /km", s/60, s%60)
+}
+
+func clockLabel(seconds float64) string {
+	s := int(seconds + 0.5)
+	if s >= 3600 {
+		return fmt.Sprintf("%d:%02d:%02d", s/3600, s%3600/60, s%60)
+	}
+	return fmt.Sprintf("%d:%02d", s/60, s%60)
+}
+
+templ strengthCard(v StrengthView) {
+	@panel() {
+		@panelHeading("Strength · 30 days") {
+			<a href="/app/insights/training" class="text-signal text-xs hover:underline">All lifts</a>
+		}
+		<div class="space-y-4 px-5 pt-3 pb-5" data-testid="fitness-strength">
+			<div class="grid grid-cols-3 gap-3">
+				@miniStat(fmt.Sprintf("%d", v.Workouts), "", "workouts")
+				@miniStat(fmt.Sprintf("%d", v.Sets), "", "sets")
+				@miniStat(fmt.Sprintf("%.1f", v.VolumeKg/1000), "t", "volume")
+			</div>
+			<ul class="divide-border divide-y text-sm">
+				for _, e := range v.Exercises {
+					<li class="py-2">
+						<div class="flex items-baseline justify-between gap-3">
+							<span class="truncate font-medium">{ e.Name }</span>
+							if e.ChangeKg > 0 {
+								<span class="text-signal shrink-0 text-xs tabular-nums">+{ kg(e.ChangeKg) }</span>
+							}
+						</div>
+						<p class="text-muted-foreground text-xs tabular-nums">best { kg(e.BestKg) } · est. 1RM { kg(e.E1RMKg) }</p>
+					</li>
+				}
+			</ul>
+			if v.Record != nil {
+				<div class="bg-signal/10 rounded-lg px-3 py-2 text-xs">
+					<span class="text-signal font-semibold">New record</span>
+					· { v.Record.Exercise } { kg(v.Record.WeightKg) } × { fmt.Sprintf("%d", v.Record.Reps) }
+					<span class="text-muted-foreground">(est. { kg(v.Record.E1RMKg) }, { v.Record.On.Format("Jan 2") })</span>
+				</div>
+			}
+		</div>
+	}
+}
+
+templ cardioCard(v CardioView) {
+	@panel() {
+		@panelHeading("Cardio · 30 days") {
+			<a href="/app/insights/cardio" class="text-signal text-xs hover:underline">All cardio</a>
+		}
+		<div class="space-y-4 px-5 pt-3 pb-5" data-testid="fitness-cardio">
+			<div class="grid grid-cols-3 gap-3">
+				@miniStat(fmt.Sprintf("%d", v.Sessions), "", "sessions")
+				if v.DistanceKm > 0 {
+					@miniStat(fmt.Sprintf("%.1f", v.DistanceKm), "km", "distance")
+				} else {
+					@miniStat(fmt.Sprintf("%d", v.Runs), "", "runs")
+				}
+				@miniStat(fmt.Sprintf("%dh %02dm", v.Minutes/60, v.Minutes%60), "", "moving")
+			</div>
+			<dl class="divide-border divide-y text-sm">
+				if v.Runs > 0 {
+					if v.LongestKm > 0 {
+						<div class="flex justify-between py-2"><dt class="text-muted-foreground">Longest run</dt><dd class="tabular-nums">{ fmt.Sprintf("%.1f km", v.LongestKm) }</dd></div>
+					}
+				}
+				if v.BestPaceSeconds > 0 {
+					<div class="flex justify-between py-2"><dt class="text-muted-foreground">Best pace</dt><dd class="tabular-nums">{ paceLabel(v.BestPaceSeconds) }</dd></div>
+				}
+				if v.Best5KSeconds > 0 {
+					<div class="flex justify-between py-2"><dt class="text-muted-foreground">Best 5K</dt><dd class="tabular-nums">{ clockLabel(v.Best5KSeconds) }</dd></div>
+				}
+				if v.RestingHR > 0 {
+					<div class="flex justify-between py-2"><dt class="text-muted-foreground">Resting heart rate</dt><dd class="tabular-nums">{ fmt.Sprintf("%.0f bpm", v.RestingHR) }</dd></div>
+				}
+			</dl>
+		</div>
+	}
+}
+
+templ miniStat(value, unit, label string) {
+	<div>
+		<p class="text-xl font-semibold tracking-tight tabular-nums">
+			{ value }
+			if unit != "" {
+				<span class="text-muted-foreground text-xs font-normal">{ unit }</span>
+			}
+		</p>
+		<p class="text-muted-foreground text-[11px]">{ label }</p>
+	</div>
 }

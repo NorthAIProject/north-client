@@ -313,14 +313,6 @@ func routes(
 	// costed exactly like a manually logged one.
 	healthSvc.WithWorkouts(activitySvc, biometricSvc)
 
-	fitnessHandler := fitness.NewHandler(fitness.Options{
-		Activity:   activitySvc,
-		Workouts:   workoutSvc,
-		Strava:     stravaSvc,
-		Meals:      mealProgressSvc,
-		Health:     healthSvc,
-		Biometrics: biometricSvc,
-	}, cfg.Env.IsProduction())
 	mealsOpts := meals.HandlerOptions{
 		Ingredients: mealIngredientSvc,
 		Diets:       mealDietSvc,
@@ -522,6 +514,17 @@ func routes(
 		MacroGoals: calculatorSvc, Biometrics: biometricSvc, Caffeine: caffeineSvc,
 		ScreenTime: screenTimeSvc, CheckIns: checkinSvc, Lifts: liftSvc, Rules: daySvc,
 	})
+
+	fitnessHandler := fitness.NewHandler(fitness.Options{
+		Activity:   activitySvc,
+		Workouts:   workoutSvc,
+		Strava:     stravaSvc,
+		Meals:      mealProgressSvc,
+		Health:     healthSvc,
+		Biometrics: biometricSvc,
+		Lifts:      liftSvc,
+		Cardio:     statsSvc,
+	}, cfg.Env.IsProduction())
 
 	insightsSvc := insights.NewService(insights.Options{
 		Dashboard: dashboardSvc,
