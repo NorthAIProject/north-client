@@ -473,6 +473,9 @@ func routes(
 		Activity:      activitySvc,
 		Mind:          mindSvc,
 		Food:          foodLogSvc,
+		Caffeine:      caffeineSvc,
+		Supplements:   supplementSvc,
+		Fasting:       fastingSvc,
 		Nudges:        nudgeSvc,
 		Push:          pushSvc,
 	}

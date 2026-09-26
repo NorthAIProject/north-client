@@ -64,3 +64,12 @@ func TestRulesResponseShape(t *testing.T) {
 		{Kind: dayd.RuleKitchenCloses, At: "20:00", Enabled: true},
 	}))
 }
+
+func TestTrendsResponseShape(t *testing.T) {
+	t.Parallel()
+	d := func(day int) time.Time { return time.Date(2026, 9, day, 8, 0, 0, 0, time.UTC) }
+	apitest.AssertGolden(t, "day_trends.golden.json", day.ProjectTrends(day.Trends{
+		Systolic: dayd.Measurements("systolic", "mmHg", 90, []dayd.Point{{At: d(20), Value: 118}, {At: d(26), Value: 122}}),
+		Fasts:    []dayd.FastBar{{StartedAt: d(25), Hours: 16.4, TargetHours: 16}},
+	}))
+}

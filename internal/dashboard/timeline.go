@@ -11,6 +11,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/NorthAIProject/north-client/internal/activity/activity"
+	caffeinecalc "github.com/NorthAIProject/north-client/internal/caffeine/caffeine"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
@@ -20,15 +21,18 @@ import (
 type EntryKind string
 
 const (
-	KindCheckIn   EntryKind = "checkin"
-	KindHydration EntryKind = "hydration"
-	KindSleep     EntryKind = "sleep"
-	KindHabit     EntryKind = "habit"
-	KindJournal   EntryKind = "journal"
-	KindGoal      EntryKind = "goal"
-	KindGoalNote  EntryKind = "goal-note"
-	KindActivity  EntryKind = "activity"
-	KindFood      EntryKind = "food"
+	KindCheckIn    EntryKind = "checkin"
+	KindHydration  EntryKind = "hydration"
+	KindSleep      EntryKind = "sleep"
+	KindHabit      EntryKind = "habit"
+	KindJournal    EntryKind = "journal"
+	KindGoal       EntryKind = "goal"
+	KindGoalNote   EntryKind = "goal-note"
+	KindActivity   EntryKind = "activity"
+	KindFood       EntryKind = "food"
+	KindCaffeine   EntryKind = "caffeine"
+	KindSupplement EntryKind = "supplement"
+	KindFasting    EntryKind = "fasting"
 )
 
 // Entry is one thing that happened, flattened out of whichever slice owns it.
@@ -77,6 +81,12 @@ func (k EntryKind) Label() string {
 		return "Activity"
 	case KindFood:
 		return "Food"
+	case KindCaffeine:
+		return "Caffeine"
+	case KindSupplement:
+		return "Supplement"
+	case KindFasting:
+		return "Fasting"
 	default:
 		return string(k)
 	}
@@ -90,7 +100,7 @@ func (k EntryKind) Label() string {
 func (s *Service) Timeline(ctx context.Context, user users.User, rg timerange.Range, limit int) ([]Entry, error) {
 	var (
 		g, gctx = errgroup.WithContext(ctx)
-		parts   = make([][]Entry, 9)
+		parts   = make([][]Entry, 12)
 	)
 
 	g.Go(func() (err error) { parts[0], err = s.checkInEntries(gctx, user, rg); return })
@@ -102,6 +112,9 @@ func (s *Service) Timeline(ctx context.Context, user users.User, rg timerange.Ra
 	g.Go(func() (err error) { parts[6], err = s.goalEntries(gctx, user, rg); return })
 	g.Go(func() (err error) { parts[7], err = s.activityEntries(gctx, user, rg); return })
 	g.Go(func() (err error) { parts[8], err = s.foodEntries(gctx, user, rg); return })
+	g.Go(func() (err error) { parts[9], err = s.caffeineEntries(gctx, user, rg); return })
+	g.Go(func() (err error) { parts[10], err = s.supplementEntries(gctx, user, rg); return })
+	g.Go(func() (err error) { parts[11], err = s.fastingEntries(gctx, user, rg); return })
 
 	if err := g.Wait(); err != nil {
 		return nil, err
@@ -380,6 +393,64 @@ func (s *Service) foodEntries(ctx context.Context, user users.User, rg timerange
 			Href:   "/app/nutrition/log",
 			Icon:   "utensils",
 		})
+	}
+	return out, nil
+}
+
+func (s *Service) caffeineEntries(ctx context.Context, user users.User, rg timerange.Range) ([]Entry, error) {
+	if s.caffeine == nil {
+		return nil, nil
+	}
+	list, err := s.caffeine.Between(ctx, user, rg)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Entry, 0, len(list))
+	for _, e := range list {
+		out = append(out, Entry{
+			Kind: KindCaffeine, At: e.LoggedAt, Title: caffeinecalc.DisplayName(e.Label), Detail: fmt.Sprintf("%d mg caffeine", e.MG),
+			Href: "/app", Icon: "coffee",
+		})
+	}
+	return out, nil
+}
+
+func (s *Service) supplementEntries(ctx context.Context, user users.User, rg timerange.Range) ([]Entry, error) {
+	if s.supplements == nil {
+		return nil, nil
+	}
+	list, err := s.supplements.Between(ctx, user, rg)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Entry, 0, len(list))
+	for _, e := range list {
+		out = append(out, Entry{Kind: KindSupplement, At: e.LoggedAt, Title: e.Label(), Href: "/app", Icon: "pill"})
+	}
+	return out, nil
+}
+
+// fastingEntries puts a fast's start and its end on the feed as two rows,
+// each only when it falls inside the window.
+func (s *Service) fastingEntries(ctx context.Context, user users.User, rg timerange.Range) ([]Entry, error) {
+	if s.fasting == nil {
+		return nil, nil
+	}
+	list, err := s.fasting.Overlapping(ctx, user, rg)
+	if err != nil {
+		return nil, err
+	}
+	var out []Entry
+	for _, f := range list {
+		if rg.Contains(f.StartedAt) {
+			out = append(out, Entry{Kind: KindFasting, At: f.StartedAt, Title: "Started fasting", Href: "/app", Icon: "timer"})
+		}
+		if f.EndedAt != nil && rg.Contains(*f.EndedAt) {
+			out = append(out, Entry{
+				Kind: KindFasting, At: *f.EndedAt, Title: "Broke the fast",
+				Detail: formatMinutes(int(f.EndedAt.Sub(f.StartedAt).Minutes())), Href: "/app", Icon: "timer-off",
+			})
+		}
 	}
 	return out, nil
 }

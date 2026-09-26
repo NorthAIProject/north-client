@@ -55,3 +55,25 @@ func Summary(entries []Entry) string {
 	}
 	return "Soreness today: " + strings.Join(parts, ", ") + "."
 }
+
+// Muscles are the 3D body's muscle keys (internal/workouts/plan.MuscleGroups)
+// each region lights up. Knees and feet have no muscle in the model; they are
+// shown as chips only.
+var Muscles = map[string][]string{
+	"neck":       {"neck"},
+	"shoulders":  {"delts", "traps"},
+	"chest":      {"chest"},
+	"upper_back": {"rhomboids", "lats", "traps"},
+	"lower_back": {"erectors"},
+	"abs":        {"abs", "serratus"},
+	"biceps":     {"biceps"},
+	"triceps":    {"triceps"},
+	"forearms":   {"forearms"},
+	"hips":       {"adductors"},
+	"glutes":     {"glutes"},
+	"quads":      {"quads"},
+	"hamstrings": {"hamstrings"},
+	"knees":      nil,
+	"calves":     {"calves"},
+	"feet":       nil,
+}

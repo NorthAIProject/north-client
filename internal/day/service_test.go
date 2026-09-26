@@ -9,8 +9,11 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/activity"
 	"github.com/NorthAIProject/north-client/internal/biometrics"
+	"github.com/NorthAIProject/north-client/internal/caffeine"
+	"github.com/NorthAIProject/north-client/internal/dashboard"
 	"github.com/NorthAIProject/north-client/internal/day"
 	dayd "github.com/NorthAIProject/north-client/internal/day/day"
+	"github.com/NorthAIProject/north-client/internal/fasting"
 	"github.com/NorthAIProject/north-client/internal/health"
 	"github.com/NorthAIProject/north-client/internal/hydration"
 	"github.com/NorthAIProject/north-client/internal/shared/database/testdb"
@@ -191,5 +194,64 @@ func TestParseDateFallsBackToToday(t *testing.T) {
 	}
 	if got := day.ParseDate("2026-01-02", loc, now); got.Month() != 1 || got.Day() != 2 || got.Location() != loc {
 		t.Errorf("parse = %v", got)
+	}
+}
+
+func TestTrendsAndTrackerRowsOnTheTimeline(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	user := seedUser(t, pool)
+
+	healthSvc := health.NewService(health.NewRepository(pool))
+	caffeineSvc := caffeine.NewService(caffeine.NewRepository(pool))
+	fastingSvc := fasting.NewService(fasting.NewRepository(pool))
+	biometricSvc := biometrics.NewService(biometrics.NewRepository(pool))
+	dash := dashboard.NewService(dashboard.Options{Caffeine: caffeineSvc, Fasting: fastingSvc})
+	svc := day.NewService(day.Options{
+		Rules: day.NewRepository(pool), Health: healthSvc, Caffeine: caffeineSvc, Fasting: fastingSvc,
+		Biometrics: biometricSvc, Timeline: dash,
+	})
+
+	if _, err := caffeineSvc.Log(ctx, user, caffeine.LogInput{Preset: "coffee"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := healthSvc.RecordBloodPressure(ctx, user.ID, 122, 79, nil); err != nil {
+		t.Fatal(err)
+	}
+	started := time.Now().Add(-20 * time.Hour)
+	if _, err := fastingSvc.Start(ctx, user, 16, &started); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fastingSvc.Stop(ctx, user); err != nil {
+		t.Fatal(err)
+	}
+
+	trends, err := svc.Trends(ctx, user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if trends.Systolic.Headline != 122 || trends.Systolic.Count != 1 {
+		t.Errorf("systolic = %+v", trends.Systolic)
+	}
+	if trends.Caffeine.Headline != 100 {
+		t.Errorf("caffeine = %+v", trends.Caffeine)
+	}
+	if len(trends.Fasts) != 1 || !trends.Fasts[0].Met() {
+		t.Errorf("fasts = %+v", trends.Fasts)
+	}
+
+	snap, err := svc.Load(ctx, user, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	kinds := map[dashboard.EntryKind]int{}
+	for _, e := range snap.Timeline {
+		kinds[e.Kind]++
+	}
+	if kinds[dashboard.KindCaffeine] != 1 || kinds[dashboard.KindFasting] == 0 {
+		t.Errorf("timeline kinds = %v", kinds)
+	}
+	if snap.Caffeine.TotalMG != 100 || snap.Body.BloodPressure == nil || snap.Body.BloodPressure.Systolic != 122 {
+		t.Errorf("caffeine %+v, bp %+v", snap.Caffeine, snap.Body.BloodPressure)
 	}
 }

@@ -9,9 +9,7 @@ package day
 
 import (
 	"context"
-	"fmt"
 	"math"
-	"sort"
 	"time"
 
 	"github.com/google/uuid"
@@ -83,6 +81,7 @@ type (
 	}
 	Biometrics interface {
 		Current(ctx context.Context, userID uuid.UUID) (biometric.Biometric, error)
+		History(ctx context.Context, userID uuid.UUID, limit int) ([]biometric.Biometric, error)
 	}
 	Health interface {
 		Between(ctx context.Context, userID uuid.UUID, metric string, since, until time.Time) ([]health.Stored, error)
@@ -122,11 +121,12 @@ type (
 	}
 )
 
-// Timeline kinds this page adds to the dashboard's feed.
+// The trackers' timeline kinds live with the rest of the feed's, in the
+// dashboard, so My Day, insights and Records all read the same rows.
 const (
-	KindCaffeine   dashboard.EntryKind = "caffeine"
-	KindSupplement dashboard.EntryKind = "supplement"
-	KindFasting    dashboard.EntryKind = "fasting"
+	KindCaffeine   = dashboard.KindCaffeine
+	KindSupplement = dashboard.KindSupplement
+	KindFasting    = dashboard.KindFasting
 )
 
 // Vitamins Apple Health may report from food apps, mapped to the tracked
@@ -301,12 +301,7 @@ func (s *Service) Load(ctx context.Context, user users.User, date time.Time) (Sn
 		})
 	}
 
-	// The trackers this page introduced write their own rows for the rail,
-	// merged into the dashboard's feed after everything has loaded.
-	var (
-		caffeineRows, supplementRows, fastRows []dashboard.Entry
-		caffeineEntries                        []caffeine.Entry
-	)
+	var caffeineEntries []caffeine.Entry
 	if s.caffeine != nil {
 		g.Go(func() error {
 			entries, err := s.caffeine.Between(gctx, user, rg)
@@ -314,12 +309,6 @@ func (s *Service) Load(ctx context.Context, user users.User, date time.Time) (Sn
 				return err
 			}
 			caffeineEntries = entries
-			for _, e := range entries {
-				caffeineRows = append(caffeineRows, dashboard.Entry{
-					Kind: KindCaffeine, At: e.LoggedAt.In(loc), Title: caffeineTitle(e), Detail: fmt.Sprintf("%d mg caffeine", e.MG),
-					Href: "/app", Icon: "coffee",
-				})
-			}
 			return nil
 		})
 	}
@@ -341,11 +330,6 @@ func (s *Service) Load(ctx context.Context, user users.User, date time.Time) (Sn
 			}
 			cov := supplement.CoverageFor(entries, also)
 			snap.Nutrients = day.Nutrients{Covered: cov.Covered, Missing: cov.Missing}
-			for _, e := range entries {
-				supplementRows = append(supplementRows, dashboard.Entry{
-					Kind: KindSupplement, At: e.LoggedAt.In(loc), Title: e.Label(), Href: "/app", Icon: "pill",
-				})
-			}
 			return nil
 		})
 	} else {
@@ -362,17 +346,6 @@ func (s *Service) Load(ctx context.Context, user users.User, date time.Time) (Sn
 			snap.Fast = &day.Fast{
 				StartedAt: f.StartedAt.In(loc), EndedAt: f.EndedAt, TargetHours: f.TargetHours,
 				Elapsed: elapsed, Phase: string(fast.PhaseAt(elapsed)), Fraction: f.Fraction(now),
-			}
-			for _, f := range fasts {
-				if rg.Contains(f.StartedAt) {
-					fastRows = append(fastRows, dashboard.Entry{Kind: KindFasting, At: f.StartedAt.In(loc), Title: "Started fasting", Href: "/app", Icon: "timer"})
-				}
-				if f.EndedAt != nil && rg.Contains(*f.EndedAt) {
-					fastRows = append(fastRows, dashboard.Entry{
-						Kind: KindFasting, At: f.EndedAt.In(loc), Title: "Broke the fast",
-						Detail: day.FormatMinutes(int(f.Elapsed(now).Minutes())), Href: "/app", Icon: "timer-off",
-					})
-				}
 			}
 			return nil
 		})
@@ -427,32 +400,8 @@ func (s *Service) Load(ctx context.Context, user users.User, date time.Time) (Sn
 		return Snapshot{}, err
 	}
 
-	snap.Timeline = mergeTimeline(snap.Timeline, caffeineRows, supplementRows, fastRows)
 	snap.Caffeine = caffeineFor(caffeineEntries, snap.Rules, date, now)
 	return snap, nil
-}
-
-// mergeTimeline folds extra rows into the feed, newest first, the same order
-// the dashboard sorts by.
-func mergeTimeline(base []dashboard.Entry, extra ...[]dashboard.Entry) []dashboard.Entry {
-	out := append([]dashboard.Entry(nil), base...)
-	for _, rows := range extra {
-		out = append(out, rows...)
-	}
-	sort.SliceStable(out, func(i, j int) bool {
-		if out[i].At.Equal(out[j].At) {
-			return out[i].Kind < out[j].Kind
-		}
-		return out[i].At.After(out[j].At)
-	})
-	return out
-}
-
-func caffeineTitle(e caffeine.Entry) string {
-	if e.Label == "" {
-		return "Caffeine"
-	}
-	return e.Label
 }
 
 // caffeineFor sums the day's caffeine and checks it against the cutoff rule.

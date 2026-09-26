@@ -3288,6 +3288,21 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '500':
           $ref: '#/components/responses/InternalError'
+  /day/trends:
+    get:
+      operationId: getDayTrends
+      summary: Trend cards for the Overview — weight, blood pressure, energy, sleep, caffeine, recent fasts
+      responses:
+        '200':
+          description: Trends
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DayTrends'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /day/rules:
     get:
       operationId: listDayRules
@@ -4291,6 +4306,59 @@ components:
           type: string
         severity:
           type: integer
+    DayTrends:
+      type: object
+      required: [series, fasts]
+      properties:
+        series:
+          type: array
+          items:
+            $ref: '#/components/schemas/DayTrend'
+        fasts:
+          type: array
+          items:
+            $ref: '#/components/schemas/DayFastBar'
+    DayTrend:
+      type: object
+      required: [key, unit, points, headline, count, windowDays]
+      properties:
+        key:
+          type: string
+          enum: [weight, systolic, active_energy, sleep, caffeine]
+        unit:
+          type: string
+        points:
+          type: array
+          items:
+            $ref: '#/components/schemas/DayTrendPoint'
+        headline:
+          type: number
+        count:
+          type: integer
+        windowDays:
+          type: integer
+    DayTrendPoint:
+      type: object
+      required: [at, value]
+      properties:
+        at:
+          type: string
+          format: date-time
+        value:
+          type: number
+    DayFastBar:
+      type: object
+      required: [startedAt, hours, targetHours, met]
+      properties:
+        startedAt:
+          type: string
+          format: date-time
+        hours:
+          type: number
+        targetHours:
+          type: integer
+        met:
+          type: boolean
     DayResponse:
       type: object
       required: [date, isToday, now, vitals, food, water, activity, workouts, body, streak, level, caffeine, nutrients, milestones, timeline, markers]

@@ -31,19 +31,20 @@ type Entry struct {
 
 // Preset is a common drink and a typical dose.
 type Preset struct {
-	Key string
-	MG  int
+	Key  string
+	Name string // English, for the feed; pages translate by Key
+	MG   int
 }
 
 // Presets are the one-tap choices. Doses are typical servings, not promises:
 // a coffee shop's "regular" can hold twice this.
 func Presets() []Preset {
 	return []Preset{
-		{Key: "espresso", MG: 63},
-		{Key: "coffee", MG: 100},
-		{Key: "tea", MG: 45},
-		{Key: "energy_drink", MG: 80},
-		{Key: "cola", MG: 35},
+		{Key: "espresso", Name: "Espresso", MG: 63},
+		{Key: "coffee", Name: "Coffee", MG: 100},
+		{Key: "tea", Name: "Tea", MG: 45},
+		{Key: "energy_drink", Name: "Energy drink", MG: 80},
+		{Key: "cola", Name: "Cola", MG: 35},
 	}
 }
 
@@ -93,4 +94,28 @@ func Summary(entries []Entry, now time.Time) string {
 	}
 	return fmt.Sprintf("Caffeine: %dmg today, about %.0fmg still active; last at %s.",
 		Total(entries), Active(entries, now), last.Format("15:04"))
+}
+
+// DisplayName is how a drink reads in English: a preset's name for a preset
+// key, the label as typed otherwise.
+func DisplayName(label string) string {
+	for _, p := range Presets() {
+		if p.Key == label {
+			return p.Name
+		}
+	}
+	if label == "" {
+		return "Caffeine"
+	}
+	return label
+}
+
+// PresetKeyFor is the preset a display name came from, if any.
+func PresetKeyFor(name string) (string, bool) {
+	for _, p := range Presets() {
+		if p.Name == name {
+			return p.Key, true
+		}
+	}
+	return "", false
 }

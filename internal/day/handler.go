@@ -33,6 +33,7 @@ func NewHandler(svc *Service) *Handler { return &Handler{svc: svc} }
 func (h *Handler) Routes(r chi.Router) {
 	r.Get("/", h.show)
 	r.Post("/day/rules", h.saveRules)
+	r.Get("/day/trends", h.trends)
 }
 
 func (h *Handler) show(w http.ResponseWriter, r *http.Request) {
@@ -317,6 +318,15 @@ func bodyCard(b day.Body) daypages.BodyCard {
 	}
 	for _, so := range b.Soreness {
 		out.Soreness = append(out.Soreness, daypages.SoreRegion{Region: so.Region, Severity: so.Severity})
+		muscles := sore.Muscles[so.Region]
+		switch so.Severity {
+		case sore.Painful:
+			out.Painful = append(out.Painful, muscles...)
+		case sore.Sore:
+			out.Sore = append(out.Sore, muscles...)
+		default:
+			out.Stiff = append(out.Stiff, muscles...)
+		}
 	}
 	if b.WeightKg != nil {
 		out.HasWeight = true
@@ -334,8 +344,8 @@ func bodyCard(b day.Body) daypages.BodyCard {
 // preset key is what was stored, so every language can name it.
 func railTitle(ctx context.Context, e dashboard.Entry) string {
 	if e.Kind == KindCaffeine {
-		if _, ok := caffeinecalc.PresetMG(e.Title); ok {
-			return i18n.T(ctx, "day.caffeine."+e.Title)
+		if key, ok := caffeinecalc.PresetKeyFor(e.Title); ok {
+			return i18n.T(ctx, "day.caffeine."+key)
 		}
 	}
 	return e.Title
@@ -367,3 +377,46 @@ func kindColor(k dashboard.EntryKind) string {
 }
 
 func litres(ml int) string { return fmt.Sprintf("%.1f", float64(ml)/1000) }
+
+// trends renders the trend cards as a fragment. The Overview loads it after
+// the page, so a slow twelve-week query never holds up the dashboard.
+func (h *Handler) trends(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+	t, err := h.svc.Trends(r.Context(), user)
+	if err != nil {
+		middleware.FromContext(r.Context()).Error("load trends", slog.Any("error", err))
+		http.Error(w, i18n.T(r.Context(), "day.error"), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := daypages.Trends(BuildTrends(t)).Render(r.Context(), w); err != nil {
+		middleware.FromContext(r.Context()).Error("render trends", slog.Any("error", err))
+	}
+}
+
+// BuildTrends turns trends into cards, in a fixed order, leaving out any with
+// nothing to show.
+func BuildTrends(t Trends) daypages.TrendsData {
+	var out daypages.TrendsData
+	add := func(s day.Series, color string, decimals int) {
+		if !s.HasData() {
+			return
+		}
+		out.Cards = append(out.Cards, daypages.TrendCard{
+			Key: s.Key, Value: fmt.Sprintf("%.*f", decimals, s.Headline), Unit: s.Unit,
+			Count: s.Count, Window: s.Window, Line: day.Sparkline(s, 100, 32), Color: color,
+		})
+	}
+	add(t.Weight, "var(--color-day-stand)", 1)
+	add(t.Systolic, "var(--color-day-move)", 0)
+	add(t.ActiveEnergy, "var(--color-day-exercise)", 0)
+	add(t.Sleep, "var(--color-day-sleep)", 1)
+	add(t.Caffeine, "var(--color-day-caffeine)", 0)
+	for _, f := range t.Fasts {
+		out.Fasts = append(out.Fasts, daypages.FastRow{
+			Date: f.StartedAt.Format("Mon 2 Jan"), Hours: fmt.Sprintf("%.1f", f.Hours),
+			Target: fmt.Sprintf("%d", f.TargetHours), Fraction: math.Min(f.Hours/float64(max(f.TargetHours, 1)), 1), Met: f.Met(),
+		})
+	}
+	return out
+}

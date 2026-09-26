@@ -1,6 +1,7 @@
 package day
 
 import (
+	"math"
 	"net/http"
 	"time"
 
@@ -22,6 +23,7 @@ func NewAPI(svc *Service) *API { return &API{svc: svc} }
 func (a *API) Routes(r chi.Router) {
 	r.Get("/day", a.show)
 	r.Get("/day/rules", a.listRules)
+	r.Get("/day/trends", a.trends)
 	r.Put("/day/rules/{kind}", a.setRule)
 	r.Delete("/day/rules/{kind}", a.deleteRule)
 }
@@ -359,4 +361,62 @@ func Project(s Snapshot) DayResponse {
 
 func ringView(r day.Ring) RingView {
 	return RingView{Value: r.Value, Goal: r.Goal, Percent: r.Percent()}
+}
+
+type TrendPointView struct {
+	At    time.Time `json:"at"`
+	Value float64   `json:"value"`
+}
+
+type TrendView struct {
+	// Key is weight, systolic, active_energy, sleep or caffeine.
+	Key    string           `json:"key"`
+	Unit   string           `json:"unit"`
+	Points []TrendPointView `json:"points"`
+	// Headline is the latest reading for a measurement, the daily average
+	// for a daily total.
+	Headline float64 `json:"headline"`
+	Count    int     `json:"count"`
+	// WindowDays is how far back the series reaches.
+	WindowDays int `json:"windowDays"`
+}
+
+type FastBarView struct {
+	StartedAt   time.Time `json:"startedAt"`
+	Hours       float64   `json:"hours"`
+	TargetHours int       `json:"targetHours"`
+	Met         bool      `json:"met"`
+}
+
+type TrendsResponse struct {
+	Series []TrendView   `json:"series"`
+	Fasts  []FastBarView `json:"fasts"`
+}
+
+func (a *API) trends(w http.ResponseWriter, r *http.Request) {
+	t, err := a.svc.Trends(r.Context(), auth.MustUser(r.Context()))
+	if err != nil {
+		httpx.Error(w, err, "Trends could not be loaded.")
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, ProjectTrends(t))
+}
+
+// ProjectTrends is the trends payload. Series with no data are left out.
+func ProjectTrends(t Trends) TrendsResponse {
+	out := TrendsResponse{Series: []TrendView{}, Fasts: make([]FastBarView, len(t.Fasts))}
+	for _, s := range []day.Series{t.Weight, t.Systolic, t.ActiveEnergy, t.Sleep, t.Caffeine} {
+		if !s.HasData() {
+			continue
+		}
+		v := TrendView{Key: s.Key, Unit: s.Unit, Headline: s.Headline, Count: s.Count, WindowDays: s.Window, Points: make([]TrendPointView, len(s.Points))}
+		for i, p := range s.Points {
+			v.Points[i] = TrendPointView{At: p.At, Value: p.Value}
+		}
+		out.Series = append(out.Series, v)
+	}
+	for i, f := range t.Fasts {
+		out.Fasts[i] = FastBarView{StartedAt: f.StartedAt, Hours: math.Round(f.Hours*10) / 10, TargetHours: f.TargetHours, Met: f.Met()}
+	}
+	return out
 }

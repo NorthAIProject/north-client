@@ -420,6 +420,9 @@ templ DashboardPanels(data DashboardData) {
 		}
 		@nudgepages.Card(data.Nudges)
 		@kpiStrip(data)
+		// My Day's trend cards, loaded after the page: twelve weeks of
+		// readings is the slowest thing here and should not hold it up.
+		<div hx-get="/app/day/trends" hx-trigger="load" hx-swap="innerHTML"></div>
 		if data.NewsTickerEnabled {
 			@newspages.TickerShell()
 		}

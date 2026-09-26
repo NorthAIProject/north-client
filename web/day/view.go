@@ -166,6 +166,11 @@ type BodyCard struct {
 	BloodPressure    string // "122/79"
 
 	Soreness []SoreRegion
+
+	// Muscles to light on the 3D body, by how sore: painful, sore, stiff.
+	Painful []string
+	Sore    []string
+	Stiff   []string
 }
 
 // SoreRegion is one sore place, as a chip.
@@ -373,4 +378,30 @@ func joinLabels(ls []string) string {
 		out += l
 	}
 	return out
+}
+
+// TrendsData is the Overview's trend cards.
+type TrendsData struct {
+	Cards []TrendCard
+	Fasts []FastRow
+}
+
+// TrendCard is one sparkline card.
+type TrendCard struct {
+	Key    string // catalogue suffix: day.trend.<key>
+	Value  string
+	Unit   string
+	Count  int
+	Window int
+	Line   string // SVG polyline points in a 100×32 box
+	Color  string
+}
+
+// FastRow is one recent fast.
+type FastRow struct {
+	Date     string
+	Hours    string
+	Target   string
+	Fraction float64
+	Met      bool
 }
