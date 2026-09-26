@@ -41,6 +41,13 @@ type DayResponse struct {
 	Workouts WorkoutsView  `json:"workouts"`
 	Body     BodyView      `json:"body"`
 	Streak   int           `json:"streak"`
+	// Level grows one per five lifetime check-ins and never goes back.
+	Level int `json:"level"`
+
+	Caffeine   CaffeineView    `json:"caffeine"`
+	Fast       *FastView       `json:"fast,omitempty"`
+	Nutrients  NutrientsView   `json:"nutrients"`
+	Milestones []MilestoneView `json:"milestones"`
 
 	Timeline []TimelineView `json:"timeline"`
 	Markers  []MarkerView   `json:"markers"`
@@ -50,6 +57,51 @@ type DayResponse struct {
 type VitalsView struct {
 	EnergyPercent   *int `json:"energyPercent,omitempty"`
 	DaylightMinutes *int `json:"daylightMinutes,omitempty"`
+	ScreenMinutes   *int `json:"screenMinutes,omitempty"`
+}
+
+type CaffeineView struct {
+	TotalMG  int `json:"totalMg"`
+	ActiveMG int `json:"activeMg"`
+	LimitMG  int `json:"limitMg"`
+	// AfterCutoff is true when a drink came after the caffeine cutoff rule.
+	AfterCutoff bool `json:"afterCutoff"`
+}
+
+type FastView struct {
+	StartedAt      time.Time  `json:"startedAt"`
+	EndedAt        *time.Time `json:"endedAt,omitempty"`
+	TargetHours    int        `json:"targetHours"`
+	ElapsedMinutes int        `json:"elapsedMinutes"`
+	// Phase is fed, fasting, fat_burning or ketosis.
+	Phase    string  `json:"phase"`
+	Fraction float64 `json:"fraction"`
+}
+
+type NutrientsView struct {
+	Covered []string `json:"covered"`
+	Missing []string `json:"missing"`
+	Total   int      `json:"total"`
+}
+
+type MilestoneView struct {
+	ID          string  `json:"id"`
+	Name        string  `json:"name"`
+	MonthsSince int     `json:"monthsSince"`
+	Fraction    float64 `json:"fraction"`
+	Due         bool    `json:"due"`
+}
+
+type BloodPressureView struct {
+	Systolic  int       `json:"systolic"`
+	Diastolic int       `json:"diastolic"`
+	At        time.Time `json:"at"`
+}
+
+type SorenessView struct {
+	Region string `json:"region"`
+	// Severity is 1 (stiff) to 3 (painful).
+	Severity int `json:"severity"`
 }
 
 type FoodView struct {
@@ -114,7 +166,11 @@ type BodyView struct {
 	HeightCm *float64 `json:"heightCm,omitempty"`
 	BMI      *float64 `json:"bmi,omitempty"`
 	// BMICategory is underweight, healthy, overweight or obese.
-	BMICategory string `json:"bmiCategory,omitempty"`
+	BMICategory    string             `json:"bmiCategory,omitempty"`
+	TargetWeightKg *float64           `json:"targetWeightKg,omitempty"`
+	ToGoalKg       *float64           `json:"toGoalKg,omitempty"`
+	BloodPressure  *BloodPressureView `json:"bloodPressure,omitempty"`
+	Soreness       []SorenessView     `json:"soreness"`
 }
 
 type TimelineView struct {
@@ -219,7 +275,15 @@ func Project(s Snapshot) DayResponse {
 		Date:    s.Date.Format("2006-01-02"),
 		IsToday: s.IsToday,
 		Now:     s.Now,
-		Vitals:  VitalsView{EnergyPercent: s.EnergyPercent, DaylightMinutes: s.DaylightMinutes},
+		Vitals:  VitalsView{EnergyPercent: s.EnergyPercent, DaylightMinutes: s.DaylightMinutes, ScreenMinutes: s.ScreenMinutes},
+		Level:   s.Level,
+		Caffeine: CaffeineView{
+			TotalMG: s.Caffeine.TotalMG, ActiveMG: s.Caffeine.ActiveMG, LimitMG: s.Caffeine.LimitMG, AfterCutoff: s.Caffeine.AfterCutoff,
+		},
+		Nutrients: NutrientsView{
+			Covered: append([]string{}, s.Nutrients.Covered...), Missing: append([]string{}, s.Nutrients.Missing...), Total: s.Nutrients.Total(),
+		},
+		Milestones: make([]MilestoneView, len(s.Milestones)),
 		Food: FoodView{
 			Calories: s.Food.Calories, ProteinG: s.Food.ProteinG, CarbG: s.Food.CarbG, FatG: s.Food.FatG,
 		},
@@ -235,11 +299,31 @@ func Project(s Snapshot) DayResponse {
 		},
 		Body: BodyView{
 			WeightKg: s.Body.WeightKg, HeightCm: s.Body.HeightCm, BMI: s.Body.BMI,
-			BMICategory: string(s.Body.Category()),
+			BMICategory:    string(s.Body.Category()),
+			TargetWeightKg: s.Body.TargetWeightKg,
+			Soreness:       make([]SorenessView, len(s.Body.Soreness)),
 		},
 		Streak:   s.Streak,
 		Timeline: make([]TimelineView, len(s.Timeline)),
 		Markers:  make([]MarkerView, len(s.Markers)),
+	}
+	for i, m := range s.Milestones {
+		out.Milestones[i] = MilestoneView{ID: m.ID, Name: m.Name, MonthsSince: m.MonthsSince, Fraction: m.Fraction, Due: m.Due}
+	}
+	if s.Fast != nil {
+		out.Fast = &FastView{
+			StartedAt: s.Fast.StartedAt, EndedAt: s.Fast.EndedAt, TargetHours: s.Fast.TargetHours,
+			ElapsedMinutes: int(s.Fast.Elapsed.Minutes()), Phase: s.Fast.Phase, Fraction: s.Fast.Fraction,
+		}
+	}
+	if d, ok := s.Body.ToGoal(); ok {
+		out.Body.ToGoalKg = &d
+	}
+	if bp := s.Body.BloodPressure; bp != nil {
+		out.Body.BloodPressure = &BloodPressureView{Systolic: bp.Systolic, Diastolic: bp.Diastolic, At: bp.At}
+	}
+	for i, so := range s.Body.Soreness {
+		out.Body.Soreness[i] = SorenessView{Region: so.Region, Severity: so.Severity}
 	}
 	if s.Food.HasGoal {
 		out.Food.Goal = &MacroGoal{

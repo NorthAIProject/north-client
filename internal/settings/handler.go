@@ -109,6 +109,7 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Get("/settings", h.show)
 	r.Post("/settings/profile", h.updateProfile)
 	r.Post("/settings/preferences", h.updatePreferences)
+	r.Post("/settings/target-weight", h.updateTargetWeight)
 	r.Post("/settings/notifications", h.updateNotifications)
 	r.Post("/settings/diets", h.updateDiets)
 
@@ -806,4 +807,28 @@ func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 		middleware.FromContext(r.Context()).Error("settings request failed", slog.Any("error", err))
 		http.Error(w, "Something went wrong.", http.StatusInternalServerError)
 	}
+}
+
+// updateTargetWeight takes the weight goal from My Day's body panel. An empty
+// field clears it. It answers by going back to the day it came from.
+func (h *Handler) updateTargetWeight(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+	var kg *float64
+	if v := strings.TrimSpace(r.PostFormValue("target_weight_kg")); v != "" {
+		f, err := strconv.ParseFloat(strings.ReplaceAll(v, ",", "."), 64)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusUnprocessableEntity), http.StatusUnprocessableEntity)
+			return
+		}
+		kg = &f
+	}
+	if _, err := h.preferences.SetTargetWeight(r.Context(), user.ID, kg); err != nil {
+		http.Error(w, http.StatusText(http.StatusUnprocessableEntity), http.StatusUnprocessableEntity)
+		return
+	}
+	http.Redirect(w, r, "/app", http.StatusSeeOther)
 }

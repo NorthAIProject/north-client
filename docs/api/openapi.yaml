@@ -1528,7 +1528,7 @@ paths:
         '422':
           $ref: '#/components/responses/ValidationError'
     delete:
-      operationId: deleteMilestone
+      operationId: deleteTracker
       summary: Delete a milestone
       responses:
         '204':
@@ -3349,6 +3349,400 @@ paths:
           $ref: '#/components/responses/ValidationError'
         '500':
           $ref: '#/components/responses/InternalError'
+  /caffeine:
+    get:
+      operationId: getCaffeine
+      summary: Today's caffeine — total, still active, and each drink
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CaffeineToday'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      operationId: logCaffeine
+      summary: Log a drink with caffeine, answering with today
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CaffeineInput'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CaffeineToday'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /caffeine/{entryID}:
+    parameters:
+      - name: entryID
+        in: path
+        required: true
+        description: The drink to undo.
+        schema:
+          type: string
+    delete:
+      operationId: undoCaffeine
+      summary: Undo a drink
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CaffeineToday'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /fasting:
+    get:
+      operationId: getFasting
+      summary: The fast running now, if any
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastingState'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /fasting/start:
+    post:
+      operationId: startFast
+      summary: Start a fast
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FastStartInput'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastingState'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /fasting/stop:
+    post:
+      operationId: stopFast
+      summary: End the running fast
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastingState'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /supplements:
+    get:
+      operationId: getSupplements
+      summary: Today's supplements and the preset list
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SupplementsToday'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      operationId: logSupplement
+      summary: Log a supplement taken; answers with today
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SupplementInput'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SupplementsToday'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /supplements/{entryID}:
+    parameters:
+      - name: entryID
+        in: path
+        required: true
+        description: The entry to undo.
+        schema:
+          type: string
+    delete:
+      operationId: undoSupplement
+      summary: Undo a supplement
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SupplementsToday'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /screen-time:
+    put:
+      operationId: setScreenTime
+      summary: Set a day's screen time (typed in, or from a Shortcut)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScreenTimeInput'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScreenTimeDay'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /soreness:
+    get:
+      operationId: getSoreness
+      summary: Today's sore regions and the list of regions
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SorenessToday'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /soreness/{region}:
+    parameters:
+      - name: region
+        in: path
+        required: true
+        description: One of the regions GET /soreness lists.
+        schema:
+          type: string
+    put:
+      operationId: setSoreness
+      summary: Set today's soreness in one region
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SorenessInput'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SorenessToday'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      operationId: clearSoreness
+      summary: Clear today's soreness in one region
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SorenessToday'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /trackers:
+    get:
+      operationId: listTrackers
+      summary: Months-since trackers (dentist, haircut)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrackerList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      operationId: createTracker
+      summary: Start tracking something
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrackerInput'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrackerList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /trackers/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: The tracker.
+        schema:
+          type: string
+    delete:
+      operationId: deleteTracker
+      summary: Stop tracking
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrackerList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /trackers/{id}/done:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: The tracker.
+        schema:
+          type: string
+    post:
+      operationId: markTrackerDone
+      summary: Reset a tracker to today
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrackerList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /health/blood-pressure:
+    post:
+      operationId: recordBloodPressure
+      summary: Record a blood pressure reading typed in by hand
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BloodPressureInput'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthSyncResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /settings/target-weight:
+    put:
+      operationId: setTargetWeight
+      summary: Set or clear the weight to aim at
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TargetWeight'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TargetWeight'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /devices/apns:
     put:
       operationId: registerAPNsDevice
@@ -3570,9 +3964,336 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorBody'
   schemas:
+    CaffeineInput:
+      type: object
+      additionalProperties: false
+      properties:
+        preset:
+          type: string
+          description: espresso, coffee, tea, energy_drink or cola; fills mg and label.
+        mg:
+          type: integer
+        label:
+          type: string
+        loggedAt:
+          type: string
+          format: date-time
+    CaffeineEntry:
+      type: object
+      required: [id, mg, label, loggedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        mg:
+          type: integer
+        label:
+          type: string
+        loggedAt:
+          type: string
+          format: date-time
+    CaffeineToday:
+      type: object
+      required: [totalMg, activeMg, limitMg, entries]
+      properties:
+        totalMg:
+          type: integer
+        activeMg:
+          type: integer
+        limitMg:
+          type: integer
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/CaffeineEntry'
+    FastStartInput:
+      type: object
+      additionalProperties: false
+      properties:
+        targetHours:
+          type: integer
+          description: Defaults to 16.
+        startedAt:
+          type: string
+          format: date-time
+    Fast:
+      type: object
+      required: [id, startedAt, targetHours, elapsedMinutes, phase]
+      properties:
+        id:
+          type: string
+          format: uuid
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: string
+          format: date-time
+        targetHours:
+          type: integer
+        elapsedMinutes:
+          type: integer
+        phase:
+          type: string
+          enum: [fed, fasting, fat_burning, ketosis]
+    FastingState:
+      type: object
+      properties:
+        current:
+          $ref: '#/components/schemas/Fast'
+    SupplementInput:
+      type: object
+      additionalProperties: false
+      properties:
+        preset:
+          type: string
+        name:
+          type: string
+        count:
+          type: integer
+        nutrients:
+          type: array
+          items:
+            type: string
+    SupplementEntry:
+      type: object
+      required: [id, name, count, nutrients, loggedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        count:
+          type: integer
+        nutrients:
+          type: array
+          items:
+            type: string
+        loggedAt:
+          type: string
+          format: date-time
+    SupplementPreset:
+      type: object
+      required: [key, name, nutrients]
+      properties:
+        key:
+          type: string
+        name:
+          type: string
+        nutrients:
+          type: array
+          items:
+            type: string
+    SupplementsToday:
+      type: object
+      required: [entries, presets, nutrients]
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/SupplementEntry'
+        presets:
+          type: array
+          items:
+            $ref: '#/components/schemas/SupplementPreset'
+        nutrients:
+          type: array
+          items:
+            type: string
+    ScreenTimeInput:
+      type: object
+      required: [minutes]
+      additionalProperties: false
+      properties:
+        date:
+          type: string
+          format: date
+        minutes:
+          type: integer
+        source:
+          type: string
+          enum: [manual, shortcut]
+    ScreenTimeDay:
+      type: object
+      required: [date, minutes, source]
+      properties:
+        date:
+          type: string
+          format: date
+        minutes:
+          type: integer
+        source:
+          type: string
+    SorenessInput:
+      type: object
+      required: [severity]
+      additionalProperties: false
+      properties:
+        severity:
+          type: integer
+          description: 1 stiff, 2 sore, 3 painful.
+        note:
+          type: string
+    SorenessEntry:
+      type: object
+      required: [region, severity]
+      properties:
+        region:
+          type: string
+        severity:
+          type: integer
+        note:
+          type: string
+    SorenessToday:
+      type: object
+      required: [entries, regions]
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/SorenessEntry'
+        regions:
+          type: array
+          items:
+            type: string
+    TrackerInput:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+        lastDoneOn:
+          type: string
+          format: date
+        intervalMonths:
+          type: integer
+    Tracker:
+      type: object
+      required: [id, name, lastDoneOn, monthsSince, due]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        lastDoneOn:
+          type: string
+          format: date
+        intervalMonths:
+          type: integer
+        monthsSince:
+          type: integer
+        due:
+          type: boolean
+    TrackerList:
+      type: object
+      required: [trackers]
+      properties:
+        trackers:
+          type: array
+          items:
+            $ref: '#/components/schemas/Tracker'
+    BloodPressureInput:
+      type: object
+      required: [systolic, diastolic]
+      additionalProperties: false
+      properties:
+        systolic:
+          type: integer
+        diastolic:
+          type: integer
+        at:
+          type: string
+          format: date-time
+    TargetWeight:
+      type: object
+      properties:
+        targetWeightKg:
+          type: [number, 'null']
+          description: Null clears the goal.
+    DayCaffeine:
+      type: object
+      required: [totalMg, activeMg, limitMg, afterCutoff]
+      properties:
+        totalMg:
+          type: integer
+        activeMg:
+          type: integer
+        limitMg:
+          type: integer
+        afterCutoff:
+          type: boolean
+    DayFast:
+      type: object
+      required: [startedAt, targetHours, elapsedMinutes, phase, fraction]
+      properties:
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: string
+          format: date-time
+        targetHours:
+          type: integer
+        elapsedMinutes:
+          type: integer
+        phase:
+          type: string
+          enum: [fed, fasting, fat_burning, ketosis]
+        fraction:
+          type: number
+    DayNutrients:
+      type: object
+      required: [covered, missing, total]
+      properties:
+        covered:
+          type: array
+          items:
+            type: string
+        missing:
+          type: array
+          items:
+            type: string
+        total:
+          type: integer
+    DayMilestone:
+      type: object
+      required: [id, name, monthsSince, fraction, due]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        monthsSince:
+          type: integer
+        fraction:
+          type: number
+        due:
+          type: boolean
+    DayBloodPressure:
+      type: object
+      required: [systolic, diastolic, at]
+      properties:
+        systolic:
+          type: integer
+        diastolic:
+          type: integer
+        at:
+          type: string
+          format: date-time
+    DaySoreness:
+      type: object
+      required: [region, severity]
+      properties:
+        region:
+          type: string
+        severity:
+          type: integer
     DayResponse:
       type: object
-      required: [date, isToday, now, vitals, food, water, activity, workouts, body, streak, timeline, markers]
+      required: [date, isToday, now, vitals, food, water, activity, workouts, body, streak, level, caffeine, nutrients, milestones, timeline, markers]
       properties:
         date:
           type: string
@@ -3598,6 +4319,18 @@ components:
           $ref: '#/components/schemas/DayBody'
         streak:
           type: integer
+        level:
+          type: integer
+        caffeine:
+          $ref: '#/components/schemas/DayCaffeine'
+        fast:
+          $ref: '#/components/schemas/DayFast'
+        nutrients:
+          $ref: '#/components/schemas/DayNutrients'
+        milestones:
+          type: array
+          items:
+            $ref: '#/components/schemas/DayMilestone'
         timeline:
           type: array
           items:
@@ -3613,6 +4346,8 @@ components:
         energyPercent:
           type: integer
         daylightMinutes:
+          type: integer
+        screenMinutes:
           type: integer
     DayFood:
       type: object
@@ -3722,6 +4457,7 @@ components:
             type: string
     DayBody:
       type: object
+      required: [soreness]
       properties:
         weightKg:
           type: number
@@ -3732,6 +4468,16 @@ components:
         bmiCategory:
           type: string
           enum: [underweight, healthy, overweight, obese]
+        targetWeightKg:
+          type: number
+        toGoalKg:
+          type: number
+        bloodPressure:
+          $ref: '#/components/schemas/DayBloodPressure'
+        soreness:
+          type: array
+          items:
+            $ref: '#/components/schemas/DaySoreness'
     DayTimelineEntry:
       type: object
       required: [kind, at, title, icon]

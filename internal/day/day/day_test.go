@@ -120,3 +120,16 @@ func TestFormatMinutes(t *testing.T) {
 		}
 	}
 }
+
+func TestLevelAndGoal(t *testing.T) {
+	if LevelFor(0) != 1 || LevelFor(91) != 19 {
+		t.Errorf("levels: %d, %d", LevelFor(0), LevelFor(91))
+	}
+	w, target := 83.9, 80.0
+	if d, ok := (Body{WeightKg: &w, TargetWeightKg: &target}).ToGoal(); !ok || d != 3.9 {
+		t.Errorf("to goal = %v, %v", d, ok)
+	}
+	if _, ok := (Body{WeightKg: &w}).ToGoal(); ok {
+		t.Error("no target, no distance")
+	}
+}

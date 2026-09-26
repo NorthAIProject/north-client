@@ -1,44 +1,132 @@
 package day
 
 import (
+	"strconv"
+
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/dialog"
+	"github.com/NorthAIProject/north-client/web/shared/ui/input"
+	"github.com/NorthAIProject/north-client/web/shared/ui/selectbox"
 )
 
-// bodyPanel is the figure with the latest weight and BMI beside it.
-//
-// The silhouette is a plain SVG outline. It is the stand-in the 3D body
-// replaces; the chips and their data stay where they are.
-templ bodyPanel(b BodyCard) {
-	<section class="border-hairline bg-surface relative overflow-hidden rounded-2xl border p-4" aria-label={ i18n.T(ctx, "day.body") } data-testid="body-panel">
-		<div class="flex items-start justify-between gap-3">
-			<div class="space-y-2">
-				if b.HasWeight {
-					<div class="bg-background/80 border-hairline rounded-xl border px-3 py-2 shadow-sm">
-						<p class="text-xl font-semibold tabular-nums">{ b.Weight }<span class="text-muted-foreground text-xs font-normal"> kg</span></p>
-					</div>
-				}
-				if b.HasBMI {
-					<div class="bg-background/80 border-hairline rounded-xl border px-3 py-2 shadow-sm">
-						<p class="text-xl font-semibold tabular-nums"><span class="text-muted-foreground text-xs font-normal">BMI </span>{ b.BMI }</p>
-						<p class={ "text-xs font-medium", bmiClass(b.BMICategory) }>{ i18n.T(ctx, "day.bmi." + b.BMICategory) }</p>
-					</div>
-				}
-				if !b.HasWeight {
-					<p class="text-muted-foreground text-sm">{ i18n.T(ctx, "day.body.none") }</p>
-					@button.Button(button.Props{Href: "/app/calculator", Variant: button.VariantOutline, Size: button.SizeSm}) {
-						{ i18n.T(ctx, "day.body.record") }
+// bodyPanel is the figure with the latest weight, BMI, blood pressure and
+// where it is sore beside it. Its button opens the forms that change them.
+templ bodyPanel(data Data) {
+	{{ b := data.Body }}
+	@dialog.Dialog(dialog.Props{ID: "day-body"}) {
+		<section class="border-hairline bg-surface relative overflow-hidden rounded-2xl border p-4" aria-label={ i18n.T(ctx, "day.body") } data-testid="body-panel">
+			<div class="flex items-start justify-between gap-3">
+				<div class="space-y-2">
+					if b.HasWeight {
+						<div class="bg-background/80 border-hairline rounded-xl border px-3 py-2 shadow-sm">
+							<p class="text-xl font-semibold tabular-nums">{ b.Weight }<span class="text-muted-foreground text-xs font-normal"> kg</span></p>
+							if b.HasGoal {
+								<p class="text-muted-foreground text-xs tabular-nums">{ i18n.Tf(ctx, "day.body.togoal", b.ToGoal) }</p>
+							}
+						</div>
 					}
+					if b.HasBMI {
+						<div class="bg-background/80 border-hairline rounded-xl border px-3 py-2 shadow-sm">
+							<p class="text-xl font-semibold tabular-nums"><span class="text-muted-foreground text-xs font-normal">BMI </span>{ b.BMI }</p>
+							<p class={ "text-xs font-medium", bmiClass(b.BMICategory) }>{ i18n.T(ctx, "day.bmi." + b.BMICategory) }</p>
+						</div>
+					}
+					if b.HasBloodPressure {
+						<div class="bg-background/80 border-hairline rounded-xl border px-3 py-2 shadow-sm">
+							<p class="text-xl font-semibold tabular-nums">{ b.BloodPressure }</p>
+							<p class="text-muted-foreground text-xs">mmHg</p>
+						</div>
+					}
+					if !b.HasWeight {
+						<p class="text-muted-foreground text-sm">{ i18n.T(ctx, "day.body.none") }</p>
+					}
+				</div>
+				@bodyFigure(data)
+			</div>
+			<div class="mt-3 flex flex-wrap justify-end gap-1.5" data-testid="soreness">
+				for _, s := range b.Soreness {
+					<span class={ "rounded-full px-2 py-0.5 text-xs font-medium", sorenessClass(s.Severity) }>
+						{ i18n.T(ctx, "day.region." + s.Region) } · { i18n.T(ctx, "day.severity." + strconv.Itoa(s.Severity)) }
+					</span>
 				}
 			</div>
-			<svg viewBox="0 0 100 220" class="text-day-stand h-56 w-auto shrink-0 opacity-80" aria-hidden="true">
-				<g fill="currentColor" fill-opacity="0.18" stroke="currentColor" stroke-opacity="0.5" stroke-width="1.2">
-					<circle cx="50" cy="20" r="13"></circle>
-					<path d="M36 38 q14 -6 28 0 l10 6 q6 4 7 12 l6 44 q1 6 -4 7 q-5 1 -6 -5 l-7 -38 l-2 40 l4 70 q1 8 -6 8 q-6 0 -7 -7 l-6 -58 l-6 58 q-1 7 -7 7 q-7 0 -6 -8 l4 -70 l-2 -40 l-7 38 q-1 6 -6 5 q-5 -1 -4 -7 l6 -44 q1 -8 7 -12 z"></path>
-				</g>
-			</svg>
+			@dialog.Trigger(dialog.TriggerProps{For: "day-body"}) {
+				@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Class: "mt-3 w-full"}) {
+					{ i18n.T(ctx, "day.body.edit") }
+				}
+			}
+		</section>
+		@dialog.Content(dialog.ContentProps{Class: "max-h-[90vh] overflow-y-auto sm:max-w-md"}) {
+			@dialog.Header() {
+				@dialog.Title() {
+					{ i18n.T(ctx, "day.body") }
+				}
+			}
+			@bodyForms(data)
+		}
+	}
+}
+
+// bodyFigure is the stand-in the 3D body replaces: a plain outline.
+templ bodyFigure(data Data) {
+	<svg viewBox="0 0 100 220" class="text-day-stand h-56 w-auto shrink-0 opacity-80" aria-hidden="true">
+		<g fill="currentColor" fill-opacity="0.18" stroke="currentColor" stroke-opacity="0.5" stroke-width="1.2">
+			<circle cx="50" cy="20" r="13"></circle>
+			<path d="M36 38 q14 -6 28 0 l10 6 q6 4 7 12 l6 44 q1 6 -4 7 q-5 1 -6 -5 l-7 -38 l-2 40 l4 70 q1 8 -6 8 q-6 0 -7 -7 l-6 -58 l-6 58 q-1 7 -7 7 q-7 0 -6 -8 l4 -70 l-2 -40 l-7 38 q-1 6 -6 5 q-5 -1 -4 -7 l6 -44 q1 -8 7 -12 z"></path>
+		</g>
+	</svg>
+}
+
+templ bodyForms(data Data) {
+	<form method="post" action="/app/soreness" class="space-y-2">
+		@ui.CSRFInput()
+		<p class="text-sm font-medium">{ i18n.T(ctx, "day.soreness.add") }</p>
+		@selectbox.SelectBox() {
+			@selectbox.Trigger(selectbox.TriggerProps{ID: "region", Name: "region"}) {
+				@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "day.soreness.region")})
+			}
+			@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
+				for _, r := range data.Regions {
+					@selectbox.Item(selectbox.ItemProps{Value: r}) {
+						{ i18n.T(ctx, "day.region." + r) }
+					}
+				}
+			}
+		}
+		<div class="grid grid-cols-4 gap-2">
+			for _, sev := range []string{"1", "2", "3", "0"} {
+				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Size: button.SizeSm, Attributes: templ.Attributes{"name": "severity", "value": sev}}) {
+					{ i18n.T(ctx, "day.severity." + sev) }
+				}
+			}
 		</div>
-	</section>
+	</form>
+	<form method="post" action="/app/settings/target-weight" class="space-y-2">
+		@ui.CSRFInput()
+		<label for="target_weight_kg" class="text-sm font-medium">{ i18n.T(ctx, "day.body.goal") }</label>
+		<div class="flex gap-2">
+			@input.Input(input.Props{ID: "target_weight_kg", Name: "target_weight_kg", Type: input.TypeNumber, Value: data.Body.Target, Placeholder: "kg", Attributes: templ.Attributes{"step": "0.1", "min": "20", "max": "400"}})
+			@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
+				{ i18n.T(ctx, "day.save") }
+			}
+		</div>
+	</form>
+	<form method="post" action="/app/blood-pressure" class="space-y-2">
+		@ui.CSRFInput()
+		<p class="text-sm font-medium">{ i18n.T(ctx, "day.body.bp") }</p>
+		<div class="flex gap-2">
+			@input.Input(input.Props{Name: "systolic", Type: input.TypeNumber, Placeholder: "120", Attributes: templ.Attributes{"aria-label": i18n.T(ctx, "day.body.systolic"), "min": "60", "max": "260"}})
+			@input.Input(input.Props{Name: "diastolic", Type: input.TypeNumber, Placeholder: "80", Attributes: templ.Attributes{"aria-label": i18n.T(ctx, "day.body.diastolic"), "min": "30", "max": "160"}})
+			@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
+				{ i18n.T(ctx, "day.save") }
+			}
+		</div>
+	</form>
+	@button.Button(button.Props{Href: "/app/calculator", Variant: button.VariantOutline, Class: "w-full"}) {
+		{ i18n.T(ctx, "day.body.record") }
+	}
 }
 
 func bmiClass(category string) string {
@@ -51,5 +139,16 @@ func bmiClass(category string) string {
 		return "text-day-move"
 	default:
 		return "text-day-water"
+	}
+}
+
+func sorenessClass(severity int) string {
+	switch severity {
+	case 3:
+		return "bg-day-move/20 text-day-move"
+	case 2:
+		return "bg-day-move/12 text-day-move"
+	default:
+		return "bg-muted text-muted-foreground"
 	}
 }

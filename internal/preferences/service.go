@@ -73,6 +73,16 @@ func (s *Service) SetNewsTickerEnabled(ctx context.Context, userID uuid.UUID, en
 	return err
 }
 
+// SetTargetWeight sets the weight to aim at, or clears it with nil. The bounds
+// mirror the column's CHECK, so a typo is a field error rather than a
+// constraint violation.
+func (s *Service) SetTargetWeight(ctx context.Context, userID uuid.UUID, kg *float64) (Preferences, error) {
+	if kg != nil && (*kg < 20 || *kg > 400) {
+		return Preferences{}, apperr.FieldErrors{}.Add("targetWeightKg", "Enter a weight between 20 and 400 kg.")
+	}
+	return s.repo.SetTargetWeight(ctx, userID, kg)
+}
+
 // Get returns the user's saved preferences, or sane defaults if they have
 // never saved any — never apperr.ErrNotFound, since a missing row is not a
 // failure here, just an unconfigured account.

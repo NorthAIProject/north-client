@@ -442,3 +442,57 @@ sql:
         package: daydb
         out: internal/day/db
         overrides: *overrides
+  - engine: postgresql
+    schema: migrations
+    queries: internal/caffeine/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: caffeinedb
+        out: internal/caffeine/db
+        overrides: *overrides
+  - engine: postgresql
+    schema: migrations
+    queries: internal/fasting/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: fastingdb
+        out: internal/fasting/db
+        overrides: *overrides
+  - engine: postgresql
+    schema: migrations
+    queries: internal/supplements/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: supplementsdb
+        out: internal/supplements/db
+        overrides: *overrides
+  - engine: postgresql
+    schema: migrations
+    queries: internal/screentime/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: screentimedb
+        out: internal/screentime/db
+        overrides: *overrides
+  - engine: postgresql
+    schema: migrations
+    queries: internal/soreness/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: sorenessdb
+        out: internal/soreness/db
+        overrides: *overrides
+  - engine: postgresql
+    schema: migrations
+    queries: internal/milestones/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: milestonesdb
+        out: internal/milestones/db
+        overrides: *overrides

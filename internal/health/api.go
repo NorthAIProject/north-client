@@ -34,6 +34,7 @@ func NewAPI(svc *Service) *API { return &API{svc: svc} }
 func (a *API) Routes(r chi.Router) {
 	r.Post("/health/samples", a.sync)
 	r.Delete("/health/samples", a.forget)
+	r.Post("/health/blood-pressure", a.bloodPressure)
 }
 
 type SampleReading struct {
@@ -126,4 +127,36 @@ func (a *API) forget(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// SourceManual is what a reading typed into North is stored under, so it never
+// collides with, or is forgotten along with, what a device reported.
+const SourceManual = "manual"
+
+// Metric names for blood pressure, one reading each per measurement.
+const (
+	MetricSystolic  = "bp_systolic"
+	MetricDiastolic = "bp_diastolic"
+)
+
+type BloodPressureRequest struct {
+	Systolic  int        `json:"systolic"`
+	Diastolic int        `json:"diastolic"`
+	At        *time.Time `json:"at,omitempty"`
+}
+
+// bloodPressure records a cuff reading typed in by hand. The phone syncs its
+// own readings through /health/samples; this is for everyone else.
+func (a *API) bloodPressure(w http.ResponseWriter, r *http.Request) {
+	var req BloodPressureRequest
+	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 4 << 10}); err != nil {
+		httpx.Error(w, err, "The request body could not be read.")
+		return
+	}
+	res, err := a.svc.RecordBloodPressure(r.Context(), auth.MustUser(r.Context()).ID, req.Systolic, req.Diastolic, req.At)
+	if err != nil {
+		httpx.Error(w, err, "The reading could not be saved.")
+		return
+	}
+	httpx.WriteJSON(w, http.StatusCreated, SyncResult{Readings: res.Written})
 }

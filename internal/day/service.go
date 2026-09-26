@@ -9,6 +9,9 @@ package day
 
 import (
 	"context"
+	"fmt"
+	"math"
+	"sort"
 	"time"
 
 	"github.com/google/uuid"
@@ -16,15 +19,25 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/activity/activity"
 	"github.com/NorthAIProject/north-client/internal/biometrics/biometric"
+	"github.com/NorthAIProject/north-client/internal/caffeine"
+	caffeinecalc "github.com/NorthAIProject/north-client/internal/caffeine/caffeine"
 	"github.com/NorthAIProject/north-client/internal/calculator"
 	"github.com/NorthAIProject/north-client/internal/dashboard"
 	"github.com/NorthAIProject/north-client/internal/day/day"
+	"github.com/NorthAIProject/north-client/internal/fasting"
+	"github.com/NorthAIProject/north-client/internal/fasting/fast"
 	"github.com/NorthAIProject/north-client/internal/health"
 	"github.com/NorthAIProject/north-client/internal/hydration"
 	"github.com/NorthAIProject/north-client/internal/meals"
+	"github.com/NorthAIProject/north-client/internal/milestones"
+	"github.com/NorthAIProject/north-client/internal/preferences"
+	"github.com/NorthAIProject/north-client/internal/screentime"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/sleep"
+	"github.com/NorthAIProject/north-client/internal/soreness"
+	"github.com/NorthAIProject/north-client/internal/supplements"
+	"github.com/NorthAIProject/north-client/internal/supplements/supplement"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
@@ -43,6 +56,9 @@ const (
 	metricDietaryCarbs    = "dietary_carbs"
 	metricDietaryFat      = "dietary_fat"
 	metricBodyMass        = "body_mass"
+	metricScreenMinutes   = "screen_minutes"
+	metricSystolic        = "bp_systolic"
+	metricDiastolic       = "bp_diastolic"
 
 	// baselineDays is how far back "usual" reaches for HRV and resting heart
 	// rate. Two weeks smooths a bad night without hiding a real trend.
@@ -80,7 +96,46 @@ type (
 	Timeline interface {
 		Timeline(ctx context.Context, user users.User, rg timerange.Range, limit int) ([]dashboard.Entry, error)
 	}
+	Caffeine interface {
+		Between(ctx context.Context, user users.User, rg timerange.Range) ([]caffeine.Entry, error)
+	}
+	Fasting interface {
+		Overlapping(ctx context.Context, user users.User, rg timerange.Range) ([]fasting.Session, error)
+	}
+	Supplements interface {
+		Between(ctx context.Context, user users.User, rg timerange.Range) ([]supplements.Entry, error)
+	}
+	ScreenTime interface {
+		ForDate(ctx context.Context, user users.User, date time.Time) (screentime.Day, bool, error)
+	}
+	Soreness interface {
+		OnDate(ctx context.Context, user users.User, date time.Time) ([]soreness.Entry, error)
+	}
+	Milestones interface {
+		List(ctx context.Context, user users.User) ([]milestones.Tracker, error)
+	}
+	Preferences interface {
+		Get(ctx context.Context, userID uuid.UUID) (preferences.Preferences, error)
+	}
+	CheckInTotals interface {
+		Total(ctx context.Context, userID uuid.UUID) (int, error)
+	}
 )
+
+// Timeline kinds this page adds to the dashboard's feed.
+const (
+	KindCaffeine   dashboard.EntryKind = "caffeine"
+	KindSupplement dashboard.EntryKind = "supplement"
+	KindFasting    dashboard.EntryKind = "fasting"
+)
+
+// Vitamins Apple Health may report from food apps, mapped to the tracked
+// nutrient each covers.
+var vitaminMetrics = map[string]string{
+	"dietary_vitamin_a": "vitamin_a",
+	"dietary_vitamin_c": "vitamin_c",
+	"dietary_vitamin_d": "vitamin_d",
+}
 
 // Options keeps the constructor readable. Every field but Rules is optional:
 // a nil slice is an empty card, never a failed page.
@@ -95,6 +150,15 @@ type Options struct {
 	Activity   Activity
 	Streaks    Streaks
 	Timeline   Timeline
+
+	Caffeine      Caffeine
+	Fasting       Fasting
+	Supplements   Supplements
+	ScreenTime    ScreenTime
+	Soreness      Soreness
+	Milestones    Milestones
+	Preferences   Preferences
+	CheckInTotals CheckInTotals
 
 	// Now is the clock. Nil means time.Now; tests pin it.
 	Now func() time.Time
@@ -112,6 +176,15 @@ type Service struct {
 	streaks    Streaks
 	timeline   Timeline
 	now        func() time.Time
+
+	caffeine      Caffeine
+	fasting       Fasting
+	supplements   Supplements
+	screenTime    ScreenTime
+	soreness      Soreness
+	milestones    Milestones
+	preferences   Preferences
+	checkInTotals CheckInTotals
 }
 
 func NewService(opts Options) *Service {
@@ -131,6 +204,15 @@ func NewService(opts Options) *Service {
 		streaks:    opts.Streaks,
 		timeline:   opts.Timeline,
 		now:        now,
+
+		caffeine:      opts.Caffeine,
+		fasting:       opts.Fasting,
+		supplements:   opts.Supplements,
+		screenTime:    opts.ScreenTime,
+		soreness:      opts.Soreness,
+		milestones:    opts.Milestones,
+		preferences:   opts.Preferences,
+		checkInTotals: opts.CheckInTotals,
 	}
 }
 
@@ -147,10 +229,17 @@ type Snapshot struct {
 	Workouts day.Workouts
 	Body     day.Body
 	Streak   int
+	Level    int
+
+	Caffeine   day.Caffeine
+	Fast       *day.Fast
+	Nutrients  day.Nutrients
+	Milestones []day.Milestone
 
 	// Vitals. Nil means not measured, which the tile shows as a dash.
 	EnergyPercent   *int
 	DaylightMinutes *int
+	ScreenMinutes   *int
 
 	Timeline []dashboard.Entry
 	Rules    []day.Rule
@@ -211,6 +300,119 @@ func (s *Service) Load(ctx context.Context, user users.User, date time.Time) (Sn
 			return
 		})
 	}
+
+	// The trackers this page introduced write their own rows for the rail,
+	// merged into the dashboard's feed after everything has loaded.
+	var (
+		caffeineRows, supplementRows, fastRows []dashboard.Entry
+		caffeineEntries                        []caffeine.Entry
+	)
+	if s.caffeine != nil {
+		g.Go(func() error {
+			entries, err := s.caffeine.Between(gctx, user, rg)
+			if err != nil {
+				return err
+			}
+			caffeineEntries = entries
+			for _, e := range entries {
+				caffeineRows = append(caffeineRows, dashboard.Entry{
+					Kind: KindCaffeine, At: e.LoggedAt.In(loc), Title: caffeineTitle(e), Detail: fmt.Sprintf("%d mg caffeine", e.MG),
+					Href: "/app", Icon: "coffee",
+				})
+			}
+			return nil
+		})
+	}
+	if s.supplements != nil {
+		g.Go(func() error {
+			entries, err := s.supplements.Between(gctx, user, rg)
+			if err != nil {
+				return err
+			}
+			var also []string
+			if s.health != nil {
+				for metric, nutrient := range vitaminMetrics {
+					if _, ok, err := s.sum(gctx, user.ID, metric, rg.Since, rg.Until); err != nil {
+						return err
+					} else if ok {
+						also = append(also, nutrient)
+					}
+				}
+			}
+			cov := supplement.CoverageFor(entries, also)
+			snap.Nutrients = day.Nutrients{Covered: cov.Covered, Missing: cov.Missing}
+			for _, e := range entries {
+				supplementRows = append(supplementRows, dashboard.Entry{
+					Kind: KindSupplement, At: e.LoggedAt.In(loc), Title: e.Label(), Href: "/app", Icon: "pill",
+				})
+			}
+			return nil
+		})
+	} else {
+		snap.Nutrients = day.Nutrients{Missing: supplement.Nutrients()}
+	}
+	if s.fasting != nil {
+		g.Go(func() error {
+			fasts, err := s.fasting.Overlapping(gctx, user, rg)
+			if err != nil || len(fasts) == 0 {
+				return err
+			}
+			f := fasts[0]
+			elapsed := f.Elapsed(now)
+			snap.Fast = &day.Fast{
+				StartedAt: f.StartedAt.In(loc), EndedAt: f.EndedAt, TargetHours: f.TargetHours,
+				Elapsed: elapsed, Phase: string(fast.PhaseAt(elapsed)), Fraction: f.Fraction(now),
+			}
+			for _, f := range fasts {
+				if rg.Contains(f.StartedAt) {
+					fastRows = append(fastRows, dashboard.Entry{Kind: KindFasting, At: f.StartedAt.In(loc), Title: "Started fasting", Href: "/app", Icon: "timer"})
+				}
+				if f.EndedAt != nil && rg.Contains(*f.EndedAt) {
+					fastRows = append(fastRows, dashboard.Entry{
+						Kind: KindFasting, At: f.EndedAt.In(loc), Title: "Broke the fast",
+						Detail: day.FormatMinutes(int(f.Elapsed(now).Minutes())), Href: "/app", Icon: "timer-off",
+					})
+				}
+			}
+			return nil
+		})
+	}
+	if s.screenTime != nil {
+		g.Go(func() error {
+			d, ok, err := s.screenTime.ForDate(gctx, user, date)
+			if err != nil {
+				return err
+			}
+			if ok {
+				snap.ScreenMinutes = &d.Minutes
+				return nil
+			}
+			mins, ok, err := s.sum(gctx, user.ID, metricScreenMinutes, rg.Since, rg.Until)
+			if ok {
+				m := int(mins)
+				snap.ScreenMinutes = &m
+			}
+			return err
+		})
+	}
+	if s.milestones != nil {
+		g.Go(func() error {
+			list, err := s.milestones.List(gctx, user)
+			for _, t := range list {
+				snap.Milestones = append(snap.Milestones, day.Milestone{
+					ID: t.ID.String(), Name: t.Name, MonthsSince: t.MonthsSince(date), Fraction: t.Fraction(date), Due: t.Due(date),
+				})
+			}
+			return err
+		})
+	}
+	if s.checkInTotals != nil {
+		g.Go(func() error {
+			total, err := s.checkInTotals.Total(gctx, user.ID)
+			snap.Level = day.LevelFor(total)
+			return err
+		})
+	}
 	g.Go(func() error {
 		rules, err := s.Rules(gctx, user.ID)
 		if err != nil {
@@ -224,7 +426,59 @@ func (s *Service) Load(ctx context.Context, user users.User, date time.Time) (Sn
 	if err := g.Wait(); err != nil {
 		return Snapshot{}, err
 	}
+
+	snap.Timeline = mergeTimeline(snap.Timeline, caffeineRows, supplementRows, fastRows)
+	snap.Caffeine = caffeineFor(caffeineEntries, snap.Rules, date, now)
 	return snap, nil
+}
+
+// mergeTimeline folds extra rows into the feed, newest first, the same order
+// the dashboard sorts by.
+func mergeTimeline(base []dashboard.Entry, extra ...[]dashboard.Entry) []dashboard.Entry {
+	out := append([]dashboard.Entry(nil), base...)
+	for _, rows := range extra {
+		out = append(out, rows...)
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].At.Equal(out[j].At) {
+			return out[i].Kind < out[j].Kind
+		}
+		return out[i].At.After(out[j].At)
+	})
+	return out
+}
+
+func caffeineTitle(e caffeine.Entry) string {
+	if e.Label == "" {
+		return "Caffeine"
+	}
+	return e.Label
+}
+
+// caffeineFor sums the day's caffeine and checks it against the cutoff rule.
+// Active is measured at now for today and at the end of the day for the past.
+func caffeineFor(entries []caffeine.Entry, rules []day.Rule, date, now time.Time) day.Caffeine {
+	at := now
+	if end := date.AddDate(0, 0, 1); at.After(end) {
+		at = end
+	}
+	out := day.Caffeine{
+		TotalMG:  caffeinecalc.Total(entries),
+		ActiveMG: int(caffeinecalc.Active(entries, at)),
+		LimitMG:  caffeinecalc.DailyLimitMG,
+	}
+	for _, r := range rules {
+		if r.Kind != day.RuleCaffeineCutoff || !r.Enabled {
+			continue
+		}
+		cutoff := r.On(date)
+		for _, e := range entries {
+			if !e.LoggedAt.Before(cutoff) {
+				out.AfterCutoff = true
+			}
+		}
+	}
+	return out
 }
 
 // Rules lists a person's day rules.
@@ -490,6 +744,39 @@ func (s *Service) loadBody(ctx context.Context, user users.User, snap *Snapshot)
 
 	snap.Body.WeightKg = weight
 	snap.Body.HeightCm = heightCm
+
+	if s.preferences != nil {
+		p, err := s.preferences.Get(ctx, user.ID)
+		if err != nil {
+			return err
+		}
+		snap.Body.TargetWeightKg = p.TargetWeightKg
+	}
+	if s.soreness != nil {
+		entries, err := s.soreness.OnDate(ctx, user, snap.Date)
+		if err != nil {
+			return err
+		}
+		for _, e := range entries {
+			snap.Body.Soreness = append(snap.Body.Soreness, day.Soreness{Region: e.Region, Severity: e.Severity})
+		}
+	}
+	if s.health != nil {
+		now := s.now()
+		sys, err := s.health.Between(ctx, user.ID, metricSystolic, now.AddDate(0, 0, -90), now.Add(time.Minute))
+		if err != nil {
+			return err
+		}
+		dia, err := s.health.Between(ctx, user.ID, metricDiastolic, now.AddDate(0, 0, -90), now.Add(time.Minute))
+		if err != nil {
+			return err
+		}
+		if len(sys) > 0 && len(dia) > 0 {
+			snap.Body.BloodPressure = &day.BloodPressure{
+				Systolic: int(math.Round(sys[0].Value)), Diastolic: int(math.Round(dia[0].Value)), At: sys[0].StartedAt,
+			}
+		}
+	}
 	if weight != nil && heightCm != nil {
 		m := *heightCm / 100
 		bmi := *weight / (m * m)

@@ -12,7 +12,7 @@ import (
 )
 
 const getUserPreferences = `-- name: GetUserPreferences :one
-SELECT id, user_id, units_system, default_goal, default_macro_split, updated_at, news_ticker_enabled FROM user_preferences WHERE user_id = $1
+SELECT id, user_id, units_system, default_goal, default_macro_split, updated_at, news_ticker_enabled, target_weight_kg FROM user_preferences WHERE user_id = $1
 `
 
 func (q *Queries) GetUserPreferences(ctx context.Context, userID uuid.UUID) (UserPreference, error) {
@@ -26,6 +26,7 @@ func (q *Queries) GetUserPreferences(ctx context.Context, userID uuid.UUID) (Use
 		&i.DefaultMacroSplit,
 		&i.UpdatedAt,
 		&i.NewsTickerEnabled,
+		&i.TargetWeightKg,
 	)
 	return i, err
 }
@@ -35,7 +36,7 @@ INSERT INTO user_preferences (user_id, news_ticker_enabled)
 VALUES ($1, $2)
 ON CONFLICT (user_id) DO UPDATE
 SET news_ticker_enabled = $2, updated_at = now()
-RETURNING id, user_id, units_system, default_goal, default_macro_split, updated_at, news_ticker_enabled
+RETURNING id, user_id, units_system, default_goal, default_macro_split, updated_at, news_ticker_enabled, target_weight_kg
 `
 
 type SetNewsTickerEnabledParams struct {
@@ -54,6 +55,36 @@ func (q *Queries) SetNewsTickerEnabled(ctx context.Context, arg SetNewsTickerEna
 		&i.DefaultMacroSplit,
 		&i.UpdatedAt,
 		&i.NewsTickerEnabled,
+		&i.TargetWeightKg,
+	)
+	return i, err
+}
+
+const setTargetWeight = `-- name: SetTargetWeight :one
+INSERT INTO user_preferences (user_id, target_weight_kg)
+VALUES ($1, $2)
+ON CONFLICT (user_id) DO UPDATE
+SET target_weight_kg = $2, updated_at = now()
+RETURNING id, user_id, units_system, default_goal, default_macro_split, updated_at, news_ticker_enabled, target_weight_kg
+`
+
+type SetTargetWeightParams struct {
+	UserID         uuid.UUID
+	TargetWeightKg *float64
+}
+
+func (q *Queries) SetTargetWeight(ctx context.Context, arg SetTargetWeightParams) (UserPreference, error) {
+	row := q.db.QueryRow(ctx, setTargetWeight, arg.UserID, arg.TargetWeightKg)
+	var i UserPreference
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.UnitsSystem,
+		&i.DefaultGoal,
+		&i.DefaultMacroSplit,
+		&i.UpdatedAt,
+		&i.NewsTickerEnabled,
+		&i.TargetWeightKg,
 	)
 	return i, err
 }
@@ -63,7 +94,7 @@ INSERT INTO user_preferences (user_id, units_system, default_goal, default_macro
 VALUES ($1, $2, $3, $4)
 ON CONFLICT (user_id) DO UPDATE
 SET units_system = $2, default_goal = $3, default_macro_split = $4, updated_at = now()
-RETURNING id, user_id, units_system, default_goal, default_macro_split, updated_at, news_ticker_enabled
+RETURNING id, user_id, units_system, default_goal, default_macro_split, updated_at, news_ticker_enabled, target_weight_kg
 `
 
 type UpsertUserPreferencesParams struct {
@@ -89,6 +120,7 @@ func (q *Queries) UpsertUserPreferences(ctx context.Context, arg UpsertUserPrefe
 		&i.DefaultMacroSplit,
 		&i.UpdatedAt,
 		&i.NewsTickerEnabled,
+		&i.TargetWeightKg,
 	)
 	return i, err
 }

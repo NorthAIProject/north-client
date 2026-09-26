@@ -44,6 +44,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/ai/providers"
 	"github.com/NorthAIProject/north-client/internal/aicreds"
 	"github.com/NorthAIProject/north-client/internal/biometrics"
+	"github.com/NorthAIProject/north-client/internal/caffeine"
 	"github.com/NorthAIProject/north-client/internal/calculator"
 	"github.com/NorthAIProject/north-client/internal/checkins"
 	"github.com/NorthAIProject/north-client/internal/coach"
@@ -52,19 +53,24 @@ import (
 	"github.com/NorthAIProject/north-client/internal/decisions"
 	"github.com/NorthAIProject/north-client/internal/documents"
 	"github.com/NorthAIProject/north-client/internal/exercises"
+	"github.com/NorthAIProject/north-client/internal/fasting"
 	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/habits"
 	"github.com/NorthAIProject/north-client/internal/hydration"
 	"github.com/NorthAIProject/north-client/internal/mcpserver"
 	"github.com/NorthAIProject/north-client/internal/meals"
 	"github.com/NorthAIProject/north-client/internal/memories"
+	"github.com/NorthAIProject/north-client/internal/milestones"
 	"github.com/NorthAIProject/north-client/internal/mind"
 	"github.com/NorthAIProject/north-client/internal/notifications"
 	"github.com/NorthAIProject/north-client/internal/preferences"
 	"github.com/NorthAIProject/north-client/internal/reports"
+	"github.com/NorthAIProject/north-client/internal/screentime"
 	"github.com/NorthAIProject/north-client/internal/shared/database"
 	"github.com/NorthAIProject/north-client/internal/shared/secret"
 	"github.com/NorthAIProject/north-client/internal/sleep"
+	"github.com/NorthAIProject/north-client/internal/soreness"
+	"github.com/NorthAIProject/north-client/internal/supplements"
 	"github.com/NorthAIProject/north-client/internal/toolaudit"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/workouts"
@@ -266,6 +272,12 @@ func buildServices(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry
 			decisions.NewContextSource(decisionSvc),
 			hydration.NewContextSource(hydrationSvc),
 			sleep.NewContextSource(sleepSvc),
+			caffeine.NewContextSource(caffeine.NewService(caffeine.NewRepository(pool))),
+			fasting.NewContextSource(fasting.NewService(fasting.NewRepository(pool))),
+			supplements.NewContextSource(supplements.NewService(supplements.NewRepository(pool))),
+			screentime.NewContextSource(screentime.NewService(screentime.NewRepository(pool))),
+			soreness.NewContextSource(soreness.NewService(soreness.NewRepository(pool))),
+			milestones.NewContextSource(milestones.NewService(milestones.NewRepository(pool))),
 			habits.NewContextSource(habitSvc),
 			reports.NewContextSource(reportSvc),
 		),

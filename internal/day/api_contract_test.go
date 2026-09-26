@@ -15,13 +15,20 @@ func TestDayResponseShape(t *testing.T) {
 
 	date := time.Date(2026, 9, 26, 0, 0, 0, 0, time.UTC)
 	at := func(h, m int) time.Time { return date.Add(time.Duration(h)*time.Hour + time.Duration(m)*time.Minute) }
-	energy, daylight, quality := 32, 84, 4
-	weight, height, bmi := 83.9, 181.0, 25.6
+	energy, daylight, screen, quality := 32, 84, 248, 4
+	weight, height, bmi, target := 83.9, 181.0, 25.6, 80.0
 	start, end := at(-1, 0), at(7, 13)
 
 	apitest.AssertGolden(t, "day.golden.json", day.Project(day.Snapshot{
 		Date: date, Now: at(14, 46), IsToday: true,
-		EnergyPercent: &energy, DaylightMinutes: &daylight,
+		EnergyPercent: &energy, DaylightMinutes: &daylight, ScreenMinutes: &screen,
+		Level:    21,
+		Caffeine: dayd.Caffeine{TotalMG: 172, ActiveMG: 72, LimitMG: 400},
+		Fast: &dayd.Fast{
+			StartedAt: at(2, 0), TargetHours: 16, Elapsed: 12*time.Hour + 46*time.Minute, Phase: "fat_burning", Fraction: 0.8,
+		},
+		Nutrients:  dayd.Nutrients{Covered: []string{"omega3"}, Missing: []string{"vitamin_a", "vitamin_c"}},
+		Milestones: []dayd.Milestone{{ID: "77777777-7777-7777-7777-777777777777", Name: "Dentist", MonthsSince: 4, Fraction: 0.67}},
 		Food: dayd.Food{
 			Calories: 1750, ProteinG: 107, CarbG: 133, FatG: 80,
 			HasGoal: true, CalorieGoal: 2200, ProteinGoalG: 160, CarbGoalG: 220, FatGoalG: 75,
@@ -38,8 +45,12 @@ func TestDayResponseShape(t *testing.T) {
 			Blocks:       []dayd.SleepBlock{{Stage: dayd.StageCore, Start: start, End: at(1, 0)}},
 		},
 		Workouts: dayd.Workouts{Count: 2, Minutes: 62, Calories: 410, Labels: []string{"Dog walk", "Morning run"}},
-		Body:     dayd.Body{WeightKg: &weight, HeightCm: &height, BMI: &bmi},
-		Streak:   91,
+		Body: dayd.Body{
+			WeightKg: &weight, HeightCm: &height, BMI: &bmi, TargetWeightKg: &target,
+			BloodPressure: &dayd.BloodPressure{Systolic: 122, Diastolic: 79, At: at(8, 0)},
+			Soreness:      []dayd.Soreness{{Region: "quads", Severity: 2}},
+		},
+		Streak: 91,
 		Timeline: []dashboard.Entry{{
 			Kind: dashboard.KindFood, At: at(15, 30), Title: "Chicken rice bowl", Detail: "650 kcal", Href: "/app/nutrition/log", Icon: "utensils",
 		}},

@@ -31,7 +31,18 @@ type Data struct {
 	Sleep    SleepCard
 	Workouts WorkoutsCard
 	Streak   int
+	Level    int
 	Body     BodyCard
+
+	Fast       FastCard
+	Nutrients  NutrientsCard
+	Caffeine   CaffeineCard
+	Milestones []MilestoneRow
+
+	// Choices for the quick-add forms.
+	CaffeinePresets   []Preset
+	SupplementPresets []Preset
+	Regions           []string
 
 	Rail  Rail
 	Rules []RuleRow
@@ -39,7 +50,10 @@ type Data struct {
 
 // Vital is one small arc gauge in the strip across the top.
 type Vital struct {
-	Key   string // catalogue suffix: day.vital.<key>
+	Key string // catalogue suffix: day.vital.<key>
+	// Label, when set, is shown instead of the catalogue name: a tracker is
+	// called whatever the person called it.
+	Label string
 	Value string // "" renders a dash
 	Unit  string
 	// Fraction fills the arc; 0 when there is no value.
@@ -143,6 +157,62 @@ type BodyCard struct {
 	HasBMI      bool
 	BMI         string
 	BMICategory string // catalogue suffix: day.bmi.<category>
+
+	HasGoal bool
+	Target  string
+	ToGoal  string
+
+	HasBloodPressure bool
+	BloodPressure    string // "122/79"
+
+	Soreness []SoreRegion
+}
+
+// SoreRegion is one sore place, as a chip.
+type SoreRegion struct {
+	Region   string // catalogue suffix: day.region.<region>
+	Severity int
+}
+
+// FastCard is the fasting ring.
+type FastCard struct {
+	Active   bool // a fast is running now
+	Shown    bool // there is a fast to show at all
+	Elapsed  string
+	Phase    string // catalogue suffix: day.fast.phase.<phase>
+	Target   string
+	Fraction float64
+	Started  string
+}
+
+// NutrientsCard is micronutrient coverage.
+type NutrientsCard struct {
+	Covered int
+	Total   int
+	Missing []string // catalogue suffixes: day.nutrient.<key>
+}
+
+// CaffeineCard is the day's caffeine, shown in the vitals strip and its dialog.
+type CaffeineCard struct {
+	Total       string
+	Active      string
+	Limit       string
+	AfterCutoff bool
+}
+
+// MilestoneRow is one "months since" tracker.
+type MilestoneRow struct {
+	ID     string
+	Name   string
+	Months string
+	Due    bool
+}
+
+// Preset is one quick-add choice.
+type Preset struct {
+	Key   string
+	Label string
+	Value string
 }
 
 type RuleRow struct {

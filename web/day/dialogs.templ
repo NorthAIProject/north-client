@@ -8,34 +8,110 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/dialog"
 	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
 	"github.com/NorthAIProject/north-client/web/shared/ui/input"
+	"github.com/NorthAIProject/north-client/web/shared/ui/selectbox"
 )
 
 // quickAdd is the "+" in the tab bar: the fastest way to put something on the
 // day. Each choice goes to the page that already knows how to log it; water,
 // the most frequent, is one tap from here.
-templ quickAdd() {
+templ quickAdd(data Data) {
 	@dialog.Dialog(dialog.Props{ID: "day-quick-add"}) {
 		@dialog.Trigger() {
 			@button.Button(button.Props{Size: button.SizeIcon, Class: "bg-signal text-background hover:bg-signal/90 rounded-full", Attributes: templ.Attributes{"aria-label": i18n.T(ctx, "day.add")}}) {
 				@icon.Plus(icon.Props{Class: "size-4.5"})
 			}
 		}
-		@dialog.Content(dialog.ContentProps{Class: "sm:max-w-sm"}) {
+		@dialog.Content(dialog.ContentProps{Class: "max-h-[90vh] overflow-y-auto sm:max-w-md"}) {
 			@dialog.Header() {
 				@dialog.Title() {
 					{ i18n.T(ctx, "day.add") }
 				}
 			}
-			<form method="post" action="/app/care/water" class="grid grid-cols-2 gap-2">
-				@ui.CSRFInput()
-				<input type="hidden" name="return_to" value="/app"/>
-				for _, ml := range []string{"250", "500"} {
-					@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Attributes: templ.Attributes{"name": "amount_ml", "value": ml}}) {
-						@icon.Droplet(icon.Props{Class: "size-4 text-day-water"})
-						+{ ml } ml
+			@quickSection("day.add.water") {
+				<form method="post" action="/app/care/water" class="grid grid-cols-3 gap-2">
+					@ui.CSRFInput()
+					<input type="hidden" name="return_to" value="/app"/>
+					for _, ml := range []string{"250", "330", "500"} {
+						@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Attributes: templ.Attributes{"name": "amount_ml", "value": ml}}) {
+							@icon.Droplet(icon.Props{Class: "size-4 text-day-water"})
+							{ ml } ml
+						}
 					}
+				</form>
+			}
+			@quickSection("day.add.caffeine") {
+				<form method="post" action="/app/caffeine" class="grid grid-cols-2 gap-2" data-testid="quick-caffeine">
+					@ui.CSRFInput()
+					for _, p := range data.CaffeinePresets {
+						@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Class: "justify-start", Attributes: templ.Attributes{"name": "preset", "value": p.Key}}) {
+							@icon.Coffee(icon.Props{Class: "size-4 text-day-caffeine"})
+							<span class="truncate">{ i18n.T(ctx, "day.caffeine." + p.Key) }</span>
+							<span class="text-muted-foreground ml-auto text-xs tabular-nums">{ p.Value }</span>
+						}
+					}
+				</form>
+			}
+			@quickSection("day.add.supplement") {
+				<form method="post" action="/app/supplements" class="space-y-2" data-testid="quick-supplement">
+					@ui.CSRFInput()
+					@selectbox.SelectBox() {
+						@selectbox.Trigger(selectbox.TriggerProps{ID: "supplement-preset", Name: "preset"}) {
+							@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "day.supplement.pick")})
+						}
+						@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
+							for _, p := range data.SupplementPresets {
+								@selectbox.Item(selectbox.ItemProps{Value: p.Key}) {
+									{ p.Label }
+								}
+							}
+						}
+					}
+					<div class="flex items-center gap-2">
+						<label for="supplement-count" class="text-muted-foreground text-sm whitespace-nowrap">{ i18n.T(ctx, "day.supplement.count") }</label>
+						@input.Input(input.Props{ID: "supplement-count", Name: "count", Type: input.TypeNumber, Value: "1", Class: "w-20", Attributes: templ.Attributes{"min": "1", "max": "20"}})
+						@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Class: "ml-auto"}) {
+							@icon.Pill(icon.Props{Class: "size-4 text-day-protein"})
+							{ i18n.T(ctx, "day.log") }
+						}
+					</div>
+				</form>
+			}
+			@quickSection("day.add.screen") {
+				<form method="post" action="/app/screen-time" class="flex items-center gap-2" data-testid="quick-screen">
+					@ui.CSRFInput()
+					@input.Input(input.Props{Name: "hours", Type: input.TypeNumber, Placeholder: "h", Class: "w-20", Attributes: templ.Attributes{"min": "0", "max": "24", "aria-label": i18n.T(ctx, "day.screen.hours")}})
+					@input.Input(input.Props{Name: "minutes", Type: input.TypeNumber, Placeholder: "min", Class: "w-20", Attributes: templ.Attributes{"min": "0", "max": "59", "aria-label": i18n.T(ctx, "day.screen.minutes")}})
+					@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
+						@icon.Smartphone(icon.Props{Class: "size-4 text-day-screen"})
+						{ i18n.T(ctx, "day.save") }
+					}
+				</form>
+			}
+			@quickSection("day.add.tracker") {
+				if len(data.Milestones) > 0 {
+					<ul class="space-y-1">
+						for _, m := range data.Milestones {
+							<li class="flex items-center justify-between gap-2 text-sm">
+								<span>{ m.Name } <span class={ "text-xs", templ.KV("text-day-move", m.Due), templ.KV("text-muted-foreground", !m.Due) }>{ i18n.Tf(ctx, "day.tracker.months", m.Months) }</span></span>
+								<form method="post" action={ templ.SafeURL("/app/trackers/" + m.ID + "/done") }>
+									@ui.CSRFInput()
+									@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm}) {
+										{ i18n.T(ctx, "day.tracker.done") }
+									}
+								</form>
+							</li>
+						}
+					</ul>
 				}
-			</form>
+				<form method="post" action="/app/trackers" class="grid grid-cols-[1fr_auto_auto] gap-2">
+					@ui.CSRFInput()
+					@input.Input(input.Props{Name: "name", Placeholder: i18n.T(ctx, "day.tracker.name"), Attributes: templ.Attributes{"maxlength": "40", "required": "true"}})
+					@input.Input(input.Props{Name: "last_done_on", Type: input.TypeDate, Attributes: templ.Attributes{"aria-label": i18n.T(ctx, "day.tracker.last")}})
+					@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
+						{ i18n.T(ctx, "day.add.short") }
+					}
+				</form>
+			}
 			<div class="grid grid-cols-2 gap-2">
 				@quickLink("/app/nutrition/log", "day.add.food", icon.Utensils(icon.Props{Class: "size-4 text-day-food"}))
 				@quickLink("/app/care", "day.add.sleep", icon.Moon(icon.Props{Class: "size-4 text-day-sleep"}))
@@ -46,6 +122,13 @@ templ quickAdd() {
 			</div>
 		}
 	}
+}
+
+templ quickSection(key string) {
+	<section class="space-y-2">
+		<h3 class="text-muted-foreground text-xs font-medium tracking-wide uppercase">{ i18n.T(ctx, key) }</h3>
+		{ children... }
+	</section>
 }
 
 templ quickLink(href, key string, ic templ.Component) {

@@ -12,10 +12,14 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
+	caffeinecalc "github.com/NorthAIProject/north-client/internal/caffeine/caffeine"
 	"github.com/NorthAIProject/north-client/internal/dashboard"
 	"github.com/NorthAIProject/north-client/internal/day/day"
+	"github.com/NorthAIProject/north-client/internal/screentime/screen"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
+	"github.com/NorthAIProject/north-client/internal/soreness/sore"
+	"github.com/NorthAIProject/north-client/internal/supplements/supplement"
 	daypages "github.com/NorthAIProject/north-client/web/day"
 )
 
@@ -97,13 +101,33 @@ func BuildView(ctx context.Context, s Snapshot) daypages.Data {
 		Streak:    s.Streak,
 	}
 
+	data.Level = s.Level
 	data.Vitals = []daypages.Vital{
+		{
+			Key: "caffeine", Value: fmt.Sprintf("%d", s.Caffeine.ActiveMG), Unit: "mg",
+			Fraction: float64(s.Caffeine.TotalMG) / float64(max(s.Caffeine.LimitMG, 1)), Color: "var(--color-day-caffeine)",
+		},
 		percentVital("energy", s.EnergyPercent, "var(--color-day-move)"),
 		minutesVital("sunlight", s.DaylightMinutes, 60, "var(--color-day-sun)"),
-		{Key: "water", Value: litres(s.Water.TotalML), Unit: "L", Fraction: s.Water.Fraction(), Color: "var(--color-day-water)"},
-		{Key: "move", Value: fmt.Sprintf("%.0f", s.Activity.Move.Value), Unit: "kcal", Fraction: s.Activity.Move.Fraction(), Color: "var(--color-day-move)"},
-		streakVital(s.Streak),
+		screenVital(s.ScreenMinutes),
+		trackerVital(s.Milestones, s.Streak),
 	}
+	data.Caffeine = daypages.CaffeineCard{
+		Total: fmt.Sprintf("%d", s.Caffeine.TotalMG), Active: fmt.Sprintf("%d", s.Caffeine.ActiveMG),
+		Limit: fmt.Sprintf("%d", s.Caffeine.LimitMG), AfterCutoff: s.Caffeine.AfterCutoff,
+	}
+	data.Fast = fastCard(s.Fast, s.IsToday)
+	data.Nutrients = daypages.NutrientsCard{Covered: len(s.Nutrients.Covered), Total: s.Nutrients.Total(), Missing: s.Nutrients.Missing}
+	for _, m := range s.Milestones {
+		data.Milestones = append(data.Milestones, daypages.MilestoneRow{ID: m.ID, Name: m.Name, Months: fmt.Sprintf("%d", m.MonthsSince), Due: m.Due})
+	}
+	for _, p := range caffeinecalc.Presets() {
+		data.CaffeinePresets = append(data.CaffeinePresets, daypages.Preset{Key: p.Key, Value: fmt.Sprintf("%d mg", p.MG)})
+	}
+	for _, p := range supplement.Presets() {
+		data.SupplementPresets = append(data.SupplementPresets, daypages.Preset{Key: p.Key, Label: p.Name})
+	}
+	data.Regions = sore.Regions()
 
 	data.Food = foodCard(s.Food)
 	data.Water = daypages.WaterCard{
@@ -127,7 +151,7 @@ func BuildView(ctx context.Context, s Snapshot) daypages.Data {
 
 	var items []daypages.RailInput
 	for _, e := range s.Timeline {
-		items = append(items, daypages.RailInput{At: e.At, Title: e.Title, Detail: e.Detail, Href: e.Href, Color: kindColor(e.Kind)})
+		items = append(items, daypages.RailInput{At: e.At, Title: railTitle(ctx, e), Detail: e.Detail, Href: e.Href, Color: kindColor(e.Kind)})
 	}
 	var markers []daypages.MarkerInput
 	for _, m := range s.Markers {
@@ -171,12 +195,46 @@ func minutesVital(key string, v *int, goal int, color string) daypages.Vital {
 	return out
 }
 
-// streakVital fills its arc a week at a time: a streak has no goal, but a
-// gauge that is always full says nothing.
-func streakVital(days int) daypages.Vital {
-	return daypages.Vital{
-		Key: "streak", Value: fmt.Sprintf("%d", days), Unit: "d",
-		Fraction: float64(days%7) / 7, Color: "var(--color-ember)",
+func screenVital(minutes *int) daypages.Vital {
+	out := daypages.Vital{Key: "screen", Unit: "", Color: "var(--color-day-screen)"}
+	if minutes != nil {
+		out.Value = day.FormatMinutes(*minutes)
+		out.Fraction = float64(*minutes) / screen.DailyLimitMinutes
+	}
+	return out
+}
+
+// trackerVital is the first "months since" tracker, named by the person; with
+// none set up, the slot shows the streak so the strip is never a hole.
+func trackerVital(list []day.Milestone, streak int) daypages.Vital {
+	if len(list) == 0 {
+		return daypages.Vital{
+			Key: "streak", Value: fmt.Sprintf("%d", streak), Unit: "d",
+			// A streak has no goal, so the arc fills a week at a time.
+			Fraction: float64(streak%7) / 7, Color: "var(--color-ember)",
+		}
+	}
+	m := list[0]
+	color := "var(--color-day-stand)"
+	if m.Due {
+		color = "var(--color-day-move)"
+	}
+	return daypages.Vital{Key: "tracker", Label: m.Name, Value: fmt.Sprintf("%d", m.MonthsSince), Unit: "mo", Fraction: m.Fraction, Color: color}
+}
+
+func fastCard(f *day.Fast, isToday bool) daypages.FastCard {
+	if f == nil {
+		return daypages.FastCard{}
+	}
+	mins := int(f.Elapsed.Minutes())
+	return daypages.FastCard{
+		Active:   f.Open() && isToday,
+		Shown:    true,
+		Elapsed:  fmt.Sprintf("%d:%02d", mins/60, mins%60),
+		Phase:    f.Phase,
+		Target:   fmt.Sprintf("%d", f.TargetHours),
+		Fraction: f.Fraction,
+		Started:  f.StartedAt.Format("Mon 15:04"),
 	}
 }
 
@@ -246,6 +304,20 @@ func sleepCard(s *day.Sleep) daypages.SleepCard {
 
 func bodyCard(b day.Body) daypages.BodyCard {
 	out := daypages.BodyCard{}
+	if b.TargetWeightKg != nil {
+		out.Target = fmt.Sprintf("%.1f", *b.TargetWeightKg)
+	}
+	if d, ok := b.ToGoal(); ok {
+		out.HasGoal = true
+		out.ToGoal = fmt.Sprintf("%.1f", d)
+	}
+	if bp := b.BloodPressure; bp != nil {
+		out.HasBloodPressure = true
+		out.BloodPressure = fmt.Sprintf("%d/%d", bp.Systolic, bp.Diastolic)
+	}
+	for _, so := range b.Soreness {
+		out.Soreness = append(out.Soreness, daypages.SoreRegion{Region: so.Region, Severity: so.Severity})
+	}
 	if b.WeightKg != nil {
 		out.HasWeight = true
 		out.Weight = fmt.Sprintf("%.1f", *b.WeightKg)
@@ -256,6 +328,17 @@ func bodyCard(b day.Body) daypages.BodyCard {
 		out.BMICategory = string(b.Category())
 	}
 	return out
+}
+
+// railTitle names a drink logged from a preset in the reader's language; the
+// preset key is what was stored, so every language can name it.
+func railTitle(ctx context.Context, e dashboard.Entry) string {
+	if e.Kind == KindCaffeine {
+		if _, ok := caffeinecalc.PresetMG(e.Title); ok {
+			return i18n.T(ctx, "day.caffeine."+e.Title)
+		}
+	}
+	return e.Title
 }
 
 func kindColor(k dashboard.EntryKind) string {
@@ -272,6 +355,12 @@ func kindColor(k dashboard.EntryKind) string {
 		return "var(--color-ember)"
 	case dashboard.KindJournal:
 		return "var(--color-agent)"
+	case KindCaffeine:
+		return "var(--color-day-caffeine)"
+	case KindSupplement:
+		return "var(--color-day-protein)"
+	case KindFasting:
+		return "var(--color-day-fat)"
 	default:
 		return "var(--color-signal)"
 	}

@@ -228,9 +228,13 @@ type Workouts struct {
 
 // Body is the latest measurement and what it means.
 type Body struct {
-	WeightKg *float64
-	HeightCm *float64
-	BMI      *float64
+	WeightKg       *float64
+	HeightCm       *float64
+	BMI            *float64
+	TargetWeightKg *float64
+
+	BloodPressure *BloodPressure
+	Soreness      []Soreness
 }
 
 // BMICategory is the WHO adult band for a BMI.
@@ -285,4 +289,72 @@ func FormatMinutes(minutes int) string {
 		return fmt.Sprintf("%dh", h)
 	}
 	return fmt.Sprintf("%dh %dm", h, m)
+}
+
+// Caffeine is the day's caffeine: what was drunk, and what is still active.
+type Caffeine struct {
+	TotalMG  int
+	ActiveMG int
+	LimitMG  int
+	// AfterCutoff is true when something was drunk after the day's caffeine
+	// cutoff rule.
+	AfterCutoff bool
+}
+
+// Fast is the fast shown on the day: the open one, or the latest that touched
+// the date.
+type Fast struct {
+	StartedAt   time.Time
+	EndedAt     *time.Time
+	TargetHours int
+	Elapsed     time.Duration
+	Phase       string
+	Fraction    float64
+}
+
+// Open reports whether the fast is still running.
+func (f Fast) Open() bool { return f.EndedAt == nil }
+
+// Nutrients is the day's micronutrient coverage.
+type Nutrients struct {
+	Covered []string
+	Missing []string
+}
+
+// Total is the size of the tracked set.
+func (n Nutrients) Total() int { return len(n.Covered) + len(n.Missing) }
+
+// Soreness is one sore region.
+type Soreness struct {
+	Region   string
+	Severity int
+}
+
+// Milestone is a "months since" tracker as the vitals strip shows it.
+type Milestone struct {
+	ID          string
+	Name        string
+	MonthsSince int
+	Fraction    float64
+	Due         bool
+}
+
+// BloodPressure is the latest reading.
+type BloodPressure struct {
+	Systolic  int
+	Diastolic int
+	At        time.Time
+}
+
+// LevelFor turns lifetime check-in days into a level: one level per five
+// days, so the number keeps moving without a missed day ever taking it back.
+func LevelFor(totalDays int) int { return totalDays/5 + 1 }
+
+// ToGoal is how far the weight is from the target, always positive, and false
+// when either is unknown.
+func (b Body) ToGoal() (float64, bool) {
+	if b.WeightKg == nil || b.TargetWeightKg == nil {
+		return 0, false
+	}
+	return math.Round(math.Abs(*b.WeightKg-*b.TargetWeightKg)*10) / 10, true
 }

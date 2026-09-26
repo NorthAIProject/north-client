@@ -14,3 +14,10 @@ VALUES ($1, $2)
 ON CONFLICT (user_id) DO UPDATE
 SET news_ticker_enabled = $2, updated_at = now()
 RETURNING *;
+
+-- name: SetTargetWeight :one
+INSERT INTO user_preferences (user_id, target_weight_kg)
+VALUES ($1, $2)
+ON CONFLICT (user_id) DO UPDATE
+SET target_weight_kg = $2, updated_at = now()
+RETURNING *;

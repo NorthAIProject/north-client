@@ -60,3 +60,6 @@ LIMIT $2;
 
 -- name: DeleteCheckIn :execrows
 DELETE FROM check_ins WHERE id = $1 AND user_id = $2;
+
+-- name: CountCheckIns :one
+SELECT COUNT(*)::bigint FROM check_ins WHERE user_id = $1;

@@ -6,6 +6,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/activity"
 	"github.com/NorthAIProject/north-client/internal/apns"
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/caffeine"
 	"github.com/NorthAIProject/north-client/internal/calculator"
 	"github.com/NorthAIProject/north-client/internal/capture"
 	"github.com/NorthAIProject/north-client/internal/care"
@@ -17,6 +18,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/documents"
 	"github.com/NorthAIProject/north-client/internal/exercises"
 	"github.com/NorthAIProject/north-client/internal/export"
+	"github.com/NorthAIProject/north-client/internal/fasting"
 	"github.com/NorthAIProject/north-client/internal/fitness"
 	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/health"
@@ -24,13 +26,17 @@ import (
 	"github.com/NorthAIProject/north-client/internal/meals"
 	"github.com/NorthAIProject/north-client/internal/media"
 	"github.com/NorthAIProject/north-client/internal/memories"
+	"github.com/NorthAIProject/north-client/internal/milestones"
 	"github.com/NorthAIProject/north-client/internal/mind"
 	"github.com/NorthAIProject/north-client/internal/news"
 	"github.com/NorthAIProject/north-client/internal/nudges"
 	"github.com/NorthAIProject/north-client/internal/onboarding"
 	"github.com/NorthAIProject/north-client/internal/reports"
+	"github.com/NorthAIProject/north-client/internal/screentime"
 	"github.com/NorthAIProject/north-client/internal/settings"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
+	"github.com/NorthAIProject/north-client/internal/soreness"
+	"github.com/NorthAIProject/north-client/internal/supplements"
 	"github.com/NorthAIProject/north-client/internal/workouts"
 )
 
@@ -87,6 +93,12 @@ func mountJSON(r chi.Router, sessions auth.SessionResolver, apis apiSet) {
 		apis.onboarding.Routes(r)
 		apis.dashboard.Routes(r)
 		apis.day.Routes(r)
+		apis.caffeine.Routes(r)
+		apis.fasting.Routes(r)
+		apis.supplements.Routes(r)
+		apis.screenTime.Routes(r)
+		apis.soreness.Routes(r)
+		apis.milestones.Routes(r)
 		apis.coach.Routes(r)
 		apis.exercises.Routes(r)
 		apis.settings.Routes(r)
@@ -116,32 +128,38 @@ func mountJSON(r chi.Router, sessions auth.SessionResolver, apis apiSet) {
 // apiSet is every feature API mounted under /api/v1. A struct rather than a
 // growing parameter list: each phase of the native app adds one.
 type apiSet struct {
-	auth       *auth.API
-	capture    *capture.API
-	onboarding *onboarding.API
-	dashboard  *dashboard.API
-	day        *day.API
-	coach      *coach.API
-	exercises  *exercises.API
-	settings   *settings.API
-	training   *workouts.API
-	activity   *activity.API
-	health     *health.API
-	fitness    *fitness.API
-	insights   *insights.API
-	goals      *goals.API
-	checkins   *checkins.API
-	reports    *reports.API
-	memories   *memories.API
-	knowledge  *documents.API
-	formChecks *media.API
-	care       *care.API
-	mind       *mind.API
-	nutrition  *meals.API
-	decisions  *decisions.API
-	nudges     *nudges.API
-	devices    *apns.API
-	export     *export.Handler
-	calculator *calculator.API
-	news       *news.API
+	auth        *auth.API
+	capture     *capture.API
+	onboarding  *onboarding.API
+	dashboard   *dashboard.API
+	day         *day.API
+	caffeine    *caffeine.API
+	fasting     *fasting.API
+	supplements *supplements.API
+	screenTime  *screentime.API
+	soreness    *soreness.API
+	milestones  *milestones.API
+	coach       *coach.API
+	exercises   *exercises.API
+	settings    *settings.API
+	training    *workouts.API
+	activity    *activity.API
+	health      *health.API
+	fitness     *fitness.API
+	insights    *insights.API
+	goals       *goals.API
+	checkins    *checkins.API
+	reports     *reports.API
+	memories    *memories.API
+	knowledge   *documents.API
+	formChecks  *media.API
+	care        *care.API
+	mind        *mind.API
+	nutrition   *meals.API
+	decisions   *decisions.API
+	nudges      *nudges.API
+	devices     *apns.API
+	export      *export.Handler
+	calculator  *calculator.API
+	news        *news.API
 }

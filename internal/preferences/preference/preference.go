@@ -35,6 +35,10 @@ type Preferences struct {
 	// NewsTickerEnabled is the dashboard's breaking-news strip. On by default.
 	NewsTickerEnabled bool
 
+	// TargetWeightKg is the weight being aimed at, for My Day's "kg to goal".
+	// Nil when none was set.
+	TargetWeightKg *float64
+
 	UpdatedAt time.Time
 }
 

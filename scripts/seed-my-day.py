@@ -110,6 +110,23 @@ call("POST", "/activity/log", token, {"activityCode": "running_9_8kmh", "started
 for kind, when in [("caffeine_cutoff", "15:00"), ("kitchen_closes", "20:00"), ("last_drink", "21:30"), ("screens_off", "22:00")]:
     call("PUT", f"/day/rules/{kind}", token, {"at": when, "enabled": True})
 
+# Caffeine through the morning, supplements with breakfast.
+for preset, h, m in [("coffee", 9, 58), ("espresso", 13, 40)]:
+    call("POST", "/caffeine", token, {"preset": preset, "loggedAt": at(h, m)})
+call("POST", "/supplements", token, {"preset": "omega3", "count": 3})
+call("POST", "/supplements", token, {"preset": "vitamin_d3"})
+
+# A 16:8 fast that began after last night's dinner.
+call("POST", "/fasting/start", token, {"targetHours": 16, "startedAt": (midnight - dt.timedelta(hours=3)).isoformat().replace("+00:00", "Z")})
+
+# Screen time, the body, and where it hurts.
+call("PUT", "/screen-time", token, {"minutes": 248, "source": "shortcut"})
+call("PUT", "/settings/target-weight", token, {"targetWeightKg": 80})
+call("POST", "/health/blood-pressure", token, {"systolic": 122, "diastolic": 79})
+for region, severity in [("lower_back", 2), ("quads", 2), ("glutes", 1)]:
+    call("PUT", f"/soreness/{region}", token, {"severity": severity})
+call("POST", "/trackers", token, {"name": "Dentist", "lastDoneOn": (today - dt.timedelta(days=120)).isoformat(), "intervalMonths": 6})
+
 # A check-in, so the streak is not zero.
 call("PUT", "/check-ins/today", token, {"mood": 4, "energy": 3, "wins": "Slept well, a bit stiff from leg day"})
 

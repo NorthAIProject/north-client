@@ -10,6 +10,7 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/dialog"
 	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
 	"github.com/NorthAIProject/north-client/web/shared/ui/input"
+	"github.com/NorthAIProject/north-client/web/shared/ui/selectbox"
 )
 
 templ Page(user users.User, data Data) {
@@ -25,12 +26,13 @@ templ Page(user users.User, data Data) {
 					@cardGrid(data)
 				</div>
 				<div class="order-3 lg:col-start-2 xl:col-start-3 xl:row-start-1">
-					@bodyPanel(data.Body)
+					@bodyPanel(data)
 				</div>
 			</div>
 		</div>
-		@tabBar()
+		@tabBar(data)
 		@dialog.Script()
+		@selectbox.Script()
 		@checkbox.Script()
 		@input.Script()
 	}
@@ -86,13 +88,19 @@ templ vitalsStrip(vitals []Vital) {
 						<span class="text-muted-foreground text-xs font-normal">{ v.Unit }</span>
 					}
 				</p>
-				<p class="text-muted-foreground max-w-full truncate text-[10px] sm:text-xs">{ i18n.T(ctx, "day.vital." + v.Key) }</p>
+				<p class="text-muted-foreground max-w-full truncate text-[10px] sm:text-xs">
+					if v.Label != "" {
+						{ v.Label }
+					} else {
+						{ i18n.T(ctx, "day.vital." + v.Key) }
+					}
+				</p>
 			</div>
 		}
 	</section>
 }
 
-templ tabBar() {
+templ tabBar(data Data) {
 	<nav class="fixed inset-x-0 bottom-4 z-40 flex justify-center px-4" aria-label={ i18n.T(ctx, "day.tabs") }>
 		<div class="bg-background/90 border-hairline flex items-center gap-1 rounded-full border p-1 shadow-lg backdrop-blur">
 			@button.Button(button.Props{Href: "/app", Variant: button.VariantSecondary, Size: button.SizeSm, Class: "rounded-full", Attributes: templ.Attributes{"aria-current": "page"}}) {
@@ -107,7 +115,7 @@ templ tabBar() {
 				@icon.FolderOpen(icon.Props{Class: "size-4"})
 				{ i18n.T(ctx, "day.tab.records") }
 			}
-			@quickAdd()
+			@quickAdd(data)
 		</div>
 	</nav>
 }

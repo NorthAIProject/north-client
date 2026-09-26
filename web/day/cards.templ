@@ -1,7 +1,9 @@
 package day
 
 import (
+	"context"
 	"strconv"
+	"strings"
 
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
@@ -12,12 +14,14 @@ import (
 
 templ cardGrid(data Data) {
 	<section class="grid grid-cols-2 gap-3 sm:gap-4" aria-label={ i18n.T(ctx, "day.cards") }>
+		@fastCard(data.Fast)
 		@foodCard(data.Food)
 		@waterCard(data.Water)
 		@activityCard(data.Activity)
 		@sleepCard(data.Sleep)
 		@workoutsCard(data.Workouts)
-		@streakCard(data.Streak)
+		@nutrientsCard(data.Nutrients)
+		@streakCard(data.Streak, data.Level)
 	</section>
 }
 
@@ -250,8 +254,8 @@ templ workoutsDetail(w WorkoutsCard) {
 	}
 }
 
-templ streakCard(streak int) {
-	@dayCard("streak", "day.card.streak", "var(--color-ember)", icon.Flame(icon.Props{Class: "size-4"}), "", streakDetail(streak)) {
+templ streakCard(streak, level int) {
+	@dayCard("streak", "day.card.streak", "var(--color-ember)", icon.Flame(icon.Props{Class: "size-4"}), i18n.Tf(ctx, "day.streak.level", level), streakDetail(streak)) {
 		<span class="flex items-center gap-2">
 			@icon.Flame(icon.Props{Class: "size-8 text-ember"})
 			<span class="text-ember text-4xl font-semibold tabular-nums">{ strconv.Itoa(streak) }</span>
@@ -263,5 +267,98 @@ templ streakDetail(streak int) {
 	<p class="text-sm">{ i18n.Tf(ctx, "day.streak.detail", streak) }</p>
 	@button.Button(button.Props{Href: "/app/check-ins", Variant: button.VariantOutline}) {
 		{ i18n.T(ctx, "day.streak.checkin") }
+	}
+}
+
+templ fastCard(f FastCard) {
+	@dayCard("fast", "day.card.fast", "var(--color-day-fat)", icon.Timer(icon.Props{Class: "size-4"}), fastMeta(ctx, f), fastDetail(f)) {
+		<span class="flex w-full items-center justify-center">
+			if f.Shown {
+				<span class="relative flex size-24 items-center justify-center">
+					<svg viewBox="0 0 80 80" class="absolute inset-0 size-24" aria-hidden="true">
+						<circle cx="40" cy="40" r="33" fill="none" stroke="var(--color-day-fat)" stroke-opacity="0.18" stroke-width="7"></circle>
+						<circle cx="40" cy="40" r="33" fill="none" stroke="var(--color-day-fat)" stroke-width="7" stroke-linecap="round" pathLength="100" stroke-dasharray={ RingDash(f.Fraction) } transform="rotate(-90 40 40)"></circle>
+					</svg>
+					<span class="text-xl font-semibold tabular-nums">{ f.Elapsed }</span>
+				</span>
+			} else {
+				<span class="text-muted-foreground text-sm">{ i18n.T(ctx, "day.fast.none") }</span>
+			}
+		</span>
+	}
+}
+
+func fastMeta(ctx context.Context, f FastCard) string {
+	if !f.Shown {
+		return ""
+	}
+	return i18n.T(ctx, "day.fast.phase."+f.Phase)
+}
+
+templ fastDetail(f FastCard) {
+	if f.Shown {
+		<dl class="grid grid-cols-2 gap-y-2 text-sm tabular-nums">
+			<dt class="text-muted-foreground">{ i18n.T(ctx, "day.fast.elapsed") }</dt>
+			<dd class="text-right font-medium">{ f.Elapsed }</dd>
+			<dt class="text-muted-foreground">{ i18n.T(ctx, "day.fast.target") }</dt>
+			<dd class="text-right">{ f.Target }h</dd>
+			<dt class="text-muted-foreground">{ i18n.T(ctx, "day.fast.started") }</dt>
+			<dd class="text-right">{ f.Started }</dd>
+			<dt class="text-muted-foreground">{ i18n.T(ctx, "day.fast.phase") }</dt>
+			<dd class="text-right">{ i18n.T(ctx, "day.fast.phase." + f.Phase) }</dd>
+		</dl>
+	}
+	if f.Active {
+		<form method="post" action="/app/fasting/stop">
+			@ui.CSRFInput()
+			@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
+				{ i18n.T(ctx, "day.fast.stop") }
+			}
+		</form>
+	} else {
+		<form method="post" action="/app/fasting/start" class="flex flex-wrap gap-2">
+			@ui.CSRFInput()
+			for _, h := range []string{"12", "16", "18", "24"} {
+				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Attributes: templ.Attributes{"name": "target_hours", "value": h}}) {
+					{ i18n.T(ctx, "day.fast.start") } { h }h
+				}
+			}
+		</form>
+	}
+}
+
+templ nutrientsCard(n NutrientsCard) {
+	@dayCard("nutrients", "day.card.nutrients", "var(--color-day-food)", icon.Leaf(icon.Props{Class: "size-4"}), "", nutrientsDetail(n)) {
+		<span class="w-full">
+			<span class="block text-3xl font-semibold tabular-nums">
+				{ strconv.Itoa(n.Covered) }<span class="text-muted-foreground text-sm font-normal">/{ strconv.Itoa(n.Total) }</span>
+			</span>
+			if len(n.Missing) > 0 {
+				<span class="text-day-fat mt-1 line-clamp-2 text-xs">{ missingNames(ctx, n.Missing, 3) }</span>
+			}
+		</span>
+	}
+}
+
+func missingNames(ctx context.Context, keys []string, limit int) string {
+	names := make([]string, 0, limit)
+	for i, k := range keys {
+		if i == limit {
+			break
+		}
+		names = append(names, i18n.T(ctx, "day.nutrient."+k))
+	}
+	return strings.Join(names, ", ")
+}
+
+templ nutrientsDetail(n NutrientsCard) {
+	<p class="text-sm">{ i18n.Tf(ctx, "day.nutrients.detail", n.Covered, n.Total) }</p>
+	if len(n.Missing) > 0 {
+		<p class="text-muted-foreground text-xs font-medium tracking-wide uppercase">{ i18n.T(ctx, "day.nutrients.missing") }</p>
+		<ul class="flex flex-wrap gap-1.5">
+			for _, k := range n.Missing {
+				<li class="bg-muted rounded-full px-2 py-0.5 text-xs">{ i18n.T(ctx, "day.nutrient." + k) }</li>
+			}
+		</ul>
 	}
 }

@@ -51,11 +51,22 @@ func (r *Repository) SetNewsTickerEnabled(ctx context.Context, userID uuid.UUID,
 	return fromDB(row), nil
 }
 
+// SetTargetWeight sets or clears the weight to aim at, leaving every other
+// setting alone. Nil clears it.
+func (r *Repository) SetTargetWeight(ctx context.Context, userID uuid.UUID, kg *float64) (Preferences, error) {
+	row, err := r.q.SetTargetWeight(ctx, preferencesdb.SetTargetWeightParams{UserID: userID, TargetWeightKg: kg})
+	if err != nil {
+		return Preferences{}, apperr.Wrap(err, "set target weight")
+	}
+	return fromDB(row), nil
+}
+
 func fromDB(row preferencesdb.UserPreference) Preferences {
 	return Preferences{
 		UserID: row.UserID, UnitsSystem: row.UnitsSystem,
 		DefaultGoal: row.DefaultGoal, DefaultMacroSplit: row.DefaultMacroSplit,
 		NewsTickerEnabled: row.NewsTickerEnabled,
+		TargetWeightKg:    row.TargetWeightKg,
 		UpdatedAt:         row.UpdatedAt,
 	}
 }
