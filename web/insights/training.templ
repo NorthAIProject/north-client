@@ -1,6 +1,7 @@
 package insights
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -31,6 +32,46 @@ type TrainingView struct {
 
 	HasDonut    bool
 	HasSessions bool
+
+	Lifting LiftingView
+}
+
+// LiftingView is what the logged sets add up to.
+type LiftingView struct {
+	HasSets     bool
+	Volume      string
+	Delta       DeltaView
+	Sets        int
+	Workouts    int
+	HasWeekly   bool
+	WeeklyChart chart.Props
+	Exercises   []LiftExerciseRow
+	Records     []LiftRecordRow
+	Muscles     []MuscleRow
+}
+
+type LiftExerciseRow struct {
+	Name   string
+	Sets   int
+	Best   string
+	E1RM   string
+	Volume string
+	// Change is the estimated max's movement across the window, in kg.
+	Change float64
+}
+
+type LiftRecordRow struct {
+	Exercise string
+	Lift     string
+	E1RM     string
+	Gain     string
+	On       string
+}
+
+type MuscleRow struct {
+	Name string
+	Sets int
+	Pct  int
 }
 
 templ Training(user users.User, view TrainingView) {
@@ -80,6 +121,7 @@ templ TrainingPanels(view TrainingView) {
 				}
 			}
 		</div>
+		@lifting(view.Lifting)
 		@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 			@card.Header() {
 				@card.Title() {
@@ -115,4 +157,152 @@ func timeLabel(view TrainingView) string {
 		return "—"
 	}
 	return view.TotalTime
+}
+
+templ lifting(view LiftingView) {
+	<section class="space-y-4" data-testid="insights-lifting">
+		<h2 class="font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Lifting</h2>
+		if !view.HasSets {
+			@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+				@card.Content() {
+					@emptyState("No sets logged in this window. Log the weight of each set during a workout in the app.", "Open training", "/app/training")
+				}
+			}
+		} else {
+			<div class="grid gap-3 sm:grid-cols-3">
+				@statTile("Volume", view.Volume, "weight × reps, against the window before", view.Delta)
+				@statTile("Sets", formatCount(view.Sets), "logged with a weight", DeltaView{})
+				@statTile("Workouts", formatCount(view.Workouts), "with sets logged", DeltaView{})
+			</div>
+			<div class="grid gap-4 lg:grid-cols-3">
+				@card.Card(card.Props{Class: "border-hairline bg-surface lg:col-span-2"}) {
+					@card.Header() {
+						@card.Title() {
+							Exercises
+						}
+						@card.Description() {
+							Best set and estimated one-rep max (Epley), with the change across this window.
+						}
+					}
+					@card.Content() {
+						<div class="-mx-2 overflow-x-auto">
+							<table class="w-full text-sm">
+								<thead class="text-muted-foreground font-mono text-[10px] uppercase tracking-[0.1em]">
+									<tr>
+										<th class="px-2 py-1 text-left font-normal">Exercise</th>
+										<th class="px-2 py-1 text-right font-normal">Sets</th>
+										<th class="px-2 py-1 text-right font-normal">Best</th>
+										<th class="px-2 py-1 text-right font-normal">Est. 1RM</th>
+										<th class="hidden px-2 py-1 text-right font-normal sm:table-cell">Volume</th>
+									</tr>
+								</thead>
+								<tbody class="divide-border divide-y">
+									for _, e := range view.Exercises {
+										<tr>
+											<td class="max-w-[12rem] truncate px-2 py-2 font-medium">{ e.Name }</td>
+											<td class="px-2 py-2 text-right tabular-nums">{ formatCount(e.Sets) }</td>
+											<td class="px-2 py-2 text-right tabular-nums">{ e.Best }</td>
+											<td class="px-2 py-2 text-right tabular-nums">
+												{ e.E1RM }
+												if e.Change > 0 {
+													<span class="text-signal ml-1 text-xs">{ changeLabel(e.Change) }</span>
+												} else if e.Change < 0 {
+													<span class="text-muted-foreground ml-1 text-xs">{ changeLabel(e.Change) }</span>
+												}
+											</td>
+											<td class="text-muted-foreground hidden px-2 py-2 text-right tabular-nums sm:table-cell">{ e.Volume }</td>
+										</tr>
+									}
+								</tbody>
+							</table>
+						</div>
+					}
+				}
+				@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+					@card.Header() {
+						@card.Title() {
+							Records
+						}
+						@card.Description() {
+							Sets that beat every earlier estimated max.
+						}
+					}
+					@card.Content() {
+						if len(view.Records) == 0 {
+							@emptyState("No new records in this window.", "", "")
+						} else {
+							<ul class="divide-border -my-2 divide-y" data-testid="lifting-records">
+								for _, r := range view.Records {
+									<li class="py-2">
+										<div class="flex items-baseline justify-between gap-2">
+											<span class="truncate text-sm font-medium">{ r.Exercise }</span>
+											<span class="text-signal shrink-0 text-xs tabular-nums">+{ r.Gain }</span>
+										</div>
+										<p class="text-muted-foreground text-xs tabular-nums">{ r.Lift } · est. { r.E1RM } · { r.On }</p>
+									</li>
+								}
+							</ul>
+						}
+					}
+				}
+			</div>
+			<div class="grid gap-4 lg:grid-cols-3">
+				if view.HasWeekly {
+					@card.Card(card.Props{Class: "border-hairline bg-surface lg:col-span-2"}) {
+						@card.Header() {
+							@card.Title() {
+								Weekly volume
+							}
+						}
+						@card.Content() {
+							@chart.Chart(view.WeeklyChart)
+						}
+					}
+				}
+				if len(view.Muscles) > 0 {
+					@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+						@card.Header() {
+							@card.Title() {
+								Sets per muscle
+							}
+							@card.Description() {
+								Counted where the muscle is a primary mover.
+							}
+						}
+						@card.Content() {
+							<ul class="space-y-2">
+								for _, m := range view.Muscles {
+									<li class="text-sm">
+										<div class="flex justify-between gap-2">
+											<span>{ m.Name }</span>
+											<span class="text-muted-foreground tabular-nums">{ formatCount(m.Sets) }</span>
+										</div>
+										<div class="bg-muted mt-1 h-1.5 rounded-full">
+											<div class="bg-signal h-1.5 rounded-full" style={ "width:" + formatCount(m.Pct) + "%" }></div>
+										</div>
+									</li>
+								}
+							</ul>
+						}
+					}
+				}
+			</div>
+		}
+	</section>
+}
+
+func changeLabel(kg float64) string {
+	sign := "+"
+	if kg < 0 {
+		sign = "−"
+		kg = -kg
+	}
+	return sign + formatKgShort(kg)
+}
+
+func formatKgShort(v float64) string {
+	if v == float64(int64(v)) {
+		return fmt.Sprintf("%.0f kg", v)
+	}
+	return fmt.Sprintf("%.1f kg", v)
 }

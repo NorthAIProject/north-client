@@ -45,6 +45,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/insights"
 	"github.com/NorthAIProject/north-client/internal/integrations"
 	"github.com/NorthAIProject/north-client/internal/jobs"
+	"github.com/NorthAIProject/north-client/internal/lifts"
 	"github.com/NorthAIProject/north-client/internal/mcpauth"
 	"github.com/NorthAIProject/north-client/internal/mcpserver"
 	"github.com/NorthAIProject/north-client/internal/meals"
@@ -383,6 +384,7 @@ func routes(
 	supplementSvc := supplements.NewService(supplements.NewRepository(pool))
 	screenTimeSvc := screentime.NewService(screentime.NewRepository(pool))
 	sorenessSvc := soreness.NewService(soreness.NewRepository(pool))
+	liftSvc := lifts.NewService(lifts.NewRepository(pool), exerciseSvc)
 	milestoneSvc := milestones.NewService(milestones.NewRepository(pool))
 
 	careOpts := care.Options{
@@ -529,6 +531,7 @@ func routes(
 		Conversations: conversationSvc,
 		Spend:         spendRepo,
 		Health:        healthSvc,
+		Lifts:         liftSvc,
 		SiteURL:       cfg.BaseURL,
 	})
 	insightsHandler := insights.NewHandler(insightsSvc)
@@ -578,6 +581,16 @@ func routes(
 		Habits:     habitSvc,
 		Biometrics: biometricSvc,
 		Activity:   activitySvc,
+
+		// Plans built by conversation, and My Day's trackers.
+		MealPlans:   mealPlanSvc,
+		Caffeine:    caffeineSvc,
+		Supplements: supplementSvc,
+		Fasting:     fastingSvc,
+		ScreenTime:  screenTimeSvc,
+		Soreness:    sorenessSvc,
+		Lifts:       liftSvc,
+		Health:      healthSvc,
 	})
 
 	agentTools.Record(auditRecorder)
@@ -610,6 +623,7 @@ func routes(
 			supplements.NewContextSource(supplementSvc),
 			screentime.NewContextSource(screenTimeSvc),
 			soreness.NewContextSource(sorenessSvc),
+			lifts.NewContextSource(liftSvc),
 			milestones.NewContextSource(milestoneSvc),
 			// nil clock: the real one. Shares DailySignals with sleep and
 			// hydration, because a device's resting numbers are read the same
@@ -846,6 +860,7 @@ func routes(
 			dashboard:   dashboardAPI,
 			day:         day.NewAPI(daySvc),
 			caffeine:    caffeine.NewAPI(caffeineSvc),
+			lifts:       lifts.NewAPI(liftSvc),
 			fasting:     fasting.NewAPI(fastingSvc),
 			supplements: supplements.NewAPI(supplementSvc),
 			screenTime:  screentime.NewAPI(screenTimeSvc),
