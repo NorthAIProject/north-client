@@ -56,6 +56,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/fasting"
 	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/habits"
+	"github.com/NorthAIProject/north-client/internal/health"
 	"github.com/NorthAIProject/north-client/internal/hydration"
 	"github.com/NorthAIProject/north-client/internal/lifts"
 	"github.com/NorthAIProject/north-client/internal/mcpserver"
@@ -314,6 +315,15 @@ func buildServices(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry
 		Users:         userSvc,
 		Notifications: notifications.NewService(notifications.NewRepository(pool)),
 		Activity:      activitySvc,
+
+		MealPlans:   meals.NewMealPlanService(mealsRepo),
+		Caffeine:    caffeine.NewService(caffeine.NewRepository(pool)),
+		Supplements: supplements.NewService(supplements.NewRepository(pool)),
+		Fasting:     fasting.NewService(fasting.NewRepository(pool)),
+		ScreenTime:  screentime.NewService(screentime.NewRepository(pool)),
+		Soreness:    soreness.NewService(soreness.NewRepository(pool)),
+		Lifts:       lifts.NewService(lifts.NewRepository(pool), exercises.NewService(exercises.NewRepository(pool))),
+		Health:      health.NewService(health.NewRepository(pool)),
 	})
 	agentTools.Record(auditRecorder)
 

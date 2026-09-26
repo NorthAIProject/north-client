@@ -259,3 +259,15 @@ func (s *Service) Recent(ctx context.Context, user users.User) ([]Set, []lift.Re
 	}
 	return recent, records, nil
 }
+
+// NextSetNumber is the number the next set of an exercise gets today: one
+// past the sets already logged for it since local midnight. Used when a set
+// arrives without a number, as one said in conversation does.
+func (s *Service) NextSetNumber(ctx context.Context, user users.User, slug, name string) (int, error) {
+	since := timerange.StartOfDay(s.now().In(user.Location()))
+	sets, err := s.repo.ListForExercises(ctx, user.ID, []string{lift.KeyFor(slug, name)}, since)
+	if err != nil {
+		return 0, err
+	}
+	return min(len(sets)+1, maxSetNo), nil
+}

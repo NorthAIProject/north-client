@@ -7,6 +7,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/NorthAIProject/north-client/internal/caffeine"
+	"github.com/NorthAIProject/north-client/internal/fasting"
+	"github.com/NorthAIProject/north-client/internal/health"
+	"github.com/NorthAIProject/north-client/internal/lifts"
+	"github.com/NorthAIProject/north-client/internal/screentime"
+	"github.com/NorthAIProject/north-client/internal/soreness"
+	"github.com/NorthAIProject/north-client/internal/supplements"
+
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/activity"
@@ -66,6 +74,21 @@ type Services struct {
 	// Activity logs a finished workout — the run someone did this morning.
 	// Needs Users too, for the timezone a spoken start time is read in.
 	Activity *activity.Service
+
+	// Plans built by conversation: a meal plan from catalog ingredients, and
+	// a training plan generated from an intake. MealPlans also needs
+	// Ingredients; Workouts is shared with the plan-editing tools.
+	MealPlans *meals.MealPlanService
+
+	// My Day's trackers. Each needs Users, for the local date it files under.
+	Caffeine    *caffeine.Service
+	Supplements *supplements.Service
+	Fasting     *fasting.Service
+	ScreenTime  *screentime.Service
+	Soreness    *soreness.Service
+	Lifts       *lifts.Service
+	// Health takes a blood pressure reading.
+	Health *health.Service
 
 	// SiteURL is the public origin, used to build the absolute asset URLs a
 	// tool hands back. Environment-specific on purpose: an agent talking to a
@@ -165,6 +188,35 @@ func Build(svc Services) *Registry {
 	}
 	if svc.FoodLog != nil && svc.Ingredients != nil {
 		r.Register(logFood(svc.FoodLog, svc.Ingredients))
+	}
+	if svc.MealPlans != nil && svc.Ingredients != nil {
+		r.Register(createMealPlan(svc.MealPlans, svc.Ingredients))
+	}
+	if svc.Workouts != nil && svc.Users != nil {
+		r.Register(createWorkoutPlan(svc.Workouts, svc.Users))
+	}
+	if svc.Users != nil {
+		if svc.Caffeine != nil {
+			r.Register(logCaffeine(svc.Caffeine, svc.Users))
+		}
+		if svc.Supplements != nil {
+			r.Register(logSupplement(svc.Supplements, svc.Users))
+		}
+		if svc.Fasting != nil {
+			r.Register(startFast(svc.Fasting, svc.Users), stopFast(svc.Fasting, svc.Users))
+		}
+		if svc.ScreenTime != nil {
+			r.Register(logScreenTime(svc.ScreenTime, svc.Users))
+		}
+		if svc.Soreness != nil {
+			r.Register(recordSoreness(svc.Soreness, svc.Users))
+		}
+		if svc.Lifts != nil {
+			r.Register(logLiftSet(svc.Lifts, svc.Users), getLiftStats(svc.Lifts, svc.Users))
+		}
+	}
+	if svc.Health != nil {
+		r.Register(recordBloodPressure(svc.Health))
 	}
 
 	return r
