@@ -3364,6 +3364,97 @@ paths:
           $ref: '#/components/responses/ValidationError'
         '500':
           $ref: '#/components/responses/InternalError'
+  /lifts/stats:
+    get:
+      operationId: getLiftStats
+      summary: Lifting over a range, with records, estimated maxes and volume
+      parameters:
+        - name: range
+          in: query
+          required: false
+          schema:
+            type: string
+          description: today, yesterday, week, month, quarter or year. Defaults to today.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LiftStats'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /lifts/last:
+    get:
+      operationId: getLastLifts
+      summary: The last workout's sets for each exercise asked about
+      parameters:
+        - name: exercise
+          in: query
+          required: false
+          description: An exercise key, the catalog slug or the name. Repeat for several; up to 30.
+          schema:
+            type: array
+            items:
+              type: string
+          style: form
+          explode: true
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LiftLast'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /lifts/sets:
+    post:
+      operationId: logLiftSet
+      summary: Log one set, the weight and the reps
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LiftSetInput'
+      responses:
+        '201':
+          description: Logged
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LiftSet'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /lifts/sets/{setID}:
+    parameters:
+      - name: setID
+        in: path
+        required: true
+        description: The set to remove.
+        schema:
+          type: string
+    delete:
+      operationId: deleteLiftSet
+      summary: Remove a set logged by mistake
+      responses:
+        '204':
+          description: Removed
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /caffeine:
     get:
       operationId: getCaffeine
@@ -3993,6 +4084,177 @@ components:
         loggedAt:
           type: string
           format: date-time
+    LiftSetInput:
+      type: object
+      additionalProperties: false
+      required: [exerciseName, setNumber, weightKg, reps]
+      properties:
+        exerciseName:
+          type: string
+        exerciseSlug:
+          type: string
+          description: The catalog slug, when the exercise came from the catalog.
+        setNumber:
+          type: integer
+        weightKg:
+          type: number
+          description: 0 for bodyweight.
+        reps:
+          type: integer
+        performedAt:
+          type: string
+          format: date-time
+        activitySessionId:
+          type: string
+          format: uuid
+          description: The timed workout this set belongs to. Ignored when it is not the caller's.
+    LiftSet:
+      type: object
+      required: [id, exerciseKey, exerciseName, exerciseSlug, setNumber, weightKg, reps, e1rmKg, performedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        exerciseKey:
+          type: string
+        exerciseName:
+          type: string
+        exerciseSlug:
+          type: string
+        setNumber:
+          type: integer
+        weightKg:
+          type: number
+        reps:
+          type: integer
+        e1rmKg:
+          type: number
+          description: Estimated one-rep max, by Epley's formula.
+        performedAt:
+          type: string
+          format: date-time
+        activitySessionId:
+          type: string
+          format: uuid
+    LiftLastExercise:
+      type: object
+      required: [key, name, performedOn, sets]
+      properties:
+        key:
+          type: string
+        name:
+          type: string
+        performedOn:
+          type: string
+          format: date
+        sets:
+          type: array
+          items:
+            $ref: '#/components/schemas/LiftSet'
+    LiftLast:
+      type: object
+      required: [exercises]
+      properties:
+        exercises:
+          type: array
+          items:
+            $ref: '#/components/schemas/LiftLastExercise'
+    LiftDayValue:
+      type: object
+      required: [date, value]
+      properties:
+        date:
+          type: string
+          format: date
+        value:
+          type: number
+    LiftExerciseStats:
+      type: object
+      required: [key, name, slug, sets, reps, volumeKg, bestWeightKg, bestE1rmKg, lastOn, trend]
+      properties:
+        key:
+          type: string
+        name:
+          type: string
+        slug:
+          type: string
+        sets:
+          type: integer
+        reps:
+          type: integer
+        volumeKg:
+          type: number
+        bestWeightKg:
+          type: number
+        bestE1rmKg:
+          type: number
+        lastOn:
+          type: string
+          format: date
+        trend:
+          type: array
+          description: The best estimated max on each day it was trained, oldest first.
+          items:
+            $ref: '#/components/schemas/LiftDayValue'
+    LiftRecord:
+      type: object
+      required: [exerciseName, date, weightKg, reps, e1rmKg, previousE1rmKg]
+      properties:
+        exerciseName:
+          type: string
+        date:
+          type: string
+          format: date
+        weightKg:
+          type: number
+        reps:
+          type: integer
+        e1rmKg:
+          type: number
+        previousE1rmKg:
+          type: number
+    LiftMuscleSets:
+      type: object
+      required: [muscle, sets]
+      properties:
+        muscle:
+          type: string
+        sets:
+          type: integer
+    LiftStats:
+      type: object
+      required: [range, workouts, sets, reps, volumeKg, priorVolumeKg, exercises, records, weekly, muscles]
+      properties:
+        range:
+          type: string
+        workouts:
+          type: integer
+        sets:
+          type: integer
+        reps:
+          type: integer
+        volumeKg:
+          type: number
+        priorVolumeKg:
+          type: number
+          description: The same-length window before, for a delta.
+        exercises:
+          type: array
+          items:
+            $ref: '#/components/schemas/LiftExerciseStats'
+        records:
+          type: array
+          items:
+            $ref: '#/components/schemas/LiftRecord'
+        weekly:
+          type: array
+          description: Volume per week (Monday start), oldest first, empty weeks included.
+          items:
+            $ref: '#/components/schemas/LiftDayValue'
+        muscles:
+          type: array
+          items:
+            $ref: '#/components/schemas/LiftMuscleSets'
     CaffeineEntry:
       type: object
       required: [id, mg, label, loggedAt]

@@ -17,6 +17,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/habits"
 	"github.com/NorthAIProject/north-client/internal/health"
 	"github.com/NorthAIProject/north-client/internal/hydration"
+	"github.com/NorthAIProject/north-client/internal/lifts"
 	"github.com/NorthAIProject/north-client/internal/meals"
 	"github.com/NorthAIProject/north-client/internal/mind"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
@@ -59,6 +60,10 @@ type Options struct {
 	// the steps, heart-rate and HRV metrics. Optional, like the rest.
 	Health HealthReadings
 
+	// Lifts powers the lifting section of training: records, estimated
+	// maxes and volume from logged sets. Optional.
+	Lifts LiftStats
+
 	// SiteURL is the base a digest links back to. Empty sends the numbers
 	// without a link, which is the right degradation for a deployment that
 	// has not been told its own address.
@@ -81,7 +86,13 @@ type Service struct {
 	conversations *conversations.Service
 	spend         *spend.Repository
 	health        HealthReadings
+	lifts         LiftStats
 	siteURL       string
+}
+
+// LiftStats is the slice of lifts.Service the training page needs.
+type LiftStats interface {
+	Stats(ctx context.Context, user users.User, rg timerange.Range) (lifts.Stats, error)
 }
 
 // HealthReadings is the slice of health.Service the metrics need.
@@ -106,6 +117,7 @@ func NewService(opts Options) *Service {
 		conversations: opts.Conversations,
 		spend:         opts.Spend,
 		health:        opts.Health,
+		lifts:         opts.Lifts,
 		siteURL:       opts.SiteURL,
 	}
 }
@@ -268,6 +280,9 @@ type TrainingData struct {
 	Sessions []activity.Session
 	Calories float64
 	Prior    float64
+
+	// Lifts is empty when the service was built without lifts.
+	Lifts lifts.Stats
 }
 
 func (s *Service) Training(ctx context.Context, user users.User, rg timerange.Range) (TrainingData, error) {
@@ -288,6 +303,12 @@ func (s *Service) Training(ctx context.Context, user users.User, rg timerange.Ra
 		out.Prior, err = s.activity.CaloriesBetween(gctx, user.ID, prev)
 		return
 	})
+	if s.lifts != nil {
+		g.Go(func() (err error) {
+			out.Lifts, err = s.lifts.Stats(gctx, user, rg)
+			return
+		})
+	}
 
 	if err := g.Wait(); err != nil {
 		return TrainingData{}, err

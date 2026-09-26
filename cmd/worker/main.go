@@ -35,6 +35,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/config"
 	"github.com/NorthAIProject/north-client/internal/conversations"
 	"github.com/NorthAIProject/north-client/internal/documents"
+	"github.com/NorthAIProject/north-client/internal/exercises"
 	"github.com/NorthAIProject/north-client/internal/fasting"
 	"github.com/NorthAIProject/north-client/internal/fitness/strava"
 	"github.com/NorthAIProject/north-client/internal/goals"
@@ -42,6 +43,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/hydration"
 	"github.com/NorthAIProject/north-client/internal/insights"
 	"github.com/NorthAIProject/north-client/internal/jobs"
+	"github.com/NorthAIProject/north-client/internal/lifts"
 	"github.com/NorthAIProject/north-client/internal/mcpauth"
 	"github.com/NorthAIProject/north-client/internal/meals"
 	"github.com/NorthAIProject/north-client/internal/media"
@@ -447,6 +449,7 @@ func run() error {
 			hydration.NewContextSource(hydration.NewService(hydration.NewRepository(pool))),
 			sleep.NewContextSource(sleep.NewService(sleep.NewRepository(pool))),
 			caffeine.NewContextSource(caffeine.NewService(caffeine.NewRepository(pool))),
+			lifts.NewContextSource(lifts.NewService(lifts.NewRepository(pool), exercises.NewService(exercises.NewRepository(pool)))),
 			fasting.NewContextSource(fasting.NewService(fasting.NewRepository(pool))),
 			supplements.NewContextSource(supplements.NewService(supplements.NewRepository(pool))),
 			screentime.NewContextSource(screentime.NewService(screentime.NewRepository(pool))),

@@ -453,6 +453,15 @@ sql:
         overrides: *overrides
   - engine: postgresql
     schema: migrations
+    queries: internal/lifts/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: liftsdb
+        out: internal/lifts/db
+        overrides: *overrides
+  - engine: postgresql
+    schema: migrations
     queries: internal/fasting/db/queries.sql
     gen:
       go:

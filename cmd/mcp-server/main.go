@@ -57,6 +57,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/habits"
 	"github.com/NorthAIProject/north-client/internal/hydration"
+	"github.com/NorthAIProject/north-client/internal/lifts"
 	"github.com/NorthAIProject/north-client/internal/mcpserver"
 	"github.com/NorthAIProject/north-client/internal/meals"
 	"github.com/NorthAIProject/north-client/internal/memories"
@@ -273,6 +274,7 @@ func buildServices(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry
 			hydration.NewContextSource(hydrationSvc),
 			sleep.NewContextSource(sleepSvc),
 			caffeine.NewContextSource(caffeine.NewService(caffeine.NewRepository(pool))),
+			lifts.NewContextSource(lifts.NewService(lifts.NewRepository(pool), exercises.NewService(exercises.NewRepository(pool)))),
 			fasting.NewContextSource(fasting.NewService(fasting.NewRepository(pool))),
 			supplements.NewContextSource(supplements.NewService(supplements.NewRepository(pool))),
 			screentime.NewContextSource(screentime.NewService(screentime.NewRepository(pool))),
