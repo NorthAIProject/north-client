@@ -13,6 +13,8 @@ var portugueseBrazilianNav = map[string]string{
 	"nav.group.progress": "Progresso",
 	"nav.group.system":   "Sistema",
 
+	"nav.my-day":             "Meu dia",
+	"nav.my-day.desc":        "Seu dia em uma tela: comida, água, sono, movimento.",
 	"nav.overview":           "Visão geral",
 	"nav.overview.desc":      "Como está o dia de hoje.",
 	"nav.quick-capture":      "Registro rápido",

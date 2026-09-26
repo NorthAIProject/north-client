@@ -47,6 +47,11 @@ be missed, and it is not right or wrong. It only accumulates.
 | A journal entry | `internal/mind` | `journal_entries` |
 | A recorded decision | `internal/decisions` | `decisions` |
 | A body measurement | `internal/biometrics` | `user_biometrics` |
+| Caffeine drunk | `internal/caffeine` | `caffeine_logs` |
+| A fasting window | `internal/fasting` | `fasting_sessions` |
+| A supplement taken | `internal/supplements` | `supplement_logs` |
+| A day's screen time | `internal/screentime` | `screen_time_logs` |
+| Where it is sore today | `internal/soreness` | `soreness_logs` |
 | A form-check video analysis | `internal/media` | `form_analyses` |
 
 A decision is not a journal entry. The journal is how someone felt; a decision is what they chose, which options they turned down, and (later) what happened. They share the append-per-event storage flavour and nothing else.
@@ -98,6 +103,9 @@ schedule; it is the thing logs and habits are measured against.
 | Diet preferences (vegan, low-carb…) | `internal/meals` | `user_diet_preferences` |
 | Standing settings (units, default goal) | `internal/preferences` | `user_preferences` |
 | A generated training plan | `internal/workouts` | `workout_plans` |
+| The shape of a day (kitchen closes, no caffeine after, screens off) | `internal/day` | `day_rules` |
+| "Months since" (dentist, haircut) | `internal/milestones` | `milestone_trackers` |
+| A weight to aim at | `internal/preferences` | `user_preferences.target_weight_kg` |
 
 ## Where imported data fits
 
@@ -119,6 +127,29 @@ Provider integrations live under `internal/fitness`, which its package doc
 claims for exactly this. They are **not** sign-in: disconnecting a provider must
 never affect someone's ability to log in, which is why Strava has its own table
 rather than a row in `auth_identities`.
+
+## Device metrics and My Day
+
+`internal/health` stores whatever a phone or bridge app sends as
+`health_metrics` rows — no migration per metric. My Day (`internal/day`) reads
+these names; they are the contract with the iOS sync:
+
+| Metric | Unit | Shape |
+|---|---|---|
+| `sleep_deep`, `sleep_rem`, `sleep_core`, `sleep_awake` | min | one row per block, start/end are the block's |
+| `active_calories`, `exercise_minutes`, `stand_hours`, `time_in_daylight` | kcal / min / count / min | one row per day |
+| `dietary_water`, `dietary_energy`, `dietary_protein`, `dietary_carbs`, `dietary_fat` | ml / kcal / g | one row per day |
+| `body_mass` | kg | one row per measurement |
+| `bp_systolic`, `bp_diastolic` | mmHg | one row each per reading; typed-in readings use source `manual` |
+| `dietary_vitamin_a`, `dietary_vitamin_c`, `dietary_vitamin_d` | µg / mg | one row per day; any amount counts toward nutrient coverage |
+| `screen_minutes` | min | one row per day, from a Shortcut; a `screen_time_logs` row wins |
+
+Dietary rows are only what *other* apps logged: the phone never uploads samples
+this app wrote itself, so My Day adds them to North's own logs without counting
+anything twice.
+
+`internal/day` owns no log. It composes one local date across the slices above,
+the same way the dashboard composes a range, and owns only `day_rules`.
 
 ---
 

@@ -87,6 +87,24 @@
   --color-sport-other: var(--north-sport-other);
   --color-sport-rest: var(--north-sport-rest);
 
+  /* My Day trackers — the rings, gauges and timeline dots. One colour per
+     tracker so a dot on the day rail and the card it opens always agree.
+     Where a tracker already has a meaning in the palette it reuses it:
+     move is effort (ember), sleep is the agent violet. */
+  --color-day-water: var(--north-day-water);
+  --color-day-food: var(--north-day-food);
+  --color-day-protein: var(--north-day-protein);
+  --color-day-carb: var(--north-day-carb);
+  --color-day-fat: var(--north-day-fat);
+  --color-day-move: var(--north-day-move);
+  --color-day-exercise: var(--north-day-exercise);
+  --color-day-stand: var(--north-day-stand);
+  --color-day-sleep: var(--north-day-sleep);
+  --color-day-caffeine: var(--north-day-caffeine);
+  --color-day-sun: var(--north-day-sun);
+  --color-day-screen: var(--north-day-screen);
+  --color-day-now: var(--north-day-now);
+
   --animate-thread-in: north-thread-in 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
   --animate-caret: north-caret 1s steps(2, start) infinite;
 
@@ -159,6 +177,20 @@
   --north-sport-other: oklch(0.58 0.02 250);
   --north-sport-rest: var(--north-hairline);
 
+  --north-day-water: oklch(0.62 0.14 235);
+  --north-day-food: oklch(0.62 0.14 150);
+  --north-day-protein: oklch(0.58 0.2 305);
+  --north-day-carb: oklch(0.78 0.16 90);
+  --north-day-fat: oklch(0.7 0.16 55);
+  --north-day-move: oklch(0.62 0.22 15);
+  --north-day-exercise: oklch(0.8 0.2 130);
+  --north-day-stand: oklch(0.74 0.13 185);
+  --north-day-sleep: var(--north-agent);
+  --north-day-caffeine: oklch(0.55 0.06 50);
+  --north-day-sun: oklch(0.8 0.16 80);
+  --north-day-screen: oklch(0.55 0.16 280);
+  --north-day-now: oklch(0.6 0.21 25);
+
   /* Muse chat tokens. Aliases, not new colours: the contract maps each role
      onto a token North already has. Repeated under .dark so they resolve
      against the dark values rather than inheriting the light ones. */
@@ -211,6 +243,20 @@
   --north-sport-strength: var(--north-agent);
   --north-sport-other: oklch(0.68 0.02 250);
   --north-sport-rest: var(--north-hairline);
+
+  --north-day-water: oklch(0.74 0.13 235);
+  --north-day-food: oklch(0.76 0.14 150);
+  --north-day-protein: oklch(0.72 0.18 305);
+  --north-day-carb: oklch(0.85 0.15 90);
+  --north-day-fat: oklch(0.8 0.15 55);
+  --north-day-move: oklch(0.7 0.21 15);
+  --north-day-exercise: oklch(0.87 0.19 130);
+  --north-day-stand: oklch(0.82 0.12 185);
+  --north-day-sleep: var(--north-agent);
+  --north-day-caffeine: oklch(0.72 0.06 50);
+  --north-day-sun: oklch(0.86 0.15 80);
+  --north-day-screen: oklch(0.7 0.15 280);
+  --north-day-now: oklch(0.7 0.2 25);
 
   --muse-canvas: var(--background);
   --muse-agent-bubble: var(--card);

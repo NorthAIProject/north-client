@@ -12,6 +12,17 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countCheckIns = `-- name: CountCheckIns :one
+SELECT COUNT(*)::bigint FROM check_ins WHERE user_id = $1
+`
+
+func (q *Queries) CountCheckIns(ctx context.Context, userID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countCheckIns, userID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const deleteCheckIn = `-- name: DeleteCheckIn :execrows
 DELETE FROM check_ins WHERE id = $1 AND user_id = $2
 `

@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
 type Service struct {
@@ -84,4 +86,33 @@ const defaultSummaryDays = 7
 // memory rules make room for.
 func (s *Service) Forget(ctx context.Context, userID uuid.UUID, source string) error {
 	return s.repo.DeleteBySource(ctx, userID, source)
+}
+
+// RecordBloodPressure stores one hand-typed cuff reading as two metrics under
+// the manual source. At defaults to now.
+//
+// The bounds are wide typo guards, not a clinical opinion: they catch the
+// numbers entered the wrong way round and a missing digit.
+func (s *Service) RecordBloodPressure(ctx context.Context, userID uuid.UUID, systolic, diastolic int, at *time.Time) (Result, error) {
+	var errs apperr.FieldErrors
+	if systolic < 60 || systolic > 260 {
+		errs = errs.Add("systolic", "Systolic is usually between 60 and 260.")
+	}
+	if diastolic < 30 || diastolic > 160 {
+		errs = errs.Add("diastolic", "Diastolic is usually between 30 and 160.")
+	}
+	if len(errs) == 0 && diastolic >= systolic {
+		errs = errs.Add("diastolic", "Diastolic is the lower number.")
+	}
+	if len(errs) > 0 {
+		return Result{}, errs
+	}
+	when := time.Now()
+	if at != nil {
+		when = *at
+	}
+	return s.Ingest(ctx, userID, SourceManual, []Reading{
+		{Metric: MetricSystolic, Value: float64(systolic), Unit: "mmHg", StartedAt: when},
+		{Metric: MetricDiastolic, Value: float64(diastolic), Unit: "mmHg", StartedAt: when},
+	})
 }

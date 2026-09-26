@@ -20,6 +20,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/apns"
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/biometrics"
+	"github.com/NorthAIProject/north-client/internal/caffeine"
 	"github.com/NorthAIProject/north-client/internal/calculator"
 	"github.com/NorthAIProject/north-client/internal/capture"
 	"github.com/NorthAIProject/north-client/internal/care"
@@ -29,10 +30,12 @@ import (
 	"github.com/NorthAIProject/north-client/internal/connections"
 	"github.com/NorthAIProject/north-client/internal/conversations"
 	"github.com/NorthAIProject/north-client/internal/dashboard"
+	"github.com/NorthAIProject/north-client/internal/day"
 	"github.com/NorthAIProject/north-client/internal/decisions"
 	"github.com/NorthAIProject/north-client/internal/documents"
 	"github.com/NorthAIProject/north-client/internal/exercises"
 	"github.com/NorthAIProject/north-client/internal/export"
+	"github.com/NorthAIProject/north-client/internal/fasting"
 	"github.com/NorthAIProject/north-client/internal/fitness"
 	"github.com/NorthAIProject/north-client/internal/fitness/strava"
 	"github.com/NorthAIProject/north-client/internal/goals"
@@ -49,6 +52,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/memories"
 	"github.com/NorthAIProject/north-client/internal/messaging"
 	"github.com/NorthAIProject/north-client/internal/messaging/telegram"
+	"github.com/NorthAIProject/north-client/internal/milestones"
 	"github.com/NorthAIProject/north-client/internal/mind"
 	"github.com/NorthAIProject/north-client/internal/news"
 	"github.com/NorthAIProject/north-client/internal/notifications"
@@ -58,11 +62,14 @@ import (
 	"github.com/NorthAIProject/north-client/internal/push"
 	"github.com/NorthAIProject/north-client/internal/quota"
 	"github.com/NorthAIProject/north-client/internal/reports"
+	"github.com/NorthAIProject/north-client/internal/screentime"
 	"github.com/NorthAIProject/north-client/internal/settings"
 	"github.com/NorthAIProject/north-client/internal/shared/metrics"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/NorthAIProject/north-client/internal/sleep"
+	"github.com/NorthAIProject/north-client/internal/soreness"
 	"github.com/NorthAIProject/north-client/internal/spend"
+	"github.com/NorthAIProject/north-client/internal/supplements"
 	"github.com/NorthAIProject/north-client/internal/toolaudit"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/vault"
@@ -369,6 +376,15 @@ func routes(
 	sleepSvc := sleep.NewService(sleep.NewRepository(pool))
 	habitSvc := habits.NewService(habits.NewRepository(pool))
 
+	// My Day's trackers. Each is its own log slice, logged from the day's
+	// quick-add and read back through the day and the coach.
+	caffeineSvc := caffeine.NewService(caffeine.NewRepository(pool))
+	fastingSvc := fasting.NewService(fasting.NewRepository(pool))
+	supplementSvc := supplements.NewService(supplements.NewRepository(pool))
+	screenTimeSvc := screentime.NewService(screentime.NewRepository(pool))
+	sorenessSvc := soreness.NewService(soreness.NewRepository(pool))
+	milestoneSvc := milestones.NewService(milestones.NewRepository(pool))
+
 	careOpts := care.Options{
 		Reminders: mealReminderSvc,
 		CheckIns:  checkinSvc,
@@ -456,6 +472,10 @@ func routes(
 		Sleep:         sleepSvc,
 		Activity:      activitySvc,
 		Mind:          mindSvc,
+		Food:          foodLogSvc,
+		Caffeine:      caffeineSvc,
+		Supplements:   supplementSvc,
+		Fasting:       fastingSvc,
 		Nudges:        nudgeSvc,
 		Push:          pushSvc,
 	}
@@ -465,6 +485,31 @@ func routes(
 	dashboardSvc := dashboard.NewService(dashboardOpts)
 	dashboardHandler := dashboard.NewHandler(dashboardSvc)
 	dashboardAPI := dashboard.NewAPI(dashboardSvc)
+
+	// My Day reads one date across the slices above and reuses the dashboard's
+	// timeline, now with meals on it, for the day rail.
+	daySvc := day.NewService(day.Options{
+		Rules:      day.NewRepository(pool),
+		Hydration:  hydrationSvc,
+		Sleep:      sleepSvc,
+		Food:       foodLogSvc,
+		MacroGoals: calculatorSvc,
+		Biometrics: biometricSvc,
+		Health:     healthSvc,
+		Activity:   activitySvc,
+		Streaks:    checkinSvc,
+		Timeline:   dashboardSvc,
+
+		Caffeine:      caffeineSvc,
+		Fasting:       fastingSvc,
+		Supplements:   supplementSvc,
+		ScreenTime:    screenTimeSvc,
+		Soreness:      sorenessSvc,
+		Milestones:    milestoneSvc,
+		Preferences:   preferencesSvc,
+		CheckInTotals: checkinSvc,
+	})
+	dayHandler := day.NewHandler(daySvc)
 
 	// Insights reuses the dashboard's timeline rather than reimplementing the
 	// merge across eight slices. Two copies of that would drift.
@@ -560,6 +605,12 @@ func routes(
 			decisions.NewContextSource(decisionSvc),
 			hydration.NewContextSource(hydrationSvc),
 			sleep.NewContextSource(sleepSvc),
+			caffeine.NewContextSource(caffeineSvc),
+			fasting.NewContextSource(fastingSvc),
+			supplements.NewContextSource(supplementSvc),
+			screentime.NewContextSource(screenTimeSvc),
+			soreness.NewContextSource(sorenessSvc),
+			milestones.NewContextSource(milestoneSvc),
 			// nil clock: the real one. Shares DailySignals with sleep and
 			// hydration, because a device's resting numbers are read the same
 			// way — as background, before anything else is interpreted.
@@ -789,33 +840,40 @@ func routes(
 	// caps are set per group inside mountAPI.
 	r.Group(func(r chi.Router) {
 		mountAPI(r, sessions, apiSet{
-			auth:       authAPI,
-			capture:    captureAPI,
-			onboarding: onboardingAPI,
-			dashboard:  dashboardAPI,
-			coach:      coach.NewAPI(coachSvc, quotaSvc, mediaSvc),
-			exercises:  exercises.NewAPI(exerciseSvc, assets.Assets),
-			settings:   settings.NewAPI(settingsHandler),
-			training:   workouts.NewAPI(workoutSvc),
-			activity:   activity.NewAPI(activitySvc),
-			health:     health.NewAPI(healthSvc),
-			fitness:    fitness.NewAPI(stravaSvc, cfg.BaseURL),
-			insights:   insights.NewAPI(insightsSvc),
-			goals:      goals.NewAPI(goalSvc),
-			checkins:   checkins.NewAPI(checkinSvc),
-			reports:    reports.NewAPI(reportSvc),
-			memories:   memories.NewAPI(memorySvc),
-			knowledge:  documents.NewAPI(documentSvc, quotaSvc),
-			formChecks: media.NewAPI(mediaSvc, quotaSvc),
-			care:       care.NewAPI(careOpts),
-			mind:       mind.NewAPI(mindSvc),
-			nutrition:  meals.NewAPI(mealsOpts),
-			decisions:  decisions.NewAPI(decisionSvc),
-			nudges:     nudges.NewAPI(nudgeSvc),
-			devices:    apns.NewAPI(apnsSvc),
-			export:     exportHandler,
-			calculator: calculator.NewAPI(calculatorSvc, biometricSvc),
-			news:       news.NewAPI(newsSvc),
+			auth:        authAPI,
+			capture:     captureAPI,
+			onboarding:  onboardingAPI,
+			dashboard:   dashboardAPI,
+			day:         day.NewAPI(daySvc),
+			caffeine:    caffeine.NewAPI(caffeineSvc),
+			fasting:     fasting.NewAPI(fastingSvc),
+			supplements: supplements.NewAPI(supplementSvc),
+			screenTime:  screentime.NewAPI(screenTimeSvc),
+			soreness:    soreness.NewAPI(sorenessSvc),
+			milestones:  milestones.NewAPI(milestoneSvc),
+			coach:       coach.NewAPI(coachSvc, quotaSvc, mediaSvc),
+			exercises:   exercises.NewAPI(exerciseSvc, assets.Assets),
+			settings:    settings.NewAPI(settingsHandler),
+			training:    workouts.NewAPI(workoutSvc),
+			activity:    activity.NewAPI(activitySvc),
+			health:      health.NewAPI(healthSvc),
+			fitness:     fitness.NewAPI(stravaSvc, cfg.BaseURL),
+			insights:    insights.NewAPI(insightsSvc),
+			goals:       goals.NewAPI(goalSvc),
+			checkins:    checkins.NewAPI(checkinSvc),
+			reports:     reports.NewAPI(reportSvc),
+			memories:    memories.NewAPI(memorySvc),
+			knowledge:   documents.NewAPI(documentSvc, quotaSvc),
+			formChecks:  media.NewAPI(mediaSvc, quotaSvc),
+			care:        care.NewAPI(careOpts),
+			mind:        mind.NewAPI(mindSvc),
+			nutrition:   meals.NewAPI(mealsOpts),
+			decisions:   decisions.NewAPI(decisionSvc),
+			nudges:      nudges.NewAPI(nudgeSvc),
+			devices:     apns.NewAPI(apnsSvc),
+			export:      exportHandler,
+			calculator:  calculator.NewAPI(calculatorSvc, biometricSvc),
+			news:        news.NewAPI(newsSvc),
 		})
 	})
 
@@ -931,6 +989,14 @@ func routes(
 			r.Group(func(r chi.Router) {
 				r.Use(onboarding.RequireOnboarded)
 
+				dayHandler.Routes(r)
+				caffeine.NewHandler(caffeineSvc).Routes(r)
+				fasting.NewHandler(fastingSvc).Routes(r)
+				supplements.NewHandler(supplementSvc).Routes(r)
+				screentime.NewHandler(screenTimeSvc).Routes(r)
+				soreness.NewHandler(sorenessSvc).Routes(r)
+				milestones.NewHandler(milestoneSvc).Routes(r)
+				health.NewWebHandler(healthSvc).Routes(r)
 				dashboardHandler.Routes(r)
 				if newsSvc != nil {
 					news.NewHandler(newsSvc).Routes(r)

@@ -276,3 +276,9 @@ func (s *Service) checkGoal(ctx context.Context, userID uuid.UUID, goalID *uuid.
 func dateKey(t time.Time) string {
 	return t.Format("2006-01-02")
 }
+
+// Total is how many days this person has ever checked in. My Day turns it into
+// a level; unlike the streak, a missed day never takes it away.
+func (s *Service) Total(ctx context.Context, userID uuid.UUID) (int, error) {
+	return s.repo.Count(ctx, userID)
+}

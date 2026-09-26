@@ -323,7 +323,19 @@ func (h *Handler) done(w http.ResponseWriter, r *http.Request, forms carepages.F
 		h.respond(w, r, http.StatusOK, forms)
 		return
 	}
-	http.Redirect(w, r, "/app/care", http.StatusSeeOther)
+	http.Redirect(w, r, returnTo(r), http.StatusSeeOther)
+}
+
+// returnTo is where a non-HTMX write lands afterwards. My Day posts water here
+// too, and should come back to itself rather than to the care page.
+//
+// Only the two known pages are accepted: an arbitrary path from a form field is
+// an open redirect waiting for someone to put a URL in it.
+func returnTo(r *http.Request) string {
+	if r.PostFormValue("return_to") == "/app" {
+		return "/app"
+	}
+	return "/app/care"
 }
 
 func parseDays(raw []string) []int {

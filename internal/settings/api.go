@@ -45,6 +45,7 @@ func (a *API) Routes(r chi.Router) {
 	r.Put("/settings/profile", a.putProfile)
 	r.Get("/settings/preferences", a.getPreferences)
 	r.Put("/settings/preferences", a.putPreferences)
+	r.Put("/settings/target-weight", a.putTargetWeight)
 	r.Get("/settings/notifications", a.getNotifications)
 	r.Put("/settings/notifications", a.putNotifications)
 
@@ -145,6 +146,24 @@ func (a *API) putPreferences(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, Preferences{UnitsSystem: p.UnitsSystem, DefaultGoal: p.DefaultGoal, DefaultMacroSplit: p.DefaultMacroSplit})
+}
+
+// TargetWeight is the weight being aimed at. Null clears it.
+type TargetWeight struct {
+	TargetWeightKg *float64 `json:"targetWeightKg"`
+}
+
+func (a *API) putTargetWeight(w http.ResponseWriter, r *http.Request) {
+	var req TargetWeight
+	if !read(w, r, &req) {
+		return
+	}
+	p, err := a.h.preferences.SetTargetWeight(r.Context(), auth.MustUser(r.Context()).ID, req.TargetWeightKg)
+	if err != nil {
+		httpx.Error(w, err, "The target weight could not be saved.")
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, TargetWeight{TargetWeightKg: p.TargetWeightKg})
 }
 
 // MARK: Notifications
