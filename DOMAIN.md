@@ -152,6 +152,11 @@ anything twice.
 `internal/day` owns no log. It composes one local date across the slices above,
 the same way the dashboard composes a range, and owns only `day_rules`.
 
+`internal/stats` owns nothing at all. It reads sleep, cardio, food, caffeine,
+screen time, check-ins and lifted sets over a window, and says what they add
+up to and which of them move together (the insights Sleep, Cardio and
+Patterns pages, the eating section of Nutrition, and `/api/v1/stats/*`).
+
 ---
 
 # Life domains

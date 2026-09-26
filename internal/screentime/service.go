@@ -40,3 +40,8 @@ func (s *Service) Set(ctx context.Context, user users.User, date *time.Time, min
 func (s *Service) ForDate(ctx context.Context, user users.User, date time.Time) (Day, bool, error) {
 	return s.repo.ForDate(ctx, user.ID, timerange.StartOfDay(date.In(user.Location())))
 }
+
+// Between lists the days in a window that have a figure, newest first.
+func (s *Service) Between(ctx context.Context, user users.User, rg timerange.Range) ([]Day, error) {
+	return s.repo.Between(ctx, user.ID, rg.Since, rg.Until)
+}

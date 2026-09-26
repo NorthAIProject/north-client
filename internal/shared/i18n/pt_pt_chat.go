@@ -60,6 +60,7 @@ var portugueseEuropeanChat = map[string]string{
 	"chat.tool.mealplan.write": "a montar o teu plano alimentar",
 	"chat.tool.workout.create": "a montar o teu plano de treino",
 	"chat.tool.lifts":          "a ver as tuas cargas",
+	"chat.tool.stats":          "a ver as tuas estatísticas",
 	"chat.tool.nutrition":      "ver a tua nutrição",
 	"chat.tool.alerts":         "ver os teus lembretes",
 	"chat.tool.alerts.write":   "criar um lembrete",

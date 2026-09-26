@@ -37,6 +37,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/settings"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/NorthAIProject/north-client/internal/soreness"
+	"github.com/NorthAIProject/north-client/internal/stats"
 	"github.com/NorthAIProject/north-client/internal/supplements"
 	"github.com/NorthAIProject/north-client/internal/workouts"
 )
@@ -96,6 +97,7 @@ func mountJSON(r chi.Router, sessions auth.SessionResolver, apis apiSet) {
 		apis.day.Routes(r)
 		apis.caffeine.Routes(r)
 		apis.lifts.Routes(r)
+		apis.stats.Routes(r)
 		apis.fasting.Routes(r)
 		apis.supplements.Routes(r)
 		apis.screenTime.Routes(r)
@@ -137,6 +139,7 @@ type apiSet struct {
 	day         *day.API
 	caffeine    *caffeine.API
 	lifts       *lifts.API
+	stats       *stats.API
 	fasting     *fasting.API
 	supplements *supplements.API
 	screenTime  *screentime.API

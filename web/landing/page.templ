@@ -25,6 +25,10 @@ templ Page() {
 			@bearingRail()
 			<div class="mx-auto w-full max-w-6xl px-6 lg:pl-28 lg:pr-8">
 				@hero()
+				@dayDemo()
+				@statsDemo()
+				@coachBuildsDemo()
+				@iphoneSection()
 				@muscleDemo()
 				@goalDemo()
 				@platformDemo()
@@ -119,6 +123,7 @@ templ hero() {
 					{ i18n.T(ctx, "land.hero.free") }
 				</p>
 				@appButtons(false)
+				@tourLinks()
 			</div>
 			@heroThread()
 		</div>
