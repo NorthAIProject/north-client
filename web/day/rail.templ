@@ -4,9 +4,32 @@ import (
 	"strconv"
 
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
+	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
 )
 
 func px(n int) string { return "top:" + strconv.Itoa(n) + "px" }
+
+func band(b RailBand) string {
+	return "top:" + strconv.Itoa(b.TopPx+12) + "px;height:" + strconv.Itoa(b.HeightPx) + "px;--band:" + bandColor(b.Kind)
+}
+
+func bandColor(kind string) string {
+	if kind == "sleep" {
+		return "var(--color-day-sleep)"
+	}
+	return "var(--color-day-fat)"
+}
+
+func card(it RailItem) string {
+	return px(it.TopPx+12) + ";--card:" + it.Color
+}
+
+func cardIcon(it RailItem) string {
+	if it.Icon == "" {
+		return "circle-dot"
+	}
+	return it.Icon
+}
 
 // rail is the day as a vertical timeline, latest at the top. Positions are
 // computed in BuildRail; the template only places them.
@@ -21,39 +44,62 @@ templ rail(data Data) {
 		x-init="$nextTick(() => { const n = $el.querySelector('[data-now]'); if (n) $el.scrollTop = n.offsetTop - $el.clientHeight / 2 })"
 		data-testid="day-rail"
 	>
-		<div class="relative ml-12 mr-3" style={ "height:" + strconv.Itoa(data.Rail.HeightPx+24) + "px" }>
-			<div class="border-hairline absolute inset-y-3 left-0 border-l border-dashed"></div>
+		<div class="relative ml-14 mr-3" style={ "height:" + strconv.Itoa(data.Rail.HeightPx+24) + "px" }>
 			for _, h := range data.Rail.Hours {
-				<div class="absolute -left-12 flex w-full items-center" style={ px(h.TopPx + 12) }>
-					<span class="text-muted-foreground w-10 -translate-y-1/2 text-right text-[11px] tabular-nums">{ h.Label }</span>
-					<span class="border-hairline ml-2 flex-1 -translate-y-1/2 border-t"></span>
+				<div class="absolute -left-14 flex w-[calc(100%+3.5rem)] items-center" style={ px(h.TopPx + 12) } aria-hidden="true">
+					<span class="text-muted-foreground w-11 -translate-y-1/2 text-right text-[11px] tabular-nums">{ h.Label }</span>
+					<span class="border-hairline ml-3 flex-1 -translate-y-1/2 border-t"></span>
+				</div>
+			}
+			for _, b := range data.Rail.Bands {
+				<div
+					class="absolute inset-x-0 rounded-xl bg-[color-mix(in_oklch,var(--band)_9%,transparent)]"
+					style={ band(b) }
+					data-testid={ "band-" + b.Kind }
+				>
+					<span class={ "absolute inset-y-1 -left-2 border-l-2 border-dashed border-[var(--band)]", templ.KV("opacity-60", b.Open) }></span>
+					<span class="absolute -top-1 -left-[13px] size-2.5 rounded-full bg-[var(--band)] ring-2 ring-[var(--color-surface)]"></span>
+					<span class="absolute -bottom-1 -left-[13px] size-2.5 rounded-full bg-[var(--band)] ring-2 ring-[var(--color-surface)]"></span>
+					if b.HeightPx >= 30 {
+						<span class="absolute top-1.5 right-2 text-[10px] font-medium text-[var(--band)]">{ b.Label }</span>
+					}
 				</div>
 			}
 			for _, m := range data.Rail.Markers {
 				<div
-					class={ "absolute right-0 left-2 flex -translate-y-1/2 items-center justify-end gap-2 text-[11px]", templ.KV("opacity-50", m.Passed) }
+					class={ "absolute inset-x-0 flex -translate-y-1/2 items-center justify-end gap-2 text-[11px]", templ.KV("opacity-50", m.Passed) }
 					style={ px(m.TopPx + 12) }
 					data-testid={ "marker-" + m.Kind }
 				>
 					<span class="border-hairline flex-1 border-t border-dashed"></span>
-					<span class="text-muted-foreground">{ i18n.T(ctx, "day.rule." + m.Kind) } { m.Time }</span>
+					<span class="text-muted-foreground bg-surface rounded-full px-1.5">{ i18n.T(ctx, "day.rule." + m.Kind) } { m.Time }</span>
 				</div>
 			}
 			for _, it := range data.Rail.Items {
-				<a href={ templ.SafeURL(it.Href) } class="hover:bg-muted/60 absolute right-0 -left-[5px] flex -translate-y-1/2 items-center gap-2 rounded-md py-0.5 pr-1" style={ px(it.TopPx + 12) }>
-					<span class="size-2.5 shrink-0 rounded-full ring-2 ring-[var(--color-surface)]" style={ "background:" + it.Color }></span>
-					<span class="min-w-0 flex-1 truncate text-sm">
-						<span class="font-medium">{ it.Title }</span>
-						if it.Detail != "" {
-							<span class="text-muted-foreground ml-1 text-xs">{ it.Detail }</span>
-						}
+				<a
+					href={ templ.SafeURL(it.Href) }
+					class={ "absolute right-0 left-2 flex -translate-y-1/2 items-center gap-2.5 rounded-xl border border-[color-mix(in_oklch,var(--card)_22%,transparent)] bg-[color-mix(in_oklch,var(--card)_11%,var(--color-surface))] px-3 py-1.5 transition-colors hover:bg-[color-mix(in_oklch,var(--card)_18%,var(--color-surface))]", templ.KV("opacity-55", it.Faded) }
+					style={ card(it) }
+					data-testid="rail-card"
+				>
+					<span class="shrink-0 text-[var(--card)]">
+						@icon.Icon(cardIcon(it))(icon.Props{Class: "size-4"})
 					</span>
-					<span class="text-muted-foreground text-[11px] tabular-nums">{ it.Time }</span>
+					<span class="min-w-0 flex-1 leading-tight">
+						<span class="block truncate text-sm font-medium">{ it.Title }</span>
+						<span class="text-muted-foreground block truncate text-[11px] tabular-nums">
+							{ it.Time }
+							if it.Detail != "" {
+								· { it.Detail }
+							}
+						</span>
+					</span>
 				</a>
 			}
 			if data.Rail.ShowNow {
-				<div class="absolute -left-12 right-0 flex -translate-y-1/2 items-center" style={ px(data.Rail.NowTopPx + 12) } data-now>
-					<span class="bg-day-now rounded-full px-1.5 py-0.5 text-[10px] font-semibold text-white tabular-nums">{ data.Rail.NowLabel }</span>
+				<div class="pointer-events-none absolute -left-14 right-0 flex -translate-y-1/2 items-center" style={ px(data.Rail.NowTopPx + 12) } data-now>
+					<span class="text-day-now w-11 text-right text-[11px] font-semibold tabular-nums">{ data.Rail.NowLabel }</span>
+					<span class="bg-day-now ml-2 size-2 rounded-full"></span>
 					<span class="bg-day-now h-px flex-1"></span>
 				</div>
 			}
