@@ -1,0 +1,65 @@
+package day
+
+import (
+	"strconv"
+
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
+)
+
+func px(n int) string { return "top:" + strconv.Itoa(n) + "px" }
+
+// rail is the day as a vertical timeline, latest at the top. Positions are
+// computed in BuildRail; the template only places them.
+//
+// Alpine scrolls the now line into view on load — local UI state, which is
+// the one job the project allows it.
+templ rail(data Data) {
+	<section
+		class="border-hairline bg-surface relative max-h-[40rem] overflow-y-auto rounded-2xl border lg:max-h-[calc(100vh-10rem)]"
+		aria-label={ i18n.T(ctx, "day.timeline") }
+		x-data
+		x-init="$nextTick(() => { const n = $el.querySelector('[data-now]'); if (n) $el.scrollTop = n.offsetTop - $el.clientHeight / 2 })"
+		data-testid="day-rail"
+	>
+		<div class="relative ml-12 mr-3" style={ "height:" + strconv.Itoa(data.Rail.HeightPx+24) + "px" }>
+			<div class="border-hairline absolute inset-y-3 left-0 border-l border-dashed"></div>
+			for _, h := range data.Rail.Hours {
+				<div class="absolute -left-12 flex w-full items-center" style={ px(h.TopPx + 12) }>
+					<span class="text-muted-foreground w-10 -translate-y-1/2 text-right text-[11px] tabular-nums">{ h.Label }</span>
+					<span class="border-hairline ml-2 flex-1 -translate-y-1/2 border-t"></span>
+				</div>
+			}
+			for _, m := range data.Rail.Markers {
+				<div
+					class={ "absolute right-0 left-2 flex -translate-y-1/2 items-center justify-end gap-2 text-[11px]", templ.KV("opacity-50", m.Passed) }
+					style={ px(m.TopPx + 12) }
+					data-testid={ "marker-" + m.Kind }
+				>
+					<span class="border-hairline flex-1 border-t border-dashed"></span>
+					<span class="text-muted-foreground">{ i18n.T(ctx, "day.rule." + m.Kind) } { m.Time }</span>
+				</div>
+			}
+			for _, it := range data.Rail.Items {
+				<a href={ templ.SafeURL(it.Href) } class="hover:bg-muted/60 absolute right-0 -left-[5px] flex -translate-y-1/2 items-center gap-2 rounded-md py-0.5 pr-1" style={ px(it.TopPx + 12) }>
+					<span class="size-2.5 shrink-0 rounded-full ring-2 ring-[var(--color-surface)]" style={ "background:" + it.Color }></span>
+					<span class="min-w-0 flex-1 truncate text-sm">
+						<span class="font-medium">{ it.Title }</span>
+						if it.Detail != "" {
+							<span class="text-muted-foreground ml-1 text-xs">{ it.Detail }</span>
+						}
+					</span>
+					<span class="text-muted-foreground text-[11px] tabular-nums">{ it.Time }</span>
+				</a>
+			}
+			if data.Rail.ShowNow {
+				<div class="absolute -left-12 right-0 flex -translate-y-1/2 items-center" style={ px(data.Rail.NowTopPx + 12) } data-now>
+					<span class="bg-day-now rounded-full px-1.5 py-0.5 text-[10px] font-semibold text-white tabular-nums">{ data.Rail.NowLabel }</span>
+					<span class="bg-day-now h-px flex-1"></span>
+				</div>
+			}
+		</div>
+		if len(data.Rail.Items) == 0 {
+			<p class="text-muted-foreground bg-surface/90 sticky bottom-0 px-4 py-3 text-center text-sm">{ i18n.T(ctx, "day.timeline.empty") }</p>
+		}
+	</section>
+}

@@ -14,6 +14,8 @@ var portugueseEuropeanNav = map[string]string{
 	"nav.group.progress": "Progresso",
 	"nav.group.system":   "Sistema",
 
+	"nav.my-day":             "O meu dia",
+	"nav.my-day.desc":        "O teu dia num ecrã: comida, água, sono, movimento.",
 	"nav.overview":           "Resumo",
 	"nav.overview.desc":      "Como está o dia de hoje.",
 	"nav.quick-capture":      "Registo rápido",

@@ -49,6 +49,9 @@ var headlines = []headline{
 	{metric: "steps", label: "Steps", agg: perDay, decimals: 0},
 	{metric: "active_calories", label: "Active calories", agg: perDay, decimals: 0},
 	{metric: "body_fat_pct", label: "Body fat", agg: mean, decimals: 1},
+	{metric: "body_mass", label: "Weight", agg: mean, decimals: 1},
+	{metric: "exercise_minutes", label: "Exercise minutes", agg: perDay, decimals: 0},
+	{metric: "time_in_daylight", label: "Time in daylight (min)", agg: perDay, decimals: 0},
 }
 
 // describe renders one metric's window as a sentence, or reports that there is

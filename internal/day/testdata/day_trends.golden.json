@@ -1,0 +1,29 @@
+{
+  "series": [
+    {
+      "key": "systolic",
+      "unit": "mmHg",
+      "points": [
+        {
+          "at": "2026-09-20T08:00:00Z",
+          "value": 118
+        },
+        {
+          "at": "2026-09-26T08:00:00Z",
+          "value": 122
+        }
+      ],
+      "headline": 122,
+      "count": 2,
+      "windowDays": 90
+    }
+  ],
+  "fasts": [
+    {
+      "startedAt": "2026-09-25T08:00:00Z",
+      "hours": 16.4,
+      "targetHours": 16,
+      "met": true
+    }
+  ]
+}

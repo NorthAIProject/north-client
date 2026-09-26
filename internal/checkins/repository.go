@@ -194,3 +194,12 @@ func toDate(t time.Time) pgtype.Date {
 	d := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
 	return pgtype.Date{Time: d, Valid: true}
 }
+
+// Count is how many days this person has ever checked in.
+func (r *Repository) Count(ctx context.Context, userID uuid.UUID) (int, error) {
+	n, err := r.q.CountCheckIns(ctx, userID)
+	if err != nil {
+		return 0, apperr.Wrap(err, "count check-ins")
+	}
+	return int(n), nil
+}

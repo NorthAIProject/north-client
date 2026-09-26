@@ -43,6 +43,10 @@ func buildTimelineView(data TimelineData) insightpages.TimelineView {
 		dashboard.KindGoal,
 		dashboard.KindGoalNote,
 		dashboard.KindActivity,
+		dashboard.KindFood,
+		dashboard.KindCaffeine,
+		dashboard.KindSupplement,
+		dashboard.KindFasting,
 	}
 	chips := make([]insightpages.FilterChip, 0, len(kinds)+1)
 	chips = append(chips, insightpages.FilterChip{

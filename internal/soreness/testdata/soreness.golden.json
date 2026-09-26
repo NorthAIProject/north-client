@@ -1,0 +1,31 @@
+{
+  "entries": [
+    {
+      "region": "quads",
+      "severity": 2
+    },
+    {
+      "region": "lower_back",
+      "severity": 1,
+      "note": "desk day"
+    }
+  ],
+  "regions": [
+    "neck",
+    "shoulders",
+    "chest",
+    "upper_back",
+    "lower_back",
+    "abs",
+    "biceps",
+    "triceps",
+    "forearms",
+    "hips",
+    "glutes",
+    "quads",
+    "hamstrings",
+    "knees",
+    "calves",
+    "feet"
+  ]
+}

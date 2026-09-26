@@ -22,10 +22,11 @@ func NewHandler(svc *Service) *Handler {
 	return &Handler{svc: svc}
 }
 
-// Routes mounts the overview. Must be behind RequireAuth.
+// Routes mounts the overview at /app/overview; My Day owns /app itself.
+// Must be behind RequireAuth.
 func (h *Handler) Routes(r chi.Router) {
-	r.Get("/", h.show)
-	r.Get("/panels", h.panels)
+	r.Get("/overview", h.show)
+	r.Get("/overview/panels", h.panels)
 }
 
 func (h *Handler) show(w http.ResponseWriter, r *http.Request) {

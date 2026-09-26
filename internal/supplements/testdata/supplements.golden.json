@@ -1,0 +1,115 @@
+{
+  "entries": [
+    {
+      "id": "33333333-3333-3333-3333-333333333333",
+      "name": "Omega-3 (EPA/DHA)",
+      "count": 3,
+      "nutrients": [
+        "omega3"
+      ],
+      "loggedAt": "2026-09-26T10:16:00Z"
+    }
+  ],
+  "presets": [
+    {
+      "key": "omega3",
+      "name": "Omega-3 (EPA/DHA)",
+      "nutrients": [
+        "omega3"
+      ]
+    },
+    {
+      "key": "vitamin_d3",
+      "name": "Vitamin D3",
+      "nutrients": [
+        "vitamin_d"
+      ]
+    },
+    {
+      "key": "multivitamin",
+      "name": "Multivitamin",
+      "nutrients": [
+        "vitamin_a",
+        "vitamin_b12",
+        "vitamin_c",
+        "vitamin_d",
+        "vitamin_e",
+        "vitamin_k",
+        "folate",
+        "zinc",
+        "iodine"
+      ]
+    },
+    {
+      "key": "magnesium",
+      "name": "Magnesium",
+      "nutrients": [
+        "magnesium"
+      ]
+    },
+    {
+      "key": "vitamin_c",
+      "name": "Vitamin C",
+      "nutrients": [
+        "vitamin_c"
+      ]
+    },
+    {
+      "key": "b12",
+      "name": "Vitamin B12",
+      "nutrients": [
+        "vitamin_b12"
+      ]
+    },
+    {
+      "key": "iron",
+      "name": "Iron",
+      "nutrients": [
+        "iron"
+      ]
+    },
+    {
+      "key": "zinc",
+      "name": "Zinc",
+      "nutrients": [
+        "zinc"
+      ]
+    },
+    {
+      "key": "calcium",
+      "name": "Calcium",
+      "nutrients": [
+        "calcium"
+      ]
+    },
+    {
+      "key": "psyllium",
+      "name": "Psyllium husk",
+      "nutrients": [
+        "fiber"
+      ]
+    },
+    {
+      "key": "creatine",
+      "name": "Creatine",
+      "nutrients": []
+    }
+  ],
+  "nutrients": [
+    "vitamin_a",
+    "vitamin_b12",
+    "vitamin_c",
+    "vitamin_d",
+    "vitamin_e",
+    "vitamin_k",
+    "folate",
+    "calcium",
+    "iron",
+    "magnesium",
+    "zinc",
+    "potassium",
+    "iodine",
+    "omega3",
+    "fiber"
+  ]
+}

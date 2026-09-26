@@ -18,4 +18,5 @@ type UserPreference struct {
 	DefaultMacroSplit string
 	UpdatedAt         time.Time
 	NewsTickerEnabled bool
+	TargetWeightKg    *float64
 }

@@ -8,11 +8,14 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/NorthAIProject/north-client/internal/activity"
+	"github.com/NorthAIProject/north-client/internal/caffeine"
 	"github.com/NorthAIProject/north-client/internal/checkins"
 	"github.com/NorthAIProject/north-client/internal/conversations"
+	"github.com/NorthAIProject/north-client/internal/fasting"
 	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/habits"
 	"github.com/NorthAIProject/north-client/internal/hydration"
+	"github.com/NorthAIProject/north-client/internal/meals"
 	"github.com/NorthAIProject/north-client/internal/memories"
 	"github.com/NorthAIProject/north-client/internal/mind"
 	"github.com/NorthAIProject/north-client/internal/nudges/nudge"
@@ -20,6 +23,7 @@ import (
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/sleep"
+	"github.com/NorthAIProject/north-client/internal/supplements"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/workouts"
 	"github.com/NorthAIProject/north-client/internal/workouts/plan"
@@ -58,6 +62,13 @@ type Options struct {
 	Activity      *activity.Service
 	Mind          *mind.Service
 
+	// Food is optional: meals eaten show in the feed when it is wired. So are
+	// caffeine, supplements and fasts.
+	Food        Food
+	Caffeine    Caffeine
+	Supplements Supplements
+	Fasting     Fasting
+
 	// Nudges is optional. The worker process never loads the dashboard, and
 	// a nil here just leaves the card off.
 	Nudges Nudges
@@ -73,6 +84,25 @@ type Options struct {
 	// strip. Nil means the deployment has no ticker at all.
 	NewsTicker NewsTicker
 }
+
+// Food is the dashboard's view of the food log: the entries in a date span,
+// inclusive at both ends.
+type Food interface {
+	Range(ctx context.Context, userID uuid.UUID, from, to time.Time) ([]meals.FoodLogEntry, error)
+}
+
+// Caffeine, Supplements and Fasting are the feed's view of My Day's trackers.
+type (
+	Caffeine interface {
+		Between(ctx context.Context, user users.User, rg timerange.Range) ([]caffeine.Entry, error)
+	}
+	Supplements interface {
+		Between(ctx context.Context, user users.User, rg timerange.Range) ([]supplements.Entry, error)
+	}
+	Fasting interface {
+		Overlapping(ctx context.Context, user users.User, rg timerange.Range) ([]fasting.Session, error)
+	}
+)
 
 // NewsTicker is the dashboard's view of the news slice: just the switch.
 type NewsTicker interface {
@@ -108,6 +138,10 @@ type Service struct {
 	sleep         *sleep.Service
 	activity      *activity.Service
 	mind          *mind.Service
+	food          Food
+	caffeine      Caffeine
+	supplements   Supplements
+	fasting       Fasting
 	nudges        Nudges
 	briefings     Briefings
 	push          Push
@@ -126,6 +160,10 @@ func NewService(opts Options) *Service {
 		sleep:         opts.Sleep,
 		activity:      opts.Activity,
 		mind:          opts.Mind,
+		food:          opts.Food,
+		caffeine:      opts.Caffeine,
+		supplements:   opts.Supplements,
+		fasting:       opts.Fasting,
 		nudges:        opts.Nudges,
 		briefings:     opts.Briefings,
 		push:          opts.Push,

@@ -79,7 +79,7 @@ func TestBuildNavRendersInTheRequestLocale(t *testing.T) {
 	var found bool
 	for _, g := range groups {
 		for _, item := range g.Items {
-			if item.Href == "/app" {
+			if item.Href == "/app/overview" {
 				found = true
 				if item.Label != "Visão geral" {
 					t.Errorf("Overview label = %q, want %q", item.Label, "Visão geral")

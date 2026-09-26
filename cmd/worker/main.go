@@ -28,12 +28,14 @@ import (
 	"github.com/NorthAIProject/north-client/internal/analytics"
 	"github.com/NorthAIProject/north-client/internal/apns"
 	"github.com/NorthAIProject/north-client/internal/biometrics"
+	"github.com/NorthAIProject/north-client/internal/caffeine"
 	"github.com/NorthAIProject/north-client/internal/calculator"
 	"github.com/NorthAIProject/north-client/internal/checkins"
 	"github.com/NorthAIProject/north-client/internal/coach"
 	"github.com/NorthAIProject/north-client/internal/config"
 	"github.com/NorthAIProject/north-client/internal/conversations"
 	"github.com/NorthAIProject/north-client/internal/documents"
+	"github.com/NorthAIProject/north-client/internal/fasting"
 	"github.com/NorthAIProject/north-client/internal/fitness/strava"
 	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/habits"
@@ -46,6 +48,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/memories"
 	"github.com/NorthAIProject/north-client/internal/messaging"
 	"github.com/NorthAIProject/north-client/internal/messaging/telegram"
+	"github.com/NorthAIProject/north-client/internal/milestones"
 	"github.com/NorthAIProject/north-client/internal/mind"
 	"github.com/NorthAIProject/north-client/internal/news"
 	"github.com/NorthAIProject/north-client/internal/notifications"
@@ -54,10 +57,13 @@ import (
 	"github.com/NorthAIProject/north-client/internal/push"
 	"github.com/NorthAIProject/north-client/internal/quota"
 	"github.com/NorthAIProject/north-client/internal/reports"
+	"github.com/NorthAIProject/north-client/internal/screentime"
 	"github.com/NorthAIProject/north-client/internal/shared/database"
 	"github.com/NorthAIProject/north-client/internal/shared/metrics"
 	"github.com/NorthAIProject/north-client/internal/sleep"
+	"github.com/NorthAIProject/north-client/internal/soreness"
 	"github.com/NorthAIProject/north-client/internal/spend"
+	"github.com/NorthAIProject/north-client/internal/supplements"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/vault"
 	vaultdb "github.com/NorthAIProject/north-client/internal/vault/db"
@@ -440,6 +446,12 @@ func run() error {
 			mind.NewContextSource(mind.NewService(mind.NewRepository(pool), checkinSvc)),
 			hydration.NewContextSource(hydration.NewService(hydration.NewRepository(pool))),
 			sleep.NewContextSource(sleep.NewService(sleep.NewRepository(pool))),
+			caffeine.NewContextSource(caffeine.NewService(caffeine.NewRepository(pool))),
+			fasting.NewContextSource(fasting.NewService(fasting.NewRepository(pool))),
+			supplements.NewContextSource(supplements.NewService(supplements.NewRepository(pool))),
+			screentime.NewContextSource(screentime.NewService(screentime.NewRepository(pool))),
+			soreness.NewContextSource(soreness.NewService(soreness.NewRepository(pool))),
+			milestones.NewContextSource(milestones.NewService(milestones.NewRepository(pool))),
 			habits.NewContextSource(habits.NewService(habits.NewRepository(pool))),
 			reports.NewContextSource(reportSvc),
 		).WithMetrics(metricsReg),
