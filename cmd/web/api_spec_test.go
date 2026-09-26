@@ -77,6 +77,37 @@ func mountedAPIOperations(t *testing.T) []string {
 // A $ref to a component that does not exist is invisible to the route check
 // above and only fails when the iOS build runs the generator. Resolve every
 // reference here instead, so the web repository catches it first.
+// The iOS generator refuses a spec where two operations share an id, so a
+// duplicate here breaks the app's build rather than anything on the server.
+func TestOpenAPISpecOperationIDsAreUnique(t *testing.T) {
+	raw, err := os.ReadFile(specPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		Paths map[string]map[string]any `yaml:"paths"`
+	}
+	if err := yaml.Unmarshal(raw, &doc); err != nil {
+		t.Fatalf("parse %s: %v", specPath, err)
+	}
+
+	seen := map[string]string{}
+	for path, item := range doc.Paths {
+		for method, node := range item {
+			op, _ := node.(map[string]any)
+			id, _ := op["operationId"].(string)
+			if id == "" {
+				continue
+			}
+			at := strings.ToUpper(method) + " " + path
+			if prev, ok := seen[id]; ok {
+				t.Errorf("operationId %q is used by both %s and %s", id, prev, at)
+			}
+			seen[id] = at
+		}
+	}
+}
+
 func TestOpenAPISpecReferencesResolve(t *testing.T) {
 	raw, err := os.ReadFile(specPath)
 	if err != nil {

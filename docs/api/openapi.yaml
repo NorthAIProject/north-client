@@ -1528,7 +1528,7 @@ paths:
         '422':
           $ref: '#/components/responses/ValidationError'
     delete:
-      operationId: deleteTracker
+      operationId: deleteMilestone
       summary: Delete a milestone
       responses:
         '204':
