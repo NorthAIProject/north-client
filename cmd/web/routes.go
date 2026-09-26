@@ -581,6 +581,16 @@ func routes(
 		Habits:     habitSvc,
 		Biometrics: biometricSvc,
 		Activity:   activitySvc,
+
+		// Plans built by conversation, and My Day's trackers.
+		MealPlans:   mealPlanSvc,
+		Caffeine:    caffeineSvc,
+		Supplements: supplementSvc,
+		Fasting:     fastingSvc,
+		ScreenTime:  screenTimeSvc,
+		Soreness:    sorenessSvc,
+		Lifts:       liftSvc,
+		Health:      healthSvc,
 	})
 
 	agentTools.Record(auditRecorder)
