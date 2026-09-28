@@ -63,6 +63,11 @@ type fanout interface {
 	Notify(ctx context.Context, userID uuid.UUID, text string) error
 }
 
+type taggedFanout interface {
+	NotifyTagged(ctx context.Context, userID uuid.UUID, kind, dedupeKey string, text string) error
+	ResolveTagged(ctx context.Context, userID uuid.UUID, kind, dedupeKey, updatedText string) error
+}
+
 // pusher delivers a newly created nudge to the browsers this person subscribed
 // (internal/push). Optional. It reports how many accepted the message so
 // delivery is counted only where something actually arrived.
@@ -206,7 +211,13 @@ func (s *Service) deliver(ctx context.Context, user users.User, n Nudge, telegra
 		if n.Body != "" {
 			text = n.Title + "\n\n" + n.Body
 		}
-		if notifyErr := s.fanout.Notify(ctx, user.ID, text); notifyErr != nil {
+		var notifyErr error
+		if tf, ok := s.fanout.(taggedFanout); ok {
+			notifyErr = tf.NotifyTagged(ctx, user.ID, n.Kind, n.DedupeKey, text)
+		} else {
+			notifyErr = s.fanout.Notify(ctx, user.ID, text)
+		}
+		if notifyErr != nil {
 			slog.Default().Warn("nudges: could not send to linked chat",
 				"error", notifyErr,
 				"user_id", user.ID,
@@ -339,6 +350,26 @@ func (s *Service) MarkRead(ctx context.Context, id, userID uuid.UUID) (Nudge, er
 
 func (s *Service) Dismiss(ctx context.Context, id, userID uuid.UUID) (Nudge, error) {
 	return s.repo.Dismiss(ctx, id, userID)
+}
+
+// DismissByKind closes any open nudge matching kind and dedupeKey.
+// If an external channel delivered the nudge (like Telegram), updateText edits
+// the previous message in-place to mark the event resolved.
+func (s *Service) DismissByKind(ctx context.Context, userID uuid.UUID, kind, dedupeKey, updateText string) error {
+	_, dismissed, err := s.repo.DismissByKind(ctx, userID, kind, dedupeKey)
+	if err != nil {
+		return err
+	}
+	if !dismissed {
+		return nil
+	}
+
+	if s.fanout != nil {
+		if tf, ok := s.fanout.(taggedFanout); ok {
+			_ = tf.ResolveTagged(ctx, userID, kind, dedupeKey, updateText)
+		}
+	}
+	return nil
 }
 
 func (s *Service) ListOnboarded(ctx context.Context, after uuid.UUID, limit int) ([]users.User, error) {

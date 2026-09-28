@@ -53,11 +53,22 @@ type Catalog interface {
 	SearchByName(ctx context.Context, query string, equipment []string, limit int) ([]exercise.Exercise, error)
 }
 
+// ActivityTracker reports whether a workout session was completed on the user's local day.
+type ActivityTracker interface {
+	CompletedToday(ctx context.Context, userID uuid.UUID, loc *time.Location) (bool, string, error)
+}
+
 type Service struct {
-	repo    *Repository
-	runner  *ai.Runner
-	catalog Catalog
-	model   string
+	repo     *Repository
+	runner   *ai.Runner
+	catalog  Catalog
+	model    string
+	activity ActivityTracker
+}
+
+func (s *Service) WithActivity(tracker ActivityTracker) *Service {
+	s.activity = tracker
+	return s
 }
 
 type Options struct {
@@ -641,6 +652,14 @@ func (s *Service) DueToday(ctx context.Context, user users.User, today time.Time
 	// a push payload, so getting it wrong strands people on a 404 long after
 	// the row is written.
 	return title, "/app/training/" + stored.ID.String(), true, nil
+}
+
+// CompletedToday reports whether today's workout has already been completed.
+func (s *Service) CompletedToday(ctx context.Context, user users.User, today time.Time) (bool, string, error) {
+	if s.activity == nil {
+		return false, "", nil
+	}
+	return s.activity.CompletedToday(ctx, user.ID, user.Location())
 }
 
 func (s *Service) LatestIntake(ctx context.Context, userID uuid.UUID) (StoredIntake, error) {

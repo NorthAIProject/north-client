@@ -28,13 +28,24 @@ type GoalLookup interface {
 	Get(ctx context.Context, id, userID uuid.UUID) (goals.Goal, error)
 }
 
+// SyncHook is notified when check-ins are saved to synchronize state across clients.
+type SyncHook interface {
+	OnCheckInSaved(ctx context.Context, userID uuid.UUID) error
+}
+
 type Service struct {
 	repo  *Repository
 	goals GoalLookup
+	sync  SyncHook
 }
 
 func NewService(repo *Repository, goals GoalLookup) *Service {
 	return &Service{repo: repo, goals: goals}
+}
+
+func (s *Service) WithSync(hook SyncHook) *Service {
+	s.sync = hook
+	return s
 }
 
 // Input is a check-in as submitted.
@@ -90,7 +101,7 @@ func (s *Service) UpsertToday(ctx context.Context, user users.User, in Input) (C
 		return CheckIn{}, err
 	}
 
-	return s.repo.Upsert(ctx, user.ID, Write{
+	checkIn, err := s.repo.Upsert(ctx, user.ID, Write{
 		LocalDate:     LocalDate(user, time.Now()),
 		Mood:          clean.Mood,
 		Energy:        clean.Energy,
@@ -99,6 +110,13 @@ func (s *Service) UpsertToday(ctx context.Context, user users.User, in Input) (C
 		Notes:         clean.Notes,
 		RelatedGoalID: clean.RelatedGoalID,
 	})
+	if err != nil {
+		return CheckIn{}, err
+	}
+	if s.sync != nil {
+		_ = s.sync.OnCheckInSaved(ctx, user.ID)
+	}
+	return checkIn, nil
 }
 
 func (s *Service) Get(ctx context.Context, id, userID uuid.UUID) (CheckIn, error) {
@@ -143,7 +161,7 @@ func (s *Service) Update(ctx context.Context, id, userID uuid.UUID, in Input) (C
 	if err := s.checkGoal(ctx, userID, clean.RelatedGoalID); err != nil {
 		return CheckIn{}, err
 	}
-	return s.repo.Update(ctx, id, userID, Write{
+	checkIn, err := s.repo.Update(ctx, id, userID, Write{
 		Mood:          clean.Mood,
 		Energy:        clean.Energy,
 		Wins:          clean.Wins,
@@ -151,6 +169,13 @@ func (s *Service) Update(ctx context.Context, id, userID uuid.UUID, in Input) (C
 		Notes:         clean.Notes,
 		RelatedGoalID: clean.RelatedGoalID,
 	})
+	if err != nil {
+		return CheckIn{}, err
+	}
+	if s.sync != nil {
+		_ = s.sync.OnCheckInSaved(ctx, userID)
+	}
+	return checkIn, nil
 }
 
 // Delete removes a check-in. It only affects rows the caller owns.

@@ -397,7 +397,7 @@ func run() error {
 
 	workoutSvc := workouts.NewService(workouts.Options{
 		Repository: workouts.NewRepository(pool),
-	})
+	}).WithActivity(activitySvc)
 
 	nudgeSvc := nudges.NewService(nudges.NewRepository(pool), userSvc, checkinSvc, goalSvc).
 		WithPrefs(notificationSvc).

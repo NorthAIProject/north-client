@@ -179,6 +179,18 @@ type Transport interface {
 	Send(ctx context.Context, externalID string, msg OutboundMessage) error
 }
 
+// EditableTransport is an optional transport interface for platforms (like Telegram)
+// that support editing previously sent messages and returning message identifiers.
+type EditableTransport interface {
+	Transport
+
+	// SendWithID delivers one message and returns the platform's message ID.
+	SendWithID(ctx context.Context, externalID string, msg OutboundMessage) (messageID int64, err error)
+
+	// Edit replaces the text of an existing message.
+	Edit(ctx context.Context, externalID string, messageID int64, text string) error
+}
+
 // artworkCredit is the attribution CC BY-SA 4.0 requires on the exercise
 // illustrations. See web/assets/exercises/NOTICE — the licence obligation is
 // the reason this string is not optional and not shortenable.
