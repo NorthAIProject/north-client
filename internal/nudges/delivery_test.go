@@ -363,3 +363,84 @@ func assertPushOpens(t *testing.T, ctx context.Context, svc *nudges.Service, use
 		t.Fatalf("opening the push lands on %q, want %q", n.Href, want)
 	}
 }
+
+type taggedFanoutSpy struct {
+	fanoutSpy
+	tagged   []taggedCall
+	resolved []resolvedCall
+}
+
+type taggedCall struct {
+	userID    uuid.UUID
+	kind      string
+	dedupeKey string
+	text      string
+}
+
+type resolvedCall struct {
+	userID     uuid.UUID
+	kind       string
+	dedupeKey  string
+	updateText string
+}
+
+func (t *taggedFanoutSpy) NotifyTagged(_ context.Context, userID uuid.UUID, kind, dedupeKey string, text string) error {
+	t.tagged = append(t.tagged, taggedCall{userID: userID, kind: kind, dedupeKey: dedupeKey, text: text})
+	return nil
+}
+
+func (t *taggedFanoutSpy) ResolveTagged(_ context.Context, userID uuid.UUID, kind, dedupeKey, updatedText string) error {
+	t.resolved = append(t.resolved, resolvedCall{userID: userID, kind: kind, dedupeKey: dedupeKey, updateText: updatedText})
+	return nil
+}
+
+func TestDismissByKindResolvesTaggedFanout(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	user := seedUser(t, pool, "nudge-dismiss-sync@north.test")
+	chat := &taggedFanoutSpy{}
+	svc := newStore(pool).WithClock(freeze(noon)).WithFanout(chat)
+
+	// 1. Raise a workout nudge
+	_, created, err := svc.Raise(ctx, user, nudges.Draft{
+		Kind:      nudges.KindWorkoutToday,
+		DedupeKey: "2026-09-28",
+		Title:     "Start today's session",
+		Body:      "Upper A",
+		Href:      "/app/training/1",
+	})
+	if err != nil || !created {
+		t.Fatalf("raise workout nudge: %v", err)
+	}
+
+	if len(chat.tagged) != 1 {
+		t.Fatalf("expected 1 tagged fanout, got %d", len(chat.tagged))
+	}
+	if chat.tagged[0].kind != nudges.KindWorkoutToday || chat.tagged[0].dedupeKey != "2026-09-28" {
+		t.Errorf("unexpected tagged call: %+v", chat.tagged[0])
+	}
+
+	// 2. Dismiss it when completed
+	err = svc.DismissByKind(ctx, user.ID, nudges.KindWorkoutToday, "2026-09-28", "✅ Completed today's session: Upper A")
+	if err != nil {
+		t.Fatalf("dismiss by kind: %v", err)
+	}
+
+	if len(chat.resolved) != 1 {
+		t.Fatalf("expected 1 resolved fanout call, got %d", len(chat.resolved))
+	}
+	if chat.resolved[0].updateText != "✅ Completed today's session: Upper A" {
+		t.Errorf("unexpected update text: %s", chat.resolved[0].updateText)
+	}
+
+	// 3. Verify it is no longer open in the bell
+	open, err := svc.ListOpen(ctx, user.ID, 10)
+	if err != nil {
+		t.Fatalf("list open: %v", err)
+	}
+	for _, n := range open {
+		if n.Kind == nudges.KindWorkoutToday && n.DedupeKey == "2026-09-28" {
+			t.Errorf("expected nudge to be dismissed, but it is still open")
+		}
+	}
+}

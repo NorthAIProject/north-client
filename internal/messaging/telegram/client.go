@@ -78,28 +78,34 @@ func (c *Client) BotID() string {
 	return id
 }
 
+type tgMessageResult struct {
+	MessageID int64 `json:"message_id"`
+}
+
 // Send delivers a reply, splitting it if Telegram will not take it whole.
 //
 // Buttons ride on the last part only: an inline keyboard attached to the first
 // chunk of a long answer would ask the person to decide before they have
 // finished reading it.
 func (c *Client) Send(ctx context.Context, externalID string, msg messaging.OutboundMessage) error {
+	_, err := c.SendWithID(ctx, externalID, msg)
+	return err
+}
+
+// SendWithID delivers a reply and returns the Telegram message ID of the sent message.
+// When split into multiple parts, the message ID of the final part is returned.
+func (c *Client) SendWithID(ctx context.Context, externalID string, msg messaging.OutboundMessage) (int64, error) {
 	if msg.Silent {
-		return nil
+		return 0, nil
 	}
 
 	chat, err := chatIDFromString(externalID)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	// The illustration goes first, so it is on screen while the words are
 	// read rather than arriving under them.
-	//
-	// A failure here is swallowed on purpose: the written cues are the
-	// substance of the answer and the picture supports them, so a rejected
-	// animation must not cost the reply. Logged rather than returned, because
-	// nothing upstream can act on it.
 	if msg.Animation != "" {
 		if err := c.sendAnimation(ctx, chat, msg); err != nil {
 			c.log().Warn("telegram refused the illustration; sending the text alone",
@@ -107,24 +113,18 @@ func (c *Client) Send(ctx context.Context, externalID string, msg messaging.Outb
 		}
 	}
 
-	// The card goes first for the same reason the illustration does, and its
-	// failure is swallowed for the same reason: the words are the substance
-	// and a refused upload must not cost them.
+	// The card goes first for the same reason the illustration does.
 	if len(msg.Photo) > 0 {
 		if err := c.sendPhoto(ctx, chat, msg.Photo, msg.PhotoCaption); err != nil {
 			c.log().Warn("telegram refused the card; sending the text alone", "error", err)
 		}
 	}
 
-	// A message whose whole story is in the caption has no text to follow it,
-	// and splitMessage returns one empty part rather than none — which would
-	// post a blank message Telegram refuses.
 	if strings.TrimSpace(msg.Text) == "" {
-		return nil
+		return 0, nil
 	}
 
-	// Split on the raw text, then format each piece: the limit Telegram
-	// enforces is on what a person reads, and tags do not count towards it.
+	var lastMessageID int64
 	parts := splitMessage(msg.Text, maxMessageRunes)
 	for i, part := range parts {
 		body := map[string]any{
@@ -139,25 +139,59 @@ func (c *Client) Send(ctx context.Context, externalID string, msg messaging.Outb
 			body["link_preview_options"] = map[string]any{"url": video, "prefer_large_media": true}
 		}
 
-		err := c.call(ctx, "sendMessage", body, nil)
+		var sent tgMessageResult
+		err := c.call(ctx, "sendMessage", body, &sent)
 		if err == nil {
+			lastMessageID = sent.MessageID
 			continue
 		}
 
-		// Telegram rejects the whole message when it cannot parse the markup,
-		// so a single stray marker would otherwise cost the person their entire
-		// answer. Slightly plain prose is a much smaller loss, and this is the
-		// part of the formatting that actually matters.
 		c.log().Warn("telegram refused formatted text; resending it plain", "error", err)
 
 		delete(body, "parse_mode")
 		body["text"] = stripMarkdown(part)
-		if err := c.call(ctx, "sendMessage", body, nil); err != nil {
-			return err
+		if err := c.call(ctx, "sendMessage", body, &sent); err != nil {
+			return 0, err
 		}
+		lastMessageID = sent.MessageID
 	}
-	return nil
+	return lastMessageID, nil
 }
+
+// Edit satisfies messaging.EditableTransport by updating an existing message's text.
+func (c *Client) Edit(ctx context.Context, externalID string, messageID int64, text string) error {
+	return c.EditMessageText(ctx, externalID, messageID, text)
+}
+
+// EditMessageText updates a previously sent message with new text.
+func (c *Client) EditMessageText(ctx context.Context, externalID string, messageID int64, text string) error {
+	if messageID == 0 {
+		return nil
+	}
+	chat, err := chatIDFromString(externalID)
+	if err != nil {
+		return err
+	}
+	body := map[string]any{
+		"chat_id":    chat,
+		"message_id": messageID,
+		"text":       markdownToHTML(text),
+		"parse_mode": "HTML",
+	}
+
+	err = c.call(ctx, "editMessageText", body, nil)
+	if err == nil {
+		return nil
+	}
+
+	c.log().Warn("telegram refused formatted edit; resending it plain", "error", err)
+
+	delete(body, "parse_mode")
+	body["text"] = stripMarkdown(text)
+	return c.call(ctx, "editMessageText", body, nil)
+}
+
+var _ messaging.EditableTransport = (*Client)(nil)
 
 // sendAnimation delivers a looping illustration with the credit its licence
 // requires.

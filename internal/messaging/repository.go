@@ -29,11 +29,12 @@ type Link struct {
 }
 
 type Repository struct {
-	q *messagingdb.Queries
+	pool *pgxpool.Pool
+	q    *messagingdb.Queries
 }
 
 func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{q: messagingdb.New(pool)}
+	return &Repository{pool: pool, q: messagingdb.New(pool)}
 }
 
 // ClaimUpdate resolves the sender and rejects a redelivery in one statement.
@@ -191,3 +192,65 @@ func linkFromDB(row messagingdb.MessagingLink) Link {
 		LastSeenAt:   row.LastSeenAt,
 	}
 }
+
+// OutboundRef tracks a message sent to an external messaging platform (like Telegram)
+// so that subsequent events (e.g. workout completion, check-in submission) can edit or
+// resolve it in-place.
+type OutboundRef struct {
+	ID         uuid.UUID
+	UserID     uuid.UUID
+	Platform   string
+	ExternalID string
+	MessageID  int64
+	Kind       string
+	DedupeKey  string
+	CreatedAt  time.Time
+}
+
+func (r *Repository) SaveOutboundRef(ctx context.Context, ref OutboundRef) error {
+	if r.pool == nil {
+		return nil
+	}
+	const q = `
+INSERT INTO messaging_outbound_references (user_id, platform, external_id, message_id, kind, dedupe_key)
+VALUES ($1, $2, $3, $4, $5, $6)
+ON CONFLICT (user_id, platform, kind, dedupe_key)
+DO UPDATE SET message_id = EXCLUDED.message_id, created_at = now();
+`
+	_, err := r.pool.Exec(ctx, q, ref.UserID, ref.Platform, ref.ExternalID, ref.MessageID, ref.Kind, ref.DedupeKey)
+	return err
+}
+
+func (r *Repository) GetOutboundRef(ctx context.Context, userID uuid.UUID, platform, kind, dedupeKey string) (OutboundRef, error) {
+	if r.pool == nil {
+		return OutboundRef{}, apperr.ErrNotFound
+	}
+	const q = `
+SELECT id, user_id, platform, external_id, message_id, kind, dedupe_key, created_at
+FROM messaging_outbound_references
+WHERE user_id = $1 AND platform = $2 AND kind = $3 AND dedupe_key = $4;
+`
+	row := r.pool.QueryRow(ctx, q, userID, platform, kind, dedupeKey)
+	var out OutboundRef
+	err := row.Scan(&out.ID, &out.UserID, &out.Platform, &out.ExternalID, &out.MessageID, &out.Kind, &out.DedupeKey, &out.CreatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return OutboundRef{}, apperr.ErrNotFound
+		}
+		return OutboundRef{}, err
+	}
+	return out, nil
+}
+
+func (r *Repository) DeleteOutboundRef(ctx context.Context, userID uuid.UUID, platform, kind, dedupeKey string) error {
+	if r.pool == nil {
+		return nil
+	}
+	const q = `
+DELETE FROM messaging_outbound_references
+WHERE user_id = $1 AND platform = $2 AND kind = $3 AND dedupe_key = $4;
+`
+	_, err := r.pool.Exec(ctx, q, userID, platform, kind, dedupeKey)
+	return err
+}
+

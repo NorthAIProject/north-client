@@ -158,6 +158,7 @@ type Session struct {
 	ActivityCode string
 	Source       string
 	Status       string
+	PlanWeekday  string
 
 	// WeightKgSnapshot is captured at Start, so a later weight change never
 	// rewrites an already-completed session's calorie burn.

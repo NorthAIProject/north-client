@@ -18,13 +18,24 @@ type BiometricsLookup interface {
 	Current(ctx context.Context, userID uuid.UUID) (biometrics.Biometric, error)
 }
 
+// SyncHook is notified when workout sessions complete to synchronize state across clients.
+type SyncHook interface {
+	OnWorkoutCompleted(ctx context.Context, userID uuid.UUID, title string) error
+}
+
 type Service struct {
 	repo       *Repository
 	biometrics BiometricsLookup
+	sync       SyncHook
 }
 
 func NewService(repo *Repository, lookup BiometricsLookup) *Service {
 	return &Service{repo: repo, biometrics: lookup}
+}
+
+func (s *Service) WithSync(hook SyncHook) *Service {
+	s.sync = hook
+	return s
 }
 
 // Start begins a new session. It requires a recorded biometric (to snapshot
@@ -93,7 +104,20 @@ func (s *Service) Stop(ctx context.Context, id, userID uuid.UUID) (Session, erro
 	elapsedHours := session.Elapsed(now).Hours()
 	calories := met.Value * session.WeightKgSnapshot * elapsedHours
 
-	return s.repo.Complete(ctx, id, userID, now, calories)
+	completed, err := s.repo.Complete(ctx, id, userID, now, calories)
+	if err != nil {
+		return Session{}, err
+	}
+
+	if s.sync != nil {
+		title := completed.PlanWeekday
+		if title == "" {
+			title = completed.ActivityCode
+		}
+		_ = s.sync.OnWorkoutCompleted(ctx, userID, title)
+	}
+
+	return completed, nil
 }
 
 func (s *Service) Cancel(ctx context.Context, id, userID uuid.UUID) error {
@@ -194,7 +218,14 @@ func (s *Service) Log(ctx context.Context, userID uuid.UUID, in LogInput) (Sessi
 	}
 
 	calories := met.Value * bio.WeightKg * in.Duration.Hours()
-	return s.repo.Log(ctx, userID, in, bio.WeightKg, calories)
+	session, err := s.repo.Log(ctx, userID, in, bio.WeightKg, calories)
+	if err != nil {
+		return Session{}, err
+	}
+	if s.sync != nil {
+		_ = s.sync.OnWorkoutCompleted(ctx, userID, in.ActivityCode)
+	}
+	return session, nil
 }
 
 // ImportInput is one finished session arriving from a provider sync.
@@ -247,7 +278,36 @@ func (s *Service) Import(ctx context.Context, in ImportInput) (Session, bool, er
 		in.Calories = met.Value * in.WeightKg * hours
 	}
 
-	return s.repo.Import(ctx, in)
+	session, created, err := s.repo.Import(ctx, in)
+	if err == nil && created && s.sync != nil {
+		_ = s.sync.OnWorkoutCompleted(ctx, in.UserID, in.ActivityCode)
+	}
+	return session, created, err
+}
+
+// CompletedToday reports whether any workout session was finished today in the user's timezone.
+func (s *Service) CompletedToday(ctx context.Context, userID uuid.UUID, loc *time.Location) (bool, string, error) {
+	if loc == nil {
+		loc = time.UTC
+	}
+	now := time.Now().In(loc)
+	since := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
+	until := since.AddDate(0, 0, 1)
+
+	sessions, err := s.repo.ListBetween(ctx, userID, since, until)
+	if err != nil {
+		return false, "", err
+	}
+	for _, sess := range sessions {
+		if sess.Status == StatusCompleted {
+			title := sess.PlanWeekday
+			if title == "" {
+				title = sess.ActivityCode
+			}
+			return true, title, nil
+		}
+	}
+	return false, "", nil
 }
 
 // sameWorkoutFromAnotherSource finds a completed session that is this import

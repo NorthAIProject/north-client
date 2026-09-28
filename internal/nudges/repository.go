@@ -13,11 +13,12 @@ import (
 )
 
 type Repository struct {
-	q *nudgesdb.Queries
+	pool *pgxpool.Pool
+	q    *nudgesdb.Queries
 }
 
 func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{q: nudgesdb.New(pool)}
+	return &Repository{pool: pool, q: nudgesdb.New(pool)}
 }
 
 // Draft is a nudge to insert if the dedupe key is new.
@@ -101,6 +102,29 @@ func (r *Repository) Dismiss(ctx context.Context, id, userID uuid.UUID) (Nudge, 
 		return Nudge{}, apperr.Wrap(err, "dismiss nudge")
 	}
 	return fromDB(row), nil
+}
+
+func (r *Repository) DismissByKind(ctx context.Context, userID uuid.UUID, kind, dedupeKey string) (Nudge, bool, error) {
+	if r.pool == nil {
+		return Nudge{}, false, nil
+	}
+	const q = `
+UPDATE user_nudges
+SET dismissed_at = now(),
+    read_at      = COALESCE(read_at, now())
+WHERE user_id = $1 AND kind = $2 AND dedupe_key = $3 AND dismissed_at IS NULL
+RETURNING id, user_id, kind, dedupe_key, title, body, href, read_at, dismissed_at, created_at;
+`
+	row := r.pool.QueryRow(ctx, q, userID, kind, dedupeKey)
+	var n nudgesdb.UserNudge
+	err := row.Scan(&n.ID, &n.UserID, &n.Kind, &n.DedupeKey, &n.Title, &n.Body, &n.Href, &n.ReadAt, &n.DismissedAt, &n.CreatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Nudge{}, false, nil
+		}
+		return Nudge{}, false, apperr.Wrap(err, "dismiss nudge by kind")
+	}
+	return fromDB(n), true, nil
 }
 
 func fromDB(row nudgesdb.UserNudge) Nudge {

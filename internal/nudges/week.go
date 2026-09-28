@@ -136,6 +136,14 @@ func (s *Service) evalWorkoutToday(ctx context.Context, user users.User, today t
 	if err != nil || !due {
 		return 0, err
 	}
+
+	if tracker, ok := s.training.(interface {
+		CompletedToday(ctx context.Context, user users.User, today time.Time) (bool, string, error)
+	}); ok {
+		if done, _, err := tracker.CompletedToday(ctx, user, today); err == nil && done {
+			return 0, nil
+		}
+	}
 	if href == "" {
 		href = "/app/fitness"
 	}

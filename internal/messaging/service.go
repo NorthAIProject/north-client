@@ -411,6 +411,98 @@ func (s *Service) NotifyMessage(ctx context.Context, userID uuid.UUID, msg Outbo
 	return nil
 }
 
+// NotifyTagged delivers an unsolicited message tagged with a feature kind and dedupe key.
+// If the transport supports editing (EditableTransport), the sent message ID is persisted
+// so that later events can edit or resolve the message in-place.
+func (s *Service) NotifyTagged(ctx context.Context, userID uuid.UUID, kind, dedupeKey string, text string) error {
+	return s.NotifyTaggedMessage(ctx, userID, kind, dedupeKey, OutboundMessage{Text: text})
+}
+
+// NotifyTaggedMessage delivers an OutboundMessage and tracks its outbound reference.
+func (s *Service) NotifyTaggedMessage(ctx context.Context, userID uuid.UUID, kind, dedupeKey string, msg OutboundMessage) error {
+	if s.transport == nil || s.links == nil {
+		return nil
+	}
+	if strings.TrimSpace(msg.Text) == "" && len(msg.Photo) == 0 {
+		return nil
+	}
+
+	links, err := s.links.ListByUser(ctx, userID)
+	if err != nil {
+		return err
+	}
+
+	for _, link := range links {
+		if link.Platform != s.transport.Platform() {
+			continue
+		}
+
+		var messageID int64
+		if editable, ok := s.transport.(EditableTransport); ok {
+			mid, sendErr := editable.SendWithID(ctx, link.ExternalID, msg)
+			if sendErr != nil {
+				s.log.Warn("messaging notify tagged failed",
+					"error", sendErr,
+					"user_id", userID,
+					"platform", link.Platform)
+				continue
+			}
+			messageID = mid
+		} else {
+			if sendErr := s.transport.Send(ctx, link.ExternalID, msg); sendErr != nil {
+				s.log.Warn("messaging notify failed",
+					"error", sendErr,
+					"user_id", userID,
+					"platform", link.Platform)
+				continue
+			}
+		}
+
+		if messageID > 0 && kind != "" && dedupeKey != "" {
+			_ = s.links.SaveOutboundRef(ctx, OutboundRef{
+				UserID:     userID,
+				Platform:   link.Platform,
+				ExternalID: link.ExternalID,
+				MessageID:  messageID,
+				Kind:       kind,
+				DedupeKey:  dedupeKey,
+			})
+		}
+	}
+	return nil
+}
+
+// ResolveTagged finds a previously sent message tagged with (kind, dedupeKey) and edits
+// it with updatedText. If editing is not supported or no previous message exists,
+// it is safely a no-op.
+func (s *Service) ResolveTagged(ctx context.Context, userID uuid.UUID, kind, dedupeKey, updatedText string) error {
+	if s.transport == nil || s.links == nil {
+		return nil
+	}
+
+	editable, ok := s.transport.(EditableTransport)
+	if !ok {
+		return nil
+	}
+
+	ref, err := s.links.GetOutboundRef(ctx, userID, s.transport.Platform(), kind, dedupeKey)
+	if err != nil {
+		return nil
+	}
+
+	if updatedText != "" {
+		if editErr := editable.Edit(ctx, ref.ExternalID, ref.MessageID, updatedText); editErr != nil {
+			s.log.Warn("messaging could not edit resolved message",
+				"error", editErr,
+				"user_id", userID,
+				"kind", kind,
+				"dedupe_key", dedupeKey)
+		}
+	}
+
+	return s.links.DeleteOutboundRef(ctx, userID, s.transport.Platform(), kind, dedupeKey)
+}
+
 // answerPending interprets the message as yes or no to a waiting write.
 func (s *Service) answerPending(ctx context.Context, user users.User, conversation conversations.Conversation, pending coach.PendingCall, text string) (OutboundMessage, error) {
 	approve, understood := parseAnswer(text)

@@ -72,6 +72,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/spend"
 	"github.com/NorthAIProject/north-client/internal/stats"
 	"github.com/NorthAIProject/north-client/internal/supplements"
+	appsync "github.com/NorthAIProject/north-client/internal/sync"
 	"github.com/NorthAIProject/north-client/internal/toolaudit"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/vault"
@@ -739,6 +740,11 @@ func routes(
 
 	messagingSvc := messaging.NewService(messagingOpts)
 	nudgeSvc.WithFanout(messagingSvc)
+
+	syncCoordinator := appsync.NewCoordinator(nudgeSvc)
+	activitySvc.WithSync(syncCoordinator)
+	checkinSvc.WithSync(syncCoordinator)
+	workoutSvc.WithActivity(activitySvc)
 
 	settingsHandler := settings.NewHandler(
 		userSvc, preferencesSvc, notificationSvc, mealDietSvc, connectionSvc, aicredSvc,

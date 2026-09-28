@@ -2,6 +2,8 @@ package workouts
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	"github.com/NorthAIProject/north-client/internal/coach"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
@@ -36,7 +38,20 @@ func (s *ContextSource) Collect(ctx context.Context, req coach.ContextRequest, i
 		return err
 	}
 
-	into.WorkoutPlan = stored.Plan.Summary()
+	summary := stored.Plan.Summary()
+	today := time.Now().In(req.User.Location())
+	title, _, due, err := s.svc.DueToday(ctx, req.User, today)
+	if err == nil && due {
+		done, _, _ := s.svc.CompletedToday(ctx, req.User, today)
+		if done {
+			into.WorkoutPlan = fmt.Sprintf("Today's scheduled session (%s): COMPLETED today.\n\nFull program:\n%s", title, summary)
+			return nil
+		}
+		into.WorkoutPlan = fmt.Sprintf("Today's scheduled session (%s): PENDING (not yet completed today).\n\nFull program:\n%s", title, summary)
+		return nil
+	}
+
+	into.WorkoutPlan = summary
 	return nil
 }
 

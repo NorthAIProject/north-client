@@ -626,3 +626,54 @@ func TestTextWithoutAVideoLeavesThePreviewAlone(t *testing.T) {
 		t.Error("a message with no video should not set link_preview_options")
 	}
 }
+
+func TestSendWithIDReturnsMessageID(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"ok":true,"result":{"message_id":428}}`))
+	}))
+	defer srv.Close()
+
+	c := NewClient("test-token")
+	c.baseURL = srv.URL
+
+	mid, err := c.SendWithID(context.Background(), "12345", messaging.OutboundMessage{
+		Text: "Start today's session: Upper A",
+	})
+	if err != nil {
+		t.Fatalf("send with id: %v", err)
+	}
+	if mid != 428 {
+		t.Errorf("expected message id 428, got %d", mid)
+	}
+}
+
+func TestEditMessageText(t *testing.T) {
+	var editedBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/editMessageText") {
+			_ = json.NewDecoder(r.Body).Decode(&editedBody)
+			_, _ = w.Write([]byte(`{"ok":true,"result":{"message_id":428}}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"ok":true,"result":{}}`))
+	}))
+	defer srv.Close()
+
+	c := NewClient("test-token")
+	c.baseURL = srv.URL
+
+	err := c.EditMessageText(context.Background(), "12345", 428, "✅ Completed today's session: Upper A")
+	if err != nil {
+		t.Fatalf("edit message text: %v", err)
+	}
+
+	if editedBody["chat_id"] != float64(12345) {
+		t.Errorf("expected chat_id 12345, got %v", editedBody["chat_id"])
+	}
+	if editedBody["message_id"] != float64(428) {
+		t.Errorf("expected message_id 428, got %v", editedBody["message_id"])
+	}
+	if !strings.Contains(editedBody["text"].(string), "Completed today's session") {
+		t.Errorf("expected updated text, got %v", editedBody["text"])
+	}
+}

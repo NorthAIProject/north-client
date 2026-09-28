@@ -1,6 +1,11 @@
 -- name: CreateActivitySession :one
-INSERT INTO activity_sessions (user_id, activity_code, weight_kg_snapshot)
-VALUES ($1, $2, $3)
+INSERT INTO activity_sessions (user_id, activity_code, weight_kg_snapshot, plan_weekday)
+VALUES (
+    sqlc.arg(user_id),
+    sqlc.arg(activity_code),
+    sqlc.arg(weight_kg_snapshot),
+    sqlc.narg(plan_weekday)
+)
 RETURNING *;
 
 -- name: GetActivitySession :one
