@@ -2,6 +2,7 @@ package nudges
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/NorthAIProject/north-client/internal/shared/lifedomain"
@@ -140,8 +141,8 @@ func (s *Service) evalWorkoutToday(ctx context.Context, user users.User, today t
 	if tracker, ok := s.training.(interface {
 		CompletedToday(ctx context.Context, user users.User, today time.Time) (bool, string, error)
 	}); ok {
-		if done, _, err := tracker.CompletedToday(ctx, user, today); err == nil && done {
-			return 0, nil
+		if done, _, errComplete := tracker.CompletedToday(ctx, user, today); errComplete == nil && done {
+			return 0, fmt.Errorf("workout already completed today, no nudge needed", errComplete)
 		}
 	}
 	if href == "" {
