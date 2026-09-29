@@ -97,7 +97,7 @@ func (s *Service) UpsertToday(ctx context.Context, user users.User, in Input) (C
 	if err != nil {
 		return CheckIn{}, err
 	}
-	if err := s.checkGoal(ctx, user.ID, clean.RelatedGoalID); err != nil {
+	if err = s.checkGoal(ctx, user.ID, clean.RelatedGoalID); err != nil {
 		return CheckIn{}, err
 	}
 
@@ -158,7 +158,7 @@ func (s *Service) Update(ctx context.Context, id, userID uuid.UUID, in Input) (C
 	if err != nil {
 		return CheckIn{}, err
 	}
-	if err := s.checkGoal(ctx, userID, clean.RelatedGoalID); err != nil {
+	if err = s.checkGoal(ctx, userID, clean.RelatedGoalID); err != nil {
 		return CheckIn{}, err
 	}
 	checkIn, err := s.repo.Update(ctx, id, userID, Write{
