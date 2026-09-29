@@ -142,7 +142,7 @@ func (s *Service) evalWorkoutToday(ctx context.Context, user users.User, today t
 		CompletedToday(ctx context.Context, user users.User, today time.Time) (bool, string, error)
 	}); ok {
 		if done, _, errComplete := tracker.CompletedToday(ctx, user, today); errComplete == nil && done {
-			return 0, fmt.Errorf("workout already completed today, no nudge needed", errComplete)
+			return 0, fmt.Errorf("workout already completed today, no nudge needed")
 		}
 	}
 	if href == "" {
