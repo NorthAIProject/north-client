@@ -10,15 +10,15 @@ import (
 // RecapExercise is one movement in a finished session, against the last time
 // it was logged when that exists.
 type RecapExercise struct {
-	Name            string
-	Sets            int
-	VolumeKg        float64
-	Best            string
-	E1RM            float64
-	PreviousE1RM    float64
-	Change          float64
-	PreviousVolume  float64
-	HasPrevious     bool
+	Name           string
+	Sets           int
+	VolumeKg       float64
+	Best           string
+	E1RM           float64
+	PreviousE1RM   float64
+	Change         float64
+	PreviousVolume float64
+	HasPrevious    bool
 }
 
 // Recap is one finished workout in words and numbers. The sentence is what

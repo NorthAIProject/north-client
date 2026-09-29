@@ -253,4 +253,3 @@ WHERE user_id = $1 AND platform = $2 AND kind = $3 AND dedupe_key = $4;
 	_, err := r.pool.Exec(ctx, q, userID, platform, kind, dedupeKey)
 	return err
 }
-
