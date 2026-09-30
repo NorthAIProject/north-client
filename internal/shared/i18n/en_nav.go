@@ -58,6 +58,7 @@ var englishNav = map[string]string{
 	"nav.memory":         "Memory",
 	"nav.memory.desc":    "What North remembers about you.",
 	"nav.decisions":      "Decisions",
+	"nav.friends":        "Friends",
 	"nav.decisions.desc": "The choices you made, and why.",
 
 	"nav.goals":                   "Goals",

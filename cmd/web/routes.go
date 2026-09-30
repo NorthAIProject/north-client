@@ -68,6 +68,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/shared/metrics"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/NorthAIProject/north-client/internal/sleep"
+	"github.com/NorthAIProject/north-client/internal/social"
 	"github.com/NorthAIProject/north-client/internal/soreness"
 	"github.com/NorthAIProject/north-client/internal/spend"
 	"github.com/NorthAIProject/north-client/internal/stats"
@@ -175,6 +176,11 @@ func routes(
 		WithFunnel(funnel)
 	nudgeHandler := nudges.NewHandler(nudgeSvc)
 
+	// Handles, invite links, follows and blocks. The bell tells people about
+	// a follow request or a friend arriving from their link.
+	socialSvc := social.NewService(social.NewRepository(pool)).WithInbox(nudgeSvc).WithFunnel(funnel)
+	socialHandler := social.NewHandler(socialSvc, cfg.BaseURL, cfg.Env.IsProduction())
+
 	memorySvc := memories.NewService(memories.NewRepository(pool))
 	memoryHandler := memories.NewHandler(memorySvc)
 
@@ -224,6 +230,7 @@ func routes(
 		Goals:         goalSvc,
 		CheckIns:      checkinSvc,
 		Storage:       storage,
+		Friends:       socialSvc,
 	}), quotaSvc, accountSvc)
 
 	// Built before workouts: the plan generator picks from this catalog, so
@@ -910,6 +917,7 @@ func routes(
 			export:      exportHandler,
 			calculator:  calculator.NewAPI(calculatorSvc, biometricSvc),
 			news:        news.NewAPI(newsSvc),
+			social:      social.NewAPI(socialSvc, cfg.BaseURL),
 		})
 	})
 
@@ -988,6 +996,8 @@ func routes(
 		// trust the product with their health data has to be able to read the
 		// policy before creating the account that would let them read it.
 		r.Method(http.MethodGet, "/privacy", templ.Handler(legal.Privacy()))
+		// Somebody's invite link: who sent it, and the way in.
+		socialHandler.PublicRoutes(r)
 		r.Method(http.MethodGet, "/terms", templ.Handler(legal.Terms()))
 
 		// The footer language switcher, for visitors who have no account to
@@ -1013,6 +1023,9 @@ func routes(
 		// Everything under /app requires a session.
 		r.Route("/app", func(r chi.Router) {
 			r.Use(authMW.RequireAuth)
+			// An invite link opened before signing up or in connects the two
+			// people on the first page inside, whichever way they signed in.
+			r.Use(socialHandler.RedeemInvite)
 			// Before any page renders, so each text box knows whether to offer
 			// a microphone without every handler passing that along.
 			r.Use(voiceHandler.Advertise)
@@ -1055,6 +1068,7 @@ func routes(
 				vaultHandler.Routes(r)
 				mindHandler.Routes(r)
 				decisionHandler.Routes(r)
+				socialHandler.Routes(r)
 				careHandler.Routes(r)
 				captureHandler.Routes(r)
 				activityHandler.Routes(r)

@@ -36,6 +36,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/screentime"
 	"github.com/NorthAIProject/north-client/internal/settings"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
+	"github.com/NorthAIProject/north-client/internal/social"
 	"github.com/NorthAIProject/north-client/internal/soreness"
 	"github.com/NorthAIProject/north-client/internal/stats"
 	"github.com/NorthAIProject/north-client/internal/supplements"
@@ -86,6 +87,7 @@ const (
 
 func mountJSON(r chi.Router, sessions auth.SessionResolver, apis apiSet) {
 	apis.auth.PublicRoutes(r)
+	apis.social.PublicRoutes(r)
 	apis.capture.Routes(r)
 	apis.fitness.PublicRoutes(r)
 
@@ -126,6 +128,7 @@ func mountJSON(r chi.Router, sessions auth.SessionResolver, apis apiSet) {
 		apis.export.APIRoutes(r)
 		apis.calculator.Routes(r)
 		apis.news.Routes(r)
+		apis.social.Routes(r)
 	})
 }
 
@@ -168,4 +171,5 @@ type apiSet struct {
 	export      *export.Handler
 	calculator  *calculator.API
 	news        *news.API
+	social      *social.API
 }

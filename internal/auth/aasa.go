@@ -25,9 +25,30 @@ func AppleAppSiteAssociation(teamID, bundleIDs string) http.HandlerFunc {
 	type section struct {
 		Apps []string `json:"apps"`
 	}
+	type component struct {
+		Path    string `json:"/"`
+		Comment string `json:"comment"`
+	}
+	type detail struct {
+		AppIDs     []string    `json:"appIDs"`
+		Components []component `json:"components"`
+	}
+	type applinks struct {
+		Details []detail `json:"details"`
+	}
+	// Universal links: an invite link tapped on an iPhone with the app opens
+	// the app, which redeems it after sign-in; without the app it is a web
+	// page as before. Only /i/* — every other path stays in the browser.
 	body := struct {
-		WebCredentials section `json:"webcredentials"`
-	}{WebCredentials: section{Apps: apps}}
+		WebCredentials section  `json:"webcredentials"`
+		AppLinks       applinks `json:"applinks"`
+	}{
+		WebCredentials: section{Apps: apps},
+		AppLinks: applinks{Details: []detail{{
+			AppIDs:     apps,
+			Components: []component{{Path: "/i/*", Comment: "invite links"}},
+		}}},
+	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
 		if teamID == "" || len(apps) == 0 {
