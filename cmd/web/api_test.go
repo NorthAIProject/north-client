@@ -92,7 +92,12 @@ var publicAPIPrefixes = []string{"/api/v1/auth/", "/api/v1/capture/"}
 
 // publicAPIRoutes are single public routes, named exactly so their siblings
 // stay guarded: Strava's OAuth return, which proves itself by its state.
-var publicAPIRoutes = map[string]bool{"/api/v1/fitness/strava/callback": true}
+var publicAPIRoutes = map[string]bool{
+	"/api/v1/fitness/strava/callback": true,
+	// Who sent an invite link, for the signed-out app; the inviter's name and
+	// handle, nothing else.
+	"/api/v1/invites/{code}": true,
+}
 
 func isPublicAPIRoute(route string) bool {
 	if publicAPIRoutes[route] {

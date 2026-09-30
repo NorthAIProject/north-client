@@ -177,6 +177,21 @@ The door left open: a **self-league** — this week vs your last four — is a
 leaderboard with one name on it and no privacy cost. If the numbers say
 people want a ladder, build that one first.
 
+**Update, 2026-09-30 — friends, not leagues.** The product owner decided
+Khepri should have Strava-style friends: follows, invite links, and later
+achievements others can see and small groups ("crews") that keep each other
+accountable. That supersedes "single-player by design" above, and it is
+built so the first reason still holds:
+
+- **Consent both ways.** A follow waits for the other person's yes
+  (`internal/social`). Blocks hide each from the other completely.
+- **Nothing is visible by default.** A follow alone shows a name and a handle.
+  What a follower may see is chosen category by category (training, streaks,
+  goal progress) and never includes the journal, decisions, memories,
+  nutrition detail or raw health numbers.
+- **Still no leagues.** The cohort-size and what-it-rewards reasons stand:
+  kudos and crews, not rankings.
+
 ---
 
 ## Schema sketch
@@ -316,7 +331,9 @@ each is a way the mechanics above become the thing they were built not to be.
 - Merging the check-in streak into the daily-goal streak.
 - Storing a total or a level.
 - Retroactive awards.
-- A leaderboard with another person's name on it.
+- A leaderboard with another person's name on it. (Friends and kudos are
+  fine; ranking people against each other is still out — see the update
+  under "Leagues, friends, leaderboards".)
 - Any mechanic that makes a missed rest day, a paused goal, or an abandoned
   goal read as a failure. The product exists for month eight; people who get
   there have paused and abandoned things.

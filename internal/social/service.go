@@ -122,7 +122,8 @@ func (s *Service) Redeem(ctx context.Context, inviteeID uuid.UUID, code string) 
 	if invite.Inviter.ID == inviteeID {
 		return false, nil
 	}
-	if blocked, err := s.repo.Blocked(ctx, inviteeID, invite.Inviter.ID); err != nil || blocked {
+	blocked, err := s.repo.Blocked(ctx, inviteeID, invite.Inviter.ID)
+	if err != nil || blocked {
 		return false, err
 	}
 	redeemed, err := s.repo.Redeem(ctx, inviteeID, invite.Code, invite.Inviter.ID)
@@ -257,9 +258,9 @@ func (s *Service) Profile(ctx context.Context, viewerID uuid.UUID, handle string
 	if person.ID == viewerID {
 		out.Relationship.Self = true
 	} else {
-		blocked, err := s.repo.Blocked(ctx, viewerID, person.ID)
-		if err != nil {
-			return Profile{}, err
+		blocked, blockErr := s.repo.Blocked(ctx, viewerID, person.ID)
+		if blockErr != nil {
+			return Profile{}, blockErr
 		}
 		if blocked {
 			return Profile{}, apperr.ErrNotFound
@@ -267,9 +268,9 @@ func (s *Service) Profile(ctx context.Context, viewerID uuid.UUID, handle string
 		if out.Relationship.Following, err = s.repo.FollowStatus(ctx, viewerID, person.ID); err != nil {
 			return Profile{}, err
 		}
-		theirs, err := s.repo.FollowStatus(ctx, person.ID, viewerID)
-		if err != nil {
-			return Profile{}, err
+		theirs, theirErr := s.repo.FollowStatus(ctx, person.ID, viewerID)
+		if theirErr != nil {
+			return Profile{}, theirErr
 		}
 		out.Relationship.FollowsYou = theirs == StatusAccepted
 	}

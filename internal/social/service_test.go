@@ -151,7 +151,7 @@ func TestFollowNeedsApproval(t *testing.T) {
 	if err != nil || c.Status != social.StatusPending {
 		t.Fatalf("follow = %+v, %v", c, err)
 	}
-	if _, err := svc.Follow(ctx, ana.ID, "joao"); err != nil {
+	if _, err = svc.Follow(ctx, ana.ID, "joao"); err != nil {
 		t.Fatal(err)
 	}
 	if len(inbox.notes) != 1 || inbox.notes[0].kind != social.KindFollowRequest || inbox.notes[0].to != joao.ID {
@@ -162,7 +162,7 @@ func TestFollowNeedsApproval(t *testing.T) {
 	if len(joaoView.Requests) != 1 || len(joaoView.Followers) != 0 {
 		t.Fatalf("before accepting: %+v", joaoView)
 	}
-	if err := svc.Accept(ctx, joao.ID, ana.ID); err != nil {
+	if err = svc.Accept(ctx, joao.ID, ana.ID); err != nil {
 		t.Fatal(err)
 	}
 	profile, err := svc.Profile(ctx, ana.ID, "joao")

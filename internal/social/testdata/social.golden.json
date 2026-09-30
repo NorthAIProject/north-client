@@ -1,0 +1,37 @@
+{
+  "handle": "me_too",
+  "invite": {
+    "code": "k7m2p9qx4r",
+    "channel": "link",
+    "url": "https://kheprios.com/i/k7m2p9qx4r"
+  },
+  "joined": 2,
+  "requests": [
+    {
+      "id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+      "displayName": "João",
+      "handle": "",
+      "status": "pending",
+      "since": "2026-09-30T20:00:00Z"
+    }
+  ],
+  "followers": [
+    {
+      "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      "displayName": "Ana",
+      "handle": "ana_runs",
+      "status": "accepted",
+      "since": "2026-09-30T20:00:00Z"
+    }
+  ],
+  "following": [
+    {
+      "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      "displayName": "Ana",
+      "handle": "ana_runs",
+      "status": "accepted",
+      "since": "2026-09-30T20:00:00Z"
+    }
+  ],
+  "blocked": []
+}
