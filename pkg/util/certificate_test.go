@@ -1,0 +1,32 @@
+package util
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"gitlab.com/sqills/development/vectron/golang-packages/pkg/s3passenger/common"
+	"gitlab.com/sqills/development/vectron/golang-packages/pkg/util"
+)
+
+func TestCertificate_GetCertificateAndSignature(t *testing.T) {
+	a := assert.New(t)
+
+	pk := "-----BEGIN PRIVATE KEY-----\nMIIEwAIBADANBgkqhkiG9w0BAQEFAASCBKowggSmAgEAAoIBAQDP22TWGgLucmYW\ntXCMmqf3FiB9WZRRWhQUoj9zTSS2pm4J/efYuSRA+AnecQSb6hEQLZn1H/Yy7GnL\nNcaD+ZfZu1FtU/gQvEaPWQkuXpAjm8Wnp+oFLOe2o8ld/wGXHpn+EV4gWTHiX/7H\nOIUmptGSB6OL40MiEPXPJzHOgZerX+EruE3YjohZOlVLk0F94wXR4CIVyc2GkILB\n92INiICxegSTOJTAcSMQBIQwnfMUL7A2R9jJGRaSM2wWPeCdjre9H1+GSizAKoQb\nBU2H3En8X3T2saw9ak3av+yuena6r3TsgdVAdLRjtqynTWjPuvGttXWNRmjcdBnc\nro8XhEz5AgMBAAECggEBAMvWrgbBL4rDqZYvjRZ2PK41htsm1CsLmZG6o1rhllWA\n1Xz7ATkqJ4GHPbZlQ03bt6wT7F3VYE4ERqPAMtQOG3qtFmeO50ESQmglurk8h0JE\nawvFwdwdc4dLDBkgEWEv43ijc5lpn2APH/4jUYDcK713vE1dK+LmmwjxuQh5UlH+\nSLV5sBAhV95i+HoZrD4/heS+xm7TCtDf/yh5QlM5tdci6/7GnmTp+cyQzkM4vzc1\nZQ7KwvrkbHOwzEAIcrJW5iJ57SewLZD+FzW6eOCQTq8T+h9+o/qEEeRrX7AnZ7gl\nK6vkfPbi+zoPXnckTVSH1x6iucbnTjFqoJxlzgVKCVkCgYEA/Ka6n3XcVO8Gvkb3\n2xNClRwVNvBT4xJ5CISEg1J0KyxfFTd9hV/NnW/97qqt3pX/LlsfMIiVqAJ0X8Um\n08Dy8ktjd8C+EPIeOf/Mp3haNryn+zfULUuhCJoFI/Y7VQ1J5sDhPy8uBuEMhGz8\n/q9WI+HIoXr6GO7yc9HWNMpD458CgYEA0pysZuVW3bzFE6HKk18FRz52HpxeeuqW\nqzUjWrOrqM4hTbiwJkA411eZ0M0Ox+FcVE2zSAT1g2Kcl/z6ZGjFUnOvfsSoYFfR\n9XCzsfVPVQ/L1TfAjlrWvXSub4u53skLZHhXz075238Jn9E14GqKT6GFR5PiEWuq\nuy5bjrtxSGcCgYEAz7F0SzAFf6C7R2Jp0KNlodRjMDWikFGYQ8NEd/wpWXBxfayP\nODxIeDsfYbrXkdp22zG3UxuFA4d5CV22DG9aiIom68P7u0x+QqmhIK7UYpj18pOz\njcTVTY/n1+dMYR+6d8JpqJptWORaeOZrmCalRnwOhYjl3edYUpPWZrE72/sCgYEA\nnqdpc+XFpynhp+VULeoBlualom+W+K8pKvXPmS8J3BLTobHD+Dye1RFnjJQ8UzQg\nEl2p9VHPBNdPMWtf0C3gnzkIdc19LX5aarMomqE5ztEkco0aH+KsK3HvSZYPQZVf\nYKMLOt66d6/eNycpl9GKOWxqcz4iqY7awUCttfrb3ncCgYEAr5UhHYm9Qc25vdFA\nBhjxIj6KJglFDkKOmdxGBRs50ahjgKso0i+Ky1M3CKOILVPC/MzBP48mBzEjHD+X\nNztm2z6a4N+F8n2cJLJguJr1IkpmfD83Qk/y1U4ypQCk8Zu8cVpcNFYPDKf5R0dd\n5Y0LlF3/DBlhO9TSRsGY9ON5JeU=\n-----END PRIVATE KEY-----"
+	certificate := "-----BEGIN CERTIFICATE-----\nMIIFUzCCAzugAwIBAgIUF26Tu3y6rbuvcUI+oJFXccqSw5AwDQYJKoZIhvcNAQEL\nBQAwPjEPMA0GA1UEChMGU3FpbGxzMRkwFwYDVQQLExBzcWlsbHMtbG9wZC10ZXN0\nMRAwDgYDVQQDEwdSb290IENBMB4XDTIwMTEwMzA4NDAwMloXDTIwMTEwNjA4NDAz\nMVowMjEwMC4GA1UEAxMnYm9yY2guc3FpbGxzLWxvcGQtdGVzdC5jbG91ZC5zcWls\nbHMuY29tMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAw+cMZWp8DD1V\nSVXwDArRpmrLqWrB7Wy75PjwMap/f/ubAkSAbYEUqGvi+fyCnTFknP3DL7KhZxP8\ngdYLYLspBz2kSfMqp1qnTEy22AH9SXkQRFN4X/KQVvRN0+9cPUcLKOxnvjWGeD05\nVbU2fqBfRzm5ru5PAbOQdcXpavANs7CspstkTYtvJ0J9AdrHEE+6mNH1qTJbacwg\nIpDvMFvfWRcuoSm0JCogiwZZB/TL1ClylODf7nEoqowdG55zD7lL5yEvifrrEOL7\nJ6ud8Ao1Qarwo27qxA6sp1uoXjBphHZGnL9hVhQyQza+J0eJ7oNQDaCEJ4CfkZdi\nC1DtSn8icwIDAQABo4IBUzCCAU8wDgYDVR0PAQH/BAQDAgOoMB0GA1UdJQQWMBQG\nCCsGAQUFBwMBBggrBgEFBQcDAjAdBgNVHQ4EFgQU6Q1ACNLbr0fN8iQbxrotHA1o\nk3gwHwYDVR0jBBgwFoAUlKtmRID+qLIT9tNEaZ6696EWKJUwWQYIKwYBBQUHAQEE\nTTBLMEkGCCsGAQUFBzAChj1odHRwczovL3MzcC12YXVsdC5zcWlsbHMtbG9wZC10\nZXN0LmNsb3VkLnNxaWxscy5jb20vdjEvcGtpL2NhMDIGA1UdEQQrMCmCJ2JvcmNo\nLnNxaWxscy1sb3BkLXRlc3QuY2xvdWQuc3FpbGxzLmNvbTBPBgNVHR8ESDBGMESg\nQqBAhj5odHRwczovL3MzcC12YXVsdC5zcWlsbHMtbG9wZC10ZXN0LmNsb3VkLnNx\naWxscy5jb20vdjEvcGtpL2NybDANBgkqhkiG9w0BAQsFAAOCAgEAcq/6BUvW71Dx\nCIgsZld8Rj+8n+FeRic+Wlvo0Vc93by9ZWoekPL0LvMO044ivobhGUX1A+8AsS/U\n1A95CuQ3dgxX1+BAZBGMnJTuRjR2iJuBEsMcRj/uyPCpnHR0LArET6tdORWtFm24\n3b1qg9FcLhTo9uaUOT+dxJo44FT29npBxTeaD3WSRZ2DiH9DD7rfN9Dj3+wYqJJK\ngwxsFgjVbKair/B4J4Qy5vZ4oo4i868ejwFKPJbD9UNSsurBJp95qwzT3myJr3/P\nEI4dThUv/XfflMsUe+tyyIODrT2J9Wsc/Tj5K4YgLv4/PcAUxiPQL8yMUiGD5Nhe\nJTbChLkhtoJQfbiNpzg6GawkvD9MugkqDd2yPTepqzCYO5aQelCVG6FFIj+NH6Ub\nStX+zNar5kw9vgH9KuQApY9PTAzJXyVJgAb+dR9Dbgm7y0ruC80dh+xBX2jE1N5w\niFQKAWBBa8BblmDDpBEU6UUbMMoHWnApSbIgQ4TkdZFk9mfBhpf25DNRrICXTnM9\nwsxjZl+5LuuQd7vfFVL7tpbYx8lXByK//DHnw3vZleac0xUgLe+YoDJw/4wm1vxR\n/ArFGiTjdIDBdIN2ReLojcZbpmLrc6+hLplznqST/bpG1gI2nlgxzRHRez+E6eBl\nn/yNpkQAC52Hlds88OoSSxc/U715NoM=\n-----END CERTIFICATE-----"
+
+	dateTime := util.Ptr(common.NewDateTime(2020, 1, 1, 1, 1, 1, common.TimezoneUTC))
+
+	cert, signature, err := GetCertificateAndSignature(pk, certificate, dateTime)
+
+	a.NoError(err)
+	a.Equal("SHA256-RSA", cert.SignatureAlgorithm.String())
+	a.Equal("Sqills", cert.Issuer.Organization[0])
+	a.Equal("sqills-lopd-test", cert.Issuer.OrganizationalUnit[0])
+	a.Equal("Root CA", cert.Issuer.CommonName)
+	a.Equal("borch.sqills-lopd-test.cloud.sqills.com", cert.Subject.CommonName)
+	a.Equal("https://s3p-vault.sqills-lopd-test.cloud.sqills.com/v1/pki/crl", cert.CRLDistributionPoints[0])
+	a.Equal(
+		"AJuGFo17VSoV4elXUxIOwQ7JafMHTNPwIfMCPbBeYPZpTZufPfrCx46AE52JBGwZSLj6QRr6s/0ZhSB+v3NiXJHWXV5NyZmyXuoplkIm7GUnCTd6aRg+B2fR043Wp8ACCyeuHcnVq8OVZNWpiVFExzvrKpr0o8Td8bGfXtED9JkF7zR4LfY6Zvh+a4X/hcZ0HNHfBJG0Fpfpy9C1tQn9IXY24XJLckbs1nLbvYYovU6i67rCbLFaQTL0YriqHGN+rnbd0Yydg7bdptloQkg0WtCKi4Dc7IUx+EeOKVzIaJp7HOh69YQOQ0HOfd+xlKIic1KRn3ad0r0m70YvkndG3A==",
+		signature,
+	)
+}
