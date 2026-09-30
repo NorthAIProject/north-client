@@ -13,6 +13,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/analytics"
 	"github.com/NorthAIProject/north-client/internal/conversations"
 	"github.com/NorthAIProject/north-client/internal/jobs"
+	"github.com/NorthAIProject/north-client/internal/nudges/nudge"
 	"github.com/NorthAIProject/north-client/internal/shared/aiattr"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
@@ -128,6 +129,11 @@ type Service struct {
 	// Nil disables it.
 	inbox Inbox
 
+	// away tells a person their reply is ready when they left before it
+	// finished: on every channel, since they are not looking at the thread.
+	// Nil disables it.
+	away Inbox
+
 	model     string
 	fastModel string
 }
@@ -234,6 +240,13 @@ type Options struct {
 
 func (s *Service) WithInbox(in Inbox) *Service {
 	s.inbox = in
+	return s
+}
+
+// WithAway sets where "your reply is ready" goes when the person who asked
+// left mid-answer.
+func (s *Service) WithAway(in Inbox) *Service {
+	s.away = in
 	return s
 }
 
@@ -847,12 +860,19 @@ func (s *Service) pump(
 	saveCtx, cancel := context.WithTimeout(context.WithoutCancel(genCtx), persistTimeout)
 	defer cancel()
 
-	if _, err := s.conversations.AppendModelMessage(
+	saved, err := s.conversations.AppendModelMessage(
 		saveCtx, target.conversation.ID, text, usage, s.model, target.provider, evidenceRefs, conversations.Provenance{},
-	); err != nil {
+	)
+	if err != nil {
 		log.Error("could not save the coach's reply", slog.Any("error", err),
 			slog.String("conversation_id", target.conversation.ID.String()))
 		return
+	}
+
+	// The request that asked is gone: the app was backgrounded or the tab
+	// closed. The answer is saved, but nobody knows it arrived.
+	if callerCtx.Err() != nil {
+		s.tellAway(saveCtx, target, saved.ID, text)
 	}
 
 	// A completed, persisted reply — the funnel's only honest definition of
@@ -1119,5 +1139,26 @@ func trySend(ctx context.Context, out chan<- ai.StreamChunk, chunk ai.StreamChun
 		return true
 	case <-ctx.Done():
 		return false
+	}
+}
+
+// awayPreviewRunes bounds the reply shown in the notification; the channels
+// clip further, this only keeps a long answer out of the nudge row.
+const awayPreviewRunes = 200
+
+// tellAway raises "your coach replied" for a turn the person walked away
+// from. It never fails the turn: the reply is already stored.
+func (s *Service) tellAway(ctx context.Context, target pumpTarget, messageID uuid.UUID, text string) {
+	if s.away == nil || target.source != "" {
+		return
+	}
+	preview := []rune(text)
+	if len(preview) > awayPreviewRunes {
+		preview = append(preview[:awayPreviewRunes-1], '…')
+	}
+	href := "/app/chat/" + target.conversation.ID.String()
+	if err := s.away.Raise(ctx, target.user, nudge.KindCoachReply, messageID.String(),
+		"Your coach replied", string(preview), href); err != nil {
+		middleware.FromContext(ctx).Warn("coach: could not say the reply is ready", slog.Any("error", err))
 	}
 }
