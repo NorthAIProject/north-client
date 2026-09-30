@@ -5964,7 +5964,7 @@ components:
           type: string
     NotificationSettings:
       type: object
-      required: [nudgeMissedCheckIn, nudgeGoalDeadline, coachActivity, trainingReminders, weeklyReportAuto, dailyBriefingAuto, statsDigestCadence, quietHoursEnabled, quietStart, quietEnd, photoAskEnabled, photoEveryDays, photoReminderDays]
+      required: [nudgeMissedCheckIn, nudgeGoalDeadline, coachActivity, trainingReminders, weeklyReportAuto, dailyBriefingAuto, statsDigestCadence, quietHoursEnabled, quietStart, quietEnd, photoAskEnabled, photoEveryDays, photoReminderDays, briefingHour, eveningReflection, eveningHour]
       properties:
         nudgeMissedCheckIn:
           type: boolean
@@ -5994,6 +5994,19 @@ components:
           type: integer
         photoReminderDays:
           type: integer
+        briefingHour:
+          type: integer
+          minimum: 0
+          maximum: 23
+          description: Local hour the morning briefing is written and pushed. Optional on PUT; left out, the saved hour is kept.
+        eveningReflection:
+          type: boolean
+          description: Ask each evening how the day went. Optional on PUT; left out, the saved value is kept.
+        eveningHour:
+          type: integer
+          minimum: 0
+          maximum: 23
+          description: Local hour of the evening reflection. Optional on PUT; left out, the saved hour is kept.
     AISettings:
       type: object
       required: [enabled, providers]

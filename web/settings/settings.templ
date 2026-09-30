@@ -3,6 +3,7 @@ package settings
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	"github.com/google/uuid"
 
@@ -84,6 +85,9 @@ type NotificationsForm struct {
 	QuietHoursEnabled  bool
 	QuietStart         string
 	QuietEnd           string
+	BriefingHour       int
+	EveningReflection  bool
+	EveningHour        int
 	Errors             map[string]string
 
 	// PushEnabled is whether this deployment can send Web Push at all. The
@@ -95,6 +99,17 @@ type NotificationsForm struct {
 }
 
 func (f NotificationsForm) fieldError(name string) string { return f.Errors[name] }
+
+// hours are the choices for the two timing selects, one per hour of the day.
+func hours() []int {
+	out := make([]int, 24)
+	for i := range out {
+		out[i] = i
+	}
+	return out
+}
+
+func hourLabel(h int) string { return fmt.Sprintf("%02d:00", h) }
 
 // digestCadences is the order the choices are offered in: off first, then
 // least to most frequent.
@@ -132,6 +147,9 @@ func NotificationsFormFor(p notifications.Prefs, photo notifications.Schedule) N
 		QuietHoursEnabled:  p.QuietHoursEnabled,
 		QuietStart:         p.QuietStart,
 		QuietEnd:           p.QuietEnd,
+		BriefingHour:       p.BriefingHour,
+		EveningReflection:  p.EveningReflection,
+		EveningHour:        p.EveningHour,
 	}
 }
 
@@ -149,7 +167,17 @@ func NotificationsFormFrom(in notifications.Input) NotificationsForm {
 		QuietHoursEnabled:  in.QuietHoursEnabled,
 		QuietStart:         in.QuietStart,
 		QuietEnd:           in.QuietEnd,
+		BriefingHour:       intOr(in.BriefingHour, notifications.DefaultBriefingHour),
+		EveningReflection:  in.EveningReflection != nil && *in.EveningReflection,
+		EveningHour:        intOr(in.EveningHour, notifications.DefaultEveningHour),
 	}
+}
+
+func intOr(v *int, fallback int) int {
+	if v == nil {
+		return fallback
+	}
+	return *v
 }
 
 // PreferencesForm carries units/objective/macro-split defaults.
@@ -507,6 +535,19 @@ templ notificationsCard(f NotificationsForm) {
 						{ i18n.T(ctx, "settings.notif.briefing.desc") }
 					}
 				}
+				@hourSelect(ctx, "briefing_hour", "settings.notif.briefing.hour", f.BriefingHour, f.fieldError("briefing_hour"))
+				@form.Item() {
+					@switchcomp.Switch(switchcomp.Props{
+						ID: "evening_reflection", Name: "evening_reflection", Checked: f.EveningReflection,
+					})
+					@label.Label(label.Props{For: "evening_reflection"}) {
+						{ i18n.T(ctx, "settings.notif.evening") }
+					}
+					@form.Description() {
+						{ i18n.T(ctx, "settings.notif.evening.desc") }
+					}
+				}
+				@hourSelect(ctx, "evening_hour", "settings.notif.evening.hour", f.EveningHour, f.fieldError("evening_hour"))
 				// A cadence rather than three switches: somebody wants one of
 				// these, and three toggles admit four combinations nobody holds.
 				@form.Item() {
@@ -861,6 +902,34 @@ templ deleteAccountDialog(user users.User) {
 					}
 				}
 			</form>
+		}
+	}
+}
+
+// hourSelect picks a whole local hour. Hours rather than a time input: the
+// sweeps that send these run hourly, so minutes would be a promise the worker
+// cannot keep.
+templ hourSelect(ctx context.Context, id, labelKey string, value int, fieldErr string) {
+	@form.Item() {
+		@label.Label(label.Props{For: id}) {
+			{ i18n.T(ctx, labelKey) }
+		}
+		@selectbox.SelectBox() {
+			@selectbox.Trigger(selectbox.TriggerProps{ID: id, Name: id, HasError: fieldErr != ""}) {
+				@selectbox.Value(selectbox.ValueProps{Placeholder: hourLabel(value)})
+			}
+			@selectbox.Content(selectbox.ContentProps{}) {
+				for _, h := range hours() {
+					@selectbox.Item(selectbox.ItemProps{Value: strconv.Itoa(h), Selected: h == value}) {
+						{ hourLabel(h) }
+					}
+				}
+			}
+		}
+		if fieldErr != "" {
+			@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+				{ fieldErr }
+			}
 		}
 	}
 }

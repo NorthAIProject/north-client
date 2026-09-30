@@ -455,7 +455,73 @@ func (s *Service) Evaluate(ctx context.Context, user users.User) (int, error) {
 		created += n
 	}
 
+	if prefs.AllowsNudge(KindEveningReflection) {
+		n, err := s.evalEveningReflection(ctx, user, prefs, today, now)
+		if err != nil {
+			return created, err
+		}
+		created += n
+	}
+
 	return created, nil
+}
+
+// eveningReflectionWindow is how long after the chosen hour the reflection may
+// still go out. A sweep that missed the hour catches up within it; one that
+// finds the window closed (quiet hours ran past it, the worker was down)
+// leaves the day alone rather than asking about it the next morning.
+const eveningReflectionWindow = 3
+
+// evalEveningReflection asks, once an evening, how the day went: a check-in if
+// there is none yet today, otherwise a line in the journal.
+//
+// It stays out of the way of the streak warning. When a streak is about to
+// break, that nudge already asks for the same check-in in stronger words, and
+// two notifications about one missing check-in is one too many.
+func (s *Service) evalEveningReflection(ctx context.Context, user users.User, prefs notifications.Prefs, today, now time.Time) (int, error) {
+	hour := now.In(user.Location()).Hour()
+	if hour < prefs.EveningHour || hour >= prefs.EveningHour+eveningReflectionWindow {
+		return 0, nil
+	}
+
+	checkedIn := false
+	if s.checkins != nil {
+		last, ok, err := s.checkins.LatestLocalDate(ctx, user.ID)
+		if err != nil {
+			return 0, err
+		}
+		checkedIn = ok && daysBetween(last, today) == 0
+		if !checkedIn && prefs.AllowsNudge(KindStreakAtRisk) && hour >= streakAtRiskHour {
+			streak, err := s.checkins.StreakAt(ctx, user, now)
+			if err != nil {
+				return 0, err
+			}
+			if streak >= streakAtRiskMin {
+				return 0, nil
+			}
+		}
+	}
+
+	draft := Draft{
+		Kind:      KindEveningReflection,
+		DedupeKey: today.Format("2006-01-02"),
+		Title:     "How did today go?",
+		Body:      "Two taps: how you feel, and one thing that went well.",
+		Href:      "/app/check-ins",
+	}
+	if checkedIn {
+		draft.Body = "You checked in. One line in the journal about today?"
+		draft.Href = "/app/mind"
+	}
+
+	_, inserted, err := s.Raise(ctx, user, draft)
+	if err != nil {
+		return 0, err
+	}
+	if inserted {
+		return 1, nil
+	}
+	return 0, nil
 }
 
 // prefsFor reads this account's notification settings, or the defaults when no

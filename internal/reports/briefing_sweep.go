@@ -9,14 +9,6 @@ import (
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
-// briefingHour is the local hour from which the morning briefing may be
-// written.
-//
-// Earlier than the weekly review's generateHour because this one is meant to be
-// waiting when somebody wakes up, and a briefing generated at 05:00 covers the
-// same recorded day as one generated at 06:00 — nothing is logged overnight.
-const briefingHour = 5
-
 // BriefingSweeper writes the morning briefing for accounts that opted in, once
 // their own morning has arrived.
 //
@@ -66,7 +58,9 @@ func (s *BriefingSweeper) sweepUser(ctx context.Context, user users.User) (bool,
 		return false, nil
 	}
 
-	local, due := localTimeIfDue(s.now(), user, briefingHour)
+	// Their own hour: the briefing is pushed the moment it is written, so the
+	// hour it is written is the hour their phone lights up.
+	local, due := localTimeIfDue(s.now(), user, prefs.BriefingHour)
 	if !due {
 		return false, nil
 	}
