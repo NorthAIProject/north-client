@@ -672,7 +672,8 @@ func routes(
 		Photos: mediaSvc,
 		Facts:  memorySvc,
 	}).WithTraining(workoutSvc).WithSchedules(notificationSvc)
-	coachSvc.WithInbox(coach.InboxFunc(nudgeSvc.RaiseFromUser))
+	coachSvc.WithInbox(coach.InboxFunc(nudgeSvc.RaiseFromUser)).
+		WithAway(coach.InboxFunc(nudgeSvc.RaiseProactive))
 	mediaSvc.WithOnReady(func(ctx context.Context, userID, analysisID uuid.UUID) {
 		_ = nudgeSvc.Note(ctx, userID, nudges.KindFormReady, analysisID.String(),
 			"Your form check is ready",

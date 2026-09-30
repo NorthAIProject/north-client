@@ -212,6 +212,62 @@ func TestReplyIsStoredEvenWhenTheUserDisconnects(t *testing.T) {
 	}
 }
 
+type awayCall struct {
+	kind, dedupe, title, body, href string
+}
+
+// A person who left mid-answer is told the reply is ready; one who stayed and
+// read it is not.
+func TestAReplyFinishedAfterTheUserLeftSaysItIsReady(t *testing.T) {
+	client := fake.Text("This is a long considered reply that keeps going for a while.")
+	client.ChunkDelay = 5 * time.Millisecond
+	h := newHarness(t, client)
+
+	calls := make(chan awayCall, 4)
+	h.coach.WithAway(coach.InboxFunc(func(_ context.Context, _ users.User, kind, dedupe, title, body, href string) error {
+		calls <- awayCall{kind, dedupe, title, body, href}
+		return nil
+	}))
+
+	conversation, err := h.coach.StartConversation(context.Background(), h.user.ID)
+	if err != nil {
+		t.Fatalf("start conversation: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	stream, err := h.coach.SendMessage(ctx, h.user, conversation.ID, "Talk to me about my training.")
+	if err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	<-stream
+	cancel()
+
+	stored := waitForReply(t, h, conversation.ID, 5*time.Second)
+	select {
+	case got := <-calls:
+		want := awayCall{"coach_reply", stored.ID.String(), "Your coach replied", stored.Content, "/app/chat/" + conversation.ID.String()}
+		if got != want {
+			t.Fatalf("away note = %+v, want %+v", got, want)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("nobody was told the reply is ready")
+	}
+
+	// Staying to the end: the pump finishes before the stream closes, so an
+	// empty channel afterwards means nothing was raised.
+	stream, err = h.coach.SendMessage(context.Background(), h.user, conversation.ID, "And tomorrow?")
+	if err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	if _, err := drain(stream); err != nil {
+		t.Fatalf("stream: %v", err)
+	}
+	select {
+	case got := <-calls:
+		t.Fatalf("a reply read live was also announced: %+v", got)
+	default:
+	}
+}
+
 func TestSendMessageRejectsEmptyInput(t *testing.T) {
 	h := newHarness(t, fake.Text("unused"))
 	ctx := context.Background()
