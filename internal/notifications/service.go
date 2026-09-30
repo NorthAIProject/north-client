@@ -29,6 +29,13 @@ type Input struct {
 	QuietHoursEnabled  bool
 	QuietStart         string
 	QuietEnd           string
+
+	// The three below are pointers because a client that predates them
+	// sends nothing, and nothing must mean "keep what is saved" rather than
+	// "midnight, off". Upsert fills a nil one from the stored row.
+	BriefingHour      *int
+	EveningReflection *bool
+	EveningHour       *int
 }
 
 // Validate normalises the window and rejects times the column would refuse.
@@ -49,6 +56,12 @@ func Validate(in Input) (Input, error) {
 	// on purpose and deserves to know it would have muted nothing.
 	if in.QuietHoursEnabled && in.QuietStart == in.QuietEnd {
 		errs = errs.Add("quiet_end", "Quiet hours must start and end at different times.")
+	}
+	if in.BriefingHour != nil && (*in.BriefingHour < 0 || *in.BriefingHour > 23) {
+		errs = errs.Add("briefing_hour", "Choose an hour between 0 and 23.")
+	}
+	if in.EveningHour != nil && (*in.EveningHour < 0 || *in.EveningHour > 23) {
+		errs = errs.Add("evening_hour", "Choose an hour between 0 and 23.")
 	}
 
 	return in, errs.OrNil()
@@ -83,6 +96,10 @@ func normalizeHourMinute(value, fallback string, errs *apperr.FieldErrors, field
 const (
 	defaultQuietStart = "22:00"
 	defaultQuietEnd   = "07:00"
+
+	// DefaultBriefingHour and DefaultEveningHour mirror the column defaults.
+	DefaultBriefingHour = 7
+	DefaultEveningHour  = 21
 )
 
 // defaults is what an account is treated as having before anyone has saved
@@ -100,6 +117,9 @@ func defaults() Prefs {
 		QuietHoursEnabled:  false,
 		QuietStart:         defaultQuietStart,
 		QuietEnd:           defaultQuietEnd,
+		BriefingHour:       DefaultBriefingHour,
+		EveningReflection:  false,
+		EveningHour:        DefaultEveningHour,
 	}
 }
 
@@ -128,7 +148,28 @@ func (s *Service) Upsert(ctx context.Context, userID uuid.UUID, in Input) (Prefs
 	if err != nil {
 		return Prefs{}, err
 	}
+	if clean.BriefingHour == nil || clean.EveningReflection == nil || clean.EveningHour == nil {
+		current, err := s.Get(ctx, userID)
+		if err != nil {
+			return Prefs{}, err
+		}
+		clean = clean.Keeping(current)
+	}
 	return s.repo.Upsert(ctx, userID, clean)
+}
+
+// Keeping fills whichever of the timing fields the caller left out from p.
+func (in Input) Keeping(p Prefs) Input {
+	if in.BriefingHour == nil {
+		in.BriefingHour = &p.BriefingHour
+	}
+	if in.EveningReflection == nil {
+		in.EveningReflection = &p.EveningReflection
+	}
+	if in.EveningHour == nil {
+		in.EveningHour = &p.EveningHour
+	}
+	return in
 }
 
 // PhotoSchedule is the photo check-in cadence, or the default if they have
