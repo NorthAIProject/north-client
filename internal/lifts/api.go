@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
@@ -157,7 +158,7 @@ func ProjectRecap(rc lift.Recap) LiftRecapView {
 	out := LiftRecapView{
 		SessionID: rc.SessionID, StartedAt: rc.StartedAt, PlanWeekday: rc.PlanWeekday, Focus: rc.Focus,
 		Sentence: rc.Sentence, DurationSeconds: int(rc.Duration.Seconds()), SetsDone: rc.SetsDone,
-		SetsPrescribed: rc.SetsPrescribed, VolumeKg: rc.VolumeKg, Calories: lift.Round(rc.Calories),
+		SetsPrescribed: rc.SetsPrescribed, VolumeKg: rc.VolumeKg, Calories: util.RoundHalfUpToScale(rc.Calories, 1),
 		Exercises: make([]LiftRecapExercise, 0, len(rc.Exercises)),
 	}
 	for _, e := range rc.Exercises {
@@ -221,7 +222,7 @@ func (a *API) undo(w http.ResponseWriter, r *http.Request) {
 func ProjectSet(s Set) LiftSetView {
 	return LiftSetView{
 		ID: s.ID, ExerciseKey: s.Key(), ExerciseName: s.ExerciseName, ExerciseSlug: s.ExerciseSlug,
-		SetNumber: s.SetNumber, WeightKg: s.WeightKg, Reps: s.Reps, E1RMKg: lift.Round(s.E1RM()),
+		SetNumber: s.SetNumber, WeightKg: s.WeightKg, Reps: s.Reps, E1RMKg: util.RoundHalfUpToScale(s.E1RM(), 1),
 		PerformedAt: s.PerformedAt, ActivitySessionID: s.ActivitySessionID,
 	}
 }

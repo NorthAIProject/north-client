@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/NorthAIProject/north-client/internal/lifts"
-	"github.com/NorthAIProject/north-client/internal/lifts/lift"
 	"github.com/NorthAIProject/north-client/internal/shared/viz"
 	insightpages "github.com/NorthAIProject/north-client/web/insights"
 )
@@ -44,7 +44,7 @@ func buildLiftingView(st lifts.Stats) insightpages.LiftingView {
 			Name: e.Name, Sets: e.Sets, Best: formatKg(e.BestWeightKg), E1RM: formatKg(e.BestE1RM), Volume: formatKg(e.VolumeKg),
 		}
 		if n := len(e.Trend); n > 1 {
-			row.Change = lift.Round(e.Trend[n-1].Value - e.Trend[0].Value)
+			row.Change = util.RoundHalfUpToScale(e.Trend[n-1].Value-e.Trend[0].Value, 1)
 		}
 		view.Exercises = append(view.Exercises, row)
 	}
@@ -54,7 +54,7 @@ func buildLiftingView(st lifts.Stats) insightpages.LiftingView {
 			Exercise: r.Set.ExerciseName,
 			Lift:     fmt.Sprintf("%s × %d", formatKg(r.Set.WeightKg), r.Set.Reps),
 			E1RM:     formatKg(r.E1RM),
-			Gain:     formatKg(lift.Round(r.E1RM - r.Previous)),
+			Gain:     formatKg(util.RoundHalfUpToScale(r.E1RM-r.Previous, 1)),
 			On:       r.Set.LogDate.Format("Mon, Jan 2"),
 		})
 	}

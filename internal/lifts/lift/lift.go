@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
 )
 
@@ -55,9 +56,6 @@ func E1RM(weightKg float64, reps int) float64 {
 	return weightKg * (1 + float64(reps)/30)
 }
 
-// Round rounds to one decimal, the precision weights are shown at.
-func Round(v float64) float64 { return math.Round(v*10) / 10 }
-
 // Record is a set that beat every earlier estimated max for its exercise.
 type Record struct {
 	Set      Set
@@ -80,7 +78,7 @@ func Records(sets []Set) []Record {
 		e := s.E1RM()
 		prev, seen := best[s.Key()]
 		if seen && e > prev+0.05 {
-			out = append(out, Record{Set: s, E1RM: Round(e), Previous: Round(prev)})
+			out = append(out, Record{Set: s, E1RM: util.RoundHalfUpToScale(e, 1), Previous: util.RoundHalfUpToScale(prev, 1)})
 		}
 		if !seen || e > prev {
 			best[s.Key()] = e
@@ -141,10 +139,10 @@ func ByExercise(sets []Set) []Exercise {
 	}
 	for i := range out {
 		e := &out[i]
-		e.VolumeKg = Round(e.VolumeKg)
-		e.BestE1RM = Round(e.BestE1RM)
+		e.VolumeKg = util.RoundHalfUpToScale(e.VolumeKg, 1)
+		e.BestE1RM = util.RoundHalfUpToScale(e.BestE1RM, 1)
 		for day, v := range days[e.Key] {
-			e.Trend = append(e.Trend, DayValue{Day: day, Value: Round(v)})
+			e.Trend = append(e.Trend, DayValue{Day: day, Value: util.RoundHalfUpToScale(v, 1)})
 		}
 		sort.Slice(e.Trend, func(a, b int) bool { return e.Trend[a].Day.Before(e.Trend[b].Day) })
 	}
@@ -181,7 +179,7 @@ func WeeklyVolume(sets []Set, since, until time.Time) []DayValue {
 	}
 	var out []DayValue
 	for w := start; w.Before(until); w = w.AddDate(0, 0, 7) {
-		out = append(out, DayValue{Day: w, Value: Round(totals[w])})
+		out = append(out, DayValue{Day: w, Value: util.RoundHalfUpToScale(totals[w], 1)})
 	}
 	return out
 }

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -38,8 +39,8 @@ func (r *Repository) Create(ctx context.Context, userID uuid.UUID, d NewDocument
 		UserID:     userID,
 		Title:      d.Title,
 		SourceKind: d.SourceKind,
-		StorageKey: nilIfEmpty(d.StorageKey),
-		Body:       nilIfEmpty(d.Body),
+		StorageKey: util.StrZeroPtr(d.StorageKey),
+		Body:       util.StrZeroPtr(d.Body),
 		Mime:       d.MIME,
 		ByteSize:   d.ByteSize,
 	})
@@ -357,13 +358,6 @@ func decodePath(raw []byte) []string {
 		_ = json.Unmarshal(raw, &out)
 	}
 	return out
-}
-
-func nilIfEmpty(s string) *string {
-	if s == "" {
-		return nil
-	}
-	return &s
 }
 
 func orEmpty(v []string) []string {
