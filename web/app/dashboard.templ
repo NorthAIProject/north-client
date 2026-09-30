@@ -263,10 +263,13 @@ templ panel(title, description string) {
 }
 
 // emptyAction is a panel with nothing in it yet: one line saying so, and the
-// one action that would fill it.
+// action that would fill it. Outlined, because the page's one filled button
+// belongs to the Today card's next step.
 templ emptyAction(message, href, cta string) {
 	<p class="text-muted-foreground mb-4 text-sm">{ message }</p>
-	@primaryButton(href, cta)
+	@button.Button(button.Props{Href: href, Variant: button.VariantOutline}) {
+		{ cta }
+	}
 }
 
 templ primaryButton(href, label string) {
