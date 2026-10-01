@@ -4013,6 +4013,37 @@ paths:
           $ref: '#/components/responses/ValidationError'
         '500':
           $ref: '#/components/responses/InternalError'
+  /lifts/sessions/{sessionID}/recap:
+    parameters:
+      - name: sessionID
+        in: path
+        required: true
+        description: A finished activity session of the caller's.
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getWorkoutRecap
+      summary: A finished workout in a sentence and per exercise, against last time
+      description: >-
+        Computed from the session and the sets logged during it, not generated.
+        Each exercise is compared with the last time it was logged before this
+        session; the first time, the previous fields are absent.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LiftRecap'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /lifts/sets/{setID}:
     parameters:
       - name: setID
@@ -4515,6 +4546,42 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CommitResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '413':
+          $ref: '#/components/responses/ContentTooLarge'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /capture/foods:
+    post:
+      operationId: parseMealFoods
+      summary: Read a spoken or typed meal into portions, each with the ingredients it could mean
+      description: >-
+        Writes nothing. Each line pre-selects `ingredient_id` only when exactly
+        one ingredient answers to the name; otherwise the person chooses from
+        `candidates`. Add the kept lines with
+        `POST /nutrition/meals/{mealID}/ingredients`. Counts against the same
+        quota as `/capture/parse`.
+      security:
+        - connectionToken: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ParseRequest'
+      responses:
+        '200':
+          description: Proposed portions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FoodDraft'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '413':
@@ -5221,6 +5288,61 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/LiftSet'
+    LiftRecap:
+      type: object
+      required: [sessionId, startedAt, sentence, durationSeconds, setsDone, setsPrescribed, volumeKg, calories, exercises]
+      properties:
+        sessionId:
+          type: string
+          format: uuid
+        startedAt:
+          type: string
+          format: date-time
+        planWeekday:
+          type: string
+          description: The plan day this workout finished; absent when it finished none.
+        focus:
+          type: string
+          description: That plan day's focus, when the current plan has the day.
+        sentence:
+          type: string
+          description: 'e.g. "42 minutes, 18 of 20 sets, 4,200 kg. Back squat estimated max up 2.5 kg."'
+        durationSeconds:
+          type: integer
+        setsDone:
+          type: integer
+        setsPrescribed:
+          type: integer
+          description: The plan day's sets in total; 0 when unknown.
+        volumeKg:
+          type: number
+        calories:
+          type: number
+        exercises:
+          type: array
+          items:
+            $ref: '#/components/schemas/LiftRecapExercise'
+    LiftRecapExercise:
+      type: object
+      required: [name, sets, volumeKg, e1rmKg]
+      properties:
+        name:
+          type: string
+        sets:
+          type: integer
+        volumeKg:
+          type: number
+        best:
+          type: string
+          description: The heaviest set by estimated max, e.g. "105 kg × 5". Absent for bodyweight.
+        e1rmKg:
+          type: number
+        previousVolumeKg:
+          type: number
+        previousE1rmKg:
+          type: number
+        changeE1rmKg:
+          type: number
     LiftLast:
       type: object
       required: [exercises]
@@ -5976,6 +6098,57 @@ components:
           type: array
           items:
             type: string
+    FoodDraft:
+      type: object
+      required: [lines, unparsed]
+      properties:
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/FoodLine'
+        unparsed:
+          type: array
+          description: Text that became no portion, including anything that was not food.
+          items:
+            type: string
+    FoodLine:
+      type: object
+      required: [source, query, grams, candidates]
+      properties:
+        source:
+          type: string
+          description: The person's own words for this line.
+        query:
+          type: string
+          description: The name that was looked up.
+        grams:
+          type: number
+          format: double
+        uncertain:
+          type: boolean
+          description: Set when the grams were converted or estimated.
+        ingredient_id:
+          type: string
+          format: uuid
+          description: The match, present only when exactly one ingredient answers to the name.
+        matched_name:
+          type: string
+        candidates:
+          type: array
+          items:
+            $ref: '#/components/schemas/FoodCandidate'
+        problem:
+          type: string
+          description: Why the line cannot be added, such as nothing in the catalog matching.
+    FoodCandidate:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
     CommitRequest:
       type: object
       required: [items]
@@ -6687,7 +6860,7 @@ components:
           type: string
     NotificationSettings:
       type: object
-      required: [nudgeMissedCheckIn, nudgeGoalDeadline, coachActivity, trainingReminders, weeklyReportAuto, dailyBriefingAuto, statsDigestCadence, quietHoursEnabled, quietStart, quietEnd, photoAskEnabled, photoEveryDays, photoReminderDays]
+      required: [nudgeMissedCheckIn, nudgeGoalDeadline, coachActivity, trainingReminders, weeklyReportAuto, dailyBriefingAuto, statsDigestCadence, quietHoursEnabled, quietStart, quietEnd, photoAskEnabled, photoEveryDays, photoReminderDays, briefingHour, eveningReflection, eveningHour]
       properties:
         nudgeMissedCheckIn:
           type: boolean
@@ -6717,6 +6890,19 @@ components:
           type: integer
         photoReminderDays:
           type: integer
+        briefingHour:
+          type: integer
+          minimum: 0
+          maximum: 23
+          description: Local hour the morning briefing is written and pushed. Optional on PUT; left out, the saved hour is kept.
+        eveningReflection:
+          type: boolean
+          description: Ask each evening how the day went. Optional on PUT; left out, the saved value is kept.
+        eveningHour:
+          type: integer
+          minimum: 0
+          maximum: 23
+          description: Local hour of the evening reflection. Optional on PUT; left out, the saved hour is kept.
     AISettings:
       type: object
       required: [enabled, providers]
@@ -7013,7 +7199,7 @@ components:
           format: date-time
     TrainingDay:
       type: object
-      required: [weekday, focus, exercises]
+      required: [weekday, focus, exercises, completedThisWeek, isNext]
       properties:
         weekday:
           type: string
@@ -7027,6 +7213,14 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/DayExercise'
+        completedThisWeek:
+          type: boolean
+          description: >-
+            A finished session accounts for this day in the current Monday–Sunday
+            week, in the person's time zone. Resets on Monday.
+        isNext:
+          type: boolean
+          description: The first unfinished plan day from today on — the one to train next.
     DayExercise:
       type: object
       required: [name, sets, reps, restSeconds, equipment, hasArt, primaryMuscles, secondaryMuscles]
@@ -7200,6 +7394,12 @@ components:
       properties:
         activityCode:
           type: string
+        planWeekday:
+          type: string
+          description: >-
+            The plan day a guided workout was opened for, e.g. Wednesday.
+            Finishing the session marks that day completed for the week, even
+            when it is trained on another day.
     GoalUpdate:
       type: object
       required: [id, note, createdAt]
@@ -8583,6 +8783,49 @@ components:
         totalTime:
           type: string
         hasSessions:
+          type: boolean
+        plan:
+          $ref: '#/components/schemas/InsightsPlanWeek'
+        recap:
+          $ref: '#/components/schemas/LiftRecap'
+    InsightsPlanWeek:
+      type: object
+      description: The training plan against what was done. Absent without a plan.
+      required: [sentence, done, planned, days, rangeDone, rangePlanned, rangeSentence]
+      properties:
+        sentence:
+          type: string
+          description: 'This week, e.g. "2 of 4 sessions done this week."'
+        done:
+          type: integer
+        planned:
+          type: integer
+        days:
+          type: array
+          description: This Monday–Sunday week's plan days in date order.
+          items:
+            $ref: '#/components/schemas/InsightsPlanDay'
+        rangeDone:
+          type: integer
+          description: Plan days in the requested range that were done.
+        rangePlanned:
+          type: integer
+        rangeSentence:
+          type: string
+    InsightsPlanDay:
+      type: object
+      required: [weekday, focus, date, done, today]
+      properties:
+        weekday:
+          type: string
+        focus:
+          type: string
+        date:
+          type: string
+          format: date
+        done:
+          type: boolean
+        today:
           type: boolean
     InsightsSession:
       type: object

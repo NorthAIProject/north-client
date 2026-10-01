@@ -42,8 +42,10 @@ import (
 	"github.com/NorthAIProject/north-client/internal/fitness/strava"
 	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/habits"
+	"github.com/NorthAIProject/north-client/internal/health"
 	"github.com/NorthAIProject/north-client/internal/hydration"
 	"github.com/NorthAIProject/north-client/internal/insights"
+	"github.com/NorthAIProject/north-client/internal/integrations"
 	"github.com/NorthAIProject/north-client/internal/jobs"
 	"github.com/NorthAIProject/north-client/internal/lifts"
 	"github.com/NorthAIProject/north-client/internal/mcpauth"
@@ -428,7 +430,17 @@ func run() error {
 	})
 	// The morning briefing also lands in the latest chat, captioned
 	// "Briefing", and the bell note opens that thread.
-	reportSvc.WithInbox(nudgeSvc).WithChats(memoryExtract.Conversations)
+	reportSvc.WithInbox(nudgeSvc).WithChats(memoryExtract.Conversations).
+		WithToday(reports.NewTodayContext(
+			health.NewService(health.NewRepository(pool)),
+			workoutSvc,
+			// The briefing reads the calendar the same way the coach does:
+			// through the person's own MCP calendar server, when connected.
+			integrations.NewService(
+				integrations.NewRepository(pool, sealer),
+				integrations.NewCalendarAdapter(integrations.NewClient()),
+			),
+		))
 
 	// Standing tasks: every fifteen minutes, each due watch runs through the
 	// coach and what it says is posted into its thread, then raised as a
@@ -455,7 +467,7 @@ func run() error {
 			hydration.NewContextSource(hydration.NewService(hydration.NewRepository(pool))),
 			sleep.NewContextSource(sleep.NewService(sleep.NewRepository(pool))),
 			caffeine.NewContextSource(caffeine.NewService(caffeine.NewRepository(pool))),
-			lifts.NewContextSource(lifts.NewService(lifts.NewRepository(pool), exercises.NewService(exercises.NewRepository(pool)))),
+			lifts.NewContextSource(lifts.NewService(lifts.NewRepository(pool), exercises.NewService(exercises.NewRepository(pool))).WithRecaps(activitySvc, workoutSvc)),
 			fasting.NewContextSource(fasting.NewService(fasting.NewRepository(pool))),
 			supplements.NewContextSource(supplements.NewService(supplements.NewRepository(pool))),
 			screentime.NewContextSource(screentime.NewService(screentime.NewRepository(pool))),

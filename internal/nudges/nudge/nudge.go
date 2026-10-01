@@ -20,6 +20,9 @@ const (
 	KindBriefingReady     = "briefing_ready"
 	KindPhotoAsk          = "photo_ask"
 	KindPhotoReminder     = "photo_reminder"
+	// KindEveningReflection is the nightly "how did today go", opted into
+	// separately from the accountability nudges.
+	KindEveningReflection = "evening_reflection"
 	// KindCrewCheckIn is the evening note that crewmates have checked in
 	// and you have not.
 	KindCrewCheckIn = "crew_checkin"

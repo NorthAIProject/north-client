@@ -1,0 +1,24 @@
+{
+  "sessionId": "22222222-2222-2222-2222-222222222222",
+  "startedAt": "2026-09-24T18:00:00Z",
+  "planWeekday": "Thursday",
+  "focus": "Lower body",
+  "sentence": "42 minutes, 2 of 6 sets, 1,025 kg. Barbell squat estimated max up 5.8 kg.",
+  "durationSeconds": 2520,
+  "setsDone": 2,
+  "setsPrescribed": 6,
+  "volumeKg": 1025,
+  "calories": 310.4,
+  "exercises": [
+    {
+      "name": "Barbell squat",
+      "sets": 2,
+      "volumeKg": 1025,
+      "best": "105 kg × 5",
+      "e1rmKg": 122.5,
+      "previousVolumeKg": 975,
+      "previousE1rmKg": 116.7,
+      "changeE1rmKg": 5.8
+    }
+  ]
+}

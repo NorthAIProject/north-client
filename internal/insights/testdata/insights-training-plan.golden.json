@@ -1,0 +1,74 @@
+{
+  "range": {
+    "key": "week",
+    "label": "Last 7 days",
+    "options": []
+  },
+  "sessions": [],
+  "burn": {
+    "labels": [],
+    "series": []
+  },
+  "kinds": [],
+  "calories": 0,
+  "delta": {
+    "direction": 0,
+    "pct": 0,
+    "hasPrior": false
+  },
+  "sessionCount": 0,
+  "totalTime": "",
+  "hasSessions": false,
+  "plan": {
+    "sentence": "1 of 3 sessions done this week.",
+    "done": 1,
+    "planned": 3,
+    "days": [
+      {
+        "weekday": "Monday",
+        "focus": "Push",
+        "date": "2026-09-28",
+        "done": true,
+        "today": false
+      },
+      {
+        "weekday": "Wednesday",
+        "focus": "Legs",
+        "date": "2026-09-30",
+        "done": false,
+        "today": true
+      },
+      {
+        "weekday": "Friday",
+        "focus": "Pull",
+        "date": "2026-10-02",
+        "done": false,
+        "today": false
+      }
+    ],
+    "rangeDone": 1,
+    "rangePlanned": 2,
+    "rangeSentence": "1 of 2 planned sessions done."
+  },
+  "recap": {
+    "sessionId": "00000000-0000-0000-0000-000000000000",
+    "startedAt": "2026-09-28T18:00:00Z",
+    "planWeekday": "Monday",
+    "focus": "Push",
+    "sentence": "40 minutes, 3 of 3 sets, 720 kg.",
+    "durationSeconds": 2400,
+    "setsDone": 3,
+    "setsPrescribed": 3,
+    "volumeKg": 720,
+    "calories": 0,
+    "exercises": [
+      {
+        "name": "Bench press",
+        "sets": 3,
+        "volumeKg": 720,
+        "best": "60 kg × 4",
+        "e1rmKg": 68
+      }
+    ]
+  }
+}

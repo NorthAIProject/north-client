@@ -22,6 +22,7 @@ const (
 	KindBriefingReady     = nudge.KindBriefingReady
 	KindPhotoAsk          = nudge.KindPhotoAsk
 	KindPhotoReminder     = nudge.KindPhotoReminder
+	KindEveningReflection = nudge.KindEveningReflection
 	KindCrewCheckIn       = nudge.KindCrewCheckIn
 )
 
@@ -34,7 +35,7 @@ const CategoryCheckIn = "CHECKIN"
 // empty for a plain banner. Only the nudges that ask for a check-in get one.
 func PushCategory(kind string) string {
 	switch kind {
-	case KindMissedCheckIn, KindStreakAtRisk, KindCrewCheckIn:
+	case KindMissedCheckIn, KindStreakAtRisk, KindCrewCheckIn, KindEveningReflection:
 		return CategoryCheckIn
 	default:
 		return ""

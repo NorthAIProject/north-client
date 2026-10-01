@@ -52,3 +52,18 @@ func TestLiftStatsShape(t *testing.T) {
 		PriorVolumeKg: 900,
 	}))
 }
+
+func TestLiftRecapShape(t *testing.T) {
+	t.Parallel()
+	earlier := fixtureSets()
+	for i := range earlier {
+		earlier[i].PerformedAt = earlier[i].PerformedAt.AddDate(0, 0, -7)
+		earlier[i].LogDate = earlier[i].LogDate.AddDate(0, 0, -7)
+		earlier[i].WeightKg -= 5
+	}
+	rc := lift.BuildRecap(42*time.Minute, 310.4, 6, fixtureSets(), earlier)
+	rc.SessionID = uuid.MustParse("22222222-2222-2222-2222-222222222222")
+	rc.StartedAt = time.Date(2026, 9, 24, 18, 0, 0, 0, time.UTC)
+	rc.PlanWeekday, rc.Focus = "Thursday", "Lower body"
+	apitest.AssertGolden(t, "lift_recap.golden.json", lifts.ProjectRecap(rc))
+}

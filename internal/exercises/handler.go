@@ -1,23 +1,47 @@
 package exercises
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
+	"github.com/NorthAIProject/north-client/internal/workouts/plan"
 	exercisepages "github.com/NorthAIProject/north-client/web/exercises"
 )
 
 type Handler struct {
-	svc *Service
+	svc   *Service
+	plans PlanLookup
 }
 
 func NewHandler(svc *Service) *Handler { return &Handler{svc: svc} }
+
+// PlanLookup returns the reader's current training plan, or an error matching
+// apperr.ErrNotFound when they have none.
+//
+// A function rather than the workouts service: workouts already imports this
+// package to resolve plans against the catalog, so the dependency has to point
+// the other way. cmd/web wires it.
+type PlanLookup func(ctx context.Context, userID uuid.UUID) (uuid.UUID, plan.Plan, error)
+
+// WithPlans lets the detail page say where an exercise sits in the reader's
+// plan and offer to add it. Without it the page still renders; it only points
+// at building a plan.
+func (h *Handler) WithPlans(lookup PlanLookup) *Handler {
+	h.plans = lookup
+	return h
+}
+
+// similarLimit is how many related movements the detail page suggests. Enough
+// to offer a swap, few enough to read as a suggestion rather than a second list.
+const similarLimit = 4
 
 func (h *Handler) Routes(r chi.Router) {
 	r.Get("/exercises", h.browse)
@@ -122,10 +146,68 @@ func (h *Handler) detail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	view := exercisepages.DetailView{Exercise: found}
+	if view.PlanID, view.Days, err = h.planDays(r, found.Slug); err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	if view.Similar, err = h.similar(r, found); err != nil {
+		h.fail(w, r, err)
+		return
+	}
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := exercisepages.Detail(user, found).Render(ctx, w); err != nil {
+	if err := exercisepages.Detail(user, view).Render(ctx, w); err != nil {
 		middleware.FromContext(ctx).Error("render exercise detail", slog.Any("error", err))
 	}
+}
+
+// planDays reads the reader's plan day by day, marking the days that already
+// include this exercise. No plan is not an error: it is the page's "build a
+// plan" case, signalled by a nil id.
+func (h *Handler) planDays(r *http.Request, slug string) (uuid.UUID, []exercisepages.PlanDayOption, error) {
+	if h.plans == nil {
+		return uuid.Nil, nil, nil
+	}
+	user := auth.MustUser(r.Context())
+	id, p, err := h.plans(r.Context(), user.ID)
+	if err != nil {
+		if apperr.Is(err, apperr.ErrNotFound) {
+			return uuid.Nil, nil, nil
+		}
+		return uuid.Nil, nil, err
+	}
+
+	days := make([]exercisepages.PlanDayOption, len(p.Days))
+	for i, day := range p.Days {
+		days[i] = exercisepages.PlanDayOption{Index: i, Weekday: day.Weekday, Focus: day.Focus}
+		for _, ex := range day.Exercises {
+			if ex.CatalogSlug == slug {
+				days[i].Includes = true
+				break
+			}
+		}
+	}
+	return id, days, nil
+}
+
+// similar is other movements for the same main muscle, so a page that turns
+// out to be the wrong exercise still leads somewhere.
+func (h *Handler) similar(r *http.Request, e Exercise) ([]Exercise, error) {
+	if len(e.Primary) == 0 {
+		return nil, nil
+	}
+	found, _, err := h.svc.Search(r.Context(), Filter{Muscle: e.Primary[0], Limit: similarLimit + 1})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Exercise, 0, similarLimit)
+	for _, candidate := range found {
+		if candidate.Slug != e.Slug && len(out) < similarLimit {
+			out = append(out, candidate)
+		}
+	}
+	return out, nil
 }
 
 // muscles renders the viewer alone, for a page that knows a slug and nothing

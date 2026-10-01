@@ -7,6 +7,8 @@ import (
 	"math"
 	"sort"
 	"time"
+
+	"github.com/FACorreiaa/go-utils/pkg/util"
 )
 
 // DayValue is one figure for one day (or week).
@@ -14,8 +16,6 @@ type DayValue struct {
 	Day   time.Time
 	Value float64
 }
-
-func round1(v float64) float64 { return math.Round(v*10) / 10 }
 
 func mean(xs []float64) float64 {
 	if len(xs) == 0 {
@@ -57,7 +57,7 @@ func Weekly(values []DayValue, since, until time.Time) []DayValue {
 	}
 	var out []DayValue
 	for w := WeekStart(since); w.Before(until); w = w.AddDate(0, 0, 7) {
-		out = append(out, DayValue{Day: w, Value: round1(totals[w])})
+		out = append(out, DayValue{Day: w, Value: util.RoundHalfUpToScale(totals[w], 1)})
 	}
 	return out
 }
@@ -283,16 +283,16 @@ func Cardio(sessions []Session, since, until time.Time) CardioStats {
 			}
 		}
 	}
-	st.DistanceKm = round1(st.DistanceKm)
+	st.DistanceKm = util.RoundHalfUpToScale(st.DistanceKm, 1)
 	st.Kcal = math.Round(st.Kcal)
-	st.Runs.DistanceKm = round1(st.Runs.DistanceKm)
-	st.Runs.LongestKm = round1(st.Runs.LongestKm)
+	st.Runs.DistanceKm = util.RoundHalfUpToScale(st.Runs.DistanceKm, 1)
+	st.Runs.LongestKm = util.RoundHalfUpToScale(st.Runs.LongestKm, 1)
 	st.Runs.AvgPace = math.Round(mean(paces))
 	st.Runs.BestPace = math.Round(st.Runs.BestPace)
 	st.Runs.Best5K = math.Round(st.Runs.Best5K)
 	for _, name := range order {
 		k := kinds[name]
-		k.DistanceKm = round1(k.DistanceKm)
+		k.DistanceKm = util.RoundHalfUpToScale(k.DistanceKm, 1)
 		st.ByKind = append(st.ByKind, *k)
 	}
 	sort.SliceStable(st.ByKind, func(i, j int) bool { return st.ByKind[i].Seconds > st.ByKind[j].Seconds })
@@ -443,7 +443,7 @@ func Eating(entries []FoodEntry, goalKcal, goalProtein, weightKg float64, lateHo
 	st.WeekdayKcal = math.Round(mean(weekday))
 	st.WeekendKcal = math.Round(mean(weekend))
 	if weightKg > 0 {
-		st.ProteinPerKg = round1(st.AvgProtein / weightKg)
+		st.ProteinPerKg = util.RoundHalfUpToScale(st.AvgProtein/weightKg, 1)
 	}
 	for _, f := range foods {
 		f.Kcal = math.Round(f.Kcal)

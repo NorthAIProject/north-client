@@ -16,6 +16,12 @@ type (
 	// naming the leaf package.
 	TrainingWindow = activity.TrainingWindow
 	RouteTotals    = activity.RouteTotals
+
+	// PlanSlot, DayStatus and Adherence are a training plan's days laid over
+	// the sessions that finished them.
+	PlanSlot  = activity.PlanSlot
+	DayStatus = activity.DayStatus
+	Adherence = activity.Adherence
 )
 
 const (
@@ -34,4 +40,9 @@ var (
 	Match             = activity.Match
 	METCodes          = activity.METCodes
 	NewTrainingWindow = activity.NewTrainingWindow
+	CanonicalWeekday  = activity.CanonicalWeekday
+	WeekStart         = activity.WeekStart
+	CompletedWeekdays = activity.CompletedWeekdays
+	ThisWeek          = activity.ThisWeek
+	PlanAdherence     = activity.PlanAdherence
 )

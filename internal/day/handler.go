@@ -16,6 +16,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/dashboard"
 	"github.com/NorthAIProject/north-client/internal/day/day"
 	"github.com/NorthAIProject/north-client/internal/screentime/screen"
+	"github.com/NorthAIProject/north-client/internal/shared/durfmt"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/NorthAIProject/north-client/internal/soreness/sore"
@@ -372,16 +373,11 @@ func railBands(ctx context.Context, s Snapshot) []daypages.BandInput {
 	for _, f := range s.Fasts {
 		label := i18n.Tf(ctx, "day.rail.fast", f.TargetHours)
 		if f.Open() {
-			label = i18n.Tf(ctx, "day.rail.fast_open", hoursMinutes(f.Elapsed))
+			label = i18n.Tf(ctx, "day.rail.fast_open", durfmt.HoursMinutes(int(f.Elapsed.Minutes())))
 		}
 		bands = append(bands, daypages.BandInput{Start: f.StartedAt, End: f.EndedAt, Kind: "fast", Label: label})
 	}
 	return bands
-}
-
-func hoursMinutes(d time.Duration) string {
-	m := int(d.Minutes())
-	return fmt.Sprintf("%dh %02dm", m/60, m%60)
 }
 
 func kindColor(k dashboard.EntryKind) string {

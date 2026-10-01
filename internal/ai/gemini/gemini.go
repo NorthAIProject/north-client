@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"google.golang.org/genai"
 
 	"github.com/NorthAIProject/north-client/internal/ai"
@@ -71,7 +72,7 @@ func (c *Client) Generate(ctx context.Context, req ai.Request) (*ai.Response, er
 	out := &ai.Response{
 		Text:      resp.Text(),
 		ToolCalls: fromFunctionCalls(resp.Candidates),
-		Model:     firstNonEmpty(resp.ModelVersion, c.model(req)),
+		Model:     util.OrDefault(resp.ModelVersion, c.model(req)),
 	}
 	if usage := resp.UsageMetadata; usage != nil {
 		out.Usage = ai.Usage{
@@ -84,17 +85,6 @@ func (c *Client) Generate(ctx context.Context, req ai.Request) (*ai.Response, er
 	}
 
 	return out, nil
-}
-
-// firstNonEmpty returns the first non-empty string, so an unreported model
-// falls back to the requested one rather than to nothing.
-func firstNonEmpty(vals ...string) string {
-	for _, v := range vals {
-		if v != "" {
-			return v
-		}
-	}
-	return ""
 }
 
 func (c *Client) Chat(ctx context.Context, req ai.Request) (<-chan ai.StreamChunk, error) {
@@ -152,7 +142,7 @@ func (c *Client) Chat(ctx context.Context, req ai.Request) (<-chan ai.StreamChun
 		}
 
 		if usage != nil {
-			send(ctx, out, ai.StreamChunk{Usage: usage, Model: firstNonEmpty(streamModel, c.model(req))})
+			send(ctx, out, ai.StreamChunk{Usage: usage, Model: util.OrDefault(streamModel, c.model(req))})
 		}
 	}()
 

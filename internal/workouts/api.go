@@ -91,6 +91,12 @@ type Day struct {
 	StartTime string        `json:"startTime,omitempty"`
 	Focus     string        `json:"focus"`
 	Exercises []DayExercise `json:"exercises"`
+	// CompletedThisWeek is true once a finished session accounts for this
+	// day in the current Monday–Sunday week.
+	CompletedThisWeek bool `json:"completedThisWeek"`
+	// IsNext marks the one day to train next: the first unfinished plan day
+	// from today on.
+	IsNext bool `json:"isNext"`
 }
 
 type DayExercise struct {
@@ -198,12 +204,18 @@ func (a *API) showPlan(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) writePlan(w http.ResponseWriter, r *http.Request, id uuid.UUID, status int) {
-	stored, problems, err := a.svc.PlanForDisplay(r.Context(), id, auth.MustUser(r.Context()).ID)
+	user := auth.MustUser(r.Context())
+	stored, problems, err := a.svc.PlanForDisplay(r.Context(), id, user.ID)
 	if err != nil {
 		httpx.Error(w, err, "That plan was not found.")
 		return
 	}
-	httpx.WriteJSON(w, status, projectDetail(stored, problems))
+	progress, err := a.svc.WeekProgress(r.Context(), user, stored.Plan, time.Now())
+	if err != nil {
+		httpx.Error(w, err, "That plan could not be loaded.")
+		return
+	}
+	httpx.WriteJSON(w, status, projectDetail(stored, problems, progress))
 }
 
 // MARK: Edits
@@ -292,7 +304,12 @@ func (a *API) edit(w http.ResponseWriter, r *http.Request, withIndex bool, body 
 			httpx.Error(w, detailErr, "That plan was not found.")
 			return
 		}
-		httpx.WriteJSON(w, http.StatusConflict, projectDetail(stored, problems))
+		progress, progressErr := a.svc.WeekProgress(r.Context(), user, stored.Plan, time.Now())
+		if progressErr != nil {
+			httpx.Error(w, progressErr, "That plan could not be loaded.")
+			return
+		}
+		httpx.WriteJSON(w, http.StatusConflict, projectDetail(stored, problems, progress))
 	case apperr.Is(err, apperr.ErrValidation):
 		// The plan package's own words: "an exercise needs at least one set".
 		message := strings.TrimSuffix(err.Error(), ": "+apperr.ErrValidation.Error())
@@ -340,7 +357,7 @@ func projectSummary(p StoredPlan) PlanSummary {
 	return PlanSummary{ID: p.ID, Name: p.Plan.Name, WeeksTotal: p.Plan.WeeksTotal, Days: days, Source: sourceOf(p), CreatedAt: p.CreatedAt}
 }
 
-func projectDetail(p StoredPlan, problems []string) PlanDetail {
+func projectDetail(p StoredPlan, problems []string, progress WeekProgress) PlanDetail {
 	days := make([]Day, 0, len(p.Plan.Days))
 	for _, d := range p.Plan.Days {
 		exercises := make([]DayExercise, 0, len(d.Exercises))
@@ -351,7 +368,10 @@ func projectDetail(p StoredPlan, problems []string) PlanDetail {
 				Primary: nonNil(e.Primary), Secondary: nonNil(e.Secondary),
 			})
 		}
-		days = append(days, Day{Weekday: d.Weekday, StartTime: d.StartTime, Focus: d.Focus, Exercises: exercises})
+		days = append(days, Day{
+			Weekday: d.Weekday, StartTime: d.StartTime, Focus: d.Focus, Exercises: exercises,
+			CompletedThisWeek: progress.Done(d.Weekday), IsNext: progress.IsNext(d),
+		})
 	}
 	if problems == nil {
 		problems = []string{}
