@@ -39,6 +39,10 @@ type Service struct {
 	repo    *Repository
 	muscles MuscleLookup
 	now     func() time.Time
+
+	// sessions and prescriptions are for recaps; see WithRecaps.
+	sessions      Sessions
+	prescriptions Prescriptions
 }
 
 // NewService takes the exercise catalog for per-muscle sets; nil leaves

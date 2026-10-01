@@ -202,6 +202,7 @@ type Snapshot struct {
 	Goals           []goals.Goal
 	LastThread      *conversations.Conversation
 	NextSession     *plan.PlanDay
+	DoneToday       *plan.PlanDay
 	PlanID          uuid.UUID
 
 	// Scoped to Range.
@@ -378,8 +379,16 @@ func (s *Service) Load(ctx context.Context, user users.User, rg timerange.Range)
 		switch {
 		case err == nil:
 			snap.PlanID = stored.ID
-			if day, ok := stored.Plan.NextSession(time.Now().In(user.Location())); ok {
-				snap.NextSession = &day
+			now := time.Now().In(user.Location())
+			progress, progressErr := s.workouts.WeekProgress(gctx, user, stored.Plan, now)
+			if progressErr != nil {
+				return progressErr
+			}
+			if progress.HasNext {
+				snap.NextSession = &progress.Next
+			}
+			if day, ok := progress.DoneToday(stored.Plan, now); ok {
+				snap.DoneToday = &day
 			}
 			return nil
 		case apperr.Is(err, apperr.ErrNotFound):

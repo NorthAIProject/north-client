@@ -3,6 +3,7 @@ package workouts
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/NorthAIProject/north-client/internal/coach"
@@ -38,21 +39,72 @@ func (s *ContextSource) Collect(ctx context.Context, req coach.ContextRequest, i
 		return err
 	}
 
-	summary := stored.Plan.Summary()
-	today := time.Now().In(req.User.Location())
-	title, _, due, err := s.svc.DueToday(ctx, req.User, today)
-	if err == nil && due {
-		done, _, _ := s.svc.CompletedToday(ctx, req.User, today)
-		if done {
-			into.WorkoutPlan = fmt.Sprintf("Today's scheduled session (%s): COMPLETED today.\n\nFull program:\n%s", title, summary)
-			return nil
-		}
-		into.WorkoutPlan = fmt.Sprintf("Today's scheduled session (%s): PENDING (not yet completed today).\n\nFull program:\n%s", title, summary)
-		return nil
+	now := time.Now().In(req.User.Location())
+	progress, err := s.svc.WeekProgress(ctx, req.User, stored.Plan, now)
+	if err != nil {
+		return err
 	}
-
-	into.WorkoutPlan = summary
+	into.WorkoutPlan = WeekStatus(stored.Plan, progress, now) + "\n\nFull program:\n" + stored.Plan.Summary()
 	return nil
+}
+
+// WeekStatus is the plan's week in two sentences: what is finished, and
+// what comes next. It is how the coach knows "you already trained today"
+// without the person saying so.
+func WeekStatus(p Plan, progress WeekProgress, now time.Time) string {
+	var b strings.Builder
+	b.WriteString("This week: ")
+	var done []string
+	for _, d := range p.Days {
+		if progress.Done(d.Weekday) {
+			done = append(done, dayLabel(d)+" COMPLETED")
+		}
+	}
+	if len(done) == 0 {
+		b.WriteString("no plan day completed yet.")
+	} else {
+		b.WriteString(strings.Join(done, "; ") + ".")
+	}
+	if !progress.HasNext {
+		return b.String()
+	}
+	b.WriteString(" Next: " + dayLabel(progress.Next))
+	switch {
+	case nextWeek(progress, now):
+		b.WriteString(", next week — every session this week is done.")
+	case strings.EqualFold(progress.Next.Weekday, now.Weekday().String()):
+		b.WriteString(", today, PENDING.")
+	default:
+		b.WriteString(".")
+	}
+	return b.String()
+}
+
+func dayLabel(d PlanDay) string {
+	if d.Focus == "" {
+		return d.Weekday
+	}
+	return fmt.Sprintf("%s (%s)", d.Weekday, d.Focus)
+}
+
+// nextWeek reports whether the next open day falls after Sunday.
+func nextWeek(progress WeekProgress, now time.Time) bool {
+	next, ok := weekdayIndex(progress.Next.Weekday)
+	if !ok {
+		return false
+	}
+	today, _ := weekdayIndex(now.Weekday().String())
+	return next < today || (next == today && progress.Done(progress.Next.Weekday))
+}
+
+// weekdayIndex counts from Monday: Monday is 0, Sunday 6.
+func weekdayIndex(label string) (int, bool) {
+	for d := time.Sunday; d <= time.Saturday; d++ {
+		if strings.EqualFold(d.String(), strings.TrimSpace(label)) {
+			return (int(d) + 6) % 7, true
+		}
+	}
+	return 0, false
 }
 
 var _ coach.ContextSource = (*ContextSource)(nil)
