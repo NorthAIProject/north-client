@@ -18,6 +18,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/health"
 	"github.com/NorthAIProject/north-client/internal/hydration"
 	"github.com/NorthAIProject/north-client/internal/lifts"
+	"github.com/NorthAIProject/north-client/internal/lifts/lift"
 	"github.com/NorthAIProject/north-client/internal/meals"
 	"github.com/NorthAIProject/north-client/internal/mind"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
@@ -66,6 +67,11 @@ type Options struct {
 	// maxes and volume from logged sets. Optional.
 	Lifts LiftStats
 
+	// Plan and Recaps put the training plan over the window: how many plan
+	// days were done, and the latest finished workout. Both optional.
+	Plan   TrainingPlan
+	Recaps Recaps
+
 	// Stats powers the sleep, cardio and patterns pages and the eating
 	// section of nutrition. Optional: without it those pages say so.
 	Stats StatsReader
@@ -93,6 +99,8 @@ type Service struct {
 	spend         *spend.Repository
 	health        HealthReadings
 	lifts         LiftStats
+	plan          TrainingPlan
+	recaps        Recaps
 	stats         StatsReader
 	siteURL       string
 }
@@ -103,6 +111,16 @@ type StatsReader interface {
 	Cardio(ctx context.Context, user users.User, rg timerange.Range) (stats.CardioStats, error)
 	Eating(ctx context.Context, user users.User, rg timerange.Range) (stat.EatingStats, error)
 	Patterns(ctx context.Context, user users.User, rg timerange.Range) ([]stat.Finding, int, error)
+}
+
+// TrainingPlan is the latest plan's days.
+type TrainingPlan interface {
+	PlanSlots(ctx context.Context, user users.User) ([]activity.PlanSlot, bool, error)
+}
+
+// Recaps finds the latest finished workout in a window.
+type Recaps interface {
+	LatestRecap(ctx context.Context, user users.User, rg timerange.Range) (lift.Recap, bool, error)
 }
 
 // LiftStats is the slice of lifts.Service the training page needs.
@@ -133,6 +151,8 @@ func NewService(opts Options) *Service {
 		spend:         opts.Spend,
 		health:        opts.Health,
 		lifts:         opts.Lifts,
+		plan:          opts.Plan,
+		recaps:        opts.Recaps,
 		stats:         opts.Stats,
 		siteURL:       opts.SiteURL,
 	}
@@ -299,10 +319,21 @@ type TrainingData struct {
 
 	// Lifts is empty when the service was built without lifts.
 	Lifts lifts.Stats
+
+	// Week is the plan over this Monday–Sunday week, day by day; Adherence
+	// is the plan over the window, as a count. Both are empty without a plan.
+	HasPlan   bool
+	Week      activity.Adherence
+	Adherence activity.Adherence
+	Now       time.Time
+
+	// Recap is the latest finished workout inside the window.
+	Recap    lift.Recap
+	HasRecap bool
 }
 
 func (s *Service) Training(ctx context.Context, user users.User, rg timerange.Range) (TrainingData, error) {
-	out := TrainingData{Range: rg}
+	out := TrainingData{Range: rg, Now: time.Now().In(user.Location())}
 	prev := rg.Previous()
 
 	g, gctx := errgroup.WithContext(ctx)
@@ -322,6 +353,26 @@ func (s *Service) Training(ctx context.Context, user users.User, rg timerange.Ra
 	if s.lifts != nil {
 		g.Go(func() (err error) {
 			out.Lifts, err = s.lifts.Stats(gctx, user, rg)
+			return
+		})
+	}
+	if s.plan != nil {
+		g.Go(func() error {
+			slots, ok, err := s.plan.PlanSlots(gctx, user)
+			if err != nil || !ok {
+				return err
+			}
+			out.HasPlan = true
+			if out.Week, err = s.activity.ThisWeek(gctx, user.ID, slots, user.Location(), out.Now); err != nil {
+				return err
+			}
+			out.Adherence, err = s.activity.PlanAdherence(gctx, user.ID, slots, rg)
+			return err
+		})
+	}
+	if s.recaps != nil {
+		g.Go(func() (err error) {
+			out.Recap, out.HasRecap, err = s.recaps.LatestRecap(gctx, user, rg)
 			return
 		})
 	}

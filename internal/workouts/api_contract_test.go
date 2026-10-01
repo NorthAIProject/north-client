@@ -33,6 +33,8 @@ func TestTrainingShapes(t *testing.T) {
 	t.Parallel()
 
 	stored := contractPlan()
-	apitest.AssertGolden(t, "plan.golden.json", projectDetail(stored, []string{"Thursday has no exercises."}))
+	// Monday is done this week, so Thursday is next.
+	progress := WeekProgress{Completed: []string{"Monday"}, Next: stored.Plan.Days[1], HasNext: true}
+	apitest.AssertGolden(t, "plan.golden.json", projectDetail(stored, []string{"Thursday has no exercises."}, progress))
 	apitest.AssertGolden(t, "plans.golden.json", PlanList{Plans: []PlanSummary{projectSummary(stored)}})
 }
