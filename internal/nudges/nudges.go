@@ -22,6 +22,7 @@ const (
 	KindBriefingReady     = nudge.KindBriefingReady
 	KindPhotoAsk          = nudge.KindPhotoAsk
 	KindPhotoReminder     = nudge.KindPhotoReminder
+	KindCrewCheckIn       = nudge.KindCrewCheckIn
 )
 
 // CategoryCheckIn is the iOS notification category that puts mood buttons
@@ -33,7 +34,7 @@ const CategoryCheckIn = "CHECKIN"
 // empty for a plain banner. Only the nudges that ask for a check-in get one.
 func PushCategory(kind string) string {
 	switch kind {
-	case KindMissedCheckIn, KindStreakAtRisk:
+	case KindMissedCheckIn, KindStreakAtRisk, KindCrewCheckIn:
 		return CategoryCheckIn
 	default:
 		return ""

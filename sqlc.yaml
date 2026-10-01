@@ -331,6 +331,16 @@ sql:
 
   - engine: postgresql
     schema: migrations
+    queries: internal/crews/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: crewsdb
+        out: internal/crews/db
+        overrides: *overrides
+
+  - engine: postgresql
+    schema: migrations
     queries: internal/social/db/queries.sql
     gen:
       go:
