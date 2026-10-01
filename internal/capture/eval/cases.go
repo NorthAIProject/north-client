@@ -118,5 +118,39 @@ func Cases() []Case {
 				UnparsedMentions("dentist"),
 			},
 		},
+		{
+			ID:     "a-plain-breakfast",
+			Why:    "Food is the kind people most want to say rather than type. Two foods must be two rows, each with a weight.",
+			Text:   "two eggs and a slice of toast",
+			Habits: theirHabits,
+			Prompt: []PromptAssertion{Renders("`grams` is the weight")},
+			Draft: []DraftAssertion{
+				Counts(2),
+				Foods("egg", "toast"),
+			},
+		},
+		{
+			ID:     "a-food-the-catalog-will-not-have",
+			Why:    "An unusual food must reach the catalog as said, so the miss is flagged; a look-alike swapped in is a wrong row nobody checks.",
+			Text:   "a bowl of kombucha jelly",
+			Habits: theirHabits,
+			Draft: []DraftAssertion{
+				FoodNotSubstituted("kombucha"),
+				NoneOfKind(captured.KindWater, captured.KindHabit, captured.KindCheckIn),
+			},
+		},
+		{
+			ID:     "food-and-a-night",
+			Why:    "Meals arrive mixed with the rest of the day. The sleep must not be lost to the food, nor the coffee turned into water.",
+			Text:   "coffee and a banana, slept 7 hours",
+			Habits: theirHabits,
+			Draft: []DraftAssertion{
+				Sleep(420),
+				// Coffee may be a food lookup or a leftover; both are honest.
+				HasFood("banana"),
+				Accounted("coffee"),
+				NoneOfKind(captured.KindWater, captured.KindHabit),
+			},
+		},
 	}
 }

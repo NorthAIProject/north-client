@@ -41,6 +41,7 @@ var knownNonDestinations = map[string]string{
 	"/app/insights/patterns/body":  "insights range swap",
 	"/app/insights/coach/body":     "insights range swap",
 	"/app/insights/spend/body":     "insights range swap",
+	"/app/capture/panel":           "capture box embedded in My Day and the food log",
 
 	"/app/fitness/activities/sessions": "activity session list fragment",
 

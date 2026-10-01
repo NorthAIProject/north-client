@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/NorthAIProject/north-client/internal/capture"
+	"github.com/NorthAIProject/north-client/internal/capture/captured"
 	"github.com/NorthAIProject/north-client/internal/capture/eval"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
@@ -104,5 +105,48 @@ func TestTheirWordsReachThePrompt(t *testing.T) {
 		if !strings.Contains(system, c.Text) {
 			t.Errorf("%s: the person's own text is not in the prompt", c.ID)
 		}
+	}
+}
+
+// The food cases grade drafts no model wrote, so they are checked here against
+// a right and a wrong answer: an assertion that passes both grades nothing.
+func TestTheFoodCasesTellRightFromWrong(t *testing.T) {
+	t.Parallel()
+
+	food := func(query string, grams float64) captured.Item {
+		return captured.Item{Kind: captured.KindFood, Source: query, Food: &captured.Food{Query: query, Grams: grams}}
+	}
+	sleep := captured.Item{Kind: captured.KindSleep, Source: "slept 7 hours", Sleep: &captured.Sleep{Minutes: 420}}
+
+	cases := map[string]struct{ right, wrong captured.Draft }{
+		"a-plain-breakfast": {
+			right: captured.Draft{Items: []captured.Item{food("eggs", 100), food("toast", 30)}},
+			wrong: captured.Draft{Items: []captured.Item{food("eggs and toast", 130)}},
+		},
+		"a-food-the-catalog-will-not-have": {
+			right: captured.Draft{Items: []captured.Item{food("kombucha jelly", 250)}},
+			wrong: captured.Draft{Items: []captured.Item{food("jelly", 250)}},
+		},
+		"food-and-a-night": {
+			right: captured.Draft{Items: []captured.Item{sleep, food("banana", 120)}, Unparsed: []string{"coffee"}},
+			wrong: captured.Draft{Items: []captured.Item{sleep, food("banana", 120)}},
+		},
+	}
+
+	for _, c := range eval.Cases() {
+		pair, ok := cases[c.ID]
+		if !ok {
+			continue
+		}
+		if failures := c.GradeDraft(pair.right); len(failures) > 0 {
+			t.Errorf("%s: the right answer failed: %v", c.ID, failures)
+		}
+		if failures := c.GradeDraft(pair.wrong); len(failures) == 0 {
+			t.Errorf("%s: the wrong answer passed", c.ID)
+		}
+		delete(cases, c.ID)
+	}
+	for id := range cases {
+		t.Errorf("case %s is not in the corpus", id)
 	}
 }

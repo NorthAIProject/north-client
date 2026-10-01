@@ -6,6 +6,10 @@ var portugueseBrazilianCapture = map[string]string{
 	"capture.ph":      "dormi 6h, 2L de água, li 20 páginas, 78kg, humor 4 energia 3",
 	"capture.read":    "Ler",
 
+	// The box embedded on the food log.
+	"capture.embed.food.title": "Descreva o que você comeu",
+	"capture.embed.food.intro": "Digite ou dite uma refeição. Nada é salvo até você conferir.",
+
 	"capture.left.title": "Não registrado",
 	"capture.left.body":  "Não consegui ler isso como entradas, então nada foi salvo.",
 	"capture.left.ask":   "Perguntar ao treinador",

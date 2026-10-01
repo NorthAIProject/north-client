@@ -42,3 +42,24 @@ func TestLogPresetAndUndo(t *testing.T) {
 		t.Errorf("second undo = %v, want not found", err)
 	}
 }
+
+// The "+" dialog's "Other" row posts milligrams and a label with no preset.
+func TestLogACustomAmountWithoutAPreset(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	user, err := users.NewService(users.NewRepository(pool)).Register(ctx, users.Registration{
+		Email: "matcha@example.com", PasswordHash: "$2a$12$notarealhashbutthatisfineheretestonly", DisplayName: "T", Timezone: "UTC",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc := caffeine.NewService(caffeine.NewRepository(pool))
+
+	e, err := svc.Log(ctx, user, caffeine.LogInput{MG: 70, Label: "  matcha "})
+	if err != nil || e.MG != 70 || e.Label != "matcha" {
+		t.Fatalf("custom log = %+v, %v", e, err)
+	}
+	if _, err := svc.Log(ctx, user, caffeine.LogInput{Label: "mystery"}); !apperr.Is(err, apperr.ErrValidation) {
+		t.Errorf("no amount and no preset should be refused, got %v", err)
+	}
+}
