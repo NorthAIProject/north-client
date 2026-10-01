@@ -16,6 +16,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/exercises/exercise"
 	"github.com/NorthAIProject/north-client/internal/lifts/lift"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/htmx"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -411,6 +412,13 @@ func (h *Handler) setStartTime(w http.ResponseWriter, r *http.Request) {
 // The edit created a new plan, so the URL in the address bar now names a
 // superseded one. Pushing the new id means a reload shows what is on screen.
 func (h *Handler) afterEdit(w http.ResponseWriter, r *http.Request, planID uuid.UUID) {
+	// A plain form post — the exercise page's "add to a day" — gets the plan
+	// page itself. The body below is an htmx fragment and would render as a
+	// bare, unstyled page.
+	if !htmx.IsRequest(r) {
+		http.Redirect(w, r, "/app/training/"+planID.String(), http.StatusSeeOther)
+		return
+	}
 	w.Header().Set("HX-Push-Url", "/app/training/"+planID.String())
 	h.renderPlanBody(w, r, planID, http.StatusOK)
 }
@@ -437,6 +445,10 @@ func (h *Handler) afterEditError(w http.ResponseWriter, r *http.Request, user us
 		return
 	}
 
+	if !htmx.IsRequest(r) {
+		http.Redirect(w, r, "/app/training/"+current.ID.String(), http.StatusSeeOther)
+		return
+	}
 	w.Header().Set("HX-Push-Url", "/app/training/"+current.ID.String())
 	h.renderPlanBody(w, r, current.ID, http.StatusConflict)
 }
