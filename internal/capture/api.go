@@ -98,6 +98,7 @@ func (a *API) Routes(r chi.Router) {
 		r.Use(a.authenticate)
 		r.Post("/parse", a.parse)
 		r.Post("/commit", a.commit)
+		r.Post("/foods", a.foods)
 	})
 }
 
@@ -110,21 +111,7 @@ func (a *API) parse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Consume rather than the Guard middleware: Guard renders an HTML refusal
-	// page, which is the wrong answer on a JSON route.
-	decision, err := a.quotas.Consume(r.Context(), user.ID, string(user.Tier), quota.QuickCapture)
-	if err != nil {
-		a.log.Error("capture quota", slog.Any("error", err))
-		httpx.Error(w, err, "Something went wrong.")
-		return
-	}
-	if !decision.Allowed {
-		// The same answer the page gives, header and all: a caller should not
-		// have to learn two refusals for one limit.
-		if seconds := int(decision.RetryAfter.Seconds()); seconds > 0 {
-			w.Header().Set("Retry-After", strconv.Itoa(seconds))
-		}
-		httpx.Error(w, httpx.ErrRateLimited, "You have made too many captures for now. Try again shortly.")
+	if !a.allow(w, r, user) {
 		return
 	}
 
@@ -138,6 +125,55 @@ func (a *API) parse(w http.ResponseWriter, r *http.Request) {
 		Items:    nonNil(draft.Items),
 		Unparsed: nonNilStrings(draft.Unparsed),
 	})
+}
+
+// foods reads a meal into portions, each with the ingredients it could mean.
+// It writes nothing: the app adds the portions a person kept through the
+// nutrition API, one call per portion.
+func (a *API) foods(w http.ResponseWriter, r *http.Request) {
+	user := userFrom(r.Context())
+
+	var req ParseRequest
+	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: maxAPIBytes}); err != nil {
+		httpx.Error(w, err, "The request body must be JSON with a text field.")
+		return
+	}
+	if !a.allow(w, r, user) {
+		return
+	}
+
+	draft, err := a.svc.ParseFoods(r.Context(), user, req.Text)
+	if err != nil {
+		a.fail(w, err, "That could not be read.")
+		return
+	}
+
+	draft.Unparsed = nonNilStrings(draft.Unparsed)
+	httpx.WriteJSON(w, http.StatusOK, draft)
+}
+
+// allow spends one parse from the account's capture quota, answering the
+// refusal itself when there is none left.
+//
+// Consume rather than the Guard middleware: Guard renders an HTML refusal
+// page, which is the wrong answer on a JSON route.
+func (a *API) allow(w http.ResponseWriter, r *http.Request, user users.User) bool {
+	decision, err := a.quotas.Consume(r.Context(), user.ID, string(user.Tier), quota.QuickCapture)
+	if err != nil {
+		a.log.Error("capture quota", slog.Any("error", err))
+		httpx.Error(w, err, "Something went wrong.")
+		return false
+	}
+	if !decision.Allowed {
+		// The same answer the page gives, header and all: a caller should not
+		// have to learn two refusals for one limit.
+		if seconds := int(decision.RetryAfter.Seconds()); seconds > 0 {
+			w.Header().Set("Retry-After", strconv.Itoa(seconds))
+		}
+		httpx.Error(w, httpx.ErrRateLimited, "You have made too many captures for now. Try again shortly.")
+		return false
+	}
+	return true
 }
 
 func (a *API) commit(w http.ResponseWriter, r *http.Request) {
