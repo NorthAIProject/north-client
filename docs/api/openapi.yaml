@@ -3155,6 +3155,92 @@ paths:
           description: Unblocked
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /feed:
+    get:
+      operationId: getFeed
+      summary: Your achievements and the ones friends share with you, newest first
+      tags: [social]
+      parameters:
+        - name: before
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: Cursor from the previous page's `before`.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Feed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /social/sharing:
+    get:
+      operationId: getSharing
+      summary: Which kinds of achievement your followers may see
+      tags: [social]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Sharing'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      operationId: setSharing
+      summary: Choose which kinds of achievement your followers may see
+      tags: [social]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Sharing'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Sharing'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /achievements/{achievementID}/kudos:
+    parameters:
+      - name: achievementID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: giveKudos
+      summary: Give kudos to a friend's achievement
+      tags: [social]
+      responses:
+        '204':
+          description: Given
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      operationId: takeKudos
+      summary: Take kudos back
+      tags: [social]
+      responses:
+        '204':
+          description: Taken back
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /news:
     get:
       operationId: getNews
@@ -4393,6 +4479,60 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorBody'
   schemas:
+    FeedItem:
+      type: object
+      required: [id, userId, displayName, handle, category, kind, title, detail, occurredAt, kudos, kudoed, mine]
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        displayName:
+          type: string
+        handle:
+          type: string
+        category:
+          type: string
+          enum: [training, streaks, goals]
+        kind:
+          type: string
+        title:
+          type: string
+        detail:
+          type: string
+        occurredAt:
+          type: string
+          format: date-time
+        kudos:
+          type: integer
+        kudoed:
+          type: boolean
+        mine:
+          type: boolean
+    Feed:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/FeedItem'
+        before:
+          type: string
+          format: date-time
+          description: Pass as `before` for the next page. Absent on the last page.
+    Sharing:
+      type: object
+      required: [training, streaks, goals]
+      properties:
+        training:
+          type: boolean
+        streaks:
+          type: boolean
+        goals:
+          type: boolean
     PersonView:
       type: object
       required: [id, displayName, handle]

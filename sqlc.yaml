@@ -321,6 +321,16 @@ sql:
 
   - engine: postgresql
     schema: migrations
+    queries: internal/achievements/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: achievementsdb
+        out: internal/achievements/db
+        overrides: *overrides
+
+  - engine: postgresql
+    schema: migrations
     queries: internal/social/db/queries.sql
     gen:
       go:

@@ -18,7 +18,20 @@ import (
 const contextGoals = 8
 
 type Service struct {
-	repo *Repository
+	repo         *Repository
+	achievements Achievements
+}
+
+// Achievements records goals and milestones completed, for friends to see
+// when their owner shares goals. achievements.Service satisfies it.
+type Achievements interface {
+	GoalCompleted(ctx context.Context, userID, goalID uuid.UUID, title string, at time.Time)
+	MilestoneReached(ctx context.Context, userID, milestoneID uuid.UUID, title string, at time.Time)
+}
+
+func (s *Service) WithAchievements(a Achievements) *Service {
+	s.achievements = a
+	return s
 }
 
 func NewService(repo *Repository) *Service {
@@ -118,7 +131,11 @@ func (s *Service) SetStatus(ctx context.Context, id, userID uuid.UUID, status st
 	if !slices.Contains(Statuses, status) {
 		return Goal{}, apperr.Wrap(apperr.ErrValidation, "unknown goal status %q", status)
 	}
-	return s.repo.SetStatus(ctx, id, userID, status)
+	g, err := s.repo.SetStatus(ctx, id, userID, status)
+	if err == nil && status == StatusAchieved && s.achievements != nil {
+		s.achievements.GoalCompleted(ctx, userID, g.ID, g.Title, time.Now())
+	}
+	return g, err
 }
 
 func (s *Service) Delete(ctx context.Context, id, userID uuid.UUID) error {
@@ -207,7 +224,11 @@ func (s *Service) SetMilestoneStatus(ctx context.Context, id, userID uuid.UUID, 
 	if !slices.Contains(MilestoneStatuses, status) {
 		return Milestone{}, apperr.Wrap(apperr.ErrValidation, "unknown milestone status %q", status)
 	}
-	return s.repo.SetMilestoneStatus(ctx, id, userID, status)
+	m, err := s.repo.SetMilestoneStatus(ctx, id, userID, status)
+	if err == nil && status == MilestoneCompleted && s.achievements != nil {
+		s.achievements.MilestoneReached(ctx, userID, m.ID, m.Title, time.Now())
+	}
+	return m, err
 }
 
 func (s *Service) DeleteMilestone(ctx context.Context, id, userID uuid.UUID) error {

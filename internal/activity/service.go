@@ -24,9 +24,34 @@ type SyncHook interface {
 }
 
 type Service struct {
-	repo       *Repository
-	biometrics BiometricsLookup
-	sync       SyncHook
+	repo         *Repository
+	biometrics   BiometricsLookup
+	sync         SyncHook
+	achievements Achievements
+}
+
+// Achievements records a finished session for friends to see, when its owner
+// shares training. achievements.Service satisfies it.
+type Achievements interface {
+	WorkoutCompleted(ctx context.Context, userID, sessionID uuid.UUID, name string, minutes int, at time.Time)
+}
+
+func (s *Service) WithAchievements(a Achievements) *Service {
+	s.achievements = a
+	return s
+}
+
+// achieve reports a finished session; a session without an end is not one.
+func (s *Service) achieve(ctx context.Context, session Session) {
+	if s.achievements == nil || session.EndedAt == nil {
+		return
+	}
+	name := session.ActivityCode
+	if met, ok := LookupMET(session.ActivityCode); ok {
+		name = met.Name
+	}
+	s.achievements.WorkoutCompleted(ctx, session.UserID, session.ID, name,
+		int(session.Elapsed(*session.EndedAt).Minutes()), *session.EndedAt)
 }
 
 func NewService(repo *Repository, lookup BiometricsLookup) *Service {
@@ -108,6 +133,7 @@ func (s *Service) Stop(ctx context.Context, id, userID uuid.UUID) (Session, erro
 	if err != nil {
 		return Session{}, err
 	}
+	s.achieve(ctx, completed)
 
 	if s.sync != nil {
 		title := completed.PlanWeekday
@@ -222,6 +248,7 @@ func (s *Service) Log(ctx context.Context, userID uuid.UUID, in LogInput) (Sessi
 	if err != nil {
 		return Session{}, err
 	}
+	s.achieve(ctx, session)
 	if s.sync != nil {
 		_ = s.sync.OnWorkoutCompleted(ctx, userID, in.ActivityCode)
 	}
@@ -281,6 +308,9 @@ func (s *Service) Import(ctx context.Context, in ImportInput) (Session, bool, er
 	session, created, err := s.repo.Import(ctx, in)
 	if err == nil && created && s.sync != nil {
 		_ = s.sync.OnWorkoutCompleted(ctx, in.UserID, in.ActivityCode)
+	}
+	if err == nil && created {
+		s.achieve(ctx, session)
 	}
 	return session, created, err
 }
