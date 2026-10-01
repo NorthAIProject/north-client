@@ -67,7 +67,7 @@ func TestImportDoesNotConflictWithAnOpenSession(t *testing.T) {
 	svc, user := newService(t, withWeight(80))
 	ctx := context.Background()
 
-	if _, err := svc.Start(ctx, user.ID, "strength_training"); err != nil {
+	if _, err := svc.Start(ctx, user.ID, "strength_training", ""); err != nil {
 		t.Fatalf("start a live session: %v", err)
 	}
 
