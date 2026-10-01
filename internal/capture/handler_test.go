@@ -2,11 +2,13 @@ package capture_test
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -22,6 +24,22 @@ func router(svc *capture.Service) http.Handler {
 	quotas := quota.NewService(nil, quota.NewLimits(nil, nil), nil)
 	r := chi.NewRouter()
 	r.Route("/app", capture.NewHandler(svc, quotas).Routes)
+	return r
+}
+
+// meteredRouter is router with a real quota service, for the routes that
+// spend one: parse is guarded, and the guard needs a counter and an identity.
+func meteredRouter(f *fixture) http.Handler {
+	quotas := quota.NewService(
+		quota.NewRepository(f.pool),
+		quota.NewLimits(map[quota.Action]quota.Limit{quota.QuickCapture: {PerWindow: 1000, Window: time.Hour}}, nil),
+		func(ctx context.Context) (quota.Identity, bool) {
+			u, ok := auth.UserFrom(ctx)
+			return quota.Identity{UserID: u.ID, Tier: string(u.Tier)}, ok
+		},
+	)
+	r := chi.NewRouter()
+	r.Route("/app", capture.NewHandler(f.svc, quotas).Routes)
 	return r
 }
 
@@ -166,5 +184,27 @@ func TestCommitWithAFailureKeepsTheReceipt(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "Logged 1 of 2.") {
 		t.Errorf("receipt missing: %s", rec.Body.String())
+	}
+}
+
+// The app's htmx config never swaps a 5xx, so a failed read answered as 500
+// would leave "Read it" looking dead. The panel explaining the failure has to
+// arrive as a swappable response, with the sentence still in the box.
+func TestAFailedReadStillShowsItsMessage(t *testing.T) {
+	f := newFixture(t)
+	f.parser.err = errors.New("model timed out")
+
+	form := url.Values{"text": {"drank 400 ml of water"}, "return_to": {"/app"}}
+	rec := post(t, meteredRouter(f), f.user, "/app/capture/parse", form)
+
+	if rec.Code >= http.StatusInternalServerError {
+		t.Fatalf("status = %d; htmx would drop the panel", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "Something went wrong reading that.") {
+		t.Errorf("error message missing: %s", body)
+	}
+	if !strings.Contains(body, "drank 400 ml of water") {
+		t.Errorf("the sentence was lost: %s", body)
 	}
 }
