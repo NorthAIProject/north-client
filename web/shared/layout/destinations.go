@@ -380,6 +380,12 @@ func Destinations() []Destination {
 			Nav:         NavPlacement{Show: true},
 		},
 		{
+			Key: "nav.leaderboard", Label: "Leaderboard", Href: "/app/friends/leaderboard", Icon: "trophy", Group: GroupProgress,
+			Description: "Your XP and level, ranked with the friends who share theirs.",
+			Keywords:    []string{"xp", "level", "rank", "ranking", "points", "compete", "streak"},
+			Nav:         NavPlacement{Show: true},
+		},
+		{
 			Key: "nav.crews", Label: "Crews", Href: "/app/crews", Icon: "flag", Group: GroupProgress,
 			Description: "A few people keeping each other going.",
 			Keywords:    []string{"group", "accountability", "partner", "challenge", "team"},

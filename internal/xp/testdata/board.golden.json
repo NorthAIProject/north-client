@@ -1,0 +1,28 @@
+{
+  "metric": "xp",
+  "period": "week",
+  "entries": [
+    {
+      "rank": 1,
+      "userId": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+      "displayName": "Bo",
+      "handle": "bo_lifts",
+      "value": 120,
+      "level": {
+        "number": 7,
+        "title": "Relentless",
+        "floor": 6000
+      },
+      "me": false
+    },
+    {
+      "rank": 2,
+      "userId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      "displayName": "Ana",
+      "handle": "",
+      "value": 40,
+      "me": true
+    }
+  ],
+  "sharing": true
+}

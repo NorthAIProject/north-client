@@ -3241,6 +3241,54 @@ paths:
           description: Taken back
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /xp:
+    get:
+      operationId: getXP
+      summary: Your XP this week by kind, lifetime XP and level
+      description: >-
+        Derived from what was done, never stored: workouts of 10 min or more
+        (two a day), habits kept on their days, check-in streak days from day 3,
+        milestones and goals achieved.
+      tags: [social]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/XPSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /leaderboard:
+    get:
+      operationId: getLeaderboard
+      summary: You and the friends who share this metric with you, ranked
+      tags: [social]
+      parameters:
+        - name: metric
+          in: query
+          schema:
+            type: string
+            enum: [xp, streak, workouts]
+            default: xp
+        - name: period
+          in: query
+          description: For xp only; streak is always current and workouts always this week.
+          schema:
+            type: string
+            enum: [week, all]
+            default: week
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Leaderboard'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
   /crews:
     get:
       operationId: listCrews
@@ -4888,6 +4936,91 @@ components:
           type: boolean
         goals:
           type: boolean
+        xp:
+          type: boolean
+          description: >-
+            XP and level, which puts the person on friends' leaderboards. Always
+            in responses; a save that leaves it out keeps it as it was.
+    LevelView:
+      type: object
+      required: [number, title, floor]
+      properties:
+        number:
+          type: integer
+        title:
+          type: string
+        floor:
+          type: integer
+          description: The XP this level starts at.
+        next:
+          type: integer
+          description: The XP the next level starts at. Absent at the top level.
+    EarnedView:
+      type: object
+      required: [kind, count, points]
+      properties:
+        kind:
+          type: string
+          enum: [workout, habit_kept, streak_day, milestone, goal]
+        count:
+          type: integer
+        points:
+          type: integer
+    XPSummary:
+      type: object
+      required: [total, level, weekTotal, week]
+      properties:
+        total:
+          type: integer
+          description: Lifetime XP.
+        level:
+          $ref: '#/components/schemas/LevelView'
+        weekTotal:
+          type: integer
+        week:
+          type: array
+          description: This week (Monday to now, local) by kind, every kind listed.
+          items:
+            $ref: '#/components/schemas/EarnedView'
+    LeaderboardEntry:
+      type: object
+      required: [rank, userId, displayName, handle, value, me]
+      properties:
+        rank:
+          type: integer
+          description: Equal values share a rank ("1, 1, 3").
+        userId:
+          type: string
+          format: uuid
+        displayName:
+          type: string
+        handle:
+          type: string
+        value:
+          type: integer
+          description: XP, streak days, or workouts, by the board's metric.
+        level:
+          $ref: '#/components/schemas/LevelView'
+        me:
+          type: boolean
+    Leaderboard:
+      type: object
+      required: [metric, entries, sharing]
+      properties:
+        metric:
+          type: string
+          enum: [xp, streak, workouts]
+        period:
+          type: string
+          enum: [week, all]
+          description: week or all for xp, week for workouts, absent for streak.
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/LeaderboardEntry'
+        sharing:
+          type: boolean
+          description: Whether the caller shares this metric, i.e. appears on friends' boards.
     PersonView:
       type: object
       required: [id, displayName, handle]

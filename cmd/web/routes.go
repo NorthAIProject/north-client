@@ -85,6 +85,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/watches"
 	"github.com/NorthAIProject/north-client/internal/workouts"
 	"github.com/NorthAIProject/north-client/internal/workouts/plan"
+	"github.com/NorthAIProject/north-client/internal/xp"
 	"github.com/NorthAIProject/north-client/web/assets"
 	"github.com/NorthAIProject/north-client/web/landing"
 	"github.com/NorthAIProject/north-client/web/legal"
@@ -281,6 +282,11 @@ func routes(
 	// Crews read check-ins and finished sessions for their boards.
 	crewSvc := crews.NewService(pool, crews.CheckInsFrom(checkinSvc), crews.WorkoutsFrom(activitySvc))
 	crewHandler := crews.NewHandler(crewSvc, cfg.BaseURL, cfg.Env.IsProduction())
+
+	// XP is derived from what the slices above record; the leaderboard reads
+	// it and the check-in streak.
+	xpSvc := xp.NewService(pool, checkinSvc)
+	xpHandler := xp.NewHandler(xpSvc)
 
 	// Preferences owns the units system, which the calculator renders in.
 	preferencesSvc := preferences.NewService(preferences.NewRepository(pool))
@@ -943,6 +949,7 @@ func routes(
 			social:       social.NewAPI(socialSvc, cfg.BaseURL),
 			achievements: achievements.NewAPI(achievementSvc),
 			crews:        crews.NewAPI(crewSvc, cfg.BaseURL),
+			xp:           xp.NewAPI(xpSvc),
 		})
 	})
 
@@ -1098,6 +1105,7 @@ func routes(
 				decisionHandler.Routes(r)
 				socialHandler.Routes(r)
 				crewHandler.Routes(r)
+				xpHandler.Routes(r)
 				careHandler.Routes(r)
 				captureHandler.Routes(r)
 				activityHandler.Routes(r)

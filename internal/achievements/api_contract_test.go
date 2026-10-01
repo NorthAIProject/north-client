@@ -18,5 +18,5 @@ func TestFeedShapes(t *testing.T) {
 		DisplayName: "Ana", Handle: "ana_runs", Category: "training", Kind: "workout_completed",
 		Title: "Finished Running", Detail: "32 min", OccurredAt: at, Kudos: 3, Kudoed: true,
 	}}))
-	apitest.AssertGolden(t, "sharing.golden.json", SharingView{Training: true, Streaks: false, Goals: true})
+	apitest.AssertGolden(t, "sharing.golden.json", SharingView{Training: true, Streaks: false, Goals: true, XP: true})
 }

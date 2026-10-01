@@ -1,5 +1,6 @@
 {
   "training": true,
   "streaks": false,
-  "goals": true
+  "goals": true,
+  "xp": true
 }

@@ -429,9 +429,10 @@ templ sharingCard(s achievement.Sharing) {
 		@card.Content() {
 			<form method="post" action="/app/friends/sharing" class="space-y-4">
 				@ui.CSRFInput()
-				@shareSwitch("share_training", "Workouts you finish", s.Training)
-				@shareSwitch("share_streaks", "Check-in streaks (7, 30, 100 days…)", s.Streaks)
+				@shareSwitch("share_training", "Workouts you finish, and how many this week", s.Training)
+				@shareSwitch("share_streaks", "Check-in streaks (7, 30, 100 days…) and your current one", s.Streaks)
 				@shareSwitch("share_goals", "Goals and milestones you complete", s.Goals)
+				@shareSwitch("share_xp", "Your XP and level, on friends' leaderboards", s.XP)
 				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantSecondary}) {
 					Save
 				}
