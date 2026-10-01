@@ -103,35 +103,53 @@ func (r *Repository) InviteByCode(ctx context.Context, code string) (InvitePrevi
 	}, nil
 }
 
-// Redeem records that inviteeID came in through code, and connects the two
-// both ways, in one transaction. redeemed is false when the account had
-// already redeemed an invite; nothing changes then.
-func (r *Repository) Redeem(ctx context.Context, inviteeID uuid.UUID, code string, inviterID uuid.UUID) (bool, error) {
+// Redemption is what one Redeem call changed.
+type Redemption struct {
+	// Attributed is true for the account's first invite, the one that counts
+	// as having brought them in.
+	Attributed bool
+	// Connected is true when the two were not already following each other.
+	Connected bool
+}
+
+// Redeem connects the two both ways and, if this is the account's first
+// invite, records it as the one that brought them, in one transaction.
+func (r *Repository) Redeem(ctx context.Context, inviteeID uuid.UUID, code string, inviterID uuid.UUID) (Redemption, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return false, apperr.Wrap(err, "begin redeem")
+		return Redemption{}, apperr.Wrap(err, "begin redeem")
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	q := r.q.WithTx(tx)
 
-	if _, err = q.Redeem(ctx, socialdb.RedeemParams{InviteeID: inviteeID, Code: code}); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return false, nil
-		}
-		return false, apperr.Wrap(err, "redeem invite")
+	var out Redemption
+	switch _, err = q.Redeem(ctx, socialdb.RedeemParams{InviteeID: inviteeID, Code: code}); {
+	case err == nil:
+		out.Attributed = true
+	case !errors.Is(err, pgx.ErrNoRows):
+		return Redemption{}, apperr.Wrap(err, "redeem invite")
 	}
-	// Following each other is what an invite means: they asked, you came.
+
+	// Following each other is what an invite means: they asked, you came. A
+	// friend who was already on Khepri is connected the same way.
 	for _, pair := range [][2]uuid.UUID{{inviteeID, inviterID}, {inviterID, inviteeID}} {
+		before, getErr := q.GetFollow(ctx, socialdb.GetFollowParams{FollowerID: pair[0], FolloweeID: pair[1]})
+		if getErr != nil && !errors.Is(getErr, pgx.ErrNoRows) {
+			return Redemption{}, apperr.Wrap(getErr, "read follow")
+		}
+		if getErr != nil || before.Status != StatusAccepted {
+			out.Connected = true
+		}
 		if _, err = q.UpsertFollow(ctx, socialdb.UpsertFollowParams{
 			FollowerID: pair[0], FolloweeID: pair[1], Status: StatusAccepted,
 		}); err != nil {
-			return false, apperr.Wrap(err, "connect invite")
+			return Redemption{}, apperr.Wrap(err, "connect invite")
 		}
 	}
 	if err = tx.Commit(ctx); err != nil {
-		return false, apperr.Wrap(err, "commit redeem")
+		return Redemption{}, apperr.Wrap(err, "commit redeem")
 	}
-	return true, nil
+	return out, nil
 }
 
 func (r *Repository) Joined(ctx context.Context, inviterID uuid.UUID) (int, error) {
