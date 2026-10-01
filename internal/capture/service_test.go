@@ -336,3 +336,25 @@ func TestParseGroundsTheModelInTheirHabits(t *testing.T) {
 		t.Fatalf("parser saw %+v, want the one habit", f.parser.sawHabits)
 	}
 }
+
+// A food the catalog does not have is flagged, not swapped for something it
+// does. "Kombucha jelly" logged as plain jelly would be a confident wrong row.
+func TestParseFlagsAFoodTheCatalogDoesNotHave(t *testing.T) {
+	f := newFixture(t)
+
+	f.parser.draft = capture.Draft{Items: []capture.Item{
+		{Kind: capture.KindFood, Source: "a bowl of kombucha jelly", Food: &capture.Food{Query: "kombucha jelly", Grams: 250}},
+	}}
+
+	draft, err := f.svc.Parse(context.Background(), f.user, "a bowl of kombucha jelly")
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	got := draft.Items[0]
+	if got.Problem == "" {
+		t.Fatalf("an unknown food should carry a problem; matched %q", got.Food.MatchedName)
+	}
+	if capture.Writable(got) {
+		t.Fatal("an unresolved food must not be writable")
+	}
+}

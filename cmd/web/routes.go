@@ -11,6 +11,7 @@ import (
 	"github.com/posthog/posthog-go"
 
 	"github.com/NorthAIProject/north-client/internal/account"
+	"github.com/NorthAIProject/north-client/internal/achievements"
 	"github.com/NorthAIProject/north-client/internal/activity"
 	"github.com/NorthAIProject/north-client/internal/agent"
 	"github.com/NorthAIProject/north-client/internal/ai"
@@ -29,6 +30,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/config"
 	"github.com/NorthAIProject/north-client/internal/connections"
 	"github.com/NorthAIProject/north-client/internal/conversations"
+	"github.com/NorthAIProject/north-client/internal/crews"
 	"github.com/NorthAIProject/north-client/internal/dashboard"
 	"github.com/NorthAIProject/north-client/internal/day"
 	"github.com/NorthAIProject/north-client/internal/decisions"
@@ -147,10 +149,14 @@ func routes(
 	spendRepo := spend.NewRepository(pool)
 	queue := jobs.NewQueue(pool)
 
-	goalSvc := goals.NewService(goals.NewRepository(pool))
+	// Moments worth showing friends, recorded by the services below as they
+	// happen. The bell is attached once nudges exist, for kudos.
+	achievementSvc := achievements.NewService(pool)
+
+	goalSvc := goals.NewService(goals.NewRepository(pool)).WithAchievements(achievementSvc)
 	goalHandler := goals.NewHandler(goalSvc).WithFunnel(funnel)
 
-	checkinSvc := checkins.NewService(checkins.NewRepository(pool), goalSvc)
+	checkinSvc := checkins.NewService(checkins.NewRepository(pool), goalSvc).WithAchievements(achievementSvc)
 	checkinHandler := checkins.NewHandler(checkinSvc, goalSvc).WithFunnel(funnel)
 
 	notificationSvc := notifications.NewService(notifications.NewRepository(pool))
@@ -176,11 +182,12 @@ func routes(
 		WithPush(apnsSvc).
 		WithFunnel(funnel)
 	nudgeHandler := nudges.NewHandler(nudgeSvc)
+	achievementSvc.WithInbox(nudgeSvc)
 
 	// Handles, invite links, follows and blocks. The bell tells people about
 	// a follow request or a friend arriving from their link.
 	socialSvc := social.NewService(social.NewRepository(pool)).WithInbox(nudgeSvc).WithFunnel(funnel)
-	socialHandler := social.NewHandler(socialSvc, cfg.BaseURL, cfg.Env.IsProduction())
+	socialHandler := social.NewHandler(socialSvc, cfg.BaseURL, cfg.Env.IsProduction()).WithAchievements(achievementSvc)
 
 	memorySvc := memories.NewService(memories.NewRepository(pool))
 	memoryHandler := memories.NewHandler(memorySvc)
@@ -268,8 +275,12 @@ func routes(
 
 	calculatorSvc := calculator.NewService(calculator.NewRepository(pool), biometricSvc)
 
-	activitySvc := activity.NewService(activity.NewRepository(pool), biometricSvc)
+	activitySvc := activity.NewService(activity.NewRepository(pool), biometricSvc).WithAchievements(achievementSvc)
 	activityHandler := activity.NewHandler(activitySvc)
+
+	// Crews read check-ins and finished sessions for their boards.
+	crewSvc := crews.NewService(pool, crews.CheckInsFrom(checkinSvc), crews.WorkoutsFrom(activitySvc))
+	crewHandler := crews.NewHandler(crewSvc, cfg.BaseURL, cfg.Env.IsProduction())
 
 	// Preferences owns the units system, which the calculator renders in.
 	preferencesSvc := preferences.NewService(preferences.NewRepository(pool))
@@ -893,43 +904,45 @@ func routes(
 	// caps are set per group inside mountAPI.
 	r.Group(func(r chi.Router) {
 		mountAPI(r, sessions, apiSet{
-			auth:        authAPI,
-			capture:     captureAPI,
-			onboarding:  onboardingAPI,
-			dashboard:   dashboardAPI,
-			day:         day.NewAPI(daySvc),
-			caffeine:    caffeine.NewAPI(caffeineSvc),
-			lifts:       lifts.NewAPI(liftSvc),
-			stats:       stats.NewAPI(statsSvc),
-			fasting:     fasting.NewAPI(fastingSvc),
-			supplements: supplements.NewAPI(supplementSvc),
-			screenTime:  screentime.NewAPI(screenTimeSvc),
-			soreness:    soreness.NewAPI(sorenessSvc),
-			milestones:  milestones.NewAPI(milestoneSvc),
-			coach:       coach.NewAPI(coachSvc, quotaSvc, mediaSvc),
-			exercises:   exercises.NewAPI(exerciseSvc, assets.Assets),
-			settings:    settings.NewAPI(settingsHandler),
-			training:    workouts.NewAPI(workoutSvc),
-			activity:    activity.NewAPI(activitySvc),
-			health:      health.NewAPI(healthSvc),
-			fitness:     fitness.NewAPI(stravaSvc, cfg.BaseURL),
-			insights:    insights.NewAPI(insightsSvc),
-			goals:       goals.NewAPI(goalSvc),
-			checkins:    checkins.NewAPI(checkinSvc),
-			reports:     reports.NewAPI(reportSvc),
-			memories:    memories.NewAPI(memorySvc),
-			knowledge:   documents.NewAPI(documentSvc, quotaSvc),
-			formChecks:  media.NewAPI(mediaSvc, quotaSvc),
-			care:        care.NewAPI(careOpts),
-			mind:        mind.NewAPI(mindSvc),
-			nutrition:   meals.NewAPI(mealsOpts),
-			decisions:   decisions.NewAPI(decisionSvc),
-			nudges:      nudges.NewAPI(nudgeSvc),
-			devices:     apns.NewAPI(apnsSvc),
-			export:      exportHandler,
-			calculator:  calculator.NewAPI(calculatorSvc, biometricSvc),
-			news:        news.NewAPI(newsSvc),
-			social:      social.NewAPI(socialSvc, cfg.BaseURL),
+			auth:         authAPI,
+			capture:      captureAPI,
+			onboarding:   onboardingAPI,
+			dashboard:    dashboardAPI,
+			day:          day.NewAPI(daySvc),
+			caffeine:     caffeine.NewAPI(caffeineSvc),
+			lifts:        lifts.NewAPI(liftSvc),
+			stats:        stats.NewAPI(statsSvc),
+			fasting:      fasting.NewAPI(fastingSvc),
+			supplements:  supplements.NewAPI(supplementSvc),
+			screenTime:   screentime.NewAPI(screenTimeSvc),
+			soreness:     soreness.NewAPI(sorenessSvc),
+			milestones:   milestones.NewAPI(milestoneSvc),
+			coach:        coach.NewAPI(coachSvc, quotaSvc, mediaSvc),
+			exercises:    exercises.NewAPI(exerciseSvc, assets.Assets),
+			settings:     settings.NewAPI(settingsHandler),
+			training:     workouts.NewAPI(workoutSvc),
+			activity:     activity.NewAPI(activitySvc),
+			health:       health.NewAPI(healthSvc),
+			fitness:      fitness.NewAPI(stravaSvc, cfg.BaseURL),
+			insights:     insights.NewAPI(insightsSvc),
+			goals:        goals.NewAPI(goalSvc),
+			checkins:     checkins.NewAPI(checkinSvc),
+			reports:      reports.NewAPI(reportSvc),
+			memories:     memories.NewAPI(memorySvc),
+			knowledge:    documents.NewAPI(documentSvc, quotaSvc),
+			formChecks:   media.NewAPI(mediaSvc, quotaSvc),
+			care:         care.NewAPI(careOpts),
+			mind:         mind.NewAPI(mindSvc),
+			nutrition:    meals.NewAPI(mealsOpts),
+			decisions:    decisions.NewAPI(decisionSvc),
+			nudges:       nudges.NewAPI(nudgeSvc),
+			devices:      apns.NewAPI(apnsSvc),
+			export:       exportHandler,
+			calculator:   calculator.NewAPI(calculatorSvc, biometricSvc),
+			news:         news.NewAPI(newsSvc),
+			social:       social.NewAPI(socialSvc, cfg.BaseURL),
+			achievements: achievements.NewAPI(achievementSvc),
+			crews:        crews.NewAPI(crewSvc, cfg.BaseURL),
 		})
 	})
 
@@ -1010,6 +1023,8 @@ func routes(
 		r.Method(http.MethodGet, "/privacy", templ.Handler(legal.Privacy()))
 		// Somebody's invite link: who sent it, and the way in.
 		socialHandler.PublicRoutes(r)
+		// A crew's join link.
+		crewHandler.PublicRoutes(r)
 		r.Method(http.MethodGet, "/terms", templ.Handler(legal.Terms()))
 
 		// The footer language switcher, for visitors who have no account to
@@ -1038,6 +1053,7 @@ func routes(
 			// An invite link opened before signing up or in connects the two
 			// people on the first page inside, whichever way they signed in.
 			r.Use(socialHandler.RedeemInvite)
+			r.Use(crewHandler.JoinFromCookie)
 			// Before any page renders, so each text box knows whether to offer
 			// a microphone without every handler passing that along.
 			r.Use(voiceHandler.Advertise)
@@ -1081,6 +1097,7 @@ func routes(
 				mindHandler.Routes(r)
 				decisionHandler.Routes(r)
 				socialHandler.Routes(r)
+				crewHandler.Routes(r)
 				careHandler.Routes(r)
 				captureHandler.Routes(r)
 				activityHandler.Routes(r)

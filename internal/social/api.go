@@ -42,6 +42,7 @@ func (a *API) Routes(r chi.Router) {
 	r.Delete("/follows/{userID}", a.unfollow)
 	r.Post("/followers/{userID}/accept", a.accept)
 	r.Delete("/followers/{userID}", a.removeFollower)
+	r.Post("/friends/match", a.matchContacts)
 	r.Post("/blocks/{userID}", a.block)
 	r.Delete("/blocks/{userID}", a.unblock)
 }
@@ -268,4 +269,42 @@ func readJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
 		return false
 	}
 	return true
+}
+
+type MatchRequest struct {
+	// Hashes are SHA-256 hex digests of lower-cased email addresses.
+	Hashes []string `json:"hashes"`
+}
+
+// MatchedPerson is somebody found in your contacts.
+type MatchedPerson struct {
+	PersonView
+	// Following is "", pending or accepted: how you follow them already.
+	Following string `json:"following"`
+}
+
+type MatchView struct {
+	People []MatchedPerson `json:"people"`
+}
+
+func (a *API) matchContacts(w http.ResponseWriter, r *http.Request) {
+	var req MatchRequest
+	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 256 << 10}); err != nil {
+		httpx.Error(w, err, "The request body could not be read.")
+		return
+	}
+	found, err := a.svc.MatchContacts(r.Context(), auth.MustUser(r.Context()).ID, req.Hashes)
+	if err != nil {
+		httpx.Error(w, err, "Your contacts could not be checked.")
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, projectMatches(found))
+}
+
+func projectMatches(found []Connection) MatchView {
+	out := MatchView{People: make([]MatchedPerson, 0, len(found))}
+	for _, c := range found {
+		out.People = append(out.People, MatchedPerson{PersonView: projectPerson(c.Person), Following: c.Status})
+	}
+	return out
 }

@@ -2,6 +2,9 @@ package social_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"strings"
 	"sync"
 	"testing"
 
@@ -248,5 +251,44 @@ func TestInviteConnectsAFriendAlreadyHere(t *testing.T) {
 	}
 	if len(inbox.notes) != 2 || inbox.notes[1].title != "Mia accepted your invite" {
 		t.Fatalf("notes = %+v", inbox.notes)
+	}
+}
+
+func emailHash(email string) string {
+	sum := sha256.Sum256([]byte(strings.ToLower(email)))
+	return hex.EncodeToString(sum[:])
+}
+
+// Contacts find people who chose a handle, never yourself or anybody blocked
+// either way, and say how you already follow them.
+func TestMatchContacts(t *testing.T) {
+	svc, _, _, pool := fixture(t)
+	ctx := context.Background()
+	me := person(t, pool, "me@north.test", "Me")
+	ana := person(t, pool, "Ana@North.test", "Ana")
+	hidden := person(t, pool, "hidden@north.test", "Hidden")
+	blocked := person(t, pool, "blocked@north.test", "Blocked")
+	_, _ = svc.SetHandle(ctx, ana.ID, "ana")
+	_, _ = svc.SetHandle(ctx, blocked.ID, "blocked")
+	_, _ = svc.SetHandle(ctx, me.ID, "me")
+	_ = hidden
+	if err := svc.Block(ctx, blocked.ID, me.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Follow(ctx, me.ID, "ana"); err != nil {
+		t.Fatal(err)
+	}
+
+	hashes := []string{emailHash("ana@north.test"), emailHash("hidden@north.test"), emailHash("blocked@north.test"), emailHash("me@north.test"), emailHash("nobody@north.test")}
+	found, err := svc.MatchContacts(ctx, me.ID, hashes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(found) != 1 || found[0].ID != ana.ID || found[0].Status != social.StatusPending {
+		t.Fatalf("found = %+v, want only Ana, already asked", found)
+	}
+
+	if _, err := svc.MatchContacts(ctx, me.ID, []string{"ana@north.test"}); !apperr.Is(err, apperr.ErrValidation) {
+		t.Fatalf("a raw email was accepted: %v", err)
 	}
 }

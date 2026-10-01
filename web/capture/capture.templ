@@ -3,6 +3,7 @@ package capture
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strconv"
 
 	"github.com/NorthAIProject/north-client/internal/capture/captured"
@@ -17,6 +18,7 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/checkbox"
 	"github.com/NorthAIProject/north-client/web/shared/ui/dictate"
 	"github.com/NorthAIProject/north-client/web/shared/ui/input"
+	"github.com/NorthAIProject/north-client/web/shared/ui/skeleton"
 	"github.com/NorthAIProject/north-client/web/shared/ui/textarea"
 )
 
@@ -40,6 +42,23 @@ type Data struct {
 
 	// Error is a whole-request failure, shown above the box.
 	Error string
+
+	// ReturnTo is the page the panel is embedded in, such as My Day's "+"
+	// dialog. Empty on the capture page itself. Embedded, the panel drops its
+	// own heading and does not grab focus, and a clean save sends the browser
+	// back to this page so it shows what was logged.
+	ReturnTo string
+}
+
+// Embedded reports whether the panel sits inside another page.
+func (d Data) Embedded() bool { return d.ReturnTo != "" }
+
+// restartURL is where "Start over" fetches an empty box from.
+func restartURL(data Data) string {
+	if data.Embedded() {
+		return "/app/capture/panel?return_to=" + url.QueryEscape(data.ReturnTo)
+	}
+	return "/app/capture"
 }
 
 templ Page(user users.User, data Data) {
@@ -54,14 +73,36 @@ templ Page(user users.User, data Data) {
 	}
 }
 
+// Embed puts the capture box on another page, fetched when it is first needed
+// rather than with the page: the "+" dialog is opened far less often than My
+// Day is rendered. trigger is the hx-trigger that fetches it — "intersect
+// once" inside a dialog, which fires when the dialog opens, or "load".
+//
+// One embed per page: the panel's forms target PanelID.
+templ Embed(returnTo, trigger string) {
+	<div
+		id={ PanelID }
+		hx-get={ "/app/capture/panel?return_to=" + url.QueryEscape(returnTo) }
+		hx-trigger={ trigger }
+		hx-swap="innerHTML"
+		data-testid="capture-embed"
+	>
+		@skeleton.Skeleton(skeleton.Props{Class: "h-28 w-full"})
+	</div>
+	// Beside the panel rather than in it, for the reason Page gives.
+	@dictate.Script()
+}
+
 templ Panel(data Data) {
-	<div class="mx-auto w-full max-w-2xl px-4 py-6 space-y-6">
-		<header class="space-y-1">
-			<h1 class="text-2xl font-semibold tracking-tight">{ i18n.T(ctx, "capture.heading") }</h1>
-			<p class="text-sm text-muted-foreground">
-				{ i18n.T(ctx, "capture.intro") }
-			</p>
-		</header>
+	<div class={ templ.KV("mx-auto w-full max-w-2xl px-4 py-6 space-y-6", !data.Embedded()), templ.KV("space-y-3", data.Embedded()) }>
+		if !data.Embedded() {
+			<header class="space-y-1">
+				<h1 class="text-2xl font-semibold tracking-tight">{ i18n.T(ctx, "capture.heading") }</h1>
+				<p class="text-sm text-muted-foreground">
+					{ i18n.T(ctx, "capture.intro") }
+				</p>
+			</header>
+		}
 		if data.Error != "" {
 			@alert.Alert(alert.Props{Variant: alert.VariantDestructive}) {
 				@alert.Description() {
@@ -91,6 +132,7 @@ templ composer(data Data) {
 		class="space-y-3"
 	>
 		@ui.CSRFInput()
+		@returnToInput(data)
 		@textarea.Textarea(textarea.Props{
 			ID:          TextID,
 			Name:        "text",
@@ -98,7 +140,7 @@ templ composer(data Data) {
 			Rows:        4,
 			Placeholder: i18n.T(ctx, "capture.ph"),
 			Class:       "text-base",
-			Attributes:  templ.Attributes{"autofocus": true, "maxlength": strconv.Itoa(captured.MaxText)},
+			Attributes:  composerAttributes(data),
 		})
 		<div class="flex items-center justify-between gap-3">
 			<p class="text-xs text-muted-foreground">Reading it costs a moment. Saving is one tap.</p>
@@ -141,6 +183,7 @@ templ preview(data Data) {
 		x-data="{ count: 0, init() { this.recount() }, recount() { this.count = this.$root.querySelectorAll('input[data-include]:checked').length } }"
 	>
 		@ui.CSRFInput()
+		@returnToInput(data)
 		<input type="hidden" name="text" value={ data.Text }/>
 		if len(data.Draft.Items) > 0 {
 			<div class="space-y-2">
@@ -157,7 +200,7 @@ templ preview(data Data) {
 				Variant:    button.VariantGhost,
 				Type:       button.TypeSubmit,
 				Class:      "min-h-11",
-				Attributes: templ.Attributes{"formaction": "/app/capture", "formmethod": "get", "hx-get": "/app/capture", "hx-target": "#" + PanelID},
+				Attributes: templ.Attributes{"formaction": "/app/capture", "formmethod": "get", "hx-get": restartURL(data), "hx-target": "#" + PanelID},
 			}) {
 				Start over
 			}
@@ -168,6 +211,24 @@ templ preview(data Data) {
 			}
 		</div>
 	</form>
+}
+
+// returnToInput carries the embedding page through parse and commit.
+templ returnToInput(data Data) {
+	if data.Embedded() {
+		<input type="hidden" name="return_to" value={ data.ReturnTo }/>
+	}
+}
+
+// composerAttributes focuses the box on its own page only. Embedded in a
+// dialog, focusing it would raise the phone keyboard over the other choices
+// before the person has picked this one.
+func composerAttributes(data Data) templ.Attributes {
+	attrs := templ.Attributes{"maxlength": strconv.Itoa(captured.MaxText)}
+	if !data.Embedded() {
+		attrs["autofocus"] = true
+	}
+	return attrs
 }
 
 templ itemRow(index int, item captured.Item) {
