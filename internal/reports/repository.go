@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -71,8 +72,7 @@ func (r *Repository) List(ctx context.Context, userID uuid.UUID, kind Kind, incl
 	}
 	var filter *string
 	if kind != "" {
-		k := string(kind)
-		filter = &k
+		filter = util.Ptr(string(kind))
 	}
 	rows, err := r.q.ListReports(ctx, reportsdb.ListReportsParams{
 		UserID:          userID,

@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
@@ -170,8 +171,7 @@ func projectGoals(goals []goal.Goal) []Goal {
 	for i, item := range goals {
 		var targetDate *time.Time
 		if !item.TargetDate.IsZero() {
-			value := item.TargetDate
-			targetDate = &value
+			targetDate = util.Ptr(item.TargetDate)
 		}
 		progress, hasProgress := item.Progress()
 		var progressPtr *int

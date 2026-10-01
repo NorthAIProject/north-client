@@ -1,6 +1,10 @@
 package types
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/FACorreiaa/go-utils/pkg/util"
+)
 
 // The three answers a person can give to "did this help?".
 //
@@ -25,11 +29,9 @@ const (
 func ParseHelpful(value string) (*bool, error) {
 	switch value {
 	case HelpfulYes:
-		yes := true
-		return &yes, nil
+		return util.Ptr(true), nil
 	case HelpfulNo:
-		no := false
-		return &no, nil
+		return util.Ptr(false), nil
 	case HelpfulClear:
 		return nil, nil
 	default:

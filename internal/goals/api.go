@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
@@ -300,8 +301,7 @@ func (a *API) writeDetail(w http.ResponseWriter, r *http.Request, status int, id
 		out.Updates = append(out.Updates, projectUpdate(u))
 	}
 	if len(updates) > 0 {
-		latest := projectUpdate(updates[0])
-		out.LatestUpdate = &latest
+		out.LatestUpdate = util.Ptr(projectUpdate(updates[0]))
 	}
 	httpx.WriteJSON(w, status, out)
 }
@@ -313,8 +313,7 @@ func summarize(g Goal) GoalSummary {
 		CreatedAt: g.CreatedAt,
 	}
 	if g.LatestUpdate != nil {
-		u := projectUpdate(*g.LatestUpdate)
-		out.LatestUpdate = &u
+		out.LatestUpdate = util.Ptr(projectUpdate(*g.LatestUpdate))
 	}
 	return out
 }

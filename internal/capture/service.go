@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/biometrics"
@@ -173,8 +174,7 @@ func (s *Service) write(ctx context.Context, user users.User, item Item) error {
 	case KindSleep:
 		in := sleep.Input{DurationMinutes: item.Sleep.Minutes}
 		if item.Sleep.Quality > 0 {
-			quality := item.Sleep.Quality
-			in.Quality = &quality
+			in.Quality = util.Ptr(item.Sleep.Quality)
 		}
 		// LogToday already files last night against today's date, so an
 		// unstated date is the common path rather than a missing one.

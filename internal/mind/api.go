@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
@@ -89,8 +90,7 @@ func (a *API) create(w http.ResponseWriter, r *http.Request) {
 func project(e JournalEntry) JournalEntryView {
 	out := JournalEntryView{ID: e.ID, Content: e.Content, CreatedAt: e.CreatedAt}
 	if e.Mood != nil {
-		m := int(*e.Mood)
-		out.Mood = &m
+		out.Mood = util.Ptr(int(*e.Mood))
 	}
 	return out
 }

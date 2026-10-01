@@ -63,8 +63,7 @@ func BuildRecap(duration time.Duration, calories float64, prescribed int, curren
 		if row.HasPrevious {
 			out.HasComparison = true
 			if bestChange == nil || math.Abs(row.Change) > math.Abs(bestChange.Change) {
-				copied := row
-				bestChange = &copied
+				bestChange = util.Ptr(row)
 			}
 		}
 	}

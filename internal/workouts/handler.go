@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
@@ -70,8 +71,7 @@ func (h *Handler) planView(ctx context.Context, user users.User, stored StoredPl
 			return workoutpages.PlanView{}, err
 		}
 		if ok {
-			card := workoutsummary.NewRecap("plan-recap", recap, user.Location())
-			view.Recap = &card
+			view.Recap = util.Ptr(workoutsummary.NewRecap("plan-recap", recap, user.Location()))
 		}
 	}
 	return view, nil

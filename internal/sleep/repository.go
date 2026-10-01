@@ -26,8 +26,7 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 func (r *Repository) Upsert(ctx context.Context, userID uuid.UUID, date time.Time, in Log) (Log, error) {
 	var quality *int16
 	if in.Quality != nil {
-		v := int16(*in.Quality)
-		quality = &v
+		quality = util.Ptr(int16(*in.Quality))
 	}
 
 	row, err := r.q.UpsertSleepLog(ctx, sleepdb.UpsertSleepLogParams{
@@ -113,8 +112,7 @@ func fromDB(row sleepdb.SleepLog) Log {
 		UpdatedAt:       row.UpdatedAt,
 	}
 	if row.Quality != nil {
-		q := int(*row.Quality)
-		l.Quality = &q
+		l.Quality = util.Ptr(int(*row.Quality))
 	}
 	if row.Bedtime != nil {
 		l.Bedtime = *row.Bedtime

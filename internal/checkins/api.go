@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
@@ -67,8 +68,7 @@ func (a *API) list(w http.ResponseWriter, r *http.Request) {
 	today, err := a.svc.Today(r.Context(), user)
 	switch {
 	case err == nil:
-		view := project(today)
-		out.Today = &view
+		out.Today = util.Ptr(project(today))
 	case !apperr.Is(err, apperr.ErrNotFound):
 		httpx.Error(w, err, "Check-ins could not be loaded.")
 		return

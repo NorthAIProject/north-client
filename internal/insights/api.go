@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/go-chi/chi/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
@@ -196,8 +197,7 @@ func projectSummary(v insightpages.SummaryView) Summary {
 			Delta: Delta{Direction: p.Delta.Direction, Pct: p.Delta.Pct, HasPrior: p.Delta.HasPrior},
 		}
 		if p.HasChart {
-			c := projectChart(p.Chart.Data)
-			pinned.Chart = &c
+			pinned.Chart = util.Ptr(projectChart(p.Chart.Data))
 		}
 		out.Pinned = append(out.Pinned, pinned)
 	}

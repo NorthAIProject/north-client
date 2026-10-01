@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
+
 	"github.com/NorthAIProject/north-client/internal/shared/database/testdb"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/sleep"
@@ -31,8 +33,6 @@ func newService(t *testing.T) (*sleep.Service, users.User) {
 	return sleep.NewService(sleep.NewRepository(pool)), user
 }
 
-func quality(n int) *int { return &n }
-
 // The point of upsert-per-day: correcting this morning's estimate edits the
 // night rather than logging a second one.
 func TestLoggingTwiceInADayCorrectsRatherThanDuplicates(t *testing.T) {
@@ -43,7 +43,7 @@ func TestLoggingTwiceInADayCorrectsRatherThanDuplicates(t *testing.T) {
 		t.Fatalf("first log: %v", err)
 	}
 
-	corrected, err := svc.LogToday(ctx, user, sleep.Input{DurationMinutes: 450, Quality: quality(4)})
+	corrected, err := svc.LogToday(ctx, user, sleep.Input{DurationMinutes: 450, Quality: util.Ptr(4)})
 	if err != nil {
 		t.Fatalf("second log: %v", err)
 	}
@@ -97,7 +97,7 @@ func TestOptionalFieldsRoundTrip(t *testing.T) {
 
 	full, err := svc.LogToday(ctx, user, sleep.Input{
 		DurationMinutes: 465,
-		Quality:         quality(4),
+		Quality:         util.Ptr(4),
 		Bedtime:         "23:15",
 		WakeTime:        "07:00",
 		Notes:           "woke once",
@@ -125,7 +125,7 @@ func TestTrendAveragesOverRecordedNightsOnly(t *testing.T) {
 		date := today.AddDate(0, 0, -i)
 		in := sleep.Input{DurationMinutes: minutes}
 		if i == 0 {
-			in.Quality = quality(5) // only one night rated
+			in.Quality = util.Ptr(5) // only one night rated
 		}
 		if _, err := svc.LogFor(ctx, user, date, in); err != nil {
 			t.Fatalf("log night %d: %v", i, err)
@@ -170,7 +170,7 @@ func TestValidationRejectsBadInput(t *testing.T) {
 	}{
 		{"no duration", sleep.Input{}},
 		{"longer than a day", sleep.Input{DurationMinutes: 1441}},
-		{"quality out of range", sleep.Input{DurationMinutes: 400, Quality: quality(6)}},
+		{"quality out of range", sleep.Input{DurationMinutes: 400, Quality: util.Ptr(6)}},
 		{"bedtime not a clock", sleep.Input{DurationMinutes: 400, Bedtime: "11pm"}},
 		{"wake time out of range", sleep.Input{DurationMinutes: 400, WakeTime: "25:00"}},
 	}

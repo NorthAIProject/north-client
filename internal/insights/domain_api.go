@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
+
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/lifts"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
@@ -418,8 +420,7 @@ func projectRecap(data TrainingData) *lifts.LiftRecapView {
 	if !data.HasRecap {
 		return nil
 	}
-	view := lifts.ProjectRecap(data.Recap)
-	return &view
+	return util.Ptr(lifts.ProjectRecap(data.Recap))
 }
 
 func projectNutrition(v insightpages.NutritionView, macros []viz.DonutSegment) InsightsNutrition {

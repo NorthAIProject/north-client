@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	sdk "github.com/anthropics/anthropic-sdk-go"
 
 	"github.com/NorthAIProject/north-client/internal/ai"
@@ -48,8 +49,7 @@ func (c *Client) Chat(ctx context.Context, req ai.Request) (<-chan ai.StreamChun
 				return
 			}
 		}
-		u := usage(msg.Usage)
-		send(ctx, out, ai.StreamChunk{Usage: &u, Model: string(msg.Model)})
+		send(ctx, out, ai.StreamChunk{Usage: util.Ptr(usage(msg.Usage)), Model: string(msg.Model)})
 	}()
 
 	return out, nil

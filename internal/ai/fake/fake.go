@@ -15,6 +15,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
+
 	"github.com/NorthAIProject/north-client/internal/ai"
 )
 
@@ -144,8 +146,7 @@ func (c *Client) Chat(ctx context.Context, req ai.Request) (<-chan ai.StreamChun
 			}
 		}
 
-		usage := resp.Usage
-		send(ctx, out, ai.StreamChunk{Usage: &usage})
+		send(ctx, out, ai.StreamChunk{Usage: util.Ptr(resp.Usage)})
 	}()
 
 	return out, nil

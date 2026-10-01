@@ -11,6 +11,7 @@ import (
 	"net/netip"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -74,8 +75,7 @@ func (s *SessionStore) Create(ctx context.Context, userID uuid.UUID, meta Metada
 		ExpiresAt: expiresAt,
 	}
 	if meta.UserAgent != "" {
-		ua := truncate(meta.UserAgent, 500)
-		params.UserAgent = &ua
+		params.UserAgent = util.Ptr(truncate(meta.UserAgent, 500))
 	}
 	if addr, err := netip.ParseAddr(meta.IP); err == nil {
 		params.Ip = &addr
