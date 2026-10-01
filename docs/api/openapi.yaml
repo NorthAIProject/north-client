@@ -2920,6 +2920,241 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '422':
           $ref: '#/components/responses/ValidationError'
+  /social:
+    get:
+      operationId: getSocial
+      summary: Your handle, invite link, follow requests, followers, following and blocks
+      tags: [social]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SocialOverview'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /social/handle:
+    put:
+      operationId: setHandle
+      summary: Claim a handle, or clear it with an empty string
+      tags: [social]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [handle]
+              properties:
+                handle:
+                  type: string
+                  description: 3-20 lower-case letters, digits or underscores; a leading @ is dropped. Empty clears it.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HandleView'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /invites:
+    get:
+      operationId: getInvite
+      summary: Your invite link for a channel, made on first use and stable after
+      tags: [social]
+      parameters:
+        - name: channel
+          in: query
+          schema:
+            type: string
+            enum: [link, messages, x, facebook, contacts]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InviteView'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /invites/{code}:
+    parameters:
+      - name: code
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: previewInvite
+      summary: Who sent an invite link. Public, for the signed-out app.
+      tags: [social]
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvitePreview'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /invites/{code}/redeem:
+    parameters:
+      - name: code
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      operationId: redeemInvite
+      summary: Connect a new account to whoever invited it; both follow each other
+      tags: [social]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RedeemView'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /profiles/{handle}:
+    parameters:
+      - name: handle
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getPublicProfile
+      summary: Somebody's public profile and how you stand to them
+      tags: [social]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileView'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /follows:
+    post:
+      operationId: follow
+      summary: Ask to follow somebody by handle; it waits for their yes
+      tags: [social]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [handle]
+              properties:
+                handle:
+                  type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectionView'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /follows/{userID}:
+    parameters:
+      - name: userID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      operationId: unfollow
+      summary: Stop following, or withdraw a request
+      tags: [social]
+      responses:
+        '204':
+          description: Unfollowed
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /followers/{userID}/accept:
+    parameters:
+      - name: userID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: acceptFollower
+      summary: Say yes to a follow request
+      tags: [social]
+      responses:
+        '204':
+          description: Accepted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /followers/{userID}:
+    parameters:
+      - name: userID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      operationId: removeFollower
+      summary: Decline a request or remove a follower; they are not told
+      tags: [social]
+      responses:
+        '204':
+          description: Removed
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /blocks/{userID}:
+    parameters:
+      - name: userID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: block
+      summary: Block somebody; every follow between you ends and each is hidden from the other
+      tags: [social]
+      responses:
+        '204':
+          description: Blocked
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: unblock
+      summary: Unblock somebody. Follows do not come back.
+      tags: [social]
+      responses:
+        '204':
+          description: Unblocked
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /news:
     get:
       operationId: getNews
@@ -4189,6 +4424,111 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorBody'
   schemas:
+    PersonView:
+      type: object
+      required: [id, displayName, handle]
+      properties:
+        id:
+          type: string
+          format: uuid
+        displayName:
+          type: string
+        handle:
+          type: string
+          description: Empty for somebody who never chose one.
+    ConnectionView:
+      allOf:
+        - $ref: '#/components/schemas/PersonView'
+        - type: object
+          required: [status, since]
+          properties:
+            status:
+              type: string
+              enum: [pending, accepted]
+            since:
+              type: string
+              format: date-time
+    InviteView:
+      type: object
+      required: [code, channel, url]
+      properties:
+        code:
+          type: string
+        channel:
+          type: string
+        url:
+          type: string
+          format: uri
+    InvitePreview:
+      type: object
+      required: [code, inviter]
+      properties:
+        code:
+          type: string
+        inviter:
+          $ref: '#/components/schemas/PersonView'
+    RedeemView:
+      type: object
+      required: [redeemed]
+      properties:
+        redeemed:
+          type: boolean
+          description: False when this account was already invited or the code leads nowhere. Neither is an error.
+    HandleView:
+      type: object
+      required: [handle]
+      properties:
+        handle:
+          type: string
+    SocialOverview:
+      type: object
+      required: [handle, invite, joined, requests, followers, following, blocked]
+      properties:
+        handle:
+          type: string
+        invite:
+          $ref: '#/components/schemas/InviteView'
+        joined:
+          type: integer
+          description: How many accounts came in through your links.
+        requests:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConnectionView'
+        followers:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConnectionView'
+        following:
+          type: array
+          description: Includes requests you sent that are still pending.
+          items:
+            $ref: '#/components/schemas/ConnectionView'
+        blocked:
+          type: array
+          items:
+            $ref: '#/components/schemas/PersonView'
+    ProfileView:
+      allOf:
+        - $ref: '#/components/schemas/PersonView'
+        - type: object
+          required: [followers, following, relationship]
+          properties:
+            followers:
+              type: integer
+            following:
+              type: integer
+            relationship:
+              type: object
+              required: [following, followsYou, self]
+              properties:
+                following:
+                  type: string
+                  description: Empty, pending or accepted.
+                followsYou:
+                  type: boolean
+                self:
+                  type: boolean
     CaffeineInput:
       type: object
       additionalProperties: false

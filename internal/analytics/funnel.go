@@ -32,6 +32,10 @@ const (
 	// EventRegistered is an account created. The top of the funnel.
 	EventRegistered = "user_registered"
 
+	// EventInviteRedeemed is a new account arriving through somebody's invite
+	// link: the strangers-count by channel, and whether invites work at all.
+	EventInviteRedeemed = "invite_redeemed"
+
 	// EventOnboardingCompleted is onboarding finished rather than skipped.
 	EventOnboardingCompleted = "onboarding_completed"
 
@@ -179,6 +183,13 @@ func New(client posthog.Client) *Funnel {
 // password path, which is the smallest of the four.
 func (p *Funnel) Registered(ctx context.Context, userID uuid.UUID, via string) {
 	p.capture(ctx, userID, EventRegistered, posthog.Properties{"via": via})
+}
+
+// InviteRedeemed records a new account that came in through an invite link.
+// channel is where that link was shared: link, messages, x, facebook,
+// contacts.
+func (p *Funnel) InviteRedeemed(ctx context.Context, inviteeID uuid.UUID, channel string) {
+	p.capture(ctx, inviteeID, EventInviteRedeemed, posthog.Properties{"channel": channel})
 }
 
 // OnboardingCompleted records onboarding finished. Skipping is deliberately
