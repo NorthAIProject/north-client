@@ -1,0 +1,22 @@
+{
+  "total": 340,
+  "level": {
+    "number": 3,
+    "title": "Regular",
+    "floor": 300,
+    "next": 800
+  },
+  "weekTotal": 40,
+  "week": [
+    {
+      "kind": "workout",
+      "count": 2,
+      "points": 40
+    },
+    {
+      "kind": "habit_kept",
+      "count": 0,
+      "points": 0
+    }
+  ]
+}

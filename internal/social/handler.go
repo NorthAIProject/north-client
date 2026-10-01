@@ -89,6 +89,7 @@ func (h *Handler) setSharing(w http.ResponseWriter, r *http.Request) {
 		Training: r.PostFormValue("share_training") != "",
 		Streaks:  r.PostFormValue("share_streaks") != "",
 		Goals:    r.PostFormValue("share_goals") != "",
+		XP:       r.PostFormValue("share_xp") != "",
 	}
 	if _, err := h.achievements.SetSharing(r.Context(), auth.MustUser(r.Context()).ID, in); err != nil {
 		h.fail(w, r, err)
