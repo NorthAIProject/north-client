@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/NorthAIProject/north-client/internal/meals"
 	"github.com/NorthAIProject/north-client/internal/memories"
 )
 
@@ -64,6 +65,45 @@ func (w WeekFrom) HasLifeFocus(ctx context.Context, userID uuid.UUID, areas ...s
 			if strings.Contains(strings.ToLower(m.Content), "focus area: "+strings.ToLower(area)) {
 				return true, nil
 			}
+		}
+	}
+	return false, nil
+}
+
+// MealsFrom is the meal data the sweep needs, wired from the meals slice.
+type MealsFrom struct {
+	Reminders reminderList
+	FoodLog   foodLogRange
+}
+
+type reminderList interface {
+	List(ctx context.Context, userID uuid.UUID) ([]meals.Reminder, error)
+}
+
+type foodLogRange interface {
+	Range(ctx context.Context, userID uuid.UUID, from, to time.Time) ([]meals.FoodLogEntry, error)
+}
+
+func (m MealsFrom) MealReminders(ctx context.Context, userID uuid.UUID) ([]meals.Reminder, error) {
+	if m.Reminders == nil {
+		return nil, nil
+	}
+	return m.Reminders.List(ctx, userID)
+}
+
+// LoggedFoodSince looks at the log date on either side of since: entries are
+// filed under a calendar date, and that date is not always the person's own.
+func (m MealsFrom) LoggedFoodSince(ctx context.Context, userID uuid.UUID, since time.Time) (bool, error) {
+	if m.FoodLog == nil {
+		return false, nil
+	}
+	entries, err := m.FoodLog.Range(ctx, userID, since.AddDate(0, 0, -1), since.AddDate(0, 0, 1))
+	if err != nil {
+		return false, err
+	}
+	for _, e := range entries {
+		if !e.LoggedAt.Before(since) {
+			return true, nil
 		}
 	}
 	return false, nil

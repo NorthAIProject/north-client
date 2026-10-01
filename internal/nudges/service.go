@@ -2,6 +2,7 @@ package nudges
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/url"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/analytics"
 	"github.com/NorthAIProject/north-client/internal/goals"
+	"github.com/NorthAIProject/north-client/internal/meals"
 	"github.com/NorthAIProject/north-client/internal/notifications"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
@@ -101,6 +103,13 @@ type trainingSource interface {
 	DueToday(ctx context.Context, user users.User, today time.Time) (title, href string, due bool, err error)
 }
 
+// mealSource answers which meal reminders a person set, and whether they
+// logged food since a moment.
+type mealSource interface {
+	MealReminders(ctx context.Context, userID uuid.UUID) ([]meals.Reminder, error)
+	LoggedFoodSince(ctx context.Context, userID uuid.UUID, since time.Time) (bool, error)
+}
+
 type Service struct {
 	repo      *Repository
 	accounts  accounts
@@ -113,6 +122,7 @@ type Service struct {
 	week      weekSource
 	training  trainingSource
 	schedules schedules
+	meals     mealSource
 	now       func() time.Time
 }
 
@@ -170,6 +180,11 @@ func (s *Service) WithTraining(t trainingSource) *Service {
 
 func (s *Service) WithSchedules(sc schedules) *Service {
 	s.schedules = sc
+	return s
+}
+
+func (s *Service) WithMeals(m mealSource) *Service {
+	s.meals = m
 	return s
 }
 
@@ -352,24 +367,50 @@ func (s *Service) Dismiss(ctx context.Context, id, userID uuid.UUID) (Nudge, err
 	return s.repo.Dismiss(ctx, id, userID)
 }
 
-// DismissByKind closes any open nudge matching kind and dedupeKey.
-// If an external channel delivered the nudge (like Telegram), updateText edits
-// the previous message in-place to mark the event resolved.
-func (s *Service) DismissByKind(ctx context.Context, userID uuid.UUID, kind, dedupeKey, updateText string) error {
-	_, dismissed, err := s.repo.DismissByKind(ctx, userID, kind, dedupeKey)
+// ResolveToday closes the nudges of kind raised for the person's local today
+// and rewrites the chat message that carried each one, using text(title, body)
+// of that nudge.
+//
+// "Today" is the person's date, not the server's: the sweep keys nudges by
+// local date, and a UTC key misses every evening west of Greenwich. A nudge
+// already dismissed from the bell is still resolved in the chat — dismissing
+// the bell does not unsend the message that keeps asking.
+func (s *Service) ResolveToday(ctx context.Context, userID uuid.UUID, kind string, text func(title, body string) string) error {
+	if s.accounts == nil {
+		return nil
+	}
+	user, err := s.accounts.ByID(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("resolve %s nudges: load user: %w", kind, err)
+	}
+	today := localDate(user, s.now())
+
+	if kind == KindWorkoutToday {
+		done, known, doneErr := s.trainedToday(ctx, user, today)
+		if doneErr != nil {
+			return fmt.Errorf("resolve %s nudges: %w", kind, doneErr)
+		}
+		if known && !done {
+			return nil
+		}
+	}
+
+	resolved, err := s.repo.ResolveForDay(ctx, userID, kind, today.Format("2006-01-02"))
 	if err != nil {
 		return err
 	}
-	if !dismissed {
+
+	tf, ok := s.fanout.(taggedFanout)
+	if !ok {
 		return nil
 	}
-
-	if s.fanout != nil {
-		if tf, ok := s.fanout.(taggedFanout); ok {
-			_ = tf.ResolveTagged(ctx, userID, kind, dedupeKey, updateText)
+	var errs []error
+	for _, n := range resolved {
+		if err := tf.ResolveTagged(ctx, userID, n.Kind, n.DedupeKey, text(n.Title, n.Body)); err != nil {
+			errs = append(errs, fmt.Errorf("resolve %s %s in chat: %w", n.Kind, n.DedupeKey, err))
 		}
 	}
-	return nil
+	return errors.Join(errs...)
 }
 
 func (s *Service) ListOnboarded(ctx context.Context, after uuid.UUID, limit int) ([]users.User, error) {
@@ -419,6 +460,13 @@ func (s *Service) Evaluate(ctx context.Context, user users.User) (int, error) {
 	created += n
 
 	n, err = s.evalPhotoSchedule(ctx, user, today)
+	if err != nil {
+		return created, err
+	}
+	created += n
+
+	// Reminders the person set themselves, so no first-week silence.
+	n, err = s.evalMealReminders(ctx, user, today, now)
 	if err != nil {
 		return created, err
 	}

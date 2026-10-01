@@ -12,6 +12,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/nudges"
 	"github.com/NorthAIProject/north-client/internal/shared/database/testdb"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/users"
 )
 
 // pushSpy stands in for internal/push. It records what it was asked to send and
@@ -394,53 +395,173 @@ func (t *taggedFanoutSpy) ResolveTagged(_ context.Context, userID uuid.UUID, kin
 	return nil
 }
 
-func TestDismissByKindResolvesTaggedFanout(t *testing.T) {
+func completedText(_, body string) string {
+	return "✅ Completed today's session: " + body
+}
+
+func TestResolveTodayEditsTheChatMessage(t *testing.T) {
 	pool := testdb.New(t)
 	ctx := context.Background()
 	user := seedUser(t, pool, "nudge-dismiss-sync@north.test")
 	chat := &taggedFanoutSpy{}
-	svc := newStore(pool).WithClock(freeze(noon)).WithFanout(chat)
+	svc := evalService(pool, noon).WithFanout(chat)
 
-	// 1. Raise a workout nudge
 	_, created, err := svc.Raise(ctx, user, nudges.Draft{
 		Kind:      nudges.KindWorkoutToday,
-		DedupeKey: "2026-09-28",
+		DedupeKey: "2026-09-02",
 		Title:     "Start today's session",
 		Body:      "Upper A",
 		Href:      "/app/training/1",
 	})
 	if err != nil || !created {
-		t.Fatalf("raise workout nudge: %v", err)
+		t.Fatalf("raise workout nudge: created=%v err=%v", created, err)
+	}
+	if len(chat.tagged) != 1 || chat.tagged[0].dedupeKey != "2026-09-02" {
+		t.Fatalf("tagged sends = %+v", chat.tagged)
 	}
 
-	if len(chat.tagged) != 1 {
-		t.Fatalf("expected 1 tagged fanout, got %d", len(chat.tagged))
-	}
-	if chat.tagged[0].kind != nudges.KindWorkoutToday || chat.tagged[0].dedupeKey != "2026-09-28" {
-		t.Errorf("unexpected tagged call: %+v", chat.tagged[0])
+	if err = svc.ResolveToday(ctx, user.ID, nudges.KindWorkoutToday, completedText); err != nil {
+		t.Fatal(err)
 	}
 
-	// 2. Dismiss it when completed
-	err = svc.DismissByKind(ctx, user.ID, nudges.KindWorkoutToday, "2026-09-28", "✅ Completed today's session: Upper A")
-	if err != nil {
-		t.Fatalf("dismiss by kind: %v", err)
+	if len(chat.resolved) != 1 || chat.resolved[0].updateText != "✅ Completed today's session: Upper A" {
+		t.Fatalf("resolved = %+v", chat.resolved)
 	}
-
-	if len(chat.resolved) != 1 {
-		t.Fatalf("expected 1 resolved fanout call, got %d", len(chat.resolved))
-	}
-	if chat.resolved[0].updateText != "✅ Completed today's session: Upper A" {
-		t.Errorf("unexpected update text: %s", chat.resolved[0].updateText)
-	}
-
-	// 3. Verify it is no longer open in the bell
 	open, err := svc.ListOpen(ctx, user.ID, 10)
 	if err != nil {
-		t.Fatalf("list open: %v", err)
+		t.Fatal(err)
 	}
-	for _, n := range open {
-		if n.Kind == nudges.KindWorkoutToday && n.DedupeKey == "2026-09-28" {
-			t.Errorf("expected nudge to be dismissed, but it is still open")
+	if len(open) != 0 {
+		t.Fatalf("still open: %+v", open)
+	}
+}
+
+// The edit must not depend on the bell: somebody who swiped the note away
+// and then trained still has a chat message asking them to train.
+func TestResolveTodayEditsAMessageDismissedFromTheBell(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	user := seedUser(t, pool, "nudge-dismissed-first@north.test")
+	chat := &taggedFanoutSpy{}
+	svc := evalService(pool, noon).WithFanout(chat)
+
+	n, _, err := svc.Raise(ctx, user, nudges.Draft{
+		Kind: nudges.KindWorkoutToday, DedupeKey: "2026-09-02",
+		Title: "Start today's session", Body: "Upper A",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Dismiss(ctx, n.ID, user.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := svc.ResolveToday(ctx, user.ID, nudges.KindWorkoutToday, completedText); err != nil {
+		t.Fatal(err)
+	}
+	if len(chat.resolved) != 1 {
+		t.Fatalf("resolved %d messages, want 1", len(chat.resolved))
+	}
+}
+
+// 23:30 in New York is already tomorrow in UTC. The nudge was keyed by the
+// local date, so resolving by the server's date would miss it.
+func TestResolveTodayUsesThePersonsDate(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	user := seedUserIn(t, pool, "nudge-west@north.test", "America/New_York")
+	lateEvening := time.Date(2026, 9, 3, 3, 30, 0, 0, time.UTC) // 2026-09-02 23:30 EDT
+	chat := &taggedFanoutSpy{}
+	svc := evalService(pool, lateEvening).WithFanout(chat)
+
+	if _, _, err := svc.CreateIfAbsent(ctx, user.ID, nudges.Draft{
+		Kind: nudges.KindWorkoutToday, DedupeKey: "2026-09-02",
+		Title: "Start today's session", Body: "Upper A",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := svc.ResolveToday(ctx, user.ID, nudges.KindWorkoutToday, completedText); err != nil {
+		t.Fatal(err)
+	}
+	if len(chat.resolved) != 1 || chat.resolved[0].dedupeKey != "2026-09-02" {
+		t.Fatalf("resolved = %+v", chat.resolved)
+	}
+}
+
+// Meal reminders are keyed "<day>:<reminder>", several a day. Resolving the
+// day closes each of them and leaves other days alone.
+func TestResolveTodayCoversKeysScopedToTheDay(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	user := seedUser(t, pool, "nudge-scoped@north.test")
+	chat := &taggedFanoutSpy{}
+	svc := evalService(pool, noon).WithFanout(chat)
+
+	for _, key := range []string{"2026-09-02:breakfast", "2026-09-02:lunch", "2026-09-01:lunch"} {
+		if _, _, err := svc.CreateIfAbsent(ctx, user.ID, nudges.Draft{
+			Kind: nudges.KindMealReminder, DedupeKey: key, Title: "log " + key,
+		}); err != nil {
+			t.Fatal(err)
 		}
+	}
+
+	if err := svc.ResolveToday(ctx, user.ID, nudges.KindMealReminder, func(title, _ string) string { return "✅ " + title }); err != nil {
+		t.Fatal(err)
+	}
+	if len(chat.resolved) != 2 {
+		t.Fatalf("resolved %d, want today's 2: %+v", len(chat.resolved), chat.resolved)
+	}
+	open, err := svc.ListOpen(ctx, user.ID, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(open) != 1 || open[0].DedupeKey != "2026-09-01:lunch" {
+		t.Fatalf("open = %+v, want only yesterday's", open)
+	}
+}
+
+// stubTraining stands in for internal/workouts: today is a plan day, and
+// done says whether a session has finished it.
+type stubTraining struct{ done bool }
+
+func (s *stubTraining) DueToday(context.Context, users.User, time.Time) (string, string, bool, error) {
+	return "Upper A", "/app/fitness", true, nil
+}
+
+func (s *stubTraining) CompletedToday(context.Context, users.User, time.Time) (bool, string, error) {
+	return s.done, "Upper A", nil
+}
+
+// A walk on a plan day reaches the coordinator as a finished activity too.
+// Only a session that finishes the plan day may mark the reminder done.
+func TestResolveTodayLeavesTheWorkoutOpenUntilThePlanDayIsDone(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	user := seedUser(t, pool, "nudge-walk@north.test")
+	chat := &taggedFanoutSpy{}
+	training := &stubTraining{}
+	svc := evalService(pool, noon).WithFanout(chat).WithTraining(training)
+
+	if _, _, err := svc.Raise(ctx, user, nudges.Draft{
+		Kind: nudges.KindWorkoutToday, DedupeKey: "2026-09-02",
+		Title: "Start today's session", Body: "Upper A",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := svc.ResolveToday(ctx, user.ID, nudges.KindWorkoutToday, completedText); err != nil {
+		t.Fatal(err)
+	}
+	if len(chat.resolved) != 0 {
+		t.Fatalf("resolved after a walk: %+v", chat.resolved)
+	}
+
+	training.done = true
+	if err := svc.ResolveToday(ctx, user.ID, nudges.KindWorkoutToday, completedText); err != nil {
+		t.Fatal(err)
+	}
+	if len(chat.resolved) != 1 {
+		t.Fatalf("resolved %d after the plan day was done, want 1", len(chat.resolved))
 	}
 }

@@ -20,6 +20,7 @@ const (
 	KindBriefingReady     = "briefing_ready"
 	KindPhotoAsk          = "photo_ask"
 	KindPhotoReminder     = "photo_reminder"
+	KindMealReminder      = "meal_reminder"
 )
 
 // Nudge is one scheduled accountability note for a person.

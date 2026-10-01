@@ -22,6 +22,7 @@ const (
 	KindBriefingReady     = nudge.KindBriefingReady
 	KindPhotoAsk          = nudge.KindPhotoAsk
 	KindPhotoReminder     = nudge.KindPhotoReminder
+	KindMealReminder      = nudge.KindMealReminder
 )
 
 // CategoryCheckIn is the iOS notification category that puts mood buttons
