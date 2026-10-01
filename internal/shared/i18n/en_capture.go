@@ -8,6 +8,10 @@ var englishCapture = map[string]string{
 	"capture.ph":      "slept 6h, 2L water, read 20 pages, 78kg, mood 4 energy 3",
 	"capture.read":    "Read it",
 
+	// The box embedded on the food log.
+	"capture.embed.food.title": "Describe what you ate",
+	"capture.embed.food.intro": "Type or dictate a meal. Nothing is saved until you check it.",
+
 	"capture.left.title": "Not logged",
 	"capture.left.body":  "I could not read these as entries, so nothing was saved for them.",
 	"capture.left.ask":   "Ask the coach",

@@ -33,4 +33,7 @@ func TestSocialShapes(t *testing.T) {
 	apitest.AssertGolden(t, "connection.golden.json", projectConnection(Connection{Person: ana, Status: StatusPending, Since: since}))
 	apitest.AssertGolden(t, "redeem.golden.json", RedeemView{Redeemed: true})
 	apitest.AssertGolden(t, "handle.golden.json", HandleView{Handle: "ana_runs"})
+	apitest.AssertGolden(t, "contacts-match.golden.json", projectMatches([]Connection{
+		{Person: ana, Status: ""}, {Person: Person{ID: joao.ID, DisplayName: "João", Handle: "joao"}, Status: StatusPending},
+	}))
 }

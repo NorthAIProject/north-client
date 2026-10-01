@@ -58,6 +58,7 @@ var portugueseEuropeanNav = map[string]string{
 	"nav.memory.desc":    "O que o North se lembra sobre ti.",
 	"nav.decisions":      "Decisões",
 	"nav.friends":        "Amigos",
+	"nav.crews":          "Grupos",
 	"nav.decisions.desc": "As escolhas que fizeste, e porquê.",
 
 	"nav.goals":                   "Objetivos",

@@ -3155,6 +3155,291 @@ paths:
           description: Unblocked
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /feed:
+    get:
+      operationId: getFeed
+      summary: Your achievements and the ones friends share with you, newest first
+      tags: [social]
+      parameters:
+        - name: before
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: Cursor from the previous page's `before`.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Feed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /social/sharing:
+    get:
+      operationId: getSharing
+      summary: Which kinds of achievement your followers may see
+      tags: [social]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Sharing'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      operationId: setSharing
+      summary: Choose which kinds of achievement your followers may see
+      tags: [social]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Sharing'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Sharing'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /achievements/{achievementID}/kudos:
+    parameters:
+      - name: achievementID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: giveKudos
+      summary: Give kudos to a friend's achievement
+      tags: [social]
+      responses:
+        '204':
+          description: Given
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      operationId: takeKudos
+      summary: Take kudos back
+      tags: [social]
+      responses:
+        '204':
+          description: Taken back
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /crews:
+    get:
+      operationId: listCrews
+      summary: The crews you are in
+      tags: [crews]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrewList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: createCrew
+      summary: Start a crew, with you as owner and first member
+      tags: [crews]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  description: 1-40 characters.
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Crew'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /crews/join/{code}:
+    parameters:
+      - name: code
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: previewCrew
+      summary: The crew behind a join link
+      tags: [crews]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Crew'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      operationId: joinCrew
+      summary: Join a crew by its link; joining twice changes nothing
+      tags: [crews]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Crew'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /crews/{crewID}:
+    parameters:
+      - name: crewID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getCrewBoard
+      summary: Each member's today, streak and week, for members only
+      tags: [crews]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrewBoard'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /crews/{crewID}/members/{userID}:
+    parameters:
+      - name: crewID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: userID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      operationId: removeCrewMember
+      summary: Leave (your own id) or, as owner, remove somebody
+      tags: [crews]
+      responses:
+        '204':
+          description: Done
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /crews/{crewID}/challenge:
+    parameters:
+      - name: crewID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      operationId: setCrewChallenge
+      summary: Set the weekly challenge (owner only)
+      tags: [crews]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrewChallenge'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrewBoard'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      operationId: clearCrewChallenge
+      summary: Clear the weekly challenge (owner only)
+      tags: [crews]
+      responses:
+        '204':
+          description: Cleared
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /friends/match:
+    post:
+      operationId: matchContacts
+      summary: Find people already on Khepri among your contacts, by hashed email
+      description: Send SHA-256 hex digests of lower-cased email addresses, never the addresses. Only people who chose a handle can be found. The hashes are not stored.
+      tags: [social]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [hashes]
+              properties:
+                hashes:
+                  type: array
+                  maxItems: 2000
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContactMatches'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
   /news:
     get:
       operationId: getNews
@@ -4460,6 +4745,149 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorBody'
   schemas:
+    ContactMatches:
+      type: object
+      required: [people]
+      properties:
+        people:
+          type: array
+          items:
+            allOf:
+              - $ref: '#/components/schemas/PersonView'
+              - type: object
+                required: [following]
+                properties:
+                  following:
+                    type: string
+                    description: Empty, pending or accepted.
+    Crew:
+      type: object
+      required: [id, name, memberCount, joinUrl]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        memberCount:
+          type: integer
+        joinUrl:
+          type: string
+          format: uri
+    CrewList:
+      type: object
+      required: [crews]
+      properties:
+        crews:
+          type: array
+          items:
+            $ref: '#/components/schemas/Crew'
+    CrewChallenge:
+      type: object
+      required: [kind, target]
+      properties:
+        kind:
+          type: string
+          enum: [checkins, workouts]
+        target:
+          type: integer
+          minimum: 1
+          maximum: 7
+    CrewMember:
+      type: object
+      required: [id, displayName, handle, checkedIn, workedOut, streak, weekProgress, owner, me]
+      properties:
+        id:
+          type: string
+          format: uuid
+        displayName:
+          type: string
+        handle:
+          type: string
+        checkedIn:
+          type: boolean
+        workedOut:
+          type: boolean
+        streak:
+          type: integer
+        weekProgress:
+          type: integer
+          description: Toward the challenge, Monday to Sunday in the member's own time zone.
+        owner:
+          type: boolean
+        me:
+          type: boolean
+    CrewBoard:
+      allOf:
+        - $ref: '#/components/schemas/Crew'
+        - type: object
+          required: [members, weekStart, isOwner]
+          properties:
+            challenge:
+              $ref: '#/components/schemas/CrewChallenge'
+            members:
+              type: array
+              items:
+                $ref: '#/components/schemas/CrewMember'
+            weekStart:
+              type: string
+              format: date-time
+            isOwner:
+              type: boolean
+    FeedItem:
+      type: object
+      required: [id, userId, displayName, handle, category, kind, title, detail, occurredAt, kudos, kudoed, mine]
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        displayName:
+          type: string
+        handle:
+          type: string
+        category:
+          type: string
+          enum: [training, streaks, goals]
+        kind:
+          type: string
+        title:
+          type: string
+        detail:
+          type: string
+        occurredAt:
+          type: string
+          format: date-time
+        kudos:
+          type: integer
+        kudoed:
+          type: boolean
+        mine:
+          type: boolean
+    Feed:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/FeedItem'
+        before:
+          type: string
+          format: date-time
+          description: Pass as `before` for the next page. Absent on the last page.
+    Sharing:
+      type: object
+      required: [training, streaks, goals]
+      properties:
+        training:
+          type: boolean
+        streaks:
+          type: boolean
+        goals:
+          type: boolean
     PersonView:
       type: object
       required: [id, displayName, handle]
