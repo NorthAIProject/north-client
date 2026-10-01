@@ -41,9 +41,20 @@ func (s *Service) WithSync(hook SyncHook) *Service {
 // Start begins a new session. It requires a recorded biometric (to snapshot
 // the weight used for the burn calculation) and refuses to open a second
 // session while one is already active or paused.
-func (s *Service) Start(ctx context.Context, userID uuid.UUID, activityCode string) (Session, error) {
+//
+// planWeekday is the plan day a guided workout was opened for, or empty. It
+// is what marks that day done once the session completes, even when
+// Wednesday's workout is trained on Tuesday.
+func (s *Service) Start(ctx context.Context, userID uuid.UUID, activityCode, planWeekday string) (Session, error) {
 	if _, ok := LookupMET(activityCode); !ok {
 		return Session{}, apperr.Wrap(apperr.ErrValidation, "unknown activity %q", activityCode)
+	}
+	if planWeekday != "" {
+		canonical, ok := CanonicalWeekday(planWeekday)
+		if !ok {
+			return Session{}, apperr.Wrap(apperr.ErrValidation, "unknown plan day %q", planWeekday)
+		}
+		planWeekday = canonical
 	}
 
 	if _, ok, err := s.repo.Active(ctx, userID); err != nil {
@@ -60,7 +71,7 @@ func (s *Service) Start(ctx context.Context, userID uuid.UUID, activityCode stri
 		return Session{}, err
 	}
 
-	return s.repo.Create(ctx, userID, activityCode, bio.WeightKg)
+	return s.repo.Create(ctx, userID, activityCode, planWeekday, bio.WeightKg)
 }
 
 func (s *Service) Pause(ctx context.Context, id, userID uuid.UUID) (Session, error) {
@@ -132,6 +143,11 @@ func (s *Service) Cancel(ctx context.Context, id, userID uuid.UUID) error {
 }
 
 // Active returns the user's open session, if any.
+// Get is one of the user's sessions; another person's is not found.
+func (s *Service) Get(ctx context.Context, id, userID uuid.UUID) (Session, error) {
+	return s.repo.Get(ctx, id, userID)
+}
+
 func (s *Service) Active(ctx context.Context, userID uuid.UUID) (Session, bool, error) {
 	return s.repo.Active(ctx, userID)
 }
@@ -285,29 +301,43 @@ func (s *Service) Import(ctx context.Context, in ImportInput) (Session, bool, er
 	return session, created, err
 }
 
-// CompletedToday reports whether any workout session was finished today in the user's timezone.
-func (s *Service) CompletedToday(ctx context.Context, userID uuid.UUID, loc *time.Location) (bool, string, error) {
-	if loc == nil {
-		loc = time.UTC
-	}
-	now := time.Now().In(loc)
-	since := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
-	until := since.AddDate(0, 0, 1)
-
-	sessions, err := s.repo.ListBetween(ctx, userID, since, until)
+// CompletedWeekdays lists the plan weekdays finished in the Monday–Sunday
+// week containing now, in the user's time zone. A run on leg day, a
+// cancelled session, and one still open finish nothing; see completionOf.
+func (s *Service) CompletedWeekdays(ctx context.Context, userID uuid.UUID, loc *time.Location, now time.Time) ([]string, error) {
+	sessions, err := s.weekSessions(ctx, userID, loc, now)
 	if err != nil {
-		return false, "", err
+		return nil, err
 	}
-	for _, sess := range sessions {
-		if sess.Status == StatusCompleted {
-			title := sess.PlanWeekday
-			if title == "" {
-				title = sess.ActivityCode
-			}
-			return true, title, nil
-		}
+	return CompletedWeekdays(sessions, loc, now), nil
+}
+
+// ThisWeek lays the plan's days over the week containing now, each done or
+// still open.
+func (s *Service) ThisWeek(ctx context.Context, userID uuid.UUID, slots []PlanSlot, loc *time.Location, now time.Time) (Adherence, error) {
+	sessions, err := s.weekSessions(ctx, userID, loc, now)
+	if err != nil {
+		return Adherence{}, err
 	}
-	return false, "", nil
+	return ThisWeek(slots, sessions, loc, now), nil
+}
+
+// PlanAdherence counts the plan days that fell in rg and how many were done.
+func (s *Service) PlanAdherence(ctx context.Context, userID uuid.UUID, slots []PlanSlot, rg timerange.Range) (Adherence, error) {
+	// A named session can finish its plan day up to six days after it
+	// started, so the sessions read reach back a week before the window.
+	sessions, err := s.repo.ListBetween(ctx, userID, rg.Since.AddDate(0, 0, -7), rg.Until.AddDate(0, 0, 7))
+	if err != nil {
+		return Adherence{}, err
+	}
+	return PlanAdherence(slots, sessions, rg.Location(), rg.Since, rg.Until), nil
+}
+
+// weekSessions are the sessions that can have finished a day of the week
+// containing now: everything that ended from that Monday onwards.
+func (s *Service) weekSessions(ctx context.Context, userID uuid.UUID, loc *time.Location, now time.Time) ([]Session, error) {
+	start := WeekStart(now, loc)
+	return s.repo.ListBetween(ctx, userID, start, start.AddDate(0, 0, 8))
 }
 
 // sameWorkoutFromAnotherSource finds a completed session that is this import

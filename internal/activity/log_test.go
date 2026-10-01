@@ -74,7 +74,7 @@ func TestLogDoesNotConflictWithAnOpenSession(t *testing.T) {
 	svc, user := newService(t, withWeight(80))
 	ctx := context.Background()
 
-	if _, err := svc.Start(ctx, user.ID, "cycling_moderate"); err != nil {
+	if _, err := svc.Start(ctx, user.ID, "cycling_moderate", ""); err != nil {
 		t.Fatalf("start: %v", err)
 	}
 	if _, err := svc.Log(ctx, user.ID, activity.LogInput{ActivityCode: "running_8kmh", Duration: 20 * time.Minute}); err != nil {

@@ -5,6 +5,8 @@ import (
 	"math"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // RecapExercise is one movement in a finished session, against the last time
@@ -24,6 +26,13 @@ type RecapExercise struct {
 // Recap is one finished workout in words and numbers. The sentence is what
 // the person, the coach, and a later trainer all read.
 type Recap struct {
+	// SessionID, StartedAt, PlanWeekday and Focus say which workout this
+	// was. PlanWeekday is empty for a session that finished no plan day.
+	SessionID   uuid.UUID
+	StartedAt   time.Time
+	PlanWeekday string
+	Focus       string
+
 	Sentence       string
 	Duration       time.Duration
 	SetsDone       int
@@ -140,6 +149,8 @@ func recapSentence(r Recap, change *RecapExercise) string {
 	switch {
 	case r.SetsPrescribed > 0 && r.SetsDone > 0:
 		parts = append(parts, fmt.Sprintf("%d of %d sets", r.SetsDone, r.SetsPrescribed))
+	case r.SetsDone == 1:
+		parts = append(parts, "1 set")
 	case r.SetsDone > 0:
 		parts = append(parts, fmt.Sprintf("%d sets", r.SetsDone))
 	}
@@ -213,6 +224,34 @@ func comma(n int) string {
 	for i := lead; i < len(s); i += 3 {
 		b.WriteByte(',')
 		b.WriteString(s[i : i+3])
+	}
+	return b.String()
+}
+
+// RecapSummary renders a recap for the coach: which workout it was, the
+// sentence, and each exercise against last time.
+func RecapSummary(r Recap, loc *time.Location) string {
+	var b strings.Builder
+	b.WriteString("Last workout")
+	if r.PlanWeekday != "" {
+		b.WriteString(" (" + r.PlanWeekday + " plan day")
+		if r.Focus != "" {
+			b.WriteString(", " + r.Focus)
+		}
+		b.WriteString(")")
+	}
+	if !r.StartedAt.IsZero() {
+		b.WriteString(", " + r.StartedAt.In(loc).Format("Mon 2 Jan"))
+	}
+	b.WriteString(": " + r.Sentence)
+	for _, e := range r.Exercises {
+		fmt.Fprintf(&b, "\n  %s: %d sets, %s kg volume", e.Name, e.Sets, comma(int(math.Round(e.VolumeKg))))
+		if e.Best != "" {
+			fmt.Fprintf(&b, ", best %s", e.Best)
+		}
+		if e.HasPrevious {
+			fmt.Fprintf(&b, " (last time %s kg volume, e1RM %+.1f kg)", comma(int(math.Round(e.PreviousVolume))), e.Change)
+		}
 	}
 	return b.String()
 }

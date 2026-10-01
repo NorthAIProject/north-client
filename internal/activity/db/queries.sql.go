@@ -13,7 +13,7 @@ import (
 )
 
 const activeActivitySession = `-- name: ActiveActivitySession :one
-SELECT id, user_id, activity_code, source, status, weight_kg_snapshot, started_at, paused_at, total_paused_seconds, ended_at, calories_burned, external_id, created_at, updated_at, distance_m FROM activity_sessions WHERE user_id = $1 AND status IN ('active', 'paused')
+SELECT id, user_id, activity_code, source, status, weight_kg_snapshot, started_at, paused_at, total_paused_seconds, ended_at, calories_burned, external_id, created_at, updated_at, distance_m, plan_weekday FROM activity_sessions WHERE user_id = $1 AND status IN ('active', 'paused')
 `
 
 func (q *Queries) ActiveActivitySession(ctx context.Context, userID uuid.UUID) (ActivitySession, error) {
@@ -35,6 +35,7 @@ func (q *Queries) ActiveActivitySession(ctx context.Context, userID uuid.UUID) (
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DistanceM,
+		&i.PlanWeekday,
 	)
 	return i, err
 }
@@ -59,7 +60,7 @@ const completeActivitySession = `-- name: CompleteActivitySession :one
 UPDATE activity_sessions
 SET status = 'completed', ended_at = $3, calories_burned = $4, updated_at = now()
 WHERE id = $1 AND user_id = $2
-RETURNING id, user_id, activity_code, source, status, weight_kg_snapshot, started_at, paused_at, total_paused_seconds, ended_at, calories_burned, external_id, created_at, updated_at, distance_m
+RETURNING id, user_id, activity_code, source, status, weight_kg_snapshot, started_at, paused_at, total_paused_seconds, ended_at, calories_burned, external_id, created_at, updated_at, distance_m, plan_weekday
 `
 
 type CompleteActivitySessionParams struct {
@@ -93,24 +94,36 @@ func (q *Queries) CompleteActivitySession(ctx context.Context, arg CompleteActiv
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DistanceM,
+		&i.PlanWeekday,
 	)
 	return i, err
 }
 
 const createActivitySession = `-- name: CreateActivitySession :one
-INSERT INTO activity_sessions (user_id, activity_code, weight_kg_snapshot)
-VALUES ($1, $2, $3)
-RETURNING id, user_id, activity_code, source, status, weight_kg_snapshot, started_at, paused_at, total_paused_seconds, ended_at, calories_burned, external_id, created_at, updated_at, distance_m
+INSERT INTO activity_sessions (user_id, activity_code, weight_kg_snapshot, plan_weekday)
+VALUES (
+    $1,
+    $2,
+    $3,
+    $4
+)
+RETURNING id, user_id, activity_code, source, status, weight_kg_snapshot, started_at, paused_at, total_paused_seconds, ended_at, calories_burned, external_id, created_at, updated_at, distance_m, plan_weekday
 `
 
 type CreateActivitySessionParams struct {
 	UserID           uuid.UUID
 	ActivityCode     string
 	WeightKgSnapshot float64
+	PlanWeekday      *string
 }
 
 func (q *Queries) CreateActivitySession(ctx context.Context, arg CreateActivitySessionParams) (ActivitySession, error) {
-	row := q.db.QueryRow(ctx, createActivitySession, arg.UserID, arg.ActivityCode, arg.WeightKgSnapshot)
+	row := q.db.QueryRow(ctx, createActivitySession,
+		arg.UserID,
+		arg.ActivityCode,
+		arg.WeightKgSnapshot,
+		arg.PlanWeekday,
+	)
 	var i ActivitySession
 	err := row.Scan(
 		&i.ID,
@@ -128,12 +141,13 @@ func (q *Queries) CreateActivitySession(ctx context.Context, arg CreateActivityS
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DistanceM,
+		&i.PlanWeekday,
 	)
 	return i, err
 }
 
 const getActivitySession = `-- name: GetActivitySession :one
-SELECT id, user_id, activity_code, source, status, weight_kg_snapshot, started_at, paused_at, total_paused_seconds, ended_at, calories_burned, external_id, created_at, updated_at, distance_m FROM activity_sessions WHERE id = $1 AND user_id = $2
+SELECT id, user_id, activity_code, source, status, weight_kg_snapshot, started_at, paused_at, total_paused_seconds, ended_at, calories_burned, external_id, created_at, updated_at, distance_m, plan_weekday FROM activity_sessions WHERE id = $1 AND user_id = $2
 `
 
 type GetActivitySessionParams struct {
@@ -160,6 +174,7 @@ func (q *Queries) GetActivitySession(ctx context.Context, arg GetActivitySession
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DistanceM,
+		&i.PlanWeekday,
 	)
 	return i, err
 }
@@ -172,7 +187,7 @@ INSERT INTO activity_sessions (
     $1, $2, $3, 'completed', $4, $5, $6, $7, $8
 )
 ON CONFLICT (source, external_id) WHERE external_id IS NOT NULL DO NOTHING
-RETURNING id, user_id, activity_code, source, status, weight_kg_snapshot, started_at, paused_at, total_paused_seconds, ended_at, calories_burned, external_id, created_at, updated_at, distance_m
+RETURNING id, user_id, activity_code, source, status, weight_kg_snapshot, started_at, paused_at, total_paused_seconds, ended_at, calories_burned, external_id, created_at, updated_at, distance_m, plan_weekday
 `
 
 type ImportActivitySessionParams struct {
@@ -217,12 +232,13 @@ func (q *Queries) ImportActivitySession(ctx context.Context, arg ImportActivityS
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DistanceM,
+		&i.PlanWeekday,
 	)
 	return i, err
 }
 
 const listActivitySessions = `-- name: ListActivitySessions :many
-SELECT id, user_id, activity_code, source, status, weight_kg_snapshot, started_at, paused_at, total_paused_seconds, ended_at, calories_burned, external_id, created_at, updated_at, distance_m FROM activity_sessions
+SELECT id, user_id, activity_code, source, status, weight_kg_snapshot, started_at, paused_at, total_paused_seconds, ended_at, calories_burned, external_id, created_at, updated_at, distance_m, plan_weekday FROM activity_sessions
 WHERE user_id = $1
 ORDER BY started_at DESC
 LIMIT $2
@@ -258,6 +274,7 @@ func (q *Queries) ListActivitySessions(ctx context.Context, arg ListActivitySess
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DistanceM,
+			&i.PlanWeekday,
 		); err != nil {
 			return nil, err
 		}
@@ -270,7 +287,7 @@ func (q *Queries) ListActivitySessions(ctx context.Context, arg ListActivitySess
 }
 
 const listActivitySessionsBetween = `-- name: ListActivitySessionsBetween :many
-SELECT id, user_id, activity_code, source, status, weight_kg_snapshot, started_at, paused_at, total_paused_seconds, ended_at, calories_burned, external_id, created_at, updated_at, distance_m FROM activity_sessions
+SELECT id, user_id, activity_code, source, status, weight_kg_snapshot, started_at, paused_at, total_paused_seconds, ended_at, calories_burned, external_id, created_at, updated_at, distance_m, plan_weekday FROM activity_sessions
 WHERE user_id = $1 AND status = 'completed'
   AND ended_at >= $2 AND ended_at < $3
 ORDER BY ended_at DESC
@@ -309,6 +326,7 @@ func (q *Queries) ListActivitySessionsBetween(ctx context.Context, arg ListActiv
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DistanceM,
+			&i.PlanWeekday,
 		); err != nil {
 			return nil, err
 		}
@@ -327,7 +345,7 @@ INSERT INTO activity_sessions (
 ) VALUES (
     $1, $2, 'manual', 'completed', $3, $4, $5, $6, $7
 )
-RETURNING id, user_id, activity_code, source, status, weight_kg_snapshot, started_at, paused_at, total_paused_seconds, ended_at, calories_burned, external_id, created_at, updated_at, distance_m
+RETURNING id, user_id, activity_code, source, status, weight_kg_snapshot, started_at, paused_at, total_paused_seconds, ended_at, calories_burned, external_id, created_at, updated_at, distance_m, plan_weekday
 `
 
 type LogActivitySessionParams struct {
@@ -370,6 +388,7 @@ func (q *Queries) LogActivitySession(ctx context.Context, arg LogActivitySession
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DistanceM,
+		&i.PlanWeekday,
 	)
 	return i, err
 }
@@ -378,7 +397,7 @@ const pauseActivitySession = `-- name: PauseActivitySession :one
 UPDATE activity_sessions
 SET status = 'paused', paused_at = now(), updated_at = now()
 WHERE id = $1 AND user_id = $2
-RETURNING id, user_id, activity_code, source, status, weight_kg_snapshot, started_at, paused_at, total_paused_seconds, ended_at, calories_burned, external_id, created_at, updated_at, distance_m
+RETURNING id, user_id, activity_code, source, status, weight_kg_snapshot, started_at, paused_at, total_paused_seconds, ended_at, calories_burned, external_id, created_at, updated_at, distance_m, plan_weekday
 `
 
 type PauseActivitySessionParams struct {
@@ -405,6 +424,7 @@ func (q *Queries) PauseActivitySession(ctx context.Context, arg PauseActivitySes
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DistanceM,
+		&i.PlanWeekday,
 	)
 	return i, err
 }
@@ -413,7 +433,7 @@ const resumeActivitySession = `-- name: ResumeActivitySession :one
 UPDATE activity_sessions
 SET status = 'active', paused_at = NULL, total_paused_seconds = $3, updated_at = now()
 WHERE id = $1 AND user_id = $2
-RETURNING id, user_id, activity_code, source, status, weight_kg_snapshot, started_at, paused_at, total_paused_seconds, ended_at, calories_burned, external_id, created_at, updated_at, distance_m
+RETURNING id, user_id, activity_code, source, status, weight_kg_snapshot, started_at, paused_at, total_paused_seconds, ended_at, calories_burned, external_id, created_at, updated_at, distance_m, plan_weekday
 `
 
 type ResumeActivitySessionParams struct {
@@ -441,6 +461,7 @@ func (q *Queries) ResumeActivitySession(ctx context.Context, arg ResumeActivityS
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DistanceM,
+		&i.PlanWeekday,
 	)
 	return i, err
 }

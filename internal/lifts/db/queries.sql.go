@@ -174,3 +174,101 @@ func (q *Queries) ListSetsForExercises(ctx context.Context, arg ListSetsForExerc
 	}
 	return items, nil
 }
+
+const listSetsForExercisesBefore = `-- name: ListSetsForExercisesBefore :many
+SELECT id, user_id, activity_session_id, log_date, exercise_slug, exercise_name, set_number, weight_kg, reps, performed_at FROM set_logs
+WHERE user_id = $1
+  AND performed_at >= $2
+  AND performed_at < $3
+  AND (CASE WHEN exercise_slug <> '' THEN exercise_slug ELSE lower(btrim(exercise_name)) END) = ANY($4::text[])
+ORDER BY performed_at DESC
+LIMIT 500
+`
+
+type ListSetsForExercisesBeforeParams struct {
+	UserID uuid.UUID
+	Since  time.Time
+	Before time.Time
+	Keys   []string
+}
+
+// Sets of the given exercises in [since, before), newest first: the history
+// a finished workout is compared against. Keys match lift.KeyFor.
+func (q *Queries) ListSetsForExercisesBefore(ctx context.Context, arg ListSetsForExercisesBeforeParams) ([]SetLog, error) {
+	rows, err := q.db.Query(ctx, listSetsForExercisesBefore,
+		arg.UserID,
+		arg.Since,
+		arg.Before,
+		arg.Keys,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SetLog{}
+	for rows.Next() {
+		var i SetLog
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.ActivitySessionID,
+			&i.LogDate,
+			&i.ExerciseSlug,
+			&i.ExerciseName,
+			&i.SetNumber,
+			&i.WeightKg,
+			&i.Reps,
+			&i.PerformedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSetsForSession = `-- name: ListSetsForSession :many
+SELECT id, user_id, activity_session_id, log_date, exercise_slug, exercise_name, set_number, weight_kg, reps, performed_at FROM set_logs
+WHERE user_id = $1 AND activity_session_id = $2
+ORDER BY performed_at, set_number
+`
+
+type ListSetsForSessionParams struct {
+	UserID            uuid.UUID
+	ActivitySessionID *uuid.UUID
+}
+
+// The sets logged during one timed workout, in the order they were done.
+func (q *Queries) ListSetsForSession(ctx context.Context, arg ListSetsForSessionParams) ([]SetLog, error) {
+	rows, err := q.db.Query(ctx, listSetsForSession, arg.UserID, arg.ActivitySessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SetLog{}
+	for rows.Next() {
+		var i SetLog
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.ActivitySessionID,
+			&i.LogDate,
+			&i.ExerciseSlug,
+			&i.ExerciseName,
+			&i.SetNumber,
+			&i.WeightKg,
+			&i.Reps,
+			&i.PerformedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

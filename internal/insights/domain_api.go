@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/lifts"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/shared/viz"
@@ -129,6 +130,31 @@ type InsightsTraining struct {
 	SessionCount int               `json:"sessionCount"`
 	TotalTime    string            `json:"totalTime"`
 	HasSessions  bool              `json:"hasSessions"`
+	// Plan is absent without a training plan; Recap before the first
+	// finished workout in the window.
+	Plan  *TrainingPlanWeek    `json:"plan,omitempty"`
+	Recap *lifts.LiftRecapView `json:"recap,omitempty"`
+}
+
+// TrainingPlanWeek is the plan against what was done: this Monday–Sunday
+// week day by day, and the requested window as a count.
+type TrainingPlanWeek struct {
+	Sentence      string            `json:"sentence"`
+	Done          int               `json:"done"`
+	Planned       int               `json:"planned"`
+	Days          []TrainingPlanDay `json:"days"`
+	RangeDone     int               `json:"rangeDone"`
+	RangePlanned  int               `json:"rangePlanned"`
+	RangeSentence string            `json:"rangeSentence"`
+}
+
+type TrainingPlanDay struct {
+	Weekday string `json:"weekday"`
+	Focus   string `json:"focus"`
+	// Date is the local calendar day, YYYY-MM-DD.
+	Date  string `json:"date"`
+	Done  bool   `json:"done"`
+	Today bool   `json:"today"`
 }
 
 type InsightsNutrition struct {
@@ -258,7 +284,9 @@ func (a *API) training(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, err, domainError)
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectTraining(view, sessionKindSegments(data.Sessions)))
+	out := projectTraining(view, sessionKindSegments(data.Sessions))
+	out.Plan, out.Recap = projectPlanWeek(data), projectRecap(data)
+	httpx.WriteJSON(w, http.StatusOK, out)
 }
 
 func (a *API) nutrition(w http.ResponseWriter, r *http.Request) {
@@ -367,6 +395,31 @@ func projectTraining(v insightpages.TrainingView, kinds []viz.DonutSegment) Insi
 		out.Sessions = append(out.Sessions, TrainingSession{Name: s.Name, At: s.At, Duration: s.Duration, Calories: s.Calories})
 	}
 	return out
+}
+
+func projectPlanWeek(data TrainingData) *TrainingPlanWeek {
+	if !data.HasPlan {
+		return nil
+	}
+	today := data.Now.Format("2006-01-02")
+	out := &TrainingPlanWeek{
+		Sentence: data.Week.Sentence, Done: data.Week.Done, Planned: data.Week.Planned,
+		Days:      make([]TrainingPlanDay, 0, len(data.Week.Days)),
+		RangeDone: data.Adherence.Done, RangePlanned: data.Adherence.Planned, RangeSentence: data.Adherence.Sentence,
+	}
+	for _, d := range data.Week.Days {
+		date := d.Date.Format("2006-01-02")
+		out.Days = append(out.Days, TrainingPlanDay{Weekday: d.Weekday, Focus: d.Focus, Date: date, Done: d.Done, Today: date == today})
+	}
+	return out
+}
+
+func projectRecap(data TrainingData) *lifts.LiftRecapView {
+	if !data.HasRecap {
+		return nil
+	}
+	view := lifts.ProjectRecap(data.Recap)
+	return &view
 }
 
 func projectNutrition(v insightpages.NutritionView, macros []viz.DonutSegment) InsightsNutrition {

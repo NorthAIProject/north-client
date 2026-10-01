@@ -181,9 +181,12 @@ func (p Plan) Summary() string {
 }
 
 // NextSession is the training day that belongs to now, or the next one after
-// it. Today wins when today is a plan day; otherwise the search walks forward
-// through the week. Unrecognised weekday labels are ignored.
-func (p Plan) NextSession(now time.Time) (PlanDay, bool) {
+// it. Today wins when today is a plan day that is not in done; otherwise the
+// search walks forward through the week. done names the weekdays already
+// finished this Monday–Sunday week, so they are skipped until the week rolls
+// over — a finished Saturday does not hide Monday. Unrecognised weekday
+// labels are ignored.
+func (p Plan) NextSession(now time.Time, done []string) (PlanDay, bool) {
 	byDay := make(map[time.Weekday]PlanDay, len(p.Days))
 	for _, d := range p.Days {
 		wd, ok := parseWeekday(d.Weekday)
@@ -195,14 +198,30 @@ func (p Plan) NextSession(now time.Time) (PlanDay, bool) {
 	if len(byDay) == 0 {
 		return PlanDay{}, false
 	}
+	finished := make(map[time.Weekday]bool, len(done))
+	for _, label := range done {
+		if wd, ok := parseWeekday(label); ok {
+			finished[wd] = true
+		}
+	}
 
 	for i := 0; i < 7; i++ {
 		day := now.AddDate(0, 0, i)
+		// Past Sunday is next week, where nothing is finished yet.
+		thisWeek := daysIntoWeek(now)+i < 7
+		if thisWeek && finished[day.Weekday()] {
+			continue
+		}
 		if session, ok := byDay[day.Weekday()]; ok {
 			return session, true
 		}
 	}
 	return PlanDay{}, false
+}
+
+// daysIntoWeek counts from Monday: Monday is 0, Sunday 6.
+func daysIntoWeek(t time.Time) int {
+	return (int(t.Weekday()) + 6) % 7
 }
 
 func parseWeekday(label string) (time.Weekday, bool) {

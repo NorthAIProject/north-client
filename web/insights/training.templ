@@ -8,6 +8,7 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/ui/card"
 	"github.com/NorthAIProject/north-client/web/shared/ui/chart"
+	"github.com/NorthAIProject/north-client/web/shared/workoutsummary"
 )
 
 // SessionRow is one completed activity session.
@@ -34,6 +35,30 @@ type TrainingView struct {
 	HasSessions bool
 
 	Lifting LiftingView
+
+	// Plan is the training plan over the window; zero without one.
+	Plan PlanAdherenceView
+	// Recap is the latest finished workout in the window; nil before one.
+	Recap *workoutsummary.Recap
+}
+
+// PlanAdherenceView is the plan against what was done: this week day by day,
+// and the window as a count.
+type PlanAdherenceView struct {
+	HasPlan bool
+	Week    workoutsummary.Week
+
+	Done     int
+	Planned  int
+	Sentence string
+}
+
+// Rate is the window's plan days done, as a percentage.
+func (p PlanAdherenceView) Rate() string {
+	if p.Planned == 0 {
+		return "—"
+	}
+	return fmt.Sprintf("%d%%", p.Done*100/p.Planned)
 }
 
 // LiftingView is what the logged sets add up to.
@@ -82,6 +107,9 @@ templ Training(user users.User, view TrainingView) {
 
 templ TrainingPanels(view TrainingView) {
 	<div class="space-y-6">
+		if view.Plan.HasPlan || view.Recap != nil {
+			@planSection(view)
+		}
 		<div class="grid gap-3 sm:grid-cols-3">
 			@statTile("Burned", formatKcal(view.Calories), "against the window before", view.Delta)
 			@statTile("Sessions", formatCount(view.SessionCount), "completed", DeltaView{})
@@ -150,6 +178,41 @@ templ TrainingPanels(view TrainingView) {
 			}
 		}
 	</div>
+}
+
+// planSection is the plan read against what was done — the view a coach or
+// trainer starts from: adherence, then the latest workout in words and bars.
+templ planSection(view TrainingView) {
+	<section class="grid gap-4 lg:grid-cols-5" data-testid="insights-plan">
+		if view.Plan.HasPlan {
+			@card.Card(card.Props{Class: "border-hairline bg-surface lg:col-span-2"}) {
+				@card.Header() {
+					@card.Title() {
+						Plan this week
+					}
+				}
+				@card.Content() {
+					<div class="space-y-4">
+						@workoutsummary.WeekStrip(view.Plan.Week)
+						if view.Plan.Planned > 0 {
+							<div class="border-hairline border-t pt-3">
+								<div class="flex items-baseline justify-between gap-2">
+									<p class="text-muted-foreground font-mono text-[10px] uppercase tracking-[0.14em]">In this window</p>
+									<p class="text-xl font-medium tabular-nums">{ view.Plan.Rate() }</p>
+								</div>
+								<p class="text-muted-foreground text-xs">{ view.Plan.Sentence }</p>
+							</div>
+						}
+					</div>
+				}
+			}
+		}
+		if view.Recap != nil {
+			<div class={ templ.KV("lg:col-span-3", view.Plan.HasPlan), templ.KV("lg:col-span-5", !view.Plan.HasPlan) }>
+				@workoutsummary.RecapCard(*view.Recap)
+			</div>
+		}
+	</section>
 }
 
 func timeLabel(view TrainingView) string {
