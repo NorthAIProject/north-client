@@ -2,6 +2,7 @@ package reports_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -166,5 +167,45 @@ func TestWeeklyListExcludesBriefings(t *testing.T) {
 	}
 	if len(weekly) != 1 {
 		t.Fatalf("weekly reports = %d, want 1", len(weekly))
+	}
+}
+
+// The briefing arrives at the hour the person chose, not a fixed one: the push
+// goes out as it is written, so the hour it is written is when the phone
+// lights up.
+func TestBriefingSweepKeepsToTheChosenHour(t *testing.T) {
+	cases := []struct {
+		name  string
+		utc   int // 09:00 in Lisbon is 08:00 UTC in August
+		wants int
+	}{
+		{"an hour early", 7, 0},
+		{"on the hour", 8, 1},
+	}
+	for i, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			now := time.Date(2026, 8, 17, tc.utc, 0, 0, 0, time.UTC)
+			briefer, svc, userSvc, notifSvc, pool := briefingFixture(t, now)
+			ctx := context.Background()
+			user := onboardedUser(t, pool, userSvc, fmt.Sprintf("briefing-hour-%d@north.test", i), "Europe/Lisbon")
+
+			hour := 9
+			on := true
+			if _, err := notifSvc.Upsert(ctx, user.ID, notifications.Input{
+				DailyBriefingAuto: on, BriefingHour: &hour,
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if err := briefer.HandleSweep(ctx, nil); err != nil {
+				t.Fatalf("sweep: %v", err)
+			}
+			list, err := svc.ListKind(ctx, user.ID, reports.KindDaily, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(list) != tc.wants {
+				t.Fatalf("briefings = %d, want %d", len(list), tc.wants)
+			}
+		})
 	}
 }
