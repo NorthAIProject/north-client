@@ -1,0 +1,35 @@
+{
+  "id": "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee",
+  "name": "Morning runners",
+  "joinUrl": "https://kheprios.com/i/c/q8w3n5k2ht",
+  "challenge": {
+    "kind": "checkins",
+    "target": 5
+  },
+  "members": [
+    {
+      "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      "displayName": "Ana",
+      "handle": "ana_runs",
+      "checkedIn": true,
+      "workedOut": false,
+      "streak": 3,
+      "weekProgress": 3,
+      "owner": true,
+      "me": true
+    },
+    {
+      "id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+      "displayName": "Leo",
+      "handle": "",
+      "checkedIn": false,
+      "workedOut": true,
+      "streak": 0,
+      "weekProgress": 1,
+      "owner": false,
+      "me": false
+    }
+  ],
+  "weekStart": "2026-09-28T00:00:00Z",
+  "isOwner": true
+}

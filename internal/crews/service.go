@@ -154,12 +154,12 @@ func (s *Service) Leave(ctx context.Context, crewID, userID uuid.UUID) error {
 		return err
 	}
 	if c.OwnerID == userID {
-		next, err := s.q.OldestOtherMember(ctx, crewsdb.OldestOtherMemberParams{CrewID: crewID, UserID: userID})
-		if errors.Is(err, pgx.ErrNoRows) {
+		next, nextErr := s.q.OldestOtherMember(ctx, crewsdb.OldestOtherMemberParams{CrewID: crewID, UserID: userID})
+		if errors.Is(nextErr, pgx.ErrNoRows) {
 			return s.q.DeleteCrew(ctx, crewID)
 		}
-		if err != nil {
-			return apperr.Wrap(err, "find next owner")
+		if nextErr != nil {
+			return apperr.Wrap(nextErr, "find next owner")
 		}
 		if err = s.q.SetOwner(ctx, crewsdb.SetOwnerParams{ID: crewID, OwnerID: next}); err != nil {
 			return apperr.Wrap(err, "hand over crew")
@@ -288,9 +288,9 @@ func (s *Service) fill(ctx context.Context, m *Member, u users.User, now time.Ti
 		}
 	}
 	if s.workouts != nil {
-		n, err := s.workouts.CountBetween(ctx, u.ID, today, today.AddDate(0, 0, 1))
-		if err != nil {
-			return err
+		n, countErr := s.workouts.CountBetween(ctx, u.ID, today, today.AddDate(0, 0, 1))
+		if countErr != nil {
+			return countErr
 		}
 		m.WorkedOut = n > 0
 	}
@@ -344,4 +344,29 @@ func newCode() string {
 		}
 	}
 	return string(out)
+}
+
+// CheckedInCrewmates are the names of the people sharing a crew with user who
+// have checked in today, each in their own day. For the evening nudge.
+func (s *Service) CheckedInCrewmates(ctx context.Context, user users.User, now time.Time) ([]string, error) {
+	if s.checkIns == nil {
+		return nil, nil
+	}
+	rows, err := s.q.CrewmatesOf(ctx, user.ID)
+	if err != nil {
+		return nil, apperr.Wrap(err, "crewmates")
+	}
+	var names []string
+	for _, r := range rows {
+		mate := users.User{ID: r.ID, Timezone: r.Timezone}
+		local := now.In(mate.Location())
+		ok, err := s.checkIns.CheckedInOn(ctx, r.ID, time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, mate.Location()))
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			names = append(names, r.DisplayName)
+		}
+	}
+	return names, nil
 }

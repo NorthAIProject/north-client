@@ -91,7 +91,7 @@ func (q *Queries) CrewByCode(ctx context.Context, code string) (Crew, error) {
 }
 
 const crewmatesOf = `-- name: CrewmatesOf :many
-SELECT DISTINCT u.id, u.display_name
+SELECT DISTINCT u.id, u.display_name, u.timezone
 FROM crew_members mine
 JOIN crew_members other ON other.crew_id = mine.crew_id AND other.user_id <> mine.user_id
 JOIN users u ON u.id = other.user_id
@@ -101,6 +101,7 @@ WHERE mine.user_id = $1
 type CrewmatesOfRow struct {
 	ID          uuid.UUID
 	DisplayName string
+	Timezone    string
 }
 
 // Everybody who shares at least one crew with the user, once each.
@@ -113,7 +114,7 @@ func (q *Queries) CrewmatesOf(ctx context.Context, userID uuid.UUID) ([]Crewmate
 	items := []CrewmatesOfRow{}
 	for rows.Next() {
 		var i CrewmatesOfRow
-		if err := rows.Scan(&i.ID, &i.DisplayName); err != nil {
+		if err := rows.Scan(&i.ID, &i.DisplayName, &i.Timezone); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

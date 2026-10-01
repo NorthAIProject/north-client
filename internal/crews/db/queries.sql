@@ -58,7 +58,7 @@ DELETE FROM crew_challenges WHERE crew_id = $1;
 
 -- name: CrewmatesOf :many
 -- Everybody who shares at least one crew with the user, once each.
-SELECT DISTINCT u.id, u.display_name
+SELECT DISTINCT u.id, u.display_name, u.timezone
 FROM crew_members mine
 JOIN crew_members other ON other.crew_id = mine.crew_id AND other.user_id <> mine.user_id
 JOIN users u ON u.id = other.user_id

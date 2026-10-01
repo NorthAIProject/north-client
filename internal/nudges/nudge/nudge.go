@@ -20,6 +20,9 @@ const (
 	KindBriefingReady     = "briefing_ready"
 	KindPhotoAsk          = "photo_ask"
 	KindPhotoReminder     = "photo_reminder"
+	// KindCrewCheckIn is the evening note that crewmates have checked in
+	// and you have not.
+	KindCrewCheckIn = "crew_checkin"
 )
 
 // Nudge is one scheduled accountability note for a person.

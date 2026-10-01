@@ -57,6 +57,7 @@ var portugueseBrazilianNav = map[string]string{
 	"nav.memory.desc":    "O que o North lembra sobre você.",
 	"nav.decisions":      "Decisões",
 	"nav.friends":        "Amigos",
+	"nav.crews":          "Grupos",
 	"nav.decisions.desc": "As escolhas que você fez, e por quê.",
 
 	"nav.goals":                   "Objetivos",
