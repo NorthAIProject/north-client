@@ -111,6 +111,7 @@ func (h *Handler) parse(w http.ResponseWriter, r *http.Request) {
 	returnTo := embedReturnTo(r.PostFormValue("return_to"))
 	draft, err := h.svc.Parse(r.Context(), user, text)
 	if err != nil {
+		logFailure(r, "capture: could not read the sentence", err)
 		// The sentence is kept: a failed parse must never cost somebody their
 		// words.
 		h.render(w, r, statusFor(err), capturepages.Data{Text: text, ReturnTo: returnTo, Error: message(err)})
@@ -147,6 +148,7 @@ func (h *Handler) commit(w http.ResponseWriter, r *http.Request) {
 
 	receipt, err := h.svc.Commit(r.Context(), user, items)
 	if err != nil {
+		logFailure(r, "capture: could not save", err)
 		h.render(w, r, statusFor(err), capturepages.Data{Text: text, ReturnTo: returnTo, Error: message(err)})
 		return
 	}
@@ -220,6 +222,14 @@ func (h *Handler) renderMealVoice(w http.ResponseWriter, r *http.Request, status
 func (h *Handler) render(w http.ResponseWriter, r *http.Request, status int, data capturepages.Data) {
 	user := auth.MustUser(r.Context())
 	ctx := r.Context()
+
+	// The app's htmx config never swaps a 5xx (web/shared/layout/base.templ),
+	// so a panel explaining an internal failure, sent as 500, would be dropped
+	// and the button would look dead. The panel is the error report here; it
+	// goes out as 200, and logFailure has already recorded what went wrong.
+	if htmx.IsRequest(r) && status >= http.StatusInternalServerError {
+		status = http.StatusOK
+	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
@@ -384,3 +394,13 @@ func message(err error) string {
 // Service is the handler's service, so the JSON twin can be built from the
 // same one rather than a second copy wired to the same tables.
 func (h *Handler) Service() *Service { return h.svc }
+
+// logFailure records an error the person only sees as "try again". A
+// validation error is theirs to fix and already on screen, so it is not
+// logged; anything else would otherwise leave no trace but a status code.
+func logFailure(r *http.Request, msg string, err error) {
+	if statusFor(err) < http.StatusInternalServerError {
+		return
+	}
+	middleware.FromContext(r.Context()).Error(msg, slog.Any("error", err))
+}
