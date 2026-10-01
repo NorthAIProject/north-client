@@ -350,6 +350,61 @@ func (q *Queries) ListFollowing(ctx context.Context, followerID uuid.UUID) ([]Li
 	return items, nil
 }
 
+const matchEmailHashes = `-- name: MatchEmailHashes :many
+SELECT u.id, u.display_name, u.handle,
+       COALESCE((SELECT f.status FROM follows f WHERE f.follower_id = $1 AND f.followee_id = u.id), '')::text AS following
+FROM users u
+WHERE u.handle IS NOT NULL
+  AND u.id <> $1
+  AND encode(sha256(convert_to(lower(u.email::text), 'UTF8')), 'hex') = ANY($2::text[])
+  AND NOT EXISTS (SELECT 1 FROM blocks b
+                  WHERE (b.blocker_id = $1 AND b.blocked_id = u.id)
+                     OR (b.blocker_id = u.id AND b.blocked_id = $1))
+ORDER BY u.display_name
+LIMIT 200
+`
+
+type MatchEmailHashesParams struct {
+	Viewer uuid.UUID
+	Hashes []string
+}
+
+type MatchEmailHashesRow struct {
+	ID          uuid.UUID
+	DisplayName string
+	Handle      *string
+	Following   string
+}
+
+// People whose email, lower-cased, hashes to one of the given SHA-256 hex
+// strings. Only accounts with a handle: choosing one is choosing to be
+// findable, which keeps this from answering "is this address on Khepri?"
+// for somebody who never asked to be found. Blocks hide either way.
+func (q *Queries) MatchEmailHashes(ctx context.Context, arg MatchEmailHashesParams) ([]MatchEmailHashesRow, error) {
+	rows, err := q.db.Query(ctx, matchEmailHashes, arg.Viewer, arg.Hashes)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []MatchEmailHashesRow{}
+	for rows.Next() {
+		var i MatchEmailHashesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.DisplayName,
+			&i.Handle,
+			&i.Following,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const personByHandle = `-- name: PersonByHandle :one
 SELECT id, display_name, handle FROM users WHERE handle = $1
 `

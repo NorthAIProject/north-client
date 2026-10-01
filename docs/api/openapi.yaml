@@ -3410,6 +3410,36 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+  /friends/match:
+    post:
+      operationId: matchContacts
+      summary: Find people already on Khepri among your contacts, by hashed email
+      description: Send SHA-256 hex digests of lower-cased email addresses, never the addresses. Only people who chose a handle can be found. The hashes are not stored.
+      tags: [social]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [hashes]
+              properties:
+                hashes:
+                  type: array
+                  maxItems: 2000
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContactMatches'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
   /news:
     get:
       operationId: getNews
@@ -4648,6 +4678,21 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorBody'
   schemas:
+    ContactMatches:
+      type: object
+      required: [people]
+      properties:
+        people:
+          type: array
+          items:
+            allOf:
+              - $ref: '#/components/schemas/PersonView'
+              - type: object
+                required: [following]
+                properties:
+                  following:
+                    type: string
+                    description: Empty, pending or accepted.
     Crew:
       type: object
       required: [id, name, memberCount, joinUrl]
