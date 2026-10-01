@@ -1,8 +1,11 @@
 package social
 
 import (
+	"fmt"
 	"strings"
+	"time"
 
+	"github.com/NorthAIProject/north-client/internal/achievements/achievement"
 	"github.com/NorthAIProject/north-client/internal/social/friend"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
@@ -15,7 +18,30 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/form"
 	"github.com/NorthAIProject/north-client/web/shared/ui/input"
 	"github.com/NorthAIProject/north-client/web/shared/ui/label"
+	switchcomp "github.com/NorthAIProject/north-client/web/shared/ui/switch"
 )
+
+// FeedSection is the friends feed and what this person shares. Enabled is
+// false when the deployment has no achievements wired.
+type FeedSection struct {
+	Enabled bool
+	Items   []achievement.Item
+	Sharing achievement.Sharing
+}
+
+func ago(t time.Time) string {
+	d := time.Since(t)
+	switch {
+	case d < time.Hour:
+		return fmt.Sprintf("%dm ago", max(1, int(d.Minutes())))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh ago", int(d.Hours()))
+	case d < 7*24*time.Hour:
+		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
+	default:
+		return t.Format("2 Jan")
+	}
+}
 
 // FriendsForm carries the two text fields back after a rejected submission.
 type FriendsForm struct {
@@ -53,7 +79,7 @@ func at(handle string) string {
 	return "@" + handle
 }
 
-templ FriendsPage(user users.User, o friend.Overview, inviteURL string, f FriendsForm) {
+templ FriendsPage(user users.User, o friend.Overview, inviteURL string, f FriendsForm, feed FeedSection) {
 	@layout.App("Friends", user, layout.BuildNav(ctx, "/app/friends")) {
 		<div class="mx-auto w-full max-w-3xl space-y-6 p-6 md:p-8">
 			<header>
@@ -63,6 +89,9 @@ templ FriendsPage(user users.User, o friend.Overview, inviteURL string, f Friend
 					People who follow you only see what you choose to share. Nobody follows you without your yes.
 				</p>
 			</header>
+			if feed.Enabled {
+				@feedCard(feed.Items)
+			}
 			@inviteCard(inviteURL, o.Joined)
 			@handleCard(f)
 			if len(o.Requests) > 0 {
@@ -83,6 +112,9 @@ templ FriendsPage(user users.User, o friend.Overview, inviteURL string, f Friend
 						</ul>
 					}
 				}
+			}
+			if feed.Enabled {
+				@sharingCard(feed.Sharing)
 			}
 			@followCard(f)
 			@listCard("Following", "Nobody yet. Follow somebody by their handle, or share your link.", o.Following, true)
@@ -290,5 +322,117 @@ templ InvitePage(p friend.InvitePreview) {
 				</div>
 			}
 		}
+	}
+}
+
+templ feedCard(items []achievement.Item) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface", ID: "feed"}) {
+		@card.Header() {
+			@card.Title() {
+				Recent
+			}
+			@card.Description() {
+				Your moments and the ones friends share with you.
+			}
+		}
+		@card.Content() {
+			if len(items) == 0 {
+				<p class="text-muted-foreground text-sm">Nothing yet. Finish a workout, keep a streak, or complete a goal, and it shows here.</p>
+			} else {
+				<ul class="divide-y divide-hairline">
+					for _, it := range items {
+						<li class="flex items-start gap-3 py-3">
+							@avatar.Avatar() {
+								@avatar.Fallback() {
+									{ initials(it.DisplayName) }
+								}
+							}
+							<div class="min-w-0 flex-1">
+								<p class="text-sm">
+									<span class="font-medium">
+										if it.Mine {
+											You
+										} else {
+											{ it.DisplayName }
+										}
+									</span>
+									<span class="text-muted-foreground"> · { ago(it.OccurredAt) }</span>
+								</p>
+								<p class="text-sm">{ it.Title }</p>
+								if it.Detail != "" {
+									<p class="text-muted-foreground text-xs">{ it.Detail }</p>
+								}
+							</div>
+							if it.Mine {
+								if it.Kudos > 0 {
+									@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
+										{ fmt.Sprint(it.Kudos) } kudos
+									}
+								}
+							} else {
+								@kudosButton(it)
+							}
+						</li>
+					}
+				</ul>
+			}
+		}
+	}
+}
+
+templ kudosButton(it achievement.Item) {
+	if it.Kudoed {
+		<form method="post" action={ templ.SafeURL("/app/friends/kudos/" + it.ID.String() + "/undo") }>
+			@ui.CSRFInput()
+			@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantSecondary, Size: button.SizeSm}) {
+				Kudos · { fmt.Sprint(it.Kudos) }
+			}
+		</form>
+	} else {
+		<form method="post" action={ templ.SafeURL("/app/friends/kudos/" + it.ID.String()) }>
+			@ui.CSRFInput()
+			@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Size: button.SizeSm}) {
+				if it.Kudos > 0 {
+					Kudos · { fmt.Sprint(it.Kudos) }
+				} else {
+					Give kudos
+				}
+			}
+		</form>
+	}
+}
+
+templ sharingCard(s achievement.Sharing) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Title() {
+				What followers see
+			}
+			@card.Description() {
+				Off until you turn it on. Your journal, decisions, food and health numbers are never shared.
+			}
+		}
+		@card.Content() {
+			<form method="post" action="/app/friends/sharing" class="space-y-4">
+				@ui.CSRFInput()
+				@shareSwitch("share_training", "Workouts you finish", s.Training)
+				@shareSwitch("share_streaks", "Check-in streaks (7, 30, 100 days…)", s.Streaks)
+				@shareSwitch("share_goals", "Goals and milestones you complete", s.Goals)
+				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantSecondary}) {
+					Save
+				}
+			</form>
+		}
+	}
+}
+
+templ shareSwitch(id, text string, on bool) {
+	@form.Item() {
+		<div class="flex items-center gap-3">
+			@switchcomp.Switch(switchcomp.Props{ID: id, Name: id, Checked: on})
+			@label.Label(label.Props{For: id}) {
+				{ text }
+			}
+		</div>
 	}
 }
