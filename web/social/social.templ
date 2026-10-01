@@ -21,6 +21,12 @@ import (
 	switchcomp "github.com/NorthAIProject/north-client/web/shared/ui/switch"
 )
 
+// ShareLinks are ready-made share pages for the invite link.
+type ShareLinks struct {
+	X        string
+	Facebook string
+}
+
 // FeedSection is the friends feed and what this person shares. Enabled is
 // false when the deployment has no achievements wired.
 type FeedSection struct {
@@ -79,7 +85,7 @@ func at(handle string) string {
 	return "@" + handle
 }
 
-templ FriendsPage(user users.User, o friend.Overview, inviteURL string, f FriendsForm, feed FeedSection) {
+templ FriendsPage(user users.User, o friend.Overview, inviteURL string, f FriendsForm, feed FeedSection, share ShareLinks) {
 	@layout.App("Friends", user, layout.BuildNav(ctx, "/app/friends")) {
 		<div class="mx-auto w-full max-w-3xl space-y-6 p-6 md:p-8">
 			<header>
@@ -92,7 +98,7 @@ templ FriendsPage(user users.User, o friend.Overview, inviteURL string, f Friend
 			if feed.Enabled {
 				@feedCard(feed.Items)
 			}
-			@inviteCard(inviteURL, o.Joined)
+			@inviteCard(inviteURL, o.Joined, share)
 			@handleCard(f)
 			if len(o.Requests) > 0 {
 				@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
@@ -143,7 +149,7 @@ templ FriendsPage(user users.User, o friend.Overview, inviteURL string, f Friend
 	}
 }
 
-templ inviteCard(url string, joined int) {
+templ inviteCard(url string, joined int, share ShareLinks) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 		@card.Header() {
 			@card.Title() {
@@ -157,6 +163,14 @@ templ inviteCard(url string, joined int) {
 			<div class="flex items-center gap-2">
 				@input.Input(input.Props{ID: "invite-url", Value: url, Readonly: true, Class: "font-mono text-sm"})
 				@copybutton.CopyButton(copybutton.Props{TargetID: "invite-url"})
+			</div>
+			<div class="mt-3 flex flex-wrap gap-2">
+				@button.Button(button.Props{Href: share.X, Target: "_blank", Variant: button.VariantOutline, Size: button.SizeSm}) {
+					Share on X
+				}
+				@button.Button(button.Props{Href: share.Facebook, Target: "_blank", Variant: button.VariantOutline, Size: button.SizeSm}) {
+					Share on Facebook
+				}
 			</div>
 			if joined > 0 {
 				<p class="text-muted-foreground mt-3 text-sm">

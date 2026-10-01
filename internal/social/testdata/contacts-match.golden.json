@@ -1,0 +1,16 @@
+{
+  "people": [
+    {
+      "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      "displayName": "Ana",
+      "handle": "ana_runs",
+      "following": ""
+    },
+    {
+      "id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+      "displayName": "João",
+      "handle": "joao",
+      "following": "pending"
+    }
+  ]
+}
