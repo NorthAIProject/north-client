@@ -17,12 +17,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/NorthAIProject/north-client/internal/checkins"
 	"github.com/NorthAIProject/north-client/internal/conversations"
 	"github.com/NorthAIProject/north-client/internal/documents"
 	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/memories"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/social/friend"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
@@ -50,6 +53,13 @@ type Exporter struct {
 	goals         *goals.Service
 	checkIns      *checkins.Service
 	storage       documents.Storage
+	friends       Friends
+}
+
+// Friends is the social graph as an export needs it. social.Service
+// satisfies it; nil leaves friends.md out.
+type Friends interface {
+	Overview(ctx context.Context, userID uuid.UUID) (friend.Overview, error)
 }
 
 // Options names what an export reads. A struct rather than six positional
@@ -62,6 +72,7 @@ type Options struct {
 	Goals         *goals.Service
 	CheckIns      *checkins.Service
 	Storage       documents.Storage
+	Friends       Friends
 }
 
 func NewExporter(o Options) *Exporter {
@@ -72,6 +83,7 @@ func NewExporter(o Options) *Exporter {
 		goals:         o.Goals,
 		checkIns:      o.CheckIns,
 		storage:       o.Storage,
+		friends:       o.Friends,
 	}
 }
 
@@ -116,6 +128,9 @@ func (e *Exporter) WriteZip(ctx context.Context, user users.User, w io.Writer) e
 	if err := e.writeConversations(ctx, zw, user); err != nil {
 		problems = append(problems, "conversations: "+err.Error())
 	}
+	if err := e.writeFriends(ctx, zw, user); err != nil {
+		problems = append(problems, "friends: "+err.Error())
+	}
 
 	if len(problems) > 0 {
 		if err := writeFile(zw, "INCOMPLETE.txt", strings.Join(append(
@@ -139,6 +154,7 @@ func (e *Exporter) writeManifest(zw *zip.Writer, user users.User) error {
 			"memories.md — the facts Khepri was told it may use",
 			"documents/ — your notes and uploads, unchanged",
 			"conversations/ — one Markdown file per conversation",
+			"friends.md — your handle, who you follow, who follows you, who you blocked",
 		},
 		"not_included": []string{
 			"the search index and the passages derived from your documents; " +
@@ -460,4 +476,51 @@ func slug(s string) string {
 		}
 	}
 	return strings.Trim(b.String(), "-")
+}
+
+// writeFriends lists connections by name and handle, never by anybody else's
+// email or anything they logged: those are theirs, not yours to export.
+func (e *Exporter) writeFriends(ctx context.Context, zw *zip.Writer, user users.User) error {
+	if e.friends == nil {
+		return nil
+	}
+	o, err := e.friends.Overview(ctx, user.ID)
+	if err != nil {
+		return err
+	}
+	var b strings.Builder
+	b.WriteString("# Friends\n\n")
+	if o.Handle != "" {
+		b.WriteString("Your handle: @" + o.Handle + "\n\n")
+	}
+	section := func(title string, people []friend.Person) {
+		b.WriteString("## " + title + "\n\n")
+		if len(people) == 0 {
+			b.WriteString("(none)\n\n")
+			return
+		}
+		for _, p := range people {
+			line := "- " + p.DisplayName
+			if p.Handle != "" {
+				line += " (@" + p.Handle + ")"
+			}
+			b.WriteString(line + "\n")
+		}
+		b.WriteString("\n")
+	}
+	people := func(cs []friend.Connection, status string) []friend.Person {
+		var out []friend.Person
+		for _, c := range cs {
+			if status == "" || c.Status == status {
+				out = append(out, c.Person)
+			}
+		}
+		return out
+	}
+	section("Following", people(o.Following, friend.StatusAccepted))
+	section("Requests you sent", people(o.Following, friend.StatusPending))
+	section("Followers", people(o.Followers, ""))
+	section("Requests waiting for you", people(o.Requests, ""))
+	section("Blocked", o.Blocked)
+	return writeFile(zw, "friends.md", b.String())
 }

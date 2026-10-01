@@ -60,6 +60,9 @@ func (g chainGenerator) Generate(ctx context.Context, req ai.Request) (*ai.Respo
 
 // ReviewContext is the week, in the person's own recorded words.
 type ReviewContext struct {
+	// Today is the day ahead, for the daily briefing only: readiness,
+	// today's session, the calendar.
+	Today     []string
 	Goals     []string
 	CheckIns  []string
 	Training  []string
@@ -95,6 +98,9 @@ func (s *Service) Generate(ctx context.Context, id, userID uuid.UUID) error {
 		if err != nil {
 			return s.fail(ctx, id, userID, err)
 		}
+	}
+	if report.Kind == KindDaily && s.today != nil {
+		review.Today = s.today.Load(ctx, user, s.now())
 	}
 
 	if s.client == nil {
@@ -208,6 +214,9 @@ func formatContext(user users.User, report Report, review ReviewContext) string 
 	}
 	b.WriteString("\n")
 
+	if report.Kind == KindDaily {
+		writeSection(&b, "Today", review.Today)
+	}
 	writeSection(&b, "Goals", review.Goals)
 	writeSection(&b, "Check-ins", review.CheckIns)
 	writeSection(&b, "Training", review.Training)

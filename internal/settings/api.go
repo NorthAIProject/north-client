@@ -187,6 +187,21 @@ type Notifications struct {
 	PhotoAskEnabled   bool `json:"photoAskEnabled"`
 	PhotoEveryDays    int  `json:"photoEveryDays"`
 	PhotoReminderDays int  `json:"photoReminderDays"`
+	// BriefingHour is the local hour, 0-23, the morning briefing arrives.
+	BriefingHour int `json:"briefingHour"`
+	// EveningReflection asks each evening, at EveningHour, how the day went.
+	EveningReflection bool `json:"eveningReflection"`
+	EveningHour       int  `json:"eveningHour"`
+}
+
+// NotificationsUpdate is Notifications as a client sends it. The timing fields
+// are optional so an app built before they existed keeps what is saved
+// instead of resetting the briefing to midnight.
+type NotificationsUpdate struct {
+	Notifications
+	BriefingHour      *int  `json:"briefingHour,omitempty"`
+	EveningReflection *bool `json:"eveningReflection,omitempty"`
+	EveningHour       *int  `json:"eveningHour,omitempty"`
 }
 
 func (a *API) getNotifications(w http.ResponseWriter, r *http.Request) {
@@ -206,11 +221,12 @@ func (a *API) getNotifications(w http.ResponseWriter, r *http.Request) {
 
 func (a *API) putNotifications(w http.ResponseWriter, r *http.Request) {
 	user := auth.MustUser(r.Context())
-	var req Notifications
+	var req NotificationsUpdate
 	if !read(w, r, &req) {
 		return
 	}
 	n, err := a.h.notifications.Upsert(r.Context(), user.ID, notifications.Input{
+		BriefingHour: req.BriefingHour, EveningReflection: req.EveningReflection, EveningHour: req.EveningHour,
 		NudgeMissedCheckIn: req.NudgeMissedCheckIn, NudgeGoalDeadline: req.NudgeGoalDeadline,
 		CoachActivity: req.CoachActivity, TrainingReminders: req.TrainingReminders,
 		WeeklyReportAuto: req.WeeklyReportAuto, DailyBriefingAuto: req.DailyBriefingAuto,
@@ -239,6 +255,7 @@ func projectNotifications(n notifications.Prefs, photo notifications.Schedule) N
 		StatsDigestCadence: n.StatsDigestCadence,
 		QuietHoursEnabled:  n.QuietHoursEnabled, QuietStart: n.QuietStart, QuietEnd: n.QuietEnd,
 		PhotoAskEnabled: photo.Enabled, PhotoEveryDays: photo.EveryDays, PhotoReminderDays: photo.ReminderDays,
+		BriefingHour: n.BriefingHour, EveningReflection: n.EveningReflection, EveningHour: n.EveningHour,
 	}
 }
 

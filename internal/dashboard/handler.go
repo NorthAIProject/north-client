@@ -128,6 +128,7 @@ func buildDashboardData(snap Snapshot) (app.DashboardData, error) {
 		NextSession:       snap.NextSession,
 		DoneToday:         snap.DoneToday,
 		PlanID:            snap.PlanID,
+		SessionToday:      snap.SessionToday,
 		CheckIns:          mapCheckIns(snap.CheckIns),
 		Habits:            mapHabits(snap.Habits),
 		Hydration:         mapHydration(snap.Hydration),

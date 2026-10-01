@@ -373,6 +373,12 @@ func Destinations() []Destination {
 			Nav:         NavPlacement{Show: true, Label: "Spend", Under: "/app/insights"},
 		},
 
+		{
+			Key: "nav.friends", Label: "Friends", Href: "/app/friends", Icon: "users", Group: GroupProgress,
+			Description: "People you follow, and your invite link.",
+			Keywords:    []string{"invite", "follow", "followers", "social", "people", "handle"},
+			Nav:         NavPlacement{Show: true},
+		},
 		// System
 		{
 			Key: "nav.knowledge", Label: "Knowledge", Href: "/app/knowledge", Icon: "book-open", Group: GroupSystem,

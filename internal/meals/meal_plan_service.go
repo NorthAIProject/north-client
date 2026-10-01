@@ -133,6 +133,43 @@ func (s *MealPlanService) AddIngredient(ctx context.Context, mealID, userID uuid
 	return s.repo.AddIngredient(ctx, mealID, userID, clean.IngredientID, clean.QuantityGrams, macros)
 }
 
+// AddIngredients adds several portions to one meal, as a spoken meal arrives.
+//
+// Every input is validated and every ingredient looked up before the first row
+// is written, so a bad line — a missing quantity, an id this account cannot
+// see — refuses the whole batch instead of leaving half a meal behind. The
+// writes themselves are not one transaction; a database failure part-way is
+// reported and whatever was written stays, exactly as it would after the same
+// failure on the one-at-a-time form.
+func (s *MealPlanService) AddIngredients(ctx context.Context, mealID, userID uuid.UUID, in []MealIngredientInput) ([]MealIngredient, error) {
+	if len(in) == 0 {
+		return nil, apperr.FieldErrors{}.Add("ingredient_id", "Choose at least one ingredient.").OrNil()
+	}
+
+	macros := make([]Macros, len(in))
+	for i, line := range in {
+		clean, err := ValidateMealIngredient(line)
+		if err != nil {
+			return nil, err
+		}
+		ingredient, err := s.repo.GetIngredient(ctx, clean.IngredientID, userID)
+		if err != nil {
+			return nil, err
+		}
+		macros[i] = ingredient.MacrosFor(clean.QuantityGrams)
+	}
+
+	added := make([]MealIngredient, 0, len(in))
+	for i, line := range in {
+		row, err := s.repo.AddIngredient(ctx, mealID, userID, line.IngredientID, line.QuantityGrams, macros[i])
+		if err != nil {
+			return added, err
+		}
+		added = append(added, row)
+	}
+	return added, nil
+}
+
 func (s *MealPlanService) RemoveIngredient(ctx context.Context, mealIngredientID, userID uuid.UUID) error {
 	return s.repo.RemoveIngredient(ctx, mealIngredientID, userID)
 }

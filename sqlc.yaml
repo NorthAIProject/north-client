@@ -321,6 +321,16 @@ sql:
 
   - engine: postgresql
     schema: migrations
+    queries: internal/social/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: socialdb
+        out: internal/social/db
+        overrides: *overrides
+
+  - engine: postgresql
+    schema: migrations
     queries: internal/decisions/db/queries.sql
     gen:
       go:
