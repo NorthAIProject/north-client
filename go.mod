@@ -9,7 +9,7 @@ tool (
 )
 
 require (
-	github.com/FACorreiaa/go-utils v1.1.0
+	github.com/FACorreiaa/go-utils v1.2.0
 	github.com/Oudwins/tailwind-merge-go v0.2.3
 	github.com/SherClockHolmes/webpush-go v1.4.0
 	github.com/a-h/templ v0.3.1020
