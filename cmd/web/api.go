@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/go-chi/chi/v5"
 
+	"github.com/NorthAIProject/north-client/internal/achievements"
 	"github.com/NorthAIProject/north-client/internal/activity"
 	"github.com/NorthAIProject/north-client/internal/apns"
 	"github.com/NorthAIProject/north-client/internal/auth"
@@ -129,47 +130,49 @@ func mountJSON(r chi.Router, sessions auth.SessionResolver, apis apiSet) {
 		apis.calculator.Routes(r)
 		apis.news.Routes(r)
 		apis.social.Routes(r)
+		apis.achievements.Routes(r)
 	})
 }
 
 // apiSet is every feature API mounted under /api/v1. A struct rather than a
 // growing parameter list: each phase of the native app adds one.
 type apiSet struct {
-	auth        *auth.API
-	capture     *capture.API
-	onboarding  *onboarding.API
-	dashboard   *dashboard.API
-	day         *day.API
-	caffeine    *caffeine.API
-	lifts       *lifts.API
-	stats       *stats.API
-	fasting     *fasting.API
-	supplements *supplements.API
-	screenTime  *screentime.API
-	soreness    *soreness.API
-	milestones  *milestones.API
-	coach       *coach.API
-	exercises   *exercises.API
-	settings    *settings.API
-	training    *workouts.API
-	activity    *activity.API
-	health      *health.API
-	fitness     *fitness.API
-	insights    *insights.API
-	goals       *goals.API
-	checkins    *checkins.API
-	reports     *reports.API
-	memories    *memories.API
-	knowledge   *documents.API
-	formChecks  *media.API
-	care        *care.API
-	mind        *mind.API
-	nutrition   *meals.API
-	decisions   *decisions.API
-	nudges      *nudges.API
-	devices     *apns.API
-	export      *export.Handler
-	calculator  *calculator.API
-	news        *news.API
-	social      *social.API
+	auth         *auth.API
+	capture      *capture.API
+	onboarding   *onboarding.API
+	dashboard    *dashboard.API
+	day          *day.API
+	caffeine     *caffeine.API
+	lifts        *lifts.API
+	stats        *stats.API
+	fasting      *fasting.API
+	supplements  *supplements.API
+	screenTime   *screentime.API
+	soreness     *soreness.API
+	milestones   *milestones.API
+	coach        *coach.API
+	exercises    *exercises.API
+	settings     *settings.API
+	training     *workouts.API
+	activity     *activity.API
+	health       *health.API
+	fitness      *fitness.API
+	insights     *insights.API
+	goals        *goals.API
+	checkins     *checkins.API
+	reports      *reports.API
+	memories     *memories.API
+	knowledge    *documents.API
+	formChecks   *media.API
+	care         *care.API
+	mind         *mind.API
+	nutrition    *meals.API
+	decisions    *decisions.API
+	nudges       *nudges.API
+	devices      *apns.API
+	export       *export.Handler
+	calculator   *calculator.API
+	news         *news.API
+	social       *social.API
+	achievements *achievements.API
 }

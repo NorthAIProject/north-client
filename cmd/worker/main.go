@@ -22,6 +22,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 
+	"github.com/NorthAIProject/north-client/internal/achievements"
 	"github.com/NorthAIProject/north-client/internal/activity"
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/ai/providers"
@@ -170,7 +171,9 @@ func run() error {
 	// Strava syncs run here rather than in the request that triggered them,
 	// so a slow or rate-limited provider never holds a page open.
 	biometricSvc := biometrics.NewService(biometrics.NewRepository(pool))
-	activitySvc := activity.NewService(activity.NewRepository(pool), biometricSvc)
+	// Imported workouts and check-ins from Telegram are achievements too.
+	achievementSvc := achievements.NewService(pool)
+	activitySvc := activity.NewService(activity.NewRepository(pool), biometricSvc).WithAchievements(achievementSvc)
 	stravaRepo := strava.NewRepository(pool, sealer)
 	stravaSvc := strava.NewService(strava.Options{
 		Repository:   stravaRepo,
@@ -259,8 +262,8 @@ func run() error {
 	// activity feed on a page, and a review never asks for it. Building the
 	// dashboard here would drag in workouts and conversations to serve a call
 	// that is never made.
-	goalSvc := goals.NewService(goals.NewRepository(pool))
-	checkinSvc := checkins.NewService(checkins.NewRepository(pool), goalSvc)
+	goalSvc := goals.NewService(goals.NewRepository(pool)).WithAchievements(achievementSvc)
+	checkinSvc := checkins.NewService(checkins.NewRepository(pool), goalSvc).WithAchievements(achievementSvc)
 	userSvc := users.NewService(users.NewRepository(pool))
 	calculatorSvc := calculator.NewService(calculator.NewRepository(pool), biometricSvc)
 	mealsRepo := meals.NewRepository(pool)

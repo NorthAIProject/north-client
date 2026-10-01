@@ -1,0 +1,18 @@
+{
+  "items": [
+    {
+      "id": "dddddddd-dddd-dddd-dddd-dddddddddddd",
+      "userId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      "displayName": "Ana",
+      "handle": "ana_runs",
+      "category": "training",
+      "kind": "workout_completed",
+      "title": "Finished Running",
+      "detail": "32 min",
+      "occurredAt": "2026-10-01T07:30:00Z",
+      "kudos": 3,
+      "kudoed": true,
+      "mine": false
+    }
+  ]
+}
