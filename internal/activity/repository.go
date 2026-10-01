@@ -21,11 +21,18 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 	return &Repository{q: activitydb.New(pool)}
 }
 
-func (r *Repository) Create(ctx context.Context, userID uuid.UUID, activityCode string, weightKg float64) (Session, error) {
+// Create opens a session. planWeekday is empty unless a guided workout was
+// started from a plan day.
+func (r *Repository) Create(ctx context.Context, userID uuid.UUID, activityCode, planWeekday string, weightKg float64) (Session, error) {
+	var weekday *string
+	if planWeekday != "" {
+		weekday = &planWeekday
+	}
 	row, err := r.q.CreateActivitySession(ctx, activitydb.CreateActivitySessionParams{
 		UserID:           userID,
 		ActivityCode:     activityCode,
 		WeightKgSnapshot: weightKg,
+		PlanWeekday:      weekday,
 	})
 	if err != nil {
 		return Session{}, apperr.Wrap(err, "create activity session")
@@ -175,7 +182,15 @@ func fromDB(row activitydb.ActivitySession) Session {
 		ExternalID:         row.ExternalID,
 		CreatedAt:          row.CreatedAt,
 		UpdatedAt:          row.UpdatedAt,
+		PlanWeekday:        deref(row.PlanWeekday),
 	}
+}
+
+func deref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 // Import writes an already-finished session from a provider sync.

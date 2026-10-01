@@ -17,6 +17,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -244,7 +245,9 @@ func (q *Queue) Enqueue(ctx context.Context, kind Kind, payload any) (Job, error
 		MaxAttempts: 3,
 		// Read from the context rather than passed in, so every caller is
 		// covered without remembering to: eight payload types and one Enqueue.
-		RequestID: nilIfEmpty(middleware.RequestIDFrom(ctx)),
+		// An absent id is stored as NULL rather than "", so "no request queued
+		// this" and "the id was lost" stay distinguishable in the data.
+		RequestID: util.StrZeroPtr(middleware.RequestIDFrom(ctx)),
 	})
 	if err != nil {
 		return Job{}, apperr.Wrap(err, "enqueue %s", kind)
@@ -339,14 +342,4 @@ func fromDB(row jobsdb.Job) Job {
 		j.RequestID = *row.RequestID
 	}
 	return j
-}
-
-// nilIfEmpty keeps an absent request id out of the column as NULL rather than
-// as an empty string, so "no request queued this" and "the id was lost" stay
-// distinguishable in the data.
-func nilIfEmpty(s string) *string {
-	if s == "" {
-		return nil
-	}
-	return &s
 }

@@ -5,6 +5,9 @@ import (
 	"math"
 	"strings"
 	"time"
+
+	"github.com/FACorreiaa/go-utils/pkg/util"
+	"github.com/google/uuid"
 )
 
 // RecapExercise is one movement in a finished session, against the last time
@@ -24,6 +27,13 @@ type RecapExercise struct {
 // Recap is one finished workout in words and numbers. The sentence is what
 // the person, the coach, and a later trainer all read.
 type Recap struct {
+	// SessionID, StartedAt, PlanWeekday and Focus say which workout this
+	// was. PlanWeekday is empty for a session that finished no plan day.
+	SessionID   uuid.UUID
+	StartedAt   time.Time
+	PlanWeekday string
+	Focus       string
+
 	Sentence       string
 	Duration       time.Duration
 	SetsDone       int
@@ -58,7 +68,7 @@ func BuildRecap(duration time.Duration, calories float64, prescribed int, curren
 			}
 		}
 	}
-	out.VolumeKg = Round(out.VolumeKg)
+	out.VolumeKg = util.RoundHalfUpToScale(out.VolumeKg, 1)
 	out.Sentence = recapSentence(out, bestChange)
 	return out
 }
@@ -92,10 +102,10 @@ func summarise(sets, earlier []Set) RecapExercise {
 			haveBest = true
 		}
 	}
-	row.VolumeKg = Round(row.VolumeKg)
+	row.VolumeKg = util.RoundHalfUpToScale(row.VolumeKg, 1)
 	if haveBest {
 		row.Best = fmt.Sprintf("%s × %d", formatKg(best.WeightKg), best.Reps)
-		row.E1RM = Round(best.E1RM())
+		row.E1RM = util.RoundHalfUpToScale(best.E1RM(), 1)
 	}
 	prev := LastWorkout(filterKey(earlier, sets[0].Key()))
 	if len(prev) == 0 {
@@ -113,11 +123,11 @@ func summarise(sets, earlier []Set) RecapExercise {
 			havePrev = true
 		}
 	}
-	row.PreviousVolume = Round(row.PreviousVolume)
+	row.PreviousVolume = util.RoundHalfUpToScale(row.PreviousVolume, 1)
 	if havePrev && haveBest {
 		row.HasPrevious = true
-		row.PreviousE1RM = Round(prevBest)
-		row.Change = Round(row.E1RM - row.PreviousE1RM)
+		row.PreviousE1RM = util.RoundHalfUpToScale(prevBest, 1)
+		row.Change = util.RoundHalfUpToScale(row.E1RM-row.PreviousE1RM, 1)
 	}
 	return row
 }
@@ -140,6 +150,8 @@ func recapSentence(r Recap, change *RecapExercise) string {
 	switch {
 	case r.SetsPrescribed > 0 && r.SetsDone > 0:
 		parts = append(parts, fmt.Sprintf("%d of %d sets", r.SetsDone, r.SetsPrescribed))
+	case r.SetsDone == 1:
+		parts = append(parts, "1 set")
 	case r.SetsDone > 0:
 		parts = append(parts, fmt.Sprintf("%d sets", r.SetsDone))
 	}
@@ -213,6 +225,34 @@ func comma(n int) string {
 	for i := lead; i < len(s); i += 3 {
 		b.WriteByte(',')
 		b.WriteString(s[i : i+3])
+	}
+	return b.String()
+}
+
+// RecapSummary renders a recap for the coach: which workout it was, the
+// sentence, and each exercise against last time.
+func RecapSummary(r Recap, loc *time.Location) string {
+	var b strings.Builder
+	b.WriteString("Last workout")
+	if r.PlanWeekday != "" {
+		b.WriteString(" (" + r.PlanWeekday + " plan day")
+		if r.Focus != "" {
+			b.WriteString(", " + r.Focus)
+		}
+		b.WriteString(")")
+	}
+	if !r.StartedAt.IsZero() {
+		b.WriteString(", " + r.StartedAt.In(loc).Format("Mon 2 Jan"))
+	}
+	b.WriteString(": " + r.Sentence)
+	for _, e := range r.Exercises {
+		fmt.Fprintf(&b, "\n  %s: %d sets, %s kg volume", e.Name, e.Sets, comma(int(math.Round(e.VolumeKg))))
+		if e.Best != "" {
+			fmt.Fprintf(&b, ", best %s", e.Best)
+		}
+		if e.HasPrevious {
+			fmt.Fprintf(&b, " (last time %s kg volume, e1RM %+.1f kg)", comma(int(math.Round(e.PreviousVolume))), e.Change)
+		}
 	}
 	return b.String()
 }

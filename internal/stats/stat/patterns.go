@@ -5,6 +5,8 @@ import (
 	"math"
 	"sort"
 	"time"
+
+	"github.com/FACorreiaa/go-utils/pkg/util"
 )
 
 // DayFacts is what is known about one local date, for finding patterns.
@@ -220,9 +222,9 @@ func Patterns(days []DayFacts) []Finding {
 		if len(a) < MinGroup || len(b) < MinGroup {
 			continue
 		}
-		ga := Group{Label: sp.aLabel, Mean: round1(mean(a)), N: len(a)}
-		gb := Group{Label: sp.bLabel, Mean: round1(mean(b)), N: len(b)}
-		diff := round1(ga.Mean - gb.Mean)
+		ga := Group{Label: sp.aLabel, Mean: util.RoundHalfUpToScale(mean(a), 1), N: len(a)}
+		gb := Group{Label: sp.bLabel, Mean: util.RoundHalfUpToScale(mean(b), 1), N: len(b)}
+		diff := util.RoundHalfUpToScale(ga.Mean-gb.Mean, 1)
 		if diff == 0 {
 			continue
 		}

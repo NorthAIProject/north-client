@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/activity"
@@ -93,6 +94,8 @@ type Snapshot struct {
 
 	PlanID      uuid.UUID
 	NextSession *plan.PlanDay
+	// DoneToday is today's plan day once a finished session accounts for it.
+	DoneToday *plan.PlanDay
 
 	StravaStatus strava.Status
 
@@ -163,8 +166,15 @@ func (s *Service) Load(ctx context.Context, user users.User) (Snapshot, error) {
 		switch {
 		case err == nil:
 			snap.PlanID = stored.ID
-			if day, ok := stored.Plan.NextSession(now); ok {
-				snap.NextSession = &day
+			progress, progressErr := s.workouts.WeekProgress(ctx, user, stored.Plan, now)
+			if progressErr != nil {
+				return Snapshot{}, progressErr
+			}
+			if progress.HasNext {
+				snap.NextSession = &progress.Next
+			}
+			if day, ok := progress.DoneToday(stored.Plan, now); ok {
+				snap.DoneToday = &day
 			}
 		case !apperr.Is(err, apperr.ErrNotFound):
 			return Snapshot{}, err
@@ -265,6 +275,7 @@ func buildView(snap Snapshot) fitnesspages.Instruments {
 	return fitnesspages.Instruments{
 		PlanID:          snap.PlanID,
 		NextSession:     snap.NextSession,
+		DoneToday:       snap.DoneToday,
 		HasMealProgress: snap.HasMealProgress,
 		MealProgress:    snap.MealProgress,
 	}
@@ -415,7 +426,7 @@ func strengthView(st *lifts.Stats) *fitnesspages.StrengthView {
 		}
 		row := fitnesspages.StrengthRow{Name: e.Name, BestKg: e.BestWeightKg, E1RMKg: e.BestE1RM}
 		if n := len(e.Trend); n > 1 {
-			row.ChangeKg = lift.Round(e.Trend[n-1].Value - e.Trend[0].Value)
+			row.ChangeKg = util.RoundHalfUpToScale(e.Trend[n-1].Value-e.Trend[0].Value, 1)
 		}
 		view.Exercises = append(view.Exercises, row)
 	}

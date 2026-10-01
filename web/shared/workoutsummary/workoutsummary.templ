@@ -1,0 +1,121 @@
+package workoutsummary
+
+import (
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/chart"
+	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
+	"github.com/NorthAIProject/north-client/web/shared/ui/progress"
+)
+
+// RecapCard is a finished workout: the sentence first, then the four numbers,
+// then each exercise's volume against last time. The page must include
+// ui.ChartScripts.
+templ RecapCard(r Recap) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface", Attributes: templ.Attributes{"data-testid": "workout-recap"}}) {
+		@card.Header() {
+			<div class="flex items-baseline justify-between gap-3">
+				@card.Title(card.TitleProps{Class: "text-base"}) {
+					{ r.Title }
+				}
+				if r.When != "" {
+					<span class="text-muted-foreground shrink-0 font-mono text-[10px] tabular-nums">{ r.When }</span>
+				}
+			</div>
+			if r.Sentence != "" {
+				@card.Description() {
+					{ r.Sentence }
+				}
+			}
+		}
+		@card.Content() {
+			<dl class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+				@tile("Time", r.Duration)
+				@tile("Sets", r.Sets)
+				@tile("Volume", r.Volume)
+				@tile("Burned", r.Calories)
+			</dl>
+			if r.HasChart {
+				<div class="mt-4">
+					@chart.Chart(r.Chart)
+				</div>
+			}
+			if len(r.Exercises) > 0 {
+				<ul class="divide-border mt-3 divide-y">
+					for _, e := range r.Exercises {
+						<li class="flex items-baseline justify-between gap-3 py-2 text-sm">
+							<span class="min-w-0 truncate font-medium">{ e.Name }</span>
+							<span class="text-muted-foreground shrink-0 text-xs tabular-nums">
+								if e.Best != "" {
+									{ e.Best }
+								}
+								if e.E1RM != "" {
+									<span>· est. { e.E1RM }</span>
+								}
+								if e.HasChange && e.Change > 0 {
+									<span class="text-signal">{ ChangeLabel(e.Change) }</span>
+								} else if e.HasChange && e.Change < 0 {
+									<span>{ ChangeLabel(e.Change) }</span>
+								}
+							</span>
+						</li>
+					}
+				</ul>
+			}
+		}
+	}
+}
+
+templ tile(label, value string) {
+	<div class="border-hairline rounded-lg border p-3">
+		<dt class="text-muted-foreground font-mono text-[10px] uppercase tracking-[0.14em]">{ label }</dt>
+		<dd class="mt-1 text-lg font-medium tabular-nums">{ value }</dd>
+	</div>
+}
+
+// WeekStrip is the plan's days this week, each done or still open, with the
+// count as a sentence and a bar.
+templ WeekStrip(w Week) {
+	<div class="space-y-3" data-testid="plan-week">
+		<div class="flex items-baseline justify-between gap-3">
+			<p class="text-sm font-medium">{ w.Sentence }</p>
+			<span class="text-muted-foreground shrink-0 font-mono text-[10px] tabular-nums">{ w.Done }/{ w.Planned }</span>
+		</div>
+		@progress.Progress(progress.Props{Max: w.Planned, Value: w.Done, Size: progress.SizeSm, BarClass: "bg-signal"})
+		<ol class="flex flex-wrap gap-2">
+			for _, d := range w.Days {
+				<li
+					class={ "flex min-w-[4.5rem] flex-1 flex-col rounded-lg border px-2.5 py-2",
+						templ.KV("border-signal/40 bg-signal/10", d.Done),
+						templ.KV("border-hairline", !d.Done),
+						templ.KV("ring-signal/50 ring-1", d.Today && !d.Done) }
+					aria-label={ weekDayLabel(d) }
+				>
+					<span class="flex items-center justify-between gap-1 font-mono text-[10px] uppercase tracking-[0.1em]">
+						{ d.Short }
+						if d.Done {
+							@icon.CircleCheck(icon.Props{Class: "text-signal size-3.5"})
+						} else if d.Past {
+							@icon.Circle(icon.Props{Class: "text-muted-foreground size-3.5"})
+						}
+					</span>
+					if d.Focus != "" {
+						<span class="text-muted-foreground mt-0.5 truncate text-xs">{ d.Focus }</span>
+					}
+				</li>
+			}
+		</ol>
+	</div>
+}
+
+func weekDayLabel(d WeekDay) string {
+	switch {
+	case d.Done:
+		return d.Short + ": completed"
+	case d.Today:
+		return d.Short + ": today, not done yet"
+	case d.Past:
+		return d.Short + ": missed"
+	default:
+		return d.Short + ": coming up"
+	}
+}
