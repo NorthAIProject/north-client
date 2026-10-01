@@ -302,6 +302,118 @@ func FoodAbout(want string, grams float64) DraftAssertion {
 	}
 }
 
+// Foods requires exactly one food entry per want, each looked up by something
+// mentioning it and each with a weight.
+//
+// The weight is only required to be there, not to be right: "a slice of
+// toast" in grams is a judgement, and the preview shows it as an editable
+// estimate. A food entry with no weight is the failure — it cannot be logged.
+func Foods(want ...string) DraftAssertion {
+	return draftCheck{
+		name: fmt.Sprintf("Foods(%q)", want),
+		check: func(d captured.Draft, _ Case) error {
+			var foods []captured.Item
+			for _, item := range d.Items {
+				if item.Kind == captured.KindFood {
+					foods = append(foods, item)
+				}
+			}
+			if len(foods) != len(want) {
+				return fmt.Errorf("%d food entries, want %d: %s", len(foods), len(want), summarise(d))
+			}
+			for _, w := range want {
+				var found bool
+				for _, item := range foods {
+					if strings.Contains(strings.ToLower(item.Food.Query), strings.ToLower(w)) {
+						found = true
+						if item.Food.Grams <= 0 {
+							return fmt.Errorf("%q has no weight", item.Food.Query)
+						}
+					}
+				}
+				if !found {
+					return fmt.Errorf("no food entry mentions %q: %s", w, summarise(d))
+				}
+			}
+			return nil
+		},
+	}
+}
+
+// HasFood requires at least one food entry mentioning want, with a weight.
+// For sentences where other foods may sit beside it.
+func HasFood(want string) DraftAssertion {
+	return draftCheck{
+		name: fmt.Sprintf("HasFood(%q)", want),
+		check: func(d captured.Draft, _ Case) error {
+			for _, item := range d.Items {
+				if item.Kind != captured.KindFood || !strings.Contains(strings.ToLower(item.Food.Query), strings.ToLower(want)) {
+					continue
+				}
+				if item.Food.Grams <= 0 {
+					return fmt.Errorf("%q has no weight", item.Food.Query)
+				}
+				return nil
+			}
+			return fmt.Errorf("no food entry mentions %q: %s", want, summarise(d))
+		},
+	}
+}
+
+// FoodNotSubstituted requires every food entry to keep the word that makes
+// the food what it is, and the word itself to reach an entry or the leftovers.
+//
+// The catalog lookup happens after the parse, and it flags a name it cannot
+// find. That only works if the parse hands it the person's food: rewriting
+// "kombucha jelly" as "jelly" or "gelatin dessert" turns a flagged miss into a
+// confident wrong row.
+func FoodNotSubstituted(word string) DraftAssertion {
+	return draftCheck{
+		name: fmt.Sprintf("FoodNotSubstituted(%q)", word),
+		check: func(d captured.Draft, _ Case) error {
+			needle := strings.ToLower(word)
+			var kept bool
+			for _, item := range d.Items {
+				if item.Kind != captured.KindFood {
+					continue
+				}
+				if !strings.Contains(strings.ToLower(item.Food.Query), needle) {
+					return fmt.Errorf("looked up %q, which has lost %q", item.Food.Query, word)
+				}
+				kept = true
+			}
+			if !kept && !strings.Contains(strings.ToLower(strings.Join(d.Unparsed, " ")), needle) {
+				return fmt.Errorf("%q reached neither a food entry nor the leftovers: %s", word, summarise(d))
+			}
+			return nil
+		},
+	}
+}
+
+// Accounted requires a fragment to reach an entry or the leftovers. For the
+// part of a sentence where either is honest — coffee is a food lookup or a
+// leftover, but it is not nothing.
+func Accounted(fragment string) DraftAssertion {
+	return draftCheck{
+		name: fmt.Sprintf("Accounted(%q)", fragment),
+		check: func(d captured.Draft, _ Case) error {
+			needle := strings.ToLower(fragment)
+			for _, item := range d.Items {
+				if strings.Contains(strings.ToLower(item.Source), needle) {
+					return nil
+				}
+				if item.Food != nil && strings.Contains(strings.ToLower(item.Food.Query), needle) {
+					return nil
+				}
+			}
+			if strings.Contains(strings.ToLower(strings.Join(d.Unparsed, " ")), needle) {
+				return nil
+			}
+			return fmt.Errorf("%q vanished: %s; leftovers %v", fragment, summarise(d), d.Unparsed)
+		},
+	}
+}
+
 // NoneOfKind requires that nothing of these kinds was produced.
 //
 // The assertion behind most of this corpus. A parser that invents is worse

@@ -45,6 +45,30 @@ func TestCapturePageRequiresASession(t *testing.T) {
 	}
 }
 
+// The panel My Day's dialog loads is the same page behind the same session,
+// served as a fragment.
+func TestCapturePanelIsAFragmentBehindASession(t *testing.T) {
+	handler, pool := testRoutesAndPool(t, func(*config.Config) {})
+
+	req := httptest.NewRequest(http.MethodGet, "/app/capture/panel?return_to=/app", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code == http.StatusOK {
+		t.Fatal("GET /app/capture/panel was served without a session")
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/app/capture/panel?return_to=/app", nil)
+	req.AddCookie(signIn(t, pool))
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /app/capture/panel answered %d, want 200", rec.Code)
+	}
+	if body := rec.Body.String(); strings.Contains(body, "<html") || !strings.Contains(body, `name="return_to" value="/app"`) {
+		t.Errorf("not an embeddable panel: %.300s", body)
+	}
+}
+
 // The commit half is a browser form, so unlike the JSON twin it must be behind
 // CSRF. This is the mirror of TestCaptureAPIIsNotBehindCSRF: the two edges have
 // opposite requirements and both are about where they are mounted.

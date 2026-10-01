@@ -4,7 +4,9 @@ import (
 	"fmt"
 
 	"github.com/NorthAIProject/north-client/internal/meals/meal"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/web/capture"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
@@ -35,6 +37,22 @@ templ LogPage(user users.User, entries []meal.FoodLogEntry, progressSummary stri
 							<p class="text-muted-foreground mt-2 text-sm">{ recommendationMsg }</p>
 						}
 					}
+				}
+			}
+			// A meal said out loud is quicker than one ingredient at a time. The
+			// capture box resolves each food against the same catalog the form
+			// below uses, and a clean save reloads this page with the entries.
+			@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+				@card.Header() {
+					@card.Title() {
+						{ i18n.T(ctx, "capture.embed.food.title") }
+					}
+					@card.Description() {
+						{ i18n.T(ctx, "capture.embed.food.intro") }
+					}
+				}
+				@card.Content() {
+					@capture.Embed("/app/nutrition/log", "load")
 				}
 			}
 			@card.Card(card.Props{Class: "border-hairline bg-surface"}) {

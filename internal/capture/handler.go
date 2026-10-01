@@ -39,6 +39,7 @@ func NewHandler(svc *Service, quotas *quota.Service) *Handler {
 // on its own, by the shared dictation endpoint in internal/voice.
 func (h *Handler) Routes(r chi.Router) {
 	r.Get("/capture", h.show)
+	r.Get("/capture/panel", h.panel)
 	r.With(h.quotas.Guard(quota.QuickCapture)).Post("/capture/parse", h.parse)
 	r.Post("/capture/commit", h.commit)
 	r.With(h.quotas.Guard(quota.QuickCapture)).Post("/capture/foods", h.foods)
@@ -46,6 +47,24 @@ func (h *Handler) Routes(r chi.Router) {
 
 // show renders the empty box, or one prefilled from the PWA share target.
 func (h *Handler) show(w http.ResponseWriter, r *http.Request) {
+	h.render(w, r, http.StatusOK, capturepages.Data{Text: sharedText(r)})
+}
+
+// panel renders the same box as show, as a fragment, for another page to
+// embed: My Day's "+" dialog and the food log load it lazily. return_to names
+// the page it sits on, so a saved capture can send the browser back there and
+// the page shows what was just logged.
+func (h *Handler) panel(w http.ResponseWriter, r *http.Request) {
+	data := capturepages.Data{Text: sharedText(r), ReturnTo: embedReturnTo(r.URL.Query().Get("return_to"))}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := capturepages.Panel(data).Render(r.Context(), w); err != nil {
+		middleware.FromContext(r.Context()).Error("render capture panel", slog.Any("error", err))
+	}
+}
+
+// sharedText reads a prefilled sentence from the query string.
+func sharedText(r *http.Request) string {
 	text := strings.TrimSpace(r.URL.Query().Get("text"))
 
 	// A share carries a title and a link as well as the text; joining them is
@@ -60,8 +79,24 @@ func (h *Handler) show(w http.ResponseWriter, r *http.Request) {
 	if len(text) > MaxText {
 		text = text[:MaxText]
 	}
+	return text
+}
 
-	h.render(w, r, http.StatusOK, capturepages.Data{Text: text})
+// embeddedPages are the pages that embed the panel. A list rather than any
+// local path: return_to ends up in a redirect, and an arbitrary value from a
+// form field is an open redirect waiting for someone to put a URL in it.
+var embeddedPages = map[string]bool{
+	"/app":               true,
+	"/app/nutrition/log": true,
+}
+
+// embedReturnTo returns raw when it names a page that embeds the panel, and ""
+// — the standalone capture page — otherwise.
+func embedReturnTo(raw string) string {
+	if embeddedPages[raw] {
+		return raw
+	}
+	return ""
 }
 
 func (h *Handler) parse(w http.ResponseWriter, r *http.Request) {
@@ -73,23 +108,25 @@ func (h *Handler) parse(w http.ResponseWriter, r *http.Request) {
 	}
 
 	text := strings.TrimSpace(r.PostFormValue("text"))
+	returnTo := embedReturnTo(r.PostFormValue("return_to"))
 	draft, err := h.svc.Parse(r.Context(), user, text)
 	if err != nil {
 		// The sentence is kept: a failed parse must never cost somebody their
 		// words.
-		h.render(w, r, statusFor(err), capturepages.Data{Text: text, Error: message(err)})
+		h.render(w, r, statusFor(err), capturepages.Data{Text: text, ReturnTo: returnTo, Error: message(err)})
 		return
 	}
 
 	if len(draft.Items) == 0 && len(draft.Unparsed) == 0 {
 		h.render(w, r, http.StatusOK, capturepages.Data{
-			Text:  text,
-			Error: "I could not find anything to log in that.",
+			Text:     text,
+			ReturnTo: returnTo,
+			Error:    "I could not find anything to log in that.",
 		})
 		return
 	}
 
-	h.render(w, r, http.StatusOK, capturepages.Data{Text: text, Draft: draft, HasDraft: true})
+	h.render(w, r, http.StatusOK, capturepages.Data{Text: text, ReturnTo: returnTo, Draft: draft, HasDraft: true})
 }
 
 func (h *Handler) commit(w http.ResponseWriter, r *http.Request) {
@@ -101,19 +138,41 @@ func (h *Handler) commit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	text := strings.TrimSpace(r.PostFormValue("text"))
+	returnTo := embedReturnTo(r.PostFormValue("return_to"))
 	items, err := itemsFromForm(r)
 	if err != nil {
-		h.render(w, r, http.StatusUnprocessableEntity, capturepages.Data{Text: text, Error: message(err)})
+		h.render(w, r, http.StatusUnprocessableEntity, capturepages.Data{Text: text, ReturnTo: returnTo, Error: message(err)})
 		return
 	}
 
 	receipt, err := h.svc.Commit(r.Context(), user, items)
 	if err != nil {
-		h.render(w, r, statusFor(err), capturepages.Data{Text: text, Error: message(err)})
+		h.render(w, r, statusFor(err), capturepages.Data{Text: text, ReturnTo: returnTo, Error: message(err)})
 		return
 	}
 
-	h.render(w, r, http.StatusOK, capturepages.Data{Receipt: receipt, HasSaved: true})
+	// Embedded, a clean save goes back to the page it was made on, which
+	// re-renders with the new entries — the same landing every other form in
+	// My Day's "+" dialog has. A receipt with a failure in it stays on screen
+	// instead: reloading would hide the one line the person needs to read.
+	if returnTo != "" && receipt.Failed() == 0 {
+		goBack(w, r, returnTo)
+		return
+	}
+
+	h.render(w, r, http.StatusOK, capturepages.Data{Receipt: receipt, HasSaved: true, ReturnTo: returnTo})
+}
+
+// goBack sends the browser to a page: by HX-Redirect for an HTMX request,
+// which would otherwise swap the whole page into the panel, and by an ordinary
+// See Other without JavaScript.
+func goBack(w http.ResponseWriter, r *http.Request, to string) {
+	if htmx.IsRequest(r) {
+		w.Header().Set("HX-Redirect", to)
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	http.Redirect(w, r, to, http.StatusSeeOther)
 }
 
 // foods reads a spoken or typed meal for one meal on a plan and answers the
