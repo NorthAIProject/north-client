@@ -30,6 +30,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/config"
 	"github.com/NorthAIProject/north-client/internal/connections"
 	"github.com/NorthAIProject/north-client/internal/conversations"
+	"github.com/NorthAIProject/north-client/internal/crews"
 	"github.com/NorthAIProject/north-client/internal/dashboard"
 	"github.com/NorthAIProject/north-client/internal/day"
 	"github.com/NorthAIProject/north-client/internal/decisions"
@@ -271,6 +272,10 @@ func routes(
 
 	activitySvc := activity.NewService(activity.NewRepository(pool), biometricSvc).WithAchievements(achievementSvc)
 	activityHandler := activity.NewHandler(activitySvc)
+
+	// Crews read check-ins and finished sessions for their boards.
+	crewSvc := crews.NewService(pool, crews.CheckInsFrom(checkinSvc), crews.WorkoutsFrom(activitySvc))
+	crewHandler := crews.NewHandler(crewSvc, cfg.BaseURL, cfg.Env.IsProduction())
 
 	// Preferences owns the units system, which the calculator renders in.
 	preferencesSvc := preferences.NewService(preferences.NewRepository(pool))
@@ -925,6 +930,7 @@ func routes(
 			news:         news.NewAPI(newsSvc),
 			social:       social.NewAPI(socialSvc, cfg.BaseURL),
 			achievements: achievements.NewAPI(achievementSvc),
+			crews:        crews.NewAPI(crewSvc, cfg.BaseURL),
 		})
 	})
 
@@ -1005,6 +1011,8 @@ func routes(
 		r.Method(http.MethodGet, "/privacy", templ.Handler(legal.Privacy()))
 		// Somebody's invite link: who sent it, and the way in.
 		socialHandler.PublicRoutes(r)
+		// A crew's join link.
+		crewHandler.PublicRoutes(r)
 		r.Method(http.MethodGet, "/terms", templ.Handler(legal.Terms()))
 
 		// The footer language switcher, for visitors who have no account to
@@ -1033,6 +1041,7 @@ func routes(
 			// An invite link opened before signing up or in connects the two
 			// people on the first page inside, whichever way they signed in.
 			r.Use(socialHandler.RedeemInvite)
+			r.Use(crewHandler.JoinFromCookie)
 			// Before any page renders, so each text box knows whether to offer
 			// a microphone without every handler passing that along.
 			r.Use(voiceHandler.Advertise)
@@ -1076,6 +1085,7 @@ func routes(
 				mindHandler.Routes(r)
 				decisionHandler.Routes(r)
 				socialHandler.Routes(r)
+				crewHandler.Routes(r)
 				careHandler.Routes(r)
 				captureHandler.Routes(r)
 				activityHandler.Routes(r)

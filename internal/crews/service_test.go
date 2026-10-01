@@ -11,8 +11,8 @@ import (
 	"github.com/NorthAIProject/north-client/internal/checkins"
 	"github.com/NorthAIProject/north-client/internal/crews"
 	"github.com/NorthAIProject/north-client/internal/crews/crew"
-	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/database/testdb"
+	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 

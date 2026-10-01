@@ -379,6 +379,12 @@ func Destinations() []Destination {
 			Keywords:    []string{"invite", "follow", "followers", "social", "people", "handle"},
 			Nav:         NavPlacement{Show: true},
 		},
+		{
+			Key: "nav.crews", Label: "Crews", Href: "/app/crews", Icon: "flag", Group: GroupProgress,
+			Description: "A few people keeping each other going.",
+			Keywords:    []string{"group", "accountability", "partner", "challenge", "team"},
+			Nav:         NavPlacement{Show: true},
+		},
 		// System
 		{
 			Key: "nav.knowledge", Label: "Knowledge", Href: "/app/knowledge", Icon: "book-open", Group: GroupSystem,
