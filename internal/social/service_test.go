@@ -107,7 +107,7 @@ func TestInviteRedeemConnectsBothWays(t *testing.T) {
 		t.Fatalf("redeem = %v, %v", ok, err)
 	}
 	if ok, _ := svc.Redeem(ctx, joao.ID, invite.Code); ok {
-		t.Fatal("second redeem reported as new")
+		t.Fatal("second redeem reported as a new connection")
 	}
 
 	for _, pair := range [][2]users.User{{ana, joao}, {joao, ana}} {
@@ -212,5 +212,41 @@ func TestBlockHidesBothWays(t *testing.T) {
 	anaView, _ := svc.Overview(ctx, ana.ID)
 	if len(anaView.Requests)+len(anaView.Followers)+len(anaView.Following) != 0 || len(anaView.Blocked) != 1 {
 		t.Fatalf("after block: %+v", anaView)
+	}
+}
+
+// A friend who is already on Khepri is connected by your link too, but only
+// an account's first invite counts as the one that brought them in.
+func TestInviteConnectsAFriendAlreadyHere(t *testing.T) {
+	svc, inbox, funnel, pool := fixture(t)
+	ctx := context.Background()
+	leo := person(t, pool, "leo@north.test", "Leo")
+	zoe := person(t, pool, "zoe@north.test", "Zoe")
+	mia := person(t, pool, "mia@north.test", "Mia")
+	leoInvite, _ := svc.InviteFor(ctx, leo.ID, social.ChannelLink)
+	zoeInvite, _ := svc.InviteFor(ctx, zoe.ID, social.ChannelLink)
+
+	if ok, err := svc.Redeem(ctx, mia.ID, leoInvite.Code); err != nil || !ok {
+		t.Fatalf("first invite: %v %v", ok, err)
+	}
+	if ok, err := svc.Redeem(ctx, mia.ID, zoeInvite.Code); err != nil || !ok {
+		t.Fatalf("second friend's invite did not connect: %v %v", ok, err)
+	}
+
+	mine, _ := svc.Overview(ctx, mia.ID)
+	if len(mine.Following) != 2 || len(mine.Followers) != 2 {
+		t.Fatalf("mia = %+v, want both friends both ways", mine)
+	}
+	if o, _ := svc.Overview(ctx, zoe.ID); o.Joined != 0 {
+		t.Fatalf("zoe joined = %d; mia was already here", o.Joined)
+	}
+	if o, _ := svc.Overview(ctx, leo.ID); o.Joined != 1 {
+		t.Fatalf("leo joined = %d, want 1", o.Joined)
+	}
+	if len(funnel.channels) != 1 {
+		t.Fatalf("funnel counted %d invites, want only the first", len(funnel.channels))
+	}
+	if len(inbox.notes) != 2 || inbox.notes[1].title != "Mia accepted your invite" {
+		t.Fatalf("notes = %+v", inbox.notes)
 	}
 }

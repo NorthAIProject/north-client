@@ -108,9 +108,14 @@ func (s *Service) PreviewInvite(ctx context.Context, code string) (InvitePreview
 	return s.repo.InviteByCode(ctx, code)
 }
 
-// Redeem connects a new account to whoever invited it. It is safe to call
-// more than once and with a code that no longer exists: an invite that cannot
-// be honoured is dropped quietly rather than failing somebody's signup.
+// Redeem connects the account to whoever's link it opened: a new account, or
+// a friend who was already here. connected is true when they were not
+// already following each other. Only an account's first invite is counted
+// as the one that brought them in.
+//
+// Safe to call more than once and with a code that no longer exists: an
+// invite that cannot be honoured is dropped quietly rather than failing
+// somebody's signup.
 func (s *Service) Redeem(ctx context.Context, inviteeID uuid.UUID, code string) (bool, error) {
 	invite, err := s.PreviewInvite(ctx, code)
 	if err != nil {
@@ -126,20 +131,24 @@ func (s *Service) Redeem(ctx context.Context, inviteeID uuid.UUID, code string) 
 	if err != nil || blocked {
 		return false, err
 	}
-	redeemed, err := s.repo.Redeem(ctx, inviteeID, invite.Code, invite.Inviter.ID)
-	if err != nil || !redeemed {
+	result, err := s.repo.Redeem(ctx, inviteeID, invite.Code, invite.Inviter.ID)
+	if err != nil {
 		return false, err
 	}
-	if s.funnel != nil {
+	if result.Attributed && s.funnel != nil {
 		s.funnel.InviteRedeemed(ctx, inviteeID, invite.Channel)
 	}
-	if s.inbox != nil {
+	if result.Connected && s.inbox != nil {
 		if joined, err := s.repo.PersonByID(ctx, inviteeID); err == nil {
+			title := joined.DisplayName + " joined from your invite"
+			if !result.Attributed {
+				title = joined.DisplayName + " accepted your invite"
+			}
 			_ = s.inbox.NoteWithPush(ctx, invite.Inviter.ID, KindInviteJoined, inviteeID.String(),
-				joined.DisplayName+" joined from your invite", "You follow each other now.", "/app/friends")
+				title, "You follow each other now.", "/app/friends")
 		}
 	}
-	return true, nil
+	return result.Connected, nil
 }
 
 // Follow asks to follow the person with this handle. It waits for their yes.
