@@ -26,3 +26,16 @@ SET dismissed_at = now(),
     read_at      = COALESCE(read_at, now())
 WHERE id = $1 AND user_id = $2 AND dismissed_at IS NULL
 RETURNING *;
+
+-- name: ResolveNudgesForDay :many
+-- Closes every nudge of a kind raised for one local day: the day's own key,
+-- or a key scoped under it ("2026-10-01:<reminder id>"). Rows already
+-- dismissed keep their time and come back too, so a chat message that carried
+-- one can still be edited.
+UPDATE user_nudges
+SET dismissed_at = COALESCE(dismissed_at, now()),
+    read_at      = COALESCE(read_at, now())
+WHERE user_id = sqlc.arg(user_id)
+  AND kind = sqlc.arg(kind)
+  AND (dedupe_key = sqlc.arg(day)::text OR dedupe_key LIKE sqlc.arg(day)::text || ':%')
+RETURNING *;

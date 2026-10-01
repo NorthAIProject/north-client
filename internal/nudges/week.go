@@ -127,6 +127,21 @@ func (s *Service) evalFirstWeekReview(ctx context.Context, user users.User, toda
 	return 0, nil
 }
 
+// trainedToday reports whether a session already finished today's plan day.
+// known is false when this service has no way to tell. Raising and resolving
+// the training reminder both ask this, so a walk on leg day neither stops the
+// reminder nor marks it done.
+func (s *Service) trainedToday(ctx context.Context, user users.User, today time.Time) (done, known bool, err error) {
+	tracker, ok := s.training.(interface {
+		CompletedToday(ctx context.Context, user users.User, today time.Time) (bool, string, error)
+	})
+	if !ok {
+		return false, false, nil
+	}
+	done, _, err = tracker.CompletedToday(ctx, user, today)
+	return done, true, err
+}
+
 func (s *Service) evalWorkoutToday(ctx context.Context, user users.User, today time.Time) (int, error) {
 	if s.training == nil {
 		return 0, nil
@@ -137,18 +152,14 @@ func (s *Service) evalWorkoutToday(ctx context.Context, user users.User, today t
 		return 0, err
 	}
 
-	if tracker, ok := s.training.(interface {
-		CompletedToday(ctx context.Context, user users.User, today time.Time) (bool, string, error)
-	}); ok {
-		done, _, doneErr := tracker.CompletedToday(ctx, user, today)
-		if doneErr != nil {
-			return 0, doneErr
-		}
-		// Already trained: nothing to nudge, and not a failure — returning
-		// an error here would stop the rest of this person's nudges.
-		if done {
-			return 0, nil
-		}
+	done, _, err := s.trainedToday(ctx, user, today)
+	if err != nil {
+		return 0, err
+	}
+	// Already trained: nothing to nudge, and not a failure — returning
+	// an error here would stop the rest of this person's nudges.
+	if done {
+		return 0, nil
 	}
 	if href == "" {
 		href = "/app/fitness"

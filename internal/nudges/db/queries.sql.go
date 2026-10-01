@@ -167,3 +167,54 @@ func (q *Queries) MarkNudgeRead(ctx context.Context, arg MarkNudgeReadParams) (U
 	)
 	return i, err
 }
+
+const resolveNudgesForDay = `-- name: ResolveNudgesForDay :many
+UPDATE user_nudges
+SET dismissed_at = COALESCE(dismissed_at, now()),
+    read_at      = COALESCE(read_at, now())
+WHERE user_id = $1
+  AND kind = $2
+  AND (dedupe_key = $3::text OR dedupe_key LIKE $3::text || ':%')
+RETURNING id, user_id, kind, dedupe_key, title, body, href, read_at, dismissed_at, created_at
+`
+
+type ResolveNudgesForDayParams struct {
+	UserID uuid.UUID
+	Kind   string
+	Day    string
+}
+
+// Closes every nudge of a kind raised for one local day: the day's own key,
+// or a key scoped under it ("2026-10-01:<reminder id>"). Rows already
+// dismissed keep their time and come back too, so a chat message that carried
+// one can still be edited.
+func (q *Queries) ResolveNudgesForDay(ctx context.Context, arg ResolveNudgesForDayParams) ([]UserNudge, error) {
+	rows, err := q.db.Query(ctx, resolveNudgesForDay, arg.UserID, arg.Kind, arg.Day)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []UserNudge{}
+	for rows.Next() {
+		var i UserNudge
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Kind,
+			&i.DedupeKey,
+			&i.Title,
+			&i.Body,
+			&i.Href,
+			&i.ReadAt,
+			&i.DismissedAt,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
