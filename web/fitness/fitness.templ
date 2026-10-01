@@ -9,6 +9,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/fitness/strava"
 	"github.com/NorthAIProject/north-client/internal/meals"
+	"github.com/NorthAIProject/north-client/internal/shared/durfmt"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/workouts/plan"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
@@ -760,7 +761,7 @@ templ cardioCard(v CardioView) {
 				} else {
 					@miniStat(fmt.Sprintf("%d", v.Runs), "", "runs")
 				}
-				@miniStat(fmt.Sprintf("%dh %02dm", v.Minutes/60, v.Minutes%60), "", "moving")
+				@miniStat(durfmt.HoursMinutes(v.Minutes), "", "moving")
 			</div>
 			<dl class="divide-border divide-y text-sm">
 				if v.Runs > 0 {

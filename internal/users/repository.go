@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -49,7 +50,7 @@ type NewRecord struct {
 func (r *Repository) Create(ctx context.Context, rec NewRecord) (User, error) {
 	email := normalizeEmail(rec.Email)
 	name := strings.TrimSpace(rec.DisplayName)
-	passwordHash := optionalHash(rec.PasswordHash)
+	passwordHash := util.StrZeroPtr(rec.PasswordHash)
 
 	locale := rec.Locale
 	if locale == "" {
@@ -125,7 +126,7 @@ func (r *Repository) CredentialsByEmail(ctx context.Context, email string) (User
 		}
 		return User{}, "", apperr.Wrap(err, "get credentials by email")
 	}
-	return fromDB(row), derefString(row.PasswordHash), nil
+	return fromDB(row), util.Val(row.PasswordHash), nil
 }
 
 // Profile carries the user-editable fields of an account.
@@ -216,7 +217,7 @@ func (r *Repository) MarkOnboarded(ctx context.Context, id uuid.UUID) (User, err
 func (r *Repository) UpdatePasswordHash(ctx context.Context, id uuid.UUID, hash string) error {
 	err := r.q.UpdateUserPassword(ctx, usersdb.UpdateUserPasswordParams{
 		ID:           id,
-		PasswordHash: optionalHash(hash),
+		PasswordHash: util.StrZeroPtr(hash),
 	})
 	return apperr.Wrap(err, "update password")
 }
@@ -226,18 +227,4 @@ func (r *Repository) UpdatePasswordHash(ctx context.Context, id uuid.UUID, hash 
 // to the user consistent with what they typed at signup.
 func normalizeEmail(email string) string {
 	return strings.ToLower(strings.TrimSpace(email))
-}
-
-func optionalHash(hash string) *string {
-	if hash == "" {
-		return nil
-	}
-	return &hash
-}
-
-func derefString(s *string) string {
-	if s == nil {
-		return ""
-	}
-	return *s
 }

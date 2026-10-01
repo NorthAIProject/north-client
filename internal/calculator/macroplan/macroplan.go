@@ -8,9 +8,9 @@ package macroplan
 
 import (
 	"fmt"
-	"math"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
 )
 
@@ -167,7 +167,7 @@ func ToMetric(weight, height float64, units string) (kg, cm float64) {
 // maths.
 func Display(kg, cm float64, units string) (weight, height float64) {
 	if units == UnitsImperial {
-		return round1(kg * poundsPerKg), round1(cm * inchesPerCm)
+		return util.RoundHalfUpToScale(kg*poundsPerKg, 1), util.RoundHalfUpToScale(cm*inchesPerCm, 1)
 	}
 	return kg, cm
 }
@@ -188,8 +188,6 @@ func HeightUnit(units string) string {
 	}
 	return "cm"
 }
-
-func round1(value float64) float64 { return math.Round(value*10) / 10 }
 
 // AllGoals returns the daily calorie target for every goal at this TDEE.
 //

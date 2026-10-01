@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
 )
 
@@ -67,7 +68,7 @@ func BuildRecap(duration time.Duration, calories float64, prescribed int, curren
 			}
 		}
 	}
-	out.VolumeKg = Round(out.VolumeKg)
+	out.VolumeKg = util.RoundHalfUpToScale(out.VolumeKg, 1)
 	out.Sentence = recapSentence(out, bestChange)
 	return out
 }
@@ -101,10 +102,10 @@ func summarise(sets, earlier []Set) RecapExercise {
 			haveBest = true
 		}
 	}
-	row.VolumeKg = Round(row.VolumeKg)
+	row.VolumeKg = util.RoundHalfUpToScale(row.VolumeKg, 1)
 	if haveBest {
 		row.Best = fmt.Sprintf("%s × %d", formatKg(best.WeightKg), best.Reps)
-		row.E1RM = Round(best.E1RM())
+		row.E1RM = util.RoundHalfUpToScale(best.E1RM(), 1)
 	}
 	prev := LastWorkout(filterKey(earlier, sets[0].Key()))
 	if len(prev) == 0 {
@@ -122,11 +123,11 @@ func summarise(sets, earlier []Set) RecapExercise {
 			havePrev = true
 		}
 	}
-	row.PreviousVolume = Round(row.PreviousVolume)
+	row.PreviousVolume = util.RoundHalfUpToScale(row.PreviousVolume, 1)
 	if havePrev && haveBest {
 		row.HasPrevious = true
-		row.PreviousE1RM = Round(prevBest)
-		row.Change = Round(row.E1RM - row.PreviousE1RM)
+		row.PreviousE1RM = util.RoundHalfUpToScale(prevBest, 1)
+		row.Change = util.RoundHalfUpToScale(row.E1RM-row.PreviousE1RM, 1)
 	}
 	return row
 }

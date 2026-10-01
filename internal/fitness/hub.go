@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/activity"
@@ -425,7 +426,7 @@ func strengthView(st *lifts.Stats) *fitnesspages.StrengthView {
 		}
 		row := fitnesspages.StrengthRow{Name: e.Name, BestKg: e.BestWeightKg, E1RMKg: e.BestE1RM}
 		if n := len(e.Trend); n > 1 {
-			row.ChangeKg = lift.Round(e.Trend[n-1].Value - e.Trend[0].Value)
+			row.ChangeKg = util.RoundHalfUpToScale(e.Trend[n-1].Value-e.Trend[0].Value, 1)
 		}
 		view.Exercises = append(view.Exercises, row)
 	}
