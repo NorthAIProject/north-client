@@ -20,10 +20,16 @@ WHERE id = $1 AND (user_id IS NULL OR user_id = $2);
 
 -- name: SearchIngredients :many
 -- Visible ingredients are the shared/global set plus the user's own.
+--
+-- patterns holds one LIKE pattern per word, already lowercased and escaped, and
+-- a name must contain every one of them. Word by word rather than one
+-- substring so "chicken breast" finds "Breast, chicken" — a spoken or typed
+-- name rarely arrives in the catalog's word order.
 SELECT * FROM ingredients
-WHERE (user_id IS NULL OR user_id = $1) AND lower(name) LIKE lower($2)
+WHERE (user_id IS NULL OR user_id = sqlc.arg(user_id))
+  AND lower(name) LIKE ALL (sqlc.arg(patterns)::text[])
 ORDER BY name
-LIMIT $3;
+LIMIT sqlc.arg(max_rows);
 
 -- name: UpdateIngredient :one
 -- Only a user's own ingredients can be edited; shared ones are read-only to

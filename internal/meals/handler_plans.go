@@ -172,6 +172,42 @@ func (h *Handler) addIngredientToMeal(w http.ResponseWriter, r *http.Request) {
 	redirectToReferer(w, r, "/app/nutrition/plans")
 }
 
+// addIngredientsToMeal takes the reviewed lines of a spoken meal.
+//
+// Each line posts as ingredient_id_N and quantity_grams_N, and every "line"
+// value names an N the person left ticked. Indexed rather than two parallel
+// lists because an unticked checkbox posts nothing, which would shift every
+// later quantity onto the wrong food.
+func (h *Handler) addIngredientsToMeal(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+
+	mealID, err := uuid.Parse(chi.URLParam(r, "mealID"))
+	if err != nil {
+		h.fail(w, r, apperr.ErrNotFound)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		h.fail(w, r, apperr.ErrValidation)
+		return
+	}
+
+	lines := make([]MealIngredientInput, 0, len(r.PostForm["line"]))
+	for _, n := range r.PostForm["line"] {
+		ingredientID, _ := uuid.Parse(r.PostFormValue("ingredient_id_" + n))
+		lines = append(lines, MealIngredientInput{
+			IngredientID:  ingredientID,
+			QuantityGrams: parseFloat(r.PostFormValue("quantity_grams_" + n)),
+		})
+	}
+
+	if _, err := h.plans.AddIngredients(r.Context(), mealID, user.ID, lines); err != nil {
+		h.fail(w, r, err)
+		return
+	}
+
+	redirectToReferer(w, r, "/app/nutrition/plans")
+}
+
 func (h *Handler) removeIngredientFromMeal(w http.ResponseWriter, r *http.Request) {
 	user := auth.MustUser(r.Context())
 
