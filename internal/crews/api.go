@@ -38,10 +38,11 @@ func (a *API) Routes(r chi.Router) {
 func JoinURL(siteURL, code string) string { return strings.TrimRight(siteURL, "/") + "/i/c/" + code }
 
 type CrewView struct {
-	ID      uuid.UUID `json:"id"`
-	Name    string    `json:"name"`
-	Members int       `json:"members"`
-	JoinURL string    `json:"joinUrl"`
+	ID   uuid.UUID `json:"id"`
+	Name string    `json:"name"`
+	// MemberCount is how many are in it; the board lists them in members.
+	MemberCount int    `json:"memberCount"`
+	JoinURL     string `json:"joinUrl"`
 }
 
 type CrewList struct {
@@ -190,7 +191,7 @@ func (a *API) clearChallenge(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) projectCrew(c Crew) CrewView {
-	return CrewView{ID: c.ID, Name: c.Name, Members: c.Members, JoinURL: JoinURL(a.siteURL, c.Code)}
+	return CrewView{ID: c.ID, Name: c.Name, MemberCount: c.Members, JoinURL: JoinURL(a.siteURL, c.Code)}
 }
 
 func (a *API) projectBoard(b Board) BoardView {
