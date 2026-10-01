@@ -27,7 +27,7 @@ func renderBrowse(t *testing.T, found []exercise.Exercise, f Filters, p Page) st
 func renderDetail(t *testing.T, e exercise.Exercise) string {
 	t.Helper()
 	var b strings.Builder
-	if err := Detail(users.User{DisplayName: "Ada"}, e).Render(context.Background(), &b); err != nil {
+	if err := Detail(users.User{DisplayName: "Ada"}, DetailView{Exercise: e}).Render(context.Background(), &b); err != nil {
 		t.Fatalf("render: %v", err)
 	}
 	return b.String()

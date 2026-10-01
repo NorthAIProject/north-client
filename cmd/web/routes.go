@@ -81,6 +81,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/voice/vocab"
 	"github.com/NorthAIProject/north-client/internal/watches"
 	"github.com/NorthAIProject/north-client/internal/workouts"
+	"github.com/NorthAIProject/north-client/internal/workouts/plan"
 	"github.com/NorthAIProject/north-client/web/assets"
 	"github.com/NorthAIProject/north-client/web/landing"
 	"github.com/NorthAIProject/north-client/web/legal"
@@ -238,6 +239,10 @@ func routes(
 		Model:      cfg.AI.Model,
 	})
 	workoutHandler := workouts.NewHandler(workoutSvc)
+	exerciseHandler.WithPlans(func(ctx context.Context, userID uuid.UUID) (uuid.UUID, plan.Plan, error) {
+		stored, lookupErr := workoutSvc.LatestPlan(ctx, userID)
+		return stored.ID, stored.Plan, lookupErr
+	})
 
 	mediaSvc := media.NewService(media.Options{
 		Repository: media.NewRepository(pool),
