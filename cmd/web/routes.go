@@ -767,10 +767,14 @@ func routes(
 
 	messagingSvc := messaging.NewService(messagingOpts)
 	nudgeSvc.WithFanout(messagingSvc)
+	// Resolving "start today's session" asks the plan whether today's day is
+	// really finished; without it any logged walk would close it.
+	nudgeSvc.WithTraining(workoutSvc)
 
 	syncCoordinator := appsync.NewCoordinator(nudgeSvc)
 	activitySvc.WithSync(syncCoordinator)
 	checkinSvc.WithSync(syncCoordinator)
+	foodLogSvc.WithSync(syncCoordinator)
 	workoutSvc.WithActivity(activitySvc)
 
 	settingsHandler := settings.NewHandler(

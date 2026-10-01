@@ -22,6 +22,7 @@ const (
 	KindBriefingReady     = nudge.KindBriefingReady
 	KindPhotoAsk          = nudge.KindPhotoAsk
 	KindPhotoReminder     = nudge.KindPhotoReminder
+	KindMealReminder      = nudge.KindMealReminder
 	KindEveningReflection = nudge.KindEveningReflection
 	KindCrewCheckIn       = nudge.KindCrewCheckIn
 )

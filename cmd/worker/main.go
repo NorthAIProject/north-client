@@ -70,6 +70,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/soreness"
 	"github.com/NorthAIProject/north-client/internal/spend"
 	"github.com/NorthAIProject/north-client/internal/supplements"
+	appsync "github.com/NorthAIProject/north-client/internal/sync"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/vault"
 	vaultdb "github.com/NorthAIProject/north-client/internal/vault/db"
@@ -418,9 +419,20 @@ func run() error {
 		}).
 		WithTraining(workoutSvc).
 		WithSchedules(notificationSvc).
+		WithMeals(nudges.MealsFrom{
+			Reminders: meals.NewMealReminderService(mealsRepo),
+			FoodLog:   meals.NewFoodLogService(mealsRepo),
+		}).
 		// The evening note that crewmates checked in and you have not.
 		WithCrews(crews.NewService(pool, crews.CheckInsFrom(checkinSvc), crews.WorkoutsFrom(activitySvc)))
 	worker.Register(jobs.KindSweepNudges, nudges.NewSweeper(nudgeSvc, log).HandleSweep)
+
+	// Strava imports and the coach's tools finish workouts and save check-ins
+	// here too; without this they would leave "start today's session" standing
+	// in the chat that only the web process could close.
+	syncCoordinator := appsync.NewCoordinator(nudgeSvc)
+	activitySvc.WithSync(syncCoordinator)
+	checkinSvc.WithSync(syncCoordinator)
 
 	mediaSvc.WithOnReady(func(ctx context.Context, userID, analysisID uuid.UUID) {
 		_ = nudgeSvc.Note(ctx, userID, nudges.KindFormReady, analysisID.String(),

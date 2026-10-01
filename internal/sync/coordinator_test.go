@@ -2,73 +2,94 @@ package sync
 
 import (
 	"context"
+	"errors"
 	"testing"
-	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/NorthAIProject/north-client/internal/nudges"
 )
 
+// fakeNudges records each resolve and renders its text against a stored
+// nudge, the way the real service does.
 type fakeNudges struct {
-	dismissed []dismissCall
+	title, body string
+	err         error
+	kinds       []string
+	texts       []string
 }
 
-type dismissCall struct {
-	userID     uuid.UUID
-	kind       string
-	dedupeKey  string
-	updateText string
+func (f *fakeNudges) ResolveToday(_ context.Context, _ uuid.UUID, kind string, text func(title, body string) string) error {
+	f.kinds = append(f.kinds, kind)
+	f.texts = append(f.texts, text(f.title, f.body))
+	return f.err
 }
 
-func (f *fakeNudges) DismissByKind(ctx context.Context, userID uuid.UUID, kind, dedupeKey, updateText string) error {
-	f.dismissed = append(f.dismissed, dismissCall{
-		userID:     userID,
-		kind:       kind,
-		dedupeKey:  dedupeKey,
-		updateText: updateText,
-	})
-	return nil
+func TestOnWorkoutCompletedNamesThePlanDay(t *testing.T) {
+	fake := &fakeNudges{title: "Start today's session", body: "Upper A"}
+	c := NewCoordinator(fake)
+
+	if err := c.OnWorkoutCompleted(context.Background(), uuid.New(), "strength"); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(fake.kinds) != 1 || fake.kinds[0] != nudges.KindWorkoutToday {
+		t.Fatalf("kinds = %v", fake.kinds)
+	}
+	if fake.texts[0] != "✅ Completed today's session: Upper A" {
+		t.Errorf("text = %q", fake.texts[0])
+	}
 }
 
-func TestOnWorkoutCompleted(t *testing.T) {
-	nudges := &fakeNudges{}
-	c := NewCoordinator(nudges)
-	userID := uuid.New()
+func TestOnWorkoutCompletedFallsBackToTheSessionTitle(t *testing.T) {
+	fake := &fakeNudges{title: "Start today's session"}
+	c := NewCoordinator(fake)
 
-	err := c.OnWorkoutCompleted(context.Background(), userID, "Upper A")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if err := c.OnWorkoutCompleted(context.Background(), uuid.New(), "strength"); err != nil {
+		t.Fatal(err)
 	}
-
-	if len(nudges.dismissed) != 1 {
-		t.Fatalf("expected 1 dismiss call, got %d", len(nudges.dismissed))
-	}
-	call := nudges.dismissed[0]
-	if call.kind != "workout_today" {
-		t.Errorf("expected kind workout_today, got %s", call.kind)
-	}
-	today := time.Now().Format("2006-01-02")
-	if call.dedupeKey != today {
-		t.Errorf("expected dedupeKey %s, got %s", today, call.dedupeKey)
-	}
-	if call.updateText != "✅ Completed today's session: Upper A" {
-		t.Errorf("unexpected update text: %s", call.updateText)
+	if fake.texts[0] != "✅ Completed today's session: strength" {
+		t.Errorf("text = %q", fake.texts[0])
 	}
 }
 
 func TestOnCheckInSaved(t *testing.T) {
-	nudges := &fakeNudges{}
-	c := NewCoordinator(nudges)
-	userID := uuid.New()
+	fake := &fakeNudges{}
+	c := NewCoordinator(fake)
 
-	err := c.OnCheckInSaved(context.Background(), userID)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if err := c.OnCheckInSaved(context.Background(), uuid.New()); err != nil {
+		t.Fatal(err)
 	}
 
-	if len(nudges.dismissed) != 2 {
-		t.Fatalf("expected 2 dismiss calls, got %d", len(nudges.dismissed))
+	if len(fake.kinds) != 2 || fake.kinds[0] != nudges.KindMissedCheckIn || fake.kinds[1] != nudges.KindStreakAtRisk {
+		t.Fatalf("kinds = %v", fake.kinds)
 	}
-	if nudges.dismissed[0].kind != "missed_checkin" || nudges.dismissed[1].kind != "streak_at_risk" {
-		t.Errorf("unexpected kinds: %+v", nudges.dismissed)
+	if fake.texts[0] != "✅ Checked in today" {
+		t.Errorf("text = %q", fake.texts[0])
+	}
+}
+
+func TestOnMealLogged(t *testing.T) {
+	fake := &fakeNudges{title: "log lunch"}
+	c := NewCoordinator(fake)
+
+	if err := c.OnMealLogged(context.Background(), uuid.New()); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(fake.kinds) != 1 || fake.kinds[0] != nudges.KindMealReminder {
+		t.Fatalf("kinds = %v", fake.kinds)
+	}
+	if fake.texts[0] != "✅ Done: log lunch" {
+		t.Errorf("text = %q", fake.texts[0])
+	}
+}
+
+func TestResolveFailureIsReturned(t *testing.T) {
+	fake := &fakeNudges{err: errors.New("database down")}
+	c := NewCoordinator(fake)
+
+	if err := c.OnWorkoutCompleted(context.Background(), uuid.New(), ""); err == nil {
+		t.Fatal("want the error back, got nil")
 	}
 }
