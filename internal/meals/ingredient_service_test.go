@@ -2,6 +2,8 @@ package meals_test
 
 import (
 	"context"
+	"sort"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -105,6 +107,100 @@ func TestSearchExcludesAnotherUsersPrivateIngredient(t *testing.T) {
 	}
 	if !containsIngredient(ownerResults, created.ID) {
 		t.Fatal("the owner cannot see their own ingredient")
+	}
+}
+
+// A spoken or typed name rarely arrives in the catalog's word order, and a
+// voice parse hands search "chicken breast" whether the row is called that or
+// "Breast, chicken". Every word must appear; their order must not matter.
+//
+// The names carry a nonsense prefix because the shared catalog is seeded by
+// migration: a real word would also match rows these assertions know nothing
+// about.
+func TestSearchMatchesEveryWordInAnyOrder(t *testing.T) {
+	pool := testdb.New(t)
+	user := newUser(t, pool, "words@north.test")
+	svc := meals.NewIngredientService(meals.NewRepository(pool))
+	ctx := context.Background()
+
+	create := func(name string) meals.Ingredient {
+		t.Helper()
+		in := validIngredient()
+		in.Name = name
+		created, err := svc.Create(ctx, user.ID, in)
+		if err != nil {
+			t.Fatalf("create %q: %v", name, err)
+		}
+		return created
+	}
+	breast := create("Zqx breast, roasted")
+	thigh := create("Zqx thigh, roasted")
+
+	found, err := svc.Search(ctx, user.ID, "Roasted  ZQX breast", 100)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if !containsIngredient(found, breast.ID) {
+		t.Error("words out of order did not find the ingredient that has them all")
+	}
+	if containsIngredient(found, thigh.ID) {
+		t.Error("an ingredient missing one of the words was returned")
+	}
+}
+
+// LIKE treats % and _ as wildcards. Unescaped, "50%" searched for "50" and
+// "_" for any character at all.
+func TestSearchTreatsWildcardsLiterally(t *testing.T) {
+	pool := testdb.New(t)
+	user := newUser(t, pool, "wildcards@north.test")
+	svc := meals.NewIngredientService(meals.NewRepository(pool))
+	ctx := context.Background()
+
+	for _, name := range []string{"Zqx chocolate 50% cocoa", "Zqx chocolate 500 bar"} {
+		in := validIngredient()
+		in.Name = name
+		if _, err := svc.Create(ctx, user.ID, in); err != nil {
+			t.Fatalf("create %q: %v", name, err)
+		}
+	}
+
+	for _, tc := range []struct {
+		query string
+		want  []string
+	}{
+		{query: "zqx 50%", want: []string{"Zqx chocolate 50% cocoa"}},
+		{query: "zqx _", want: nil},
+		{query: "zqx chocolate", want: []string{"Zqx chocolate 50% cocoa", "Zqx chocolate 500 bar"}},
+	} {
+		found, err := svc.Search(ctx, user.ID, tc.query, 100)
+		if err != nil {
+			t.Fatalf("search %q: %v", tc.query, err)
+		}
+		// Sorted here rather than trusted from ORDER BY: where "50%" falls
+		// against "500" is the database collation's call, not this test's.
+		var got []string
+		for _, f := range found {
+			got = append(got, f.Name)
+		}
+		sort.Strings(got)
+		if strings.Join(got, "|") != strings.Join(tc.want, "|") {
+			t.Errorf("search %q = %q, want %q", tc.query, got, tc.want)
+		}
+	}
+}
+
+// An empty box lists the catalog rather than nothing, as it always has.
+func TestSearchWithEmptyQueryListsEverything(t *testing.T) {
+	pool := testdb.New(t)
+	user := newUser(t, pool, "empty@north.test")
+	svc := meals.NewIngredientService(meals.NewRepository(pool))
+
+	found, err := svc.Search(context.Background(), user.ID, "   ", 5)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(found) == 0 {
+		t.Fatal("an empty query returned nothing; the seeded catalog should fill the page")
 	}
 }
 

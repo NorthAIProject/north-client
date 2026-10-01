@@ -936,20 +936,26 @@ func (q *Queries) RemoveUserDiet(ctx context.Context, arg RemoveUserDietParams) 
 
 const searchIngredients = `-- name: SearchIngredients :many
 SELECT id, user_id, name, brand, category, serving_size_grams, calories_per_100g, protein_g_per_100g, fat_g_per_100g, carbs_g_per_100g, fiber_g_per_100g, sugar_g_per_100g, sodium_mg_per_100g, potassium_mg_per_100g, cholesterol_mg_per_100g, created_at, updated_at, saturated_fat_g_per_100g FROM ingredients
-WHERE (user_id IS NULL OR user_id = $1) AND lower(name) LIKE lower($2)
+WHERE (user_id IS NULL OR user_id = $1)
+  AND lower(name) LIKE ALL ($2::text[])
 ORDER BY name
 LIMIT $3
 `
 
 type SearchIngredientsParams struct {
-	UserID *uuid.UUID
-	Lower  string
-	Limit  int32
+	UserID   *uuid.UUID
+	Patterns []string
+	MaxRows  int32
 }
 
 // Visible ingredients are the shared/global set plus the user's own.
+//
+// patterns holds one LIKE pattern per word, already lowercased and escaped, and
+// a name must contain every one of them. Word by word rather than one
+// substring so "chicken breast" finds "Breast, chicken" — a spoken or typed
+// name rarely arrives in the catalog's word order.
 func (q *Queries) SearchIngredients(ctx context.Context, arg SearchIngredientsParams) ([]Ingredient, error) {
-	rows, err := q.db.Query(ctx, searchIngredients, arg.UserID, arg.Lower, arg.Limit)
+	rows, err := q.db.Query(ctx, searchIngredients, arg.UserID, arg.Patterns, arg.MaxRows)
 	if err != nil {
 		return nil, err
 	}

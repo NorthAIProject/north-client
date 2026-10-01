@@ -5,10 +5,12 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/meals/meal"
 	"github.com/NorthAIProject/north-client/internal/users"
+	capturepages "github.com/NorthAIProject/north-client/web/capture"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
 	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/dictate"
 	"github.com/NorthAIProject/north-client/web/shared/ui/form"
 	"github.com/NorthAIProject/north-client/web/shared/ui/input"
 	"github.com/NorthAIProject/north-client/web/shared/ui/label"
@@ -168,6 +170,7 @@ templ PlanDetailPage(user users.User, plan meal.MealPlan, allIngredients []meal.
 		</div>
 		@label.Script()
 		@selectbox.Script()
+		@dictate.Script()
 	}
 }
 
@@ -229,6 +232,7 @@ templ mealCard(m meal.Meal, allIngredients []meal.Ingredient, f MealIngredientFo
 					{ f.fieldError("quantity_grams") }
 				}
 			}
+			@capturepages.MealVoice(capturepages.MealVoiceData{MealID: m.ID.String()})
 		}
 	}
 }

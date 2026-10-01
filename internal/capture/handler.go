@@ -41,6 +41,7 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Get("/capture", h.show)
 	r.With(h.quotas.Guard(quota.QuickCapture)).Post("/capture/parse", h.parse)
 	r.Post("/capture/commit", h.commit)
+	r.With(h.quotas.Guard(quota.QuickCapture)).Post("/capture/foods", h.foods)
 }
 
 // show renders the empty box, or one prefilled from the PWA share target.
@@ -113,6 +114,48 @@ func (h *Handler) commit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.render(w, r, http.StatusOK, capturepages.Data{Receipt: receipt, HasSaved: true})
+}
+
+// foods reads a spoken or typed meal for one meal on a plan and answers the
+// box with a review under it. It writes nothing; the review posts to the meal.
+//
+// The meal id is only carried through to that review's form action. Whose
+// meal it is gets checked where the rows are written, not here, where a
+// forged id could at most cost its sender a parse against their own quota.
+func (h *Handler) foods(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "That request could not be read.", http.StatusUnprocessableEntity)
+		return
+	}
+	mealID, err := uuid.Parse(r.PostFormValue("meal_id"))
+	if err != nil {
+		http.Error(w, "Not found.", http.StatusNotFound)
+		return
+	}
+
+	data := capturepages.MealVoiceData{
+		MealID: mealID.String(),
+		Text:   strings.TrimSpace(r.PostFormValue("text")),
+	}
+	draft, err := h.svc.ParseFoods(r.Context(), user, data.Text)
+	if err != nil {
+		data.Error = message(err)
+		h.renderMealVoice(w, r, statusFor(err), data)
+		return
+	}
+
+	data.Draft, data.Parsed = draft, true
+	h.renderMealVoice(w, r, http.StatusOK, data)
+}
+
+func (h *Handler) renderMealVoice(w http.ResponseWriter, r *http.Request, status int, data capturepages.MealVoiceData) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
+	if err := capturepages.MealVoice(data).Render(r.Context(), w); err != nil {
+		middleware.FromContext(r.Context()).Error("render meal voice", slog.Any("error", err))
+	}
 }
 
 func (h *Handler) render(w http.ResponseWriter, r *http.Request, status int, data capturepages.Data) {
