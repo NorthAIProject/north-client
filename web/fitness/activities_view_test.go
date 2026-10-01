@@ -308,6 +308,20 @@ func TestSessionPageNumbers(t *testing.T) {
 	}
 }
 
+func TestRound1sRoundsHalfAwayFromZero(t *testing.T) {
+	t.Parallel()
+
+	in := []float64{0, 2.25, 2.24, 47.96, -1.26, -2.25}
+	want := []float64{0, 2.3, 2.2, 48, -1.3, -2.3}
+
+	got := round1s(in)
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("round1s(%v) = %v, want %v", in, got, want)
+		}
+	}
+}
+
 func render(t *testing.T, c templ.Component) string {
 	t.Helper()
 	var buf strings.Builder

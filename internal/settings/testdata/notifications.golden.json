@@ -11,5 +11,8 @@
   "quietEnd": "07:00",
   "photoAskEnabled": true,
   "photoEveryDays": 14,
-  "photoReminderDays": 2
+  "photoReminderDays": 2,
+  "briefingHour": 7,
+  "eveningReflection": true,
+  "eveningHour": 21
 }

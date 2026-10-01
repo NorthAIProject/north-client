@@ -44,7 +44,7 @@ func (h *Handler) start(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := h.svc.Start(r.Context(), user.ID, r.PostFormValue("activity_code")); err != nil {
+	if _, err := h.svc.Start(r.Context(), user.ID, r.PostFormValue("activity_code"), ""); err != nil {
 		if apperr.Is(err, apperr.ErrValidation) || apperr.Is(err, apperr.ErrConflict) {
 			h.render(w, r, err.Error())
 			return

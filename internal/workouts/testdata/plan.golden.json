@@ -25,12 +25,16 @@
             "glutes"
           ]
         }
-      ]
+      ],
+      "completedThisWeek": true,
+      "isNext": false
     },
     {
       "weekday": "Thursday",
       "focus": "Upper body",
-      "exercises": []
+      "exercises": [],
+      "completedThisWeek": false,
+      "isNext": true
     }
   ],
   "problems": [

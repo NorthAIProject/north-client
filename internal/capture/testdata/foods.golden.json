@@ -1,0 +1,48 @@
+{
+  "lines": [
+    {
+      "source": "200 grams of chicken breast",
+      "query": "chicken breast",
+      "grams": 200,
+      "ingredient_id": "11111111-1111-1111-1111-111111111111",
+      "matched_name": "Chicken breast",
+      "candidates": [
+        {
+          "id": "11111111-1111-1111-1111-111111111111",
+          "name": "Chicken breast"
+        },
+        {
+          "id": "22222222-2222-2222-2222-222222222222",
+          "name": "Chicken breast, breaded"
+        }
+      ]
+    },
+    {
+      "source": "two eggs",
+      "query": "egg",
+      "grams": 120,
+      "uncertain": true,
+      "candidates": [
+        {
+          "id": "33333333-3333-3333-3333-333333333333",
+          "name": "Egg, boiled"
+        },
+        {
+          "id": "44444444-4444-4444-4444-444444444444",
+          "name": "Egg, fried"
+        }
+      ]
+    },
+    {
+      "source": "some dragonfruit",
+      "query": "dragonfruit",
+      "grams": 100,
+      "uncertain": true,
+      "candidates": [],
+      "problem": "Nothing in the catalog matches \"dragonfruit\"."
+    }
+  ],
+  "unparsed": [
+    "a glass of water"
+  ]
+}

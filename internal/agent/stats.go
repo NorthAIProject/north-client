@@ -9,13 +9,12 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/ai"
+	"github.com/NorthAIProject/north-client/internal/shared/durfmt"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/stats"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
-
-func clock(minutes int) string { return fmt.Sprintf("%dh %02dm", minutes/60, minutes%60) }
 
 // getStats reads the stats pages for the coach, so "how has my sleep been"
 // and "does coffee affect my sleep" are answered from the numbers.
@@ -62,12 +61,12 @@ func getStats(svc *stats.Service, userSvc *users.Service) Capability {
 					return "No sleep recorded in that window.", nil
 				}
 				fmt.Fprintf(&b, "%d nights, average %s; %d at 8h or more; debt over the last 7 nights %s.",
-					len(st.Nights), clock(st.AvgMinutes), st.NightsOnTgt, clock(st.DebtMinutes))
+					len(st.Nights), durfmt.HoursMinutes(st.AvgMinutes), st.NightsOnTgt, durfmt.HoursMinutes(st.DebtMinutes))
 				if st.HasTimes {
 					fmt.Fprintf(&b, " Bedtime around %s (±%d min), up around %s (±%d min).", st.AvgBedtime, st.BedtimeSpread, st.AvgWake, st.WakeSpread)
 				}
 				if st.WeekdayAvg > 0 && st.WeekendAvg > 0 {
-					fmt.Fprintf(&b, " Weekdays %s, weekends %s.", clock(st.WeekdayAvg), clock(st.WeekendAvg))
+					fmt.Fprintf(&b, " Weekdays %s, weekends %s.", durfmt.HoursMinutes(st.WeekdayAvg), durfmt.HoursMinutes(st.WeekendAvg))
 				}
 				for stage, share := range st.StageShare {
 					fmt.Fprintf(&b, " %s %.0f%%.", stage, share*100)
@@ -77,9 +76,9 @@ func getStats(svc *stats.Service, userSvc *users.Service) Capability {
 				if err != nil {
 					return "", err
 				}
-				fmt.Fprintf(&b, "%d sessions, %s, %.1f km, %.0f kcal.", st.Sessions, clock(st.Seconds/60), st.DistanceKm, st.Kcal)
+				fmt.Fprintf(&b, "%d sessions, %s, %.1f km, %.0f kcal.", st.Sessions, durfmt.HoursMinutes(st.Seconds/60), st.DistanceKm, st.Kcal)
 				for _, k := range st.ByKind {
-					fmt.Fprintf(&b, " %s: %d sessions, %s.", k.Name, k.Sessions, clock(k.Seconds/60))
+					fmt.Fprintf(&b, " %s: %d sessions, %s.", k.Name, k.Sessions, durfmt.HoursMinutes(k.Seconds/60))
 				}
 				if r := st.Runs; r.Count > 0 && r.AvgPace > 0 {
 					fmt.Fprintf(&b, " Runs: %d, average pace %d:%02d/km, best %d:%02d/km, longest %.1f km.",

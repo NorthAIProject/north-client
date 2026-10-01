@@ -45,6 +45,7 @@ type Service struct {
 	notify    Notifier
 	inbox     Inbox
 	chats     Chats
+	today     *TodayContext
 }
 
 // Chats posts the finished briefing into the person's latest chat as a
@@ -91,6 +92,17 @@ type Options struct {
 	// and the bell note then opens that thread. Nil leaves it on the reports
 	// page only, which is where the bell points instead.
 	Chats Chats
+
+	// Today adds readiness, today's session and the calendar to the daily
+	// briefing. Nil leaves the briefing about the recorded past only.
+	Today *TodayContext
+}
+
+// WithToday adds the day ahead to the daily briefing. Wired after
+// construction because its readers are built later in the worker.
+func (s *Service) WithToday(t *TodayContext) *Service {
+	s.today = t
+	return s
 }
 
 func (s *Service) WithInbox(in Inbox) *Service {
@@ -117,6 +129,7 @@ func NewService(opts Options) *Service {
 		notify:    opts.Notify,
 		inbox:     opts.Inbox,
 		chats:     opts.Chats,
+		today:     opts.Today,
 	}
 	if s.now == nil {
 		s.now = time.Now

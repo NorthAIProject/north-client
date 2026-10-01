@@ -384,6 +384,9 @@ func (h *Handler) updateNotifications(w http.ResponseWriter, r *http.Request) {
 		QuietHoursEnabled:  checked(r, "quiet_hours_enabled"),
 		QuietStart:         strings.TrimSpace(r.PostFormValue("quiet_start")),
 		QuietEnd:           strings.TrimSpace(r.PostFormValue("quiet_end")),
+		BriefingHour:       formHour(r, "briefing_hour"),
+		EveningReflection:  formSwitch(r, "evening_reflection", "evening_hour"),
+		EveningHour:        formHour(r, "evening_hour"),
 	}
 
 	every, _ := strconv.Atoi(strings.TrimSpace(r.PostFormValue("photo_every_days")))
@@ -427,6 +430,9 @@ func (h *Handler) updateNotifications(w http.ResponseWriter, r *http.Request) {
 				QuietHoursEnabled:  in.QuietHoursEnabled,
 				QuietStart:         in.QuietStart,
 				QuietEnd:           in.QuietEnd,
+				BriefingHour:       valueOr(in.BriefingHour, notifications.DefaultBriefingHour),
+				EveningReflection:  in.EveningReflection != nil && *in.EveningReflection,
+				EveningHour:        valueOr(in.EveningHour, notifications.DefaultEveningHour),
 			}
 			notifForm := settingspages.NotificationsFormFor(n, photo)
 			notifForm.Errors = fieldErrs.Messages()
@@ -445,6 +451,32 @@ func (h *Handler) updateNotifications(w http.ResponseWriter, r *http.Request) {
 // the four call sites above.
 func checked(r *http.Request, name string) bool {
 	return r.PostFormValue(name) != ""
+}
+
+// formHour reads an hour select, or nil when the form had no such field: a
+// page rendered before the field existed must keep the saved hour, not
+// reset it to midnight. An unparsable value is passed through as -1 so
+// validation names the field.
+func formHour(r *http.Request, name string) *int {
+	if _, sent := r.PostForm[name]; !sent {
+		return nil
+	}
+	h, err := strconv.Atoi(strings.TrimSpace(r.PostFormValue(name)))
+	if err != nil {
+		h = -1
+	}
+	return &h
+}
+
+// formSwitch reads a switch that is new to the form. An unchecked switch
+// sends nothing, so its absence alone cannot tell "off" from "this page
+// predates it"; a companion field that is always sent tells them apart.
+func formSwitch(r *http.Request, name, companion string) *bool {
+	if _, sent := r.PostForm[companion]; !sent {
+		return nil
+	}
+	on := checked(r, name)
+	return &on
 }
 
 func (h *Handler) updateDiets(w http.ResponseWriter, r *http.Request) {
@@ -831,4 +863,11 @@ func (h *Handler) updateTargetWeight(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/app", http.StatusSeeOther)
+}
+
+func valueOr(v *int, fallback int) int {
+	if v == nil {
+		return fallback
+	}
+	return *v
 }

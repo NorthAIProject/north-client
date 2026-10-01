@@ -52,6 +52,14 @@ type Prefs struct {
 	QuietStart string
 	QuietEnd   string
 
+	// BriefingHour is the local hour, 0-23, from which the morning briefing is
+	// written and pushed.
+	BriefingHour int
+	// EveningReflection opts in to a nightly prompt to check in or write in
+	// the journal, at EveningHour local.
+	EveningReflection bool
+	EveningHour       int
+
 	UpdatedAt time.Time
 }
 
@@ -68,6 +76,8 @@ func (p Prefs) AllowsNudge(kind string) bool {
 		return p.NudgeGoalDeadline
 	case "workout_today":
 		return p.TrainingReminders
+	case "evening_reflection":
+		return p.EveningReflection
 	case "first_week_check", "first_week_evidence", "first_week_review",
 		"form_ready", "coach_reply", "briefing_ready",
 		"photo_ask", "photo_reminder":
@@ -136,6 +146,9 @@ func fromDB(row notificationsdb.UserNotificationPref) Prefs {
 		QuietHoursEnabled:  row.QuietHoursEnabled,
 		QuietStart:         row.QuietStart,
 		QuietEnd:           row.QuietEnd,
+		BriefingHour:       int(row.BriefingHour),
+		EveningReflection:  row.EveningReflection,
+		EveningHour:        int(row.EveningHour),
 		UpdatedAt:          row.UpdatedAt,
 	}
 }
