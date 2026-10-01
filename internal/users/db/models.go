@@ -24,4 +24,5 @@ type User struct {
 	CoachingTone  string
 	// BCP 47 tag chosen by the user: en, pt-PT, pt-BR or es. Not inferred from timezone.
 	Locale string
+	Handle *string
 }

@@ -1,0 +1,12 @@
+{
+  "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+  "displayName": "Ana",
+  "handle": "ana_runs",
+  "followers": 12,
+  "following": 9,
+  "relationship": {
+    "following": "pending",
+    "followsYou": true,
+    "self": false
+  }
+}
