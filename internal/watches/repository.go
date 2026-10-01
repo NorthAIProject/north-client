@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -26,8 +27,7 @@ func (r *Repository) Create(ctx context.Context, userID, conversationID uuid.UUI
 	}
 	var weekday *int16
 	if p.Schedule.Cadence == CadenceWeekly {
-		d := int16(p.Schedule.Weekday)
-		weekday = &d
+		weekday = util.Ptr(int16(p.Schedule.Weekday))
 	}
 
 	row, err := r.q.CreateWatch(ctx, watchesdb.CreateWatchParams{

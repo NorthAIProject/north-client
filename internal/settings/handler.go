@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
@@ -475,8 +476,7 @@ func formSwitch(r *http.Request, name, companion string) *bool {
 	if _, sent := r.PostForm[companion]; !sent {
 		return nil
 	}
-	on := checked(r, name)
-	return &on
+	return util.Ptr(checked(r, name))
 }
 
 func (h *Handler) updateDiets(w http.ResponseWriter, r *http.Request) {
@@ -763,8 +763,7 @@ func (h *Handler) render(
 			h.fail(w, r, err)
 			return
 		}
-		f := settingspages.PreferencesFormFor(p)
-		prefsForm = &f
+		prefsForm = util.Ptr(settingspages.PreferencesFormFor(p))
 	}
 
 	if notifForm == nil {
@@ -778,8 +777,7 @@ func (h *Handler) render(
 			h.fail(w, r, photoErr)
 			return
 		}
-		f := settingspages.NotificationsFormFor(n, photo)
-		notifForm = &f
+		notifForm = util.Ptr(settingspages.NotificationsFormFor(n, photo))
 	}
 
 	// Filled in on every render, including a rejected submission: the push row

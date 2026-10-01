@@ -5,6 +5,8 @@ import (
 	"sort"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
+
 	"github.com/NorthAIProject/north-client/internal/activity/activity"
 	"github.com/NorthAIProject/north-client/internal/dashboard"
 	"github.com/NorthAIProject/north-client/internal/goals"
@@ -311,8 +313,7 @@ func buildRecap(data TrainingData) *workoutsummary.Recap {
 	if !data.HasRecap {
 		return nil
 	}
-	card := workoutsummary.NewRecap("insights-training-recap", data.Recap, data.Range.Location())
-	return &card
+	return util.Ptr(workoutsummary.NewRecap("insights-training-recap", data.Recap, data.Range.Location()))
 }
 
 // The helpers below hold the numbers behind the gauges and donuts. The page

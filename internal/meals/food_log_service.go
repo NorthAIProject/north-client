@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
 
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
@@ -76,8 +77,7 @@ func (s *FoodLogService) LogIngredient(ctx context.Context, userID uuid.UUID, in
 	}
 
 	macros := ingredient.MacrosFor(in.QuantityGrams)
-	qty := in.QuantityGrams
-	entry, err := s.repo.InsertFoodLog(ctx, userID, in.LogDate, nil, &ingredient.ID, &qty, ingredient.Name, macros)
+	entry, err := s.repo.InsertFoodLog(ctx, userID, in.LogDate, nil, &ingredient.ID, util.Ptr(in.QuantityGrams), ingredient.Name, macros)
 	if err != nil {
 		return FoodLogEntry{}, err
 	}

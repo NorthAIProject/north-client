@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"strings"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/ai"
@@ -206,8 +207,7 @@ func resolveSupersessions(candidates []extract.Candidate, believed []CurrentFact
 	for _, c := range candidates {
 		pr := Proposal{Candidate: c}
 		if c.Supersedes >= 1 && c.Supersedes <= len(believed) {
-			id := believed[c.Supersedes-1].ID
-			pr.SupersedesID = &id
+			pr.SupersedesID = util.Ptr(believed[c.Supersedes-1].ID)
 		}
 		out = append(out, pr)
 	}

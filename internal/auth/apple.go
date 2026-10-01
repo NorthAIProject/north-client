@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -184,8 +185,7 @@ func (s *Service) findOrCreateAppleUser(ctx context.Context, subject, email, ful
 			return users.User{}, err
 		}
 	}
-	storedEmail := email
-	_, err = s.sessions.q.CreateAuthIdentity(ctx, authdb.CreateAuthIdentityParams{UserID: user.ID, Provider: "apple", ProviderSubject: subject, Email: &storedEmail})
+	_, err = s.sessions.q.CreateAuthIdentity(ctx, authdb.CreateAuthIdentityParams{UserID: user.ID, Provider: "apple", ProviderSubject: subject, Email: util.Ptr(email)})
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if !errors.As(err, &pgErr) || pgErr.Code != "23505" {
