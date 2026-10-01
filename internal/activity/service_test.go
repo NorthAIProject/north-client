@@ -250,7 +250,7 @@ func TestFinishedPlanSessionCompletesItsDayAndACancelledOneDoesNot(t *testing.T)
 	if err != nil {
 		t.Fatalf("start: %v", err)
 	}
-	if err := svc.Cancel(ctx, cancelled.ID, user.ID); err != nil {
+	if err = svc.Cancel(ctx, cancelled.ID, user.ID); err != nil {
 		t.Fatalf("cancel: %v", err)
 	}
 
@@ -261,7 +261,7 @@ func TestFinishedPlanSessionCompletesItsDayAndACancelledOneDoesNot(t *testing.T)
 	if started.PlanWeekday != "Wednesday" {
 		t.Fatalf("plan weekday = %q, want the canonical Wednesday", started.PlanWeekday)
 	}
-	if _, err := svc.Stop(ctx, started.ID, user.ID); err != nil {
+	if _, err = svc.Stop(ctx, started.ID, user.ID); err != nil {
 		t.Fatalf("stop: %v", err)
 	}
 

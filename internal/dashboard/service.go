@@ -380,9 +380,9 @@ func (s *Service) Load(ctx context.Context, user users.User, rg timerange.Range)
 		case err == nil:
 			snap.PlanID = stored.ID
 			now := time.Now().In(user.Location())
-			progress, err := s.workouts.WeekProgress(gctx, user, stored.Plan, now)
-			if err != nil {
-				return err
+			progress, progressErr := s.workouts.WeekProgress(gctx, user, stored.Plan, now)
+			if progressErr != nil {
+				return progressErr
 			}
 			if progress.HasNext {
 				snap.NextSession = &progress.Next

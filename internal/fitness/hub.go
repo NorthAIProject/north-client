@@ -165,9 +165,9 @@ func (s *Service) Load(ctx context.Context, user users.User) (Snapshot, error) {
 		switch {
 		case err == nil:
 			snap.PlanID = stored.ID
-			progress, err := s.workouts.WeekProgress(ctx, user, stored.Plan, now)
-			if err != nil {
-				return Snapshot{}, err
+			progress, progressErr := s.workouts.WeekProgress(ctx, user, stored.Plan, now)
+			if progressErr != nil {
+				return Snapshot{}, progressErr
 			}
 			if progress.HasNext {
 				snap.NextSession = &progress.Next

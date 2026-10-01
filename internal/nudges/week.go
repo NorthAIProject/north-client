@@ -140,9 +140,9 @@ func (s *Service) evalWorkoutToday(ctx context.Context, user users.User, today t
 	if tracker, ok := s.training.(interface {
 		CompletedToday(ctx context.Context, user users.User, today time.Time) (bool, string, error)
 	}); ok {
-		done, _, err := tracker.CompletedToday(ctx, user, today)
-		if err != nil {
-			return 0, err
+		done, _, doneErr := tracker.CompletedToday(ctx, user, today)
+		if doneErr != nil {
+			return 0, doneErr
 		}
 		// Already trained: nothing to nudge, and not a failure — returning
 		// an error here would stop the rest of this person's nudges.
