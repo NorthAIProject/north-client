@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/NorthAIProject/north-client/internal/achievements/achievement"
 	"github.com/NorthAIProject/north-client/internal/auth"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
@@ -27,9 +28,25 @@ const InviteCookie = "north_invite"
 const inviteCookieAge = 30 * 24 * time.Hour
 
 type Handler struct {
-	svc     *Service
-	siteURL string
-	secure  bool
+	svc          *Service
+	siteURL      string
+	secure       bool
+	achievements Achievements
+}
+
+// Achievements is the feed and kudos the Friends page shows.
+// achievements.Service satisfies it; nil leaves both off the page.
+type Achievements interface {
+	Feed(ctx context.Context, viewerID uuid.UUID, before time.Time) ([]achievement.Item, error)
+	Sharing(ctx context.Context, userID uuid.UUID) (achievement.Sharing, error)
+	SetSharing(ctx context.Context, userID uuid.UUID, in achievement.Sharing) (achievement.Sharing, error)
+	GiveKudos(ctx context.Context, giverID, achievementID uuid.UUID, giverName string) error
+	TakeKudos(ctx context.Context, giverID, achievementID uuid.UUID) error
+}
+
+func (h *Handler) WithAchievements(a Achievements) *Handler {
+	h.achievements = a
+	return h
 }
 
 // NewHandler builds the web routes. secure marks the invite cookie Secure,
@@ -53,6 +70,55 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Post("/friends/{userID}/unfollow", h.onPerson(h.svc.Unfollow))
 	r.Post("/friends/{userID}/block", h.onPerson(h.svc.Block))
 	r.Post("/friends/{userID}/unblock", h.onPerson(h.svc.Unblock))
+	r.Post("/friends/sharing", h.setSharing)
+	r.Post("/friends/kudos/{achievementID}", h.kudos(true))
+	r.Post("/friends/kudos/{achievementID}/undo", h.kudos(false))
+}
+
+func (h *Handler) setSharing(w http.ResponseWriter, r *http.Request) {
+	if h.achievements == nil {
+		h.fail(w, r, apperr.ErrNotFound)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		h.fail(w, r, apperr.ErrValidation)
+		return
+	}
+	in := achievement.Sharing{
+		Training: r.PostFormValue("share_training") != "",
+		Streaks:  r.PostFormValue("share_streaks") != "",
+		Goals:    r.PostFormValue("share_goals") != "",
+	}
+	if _, err := h.achievements.SetSharing(r.Context(), auth.MustUser(r.Context()).ID, in); err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	http.Redirect(w, r, "/app/friends", http.StatusSeeOther)
+}
+
+func (h *Handler) kudos(give bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if h.achievements == nil {
+			h.fail(w, r, apperr.ErrNotFound)
+			return
+		}
+		id, err := uuid.Parse(chi.URLParam(r, "achievementID"))
+		if err != nil {
+			h.fail(w, r, apperr.ErrNotFound)
+			return
+		}
+		user := auth.MustUser(r.Context())
+		if give {
+			err = h.achievements.GiveKudos(r.Context(), user.ID, id, user.DisplayName)
+		} else {
+			err = h.achievements.TakeKudos(r.Context(), user.ID, id)
+		}
+		if err != nil {
+			h.fail(w, r, err)
+			return
+		}
+		http.Redirect(w, r, "/app/friends#feed", http.StatusSeeOther)
+	}
 }
 
 // invite shows who sent the link. A signed-in visitor is connected at once; a
@@ -109,7 +175,19 @@ func (h *Handler) page(w http.ResponseWriter, r *http.Request, status int, form 
 	if form.Handle == "" && form.Errors["handle"] == "" {
 		form.Handle = overview.Handle
 	}
-	h.render(w, r, status, socialpages.FriendsPage(user, overview, InviteURL(h.siteURL, overview.Invite.Code), form))
+	var feed socialpages.FeedSection
+	if h.achievements != nil {
+		feed.Enabled = true
+		if feed.Items, err = h.achievements.Feed(r.Context(), user.ID, time.Time{}); err != nil {
+			h.fail(w, r, err)
+			return
+		}
+		if feed.Sharing, err = h.achievements.Sharing(r.Context(), user.ID); err != nil {
+			h.fail(w, r, err)
+			return
+		}
+	}
+	h.render(w, r, status, socialpages.FriendsPage(user, overview, InviteURL(h.siteURL, overview.Invite.Code), form, feed))
 }
 
 func (h *Handler) setHandle(w http.ResponseWriter, r *http.Request) {
