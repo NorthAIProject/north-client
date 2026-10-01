@@ -207,7 +207,7 @@ func TestAddIngredientsWritesNothingWhenOneLineIsBad(t *testing.T) {
 		"another account's private": {{IngredientID: chicken.ID, QuantityGrams: 200}, {IngredientID: private.ID, QuantityGrams: 50}},
 		"empty":                     nil,
 	} {
-		if _, err := planSvc.AddIngredients(ctx, meal.ID, user.ID, lines); err == nil {
+		if _, refused := planSvc.AddIngredients(ctx, meal.ID, user.ID, lines); refused == nil {
 			t.Errorf("%s: batch was accepted", name)
 		}
 	}

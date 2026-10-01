@@ -25,10 +25,14 @@ func TestMealVoiceReviewPostsIndexedLines(t *testing.T) {
 		Parsed: true,
 		Draft: captured.FoodDraft{
 			Lines: []captured.FoodLine{
-				{Query: "chicken breast", Grams: 200, IngredientID: breast, MatchedName: "Chicken breast",
-					Candidates: []captured.Candidate{{ID: breast, Name: "Chicken breast"}}},
-				{Query: "rice", Grams: 100, Uncertain: true,
-					Candidates: []captured.Candidate{{ID: uuid.New(), Name: "Rice, white"}, {ID: uuid.New(), Name: "Rice, brown"}}},
+				{
+					Query: "chicken breast", Grams: 200, IngredientID: breast, MatchedName: "Chicken breast",
+					Candidates: []captured.Candidate{{ID: breast, Name: "Chicken breast"}},
+				},
+				{
+					Query: "rice", Grams: 100, Uncertain: true,
+					Candidates: []captured.Candidate{{ID: uuid.New(), Name: "Rice, white"}, {ID: uuid.New(), Name: "Rice, brown"}},
+				},
 			},
 			Unparsed: []string{"a glass of water"},
 		},
