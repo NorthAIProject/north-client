@@ -68,6 +68,9 @@ type Overview struct {
 
 type StartRequest struct {
 	ActivityCode string `json:"activityCode"`
+	// PlanWeekday is the plan day a guided workout was opened for. Finishing
+	// the session marks that day completed for the week.
+	PlanWeekday string `json:"planWeekday,omitempty"`
 }
 
 type LogRequest struct {
@@ -109,7 +112,7 @@ func (a *API) start(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &req) {
 		return
 	}
-	session, err := a.svc.Start(r.Context(), auth.MustUser(r.Context()).ID, req.ActivityCode)
+	session, err := a.svc.Start(r.Context(), auth.MustUser(r.Context()).ID, req.ActivityCode, req.PlanWeekday)
 	a.respond(w, http.StatusCreated, session, err)
 }
 

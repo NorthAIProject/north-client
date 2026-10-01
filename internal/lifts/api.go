@@ -27,6 +27,7 @@ func (a *API) Routes(r chi.Router) {
 	r.Get("/lifts/last", a.last)
 	r.Post("/lifts/sets", a.log)
 	r.Delete("/lifts/sets/{setID}", a.undo)
+	r.Get("/lifts/sessions/{sessionID}/recap", a.recap)
 }
 
 type LiftSetRequest struct {
@@ -106,6 +107,68 @@ type LiftStatsView struct {
 	Records       []LiftRecordView    `json:"records"`
 	Weekly        []LiftDayValue      `json:"weekly"`
 	Muscles       []LiftMuscleSets    `json:"muscles"`
+}
+
+// LiftRecapExercise is one movement of a finished workout against the last
+// time it was done. Previous fields are absent the first time.
+type LiftRecapExercise struct {
+	Name             string   `json:"name"`
+	Sets             int      `json:"sets"`
+	VolumeKg         float64  `json:"volumeKg"`
+	Best             string   `json:"best,omitempty"`
+	E1RMKg           float64  `json:"e1rmKg"`
+	PreviousVolumeKg *float64 `json:"previousVolumeKg,omitempty"`
+	PreviousE1RMKg   *float64 `json:"previousE1rmKg,omitempty"`
+	ChangeE1RMKg     *float64 `json:"changeE1rmKg,omitempty"`
+}
+
+// LiftRecapView is a finished workout in one sentence and per exercise: what
+// the finish screen, the plan page and Insights all show.
+type LiftRecapView struct {
+	SessionID       uuid.UUID           `json:"sessionId"`
+	StartedAt       time.Time           `json:"startedAt"`
+	PlanWeekday     string              `json:"planWeekday,omitempty"`
+	Focus           string              `json:"focus,omitempty"`
+	Sentence        string              `json:"sentence"`
+	DurationSeconds int                 `json:"durationSeconds"`
+	SetsDone        int                 `json:"setsDone"`
+	SetsPrescribed  int                 `json:"setsPrescribed"`
+	VolumeKg        float64             `json:"volumeKg"`
+	Calories        float64             `json:"calories"`
+	Exercises       []LiftRecapExercise `json:"exercises"`
+}
+
+func (a *API) recap(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(chi.URLParam(r, "sessionID"))
+	if err != nil {
+		httpx.Error(w, apperr.ErrNotFound, "Not found.")
+		return
+	}
+	recap, err := a.svc.Recap(r.Context(), auth.MustUser(r.Context()), id)
+	if err != nil {
+		httpx.Error(w, err, "That workout's recap could not be loaded.")
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, ProjectRecap(recap))
+}
+
+// ProjectRecap is the wire shape of a recap.
+func ProjectRecap(rc lift.Recap) LiftRecapView {
+	out := LiftRecapView{
+		SessionID: rc.SessionID, StartedAt: rc.StartedAt, PlanWeekday: rc.PlanWeekday, Focus: rc.Focus,
+		Sentence: rc.Sentence, DurationSeconds: int(rc.Duration.Seconds()), SetsDone: rc.SetsDone,
+		SetsPrescribed: rc.SetsPrescribed, VolumeKg: rc.VolumeKg, Calories: lift.Round(rc.Calories),
+		Exercises: make([]LiftRecapExercise, 0, len(rc.Exercises)),
+	}
+	for _, e := range rc.Exercises {
+		row := LiftRecapExercise{Name: e.Name, Sets: e.Sets, VolumeKg: e.VolumeKg, Best: e.Best, E1RMKg: e.E1RM}
+		if e.HasPrevious {
+			prevVolume, prevE1RM, change := e.PreviousVolume, e.PreviousE1RM, e.Change
+			row.PreviousVolumeKg, row.PreviousE1RMKg, row.ChangeE1RMKg = &prevVolume, &prevE1RM, &change
+		}
+		out.Exercises = append(out.Exercises, row)
+	}
+	return out
 }
 
 func (a *API) stats(w http.ResponseWriter, r *http.Request) {

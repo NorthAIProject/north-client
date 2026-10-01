@@ -101,7 +101,7 @@ func TestElapsedFreezesAtEndedAt(t *testing.T) {
 func TestStartRequiresBiometrics(t *testing.T) {
 	svc, user := newService(t, fakeBiometrics{err: apperr.ErrNotFound})
 
-	if _, err := svc.Start(context.Background(), user.ID, "walking_moderate"); !apperr.Is(err, apperr.ErrValidation) {
+	if _, err := svc.Start(context.Background(), user.ID, "walking_moderate", ""); !apperr.Is(err, apperr.ErrValidation) {
 		t.Fatalf("expected ErrValidation, got %v", err)
 	}
 }
@@ -109,7 +109,7 @@ func TestStartRequiresBiometrics(t *testing.T) {
 func TestStartRejectsUnknownActivity(t *testing.T) {
 	svc, user := newService(t, withWeight(80))
 
-	if _, err := svc.Start(context.Background(), user.ID, "teleporting"); !apperr.Is(err, apperr.ErrValidation) {
+	if _, err := svc.Start(context.Background(), user.ID, "teleporting", ""); !apperr.Is(err, apperr.ErrValidation) {
 		t.Fatalf("expected ErrValidation, got %v", err)
 	}
 }
@@ -118,7 +118,7 @@ func TestLifecycleStartPauseResumeStop(t *testing.T) {
 	svc, user := newService(t, withWeight(80))
 	ctx := context.Background()
 
-	started, err := svc.Start(ctx, user.ID, "running_9_8kmh")
+	started, err := svc.Start(ctx, user.ID, "running_9_8kmh", "")
 	if err != nil {
 		t.Fatalf("start: %v", err)
 	}
@@ -178,11 +178,11 @@ func TestSecondStartConflictsWhileOneIsOpen(t *testing.T) {
 	svc, user := newService(t, withWeight(80))
 	ctx := context.Background()
 
-	if _, err := svc.Start(ctx, user.ID, "walking_moderate"); err != nil {
+	if _, err := svc.Start(ctx, user.ID, "walking_moderate", ""); err != nil {
 		t.Fatalf("first start: %v", err)
 	}
 
-	if _, err := svc.Start(ctx, user.ID, "running_9_8kmh"); !apperr.Is(err, apperr.ErrConflict) {
+	if _, err := svc.Start(ctx, user.ID, "running_9_8kmh", ""); !apperr.Is(err, apperr.ErrConflict) {
 		t.Fatalf("expected ErrConflict, got %v", err)
 	}
 }
@@ -191,7 +191,7 @@ func TestCancelReleasesTheOpenSessionSlot(t *testing.T) {
 	svc, user := newService(t, withWeight(80))
 	ctx := context.Background()
 
-	started, err := svc.Start(ctx, user.ID, "walking_moderate")
+	started, err := svc.Start(ctx, user.ID, "walking_moderate", "")
 	if err != nil {
 		t.Fatalf("start: %v", err)
 	}
@@ -207,7 +207,7 @@ func TestCancelReleasesTheOpenSessionSlot(t *testing.T) {
 	}
 
 	// The slot should be free again.
-	if _, err := svc.Start(ctx, user.ID, "running_9_8kmh"); err != nil {
+	if _, err := svc.Start(ctx, user.ID, "running_9_8kmh", ""); err != nil {
 		t.Fatalf("start after cancel: %v", err)
 	}
 }
@@ -216,7 +216,7 @@ func TestTotalCaloriesSinceSumsCompletedSessions(t *testing.T) {
 	svc, user := newService(t, withWeight(80))
 	ctx := context.Background()
 
-	started, err := svc.Start(ctx, user.ID, "running_9_8kmh")
+	started, err := svc.Start(ctx, user.ID, "running_9_8kmh", "")
 	if err != nil {
 		t.Fatalf("start: %v", err)
 	}
@@ -230,5 +230,46 @@ func TestTotalCaloriesSinceSumsCompletedSessions(t *testing.T) {
 	}
 	if total < 0 {
 		t.Fatalf("total = %v, want >= 0", total)
+	}
+}
+
+func TestStartRejectsAnUnknownPlanDay(t *testing.T) {
+	svc, user := newService(t, withWeight(80))
+
+	if _, err := svc.Start(context.Background(), user.ID, "strength_training", "Leg day"); !apperr.Is(err, apperr.ErrValidation) {
+		t.Fatalf("expected ErrValidation, got %v", err)
+	}
+}
+
+func TestFinishedPlanSessionCompletesItsDayAndACancelledOneDoesNot(t *testing.T) {
+	svc, user := newService(t, withWeight(80))
+	ctx := context.Background()
+
+	// Cancelled first: it must leave Friday open.
+	cancelled, err := svc.Start(ctx, user.ID, "strength_training", "friday")
+	if err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	if err := svc.Cancel(ctx, cancelled.ID, user.ID); err != nil {
+		t.Fatalf("cancel: %v", err)
+	}
+
+	started, err := svc.Start(ctx, user.ID, "strength_training", "wednesday")
+	if err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	if started.PlanWeekday != "Wednesday" {
+		t.Fatalf("plan weekday = %q, want the canonical Wednesday", started.PlanWeekday)
+	}
+	if _, err := svc.Stop(ctx, started.ID, user.ID); err != nil {
+		t.Fatalf("stop: %v", err)
+	}
+
+	got, err := svc.CompletedWeekdays(ctx, user.ID, time.UTC, time.Now())
+	if err != nil {
+		t.Fatalf("completed weekdays: %v", err)
+	}
+	if len(got) != 1 || got[0] != "Wednesday" {
+		t.Fatalf("completed = %v, want [Wednesday]", got)
 	}
 }

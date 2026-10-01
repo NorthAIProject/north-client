@@ -12,6 +12,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/shared/viz"
 	insightpages "github.com/NorthAIProject/north-client/web/insights"
+	"github.com/NorthAIProject/north-client/web/shared/workoutsummary"
 )
 
 // Chart options are built here rather than in a template, the same way
@@ -288,7 +289,30 @@ func buildTrainingView(data TrainingData) (insightpages.TrainingView, error) {
 		TotalTime:    formatDuration(totalSeconds),
 		HasSessions:  len(rows) > 0,
 		Lifting:      buildLiftingView(data.Lifts),
+		Plan:         buildPlanAdherence(data),
+		Recap:        buildRecap(data),
 	}, nil
+}
+
+func buildPlanAdherence(data TrainingData) insightpages.PlanAdherenceView {
+	if !data.HasPlan {
+		return insightpages.PlanAdherenceView{}
+	}
+	return insightpages.PlanAdherenceView{
+		HasPlan:  true,
+		Week:     workoutsummary.NewWeek(data.Week, data.Now),
+		Done:     data.Adherence.Done,
+		Planned:  data.Adherence.Planned,
+		Sentence: data.Adherence.Sentence,
+	}
+}
+
+func buildRecap(data TrainingData) *workoutsummary.Recap {
+	if !data.HasRecap {
+		return nil
+	}
+	card := workoutsummary.NewRecap("insights-training-recap", data.Recap, data.Range.Location())
+	return &card
 }
 
 // The helpers below hold the numbers behind the gauges and donuts. The page

@@ -449,7 +449,7 @@ func run() error {
 			hydration.NewContextSource(hydration.NewService(hydration.NewRepository(pool))),
 			sleep.NewContextSource(sleep.NewService(sleep.NewRepository(pool))),
 			caffeine.NewContextSource(caffeine.NewService(caffeine.NewRepository(pool))),
-			lifts.NewContextSource(lifts.NewService(lifts.NewRepository(pool), exercises.NewService(exercises.NewRepository(pool)))),
+			lifts.NewContextSource(lifts.NewService(lifts.NewRepository(pool), exercises.NewService(exercises.NewRepository(pool))).WithRecaps(activitySvc, workoutSvc)),
 			fasting.NewContextSource(fasting.NewService(fasting.NewRepository(pool))),
 			supplements.NewContextSource(supplements.NewService(supplements.NewRepository(pool))),
 			screentime.NewContextSource(screentime.NewService(screentime.NewRepository(pool))),
