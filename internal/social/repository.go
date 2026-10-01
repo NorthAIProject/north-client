@@ -285,3 +285,16 @@ func deref(s *string) string {
 	}
 	return *s
 }
+
+// MatchEmails finds people by hashed email; see MatchEmailHashes.
+func (r *Repository) MatchEmails(ctx context.Context, viewerID uuid.UUID, hashes []string) ([]Connection, error) {
+	rows, err := r.q.MatchEmailHashes(ctx, socialdb.MatchEmailHashesParams{Viewer: viewerID, Hashes: hashes})
+	if err != nil {
+		return nil, apperr.Wrap(err, "match contacts")
+	}
+	out := make([]Connection, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, Connection{Person: Person{ID: row.ID, DisplayName: row.DisplayName, Handle: deref(row.Handle)}, Status: row.Following})
+	}
+	return out, nil
+}

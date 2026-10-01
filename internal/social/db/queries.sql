@@ -99,3 +99,20 @@ SELECT u.id, u.display_name, u.handle
 FROM blocks b JOIN users u ON u.id = b.blocked_id
 WHERE b.blocker_id = $1
 ORDER BY b.created_at DESC;
+
+-- name: MatchEmailHashes :many
+-- People whose email, lower-cased, hashes to one of the given SHA-256 hex
+-- strings. Only accounts with a handle: choosing one is choosing to be
+-- findable, which keeps this from answering "is this address on Khepri?"
+-- for somebody who never asked to be found. Blocks hide either way.
+SELECT u.id, u.display_name, u.handle,
+       COALESCE((SELECT f.status FROM follows f WHERE f.follower_id = sqlc.arg('viewer') AND f.followee_id = u.id), '')::text AS following
+FROM users u
+WHERE u.handle IS NOT NULL
+  AND u.id <> sqlc.arg('viewer')
+  AND encode(sha256(convert_to(lower(u.email::text), 'UTF8')), 'hex') = ANY(sqlc.arg('hashes')::text[])
+  AND NOT EXISTS (SELECT 1 FROM blocks b
+                  WHERE (b.blocker_id = sqlc.arg('viewer') AND b.blocked_id = u.id)
+                     OR (b.blocker_id = u.id AND b.blocked_id = sqlc.arg('viewer')))
+ORDER BY u.display_name
+LIMIT 200;

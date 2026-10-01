@@ -323,3 +323,31 @@ func validCode(code string) bool {
 	}
 	return true
 }
+
+// MaxContactHashes bounds one match request: a big address book, not a list
+// somebody scraped.
+const MaxContactHashes = 2000
+
+var sha256Hex = regexp.MustCompile(`^[0-9a-f]{64}$`)
+
+// MatchContacts finds people already here among the viewer's contacts. The
+// phone sends SHA-256 hashes of lower-cased emails, never the addresses;
+// the hashes are used for this query and not kept. Each result's Status is
+// how the viewer follows them: "", pending or accepted.
+func (s *Service) MatchContacts(ctx context.Context, viewerID uuid.UUID, hashes []string) ([]Connection, error) {
+	if len(hashes) > MaxContactHashes {
+		return nil, apperr.FieldErrors{}.Add("hashes", "Send at most 2000 contacts at a time.")
+	}
+	clean := make([]string, 0, len(hashes))
+	for _, h := range hashes {
+		h = strings.ToLower(strings.TrimSpace(h))
+		if !sha256Hex.MatchString(h) {
+			return nil, apperr.FieldErrors{}.Add("hashes", "Each contact must be a SHA-256 hex digest.")
+		}
+		clean = append(clean, h)
+	}
+	if len(clean) == 0 {
+		return []Connection{}, nil
+	}
+	return s.repo.MatchEmails(ctx, viewerID, clean)
+}
