@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -22,8 +23,7 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 func (r *Repository) Create(ctx context.Context, userID uuid.UUID, content string, mood *int) (JournalEntry, error) {
 	var moodParam *int16
 	if mood != nil {
-		v := int16(*mood)
-		moodParam = &v
+		moodParam = util.Ptr(int16(*mood))
 	}
 
 	row, err := r.q.CreateJournalEntry(ctx, minddb.CreateJournalEntryParams{UserID: userID, Content: content, Mood: moodParam})
@@ -68,8 +68,7 @@ func (r *Repository) ListBetween(ctx context.Context, userID uuid.UUID, since, u
 func fromDB(row minddb.JournalEntry) JournalEntry {
 	e := JournalEntry{ID: row.ID, UserID: row.UserID, Content: row.Content, CreatedAt: row.CreatedAt}
 	if row.Mood != nil {
-		m := int(*row.Mood)
-		e.Mood = &m
+		e.Mood = util.Ptr(int(*row.Mood))
 	}
 	return e
 }

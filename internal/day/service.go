@@ -12,6 +12,7 @@ import (
 	"math"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
 
@@ -301,8 +302,7 @@ func (s *Service) Load(ctx context.Context, user users.User, date time.Time) (Sn
 		g.Go(func() error {
 			mins, ok, err := s.sum(gctx, user.ID, metricDaylight, rg.Since, rg.Until)
 			if ok {
-				v := int(mins)
-				snap.DaylightMinutes = &v
+				snap.DaylightMinutes = util.Ptr(int(mins))
 			}
 			return err
 		})
@@ -397,8 +397,7 @@ func (s *Service) Load(ctx context.Context, user users.User, date time.Time) (Sn
 			}
 			mins, ok, err := s.sum(gctx, user.ID, metricScreenMinutes, rg.Since, rg.Until)
 			if ok {
-				m := int(mins)
-				snap.ScreenMinutes = &m
+				snap.ScreenMinutes = util.Ptr(int(mins))
 			}
 			return err
 		})
@@ -721,8 +720,7 @@ func (s *Service) loadBody(ctx context.Context, user users.User, snap *Snapshot)
 		}
 		// Newest first.
 		if len(rows) > 0 && rows[0].StartedAt.After(weighed) {
-			w := rows[0].Value
-			weight = &w
+			weight = util.Ptr(rows[0].Value)
 		}
 	}
 
@@ -763,8 +761,7 @@ func (s *Service) loadBody(ctx context.Context, user users.User, snap *Snapshot)
 	}
 	if weight != nil && heightCm != nil {
 		m := *heightCm / 100
-		bmi := *weight / (m * m)
-		snap.Body.BMI = &bmi
+		snap.Body.BMI = util.Ptr(*weight / (m * m))
 	}
 	return nil
 }
@@ -785,8 +782,7 @@ func (s *Service) loadEnergy(ctx context.Context, user users.User, rg timerange.
 		return err
 	}
 	if sleepSnap.Sleep != nil {
-		m := sleepSnap.Sleep.TotalMinutes
-		in.SleepMinutes = &m
+		in.SleepMinutes = util.Ptr(sleepSnap.Sleep.TotalMinutes)
 		in.WokeAt = sleepSnap.Sleep.End
 	}
 	kcal, _, err := s.sum(ctx, user.ID, metricActiveCalories, rg.Since, rg.Until)
@@ -849,6 +845,5 @@ func mean(vs []float64) *float64 {
 	for _, v := range vs {
 		total += v
 	}
-	m := total / float64(len(vs))
-	return &m
+	return util.Ptr(total / float64(len(vs)))
 }

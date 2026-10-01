@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/ai"
@@ -116,8 +117,7 @@ func logSleep(svc *sleep.Service, userSvc *users.Service) Capability {
 
 			input := sleep.Input{DurationMinutes: in.Minutes, Notes: in.Notes}
 			if in.Quality > 0 {
-				quality := in.Quality
-				input.Quality = &quality
+				input.Quality = util.Ptr(in.Quality)
 			}
 
 			if _, err := svc.LogToday(ctx, user, input); err != nil {

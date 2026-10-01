@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -176,8 +177,7 @@ func (r *Repository) Delete(ctx context.Context, id, userID uuid.UUID) error {
 func (r *Repository) AddUpdate(ctx context.Context, goalID, userID uuid.UUID, note string, progress *int) (Update, error) {
 	var p *int16
 	if progress != nil {
-		v := int16(*progress)
-		p = &v
+		p = util.Ptr(int16(*progress))
 	}
 
 	row, err := r.q.AddGoalUpdate(ctx, goalsdb.AddGoalUpdateParams{
@@ -237,8 +237,7 @@ func (r *Repository) UpdatesBetween(ctx context.Context, userID uuid.UUID, since
 			CreatedAt: row.CreatedAt,
 		}
 		if row.Progress != nil {
-			p := int(*row.Progress)
-			u.Progress = &p
+			u.Progress = util.Ptr(int(*row.Progress))
 		}
 		out = append(out, TimelineUpdate{Update: u, GoalTitle: row.GoalTitle})
 	}
@@ -381,8 +380,7 @@ func updateFromDB(row goalsdb.GoalUpdate) Update {
 		CreatedAt: row.CreatedAt,
 	}
 	if row.Progress != nil {
-		p := int(*row.Progress)
-		u.Progress = &p
+		u.Progress = util.Ptr(int(*row.Progress))
 	}
 	return u
 }

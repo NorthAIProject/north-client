@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
 
@@ -371,8 +372,7 @@ func (s *Service) Load(ctx context.Context, user users.User, rg timerange.Range)
 			return err
 		}
 		if len(threads) > 0 {
-			c := threads[0]
-			snap.LastThread = &c
+			snap.LastThread = util.Ptr(threads[0])
 		}
 		return nil
 	})

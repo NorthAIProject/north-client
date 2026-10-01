@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
@@ -90,8 +91,7 @@ func (a *API) overview(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, err, "Activity could not be loaded.")
 		return
 	} else if ok {
-		view := project(active, now)
-		out.Active = &view
+		out.Active = util.Ptr(project(active, now))
 	}
 	recent, err := a.svc.List(r.Context(), userID, 20)
 	if err != nil {

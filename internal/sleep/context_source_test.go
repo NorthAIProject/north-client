@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
+
 	"github.com/NorthAIProject/north-client/internal/coach"
 	"github.com/NorthAIProject/north-client/internal/sleep"
 )
@@ -18,7 +20,7 @@ func TestContextSourceReportsTrendAndLastNight(t *testing.T) {
 	for i, minutes := range []int{465, 420, 400} {
 		if _, err := svc.LogFor(ctx, user, today.AddDate(0, 0, -i), sleep.Input{
 			DurationMinutes: minutes,
-			Quality:         quality(4),
+			Quality:         util.Ptr(4),
 		}); err != nil {
 			t.Fatalf("log night %d: %v", i, err)
 		}

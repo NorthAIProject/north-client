@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -213,8 +214,7 @@ func (r *Repository) Import(ctx context.Context, in ImportInput) (Session, bool,
 	// coach's "kcal burned today" line as fact.
 	var calories *float64
 	if in.Calories > 0 {
-		c := in.Calories
-		calories = &c
+		calories = util.Ptr(in.Calories)
 	}
 
 	row, err := r.q.ImportActivitySession(ctx, activitydb.ImportActivitySessionParams{
@@ -247,8 +247,7 @@ func (r *Repository) Log(ctx context.Context, userID uuid.UUID, in LogInput, wei
 
 	var distance *float64
 	if in.DistanceM > 0 {
-		d := in.DistanceM
-		distance = &d
+		distance = util.Ptr(in.DistanceM)
 	}
 
 	row, err := r.q.LogActivitySession(ctx, activitydb.LogActivitySessionParams{

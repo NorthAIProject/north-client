@@ -3,6 +3,7 @@ package spend
 import (
 	"context"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/ai"
@@ -32,8 +33,7 @@ func (m *Meter) Record(ctx context.Context, provider, model string, usage ai.Usa
 
 	var userID *uuid.UUID
 	if attr.UserID != uuid.Nil {
-		id := attr.UserID
-		userID = &id
+		userID = util.Ptr(attr.UserID)
 	}
 
 	// A user's own key is their bill. Pricing it with our rates would be a
