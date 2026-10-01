@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -187,7 +188,12 @@ func (h *Handler) page(w http.ResponseWriter, r *http.Request, status int, form 
 			return
 		}
 	}
-	h.render(w, r, status, socialpages.FriendsPage(user, overview, InviteURL(h.siteURL, overview.Invite.Code), form, feed))
+	share, err := h.shareLinks(r, user.ID)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	h.render(w, r, status, socialpages.FriendsPage(user, overview, InviteURL(h.siteURL, overview.Invite.Code), form, feed, share))
 }
 
 func (h *Handler) setHandle(w http.ResponseWriter, r *http.Request) {
@@ -263,4 +269,30 @@ func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 		middleware.FromContext(r.Context()).Error("friends request failed", slog.Any("error", err))
 		http.Error(w, "Something went wrong.", http.StatusInternalServerError)
 	}
+}
+
+// inviteText is what a shared invite says before its link.
+const inviteText = "I'm using Khepri to keep my goals, training and check-ins going. Join me:"
+
+// shareLinks are the X and Facebook share pages, each with its own invite
+// code so the strangers-count can tell which posting brought somebody in.
+// Plain share intents: the person posts it themselves, nothing is sent for
+// them, and no platform API or key is involved.
+func (h *Handler) shareLinks(r *http.Request, userID uuid.UUID) (socialpages.ShareLinks, error) {
+	x, err := h.svc.InviteFor(r.Context(), userID, ChannelX)
+	if err != nil {
+		return socialpages.ShareLinks{}, err
+	}
+	fb, err := h.svc.InviteFor(r.Context(), userID, ChannelFacebook)
+	if err != nil {
+		return socialpages.ShareLinks{}, err
+	}
+	return socialpages.ShareLinks{
+		X: "https://x.com/intent/post?" + url.Values{
+			"text": {inviteText}, "url": {InviteURL(h.siteURL, x.Code)},
+		}.Encode(),
+		Facebook: "https://www.facebook.com/sharer/sharer.php?" + url.Values{
+			"u": {InviteURL(h.siteURL, fb.Code)},
+		}.Encode(),
+	}, nil
 }
