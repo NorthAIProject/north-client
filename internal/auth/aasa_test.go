@@ -15,7 +15,9 @@ func TestAppleAppSiteAssociationNamesEveryBuild(t *testing.T) {
 	auth.AppleAppSiteAssociation("84X9WYBF36", "com.fernandocorreia.khepri,com.fernandocorreia.khepri.beta").
 		ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/.well-known/apple-app-site-association", nil))
 
-	want := `{"webcredentials":{"apps":["84X9WYBF36.com.fernandocorreia.khepri","84X9WYBF36.com.fernandocorreia.khepri.beta"]}}` + "\n"
+	want := `{"webcredentials":{"apps":["84X9WYBF36.com.fernandocorreia.khepri","84X9WYBF36.com.fernandocorreia.khepri.beta"]},` +
+		`"applinks":{"details":[{"appIDs":["84X9WYBF36.com.fernandocorreia.khepri","84X9WYBF36.com.fernandocorreia.khepri.beta"],` +
+		`"components":[{"/":"/i/*","comment":"invite links"}]}]}}` + "\n"
 	if rec.Code != http.StatusOK || rec.Body.String() != want {
 		t.Fatalf("got %d %s, want 200 %s", rec.Code, rec.Body.String(), want)
 	}

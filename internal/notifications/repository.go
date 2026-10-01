@@ -46,6 +46,9 @@ func (r *Repository) Upsert(ctx context.Context, userID uuid.UUID, in Input) (Pr
 		QuietHoursEnabled:  in.QuietHoursEnabled,
 		QuietStart:         in.QuietStart,
 		QuietEnd:           in.QuietEnd,
+		BriefingHour:       int16(valueOr(in.BriefingHour, DefaultBriefingHour)),
+		EveningReflection:  in.EveningReflection != nil && *in.EveningReflection,
+		EveningHour:        int16(valueOr(in.EveningHour, DefaultEveningHour)),
 	})
 	if err != nil {
 		return Prefs{}, apperr.Wrap(err, "upsert notification prefs")
@@ -113,4 +116,11 @@ func (r *Repository) ClaimDigest(ctx context.Context, userID uuid.UUID, cadence 
 		return false, apperr.Wrap(err, "claim stats digest")
 	}
 	return true, nil
+}
+
+func valueOr(v *int, fallback int) int {
+	if v == nil {
+		return fallback
+	}
+	return *v
 }

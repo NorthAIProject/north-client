@@ -1,21 +1,15 @@
 package app
 
 import (
-	"context"
-	"fmt"
 	"strconv"
-	"time"
 
-	"github.com/google/uuid"
-
-	"github.com/NorthAIProject/north-client/internal/conversations"
-	"github.com/NorthAIProject/north-client/internal/goals/goal"
-	"github.com/NorthAIProject/north-client/internal/nudges/nudge"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
-	"github.com/NorthAIProject/north-client/web/shared/markdown"
 	"github.com/NorthAIProject/north-client/internal/users"
-	"github.com/NorthAIProject/north-client/internal/workouts/plan"
+	fitnesspages "github.com/NorthAIProject/north-client/web/fitness"
+	newspages "github.com/NorthAIProject/north-client/web/news"
+	nudgepages "github.com/NorthAIProject/north-client/web/nudges"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/markdown"
 	"github.com/NorthAIProject/north-client/web/shared/mascot"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
@@ -23,249 +17,12 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/chart"
 	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
 	"github.com/NorthAIProject/north-client/web/shared/ui/progress"
-	newspages "github.com/NorthAIProject/north-client/web/news"
-	fitnesspages "github.com/NorthAIProject/north-client/web/fitness"
-	nudgepages "github.com/NorthAIProject/north-client/web/nudges"
 )
 
-// DashboardData is the command-center snapshot.
-type DashboardData struct {
-	// NewsTickerEnabled renders the breaking-news strip's lazy shell.
-	NewsTickerEnabled bool
-
-	Range RangeView
-
-	CheckedInToday   bool
-	Streak           int
-	GoalActivity7d   int
-	PendingMemories  int
-	Goals            []goal.Goal
-	LastThread       *conversations.Conversation
-	NextSession      *plan.PlanDay
-	DoneToday        *plan.PlanDay
-	PlanID           uuid.UUID
-	CheckIns         CheckInSeriesView
-	Habits           HabitsView
-	Hydration        HydrationView
-	Sleep            SleepView
-	ActivityCalories float64
-	Timeline         []TimelineEntryView
-	Deltas           DeltasView
-
-	MoodChart        chart.Props
-	HydrationChart   chart.Props
-	HabitGaugeOption map[string]any
-	CheckInHeatmap   map[string]any
-	ActivityDonut    map[string]any
-	HasActivityDonut bool
-
-	Nudges []nudge.Nudge
-
-	// Briefing is this morning's note, already rendered markdown source. Empty
-	// when there is none for today.
-	Briefing     string
-	HasBriefing  bool
-
-	// HasNextStep is the first-run card. Hidden once the person has a goal,
-	// today's check-in, and a coach thread.
-	HasNextStep bool
-	NextStep    NextStep
-}
-
-// NextStep is the one action a fresh account should take next.
-type NextStep struct {
-	// Kind is the step's identity from internal/dashboard. The template reads
-	// it for exactly one case: NextStepKindPush hides itself when the browser
-	// cannot deliver notifications, which only script can know.
-	Kind    string
-	Eyebrow string
-	Title   string
-	Body    string
-	CTA     string
-	Href    string
-}
-
-// RangeOption is one choice in the period selector.
-type RangeOption struct {
-	Key      string
-	Label    string
-	Selected bool
-}
-
-// LabelIn is the option's label in the request's language. Key is
-// timerange.Key, so the catalogue entry is derivable rather than carried.
-func (o RangeOption) LabelIn(ctx context.Context) string {
-	return rangeLabel(ctx, o.Key, o.Label)
-}
-
-type RangeView struct {
-	Key     string
-	Label   string
-	Options []RangeOption
-}
-
-// LabelIn is the selected range's label in the request's language.
-func (v RangeView) LabelIn(ctx context.Context) string {
-	return rangeLabel(ctx, v.Key, v.Label)
-}
-
-// rangeLabel translates a range key, falling back to the English the handler
-// carried rather than to the key: a range this build stops naming should still
-// read as a period, not as "range.fortnight".
-func rangeLabel(ctx context.Context, key, english string) string {
-	if key == "" {
-		return english
-	}
-	if got := i18n.T(ctx, "range."+key); got != "range."+key {
-		return got
-	}
-	return english
-}
-
-// DeltaView is a metric's change against the previous window of equal length.
-//
-// HasPrior false means there is nothing to compare against. The template then
-// renders nothing at all: a first-week user shown "+100%" on every tile is
-// being told something false.
-type DeltaView struct {
-	Pct       float64
-	Direction int
-	HasPrior  bool
-}
-
-type DeltasView struct {
-	Hydration  DeltaView
-	SleepHours DeltaView
-	Calories   DeltaView
-	CheckIns   DeltaView
-}
-
-// TimelineEntryView is one row of the activity feed.
-type TimelineEntryView struct {
-	Kind   string
-	Label  string
-	At     time.Time
-	Title  string
-	Detail string
-	Href   string
-	Icon   string
-}
-
-type CheckInDayView struct {
-	Label  string
-	Mood   int
-	Energy int
-}
-
-type CheckInSeriesView struct {
-	Days []CheckInDayView
-}
-
-func (s CheckInSeriesView) HasData() bool {
-	for _, d := range s.Days {
-		if d.Mood > 0 || d.Energy > 0 {
-			return true
-		}
-	}
-	return false
-}
-
-type HabitsView struct {
-	HasHabits  bool
-	Rate       int
-	Kept       int
-	Scheduled  int
-	BestStreak int
-}
-
-type HydrationDayView struct {
-	Label    string
-	TotalML  int
-	TargetML int
-}
-
-type HydrationView struct {
-	TodayML  int
-	TargetML int
-	Percent  int
-	Days     []HydrationDayView
-}
-
-func (h HydrationView) HasData() bool {
-	if h.TodayML > 0 {
-		return true
-	}
-	for _, d := range h.Days {
-		if d.TotalML > 0 {
-			return true
-		}
-	}
-	return false
-}
-
-type SleepView struct {
-	Logged          bool
-	DurationMinutes int
-	Quality         *int
-}
-
-func (d DashboardData) HasPlan() bool {
-	return d.PlanID != uuid.Nil
-}
-
-func hasProgress(g goal.Goal) bool {
-	_, ok := g.Progress()
-	return ok
-}
-
-func progressPct(g goal.Goal) int {
-	pct, _ := g.Progress()
-	return pct
-}
-
-func formatLitres(ml int) string {
-	if ml >= 1000 {
-		return fmt.Sprintf("%.1f L", float64(ml)/1000)
-	}
-	return fmt.Sprintf("%d ml", ml)
-}
-
-func formatSleep(minutes int) string {
-	h := minutes / 60
-	m := minutes % 60
-	if m == 0 {
-		return fmt.Sprintf("%dh", h)
-	}
-	return fmt.Sprintf("%dh %dm", h, m)
-}
-
-// rangeHref keeps the selector working without JavaScript.
-func rangeHref(key string) string {
-	return "/app/overview?range=" + key
-}
-
-func panelsHref(key string) string {
-	return "/app/overview/panels?range=" + key
-}
-
-// relativeTime keeps a feed row short. Anything older than a week is a date,
-// because "9 days ago" is harder to place than "4 Aug".
-func relativeTime(t time.Time) string {
-	d := time.Since(t)
-	switch {
-	case d < time.Minute:
-		return "just now"
-	case d < time.Hour:
-		return fmt.Sprintf("%dm ago", int(d.Minutes()))
-	case d < 24*time.Hour:
-		return fmt.Sprintf("%dh ago", int(d.Hours()))
-	case d < 7*24*time.Hour:
-		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
-	default:
-		return t.Format("2 Jan")
-	}
-}
-
+// The page reads top to bottom as: what to do now, what the coach has to say,
+// the things you can act on, and only then how the period went. The first two
+// are about today and sit outside the range swap; everything from the trends
+// strip down belongs to the selected period.
 templ Dashboard(user users.User, data DashboardData) {
 	@layout.App(i18n.T(ctx, "nav.overview"), user, layout.BuildNav(ctx, "/app/overview")) {
 		<div class="mx-auto w-full max-w-6xl space-y-6 p-6 md:p-8">
@@ -283,6 +40,9 @@ templ Dashboard(user users.User, data DashboardData) {
 			</header>
 			if data.HasNextStep {
 				@nextStepCard(data.NextStep)
+			}
+			if data.showToday() {
+				@todayCard(data)
 			}
 			<div id="dashboard-panels">
 				@DashboardPanels(data)
@@ -325,19 +85,6 @@ templ rangeSelector(data DashboardData) {
 	</nav>
 }
 
-// DashboardPanels is everything the range selector replaces. Exported because
-// the panels endpoint renders it on its own.
-//
-// The only <script> tags inside are type="application/json" data payloads —
-// each chart's series, emitted by chart.Chart and templ.JSONScript. Those have
-// to travel with the swap, since they are the new numbers. No executable
-// JavaScript is in here: Chart.js picks up swapped canvases through a
-// MutationObserver and ECharts through echarts-init.js's htmx:after:swap
-// listener, and both libraries are loaded once by the page around this.
-// NextStepKindPush matches dashboard.StepKindPush. Repeated here rather than
-// imported so the view package does not depend on the slice that renders it.
-const NextStepKindPush = "push"
-
 templ nextStepCard(step NextStep) {
 	if step.Kind == NextStepKindPush {
 		// Hidden until push.js has confirmed this browser can deliver: an
@@ -367,22 +114,176 @@ templ nextStepBody(step NextStep) {
 				Title:   step.Title,
 				Body:    step.Body,
 			}) {
-				@button.Button(button.Props{Href: step.Href, Class: "bg-signal text-background hover:bg-signal/90"}) {
-					{ step.CTA }
-				}
+				@primaryButton(step.Href, step.CTA)
 				{ children... }
 			}
 		}
 	}
 }
 
-// briefingCard is the morning note. It sits above everything else because it is
-// the thing somebody opens the dashboard to read, and it disappears entirely
-// once the day it describes is over.
+// todayCard is the answer to "what should I do now". It names one next step
+// with the only filled button on the card, then lists the day so the rest is
+// visible without competing with it. Once everything is done it offers the
+// reflection instead, so the card never ends on nothing to do.
+templ todayCard(data DashboardData) {
+	{{ items := todayItems(ctx, data) }}
+	{{ next, hasNext := nextTodayItem(items) }}
+	@card.Card(card.Props{Class: "border-hairline bg-surface", Attributes: templ.Attributes{"data-today": "true"}}) {
+		@card.Content() {
+			<div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+				<div class="min-w-0">
+					<p class="text-muted-foreground font-mono text-[10px] tracking-[0.14em] uppercase">
+						{ i18n.T(ctx, "dash.today.title") } · { i18n.Tf(ctx, "dash.today.progress", doneCount(items), len(items)) }
+					</p>
+					if hasNext {
+						<p class="mt-1 text-lg font-medium tracking-tight">
+							{ i18n.T(ctx, "dash.today.next") } { next.Label }
+						</p>
+						<p class="text-muted-foreground text-sm">{ next.Detail }</p>
+					} else {
+						<p class="mt-1 text-lg font-medium tracking-tight">{ i18n.T(ctx, "dash.today.alldone") }</p>
+						<p class="text-muted-foreground text-sm">{ i18n.T(ctx, "dash.today.alldone.body") }</p>
+					}
+				</div>
+				<div class="shrink-0">
+					if hasNext {
+						@primaryButton(next.Href, next.CTA)
+					} else {
+						@startReflectionForm()
+					}
+				</div>
+			</div>
+			<ul class="border-hairline mt-4 grid gap-2 border-t pt-4 sm:grid-cols-2 lg:grid-cols-4">
+				for _, item := range items {
+					<li>
+						@todayRow(item, hasNext && item.Key == next.Key)
+					</li>
+				}
+			</ul>
+		}
+	}
+}
+
+// todayRow is one item on the day. Done is shown with a mark as well as a
+// colour, and the row stays a link either way: a check-in can be edited, water
+// topped up past the target.
+templ todayRow(item TodayItem, isNext bool) {
+	<a
+		href={ templ.SafeURL(item.Href) }
+		data-today-item={ item.Key }
+		if item.Done {
+			data-done="true"
+		}
+		class={ "group flex items-start gap-3 rounded-md border px-3 py-2 transition-colors",
+			templ.KV("border-signal/40 bg-signal/5", isNext),
+			templ.KV("border-hairline hover:border-signal/40", !isNext) }
+	>
+		<span
+			class={ "mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full border",
+				templ.KV("border-signal bg-signal text-background", item.Done),
+				templ.KV("border-hairline text-muted-foreground", !item.Done) }
+		>
+			if item.Done {
+				@icon.Icon("check")(icon.Props{Class: "size-3"})
+			} else {
+				@icon.Icon(item.Icon)(icon.Props{Class: "size-3"})
+			}
+		</span>
+		<span class="min-w-0 flex-1">
+			<span class={ "block truncate text-sm font-medium", templ.KV("text-muted-foreground line-through", item.Done) }>
+				{ item.Label }
+			</span>
+			<span class="text-muted-foreground block truncate text-xs tabular-nums">{ item.Detail }</span>
+		</span>
+	</a>
+}
+
+// DashboardPanels is everything the range selector replaces. Exported because
+// the panels endpoint renders it on its own.
+//
+// The only <script> tags inside are type="application/json" data payloads —
+// each chart's series, emitted by chart.Chart and templ.JSONScript. Those have
+// to travel with the swap, since they are the new numbers. No executable
+// JavaScript is in here: Chart.js picks up swapped canvases through a
+// MutationObserver and ECharts through echarts-init.js's htmx:after:swap
+// listener, and both libraries are loaded once by the page around this.
+templ DashboardPanels(data DashboardData) {
+	<div class="space-y-6">
+		if data.HasBriefing {
+			@briefingCard(data)
+		} else {
+			@briefingPrompt()
+		}
+		@nudgepages.Card(data.Nudges)
+		// Things to act on come before things to read.
+		<div class="grid gap-4 lg:grid-cols-3">
+			@trainingPanel(data)
+			@goalsPanel(data)
+			@coachPanel(data)
+		</div>
+		@trendsStrip(data)
+		// My Day's trend cards, loaded after the page: twelve weeks of
+		// readings is the slowest thing here and should not hold it up.
+		<div hx-get="/app/day/trends" hx-trigger="load" hx-swap="innerHTML"></div>
+		<div class="grid gap-4 lg:grid-cols-3">
+			<div class="lg:col-span-2">
+				@checkInPanel(data)
+			</div>
+			@timelinePanel(data)
+		</div>
+		<div class="grid gap-4 lg:grid-cols-3">
+			@habitsPanel(data)
+			@hydrationPanel(data)
+			@splitPanel(data)
+		</div>
+		if data.NewsTickerEnabled {
+			@newspages.TickerShell()
+		}
+	</div>
+}
+
+// panel is every dashboard card: one surface, a title, an optional
+// description. Children are the body.
+templ panel(title, description string) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface h-full"}) {
+		@card.Header() {
+			@card.Title() {
+				{ title }
+			}
+			if description != "" {
+				@card.Description() {
+					{ description }
+				}
+			}
+		}
+		@card.Content() {
+			{ children... }
+		}
+	}
+}
+
+// emptyAction is a panel with nothing in it yet: one line saying so, and the
+// action that would fill it. Outlined, because the page's one filled button
+// belongs to the Today card's next step.
+templ emptyAction(message, href, cta string) {
+	<p class="text-muted-foreground mb-4 text-sm">{ message }</p>
+	@button.Button(button.Props{Href: href, Variant: button.VariantOutline}) {
+		{ cta }
+	}
+}
+
+templ primaryButton(href, label string) {
+	@button.Button(button.Props{Href: href, Class: "bg-signal text-background hover:bg-signal/90"}) {
+		{ label }
+	}
+}
+
+// briefingCard is the morning note. It disappears entirely once the day it
+// describes is over.
 templ briefingCard(data DashboardData) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 		@card.Content() {
-			<p class="text-muted-foreground text-xs tracking-wide uppercase">Today</p>
+			@ui.MonoLabel(i18n.T(ctx, "dash.briefing.title"))
 			<div class="prose prose-sm dark:prose-invert mt-2 max-w-none">
 				@markdown.Render(data.Briefing)
 			</div>
@@ -397,14 +298,14 @@ templ briefingPrompt() {
 		@card.Content() {
 			<div class="flex flex-wrap items-center justify-between gap-3">
 				<div>
-					<p class="text-muted-foreground text-xs tracking-wide uppercase">Today</p>
+					@ui.MonoLabel(i18n.T(ctx, "dash.briefing.title"))
 					<p class="mt-1 text-sm leading-relaxed">
 						{ i18n.T(ctx, "dash.briefing.empty") }
 					</p>
 				</div>
 				<form method="post" action="/app/reports/briefing">
 					@ui.CSRFInput()
-					@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm}) {
+					@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Variant: button.VariantOutline}) {
 						{ i18n.T(ctx, "dash.briefing.write") }
 					}
 				</form>
@@ -413,46 +314,10 @@ templ briefingPrompt() {
 	}
 }
 
-templ DashboardPanels(data DashboardData) {
-	<div class="space-y-6">
-		if data.HasBriefing {
-			@briefingCard(data)
-		} else {
-			@briefingPrompt()
-		}
-		@nudgepages.Card(data.Nudges)
-		@kpiStrip(data)
-		// My Day's trend cards, loaded after the page: twelve weeks of
-		// readings is the slowest thing here and should not hold it up.
-		<div hx-get="/app/day/trends" hx-trigger="load" hx-swap="innerHTML"></div>
-		if data.NewsTickerEnabled {
-			@newspages.TickerShell()
-		}
-		<div class="grid gap-4 lg:grid-cols-3">
-			<div class="lg:col-span-2">
-				@checkInPanel(data)
-			</div>
-			@timelinePanel(data)
-		</div>
-		<div class="grid gap-4 lg:grid-cols-3">
-			@habitsPanel(data)
-			@hydrationPanel(data)
-			@splitPanel(data)
-		</div>
-		<div class="grid gap-4 lg:grid-cols-3">
-			@goalsPanel(data)
-			@coachPanel(data)
-			@trainingPanel(data)
-		</div>
-	</div>
-}
-
-templ kpiStrip(data DashboardData) {
+// trendsStrip is the period at a glance. Check-in done-or-not moved to the
+// Today card; what stays here is what the range selector changes.
+templ trendsStrip(data DashboardData) {
 	@ui.KpiStrip() {
-		@ui.KpiCell(ui.KpiCellProps{
-			Label: i18n.T(ctx, "dash.kpi.checkin"), Value: checkInKPI(ctx, data),
-			Href: "/app/check-ins", CTA: checkInCTA(ctx, data),
-		})
 		@ui.KpiCell(ui.KpiCellProps{
 			Label: i18n.T(ctx, "dash.kpi.streak"), Value: streakKPI(ctx, data),
 			Href: "/app/check-ins", CTA: i18n.T(ctx, "dash.kpi.checkcta"),
@@ -499,103 +364,109 @@ templ deltaChip(delta DeltaView) {
 	}
 }
 
-func formatPct(pct float64) string {
-	if pct < 0 {
-		pct = -pct
-	}
-	return fmt.Sprintf("%.0f%%", pct)
-}
-
-func checkInKPI(ctx context.Context, data DashboardData) string {
-	if data.CheckedInToday {
-		return i18n.T(ctx, "dash.kpi.done")
-	}
-	return i18n.T(ctx, "dash.kpi.pending")
-}
-
-func checkInCTA(ctx context.Context, data DashboardData) string {
-	if data.CheckedInToday {
-		return i18n.T(ctx, "dash.kpi.edit")
-	}
-	return i18n.T(ctx, "dash.kpi.checkcta")
-}
-
-// An em dash for no streak, and two catalogue strings for the rest: "1 days"
-// is wrong in every language here.
-func streakKPI(ctx context.Context, data DashboardData) string {
-	switch {
-	case data.Streak <= 0:
-		return "—"
-	case data.Streak == 1:
-		return i18n.T(ctx, "dash.kpi.streak.one")
-	default:
-		return i18n.Tf(ctx, "dash.kpi.streak.many", data.Streak)
+// trainingPanel is the plan, not today's session: the Today card already
+// carries that. On a rest day it says when the next one is.
+templ trainingPanel(data DashboardData) {
+	@panel(i18n.T(ctx, "dash.training.title"), "") {
+		if data.DoneToday != nil {
+			<p class="text-muted-foreground mb-2 flex items-center gap-1.5 text-xs">
+				@icon.CircleCheck(icon.Props{Class: "text-signal size-3.5"})
+				{ fitnesspages.CompletedLine(*data.DoneToday) }
+			</p>
+		}
+		if data.HasPlan() {
+			if data.NextSession != nil {
+				<p class="text-sm font-medium">{ data.NextSession.Weekday } — { data.NextSession.Focus }</p>
+				<p class="text-muted-foreground mt-1 mb-3 text-sm">
+					{ i18n.Tf(ctx, "dash.today.train.count", len(data.NextSession.Exercises)) }
+				</p>
+			}
+			@button.Button(button.Props{Href: "/app/training/" + data.PlanID.String(), Variant: button.VariantOutline}) {
+				{ i18n.T(ctx, "dash.training.plan") }
+			}
+		} else {
+			@emptyAction(i18n.T(ctx, "dash.training.empty"), "/app/training", i18n.T(ctx, "dash.training.build"))
+		}
+		<a href="/app/exercises" class="text-signal mt-4 block text-xs hover:underline">
+			{ i18n.T(ctx, "dash.training.library") }
+		</a>
 	}
 }
 
-func goalActivityLabel(n int) string {
-	switch {
-	case n <= 0:
-		return ""
-	case n == 1:
-		return "1 this week"
-	default:
-		return strconv.Itoa(n) + " this week"
+templ goalsPanel(data DashboardData) {
+	@panel(i18n.T(ctx, "dash.goals.title"), goalActivityLabel(data.GoalActivity7d)) {
+		if len(data.Goals) == 0 {
+			@emptyAction(i18n.T(ctx, "dash.goals.empty"), "/app/goals", i18n.T(ctx, "dash.goals.cta"))
+		} else {
+			<ul class="space-y-3">
+				for _, g := range data.Goals {
+					<li>
+						<a href={ templ.SafeURL("/app/goals/" + g.ID.String()) } class="block">
+							<p class="text-sm font-medium">{ g.Title }</p>
+							if hasProgress(g) {
+								<div class="mt-2">
+									@progress.Progress(progress.Props{Value: progressPct(g), Max: 100, Size: progress.SizeSm})
+								</div>
+							}
+						</a>
+					</li>
+				}
+			</ul>
+			<div class="mt-4">
+				@button.Button(button.Props{Href: "/app/goals", Variant: button.VariantOutline, Size: button.SizeSm}) {
+					{ i18n.T(ctx, "dash.goals.all") }
+				}
+			</div>
+		}
 	}
 }
 
-func waterKPI(data DashboardData) string {
-	if data.Hydration.TargetML <= 0 && data.Hydration.TodayML <= 0 {
-		return "—"
-	}
-	return fmt.Sprintf("%s / %s", formatLitres(data.Hydration.TodayML), formatLitres(data.Hydration.TargetML))
+templ startReflectionForm() {
+	<form method="post" action="/app/chat">
+		@ui.CSRFInput()
+		<input type="hidden" name="kind" value="reflection"/>
+		@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
+			{ i18n.T(ctx, "dash.reflect") }
+		}
+	</form>
 }
 
-func sleepKPI(data DashboardData) string {
-	if !data.Sleep.Logged {
-		return "—"
+templ coachPanel(data DashboardData) {
+	@panel(i18n.T(ctx, "dash.coach.title"), "") {
+		if data.LastThread != nil {
+			<p class="mb-3 text-sm font-medium">{ data.LastThread.DisplayTitle() }</p>
+			<div class="flex flex-wrap items-center gap-2">
+				@button.Button(button.Props{Href: "/app/chat/" + data.LastThread.ID.String(), Variant: button.VariantOutline}) {
+					{ i18n.T(ctx, "dash.coach.cont") }
+				}
+				@startReflectionForm()
+			</div>
+		} else {
+			<p class="text-muted-foreground mb-4 text-sm">{ i18n.T(ctx, "dash.coach.empty") }</p>
+			<div class="flex flex-wrap items-center gap-2">
+				@button.Button(button.Props{Href: "/app/chat", Variant: button.VariantOutline}) {
+					{ i18n.T(ctx, "dash.coach.start") }
+				}
+				@startReflectionForm()
+			</div>
+		}
 	}
-	text := formatSleep(data.Sleep.DurationMinutes)
-	if data.Sleep.Quality != nil {
-		text += fmt.Sprintf(" · %d/5", *data.Sleep.Quality)
-	}
-	return text
-}
-
-func caloriesKPI(data DashboardData) string {
-	if data.ActivityCalories <= 0 {
-		return "—"
-	}
-	return fmt.Sprintf("%.0f kcal", data.ActivityCalories)
 }
 
 // timelinePanel is the feed of everything that happened in the window,
 // assembled across every slice.
 templ timelinePanel(data DashboardData) {
-	@card.Card(card.Props{Class: "border-hairline bg-surface h-full"}) {
-		@card.Header() {
-			@card.Title() {
-				{ i18n.T(ctx, "dash.timeline.title") }
-			}
-			@card.Description() {
-				{ i18n.Tf(ctx, "dash.timeline.desc", data.Range.LabelIn(ctx)) }
-			}
-		}
-		@card.Content() {
-			if len(data.Timeline) == 0 {
-				<p class="text-muted-foreground mb-4 text-sm">{ i18n.T(ctx, "dash.timeline.empty") }</p>
-				@button.Button(button.Props{Href: "/app/check-ins", Class: "bg-signal text-background hover:bg-signal/90"}) {
-					{ i18n.T(ctx, "dash.kpi.checkcta") }
+	@panel(i18n.T(ctx, "dash.timeline.title"), i18n.Tf(ctx, "dash.timeline.desc", data.Range.LabelIn(ctx))) {
+		if len(data.Timeline) == 0 {
+			<p class="text-muted-foreground text-sm">{ i18n.T(ctx, "dash.timeline.empty") }</p>
+		} else {
+			<ul class="divide-border -my-2 divide-y">
+				for _, e := range data.Timeline {
+					<li class="py-2">
+						@timelineRow(e)
+					</li>
 				}
-			} else {
-				<ul class="divide-border -my-2 divide-y">
-					for _, e := range data.Timeline {
-						<li class="py-2">
-							@timelineRow(e)
-						</li>
-					}
-				</ul>
-			}
+			</ul>
 		}
 	}
 }
@@ -625,238 +496,65 @@ templ timelineRow(e TimelineEntryView) {
 // splitPanel answers "where did my effort go" from the feed already in
 // memory, rather than from another query.
 templ splitPanel(data DashboardData) {
-	@card.Card(card.Props{Class: "border-hairline bg-surface h-full"}) {
-		@card.Header() {
-			@card.Title() {
-				{ i18n.T(ctx, "dash.activity.title") }
-			}
-			@card.Description() {
-				{ i18n.T(ctx, "dash.activity.desc") }
-			}
-		}
-		@card.Content() {
-			if data.HasActivityDonut {
-				@templ.JSONScript("dashboard-split-option", data.ActivityDonut)
-				@ui.EChartsMount("dashboard-split", "dashboard-split-option", "min-h-48 w-full")
-			} else {
-				<p class="text-muted-foreground text-sm">Nothing logged in this window yet.</p>
-			}
+	@panel(i18n.T(ctx, "dash.activity.title"), i18n.T(ctx, "dash.activity.desc")) {
+		if data.HasActivityDonut {
+			@templ.JSONScript("dashboard-split-option", data.ActivityDonut)
+			@ui.EChartsMount("dashboard-split", "dashboard-split-option", "min-h-48 w-full")
+		} else {
+			<p class="text-muted-foreground text-sm">{ i18n.T(ctx, "dash.timeline.empty") }</p>
 		}
 	}
 }
 
+// The empty chart panels below say what is missing and nothing else. The
+// action that fills them lives on the Today card, once, rather than as a
+// filled button on every empty panel competing for the same click.
 templ checkInPanel(data DashboardData) {
-	@card.Card(card.Props{Class: "border-hairline bg-surface h-full"}) {
-		@card.Header() {
-			@card.Title() {
-				{ i18n.T(ctx, "dash.mood.title") }
+	@panel(i18n.T(ctx, "dash.mood.title"), i18n.T(ctx, "dash.mood.desc")) {
+		if data.CheckIns.HasData() {
+			@chart.Chart(data.MoodChart)
+			if len(data.CheckInHeatmap) > 0 {
+				@templ.JSONScript("dashboard-checkin-heatmap-option", data.CheckInHeatmap)
+				@ui.EChartsMount("dashboard-checkin-heatmap", "dashboard-checkin-heatmap-option", "border-hairline mt-4 min-h-32 w-full rounded-md border")
 			}
-			@card.Description() {
-				{ i18n.T(ctx, "dash.mood.desc") }
-			}
-		}
-		@card.Content() {
-			if data.CheckIns.HasData() {
-				@chart.Chart(data.MoodChart)
-				if len(data.CheckInHeatmap) > 0 {
-					@templ.JSONScript("dashboard-checkin-heatmap-option", data.CheckInHeatmap)
-					@ui.EChartsMount("dashboard-checkin-heatmap", "dashboard-checkin-heatmap-option", "border-hairline mt-4 min-h-32 w-full rounded-md border")
-				}
-			} else {
-				<p class="text-muted-foreground mb-4 text-sm">{ i18n.T(ctx, "dash.mood.empty") }</p>
-				@button.Button(button.Props{Href: "/app/check-ins", Class: "bg-signal text-background hover:bg-signal/90"}) {
-					{ i18n.T(ctx, "dash.kpi.checkcta") }
-				}
-			}
+		} else {
+			<p class="text-muted-foreground text-sm">{ i18n.T(ctx, "dash.mood.empty") }</p>
 		}
 	}
 }
 
 templ habitsPanel(data DashboardData) {
-	@card.Card(card.Props{Class: "border-hairline bg-surface h-full"}) {
-		@card.Header() {
-			@card.Title() {
-				{ i18n.T(ctx, "dash.habits.title") }
+	@panel(i18n.T(ctx, "dash.habits.title"), habitsDescription(ctx, data)) {
+		if data.Habits.HasHabits {
+			if len(data.HabitGaugeOption) > 0 {
+				@templ.JSONScript("dashboard-habit-gauge-option", data.HabitGaugeOption)
+				@ui.EChartsMount("dashboard-habit-gauge", "dashboard-habit-gauge-option", "min-h-48 w-full")
 			}
-			@card.Description() {
-				if data.Habits.HasHabits {
-					{ i18n.T(ctx, "dash.habits.desc") }
-				} else {
-					{ i18n.T(ctx, "dash.habits.empty") }
+			<p class="text-muted-foreground mt-2 text-xs">
+				{ strconv.Itoa(data.Habits.Kept) } kept of { strconv.Itoa(data.Habits.Scheduled) } scheduled
+				if data.Habits.BestStreak > 0 {
+					<span>· best streak { strconv.Itoa(data.Habits.BestStreak) }</span>
 				}
-			}
-		}
-		@card.Content() {
-			if data.Habits.HasHabits {
-				if len(data.HabitGaugeOption) > 0 {
-					@templ.JSONScript("dashboard-habit-gauge-option", data.HabitGaugeOption)
-					@ui.EChartsMount("dashboard-habit-gauge", "dashboard-habit-gauge-option", "min-h-48 w-full")
-				}
-				<p class="text-muted-foreground mt-2 text-xs">
-					{ strconv.Itoa(data.Habits.Kept) } kept of { strconv.Itoa(data.Habits.Scheduled) } scheduled
-					if data.Habits.BestStreak > 0 {
-						<span>· best streak { strconv.Itoa(data.Habits.BestStreak) }</span>
-					}
-				</p>
-			} else {
-				<p class="text-muted-foreground mb-4 text-sm">No habits yet.</p>
-				@button.Button(button.Props{Href: "/app/care", Class: "bg-signal text-background hover:bg-signal/90"}) {
-					{ i18n.T(ctx, "dash.habits.cta") }
-				}
-			}
+			</p>
+		} else {
+			// Habits are not on the Today card, so this empty state keeps its
+			// own way in.
+			<p class="text-muted-foreground mb-3 text-sm">{ i18n.T(ctx, "dash.habits.none") }</p>
+			<a href="/app/care" class="text-signal text-xs hover:underline">{ i18n.T(ctx, "dash.habits.cta") }</a>
 		}
 	}
 }
 
 templ hydrationPanel(data DashboardData) {
-	@card.Card(card.Props{Class: "border-hairline bg-surface h-full"}) {
-		@card.Header() {
-			@card.Title() {
-				{ i18n.T(ctx, "dash.hydration.title") }
-			}
-			@card.Description() {
-				if data.Hydration.HasData() {
-					{ i18n.T(ctx, "dash.hydration.desc") }
-				} else {
-					{ i18n.T(ctx, "dash.hydration.empty") }
-				}
-			}
-		}
-		@card.Content() {
-			if data.Hydration.HasData() {
-				<p class="text-signal mb-3 text-sm font-medium tabular-nums">
-					Today { strconv.Itoa(data.Hydration.Percent) }% · { formatLitres(data.Hydration.TodayML) }
-				</p>
-				@chart.Chart(data.HydrationChart)
-			} else {
-				<p class="text-muted-foreground mb-4 text-sm">No water logged in this window.</p>
-				@button.Button(button.Props{Href: "/app/care", Class: "bg-signal text-background hover:bg-signal/90"}) {
-					{ i18n.T(ctx, "dash.hydration.cta") }
-				}
-			}
-		}
-	}
-}
-
-templ goalsPanel(data DashboardData) {
-	@card.Card(card.Props{Class: "border-hairline bg-surface h-full"}) {
-		@card.Header() {
-			@card.Title() {
-				{ i18n.T(ctx, "dash.goals.title") }
-			}
-			if label := goalActivityLabel(data.GoalActivity7d); label != "" {
-				@card.Description() {
-					@ui.MonoLabel(label)
-				}
-			}
-		}
-		@card.Content() {
-			if len(data.Goals) == 0 {
-				<p class="text-muted-foreground mb-4 text-sm">The coach works better once it knows what you are aiming at.</p>
-				@button.Button(button.Props{Href: "/app/goals", Class: "bg-signal text-background hover:bg-signal/90"}) {
-					{ i18n.T(ctx, "dash.goals.cta") }
-				}
-			} else {
-				<ul class="space-y-3">
-					for _, g := range data.Goals {
-						<li>
-							<a href={ templ.SafeURL("/app/goals/" + g.ID.String()) } class="block">
-								<p class="text-sm font-medium">{ g.Title }</p>
-								if hasProgress(g) {
-									<div class="mt-2">
-										@progress.Progress(progress.Props{Value: progressPct(g), Max: 100, Size: progress.SizeSm})
-									</div>
-								}
-							</a>
-						</li>
-					}
-				</ul>
-				<div class="mt-4">
-					@button.Button(button.Props{Href: "/app/goals", Variant: button.VariantOutline, Size: button.SizeSm}) {
-						{ i18n.T(ctx, "dash.goals.all") }
-					}
-				</div>
-			}
-		}
-	}
-}
-
-templ startReflectionForm() {
-	<form method="post" action="/app/chat">
-		@ui.CSRFInput()
-		<input type="hidden" name="kind" value="reflection"/>
-		@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
-			{ i18n.T(ctx, "dash.reflect") }
-		}
-	</form>
-}
-
-templ coachPanel(data DashboardData) {
-	@card.Card(card.Props{Class: "border-hairline bg-surface h-full"}) {
-		@card.Header() {
-			@card.Title() {
-				{ i18n.T(ctx, "dash.coach.title") }
-			}
-		}
-		@card.Content() {
-			if data.LastThread != nil {
-				<p class="mb-3 text-sm font-medium">{ data.LastThread.DisplayTitle() }</p>
-				<div class="flex flex-wrap items-center gap-2">
-					@button.Button(button.Props{Href: "/app/chat/" + data.LastThread.ID.String(), Class: "bg-signal text-background hover:bg-signal/90"}) {
-						{ i18n.T(ctx, "dash.coach.cont") }
-					}
-					@startReflectionForm()
-				</div>
-			} else {
-				<p class="text-muted-foreground mb-4 text-sm">Khepri already has your goals and check-ins when they exist.</p>
-				<div class="flex flex-wrap items-center gap-2">
-					@button.Button(button.Props{Href: "/app/chat", Class: "bg-signal text-background hover:bg-signal/90"}) {
-						{ i18n.T(ctx, "dash.coach.start") }
-					}
-					@startReflectionForm()
-				</div>
-			}
-		}
-	}
-}
-
-templ trainingPanel(data DashboardData) {
-	@card.Card(card.Props{Class: "border-hairline bg-surface h-full"}) {
-		@card.Header() {
-			@card.Title() {
-				{ i18n.T(ctx, "dash.training.title") }
-			}
-		}
-		@card.Content() {
-			if data.DoneToday != nil {
-				<p class="text-muted-foreground mb-2 flex items-center gap-1.5 text-xs">
-					@icon.CircleCheck(icon.Props{Class: "text-signal size-3.5"})
-					{ fitnesspages.CompletedLine(*data.DoneToday) }
-				</p>
-			}
-			if data.NextSession != nil {
-				<p class="text-sm font-medium">{ data.NextSession.Weekday } — { data.NextSession.Focus }</p>
-				<p class="text-muted-foreground mt-1 mb-3 text-sm">
-					{ strconv.Itoa(len(data.NextSession.Exercises)) } exercises
-				</p>
-				@button.Button(button.Props{Href: "/app/training/" + data.PlanID.String(), Class: "bg-signal text-background hover:bg-signal/90"}) {
-					{ i18n.T(ctx, "dash.training.session") }
-				}
-			} else if data.HasPlan() {
-				@button.Button(button.Props{Href: "/app/training/" + data.PlanID.String(), Variant: button.VariantOutline}) {
-					{ i18n.T(ctx, "dash.training.plan") }
-				}
-			} else {
-				<p class="text-muted-foreground mb-4 text-sm">A plan the coach can follow, not a paragraph of sets.</p>
-				@button.Button(button.Props{Href: "/app/training", Class: "bg-signal text-background hover:bg-signal/90"}) {
-					{ i18n.T(ctx, "dash.training.build") }
-				}
-			}
-			if data.ActivityCalories > 0 {
-				<p class="text-muted-foreground mt-4 text-xs tabular-nums">
-					{ fmt.Sprintf("%.0f kcal", data.ActivityCalories) } burned in this window
-				</p>
-			}
+	@panel(i18n.T(ctx, "dash.hydration.title"), hydrationDescription(ctx, data)) {
+		if data.Hydration.HasData() {
+			<p class="text-signal mb-3 text-sm font-medium tabular-nums">
+				Today { strconv.Itoa(data.Hydration.Percent) }% · { formatLitres(data.Hydration.TodayML) }
+			</p>
+			@chart.Chart(data.HydrationChart)
+		} else {
+			<p class="text-muted-foreground mb-3 text-sm">{ i18n.T(ctx, "dash.hydration.none") }</p>
+			<a href="/app/care" class="text-signal text-xs hover:underline">{ i18n.T(ctx, "dash.hydration.cta") }</a>
 		}
 	}
 }

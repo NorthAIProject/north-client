@@ -3,6 +3,7 @@ package meals
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -50,13 +51,13 @@ func (r *Repository) GetIngredient(ctx context.Context, id, userID uuid.UUID) (I
 	return ingredientFromDB(row), nil
 }
 
-// SearchIngredients returns the shared/global set plus the user's own,
-// matching a case-insensitive substring of name.
+// SearchIngredients returns the shared/global set plus the user's own whose
+// name contains every word of query, in any order and any case.
 func (r *Repository) SearchIngredients(ctx context.Context, userID uuid.UUID, query string, limit int) ([]Ingredient, error) {
 	rows, err := r.q.SearchIngredients(ctx, mealsdb.SearchIngredientsParams{
-		UserID: &userID,
-		Lower:  "%" + query + "%",
-		Limit:  int32(limit),
+		UserID:   &userID,
+		Patterns: wordPatterns(query),
+		MaxRows:  int32(limit),
 	})
 	if err != nil {
 		return nil, apperr.Wrap(err, "search ingredients")
@@ -132,4 +133,23 @@ func ingredientFromDB(row mealsdb.Ingredient) Ingredient {
 		CreatedAt:            row.CreatedAt,
 		UpdatedAt:            row.UpdatedAt,
 	}
+}
+
+// likeEscaper makes a word match itself under LIKE. Without it "50%" matched
+// every name with a 50 in it and "_" matched any single character.
+var likeEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+
+// wordPatterns turns a query into one LIKE pattern per word. An empty query is
+// a single pattern that matches every name, which is what an empty search box
+// has always meant.
+func wordPatterns(query string) []string {
+	words := strings.Fields(strings.ToLower(query))
+	if len(words) == 0 {
+		return []string{"%"}
+	}
+	patterns := make([]string, len(words))
+	for i, w := range words {
+		patterns[i] = "%" + likeEscaper.Replace(w) + "%"
+	}
+	return patterns
 }
