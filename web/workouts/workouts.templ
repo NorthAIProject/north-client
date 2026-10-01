@@ -3,6 +3,7 @@ package workouts
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -14,6 +15,7 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/exerciserow"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
 	"github.com/NorthAIProject/north-client/web/shared/muscleviewer"
+	"github.com/NorthAIProject/north-client/web/shared/workoutsummary"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/ui/alert"
 	"github.com/NorthAIProject/north-client/web/shared/ui/badge"
@@ -280,6 +282,29 @@ type PlanView struct {
 	// who answered "dumbbells" may be in a hotel gym today. See
 	// Service.applyEdit.
 	Problems []string
+
+	// Completed are the weekdays finished this Monday–Sunday week, and Next
+	// the one to train next. They badge the day cards the way the phone does.
+	Completed []string
+	Next      string
+
+	// Recap is this week's latest finished workout; nil before the first.
+	Recap *workoutsummary.Recap
+}
+
+// Done reports whether day was finished this week.
+func (v PlanView) Done(day plan.PlanDay) bool {
+	for _, d := range v.Completed {
+		if strings.EqualFold(d, strings.TrimSpace(day.Weekday)) {
+			return true
+		}
+	}
+	return false
+}
+
+// IsNext reports whether day is the one to train next.
+func (v PlanView) IsNext(day plan.PlanDay) bool {
+	return v.Next != "" && strings.EqualFold(v.Next, strings.TrimSpace(day.Weekday))
 }
 
 // Picker is the panel that chooses a catalog exercise. Swapping one and adding
@@ -381,6 +406,11 @@ templ PlanPage(user users.User, v PlanView) {
 					}
 				</div>
 			</header>
+			if v.Recap != nil {
+				<section class="mb-6">
+					@workoutsummary.RecapCard(*v.Recap)
+				</section>
+			}
 			@card.Card(card.Props{Class: "mb-6"}) {
 				@card.Header() {
 					@card.Title(card.TitleProps{Class: "text-base"}) {
@@ -395,6 +425,9 @@ templ PlanPage(user users.User, v PlanView) {
 		</div>
 		@dialog.Script()
 		@muscleviewer.Script()
+		if v.Recap != nil {
+			@ui.ChartScripts()
+		}
 	}
 }
 
@@ -473,6 +506,7 @@ templ dayShell(v PlanView, dayIndex int, day plan.PlanDay) {
 					@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
 						{ day.Focus }
 					}
+					@dayStatus(v, day)
 				</div>
 				@startTimeControl(v, dayIndex, day)
 			}
@@ -501,6 +535,22 @@ templ dayShell(v PlanView, dayIndex int, day plan.PlanDay) {
 			}
 		}
 	</div>
+}
+
+// dayStatus labels a day Completed once a finished session accounts for it
+// this week, or Next when it is the one to train next — the same words the
+// phone's Training list uses.
+templ dayStatus(v PlanView, day plan.PlanDay) {
+	if v.Done(day) {
+		@badge.Badge(badge.Props{Variant: badge.VariantOutline, Class: "border-signal/40 text-signal gap-1", Attributes: templ.Attributes{"data-testid": "day-completed"}}) {
+			@icon.CircleCheck(icon.Props{Class: "size-3"})
+			Completed
+		}
+	} else if v.IsNext(day) {
+		@badge.Badge(badge.Props{Class: "bg-signal text-background", Attributes: templ.Attributes{"data-testid": "day-next"}}) {
+			Next
+		}
+	}
 }
 
 // startTimeControl shows when the session starts and edits it in place. The

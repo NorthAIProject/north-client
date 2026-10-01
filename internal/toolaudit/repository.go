@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -29,7 +30,7 @@ func (r *Repository) Insert(ctx context.Context, e Execution) error {
 		Arguments: e.Arguments,
 		Surface:   string(e.Surface),
 		Outcome:   string(e.Outcome),
-		Detail:    nilIfEmpty(e.Detail),
+		Detail:    util.StrZeroPtr(e.Detail),
 	})
 	return apperr.Wrap(err, "record tool execution %q", e.Tool)
 }
@@ -60,13 +61,6 @@ func (r *Repository) List(ctx context.Context, userID uuid.UUID, limit int) ([]E
 		out = append(out, e)
 	}
 	return out, nil
-}
-
-func nilIfEmpty(s string) *string {
-	if s == "" {
-		return nil
-	}
-	return &s
 }
 
 func (r *Repository) ArgumentsSince(ctx context.Context, userID uuid.UUID, tool string, surface Surface, since time.Time) ([]json.RawMessage, error) {

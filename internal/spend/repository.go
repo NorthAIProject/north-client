@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -43,7 +44,7 @@ func (r *Repository) Record(ctx context.Context, g Generation) {
 		UserID:       g.UserID,
 		Surface:      surfaceOrUnknown(g.Surface),
 		Provider:     g.Provider,
-		Model:        nilIfEmpty(g.Model),
+		Model:        util.StrZeroPtr(g.Model),
 		InputTokens:  int32(g.InputTokens),
 		OutputTokens: int32(g.OutputTokens),
 		CostMicros:   g.CostMicros,
@@ -95,7 +96,7 @@ func (r *Repository) ByModel(ctx context.Context, window Range, billableOnly boo
 	for _, row := range rows {
 		out = append(out, ModelSpend{
 			Provider:     row.Provider,
-			Model:        deref(row.Model),
+			Model:        util.Val(row.Model),
 			Generations:  row.Generations,
 			InputTokens:  row.InputTokens,
 			OutputTokens: row.OutputTokens,
@@ -150,20 +151,6 @@ func surfaceOrUnknown(s string) string {
 	return s
 }
 
-func nilIfEmpty(s string) *string {
-	if s == "" {
-		return nil
-	}
-	return &s
-}
-
-func deref(s *string) string {
-	if s == nil {
-		return ""
-	}
-	return *s
-}
-
 // Assert the repository satisfies the interface the metering decorator depends
 // on, so a signature change breaks the build here rather than at wiring time.
 var _ Recorder = (*Repository)(nil)
@@ -210,7 +197,7 @@ func (r *Repository) UserModels(ctx context.Context, userID uuid.UUID, window Ra
 	for _, row := range rows {
 		out = append(out, ModelSpend{
 			Provider:     row.Provider,
-			Model:        deref(row.Model),
+			Model:        util.Val(row.Model),
 			Generations:  row.Generations,
 			InputTokens:  row.InputTokens,
 			OutputTokens: row.OutputTokens,

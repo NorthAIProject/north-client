@@ -34,6 +34,7 @@ func TestSettingsShapes(t *testing.T) {
 		NudgeMissedCheckIn: true, TrainingReminders: true, StatsDigestCadence: "weekly",
 		QuietHoursEnabled: true, QuietStart: "22:00", QuietEnd: "07:00",
 		PhotoAskEnabled: true, PhotoEveryDays: 14, PhotoReminderDays: 2,
+		BriefingHour: 7, EveningReflection: true, EveningHour: 21,
 	})
 	// The key is write-only: the response carries a hint and nothing else.
 	apitest.AssertGolden(t, "ai-settings.golden.json", AISettings{

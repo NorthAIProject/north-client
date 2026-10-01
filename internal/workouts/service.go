@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/NorthAIProject/north-client/internal/activity/activity"
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/ai/prompts"
 	"github.com/NorthAIProject/north-client/internal/exercises/exercise"
@@ -53,9 +54,10 @@ type Catalog interface {
 	SearchByName(ctx context.Context, query string, equipment []string, limit int) ([]exercise.Exercise, error)
 }
 
-// ActivityTracker reports whether a workout session was completed on the user's local day.
+// ActivityTracker is the slice of activity this service needs: which plan
+// days the person's finished sessions account for this week.
 type ActivityTracker interface {
-	CompletedToday(ctx context.Context, userID uuid.UUID, loc *time.Location) (bool, string, error)
+	CompletedWeekdays(ctx context.Context, userID uuid.UUID, loc *time.Location, now time.Time) ([]string, error)
 }
 
 type Service struct {
@@ -636,7 +638,7 @@ func (s *Service) DueToday(ctx context.Context, user users.User, today time.Time
 		}
 		return "", "", false, err
 	}
-	session, ok := stored.Plan.NextSession(today)
+	session, ok := stored.Plan.NextSession(today, nil)
 	if !ok {
 		return "", "", false, nil
 	}
@@ -654,12 +656,124 @@ func (s *Service) DueToday(ctx context.Context, user users.User, today time.Time
 	return title, "/app/training/" + stored.ID.String(), true, nil
 }
 
-// CompletedToday reports whether today's workout has already been completed.
+// WeekProgress is a plan laid over this Monday–Sunday week: the weekdays
+// already finished and the day that comes next.
+type WeekProgress struct {
+	// Completed are finished weekdays, Monday first.
+	Completed []string
+	// Next is the first unfinished plan day from today on, wrapping into
+	// next week when everything left this week is done.
+	Next    PlanDay
+	HasNext bool
+}
+
+// Done reports whether weekday was finished this week.
+func (w WeekProgress) Done(weekday string) bool {
+	for _, d := range w.Completed {
+		if strings.EqualFold(d, strings.TrimSpace(weekday)) {
+			return true
+		}
+	}
+	return false
+}
+
+// IsNext reports whether day is the one to train next.
+func (w WeekProgress) IsNext(day PlanDay) bool {
+	return w.HasNext && strings.EqualFold(w.Next.Weekday, day.Weekday)
+}
+
+// DoneToday is today's plan day when it is already finished.
+func (w WeekProgress) DoneToday(p Plan, now time.Time) (PlanDay, bool) {
+	today := now.Weekday().String()
+	if !w.Done(today) {
+		return PlanDay{}, false
+	}
+	for _, d := range p.Days {
+		if strings.EqualFold(strings.TrimSpace(d.Weekday), today) {
+			return d, true
+		}
+	}
+	return PlanDay{}, false
+}
+
+// WeekProgress reads which of p's days are finished this week and which is
+// next. Without an activity tracker nothing is finished, which is the
+// calendar-only answer the plan gave before sessions were counted.
+func (s *Service) WeekProgress(ctx context.Context, user users.User, p Plan, now time.Time) (WeekProgress, error) {
+	now = now.In(user.Location())
+	var done []string
+	if s.activity != nil {
+		var err error
+		done, err = s.activity.CompletedWeekdays(ctx, user.ID, user.Location(), now)
+		if err != nil {
+			return WeekProgress{}, err
+		}
+	}
+	out := WeekProgress{Completed: done}
+	out.Next, out.HasNext = p.NextSession(now, done)
+	return out, nil
+}
+
+// CompletedToday reports whether today's plan day is already finished, and
+// its focus. Only a session that finishes today's plan day counts: an
+// evening run on leg day leaves the leg session open.
 func (s *Service) CompletedToday(ctx context.Context, user users.User, today time.Time) (bool, string, error) {
-	if s.activity == nil {
+	stored, err := s.repo.LatestPlan(ctx, user.ID)
+	if err != nil {
+		if apperr.Is(err, apperr.ErrNotFound) {
+			return false, "", nil
+		}
+		return false, "", err
+	}
+	progress, err := s.WeekProgress(ctx, user, stored.Plan, today)
+	if err != nil {
+		return false, "", err
+	}
+	day, ok := progress.DoneToday(stored.Plan, today.In(user.Location()))
+	if !ok {
 		return false, "", nil
 	}
-	return s.activity.CompletedToday(ctx, user.ID, user.Location())
+	return true, day.Focus, nil
+}
+
+// Prescription is what the latest plan asks for on weekday: the day's focus
+// and its sets in total. ok is false without a plan or without that day.
+func (s *Service) Prescription(ctx context.Context, user users.User, weekday string) (string, int, bool, error) {
+	stored, err := s.repo.LatestPlan(ctx, user.ID)
+	if err != nil {
+		if apperr.Is(err, apperr.ErrNotFound) {
+			return "", 0, false, nil
+		}
+		return "", 0, false, err
+	}
+	for _, d := range stored.Plan.Days {
+		if !strings.EqualFold(strings.TrimSpace(d.Weekday), weekday) {
+			continue
+		}
+		sets := 0
+		for _, e := range d.Exercises {
+			sets += e.Sets
+		}
+		return d.Focus, sets, true, nil
+	}
+	return "", 0, false, nil
+}
+
+// PlanSlots are the latest plan's days, enough to count adherence. ok is
+// false without a plan.
+func (s *Service) PlanSlots(ctx context.Context, user users.User) ([]activity.PlanSlot, bool, error) {
+	stored, err := s.repo.LatestPlan(ctx, user.ID)
+	if err != nil {
+		if apperr.Is(err, apperr.ErrNotFound) {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+	slots := make([]activity.PlanSlot, 0, len(stored.Plan.Days))
+	for _, d := range stored.Plan.Days {
+		slots = append(slots, activity.PlanSlot{Weekday: d.Weekday, Focus: d.Focus})
+	}
+	return slots, true, nil
 }
 
 func (s *Service) LatestIntake(ctx context.Context, userID uuid.UUID) (StoredIntake, error) {

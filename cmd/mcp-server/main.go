@@ -238,6 +238,7 @@ func buildServices(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry
 	biometricSvc := biometrics.NewService(biometrics.NewRepository(pool))
 	calculatorSvc := calculator.NewService(calculator.NewRepository(pool), biometricSvc)
 	activitySvc := activity.NewService(activity.NewRepository(pool), biometricSvc)
+	workoutSvc.WithActivity(activitySvc)
 
 	mealsRepo := meals.NewRepository(pool)
 	mealDietSvc := meals.NewDietPreferenceService(mealsRepo)
@@ -275,7 +276,7 @@ func buildServices(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry
 			hydration.NewContextSource(hydrationSvc),
 			sleep.NewContextSource(sleepSvc),
 			caffeine.NewContextSource(caffeine.NewService(caffeine.NewRepository(pool))),
-			lifts.NewContextSource(lifts.NewService(lifts.NewRepository(pool), exercises.NewService(exercises.NewRepository(pool)))),
+			lifts.NewContextSource(lifts.NewService(lifts.NewRepository(pool), exercises.NewService(exercises.NewRepository(pool))).WithRecaps(activitySvc, workoutSvc)),
 			fasting.NewContextSource(fasting.NewService(fasting.NewRepository(pool))),
 			supplements.NewContextSource(supplements.NewService(supplements.NewRepository(pool))),
 			screentime.NewContextSource(screentime.NewService(screentime.NewRepository(pool))),

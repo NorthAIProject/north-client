@@ -84,6 +84,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/voice/vocab"
 	"github.com/NorthAIProject/north-client/internal/watches"
 	"github.com/NorthAIProject/north-client/internal/workouts"
+	"github.com/NorthAIProject/north-client/internal/workouts/plan"
 	"github.com/NorthAIProject/north-client/web/assets"
 	"github.com/NorthAIProject/north-client/web/landing"
 	"github.com/NorthAIProject/north-client/web/legal"
@@ -252,6 +253,10 @@ func routes(
 		Model:      cfg.AI.Model,
 	})
 	workoutHandler := workouts.NewHandler(workoutSvc)
+	exerciseHandler.WithPlans(func(ctx context.Context, userID uuid.UUID) (uuid.UUID, plan.Plan, error) {
+		stored, lookupErr := workoutSvc.LatestPlan(ctx, userID)
+		return stored.ID, stored.Plan, lookupErr
+	})
 
 	mediaSvc := media.NewService(media.Options{
 		Repository: media.NewRepository(pool),
@@ -396,7 +401,8 @@ func routes(
 	supplementSvc := supplements.NewService(supplements.NewRepository(pool))
 	screenTimeSvc := screentime.NewService(screentime.NewRepository(pool))
 	sorenessSvc := soreness.NewService(soreness.NewRepository(pool))
-	liftSvc := lifts.NewService(lifts.NewRepository(pool), exerciseSvc)
+	liftSvc := lifts.NewService(lifts.NewRepository(pool), exerciseSvc).WithRecaps(activitySvc, workoutSvc)
+	workoutHandler.WithRecaps(liftSvc)
 	milestoneSvc := milestones.NewService(milestones.NewRepository(pool))
 
 	careOpts := care.Options{
@@ -562,6 +568,8 @@ func routes(
 		Spend:         spendRepo,
 		Health:        healthSvc,
 		Lifts:         liftSvc,
+		Plan:          workoutSvc,
+		Recaps:        liftSvc,
 		Stats:         statsSvc,
 		SiteURL:       cfg.BaseURL,
 	})

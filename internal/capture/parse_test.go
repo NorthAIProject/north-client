@@ -108,6 +108,37 @@ func TestConvertNormalisesPounds(t *testing.T) {
 	}
 }
 
+// Rounding used to add 0.5 and truncate toward zero, which rounds negative
+// readings the wrong way. Validate rejects them later, but the conversion
+// itself should not lie about the number.
+func TestToKilogramsRoundsToOneDecimal(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		lb   float64
+		want float64
+	}{
+		{"whole pounds", 172, 78},
+		{"just past a .x5 boundary", 2.7558, 1.3},
+		{"negative", -1, -0.5},
+		{"negative just past a .x5 boundary", -2.7558, -1.3},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := toKilograms(tt.lb, "lb")
+			if err != nil {
+				t.Fatalf("toKilograms: %v", err)
+			}
+			if got != tt.want {
+				t.Fatalf("toKilograms(%v lb) = %v, want %v", tt.lb, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestConvertRefusesAnUnknownWeightUnit(t *testing.T) {
 	t.Parallel()
 

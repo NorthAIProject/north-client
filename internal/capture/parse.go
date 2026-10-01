@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
+
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/ai/prompts"
 	"github.com/NorthAIProject/north-client/internal/habits"
@@ -291,14 +293,10 @@ func toKilograms(value float64, unit string) (float64, error) {
 	case "kg", "":
 		return value, nil
 	case "lb", "lbs":
-		return round1(value * 0.45359237), nil
+		return util.RoundHalfUpToScale(value*0.45359237, 1), nil
 	default:
 		return 0, apperr.Wrap(apperr.ErrValidation, "unknown weight unit %q", unit)
 	}
-}
-
-func round1(v float64) float64 {
-	return float64(int(v*10+0.5)) / 10
 }
 
 // leftovers finds the parts of the person's text that reached neither an item

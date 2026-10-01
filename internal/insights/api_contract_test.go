@@ -4,6 +4,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/NorthAIProject/north-client/internal/activity"
+	"github.com/NorthAIProject/north-client/internal/lifts/lift"
 	"github.com/NorthAIProject/north-client/internal/shared/apitest"
 	"github.com/NorthAIProject/north-client/internal/shared/viz"
 	insightpages "github.com/NorthAIProject/north-client/web/insights"
@@ -96,4 +98,30 @@ func TestInsightsShapes(t *testing.T) {
 		Models:   []insightpages.SpendRow{{Label: "claude-sonnet-5", Cost: "€0.06", Generations: 20, Tokens: 30000, Pct: 75}},
 		HasData:  true,
 	}))
+}
+
+func TestInsightsTrainingPlanAndRecapShape(t *testing.T) {
+	t.Parallel()
+
+	monday := time.Date(2026, 9, 28, 0, 0, 0, 0, time.UTC)
+	data := TrainingData{
+		Now:     monday.AddDate(0, 0, 2).Add(18 * time.Hour),
+		HasPlan: true,
+		Week: activity.Adherence{Planned: 3, Done: 1, Sentence: "1 of 3 sessions done this week.", Days: []activity.DayStatus{
+			{Weekday: "Monday", Focus: "Push", Date: monday, Done: true},
+			{Weekday: "Wednesday", Focus: "Legs", Date: monday.AddDate(0, 0, 2)},
+			{Weekday: "Friday", Focus: "Pull", Date: monday.AddDate(0, 0, 4)},
+		}},
+		Adherence: activity.Adherence{Planned: 2, Done: 1, Sentence: "1 of 2 planned sessions done."},
+		HasRecap:  true,
+		Recap: lift.Recap{
+			StartedAt: monday.Add(18 * time.Hour), PlanWeekday: "Monday", Focus: "Push",
+			Sentence: "40 minutes, 3 of 3 sets, 720 kg.", Duration: 40 * time.Minute, SetsDone: 3, SetsPrescribed: 3, VolumeKg: 720,
+			Exercises: []lift.RecapExercise{{Name: "Bench press", Sets: 3, VolumeKg: 720, Best: "60 kg × 4", E1RM: 68}},
+		},
+	}
+	rng := insightpages.RangeView{Key: "week", Label: "Last 7 days"}
+	out := projectTraining(insightpages.TrainingView{Range: rng}, nil)
+	out.Plan, out.Recap = projectPlanWeek(data), projectRecap(data)
+	apitest.AssertGolden(t, "insights-training-plan.golden.json", out)
 }

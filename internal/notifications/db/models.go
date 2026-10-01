@@ -35,4 +35,7 @@ type UserNotificationPref struct {
 	TrainingReminders  bool
 	// How often the insights digest is sent: off, daily, weekly or monthly.
 	StatsDigestCadence string
+	BriefingHour       int16
+	EveningReflection  bool
+	EveningHour        int16
 }

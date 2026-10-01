@@ -6,26 +6,76 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/NorthAIProject/north-client/internal/activity/activity"
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/exercises/exercise"
+	"github.com/NorthAIProject/north-client/internal/lifts/lift"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/htmx"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
+	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/workouts/plan"
+	"github.com/NorthAIProject/north-client/web/shared/workoutsummary"
 	workoutpages "github.com/NorthAIProject/north-client/web/workouts"
 
 	"github.com/a-h/templ"
 )
 
 type Handler struct {
-	svc *Service
+	svc    *Service
+	recaps Recaps
 }
 
 func NewHandler(svc *Service) *Handler { return &Handler{svc: svc} }
+
+// Recaps finds the latest finished workout in a window.
+type Recaps interface {
+	LatestRecap(ctx context.Context, user users.User, rg timerange.Range) (lift.Recap, bool, error)
+}
+
+// WithRecaps puts this week's latest workout at the top of the plan page.
+func (h *Handler) WithRecaps(recaps Recaps) *Handler {
+	h.recaps = recaps
+	return h
+}
+
+// planView is a stored plan as the page draws it, with this week laid over
+// it: which days are done, which is next, and the latest recap.
+func (h *Handler) planView(ctx context.Context, user users.User, stored StoredPlan, problems []string) (workoutpages.PlanView, error) {
+	now := time.Now().In(user.Location())
+	progress, err := h.svc.WeekProgress(ctx, user, stored.Plan, now)
+	if err != nil {
+		return workoutpages.PlanView{}, err
+	}
+	view := workoutpages.PlanView{
+		ID:        stored.ID,
+		Plan:      stored.Plan,
+		CreatedAt: stored.CreatedAt,
+		Problems:  problems,
+		Completed: progress.Completed,
+	}
+	if progress.HasNext {
+		view.Next = progress.Next.Weekday
+	}
+	if h.recaps != nil && len(progress.Completed) > 0 {
+		week := activity.WeekStart(now, user.Location())
+		recap, ok, err := h.recaps.LatestRecap(ctx, user, timerange.Between(week, week.AddDate(0, 0, 7)))
+		if err != nil {
+			return workoutpages.PlanView{}, err
+		}
+		if ok {
+			card := workoutsummary.NewRecap("plan-recap", recap, user.Location())
+			view.Recap = &card
+		}
+	}
+	return view, nil
+}
 
 // Routes mounts the training endpoints. Must be behind RequireAuth.
 func (h *Handler) Routes(r chi.Router) {
@@ -362,6 +412,13 @@ func (h *Handler) setStartTime(w http.ResponseWriter, r *http.Request) {
 // The edit created a new plan, so the URL in the address bar now names a
 // superseded one. Pushing the new id means a reload shows what is on screen.
 func (h *Handler) afterEdit(w http.ResponseWriter, r *http.Request, planID uuid.UUID) {
+	// A plain form post — the exercise page's "add to a day" — gets the plan
+	// page itself. The body below is an htmx fragment and would render as a
+	// bare, unstyled page.
+	if !htmx.IsRequest(r) {
+		http.Redirect(w, r, "/app/training/"+planID.String(), http.StatusSeeOther)
+		return
+	}
 	w.Header().Set("HX-Push-Url", "/app/training/"+planID.String())
 	h.renderPlanBody(w, r, planID, http.StatusOK)
 }
@@ -388,6 +445,10 @@ func (h *Handler) afterEditError(w http.ResponseWriter, r *http.Request, user us
 		return
 	}
 
+	if !htmx.IsRequest(r) {
+		http.Redirect(w, r, "/app/training/"+current.ID.String(), http.StatusSeeOther)
+		return
+	}
 	w.Header().Set("HX-Push-Url", "/app/training/"+current.ID.String())
 	h.renderPlanBody(w, r, current.ID, http.StatusConflict)
 }
@@ -407,12 +468,12 @@ func (h *Handler) renderPlanBody(w http.ResponseWriter, r *http.Request, planID 
 		return
 	}
 
-	render(w, r, status, workoutpages.PlanBody(workoutpages.PlanView{
-		ID:        stored.ID,
-		Plan:      stored.Plan,
-		CreatedAt: stored.CreatedAt,
-		Problems:  problems,
-	}))
+	view, err := h.planView(r.Context(), user, stored, problems)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	render(w, r, status, workoutpages.PlanBody(view))
 }
 
 // dayOf loads a plan for display and picks out one day.
@@ -427,11 +488,9 @@ func (h *Handler) dayOf(r *http.Request, target editTarget) (workoutpages.PlanVi
 		return workoutpages.PlanView{}, plan.PlanDay{}, apperr.ErrValidation
 	}
 
-	view := workoutpages.PlanView{
-		ID:        stored.ID,
-		Plan:      stored.Plan,
-		CreatedAt: stored.CreatedAt,
-		Problems:  problems,
+	view, err := h.planView(r.Context(), user, stored, problems)
+	if err != nil {
+		return workoutpages.PlanView{}, plan.PlanDay{}, err
 	}
 	return view, stored.Plan.Days[target.day], nil
 }
@@ -576,12 +635,12 @@ func (h *Handler) showPlan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	render(w, r, http.StatusOK, workoutpages.PlanPage(user, workoutpages.PlanView{
-		ID:        stored.ID,
-		Plan:      stored.Plan,
-		CreatedAt: stored.CreatedAt,
-		Problems:  problems,
-	}))
+	view, err := h.planView(r.Context(), user, stored, problems)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	render(w, r, http.StatusOK, workoutpages.PlanPage(user, view))
 }
 
 func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {

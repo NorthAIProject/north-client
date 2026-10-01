@@ -15,27 +15,27 @@ import (
 )
 
 type fakeActivityTracker struct {
-	completed bool
-	title     string
+	completed []string
 }
 
-func (f *fakeActivityTracker) CompletedToday(ctx context.Context, userID uuid.UUID, loc *time.Location) (bool, string, error) {
-	return f.completed, f.title, nil
+func (f *fakeActivityTracker) CompletedWeekdays(context.Context, uuid.UUID, *time.Location, time.Time) ([]string, error) {
+	return f.completed, nil
 }
 
 func TestContextSource_CompletedAndPending(t *testing.T) {
 	today := time.Now().Weekday().String()
-	plan := workouts.Plan{
-		Name: "Test 3-Day",
-		Days: []workouts.PlanDay{
-			{
-				Weekday: today,
-				Focus:   "Upper A",
-				Exercises: []workouts.Exercise{
-					{Name: "Bench Press", Sets: 3, Reps: "8-10"},
-				},
-			},
-		},
+	// A plan that passes validation, with its first day moved to today and
+	// the others kept off it.
+	plan := goodPlan()
+	plan.Days[0].Weekday, plan.Days[0].Focus = today, "Upper A"
+	others := []string{"Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"}
+	next := 0
+	for i := 1; i < len(plan.Days); i++ {
+		for others[next] == today {
+			next++
+		}
+		plan.Days[i].Weekday = others[next]
+		next++
 	}
 
 	client := &fake.Client{}
@@ -51,7 +51,7 @@ func TestContextSource_CompletedAndPending(t *testing.T) {
 	}
 
 	// 1. When session is pending
-	tracker := &fakeActivityTracker{completed: false}
+	tracker := &fakeActivityTracker{}
 	svc.WithActivity(tracker)
 	source := workouts.NewContextSource(svc)
 
@@ -69,7 +69,7 @@ func TestContextSource_CompletedAndPending(t *testing.T) {
 	}
 
 	// 2. When session is completed
-	tracker.completed = true
+	tracker.completed = []string{today}
 	cCompleted := &coach.Context{User: user}
 	if err := source.Collect(ctx, req, cCompleted); err != nil {
 		t.Fatalf("collect context completed: %v", err)
@@ -77,5 +77,43 @@ func TestContextSource_CompletedAndPending(t *testing.T) {
 
 	if !strings.Contains(cCompleted.WorkoutPlan, "COMPLETED") {
 		t.Errorf("expected WorkoutPlan to report COMPLETED, got:\n%s", cCompleted.WorkoutPlan)
+	}
+}
+
+func TestWeekStatusNamesWhatIsDoneAndWhatIsNext(t *testing.T) {
+	t.Parallel()
+
+	p := workouts.Plan{Days: []workouts.PlanDay{
+		{Weekday: "Monday", Focus: "Push"},
+		{Weekday: "Wednesday", Focus: "Legs"},
+		{Weekday: "Friday", Focus: "Pull"},
+	}}
+	wednesday := time.Date(2026, 9, 30, 18, 0, 0, 0, time.UTC)
+
+	cases := []struct {
+		name     string
+		progress workouts.WeekProgress
+		want     string
+	}{
+		{
+			name:     "today still open",
+			progress: workouts.WeekProgress{Completed: []string{"Monday"}, Next: p.Days[1], HasNext: true},
+			want:     "This week: Monday (Push) COMPLETED. Next: Wednesday (Legs), today, PENDING.",
+		},
+		{
+			name:     "today done",
+			progress: workouts.WeekProgress{Completed: []string{"Monday", "Wednesday"}, Next: p.Days[2], HasNext: true},
+			want:     "This week: Monday (Push) COMPLETED; Wednesday (Legs) COMPLETED. Next: Friday (Pull).",
+		},
+		{
+			name:     "week finished",
+			progress: workouts.WeekProgress{Completed: []string{"Monday", "Wednesday", "Friday"}, Next: p.Days[0], HasNext: true},
+			want:     "This week: Monday (Push) COMPLETED; Wednesday (Legs) COMPLETED; Friday (Pull) COMPLETED. Next: Monday (Push), next week — every session this week is done.",
+		},
+	}
+	for _, tc := range cases {
+		if got := workouts.WeekStatus(p, tc.progress, wednesday); got != tc.want {
+			t.Errorf("%s:\n got %q\nwant %q", tc.name, got, tc.want)
+		}
 	}
 }

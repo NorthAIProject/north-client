@@ -11,14 +11,10 @@ var englishDashboard = map[string]string{
 	"dash.briefing.empty": "No briefing yet this morning.",
 	"dash.briefing.write": "Write today's briefing",
 
-	"dash.kpi.checkin":  "Check-in",
 	"dash.kpi.streak":   "Streak",
 	"dash.kpi.water":    "Water",
 	"dash.kpi.sleep":    "Sleep",
 	"dash.kpi.burned":   "Burned",
-	"dash.kpi.done":     "Done",
-	"dash.kpi.pending":  "Pending",
-	"dash.kpi.edit":     "Edit",
 	"dash.kpi.checkcta": "Check in",
 	"dash.kpi.logwater": "Log water",
 	"dash.kpi.logsleep": "Log sleep",
@@ -36,7 +32,6 @@ var englishDashboard = map[string]string{
 
 	"dash.mood.title": "Mood & energy",
 	"dash.mood.desc":  "The trailing fortnight from your check-ins.",
-	"dash.mood.cta":   "Check in",
 
 	"dash.habits.title":    "Habits",
 	"dash.habits.desc":     "Seven-day adherence across active habits.",
@@ -61,6 +56,27 @@ var englishDashboard = map[string]string{
 	"dash.training.session": "Open session",
 	"dash.training.plan":    "Open plan",
 	"dash.training.build":   "Build a training plan",
+
+	"dash.briefing.title":       "Briefing",
+	"dash.today.title":          "Today",
+	"dash.today.progress":       "%[1]d of %[2]d done",
+	"dash.today.next":           "Next:",
+	"dash.today.alldone":        "That is today done.",
+	"dash.today.alldone.body":   "A two-minute reflection is the best thing left to do.",
+	"dash.today.checkin":        "Check in",
+	"dash.today.checkin.detail": "Mood and energy, thirty seconds.",
+	"dash.today.streak":         "Streak: %[1]s",
+	"dash.today.train":          "Train: %[1]s",
+	"dash.today.train.count":    "%[1]d exercises",
+	"dash.today.water":          "Drink water",
+	"dash.today.sleep":          "Log last night",
+	"dash.today.sleep.none":     "Not logged yet.",
+	"dash.training.empty":       "A plan the coach can follow, not a paragraph of sets.",
+	"dash.training.library":     "Browse exercises",
+	"dash.goals.empty":          "The coach works better once it knows what you are aiming at.",
+	"dash.coach.empty":          "Khepri already has your goals and check-ins when they exist.",
+	"dash.habits.none":          "No habits yet.",
+	"dash.hydration.none":       "No water logged in this window.",
 
 	// Keyed off timerange.Key. Shared with the insights pages, which use the
 	// same selector.
