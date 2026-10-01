@@ -1,6 +1,7 @@
 package activity
 
 import (
+	"fmt"
 	"strings"
 	"time"
 )
@@ -11,10 +12,11 @@ type PlanSlot struct {
 	Focus   string
 }
 
-// DayStatus is one plan day inside a short window.
+// DayStatus is one plan day on one date.
 type DayStatus struct {
 	Weekday string
 	Focus   string
+	Date    time.Time
 	Done    bool
 }
 
@@ -47,143 +49,138 @@ func IsStrength(code string) bool {
 	return strings.HasPrefix(code, "strength_training")
 }
 
-// WeekWindow is the rolling seven local days through today, half-open
-// [start of today-6, start of tomorrow). Each weekday appears once, so a
-// completion drops off when that weekday comes around again.
-func WeekWindow(now time.Time, loc *time.Location) (since, until time.Time) {
+// WeekStart is local midnight on the Monday that begins t's week — the same
+// Monday-to-Monday week the weekly review covers. A plan day is done for
+// this week only; next Monday every day is open again.
+func WeekStart(t time.Time, loc *time.Location) time.Time {
 	if loc == nil {
 		loc = time.UTC
 	}
-	t := now.In(loc)
-	today := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, loc)
-	return today.AddDate(0, 0, -6), today.AddDate(0, 0, 1)
+	day := startOfDay(t, loc)
+	back := (int(day.Weekday()) + 6) % 7
+	return day.AddDate(0, 0, -back)
 }
 
-// CompletedWeekdayNames lists the plan weekdays finished in the rolling week
-// that contains now. A session that names its plan day counts for that day
-// even when it was started on another date. A strength session that names
-// none counts for the weekday it started on. Cancelled and open sessions do
-// not count.
-func CompletedWeekdayNames(sessions []Session, loc *time.Location, now time.Time) []string {
+// completion is one plan occurrence a session finished: that weekday, in the
+// week that starts on week.
+type completion struct {
+	week    time.Time
+	weekday string
+}
+
+// completionOf reports which plan day a session finished. A session that
+// names its plan day counts for that day of the week it started in, so
+// Wednesday's workout done on Tuesday still finishes Wednesday. A strength
+// session that names none counts for the weekday it started on. Cancelled
+// and open sessions finish nothing, and neither does an unnamed run.
+func completionOf(s Session, loc *time.Location) (completion, bool) {
+	if s.Status != StatusCompleted {
+		return completion{}, false
+	}
+	week := WeekStart(s.StartedAt, loc)
+	if weekday, ok := CanonicalWeekday(s.PlanWeekday); ok {
+		return completion{week: week, weekday: weekday}, true
+	}
+	if !IsStrength(s.ActivityCode) {
+		return completion{}, false
+	}
+	return completion{week: week, weekday: s.StartedAt.In(loc).Weekday().String()}, true
+}
+
+func completions(sessions []Session, loc *time.Location) map[completion]bool {
+	out := make(map[completion]bool, len(sessions))
+	for _, s := range sessions {
+		if c, ok := completionOf(s, loc); ok {
+			out[c] = true
+		}
+	}
+	return out
+}
+
+// CompletedWeekdays lists the weekdays finished in the week containing now,
+// Monday first. sessions should cover at least that week.
+func CompletedWeekdays(sessions []Session, loc *time.Location, now time.Time) []string {
 	if loc == nil {
 		loc = time.UTC
 	}
-	since, until := WeekWindow(now, loc)
+	done := completions(sessions, loc)
+	week := WeekStart(now, loc)
 	var names []string
-	seen := map[string]bool{}
-	for day := since; day.Before(until); day = day.AddDate(0, 0, 1) {
-		if !completedOn(sessions, day, loc) {
-			continue
+	for i := 0; i < 7; i++ {
+		name := week.AddDate(0, 0, i).Weekday().String()
+		if done[completion{week: week, weekday: name}] {
+			names = append(names, name)
 		}
-		name := day.Weekday().String()
-		if seen[name] {
-			continue
-		}
-		seen[name] = true
-		names = append(names, name)
 	}
 	return names
 }
 
+// ThisWeek is the plan laid over the Monday–Sunday week containing now: one
+// row per plan day in date order, each done or still open.
+func ThisWeek(slots []PlanSlot, sessions []Session, loc *time.Location, now time.Time) Adherence {
+	if loc == nil {
+		loc = time.UTC
+	}
+	week := WeekStart(now, loc)
+	out := adherence(slots, sessions, loc, week, week.AddDate(0, 0, 7), true)
+	out.Sentence = weekSentence(out.Done, out.Planned)
+	return out
+}
+
 // PlanAdherence counts plan days whose date falls in [since, until) and how
-// many of those were finished. Days is filled only when the window is a week
-// or shorter, one row per plan day in order, because a month of the same
-// weekday is a count rather than a strip.
+// many of those were finished. It is a rate, not a checklist, so Days is
+// left empty; ThisWeek is the checklist.
 func PlanAdherence(slots []PlanSlot, sessions []Session, loc *time.Location, since, until time.Time) Adherence {
 	if loc == nil {
 		loc = time.UTC
 	}
-	since = startOfDay(since, loc)
-	until = startOfDay(until, loc)
+	out := adherence(slots, sessions, loc, startOfDay(since, loc), startOfDay(until, loc), false)
+	if out.Planned > 0 {
+		out.Sentence = fmt.Sprintf("%d of %s done.", out.Done, plural(out.Planned, "planned session"))
+	}
+	return out
+}
+
+func adherence(slots []PlanSlot, sessions []Session, loc *time.Location, since, until time.Time, withDays bool) Adherence {
+	done := completions(sessions, loc)
 	var out Adherence
-	week := until.Sub(since) <= 8*24*time.Hour
 	for day := since; day.Before(until); day = day.AddDate(0, 0, 1) {
 		slot, ok := slotOn(slots, day.Weekday().String())
 		if !ok {
 			continue
 		}
+		finished := done[completion{week: WeekStart(day, loc), weekday: day.Weekday().String()}]
 		out.Planned++
-		done := completedOn(sessions, day, loc)
-		if done {
+		if finished {
 			out.Done++
 		}
-		if week {
-			out.Days = append(out.Days, DayStatus{Weekday: slot.Weekday, Focus: slot.Focus, Done: done})
+		if withDays {
+			out.Days = append(out.Days, DayStatus{Weekday: slot.Weekday, Focus: slot.Focus, Date: day, Done: finished})
 		}
 	}
-	out.Sentence = adherenceSentence(out.Done, out.Planned, week)
 	return out
 }
 
-func adherenceSentence(done, planned int, week bool) string {
-	if planned == 0 {
+func weekSentence(done, planned int) string {
+	switch {
+	case planned == 0:
 		return ""
+	case planned == 1 && done == 1:
+		return "This week's session is done."
+	case done == planned:
+		return fmt.Sprintf("All %s done this week.", plural(planned, "session"))
+	default:
+		return fmt.Sprintf("%d of %s done this week.", done, plural(planned, "session"))
 	}
-	when := "in this window"
-	if week {
-		when = "this week"
-	}
-	noun := "sessions"
-	if planned == 1 {
-		noun = "session"
-	}
-	return strings.TrimSpace(itoa(done) + " of " + itoa(planned) + " " + noun + " done " + when + ".")
-}
-
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	var b [12]byte
-	i := len(b)
-	for n > 0 {
-		i--
-		b[i] = byte('0' + n%10)
-		n /= 10
-	}
-	return string(b[i:])
 }
 
 func slotOn(slots []PlanSlot, weekday string) (PlanSlot, bool) {
 	for _, s := range slots {
-		if strings.EqualFold(s.Weekday, weekday) {
+		if strings.EqualFold(strings.TrimSpace(s.Weekday), weekday) {
 			return s, true
 		}
 	}
 	return PlanSlot{}, false
-}
-
-// completedOn reports whether any session finishes the plan occurrence on day.
-func completedOn(sessions []Session, day time.Time, loc *time.Location) bool {
-	for _, s := range sessions {
-		if completes(s, day, loc) {
-			return true
-		}
-	}
-	return false
-}
-
-// completes reports whether this session is the workout for the plan
-// occurrence on day. The session has to have started within the six days
-// before that occurrence, so last week's Wednesday does not finish this one,
-// and a Wednesday session started on Tuesday still does.
-func completes(s Session, day time.Time, loc *time.Location) bool {
-	if s.Status != StatusCompleted {
-		return false
-	}
-	start := s.StartedAt.In(loc)
-	dayStart := startOfDay(day, loc)
-	if start.Before(dayStart.AddDate(0, 0, -6)) || !start.Before(dayStart.AddDate(0, 0, 1)) {
-		return false
-	}
-	if canonical, ok := CanonicalWeekday(s.PlanWeekday); ok {
-		return strings.EqualFold(canonical, day.Weekday().String())
-	}
-	if !IsStrength(s.ActivityCode) {
-		return false
-	}
-	started := startOfDay(start, loc)
-	return started.Equal(dayStart)
 }
 
 func startOfDay(t time.Time, loc *time.Location) time.Time {

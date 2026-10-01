@@ -49,6 +49,7 @@ func tiles() []layout.Destination {
 type Instruments struct {
 	PlanID          uuid.UUID
 	NextSession     *plan.PlanDay
+	DoneToday       *plan.PlanDay
 	HasMealProgress bool
 	MealProgress    *meals.Progress
 }
@@ -376,6 +377,9 @@ templ upNextCard(data HubData) {
 	@panel() {
 		<div class="p-5">
 			@ui.MonoLabel("Up next")
+			if d := data.Instruments.DoneToday; d != nil {
+				@doneTodayLine(*d)
+			}
 			if s := data.Instruments.NextSession; s != nil {
 				<p class="mt-2 text-lg font-semibold tracking-tight">
 					{ s.Weekday }
@@ -411,6 +415,23 @@ templ upNextCard(data HubData) {
 			}
 		</div>
 	}
+}
+
+// doneTodayLine names the plan day already finished today, so "Up next"
+// pointing at Friday does not read as if today's session were skipped.
+templ doneTodayLine(d plan.PlanDay) {
+	<p class="text-muted-foreground mt-2 flex items-center gap-1.5 text-xs">
+		@icon.CircleCheck(icon.Props{Class: "text-signal size-3.5"})
+		{ CompletedLine(d) }
+	</p>
+}
+
+// CompletedLine reads "Wednesday completed — Push".
+func CompletedLine(d plan.PlanDay) string {
+	if d.Focus == "" {
+		return d.Weekday + " completed"
+	}
+	return d.Weekday + " completed — " + d.Focus
 }
 
 func exerciseCount(n int) string {

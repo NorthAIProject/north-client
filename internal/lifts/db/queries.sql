@@ -28,3 +28,20 @@ WHERE user_id = sqlc.arg(user_id)
   AND (CASE WHEN exercise_slug <> '' THEN exercise_slug ELSE lower(btrim(exercise_name)) END) = ANY(sqlc.arg(keys)::text[])
 ORDER BY performed_at DESC
 LIMIT 500;
+
+-- name: ListSetsForSession :many
+-- The sets logged during one timed workout, in the order they were done.
+SELECT * FROM set_logs
+WHERE user_id = sqlc.arg(user_id) AND activity_session_id = sqlc.arg(activity_session_id)
+ORDER BY performed_at, set_number;
+
+-- name: ListSetsForExercisesBefore :many
+-- Sets of the given exercises in [since, before), newest first: the history
+-- a finished workout is compared against. Keys match lift.KeyFor.
+SELECT * FROM set_logs
+WHERE user_id = sqlc.arg(user_id)
+  AND performed_at >= sqlc.arg(since)
+  AND performed_at < sqlc.arg(before)
+  AND (CASE WHEN exercise_slug <> '' THEN exercise_slug ELSE lower(btrim(exercise_name)) END) = ANY(sqlc.arg(keys)::text[])
+ORDER BY performed_at DESC
+LIMIT 500;

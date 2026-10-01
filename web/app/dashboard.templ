@@ -24,6 +24,7 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
 	"github.com/NorthAIProject/north-client/web/shared/ui/progress"
 	newspages "github.com/NorthAIProject/north-client/web/news"
+	fitnesspages "github.com/NorthAIProject/north-client/web/fitness"
 	nudgepages "github.com/NorthAIProject/north-client/web/nudges"
 )
 
@@ -41,6 +42,7 @@ type DashboardData struct {
 	Goals            []goal.Goal
 	LastThread       *conversations.Conversation
 	NextSession      *plan.PlanDay
+	DoneToday        *plan.PlanDay
 	PlanID           uuid.UUID
 	CheckIns         CheckInSeriesView
 	Habits           HabitsView
@@ -826,6 +828,12 @@ templ trainingPanel(data DashboardData) {
 			}
 		}
 		@card.Content() {
+			if data.DoneToday != nil {
+				<p class="text-muted-foreground mb-2 flex items-center gap-1.5 text-xs">
+					@icon.CircleCheck(icon.Props{Class: "text-signal size-3.5"})
+					{ fitnesspages.CompletedLine(*data.DoneToday) }
+				</p>
+			}
 			if data.NextSession != nil {
 				<p class="text-sm font-medium">{ data.NextSession.Weekday } — { data.NextSession.Focus }</p>
 				<p class="text-muted-foreground mt-1 mb-3 text-sm">

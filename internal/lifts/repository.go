@@ -65,6 +65,25 @@ func (r *Repository) ListForExercises(ctx context.Context, userID uuid.UUID, key
 	return fromRows(rows), nil
 }
 
+// ListForSession is one timed workout's sets, in the order they were done.
+func (r *Repository) ListForSession(ctx context.Context, userID, sessionID uuid.UUID) ([]Set, error) {
+	rows, err := r.q.ListSetsForSession(ctx, liftsdb.ListSetsForSessionParams{UserID: userID, ActivitySessionID: &sessionID})
+	if err != nil {
+		return nil, apperr.Wrap(err, "list sets for session")
+	}
+	return fromRows(rows), nil
+}
+
+// ListForExercisesBefore is the history of these exercises in [since, before),
+// newest first.
+func (r *Repository) ListForExercisesBefore(ctx context.Context, userID uuid.UUID, keys []string, since, before time.Time) ([]Set, error) {
+	rows, err := r.q.ListSetsForExercisesBefore(ctx, liftsdb.ListSetsForExercisesBeforeParams{UserID: userID, Since: since, Before: before, Keys: keys})
+	if err != nil {
+		return nil, apperr.Wrap(err, "list earlier sets for exercises")
+	}
+	return fromRows(rows), nil
+}
+
 func fromRows(rows []liftsdb.SetLog) []Set {
 	out := make([]Set, len(rows))
 	for i, row := range rows {

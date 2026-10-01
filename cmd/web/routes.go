@@ -378,7 +378,8 @@ func routes(
 	supplementSvc := supplements.NewService(supplements.NewRepository(pool))
 	screenTimeSvc := screentime.NewService(screentime.NewRepository(pool))
 	sorenessSvc := soreness.NewService(soreness.NewRepository(pool))
-	liftSvc := lifts.NewService(lifts.NewRepository(pool), exerciseSvc)
+	liftSvc := lifts.NewService(lifts.NewRepository(pool), exerciseSvc).WithRecaps(activitySvc, workoutSvc)
+	workoutHandler.WithRecaps(liftSvc)
 	milestoneSvc := milestones.NewService(milestones.NewRepository(pool))
 
 	careOpts := care.Options{
@@ -544,6 +545,8 @@ func routes(
 		Spend:         spendRepo,
 		Health:        healthSvc,
 		Lifts:         liftSvc,
+		Plan:          workoutSvc,
+		Recaps:        liftSvc,
 		Stats:         statsSvc,
 		SiteURL:       cfg.BaseURL,
 	})
@@ -672,7 +675,8 @@ func routes(
 		Photos: mediaSvc,
 		Facts:  memorySvc,
 	}).WithTraining(workoutSvc).WithSchedules(notificationSvc)
-	coachSvc.WithInbox(coach.InboxFunc(nudgeSvc.RaiseFromUser))
+	coachSvc.WithInbox(coach.InboxFunc(nudgeSvc.RaiseFromUser)).
+		WithAway(coach.InboxFunc(nudgeSvc.RaiseProactive))
 	mediaSvc.WithOnReady(func(ctx context.Context, userID, analysisID uuid.UUID) {
 		_ = nudgeSvc.Note(ctx, userID, nudges.KindFormReady, analysisID.String(),
 			"Your form check is ready",
