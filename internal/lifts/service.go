@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
 
@@ -92,7 +93,7 @@ func (s *Service) Log(ctx context.Context, user users.User, in LogInput) (Set, e
 		ExerciseSlug:      strings.TrimSpace(in.ExerciseSlug),
 		ExerciseName:      name,
 		SetNumber:         in.SetNumber,
-		WeightKg:          lift.Round(in.WeightKg),
+		WeightKg:          util.RoundHalfUpToScale(in.WeightKg, 1),
 		Reps:              in.Reps,
 		PerformedAt:       at,
 	})
@@ -157,7 +158,7 @@ func (st Stats) VolumeKg() float64 {
 	for _, s := range st.Sets {
 		total += s.Volume()
 	}
-	return lift.Round(total)
+	return util.RoundHalfUpToScale(total, 1)
 }
 
 func (s *Service) Stats(ctx context.Context, user users.User, rg timerange.Range) (Stats, error) {
@@ -193,7 +194,7 @@ func (s *Service) Stats(ctx context.Context, user users.User, rg timerange.Range
 	for _, set := range prior {
 		st.PriorVolumeKg += set.Volume()
 	}
-	st.PriorVolumeKg = lift.Round(st.PriorVolumeKg)
+	st.PriorVolumeKg = util.RoundHalfUpToScale(st.PriorVolumeKg, 1)
 
 	muscles, err := s.muscleSets(ctx, st.Sets)
 	if err != nil {

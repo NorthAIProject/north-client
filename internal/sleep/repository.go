@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -34,9 +35,11 @@ func (r *Repository) Upsert(ctx context.Context, userID uuid.UUID, date time.Tim
 		LocalDate:       toDate(date),
 		DurationMinutes: int32(in.DurationMinutes),
 		Quality:         quality,
-		Bedtime:         nilIfEmpty(in.Bedtime),
-		WakeTime:        nilIfEmpty(in.WakeTime),
-		Notes:           in.Notes,
+		// The columns are nullable and CHECK-constrained to "HH:MM", so an empty
+		// string has to become NULL rather than fail the constraint.
+		Bedtime:  util.StrZeroPtr(in.Bedtime),
+		WakeTime: util.StrZeroPtr(in.WakeTime),
+		Notes:    in.Notes,
 	})
 	if err != nil {
 		return Log{}, apperr.Wrap(err, "upsert sleep log")
@@ -120,15 +123,6 @@ func fromDB(row sleepdb.SleepLog) Log {
 		l.WakeTime = *row.WakeTime
 	}
 	return l
-}
-
-// The columns are nullable and CHECK-constrained to "HH:MM", so an empty
-// string has to become NULL rather than fail the constraint.
-func nilIfEmpty(s string) *string {
-	if s == "" {
-		return nil
-	}
-	return &s
 }
 
 // Date conversion is duplicated per slice rather than shared, same as

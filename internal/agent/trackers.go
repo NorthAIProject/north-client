@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/ai"
@@ -313,7 +314,7 @@ func logLiftSet(svc *lifts.Service, userSvc *users.Service) Capability {
 				}
 			}
 			return fmt.Sprintf("Logged %d set(s) of %s: %.1f kg × %d (est. 1RM %.1f kg).",
-				count, last.ExerciseName, last.WeightKg, last.Reps, lift.Round(last.E1RM())), nil
+				count, last.ExerciseName, last.WeightKg, last.Reps, util.RoundHalfUpToScale(last.E1RM(), 1)), nil
 		},
 	}
 }

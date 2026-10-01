@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/lifts/lift"
@@ -21,7 +22,7 @@ func TestE1RM(t *testing.T) {
 	if got := lift.E1RM(100, 1); got != 100 {
 		t.Errorf("single = %v, want 100", got)
 	}
-	if got := lift.Round(lift.E1RM(100, 5)); got != 116.7 {
+	if got := util.RoundHalfUpToScale(lift.E1RM(100, 5), 1); got != 116.7 {
 		t.Errorf("100x5 = %v, want 116.7", got)
 	}
 }

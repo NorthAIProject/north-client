@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
+
 	"github.com/NorthAIProject/north-client/internal/fitness/strava"
 	"github.com/NorthAIProject/north-client/internal/shared/viz"
 )
@@ -182,7 +184,7 @@ func sportColorVar(f strava.SportFamily) string {
 func round1s(in []float64) []float64 {
 	out := make([]float64, len(in))
 	for i, v := range in {
-		out[i] = float64(int(v*10+0.5)) / 10
+		out[i] = util.RoundHalfUpToScale(v, 1)
 	}
 	return out
 }
