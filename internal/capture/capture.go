@@ -32,6 +32,10 @@ type (
 	Draft   = captured.Draft
 	Outcome = captured.Outcome
 	Receipt = captured.Receipt
+
+	FoodDraft = captured.FoodDraft
+	FoodLine  = captured.FoodLine
+	Candidate = captured.Candidate
 )
 
 const (
