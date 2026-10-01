@@ -23,6 +23,9 @@ const (
 	// KindEveningReflection is the nightly "how did today go", opted into
 	// separately from the accountability nudges.
 	KindEveningReflection = "evening_reflection"
+	// KindCrewCheckIn is the evening note that crewmates have checked in
+	// and you have not.
+	KindCrewCheckIn = "crew_checkin"
 )
 
 // Nudge is one scheduled accountability note for a person.

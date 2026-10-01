@@ -113,7 +113,20 @@ type Service struct {
 	week      weekSource
 	training  trainingSource
 	schedules schedules
+	crews     crewSource
 	now       func() time.Time
+}
+
+// crewSource names the crewmates who checked in today. crews.Service
+// satisfies it.
+type crewSource interface {
+	CheckedInCrewmates(ctx context.Context, user users.User, now time.Time) ([]string, error)
+}
+
+// WithCrews turns on the evening crew note.
+func (s *Service) WithCrews(c crewSource) *Service {
+	s.crews = c
+	return s
 }
 
 func NewService(repo *Repository, accounts accounts, checkins checkinDays, goals activeGoals) *Service {
@@ -455,6 +468,14 @@ func (s *Service) Evaluate(ctx context.Context, user users.User) (int, error) {
 		created += n
 	}
 
+	if prefs.AllowsNudge(KindCrewCheckIn) {
+		n, err := s.evalCrewCheckIn(ctx, user, today, now)
+		if err != nil {
+			return created, err
+		}
+		created += n
+	}
+
 	if prefs.AllowsNudge(KindEveningReflection) {
 		n, err := s.evalEveningReflection(ctx, user, prefs, today, now)
 		if err != nil {
@@ -491,6 +512,16 @@ func (s *Service) evalEveningReflection(ctx context.Context, user users.User, pr
 			return 0, err
 		}
 		checkedIn = ok && daysBetween(last, today) == 0
+		// The crew note already asks for this check-in, by name.
+		if !checkedIn && s.crews != nil && prefs.AllowsNudge(KindCrewCheckIn) && hour >= streakAtRiskHour {
+			mates, err := s.crews.CheckedInCrewmates(ctx, user, now)
+			if err != nil {
+				return 0, err
+			}
+			if len(mates) > 0 {
+				return 0, nil
+			}
+		}
 		if !checkedIn && prefs.AllowsNudge(KindStreakAtRisk) && hour >= streakAtRiskHour {
 			streak, err := s.checkins.StreakAt(ctx, user, now)
 			if err != nil {
@@ -710,4 +741,54 @@ func daysBetween(a, b time.Time) int {
 	aa := calendarDay(a)
 	bb := calendarDay(b)
 	return int(bb.Sub(aa).Hours() / 24)
+}
+
+// evalCrewCheckIn tells somebody, once an evening, that people in their crew
+// checked in today and they have not. It stands aside for the streak
+// warning, which asks for the same check-in more urgently.
+func (s *Service) evalCrewCheckIn(ctx context.Context, user users.User, today, now time.Time) (int, error) {
+	if s.crews == nil || s.checkins == nil || now.In(user.Location()).Hour() < streakAtRiskHour {
+		return 0, nil
+	}
+	last, ok, err := s.checkins.LatestLocalDate(ctx, user.ID)
+	if err != nil {
+		return 0, err
+	}
+	if ok && daysBetween(last, today) == 0 {
+		return 0, nil
+	}
+	streak, err := s.checkins.StreakAt(ctx, user, now)
+	if err != nil {
+		return 0, err
+	}
+	if streak >= streakAtRiskMin {
+		return 0, nil
+	}
+	names, err := s.crews.CheckedInCrewmates(ctx, user, now)
+	if err != nil || len(names) == 0 {
+		return 0, err
+	}
+	_, inserted, err := s.Raise(ctx, user, Draft{
+		Kind:      KindCrewCheckIn,
+		DedupeKey: today.Format("2006-01-02"),
+		Title:     crewTitle(names),
+		Body:      "Your turn: two taps.",
+		Href:      "/app/check-ins",
+	})
+	if err != nil || !inserted {
+		return 0, err
+	}
+	return 1, nil
+}
+
+// crewTitle names up to two people and counts the rest.
+func crewTitle(names []string) string {
+	switch len(names) {
+	case 1:
+		return names[0] + " checked in today"
+	case 2:
+		return names[0] + " and " + names[1] + " checked in today"
+	default:
+		return fmt.Sprintf("%s, %s and %d more checked in today", names[0], names[1], len(names)-2)
+	}
 }

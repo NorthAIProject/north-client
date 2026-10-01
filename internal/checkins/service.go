@@ -34,9 +34,21 @@ type SyncHook interface {
 }
 
 type Service struct {
-	repo  *Repository
-	goals GoalLookup
-	sync  SyncHook
+	repo         *Repository
+	goals        GoalLookup
+	sync         SyncHook
+	achievements Achievements
+}
+
+// Achievements records check-in streaks worth showing friends.
+// achievements.Service satisfies it; it ignores lengths that are not marks.
+type Achievements interface {
+	StreakReached(ctx context.Context, userID uuid.UUID, days int, localDate string, at time.Time)
+}
+
+func (s *Service) WithAchievements(a Achievements) *Service {
+	s.achievements = a
+	return s
 }
 
 func NewService(repo *Repository, goals GoalLookup) *Service {
@@ -115,6 +127,12 @@ func (s *Service) UpsertToday(ctx context.Context, user users.User, in Input) (C
 	}
 	if s.sync != nil {
 		_ = s.sync.OnCheckInSaved(ctx, user.ID)
+	}
+	if s.achievements != nil {
+		now := time.Now()
+		if streak, streakErr := s.StreakAt(ctx, user, now); streakErr == nil {
+			s.achievements.StreakReached(ctx, user.ID, streak, LocalDate(user, now).Format("2006-01-02"), now)
+		}
 	}
 	return checkIn, nil
 }
