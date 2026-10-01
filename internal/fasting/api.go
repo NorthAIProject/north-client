@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
@@ -77,8 +78,7 @@ func (a *API) respond(w http.ResponseWriter, r *http.Request, status int) {
 	}
 	out := FastingView{}
 	if ok {
-		v := ProjectFast(current, time.Now())
-		out.Current = &v
+		out.Current = util.Ptr(ProjectFast(current, time.Now()))
 	}
 	httpx.WriteJSON(w, status, out)
 }

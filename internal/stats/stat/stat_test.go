@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
+
 	"github.com/NorthAIProject/north-client/internal/stats/stat"
 )
 
@@ -90,8 +92,6 @@ func TestEatingAdherenceAndSlots(t *testing.T) {
 	}
 }
 
-func intp(v int) *int { return &v }
-
 func TestPatternsNeedEnoughDaysAndRankByStrength(t *testing.T) {
 	t.Parallel()
 	var days []stat.DayFacts
@@ -103,12 +103,12 @@ func TestPatternsNeedEnoughDaysAndRankByStrength(t *testing.T) {
 		if (d-1)%2 == 0 && d > 1 {
 			sleep = 420
 		}
-		f.SleepMinutes = intp(sleep)
+		f.SleepMinutes = util.Ptr(sleep)
 		mood := 3
 		if f.Trained {
 			mood = 4
 		}
-		f.Mood = intp(mood)
+		f.Mood = util.Ptr(mood)
 		days = append(days, f)
 	}
 	found := stat.Patterns(days)

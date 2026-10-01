@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -39,8 +40,7 @@ type NewMemory struct {
 func (r *Repository) Create(ctx context.Context, userID uuid.UUID, m NewMemory) (Memory, error) {
 	var conf *float32
 	if m.Confidence != nil {
-		v := float32(*m.Confidence)
-		conf = &v
+		conf = util.Ptr(float32(*m.Confidence))
 	}
 	row, err := r.q.CreateMemory(ctx, memoriesdb.CreateMemoryParams{
 		UserID:               userID,
@@ -344,8 +344,7 @@ func fromDB(row memoriesdb.UserMemory) Memory {
 		UpdatedAt:            row.UpdatedAt,
 	}
 	if row.Confidence != nil {
-		c := float64(*row.Confidence)
-		m.Confidence = &c
+		m.Confidence = util.Ptr(float64(*row.Confidence))
 	}
 	return m
 }

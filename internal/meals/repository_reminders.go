@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
@@ -88,8 +89,7 @@ func reminderFromDB(row mealsdb.MealReminder) Reminder {
 		CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 	}
 	if row.LastFiredLocalDate.Valid {
-		t := row.LastFiredLocalDate.Time
-		rem.LastFiredLocalDate = &t
+		rem.LastFiredLocalDate = util.Ptr(row.LastFiredLocalDate.Time)
 	}
 	return rem
 }

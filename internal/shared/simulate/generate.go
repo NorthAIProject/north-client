@@ -5,6 +5,8 @@ import (
 	"math/rand/v2"
 	"slices"
 	"time"
+
+	"github.com/FACorreiaa/go-utils/pkg/util"
 )
 
 // Nudge kinds this package raises.
@@ -219,8 +221,7 @@ func generatePerson(persona Persona, index, weeks int, now time.Time, src *rand.
 
 		// Sleep: the device number is the truth, the log is what they typed.
 		if persona.WearsDevice {
-			minutes := persona.SleepMinutes + src.IntN(61) - 30
-			day.DeviceSleepMinutes = &minutes
+			day.DeviceSleepMinutes = util.Ptr(persona.SleepMinutes + src.IntN(61) - 30)
 			day.Steps = 4000 + src.IntN(9000)
 			day.RestingHR = 52 + src.IntN(14)
 		}
@@ -236,8 +237,7 @@ func generatePerson(persona Persona, index, weeks int, now time.Time, src *rand.
 			logged := base + persona.SleepOverReport + src.IntN(21) - 10
 			day.Sleep = &SleepLog{DurationMinutes: logged}
 			if src.Float64() < 0.4 {
-				q := qualityFor(persona, week, src)
-				day.Sleep.Quality = &q
+				day.Sleep.Quality = util.Ptr(qualityFor(persona, week, src))
 			}
 		}
 

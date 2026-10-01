@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
@@ -84,8 +85,7 @@ func projectFeed(items []Item) Feed {
 		})
 	}
 	if len(items) == feedPage {
-		last := items[len(items)-1].OccurredAt
-		out.Before = &last
+		out.Before = util.Ptr(items[len(items)-1].OccurredAt)
 	}
 	return out
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -26,8 +27,7 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 func (r *Repository) Create(ctx context.Context, userID uuid.UUID, name string, last time.Time, interval *int) (Tracker, error) {
 	var iv *int16
 	if interval != nil {
-		v := int16(*interval)
-		iv = &v
+		iv = util.Ptr(int16(*interval))
 	}
 	row, err := r.q.CreateMilestone(ctx, milestonesdb.CreateMilestoneParams{
 		UserID: userID, Name: name, LastDoneOn: pgtype.Date{Time: last, Valid: true}, IntervalMonths: iv,
@@ -79,8 +79,7 @@ func (r *Repository) List(ctx context.Context, userID uuid.UUID) ([]Tracker, err
 func fromDB(row milestonesdb.MilestoneTracker) Tracker {
 	t := Tracker{ID: row.ID, Name: row.Name, LastDoneOn: row.LastDoneOn.Time}
 	if row.IntervalMonths != nil {
-		v := int(*row.IntervalMonths)
-		t.IntervalMonths = &v
+		t.IntervalMonths = util.Ptr(int(*row.IntervalMonths))
 	}
 	return t
 }

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
 
@@ -398,8 +399,7 @@ func (s *Service) Patterns(ctx context.Context, user users.User, rg timerange.Ra
 
 	for _, n := range nights {
 		if f := at(n.Date); f != nil {
-			m := n.Minutes
-			f.SleepMinutes = &m
+			f.SleepMinutes = util.Ptr(n.Minutes)
 		}
 	}
 	for _, e := range food {
@@ -422,8 +422,7 @@ func (s *Service) Patterns(ctx context.Context, user users.User, rg timerange.Ra
 	}
 	for _, sc := range screens {
 		if f := at(sc.LocalDate); f != nil {
-			m := sc.Minutes
-			f.ScreenMin = &m
+			f.ScreenMin = util.Ptr(sc.Minutes)
 		}
 	}
 	for _, c := range checks {

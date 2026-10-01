@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
@@ -531,8 +532,7 @@ func (w *simWriter) writeNudges(ctx context.Context, userID uuid.UUID, day simul
 		if n.Read {
 			// An hour later, which is what makes a response-latency profile
 			// possible to compute at all.
-			t := at.Add(time.Hour)
-			readAt = &t
+			readAt = util.Ptr(at.Add(time.Hour))
 		}
 
 		if _, err := w.pool.Exec(ctx,
