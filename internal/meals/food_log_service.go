@@ -9,12 +9,24 @@ import (
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
+// SyncHook is told when food is logged, so meal reminders already sent to a
+// chat or the bell can be marked done.
+type SyncHook interface {
+	OnMealLogged(ctx context.Context, userID uuid.UUID) error
+}
+
 type FoodLogService struct {
 	repo *Repository
+	sync SyncHook
 }
 
 func NewFoodLogService(repo *Repository) *FoodLogService {
 	return &FoodLogService{repo: repo}
+}
+
+func (s *FoodLogService) WithSync(hook SyncHook) *FoodLogService {
+	s.sync = hook
+	return s
 }
 
 type LogMealInput struct {
@@ -40,7 +52,12 @@ func (s *FoodLogService) LogMeal(ctx context.Context, userID uuid.UUID, in LogMe
 		return FoodLogEntry{}, err
 	}
 
-	return s.repo.InsertFoodLog(ctx, userID, in.LogDate, &meal.ID, nil, nil, meal.Name, meal.TotalMacros)
+	entry, err := s.repo.InsertFoodLog(ctx, userID, in.LogDate, &meal.ID, nil, nil, meal.Name, meal.TotalMacros)
+	if err != nil {
+		return FoodLogEntry{}, err
+	}
+	s.logged(ctx, userID)
+	return entry, nil
 }
 
 // LogIngredient records an ad-hoc ingredient + quantity not tied to any meal
@@ -60,7 +77,20 @@ func (s *FoodLogService) LogIngredient(ctx context.Context, userID uuid.UUID, in
 
 	macros := ingredient.MacrosFor(in.QuantityGrams)
 	qty := in.QuantityGrams
-	return s.repo.InsertFoodLog(ctx, userID, in.LogDate, nil, &ingredient.ID, &qty, ingredient.Name, macros)
+	entry, err := s.repo.InsertFoodLog(ctx, userID, in.LogDate, nil, &ingredient.ID, &qty, ingredient.Name, macros)
+	if err != nil {
+		return FoodLogEntry{}, err
+	}
+	s.logged(ctx, userID)
+	return entry, nil
+}
+
+// logged tells the sync hook. The meal is saved either way; the hook logs its
+// own failures, so there is nothing for the caller to do with one.
+func (s *FoodLogService) logged(ctx context.Context, userID uuid.UUID) {
+	if s.sync != nil {
+		_ = s.sync.OnMealLogged(ctx, userID)
+	}
 }
 
 func (s *FoodLogService) Delete(ctx context.Context, id, userID uuid.UUID) error {

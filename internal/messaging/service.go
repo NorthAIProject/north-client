@@ -459,7 +459,7 @@ func (s *Service) NotifyTaggedMessage(ctx context.Context, userID uuid.UUID, kin
 		}
 
 		if messageID > 0 && kind != "" && dedupeKey != "" {
-			_ = s.links.SaveOutboundRef(ctx, OutboundRef{
+			saveErr := s.links.SaveOutboundRef(ctx, OutboundRef{
 				UserID:     userID,
 				Platform:   link.Platform,
 				ExternalID: link.ExternalID,
@@ -467,6 +467,14 @@ func (s *Service) NotifyTaggedMessage(ctx context.Context, userID uuid.UUID, kin
 				Kind:       kind,
 				DedupeKey:  dedupeKey,
 			})
+			if saveErr != nil {
+				// Sent, but it can no longer be edited when the event resolves.
+				s.log.Warn("messaging could not keep sent message reference",
+					"error", saveErr,
+					"user_id", userID,
+					"kind", kind,
+					"dedupe_key", dedupeKey)
+			}
 		}
 	}
 	return nil
@@ -486,8 +494,14 @@ func (s *Service) ResolveTagged(ctx context.Context, userID uuid.UUID, kind, ded
 	}
 
 	ref, err := s.links.GetOutboundRef(ctx, userID, s.transport.Platform(), kind, dedupeKey)
-	if err != nil {
+	if errors.Is(err, apperr.ErrNotFound) {
+		// Sent before references were kept, never sent to a chat, or already
+		// resolved: nothing to edit.
+		s.log.Debug("messaging has no message to resolve", "user_id", userID, "kind", kind, "dedupe_key", dedupeKey)
 		return nil
+	}
+	if err != nil {
+		return apperr.Wrap(err, "look up message to resolve")
 	}
 
 	if updatedText != "" {
@@ -497,6 +511,8 @@ func (s *Service) ResolveTagged(ctx context.Context, userID uuid.UUID, kind, ded
 				"user_id", userID,
 				"kind", kind,
 				"dedupe_key", dedupeKey)
+		} else {
+			s.log.Info("sync resolved message", "user_id", userID, "kind", kind, "dedupe_key", dedupeKey)
 		}
 	}
 
