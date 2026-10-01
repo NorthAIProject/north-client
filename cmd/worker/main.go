@@ -35,6 +35,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/coach"
 	"github.com/NorthAIProject/north-client/internal/config"
 	"github.com/NorthAIProject/north-client/internal/conversations"
+	"github.com/NorthAIProject/north-client/internal/crews"
 	"github.com/NorthAIProject/north-client/internal/documents"
 	"github.com/NorthAIProject/north-client/internal/exercises"
 	"github.com/NorthAIProject/north-client/internal/fasting"
@@ -414,7 +415,9 @@ func run() error {
 			Facts:  memoryExtract.Memories,
 		}).
 		WithTraining(workoutSvc).
-		WithSchedules(notificationSvc)
+		WithSchedules(notificationSvc).
+		// The evening note that crewmates checked in and you have not.
+		WithCrews(crews.NewService(pool, crews.CheckInsFrom(checkinSvc), crews.WorkoutsFrom(activitySvc)))
 	worker.Register(jobs.KindSweepNudges, nudges.NewSweeper(nudgeSvc, log).HandleSweep)
 
 	mediaSvc.WithOnReady(func(ctx context.Context, userID, analysisID uuid.UUID) {

@@ -13,6 +13,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/care"
 	"github.com/NorthAIProject/north-client/internal/checkins"
 	"github.com/NorthAIProject/north-client/internal/coach"
+	"github.com/NorthAIProject/north-client/internal/crews"
 	"github.com/NorthAIProject/north-client/internal/dashboard"
 	"github.com/NorthAIProject/north-client/internal/day"
 	"github.com/NorthAIProject/north-client/internal/decisions"
@@ -131,6 +132,7 @@ func mountJSON(r chi.Router, sessions auth.SessionResolver, apis apiSet) {
 		apis.news.Routes(r)
 		apis.social.Routes(r)
 		apis.achievements.Routes(r)
+		apis.crews.Routes(r)
 	})
 }
 
@@ -175,4 +177,5 @@ type apiSet struct {
 	news         *news.API
 	social       *social.API
 	achievements *achievements.API
+	crews        *crews.API
 }
