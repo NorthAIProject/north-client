@@ -3361,6 +3361,115 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '422':
           $ref: '#/components/responses/ValidationError'
+  /inbox:
+    get:
+      operationId: listInbox
+      summary: What is waiting in the capture inbox, newest first
+      tags: [inbox]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Inbox'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: addToInbox
+      summary: Save something without deciding where it goes
+      description: >-
+        Saved at once; the coach suggests a home in the background, so a fresh
+        item has no suggestion yet.
+      tags: [inbox]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text:
+                  type: string
+                  description: 1-4000 characters.
+                source:
+                  type: string
+                  enum: [app, share, shortcut, web]
+                  description: Where it was saved from; app when absent.
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InboxItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /inbox/{itemID}/file:
+    parameters:
+      - name: itemID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: fileInboxItem
+      summary: File an item where you choose
+      tags: [inbox]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [destination]
+              properties:
+                destination:
+                  type: string
+                  enum: [goal_note, knowledge, journal]
+                goalId:
+                  type: string
+                  format: uuid
+                  description: Required for goal_note.
+                title:
+                  type: string
+                  description: Knowledge note title; empty uses the start of the text.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InboxItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /inbox/{itemID}/dismiss:
+    parameters:
+      - name: itemID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: dismissInboxItem
+      summary: Drop an item without filing it
+      tags: [inbox]
+      responses:
+        '204':
+          description: Dismissed
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /crews:
     get:
       operationId: listCrews
@@ -4959,6 +5068,51 @@ components:
               priority:
                 type: integer
                 description: 1 first; 0 is unranked.
+    Inbox:
+      type: object
+      required: [items, open]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/InboxItem'
+        open:
+          type: integer
+          description: How many are waiting, which can be more than items lists.
+    InboxItem:
+      type: object
+      required: [id, text, source, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        text:
+          type: string
+        source:
+          type: string
+          enum: [app, share, shortcut, web]
+        suggestion:
+          $ref: '#/components/schemas/InboxSuggestion'
+        createdAt:
+          type: string
+          format: date-time
+    InboxSuggestion:
+      type: object
+      required: [destination, why]
+      properties:
+        destination:
+          type: string
+          enum: [goal_note, knowledge, journal]
+        goalId:
+          type: string
+          format: uuid
+        goalTitle:
+          type: string
+        title:
+          type: string
+          description: A suggested knowledge-note title.
+        why:
+          type: string
     CrewList:
       type: object
       required: [crews]

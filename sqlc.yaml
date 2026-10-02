@@ -354,6 +354,16 @@ sql:
 
   - engine: postgresql
     schema: migrations
+    queries: internal/inbox/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: inboxdb
+        out: internal/inbox/db
+        overrides: *overrides
+
+  - engine: postgresql
+    schema: migrations
     queries: internal/social/db/queries.sql
     gen:
       go:

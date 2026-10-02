@@ -399,6 +399,12 @@ func Destinations() []Destination {
 		},
 		// System
 		{
+			Key: "nav.inbox", Label: "Inbox", Href: "/app/inbox", Icon: "inbox", Group: GroupSystem,
+			Description: "Things saved to sort later, with the coach suggesting where each goes.",
+			Keywords:    []string{"capture", "save", "share", "later", "triage", "notes"},
+			Nav:         NavPlacement{Show: true},
+		},
+		{
 			Key: "nav.knowledge", Label: "Knowledge", Href: "/app/knowledge", Icon: "book-open", Group: GroupSystem,
 			Description: "Documents and notes North can draw on.",
 			Keywords:    []string{"documents", "files", "pdf", "notes", "upload", "library"},
