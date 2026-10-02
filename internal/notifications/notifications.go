@@ -82,7 +82,7 @@ func (p Prefs) AllowsNudge(kind string) bool {
 		// The same switch as the weekly report: both are "do the week with me".
 		return p.WeeklyReportAuto
 	case "first_week_check", "first_week_evidence", "first_week_review",
-		"form_ready", "coach_reply", "briefing_ready",
+		"form_ready", "coach_reply", "briefing_ready", "decision_revisit",
 		"photo_ask", "photo_reminder":
 		return p.CoachActivity
 	default:

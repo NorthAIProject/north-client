@@ -153,6 +153,7 @@ func formFrom(r *http.Request) decisionpages.DecisionForm {
 		Options:   strings.TrimSpace(r.PostFormValue("options")),
 		Rationale: strings.TrimSpace(r.PostFormValue("rationale")),
 		Outcome:   strings.TrimSpace(r.PostFormValue("outcome")),
+		Held:      strings.TrimSpace(r.PostFormValue("held")),
 	}
 }
 
@@ -162,6 +163,7 @@ func inputFrom(form decisionpages.DecisionForm) Input {
 		Options:   form.Options,
 		Rationale: form.Rationale,
 		Outcome:   form.Outcome,
+		Held:      form.Held,
 	}
 }
 
