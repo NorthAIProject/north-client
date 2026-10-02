@@ -129,6 +129,24 @@ claims for exactly this. They are **not** sign-in: disconnecting a provider must
 never affect someone's ability to log in, which is why Strava has its own table
 rather than a row in `auth_identities`.
 
+## Finding friends
+
+`internal/social` owns how accounts find each other, and every way in is
+opt-in through a handle: no handle, not findable.
+
+- **Contacts** match by hash only (`POST /friends/match`): SHA-256 of
+  lower-cased emails and of E.164 phone numbers. Nothing is stored.
+- **Phone numbers** live on `users` (`phone_e164`, `phone_verified_at`), set
+  only after a texted code (`internal/social/phone`, Twilio Verify behind a
+  `Verifier` interface). Unique: the latest account to prove a number takes
+  it. `phone_verifications` is both the pending code and the SMS rate limit.
+- **Facebook** is a link, not a sign-in. It is an `auth_identities` row with
+  provider `facebook`, which bends the Strava rule above on purpose: there is
+  no Facebook sign-in, so the row can never be how somebody logs in, and
+  removing it can never lock anybody out. The token is used once, in the
+  callback, and dropped; `facebook_imports` keeps the Khepri accounts found
+  for an hour so the page and the app can show them.
+
 ## Device metrics and My Day
 
 `internal/health` stores whatever a phone or bridge app sends as

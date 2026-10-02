@@ -86,6 +86,16 @@ type Config struct {
 	StravaClientID     string
 	StravaClientSecret string
 
+	// Twilio Verify texts the codes that prove a phone number is somebody's.
+	// Optional: without it production offers no phone number at all, and
+	// development uses a stand-in that accepts 000000.
+	Twilio TwilioConfig
+
+	// Facebook is the Meta app behind "Connect Facebook" on the Friends page.
+	// Optional, like Strava's: both empty hides the feature everywhere.
+	FacebookAppID     string
+	FacebookAppSecret string
+
 	// WebAuthn relying party. RPID defaults to the host of BaseURL when empty.
 	WebAuthnRPID        string
 	WebAuthnDisplayName string
@@ -416,6 +426,19 @@ type TelegramConfig struct {
 	BotUsername string
 }
 
+// TwilioConfig is one Twilio Verify service. All three are needed; the
+// service holds the code length, expiry and the message template.
+type TwilioConfig struct {
+	AccountSID       string
+	AuthToken        string
+	VerifyServiceSID string
+}
+
+// Enabled reports whether codes can really be texted.
+func (c TwilioConfig) Enabled() bool {
+	return c.AccountSID != "" && c.AuthToken != "" && c.VerifyServiceSID != ""
+}
+
 // Enabled reports whether the messaging adapter should be built.
 func (c TelegramConfig) Enabled() bool { return c.BotToken != "" }
 
@@ -542,6 +565,15 @@ func Load() (*Config, error) {
 
 		StravaClientID:     strings.TrimSpace(os.Getenv("STRAVA_CLIENT_ID")),
 		StravaClientSecret: strings.TrimSpace(os.Getenv("STRAVA_CLIENT_SECRET")),
+
+		Twilio: TwilioConfig{
+			AccountSID:       strings.TrimSpace(os.Getenv("TWILIO_ACCOUNT_SID")),
+			AuthToken:        strings.TrimSpace(os.Getenv("TWILIO_AUTH_TOKEN")),
+			VerifyServiceSID: strings.TrimSpace(os.Getenv("TWILIO_VERIFY_SERVICE_SID")),
+		},
+
+		FacebookAppID:     strings.TrimSpace(os.Getenv("FACEBOOK_APP_ID")),
+		FacebookAppSecret: strings.TrimSpace(os.Getenv("FACEBOOK_APP_SECRET")),
 
 		MCPListenAddr:     optional("MCP_LISTEN_ADDR", "127.0.0.1:8093"),
 		MetricsListenAddr: optional("METRICS_LISTEN_ADDR", "127.0.0.1:9090"),

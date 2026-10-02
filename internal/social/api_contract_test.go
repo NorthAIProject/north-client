@@ -36,4 +36,12 @@ func TestSocialShapes(t *testing.T) {
 	apitest.AssertGolden(t, "contacts-match.golden.json", projectMatches([]Connection{
 		{Person: ana, Status: ""}, {Person: Person{ID: joao.ID, DisplayName: "João", Handle: "joao"}, Status: StatusPending},
 	}))
+	apitest.AssertGolden(t, "phone.golden.json", projectPhone(Phone{Number: "+351912345678", VerifiedAt: since}, true))
+	apitest.AssertGolden(t, "phone-pending.golden.json", projectPhone(Phone{Pending: "+447911123456"}, true))
+	apitest.AssertGolden(t, "facebook-friends.golden.json", projectFacebook(FacebookFriends{
+		Connected: true, ImportedAt: since,
+		People: []Connection{{Person: ana, Status: ""}, {Person: Person{ID: joao.ID, DisplayName: "João", Handle: "joao"}, Status: StatusAccepted}},
+	}, true))
+	apitest.AssertGolden(t, "facebook-unconfigured.golden.json", projectFacebook(FacebookFriends{People: []Connection{}}, false))
+	apitest.AssertGolden(t, "facebook-connect.golden.json", FacebookConnect{AuthorizeURL: "https://www.facebook.com/v21.0/dialog/oauth?client_id=123&state=abc"})
 }

@@ -89,3 +89,24 @@ type Profile struct {
 	Following    int
 	Relationship Relationship
 }
+
+// Phone is an account's own number, as only its owner ever sees it.
+type Phone struct {
+	// Number is E.164, empty until one is verified.
+	Number     string
+	VerifiedAt time.Time
+	// Pending is the number a code was just texted to, empty when no code
+	// is waiting.
+	Pending string
+}
+
+// FacebookFriends is the Facebook card: whether Facebook is connected, and
+// who the last import found here.
+type FacebookFriends struct {
+	Connected bool
+	// People are the last import's finds with how you follow them, empty
+	// once that import has expired. Finding them again means connecting
+	// again: the token that read the friend list is never kept.
+	People     []Connection
+	ImportedAt time.Time
+}

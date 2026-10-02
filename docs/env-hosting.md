@@ -64,6 +64,8 @@ this list before the first public cutover.
 | `APPLE_BUNDLE_ID` | Bundle IDs, comma-separated, e.g. `com.fernandocorreia.khepri,com.fernandocorreia.khepri.beta` | Native Sign in with Apple audiences, one per build that can sign in. Empty disables native Apple sign-in |
 | `APPLE_TEAM_ID` | Apple developer team ID, e.g. `84X9WYBF36` | With `APPLE_BUNDLE_ID`, serves `/.well-known/apple-app-site-association` so the iOS app can use passkeys for this domain. Empty serves 404 |
 | `STRAVA_CLIENT_ID` + `STRAVA_CLIENT_SECRET` | Strava API application | Fitness connect. Empty makes the integration report itself unavailable |
+| `TWILIO_ACCOUNT_SID` + `TWILIO_AUTH_TOKEN` + `TWILIO_VERIFY_SERVICE_SID` | Twilio console → Verify → Services | Verified phone numbers for contact matching. Empty in production hides the phone card and API; in development a stand-in accepts code `000000`. See [Friend finding](#friend-finding-twilio-verify-and-facebook) |
+| `FACEBOOK_APP_ID` + `FACEBOOK_APP_SECRET` | Meta for Developers → App settings → Basic | Connect Facebook on the Friends page and in the app. Empty hides it. See [Friend finding](#friend-finding-twilio-verify-and-facebook) |
 | `TELEGRAM_BOT_TOKEN` + `TELEGRAM_BOT_USERNAME` + `TELEGRAM_WEBHOOK_SECRET` | @BotFather token, bot name, `openssl rand -hex 32` | Messaging gateway. Empty builds no adapter. Production uses webhook mode, not polling |
 | `POSTHOG_API_KEY` | PostHog project key | Coach LLM observability and the product funnel. Empty in production is a silent no-op dashboard |
 | `VAPID_PUBLIC_KEY` + `VAPID_PRIVATE_KEY` | `main vapid-keygen`, once | Web Push for nudges. Empty hides the "nudges on this device" row and the dashboard offer; nudges stay in the bell and on Telegram. See [Web Push](#web-push) |
@@ -162,6 +164,13 @@ GOOGLE_CLIENT_SECRET=
 
 STRAVA_CLIENT_ID=
 STRAVA_CLIENT_SECRET=
+
+TWILIO_ACCOUNT_SID=
+TWILIO_AUTH_TOKEN=
+TWILIO_VERIFY_SERVICE_SID=
+
+FACEBOOK_APP_ID=
+FACEBOOK_APP_SECRET=
 
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_WEBHOOK_SECRET=            # openssl rand -hex 32; selects webhook mode
@@ -332,6 +341,38 @@ itself unavailable; the rest of the app still starts.
 
 Strava authorized callback: `{BASE_URL}/app/fitness/strava/callback`.
 Tokens are sealed with `ENCRYPTION_KEY`.
+
+---
+
+## Friend finding (Twilio Verify and Facebook)
+
+Both optional. Without their credentials the Friends page and the API
+report them unconfigured and offer nothing.
+
+| Variable | Default | Production |
+|---|---|---|
+| `TWILIO_ACCOUNT_SID` | empty | Account SID (`AC…`) |
+| `TWILIO_AUTH_TOKEN` | empty | Auth token. A secret |
+| `TWILIO_VERIFY_SERVICE_SID` | empty | Verify service SID (`VA…`); the service sets code length and expiry |
+| `FACEBOOK_APP_ID` | empty | Meta app ID |
+| `FACEBOOK_APP_SECRET` | empty | Meta app secret. A secret |
+
+Texts cost money, so starts are capped at 5 per account per hour and 5 per
+number per day, and 5 code checks per text, on top of Twilio's own limits.
+
+Meta app settings:
+
+- **Facebook Login → Valid OAuth Redirect URIs**: both
+  `{BASE_URL}/app/friends/facebook/callback` (web) and
+  `{BASE_URL}/api/v1/social/facebook/callback` (iOS).
+- **App Domains**: the host of `BASE_URL`.
+- **Permissions**: `public_profile` and `user_friends`. `user_friends` needs
+  App Review before anybody outside the app's roles can grant it, and it only
+  ever returns friends who also connected Khepri.
+
+No Facebook token is stored: it reads the friend list during the callback
+and is dropped. Only the link (an `auth_identities` row, provider
+`facebook`) is kept, plus the Khepri accounts found, for an hour.
 
 ---
 

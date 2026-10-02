@@ -71,6 +71,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/NorthAIProject/north-client/internal/sleep"
 	"github.com/NorthAIProject/north-client/internal/social"
+	"github.com/NorthAIProject/north-client/internal/social/facebook"
 	"github.com/NorthAIProject/north-client/internal/soreness"
 	"github.com/NorthAIProject/north-client/internal/spend"
 	"github.com/NorthAIProject/north-client/internal/stats"
@@ -189,6 +190,14 @@ func routes(
 	// Handles, invite links, follows and blocks. The bell tells people about
 	// a follow request or a friend arriving from their link.
 	socialSvc := social.NewService(social.NewRepository(pool)).WithInbox(nudgeSvc).WithFunnel(funnel)
+	// Verified phone numbers and Connect Facebook are each off without their
+	// credentials, and their cards and API answer as unconfigured.
+	if v := phoneVerifier(cfg); v != nil {
+		socialSvc.WithPhoneVerifier(v)
+	}
+	if fb := facebook.New(cfg.FacebookAppID, cfg.FacebookAppSecret); fb != nil {
+		socialSvc.WithFacebook(fb)
+	}
 	socialHandler := social.NewHandler(socialSvc, cfg.BaseURL, cfg.Env.IsProduction()).WithAchievements(achievementSvc)
 
 	memorySvc := memories.NewService(memories.NewRepository(pool))
