@@ -535,3 +535,13 @@ sql:
         package: milestonesdb
         out: internal/milestones/db
         overrides: *overrides
+
+  - engine: postgresql
+    schema: migrations
+    queries: internal/xp/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: xpdb
+        out: internal/xp/db
+        overrides: *overrides

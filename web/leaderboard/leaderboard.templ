@@ -1,0 +1,197 @@
+package leaderboard
+
+import (
+	"fmt"
+
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/avatar"
+	"github.com/NorthAIProject/north-client/web/shared/ui/badge"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/progress"
+)
+
+// Boards in the order they are offered; the key is the ?board= value.
+var Boards = []struct{ Key, Label string }{
+	{"xp-week", "XP this week"},
+	{"xp-all", "XP all time"},
+	{"streak", "Streak"},
+	{"workouts", "Workouts this week"},
+}
+
+// Level is the viewer's title and how far they are into it.
+type Level struct {
+	Number int
+	Title  string
+	Total  int
+	Floor  int
+	// Next is zero at the top level.
+	Next int
+}
+
+// Kind is one row of this week's XP.
+type Kind struct {
+	Label  string
+	Count  int
+	Points int
+}
+
+// Row is one place on the board.
+type Row struct {
+	Rank   int
+	Name   string
+	Handle string
+	Value  string
+	Level  string
+	Me     bool
+}
+
+type Page struct {
+	Level     Level
+	WeekTotal int
+	Week      []Kind
+	Board     string
+	Rows      []Row
+	// Sharing is whether the viewer's friends see them on this board.
+	Sharing bool
+	// ShareSwitch names the switch that would put them there.
+	ShareSwitch string
+}
+
+func initials(name string) string {
+	for _, r := range name {
+		return string(r)
+	}
+	return "?"
+}
+
+templ LeaderboardPage(user users.User, p Page) {
+	@layout.App("Leaderboard", user, layout.BuildNav(ctx, "/app/friends/leaderboard")) {
+		<div class="mx-auto w-full max-w-3xl space-y-6 p-6 md:p-8">
+			<header class="flex items-end justify-between gap-4">
+				<div>
+					@ui.MonoLabel("Progress")
+					<h1 class="mt-2 text-2xl font-medium tracking-tight">Leaderboard</h1>
+					<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
+						You and the friends who share with you. XP comes only from things done: workouts, habits kept, streaks, milestones and goals.
+					</p>
+				</div>
+				@button.Button(button.Props{Href: "/app/friends", Variant: button.VariantGhost}) {
+					Friends
+				}
+			</header>
+			@levelCard(p)
+			@boardCard(p)
+		</div>
+	}
+}
+
+templ levelCard(p Page) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Description() {
+				Level { fmt.Sprint(p.Level.Number) }
+			}
+			@card.Title() {
+				{ p.Level.Title }
+			}
+		}
+		@card.Content() {
+			<div class="space-y-4">
+				if p.Level.Next > 0 {
+					<div class="space-y-1">
+						@progress.Progress(progress.Props{
+							Max:   p.Level.Next - p.Level.Floor,
+							Value: p.Level.Total - p.Level.Floor,
+							Label: "Progress to the next level",
+						})
+						<p class="text-muted-foreground text-xs tabular-nums">
+							{ fmt.Sprintf("%d XP · %d to the next level", p.Level.Total, p.Level.Next-p.Level.Total) }
+						</p>
+					</div>
+				} else {
+					<p class="text-muted-foreground text-xs tabular-nums">{ fmt.Sprintf("%d XP · the top level", p.Level.Total) }</p>
+				}
+				<div>
+					<p class="text-sm font-medium tabular-nums">{ fmt.Sprintf("%d XP this week", p.WeekTotal) }</p>
+					<ul class="divide-hairline mt-2 divide-y">
+						for _, k := range p.Week {
+							<li class="flex items-center justify-between py-2 text-sm">
+								<span class="text-muted-foreground">{ k.Label }</span>
+								<span class="tabular-nums">{ fmt.Sprintf("%d × · %d XP", k.Count, k.Points) }</span>
+							</li>
+						}
+					</ul>
+				</div>
+			</div>
+		}
+	}
+}
+
+templ boardCard(p Page) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			<nav class="flex flex-wrap gap-2" aria-label="Boards">
+				for _, b := range Boards {
+					if b.Key == p.Board {
+						@button.Button(button.Props{Href: "?board=" + b.Key, Variant: button.VariantSecondary, Size: button.SizeSm, Attributes: templ.Attributes{"aria-current": "page"}}) {
+							{ b.Label }
+						}
+					} else {
+						@button.Button(button.Props{Href: "?board=" + b.Key, Variant: button.VariantGhost, Size: button.SizeSm}) {
+							{ b.Label }
+						}
+					}
+				}
+			</nav>
+		}
+		@card.Content() {
+			<ol class="divide-hairline divide-y">
+				for _, r := range p.Rows {
+					@row(r)
+				}
+			</ol>
+			if len(p.Rows) <= 1 {
+				<p class="text-muted-foreground mt-3 text-sm">
+					Only you so far. Friends appear here once they share this with followers.
+				</p>
+			}
+			if !p.Sharing {
+				<p class="text-muted-foreground mt-3 text-sm">
+					Your friends don't see you on this board. Turn on <span class="text-foreground">{ p.ShareSwitch }</span> under
+					<a href="/app/friends" class="underline underline-offset-2">What followers see</a>.
+				</p>
+			}
+		}
+	}
+}
+
+templ row(r Row) {
+	<li class={ "flex items-center gap-3 py-3", templ.KV("font-medium", r.Me) }>
+		<span class="text-muted-foreground w-6 text-right text-sm tabular-nums">{ fmt.Sprint(r.Rank) }</span>
+		@avatar.Avatar() {
+			@avatar.Fallback() {
+				{ initials(r.Name) }
+			}
+		}
+		<div class="min-w-0 flex-1">
+			<p class="truncate text-sm">
+				{ r.Name }
+				if r.Me {
+					<span class="text-muted-foreground font-normal">(you)</span>
+				}
+			</p>
+			if r.Handle != "" {
+				<p class="text-muted-foreground truncate text-xs">{ "@" + r.Handle }</p>
+			}
+		</div>
+		if r.Level != "" {
+			@badge.Badge(badge.Props{Variant: badge.VariantOutline}) {
+				{ r.Level }
+			}
+		}
+		<span class="text-sm tabular-nums">{ r.Value }</span>
+	</li>
+}

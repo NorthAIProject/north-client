@@ -55,6 +55,17 @@ type SharingView struct {
 	Training bool `json:"training"`
 	Streaks  bool `json:"streaks"`
 	Goals    bool `json:"goals"`
+	// XP is XP and level, which puts the person on friends' leaderboards.
+	XP bool `json:"xp"`
+}
+
+// SharingUpdate is SharingView with xp optional: a client from before the
+// leaderboard does not send it, and its save must not switch it off.
+type SharingUpdate struct {
+	Training bool  `json:"training"`
+	Streaks  bool  `json:"streaks"`
+	Goals    bool  `json:"goals"`
+	XP       *bool `json:"xp"`
 }
 
 func (a *API) feed(w http.ResponseWriter, r *http.Request) {
@@ -100,12 +111,24 @@ func (a *API) getSharing(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) putSharing(w http.ResponseWriter, r *http.Request) {
-	var req SharingView
+	var req SharingUpdate
 	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 4 << 10}); err != nil {
 		httpx.Error(w, err, "The request body could not be read.")
 		return
 	}
-	s, err := a.svc.SetSharing(r.Context(), auth.MustUser(r.Context()).ID, Sharing(req))
+	userID := auth.MustUser(r.Context()).ID
+	in := Sharing{Training: req.Training, Streaks: req.Streaks, Goals: req.Goals}
+	if req.XP != nil {
+		in.XP = *req.XP
+	} else {
+		current, err := a.svc.Sharing(r.Context(), userID)
+		if err != nil {
+			httpx.Error(w, err, "What friends see could not be saved.")
+			return
+		}
+		in.XP = current.XP
+	}
+	s, err := a.svc.SetSharing(r.Context(), userID, in)
 	if err != nil {
 		httpx.Error(w, err, "What friends see could not be saved.")
 		return
