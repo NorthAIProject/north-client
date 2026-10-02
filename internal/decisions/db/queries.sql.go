@@ -7,14 +7,38 @@ package decisionsdb
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
 
+const calibration = `-- name: Calibration :one
+SELECT
+    count(*) FILTER (WHERE held = 'yes')    AS held_yes,
+    count(*) FILTER (WHERE held = 'partly') AS held_partly,
+    count(*) FILTER (WHERE held = 'no')     AS held_no
+FROM decisions
+WHERE user_id = $1
+`
+
+type CalibrationRow struct {
+	HeldYes    int64
+	HeldPartly int64
+	HeldNo     int64
+}
+
+// How the person's calls held up, among the ones they looked back on.
+func (q *Queries) Calibration(ctx context.Context, userID uuid.UUID) (CalibrationRow, error) {
+	row := q.db.QueryRow(ctx, calibration, userID)
+	var i CalibrationRow
+	err := row.Scan(&i.HeldYes, &i.HeldPartly, &i.HeldNo)
+	return i, err
+}
+
 const createDecision = `-- name: CreateDecision :one
 INSERT INTO decisions (user_id, title, options, rationale, outcome)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, user_id, title, options, rationale, outcome, decided_at, created_at, updated_at
+RETURNING id, user_id, title, options, rationale, outcome, decided_at, created_at, updated_at, held, held_at
 `
 
 type CreateDecisionParams struct {
@@ -44,6 +68,8 @@ func (q *Queries) CreateDecision(ctx context.Context, arg CreateDecisionParams) 
 		&i.DecidedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Held,
+		&i.HeldAt,
 	)
 	return i, err
 }
@@ -65,8 +91,42 @@ func (q *Queries) DeleteDecision(ctx context.Context, arg DeleteDecisionParams) 
 	return result.RowsAffected(), nil
 }
 
+const dueRevisit = `-- name: DueRevisit :one
+SELECT d.id, d.title, m.mark::int AS mark
+FROM decisions d
+CROSS JOIN (VALUES (30), (90)) AS m (mark)
+WHERE d.user_id = $1
+  AND d.decided_at + make_interval(days => m.mark) <= $2::timestamptz
+  AND d.decided_at + make_interval(days => m.mark) > $3::timestamptz
+  AND (d.held_at IS NULL OR d.held_at < d.decided_at + make_interval(days => m.mark))
+ORDER BY d.decided_at + make_interval(days => m.mark)
+LIMIT 1
+`
+
+type DueRevisitParams struct {
+	UserID uuid.UUID
+	Now    time.Time
+	Since  time.Time
+}
+
+type DueRevisitRow struct {
+	ID    uuid.UUID
+	Title string
+	Mark  int32
+}
+
+// The oldest revisit due: 30 or 90 days after the call, not yet answered
+// since that mark. Marks before since are let go, so a decision logged long
+// before revisits existed is not asked about out of nowhere.
+func (q *Queries) DueRevisit(ctx context.Context, arg DueRevisitParams) (DueRevisitRow, error) {
+	row := q.db.QueryRow(ctx, dueRevisit, arg.UserID, arg.Now, arg.Since)
+	var i DueRevisitRow
+	err := row.Scan(&i.ID, &i.Title, &i.Mark)
+	return i, err
+}
+
 const getDecision = `-- name: GetDecision :one
-SELECT id, user_id, title, options, rationale, outcome, decided_at, created_at, updated_at FROM decisions WHERE id = $1 AND user_id = $2
+SELECT id, user_id, title, options, rationale, outcome, decided_at, created_at, updated_at, held, held_at FROM decisions WHERE id = $1 AND user_id = $2
 `
 
 type GetDecisionParams struct {
@@ -87,12 +147,14 @@ func (q *Queries) GetDecision(ctx context.Context, arg GetDecisionParams) (Decis
 		&i.DecidedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Held,
+		&i.HeldAt,
 	)
 	return i, err
 }
 
 const listDecisions = `-- name: ListDecisions :many
-SELECT id, user_id, title, options, rationale, outcome, decided_at, created_at, updated_at FROM decisions
+SELECT id, user_id, title, options, rationale, outcome, decided_at, created_at, updated_at, held, held_at FROM decisions
 WHERE user_id = $1
 ORDER BY decided_at DESC, created_at DESC
 LIMIT $2
@@ -122,6 +184,8 @@ func (q *Queries) ListDecisions(ctx context.Context, arg ListDecisionsParams) ([
 			&i.DecidedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Held,
+			&i.HeldAt,
 		); err != nil {
 			return nil, err
 		}
@@ -139,9 +203,12 @@ SET title      = $3,
     options    = $4,
     rationale  = $5,
     outcome    = $6,
+    held       = NULLIF($7::text, ''),
+    -- Any answer counts as looking back now; clearing it forgets the answer.
+    held_at    = CASE WHEN $7::text = '' THEN NULL ELSE now() END,
     updated_at = now()
 WHERE id = $1 AND user_id = $2
-RETURNING id, user_id, title, options, rationale, outcome, decided_at, created_at, updated_at
+RETURNING id, user_id, title, options, rationale, outcome, decided_at, created_at, updated_at, held, held_at
 `
 
 type UpdateDecisionParams struct {
@@ -151,6 +218,7 @@ type UpdateDecisionParams struct {
 	Options   string
 	Rationale string
 	Outcome   string
+	Held      string
 }
 
 func (q *Queries) UpdateDecision(ctx context.Context, arg UpdateDecisionParams) (Decision, error) {
@@ -161,6 +229,7 @@ func (q *Queries) UpdateDecision(ctx context.Context, arg UpdateDecisionParams) 
 		arg.Options,
 		arg.Rationale,
 		arg.Outcome,
+		arg.Held,
 	)
 	var i Decision
 	err := row.Scan(
@@ -173,6 +242,8 @@ func (q *Queries) UpdateDecision(ctx context.Context, arg UpdateDecisionParams) 
 		&i.DecidedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Held,
+		&i.HeldAt,
 	)
 	return i, err
 }

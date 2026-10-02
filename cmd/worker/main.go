@@ -36,6 +36,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/config"
 	"github.com/NorthAIProject/north-client/internal/conversations"
 	"github.com/NorthAIProject/north-client/internal/crews"
+	"github.com/NorthAIProject/north-client/internal/decisions"
 	"github.com/NorthAIProject/north-client/internal/documents"
 	"github.com/NorthAIProject/north-client/internal/exercises"
 	"github.com/NorthAIProject/north-client/internal/fasting"
@@ -430,7 +431,9 @@ func run() error {
 		}).
 		// The evening note that crewmates checked in and you have not.
 		WithCrews(crews.NewService(pool, crews.CheckInsFrom(checkinSvc), crews.WorkoutsFrom(activitySvc))).
-		WithWeekly(weeklySvc)
+		WithWeekly(weeklySvc).
+		// 30 and 90 days after a decision: did it hold?
+		WithDecisions(decisions.NewService(decisions.NewRepository(pool)))
 	worker.Register(jobs.KindSweepNudges, nudges.NewSweeper(nudgeSvc, log).HandleSweep)
 
 	// Strava imports and the coach's tools finish workouts and save check-ins
