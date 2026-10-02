@@ -86,11 +86,11 @@ templ phoneStartForm(s PhoneSection, f FriendsForm) {
 	<form method="post" action="/app/friends/phone" class="flex flex-wrap items-end gap-2">
 		@ui.CSRFInput()
 		@form.Item() {
-			@label.Label(label.Props{For: "country", Error: f.fieldError("country")}) {
+			@label.Label(label.Props{For: "countryCode", Error: f.fieldError("countryCode")}) {
 				Country
 			}
 			@selectbox.SelectBox() {
-				@selectbox.Trigger(selectbox.TriggerProps{ID: "country", Name: "country", HasError: f.fieldError("country") != ""}) {
+				@selectbox.Trigger(selectbox.TriggerProps{ID: "countryCode", Name: "countryCode", HasError: f.fieldError("countryCode") != ""}) {
 					@selectbox.Value(selectbox.ValueProps{Placeholder: "Choose"})
 				}
 				@selectbox.Content(selectbox.ContentProps{SearchPlaceholder: "Search countries"}) {
@@ -101,9 +101,9 @@ templ phoneStartForm(s PhoneSection, f FriendsForm) {
 					}
 				}
 			}
-			if f.fieldError("country") != "" {
+			if f.fieldError("countryCode") != "" {
 				@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
-					{ f.fieldError("country") }
+					{ f.fieldError("countryCode") }
 				}
 			}
 		}

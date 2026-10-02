@@ -54,7 +54,7 @@ func (h *Handler) startPhone(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, apperr.ErrValidation)
 		return
 	}
-	raw, dial := r.PostFormValue("phone"), r.PostFormValue("country")
+	raw, dial := r.PostFormValue("phone"), r.PostFormValue("countryCode")
 	if _, err := h.svc.StartPhoneVerification(r.Context(), auth.MustUser(r.Context()).ID, raw, dial); err != nil {
 		h.formError(w, r, phoneFieldError(err, "phone"), socialpages.FriendsForm{Phone: raw, Country: dial})
 		return
