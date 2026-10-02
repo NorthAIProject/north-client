@@ -22,7 +22,8 @@ import (
 // would make both untrustworthy. Charts arrive as labelled series, which is
 // all a native chart needs; colours and styling stay with each client.
 type API struct {
-	svc *Service
+	svc   *Service
+	focus FocusSource
 }
 
 // NewAPI builds the routes; mount them behind auth.RequireBearer.
@@ -39,6 +40,7 @@ func (a *API) Routes(r chi.Router) {
 	r.Get("/insights/nutrition", a.nutrition)
 	r.Get("/insights/coach", a.coach)
 	r.Get("/insights/spend", a.spend)
+	r.Get("/insights/areas", a.areas)
 }
 
 type Range struct {
