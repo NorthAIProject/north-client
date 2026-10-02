@@ -360,6 +360,11 @@ func run() error {
 		digestNotify = messagingSvc
 	}
 
+	// A life area on track four weeks running is an achievement friends can
+	// see under the streaks they share.
+	worker.Register(jobs.KindSweepAreaStreaks,
+		insights.NewAreaStreakSweeper(userSvc, insightsSvc, achievementSvc, log).HandleSweep)
+
 	worker.Register(jobs.KindSweepDigests,
 		insights.NewDigestSweeper(insights.DigestSweeperOptions{
 			Accounts: userSvc,
@@ -536,6 +541,7 @@ func run() error {
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepBriefings, struct{}{})
 	worker.RegisterPeriodic(15*time.Minute, jobs.KindSweepWatches, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepDigests, struct{}{})
+	worker.RegisterPeriodic(time.Hour, jobs.KindSweepAreaStreaks, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepSummaries, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepStrava, struct{}{})
 	worker.RegisterPeriodic(24*time.Hour, jobs.KindSweepQuotas, struct{}{})
