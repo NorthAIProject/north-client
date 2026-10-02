@@ -16,6 +16,8 @@ func render(t *testing.T, page string) string {
 		err = Privacy().Render(context.Background(), &b)
 	case "terms":
 		err = Terms().Render(context.Background(), &b)
+	case "facebook":
+		err = FacebookDataDeletion().Render(context.Background(), &b)
 	default:
 		t.Fatalf("unknown page %q", page)
 	}
@@ -105,6 +107,19 @@ func TestThePoliciesLinkToEachOther(t *testing.T) {
 			if !strings.Contains(html, href) {
 				t.Errorf("%s does not link to %s", page, href)
 			}
+		}
+	}
+}
+
+// Meta reviews this page before it allows Facebook Login, so it must name the
+// way out that does not need Khepri at all.
+func TestFacebookDataPageSaysHowToDelete(t *testing.T) {
+	t.Parallel()
+
+	body := render(t, "facebook")
+	for _, want := range []string{"Disconnect Facebook", "/app/settings", "Apps and websites"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the Facebook data page does not mention %q", want)
 		}
 	}
 }
