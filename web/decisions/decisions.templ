@@ -11,6 +11,7 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/form"
 	"github.com/NorthAIProject/north-client/web/shared/ui/input"
 	"github.com/NorthAIProject/north-client/web/shared/ui/label"
+	"github.com/NorthAIProject/north-client/web/shared/ui/radio"
 	"github.com/NorthAIProject/north-client/web/shared/ui/textarea"
 )
 
@@ -20,7 +21,15 @@ type DecisionForm struct {
 	Options   string
 	Rationale string
 	Outcome   string
+	Held      string
 	Errors    map[string]string
+}
+
+var heldChoices = []struct{ value, label string }{
+	{"", "Not yet"},
+	{decision.HeldYes, "Yes"},
+	{decision.HeldPartly, "Partly"},
+	{decision.HeldNo, "No"},
 }
 
 func (f DecisionForm) fieldError(name string) string {
@@ -37,6 +46,7 @@ func FormFor(d decision.Decision) DecisionForm {
 		Options:   d.Options,
 		Rationale: d.Rationale,
 		Outcome:   d.Outcome,
+		Held:      d.Held,
 	}
 }
 
@@ -186,6 +196,21 @@ templ decisionFormCard(action, heading, submit string, f DecisionForm, withOutco
 							}
 						}
 					}
+					@form.Item() {
+						@label.Label(label.Props{Error: f.fieldError("held")}) {
+							Did it hold?
+						}
+						<div class="flex flex-wrap gap-4">
+							for _, c := range heldChoices {
+								<div class="flex items-center gap-2">
+									@radio.Radio(radio.Props{ID: "held-" + c.label, Name: "held", Value: c.value, Checked: f.Held == c.value})
+									@label.Label(label.Props{For: "held-" + c.label}) {
+										{ c.label }
+									}
+								</div>
+							}
+						</div>
+					}
 				}
 				@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90"}) {
 					{ submit }
@@ -208,6 +233,9 @@ templ decisionCard(d decision.Decision) {
 			}
 			if d.Outcome != "" {
 				<p class="text-muted-foreground text-sm">Outcome: { d.Outcome }</p>
+			}
+			if d.Held != "" {
+				<p class="text-muted-foreground text-sm">Held: { d.Held }</p>
 			}
 			@button.Button(button.Props{Href: "/app/decisions/" + d.ID.String(), Variant: button.VariantGhost, Size: button.SizeSm}) {
 				Edit

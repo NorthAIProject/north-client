@@ -8,4 +8,8 @@ package decisions
 
 import "github.com/NorthAIProject/north-client/internal/decisions/decision"
 
-type Decision = decision.Decision
+type (
+	Decision    = decision.Decision
+	Revisit     = decision.Revisit
+	Calibration = decision.Calibration
+)

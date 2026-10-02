@@ -4,10 +4,12 @@ import (
 	"context"
 	"sort"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/google/uuid"
 
+	"github.com/NorthAIProject/north-client/internal/decisions/decision"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
@@ -33,6 +35,8 @@ type Input struct {
 	Options   string
 	Rationale string
 	Outcome   string
+	// Held is yes, partly or no once looked back on; empty is not answered.
+	Held string
 }
 
 type Service struct {
@@ -69,6 +73,12 @@ func Validate(in Input) (Input, error) {
 		errs = errs.Add("outcome", "Keep this under 2000 characters.")
 	}
 
+	switch in.Held = strings.TrimSpace(in.Held); in.Held {
+	case "", decision.HeldYes, decision.HeldPartly, decision.HeldNo:
+	default:
+		errs = errs.Add("held", "Choose yes, partly or no.")
+	}
+
 	return in, errs.OrNil()
 }
 
@@ -96,7 +106,22 @@ func (s *Service) Update(ctx context.Context, id, userID uuid.UUID, in Input) (D
 	if err != nil {
 		return Decision{}, err
 	}
-	return s.repo.Update(ctx, id, userID, clean.Title, clean.Options, clean.Rationale, clean.Outcome)
+	return s.repo.Update(ctx, id, userID, clean.Title, clean.Options, clean.Rationale, clean.Outcome, clean.Held)
+}
+
+// revisitGrace is how long after a revisit mark the question may still be
+// asked; past it the mark is let go.
+const revisitGrace = 14 * 24 * time.Hour
+
+// DueRevisit is the decision the coach should ask about now, if any: one
+// passed its 30- or 90-day mark in the last two weeks and not answered since.
+func (s *Service) DueRevisit(ctx context.Context, userID uuid.UUID, now time.Time) (Revisit, bool, error) {
+	return s.repo.DueRevisit(ctx, userID, now, now.Add(-revisitGrace))
+}
+
+// Calibration is how the person's calls held up when they looked back.
+func (s *Service) Calibration(ctx context.Context, userID uuid.UUID) (Calibration, error) {
+	return s.repo.Calibration(ctx, userID)
 }
 
 func (s *Service) Delete(ctx context.Context, id, userID uuid.UUID) error {

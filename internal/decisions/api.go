@@ -24,6 +24,7 @@ func NewAPI(svc *Service) *API { return &API{svc: svc} }
 func (a *API) Routes(r chi.Router) {
 	r.Get("/decisions", a.list)
 	r.Post("/decisions", a.create)
+	r.Get("/decisions/calibration", a.calibration)
 	r.Get("/decisions/{decisionID}", a.show)
 	r.Put("/decisions/{decisionID}", a.update)
 	r.Delete("/decisions/{decisionID}", a.destroy)
@@ -35,8 +36,19 @@ type DecisionView struct {
 	Options   string    `json:"options"`
 	Rationale string    `json:"rationale"`
 	// Outcome is filled in later, once it is known how it went.
-	Outcome   string    `json:"outcome"`
+	Outcome string `json:"outcome"`
+	// Held is whether the call held up when looked back on (yes, partly or
+	// no); absent until answered.
+	Held      string    `json:"held,omitempty"`
 	DecidedAt time.Time `json:"decidedAt"`
+}
+
+// CalibrationView counts how calls held up among those looked back on.
+type CalibrationView struct {
+	Yes       int `json:"yes"`
+	Partly    int `json:"partly"`
+	No        int `json:"no"`
+	Revisited int `json:"revisited"`
 }
 
 type DecisionList struct {
@@ -48,6 +60,8 @@ type DecisionRequest struct {
 	Options   string `json:"options"`
 	Rationale string `json:"rationale"`
 	Outcome   string `json:"outcome"`
+	// Held is yes, partly or no; empty or absent clears it.
+	Held string `json:"held"`
 }
 
 func (a *API) list(w http.ResponseWriter, r *http.Request) {
@@ -106,6 +120,19 @@ func (a *API) update(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, project(d))
 }
 
+func (a *API) calibration(w http.ResponseWriter, r *http.Request) {
+	c, err := a.svc.Calibration(r.Context(), auth.MustUser(r.Context()).ID)
+	if err != nil {
+		httpx.Error(w, err, "Calibration could not be loaded.")
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, projectCalibration(c))
+}
+
+func projectCalibration(c Calibration) CalibrationView {
+	return CalibrationView{Yes: c.Yes, Partly: c.Partly, No: c.No, Revisited: c.Revisited()}
+}
+
 func (a *API) destroy(w http.ResponseWriter, r *http.Request) {
 	id, ok := decisionID(w, r)
 	if !ok {
@@ -119,7 +146,7 @@ func (a *API) destroy(w http.ResponseWriter, r *http.Request) {
 }
 
 func project(d Decision) DecisionView {
-	return DecisionView{ID: d.ID, Title: d.Title, Options: d.Options, Rationale: d.Rationale, Outcome: d.Outcome, DecidedAt: d.DecidedAt}
+	return DecisionView{ID: d.ID, Title: d.Title, Options: d.Options, Rationale: d.Rationale, Outcome: d.Outcome, Held: d.Held, DecidedAt: d.DecidedAt}
 }
 
 func decisionID(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {

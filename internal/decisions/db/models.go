@@ -20,4 +20,6 @@ type Decision struct {
 	DecidedAt time.Time
 	CreatedAt time.Time
 	UpdatedAt time.Time
+	Held      *string
+	HeldAt    *time.Time
 }

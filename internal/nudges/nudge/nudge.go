@@ -31,6 +31,10 @@ const (
 	// KindWeekReview asks on Sunday evening for the weekly review: how the
 	// week went, and the focus for the next one.
 	KindWeekReview = "week_review"
+
+	// KindDecisionRevisit asks 30 and 90 days after a decision whether it
+	// held.
+	KindDecisionRevisit = "decision_revisit"
 )
 
 // Nudge is one scheduled accountability note for a person.
