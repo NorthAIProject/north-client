@@ -59,6 +59,7 @@ var portugueseBrazilianNav = map[string]string{
 	"nav.friends":        "Amigos",
 	"nav.leaderboard":    "Classificação",
 	"nav.crews":          "Grupos",
+	"nav.inbox":          "Caixa de entrada",
 	"nav.weekly":         "Planejar a semana",
 	"nav.decisions.desc": "As escolhas que você fez, e por quê.",
 
