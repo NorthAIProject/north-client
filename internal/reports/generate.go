@@ -71,6 +71,9 @@ type ReviewContext struct {
 	Hydration []string
 	Habits    []string
 	Memories  []string
+	// Focus is what the person chose for this week in their last weekly
+	// review, so the review can say whether it held.
+	Focus []string
 }
 
 // ContextLoader collects the recorded week. Tests inject a stub; production
@@ -101,6 +104,12 @@ func (s *Service) Generate(ctx context.Context, id, userID uuid.UUID) error {
 	}
 	if report.Kind == KindDaily && s.today != nil {
 		review.Today = s.today.Load(ctx, user, s.now())
+	}
+	if report.Kind == KindWeekly && s.focus != nil {
+		review.Focus, err = s.focus.FocusLines(ctx, user, report.PeriodStart)
+		if err != nil {
+			return s.fail(ctx, id, userID, err)
+		}
 	}
 
 	if s.client == nil {
@@ -216,6 +225,9 @@ func formatContext(user users.User, report Report, review ReviewContext) string 
 
 	if report.Kind == KindDaily {
 		writeSection(&b, "Today", review.Today)
+	}
+	if report.Kind == KindWeekly && len(review.Focus) > 0 {
+		writeSection(&b, "What they chose for this week", review.Focus)
 	}
 	writeSection(&b, "Goals", review.Goals)
 	writeSection(&b, "Check-ins", review.CheckIns)

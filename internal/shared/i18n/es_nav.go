@@ -60,6 +60,7 @@ var spanishNav = map[string]string{
 	"nav.friends":        "Amigos",
 	"nav.leaderboard":    "Clasificación",
 	"nav.crews":          "Grupos",
+	"nav.weekly":         "Planificar la semana",
 	"nav.decisions.desc": "Las decisiones que tomaste, y por qué.",
 
 	"nav.goals":                   "Objetivos",

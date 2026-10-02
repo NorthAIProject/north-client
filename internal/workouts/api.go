@@ -83,6 +83,9 @@ type PlanDetail struct {
 	Problems  []string  `json:"problems"`
 	Source    string    `json:"source"`
 	CreatedAt time.Time `json:"createdAt"`
+	// WeekVolume is this week's choice from the weekly review: hold, build or
+	// deload. Each exercise's thisWeekSets already reflects it.
+	WeekVolume string `json:"weekVolume"`
 }
 
 type Day struct {
@@ -100,13 +103,17 @@ type Day struct {
 }
 
 type DayExercise struct {
-	Name        string `json:"name"`
-	Sets        int    `json:"sets"`
-	Reps        string `json:"reps"`
-	RestSeconds int    `json:"restSeconds"`
-	Equipment   string `json:"equipment"`
-	FormCues    string `json:"formCues,omitempty"`
-	Substitute  string `json:"substitute,omitempty"`
+	Name string `json:"name"`
+	// Sets is the plan as written, which is what an edit changes.
+	Sets int `json:"sets"`
+	// ThisWeekSets is what this week asks for after the weekly review's
+	// volume; the same as sets in a hold week.
+	ThisWeekSets int    `json:"thisWeekSets"`
+	Reps         string `json:"reps"`
+	RestSeconds  int    `json:"restSeconds"`
+	Equipment    string `json:"equipment"`
+	FormCues     string `json:"formCues,omitempty"`
+	Substitute   string `json:"substitute,omitempty"`
 	// CatalogSlug links to /exercises/{slug}; empty for a movement the model
 	// named that is not in the catalog.
 	CatalogSlug string `json:"catalogSlug,omitempty"`
@@ -361,9 +368,9 @@ func projectDetail(p StoredPlan, problems []string, progress WeekProgress) PlanD
 	days := make([]Day, 0, len(p.Plan.Days))
 	for _, d := range p.Plan.Days {
 		exercises := make([]DayExercise, 0, len(d.Exercises))
-		for _, e := range d.Exercises {
+		for i, e := range d.Exercises {
 			exercises = append(exercises, DayExercise{
-				Name: e.Name, Sets: e.Sets, Reps: e.Reps, RestSeconds: e.RestSeconds, Equipment: e.Equipment,
+				Name: e.Name, Sets: e.Sets, ThisWeekSets: progress.Volume.SetsFor(i, e.Sets), Reps: e.Reps, RestSeconds: e.RestSeconds, Equipment: e.Equipment,
 				FormCues: e.FormCues, Substitute: e.Substitute, CatalogSlug: e.CatalogSlug, HasArt: e.HasIllustration(),
 				Primary: nonNil(e.Primary), Secondary: nonNil(e.Secondary),
 			})
@@ -379,7 +386,16 @@ func projectDetail(p StoredPlan, problems []string, progress WeekProgress) PlanD
 	return PlanDetail{
 		ID: p.ID, Name: p.Plan.Name, Rationale: p.Plan.Rationale, WeeksTotal: p.Plan.WeeksTotal,
 		Days: days, Problems: problems, Source: sourceOf(p), CreatedAt: p.CreatedAt,
+		WeekVolume: string(weekVolume(progress.Volume)),
 	}
+}
+
+// weekVolume names a week without a review as hold, which is what it is.
+func weekVolume(v Volume) Volume {
+	if v.Valid() {
+		return v
+	}
+	return VolumeHold
 }
 
 func sourceOf(p StoredPlan) string {

@@ -78,6 +78,9 @@ func (p Prefs) AllowsNudge(kind string) bool {
 		return p.TrainingReminders
 	case "evening_reflection":
 		return p.EveningReflection
+	case "week_review":
+		// The same switch as the weekly report: both are "do the week with me".
+		return p.WeeklyReportAuto
 	case "first_week_check", "first_week_evidence", "first_week_review",
 		"form_ready", "coach_reply", "briefing_ready",
 		"photo_ask", "photo_reminder":

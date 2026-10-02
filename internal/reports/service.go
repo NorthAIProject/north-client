@@ -46,6 +46,7 @@ type Service struct {
 	inbox     Inbox
 	chats     Chats
 	today     *TodayContext
+	focus     FocusSource
 }
 
 // Chats posts the finished briefing into the person's latest chat as a
@@ -102,6 +103,20 @@ type Options struct {
 // construction because its readers are built later in the worker.
 func (s *Service) WithToday(t *TodayContext) *Service {
 	s.today = t
+	return s
+}
+
+// FocusSource is the focus chosen for a week in the weekly review, as lines
+// for the prompt; none when the week was not reviewed. weekly.Service
+// satisfies it.
+type FocusSource interface {
+	FocusLines(ctx context.Context, user users.User, weekStart time.Time) ([]string, error)
+}
+
+// WithFocus lets the weekly review say whether last Sunday's focus held.
+// Wired after construction because the weekly service is built from this one.
+func (s *Service) WithFocus(f FocusSource) *Service {
+	s.focus = f
 	return s
 }
 

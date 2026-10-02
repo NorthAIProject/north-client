@@ -48,6 +48,10 @@ for a problem.
 Two or three concrete next steps that follow from the week they had, not a
 generic programme.
 
+If the context has "What they chose for this week", open this section with
+one line per priority saying whether it held, from what was recorded. Do not
+mark a priority done without evidence for it.
+
 {{- if .Context }}
 
 ## CONTEXT

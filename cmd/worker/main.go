@@ -75,6 +75,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/vault"
 	vaultdb "github.com/NorthAIProject/north-client/internal/vault/db"
 	"github.com/NorthAIProject/north-client/internal/watches"
+	"github.com/NorthAIProject/north-client/internal/weekly"
 	"github.com/NorthAIProject/north-client/internal/workouts"
 )
 
@@ -402,9 +403,13 @@ func run() error {
 		return apnsErr
 	}
 
+	// The weekly review's focus sets each week's training volume, and the
+	// Sunday nudge asks for it.
+	weeklySvc := weekly.NewService(pool, goalSvc, reportSvc).WithAchievements(achievementSvc)
+	reportSvc.WithFocus(weeklySvc)
 	workoutSvc := workouts.NewService(workouts.Options{
 		Repository: workouts.NewRepository(pool),
-	}).WithActivity(activitySvc)
+	}).WithActivity(activitySvc).WithVolume(weeklySvc)
 
 	nudgeSvc := nudges.NewService(nudges.NewRepository(pool), userSvc, checkinSvc, goalSvc).
 		WithPrefs(notificationSvc).
@@ -424,7 +429,8 @@ func run() error {
 			FoodLog:   meals.NewFoodLogService(mealsRepo),
 		}).
 		// The evening note that crewmates checked in and you have not.
-		WithCrews(crews.NewService(pool, crews.CheckInsFrom(checkinSvc), crews.WorkoutsFrom(activitySvc)))
+		WithCrews(crews.NewService(pool, crews.CheckInsFrom(checkinSvc), crews.WorkoutsFrom(activitySvc))).
+		WithWeekly(weeklySvc)
 	worker.Register(jobs.KindSweepNudges, nudges.NewSweeper(nudgeSvc, log).HandleSweep)
 
 	// Strava imports and the coach's tools finish workouts and save check-ins
@@ -469,6 +475,7 @@ func run() error {
 			checkins.NewContextSource(checkinSvc),
 			memories.NewContextSource(memoryExtract.Memories),
 			workouts.NewContextSource(workoutSvc),
+			weekly.NewContextSource(weeklySvc),
 			calculator.NewContextSource(calculatorSvc),
 			activity.NewContextSource(activitySvc, stravaSvc),
 			meals.NewContextSource(

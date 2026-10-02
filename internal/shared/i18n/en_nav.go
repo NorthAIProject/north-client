@@ -61,6 +61,7 @@ var englishNav = map[string]string{
 	"nav.friends":        "Friends",
 	"nav.leaderboard":    "Leaderboard",
 	"nav.crews":          "Crews",
+	"nav.weekly":         "Plan the week",
 	"nav.decisions.desc": "The choices you made, and why.",
 
 	"nav.goals":                   "Goals",

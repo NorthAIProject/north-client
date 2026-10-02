@@ -157,6 +157,7 @@ func TestBuildNavMatchesTheSidebarAsShipped(t *testing.T) {
 		{"Progress", []item{
 			{"Goals", "/app/goals", nil},
 			{"Reports", "/app/reports", nil},
+			{"Plan the week", "/app/weekly", nil},
 			{"Insights", "/app/insights", []string{
 				"Summary", "Activity", "Body", "Mind", "Progress", "Training", "Nutrition",
 				"Sleep", "Cardio", "Patterns", "Coaching", "Spend",

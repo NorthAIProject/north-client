@@ -67,7 +67,7 @@ func (q *Queries) CountOverdueMilestones(ctx context.Context, userID uuid.UUID) 
 const createGoal = `-- name: CreateGoal :one
 INSERT INTO goals (user_id, title, motivation, success, category, target_date)
 VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, user_id, title, motivation, success, category, status, target_date, created_at, updated_at, closed_at
+RETURNING id, user_id, title, motivation, success, category, status, target_date, created_at, updated_at, closed_at, priority
 `
 
 type CreateGoalParams struct {
@@ -101,6 +101,7 @@ func (q *Queries) CreateGoal(ctx context.Context, arg CreateGoalParams) (Goal, e
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ClosedAt,
+		&i.Priority,
 	)
 	return i, err
 }
@@ -174,7 +175,7 @@ func (q *Queries) DeleteMilestone(ctx context.Context, arg DeleteMilestoneParams
 }
 
 const getGoal = `-- name: GetGoal :one
-SELECT id, user_id, title, motivation, success, category, status, target_date, created_at, updated_at, closed_at FROM goals WHERE id = $1 AND user_id = $2
+SELECT id, user_id, title, motivation, success, category, status, target_date, created_at, updated_at, closed_at, priority FROM goals WHERE id = $1 AND user_id = $2
 `
 
 type GetGoalParams struct {
@@ -197,6 +198,7 @@ func (q *Queries) GetGoal(ctx context.Context, arg GetGoalParams) (Goal, error) 
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ClosedAt,
+		&i.Priority,
 	)
 	return i, err
 }
@@ -264,11 +266,13 @@ func (q *Queries) LatestGoalUpdates(ctx context.Context, userID uuid.UUID) ([]Go
 }
 
 const listActiveGoals = `-- name: ListActiveGoals :many
-SELECT id, user_id, title, motivation, success, category, status, target_date, created_at, updated_at, closed_at FROM goals
+SELECT id, user_id, title, motivation, success, category, status, target_date, created_at, updated_at, closed_at, priority FROM goals
 WHERE user_id = $1 AND status = 'active'
 ORDER BY
-    -- Goals with a deadline surface first, soonest first; open-ended goals
-    -- follow. NULLS LAST is the whole point: a goal with no date is not urgent.
+    -- The order the person chose in their weekly review comes first.
+    priority ASC NULLS LAST,
+    -- Then goals with a deadline, soonest first; open-ended goals follow.
+    -- NULLS LAST is the whole point: a goal with no date is not urgent.
     target_date ASC NULLS LAST,
     created_at DESC
 LIMIT $2
@@ -301,6 +305,7 @@ func (q *Queries) ListActiveGoals(ctx context.Context, arg ListActiveGoalsParams
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.ClosedAt,
+			&i.Priority,
 		); err != nil {
 			return nil, err
 		}
@@ -407,9 +412,9 @@ func (q *Queries) ListGoalUpdatesBetween(ctx context.Context, arg ListGoalUpdate
 }
 
 const listGoals = `-- name: ListGoals :many
-SELECT id, user_id, title, motivation, success, category, status, target_date, created_at, updated_at, closed_at FROM goals
+SELECT id, user_id, title, motivation, success, category, status, target_date, created_at, updated_at, closed_at, priority FROM goals
 WHERE user_id = $1
-ORDER BY (status = 'active') DESC, created_at DESC
+ORDER BY (status = 'active') DESC, priority ASC NULLS LAST, created_at DESC
 LIMIT $2
 `
 
@@ -441,6 +446,7 @@ func (q *Queries) ListGoals(ctx context.Context, arg ListGoalsParams) ([]Goal, e
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.ClosedAt,
+			&i.Priority,
 		); err != nil {
 			return nil, err
 		}
@@ -453,7 +459,7 @@ func (q *Queries) ListGoals(ctx context.Context, arg ListGoalsParams) ([]Goal, e
 }
 
 const listGoalsCreatedBetween = `-- name: ListGoalsCreatedBetween :many
-SELECT id, user_id, title, motivation, success, category, status, target_date, created_at, updated_at, closed_at FROM goals
+SELECT id, user_id, title, motivation, success, category, status, target_date, created_at, updated_at, closed_at, priority FROM goals
 WHERE user_id = $1 AND created_at >= $2 AND created_at < $3
 ORDER BY created_at DESC
 `
@@ -485,6 +491,7 @@ func (q *Queries) ListGoalsCreatedBetween(ctx context.Context, arg ListGoalsCrea
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.ClosedAt,
+			&i.Priority,
 		); err != nil {
 			return nil, err
 		}
@@ -574,6 +581,27 @@ func (q *Queries) MilestoneCounts(ctx context.Context, userID uuid.UUID) ([]Mile
 	return items, nil
 }
 
+const rankActiveGoals = `-- name: RankActiveGoals :exec
+UPDATE goals
+SET priority = (
+    SELECT r.ord FROM unnest($1::uuid[]) WITH ORDINALITY AS r(id, ord)
+    WHERE r.id = goals.id
+)
+WHERE user_id = $2 AND status = 'active'
+`
+
+type RankActiveGoalsParams struct {
+	Ids    []uuid.UUID
+	UserID uuid.UUID
+}
+
+// One statement, so a reorder is never half applied: goals named in ids take
+// their position (1-based), every other active goal goes back to unranked.
+func (q *Queries) RankActiveGoals(ctx context.Context, arg RankActiveGoalsParams) error {
+	_, err := q.db.Exec(ctx, rankActiveGoals, arg.Ids, arg.UserID)
+	return err
+}
+
 const setGoalStatus = `-- name: SetGoalStatus :one
 UPDATE goals
 SET status     = $3,
@@ -582,7 +610,7 @@ SET status     = $3,
     closed_at  = CASE WHEN $3::text = 'active' THEN NULL ELSE now() END,
     updated_at = now()
 WHERE id = $1 AND user_id = $2
-RETURNING id, user_id, title, motivation, success, category, status, target_date, created_at, updated_at, closed_at
+RETURNING id, user_id, title, motivation, success, category, status, target_date, created_at, updated_at, closed_at, priority
 `
 
 type SetGoalStatusParams struct {
@@ -606,6 +634,7 @@ func (q *Queries) SetGoalStatus(ctx context.Context, arg SetGoalStatusParams) (G
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ClosedAt,
+		&i.Priority,
 	)
 	return i, err
 }
@@ -654,7 +683,7 @@ SET title       = $3,
     target_date = $7,
     updated_at  = now()
 WHERE id = $1 AND user_id = $2
-RETURNING id, user_id, title, motivation, success, category, status, target_date, created_at, updated_at, closed_at
+RETURNING id, user_id, title, motivation, success, category, status, target_date, created_at, updated_at, closed_at, priority
 `
 
 type UpdateGoalParams struct {
@@ -690,6 +719,7 @@ func (q *Queries) UpdateGoal(ctx context.Context, arg UpdateGoalParams) (Goal, e
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ClosedAt,
+		&i.Priority,
 	)
 	return i, err
 }
