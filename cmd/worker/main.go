@@ -44,6 +44,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/habits"
 	"github.com/NorthAIProject/north-client/internal/health"
 	"github.com/NorthAIProject/north-client/internal/hydration"
+	"github.com/NorthAIProject/north-client/internal/inbox"
 	"github.com/NorthAIProject/north-client/internal/insights"
 	"github.com/NorthAIProject/north-client/internal/integrations"
 	"github.com/NorthAIProject/north-client/internal/jobs"
@@ -406,6 +407,13 @@ func run() error {
 	// The weekly review's focus sets each week's training volume, and the
 	// Sunday nudge asks for it.
 	weeklySvc := weekly.NewService(pool, goalSvc, reportSvc).WithAchievements(achievementSvc)
+
+	// The coach's suggestion for each captured inbox item, on the fast model:
+	// sorting one note does not need the strong one.
+	inboxSvc := inbox.NewService(pool, inbox.Options{
+		Suggester: inbox.NewAISuggester(runner, cfg.AI.FastModel), Goals: goalSvc, Users: userSvc, Log: log,
+	})
+	worker.Register(jobs.KindSuggestInbox, inboxSvc.HandleSuggestJob)
 	reportSvc.WithFocus(weeklySvc)
 	workoutSvc := workouts.NewService(workouts.Options{
 		Repository: workouts.NewRepository(pool),
