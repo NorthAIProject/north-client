@@ -280,7 +280,7 @@ func TestMatchContacts(t *testing.T) {
 	}
 
 	hashes := []string{emailHash("ana@north.test"), emailHash("hidden@north.test"), emailHash("blocked@north.test"), emailHash("me@north.test"), emailHash("nobody@north.test")}
-	found, err := svc.MatchContacts(ctx, me.ID, hashes)
+	found, err := svc.MatchContacts(ctx, me.ID, hashes, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -288,7 +288,7 @@ func TestMatchContacts(t *testing.T) {
 		t.Fatalf("found = %+v, want only Ana, already asked", found)
 	}
 
-	if _, err := svc.MatchContacts(ctx, me.ID, []string{"ana@north.test"}); !apperr.Is(err, apperr.ErrValidation) {
+	if _, err := svc.MatchContacts(ctx, me.ID, []string{"ana@north.test"}, nil); !apperr.Is(err, apperr.ErrValidation) {
 		t.Fatalf("a raw email was accepted: %v", err)
 	}
 }

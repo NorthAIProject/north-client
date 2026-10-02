@@ -91,12 +91,15 @@ func apiRouter(t *testing.T) chi.Router {
 var publicAPIPrefixes = []string{"/api/v1/auth/", "/api/v1/capture/"}
 
 // publicAPIRoutes are single public routes, named exactly so their siblings
-// stay guarded: Strava's OAuth return, which proves itself by its state.
+// stay guarded: the OAuth returns, which prove themselves by their state.
 var publicAPIRoutes = map[string]bool{
 	"/api/v1/fitness/strava/callback": true,
 	// Who sent an invite link, for the signed-out app; the inviter's name and
 	// handle, nothing else.
 	"/api/v1/invites/{code}": true,
+	// Facebook's OAuth return for Connect Facebook in the app; like Strava's,
+	// it proves itself by its single-use state.
+	"/api/v1/social/facebook/callback": true,
 }
 
 func isPublicAPIRoute(route string) bool {

@@ -45,6 +45,35 @@ func (q *Queries) Block(ctx context.Context, arg BlockParams) error {
 	return err
 }
 
+const clearPhone = `-- name: ClearPhone :exec
+UPDATE users SET phone_e164 = NULL, phone_verified_at = NULL, updated_at = now()
+WHERE id = $1
+`
+
+func (q *Queries) ClearPhone(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, clearPhone, id)
+	return err
+}
+
+const closePhoneVerification = `-- name: ClosePhoneVerification :exec
+UPDATE phone_verifications SET closed_at = now() WHERE id = $1
+`
+
+func (q *Queries) ClosePhoneVerification(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, closePhoneVerification, id)
+	return err
+}
+
+const closePhoneVerifications = `-- name: ClosePhoneVerifications :exec
+UPDATE phone_verifications SET closed_at = now()
+WHERE user_id = $1 AND closed_at IS NULL
+`
+
+func (q *Queries) ClosePhoneVerifications(ctx context.Context, userID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, closePhoneVerifications, userID)
+	return err
+}
+
 const countFollows = `-- name: CountFollows :one
 SELECT
     (SELECT count(*) FROM follows f1 WHERE f1.followee_id = $1 AND f1.status = 'accepted') AS followers,
@@ -63,6 +92,55 @@ func (q *Queries) CountFollows(ctx context.Context, followeeID uuid.UUID) (Count
 	return i, err
 }
 
+const countPhoneCheck = `-- name: CountPhoneCheck :one
+UPDATE phone_verifications SET attempts = attempts + 1
+WHERE id = $1
+RETURNING attempts
+`
+
+// Counted before the code is checked, so parallel guesses cannot outrun
+// the limit.
+func (q *Queries) CountPhoneCheck(ctx context.Context, id uuid.UUID) (int32, error) {
+	row := q.db.QueryRow(ctx, countPhoneCheck, id)
+	var attempts int32
+	err := row.Scan(&attempts)
+	return attempts, err
+}
+
+const countPhoneStartsByNumber = `-- name: CountPhoneStartsByNumber :one
+SELECT count(*) FROM phone_verifications
+WHERE phone_e164 = $1 AND created_at > $2
+`
+
+type CountPhoneStartsByNumberParams struct {
+	PhoneE164 string
+	Since     time.Time
+}
+
+func (q *Queries) CountPhoneStartsByNumber(ctx context.Context, arg CountPhoneStartsByNumberParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countPhoneStartsByNumber, arg.PhoneE164, arg.Since)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countPhoneStartsByUser = `-- name: CountPhoneStartsByUser :one
+SELECT count(*) FROM phone_verifications
+WHERE user_id = $1 AND created_at > $2
+`
+
+type CountPhoneStartsByUserParams struct {
+	UserID uuid.UUID
+	Since  time.Time
+}
+
+func (q *Queries) CountPhoneStartsByUser(ctx context.Context, arg CountPhoneStartsByUserParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countPhoneStartsByUser, arg.UserID, arg.Since)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countRedemptions = `-- name: CountRedemptions :one
 SELECT count(*) FROM invite_redemptions r
 JOIN invites i ON i.code = r.code
@@ -74,6 +152,22 @@ func (q *Queries) CountRedemptions(ctx context.Context, inviterID uuid.UUID) (in
 	var count int64
 	err := row.Scan(&count)
 	return count, err
+}
+
+const createFacebookOAuthState = `-- name: CreateFacebookOAuthState :exec
+INSERT INTO facebook_oauth_states (state_hash, user_id, expires_at)
+VALUES ($1, $2, $3)
+`
+
+type CreateFacebookOAuthStateParams struct {
+	StateHash []byte
+	UserID    uuid.UUID
+	ExpiresAt time.Time
+}
+
+func (q *Queries) CreateFacebookOAuthState(ctx context.Context, arg CreateFacebookOAuthStateParams) error {
+	_, err := q.db.Exec(ctx, createFacebookOAuthState, arg.StateHash, arg.UserID, arg.ExpiresAt)
+	return err
 }
 
 const createInvite = `-- name: CreateInvite :one
@@ -101,6 +195,49 @@ func (q *Queries) CreateInvite(ctx context.Context, arg CreateInviteParams) (Inv
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const createPhoneVerification = `-- name: CreatePhoneVerification :one
+INSERT INTO phone_verifications (user_id, phone_e164)
+VALUES ($1, $2)
+RETURNING id, user_id, phone_e164, attempts, created_at, closed_at
+`
+
+type CreatePhoneVerificationParams struct {
+	UserID    uuid.UUID
+	PhoneE164 string
+}
+
+func (q *Queries) CreatePhoneVerification(ctx context.Context, arg CreatePhoneVerificationParams) (PhoneVerification, error) {
+	row := q.db.QueryRow(ctx, createPhoneVerification, arg.UserID, arg.PhoneE164)
+	var i PhoneVerification
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.PhoneE164,
+		&i.Attempts,
+		&i.CreatedAt,
+		&i.ClosedAt,
+	)
+	return i, err
+}
+
+const deleteExpiredFacebookOAuthStates = `-- name: DeleteExpiredFacebookOAuthStates :exec
+DELETE FROM facebook_oauth_states WHERE expires_at <= now()
+`
+
+func (q *Queries) DeleteExpiredFacebookOAuthStates(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, deleteExpiredFacebookOAuthStates)
+	return err
+}
+
+const deleteFacebookImport = `-- name: DeleteFacebookImport :exec
+DELETE FROM facebook_imports WHERE user_id = $1
+`
+
+func (q *Queries) DeleteFacebookImport(ctx context.Context, userID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteFacebookImport, userID)
+	return err
 }
 
 const deleteFollow = `-- name: DeleteFollow :execrows
@@ -135,6 +272,84 @@ func (q *Queries) DeleteFollowsBetween(ctx context.Context, arg DeleteFollowsBet
 	return err
 }
 
+const facebookFriendsHere = `-- name: FacebookFriendsHere :many
+SELECT u.id
+FROM auth_identities ai JOIN users u ON u.id = ai.user_id
+WHERE ai.provider = 'facebook'
+  AND ai.provider_subject = ANY($1::text[])
+  AND u.handle IS NOT NULL
+  AND u.id <> $2
+  AND NOT EXISTS (SELECT 1 FROM blocks b
+                  WHERE (b.blocker_id = $2 AND b.blocked_id = u.id)
+                     OR (b.blocker_id = u.id AND b.blocked_id = $2))
+LIMIT 200
+`
+
+type FacebookFriendsHereParams struct {
+	Subjects []string
+	Viewer   uuid.UUID
+}
+
+// Accounts linked to any of these Facebook ids that the viewer may be
+// shown: a handle, not themselves, no block either way.
+func (q *Queries) FacebookFriendsHere(ctx context.Context, arg FacebookFriendsHereParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, facebookFriendsHere, arg.Subjects, arg.Viewer)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []uuid.UUID{}
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const facebookImport = `-- name: FacebookImport :one
+SELECT people, imported_at FROM facebook_imports
+WHERE user_id = $1 AND expires_at > now()
+`
+
+type FacebookImportRow struct {
+	People     []uuid.UUID
+	ImportedAt time.Time
+}
+
+func (q *Queries) FacebookImport(ctx context.Context, userID uuid.UUID) (FacebookImportRow, error) {
+	row := q.db.QueryRow(ctx, facebookImport, userID)
+	var i FacebookImportRow
+	err := row.Scan(&i.People, &i.ImportedAt)
+	return i, err
+}
+
+const facebookOwner = `-- name: FacebookOwner :one
+
+SELECT user_id FROM auth_identities
+WHERE provider = 'facebook' AND provider_subject = $1
+`
+
+// ---------------------------------------------------------------------------
+// Facebook
+//
+// The link is an auth_identities row with provider 'facebook', the same
+// (provider, subject) shape Google and Apple use. Only this package writes
+// facebook rows, and nothing signs in with them: there is no Facebook
+// sign-in, so removing the row can never lock anybody out.
+// ---------------------------------------------------------------------------
+func (q *Queries) FacebookOwner(ctx context.Context, providerSubject string) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, facebookOwner, providerSubject)
+	var user_id uuid.UUID
+	err := row.Scan(&user_id)
+	return user_id, err
+}
+
 const getFollow = `-- name: GetFollow :one
 SELECT follower_id, followee_id, status, created_at, accepted_at FROM follows WHERE follower_id = $1 AND followee_id = $2
 `
@@ -166,6 +381,26 @@ func (q *Queries) GetHandle(ctx context.Context, id uuid.UUID) (*string, error) 
 	var handle *string
 	err := row.Scan(&handle)
 	return handle, err
+}
+
+const getPhone = `-- name: GetPhone :one
+
+SELECT phone_e164, phone_verified_at FROM users WHERE id = $1
+`
+
+type GetPhoneRow struct {
+	PhoneE164       *string
+	PhoneVerifiedAt *time.Time
+}
+
+// ---------------------------------------------------------------------------
+// Phone numbers
+// ---------------------------------------------------------------------------
+func (q *Queries) GetPhone(ctx context.Context, id uuid.UUID) (GetPhoneRow, error) {
+	row := q.db.QueryRow(ctx, getPhone, id)
+	var i GetPhoneRow
+	err := row.Scan(&i.PhoneE164, &i.PhoneVerifiedAt)
+	return i, err
 }
 
 const inviteByCode = `-- name: InviteByCode :one
@@ -233,6 +468,38 @@ func (q *Queries) IsBlockedEitherWay(ctx context.Context, arg IsBlockedEitherWay
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
+}
+
+const isFacebookConnected = `-- name: IsFacebookConnected :one
+SELECT EXISTS (SELECT 1 FROM auth_identities WHERE user_id = $1 AND provider = 'facebook')
+`
+
+func (q *Queries) IsFacebookConnected(ctx context.Context, userID uuid.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, isFacebookConnected, userID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const linkFacebook = `-- name: LinkFacebook :one
+INSERT INTO auth_identities (user_id, provider, provider_subject)
+VALUES ($1, 'facebook', $2)
+ON CONFLICT (provider, provider_subject) DO NOTHING
+RETURNING user_id
+`
+
+type LinkFacebookParams struct {
+	UserID  uuid.UUID
+	Subject string
+}
+
+// ON CONFLICT DO NOTHING returns no row when another account took the id
+// first; the caller reads the owner again.
+func (q *Queries) LinkFacebook(ctx context.Context, arg LinkFacebookParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, linkFacebook, arg.UserID, arg.Subject)
+	var user_id uuid.UUID
+	err := row.Scan(&user_id)
+	return user_id, err
 }
 
 const listBlocked = `-- name: ListBlocked :many
@@ -350,13 +617,26 @@ func (q *Queries) ListFollowing(ctx context.Context, followerID uuid.UUID) ([]Li
 	return items, nil
 }
 
-const matchEmailHashes = `-- name: MatchEmailHashes :many
+const lockUserForPhone = `-- name: LockUserForPhone :exec
+SELECT 1 FROM users WHERE id = $1 FOR UPDATE
+`
+
+// Serialises one account's starts so two at once cannot both slip under
+// the rate limit.
+func (q *Queries) LockUserForPhone(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, lockUserForPhone, id)
+	return err
+}
+
+const matchContactHashes = `-- name: MatchContactHashes :many
 SELECT u.id, u.display_name, u.handle,
        COALESCE((SELECT f.status FROM follows f WHERE f.follower_id = $1 AND f.followee_id = u.id), '')::text AS following
 FROM users u
 WHERE u.handle IS NOT NULL
   AND u.id <> $1
-  AND encode(sha256(convert_to(lower(u.email::text), 'UTF8')), 'hex') = ANY($2::text[])
+  AND (encode(sha256(convert_to(lower(u.email::text), 'UTF8')), 'hex') = ANY($2::text[])
+       OR (u.phone_verified_at IS NOT NULL
+           AND encode(sha256(convert_to(u.phone_e164, 'UTF8')), 'hex') = ANY($3::text[])))
   AND NOT EXISTS (SELECT 1 FROM blocks b
                   WHERE (b.blocker_id = $1 AND b.blocked_id = u.id)
                      OR (b.blocker_id = u.id AND b.blocked_id = $1))
@@ -364,31 +644,111 @@ ORDER BY u.display_name
 LIMIT 200
 `
 
-type MatchEmailHashesParams struct {
-	Viewer uuid.UUID
-	Hashes []string
+type MatchContactHashesParams struct {
+	Viewer      uuid.UUID
+	EmailHashes []string
+	PhoneHashes []string
 }
 
-type MatchEmailHashesRow struct {
+type MatchContactHashesRow struct {
 	ID          uuid.UUID
 	DisplayName string
 	Handle      *string
 	Following   string
 }
 
-// People whose email, lower-cased, hashes to one of the given SHA-256 hex
-// strings. Only accounts with a handle: choosing one is choosing to be
-// findable, which keeps this from answering "is this address on Khepri?"
-// for somebody who never asked to be found. Blocks hide either way.
-func (q *Queries) MatchEmailHashes(ctx context.Context, arg MatchEmailHashesParams) ([]MatchEmailHashesRow, error) {
-	rows, err := q.db.Query(ctx, matchEmailHashes, arg.Viewer, arg.Hashes)
+// People whose email, lower-cased, or verified phone number, E.164, hashes
+// to one of the given SHA-256 hex strings. Only accounts with a handle:
+// choosing one is choosing to be findable, which keeps this from answering
+// "is this address on Khepri?" for somebody who never asked to be found. An
+// unverified number matches nothing. Blocks hide either way.
+func (q *Queries) MatchContactHashes(ctx context.Context, arg MatchContactHashesParams) ([]MatchContactHashesRow, error) {
+	rows, err := q.db.Query(ctx, matchContactHashes, arg.Viewer, arg.EmailHashes, arg.PhoneHashes)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []MatchEmailHashesRow{}
+	items := []MatchContactHashesRow{}
 	for rows.Next() {
-		var i MatchEmailHashesRow
+		var i MatchContactHashesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.DisplayName,
+			&i.Handle,
+			&i.Following,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const pendingPhoneVerification = `-- name: PendingPhoneVerification :one
+SELECT id, user_id, phone_e164, attempts, created_at, closed_at FROM phone_verifications
+WHERE user_id = $1 AND closed_at IS NULL AND created_at > $2
+ORDER BY created_at DESC
+LIMIT 1
+`
+
+type PendingPhoneVerificationParams struct {
+	UserID uuid.UUID
+	Since  time.Time
+}
+
+func (q *Queries) PendingPhoneVerification(ctx context.Context, arg PendingPhoneVerificationParams) (PhoneVerification, error) {
+	row := q.db.QueryRow(ctx, pendingPhoneVerification, arg.UserID, arg.Since)
+	var i PhoneVerification
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.PhoneE164,
+		&i.Attempts,
+		&i.CreatedAt,
+		&i.ClosedAt,
+	)
+	return i, err
+}
+
+const peopleByIDs = `-- name: PeopleByIDs :many
+SELECT u.id, u.display_name, u.handle,
+       COALESCE((SELECT f.status FROM follows f WHERE f.follower_id = $1 AND f.followee_id = u.id), '')::text AS following
+FROM users u
+WHERE u.id = ANY($2::uuid[])
+  AND u.handle IS NOT NULL
+  AND u.id <> $1
+  AND NOT EXISTS (SELECT 1 FROM blocks b
+                  WHERE (b.blocker_id = $1 AND b.blocked_id = u.id)
+                     OR (b.blocker_id = u.id AND b.blocked_id = $1))
+ORDER BY u.display_name
+`
+
+type PeopleByIDsParams struct {
+	Viewer uuid.UUID
+	Ids    []uuid.UUID
+}
+
+type PeopleByIDsRow struct {
+	ID          uuid.UUID
+	DisplayName string
+	Handle      *string
+	Following   string
+}
+
+// The same filter again at read time: in the hour an import lives, somebody
+// may clear their handle or block the viewer.
+func (q *Queries) PeopleByIDs(ctx context.Context, arg PeopleByIDsParams) ([]PeopleByIDsRow, error) {
+	rows, err := q.db.Query(ctx, peopleByIDs, arg.Viewer, arg.Ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []PeopleByIDsRow{}
+	for rows.Next() {
+		var i PeopleByIDsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.DisplayName,
@@ -439,6 +799,15 @@ func (q *Queries) PersonByID(ctx context.Context, id uuid.UUID) (PersonByIDRow, 
 	return i, err
 }
 
+const prunePhoneVerifications = `-- name: PrunePhoneVerifications :exec
+DELETE FROM phone_verifications WHERE created_at < $1
+`
+
+func (q *Queries) PrunePhoneVerifications(ctx context.Context, before time.Time) error {
+	_, err := q.db.Exec(ctx, prunePhoneVerifications, before)
+	return err
+}
+
 const redeem = `-- name: Redeem :one
 INSERT INTO invite_redemptions (invitee_id, code)
 VALUES ($1, $2)
@@ -459,6 +828,41 @@ func (q *Queries) Redeem(ctx context.Context, arg RedeemParams) (time.Time, erro
 	return redeemed_at, err
 }
 
+const releasePhone = `-- name: ReleasePhone :exec
+UPDATE users SET phone_e164 = NULL, phone_verified_at = NULL, updated_at = now()
+WHERE phone_e164 = $1 AND id <> $2
+`
+
+type ReleasePhoneParams struct {
+	Phone  *string
+	Keeper uuid.UUID
+}
+
+// The number leaves any other account that held it: the latest account to
+// prove possession wins.
+func (q *Queries) ReleasePhone(ctx context.Context, arg ReleasePhoneParams) error {
+	_, err := q.db.Exec(ctx, releasePhone, arg.Phone, arg.Keeper)
+	return err
+}
+
+const saveFacebookImport = `-- name: SaveFacebookImport :exec
+INSERT INTO facebook_imports (user_id, people, expires_at)
+VALUES ($1, $2, $3)
+ON CONFLICT (user_id) DO UPDATE
+SET people = EXCLUDED.people, imported_at = now(), expires_at = EXCLUDED.expires_at
+`
+
+type SaveFacebookImportParams struct {
+	UserID    uuid.UUID
+	People    []uuid.UUID
+	ExpiresAt time.Time
+}
+
+func (q *Queries) SaveFacebookImport(ctx context.Context, arg SaveFacebookImportParams) error {
+	_, err := q.db.Exec(ctx, saveFacebookImport, arg.UserID, arg.People, arg.ExpiresAt)
+	return err
+}
+
 const setHandle = `-- name: SetHandle :one
 UPDATE users SET handle = $2, updated_at = now()
 WHERE id = $1
@@ -477,6 +881,35 @@ func (q *Queries) SetHandle(ctx context.Context, arg SetHandleParams) (*string, 
 	return handle, err
 }
 
+const setPhone = `-- name: SetPhone :exec
+UPDATE users SET phone_e164 = $2, phone_verified_at = now(), updated_at = now()
+WHERE id = $1
+`
+
+type SetPhoneParams struct {
+	ID    uuid.UUID
+	Phone *string
+}
+
+func (q *Queries) SetPhone(ctx context.Context, arg SetPhoneParams) error {
+	_, err := q.db.Exec(ctx, setPhone, arg.ID, arg.Phone)
+	return err
+}
+
+const takeFacebookOAuthState = `-- name: TakeFacebookOAuthState :one
+DELETE FROM facebook_oauth_states
+WHERE state_hash = $1 AND expires_at > now()
+RETURNING user_id
+`
+
+// Single use: the row is gone whether or not the connection then succeeds.
+func (q *Queries) TakeFacebookOAuthState(ctx context.Context, stateHash []byte) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, takeFacebookOAuthState, stateHash)
+	var user_id uuid.UUID
+	err := row.Scan(&user_id)
+	return user_id, err
+}
+
 const unblock = `-- name: Unblock :execrows
 DELETE FROM blocks WHERE blocker_id = $1 AND blocked_id = $2
 `
@@ -492,6 +925,15 @@ func (q *Queries) Unblock(ctx context.Context, arg UnblockParams) (int64, error)
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const unlinkFacebook = `-- name: UnlinkFacebook :exec
+DELETE FROM auth_identities WHERE user_id = $1 AND provider = 'facebook'
+`
+
+func (q *Queries) UnlinkFacebook(ctx context.Context, userID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, unlinkFacebook, userID)
+	return err
 }
 
 const upsertFollow = `-- name: UpsertFollow :one

@@ -23,6 +23,8 @@ type User struct {
 	OnboardedAt   *time.Time
 	CoachingTone  string
 	// BCP 47 tag chosen by the user: en, pt-PT, pt-BR or es. Not inferred from timezone.
-	Locale string
-	Handle *string
+	Locale          string
+	Handle          *string
+	PhoneE164       *string
+	PhoneVerifiedAt *time.Time
 }

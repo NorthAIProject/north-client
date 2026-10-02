@@ -286,9 +286,11 @@ func deref(s *string) string {
 	return *s
 }
 
-// MatchEmails finds people by hashed email; see MatchEmailHashes.
-func (r *Repository) MatchEmails(ctx context.Context, viewerID uuid.UUID, hashes []string) ([]Connection, error) {
-	rows, err := r.q.MatchEmailHashes(ctx, socialdb.MatchEmailHashesParams{Viewer: viewerID, Hashes: hashes})
+// MatchContacts finds people by hashed email or phone; see MatchContactHashes.
+func (r *Repository) MatchContacts(ctx context.Context, viewerID uuid.UUID, emailHashes, phoneHashes []string) ([]Connection, error) {
+	rows, err := r.q.MatchContactHashes(ctx, socialdb.MatchContactHashesParams{
+		Viewer: viewerID, EmailHashes: emailHashes, PhoneHashes: phoneHashes,
+	})
 	if err != nil {
 		return nil, apperr.Wrap(err, "match contacts")
 	}
