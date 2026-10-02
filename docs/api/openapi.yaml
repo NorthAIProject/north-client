@@ -3832,6 +3832,29 @@ paths:
                 $ref: '#/components/schemas/InsightsCoach'
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /insights/areas:
+    get:
+      operationId: getInsightsAreas
+      summary: The life-area scoreboard, week by week
+      description: >-
+        The same areas the summary scores, for each of the last weeks (Monday to
+        Sunday in the person's time zone), oldest first; the last week is the one
+        in progress. Focus is this week's focus from the weekly review.
+      parameters:
+        - name: weeks
+          in: query
+          description: How many weeks, 2-12; 8 when absent or out of range.
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InsightsAreas'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /insights/spend:
     get:
       operationId: getInsightsSpend
@@ -5068,6 +5091,54 @@ components:
               priority:
                 type: integer
                 description: 1 first; 0 is unranked.
+    InsightsAreas:
+      type: object
+      required: [weeks, areas, focus]
+      properties:
+        weeks:
+          type: array
+          description: The Monday of each week, oldest first.
+          items:
+            type: string
+            format: date
+        areas:
+          type: array
+          items:
+            $ref: '#/components/schemas/InsightsArea'
+        focus:
+          type: array
+          description: This week's focus from the weekly review; empty when not reviewed.
+          items:
+            type: string
+    InsightsArea:
+      type: object
+      required: [key, label, points, verdict, hasData, trend]
+      properties:
+        key:
+          type: string
+        label:
+          type: string
+        points:
+          type: integer
+          description: This week so far, 0-100.
+        verdict:
+          type: string
+          description: The summary's word for the score; empty when there is too little to judge.
+        reason:
+          type: string
+        hasData:
+          type: boolean
+        trend:
+          type: array
+          description: One point per week, matching weeks.
+          items:
+            type: object
+            required: [points, hasData]
+            properties:
+              points:
+                type: integer
+              hasData:
+                type: boolean
     Inbox:
       type: object
       required: [items, open]
