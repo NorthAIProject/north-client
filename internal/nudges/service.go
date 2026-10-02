@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/analytics"
+	"github.com/NorthAIProject/north-client/internal/decisions/decision"
 	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/meals"
 	"github.com/NorthAIProject/north-client/internal/notifications"
@@ -125,6 +126,7 @@ type Service struct {
 	meals     mealSource
 	crews     crewSource
 	weekly    weeklySource
+	decisions decisionSource
 	now       func() time.Time
 }
 
@@ -132,6 +134,16 @@ type Service struct {
 // satisfies it.
 type crewSource interface {
 	CheckedInCrewmates(ctx context.Context, user users.User, now time.Time) ([]string, error)
+}
+
+type decisionSource interface {
+	DueRevisit(ctx context.Context, userID uuid.UUID, now time.Time) (decision.Revisit, bool, error)
+}
+
+// WithDecisions turns on decision revisits.
+func (s *Service) WithDecisions(d decisionSource) *Service {
+	s.decisions = d
+	return s
 }
 
 type weeklySource interface {
@@ -535,6 +547,14 @@ func (s *Service) Evaluate(ctx context.Context, user users.User) (int, error) {
 		created += n
 	}
 
+	if prefs.AllowsNudge(KindDecisionRevisit) {
+		n, err := s.evalDecisionRevisit(ctx, user, now)
+		if err != nil {
+			return created, err
+		}
+		created += n
+	}
+
 	if prefs.AllowsNudge(KindWeekReview) {
 		n, err := s.evalWeekReview(ctx, user, prefs, today, now)
 		if err != nil {
@@ -625,6 +645,38 @@ func (s *Service) evalEveningReflection(ctx context.Context, user users.User, pr
 		return 1, nil
 	}
 	return 0, nil
+}
+
+// decisionRevisitHour is the local hour revisits are asked in. One hour a
+// day keeps it to one question a day at most, even with several due; the
+// rest wait for the next morning.
+const decisionRevisitHour = 10
+
+// evalDecisionRevisit asks whether a decision held, 30 and 90 days after it
+// was made, once per mark.
+func (s *Service) evalDecisionRevisit(ctx context.Context, user users.User, now time.Time) (int, error) {
+	if s.decisions == nil || now.In(user.Location()).Hour() != decisionRevisitHour {
+		return 0, nil
+	}
+	due, ok, err := s.decisions.DueRevisit(ctx, user.ID, now)
+	if err != nil || !ok {
+		return 0, err
+	}
+	when := "A month ago"
+	if due.Mark >= 90 {
+		when = "Three months ago"
+	}
+	_, inserted, err := s.Raise(ctx, user, Draft{
+		Kind:      KindDecisionRevisit,
+		DedupeKey: fmt.Sprintf("decision:%s:%d", due.ID, due.Mark),
+		Title:     "Did it hold?",
+		Body:      when + " you decided: " + due.Title + ". How did it turn out?",
+		Href:      "/app/decisions/" + due.ID.String(),
+	})
+	if err != nil || !inserted {
+		return 0, err
+	}
+	return 1, nil
 }
 
 func (s *Service) weeklyReviewOn(prefs notifications.Prefs) bool {

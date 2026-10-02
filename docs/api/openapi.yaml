@@ -2708,6 +2708,19 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '422':
           $ref: '#/components/responses/ValidationError'
+  /decisions/calibration:
+    get:
+      operationId: getDecisionCalibration
+      summary: How your calls held up, among the ones you looked back on
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DecisionCalibration'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /decisions/{decisionID}:
     parameters:
       - name: decisionID
@@ -8577,6 +8590,10 @@ components:
           type: string
         outcome:
           type: string
+        held:
+          type: string
+          enum: ['yes', partly, 'no']
+          description: Whether the call held up when looked back on; absent until answered.
         decidedAt:
           type: string
           format: date-time
@@ -8600,6 +8617,25 @@ components:
           type: string
         outcome:
           type: string
+        held:
+          type: string
+          enum: ['', 'yes', partly, 'no']
+          description: >-
+            Whether the call held up. Empty or absent clears it, so a client
+            editing a decision sends the current value back.
+    DecisionCalibration:
+      type: object
+      required: ['yes', partly, 'no', revisited]
+      properties:
+        'yes':
+          type: integer
+        partly:
+          type: integer
+        'no':
+          type: integer
+        revisited:
+          type: integer
+          description: Decisions looked back on (yes + partly + no).
     BellNudge:
       type: object
       required: [id, kind, title, body, href, unread, createdAt]
