@@ -67,6 +67,7 @@ type Service struct {
 	model    string
 	activity ActivityTracker
 	volume   VolumeSource
+	lighter  LighterSource
 }
 
 func (s *Service) WithActivity(tracker ActivityTracker) *Service {
@@ -83,6 +84,31 @@ type VolumeSource interface {
 func (s *Service) WithVolume(v VolumeSource) *Service {
 	s.volume = v
 	return s
+}
+
+// LighterSource says whether the person chose a lighter session on the
+// local day containing at. lighterday.Service satisfies it; without one no
+// day is lighter.
+type LighterSource interface {
+	LighterOn(ctx context.Context, user users.User, at time.Time) (bool, error)
+}
+
+func (s *Service) WithLighter(l LighterSource) *Service {
+	s.lighter = l
+	return s
+}
+
+// lighterToday is today's weekday when the person chose to take today
+// lighter, or empty.
+func (s *Service) lighterToday(ctx context.Context, user users.User, now time.Time) (string, error) {
+	if s.lighter == nil {
+		return "", nil
+	}
+	ok, err := s.lighter.LighterOn(ctx, user, now)
+	if err != nil || !ok {
+		return "", err
+	}
+	return now.In(user.Location()).Weekday().String(), nil
 }
 
 func (s *Service) volumeFor(ctx context.Context, user users.User, at time.Time) (Volume, error) {
@@ -687,6 +713,19 @@ type WeekProgress struct {
 	// Volume is this week's choice from the weekly review, and Next already
 	// has its sets adjusted for it.
 	Volume Volume
+	// LighterToday is today's weekday when the person chose a lighter
+	// session this morning; empty otherwise. It wins over Volume for that day
+	// only.
+	LighterToday string
+}
+
+// VolumeOn is the volume a plan day trains at this week: a deload on a day
+// taken lighter, the week's volume on every other.
+func (w WeekProgress) VolumeOn(weekday string) Volume {
+	if w.LighterToday != "" && strings.EqualFold(strings.TrimSpace(weekday), w.LighterToday) {
+		return VolumeDeload
+	}
+	return w.Volume
 }
 
 // Done reports whether weekday was finished this week.
@@ -735,10 +774,14 @@ func (s *Service) WeekProgress(ctx context.Context, user users.User, p Plan, now
 	if err != nil {
 		return WeekProgress{}, err
 	}
-	out := WeekProgress{Completed: done, Volume: volume}
+	lighter, err := s.lighterToday(ctx, user, now)
+	if err != nil {
+		return WeekProgress{}, err
+	}
+	out := WeekProgress{Completed: done, Volume: volume, LighterToday: lighter}
 	out.Next, out.HasNext = p.NextSession(now, done)
 	if out.HasNext {
-		out.Next = volume.Day(out.Next)
+		out.Next = out.VolumeOn(out.Next.Weekday).Day(out.Next)
 	}
 	return out, nil
 }
@@ -775,11 +818,18 @@ func (s *Service) Prescription(ctx context.Context, user users.User, weekday str
 		}
 		return "", 0, false, err
 	}
-	// What the week asked for, so a deload week is not read as half a session.
-	volume, err := s.volumeFor(ctx, user, time.Now())
+	// What the week asked for, so a deload week or a lighter day is not read
+	// as half a session.
+	now := time.Now()
+	week, err := s.volumeFor(ctx, user, now)
 	if err != nil {
 		return "", 0, false, err
 	}
+	lighter, err := s.lighterToday(ctx, user, now)
+	if err != nil {
+		return "", 0, false, err
+	}
+	volume := WeekProgress{Volume: week, LighterToday: lighter}.VolumeOn(weekday)
 	for _, d := range stored.Plan.Days {
 		if !strings.EqualFold(strings.TrimSpace(d.Weekday), weekday) {
 			continue

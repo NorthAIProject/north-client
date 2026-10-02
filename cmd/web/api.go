@@ -27,6 +27,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/inbox"
 	"github.com/NorthAIProject/north-client/internal/insights"
 	"github.com/NorthAIProject/north-client/internal/lifts"
+	"github.com/NorthAIProject/north-client/internal/lighterday"
 	"github.com/NorthAIProject/north-client/internal/meals"
 	"github.com/NorthAIProject/north-client/internal/media"
 	"github.com/NorthAIProject/north-client/internal/memories"
@@ -139,6 +140,7 @@ func mountJSON(r chi.Router, sessions auth.SessionResolver, apis apiSet) {
 		apis.xp.Routes(r)
 		apis.weekly.Routes(r)
 		apis.inbox.Routes(r)
+		apis.lighter.Routes(r)
 	})
 }
 
@@ -187,4 +189,5 @@ type apiSet struct {
 	xp           *xp.API
 	weekly       *weekly.API
 	inbox        *inbox.API
+	lighter      *lighterday.API
 }
