@@ -1060,6 +1060,8 @@ func routes(
 		// A crew's join link.
 		crewHandler.PublicRoutes(r)
 		r.Method(http.MethodGet, "/terms", templ.Handler(legal.Terms()))
+		// Meta's "Data Deletion Instructions URL" for Facebook Login.
+		r.Method(http.MethodGet, "/facebook-data", templ.Handler(legal.FacebookDataDeletion()))
 
 		// The footer language switcher, for visitors who have no account to
 		// store a preference on. A POST rather than a link: it writes a cookie,
