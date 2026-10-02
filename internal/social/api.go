@@ -26,9 +26,11 @@ func NewAPI(svc *Service, siteURL string) *API {
 	return &API{svc: svc, siteURL: strings.TrimRight(siteURL, "/")}
 }
 
-// PublicRoutes is the one thing a signed-out app can ask: who sent this link.
+// PublicRoutes are what needs no bearer token: who sent this link, and
+// Facebook's return from a connection begun in the app.
 func (a *API) PublicRoutes(r chi.Router) {
 	r.Get("/invites/{code}", a.preview)
+	r.Get("/social/facebook/callback", a.facebookCallback)
 }
 
 // Routes go behind auth.RequireBearer.
@@ -45,6 +47,14 @@ func (a *API) Routes(r chi.Router) {
 	r.Post("/friends/match", a.matchContacts)
 	r.Post("/blocks/{userID}", a.block)
 	r.Delete("/blocks/{userID}", a.unblock)
+	r.Get("/social/phone", a.phone)
+	r.Delete("/social/phone", a.removePhone)
+	r.Post("/social/phone/verification", a.startPhone)
+	r.Delete("/social/phone/verification", a.cancelPhone)
+	r.Post("/social/phone/verification/check", a.checkPhone)
+	r.Get("/social/facebook", a.facebookFriends)
+	r.Delete("/social/facebook", a.disconnectFacebook)
+	r.Post("/social/facebook/connect", a.connectFacebook)
 }
 
 type PersonView struct {
@@ -274,6 +284,9 @@ func readJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
 type MatchRequest struct {
 	// Hashes are SHA-256 hex digests of lower-cased email addresses.
 	Hashes []string `json:"hashes"`
+	// PhoneHashes are SHA-256 hex digests of E.164 phone numbers
+	// ("+351912345678"). Hashes and PhoneHashes share the 2000 cap.
+	PhoneHashes []string `json:"phoneHashes"`
 }
 
 // MatchedPerson is somebody found in your contacts.
@@ -293,7 +306,7 @@ func (a *API) matchContacts(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, err, "The request body could not be read.")
 		return
 	}
-	found, err := a.svc.MatchContacts(r.Context(), auth.MustUser(r.Context()).ID, req.Hashes)
+	found, err := a.svc.MatchContacts(r.Context(), auth.MustUser(r.Context()).ID, req.Hashes, req.PhoneHashes)
 	if err != nil {
 		httpx.Error(w, err, "Your contacts could not be checked.")
 		return

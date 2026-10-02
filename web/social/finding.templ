@@ -1,0 +1,281 @@
+package social
+
+import (
+	"strconv"
+
+	"github.com/NorthAIProject/north-client/internal/social/friend"
+	"github.com/NorthAIProject/north-client/internal/social/phone"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/alert"
+	"github.com/NorthAIProject/north-client/web/shared/ui/badge"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/form"
+	"github.com/NorthAIProject/north-client/web/shared/ui/input"
+	"github.com/NorthAIProject/north-client/web/shared/ui/inputotp"
+	"github.com/NorthAIProject/north-client/web/shared/ui/label"
+	"github.com/NorthAIProject/north-client/web/shared/ui/selectbox"
+)
+
+// Finding is the two ways friends find you beyond a handle: a verified phone
+// number and Facebook.
+type Finding struct {
+	Phone    PhoneSection
+	Facebook FacebookSection
+}
+
+// PhoneSection is the phone number card. Enabled is false when the
+// deployment cannot text codes; a number already verified still shows, so
+// it can be removed.
+type PhoneSection struct {
+	Enabled bool
+	Phone   friend.Phone
+	// Dial is the calling code preselected for a national number, empty
+	// when the account's timezone and language do not say.
+	Dial string
+}
+
+// FacebookSection is the Facebook card.
+type FacebookSection struct {
+	Enabled bool
+	Friends friend.FacebookFriends
+	// Result is how the connection the page was opened from ended:
+	// connected, cancelled, expired, taken or failed. Empty otherwise.
+	Result string
+}
+
+templ phoneCard(s PhoneSection, f FriendsForm) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface", ID: "phone-card"}) {
+		@card.Header() {
+			@card.Title() {
+				Phone number
+			}
+			@card.Description() {
+				Friends who have your number in their contacts can find you. It is never shown to anyone.
+			}
+		}
+		@card.Content() {
+			<div class="space-y-4">
+				if s.Phone.Number != "" {
+					<div class="flex items-center gap-3">
+						<p class="flex-1 font-mono text-sm">{ s.Phone.Number }</p>
+						@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
+							Verified
+						}
+						<form method="post" action="/app/friends/phone/remove">
+							@ui.CSRFInput()
+							@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm}) {
+								Remove
+							}
+						</form>
+					</div>
+				}
+				if s.Enabled {
+					if s.Phone.Pending != "" {
+						@phoneCodeForm(s.Phone.Pending, f)
+					} else {
+						@phoneStartForm(s, f)
+					}
+				}
+			</div>
+		}
+	}
+}
+
+templ phoneStartForm(s PhoneSection, f FriendsForm) {
+	<form method="post" action="/app/friends/phone" class="flex flex-wrap items-end gap-2">
+		@ui.CSRFInput()
+		@form.Item() {
+			@label.Label(label.Props{For: "countryCode", Error: f.fieldError("countryCode")}) {
+				Country
+			}
+			@selectbox.SelectBox() {
+				@selectbox.Trigger(selectbox.TriggerProps{ID: "countryCode", Name: "countryCode", HasError: f.fieldError("countryCode") != ""}) {
+					@selectbox.Value(selectbox.ValueProps{Placeholder: "Choose"})
+				}
+				@selectbox.Content(selectbox.ContentProps{SearchPlaceholder: "Search countries"}) {
+					for _, c := range phone.Countries {
+						@selectbox.Item(selectbox.ItemProps{Value: c.Dial, Selected: c.Dial == countryValue(s, f)}) {
+							{ c.Name } (+{ c.Dial })
+						}
+					}
+				}
+			}
+			if f.fieldError("countryCode") != "" {
+				@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+					{ f.fieldError("countryCode") }
+				}
+			}
+		}
+		@form.Item(form.ItemProps{Class: "flex-1"}) {
+			@label.Label(label.Props{For: "phone", Error: f.fieldError("phone")}) {
+				if s.Phone.Number != "" {
+					A different number
+				} else {
+					Your number
+				}
+			}
+			@input.Input(input.Props{ID: "phone", Name: "phone", Type: input.TypeTel, Value: f.Phone, Placeholder: "912 345 678 or +351 912 345 678", HasError: f.fieldError("phone") != ""})
+			if f.fieldError("phone") != "" {
+				@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+					{ f.fieldError("phone") }
+				}
+			}
+		}
+		@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantSecondary}) {
+			Text me a code
+		}
+	</form>
+}
+
+// countryValue is what the select shows: what was just submitted, else the
+// account's best guess.
+func countryValue(s PhoneSection, f FriendsForm) string {
+	if f.Country != "" {
+		return f.Country
+	}
+	return s.Dial
+}
+
+templ phoneCodeForm(pending string, f FriendsForm) {
+	<form method="post" action="/app/friends/phone/check" class="space-y-3">
+		@ui.CSRFInput()
+		@form.Item() {
+			@label.Label(label.Props{For: "code", Error: f.fieldError("code")}) {
+				The code we texted to { pending }
+			}
+			@inputotp.InputOTP(inputotp.Props{ID: "code", Name: "code", HasError: f.fieldError("code") != ""}) {
+				@inputotp.Group() {
+					for i := range 6 {
+						@inputotp.Slot(inputotp.SlotProps{Index: i, HasError: f.fieldError("code") != ""})
+					}
+				}
+			}
+			if f.fieldError("code") != "" {
+				@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+					{ f.fieldError("code") }
+				}
+			}
+		}
+		@button.Button(button.Props{Type: button.TypeSubmit}) {
+			Verify
+		}
+	</form>
+	<form method="post" action="/app/friends/phone/cancel" class="mt-2">
+		@ui.CSRFInput()
+		@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm}) {
+			Use a different number
+		}
+	</form>
+}
+
+templ facebookCard(s FacebookSection) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface", ID: "facebook"}) {
+		@card.Header() {
+			@card.Title() {
+				Facebook friends on Khepri
+			}
+			@card.Description() {
+				Finds Facebook friends who connected Khepri too. Khepri keeps only which Facebook account is yours: not your friend list, not your posts.
+			}
+		}
+		@card.Content() {
+			<div class="space-y-4">
+				if notice := facebookNotice(s.Result); notice != "" {
+					@alert.Alert(alert.Props{Variant: facebookNoticeVariant(s.Result)}) {
+						@alert.Description() {
+							{ notice }
+						}
+					}
+				}
+				if s.Friends.Connected {
+					@facebookPeople(s.Friends)
+				}
+				<div class="flex flex-wrap gap-2">
+					if s.Enabled {
+						@button.Button(button.Props{Href: "/app/friends/facebook/connect", Variant: button.VariantOutline, Size: button.SizeSm}) {
+							if s.Friends.Connected {
+								Find Facebook friends
+							} else {
+								Connect Facebook
+							}
+						}
+					}
+					if s.Friends.Connected {
+						<form method="post" action="/app/friends/facebook/disconnect">
+							@ui.CSRFInput()
+							@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm}) {
+								Disconnect Facebook
+							}
+						</form>
+					}
+				</div>
+			</div>
+		}
+	}
+}
+
+templ facebookPeople(f friend.FacebookFriends) {
+	if f.ImportedAt.IsZero() {
+		<p class="text-muted-foreground text-sm">Facebook is connected. Find Facebook friends to see who is here.</p>
+	} else if len(f.People) == 0 {
+		<p class="text-muted-foreground text-sm">None of your Facebook friends are here yet. Only friends who connected Khepri to their Facebook show up.</p>
+	} else {
+		<ul class="divide-y divide-hairline">
+			for _, c := range f.People {
+				@personRow(c.Person, c.Status) {
+					if c.Status == "" {
+						@followByHandle(c.Handle)
+					} else if c.Status == friend.StatusAccepted {
+						@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
+							Following
+						}
+					}
+				}
+			}
+		</ul>
+		<p class="text-muted-foreground text-xs">{ peopleFound(len(f.People)) }</p>
+	}
+}
+
+// followByHandle asks to follow somebody found by contacts or Facebook. Every
+// match has a handle: having one is what made them findable.
+templ followByHandle(handle string) {
+	<form method="post" action="/app/friends/follow">
+		@ui.CSRFInput()
+		<input type="hidden" name="follow" value={ handle }/>
+		@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantDefault, Size: button.SizeSm}) {
+			Ask to follow
+		}
+	</form>
+}
+
+func peopleFound(n int) string {
+	if n == 1 {
+		return "1 Facebook friend is here."
+	}
+	return strconv.Itoa(n) + " Facebook friends are here."
+}
+
+func facebookNotice(result string) string {
+	switch result {
+	case "connected":
+		return "Facebook connected."
+	case "cancelled":
+		return "Facebook was not connected: you cancelled on Facebook."
+	case "expired":
+		return "That Facebook connection expired or could not be verified. Please try again."
+	case "taken":
+		return "That Facebook account is already connected to another Khepri account."
+	case "failed":
+		return "Connecting Facebook failed. Please try again."
+	}
+	return ""
+}
+
+func facebookNoticeVariant(result string) alert.Variant {
+	if result == "connected" || result == "cancelled" {
+		return alert.VariantDefault
+	}
+	return alert.VariantDestructive
+}

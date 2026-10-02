@@ -3642,8 +3642,13 @@ paths:
   /friends/match:
     post:
       operationId: matchContacts
-      summary: Find people already on Khepri among your contacts, by hashed email
-      description: Send SHA-256 hex digests of lower-cased email addresses, never the addresses. Only people who chose a handle can be found. The hashes are not stored.
+      summary: Find people already on Khepri among your contacts, by hashed email or phone number
+      description: >-
+        Send SHA-256 hex digests of lower-cased email addresses and of E.164
+        phone numbers ("+351912345678"), never the addresses or numbers. Only
+        people who chose a handle can be found, and a phone number only finds
+        an account that verified it. Blocks hide either way. The hashes are not
+        stored. hashes and phoneHashes together hold at most 2000.
       tags: [social]
       requestBody:
         required: true
@@ -3656,6 +3661,13 @@ paths:
                 hashes:
                   type: array
                   maxItems: 2000
+                  description: SHA-256 hex of lower-cased, trimmed email addresses. May be empty.
+                  items:
+                    type: string
+                phoneHashes:
+                  type: array
+                  maxItems: 2000
+                  description: SHA-256 hex of E.164 phone numbers, including the plus.
                   items:
                     type: string
       responses:
@@ -3669,6 +3681,182 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '422':
           $ref: '#/components/responses/ValidationError'
+  /social/phone:
+    get:
+      operationId: getPhone
+      summary: Your verified phone number and any code waiting to be entered
+      description: Only ever shown to its owner. configured is false when this deployment cannot text codes; hide adding a number then.
+      tags: [social]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PhoneView'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    delete:
+      operationId: removePhone
+      summary: Remove your verified phone number; contacts stop finding you by it
+      tags: [social]
+      responses:
+        '204':
+          description: Removed
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /social/phone/verification:
+    post:
+      operationId: startPhoneVerification
+      summary: Text a code to a phone number
+      description: >-
+        phone may be "+<digits>", "00<digits>", or a national number with
+        countryCode (the calling code, digits only). Spaces, dashes, dots and
+        parentheses are ignored. Limited to 5 texts per account per hour and 5
+        per number per day; 429 past either. 404 when this deployment cannot
+        text codes.
+      tags: [social]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PhoneStartRequest'
+      responses:
+        '200':
+          description: Code sent; pending is the number it went to
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PhoneView'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+    delete:
+      operationId: cancelPhoneVerification
+      summary: Forget the code being waited on, to enter a different number
+      tags: [social]
+      responses:
+        '204':
+          description: Cancelled
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /social/phone/verification/check:
+    post:
+      operationId: checkPhoneCode
+      summary: Verify the pending number with the texted code
+      description: >-
+        On success the number is yours and leaves any other account that had
+        verified it: the latest account to prove possession wins. A wrong or
+        expired code is a 422 on the code field; 5 tries per text, then 429.
+      tags: [social]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+      responses:
+        '200':
+          description: Verified
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PhoneView'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /social/facebook:
+    get:
+      operationId: getFacebookFriends
+      summary: Whether Facebook is connected, and who the last import found here
+      description: >-
+        people holds the last import's finds for an hour after it, re-read now
+        so follow status, handles and blocks are current; empty before any
+        import and once it expires. Connecting again refreshes it.
+      tags: [social]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FacebookFriends'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    delete:
+      operationId: disconnectFacebook
+      summary: Disconnect Facebook; the link and the last import are removed
+      tags: [social]
+      responses:
+        '204':
+          description: Disconnected
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /social/facebook/connect:
+    post:
+      operationId: connectFacebook
+      summary: Begin connecting Facebook from the app
+      description: >-
+        Returns Facebook's consent URL. Open it in an authentication session
+        whose callback scheme is khepri; Facebook returns through the server to
+        khepri://friends/facebook?result=connected|cancelled|expired|taken|failed.
+        Then read GET /social/facebook for who was found. Connecting again is
+        how to find friends again: the Facebook token is never kept.
+      tags: [social]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FacebookConnect'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /social/facebook/callback:
+    get:
+      operationId: facebookCallback
+      summary: Facebook's OAuth return for connections begun in the app
+      description: >-
+        Public, called by Facebook; always redirects to
+        khepri://friends/facebook. taken means that Facebook account is
+        connected to a different Khepri account.
+      tags: [social]
+      security: []
+      parameters:
+        - name: state
+          in: query
+          schema:
+            type: string
+        - name: code
+          in: query
+          schema:
+            type: string
+        - name: error
+          in: query
+          schema:
+            type: string
+      responses:
+        '302':
+          description: Back to the app
   /news:
     get:
       operationId: getNews
@@ -4997,6 +5185,61 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorBody'
   schemas:
+    PhoneView:
+      type: object
+      required: [configured, number, pending]
+      properties:
+        configured:
+          type: boolean
+          description: False when this deployment cannot text codes.
+        number:
+          type: string
+          description: The verified number, E.164, or empty.
+        verifiedAt:
+          type: string
+          format: date-time
+        pending:
+          type: string
+          description: The number a code was just texted to (valid ten minutes), or empty.
+    PhoneStartRequest:
+      type: object
+      required: [phone]
+      properties:
+        phone:
+          type: string
+          description: As typed, e.g. "+351 912 345 678" or "912 345 678".
+        countryCode:
+          type: string
+          description: Calling code, digits only ("351"), for a national number.
+    FacebookFriends:
+      type: object
+      required: [configured, connected, people]
+      properties:
+        configured:
+          type: boolean
+          description: False when this deployment has no Meta app; hide Connect Facebook.
+        connected:
+          type: boolean
+        people:
+          type: array
+          items:
+            allOf:
+              - $ref: '#/components/schemas/PersonView'
+              - type: object
+                required: [following]
+                properties:
+                  following:
+                    type: string
+                    description: Empty, pending or accepted.
+        importedAt:
+          type: string
+          format: date-time
+    FacebookConnect:
+      type: object
+      required: [authorizeUrl]
+      properties:
+        authorizeUrl:
+          type: string
     ContactMatches:
       type: object
       required: [people]

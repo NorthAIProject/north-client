@@ -74,6 +74,13 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Post("/friends/sharing", h.setSharing)
 	r.Post("/friends/kudos/{achievementID}", h.kudos(true))
 	r.Post("/friends/kudos/{achievementID}/undo", h.kudos(false))
+	r.Post("/friends/phone", h.startPhone)
+	r.Post("/friends/phone/check", h.checkPhone)
+	r.Post("/friends/phone/cancel", h.cancelPhone)
+	r.Post("/friends/phone/remove", h.removePhone)
+	r.Get("/friends/facebook/connect", h.facebookConnect)
+	r.Get("/friends/facebook/callback", h.facebookCallback)
+	r.Post("/friends/facebook/disconnect", h.facebookDisconnect)
 }
 
 func (h *Handler) setSharing(w http.ResponseWriter, r *http.Request) {
@@ -194,7 +201,12 @@ func (h *Handler) page(w http.ResponseWriter, r *http.Request, status int, form 
 		h.fail(w, r, err)
 		return
 	}
-	h.render(w, r, status, socialpages.FriendsPage(user, overview, InviteURL(h.siteURL, overview.Invite.Code), form, feed, share))
+	finding, err := h.finding(r, user)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	h.render(w, r, status, socialpages.FriendsPage(user, overview, InviteURL(h.siteURL, overview.Invite.Code), form, feed, share, finding))
 }
 
 func (h *Handler) setHandle(w http.ResponseWriter, r *http.Request) {

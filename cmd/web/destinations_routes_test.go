@@ -53,6 +53,9 @@ var knownNonDestinations = map[string]string{
 	// redirects to Strava, callback expects a code and a matching state.
 	"/app/fitness/strava/connect":  "oauth redirect",
 	"/app/fitness/strava/callback": "oauth return",
+	// The same for Connect Facebook on the Friends page.
+	"/app/friends/facebook/connect":  "oauth redirect",
+	"/app/friends/facebook/callback": "oauth return",
 
 	// Mounted only outside production, so listing it would ship a guaranteed
 	// 404. See the note in layout.Destinations.

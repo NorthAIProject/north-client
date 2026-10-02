@@ -1,0 +1,56 @@
+package legal
+
+import "github.com/NorthAIProject/north-client/web/shared/layout"
+
+// FacebookDataDeletion is the page Meta asks every app using Facebook Login to
+// link as its "Data Deletion Instructions URL". It says what Khepri keeps from
+// Facebook and how to remove it, without needing an account to read it.
+templ FacebookDataDeletion() {
+	@layout.Public("Facebook data", signedIn(ctx)) {
+		@document("Your Facebook data in Khepri") {
+			<p class="lead">
+				Khepri uses Facebook only to find friends of yours who are already
+				here. You choose to connect it from Friends, and you can take it
+				away again at any time.
+			</p>
+			@section("What Khepri keeps") {
+				<p>
+					Your Facebook account's app-scoped ID, linked to your Khepri
+					account, so friends who connect later can find you. Nothing else:
+					not your name or photo from Facebook, not your friends list, and
+					not the access token Facebook hands over while you connect. That
+					token is used once to read which of your friends use Khepri and is
+					then thrown away.
+				</p>
+				<p>
+					The Khepri accounts that a connection found are kept for one hour
+					so you can follow them, then deleted.
+				</p>
+			}
+			@section("How to delete it") {
+				<ol>
+					<li>
+						Sign in to Khepri, open <a href="/app/friends">Friends</a>, and
+						choose <strong>Disconnect Facebook</strong>. The link and any
+						results are deleted at once.
+					</li>
+					<li>
+						Or delete your Khepri account under
+						<a href="/app/settings">Settings</a>, which deletes everything,
+						including the Facebook link.
+					</li>
+					<li>
+						You can also remove Khepri from Facebook itself, under
+						Settings &amp; privacy → Settings → Apps and websites. Khepri
+						then cannot read anything new from Facebook; disconnect in Khepri
+						as well to delete the link it holds.
+					</li>
+				</ol>
+				<p>
+					If you cannot sign in, write to { ContactEmail } from the address
+					on your account and we will delete it for you.
+				</p>
+			}
+		}
+	}
+}
