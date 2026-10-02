@@ -14,10 +14,15 @@ const (
 	CategoryTraining = "training"
 	CategoryStreaks  = "streaks"
 	CategoryGoals    = "goals"
+	// CategoryXP is XP and level, which is what puts a person on a friend's
+	// leaderboard. No achievement is ever in it.
+	CategoryXP = "xp"
 )
 
 // Categories in the order they are offered.
-func Categories() []string { return []string{CategoryTraining, CategoryStreaks, CategoryGoals} }
+func Categories() []string {
+	return []string{CategoryTraining, CategoryStreaks, CategoryGoals, CategoryXP}
+}
 
 // Kinds of moment, each in one category.
 const (
@@ -50,4 +55,5 @@ type Sharing struct {
 	Training bool
 	Streaks  bool
 	Goals    bool
+	XP       bool
 }
