@@ -124,6 +124,7 @@ type Service struct {
 	schedules schedules
 	meals     mealSource
 	crews     crewSource
+	weekly    weeklySource
 	now       func() time.Time
 }
 
@@ -131,6 +132,16 @@ type Service struct {
 // satisfies it.
 type crewSource interface {
 	CheckedInCrewmates(ctx context.Context, user users.User, now time.Time) ([]string, error)
+}
+
+type weeklySource interface {
+	Reviewed(ctx context.Context, user users.User, monday time.Time) (bool, error)
+}
+
+// WithWeekly turns on the Sunday-evening weekly review.
+func (s *Service) WithWeekly(w weeklySource) *Service {
+	s.weekly = w
+	return s
 }
 
 // WithCrews turns on the evening crew note.
@@ -524,6 +535,14 @@ func (s *Service) Evaluate(ctx context.Context, user users.User) (int, error) {
 		created += n
 	}
 
+	if prefs.AllowsNudge(KindWeekReview) {
+		n, err := s.evalWeekReview(ctx, user, prefs, today, now)
+		if err != nil {
+			return created, err
+		}
+		created += n
+	}
+
 	if prefs.AllowsNudge(KindEveningReflection) {
 		n, err := s.evalEveningReflection(ctx, user, prefs, today, now)
 		if err != nil {
@@ -550,6 +569,11 @@ const eveningReflectionWindow = 3
 func (s *Service) evalEveningReflection(ctx context.Context, user users.User, prefs notifications.Prefs, today, now time.Time) (int, error) {
 	hour := now.In(user.Location()).Hour()
 	if hour < prefs.EveningHour || hour >= prefs.EveningHour+eveningReflectionWindow {
+		return 0, nil
+	}
+	// On Sunday the weekly review asks about the whole week, which covers the
+	// day; one evening note is enough.
+	if s.weeklyReviewOn(prefs) && now.In(user.Location()).Weekday() == time.Sunday {
 		return 0, nil
 	}
 
@@ -601,6 +625,40 @@ func (s *Service) evalEveningReflection(ctx context.Context, user users.User, pr
 		return 1, nil
 	}
 	return 0, nil
+}
+
+func (s *Service) weeklyReviewOn(prefs notifications.Prefs) bool {
+	return s.weekly != nil && prefs.AllowsNudge(KindWeekReview)
+}
+
+// evalWeekReview asks on Sunday evening, at the person's evening hour, for
+// the weekly review of the week ending, unless next week already has a focus.
+// It uses the evening reflection's window: a sweep that misses the hour
+// catches up within it, and Monday morning is too late to plan Monday.
+func (s *Service) evalWeekReview(ctx context.Context, user users.User, prefs notifications.Prefs, today, now time.Time) (int, error) {
+	if s.weekly == nil {
+		return 0, nil
+	}
+	local := now.In(user.Location())
+	if local.Weekday() != time.Sunday || local.Hour() < prefs.EveningHour || local.Hour() >= prefs.EveningHour+eveningReflectionWindow {
+		return 0, nil
+	}
+	monday := today.AddDate(0, 0, 1)
+	reviewed, err := s.weekly.Reviewed(ctx, user, monday)
+	if err != nil || reviewed {
+		return 0, err
+	}
+	_, inserted, err := s.Raise(ctx, user, Draft{
+		Kind:      KindWeekReview,
+		DedupeKey: monday.Format("2006-01-02"),
+		Title:     "Plan next week",
+		Body:      "Two minutes: how this week went, and up to three things for the next.",
+		Href:      "/app/weekly",
+	})
+	if err != nil || !inserted {
+		return 0, err
+	}
+	return 1, nil
 }
 
 // prefsFor reads this account's notification settings, or the defaults when no

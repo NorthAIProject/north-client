@@ -83,6 +83,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/voice"
 	"github.com/NorthAIProject/north-client/internal/voice/vocab"
 	"github.com/NorthAIProject/north-client/internal/watches"
+	"github.com/NorthAIProject/north-client/internal/weekly"
 	"github.com/NorthAIProject/north-client/internal/workouts"
 	"github.com/NorthAIProject/north-client/internal/workouts/plan"
 	"github.com/NorthAIProject/north-client/internal/xp"
@@ -595,6 +596,13 @@ func routes(
 	})
 	reportHandler := reports.NewHandler(reportSvc, quotaSvc)
 
+	// The weekly review reads goals and reports, and sets the week's training
+	// volume, so it is wired after both and handed back to workouts.
+	weeklySvc := weekly.NewService(pool, goalSvc, reportSvc).WithAchievements(achievementSvc)
+	workoutSvc.WithVolume(weeklySvc)
+	reportSvc.WithFocus(weeklySvc)
+	weeklyHandler := weekly.NewHandler(weeklySvc)
+
 	// Late-wired: see Service.WithBriefings. reports needs insights, and
 	// insights needs the dashboard, so the briefing card arrives last.
 	dashboardSvc.WithBriefings(reportSvc)
@@ -653,6 +661,7 @@ func routes(
 			memories.NewContextSource(memorySvc),
 			documents.NewContextSource(documentSvc),
 			workouts.NewContextSource(workoutSvc),
+			weekly.NewContextSource(weeklySvc),
 			media.NewContextSource(mediaSvc),
 			calculator.NewContextSource(calculatorSvc),
 			// Strava supplies distance and climb, which North's own sessions
@@ -950,6 +959,7 @@ func routes(
 			achievements: achievements.NewAPI(achievementSvc),
 			crews:        crews.NewAPI(crewSvc, cfg.BaseURL),
 			xp:           xp.NewAPI(xpSvc),
+			weekly:       weekly.NewAPI(weeklySvc),
 		})
 	})
 
@@ -1106,6 +1116,7 @@ func routes(
 				socialHandler.Routes(r)
 				crewHandler.Routes(r)
 				xpHandler.Routes(r)
+				weeklyHandler.Routes(r)
 				careHandler.Routes(r)
 				captureHandler.Routes(r)
 				activityHandler.Routes(r)

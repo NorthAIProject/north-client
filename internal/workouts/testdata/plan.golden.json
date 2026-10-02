@@ -12,6 +12,7 @@
         {
           "name": "Goblet squat",
           "sets": 3,
+          "thisWeekSets": 3,
           "reps": "8-12",
           "restSeconds": 90,
           "equipment": "dumbbell",
@@ -41,5 +42,6 @@
     "Thursday has no exercises."
   ],
   "source": "edited",
-  "createdAt": "2026-09-24T07:15:00Z"
+  "createdAt": "2026-09-24T07:15:00Z",
+  "weekVolume": "hold"
 }

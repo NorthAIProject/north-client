@@ -66,11 +66,30 @@ type Service struct {
 	catalog  Catalog
 	model    string
 	activity ActivityTracker
+	volume   VolumeSource
 }
 
 func (s *Service) WithActivity(tracker ActivityTracker) *Service {
 	s.activity = tracker
 	return s
+}
+
+// VolumeSource says how hard someone chose to train in the week containing at.
+// weekly.Service satisfies it; without one every week is the plan as written.
+type VolumeSource interface {
+	VolumeFor(ctx context.Context, user users.User, at time.Time) (Volume, error)
+}
+
+func (s *Service) WithVolume(v VolumeSource) *Service {
+	s.volume = v
+	return s
+}
+
+func (s *Service) volumeFor(ctx context.Context, user users.User, at time.Time) (Volume, error) {
+	if s.volume == nil {
+		return VolumeHold, nil
+	}
+	return s.volume.VolumeFor(ctx, user, at)
 }
 
 type Options struct {
@@ -665,6 +684,9 @@ type WeekProgress struct {
 	// next week when everything left this week is done.
 	Next    PlanDay
 	HasNext bool
+	// Volume is this week's choice from the weekly review, and Next already
+	// has its sets adjusted for it.
+	Volume Volume
 }
 
 // Done reports whether weekday was finished this week.
@@ -709,8 +731,15 @@ func (s *Service) WeekProgress(ctx context.Context, user users.User, p Plan, now
 			return WeekProgress{}, err
 		}
 	}
-	out := WeekProgress{Completed: done}
+	volume, err := s.volumeFor(ctx, user, now)
+	if err != nil {
+		return WeekProgress{}, err
+	}
+	out := WeekProgress{Completed: done, Volume: volume}
 	out.Next, out.HasNext = p.NextSession(now, done)
+	if out.HasNext {
+		out.Next = volume.Day(out.Next)
+	}
 	return out, nil
 }
 
@@ -746,12 +775,17 @@ func (s *Service) Prescription(ctx context.Context, user users.User, weekday str
 		}
 		return "", 0, false, err
 	}
+	// What the week asked for, so a deload week is not read as half a session.
+	volume, err := s.volumeFor(ctx, user, time.Now())
+	if err != nil {
+		return "", 0, false, err
+	}
 	for _, d := range stored.Plan.Days {
 		if !strings.EqualFold(strings.TrimSpace(d.Weekday), weekday) {
 			continue
 		}
 		sets := 0
-		for _, e := range d.Exercises {
+		for _, e := range volume.Day(d).Exercises {
 			sets += e.Sets
 		}
 		return d.Focus, sets, true, nil
