@@ -3879,6 +3879,51 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+  /today/lighter:
+    get:
+      operationId: getLighterDay
+      summary: Whether to offer a lighter session today
+      description: >-
+        Offered on a low-readiness morning (HRV more than 10% under its 14-day
+        average, or resting heart rate more than 5% over it) with a plan session
+        still to do and no answer yet.
+      tags: [training]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LighterDay'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      operationId: chooseLighterDay
+      summary: Take today lighter, or keep the plan
+      description: Lighter cuts today's sets to about 60% for today only; the plan is not edited.
+      tags: [training]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [choice]
+              properties:
+                choice:
+                  type: string
+                  enum: [lighter, keep]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LighterDay'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
   /crews:
     get:
       operationId: listCrews
@@ -5884,6 +5929,35 @@ components:
           description: A suggested knowledge-note title.
         why:
           type: string
+    LighterDay:
+      type: object
+      required: [offered, readiness]
+      properties:
+        offered:
+          type: boolean
+          description: Ask now — a low morning, a session still to do, no answer yet.
+        readiness:
+          type: object
+          required: [low]
+          properties:
+            low:
+              type: boolean
+            hrv:
+              type: number
+              description: This morning's HRV (ms), when Health has it.
+            hrvBaseline:
+              type: number
+            restingHeartRate:
+              type: number
+            restingHeartRateBaseline:
+              type: number
+        session:
+          type: string
+          description: Today's plan session, when there is one.
+        choice:
+          type: string
+          enum: [lighter, keep]
+          description: Today's answer; absent until given.
     CrewList:
       type: object
       required: [crews]
@@ -8843,6 +8917,11 @@ components:
         isNext:
           type: boolean
           description: The first unfinished plan day from today on — the one to train next.
+        lighter:
+          type: boolean
+          description: >-
+            Today, when the person chose a lighter session this morning; its
+            exercises' thisWeekSets are already reduced.
     DayExercise:
       type: object
       required: [name, sets, reps, restSeconds, equipment, hasArt, primaryMuscles, secondaryMuscles]
