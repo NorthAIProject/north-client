@@ -170,6 +170,15 @@ func (r *Repository) SetStatus(ctx context.Context, id, userID uuid.UUID, status
 	return fromDB(row), nil
 }
 
+// Rank sets the order of the person's active goals; active goals left out of
+// ids become unranked.
+func (r *Repository) Rank(ctx context.Context, userID uuid.UUID, ids []uuid.UUID) error {
+	if err := r.q.RankActiveGoals(ctx, goalsdb.RankActiveGoalsParams{Ids: ids, UserID: userID}); err != nil {
+		return apperr.Wrap(err, "rank goals")
+	}
+	return nil
+}
+
 func (r *Repository) Delete(ctx context.Context, id, userID uuid.UUID) error {
 	return apperr.Wrap(r.q.DeleteGoal(ctx, goalsdb.DeleteGoalParams{ID: id, UserID: userID}), "delete goal")
 }
@@ -365,6 +374,9 @@ func fromDB(row goalsdb.Goal) Goal {
 		CreatedAt:  row.CreatedAt,
 		UpdatedAt:  row.UpdatedAt,
 		ClosedAt:   row.ClosedAt,
+	}
+	if row.Priority != nil {
+		g.Priority = int(*row.Priority)
 	}
 	if row.TargetDate.Valid {
 		g.TargetDate = row.TargetDate.Time

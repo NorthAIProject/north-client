@@ -100,6 +100,13 @@ func (s *Service) MilestoneReached(ctx context.Context, userID, milestoneID uuid
 		"Reached a milestone: "+title, "", at)
 }
 
+// WeekReviewed records a weekly review finished, once per planned week. It
+// sits with goals: a review is choosing what the goals get next.
+func (s *Service) WeekReviewed(ctx context.Context, userID uuid.UUID, weekStart, at time.Time) {
+	s.record(ctx, userID, achievement.CategoryGoals, achievement.KindWeekReviewed, weekStart.Format("2006-01-02"),
+		"Planned the week of "+weekStart.Format("2 Jan"), "", at)
+}
+
 // Feed is the viewer's own achievements and those friends share with them,
 // newest first, before the cursor (zero time means now).
 func (s *Service) Feed(ctx context.Context, viewerID uuid.UUID, before time.Time) ([]Item, error) {

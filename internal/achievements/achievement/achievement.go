@@ -30,6 +30,7 @@ const (
 	KindStreakReached    = "streak_reached"
 	KindGoalCompleted    = "goal_completed"
 	KindMilestoneReached = "milestone_reached"
+	KindWeekReviewed     = "week_reviewed"
 )
 
 // Item is one achievement in a feed.

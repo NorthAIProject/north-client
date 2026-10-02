@@ -3289,6 +3289,65 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '422':
           $ref: '#/components/responses/ValidationError'
+  /weekly/review:
+    get:
+      operationId: getWeeklyReview
+      summary: The week that happened and the one being planned
+      description: >-
+        From Friday on the review plans next week; earlier it plans the current
+        one. Asks for the week's report when there is none yet, so report.ready
+        can be false for a minute after a Sunday-evening review opens.
+      tags: [weekly]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeeklyReview'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /weekly/focus:
+    put:
+      operationId: setWeeklyFocus
+      summary: Finish the review with a focus for the week being planned
+      description: >-
+        Stores up to three priorities and the training volume for the planned
+        week, and puts the active goals in goalOrder (active goals left out
+        become unranked).
+      tags: [weekly]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [priorities, goalOrder, volume]
+              properties:
+                priorities:
+                  type: array
+                  maxItems: 3
+                  items:
+                    type: string
+                goalOrder:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+                volume:
+                  type: string
+                  enum: [hold, build, deload]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeeklyFocus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
   /crews:
     get:
       operationId: listCrews
@@ -4822,6 +4881,71 @@ components:
         joinUrl:
           type: string
           format: uri
+    WeeklyFocus:
+      type: object
+      required: [weekStart, priorities, volume, reviewedAt]
+      properties:
+        weekStart:
+          type: string
+          format: date
+          description: Monday of the week, in the person's time zone.
+        priorities:
+          type: array
+          items:
+            type: string
+        volume:
+          type: string
+          enum: [hold, build, deload]
+        reviewedAt:
+          type: string
+          format: date-time
+    WeeklyReview:
+      type: object
+      required: [reviewing, planning, goals]
+      properties:
+        reviewing:
+          type: string
+          format: date
+          description: Monday of the week that happened.
+        planning:
+          type: string
+          format: date
+          description: Monday of the week the new focus is for.
+        report:
+          type: object
+          required: [id, title, body, ready]
+          properties:
+            id:
+              type: string
+              format: uuid
+            title:
+              type: string
+            body:
+              type: string
+              description: Markdown; empty while the report is being written.
+            ready:
+              type: boolean
+        last:
+          $ref: '#/components/schemas/WeeklyFocus'
+        current:
+          $ref: '#/components/schemas/WeeklyFocus'
+        goals:
+          type: array
+          description: Active goals in the person's order.
+          items:
+            type: object
+            required: [id, title, category, priority]
+            properties:
+              id:
+                type: string
+                format: uuid
+              title:
+                type: string
+              category:
+                type: string
+              priority:
+                type: integer
+                description: 1 first; 0 is unranked.
     CrewList:
       type: object
       required: [crews]
@@ -7375,6 +7499,12 @@ components:
         createdAt:
           type: string
           format: date-time
+        weekVolume:
+          type: string
+          enum: [hold, build, deload]
+          description: >-
+            This week's training load from the weekly review. Each exercise's
+            thisWeekSets already reflects it; hold when the week was not reviewed.
     TrainingDay:
       type: object
       required: [weekday, focus, exercises, completedThisWeek, isNext]
@@ -7407,6 +7537,12 @@ components:
           type: string
         sets:
           type: integer
+          description: The plan as written, which is what an edit changes.
+        thisWeekSets:
+          type: integer
+          description: >-
+            What this week asks for after the weekly review's volume (fewer in a
+            deload week, one more on the first two exercises in a build week).
         reps:
           type: string
         restSeconds:
