@@ -96,9 +96,14 @@ func New(opts Options) (*Client, error) {
 	if httpClient == nil {
 		// No overall timeout: a streamed coaching reply can legitimately run
 		// for minutes. Request lifetime is bounded by the caller's context.
+		//
+		// The header timeout must cover a whole non-streamed generation too,
+		// because Generate sends stream:false and the server answers only once
+		// it has finished. A training plan from Hermes or NVIDIA takes one to
+		// three minutes; at 60 s every plan request failed.
 		httpClient = &http.Client{
 			Transport: &http.Transport{
-				ResponseHeaderTimeout: 60 * time.Second,
+				ResponseHeaderTimeout: 5 * time.Minute,
 				IdleConnTimeout:       90 * time.Second,
 			},
 		}

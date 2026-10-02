@@ -36,6 +36,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/config"
 	"github.com/NorthAIProject/north-client/internal/conversations"
 	"github.com/NorthAIProject/north-client/internal/crews"
+	"github.com/NorthAIProject/north-client/internal/decisions"
 	"github.com/NorthAIProject/north-client/internal/documents"
 	"github.com/NorthAIProject/north-client/internal/exercises"
 	"github.com/NorthAIProject/north-client/internal/fasting"
@@ -44,6 +45,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/habits"
 	"github.com/NorthAIProject/north-client/internal/health"
 	"github.com/NorthAIProject/north-client/internal/hydration"
+	"github.com/NorthAIProject/north-client/internal/inbox"
 	"github.com/NorthAIProject/north-client/internal/insights"
 	"github.com/NorthAIProject/north-client/internal/integrations"
 	"github.com/NorthAIProject/north-client/internal/jobs"
@@ -358,6 +360,11 @@ func run() error {
 		digestNotify = messagingSvc
 	}
 
+	// A life area on track four weeks running is an achievement friends can
+	// see under the streaks they share.
+	worker.Register(jobs.KindSweepAreaStreaks,
+		insights.NewAreaStreakSweeper(userSvc, insightsSvc, achievementSvc, log).HandleSweep)
+
 	worker.Register(jobs.KindSweepDigests,
 		insights.NewDigestSweeper(insights.DigestSweeperOptions{
 			Accounts: userSvc,
@@ -406,6 +413,13 @@ func run() error {
 	// The weekly review's focus sets each week's training volume, and the
 	// Sunday nudge asks for it.
 	weeklySvc := weekly.NewService(pool, goalSvc, reportSvc).WithAchievements(achievementSvc)
+
+	// The coach's suggestion for each captured inbox item, on the fast model:
+	// sorting one note does not need the strong one.
+	inboxSvc := inbox.NewService(pool, inbox.Options{
+		Suggester: inbox.NewAISuggester(runner, cfg.AI.FastModel), Goals: goalSvc, Users: userSvc, Log: log,
+	})
+	worker.Register(jobs.KindSuggestInbox, inboxSvc.HandleSuggestJob)
 	reportSvc.WithFocus(weeklySvc)
 	workoutSvc := workouts.NewService(workouts.Options{
 		Repository: workouts.NewRepository(pool),
@@ -430,7 +444,9 @@ func run() error {
 		}).
 		// The evening note that crewmates checked in and you have not.
 		WithCrews(crews.NewService(pool, crews.CheckInsFrom(checkinSvc), crews.WorkoutsFrom(activitySvc))).
-		WithWeekly(weeklySvc)
+		WithWeekly(weeklySvc).
+		// 30 and 90 days after a decision: did it hold?
+		WithDecisions(decisions.NewService(decisions.NewRepository(pool)))
 	worker.Register(jobs.KindSweepNudges, nudges.NewSweeper(nudgeSvc, log).HandleSweep)
 
 	// Strava imports and the coach's tools finish workouts and save check-ins
@@ -525,6 +541,7 @@ func run() error {
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepBriefings, struct{}{})
 	worker.RegisterPeriodic(15*time.Minute, jobs.KindSweepWatches, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepDigests, struct{}{})
+	worker.RegisterPeriodic(time.Hour, jobs.KindSweepAreaStreaks, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepSummaries, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepStrava, struct{}{})
 	worker.RegisterPeriodic(24*time.Hour, jobs.KindSweepQuotas, struct{}{})

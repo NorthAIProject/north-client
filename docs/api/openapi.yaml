@@ -2708,6 +2708,19 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '422':
           $ref: '#/components/responses/ValidationError'
+  /decisions/calibration:
+    get:
+      operationId: getDecisionCalibration
+      summary: How your calls held up, among the ones you looked back on
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DecisionCalibration'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /decisions/{decisionID}:
     parameters:
       - name: decisionID
@@ -3348,6 +3361,115 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '422':
           $ref: '#/components/responses/ValidationError'
+  /inbox:
+    get:
+      operationId: listInbox
+      summary: What is waiting in the capture inbox, newest first
+      tags: [inbox]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Inbox'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: addToInbox
+      summary: Save something without deciding where it goes
+      description: >-
+        Saved at once; the coach suggests a home in the background, so a fresh
+        item has no suggestion yet.
+      tags: [inbox]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text:
+                  type: string
+                  description: 1-4000 characters.
+                source:
+                  type: string
+                  enum: [app, share, shortcut, web]
+                  description: Where it was saved from; app when absent.
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InboxItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /inbox/{itemID}/file:
+    parameters:
+      - name: itemID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: fileInboxItem
+      summary: File an item where you choose
+      tags: [inbox]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [destination]
+              properties:
+                destination:
+                  type: string
+                  enum: [goal_note, knowledge, journal]
+                goalId:
+                  type: string
+                  format: uuid
+                  description: Required for goal_note.
+                title:
+                  type: string
+                  description: Knowledge note title; empty uses the start of the text.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InboxItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /inbox/{itemID}/dismiss:
+    parameters:
+      - name: itemID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: dismissInboxItem
+      summary: Drop an item without filing it
+      tags: [inbox]
+      responses:
+        '204':
+          description: Dismissed
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /crews:
     get:
       operationId: listCrews
@@ -3896,6 +4018,29 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InsightsCoach'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /insights/areas:
+    get:
+      operationId: getInsightsAreas
+      summary: The life-area scoreboard, week by week
+      description: >-
+        The same areas the summary scores, for each of the last weeks (Monday to
+        Sunday in the person's time zone), oldest first; the last week is the one
+        in progress. Focus is this week's focus from the weekly review.
+      parameters:
+        - name: weeks
+          in: query
+          description: How many weeks, 2-12; 8 when absent or out of range.
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InsightsAreas'
         '401':
           $ref: '#/components/responses/Unauthorized'
   /insights/spend:
@@ -5189,6 +5334,99 @@ components:
               priority:
                 type: integer
                 description: 1 first; 0 is unranked.
+    InsightsAreas:
+      type: object
+      required: [weeks, areas, focus]
+      properties:
+        weeks:
+          type: array
+          description: The Monday of each week, oldest first.
+          items:
+            type: string
+            format: date
+        areas:
+          type: array
+          items:
+            $ref: '#/components/schemas/InsightsArea'
+        focus:
+          type: array
+          description: This week's focus from the weekly review; empty when not reviewed.
+          items:
+            type: string
+    InsightsArea:
+      type: object
+      required: [key, label, points, verdict, hasData, trend]
+      properties:
+        key:
+          type: string
+        label:
+          type: string
+        points:
+          type: integer
+          description: This week so far, 0-100.
+        verdict:
+          type: string
+          description: The summary's word for the score; empty when there is too little to judge.
+        reason:
+          type: string
+        hasData:
+          type: boolean
+        trend:
+          type: array
+          description: One point per week, matching weeks.
+          items:
+            type: object
+            required: [points, hasData]
+            properties:
+              points:
+                type: integer
+              hasData:
+                type: boolean
+    Inbox:
+      type: object
+      required: [items, open]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/InboxItem'
+        open:
+          type: integer
+          description: How many are waiting, which can be more than items lists.
+    InboxItem:
+      type: object
+      required: [id, text, source, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        text:
+          type: string
+        source:
+          type: string
+          enum: [app, share, shortcut, web]
+        suggestion:
+          $ref: '#/components/schemas/InboxSuggestion'
+        createdAt:
+          type: string
+          format: date-time
+    InboxSuggestion:
+      type: object
+      required: [destination, why]
+      properties:
+        destination:
+          type: string
+          enum: [goal_note, knowledge, journal]
+        goalId:
+          type: string
+          format: uuid
+        goalTitle:
+          type: string
+        title:
+          type: string
+          description: A suggested knowledge-note title.
+        why:
+          type: string
     CrewList:
       type: object
       required: [crews]
@@ -8820,6 +9058,10 @@ components:
           type: string
         outcome:
           type: string
+        held:
+          type: string
+          enum: ['yes', partly, 'no']
+          description: Whether the call held up when looked back on; absent until answered.
         decidedAt:
           type: string
           format: date-time
@@ -8843,6 +9085,25 @@ components:
           type: string
         outcome:
           type: string
+        held:
+          type: string
+          enum: ['', 'yes', partly, 'no']
+          description: >-
+            Whether the call held up. Empty or absent clears it, so a client
+            editing a decision sends the current value back.
+    DecisionCalibration:
+      type: object
+      required: ['yes', partly, 'no', revisited]
+      properties:
+        'yes':
+          type: integer
+        partly:
+          type: integer
+        'no':
+          type: integer
+        revisited:
+          type: integer
+          description: Decisions looked back on (yes + partly + no).
     BellNudge:
       type: object
       required: [id, kind, title, body, href, unread, createdAt]

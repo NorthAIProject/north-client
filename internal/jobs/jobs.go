@@ -78,6 +78,13 @@ const (
 	// KindSyncVault imports files from a connected local vault folder.
 	KindSyncVault Kind = "sync_vault"
 
+	// KindSuggestInbox asks the coach where one captured inbox item belongs.
+	KindSuggestInbox Kind = "suggest_inbox"
+
+	// KindSweepAreaStreaks looks on Monday mornings for life areas on track
+	// four weeks running.
+	KindSweepAreaStreaks Kind = "sweep_area_streaks"
+
 	// KindWeeklyReview writes one week's review from the person's recorded week.
 	KindWeeklyReview Kind = "weekly_review"
 
@@ -170,6 +177,12 @@ type SummarizeConversationPayload struct {
 type ExtractMemoriesPayload struct {
 	UserID         uuid.UUID `json:"user_id"`
 	ConversationID uuid.UUID `json:"conversation_id"`
+}
+
+// SuggestInboxPayload is the job body for KindSuggestInbox.
+type SuggestInboxPayload struct {
+	UserID uuid.UUID `json:"user_id"`
+	ItemID uuid.UUID `json:"item_id"`
 }
 
 // SyncStravaPayload is the job body for KindSyncStrava. Here for the same

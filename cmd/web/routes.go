@@ -44,6 +44,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/habits"
 	"github.com/NorthAIProject/north-client/internal/health"
 	"github.com/NorthAIProject/north-client/internal/hydration"
+	"github.com/NorthAIProject/north-client/internal/inbox"
 	"github.com/NorthAIProject/north-client/internal/insights"
 	"github.com/NorthAIProject/north-client/internal/integrations"
 	"github.com/NorthAIProject/north-client/internal/jobs"
@@ -612,6 +613,12 @@ func routes(
 	reportSvc.WithFocus(weeklySvc)
 	weeklyHandler := weekly.NewHandler(weeklySvc)
 
+	// The capture inbox saves here; the worker suggests where each item goes.
+	inboxSvc := inbox.NewService(pool, inbox.Options{
+		Queue: queue, Goals: goalSvc, Notes: documentSvc, Journal: mindSvc, Users: userSvc,
+	})
+	inboxHandler := inbox.NewHandler(inboxSvc)
+
 	// Late-wired: see Service.WithBriefings. reports needs insights, and
 	// insights needs the dashboard, so the briefing card arrives last.
 	dashboardSvc.WithBriefings(reportSvc)
@@ -948,7 +955,7 @@ func routes(
 			activity:     activity.NewAPI(activitySvc),
 			health:       health.NewAPI(healthSvc),
 			fitness:      fitness.NewAPI(stravaSvc, cfg.BaseURL),
-			insights:     insights.NewAPI(insightsSvc),
+			insights:     insights.NewAPI(insightsSvc).WithFocus(weeklySvc),
 			goals:        goals.NewAPI(goalSvc),
 			checkins:     checkins.NewAPI(checkinSvc),
 			reports:      reports.NewAPI(reportSvc),
@@ -969,6 +976,7 @@ func routes(
 			crews:        crews.NewAPI(crewSvc, cfg.BaseURL),
 			xp:           xp.NewAPI(xpSvc),
 			weekly:       weekly.NewAPI(weeklySvc),
+			inbox:        inbox.NewAPI(inboxSvc),
 		})
 	})
 
@@ -1126,6 +1134,7 @@ func routes(
 				crewHandler.Routes(r)
 				xpHandler.Routes(r)
 				weeklyHandler.Routes(r)
+				inboxHandler.Routes(r)
 				careHandler.Routes(r)
 				captureHandler.Routes(r)
 				activityHandler.Routes(r)

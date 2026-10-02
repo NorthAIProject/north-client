@@ -3,6 +3,7 @@ package decisions
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -56,7 +57,7 @@ func (r *Repository) List(ctx context.Context, userID uuid.UUID, limit int) ([]D
 	return fromDBList(rows), nil
 }
 
-func (r *Repository) Update(ctx context.Context, id, userID uuid.UUID, title, options, rationale, outcome string) (Decision, error) {
+func (r *Repository) Update(ctx context.Context, id, userID uuid.UUID, title, options, rationale, outcome, held string) (Decision, error) {
 	row, err := r.q.UpdateDecision(ctx, decisionsdb.UpdateDecisionParams{
 		ID:        id,
 		UserID:    userID,
@@ -64,6 +65,7 @@ func (r *Repository) Update(ctx context.Context, id, userID uuid.UUID, title, op
 		Options:   options,
 		Rationale: rationale,
 		Outcome:   outcome,
+		Held:      held,
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -85,6 +87,26 @@ func (r *Repository) Delete(ctx context.Context, id, userID uuid.UUID) error {
 	return nil
 }
 
+// DueRevisit is the oldest revisit due at now whose mark is after since.
+func (r *Repository) DueRevisit(ctx context.Context, userID uuid.UUID, now, since time.Time) (Revisit, bool, error) {
+	row, err := r.q.DueRevisit(ctx, decisionsdb.DueRevisitParams{UserID: userID, Now: now, Since: since})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Revisit{}, false, nil
+	}
+	if err != nil {
+		return Revisit{}, false, apperr.Wrap(err, "due decision revisit")
+	}
+	return Revisit{ID: row.ID, Title: row.Title, Mark: int(row.Mark)}, true, nil
+}
+
+func (r *Repository) Calibration(ctx context.Context, userID uuid.UUID) (Calibration, error) {
+	row, err := r.q.Calibration(ctx, userID)
+	if err != nil {
+		return Calibration{}, apperr.Wrap(err, "decision calibration")
+	}
+	return Calibration{Yes: int(row.HeldYes), Partly: int(row.HeldPartly), No: int(row.HeldNo)}, nil
+}
+
 func fromDBList(rows []decisionsdb.Decision) []Decision {
 	out := make([]Decision, 0, len(rows))
 	for _, row := range rows {
@@ -94,15 +116,20 @@ func fromDBList(rows []decisionsdb.Decision) []Decision {
 }
 
 func fromDB(row decisionsdb.Decision) Decision {
-	return Decision{
+	d := Decision{
 		ID:        row.ID,
 		UserID:    row.UserID,
 		Title:     row.Title,
 		Options:   row.Options,
 		Rationale: row.Rationale,
 		Outcome:   row.Outcome,
+		HeldAt:    row.HeldAt,
 		DecidedAt: row.DecidedAt,
 		CreatedAt: row.CreatedAt,
 		UpdatedAt: row.UpdatedAt,
 	}
+	if row.Held != nil {
+		d.Held = *row.Held
+	}
+	return d
 }
