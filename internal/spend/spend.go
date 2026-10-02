@@ -55,6 +55,8 @@ const (
 	// already writing.
 	SurfaceDictation = "dictation"
 	SurfaceEmbedding = "embedding"
+	// SurfaceInboxTriage is the coach suggesting where a captured item goes.
+	SurfaceInboxTriage = "inbox_triage"
 
 	// SurfaceUnknown labels a call that reached a provider without anyone
 	// saying what it was for. Recorded rather than guessed: an unlabelled call
