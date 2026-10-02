@@ -8,13 +8,15 @@ package social
 import "github.com/NorthAIProject/north-client/internal/social/friend"
 
 type (
-	Person        = friend.Person
-	Connection    = friend.Connection
-	Invite        = friend.Invite
-	InvitePreview = friend.InvitePreview
-	Overview      = friend.Overview
-	Relationship  = friend.Relationship
-	Profile       = friend.Profile
+	Person          = friend.Person
+	Connection      = friend.Connection
+	Invite          = friend.Invite
+	InvitePreview   = friend.InvitePreview
+	Overview        = friend.Overview
+	Relationship    = friend.Relationship
+	Profile         = friend.Profile
+	Phone           = friend.Phone
+	FacebookFriends = friend.FacebookFriends
 )
 
 const (

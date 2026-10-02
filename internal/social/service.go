@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/social/phone"
 )
 
 // Inbox tells somebody that something social happened to them: a follow
@@ -30,9 +31,11 @@ const (
 )
 
 type Service struct {
-	repo   *Repository
-	inbox  Inbox
-	funnel Funnel
+	repo     *Repository
+	inbox    Inbox
+	funnel   Funnel
+	verifier phone.Verifier
+	facebook Facebook
 }
 
 func NewService(repo *Repository) *Service { return &Service{repo: repo} }
@@ -324,30 +327,46 @@ func validCode(code string) bool {
 	return true
 }
 
-// MaxContactHashes bounds one match request: a big address book, not a list
-// somebody scraped.
+// MaxContactHashes bounds one match request, emails and phone numbers
+// together: a big address book, not a list somebody scraped.
 const MaxContactHashes = 2000
 
 var sha256Hex = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
 // MatchContacts finds people already here among the viewer's contacts. The
-// phone sends SHA-256 hashes of lower-cased emails, never the addresses;
-// the hashes are used for this query and not kept. Each result's Status is
-// how the viewer follows them: "", pending or accepted.
-func (s *Service) MatchContacts(ctx context.Context, viewerID uuid.UUID, hashes []string) ([]Connection, error) {
-	if len(hashes) > MaxContactHashes {
+// phone sends SHA-256 hashes of lower-cased emails and of E.164 phone
+// numbers ("+351912345678"), never the addresses or numbers; the hashes are
+// used for this query and not kept. A phone number only finds an account
+// that verified it. Each result's Status is how the viewer follows them:
+// "", pending or accepted.
+func (s *Service) MatchContacts(ctx context.Context, viewerID uuid.UUID, emailHashes, phoneHashes []string) ([]Connection, error) {
+	if len(emailHashes)+len(phoneHashes) > MaxContactHashes {
 		return nil, apperr.FieldErrors{}.Add("hashes", "Send at most 2000 contacts at a time.")
 	}
+	emails, ok := cleanHashes(emailHashes)
+	if !ok {
+		return nil, apperr.FieldErrors{}.Add("hashes", "Each contact must be a SHA-256 hex digest.")
+	}
+	phones, ok := cleanHashes(phoneHashes)
+	if !ok {
+		return nil, apperr.FieldErrors{}.Add("phoneHashes", "Each phone number must be a SHA-256 hex digest.")
+	}
+	if len(emails)+len(phones) == 0 {
+		return []Connection{}, nil
+	}
+	return s.repo.MatchContacts(ctx, viewerID, emails, phones)
+}
+
+// cleanHashes lower-cases and trims each hash, and reports false if any is
+// not a SHA-256 hex digest.
+func cleanHashes(hashes []string) ([]string, bool) {
 	clean := make([]string, 0, len(hashes))
 	for _, h := range hashes {
 		h = strings.ToLower(strings.TrimSpace(h))
 		if !sha256Hex.MatchString(h) {
-			return nil, apperr.FieldErrors{}.Add("hashes", "Each contact must be a SHA-256 hex digest.")
+			return nil, false
 		}
 		clean = append(clean, h)
 	}
-	if len(clean) == 0 {
-		return []Connection{}, nil
-	}
-	return s.repo.MatchEmails(ctx, viewerID, clean)
+	return clean, true
 }

@@ -24,3 +24,12 @@ type Invite struct {
 	Channel   string
 	CreatedAt time.Time
 }
+
+type PhoneVerification struct {
+	ID        uuid.UUID
+	UserID    uuid.UUID
+	PhoneE164 string
+	Attempts  int32
+	CreatedAt time.Time
+	ClosedAt  *time.Time
+}

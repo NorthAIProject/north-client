@@ -18,6 +18,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/media"
 	"github.com/NorthAIProject/north-client/internal/shared/database"
 	"github.com/NorthAIProject/north-client/internal/shared/metrics"
+	"github.com/NorthAIProject/north-client/internal/social/phone"
 	"github.com/NorthAIProject/north-client/internal/spend"
 	"github.com/joho/godotenv"
 )
@@ -159,6 +160,24 @@ func run() error {
 	}
 
 	log.Info("server stopped")
+	return nil
+}
+
+// phoneVerifier picks how phone codes are texted, on the same reasoning as
+// mailer: Twilio when configured; in development a stand-in that texts
+// nothing and accepts 000000, so the journey can be walked locally; in
+// production without Twilio, nothing, which hides phone numbers entirely.
+func phoneVerifier(cfg *config.Config) phone.Verifier {
+	switch {
+	case cfg.Twilio.Enabled():
+		return phone.TwilioVerifier{
+			AccountSID: cfg.Twilio.AccountSID,
+			AuthToken:  cfg.Twilio.AuthToken,
+			ServiceSID: cfg.Twilio.VerifyServiceSID,
+		}
+	case !cfg.Env.IsProduction():
+		return phone.DevVerifier{}
+	}
 	return nil
 }
 

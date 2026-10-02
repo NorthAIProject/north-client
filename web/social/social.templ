@@ -17,7 +17,9 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/copybutton"
 	"github.com/NorthAIProject/north-client/web/shared/ui/form"
 	"github.com/NorthAIProject/north-client/web/shared/ui/input"
+	"github.com/NorthAIProject/north-client/web/shared/ui/inputotp"
 	"github.com/NorthAIProject/north-client/web/shared/ui/label"
+	"github.com/NorthAIProject/north-client/web/shared/ui/selectbox"
 	switchcomp "github.com/NorthAIProject/north-client/web/shared/ui/switch"
 )
 
@@ -49,11 +51,13 @@ func ago(t time.Time) string {
 	}
 }
 
-// FriendsForm carries the two text fields back after a rejected submission.
+// FriendsForm carries the text fields back after a rejected submission.
 type FriendsForm struct {
-	Handle string
-	Follow string
-	Errors map[string]string
+	Handle  string
+	Follow  string
+	Phone   string
+	Country string
+	Errors  map[string]string
 }
 
 func (f FriendsForm) fieldError(name string) string {
@@ -85,7 +89,7 @@ func at(handle string) string {
 	return "@" + handle
 }
 
-templ FriendsPage(user users.User, o friend.Overview, inviteURL string, f FriendsForm, feed FeedSection, share ShareLinks) {
+templ FriendsPage(user users.User, o friend.Overview, inviteURL string, f FriendsForm, feed FeedSection, share ShareLinks, finding Finding) {
 	@layout.App("Friends", user, layout.BuildNav(ctx, "/app/friends")) {
 		<div class="mx-auto w-full max-w-3xl space-y-6 p-6 md:p-8">
 			<header>
@@ -100,6 +104,12 @@ templ FriendsPage(user users.User, o friend.Overview, inviteURL string, f Friend
 			}
 			@inviteCard(inviteURL, o.Joined, share)
 			@handleCard(f)
+			if finding.Phone.Enabled || finding.Phone.Phone.Number != "" {
+				@phoneCard(finding.Phone, f)
+			}
+			if finding.Facebook.Enabled || finding.Facebook.Friends.Connected {
+				@facebookCard(finding.Facebook)
+			}
 			if len(o.Requests) > 0 {
 				@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 					@card.Header() {
@@ -146,6 +156,8 @@ templ FriendsPage(user users.User, o friend.Overview, inviteURL string, f Friend
 		</div>
 		@label.Script()
 		@copybutton.Script()
+		@selectbox.Script()
+		@inputotp.Script()
 	}
 }
 
@@ -370,7 +382,7 @@ templ feedCard(items []achievement.Item) {
 											{ it.DisplayName }
 										}
 									</span>
-									<span class="text-muted-foreground"> · { ago(it.OccurredAt) }</span>
+									<span class="text-muted-foreground">· { ago(it.OccurredAt) }</span>
 								</p>
 								<p class="text-sm">{ it.Title }</p>
 								if it.Detail != "" {

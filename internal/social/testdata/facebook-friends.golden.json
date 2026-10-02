@@ -1,0 +1,19 @@
+{
+  "configured": true,
+  "connected": true,
+  "people": [
+    {
+      "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      "displayName": "Ana",
+      "handle": "ana_runs",
+      "following": ""
+    },
+    {
+      "id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+      "displayName": "João",
+      "handle": "joao",
+      "following": "accepted"
+    }
+  ],
+  "importedAt": "2026-09-30T20:00:00Z"
+}
