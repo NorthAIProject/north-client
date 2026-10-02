@@ -1,0 +1,171 @@
+package weekly
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/internal/weekly/week"
+	"github.com/NorthAIProject/north-client/internal/workouts/plan"
+	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/markdown"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/form"
+	"github.com/NorthAIProject/north-client/web/shared/ui/input"
+	"github.com/NorthAIProject/north-client/web/shared/ui/label"
+	"github.com/NorthAIProject/north-client/web/shared/ui/radio"
+)
+
+// Form is what was submitted, kept when it comes back with errors.
+type Form struct {
+	Priorities [week.MaxPriorities]string
+	Volume     plan.Volume
+	Errors     map[string]string
+	Saved      bool
+}
+
+func (f Form) fieldError(name string) string {
+	if f.Errors == nil {
+		return ""
+	}
+	return f.Errors[name]
+}
+
+// FormFrom fills the form from a focus already set, so doing the review again
+// starts from the last answer.
+func FormFrom(f *week.Focus) Form {
+	out := Form{Volume: plan.VolumeHold}
+	if f == nil {
+		return out
+	}
+	copy(out.Priorities[:], f.Priorities)
+	out.Volume = f.Volume
+	return out
+}
+
+func rankValue(g week.Goal, i int) string {
+	if g.Priority > 0 {
+		return fmt.Sprint(g.Priority)
+	}
+	return fmt.Sprint(i + 1)
+}
+
+var volumes = []struct {
+	value plan.Volume
+	title string
+	hint  string
+}{
+	{plan.VolumeHold, "Hold", "Train the plan as written."},
+	{plan.VolumeBuild, "Build", "One extra set on each day's first two exercises."},
+	{plan.VolumeDeload, "Deload", "About 60% of the sets, to recover."},
+}
+
+templ Page(user users.User, rv week.Review, f Form) {
+	@layout.App("Weekly review", user, layout.BuildNav(ctx, "/app/weekly")) {
+		<div class="mx-auto w-full max-w-3xl space-y-6 p-6 md:p-8">
+			<header>
+				@ui.MonoLabel("Weekly review")
+				<h1 class="mt-2 text-2xl font-medium tracking-tight">Plan the week of { rv.Planning.Format("2 Jan") }</h1>
+				<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
+					How the week of { rv.Reviewing.Format("2 Jan") } went, then up to three priorities, your goals in order, and how hard to train.
+				</p>
+			</header>
+			if f.Saved {
+				<p class="text-sm" role="status">Saved. The coach, your goals and your training plan use this week's focus now.</p>
+			}
+			@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+				@card.Header() {
+					@card.Title() {
+						The week that happened
+					}
+				}
+				@card.Content() {
+					if rv.Last != nil && len(rv.Last.Priorities) > 0 {
+						<p class="text-muted-foreground mb-3 text-sm">You chose: { strings.Join(rv.Last.Priorities, "; ") }</p>
+					}
+					if rv.Report != nil && rv.Report.Ready {
+						<div class="prose prose-sm max-w-none">
+							@markdown.Render(rv.Report.Body)
+						</div>
+					} else {
+						<p class="text-muted-foreground text-sm">Your weekly report is being written. Reload in a minute, or plan the week now.</p>
+					}
+				}
+			}
+			<form method="post" action="/app/weekly" class="space-y-6">
+				@ui.CSRFInput()
+				@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+					@card.Header() {
+						@card.Title() {
+							Priorities
+						}
+						@card.Description() {
+							Up to three things this week is for.
+						}
+					}
+					@card.Content(card.ContentProps{Class: "space-y-3"}) {
+						for i, p := range f.Priorities {
+							@input.Input(input.Props{ID: fmt.Sprintf("priority-%d", i), Name: "priority", Value: p, Placeholder: fmt.Sprintf("Priority %d", i+1), HasError: f.fieldError("priorities") != ""})
+						}
+						if f.fieldError("priorities") != "" {
+							@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+								{ f.fieldError("priorities") }
+							}
+						}
+					}
+				}
+				if len(rv.Goals) > 0 {
+					@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+						@card.Header() {
+							@card.Title() {
+								Goals in order
+							}
+							@card.Description() {
+								1 is first. The coach and your goals list follow this order.
+							}
+						}
+						@card.Content() {
+							<ul class="divide-y divide-hairline">
+								for i, g := range rv.Goals {
+									<li class="flex items-center gap-3 py-2">
+										@input.Input(input.Props{ID: "rank-" + g.ID.String(), Name: "rank_" + g.ID.String(), Type: input.TypeNumber, Value: rankValue(g, i), Class: "w-16", Attributes: templ.Attributes{"min": "1", "aria-label": "Order of " + g.Title}})
+										<span class="text-sm">{ g.Title }</span>
+									</li>
+								}
+							</ul>
+							if f.fieldError("goals") != "" {
+								@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+									{ f.fieldError("goals") }
+								}
+							}
+						}
+					}
+				}
+				@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+					@card.Header() {
+						@card.Title() {
+							Training this week
+						}
+					}
+					@card.Content(card.ContentProps{Class: "space-y-3"}) {
+						for _, v := range volumes {
+							<div class="flex items-start gap-3">
+								@radio.Radio(radio.Props{ID: "volume-" + string(v.value), Name: "volume", Value: string(v.value), Checked: f.Volume == v.value})
+								@label.Label(label.Props{For: "volume-" + string(v.value)}) {
+									<span class="font-medium">{ v.title }</span>
+									<span class="text-muted-foreground block text-xs">{ v.hint }</span>
+								}
+							</div>
+						}
+					}
+				}
+				@button.Button(button.Props{Type: button.TypeSubmit}) {
+					Save the week
+				}
+			</form>
+		</div>
+		@label.Script()
+	}
+}

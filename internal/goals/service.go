@@ -138,6 +138,28 @@ func (s *Service) SetStatus(ctx context.Context, id, userID uuid.UUID, status st
 	return g, err
 }
 
+// Rank puts the person's active goals in the order given, first first. An id
+// that is not one of their active goals is a validation error rather than
+// silently ignored, so a stale list on a phone cannot reorder the wrong set.
+func (s *Service) Rank(ctx context.Context, userID uuid.UUID, ids []uuid.UUID) error {
+	active, err := s.repo.ListActive(ctx, userID, 100)
+	if err != nil {
+		return err
+	}
+	known := make(map[uuid.UUID]bool, len(active))
+	for _, g := range active {
+		known[g.ID] = true
+	}
+	seen := make(map[uuid.UUID]bool, len(ids))
+	for _, id := range ids {
+		if !known[id] || seen[id] {
+			return apperr.FieldErrors{}.Add("goals", "That order does not match your active goals. Reload and try again.")
+		}
+		seen[id] = true
+	}
+	return s.repo.Rank(ctx, userID, ids)
+}
+
 func (s *Service) Delete(ctx context.Context, id, userID uuid.UUID) error {
 	return s.repo.Delete(ctx, id, userID)
 }

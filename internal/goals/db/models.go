@@ -23,6 +23,7 @@ type Goal struct {
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
 	ClosedAt   *time.Time
+	Priority   *int32
 }
 
 type GoalMilestone struct {

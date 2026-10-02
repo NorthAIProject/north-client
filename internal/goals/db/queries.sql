@@ -11,7 +11,7 @@ SELECT * FROM goals WHERE id = $1 AND user_id = $2;
 -- person is actually doing.
 SELECT * FROM goals
 WHERE user_id = $1
-ORDER BY (status = 'active') DESC, created_at DESC
+ORDER BY (status = 'active') DESC, priority ASC NULLS LAST, created_at DESC
 LIMIT $2;
 
 -- name: ListActiveGoals :many
@@ -19,8 +19,10 @@ LIMIT $2;
 SELECT * FROM goals
 WHERE user_id = $1 AND status = 'active'
 ORDER BY
-    -- Goals with a deadline surface first, soonest first; open-ended goals
-    -- follow. NULLS LAST is the whole point: a goal with no date is not urgent.
+    -- The order the person chose in their weekly review comes first.
+    priority ASC NULLS LAST,
+    -- Then goals with a deadline, soonest first; open-ended goals follow.
+    -- NULLS LAST is the whole point: a goal with no date is not urgent.
     target_date ASC NULLS LAST,
     created_at DESC
 LIMIT $2;
@@ -138,3 +140,13 @@ WHERE m.user_id = $1
   AND m.status = 'open'
   AND m.target_date IS NOT NULL
   AND m.target_date < CURRENT_DATE;
+
+-- name: RankActiveGoals :exec
+-- One statement, so a reorder is never half applied: goals named in ids take
+-- their position (1-based), every other active goal goes back to unranked.
+UPDATE goals
+SET priority = (
+    SELECT r.ord FROM unnest(@ids::uuid[]) WITH ORDINALITY AS r(id, ord)
+    WHERE r.id = goals.id
+)
+WHERE user_id = @user_id AND status = 'active';

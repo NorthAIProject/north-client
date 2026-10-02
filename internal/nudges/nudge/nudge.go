@@ -27,6 +27,10 @@ const (
 	// KindCrewCheckIn is the evening note that crewmates have checked in
 	// and you have not.
 	KindCrewCheckIn = "crew_checkin"
+
+	// KindWeekReview asks on Sunday evening for the weekly review: how the
+	// week went, and the focus for the next one.
+	KindWeekReview = "week_review"
 )
 
 // Nudge is one scheduled accountability note for a person.

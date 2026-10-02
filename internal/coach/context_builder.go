@@ -53,6 +53,10 @@ type Context struct {
 	Goals    []string
 	CheckIns []string
 
+	// WeekFocus is what they chose in their weekly review for this week:
+	// priorities and training volume. Empty when the week was not reviewed.
+	WeekFocus []string
+
 	// Calendar is the next seven days from an external server the person
 	// connected, already reduced to summary strings. Empty when nothing is
 	// connected, which is the normal state.
@@ -340,6 +344,7 @@ func (b *ContextBuilder) collect(ctx context.Context, req ContextRequest, out *C
 func (c *Context) merge(part *Context) {
 	c.Goals = append(c.Goals, part.Goals...)
 	c.CheckIns = append(c.CheckIns, part.CheckIns...)
+	c.WeekFocus = append(c.WeekFocus, part.WeekFocus...)
 	c.Calendar = append(c.Calendar, part.Calendar...)
 	c.FormAnalyses = append(c.FormAnalyses, part.FormAnalyses...)
 	c.Memories = append(c.Memories, part.Memories...)
@@ -396,6 +401,7 @@ func (c *Context) Render() string {
 	}
 
 	section(&b, "Goals", c.Goals, "none recorded yet")
+	section(&b, "This week's focus (their weekly review)", c.WeekFocus, "not set this week")
 	section(&b, "Recent check-ins", c.CheckIns, "none recorded yet")
 	evidenceSection(&b, "Known about them", c.Memories, "none recorded yet")
 

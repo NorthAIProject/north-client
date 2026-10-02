@@ -301,6 +301,12 @@ func Destinations() []Destination {
 			Nav:         NavPlacement{Show: true},
 		},
 		{
+			Key: "nav.weekly", Label: "Plan the week", Href: "/app/weekly", Icon: "calendar-check", Group: GroupProgress,
+			Description: "Review the week and choose a focus for the next one.",
+			Keywords:    []string{"weekly", "review", "plan", "priorities", "focus", "deload"},
+			Nav:         NavPlacement{Show: true},
+		},
+		{
 			Key: "nav.insights", Label: "Insights", Href: "/app/insights", Icon: "chart-line", Group: GroupProgress,
 			Description: "How every part of it has been going.",
 			Keywords:    []string{"charts", "trends", "analytics", "stats", "score", "summary"},

@@ -1,0 +1,32 @@
+{
+  "reviewing": "2026-09-28",
+  "planning": "2026-10-05",
+  "report": {
+    "id": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+    "title": "Week of 28 Sep 2026",
+    "body": "## What moved\n\nFour check-ins.",
+    "ready": true
+  },
+  "last": {
+    "weekStart": "2026-09-28",
+    "priorities": [
+      "Sleep by 23:00"
+    ],
+    "volume": "hold",
+    "reviewedAt": "2026-09-27T19:30:00Z"
+  },
+  "goals": [
+    {
+      "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      "title": "Run a half marathon",
+      "category": "fitness",
+      "priority": 1
+    },
+    {
+      "id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+      "title": "Ship the portfolio",
+      "category": "work",
+      "priority": 0
+    }
+  ]
+}

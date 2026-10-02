@@ -341,6 +341,19 @@ sql:
 
   - engine: postgresql
     schema: migrations
+    queries: internal/weekly/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: weeklydb
+        out: internal/weekly/db
+        overrides: *overrides
+        # sqlc singularises "focus" to "focu".
+        rename:
+          weekly_focu: WeeklyFocus
+
+  - engine: postgresql
+    schema: migrations
     queries: internal/social/db/queries.sql
     gen:
       go:

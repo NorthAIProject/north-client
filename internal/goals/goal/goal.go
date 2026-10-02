@@ -73,6 +73,10 @@ type Goal struct {
 	Category string
 	Status   string
 
+	// Priority is where the person ranked this goal in their weekly review,
+	// 1 first; 0 is unranked.
+	Priority int
+
 	// TargetDate is zero when the goal is open-ended, which is common and fine.
 	TargetDate time.Time
 

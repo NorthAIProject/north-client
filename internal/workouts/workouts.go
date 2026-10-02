@@ -16,6 +16,15 @@ type (
 	// Movement is the part of an exercise a swap replaces — the lift itself,
 	// not the sets and reps prescribed of it.
 	Movement = plan.Movement
+
+	// Volume is a week's training load from the weekly review.
+	Volume = plan.Volume
+)
+
+const (
+	VolumeHold   = plan.VolumeHold
+	VolumeBuild  = plan.VolumeBuild
+	VolumeDeload = plan.VolumeDeload
 )
 
 var (

@@ -60,6 +60,7 @@ var portugueseEuropeanNav = map[string]string{
 	"nav.friends":        "Amigos",
 	"nav.leaderboard":    "Classificação",
 	"nav.crews":          "Grupos",
+	"nav.weekly":         "Planear a semana",
 	"nav.decisions.desc": "As escolhas que fizeste, e porquê.",
 
 	"nav.goals":                   "Objetivos",
