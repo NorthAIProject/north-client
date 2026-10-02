@@ -364,6 +364,16 @@ sql:
 
   - engine: postgresql
     schema: migrations
+    queries: internal/lighterday/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: lighterdaydb
+        out: internal/lighterday/db
+        overrides: *overrides
+
+  - engine: postgresql
+    schema: migrations
     queries: internal/social/db/queries.sql
     gen:
       go:

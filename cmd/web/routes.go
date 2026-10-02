@@ -49,6 +49,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/integrations"
 	"github.com/NorthAIProject/north-client/internal/jobs"
 	"github.com/NorthAIProject/north-client/internal/lifts"
+	"github.com/NorthAIProject/north-client/internal/lighterday"
 	"github.com/NorthAIProject/north-client/internal/mcpauth"
 	"github.com/NorthAIProject/north-client/internal/mcpserver"
 	"github.com/NorthAIProject/north-client/internal/meals"
@@ -354,6 +355,12 @@ func routes(
 	// slice owns the dedupe and the calorie estimate, so a synced session is
 	// costed exactly like a manually logged one.
 	healthSvc.WithWorkouts(activitySvc, biometricSvc)
+
+	// A lighter day: on a low-readiness morning the person may take today's
+	// session at about 60%. Workouts reads the answer for today's sets.
+	lighterSvc := lighterday.NewService(pool, healthSvc, workoutSvc)
+	workoutSvc.WithLighter(lighterSvc)
+	lighterHandler := lighterday.NewHandler(lighterSvc)
 
 	mealsOpts := meals.HandlerOptions{
 		Ingredients: mealIngredientSvc,
@@ -994,6 +1001,7 @@ func routes(
 			xp:           xp.NewAPI(xpSvc),
 			weekly:       weekly.NewAPI(weeklySvc),
 			inbox:        inbox.NewAPI(inboxSvc),
+			lighter:      lighterday.NewAPI(lighterSvc),
 		})
 	})
 
@@ -1155,6 +1163,7 @@ func routes(
 				xpHandler.Routes(r)
 				weeklyHandler.Routes(r)
 				inboxHandler.Routes(r)
+				lighterHandler.Routes(r)
 				careHandler.Routes(r)
 				captureHandler.Routes(r)
 				activityHandler.Routes(r)
