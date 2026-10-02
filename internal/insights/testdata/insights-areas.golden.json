@@ -1,0 +1,98 @@
+{
+  "weeks": [
+    "2026-09-21",
+    "2026-09-28"
+  ],
+  "areas": [
+    {
+      "key": "body",
+      "label": "Body",
+      "points": 78,
+      "verdict": "OK",
+      "reason": "Water carried this; Sleep duration cost the most.",
+      "hasData": true,
+      "trend": [
+        {
+          "points": 64,
+          "hasData": true
+        },
+        {
+          "points": 78,
+          "hasData": true
+        }
+      ]
+    },
+    {
+      "key": "mind",
+      "label": "Mind",
+      "points": 0,
+      "verdict": "",
+      "hasData": false,
+      "trend": [
+        {
+          "points": 0,
+          "hasData": false
+        },
+        {
+          "points": 0,
+          "hasData": false
+        }
+      ]
+    },
+    {
+      "key": "progress",
+      "label": "Progress",
+      "points": 0,
+      "verdict": "",
+      "hasData": false,
+      "trend": [
+        {
+          "points": 0,
+          "hasData": false
+        },
+        {
+          "points": 0,
+          "hasData": false
+        }
+      ]
+    },
+    {
+      "key": "training",
+      "label": "Training",
+      "points": 0,
+      "verdict": "",
+      "hasData": false,
+      "trend": [
+        {
+          "points": 0,
+          "hasData": false
+        },
+        {
+          "points": 0,
+          "hasData": false
+        }
+      ]
+    },
+    {
+      "key": "nutrition",
+      "label": "Nutrition",
+      "points": 0,
+      "verdict": "",
+      "hasData": false,
+      "trend": [
+        {
+          "points": 0,
+          "hasData": false
+        },
+        {
+          "points": 0,
+          "hasData": false
+        }
+      ]
+    }
+  ],
+  "focus": [
+    "Priorities: Three runs",
+    "Training: deload week, about 60% of the plan's sets"
+  ]
+}

@@ -107,6 +107,15 @@ func (s *Service) WeekReviewed(ctx context.Context, userID uuid.UUID, weekStart,
 		"Planned the week of "+weekStart.Format("2 Jan"), "", at)
 }
 
+// AreaStreak records a life area on track for weeks consecutive weeks,
+// once per run: the run's first Monday keys it, so a run that keeps going is
+// not recorded again, and one that breaks and starts over is.
+func (s *Service) AreaStreak(ctx context.Context, userID uuid.UUID, area, label string, weeks int, runStart, at time.Time) {
+	s.record(ctx, userID, achievement.CategoryStreaks, achievement.KindAreaStreak,
+		fmt.Sprintf("%s:%s", area, runStart.Format("2006-01-02")),
+		fmt.Sprintf("%s on track %d weeks running", label, weeks), "", at)
+}
+
 // Feed is the viewer's own achievements and those friends share with them,
 // newest first, before the cursor (zero time means now).
 func (s *Service) Feed(ctx context.Context, viewerID uuid.UUID, before time.Time) ([]Item, error) {
