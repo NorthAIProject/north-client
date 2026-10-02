@@ -77,7 +77,7 @@ func (s *Service) StartPhoneVerification(ctx context.Context, userID uuid.UUID, 
 	number, err := phone.Normalize(raw, dial)
 	switch {
 	case errors.Is(err, phone.ErrNeedsCountry):
-		return Phone{}, apperr.FieldErrors{}.Add("country", "Choose a country, or start the number with +.")
+		return Phone{}, apperr.FieldErrors{}.Add("countryCode", "Choose a country, or start the number with +.")
 	case err != nil:
 		return Phone{}, apperr.FieldErrors{}.Add("phone", "That does not look like a phone number.")
 	}
