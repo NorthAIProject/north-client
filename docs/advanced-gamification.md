@@ -192,6 +192,24 @@ built so the first reason still holds:
 - **Still no leagues.** The cohort-size and what-it-rewards reasons stand:
   kudos and crews, not rankings.
 
+**Update, 2026-10-02 — XP, levels and a friends leaderboard.** The product
+owner asked for Norviq's leaderboards and gamification. Built in
+`internal/xp`, narrower than the sections below describe:
+
+- **XP is derived, not a ledger.** Every row in the XP table above already
+  lives in its own slice, so one query counts them on read (workouts, habits
+  kept on their days, streak days from day 3, milestones, goals). No hooks, no
+  reversals, nothing stored. Form checks and weekly reviews are not counted
+  yet. Because it is derived it is retroactive, which the rollout section
+  below argued against; with fewer than ten strangers there is no cohort to
+  protect.
+- **Levels** are the seven titles, from lifetime XP, unlocking nothing.
+- **Friends-only leaderboard**, never strangers: the viewer plus accepted
+  follows who share that category, minus blocks. XP needs a fourth sharing
+  switch, `xp`, off by default. Still no leagues, promotion or demotion.
+- **Not built:** daily goal ring, rest days, badges, the per-account switch
+  and cohort rollout, analytics events.
+
 ---
 
 ## Schema sketch
