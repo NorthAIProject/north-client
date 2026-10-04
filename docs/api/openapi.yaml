@@ -2548,6 +2548,36 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+  /nutrition/meals/{mealID}/day:
+    parameters:
+      - name: mealID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      operationId: updatePlanMealDay
+      summary: Update a meal's weekday assignment and day carb override
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MealRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MealPlanDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
   /nutrition/meals/{mealID}/ingredients:
     parameters:
       - name: mealID
@@ -8924,6 +8954,9 @@ components:
           type: string
         description:
           type: string
+        planType:
+          type: string
+          enum: [no_carb, low_carb, mid_carb, high_carb, custom]
         totalMacros:
           $ref: '#/components/schemas/Macros'
         mealCount:
@@ -8948,6 +8981,10 @@ components:
               type: string
             gender:
               type: string
+            customCarbPct:
+              type: number
+            macroTarget:
+              $ref: '#/components/schemas/Macros'
             meals:
               type: array
               items:
@@ -8961,6 +8998,19 @@ components:
                     type: integer
                   name:
                     type: string
+                  weekday:
+                    type: integer
+                    minimum: 0
+                    maximum: 6
+                  dayPlanType:
+                    type: string
+                    enum: [no_carb, low_carb, mid_carb, high_carb, custom]
+                  dayTarget:
+                    $ref: '#/components/schemas/Macros'
+                  remaining:
+                    $ref: '#/components/schemas/Macros'
+                  overageConfirmed:
+                    type: boolean
                   totalMacros:
                     $ref: '#/components/schemas/Macros'
                   ingredients:
@@ -8981,6 +9031,11 @@ components:
           type: string
         gender:
           type: string
+        planType:
+          type: string
+          enum: [no_carb, low_carb, mid_carb, high_carb, custom]
+        customCarbPct:
+          type: number
     MealRequest:
       type: object
       required: [name, mealNumber]
@@ -8989,6 +9044,19 @@ components:
           type: string
         mealNumber:
           type: integer
+        weekday:
+          type: integer
+          minimum: 0
+          maximum: 6
+        dayPlanType:
+          type: string
+          enum: [no_carb, low_carb, mid_carb, high_carb, custom]
+        dayCustomCarbG:
+          type: number
+        dayCustomProteinG:
+          type: number
+        dayCustomFatG:
+          type: number
     PortionRequest:
       type: object
       required: [ingredientId, quantityGrams]
@@ -8998,6 +9066,8 @@ components:
           format: uuid
         quantityGrams:
           type: number
+        confirmOverage:
+          type: boolean
     LogMealRequest:
       type: object
       required: [mealId]

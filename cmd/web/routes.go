@@ -361,6 +361,7 @@ func routes(
 		FoodLog:     foodLogSvc,
 		Progress:    mealProgressSvc,
 		Recommend:   mealRecommendSvc,
+		Goals:       calculatorSvc,
 	}
 	mealsHandler := meals.NewHandler(mealsOpts)
 

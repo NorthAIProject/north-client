@@ -131,6 +131,12 @@ type MealPlan struct {
 	ActivityLevel string
 	Gender        string
 
+	// PlanType sets the carb preset (no_carb, low_carb, mid_carb, high_carb, custom).
+	// Empty means no constraint (legacy plans).
+	PlanType      string
+	CustomCarbPct *float64
+	MacroPlanID   *uuid.UUID
+
 	// TotalMacros is a cache kept current by the service on every ingredient
 	// add/remove, not re-summed on every read.
 	TotalMacros Macros
@@ -148,6 +154,14 @@ type Meal struct {
 
 	MealNumber int
 	Name       string
+
+	// Weekday is nil for unassigned meals, 0–6 for Sunday–Saturday.
+	Weekday          *int
+	DayPlanType      string
+	DayCustomCarbG   *float64
+	DayCustomProteinG *float64
+	DayCustomFatG    *float64
+	OverageConfirmed bool
 
 	TotalMacros Macros
 	Ingredients []MealIngredient

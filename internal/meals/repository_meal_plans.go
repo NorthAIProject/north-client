@@ -11,10 +11,17 @@ import (
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
-func (r *Repository) CreatePlan(ctx context.Context, userID uuid.UUID, name, description, objective, activityLevel, gender string) (MealPlan, error) {
+func (r *Repository) CreatePlan(ctx context.Context, userID uuid.UUID, name, description, objective, activityLevel, gender, planType string, customCarbPct *float64, macroPlanID *uuid.UUID) (MealPlan, error) {
 	row, err := r.q.CreateMealPlan(ctx, mealsdb.CreateMealPlanParams{
-		UserID: userID, Name: name, Description: description,
-		Objective: objective, ActivityLevel: activityLevel, Gender: gender,
+		UserID:        userID,
+		Name:          name,
+		Description:   description,
+		Objective:     objective,
+		ActivityLevel: activityLevel,
+		Gender:        gender,
+		PlanType:      stringPtr(planType),
+		CustomCarbPct: customCarbPct,
+		MacroPlanID:   macroPlanID,
 	})
 	if err != nil {
 		return MealPlan{}, apperr.Wrap(err, "create meal plan")
@@ -73,10 +80,18 @@ func (r *Repository) ListPlans(ctx context.Context, userID uuid.UUID) ([]MealPla
 	return out, nil
 }
 
-func (r *Repository) UpdatePlan(ctx context.Context, id, userID uuid.UUID, name, description, objective, activityLevel, gender string) (MealPlan, error) {
+func (r *Repository) UpdatePlan(ctx context.Context, id, userID uuid.UUID, name, description, objective, activityLevel, gender, planType string, customCarbPct *float64, macroPlanID *uuid.UUID) (MealPlan, error) {
 	row, err := r.q.UpdateMealPlan(ctx, mealsdb.UpdateMealPlanParams{
-		ID: id, UserID: userID, Name: name, Description: description,
-		Objective: objective, ActivityLevel: activityLevel, Gender: gender,
+		ID:            id,
+		UserID:        userID,
+		Name:          name,
+		Description:   description,
+		Objective:     objective,
+		ActivityLevel: activityLevel,
+		Gender:        gender,
+		PlanType:      stringPtr(planType),
+		CustomCarbPct: customCarbPct,
+		MacroPlanID:   macroPlanID,
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -91,7 +106,7 @@ func (r *Repository) DeletePlan(ctx context.Context, id, userID uuid.UUID) error
 	return apperr.Wrap(r.q.DeleteMealPlan(ctx, mealsdb.DeleteMealPlanParams{ID: id, UserID: userID}), "delete meal plan")
 }
 
-func (r *Repository) AddMeal(ctx context.Context, planID, userID uuid.UUID, name string, mealNumber int) (Meal, error) {
+func (r *Repository) AddMeal(ctx context.Context, planID, userID uuid.UUID, name string, mealNumber int, weekday *int, dayPlanType string, dayCustomCarbG, dayCustomProteinG, dayCustomFatG *float64) (Meal, error) {
 	// Ownership check: a meal cannot be created under a plan that is not the
 	// caller's, so confirm the plan resolves for this user first.
 	if _, err := r.q.GetMealPlan(ctx, mealsdb.GetMealPlanParams{ID: planID, UserID: userID}); err != nil {
@@ -101,11 +116,59 @@ func (r *Repository) AddMeal(ctx context.Context, planID, userID uuid.UUID, name
 		return Meal{}, apperr.Wrap(err, "get meal plan")
 	}
 
-	row, err := r.q.CreateMeal(ctx, mealsdb.CreateMealParams{MealPlanID: planID, MealNumber: int16(mealNumber), Name: name})
+	row, err := r.q.CreateMeal(ctx, mealsdb.CreateMealParams{
+		MealPlanID:        planID,
+		MealNumber:        int16(mealNumber),
+		Name:              name,
+		Weekday:           int16Ptr(weekday),
+		DayPlanType:       stringPtr(dayPlanType),
+		DayCustomCarbG:    dayCustomCarbG,
+		DayCustomProteinG: dayCustomProteinG,
+		DayCustomFatG:     dayCustomFatG,
+	})
 	if err != nil {
 		return Meal{}, apperr.Wrap(err, "create meal")
 	}
 	return mealFromDB(row), nil
+}
+
+func (r *Repository) UpdateMealDay(ctx context.Context, mealID, userID uuid.UUID, weekday *int, dayPlanType string, dayCustomCarbG, dayCustomProteinG, dayCustomFatG *float64) (Meal, error) {
+	row, err := r.q.UpdateMealDay(ctx, mealsdb.UpdateMealDayParams{
+		ID:                mealID,
+		UserID:            userID,
+		Weekday:           int16Ptr(weekday),
+		DayPlanType:       stringPtr(dayPlanType),
+		DayCustomCarbG:    dayCustomCarbG,
+		DayCustomProteinG: dayCustomProteinG,
+		DayCustomFatG:     dayCustomFatG,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Meal{}, apperr.ErrNotFound
+		}
+		return Meal{}, apperr.Wrap(err, "update meal day")
+	}
+	return mealFromDB(row), nil
+}
+
+func (r *Repository) ConfirmOverage(ctx context.Context, mealID uuid.UUID) error {
+	return apperr.Wrap(r.q.ConfirmMealOverage(ctx, mealID), "confirm meal overage")
+}
+
+func (r *Repository) SumDayMacros(ctx context.Context, planID uuid.UUID, weekday int) (Macros, error) {
+	row, err := r.q.SumMealMacrosByPlanAndWeekday(ctx, mealsdb.SumMealMacrosByPlanAndWeekdayParams{
+		MealPlanID: planID,
+		Weekday:    int16Ptr(&weekday),
+	})
+	if err != nil {
+		return Macros{}, apperr.Wrap(err, "sum meal macros by weekday")
+	}
+	return Macros{
+		Calories: row.Calories,
+		ProteinG: row.ProteinG,
+		FatG:     row.FatG,
+		CarbG:    row.CarbsG,
+	}, nil
 }
 
 // GetMeal loads a single meal, checking ownership via its parent plan.
@@ -241,17 +304,36 @@ func (r *Repository) recalculatePlanTotals(ctx context.Context, planID uuid.UUID
 
 func mealPlanFromDB(row mealsdb.MealPlan) MealPlan {
 	return MealPlan{
-		ID: row.ID, UserID: row.UserID, Name: row.Name, Description: row.Description,
-		Objective: row.Objective, ActivityLevel: row.ActivityLevel, Gender: row.Gender,
-		TotalMacros: macrosFromJSON(row.TotalMacros),
-		CreatedAt:   row.CreatedAt, UpdatedAt: row.UpdatedAt,
+		ID:            row.ID,
+		UserID:        row.UserID,
+		Name:          row.Name,
+		Description:   row.Description,
+		Objective:     row.Objective,
+		ActivityLevel: row.ActivityLevel,
+		Gender:        row.Gender,
+		PlanType:      derefString(row.PlanType),
+		CustomCarbPct: row.CustomCarbPct,
+		MacroPlanID:   row.MacroPlanID,
+		TotalMacros:   macrosFromJSON(row.TotalMacros),
+		CreatedAt:     row.CreatedAt,
+		UpdatedAt:     row.UpdatedAt,
 	}
 }
 
 func mealFromDB(row mealsdb.Meal) Meal {
 	return Meal{
-		ID: row.ID, MealPlanID: row.MealPlanID, MealNumber: int(row.MealNumber), Name: row.Name,
-		TotalMacros: macrosFromJSON(row.TotalMacros), CreatedAt: row.CreatedAt,
+		ID:                row.ID,
+		MealPlanID:        row.MealPlanID,
+		MealNumber:        int(row.MealNumber),
+		Name:              row.Name,
+		Weekday:           intPtrFromInt16(row.Weekday),
+		DayPlanType:       derefString(row.DayPlanType),
+		DayCustomCarbG:    row.DayCustomCarbG,
+		DayCustomProteinG: row.DayCustomProteinG,
+		DayCustomFatG:     row.DayCustomFatG,
+		OverageConfirmed:  row.OverageConfirmed,
+		TotalMacros:       macrosFromJSON(row.TotalMacros),
+		CreatedAt:         row.CreatedAt,
 	}
 }
 

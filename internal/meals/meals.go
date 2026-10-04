@@ -16,6 +16,25 @@ type (
 	MealIngredient = meal.MealIngredient
 	FoodLogEntry   = meal.FoodLogEntry
 	Reminder       = meal.Reminder
+	DayTarget      = meal.DayTarget
+	Overage        = meal.Overage
+)
+
+const (
+	PlanTypeNoCarb   = meal.PlanTypeNoCarb
+	PlanTypeLowCarb  = meal.PlanTypeLowCarb
+	PlanTypeMidCarb  = meal.PlanTypeMidCarb
+	PlanTypeHighCarb = meal.PlanTypeHighCarb
+	PlanTypeCustom   = meal.PlanTypeCustom
+)
+
+var (
+	PlanTypes        = meal.PlanTypes
+	PlanTypeLabel    = meal.PlanTypeLabel
+	CarbRange        = meal.CarbRange
+	DefaultCarbPct   = meal.DefaultCarbPct
+	CheckOverage     = meal.CheckOverage
+	ResolveDayTarget = meal.ResolveDayTarget
 )
 
 const (
@@ -31,3 +50,4 @@ const (
 )
 
 var Categories = meal.Categories
+

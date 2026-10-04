@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/calculator"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 )
@@ -21,6 +22,7 @@ type API struct {
 	foodLog     *FoodLogService
 	progress    *TrackMealProgressService
 	recommend   *GoalRecommendationService
+	goals       MacroGoalLookup
 }
 
 // NewAPI builds the routes from the web handler's options; mount them behind
@@ -28,7 +30,7 @@ type API struct {
 func NewAPI(opts HandlerOptions) *API {
 	return &API{
 		ingredients: opts.Ingredients, plans: opts.Plans, foodLog: opts.FoodLog,
-		progress: opts.Progress, recommend: opts.Recommend,
+		progress: opts.Progress, recommend: opts.Recommend, goals: opts.Goals,
 	}
 }
 
@@ -43,6 +45,7 @@ func (a *API) Routes(r chi.Router) {
 	r.Delete("/nutrition/plans/{planID}", a.deletePlan)
 	r.Post("/nutrition/plans/{planID}/meals", a.addMeal)
 	r.Delete("/nutrition/meals/{mealID}", a.removeMeal)
+	r.Put("/nutrition/meals/{mealID}/day", a.updateMealDay)
 	r.Post("/nutrition/meals/{mealID}/ingredients", a.addMealIngredient)
 	r.Delete("/nutrition/meal-ingredients/{mealIngredientID}", a.removeMealIngredient)
 
@@ -92,17 +95,23 @@ type MealIngredientView struct {
 }
 
 type MealView struct {
-	ID          uuid.UUID            `json:"id"`
-	MealNumber  int                  `json:"mealNumber"`
-	Name        string               `json:"name"`
-	TotalMacros MacrosView           `json:"totalMacros"`
-	Ingredients []MealIngredientView `json:"ingredients"`
+	ID               uuid.UUID            `json:"id"`
+	MealNumber       int                  `json:"mealNumber"`
+	Name             string               `json:"name"`
+	Weekday          *int                 `json:"weekday,omitempty"`
+	DayPlanType      string               `json:"dayPlanType,omitempty"`
+	DayTarget        *MacrosView          `json:"dayTarget,omitempty"`
+	TotalMacros      MacrosView           `json:"totalMacros"`
+	Remaining        *MacrosView          `json:"remaining,omitempty"`
+	OverageConfirmed bool                 `json:"overageConfirmed,omitempty"`
+	Ingredients      []MealIngredientView `json:"ingredients"`
 }
 
 type PlanSummary struct {
 	ID          uuid.UUID  `json:"id"`
 	Name        string     `json:"name"`
 	Description string     `json:"description"`
+	PlanType    string     `json:"planType,omitempty"`
 	TotalMacros MacrosView `json:"totalMacros"`
 	MealCount   int        `json:"mealCount"`
 }
@@ -113,28 +122,46 @@ type PlanList struct {
 
 type PlanDetail struct {
 	PlanSummary
-	Objective     string     `json:"objective"`
-	ActivityLevel string     `json:"activityLevel"`
-	Gender        string     `json:"gender"`
-	Meals         []MealView `json:"meals"`
+	Objective     string      `json:"objective"`
+	ActivityLevel string      `json:"activityLevel"`
+	Gender        string      `json:"gender"`
+	CustomCarbPct *float64    `json:"customCarbPct,omitempty"`
+	MacroTarget   *MacrosView `json:"macroTarget,omitempty"`
+	Meals         []MealView  `json:"meals"`
 }
 
 type PlanRequest struct {
-	Name          string `json:"name"`
-	Description   string `json:"description"`
-	Objective     string `json:"objective"`
-	ActivityLevel string `json:"activityLevel"`
-	Gender        string `json:"gender"`
+	Name          string   `json:"name"`
+	Description   string   `json:"description,omitempty"`
+	Objective     string   `json:"objective,omitempty"`
+	ActivityLevel string   `json:"activityLevel,omitempty"`
+	Gender        string   `json:"gender,omitempty"`
+	PlanType      string   `json:"planType,omitempty"`
+	CustomCarbPct *float64 `json:"customCarbPct,omitempty"`
 }
 
 type MealRequest struct {
-	Name       string `json:"name"`
-	MealNumber int    `json:"mealNumber"`
+	Name              string   `json:"name"`
+	MealNumber        int      `json:"mealNumber"`
+	Weekday           *int     `json:"weekday,omitempty"`
+	DayPlanType       string   `json:"dayPlanType,omitempty"`
+	DayCustomCarbG    *float64 `json:"dayCustomCarbG,omitempty"`
+	DayCustomProteinG *float64 `json:"dayCustomProteinG,omitempty"`
+	DayCustomFatG     *float64 `json:"dayCustomFatG,omitempty"`
 }
 
 type PortionRequest struct {
-	IngredientID  uuid.UUID `json:"ingredientId"`
-	QuantityGrams float64   `json:"quantityGrams"`
+	IngredientID   uuid.UUID `json:"ingredientId"`
+	QuantityGrams  float64   `json:"quantityGrams"`
+	ConfirmOverage bool      `json:"confirmOverage,omitempty"`
+}
+
+type OverageView struct {
+	ProteinG float64 `json:"proteinG"`
+	FatG     float64 `json:"fatG"`
+	CarbG    float64 `json:"carbG"`
+	Calories float64 `json:"calories"`
+	Message  string  `json:"message"`
 }
 
 type LogMealRequest struct {
@@ -220,7 +247,23 @@ func (a *API) createPlan(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &req) {
 		return
 	}
-	plan, err := a.plans.CreatePlan(r.Context(), auth.MustUser(r.Context()).ID, MealPlanInput(req))
+	userID := auth.MustUser(r.Context()).ID
+	var macroPlanID *uuid.UUID
+	if a.goals != nil {
+		if cur, err := a.goals.Current(r.Context(), userID); err == nil {
+			macroPlanID = &cur.ID
+		}
+	}
+	plan, err := a.plans.CreatePlan(r.Context(), userID, MealPlanInput{
+		Name:          req.Name,
+		Description:   req.Description,
+		Objective:     req.Objective,
+		ActivityLevel: req.ActivityLevel,
+		Gender:        req.Gender,
+		PlanType:      req.PlanType,
+		CustomCarbPct: req.CustomCarbPct,
+		MacroPlanID:   macroPlanID,
+	})
 	if err != nil {
 		httpx.Error(w, err, "The meal plan could not be saved.")
 		return
@@ -249,11 +292,44 @@ func (a *API) addMeal(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &req) {
 		return
 	}
-	if _, err := a.plans.AddMeal(r.Context(), id, auth.MustUser(r.Context()).ID, MealInput(req)); err != nil {
+	if _, err := a.plans.AddMeal(r.Context(), id, auth.MustUser(r.Context()).ID, MealInput{
+		Name:              req.Name,
+		MealNumber:        req.MealNumber,
+		Weekday:           req.Weekday,
+		DayPlanType:       req.DayPlanType,
+		DayCustomCarbG:    req.DayCustomCarbG,
+		DayCustomProteinG: req.DayCustomProteinG,
+		DayCustomFatG:     req.DayCustomFatG,
+	}); err != nil {
 		httpx.Error(w, err, "The meal could not be added.")
 		return
 	}
 	a.writePlan(w, r, http.StatusCreated, id)
+}
+
+func (a *API) updateMealDay(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r, "mealID")
+	if !ok {
+		return
+	}
+	var req MealRequest
+	if !readJSON(w, r, &req) {
+		return
+	}
+	meal, err := a.plans.UpdateMealDay(r.Context(), id, auth.MustUser(r.Context()).ID, MealInput{
+		Name:              req.Name,
+		MealNumber:        req.MealNumber,
+		Weekday:           req.Weekday,
+		DayPlanType:       req.DayPlanType,
+		DayCustomCarbG:    req.DayCustomCarbG,
+		DayCustomProteinG: req.DayCustomProteinG,
+		DayCustomFatG:     req.DayCustomFatG,
+	})
+	if err != nil {
+		httpx.Error(w, err, "The meal day could not be updated.")
+		return
+	}
+	a.writePlan(w, r, http.StatusOK, meal.MealPlanID)
 }
 
 func (a *API) removeMeal(w http.ResponseWriter, r *http.Request) {
@@ -269,8 +345,25 @@ func (a *API) addMealIngredient(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &req) {
 		return
 	}
-	added, err := a.plans.AddIngredient(r.Context(), id, auth.MustUser(r.Context()).ID, MealIngredientInput(req))
+	added, overage, err := a.plans.AddIngredientChecked(r.Context(), id, auth.MustUser(r.Context()).ID, MealIngredientInput{
+		IngredientID:  req.IngredientID,
+		QuantityGrams: req.QuantityGrams,
+	}, req.ConfirmOverage, a.goals)
 	if err != nil {
+		if overage != nil && overage.IsOver {
+			httpx.WriteJSON(w, http.StatusUnprocessableEntity, map[string]any{
+				"error":   "macro_overage",
+				"message": err.Error(),
+				"overage": OverageView{
+					ProteinG: max(0, overage.ProteinG),
+					FatG:     max(0, overage.FatG),
+					CarbG:    max(0, overage.CarbG),
+					Calories: max(0, overage.Calories),
+					Message:  err.Error(),
+				},
+			})
+			return
+		}
 		httpx.Error(w, err, "The ingredient could not be added.")
 		return
 	}
@@ -365,20 +458,80 @@ func (a *API) writeLog(w http.ResponseWriter, r *http.Request, status int) {
 }
 
 func (a *API) writePlan(w http.ResponseWriter, r *http.Request, status int, id uuid.UUID) {
-	plan, err := a.plans.GetPlan(r.Context(), id, auth.MustUser(r.Context()).ID)
+	userID := auth.MustUser(r.Context()).ID
+	plan, err := a.plans.GetPlan(r.Context(), id, userID)
 	if err != nil {
 		httpx.Error(w, err, "The meal plan could not be loaded.")
 		return
 	}
 	out := PlanDetail{
-		PlanSummary: summarizePlan(plan), Objective: plan.Objective, ActivityLevel: plan.ActivityLevel,
-		Gender: plan.Gender, Meals: make([]MealView, 0, len(plan.Meals)),
+		PlanSummary:   summarizePlan(plan),
+		Objective:     plan.Objective,
+		ActivityLevel: plan.ActivityLevel,
+		Gender:        plan.Gender,
+		CustomCarbPct: plan.CustomCarbPct,
+		Meals:         make([]MealView, 0, len(plan.Meals)),
 	}
+
+	var activeMacro *calculator.MacroPlan
+	if a.goals != nil {
+		if m, err := a.goals.Current(r.Context(), userID); err == nil {
+			activeMacro = &m
+			out.MacroTarget = &MacrosView{
+				Calories: m.CalorieGoal,
+				ProteinG: m.ProteinG,
+				FatG:     m.FatG,
+				CarbG:    m.CarbG,
+			}
+		}
+	}
+
+	dayTotals := make(map[int]Macros)
+	for _, m := range plan.Meals {
+		if m.Weekday != nil {
+			dayTotals[*m.Weekday] = dayTotals[*m.Weekday].Add(m.TotalMacros)
+		}
+	}
+
 	for _, m := range plan.Meals {
 		meal := MealView{
-			ID: m.ID, MealNumber: m.MealNumber, Name: m.Name, TotalMacros: MacrosView(m.TotalMacros),
-			Ingredients: make([]MealIngredientView, 0, len(m.Ingredients)),
+			ID:               m.ID,
+			MealNumber:       m.MealNumber,
+			Name:             m.Name,
+			Weekday:          m.Weekday,
+			DayPlanType:      m.DayPlanType,
+			OverageConfirmed: m.OverageConfirmed,
+			TotalMacros:      MacrosView(m.TotalMacros),
+			Ingredients:      make([]MealIngredientView, 0, len(m.Ingredients)),
 		}
+
+		if activeMacro != nil && m.Weekday != nil && (plan.PlanType != "" || m.DayPlanType != "" || m.DayCustomCarbG != nil) {
+			target := ResolveDayTarget(
+				activeMacro.ProteinG,
+				activeMacro.FatG,
+				activeMacro.CarbG,
+				plan.PlanType,
+				plan.CustomCarbPct,
+				m.DayPlanType,
+				m.DayCustomCarbG,
+				m.DayCustomProteinG,
+				m.DayCustomFatG,
+			)
+			meal.DayTarget = &MacrosView{
+				Calories: target.Calories,
+				ProteinG: target.ProteinG,
+				FatG:     target.FatG,
+				CarbG:    target.CarbG,
+			}
+			consumed := dayTotals[*m.Weekday]
+			meal.Remaining = &MacrosView{
+				Calories: max(0, target.Calories-consumed.Calories),
+				ProteinG: max(0, target.ProteinG-consumed.ProteinG),
+				FatG:     max(0, target.FatG-consumed.FatG),
+				CarbG:    max(0, target.CarbG-consumed.CarbG),
+			}
+		}
+
 		for _, mi := range m.Ingredients {
 			meal.Ingredients = append(meal.Ingredients, projectMealIngredient(mi))
 		}
@@ -416,7 +569,14 @@ func projectMealIngredient(mi MealIngredient) MealIngredientView {
 }
 
 func summarizePlan(p MealPlan) PlanSummary {
-	return PlanSummary{ID: p.ID, Name: p.Name, Description: p.Description, TotalMacros: MacrosView(p.TotalMacros), MealCount: len(p.Meals)}
+	return PlanSummary{
+		ID:          p.ID,
+		Name:        p.Name,
+		Description: p.Description,
+		PlanType:    p.PlanType,
+		TotalMacros: MacrosView(p.TotalMacros),
+		MealCount:   len(p.Meals),
+	}
 }
 
 func pathID(w http.ResponseWriter, r *http.Request, name string) (uuid.UUID, bool) {
