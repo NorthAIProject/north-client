@@ -1,12 +1,16 @@
 package meals
 
 import (
+	"context"
 	"net/http"
+	"strconv"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/calculator"
+	"github.com/NorthAIProject/north-client/internal/meals/meal"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	nutritionpages "github.com/NorthAIProject/north-client/web/nutrition"
 )
@@ -20,7 +24,14 @@ func (h *Handler) plansIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.render(w, r, http.StatusOK, nutritionpages.PlansIndexPage(user, plans, nutritionpages.PlanForm{}))
+	var activeMacro *calculator.MacroPlan
+	if h.goals != nil {
+		if m, err := h.goals.Current(r.Context(), user.ID); err == nil {
+			activeMacro = &m
+		}
+	}
+
+	h.render(w, r, http.StatusOK, nutritionpages.PlansIndexPage(user, plans, nutritionpages.PlanForm{}, activeMacro))
 }
 
 func (h *Handler) createPlan(w http.ResponseWriter, r *http.Request) {
@@ -31,9 +42,35 @@ func (h *Handler) createPlan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	form := nutritionpages.PlanForm{Name: r.PostFormValue("name"), Description: r.PostFormValue("description")}
+	form := nutritionpages.PlanForm{
+		Name:          r.PostFormValue("name"),
+		Description:   r.PostFormValue("description"),
+		PlanType:      r.PostFormValue("plan_type"),
+		CustomCarbPct: r.PostFormValue("custom_carb_pct"),
+	}
 
-	plan, err := h.plans.CreatePlan(r.Context(), user.ID, MealPlanInput{Name: form.Name, Description: form.Description})
+	var customPct *float64
+	if form.CustomCarbPct != "" {
+		v := parseFloat(form.CustomCarbPct)
+		customPct = &v
+	}
+
+	var macroPlanID *uuid.UUID
+	var activeMacro *calculator.MacroPlan
+	if h.goals != nil {
+		if cur, err := h.goals.Current(r.Context(), user.ID); err == nil {
+			macroPlanID = &cur.ID
+			activeMacro = &cur
+		}
+	}
+
+	plan, err := h.plans.CreatePlan(r.Context(), user.ID, MealPlanInput{
+		Name:          form.Name,
+		Description:   form.Description,
+		PlanType:      form.PlanType,
+		CustomCarbPct: customPct,
+		MacroPlanID:   macroPlanID,
+	})
 	if err != nil {
 		var fieldErrs apperr.FieldErrors
 		if apperr.As(err, &fieldErrs) {
@@ -43,7 +80,7 @@ func (h *Handler) createPlan(w http.ResponseWriter, r *http.Request) {
 				h.fail(w, r, listErr)
 				return
 			}
-			h.render(w, r, http.StatusUnprocessableEntity, nutritionpages.PlansIndexPage(user, plans, form))
+			h.render(w, r, http.StatusUnprocessableEntity, nutritionpages.PlansIndexPage(user, plans, form, activeMacro))
 			return
 		}
 		h.fail(w, r, err)
@@ -95,7 +132,21 @@ func (h *Handler) renderPlanDetail(w http.ResponseWriter, r *http.Request, statu
 		return
 	}
 
-	h.render(w, r, status, nutritionpages.PlanDetailPage(user, plan, allIngredients, mealForm, ingredientForm))
+	var activeMacro *calculator.MacroPlan
+	if h.goals != nil {
+		if m, err := h.goals.Current(r.Context(), user.ID); err == nil {
+			activeMacro = &m
+		}
+	}
+
+	dayTotals := make(map[int]meal.Macros)
+	for _, m := range plan.Meals {
+		if m.Weekday != nil {
+			dayTotals[*m.Weekday] = dayTotals[*m.Weekday].Add(m.TotalMacros)
+		}
+	}
+
+	h.render(w, r, status, nutritionpages.PlanDetailPage(user, plan, allIngredients, mealForm, ingredientForm, activeMacro, dayTotals))
 }
 
 func (h *Handler) addMeal(w http.ResponseWriter, r *http.Request) {
@@ -118,7 +169,18 @@ func (h *Handler) addMeal(w http.ResponseWriter, r *http.Request) {
 	}
 
 	name := r.PostFormValue("name")
-	if _, err := h.plans.AddMeal(r.Context(), planID, user.ID, MealInput{Name: name, MealNumber: len(plan.Meals) + 1}); err != nil {
+	var weekday *int
+	if wStr := r.PostFormValue("weekday"); wStr != "" && wStr != "-1" {
+		if v, err := strconv.Atoi(wStr); err == nil {
+			weekday = &v
+		}
+	}
+
+	if _, err := h.plans.AddMeal(r.Context(), planID, user.ID, MealInput{
+		Name:       name,
+		MealNumber: len(plan.Meals) + 1,
+		Weekday:    weekday,
+	}); err != nil {
 		var fieldErrs apperr.FieldErrors
 		if apperr.As(err, &fieldErrs) {
 			h.renderPlanDetail(w, r, http.StatusUnprocessableEntity, nutritionpages.MealForm{Name: name, Errors: fieldErrs.Messages()}, nutritionpages.MealIngredientForm{})
@@ -129,6 +191,46 @@ func (h *Handler) addMeal(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Redirect(w, r, "/app/nutrition/plans/"+planID.String(), http.StatusSeeOther)
+}
+
+func (h *Handler) updateMealDay(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+
+	mealID, err := uuid.Parse(chi.URLParam(r, "mealID"))
+	if err != nil {
+		h.fail(w, r, apperr.ErrNotFound)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		h.fail(w, r, apperr.ErrValidation)
+		return
+	}
+
+	mealRow, err := h.plans.repo.GetMeal(r.Context(), mealID, user.ID)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+
+	var weekday *int
+	if wStr := r.PostFormValue("weekday"); wStr != "" && wStr != "-1" {
+		if v, err := strconv.Atoi(wStr); err == nil {
+			weekday = &v
+		}
+	}
+	dayPlanType := r.PostFormValue("day_plan_type")
+
+	if _, err := h.plans.UpdateMealDay(r.Context(), mealID, user.ID, MealInput{
+		Name:        mealRow.Name,
+		MealNumber:  mealRow.MealNumber,
+		Weekday:     weekday,
+		DayPlanType: dayPlanType,
+	}); err != nil {
+		h.fail(w, r, err)
+		return
+	}
+
+	redirectToReferer(w, r, "/app/nutrition/plans")
 }
 
 func (h *Handler) removeMeal(w http.ResponseWriter, r *http.Request) {
@@ -162,9 +264,54 @@ func (h *Handler) addIngredientToMeal(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ingredientID, _ := uuid.Parse(r.PostFormValue("ingredient_id"))
-	quantity := parseFloat(r.PostFormValue("quantity_grams"))
+	quantityStr := r.PostFormValue("quantity_grams")
+	quantity := parseFloat(quantityStr)
+	confirmOverage := r.PostFormValue("confirm_overage") == "1" || r.PostFormValue("confirm_overage") == "true"
 
-	if _, err := h.plans.AddIngredient(r.Context(), mealID, user.ID, MealIngredientInput{IngredientID: ingredientID, QuantityGrams: quantity}); err != nil {
+	_, overage, err := h.plans.AddIngredientChecked(r.Context(), mealID, user.ID, MealIngredientInput{
+		IngredientID:  ingredientID,
+		QuantityGrams: quantity,
+	}, confirmOverage, h.goals)
+	if err != nil {
+		if overage != nil && overage.IsOver {
+			mealRow, mealErr := h.plans.repo.GetMeal(r.Context(), mealID, user.ID)
+			if mealErr == nil {
+				rctx := chi.RouteContext(r.Context())
+				if rctx == nil {
+					rctx = chi.NewRouteContext()
+					r = r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
+				}
+				rctx.URLParams.Add("id", mealRow.MealPlanID.String())
+
+				h.renderPlanDetail(w, r, http.StatusUnprocessableEntity, nutritionpages.MealForm{}, nutritionpages.MealIngredientForm{
+					MealID:       mealID.String(),
+					IngredientID: ingredientID.String(),
+					Quantity:     quantityStr,
+					Overage:      overage,
+				})
+				return
+			}
+		}
+		var fieldErrs apperr.FieldErrors
+		if apperr.As(err, &fieldErrs) {
+			mealRow, mealErr := h.plans.repo.GetMeal(r.Context(), mealID, user.ID)
+			if mealErr == nil {
+				rctx := chi.RouteContext(r.Context())
+				if rctx == nil {
+					rctx = chi.NewRouteContext()
+					r = r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
+				}
+				rctx.URLParams.Add("id", mealRow.MealPlanID.String())
+
+				h.renderPlanDetail(w, r, http.StatusUnprocessableEntity, nutritionpages.MealForm{}, nutritionpages.MealIngredientForm{
+					MealID:       mealID.String(),
+					IngredientID: ingredientID.String(),
+					Quantity:     quantityStr,
+					Errors:       fieldErrs.Messages(),
+				})
+				return
+			}
+		}
 		h.fail(w, r, err)
 		return
 	}
@@ -173,11 +320,6 @@ func (h *Handler) addIngredientToMeal(w http.ResponseWriter, r *http.Request) {
 }
 
 // addIngredientsToMeal takes the reviewed lines of a spoken meal.
-//
-// Each line posts as ingredient_id_N and quantity_grams_N, and every "line"
-// value names an N the person left ticked. Indexed rather than two parallel
-// lists because an unticked checkbox posts nothing, which would shift every
-// later quantity onto the wrong food.
 func (h *Handler) addIngredientsToMeal(w http.ResponseWriter, r *http.Request) {
 	user := auth.MustUser(r.Context())
 
@@ -225,10 +367,6 @@ func (h *Handler) removeIngredientFromMeal(w http.ResponseWriter, r *http.Reques
 	redirectToReferer(w, r, "/app/nutrition/plans")
 }
 
-// redirectToReferer sends the browser back to the page it came from (the
-// plan detail page), falling back to a sane default if the header is
-// missing — simpler than threading the plan id through every one of these
-// child-resource handlers just to build the same URL.
 func redirectToReferer(w http.ResponseWriter, r *http.Request, fallback string) {
 	if ref := r.Referer(); ref != "" {
 		http.Redirect(w, r, ref, http.StatusSeeOther)

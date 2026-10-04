@@ -22,6 +22,7 @@ type Handler struct {
 	foodLog     *FoodLogService
 	progress    *TrackMealProgressService
 	recommend   *GoalRecommendationService
+	goals       MacroGoalLookup
 }
 
 type HandlerOptions struct {
@@ -31,12 +32,14 @@ type HandlerOptions struct {
 	FoodLog     *FoodLogService
 	Progress    *TrackMealProgressService
 	Recommend   *GoalRecommendationService
+	Goals       MacroGoalLookup
 }
 
 func NewHandler(opts HandlerOptions) *Handler {
 	return &Handler{
 		ingredients: opts.Ingredients, diets: opts.Diets, plans: opts.Plans,
 		foodLog: opts.FoodLog, progress: opts.Progress, recommend: opts.Recommend,
+		goals: opts.Goals,
 	}
 }
 
@@ -51,6 +54,7 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Post("/nutrition/plans/{id}/delete", h.deletePlan)
 	r.Post("/nutrition/plans/{id}/meals", h.addMeal)
 	r.Post("/nutrition/meals/{mealID}/delete", h.removeMeal)
+	r.Post("/nutrition/meals/{mealID}/day", h.updateMealDay)
 	r.Post("/nutrition/meals/{mealID}/ingredients", h.addIngredientToMeal)
 	r.Post("/nutrition/meals/{mealID}/ingredients/batch", h.addIngredientsToMeal)
 	r.Post("/nutrition/meal-ingredients/{id}/delete", h.removeIngredientFromMeal)

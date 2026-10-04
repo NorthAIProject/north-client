@@ -73,3 +73,34 @@ func intsToInt16s(in []int) []int16 {
 	}
 	return out
 }
+
+func stringPtr(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
+func derefString(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+func int16Ptr(i *int) *int16 {
+	if i == nil {
+		return nil
+	}
+	v := int16(*i)
+	return &v
+}
+
+func intPtrFromInt16(i *int16) *int {
+	if i == nil {
+		return nil
+	}
+	v := int(*i)
+	return &v
+}
+

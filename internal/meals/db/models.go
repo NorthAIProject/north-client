@@ -55,12 +55,18 @@ type Ingredient struct {
 }
 
 type Meal struct {
-	ID          uuid.UUID
-	MealPlanID  uuid.UUID
-	MealNumber  int16
-	Name        string
-	TotalMacros []byte
-	CreatedAt   time.Time
+	ID                uuid.UUID
+	MealPlanID        uuid.UUID
+	MealNumber        int16
+	Name              string
+	TotalMacros       []byte
+	CreatedAt         time.Time
+	Weekday           *int16
+	DayPlanType       *string
+	DayCustomCarbG    *float64
+	DayCustomProteinG *float64
+	DayCustomFatG     *float64
+	OverageConfirmed  bool
 }
 
 type MealIngredient struct {
@@ -86,6 +92,9 @@ type MealPlan struct {
 	TotalMacros   []byte
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
+	PlanType      *string
+	CustomCarbPct *float64
+	MacroPlanID   *uuid.UUID
 }
 
 type MealReminder struct {

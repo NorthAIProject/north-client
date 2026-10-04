@@ -70,8 +70,8 @@ DELETE FROM user_diet_preferences WHERE user_id = $1 AND diet_id = $2;
 -- Meal plans
 
 -- name: CreateMealPlan :one
-INSERT INTO meal_plans (user_id, name, description, objective, activity_level, gender)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO meal_plans (user_id, name, description, objective, activity_level, gender, plan_type, custom_carb_pct, macro_plan_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 RETURNING *;
 
 -- name: GetMealPlan :one
@@ -82,7 +82,8 @@ SELECT * FROM meal_plans WHERE user_id = $1 ORDER BY created_at DESC;
 
 -- name: UpdateMealPlan :one
 UPDATE meal_plans
-SET name = $3, description = $4, objective = $5, activity_level = $6, gender = $7, updated_at = now()
+SET name = $3, description = $4, objective = $5, activity_level = $6, gender = $7,
+    plan_type = $8, custom_carb_pct = $9, macro_plan_id = $10, updated_at = now()
 WHERE id = $1 AND user_id = $2
 RETURNING *;
 
@@ -95,8 +96,8 @@ UPDATE meal_plans SET total_macros = $2, updated_at = now() WHERE id = $1;
 -- Meals (within a plan)
 
 -- name: CreateMeal :one
-INSERT INTO meals (meal_plan_id, meal_number, name)
-VALUES ($1, $2, $3)
+INSERT INTO meals (meal_plan_id, meal_number, name, weekday, day_plan_type, day_custom_carb_g, day_custom_protein_g, day_custom_fat_g)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 RETURNING *;
 
 -- name: GetMealOwned :one
@@ -107,7 +108,30 @@ JOIN meal_plans mp ON mp.id = m.meal_plan_id
 WHERE m.id = $1 AND mp.user_id = $2;
 
 -- name: ListMealsByPlan :many
-SELECT * FROM meals WHERE meal_plan_id = $1 ORDER BY meal_number;
+SELECT * FROM meals WHERE meal_plan_id = $1 ORDER BY COALESCE(weekday, -1), meal_number;
+
+-- name: ListMealsByPlanAndWeekday :many
+SELECT * FROM meals WHERE meal_plan_id = $1 AND weekday = $2 ORDER BY meal_number;
+
+-- name: UpdateMealDay :one
+UPDATE meals
+SET weekday = $3, day_plan_type = $4, day_custom_carb_g = $5,
+    day_custom_protein_g = $6, day_custom_fat_g = $7
+WHERE meals.id = $1 AND meal_plan_id IN (SELECT id FROM meal_plans WHERE user_id = $2)
+RETURNING *;
+
+-- name: ConfirmMealOverage :exec
+UPDATE meals SET overage_confirmed = true WHERE meals.id = $1;
+
+-- name: SumMealMacrosByPlanAndWeekday :one
+SELECT
+    COALESCE(SUM(mi.calories), 0)::double precision  AS calories,
+    COALESCE(SUM(mi.protein_g), 0)::double precision AS protein_g,
+    COALESCE(SUM(mi.fat_g), 0)::double precision     AS fat_g,
+    COALESCE(SUM(mi.carbs_g), 0)::double precision   AS carbs_g
+FROM meal_ingredients mi
+JOIN meals m ON m.id = mi.meal_id
+WHERE m.meal_plan_id = $1 AND m.weekday = $2;
 
 -- name: DeleteMealOwned :exec
 DELETE FROM meals

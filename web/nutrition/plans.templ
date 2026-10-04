@@ -3,6 +3,7 @@ package nutrition
 import (
 	"fmt"
 
+	"github.com/NorthAIProject/north-client/internal/calculator"
 	"github.com/NorthAIProject/north-client/internal/meals/meal"
 	"github.com/NorthAIProject/north-client/internal/users"
 	capturepages "github.com/NorthAIProject/north-client/web/capture"
@@ -17,11 +18,24 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/selectbox"
 )
 
+var weekdayNames = []string{
+	"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday",
+}
+
+func weekdayName(d *int) string {
+	if d == nil || *d < 0 || *d > 6 {
+		return "Any day (unassigned)"
+	}
+	return weekdayNames[*d]
+}
+
 // PlanForm carries a submitted (or rejected) meal plan.
 type PlanForm struct {
-	Name        string
-	Description string
-	Errors      map[string]string
+	Name          string
+	Description   string
+	PlanType      string
+	CustomCarbPct string
+	Errors        map[string]string
 }
 
 func (f PlanForm) fieldError(name string) string {
@@ -31,13 +45,30 @@ func (f PlanForm) fieldError(name string) string {
 	return f.Errors[name]
 }
 
-templ PlansIndexPage(user users.User, plans []meal.MealPlan, f PlanForm) {
+templ PlansIndexPage(user users.User, plans []meal.MealPlan, f PlanForm, activeMacro *calculator.MacroPlan) {
 	@layout.App("Meal plans", user, nav(ctx)) {
 		<div class="mx-auto w-full max-w-2xl space-y-6 p-6 md:p-8">
 			<header>
 				@ui.MonoLabel("Nutrition")
 				<h1 class="mt-2 text-2xl font-medium tracking-tight">Meal plans</h1>
 			</header>
+
+			if activeMacro != nil {
+				<div class="rounded-lg border border-hairline bg-surface p-4 text-sm space-y-1">
+					<div class="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Active Macro Target</div>
+					<div class="font-medium text-foreground">
+						{ fmt.Sprintf("%.0f kcal · %.0fg protein / %.0fg fat / %.0fg carbs", activeMacro.CalorieGoal, activeMacro.ProteinG, activeMacro.FatG, activeMacro.CarbG) }
+					</div>
+					<div class="text-xs text-muted-foreground">
+						{ fmt.Sprintf("Calculated for %s (%s)", activeMacro.Goal, activeMacro.MacroSplit) }
+					</div>
+				</div>
+			} else {
+				<div class="rounded-lg border border-hairline bg-surface p-4 text-sm text-muted-foreground">
+					No active macro target set. Set your biometrics and target in the <a href="/app/calculator" class="text-signal underline">Calculator</a>.
+				</div>
+			}
+
 			@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 				@card.Header() {
 					@card.Title() {
@@ -64,6 +95,35 @@ templ PlansIndexPage(user users.User, plans []meal.MealPlan, f PlanForm) {
 							}
 							@input.Input(input.Props{ID: "description", Name: "description", Value: f.Description})
 						}
+						@form.Item() {
+							@label.Label(label.Props{For: "plan_type"}) {
+								Carb plan type
+							}
+							<select id="plan_type" name="plan_type" class="w-full rounded-md border border-hairline bg-surface px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-signal">
+								<option value="">No restriction (unconstrained)</option>
+								<option value="no_carb" selected?={ f.PlanType == "no_carb" }>No carb (0–5% of active carbs)</option>
+								<option value="low_carb" selected?={ f.PlanType == "low_carb" }>Low carb (6–25% of active carbs)</option>
+								<option value="mid_carb" selected?={ f.PlanType == "mid_carb" }>Mid carb (26–45% of active carbs)</option>
+								<option value="high_carb" selected?={ f.PlanType == "high_carb" }>High carb (46–65% of active carbs)</option>
+								<option value="custom" selected?={ f.PlanType == "custom" }>Custom percentage</option>
+							</select>
+							if f.fieldError("plan_type") != "" {
+								@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+									{ f.fieldError("plan_type") }
+								}
+							}
+						}
+						@form.Item() {
+							@label.Label(label.Props{For: "custom_carb_pct"}) {
+								Custom carb % of active carbs (if custom selected)
+							}
+							@input.Input(input.Props{ID: "custom_carb_pct", Name: "custom_carb_pct", Type: input.TypeNumber, Value: f.CustomCarbPct, Placeholder: "e.g. 50"})
+							if f.fieldError("custom_carb_pct") != "" {
+								@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+									{ f.fieldError("custom_carb_pct") }
+								}
+							}
+						}
 						@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90"}) {
 							Create plan
 						}
@@ -87,7 +147,14 @@ templ planCard(p meal.MealPlan) {
 		@card.Card(card.Props{Class: "border-hairline hover:border-muted-foreground/30 transition-colors"}) {
 			@card.Content(card.ContentProps{Class: "py-4"}) {
 				<div class="flex items-center justify-between">
-					<span class="font-medium">{ p.Name }</span>
+					<div>
+						<span class="font-medium">{ p.Name }</span>
+						if p.PlanType != "" {
+							<span class="ml-2 inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-surface-subtle text-signal border border-hairline">
+								{ meal.PlanTypeLabel(p.PlanType) }
+							</span>
+						}
+					</div>
 					<span class="text-muted-foreground text-sm">{ fmt.Sprintf("%.0f kcal", p.TotalMacros.Calories) }</span>
 				</div>
 			}
@@ -97,8 +164,10 @@ templ planCard(p meal.MealPlan) {
 
 // MealForm carries a submitted meal name.
 type MealForm struct {
-	Name   string
-	Errors map[string]string
+	Name        string
+	Weekday     string
+	DayPlanType string
+	Errors      map[string]string
 }
 
 func (f MealForm) fieldError(name string) string {
@@ -110,8 +179,10 @@ func (f MealForm) fieldError(name string) string {
 
 // MealIngredientForm carries a submitted ingredient + quantity for a meal.
 type MealIngredientForm struct {
+	MealID       string
 	IngredientID string
 	Quantity     string
+	Overage      *meal.Overage
 	Errors       map[string]string
 }
 
@@ -122,19 +193,42 @@ func (f MealIngredientForm) fieldError(name string) string {
 	return f.Errors[name]
 }
 
-templ PlanDetailPage(user users.User, plan meal.MealPlan, allIngredients []meal.Ingredient, mealForm MealForm, ingredientForm MealIngredientForm) {
+templ PlanDetailPage(
+	user users.User,
+	plan meal.MealPlan,
+	allIngredients []meal.Ingredient,
+	mealForm MealForm,
+	ingredientForm MealIngredientForm,
+	activeMacro *calculator.MacroPlan,
+	dayTotals map[int]meal.Macros,
+) {
 	@layout.App(plan.Name, user, nav(ctx)) {
 		<div class="mx-auto w-full max-w-2xl space-y-6 p-6 md:p-8">
 			<a href="/app/nutrition/plans" class="text-muted-foreground hover:text-foreground text-sm">← All plans</a>
 			<header class="flex items-start justify-between gap-4">
 				<div>
-					<h1 class="text-2xl font-medium tracking-tight">{ plan.Name }</h1>
+					<div class="flex items-center gap-2">
+						<h1 class="text-2xl font-medium tracking-tight">{ plan.Name }</h1>
+						if plan.PlanType != "" {
+							<span class="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium bg-surface text-signal border border-hairline">
+								{ meal.PlanTypeLabel(plan.PlanType) }
+								if plan.PlanType == meal.PlanTypeCustom && plan.CustomCarbPct != nil {
+									{ fmt.Sprintf(" (%.0f%%)", *plan.CustomCarbPct) }
+								}
+							</span>
+						}
+					</div>
 					if plan.Description != "" {
 						<p class="text-muted-foreground mt-1 text-sm">{ plan.Description }</p>
 					}
 					<p class="text-signal mt-2 text-sm font-medium">
 						{ fmt.Sprintf("%.0f kcal · %.0fg protein / %.0fg fat / %.0fg carbs", plan.TotalMacros.Calories, plan.TotalMacros.ProteinG, plan.TotalMacros.FatG, plan.TotalMacros.CarbG) }
 					</p>
+					if activeMacro != nil {
+						<p class="text-xs text-muted-foreground mt-1">
+							Active target: { fmt.Sprintf("%.0f kcal · %.0fg P / %.0fg F / %.0fg C", activeMacro.CalorieGoal, activeMacro.ProteinG, activeMacro.FatG, activeMacro.CarbG) }
+						</p>
+					}
 				</div>
 				<form method="post" action={ templ.SafeURL("/app/nutrition/plans/" + plan.ID.String() + "/delete") }>
 					@ui.CSRFInput()
@@ -143,9 +237,11 @@ templ PlanDetailPage(user users.User, plan meal.MealPlan, allIngredients []meal.
 					}
 				</form>
 			</header>
+
 			for _, m := range plan.Meals {
-				@mealCard(m, allIngredients, ingredientForm)
+				@mealCard(m, allIngredients, ingredientForm, plan, activeMacro, dayTotals)
 			}
+
 			@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 				@card.Header() {
 					@card.Title() {
@@ -153,18 +249,34 @@ templ PlanDetailPage(user users.User, plan meal.MealPlan, allIngredients []meal.
 					}
 				}
 				@card.Content() {
-					<form method="post" action={ templ.SafeURL("/app/nutrition/plans/" + plan.ID.String() + "/meals") } class="flex gap-2">
+					<form method="post" action={ templ.SafeURL("/app/nutrition/plans/" + plan.ID.String() + "/meals") } class="space-y-3">
 						@ui.CSRFInput()
-						@input.Input(input.Props{Name: "name", Value: mealForm.Name, Placeholder: "e.g. Breakfast", Required: true, HasError: mealForm.fieldError("name") != ""})
-						@button.Button(button.Props{Type: button.TypeSubmit}) {
-							Add
+						<div class="flex gap-2">
+							<div class="flex-1">
+								@input.Input(input.Props{Name: "name", Value: mealForm.Name, Placeholder: "e.g. Breakfast", Required: true, HasError: mealForm.fieldError("name") != ""})
+							</div>
+							<div class="w-40">
+								<select name="weekday" class="w-full h-10 rounded-md border border-hairline bg-surface px-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-signal">
+									<option value="-1">Any day</option>
+									<option value="1" selected?={ mealForm.Weekday == "1" }>Monday</option>
+									<option value="2" selected?={ mealForm.Weekday == "2" }>Tuesday</option>
+									<option value="3" selected?={ mealForm.Weekday == "3" }>Wednesday</option>
+									<option value="4" selected?={ mealForm.Weekday == "4" }>Thursday</option>
+									<option value="5" selected?={ mealForm.Weekday == "5" }>Friday</option>
+									<option value="6" selected?={ mealForm.Weekday == "6" }>Saturday</option>
+									<option value="0" selected?={ mealForm.Weekday == "0" }>Sunday</option>
+								</select>
+							</div>
+							@button.Button(button.Props{Type: button.TypeSubmit}) {
+								Add
+							}
+						</div>
+						if mealForm.fieldError("name") != "" {
+							@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+								{ mealForm.fieldError("name") }
+							}
 						}
 					</form>
-					if mealForm.fieldError("name") != "" {
-						@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
-							{ mealForm.fieldError("name") }
-						}
-					}
 				}
 			}
 		</div>
@@ -174,17 +286,115 @@ templ PlanDetailPage(user users.User, plan meal.MealPlan, allIngredients []meal.
 	}
 }
 
-templ mealCard(m meal.Meal, allIngredients []meal.Ingredient, f MealIngredientForm) {
+templ mealCard(
+	m meal.Meal,
+	allIngredients []meal.Ingredient,
+	f MealIngredientForm,
+	plan meal.MealPlan,
+	activeMacro *calculator.MacroPlan,
+	dayTotals map[int]meal.Macros,
+) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 		@card.Header() {
-			@card.Title() {
-				{ m.Name }
-			}
-			@card.Description() {
-				{ fmt.Sprintf("%.0f kcal", m.TotalMacros.Calories) }
-			}
+			<div class="flex items-start justify-between">
+				<div>
+					<div class="flex items-center gap-2">
+						@card.Title() {
+							{ m.Name }
+						}
+						if m.Weekday != nil {
+							<span class="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium bg-surface-subtle text-foreground border border-hairline">
+								{ weekdayName(m.Weekday) }
+							</span>
+						}
+						if m.DayPlanType != "" {
+							<span class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-surface-subtle text-signal border border-hairline">
+								{ meal.PlanTypeLabel(m.DayPlanType) }
+							</span>
+						}
+					</div>
+					@card.Description() {
+						{ fmt.Sprintf("%.0f kcal", m.TotalMacros.Calories) }
+					}
+				</div>
+
+				if activeMacro != nil && m.Weekday != nil && (plan.PlanType != "" || m.DayPlanType != "" || m.DayCustomCarbG != nil) {
+					{{
+						target := meal.ResolveDayTarget(
+							activeMacro.ProteinG, activeMacro.FatG, activeMacro.CarbG,
+							plan.PlanType, plan.CustomCarbPct,
+							m.DayPlanType, m.DayCustomCarbG, m.DayCustomProteinG, m.DayCustomFatG,
+						)
+						consumed := dayTotals[*m.Weekday]
+						remC := target.CarbG - consumed.CarbG
+						remP := target.ProteinG - consumed.ProteinG
+						remF := target.FatG - consumed.FatG
+					}}
+					<div class="text-right text-xs space-y-0.5">
+						<div class="text-muted-foreground">
+							Day Target: { fmt.Sprintf("%.0fg C · %.0fg P · %.0fg F", target.CarbG, target.ProteinG, target.FatG) }
+						</div>
+						<div class="font-medium">
+							Remaining:
+							if remC < 0 {
+								<span class="text-destructive font-semibold">{ fmt.Sprintf("+%.0fg C (over)", -remC) }</span>
+							} else {
+								<span>{ fmt.Sprintf("%.0fg C", remC) }</span>
+							}
+							·
+							if remP < 0 {
+								<span class="text-destructive font-semibold">{ fmt.Sprintf("+%.0fg P (over)", -remP) }</span>
+							} else {
+								<span>{ fmt.Sprintf("%.0fg P", remP) }</span>
+							}
+							·
+							if remF < 0 {
+								<span class="text-destructive font-semibold">{ fmt.Sprintf("+%.0fg F (over)", -remF) }</span>
+							} else {
+								<span>{ fmt.Sprintf("%.0fg F", remF) }</span>
+							}
+						</div>
+					</div>
+				}
+			</div>
 		}
 		@card.Content() {
+			<!-- Day assignment & override settings -->
+			<details class="mb-4 text-xs text-muted-foreground border border-hairline rounded p-2">
+				<summary class="cursor-pointer font-medium hover:text-foreground">Day schedule & carb override</summary>
+				<form method="post" action={ templ.SafeURL("/app/nutrition/meals/" + m.ID.String() + "/day") } class="mt-2 space-y-2">
+					@ui.CSRFInput()
+					<div class="grid grid-cols-2 gap-2">
+						<div>
+							<label class="block text-muted-foreground mb-1">Weekday</label>
+							<select name="weekday" class="w-full rounded border border-hairline bg-surface p-1 text-foreground">
+								<option value="-1" selected?={ m.Weekday == nil }>Unassigned</option>
+								<option value="1" selected?={ m.Weekday != nil && *m.Weekday == 1 }>Monday</option>
+								<option value="2" selected?={ m.Weekday != nil && *m.Weekday == 2 }>Tuesday</option>
+								<option value="3" selected?={ m.Weekday != nil && *m.Weekday == 3 }>Wednesday</option>
+								<option value="4" selected?={ m.Weekday != nil && *m.Weekday == 4 }>Thursday</option>
+								<option value="5" selected?={ m.Weekday != nil && *m.Weekday == 5 }>Friday</option>
+								<option value="6" selected?={ m.Weekday != nil && *m.Weekday == 6 }>Saturday</option>
+								<option value="0" selected?={ m.Weekday != nil && *m.Weekday == 0 }>Sunday</option>
+							</select>
+						</div>
+						<div>
+							<label class="block text-muted-foreground mb-1">Day carb override</label>
+							<select name="day_plan_type" class="w-full rounded border border-hairline bg-surface p-1 text-foreground">
+								<option value="" selected?={ m.DayPlanType == "" }>Plan default</option>
+								<option value="no_carb" selected?={ m.DayPlanType == "no_carb" }>No carb (0–5%)</option>
+								<option value="low_carb" selected?={ m.DayPlanType == "low_carb" }>Low carb (6–25%)</option>
+								<option value="mid_carb" selected?={ m.DayPlanType == "mid_carb" }>Mid carb (26–45%)</option>
+								<option value="high_carb" selected?={ m.DayPlanType == "high_carb" }>High carb (46–65%)</option>
+							</select>
+						</div>
+					</div>
+					@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Size: button.SizeSm}) {
+						Update day settings
+					}
+				</form>
+			</details>
+
 			if len(m.Ingredients) > 0 {
 				<ul class="mb-4 space-y-1">
 					for _, mi := range m.Ingredients {
@@ -203,6 +413,34 @@ templ mealCard(m meal.Meal, allIngredients []meal.Ingredient, f MealIngredientFo
 					}
 				</ul>
 			}
+
+			<!-- Overage warning prompt -->
+			if f.MealID == m.ID.String() && f.Overage != nil && f.Overage.IsOver {
+				<div class="mb-3 rounded-md border border-destructive/40 bg-destructive/10 p-3 space-y-2 text-sm">
+					<div class="font-semibold text-destructive">Macro target exceeded:</div>
+					<div class="text-xs space-y-0.5">
+						if f.Overage.CarbG > 0 {
+							<div>Carbs: <span class="font-medium">+{ fmt.Sprintf("%.1fg", f.Overage.CarbG) }</span> over limit</div>
+						}
+						if f.Overage.ProteinG > 0 {
+							<div>Protein: <span class="font-medium">+{ fmt.Sprintf("%.1fg", f.Overage.ProteinG) }</span> over limit</div>
+						}
+						if f.Overage.FatG > 0 {
+							<div>Fat: <span class="font-medium">+{ fmt.Sprintf("%.1fg", f.Overage.FatG) }</span> over limit</div>
+						}
+					</div>
+					<form method="post" action={ templ.SafeURL("/app/nutrition/meals/" + m.ID.String() + "/ingredients") } class="flex gap-2 pt-1">
+						@ui.CSRFInput()
+						<input type="hidden" name="ingredient_id" value={ f.IngredientID } />
+						<input type="hidden" name="quantity_grams" value={ f.Quantity } />
+						<input type="hidden" name="confirm_overage" value="1" />
+						@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantDestructive, Size: button.SizeSm}) {
+							Confirm and save anyway
+						}
+					</form>
+				</div>
+			}
+
 			<form method="post" action={ templ.SafeURL("/app/nutrition/meals/" + m.ID.String() + "/ingredients") } class="flex items-end gap-2">
 				@ui.CSRFInput()
 				<div class="flex-1">
@@ -226,7 +464,7 @@ templ mealCard(m meal.Meal, allIngredients []meal.Ingredient, f MealIngredientFo
 					Add
 				}
 			</form>
-			if f.fieldError("ingredient_id") != "" || f.fieldError("quantity_grams") != "" {
+			if (f.fieldError("ingredient_id") != "" || f.fieldError("quantity_grams") != "") && f.MealID == m.ID.String() {
 				@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
 					{ f.fieldError("ingredient_id") }
 					{ f.fieldError("quantity_grams") }
