@@ -56,22 +56,23 @@ func haystack(ctx context.Context, d Destination) string {
 templ commandPalette() {
 	<div x-data="commandPalette" x-on:keydown.window="hotkey($event)" class="contents">
 		@dialog.Trigger(dialog.TriggerProps{For: paletteID}) {
-			// Widths are set from sm: up only. Below that the label and the hotkey
-			// are both hidden and the trigger is a bare icon button, so a fixed
-			// width would leave an icon floating in dead space.
+			// A max width, not a fixed one. The button component is shrink-0, and a
+			// fixed sm:w-64 paints this control across the bell once the header is
+			// tight. Below sm the label and the hotkey are hidden, so the trigger
+			// collapses to the icon and the max width does nothing.
 			@button.Button(button.Props{
 				Variant: button.VariantOutline,
 				Size:    button.SizeSm,
-				Class:   "text-muted-foreground gap-2 font-normal sm:w-64 sm:justify-start lg:w-80",
+				Class:   "text-muted-foreground min-w-0 max-w-64 shrink gap-2 overflow-hidden font-normal sm:justify-start lg:max-w-80",
 				Attributes: templ.Attributes{
 					"type":       "button",
 					"aria-label": i18n.T(ctx, "palette.aria"),
 				},
 			}) {
 				@icon.Icon("search")(icon.Props{Class: "size-4"})
-				<span class="hidden sm:inline">{ i18n.T(ctx, "palette.trigger") }</span>
+				<span class="hidden min-w-0 truncate sm:inline">{ i18n.T(ctx, "palette.trigger") }</span>
 				<kbd
-					class="border-border bg-muted text-muted-foreground hidden rounded border px-1.5 py-0.5 font-mono text-[10px] sm:ml-auto sm:inline"
+					class="border-border bg-muted text-muted-foreground hidden shrink-0 rounded border px-1.5 py-0.5 font-mono text-[10px] sm:ml-auto sm:inline"
 					x-text="hotkeyLabel"
 				>⌘K</kbd>
 			}
