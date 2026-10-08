@@ -131,13 +131,14 @@ var (
 	advancedMid = meal.PlanSettings{Type: meal.MidCarb, Mode: meal.Advanced}
 )
 
-func overage(t *testing.T, err error) *meals.OverageError {
+// overage asserts err refused a change for going over, and returns the verdict.
+func overage(t *testing.T, err error) meal.Verdict {
 	t.Helper()
 	var over *meals.OverageError
 	if !errors.As(err, &over) {
 		t.Fatalf("expected an overage, got %v", err)
 	}
-	return over
+	return over.Verdict
 }
 
 func fieldError(t *testing.T, err error, field string) {
@@ -278,10 +279,10 @@ func TestEasyOverageIsRefusedEvenWhenConfirmed(t *testing.T) {
 	// 200 g rice is 56 g carbs against a 38.75 g day.
 	for _, confirm := range []bool{false, true} {
 		over := overage(t, f.add(lunch, f.rice, 200, confirm))
-		if over.Verdict.CanConfirm {
+		if over.CanConfirm {
 			t.Fatal("an easy plan offered to confirm an overage")
 		}
-		if got := over.Verdict.Over[0].Status.Over.CarbG; !within(got, 17.25, 0.001) {
+		if got := over.Over[0].Status.Over.CarbG; !within(got, 17.25, 0.001) {
 			t.Fatalf("carbs over = %v, want 17.25", got)
 		}
 	}
@@ -295,7 +296,7 @@ func TestAdvancedOverageNeedsConfirmation(t *testing.T) {
 	plan := f.plan(t, meal.PlanSettings{Type: meal.LowCarb, Mode: meal.Advanced})
 	lunch := f.meal(t, plan.Days[0], "Lunch")
 
-	if over := overage(t, f.add(lunch, f.rice, 200, false)); !over.Verdict.CanConfirm {
+	if over := overage(t, f.add(lunch, f.rice, 200, false)); !over.CanConfirm {
 		t.Fatal("an advanced plan did not offer to confirm")
 	}
 	if err := f.add(lunch, f.rice, 200, true); err != nil {
@@ -396,7 +397,7 @@ func TestSwitchingToEasyIsRefusedWhileADayIsOver(t *testing.T) {
 	}
 
 	err := f.svc.UpdateSettings(f.ctx, plan.ID, f.userID, meals.PlanSettingsInput{Name: "Plan", Settings: easyMid, ConfirmReset: true})
-	if over := overage(t, err); over.Verdict.CanConfirm {
+	if over := overage(t, err); over.CanConfirm {
 		t.Fatal("switching to easy offered to confirm an overage")
 	}
 }

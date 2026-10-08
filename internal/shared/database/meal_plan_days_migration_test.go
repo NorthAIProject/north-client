@@ -62,8 +62,8 @@ func TestMealPlanDaysMigrationKeepsExistingPlans(t *testing.T) {
 	}
 	exec := func(query string, args ...any) {
 		t.Helper()
-		if _, err := db.ExecContext(ctx, query, args...); err != nil {
-			t.Fatalf("%s: %v", query, err)
+		if _, execErr := db.ExecContext(ctx, query, args...); execErr != nil {
+			t.Fatalf("%s: %v", query, execErr)
 		}
 	}
 	exec(`INSERT INTO users (id, email, password_hash, display_name, timezone)
@@ -92,7 +92,7 @@ func TestMealPlanDaysMigrationKeepsExistingPlans(t *testing.T) {
 	for rows.Next() {
 		var name, planType, mode string
 		var noPct bool
-		if err := rows.Scan(&name, &planType, &noPct, &mode); err != nil {
+		if err = rows.Scan(&name, &planType, &noPct, &mode); err != nil {
 			t.Fatalf("scan plan: %v", err)
 		}
 		if planType != want[name] || !noPct || mode != "advanced" {
@@ -104,10 +104,10 @@ func TestMealPlanDaysMigrationKeepsExistingPlans(t *testing.T) {
 	// Typed gets Monday (its own meal plus the any-day one, renumbered) and
 	// Saturday; Untyped and Empty get Monday.
 	var days, mondayMeals, mondayNumbers int
-	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM meal_plan_days`).Scan(&days); err != nil {
+	if err = db.QueryRowContext(ctx, `SELECT count(*) FROM meal_plan_days`).Scan(&days); err != nil {
 		t.Fatalf("count days: %v", err)
 	}
-	if err := db.QueryRowContext(ctx, `
+	if err = db.QueryRowContext(ctx, `
 		SELECT count(*), count(DISTINCT m.meal_number) FROM meals m
 		JOIN meal_plan_days d ON d.id = m.day_id
 		WHERE d.meal_plan_id = '00000000-0000-0000-0000-0000000000a1' AND d.weekday = 1`,
@@ -123,7 +123,7 @@ func TestMealPlanDaysMigrationKeepsExistingPlans(t *testing.T) {
 		t.Fatalf("migrate down to %d: %v", perMealWeekdays, err)
 	}
 	var saturday int
-	if err := db.QueryRowContext(ctx, `SELECT weekday FROM meals WHERE name = 'Saturday breakfast'`).Scan(&saturday); err != nil {
+	if err = db.QueryRowContext(ctx, `SELECT weekday FROM meals WHERE name = 'Saturday breakfast'`).Scan(&saturday); err != nil {
 		t.Fatalf("read weekday after down: %v", err)
 	}
 	if saturday != 6 {

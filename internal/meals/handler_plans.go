@@ -180,7 +180,7 @@ func (h *Handler) updatePlanSettings(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, apperr.ErrNotFound)
 		return
 	}
-	if err := r.ParseForm(); err != nil {
+	if err = r.ParseForm(); err != nil {
 		h.fail(w, r, apperr.ErrValidation)
 		return
 	}
@@ -209,7 +209,7 @@ func (h *Handler) addDay(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, apperr.ErrNotFound)
 		return
 	}
-	if err := r.ParseForm(); err != nil {
+	if err = r.ParseForm(); err != nil {
 		h.fail(w, r, apperr.ErrValidation)
 		return
 	}
@@ -235,7 +235,7 @@ func (h *Handler) updateDay(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, apperr.ErrNotFound)
 		return
 	}
-	if err := r.ParseForm(); err != nil {
+	if err = r.ParseForm(); err != nil {
 		h.fail(w, r, apperr.ErrValidation)
 		return
 	}
@@ -339,7 +339,7 @@ func (h *Handler) addIngredientToMeal(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, apperr.ErrNotFound)
 		return
 	}
-	if err := r.ParseForm(); err != nil {
+	if err = r.ParseForm(); err != nil {
 		h.fail(w, r, apperr.ErrValidation)
 		return
 	}
@@ -376,7 +376,7 @@ func (h *Handler) addIngredientsToMeal(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, apperr.ErrNotFound)
 		return
 	}
-	if err := r.ParseForm(); err != nil {
+	if err = r.ParseForm(); err != nil {
 		h.fail(w, r, apperr.ErrValidation)
 		return
 	}
