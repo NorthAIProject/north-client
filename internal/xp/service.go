@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/NorthAIProject/north-client/internal/achievements"
 	"github.com/NorthAIProject/north-client/internal/achievements/achievement"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
@@ -61,6 +62,7 @@ func (s *Service) earned(ctx context.Context, ids []uuid.UUID, w window) (map[uu
 	rows, err := s.q.Earned(ctx, xpdb.EarnedParams{
 		UserIds: ids, FromDay: w.fromDay, ToDay: w.toDay, FromAt: w.fromAt, ToAt: w.toAt,
 		StreakFrom: StreakDayFrom, WorkoutMinSeconds: WorkoutMinMinutes * 60, WorkoutsPerDay: WorkoutsPaidPerDay,
+		StreakMarks: streakMarks(), ChallengeMetKind: achievement.KindCrewChallengeMet,
 	})
 	if err != nil {
 		return nil, apperr.Wrap(err, "earned")
@@ -73,6 +75,16 @@ func (s *Service) earned(ctx context.Context, ids []uuid.UUID, w window) (map[uu
 		out[r.UserID][r.Kind] = int(r.N)
 	}
 	return out, nil
+}
+
+// streakMarks are the streak lengths that pay a bonus: the same ones the
+// friends feed records a moment for.
+func streakMarks() []int32 {
+	out := make([]int32, 0, len(achievements.StreakMarks))
+	for _, m := range achievements.StreakMarks {
+		out = append(out, int32(m))
+	}
+	return out
 }
 
 // pointsFor is what a count of one kind pays.
@@ -88,6 +100,12 @@ func pointsFor(kind string, n int) int {
 		return n * PointsMilestone
 	case KindGoal:
 		return n * PointsGoal
+	case KindWeekReviewed:
+		return n * PointsWeekReviewed
+	case KindStreakMark:
+		return n * PointsStreakMark
+	case KindChallengeMet:
+		return n * PointsChallengeMet
 	}
 	return 0
 }

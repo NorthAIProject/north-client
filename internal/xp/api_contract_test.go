@@ -12,8 +12,12 @@ func TestXPShapes(t *testing.T) {
 	t.Parallel()
 
 	apitest.AssertGolden(t, "summary.golden.json", projectSummary(Summary{
-		Week:      []Earned{{Kind: KindWorkout, Count: 2, Points: 40}, {Kind: KindHabitKept, Count: 0, Points: 0}},
-		WeekTotal: 40, Total: 340, Level: LevelFor(340),
+		Week: []Earned{
+			{Kind: KindWorkout, Count: 2, Points: 40},
+			{Kind: KindHabitKept, Count: 0, Points: 0},
+			{Kind: KindWeekReviewed, Count: 1, Points: 25},
+		},
+		WeekTotal: 65, Total: 340, Level: LevelFor(340),
 	}))
 	top := LevelFor(7000)
 	apitest.AssertGolden(t, "board.golden.json", projectBoard(Board{

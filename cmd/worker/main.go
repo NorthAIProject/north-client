@@ -365,6 +365,13 @@ func run() error {
 	worker.Register(jobs.KindSweepAreaStreaks,
 		insights.NewAreaStreakSweeper(userSvc, insightsSvc, achievementSvc, log).HandleSweep)
 
+	// A crew challenge met last week is recorded on Monday morning, which is
+	// what pays its XP.
+	worker.Register(jobs.KindSweepCrewChallenges,
+		crews.NewChallengeSweeper(userSvc,
+			crews.NewService(pool, crews.CheckInsFrom(checkinSvc), crews.WorkoutsFrom(activitySvc)),
+			achievementSvc, log).HandleSweep)
+
 	worker.Register(jobs.KindSweepDigests,
 		insights.NewDigestSweeper(insights.DigestSweeperOptions{
 			Accounts: userSvc,
@@ -542,6 +549,7 @@ func run() error {
 	worker.RegisterPeriodic(15*time.Minute, jobs.KindSweepWatches, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepDigests, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepAreaStreaks, struct{}{})
+	worker.RegisterPeriodic(time.Hour, jobs.KindSweepCrewChallenges, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepSummaries, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepStrava, struct{}{})
 	worker.RegisterPeriodic(24*time.Hour, jobs.KindSweepQuotas, struct{}{})

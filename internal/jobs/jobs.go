@@ -85,6 +85,10 @@ const (
 	// four weeks running.
 	KindSweepAreaStreaks Kind = "sweep_area_streaks"
 
+	// KindSweepCrewChallenges closes each crew's week on Monday mornings and
+	// records the members who met its challenge.
+	KindSweepCrewChallenges Kind = "sweep_crew_challenges"
+
 	// KindWeeklyReview writes one week's review from the person's recorded week.
 	KindWeeklyReview Kind = "weekly_review"
 

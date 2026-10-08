@@ -32,6 +32,7 @@ const (
 	KindMilestoneReached = "milestone_reached"
 	KindWeekReviewed     = "week_reviewed"
 	KindAreaStreak       = "area_streak"
+	KindCrewChallengeMet = "crew_challenge_met"
 )
 
 // Item is one achievement in a feed.

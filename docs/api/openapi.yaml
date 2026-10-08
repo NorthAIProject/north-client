@@ -5994,9 +5994,26 @@ components:
           type: integer
         points:
           type: integer
+    XPEarned:
+      type: object
+      required: [kind, count, points]
+      description: >-
+        One kind of XP this week. Unlike EarnedView, kind is open-ended: the
+        server may add kinds, and a client shows one it does not know rather
+        than failing to decode.
+      properties:
+        kind:
+          type: string
+          description: >-
+            workout, habit_kept, streak_day, streak_mark, week_reviewed,
+            challenge_met, milestone or goal today.
+        count:
+          type: integer
+        points:
+          type: integer
     XPSummary:
       type: object
-      required: [total, level, weekTotal, week]
+      required: [total, level, weekTotal, week, earned]
       properties:
         total:
           type: integer
@@ -6005,11 +6022,20 @@ components:
           $ref: '#/components/schemas/LevelView'
         weekTotal:
           type: integer
+          description: This week's XP from every kind, including kinds `week` leaves out.
         week:
           type: array
-          description: This week (Monday to now, local) by kind, every kind listed.
+          deprecated: true
+          description: >-
+            This week (Monday to now, local) by the first five kinds only, kept
+            for clients that decode kind as a closed enum. Use `earned`.
           items:
             $ref: '#/components/schemas/EarnedView'
+        earned:
+          type: array
+          description: This week (Monday to now, local) by kind, every kind listed, in display order.
+          items:
+            $ref: '#/components/schemas/XPEarned'
     LeaderboardEntry:
       type: object
       required: [rank, userId, displayName, handle, value, me]
