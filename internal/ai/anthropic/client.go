@@ -1,10 +1,11 @@
 // Package anthropic is Khepri's client for Claude, over Anthropic's native
 // Messages API.
 //
-// Reached only through a key a person brings themselves (see
-// providers.Catalog). It calls Khepri's tools natively, so it does not
-// implement ai.ToolCaller: the coach runs its own tool loop against it, and
-// the MCP bridge built for gateways never applies.
+// Reached two ways: through a key a person brings themselves (see
+// providers.Catalog), and as Khepri's own provider when ANTHROPIC_API_KEY is
+// set (Managed, built in providers.Build). It calls Khepri's tools natively,
+// so it does not implement ai.ToolCaller: the coach runs its own tool loop
+// against it, and the MCP bridge built for gateways never applies.
 package anthropic
 
 import (
@@ -34,12 +35,35 @@ type Options struct {
 	// HTTPClient is shared across users so a per-user client reuses
 	// connections instead of paying a TLS handshake per turn.
 	HTTPClient *http.Client
+
+	// Effort is sent as output_config.effort. Empty leaves the model default.
+	Effort string
+
+	// Thinking is "adaptive" or "disabled". Empty sends nothing, which is the
+	// model default and what a person's own key has always had.
+	Thinking string
+
+	// Managed marks Khepri's own client, the first rung of a chain rather than
+	// a key a person brought. It changes two things. A model name meant for
+	// another provider (AI_FAST_MODEL is an OpenRouter slug) is replaced with
+	// DefaultModel instead of being sent to a 404. And every refusal fails over,
+	// because the chain behind it is the one that has always answered: a
+	// request Claude rejects is not evidence that the request is malformed.
+	Managed bool
 }
 
 type Client struct {
 	sdk          sdk.Client
 	defaultModel string
+	effort       sdk.OutputConfigEffort
+	thinking     string
+	managed      bool
 }
+
+// minThinkingTokens is the smallest max_tokens worth thinking under. Thinking
+// counts toward the limit, so a short request that thinks first can spend the
+// whole budget before it writes a word.
+const minThinkingTokens = 1024
 
 func New(opts Options) (*Client, error) {
 	if strings.TrimSpace(opts.APIKey) == "" {
@@ -58,7 +82,13 @@ func New(opts Options) (*Client, error) {
 	if model == "" {
 		model = "claude-opus-5"
 	}
-	return &Client{sdk: sdk.NewClient(reqOpts...), defaultModel: model}, nil
+	return &Client{
+		sdk:          sdk.NewClient(reqOpts...),
+		defaultModel: model,
+		effort:       sdk.OutputConfigEffort(opts.Effort),
+		thinking:     opts.Thinking,
+		managed:      opts.Managed,
+	}, nil
 }
 
 func (c *Client) Name() string { return "anthropic" }
@@ -66,9 +96,9 @@ func (c *Client) Name() string { return "anthropic" }
 func (c *Client) Generate(ctx context.Context, req ai.Request) (*ai.Response, error) {
 	msg, err := c.sdk.Messages.New(ctx, c.params(req))
 	if err != nil {
-		return nil, classify(err)
+		return nil, c.classify(err)
 	}
-	if err := stopError(msg.StopReason); err != nil {
+	if err := stopError(msg.StopReason, msg.Content); err != nil {
 		return nil, err
 	}
 	return fromMessage(msg), nil
@@ -82,7 +112,10 @@ func (c *Client) UploadFile(context.Context, ai.UploadRequest) (*ai.File, error)
 
 func (c *Client) params(req ai.Request) sdk.MessageNewParams {
 	model := req.Model
-	if model == "" {
+	// The managed client shares callers with the rest of the chain, and their
+	// model names are written for OpenRouter. Only a Claude name means
+	// anything here.
+	if model == "" || (c.managed && !strings.HasPrefix(model, "claude-")) {
 		model = c.defaultModel
 	}
 	maxTokens := int64(req.MaxTokens)
@@ -102,13 +135,18 @@ func (c *Client) params(req ai.Request) sdk.MessageNewParams {
 	// from before provider_state, or another provider's call) cannot have its
 	// thinking replayed, and a replay without it is refused. That request runs
 	// without thinking; everything else keeps the model's default.
-	if lostThinking(req.Messages) {
+	switch {
+	case lostThinking(req.Messages), c.thinking == "disabled",
+		c.thinking != "" && maxTokens < minThinkingTokens:
 		p.Thinking = sdk.ThinkingConfigParamUnion{OfDisabled: &sdk.ThinkingConfigDisabledParam{}}
+	case c.thinking == "adaptive":
+		p.Thinking = sdk.ThinkingConfigParamUnion{OfAdaptive: &sdk.ThinkingConfigAdaptiveParam{}}
 	}
+	// Effort and format share output_config; each is set on its own field so
+	// neither overwrites the other.
+	p.OutputConfig.Effort = c.effort
 	if req.ResponseSchema != nil {
-		p.OutputConfig = sdk.OutputConfigParam{
-			Format: sdk.JSONOutputFormatParam{Schema: ai.JSONSchema(req.ResponseSchema)},
-		}
+		p.OutputConfig.Format = sdk.JSONOutputFormatParam{Schema: ai.JSONSchema(req.ResponseSchema)}
 	}
 	if req.System != "" {
 		// Cached because Khepri's context block is most of every request, and

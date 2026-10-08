@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/NorthAIProject/north-client/internal/ai"
+	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
 // sse renders events the way the Messages API streams them.
@@ -134,5 +135,92 @@ func TestAnAbandonedStreamClosesWithoutBlocking(t *testing.T) {
 	case <-done:
 	case <-time.After(5 * time.Second):
 		t.Fatal("the stream did not close after the caller went away")
+	}
+}
+
+const (
+	evThinkingStart = `{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"","signature":""}}`
+	evThinking      = `{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"hmm"}}`
+	evSignature     = `{"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"sig-1"}}`
+	evText1Start    = `{"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}`
+	evStop1         = `{"type":"content_block_stop","index":1}`
+)
+
+func evText1(text string) string {
+	return fmt.Sprintf(`{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":%q}}`, text)
+}
+
+// Before any text has streamed nothing has reached the person, so a failure
+// there is Chat's own error. That is what lets the runner ask the next
+// provider instead of leaving the coach with a broken reply.
+func TestChatReturnsAFailureBeforeTheReplyCommits(t *testing.T) {
+	overloaded := apiError(529, "overloaded_error", "Overloaded")
+	cases := map[string]struct {
+		res  []cannedResponse
+		want error
+	}{
+		"http error": {[]cannedResponse{overloaded, overloaded, overloaded, overloaded}, apperr.ErrUnavailable},
+		"spend limit": {[]cannedResponse{apiError(400, "invalid_request_error",
+			"You have reached your specified workspace API usage limits.")}, apperr.ErrPaymentRequired},
+		"refusal": {[]cannedResponse{sse(evStart, evMsgDelta("refusal", 0), evMsgStop)}, apperr.ErrUnavailable},
+		"thinking used every token": {[]cannedResponse{sse(evStart, evThinkingStart, evThinking, evSignature, evStop0,
+			evMsgDelta("max_tokens", 1024), evMsgStop)}, apperr.ErrUnavailable},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			_, client := newManagedFakeAPI(t, tc.res...)
+			ch, err := client.Chat(context.Background(), ai.Request{Messages: []ai.Message{ai.UserText("squat?")}})
+			if ch != nil {
+				t.Error("a channel was returned alongside the error")
+			}
+			if !apperr.Is(err, tc.want) || !ai.Failover(err) {
+				t.Fatalf("err = %v, want %v so the runner fails over", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestChatHoldsThinkingBackThenStreamsTheText(t *testing.T) {
+	_, client := newManagedFakeAPI(t, sse(evStart, evThinkingStart, evThinking, evSignature, evStop0,
+		evText1Start, evText1("Sit "), evText1("back."), evStop1, evMsgDelta("end_turn", 9), evMsgStop))
+
+	ch, err := client.Chat(context.Background(), ai.Request{Messages: []ai.Message{ai.UserText("squat?")}})
+	if err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+	var text strings.Builder
+	var last ai.StreamChunk
+	for _, c := range collect(t, ch) {
+		if c.Err != nil {
+			t.Fatalf("stream error: %v", c.Err)
+		}
+		text.WriteString(c.Text)
+		last = c
+	}
+	if text.String() != "Sit back." {
+		t.Errorf("text = %q; the first delta read before Chat returned must not be lost", text.String())
+	}
+	if last.Usage == nil || last.Usage.OutputTokens != 9 {
+		t.Errorf("last chunk = %+v, want usage", last)
+	}
+}
+
+// Once text has gone out, a refusal can only arrive on the channel: Chat has
+// already returned.
+func TestARefusalAfterTextArrivesOnTheChannel(t *testing.T) {
+	_, client := newFakeAPI(t, sse(evStart, evTextStart, evText("Sure, "), evStop0, evMsgDelta("refusal", 3), evMsgStop))
+
+	ch, err := client.Chat(context.Background(), ai.Request{Messages: []ai.Message{ai.UserText("go")}})
+	if err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+	var gotErr error
+	for _, c := range collect(t, ch) {
+		if c.Err != nil {
+			gotErr = c.Err
+		}
+	}
+	if !apperr.Is(gotErr, apperr.ErrUnavailable) {
+		t.Fatalf("stream err = %v, want ErrUnavailable", gotErr)
 	}
 }

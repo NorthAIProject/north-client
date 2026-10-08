@@ -20,8 +20,11 @@ func TestErrorsLandInTheClassesTheRunnerActsOn(t *testing.T) {
 		res  cannedResponse
 		want error
 	}{
-		"bad key":      {apiError(401, "authentication_error", "invalid x-api-key"), apperr.ErrForbidden},
-		"no credit":    {apiError(400, "invalid_request_error", "Your credit balance is too low to access the Anthropic API."), apperr.ErrPaymentRequired},
+		"bad key":   {apiError(401, "authentication_error", "invalid x-api-key"), apperr.ErrForbidden},
+		"no credit": {apiError(400, "invalid_request_error", "Your credit balance is too low to access the Anthropic API."), apperr.ErrPaymentRequired},
+		// What a workspace that has reached its spend limit is told. The trial
+		// budget ending must hand traffic back to the chain, not fail requests.
+		"spend limit":  {apiError(400, "invalid_request_error", "You have reached your specified workspace API usage limits. You will regain access on 2026-11-01 at 00:00 UTC."), apperr.ErrPaymentRequired},
 		"rate limited": {apiError(429, "rate_limit_error", "slow down"), apperr.ErrUnavailable},
 		"overloaded":   {apiError(529, "overloaded_error", "Overloaded"), apperr.ErrUnavailable},
 		"server error": {apiError(500, "api_error", "boom"), apperr.ErrUnavailable},
@@ -59,5 +62,30 @@ func TestARefusalFailsOverRatherThanPostingNothing(t *testing.T) {
 	_, err := client.Generate(context.Background(), ai.Request{Messages: []ai.Message{ai.UserText("hi")}})
 	if !apperr.Is(err, apperr.ErrUnavailable) {
 		t.Fatalf("err = %v, want ErrUnavailable so the chain answers", err)
+	}
+}
+
+func TestTheManagedClientFailsOverOnAnyClientError(t *testing.T) {
+	cases := map[string]cannedResponse{
+		"rejected request": apiError(400, "invalid_request_error", "thinking: disabled is not supported at this effort"),
+		"unknown model":    apiError(404, "not_found_error", "model: google/gemini-2.5-flash"),
+	}
+	for name, res := range cases {
+		t.Run(name, func(t *testing.T) {
+			_, client := newManagedFakeAPI(t, res)
+			_, err := client.Generate(context.Background(), ai.Request{Messages: []ai.Message{ai.UserText("hi")}})
+			if !apperr.Is(err, apperr.ErrUnavailable) || !ai.Failover(err) {
+				t.Fatalf("err = %v, want ErrUnavailable so the chain behind it answers", err)
+			}
+		})
+	}
+}
+
+func TestTheManagedClientStillParksOnBilling(t *testing.T) {
+	res := apiError(400, "invalid_request_error", "Your credit balance is too low to access the Anthropic API.")
+	_, client := newManagedFakeAPI(t, res)
+	_, err := client.Generate(context.Background(), ai.Request{Messages: []ai.Message{ai.UserText("hi")}})
+	if !apperr.Is(err, apperr.ErrPaymentRequired) {
+		t.Fatalf("err = %v, want ErrPaymentRequired", err)
 	}
 }
