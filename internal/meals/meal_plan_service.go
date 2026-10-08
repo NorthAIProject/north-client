@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -12,12 +13,43 @@ import (
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
+// MealPlanService owns meal plans and holds every change to them to the
+// person's current macro target (see meal/plan_rules.go for the rules).
 type MealPlanService struct {
-	repo *Repository
+	repo  *Repository
+	goals MacroGoalLookup
 }
 
-func NewMealPlanService(repo *Repository) *MealPlanService {
-	return &MealPlanService{repo: repo}
+func NewMealPlanService(repo *Repository, goals MacroGoalLookup) *MealPlanService {
+	return &MealPlanService{repo: repo, goals: goals}
+}
+
+// ActiveTarget is the person's current macro target, exactly as the
+// calculator produced it; nil when it has not produced one yet.
+func (s *MealPlanService) ActiveTarget(ctx context.Context, userID uuid.UUID) (*Macros, error) {
+	goal, err := s.goals.Current(ctx, userID)
+	if apperr.Is(err, apperr.ErrNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, apperr.Wrap(err, "load macro target")
+	}
+	return &Macros{Calories: goal.CalorieGoal, ProteinG: goal.ProteinG, FatG: goal.FatG, CarbG: goal.CarbG}, nil
+}
+
+// requireTarget is ActiveTarget for a change: with no target there are no
+// limits to hold a plan to, so the change is refused rather than let through
+// unchecked.
+func (s *MealPlanService) requireTarget(ctx context.Context, userID uuid.UUID) (Macros, error) {
+	target, err := s.ActiveTarget(ctx, userID)
+	if err != nil {
+		return Macros{}, err
+	}
+	if target == nil {
+		return Macros{}, apperr.FieldErrors{}.Add("macro_target",
+			"Work out your macro target in the calculator first; meal plans are built on it.").OrNil()
+	}
+	return *target, nil
 }
 
 type MealPlanInput struct {
@@ -26,75 +58,93 @@ type MealPlanInput struct {
 	Objective     string
 	ActivityLevel string
 	Gender        string
-	PlanType      string
-	CustomCarbPct *float64
-	MacroPlanID   *uuid.UUID
+	Settings      meal.PlanSettings
+	// DayCount fills the plan with that many days from Monday. Weekdays,
+	// advanced plans only, names the days instead.
+	DayCount int
+	Weekdays []time.Weekday
 }
 
 func ValidateMealPlan(in MealPlanInput) (MealPlanInput, error) {
 	var errs apperr.FieldErrors
 
-	in.Name = strings.TrimSpace(in.Name)
+	in.Name, errs = validatePlanName(in.Name, errs)
+	in.Settings, errs = validateSettings(in.Settings, errs)
+
 	switch {
-	case in.Name == "":
+	case len(in.Weekdays) > 0 && in.Settings.Mode != meal.Advanced:
+		errs = errs.Add("weekdays", "Easy plans take a number of days; choose weekdays in advanced mode.")
+	case len(in.Weekdays) > 0:
+		seen := map[time.Weekday]bool{}
+		for _, wd := range in.Weekdays {
+			if wd < time.Sunday || wd > time.Saturday || seen[wd] {
+				errs = errs.Add("weekdays", "Choose each weekday at most once.")
+				break
+			}
+			seen[wd] = true
+		}
+	case in.Settings.Mode == meal.Advanced && in.DayCount == 0:
+		errs = errs.Add("weekdays", "Choose at least one weekday.")
+	case in.DayCount < 1 || in.DayCount > meal.MaxDays:
+		errs = errs.Add("day_count", fmt.Sprintf("Choose between 1 and %d days.", meal.MaxDays))
+	default:
+		in.Weekdays = meal.EasyWeekdays(in.DayCount)
+	}
+
+	return in, errs.OrNil()
+}
+
+func validatePlanName(name string, errs apperr.FieldErrors) (string, apperr.FieldErrors) {
+	name = strings.TrimSpace(name)
+	switch {
+	case name == "":
 		errs = errs.Add("name", "Give the plan a name.")
-	case len(in.Name) > 200:
+	case len(name) > 200:
 		errs = errs.Add("name", "Keep the name under 200 characters.")
 	}
+	return name, errs
+}
 
-	in.PlanType = strings.TrimSpace(in.PlanType)
-	if in.PlanType != "" {
-		if !slices.Contains(meal.PlanTypes, in.PlanType) {
-			errs = errs.Add("plan_type", "Choose a valid plan type.")
-		}
-		if in.PlanType == meal.PlanTypeCustom {
-			if in.CustomCarbPct == nil || *in.CustomCarbPct < 0 || *in.CustomCarbPct > 100 {
-				errs = errs.Add("custom_carb_pct", "Enter a percentage between 0 and 100.")
-			}
-		}
+func validateSettings(s meal.PlanSettings, errs apperr.FieldErrors) (meal.PlanSettings, apperr.FieldErrors) {
+	if !s.Mode.Valid() {
+		errs = errs.Add("mode", "Choose easy or advanced.")
 	}
-
-	return in, errs.OrNil()
+	switch {
+	case !s.Type.Valid():
+		errs = errs.Add("plan_type", "Choose a plan type.")
+	case s.Type != meal.Custom:
+		s.CustomCarbPct = nil
+	case s.Mode != meal.Advanced:
+		errs = errs.Add("plan_type", "A custom carb share is an advanced-mode choice.")
+	case s.CustomCarbPct == nil || *s.CustomCarbPct < 0 || *s.CustomCarbPct > 100:
+		errs = errs.Add("custom_carb_pct", "Enter a share of your carb target between 0 and 100%.")
+	}
+	return s, errs
 }
 
-type MealInput struct {
-	Name              string
-	MealNumber        int
-	Weekday           *int
-	DayPlanType       string
-	DayCustomCarbG    *float64
-	DayCustomProteinG *float64
-	DayCustomFatG     *float64
-}
-
-func ValidateMeal(in MealInput) (MealInput, error) {
+// ValidateDayOverride checks an advanced day's override against the active
+// target, which no override may exceed.
+func ValidateDayOverride(o meal.DayOverride, active Macros) error {
 	var errs apperr.FieldErrors
+	if o.CarbType != nil {
+		if _, ok := meal.BandFor(*o.CarbType); !ok {
+			errs = errs.Add("carb_type", "Choose no, low, mid or high carb.")
+		}
+		if o.CarbG != nil {
+			errs = errs.Add("carb_g", "Set the day's carbs by type or by grams, not both.")
+		}
+	}
+	errs = checkGrams(errs, "carb_g", "carbs", o.CarbG, active.CarbG)
+	errs = checkGrams(errs, "protein_g", "protein", o.ProteinG, active.ProteinG)
+	errs = checkGrams(errs, "fat_g", "fat", o.FatG, active.FatG)
+	return errs.OrNil()
+}
 
-	in.Name = strings.TrimSpace(in.Name)
-	if in.Name == "" {
-		errs = errs.Add("name", "Give the meal a name.")
+func checkGrams(errs apperr.FieldErrors, field, name string, grams *float64, limit float64) apperr.FieldErrors {
+	if grams != nil && (*grams < 0 || *grams > limit) {
+		return errs.Add(field, fmt.Sprintf("Keep %s between 0 and your target of %.0f g.", name, limit))
 	}
-	if in.MealNumber < 1 {
-		errs = errs.Add("meal_number", "Meal order must be at least 1.")
-	}
-	if in.Weekday != nil && (*in.Weekday < 0 || *in.Weekday > 6) {
-		errs = errs.Add("weekday", "Weekday must be between 0 (Sunday) and 6 (Saturday).")
-	}
-	in.DayPlanType = strings.TrimSpace(in.DayPlanType)
-	if in.DayPlanType != "" && !slices.Contains(meal.PlanTypes, in.DayPlanType) {
-		errs = errs.Add("day_plan_type", "Choose a valid plan type.")
-	}
-	if in.DayCustomCarbG != nil && *in.DayCustomCarbG < 0 {
-		errs = errs.Add("day_custom_carb_g", "Carb grams cannot be negative.")
-	}
-	if in.DayCustomProteinG != nil && *in.DayCustomProteinG < 0 {
-		errs = errs.Add("day_custom_protein_g", "Protein grams cannot be negative.")
-	}
-	if in.DayCustomFatG != nil && *in.DayCustomFatG < 0 {
-		errs = errs.Add("day_custom_fat_g", "Fat grams cannot be negative.")
-	}
-
-	return in, errs.OrNil()
+	return errs
 }
 
 type MealIngredientInput struct {
@@ -115,12 +165,124 @@ func ValidateMealIngredient(in MealIngredientInput) (MealIngredientInput, error)
 	return in, errs.OrNil()
 }
 
-func (s *MealPlanService) CreatePlan(ctx context.Context, userID uuid.UUID, in MealPlanInput) (MealPlan, error) {
+// DayDraft is the meals to create a plan's day with.
+type DayDraft struct {
+	Meals []MealDraft
+}
+
+// MealDraft is a meal to create, with its portions.
+type MealDraft struct {
+	Name     string
+	Portions []MealIngredientInput
+}
+
+// OverageError refuses a change that would take a day further over its
+// target. The verdict says whether the person may confirm it, and by how much
+// each day would be over.
+type OverageError struct {
+	// PlanID is the plan the change was to; nil for a plan being created.
+	PlanID  uuid.UUID
+	Verdict meal.Verdict
+}
+
+func (e *OverageError) Error() string {
+	days := make([]string, 0, len(e.Verdict.Over))
+	for _, d := range e.Verdict.Over {
+		var parts []string
+		for _, m := range []struct {
+			name string
+			over float64
+		}{{"protein", d.Status.Over.ProteinG}, {"carbs", d.Status.Over.CarbG}, {"fat", d.Status.Over.FatG}} {
+			if m.over >= 0.5 {
+				parts = append(parts, fmt.Sprintf("%.0f g over on %s", m.over, m.name))
+			}
+		}
+		days = append(days, fmt.Sprintf("%s would be %s", d.Weekday, strings.Join(parts, " and ")))
+	}
+	return strings.Join(days, "; ") + "."
+}
+
+func (e *OverageError) Unwrap() error { return apperr.ErrConflict }
+
+// checkOverage applies the overage rule to a change to plan whose result is
+// after. fresh compares against nothing, for a plan switching to easy.
+func checkOverage(active Macros, plan MealPlan, after meal.PlanState, fresh, confirm bool) error {
+	var before *meal.PlanState
+	if !fresh {
+		state := plan.State()
+		before = &state
+	}
+	v := meal.CheckWrite(active, before, after, confirm)
+	if v.Allowed {
+		return nil
+	}
+	return &OverageError{PlanID: plan.ID, Verdict: v}
+}
+
+// CreatePlan creates a plan with its days. days, when given, fills the plan's
+// days in order with meals; a plan that would start over its target is
+// refused like any other change.
+func (s *MealPlanService) CreatePlan(ctx context.Context, userID uuid.UUID, in MealPlanInput, days []DayDraft, confirm bool) (MealPlan, error) {
 	clean, err := ValidateMealPlan(in)
 	if err != nil {
 		return MealPlan{}, err
 	}
-	return s.repo.CreatePlan(ctx, userID, clean.Name, clean.Description, clean.Objective, clean.ActivityLevel, clean.Gender, clean.PlanType, clean.CustomCarbPct, clean.MacroPlanID)
+	if len(days) > len(clean.Weekdays) {
+		return MealPlan{}, apperr.FieldErrors{}.Add("days", "There are more days of meals than days in the plan.").OrNil()
+	}
+	active, err := s.requireTarget(ctx, userID)
+	if err != nil {
+		return MealPlan{}, err
+	}
+
+	newDays := make([]NewDay, len(clean.Weekdays))
+	after := meal.PlanState{Settings: clean.Settings, Days: make([]meal.DayState, len(clean.Weekdays))}
+	for i, wd := range clean.Weekdays {
+		newDays[i].Weekday = wd
+		after.Days[i].Weekday = wd
+		if i >= len(days) {
+			continue
+		}
+		for _, draft := range days[i].Meals {
+			name, err := validateMealName(draft.Name)
+			if err != nil {
+				return MealPlan{}, err
+			}
+			portions, total, err := s.portions(ctx, userID, draft.Portions)
+			if err != nil {
+				return MealPlan{}, err
+			}
+			newDays[i].Meals = append(newDays[i].Meals, NewMeal{Name: name, Portions: portions})
+			after.Days[i].Consumed = after.Days[i].Consumed.Add(total)
+		}
+	}
+	if v := meal.CheckWrite(active, nil, after, confirm); !v.Allowed {
+		return MealPlan{}, &OverageError{Verdict: v}
+	}
+
+	id, err := s.repo.CreatePlan(ctx, userID, NewPlan{
+		Name: clean.Name, Description: clean.Description, Objective: clean.Objective,
+		ActivityLevel: clean.ActivityLevel, Gender: clean.Gender, Settings: clean.Settings,
+	}, newDays)
+	if err != nil {
+		return MealPlan{}, err
+	}
+	return s.repo.GetPlan(ctx, id, userID)
+}
+
+// PlanIDOfDay, PlanIDOfMeal and PlanIDOfMealIngredient find the plan a part
+// of a plan belongs to, so a page can return to it. apperr.ErrNotFound if the
+// part is not the user's.
+func (s *MealPlanService) PlanIDOfDay(ctx context.Context, dayID, userID uuid.UUID) (uuid.UUID, error) {
+	return s.repo.PlanIDOfDay(ctx, dayID, userID)
+}
+
+func (s *MealPlanService) PlanIDOfMeal(ctx context.Context, mealID, userID uuid.UUID) (uuid.UUID, error) {
+	return s.repo.PlanIDOfMeal(ctx, mealID, userID)
+}
+
+func (s *MealPlanService) PlanIDOfMealIngredient(ctx context.Context, mealIngredientID, userID uuid.UUID) (uuid.UUID, error) {
+	return s.repo.PlanIDOfMealIngredient(ctx, mealIngredientID, userID)
 }
 
 func (s *MealPlanService) GetPlan(ctx context.Context, id, userID uuid.UUID) (MealPlan, error) {
@@ -131,174 +293,229 @@ func (s *MealPlanService) ListPlans(ctx context.Context, userID uuid.UUID) ([]Me
 	return s.repo.ListPlans(ctx, userID)
 }
 
-func (s *MealPlanService) UpdatePlan(ctx context.Context, id, userID uuid.UUID, in MealPlanInput) (MealPlan, error) {
-	clean, err := ValidateMealPlan(in)
-	if err != nil {
-		return MealPlan{}, err
-	}
-	return s.repo.UpdatePlan(ctx, id, userID, clean.Name, clean.Description, clean.Objective, clean.ActivityLevel, clean.Gender, clean.PlanType, clean.CustomCarbPct, clean.MacroPlanID)
-}
-
 func (s *MealPlanService) DeletePlan(ctx context.Context, id, userID uuid.UUID) error {
 	return s.repo.DeletePlan(ctx, id, userID)
 }
 
-func (s *MealPlanService) AddMeal(ctx context.Context, planID, userID uuid.UUID, in MealInput) (Meal, error) {
-	clean, err := ValidateMeal(in)
-	if err != nil {
-		return Meal{}, err
-	}
-	return s.repo.AddMeal(ctx, planID, userID, clean.Name, clean.MealNumber, clean.Weekday, clean.DayPlanType, clean.DayCustomCarbG, clean.DayCustomProteinG, clean.DayCustomFatG)
+// PlanSettingsInput is an edit of a plan's name and plan-wide choices.
+type PlanSettingsInput struct {
+	Name        string
+	Description string
+	Settings    meal.PlanSettings
+	// ConfirmReset accepts that switching an advanced plan to easy returns
+	// every day to the plan's default target.
+	ConfirmReset   bool
+	ConfirmOverage bool
 }
 
-func (s *MealPlanService) UpdateMealDay(ctx context.Context, mealID, userID uuid.UUID, in MealInput) (Meal, error) {
-	clean, err := ValidateMeal(in)
+// UpdateSettings renames a plan or changes its type or mode. Switching from
+// advanced to easy needs ConfirmReset, drops every day's override, and is
+// refused while any day would be over its target.
+func (s *MealPlanService) UpdateSettings(ctx context.Context, planID, userID uuid.UUID, in PlanSettingsInput) error {
+	var errs apperr.FieldErrors
+	in.Name, errs = validatePlanName(in.Name, errs)
+	in.Settings, errs = validateSettings(in.Settings, errs)
+	if err := errs.OrNil(); err != nil {
+		return err
+	}
+	active, err := s.requireTarget(ctx, userID)
+	if err != nil {
+		return err
+	}
+
+	return s.repo.WithPlanLocked(ctx, planID, userID, func(tx *PlanTx, plan MealPlan) error {
+		toEasy := plan.Settings.Mode == meal.Advanced && in.Settings.Mode == meal.Easy
+		if toEasy && !in.ConfirmReset {
+			return apperr.FieldErrors{}.Add("confirm_reset",
+				"Switching to easy resets every day to the plan's default target.").OrNil()
+		}
+		after := plan.State()
+		after.Settings = in.Settings
+		if toEasy {
+			for i := range after.Days {
+				after.Days[i].Override = meal.DayOverride{}
+			}
+		}
+		if err := checkOverage(active, plan, after, toEasy, in.ConfirmOverage); err != nil {
+			return err
+		}
+		if toEasy {
+			if err := tx.ClearOverrides(ctx, planID); err != nil {
+				return err
+			}
+		}
+		return tx.UpdateSettings(ctx, planID, in.Name, in.Description, in.Settings)
+	})
+}
+
+// AddDay adds a day to a plan: the given weekday in an advanced plan, or the
+// next free one from Monday.
+func (s *MealPlanService) AddDay(ctx context.Context, planID, userID uuid.UUID, weekday *time.Weekday) (meal.Day, error) {
+	var day meal.Day
+	err := s.repo.WithPlanLocked(ctx, planID, userID, func(tx *PlanTx, plan MealPlan) error {
+		taken := plan.Weekdays()
+		wd, free := meal.NextFreeWeekday(taken)
+		switch {
+		case !free:
+			return apperr.FieldErrors{}.Add("weekday", fmt.Sprintf("A plan has at most %d days.", meal.MaxDays)).OrNil()
+		case weekday == nil:
+		case plan.Settings.Mode != meal.Advanced:
+			return apperr.FieldErrors{}.Add("weekday", "Easy plans add the next day of the week; choose weekdays in advanced mode.").OrNil()
+		case *weekday < time.Sunday || *weekday > time.Saturday || slices.Contains(taken, *weekday):
+			return apperr.FieldErrors{}.Add("weekday", "Choose a weekday the plan does not have yet.").OrNil()
+		default:
+			wd = *weekday
+		}
+		var err error
+		day, err = tx.AddDay(ctx, planID, wd)
+		return err
+	})
+	return day, err
+}
+
+// UpdateDay sets an advanced plan's override for one day.
+func (s *MealPlanService) UpdateDay(ctx context.Context, dayID, userID uuid.UUID, o meal.DayOverride, confirm bool) error {
+	active, err := s.requireTarget(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if err := ValidateDayOverride(o, active); err != nil {
+		return err
+	}
+	planID, err := s.repo.PlanIDOfDay(ctx, dayID, userID)
+	if err != nil {
+		return err
+	}
+	return s.repo.WithPlanLocked(ctx, planID, userID, func(tx *PlanTx, plan MealPlan) error {
+		if plan.Settings.Mode != meal.Advanced {
+			return apperr.FieldErrors{}.Add("mode", "Switch the plan to advanced to change a single day.").OrNil()
+		}
+		i, ok := plan.DayIndex(dayID)
+		if !ok {
+			return apperr.ErrNotFound
+		}
+		after := plan.State()
+		after.Days[i].Override = o
+		if err := checkOverage(active, plan, after, false, confirm); err != nil {
+			return err
+		}
+		return tx.UpdateDay(ctx, dayID, o)
+	})
+}
+
+// RemoveDay deletes a day and its meals. A plan keeps at least one day.
+func (s *MealPlanService) RemoveDay(ctx context.Context, dayID, userID uuid.UUID) error {
+	planID, err := s.repo.PlanIDOfDay(ctx, dayID, userID)
+	if err != nil {
+		return err
+	}
+	return s.repo.WithPlanLocked(ctx, planID, userID, func(tx *PlanTx, plan MealPlan) error {
+		if len(plan.Days) == 1 {
+			return apperr.FieldErrors{}.Add("day", "A plan needs at least one day.").OrNil()
+		}
+		return tx.RemoveDay(ctx, planID, dayID)
+	})
+}
+
+func validateMealName(name string) (string, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", apperr.FieldErrors{}.Add("name", "Give the meal a name.").OrNil()
+	}
+	return name, nil
+}
+
+// AddMeal adds a meal at the end of a day.
+func (s *MealPlanService) AddMeal(ctx context.Context, dayID, userID uuid.UUID, name string) (Meal, error) {
+	name, err := validateMealName(name)
 	if err != nil {
 		return Meal{}, err
 	}
-	return s.repo.UpdateMealDay(ctx, mealID, userID, clean.Weekday, clean.DayPlanType, clean.DayCustomCarbG, clean.DayCustomProteinG, clean.DayCustomFatG)
+	planID, err := s.repo.PlanIDOfDay(ctx, dayID, userID)
+	if err != nil {
+		return Meal{}, err
+	}
+	var added Meal
+	err = s.repo.WithPlanLocked(ctx, planID, userID, func(tx *PlanTx, _ MealPlan) error {
+		added, err = tx.AddMeal(ctx, planID, dayID, name)
+		return err
+	})
+	return added, err
 }
 
 func (s *MealPlanService) RemoveMeal(ctx context.Context, mealID, userID uuid.UUID) error {
 	return s.repo.RemoveMeal(ctx, mealID, userID)
 }
 
-type OverageError struct {
-	Overage meal.Overage
-}
-
-func (e OverageError) Error() string {
-	var parts []string
-	if e.Overage.CarbG > 0 {
-		parts = append(parts, fmt.Sprintf("%.0fg carbs", e.Overage.CarbG))
-	}
-	if e.Overage.ProteinG > 0 {
-		parts = append(parts, fmt.Sprintf("%.0fg protein", e.Overage.ProteinG))
-	}
-	if e.Overage.FatG > 0 {
-		parts = append(parts, fmt.Sprintf("%.0fg fat", e.Overage.FatG))
-	}
-	return fmt.Sprintf("Exceeds day target by %s", strings.Join(parts, ", "))
-}
-
-// AddIngredient looks up the ingredient's per-100g profile, snapshots the
-// macros for this quantity, and recalculates the meal's and plan's totals.
-func (s *MealPlanService) AddIngredient(ctx context.Context, mealID, userID uuid.UUID, in MealIngredientInput) (MealIngredient, error) {
-	clean, err := ValidateMealIngredient(in)
+// AddIngredient adds one portion to a meal; see AddIngredients.
+func (s *MealPlanService) AddIngredient(ctx context.Context, mealID, userID uuid.UUID, in MealIngredientInput, confirm bool) (MealIngredient, error) {
+	added, err := s.AddIngredients(ctx, mealID, userID, []MealIngredientInput{in}, confirm)
 	if err != nil {
 		return MealIngredient{}, err
 	}
-
-	ingredient, err := s.repo.GetIngredient(ctx, clean.IngredientID, userID)
-	if err != nil {
-		return MealIngredient{}, err
-	}
-
-	macros := ingredient.MacrosFor(clean.QuantityGrams)
-	return s.repo.AddIngredient(ctx, mealID, userID, clean.IngredientID, clean.QuantityGrams, macros)
+	return added[0], nil
 }
 
-// AddIngredientChecked adds an ingredient and verifies whether the day's macro target is exceeded.
-// If exceeded without confirmOverage, the change is reverted and OverageError is returned.
-func (s *MealPlanService) AddIngredientChecked(
-	ctx context.Context,
-	mealID, userID uuid.UUID,
-	in MealIngredientInput,
-	confirmOverage bool,
-	goals MacroGoalLookup,
-) (MealIngredient, *meal.Overage, error) {
-	added, err := s.AddIngredient(ctx, mealID, userID, in)
-	if err != nil {
-		return MealIngredient{}, nil, err
-	}
-
-	mealRow, err := s.repo.GetMeal(ctx, mealID, userID)
-	if err != nil || mealRow.Weekday == nil {
-		return added, nil, nil
-	}
-
-	plan, err := s.repo.GetPlan(ctx, mealRow.MealPlanID, userID)
-	if err != nil {
-		return added, nil, nil
-	}
-
-	if plan.PlanType == "" && mealRow.DayPlanType == "" && mealRow.DayCustomCarbG == nil {
-		return added, nil, nil
-	}
-
-	if goals == nil {
-		return added, nil, nil
-	}
-
-	macroGoal, err := goals.Current(ctx, userID)
-	if err != nil {
-		return added, nil, nil
-	}
-
-	target := meal.ResolveDayTarget(
-		macroGoal.ProteinG,
-		macroGoal.FatG,
-		macroGoal.CarbG,
-		plan.PlanType,
-		plan.CustomCarbPct,
-		mealRow.DayPlanType,
-		mealRow.DayCustomCarbG,
-		mealRow.DayCustomProteinG,
-		mealRow.DayCustomFatG,
-	)
-
-	dayTotals, err := s.repo.SumDayMacros(ctx, mealRow.MealPlanID, *mealRow.Weekday)
-	if err != nil {
-		return added, nil, nil
-	}
-
-	overage := meal.CheckOverage(dayTotals, target)
-	if overage.IsOver {
-		if !confirmOverage {
-			_ = s.RemoveIngredient(ctx, added.ID, userID)
-			return MealIngredient{}, &overage, OverageError{Overage: overage}
-		}
-		_ = s.repo.ConfirmOverage(ctx, mealID)
-	}
-
-	return added, &overage, nil
-}
-
-// AddIngredients adds several portions to one meal, as a spoken meal arrives.
+// AddIngredients adds portions to a meal, as a spoken meal arrives, with each
+// portion's macros snapshotted and the meal's and plan's totals recalculated.
 //
-// Every input is validated and every ingredient looked up before the first row
-// is written, so a bad line — a missing quantity, an id this account cannot
-// see — refuses the whole batch instead of leaving half a meal behind. The
-// writes themselves are not one transaction; a database failure part-way is
-// reported and whatever was written stays, exactly as it would after the same
-// failure on the one-at-a-time form.
-func (s *MealPlanService) AddIngredients(ctx context.Context, mealID, userID uuid.UUID, in []MealIngredientInput) ([]MealIngredient, error) {
+// The portions are checked together against the meal's day, and written
+// together or not at all: a bad line — a missing quantity, an id this account
+// cannot see — or a day the batch would take over refuses the whole batch
+// instead of leaving half a meal behind.
+func (s *MealPlanService) AddIngredients(ctx context.Context, mealID, userID uuid.UUID, in []MealIngredientInput, confirm bool) ([]MealIngredient, error) {
 	if len(in) == 0 {
 		return nil, apperr.FieldErrors{}.Add("ingredient_id", "Choose at least one ingredient.").OrNil()
 	}
+	portions, total, err := s.portions(ctx, userID, in)
+	if err != nil {
+		return nil, err
+	}
+	active, err := s.requireTarget(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	planID, err := s.repo.PlanIDOfMeal(ctx, mealID, userID)
+	if err != nil {
+		return nil, err
+	}
 
-	macros := make([]Macros, len(in))
-	for i, line := range in {
+	var added []MealIngredient
+	err = s.repo.WithPlanLocked(ctx, planID, userID, func(tx *PlanTx, plan MealPlan) error {
+		i, ok := plan.DayIndexOfMeal(mealID)
+		if !ok {
+			return apperr.ErrNotFound
+		}
+		after := plan.State()
+		after.Days[i].Consumed = after.Days[i].Consumed.Add(total)
+		if err := checkOverage(active, plan, after, false, confirm); err != nil {
+			return err
+		}
+		added, err = tx.AddPortions(ctx, planID, mealID, portions)
+		return err
+	})
+	return added, err
+}
+
+// portions validates lines and works out the macros each adds, from the
+// ingredient's per-100g profile.
+func (s *MealPlanService) portions(ctx context.Context, userID uuid.UUID, lines []MealIngredientInput) ([]NewPortion, Macros, error) {
+	out := make([]NewPortion, len(lines))
+	var total Macros
+	for i, line := range lines {
 		clean, err := ValidateMealIngredient(line)
 		if err != nil {
-			return nil, err
+			return nil, Macros{}, err
 		}
 		ingredient, err := s.repo.GetIngredient(ctx, clean.IngredientID, userID)
 		if err != nil {
-			return nil, err
+			return nil, Macros{}, err
 		}
-		macros[i] = ingredient.MacrosFor(clean.QuantityGrams)
+		macros := ingredient.MacrosFor(clean.QuantityGrams)
+		out[i] = NewPortion{IngredientID: clean.IngredientID, QuantityGrams: clean.QuantityGrams, Macros: macros}
+		total = total.Add(macros)
 	}
-
-	added := make([]MealIngredient, 0, len(in))
-	for i, line := range in {
-		row, err := s.repo.AddIngredient(ctx, mealID, userID, line.IngredientID, line.QuantityGrams, macros[i])
-		if err != nil {
-			return added, err
-		}
-		added = append(added, row)
-	}
-	return added, nil
+	return out, total, nil
 }
 
 func (s *MealPlanService) RemoveIngredient(ctx context.Context, mealIngredientID, userID uuid.UUID) error {

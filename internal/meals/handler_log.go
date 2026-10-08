@@ -72,7 +72,7 @@ func (h *Handler) progressSummary(ctx context.Context, userID uuid.UUID, date ti
 	return progress.Summary(), true, nil
 }
 
-// mealOptions flattens every plan's meals into "Plan – Meal" options for the
+// mealOptions flattens every plan's meals into "Plan – Mon – Meal" options for the
 // log-a-meal dropdown. MealPlanService has no "list all meals" query of its
 // own, so this loads each plan in full — fine at the size a person's own
 // meal plans realistically reach, not a per-message hot path.
@@ -88,8 +88,10 @@ func (h *Handler) mealOptions(ctx context.Context, userID uuid.UUID) ([]nutritio
 		if err != nil {
 			return nil, err
 		}
-		for _, m := range full.Meals {
-			opts = append(opts, nutritionpages.MealOption{ID: m.ID.String(), Label: p.Name + " – " + m.Name})
+		for _, d := range full.Days {
+			for _, m := range d.Meals {
+				opts = append(opts, nutritionpages.MealOption{ID: m.ID.String(), Label: p.Name + " – " + d.Weekday.String()[:3] + " – " + m.Name})
+			}
 		}
 	}
 	return opts, nil

@@ -1,0 +1,519 @@
+package nutrition
+
+import (
+	"fmt"
+	"strconv"
+
+	"github.com/NorthAIProject/north-client/internal/meals/meal"
+	"github.com/NorthAIProject/north-client/internal/users"
+	capturepages "github.com/NorthAIProject/north-client/web/capture"
+	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/alert"
+	"github.com/NorthAIProject/north-client/web/shared/ui/badge"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/dialog"
+	"github.com/NorthAIProject/north-client/web/shared/ui/dictate"
+	"github.com/NorthAIProject/north-client/web/shared/ui/form"
+	"github.com/NorthAIProject/north-client/web/shared/ui/input"
+	"github.com/NorthAIProject/north-client/web/shared/ui/label"
+	"github.com/NorthAIProject/north-client/web/shared/ui/progress"
+	"github.com/NorthAIProject/north-client/web/shared/ui/radio"
+	"github.com/NorthAIProject/north-client/web/shared/ui/selectbox"
+)
+
+templ PlanDetailPage(user users.User, page PlanPage) {
+	@layout.App(page.Plan.Name, user, nav(ctx)) {
+		<div class="mx-auto w-full max-w-2xl space-y-6 p-6 md:p-8">
+			<a href="/app/nutrition/plans" class="text-muted-foreground hover:text-foreground text-sm">← All plans</a>
+			<header class="flex items-start justify-between gap-4">
+				<div>
+					<h1 class="text-2xl font-medium tracking-tight">{ page.Plan.Name }</h1>
+					if page.Plan.Description != "" {
+						<p class="text-muted-foreground mt-1 text-sm">{ page.Plan.Description }</p>
+					}
+					<div class="mt-2 flex flex-wrap gap-2">
+						@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
+							{ planTypeLabel(page.Plan.Settings) }
+						}
+						@badge.Badge(badge.Props{Variant: badge.VariantOutline}) {
+							{ modeLabel(page.Plan.Settings.Mode) }
+						}
+					</div>
+				</div>
+				<form method="post" action={ templ.SafeURL("/app/nutrition/plans/" + page.Plan.ID.String() + "/delete") }>
+					@ui.CSRFInput()
+					@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm}) {
+						Delete plan
+					}
+				</form>
+			</header>
+			@targetNotice(page.Target)
+			if page.Overage != nil {
+				@overageAlert(*page.Overage)
+			}
+			@settingsCard(page)
+			for i, d := range page.Plan.Days {
+				@dayCard(page, d, statusAt(page.statuses(), i))
+			}
+			@addDayCard(page)
+		</div>
+		@templ.JSONScript("plan-ingredients", ingredientMacros(page.Ingredients))
+		@label.Script()
+		@selectbox.Script()
+		@dialog.Script()
+		@progress.Script()
+		@dictate.Script()
+	}
+}
+
+templ overageAlert(o OverageNotice) {
+	@alert.Alert(alert.Props{Variant: alert.VariantDestructive}) {
+		@alert.Title() {
+			That would go over your target
+		}
+		@alert.Description() {
+			<ul class="mt-1 space-y-1">
+				for _, d := range o.Days {
+					<li>{ overageLine(d) }</li>
+				}
+			</ul>
+			if o.CanConfirm {
+				<form method="post" action={ templ.SafeURL(o.Repost.Action) } class="mt-3">
+					@ui.CSRFInput()
+					for _, f := range o.Repost.Fields {
+						<input type="hidden" name={ f.Name } value={ f.Value }/>
+					}
+					<input type="hidden" name="confirm_overage" value="1"/>
+					@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantDestructive, Size: button.SizeSm}) {
+						Save anyway
+					}
+				</form>
+			} else {
+				<p class="mt-2">Easy plans stay within your target. Choose a smaller portion, remove something, or switch the plan to advanced.</p>
+			}
+		}
+	}
+}
+
+templ settingsCard(page PlanPage) {
+	{{ s := page.Plan.Settings }}
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Title() {
+				Plan settings
+			}
+		}
+		@card.Content(card.ContentProps{Class: "space-y-4"}) {
+			<form
+				method="post"
+				action={ templ.SafeURL("/app/nutrition/plans/" + page.Plan.ID.String() + "/settings") }
+				class="space-y-4"
+				x-data={ fmt.Sprintf("{ mode: %q, type: %q }", s.Mode, s.Type) }
+			>
+				@ui.CSRFInput()
+				<input type="hidden" name="mode" value={ string(s.Mode) }/>
+				<fieldset class="space-y-4" disabled?={ page.Target == nil }>
+					@form.Item() {
+						@label.Label(label.Props{For: "plan-name"}) {
+							Name
+						}
+						@input.Input(input.Props{ID: "plan-name", Name: "name", Value: page.Plan.Name, Required: true, HasError: page.errorFor("settings", "name") != ""})
+						@fieldMessage(page.errorFor("settings", "name"))
+					}
+					@form.Item() {
+						@label.Label(label.Props{For: "plan-description"}) {
+							Description (optional)
+						}
+						@input.Input(input.Props{ID: "plan-description", Name: "description", Value: page.Plan.Description})
+					}
+					@planTypeFields("settings", page.Target, s.Type, gramsValue(s.CustomCarbPct), settingsErrors(page))
+					@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
+						Save settings
+					}
+				</fieldset>
+			</form>
+			if page.advanced() {
+				@switchToEasy(page)
+			} else {
+				<form method="post" action={ templ.SafeURL("/app/nutrition/plans/" + page.Plan.ID.String() + "/settings") }>
+					@ui.CSRFInput()
+					<input type="hidden" name="name" value={ page.Plan.Name }/>
+					<input type="hidden" name="description" value={ page.Plan.Description }/>
+					<input type="hidden" name="plan_type" value={ string(s.Type) }/>
+					<input type="hidden" name="mode" value={ string(meal.Advanced) }/>
+					<p class="text-muted-foreground mb-2 text-sm">Advanced mode lets each day have its own carbs, protein and fat, and lets you go over once you confirm.</p>
+					@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm, Disabled: page.Target == nil}) {
+						Switch to advanced
+					}
+				</form>
+			}
+		}
+	}
+}
+
+func settingsErrors(page PlanPage) map[string]string {
+	if page.Problem.Scope != "settings" {
+		return nil
+	}
+	return page.Problem.Errors
+}
+
+// switchToEasy asks before an advanced plan goes back to easy, since every
+// day loses its own target.
+templ switchToEasy(page PlanPage) {
+	{{ preset := page.Plan.Settings.Type }}
+	if _, ok := meal.BandFor(preset); !ok {
+		{{ preset = meal.MidCarb }}
+	}
+	@dialog.Trigger(dialog.TriggerProps{For: "switch-to-easy"}) {
+		@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantGhost, Size: button.SizeSm, Disabled: page.Target == nil}) {
+			Switch to easy
+		}
+	}
+	@dialog.Dialog(dialog.Props{ID: "switch-to-easy"}) {
+		@dialog.Content() {
+			<form
+				method="post"
+				action={ templ.SafeURL("/app/nutrition/plans/" + page.Plan.ID.String() + "/settings") }
+				x-data={ fmt.Sprintf("{ mode: %q, type: %q }", meal.Easy, preset) }
+			>
+				@ui.CSRFInput()
+				<input type="hidden" name="name" value={ page.Plan.Name }/>
+				<input type="hidden" name="description" value={ page.Plan.Description }/>
+				<input type="hidden" name="mode" value={ string(meal.Easy) }/>
+				<input type="hidden" name="confirm_reset" value="1"/>
+				@dialog.Header() {
+					@dialog.Title() {
+						Switch to easy?
+					}
+					@dialog.Description() {
+						Every day goes back to the plan's default target, and its own carbs, protein and fat are dropped. A day already over that target has to be trimmed first.
+					}
+				}
+				<div class="py-4">
+					@planTypeFields("easy", page.Target, preset, "", nil)
+				</div>
+				@dialog.Footer() {
+					@dialog.Close() {
+						@button.Button(button.Props{Variant: button.VariantOutline, Type: button.TypeButton}) {
+							Keep advanced
+						}
+					}
+					@button.Button(button.Props{Type: button.TypeSubmit}) {
+						Switch to easy
+					}
+				}
+			</form>
+		}
+	}
+}
+
+templ dayCard(page PlanPage, d meal.Day, status *meal.DayStatus) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			<div class="flex items-start justify-between gap-4">
+				<div class="space-y-1">
+					@card.Title() {
+						{ d.Weekday.String() }
+					}
+					if label := overrideLabel(d.Override); label != "" {
+						@badge.Badge(badge.Props{Variant: badge.VariantOutline}) {
+							{ label }
+						}
+					}
+				</div>
+				<div class="flex items-center gap-1">
+					if page.advanced() && page.Target != nil {
+						@dayOverrideDialog(page, d)
+					}
+					if len(page.Plan.Days) > 1 {
+						@removeDay(d)
+					}
+				</div>
+			</div>
+		}
+		@card.Content(card.ContentProps{Class: "space-y-5"}) {
+			if status != nil {
+				@dayStatus(*status)
+			}
+			for _, m := range d.Meals {
+				@mealBlock(page, m, status)
+			}
+			<form method="post" action={ templ.SafeURL("/app/nutrition/days/" + d.ID.String() + "/meals") } class="flex gap-2">
+				@ui.CSRFInput()
+				@input.Input(input.Props{Name: "name", Placeholder: "Add a meal, e.g. Breakfast", Required: true, Disabled: page.Target == nil, HasError: page.errorFor("meal:"+d.ID.String(), "name") != ""})
+				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Disabled: page.Target == nil}) {
+					Add meal
+				}
+			</form>
+			@fieldMessage(page.errorFor("meal:"+d.ID.String(), "name"))
+		}
+	}
+}
+
+func statusAt(statuses []meal.DayStatus, i int) *meal.DayStatus {
+	if statuses == nil {
+		return nil
+	}
+	return &statuses[i]
+}
+
+templ dayStatus(s meal.DayStatus) {
+	<div class="space-y-2">
+		for _, m := range macroRows(s) {
+			<div>
+				<div class="flex justify-between text-sm">
+					<span>{ m.Name }</span>
+					<span class={ templ.KV("text-destructive font-medium", m.isOver()), templ.KV("text-muted-foreground", !m.isOver()) }>{ m.summary() }</span>
+				</div>
+				@progress.Progress(progress.Props{Value: m.percent(), Max: 100, Size: progress.SizeSm, Variant: progressVariant(m)})
+			</div>
+		}
+	</div>
+}
+
+func progressVariant(m macroRow) progress.Variant {
+	if m.isOver() {
+		return progress.VariantDanger
+	}
+	return progress.VariantDefault
+}
+
+templ mealBlock(page PlanPage, m meal.Meal, status *meal.DayStatus) {
+	<section class="border-hairline space-y-3 border-t pt-4">
+		<div class="flex items-center justify-between">
+			<h3 class="font-medium">{ m.Name }</h3>
+			<div class="flex items-center gap-2">
+				<span class="text-muted-foreground text-sm">{ fmt.Sprintf("%.0f kcal", m.TotalMacros.Calories) }</span>
+				<form method="post" action={ templ.SafeURL("/app/nutrition/meals/" + m.ID.String() + "/delete") }>
+					@ui.CSRFInput()
+					@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm}) {
+						Remove meal
+					}
+				</form>
+			</div>
+		</div>
+		if len(m.Ingredients) > 0 {
+			<ul class="space-y-1">
+				for _, mi := range m.Ingredients {
+					<li class="flex items-center justify-between text-sm">
+						<span>{ mi.IngredientName } · { fmt.Sprintf("%.0fg", mi.QuantityGrams) }</span>
+						<div class="flex items-center gap-2">
+							<span class="text-muted-foreground">{ fmt.Sprintf("%.0f kcal", mi.Macros.Calories) }</span>
+							<form method="post" action={ templ.SafeURL("/app/nutrition/meal-ingredients/" + mi.ID.String() + "/delete") }>
+								@ui.CSRFInput()
+								@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm}) {
+									Remove
+								}
+							</form>
+						</div>
+					</li>
+				}
+			</ul>
+		}
+		if status != nil {
+			@addPortionForm(page, m, *status)
+			@capturepages.MealVoice(capturepages.MealVoiceData{MealID: m.ID.String()})
+		}
+	</section>
+}
+
+// addPortionForm adds an ingredient to a meal, showing what the day has left
+// and, as the person picks a food and a weight, what would remain after it.
+templ addPortionForm(page PlanPage, m meal.Meal, status meal.DayStatus) {
+	{{ scope := "portion:" + m.ID.String() }}
+	<form
+		method="post"
+		action={ templ.SafeURL("/app/nutrition/meals/" + m.ID.String() + "/ingredients") }
+		class="space-y-2"
+		x-data={ previewState(status) }
+		@change="if ($event.target.name === 'ingredient_id') id = $event.target.value"
+	>
+		@ui.CSRFInput()
+		<div class="flex items-end gap-2">
+			<div class="flex-1">
+				@selectbox.SelectBox() {
+					@selectbox.Trigger(selectbox.TriggerProps{Name: "ingredient_id", HasError: page.errorFor(scope, "ingredient_id") != ""}) {
+						@selectbox.Value(selectbox.ValueProps{Placeholder: "Choose an ingredient"})
+					}
+					@selectbox.Content() {
+						for _, ing := range page.Ingredients {
+							@selectbox.Item(selectbox.ItemProps{Value: ing.ID.String()}) {
+								{ ing.Name }
+							}
+						}
+					}
+				}
+			</div>
+			<div class="w-24">
+				@input.Input(input.Props{
+					Name: "quantity_grams", Type: input.TypeNumber, Placeholder: "grams",
+					HasError: page.errorFor(scope, "quantity_grams") != "", Attributes: templ.Attributes{"x-model.number": "grams", "min": "1"},
+				})
+			</div>
+			@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
+				Add
+			}
+		</div>
+		<p class="text-muted-foreground text-xs">
+			<span x-show="!id || !grams">{ remainingLine(status) }</span>
+			<span x-show="id && grams" x-cloak x-text={ previewText }></span>
+		</p>
+		@fieldMessage(page.errorFor(scope, "ingredient_id"))
+		@fieldMessage(page.errorFor(scope, "quantity_grams"))
+	</form>
+}
+
+// dayOverrideDialog sets an advanced day's own carbs, protein and fat. Blank
+// fields follow the plan.
+templ dayOverrideDialog(page PlanPage, d meal.Day) {
+	{{ id := "day-" + d.ID.String() }}
+	{{ scope := "day:" + d.ID.String() }}
+	{{ current := "" }}
+	if d.Override.CarbType != nil {
+		{{ current = string(*d.Override.CarbType) }}
+	}
+	@dialog.Trigger(dialog.TriggerProps{For: id}) {
+		@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantGhost, Size: button.SizeSm}) {
+			Change day
+		}
+	}
+	@dialog.Dialog(dialog.Props{ID: id, Open: page.Problem.Scope == scope}) {
+		@dialog.Content() {
+			<form method="post" action={ templ.SafeURL("/app/nutrition/days/" + d.ID.String()) } class="space-y-4">
+				@ui.CSRFInput()
+				@dialog.Header() {
+					@dialog.Title() {
+						{ d.Weekday.String() }
+					}
+					@dialog.Description() {
+						Give this day its own target. Blank fields follow the plan; nothing can go above your daily target.
+					}
+				}
+				@form.Item() {
+					@ui.MonoLabel("Carbs")
+					@carbTypeChoice(id+"-carb-plan", "", "Follow the plan", current == "")
+					for _, b := range meal.CarbBands {
+						@carbTypeChoice(id+"-carb-"+string(b.Type), string(b.Type), b.Label+" day", current == string(b.Type))
+					}
+					@fieldMessage(page.errorFor(scope, "carb_type"))
+				}
+				@gramsField(page, scope, id+"-carb-g", "carb_g", "Or exact carb grams", d.Override.CarbG, page.Target.CarbG)
+				@gramsField(page, scope, id+"-protein-g", "protein_g", "Protein (g)", d.Override.ProteinG, page.Target.ProteinG)
+				@gramsField(page, scope, id+"-fat-g", "fat_g", "Fat (g)", d.Override.FatG, page.Target.FatG)
+				@dialog.Footer() {
+					@dialog.Close() {
+						@button.Button(button.Props{Variant: button.VariantOutline, Type: button.TypeButton}) {
+							Cancel
+						}
+					}
+					@button.Button(button.Props{Type: button.TypeSubmit}) {
+						Save day
+					}
+				}
+			</form>
+		}
+	}
+}
+
+templ carbTypeChoice(id, value, text string, checked bool) {
+	<div class="flex items-center gap-2">
+		@radio.Radio(radio.Props{ID: id, Name: "carb_type", Value: value, Checked: checked})
+		@label.Label(label.Props{For: id}) {
+			{ text }
+		}
+	</div>
+}
+
+templ gramsField(page PlanPage, scope, id, name, text string, value *float64, limit float64) {
+	@form.Item() {
+		@label.Label(label.Props{For: id}) {
+			{ text }
+		}
+		@input.Input(input.Props{
+			ID: id, Name: name, Type: input.TypeNumber, Value: gramsValue(value), Placeholder: fmt.Sprintf("up to %.0f", limit),
+			Attributes: templ.Attributes{"min": "0", "max": strconv.FormatFloat(limit, 'f', 0, 64), "step": "any"},
+			HasError: page.errorFor(scope, name) != "",
+		})
+		@fieldMessage(page.errorFor(scope, name))
+	}
+}
+
+// removeDay deletes a day straight away when it is empty, and asks first when
+// it would take meals with it.
+templ removeDay(d meal.Day) {
+	{{ action := templ.SafeURL("/app/nutrition/days/" + d.ID.String() + "/delete") }}
+	if len(d.Meals) == 0 {
+		<form method="post" action={ action }>
+			@ui.CSRFInput()
+			@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm}) {
+				Remove day
+			}
+		</form>
+	} else {
+		@dialog.Trigger(dialog.TriggerProps{For: "remove-" + d.ID.String()}) {
+			@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantGhost, Size: button.SizeSm}) {
+				Remove day
+			}
+		}
+		@dialog.Dialog(dialog.Props{ID: "remove-" + d.ID.String()}) {
+			@dialog.Content() {
+				<form method="post" action={ action }>
+					@ui.CSRFInput()
+					@dialog.Header() {
+						@dialog.Title() {
+							{ "Remove " + d.Weekday.String() + "?" }
+						}
+						@dialog.Description() {
+							{ fmt.Sprintf("Its %d meals go with it.", len(d.Meals)) }
+						}
+					}
+					@dialog.Footer() {
+						@dialog.Close() {
+							@button.Button(button.Props{Variant: button.VariantOutline, Type: button.TypeButton}) {
+								Keep it
+							}
+						}
+						@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantDestructive}) {
+							Remove day
+						}
+					}
+				</form>
+			}
+		}
+	}
+}
+
+templ addDayCard(page PlanPage) {
+	if free := page.freeWeekdays(); len(free) > 0 {
+		<form method="post" action={ templ.SafeURL("/app/nutrition/plans/" + page.Plan.ID.String() + "/days") } class="flex items-end gap-2">
+			@ui.CSRFInput()
+			if page.advanced() {
+				<div class="w-48">
+					@selectbox.SelectBox() {
+						@selectbox.Trigger(selectbox.TriggerProps{Name: "weekday"}) {
+							@selectbox.Value(selectbox.ValueProps{Placeholder: "Choose a weekday"})
+						}
+						@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
+							for _, wd := range free {
+								@selectbox.Item(selectbox.ItemProps{Value: strconv.Itoa(int(wd))}) {
+									{ wd.String() }
+								}
+							}
+						}
+					}
+				</div>
+				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
+					Add day
+				}
+			} else {
+				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
+					{ "Add " + free[0].String() }
+				}
+			}
+		</form>
+		@fieldMessage(page.errorFor("days", "weekday"))
+	}
+}
