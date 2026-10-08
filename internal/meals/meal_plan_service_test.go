@@ -2,12 +2,17 @@ package meals_test
 
 import (
 	"context"
+	"errors"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/NorthAIProject/north-client/internal/calculator"
 	"github.com/NorthAIProject/north-client/internal/meals"
+	"github.com/NorthAIProject/north-client/internal/meals/meal"
 	"github.com/NorthAIProject/north-client/internal/shared/database/testdb"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
@@ -20,15 +25,48 @@ func within(got, want, tolerance float64) bool {
 	return diff < tolerance
 }
 
-// TestTotalsAlwaysEqualTheSumOfChildren is the most important test in this
-// package: meal and plan total_macros are a cache, and a cache that drifts
-// from its source is worse than no cache at all.
-func TestTotalsAlwaysEqualTheSumOfChildren(t *testing.T) {
+// goalStub is the calculator as the plan service sees it. A nil plan is a
+// person who has not worked out a target yet.
+type goalStub struct {
+	mu   sync.Mutex
+	plan *calculator.MacroPlan
+}
+
+func (g *goalStub) Current(context.Context, uuid.UUID) (calculator.MacroPlan, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.plan == nil {
+		return calculator.MacroPlan{}, apperr.ErrNotFound
+	}
+	return *g.plan, nil
+}
+
+func (g *goalStub) clear() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.plan = nil
+}
+
+// planFixture is a person with a 150 g protein / 70 g fat / 250 g carb target
+// and two foods: chicken (31 g protein per 100 g) and rice (28 g carbs per
+// 100 g).
+type planFixture struct {
+	ctx     context.Context
+	pool    *pgxpool.Pool
+	svc     *meals.MealPlanService
+	goals   *goalStub
+	userID  uuid.UUID
+	chicken meals.Ingredient
+	rice    meals.Ingredient
+}
+
+func newPlanFixture(t *testing.T, email string) planFixture {
+	t.Helper()
 	pool := testdb.New(t)
-	user := newUser(t, pool, "fernando@north.test")
+	user := newUser(t, pool, email)
 	repo := meals.NewRepository(pool)
 	ingredientSvc := meals.NewIngredientService(repo)
-	planSvc := meals.NewMealPlanService(repo)
+	goals := &goalStub{plan: &calculator.MacroPlan{CalorieGoal: 2230, ProteinG: 150, FatG: 70, CarbG: 250}}
 	ctx := context.Background()
 
 	chicken, err := ingredientSvc.Create(ctx, user.ID, meals.IngredientInput{
@@ -45,364 +83,445 @@ func TestTotalsAlwaysEqualTheSumOfChildren(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create rice: %v", err)
 	}
+	return planFixture{
+		ctx: ctx, pool: pool, svc: meals.NewMealPlanService(repo, goals), goals: goals, userID: user.ID,
+		chicken: chicken, rice: rice,
+	}
+}
 
-	plan, err := planSvc.CreatePlan(ctx, user.ID, meals.MealPlanInput{Name: "Cutting plan"})
+func (f planFixture) plan(t *testing.T, s meal.PlanSettings, weekdays ...time.Weekday) meals.MealPlan {
+	t.Helper()
+	in := meals.MealPlanInput{Name: "Plan", Settings: s, Weekdays: weekdays}
+	if len(weekdays) == 0 {
+		in.DayCount = 1
+	}
+	plan, err := f.svc.CreatePlan(f.ctx, f.userID, in, nil, false)
 	if err != nil {
 		t.Fatalf("create plan: %v", err)
 	}
+	return plan
+}
 
-	meal, err := planSvc.AddMeal(ctx, plan.ID, user.ID, meals.MealInput{Name: "Lunch", MealNumber: 1})
+func (f planFixture) meal(t *testing.T, day meal.Day, name string) meals.Meal {
+	t.Helper()
+	m, err := f.svc.AddMeal(f.ctx, day.ID, f.userID, name)
 	if err != nil {
 		t.Fatalf("add meal: %v", err)
 	}
+	return m
+}
 
-	chickenLine, err := planSvc.AddIngredient(ctx, meal.ID, user.ID, meals.MealIngredientInput{IngredientID: chicken.ID, QuantityGrams: 200})
+func (f planFixture) add(m meals.Meal, in meals.Ingredient, grams float64, confirm bool) error {
+	_, err := f.svc.AddIngredient(f.ctx, m.ID, f.userID, meals.MealIngredientInput{IngredientID: in.ID, QuantityGrams: grams}, confirm)
+	return err
+}
+
+func (f planFixture) reload(t *testing.T, id uuid.UUID) meals.MealPlan {
+	t.Helper()
+	plan, err := f.svc.GetPlan(f.ctx, id, f.userID)
+	if err != nil {
+		t.Fatalf("get plan: %v", err)
+	}
+	return plan
+}
+
+var (
+	easyLow     = meal.PlanSettings{Type: meal.LowCarb, Mode: meal.Easy}
+	easyMid     = meal.PlanSettings{Type: meal.MidCarb, Mode: meal.Easy}
+	advancedMid = meal.PlanSettings{Type: meal.MidCarb, Mode: meal.Advanced}
+)
+
+func overage(t *testing.T, err error) *meals.OverageError {
+	t.Helper()
+	var over *meals.OverageError
+	if !errors.As(err, &over) {
+		t.Fatalf("expected an overage, got %v", err)
+	}
+	return over
+}
+
+func fieldError(t *testing.T, err error, field string) {
+	t.Helper()
+	var fields apperr.FieldErrors
+	if !errors.As(err, &fields) || fields.Messages()[field] == "" {
+		t.Fatalf("expected a %s field error, got %v", field, err)
+	}
+}
+
+// TestTotalsAlwaysEqualTheSumOfChildren is the most important test in this
+// package: meal and plan total_macros are a cache, and a cache that drifts
+// from its source is worse than no cache at all.
+func TestTotalsAlwaysEqualTheSumOfChildren(t *testing.T) {
+	f := newPlanFixture(t, "totals@north.test")
+	plan := f.plan(t, easyMid)
+	lunch := f.meal(t, plan.Days[0], "Lunch")
+
+	chickenLine, err := f.svc.AddIngredient(f.ctx, lunch.ID, f.userID, meals.MealIngredientInput{IngredientID: f.chicken.ID, QuantityGrams: 200}, false)
 	if err != nil {
 		t.Fatalf("add chicken: %v", err)
 	}
-	if !within(chickenLine.Macros.Calories, 330, 0.01) {
-		t.Fatalf("chicken line calories = %v, want 330", chickenLine.Macros.Calories)
-	}
-
-	if _, err = planSvc.AddIngredient(ctx, meal.ID, user.ID, meals.MealIngredientInput{IngredientID: rice.ID, QuantityGrams: 150}); err != nil {
+	if err := f.add(lunch, f.rice, 150, false); err != nil {
 		t.Fatalf("add rice: %v", err)
 	}
 
 	// 200g chicken (330 kcal) + 150g rice (195 kcal) = 525 kcal.
-	loaded, err := planSvc.GetPlan(ctx, plan.ID, user.ID)
-	if err != nil {
-		t.Fatalf("get plan: %v", err)
+	loaded := f.reload(t, plan.ID)
+	day := loaded.Days[0]
+	if len(day.Meals) != 1 || len(day.Meals[0].Ingredients) != 2 {
+		t.Fatalf("expected 1 meal with 2 ingredients, got %+v", day.Meals)
 	}
-	if len(loaded.Meals) != 1 || len(loaded.Meals[0].Ingredients) != 2 {
-		t.Fatalf("expected 1 meal with 2 ingredients, got %d meals", len(loaded.Meals))
-	}
-	if !within(loaded.Meals[0].TotalMacros.Calories, 525, 0.01) {
-		t.Fatalf("meal total calories = %v, want 525", loaded.Meals[0].TotalMacros.Calories)
-	}
-	if !within(loaded.TotalMacros.Calories, 525, 0.01) {
-		t.Fatalf("plan total calories = %v, want 525 (only one meal)", loaded.TotalMacros.Calories)
+	if !within(day.Meals[0].TotalMacros.Calories, 525, 0.01) || !within(loaded.TotalMacros.Calories, 525, 0.01) {
+		t.Fatalf("totals = meal %v, plan %v; want 525", day.Meals[0].TotalMacros.Calories, loaded.TotalMacros.Calories)
 	}
 
-	// Removing the rice line should bring both totals back down to just the
-	// chicken.
-	if err = planSvc.RemoveIngredient(ctx, chickenLine.ID, user.ID); err != nil {
-		t.Fatalf("remove chicken line: %v", err)
+	if err := f.svc.RemoveIngredient(f.ctx, chickenLine.ID, f.userID); err != nil {
+		t.Fatalf("remove chicken: %v", err)
+	}
+	if got := f.reload(t, plan.ID).TotalMacros.Calories; !within(got, 195, 0.01) {
+		t.Fatalf("plan total after removal = %v, want 195 (rice only)", got)
 	}
 
-	afterRemoval, err := planSvc.GetPlan(ctx, plan.ID, user.ID)
-	if err != nil {
-		t.Fatalf("get plan after removal: %v", err)
-	}
-	if len(afterRemoval.Meals[0].Ingredients) != 1 {
-		t.Fatalf("expected 1 remaining ingredient, got %d", len(afterRemoval.Meals[0].Ingredients))
-	}
-	if !within(afterRemoval.Meals[0].TotalMacros.Calories, 195, 0.01) {
-		t.Fatalf("meal total after removal = %v, want 195 (rice only)", afterRemoval.Meals[0].TotalMacros.Calories)
-	}
-	if !within(afterRemoval.TotalMacros.Calories, 195, 0.01) {
-		t.Fatalf("plan total after removal = %v, want 195", afterRemoval.TotalMacros.Calories)
-	}
-
-	// Removing the whole meal should zero out the plan.
-	if err = planSvc.RemoveMeal(ctx, meal.ID, user.ID); err != nil {
+	if err := f.svc.RemoveMeal(f.ctx, lunch.ID, f.userID); err != nil {
 		t.Fatalf("remove meal: %v", err)
 	}
-	afterMealRemoval, err := planSvc.GetPlan(ctx, plan.ID, user.ID)
-	if err != nil {
-		t.Fatalf("get plan after meal removal: %v", err)
-	}
-	if len(afterMealRemoval.Meals) != 0 {
-		t.Fatalf("expected no meals left, got %d", len(afterMealRemoval.Meals))
-	}
-	if afterMealRemoval.TotalMacros.Calories != 0 {
-		t.Fatalf("plan total after removing its only meal = %v, want 0", afterMealRemoval.TotalMacros.Calories)
+	if got := f.reload(t, plan.ID); len(got.Days[0].Meals) != 0 || got.TotalMacros.Calories != 0 {
+		t.Fatalf("after removing its only meal: %d meals, %v kcal", len(got.Days[0].Meals), got.TotalMacros.Calories)
 	}
 }
 
 func TestPlansAreScopedToTheirOwner(t *testing.T) {
-	pool := testdb.New(t)
-	owner := newUser(t, pool, "owner@north.test")
-	stranger := newUser(t, pool, "stranger@north.test")
-	repo := meals.NewRepository(pool)
-	planSvc := meals.NewMealPlanService(repo)
-	ctx := context.Background()
+	f := newPlanFixture(t, "owner@north.test")
+	stranger := newUser(t, f.pool, "stranger@north.test")
+	plan := f.plan(t, advancedMid)
 
-	plan, err := planSvc.CreatePlan(ctx, owner.ID, meals.MealPlanInput{Name: "My plan"})
-	if err != nil {
-		t.Fatalf("create plan: %v", err)
+	if _, err := f.svc.GetPlan(f.ctx, plan.ID, stranger.ID); !apperr.Is(err, apperr.ErrNotFound) {
+		t.Fatalf("get: expected ErrNotFound, got %v", err)
 	}
-
-	if _, err := planSvc.GetPlan(ctx, plan.ID, stranger.ID); !apperr.Is(err, apperr.ErrNotFound) {
-		t.Fatalf("expected ErrNotFound, got %v", err)
+	if _, err := f.svc.AddMeal(f.ctx, plan.Days[0].ID, stranger.ID, "Hijack"); !apperr.Is(err, apperr.ErrNotFound) {
+		t.Fatalf("add meal: expected ErrNotFound, got %v", err)
 	}
-
-	if _, err := planSvc.AddMeal(ctx, plan.ID, stranger.ID, meals.MealInput{Name: "Hijack", MealNumber: 1}); !apperr.Is(err, apperr.ErrNotFound) {
-		t.Fatalf("expected ErrNotFound, got %v", err)
+	if err := f.svc.UpdateDay(f.ctx, plan.Days[0].ID, stranger.ID, meal.DayOverride{}, false); !apperr.Is(err, apperr.ErrNotFound) {
+		t.Fatalf("update day: expected ErrNotFound, got %v", err)
 	}
 }
 
 func TestValidationRejectsMissingPlanName(t *testing.T) {
 	t.Parallel()
 
-	_, err := meals.ValidateMealPlan(meals.MealPlanInput{})
-	if !apperr.Is(err, apperr.ErrValidation) {
-		t.Fatalf("expected ErrValidation, got %v", err)
+	_, err := meals.ValidateMealPlan(meals.MealPlanInput{Settings: easyMid, DayCount: 1})
+	fieldError(t, err, "name")
+}
+
+func TestValidationKeepsCustomCarbsToAdvanced(t *testing.T) {
+	t.Parallel()
+
+	pct := 40.0
+	_, err := meals.ValidateMealPlan(meals.MealPlanInput{
+		Name: "Plan", DayCount: 1, Settings: meal.PlanSettings{Type: meal.Custom, CustomCarbPct: &pct, Mode: meal.Easy},
+	})
+	fieldError(t, err, "plan_type")
+
+	_, err = meals.ValidateMealPlan(meals.MealPlanInput{
+		Name: "Plan", Weekdays: []time.Weekday{time.Monday}, Settings: easyMid,
+	})
+	fieldError(t, err, "weekdays")
+}
+
+// With no target there is nothing to hold a plan to, so nothing is let through
+// unchecked: no new plan, and no food on an existing one.
+func TestNoMacroTargetRefusesPlansAndFood(t *testing.T) {
+	f := newPlanFixture(t, "notarget@north.test")
+	plan := f.plan(t, easyMid)
+	lunch := f.meal(t, plan.Days[0], "Lunch")
+	f.goals.clear()
+
+	_, err := f.svc.CreatePlan(f.ctx, f.userID, meals.MealPlanInput{Name: "Another", Settings: easyMid, DayCount: 1}, nil, false)
+	fieldError(t, err, "macro_target")
+	fieldError(t, f.add(lunch, f.rice, 10, true), "macro_target")
+
+	if n := len(f.reload(t, plan.ID).Days[0].Meals[0].Ingredients); n != 0 {
+		t.Fatalf("food was added without a target: %d lines", n)
+	}
+}
+
+func TestEasyPlanFillsDaysFromMondayAtTheMidpoint(t *testing.T) {
+	f := newPlanFixture(t, "easy@north.test")
+	plan, err := f.svc.CreatePlan(f.ctx, f.userID, meals.MealPlanInput{Name: "Week", Settings: easyLow, DayCount: 5}, nil, false)
+	if err != nil {
+		t.Fatalf("create plan: %v", err)
+	}
+
+	want := []time.Weekday{time.Monday, time.Tuesday, time.Wednesday, time.Thursday, time.Friday}
+	if got := plan.Weekdays(); len(got) != len(want) {
+		t.Fatalf("weekdays = %v, want %v", got, want)
+	}
+	target, err := f.svc.ActiveTarget(f.ctx, f.userID)
+	if err != nil || target == nil {
+		t.Fatalf("active target: %v, %v", target, err)
+	}
+	for i, st := range plan.State().Statuses(*target) {
+		if plan.Days[i].Weekday != want[i] {
+			t.Errorf("day %d is %s, want %s", i, plan.Days[i].Weekday, want[i])
+		}
+		// Low carb is 6–25% of 250 g; the midpoint, 15.5%, is 38.75 g.
+		if !within(st.Target.CarbG, 38.75, 0.001) || st.Target.ProteinG != 150 || st.Target.FatG != 70 {
+			t.Errorf("%s target = %+v, want 38.75 g carbs at the active protein and fat", plan.Days[i].Weekday, st.Target)
+		}
+	}
+}
+
+func TestEasyOverageIsRefusedEvenWhenConfirmed(t *testing.T) {
+	f := newPlanFixture(t, "easyover@north.test")
+	plan := f.plan(t, easyLow)
+	lunch := f.meal(t, plan.Days[0], "Lunch")
+
+	// 200 g rice is 56 g carbs against a 38.75 g day.
+	for _, confirm := range []bool{false, true} {
+		over := overage(t, f.add(lunch, f.rice, 200, confirm))
+		if over.Verdict.CanConfirm {
+			t.Fatal("an easy plan offered to confirm an overage")
+		}
+		if got := over.Verdict.Over[0].Status.Over.CarbG; !within(got, 17.25, 0.001) {
+			t.Fatalf("carbs over = %v, want 17.25", got)
+		}
+	}
+	if loaded := f.reload(t, plan.ID); len(loaded.Days[0].Meals[0].Ingredients) != 0 || loaded.TotalMacros.Calories != 0 {
+		t.Fatalf("a refused portion was written: %+v", loaded.Days[0].Meals[0])
+	}
+}
+
+func TestAdvancedOverageNeedsConfirmation(t *testing.T) {
+	f := newPlanFixture(t, "advancedover@north.test")
+	plan := f.plan(t, meal.PlanSettings{Type: meal.LowCarb, Mode: meal.Advanced})
+	lunch := f.meal(t, plan.Days[0], "Lunch")
+
+	if over := overage(t, f.add(lunch, f.rice, 200, false)); !over.Verdict.CanConfirm {
+		t.Fatal("an advanced plan did not offer to confirm")
+	}
+	if err := f.add(lunch, f.rice, 200, true); err != nil {
+		t.Fatalf("confirmed overage refused: %v", err)
+	}
+	// Protein has room, and carbs do not grow: no question to ask.
+	if err := f.add(lunch, f.chicken, 100, false); err != nil {
+		t.Fatalf("chicken on a carb-over day: %v", err)
+	}
+	// More carbs grow the overage, so it is asked again.
+	overage(t, f.add(lunch, f.rice, 20, false))
+}
+
+// The acceptance case: Monday low carb and Saturday high carb in one plan.
+func TestAdvancedDaysCanEachHaveTheirOwnTarget(t *testing.T) {
+	f := newPlanFixture(t, "days@north.test")
+	plan := f.plan(t, advancedMid, time.Saturday, time.Monday)
+	low, high := meal.LowCarb, meal.HighCarb
+	monday, saturday := plan.Days[0], plan.Days[1]
+	if monday.Weekday != time.Monday || saturday.Weekday != time.Saturday {
+		t.Fatalf("days run %v, want Monday first", plan.Weekdays())
+	}
+
+	if err := f.svc.UpdateDay(f.ctx, monday.ID, f.userID, meal.DayOverride{CarbType: &low}, false); err != nil {
+		t.Fatalf("monday low carb: %v", err)
+	}
+	if err := f.svc.UpdateDay(f.ctx, saturday.ID, f.userID, meal.DayOverride{CarbType: &high}, false); err != nil {
+		t.Fatalf("saturday high carb: %v", err)
+	}
+
+	loaded := f.reload(t, plan.ID)
+	target, _ := f.svc.ActiveTarget(f.ctx, f.userID)
+	st := loaded.State().Statuses(*target)
+	if !within(st[0].Target.CarbG, 38.75, 0.001) || !within(st[1].Target.CarbG, 138.75, 0.001) {
+		t.Fatalf("carb targets = %v and %v, want 38.75 and 138.75", st[0].Target.CarbG, st[1].Target.CarbG)
+	}
+}
+
+func TestEasyPlansHaveNoDayOverrides(t *testing.T) {
+	f := newPlanFixture(t, "easyday@north.test")
+	plan := f.plan(t, easyMid)
+	low := meal.LowCarb
+	fieldError(t, f.svc.UpdateDay(f.ctx, plan.Days[0].ID, f.userID, meal.DayOverride{CarbType: &low}, false), "mode")
+}
+
+func TestOverridesCannotExceedTheActiveTarget(t *testing.T) {
+	f := newPlanFixture(t, "ceiling@north.test")
+	plan := f.plan(t, advancedMid)
+	carbs, protein := 300.0, 151.0
+	err := f.svc.UpdateDay(f.ctx, plan.Days[0].ID, f.userID, meal.DayOverride{CarbG: &carbs, ProteinG: &protein}, false)
+	fieldError(t, err, "carb_g")
+	fieldError(t, err, "protein_g")
+}
+
+func TestLoweringThePlanTypeIsChecked(t *testing.T) {
+	f := newPlanFixture(t, "lower@north.test")
+	plan := f.plan(t, easyMid)
+	lunch := f.meal(t, plan.Days[0], "Lunch")
+	// 250 g rice is 70 g carbs: inside mid carb's 88.75 g, past low carb's 38.75 g.
+	if err := f.add(lunch, f.rice, 250, false); err != nil {
+		t.Fatalf("add rice: %v", err)
+	}
+
+	err := f.svc.UpdateSettings(f.ctx, plan.ID, f.userID, meals.PlanSettingsInput{Name: "Plan", Settings: easyLow})
+	overage(t, err)
+	if got := f.reload(t, plan.ID).Settings.Type; got != meal.MidCarb {
+		t.Fatalf("plan type = %s after a refused change", got)
+	}
+}
+
+func TestSwitchingToEasyNeedsConfirmationAndResetsDays(t *testing.T) {
+	f := newPlanFixture(t, "toeasy@north.test")
+	plan := f.plan(t, advancedMid)
+	low := meal.LowCarb
+	if err := f.svc.UpdateDay(f.ctx, plan.Days[0].ID, f.userID, meal.DayOverride{CarbType: &low}, false); err != nil {
+		t.Fatalf("override: %v", err)
+	}
+
+	toEasy := meals.PlanSettingsInput{Name: "Plan", Settings: easyMid}
+	fieldError(t, f.svc.UpdateSettings(f.ctx, plan.ID, f.userID, toEasy), "confirm_reset")
+
+	toEasy.ConfirmReset = true
+	if err := f.svc.UpdateSettings(f.ctx, plan.ID, f.userID, toEasy); err != nil {
+		t.Fatalf("switch to easy: %v", err)
+	}
+	loaded := f.reload(t, plan.ID)
+	if loaded.Settings.Mode != meal.Easy || !loaded.Days[0].Override.IsZero() {
+		t.Fatalf("after switching: mode %s, override %+v", loaded.Settings.Mode, loaded.Days[0].Override)
+	}
+}
+
+func TestSwitchingToEasyIsRefusedWhileADayIsOver(t *testing.T) {
+	f := newPlanFixture(t, "toeasyover@north.test")
+	plan := f.plan(t, advancedMid)
+	lunch := f.meal(t, plan.Days[0], "Lunch")
+	if err := f.add(lunch, f.rice, 400, true); err != nil {
+		t.Fatalf("confirmed overage: %v", err)
+	}
+
+	err := f.svc.UpdateSettings(f.ctx, plan.ID, f.userID, meals.PlanSettingsInput{Name: "Plan", Settings: easyMid, ConfirmReset: true})
+	if over := overage(t, err); over.Verdict.CanConfirm {
+		t.Fatal("switching to easy offered to confirm an overage")
+	}
+}
+
+func TestEasyStaysWithinTheTargetWhenTheyAddDays(t *testing.T) {
+	f := newPlanFixture(t, "adddays@north.test")
+	plan := f.plan(t, easyMid)
+
+	day, err := f.svc.AddDay(f.ctx, plan.ID, f.userID, nil)
+	if err != nil || day.Weekday != time.Tuesday {
+		t.Fatalf("add day = %v, %v; want Tuesday", day.Weekday, err)
+	}
+	sunday := time.Sunday
+	_, err = f.svc.AddDay(f.ctx, plan.ID, f.userID, &sunday)
+	fieldError(t, err, "weekday")
+
+	if err := f.svc.RemoveDay(f.ctx, day.ID, f.userID); err != nil {
+		t.Fatalf("remove day: %v", err)
+	}
+	fieldError(t, f.svc.RemoveDay(f.ctx, plan.Days[0].ID, f.userID), "day")
+}
+
+func TestMealsAreNumberedWithinTheirDay(t *testing.T) {
+	f := newPlanFixture(t, "numbers@north.test")
+	plan := f.plan(t, advancedMid, time.Monday, time.Tuesday)
+
+	got := []int{
+		f.meal(t, plan.Days[0], "Breakfast").MealNumber,
+		f.meal(t, plan.Days[0], "Lunch").MealNumber,
+		f.meal(t, plan.Days[1], "Breakfast").MealNumber,
+	}
+	if got[0] != 1 || got[1] != 2 || got[2] != 1 {
+		t.Fatalf("meal numbers = %v, want [1 2 1]", got)
+	}
+}
+
+// Two portions that each fit but together go over cannot both pass the check:
+// the plan's row lock makes the second see the first.
+func TestConcurrentAddsCannotTogetherGoOver(t *testing.T) {
+	f := newPlanFixture(t, "race@north.test")
+	plan := f.plan(t, easyLow)
+	lunch := f.meal(t, plan.Days[0], "Lunch")
+
+	// 100 g rice is 28 g carbs; two are 56 g against a 38.75 g day.
+	errs := make([]error, 2)
+	var wg sync.WaitGroup
+	for i := range errs {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			errs[i] = f.add(lunch, f.rice, 100, false)
+		}()
+	}
+	wg.Wait()
+
+	if (errs[0] == nil) == (errs[1] == nil) {
+		t.Fatalf("want exactly one add to succeed, got %v and %v", errs[0], errs[1])
 	}
 }
 
 // A spoken meal lands as one batch. Every line reaches the meal and the totals
 // still equal the sum of their children — the cache the test above guards.
 func TestAddIngredientsAddsEveryLine(t *testing.T) {
-	pool := testdb.New(t)
-	user := newUser(t, pool, "batch@north.test")
-	repo := meals.NewRepository(pool)
-	ingredientSvc := meals.NewIngredientService(repo)
-	planSvc := meals.NewMealPlanService(repo)
-	ctx := context.Background()
+	f := newPlanFixture(t, "batch@north.test")
+	plan := f.plan(t, easyMid)
+	lunch := f.meal(t, plan.Days[0], "Lunch")
 
-	chicken, rice, meal := batchFixture(t, ctx, ingredientSvc, planSvc, user.ID)
-
-	added, err := planSvc.AddIngredients(ctx, meal.ID, user.ID, []meals.MealIngredientInput{
-		{IngredientID: chicken.ID, QuantityGrams: 200},
-		{IngredientID: rice.ID, QuantityGrams: 150},
-	})
+	added, err := f.svc.AddIngredients(f.ctx, lunch.ID, f.userID, []meals.MealIngredientInput{
+		{IngredientID: f.chicken.ID, QuantityGrams: 200},
+		{IngredientID: f.rice.ID, QuantityGrams: 150},
+	}, false)
 	if err != nil {
 		t.Fatalf("add ingredients: %v", err)
 	}
 	if len(added) != 2 {
 		t.Fatalf("added %d lines, want 2", len(added))
 	}
-
-	// 200g chicken (330 kcal) + 150g rice (195 kcal) = 525 kcal.
-	loaded, err := planSvc.GetPlan(ctx, meal.MealPlanID, user.ID)
-	if err != nil {
-		t.Fatalf("get plan: %v", err)
-	}
-	if !within(loaded.Meals[0].TotalMacros.Calories, 525, 0.01) {
-		t.Fatalf("meal total calories = %v, want 525", loaded.Meals[0].TotalMacros.Calories)
+	if got := f.reload(t, plan.ID).Days[0].Meals[0].TotalMacros.Calories; !within(got, 525, 0.01) {
+		t.Fatalf("meal total calories = %v, want 525", got)
 	}
 }
 
-// One bad line refuses the batch before anything is written: half a spoken
-// meal on the plan, with no way to tell which half, is worse than none.
-func TestAddIngredientsWritesNothingWhenOneLineIsBad(t *testing.T) {
-	pool := testdb.New(t)
-	user := newUser(t, pool, "badbatch@north.test")
-	stranger := newUser(t, pool, "batchstranger@north.test")
-	repo := meals.NewRepository(pool)
-	ingredientSvc := meals.NewIngredientService(repo)
-	planSvc := meals.NewMealPlanService(repo)
-	ctx := context.Background()
+// One bad line, or a batch that together goes over, refuses the batch before
+// anything is written: half a spoken meal on the plan, with no way to tell
+// which half, is worse than none.
+func TestAddIngredientsWritesNothingWhenRefused(t *testing.T) {
+	f := newPlanFixture(t, "badbatch@north.test")
+	stranger := newUser(t, f.pool, "batchstranger@north.test")
+	plan := f.plan(t, easyLow)
+	lunch := f.meal(t, plan.Days[0], "Lunch")
 
-	chicken, _, meal := batchFixture(t, ctx, ingredientSvc, planSvc, user.ID)
-	private, err := ingredientSvc.Create(ctx, stranger.ID, meals.IngredientInput{
-		Name: "Stranger's granola", Category: meals.CategoryCarb,
-		Per100g: meals.Macros{Calories: 450},
+	strangerSvc := meals.NewIngredientService(meals.NewRepository(f.pool))
+	private, err := strangerSvc.Create(f.ctx, stranger.ID, meals.IngredientInput{
+		Name: "Stranger's granola", Category: meals.CategoryCarb, Per100g: meals.Macros{Calories: 450},
 	})
 	if err != nil {
 		t.Fatalf("create stranger's ingredient: %v", err)
 	}
 
 	for name, lines := range map[string][]meals.MealIngredientInput{
-		"zero grams":                {{IngredientID: chicken.ID, QuantityGrams: 200}, {IngredientID: chicken.ID, QuantityGrams: 0}},
-		"another account's private": {{IngredientID: chicken.ID, QuantityGrams: 200}, {IngredientID: private.ID, QuantityGrams: 50}},
+		"zero grams":                {{IngredientID: f.chicken.ID, QuantityGrams: 200}, {IngredientID: f.chicken.ID, QuantityGrams: 0}},
+		"another account's private": {{IngredientID: f.chicken.ID, QuantityGrams: 200}, {IngredientID: private.ID, QuantityGrams: 50}},
+		"over together":             {{IngredientID: f.rice.ID, QuantityGrams: 100}, {IngredientID: f.rice.ID, QuantityGrams: 100}},
 		"empty":                     nil,
 	} {
-		if _, refused := planSvc.AddIngredients(ctx, meal.ID, user.ID, lines); refused == nil {
+		if _, refused := f.svc.AddIngredients(f.ctx, lunch.ID, f.userID, lines, false); refused == nil {
 			t.Errorf("%s: batch was accepted", name)
 		}
 	}
 
-	loaded, err := planSvc.GetPlan(ctx, meal.MealPlanID, user.ID)
-	if err != nil {
-		t.Fatalf("get plan: %v", err)
-	}
-	if n := len(loaded.Meals[0].Ingredients); n != 0 {
+	if n := len(f.reload(t, plan.ID).Days[0].Meals[0].Ingredients); n != 0 {
 		t.Fatalf("a refused batch left %d lines on the meal", n)
 	}
 }
 
-func batchFixture(t *testing.T, ctx context.Context, ingredientSvc *meals.IngredientService, planSvc *meals.MealPlanService, userID uuid.UUID) (meals.Ingredient, meals.Ingredient, meals.Meal) {
-	t.Helper()
+func TestCreatingAPlanThatStartsOverWritesNothing(t *testing.T) {
+	f := newPlanFixture(t, "drafts@north.test")
+	days := []meals.DayDraft{{Meals: []meals.MealDraft{{
+		Name: "Lunch", Portions: []meals.MealIngredientInput{{IngredientID: f.rice.ID, QuantityGrams: 300}},
+	}}}}
 
-	chicken, err := ingredientSvc.Create(ctx, userID, meals.IngredientInput{
-		Name: "Chicken breast", Category: meals.CategoryProtein,
-		Per100g: meals.Macros{Calories: 165, ProteinG: 31, FatG: 3.6, CarbG: 0},
-	})
-	if err != nil {
-		t.Fatalf("create chicken: %v", err)
-	}
-	rice, err := ingredientSvc.Create(ctx, userID, meals.IngredientInput{
-		Name: "White rice", Category: meals.CategoryCarb,
-		Per100g: meals.Macros{Calories: 130, ProteinG: 2.7, FatG: 0.3, CarbG: 28},
-	})
-	if err != nil {
-		t.Fatalf("create rice: %v", err)
-	}
-	plan, err := planSvc.CreatePlan(ctx, userID, meals.MealPlanInput{Name: "Spoken plan"})
-	if err != nil {
-		t.Fatalf("create plan: %v", err)
-	}
-	meal, err := planSvc.AddMeal(ctx, plan.ID, userID, meals.MealInput{Name: "Lunch", MealNumber: 1})
-	if err != nil {
-		t.Fatalf("add meal: %v", err)
-	}
-	return chicken, rice, meal
-}
-
-type testMacroGoalLookup struct {
-	plan calculator.MacroPlan
-}
-
-func (m testMacroGoalLookup) Current(ctx context.Context, userID uuid.UUID) (calculator.MacroPlan, error) {
-	return m.plan, nil
-}
-
-func TestFlexibleCarbPlanAndOverageEnforcement(t *testing.T) {
-	pool := testdb.New(t)
-	user := newUser(t, pool, "carbplans@north.test")
-	repo := meals.NewRepository(pool)
-	ingredientSvc := meals.NewIngredientService(repo)
-	planSvc := meals.NewMealPlanService(repo)
-	ctx := context.Background()
-
-	goals := testMacroGoalLookup{
-		plan: calculator.MacroPlan{
-			ProteinG:    150,
-			FatG:        60,
-			CarbG:       200,
-			CalorieGoal: 150*4 + 60*9 + 200*4,
-		},
-	}
-
-	rice, err := ingredientSvc.Create(ctx, user.ID, meals.IngredientInput{
-		Name:     "White rice",
-		Category: meals.CategoryCarb,
-		Per100g:  meals.Macros{Calories: 130, ProteinG: 2.7, FatG: 0.3, CarbG: 28},
-	})
-	if err != nil {
-		t.Fatalf("create rice: %v", err)
-	}
-
-	// 1. Create plan with low_carb
-	plan, err := planSvc.CreatePlan(ctx, user.ID, meals.MealPlanInput{
-		Name:     "Flexible Carb Week",
-		PlanType: meals.PlanTypeLowCarb,
-	})
-	if err != nil {
-		t.Fatalf("create plan: %v", err)
-	}
-	if plan.PlanType != meals.PlanTypeLowCarb {
-		t.Fatalf("expected plan type low_carb, got %v", plan.PlanType)
-	}
-
-	// 2. Add Monday meal (weekday 0) and Saturday meal (weekday 5)
-	weekdayMon := 0
-	monMeal, err := planSvc.AddMeal(ctx, plan.ID, user.ID, meals.MealInput{
-		Name:        "Monday Lunch",
-		MealNumber:  1,
-		Weekday:     &weekdayMon,
-		DayPlanType: meals.PlanTypeLowCarb,
-	})
-	if err != nil {
-		t.Fatalf("add monday meal: %v", err)
-	}
-
-	weekdaySat := 5
-	satMeal, err := planSvc.AddMeal(ctx, plan.ID, user.ID, meals.MealInput{
-		Name:        "Saturday Feast",
-		MealNumber:  1,
-		Weekday:     &weekdaySat,
-		DayPlanType: meals.PlanTypeHighCarb,
-	})
-	if err != nil {
-		t.Fatalf("add saturday meal: %v", err)
-	}
-
-	// Resolve targets: Monday is low_carb (20% of 200 = 40g carb)
-	monTarget := meals.ResolveDayTarget(goals.plan.ProteinG, goals.plan.FatG, goals.plan.CarbG, plan.PlanType, plan.CustomCarbPct, monMeal.DayPlanType, nil, nil, nil)
-	if !within(monTarget.CarbG, 40.0, 0.01) {
-		t.Fatalf("monday carb target = %v, want 40", monTarget.CarbG)
-	}
-
-	// Saturday is high_carb (55% of 200 = 110g carb)
-	satTarget := meals.ResolveDayTarget(goals.plan.ProteinG, goals.plan.FatG, goals.plan.CarbG, plan.PlanType, plan.CustomCarbPct, satMeal.DayPlanType, nil, nil, nil)
-	if !within(satTarget.CarbG, 110.0, 0.01) {
-		t.Fatalf("saturday carb target = %v, want 110", satTarget.CarbG)
-	}
-
-	// 3. Adding 200g rice to Monday: 200g * 28g/100g = 56g carbs.
-	// Since Monday limit is 40g, 56g exceeds the 40g target by 16g.
-	// Without confirmation, AddIngredientChecked must be refused and rollback cleanly.
-	_, overage, err := planSvc.AddIngredientChecked(ctx, monMeal.ID, user.ID, meals.MealIngredientInput{
-		IngredientID:  rice.ID,
-		QuantityGrams: 200,
-	}, false, goals)
-	if err == nil {
-		t.Fatalf("expected overage error, got nil")
-	}
-
-	var overageErr meals.OverageError
-	if !apperr.As(err, &overageErr) {
-		t.Fatalf("expected error to be meals.OverageError, got %T: %v", err, err)
-	}
-	if overage == nil || !overage.IsOver {
-		t.Fatalf("expected overage.IsOver to be true")
-	}
-	if !within(overage.CarbG, 16.0, 0.01) {
-		t.Fatalf("carb overage = %v, want 16", overage.CarbG)
-	}
-
-	// Verify nothing was saved
-	loadedMon, err := repo.GetMeal(ctx, monMeal.ID, user.ID)
-	if err != nil {
-		t.Fatalf("get meal: %v", err)
-	}
-	if len(loadedMon.Ingredients) != 0 {
-		t.Fatalf("expected 0 ingredients after rejected overage, got %d", len(loadedMon.Ingredients))
-	}
-
-	// 4. Try again with confirmOverage = true
-	savedLine, overage, err := planSvc.AddIngredientChecked(ctx, monMeal.ID, user.ID, meals.MealIngredientInput{
-		IngredientID:  rice.ID,
-		QuantityGrams: 200,
-	}, true, goals)
-	if err != nil {
-		t.Fatalf("add ingredient with confirmation failed: %v", err)
-	}
-	if savedLine.QuantityGrams != 200 {
-		t.Fatalf("expected 200g saved line, got %v", savedLine.QuantityGrams)
-	}
-	if overage == nil || !overage.IsOver {
-		t.Fatalf("expected overage to still be calculated and returned even when confirmed")
-	}
-
-	// Verify meal now has the line and overage_confirmed = true
-	loadedMon, err = repo.GetMeal(ctx, monMeal.ID, user.ID)
-	if err != nil {
-		t.Fatalf("get meal: %v", err)
-	}
-	if len(loadedMon.Ingredients) != 1 {
-		t.Fatalf("expected 1 ingredient, got %d", len(loadedMon.Ingredients))
-	}
-	if !loadedMon.OverageConfirmed {
-		t.Fatalf("expected overage_confirmed to be true on meal")
-	}
-
-	// 5. On Saturday, limit is 110g carb. Adding 200g rice (56g carb) is within 110g.
-	// Should succeed without overage confirmation.
-	satLine, satOverage, err := planSvc.AddIngredientChecked(ctx, satMeal.ID, user.ID, meals.MealIngredientInput{
-		IngredientID:  rice.ID,
-		QuantityGrams: 200,
-	}, false, goals)
-	if err != nil {
-		t.Fatalf("add ingredient to saturday failed: %v", err)
-	}
-	if satLine.QuantityGrams != 200 {
-		t.Fatalf("expected 200g, got %v", satLine.QuantityGrams)
-	}
-	if satOverage != nil && satOverage.IsOver {
-		t.Fatalf("expected saturday overage to not be over")
+	_, err := f.svc.CreatePlan(f.ctx, f.userID, meals.MealPlanInput{Name: "Too much", Settings: easyLow, DayCount: 1}, days, false)
+	overage(t, err)
+	plans, err := f.svc.ListPlans(f.ctx, f.userID)
+	if err != nil || len(plans) != 0 {
+		t.Fatalf("plans after a refused create = %d, %v", len(plans), err)
 	}
 }
-

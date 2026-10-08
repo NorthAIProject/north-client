@@ -2435,6 +2435,19 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+  /nutrition/plan-options:
+    get:
+      operationId: getMealPlanOptions
+      summary: What a new plan can be — the active macro target and the plan types
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MealPlanOptions'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /nutrition/plans:
     get:
       operationId: listMealPlans
@@ -2450,7 +2463,11 @@ paths:
           $ref: '#/components/responses/Unauthorized'
     post:
       operationId: createMealPlan
-      summary: Create a meal plan
+      summary: Create a meal plan with its days
+      description: |
+        Needs a macro target from the calculator; without one the 422 names
+        the field macro_target. Easy plans take dayCount (days from Monday);
+        advanced plans may name weekdays instead.
       requestBody:
         required: true
         content:
@@ -2478,7 +2495,7 @@ paths:
           format: uuid
     get:
       operationId: getMealPlan
-      summary: A meal plan with its meals and portions
+      summary: A meal plan with its days, meals and portions, each day measured against its target
       responses:
         '200':
           description: OK
@@ -2490,6 +2507,34 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+    put:
+      operationId: updateMealPlan
+      summary: Rename a plan or change its type or mode; answers with the plan
+      description: |
+        Switching an advanced plan to easy needs confirmReset (the 422 names
+        confirm_reset otherwise) and drops every day's override. A change that
+        would take a day further over its target is a 409.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MealPlanUpdate'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MealPlanDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/MacroOverage'
+        '422':
+          $ref: '#/components/responses/ValidationError'
     delete:
       operationId: deleteMealPlan
       summary: Delete a meal plan
@@ -2500,7 +2545,7 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
-  /nutrition/plans/{planID}/meals:
+  /nutrition/plans/{planID}/days:
     parameters:
       - name: planID
         in: path
@@ -2509,8 +2554,82 @@ paths:
           type: string
           format: uuid
     post:
+      operationId: addMealPlanDay
+      summary: Add a day; the next free weekday from Monday, or a named one in an advanced plan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MealPlanDayRequest'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MealPlanDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /nutrition/plan-days/{dayID}:
+    parameters:
+      - name: dayID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      operationId: updateMealPlanDay
+      summary: Give an advanced plan's day its own target; answers with the plan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MealPlanDayOverride'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MealPlanDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/MacroOverage'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      operationId: removeMealPlanDay
+      summary: Remove a day and its meals; a plan keeps at least one day
+      responses:
+        '204':
+          description: Done
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /nutrition/plan-days/{dayID}/meals:
+    parameters:
+      - name: dayID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
       operationId: addPlanMeal
-      summary: Add a meal; answers with the plan
+      summary: Add a meal at the end of a day; answers with the plan
       requestBody:
         required: true
         content:
@@ -2548,36 +2667,6 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
-  /nutrition/meals/{mealID}/day:
-    parameters:
-      - name: mealID
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-    put:
-      operationId: updatePlanMealDay
-      summary: Update a meal's weekday assignment and day carb override
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/MealRequest'
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/MealPlanDetail'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '422':
-          $ref: '#/components/responses/ValidationError'
   /nutrition/meals/{mealID}/ingredients:
     parameters:
       - name: mealID
@@ -2589,6 +2678,7 @@ paths:
     post:
       operationId: addMealPortion
       summary: Add an ingredient to a meal, by weight
+      description: A portion that would take the meal's day further over its target is a 409.
       requestBody:
         required: true
         content:
@@ -2606,6 +2696,40 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/MacroOverage'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /nutrition/meals/{mealID}/ingredients/batch:
+    parameters:
+      - name: mealID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: addMealPortions
+      summary: Add several ingredients to a meal at once, all or none, as a spoken meal arrives
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PortionsRequest'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MealPortionList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/MacroOverage'
         '422':
           $ref: '#/components/responses/ValidationError'
   /nutrition/meal-ingredients/{mealIngredientID}:
@@ -5196,6 +5320,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorBody'
+    MacroOverage:
+      description: The change would take a day further over its macro target
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MacroOverage'
     ValidationError:
       description: Request body failed validation
       content:
@@ -8943,9 +9073,24 @@ components:
           type: number
         macros:
           $ref: '#/components/schemas/Macros'
+    MealPlanType:
+      type: string
+      enum: [no_carb, low_carb, mid_carb, high_carb, custom]
+      description: |
+        The plan's carb level, as a share of the active carb target: no_carb
+        0–5%, low_carb 6–25%, mid_carb 26–45%, high_carb 46–65%, each day
+        defaulting to the band's midpoint; custom is the plan's own share,
+        advanced plans only.
+    MealPlanMode:
+      type: string
+      enum: [easy, advanced]
+      description: |
+        easy plans take a preset type and a number of days and refuse
+        anything over a day's target; advanced plans allow custom carbs,
+        per-day targets, and overages the person confirms.
     MealPlanSummary:
       type: object
-      required: [id, name, description, totalMacros, mealCount]
+      required: [id, name, description, planType, mode, dayCount, totalMacros]
       properties:
         id:
           type: string
@@ -8955,12 +9100,17 @@ components:
         description:
           type: string
         planType:
-          type: string
-          enum: [no_carb, low_carb, mid_carb, high_carb, custom]
+          $ref: '#/components/schemas/MealPlanType'
+        customCarbPct:
+          type: number
+          description: Set only for custom plans.
+        mode:
+          $ref: '#/components/schemas/MealPlanMode'
+        dayCount:
+          type: integer
         totalMacros:
           $ref: '#/components/schemas/Macros'
-        mealCount:
-          type: integer
+          description: Every day's meals together.
     MealPlanList:
       type: object
       required: [plans]
@@ -8969,11 +9119,75 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/MealPlanSummary'
+    MealDayStatus:
+      type: object
+      required: [target, consumed, remaining, over, isOver]
+      description: A day measured against its target.
+      properties:
+        target:
+          $ref: '#/components/schemas/Macros'
+        consumed:
+          $ref: '#/components/schemas/Macros'
+        remaining:
+          $ref: '#/components/schemas/Macros'
+          description: Target minus consumed; negative where the day is over.
+        over:
+          $ref: '#/components/schemas/Macros'
+          description: How far past the target each macro is; zero where it is not.
+        isOver:
+          type: boolean
+          description: Protein, fat or carbs are past the target. Calories are shown, not checked.
+    MealPlanMeal:
+      type: object
+      required: [id, mealNumber, name, totalMacros, ingredients]
+      properties:
+        id:
+          type: string
+          format: uuid
+        mealNumber:
+          type: integer
+          description: Order within its day.
+        name:
+          type: string
+        totalMacros:
+          $ref: '#/components/schemas/Macros'
+        ingredients:
+          type: array
+          items:
+            $ref: '#/components/schemas/MealPortion'
+    MealPlanDay:
+      type: object
+      required: [id, weekday, meals]
+      properties:
+        id:
+          type: string
+          format: uuid
+        weekday:
+          type: integer
+          minimum: 0
+          maximum: 6
+          description: 0 is Sunday. Days come Monday first.
+        carbType:
+          $ref: '#/components/schemas/MealPlanType'
+          description: An advanced day's own carb band; never custom.
+        carbG:
+          type: number
+        proteinG:
+          type: number
+        fatG:
+          type: number
+        status:
+          $ref: '#/components/schemas/MealDayStatus'
+          description: Absent until the person has a macro target.
+        meals:
+          type: array
+          items:
+            $ref: '#/components/schemas/MealPlanMeal'
     MealPlanDetail:
       allOf:
         - $ref: '#/components/schemas/MealPlanSummary'
         - type: object
-          required: [objective, activityLevel, gender, meals]
+          required: [objective, activityLevel, gender, days]
           properties:
             objective:
               type: string
@@ -8981,45 +9195,47 @@ components:
               type: string
             gender:
               type: string
-            customCarbPct:
-              type: number
-            macroTarget:
+            target:
               $ref: '#/components/schemas/Macros'
-            meals:
+              description: The active macro target from the calculator; absent until there is one.
+            days:
               type: array
               items:
-                type: object
-                required: [id, mealNumber, name, totalMacros, ingredients]
-                properties:
-                  id:
-                    type: string
-                    format: uuid
-                  mealNumber:
-                    type: integer
-                  name:
-                    type: string
-                  weekday:
-                    type: integer
-                    minimum: 0
-                    maximum: 6
-                  dayPlanType:
-                    type: string
-                    enum: [no_carb, low_carb, mid_carb, high_carb, custom]
-                  dayTarget:
-                    $ref: '#/components/schemas/Macros'
-                  remaining:
-                    $ref: '#/components/schemas/Macros'
-                  overageConfirmed:
-                    type: boolean
-                  totalMacros:
-                    $ref: '#/components/schemas/Macros'
-                  ingredients:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/MealPortion'
+                $ref: '#/components/schemas/MealPlanDay'
+    MealPlanTypeOption:
+      type: object
+      required: [id, minPct, maxPct, advancedOnly]
+      properties:
+        id:
+          $ref: '#/components/schemas/MealPlanType'
+        minPct:
+          type: number
+        maxPct:
+          type: number
+        defaultPct:
+          type: number
+          description: A preset's midpoint; absent for custom.
+        defaultCarbG:
+          type: number
+          description: The midpoint in grams of the active target; absent for custom or without a target.
+        advancedOnly:
+          type: boolean
+    MealPlanOptions:
+      type: object
+      required: [maxDays, planTypes]
+      properties:
+        target:
+          $ref: '#/components/schemas/Macros'
+          description: Absent until the calculator has produced a target; plans cannot be made without one.
+        maxDays:
+          type: integer
+        planTypes:
+          type: array
+          items:
+            $ref: '#/components/schemas/MealPlanTypeOption'
     MealPlanRequest:
       type: object
-      required: [name]
+      required: [name, planType, mode]
       properties:
         name:
           type: string
@@ -9032,31 +9248,68 @@ components:
         gender:
           type: string
         planType:
-          type: string
-          enum: [no_carb, low_carb, mid_carb, high_carb, custom]
+          $ref: '#/components/schemas/MealPlanType'
         customCarbPct:
           type: number
-    MealRequest:
+        mode:
+          $ref: '#/components/schemas/MealPlanMode'
+        dayCount:
+          type: integer
+          minimum: 1
+          maximum: 7
+        weekdays:
+          type: array
+          description: Advanced plans only; 0 is Sunday.
+          items:
+            type: integer
+            minimum: 0
+            maximum: 6
+    MealPlanUpdate:
       type: object
-      required: [name, mealNumber]
+      required: [name, planType, mode]
       properties:
         name:
           type: string
-        mealNumber:
-          type: integer
+        description:
+          type: string
+        planType:
+          $ref: '#/components/schemas/MealPlanType'
+        customCarbPct:
+          type: number
+        mode:
+          $ref: '#/components/schemas/MealPlanMode'
+        confirmReset:
+          type: boolean
+          description: Accepts that switching to easy drops every day's own target.
+        confirmOverage:
+          type: boolean
+    MealPlanDayRequest:
+      type: object
+      properties:
         weekday:
           type: integer
           minimum: 0
           maximum: 6
-        dayPlanType:
+    MealPlanDayOverride:
+      type: object
+      description: Absent fields follow the plan. carbType and carbG are never both set; none may exceed the active target.
+      properties:
+        carbType:
+          $ref: '#/components/schemas/MealPlanType'
+        carbG:
+          type: number
+        proteinG:
+          type: number
+        fatG:
+          type: number
+        confirmOverage:
+          type: boolean
+    MealRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
           type: string
-          enum: [no_carb, low_carb, mid_carb, high_carb, custom]
-        dayCustomCarbG:
-          type: number
-        dayCustomProteinG:
-          type: number
-        dayCustomFatG:
-          type: number
     PortionRequest:
       type: object
       required: [ingredientId, quantityGrams]
@@ -9068,6 +9321,63 @@ components:
           type: number
         confirmOverage:
           type: boolean
+          description: Advanced plans only; save even though the day goes over.
+    PortionLine:
+      type: object
+      required: [ingredientId, quantityGrams]
+      properties:
+        ingredientId:
+          type: string
+          format: uuid
+        quantityGrams:
+          type: number
+    PortionsRequest:
+      type: object
+      required: [portions]
+      properties:
+        portions:
+          type: array
+          items:
+            $ref: '#/components/schemas/PortionLine'
+        confirmOverage:
+          type: boolean
+    MealPortionList:
+      type: object
+      required: [portions]
+      properties:
+        portions:
+          type: array
+          items:
+            $ref: '#/components/schemas/MealPortion'
+    MacroOverage:
+      type: object
+      required: [message, canConfirm, days]
+      description: |
+        A change that would take a day further over its target. canConfirm
+        is set for advanced plans, which save the same request once it
+        carries confirmOverage; easy plans never do.
+      properties:
+        message:
+          type: string
+        canConfirm:
+          type: boolean
+        days:
+          type: array
+          items:
+            type: object
+            required: [dayId, weekday, target, consumed, over]
+            properties:
+              dayId:
+                type: string
+                format: uuid
+              weekday:
+                type: integer
+              target:
+                $ref: '#/components/schemas/Macros'
+              consumed:
+                $ref: '#/components/schemas/Macros'
+              over:
+                $ref: '#/components/schemas/Macros'
     LogMealRequest:
       type: object
       required: [mealId]

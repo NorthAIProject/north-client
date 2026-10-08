@@ -120,7 +120,9 @@ type Diet struct {
 	Description string
 }
 
-// MealPlan groups a set of meals around a stated objective.
+// MealPlan groups a week's days of meals around a stated objective, each day
+// held to a target taken from the person's current macro plan (see
+// plan_rules.go).
 type MealPlan struct {
 	ID     uuid.UUID
 	UserID uuid.UUID
@@ -131,37 +133,85 @@ type MealPlan struct {
 	ActivityLevel string
 	Gender        string
 
-	// PlanType sets the carb preset (no_carb, low_carb, mid_carb, high_carb, custom).
-	// Empty means no constraint (legacy plans).
-	PlanType      string
-	CustomCarbPct *float64
-	MacroPlanID   *uuid.UUID
+	Settings PlanSettings
 
 	// TotalMacros is a cache kept current by the service on every ingredient
-	// add/remove, not re-summed on every read.
+	// add/remove, not re-summed on every read. It spans every day.
 	TotalMacros Macros
-	Meals       []Meal
+	// Days run Monday first. ListPlans loads them without their meals.
+	Days []Day
 
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
 
-// Meal is one meal within a plan (breakfast, lunch, ...), ordered by
-// MealNumber.
+// State is the plan as the overage rule sees it.
+func (p MealPlan) State() PlanState {
+	days := make([]DayState, len(p.Days))
+	for i, d := range p.Days {
+		days[i] = DayState{ID: d.ID, Weekday: d.Weekday, Override: d.Override, Consumed: d.Consumed()}
+	}
+	return PlanState{Settings: p.Settings, Days: days}
+}
+
+// DayIndex finds a day of the plan by id.
+func (p MealPlan) DayIndex(dayID uuid.UUID) (int, bool) {
+	for i, d := range p.Days {
+		if d.ID == dayID {
+			return i, true
+		}
+	}
+	return 0, false
+}
+
+// DayIndexOfMeal finds the day of the plan holding a meal.
+func (p MealPlan) DayIndexOfMeal(mealID uuid.UUID) (int, bool) {
+	for i, d := range p.Days {
+		for _, m := range d.Meals {
+			if m.ID == mealID {
+				return i, true
+			}
+		}
+	}
+	return 0, false
+}
+
+// Weekdays lists the weekdays the plan covers.
+func (p MealPlan) Weekdays() []time.Weekday {
+	out := make([]time.Weekday, len(p.Days))
+	for i, d := range p.Days {
+		out[i] = d.Weekday
+	}
+	return out
+}
+
+// Day is one weekday of a plan and its meals.
+type Day struct {
+	ID       uuid.UUID
+	PlanID   uuid.UUID
+	Weekday  time.Weekday
+	Override DayOverride
+	Meals    []Meal
+}
+
+// Consumed is what the day's meals add up to.
+func (d Day) Consumed() Macros {
+	var total Macros
+	for _, m := range d.Meals {
+		total = total.Add(m.TotalMacros)
+	}
+	return total
+}
+
+// Meal is one meal within a day of a plan (breakfast, lunch, ...), ordered by
+// MealNumber within its day.
 type Meal struct {
 	ID         uuid.UUID
 	MealPlanID uuid.UUID
+	DayID      uuid.UUID
 
 	MealNumber int
 	Name       string
-
-	// Weekday is nil for unassigned meals, 0–6 for Sunday–Saturday.
-	Weekday          *int
-	DayPlanType      string
-	DayCustomCarbG   *float64
-	DayCustomProteinG *float64
-	DayCustomFatG    *float64
-	OverageConfirmed bool
 
 	TotalMacros Macros
 	Ingredients []MealIngredient

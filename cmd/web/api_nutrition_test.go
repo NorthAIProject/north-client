@@ -43,24 +43,66 @@ func TestNutritionAPI(t *testing.T) {
 		t.Errorf("search did not return the new ingredient as own: %+v", found)
 	}
 
-	var plan struct {
-		ID    string
-		Meals []struct{ ID string }
+	// Plans are held to the calculator's target, so there is none without one.
+	if rec := api.call(http.MethodPost, "/api/v1/nutrition/plans", `{"name":"Too soon","planType":"mid_carb","mode":"easy","dayCount":1}`); rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("plan without a target: %d %s", rec.Code, rec.Body)
 	}
-	decode(http.StatusCreated, http.MethodPost, "/api/v1/nutrition/plans", `{"name":"Training days"}`, &plan)
-	decode(http.StatusCreated, http.MethodPost, "/api/v1/nutrition/plans/"+plan.ID+"/meals", `{"name":"Breakfast","mealNumber":1}`, &plan)
-	if len(plan.Meals) != 1 {
+	decode(http.StatusOK, http.MethodPut, "/api/v1/calculator/biometrics", `{"weightKg":72,"heightCm":175,"dateOfBirth":"1990-05-01","sex":"female"}`, nil)
+	decode(http.StatusCreated, http.MethodPost, "/api/v1/calculator/plan", `{"activityLevel":"moderate","goal":"maintenance","macroSplit":"moderate_carb"}`, nil)
+
+	var options struct {
+		Target    *struct{ CarbG float64 }
+		PlanTypes []struct{ ID string }
+	}
+	decode(http.StatusOK, http.MethodGet, "/api/v1/nutrition/plan-options", "", &options)
+	if options.Target == nil || len(options.PlanTypes) != 5 {
+		t.Fatalf("plan options = %+v", options)
+	}
+
+	type day struct {
+		ID      string
+		Weekday int
+		Status  *struct{ Target struct{ CarbG float64 } }
+		Meals   []struct{ ID string }
+	}
+	var plan struct {
+		ID   string
+		Days []day
+	}
+	decode(http.StatusCreated, http.MethodPost, "/api/v1/nutrition/plans", `{"name":"Training days","planType":"no_carb","mode":"advanced","weekdays":[6,1]}`, &plan)
+	if len(plan.Days) != 2 || plan.Days[0].Weekday != 1 || plan.Days[1].Weekday != 6 || plan.Days[0].Status == nil {
+		t.Fatalf("plan = %+v, want Monday then Saturday, measured", plan)
+	}
+	decode(http.StatusOK, http.MethodPut, "/api/v1/nutrition/plan-days/"+plan.Days[1].ID, `{"carbType":"high_carb"}`, &plan)
+	if plan.Days[1].Status.Target.CarbG <= plan.Days[0].Status.Target.CarbG {
+		t.Errorf("Saturday's high-carb target is not above Monday's: %+v", plan.Days)
+	}
+	decode(http.StatusCreated, http.MethodPost, "/api/v1/nutrition/plan-days/"+plan.Days[0].ID+"/meals", `{"name":"Breakfast"}`, &plan)
+	if len(plan.Days[0].Meals) != 1 {
 		t.Fatalf("plan after adding a meal: %+v", plan)
 	}
-	decode(http.StatusCreated, http.MethodPost, "/api/v1/nutrition/meals/"+plan.Meals[0].ID+"/ingredients",
-		`{"ingredientId":"`+oats.ID+`","quantityGrams":50}`, nil)
+	breakfast := plan.Days[0].Meals[0].ID
+
+	// 50 g of oats is 34 g of carbs, past a no-carb Monday: refused with the
+	// amount until confirmed.
+	var over struct {
+		CanConfirm bool
+		Days       []struct{ Over struct{ CarbG float64 } }
+	}
+	portion := `{"ingredientId":"` + oats.ID + `","quantityGrams":50}`
+	decode(http.StatusConflict, http.MethodPost, "/api/v1/nutrition/meals/"+breakfast+"/ingredients", portion, &over)
+	if !over.CanConfirm || len(over.Days) != 1 || over.Days[0].Over.CarbG <= 0 {
+		t.Fatalf("overage = %+v", over)
+	}
+	decode(http.StatusCreated, http.MethodPost, "/api/v1/nutrition/meals/"+breakfast+"/ingredients",
+		`{"ingredientId":"`+oats.ID+`","quantityGrams":50,"confirmOverage":true}`, nil)
 
 	var log struct {
 		Entries []struct{ ID string }
 		Totals  struct{ Calories float64 }
 	}
 	decode(http.StatusCreated, http.MethodPost, "/api/v1/nutrition/log/ingredients", `{"ingredientId":"`+oats.ID+`","quantityGrams":100}`, &log)
-	decode(http.StatusCreated, http.MethodPost, "/api/v1/nutrition/log/meals", `{"mealId":"`+plan.Meals[0].ID+`"}`, &log)
+	decode(http.StatusCreated, http.MethodPost, "/api/v1/nutrition/log/meals", `{"mealId":"`+breakfast+`"}`, &log)
 	// 100 g of oats (380) plus the breakfast of 50 g (190).
 	if len(log.Entries) != 2 || math.Abs(log.Totals.Calories-570) > 0.5 {
 		t.Errorf("log = %+v, want two entries totalling 570 kcal", log)

@@ -1,0 +1,28 @@
+{
+  "message": "Monday would be 14 g over on carbs.",
+  "canConfirm": true,
+  "days": [
+    {
+      "dayId": "66666666-aaaa-aaaa-aaaa-666666666666",
+      "weekday": 1,
+      "target": {
+        "calories": 1331.2,
+        "proteinG": 130,
+        "fatG": 70,
+        "carbG": 40.3
+      },
+      "consumed": {
+        "calories": 303.2,
+        "proteinG": 10.6,
+        "fatG": 5.2,
+        "carbG": 54.2
+      },
+      "over": {
+        "calories": 0,
+        "proteinG": 0,
+        "fatG": 0,
+        "carbG": 13.9
+      }
+    }
+  ]
+}
