@@ -15,17 +15,19 @@ this automatically, so check both whenever a muscle key changes:
 
 1. **`muscles.js`** (above).
 2. **`internal/workouts/plan/muscle.go`** — `MuscleGroups`, the Go-side copy
-   of the same 15 keys. This is what constrains `PlanSchema()`'s
+   of the same 17 keys. This is what constrains `PlanSchema()`'s
    `primary_muscles`/`secondary_muscles`/`stabilizer_muscles` fields via
    `ai.Enum`, so the AI plan generator can only ever return a key that exists
    here.
 
-There is deliberately no third source of truth (no database table, no
-exercise catalog): the AI produces muscle assignments directly, per exercise,
-constrained to this list. A key present in one file but not the other either
-highlights nothing (`viewer.js`'s `setLoads` silently skips unresolved keys)
-or can never be produced by the model — both fail quietly, not loudly, so
-this checklist is the only thing keeping them aligned.
+The exercise catalog (`exercises.primary_muscles` / `secondary_muscles`)
+stores keys from the same list, and is what logged sets are mapped through:
+the plan page's Muscles card lights the body from `lift.LoadOf` — fatigued,
+recovering, trained this week — via `setMuscleGroups`' three tiers. A key
+present in one file but not the other either highlights nothing
+(`viewer.js`'s `setLoads` silently skips unresolved keys) or can never be
+produced by the model — both fail quietly, not loudly, so this checklist is
+the only thing keeping them aligned.
 
 `build-body.mjs` is the one place that fails loudly: it refuses to write a
 `body.glb` that has no geometry for some key in `MUSCLE_ALIASES`.

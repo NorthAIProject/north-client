@@ -96,9 +96,10 @@ func TestWeekStatusNamesWhatIsDoneAndWhatIsNext(t *testing.T) {
 	}
 
 	cases := []struct {
-		name     string
-		progress workouts.WeekProgress
-		want     string
+		name      string
+		progress  workouts.WeekProgress
+		planStart time.Time
+		want      string
 	}{
 		{
 			name: "today still open",
@@ -124,9 +125,22 @@ func TestWeekStatusNamesWhatIsDoneAndWhatIsNext(t *testing.T) {
 				session(1, "Tuesday", "Push", true), session(3, "Thursday", "Legs", false)),
 			want: "This week: Tuesday (Push) COMPLETED. They changed this week to 2 training days: Tuesday (Push), Thursday (Legs). Next: Thursday (Legs).",
 		},
+		{
+			name: "earlier day skipped",
+			progress: week(false, session(2, "Wednesday", "Legs", false),
+				session(0, "Monday", "Push", false), session(2, "Wednesday", "Legs", false), session(4, "Friday", "Pull", false)),
+			want: "This week: no plan day completed yet. MISSED: Monday (Push). Next: Wednesday (Legs), today, PENDING.",
+		},
+		{
+			name: "plan made after the skipped day",
+			progress: week(false, session(2, "Wednesday", "Legs", false),
+				session(0, "Monday", "Push", false), session(2, "Wednesday", "Legs", false), session(4, "Friday", "Pull", false)),
+			planStart: monday.AddDate(0, 0, 1),
+			want:      "This week: no plan day completed yet. Next: Wednesday (Legs), today, PENDING.",
+		},
 	}
 	for _, tc := range cases {
-		if got := workouts.WeekStatus(tc.progress, wednesday); got != tc.want {
+		if got := workouts.WeekStatus(tc.progress, wednesday, tc.planStart); got != tc.want {
 			t.Errorf("%s:\n got %q\nwant %q", tc.name, got, tc.want)
 		}
 	}

@@ -129,6 +129,9 @@ func TestPlanAndTrackerToolsWriteRealRows(t *testing.T) {
 	if out = invoke("get_lift_stats", map[string]any{"range": "week"}); !strings.Contains(out, "4 sets") {
 		t.Errorf("get_lift_stats said %q", out)
 	}
+	if out = invoke("get_training_context", map[string]any{}); !strings.Contains(out, "last lifting session today") {
+		t.Errorf("get_training_context said %q", out)
+	}
 }
 
 func TestClockTodayReadsAFutureTimeAsYesterday(t *testing.T) {

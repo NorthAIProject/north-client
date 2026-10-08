@@ -420,7 +420,7 @@ func routes(
 	screenTimeSvc := screentime.NewService(screentime.NewRepository(pool))
 	sorenessSvc := soreness.NewService(soreness.NewRepository(pool))
 	liftSvc := lifts.NewService(lifts.NewRepository(pool), exerciseSvc).WithRecaps(activitySvc, workoutSvc)
-	workoutHandler.WithRecaps(liftSvc)
+	workoutHandler.WithRecaps(liftSvc).WithLoads(liftSvc)
 	milestoneSvc := milestones.NewService(milestones.NewRepository(pool))
 
 	careOpts := care.Options{
