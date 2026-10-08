@@ -44,27 +44,36 @@ func (s *ContextSource) Collect(ctx context.Context, req coach.ContextRequest, i
 	if err != nil {
 		return err
 	}
-	into.WorkoutPlan = WeekStatus(progress, now) + "\n\nFull program:\n" + stored.Plan.Summary()
+	into.WorkoutPlan = WeekStatus(progress, now, stored.CreatedAt) + "\n\nFull program:\n" + stored.Plan.Summary()
 	return nil
 }
 
-// WeekStatus is the week in a few sentences: what is finished, what comes
-// next, and — when someone changed the week — which days it trains. It is
-// how the coach knows "you already trained today" without the person saying
-// so, and that this is a three-day week without being told twice.
-func WeekStatus(progress WeekProgress, now time.Time) string {
+// WeekStatus is the week in a few sentences: what is finished, what was
+// skipped, what comes next, and — when someone changed the week — which days
+// it trains. It is how the coach knows "you already trained today" or "you
+// skipped legs on Monday" without the person saying so, and that this is a
+// three-day week without being told twice. planStart is when the plan was
+// made: a plan followed mid-week fills the whole week, but days before it
+// existed were never asked for, so they are not missed.
+func WeekStatus(progress WeekProgress, now, planStart time.Time) string {
 	var b strings.Builder
 	b.WriteString("This week: ")
-	var done []string
+	var done, missed []string
 	for _, d := range progress.Days {
-		if d.Completed {
+		switch {
+		case d.Completed:
 			done = append(done, dayLabel(d.Day)+" COMPLETED")
+		case missedDay(d.Date, now, planStart):
+			missed = append(missed, dayLabel(d.Day))
 		}
 	}
 	if len(done) == 0 {
 		b.WriteString("no plan day completed yet.")
 	} else {
 		b.WriteString(strings.Join(done, "; ") + ".")
+	}
+	if len(missed) > 0 {
+		b.WriteString(" MISSED: " + strings.Join(missed, "; ") + ".")
 	}
 	if progress.Custom {
 		b.WriteString(" " + customWeek(progress))
@@ -101,6 +110,17 @@ func dayLabel(d PlanDay) string {
 		return d.Weekday
 	}
 	return fmt.Sprintf("%s (%s)", d.Weekday, d.Focus)
+}
+
+// missedDay reports whether a training day dated date already passed
+// without being done. Today is never missed — there is still time.
+func missedDay(date, now, planStart time.Time) bool {
+	if !date.Before(now) || sameDay(date, now) {
+		return false
+	}
+	y, m, d := date.In(now.Location()).Date()
+	endOfDay := time.Date(y, m, d, 23, 59, 59, 0, now.Location())
+	return !endOfDay.Before(planStart)
 }
 
 func sameDay(a, b time.Time) bool {
