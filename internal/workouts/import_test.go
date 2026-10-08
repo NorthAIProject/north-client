@@ -58,6 +58,12 @@ func TestImportPlanStoresThePlanAsWrittenAndCallsNoModel(t *testing.T) {
 		t.Fatalf("rdl = %+v, want nothing filled in", rdl)
 	}
 
+	// Importing a plan is asking to train from it.
+	active, err := svc.ActivePlan(ctx, user.ID)
+	if err != nil || active.ID != stored.ID {
+		t.Fatalf("active plan = %v (err %v), want the imported one", active.ID, err)
+	}
+
 	// The placeholder intake must never pre-fill the generator's form.
 	if _, missing := svc.LatestIntake(ctx, user.ID); !apperr.Is(missing, apperr.ErrNotFound) {
 		t.Fatalf("latest intake err = %v, want not found", missing)
@@ -70,6 +76,15 @@ func TestImportPlanStoresThePlanAsWrittenAndCallsNoModel(t *testing.T) {
 	}
 	if edited.Plan.Days[0].Exercises[1].Sets != 3 || edited.Plan.Days[0].Exercises[0].Load != "100 kg" {
 		t.Fatalf("edited = %+v", edited.Plan.Days[0].Exercises)
+	}
+
+	// A second import takes over from the first.
+	second, err := svc.ImportPlan(ctx, user, importedPlan())
+	if err != nil {
+		t.Fatalf("second import: %v", err)
+	}
+	if active, err := svc.ActivePlan(ctx, user.ID); err != nil || active.IntakeID != second.IntakeID {
+		t.Fatalf("active plan intake = %v (err %v), want the second import's", active.IntakeID, err)
 	}
 }
 
