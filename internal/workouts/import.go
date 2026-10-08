@@ -3,6 +3,7 @@ package workouts
 import (
 	"context"
 	"strings"
+	"time"
 
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -38,13 +39,26 @@ func (s *Service) ImportPlan(ctx context.Context, user users.User, p Plan) (Stor
 		return StoredPlan{}, err
 	}
 
-	return s.repo.CreatePlan(ctx, StoredPlan{
+	stored, err := s.repo.CreatePlan(ctx, StoredPlan{
 		UserID:   user.ID,
 		IntakeID: intake.ID,
 		Plan:     p,
 		Provider: importProvider,
 		Source:   SourceImported,
 	})
+	if err != nil {
+		return StoredPlan{}, err
+	}
+
+	// Followed from now on, as a generated plan is: importing a plan is
+	// asking to train from it.
+	if err := s.repo.SetActivePlan(ctx, user.ID, stored.IntakeID); err != nil {
+		return StoredPlan{}, err
+	}
+	if err := s.followInThisWeek(ctx, user, stored, time.Now()); err != nil {
+		return StoredPlan{}, err
+	}
+	return stored, nil
 }
 
 func parseImportedWeekday(label string) (string, bool) {
