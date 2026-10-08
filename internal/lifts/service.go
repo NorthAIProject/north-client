@@ -205,22 +205,8 @@ func (s *Service) Stats(ctx context.Context, user users.User, rg timerange.Range
 }
 
 func (s *Service) muscleSets(ctx context.Context, sets []Set) ([]MuscleSets, error) {
-	if s.muscles == nil {
-		return nil, nil
-	}
-	var slugs []string
-	seen := map[string]bool{}
-	for _, set := range sets {
-		if set.ExerciseSlug != "" && !seen[set.ExerciseSlug] {
-			seen[set.ExerciseSlug] = true
-			slugs = append(slugs, set.ExerciseSlug)
-		}
-	}
-	if len(slugs) == 0 {
-		return nil, nil
-	}
-	catalog, err := s.muscles.Resolve(ctx, slugs)
-	if err != nil {
+	catalog, err := s.catalog(ctx, sets)
+	if err != nil || len(catalog) == 0 {
 		return nil, err
 	}
 	counts := map[string]int{}
@@ -240,6 +226,45 @@ func (s *Service) muscleSets(ctx context.Context, sets []Set) ([]MuscleSets, err
 		return out[i].Muscle < out[j].Muscle
 	})
 	return out, nil
+}
+
+// catalog is the catalog entry of every exercise in sets that has one. Empty
+// without a catalog wired or with only typed-in exercises.
+func (s *Service) catalog(ctx context.Context, sets []Set) (map[string]exercises.Exercise, error) {
+	if s.muscles == nil {
+		return nil, nil
+	}
+	var slugs []string
+	seen := map[string]bool{}
+	for _, set := range sets {
+		if set.ExerciseSlug != "" && !seen[set.ExerciseSlug] {
+			seen[set.ExerciseSlug] = true
+			slugs = append(slugs, set.ExerciseSlug)
+		}
+	}
+	if len(slugs) == 0 {
+		return nil, nil
+	}
+	return s.muscles.Resolve(ctx, slugs)
+}
+
+// Readiness is how fatigued or detrained each muscle is now, from a year of
+// sets — far enough back to notice a muscle left alone for months.
+func (s *Service) Readiness(ctx context.Context, user users.User) (lift.Load, error) {
+	now := s.now().In(user.Location())
+	sets, err := s.repo.ListBetween(ctx, user.ID, now.Add(-history), now.Add(time.Minute))
+	if err != nil {
+		return lift.Load{}, err
+	}
+	catalog, err := s.catalog(ctx, sets)
+	if err != nil {
+		return lift.Load{}, err
+	}
+	weights := make(lift.Weights, len(catalog))
+	for slug, e := range catalog {
+		weights[slug] = lift.MuscleWeights(e.Primary, e.Secondary)
+	}
+	return lift.LoadOf(sets, weights, now), nil
 }
 
 // Recent is the last fortnight, for the coach.

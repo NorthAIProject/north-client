@@ -8,8 +8,9 @@ import (
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 )
 
-// ContextSource tells the coach what has been lifted lately and which
-// records fell, so advice on load and progression starts from the numbers.
+// ContextSource tells the coach what has been lifted lately, which records
+// fell, and which muscles are still tired or going stale, so advice on load,
+// progression and what to train today starts from the numbers.
 type ContextSource struct {
 	svc *Service
 }
@@ -24,6 +25,15 @@ func (s *ContextSource) Collect(ctx context.Context, req coach.ContextRequest, i
 		return err
 	}
 	into.FitnessSummary = append(into.FitnessSummary, lift.Summary(sets, records))
+
+	load, err := s.svc.Readiness(ctx, req.User)
+	if err != nil {
+		return err
+	}
+	// Someone who has never lifted already reads "no sets" above.
+	if !load.LastSession.IsZero() {
+		into.FitnessSummary = append(into.FitnessSummary, lift.ReadinessSummary(load))
+	}
 
 	recap, ok, err := s.svc.LatestRecap(ctx, req.User, timerange.Parse(timerange.KeyWeek, req.User.Location()))
 	if err != nil {
