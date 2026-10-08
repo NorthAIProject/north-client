@@ -29,12 +29,13 @@ func (q *Queries) AddUserDiet(ctx context.Context, arg AddUserDietParams) error 
 	return err
 }
 
-const confirmMealOverage = `-- name: ConfirmMealOverage :exec
-UPDATE meals SET overage_confirmed = true WHERE meals.id = $1
+const clearMealPlanDayOverrides = `-- name: ClearMealPlanDayOverrides :exec
+UPDATE meal_plan_days SET carb_type = NULL, carb_g = NULL, protein_g = NULL, fat_g = NULL
+WHERE meal_plan_id = $1
 `
 
-func (q *Queries) ConfirmMealOverage(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.Exec(ctx, confirmMealOverage, id)
+func (q *Queries) ClearMealPlanDayOverrides(ctx context.Context, mealPlanID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, clearMealPlanDayOverrides, mealPlanID)
 	return err
 }
 
@@ -112,34 +113,22 @@ func (q *Queries) CreateIngredient(ctx context.Context, arg CreateIngredientPara
 
 const createMeal = `-- name: CreateMeal :one
 
-INSERT INTO meals (meal_plan_id, meal_number, name, weekday, day_plan_type, day_custom_carb_g, day_custom_protein_g, day_custom_fat_g)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, meal_plan_id, meal_number, name, total_macros, created_at, weekday, day_plan_type, day_custom_carb_g, day_custom_protein_g, day_custom_fat_g, overage_confirmed
+INSERT INTO meals (meal_plan_id, day_id, name, meal_number)
+VALUES ($1, $2, $3, (SELECT COALESCE(MAX(meal_number), 0) + 1 FROM meals WHERE day_id = $2))
+RETURNING id, meal_plan_id, meal_number, name, total_macros, created_at, day_id
 `
 
 type CreateMealParams struct {
-	MealPlanID        uuid.UUID
-	MealNumber        int16
-	Name              string
-	Weekday           *int16
-	DayPlanType       *string
-	DayCustomCarbG    *float64
-	DayCustomProteinG *float64
-	DayCustomFatG     *float64
+	MealPlanID uuid.UUID
+	DayID      uuid.UUID
+	Name       string
 }
 
-// Meals (within a plan)
+// Meals (within a day)
+// Numbered after the day's last meal. Callers hold the plan's lock, so two
+// meals added at once cannot take the same number.
 func (q *Queries) CreateMeal(ctx context.Context, arg CreateMealParams) (Meal, error) {
-	row := q.db.QueryRow(ctx, createMeal,
-		arg.MealPlanID,
-		arg.MealNumber,
-		arg.Name,
-		arg.Weekday,
-		arg.DayPlanType,
-		arg.DayCustomCarbG,
-		arg.DayCustomProteinG,
-		arg.DayCustomFatG,
-	)
+	row := q.db.QueryRow(ctx, createMeal, arg.MealPlanID, arg.DayID, arg.Name)
 	var i Meal
 	err := row.Scan(
 		&i.ID,
@@ -148,12 +137,7 @@ func (q *Queries) CreateMeal(ctx context.Context, arg CreateMealParams) (Meal, e
 		&i.Name,
 		&i.TotalMacros,
 		&i.CreatedAt,
-		&i.Weekday,
-		&i.DayPlanType,
-		&i.DayCustomCarbG,
-		&i.DayCustomProteinG,
-		&i.DayCustomFatG,
-		&i.OverageConfirmed,
+		&i.DayID,
 	)
 	return i, err
 }
@@ -203,9 +187,9 @@ func (q *Queries) CreateMealIngredient(ctx context.Context, arg CreateMealIngred
 
 const createMealPlan = `-- name: CreateMealPlan :one
 
-INSERT INTO meal_plans (user_id, name, description, objective, activity_level, gender, plan_type, custom_carb_pct, macro_plan_id)
+INSERT INTO meal_plans (user_id, name, description, objective, activity_level, gender, plan_type, custom_carb_pct, mode)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-RETURNING id, user_id, name, description, objective, activity_level, gender, total_macros, created_at, updated_at, plan_type, custom_carb_pct, macro_plan_id
+RETURNING id, user_id, name, description, objective, activity_level, gender, total_macros, created_at, updated_at, plan_type, custom_carb_pct, mode
 `
 
 type CreateMealPlanParams struct {
@@ -215,9 +199,9 @@ type CreateMealPlanParams struct {
 	Objective     string
 	ActivityLevel string
 	Gender        string
-	PlanType      *string
+	PlanType      string
 	CustomCarbPct *float64
-	MacroPlanID   *uuid.UUID
+	Mode          string
 }
 
 // Meal plans
@@ -231,7 +215,7 @@ func (q *Queries) CreateMealPlan(ctx context.Context, arg CreateMealPlanParams) 
 		arg.Gender,
 		arg.PlanType,
 		arg.CustomCarbPct,
-		arg.MacroPlanID,
+		arg.Mode,
 	)
 	var i MealPlan
 	err := row.Scan(
@@ -247,7 +231,34 @@ func (q *Queries) CreateMealPlan(ctx context.Context, arg CreateMealPlanParams) 
 		&i.UpdatedAt,
 		&i.PlanType,
 		&i.CustomCarbPct,
-		&i.MacroPlanID,
+		&i.Mode,
+	)
+	return i, err
+}
+
+const createMealPlanDay = `-- name: CreateMealPlanDay :one
+
+INSERT INTO meal_plan_days (meal_plan_id, weekday) VALUES ($1, $2) RETURNING id, meal_plan_id, weekday, carb_type, carb_g, protein_g, fat_g, created_at
+`
+
+type CreateMealPlanDayParams struct {
+	MealPlanID uuid.UUID
+	Weekday    int16
+}
+
+// Days (within a plan)
+func (q *Queries) CreateMealPlanDay(ctx context.Context, arg CreateMealPlanDayParams) (MealPlanDay, error) {
+	row := q.db.QueryRow(ctx, createMealPlanDay, arg.MealPlanID, arg.Weekday)
+	var i MealPlanDay
+	err := row.Scan(
+		&i.ID,
+		&i.MealPlanID,
+		&i.Weekday,
+		&i.CarbType,
+		&i.CarbG,
+		&i.ProteinG,
+		&i.FatG,
+		&i.CreatedAt,
 	)
 	return i, err
 }
@@ -390,6 +401,15 @@ func (q *Queries) DeleteMealPlan(ctx context.Context, arg DeleteMealPlanParams) 
 	return err
 }
 
+const deleteMealPlanDay = `-- name: DeleteMealPlanDay :exec
+DELETE FROM meal_plan_days WHERE id = $1
+`
+
+func (q *Queries) DeleteMealPlanDay(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteMealPlanDay, id)
+	return err
+}
+
 const deleteMealReminder = `-- name: DeleteMealReminder :exec
 DELETE FROM meal_reminders WHERE id = $1 AND user_id = $2
 `
@@ -500,7 +520,7 @@ func (q *Queries) GetMealIngredientOwned(ctx context.Context, arg GetMealIngredi
 }
 
 const getMealOwned = `-- name: GetMealOwned :one
-SELECT m.id, m.meal_plan_id, m.meal_number, m.name, m.total_macros, m.created_at, m.weekday, m.day_plan_type, m.day_custom_carb_g, m.day_custom_protein_g, m.day_custom_fat_g, m.overage_confirmed FROM meals m
+SELECT m.id, m.meal_plan_id, m.meal_number, m.name, m.total_macros, m.created_at, m.day_id FROM meals m
 JOIN meal_plans mp ON mp.id = m.meal_plan_id
 WHERE m.id = $1 AND mp.user_id = $2
 `
@@ -522,18 +542,13 @@ func (q *Queries) GetMealOwned(ctx context.Context, arg GetMealOwnedParams) (Mea
 		&i.Name,
 		&i.TotalMacros,
 		&i.CreatedAt,
-		&i.Weekday,
-		&i.DayPlanType,
-		&i.DayCustomCarbG,
-		&i.DayCustomProteinG,
-		&i.DayCustomFatG,
-		&i.OverageConfirmed,
+		&i.DayID,
 	)
 	return i, err
 }
 
 const getMealPlan = `-- name: GetMealPlan :one
-SELECT id, user_id, name, description, objective, activity_level, gender, total_macros, created_at, updated_at, plan_type, custom_carb_pct, macro_plan_id FROM meal_plans WHERE id = $1 AND user_id = $2
+SELECT id, user_id, name, description, objective, activity_level, gender, total_macros, created_at, updated_at, plan_type, custom_carb_pct, mode FROM meal_plans WHERE id = $1 AND user_id = $2
 `
 
 type GetMealPlanParams struct {
@@ -557,7 +572,34 @@ func (q *Queries) GetMealPlan(ctx context.Context, arg GetMealPlanParams) (MealP
 		&i.UpdatedAt,
 		&i.PlanType,
 		&i.CustomCarbPct,
-		&i.MacroPlanID,
+		&i.Mode,
+	)
+	return i, err
+}
+
+const getMealPlanDayOwned = `-- name: GetMealPlanDayOwned :one
+SELECT d.id, d.meal_plan_id, d.weekday, d.carb_type, d.carb_g, d.protein_g, d.fat_g, d.created_at FROM meal_plan_days d
+JOIN meal_plans mp ON mp.id = d.meal_plan_id
+WHERE d.id = $1 AND mp.user_id = $2
+`
+
+type GetMealPlanDayOwnedParams struct {
+	ID     uuid.UUID
+	UserID uuid.UUID
+}
+
+func (q *Queries) GetMealPlanDayOwned(ctx context.Context, arg GetMealPlanDayOwnedParams) (MealPlanDay, error) {
+	row := q.db.QueryRow(ctx, getMealPlanDayOwned, arg.ID, arg.UserID)
+	var i MealPlanDay
+	err := row.Scan(
+		&i.ID,
+		&i.MealPlanID,
+		&i.Weekday,
+		&i.CarbType,
+		&i.CarbG,
+		&i.ProteinG,
+		&i.FatG,
+		&i.CreatedAt,
 	)
 	return i, err
 }
@@ -809,8 +851,78 @@ func (q *Queries) ListMealIngredients(ctx context.Context, mealID uuid.UUID) ([]
 	return items, nil
 }
 
+const listMealPlanDays = `-- name: ListMealPlanDays :many
+SELECT id, meal_plan_id, weekday, carb_type, carb_g, protein_g, fat_g, created_at FROM meal_plan_days WHERE meal_plan_id = $1 ORDER BY (weekday + 6) % 7
+`
+
+// Monday first.
+func (q *Queries) ListMealPlanDays(ctx context.Context, mealPlanID uuid.UUID) ([]MealPlanDay, error) {
+	rows, err := q.db.Query(ctx, listMealPlanDays, mealPlanID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []MealPlanDay{}
+	for rows.Next() {
+		var i MealPlanDay
+		if err := rows.Scan(
+			&i.ID,
+			&i.MealPlanID,
+			&i.Weekday,
+			&i.CarbType,
+			&i.CarbG,
+			&i.ProteinG,
+			&i.FatG,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMealPlanDaysByUser = `-- name: ListMealPlanDaysByUser :many
+SELECT d.id, d.meal_plan_id, d.weekday, d.carb_type, d.carb_g, d.protein_g, d.fat_g, d.created_at FROM meal_plan_days d
+JOIN meal_plans mp ON mp.id = d.meal_plan_id
+WHERE mp.user_id = $1
+ORDER BY d.meal_plan_id, (d.weekday + 6) % 7
+`
+
+func (q *Queries) ListMealPlanDaysByUser(ctx context.Context, userID uuid.UUID) ([]MealPlanDay, error) {
+	rows, err := q.db.Query(ctx, listMealPlanDaysByUser, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []MealPlanDay{}
+	for rows.Next() {
+		var i MealPlanDay
+		if err := rows.Scan(
+			&i.ID,
+			&i.MealPlanID,
+			&i.Weekday,
+			&i.CarbType,
+			&i.CarbG,
+			&i.ProteinG,
+			&i.FatG,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listMealPlans = `-- name: ListMealPlans :many
-SELECT id, user_id, name, description, objective, activity_level, gender, total_macros, created_at, updated_at, plan_type, custom_carb_pct, macro_plan_id FROM meal_plans WHERE user_id = $1 ORDER BY created_at DESC
+SELECT id, user_id, name, description, objective, activity_level, gender, total_macros, created_at, updated_at, plan_type, custom_carb_pct, mode FROM meal_plans WHERE user_id = $1 ORDER BY created_at DESC
 `
 
 func (q *Queries) ListMealPlans(ctx context.Context, userID uuid.UUID) ([]MealPlan, error) {
@@ -835,7 +947,7 @@ func (q *Queries) ListMealPlans(ctx context.Context, userID uuid.UUID) ([]MealPl
 			&i.UpdatedAt,
 			&i.PlanType,
 			&i.CustomCarbPct,
-			&i.MacroPlanID,
+			&i.Mode,
 		); err != nil {
 			return nil, err
 		}
@@ -882,7 +994,7 @@ func (q *Queries) ListMealReminders(ctx context.Context, userID uuid.UUID) ([]Me
 }
 
 const listMealsByPlan = `-- name: ListMealsByPlan :many
-SELECT id, meal_plan_id, meal_number, name, total_macros, created_at, weekday, day_plan_type, day_custom_carb_g, day_custom_protein_g, day_custom_fat_g, overage_confirmed FROM meals WHERE meal_plan_id = $1 ORDER BY COALESCE(weekday, -1), meal_number
+SELECT id, meal_plan_id, meal_number, name, total_macros, created_at, day_id FROM meals WHERE meal_plan_id = $1 ORDER BY day_id, meal_number
 `
 
 func (q *Queries) ListMealsByPlan(ctx context.Context, mealPlanID uuid.UUID) ([]Meal, error) {
@@ -901,54 +1013,7 @@ func (q *Queries) ListMealsByPlan(ctx context.Context, mealPlanID uuid.UUID) ([]
 			&i.Name,
 			&i.TotalMacros,
 			&i.CreatedAt,
-			&i.Weekday,
-			&i.DayPlanType,
-			&i.DayCustomCarbG,
-			&i.DayCustomProteinG,
-			&i.DayCustomFatG,
-			&i.OverageConfirmed,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listMealsByPlanAndWeekday = `-- name: ListMealsByPlanAndWeekday :many
-SELECT id, meal_plan_id, meal_number, name, total_macros, created_at, weekday, day_plan_type, day_custom_carb_g, day_custom_protein_g, day_custom_fat_g, overage_confirmed FROM meals WHERE meal_plan_id = $1 AND weekday = $2 ORDER BY meal_number
-`
-
-type ListMealsByPlanAndWeekdayParams struct {
-	MealPlanID uuid.UUID
-	Weekday    *int16
-}
-
-func (q *Queries) ListMealsByPlanAndWeekday(ctx context.Context, arg ListMealsByPlanAndWeekdayParams) ([]Meal, error) {
-	rows, err := q.db.Query(ctx, listMealsByPlanAndWeekday, arg.MealPlanID, arg.Weekday)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Meal{}
-	for rows.Next() {
-		var i Meal
-		if err := rows.Scan(
-			&i.ID,
-			&i.MealPlanID,
-			&i.MealNumber,
-			&i.Name,
-			&i.TotalMacros,
-			&i.CreatedAt,
-			&i.Weekday,
-			&i.DayPlanType,
-			&i.DayCustomCarbG,
-			&i.DayCustomProteinG,
-			&i.DayCustomFatG,
-			&i.OverageConfirmed,
+			&i.DayID,
 		); err != nil {
 			return nil, err
 		}
@@ -1002,6 +1067,38 @@ func (q *Queries) ListNotYetFiredMealReminders(ctx context.Context, arg ListNotY
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockMealPlan = `-- name: LockMealPlan :one
+SELECT id, user_id, name, description, objective, activity_level, gender, total_macros, created_at, updated_at, plan_type, custom_carb_pct, mode FROM meal_plans WHERE id = $1 AND user_id = $2 FOR UPDATE
+`
+
+type LockMealPlanParams struct {
+	ID     uuid.UUID
+	UserID uuid.UUID
+}
+
+// Taken at the start of every checked change, so two changes to one plan
+// cannot each pass the overage check and together go over.
+func (q *Queries) LockMealPlan(ctx context.Context, arg LockMealPlanParams) (MealPlan, error) {
+	row := q.db.QueryRow(ctx, lockMealPlan, arg.ID, arg.UserID)
+	var i MealPlan
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Name,
+		&i.Description,
+		&i.Objective,
+		&i.ActivityLevel,
+		&i.Gender,
+		&i.TotalMacros,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.PlanType,
+		&i.CustomCarbPct,
+		&i.Mode,
+	)
+	return i, err
 }
 
 const markMealReminderFired = `-- name: MarkMealReminderFired :exec
@@ -1148,41 +1245,6 @@ func (q *Queries) SumMealIngredientMacros(ctx context.Context, mealID uuid.UUID)
 	return i, err
 }
 
-const sumMealMacrosByPlanAndWeekday = `-- name: SumMealMacrosByPlanAndWeekday :one
-SELECT
-    COALESCE(SUM(mi.calories), 0)::double precision  AS calories,
-    COALESCE(SUM(mi.protein_g), 0)::double precision AS protein_g,
-    COALESCE(SUM(mi.fat_g), 0)::double precision     AS fat_g,
-    COALESCE(SUM(mi.carbs_g), 0)::double precision   AS carbs_g
-FROM meal_ingredients mi
-JOIN meals m ON m.id = mi.meal_id
-WHERE m.meal_plan_id = $1 AND m.weekday = $2
-`
-
-type SumMealMacrosByPlanAndWeekdayParams struct {
-	MealPlanID uuid.UUID
-	Weekday    *int16
-}
-
-type SumMealMacrosByPlanAndWeekdayRow struct {
-	Calories float64
-	ProteinG float64
-	FatG     float64
-	CarbsG   float64
-}
-
-func (q *Queries) SumMealMacrosByPlanAndWeekday(ctx context.Context, arg SumMealMacrosByPlanAndWeekdayParams) (SumMealMacrosByPlanAndWeekdayRow, error) {
-	row := q.db.QueryRow(ctx, sumMealMacrosByPlanAndWeekday, arg.MealPlanID, arg.Weekday)
-	var i SumMealMacrosByPlanAndWeekdayRow
-	err := row.Scan(
-		&i.Calories,
-		&i.ProteinG,
-		&i.FatG,
-		&i.CarbsG,
-	)
-	return i, err
-}
-
 const updateIngredient = `-- name: UpdateIngredient :one
 UPDATE ingredients
 SET name = $3, brand = $4, category = $5, serving_size_grams = $6,
@@ -1257,103 +1319,54 @@ func (q *Queries) UpdateIngredient(ctx context.Context, arg UpdateIngredientPara
 	return i, err
 }
 
-const updateMealDay = `-- name: UpdateMealDay :one
-UPDATE meals
-SET weekday = $3, day_plan_type = $4, day_custom_carb_g = $5,
-    day_custom_protein_g = $6, day_custom_fat_g = $7
-WHERE meals.id = $1 AND meal_plan_id IN (SELECT id FROM meal_plans WHERE user_id = $2)
-RETURNING id, meal_plan_id, meal_number, name, total_macros, created_at, weekday, day_plan_type, day_custom_carb_g, day_custom_protein_g, day_custom_fat_g, overage_confirmed
+const updateMealPlanDay = `-- name: UpdateMealPlanDay :exec
+UPDATE meal_plan_days SET carb_type = $2, carb_g = $3, protein_g = $4, fat_g = $5 WHERE id = $1
 `
 
-type UpdateMealDayParams struct {
-	ID                uuid.UUID
-	UserID            uuid.UUID
-	Weekday           *int16
-	DayPlanType       *string
-	DayCustomCarbG    *float64
-	DayCustomProteinG *float64
-	DayCustomFatG     *float64
+type UpdateMealPlanDayParams struct {
+	ID       uuid.UUID
+	CarbType *string
+	CarbG    *float64
+	ProteinG *float64
+	FatG     *float64
 }
 
-func (q *Queries) UpdateMealDay(ctx context.Context, arg UpdateMealDayParams) (Meal, error) {
-	row := q.db.QueryRow(ctx, updateMealDay,
+func (q *Queries) UpdateMealPlanDay(ctx context.Context, arg UpdateMealPlanDayParams) error {
+	_, err := q.db.Exec(ctx, updateMealPlanDay,
 		arg.ID,
-		arg.UserID,
-		arg.Weekday,
-		arg.DayPlanType,
-		arg.DayCustomCarbG,
-		arg.DayCustomProteinG,
-		arg.DayCustomFatG,
+		arg.CarbType,
+		arg.CarbG,
+		arg.ProteinG,
+		arg.FatG,
 	)
-	var i Meal
-	err := row.Scan(
-		&i.ID,
-		&i.MealPlanID,
-		&i.MealNumber,
-		&i.Name,
-		&i.TotalMacros,
-		&i.CreatedAt,
-		&i.Weekday,
-		&i.DayPlanType,
-		&i.DayCustomCarbG,
-		&i.DayCustomProteinG,
-		&i.DayCustomFatG,
-		&i.OverageConfirmed,
-	)
-	return i, err
+	return err
 }
 
-const updateMealPlan = `-- name: UpdateMealPlan :one
+const updateMealPlanSettings = `-- name: UpdateMealPlanSettings :exec
 UPDATE meal_plans
-SET name = $3, description = $4, objective = $5, activity_level = $6, gender = $7,
-    plan_type = $8, custom_carb_pct = $9, macro_plan_id = $10, updated_at = now()
-WHERE id = $1 AND user_id = $2
-RETURNING id, user_id, name, description, objective, activity_level, gender, total_macros, created_at, updated_at, plan_type, custom_carb_pct, macro_plan_id
+SET name = $2, description = $3, plan_type = $4, custom_carb_pct = $5, mode = $6, updated_at = now()
+WHERE id = $1
 `
 
-type UpdateMealPlanParams struct {
+type UpdateMealPlanSettingsParams struct {
 	ID            uuid.UUID
-	UserID        uuid.UUID
 	Name          string
 	Description   string
-	Objective     string
-	ActivityLevel string
-	Gender        string
-	PlanType      *string
+	PlanType      string
 	CustomCarbPct *float64
-	MacroPlanID   *uuid.UUID
+	Mode          string
 }
 
-func (q *Queries) UpdateMealPlan(ctx context.Context, arg UpdateMealPlanParams) (MealPlan, error) {
-	row := q.db.QueryRow(ctx, updateMealPlan,
+func (q *Queries) UpdateMealPlanSettings(ctx context.Context, arg UpdateMealPlanSettingsParams) error {
+	_, err := q.db.Exec(ctx, updateMealPlanSettings,
 		arg.ID,
-		arg.UserID,
 		arg.Name,
 		arg.Description,
-		arg.Objective,
-		arg.ActivityLevel,
-		arg.Gender,
 		arg.PlanType,
 		arg.CustomCarbPct,
-		arg.MacroPlanID,
+		arg.Mode,
 	)
-	var i MealPlan
-	err := row.Scan(
-		&i.ID,
-		&i.UserID,
-		&i.Name,
-		&i.Description,
-		&i.Objective,
-		&i.ActivityLevel,
-		&i.Gender,
-		&i.TotalMacros,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.PlanType,
-		&i.CustomCarbPct,
-		&i.MacroPlanID,
-	)
-	return i, err
+	return err
 }
 
 const updateMealPlanTotalMacros = `-- name: UpdateMealPlanTotalMacros :exec

@@ -1,0 +1,25 @@
+{
+  "target": {
+    "calories": 2190,
+    "proteinG": 130,
+    "fatG": 70,
+    "carbG": 260
+  },
+  "maxDays": 7,
+  "planTypes": [
+    {
+      "id": "mid_carb",
+      "minPct": 26,
+      "maxPct": 45,
+      "defaultPct": 35.5,
+      "defaultCarbG": 92.3,
+      "advancedOnly": false
+    },
+    {
+      "id": "custom",
+      "minPct": 0,
+      "maxPct": 100,
+      "advancedOnly": true
+    }
+  ]
+}

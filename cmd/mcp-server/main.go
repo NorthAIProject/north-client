@@ -317,7 +317,7 @@ func buildServices(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry
 		Notifications: notifications.NewService(notifications.NewRepository(pool)),
 		Activity:      activitySvc,
 
-		MealPlans:   meals.NewMealPlanService(mealsRepo),
+		MealPlans:   meals.NewMealPlanService(mealsRepo, calculatorSvc),
 		Caffeine:    caffeine.NewService(caffeine.NewRepository(pool)),
 		Supplements: supplements.NewService(supplements.NewRepository(pool)),
 		Fasting:     fasting.NewService(fasting.NewRepository(pool)),

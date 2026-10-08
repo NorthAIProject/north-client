@@ -184,13 +184,14 @@ func TestAMealWithASelfCreatedIngredientDoesNotBlockDeletion(t *testing.T) {
 		t.Fatalf("seed ingredient: %v", err)
 	}
 	if err := pool.QueryRow(ctx, `
-		INSERT INTO meal_plans (user_id, name) VALUES ($1, 'Winter') RETURNING id`,
+		INSERT INTO meal_plans (user_id, name, plan_type, mode) VALUES ($1, 'Winter', 'mid_carb', 'easy') RETURNING id`,
 		user.ID).Scan(&planID); err != nil {
 		t.Fatalf("seed meal plan: %v", err)
 	}
 	if err := pool.QueryRow(ctx, `
-		INSERT INTO meals (meal_plan_id, meal_number, name)
-		VALUES ($1, 1, 'Dinner') RETURNING id`, planID).Scan(&mealID); err != nil {
+		WITH monday AS (INSERT INTO meal_plan_days (meal_plan_id, weekday) VALUES ($1, 1) RETURNING id)
+		INSERT INTO meals (meal_plan_id, day_id, meal_number, name)
+		SELECT $1, monday.id, 1, 'Dinner' FROM monday RETURNING id`, planID).Scan(&mealID); err != nil {
 		t.Fatalf("seed meal: %v", err)
 	}
 	if _, err := pool.Exec(ctx, `
@@ -224,13 +225,14 @@ func TestDeletingAnIngredientStillInUseStillFails(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := pool.QueryRow(ctx, `
-		INSERT INTO meal_plans (user_id, name) VALUES ($1, 'Winter') RETURNING id`,
+		INSERT INTO meal_plans (user_id, name, plan_type, mode) VALUES ($1, 'Winter', 'mid_carb', 'easy') RETURNING id`,
 		user.ID).Scan(&planID); err != nil {
 		t.Fatal(err)
 	}
 	if err := pool.QueryRow(ctx, `
-		INSERT INTO meals (meal_plan_id, meal_number, name)
-		VALUES ($1, 1, 'Dinner') RETURNING id`, planID).Scan(&mealID); err != nil {
+		WITH monday AS (INSERT INTO meal_plan_days (meal_plan_id, weekday) VALUES ($1, 1) RETURNING id)
+		INSERT INTO meals (meal_plan_id, day_id, meal_number, name)
+		SELECT $1, monday.id, 1, 'Dinner' FROM monday RETURNING id`, planID).Scan(&mealID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := pool.Exec(ctx, `
