@@ -215,6 +215,8 @@ type AIConfig struct {
 	XAI        OpenAICompatConfig
 	Hermes     OpenAICompatConfig
 
+	Anthropic AnthropicConfig
+
 	// OpenRouter's attribution headers. Its convention, not the dialect's.
 	OpenRouterSiteURL  string
 	OpenRouterSiteName string
@@ -230,6 +232,36 @@ type AIConfig struct {
 	// OpenRouter variant must name a ":free" model.
 	OpenRouterFreeAPIKey string
 }
+
+// AnthropicConfig is Khepri's own Claude key, called over the native Messages
+// API rather than through OpenRouter.
+//
+// It sits in front of the existing chain without replacing it. First is the
+// switch: with it off, or with no key, the chains are exactly what
+// AI_PROVIDER_CHAIN and AI_PROVIDER_CHAIN_FREE say, so turning it off is the
+// whole of a rollback.
+type AnthropicConfig struct {
+	APIKey string
+	Model  string
+
+	// Effort is output_config.effort: low, medium, high, xhigh or max. Empty
+	// leaves the model's default.
+	Effort string
+
+	// Thinking is adaptive or disabled.
+	Thinking string
+
+	// First puts anthropic at the head of the chain, ahead of whatever
+	// AI_PROVIDER_CHAIN names. Needs APIKey to do anything.
+	First bool
+
+	// Scope is "all", which puts it at the head of the free chain too, or
+	// "paid", which leaves free users on the chain they have.
+	Scope string
+}
+
+// Leads reports whether anthropic goes in front of the chains.
+func (c AnthropicConfig) Leads() bool { return c.First && c.APIKey != "" }
 
 // ProviderVariant is one chain entry of the form "provider=model".
 //
@@ -632,6 +664,14 @@ func Load() (*Config, error) {
 
 			UploadProvider: optional("AI_UPLOAD_PROVIDER", "gemini"),
 
+			Anthropic: AnthropicConfig{
+				APIKey:   strings.TrimSpace(os.Getenv("ANTHROPIC_API_KEY")),
+				Model:    optional("ANTHROPIC_MODEL", "claude-haiku-5-5"),
+				Effort:   optional("ANTHROPIC_EFFORT", ""),
+				Thinking: optional("ANTHROPIC_THINKING", "adaptive"),
+				Scope:    optional("ANTHROPIC_SCOPE", "all"),
+			},
+
 			OpenRouter: OpenAICompatConfig{
 				APIKey:  os.Getenv("OPENROUTER_API_KEY"),
 				BaseURL: optional("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
@@ -800,6 +840,13 @@ func Load() (*Config, error) {
 	}
 	cfg.AutoMigrate = autoMigrate
 
+	anthropicFirst, err := boolValue("ANTHROPIC_FIRST", false)
+	if err != nil {
+		problems = append(problems, err.Error())
+	}
+	cfg.AI.Anthropic.First = anthropicFirst
+	problems = append(problems, cfg.AI.Anthropic.problems()...)
+
 	// 587 is the submission port, upgraded with STARTTLS. 465 is implicit TLS
 	// and the mailer dials it encrypted; anything else is treated as 587-like.
 	smtpPort, err := intValue("SMTP_PORT", 587)
@@ -865,6 +912,16 @@ func Load() (*Config, error) {
 	}
 	if len(cfg.AI.FreeChain) == 0 {
 		cfg.AI.FreeChain = append([]string{}, freeFloor...)
+	}
+
+	// Khepri's own Claude key goes in front of the chain an operator wrote,
+	// which stays behind it untouched as the fallback. Prepended after the
+	// defaults above, so a deployment that relies on them keeps them.
+	if cfg.AI.Anthropic.Leads() {
+		cfg.AI.Chain = prependProvider(cfg.AI.Chain, "anthropic")
+		if cfg.AI.Anthropic.Scope == "all" {
+			cfg.AI.FreeChain = prependProvider(cfg.AI.FreeChain, "anthropic")
+		}
 	}
 
 	// Only the names are checked here. Whether a named provider has its
@@ -1034,6 +1091,12 @@ func (c AIConfig) ProviderOptions(env Environment) providers.Options {
 		AllowFakeHead: !env.IsProduction(),
 		GeminiAPIKey:  c.GeminiAPIKey,
 		GeminiModel:   c.GeminiModel,
+		Anthropic: providers.Anthropic{
+			APIKey:   c.Anthropic.APIKey,
+			Model:    c.Anthropic.Model,
+			Effort:   c.Anthropic.Effort,
+			Thinking: c.Anthropic.Thinking,
+		},
 		Compatible: []providers.Compatible{
 			{
 				Name:    "openrouter",
@@ -1130,6 +1193,7 @@ func optional(key, fallback string) string {
 // skipped provider — Resolve drops unknown names, which is the right behaviour
 // at runtime and the wrong one for a misspelled configuration.
 var knownProviders = map[string]bool{
+	"anthropic":  true,
 	"gemini":     true,
 	"openrouter": true,
 	"nvidia":     true,
@@ -1186,6 +1250,49 @@ func sortedNames(set map[string]bool) []string {
 var freeFloor = []string{
 	"openrouter=nvidia/nemotron-3-ultra-550b-a55b:free",
 	"openrouter=nvidia/nemotron-3-super-120b-a12b:free",
+}
+
+// prependProvider puts name at the head of chain, dropping any later mention
+// of it so a provider that refused is not asked twice.
+func prependProvider(chain []string, name string) []string {
+	out := make([]string, 0, len(chain)+1)
+	out = append(out, name)
+	for _, entry := range chain {
+		if entry != name {
+			out = append(out, entry)
+		}
+	}
+	return out
+}
+
+// problems reports settings the API would reject on every request. Checked
+// whether or not a key is set: a typo should fail the boot that introduced it,
+// not the later one that adds the key.
+func (c AnthropicConfig) problems() []string {
+	var out []string
+	switch c.Effort {
+	case "", "low", "medium", "high", "xhigh", "max":
+	default:
+		out = append(out, fmt.Sprintf("ANTHROPIC_EFFORT must be low, medium, high, xhigh or max, got %q", c.Effort))
+	}
+	switch c.Thinking {
+	case "adaptive", "disabled":
+	default:
+		out = append(out, fmt.Sprintf("ANTHROPIC_THINKING must be adaptive or disabled, got %q", c.Thinking))
+	}
+	// Thinking can be turned off only at effort high or below.
+	if c.Thinking == "disabled" && (c.Effort == "xhigh" || c.Effort == "max") {
+		out = append(out, fmt.Sprintf("ANTHROPIC_THINKING=disabled needs ANTHROPIC_EFFORT high or below, got %q", c.Effort))
+	}
+	switch c.Scope {
+	case "all", "paid":
+	default:
+		out = append(out, fmt.Sprintf("ANTHROPIC_SCOPE must be all or paid, got %q", c.Scope))
+	}
+	if c.Model != "" && !strings.HasPrefix(c.Model, "claude-") {
+		out = append(out, fmt.Sprintf("ANTHROPIC_MODEL must be a Claude model name such as claude-haiku-5-5, got %q", c.Model))
+	}
+	return out
 }
 
 // parseChainEntry splits a chain entry into its provider and its optional model

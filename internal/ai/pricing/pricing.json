@@ -16,6 +16,11 @@
   ],
 
   "models": {
+    "anthropic/claude-haiku-5-5": {
+      "input": 100000,
+      "output": 500000,
+      "note": "Khepri's own key, native Messages API. 0.10 / 0.50 per million for prompts up to 100K tokens; above that Anthropic charges 5x, which this flat rate understates. Cached input is counted as input at the full rate, so cache reads are overstated."
+    },
     "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free": {
       "input": 0,
       "output": 0,

@@ -197,7 +197,7 @@ APNS_TOPICS=                        # bundle IDs, comma-separated: prod and .bet
 |---|---|---|
 | `DATABASE_URL` | none | Only variable that is strictly required **to boot**. `sslmode=require` on a real Postgres; `disable` is a laptop value |
 | `ENCRYPTION_KEY` | unset | Unset is allowed by the loader. A value that is not 32 bytes of base64 **is not**. Production must set it |
-| `AI_PROVIDER_CHAIN` | `gemini` via legacy `AI_PROVIDER` | The named providers must exist (`gemini`, `openrouter`, `nvidia`, `xai`, `hermes`, `fake`). At least one named provider must have credentials, or `providers.Build` fails |
+| `AI_PROVIDER_CHAIN` | `gemini` via legacy `AI_PROVIDER` | The named providers must exist (`anthropic`, `gemini`, `openrouter`, `nvidia`, `xai`, `hermes`, `fake`). At least one named provider must have credentials, or `providers.Build` fails |
 | `EMBEDDING_PROVIDER` + `EMBEDDING_MODEL` | unset | Either both set or both empty. Dimensions must be `1024`. Production must set both |
 | `PORT`, quota ints, `SESSION_LIFETIME`, `STORAGE_USE_PATH_STYLE` | see below | A non-empty value that does not parse fails the boot |
 
@@ -249,6 +249,12 @@ one.
 | `AI_MODEL` | empty | Leave empty so each provider uses its own model |
 | `AI_FAST_MODEL` | empty | Same. Used for cheaper side work (memory extraction) |
 | `AI_UPLOAD_PROVIDER` | `gemini` | Form video analysis. Needs a provider with a file-upload API; the OpenAI-dialect backends do not have one |
+| `ANTHROPIC_API_KEY` | empty | Khepri's own Claude key, native Messages API. Unset, no client is built |
+| `ANTHROPIC_FIRST` | `false` | `true` puts `anthropic` in front of `AI_PROVIDER_CHAIN`; the chain stays behind it as the fallback. `false` is the rollback |
+| `ANTHROPIC_SCOPE` | `all` | `all` also leads `AI_PROVIDER_CHAIN_FREE`; `paid` leaves free users on their chain |
+| `ANTHROPIC_MODEL` | `claude-haiku-5-5` | Used whenever a caller's model is not a `claude-` name (e.g. an OpenRouter `AI_FAST_MODEL`) |
+| `ANTHROPIC_EFFORT` | empty | `low`, `medium`, `high`, `xhigh`, `max`. Empty is the model default |
+| `ANTHROPIC_THINKING` | `adaptive` | Or `disabled`. Off regardless when a request's `max_tokens` is under 1024 |
 
 Per-provider keys. A provider is on when its key (and, for Hermes, its
 base URL) is set:

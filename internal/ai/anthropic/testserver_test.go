@@ -29,6 +29,24 @@ type cannedResponse struct {
 
 func newFakeAPI(t *testing.T, responses ...cannedResponse) (*fakeAPI, *anthropic.Client) {
 	t.Helper()
+	return newFakeAPIWith(t, anthropic.Options{DefaultModel: "claude-opus-5"}, responses...)
+}
+
+// newManagedFakeAPI builds the client as Khepri's own provider is built.
+func newManagedFakeAPI(t *testing.T, responses ...cannedResponse) (*fakeAPI, *anthropic.Client) {
+	t.Helper()
+	return newFakeAPIWith(t, anthropic.Options{
+		DefaultModel: "claude-haiku-5-5",
+		Effort:       "low",
+		Thinking:     "adaptive",
+		Managed:      true,
+	}, responses...)
+}
+
+// newFakeAPIWith builds a client from opts, pointed at a fake API. The key,
+// address and HTTP client are always the fake's.
+func newFakeAPIWith(t *testing.T, opts anthropic.Options, responses ...cannedResponse) (*fakeAPI, *anthropic.Client) {
+	t.Helper()
 	f := &fakeAPI{responses: responses}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		raw, _ := io.ReadAll(r.Body)
@@ -57,12 +75,10 @@ func newFakeAPI(t *testing.T, responses ...cannedResponse) (*fakeAPI, *anthropic
 	}))
 	t.Cleanup(srv.Close)
 
-	client, err := anthropic.New(anthropic.Options{
-		APIKey:       "sk-ant-test",
-		DefaultModel: "claude-opus-5",
-		BaseURL:      srv.URL,
-		HTTPClient:   srv.Client(),
-	})
+	opts.APIKey = "sk-ant-test"
+	opts.BaseURL = srv.URL
+	opts.HTTPClient = srv.Client()
+	client, err := anthropic.New(opts)
 	if err != nil {
 		t.Fatalf("new client: %v", err)
 	}
