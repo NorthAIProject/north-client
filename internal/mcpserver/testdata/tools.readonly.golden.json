@@ -34,6 +34,25 @@
     "readOnly": true
   },
   {
+    "name": "get_training_week",
+    "description": "Read which days this person trains this week (or next week) and which session each day has, what is done, and what is next. Use it before talking about their week, or before changing it with set_training_week.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "description": "which week",
+      "properties": {
+        "next_week": {
+          "description": "true for next week; this week otherwise",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "next_week"
+      ],
+      "type": "object"
+    },
+    "readOnly": true
+  },
+  {
     "name": "get_workout_plan",
     "description": "Read this person's current training plan: the days, the focus of each, and the exercises on them. Use it before advising on training, so the advice fits the plan they are actually following.",
     "inputSchema": {

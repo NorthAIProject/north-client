@@ -11,7 +11,6 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/NorthAIProject/north-client/internal/activity/activity"
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/ai/prompts"
 	"github.com/NorthAIProject/north-client/internal/exercises/exercise"
@@ -266,13 +265,25 @@ func (s *Service) CreatePlan(ctx context.Context, user users.User, in Intake) (S
 		return StoredPlan{}, err
 	}
 
-	return s.repo.CreatePlan(ctx, StoredPlan{
+	stored, err := s.repo.CreatePlan(ctx, StoredPlan{
 		UserID:   user.ID,
 		IntakeID: intake.ID,
 		Plan:     plan,
 		Model:    s.model,
 		Provider: provider,
 	})
+	if err != nil {
+		return StoredPlan{}, err
+	}
+
+	// A plan someone just asked for is the one they mean to follow.
+	if err := s.repo.SetActivePlan(ctx, user.ID, stored.IntakeID); err != nil {
+		return StoredPlan{}, err
+	}
+	if err := s.followInThisWeek(ctx, user, stored, time.Now()); err != nil {
+		return StoredPlan{}, err
+	}
+	return stored, nil
 }
 
 // ErrPlanSuperseded means the plan an edit was made against is no longer the
@@ -558,8 +569,9 @@ func (s *Service) movement(ctx context.Context, slug string) (Movement, error) {
 //
 // A new row rather than an UPDATE. That keeps the model's original readable,
 // keeps intake_id and the generation columns satisfiable without inventing an
-// intake, and means /app/training — which already resolves to the newest plan —
-// shows the edit with no routing change. See migrations/20260827190000.
+// intake, and means /app/training — which resolves to the newest version of
+// the followed plan — shows the edit with no routing change. Editing does not
+// change which plan is followed. See migrations/20260827190000.
 //
 // Validation runs but does not block. The intake describes a typical week
 // rather than a contract, and someone who answered "dumbbells" may be standing
@@ -644,172 +656,6 @@ func (s *Service) PlanForDisplay(ctx context.Context, id, userID uuid.UUID) (Sto
 	return stored, problems, nil
 }
 
-func (s *Service) LatestPlan(ctx context.Context, userID uuid.UUID) (StoredPlan, error) {
-	return s.repo.LatestPlan(ctx, userID)
-}
-
-// DueToday reports whether the latest plan has a session on this local day.
-func (s *Service) DueToday(ctx context.Context, user users.User, today time.Time) (string, string, bool, error) {
-	stored, err := s.repo.LatestPlan(ctx, user.ID)
-	if err != nil {
-		if apperr.Is(err, apperr.ErrNotFound) {
-			return "", "", false, nil
-		}
-		return "", "", false, err
-	}
-	session, ok := stored.Plan.NextSession(today, nil)
-	if !ok {
-		return "", "", false, nil
-	}
-	if !strings.EqualFold(session.Weekday, today.Weekday().String()) {
-		return "", "", false, nil
-	}
-	title := session.Focus
-	if title == "" {
-		title = session.Weekday
-	}
-	// The training routes live under /training, not /workouts — see
-	// Handler.Routes. This link is persisted into user_nudges.href and sent as
-	// a push payload, so getting it wrong strands people on a 404 long after
-	// the row is written.
-	return title, "/app/training/" + stored.ID.String(), true, nil
-}
-
-// WeekProgress is a plan laid over this Monday–Sunday week: the weekdays
-// already finished and the day that comes next.
-type WeekProgress struct {
-	// Completed are finished weekdays, Monday first.
-	Completed []string
-	// Next is the first unfinished plan day from today on, wrapping into
-	// next week when everything left this week is done.
-	Next    PlanDay
-	HasNext bool
-	// Volume is this week's choice from the weekly review, and Next already
-	// has its sets adjusted for it.
-	Volume Volume
-}
-
-// Done reports whether weekday was finished this week.
-func (w WeekProgress) Done(weekday string) bool {
-	for _, d := range w.Completed {
-		if strings.EqualFold(d, strings.TrimSpace(weekday)) {
-			return true
-		}
-	}
-	return false
-}
-
-// IsNext reports whether day is the one to train next.
-func (w WeekProgress) IsNext(day PlanDay) bool {
-	return w.HasNext && strings.EqualFold(w.Next.Weekday, day.Weekday)
-}
-
-// DoneToday is today's plan day when it is already finished.
-func (w WeekProgress) DoneToday(p Plan, now time.Time) (PlanDay, bool) {
-	today := now.Weekday().String()
-	if !w.Done(today) {
-		return PlanDay{}, false
-	}
-	for _, d := range p.Days {
-		if strings.EqualFold(strings.TrimSpace(d.Weekday), today) {
-			return d, true
-		}
-	}
-	return PlanDay{}, false
-}
-
-// WeekProgress reads which of p's days are finished this week and which is
-// next. Without an activity tracker nothing is finished, which is the
-// calendar-only answer the plan gave before sessions were counted.
-func (s *Service) WeekProgress(ctx context.Context, user users.User, p Plan, now time.Time) (WeekProgress, error) {
-	now = now.In(user.Location())
-	var done []string
-	if s.activity != nil {
-		var err error
-		done, err = s.activity.CompletedWeekdays(ctx, user.ID, user.Location(), now)
-		if err != nil {
-			return WeekProgress{}, err
-		}
-	}
-	volume, err := s.volumeFor(ctx, user, now)
-	if err != nil {
-		return WeekProgress{}, err
-	}
-	out := WeekProgress{Completed: done, Volume: volume}
-	out.Next, out.HasNext = p.NextSession(now, done)
-	if out.HasNext {
-		out.Next = volume.Day(out.Next)
-	}
-	return out, nil
-}
-
-// CompletedToday reports whether today's plan day is already finished, and
-// its focus. Only a session that finishes today's plan day counts: an
-// evening run on leg day leaves the leg session open.
-func (s *Service) CompletedToday(ctx context.Context, user users.User, today time.Time) (bool, string, error) {
-	stored, err := s.repo.LatestPlan(ctx, user.ID)
-	if err != nil {
-		if apperr.Is(err, apperr.ErrNotFound) {
-			return false, "", nil
-		}
-		return false, "", err
-	}
-	progress, err := s.WeekProgress(ctx, user, stored.Plan, today)
-	if err != nil {
-		return false, "", err
-	}
-	day, ok := progress.DoneToday(stored.Plan, today.In(user.Location()))
-	if !ok {
-		return false, "", nil
-	}
-	return true, day.Focus, nil
-}
-
-// Prescription is what the latest plan asks for on weekday: the day's focus
-// and its sets in total. ok is false without a plan or without that day.
-func (s *Service) Prescription(ctx context.Context, user users.User, weekday string) (string, int, bool, error) {
-	stored, err := s.repo.LatestPlan(ctx, user.ID)
-	if err != nil {
-		if apperr.Is(err, apperr.ErrNotFound) {
-			return "", 0, false, nil
-		}
-		return "", 0, false, err
-	}
-	// What the week asked for, so a deload week is not read as half a session.
-	volume, err := s.volumeFor(ctx, user, time.Now())
-	if err != nil {
-		return "", 0, false, err
-	}
-	for _, d := range stored.Plan.Days {
-		if !strings.EqualFold(strings.TrimSpace(d.Weekday), weekday) {
-			continue
-		}
-		sets := 0
-		for _, e := range volume.Day(d).Exercises {
-			sets += e.Sets
-		}
-		return d.Focus, sets, true, nil
-	}
-	return "", 0, false, nil
-}
-
-// PlanSlots are the latest plan's days, enough to count adherence. ok is
-// false without a plan.
-func (s *Service) PlanSlots(ctx context.Context, user users.User) ([]activity.PlanSlot, bool, error) {
-	stored, err := s.repo.LatestPlan(ctx, user.ID)
-	if err != nil {
-		if apperr.Is(err, apperr.ErrNotFound) {
-			return nil, false, nil
-		}
-		return nil, false, err
-	}
-	slots := make([]activity.PlanSlot, 0, len(stored.Plan.Days))
-	for _, d := range stored.Plan.Days {
-		slots = append(slots, activity.PlanSlot{Weekday: d.Weekday, Focus: d.Focus})
-	}
-	return slots, true, nil
-}
-
 func (s *Service) LatestIntake(ctx context.Context, userID uuid.UUID) (StoredIntake, error) {
 	return s.repo.LatestIntake(ctx, userID)
 }
@@ -835,18 +681,54 @@ func (s *Service) CurrentVersionOf(ctx context.Context, user users.User, planID 
 	return s.repo.LatestPlanForIntake(ctx, user.ID, stale.IntakeID)
 }
 
-// ListCurrentPlans returns one row per plan: the version the person is
-// currently following, most recently touched first.
+// ListCurrentPlans returns one row per plan: its newest version, the plan
+// being followed first and the rest most recently touched first.
 //
 // The distinction from ListPlans is invisible in the names alone, which is why
 // both carry it in a comment. A plan is an intake — every edit of it shares
 // that intake_id — so this collapses a plan's edit history down to the version
 // that matters and leaves the rest stored.
+//
+// Followed first because clients read the first plan as the one followed:
+// the web list badges it, and iOS builds from before the choice existed
+// showed plans.first as the plan.
 func (s *Service) ListCurrentPlans(ctx context.Context, userID uuid.UUID, limit int) ([]StoredPlan, error) {
 	if limit <= 0 || limit > 50 {
 		limit = 20
 	}
-	return s.repo.ListCurrentPlans(ctx, userID, limit)
+	plans, err := s.repo.ListCurrentPlans(ctx, userID, limit)
+	if err != nil || len(plans) == 0 {
+		return plans, err
+	}
+	active, err := s.repo.ActivePlan(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	for i, p := range plans {
+		if p.IntakeID == active.IntakeID {
+			copy(plans[1:i+1], plans[:i])
+			plans[0] = p
+			break
+		}
+	}
+	return plans, nil
+}
+
+// PlansWithDays are the saved plans written for exactly n days a week, the
+// followed one first: what someone choosing n days might want to train
+// instead of stretching or squeezing their usual plan.
+func (s *Service) PlansWithDays(ctx context.Context, userID uuid.UUID, n int) ([]StoredPlan, error) {
+	plans, err := s.ListCurrentPlans(ctx, userID, 50)
+	if err != nil {
+		return nil, err
+	}
+	var out []StoredPlan
+	for _, p := range plans {
+		if len(p.Plan.Days) == n {
+			out = append(out, p)
+		}
+	}
+	return out, nil
 }
 
 // candidates fetches the catalog rows the model may pick from.

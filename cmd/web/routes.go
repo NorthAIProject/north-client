@@ -266,7 +266,7 @@ func routes(
 	})
 	workoutHandler := workouts.NewHandler(workoutSvc)
 	exerciseHandler.WithPlans(func(ctx context.Context, userID uuid.UUID) (uuid.UUID, plan.Plan, error) {
-		stored, lookupErr := workoutSvc.LatestPlan(ctx, userID)
+		stored, lookupErr := workoutSvc.ActivePlan(ctx, userID)
 		return stored.ID, stored.Plan, lookupErr
 	})
 

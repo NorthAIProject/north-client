@@ -105,7 +105,7 @@ func TestThisWeekListsEveryPlanDayInOrder(t *testing.T) {
 	slots := []PlanSlot{{Weekday: "Friday", Focus: "Pull"}, {Weekday: "Monday", Focus: "Push"}, {Weekday: "Wednesday", Focus: "Legs"}}
 	sessions := []Session{lifting(on(0, 7), "Monday")}
 
-	got := ThisWeek(slots, sessions, time.UTC, on(2, 9))
+	got := ThisWeek(Schedule{Default: slots}, sessions, time.UTC, on(2, 9))
 	if got.Planned != 3 || got.Done != 1 {
 		t.Fatalf("planned/done = %d/%d, want 3/1", got.Planned, got.Done)
 	}
@@ -133,7 +133,7 @@ func TestPlanAdherenceCountsOnlyDatesInTheWindow(t *testing.T) {
 		lifting(on(0, 7), "Monday"),
 	}
 	// Two full weeks, ending before this Thursday.
-	got := PlanAdherence(slots, sessions, time.UTC, monday.AddDate(0, 0, -7), on(3, 0))
+	got := PlanAdherence(Schedule{Default: slots}, sessions, time.UTC, monday.AddDate(0, 0, -7), on(3, 0))
 	if got.Planned != 3 || got.Done != 2 {
 		t.Fatalf("planned/done = %d/%d, want 3/2", got.Planned, got.Done)
 	}

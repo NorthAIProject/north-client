@@ -113,9 +113,9 @@ type StatsReader interface {
 	Patterns(ctx context.Context, user users.User, rg timerange.Range) ([]stat.Finding, int, error)
 }
 
-// TrainingPlan is the latest plan's days.
+// TrainingPlan is the followed plan's training days, week by week.
 type TrainingPlan interface {
-	PlanSlots(ctx context.Context, user users.User) ([]activity.PlanSlot, bool, error)
+	PlanSchedule(ctx context.Context, user users.User, rg timerange.Range) (activity.Schedule, bool, error)
 }
 
 // Recaps finds the latest finished workout in a window.
@@ -358,15 +358,15 @@ func (s *Service) Training(ctx context.Context, user users.User, rg timerange.Ra
 	}
 	if s.plan != nil {
 		g.Go(func() error {
-			slots, ok, err := s.plan.PlanSlots(gctx, user)
+			schedule, ok, err := s.plan.PlanSchedule(gctx, user, rg)
 			if err != nil || !ok {
 				return err
 			}
 			out.HasPlan = true
-			if out.Week, err = s.activity.ThisWeek(gctx, user.ID, slots, user.Location(), out.Now); err != nil {
+			if out.Week, err = s.activity.ThisWeek(gctx, user.ID, schedule, user.Location(), out.Now); err != nil {
 				return err
 			}
-			out.Adherence, err = s.activity.PlanAdherence(gctx, user.ID, slots, rg)
+			out.Adherence, err = s.activity.PlanAdherence(gctx, user.ID, schedule, rg)
 			return err
 		})
 	}
