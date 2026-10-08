@@ -26,7 +26,12 @@ import (
 templ PlanDetailPage(user users.User, page PlanPage) {
 	@layout.App(page.Plan.Name, user, nav(ctx)) {
 		<div class="mx-auto w-full max-w-2xl space-y-6 p-6 md:p-8">
-			<a href="/app/nutrition/plans" class="text-muted-foreground hover:text-foreground text-sm">← All plans</a>
+			<div class="flex items-center justify-between gap-4">
+				<a href="/app/nutrition/plans" class="text-muted-foreground hover:text-foreground text-sm">← All plans</a>
+				@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Href: "/app/nutrition/import"}) {
+					Import another plan
+				}
+			</div>
 			<header class="flex items-start justify-between gap-4">
 				<div>
 					<h1 class="text-2xl font-medium tracking-tight">{ page.Plan.Name }</h1>

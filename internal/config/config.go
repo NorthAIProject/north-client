@@ -404,6 +404,11 @@ type QuotaConfig struct {
 	// easiest thing in the product to trigger by accident, and a pocket can
 	// hold one for an hour.
 	VoiceCaptures int
+
+	// PlanImports bounds reading a plan out of a file. Only a document or a
+	// photo costs a model call — a spreadsheet is read by code — but every
+	// upload is counted, so the bound does not depend on which file arrives.
+	PlanImports int
 }
 
 // Limits renders the config as the per-action budgets the quota package wants.
@@ -419,6 +424,7 @@ func (q QuotaConfig) Limits() map[quota.Action]quota.Limit {
 		quota.AccountExport:   {PerWindow: q.AccountExports},
 		quota.QuickCapture:    {PerWindow: q.QuickCaptures},
 		quota.VoiceCapture:    {PerWindow: q.VoiceCaptures},
+		quota.PlanImport:      {PerWindow: q.PlanImports},
 	}
 }
 
@@ -765,6 +771,7 @@ func Load() (*Config, error) {
 		{"QUOTA_MEDIA_ANALYSES_PER_HOUR", 20, &cfg.Quota.MediaAnalyses},
 		{"QUOTA_QUICK_CAPTURES_PER_HOUR", 60, &cfg.Quota.QuickCaptures},
 		{"QUOTA_VOICE_CAPTURES_PER_HOUR", 40, &cfg.Quota.VoiceCaptures},
+		{"QUOTA_PLAN_IMPORTS_PER_HOUR", 20, &cfg.Quota.PlanImports},
 		// Low because an export reads the whole account — every document out of
 		// the bucket included — and nobody needs their entire history four times
 		// in an hour.
@@ -780,6 +787,7 @@ func Load() (*Config, error) {
 		{"QUOTA_PRO_MEDIA_ANALYSES_PER_HOUR", 100, &cfg.QuotaPro.MediaAnalyses},
 		{"QUOTA_PRO_QUICK_CAPTURES_PER_HOUR", 600, &cfg.QuotaPro.QuickCaptures},
 		{"QUOTA_PRO_VOICE_CAPTURES_PER_HOUR", 400, &cfg.QuotaPro.VoiceCaptures},
+		{"QUOTA_PRO_PLAN_IMPORTS_PER_HOUR", 100, &cfg.QuotaPro.PlanImports},
 		// Not raised as far as the rest: an export reads every document in the
 		// account out of the bucket, and paying for the product does not make
 		// that cheap.

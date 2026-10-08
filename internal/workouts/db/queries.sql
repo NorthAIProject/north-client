@@ -1,14 +1,16 @@
 -- name: CreateIntake :one
-INSERT INTO workout_intakes (user_id, goal, experience, days_per_week, session_minutes, equipment, limitations)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO workout_intakes (user_id, goal, experience, days_per_week, session_minutes, equipment, limitations, imported)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 RETURNING *;
 
 -- name: GetIntake :one
 SELECT * FROM workout_intakes WHERE id = $1 AND user_id = $2;
 
+-- LatestIntake is the newest set of answers the person actually gave. An
+-- imported plan's intake row is skipped: it holds no answers.
 -- name: LatestIntake :one
 SELECT * FROM workout_intakes
-WHERE user_id = $1
+WHERE user_id = $1 AND NOT imported
 ORDER BY created_at DESC
 LIMIT 1;
 

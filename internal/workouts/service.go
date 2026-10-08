@@ -648,8 +648,11 @@ func (s *Service) PlanForDisplay(ctx context.Context, id, userID uuid.UUID) (Sto
 	// Reported, never enforced — an edit that breaks a stated constraint is
 	// usually someone changing their mind. A missing intake is not worth
 	// failing the page over; it just means nothing to compare against.
+	//
+	// An imported plan was never built from answers, so there is nothing to
+	// fall short of.
 	var problems []string
-	if intake, err := s.repo.GetIntake(ctx, stored.IntakeID, userID); err == nil {
+	if intake, err := s.repo.GetIntake(ctx, stored.IntakeID, userID); err == nil && !intake.Imported {
 		problems = Validate(stored.Plan, intake.Intake)
 	}
 

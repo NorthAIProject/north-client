@@ -112,6 +112,8 @@ func describe(action Action) string {
 		return "quick capture"
 	case VoiceCapture:
 		return "voice notes"
+	case PlanImport:
+		return "plan imports"
 	default:
 		return string(action)
 	}

@@ -1,0 +1,247 @@
+package planimport
+
+import (
+	"fmt"
+	"strconv"
+
+	"github.com/NorthAIProject/north-client/internal/planimport/draft"
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/alert"
+	"github.com/NorthAIProject/north-client/web/shared/ui/badge"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/input"
+	"github.com/NorthAIProject/north-client/web/shared/ui/selectbox"
+	"github.com/NorthAIProject/north-client/web/shared/ui/table"
+)
+
+// WorkoutReview is the review page's data.
+type WorkoutReview struct {
+	Draft draft.WorkoutDraft
+	// DraftJSON is the draft as posted back in the hidden field.
+	DraftJSON string
+	Error     string
+}
+
+var weekdays = []string{"Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"}
+
+func missingSets(d draft.WorkoutDraft) bool {
+	for _, day := range d.Days {
+		for _, ex := range day.Exercises {
+			if ex.Sets == nil {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func optInt(n *int) string {
+	if n == nil {
+		return ""
+	}
+	return strconv.Itoa(*n)
+}
+
+func field(day, ex int, name string) string { return fmt.Sprintf("d%d.e%d.%s", day, ex, name) }
+
+func dayLabel(label string, i int) string {
+	if label == "" {
+		return fmt.Sprintf("Training day %d", i+1)
+	}
+	return label
+}
+
+templ WorkoutReviewPage(user users.User, v WorkoutReview) {
+	@layout.App("Review import", user, layout.BuildNav(ctx, "/app/fitness")) {
+		<div class="mx-auto w-full max-w-5xl space-y-6 p-6 md:p-8">
+			<header>
+				@ui.MonoLabel("Import")
+				<h1 class="mt-2 text-2xl font-medium tracking-tight">Check your workout plan</h1>
+				<p class="text-muted-foreground mt-1 text-sm">
+					This is what was read from your file. Blank cells weren't in it. Fix anything that's
+					wrong, give each day a day of the week, then save. Nothing is saved until you do.
+				</p>
+				if missingSets(v.Draft) {
+					<p class="text-muted-foreground mt-2 text-sm">
+						Exercises without a set count won't appear in a live workout until you give them one — here or later on the plan.
+					</p>
+				}
+			</header>
+			if v.Error != "" {
+				@alert.Alert(alert.Props{Variant: alert.VariantDestructive}) {
+					@alert.Description() {
+						{ v.Error }
+					}
+				}
+			}
+			<form method="post" action="/app/training/import/review" class="space-y-6">
+				@ui.CSRFInput()
+				<input type="hidden" name="draft" value={ v.DraftJSON }/>
+				@defaultSubmit()
+				<label class="block space-y-1">
+					<span class="text-muted-foreground text-xs">Plan name</span>
+					@input.Input(input.Props{Name: "name", Value: v.Draft.Name, Required: true})
+				</label>
+				if len(v.Draft.Unparsed) > 0 {
+					@unparsedList(v.Draft.Unparsed)
+				}
+				for i, day := range v.Draft.Days {
+					@workoutDay(i, day)
+				}
+				<div class="flex flex-wrap items-center justify-end gap-2">
+					@button.Button(button.Props{Href: "/app/training", Variant: button.VariantGhost}) {
+						Cancel import
+					}
+					@button.Button(button.Props{Type: button.TypeSubmit, Attributes: templ.Attributes{"name": "action", "value": "save"}}) {
+						Save plan
+					}
+				</div>
+			</form>
+		</div>
+		@selectbox.Script()
+		@input.Script()
+	}
+}
+
+templ workoutDay(i int, day draft.WorkoutDayDraft) {
+	@card.Card() {
+		@card.Header(card.HeaderProps{Class: "flex flex-row flex-wrap items-center justify-between gap-3"}) {
+			@card.Title() {
+				{ dayLabel(day.Label, i) }
+			}
+			<div class="flex items-center gap-2">
+				@weekdayPicker(fmt.Sprintf("d%d.weekday", i), day.Weekday)
+				@button.Button(button.Props{
+					Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm,
+					Attributes: templ.Attributes{"name": "action", "value": fmt.Sprintf("delete-day:%d", i), "formnovalidate": true},
+				}) {
+					Remove day
+				}
+			</div>
+		}
+		@card.Content() {
+			<div class="overflow-x-auto">
+				@table.Table() {
+					@table.Header() {
+						@table.Row() {
+							@table.Head() {
+								Exercise
+							}
+							@table.Head() {
+								Sets
+							}
+							@table.Head() {
+								Reps
+							}
+							@table.Head() {
+								Load
+							}
+							@table.Head() {
+								Rest (s)
+							}
+							@table.Head() {
+								Notes
+							}
+							@table.Head() {
+								<span class="sr-only">Remove</span>
+							}
+						}
+					}
+					@table.Body() {
+						for j, ex := range day.Exercises {
+							@exerciseRow(i, j, ex)
+						}
+					}
+				}
+			</div>
+		}
+	}
+}
+
+templ exerciseRow(i, j int, ex draft.ExerciseDraft) {
+	@table.Row() {
+		@table.Cell(table.CellProps{Class: "min-w-40 align-top"}) {
+			@input.Input(input.Props{Name: field(i, j, "name"), Value: ex.Name, Required: true, HasError: ex.Name == ""})
+			if len(ex.Flags) > 0 {
+				<div class="mt-1 flex flex-wrap gap-1">
+					for _, f := range ex.Flags {
+						@badge.Badge(badge.Props{Variant: badge.VariantOutline, Class: "whitespace-normal text-left"}) {
+							{ f }
+						}
+					}
+				</div>
+			}
+		}
+		@table.Cell(table.CellProps{Class: "align-top"}) {
+			@input.Input(input.Props{Name: field(i, j, "sets"), Type: input.TypeNumber, Value: optInt(ex.Sets), Class: "w-16", Placeholder: "—"})
+		}
+		@table.Cell(table.CellProps{Class: "align-top"}) {
+			@input.Input(input.Props{Name: field(i, j, "reps"), Value: ex.Reps, Class: "w-20", Placeholder: "—"})
+		}
+		@table.Cell(table.CellProps{Class: "align-top"}) {
+			@input.Input(input.Props{Name: field(i, j, "load"), Value: ex.Load, Class: "w-24", Placeholder: "—"})
+		}
+		@table.Cell(table.CellProps{Class: "align-top"}) {
+			@input.Input(input.Props{Name: field(i, j, "rest"), Type: input.TypeNumber, Value: optInt(ex.RestSeconds), Class: "w-20", Placeholder: "—"})
+		}
+		@table.Cell(table.CellProps{Class: "min-w-40 align-top"}) {
+			@input.Input(input.Props{Name: field(i, j, "notes"), Value: ex.Notes, Placeholder: "—"})
+		}
+		@table.Cell(table.CellProps{Class: "align-top"}) {
+			@button.Button(button.Props{
+				Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm,
+				Attributes: templ.Attributes{"name": "action", "value": fmt.Sprintf("delete-exercise:%d:%d", i, j), "formnovalidate": true, "aria-label": "Remove " + ex.Name},
+			}) {
+				Remove
+			}
+		}
+	}
+}
+
+templ weekdayPicker(name, selected string) {
+	@selectbox.SelectBox() {
+		@selectbox.Trigger(selectbox.TriggerProps{Name: name, Class: "w-40", HasError: selected == ""}) {
+			@selectbox.Value(selectbox.ValueProps{Placeholder: "Day of the week"})
+		}
+		@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
+			for _, d := range weekdays {
+				@selectbox.Item(selectbox.ItemProps{Value: d, Selected: d == selected}) {
+					{ d }
+				}
+			}
+		}
+	}
+}
+
+templ unparsedList(lines []string) {
+	@alert.Alert() {
+		@alert.Title() {
+			Not imported
+		}
+		@alert.Description() {
+			<p>These lines looked like part of the plan but couldn't be turned into rows. Add them yourself if they matter.</p>
+			<ul class="mt-2 list-disc space-y-0.5 pl-5">
+				for _, line := range lines {
+					<li>&ldquo;{ line }&rdquo;</li>
+				}
+			</ul>
+		}
+	}
+}
+
+// defaultSubmit is the form's first submit button, so Enter in any field
+// refreshes the review instead of pressing the first Remove button in the
+// form. Visually hidden rather than display:none, which some browsers skip
+// when choosing the default button.
+templ defaultSubmit() {
+	@button.Button(button.Props{
+		Type:       button.TypeSubmit,
+		Class:      "sr-only",
+		Attributes: templ.Attributes{"name": "action", "value": "update", "tabindex": "-1", "aria-hidden": "true", "formnovalidate": true},
+	}) {
+		Update
+	}
+}

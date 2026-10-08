@@ -53,6 +53,12 @@ type Exercise struct {
 	// use.
 	Reps string `json:"reps"`
 
+	// Load is the weight as the person's own plan wrote it: "100 kg", "RPE 8",
+	// "bodyweight". Text, for the reason Reps is. Only imported plans set it;
+	// the generator's schema leaves it out, because a model that has never
+	// seen someone lift has no business choosing their weights.
+	Load string `json:"load,omitempty"`
+
 	RestSeconds int    `json:"rest_seconds"`
 	Equipment   string `json:"equipment"`
 	FormCues    string `json:"form_cues"`
@@ -169,7 +175,15 @@ func (p Plan) Summary() string {
 			if i > 0 {
 				b.WriteString(", ")
 			}
-			fmt.Fprintf(&b, "%s %dx%s", e.Name, e.Sets, e.Reps)
+			b.WriteString(e.Name)
+			if e.Sets > 0 {
+				fmt.Fprintf(&b, " %dx%s", e.Sets, e.Reps)
+			} else if e.Reps != "" {
+				fmt.Fprintf(&b, " %s reps", e.Reps)
+			}
+			if e.Load != "" {
+				fmt.Fprintf(&b, " @ %s", e.Load)
+			}
 		}
 		if emphasis := dayEmphasis(d); emphasis != "" {
 			fmt.Fprintf(&b, " (emphasis: %s)", emphasis)

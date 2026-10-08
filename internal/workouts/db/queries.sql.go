@@ -13,9 +13,9 @@ import (
 )
 
 const createIntake = `-- name: CreateIntake :one
-INSERT INTO workout_intakes (user_id, goal, experience, days_per_week, session_minutes, equipment, limitations)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, user_id, goal, experience, days_per_week, session_minutes, equipment, limitations, created_at
+INSERT INTO workout_intakes (user_id, goal, experience, days_per_week, session_minutes, equipment, limitations, imported)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+RETURNING id, user_id, goal, experience, days_per_week, session_minutes, equipment, limitations, created_at, imported
 `
 
 type CreateIntakeParams struct {
@@ -26,6 +26,7 @@ type CreateIntakeParams struct {
 	SessionMinutes int16
 	Equipment      []string
 	Limitations    string
+	Imported       bool
 }
 
 func (q *Queries) CreateIntake(ctx context.Context, arg CreateIntakeParams) (WorkoutIntake, error) {
@@ -37,6 +38,7 @@ func (q *Queries) CreateIntake(ctx context.Context, arg CreateIntakeParams) (Wor
 		arg.SessionMinutes,
 		arg.Equipment,
 		arg.Limitations,
+		arg.Imported,
 	)
 	var i WorkoutIntake
 	err := row.Scan(
@@ -49,6 +51,7 @@ func (q *Queries) CreateIntake(ctx context.Context, arg CreateIntakeParams) (Wor
 		&i.Equipment,
 		&i.Limitations,
 		&i.CreatedAt,
+		&i.Imported,
 	)
 	return i, err
 }
@@ -142,7 +145,7 @@ func (q *Queries) GetActivePlan(ctx context.Context, userID uuid.UUID) (WorkoutP
 }
 
 const getIntake = `-- name: GetIntake :one
-SELECT id, user_id, goal, experience, days_per_week, session_minutes, equipment, limitations, created_at FROM workout_intakes WHERE id = $1 AND user_id = $2
+SELECT id, user_id, goal, experience, days_per_week, session_minutes, equipment, limitations, created_at, imported FROM workout_intakes WHERE id = $1 AND user_id = $2
 `
 
 type GetIntakeParams struct {
@@ -163,6 +166,7 @@ func (q *Queries) GetIntake(ctx context.Context, arg GetIntakeParams) (WorkoutIn
 		&i.Equipment,
 		&i.Limitations,
 		&i.CreatedAt,
+		&i.Imported,
 	)
 	return i, err
 }
@@ -236,12 +240,14 @@ func (q *Queries) InsertWeekIfAbsent(ctx context.Context, arg InsertWeekIfAbsent
 }
 
 const latestIntake = `-- name: LatestIntake :one
-SELECT id, user_id, goal, experience, days_per_week, session_minutes, equipment, limitations, created_at FROM workout_intakes
-WHERE user_id = $1
+SELECT id, user_id, goal, experience, days_per_week, session_minutes, equipment, limitations, created_at, imported FROM workout_intakes
+WHERE user_id = $1 AND NOT imported
 ORDER BY created_at DESC
 LIMIT 1
 `
 
+// LatestIntake is the newest set of answers the person actually gave. An
+// imported plan's intake row is skipped: it holds no answers.
 func (q *Queries) LatestIntake(ctx context.Context, userID uuid.UUID) (WorkoutIntake, error) {
 	row := q.db.QueryRow(ctx, latestIntake, userID)
 	var i WorkoutIntake
@@ -255,6 +261,7 @@ func (q *Queries) LatestIntake(ctx context.Context, userID uuid.UUID) (WorkoutIn
 		&i.Equipment,
 		&i.Limitations,
 		&i.CreatedAt,
+		&i.Imported,
 	)
 	return i, err
 }

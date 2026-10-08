@@ -83,6 +83,23 @@ func (s *IngredientService) Search(ctx context.Context, userID uuid.UUID, query 
 	return s.repo.SearchIngredients(ctx, userID, strings.TrimSpace(query), limit)
 }
 
+// Offer searches for one food and picks the row it means, when it can.
+//
+// Quick capture and plan import both turn a written food into an ingredient
+// through here, so "chicken breast" resolves to the same row whichever screen
+// it was typed into. match is nil when the search was ambiguous or empty; the
+// candidates are what to offer the person instead.
+func (s *IngredientService) Offer(ctx context.Context, userID uuid.UUID, query string, limit int) (match *Ingredient, candidates []Ingredient, err error) {
+	found, err := s.Search(ctx, userID, query, limit)
+	if err != nil {
+		return nil, nil, err
+	}
+	if m, ambiguous := MatchIngredient(found, query); len(found) > 0 && len(ambiguous) == 0 {
+		match = &m
+	}
+	return match, found, nil
+}
+
 func (s *IngredientService) Update(ctx context.Context, id, userID uuid.UUID, in IngredientInput) (Ingredient, error) {
 	clean, err := ValidateIngredient(in)
 	if err != nil {

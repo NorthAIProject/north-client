@@ -216,6 +216,11 @@ func Destinations() []Destination {
 			Keywords:    []string{"workout", "create", "generate", "program"},
 		},
 		{
+			Key: "nav.import-training-plan", Label: "Import training plan", Href: "/app/training/import", Icon: "file-up", Group: GroupBody,
+			Description: "Bring in a plan from a file or photo.",
+			Keywords:    []string{"workout", "upload", "spreadsheet", "pdf", "coach", "import"},
+		},
+		{
 			Key: "nav.training-plans", Label: "Training plans", Href: "/app/training/plans", Icon: "clipboard-list", Group: GroupBody,
 			Description: "Every plan you have saved.",
 			Keywords:    []string{"workout", "saved", "history", "programs"},
@@ -249,6 +254,11 @@ func Destinations() []Destination {
 			Key: "nav.meal-plans", Label: "Meal plans", Href: "/app/nutrition/plans", Icon: "utensils", Group: GroupBody,
 			Description: "Build plans, track totals.",
 			Keywords:    []string{"food", "diet", "nutrition", "recipes", "eating"},
+		},
+		{
+			Key: "nav.import-meal-plan", Label: "Import meal plan", Href: "/app/nutrition/import", Icon: "file-up", Group: GroupBody,
+			Description: "Bring in a meal plan from a file or photo.",
+			Keywords:    []string{"food", "diet", "upload", "spreadsheet", "pdf", "import"},
 		},
 		{
 			Key: "nav.food-log", Label: "Food log", Href: "/app/nutrition/log", Icon: "notebook-pen", Group: GroupBody,

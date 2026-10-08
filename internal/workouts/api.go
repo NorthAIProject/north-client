@@ -120,10 +120,12 @@ type DayExercise struct {
 	// volume; the same as sets in a hold week.
 	ThisWeekSets int    `json:"thisWeekSets"`
 	Reps         string `json:"reps"`
-	RestSeconds  int    `json:"restSeconds"`
-	Equipment    string `json:"equipment"`
-	FormCues     string `json:"formCues,omitempty"`
-	Substitute   string `json:"substitute,omitempty"`
+	// Load is the weight as an imported plan wrote it; empty otherwise.
+	Load        string `json:"load,omitempty"`
+	RestSeconds int    `json:"restSeconds"`
+	Equipment   string `json:"equipment"`
+	FormCues    string `json:"formCues,omitempty"`
+	Substitute  string `json:"substitute,omitempty"`
 	// CatalogSlug links to /exercises/{slug}; empty for a movement the model
 	// named that is not in the catalog.
 	CatalogSlug string `json:"catalogSlug,omitempty"`
@@ -393,7 +395,7 @@ func projectDetail(p StoredPlan, problems []string, progress WeekProgress, activ
 		exercises := make([]DayExercise, 0, len(d.Exercises))
 		for i, e := range d.Exercises {
 			exercises = append(exercises, DayExercise{
-				Name: e.Name, Sets: e.Sets, ThisWeekSets: progress.Volume.SetsFor(i, e.Sets), Reps: e.Reps, RestSeconds: e.RestSeconds, Equipment: e.Equipment,
+				Name: e.Name, Sets: e.Sets, ThisWeekSets: progress.Volume.SetsFor(i, e.Sets), Reps: e.Reps, Load: e.Load, RestSeconds: e.RestSeconds, Equipment: e.Equipment,
 				FormCues: e.FormCues, Substitute: e.Substitute, CatalogSlug: e.CatalogSlug, HasArt: e.HasIllustration(),
 				Primary: nonNil(e.Primary), Secondary: nonNil(e.Secondary),
 			})

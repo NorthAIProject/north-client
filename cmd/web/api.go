@@ -35,6 +35,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/news"
 	"github.com/NorthAIProject/north-client/internal/nudges"
 	"github.com/NorthAIProject/north-client/internal/onboarding"
+	"github.com/NorthAIProject/north-client/internal/planimport"
 	"github.com/NorthAIProject/north-client/internal/reports"
 	"github.com/NorthAIProject/north-client/internal/screentime"
 	"github.com/NorthAIProject/north-client/internal/settings"
@@ -77,6 +78,7 @@ func mountAPI(r chi.Router, sessions auth.SessionResolver, apis apiSet) {
 			r.Use(auth.RequireBearer(sessions))
 			apis.knowledge.UploadRoutes(r)
 			apis.formChecks.UploadRoutes(r)
+			apis.planImport.UploadRoutes(r)
 		})
 	})
 }
@@ -127,6 +129,7 @@ func mountJSON(r chi.Router, sessions auth.SessionResolver, apis apiSet) {
 		apis.care.Routes(r)
 		apis.mind.Routes(r)
 		apis.nutrition.Routes(r)
+		apis.planImport.Routes(r)
 		apis.decisions.Routes(r)
 		apis.nudges.Routes(r)
 		apis.devices.Routes(r)
@@ -175,6 +178,7 @@ type apiSet struct {
 	care         *care.API
 	mind         *mind.API
 	nutrition    *meals.API
+	planImport   *planimport.API
 	decisions    *decisions.API
 	nudges       *nudges.API
 	devices      *apns.API

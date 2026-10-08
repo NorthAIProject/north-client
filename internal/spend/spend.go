@@ -39,6 +39,7 @@ const (
 	SurfaceWorkoutPlan   = "workout_plan"
 	SurfaceQuickCapture  = "quick_capture"
 	SurfaceVoiceCapture  = "voice_capture"
+	SurfacePlanImport    = "plan_import"
 
 	// SurfaceTelegramVoice is dictation on a phone, kept apart from
 	// SurfaceVoiceCapture because they are different products with different
