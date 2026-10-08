@@ -155,6 +155,13 @@ func Build(svc Services) *Registry {
 				addWorkoutExercise(svc.Workouts, svc.Users),
 				removeWorkoutExercise(svc.Workouts, svc.Users),
 			)
+
+			// The week, and which plan is followed. See training_week.go.
+			r.Register(
+				getTrainingWeek(svc.Workouts, svc.Users),
+				setTrainingWeek(svc.Workouts, svc.Users),
+				setActiveWorkoutPlan(svc.Workouts, svc.Users),
+			)
 		}
 	}
 	if svc.Ingredients != nil {
@@ -727,7 +734,7 @@ func getWorkoutPlan(svc *workouts.Service) Capability {
 		},
 		ReadOnly: true,
 		Invoke: func(ctx context.Context, userID uuid.UUID, _ json.RawMessage) (string, error) {
-			stored, err := svc.LatestPlan(ctx, userID)
+			stored, err := svc.ActivePlan(ctx, userID)
 			if err != nil {
 				if apperr.Is(err, apperr.ErrNotFound) {
 					// Not an error the model should apologise for. They simply

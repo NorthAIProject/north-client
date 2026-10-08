@@ -18,10 +18,10 @@ type Sessions interface {
 	Get(ctx context.Context, id, userID uuid.UUID) (activity.Session, error)
 }
 
-// Prescriptions is what the person's current plan asks for on a weekday: its
-// focus and how many sets in total. ok is false when the plan has no such day.
+// Prescriptions is what the week containing at asked for on a weekday: its
+// focus and how many sets in total. ok is false when that week did not train it.
 type Prescriptions interface {
-	Prescription(ctx context.Context, user users.User, weekday string) (focus string, sets int, ok bool, err error)
+	Prescription(ctx context.Context, user users.User, at time.Time, weekday string) (focus string, sets int, ok bool, err error)
 }
 
 // WithRecaps lets the service describe finished workouts. prescriptions may
@@ -103,7 +103,7 @@ func (s *Service) recapFor(ctx context.Context, user users.User, session activit
 	var prescribed int
 	if weekday != "" && s.prescriptions != nil {
 		var ok bool
-		focus, prescribed, ok, err = s.prescriptions.Prescription(ctx, user, weekday)
+		focus, prescribed, ok, err = s.prescriptions.Prescription(ctx, user, session.StartedAt, weekday)
 		if err != nil {
 			return lift.Recap{}, err
 		}

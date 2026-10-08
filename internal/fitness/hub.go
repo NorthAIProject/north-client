@@ -162,18 +162,18 @@ func (s *Service) Load(ctx context.Context, user users.User) (Snapshot, error) {
 	}
 
 	if s.workouts != nil {
-		stored, err := s.workouts.LatestPlan(ctx, user.ID)
+		stored, err := s.workouts.ActivePlan(ctx, user.ID)
 		switch {
 		case err == nil:
 			snap.PlanID = stored.ID
-			progress, progressErr := s.workouts.WeekProgress(ctx, user, stored.Plan, now)
+			progress, progressErr := s.workouts.WeekProgress(ctx, user, now)
 			if progressErr != nil {
 				return Snapshot{}, progressErr
 			}
 			if progress.HasNext {
 				snap.NextSession = &progress.Next
 			}
-			if day, ok := progress.DoneToday(stored.Plan, now); ok {
+			if day, ok := progress.DoneToday(now); ok {
 				snap.DoneToday = &day
 			}
 		case !apperr.Is(err, apperr.ErrNotFound):

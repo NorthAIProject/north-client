@@ -9,6 +9,7 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const createIntake = `-- name: CreateIntake :one
@@ -99,6 +100,47 @@ func (q *Queries) CreatePlan(ctx context.Context, arg CreatePlanParams) (Workout
 	return i, err
 }
 
+const deleteWeek = `-- name: DeleteWeek :exec
+DELETE FROM workout_weeks WHERE user_id = $1 AND week_start = $2
+`
+
+type DeleteWeekParams struct {
+	UserID    uuid.UUID
+	WeekStart pgtype.Date
+}
+
+func (q *Queries) DeleteWeek(ctx context.Context, arg DeleteWeekParams) error {
+	_, err := q.db.Exec(ctx, deleteWeek, arg.UserID, arg.WeekStart)
+	return err
+}
+
+const getActivePlan = `-- name: GetActivePlan :one
+SELECT p.id, p.user_id, p.intake_id, p.name, p.plan, p.model, p.provider, p.created_at, p.source, p.edited_from FROM workout_plans p
+JOIN workout_active_plans a ON a.intake_id = p.intake_id AND a.user_id = p.user_id
+WHERE a.user_id = $1
+ORDER BY p.created_at DESC
+LIMIT 1
+`
+
+// The newest version of the plan someone chose to follow.
+func (q *Queries) GetActivePlan(ctx context.Context, userID uuid.UUID) (WorkoutPlan, error) {
+	row := q.db.QueryRow(ctx, getActivePlan, userID)
+	var i WorkoutPlan
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.IntakeID,
+		&i.Name,
+		&i.Plan,
+		&i.Model,
+		&i.Provider,
+		&i.CreatedAt,
+		&i.Source,
+		&i.EditedFrom,
+	)
+	return i, err
+}
+
 const getIntake = `-- name: GetIntake :one
 SELECT id, user_id, goal, experience, days_per_week, session_minutes, equipment, limitations, created_at FROM workout_intakes WHERE id = $1 AND user_id = $2
 `
@@ -150,6 +192,47 @@ func (q *Queries) GetPlan(ctx context.Context, arg GetPlanParams) (WorkoutPlan, 
 		&i.EditedFrom,
 	)
 	return i, err
+}
+
+const getWeek = `-- name: GetWeek :one
+SELECT user_id, week_start, slots, custom, updated_at FROM workout_weeks WHERE user_id = $1 AND week_start = $2
+`
+
+type GetWeekParams struct {
+	UserID    uuid.UUID
+	WeekStart pgtype.Date
+}
+
+func (q *Queries) GetWeek(ctx context.Context, arg GetWeekParams) (WorkoutWeek, error) {
+	row := q.db.QueryRow(ctx, getWeek, arg.UserID, arg.WeekStart)
+	var i WorkoutWeek
+	err := row.Scan(
+		&i.UserID,
+		&i.WeekStart,
+		&i.Slots,
+		&i.Custom,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const insertWeekIfAbsent = `-- name: InsertWeekIfAbsent :exec
+INSERT INTO workout_weeks (user_id, week_start, slots, custom)
+VALUES ($1, $2, $3, false)
+ON CONFLICT (user_id, week_start) DO NOTHING
+`
+
+type InsertWeekIfAbsentParams struct {
+	UserID    uuid.UUID
+	WeekStart pgtype.Date
+	Slots     []byte
+}
+
+// InsertWeekIfAbsent records a default week the first time it is read. Two
+// readers racing both compute the same week; the second simply loses.
+func (q *Queries) InsertWeekIfAbsent(ctx context.Context, arg InsertWeekIfAbsentParams) error {
+	_, err := q.db.Exec(ctx, insertWeekIfAbsent, arg.UserID, arg.WeekStart, arg.Slots)
+	return err
 }
 
 const latestIntake = `-- name: LatestIntake :one
@@ -341,4 +424,113 @@ func (q *Queries) ListPlans(ctx context.Context, arg ListPlansParams) ([]Workout
 		return nil, err
 	}
 	return items, nil
+}
+
+const listWeeksBetween = `-- name: ListWeeksBetween :many
+SELECT user_id, week_start, slots, custom, updated_at FROM workout_weeks
+WHERE user_id = $1 AND week_start >= $2 AND week_start < $3
+ORDER BY week_start
+`
+
+type ListWeeksBetweenParams struct {
+	UserID      uuid.UUID
+	WeekStart   pgtype.Date
+	WeekStart_2 pgtype.Date
+}
+
+func (q *Queries) ListWeeksBetween(ctx context.Context, arg ListWeeksBetweenParams) ([]WorkoutWeek, error) {
+	rows, err := q.db.Query(ctx, listWeeksBetween, arg.UserID, arg.WeekStart, arg.WeekStart_2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []WorkoutWeek{}
+	for rows.Next() {
+		var i WorkoutWeek
+		if err := rows.Scan(
+			&i.UserID,
+			&i.WeekStart,
+			&i.Slots,
+			&i.Custom,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const previousWeekWithIntake = `-- name: PreviousWeekWithIntake :one
+SELECT user_id, week_start, slots, custom, updated_at FROM workout_weeks
+WHERE user_id = $1
+  AND week_start < $2
+  AND slots @> jsonb_build_array(jsonb_build_object('intake_id', $3::text))
+ORDER BY week_start DESC
+LIMIT 1
+`
+
+type PreviousWeekWithIntakeParams struct {
+	UserID    uuid.UUID
+	WeekStart pgtype.Date
+	IntakeID  string
+}
+
+// PreviousWeekWithIntake is the latest recorded week before week_start that
+// trained any of a plan's sessions: where that plan's rotation stopped.
+func (q *Queries) PreviousWeekWithIntake(ctx context.Context, arg PreviousWeekWithIntakeParams) (WorkoutWeek, error) {
+	row := q.db.QueryRow(ctx, previousWeekWithIntake, arg.UserID, arg.WeekStart, arg.IntakeID)
+	var i WorkoutWeek
+	err := row.Scan(
+		&i.UserID,
+		&i.WeekStart,
+		&i.Slots,
+		&i.Custom,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const setActivePlan = `-- name: SetActivePlan :exec
+INSERT INTO workout_active_plans (user_id, intake_id)
+VALUES ($1, $2)
+ON CONFLICT (user_id) DO UPDATE
+SET intake_id = EXCLUDED.intake_id, updated_at = now()
+`
+
+type SetActivePlanParams struct {
+	UserID   uuid.UUID
+	IntakeID uuid.UUID
+}
+
+func (q *Queries) SetActivePlan(ctx context.Context, arg SetActivePlanParams) error {
+	_, err := q.db.Exec(ctx, setActivePlan, arg.UserID, arg.IntakeID)
+	return err
+}
+
+const upsertWeek = `-- name: UpsertWeek :exec
+INSERT INTO workout_weeks (user_id, week_start, slots, custom)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (user_id, week_start) DO UPDATE
+SET slots = EXCLUDED.slots, custom = EXCLUDED.custom, updated_at = now()
+`
+
+type UpsertWeekParams struct {
+	UserID    uuid.UUID
+	WeekStart pgtype.Date
+	Slots     []byte
+	Custom    bool
+}
+
+func (q *Queries) UpsertWeek(ctx context.Context, arg UpsertWeekParams) error {
+	_, err := q.db.Exec(ctx, upsertWeek,
+		arg.UserID,
+		arg.WeekStart,
+		arg.Slots,
+		arg.Custom,
+	)
+	return err
 }

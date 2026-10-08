@@ -12,6 +12,22 @@ type PlanSlot struct {
 	Focus   string
 }
 
+// Schedule is a training plan as weeks. A week someone changed, or that was
+// recorded while it ran, trains what Weeks holds for its Monday (keyed as
+// time.DateOnly); every other week trains Default.
+type Schedule struct {
+	Default []PlanSlot
+	Weeks   map[string][]PlanSlot
+}
+
+// For is the training days of the week starting on weekStart.
+func (s Schedule) For(weekStart time.Time) []PlanSlot {
+	if slots, ok := s.Weeks[weekStart.Format(time.DateOnly)]; ok {
+		return slots
+	}
+	return s.Default
+}
+
 // DayStatus is one plan day on one date.
 type DayStatus struct {
 	Weekday string
@@ -117,12 +133,12 @@ func CompletedWeekdays(sessions []Session, loc *time.Location, now time.Time) []
 
 // ThisWeek is the plan laid over the Monday–Sunday week containing now: one
 // row per plan day in date order, each done or still open.
-func ThisWeek(slots []PlanSlot, sessions []Session, loc *time.Location, now time.Time) Adherence {
+func ThisWeek(schedule Schedule, sessions []Session, loc *time.Location, now time.Time) Adherence {
 	if loc == nil {
 		loc = time.UTC
 	}
 	week := WeekStart(now, loc)
-	out := adherence(slots, sessions, loc, week, week.AddDate(0, 0, 7), true)
+	out := adherence(schedule, sessions, loc, week, week.AddDate(0, 0, 7), true)
 	out.Sentence = weekSentence(out.Done, out.Planned)
 	return out
 }
@@ -130,26 +146,27 @@ func ThisWeek(slots []PlanSlot, sessions []Session, loc *time.Location, now time
 // PlanAdherence counts plan days whose date falls in [since, until) and how
 // many of those were finished. It is a rate, not a checklist, so Days is
 // left empty; ThisWeek is the checklist.
-func PlanAdherence(slots []PlanSlot, sessions []Session, loc *time.Location, since, until time.Time) Adherence {
+func PlanAdherence(schedule Schedule, sessions []Session, loc *time.Location, since, until time.Time) Adherence {
 	if loc == nil {
 		loc = time.UTC
 	}
-	out := adherence(slots, sessions, loc, startOfDay(since, loc), startOfDay(until, loc), false)
+	out := adherence(schedule, sessions, loc, startOfDay(since, loc), startOfDay(until, loc), false)
 	if out.Planned > 0 {
 		out.Sentence = fmt.Sprintf("%d of %s done.", out.Done, plural(out.Planned, "planned session"))
 	}
 	return out
 }
 
-func adherence(slots []PlanSlot, sessions []Session, loc *time.Location, since, until time.Time, withDays bool) Adherence {
+func adherence(schedule Schedule, sessions []Session, loc *time.Location, since, until time.Time, withDays bool) Adherence {
 	done := completions(sessions, loc)
 	var out Adherence
 	for day := since; day.Before(until); day = day.AddDate(0, 0, 1) {
-		slot, ok := slotOn(slots, day.Weekday().String())
+		week := WeekStart(day, loc)
+		slot, ok := slotOn(schedule.For(week), day.Weekday().String())
 		if !ok {
 			continue
 		}
-		finished := done[completion{week: WeekStart(day, loc), weekday: day.Weekday().String()}]
+		finished := done[completion{week: week, weekday: day.Weekday().String()}]
 		out.Planned++
 		if finished {
 			out.Done++

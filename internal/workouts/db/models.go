@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type WorkoutIntake struct {
@@ -33,4 +34,12 @@ type WorkoutPlan struct {
 	CreatedAt  time.Time
 	Source     string
 	EditedFrom *uuid.UUID
+}
+
+type WorkoutWeek struct {
+	UserID    uuid.UUID
+	WeekStart pgtype.Date
+	Slots     []byte
+	Custom    bool
+	UpdatedAt time.Time
 }

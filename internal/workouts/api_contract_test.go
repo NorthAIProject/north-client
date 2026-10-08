@@ -13,6 +13,7 @@ import (
 func contractPlan() StoredPlan {
 	return StoredPlan{
 		ID:        uuid.MustParse("abababab-abab-abab-abab-abababababab"),
+		IntakeID:  uuid.MustParse("cdcdcdcd-cdcd-cdcd-cdcd-cdcdcdcdcdcd"),
 		Source:    SourceEdited,
 		CreatedAt: time.Date(2026, 9, 24, 7, 15, 0, 0, time.UTC),
 		Plan: plan.Plan{
@@ -34,7 +35,23 @@ func TestTrainingShapes(t *testing.T) {
 
 	stored := contractPlan()
 	// Monday is done this week, so Thursday is next.
-	progress := WeekProgress{Completed: []string{"Monday"}, Next: stored.Plan.Days[1], HasNext: true}
-	apitest.AssertGolden(t, "plan.golden.json", projectDetail(stored, []string{"Thursday has no exercises."}, progress))
-	apitest.AssertGolden(t, "plans.golden.json", PlanList{Plans: []PlanSummary{projectSummary(stored)}})
+	monday := time.Date(2026, 9, 28, 0, 0, 0, 0, time.UTC)
+	day := func(index, offset int, done bool) WeekDay {
+		d := stored.Plan.Days[index]
+		return WeekDay{
+			Slot: Slot{Weekday: d.Weekday, IntakeID: stored.IntakeID, DayIndex: index},
+			Date: monday.AddDate(0, 0, offset), PlanID: stored.ID, PlanName: stored.Plan.Name,
+			Day: d, Completed: done,
+		}
+	}
+	progress := WeekProgress{
+		Start: monday, Completed: []string{"Monday"},
+		Days: []WeekDay{day(0, 0, true), day(1, 3, false)},
+		Next: stored.Plan.Days[1], NextDay: day(1, 3, false), HasNext: true,
+	}
+	apitest.AssertGolden(t, "plan.golden.json", projectDetail(stored, []string{"Thursday has no exercises."}, progress, stored.IntakeID))
+	summary := projectSummary(stored)
+	summary.Active = true
+	apitest.AssertGolden(t, "plans.golden.json", PlanList{Plans: []PlanSummary{summary}})
+	apitest.AssertGolden(t, "week.golden.json", projectWeek(progress))
 }
