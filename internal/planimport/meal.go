@@ -46,62 +46,122 @@ const statedTolerance = 0.15
 // active target. It writes nothing.
 //
 // Everything it fills in — grams it could derive, the matched ingredient, each
-// line's macros, each day's totals and overage — is recomputed on every call,
-// from what the person can edit: the food, the chosen ingredient, the grams,
-// the weekday, the plan type. That makes it the one place the arithmetic
-// happens, for the review screen and for the commit alike.
+// line's macros, each day's totals, target and overage — is recomputed on
+// every call from what the person can edit: the food, the chosen ingredient,
+// the grams, the weekday, the plan type and mode. The overage verdict is
+// meal.CheckWrite, the rule every other change to a meal plan is held to, so
+// the review screen and the save cannot disagree.
 func (s *Service) PreviewMeal(ctx context.Context, userID uuid.UUID, d MealDraft) MealDraft {
 	d.Normalize()
-	totals := map[int]meals.Macros{}
-	dayTotals := make([]meals.Macros, len(d.Days))
+	if d.Mode == "" {
+		d.Mode = string(defaultMode(d))
+	}
 
 	for di := range d.Days {
 		day := &d.Days[di]
+		var total meal.Macros
 		for mi := range day.Meals {
 			for fi := range day.Meals[mi].Foods {
 				food := &day.Meals[mi].Foods[fi]
 				s.resolveFood(ctx, userID, food)
 				if food.Macros != nil {
-					dayTotals[di] = dayTotals[di].Add(meal.Macros{Calories: food.Macros.Calories, ProteinG: food.Macros.ProteinG, CarbG: food.Macros.CarbG, FatG: food.Macros.FatG})
+					total = total.Add(meal.Macros{Calories: food.Macros.Calories, ProteinG: food.Macros.ProteinG, CarbG: food.Macros.CarbG, FatG: food.Macros.FatG})
 				}
 			}
 		}
-		day.Totals = macroGrams(dayTotals[di])
+		day.Totals = macroGrams(total)
 		day.Target, day.Remaining, day.Over = nil, nil, []string{}
-		if day.Weekday != nil {
-			totals[*day.Weekday] = totals[*day.Weekday].Add(dayTotals[di])
+		if meal.Mode(d.Mode) == meal.Easy {
+			day.Weekday = nil
+			if di < meal.MaxDays {
+				wd := int(meal.WeekOrder[di])
+				day.Weekday = &wd
+			}
 		}
 	}
 
-	checks, ok := s.mealPlans.CheckDays(ctx, userID, d.PlanType, d.CustomCarbPct, totals, s.goals)
+	d.HasTarget, d.CanConfirm = false, false
+	active, err := s.mealPlans.ActiveTarget(ctx, userID)
+	if err != nil || active == nil {
+		return d
+	}
+	d.HasTarget = true
+
+	settings, ok := planSettings(d)
 	if !ok {
 		return d
 	}
-	for di := range d.Days {
-		day := &d.Days[di]
-		if day.Weekday == nil {
+	state, index := planState(d, settings)
+	statuses := state.Statuses(*active)
+	for di, si := range index {
+		if si < 0 {
 			continue
 		}
-		c := checks[*day.Weekday]
-		day.Target = &MacroGrams{Calories: c.Target.Calories, ProteinG: c.Target.ProteinG, CarbG: c.Target.CarbG, FatG: c.Target.FatG}
-		day.Remaining = &MacroGrams{
-			Calories: c.Target.Calories - c.Totals.Calories,
-			ProteinG: c.Target.ProteinG - c.Totals.ProteinG,
-			CarbG:    c.Target.CarbG - c.Totals.CarbG,
-			FatG:     c.Target.FatG - c.Totals.FatG,
+		st := statuses[si]
+		d.Days[di].Target = macroGrams(st.Target)
+		d.Days[di].Remaining = macroGrams(st.Remaining)
+		if st.IsOver() {
+			d.Days[di].Over = overList(st.Over)
 		}
-		day.Over = overList(c.Overage)
 	}
+	d.CanConfirm = meal.CheckWrite(*active, nil, state, false).CanConfirm
 	return d
 }
 
-func overList(o meal.Overage) []string {
+// defaultMode starts a draft in the mode its days already fit: easy when they
+// are unnamed or run Monday onwards in order, advanced when the file names
+// weekdays an easy plan could not have.
+func defaultMode(d MealDraft) meal.Mode {
+	for i, day := range d.Days {
+		if day.Weekday != nil && (i >= meal.MaxDays || *day.Weekday != int(meal.WeekOrder[i])) {
+			return meal.Advanced
+		}
+	}
+	return meal.Easy
+}
+
+// planSettings reads the draft's choices, reporting false while they are not
+// yet a valid plan: a plan type to pick, or a custom share without one.
+func planSettings(d MealDraft) (meal.PlanSettings, bool) {
+	settings := meal.PlanSettings{Type: meal.PlanType(d.PlanType), CustomCarbPct: d.CustomCarbPct, Mode: meal.Mode(d.Mode)}
+	switch {
+	case !settings.Type.Valid() || !settings.Mode.Valid():
+		return settings, false
+	case settings.Type == meal.Custom && (settings.Mode != meal.Advanced || settings.CustomCarbPct == nil):
+		return settings, false
+	}
+	return settings, true
+}
+
+// planState is the draft as the overage rule sees it. index maps each draft
+// day to its place in state.Days, or -1 for a day with no weekday yet.
+func planState(d MealDraft, settings meal.PlanSettings) (meal.PlanState, []int) {
+	state := meal.PlanState{Settings: settings}
+	index := make([]int, len(d.Days))
+	for i, day := range d.Days {
+		index[i] = -1
+		if day.Weekday == nil {
+			continue
+		}
+		consumed := meal.Macros{}
+		if day.Totals != nil {
+			consumed = meal.Macros{Calories: day.Totals.Calories, ProteinG: day.Totals.ProteinG, CarbG: day.Totals.CarbG, FatG: day.Totals.FatG}
+		}
+		index[i] = len(state.Days)
+		// Each day gets its own id: CheckWrite tells days apart by id, and
+		// there are no stored ones yet.
+		state.Days = append(state.Days, meal.DayState{ID: uuid.New(), Weekday: time.Weekday(*day.Weekday), Consumed: consumed})
+	}
+	return state, index
+}
+
+func overList(o meal.Macros) []string {
 	out := []string{}
 	for _, m := range []struct {
 		label string
 		over  float64
 	}{{"protein", o.ProteinG}, {"carbs", o.CarbG}, {"fat", o.FatG}} {
-		if m.over > 0.01 {
+		if m.over >= 0.5 {
 			out = append(out, fmt.Sprintf("%s over by %.0f g", m.label, math.Ceil(m.over)))
 		}
 	}
@@ -235,56 +295,89 @@ func statedMismatch(f *FoodDraft, m meal.Macros, name string) []string {
 	return out
 }
 
-// mealPlanFromDraft converts a reviewed draft into what meals.ImportPlan
-// stores, or reports what still needs the person's attention.
-func mealPlanFromDraft(d MealDraft) (meals.ImportedMealPlan, []string) {
-	var problems []string
-	out := meals.ImportedMealPlan{Name: d.Name, PlanType: d.PlanType, CustomCarbPct: d.CustomCarbPct}
-	numbers := map[int]int{}
+// importPlan is a reviewed draft in the shape meals.CreatePlan takes, plus
+// the personal ingredients to create first.
+type importPlan struct {
+	input meals.MealPlanInput
+	days  []meals.DayDraft
+	// mine lists the portions whose ingredient is still to be created, by
+	// position, with what to create.
+	mine []minePortion
+}
 
-	for _, day := range d.Days {
+type minePortion struct {
+	day, meal, portion int
+	ingredient         meals.IngredientInput
+}
+
+// mealPlanFromDraft converts a previewed draft into what meals.CreatePlan
+// stores, or reports what still needs the person's attention.
+func mealPlanFromDraft(d MealDraft) (importPlan, []string) {
+	var problems []string
+	settings, ok := planSettings(d)
+	if !ok {
+		problems = append(problems, "Choose a carb type for the plan.")
+	}
+	if !d.HasTarget {
+		problems = append(problems, "Work out your macro target in the calculator first; meal plans are built on it.")
+	}
+	if len(d.Days) > meal.MaxDays {
+		problems = append(problems, fmt.Sprintf("A plan holds at most %d days; remove %d.", meal.MaxDays, len(d.Days)-meal.MaxDays))
+	}
+
+	out := importPlan{input: meals.MealPlanInput{Name: d.Name, Settings: settings}}
+	if settings.Mode == meal.Easy {
+		out.input.DayCount = len(d.Days)
+	}
+
+	for di, day := range d.Days {
 		label := day.Label
 		if label == "" {
-			label = "a day"
+			label = fmt.Sprintf("day %d", di+1)
 		}
-		if day.Weekday == nil {
-			problems = append(problems, fmt.Sprintf("Choose which day of the week %s is.", label))
-			continue
+		if settings.Mode == meal.Advanced {
+			if day.Weekday == nil {
+				problems = append(problems, fmt.Sprintf("Choose which day of the week %s is.", label))
+				continue
+			}
+			out.input.Weekdays = append(out.input.Weekdays, time.Weekday(*day.Weekday))
 		}
-		for _, m := range day.Meals {
-			numbers[*day.Weekday]++
+
+		dd := meals.DayDraft{}
+		for mi, m := range day.Meals {
 			name := strings.TrimSpace(m.Name)
 			if name == "" {
-				name = fmt.Sprintf("Meal %d", numbers[*day.Weekday])
+				name = fmt.Sprintf("Meal %d", mi+1)
 			}
-			im := meals.ImportedMeal{Name: name, Weekday: *day.Weekday}
+			md := meals.MealDraft{Name: name}
 			for _, f := range m.Foods {
 				if !f.Ready() {
-					problems = append(problems, fmt.Sprintf("%s, %s: %q isn't ready — %s", time.Weekday(*day.Weekday), name, f.Food, strings.Join(f.Checks, " ")))
+					problems = append(problems, fmt.Sprintf("%s, %s: %q isn't ready — %s", label, name, f.Food, strings.Join(f.Checks, " ")))
 					continue
 				}
-				item := meals.ImportedItem{QuantityGrams: *f.Grams}
+				portion := meals.MealIngredientInput{QuantityGrams: *f.Grams}
 				if f.IngredientID != nil {
-					item.IngredientID = *f.IngredientID
+					portion.IngredientID = *f.IngredientID
 				} else {
-					item.NewIngredient = personalIngredient(f)
+					out.mine = append(out.mine, minePortion{day: len(out.days), meal: len(dd.Meals), portion: len(md.Portions), ingredient: personalIngredient(f)})
 				}
-				im.Items = append(im.Items, item)
+				md.Portions = append(md.Portions, portion)
 			}
-			if len(im.Items) > 0 {
-				out.Meals = append(out.Meals, im)
+			if len(md.Portions) > 0 {
+				dd.Meals = append(dd.Meals, md)
 			}
 		}
+		out.days = append(out.days, dd)
 	}
 	return out, problems
 }
 
 // personalIngredient scales the file's stated macros for this portion to the
 // per-100 g profile every ingredient is stored as.
-func personalIngredient(f FoodDraft) *meals.IngredientInput {
+func personalIngredient(f FoodDraft) meals.IngredientInput {
 	scale := 100 / *f.Grams
 	p, c, fat := *f.StatedProteinG*scale, *f.StatedCarbG*scale, *f.StatedFatG*scale
-	return &meals.IngredientInput{
+	return meals.IngredientInput{
 		Name:             f.Food,
 		ServingSizeGrams: *f.Grams,
 		Per100g:          meals.Macros{ProteinG: p, CarbG: c, FatG: fat, Calories: 4*p + 4*c + 9*fat},

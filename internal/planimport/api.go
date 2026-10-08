@@ -51,9 +51,8 @@ type MealCommitRequest struct {
 
 // MealCommitRefusal is the 422 for a meal commit: the usual error shape, plus
 // the draft as the server previewed it, so the client can show each reason
-// beside the line or day it belongs to. fields.overage is set when the only
-// thing standing in the way is a day over its target — the case where asking
-// again with confirmOverage is the answer.
+// beside the line or day it belongs to. A day over its target is a 409
+// MacroOverage instead, as everywhere else in meal plans.
 type MealCommitRefusal struct {
 	Error httpx.ErrorDetail `json:"error"`
 	Draft MealDraft         `json:"draft"`
@@ -121,14 +120,13 @@ func (a *API) commitMeal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var over meals.ImportOverageError
+	var over *meals.OverageError
 	var fields apperr.FieldErrors
 	switch {
 	case apperr.As(err, &over):
-		httpx.WriteJSON(w, http.StatusUnprocessableEntity, MealCommitRefusal{
-			Error: httpx.ErrorDetail{Message: "Some days go over your target. Confirm to save anyway.", Fields: map[string]string{"overage": over.Error()}},
-			Draft: previewed,
-		})
+		// The same 409 every other change to a meal plan gets; canConfirm says
+		// whether asking again with confirmOverage will save it.
+		httpx.WriteJSON(w, http.StatusConflict, meals.ProjectOverage(over))
 	case apperr.As(err, &fields):
 		httpx.WriteJSON(w, http.StatusUnprocessableEntity, MealCommitRefusal{
 			Error: httpx.ErrorDetail{Message: "Some foods need attention before saving.", Fields: fields.Messages()},

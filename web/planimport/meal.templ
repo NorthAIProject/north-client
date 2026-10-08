@@ -119,32 +119,45 @@ templ MealReviewPage(user users.User, v MealReview) {
 				@defaultSubmit()
 				@card.Card() {
 					@card.Content(card.ContentProps{Class: "grid gap-4 pt-6 sm:grid-cols-3"}) {
-						<label class="block space-y-1 sm:col-span-2">
+						<label class="block space-y-1 sm:col-span-3">
 							<span class="text-muted-foreground text-xs">Plan name</span>
 							@input.Input(input.Props{Name: "name", Value: v.Draft.Name, Required: true})
 						</label>
 						<div class="space-y-1">
-							<span class="text-muted-foreground text-xs">Carb type</span>
-							@planTypePicker(v.Draft.PlanType)
+							<span class="text-muted-foreground text-xs">Mode</span>
+							@modePicker(v.Draft.Mode)
 						</div>
-						if v.Draft.PlanType == meal.PlanTypeCustom {
+						<div class="space-y-1">
+							<span class="text-muted-foreground text-xs">Carb type</span>
+							@planTypePicker(v.Draft.PlanType, v.Draft.Mode == string(meal.Advanced))
+						</div>
+						if v.Draft.PlanType == string(meal.Custom) {
 							<label class="block space-y-1">
 								<span class="text-muted-foreground text-xs">Carbs, % of target</span>
 								@input.Input(input.Props{Name: "custom_carb_pct", Type: input.TypeNumber, Value: grams(v.Draft.CustomCarbPct)})
 							</label>
 						}
 						<p class="text-muted-foreground text-xs sm:col-span-3">
-							Days are only measured against your target once you pick a carb type, as with a plan you build here.
+							if v.Draft.Mode == string(meal.Advanced) {
+								Advanced: pick each day's weekday; a day over its target can be saved once you confirm it.
+							} else {
+								Easy: days run from Monday in order, and no day may go over its target.
+							}
 						</p>
+						if !v.Draft.HasTarget {
+							<p class="text-destructive text-xs sm:col-span-3">
+								You have no macro target yet. <a href="/app/calculator" class="underline">Work it out in the calculator</a>; meal plans are built on it.
+							</p>
+						}
 					}
 				}
 				if len(v.Draft.Unparsed) > 0 {
 					@unparsedList(v.Draft.Unparsed)
 				}
 				for i, day := range v.Draft.Days {
-					@mealDay(i, day)
+					@mealDay(i, day, v.Draft.Mode == string(meal.Advanced))
 				}
-				if v.NeedsConfirm && anyOver(v.Draft.Days) {
+				if v.NeedsConfirm && v.Draft.CanConfirm && anyOver(v.Draft.Days) {
 					@alert.Alert(alert.Props{Variant: alert.VariantDestructive}) {
 						@alert.Title() {
 							Some days go over your target
@@ -177,25 +190,43 @@ templ MealReviewPage(user users.User, v MealReview) {
 	}
 }
 
-templ planTypePicker(selected string) {
+templ planTypePicker(selected string, advanced bool) {
 	@selectbox.SelectBox() {
-		@selectbox.Trigger(selectbox.TriggerProps{Name: "plan_type"}) {
-			@selectbox.Value(selectbox.ValueProps{Placeholder: "None"})
+		@selectbox.Trigger(selectbox.TriggerProps{Name: "plan_type", HasError: selected == ""}) {
+			@selectbox.Value(selectbox.ValueProps{Placeholder: "Choose one"})
 		}
 		@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
-			@selectbox.Item(selectbox.ItemProps{Value: "", Selected: selected == ""}) {
-				None
+			for _, band := range meal.CarbBands {
+				@selectbox.Item(selectbox.ItemProps{Value: string(band.Type), Selected: string(band.Type) == selected}) {
+					{ fmt.Sprintf("%s (%.0f–%.0f%%)", band.Label, band.MinPct, band.MaxPct) }
+				}
 			}
-			for _, pt := range meal.PlanTypes {
-				@selectbox.Item(selectbox.ItemProps{Value: pt, Selected: pt == selected}) {
-					{ meal.PlanTypeLabel(pt) }
+			if advanced {
+				@selectbox.Item(selectbox.ItemProps{Value: string(meal.Custom), Selected: selected == string(meal.Custom)}) {
+					Custom
 				}
 			}
 		}
 	}
 }
 
-templ mealDay(i int, day draft.MealDayDraft) {
+templ modePicker(selected string) {
+	@selectbox.SelectBox() {
+		@selectbox.Trigger(selectbox.TriggerProps{Name: "mode"}) {
+			@selectbox.Value()
+		}
+		@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
+			@selectbox.Item(selectbox.ItemProps{Value: string(meal.Easy), Selected: selected != string(meal.Advanced)}) {
+				Easy
+			}
+			@selectbox.Item(selectbox.ItemProps{Value: string(meal.Advanced), Selected: selected == string(meal.Advanced)}) {
+				Advanced
+			}
+		}
+	}
+}
+
+templ mealDay(i int, day draft.MealDayDraft, advanced bool) {
 	@card.Card(card.Props{Class: overClass(day)}) {
 		@card.Header(card.HeaderProps{Class: "flex flex-row flex-wrap items-center justify-between gap-3"}) {
 			<div>
@@ -213,7 +244,11 @@ templ mealDay(i int, day draft.MealDayDraft) {
 				}
 			</div>
 			<div class="flex items-center gap-2">
-				@mealWeekdayPicker(fmt.Sprintf("d%d.weekday", i), day.Weekday)
+				if advanced {
+					@mealWeekdayPicker(fmt.Sprintf("d%d.weekday", i), day.Weekday)
+				} else if day.Weekday != nil {
+					<span class="text-muted-foreground text-sm">{ time.Weekday(*day.Weekday).String() }</span>
+				}
 				@button.Button(button.Props{
 					Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm,
 					Attributes: templ.Attributes{"name": "action", "value": fmt.Sprintf("delete-day:%d", i), "formnovalidate": true},

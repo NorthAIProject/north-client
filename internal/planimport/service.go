@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/meals"
+	"github.com/NorthAIProject/north-client/internal/meals/meal"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/workouts"
@@ -21,7 +22,6 @@ type Service struct {
 	workouts    *workouts.Service
 	mealPlans   *meals.MealPlanService
 	ingredients *meals.IngredientService
-	goals       meals.MacroGoalLookup
 
 	// inFlight holds the users with a parse running. One import at a time per
 	// person: a second upload while the first is still being read is almost
@@ -38,7 +38,6 @@ type Options struct {
 	Workouts    *workouts.Service
 	MealPlans   *meals.MealPlanService
 	Ingredients *meals.IngredientService
-	Goals       meals.MacroGoalLookup
 }
 
 func NewService(opts Options) *Service {
@@ -47,7 +46,6 @@ func NewService(opts Options) *Service {
 		workouts:    opts.Workouts,
 		mealPlans:   opts.MealPlans,
 		ingredients: opts.Ingredients,
-		goals:       opts.Goals,
 	}
 }
 
@@ -136,16 +134,42 @@ func (s *Service) CommitWorkout(ctx context.Context, user users.User, d WorkoutD
 // The draft is previewed again first, so what is saved is what the server
 // computed, never a total the client sent. The previewed draft is returned on
 // every path, so a refused commit can re-render the review with the reason
-// next to the line or day it is about.
+// beside the line or day it is about.
+//
+// A day over its target is refused by meals.CreatePlan exactly as any other
+// change to a meal plan is: always on an easy plan, until confirmed on an
+// advanced one.
 func (s *Service) CommitMeal(ctx context.Context, user users.User, d MealDraft, confirmOverage bool) (meals.MealPlan, MealDraft, error) {
 	d = s.PreviewMeal(ctx, user.ID, d)
 
-	in, problems := mealPlanFromDraft(d)
+	plan, problems := mealPlanFromDraft(d)
 	if len(problems) > 0 {
 		return meals.MealPlan{}, d, apperr.FieldErrors{{Field: "plan", Message: strings.Join(problems, " ")}}
 	}
 
-	saved, err := s.mealPlans.ImportPlan(ctx, user.ID, in, confirmOverage, s.goals)
+	// Checked here as well as in CreatePlan, and before any personal
+	// ingredient is created: otherwise a refusal followed by "confirm and
+	// save" would leave a second copy of each one behind.
+	if len(plan.mine) > 0 {
+		active, err := s.mealPlans.ActiveTarget(ctx, user.ID)
+		if err != nil {
+			return meals.MealPlan{}, d, err
+		}
+		settings, _ := planSettings(d)
+		state, _ := planState(d, settings)
+		if v := meal.CheckWrite(*active, nil, state, confirmOverage); !v.Allowed {
+			return meals.MealPlan{}, d, &meals.OverageError{Verdict: v}
+		}
+	}
+	for _, m := range plan.mine {
+		created, err := s.ingredients.Create(ctx, user.ID, m.ingredient)
+		if err != nil {
+			return meals.MealPlan{}, d, err
+		}
+		plan.days[m.day].Meals[m.meal].Portions[m.portion].IngredientID = created.ID
+	}
+
+	saved, err := s.mealPlans.CreatePlan(ctx, user.ID, plan.input, plan.days, confirmOverage)
 	return saved, d, err
 }
 

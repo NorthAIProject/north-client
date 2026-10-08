@@ -48,15 +48,28 @@ type ExerciseDraft struct {
 
 // MealDraft is a meal plan read from a file.
 //
-// PlanType and CustomCarbPct are the person's choice on the review screen —
-// the same carb preset a hand-made plan is created with — and decide the target
-// each day is measured against. A file never sets them.
+// PlanType, CustomCarbPct and Mode are the person's choices on the review
+// screen — the same settings a plan made in the app is created with — and
+// decide the target each day is measured against. A file never sets them.
+//
+// In easy mode the days fill Monday onwards in order, as an easy plan's days
+// always do, and Weekday is shown rather than chosen. In advanced mode each
+// day's weekday is the person's to pick.
 type MealDraft struct {
 	Name          string         `json:"name"`
 	PlanType      string         `json:"planType"`
 	CustomCarbPct *float64       `json:"customCarbPct,omitempty"`
+	Mode          string         `json:"mode"`
 	Days          []MealDayDraft `json:"days"`
 	Unparsed      []string       `json:"unparsed"`
+
+	// HasTarget is false when the person has no macro target yet, so there is
+	// nothing to measure the days against and nothing can be saved.
+	HasTarget bool `json:"hasTarget"`
+	// CanConfirm is set when some day is over and the plan is advanced: saving
+	// with confirmOverage goes ahead. An easy plan that is over cannot be
+	// saved until it isn't.
+	CanConfirm bool `json:"canConfirm"`
 }
 
 // MealDayDraft is one day of meals, with that day's arithmetic.

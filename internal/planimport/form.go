@@ -103,6 +103,7 @@ func mealFromForm(r *http.Request) (MealDraft, reviewAction, error) {
 
 	d.Name = r.PostFormValue("name")
 	d.PlanType = r.PostFormValue("plan_type")
+	d.Mode = r.PostFormValue("mode")
 	d.CustomCarbPct = nil
 	if raw := strings.TrimSpace(r.PostFormValue("custom_carb_pct")); raw != "" {
 		if v, err := strconv.ParseFloat(raw, 64); err == nil {

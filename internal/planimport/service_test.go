@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/calculator"
 	"github.com/NorthAIProject/north-client/internal/meals"
+	"github.com/NorthAIProject/north-client/internal/meals/meal"
 	"github.com/NorthAIProject/north-client/internal/planimport"
 	"github.com/NorthAIProject/north-client/internal/shared/database/testdb"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
@@ -57,7 +59,8 @@ func newFixture(t *testing.T) fixture {
 	f := fixture{
 		user:        user,
 		workouts:    workouts.NewService(workouts.Options{Repository: workouts.NewRepository(pool)}),
-		mealPlans:   meals.NewMealPlanService(repo),
+		// Low carb's default is 15.5% of the 200 g carb target: a 31 g day.
+		mealPlans:   meals.NewMealPlanService(repo, goalLookup{plan: calculator.MacroPlan{ProteinG: 150, FatG: 60, CarbG: 200, CalorieGoal: 150*4 + 60*9 + 200*4}}),
 		ingredients: meals.NewIngredientService(repo),
 		model:       model,
 	}
@@ -65,8 +68,6 @@ func newFixture(t *testing.T) fixture {
 		Workouts:    f.workouts,
 		MealPlans:   f.mealPlans,
 		Ingredients: f.ingredients,
-		// Low carb is 20% of 200 g: a 40 g carb day.
-		Goals: goalLookup{plan: calculator.MacroPlan{ProteinG: 150, FatG: 60, CarbG: 200}},
 	})
 	return f
 }
@@ -141,65 +142,72 @@ func TestMealCSVPreviewsAgainstTheTargetAndCannotSilentlySaveAnOverage(t *testin
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	if draft.Days[0].Meals[0].Foods[0].IngredientID == nil || *draft.Days[0].Meals[0].Foods[0].IngredientID != rice.ID {
+	if got := draft.Days[0].Meals[0].Foods[0].IngredientID; got == nil || *got != rice.ID {
 		t.Fatalf("rice was not matched to the catalog: %+v", draft.Days[0].Meals[0].Foods[0])
 	}
-
-	// No plan type yet: nothing to measure against, totals only.
+	// Monday, Tuesday in order: an easy plan's days.
+	if draft.Mode != string(meal.Easy) || !draft.HasTarget {
+		t.Fatalf("mode = %q, hasTarget = %v", draft.Mode, draft.HasTarget)
+	}
+	// No carb type yet: totals, but nothing to measure them against.
 	if draft.Days[0].Target != nil || draft.Days[0].Totals == nil {
 		t.Fatalf("day = %+v", draft.Days[0])
 	}
 
-	draft.PlanType = meals.PlanTypeLowCarb
+	draft.PlanType = string(meal.LowCarb)
 	draft = f.svc.PreviewMeal(ctx, f.user.ID, draft)
-
 	tue := draft.Days[1]
-	if tue.Target == nil || tue.Target.CarbG != 40 {
-		t.Fatalf("Tuesday target = %+v, want 40 g carbs", tue.Target)
+	if tue.Target == nil || !within(tue.Target.CarbG, 31) {
+		t.Fatalf("Tuesday target = %+v, want 31 g carbs", tue.Target)
 	}
-	if len(tue.Over) != 1 || !strings.Contains(tue.Over[0], "carbs over by") {
-		t.Fatalf("Tuesday over = %q", tue.Over)
+	if len(tue.Over) != 1 || !strings.Contains(tue.Over[0], "carbs over by") || draft.CanConfirm {
+		t.Fatalf("Tuesday over = %q, canConfirm = %v: an easy plan over target cannot be confirmed", tue.Over, draft.CanConfirm)
 	}
-	stew := tue.Meals[1].Foods[1]
-	if stew.Ready() || len(stew.Checks) == 0 {
+	if stew := tue.Meals[1].Foods[1]; stew.Ready() || len(stew.Checks) == 0 {
 		t.Fatalf("stew = %+v, want it blocked with a reason", stew)
 	}
 
-	// Unresolved lines block the save.
 	if _, _, err := f.svc.CommitMeal(ctx, f.user, draft, true); !apperr.Is(err, apperr.ErrValidation) {
 		t.Fatalf("commit with an unresolved food: err = %v", err)
 	}
 
 	// The person deletes the stew and keeps the shake as their own food.
-	tue.Meals[1].Foods = tue.Meals[1].Foods[:1]
-	tue.Meals[1].Foods[0].SaveAsMine = true
-	draft.Days[1] = tue
+	draft.Days[1].Meals[1].Foods = draft.Days[1].Meals[1].Foods[:1]
+	draft.Days[1].Meals[1].Foods[0].SaveAsMine = true
 
-	_, previewed, err := f.svc.CommitMeal(ctx, f.user, draft, false)
-	var over meals.ImportOverageError
-	if !apperr.As(err, &over) {
-		t.Fatalf("commit over target without confirming: err = %v, want an overage refusal", err)
-	}
-	if len(previewed.Days[1].Over) == 0 {
-		t.Fatalf("the refused commit must hand back the overage to show")
+	// Easy: refused even when confirmed, and nothing created.
+	_, _, err = f.svc.CommitMeal(ctx, f.user, draft, true)
+	var over *meals.OverageError
+	if !apperr.As(err, &over) || over.Verdict.CanConfirm {
+		t.Fatalf("easy commit over target: err = %v, want an overage that cannot be confirmed", err)
 	}
 	if plans, _ := f.mealPlans.ListPlans(ctx, f.user.ID); len(plans) != 0 {
 		t.Fatalf("a refused commit stored a plan")
 	}
+	if found, _ := f.ingredients.Search(ctx, f.user.ID, "Coach's shake", 5); len(found) != 0 {
+		t.Fatalf("a refused commit created the personal ingredient")
+	}
 
+	// Advanced: refused until confirmed, then saved on the weekdays chosen.
+	draft.Mode = string(meal.Advanced)
+	wed := int(time.Wednesday)
+	draft.Days[1].Weekday = &wed
+	if _, _, err := f.svc.CommitMeal(ctx, f.user, draft, false); !apperr.As(err, &over) || !over.Verdict.CanConfirm {
+		t.Fatalf("advanced commit without confirming: err = %v, want a confirmable overage", err)
+	}
 	saved, _, err := f.svc.CommitMeal(ctx, f.user, draft, true)
 	if err != nil {
 		t.Fatalf("confirmed commit: %v", err)
 	}
-	if len(saved.Meals) != 3 {
-		t.Fatalf("meals = %d, want 3", len(saved.Meals))
+	if len(saved.Days) != 2 || saved.Days[1].Weekday != time.Wednesday {
+		t.Fatalf("days = %+v", saved.Days)
 	}
-	for _, m := range saved.Meals {
-		if m.Name == "Dinner" && (m.Ingredients[0].QuantityGrams != 300 || m.TotalMacros.ProteinG < 71.9) {
-			t.Fatalf("shake = %+v", m.Ingredients)
-		}
+	if found, _ := f.ingredients.Search(ctx, f.user.ID, "Coach's shake", 5); len(found) != 1 {
+		t.Fatalf("personal ingredients = %d, want exactly 1", len(found))
 	}
 }
+
+func within(got, want float64) bool { return got > want-0.01 && got < want+0.01 }
 
 // The web round trip: upload a sheet, see it on the review page, fix it, save.
 // The quota guard is the router's concern and is not mounted here.
