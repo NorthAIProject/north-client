@@ -46,7 +46,7 @@ type Options struct {
 	// Managed marks Khepri's own client, the first rung of a chain rather than
 	// a key a person brought. It changes two things. A model name meant for
 	// another provider (AI_FAST_MODEL is an OpenRouter slug) is replaced with
-	// DefaultModel instead of being sent to a 404. And every refusal fails over,
+	// DefaultModel instead of being sent to a 404. And every 4xx fails over,
 	// because the chain behind it is the one that has always answered: a
 	// request Claude rejects is not evidence that the request is malformed.
 	Managed bool
@@ -134,7 +134,9 @@ func (c *Client) params(req ai.Request) sdk.MessageNewParams {
 	// A tool call in this turn with no record of the turn that made it (a row
 	// from before provider_state, or another provider's call) cannot have its
 	// thinking replayed, and a replay without it is refused. That request runs
-	// without thinking; everything else keeps the model's default.
+	// without thinking. So does one too short to think in, or any request when
+	// thinking is configured off. Otherwise thinking is what was configured,
+	// and with nothing configured (a personal key) the model's default.
 	switch {
 	case lostThinking(req.Messages), c.thinking == "disabled",
 		c.thinking != "" && maxTokens < minThinkingTokens:
