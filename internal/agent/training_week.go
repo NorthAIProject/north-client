@@ -108,9 +108,9 @@ func setTrainingWeek(svc *workouts.Service, userSvc *users.Service) Capability {
 				return "", err
 			}
 			if in.Usual {
-				week, err := svc.ResetWeek(ctx, user, time.Now(), in.NextWeek)
-				if err != nil {
-					return "", err
+				week, resetErr := svc.ResetWeek(ctx, user, time.Now(), in.NextWeek)
+				if resetErr != nil {
+					return "", resetErr
 				}
 				return "Put the week back to the usual one.\n" + describeWeek(week), nil
 			}
@@ -127,16 +127,16 @@ func setTrainingWeek(svc *workouts.Service, userSvc *users.Service) Capability {
 				change.Days = *in.Days
 			}
 			if in.Plan != "" {
-				p, err := pickPlan(plans, in.Plan)
-				if err != nil {
-					return "", err
+				p, pickErr := pickPlan(plans, in.Plan)
+				if pickErr != nil {
+					return "", pickErr
 				}
 				change.PlanID = &p.ID
 			}
 			for _, s := range in.Sessions {
-				ref, err := pickSession(plans, s.Plan, s.Session)
-				if err != nil {
-					return "", err
+				ref, pickErr := pickSession(plans, s.Plan, s.Session)
+				if pickErr != nil {
+					return "", pickErr
 				}
 				if change.Assign == nil {
 					change.Assign = make(map[string]workouts.SessionRef)
