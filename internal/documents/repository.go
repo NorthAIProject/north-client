@@ -316,15 +316,9 @@ func fromDB(row documentsdb.Document) Document {
 		CreatedAt:          row.CreatedAt,
 		UpdatedAt:          row.UpdatedAt,
 	}
-	if row.StorageKey != nil {
-		d.StorageKey = *row.StorageKey
-	}
-	if row.Body != nil {
-		d.Body = *row.Body
-	}
-	if row.ExternalPath != nil {
-		d.ExternalPath = *row.ExternalPath
-	}
+	d.StorageKey = util.Val(row.StorageKey)
+	d.Body = util.Val(row.Body)
+	d.ExternalPath = util.Val(row.ExternalPath)
 	d.ExternalMtime = row.ExternalMtime
 	return d
 }

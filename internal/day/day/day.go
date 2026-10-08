@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
+
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
@@ -356,5 +358,5 @@ func (b Body) ToGoal() (float64, bool) {
 	if b.WeightKg == nil || b.TargetWeightKg == nil {
 		return 0, false
 	}
-	return math.Round(math.Abs(*b.WeightKg-*b.TargetWeightKg)*10) / 10, true
+	return util.RoundHalfUpToScale(math.Abs(*b.WeightKg-*b.TargetWeightKg), 1), true
 }

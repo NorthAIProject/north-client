@@ -106,9 +106,7 @@ func fromDB(row watchesdb.CoachWatch) Watch {
 		LastRunAt: row.LastRunAt,
 		CreatedAt: row.CreatedAt,
 	}
-	if row.ConversationID != nil {
-		w.ConversationID = *row.ConversationID
-	}
+	w.ConversationID = util.Val(row.ConversationID)
 	if row.Weekday != nil {
 		w.Schedule.Weekday = time.Weekday(*row.Weekday)
 	}

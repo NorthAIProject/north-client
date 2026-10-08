@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/ai"
@@ -705,7 +706,7 @@ func (s *Service) pump(
 			}
 		}
 
-		roundUsageValue := usageOrZero(roundUsage)
+		roundUsageValue := util.Val(roundUsage)
 		roundLatency := time.Since(roundStart)
 
 		s.analytics.captureGeneration(callerCtx, generation{

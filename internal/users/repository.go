@@ -139,10 +139,7 @@ type Profile struct {
 }
 
 func (r *Repository) UpdateProfile(ctx context.Context, id uuid.UUID, p Profile) (User, error) {
-	var style *string
-	if s := strings.TrimSpace(p.CoachingStyle); s != "" {
-		style = &s
-	}
+	style := util.StrZeroPtr(strings.TrimSpace(p.CoachingStyle))
 
 	tone := p.CoachingTone
 	if tone == "" {

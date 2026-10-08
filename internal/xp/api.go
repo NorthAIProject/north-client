@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
@@ -91,8 +92,7 @@ func (a *API) board(w http.ResponseWriter, r *http.Request) {
 func projectLevel(l Level) LevelView {
 	v := LevelView{Number: l.Number, Title: l.Title, Floor: l.Floor}
 	if l.Next > 0 {
-		next := l.Next
-		v.Next = &next
+		v.Next = util.Ptr(l.Next)
 	}
 	return v
 }
@@ -112,8 +112,7 @@ func projectBoard(b Board) BoardView {
 			Rank: e.Rank, UserID: e.UserID, DisplayName: e.DisplayName, Handle: e.Handle, Value: e.Value, Me: e.Me,
 		}
 		if e.Level != nil {
-			l := projectLevel(*e.Level)
-			v.Level = &l
+			v.Level = util.Ptr(projectLevel(*e.Level))
 		}
 		out.Entries = append(out.Entries, v)
 	}
