@@ -128,11 +128,13 @@ func (h *Handler) mealReview(w http.ResponseWriter, r *http.Request) {
 // page shows: the overage to confirm, or the reason to fix.
 func (h *Handler) mealView(d MealDraft, err error) pages.MealReview {
 	view := pages.MealReview{Draft: d, DraftJSON: encode(d)}
-	var over meals.ImportOverageError
+	var over *meals.OverageError
 	switch {
 	case err == nil:
-	case apperr.As(err, &over):
+	case apperr.As(err, &over) && over.Verdict.CanConfirm:
 		view.NeedsConfirm = true
+	case apperr.As(err, &over):
+		view.Error = "Easy plans can't go over your target: " + over.Error() + " Change those days, or switch to Advanced to save it anyway."
 	default:
 		view.Error = message(err)
 	}

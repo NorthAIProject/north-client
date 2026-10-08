@@ -633,6 +633,12 @@ func writeChangeError(w http.ResponseWriter, err error, message string) {
 		httpx.Error(w, err, message)
 		return
 	}
+	httpx.WriteJSON(w, http.StatusConflict, ProjectOverage(over))
+}
+
+// ProjectOverage is the 409 body for a refused change. Exported so plan
+// import answers an over-target plan in the same shape as the plan pages.
+func ProjectOverage(over *OverageError) MacroOverage {
 	out := MacroOverage{Message: over.Error(), CanConfirm: over.Verdict.CanConfirm, Days: make([]DayOverageView, 0, len(over.Verdict.Over))}
 	for _, d := range over.Verdict.Over {
 		out.Days = append(out.Days, DayOverageView{
@@ -640,7 +646,7 @@ func writeChangeError(w http.ResponseWriter, err error, message string) {
 			Target: MacrosView(d.Status.Target), Consumed: MacrosView(d.Status.Consumed), Over: MacrosView(d.Status.Over),
 		})
 	}
-	httpx.WriteJSON(w, http.StatusConflict, out)
+	return out
 }
 
 func (a *API) remove(w http.ResponseWriter, r *http.Request, param string,

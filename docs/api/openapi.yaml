@@ -2676,9 +2676,10 @@ paths:
       operationId: commitMealImport
       summary: Save a reviewed meal draft as a new plan
       description: >-
-        A day over its target is refused unless confirmOverage is true, with
-        fields.overage set; nothing is written. Unresolved foods are refused
-        the same way. Either refusal carries the server's preview of the draft.
+        A day over its target is a 409 MacroOverage, as for any change to a
+        meal plan: an easy plan is always refused, an advanced one saves when
+        asked again with confirmOverage. Unresolved foods are a 422 carrying
+        the server's preview of the draft. Nothing is written on either.
       requestBody:
         required: true
         content:
@@ -2694,6 +2695,8 @@ paths:
                 $ref: '#/components/schemas/ImportedPlan'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/MacroOverage'
         '422':
           description: Not saved; see error.fields and the previewed draft
           content:
@@ -7553,16 +7556,28 @@ components:
             type: string
     MealImportDraft:
       type: object
-      required: [name, planType, days, unparsed]
+      required: [name, planType, mode, days, unparsed, hasTarget, canConfirm]
       properties:
         name:
           type: string
         planType:
           type: string
-          description: The carb preset chosen on review (no_carb, low_carb, mid_carb, high_carb, custom), or empty.
+          description: The carb type chosen on review (no_carb, low_carb, mid_carb, high_carb; custom in advanced mode), or empty until chosen.
         customCarbPct:
           type: number
           format: double
+        mode:
+          type: string
+          description: >-
+            easy or advanced. Easy days run from Monday in the draft's order and
+            may not go over target; advanced days carry a chosen weekday and may
+            go over once confirmed. Preview picks one when empty.
+        hasTarget:
+          type: boolean
+          description: False when there is no macro target yet; nothing can be saved until there is.
+        canConfirm:
+          type: boolean
+          description: Some day is over and the plan is advanced, so saving with confirmOverage goes ahead.
         days:
           type: array
           items:
@@ -7579,7 +7594,7 @@ components:
           type: string
         weekday:
           type: integer
-          description: 0-6, Sunday-Saturday; null until assigned.
+          description: 0-6, Sunday-Saturday. Set by preview in easy mode; chosen in advanced mode, absent until then.
         meals:
           type: array
           items:
