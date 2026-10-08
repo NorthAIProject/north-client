@@ -296,6 +296,8 @@ type PlanView struct {
 
 	// Recap is this week's latest finished workout; nil before the first.
 	Recap *workoutsummary.Recap
+	// Readiness is the body lit from logged sets; nil before the first set.
+	Readiness *workoutsummary.Readiness
 }
 
 // Done reports whether the day at dayIndex was trained this week.
@@ -415,6 +417,11 @@ templ PlanPage(user users.User, v PlanView) {
 			if v.Recap != nil {
 				<section class="mb-6">
 					@workoutsummary.RecapCard(*v.Recap)
+				</section>
+			}
+			if v.Readiness != nil {
+				<section class="mb-6">
+					@workoutsummary.ReadinessCard(*v.Readiness)
 				</section>
 			}
 			@card.Card(card.Props{Class: "mb-6"}) {

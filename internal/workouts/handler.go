@@ -31,6 +31,7 @@ import (
 type Handler struct {
 	svc    *Service
 	recaps Recaps
+	loads  Loads
 }
 
 func NewHandler(svc *Service) *Handler { return &Handler{svc: svc} }
@@ -43,6 +44,17 @@ type Recaps interface {
 // WithRecaps puts this week's latest workout at the top of the plan page.
 func (h *Handler) WithRecaps(recaps Recaps) *Handler {
 	h.recaps = recaps
+	return h
+}
+
+// Loads reads how ready each muscle is from logged sets.
+type Loads interface {
+	Readiness(ctx context.Context, user users.User) (lift.Load, error)
+}
+
+// WithLoads lights the plan page's body from what was actually lifted.
+func (h *Handler) WithLoads(loads Loads) *Handler {
+	h.loads = loads
 	return h
 }
 
@@ -90,6 +102,15 @@ func (h *Handler) planView(ctx context.Context, user users.User, stored StoredPl
 		}
 		if ok {
 			view.Recap = util.Ptr(workoutsummary.NewRecap("plan-recap", recap, user.Location()))
+		}
+	}
+	if h.loads != nil {
+		load, err := h.loads.Readiness(ctx, user)
+		if err != nil {
+			return workoutpages.PlanView{}, err
+		}
+		if !load.LastSession.IsZero() {
+			view.Readiness = util.Ptr(workoutsummary.NewReadiness(load))
 		}
 	}
 	return view, nil
