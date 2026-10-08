@@ -59,8 +59,8 @@ func TestImportPlanStoresThePlanAsWrittenAndCallsNoModel(t *testing.T) {
 	}
 
 	// The placeholder intake must never pre-fill the generator's form.
-	if _, err := svc.LatestIntake(ctx, user.ID); !apperr.Is(err, apperr.ErrNotFound) {
-		t.Fatalf("latest intake err = %v, want not found", err)
+	if _, missing := svc.LatestIntake(ctx, user.ID); !apperr.Is(missing, apperr.ErrNotFound) {
+		t.Fatalf("latest intake err = %v, want not found", missing)
 	}
 
 	// And the plan edits like any other.

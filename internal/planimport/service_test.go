@@ -57,8 +57,8 @@ func newFixture(t *testing.T) fixture {
 	model := fake.Text("")
 	repo := meals.NewRepository(pool)
 	f := fixture{
-		user:        user,
-		workouts:    workouts.NewService(workouts.Options{Repository: workouts.NewRepository(pool)}),
+		user:     user,
+		workouts: workouts.NewService(workouts.Options{Repository: workouts.NewRepository(pool)}),
 		// Low carb's default is 15.5% of the 200 g carb target: a 31 g day.
 		mealPlans:   meals.NewMealPlanService(repo, goalLookup{plan: calculator.MacroPlan{ProteinG: 150, FatG: 60, CarbG: 200, CalorieGoal: 150*4 + 60*9 + 200*4}}),
 		ingredients: meals.NewIngredientService(repo),
@@ -87,8 +87,8 @@ func TestWorkoutCSVImportsWithoutInventedValues(t *testing.T) {
 	}
 
 	// Saving before "Day 1" has a weekday is refused, and stores nothing.
-	if _, err := f.svc.CommitWorkout(ctx, f.user, draft); !apperr.Is(err, apperr.ErrValidation) {
-		t.Fatalf("commit with an unassigned day: err = %v, want validation", err)
+	if _, refused := f.svc.CommitWorkout(ctx, f.user, draft); !apperr.Is(refused, apperr.ErrValidation) {
+		t.Fatalf("commit with an unassigned day: err = %v, want validation", refused)
 	}
 
 	draft.Days[0].Weekday = "Monday"
@@ -167,8 +167,8 @@ func TestMealCSVPreviewsAgainstTheTargetAndCannotSilentlySaveAnOverage(t *testin
 		t.Fatalf("stew = %+v, want it blocked with a reason", stew)
 	}
 
-	if _, _, err := f.svc.CommitMeal(ctx, f.user, draft, true); !apperr.Is(err, apperr.ErrValidation) {
-		t.Fatalf("commit with an unresolved food: err = %v", err)
+	if _, _, refused := f.svc.CommitMeal(ctx, f.user, draft, true); !apperr.Is(refused, apperr.ErrValidation) {
+		t.Fatalf("commit with an unresolved food: err = %v", refused)
 	}
 
 	// The person deletes the stew and keeps the shake as their own food.
@@ -192,8 +192,8 @@ func TestMealCSVPreviewsAgainstTheTargetAndCannotSilentlySaveAnOverage(t *testin
 	draft.Mode = string(meal.Advanced)
 	wed := int(time.Wednesday)
 	draft.Days[1].Weekday = &wed
-	if _, _, err := f.svc.CommitMeal(ctx, f.user, draft, false); !apperr.As(err, &over) || !over.Verdict.CanConfirm {
-		t.Fatalf("advanced commit without confirming: err = %v, want a confirmable overage", err)
+	if _, _, refused := f.svc.CommitMeal(ctx, f.user, draft, false); !apperr.As(refused, &over) || !over.Verdict.CanConfirm {
+		t.Fatalf("advanced commit without confirming: err = %v, want a confirmable overage", refused)
 	}
 	saved, _, err := f.svc.CommitMeal(ctx, f.user, draft, true)
 	if err != nil {
