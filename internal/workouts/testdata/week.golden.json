@@ -1,0 +1,41 @@
+{
+  "weekStart": "2026-09-28",
+  "custom": false,
+  "weekVolume": "hold",
+  "days": [
+    {
+      "weekday": "Monday",
+      "date": "2026-09-28",
+      "planId": "abababab-abab-abab-abab-abababababab",
+      "planName": "Strength base",
+      "dayIndex": 0,
+      "focus": "Lower body",
+      "startTime": "07:00",
+      "exerciseCount": 1,
+      "completed": true,
+      "isNext": false
+    },
+    {
+      "weekday": "Thursday",
+      "date": "2026-10-01",
+      "planId": "abababab-abab-abab-abab-abababababab",
+      "planName": "Strength base",
+      "dayIndex": 1,
+      "focus": "Upper body",
+      "exerciseCount": 0,
+      "completed": false,
+      "isNext": true
+    }
+  ],
+  "next": {
+    "weekday": "Thursday",
+    "date": "2026-10-01",
+    "planId": "abababab-abab-abab-abab-abababababab",
+    "planName": "Strength base",
+    "dayIndex": 1,
+    "focus": "Upper body",
+    "exerciseCount": 0,
+    "completed": false,
+    "isNext": true
+  }
+}

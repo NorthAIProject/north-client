@@ -54,7 +54,7 @@ func loadEditablePlan(ctx context.Context, svc *workouts.Service, userSvc *users
 		return editablePlan{}, err
 	}
 
-	stored, err := svc.LatestPlan(ctx, userID)
+	stored, err := svc.ActivePlan(ctx, userID)
 	if err != nil {
 		if apperr.Is(err, apperr.ErrNotFound) {
 			// Not something to apologise for. They have no plan, and saying so

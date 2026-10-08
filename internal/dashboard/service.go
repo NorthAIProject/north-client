@@ -378,19 +378,19 @@ func (s *Service) Load(ctx context.Context, user users.User, rg timerange.Range)
 	})
 
 	g.Go(func() error {
-		stored, err := s.workouts.LatestPlan(gctx, user.ID)
+		stored, err := s.workouts.ActivePlan(gctx, user.ID)
 		switch {
 		case err == nil:
 			snap.PlanID = stored.ID
 			now := time.Now().In(user.Location())
-			progress, progressErr := s.workouts.WeekProgress(gctx, user, stored.Plan, now)
+			progress, progressErr := s.workouts.WeekProgress(gctx, user, now)
 			if progressErr != nil {
 				return progressErr
 			}
 			if progress.HasNext {
 				snap.NextSession = &progress.Next
 			}
-			if day, ok := progress.DoneToday(stored.Plan, now); ok {
+			if day, ok := progress.DoneToday(now); ok {
 				snap.DoneToday = &day
 			}
 			// The Today card lists the session when today is a plan day still

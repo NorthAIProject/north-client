@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
@@ -239,4 +240,138 @@ func planFromDB(row workoutsdb.WorkoutPlan) (StoredPlan, error) {
 		EditedFrom: row.EditedFrom,
 		CreatedAt:  row.CreatedAt,
 	}, nil
+}
+
+// ActivePlan is the newest version of the plan someone follows. An account
+// with plans but no recorded choice — one that predates the choice, or whose
+// chosen plan was deleted — follows its newest plan, which is what "active"
+// meant before it was a choice.
+func (r *Repository) ActivePlan(ctx context.Context, userID uuid.UUID) (StoredPlan, error) {
+	row, err := r.q.GetActivePlan(ctx, userID)
+	if err == nil {
+		return planFromDB(row)
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return StoredPlan{}, apperr.Wrap(err, "active plan")
+	}
+	return r.LatestPlan(ctx, userID)
+}
+
+func (r *Repository) SetActivePlan(ctx context.Context, userID, intakeID uuid.UUID) error {
+	if err := r.q.SetActivePlan(ctx, workoutsdb.SetActivePlanParams{UserID: userID, IntakeID: intakeID}); err != nil {
+		return apperr.Wrap(err, "set active plan")
+	}
+	return nil
+}
+
+// StoredWeek is a recorded week of training. Start is its Monday.
+type StoredWeek struct {
+	Start  time.Time
+	Slots  []Slot
+	Custom bool
+}
+
+// GetWeek is the recorded week starting on start; ok is false when none is.
+func (r *Repository) GetWeek(ctx context.Context, userID uuid.UUID, start time.Time) (StoredWeek, bool, error) {
+	row, err := r.q.GetWeek(ctx, workoutsdb.GetWeekParams{UserID: userID, WeekStart: dateOf(start)})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return StoredWeek{}, false, nil
+		}
+		return StoredWeek{}, false, apperr.Wrap(err, "get week")
+	}
+	week, err := weekFromDB(row)
+	return week, err == nil, err
+}
+
+// InsertWeekIfAbsent records a default week unless one is already recorded.
+func (r *Repository) InsertWeekIfAbsent(ctx context.Context, userID uuid.UUID, start time.Time, slots []Slot) error {
+	raw, err := encodeSlots(slots)
+	if err != nil {
+		return err
+	}
+	if err := r.q.InsertWeekIfAbsent(ctx, workoutsdb.InsertWeekIfAbsentParams{UserID: userID, WeekStart: dateOf(start), Slots: raw}); err != nil {
+		return apperr.Wrap(err, "insert week")
+	}
+	return nil
+}
+
+func (r *Repository) UpsertWeek(ctx context.Context, userID uuid.UUID, week StoredWeek) error {
+	raw, err := encodeSlots(week.Slots)
+	if err != nil {
+		return err
+	}
+	if err := r.q.UpsertWeek(ctx, workoutsdb.UpsertWeekParams{
+		UserID: userID, WeekStart: dateOf(week.Start), Slots: raw, Custom: week.Custom,
+	}); err != nil {
+		return apperr.Wrap(err, "save week")
+	}
+	return nil
+}
+
+func (r *Repository) DeleteWeek(ctx context.Context, userID uuid.UUID, start time.Time) error {
+	if err := r.q.DeleteWeek(ctx, workoutsdb.DeleteWeekParams{UserID: userID, WeekStart: dateOf(start)}); err != nil {
+		return apperr.Wrap(err, "delete week")
+	}
+	return nil
+}
+
+// PreviousWeekWithIntake is the latest recorded week before start that had
+// any of intake's sessions; ok is false when none did.
+func (r *Repository) PreviousWeekWithIntake(ctx context.Context, userID uuid.UUID, start time.Time, intakeID uuid.UUID) (StoredWeek, bool, error) {
+	row, err := r.q.PreviousWeekWithIntake(ctx, workoutsdb.PreviousWeekWithIntakeParams{
+		UserID: userID, WeekStart: dateOf(start), IntakeID: intakeID.String(),
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return StoredWeek{}, false, nil
+		}
+		return StoredWeek{}, false, apperr.Wrap(err, "previous week")
+	}
+	week, err := weekFromDB(row)
+	return week, err == nil, err
+}
+
+// WeeksBetween are the recorded weeks starting in [since, until).
+func (r *Repository) WeeksBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]StoredWeek, error) {
+	rows, err := r.q.ListWeeksBetween(ctx, workoutsdb.ListWeeksBetweenParams{
+		UserID: userID, WeekStart: dateOf(since), WeekStart_2: dateOf(until),
+	})
+	if err != nil {
+		return nil, apperr.Wrap(err, "list weeks")
+	}
+	out := make([]StoredWeek, 0, len(rows))
+	for _, row := range rows {
+		week, err := weekFromDB(row)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, week)
+	}
+	return out, nil
+}
+
+func weekFromDB(row workoutsdb.WorkoutWeek) (StoredWeek, error) {
+	var slots []Slot
+	if err := json.Unmarshal(row.Slots, &slots); err != nil {
+		return StoredWeek{}, apperr.Wrap(err, "decode week %s", row.WeekStart.Time.Format(time.DateOnly))
+	}
+	return StoredWeek{Start: row.WeekStart.Time, Slots: slots, Custom: row.Custom}, nil
+}
+
+func encodeSlots(slots []Slot) ([]byte, error) {
+	if slots == nil {
+		slots = []Slot{}
+	}
+	raw, err := json.Marshal(slots)
+	if err != nil {
+		return nil, apperr.Wrap(err, "encode week")
+	}
+	return raw, nil
+}
+
+// dateOf is t's calendar date as Postgres stores a date: the day t names in
+// its own location, with no time zone attached.
+func dateOf(t time.Time) pgtype.Date {
+	return pgtype.Date{Time: time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC), Valid: true}
 }

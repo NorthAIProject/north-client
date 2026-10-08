@@ -3,7 +3,6 @@ package workouts
 import (
 	"fmt"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -222,8 +221,8 @@ type PlanSummary struct {
 // A <ul> of anchors rather than a table, following the exercises browse list:
 // every row is a link and none of it is tabular.
 //
-// The first row is the plan /app/training resolves to, because the query hands
-// them back most-recently-touched first. Saying so is the difference between a
+// The first row is the plan being followed — ListCurrentPlans puts it first —
+// and the one /app/training resolves to. Saying so is the difference between a
 // list of plans and a list where one of them is the one you are following.
 templ PlansPage(user users.User, plans []PlanSummary) {
 	@layout.App("Training plans", user, layout.BuildNav(ctx, "/app/fitness")) {
@@ -283,28 +282,30 @@ type PlanView struct {
 	// Service.applyEdit.
 	Problems []string
 
-	// Completed are the weekdays finished this Monday–Sunday week, and Next
-	// the one to train next. They badge the day cards the way the phone does.
-	Completed []string
-	Next      string
+	// Completed are the plan's days trained this Monday–Sunday week, by
+	// index, and Next the index of the one to train next or -1. They badge
+	// the day cards the way the phone does. A day counts on whichever date
+	// the week scheduled it, so they are indexes rather than weekdays.
+	Completed map[int]bool
+	Next      int
+
+	// Active is the plan being followed. Its page shows the week; any other
+	// plan's page offers to follow it instead.
+	Active bool
+	Week   *WeekView
 
 	// Recap is this week's latest finished workout; nil before the first.
 	Recap *workoutsummary.Recap
 }
 
-// Done reports whether day was finished this week.
-func (v PlanView) Done(day plan.PlanDay) bool {
-	for _, d := range v.Completed {
-		if strings.EqualFold(d, strings.TrimSpace(day.Weekday)) {
-			return true
-		}
-	}
-	return false
+// Done reports whether the day at dayIndex was trained this week.
+func (v PlanView) Done(dayIndex int) bool {
+	return v.Completed[dayIndex]
 }
 
-// IsNext reports whether day is the one to train next.
-func (v PlanView) IsNext(day plan.PlanDay) bool {
-	return v.Next != "" && strings.EqualFold(v.Next, strings.TrimSpace(day.Weekday))
+// IsNext reports whether the day at dayIndex is the one to train next.
+func (v PlanView) IsNext(dayIndex int) bool {
+	return v.Next == dayIndex
 }
 
 // Picker is the panel that chooses a catalog exercise. Swapping one and adding
@@ -406,6 +407,11 @@ templ PlanPage(user users.User, v PlanView) {
 					}
 				</div>
 			</header>
+			if v.Week != nil {
+				@WeekCard(*v.Week)
+			} else if !v.Active {
+				@FollowCard(v.ID)
+			}
 			if v.Recap != nil {
 				<section class="mb-6">
 					@workoutsummary.RecapCard(*v.Recap)
@@ -425,6 +431,8 @@ templ PlanPage(user users.User, v PlanView) {
 		</div>
 		@dialog.Script()
 		@muscleviewer.Script()
+		@checkbox.Script()
+		@selectbox.Script()
 		if v.Recap != nil {
 			@ui.ChartScripts()
 		}
@@ -506,7 +514,7 @@ templ dayShell(v PlanView, dayIndex int, day plan.PlanDay) {
 					@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
 						{ day.Focus }
 					}
-					@dayStatus(v, day)
+					@dayStatus(v, dayIndex)
 				</div>
 				@startTimeControl(v, dayIndex, day)
 			}
@@ -540,13 +548,13 @@ templ dayShell(v PlanView, dayIndex int, day plan.PlanDay) {
 // dayStatus labels a day Completed once a finished session accounts for it
 // this week, or Next when it is the one to train next — the same words the
 // phone's Training list uses.
-templ dayStatus(v PlanView, day plan.PlanDay) {
-	if v.Done(day) {
+templ dayStatus(v PlanView, dayIndex int) {
+	if v.Done(dayIndex) {
 		@badge.Badge(badge.Props{Variant: badge.VariantOutline, Class: "border-signal/40 text-signal gap-1", Attributes: templ.Attributes{"data-testid": "day-completed"}}) {
 			@icon.CircleCheck(icon.Props{Class: "size-3"})
 			Completed
 		}
-	} else if v.IsNext(day) {
+	} else if v.IsNext(dayIndex) {
 		@badge.Badge(badge.Props{Class: "bg-signal text-background", Attributes: templ.Attributes{"data-testid": "day-next"}}) {
 			Next
 		}

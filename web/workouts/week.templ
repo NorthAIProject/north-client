@@ -1,0 +1,456 @@
+package workouts
+
+import (
+	"fmt"
+	"strconv"
+	"time"
+
+	"github.com/google/uuid"
+
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/badge"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/checkbox"
+	"github.com/NorthAIProject/north-client/web/shared/ui/label"
+	"github.com/NorthAIProject/north-client/web/shared/ui/selectbox"
+)
+
+// WeekView is a week of training as the plan page shows and edits it.
+type WeekView struct {
+	// NextWeek is next week rather than this one.
+	NextWeek bool
+	Start    time.Time
+
+	// Today is today's position in the week, Monday 0, or -1 for a week not
+	// yet started. Days before it can no longer be trained, so the editor
+	// offers them only as history.
+	Today int
+
+	// Custom is a week someone changed rather than the plan's usual week.
+	Custom bool
+	Days   []WeekDayView
+
+	// The editor's state. Source is the plan whose sessions fill the days;
+	// Plans are the saved plans to fill from, and Sessions every session of
+	// every saved plan, for pinning a day to one.
+	Source   uuid.UUID
+	Plans    []PlanSummary
+	Sessions []SessionOption
+
+	// Matching are saved plans written for exactly len(Days) days, other than
+	// Source, offered instead.
+	Matching []PlanSummary
+
+	Error string
+
+	// Render tells one rendering of the editor from the next. Its select
+	// boxes take it into their ids: a swap that finds the same ids keeps the
+	// old elements, which the select box script has already initialised and
+	// will not draw again, leaving them blank.
+	Render string
+}
+
+// WeekDayView is one training day of the week.
+type WeekDayView struct {
+	Weekday  string
+	Date     time.Time
+	Focus    string
+	PlanName string
+
+	// FromOtherPlan is a session from a plan other than the one followed,
+	// which is worth naming.
+	FromOtherPlan bool
+	Completed     bool
+	IsNext        bool
+	StartTime     string
+
+	// Pinned is the session chosen for this day by hand, as a SessionOption
+	// value, or empty when it takes the next one in the rotation.
+	Pinned string
+}
+
+// SessionOption is one session of one saved plan, for the per-day picker.
+type SessionOption struct {
+	Value string
+	Label string
+}
+
+// SessionValue is how a session is named in the editor's form.
+func SessionValue(planID uuid.UUID, dayIndex int) string {
+	return fmt.Sprintf("%s:%d", planID, dayIndex)
+}
+
+var weekdays = []string{"Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"}
+
+func (v WeekView) trains(weekday string) bool {
+	for _, d := range v.Days {
+		if d.Weekday == weekday {
+			return true
+		}
+	}
+	return false
+}
+
+func (v WeekView) day(weekday string) (WeekDayView, bool) {
+	for _, d := range v.Days {
+		if d.Weekday == weekday {
+			return d, true
+		}
+	}
+	return WeekDayView{}, false
+}
+
+// closed reports whether weekday can no longer change: it is past, or
+// already trained.
+func (v WeekView) closed(weekday string) bool {
+	if d, ok := v.day(weekday); ok && d.Completed {
+		return true
+	}
+	for i, wd := range weekdays {
+		if wd == weekday {
+			return i < v.Today
+		}
+	}
+	return false
+}
+
+func (v WeekView) title() string {
+	if v.NextWeek {
+		return "Next week"
+	}
+	return "This week"
+}
+
+// lowerTitle is title() mid-sentence: "Change this week".
+func (v WeekView) lowerTitle() string {
+	if v.NextWeek {
+		return "next week"
+	}
+	return "this week"
+}
+
+func (v WeekView) query() string {
+	if v.NextWeek {
+		return "?week=next"
+	}
+	return ""
+}
+
+const weekDOMID = "training-week"
+
+// WeekCard is the week's training days, and the way into changing them.
+// Every week fragment replaces #training-week whole.
+templ WeekCard(v WeekView) {
+	<section id={ weekDOMID } class="mb-6" data-testid="training-week">
+		@card.Card() {
+			@card.Header() {
+				@weekHeader(v)
+			}
+			@card.Content() {
+				if len(v.Days) == 0 {
+					<p class="text-muted-foreground text-sm">A rest week — nothing is scheduled.</p>
+				}
+				<ul class="divide-border divide-y">
+					for _, d := range v.Days {
+						@weekDayRow(d)
+					}
+				</ul>
+				<div class="mt-4 flex flex-wrap gap-2">
+					@button.Button(button.Props{
+						Variant: button.VariantOutline,
+						Size:    button.SizeSm,
+						Attributes: templ.Attributes{
+							"hx-get":    "/app/training/week/edit" + v.query(),
+							"hx-target": "#" + weekDOMID,
+							"hx-swap":   "outerHTML",
+						},
+					}) {
+						Change { v.lowerTitle() }
+					}
+					if v.Custom {
+						<form hx-post={ "/app/training/week/reset" + v.query() } hx-target={ "#" + weekDOMID } hx-swap="outerHTML">
+							@ui.CSRFInput()
+							@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Type: button.TypeSubmit}) {
+								Back to your usual week
+							}
+						</form>
+					}
+				</div>
+			}
+		}
+	</section>
+}
+
+templ weekHeader(v WeekView) {
+	<div class="flex flex-wrap items-start justify-between gap-3">
+		<div>
+			@card.Title(card.TitleProps{Class: "text-base"}) {
+				{ v.title() }
+			}
+			<p class="text-muted-foreground mt-1 text-sm">
+				{ strconv.Itoa(len(v.Days)) } training days from { v.Start.Format("Mon 2 Jan") }
+				if v.Custom {
+					· changed from your usual week
+				}
+			</p>
+		</div>
+		@button.Button(button.Props{
+			Variant: button.VariantGhost,
+			Size:    button.SizeSm,
+			Attributes: templ.Attributes{
+				"hx-get":    "/app/training/week" + WeekView{NextWeek: !v.NextWeek}.query(),
+				"hx-target": "#" + weekDOMID,
+				"hx-swap":   "outerHTML",
+			},
+		}) {
+			if v.NextWeek {
+				This week
+			} else {
+				Next week
+			}
+		}
+	</div>
+}
+
+templ weekDayRow(d WeekDayView) {
+	<li class="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5">
+		<span class="w-24 shrink-0 text-sm font-medium">{ d.Date.Format("Mon 2 Jan") }</span>
+		<span class="min-w-0 flex-1 text-sm">
+			{ d.Focus }
+			if d.FromOtherPlan {
+				<span class="text-muted-foreground">· { d.PlanName }</span>
+			}
+		</span>
+		if d.StartTime != "" {
+			<span class="text-muted-foreground font-mono text-xs">{ d.StartTime }</span>
+		}
+		if d.Completed {
+			@badge.Badge(badge.Props{Variant: badge.VariantOutline, Class: "border-signal/40 text-signal"}) {
+				Completed
+			}
+		} else if d.IsNext {
+			@badge.Badge(badge.Props{Class: "bg-signal text-background"}) {
+				Next
+			}
+		}
+	</li>
+}
+
+// WeekEditor changes a week. Any change re-posts the form and the server
+// answers with the week it would make — which sessions land on which days —
+// so the rotation is visible before anything is saved.
+templ WeekEditor(v WeekView) {
+	<section id={ weekDOMID } class="mb-6" data-testid="training-week-editor">
+		@card.Card() {
+			@card.Header() {
+				@card.Title(card.TitleProps{Class: "text-base"}) {
+					Change { v.lowerTitle() }
+				}
+				<p class="text-muted-foreground mt-1 text-sm">
+					Pick the days you can train. Each day gets the next session of your plan, and anything left over carries into the following week.
+				</p>
+			}
+			@card.Content() {
+				<form
+					hx-post={ "/app/training/week/edit" + v.query() }
+					hx-trigger="change"
+					hx-target={ "#" + weekDOMID }
+					hx-swap="outerHTML"
+					class="space-y-5"
+				>
+					@ui.CSRFInput()
+					if v.Error != "" {
+						<p class="text-destructive text-sm" role="alert">{ v.Error }</p>
+					}
+					@dayCountButtons(v)
+					@weekdayToggles(v)
+					@sourcePicker(v)
+					if len(v.Matching) > 0 {
+						@matchingPlans(v)
+					}
+					@sessionPickers(v)
+					<div class="flex flex-wrap gap-2">
+						@button.Button(button.Props{
+							Size: button.SizeSm,
+							Attributes: templ.Attributes{
+								"hx-post":    "/app/training/week" + v.query(),
+								"hx-trigger": "click",
+								"hx-target":  "#" + weekDOMID,
+								"hx-swap":    "outerHTML",
+							},
+						}) {
+							Save { v.lowerTitle() }
+						}
+						@button.Button(button.Props{
+							Variant: button.VariantGhost,
+							Size:    button.SizeSm,
+							Attributes: templ.Attributes{
+								"hx-get":     "/app/training/week" + v.query(),
+								"hx-trigger": "click",
+								"hx-target":  "#" + weekDOMID,
+								"hx-swap":    "outerHTML",
+							},
+						}) {
+							Cancel
+						}
+					</div>
+				</form>
+			}
+		}
+		@checkbox.Script()
+		@selectbox.Script()
+	</section>
+}
+
+// dayCountButtons suggest a whole week for a number of days.
+templ dayCountButtons(v WeekView) {
+	<fieldset>
+		<legend class="mb-2 text-sm font-medium">How many days?</legend>
+		<div class="flex flex-wrap gap-1.5">
+			for n := 1; n <= 7; n++ {
+				@button.Button(button.Props{
+					Variant: dayCountVariant(len(v.Days) == n),
+					Size:    button.SizeSm,
+					Attributes: templ.Attributes{
+						"hx-post":    "/app/training/week/edit" + v.query(),
+						"hx-trigger": "click",
+						"hx-target":  "#" + weekDOMID,
+						"hx-swap":    "outerHTML",
+						"hx-vals":    fmt.Sprintf(`{"days": "%d"}`, n),
+						"aria-label": fmt.Sprintf("%d days", n),
+					},
+				}) {
+					{ strconv.Itoa(n) }
+				}
+			}
+		</div>
+	</fieldset>
+}
+
+func dayCountVariant(selected bool) button.Variant {
+	if selected {
+		return button.VariantDefault
+	}
+	return button.VariantOutline
+}
+
+templ weekdayToggles(v WeekView) {
+	<fieldset>
+		<legend class="mb-2 text-sm font-medium">Which days?</legend>
+		<div class="flex flex-wrap gap-x-4 gap-y-2">
+			for _, wd := range weekdays {
+				<div class="flex items-center gap-2">
+					@checkbox.Checkbox(checkbox.Props{ID: "week-" + wd, Name: "weekday", Value: wd, Checked: v.trains(wd), Disabled: v.closed(wd)})
+					@label.Label(label.Props{For: "week-" + wd}) {
+						{ wd[:3] }
+					}
+				</div>
+			}
+		</div>
+	</fieldset>
+}
+
+templ sourcePicker(v WeekView) {
+	if len(v.Plans) > 1 {
+		<div>
+			@label.Label(label.Props{For: "week-plan-" + v.Render}) {
+				Fill the days from
+			}
+			@selectbox.SelectBox(selectbox.Props{Class: "mt-2"}) {
+				@selectbox.Trigger(selectbox.TriggerProps{ID: "week-plan-" + v.Render, Name: "plan"}) {
+					@selectbox.Value()
+				}
+				@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
+					for _, p := range v.Plans {
+						@selectbox.Item(selectbox.ItemProps{Value: p.ID.String(), Selected: p.ID == v.Source}) {
+							{ p.Name } · { strconv.Itoa(p.Days) } days
+						}
+					}
+				}
+			}
+		</div>
+	} else if len(v.Plans) == 1 {
+		<input type="hidden" name="plan" value={ v.Plans[0].ID.String() }/>
+	}
+}
+
+templ matchingPlans(v WeekView) {
+	<div class="border-hairline rounded-lg border px-3 py-2.5 text-sm">
+		for _, p := range v.Matching {
+			<div class="flex flex-wrap items-center justify-between gap-2">
+				<span>
+					<span class="font-medium">{ p.Name }</span>
+					<span class="text-muted-foreground">is built for { strconv.Itoa(p.Days) } days.</span>
+				</span>
+				@button.Button(button.Props{
+					Variant: button.VariantOutline,
+					Size:    button.SizeSm,
+					Attributes: templ.Attributes{
+						"hx-post":    "/app/training/week/edit" + v.query(),
+						"hx-trigger": "click",
+						"hx-target":  "#" + weekDOMID,
+						"hx-swap":    "outerHTML",
+						"hx-vals":    fmt.Sprintf(`{"plan": "%s", "days": "%d"}`, p.ID, p.Days),
+					},
+				}) {
+					Use it this week
+				}
+			</div>
+		}
+	</div>
+}
+
+// sessionPickers let any day train a specific session instead of the next one
+// in the rotation.
+templ sessionPickers(v WeekView) {
+	if len(v.Days) > 0 {
+		<fieldset class="space-y-2">
+			<legend class="mb-1 text-sm font-medium">Sessions</legend>
+			for _, wd := range weekdays {
+				if d, ok := v.day(wd); ok {
+					<div class="flex flex-wrap items-center gap-3">
+						<span class="w-24 shrink-0 text-sm">{ d.Date.Format("Mon 2 Jan") }</span>
+						if d.Completed {
+							<span class="text-sm">{ d.Focus }</span>
+							@badge.Badge(badge.Props{Variant: badge.VariantOutline, Class: "border-signal/40 text-signal"}) {
+								Completed
+							}
+						} else {
+							@selectbox.SelectBox(selectbox.Props{Class: "min-w-0 flex-1"}) {
+								@selectbox.Trigger(selectbox.TriggerProps{ID: "week-session-" + wd + "-" + v.Render, Name: "session_" + wd}) {
+									@selectbox.Value()
+								}
+								@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
+									@selectbox.Item(selectbox.ItemProps{Value: "", Selected: d.Pinned == ""}) {
+										Next in your plan · { d.Focus }
+									}
+									for _, o := range v.Sessions {
+										@selectbox.Item(selectbox.ItemProps{Value: o.Value, Selected: d.Pinned == o.Value}) {
+											{ o.Label }
+										}
+									}
+								}
+							}
+						}
+					</div>
+				}
+			}
+		</fieldset>
+	}
+}
+
+// FollowCard is shown on a plan that is not the one being followed.
+templ FollowCard(planID uuid.UUID) {
+	@card.Card(card.Props{Class: "mb-6"}) {
+		@card.Content(card.ContentProps{Class: "flex flex-wrap items-center justify-between gap-3 pt-6"}) {
+			<p class="text-muted-foreground text-sm">You are not following this plan right now.</p>
+			<form method="post" action={ templ.SafeURL(fmt.Sprintf("/app/training/%s/activate", planID)) }>
+				@ui.CSRFInput()
+				@button.Button(button.Props{Size: button.SizeSm, Type: button.TypeSubmit}) {
+					Follow this plan
+				}
+			</form>
+		}
+	}
+}

@@ -83,12 +83,17 @@ func TestContextSource_CompletedAndPending(t *testing.T) {
 func TestWeekStatusNamesWhatIsDoneAndWhatIsNext(t *testing.T) {
 	t.Parallel()
 
-	p := workouts.Plan{Days: []workouts.PlanDay{
-		{Weekday: "Monday", Focus: "Push"},
-		{Weekday: "Wednesday", Focus: "Legs"},
-		{Weekday: "Friday", Focus: "Pull"},
-	}}
-	wednesday := time.Date(2026, 9, 30, 18, 0, 0, 0, time.UTC)
+	monday := time.Date(2026, 9, 28, 0, 0, 0, 0, time.UTC)
+	wednesday := monday.AddDate(0, 0, 2).Add(18 * time.Hour)
+	session := func(offset int, weekday, focus string, done bool) workouts.WeekDay {
+		return workouts.WeekDay{
+			Slot: workouts.Slot{Weekday: weekday}, Date: monday.AddDate(0, 0, offset),
+			Day: workouts.PlanDay{Weekday: weekday, Focus: focus}, Completed: done,
+		}
+	}
+	week := func(custom bool, next workouts.WeekDay, days ...workouts.WeekDay) workouts.WeekProgress {
+		return workouts.WeekProgress{Start: monday, Custom: custom, Days: days, Next: next.Day, NextDay: next, HasNext: true}
+	}
 
 	cases := []struct {
 		name     string
@@ -96,23 +101,32 @@ func TestWeekStatusNamesWhatIsDoneAndWhatIsNext(t *testing.T) {
 		want     string
 	}{
 		{
-			name:     "today still open",
-			progress: workouts.WeekProgress{Completed: []string{"Monday"}, Next: p.Days[1], HasNext: true},
-			want:     "This week: Monday (Push) COMPLETED. Next: Wednesday (Legs), today, PENDING.",
+			name: "today still open",
+			progress: week(false, session(2, "Wednesday", "Legs", false),
+				session(0, "Monday", "Push", true), session(2, "Wednesday", "Legs", false), session(4, "Friday", "Pull", false)),
+			want: "This week: Monday (Push) COMPLETED. Next: Wednesday (Legs), today, PENDING.",
 		},
 		{
-			name:     "today done",
-			progress: workouts.WeekProgress{Completed: []string{"Monday", "Wednesday"}, Next: p.Days[2], HasNext: true},
-			want:     "This week: Monday (Push) COMPLETED; Wednesday (Legs) COMPLETED. Next: Friday (Pull).",
+			name: "today done",
+			progress: week(false, session(4, "Friday", "Pull", false),
+				session(0, "Monday", "Push", true), session(2, "Wednesday", "Legs", true), session(4, "Friday", "Pull", false)),
+			want: "This week: Monday (Push) COMPLETED; Wednesday (Legs) COMPLETED. Next: Friday (Pull).",
 		},
 		{
-			name:     "week finished",
-			progress: workouts.WeekProgress{Completed: []string{"Monday", "Wednesday", "Friday"}, Next: p.Days[0], HasNext: true},
-			want:     "This week: Monday (Push) COMPLETED; Wednesday (Legs) COMPLETED; Friday (Pull) COMPLETED. Next: Monday (Push), next week — every session this week is done.",
+			name: "week finished",
+			progress: week(false, session(7, "Monday", "Push", false),
+				session(0, "Monday", "Push", true), session(2, "Wednesday", "Legs", true), session(4, "Friday", "Pull", true)),
+			want: "This week: Monday (Push) COMPLETED; Wednesday (Legs) COMPLETED; Friday (Pull) COMPLETED. Next: Monday (Push), next week — every session this week is done.",
+		},
+		{
+			name: "a changed week says which days it trains",
+			progress: week(true, session(3, "Thursday", "Legs", false),
+				session(1, "Tuesday", "Push", true), session(3, "Thursday", "Legs", false)),
+			want: "This week: Tuesday (Push) COMPLETED. They changed this week to 2 training days: Tuesday (Push), Thursday (Legs). Next: Thursday (Legs).",
 		},
 	}
 	for _, tc := range cases {
-		if got := workouts.WeekStatus(p, tc.progress, wednesday); got != tc.want {
+		if got := workouts.WeekStatus(tc.progress, wednesday); got != tc.want {
 			t.Errorf("%s:\n got %q\nwant %q", tc.name, got, tc.want)
 		}
 	}

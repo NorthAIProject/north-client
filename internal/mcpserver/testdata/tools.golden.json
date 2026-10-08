@@ -290,6 +290,25 @@
     "readOnly": true
   },
   {
+    "name": "get_training_week",
+    "description": "Read which days this person trains this week (or next week) and which session each day has, what is done, and what is next. Use it before talking about their week, or before changing it with set_training_week.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "description": "which week",
+      "properties": {
+        "next_week": {
+          "description": "true for next week; this week otherwise",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "next_week"
+      ],
+      "type": "object"
+    },
+    "readOnly": true
+  },
+  {
     "name": "get_workout_plan",
     "description": "Read this person's current training plan: the days, the focus of each, and the exercises on them. Use it before advising on training, so the advice fits the plan they are actually following.",
     "inputSchema": {
@@ -615,6 +634,96 @@
       "type": "object"
     },
     "readOnly": true
+  },
+  {
+    "name": "set_active_workout_plan",
+    "description": "Switch which of this person's saved training plans they follow, by name. Nothing is generated or deleted; the week switches to the chosen plan's usual days, keeping what was already trained. For a different week only, use set_training_week with plan instead.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "description": "the plan to follow",
+      "properties": {
+        "plan": {
+          "description": "the saved plan's name, or enough of it to be unambiguous",
+          "type": "string"
+        }
+      },
+      "required": [
+        "plan"
+      ],
+      "type": "object"
+    },
+    "readOnly": false
+  },
+  {
+    "name": "set_training_week",
+    "description": "Change which days this person trains this week or next, without changing their plan. Give weekdays when they name them, or just days (a number) to have days suggested; days 0 is a rest week. Each day gets the next session of their plan in order, and anything left over carries into the following week. Sessions already trained this week are kept. Set plan to fill the days from another saved plan, and sessions to put a specific session on a day. Set usual to put the week back to their usual one.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "description": "the week to set",
+      "properties": {
+        "days": {
+          "description": "how many days to train, 0 to 7, when they did not name the days",
+          "type": "integer"
+        },
+        "next_week": {
+          "description": "true to change next week instead of this one",
+          "type": "boolean"
+        },
+        "plan": {
+          "description": "name of the saved plan whose sessions fill the days; the plan they follow when absent",
+          "type": "string"
+        },
+        "sessions": {
+          "description": "days pinned to a specific session",
+          "items": {
+            "additionalProperties": false,
+            "description": "one pinned day",
+            "properties": {
+              "plan": {
+                "description": "name of the saved plan the session is from; the plan they follow when absent",
+                "type": "string"
+              },
+              "session": {
+                "description": "the session's focus as the plan writes it, such as 'Upper A'",
+                "type": "string"
+              },
+              "weekday": {
+                "description": "the day, which must be one of the days trained",
+                "type": "string"
+              }
+            },
+            "required": [
+              "weekday",
+              "session"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "usual": {
+          "description": "true to put the week back to their usual one; other fields are ignored",
+          "type": "boolean"
+        },
+        "weekdays": {
+          "description": "the days to train, such as Monday",
+          "items": {
+            "description": "a day of the week",
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "days",
+        "next_week",
+        "plan",
+        "sessions",
+        "usual",
+        "weekdays"
+      ],
+      "type": "object"
+    },
+    "readOnly": false
   },
   {
     "name": "swap_workout_exercise",

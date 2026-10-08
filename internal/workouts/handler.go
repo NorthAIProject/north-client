@@ -50,7 +50,11 @@ func (h *Handler) WithRecaps(recaps Recaps) *Handler {
 // it: which days are done, which is next, and the latest recap.
 func (h *Handler) planView(ctx context.Context, user users.User, stored StoredPlan, problems []string) (workoutpages.PlanView, error) {
 	now := time.Now().In(user.Location())
-	progress, err := h.svc.WeekProgress(ctx, user, stored.Plan, now)
+	progress, err := h.svc.WeekProgress(ctx, user, now)
+	if err != nil {
+		return workoutpages.PlanView{}, err
+	}
+	active, err := h.svc.ActivePlan(ctx, user.ID)
 	if err != nil {
 		return workoutpages.PlanView{}, err
 	}
@@ -59,10 +63,24 @@ func (h *Handler) planView(ctx context.Context, user users.User, stored StoredPl
 		Plan:      stored.Plan,
 		CreatedAt: stored.CreatedAt,
 		Problems:  problems,
-		Completed: progress.Completed,
+		Completed: make(map[int]bool),
+		Next:      -1,
+		Active:    stored.IntakeID == active.IntakeID,
 	}
-	if progress.HasNext {
-		view.Next = progress.Next.Weekday
+	for i := range stored.Plan.Days {
+		if progress.Trained(stored.IntakeID, i) {
+			view.Completed[i] = true
+		}
+		if progress.IsNext(stored.IntakeID, i) {
+			view.Next = i
+		}
+	}
+	if view.Active {
+		week, err := h.weekView(ctx, user, progress, false)
+		if err != nil {
+			return workoutpages.PlanView{}, err
+		}
+		view.Week = &week
 	}
 	if h.recaps != nil && len(progress.Completed) > 0 {
 		week := activity.WeekStart(now, user.Location())
@@ -87,6 +105,14 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Get("/training/plans", h.listPlans)
 	r.Post("/training/new", h.submitIntake)
 	r.Get("/training/{id}", h.showPlan)
+	r.Post("/training/{id}/activate", h.activatePlan)
+
+	// The week. Static segments beside /training/{id}, like /training/new.
+	r.Get("/training/week", h.showWeek)
+	r.Get("/training/week/edit", h.editWeek)
+	r.Post("/training/week/edit", h.previewWeek)
+	r.Post("/training/week", h.saveWeek)
+	r.Post("/training/week/reset", h.resetWeek)
 
 	// Editing. Every mutation inserts a new plan row rather than updating one,
 	// so these all respond with the re-rendered day card for the *new* plan and

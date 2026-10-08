@@ -19,6 +19,9 @@ type (
 
 	// Volume is a week's training load from the weekly review.
 	Volume = plan.Volume
+
+	// Slot is one training day of one week; see plan/week.go.
+	Slot = plan.Slot
 )
 
 const (
