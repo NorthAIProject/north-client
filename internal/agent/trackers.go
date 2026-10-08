@@ -31,7 +31,7 @@ import (
 // "took my vitamin D", "started fasting at eight", "did 100 kg for 5 on
 // squat". Each goes through the slice that owns it, so the chat, Telegram and
 // the pages all see the same entry. None are ReadOnly, so each shows an
-// approval card first, except get_lift_stats.
+// approval card first, except get_lift_stats and get_training_context.
 
 func presetKeys[T any](presets []T, key func(T) string) string {
 	keys := make([]string, len(presets))
@@ -363,6 +363,48 @@ func getLiftStats(svc *lifts.Service, userSvc *users.Service) Capability {
 			for _, r := range st.Records {
 				fmt.Fprintf(&b, "\nRecord %s: %s %.1f kg × %d (est. %.1f kg, was %.1f).",
 					r.Set.LogDate.Format("Jan 2"), r.Set.ExerciseName, r.Set.WeightKg, r.Set.Reps, r.E1RM, r.Previous)
+			}
+			return b.String(), nil
+		},
+	}
+}
+
+func getTrainingContext(svc *lifts.Service, userSvc *users.Service) Capability {
+	return Capability{
+		Tool: ai.Tool{
+			Name: "get_training_context",
+			Description: "Read how ready each muscle is to train today, from their logged sets: which are still fatigued or recovering, " +
+				"which have gone untrained long enough to lose strength, when they last lifted, and records from the last two weeks. " +
+				"Use it before suggesting what to train.",
+			Parameters: ai.Object("no arguments", map[string]*ai.Schema{}),
+		},
+		ReadOnly:   true,
+		Idempotent: true,
+		Invoke: func(ctx context.Context, userID uuid.UUID, _ json.RawMessage) (string, error) {
+			user, err := userSvc.ByID(ctx, userID)
+			if err != nil {
+				return "", err
+			}
+			load, err := svc.Readiness(ctx, user)
+			if err != nil {
+				return "", err
+			}
+			if load.LastSession.IsZero() {
+				return "No sets logged yet, so there is nothing to read readiness from.", nil
+			}
+			_, records, err := svc.Recent(ctx, user)
+			if err != nil {
+				return "", err
+			}
+			var b strings.Builder
+			b.WriteString(lift.ReadinessSummary(load))
+			for _, m := range load.Muscles {
+				fmt.Fprintf(&b, "\n%s: %s, last trained %s, strength %.0f%%.",
+					m.Muscle, m.State, m.LastTrained.In(user.Location()).Format("Jan 2"), m.Strength*100)
+			}
+			for _, r := range records {
+				fmt.Fprintf(&b, "\nRecord %s: %s %.1f kg × %d (est. 1RM %.1f kg).",
+					r.Set.LogDate.Format("Jan 2"), r.Set.ExerciseName, r.Set.WeightKg, r.Set.Reps, r.E1RM)
 			}
 			return b.String(), nil
 		},

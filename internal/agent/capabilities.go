@@ -224,7 +224,7 @@ func Build(svc Services) *Registry {
 			r.Register(recordSoreness(svc.Soreness, svc.Users))
 		}
 		if svc.Lifts != nil {
-			r.Register(logLiftSet(svc.Lifts, svc.Users), getLiftStats(svc.Lifts, svc.Users))
+			r.Register(logLiftSet(svc.Lifts, svc.Users), getLiftStats(svc.Lifts, svc.Users), getTrainingContext(svc.Lifts, svc.Users))
 		}
 	}
 	if svc.Health != nil {
