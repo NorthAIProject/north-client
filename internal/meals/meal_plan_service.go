@@ -243,17 +243,9 @@ func (s *MealPlanService) CreatePlan(ctx context.Context, userID uuid.UUID, in M
 		if i >= len(days) {
 			continue
 		}
-		for _, draft := range days[i].Meals {
-			name, err := validateMealName(draft.Name)
-			if err != nil {
-				return MealPlan{}, err
-			}
-			portions, total, err := s.portions(ctx, userID, draft.Portions)
-			if err != nil {
-				return MealPlan{}, err
-			}
-			newDays[i].Meals = append(newDays[i].Meals, NewMeal{Name: name, Portions: portions})
-			after.Days[i].Consumed = after.Days[i].Consumed.Add(total)
+		newDays[i].Meals, after.Days[i].Consumed, err = s.newMeals(ctx, userID, days[i].Meals)
+		if err != nil {
+			return MealPlan{}, err
 		}
 	}
 	if v := meal.CheckWrite(active, nil, after, confirm); !v.Allowed {
@@ -283,6 +275,26 @@ func (s *MealPlanService) PlanIDOfMeal(ctx context.Context, mealID, userID uuid.
 
 func (s *MealPlanService) PlanIDOfMealIngredient(ctx context.Context, mealIngredientID, userID uuid.UUID) (uuid.UUID, error) {
 	return s.repo.PlanIDOfMealIngredient(ctx, mealIngredientID, userID)
+}
+
+// newMeals validates a day's drafted meals and works out their portions,
+// returning them with what they add up to.
+func (s *MealPlanService) newMeals(ctx context.Context, userID uuid.UUID, drafts []MealDraft) ([]NewMeal, Macros, error) {
+	out := make([]NewMeal, 0, len(drafts))
+	var consumed Macros
+	for _, draft := range drafts {
+		name, err := validateMealName(draft.Name)
+		if err != nil {
+			return nil, Macros{}, err
+		}
+		portions, total, err := s.portions(ctx, userID, draft.Portions)
+		if err != nil {
+			return nil, Macros{}, err
+		}
+		out = append(out, NewMeal{Name: name, Portions: portions})
+		consumed = consumed.Add(total)
+	}
+	return out, consumed, nil
 }
 
 func (s *MealPlanService) GetPlan(ctx context.Context, id, userID uuid.UUID) (MealPlan, error) {
@@ -379,7 +391,7 @@ func (s *MealPlanService) UpdateDay(ctx context.Context, dayID, userID uuid.UUID
 	if err != nil {
 		return err
 	}
-	if err := ValidateDayOverride(o, active); err != nil {
+	if err = ValidateDayOverride(o, active); err != nil {
 		return err
 	}
 	planID, err := s.repo.PlanIDOfDay(ctx, dayID, userID)
@@ -437,8 +449,9 @@ func (s *MealPlanService) AddMeal(ctx context.Context, dayID, userID uuid.UUID, 
 	}
 	var added Meal
 	err = s.repo.WithPlanLocked(ctx, planID, userID, func(tx *PlanTx, _ MealPlan) error {
-		added, err = tx.AddMeal(ctx, planID, dayID, name)
-		return err
+		var addErr error
+		added, addErr = tx.AddMeal(ctx, planID, dayID, name)
+		return addErr
 	})
 	return added, err
 }
@@ -488,11 +501,12 @@ func (s *MealPlanService) AddIngredients(ctx context.Context, mealID, userID uui
 		}
 		after := plan.State()
 		after.Days[i].Consumed = after.Days[i].Consumed.Add(total)
-		if err := checkOverage(active, plan, after, false, confirm); err != nil {
-			return err
+		if overErr := checkOverage(active, plan, after, false, confirm); overErr != nil {
+			return overErr
 		}
-		added, err = tx.AddPortions(ctx, planID, mealID, portions)
-		return err
+		var addErr error
+		added, addErr = tx.AddPortions(ctx, planID, mealID, portions)
+		return addErr
 	})
 	return added, err
 }
