@@ -38,6 +38,12 @@ func (a *API) Routes(r chi.Router) {
 	r.Post("/training/plans", a.createPlan)
 	r.Get("/training/intake", a.latestIntake)
 	r.Get("/training/plans/{planID}", a.showPlan)
+	r.Post("/training/plans/{planID}/activate", a.activatePlan)
+
+	r.Get("/training/week", a.showWeek)
+	r.Put("/training/week", a.setWeek)
+	r.Delete("/training/week", a.resetWeek)
+	r.Post("/training/week/suggestion", a.suggestWeek)
 
 	r.Put("/training/plans/{planID}/days/{day}/start-time", a.setStartTime)
 	r.Get("/training/plans/{planID}/days/{day}/suggestions", a.suggestForDay)
@@ -59,6 +65,8 @@ type PlanSummary struct {
 	// Source is ai (as generated) or edited.
 	Source    string    `json:"source"`
 	CreatedAt time.Time `json:"createdAt"`
+	// Active is the plan being followed; the list puts it first.
+	Active bool `json:"active"`
 }
 
 type DaySummary struct {
@@ -86,6 +94,8 @@ type PlanDetail struct {
 	// WeekVolume is this week's choice from the weekly review: hold, build or
 	// deload. Each exercise's thisWeekSets already reflects it.
 	WeekVolume string `json:"weekVolume"`
+	// Active is the plan being followed.
+	Active bool `json:"active"`
 }
 
 type Day struct {
@@ -94,11 +104,11 @@ type Day struct {
 	StartTime string        `json:"startTime,omitempty"`
 	Focus     string        `json:"focus"`
 	Exercises []DayExercise `json:"exercises"`
-	// CompletedThisWeek is true once a finished session accounts for this
-	// day in the current Monday–Sunday week.
+	// CompletedThisWeek is true once this day was trained in the current
+	// Monday–Sunday week, on whichever day the week scheduled it.
 	CompletedThisWeek bool `json:"completedThisWeek"`
-	// IsNext marks the one day to train next: the first unfinished plan day
-	// from today on.
+	// IsNext marks the one day to train next: the session of the week's first
+	// unfinished day from today on. See GET /training/week for which day.
 	IsNext bool `json:"isNext"`
 }
 
@@ -162,8 +172,11 @@ func (a *API) listPlans(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := PlanList{Plans: make([]PlanSummary, 0, len(plans))}
-	for _, p := range plans {
-		out.Plans = append(out.Plans, projectSummary(p))
+	for i, p := range plans {
+		summary := projectSummary(p)
+		// ListCurrentPlans puts the followed plan first.
+		summary.Active = i == 0
+		out.Plans = append(out.Plans, summary)
 	}
 	httpx.WriteJSON(w, http.StatusOK, out)
 }
@@ -217,12 +230,17 @@ func (a *API) writePlan(w http.ResponseWriter, r *http.Request, id uuid.UUID, st
 		httpx.Error(w, err, "That plan was not found.")
 		return
 	}
-	progress, err := a.svc.WeekProgress(r.Context(), user, stored.Plan, time.Now())
+	progress, err := a.svc.WeekProgress(r.Context(), user, time.Now())
 	if err != nil {
 		httpx.Error(w, err, "That plan could not be loaded.")
 		return
 	}
-	httpx.WriteJSON(w, status, projectDetail(stored, problems, progress))
+	active, err := a.svc.ActivePlan(r.Context(), user.ID)
+	if err != nil {
+		httpx.Error(w, err, "That plan could not be loaded.")
+		return
+	}
+	httpx.WriteJSON(w, status, projectDetail(stored, problems, progress, active.IntakeID))
 }
 
 // MARK: Edits
@@ -311,12 +329,17 @@ func (a *API) edit(w http.ResponseWriter, r *http.Request, withIndex bool, body 
 			httpx.Error(w, detailErr, "That plan was not found.")
 			return
 		}
-		progress, progressErr := a.svc.WeekProgress(r.Context(), user, stored.Plan, time.Now())
+		progress, progressErr := a.svc.WeekProgress(r.Context(), user, time.Now())
 		if progressErr != nil {
 			httpx.Error(w, progressErr, "That plan could not be loaded.")
 			return
 		}
-		httpx.WriteJSON(w, http.StatusConflict, projectDetail(stored, problems, progress))
+		active, activeErr := a.svc.ActivePlan(r.Context(), user.ID)
+		if activeErr != nil {
+			httpx.Error(w, activeErr, "That plan could not be loaded.")
+			return
+		}
+		httpx.WriteJSON(w, http.StatusConflict, projectDetail(stored, problems, progress, active.IntakeID))
 	case apperr.Is(err, apperr.ErrValidation):
 		// The plan package's own words: "an exercise needs at least one set".
 		message := strings.TrimSuffix(err.Error(), ": "+apperr.ErrValidation.Error())
@@ -364,9 +387,9 @@ func projectSummary(p StoredPlan) PlanSummary {
 	return PlanSummary{ID: p.ID, Name: p.Plan.Name, WeeksTotal: p.Plan.WeeksTotal, Days: days, Source: sourceOf(p), CreatedAt: p.CreatedAt}
 }
 
-func projectDetail(p StoredPlan, problems []string, progress WeekProgress) PlanDetail {
+func projectDetail(p StoredPlan, problems []string, progress WeekProgress, active uuid.UUID) PlanDetail {
 	days := make([]Day, 0, len(p.Plan.Days))
-	for _, d := range p.Plan.Days {
+	for dayIndex, d := range p.Plan.Days {
 		exercises := make([]DayExercise, 0, len(d.Exercises))
 		for i, e := range d.Exercises {
 			exercises = append(exercises, DayExercise{
@@ -377,7 +400,7 @@ func projectDetail(p StoredPlan, problems []string, progress WeekProgress) PlanD
 		}
 		days = append(days, Day{
 			Weekday: d.Weekday, StartTime: d.StartTime, Focus: d.Focus, Exercises: exercises,
-			CompletedThisWeek: progress.Done(d.Weekday), IsNext: progress.IsNext(d),
+			CompletedThisWeek: progress.Trained(p.IntakeID, dayIndex), IsNext: progress.IsNext(p.IntakeID, dayIndex),
 		})
 	}
 	if problems == nil {
@@ -386,7 +409,7 @@ func projectDetail(p StoredPlan, problems []string, progress WeekProgress) PlanD
 	return PlanDetail{
 		ID: p.ID, Name: p.Plan.Name, Rationale: p.Plan.Rationale, WeeksTotal: p.Plan.WeeksTotal,
 		Days: days, Problems: problems, Source: sourceOf(p), CreatedAt: p.CreatedAt,
-		WeekVolume: string(weekVolume(progress.Volume)),
+		WeekVolume: string(weekVolume(progress.Volume)), Active: p.IntakeID == active,
 	}
 }
 

@@ -477,7 +477,7 @@ func TestSwappingInsertsANewPlanAndLeavesTheOriginalIntact(t *testing.T) {
 	}
 
 	// And the edit is what /app/training now resolves to.
-	newest, err := svc.LatestPlan(ctx, user.ID)
+	newest, err := svc.ActivePlan(ctx, user.ID)
 	if err != nil {
 		t.Fatalf("latest plan: %v", err)
 	}
@@ -873,14 +873,15 @@ func TestListCurrentPlansReturnsOneRowPerPlanNotPerVersion(t *testing.T) {
 	if len(current) != 2 {
 		t.Fatalf("listed %d plans, want 2", len(current))
 	}
-	// Most recently touched first, so /app/training and this page agree.
+	// The followed plan first — the newest, since making a plan follows it —
+	// so /app/training and this page agree.
 	if current[0].ID != second.ID {
 		t.Errorf("first row is %v, want the newer plan %v", current[0].ID, second.ID)
 	}
 
 	// Editing the older plan makes it three rows in the table but must not make
-	// it two entries in the list — and it must move to the top, because it is
-	// now the most recently touched.
+	// it two entries in the list. It stays second: editing a plan does not
+	// make it the one followed, and the followed plan leads the list.
 	edited, err := svc.SwapExercise(ctx, user, first.ID, 0, 0, "dumbbell-bench-press")
 	if err != nil {
 		t.Fatalf("swap: %v", err)
@@ -894,13 +895,17 @@ func TestListCurrentPlansReturnsOneRowPerPlanNotPerVersion(t *testing.T) {
 		t.Fatalf("listed %d plans after an edit, want 2 — versions must not appear as plans", len(current))
 	}
 
+	if current[0].ID != second.ID {
+		t.Errorf("first row is %v, want the followed plan %v", current[0].ID, second.ID)
+	}
+
 	// The edited plan's row has to be its newest version. A query grouping on
 	// the wrong column would hand back the row as first generated, and the page
 	// would show people a plan they had already changed.
-	if current[0].ID != edited.ID {
-		t.Errorf("first row is %v, want the edited version %v", current[0].ID, edited.ID)
+	if current[1].ID != edited.ID {
+		t.Errorf("second row is %v, want the edited version %v", current[1].ID, edited.ID)
 	}
-	if current[0].IntakeID != first.IntakeID {
+	if current[1].IntakeID != first.IntakeID {
 		t.Error("the edited row lost the intake that identifies its plan")
 	}
 

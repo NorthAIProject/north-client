@@ -838,6 +838,110 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+  /training/plans/{planID}/activate:
+    parameters:
+      - name: planID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: activatePlan
+      summary: Follow this plan
+      description: >-
+        Makes the plan the one followed. A week nobody changed switches to its
+        usual days, keeping what was already trained. Answers with the plan's
+        newest version.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /training/week:
+    parameters:
+      - $ref: '#/components/parameters/WeekParam'
+    get:
+      operationId: getTrainingWeek
+      summary: Which days a week trains and which session each has
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrainingWeek'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      operationId: setTrainingWeek
+      summary: Change which days a week trains
+      description: >-
+        Each chosen day takes the next session of the plan's rotation, and
+        whatever is left over carries into the following week. Days already
+        trained this week are kept.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WeekRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrainingWeek'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      operationId: resetTrainingWeek
+      summary: Put a week back to the plan's usual one
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrainingWeek'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /training/week/suggestion:
+    parameters:
+      - $ref: '#/components/parameters/WeekParam'
+    post:
+      operationId: suggestTrainingWeek
+      summary: The week a change would make, without saving it
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WeekRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeekSuggestion'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
   /training/plans/{planID}/days/{day}/start-time:
     parameters:
       - name: planID
@@ -5103,6 +5207,14 @@ components:
       scheme: bearer
       description: An `nk_` connection token from Settings → Connections.
   parameters:
+    WeekParam:
+      name: week
+      in: query
+      required: false
+      description: next for next week; this week otherwise.
+      schema:
+        type: string
+        enum: [next]
     InsightsRange:
       name: range
       in: query
@@ -7969,6 +8081,102 @@ components:
         createdAt:
           type: string
           format: date-time
+        active:
+          type: boolean
+          description: The plan being followed; the list puts it first.
+    TrainingWeek:
+      type: object
+      required: [weekStart, custom, weekVolume, days]
+      properties:
+        weekStart:
+          type: string
+          format: date
+          description: The week's Monday.
+        custom:
+          type: boolean
+          description: Someone changed this week rather than following the plan's usual one.
+        weekVolume:
+          type: string
+          enum: [hold, build, deload]
+        days:
+          type: array
+          items:
+            $ref: '#/components/schemas/WeekSession'
+        next:
+          $ref: '#/components/schemas/WeekSession'
+    WeekSession:
+      type: object
+      required: [weekday, date, planId, planName, dayIndex, focus, exerciseCount, completed, isNext]
+      description: >-
+        One training day of a week. GET /training/plans/{planId} and its
+        days[dayIndex] is the session; start a guided workout for it with
+        planWeekday set to weekday, not to the plan day's own weekday.
+      properties:
+        weekday:
+          type: string
+        date:
+          type: string
+          format: date
+        planId:
+          type: string
+          format: uuid
+        planName:
+          type: string
+        dayIndex:
+          type: integer
+        focus:
+          type: string
+        startTime:
+          type: string
+          description: HH:MM in the person's time zone, when they usually train that weekday.
+        exerciseCount:
+          type: integer
+        completed:
+          type: boolean
+        isNext:
+          type: boolean
+    WeekRequest:
+      type: object
+      properties:
+        weekdays:
+          type: array
+          description: The days to train. Empty with days set asks for suggested days; both empty is a rest week.
+          items:
+            type: string
+        days:
+          type: integer
+          minimum: 0
+          maximum: 7
+        planId:
+          type: string
+          format: uuid
+          description: The plan whose sessions fill the days; the plan followed when absent.
+        assignments:
+          type: array
+          items:
+            $ref: '#/components/schemas/WeekAssignment'
+    WeekAssignment:
+      type: object
+      required: [weekday, planId, dayIndex]
+      properties:
+        weekday:
+          type: string
+        planId:
+          type: string
+          format: uuid
+        dayIndex:
+          type: integer
+    WeekSuggestion:
+      type: object
+      required: [week, matchingPlans]
+      properties:
+        week:
+          $ref: '#/components/schemas/TrainingWeek'
+        matchingPlans:
+          type: array
+          description: Saved plans written for exactly the suggested number of days.
+          items:
+            $ref: '#/components/schemas/PlanSummary'
     DaySummary:
       type: object
       required: [weekday, focus, exerciseCount]
@@ -8016,6 +8224,9 @@ components:
           description: >-
             This week's training load from the weekly review. Each exercise's
             thisWeekSets already reflects it; hold when the week was not reviewed.
+        active:
+          type: boolean
+          description: The plan being followed.
     TrainingDay:
       type: object
       required: [weekday, focus, exercises, completedThisWeek, isNext]

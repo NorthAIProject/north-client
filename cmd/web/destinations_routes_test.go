@@ -35,6 +35,8 @@ var knownNonDestinations = map[string]string{
 	"/app/insights/mind/body":      "insights range swap",
 	"/app/insights/progress/body":  "insights range swap",
 	"/app/insights/training/body":  "insights range swap",
+	"/app/training/week":           "training week card fragment",
+	"/app/training/week/edit":      "training week editor fragment",
 	"/app/insights/nutrition/body": "insights range swap",
 	"/app/insights/sleep/body":     "insights range swap",
 	"/app/insights/cardio/body":    "insights range swap",

@@ -20,6 +20,7 @@ type (
 	// PlanSlot, DayStatus and Adherence are a training plan's days laid over
 	// the sessions that finished them.
 	PlanSlot  = activity.PlanSlot
+	Schedule  = activity.Schedule
 	DayStatus = activity.DayStatus
 	Adherence = activity.Adherence
 )

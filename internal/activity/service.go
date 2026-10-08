@@ -344,23 +344,23 @@ func (s *Service) CompletedWeekdays(ctx context.Context, userID uuid.UUID, loc *
 
 // ThisWeek lays the plan's days over the week containing now, each done or
 // still open.
-func (s *Service) ThisWeek(ctx context.Context, userID uuid.UUID, slots []PlanSlot, loc *time.Location, now time.Time) (Adherence, error) {
+func (s *Service) ThisWeek(ctx context.Context, userID uuid.UUID, schedule Schedule, loc *time.Location, now time.Time) (Adherence, error) {
 	sessions, err := s.weekSessions(ctx, userID, loc, now)
 	if err != nil {
 		return Adherence{}, err
 	}
-	return ThisWeek(slots, sessions, loc, now), nil
+	return ThisWeek(schedule, sessions, loc, now), nil
 }
 
 // PlanAdherence counts the plan days that fell in rg and how many were done.
-func (s *Service) PlanAdherence(ctx context.Context, userID uuid.UUID, slots []PlanSlot, rg timerange.Range) (Adherence, error) {
+func (s *Service) PlanAdherence(ctx context.Context, userID uuid.UUID, schedule Schedule, rg timerange.Range) (Adherence, error) {
 	// A named session can finish its plan day up to six days after it
 	// started, so the sessions read reach back a week before the window.
 	sessions, err := s.repo.ListBetween(ctx, userID, rg.Since.AddDate(0, 0, -7), rg.Until.AddDate(0, 0, 7))
 	if err != nil {
 		return Adherence{}, err
 	}
-	return PlanAdherence(slots, sessions, rg.Location(), rg.Since, rg.Until), nil
+	return PlanAdherence(schedule, sessions, rg.Location(), rg.Since, rg.Until), nil
 }
 
 // weekSessions are the sessions that can have finished a day of the week

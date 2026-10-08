@@ -57,6 +57,7 @@ var portugueseBrazilianChat = map[string]string{
 	"chat.tool.workout.write":  "editando seu plano de treino",
 	"chat.tool.mealplan.write": "montando seu plano alimentar",
 	"chat.tool.workout.create": "montando seu plano de treino",
+	"chat.tool.workout.week":   "mudando sua semana de treino",
 	"chat.tool.lifts":          "vendo suas cargas",
 	"chat.tool.stats":          "vendo suas estatísticas",
 	"chat.tool.nutrition":      "verificando sua nutrição",

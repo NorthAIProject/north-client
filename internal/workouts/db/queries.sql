@@ -72,3 +72,51 @@ SELECT * FROM (
 ) AS current_plans
 ORDER BY created_at DESC
 LIMIT $2;
+
+-- name: GetActivePlan :one
+-- The newest version of the plan someone chose to follow.
+SELECT p.* FROM workout_plans p
+JOIN workout_active_plans a ON a.intake_id = p.intake_id AND a.user_id = p.user_id
+WHERE a.user_id = $1
+ORDER BY p.created_at DESC
+LIMIT 1;
+
+-- name: SetActivePlan :exec
+INSERT INTO workout_active_plans (user_id, intake_id)
+VALUES ($1, $2)
+ON CONFLICT (user_id) DO UPDATE
+SET intake_id = EXCLUDED.intake_id, updated_at = now();
+
+-- name: GetWeek :one
+SELECT * FROM workout_weeks WHERE user_id = $1 AND week_start = $2;
+
+-- InsertWeekIfAbsent records a default week the first time it is read. Two
+-- readers racing both compute the same week; the second simply loses.
+-- name: InsertWeekIfAbsent :exec
+INSERT INTO workout_weeks (user_id, week_start, slots, custom)
+VALUES ($1, $2, $3, false)
+ON CONFLICT (user_id, week_start) DO NOTHING;
+
+-- name: UpsertWeek :exec
+INSERT INTO workout_weeks (user_id, week_start, slots, custom)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (user_id, week_start) DO UPDATE
+SET slots = EXCLUDED.slots, custom = EXCLUDED.custom, updated_at = now();
+
+-- name: DeleteWeek :exec
+DELETE FROM workout_weeks WHERE user_id = $1 AND week_start = $2;
+
+-- PreviousWeekWithIntake is the latest recorded week before week_start that
+-- trained any of a plan's sessions: where that plan's rotation stopped.
+-- name: PreviousWeekWithIntake :one
+SELECT * FROM workout_weeks
+WHERE user_id = $1
+  AND week_start < $2
+  AND slots @> jsonb_build_array(jsonb_build_object('intake_id', sqlc.arg(intake_id)::text))
+ORDER BY week_start DESC
+LIMIT 1;
+
+-- name: ListWeeksBetween :many
+SELECT * FROM workout_weeks
+WHERE user_id = $1 AND week_start >= $2 AND week_start < $3
+ORDER BY week_start;

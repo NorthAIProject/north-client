@@ -233,7 +233,7 @@ func TestAPlanThatNeverConformsIsNeverStored(t *testing.T) {
 		t.Fatal("a persistently invalid plan must not be stored")
 	}
 
-	if _, err := svc.LatestPlan(context.Background(), user.ID); err == nil {
+	if _, err := svc.ActivePlan(context.Background(), user.ID); err == nil {
 		t.Fatal("no plan should exist after a failed generation")
 	}
 

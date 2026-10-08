@@ -192,8 +192,8 @@ func TestAnUnknownScopeIsTreatedAsReadOnly(t *testing.T) {
 // set_alert — do not register. See internal/agent/capabilities.go.
 func TestTheToolCountIsWhatWeThinkItIs(t *testing.T) {
 	const (
-		wantFull     = 27
-		wantReadOnly = 12
+		wantFull     = 30
+		wantReadOnly = 13
 	)
 
 	if got := len(describeTools(t, "")); got != wantFull {
@@ -226,6 +226,9 @@ func TestEveryToolDeclaresWhetherItWrites(t *testing.T) {
 		"remove_workout_exercise": true,
 		// Generating a whole plan stores it as the one they follow.
 		"create_workout_plan": true,
+		// Changing a week, or which plan is followed.
+		"set_training_week":       true,
+		"set_active_workout_plan": true,
 
 		// The day's logs. Each writes a row a person would otherwise have
 		// typed into a form — see internal/agent/logging.go.
