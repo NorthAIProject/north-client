@@ -112,7 +112,7 @@ func TestTheNewestPlanIsFollowedAndEditingAnotherDoesNotSwitch(t *testing.T) {
 	}
 
 	// Editing the plan not followed used to make it the followed one.
-	if _, err := f.svc.SetStartTime(ctx, f.user, f.fullBody.ID, 0, "07:30"); err != nil {
+	if _, err = f.svc.SetStartTime(ctx, f.user, f.fullBody.ID, 0, "07:30"); err != nil {
 		t.Fatalf("edit: %v", err)
 	}
 	active, err = f.svc.ActivePlan(ctx, f.user.ID)
@@ -120,7 +120,7 @@ func TestTheNewestPlanIsFollowedAndEditingAnotherDoesNotSwitch(t *testing.T) {
 		t.Fatalf("after editing another plan, active = %v %v", active.Plan.Name, err)
 	}
 
-	if _, err := f.svc.SetActivePlan(ctx, f.user, f.fullBody.ID); err != nil {
+	if _, err = f.svc.SetActivePlan(ctx, f.user, f.fullBody.ID); err != nil {
 		t.Fatalf("follow: %v", err)
 	}
 	active, err = f.svc.ActivePlan(ctx, f.user.ID)

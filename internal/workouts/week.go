@@ -35,7 +35,7 @@ func (s *Service) SetActivePlan(ctx context.Context, user users.User, planID uui
 	if err != nil {
 		return StoredPlan{}, err
 	}
-	if err := s.repo.SetActivePlan(ctx, user.ID, chosen.IntakeID); err != nil {
+	if err = s.repo.SetActivePlan(ctx, user.ID, chosen.IntakeID); err != nil {
 		return StoredPlan{}, err
 	}
 	current, err := s.repo.LatestPlanForIntake(ctx, user.ID, chosen.IntakeID)
@@ -408,7 +408,7 @@ func (s *Service) currentWeek(ctx context.Context, user users.User, start time.T
 	if err != nil || len(week.Slots) == 0 {
 		return week, err
 	}
-	if err := s.repo.InsertWeekIfAbsent(ctx, user.ID, start, week.Slots); err != nil {
+	if err = s.repo.InsertWeekIfAbsent(ctx, user.ID, start, week.Slots); err != nil {
 		return StoredWeek{}, err
 	}
 	// Re-read: a concurrent first read may have recorded it first.
@@ -477,11 +477,11 @@ func (s *Service) resolve(ctx context.Context, user users.User, week StoredWeek,
 
 	plans := make(map[uuid.UUID]StoredPlan)
 	var home *StoredPlan
-	if active, err := s.repo.ActivePlan(ctx, user.ID); err == nil {
+	if active, activeErr := s.repo.ActivePlan(ctx, user.ID); activeErr == nil {
 		home = &active
 		plans[active.IntakeID] = active
-	} else if !apperr.Is(err, apperr.ErrNotFound) {
-		return WeekProgress{}, err
+	} else if !apperr.Is(activeErr, apperr.ErrNotFound) {
+		return WeekProgress{}, activeErr
 	}
 
 	finished := make(map[string]bool, len(done))
@@ -645,7 +645,7 @@ func (s *Service) PlanSchedule(ctx context.Context, user users.User, rg timerang
 	}
 	// Records this week if nothing has yet, so it is counted as it will be
 	// followed.
-	if _, err := s.WeekProgress(ctx, user, time.Now()); err != nil {
+	if _, err = s.WeekProgress(ctx, user, time.Now()); err != nil {
 		return activity.Schedule{}, false, err
 	}
 

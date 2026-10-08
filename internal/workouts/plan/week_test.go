@@ -236,7 +236,7 @@ func TestNextSlot(t *testing.T) {
 	}
 
 	saturday := time.Date(2026, 10, 10, 9, 0, 0, 0, time.UTC)
-	if _, ok := NextSlot(week, saturday, []string{"Saturday"}); ok {
+	if _, ok = NextSlot(week, saturday, []string{"Saturday"}); ok {
 		t.Fatal("nothing is left once Saturday is done")
 	}
 
