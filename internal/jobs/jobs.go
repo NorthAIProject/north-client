@@ -351,8 +351,6 @@ func fromDB(row jobsdb.Job) Job {
 		LastError:   row.LastError,
 		CreatedAt:   row.CreatedAt,
 	}
-	if row.RequestID != nil {
-		j.RequestID = *row.RequestID
-	}
+	j.RequestID = util.Val(row.RequestID)
 	return j
 }

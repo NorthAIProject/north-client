@@ -261,10 +261,7 @@ func buildTrainingView(data TrainingData) (insightpages.TrainingView, error) {
 		}
 		totalSeconds += seconds
 
-		kcal := 0.0
-		if sess.CaloriesBurned != nil {
-			kcal = *sess.CaloriesBurned
-		}
+		kcal := util.Val(sess.CaloriesBurned)
 		rows = append(rows, insightpages.SessionRow{
 			Name: name, At: ended, Duration: formatDuration(seconds), Calories: kcal,
 		})

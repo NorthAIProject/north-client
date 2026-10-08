@@ -74,9 +74,7 @@ func (s *SessionStore) Create(ctx context.Context, userID uuid.UUID, meta Metada
 		UserID:    userID,
 		ExpiresAt: expiresAt,
 	}
-	if meta.UserAgent != "" {
-		params.UserAgent = util.Ptr(truncate(meta.UserAgent, 500))
-	}
+	params.UserAgent = util.StrZeroPtr(truncate(meta.UserAgent, 500))
 	if addr, err := netip.ParseAddr(meta.IP); err == nil {
 		params.Ip = &addr
 	}
@@ -170,9 +168,7 @@ func userFromDB(row authdb.User) users.User {
 		CreatedAt: row.CreatedAt,
 		UpdatedAt: row.UpdatedAt,
 	}
-	if row.CoachingStyle != nil {
-		u.CoachingStyle = *row.CoachingStyle
-	}
+	u.CoachingStyle = util.Val(row.CoachingStyle)
 	u.CoachingTone = users.Tone(row.CoachingTone)
 	u.OnboardedAt = row.OnboardedAt
 	return u

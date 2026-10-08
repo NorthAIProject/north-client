@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/meals"
@@ -201,12 +202,8 @@ func workoutPlanFromDraft(d WorkoutDraft) (plan.Plan, []string) {
 				Load:     strings.TrimSpace(ex.Load),
 				FormCues: strings.TrimSpace(ex.Notes),
 			}
-			if ex.Sets != nil {
-				e.Sets = *ex.Sets
-			}
-			if ex.RestSeconds != nil {
-				e.RestSeconds = *ex.RestSeconds
-			}
+			e.Sets = util.Val(ex.Sets)
+			e.RestSeconds = util.Val(ex.RestSeconds)
 			pd.Exercises = append(pd.Exercises, e)
 		}
 		out.Days = append(out.Days, pd)

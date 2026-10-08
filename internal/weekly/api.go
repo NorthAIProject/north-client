@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
@@ -101,12 +102,10 @@ func projectReview(rv Review) ReviewView {
 		out.Report = &ReviewReport{ID: rv.Report.ID, Title: rv.Report.Title, Body: rv.Report.Body, Ready: rv.Report.Ready}
 	}
 	if rv.Last != nil {
-		v := projectFocus(*rv.Last)
-		out.Last = &v
+		out.Last = util.Ptr(projectFocus(*rv.Last))
 	}
 	if rv.Current != nil {
-		v := projectFocus(*rv.Current)
-		out.Current = &v
+		out.Current = util.Ptr(projectFocus(*rv.Current))
 	}
 	for _, g := range rv.Goals {
 		out.Goals = append(out.Goals, ReviewGoal{ID: g.ID, Title: g.Title, Category: g.Category, Priority: g.Priority})

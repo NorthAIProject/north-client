@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -128,12 +129,8 @@ func (s *Service) Feed(ctx context.Context, viewerID uuid.UUID, before time.Time
 	}
 	out := make([]Item, 0, len(rows))
 	for _, r := range rows {
-		handle := ""
-		if r.Handle != nil {
-			handle = *r.Handle
-		}
 		out = append(out, Item{
-			ID: r.ID, UserID: r.UserID, DisplayName: r.DisplayName, Handle: handle,
+			ID: r.ID, UserID: r.UserID, DisplayName: r.DisplayName, Handle: util.Val(r.Handle),
 			Category: r.Category, Kind: r.Kind, Title: r.Title, Detail: r.Detail, OccurredAt: r.OccurredAt,
 			Kudos: int(r.Kudos), Kudoed: r.Kudoed, Mine: r.UserID == viewerID,
 		})

@@ -55,9 +55,7 @@ func (r *Repository) List(ctx context.Context, userID uuid.UUID, limit int) ([]E
 			Outcome:   Outcome(row.Outcome),
 			CreatedAt: row.CreatedAt,
 		}
-		if row.Detail != nil {
-			e.Detail = *row.Detail
-		}
+		e.Detail = util.Val(row.Detail)
 		out = append(out, e)
 	}
 	return out, nil

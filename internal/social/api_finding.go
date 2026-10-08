@@ -7,6 +7,8 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
+
 	"github.com/NorthAIProject/north-client/internal/auth"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
@@ -128,8 +130,7 @@ func phoneError(w http.ResponseWriter, err error, message string) {
 func projectPhone(p Phone, configured bool) PhoneView {
 	out := PhoneView{Configured: configured, Number: p.Number, Pending: p.Pending}
 	if !p.VerifiedAt.IsZero() {
-		at := p.VerifiedAt
-		out.VerifiedAt = &at
+		out.VerifiedAt = util.Ptr(p.VerifiedAt)
 	}
 	return out
 }
@@ -187,8 +188,7 @@ func (a *API) facebookCallback(w http.ResponseWriter, r *http.Request) {
 func projectFacebook(f FacebookFriends, configured bool) FacebookView {
 	out := FacebookView{Configured: configured, Connected: f.Connected, People: projectMatches(f.People).People}
 	if !f.ImportedAt.IsZero() {
-		at := f.ImportedAt
-		out.ImportedAt = &at
+		out.ImportedAt = util.Ptr(f.ImportedAt)
 	}
 	return out
 }

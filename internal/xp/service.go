@@ -7,6 +7,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -171,12 +172,9 @@ func (s *Service) Board(ctx context.Context, viewer users.User, metric, period s
 	entries := make([]Entry, 0, len(people))
 	for _, p := range people {
 		e := Entry{UserID: p.ID, DisplayName: p.DisplayName, Value: values[p.ID].value, Me: p.ID == viewer.ID}
-		if p.Handle != nil {
-			e.Handle = *p.Handle
-		}
+		e.Handle = util.Val(p.Handle)
 		if metric == MetricXP {
-			l := LevelFor(values[p.ID].lifetime)
-			e.Level = &l
+			e.Level = util.Ptr(LevelFor(values[p.ID].lifetime))
 		}
 		entries = append(entries, e)
 	}

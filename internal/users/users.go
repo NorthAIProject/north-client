@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
 
 	usersdb "github.com/NorthAIProject/north-client/internal/users/db"
@@ -257,9 +258,7 @@ func fromDB(row usersdb.User) User {
 		CreatedAt:    row.CreatedAt,
 		UpdatedAt:    row.UpdatedAt,
 	}
-	if row.CoachingStyle != nil {
-		u.CoachingStyle = *row.CoachingStyle
-	}
+	u.CoachingStyle = util.Val(row.CoachingStyle)
 	u.OnboardedAt = row.OnboardedAt
 	return u
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/activity/activity"
@@ -112,10 +113,7 @@ func (s *Service) recapFor(ctx context.Context, user users.User, session activit
 		}
 	}
 
-	var calories float64
-	if session.CaloriesBurned != nil {
-		calories = *session.CaloriesBurned
-	}
+	calories := util.Val(session.CaloriesBurned)
 	end := s.now()
 	if session.EndedAt != nil {
 		end = *session.EndedAt

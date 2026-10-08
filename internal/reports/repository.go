@@ -70,10 +70,7 @@ func (r *Repository) List(ctx context.Context, userID uuid.UUID, kind Kind, incl
 	if limit <= 0 {
 		limit = 50
 	}
-	var filter *string
-	if kind != "" {
-		filter = util.Ptr(string(kind))
-	}
+	filter := util.StrZeroPtr(string(kind))
 	rows, err := r.q.ListReports(ctx, reportsdb.ListReportsParams{
 		UserID:          userID,
 		IncludeArchived: includeArchived,

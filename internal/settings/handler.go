@@ -432,7 +432,7 @@ func (h *Handler) updateNotifications(w http.ResponseWriter, r *http.Request) {
 				QuietStart:         in.QuietStart,
 				QuietEnd:           in.QuietEnd,
 				BriefingHour:       valueOr(in.BriefingHour, notifications.DefaultBriefingHour),
-				EveningReflection:  in.EveningReflection != nil && *in.EveningReflection,
+				EveningReflection:  util.BoolValOrDefault(in.EveningReflection, false),
 				EveningHour:        valueOr(in.EveningHour, notifications.DefaultEveningHour),
 			}
 			notifForm := settingspages.NotificationsFormFor(n, photo)

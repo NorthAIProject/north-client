@@ -3,6 +3,8 @@ package fitness
 import (
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
+
 	"github.com/NorthAIProject/north-client/internal/activity"
 	"github.com/NorthAIProject/north-client/internal/biometrics"
 	"github.com/NorthAIProject/north-client/internal/health"
@@ -113,9 +115,7 @@ func buildRecent(sessions []activity.Session) []RecentSession {
 		if s.DistanceM != nil {
 			r.DistanceKm = *s.DistanceM / 1000
 		}
-		if s.CaloriesBurned != nil {
-			r.Calories = *s.CaloriesBurned
-		}
+		r.Calories = util.Val(s.CaloriesBurned)
 		out = append(out, r)
 	}
 	return out

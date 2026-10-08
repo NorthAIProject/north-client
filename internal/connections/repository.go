@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -41,10 +42,7 @@ func (r *Repository) InsertGrant(ctx context.Context, in GrantRow) (Connection, 
 	// NULL rather than the empty string. The column is a foreign key, and ""
 	// is a value that satisfies no row — it fails the constraint instead of
 	// meaning "no client recorded", which is what an absent id means.
-	var clientID *string
-	if in.OAuthClientID != "" {
-		clientID = &in.OAuthClientID
-	}
+	clientID := util.StrZeroPtr(in.OAuthClientID)
 
 	row, err := r.q.InsertOAuthGrant(ctx, connectionsdb.InsertOAuthGrantParams{
 		UserID:        in.UserID,

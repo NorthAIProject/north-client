@@ -124,15 +124,6 @@ func (a *Analytics) captureToolSpan(ctx context.Context, sessionID, traceID, dis
 	}
 }
 
-// usageOrZero reads a possibly-nil usage pointer, such as the last chunk of a
-// stream that ended before the provider reported one.
-func usageOrZero(u *ai.Usage) ai.Usage {
-	if u == nil {
-		return ai.Usage{}
-	}
-	return *u
-}
-
 // logGeneration records one model call as a structured log line.
 //
 // Every field here is a number, an identifier, or a provider name. The prompt
