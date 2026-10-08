@@ -100,8 +100,9 @@ func TestReadinessReadsMusclesFromTheCatalog(t *testing.T) {
 		"barbell-squat": {Slug: "barbell-squat", Primary: []string{"quads"}, Secondary: []string{"hamstrings"}},
 	})
 
-	if load, err := svc.Readiness(ctx, user); err != nil || !load.LastSession.IsZero() {
-		t.Fatalf("no sets: load = %+v, err = %v", load, err)
+	empty, err := svc.Readiness(ctx, user)
+	if err != nil || !empty.LastSession.IsZero() {
+		t.Fatalf("no sets: load = %+v, err = %v", empty, err)
 	}
 
 	hourAgo := time.Now().Add(-time.Hour)
