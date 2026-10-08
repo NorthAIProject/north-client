@@ -1,0 +1,127 @@
+package planimport
+
+import (
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/alert"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
+)
+
+// Kind is which plan a page imports.
+type Kind string
+
+const (
+	Workout Kind = "workout"
+	Meal    Kind = "meal"
+)
+
+// accept mirrors planimport.Accepted. Repeated rather than imported so this
+// package stays free of the service it renders for; the server checks the
+// bytes either way.
+const accept = ".pdf,.docx,.txt,.md,.csv,.tsv,.xlsx,.json,.jpg,.jpeg,.png,.webp,.heic,image/*"
+
+func (k Kind) title() string {
+	if k == Meal {
+		return "Import a meal plan"
+	}
+	return "Import a workout plan"
+}
+
+func (k Kind) action() string {
+	if k == Meal {
+		return "/app/nutrition/import"
+	}
+	return "/app/training/import"
+}
+
+func (k Kind) back() string {
+	if k == Meal {
+		return "/app/nutrition/plans"
+	}
+	return "/app/training"
+}
+
+func (k Kind) columns() string {
+	if k == Meal {
+		return "day, meal, food, quantity, unit, protein, carbs, fat"
+	}
+	return "day, exercise, sets, reps, load, rest, notes"
+}
+
+templ UploadPage(user users.User, kind Kind, errMsg string) {
+	@layout.App(kind.title(), user, layout.BuildNav(ctx, "/app/fitness")) {
+		<div class="mx-auto w-full max-w-2xl space-y-6 p-6 md:p-8">
+			<header>
+				@ui.MonoLabel("Import")
+				<h1 class="mt-2 text-2xl font-medium tracking-tight">{ kind.title() }</h1>
+				<p class="text-muted-foreground mt-1 text-sm">
+					Nothing is saved until you've checked what was read and pressed Save.
+					if kind == Meal {
+						Your macro target stays as it is; foods are measured against it.
+					}
+				</p>
+			</header>
+			if errMsg != "" {
+				@alert.Alert(alert.Props{Variant: alert.VariantDestructive}) {
+					@alert.Description() {
+						{ errMsg }
+					}
+				}
+			}
+			@card.Card() {
+				@card.Content(card.ContentProps{Class: "space-y-4 pt-6"}) {
+					@uploadDrop(kind)
+					<div class="text-muted-foreground space-y-1 text-xs">
+						<p>PDF (up to 20 pages), Word, text or Markdown, a CSV, TSV or Excel (.xlsx) sheet, JSON, or a photo. Up to 10 MB.</p>
+						<p>Spreadsheets need a header row; the first sheet is read. Columns: { kind.columns() }. Others are ignored.</p>
+						<p>Anything the file doesn't say is left blank for you to fill in — never guessed.</p>
+					</div>
+				}
+			}
+			@button.Button(button.Props{Href: kind.back(), Variant: button.VariantGhost}) {
+				Cancel
+			}
+		</div>
+	}
+}
+
+// uploadDrop is a drop target, built as the knowledge page's is: no templUI
+// dropzone exists, and Alpine only tracks drag-over state before submitting
+// the same multipart form the file input uses.
+templ uploadDrop(kind Kind) {
+	<form
+		method="post"
+		action={ templ.SafeURL(kind.action()) }
+		enctype="multipart/form-data"
+		x-data="{ over: false, busy: false }"
+		@dragover.prevent="over = true"
+		@dragleave.prevent="over = false"
+		@drop.prevent="over = false; busy = true; $refs.file.files = $event.dataTransfer.files; $el.submit()"
+	>
+		@ui.CSRFInput()
+		<label
+			for="file"
+			:class="over ? 'border-signal bg-signal/8' : 'border-hairline bg-surface'"
+			class="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-md border border-dashed px-4 py-10 text-center transition-colors duration-150"
+		>
+			@icon.Icon("file-up")(icon.Props{Class: "text-muted-foreground size-5"})
+			<span class="text-sm font-medium" x-text="busy ? 'Reading your plan…' : 'Drop a file, or browse'">Drop a file, or browse</span>
+			<!-- Hidden native input: templUI Input cannot sit inside a drop
+			     target without drawing its own field chrome. -->
+			<input
+				id="file"
+				type="file"
+				name="file"
+				accept={ accept }
+				class="sr-only"
+				x-ref="file"
+				x-bind:disabled="busy"
+				onchange="this.form.requestSubmit()"
+				@change="busy = true"
+			/>
+		</label>
+	</form>
+}

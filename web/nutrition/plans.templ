@@ -24,7 +24,12 @@ templ PlansIndexPage(user users.User, plans []meal.MealPlan, target *meal.Macros
 		<div class="mx-auto w-full max-w-2xl space-y-6 p-6 md:p-8">
 			<header>
 				@ui.MonoLabel("Nutrition")
-				<h1 class="mt-2 text-2xl font-medium tracking-tight">Meal plans</h1>
+				<div class="mt-2 flex items-center justify-between gap-4">
+					<h1 class="text-2xl font-medium tracking-tight">Meal plans</h1>
+					@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Href: "/app/nutrition/import"}) {
+						Import from file
+					}
+				</div>
 			</header>
 			@targetNotice(target)
 			@card.Card(card.Props{Class: "border-hairline bg-surface"}) {

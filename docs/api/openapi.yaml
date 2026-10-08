@@ -766,6 +766,67 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '422':
           $ref: '#/components/responses/ValidationError'
+  /training/import/parse:
+    post:
+      operationId: parseWorkoutImport
+      summary: Read a workout plan out of a file
+      description: >-
+        Writes nothing. Spreadsheets and JSON are mapped by their header or
+        keys; documents and photos are transcribed by a model. Values the file
+        does not state come back empty, never filled in. Refusals (empty,
+        unsupported, password-protected, too long, not a plan) are a 422 with
+        the reason in fields.file.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: >-
+                    PDF (up to 20 pages), DOCX, TXT, MD, CSV, TSV, XLSX (first
+                    sheet), JSON, or a JPG, PNG, WEBP or HEIC photo. Up to 10 MB.
+      responses:
+        '200':
+          description: The draft to review
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkoutImportDraft'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /training/import:
+    post:
+      operationId: commitWorkoutImport
+      summary: Save a reviewed workout draft as a new plan
+      description: Every day needs a weekday, unique within the plan, and every exercise a name.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkoutImportDraft'
+      responses:
+        '201':
+          description: Saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportedPlan'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
   /training/plans:
     get:
       operationId: listPlans
@@ -2552,6 +2613,93 @@ paths:
                 $ref: '#/components/schemas/MealPlanOptions'
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /nutrition/import/parse:
+    post:
+      operationId: parseMealImport
+      summary: Read a meal plan out of a file
+      description: >-
+        Writes nothing. Foods are matched to the ingredient catalog and every
+        day is measured against the active macro target, which is only read.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: >-
+                    PDF (up to 20 pages), DOCX, TXT, MD, CSV, TSV, XLSX (first
+                    sheet), JSON, or a JPG, PNG, WEBP or HEIC photo. Up to 10 MB.
+      responses:
+        '200':
+          description: The draft to review, previewed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MealImportDraft'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /nutrition/import/preview:
+    post:
+      operationId: previewMealImport
+      summary: Recompute an edited meal draft
+      description: Re-resolves ingredients, grams, macros and each day's target and overage. Writes nothing.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MealImportDraft'
+      responses:
+        '200':
+          description: The draft, previewed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MealImportDraft'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /nutrition/import:
+    post:
+      operationId: commitMealImport
+      summary: Save a reviewed meal draft as a new plan
+      description: >-
+        A day over its target is refused unless confirmOverage is true, with
+        fields.overage set; nothing is written. Unresolved foods are refused
+        the same way. Either refusal carries the server's preview of the draft.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MealImportCommit'
+      responses:
+        '201':
+          description: Saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportedPlan'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          description: Not saved; see error.fields and the previewed draft
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MealImportRefusal'
   /nutrition/plans:
     get:
       operationId: listMealPlans
@@ -7344,6 +7492,207 @@ components:
           type: object
           additionalProperties:
             type: string
+    ImportedPlan:
+      type: object
+      required: [planId]
+      properties:
+        planId:
+          type: string
+          format: uuid
+    WorkoutImportDraft:
+      type: object
+      required: [name, days, unparsed]
+      properties:
+        name:
+          type: string
+        days:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkoutImportDay'
+        unparsed:
+          type: array
+          description: Plan lines that became no row, in the file's own words.
+          items:
+            type: string
+    WorkoutImportDay:
+      type: object
+      required: [label, weekday, exercises]
+      properties:
+        label:
+          type: string
+          description: What the file called the day ("Day 1", "Push", "Monday").
+        weekday:
+          type: string
+          description: Monday..Sunday, or empty until the person picks one.
+        exercises:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkoutImportExercise'
+    WorkoutImportExercise:
+      type: object
+      required: [name, reps, load, notes]
+      properties:
+        name:
+          type: string
+        sets:
+          type: integer
+          description: Null when the file does not state a set count.
+        reps:
+          type: string
+        load:
+          type: string
+        restSeconds:
+          type: integer
+        notes:
+          type: string
+          description: How-to or form notes; stored as the exercise's form cues.
+        flags:
+          type: array
+          description: What reading the file noticed about this row.
+          items:
+            type: string
+    MealImportDraft:
+      type: object
+      required: [name, planType, days, unparsed]
+      properties:
+        name:
+          type: string
+        planType:
+          type: string
+          description: The carb preset chosen on review (no_carb, low_carb, mid_carb, high_carb, custom), or empty.
+        customCarbPct:
+          type: number
+          format: double
+        days:
+          type: array
+          items:
+            $ref: '#/components/schemas/MealImportDay'
+        unparsed:
+          type: array
+          items:
+            type: string
+    MealImportDay:
+      type: object
+      required: [label, meals]
+      properties:
+        label:
+          type: string
+        weekday:
+          type: integer
+          description: 0-6, Sunday-Saturday; null until assigned.
+        meals:
+          type: array
+          items:
+            $ref: '#/components/schemas/MealImportMeal'
+        totals:
+          $ref: '#/components/schemas/ImportMacros'
+        target:
+          $ref: '#/components/schemas/ImportMacros'
+        remaining:
+          $ref: '#/components/schemas/ImportMacros'
+        over:
+          type: array
+          description: One line per macro over the day's target; empty when within it.
+          items:
+            type: string
+    MealImportMeal:
+      type: object
+      required: [name, foods]
+      properties:
+        name:
+          type: string
+        foods:
+          type: array
+          items:
+            $ref: '#/components/schemas/MealImportFood'
+    MealImportFood:
+      type: object
+      required: [food, unit, matchedName, saveAsMine]
+      properties:
+        food:
+          type: string
+        quantity:
+          type: number
+          format: double
+        unit:
+          type: string
+        grams:
+          type: number
+          format: double
+          description: The weight that will be stored. Null when it cannot be known; edit it on review.
+        statedProteinG:
+          type: number
+          format: double
+        statedCarbG:
+          type: number
+          format: double
+        statedFatG:
+          type: number
+          format: double
+        ingredientId:
+          type: string
+          format: uuid
+        matchedName:
+          type: string
+        candidates:
+          type: array
+          items:
+            $ref: '#/components/schemas/ImportCandidate'
+        macros:
+          $ref: '#/components/schemas/ImportMacros'
+        saveAsMine:
+          type: boolean
+          description: Create a personal ingredient from the stated macros instead of choosing one.
+        flags:
+          type: array
+          items:
+            type: string
+        checks:
+          type: array
+          description: What still blocks saving this line; recomputed by every preview.
+          items:
+            type: string
+    ImportCandidate:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+    ImportMacros:
+      type: object
+      required: [calories, proteinG, carbG, fatG]
+      properties:
+        calories:
+          type: number
+          format: double
+        proteinG:
+          type: number
+          format: double
+        carbG:
+          type: number
+          format: double
+        fatG:
+          type: number
+          format: double
+    MealImportCommit:
+      type: object
+      required: [draft, confirmOverage]
+      properties:
+        draft:
+          $ref: '#/components/schemas/MealImportDraft'
+        confirmOverage:
+          type: boolean
+    MealImportRefusal:
+      type: object
+      required: [error, draft]
+      properties:
+        error:
+          $ref: '#/components/schemas/ErrorDetail'
+        draft:
+          $ref: '#/components/schemas/MealImportDraft'
     SignupRequest:
       type: object
       required: [email, password, passwordConfirmation]
@@ -8389,7 +8738,9 @@ components:
           type: string
         sets:
           type: integer
-          description: The plan as written, which is what an edit changes.
+          description: >-
+            The plan as written, which is what an edit changes. 0 means the
+            plan does not state a set count (an imported plan may leave it out).
         thisWeekSets:
           type: integer
           description: >-
@@ -8397,8 +8748,13 @@ components:
             deload week, one more on the first two exercises in a build week).
         reps:
           type: string
+          description: Empty when an imported plan does not state reps.
+        load:
+          type: string
+          description: The weight as an imported plan wrote it ("100 kg", "RPE 8"). Absent otherwise.
         restSeconds:
           type: integer
+          description: 0 means rest is not stated.
         equipment:
           type: string
         formCues:

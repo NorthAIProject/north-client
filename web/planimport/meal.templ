@@ -1,0 +1,364 @@
+package planimport
+
+import (
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/NorthAIProject/north-client/internal/meals/meal"
+	"github.com/NorthAIProject/north-client/internal/planimport/draft"
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/alert"
+	"github.com/NorthAIProject/north-client/web/shared/ui/badge"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/input"
+	"github.com/NorthAIProject/north-client/web/shared/ui/selectbox"
+	"github.com/NorthAIProject/north-client/web/shared/ui/table"
+)
+
+// MealReview is the meal review page's data.
+type MealReview struct {
+	Draft     draft.MealDraft
+	DraftJSON string
+	Error     string
+
+	// NeedsConfirm is set after a save was refused only because a day goes
+	// over its target: the page then offers to save anyway.
+	NeedsConfirm bool
+}
+
+func foodField(d, m, f int, name string) string { return fmt.Sprintf("d%d.m%d.f%d.%s", d, m, f, name) }
+
+func grams(v *float64) string {
+	if v == nil {
+		return ""
+	}
+	return fmt.Sprintf("%g", *v)
+}
+
+func macroLine(m *draft.MacroGrams) string {
+	if m == nil {
+		return "—"
+	}
+	return fmt.Sprintf("%.0f P · %.0f C · %.0f F", m.ProteinG, m.CarbG, m.FatG)
+}
+
+func stated(f draft.FoodDraft) string {
+	var parts []string
+	for _, s := range []struct {
+		v     *float64
+		label string
+	}{{f.StatedProteinG, "P"}, {f.StatedCarbG, "C"}, {f.StatedFatG, "F"}} {
+		if s.v != nil {
+			parts = append(parts, fmt.Sprintf("%.0f %s", *s.v, s.label))
+		}
+	}
+	return strings.Join(parts, " · ")
+}
+
+func amount(f draft.FoodDraft) string {
+	if f.Quantity == nil {
+		return f.Unit
+	}
+	return strings.TrimSpace(fmt.Sprintf("%g %s", *f.Quantity, f.Unit))
+}
+
+func ingredientValue(f draft.FoodDraft) string {
+	switch {
+	case f.SaveAsMine:
+		return "mine"
+	case f.IngredientID != nil:
+		return f.IngredientID.String()
+	default:
+		return ""
+	}
+}
+
+func hasStatedMacros(f draft.FoodDraft) bool {
+	return f.StatedProteinG != nil && f.StatedCarbG != nil && f.StatedFatG != nil
+}
+
+// mealWeekdays is Monday-first, as the rest of the app lists a week, with the
+// values meal.Meal stores: 0 is Sunday.
+var mealWeekdays = []time.Weekday{time.Monday, time.Tuesday, time.Wednesday, time.Thursday, time.Friday, time.Saturday, time.Sunday}
+
+func anyOver(days []draft.MealDayDraft) bool {
+	for _, d := range days {
+		if len(d.Over) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+templ MealReviewPage(user users.User, v MealReview) {
+	@layout.App("Review import", user, layout.BuildNav(ctx, "/app/fitness")) {
+		<div class="mx-auto w-full max-w-5xl space-y-6 p-6 md:p-8">
+			<header>
+				@ui.MonoLabel("Import")
+				<h1 class="mt-2 text-2xl font-medium tracking-tight">Check your meal plan</h1>
+				<p class="text-muted-foreground mt-1 text-sm">
+					Each food is matched to an ingredient and weighed in grams, then every day is measured
+					against what's left of your macro target. Your target itself doesn't change.
+					Nothing is saved until you press Save.
+				</p>
+			</header>
+			if v.Error != "" {
+				@alert.Alert(alert.Props{Variant: alert.VariantDestructive}) {
+					@alert.Description() {
+						{ v.Error }
+					}
+				}
+			}
+			<form method="post" action="/app/nutrition/import/review" class="space-y-6">
+				@ui.CSRFInput()
+				<input type="hidden" name="draft" value={ v.DraftJSON }/>
+				@defaultSubmit()
+				@card.Card() {
+					@card.Content(card.ContentProps{Class: "grid gap-4 pt-6 sm:grid-cols-3"}) {
+						<label class="block space-y-1 sm:col-span-2">
+							<span class="text-muted-foreground text-xs">Plan name</span>
+							@input.Input(input.Props{Name: "name", Value: v.Draft.Name, Required: true})
+						</label>
+						<div class="space-y-1">
+							<span class="text-muted-foreground text-xs">Carb type</span>
+							@planTypePicker(v.Draft.PlanType)
+						</div>
+						if v.Draft.PlanType == meal.PlanTypeCustom {
+							<label class="block space-y-1">
+								<span class="text-muted-foreground text-xs">Carbs, % of target</span>
+								@input.Input(input.Props{Name: "custom_carb_pct", Type: input.TypeNumber, Value: grams(v.Draft.CustomCarbPct)})
+							</label>
+						}
+						<p class="text-muted-foreground text-xs sm:col-span-3">
+							Days are only measured against your target once you pick a carb type, as with a plan you build here.
+						</p>
+					}
+				}
+				if len(v.Draft.Unparsed) > 0 {
+					@unparsedList(v.Draft.Unparsed)
+				}
+				for i, day := range v.Draft.Days {
+					@mealDay(i, day)
+				}
+				if v.NeedsConfirm && anyOver(v.Draft.Days) {
+					@alert.Alert(alert.Props{Variant: alert.VariantDestructive}) {
+						@alert.Title() {
+							Some days go over your target
+						}
+						@alert.Description() {
+							<p>The days marked above exceed what your target leaves. Change them, or save anyway.</p>
+							<div class="mt-3">
+								@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantDestructive, Attributes: templ.Attributes{"name": "action", "value": "save-confirm"}}) {
+									Confirm and save anyway
+								}
+							</div>
+						}
+					}
+				}
+				<div class="flex flex-wrap items-center justify-end gap-2">
+					@button.Button(button.Props{Href: "/app/nutrition/plans", Variant: button.VariantGhost}) {
+						Cancel import
+					}
+					@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Attributes: templ.Attributes{"name": "action", "value": "update", "formnovalidate": true}}) {
+						Recalculate
+					}
+					@button.Button(button.Props{Type: button.TypeSubmit, Attributes: templ.Attributes{"name": "action", "value": "save"}}) {
+						Save plan
+					}
+				</div>
+			</form>
+		</div>
+		@selectbox.Script()
+		@input.Script()
+	}
+}
+
+templ planTypePicker(selected string) {
+	@selectbox.SelectBox() {
+		@selectbox.Trigger(selectbox.TriggerProps{Name: "plan_type"}) {
+			@selectbox.Value(selectbox.ValueProps{Placeholder: "None"})
+		}
+		@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
+			@selectbox.Item(selectbox.ItemProps{Value: "", Selected: selected == ""}) {
+				None
+			}
+			for _, pt := range meal.PlanTypes {
+				@selectbox.Item(selectbox.ItemProps{Value: pt, Selected: pt == selected}) {
+					{ meal.PlanTypeLabel(pt) }
+				}
+			}
+		}
+	}
+}
+
+templ mealDay(i int, day draft.MealDayDraft) {
+	@card.Card(card.Props{Class: overClass(day)}) {
+		@card.Header(card.HeaderProps{Class: "flex flex-row flex-wrap items-center justify-between gap-3"}) {
+			<div>
+				@card.Title() {
+					{ dayLabel(day.Label, i) }
+				}
+				<p class="text-muted-foreground mt-1 font-mono text-xs">
+					{ macroLine(day.Totals) }
+					if day.Target != nil {
+						<span>· target { macroLine(day.Target) } · left { macroLine(day.Remaining) }</span>
+					}
+				</p>
+				for _, o := range day.Over {
+					<p class="text-destructive mt-1 text-xs font-medium">{ o }</p>
+				}
+			</div>
+			<div class="flex items-center gap-2">
+				@mealWeekdayPicker(fmt.Sprintf("d%d.weekday", i), day.Weekday)
+				@button.Button(button.Props{
+					Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm,
+					Attributes: templ.Attributes{"name": "action", "value": fmt.Sprintf("delete-day:%d", i), "formnovalidate": true},
+				}) {
+					Remove day
+				}
+			</div>
+		}
+		@card.Content(card.ContentProps{Class: "space-y-5"}) {
+			for j, m := range day.Meals {
+				<div class="space-y-2">
+					<div class="flex items-center gap-2">
+						@input.Input(input.Props{Name: fmt.Sprintf("d%d.m%d.name", i, j), Value: m.Name, Placeholder: fmt.Sprintf("Meal %d", j+1), Class: "max-w-xs"})
+						@button.Button(button.Props{
+							Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm,
+							Attributes: templ.Attributes{"name": "action", "value": fmt.Sprintf("delete-meal:%d:%d", i, j), "formnovalidate": true},
+						}) {
+							Remove meal
+						}
+					</div>
+					<div class="overflow-x-auto">
+						@table.Table() {
+							@table.Header() {
+								@table.Row() {
+									@table.Head() {
+										From your file
+									}
+									@table.Head() {
+										Ingredient
+									}
+									@table.Head() {
+										Grams
+									}
+									@table.Head() {
+										Macros
+									}
+									@table.Head() {
+										<span class="sr-only">Remove</span>
+									}
+								}
+							}
+							@table.Body() {
+								for k, f := range m.Foods {
+									@foodRow(i, j, k, f)
+								}
+							}
+						}
+					</div>
+				</div>
+			}
+		}
+	}
+}
+
+templ foodRow(i, j, k int, f draft.FoodDraft) {
+	@table.Row() {
+		@table.Cell(table.CellProps{Class: "min-w-40 align-top"}) {
+			<div class="font-medium">{ f.Food }</div>
+			<div class="text-muted-foreground text-xs">
+				{ amount(f) }
+				if s := stated(f); s != "" {
+					· file says { s }
+				}
+			</div>
+			<div class="mt-1 flex flex-wrap gap-1">
+				for _, flag := range f.Flags {
+					@badge.Badge(badge.Props{Variant: badge.VariantOutline, Class: "whitespace-normal text-left"}) {
+						{ flag }
+					}
+				}
+				for _, c := range f.Checks {
+					@badge.Badge(badge.Props{Variant: badge.VariantDestructive, Class: "whitespace-normal text-left"}) {
+						{ c }
+					}
+				}
+			</div>
+		}
+		@table.Cell(table.CellProps{Class: "min-w-48 align-top"}) {
+			@selectbox.SelectBox() {
+				@selectbox.Trigger(selectbox.TriggerProps{Name: foodField(i, j, k, "ingredient"), HasError: ingredientValue(f) == ""}) {
+					@selectbox.Value(selectbox.ValueProps{Placeholder: "Choose an ingredient"})
+				}
+				@selectbox.Content() {
+					for _, c := range f.Candidates {
+						@selectbox.Item(selectbox.ItemProps{Value: c.ID.String(), Selected: f.IngredientID != nil && *f.IngredientID == c.ID}) {
+							{ c.Name }
+						}
+					}
+					if f.IngredientID != nil && f.MatchedName != "" && !candidateListed(f) {
+						@selectbox.Item(selectbox.ItemProps{Value: f.IngredientID.String(), Selected: true}) {
+							{ f.MatchedName }
+						}
+					}
+					if hasStatedMacros(f) {
+						@selectbox.Item(selectbox.ItemProps{Value: "mine", Selected: f.SaveAsMine}) {
+							Save as my own food (file's macros)
+						}
+					}
+				}
+			}
+		}
+		@table.Cell(table.CellProps{Class: "align-top"}) {
+			@input.Input(input.Props{Name: foodField(i, j, k, "grams"), Type: input.TypeNumber, Value: grams(f.Grams), Class: "w-24", HasError: f.Grams == nil, Attributes: templ.Attributes{"step": "any", "min": "0"}})
+		}
+		@table.Cell(table.CellProps{Class: "align-top font-mono text-xs"}) {
+			{ macroLine(f.Macros) }
+		}
+		@table.Cell(table.CellProps{Class: "align-top"}) {
+			@button.Button(button.Props{
+				Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm,
+				Attributes: templ.Attributes{"name": "action", "value": fmt.Sprintf("delete-food:%d:%d:%d", i, j, k), "formnovalidate": true, "aria-label": "Remove " + f.Food},
+			}) {
+				Remove
+			}
+		}
+	}
+}
+
+func overClass(day draft.MealDayDraft) string {
+	if len(day.Over) > 0 {
+		return "border-destructive/60"
+	}
+	return ""
+}
+
+func candidateListed(f draft.FoodDraft) bool {
+	for _, c := range f.Candidates {
+		if f.IngredientID != nil && c.ID == *f.IngredientID {
+			return true
+		}
+	}
+	return false
+}
+
+templ mealWeekdayPicker(name string, selected *int) {
+	@selectbox.SelectBox() {
+		@selectbox.Trigger(selectbox.TriggerProps{Name: name, Class: "w-40", HasError: selected == nil}) {
+			@selectbox.Value(selectbox.ValueProps{Placeholder: "Day of the week"})
+		}
+		@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
+			for _, d := range mealWeekdays {
+				@selectbox.Item(selectbox.ItemProps{Value: fmt.Sprint(int(d)), Selected: selected != nil && *selected == int(d)}) {
+					{ d.String() }
+				}
+			}
+		}
+	}
+}

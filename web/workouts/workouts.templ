@@ -81,6 +81,12 @@ templ IntakePage(user users.User, f IntakeForm) {
 					Khepri only programmes what you can actually do. Be honest about the
 					equipment and the time — the plan is checked against your answers.
 				</p>
+				<p class="text-muted-foreground mt-2 text-sm">
+					Already have a plan from a coach or a spreadsheet?
+					@button.Button(button.Props{Variant: button.VariantLink, Href: "/app/training/import", Class: "h-auto p-0"}) {
+						Import it from a file
+					}
+				</p>
 			</header>
 			if f.Error != "" {
 				@alert.Alert(alert.Props{Variant: alert.VariantDestructive, Class: "mb-4"}) {
@@ -235,9 +241,14 @@ templ PlansPage(user users.User, plans []PlanSummary) {
 						Every plan you have built. Opening one shows it as it stands now, including any changes you have made.
 					</p>
 				</div>
-				@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Href: "/app/training/new"}) {
-					New plan
-				}
+				<div class="flex shrink-0 gap-2">
+					@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Href: "/app/training/import"}) {
+						Import
+					}
+					@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Href: "/app/training/new"}) {
+						New plan
+					}
+				</div>
 			</header>
 			<ul class="space-y-2">
 				for i, p := range plans {
@@ -403,6 +414,9 @@ templ PlanPage(user users.User, v PlanView) {
 				<div class="flex shrink-0 gap-2">
 					@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Href: "/app/training/plans"}) {
 						All plans
+					}
+					@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Href: "/app/training/import"}) {
+						Import
 					}
 					@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Href: "/app/training/new"}) {
 						New plan
@@ -659,6 +673,37 @@ func anyIllustrated(p plan.Plan) bool {
 	return false
 }
 
+// prescription is the sets×reps label. An imported plan can leave either out,
+// and "0×" would read as an instruction to do nothing, so what was not stated
+// is not shown.
+func prescription(ex plan.Exercise) string {
+	switch {
+	case ex.Sets > 0 && ex.Reps != "":
+		return fmt.Sprintf("%d×%s", ex.Sets, ex.Reps)
+	case ex.Sets > 0:
+		return fmt.Sprintf("%d sets", ex.Sets)
+	case ex.Reps != "":
+		return ex.Reps + " reps"
+	default:
+		return "Set sets & reps"
+	}
+}
+
+// exerciseDetails joins the load, rest and equipment that are known.
+func exerciseDetails(ex plan.Exercise) string {
+	var parts []string
+	if ex.Load != "" {
+		parts = append(parts, "Load "+ex.Load)
+	}
+	if ex.RestSeconds > 0 {
+		parts = append(parts, fmt.Sprintf("Rest %ds", ex.RestSeconds))
+	}
+	if ex.Equipment != "" {
+		parts = append(parts, ex.Equipment)
+	}
+	return strings.Join(parts, " · ")
+}
+
 templ exerciseRow(v PlanView, dayIndex, index int, ex plan.Exercise, dayLength int) {
 	{{ id := fmt.Sprintf("exercise-%d-%d", dayIndex, index) }}
 	<li class="py-3 first:pt-0 last:pb-0">
@@ -692,7 +737,7 @@ templ exerciseRow(v PlanView, dayIndex, index int, ex plan.Exercise, dayLength i
 							class="text-muted-foreground hover:text-foreground shrink-0 font-mono text-sm underline decoration-dotted underline-offset-4"
 							title="Change sets, reps and rest"
 						>
-							{ strconv.Itoa(ex.Sets) }×{ ex.Reps }
+							{ prescription(ex) }
 						</button>
 					</div>
 					<form
@@ -740,7 +785,7 @@ templ exerciseRow(v PlanView, dayIndex, index int, ex plan.Exercise, dayLength i
 					<p class="text-muted-foreground mt-1 text-sm">{ ex.FormCues }</p>
 				}
 				<p class="text-muted-foreground/70 mt-1 text-xs">
-					Rest { strconv.Itoa(ex.RestSeconds) }s · { ex.Equipment }
+					{ exerciseDetails(ex) }
 					if ex.Substitute != "" {
 						· No equipment? { ex.Substitute }
 					}

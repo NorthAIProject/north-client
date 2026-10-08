@@ -17,9 +17,14 @@ import (
 
 // StoredIntake is a persisted intake.
 type StoredIntake struct {
-	ID        uuid.UUID
-	UserID    uuid.UUID
-	Intake    Intake
+	ID     uuid.UUID
+	UserID uuid.UUID
+	Intake Intake
+
+	// Imported marks the placeholder row behind an imported plan. Its Intake
+	// holds no answers and must not be read as if it did.
+	Imported bool
+
 	CreatedAt time.Time
 }
 
@@ -33,6 +38,10 @@ const (
 	// rather than updating one, so a chain of edits keeps every step — see
 	// migrations/20260827190000.
 	SourceEdited = "edited"
+
+	// SourceImported marks a plan read from a file the person uploaded and
+	// confirmed. No model generated it; Model and Provider say so.
+	SourceImported = "imported"
 )
 
 type StoredPlan struct {
@@ -78,6 +87,31 @@ func (r *Repository) CreateIntake(ctx context.Context, userID uuid.UUID, in Inta
 	}
 	return intakeFromDB(row), nil
 }
+
+// CreateImportedIntake inserts the placeholder intake an imported plan hangs
+// from. Only days_per_week means anything — it is the plan's own day count —
+// and the rest are the column defaults or the smallest values the CHECKs
+// allow. Nothing reads them: LatestIntake skips imported rows and
+// PlanForDisplay does not validate against one.
+func (r *Repository) CreateImportedIntake(ctx context.Context, userID uuid.UUID, daysPerWeek int) (StoredIntake, error) {
+	row, err := r.q.CreateIntake(ctx, workoutsdb.CreateIntakeParams{
+		UserID:         userID,
+		Goal:           "",
+		Experience:     "",
+		DaysPerWeek:    int16(daysPerWeek),
+		SessionMinutes: importedSessionMinutes,
+		Equipment:      []string{},
+		Imported:       true,
+	})
+	if err != nil {
+		return StoredIntake{}, apperr.Wrap(err, "create imported intake")
+	}
+	return intakeFromDB(row), nil
+}
+
+// importedSessionMinutes satisfies session_minutes' CHECK on a row that has no
+// session length. Unread; see CreateImportedIntake.
+const importedSessionMinutes = 10
 
 // GetIntake fetches the intake a plan was built from, so the plan page can say
 // what it no longer satisfies. The plan's own intake rather than the newest:
@@ -209,6 +243,7 @@ func intakeFromDB(row workoutsdb.WorkoutIntake) StoredIntake {
 	return StoredIntake{
 		ID:        row.ID,
 		UserID:    row.UserID,
+		Imported:  row.Imported,
 		CreatedAt: row.CreatedAt,
 		Intake: Intake{
 			Goal:           row.Goal,

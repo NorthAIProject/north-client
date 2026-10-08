@@ -41,6 +41,8 @@ const (
 	ConversationSummary = "conversation_summary.md"
 	QuickCapture        = "quick_capture.md"
 	StandingTask        = "standing_task.md"
+	PlanImportWorkout   = "plan_import_workout.md"
+	PlanImportMeal      = "plan_import_meal.md"
 )
 
 // Render executes a prompt template with the given data.

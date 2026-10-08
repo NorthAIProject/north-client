@@ -62,6 +62,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/notifications"
 	"github.com/NorthAIProject/north-client/internal/nudges"
 	"github.com/NorthAIProject/north-client/internal/onboarding"
+	"github.com/NorthAIProject/north-client/internal/planimport"
 	"github.com/NorthAIProject/north-client/internal/preferences"
 	"github.com/NorthAIProject/north-client/internal/push"
 	"github.com/NorthAIProject/north-client/internal/quota"
@@ -363,6 +364,20 @@ func routes(
 		Recommend:   mealRecommendSvc,
 	}
 	mealsHandler := meals.NewHandler(mealsOpts)
+
+	// Plan import reads a workout or meal plan out of a file. It owns no
+	// table: a confirmed import is stored by the workouts and meals services
+	// exactly as a plan made in the app. Spreadsheets are read by code; only a
+	// document or a photo reaches the model, and FastModel for the reason
+	// capture uses it — this is transcription, not writing.
+	planImportSvc := planimport.NewService(planimport.Options{
+		Reader:      planimport.NewAIReader(runner, cfg.AI.FastModel),
+		Workouts:    workoutSvc,
+		MealPlans:   mealPlanSvc,
+		Ingredients: mealIngredientSvc,
+		Goals:       calculatorSvc,
+	})
+	planImportHandler := planimport.NewHandler(planImportSvc, quotaSvc)
 
 	// Personal access tokens for outside agents. The base URL comes from
 	// configuration and not from the request, because the setup instructions
@@ -965,6 +980,7 @@ func routes(
 			care:         care.NewAPI(careOpts),
 			mind:         mind.NewAPI(mindSvc),
 			nutrition:    meals.NewAPI(mealsOpts),
+			planImport:   planimport.NewAPI(planImportSvc, quotaSvc),
 			decisions:    decisions.NewAPI(decisionSvc),
 			nudges:       nudges.NewAPI(nudgeSvc),
 			devices:      apns.NewAPI(apnsSvc),
@@ -1142,6 +1158,7 @@ func routes(
 				activityHandler.Routes(r)
 				calculatorHandler.Routes(r)
 				mealsHandler.Routes(r)
+				planImportHandler.Routes(r)
 				fitnessHandler.Routes(r)
 			})
 		})

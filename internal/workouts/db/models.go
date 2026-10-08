@@ -21,6 +21,7 @@ type WorkoutIntake struct {
 	Equipment      []string
 	Limitations    string
 	CreatedAt      time.Time
+	Imported       bool
 }
 
 type WorkoutPlan struct {

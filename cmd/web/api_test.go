@@ -31,6 +31,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/memories"
 	"github.com/NorthAIProject/north-client/internal/mind"
 	"github.com/NorthAIProject/north-client/internal/news"
+	"github.com/NorthAIProject/north-client/internal/planimport"
 	"github.com/NorthAIProject/north-client/internal/nudges"
 	"github.com/NorthAIProject/north-client/internal/onboarding"
 	"github.com/NorthAIProject/north-client/internal/reports"
@@ -76,6 +77,7 @@ func apiRouter(t *testing.T) chi.Router {
 		care:       care.NewAPI(care.Options{}),
 		mind:       mind.NewAPI(nil),
 		nutrition:  meals.NewAPI(meals.HandlerOptions{}),
+		planImport: planimport.NewAPI(nil, nil),
 		decisions:  decisions.NewAPI(nil),
 		nudges:     nudges.NewAPI(nil),
 		devices:    apns.NewAPI(nil),

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/NorthAIProject/north-client/internal/meals"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
@@ -43,7 +42,7 @@ func (s *Service) offer(ctx context.Context, user users.User, item Item) FoodLin
 		Candidates: []Candidate{},
 	}
 
-	found, err := s.ingredients.Search(ctx, user.ID, item.Food.Query, searchLimit)
+	match, found, err := s.ingredients.Offer(ctx, user.ID, item.Food.Query, searchLimit)
 	if err != nil {
 		line.Problem = "The ingredient catalog could not be searched."
 		return line
@@ -56,7 +55,7 @@ func (s *Service) offer(ctx context.Context, user users.User, item Item) FoodLin
 	for _, ingredient := range found {
 		line.Candidates = append(line.Candidates, Candidate{ID: ingredient.ID, Name: ingredient.Name})
 	}
-	if match, ambiguous := meals.MatchIngredient(found, item.Food.Query); len(ambiguous) == 0 {
+	if match != nil {
 		line.IngredientID = match.ID
 		line.MatchedName = match.Name
 	}
