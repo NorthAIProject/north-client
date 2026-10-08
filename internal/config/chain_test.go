@@ -19,6 +19,8 @@ func loadWith(t *testing.T, env map[string]string) (*Config, error) {
 	for _, key := range []string{
 		"AI_PROVIDER", "AI_PROVIDER_CHAIN", "AI_PROVIDER_CHAIN_FREE",
 		"OPENROUTER_API_KEY", "OPENROUTER_FREE_API_KEY",
+		"ANTHROPIC_API_KEY", "ANTHROPIC_FIRST", "ANTHROPIC_MODEL",
+		"ANTHROPIC_EFFORT", "ANTHROPIC_THINKING", "ANTHROPIC_SCOPE",
 	} {
 		t.Setenv(key, "")
 	}

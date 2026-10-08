@@ -12,6 +12,7 @@ import (
 	"fmt"
 
 	"github.com/NorthAIProject/north-client/internal/ai"
+	"github.com/NorthAIProject/north-client/internal/ai/anthropic"
 	"github.com/NorthAIProject/north-client/internal/ai/fake"
 	"github.com/NorthAIProject/north-client/internal/ai/gemini"
 	"github.com/NorthAIProject/north-client/internal/ai/openaicompat"
@@ -41,10 +42,23 @@ type Options struct {
 	GeminiAPIKey string
 	GeminiModel  string
 
+	// Anthropic is Khepri's own Claude key, called over the native Messages
+	// API. Empty APIKey means no client is built.
+	Anthropic Anthropic
+
 	// Compatible holds every backend that speaks the OpenAI chat dialect —
 	// OpenRouter, NVIDIA, xAI, and a self-hosted Hermes gateway are all the
 	// same client with different settings.
 	Compatible []Compatible
+}
+
+// Anthropic configures the managed Claude client. Its place in the chain is
+// config's decision; this only says how to build it.
+type Anthropic struct {
+	APIKey   string
+	Model    string
+	Effort   string
+	Thinking string
 }
 
 // Compatible describes one OpenAI-dialect backend.
@@ -77,6 +91,21 @@ func Build(ctx context.Context, opts Options) (*ai.Registry, error) {
 		})
 		if err != nil {
 			return nil, fmt.Errorf("providers: build gemini: %w", err)
+		}
+		r.Register(client)
+	}
+
+	if opts.Anthropic.APIKey != "" {
+		client, err := anthropic.New(anthropic.Options{
+			APIKey:       opts.Anthropic.APIKey,
+			DefaultModel: opts.Anthropic.Model,
+			Effort:       opts.Anthropic.Effort,
+			Thinking:     opts.Anthropic.Thinking,
+			Managed:      true,
+		})
+		if err != nil {
+			// Not wrapped with the options: they hold the key.
+			return nil, fmt.Errorf("providers: build anthropic: invalid configuration")
 		}
 		r.Register(client)
 	}

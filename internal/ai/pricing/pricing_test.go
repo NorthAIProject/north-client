@@ -24,6 +24,8 @@ func TestEveryShippedModelIsPricedOrAcknowledged(t *testing.T) {
 		{"nvidia", "meta/llama-3.3-70b-instruct"},
 		{"xai", "grok-4.5"},
 		{"hermes", "hermes-3"},
+		// ANTHROPIC_MODEL's default, as the managed client reports it.
+		{"anthropic", "claude-haiku-5-5"},
 		// The free floor, reached as provider=model chain entries. Named here
 		// by the base provider, which is what Key normalises a variant to.
 		{"openrouter", "nvidia/nemotron-3-ultra-550b-a55b:free"},
@@ -96,5 +98,19 @@ func TestASmallCallDoesNotRoundToZero(t *testing.T) {
 	// priced-zero model must stay zero.
 	if micros, ok := pricing.Cost("openrouter", "nvidia/nemotron-3-super-120b-a12b:free", 1234, 567); !ok || micros != 0 {
 		t.Errorf("cost = %d, ok = %v; want 0, true", micros, ok)
+	}
+}
+
+// Haiku 5.5 is the trial model, and its cost is the question the trial asks.
+// 0.10 in and 0.50 out per million tokens.
+func TestHaikuIsPricedAtItsListRate(t *testing.T) {
+	t.Parallel()
+
+	micros, ok := pricing.Cost("anthropic", "claude-haiku-5-5", 1_000_000, 1_000_000)
+	if !ok {
+		t.Fatal("claude-haiku-5-5 has no rate")
+	}
+	if micros != 600_000 {
+		t.Errorf("cost = %d micros, want 600000 (0.10 + 0.50)", micros)
 	}
 }

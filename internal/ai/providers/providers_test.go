@@ -100,6 +100,50 @@ func TestBuildPrefersTheChainHeadOverTheFirstRegistered(t *testing.T) {
 	}
 }
 
+func TestBuildRegistersKhepriOwnAnthropicKeyAsTheChainHead(t *testing.T) {
+	r, err := providers.Build(context.Background(), providers.Options{
+		Chain:      []string{"anthropic", "openrouter"},
+		Anthropic:  providers.Anthropic{APIKey: "sk-ant-test", Model: "claude-haiku-5-5", Effort: "low", Thinking: "adaptive"},
+		Compatible: []providers.Compatible{compatSpec("openrouter", "anthropic/claude-sonnet-4.5")},
+	})
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	if r.DefaultName() != "anthropic" {
+		t.Errorf("default = %q, want anthropic", r.DefaultName())
+	}
+	got := r.Resolve([]string{"anthropic", "openrouter"})
+	if len(got) != 2 || got[0].Name() != "anthropic" || got[1].Name() != "openrouter" {
+		t.Errorf("resolved = %v, want anthropic then openrouter", names(got))
+	}
+}
+
+// With no key, a chain naming anthropic resolves exactly as it would without
+// it. That is the state every deployment is in before the key is sealed.
+func TestBuildSkipsAnthropicWithoutAKey(t *testing.T) {
+	r, err := providers.Build(context.Background(), providers.Options{
+		Chain:      []string{"anthropic", "openrouter"},
+		Compatible: []providers.Compatible{compatSpec("openrouter", "anthropic/claude-sonnet-4.5")},
+	})
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	if _, err := r.Get("anthropic"); err == nil {
+		t.Error("anthropic was registered with no key")
+	}
+	if r.DefaultName() != "openrouter" {
+		t.Errorf("default = %q, want openrouter", r.DefaultName())
+	}
+}
+
+func names(clients []ai.Client) []string {
+	out := make([]string, 0, len(clients))
+	for _, c := range clients {
+		out = append(out, c.Name())
+	}
+	return out
+}
+
 // noopMeter satisfies ai.Meter without recording, so a test can build a
 // registry that wraps its clients the way production does.
 type noopMeter struct{}
