@@ -7,8 +7,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/caffeine"
+	"github.com/NorthAIProject/north-client/internal/calculator"
 	"github.com/NorthAIProject/north-client/internal/fasting"
 	"github.com/NorthAIProject/north-client/internal/lifts"
 	"github.com/NorthAIProject/north-client/internal/meals"
@@ -33,7 +36,7 @@ func TestPlanAndTrackerToolsWriteRealRows(t *testing.T) {
 
 	mealsRepo := meals.NewRepository(pool)
 	ingredientSvc := meals.NewIngredientService(mealsRepo)
-	planSvc := meals.NewMealPlanService(mealsRepo)
+	planSvc := meals.NewMealPlanService(mealsRepo, fixedTarget{ProteinG: 150, FatG: 70, CarbG: 250})
 	for _, in := range []meals.IngredientInput{
 		{Name: "Zzoats test", ServingSizeGrams: 40, Per100g: meals.Macros{Calories: 380, ProteinG: 13, CarbG: 66, FatG: 7}},
 		{Name: "Zzchicken test", ServingSizeGrams: 150, Per100g: meals.Macros{Calories: 165, ProteinG: 31, FatG: 4}},
@@ -72,10 +75,10 @@ func TestPlanAndTrackerToolsWriteRealRows(t *testing.T) {
 
 	out := invoke("create_meal_plan", map[string]any{
 		"name": "Cut", "objective": "cutting",
-		"meals": []map[string]any{
+		"days": []map[string]any{{"meals": []map[string]any{
 			{"name": "Breakfast", "ingredients": []map[string]any{{"food": "zzoats", "grams": 80}}},
 			{"name": "Lunch", "ingredients": []map[string]any{{"food": "zzchicken", "grams": 200}}},
-		},
+		}}},
 	})
 	if !strings.Contains(out, "Breakfast") || !strings.Contains(out, "Lunch") {
 		t.Errorf("create_meal_plan said %q", out)
@@ -88,12 +91,24 @@ func TestPlanAndTrackerToolsWriteRealRows(t *testing.T) {
 	// An ingredient that does not resolve stops the plan before anything is
 	// written.
 	if res := call("create_meal_plan", map[string]any{
-		"name": "Broken", "meals": []map[string]any{{"name": "Dinner", "ingredients": []map[string]any{{"food": "unobtainium", "grams": 100}}}},
+		"name": "Broken", "days": []map[string]any{{"meals": []map[string]any{
+			{"name": "Dinner", "ingredients": []map[string]any{{"food": "unobtainium", "grams": 100}}},
+		}}},
 	}); !res.IsError {
 		t.Errorf("an unknown ingredient was accepted: %s", res.Content)
 	}
+
+	// A day over the target is refused with the amount, and nothing is saved:
+	// 300 g oats is 198 g carbs against mid carb's 88.75 g.
+	if res := call("create_meal_plan", map[string]any{
+		"name": "Too much", "plan_type": "mid_carb", "days": []map[string]any{{"meals": []map[string]any{
+			{"name": "Breakfast", "ingredients": []map[string]any{{"food": "zzoats", "grams": 300}}},
+		}}},
+	}); !res.IsError || !strings.Contains(res.Content, "over on carbs") {
+		t.Errorf("an over-target plan was not refused with the amount: %s", res.Content)
+	}
 	if plans, _ = planSvc.ListPlans(ctx, user.ID); len(plans) != 1 {
-		t.Errorf("a failed plan left %d plans", len(plans))
+		t.Errorf("failed plans left %d plans", len(plans))
 	}
 
 	invoke("log_caffeine", map[string]any{"preset": "espresso"})
@@ -148,4 +163,11 @@ func TestClockTodayReadsAFutureTimeAsYesterday(t *testing.T) {
 	if _, err = clockToday("8pm", loc, now); err == nil {
 		t.Error("8pm accepted")
 	}
+}
+
+// fixedTarget is a macro target from the calculator that never changes.
+type fixedTarget calculator.MacroPlan
+
+func (f fixedTarget) Current(context.Context, uuid.UUID) (calculator.MacroPlan, error) {
+	return calculator.MacroPlan(f), nil
 }

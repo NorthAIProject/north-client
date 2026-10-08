@@ -10,6 +10,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/meals"
+	"github.com/NorthAIProject/north-client/internal/meals/meal"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/workouts"
@@ -22,9 +23,9 @@ import (
 // tools write, so each shows an approval card carrying the whole plan before
 // anything is stored (see coach.writingCalls).
 
-// maxPlanMeals and maxMealIngredients bound one call. A day rarely has more
-// than six eating occasions, and a meal of twenty ingredients is a recipe
-// the catalog lookup would not resolve reliably anyway.
+// maxPlanMeals and maxMealIngredients bound one day of one call. A day
+// rarely has more than six eating occasions, and a meal of twenty ingredients
+// is a recipe the catalog lookup would not resolve reliably anyway.
 const (
 	maxPlanMeals       = 8
 	maxMealIngredients = 15
@@ -39,107 +40,115 @@ func createMealPlan(plans *meals.MealPlanService, ingredients *meals.IngredientS
 		Name        string          `json:"name"`
 		Ingredients []ingredientArg `json:"ingredients"`
 	}
+	type dayArg struct {
+		Meals []mealArg `json:"meals"`
+	}
 	type args struct {
-		Name        string    `json:"name"`
-		Description string    `json:"description"`
-		Objective   string    `json:"objective"`
-		Meals       []mealArg `json:"meals"`
+		Name        string        `json:"name"`
+		Description string        `json:"description"`
+		Objective   string        `json:"objective"`
+		PlanType    meal.PlanType `json:"plan_type"`
+		Days        []dayArg      `json:"days"`
+	}
+
+	planTypes := make([]string, len(meal.CarbBands))
+	shares := make([]string, len(meal.CarbBands))
+	for i, b := range meal.CarbBands {
+		planTypes[i] = string(b.Type)
+		shares[i] = fmt.Sprintf("%s %.1f%%", b.Type, b.DefaultPct())
 	}
 
 	return Capability{
 		Tool: ai.Tool{
 			Name: "create_meal_plan",
-			Description: "Create a meal plan for this person: named meals in eating order, each made of catalog ingredients by weight. " +
-				"Use it when they ask for a meal plan or agree to one you proposed. Build it against their macro targets " +
-				"(calculate_macros) and dietary preferences, and use plain ingredient names such as 'oats' or 'chicken breast' — " +
-				"each is looked up in the catalog, and an unknown or ambiguous one stops the whole plan so nothing half-made is saved. " +
-				"Use search_ingredients first when unsure of a name.",
+			Description: "Create a meal plan for this person: one to seven days from Monday, each with named meals in eating order made of " +
+				"catalog ingredients by weight. Use it when they ask for a meal plan or agree to one you proposed. " +
+				"Every day is held to their macro target from the calculator, with carbs a share of their carb target set by " +
+				"plan_type (" + strings.Join(shares, ", ") + "); a day over its protein, carbs or fat is " +
+				"refused with the amounts, and nothing is saved — shrink portions and try again. Without a target the plan cannot " +
+				"be made: offer calculate_macros first. Use plain ingredient names such as 'oats' or 'chicken breast' — each is " +
+				"looked up in the catalog, and an unknown or ambiguous one stops the whole plan. Use search_ingredients first when " +
+				"unsure of a name.",
 			Parameters: ai.Object("the plan to create", map[string]*ai.Schema{
 				"name":        ai.String("what the plan is called, such as 'Cutting — 2,100 kcal'"),
 				"description": ai.String("a sentence on what the plan is for; optional"),
 				"objective":   ai.Enum("the aim, when there is one", "cutting", "maintenance", "bulking"),
-				"meals": ai.Array("the meals in eating order", ai.Object("one meal", map[string]*ai.Schema{
-					"name": ai.String("the meal, such as 'Breakfast'"),
-					"ingredients": ai.Array("what goes in it", ai.Object("one ingredient", map[string]*ai.Schema{
-						"food":  ai.String("the ingredient's plain name"),
-						"grams": ai.Number("how much, in grams"),
-					}, "food", "grams")),
-				}, "name", "ingredients")),
-			}, "name", "meals"),
+				"plan_type":   ai.Enum("the carb level; mid_carb when they have not said", planTypes...),
+				"days": ai.Array("the plan's days, Monday first", ai.Object("one day", map[string]*ai.Schema{
+					"meals": ai.Array("the day's meals in eating order", ai.Object("one meal", map[string]*ai.Schema{
+						"name": ai.String("the meal, such as 'Breakfast'"),
+						"ingredients": ai.Array("what goes in it", ai.Object("one ingredient", map[string]*ai.Schema{
+							"food":  ai.String("the ingredient's plain name"),
+							"grams": ai.Number("how much, in grams"),
+						}, "food", "grams")),
+					}, "name", "ingredients")),
+				}, "meals")),
+			}, "name", "days"),
 		},
 		Invoke: func(ctx context.Context, userID uuid.UUID, raw json.RawMessage) (string, error) {
 			in, err := Decode[args](raw)
 			if err != nil {
 				return "", err
 			}
-			if len(in.Meals) == 0 || len(in.Meals) > maxPlanMeals {
-				return "", apperr.Wrap(apperr.ErrValidation, "a meal plan needs between 1 and %d meals", maxPlanMeals)
+			if len(in.Days) == 0 || len(in.Days) > meal.MaxDays {
+				return "", apperr.Wrap(apperr.ErrValidation, "a meal plan needs between 1 and %d days", meal.MaxDays)
+			}
+			if in.PlanType == "" {
+				in.PlanType = meal.MidCarb
 			}
 
 			// Every name is resolved before anything is written: a plan with
 			// the dinner missing because "salmon filet" did not match would be
 			// worse than asking again.
-			type resolved struct {
-				id    uuid.UUID
-				grams float64
-			}
-			planned := make([][]resolved, len(in.Meals))
-			for i, m := range in.Meals {
-				if strings.TrimSpace(m.Name) == "" || len(m.Ingredients) == 0 || len(m.Ingredients) > maxMealIngredients {
-					return "", apperr.Wrap(apperr.ErrValidation,
-						"meal %d needs a name and between 1 and %d ingredients", i+1, maxMealIngredients)
+			days := make([]meals.DayDraft, len(in.Days))
+			for d, day := range in.Days {
+				if len(day.Meals) == 0 || len(day.Meals) > maxPlanMeals {
+					return "", apperr.Wrap(apperr.ErrValidation, "day %d needs between 1 and %d meals", d+1, maxPlanMeals)
 				}
-				for _, ing := range m.Ingredients {
-					if ing.Grams <= 0 || ing.Grams > 2000 {
-						return "", apperr.Wrap(apperr.ErrValidation, "%q needs a weight between 1 and 2000 g", ing.Food)
+				for i, m := range day.Meals {
+					if strings.TrimSpace(m.Name) == "" || len(m.Ingredients) == 0 || len(m.Ingredients) > maxMealIngredients {
+						return "", apperr.Wrap(apperr.ErrValidation,
+							"day %d, meal %d needs a name and between 1 and %d ingredients", d+1, i+1, maxMealIngredients)
 					}
-					match, matchErr := matchIngredient(ctx, ingredients, userID, ing.Food)
-					if matchErr != nil {
-						return "", matchErr
+					draft := meals.MealDraft{Name: m.Name}
+					for _, ing := range m.Ingredients {
+						if ing.Grams <= 0 || ing.Grams > 2000 {
+							return "", apperr.Wrap(apperr.ErrValidation, "%q needs a weight between 1 and 2000 g", ing.Food)
+						}
+						match, matchErr := matchIngredient(ctx, ingredients, userID, ing.Food)
+						if matchErr != nil {
+							return "", matchErr
+						}
+						draft.Portions = append(draft.Portions, meals.MealIngredientInput{IngredientID: match.ID, QuantityGrams: ing.Grams})
 					}
-					planned[i] = append(planned[i], resolved{id: match.ID, grams: ing.Grams})
+					days[d].Meals = append(days[d].Meals, draft)
 				}
 			}
 
-			plan, err := plans.CreatePlan(ctx, userID, meals.MealPlanInput{
+			// Easy mode, so a day over the target is refused rather than
+			// offered for confirmation: the model has no one to confirm with.
+			stored, err := plans.CreatePlan(ctx, userID, meals.MealPlanInput{
 				Name: in.Name, Description: in.Description, Objective: in.Objective,
-			})
+				Settings: meal.PlanSettings{Type: in.PlanType, Mode: meal.Easy},
+				DayCount: len(in.Days),
+			}, days, false)
 			if err != nil {
 				return "", err
-			}
-			// A failure part-way removes the plan rather than leaving a
-			// fragment in their list.
-			fail := func(err error) (string, error) {
-				_ = plans.DeletePlan(context.WithoutCancel(ctx), plan.ID, userID)
-				return "", err
-			}
-			for i, m := range in.Meals {
-				meal, mealErr := plans.AddMeal(ctx, plan.ID, userID, meals.MealInput{Name: m.Name, MealNumber: i + 1})
-				if mealErr != nil {
-					return fail(mealErr)
-				}
-				for _, ing := range planned[i] {
-					if _, ingErr := plans.AddIngredient(ctx, meal.ID, userID, meals.MealIngredientInput{
-						IngredientID: ing.id, QuantityGrams: ing.grams,
-					}); ingErr != nil {
-						return fail(ingErr)
-					}
-				}
 			}
 
-			stored, err := plans.GetPlan(ctx, plan.ID, userID)
-			if err != nil {
-				return "", err
-			}
 			var b strings.Builder
-			fmt.Fprintf(&b, "Created the meal plan %q: %.0f kcal, %.0f g protein, %.0f g carbs, %.0f g fat a day.",
-				stored.Name, stored.TotalMacros.Calories, stored.TotalMacros.ProteinG, stored.TotalMacros.CarbG, stored.TotalMacros.FatG)
-			for _, meal := range stored.Meals {
-				names := make([]string, len(meal.Ingredients))
-				for j, ing := range meal.Ingredients {
-					names[j] = fmt.Sprintf("%.0f g %s", ing.QuantityGrams, ing.IngredientName)
+			fmt.Fprintf(&b, "Created the meal plan %q (%s, %d days).", stored.Name, stored.Settings.Type.Label(), len(stored.Days))
+			for _, day := range stored.Days {
+				total := day.Consumed()
+				fmt.Fprintf(&b, "\n%s: %.0f kcal, %.0f g protein, %.0f g carbs, %.0f g fat.",
+					day.Weekday, total.Calories, total.ProteinG, total.CarbG, total.FatG)
+				for _, m := range day.Meals {
+					names := make([]string, len(m.Ingredients))
+					for j, ing := range m.Ingredients {
+						names[j] = fmt.Sprintf("%.0f g %s", ing.QuantityGrams, ing.IngredientName)
+					}
+					fmt.Fprintf(&b, "\n  %s (%.0f kcal): %s", m.Name, m.TotalMacros.Calories, strings.Join(names, ", "))
 				}
-				fmt.Fprintf(&b, "\n%s (%.0f kcal): %s", meal.Name, meal.TotalMacros.Calories, strings.Join(names, ", "))
 			}
 			return b.String(), nil
 		},

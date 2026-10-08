@@ -339,7 +339,7 @@ func routes(
 	mealsRepo := meals.NewRepository(pool)
 	mealIngredientSvc := meals.NewIngredientService(mealsRepo)
 	mealDietSvc := meals.NewDietPreferenceService(mealsRepo)
-	mealPlanSvc := meals.NewMealPlanService(mealsRepo)
+	mealPlanSvc := meals.NewMealPlanService(mealsRepo, calculatorSvc)
 	foodLogSvc := meals.NewFoodLogService(mealsRepo)
 	mealProgressSvc := meals.NewTrackMealProgressService(foodLogSvc, calculatorSvc)
 	mealRecommendSvc := meals.NewGoalRecommendationService(mealProgressSvc, calculatorSvc)
@@ -361,7 +361,6 @@ func routes(
 		FoodLog:     foodLogSvc,
 		Progress:    mealProgressSvc,
 		Recommend:   mealRecommendSvc,
-		Goals:       calculatorSvc,
 	}
 	mealsHandler := meals.NewHandler(mealsOpts)
 

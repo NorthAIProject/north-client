@@ -2,41 +2,88 @@
   "id": "33333333-aaaa-aaaa-aaaa-333333333333",
   "name": "Training days",
   "description": "High carb",
+  "planType": "high_carb",
+  "mode": "advanced",
+  "dayCount": 2,
   "totalMacros": {
     "calories": 303.2,
     "proteinG": 10.6,
     "fatG": 5.2,
     "carbG": 54.2
   },
-  "mealCount": 1,
   "objective": "maintain",
   "activityLevel": "active",
   "gender": "female",
-  "meals": [
+  "target": {
+    "calories": 2190,
+    "proteinG": 130,
+    "fatG": 70,
+    "carbG": 260
+  },
+  "days": [
     {
-      "id": "44444444-aaaa-aaaa-aaaa-444444444444",
-      "mealNumber": 1,
-      "name": "Breakfast",
-      "totalMacros": {
-        "calories": 303.2,
-        "proteinG": 10.6,
-        "fatG": 5.2,
-        "carbG": 54.2
+      "id": "66666666-aaaa-aaaa-aaaa-666666666666",
+      "weekday": 1,
+      "carbType": "low_carb",
+      "status": {
+        "target": {
+          "calories": 1331.2,
+          "proteinG": 130,
+          "fatG": 70,
+          "carbG": 40.3
+        },
+        "consumed": {
+          "calories": 303.2,
+          "proteinG": 10.6,
+          "fatG": 5.2,
+          "carbG": 54.2
+        },
+        "remaining": {
+          "calories": 1028,
+          "proteinG": 119.4,
+          "fatG": 64.8,
+          "carbG": -13.9
+        },
+        "over": {
+          "calories": 0,
+          "proteinG": 0,
+          "fatG": 0,
+          "carbG": 13.9
+        },
+        "isOver": true
       },
-      "ingredients": [
+      "meals": [
         {
-          "id": "22222222-aaaa-aaaa-aaaa-222222222222",
-          "ingredientId": "11111111-aaaa-aaaa-aaaa-111111111111",
-          "name": "Rolled oats",
-          "quantityGrams": 80,
-          "macros": {
+          "id": "44444444-aaaa-aaaa-aaaa-444444444444",
+          "mealNumber": 1,
+          "name": "Breakfast",
+          "totalMacros": {
             "calories": 303.2,
             "proteinG": 10.6,
             "fatG": 5.2,
             "carbG": 54.2
-          }
+          },
+          "ingredients": [
+            {
+              "id": "22222222-aaaa-aaaa-aaaa-222222222222",
+              "ingredientId": "11111111-aaaa-aaaa-aaaa-111111111111",
+              "name": "Rolled oats",
+              "quantityGrams": 80,
+              "macros": {
+                "calories": 303.2,
+                "proteinG": 10.6,
+                "fatG": 5.2,
+                "carbG": 54.2
+              }
+            }
+          ]
         }
       ]
+    },
+    {
+      "id": "77777777-aaaa-aaaa-aaaa-777777777777",
+      "weekday": 6,
+      "meals": []
     }
   ]
 }
