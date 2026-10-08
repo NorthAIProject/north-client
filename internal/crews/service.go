@@ -295,13 +295,8 @@ func (s *Service) fill(ctx context.Context, m *Member, u users.User, now time.Ti
 		m.WorkedOut = n > 0
 	}
 	if ch != nil {
-		from, to := weekStart(local), weekStart(local).AddDate(0, 0, 7)
-		switch {
-		case ch.Kind == crew.ChallengeCheckIns && s.checkIns != nil:
-			m.WeekProgress, err = s.checkIns.CountBetween(ctx, u.ID, from, to)
-		case ch.Kind == crew.ChallengeWorkouts && s.workouts != nil:
-			m.WeekProgress, err = s.workouts.CountBetween(ctx, u.ID, from, to)
-		}
+		from := weekStart(local)
+		m.WeekProgress, err = s.progress(ctx, u.ID, ch.Kind, from, from.AddDate(0, 0, 7))
 	}
 	return err
 }

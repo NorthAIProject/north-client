@@ -3,7 +3,7 @@
 -- row is counted from the slice that owns it, under the rules in internal/xp.
 -- Dates are local days (first inclusive, last exclusive); times bound the
 -- kinds that carry a timestamp. A streak day needs the check-ins before the
--- window too, so that scan is open at the start.
+-- window too, so that scan is open at the start; so does a streak mark.
 WITH people AS (
     -- An unknown zone name falls back to UTC, as users.User.Location does,
     -- rather than failing the whole board.
@@ -27,15 +27,44 @@ runs AS (
     WHERE user_id IN (SELECT id FROM people)
       AND local_date < (sqlc.arg('to_day')::text)::date
 ),
+run_days AS (
+    SELECT user_id, local_date,
+           ROW_NUMBER() OVER (PARTITION BY user_id, run ORDER BY local_date) AS day_in_run
+    FROM runs
+),
 streak_days AS (
     SELECT user_id, count(*)::int AS n
-    FROM (
-        SELECT user_id, local_date,
-               ROW_NUMBER() OVER (PARTITION BY user_id, run ORDER BY local_date) AS day_in_run
-        FROM runs
-    ) d
+    FROM run_days
     WHERE day_in_run >= sqlc.arg('streak_from')::int
       AND local_date >= (sqlc.arg('from_day')::text)::date
+    GROUP BY user_id
+),
+-- The day a run reaches a mark pays once more. A run that breaks and comes
+-- back to the mark has done the days again, and pays again.
+streak_marks AS (
+    SELECT user_id, count(*)::int AS n
+    FROM run_days
+    WHERE day_in_run = ANY(sqlc.arg('streak_marks')::int[])
+      AND local_date >= (sqlc.arg('from_day')::text)::date
+    GROUP BY user_id
+),
+-- One per planned week, when it was last saved: the server chooses the week,
+-- so a review cannot be filed against old weeks to farm it.
+weeks_reviewed AS (
+    SELECT user_id, count(*)::int AS n
+    FROM weekly_focus
+    WHERE user_id IN (SELECT id FROM people)
+      AND reviewed_at >= sqlc.arg('from_at')::timestamptz AND reviewed_at < sqlc.arg('to_at')::timestamptz
+    GROUP BY user_id
+),
+-- A crew's week is closed by the crews sweep, which records it once per
+-- member, crew and week; this only counts what it recorded.
+challenges_met AS (
+    SELECT user_id, count(*)::int AS n
+    FROM achievements
+    WHERE user_id IN (SELECT id FROM people)
+      AND kind = sqlc.arg('challenge_met_kind')::text
+      AND occurred_at >= sqlc.arg('from_at')::timestamptz AND occurred_at < sqlc.arg('to_at')::timestamptz
     GROUP BY user_id
 ),
 workouts AS (
@@ -77,7 +106,10 @@ SELECT user_id, 'habit_kept'::text AS kind, n FROM habits_kept
 UNION ALL SELECT user_id, 'streak_day', n FROM streak_days
 UNION ALL SELECT user_id, 'workout', n FROM workouts
 UNION ALL SELECT user_id, 'milestone', n FROM milestones
-UNION ALL SELECT user_id, 'goal', n FROM goals_achieved;
+UNION ALL SELECT user_id, 'goal', n FROM goals_achieved
+UNION ALL SELECT user_id, 'streak_mark', n FROM streak_marks
+UNION ALL SELECT user_id, 'week_reviewed', n FROM weeks_reviewed
+UNION ALL SELECT user_id, 'challenge_met', n FROM challenges_met;
 
 -- name: Participants :many
 -- Who appears on the viewer's board for one sharing category: the viewer, and

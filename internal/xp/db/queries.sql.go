@@ -36,15 +36,38 @@ runs AS (
     WHERE user_id IN (SELECT id FROM people)
       AND local_date < ($3::text)::date
 ),
+run_days AS (
+    SELECT user_id, local_date,
+           ROW_NUMBER() OVER (PARTITION BY user_id, run ORDER BY local_date) AS day_in_run
+    FROM runs
+),
 streak_days AS (
     SELECT user_id, count(*)::int AS n
-    FROM (
-        SELECT user_id, local_date,
-               ROW_NUMBER() OVER (PARTITION BY user_id, run ORDER BY local_date) AS day_in_run
-        FROM runs
-    ) d
+    FROM run_days
     WHERE day_in_run >= $4::int
       AND local_date >= ($2::text)::date
+    GROUP BY user_id
+),
+streak_marks AS (
+    SELECT user_id, count(*)::int AS n
+    FROM run_days
+    WHERE day_in_run = ANY($5::int[])
+      AND local_date >= ($2::text)::date
+    GROUP BY user_id
+),
+weeks_reviewed AS (
+    SELECT user_id, count(*)::int AS n
+    FROM weekly_focus
+    WHERE user_id IN (SELECT id FROM people)
+      AND reviewed_at >= $6::timestamptz AND reviewed_at < $7::timestamptz
+    GROUP BY user_id
+),
+challenges_met AS (
+    SELECT user_id, count(*)::int AS n
+    FROM achievements
+    WHERE user_id IN (SELECT id FROM people)
+      AND kind = $8::text
+      AND occurred_at >= $6::timestamptz AND occurred_at < $7::timestamptz
     GROUP BY user_id
 ),
 workouts AS (
@@ -58,12 +81,12 @@ workouts AS (
         FROM activity_sessions s
         JOIN people p ON p.id = s.user_id
         WHERE s.status = 'completed'
-          AND s.ended_at >= $5::timestamptz
-          AND s.ended_at <  $6::timestamptz
+          AND s.ended_at >= $6::timestamptz
+          AND s.ended_at <  $7::timestamptz
           AND EXTRACT(EPOCH FROM (s.ended_at - s.started_at)) - s.total_paused_seconds
-              >= $7::int
+              >= $9::int
     ) w
-    WHERE nth <= $8::int
+    WHERE nth <= $10::int
     GROUP BY user_id
 ),
 milestones AS (
@@ -71,7 +94,7 @@ milestones AS (
     FROM goal_milestones
     WHERE user_id IN (SELECT id FROM people)
       AND status = 'completed'
-      AND completed_at >= $5::timestamptz AND completed_at < $6::timestamptz
+      AND completed_at >= $6::timestamptz AND completed_at < $7::timestamptz
     GROUP BY user_id
 ),
 goals_achieved AS (
@@ -79,7 +102,7 @@ goals_achieved AS (
     FROM goals
     WHERE user_id IN (SELECT id FROM people)
       AND status = 'achieved'
-      AND closed_at >= $5::timestamptz AND closed_at < $6::timestamptz
+      AND closed_at >= $6::timestamptz AND closed_at < $7::timestamptz
     GROUP BY user_id
 )
 SELECT user_id, 'habit_kept'::text AS kind, n FROM habits_kept
@@ -87,6 +110,9 @@ UNION ALL SELECT user_id, 'streak_day', n FROM streak_days
 UNION ALL SELECT user_id, 'workout', n FROM workouts
 UNION ALL SELECT user_id, 'milestone', n FROM milestones
 UNION ALL SELECT user_id, 'goal', n FROM goals_achieved
+UNION ALL SELECT user_id, 'streak_mark', n FROM streak_marks
+UNION ALL SELECT user_id, 'week_reviewed', n FROM weeks_reviewed
+UNION ALL SELECT user_id, 'challenge_met', n FROM challenges_met
 `
 
 type EarnedParams struct {
@@ -94,8 +120,10 @@ type EarnedParams struct {
 	FromDay           string
 	ToDay             string
 	StreakFrom        int32
+	StreakMarks       []int32
 	FromAt            time.Time
 	ToAt              time.Time
+	ChallengeMetKind  string
 	WorkoutMinSeconds int32
 	WorkoutsPerDay    int32
 }
@@ -110,15 +138,23 @@ type EarnedRow struct {
 // row is counted from the slice that owns it, under the rules in internal/xp.
 // Dates are local days (first inclusive, last exclusive); times bound the
 // kinds that carry a timestamp. A streak day needs the check-ins before the
-// window too, so that scan is open at the start.
+// window too, so that scan is open at the start; so does a streak mark.
+// The day a run reaches a mark pays once more. A run that breaks and comes
+// back to the mark has done the days again, and pays again.
+// One per planned week, when it was last saved: the server chooses the week,
+// so a review cannot be filed against old weeks to farm it.
+// A crew's week is closed by the crews sweep, which records it once per
+// member, crew and week; this only counts what it recorded.
 func (q *Queries) Earned(ctx context.Context, arg EarnedParams) ([]EarnedRow, error) {
 	rows, err := q.db.Query(ctx, earned,
 		arg.UserIds,
 		arg.FromDay,
 		arg.ToDay,
 		arg.StreakFrom,
+		arg.StreakMarks,
 		arg.FromAt,
 		arg.ToAt,
+		arg.ChallengeMetKind,
 		arg.WorkoutMinSeconds,
 		arg.WorkoutsPerDay,
 	)

@@ -34,17 +34,27 @@ type LevelView struct {
 }
 
 type EarnedView struct {
-	// Kind is workout, habit_kept, streak_day, milestone or goal.
 	Kind   string `json:"kind"`
 	Count  int    `json:"count"`
 	Points int    `json:"points"`
 }
 
 type SummaryView struct {
-	Total     int          `json:"total"`
-	Level     LevelView    `json:"level"`
-	WeekTotal int          `json:"weekTotal"`
-	Week      []EarnedView `json:"week"`
+	Total     int       `json:"total"`
+	Level     LevelView `json:"level"`
+	WeekTotal int       `json:"weekTotal"`
+	// Week holds only the five kinds the first clients shipped with: they
+	// decode kind as a closed enum, so one more kind would fail the whole
+	// response. WeekTotal still counts every kind.
+	Week []EarnedView `json:"week"`
+	// Earned is this week by every kind. Its kind is open-ended, so a client
+	// shows a label it does not know rather than failing.
+	Earned []EarnedView `json:"earned"`
+}
+
+// firstKinds are the kinds Week is limited to.
+var firstKinds = map[string]bool{
+	KindWorkout: true, KindHabitKept: true, KindStreakDay: true, KindMilestone: true, KindGoal: true,
 }
 
 type EntryView struct {
@@ -98,9 +108,15 @@ func projectLevel(l Level) LevelView {
 }
 
 func projectSummary(s Summary) SummaryView {
-	out := SummaryView{Total: s.Total, Level: projectLevel(s.Level), WeekTotal: s.WeekTotal, Week: make([]EarnedView, 0, len(s.Week))}
+	out := SummaryView{
+		Total: s.Total, Level: projectLevel(s.Level), WeekTotal: s.WeekTotal,
+		Week: make([]EarnedView, 0, len(firstKinds)), Earned: make([]EarnedView, 0, len(s.Week)),
+	}
 	for _, e := range s.Week {
-		out.Week = append(out.Week, EarnedView(e))
+		out.Earned = append(out.Earned, EarnedView(e))
+		if firstKinds[e.Kind] {
+			out.Week = append(out.Week, EarnedView(e))
+		}
 	}
 	return out
 }
