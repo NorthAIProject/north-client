@@ -23,7 +23,14 @@ func (f *fakeActivityTracker) CompletedWeekdays(context.Context, uuid.UUID, *tim
 }
 
 func TestContextSource_CompletedAndPending(t *testing.T) {
-	today := time.Now().Weekday().String()
+	// Today as the user sees it: newService registers them in Lisbon, and
+	// the plan is read in their zone. time.Now() alone is UTC on CI, a
+	// different weekday from 23:00 to midnight.
+	lisbon, err := time.LoadLocation("Europe/Lisbon")
+	if err != nil {
+		t.Fatalf("load location: %v", err)
+	}
+	today := time.Now().In(lisbon).Weekday().String()
 	// A plan that passes validation, with its first day moved to today and
 	// the others kept off it.
 	plan := goodPlan()
@@ -45,7 +52,7 @@ func TestContextSource_CompletedAndPending(t *testing.T) {
 	svc, user := newService(t, client)
 
 	ctx := context.Background()
-	_, err := svc.CreatePlan(ctx, user, dumbbellIntake())
+	_, err = svc.CreatePlan(ctx, user, dumbbellIntake())
 	if err != nil {
 		t.Fatalf("create plan: %v", err)
 	}
