@@ -145,3 +145,22 @@ func TestHealthListsWhatThePersonTracksInCatalogOrder(t *testing.T) {
 		t.Errorf("projected %+v", list)
 	}
 }
+
+// The chip must agree with the range the sentence shows: 52 against a usual
+// shown as 52–54 is within it, though 52 sits 1.2 deviations under 53.0.
+func TestUsualStateFollowsTheNumbersAsShown(t *testing.T) {
+	t.Parallel()
+	m, _ := lookupMetric("resting-heart-rate")
+	u := Usual{
+		Latest:   point{At: time.Date(2026, 10, 9, 0, 0, 0, 0, time.UTC), Value: 52},
+		Baseline: stat.Baseline{Mean: 53, SD: 0.83, Days: 28}, Z: -1.2, State: stat.Below,
+	}
+	v := usualView(m, u)
+	if v.State != stat.Usual || v.Text != "Within your usual range: 52bpm on Fri 9 Oct, usually 52bpm–54bpm." {
+		t.Errorf("view = %q %q", v.State, v.Text)
+	}
+	u.Latest.Value = 51
+	if v := usualView(m, u); v.State != stat.Below {
+		t.Errorf("51 against 52–54 = %q", v.State)
+	}
+}
