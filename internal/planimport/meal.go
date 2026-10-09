@@ -249,7 +249,7 @@ func (s *Service) derivedGrams(f *FoodDraft, ingredient *meals.Ingredient) *floa
 	if f.Quantity == nil {
 		return nil
 	}
-	unit := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(f.Unit), "."))
+	unit := normalizeUnit(f.Unit)
 	qty := *f.Quantity
 
 	if per, ok := gramsPer[unit]; ok && per > 0 {
@@ -271,6 +271,11 @@ func (s *Service) derivedGrams(f *FoodDraft, ingredient *meals.Ingredient) *floa
 		return &g
 	}
 	return nil
+}
+
+// normalizeUnit folds "G.", " kg" and "Slices" to the keys the unit tables use.
+func normalizeUnit(unit string) string {
+	return strings.ToLower(strings.TrimSuffix(strings.TrimSpace(unit), "."))
 }
 
 func statedMismatch(f *FoodDraft, m meal.Macros, name string) []string {

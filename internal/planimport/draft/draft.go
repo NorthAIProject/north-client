@@ -3,6 +3,8 @@
 package draft
 
 import (
+	"fmt"
+
 	"github.com/google/uuid"
 )
 
@@ -70,6 +72,13 @@ type MealDraft struct {
 	// with confirmOverage goes ahead. An easy plan that is over cannot be
 	// saved until it isn't.
 	CanConfirm bool `json:"canConfirm"`
+
+	// EveryDay is set when the file named no days: its single day is eaten
+	// every day of the week and is saved as seven copies of itself.
+	EveryDay bool `json:"everyDay,omitempty"`
+	// Notes is the file's advice, recipes and general guidance, kept beside
+	// the plan rather than forced into rows.
+	Notes string `json:"notes,omitempty"`
 }
 
 // MealDayDraft is one day of meals, with that day's arithmetic.
@@ -88,10 +97,42 @@ type MealDayDraft struct {
 	Over      []string    `json:"over"`
 }
 
-// MealDraftMeal is one meal within a day.
+// MealDraftMeal is one meal within a day: a slot holding one or more
+// interchangeable options.
+//
+// Foods is the first option, the one counted toward the day, and OptionLabel
+// is what the file called it ("Opção 1"), or empty. Alternatives are the
+// other options, in the file's order. A client that knows nothing of options
+// round-trips Foods alone and still saves the first.
 type MealDraftMeal struct {
-	Name  string      `json:"name"`
+	Name         string            `json:"name"`
+	Foods        []FoodDraft       `json:"foods"`
+	OptionLabel  string            `json:"optionLabel,omitempty"`
+	Alternatives []MealDraftOption `json:"alternatives,omitempty"`
+}
+
+// MealDraftOption is a further option of a meal: eaten instead of the first,
+// never counted toward the day.
+type MealDraftOption struct {
+	Label string      `json:"label"`
 	Foods []FoodDraft `json:"foods"`
+}
+
+// Options lists the meal's options in order, the first one first. The Foods
+// slices are the meal's own, so a food changed through them is changed in
+// the meal; adding or removing an option is not.
+func (m MealDraftMeal) Options() []MealDraftOption {
+	return append([]MealDraftOption{{Label: m.OptionLabel, Foods: m.Foods}}, m.Alternatives...)
+}
+
+// OptionName is what option o (0 being the first) is shown as: its label, or
+// "Option N" when the file gave it none.
+func (m MealDraftMeal) OptionName(o int) string {
+	opts := m.Options()
+	if o >= 0 && o < len(opts) && opts[o].Label != "" {
+		return opts[o].Label
+	}
+	return fmt.Sprintf("Option %d", o+1)
 }
 
 // FoodDraft is one food line.
@@ -106,6 +147,12 @@ type FoodDraft struct {
 	Quantity *float64 `json:"quantity,omitempty"`
 	Unit     string   `json:"unit"`
 	Grams    *float64 `json:"grams,omitempty"`
+
+	// SourceText is the line as the file wrote it ("2 fatias pão integral"),
+	// kept because Food may be a catalog stand-in for it. Estimated marks
+	// Grams as the reader's estimate of a vague amount, not the file's number.
+	SourceText string `json:"sourceText,omitempty"`
+	Estimated  bool   `json:"estimated,omitempty"`
 
 	StatedProteinG *float64 `json:"statedProteinG,omitempty"`
 	StatedCarbG    *float64 `json:"statedCarbG,omitempty"`
@@ -168,15 +215,24 @@ func (d *MealDraft) Normalize() {
 		day.Meals = orEmpty(day.Meals)
 		day.Over = orEmpty(day.Over)
 		for j := range day.Meals {
-			day.Meals[j].Foods = orEmpty(day.Meals[j].Foods)
-			for k := range day.Meals[j].Foods {
-				f := &day.Meals[j].Foods[k]
-				f.Candidates = orEmpty(f.Candidates)
-				f.Flags = orEmpty(f.Flags)
-				f.Checks = orEmpty(f.Checks)
+			m := &day.Meals[j]
+			m.Foods = normalizeFoods(m.Foods)
+			for o := range m.Alternatives {
+				m.Alternatives[o].Foods = normalizeFoods(m.Alternatives[o].Foods)
 			}
 		}
 	}
+}
+
+func normalizeFoods(foods []FoodDraft) []FoodDraft {
+	foods = orEmpty(foods)
+	for k := range foods {
+		f := &foods[k]
+		f.Candidates = orEmpty(f.Candidates)
+		f.Flags = orEmpty(f.Flags)
+		f.Checks = orEmpty(f.Checks)
+	}
+	return foods
 }
 
 func orEmpty[T any](s []T) []T {

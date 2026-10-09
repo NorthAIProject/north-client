@@ -81,7 +81,7 @@ func TestWorkoutCSVImportsWithoutInventedValues(t *testing.T) {
 		",Leg Curl,,,,,\n" +
 		"Thursday,Bench Press,4,6,RPE 8,2 min,\n"
 
-	draft, err := f.svc.ParseWorkout(ctx, f.user, "block.csv", []byte(csv))
+	draft, err := f.svc.ParseWorkout(ctx, f.user, "block.csv", []byte(csv), "")
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -138,7 +138,7 @@ func TestMealCSVPreviewsAgainstTheTargetAndCannotSilentlySaveAnOverage(t *testin
 		"Tuesday,Dinner,Coach's shake,300,g,72,6,6\n" +
 		"Tuesday,Dinner,Mystery stew,1,bowl,,,\n"
 
-	draft, err := f.svc.ParseMeal(ctx, f.user, "week.csv", []byte(csv))
+	draft, err := f.svc.ParseMeal(ctx, f.user, "week.csv", []byte(csv), "")
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
