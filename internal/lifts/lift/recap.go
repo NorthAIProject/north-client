@@ -47,7 +47,10 @@ type Recap struct {
 // BuildRecap summarises the sets of one session. earlier is every set of
 // those exercises from before this session; the most recent of those is
 // "last time".
+// Warm-ups are left out throughout: they are neither sets done against the
+// plan nor volume.
 func BuildRecap(duration time.Duration, calories float64, prescribed int, current, earlier []Set) Recap {
+	current, earlier = Working(current), Working(earlier)
 	groups := groupInOrder(current)
 	out := Recap{
 		Duration:       duration,
