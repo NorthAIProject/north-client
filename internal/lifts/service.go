@@ -62,6 +62,10 @@ type LogInput struct {
 	Reps              int
 	PerformedAt       *time.Time
 	ActivitySessionID *uuid.UUID
+	// Kind is one of lift.Kinds; empty means a work set.
+	Kind string
+	// RIR is reps in reserve, 0 to lift.MaxRIR; nil when not given.
+	RIR *int
 }
 
 // Log records a set against the local day it was done on.
@@ -80,6 +84,16 @@ func (s *Service) Log(ctx context.Context, user users.User, in LogInput) (Set, e
 	if in.Reps < 1 || in.Reps > maxReps {
 		errs = errs.Add("reps", "Enter between 1 and 100 reps.")
 	}
+	kind := strings.TrimSpace(in.Kind)
+	if kind == "" {
+		kind = lift.KindWork
+	}
+	if !lift.ValidKind(kind) {
+		errs = errs.Add("kind", "Choose work, warm-up or drop set.")
+	}
+	if in.RIR != nil && (*in.RIR < 0 || *in.RIR > lift.MaxRIR) {
+		errs = errs.Add("rir", "Enter reps in reserve between 0 and 10.")
+	}
 	if len(errs) > 0 {
 		return Set{}, errs
 	}
@@ -96,6 +110,8 @@ func (s *Service) Log(ctx context.Context, user users.User, in LogInput) (Set, e
 		WeightKg:          util.RoundHalfUpToScale(in.WeightKg, 1),
 		Reps:              in.Reps,
 		PerformedAt:       at,
+		Kind:              kind,
+		RIR:               in.RIR,
 	})
 }
 
@@ -210,7 +226,7 @@ func (s *Service) muscleSets(ctx context.Context, sets []Set) ([]MuscleSets, err
 		return nil, err
 	}
 	counts := map[string]int{}
-	for _, set := range sets {
+	for _, set := range lift.Working(sets) {
 		for _, m := range catalog[set.ExerciseSlug].Primary {
 			counts[m]++
 		}

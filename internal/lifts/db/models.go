@@ -22,4 +22,6 @@ type SetLog struct {
 	WeightKg          float64
 	Reps              int32
 	PerformedAt       time.Time
+	Kind              string
+	Rir               *int16
 }

@@ -39,6 +39,8 @@ type LiftSetRequest struct {
 	Reps              int        `json:"reps"`
 	PerformedAt       *time.Time `json:"performedAt,omitempty"`
 	ActivitySessionID *uuid.UUID `json:"activitySessionId,omitempty"`
+	Kind              string     `json:"kind,omitempty"`
+	RIR               *int       `json:"rir,omitempty"`
 }
 
 type LiftSetView struct {
@@ -52,6 +54,8 @@ type LiftSetView struct {
 	E1RMKg            float64    `json:"e1rmKg"`
 	PerformedAt       time.Time  `json:"performedAt"`
 	ActivitySessionID *uuid.UUID `json:"activitySessionId,omitempty"`
+	Kind              string     `json:"kind"`
+	RIR               *int       `json:"rir,omitempty"`
 }
 
 type LiftLastExercise struct {
@@ -223,8 +227,17 @@ func ProjectSet(s Set) LiftSetView {
 	return LiftSetView{
 		ID: s.ID, ExerciseKey: s.Key(), ExerciseName: s.ExerciseName, ExerciseSlug: s.ExerciseSlug,
 		SetNumber: s.SetNumber, WeightKg: s.WeightKg, Reps: s.Reps, E1RMKg: util.RoundHalfUpToScale(s.E1RM(), 1),
-		PerformedAt: s.PerformedAt, ActivitySessionID: s.ActivitySessionID,
+		PerformedAt: s.PerformedAt, ActivitySessionID: s.ActivitySessionID, Kind: kindOrWork(s.Kind), RIR: s.RIR,
 	}
+}
+
+// kindOrWork names a set's kind on the wire. A set built in code without one
+// is a work set, as every set before kinds existed was.
+func kindOrWork(kind string) string {
+	if kind == "" {
+		return lift.KindWork
+	}
+	return kind
 }
 
 // ProjectLast answers in the order the keys were asked for, leaving out

@@ -129,3 +129,47 @@ func TestReadinessReadsMusclesFromTheCatalog(t *testing.T) {
 		t.Errorf("unmapped = %d, want the typed-in set", load.Unmapped)
 	}
 }
+
+func TestLogKeepsKindAndRIR(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	user, err := users.NewService(users.NewRepository(pool)).Register(ctx, users.Registration{
+		Email: "kinds@example.com", PasswordHash: "$2a$12$notarealhashbutthatisfineheretestonly", DisplayName: "K", Timezone: "UTC",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc := lifts.NewService(lifts.NewRepository(pool), nil)
+
+	two := 2
+	warm, err := svc.Log(ctx, user, lifts.LogInput{ExerciseName: "Bench", SetNumber: 1, WeightKg: 40, Reps: 10, Kind: lift.KindWarmup})
+	if err != nil {
+		t.Fatal(err)
+	}
+	work, err := svc.Log(ctx, user, lifts.LogInput{ExerciseName: "Bench", SetNumber: 2, WeightKg: 80, Reps: 5, RIR: &two})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if warm.Kind != lift.KindWarmup || warm.RIR != nil {
+		t.Errorf("warm-up = %+v", warm)
+	}
+	if work.Kind != lift.KindWork || work.RIR == nil || *work.RIR != 2 {
+		t.Errorf("work set = %+v, want kind work and rir 2", work)
+	}
+
+	eleven := 11
+	if _, err = svc.Log(ctx, user, lifts.LogInput{ExerciseName: "Bench", SetNumber: 3, WeightKg: 80, Reps: 5, Kind: "failure"}); !apperr.Is(err, apperr.ErrValidation) {
+		t.Errorf("unknown kind = %v, want a validation error", err)
+	}
+	if _, err = svc.Log(ctx, user, lifts.LogInput{ExerciseName: "Bench", SetNumber: 3, WeightKg: 80, Reps: 5, RIR: &eleven}); !apperr.Is(err, apperr.ErrValidation) {
+		t.Errorf("rir 11 = %v, want a validation error", err)
+	}
+
+	st, err := svc.Stats(ctx, user, timerange.Parse(timerange.KeyWeek, user.Location()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.VolumeKg() != 400 {
+		t.Errorf("volume = %v, want 400 (the warm-up does not count)", st.VolumeKg())
+	}
+}

@@ -134,3 +134,15 @@ func TestReadinessSummaryCountsCalendarDays(t *testing.T) {
 		t.Errorf("empty = %q", got)
 	}
 }
+
+func TestFatigueIgnoresWarmups(t *testing.T) {
+	t.Parallel()
+	warmups := setsAgo("barbell-squat", 6, time.Hour)
+	for i := range warmups {
+		warmups[i].Kind = lift.KindWarmup
+	}
+	load := lift.LoadOf(warmups, weights, loadNow)
+	if len(load.Muscles) != 0 || load.LastSession.IsZero() {
+		t.Errorf("warm-ups only: muscles %+v, last session %v; want no muscles but a session", load.Muscles, load.LastSession)
+	}
+}

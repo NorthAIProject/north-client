@@ -106,3 +106,45 @@ func TestSummary(t *testing.T) {
 		t.Errorf("summary = %q", got)
 	}
 }
+
+func TestWarmupsCountForNothing(t *testing.T) {
+	t.Parallel()
+	warm := set("Squat", 2, 60, 5)
+	warm.Kind = lift.KindWarmup
+	work := set("Squat", 2, 100, 5)
+	work.Kind = lift.KindWork
+	heavyWarm := set("Squat", 3, 140, 3) // a "record" that is only a warm-up
+	heavyWarm.Kind = lift.KindWarmup
+	drop := set("Squat", 3, 80, 8)
+	drop.Kind = lift.KindDrop
+	sets := []lift.Set{warm, work, heavyWarm, drop}
+
+	if warm.Volume() != 0 || drop.Volume() != 640 {
+		t.Errorf("volume: warm-up %v, drop %v", warm.Volume(), drop.Volume())
+	}
+	if recs := lift.Records(sets); len(recs) != 0 {
+		t.Errorf("records = %+v, want none (the heavy set was a warm-up, the drop is lighter)", recs)
+	}
+	ex := lift.ByExercise(sets)
+	if len(ex) != 1 || ex[0].Sets != 2 || ex[0].BestWeightKg != 100 {
+		t.Errorf("by exercise = %+v, want the work and drop sets only", ex)
+	}
+	if got := lift.Working(sets); len(got) != 2 {
+		t.Errorf("working = %d sets, want 2", len(got))
+	}
+	if !strings.Contains(lift.Summary(sets, nil), "2 working sets") {
+		t.Errorf("summary = %q", lift.Summary(sets, nil))
+	}
+}
+
+func TestValidKind(t *testing.T) {
+	t.Parallel()
+	for _, k := range lift.Kinds {
+		if !lift.ValidKind(k) {
+			t.Errorf("%q invalid", k)
+		}
+	}
+	if lift.ValidKind("failure") || lift.ValidKind("") {
+		t.Error("an unknown or empty kind is valid")
+	}
+}

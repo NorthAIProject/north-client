@@ -13,7 +13,32 @@ import (
 	"github.com/google/uuid"
 )
 
-// Set is one working set.
+// The kinds of set. A warm-up is logged so the session reads as it happened,
+// but it is preparation rather than training: it never counts toward volume,
+// records, exercise bests or fatigue. A drop set is work.
+const (
+	KindWarmup = "warmup"
+	KindWork   = "work"
+	KindDrop   = "drop"
+)
+
+// Kinds are the valid set kinds, in the order a form offers them.
+var Kinds = []string{KindWork, KindWarmup, KindDrop}
+
+// ValidKind reports whether kind is one of Kinds.
+func ValidKind(kind string) bool {
+	for _, k := range Kinds {
+		if k == kind {
+			return true
+		}
+	}
+	return false
+}
+
+// MaxRIR bounds reps in reserve. Past ten nobody can tell.
+const MaxRIR = 10
+
+// Set is one logged set.
 type Set struct {
 	ID                uuid.UUID
 	ActivitySessionID *uuid.UUID
@@ -24,6 +49,24 @@ type Set struct {
 	WeightKg          float64
 	Reps              int
 	PerformedAt       time.Time
+	// Kind is one of Kinds; KindWork for every set logged before kinds.
+	Kind string
+	// RIR is reps in reserve, 0 meaning to failure; nil when nobody said.
+	RIR *int
+}
+
+// Counts reports whether the set is training: anything but a warm-up.
+func (s Set) Counts() bool { return s.Kind != KindWarmup }
+
+// Working is the sets that count, in their order.
+func Working(sets []Set) []Set {
+	out := make([]Set, 0, len(sets))
+	for _, s := range sets {
+		if s.Counts() {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // Key is what makes two sets the same exercise: the catalog slug when there
@@ -40,8 +83,13 @@ func KeyFor(slug, name string) string {
 }
 
 // Volume is weight times reps. A bodyweight set has no volume: its load is
-// the person, which is not what this measures.
-func (s Set) Volume() float64 { return s.WeightKg * float64(s.Reps) }
+// the person, which is not what this measures. Nor does a warm-up.
+func (s Set) Volume() float64 {
+	if !s.Counts() {
+		return 0
+	}
+	return s.WeightKg * float64(s.Reps)
+}
 
 // E1RM is the set's estimated one-rep max by Epley's formula, the one most
 // training apps use. It is least reliable past about ten reps, so those sets
@@ -65,9 +113,9 @@ type Record struct {
 
 // Records walks sets oldest first and returns each that raised its
 // exercise's best estimated max. The first set of an exercise is its
-// baseline, not a record. Bodyweight sets never count.
+// baseline, not a record. Bodyweight sets and warm-ups never count.
 func Records(sets []Set) []Record {
-	sorted := append([]Set(nil), sets...)
+	sorted := Working(sets)
 	sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].PerformedAt.Before(sorted[j].PerformedAt) })
 	best := map[string]float64{}
 	var out []Record
@@ -109,13 +157,14 @@ type DayValue struct {
 	Value float64
 }
 
-// ByExercise groups sets per exercise, most trained (by sets) first. Names
-// come from the latest set, so a rename shows its newest spelling.
+// ByExercise groups working sets per exercise, most trained (by sets)
+// first. Names come from the latest set, so a rename shows its newest
+// spelling. Warm-ups are left out.
 func ByExercise(sets []Set) []Exercise {
 	index := map[string]int{}
 	var out []Exercise
 	days := map[string]map[time.Time]float64{}
-	for _, s := range sets {
+	for _, s := range Working(sets) {
 		i, ok := index[s.Key()]
 		if !ok {
 			i = len(out)
@@ -235,7 +284,7 @@ func Summary(sets []Set, records []Record) string {
 	for _, s := range sets {
 		total += s.Volume()
 	}
-	fmt.Fprintf(&b, "Lifting, last 14 days: %d workouts, %d sets, %.0f kg total volume.", Workouts(sets), len(sets), total)
+	fmt.Fprintf(&b, "Lifting, last 14 days: %d workouts, %d working sets, %.0f kg total volume.", Workouts(sets), len(Working(sets)), total)
 	for i, e := range ByExercise(sets) {
 		if i == 5 {
 			break

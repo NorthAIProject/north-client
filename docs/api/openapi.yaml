@@ -6477,6 +6477,15 @@ components:
           type: string
           format: uuid
           description: The timed workout this set belongs to. Ignored when it is not the caller's.
+        kind:
+          type: string
+          enum: [warmup, work, drop]
+          description: warmup sets are left out of volume, records and fatigue; defaults to work
+        rir:
+          type: integer
+          minimum: 0
+          maximum: 10
+          description: "Reps in reserve: 0 is to failure."
     LiftSet:
       type: object
       required: [id, exerciseKey, exerciseName, exerciseSlug, setNumber, weightKg, reps, e1rmKg, performedAt]
@@ -6505,6 +6514,15 @@ components:
         activitySessionId:
           type: string
           format: uuid
+        kind:
+          type: string
+          enum: [warmup, work, drop]
+          description: warmup sets are left out of volume, records and fatigue; defaults to work
+        rir:
+          type: integer
+          minimum: 0
+          maximum: 10
+          description: "Reps in reserve: 0 is to failure."
     LiftLastExercise:
       type: object
       required: [key, name, performedOn, sets]
