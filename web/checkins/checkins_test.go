@@ -58,13 +58,11 @@ func renderIndex(t *testing.T) string {
 	var buf bytes.Buffer
 	err := IndexPage(
 		users.User{DisplayName: "Fernando"},
-		nil,
 		CheckInForm{Mood: 3, Energy: 3},
 		nil,
-		0,
 		false,
 		nil,
-		Instruments{},
+		LiveData{},
 	).Render(context.Background(), &buf)
 	if err != nil {
 		t.Fatal(err)

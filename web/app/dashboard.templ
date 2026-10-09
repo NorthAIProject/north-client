@@ -9,6 +9,7 @@ import (
 	newspages "github.com/NorthAIProject/north-client/web/news"
 	nudgepages "github.com/NorthAIProject/north-client/web/nudges"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/live"
 	"github.com/NorthAIProject/north-client/web/shared/markdown"
 	"github.com/NorthAIProject/north-client/web/shared/mascot"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
@@ -38,12 +39,12 @@ templ Dashboard(user users.User, data DashboardData) {
 				</div>
 				@rangeSelector(data)
 			</header>
-			if data.HasNextStep {
+			// The push offer stays outside the live region: it carries its own
+			// script, which must not be re-run by a swap.
+			if data.HasNextStep && data.NextStep.Kind == NextStepKindPush {
 				@nextStepCard(data.NextStep)
 			}
-			if data.showToday() {
-				@todayCard(data)
-			}
+			@TodayLive(data)
 			<div id="dashboard-panels">
 				@DashboardPanels(data)
 			</div>
@@ -119,6 +120,27 @@ templ nextStepBody(step NextStep) {
 			}
 		}
 	}
+}
+
+// TodayLive is the part of the overview a check-in changes: a "check in" next
+// step, or the Today card with its check-in row. It refreshes itself after a
+// save in this tab and polls for saves elsewhere; every hx attribute is on
+// this element because htmx 4 does not inherit them.
+templ TodayLive(data DashboardData) {
+	<div
+		id="dashboard-today"
+		class="space-y-6"
+		hx-get={ todayLiveHref(data) }
+		hx-trigger={ live.CheckInTrigger }
+		hx-swap="outerHTML"
+	>
+		if data.HasNextStep && data.NextStep.Kind != NextStepKindPush {
+			@nextStepCard(data.NextStep)
+		}
+		if data.showToday() {
+			@todayCard(data)
+		}
+	</div>
 }
 
 // todayCard is the answer to "what should I do now". It names one next step

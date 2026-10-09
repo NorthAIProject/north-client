@@ -92,6 +92,14 @@
         "createdAt": "2026-09-24T07:15:00Z"
       }
     ],
-    "briefing": "Easy day. Hydrate before the evening session."
+    "briefing": "Easy day. Hydrate before the evening session.",
+    "todayCheckIn": {
+      "mood": 4,
+      "energy": 3,
+      "stress": 2,
+      "sleepQuality": 4,
+      "source": "siri",
+      "at": "2026-09-24T07:15:00Z"
+    }
   }
 }

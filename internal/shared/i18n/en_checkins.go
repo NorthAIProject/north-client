@@ -61,4 +61,27 @@ var englishCheckins = map[string]string{
 	"checkins.scale.option": "%[1]s %[2]d of 5",
 	"checkins.scale.low":    "Low",
 	"checkins.scale.high":   "High",
+
+	// Optional extras on the energy and notes panes.
+	"checkins.q.stress":     "How stressed are you?",
+	"checkins.q.sleep":      "How did you sleep?",
+	"checkins.field.stress": "Stress",
+	"checkins.field.sleep":  "Sleep quality",
+	"checkins.scale.skip":   "Skip",
+	"checkins.tags":         "Tags (optional)",
+	"checkins.ph.tags":      "Comma-separated, e.g. travel, sick",
+
+	// History metadata. Times are HH:MM in the reader's zone.
+	"checkins.meta.at":     "Logged %[1]s",
+	"checkins.meta.edited": "edited %[1]s",
+	"checkins.meta.stress": "stress %[1]d/5",
+	"checkins.meta.sleep":  "sleep %[1]d/5",
+
+	// Where an entry came from.
+	"checkins.source.web":     "Web",
+	"checkins.source.ios":     "iPhone app",
+	"checkins.source.siri":    "Siri",
+	"checkins.source.coach":   "Coach chat",
+	"checkins.source.mcp":     "AI assistant",
+	"checkins.source.capture": "Quick capture",
 }
