@@ -54,6 +54,8 @@ func pageData(snap Snapshot, inst carepages.Instruments) carepages.Data {
 		LastNight:      snap.LastNight,
 		SleptLastNight: snap.SleptLastNight,
 		Habits:         snap.Habits,
+		Medications:    snap.Medications,
+		MedicationDay:  snap.MedicationDay,
 		Instruments:    inst,
 	}
 }

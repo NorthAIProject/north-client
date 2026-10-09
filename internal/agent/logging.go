@@ -140,7 +140,7 @@ func completeHabit(svc *habits.Service, userSvc *users.Service) Capability {
 			Name: "complete_habit",
 			Description: "Mark one of the user's habits as done today, naming it as they do. " +
 				"This never creates a habit: if they name something they do not keep, tell them so " +
-				"and point them at the habits section rather than inventing one.",
+				"and offer to start tracking it with create_habit rather than inventing one.",
 			Parameters: ai.Object("the habit they kept", map[string]*ai.Schema{
 				"name": ai.String("the habit's name, such as 'read 20 pages'"),
 			}, "name"),
@@ -245,21 +245,37 @@ func recordWeight(svc *biometrics.Service) Capability {
 }
 
 func logFood(foodLog *meals.FoodLogService, ingredients *meals.IngredientService) Capability {
-	type args struct {
+	type item struct {
 		Food  string  `json:"food"`
 		Grams float64 `json:"grams"`
 	}
+	type args struct {
+		Food  string  `json:"food"`
+		Grams float64 `json:"grams"`
+		Items []item  `json:"items"`
+	}
+
+	// food and grams are the original single-food shape, still required so
+	// the schema only grows; items is a whole meal in one call, so a plate of
+	// four things is one approval card. A model sending items fills food with
+	// "" and grams with 0, which is read as no single food.
+	params := ai.Object("what they ate", map[string]*ai.Schema{
+		"food":  ai.String("the ingredient's name for a single food; empty when using items"),
+		"grams": ai.Number("how much of that food they ate, in grams; 0 when using items"),
+		"items": ai.Array("several foods eaten together, such as a whole meal; use instead of food and grams",
+			ai.Object("one food", map[string]*ai.Schema{
+				"food":  ai.String("the ingredient's name"),
+				"grams": ai.Number("how much they ate, in grams"),
+			}, "food", "grams")),
+	}, "food", "grams")
 
 	return Capability{
 		Tool: ai.Tool{
 			Name: "log_food",
-			Description: "Record something the user ate, by name and weight in grams. " +
-				"The name is looked up in the ingredient catalog, so use a plain one such as " +
-				"'chicken breast' rather than a brand or a recipe.",
-			Parameters: ai.Object("what they ate", map[string]*ai.Schema{
-				"food":  ai.String("the ingredient's name"),
-				"grams": ai.Number("how much they ate, in grams"),
-			}, "food", "grams"),
+			Description: "Record something the user ate, by name and weight in grams: one food with food and grams, or a whole " +
+				"meal at once with every food in items (food empty, grams 0). Each name is looked up in the ingredient catalog, so use a plain one such as " +
+				"'chicken breast' rather than a brand or a recipe. An unknown or ambiguous name logs nothing.",
+			Parameters: params,
 		},
 		Idempotent: false,
 		Invoke: func(ctx context.Context, userID uuid.UUID, raw json.RawMessage) (string, error) {
@@ -268,18 +284,48 @@ func logFood(foodLog *meals.FoodLogService, ingredients *meals.IngredientService
 				return "", err
 			}
 
-			match, err := matchIngredient(ctx, ingredients, userID, in.Food)
-			if err != nil {
-				return "", err
+			items := in.Items
+			if strings.TrimSpace(in.Food) != "" || in.Grams != 0 {
+				items = append([]item{{Food: in.Food, Grams: in.Grams}}, items...)
+			}
+			if len(items) == 0 || len(items) > maxMealIngredients {
+				return "", apperr.Wrap(apperr.ErrValidation, "name between 1 and %d foods to log", maxMealIngredients)
 			}
 
-			if _, err := foodLog.LogIngredient(ctx, userID, meals.LogIngredientInput{
-				IngredientID:  match.ID,
-				QuantityGrams: in.Grams,
-			}); err != nil {
-				return "", err
+			// Every name and weight is checked before anything is written, so
+			// a meal is never half logged because its third food was unknown.
+			lines := make([]meals.LogIngredientInput, len(items))
+			matched := make([]meals.Ingredient, len(items))
+			for i, it := range items {
+				if it.Grams <= 0 || it.Grams > maxFoodGrams {
+					return "", apperr.Wrap(apperr.ErrValidation, "%q needs a weight between 1 and %d g", it.Food, maxFoodGrams)
+				}
+				match, matchErr := matchIngredient(ctx, ingredients, userID, it.Food)
+				if matchErr != nil {
+					return "", matchErr
+				}
+				matched[i] = match
+				lines[i] = meals.LogIngredientInput{IngredientID: match.ID, QuantityGrams: it.Grams}
 			}
-			return fmt.Sprintf("Logged %.0f g of %s.", in.Grams, match.Name), nil
+
+			logged := make([]string, 0, len(lines))
+			var total meals.Macros
+			for i, line := range lines {
+				entry, logErr := foodLog.LogIngredient(ctx, userID, line)
+				if logErr != nil {
+					if len(logged) > 0 {
+						return "", apperr.Wrap(logErr, "logged %s, then failed on %s", strings.Join(logged, ", "), matched[i].Name)
+					}
+					return "", logErr
+				}
+				logged = append(logged, fmt.Sprintf("%.0f g of %s", line.QuantityGrams, matched[i].Name))
+				total = total.Add(entry.Macros)
+			}
+			if len(logged) == 1 {
+				return fmt.Sprintf("Logged %s.", logged[0]), nil
+			}
+			return fmt.Sprintf("Logged %s: %.0f kcal, %.0f g protein, %.0f g carbs, %.0f g fat in all.",
+				strings.Join(logged, ", "), total.Calories, total.ProteinG, total.CarbG, total.FatG), nil
 		},
 	}
 }

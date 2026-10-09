@@ -54,6 +54,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/mcpserver"
 	"github.com/NorthAIProject/north-client/internal/meals"
 	"github.com/NorthAIProject/north-client/internal/media"
+	"github.com/NorthAIProject/north-client/internal/medications"
 	"github.com/NorthAIProject/north-client/internal/memories"
 	"github.com/NorthAIProject/north-client/internal/messaging"
 	"github.com/NorthAIProject/north-client/internal/messaging/telegram"
@@ -245,6 +246,9 @@ func routes(
 	// Export reads across profile, goals, check-ins, memories, documents and
 	// conversations, which is why it is its own package rather than a method on
 	// any one of them.
+	// Built here rather than with the care slices below: the export reads it.
+	medicationSvc := medications.NewService(medications.NewRepository(pool))
+
 	exportHandler := export.NewHandler(export.NewExporter(export.Options{
 		Documents:     documentSvc,
 		Memories:      memorySvc,
@@ -253,6 +257,7 @@ func routes(
 		CheckIns:      checkinSvc,
 		Storage:       storage,
 		Friends:       socialSvc,
+		Medications:   medicationSvc,
 	}), quotaSvc, accountSvc)
 
 	// Built before workouts: the plan generator picks from this catalog, so
@@ -451,6 +456,8 @@ func routes(
 		Hydration: hydrationSvc,
 		Sleep:     sleepSvc,
 		Habits:    habitSvc,
+
+		Medications: medicationSvc,
 	}
 	careHandler := care.NewHandler(careOpts)
 
@@ -684,6 +691,8 @@ func routes(
 		Lifts:       liftSvc,
 		Health:      healthSvc,
 		Stats:       statsSvc,
+		Preferences: preferencesSvc,
+		Medications: medicationSvc,
 	})
 
 	agentTools.Record(auditRecorder)
@@ -715,6 +724,7 @@ func routes(
 			caffeine.NewContextSource(caffeineSvc),
 			fasting.NewContextSource(fastingSvc),
 			supplements.NewContextSource(supplementSvc),
+			medications.NewContextSource(medicationSvc),
 			screentime.NewContextSource(screenTimeSvc),
 			soreness.NewContextSource(sorenessSvc),
 			lifts.NewContextSource(liftSvc),
@@ -968,6 +978,7 @@ func routes(
 			stats:        stats.NewAPI(statsSvc),
 			fasting:      fasting.NewAPI(fastingSvc),
 			supplements:  supplements.NewAPI(supplementSvc),
+			medications:  medications.NewAPI(medicationSvc),
 			screenTime:   screentime.NewAPI(screenTimeSvc),
 			soreness:     soreness.NewAPI(sorenessSvc),
 			milestones:   milestones.NewAPI(milestoneSvc),
@@ -1165,6 +1176,8 @@ func routes(
 				inboxHandler.Routes(r)
 				lighterHandler.Routes(r)
 				careHandler.Routes(r)
+				// The medications card's writes, rendered back through the care page.
+				medications.NewHandler(medicationSvc, careHandler).Routes(r)
 				captureHandler.Routes(r)
 				activityHandler.Routes(r)
 				calculatorHandler.Routes(r)

@@ -54,6 +54,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/mcpauth"
 	"github.com/NorthAIProject/north-client/internal/meals"
 	"github.com/NorthAIProject/north-client/internal/media"
+	"github.com/NorthAIProject/north-client/internal/medications"
 	"github.com/NorthAIProject/north-client/internal/memories"
 	"github.com/NorthAIProject/north-client/internal/messaging"
 	"github.com/NorthAIProject/north-client/internal/messaging/telegram"
@@ -457,7 +458,9 @@ func run() error {
 		WithCrews(crews.NewService(pool, crews.CheckInsFrom(checkinSvc), crews.WorkoutsFrom(activitySvc))).
 		WithWeekly(weeklySvc).
 		// 30 and 90 days after a decision: did it hold?
-		WithDecisions(decisions.NewService(decisions.NewRepository(pool)))
+		WithDecisions(decisions.NewService(decisions.NewRepository(pool))).
+		// Dose reminders the person scheduled; raised even in quiet hours.
+		WithMedications(medications.NewService(medications.NewRepository(pool)))
 	worker.Register(jobs.KindSweepNudges, nudges.NewSweeper(nudgeSvc, log).HandleSweep)
 
 	// Strava imports and the coach's tools finish workouts and save check-ins
@@ -516,6 +519,7 @@ func run() error {
 			lifts.NewContextSource(lifts.NewService(lifts.NewRepository(pool), exercises.NewService(exercises.NewRepository(pool))).WithRecaps(activitySvc, workoutSvc)),
 			fasting.NewContextSource(fasting.NewService(fasting.NewRepository(pool))),
 			supplements.NewContextSource(supplements.NewService(supplements.NewRepository(pool))),
+			medications.NewContextSource(medications.NewService(medications.NewRepository(pool))),
 			screentime.NewContextSource(screentime.NewService(screentime.NewRepository(pool))),
 			soreness.NewContextSource(soreness.NewService(soreness.NewRepository(pool))),
 			milestones.NewContextSource(milestones.NewService(milestones.NewRepository(pool))),

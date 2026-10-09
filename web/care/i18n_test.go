@@ -26,10 +26,10 @@ func renderCareIn(t *testing.T, locale users.Locale) string {
 
 func TestCareRendersInTheChosenLanguage(t *testing.T) {
 	cases := map[users.Locale][]string{
-		users.LocaleEN:   {"Care", "Add habit", "Nothing due right now."},
-		users.LocalePTPT: {"Cuidado", "Adicionar hábito", "Nada a cumprir neste momento."},
-		users.LocalePTBR: {"Cuidado", "Adicionar hábito", "Nada para agora."},
-		users.LocaleES:   {"Cuidado", "Añadir hábito", "Nada pendiente ahora mismo."},
+		users.LocaleEN:   {"Care", "Add habit", "Nothing due right now.", "Add medication"},
+		users.LocalePTPT: {"Cuidado", "Adicionar hábito", "Nada a cumprir neste momento.", "Adicionar medicamento"},
+		users.LocalePTBR: {"Cuidado", "Adicionar hábito", "Nada para agora.", "Adicionar medicamento"},
+		users.LocaleES:   {"Cuidado", "Añadir hábito", "Nada pendiente ahora mismo.", "Añadir medicamento"},
 	}
 	for locale, wants := range cases {
 		html := renderCareIn(t, locale)

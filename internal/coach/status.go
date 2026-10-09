@@ -30,23 +30,29 @@ var toolStatusKeys = map[string]string{
 	"search_goals":    "chat.tool.goals",
 	"create_goal":     "chat.tool.goals.write",
 	"add_goal_update": "chat.tool.goals.write",
+	"update_goal":     "chat.tool.goals.write",
 
 	"create_check_in": "chat.tool.checkin",
 	"list_check_ins":  "chat.tool.checkin.read",
 
 	"search_documents": "chat.tool.documents",
 
-	"get_workout_plan":        "chat.tool.workout",
-	"swap_workout_exercise":   "chat.tool.workout.write",
-	"add_workout_exercise":    "chat.tool.workout.write",
-	"remove_workout_exercise": "chat.tool.workout.write",
-	"create_workout_plan":     "chat.tool.workout.create",
-	"get_training_week":       "chat.tool.workout",
-	"set_training_week":       "chat.tool.workout.week",
-	"set_active_workout_plan": "chat.tool.workout.write",
-	"get_lift_stats":          "chat.tool.lifts",
-	"get_stats":               "chat.tool.stats",
-	"create_meal_plan":        "chat.tool.mealplan.write",
+	"get_workout_plan":         "chat.tool.workout",
+	"swap_workout_exercise":    "chat.tool.workout.write",
+	"add_workout_exercise":     "chat.tool.workout.write",
+	"remove_workout_exercise":  "chat.tool.workout.write",
+	"set_workout_prescription": "chat.tool.workout.write",
+	"move_workout_exercise":    "chat.tool.workout.write",
+	"set_workout_start_time":   "chat.tool.workout.write",
+	"create_workout_plan":      "chat.tool.workout.create",
+	"get_training_week":        "chat.tool.workout",
+	"set_training_week":        "chat.tool.workout.week",
+	"set_active_workout_plan":  "chat.tool.workout.write",
+	"get_lift_stats":           "chat.tool.lifts",
+	"get_stats":                "chat.tool.stats",
+	"create_meal_plan":         "chat.tool.mealplan.write",
+	"edit_meal_plan":           "chat.tool.mealplan.write",
+	"get_meal_plan":            "chat.tool.nutrition",
 
 	"search_ingredients": "chat.tool.nutrition",
 	"todays_nutrition":   "chat.tool.nutrition",
@@ -69,6 +75,17 @@ var toolStatusKeys = map[string]string{
 	"record_soreness":       "chat.tool.log",
 	"record_blood_pressure": "chat.tool.log",
 	"log_lift_set":          "chat.tool.log",
+
+	// Corrections and the rest of what a person can change by talking.
+	"undo_log":            "chat.tool.log",
+	"log_planned_meal":    "chat.tool.log",
+	"create_habit":        "chat.tool.log",
+	"update_habit":        "chat.tool.log",
+	"set_target_weight":   "chat.tool.log",
+	"add_medication":      "chat.tool.log",
+	"update_medication":   "chat.tool.log",
+	"stop_medication":     "chat.tool.log",
+	"log_medication_dose": "chat.tool.log",
 }
 
 const defaultToolStatusKey = "chat.tool.default"

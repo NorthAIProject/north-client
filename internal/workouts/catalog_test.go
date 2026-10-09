@@ -806,6 +806,43 @@ func TestSettingThePrescriptionChangesTheDoseNotTheMovement(t *testing.T) {
 	}
 }
 
+// "Everything to three sets" from the chat is one decision, so it lands as one
+// new plan version descending from the old one, not one version per exercise.
+func TestABulkPrescriptionEditIsOnePlanVersion(t *testing.T) {
+	t.Parallel()
+
+	svc, user, stored, _ := newEditablePlan(t)
+	ctx := context.Background()
+
+	three := 3
+	edited, changed, err := svc.EditPrescriptions(ctx, user, stored.ID,
+		func(int, workouts.Exercise) bool { return true }, workouts.PrescriptionChange{Sets: &three})
+	if err != nil {
+		t.Fatalf("edit prescriptions: %v", err)
+	}
+	if len(changed) == 0 {
+		t.Fatal("nothing reported as changed")
+	}
+	for _, day := range edited.Plan.Days {
+		for _, ex := range day.Exercises {
+			if ex.Sets != 3 {
+				t.Errorf("%s is on %d sets", ex.Name, ex.Sets)
+			}
+		}
+	}
+	if edited.EditedFrom == nil || *edited.EditedFrom != stored.ID {
+		t.Errorf("EditedFrom = %v, want %s", edited.EditedFrom, stored.ID)
+	}
+
+	plans, err := svc.ListPlans(ctx, user.ID, 10)
+	if err != nil {
+		t.Fatalf("list plans: %v", err)
+	}
+	if len(plans) != 2 {
+		t.Errorf("%d plan rows, want the original and exactly one edit", len(plans))
+	}
+}
+
 // The numbers arrive from a form, so nonsense has to be refused rather than
 // stored. plan.SetPrescription owns the rules; this pins that the service
 // surfaces them as a validation failure.

@@ -456,8 +456,20 @@ func (s *MealPlanService) AddMeal(ctx context.Context, dayID, userID uuid.UUID, 
 	return added, err
 }
 
+// RemoveMeal deletes a meal with its ingredients. Taking food away never
+// takes a day further over, so it is not checked, but it holds the plan's
+// lock like every other change so a concurrent checked change sees it.
 func (s *MealPlanService) RemoveMeal(ctx context.Context, mealID, userID uuid.UUID) error {
-	return s.repo.RemoveMeal(ctx, mealID, userID)
+	planID, err := s.repo.PlanIDOfMeal(ctx, mealID, userID)
+	if err != nil {
+		return err
+	}
+	return s.repo.WithPlanLocked(ctx, planID, userID, func(tx *PlanTx, plan MealPlan) error {
+		if _, ok := plan.DayIndexOfMeal(mealID); !ok {
+			return apperr.ErrNotFound
+		}
+		return tx.RemoveMeal(ctx, planID, mealID)
+	})
 }
 
 // AddIngredient adds one portion to a meal; see AddIngredients.
@@ -532,6 +544,17 @@ func (s *MealPlanService) portions(ctx context.Context, userID uuid.UUID, lines 
 	return out, total, nil
 }
 
+// RemoveIngredient takes one ingredient off a meal, under the plan's lock for
+// the reason RemoveMeal gives.
 func (s *MealPlanService) RemoveIngredient(ctx context.Context, mealIngredientID, userID uuid.UUID) error {
-	return s.repo.RemoveIngredient(ctx, mealIngredientID, userID)
+	planID, mealID, err := s.repo.LocateMealIngredient(ctx, mealIngredientID, userID)
+	if err != nil {
+		return err
+	}
+	return s.repo.WithPlanLocked(ctx, planID, userID, func(tx *PlanTx, plan MealPlan) error {
+		if _, ok := plan.DayIndexOfMeal(mealID); !ok {
+			return apperr.ErrNotFound
+		}
+		return tx.RemovePortion(ctx, planID, mealID, mealIngredientID)
+	})
 }

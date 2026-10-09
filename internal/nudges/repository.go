@@ -39,6 +39,10 @@ type Draft struct {
 	// Telegram by another route (the daily briefing) and so would arrive there
 	// twice, but has not reached the lock screen. Not stored, like Everywhere.
 	Push bool
+
+	// Alarm is raised even in quiet hours: a medication reminder is a time
+	// the person chose, not North deciding to speak. Not stored, like Push.
+	Alarm bool
 }
 
 func (r *Repository) Insert(ctx context.Context, userID uuid.UUID, d Draft) (Nudge, bool, error) {

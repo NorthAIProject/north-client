@@ -138,9 +138,12 @@ func TestEveryPlanEditIsDeclaredAsAWrite(t *testing.T) {
 	t.Parallel()
 
 	capabilities := map[string]Capability{
-		"swap_workout_exercise":   swapWorkoutExercise(nil, nil),
-		"add_workout_exercise":    addWorkoutExercise(nil, nil),
-		"remove_workout_exercise": removeWorkoutExercise(nil, nil),
+		"swap_workout_exercise":    swapWorkoutExercise(nil, nil),
+		"add_workout_exercise":     addWorkoutExercise(nil, nil),
+		"remove_workout_exercise":  removeWorkoutExercise(nil, nil),
+		"set_workout_prescription": setWorkoutPrescription(nil, nil),
+		"move_workout_exercise":    moveWorkoutExercise(nil, nil),
+		"set_workout_start_time":   setWorkoutStartTime(nil, nil),
 	}
 
 	for name, c := range capabilities {
@@ -171,5 +174,82 @@ func TestSlugArgumentsPointAtSearchExercises(t *testing.T) {
 		if !strings.Contains(c.Tool.Description, "search_exercises") {
 			t.Errorf("%s does not tell the model where slugs come from", c.Tool.Name)
 		}
+	}
+}
+
+// The request behind set_workout_prescription: "everything from 2 sets to 3".
+// With no day and no exercise the filter covers the whole plan, and
+// only_if_sets narrows it to the exercises on that count.
+func TestPrescriptionMatchCoversThePlanWhenNothingIsNamed(t *testing.T) {
+	t.Parallel()
+
+	p := editablePlanFixture()
+	three := 3
+	match, err := prescriptionMatch(p, "", "", &three)
+	if err != nil {
+		t.Fatalf("match: %v", err)
+	}
+
+	var hit []string
+	for d, day := range p.Days {
+		for _, ex := range day.Exercises {
+			if match(d, ex) {
+				hit = append(hit, ex.Name)
+			}
+		}
+	}
+	want := "Romanian Deadlift, One-Arm Dumbbell Row, Dumbbell Bench Press"
+	if got := strings.Join(hit, ", "); got != want {
+		t.Errorf("matched %s, want %s", got, want)
+	}
+}
+
+func TestPrescriptionMatchNarrowsByDayFocusAndName(t *testing.T) {
+	t.Parallel()
+
+	p := editablePlanFixture()
+	cases := []struct {
+		day, exercise string
+		want          string
+	}{
+		{"Monday", "", "Barbell Back Squat, Romanian Deadlift"},
+		{"upper body", "", "One-Arm Dumbbell Row, Dumbbell Bench Press"},
+		{"", "dumbbell", "One-Arm Dumbbell Row, Dumbbell Bench Press"},
+		{"thu", "row", "One-Arm Dumbbell Row"},
+	}
+	for _, c := range cases {
+		match, err := prescriptionMatch(p, c.day, c.exercise, nil)
+		if err != nil {
+			t.Errorf("%q/%q: %v", c.day, c.exercise, err)
+			continue
+		}
+		var hit []string
+		for d, day := range p.Days {
+			for _, ex := range day.Exercises {
+				if match(d, ex) {
+					hit = append(hit, ex.Name)
+				}
+			}
+		}
+		if got := strings.Join(hit, ", "); got != c.want {
+			t.Errorf("%q/%q matched %s, want %s", c.day, c.exercise, got, c.want)
+		}
+	}
+}
+
+// A name that matches nothing has to say what is there, so the model can
+// correct itself instead of asking.
+func TestPrescriptionMatchNamesTheExercisesWhenNothingMatches(t *testing.T) {
+	t.Parallel()
+
+	_, err := prescriptionMatch(editablePlanFixture(), "Monday", "curl", nil)
+	if err == nil {
+		t.Fatal("a name matching nothing was accepted")
+	}
+	if !strings.Contains(err.Error(), "Barbell Back Squat") {
+		t.Errorf("the error does not list the day's exercises: %v", err)
+	}
+	if _, err := prescriptionMatch(editablePlanFixture(), "Sunday", "", nil); err == nil {
+		t.Error("a day the plan does not have was accepted")
 	}
 }
