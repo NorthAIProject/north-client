@@ -6,6 +6,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/insights/highlight"
 	"github.com/NorthAIProject/north-client/internal/shared/viz"
+	"github.com/NorthAIProject/north-client/internal/stats/stat"
 	insightpages "github.com/NorthAIProject/north-client/web/insights"
 )
 
@@ -36,6 +37,11 @@ func buildMetricView(data MetricData) (insightpages.MetricView, error) {
 		HrefLabel: "See the whole domain",
 		Chart:     viz.Bar("insights-metric-"+m.Key, m.Label, labels, series),
 		HasData:   len(data.Points) > 0,
+		Health:    m.Health,
+	}
+	if data.Usual != nil {
+		u := usualView(m, *data.Usual)
+		view.Usual = &u
 	}
 
 	view.Trend = trendView(m, current, prior, len(data.Prior) > 0)
@@ -124,6 +130,25 @@ func metricComparisons(m metric, current, prior float64, hasPrior bool) []highli
 		return nil
 	}
 	return []highlight.Comparison{{Label: m.Label, Current: current, Prior: prior}}
+}
+
+// usualView words a latest day against the person's usual range: the mean
+// give or take one standard deviation, which about two days in three fall in.
+func usualView(m metric, u Usual) insightpages.UsualView {
+	low := formatMetric(m, math.Max(u.Baseline.Mean-u.Baseline.SD, 0))
+	high := formatMetric(m, u.Baseline.Mean+u.Baseline.SD)
+	lead := map[string]string{
+		stat.Above: "Above your usual",
+		stat.Usual: "Within your usual range",
+		stat.Below: "Below your usual",
+	}[u.State]
+	return insightpages.UsualView{
+		Day: u.Latest.At, Latest: u.Latest.Value,
+		Mean: u.Baseline.Mean, SD: u.Baseline.SD, Low: low, High: high,
+		Days: u.Baseline.Days, Z: math.Round(u.Z*100) / 100, State: u.State,
+		Text: fmt.Sprintf("%s: %s on %s, usually %s–%s.",
+			lead, formatMetric(m, u.Latest.Value), u.Latest.At.Format("Mon 2 Jan"), low, high),
+	}
 }
 
 // formatMetric renders a metric's value at its own precision.

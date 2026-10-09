@@ -1,0 +1,35 @@
+{
+  "metrics": [
+    {
+      "key": "steps",
+      "label": "Steps",
+      "latest": "11200",
+      "day": "2026-09-24",
+      "recent": [
+        8800,
+        11200
+      ],
+      "usual": {
+        "day": "2026-09-24",
+        "latest": 11200,
+        "mean": 9000,
+        "sd": 1100,
+        "low": "7900",
+        "high": "10100",
+        "days": 28,
+        "z": 2,
+        "state": "above",
+        "text": "Above your usual: 11200 on Thu 24 Sep, usually 7900–10100."
+      }
+    },
+    {
+      "key": "vo2max",
+      "label": "VO2 max",
+      "latest": "44.2",
+      "day": "2026-09-24",
+      "recent": [
+        44.2
+      ]
+    }
+  ]
+}

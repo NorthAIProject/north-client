@@ -8,6 +8,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/lifts/lift"
 	"github.com/NorthAIProject/north-client/internal/shared/apitest"
 	"github.com/NorthAIProject/north-client/internal/shared/viz"
+	"github.com/NorthAIProject/north-client/internal/stats/stat"
 	insightpages "github.com/NorthAIProject/north-client/web/insights"
 	"github.com/NorthAIProject/north-client/web/shared/ui/chart"
 )
@@ -42,6 +43,31 @@ func TestInsightsShapes(t *testing.T) {
 		Comparison: insightpages.ComparisonView{CurrentLabel: "This week", CurrentValue: "7.3 h", CurrentPct: 100, PriorLabel: "Last week", PriorValue: "7.0 h", PriorPct: 96, HasPrior: true},
 		Highlights: []string{"Up 4.5% on last week."},
 		HasData:    true,
+	}))
+	usual := insightpages.UsualView{
+		Day: time.Date(2026, 9, 24, 0, 0, 0, 0, time.UTC), Latest: 11200, Mean: 9000, SD: 1100,
+		Low: "7900", High: "10100", Days: 28, Z: 2, State: "above",
+		Text: "Above your usual: 11200 on Thu 24 Sep, usually 7900–10100.",
+	}
+	apitest.AssertGolden(t, "insights-metric-health.golden.json", projectMetric(insightpages.MetricView{
+		Range: rng, Key: "steps", Label: "Steps", Headline: "9400", Note: "average across 7 logged days",
+		Chart:   chart.Props{Data: week},
+		Trend:   insightpages.TrendView{Direction: 1, Pct: 6, Word: "Up 6%", HasPrior: true},
+		HasData: true, Health: true, Usual: &usual,
+	}))
+	apitest.AssertGolden(t, "insights-health.golden.json", projectHealth([]HealthRow{
+		{
+			Metric: metric{Key: "steps", Label: "Steps"},
+			Recent: []point{{At: usual.Day.AddDate(0, 0, -1), Value: 8800}, {At: usual.Day, Value: 11200}},
+			Usual: &Usual{
+				Latest: point{At: usual.Day, Value: 11200}, Baseline: stat.Baseline{Mean: 9000, SD: 1100, Days: 28},
+				Z: 2, State: stat.Above,
+			},
+		},
+		{
+			Metric: metric{Key: "vo2max", Label: "VO2 max", Decimals: 1},
+			Recent: []point{{At: usual.Day, Value: 44.2}},
+		},
 	}))
 
 	at := time.Date(2026, 9, 21, 7, 30, 0, 0, time.UTC)
