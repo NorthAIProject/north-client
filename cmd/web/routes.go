@@ -751,8 +751,17 @@ func routes(
 		Analytics:   coach.NewAnalytics(posthogClient).WithMetrics(metricsReg),
 		Funnel:      funnel,
 		Attachments: mediaSvc,
-		Model:       cfg.AI.Model,
-		FastModel:   cfg.AI.FastModel,
+		// A document sent in chat is read into the turn as text. Wired here
+		// because coach must not import media or planimport: both import it.
+		AttachmentText: coach.AttachmentTextFunc(func(ctx context.Context, userID, mediaID uuid.UUID) (string, error) {
+			m, data, err := mediaSvc.ReadFile(ctx, userID, mediaID)
+			if err != nil {
+				return "", err
+			}
+			return planimport.ExtractText(m.OriginalName, data)
+		}),
+		Model:     cfg.AI.Model,
+		FastModel: cfg.AI.FastModel,
 	})
 	coachHandler := coach.NewHandler(coachSvc, quotaSvc).WithMedia(mediaSvc)
 
