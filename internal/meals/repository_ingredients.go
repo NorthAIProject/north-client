@@ -70,6 +70,15 @@ func (r *Repository) SearchIngredients(ctx context.Context, userID uuid.UUID, qu
 	return out, nil
 }
 
+// SharedIngredientNames lists the shared catalog's names, A to Z.
+func (r *Repository) SharedIngredientNames(ctx context.Context) ([]string, error) {
+	names, err := r.q.ListSharedIngredientNames(ctx)
+	if err != nil {
+		return nil, apperr.Wrap(err, "list shared ingredient names")
+	}
+	return names, nil
+}
+
 // UpdateIngredient only succeeds against an ingredient the user owns; shared
 // ingredients are read-only to everyone.
 func (r *Repository) UpdateIngredient(ctx context.Context, id, userID uuid.UUID, in Ingredient) (Ingredient, error) {

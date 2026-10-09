@@ -509,7 +509,7 @@ func (a *API) addMealIngredients(w http.ResponseWriter, r *http.Request) {
 	}
 	lines := make([]MealIngredientInput, len(req.Portions))
 	for i, p := range req.Portions {
-		lines[i] = MealIngredientInput(p)
+		lines[i] = MealIngredientInput{IngredientID: p.IngredientID, QuantityGrams: p.QuantityGrams}
 	}
 	added, err := a.plans.AddIngredients(r.Context(), id, auth.MustUser(r.Context()).ID, lines, req.ConfirmOverage)
 	if err != nil {
