@@ -1,6 +1,7 @@
 package planimport
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
@@ -78,6 +79,34 @@ func TestBuildMealUsesTheStandInNameAndKeepsTheSourceLine(t *testing.T) {
 	tea := foods[3]
 	if tea.Food != "chá" || tea.Grams != nil || tea.Estimated {
 		t.Fatalf("tea = %+v, want no weight from an unreadable estimate", tea)
+	}
+}
+
+// A range the reader filled with an estimate is flagged once, as estimated;
+// "isn't a number" is only for a quantity left with no weight at all.
+func TestBuildMealFlagsAnEstimatedRangeOnce(t *testing.T) {
+	t.Parallel()
+
+	draft, err := buildMeal(MealReading{Rows: []MealRow{
+		{Meal: "Almoço", Food: "arroz", FoodEN: "White rice", Quantity: "150–250", Unit: "g", GramsEstimate: "200"},
+		{Meal: "Almoço", Food: "feijão", FoodEN: "Beans", Quantity: "150–250", Unit: "g"},
+	}})
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	foods := draft.Days[0].Meals[0].Foods
+
+	rice := foods[0]
+	if rice.Grams == nil || *rice.Grams != 200 || !rice.Estimated {
+		t.Fatalf("rice = %+v, want the 200 g estimate", rice)
+	}
+	if want := []string{`Estimated weight for "150–250 g". Check it.`}; !slices.Equal(rice.Flags, want) {
+		t.Fatalf("rice flags = %q, want only %q", rice.Flags, want)
+	}
+
+	beans := foods[1]
+	if beans.Grams != nil || !containsFlag(beans.Flags, `Quantity "150–250" isn't a number.`) {
+		t.Fatalf("beans = %+v, want the quantity flagged when nothing filled it", beans)
 	}
 }
 

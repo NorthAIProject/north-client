@@ -226,12 +226,25 @@ func foodFromRow(row MealRow) FoodDraft {
 	}
 
 	qty, unitFromQty, ok := parseAmount(row.Quantity)
-	if !ok {
-		food.Flags = append(food.Flags, fmt.Sprintf("Quantity %q isn't a number.", strings.TrimSpace(row.Quantity)))
-	}
 	food.Quantity = qty
 	if food.Unit == "" {
 		food.Unit = unitFromQty
+	}
+	estimateFlag := ""
+	if !exactGrams(food) {
+		if g, _, read := parseAmount(row.GramsEstimate); read && g != nil && *g > 0 {
+			food.Grams, food.Estimated = g, true
+			amount := joinWords(row.Quantity, row.Unit)
+			if amount == "" {
+				amount = original
+			}
+			estimateFlag = fmt.Sprintf("Estimated weight for %q. Check it.", amount)
+		}
+	}
+	// A quantity an estimate stood in for ("150–250") is already flagged as
+	// estimated; saying it isn't a number as well is the same warning twice.
+	if !ok && !food.Estimated {
+		food.Flags = append(food.Flags, fmt.Sprintf("Quantity %q isn't a number.", strings.TrimSpace(row.Quantity)))
 	}
 
 	for _, m := range []struct {
@@ -250,15 +263,8 @@ func foodFromRow(row MealRow) FoodDraft {
 		}
 	}
 
-	if !exactGrams(food) {
-		if g, _, ok := parseAmount(row.GramsEstimate); ok && g != nil && *g > 0 {
-			food.Grams, food.Estimated = g, true
-			amount := joinWords(row.Quantity, row.Unit)
-			if amount == "" {
-				amount = original
-			}
-			food.Flags = append(food.Flags, fmt.Sprintf("Estimated weight for %q. Check it.", amount))
-		}
+	if estimateFlag != "" {
+		food.Flags = append(food.Flags, estimateFlag)
 	}
 	if row.Uncertain {
 		food.Flags = append(food.Flags, uncertainFlag)
