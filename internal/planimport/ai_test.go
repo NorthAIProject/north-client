@@ -1,6 +1,7 @@
 package planimport
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"strings"
@@ -267,5 +268,69 @@ func TestMealSchemaRequiresEveryField(t *testing.T) {
 	}
 	if got := strings.Join(workoutSchema.Required, ","); got != "is_plan,not_plan_reason,name,rows,unparsed" {
 		t.Fatalf("workout reply required = %s, want it unchanged", got)
+	}
+}
+
+// A PDF without a text layer reaches the model as the PDF itself, and the
+// reading goes on to a draft like any other.
+func TestAPDFWithoutATextLayerIsReadAsADocument(t *testing.T) {
+	t.Parallel()
+
+	client := fake.Text(`{"is_plan":"yes","not_plan_reason":"","name":"Força",
+	  "rows":[{"day":"Segunda","exercise":"Agachamento","sets":"3","reps":"5","load":"","rest":"","notes":"","confidence":"high"}],
+	  "unparsed":[]}`)
+	svc := NewService(Options{Reader: readerWith(client)})
+	data := minimalPDF(t, []string{" "}, false)
+
+	draft, err := svc.ParseWorkout(context.Background(), users.User{}, "plano.pdf", data, "")
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(draft.Days) != 1 || len(draft.Days[0].Exercises) != 1 || draft.Days[0].Exercises[0].Name != "Agachamento" {
+		t.Fatalf("draft = %+v", draft)
+	}
+
+	call := client.LastCall()
+	part := call.Messages[0].Parts[0]
+	if part.MIMEType != "application/pdf" || !bytes.Equal(part.InlineData, data) {
+		t.Fatalf("part = %q with %d bytes, want the PDF inline", part.MIMEType, len(part.InlineData))
+	}
+	if !strings.Contains(call.System, "attached PDF") || strings.Contains(call.System, "<source> tags") {
+		t.Fatalf("the prompt should say the source is an attached PDF, not extracted text:\n%s", call.System)
+	}
+}
+
+func TestTheMealPromptReadsAPDFDocument(t *testing.T) {
+	t.Parallel()
+
+	client := fake.Text(`{"is_plan":"yes","not_plan_reason":"","name":"","rows":[],"unparsed":[],"notes":"","same_as":[]}`)
+	src, err := Open("plano.pdf", minimalPDF(t, []string{" "}, false))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	if _, err := readerWith(client).ReadMeal(context.Background(), users.User{}, src, ""); err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	call := client.LastCall()
+	if !strings.Contains(call.System, "attached PDF") || strings.Contains(call.System, "<source> tags") {
+		t.Fatalf("the meal prompt should say the source is an attached PDF:\n%s", call.System)
+	}
+	if call.Messages[0].Parts[0].MIMEType != "application/pdf" {
+		t.Fatalf("part = %+v, want the PDF inline", call.Messages[0].Parts[0])
+	}
+}
+
+// When every provider fails on a PDF document, the person hears what they can
+// do instead, as for a photo.
+func TestAPDFDocumentNoProviderCouldReadSaysWhatToDo(t *testing.T) {
+	t.Parallel()
+
+	client := &fake.Client{Handler: func(context.Context, ai.Request) (fake.Response, error) {
+		return fake.Response{}, errors.New("provider: unsupported content type")
+	}}
+	src := Source{Kind: KindPDFDocument, Filename: "plano.pdf", Document: []byte("%PDF-1.4"), MIME: "application/pdf"}
+	_, _, _, err := readerWith(client).ReadWorkout(context.Background(), users.User{}, src, "")
+	if ReasonOf(err) != ReasonCannotRead || !strings.Contains(err.Error(), "PDF") {
+		t.Fatalf("err = %v, want a cannot-read refusal about the PDF", err)
 	}
 }
