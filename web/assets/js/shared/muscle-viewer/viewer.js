@@ -1,55 +1,66 @@
 /**
- * The muscle viewer (NOR-8). Shared between the marketing landing page and the
- * real /app/training pages — one module, two callers, no page-specific logic here.
+ * The body figure (NOR-8). One module for every caller: My Day's body card, the
+ * plan page's Muscles card, exercise pages and the landing demo.
  *
- * The figure is a real anatomical model: a Z-Anatomy-derived muscle set
- * (CC BY-SA 4.0, hpfrei/body-anatomy-3d-viewer) sealed inside an opaque athletic
- * skin — see web/assets/models/README.md for the full attribution and how
- * body.glb was built. Every muscle mesh is tagged with a muscle key by name.
+ * The figure is body-map.glb: the skin of a body cut into one region per muscle
+ * key, built by scripts/bodymap from the anatomical atlas (attribution in
+ * siteFooter(), web/landing/sections.templ). Each region is its own mesh and
+ * material, named after its key, so colouring a muscle is setting one colour —
+ * no geometry is reloaded — and a tap resolves to a key by the mesh's name.
  *
- * NOR-6 changed what you see. The figure used to be a translucent shell with grey
- * muscles permanently visible underneath, which read as a blocky anatomy diagram.
- * Now the body is solid and lit like a product shot, and only the muscles an
- * exercise actually works light up — glowing out through the skin from inside
- * rather than being drawn on top of it. See glowMaterial() for how that works.
+ * Untrained muscle is a cool grey-blue; trained muscle ramps from a pale amber
+ * to ember. Skin with no muscle under it (head, hands, feet, joints) is a plain
+ * neutral, so the muscle regions read as structure even with nothing trained.
  *
- * Two ways to drive the colouring:
- *   - setLoads([{key, share, role}]) — continuous, per-muscle percentages. Used
- *     by the landing demo, which has its own richer readout beside the canvas.
- *   - setMuscleGroups({primary, secondary, stabilizers}) — the production data
- *     contract (NOR-8): three flat arrays of muscle keys, no percentages, because
- *     that's what the AI plan generator actually produces. This is an adapter
- *     over setLoads with a fixed intensity per tier, not a separate code path.
+ * Ways to drive the colour, all ending in setHeat():
+ *   - setHeat({quads: 0.8, ...})  — region key → 0..1. The body map: server
+ *     computed (internal/lifts/lift.HeatOf, folded by internal/bodymap).
+ *   - setMuscleGroups({primary, secondary, stabilizers}) — what an exercise
+ *     works, at fixed tiers.
+ *   - setLoads([{key, share}]) — the landing demo's percentages.
+ *
+ * Keys must already be region keys; folding (rhomboids → traps) is the
+ * server's job, so this file never needs its own copy of the table.
  */
 import * as THREE from "/assets/js/vendor/three.module.min.js";
 import { GLTFLoader } from "/assets/js/vendor/three-gltf-loader.module.js";
-import { MeshoptDecoder } from "/assets/js/vendor/three-meshopt-decoder.module.js";
-// Shared with tools/model/build-body.mjs, which uses the same table to decide what
-// goes into body.glb in the first place — see muscles.js.
-import { MUSCLE_ALIASES, MUSCLE_INFO, resolveKey } from "./muscles.js";
+import { MUSCLE_INFO } from "./muscles.js";
 import { readCSSColor } from "../css-color.js";
 
-// The figure is a mannequin, not a person: one matte neutral per theme, so the
-// only warm colour on it is the effort colour (ember, a brand token read live from
-// CSS below). A realistic skin tone was tried and lost twice over — ember on tan
-// has no contrast, and a photoreal body beside a hairline UI reads as uncanny.
-const THEME = {
-  dark: { exposure: 1.05, rim: 0x8ec6ff, rimStrength: 0.4, skin: 0x4a515c },
-  light: { exposure: 0.9, rim: 0x2b3a52, rimStrength: 0.22, skin: 0x9aa3ae },
+const MODEL_PATH = "/assets/models/body-map.glb";
+const BASE_REGION = "base";
+
+// Fallbacks for the colour tokens in web/assets/css/input.css, used only when a
+// page has not loaded the stylesheet.
+const FALLBACK = {
+  idle: 0x7d8ca1,
+  base: 0x8b9097,
+  heatLow: 0xf0d6a0,
+  ember: 0xe8973c,
 };
 
-const SKIN_ROUGHNESS = 0.6;
+const THEME = {
+  dark: { exposure: 0.95, rim: 0x8ec6ff, rimStrength: 0.3 },
+  light: { exposure: 0.9, rim: 0x2b3a52, rimStrength: 0.15 },
+};
 
-// A soft radial-gradient disc under the figure. Cheaper than a shadow map by a full
-// render pass every frame — the figure never stops rotating (see tick()), so nothing
-// about a real shadow could be cached anyway.
+// Muscles mostly seen from behind. When the hottest of these outweighs the
+// front, the figure faces away by default, so a back day is not hidden.
+const BACK_REGIONS = new Set(["traps", "lats", "erectors", "glutes", "hamstrings", "calves", "triceps", "neck"]);
+
+const FRONT_YAW = 0.45; // front three-quarter, radians
+const SWAY = 0.35; // idle sway either side of the facing, radians
+const SWAY_PERIOD = 8; // seconds
+
+// A soft radial-gradient disc under the figure. Cheaper than a shadow map, and
+// the figure is always moving, so nothing about a real shadow could be cached.
 function createShadowTexture() {
   const size = 128;
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = size;
   const ctx = canvas.getContext("2d");
   const gradient = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
-  gradient.addColorStop(0, "rgba(0,0,0,0.55)");
+  gradient.addColorStop(0, "rgba(0,0,0,0.5)");
   gradient.addColorStop(1, "rgba(0,0,0,0)");
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, size, size);
@@ -58,133 +69,32 @@ function createShadowTexture() {
   return texture;
 }
 
-// A studio softbox rig, built as geometry and baked into an environment map by
-// PMREMGenerator. This is what an .hdr file would buy us, for no bytes: the
-// ticket asked for HDRI lighting, but a real one costs 300KB-1MB on top of the
-// model download. Three emissive panels (warm key, cool fill, overhead strip)
-// plus a dim floor bounce is enough structure for skin to read as skin — the
-// point is that reflections have *shape*, not that they depict a real room.
-// Colours exceed 1.0 deliberately: PMREM renders to a half-float target, so the
-// panels stay HDR and specular highlights keep their punch through ACES.
+// A studio softbox rig baked into an environment map by PMREMGenerator: what an
+// .hdr file would buy, for no download. Colours exceed 1.0 deliberately — PMREM
+// renders to a half-float target, so highlights keep their punch through ACES.
 function createStudioEnvironment() {
   const env = new THREE.Scene();
   const geometry = new THREE.PlaneGeometry(1, 1);
-
-  const panel = (hex, intensity, scale, position, lookAt) => {
+  const panel = (hex, intensity, scale, position) => {
     const material = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
     material.color.setHex(hex).multiplyScalar(intensity);
     const mesh = new THREE.Mesh(geometry, material);
     mesh.scale.set(scale[0], scale[1], 1);
     mesh.position.set(position[0], position[1], position[2]);
-    mesh.lookAt(lookAt[0], lookAt[1], lookAt[2]);
+    mesh.lookAt(0, 0, 0);
     env.add(mesh);
-    return mesh;
   };
-
-  panel(0xfff4e6, 7.5, [9, 12], [5, 5, 7], [0, 0, 0]); // key, warm, front-right
-  panel(0xdce8ff, 2.6, [8, 10], [-6, 2, 3], [0, 0, 0]); // fill, cool, front-left
-  panel(0xffffff, 4.0, [10, 4], [0, 9, -1], [0, 0, 0]); // overhead strip
-  panel(0x6b6257, 0.9, [12, 12], [0, -6, 2], [0, 0, 0]); // floor bounce
-  panel(0xa8c4e8, 1.4, [7, 10], [0, 1, -9], [0, 0, 0]); // back separation
-
+  panel(0xfff4e6, 6.5, [9, 12], [5, 5, 7]); // key, warm, front-right
+  panel(0xdce8ff, 2.4, [8, 10], [-6, 2, 3]); // fill, cool, front-left
+  panel(0xffffff, 3.5, [10, 4], [0, 9, -1]); // overhead strip
+  panel(0x6b6257, 0.8, [12, 12], [0, -6, 2]); // floor bounce
+  panel(0xa8c4e8, 1.4, [7, 10], [0, 1, -9]); // back separation
   return env;
 }
 
-// The glow-through shader. A muscle lives *inside* an opaque body, so it can't be
-// lit conventionally — nothing would ever see it. Instead each worked muscle is
-// drawn after the skin with additive blending and depthFunc GreaterDepth, which
-// means it only renders where the skin is already in front of it: the light reads
-// as coming from under the surface.
-//
-// Two terms shape it into something volumetric rather than a flat decal:
-//
-//   fresnel  — glancing surfaces contribute most, so a muscle glows brightest at
-//              its edges and where it wraps away from the camera.
-//   depth    — GreaterDepth alone also passes for muscles on the *far* side of the
-//              body (nothing but the skin writes depth, so the far quad is "behind
-//              the skin" too, and the torso would light up from behind). uDepthMid
-//              is the camera's distance to the figure's centre; anything further
-//              than that fades out over uDepthFade, which is what keeps the body
-//              reading as solid.
-//
-// Blending is alpha, not additive. Additive is the obvious choice for something
-// called a glow and it's wrong here: the landing page card is white and the skin
-// is a light neutral, so adding light to it does nothing except at the few pixels
-// where the body is already dark — the figure ends up looking like it's on fire
-// along its silhouette and flat everywhere else. Compositing ember *over* the skin
-// instead reads the same on a white card and on the dark /app shell.
-const GLOW_VERTEX = /* glsl */ `
-  varying vec3 vWorldNormal;
-  varying vec3 vViewDir;
-  varying float vCameraDist;
-  void main() {
-    vec4 worldPosition = modelMatrix * vec4(position, 1.0);
-    vWorldNormal = normalize(mat3(modelMatrix) * normal);
-    vViewDir = normalize(cameraPosition - worldPosition.xyz);
-    vCameraDist = distance(cameraPosition, worldPosition.xyz);
-    gl_Position = projectionMatrix * viewMatrix * worldPosition;
-  }
-`;
-
-const GLOW_FRAGMENT = /* glsl */ `
-  uniform vec3 uColor;
-  uniform float uIntensity;
-  uniform float uDepthMid;
-  uniform float uDepthFade;
-  varying vec3 vWorldNormal;
-  varying vec3 vViewDir;
-  varying float vCameraDist;
-  void main() {
-    float facing = abs(dot(normalize(vWorldNormal), normalize(vViewDir)));
-    float fresnel = pow(1.0 - facing, 1.5);
-    // Base term carries most of it and fresnel only adds shape. Leaning on fresnel
-    // instead reads well in profile and then fades out exactly when the viewer turns
-    // a muscle to face them — which is the moment they're trying to look at it.
-    float body = 0.55 + 0.45 * fresnel;
-    float depthMask = 1.0 - smoothstep(uDepthMid, uDepthMid + uDepthFade, vCameraDist);
-    // Hotter towards the rim, so a muscle still has interior shape once the alpha
-    // has flattened out near 1.
-    vec3 tint = uColor * (0.9 + 0.45 * fresnel);
-    gl_FragColor = vec4(tint, clamp(body * depthMask * uIntensity, 0.0, 1.0));
-    #include <tonemapping_fragment>
-    #include <colorspace_fragment>
-  }
-`;
-
-function createGlowMaterial(color, depthMid) {
-  return new THREE.ShaderMaterial({
-    uniforms: {
-      uColor: { value: color.clone() },
-      uIntensity: { value: 0 },
-      uDepthMid: { value: depthMid },
-      // The body is ~0.9 units deep at this scale, so a fade much wider than half
-      // that lets the spine glow through the chest.
-      uDepthFade: { value: 0.25 },
-    },
-    vertexShader: GLOW_VERTEX,
-    fragmentShader: GLOW_FRAGMENT,
-    transparent: true,
-    depthWrite: false,
-    depthFunc: THREE.GreaterDepth,
-    side: THREE.FrontSide,
-  });
-}
-
-// ?muscleDebug=1 makes the skin translucent so muscle geometry poking through it
-// is obvious. Alignment between the two source meshes is the fragile part of the
-// asset pipeline (see tools/model/README.md) and this is how you check it.
-function isDebug() {
-  try {
-    return new URLSearchParams(location.search).get("muscleDebug") === "1";
-  } catch {
-    return false;
-  }
-}
-
-// Cheap to check before spending the GLTF download and the WebGLRenderer
-// constructor call (which throws, inconsistently across browsers, rather than
-// failing predictably) — callers treat a thrown createViewer() as "no 3D here,
-// show the fallback" (see the alpine wrapper's load()).
+// Cheap to check before spending the download and the WebGLRenderer
+// constructor, which throws inconsistently across browsers. A thrown
+// createViewer() means "no 3D here": callers show the flat figure.
 function hasWebGL() {
   try {
     const probe = document.createElement("canvas");
@@ -196,350 +106,24 @@ function hasWebGL() {
   }
 }
 
-export async function createViewer(canvas, options = {}) {
-  if (!hasWebGL()) throw new Error("WebGL unavailable");
-
-  const reduced = Boolean(options.reduced);
-  let dark = options.dark !== false;
-  let palette = dark ? THEME.dark : THEME.light;
-
-  const renderer = new THREE.WebGLRenderer({
-    canvas,
-    antialias: true,
-    alpha: true,
-    powerPreference: "low-power",
-  });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = palette.exposure;
-
-  const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
-  camera.position.set(0, 0.25, 9.2);
-  camera.lookAt(0, 0.1, 0);
-
-  // Distance from the camera to the figure's centre, which is what the glow shader
-  // fades past to stop far-side muscles bleeding through the torso. Derived rather
-  // than hardcoded so moving the camera above can't silently desync the two.
-  const depthMid = camera.position.distanceTo(new THREE.Vector3(0, 0.1, 0));
-
-  // Image-based lighting from a procedural studio rig baked through PMREM — see
-  // createStudioEnvironment() for why this isn't an .hdr file. Generated once, and
-  // both the source scene and the generator are dropped immediately; only the
-  // resulting cube texture is kept.
-  const pmrem = new THREE.PMREMGenerator(renderer);
-  const studioEnv = createStudioEnvironment();
-  const envTexture = pmrem.fromScene(studioEnv, 0.03).texture;
-  studioEnv.traverse((obj) => {
-    if (obj.isMesh) {
-      obj.geometry.dispose();
-      obj.material.dispose();
-    }
-  });
-  pmrem.dispose();
-  scene.environment = envTexture;
-  scene.environmentIntensity = 1.0;
-
-  // The environment does most of the work now that the body has real materials.
-  // These two are for shaping only: a soft key to keep the chest and quads from
-  // going flat, and a cool back rim so the silhouette separates from the card.
-  const key = new THREE.DirectionalLight(0xfff1e0, 0.85);
-  key.position.set(3.5, 5, 6);
-  scene.add(key);
-
-  const rim = new THREE.DirectionalLight(palette.rim, 0.55);
-  rim.position.set(-4, 1.5, -5);
-  scene.add(rim);
-
-  const shadowTexture = createShadowTexture();
-  const shadowMaterial = new THREE.MeshBasicMaterial({
-    map: shadowTexture,
-    transparent: true,
-    depthWrite: false,
-    toneMapped: false,
-  });
-  const shadowGeometry = new THREE.CircleGeometry(1.6, 32);
-  const shadow = new THREE.Mesh(shadowGeometry, shadowMaterial);
-  shadow.rotation.x = -Math.PI / 2;
-  shadow.position.y = -2.15;
-  // On scene, not group: group.rotation.y turns every frame (see tick()), and a
-  // shadow spinning with the body it belongs to would read as a bug, not a feature.
-  scene.add(shadow);
-
-  let ember = readCSSColor("--north-ember", 0xe8973c);
-  const { group, regions, skin } = await loadFigure(ember, depthMid, palette);
-  scene.add(group);
-
-  const muscleMeshes = Object.values(regions).flatMap((region) => region.meshes);
-
-  // ---------------------------------------------------------------------
-  // Interaction: a drag to rotate is the whole control surface, so pulling in
-  // OrbitControls would double the download for one axis.
-  // ---------------------------------------------------------------------
-  let targetY = 0.35;
-  let currentY = 0.35;
-  let dragging = false;
-  let lastX = 0;
-  let downX = 0;
-  let downY = 0;
-  let downAt = 0;
-
-  const onPointerDown = (e) => {
-    dragging = true;
-    lastX = e.clientX;
-    downX = e.clientX;
-    downY = e.clientY;
-    downAt = performance.now();
-    canvas.setPointerCapture(e.pointerId);
-  };
-  const onPointerMove = (e) => {
-    if (!dragging) return;
-    targetY += (e.clientX - lastX) * 0.01;
-    lastX = e.clientX;
-  };
-  const onPointerRelease = (e) => {
-    dragging = false;
-    if (e.pointerId !== undefined && canvas.hasPointerCapture(e.pointerId)) {
-      canvas.releasePointerCapture(e.pointerId);
-    }
-  };
-  canvas.addEventListener("pointerdown", onPointerDown);
-  canvas.addEventListener("pointermove", onPointerMove);
-  canvas.addEventListener("pointerup", onPointerRelease);
-  canvas.addEventListener("pointercancel", onPointerRelease);
-
-  // ---------------------------------------------------------------------
-  // Click-to-inspect: a pointerup that barely moved and didn't linger is a
-  // click, not the end of a drag-to-rotate. Raycast against the figure and
-  // resolve the hit mesh back to a muscle key the same way loadFigure() does,
-  // so "what did I click" and "what does setLoads colour" never disagree.
-  //
-  // Muscle meshes only, never the skin: since NOR-6 the skin is opaque and sits
-  // in front of every muscle, so a raycast against the whole group would return
-  // the shell for every single click.
-  //
-  // The list is also filtered to what's currently lit. Raycaster does NOT skip
-  // objects with visible === false — it only tests layers — so without this a
-  // click anywhere on the body reports whichever unlit muscle happens to lie
-  // under the cursor, including deep ones nobody can see. Only offering the
-  // muscles that are actually glowing is what the person is looking at.
-  // ---------------------------------------------------------------------
-  const raycaster = new THREE.Raycaster();
-  const pointerNDC = new THREE.Vector2();
-
-  const onPointerClick = (e) => {
-    if (!options.onMuscleClick) return;
-    const moved = Math.hypot(e.clientX - downX, e.clientY - downY);
-    if (moved > 6 || performance.now() - downAt > 500) return;
-
-    const rect = canvas.getBoundingClientRect();
-    if (!rect.width || !rect.height) return;
-    pointerNDC.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-    pointerNDC.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-    raycaster.setFromCamera(pointerNDC, camera);
-
-    const lit = muscleMeshes.filter((mesh) => mesh.visible);
-    for (const hit of raycaster.intersectObjects(lit, false)) {
-      const key = resolveKey(hit.object.name) || resolveKey(hit.object.parent && hit.object.parent.name);
-      if (key) {
-        options.onMuscleClick(key, MUSCLE_INFO[key] || null);
-        return;
-      }
-    }
-  };
-  canvas.addEventListener("pointerup", onPointerClick);
-
-  // ---------------------------------------------------------------------
-  // Sizing
-  // ---------------------------------------------------------------------
-  function resize() {
-    const width = canvas.clientWidth;
-    const height = canvas.clientHeight;
-    if (!width || !height) return;
-    renderer.setSize(width, height, false);
-    camera.aspect = width / height;
-    camera.updateProjectionMatrix();
-  }
-
-  const resizeObserver = new ResizeObserver(resize);
-  resizeObserver.observe(canvas);
-  resize();
-
-  // ---------------------------------------------------------------------
-  // Render loop, paused whenever the canvas is off screen
-  // ---------------------------------------------------------------------
-  let running = true;
-  let frame = 0;
-
-  const visibility = new IntersectionObserver((entries) => {
-    running = entries.some((e) => e.isIntersecting);
-    if (running) frame = requestAnimationFrame(tick);
-  });
-  visibility.observe(canvas);
-
-  function tick() {
-    if (!running) return;
-    if (!dragging && !reduced) targetY += 0.0022;
-    currentY += (targetY - currentY) * 0.08;
-    group.rotation.y = currentY;
-    renderer.render(scene, camera);
-    frame = requestAnimationFrame(tick);
-  }
-  frame = requestAnimationFrame(tick);
-
-  // ---------------------------------------------------------------------
-  // Highlighting
-  // ---------------------------------------------------------------------
-  let current = [];
-
-  // A muscle at zero load isn't dimmed, it's switched off: it's sealed inside an
-  // opaque body, so anything less than "off" would read as the skin being dirty.
-  // Hiding it also drops it out of the draw call list and out of the raycast —
-  // on a typical exercise fewer than a dozen of the 116 meshes are worked.
-  function setLoads(loads) {
-    current = loads;
-    const peak = loads.reduce((m, l) => Math.max(m, l.share), 0) || 1;
-
-    for (const region of Object.values(regions)) {
-      region.material.uniforms.uIntensity.value = 0;
-      for (const mesh of region.meshes) mesh.visible = false;
-    }
-
-    for (const load of loads) {
-      const region = regions[load.key];
-      if (!region) continue;
-      const intensity = Math.min(1, load.share / peak);
-      // Floor of 0.22 so a stabiliser still reads as lit rather than as a smudge;
-      // the tier spread above it is what distinguishes primary from secondary. The
-      // ceiling stays under 1 so even a primary mover keeps some skin reading over
-      // it — at full opacity the muscle stops looking like it's under the surface.
-      //
-      // These numbers are per *layer*, not per muscle group. Glow meshes don't write
-      // depth (they can't — see createGlowMaterial), so where a group is several
-      // sheets deep the alphas composite. "abs" is the worst case at four layers
-      // (transversus, both obliques, rectus) and turns into a flat slab across the
-      // whole abdomen if a single layer is allowed to be strong. Anything much above
-      // this trades a legible quad for an unreadable torso.
-      region.material.uniforms.uIntensity.value = 0.32 + 0.42 * intensity;
-      for (const mesh of region.meshes) mesh.visible = true;
-    }
-  }
-
-  // Production data contract (NOR-8): three flat key arrays, no percentages —
-  // that's what the AI plan generator returns. share values here are fixed
-  // per tier, chosen to match the opacity tiers the landing readout already
-  // uses for Primary/Secondary/Stabiliser (demos.templ's roleShade), so the
-  // two call sites stay visually consistent even though only one of them
-  // exposes numbers to the person looking at it.
-  function setMuscleGroups({ primary = [], secondary = [], stabilizers = [] } = {}) {
-    setLoads([
-      ...primary.map((key) => ({ key, share: 100, role: "primary" })),
-      ...secondary.map((key) => ({ key, share: 55, role: "secondary" })),
-      ...stabilizers.map((key) => ({ key, share: 25, role: "stabilizer" })),
-    ]);
-  }
-
+function readColours() {
   return {
-    setLoads,
-    setMuscleGroups,
-    setTheme(isDark) {
-      dark = isDark;
-      palette = dark ? THEME.dark : THEME.light;
-      renderer.toneMappingExposure = palette.exposure;
-      rim.color.set(palette.rim);
-      skin.setTheme(palette);
-      ember = readCSSColor("--north-ember", 0xe8973c);
-      for (const region of Object.values(regions)) {
-        region.material.uniforms.uColor.value.copy(ember);
-      }
-      setLoads(current);
-    },
-    destroy() {
-      cancelAnimationFrame(frame);
-      running = false;
-      resizeObserver.disconnect();
-      visibility.disconnect();
-      canvas.removeEventListener("pointerdown", onPointerDown);
-      canvas.removeEventListener("pointermove", onPointerMove);
-      canvas.removeEventListener("pointerup", onPointerRelease);
-      canvas.removeEventListener("pointercancel", onPointerRelease);
-      canvas.removeEventListener("pointerup", onPointerClick);
-
-      const geometries = new Set();
-      const materials = new Set();
-      group.traverse((obj) => {
-        if (!obj.isMesh) return;
-        geometries.add(obj.geometry);
-        materials.add(obj.material);
-      });
-      for (const geometry of geometries) geometry.dispose();
-      for (const material of materials) material.dispose();
-      // Material.dispose() doesn't touch the textures the material points at, and
-      // the skin's remaining maps are the only textures in the file that came from
-      // the GLTF rather than being generated here.
-      skin.disposeTextures();
-
-      shadowGeometry.dispose();
-      shadowMaterial.dispose();
-      shadowTexture.dispose();
-      envTexture.dispose();
-
-      scene.clear();
-      renderer.dispose();
-      renderer.forceContextLoss();
-    },
+    idle: readCSSColor("--north-body-idle", FALLBACK.idle),
+    base: readCSSColor("--north-body-base", FALLBACK.base),
+    heatLow: readCSSColor("--north-heat-low", FALLBACK.heatLow),
+    ember: readCSSColor("--north-ember", FALLBACK.ember),
   };
 }
 
-const MODEL_PATH = "/assets/models/body.glb";
-
-function isUnderSkinNode(obj) {
-  for (let n = obj; n; n = n.parent) {
-    if (n.name === "skin") return true;
-  }
-  return false;
-}
-
-/**
- * Builds the skin's material: the asset's own material, recoloured as a matte
- * mannequin in the theme's neutral (see THEME). Any baked albedo is dropped — it
- * is a skin tone, which is exactly what the mannequin is not. Normal and roughness
- * maps, if a future asset ships them, are kept: they are shape, not colour.
- *
- * The fresnel rim is what stops a dark body dissolving into a dark card. It's
- * injected into the standard material rather than replacing it, so roughness,
- * normals and the environment map all keep working.
- */
-function buildSkin(source, palette, debug) {
-  const material =
-    source && source.isMeshStandardMaterial ? source : new THREE.MeshStandardMaterial();
-
-  if (material.map) {
-    material.map.dispose();
-    material.map = null;
-  }
-  material.metalness = 0;
-  material.roughness = SKIN_ROUGHNESS;
-  material.color.setHex(palette.skin);
-
-  // ?muscleDebug=1 only — production skin is opaque, which is what lets the glow
-  // pass use GreaterDepth at all.
-  material.transparent = debug;
-  material.opacity = debug ? 0.25 : 1;
-  material.depthWrite = !debug;
-
-  const rimColor = { value: new THREE.Color(palette.rim) };
-  const rimStrength = { value: palette.rimStrength };
-
+// A fresnel rim, injected into the standard material so roughness and the
+// environment keep working. It is what stops a dark body dissolving into a
+// dark card. The uniforms are shared, so a theme change is one assignment.
+function addRim(material, rim) {
   material.onBeforeCompile = (shader) => {
-    shader.uniforms.uRimColor = rimColor;
-    shader.uniforms.uRimStrength = rimStrength;
+    shader.uniforms.uRimColor = rim.color;
+    shader.uniforms.uRimStrength = rim.strength;
     shader.fragmentShader = shader.fragmentShader
-      .replace(
-        "#include <common>",
-        "#include <common>\nuniform vec3 uRimColor;\nuniform float uRimStrength;",
-      )
+      .replace("#include <common>", "#include <common>\nuniform vec3 uRimColor;\nuniform float uRimStrength;")
       .replace(
         "#include <opaque_fragment>",
         `{
@@ -549,153 +133,301 @@ function buildSkin(source, palette, debug) {
         #include <opaque_fragment>`,
       );
   };
-  material.needsUpdate = true;
+  material.customProgramCacheKey = () => "north-body-rim";
+}
 
-  const textures = [
-    material.normalMap,
-    material.roughnessMap,
-    material.metalnessMap,
-    material.aoMap,
-  ].filter(Boolean);
+export async function createViewer(canvas, options = {}) {
+  if (!hasWebGL()) throw new Error("WebGL unavailable");
+
+  const reduced = Boolean(options.reduced);
+  let palette = options.dark !== false ? THEME.dark : THEME.light;
+  let colours = readColours();
+
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: "low-power" });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = palette.exposure;
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 50);
+
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const studio = createStudioEnvironment();
+  const envTexture = pmrem.fromScene(studio, 0.03).texture;
+  studio.traverse((obj) => {
+    if (obj.isMesh) {
+      obj.geometry.dispose();
+      obj.material.dispose();
+    }
+  });
+  pmrem.dispose();
+  scene.environment = envTexture;
+  // Enough to model the form; more washes the region colours out.
+  scene.environmentIntensity = 0.65;
+
+  // Shaping only; the environment does most of the lighting.
+  const key = new THREE.DirectionalLight(0xfff1e0, 0.9);
+  key.position.set(2, 3, 3);
+  scene.add(key);
+  const rimLight = new THREE.DirectionalLight(palette.rim, 0.5);
+  rimLight.position.set(-2, 1, -3);
+  scene.add(rimLight);
+
+  const rim = {
+    color: { value: new THREE.Color(palette.rim) },
+    strength: { value: palette.rimStrength },
+  };
+
+  const { figure, regions, height } = await loadFigure(colours, rim);
+  const group = new THREE.Group();
+  group.add(figure);
+  scene.add(group);
+
+  const shadowTexture = createShadowTexture();
+  const shadowMaterial = new THREE.MeshBasicMaterial({ map: shadowTexture, transparent: true, depthWrite: false, toneMapped: false });
+  const shadowGeometry = new THREE.CircleGeometry(height * 0.3, 32);
+  const shadow = new THREE.Mesh(shadowGeometry, shadowMaterial);
+  shadow.rotation.x = -Math.PI / 2;
+  shadow.position.y = 0.001;
+  scene.add(shadow);
+
+  // Frame the standing figure: aim at its middle from far enough back that
+  // head and feet fit at any aspect the card gives us.
+  function frame() {
+    const fov = THREE.MathUtils.degToRad(camera.fov);
+    const fitHeight = (height * 1.04) / 2 / Math.tan(fov / 2);
+    const fitWidth = fitHeight / Math.min(1, camera.aspect * 1.6);
+    camera.position.set(0, height * 0.52, Math.max(fitHeight, fitWidth));
+    camera.lookAt(0, height * 0.5, 0);
+  }
+
+  // -------------------------------------------------------------------------
+  // Interaction: drag turns the figure; a short, still press is a tap.
+  // -------------------------------------------------------------------------
+  let facing = FRONT_YAW;
+  let dragOffset = 0;
+  let dragging = false;
+  let lastX = 0;
+  let down = { x: 0, y: 0, at: 0 };
+  let lastDragAt = -Infinity;
+
+  const onPointerDown = (e) => {
+    dragging = true;
+    lastX = e.clientX;
+    down = { x: e.clientX, y: e.clientY, at: performance.now() };
+    canvas.setPointerCapture(e.pointerId);
+  };
+  const onPointerMove = (e) => {
+    if (!dragging) return;
+    dragOffset += (e.clientX - lastX) * 0.012;
+    lastX = e.clientX;
+    lastDragAt = performance.now();
+  };
+  const onPointerUp = (e) => {
+    dragging = false;
+    if (e.pointerId !== undefined && canvas.hasPointerCapture(e.pointerId)) {
+      canvas.releasePointerCapture(e.pointerId);
+    }
+    const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
+    if (e.type === "pointerup" && moved <= 6 && performance.now() - down.at <= 500) tap(e);
+  };
+  canvas.addEventListener("pointerdown", onPointerDown);
+  canvas.addEventListener("pointermove", onPointerMove);
+  canvas.addEventListener("pointerup", onPointerUp);
+  canvas.addEventListener("pointercancel", onPointerUp);
+
+  const raycaster = new THREE.Raycaster();
+  const pointer = new THREE.Vector2();
+  const meshes = Object.values(regions).map((r) => r.mesh);
+  let selected = null;
+
+  function tap(e) {
+    const rect = canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+    raycaster.setFromCamera(pointer, camera);
+    const hit = raycaster.intersectObjects(meshes, false)[0];
+    const key = hit && hit.object.name !== BASE_REGION ? hit.object.name : null;
+    select(key);
+    if (options.onMuscleClick) {
+      options.onMuscleClick(key, key ? MUSCLE_INFO[key] || null : null, {
+        x: (e.clientX - rect.left) / rect.width,
+        y: (e.clientY - rect.top) / rect.height,
+      });
+    }
+  }
+
+  function select(key) {
+    if (selected && regions[selected]) regions[selected].material.emissive.setScalar(0);
+    selected = key;
+    if (selected && regions[selected]) regions[selected].material.emissive.setScalar(0.05);
+  }
+
+  // -------------------------------------------------------------------------
+  // Sizing, and a render loop paused whenever the canvas is off screen
+  // -------------------------------------------------------------------------
+  function resize() {
+    const width = canvas.clientWidth;
+    const height = canvas.clientHeight;
+    if (!width || !height) return;
+    renderer.setSize(width, height, false);
+    camera.aspect = width / height;
+    camera.updateProjectionMatrix();
+    frame();
+  }
+  const resizeObserver = new ResizeObserver(resize);
+  resizeObserver.observe(canvas);
+  resize();
+
+  let running = true;
+  let raf = 0;
+  const start = performance.now();
+  let yaw = facing;
+
+  const visibility = new IntersectionObserver((entries) => {
+    const visible = entries.some((e) => e.isIntersecting);
+    if (visible && !running) {
+      running = true;
+      raf = requestAnimationFrame(tick);
+    } else if (!visible) {
+      running = false;
+    }
+  });
+  visibility.observe(canvas);
+
+  function tick(now) {
+    if (!running) return;
+    // A slow sway around the facing, paused for a few seconds after a drag so
+    // the figure stays where the person put it; none at all for reduced motion.
+    const idle = !reduced && !dragging && now - lastDragAt > 4000;
+    const sway = idle ? Math.sin(((now - start) / 1000 / SWAY_PERIOD) * Math.PI * 2) * SWAY : 0;
+    const target = facing + dragOffset + sway;
+    yaw += (target - yaw) * (reduced ? 1 : 0.08);
+    group.rotation.y = yaw;
+    renderer.render(scene, camera);
+    raf = requestAnimationFrame(tick);
+  }
+  raf = requestAnimationFrame(tick);
+
+  // -------------------------------------------------------------------------
+  // Colour
+  // -------------------------------------------------------------------------
+  let heat = {};
+  const scratch = new THREE.Color();
+
+  function colourFor(key, intensity) {
+    if (key === BASE_REGION) return colours.base;
+    if (!(intensity > 0)) return colours.idle;
+    // Even a light touch reads as warm: start a quarter of the way up the ramp.
+    const t = 0.25 + 0.75 * Math.min(1, intensity);
+    return scratch.copy(colours.heatLow).lerp(colours.ember, t);
+  }
+
+  function setHeat(next = {}) {
+    heat = { ...next };
+    for (const [key, region] of Object.entries(regions)) {
+      region.material.color.copy(colourFor(key, heat[key] || 0));
+    }
+    let front = 0;
+    let back = 0;
+    for (const [key, value] of Object.entries(heat)) {
+      if (BACK_REGIONS.has(key)) back = Math.max(back, value);
+      else front = Math.max(front, value);
+    }
+    facing = back > front ? Math.PI + FRONT_YAW : FRONT_YAW;
+  }
+
+  function setMuscleGroups({ primary = [], secondary = [], stabilizers = [] } = {}) {
+    const next = {};
+    const put = (keys, value) => {
+      for (const k of keys) next[k] = Math.max(next[k] || 0, value);
+    };
+    put(stabilizers, 0.25);
+    put(secondary, 0.55);
+    put(primary, 1);
+    setHeat(next);
+  }
+
+  function setLoads(loads = []) {
+    const peak = loads.reduce((m, l) => Math.max(m, l.share), 0) || 1;
+    const next = {};
+    for (const load of loads) next[load.key] = Math.max(next[load.key] || 0, load.share / peak);
+    setHeat(next);
+  }
+
+  setHeat({});
 
   return {
-    material,
-    setTheme(next) {
-      material.color.setHex(next.skin);
-      rimColor.value.set(next.rim);
-      rimStrength.value = next.rimStrength;
+    setHeat,
+    setMuscleGroups,
+    setLoads,
+    select,
+    // Turn to show the front or the back, for a caller with its own toggle.
+    face(side) {
+      facing = side === "back" ? Math.PI + FRONT_YAW : FRONT_YAW;
+      dragOffset = 0;
     },
-    disposeTextures() {
-      for (const texture of textures) texture.dispose();
+    setTheme(isDark) {
+      palette = isDark ? THEME.dark : THEME.light;
+      renderer.toneMappingExposure = palette.exposure;
+      rimLight.color.set(palette.rim);
+      rim.color.value.set(palette.rim);
+      rim.strength.value = palette.rimStrength;
+      colours = readColours();
+      setHeat(heat);
+    },
+    destroy() {
+      cancelAnimationFrame(raf);
+      running = false;
+      resizeObserver.disconnect();
+      visibility.disconnect();
+      canvas.removeEventListener("pointerdown", onPointerDown);
+      canvas.removeEventListener("pointermove", onPointerMove);
+      canvas.removeEventListener("pointerup", onPointerUp);
+      canvas.removeEventListener("pointercancel", onPointerUp);
+      for (const region of Object.values(regions)) {
+        region.mesh.geometry.dispose();
+        region.material.dispose();
+      }
+      shadowGeometry.dispose();
+      shadowMaterial.dispose();
+      shadowTexture.dispose();
+      envTexture.dispose();
+      scene.clear();
+      renderer.dispose();
+      renderer.forceContextLoss();
     },
   };
 }
 
 /**
- * Loads body.glb, walks the scene, and rebuilds every mesh's material in place.
- *
- * Muscle meshes share one glow material per key across both sides and every
- * anatomical head, so `setLoads` sets one uniform instead of walking the scene
- * graph; the mesh list beside it is what gets shown and hidden. The skin keeps
- * its own baked material. Anything unmatched is a leftover from the asset build
- * and is hidden outright — it's sealed inside an opaque body, so drawing it can
- * only cost frames.
+ * Loads body-map.glb and gives every region its own material, keyed by the
+ * mesh's name. The file stands on the origin (soles at y = 0, centred), so
+ * nothing needs measuring beyond its height.
  */
-async function loadFigure(ember, depthMid, palette) {
-  const loader = new GLTFLoader();
-  loader.setMeshoptDecoder(MeshoptDecoder);
+async function loadFigure(colours, rim) {
+  // Versioned like the module itself: /assets/ is served immutable for a year.
+  const version = new URL(import.meta.url).searchParams.get("v");
+  const url = version ? `${MODEL_PATH}?v=${version}` : MODEL_PATH;
+  const gltf = await new GLTFLoader().loadAsync(url);
+  const figure = gltf.scene;
 
-  // MODEL_PATH is versioned the same way the module itself is (landing.js appends
-  // ?v=<deploy token> to the import), since mountAssets serves everything under
-  // /assets/ with a one-year immutable Cache-Control.
-  const moduleVersion = new URL(import.meta.url).searchParams.get("v");
-  const url = moduleVersion ? `${MODEL_PATH}?v=${moduleVersion}` : MODEL_PATH;
-
-  const gltf = await loader.loadAsync(url);
-  const inner = gltf.scene;
-
-  // Auto-frame: scale to the height this viewer's camera/lighting/contact-shadow
-  // are tuned for, and recenter into a pivot group so rotation.y (driven every
-  // frame by tick()) turns around the figure's own center rather than wherever
-  // the source asset happened to put its origin.
-  const box = new THREE.Box3().setFromObject(inner);
-  const size = box.getSize(new THREE.Vector3());
-  const TARGET_HEIGHT = 4.7;
-  inner.scale.setScalar(TARGET_HEIGHT / size.y);
-
-  const scaledBox = new THREE.Box3().setFromObject(inner);
-  const center = scaledBox.getCenter(new THREE.Vector3());
-  inner.position.x -= center.x;
-  inner.position.z -= center.z;
-  inner.position.y -= scaledBox.min.y + 2.15; // feet rest on the contact-shadow plane
-
-  const group = new THREE.Group();
-  group.add(inner);
-
-  const debug = isDebug();
   const regions = {};
-
-  function regionFor(key) {
-    if (!regions[key]) {
-      regions[key] = { material: createGlowMaterial(ember, depthMid), meshes: [] };
-    }
-    return regions[key];
-  }
-
-  const discardedMaterials = new Set();
-  const unmatchedNames = [];
-  // Keys with no mesh names are unmodelled on purpose (chest, until body.glb gains a
-  // pectoralis) and are recorded as such in internal/workouts/plan/muscle.go. Warning
-  // about them would fire on every page load for a known, documented gap.
-  const orphanedKeys = new Set(
-    Object.entries(MUSCLE_ALIASES)
-      .filter(([, aliases]) => aliases.length > 0)
-      .map(([key]) => key),
-  );
-  let skinSource = null;
-
-  inner.traverse((obj) => {
+  figure.traverse((obj) => {
     if (!obj.isMesh) return;
-    obj.frustumCulled = false;
-
-    if (isUnderSkinNode(obj)) {
-      skinSource = obj.material;
-      obj.renderOrder = 0;
-      return;
-    }
-
-    if (obj.material) discardedMaterials.add(obj.material);
-
-    const key = resolveKey(obj.name) || resolveKey(obj.parent && obj.parent.name);
-    if (key) {
-      const region = regionFor(key);
-      obj.material = region.material;
-      // Drawn after the skin has written depth, which is what GreaterDepth in the
-      // glow shader tests against.
-      obj.renderOrder = 2;
-      obj.visible = false;
-      region.meshes.push(obj);
-      orphanedKeys.delete(key);
-    } else {
-      obj.visible = false;
-      unmatchedNames.push(obj.name);
-    }
+    if (obj.material) obj.material.dispose();
+    const material = new THREE.MeshStandardMaterial({
+      color: obj.name === BASE_REGION ? colours.base : colours.idle,
+      roughness: 0.62,
+      metalness: 0,
+      emissive: 0x000000,
+    });
+    addRim(material, rim);
+    obj.material = material;
+    regions[obj.name] = { mesh: obj, material };
   });
-
-  const skin = buildSkin(skinSource, palette, debug);
-  inner.traverse((obj) => {
-    if (obj.isMesh && isUnderSkinNode(obj)) obj.material = skin.material;
-  });
-
-  // The GLTF's own muscle materials are replaced above and never rendered — dispose
-  // them rather than let them sit unused until GC. The skin's is deliberately not in
-  // this set: buildSkin() keeps it for its baked maps.
-  for (const material of discardedMaterials) material.dispose();
-
-  if (!skinSource) {
-    console.warn("[muscle-viewer] body.glb has no node tagged \"skin\" — see tools/model/README.md");
-  } else {
-    // A skin that loads but is fitted wrong is worse than a missing one: nothing
-    // errors, and the glow (which only draws behind skin depth) draws nothing.
-    const skinNode = inner.getObjectByName("skin");
-    const skinHeight = new THREE.Box3().setFromObject(skinNode).getSize(new THREE.Vector3()).y;
-    if (skinHeight < TARGET_HEIGHT * 0.5) {
-      console.warn("[muscle-viewer] skin collapsed — fitted skin is far shorter than the figure; run tools/model/refit-skin.mjs");
-    }
-  }
-  // An orphaned key is a real fault: a muscle North can name but never show. Meshes
-  // the other way round are expected until body.glb is rebuilt — the deep abdominal
-  // and spinal layers were dropped from muscles.js but are still in the shipped asset,
-  // and warning about them on every page load would train everyone to ignore this.
-  if (orphanedKeys.size > 0) {
-    console.warn(
-      "[muscle-viewer] asset naming drift — these keys have no mesh in body.glb and can never light up:",
-      [...orphanedKeys],
-    );
-  }
-  if (debug && unmatchedNames.length > 0) {
-    console.info("[muscle-viewer] meshes in body.glb with no muscle key:", unmatchedNames);
-  }
-
-  return { group, regions, skin };
+  const box = new THREE.Box3().setFromObject(figure);
+  return { figure, regions, height: box.max.y - box.min.y };
 }

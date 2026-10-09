@@ -1,6 +1,9 @@
 # Model tools
 
-Builds `web/assets/models/body.glb`, the figure the muscle viewer renders.
+Builds `tools/model/body-source.glb`: the anatomical atlas fitted inside an outer
+skin. It is not served. `go run ./scripts/bodymap` turns it into the figure every
+client draws (`web/assets/models/body-map.glb`, the iOS `BodyMap.usdz` and the flat
+fallback); see `web/assets/models/README.md`.
 
 This is a build-time tool. It is not part of the Go build, it is not deployed, and
 nothing in the application imports it. It exists because `body.glb` is generated from
@@ -31,7 +34,7 @@ node prepare-skin.mjs \
 node build-body.mjs \
   --muscles /tmp/north-model-src/z-anatomy-body.glb \
   --skin    /tmp/north-model-src/skin-arms-down.glb \
-  --out     web/assets/models/body.glb
+  --out     tools/model/body-source.glb
 ```
 
 `--out` is relative to the repository root, not to `tools/model`.
@@ -40,7 +43,7 @@ node build-body.mjs \
 |---|---|---|
 | `--muscles` | required | anatomical source; must contain the meshes named in `muscles.js` |
 | `--skin` | required | outer body |
-| `--out` | `web/assets/models/body.glb` | relative to the repository root |
+| `--out` | `tools/model/body-source.glb` | relative to the repository root |
 | `--skin-scale` | `1` | multiplier *on top of* the automatic height fit |
 | `--skin-offset` | `0,0,0` | manual nudge in muscle-space units, applied after the fit |
 | `--skin-tris` | `60000` | decimation target for the outer body |
@@ -73,16 +76,11 @@ the skin to the muscles automatically — matches total height, centres the foot
 puts the feet on the same floor — which is correct when both assets are a standing
 human of ordinary proportions, and wrong otherwise.
 
-When it's wrong, muscles poke out through the skin. To check:
-
-```
-http://localhost:8090/?muscleDebug=1
-```
-
-That renders the skin at 25% opacity. Anything sticking out is a fit problem. Correct
-it with `--skin-scale` and `--skin-offset` and rebuild — a slightly *larger* skin is
-always the safe direction, since the glow shader only draws muscle that has skin in
-front of it, and a muscle poking through the surface simply vanishes at that spot.
+Matching total height is also why this fit is off in a way that matters: the atlas
+has no skull, so it gets stretched to the top of the head and every muscle sits about
+a tenth of the body too high. `scripts/bodymap` refits the atlas to the skin itself
+before it labels anything, so the figure is right even though this file is not. Check
+a change with `go run ./scripts/bodymap -debug-svg /tmp/body.svg`.
 
 The fit measures world-space bounds (`fit.mjs`), node transforms included, and the
 build fails if the fitted skin is not within 10% of the muscle height. Fitting against

@@ -2,7 +2,9 @@ package lifts
 
 import (
 	"bytes"
+	"math"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/FACorreiaa/go-utils/pkg/util"
@@ -10,6 +12,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/bodymap"
 	"github.com/NorthAIProject/north-client/internal/lifts/lift"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
@@ -30,6 +33,62 @@ func (a *API) Routes(r chi.Router) {
 	r.Post("/lifts/sets", a.log)
 	r.Delete("/lifts/sets/{setID}", a.undo)
 	r.Get("/lifts/sessions/{sessionID}/recap", a.recap)
+	r.Get("/body/map", a.bodyMap)
+}
+
+// BodyMapView is the body figure's payload. Muscles lists every region of the
+// figure, untrained ones at intensity 0, so a client needs no region list of
+// its own. Ids are open strings: a figure that gains a region must not break
+// a client that shipped before it.
+type BodyMapView struct {
+	Days int `json:"days"`
+	// LastSessionOn is the date of the latest working set, in the person's
+	// timezone; absent when nothing was ever logged.
+	LastSessionOn string          `json:"lastSessionOn,omitempty"`
+	Muscles       []BodyMapMuscle `json:"muscles"`
+}
+
+type BodyMapMuscle struct {
+	ID        string  `json:"id"`
+	Intensity float64 `json:"intensity"`
+	// LastTrainedOn is absent for a region never trained.
+	LastTrainedOn string `json:"lastTrainedOn,omitempty"`
+}
+
+// bodyMap is GET /body/map?days=7: which regions recent training heated.
+func (a *API) bodyMap(w http.ResponseWriter, r *http.Request) {
+	days := 7
+	if raw := r.URL.Query().Get("days"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil {
+			httpx.Error(w, apperr.FieldErrors{}.Add("days", "Use a whole number of days."), "Use a whole number of days.")
+			return
+		}
+		days = n
+	}
+	user := auth.MustUser(r.Context())
+	m, err := a.svc.BodyMap(r.Context(), user, days)
+	if err != nil {
+		httpx.Error(w, err, "The body map could not be loaded.")
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, NewBodyMapView(m, user.Location()))
+}
+
+// NewBodyMapView renders a body map with dates in loc.
+func NewBodyMapView(m bodymap.Map, loc *time.Location) BodyMapView {
+	out := BodyMapView{Days: m.Days, Muscles: make([]BodyMapMuscle, 0, len(m.Regions))}
+	if !m.LastSession.IsZero() {
+		out.LastSessionOn = m.LastSession.In(loc).Format(time.DateOnly)
+	}
+	for _, region := range m.Regions {
+		muscle := BodyMapMuscle{ID: region.Region, Intensity: math.Round(region.Intensity*1000) / 1000}
+		if !region.LastTrained.IsZero() {
+			muscle.LastTrainedOn = region.LastTrained.In(loc).Format(time.DateOnly)
+		}
+		out.Muscles = append(out.Muscles, muscle)
+	}
+	return out
 }
 
 // UploadRoutes go in the API's upload group, whose body cap fits a file.

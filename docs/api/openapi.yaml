@@ -4866,6 +4866,38 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '500':
           $ref: '#/components/responses/InternalError'
+  /body/map:
+    get:
+      operationId: getBodyMap
+      summary: Which body regions recent training heated, for the body figure
+      description: |
+        Every region of the figure is listed, untrained ones at intensity 0, so a
+        client needs no region list of its own. Region ids are muscle keys
+        (quads, delts, traps…); a muscle with no skin of its own is folded into
+        the region above it (rhomboids into traps). Treat ids as open strings:
+        the figure may gain regions.
+      parameters:
+        - name: days
+          in: query
+          required: false
+          description: How many days back the heat looks, 1 to 28. Defaults to 7.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 28
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BodyMap'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /lifts/stats:
     get:
       operationId: getLiftStats
@@ -6783,6 +6815,35 @@ components:
           type: number
         previousE1rmKg:
           type: number
+    BodyMap:
+      type: object
+      required: [days, muscles]
+      properties:
+        days:
+          type: integer
+        lastSessionOn:
+          type: string
+          format: date
+          description: Date of the latest working set, in the person's timezone. Absent when nothing was ever logged.
+        muscles:
+          type: array
+          items:
+            $ref: '#/components/schemas/BodyMapMuscle'
+    BodyMapMuscle:
+      type: object
+      required: [id, intensity]
+      properties:
+        id:
+          type: string
+          description: A region id (muscle key). Open-ended; show an unknown one rather than failing.
+        intensity:
+          type: number
+          format: double
+          description: 0 (not trained in the window) to 1. Primary movers count a set fully, assisting muscles 0.4; a set's weight fades from 1 the day after to about 0.2 a week later.
+        lastTrainedOn:
+          type: string
+          format: date
+          description: Date the region was last trained, inside the window or not. Absent if never.
     LiftMuscleSets:
       type: object
       required: [muscle, sets]

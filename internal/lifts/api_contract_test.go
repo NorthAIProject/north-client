@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/NorthAIProject/north-client/internal/bodymap"
 	"github.com/NorthAIProject/north-client/internal/lifts"
 	"github.com/NorthAIProject/north-client/internal/lifts/lift"
 	"github.com/NorthAIProject/north-client/internal/shared/apitest"
@@ -66,4 +67,12 @@ func TestLiftRecapShape(t *testing.T) {
 	rc.StartedAt = time.Date(2026, 9, 24, 18, 0, 0, 0, time.UTC)
 	rc.PlanWeekday, rc.Focus = "Thursday", "Lower body"
 	apitest.AssertGolden(t, "lift_recap.golden.json", lifts.ProjectRecap(rc))
+}
+
+func TestBodyMapShape(t *testing.T) {
+	t.Parallel()
+	weights := lift.Weights{"barbell-squat": lift.MuscleWeights([]string{"quads", "glutes"}, []string{"hamstrings"})}
+	now := time.Date(2026, 9, 25, 9, 0, 0, 0, time.UTC)
+	heat := lift.HeatOf(fixtureSets(), weights, now, time.UTC, 7)
+	apitest.AssertGolden(t, "body_map.golden.json", lifts.NewBodyMapView(bodymap.FromHeat(heat), time.UTC))
 }
