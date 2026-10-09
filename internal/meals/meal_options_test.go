@@ -101,14 +101,16 @@ func TestAddOptionAppendsAnEmptyAlternative(t *testing.T) {
 	if added.OptionIndex != 3 || added.OptionLabel != "Opção 3" || added.Name != "Almoço" || added.MealNumber != slot.MealNumber {
 		t.Fatalf("added = %+v", added)
 	}
-	if _, err := f.svc.AddOption(f.ctx, f.userID, plan.ID, slot.ID, "  "); !apperr.Is(err, apperr.ErrValidation) {
-		t.Fatalf("unlabelled option err = %v", err)
+	// A blank label is the option's position, so no two options read alike.
+	unlabelled, err := f.svc.AddOption(f.ctx, f.userID, plan.ID, slot.ID, "  ")
+	if err != nil || unlabelled.OptionLabel != "Option 4" {
+		t.Fatalf("unlabelled option = %+v, err = %v; want Option 4", unlabelled, err)
 	}
 	other := f.easyPlan(t, easyMid, 1)
 	if _, err := f.svc.AddOption(f.ctx, f.userID, other.ID, slot.ID, "Opção 4"); !apperr.Is(err, apperr.ErrNotFound) {
 		t.Fatalf("meal of another plan err = %v", err)
 	}
-	if got := f.reload(t, plan.ID).Days[0].Meals[0].Alternatives; len(got) != 2 || got[1].ID != added.ID {
+	if got := f.reload(t, plan.ID).Days[0].Meals[0].Alternatives; len(got) != 3 || got[1].ID != added.ID {
 		t.Fatalf("alternatives = %+v", got)
 	}
 }
