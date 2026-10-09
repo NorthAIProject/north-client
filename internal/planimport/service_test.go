@@ -41,6 +41,7 @@ type fixture struct {
 	workouts    *workouts.Service
 	mealPlans   *meals.MealPlanService
 	ingredients *meals.IngredientService
+	repo        *meals.Repository
 	model       *fake.Client
 }
 
@@ -64,6 +65,7 @@ func newFixture(t *testing.T) fixture {
 		// Low carb's default is 15.5% of the 200 g carb target: a 31 g day.
 		mealPlans:   meals.NewMealPlanService(repo, goalLookup{plan: calculator.MacroPlan{ProteinG: 150, FatG: 60, CarbG: 200, CalorieGoal: 150*4 + 60*9 + 200*4}}),
 		ingredients: meals.NewIngredientService(repo),
+		repo:        repo,
 		model:       model,
 	}
 	f.svc = planimport.NewService(planimport.Options{
