@@ -350,6 +350,48 @@ func TestEveryDayMealPlanWithOptionsSavesSevenDaysAndOnePersonalFood(t *testing.
 	}
 }
 
+// Old iOS builds drop everyDay when they send a draft back. Its one day still
+// carries the "Every day" label parsing gave it, so the plan is still saved
+// on all seven days rather than as a Monday-only plan.
+func TestCommitMealKeepsAnEveryDayDraftThatLostItsFlag(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	if _, err := f.ingredients.Create(ctx, f.user.ID, meals.IngredientInput{
+		Name: "Grilled chicken breast", Category: meals.CategoryProtein, Per100g: meals.Macros{Calories: 165, ProteinG: 31, FatG: 3.6},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	csv := "Meal,Food,Quantity,Unit\nLunch,Grilled chicken breast,100,g\n"
+	draft, err := f.svc.ParseMeal(ctx, f.user, "plan.csv", []byte(csv), "")
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if !draft.EveryDay || len(draft.Days) != 1 || draft.Days[0].Label != "Every day" {
+		t.Fatalf("draft = %+v, want one day labelled Every day", draft)
+	}
+	draft.PlanType = string(meal.LowCarb)
+	draft.EveryDay = false // what an old iOS build sends back
+
+	saved, _, err := f.svc.CommitMeal(ctx, f.user, draft, false)
+	if err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+	if len(saved.Days) != 7 {
+		t.Fatalf("days = %d, want 7", len(saved.Days))
+	}
+
+	// A one-day plan whose day has another name stays one day.
+	draft.Days[0].Label = "Monday"
+	saved, _, err = f.svc.CommitMeal(ctx, f.user, draft, false)
+	if err != nil {
+		t.Fatalf("commit one day: %v", err)
+	}
+	if len(saved.Days) != 1 {
+		t.Fatalf("days = %d, want 1", len(saved.Days))
+	}
+}
+
 // The JSON API carries options, every-day, notes and the imported-line
 // fields through preview untouched.
 func TestMealImportAPICarriesOptionsAndNotes(t *testing.T) {
