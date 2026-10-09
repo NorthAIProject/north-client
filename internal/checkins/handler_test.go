@@ -13,6 +13,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/checkins/checkin"
 	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/shared/database/testdb"
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -118,5 +120,111 @@ func TestRenderFormPlainRequestReturnsFullPage(t *testing.T) {
 	}
 	if !strings.Contains(body, "Pick a mood from 1 to 5.") {
 		t.Error("field error not rendered inline")
+	}
+}
+
+// A save over htmx swaps only the form's panel; the history, KPIs and charts
+// refresh themselves on the event the response announces. It must be aimed at
+// body, because the form that sent the request has been swapped out by then.
+func TestRenderSavedAnnouncesTheSave(t *testing.T) {
+	pool := testdb.New(t)
+	user := handlerUser(t, pool)
+	h := newTestHandler(pool)
+
+	saved, err := h.svc.UpsertToday(context.Background(), user, Input{Mood: 4, Energy: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	r := httptest.NewRequest(http.MethodPost, "/app/check-ins", nil)
+	r.Header.Set("HX-Request", "true")
+	w := httptest.NewRecorder()
+	h.renderSaved(w, r, user, saved)
+
+	if got := w.Header().Get("HX-Trigger"); got != `{"checkin-saved":{"target":"body"}}` {
+		t.Fatalf("HX-Trigger = %q", got)
+	}
+	if !strings.Contains(w.Body.String(), `id="`+checkinpages.PanelID+`"`) {
+		t.Error("saved response lost the panel swap target")
+	}
+
+	// The no-JavaScript path redirects; nothing listens there.
+	plain := httptest.NewRecorder()
+	h.renderSaved(plain, httptest.NewRequest(http.MethodPost, "/app/check-ins", nil), user, saved)
+	if plain.Code != http.StatusSeeOther || plain.Header().Get("HX-Trigger") != "" {
+		t.Fatalf("plain post: status %d, HX-Trigger %q", plain.Code, plain.Header().Get("HX-Trigger"))
+	}
+}
+
+// The live region polls every 20 seconds with the version it shows. Unchanged
+// must be a 204, which htmx does not swap; changed must redraw it.
+func TestLiveAnswers204UntilSomethingChanges(t *testing.T) {
+	pool := testdb.New(t)
+	user := handlerUser(t, pool)
+	h := newTestHandler(pool)
+	ctx := auth.ContextWithUser(context.Background(), user)
+
+	get := func(version string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(http.MethodGet, checkinpages.LiveURL(version), nil).WithContext(ctx)
+		r.Header.Set("HX-Request", "true")
+		w := httptest.NewRecorder()
+		h.live(w, r)
+		return w
+	}
+
+	first := get("")
+	if first.Code != http.StatusOK {
+		t.Fatalf("stale version: status %d, want 200", first.Code)
+	}
+	version, err := h.svc.Version(ctx, user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(first.Body.String(), `id="`+checkinpages.LiveID+`"`) ||
+		!strings.Contains(first.Body.String(), "checkin-saved from:body, every 20s") {
+		t.Fatalf("live region missing its id or trigger:\n%s", first.Body.String())
+	}
+
+	if w := get(version); w.Code != http.StatusNoContent || w.Body.Len() != 0 {
+		t.Fatalf("unchanged version: status %d body %q, want an empty 204", w.Code, w.Body.String())
+	}
+
+	if _, err = h.svc.UpsertToday(ctx, user, Input{Mood: 5, Energy: 4, Tags: []string{"travel"}, Source: checkin.SourceWeb}); err != nil {
+		t.Fatal(err)
+	}
+	changed := get(version)
+	if changed.Code != http.StatusOK {
+		t.Fatalf("after a save: status %d, want 200", changed.Code)
+	}
+	if !strings.Contains(changed.Body.String(), "travel") {
+		t.Error("redrawn region does not show the new check-in's tag")
+	}
+}
+
+// Every field the form sends reaches the service, and blank optional scales
+// mean "not given".
+func TestFormCarriesTheExtras(t *testing.T) {
+	r := httptest.NewRequest(http.MethodPost, "/app/check-ins",
+		strings.NewReader("mood=4&energy=3&stress=2&sleep_quality=&tags=Travel,+sick"))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if err := r.ParseForm(); err != nil {
+		t.Fatal(err)
+	}
+	in := inputFrom(formFrom(r))
+	if in.Stress == nil || *in.Stress != 2 {
+		t.Errorf("stress = %v, want 2", in.Stress)
+	}
+	if in.SleepQuality != nil {
+		t.Errorf("blank sleep quality should be nil, got %v", *in.SleepQuality)
+	}
+	if in.Source != checkin.SourceWeb {
+		t.Errorf("source = %q, want web", in.Source)
+	}
+	clean, err := Validate(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(clean.Tags, "|") != "travel|sick" {
+		t.Errorf("tags = %q", clean.Tags)
 	}
 }

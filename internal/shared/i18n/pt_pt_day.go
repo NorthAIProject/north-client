@@ -217,4 +217,7 @@ var portugueseEuropeanDay = map[string]string{
 	"day.body.weight":    "Peso (kg)",
 	"day.body.height":    "Altura (cm)",
 	"day.body.measure":   "Guardar peso",
+
+	"day.streak.today":  "Hoje: humor %[1]d · energia %[2]d · %[3]s",
+	"day.streak.notyet": "Ainda sem registo hoje",
 }

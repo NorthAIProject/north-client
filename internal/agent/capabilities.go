@@ -24,6 +24,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/biometrics"
 	"github.com/NorthAIProject/north-client/internal/calculator"
 	"github.com/NorthAIProject/north-client/internal/checkins"
+	"github.com/NorthAIProject/north-client/internal/checkins/checkin"
 	"github.com/NorthAIProject/north-client/internal/coach"
 	"github.com/NorthAIProject/north-client/internal/documents"
 	"github.com/NorthAIProject/north-client/internal/exercises"
@@ -36,6 +37,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/notifications"
 	"github.com/NorthAIProject/north-client/internal/preferences"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/toolsurface"
 	"github.com/NorthAIProject/north-client/internal/sleep"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/watches"
@@ -655,27 +657,34 @@ func addGoalUpdate(svc *goals.Service) Capability {
 
 func createCheckIn(svc *checkins.Service, userSvc *users.Service) Capability {
 	type args struct {
-		Mood       int    `json:"mood"`
-		Energy     int    `json:"energy"`
-		Wins       string `json:"wins"`
-		Challenges string `json:"challenges"`
-		Notes      string `json:"notes"`
+		Mood         int      `json:"mood"`
+		Energy       int      `json:"energy"`
+		Wins         string   `json:"wins"`
+		Challenges   string   `json:"challenges"`
+		Notes        string   `json:"notes"`
+		Stress       *int     `json:"stress"`
+		SleepQuality *int     `json:"sleep_quality"`
+		Tags         []string `json:"tags"`
 	}
 
 	return Capability{
 		Tool: ai.Tool{
 			Name: "create_check_in",
-			Description: "Record today's check-in. Writing again on the same day replaces that day's entry " +
-				"rather than adding a second one, so this is safe to call twice.",
+			Description: "Record today's check-in. Writing again on the same day updates that day's entry " +
+				"rather than adding a second one: fields you leave out keep what was already recorded, " +
+				"so this is safe to call twice.",
 			Parameters: ai.Object("today's check-in", map[string]*ai.Schema{
-				"mood":       ai.Integer("how the user feels, 1 (worst) to 5 (best)"),
-				"energy":     ai.Integer("the user's energy level, 1 (lowest) to 5 (highest)"),
-				"wins":       ai.String("what went well"),
-				"challenges": ai.String("what got in the way"),
-				"notes":      ai.String("anything else worth telling the coach"),
+				"mood":          ai.Integer("how the user feels, 1 (worst) to 5 (best)"),
+				"energy":        ai.Integer("the user's energy level, 1 (lowest) to 5 (highest)"),
+				"wins":          ai.String("what went well"),
+				"challenges":    ai.String("what got in the way"),
+				"notes":         ai.String("anything else worth telling the coach"),
+				"stress":        ai.Integer("optional: how stressed the user feels, 1 (calm) to 5 (very stressed)"),
+				"sleep_quality": ai.Integer("optional: how well the user slept last night, 1 (badly) to 5 (very well)"),
+				"tags":          ai.Array("optional: up to 8 short labels for the day, such as travel or sick", ai.String("one short lowercase label")),
 			}, "mood", "energy"),
 		},
-		// An upsert: the second call of the day corrects the first rather than
+		// A merge: the second call of the day corrects the first rather than
 		// adding to it, which is what makes a retry safe.
 		Idempotent: true,
 		Invoke: func(ctx context.Context, userID uuid.UUID, raw json.RawMessage) (string, error) {
@@ -691,12 +700,18 @@ func createCheckIn(svc *checkins.Service, userSvc *users.Service) Capability {
 				return "", err
 			}
 
-			entry, err := svc.UpsertToday(ctx, user, checkins.Input{
-				Mood:       in.Mood,
-				Energy:     in.Energy,
-				Wins:       in.Wins,
-				Challenges: in.Challenges,
-				Notes:      in.Notes,
+			// Merge, not replace: the model knows what this conversation
+			// said, not what the person wrote on the form this morning.
+			entry, err := svc.MergeToday(ctx, user, checkins.Input{
+				Mood:         in.Mood,
+				Energy:       in.Energy,
+				Wins:         in.Wins,
+				Challenges:   in.Challenges,
+				Notes:        in.Notes,
+				Stress:       in.Stress,
+				SleepQuality: in.SleepQuality,
+				Tags:         in.Tags,
+				Source:       checkInSource(ctx),
 			})
 			if err != nil {
 				return "", err
@@ -711,6 +726,19 @@ func createCheckIn(svc *checkins.Service, userSvc *users.Service) Capability {
 			return fmt.Sprintf("Logged today's check-in: mood %d, energy %d. That is a %d-day streak.",
 				entry.Mood, entry.Energy, streak), nil
 		},
+	}
+}
+
+// checkInSource names the surface a tool-written check-in came from. Telegram
+// reaches the tools through the coach, so it is recorded as the coach.
+func checkInSource(ctx context.Context) checkin.Source {
+	switch toolsurface.From(ctx) {
+	case toolsurface.MCP:
+		return checkin.SourceMCP
+	case toolsurface.Coach:
+		return checkin.SourceCoach
+	default:
+		return checkin.SourceUnknown
 	}
 }
 

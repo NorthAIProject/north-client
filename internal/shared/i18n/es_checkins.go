@@ -57,4 +57,24 @@ var spanishCheckins = map[string]string{
 	"checkins.scale.option": "%[1]s %[2]d de 5",
 	"checkins.scale.low":    "Bajo",
 	"checkins.scale.high":   "Alto",
+
+	"checkins.q.stress":     "¿Cuánto estrés tienes?",
+	"checkins.q.sleep":      "¿Cómo has dormido?",
+	"checkins.field.stress": "Estrés",
+	"checkins.field.sleep":  "Calidad del sueño",
+	"checkins.scale.skip":   "Omitir",
+	"checkins.tags":         "Etiquetas (opcional)",
+	"checkins.ph.tags":      "Separadas por comas, p. ej. viaje, enfermo",
+
+	"checkins.meta.at":     "Registrado a las %[1]s",
+	"checkins.meta.edited": "editado a las %[1]s",
+	"checkins.meta.stress": "estrés %[1]d/5",
+	"checkins.meta.sleep":  "sueño %[1]d/5",
+
+	"checkins.source.web":     "Navegador",
+	"checkins.source.ios":     "App de iPhone",
+	"checkins.source.siri":    "Siri",
+	"checkins.source.coach":   "Chat con el entrenador",
+	"checkins.source.mcp":     "Asistente de IA",
+	"checkins.source.capture": "Captura rápida",
 }
