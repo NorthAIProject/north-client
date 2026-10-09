@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
@@ -137,7 +138,7 @@ func (r *Repository) PeopleByIDs(ctx context.Context, viewerID uuid.UUID, ids []
 	}
 	out := make([]Connection, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, Connection{Person: Person{ID: row.ID, DisplayName: row.DisplayName, Handle: deref(row.Handle)}, Status: row.Following})
+		out = append(out, Connection{Person: Person{ID: row.ID, DisplayName: row.DisplayName, Handle: util.Val(row.Handle)}, Status: row.Following})
 	}
 	return out, nil
 }

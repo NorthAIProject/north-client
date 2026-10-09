@@ -219,12 +219,8 @@ func (s *Service) Cardio(ctx context.Context, user users.User, rg timerange.Rang
 			Code: sess.ActivityCode, Name: activityName(sess.ActivityCode),
 			At: sess.StartedAt.In(rg.Location()), Seconds: int(sess.Elapsed(*sess.EndedAt).Seconds()),
 		}
-		if sess.DistanceM != nil {
-			c.DistanceM = *sess.DistanceM
-		}
-		if sess.CaloriesBurned != nil {
-			c.Kcal = *sess.CaloriesBurned
-		}
+		c.DistanceM = util.Val(sess.DistanceM)
+		c.Kcal = util.Val(sess.CaloriesBurned)
 		cardio = append(cardio, c)
 	}
 	out.CardioStats = stat.Cardio(cardio, rg.Since, rg.Until)

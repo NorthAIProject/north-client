@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/meals"
@@ -74,8 +75,7 @@ func (s *Service) PreviewMeal(ctx context.Context, userID uuid.UUID, d MealDraft
 		if meal.Mode(d.Mode) == meal.Easy {
 			day.Weekday = nil
 			if di < meal.MaxDays {
-				wd := int(meal.WeekOrder[di])
-				day.Weekday = &wd
+				day.Weekday = util.Ptr(int(meal.WeekOrder[di]))
 			}
 		}
 	}
@@ -198,8 +198,7 @@ func (s *Service) resolveFood(ctx context.Context, userID uuid.UUID, f *FoodDraf
 			}
 			if match != nil {
 				ingredient = match
-				id := match.ID
-				f.IngredientID = &id
+				f.IngredientID = util.Ptr(match.ID)
 			}
 		}
 	}

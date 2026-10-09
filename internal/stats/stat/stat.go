@@ -175,7 +175,7 @@ func Sleep(nights []Night, target int) SleepStats {
 		st.StageShare = map[string]float64{}
 		for stage, m := range stageTotals {
 			if stage != "awake" {
-				st.StageShare[stage] = math.Round(m/asleep*100) / 100
+				st.StageShare[stage] = util.RoundHalfUpToScale(m/asleep, 2)
 			}
 		}
 	}
@@ -461,7 +461,7 @@ func Eating(entries []FoodEntry, goalKcal, goalProtein, weightKg float64, lateHo
 	for _, s := range slots {
 		share := 0.0
 		if total > 0 {
-			share = math.Round(slotKcal[s.key]/total*100) / 100
+			share = util.RoundHalfUpToScale(slotKcal[s.key]/total, 2)
 		}
 		st.BySlot = append(st.BySlot, Slot{Key: s.key, Kcal: math.Round(slotKcal[s.key]), Share: share})
 	}

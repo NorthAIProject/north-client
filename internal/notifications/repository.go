@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -47,7 +48,7 @@ func (r *Repository) Upsert(ctx context.Context, userID uuid.UUID, in Input) (Pr
 		QuietStart:         in.QuietStart,
 		QuietEnd:           in.QuietEnd,
 		BriefingHour:       int16(valueOr(in.BriefingHour, DefaultBriefingHour)),
-		EveningReflection:  in.EveningReflection != nil && *in.EveningReflection,
+		EveningReflection:  util.BoolValOrDefault(in.EveningReflection, false),
 		EveningHour:        int16(valueOr(in.EveningHour, DefaultEveningHour)),
 	})
 	if err != nil {

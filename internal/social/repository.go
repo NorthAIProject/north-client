@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -43,7 +44,7 @@ func (r *Repository) Handle(ctx context.Context, userID uuid.UUID) (string, erro
 	if err != nil {
 		return "", apperr.Wrap(err, "get handle")
 	}
-	return deref(h), nil
+	return util.Val(h), nil
 }
 
 func (r *Repository) PersonByHandle(ctx context.Context, handle string) (Person, error) {
@@ -54,7 +55,7 @@ func (r *Repository) PersonByHandle(ctx context.Context, handle string) (Person,
 	if err != nil {
 		return Person{}, apperr.Wrap(err, "person by handle")
 	}
-	return Person{ID: row.ID, DisplayName: row.DisplayName, Handle: deref(row.Handle)}, nil
+	return Person{ID: row.ID, DisplayName: row.DisplayName, Handle: util.Val(row.Handle)}, nil
 }
 
 func (r *Repository) PersonByID(ctx context.Context, id uuid.UUID) (Person, error) {
@@ -65,7 +66,7 @@ func (r *Repository) PersonByID(ctx context.Context, id uuid.UUID) (Person, erro
 	if err != nil {
 		return Person{}, apperr.Wrap(err, "person by id")
 	}
-	return Person{ID: row.ID, DisplayName: row.DisplayName, Handle: deref(row.Handle)}, nil
+	return Person{ID: row.ID, DisplayName: row.DisplayName, Handle: util.Val(row.Handle)}, nil
 }
 
 // InviteFor returns the inviter's code for a channel, creating one with the
@@ -99,7 +100,7 @@ func (r *Repository) InviteByCode(ctx context.Context, code string) (InvitePrevi
 	}
 	return InvitePreview{
 		Code: row.Code, Channel: row.Channel,
-		Inviter: Person{ID: row.InviterID, DisplayName: row.DisplayName, Handle: deref(row.Handle)},
+		Inviter: Person{ID: row.InviterID, DisplayName: row.DisplayName, Handle: util.Val(row.Handle)},
 	}, nil
 }
 
@@ -270,20 +271,13 @@ func (r *Repository) BlockedList(ctx context.Context, blockerID uuid.UUID) ([]Pe
 	}
 	out := make([]Person, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, Person{ID: row.ID, DisplayName: row.DisplayName, Handle: deref(row.Handle)})
+		out = append(out, Person{ID: row.ID, DisplayName: row.DisplayName, Handle: util.Val(row.Handle)})
 	}
 	return out, nil
 }
 
 func connection(id uuid.UUID, name string, handle *string, status string, since time.Time) Connection {
-	return Connection{Person: Person{ID: id, DisplayName: name, Handle: deref(handle)}, Status: status, Since: since}
-}
-
-func deref(s *string) string {
-	if s == nil {
-		return ""
-	}
-	return *s
+	return Connection{Person: Person{ID: id, DisplayName: name, Handle: util.Val(handle)}, Status: status, Since: since}
 }
 
 // MatchContacts finds people by hashed email or phone; see MatchContactHashes.
@@ -296,7 +290,7 @@ func (r *Repository) MatchContacts(ctx context.Context, viewerID uuid.UUID, emai
 	}
 	out := make([]Connection, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, Connection{Person: Person{ID: row.ID, DisplayName: row.DisplayName, Handle: deref(row.Handle)}, Status: row.Following})
+		out = append(out, Connection{Person: Person{ID: row.ID, DisplayName: row.DisplayName, Handle: util.Val(row.Handle)}, Status: row.Following})
 	}
 	return out, nil
 }

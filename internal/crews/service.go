@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -261,9 +262,7 @@ func (s *Service) Board(ctx context.Context, crewID, viewerID uuid.UUID) (Board,
 	for _, r := range rows {
 		u := users.User{ID: r.ID, Timezone: r.Timezone}
 		m := Member{ID: r.ID, DisplayName: r.DisplayName, Owner: r.ID == c.OwnerID, Me: r.ID == viewerID}
-		if r.Handle != nil {
-			m.Handle = *r.Handle
-		}
+		m.Handle = util.Val(r.Handle)
 		if err := s.fill(ctx, &m, u, now, out.Challenge); err != nil {
 			return Board{}, err
 		}

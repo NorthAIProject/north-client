@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -128,8 +129,6 @@ func fromDB(row decisionsdb.Decision) Decision {
 		CreatedAt: row.CreatedAt,
 		UpdatedAt: row.UpdatedAt,
 	}
-	if row.Held != nil {
-		d.Held = *row.Held
-	}
+	d.Held = util.Val(row.Held)
 	return d
 }

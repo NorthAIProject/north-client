@@ -114,12 +114,8 @@ func fromDB(row sleepdb.SleepLog) Log {
 	if row.Quality != nil {
 		l.Quality = util.Ptr(int(*row.Quality))
 	}
-	if row.Bedtime != nil {
-		l.Bedtime = *row.Bedtime
-	}
-	if row.WakeTime != nil {
-		l.WakeTime = *row.WakeTime
-	}
+	l.Bedtime = util.Val(row.Bedtime)
+	l.WakeTime = util.Val(row.WakeTime)
 	return l
 }
 

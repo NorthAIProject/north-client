@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/go-chi/chi/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
@@ -343,7 +344,7 @@ func bodyCard(b day.Body) daypages.BodyCard {
 	}
 	if b.BMI != nil {
 		out.HasBMI = true
-		out.BMI = fmt.Sprintf("%.1f", math.Round(*b.BMI*10)/10)
+		out.BMI = fmt.Sprintf("%.1f", util.RoundHalfUpToScale(*b.BMI, 1))
 		out.BMICategory = string(b.Category())
 	}
 	return out
