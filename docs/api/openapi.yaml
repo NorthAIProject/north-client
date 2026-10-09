@@ -5233,6 +5233,155 @@ paths:
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalError'
+  /medications:
+    get:
+      operationId: getMedications
+      summary: Active medications and today's doses
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Medications'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      operationId: addMedication
+      summary: Add a medication as the person describes it; answers with the medications
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MedicationInput'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Medications'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /medications/{medicationID}:
+    parameters:
+      - name: medicationID
+        in: path
+        required: true
+        description: The medication to change.
+        schema:
+          type: string
+    put:
+      operationId: updateMedication
+      summary: Change an active medication; only the fields present change
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MedicationInput'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Medications'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /medications/{medicationID}/stop:
+    parameters:
+      - name: medicationID
+        in: path
+        required: true
+        description: The medication to stop.
+        schema:
+          type: string
+    post:
+      operationId: stopMedication
+      summary: Stop a medication; its doses stay as history
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Medications'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /medications/{medicationID}/doses:
+    parameters:
+      - name: medicationID
+        in: path
+        required: true
+        description: The medication the dose is of.
+        schema:
+          type: string
+    post:
+      operationId: logMedicationDose
+      summary: Log a dose taken or skipped; without a slot, the nearest unanswered time today
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MedicationDoseInput'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Medications'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /medications/doses/{logID}:
+    parameters:
+      - name: logID
+        in: path
+        required: true
+        description: The dose to undo.
+        schema:
+          type: string
+    delete:
+      operationId: undoMedicationDose
+      summary: Undo a logged dose
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Medications'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /screen-time:
     put:
       operationId: setScreenTime
@@ -7009,6 +7158,148 @@ components:
           type: array
           items:
             type: string
+    MedicationInput:
+      type: object
+      additionalProperties: false
+      description: >-
+        On POST, name is required and remind defaults to true. On PUT, only the
+        fields present change.
+      properties:
+        name:
+          type: string
+        dose:
+          type: string
+          description: Free text as the person says it, such as "500 mg" or "1 puff".
+        times:
+          type: array
+          description: HH:MM in the person's zone; empty means as needed.
+          items:
+            type: string
+        daysOfWeek:
+          type: array
+          description: 0 (Sunday) to 6; empty means every day.
+          items:
+            type: integer
+        remind:
+          type: boolean
+        notes:
+          type: string
+    MedicationDoseInput:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          description: taken (the default) or skipped.
+        slot:
+          type: string
+          description: The scheduled HH:MM this answers; omit to use the nearest unanswered time today.
+    Medication:
+      type: object
+      required: [id, name, dose, times, daysOfWeek, remind, notes, asNeeded]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        dose:
+          type: string
+        times:
+          type: array
+          items:
+            type: string
+        daysOfWeek:
+          type: array
+          items:
+            type: integer
+        remind:
+          type: boolean
+        notes:
+          type: string
+        asNeeded:
+          type: boolean
+    MedicationSlot:
+      type: object
+      required: [medicationId, name, dose, time, status]
+      properties:
+        medicationId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        dose:
+          type: string
+        time:
+          type: string
+        status:
+          type: string
+          description: >-
+            taken, skipped, due or upcoming today. A plain string rather than an
+            enum: a client must accept a value it does not know.
+        logId:
+          type: string
+          format: uuid
+    MedicationDose:
+      type: object
+      required: [id, medicationId, name, status, loggedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        medicationId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slot:
+          type: string
+        status:
+          type: string
+          description: taken or skipped; a plain string, not an enum.
+        loggedAt:
+          type: string
+          format: date-time
+    MedicationAsNeeded:
+      type: object
+      required: [medicationId, name, dose, doses]
+      properties:
+        medicationId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        dose:
+          type: string
+        doses:
+          type: array
+          items:
+            $ref: '#/components/schemas/MedicationDose'
+    MedicationsToday:
+      type: object
+      required: [date, slots, asNeeded]
+      properties:
+        date:
+          type: string
+          description: The person's local date, YYYY-MM-DD.
+        slots:
+          type: array
+          items:
+            $ref: '#/components/schemas/MedicationSlot'
+        asNeeded:
+          type: array
+          items:
+            $ref: '#/components/schemas/MedicationAsNeeded'
+    Medications:
+      type: object
+      required: [medications, today]
+      properties:
+        medications:
+          type: array
+          items:
+            $ref: '#/components/schemas/Medication'
+        today:
+          $ref: '#/components/schemas/MedicationsToday'
     ScreenTimeInput:
       type: object
       required: [minutes]

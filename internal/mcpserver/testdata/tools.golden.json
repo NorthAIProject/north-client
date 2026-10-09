@@ -28,6 +28,53 @@
     "readOnly": false
   },
   {
+    "name": "add_medication",
+    "description": "Start tracking a medication the person says they take, with the dose and times exactly as they said them. No times means as needed. Reminders are on unless they say otherwise. Record only what the person states; never suggest, change, or advise on doses.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "description": "the medication",
+      "properties": {
+        "days": {
+          "description": "weekday names when not every day; empty for every day",
+          "items": {
+            "description": "a weekday, like Monday",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "dose": {
+          "description": "the dose as they said it, like '500 mg' or '1 puff'; empty when they did not say",
+          "type": "string"
+        },
+        "name": {
+          "description": "its name as they said it",
+          "type": "string"
+        },
+        "notes": {
+          "description": "anything else they said about taking it; optional",
+          "type": "string"
+        },
+        "remind": {
+          "description": "whether to remind them at each time; defaults to true",
+          "type": "boolean"
+        },
+        "times": {
+          "description": "times of day as HH:MM in their time; empty for as needed",
+          "items": {
+            "description": "HH:MM",
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "readOnly": false
+  },
+  {
     "name": "add_workout_exercise",
     "description": "Add an exercise to the end of a training day. Use search_exercises first to find its slug. It starts at 3×8-12 with 90s rest, which the person can change afterwards.",
     "inputSchema": {
@@ -117,7 +164,7 @@
   },
   {
     "name": "complete_habit",
-    "description": "Mark one of the user's habits as done today, naming it as they do. This never creates a habit: if they name something they do not keep, tell them so and point them at the habits section rather than inventing one.",
+    "description": "Mark one of the user's habits as done today, naming it as they do. This never creates a habit: if they name something they do not keep, tell them so and offer to start tracking it with create_habit rather than inventing one.",
     "inputSchema": {
       "additionalProperties": false,
       "description": "the habit they kept",
@@ -204,6 +251,144 @@
     "readOnly": false
   },
   {
+    "name": "create_habit",
+    "description": "Start tracking a new habit for this person, when they have said they want to keep it — not for a passing wish. Name it the way they said it. Leave days empty for every day.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "description": "the habit",
+      "properties": {
+        "days": {
+          "description": "the days it is due, such as Monday; empty for every day",
+          "items": {
+            "description": "a day of the week",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "domain": {
+          "description": "the area of life it belongs to",
+          "enum": [
+            "fitness",
+            "health",
+            "work",
+            "learning",
+            "personal",
+            "other"
+          ],
+          "type": "string"
+        },
+        "name": {
+          "description": "the habit, such as 'read 20 pages'",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "readOnly": false
+  },
+  {
+    "name": "create_meal_plan",
+    "description": "Create a meal plan for this person: one to seven days from Monday, each with named meals in eating order made of catalog ingredients by weight. Use it when they ask for a meal plan or agree to one you proposed. Every day is held to their macro target from the calculator, with carbs a share of their carb target set by plan_type (no_carb 2.5%, low_carb 15.5%, mid_carb 35.5%, high_carb 55.5%); a day over its protein, carbs or fat is refused with the amounts, and nothing is saved — shrink portions and try again. Without a target the plan cannot be made: offer calculate_macros first. Use plain ingredient names such as 'oats' or 'chicken breast' — each is looked up in the catalog, and an unknown or ambiguous one stops the whole plan. Use search_ingredients first when unsure of a name.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "description": "the plan to create",
+      "properties": {
+        "days": {
+          "description": "the plan's days, Monday first",
+          "items": {
+            "additionalProperties": false,
+            "description": "one day",
+            "properties": {
+              "meals": {
+                "description": "the day's meals in eating order",
+                "items": {
+                  "additionalProperties": false,
+                  "description": "one meal",
+                  "properties": {
+                    "ingredients": {
+                      "description": "what goes in it",
+                      "items": {
+                        "additionalProperties": false,
+                        "description": "one ingredient",
+                        "properties": {
+                          "food": {
+                            "description": "the ingredient's plain name",
+                            "type": "string"
+                          },
+                          "grams": {
+                            "description": "how much, in grams",
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "food",
+                          "grams"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "name": {
+                      "description": "the meal, such as 'Breakfast'",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "ingredients"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "meals"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "description": {
+          "description": "a sentence on what the plan is for; optional",
+          "type": "string"
+        },
+        "name": {
+          "description": "what the plan is called, such as 'Cutting — 2,100 kcal'",
+          "type": "string"
+        },
+        "objective": {
+          "description": "the aim, when there is one",
+          "enum": [
+            "cutting",
+            "maintenance",
+            "bulking"
+          ],
+          "type": "string"
+        },
+        "plan_type": {
+          "description": "the carb level; mid_carb when they have not said",
+          "enum": [
+            "no_carb",
+            "low_carb",
+            "mid_carb",
+            "high_carb"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "days"
+      ],
+      "type": "object"
+    },
+    "readOnly": false
+  },
+  {
     "name": "create_workout_plan",
     "description": "Generate and save a new training plan from what the person told you: their goal, experience, how many days a week and how long each session, the equipment they have, and any injuries or limits. It replaces the plan they follow now (the old one is kept in history). Ask for anything missing rather than guessing days or equipment. To change one exercise in the current plan, use swap/add/remove_workout_exercise instead.",
     "inputSchema": {
@@ -256,6 +441,84 @@
     "readOnly": false
   },
   {
+    "name": "edit_meal_plan",
+    "description": "Change the meals in one of this person's meal plans. Put every change they asked for in one call: the changes are applied together or not at all. Ops: add_meal (an empty meal at the end of the day), remove_meal, add_food (grams of a catalog food added to a meal), remove_food (every portion of that food in the meal), set_grams (the meal holds exactly that many grams of a food already in it). Leave days out to change every day of the plan; a change applies on the days where its meal (and food) exist, and is refused only if it matches on none. Use get_meal_plan first to see the meal and food names. A result that would take a day further over its macro target is refused with the amounts and nothing is saved: shrink the change, or tell the person and ask. Set allow_over_target only after the person has explicitly accepted an overage that a refused call reported; easy plans never go over, whatever it says.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "description": "the changes to make",
+      "properties": {
+        "allow_over_target": {
+          "description": "true only once the person accepted going over their target, after a refusal said by how much",
+          "type": "boolean"
+        },
+        "changes": {
+          "description": "every change, applied in order",
+          "items": {
+            "additionalProperties": false,
+            "description": "one change",
+            "properties": {
+              "days": {
+                "description": "the weekdays to change; omit for every day of the plan",
+                "items": {
+                  "description": "a weekday",
+                  "enum": [
+                    "Monday",
+                    "Tuesday",
+                    "Wednesday",
+                    "Thursday",
+                    "Friday",
+                    "Saturday",
+                    "Sunday"
+                  ],
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "food": {
+                "description": "the food: a plain catalog name for add_food, the name the plan shows for remove_food and set_grams",
+                "type": "string"
+              },
+              "grams": {
+                "description": "grams to add (add_food) or to leave (set_grams)",
+                "type": "number"
+              },
+              "meal": {
+                "description": "the meal's name, such as 'Breakfast'",
+                "type": "string"
+              },
+              "op": {
+                "description": "what to do",
+                "enum": [
+                  "add_meal",
+                  "remove_meal",
+                  "add_food",
+                  "remove_food",
+                  "set_grams"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "op",
+              "meal"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "plan": {
+          "description": "the plan's name; needed only when they have more than one",
+          "type": "string"
+        }
+      },
+      "required": [
+        "changes"
+      ],
+      "type": "object"
+    },
+    "readOnly": false
+  },
+  {
     "name": "get_exercise",
     "description": "Read one catalog exercise in full: how to perform it, what it needs, and every muscle it trains. Call this before describing how a movement is performed rather than answering from memory, and pass on the video and illustration it returns.",
     "inputSchema": {
@@ -290,6 +553,25 @@
     "readOnly": true
   },
   {
+    "name": "get_meal_plan",
+    "description": "Read one of this person's meal plans: each day's meals with every food and its weight, and each day's calories and macros against their target. Read it before editing a plan or answering what is in it. With several plans and none named, it lists them and shows the most recently changed one.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "description": "which plan",
+      "properties": {
+        "plan": {
+          "description": "the plan's name; empty for their most recently changed plan",
+          "type": "string"
+        }
+      },
+      "required": [
+        "plan"
+      ],
+      "type": "object"
+    },
+    "readOnly": true
+  },
+  {
     "name": "get_training_week",
     "description": "Read which days this person trains this week (or next week) and which session each day has, what is done, and what is next. Use it before talking about their week, or before changing it with set_training_week.",
     "inputSchema": {
@@ -310,12 +592,19 @@
   },
   {
     "name": "get_workout_plan",
-    "description": "Read this person's current training plan: the days, the focus of each, and the exercises on them. Use it before advising on training, so the advice fits the plan they are actually following.",
+    "description": "Read a training plan: the days, the focus and start time of each, and every exercise with its sets, reps, rest and load. Use it before advising on training, so the advice fits the plan they are actually following, and before editing one.",
     "inputSchema": {
       "additionalProperties": false,
-      "description": "no arguments",
-      "properties": {},
-      "required": [],
+      "description": "which plan",
+      "properties": {
+        "plan": {
+          "description": "a saved plan's name; an empty string for the plan they follow",
+          "type": "string"
+        }
+      },
+      "required": [
+        "plan"
+      ],
       "type": "object"
     },
     "readOnly": true
@@ -357,6 +646,19 @@
     "readOnly": true
   },
   {
+    "name": "list_medications",
+    "description": "Read the medications this person tracks: each one's dose and schedule as they gave it, and what was taken, skipped or is still due today. Record only what the person states; never suggest, change, or advise on doses.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "description": "no arguments",
+      "properties": {},
+      "required": [],
+      "type": "object"
+    },
+    "readOnly": true,
+    "idempotent": true
+  },
+  {
     "name": "log_activity",
     "description": "Record a workout the user has already finished: a run, a walk, a ride, a swim, a gym session. Give the activity in their own words and the duration in minutes. Add the distance when they said one, so a run is stored with its pace. Leave started_at empty when it just finished; otherwise give the local date and time they started, such as '2026-09-10 07:30'. Convert miles to kilometres yourself. Do not use this for a session still in progress.",
     "inputSchema": {
@@ -392,23 +694,100 @@
   },
   {
     "name": "log_food",
-    "description": "Record something the user ate, by name and weight in grams. The name is looked up in the ingredient catalog, so use a plain one such as 'chicken breast' rather than a brand or a recipe.",
+    "description": "Record something the user ate, by name and weight in grams: one food with food and grams, or a whole meal at once with every food in items (food empty, grams 0). Each name is looked up in the ingredient catalog, so use a plain one such as 'chicken breast' rather than a brand or a recipe. An unknown or ambiguous name logs nothing.",
     "inputSchema": {
       "additionalProperties": false,
       "description": "what they ate",
       "properties": {
         "food": {
-          "description": "the ingredient's name",
+          "description": "the ingredient's name for a single food; empty when using items",
           "type": "string"
         },
         "grams": {
-          "description": "how much they ate, in grams",
+          "description": "how much of that food they ate, in grams; 0 when using items",
           "type": "number"
+        },
+        "items": {
+          "description": "several foods eaten together, such as a whole meal; use instead of food and grams",
+          "items": {
+            "additionalProperties": false,
+            "description": "one food",
+            "properties": {
+              "food": {
+                "description": "the ingredient's name",
+                "type": "string"
+              },
+              "grams": {
+                "description": "how much they ate, in grams",
+                "type": "number"
+              }
+            },
+            "required": [
+              "food",
+              "grams"
+            ],
+            "type": "object"
+          },
+          "type": "array"
         }
       },
       "required": [
         "food",
         "grams"
+      ],
+      "type": "object"
+    },
+    "readOnly": false
+  },
+  {
+    "name": "log_medication_dose",
+    "description": "Record that the person took or skipped a dose of a tracked medication today. Without a time, it answers the scheduled time nearest now that is still open; logging a time again replaces its answer. Record only what the person states; never suggest, change, or advise on doses.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "description": "the dose",
+      "properties": {
+        "name": {
+          "description": "the medication as it is tracked",
+          "type": "string"
+        },
+        "status": {
+          "description": "taken unless they said they skipped it",
+          "enum": [
+            "taken",
+            "skipped"
+          ],
+          "type": "string"
+        },
+        "time": {
+          "description": "the scheduled HH:MM this dose was for, when they said; optional",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "readOnly": false
+  },
+  {
+    "name": "log_planned_meal",
+    "description": "Record that this person ate one of today's meals from their meal plan as planned, such as 'I had my breakfast'. It logs the meal's foods and macros for today's weekday in their timezone. If they ate something different, use log_food instead.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "description": "the meal they ate",
+      "properties": {
+        "meal": {
+          "description": "the meal's name in the plan, such as 'Breakfast'",
+          "type": "string"
+        },
+        "plan": {
+          "description": "the plan's name; empty for their most recently changed plan",
+          "type": "string"
+        }
+      },
+      "required": [
+        "meal"
       ],
       "type": "object"
     },
@@ -458,6 +837,35 @@
       },
       "required": [
         "amount_ml"
+      ],
+      "type": "object"
+    },
+    "readOnly": false
+  },
+  {
+    "name": "move_workout_exercise",
+    "description": "Reorder an exercise within its training day, for example to do a lift first while fresh.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "description": "which exercise to move, and where",
+      "properties": {
+        "day": {
+          "description": "the training day, such as 'Monday'",
+          "type": "string"
+        },
+        "exercise": {
+          "description": "the exercise to move, as it is named in the plan",
+          "type": "string"
+        },
+        "position": {
+          "description": "its new position in the day, 1 for first",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "day",
+        "exercise",
+        "position"
       ],
       "type": "object"
     },
@@ -655,6 +1063,26 @@
     "readOnly": false
   },
   {
+    "name": "set_target_weight",
+    "description": "Set the body weight this person is aiming for, in kilograms, or clear it with 0. Only a number they gave; never pick one for them.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "description": "the target",
+      "properties": {
+        "kg": {
+          "description": "the target weight in kg, or 0 to clear it",
+          "type": "number"
+        }
+      },
+      "required": [
+        "kg"
+      ],
+      "type": "object"
+    },
+    "readOnly": false,
+    "idempotent": true
+  },
+  {
     "name": "set_training_week",
     "description": "Change which days this person trains this week or next, without changing their plan. Give weekdays when they name them, or just days (a number) to have days suggested; days 0 is a rest week. Each day gets the next session of their plan in order, and anything left over carries into the following week. Sessions already trained this week are kept. Set plan to fill the days from another saved plan, and sessions to put a specific session on a day. Set usual to put the week back to their usual one.",
     "inputSchema": {
@@ -726,6 +1154,104 @@
     "readOnly": false
   },
   {
+    "name": "set_workout_prescription",
+    "description": "Change how much of the work to do — sets, reps, rest or load — for one exercise, one day, or the whole training plan, in a single edit. Leave day empty for every day and exercise empty for every exercise. 'Everything from 2 sets to 3' is one call: sets=3, only_if_sets=2. 'One more set on all the squats' is exercise='squat', add_sets=1. Never call it once per exercise when one call with a wider filter does the job. The movements stay; only the dose changes.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "description": "which exercises to change, and to what; give only the fields that change, at least one of sets, add_sets, reps, rest_seconds or load",
+      "properties": {
+        "add_sets": {
+          "description": "sets to add (negative to remove); not together with sets",
+          "type": "integer"
+        },
+        "day": {
+          "description": "a training day such as 'Monday' or a session such as 'Lower B'; an empty string for every day",
+          "type": "string"
+        },
+        "exercise": {
+          "description": "part of an exercise name; every exercise containing it changes. Empty for all",
+          "type": "string"
+        },
+        "load": {
+          "description": "the target weight as written, such as '100 kg' or 'RPE 8'; an empty string clears it, so omit it to keep it",
+          "type": "string"
+        },
+        "only_if_sets": {
+          "description": "only change exercises currently on this many sets",
+          "type": "integer"
+        },
+        "plan": {
+          "description": "a saved plan's name; leave empty for the plan they follow",
+          "type": "string"
+        },
+        "reps": {
+          "description": "the new rep range, such as '8-12', '5' or 'AMRAP'",
+          "type": "string"
+        },
+        "rest_seconds": {
+          "description": "the new rest between sets, in seconds",
+          "type": "integer"
+        },
+        "sets": {
+          "description": "the new number of sets",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "day"
+      ],
+      "type": "object"
+    },
+    "readOnly": false
+  },
+  {
+    "name": "set_workout_start_time",
+    "description": "Set or clear when training sessions start. Leave days empty to set every training day at once.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "description": "which days, and when",
+      "properties": {
+        "days": {
+          "description": "training days such as 'Monday'; empty for every day",
+          "items": {
+            "description": "a training day",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "start_time": {
+          "description": "HH:MM on a 24-hour clock, or empty to clear",
+          "type": "string"
+        }
+      },
+      "required": [
+        "start_time"
+      ],
+      "type": "object"
+    },
+    "readOnly": false
+  },
+  {
+    "name": "stop_medication",
+    "description": "Stop tracking a medication the person says they no longer take. Its logged doses are kept as history, and its reminders end. Record only what the person states; never suggest, change, or advise on doses.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "description": "the medication",
+      "properties": {
+        "name": {
+          "description": "the medication as it is tracked",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "readOnly": false,
+    "idempotent": true
+  },
+  {
     "name": "swap_workout_exercise",
     "description": "Replace one exercise in this person's training plan with a different one, keeping its sets, reps and rest. Use search_exercises first to find the replacement's slug. Good for when equipment is unavailable, something aggravates an injury, or they simply dislike a movement.",
     "inputSchema": {
@@ -765,5 +1291,155 @@
       "type": "object"
     },
     "readOnly": true
+  },
+  {
+    "name": "undo_log",
+    "description": "Take back something logged today by mistake: water, food, a supplement, caffeine, a lifting set, a fast, a habit tick or a medication dose. With no match it removes the most recent entry of that kind. To correct an amount, undo the wrong entry and log the right one. If several entries match, the error lists today's entries so you can be specific.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "description": "what to take back",
+      "properties": {
+        "kind": {
+          "description": "what kind of log",
+          "enum": [
+            "food",
+            "habit",
+            "medication",
+            "water"
+          ],
+          "type": "string"
+        },
+        "match": {
+          "description": "part of the entry's description, such as 'espresso' or '500'; an empty string for the most recent",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "match"
+      ],
+      "type": "object"
+    },
+    "readOnly": false
+  },
+  {
+    "name": "update_goal",
+    "description": "Change one of this person's goals: mark it achieved, pause, resume or abandon it, rename it, or set or clear its target date. The goal is named by title. Give only what changes. For a progress note, use add_goal_update instead.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "description": "the goal and what changes",
+      "properties": {
+        "goal_title": {
+          "description": "the goal to change, matched by title",
+          "type": "string"
+        },
+        "status": {
+          "description": "its new status; omit to keep it",
+          "enum": [
+            "active",
+            "achieved",
+            "paused",
+            "abandoned"
+          ],
+          "type": "string"
+        },
+        "target_date": {
+          "description": "a new target date as YYYY-MM-DD, or 'none' to make it open-ended; omit to keep it",
+          "type": "string"
+        },
+        "title": {
+          "description": "a new title, in their words; omit to keep it",
+          "type": "string"
+        }
+      },
+      "required": [
+        "goal_title"
+      ],
+      "type": "object"
+    },
+    "readOnly": false
+  },
+  {
+    "name": "update_habit",
+    "description": "Change one of this person's habits: rename it, change the days it is due, or pause and resume it. The habit is named as they call it. Give only what changes. To untick today, use undo_log with kind habit.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "description": "the habit and what changes",
+      "properties": {
+        "active": {
+          "description": "false to pause tracking it, true to resume; omit to keep it",
+          "type": "boolean"
+        },
+        "days": {
+          "description": "the new days it is due; omit to keep them",
+          "items": {
+            "description": "a day of the week",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "name": {
+          "description": "the habit to change, as they call it",
+          "type": "string"
+        },
+        "new_name": {
+          "description": "a new name; omit to keep it",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "readOnly": false
+  },
+  {
+    "name": "update_medication",
+    "description": "Change a tracked medication because the person said it changed: a new dose, new times, other days, reminders on or off, or a corrected name. Pass only what changed. Record only what the person states; never suggest, change, or advise on doses.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "description": "the change",
+      "properties": {
+        "days": {
+          "description": "the new weekday names; an empty list means every day; optional",
+          "items": {
+            "description": "a weekday",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "dose": {
+          "description": "the new dose as they said it; optional",
+          "type": "string"
+        },
+        "name": {
+          "description": "the medication as it is tracked now",
+          "type": "string"
+        },
+        "new_name": {
+          "description": "its corrected name; optional",
+          "type": "string"
+        },
+        "remind": {
+          "description": "reminders on or off; optional",
+          "type": "boolean"
+        },
+        "times": {
+          "description": "the new times as HH:MM; an empty list makes it as needed; optional",
+          "items": {
+            "description": "HH:MM",
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "readOnly": false,
+    "idempotent": true
   }
 ]

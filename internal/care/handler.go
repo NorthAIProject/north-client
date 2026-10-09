@@ -309,6 +309,19 @@ func (h *Handler) deleteHabit(w http.ResponseWriter, r *http.Request) {
 	h.done(w, r, carepages.Forms{})
 }
 
+// Done re-renders the care page after a write another slice handled, the way
+// this handler's own writes do. The medications handler uses it.
+func (h *Handler) Done(w http.ResponseWriter, r *http.Request) { h.done(w, r, carepages.Forms{}) }
+
+// Rejected re-renders the page with the medication form's errors and what was
+// typed into it.
+func (h *Handler) Rejected(w http.ResponseWriter, r *http.Request, form carepages.MedicationForm) {
+	h.respond(w, r, http.StatusUnprocessableEntity, carepages.Forms{Medication: form})
+}
+
+// Fail answers a write that could not be done.
+func (h *Handler) Fail(w http.ResponseWriter, r *http.Request, err error) { h.fail(w, r, err) }
+
 func (h *Handler) pathID(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {

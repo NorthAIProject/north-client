@@ -543,6 +543,15 @@ sql:
         overrides: *overrides
   - engine: postgresql
     schema: migrations
+    queries: internal/medications/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: medicationsdb
+        out: internal/medications/db
+        overrides: *overrides
+  - engine: postgresql
+    schema: migrations
     queries: internal/screentime/db/queries.sql
     gen:
       go:

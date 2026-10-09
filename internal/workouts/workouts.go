@@ -22,6 +22,9 @@ type (
 
 	// Slot is one training day of one week; see plan/week.go.
 	Slot = plan.Slot
+
+	// PrescriptionChange is a dose change applied to many exercises at once.
+	PrescriptionChange = plan.PrescriptionChange
 )
 
 const (
@@ -36,11 +39,13 @@ var (
 
 	// Swap and its siblings are pure: a plan in, a new plan out. The service
 	// wraps them with loading, validation and storage; see applyEdit.
-	Swap            = plan.Swap
-	Insert          = plan.Insert
-	Remove          = plan.Remove
-	Move            = plan.Move
-	SetPrescription = plan.SetPrescription
-	SetStartTime    = plan.SetStartTime
-	NewExercise     = plan.NewExercise
+	Swap              = plan.Swap
+	Insert            = plan.Insert
+	Remove            = plan.Remove
+	Move              = plan.Move
+	SetPrescription   = plan.SetPrescription
+	ApplyPrescription = plan.ApplyPrescription
+	SetStartTime      = plan.SetStartTime
+	SetStartTimes     = plan.SetStartTimes
+	NewExercise       = plan.NewExercise
 )

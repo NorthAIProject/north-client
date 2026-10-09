@@ -1,0 +1,236 @@
+package care
+
+import (
+	"context"
+	"strings"
+	"time"
+
+	"github.com/NorthAIProject/north-client/internal/medications/medication"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/badge"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/form"
+	"github.com/NorthAIProject/north-client/web/shared/ui/input"
+	"github.com/NorthAIProject/north-client/web/shared/ui/label"
+)
+
+// MedicationForm is the add form as it was typed. Times stays one string, the
+// way it sits in the input, so a rejected form gives it back unchanged.
+type MedicationForm struct {
+	Name   string
+	Dose   string
+	Times  string
+	Errors map[string]string
+}
+
+func slotStatusLabel(ctx context.Context, status string) string {
+	switch status {
+	case medication.StatusTaken, medication.StatusSkipped, medication.StatusDue, medication.StatusUpcoming:
+		return i18n.T(ctx, "care.meds.status."+status)
+	default:
+		return status
+	}
+}
+
+func slotBadge(status string) badge.Variant {
+	switch status {
+	case medication.StatusTaken:
+		return badge.VariantDefault
+	case medication.StatusDue:
+		return badge.VariantDestructive
+	default:
+		return badge.VariantSecondary
+	}
+}
+
+func medicationSchedule(ctx context.Context, m medication.Medication) string {
+	if m.AsNeeded() {
+		return i18n.T(ctx, "care.meds.asneeded")
+	}
+	return strings.Join(m.Times, ", ") + " · " + daysSummary(ctx, m.Days)
+}
+
+templ medicationsCard(meds []medication.Medication, day medication.Day, f MedicationForm) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@card.Header() {
+			@card.Title() {
+				{ i18n.T(ctx, "care.meds.title") }
+			}
+			@card.Description() {
+				{ i18n.T(ctx, "care.meds.desc") }
+			}
+		}
+		@card.Content() {
+			if len(meds) == 0 {
+				<p class="text-muted-foreground mb-4 text-sm">{ i18n.T(ctx, "care.meds.none") }</p>
+			}
+			if len(day.Slots) > 0 {
+				@ui.MonoLabel(i18n.T(ctx, "care.meds.today"))
+				<ul class="mb-6 mt-2 space-y-2">
+					for _, s := range day.Slots {
+						@medicationSlotRow(s, s.Status(day.Now))
+					}
+				</ul>
+			}
+			if len(day.AsNeeded) > 0 {
+				@ui.MonoLabel(i18n.T(ctx, "care.meds.asneeded"))
+				<ul class="mb-6 mt-2 space-y-2">
+					for _, u := range day.AsNeeded {
+						@asNeededRow(u, day.Now.Location())
+					}
+				</ul>
+			}
+			if len(meds) > 0 {
+				@ui.MonoLabel(i18n.T(ctx, "care.meds.manage"))
+				<ul class="mb-6 mt-2 space-y-2">
+					for _, m := range meds {
+						@medicationRow(m)
+					}
+				</ul>
+			}
+			@addMedicationForm(f)
+		}
+	}
+}
+
+templ medicationSlotRow(s medication.Slot, status string) {
+	<li class="border-hairline flex items-center justify-between gap-3 rounded-lg border px-3 py-2">
+		<div class="min-w-0">
+			<span class="font-mono text-xs">{ s.Time }</span>
+			<span class="ml-2 text-sm font-medium">{ s.Medication.Label() }</span>
+		</div>
+		<div class="flex shrink-0 items-center gap-2">
+			@badge.Badge(badge.Props{Variant: slotBadge(status)}) {
+				{ slotStatusLabel(ctx, status) }
+			}
+			if s.Log != nil {
+				@undoDoseButton(s.Log.ID.String())
+			} else {
+				@doseButton(s.Medication.ID.String(), s.Time, medication.StatusTaken, i18n.T(ctx, "care.meds.take"), true)
+				@doseButton(s.Medication.ID.String(), s.Time, medication.StatusSkipped, i18n.T(ctx, "care.meds.skip"), false)
+			}
+		</div>
+	</li>
+}
+
+templ asNeededRow(u medication.Unscheduled, loc *time.Location) {
+	<li class="border-hairline rounded-lg border px-3 py-2">
+		<div class="flex items-center justify-between gap-3">
+			<span class="text-sm font-medium">{ u.Medication.Label() }</span>
+			if u.Medication.AsNeeded() {
+				@doseButton(u.Medication.ID.String(), "", medication.StatusTaken, i18n.T(ctx, "care.meds.tookone"), true)
+			}
+		</div>
+		if len(u.Doses) == 0 {
+			<p class="text-muted-foreground mt-1 text-xs">{ i18n.T(ctx, "care.meds.asneeded.none") }</p>
+		} else {
+			<ul class="mt-1 space-y-1">
+				for _, d := range u.Doses {
+					<li class="text-muted-foreground flex items-center justify-between text-xs">
+						<span>{ d.LoggedAt.In(loc).Format("15:04") } · { slotStatusLabel(ctx, d.Status) }</span>
+						@undoDoseButton(d.ID.String())
+					</li>
+				}
+			</ul>
+		}
+	</li>
+}
+
+templ medicationRow(m medication.Medication) {
+	<li class="border-hairline flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm">
+		<div class="min-w-0">
+			<span class="font-medium">{ m.Label() }</span>
+			<span class="text-muted-foreground ml-2">{ medicationSchedule(ctx, m) }</span>
+		</div>
+		<form method="post" action={ templ.SafeURL("/app/care/medications/" + m.ID.String() + "/stop") } { panelSwapAttrs()... }>
+			@ui.CSRFInput()
+			@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm}) {
+				{ i18n.T(ctx, "care.meds.stop") }
+			}
+		</form>
+	</li>
+}
+
+// doseButton posts one dose: a scheduled slot answered, or an as-needed dose
+// when slot is empty.
+templ doseButton(medID, slot, status, text string, primary bool) {
+	<form method="post" action={ templ.SafeURL("/app/care/medications/" + medID + "/doses") } { panelSwapAttrs()... }>
+		@ui.CSRFInput()
+		<input type="hidden" name="status" value={ status }/>
+		if slot != "" {
+			<input type="hidden" name="slot" value={ slot }/>
+		}
+		if primary {
+			@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Class: "bg-signal text-background hover:bg-signal/90"}) {
+				{ text }
+			}
+		} else {
+			@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Size: button.SizeSm}) {
+				{ text }
+			}
+		}
+	</form>
+}
+
+templ undoDoseButton(logID string) {
+	<form method="post" action={ templ.SafeURL("/app/care/medications/doses/" + logID + "/undo") } { panelSwapAttrs()... }>
+		@ui.CSRFInput()
+		@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm}) {
+			{ i18n.T(ctx, "care.meds.undo") }
+		}
+	</form>
+}
+
+templ addMedicationForm(f MedicationForm) {
+	<form method="post" action="/app/care/medications" class="space-y-4" { panelSwapAttrs()... }>
+		@ui.CSRFInput()
+		<div class="flex flex-wrap gap-4">
+			@form.Item() {
+				@label.Label(label.Props{For: "med_name"}) {
+					{ i18n.T(ctx, "care.meds.name") }
+				}
+				@input.Input(input.Props{
+					ID: "med_name", Name: "name", Value: f.Name, Required: true,
+					Placeholder: i18n.T(ctx, "care.meds.name.ph"),
+					HasError:    f.fieldError("name") != "",
+				})
+			}
+			@form.Item() {
+				@label.Label(label.Props{For: "med_dose"}) {
+					{ i18n.T(ctx, "care.meds.dose") }
+				}
+				@input.Input(input.Props{
+					ID: "med_dose", Name: "dose", Value: f.Dose,
+					Placeholder: i18n.T(ctx, "care.meds.dose.ph"),
+					HasError:    f.fieldError("dose") != "",
+				})
+			}
+			@form.Item() {
+				@label.Label(label.Props{For: "med_times"}) {
+					{ i18n.T(ctx, "care.meds.times") }
+				}
+				// A format, not a word: the same in every language.
+				@input.Input(input.Props{
+					ID: "med_times", Name: "times", Value: f.Times,
+					Placeholder: "08:00, 20:00",
+					HasError:    f.fieldError("times") != "",
+				})
+				@form.Description() {
+					{ i18n.T(ctx, "care.meds.times.help") }
+				}
+			}
+		</div>
+		for _, field := range []string{"name", "dose", "times"} {
+			if msg := f.fieldError(field); msg != "" {
+				@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+					{ msg }
+				}
+			}
+		}
+		@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90"}) {
+			{ i18n.T(ctx, "care.meds.add") }
+		}
+	</form>
+}

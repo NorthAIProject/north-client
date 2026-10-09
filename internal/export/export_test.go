@@ -15,6 +15,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/documents"
 	"github.com/NorthAIProject/north-client/internal/export"
 	"github.com/NorthAIProject/north-client/internal/goals"
+	"github.com/NorthAIProject/north-client/internal/medications"
 	"github.com/NorthAIProject/north-client/internal/memories"
 	"github.com/NorthAIProject/north-client/internal/shared/database/testdb"
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -78,6 +79,15 @@ func TestExportCarriesEverythingAPersonPutIn(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	medSvc := medications.NewService(medications.NewRepository(pool))
+	med, err := medSvc.Add(ctx, user, medications.Input{Name: "Ibuprofen", Dose: "200 mg", Notes: "Only after physio."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = medSvc.LogDose(ctx, user, med.ID, "", nil); err != nil {
+		t.Fatal(err)
+	}
+
 	convo, err := convoSvc.Start(ctx, user.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -99,9 +109,10 @@ func TestExportCarriesEverythingAPersonPutIn(t *testing.T) {
 		Conversations: convoSvc,
 		Goals:         goalSvc,
 		CheckIns:      checkinSvc,
+		Medications:   medSvc,
 	}), user)
 
-	for _, name := range []string{"README.md", "manifest.json", "memories.md", "profile.md", "goals.md", "check-ins.md"} {
+	for _, name := range []string{"README.md", "manifest.json", "memories.md", "profile.md", "goals.md", "check-ins.md", "medications.md"} {
 		if _, ok := files[name]; !ok {
 			t.Errorf("%s is missing from the export", name)
 		}
@@ -124,6 +135,9 @@ func TestExportCarriesEverythingAPersonPutIn(t *testing.T) {
 		{"goals.md", "The shoulder should stop deciding"},
 		{"check-ins.md", "Pressed narrow grip with no pain"},
 		{"check-ins.md", "Sleep was short"},
+		{"medications.md", "Ibuprofen 200 mg"},
+		{"medications.md", "Only after physio."},
+		{"medications.md", "unscheduled · Ibuprofen 200 mg · taken"},
 	} {
 		if got := files[tc.file]; !strings.Contains(got, tc.want) {
 			t.Errorf("%s does not contain %q:\n%s", tc.file, tc.want, got)

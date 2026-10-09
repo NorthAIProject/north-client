@@ -127,6 +127,7 @@ type Service struct {
 	crews     crewSource
 	weekly    weeklySource
 	decisions decisionSource
+	meds      medicationSource
 	now       func() time.Time
 }
 
@@ -224,6 +225,12 @@ func (s *Service) WithMeals(m mealSource) *Service {
 	return s
 }
 
+// WithMedications turns on medication reminders.
+func (s *Service) WithMedications(m medicationSource) *Service {
+	s.meds = m
+	return s
+}
+
 // Raise inserts a nudge if the dedupe key is new, the person allowed this
 // kind, and it is not quiet hours. A successful insert is fanned out to
 // Telegram and to subscribed browsers, unless the kind is one they already
@@ -236,7 +243,7 @@ func (s *Service) Raise(ctx context.Context, user users.User, d Draft) (Nudge, b
 	if !prefs.AllowsNudge(d.Kind) {
 		return Nudge{}, false, nil
 	}
-	if prefs.InQuietHours(s.now().In(user.Location())) {
+	if !d.Alarm && prefs.InQuietHours(s.now().In(user.Location())) {
 		return Nudge{}, false, nil
 	}
 
@@ -471,14 +478,20 @@ func (s *Service) Evaluate(ctx context.Context, user users.User) (int, error) {
 		return 0, err
 	}
 
+	// Medication reminders come before the quiet-hours return below: they
+	// are alarms the person set for a time, and a 22:30 dose deferred to the
+	// morning is a missed dose, not a polite one.
+	created, err := s.evalMedicationReminders(ctx, user, today, now)
+	if err != nil {
+		return created, err
+	}
+
 	// Quiet hours defer rather than suppress: both dedupe keys below are per
 	// local day, so whatever would have been raised now is raised unchanged by
 	// the next sweep after the window closes.
 	if prefs.InQuietHours(now.In(user.Location())) {
-		return 0, nil
+		return created, nil
 	}
-
-	created := 0
 
 	// First-week notes are the point of a new account. Missed-check-in and
 	// deadlines stay silent for a couple of days so a brand-new person is

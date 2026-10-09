@@ -35,6 +35,10 @@ const (
 	// KindDecisionRevisit asks 30 and 90 days after a decision whether it
 	// held.
 	KindDecisionRevisit = "decision_revisit"
+
+	// KindMedicationReminder is a scheduled dose whose time has come. It is
+	// the alarm the person set, so quiet hours do not hold it back.
+	KindMedicationReminder = "medication_reminder"
 )
 
 // Nudge is one scheduled accountability note for a person.
