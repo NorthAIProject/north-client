@@ -1,37 +1,37 @@
-// Package muscleviewer is the reusable 3D muscle-highlight component (NOR-8).
+// Package muscleviewer is the body figure (NOR-8): a 3D body whose skin is cut
+// into one region per muscle key, coloured from untrained grey-blue to ember.
 //
 // It renders a canvas driven by web/assets/js/shared/muscle-viewer/{viewer,alpine}.js
-// against the shared body.glb model (see web/assets/models/README.md), given
-// nothing but three muscle-key arrays. Any page — an exercise row, a workout
-// plan, eventually a coaching response — embeds it the same way:
+// against body-map.glb (built by scripts/bodymap), and the same regions as a
+// flat front/back SVG when the browser has no WebGL. Any page embeds it one of
+// two ways:
 //
-//	@muscleviewer.Viewer(muscleviewer.Props{
-//		ID:        "exercise-42",
-//		Primary:   ex.Primary,
-//		Secondary: ex.Secondary,
-//		Stabilizers: ex.Stabilizers,
-//		ExerciseName: ex.Name,
-//	})
+//	// what an exercise works
+//	@muscleviewer.Viewer(muscleviewer.Props{ID: "exercise-42", Primary: ex.Primary, Secondary: ex.Secondary})
 //
-// Loading, WebGL fallback, and click-to-inspect are all handled inside the
-// component; a caller only supplies the muscle keys.
+//	// what recent training heated, with tap-to-inspect
+//	@muscleviewer.Viewer(muscleviewer.Props{ID: "day-body", Map: &bodyMap, HideLegend: true})
+//
+// Every colour is decided here, on the server; the script only paints it.
 package muscleviewer
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 
-	"github.com/NorthAIProject/north-client/internal/workouts/plan"
+	"github.com/NorthAIProject/north-client/internal/bodymap"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/web/shared/ui/aspectratio"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
 )
 
-// Props is the data contract handed to the AI-driven viewer: three flat
-// muscle-key arrays, no percentages. Keys must be members of
-// internal/workouts/plan.MuscleGroups — anything else is silently ignored by
-// the viewer (see viewer.js's setLoads, which skips unresolved keys).
+// Props is what the figure shows. Muscle keys must be members of
+// internal/workouts/plan.MuscleGroups; anything else is ignored.
 type Props struct {
-	// ID must be unique on the page; it namespaces the canvas ref and the
-	// legend so multiple viewers (e.g. one per dialog) don't collide.
+	// ID must be unique on the page; it namespaces the canvas and the legend
+	// so multiple viewers (e.g. one per dialog) don't collide.
 	ID string
 
 	Primary      []string
@@ -39,90 +39,169 @@ type Props struct {
 	Stabilizers  []string
 	ExerciseName string
 
+	// Map, when set, replaces the three tiers: each region is coloured by how
+	// much recent training heated it, and a tap names the region, says when
+	// it was last trained and links to its exercises.
+	Map *bodymap.Map
+
 	// HideLegend drops the primary/secondary/stabiliser key, for a caller
-	// whose tiers mean something else and who draws its own (My Day's body
-	// uses them for how sore a muscle is).
+	// whose colours mean something else and who draws its own.
 	HideLegend bool
 }
 
-// alpineData serializes Props into the object literal northMuscleViewer()
-// expects. templ HTML-escapes the { expr } attribute value automatically,
-// which matters here since muscle keys and the exercise name can originate
-// from AI output.
-func alpineData(p Props) string {
+// Tier intensities for an exercise's muscles, matching the legend.
+const (
+	primaryHeat    = 1.0
+	secondaryHeat  = 0.55
+	stabilizerHeat = 0.25
+)
+
+// heat is the colour of every region, 0 to 1, keyed by region.
+func heat(p Props) map[string]float64 {
+	out := map[string]float64{}
+	if p.Map != nil {
+		for _, r := range p.Map.Regions {
+			if r.Intensity > 0 {
+				out[r.Region] = r.Intensity
+			}
+		}
+		return out
+	}
+	put := func(keys []string, value float64) {
+		for _, key := range keys {
+			if region, ok := bodymap.RegionOf(key); ok && value > out[region] {
+				out[region] = value
+			}
+		}
+	}
+	put(p.Primary, primaryHeat)
+	put(p.Secondary, secondaryHeat)
+	put(p.Stabilizers, stabilizerHeat)
+	return out
+}
+
+// detail is what a tap on a region shows, already in the reader's language.
+type detail struct {
+	Name string `json:"name"`
+	Last string `json:"last,omitempty"`
+	Href string `json:"href,omitempty"`
+}
+
+func details(ctx context.Context, p Props) map[string]detail {
+	out := map[string]detail{}
+	for _, region := range bodymap.Regions {
+		out[region] = detail{Name: i18n.T(ctx, "muscle."+region)}
+	}
+	if p.Map == nil {
+		return out
+	}
+	for _, r := range p.Map.Regions {
+		d := out[r.Region]
+		switch {
+		case r.LastTrained.IsZero():
+			d.Last = i18n.T(ctx, "bodymap.never")
+		default:
+			d.Last = i18n.Tf(ctx, "bodymap.last", fmt.Sprintf("%d %s", r.LastTrained.Day(), i18n.T(ctx, fmt.Sprintf("month.long.%d", int(r.LastTrained.Month())))))
+		}
+		d.Href = "/app/exercises?muscle=" + r.Region
+		out[r.Region] = d
+	}
+	return out
+}
+
+// alpineData serializes the figure for northMuscleViewer(). templ escapes the
+// attribute value, which matters: names can come from AI output.
+func alpineData(ctx context.Context, p Props) string {
 	data, _ := json.Marshal(map[string]any{
-		"primary":      nonNil(p.Primary),
-		"secondary":    nonNil(p.Secondary),
-		"stabilizers":  nonNil(p.Stabilizers),
-		"exerciseName": p.ExerciseName,
+		"heat":    heat(p),
+		"details": details(ctx, p),
+		"inspect": p.Map != nil,
 	})
 	return "northMuscleViewer(" + string(data) + ")"
 }
 
-func nonNil(keys []string) []string {
-	if keys == nil {
-		return []string{}
+// regionStyle colours one region of the flat figure the way the 3D one is:
+// untrained grey-blue, else a mix from pale amber toward ember.
+// Built here from fixed tokens and a number, so it is safe CSS as it stands.
+func regionStyle(h map[string]float64, region string) templ.SafeCSS {
+	const stroke = "; stroke: var(--north-surface); stroke-width: 0.8"
+	v, ok := h[region]
+	if !ok || v <= 0 {
+		return templ.SafeCSS("fill: var(--north-body-idle)" + stroke)
 	}
-	return keys
+	t := 0.25 + 0.75*min(v, 1)
+	return templ.SafeCSS(fmt.Sprintf("fill: color-mix(in oklch, var(--north-ember) %.0f%%, var(--north-heat-low))", t*100) + stroke)
 }
 
-// unmodelled lists, in the order they appear, the muscle groups this viewer
-// was given that body.glb has no mesh for (plan.UnmodelledGroups).
-//
-// The alternative is silence, and silence here is worse than an apology: a
-// bench press whose model lights up only the triceps looks like the muscle
-// data is wrong, when it is the asset that is incomplete.
-func unmodelled(p Props) []string {
-	seen := make(map[string]bool)
-	var keys []string
-	for _, group := range [][]string{p.Primary, p.Secondary, p.Stabilizers} {
-		for _, key := range group {
-			if !plan.IsUnmodelled(key) || seen[key] {
-				continue
-			}
-			seen[key] = true
-			keys = append(keys, titleCase(key))
-		}
+// summary is the figure in words, for screen readers: the hottest regions.
+func summary(ctx context.Context, p Props) string {
+	if p.Map == nil {
+		return i18n.T(ctx, "bodymap.figure")
 	}
-	return keys
-}
-
-// titleCase turns a muscle key ("quads") into fallback label text ("Quads")
-// for the no-WebGL path, without depending on the JS module's MUSCLE_INFO
-// display names.
-func titleCase(key string) string {
-	if key == "" {
-		return key
+	hot := bodymap.Hottest(p.Map.Regions)
+	if len(hot) == 0 {
+		return i18n.T(ctx, "bodymap.empty")
 	}
-	return strings.ToUpper(key[:1]) + key[1:]
+	names := make([]string, 0, len(hot))
+	for _, r := range hot {
+		names = append(names, i18n.T(ctx, "muscle."+r.Region))
+	}
+	return i18n.Tf(ctx, "bodymap.summary", strings.Join(names, ", "))
 }
 
 templ Viewer(p Props) {
+	{{ h := heat(p) }}
 	<div
 		if p.ID != "" {
 			id={ p.ID }
 		}
-		x-data={ alpineData(p) }
-		class="rounded-lg border border-hairline bg-background/40 p-4"
+		x-data={ alpineData(ctx, p) }
 	>
-		@aspectratio.AspectRatio(aspectratio.Props{Ratio: aspectratio.RatioSquare, Class: "rounded-lg border border-hairline bg-background/60"}) {
-			// Hand-rolled: a WebGL surface has no counterpart in the component
-			// library — see web/landing/demos.templ for the same rationale.
-			<canvas
-				x-ref="canvas"
-				aria-hidden="true"
-				class="size-full cursor-grab touch-none rounded-lg active:cursor-grabbing"
-			></canvas>
+		<div class="relative">
+			@aspectratio.AspectRatio(aspectratio.Props{Ratio: aspectratio.RatioSquare, Class: "rounded-lg border border-hairline bg-background/60"}) {
+				// Hand-rolled: a WebGL surface has no counterpart in the
+				// component library.
+				<canvas
+					x-ref="canvas"
+					x-show="!failed"
+					role="img"
+					aria-label={ summary(ctx, p) }
+					class="size-full cursor-grab touch-none rounded-lg active:cursor-grabbing"
+				></canvas>
+				<div x-show="failed" x-cloak class="absolute inset-0 grid grid-cols-2 gap-1 p-2" role="img" aria-label={ summary(ctx, p) }>
+					@flatView(figureFront, h)
+					@flatView(figureBack, h)
+				</div>
+				<div
+					x-show="!ready"
+					class="pointer-events-none absolute inset-0 flex items-center justify-center p-4 text-center"
+				>
+					<span class="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">{ i18n.T(ctx, "bodymap.loading") }</span>
+				</div>
+			}
+			// Hand-rolled callout: templUI's popover opens from a trigger
+			// element, and here the trigger is a point on a canvas.
 			<div
-				x-show="!ready || failed"
-				class="pointer-events-none absolute inset-0 flex items-center justify-center p-4 text-center"
+				x-show="selected"
+				x-cloak
+				x-transition.opacity
+				class="bg-surface/95 border-hairline absolute inset-x-2 bottom-2 flex flex-wrap items-start gap-x-2 gap-y-1.5 rounded-xl border p-2 pl-3 shadow-lg backdrop-blur"
+				data-testid="muscle-callout"
 			>
-				<span
-					class="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground"
-					x-text="failed ? 'Preview unavailable — see the muscle list below' : 'Loading model'"
-				>Loading model</span>
+				<div class="min-w-0 flex-1 pt-0.5">
+					<p class="text-sm font-medium" x-text="selected && selected.name"></p>
+					<p class="text-muted-foreground text-xs" x-show="selected && selected.last" x-text="selected && selected.last"></p>
+				</div>
+				@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Attributes: templ.Attributes{"@click": "clear()", "aria-label": i18n.T(ctx, "bodymap.close")}}) {
+					×
+				}
+				<template x-if="selected && selected.href">
+					@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Class: "w-full", Attributes: templ.Attributes{":href": "selected.href"}, Href: "/app/exercises"}) {
+						{ i18n.T(ctx, "bodymap.open") }
+					}
+				</template>
 			</div>
-		}
+		</div>
 		<div class={ "mt-3 flex flex-wrap items-center gap-3", templ.KV("hidden", p.HideLegend) }>
 			<span class="flex items-center gap-1.5">
 				<span class="size-2 rounded-[2px] bg-ember"></span>
@@ -137,26 +216,25 @@ templ Viewer(p Props) {
 				<span class="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Stabiliser</span>
 			</span>
 		</div>
-		if keys := unmodelled(p); len(keys) > 0 {
-			<p class="mt-3 text-xs leading-relaxed text-muted-foreground">
-				{ strings.Join(keys, ", ") }
-				if len(keys) == 1 {
-					{ " is trained here but is not shown on the model yet." }
-				} else {
-					{ " are trained here but are not shown on the model yet." }
-				}
-			</p>
-		}
-		<div x-show="ready && !failed && selectedMuscle" x-cloak class="mt-3 rounded-md bg-signal/10 p-3">
-			<p class="text-sm font-medium" x-text="selectedMuscle && selectedMuscle.name"></p>
-			<p class="mt-0.5 text-xs leading-relaxed text-foreground/90" x-text="selectedMuscle && selectedMuscle.description"></p>
-		</div>
-		<div x-show="failed" x-cloak class="mt-3 space-y-2 text-sm">
-			@muscleList("Primary", p.Primary)
-			@muscleList("Secondary", p.Secondary)
-			@muscleList("Stabiliser", p.Stabilizers)
-		</div>
 	</div>
+}
+
+// flatView is one side of the no-WebGL figure. Regions are tappable like the
+// 3D ones and open the same callout.
+templ flatView(v figureView, h map[string]float64) {
+	<svg viewBox={ v.ViewBox } class="size-full" aria-hidden="true">
+		<path d={ v.Silhouette } fill-rule="evenodd" style="fill: var(--north-body-base)"></path>
+		for _, r := range v.Regions {
+			<path
+				d={ r.D }
+				fill-rule="evenodd"
+				style={ regionStyle(h, r.Region) }
+				data-muscle={ r.Region }
+				class="cursor-pointer"
+				@click={ fmt.Sprintf("select(%q)", r.Region) }
+			></path>
+		}
+	</svg>
 }
 
 var scriptOnce = templ.NewOnceHandle()
@@ -167,19 +245,5 @@ var scriptOnce = templ.NewOnceHandle()
 templ Script() {
 	@scriptOnce.Once() {
 		<script src="/assets/js/shared/muscle-viewer/alpine.js"></script>
-	}
-}
-
-templ muscleList(label string, keys []string) {
-	if len(keys) > 0 {
-		<p>
-			<span class="text-muted-foreground">{ label }: </span>
-			for i, key := range keys {
-				if i > 0 {
-					{ ", " }
-				}
-				{ titleCase(key) }
-			}
-		</p>
 	}
 }

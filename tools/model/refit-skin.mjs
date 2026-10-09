@@ -9,7 +9,7 @@
  *
  * Run it from the repository root:
  *
- *   node tools/model/refit-skin.mjs [--in web/assets/models/body.glb] [--out <same>]
+ *   node tools/model/refit-skin.mjs [--in tools/model/body-source.glb] [--out <same>]
  *     [--skin-scale 1] [--skin-offset 0,0,0]
  */
 import { resolve, dirname } from "node:path";
@@ -25,7 +25,7 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const SKIN_NODE = "skin";
 
 function parseArgs(argv) {
-  const args = { in: "web/assets/models/body.glb", out: null, skinScale: 1, skinOffset: [0, 0, 0] };
+  const args = { in: "tools/model/body-source.glb", out: null, skinScale: 1, skinOffset: [0, 0, 0] };
   for (let i = 0; i < argv.length; i += 2) {
     const [flag, value] = [argv[i], argv[i + 1]];
     if (value === undefined) throw new Error(`${flag} needs a value`);

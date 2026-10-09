@@ -3,11 +3,12 @@
 Files:
 
 - **`muscles.js`** — the muscle taxonomy. `MUSCLE_ALIASES` maps each key to the
-  exact `body.glb` mesh names it covers; `MUSCLE_INFO` gives it a display name
+  atlas mesh names it covers (read by `tools/model/build-body.mjs` and
+  `scripts/bodymap`); `MUSCLE_INFO` gives it a display name
   and one-line description for the click-to-inspect panel. Imported by both
   `viewer.js` (in the browser) and `tools/model/build-body.mjs` (in Node, at
   asset-build time), which is why it may never import three.js.
-- **`viewer.js`** — the renderer. Scene, materials, glow shader, interaction.
+- **`viewer.js`** — the renderer. Scene, region materials, interaction.
 - **`alpine.js`** — the Alpine wrapper used by the in-app component.
 
 Two files make up the muscle taxonomy and must stay in sync — nothing enforces
@@ -42,32 +43,23 @@ the only thing keeping them aligned.
 5. No schema or migration is needed — `PlanSchema()` reads `MuscleGroups`
    directly, and plans are stored as `jsonb`.
 
-## How the figure is drawn (NOR-6)
+## How the figure is drawn
 
-The body is **opaque**. Muscles live inside it and are invisible until an
-exercise works them, at which point they surface as an ember glow.
+`body-map.glb` is the skin of a body cut into one region per muscle key (see
+`web/assets/models/README.md`). Every region has its own material, so colouring is
+setting a colour: untrained regions are `--north-body-idle`, skin with no muscle
+under it is `--north-body-base`, and heat ramps from `--north-heat-low` to
+`--north-ember`. The tokens live in `web/assets/css/input.css` and are mirrored to
+iOS.
 
-That glow can't be conventional lighting — nothing can see a mesh sealed inside
-a solid body. Instead each worked muscle is drawn after the skin with
-`depthFunc: GreaterDepth`, so it renders *only where the skin is already in
-front of it*. The light reads as coming from under the surface. Muscles at zero
-load are `visible = false`, which also drops them from the draw list and from
-the click-to-inspect raycast.
+Every colour is decided on the server. `muscleviewer.templ` turns either an
+exercise's tiers or a body map (`internal/bodymap`) into region heat, folds muscles
+without skin into the region over them, and hands the viewer a finished
+`{region: 0..1}` map plus the localized tap details. Without WebGL the same heat
+paints the flat front/back SVG generated beside it.
 
-Two details in `createGlowMaterial()`'s shader are there to stop it looking
-wrong, and both are easy to break by "simplifying":
-
-- **Alpha blending, not additive.** Additive is the obvious choice for a glow
-  and it fails on the landing page: that card is white and the skin is light,
-  so adding light does nothing except where the body is already dark, and the
-  figure ends up looking like it is on fire along its silhouette.
-- **A depth fade past the figure's centre.** `GreaterDepth` also passes for
-  muscles on the *far* side of the body, since nothing but the skin writes
-  depth. Without the fade, the torso lights up from behind.
-
-`?muscleDebug=1` renders the skin at 25% opacity, for checking that the two
-source meshes in `body.glb` actually fit each other, and lists any mesh in the
-asset that no muscle key claims. See `tools/model/README.md`.
+The figure sways slowly around a front three-quarter view (back three-quarter when
+back muscles are the hottest), never under reduced motion; drag turns it.
 
 ## Adding a new exercise
 
@@ -87,4 +79,4 @@ exercise-name lookup table to keep updated.
   no percentages, because that's what the AI actually returns. This is a
   thin adapter over the same `setLoads` internals (fixed intensity per tier).
 
-Both consume the same `viewer.js` module and the same `body.glb`.
+Both consume the same `viewer.js` module and the same `body-map.glb`.

@@ -1,27 +1,30 @@
 /**
- * Alpine wrapper for the shared muscle viewer (NOR-8).
+ * Alpine wrapper for the body figure (NOR-8).
  *
- * Registers `northMuscleViewer(props)` — `props` is
- * `{primary: string[], secondary: string[], stabilizers: string[], exerciseName: string}`,
- * matching web/shared/muscleviewer/muscleviewer.templ's Props.
+ * Registers `northMuscleViewer(props)`, where props come from
+ * web/shared/muscleviewer/muscleviewer.templ:
  *
- * Loading is driven entirely by IntersectionObserver, not by whoever embeds
- * this component: a closed native <dialog> has no box (display:none per the
- * UA stylesheet), so its canvas is never intersecting until the dialog opens
- * — the same mechanism handles "load on first open" and "free the WebGL
- * context on close" without either caller needing to know about the other.
+ *   heat     region key → 0..1, every colour already decided by the server
+ *   details  region key → {name, last?, href?}, already in the reader's language
+ *   inspect  whether a tap opens the callout with "last trained" and a link
+ *
+ * Loading is driven by IntersectionObserver, not by whoever embeds this
+ * component: a closed native <dialog> has no box, so its canvas is never
+ * intersecting until the dialog opens — the same mechanism handles "load on
+ * first open" and "free the WebGL context on close".
+ *
+ * When the 3D figure cannot start (no WebGL), `failed` shows the flat SVG
+ * figure the templ already rendered. Its regions call select() directly.
  *
  * Alpine is loaded with `defer` (web/shared/layout/base.templ), and this
- * script is a plain (non-deferred, non-module) tag, so document order alone
- * guarantees it registers before alpine:init fires — same technique
- * web/landing/scripts.templ uses for northMuscle.
+ * script is a plain tag, so document order alone guarantees it registers
+ * before alpine:init fires.
  */
 (function () {
   "use strict";
 
-  // Mirrors landing.js's assetURL(): reuse this script's own cache-bust query
-  // param for the dynamically imported module, so an immutable-cached asset
-  // doesn't mask a rebuild.
+  // Reuse this script's own cache-bust query for the imported module, so an
+  // immutable-cached asset doesn't mask a rebuild.
   function assetURL(path) {
     const src = document.currentScript && document.currentScript.src;
     const version = src ? new URL(src, location.href).searchParams.get("v") : null;
@@ -37,22 +40,20 @@
       failed: false,
       viewer: null,
       observer: null,
-      selectedMuscle: null,
-      primary: props.primary || [],
-      secondary: props.secondary || [],
-      stabilizers: props.stabilizers || [],
-      exerciseName: props.exerciseName || "",
+      selected: null,
+      heat: props.heat || {},
+      details: props.details || {},
+      inspect: Boolean(props.inspect),
 
       init() {
         this.observer = new IntersectionObserver(
           (entries) => {
-            const visible = entries.some((e) => e.isIntersecting);
-            if (visible) this.load();
+            if (entries.some((e) => e.isIntersecting)) this.load();
             else this.teardown();
           },
           { rootMargin: "300px" },
         );
-        this.observer.observe(this.$refs.canvas);
+        this.observer.observe(this.$el);
       },
 
       async load() {
@@ -61,31 +62,40 @@
           const module = await import(viewerModuleURL);
           this.viewer = await module.createViewer(this.$refs.canvas, {
             reduced,
-            dark: true, // /app/* is permanently dark today — see plan.md
-            onMuscleClick: (key, meta) => {
-              this.selectedMuscle = meta ? { key, ...meta } : null;
-            },
+            dark: document.documentElement.classList.contains("dark"),
+            onMuscleClick: (key) => this.select(key),
           });
-          this.ready = true;
-          this.viewer.setMuscleGroups({
-            primary: this.primary,
-            secondary: this.secondary,
-            stabilizers: this.stabilizers,
-          });
+          this.viewer.setHeat(this.heat);
         } catch (err) {
           this.failed = true;
-          this.ready = true;
         }
+        this.ready = true;
       },
 
-      // Frees the WebGL context without discarding the component's own state
-      // (props survive), so scrolling/closing back into view reloads clean.
+      // A tap on a region, from the canvas or the flat figure. On a figure
+      // that only shows what an exercise works, the callout is just the name.
+      select(key) {
+        const detail = key && this.details[key];
+        if (!detail) {
+          this.clear();
+          return;
+        }
+        this.selected = this.inspect ? { key, ...detail } : { key, name: detail.name };
+        if (this.viewer) this.viewer.select(key);
+      },
+
+      clear() {
+        this.selected = null;
+        if (this.viewer) this.viewer.select(null);
+      },
+
+      // Frees the WebGL context but keeps the props, so scrolling or opening
+      // the dialog again reloads clean.
       teardown() {
         if (this.viewer) this.viewer.destroy();
         this.viewer = null;
         this.ready = false;
-        this.failed = false;
-        this.selectedMuscle = null;
+        this.selected = null;
       },
 
       destroy() {

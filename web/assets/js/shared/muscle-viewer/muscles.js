@@ -1,12 +1,11 @@
 /**
- * The muscle name tables: the mapping between North's 15 muscle keys and the exact
- * mesh names inside body.glb.
+ * The muscle name tables: North's 17 muscle keys, the atlas mesh names each one
+ * covers, and the name and description shown for it.
  *
- * This lives apart from viewer.js because it has two consumers with nothing else in
- * common. The viewer imports it in the browser to colour meshes; tools/model/build-body.mjs
- * imports it in Node to decide which meshes to keep when it rebuilds body.glb from the
- * source anatomy. The model and the code that reads it are then generated from one
- * list rather than from two that can drift apart.
+ * MUSCLE_ALIASES is read by the asset builds, not the browser:
+ * tools/model/build-body.mjs keeps these atlas meshes in body-source.glb, and
+ * scripts/bodymap turns the skin over them into the figure's regions. The viewer
+ * imports only MUSCLE_INFO.
  *
  * Nothing here may import three.js, or the build script can't load it.
  *

@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/bodymap"
 	caffeinecalc "github.com/NorthAIProject/north-client/internal/caffeine/caffeine"
 	"github.com/NorthAIProject/north-client/internal/dashboard"
 	"github.com/NorthAIProject/north-client/internal/day/day"
@@ -22,14 +23,30 @@ import (
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/NorthAIProject/north-client/internal/soreness/sore"
 	"github.com/NorthAIProject/north-client/internal/supplements/supplement"
+	"github.com/NorthAIProject/north-client/internal/users"
 	daypages "github.com/NorthAIProject/north-client/web/day"
 )
 
 type Handler struct {
-	svc *Service
+	svc      *Service
+	bodyMaps BodyMaps
 }
 
 func NewHandler(svc *Service) *Handler { return &Handler{svc: svc} }
+
+// BodyMaps is what recent training heated, for the body figure.
+type BodyMaps interface {
+	BodyMap(ctx context.Context, user users.User, days int) (bodymap.Map, error)
+}
+
+// bodyMapDays is the window the Today figure shows.
+const bodyMapDays = 7
+
+// WithBodyMaps colours the body figure from logged sets.
+func (h *Handler) WithBodyMaps(maps BodyMaps) *Handler {
+	h.bodyMaps = maps
+	return h
+}
 
 // Routes mounts My Day at /app. Must be behind RequireAuth.
 func (h *Handler) Routes(r chi.Router) {
@@ -49,8 +66,18 @@ func (h *Handler) show(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	data := BuildView(r.Context(), snap)
+	if h.bodyMaps != nil {
+		// A figure without heat is still a figure; this never fails the page.
+		if m, err := h.bodyMaps.BodyMap(r.Context(), user, bodyMapDays); err == nil {
+			data.Body.Map = &m
+		} else {
+			middleware.FromContext(r.Context()).Warn("load body map", slog.Any("error", err))
+		}
+	}
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := daypages.Page(user, BuildView(r.Context(), snap)).Render(r.Context(), w); err != nil {
+	if err := daypages.Page(user, data).Render(r.Context(), w); err != nil {
 		middleware.FromContext(r.Context()).Error("render day", slog.Any("error", err))
 	}
 }
@@ -328,19 +355,11 @@ func bodyCard(b day.Body) daypages.BodyCard {
 	}
 	for _, so := range b.Soreness {
 		out.Soreness = append(out.Soreness, daypages.SoreRegion{Region: so.Region, Severity: so.Severity})
-		muscles := sore.Muscles[so.Region]
-		switch so.Severity {
-		case sore.Painful:
-			out.Painful = append(out.Painful, muscles...)
-		case sore.Sore:
-			out.Sore = append(out.Sore, muscles...)
-		default:
-			out.Stiff = append(out.Stiff, muscles...)
-		}
 	}
 	if b.WeightKg != nil {
 		out.HasWeight = true
 		out.Weight = fmt.Sprintf("%.1f", *b.WeightKg)
+		out.HeightMissing = b.HeightCm == nil
 	}
 	if b.BMI != nil {
 		out.HasBMI = true
