@@ -113,3 +113,38 @@ func findLine(t *testing.T, lines []string, want string) string {
 	t.Fatalf("no line mentioning %q in %v", want, lines)
 	return ""
 }
+
+// With a week or more of readings in the four weeks before the window, the
+// line says what the metric usually is; with less, it says nothing about it.
+func TestSummaryNamesTheUsualFromTheWeeksBefore(t *testing.T) {
+	svc, user := newService(t)
+	ctx := context.Background()
+
+	// Eight days of 9,000 steps in the four weeks before Aug 8-15, then two
+	// days of 4,000 inside the window.
+	var readings []health.Reading
+	for d := 0; d < 8; d++ {
+		readings = append(readings, health.Reading{
+			Metric: "steps", Value: 9000, Unit: "count", StartedAt: at("2026-07-20T09:00:00Z").AddDate(0, 0, d),
+		})
+	}
+	readings = append(readings,
+		health.Reading{Metric: "steps", Value: 4000, Unit: "count", StartedAt: at("2026-08-13T09:00:00Z")},
+		health.Reading{Metric: "steps", Value: 4000, Unit: "count", StartedAt: at("2026-08-14T09:00:00Z")},
+		health.Reading{Metric: "resting_heart_rate", Value: 55, Unit: "bpm", StartedAt: at("2026-08-14T06:00:00Z")},
+	)
+	if _, err := svc.Ingest(ctx, user.ID, "apple_health", readings); err != nil {
+		t.Fatalf("ingest: %v", err)
+	}
+
+	lines, err := svc.Summary(ctx, user.ID, at("2026-08-15T00:00:00Z"), 7)
+	if err != nil {
+		t.Fatalf("summary: %v", err)
+	}
+	if line := findLine(t, lines, "steps"); !strings.Contains(line, "4,000 per day") || !strings.Contains(line, "usually 9,000") {
+		t.Errorf("steps line = %q, want 4,000 per day, usually 9,000", line)
+	}
+	if line := findLine(t, lines, "resting heart rate"); strings.Contains(line, "usually") {
+		t.Errorf("resting heart rate line = %q — no history, so no usual", line)
+	}
+}
