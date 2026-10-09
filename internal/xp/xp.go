@@ -1,10 +1,11 @@
 // Package xp scores verified progress and ranks friends by it.
 //
 // XP is never stored. It is derived on read from what the other slices already
-// record — a habit kept on a scheduled day, a check-in streak, a finished
-// session, a milestone, a goal — so a goal reopened stops paying without a
-// reversal, and nothing can be earned that the data does not show. The rules
-// are docs/advanced-gamification.md's table; logging, chatting and rating pay
+// record — a habit kept on a scheduled day, a check-in streak and the marks it
+// reaches, a finished session, a weekly review, a crew challenge met, a
+// milestone, a goal — so a goal reopened stops paying without a reversal, and
+// nothing can be earned that the data does not show. The rules are
+// docs/advanced-gamification.md's table; logging, chatting and rating pay
 // nothing.
 package xp
 
@@ -17,11 +18,17 @@ const (
 	KindWorkout        = "workout"
 	KindMilestone      = "milestone"
 	KindGoal           = "goal"
+	KindWeekReviewed   = "week_reviewed"
+	KindStreakMark     = "streak_mark"
+	KindChallengeMet   = "challenge_met"
 	PointsHabitKept    = 10
 	PointsStreakDay    = 5
 	PointsWorkout      = 20
 	PointsMilestone    = 40
 	PointsGoal         = 150
+	PointsWeekReviewed = 25
+	PointsStreakMark   = 50
+	PointsChallengeMet = 30
 	WorkoutMinMinutes  = 10
 	WorkoutsPaidPerDay = 2
 	StreakDayFrom      = 3
@@ -29,7 +36,10 @@ const (
 
 // Kinds in the order they are shown.
 func Kinds() []string {
-	return []string{KindWorkout, KindHabitKept, KindStreakDay, KindMilestone, KindGoal}
+	return []string{
+		KindWorkout, KindHabitKept, KindStreakDay, KindStreakMark,
+		KindWeekReviewed, KindChallengeMet, KindMilestone, KindGoal,
+	}
 }
 
 // Earned is how many of one kind counted, and what they paid.

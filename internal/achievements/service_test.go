@@ -123,6 +123,33 @@ func TestRecordingIsSparseAndOnce(t *testing.T) {
 	}
 }
 
+// A crew challenge met is one moment per crew and week, filed with what the
+// challenge counted.
+func TestCrewChallengeMetIsOncePerWeek(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	ach := achievements.NewService(pool)
+	ana := person(t, pool, "ana@north.test", "Ana")
+	runners, lifters := uuid.New(), uuid.New()
+	week := time.Date(2026, 9, 28, 0, 0, 0, 0, time.UTC)
+
+	ach.CrewChallengeMet(ctx, ana.ID, runners, "Runners", "checkins", 5, week, time.Now())
+	ach.CrewChallengeMet(ctx, ana.ID, runners, "Runners", "checkins", 5, week, time.Now())
+	ach.CrewChallengeMet(ctx, ana.ID, lifters, "Lifters", "workouts", 3, week, time.Now())
+
+	got, _ := ach.Feed(ctx, ana.ID, time.Time{})
+	if len(got) != 2 {
+		t.Fatalf("recorded %v, want one per crew", titles(got))
+	}
+	category := map[string]string{}
+	for _, it := range got {
+		category[it.Title] = it.Category
+	}
+	if category["Met the Runners challenge"] != "streaks" || category["Met the Lifters challenge"] != "training" {
+		t.Fatalf("categories = %v", category)
+	}
+}
+
 // Kudos go to things you can see that are not yours; the owner hears once.
 func TestKudos(t *testing.T) {
 	pool := testdb.New(t)

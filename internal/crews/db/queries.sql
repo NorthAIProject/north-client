@@ -63,3 +63,12 @@ FROM crew_members mine
 JOIN crew_members other ON other.crew_id = mine.crew_id AND other.user_id <> mine.user_id
 JOIN users u ON u.id = other.user_id
 WHERE mine.user_id = $1;
+
+-- name: ChallengesOf :many
+-- The user's crews that have a challenge, with it and when it was last set.
+SELECT c.id, c.name, ch.kind, ch.target, ch.created_at
+FROM crew_members m
+JOIN crews c ON c.id = m.crew_id
+JOIN crew_challenges ch ON ch.crew_id = c.id
+WHERE m.user_id = $1
+ORDER BY c.created_at;
