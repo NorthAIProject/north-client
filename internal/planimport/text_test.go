@@ -51,3 +51,13 @@ func TestExtractTextRefusesAnImageAndKeepsTheFileLimits(t *testing.T) {
 		t.Fatalf("unsupported: err = %v", err)
 	}
 }
+
+func TestExtractTextSaysWhenAPDFHasNoTextLayer(t *testing.T) {
+	_, err := ExtractText("plano.pdf", minimalPDF(t, []string{" "}, false))
+	if !errors.Is(err, ErrNoTextLayer) {
+		t.Fatalf("err = %v, want ErrNoTextLayer", err)
+	}
+	if ReasonOf(err) != "" {
+		t.Fatalf("err = %v is a refusal; a PDF without a text layer can still be imported", err)
+	}
+}

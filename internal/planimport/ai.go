@@ -155,7 +155,9 @@ var mealSchema = replySchema("one food", map[string]string{
 })
 
 func (r *AIReader) ReadWorkout(ctx context.Context, user users.User, src Source, hint string) (string, []WorkoutRow, []string, error) {
-	system, err := prompts.Render(prompts.PlanImportWorkout, map[string]any{"Kind": string(src.Kind), "Image": src.Kind == KindImage})
+	system, err := prompts.Render(prompts.PlanImportWorkout, map[string]any{
+		"Kind": string(src.Kind), "Image": src.Kind == KindImage, "Document": src.Kind == KindPDFDocument,
+	})
 	if err != nil {
 		return "", nil, nil, apperr.Wrap(err, "render the workout import prompt")
 	}
@@ -180,7 +182,8 @@ func (r *AIReader) ReadWorkout(ctx context.Context, user users.User, src Source,
 
 func (r *AIReader) ReadMeal(ctx context.Context, user users.User, src Source, hint string) (MealReading, error) {
 	system, err := prompts.Render(prompts.PlanImportMeal, map[string]any{
-		"Kind": string(src.Kind), "Image": src.Kind == KindImage, "Catalog": r.catalogFor(ctx),
+		"Kind": string(src.Kind), "Image": src.Kind == KindImage, "Document": src.Kind == KindPDFDocument,
+		"Catalog": r.catalogFor(ctx),
 	})
 	if err != nil {
 		return MealReading{}, apperr.Wrap(err, "render the meal import prompt")
@@ -247,9 +250,12 @@ func notAPlan(reply modelReply, noun string) error {
 // the same for every file so its prefix can be cached.
 func (r *AIReader) read(ctx context.Context, user users.User, src Source, hint, system string, schema *ai.Schema, out any) error {
 	var parts []ai.Part
-	if src.Kind == KindImage {
+	switch src.Kind {
+	case KindImage:
 		parts = []ai.Part{{InlineData: src.Image, MIMEType: src.MIME}}
-	} else {
+	case KindPDFDocument:
+		parts = []ai.Part{{InlineData: src.Document, MIMEType: src.MIME}}
+	default:
 		parts = []ai.Part{ai.TextPart("<source>\n" + src.Text + "\n</source>")}
 	}
 	if hint = strings.TrimSpace(hint); hint != "" {
@@ -291,10 +297,13 @@ func (r *AIReader) read(ctx context.Context, user users.User, src Source, hint, 
 		if apperr.Is(err, apperr.ErrValidation) || ReasonOf(err) != "" {
 			return err
 		}
-		// Every provider refused or failed. For an image that is most often a
-		// model that cannot see; say what the person can do about it.
-		if src.Kind == KindImage {
+		// Every provider refused or failed. For an image or a PDF that is most
+		// often a model that cannot see; say what the person can do about it.
+		switch src.Kind {
+		case KindImage:
 			return &FileError{Reason: ReasonCannotRead, Message: "This photo couldn't be read right now. Try a JPG or PNG, or import a CSV or spreadsheet instead."}
+		case KindPDFDocument:
+			return &FileError{Reason: ReasonCannotRead, Message: "This PDF couldn't be read right now. Try a photo of its pages, or import a CSV or spreadsheet instead."}
 		}
 		return err
 	}

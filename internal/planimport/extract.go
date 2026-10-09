@@ -69,6 +69,10 @@ func readXLSX(data []byte) ([][]string, error) {
 	return rows, nil
 }
 
+// errNoTextLayer is readPDF's answer for a PDF that opened, within the page
+// limit, but gave no words: Open keeps it as a document for the model.
+var errNoTextLayer = errors.New("the PDF has no text layer")
+
 // readPDF extracts a PDF's text layer, page by page.
 func readPDF(data []byte) (string, error) {
 	if !bytes.HasPrefix(bytes.TrimLeft(data[:min(len(data), 1024)], " \t\r\n\x00"), []byte("%PDF")) {
@@ -107,9 +111,9 @@ func readPDF(data []byte) (string, error) {
 	}
 
 	if !readable {
-		// A scan: a picture of a page with no text layer. A photo of the same
-		// page reads fine, and saying so is more use than a generic failure.
-		return "", refuse(ReasonUnreadable, "This PDF is a scan with no text in it. Take a photo of the page and import that instead.")
+		// A scan, or an export whose text this reader cannot follow. Every
+		// provider reads a PDF itself, so it goes to the model whole.
+		return "", errNoTextLayer
 	}
 	return b.String(), nil
 }

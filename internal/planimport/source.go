@@ -3,6 +3,7 @@ package planimport
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"path/filepath"
@@ -41,6 +42,11 @@ const (
 	KindDOCX  Kind = "docx"
 	KindText  Kind = "text"
 	KindImage Kind = "image"
+
+	// KindPDFDocument is a PDF whose text layer yields nothing: a scan, or an
+	// export (Canva's, for one) the text reader cannot follow. The model reads
+	// the PDF itself, as it reads a photo.
+	KindPDFDocument Kind = "pdf_document"
 )
 
 // Accepted is the list shown when a file is refused, and the accept attribute
@@ -49,19 +55,20 @@ const Accepted = ".pdf,.docx,.txt,.md,.csv,.tsv,.xlsx,.json,.jpg,.jpeg,.png,.web
 
 // Source is a file after it has been opened and checked, ready to be read.
 //
-// Exactly one of Rows, Text, JSON or Image is set, according to Kind. The
-// split decides who reads it: rows and JSON have a stated shape and are mapped
-// by code, with no model involved; text and images have no shape and go to a
-// model.
+// Exactly one of Rows, Text, JSON, Image or Document is set, according to
+// Kind. The split decides who reads it: rows and JSON have a stated shape and
+// are mapped by code, with no model involved; text, images and PDF documents
+// have no shape and go to a model. MIME is set with Image and Document.
 type Source struct {
 	Kind     Kind
 	Filename string
 
-	Rows  [][]string
-	Text  string
-	JSON  []byte
-	Image []byte
-	MIME  string
+	Rows     [][]string
+	Text     string
+	JSON     []byte
+	Image    []byte
+	Document []byte
+	MIME     string
 }
 
 // Structured reports whether the file has a stated shape that code can map
@@ -124,6 +131,10 @@ func Open(filename string, data []byte) (Source, error) {
 
 	case "pdf":
 		text, err := readPDF(data)
+		if errors.Is(err, errNoTextLayer) {
+			src.Kind, src.Document, src.MIME = KindPDFDocument, data, "application/pdf"
+			return src, nil
+		}
 		src.Kind, src.Text = KindPDF, text
 		return src, err
 

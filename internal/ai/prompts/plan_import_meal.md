@@ -83,7 +83,8 @@ not a skipped line.
 
 ## The source
 
-{{if .Image}}The source is the attached image of the person's plan.{{else}}The person's message holds the text extracted from their file ({{.Kind}}),
+{{if .Image}}The source is the attached image of the person's plan.{{else if .Document}}The source is the attached PDF of the person's plan. Read its pages as you
+would a printout.{{else}}The person's message holds the text extracted from their file ({{.Kind}}),
 between <source> tags. Line breaks and tabs come from the file's layout; a tab
 often separates table columns.{{end}}
 
