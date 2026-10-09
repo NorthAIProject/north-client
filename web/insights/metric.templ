@@ -2,6 +2,7 @@ package insights
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
@@ -56,6 +57,27 @@ type MetricView struct {
 	Highlights []string
 
 	HasData bool
+
+	// Health marks a metric synced from a health provider.
+	Health bool
+	// Usual places the latest day against the person's own usual range; nil
+	// until there are enough days for one.
+	Usual *UsualView
+}
+
+// UsualView is a latest day against the weeks before it.
+type UsualView struct {
+	Day    time.Time
+	Latest float64
+	Mean   float64
+	SD     float64
+	// Low and High are the usual range, the mean give or take one standard
+	// deviation, already formatted at the metric's precision.
+	Low, High string
+	Days      int
+	Z         float64
+	State     string // "above", "usual" or "below"
+	Text      string
 }
 
 templ Metric(user users.User, view MetricView) {
@@ -85,6 +107,9 @@ templ MetricBody(view MetricView) {
 				@chart.Chart(view.Chart)
 			</div>
 			@trendRow(view.Trend)
+			if view.Usual != nil {
+				@usualRow(*view.Usual)
+			}
 			if view.Comparison.HasPrior {
 				@comparison(view.Comparison)
 			}
@@ -116,6 +141,15 @@ templ trendRow(t TrendView) {
 		} else {
 			<span class="text-muted-foreground text-sm">Not enough history</span>
 		}
+	</div>
+}
+
+// usualRow says where the latest day sits against the person's own range,
+// in the same shape as the trend row above it.
+templ usualRow(u UsualView) {
+	<div class="border-hairline bg-surface/60 space-y-1 rounded-lg border px-4 py-3">
+		<p class="text-muted-foreground font-mono text-[10px] uppercase tracking-[0.14em]">Against your usual</p>
+		<p class={ "text-sm", templ.KV("text-signal", u.State != "usual") }>{ u.Text }</p>
 	</div>
 }
 

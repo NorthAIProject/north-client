@@ -3,6 +3,7 @@ package insights
 import (
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/go-chi/chi/v5"
@@ -32,6 +33,7 @@ func NewAPI(svc *Service) *API { return &API{svc: svc} }
 func (a *API) Routes(r chi.Router) {
 	r.Get("/insights", a.summary)
 	r.Get("/insights/metrics/{key}", a.metric)
+	r.Get("/insights/health", a.health)
 	r.Get("/insights/timeline", a.timeline)
 	r.Get("/insights/body", a.body)
 	r.Get("/insights/mind", a.mind)
@@ -134,16 +136,51 @@ type Comparison struct {
 }
 
 type MetricDetail struct {
-	Range      Range      `json:"range"`
-	Key        string     `json:"key"`
-	Label      string     `json:"label"`
-	Headline   string     `json:"headline"`
-	Note       string     `json:"note"`
-	Chart      Chart      `json:"chart"`
-	Trend      Trend      `json:"trend"`
-	Comparison Comparison `json:"comparison"`
-	Highlights []string   `json:"highlights"`
-	HasData    bool       `json:"hasData"`
+	Range      Range       `json:"range"`
+	Key        string      `json:"key"`
+	Label      string      `json:"label"`
+	Headline   string      `json:"headline"`
+	Note       string      `json:"note"`
+	Chart      Chart       `json:"chart"`
+	Trend      Trend       `json:"trend"`
+	Comparison Comparison  `json:"comparison"`
+	Highlights []string    `json:"highlights"`
+	HasData    bool        `json:"hasData"`
+	Health     bool        `json:"health,omitempty"`
+	Usual      *UsualRange `json:"usual,omitempty"`
+}
+
+// UsualRange is a latest day against the person's usual range. Text is the
+// sentence to show; the numbers are there for a client that draws the band.
+type UsualRange struct {
+	Day    string  `json:"day"`
+	Latest float64 `json:"latest"`
+	Mean   float64 `json:"mean"`
+	SD     float64 `json:"sd"`
+	Low    string  `json:"low"`
+	High   string  `json:"high"`
+	Days   int     `json:"days"`
+	Z      float64 `json:"z"`
+	// State is "above", "usual" or "below", kept an open string so a new
+	// state never breaks a shipped client's decode.
+	State string `json:"state"`
+	Text  string `json:"text"`
+}
+
+// HealthList is the health metrics a person has recent readings for.
+type HealthList struct {
+	Metrics []HealthMetric `json:"metrics"`
+}
+
+// HealthMetric is one row of the health list. Recent holds the last
+// fortnight's daily values, oldest first, for a sparkline.
+type HealthMetric struct {
+	Key    string      `json:"key"`
+	Label  string      `json:"label"`
+	Latest string      `json:"latest"`
+	Day    string      `json:"day"`
+	Recent []float64   `json:"recent"`
+	Usual  *UsualRange `json:"usual,omitempty"`
 }
 
 func (a *API) summary(w http.ResponseWriter, r *http.Request) {
@@ -178,6 +215,43 @@ func (a *API) metric(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, projectMetric(view))
 }
 
+func (a *API) health(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+	rows, err := a.svc.Health(r.Context(), user, time.Now())
+	if err != nil {
+		httpx.Error(w, err, "Health could not be loaded.")
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, projectHealth(rows))
+}
+
+func projectHealth(rows []HealthRow) HealthList {
+	out := HealthList{Metrics: []HealthMetric{}}
+	for _, row := range rows {
+		latest := row.Recent[len(row.Recent)-1]
+		metric := HealthMetric{
+			Key: row.Metric.Key, Label: row.Metric.Label,
+			Latest: formatMetric(row.Metric, latest.Value), Day: latest.At.Format(time.DateOnly),
+			Recent: make([]float64, 0, len(row.Recent)),
+		}
+		for _, p := range row.Recent {
+			metric.Recent = append(metric.Recent, p.Value)
+		}
+		if row.Usual != nil {
+			metric.Usual = projectUsual(usualView(row.Metric, *row.Usual))
+		}
+		out.Metrics = append(out.Metrics, metric)
+	}
+	return out
+}
+
+func projectUsual(v insightpages.UsualView) *UsualRange {
+	return &UsualRange{
+		Day: v.Day.Format(time.DateOnly), Latest: v.Latest, Mean: v.Mean, SD: v.SD,
+		Low: v.Low, High: v.High, Days: v.Days, Z: v.Z, State: v.State, Text: v.Text,
+	}
+}
+
 func projectSummary(v insightpages.SummaryView) Summary {
 	out := Summary{
 		Range: projectRange(v.Range), Scores: []Score{}, Pinned: []Pinned{},
@@ -207,7 +281,7 @@ func projectSummary(v insightpages.SummaryView) Summary {
 }
 
 func projectMetric(v insightpages.MetricView) MetricDetail {
-	return MetricDetail{
+	out := MetricDetail{
 		Range: projectRange(v.Range), Key: v.Key, Label: v.Label, Headline: v.Headline, Note: v.Note,
 		Chart: projectChart(v.Chart.Data),
 		Trend: Trend{Direction: v.Trend.Direction, Pct: v.Trend.Pct, Word: v.Trend.Word, HasPrior: v.Trend.HasPrior},
@@ -218,7 +292,12 @@ func projectMetric(v insightpages.MetricView) MetricDetail {
 		},
 		Highlights: nonNil(v.Highlights),
 		HasData:    v.HasData,
+		Health:     v.Health,
 	}
+	if v.Usual != nil {
+		out.Usual = projectUsual(*v.Usual)
+	}
+	return out
 }
 
 func projectRange(v insightpages.RangeView) Range {

@@ -4350,7 +4350,7 @@ paths:
         required: true
         schema:
           type: string
-        description: e.g. sleep, water, mood, energy, burn, sessions, steps, active-energy, resting-heart-rate, hrv
+        description: e.g. sleep, water, mood, energy, burn, sessions, or a key from GET /insights/health (steps, active-energy, exercise-minutes, stand-hours, daylight, resting-heart-rate, hrv, vo2max, weight)
     get:
       operationId: getInsightMetric
       summary: One metric over a window, beside the window before it
@@ -4367,6 +4367,23 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+  /insights/health:
+    get:
+      operationId: getInsightsHealth
+      summary: The health metrics this person has readings for in the last 14 days, each against their usual
+      description: |
+        Rows follow the server's catalog order and are left out when there is no reading in the last
+        14 days. A row's key opens its detail at GET /insights/metrics/{key}. Usual is absent until
+        there are at least 7 days of readings in the 28 days before the latest one.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InsightsHealth'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /insights/timeline:
     get:
       operationId: getInsightsTimeline
@@ -10944,6 +10961,71 @@ components:
             type: string
         hasData:
           type: boolean
+        health:
+          type: boolean
+          description: True for a metric synced from a health provider such as Apple Health.
+        usual:
+          $ref: '#/components/schemas/InsightsUsualRange'
+    InsightsUsualRange:
+      type: object
+      description: |
+        The latest day of a metric against the person's usual range over the 28 days before it:
+        the mean give or take one standard deviation.
+      required: [day, latest, mean, sd, low, high, days, z, state, text]
+      properties:
+        day:
+          type: string
+          format: date
+        latest:
+          type: number
+        mean:
+          type: number
+        sd:
+          type: number
+        low:
+          type: string
+          description: The bottom of the usual range, formatted at the metric's precision.
+        high:
+          type: string
+        days:
+          type: integer
+          description: Days with a reading behind the baseline.
+        z:
+          type: number
+        state:
+          type: string
+          description: above, usual or below. An open string so a new state never breaks decoding.
+        text:
+          type: string
+    InsightsHealth:
+      type: object
+      required: [metrics]
+      properties:
+        metrics:
+          type: array
+          items:
+            $ref: '#/components/schemas/InsightsHealthMetric'
+    InsightsHealthMetric:
+      type: object
+      required: [key, label, latest, day, recent]
+      properties:
+        key:
+          type: string
+        label:
+          type: string
+        latest:
+          type: string
+          description: The latest day's value, formatted with its unit.
+        day:
+          type: string
+          format: date
+        recent:
+          type: array
+          description: One value per day with a reading over the last 14 days, oldest first.
+          items:
+            type: number
+        usual:
+          $ref: '#/components/schemas/InsightsUsualRange'
     InsightsSegment:
       type: object
       required: [label, value]
