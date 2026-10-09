@@ -166,6 +166,31 @@ func TestDescribeMealPlanListsOptionsAndCollapsesIdenticalDays(t *testing.T) {
 	}
 }
 
+// Some of the plan's days that read alike are only a span, not "Every day":
+// edit_meal_plan describes just the days it changed, and two identical
+// changed days of a week are not the whole plan.
+func TestDescribeMealDaysSaysEveryDayOnlyForThePlansDays(t *testing.T) {
+	week := optionPlan()
+	week.Days = nil
+	for _, wd := range meal.WeekOrder {
+		d := optionPlan().Days[0]
+		d.Weekday = wd
+		week.Days = append(week.Days, d)
+	}
+
+	var b strings.Builder
+	describeMealDays(&b, week, week.Days[:2], nil)
+	if got := b.String(); strings.Contains(got, "Every day") || !strings.HasPrefix(got, "\nMonday–Tuesday: ") {
+		t.Errorf("two of seven days = %q, want a Monday–Tuesday span", got)
+	}
+
+	b.Reset()
+	describeMealDays(&b, week, week.Days, nil)
+	if got := b.String(); !strings.HasPrefix(got, "\nEvery day (Monday–Sunday): ") {
+		t.Errorf("all seven days = %q, want Every day (Monday–Sunday)", got)
+	}
+}
+
 // withBreakfastGrams is day with its first meal's first food reweighed,
 // copied so the plan it came from is untouched.
 func withBreakfastGrams(day meal.Day, grams float64) meal.Day {
