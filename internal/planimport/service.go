@@ -164,6 +164,17 @@ func (s *Service) CommitWorkout(ctx context.Context, user users.User, d WorkoutD
 	return s.workouts.ImportPlan(ctx, user, p)
 }
 
+// recoverEveryDay marks as every-day a draft whose one day still carries
+// the "Every day" label parsing gave it. Old iOS builds drop the everyDay
+// field when they send a draft back, and without this the plan would save
+// as Monday alone.
+func recoverEveryDay(d MealDraft) MealDraft {
+	if !d.EveryDay && len(d.Days) == 1 && strings.EqualFold(strings.TrimSpace(d.Days[0].Label), everyDayLabel) {
+		d.EveryDay = true
+	}
+	return d
+}
+
 // CommitMeal saves a reviewed meal draft as a plan.
 //
 // The draft is previewed again first, so what is saved is what the server
@@ -175,6 +186,7 @@ func (s *Service) CommitWorkout(ctx context.Context, user users.User, d WorkoutD
 // change to a meal plan is: always on an easy plan, until confirmed on an
 // advanced one.
 func (s *Service) CommitMeal(ctx context.Context, user users.User, d MealDraft, confirmOverage bool) (meals.MealPlan, MealDraft, error) {
+	d = recoverEveryDay(d)
 	d = s.PreviewMeal(ctx, user.ID, d)
 
 	plan, problems := mealPlanFromDraft(d)
