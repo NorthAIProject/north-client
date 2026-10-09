@@ -122,17 +122,17 @@ func TestTodaysMeal(t *testing.T) {
 		},
 	}}}
 
-	if m, err := todaysMeal(plan, time.Monday, "breakfast"); err != nil || m.Name != "Breakfast" {
+	if m, err := todaysMeal(plan, time.Monday, "breakfast", ""); err != nil || m.Name != "Breakfast" {
 		t.Fatalf("breakfast = %+v, %v", m, err)
 	}
-	if _, err := todaysMeal(plan, time.Monday, "snack"); !apperr.Is(err, apperr.ErrValidation) {
+	if _, err := todaysMeal(plan, time.Monday, "snack", ""); !apperr.Is(err, apperr.ErrValidation) {
 		t.Fatalf("an empty meal was loggable: %v", err)
 	}
-	if _, err := todaysMeal(plan, time.Monday, "dinner"); !apperr.Is(err, apperr.ErrNotFound) ||
+	if _, err := todaysMeal(plan, time.Monday, "dinner", ""); !apperr.Is(err, apperr.ErrNotFound) ||
 		!strings.Contains(err.Error(), `"Breakfast"`) {
 		t.Fatalf("missing meal err = %v, want it to list the day's meals", err)
 	}
-	if _, err := todaysMeal(plan, time.Tuesday, "breakfast"); !apperr.Is(err, apperr.ErrNotFound) {
+	if _, err := todaysMeal(plan, time.Tuesday, "breakfast", ""); !apperr.Is(err, apperr.ErrNotFound) {
 		t.Fatalf("unplanned day err = %v", err)
 	}
 }
