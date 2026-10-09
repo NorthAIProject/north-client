@@ -14,6 +14,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/ai/fake"
 	"github.com/NorthAIProject/north-client/internal/coach"
 	"github.com/NorthAIProject/north-client/internal/conversations"
+	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
@@ -585,5 +586,121 @@ func TestAWriteSuspendedOnALongThreadIsStillPending(t *testing.T) {
 	}
 	if !ok {
 		t.Error("nothing is awaiting approval; the write at the end of a long thread was missed")
+	}
+}
+
+// slowTools is a write that takes a while, like generating a training plan: it
+// says when it has started and waits to be let go.
+type slowTools struct {
+	*stubTools
+	started chan struct{}
+	release chan struct{}
+
+	// ctxErr is the context's error when the write finished, so a test can
+	// tell whether the write was cut off.
+	ctxErr error
+}
+
+func (s *slowTools) InvokeAll(ctx context.Context, userID uuid.UUID, calls []ai.ToolCall) []ai.ToolResult {
+	close(s.started)
+	<-s.release
+	s.ctxErr = ctx.Err()
+	return s.stubTools.InvokeAll(ctx, userID, calls)
+}
+
+func newSlowTools() *slowTools {
+	return &slowTools{
+		stubTools: &stubTools{
+			tools:    []ai.Tool{writeTool},
+			results:  map[string]string{"create_check_in": "logged"},
+			readOnly: map[string]bool{"create_check_in": false},
+		},
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+}
+
+// suspendOnWrite sends a message the coach answers with a write, leaving it
+// waiting for approval.
+func suspendOnWrite(t *testing.T, h harness) uuid.UUID {
+	t.Helper()
+
+	conversationID := newConversation(t, h)
+	stream, err := h.coach.SendMessage(context.Background(), h.user, conversationID, "log my check-in")
+	if err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	if _, drainErr := drain(stream); drainErr != nil {
+		t.Fatalf("drain: %v", drainErr)
+	}
+	return conversationID
+}
+
+// The phone gives up long before a training plan is ready. Hanging up must not
+// cut the write off, or it is never recorded and the turn waits for approval
+// forever — which is what Allow did in prod on 2026-10-09.
+func TestAnApprovalTheCallerHangsUpOnStillRecordsTheWrite(t *testing.T) {
+	t.Parallel()
+
+	tools := newSlowTools()
+	client := &fake.Client{Responses: []fake.Response{
+		fake.Calling(fake.ToolCall("create_check_in", `{"mood":4}`)),
+		{Text: "Logged it."},
+	}}
+	h := newToolHarness(t, client, tools)
+	conversationID := suspendOnWrite(t, h)
+
+	ctx, hangUp := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- h.coach.ResolvePending(ctx, h.user, conversationID, uuid.Nil, true) }()
+
+	<-tools.started
+	hangUp()
+	close(tools.release)
+
+	if err := <-done; err != nil {
+		t.Fatalf("approve: %v", err)
+	}
+	if tools.ctxErr != nil {
+		t.Errorf("the write ran on a cancelled context (%v); hanging up cut it off", tools.ctxErr)
+	}
+	if _, ok, err := h.coach.PendingApproval(context.Background(), h.user, conversationID); err != nil {
+		t.Fatalf("pending approval: %v", err)
+	} else if ok {
+		t.Error("the call is still pending; the result of the write was not recorded")
+	}
+}
+
+// A second tap while the first is still running must not start the write
+// again. The turn reads as pending until the first one records its result, so
+// the messageID check alone lets it through.
+func TestASecondApprovalWhileTheFirstRunsIsRefused(t *testing.T) {
+	t.Parallel()
+
+	tools := newSlowTools()
+	client := &fake.Client{Responses: []fake.Response{
+		fake.Calling(fake.ToolCall("create_check_in", `{"mood":4}`)),
+		{Text: "Logged it."},
+	}}
+	h := newToolHarness(t, client, tools)
+	conversationID := suspendOnWrite(t, h)
+
+	done := make(chan error, 1)
+	go func() {
+		done <- h.coach.ResolvePending(context.Background(), h.user, conversationID, uuid.Nil, true)
+	}()
+	<-tools.started
+
+	err := h.coach.ResolvePending(context.Background(), h.user, conversationID, uuid.Nil, true)
+	if !apperr.Is(err, apperr.ErrConflict) {
+		t.Errorf("second approve = %v, want a conflict while the first is running", err)
+	}
+
+	close(tools.release)
+	if err := <-done; err != nil {
+		t.Fatalf("first approve: %v", err)
+	}
+	if len(tools.calls) != 1 {
+		t.Errorf("the write ran %d times, want exactly 1", len(tools.calls))
 	}
 }

@@ -339,7 +339,11 @@ paths:
     post:
       operationId: decideToolCalls
       summary: Allow or refuse the writes the coach asked to make
-      description: The tools run inside this request. Then call resumeConversation for the reply.
+      description: >-
+        The tools run inside this request, which can take minutes for a new
+        training plan. They finish and are recorded even if the caller hangs up.
+        A second call while the first is still running answers 409. Then call
+        resumeConversation for the reply.
       requestBody:
         required: true
         content:
