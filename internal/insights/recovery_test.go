@@ -20,12 +20,15 @@ type fakeNights []stat.Night
 func (f fakeNights) Sleep(context.Context, users.User, timerange.Range) (stat.SleepStats, error) {
 	return stat.SleepStats{Nights: f}, nil
 }
+
 func (fakeNights) Cardio(context.Context, users.User, timerange.Range) (stats.CardioStats, error) {
 	return stats.CardioStats{}, nil
 }
+
 func (fakeNights) Eating(context.Context, users.User, timerange.Range) (stat.EatingStats, error) {
 	return stat.EatingStats{}, nil
 }
+
 func (fakeNights) Patterns(context.Context, users.User, timerange.Range) ([]stat.Finding, int, error) {
 	return nil, 0, nil
 }
