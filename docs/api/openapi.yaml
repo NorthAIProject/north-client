@@ -8114,6 +8114,17 @@ components:
           type: array
           items:
             type: string
+        everyDay:
+          type: boolean
+          description: >-
+            The file named no days. The draft then has exactly one day, which
+            preview measures once (as Monday) and commit saves on all seven
+            weekdays. Absent means false.
+        notes:
+          type: string
+          description: >-
+            Advice, recipes and general guidance the file carried beside its
+            meals (markdown, in the file's language). Saved with the plan.
     MealImportDay:
       type: object
       required: [label, meals]
@@ -8141,9 +8152,33 @@ components:
     MealImportMeal:
       type: object
       required: [name, foods]
+      description: >-
+        A meal slot. foods is its first option, the only one counted toward
+        the day; alternatives are the other options, eaten instead of it. A
+        client that ignores alternatives round-trips foods alone and saves the
+        first option.
       properties:
         name:
           type: string
+        foods:
+          type: array
+          items:
+            $ref: '#/components/schemas/MealImportFood'
+        optionLabel:
+          type: string
+          description: What the file called the first option ("Opção 1"); absent when unnamed.
+        alternatives:
+          type: array
+          description: The meal's further options, in the file's order. Absent when there are none.
+          items:
+            $ref: '#/components/schemas/MealImportOption'
+    MealImportOption:
+      type: object
+      required: [label, foods]
+      properties:
+        label:
+          type: string
+          description: What the file called this option; empty when unnamed (saved as "Option N").
         foods:
           type: array
           items:
@@ -8163,6 +8198,14 @@ components:
           type: number
           format: double
           description: The weight that will be stored. Null when it cannot be known; edit it on review.
+        sourceText:
+          type: string
+          description: >-
+            The line as the file wrote it ("2 fatias pão integral"), kept
+            because food may be an English catalog stand-in for it.
+        estimated:
+          type: boolean
+          description: grams is the reader's estimate of a vague amount, not the file's number. Absent means false.
         statedProteinG:
           type: number
           format: double
