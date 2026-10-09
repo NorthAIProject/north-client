@@ -135,8 +135,12 @@ type MealPlan struct {
 
 	Settings PlanSettings
 
+	// Notes is free text an imported plan carried beside its meals.
+	Notes string
+
 	// TotalMacros is a cache kept current by the service on every ingredient
-	// add/remove, not re-summed on every read. It spans every day.
+	// add/remove, not re-summed on every read. It spans every day, counting
+	// each slot's default option only.
 	TotalMacros Macros
 	// Days run Monday first. ListPlans loads them without their meals.
 	Days []Day
@@ -164,16 +168,29 @@ func (p MealPlan) DayIndex(dayID uuid.UUID) (int, bool) {
 	return 0, false
 }
 
-// DayIndexOfMeal finds the day of the plan holding a meal.
+// DayIndexOfMeal finds the day of the plan holding a meal, default or
+// alternative.
 func (p MealPlan) DayIndexOfMeal(mealID uuid.UUID) (int, bool) {
+	day, _, ok := p.LocateMeal(mealID)
+	return day, ok
+}
+
+// LocateMeal finds the day of the plan holding a meal, and whether the meal is
+// an alternative option of its slot rather than the default.
+func (p MealPlan) LocateMeal(mealID uuid.UUID) (day int, alternative bool, ok bool) {
 	for i, d := range p.Days {
 		for _, m := range d.Meals {
 			if m.ID == mealID {
-				return i, true
+				return i, false, true
+			}
+			for _, alt := range m.Alternatives {
+				if alt.ID == mealID {
+					return i, true, true
+				}
 			}
 		}
 	}
-	return 0, false
+	return 0, false, false
 }
 
 // Weekdays lists the weekdays the plan covers.
@@ -191,10 +208,14 @@ type Day struct {
 	PlanID   uuid.UUID
 	Weekday  time.Weekday
 	Override DayOverride
-	Meals    []Meal
+	// Meals holds each slot's default option; the others hang off it as
+	// Alternatives.
+	Meals []Meal
 }
 
-// Consumed is what the day's meals add up to.
+// Consumed is what the day's meals add up to: each slot's default option.
+// Alternatives are interchangeable with their default, not eaten on top of
+// it, so they are not counted.
 func (d Day) Consumed() Macros {
 	var total Macros
 	for _, m := range d.Meals {
@@ -205,18 +226,46 @@ func (d Day) Consumed() Macros {
 
 // Meal is one meal within a day of a plan (breakfast, lunch, ...), ordered by
 // MealNumber within its day.
+//
+// A meal slot can hold several interchangeable options, each a Meal sharing
+// the slot's MealNumber. Option 1 is the default, the one a day's totals
+// count; the rest are its Alternatives, ordered by OptionIndex, which may have
+// gaps.
 type Meal struct {
 	ID         uuid.UUID
 	MealPlanID uuid.UUID
 	DayID      uuid.UUID
 
-	MealNumber int
-	Name       string
+	MealNumber  int
+	OptionIndex int
+	// OptionLabel tells an option apart from its slot's others ("Opção 2");
+	// empty for a slot's only option.
+	OptionLabel string
+	Name        string
 
 	TotalMacros Macros
 	Ingredients []MealIngredient
 
+	// Alternatives are set on a default only, never on an alternative.
+	Alternatives []Meal
+
 	CreatedAt time.Time
+}
+
+// Options lists the slot's options: the default, then its alternatives.
+func (m Meal) Options() []Meal {
+	out := make([]Meal, 0, 1+len(m.Alternatives))
+	out = append(out, m)
+	return append(out, m.Alternatives...)
+}
+
+// DisplayName is the meal's name with its option label, as a log entry or a
+// picker names it.
+func (m Meal) DisplayName() string {
+	if m.OptionLabel == "" {
+		return m.Name
+	}
+	return m.Name + " · " + m.OptionLabel
 }
 
 // MealIngredient is one ingredient within a meal, at a specific quantity.
@@ -232,6 +281,13 @@ type MealIngredient struct {
 
 	QuantityGrams float64
 	Macros        Macros
+
+	// SourceText is the line an imported plan had for this food, kept when
+	// the catalog name differs from it; empty otherwise.
+	SourceText string
+	// Estimated marks a food and quantity the importer guessed at, from a
+	// vague or unmatched line.
+	Estimated bool
 
 	CreatedAt time.Time
 }
