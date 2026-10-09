@@ -10188,6 +10188,14 @@ components:
           type: number
         macros:
           $ref: '#/components/schemas/Macros'
+        sourceText:
+          type: string
+          description: The line an imported plan had for this food. Absent when there was none.
+        estimated:
+          type: boolean
+          description: |
+            The importer guessed this food and quantity from a vague or
+            unmatched line. Absent when false.
     MealPlanType:
       type: string
       enum: [no_carb, low_carb, mid_carb, high_carb, custom]
@@ -10255,6 +10263,9 @@ components:
     MealPlanMeal:
       type: object
       required: [id, mealNumber, name, totalMacros, ingredients]
+      description: |
+        A meal slot's default option. The day's status counts it and not its
+        alternatives, which are eaten instead of it.
       properties:
         id:
           type: string
@@ -10263,6 +10274,32 @@ components:
           type: integer
           description: Order within its day.
         name:
+          type: string
+        optionLabel:
+          type: string
+          description: Tells the option apart from the slot's others. Absent when unlabelled.
+        totalMacros:
+          $ref: '#/components/schemas/Macros'
+        ingredients:
+          type: array
+          items:
+            $ref: '#/components/schemas/MealPortion'
+        alternatives:
+          type: array
+          description: The slot's other options, in order. Absent when there are none.
+          items:
+            $ref: '#/components/schemas/MealPlanOption'
+    MealPlanOption:
+      type: object
+      required: [id, optionLabel, totalMacros, ingredients]
+      description: |
+        An alternative option of a meal slot, under the slot's name. Logging
+        it logs this option's id.
+      properties:
+        id:
+          type: string
+          format: uuid
+        optionLabel:
           type: string
         totalMacros:
           $ref: '#/components/schemas/Macros'
@@ -10310,6 +10347,9 @@ components:
               type: string
             gender:
               type: string
+            notes:
+              type: string
+              description: Free text an imported plan carried beside its meals. Absent when there is none.
             target:
               $ref: '#/components/schemas/Macros'
               description: The active macro target from the calculator; absent until there is one.
