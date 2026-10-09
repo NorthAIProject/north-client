@@ -491,11 +491,11 @@ func audioFormat(mime string) string {
 // is attached. The dialect rejects a mixed object, and sending only m.Text()
 // would silently drop the attachment.
 //
-// Audio and images are different part types here, unlike Gemini where both are
-// inline data with a MIME type. Sending audio as image_url — which this did
-// until voice notes existed — puts a base64 waveform behind a data: URL the
-// provider parses as a picture. That fails in the least useful way available:
-// no error naming audio, just a model that saw nothing.
+// Audio, images and PDFs are different part types here, unlike Gemini where
+// all are inline data with a MIME type. Sending audio as image_url — which
+// this did until voice notes existed — puts a base64 waveform behind a data:
+// URL the provider parses as a picture. That fails in the least useful way
+// available: no error naming audio, just a model that saw nothing.
 func openAIContent(m ai.Message) any {
 	hasBinary := false
 	for _, p := range m.Parts {
@@ -524,6 +524,18 @@ func openAIContent(m ai.Message) any {
 					"input_audio": map[string]any{
 						"data":   base64.StdEncoding.EncodeToString(p.InlineData),
 						"format": audioFormat(mime),
+					},
+				})
+				continue
+			}
+			if mime == "application/pdf" {
+				// A file part, which OpenAI and OpenRouter read as a document.
+				// The filename is required and only labels it.
+				parts = append(parts, map[string]any{
+					"type": "file",
+					"file": map[string]any{
+						"filename":  "document.pdf",
+						"file_data": "data:application/pdf;base64," + base64.StdEncoding.EncodeToString(p.InlineData),
 					},
 				})
 				continue
