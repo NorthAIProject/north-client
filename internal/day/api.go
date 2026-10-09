@@ -1,10 +1,10 @@
 package day
 
 import (
-	"math"
 	"net/http"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/go-chi/chi/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
@@ -416,7 +416,7 @@ func ProjectTrends(t Trends) TrendsResponse {
 		out.Series = append(out.Series, v)
 	}
 	for i, f := range t.Fasts {
-		out.Fasts[i] = FastBarView{StartedAt: f.StartedAt, Hours: math.Round(f.Hours*10) / 10, TargetHours: f.TargetHours, Met: f.Met()}
+		out.Fasts[i] = FastBarView{StartedAt: f.StartedAt, Hours: util.RoundHalfUpToScale(f.Hours, 1), TargetHours: f.TargetHours, Met: f.Met()}
 	}
 	return out
 }

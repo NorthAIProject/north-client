@@ -3,6 +3,8 @@ package planimport
 import (
 	"fmt"
 	"strings"
+
+	"github.com/FACorreiaa/go-utils/pkg/util"
 )
 
 // Every reader — spreadsheet, JSON, and the model — ends in the same place: a
@@ -147,8 +149,7 @@ func buildMeal(name string, rows []MealRow, unparsed []string) (MealDraft, error
 		if !seen {
 			day := MealDayDraft{Label: dayLabel, Meals: []MealDraftMeal{}, Over: []string{}}
 			if wd, ok := weekdayOf(dayLabel); ok {
-				n := int(wd)
-				day.Weekday = &n
+				day.Weekday = util.Ptr(int(wd))
 			}
 			draft.Days = append(draft.Days, day)
 			di = len(draft.Days) - 1

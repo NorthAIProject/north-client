@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -210,8 +211,7 @@ func (s *Service) focus(ctx context.Context, userID uuid.UUID, monday time.Time)
 	if err != nil {
 		return nil, apperr.Wrap(err, "load weekly focus")
 	}
-	f := fromDB(row, monday.Location())
-	return &f, nil
+	return util.Ptr(fromDB(row, monday.Location())), nil
 }
 
 func fromDB(row weeklydb.WeeklyFocus, loc *time.Location) Focus {

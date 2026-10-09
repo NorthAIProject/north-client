@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -315,9 +316,7 @@ func conversationFromDB(row conversationsdb.Conversation) Conversation {
 	if c.Kind == "" {
 		c.Kind = KindChat
 	}
-	if row.Title != nil {
-		c.Title = *row.Title
-	}
+	c.Title = util.Val(row.Title)
 	return c
 }
 
@@ -375,12 +374,8 @@ func messageFromDB(row conversationsdb.Message) Message {
 			m.Usage = &usage
 		}
 	}
-	if row.Model != nil {
-		m.Model = *row.Model
-	}
-	if row.Provider != nil {
-		m.Provider = *row.Provider
-	}
+	m.Model = util.Val(row.Model)
+	m.Provider = util.Val(row.Provider)
 	m.EvidenceRefs = row.EvidenceRefs
 
 	if len(row.ToolCalls) > 0 {

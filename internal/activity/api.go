@@ -126,9 +126,7 @@ func (a *API) log(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	in := LogInput{ActivityCode: req.ActivityCode, Duration: time.Duration(req.DurationMinutes) * time.Minute}
-	if req.StartedAt != nil {
-		in.StartedAt = *req.StartedAt
-	}
+	in.StartedAt = util.Val(req.StartedAt)
 	if req.DistanceKm != nil {
 		in.DistanceM = *req.DistanceKm * 1000
 	}
