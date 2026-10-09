@@ -71,6 +71,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/shared/database"
 	"github.com/NorthAIProject/north-client/internal/shared/metrics"
 	"github.com/NorthAIProject/north-client/internal/sleep"
+	"github.com/NorthAIProject/north-client/internal/stats"
 	"github.com/NorthAIProject/north-client/internal/soreness"
 	"github.com/NorthAIProject/north-client/internal/spend"
 	"github.com/NorthAIProject/north-client/internal/supplements"
@@ -435,7 +436,14 @@ func run() error {
 	}).WithActivity(activitySvc).WithVolume(weeklySvc)
 	// Today's sets follow a lighter-day answer here too, so the nudges and
 	// the lift recap read the session the person chose.
-	workoutSvc.WithLighter(lighterday.NewService(pool, health.NewService(health.NewRepository(pool)), workoutSvc))
+	//
+	// Recovery is the one rule for a low morning, shared by the lighter-day
+	// offer and the briefing below.
+	healthReadings := health.NewService(health.NewRepository(pool))
+	recoverySrc := insights.NewRecoverySource(healthReadings, stats.NewService(stats.Sources{
+		Sleep: sleep.NewService(sleep.NewRepository(pool)), Health: healthReadings,
+	}))
+	workoutSvc.WithLighter(lighterday.NewService(pool, recoverySrc, workoutSvc))
 
 	nudgeSvc := nudges.NewService(nudges.NewRepository(pool), userSvc, checkinSvc, goalSvc).
 		WithPrefs(notificationSvc).
@@ -480,7 +488,7 @@ func run() error {
 	// "Briefing", and the bell note opens that thread.
 	reportSvc.WithInbox(nudgeSvc).WithChats(memoryExtract.Conversations).
 		WithToday(reports.NewTodayContext(
-			health.NewService(health.NewRepository(pool)),
+			recoverySrc,
 			workoutSvc,
 			// The briefing reads the calendar the same way the coach does:
 			// through the person's own MCP calendar server, when connected.

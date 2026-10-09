@@ -363,7 +363,14 @@ func routes(
 
 	// A lighter day: on a low-readiness morning the person may take today's
 	// session at about 60%. Workouts reads the answer for today's sets.
-	lighterSvc := lighterday.NewService(pool, healthSvc, workoutSvc)
+	//
+	// Low means today's recovery is under the person's usual: the one rule
+	// the briefing, the Progress screen and the coach read too. Its nights
+	// come from the same sleep stats the sleep page reads.
+	recoverySrc := insights.NewRecoverySource(healthSvc, stats.NewService(stats.Sources{
+		Sleep: sleep.NewService(sleep.NewRepository(pool)), Health: healthSvc,
+	}))
+	lighterSvc := lighterday.NewService(pool, recoverySrc, workoutSvc)
 	workoutSvc.WithLighter(lighterSvc)
 	lighterHandler := lighterday.NewHandler(lighterSvc)
 
@@ -734,6 +741,9 @@ func routes(
 			// hydration, because a device's resting numbers are read the same
 			// way — as background, before anything else is interpreted.
 			health.NewContextSource(healthSvc, nil),
+			// Today's recovery, in the words the Progress screen uses, read
+			// after the week of device numbers it is built from.
+			insights.NewRecoveryContextSource(insightsSvc, nil),
 			habits.NewContextSource(habitSvc),
 			reports.NewContextSource(reportSvc),
 			integrations.NewContextSource(integrationSvc),
