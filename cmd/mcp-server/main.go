@@ -61,6 +61,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/lifts"
 	"github.com/NorthAIProject/north-client/internal/mcpserver"
 	"github.com/NorthAIProject/north-client/internal/meals"
+	"github.com/NorthAIProject/north-client/internal/medications"
 	"github.com/NorthAIProject/north-client/internal/memories"
 	"github.com/NorthAIProject/north-client/internal/milestones"
 	"github.com/NorthAIProject/north-client/internal/mind"
@@ -325,6 +326,14 @@ func buildServices(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry
 		Soreness:    soreness.NewService(soreness.NewRepository(pool)),
 		Lifts:       lifts.NewService(lifts.NewRepository(pool), exercises.NewService(exercises.NewRepository(pool))),
 		Health:      health.NewService(health.NewRepository(pool)),
+
+		// The day's logs and the settings an agent can change, so a client
+		// connected over MCP can do what the coach does.
+		Hydration:   hydrationSvc,
+		Sleep:       sleepSvc,
+		Habits:      habitSvc,
+		Preferences: preferencesSvc,
+		Medications: medications.NewService(medications.NewRepository(pool)),
 	})
 	agentTools.Record(auditRecorder)
 

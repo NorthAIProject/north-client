@@ -32,7 +32,9 @@ import (
 	"github.com/NorthAIProject/north-client/internal/habits"
 	"github.com/NorthAIProject/north-client/internal/hydration"
 	"github.com/NorthAIProject/north-client/internal/meals"
+	"github.com/NorthAIProject/north-client/internal/medications"
 	"github.com/NorthAIProject/north-client/internal/notifications"
+	"github.com/NorthAIProject/north-client/internal/preferences"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/sleep"
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -95,6 +97,12 @@ type Services struct {
 	// Stats reads the stats pages (sleep, cardio, eating, patterns).
 	Stats *stats.Service
 
+	// Preferences holds the target weight.
+	Preferences *preferences.Service
+
+	// Medications is what someone takes and when; see medications.go.
+	Medications *medications.Service
+
 	// SiteURL is the public origin, used to build the absolute asset URLs a
 	// tool hands back. Environment-specific on purpose: an agent talking to a
 	// laptop should be given that laptop's addresses, not production's.
@@ -129,7 +137,7 @@ func Build(svc Services) *Registry {
 		r.Register(calculateMacros(svc.Calculator))
 	}
 	if svc.Goals != nil {
-		r.Register(listGoals(svc.Goals), createGoal(svc.Goals), addGoalUpdate(svc.Goals))
+		r.Register(listGoals(svc.Goals), createGoal(svc.Goals), addGoalUpdate(svc.Goals), updateGoal(svc.Goals))
 	}
 	if svc.CheckIns != nil && svc.Users != nil {
 		// Both, because writing a check-in needs the person's timezone and
@@ -154,6 +162,9 @@ func Build(svc Services) *Registry {
 				swapWorkoutExercise(svc.Workouts, svc.Users),
 				addWorkoutExercise(svc.Workouts, svc.Users),
 				removeWorkoutExercise(svc.Workouts, svc.Users),
+				setWorkoutPrescription(svc.Workouts, svc.Users),
+				moveWorkoutExercise(svc.Workouts, svc.Users),
+				setWorkoutStartTime(svc.Workouts, svc.Users),
 			)
 
 			// The week, and which plan is followed. See training_week.go.
@@ -185,7 +196,7 @@ func Build(svc Services) *Registry {
 			r.Register(logSleep(svc.Sleep, svc.Users))
 		}
 		if svc.Habits != nil {
-			r.Register(completeHabit(svc.Habits, svc.Users))
+			r.Register(completeHabit(svc.Habits, svc.Users), createHabit(svc.Habits, svc.Users), updateHabit(svc.Habits, svc.Users))
 		}
 		if svc.Activity != nil {
 			r.Register(logActivity(svc.Activity, svc.Users))
@@ -202,7 +213,14 @@ func Build(svc Services) *Registry {
 		r.Register(logFood(svc.FoodLog, svc.Ingredients))
 	}
 	if svc.MealPlans != nil && svc.Ingredients != nil {
-		r.Register(createMealPlan(svc.MealPlans, svc.Ingredients))
+		r.Register(
+			createMealPlan(svc.MealPlans, svc.Ingredients),
+			getMealPlan(svc.MealPlans),
+			editMealPlan(svc.MealPlans, svc.Ingredients),
+		)
+		if svc.FoodLog != nil && svc.Users != nil {
+			r.Register(logPlannedMeal(svc.MealPlans, svc.FoodLog, svc.Users))
+		}
 	}
 	if svc.Workouts != nil && svc.Users != nil {
 		r.Register(createWorkoutPlan(svc.Workouts, svc.Users))
@@ -232,6 +250,26 @@ func Build(svc Services) *Registry {
 	}
 	if svc.Stats != nil && svc.Users != nil {
 		r.Register(getStats(svc.Stats, svc.Users))
+	}
+	if svc.Preferences != nil {
+		r.Register(setTargetWeight(svc.Preferences))
+	}
+	if svc.Medications != nil && svc.Users != nil {
+		r.Register(
+			listMedications(svc.Medications, svc.Users),
+			addMedication(svc.Medications, svc.Users),
+			updateMedication(svc.Medications, svc.Users),
+			stopMedication(svc.Medications, svc.Users),
+			logMedicationDose(svc.Medications, svc.Users),
+		)
+	}
+
+	// Taking back any of the day's logs, over whichever trackers are wired.
+	// See corrections.go.
+	if svc.Users != nil {
+		if sources := undoSources(svc); len(sources) > 0 {
+			r.Register(undoLog(sources, svc.Users))
+		}
 	}
 
 	return r
@@ -725,17 +763,36 @@ func searchDocs(svc *documents.Service) Capability {
 }
 
 func getWorkoutPlan(svc *workouts.Service) Capability {
+	type args struct {
+		Plan string `json:"plan"`
+	}
+
 	return Capability{
 		Tool: ai.Tool{
 			Name: "get_workout_plan",
-			Description: "Read this person's current training plan: the days, the focus of each, and the exercises on them. " +
-				"Use it before advising on training, so the advice fits the plan they are actually following.",
-			Parameters: ai.Object("no arguments", map[string]*ai.Schema{}),
+			Description: "Read a training plan: the days, the focus and start time of each, and every exercise with its sets, reps, rest and load. " +
+				"Use it before advising on training, so the advice fits the plan they are actually following, and before editing one.",
+			Parameters: ai.Object("which plan", map[string]*ai.Schema{
+				"plan": ai.String("a saved plan's name; an empty string for the plan they follow"),
+			}, "plan"),
 		},
 		ReadOnly: true,
-		Invoke: func(ctx context.Context, userID uuid.UUID, _ json.RawMessage) (string, error) {
-			stored, err := svc.ActivePlan(ctx, userID)
+		Invoke: func(ctx context.Context, userID uuid.UUID, raw json.RawMessage) (string, error) {
+			in, err := Decode[args](raw)
 			if err != nil {
+				return "", err
+			}
+
+			var stored workouts.StoredPlan
+			if strings.TrimSpace(in.Plan) != "" {
+				plans, err := svc.ListCurrentPlans(ctx, userID, 50)
+				if err != nil {
+					return "", err
+				}
+				if stored, err = pickPlan(plans, in.Plan); err != nil {
+					return "", err
+				}
+			} else if stored, err = svc.ActivePlan(ctx, userID); err != nil {
 				if apperr.Is(err, apperr.ErrNotFound) {
 					// Not an error the model should apologise for. They simply
 					// have no plan yet, and saying so lets it offer to build one.
@@ -744,21 +801,32 @@ func getWorkoutPlan(svc *workouts.Service) Capability {
 				return "", err
 			}
 
-			var b strings.Builder
-			fmt.Fprintf(&b, "%s (%d weeks)\n", stored.Plan.Name, stored.Plan.WeeksTotal)
-			for _, day := range stored.Plan.Days {
-				fmt.Fprintf(&b, "- %s — %s:", day.Weekday, day.Focus)
-				for i, exercise := range day.Exercises {
-					if i > 0 {
-						b.WriteString(",")
-					}
-					fmt.Fprintf(&b, " %s %dx%s", exercise.Name, exercise.Sets, exercise.Reps)
-				}
-				b.WriteString("\n")
-			}
-			return b.String(), nil
+			return describePlanForEditing(stored.Plan), nil
 		},
 	}
+}
+
+// describePlanForEditing writes a plan with every number an edit can change,
+// so the model can see what "everything on two sets" currently covers before
+// it asks to change it.
+func describePlanForEditing(p workouts.Plan) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s (%d weeks)\n", p.Name, p.WeeksTotal)
+	for _, day := range p.Days {
+		fmt.Fprintf(&b, "- %s — %s", day.Weekday, day.Focus)
+		if day.StartTime != "" {
+			fmt.Fprintf(&b, ", at %s", day.StartTime)
+		}
+		b.WriteString(":\n")
+		for _, ex := range day.Exercises {
+			fmt.Fprintf(&b, "  - %s %dx%s, %ds rest", ex.Name, ex.Sets, ex.Reps, ex.RestSeconds)
+			if ex.Load != "" {
+				fmt.Fprintf(&b, " @ %s", ex.Load)
+			}
+			b.WriteString("\n")
+		}
+	}
+	return b.String()
 }
 
 // pickGoal resolves a goal by the title a model used.

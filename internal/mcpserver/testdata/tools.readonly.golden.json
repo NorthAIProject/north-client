@@ -34,6 +34,25 @@
     "readOnly": true
   },
   {
+    "name": "get_meal_plan",
+    "description": "Read one of this person's meal plans: each day's meals with every food and its weight, and each day's calories and macros against their target. Read it before editing a plan or answering what is in it. With several plans and none named, it lists them and shows the most recently changed one.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "description": "which plan",
+      "properties": {
+        "plan": {
+          "description": "the plan's name; empty for their most recently changed plan",
+          "type": "string"
+        }
+      },
+      "required": [
+        "plan"
+      ],
+      "type": "object"
+    },
+    "readOnly": true
+  },
+  {
     "name": "get_training_week",
     "description": "Read which days this person trains this week (or next week) and which session each day has, what is done, and what is next. Use it before talking about their week, or before changing it with set_training_week.",
     "inputSchema": {
@@ -54,12 +73,19 @@
   },
   {
     "name": "get_workout_plan",
-    "description": "Read this person's current training plan: the days, the focus of each, and the exercises on them. Use it before advising on training, so the advice fits the plan they are actually following.",
+    "description": "Read a training plan: the days, the focus and start time of each, and every exercise with its sets, reps, rest and load. Use it before advising on training, so the advice fits the plan they are actually following, and before editing one.",
     "inputSchema": {
       "additionalProperties": false,
-      "description": "no arguments",
-      "properties": {},
-      "required": [],
+      "description": "which plan",
+      "properties": {
+        "plan": {
+          "description": "a saved plan's name; an empty string for the plan they follow",
+          "type": "string"
+        }
+      },
+      "required": [
+        "plan"
+      ],
       "type": "object"
     },
     "readOnly": true
@@ -99,6 +125,19 @@
       "type": "object"
     },
     "readOnly": true
+  },
+  {
+    "name": "list_medications",
+    "description": "Read the medications this person tracks: each one's dose and schedule as they gave it, and what was taken, skipped or is still due today. Record only what the person states; never suggest, change, or advise on doses.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "description": "no arguments",
+      "properties": {},
+      "required": [],
+      "type": "object"
+    },
+    "readOnly": true,
+    "idempotent": true
   },
   {
     "name": "search_documents",

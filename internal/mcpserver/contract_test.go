@@ -25,6 +25,8 @@ import (
 	"github.com/NorthAIProject/north-client/internal/hydration"
 	"github.com/NorthAIProject/north-client/internal/mcpserver"
 	"github.com/NorthAIProject/north-client/internal/meals"
+	"github.com/NorthAIProject/north-client/internal/medications"
+	"github.com/NorthAIProject/north-client/internal/preferences"
 	"github.com/NorthAIProject/north-client/internal/sleep"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/workouts"
@@ -192,8 +194,8 @@ func TestAnUnknownScopeIsTreatedAsReadOnly(t *testing.T) {
 // set_alert — do not register. See internal/agent/capabilities.go.
 func TestTheToolCountIsWhatWeThinkItIs(t *testing.T) {
 	const (
-		wantFull     = 30
-		wantReadOnly = 13
+		wantFull     = 47
+		wantReadOnly = 15
 	)
 
 	if got := len(describeTools(t, "")); got != wantFull {
@@ -229,6 +231,30 @@ func TestEveryToolDeclaresWhetherItWrites(t *testing.T) {
 		// Changing a week, or which plan is followed.
 		"set_training_week":       true,
 		"set_active_workout_plan": true,
+		// Changing the dose, order or start time of what is already there.
+		"set_workout_prescription": true,
+		"move_workout_exercise":    true,
+		"set_workout_start_time":   true,
+
+		// Meal plans: building one, changing one, eating from one.
+		"create_meal_plan": true,
+		"edit_meal_plan":   true,
+		"log_planned_meal": true,
+
+		// Goals, habits and the weight to aim at.
+		"update_goal":       true,
+		"create_habit":      true,
+		"update_habit":      true,
+		"set_target_weight": true,
+
+		// Medications. Each changes what someone is reminded to take.
+		"add_medication":      true,
+		"update_medication":   true,
+		"stop_medication":     true,
+		"log_medication_dose": true,
+
+		// Taking back a log deletes it.
+		"undo_log": true,
 
 		// The day's logs. Each writes a row a person would otherwise have
 		// typed into a form — see internal/agent/logging.go.
@@ -364,6 +390,12 @@ func testRegistry() *agent.Registry {
 		Habits:     habits.NewService(habits.NewRepository(nil)),
 		Biometrics: biometrics.NewService(biometrics.NewRepository(nil)),
 		Activity:   activity.NewService(activity.NewRepository(nil), nil),
+
+		// Editing what exists rather than only creating it: meal plans, the
+		// target weight and medications, so their schemas are pinned too.
+		MealPlans:   meals.NewMealPlanService(meals.NewRepository(nil), calculator.NewService(calculator.NewRepository(nil), nil)),
+		Preferences: preferences.NewService(preferences.NewRepository(nil)),
+		Medications: medications.NewService(medications.NewRepository(nil)),
 	})
 }
 

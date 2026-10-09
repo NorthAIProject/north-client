@@ -1,0 +1,79 @@
+{
+  "medications": [
+    {
+      "id": "44444444-4444-4444-4444-444444444444",
+      "name": "Metformin",
+      "dose": "500 mg",
+      "times": [
+        "08:00",
+        "20:00"
+      ],
+      "daysOfWeek": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "remind": true,
+      "notes": "",
+      "asNeeded": false
+    },
+    {
+      "id": "55555555-5555-5555-5555-555555555555",
+      "name": "Salbutamol",
+      "dose": "1 puff",
+      "times": [],
+      "daysOfWeek": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "remind": true,
+      "notes": "Before a run if it is cold.",
+      "asNeeded": true
+    }
+  ],
+  "today": {
+    "date": "2026-10-08",
+    "slots": [
+      {
+        "medicationId": "44444444-4444-4444-4444-444444444444",
+        "name": "Metformin",
+        "dose": "500 mg",
+        "time": "08:00",
+        "status": "taken",
+        "logId": "66666666-6666-6666-6666-666666666666"
+      },
+      {
+        "medicationId": "44444444-4444-4444-4444-444444444444",
+        "name": "Metformin",
+        "dose": "500 mg",
+        "time": "20:00",
+        "status": "upcoming"
+      }
+    ],
+    "asNeeded": [
+      {
+        "medicationId": "55555555-5555-5555-5555-555555555555",
+        "name": "Salbutamol",
+        "dose": "1 puff",
+        "doses": [
+          {
+            "id": "77777777-7777-7777-7777-777777777777",
+            "medicationId": "55555555-5555-5555-5555-555555555555",
+            "name": "Salbutamol",
+            "status": "taken",
+            "loggedAt": "2026-10-08T14:10:00Z"
+          }
+        ]
+      }
+    ]
+  }
+}

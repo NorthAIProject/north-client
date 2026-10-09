@@ -363,27 +363,32 @@ func (q *Queries) DeleteIngredient(ctx context.Context, arg DeleteIngredientPara
 }
 
 const deleteMealIngredient = `-- name: DeleteMealIngredient :exec
-DELETE FROM meal_ingredients WHERE id = $1
+DELETE FROM meal_ingredients WHERE id = $1 AND meal_id = $2
 `
 
-func (q *Queries) DeleteMealIngredient(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.Exec(ctx, deleteMealIngredient, id)
+type DeleteMealIngredientParams struct {
+	ID     uuid.UUID
+	MealID uuid.UUID
+}
+
+func (q *Queries) DeleteMealIngredient(ctx context.Context, arg DeleteMealIngredientParams) error {
+	_, err := q.db.Exec(ctx, deleteMealIngredient, arg.ID, arg.MealID)
 	return err
 }
 
-const deleteMealOwned = `-- name: DeleteMealOwned :exec
-DELETE FROM meals
-USING meal_plans
-WHERE meals.id = $1 AND meals.meal_plan_id = meal_plans.id AND meal_plans.user_id = $2
+const deleteMealOfPlan = `-- name: DeleteMealOfPlan :exec
+DELETE FROM meals WHERE id = $1 AND meal_plan_id = $2
 `
 
-type DeleteMealOwnedParams struct {
-	ID     uuid.UUID
-	UserID uuid.UUID
+type DeleteMealOfPlanParams struct {
+	ID         uuid.UUID
+	MealPlanID uuid.UUID
 }
 
-func (q *Queries) DeleteMealOwned(ctx context.Context, arg DeleteMealOwnedParams) error {
-	_, err := q.db.Exec(ctx, deleteMealOwned, arg.ID, arg.UserID)
+// Callers hold the plan's lock and have checked it is the user's; the plan id
+// keeps a meal id from another plan from matching.
+func (q *Queries) DeleteMealOfPlan(ctx context.Context, arg DeleteMealOfPlanParams) error {
+	_, err := q.db.Exec(ctx, deleteMealOfPlan, arg.ID, arg.MealPlanID)
 	return err
 }
 
@@ -1315,6 +1320,49 @@ func (q *Queries) UpdateIngredient(ctx context.Context, arg UpdateIngredientPara
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.SaturatedFatGPer100g,
+	)
+	return i, err
+}
+
+const updateMealIngredientQuantity = `-- name: UpdateMealIngredientQuantity :one
+UPDATE meal_ingredients
+SET quantity_grams = $3, calories = $4, protein_g = $5, fat_g = $6, carbs_g = $7
+WHERE id = $1 AND meal_id = $2
+RETURNING id, meal_id, ingredient_id, quantity_grams, calories, protein_g, fat_g, carbs_g, created_at
+`
+
+type UpdateMealIngredientQuantityParams struct {
+	ID            uuid.UUID
+	MealID        uuid.UUID
+	QuantityGrams float64
+	Calories      float64
+	ProteinG      float64
+	FatG          float64
+	CarbsG        float64
+}
+
+// A new quantity with its macros, worked out by the caller like an insert's.
+func (q *Queries) UpdateMealIngredientQuantity(ctx context.Context, arg UpdateMealIngredientQuantityParams) (MealIngredient, error) {
+	row := q.db.QueryRow(ctx, updateMealIngredientQuantity,
+		arg.ID,
+		arg.MealID,
+		arg.QuantityGrams,
+		arg.Calories,
+		arg.ProteinG,
+		arg.FatG,
+		arg.CarbsG,
+	)
+	var i MealIngredient
+	err := row.Scan(
+		&i.ID,
+		&i.MealID,
+		&i.IngredientID,
+		&i.QuantityGrams,
+		&i.Calories,
+		&i.ProteinG,
+		&i.FatG,
+		&i.CarbsG,
+		&i.CreatedAt,
 	)
 	return i, err
 }

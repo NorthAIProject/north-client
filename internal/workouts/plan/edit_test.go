@@ -478,3 +478,128 @@ func TestSummaryMentionsStartTime(t *testing.T) {
 		t.Errorf("summary = %q", p.Summary())
 	}
 }
+
+func intp(n int) *int { return &n }
+
+// The request that started this: every exercise on two sets goes to three, and
+// only those. One that was already on five stays on five.
+func TestApplyPrescriptionChangesOnlyWhatMatches(t *testing.T) {
+	t.Parallel()
+
+	p := samplePlan()
+	p.Days[0].Exercises[1].Sets = 2
+
+	out, changed, err := ApplyPrescription(p, func(_ int, ex Exercise) bool { return ex.Sets == 2 }, PrescriptionChange{Sets: intp(3)})
+	if err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+	if got := out.Days[0].Exercises[0].Sets; got != 5 {
+		t.Errorf("squat sets = %d, want 5 untouched", got)
+	}
+	if got := out.Days[0].Exercises[1]; got.Sets != 3 || got.Reps != "8-10" || got.RestSeconds != 120 {
+		t.Errorf("deadlift = %d x %s, %ds; want only the sets changed", got.Sets, got.Reps, got.RestSeconds)
+	}
+	if len(changed) != 1 || !strings.Contains(changed[0], "Romanian Deadlift") {
+		t.Errorf("changed = %q", changed)
+	}
+}
+
+func TestApplyPrescriptionAddsSetsAndKeepsTheRest(t *testing.T) {
+	t.Parallel()
+
+	out, changed, err := ApplyPrescription(samplePlan(), func(int, Exercise) bool { return true }, PrescriptionChange{AddSets: 1})
+	if err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+	if a, b := out.Days[0].Exercises[0].Sets, out.Days[0].Exercises[1].Sets; a != 6 || b != 4 {
+		t.Errorf("sets = %d, %d; want 6, 4", a, b)
+	}
+	if len(changed) != 2 {
+		t.Errorf("changed %d exercises, want 2", len(changed))
+	}
+}
+
+func TestApplyPrescriptionDoesNotDisturbTheOriginalPlan(t *testing.T) {
+	t.Parallel()
+
+	original := samplePlan()
+	reps := "10"
+	if _, _, err := ApplyPrescription(original, func(int, Exercise) bool { return true }, PrescriptionChange{Sets: intp(2), Reps: &reps}); err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+	if got := original.Days[0].Exercises[0]; got.Sets != 5 || got.Reps != "5" {
+		t.Errorf("the original is now %d x %s", got.Sets, got.Reps)
+	}
+}
+
+func TestApplyPrescriptionRefuses(t *testing.T) {
+	t.Parallel()
+
+	all := func(int, Exercise) bool { return true }
+	none := func(int, Exercise) bool { return false }
+
+	cases := []struct {
+		name  string
+		match func(int, Exercise) bool
+		ch    PrescriptionChange
+	}{
+		{"nothing matched", none, PrescriptionChange{Sets: intp(3)}},
+		{"nothing to change", all, PrescriptionChange{}},
+		{"absolute and relative together", all, PrescriptionChange{Sets: intp(3), AddSets: 1}},
+		{"down to zero sets", all, PrescriptionChange{AddSets: -5}},
+	}
+	for _, c := range cases {
+		if _, _, err := ApplyPrescription(samplePlan(), c.match, c.ch); err == nil {
+			t.Errorf("%s: accepted", c.name)
+		}
+	}
+}
+
+func TestSetStartTimesSetsEveryNamedDay(t *testing.T) {
+	t.Parallel()
+
+	p := samplePlan()
+	p.Days = append(p.Days, PlanDay{Weekday: "Thursday"})
+
+	out, err := SetStartTimes(p, []int{0, 1}, "07:30")
+	if err != nil {
+		t.Fatalf("set: %v", err)
+	}
+	for _, d := range out.Days {
+		if d.StartTime != "07:30" {
+			t.Errorf("%s starts %q", d.Weekday, d.StartTime)
+		}
+	}
+	if p.Days[0].StartTime != "" {
+		t.Errorf("the original changed")
+	}
+	if _, err := SetStartTimes(p, nil, "07:30"); err == nil {
+		t.Errorf("no days: accepted")
+	}
+}
+
+func TestApplyPrescriptionSetsAndClearsTheLoad(t *testing.T) {
+	t.Parallel()
+
+	squat := func(_ int, ex Exercise) bool { return strings.Contains(ex.Name, "Squat") }
+	heavy := " 100 kg "
+	out, changed, err := ApplyPrescription(samplePlan(), squat, PrescriptionChange{Load: &heavy})
+	if err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+	if got := out.Days[0].Exercises[0].Load; got != "100 kg" {
+		t.Errorf("Load = %q", got)
+	}
+	if !strings.Contains(changed[0], "@ 100 kg") {
+		t.Errorf("changed = %q", changed)
+	}
+
+	empty := ""
+	cleared, _, err := ApplyPrescription(out, squat, PrescriptionChange{Load: &empty})
+	if err != nil {
+		t.Fatalf("clear: %v", err)
+	}
+	if got := cleared.Days[0].Exercises[0].Load; got != "" {
+		t.Errorf("Load = %q, want cleared", got)
+	}
+}

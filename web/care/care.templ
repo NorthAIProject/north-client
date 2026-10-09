@@ -10,6 +10,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/habits"
 	"github.com/NorthAIProject/north-client/internal/hydration"
 	"github.com/NorthAIProject/north-client/internal/meals"
+	"github.com/NorthAIProject/north-client/internal/medications/medication"
 	"github.com/NorthAIProject/north-client/internal/shared/lifedomain"
 	"github.com/NorthAIProject/north-client/internal/sleep"
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -54,7 +55,11 @@ type Data struct {
 	LastNight      sleep.Log
 	SleptLastNight bool
 
-	Habits      []habits.Stats
+	Habits []habits.Stats
+
+	Medications   []medication.Medication
+	MedicationDay medication.Day
+
 	Instruments Instruments
 }
 
@@ -66,6 +71,8 @@ type Forms struct {
 	Water    WaterForm
 	Sleep    SleepForm
 	Habit    HabitForm
+
+	Medication MedicationForm
 }
 
 type ReminderForm struct {
@@ -106,6 +113,9 @@ func fieldError(errs map[string]string, name string) string {
 func (f ReminderForm) fieldError(name string) string { return fieldError(f.Errors, name) }
 func (f SleepForm) fieldError(name string) string    { return fieldError(f.Errors, name) }
 func (f HabitForm) fieldError(name string) string    { return fieldError(f.Errors, name) }
+func (f MedicationForm) fieldError(name string) string {
+	return fieldError(f.Errors, name)
+}
 
 func (f ReminderForm) dayChecked(day int) bool { return dayChecked(f.DaysOfWeek, day) }
 func (f HabitForm) dayChecked(day int) bool    { return dayChecked(f.DaysOfWeek, day) }
@@ -191,6 +201,7 @@ templ Panel(user users.User, data Data, forms Forms) {
 		@waterCard(data.Water, data.WaterEntries, forms.Water)
 		@sleepCard(data.LastNight, data.SleptLastNight, forms.Sleep)
 		@habitsCard(data.Habits, forms.Habit)
+		@medicationsCard(data.Medications, data.MedicationDay, forms.Medication)
 		@remindersCard(data.DueReminders)
 		@manageRemindersCard(data.AllReminders, forms.Reminder)
 	</div>

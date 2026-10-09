@@ -376,6 +376,29 @@ func (s *Service) SetPrescription(ctx context.Context, user users.User, planID u
 	})
 }
 
+// EditPrescriptions changes the dose of every exercise match accepts, as one
+// new plan version, and returns what changed alongside it.
+func (s *Service) EditPrescriptions(ctx context.Context, user users.User, planID uuid.UUID, match func(day int, ex Exercise) bool, change PrescriptionChange) (StoredPlan, []string, error) {
+	var changed []string
+	stored, err := s.applyEdit(ctx, user, planID, func(p Plan) (Plan, error) {
+		out, lines, err := ApplyPrescription(p, match, change)
+		changed = lines
+		return out, err
+	})
+	if err != nil {
+		return StoredPlan{}, nil, err
+	}
+	return stored, changed, nil
+}
+
+// SetStartTimes sets or clears when several days' sessions start, as one new
+// plan version.
+func (s *Service) SetStartTimes(ctx context.Context, user users.User, planID uuid.UUID, days []int, startTime string) (StoredPlan, error) {
+	return s.applyEdit(ctx, user, planID, func(p Plan) (Plan, error) {
+		return SetStartTimes(p, days, startTime)
+	})
+}
+
 // SetStartTime sets or clears when a day's session starts.
 func (s *Service) SetStartTime(ctx context.Context, user users.User, planID uuid.UUID, day int, startTime string) (StoredPlan, error) {
 	return s.applyEdit(ctx, user, planID, func(p Plan) (Plan, error) {
