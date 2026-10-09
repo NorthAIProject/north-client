@@ -50,6 +50,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/integrations"
 	"github.com/NorthAIProject/north-client/internal/jobs"
 	"github.com/NorthAIProject/north-client/internal/lifts"
+	"github.com/NorthAIProject/north-client/internal/lighterday"
 	"github.com/NorthAIProject/north-client/internal/mcpauth"
 	"github.com/NorthAIProject/north-client/internal/meals"
 	"github.com/NorthAIProject/north-client/internal/media"
@@ -431,6 +432,9 @@ func run() error {
 	workoutSvc := workouts.NewService(workouts.Options{
 		Repository: workouts.NewRepository(pool),
 	}).WithActivity(activitySvc).WithVolume(weeklySvc)
+	// Today's sets follow a lighter-day answer here too, so the nudges and
+	// the lift recap read the session the person chose.
+	workoutSvc.WithLighter(lighterday.NewService(pool, health.NewService(health.NewRepository(pool)), workoutSvc))
 
 	nudgeSvc := nudges.NewService(nudges.NewRepository(pool), userSvc, checkinSvc, goalSvc).
 		WithPrefs(notificationSvc).

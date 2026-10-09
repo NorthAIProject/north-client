@@ -375,6 +375,8 @@ templ trainingPanel(data DashboardData) {
 			</p>
 		}
 		if data.HasPlan() {
+			// The lighter-day offer, when this morning calls for one.
+			<div hx-get="/app/today/lighter" hx-trigger="load" hx-swap="outerHTML"></div>
 			if data.NextSession != nil {
 				<p class="text-sm font-medium">{ data.NextSession.Weekday } — { data.NextSession.Focus }</p>
 				<p class="text-muted-foreground mt-1 mb-3 text-sm">

@@ -1,0 +1,68 @@
+package lighterday
+
+import (
+	"fmt"
+
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+)
+
+// CardID is where the offer renders and re-renders after an answer.
+const CardID = "lighter-day"
+
+// Card is the offer as the dashboard shows it.
+type Card struct {
+	Offered bool
+	Session string
+	// Choice is today's answer: lighter, keep, or empty.
+	Choice string
+	// Why is the readings in a line, e.g. "HRV 38 ms against 52".
+	Why string
+}
+
+func pct(value, base float64) string {
+	if base == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%+.0f%%", (value-base)/base*100)
+}
+
+// WhyLine words the readings behind a low morning.
+func WhyLine(hrv, hrvBase float64, hasHRV bool, rhr, rhrBase float64, hasRHR bool) string {
+	switch {
+	case hasHRV && hasRHR:
+		return fmt.Sprintf("HRV %.0f ms (%s on your two-week average), resting heart rate %.0f bpm (%s).", hrv, pct(hrv, hrvBase), rhr, pct(rhr, rhrBase))
+	case hasHRV:
+		return fmt.Sprintf("HRV %.0f ms, %s on your two-week average.", hrv, pct(hrv, hrvBase))
+	case hasRHR:
+		return fmt.Sprintf("Resting heart rate %.0f bpm, %s on your two-week average.", rhr, pct(rhr, rhrBase))
+	default:
+		return ""
+	}
+}
+
+// Fragment is loaded into the dashboard with hx-get and swapped after an
+// answer. It renders nothing when there is nothing to offer or say.
+templ Fragment(c Card) {
+	<div id={ CardID }>
+		if c.Offered {
+			<div class="border-hairline bg-surface mb-3 space-y-2 rounded-lg border p-3">
+				<p class="text-sm font-medium">Lighter day?</p>
+				<p class="text-muted-foreground text-xs">
+					Your body has not caught up this morning. { c.Why } Train about 60% of today's sets for { c.Session }, or keep the plan.
+				</p>
+				<form hx-post="/app/today/lighter" hx-target={ "#" + CardID } hx-swap="outerHTML" hx-disable="find button" method="post" action="/app/today/lighter" class="flex gap-2">
+					@ui.CSRFInput()
+					@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Attributes: templ.Attributes{"name": "choice", "value": "lighter"}}) {
+						Take it lighter
+					}
+					@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Variant: button.VariantOutline, Attributes: templ.Attributes{"name": "choice", "value": "keep"}}) {
+						Keep the plan
+					}
+				</form>
+			</div>
+		} else if c.Choice == "lighter" {
+			<p class="text-muted-foreground mb-3 text-xs">Lighter day: today's sets are cut to about 60%. Tomorrow is back to the plan.</p>
+		}
+	</div>
+}

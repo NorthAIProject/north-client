@@ -66,6 +66,7 @@ type Service struct {
 	model    string
 	activity ActivityTracker
 	volume   VolumeSource
+	lighter  LighterSource
 }
 
 func (s *Service) WithActivity(tracker ActivityTracker) *Service {
@@ -82,6 +83,31 @@ type VolumeSource interface {
 func (s *Service) WithVolume(v VolumeSource) *Service {
 	s.volume = v
 	return s
+}
+
+// LighterSource says whether the person chose a lighter session on the
+// local day containing at. lighterday.Service satisfies it; without one no
+// day is lighter.
+type LighterSource interface {
+	LighterOn(ctx context.Context, user users.User, at time.Time) (bool, error)
+}
+
+func (s *Service) WithLighter(l LighterSource) *Service {
+	s.lighter = l
+	return s
+}
+
+// lighterToday is today's weekday when the person chose to take today
+// lighter, or empty.
+func (s *Service) lighterToday(ctx context.Context, user users.User, now time.Time) (string, error) {
+	if s.lighter == nil {
+		return "", nil
+	}
+	ok, err := s.lighter.LighterOn(ctx, user, now)
+	if err != nil || !ok {
+		return "", err
+	}
+	return now.In(user.Location()).Weekday().String(), nil
 }
 
 func (s *Service) volumeFor(ctx context.Context, user users.User, at time.Time) (Volume, error) {
