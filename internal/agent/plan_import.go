@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/google/uuid"
@@ -16,6 +17,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/media"
 	"github.com/NorthAIProject/north-client/internal/planimport"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/workouts"
 )
@@ -198,16 +200,7 @@ func describeImportedMealPlan(b *strings.Builder, plan meals.MealPlan, res plani
 
 // daysAlike reports whether every day of plan reads the same.
 func daysAlike(plan meals.MealPlan) bool {
-	if len(plan.Days) < 2 {
-		return true
-	}
-	bodies := make([]string, len(plan.Days))
-	for i, day := range plan.Days {
-		var body strings.Builder
-		describeDayBody(&body, plan, day, nil)
-		bodies[i] = body.String()
-	}
-	return allSame(bodies)
+	return len(groupDays(plan, plan.Days, nil)) <= 1
 }
 
 func describeImportedWorkout(b *strings.Builder, stored workouts.StoredPlan) {
@@ -224,6 +217,7 @@ func saveImportNotes(ctx context.Context, docs *documents.Service, userID uuid.U
 	title := "Plan notes — " + truncateRunes(planName, maxNoteTitlePlanName)
 	body := strings.TrimSpace(notes) + "\n\nFrom " + filename
 	if _, err := docs.CreateNote(ctx, userID, title, body); err != nil {
+		middleware.FromContext(ctx).Warn("save imported plan notes", slog.Any("error", err))
 		return "The plan is saved, but its advice and recipes could not be saved to their notes: " + userFacing(err)
 	}
 	return "Saved the plan's advice and recipes to their notes."

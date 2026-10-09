@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"strings"
 	"sync"
 	"testing"
@@ -22,6 +23,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/quota"
 	"github.com/NorthAIProject/north-client/internal/shared/database/testdb"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
@@ -241,6 +243,28 @@ func TestImportPlanFromAttachmentWithoutDocumentsSavesNoNotes(t *testing.T) {
 	}
 }
 
+// Notes that cannot be saved leave the plan saved, say so, and log why.
+func TestImportPlanFromAttachmentReportsAndLogsUnsavedNotes(t *testing.T) {
+	f := newImportFixture(t)
+	f.reader.reading = everyDayLunch()
+	f.reader.reading.Notes = strings.Repeat("n", 500_001) // over the documents' note limit
+	f.attach(t, "dieta.txt", "Almoço")
+
+	var logs bytes.Buffer
+	ctx := middleware.WithLogger(context.Background(), slog.New(slog.NewTextHandler(&logs, nil)))
+	raw, err := json.Marshal(map[string]any{"kind": "meal", "file": "dieta.txt"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := f.registry.Invoke(ctx, f.user.ID, ai.ToolCall{Name: "import_plan_from_attachment", Arguments: raw})
+	if res.IsError || !strings.Contains(res.Content, "could not be saved to their notes") {
+		t.Fatalf("result = %+v, want the plan saved and the notes failure said", res)
+	}
+	if !strings.Contains(logs.String(), "save imported plan notes") || !strings.Contains(logs.String(), "too long") {
+		t.Errorf("the notes failure was not logged with its cause: %q", logs.String())
+	}
+}
+
 func TestImportPlanFromAttachmentExplainsWhatStoppedIt(t *testing.T) {
 	f := newImportFixture(t)
 	f.reader.reading = everyDayLunch()
@@ -348,6 +372,10 @@ func TestMealPlanToolsWorkWithOptions(t *testing.T) {
 		!strings.Contains(out, `option 2 "Arroz"`) || !strings.Contains(out, "30 g Plain white rice") ||
 		!strings.Contains(out, `option 3 "Peixe" (0 kcal): nothing yet`) {
 		t.Fatalf("after the Monday edit:\n%s", out)
+	}
+	if blocks := dayBlocks(out); len(blocks) != 2 ||
+		!strings.HasPrefix(blocks[0], "Monday: ") || !strings.HasPrefix(blocks[1], "Tuesday–Sunday: ") {
+		t.Fatalf("after the Monday edit the days are %q, want Monday and Tuesday–Sunday", blocks)
 	}
 	f.invoke(t, "edit_meal_plan", map[string]any{"changes": []map[string]any{
 		{"op": "remove_option", "days": []string{"Monday"}, "meal": "Almoço", "option": 3},
