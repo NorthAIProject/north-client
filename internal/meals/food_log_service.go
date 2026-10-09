@@ -42,7 +42,8 @@ type LogIngredientInput struct {
 }
 
 // LogMeal records that the user ate a meal from one of their plans today (or
-// on LogDate), snapshotting the meal's current total macros.
+// on LogDate), snapshotting the meal's current total macros. An alternative
+// option logs as itself, under its label and with its own totals.
 func (s *FoodLogService) LogMeal(ctx context.Context, userID uuid.UUID, in LogMealInput) (FoodLogEntry, error) {
 	if in.LogDate.IsZero() {
 		in.LogDate = time.Now()
@@ -53,7 +54,7 @@ func (s *FoodLogService) LogMeal(ctx context.Context, userID uuid.UUID, in LogMe
 		return FoodLogEntry{}, err
 	}
 
-	entry, err := s.repo.InsertFoodLog(ctx, userID, in.LogDate, &meal.ID, nil, nil, meal.Name, meal.TotalMacros)
+	entry, err := s.repo.InsertFoodLog(ctx, userID, in.LogDate, &meal.ID, nil, nil, meal.DisplayName(), meal.TotalMacros)
 	if err != nil {
 		return FoodLogEntry{}, err
 	}
