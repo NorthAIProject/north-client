@@ -95,6 +95,23 @@ func (r *Repository) GetMedia(ctx context.Context, id, userID uuid.UUID) (Media,
 	return mediaFromDB(row), nil
 }
 
+// LatestOfKinds is the person's newest media of one of kinds, and with name
+// set, the newest whose original name matches it case-insensitively.
+func (r *Repository) LatestOfKinds(ctx context.Context, userID uuid.UUID, kinds []string, name string) (Media, error) {
+	row, err := r.q.LatestUserMediaOfKinds(ctx, mediadb.LatestUserMediaOfKindsParams{
+		UserID: userID,
+		Kinds:  kinds,
+		Name:   name,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Media{}, apperr.ErrNotFound
+		}
+		return Media{}, apperr.Wrap(err, "latest media of kinds")
+	}
+	return mediaFromDB(row), nil
+}
+
 // GetMediaByID is unscoped, for the worker, which acts for the system rather
 // than a signed-in user. Handlers must use GetMedia.
 func (r *Repository) GetMediaByID(ctx context.Context, id uuid.UUID) (Media, error) {

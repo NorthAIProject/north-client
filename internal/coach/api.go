@@ -30,12 +30,12 @@ import (
 type API struct {
 	svc    *Service
 	quotas *quota.Service
-	images imageStore
+	media  chatMedia
 }
 
 // NewAPI builds the routes; mount them behind auth.RequireBearer.
-func NewAPI(svc *Service, quotas *quota.Service, images imageStore) *API {
-	return &API{svc: svc, quotas: quotas, images: images}
+func NewAPI(svc *Service, quotas *quota.Service, media chatMedia) *API {
+	return &API{svc: svc, quotas: quotas, media: media}
 }
 
 // Routes mounts routes relative to /api/v1.
@@ -116,7 +116,7 @@ type StartRequest struct {
 
 type ReplyRequest struct {
 	Text string `json:"text"`
-	// MediaID is a photo already uploaded to this account.
+	// MediaID is a photo or document already uploaded to this account.
 	MediaID *uuid.UUID `json:"mediaId,omitempty"`
 	// Begin asks a new reflection to open with the coach's first question
 	// instead of answering a message.
@@ -256,14 +256,14 @@ func (a *API) reply(w http.ResponseWriter, r *http.Request) {
 	}
 
 	in := Incoming{Text: strings.TrimSpace(req.Text)}
-	if req.MediaID != nil && a.images != nil {
+	if req.MediaID != nil && a.media != nil {
 		// Built only from a record this account owns, as on the web.
-		image, imageErr := a.images.LoadChatImage(r.Context(), *req.MediaID, user.ID)
-		if imageErr != nil {
-			httpx.Error(w, apperr.FieldErrors{}.Add("mediaId", "That photo is not available."), "That photo is not available.")
+		attachment, loadErr := a.media.LoadChatAttachment(r.Context(), *req.MediaID, user.ID)
+		if loadErr != nil {
+			httpx.Error(w, apperr.FieldErrors{}.Add("mediaId", "That file is not available."), "That file is not available.")
 			return
 		}
-		in.Attachments = []conversations.Attachment{{MediaID: image.ID, Kind: image.Kind, MIMEType: image.MIMEType, Name: image.OriginalName}}
+		in.Attachments = []conversations.Attachment{attachment}
 	}
 	if !req.Begin {
 		if turnErr := conversations.ValidateTurn(in.Text, len(in.Attachments) > 0); turnErr != nil {
@@ -478,7 +478,7 @@ func projectMessage(m conversations.Message) Message {
 	}
 	attachments := make([]Attachment, 0, len(m.Parts))
 	for _, p := range m.Parts {
-		attachments = append(attachments, Attachment{MediaID: p.MediaID, Kind: p.Kind, MIMEType: p.MIMEType, Name: p.Name})
+		attachments = append(attachments, projectAttachment(p))
 	}
 	return Message{
 		ID:          m.ID,
@@ -489,6 +489,10 @@ func projectMessage(m conversations.Message) Message {
 		Helpful:     m.Helpful,
 		CreatedAt:   m.CreatedAt,
 	}
+}
+
+func projectAttachment(a conversations.Attachment) Attachment {
+	return Attachment{MediaID: a.MediaID, Kind: a.Kind, MIMEType: a.MIMEType, Name: a.Name}
 }
 
 func projectApproval(p PendingCall) *Approval {

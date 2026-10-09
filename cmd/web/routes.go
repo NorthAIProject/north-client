@@ -754,7 +754,7 @@ func routes(
 		Model:       cfg.AI.Model,
 		FastModel:   cfg.AI.FastModel,
 	})
-	coachHandler := coach.NewHandler(coachSvc, quotaSvc).WithImages(mediaSvc)
+	coachHandler := coach.NewHandler(coachSvc, quotaSvc).WithMedia(mediaSvc)
 
 	// Wired after construction: the bell and the coach both already exist,
 	// and a cycle of constructors would be worse than two setters.

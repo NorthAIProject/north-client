@@ -27,35 +27,30 @@ import (
 type Handler struct {
 	svc    *Service
 	quotas *quota.Service
-	images imageStore
+	media  chatMedia
 }
 
-// ChatImage is the handful of fields the composer needs from a stored photo.
-// Named here so this package does not import internal/media, which already
+// chatMedia is the slice of media the chat needs: store a photo or a document
+// someone attached, and load one back by id, for this account only.
+//
+// The answer is the attachment as the turn stores it. Named in terms of
+// conversations so this package does not import internal/media, which already
 // implements a ContextSource and would close a cycle.
-type ChatImage struct {
-	ID           uuid.UUID
-	Kind         string
-	MIMEType     string
-	OriginalName string
+type chatMedia interface {
+	StoreChatAttachment(ctx context.Context, userID uuid.UUID, filename string, size int64, body io.Reader) (conversations.Attachment, error)
+	LoadChatAttachment(ctx context.Context, id, userID uuid.UUID) (conversations.Attachment, error)
 }
 
-// imageStore is the slice of media this handler needs: store a photo, get an id.
-type imageStore interface {
-	StoreChatImage(ctx context.Context, userID uuid.UUID, filename string, size int64, body io.Reader) (ChatImage, error)
-	LoadChatImage(ctx context.Context, id, userID uuid.UUID) (ChatImage, error)
-}
-
-// maxChatUpload is slightly above an 8 MB photo so a just-over file is
-// rejected by the media service, not by a bare multipart parse.
+// maxChatUpload is slightly above an 8 MB photo or document so a just-over
+// file is rejected by the media service, not by a bare multipart parse.
 const maxChatUpload = (8 << 20) + (1 << 20)
 
 func NewHandler(svc *Service, quotas *quota.Service) *Handler {
 	return &Handler{svc: svc, quotas: quotas}
 }
 
-func (h *Handler) WithImages(store imageStore) *Handler {
-	h.images = store
+func (h *Handler) WithMedia(store chatMedia) *Handler {
+	h.media = store
 	return h
 }
 
@@ -345,15 +340,11 @@ func (h *Handler) sendMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mediaID := uuid.Nil
-	if attachment != nil {
-		mediaID = attachment.MediaID
-	}
-	render(w, r, http.StatusOK, chatpages.PendingExchange(conversation.ID, text, mediaID))
+	render(w, r, http.StatusOK, chatpages.PendingExchange(conversation.ID, text, attachment))
 }
 
 func (h *Handler) readAttachment(r *http.Request, userID uuid.UUID) (*conversations.Attachment, error) {
-	if h.images == nil || r.MultipartForm == nil {
+	if h.media == nil || r.MultipartForm == nil {
 		return nil, nil
 	}
 
@@ -367,21 +358,15 @@ func (h *Handler) readAttachment(r *http.Request, userID uuid.UUID) (*conversati
 	}
 	defer func() { _ = file.Close() }()
 
-	stored, err := h.images.StoreChatImage(r.Context(), userID, header.Filename, header.Size, file)
+	stored, err := h.media.StoreChatAttachment(r.Context(), userID, header.Filename, header.Size, file)
 	if err != nil {
 		var fieldErrs apperr.FieldErrors
 		if apperr.As(err, &fieldErrs) {
 			return nil, fmt.Errorf("%s", fieldErrs.Messages()["attachment"])
 		}
-		return nil, fmt.Errorf("could not store that photo")
+		return nil, fmt.Errorf("could not store that file")
 	}
-
-	return &conversations.Attachment{
-		MediaID:  stored.ID,
-		Kind:     stored.Kind,
-		MIMEType: stored.MIMEType,
-		Name:     stored.OriginalName,
-	}, nil
+	return &stored, nil
 }
 
 // stream generates the reply and pushes it as Server-Sent Events.
@@ -461,19 +446,14 @@ func (h *Handler) stream(w http.ResponseWriter, r *http.Request) {
 		// every path that reads the bytes goes through GetMedia, which filters
 		// on the user — but it wrote a dangling reference to somebody else's
 		// row into this conversation's history.
-		if mediaID != uuid.Nil && h.images != nil {
-			rec, recErr := h.images.LoadChatImage(r.Context(), mediaID, user.ID)
+		if mediaID != uuid.Nil && h.media != nil {
+			rec, recErr := h.media.LoadChatAttachment(r.Context(), mediaID, user.ID)
 			if recErr != nil {
 				// Not fatal: the message is still worth sending without it.
 				middleware.FromContext(r.Context()).Warn("chat attachment not available to this account",
 					slog.String("media_id", mediaID.String()))
 			} else {
-				in.Attachments = []conversations.Attachment{{
-					MediaID:  rec.ID,
-					Kind:     rec.Kind,
-					MIMEType: rec.MIMEType,
-					Name:     rec.OriginalName,
-				}}
+				in.Attachments = []conversations.Attachment{rec}
 			}
 		}
 		stream, err = h.svc.SendIncoming(r.Context(), user, conversation.ID, in)

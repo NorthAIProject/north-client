@@ -32,8 +32,9 @@ var portugueseEuropeanChat = map[string]string{
 	"chat.feedback.yes":        "Sim",
 	"chat.feedback.no":         "Não",
 
-	"chat.attach":      "Anexar uma foto",
-	"chat.placeholder": "Em que estás a trabalhar?",
+	"chat.attach":        "Anexar uma foto ou um ficheiro",
+	"chat.attach_remove": "Remover o ficheiro",
+	"chat.placeholder":   "Em que estás a trabalhar?",
 
 	"chat.approval.title": "O Khepri quer alterar algo",
 	"chat.approval.yes":   "Sim, avança",

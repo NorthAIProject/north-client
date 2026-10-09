@@ -32,8 +32,9 @@ var portugueseBrazilianChat = map[string]string{
 	"chat.feedback.yes":        "Sim",
 	"chat.feedback.no":         "Não",
 
-	"chat.attach":      "Anexar uma foto",
-	"chat.placeholder": "No que você está trabalhando?",
+	"chat.attach":        "Anexar uma foto ou um arquivo",
+	"chat.attach_remove": "Remover o arquivo",
+	"chat.placeholder":   "No que você está trabalhando?",
 
 	"chat.approval.title": "O Khepri quer mudar algo",
 	"chat.approval.yes":   "Sim, pode ir",
