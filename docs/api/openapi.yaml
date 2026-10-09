@@ -8478,6 +8478,25 @@ components:
             $ref: '#/components/schemas/Nudge'
         briefing:
           type: string
+        todayCheckIn:
+          $ref: '#/components/schemas/TodayCheckIn'
+    TodayCheckIn:
+      type: object
+      required: [mood, energy, source, at]
+      properties:
+        mood:
+          type: integer
+        energy:
+          type: integer
+        stress:
+          type: integer
+        sleepQuality:
+          type: integer
+        source:
+          type: string
+        at:
+          type: string
+          format: date-time
     TodayGoal:
       type: object
       required: [id, title, category, status, milestoneTotal, milestoneDone]
@@ -9684,7 +9703,7 @@ components:
           type: string
     CheckIn:
       type: object
-      required: [id, localDate, mood, energy, wins, challenges, notes, updatedAt]
+      required: [id, localDate, mood, energy, wins, challenges, notes, updatedAt, createdAt, source, tags]
       properties:
         id:
           type: string
@@ -9714,6 +9733,24 @@ components:
         updatedAt:
           type: string
           format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        source:
+          type: string
+          description: Where the check-in was filed - web, ios, siri, coach, mcp, capture or unknown. Open-ended; clients show values they do not know generically.
+        stress:
+          type: integer
+          minimum: 1
+          maximum: 5
+        sleepQuality:
+          type: integer
+          minimum: 1
+          maximum: 5
+        tags:
+          type: array
+          items:
+            type: string
     CheckInList:
       type: object
       required: [recent, streak]
@@ -9743,6 +9780,17 @@ components:
         relatedGoalId:
           type: string
           format: uuid
+        stress:
+          type: integer
+        sleepQuality:
+          type: integer
+        tags:
+          type: array
+          items:
+            type: string
+        source:
+          type: string
+          description: Where the check-in was filed, e.g. ios or siri.
     ReportSummary:
       type: object
       required: [id, kind, title, periodStart, periodEnd, status, archived]

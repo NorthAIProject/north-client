@@ -576,6 +576,7 @@ func routes(
 		Milestones:    milestoneSvc,
 		Preferences:   preferencesSvc,
 		CheckInTotals: checkinSvc,
+		CheckIns:      checkinSvc,
 	})
 	dayHandler := day.NewHandler(daySvc).WithBodyMaps(liftSvc)
 

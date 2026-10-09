@@ -20,7 +20,7 @@ func TestSavedPanelLeadsWithTheMomentWhenThereIsOne(t *testing.T) {
 	}
 
 	var with bytes.Buffer
-	if err := SavedPanel(checkin.CheckIn{Mood: 4, Energy: 3}, nil, 7, &m).Render(context.Background(), &with); err != nil {
+	if err := SavedPanel(checkin.CheckIn{Mood: 4, Energy: 3}, 7, &m).Render(context.Background(), &with); err != nil {
 		t.Fatal(err)
 	}
 	html := with.String()
@@ -36,7 +36,7 @@ func TestSavedPanelLeadsWithTheMomentWhenThereIsOne(t *testing.T) {
 	}
 
 	var without bytes.Buffer
-	if err := SavedPanel(checkin.CheckIn{Mood: 4, Energy: 3}, nil, 8, nil).Render(context.Background(), &without); err != nil {
+	if err := SavedPanel(checkin.CheckIn{Mood: 4, Energy: 3}, 8, nil).Render(context.Background(), &without); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(without.String(), `data-moment=`) {

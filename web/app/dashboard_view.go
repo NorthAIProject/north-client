@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -23,7 +24,11 @@ type DashboardData struct {
 
 	Range RangeView
 
-	CheckedInToday  bool
+	CheckedInToday bool
+	// TodayCheckIn is today's numbers once checked in; nil before.
+	TodayCheckIn *TodayCheckInView
+	// CheckInVersion is what the live Today region sends back when it polls.
+	CheckInVersion  string
 	Streak          int
 	GoalActivity7d  int
 	PendingMemories int
@@ -329,6 +334,25 @@ func todayItems(ctx context.Context, data DashboardData) []TodayItem {
 	return items
 }
 
+// TodayCheckInView is today's check-in as the Today card shows it.
+type TodayCheckInView struct {
+	Mood, Energy int
+	// At is when it was last filed, HH:MM in the reader's zone.
+	At string
+}
+
+// todayLiveHref is where the live Today region re-fetches itself: the range
+// on screen, so the card is drawn as it was, and the check-in version, so an
+// unchanged poll is a 204.
+func todayLiveHref(data DashboardData) string {
+	q := url.Values{}
+	if data.Range.Key != "" {
+		q.Set("range", data.Range.Key)
+	}
+	q.Set("v", data.CheckInVersion)
+	return "/app/overview/today?" + q.Encode()
+}
+
 func checkInItem(ctx context.Context, data DashboardData) TodayItem {
 	item := TodayItem{
 		Key:    TodayCheckIn,
@@ -339,7 +363,11 @@ func checkInItem(ctx context.Context, data DashboardData) TodayItem {
 		CTA:    i18n.T(ctx, "dash.kpi.checkcta"),
 		Done:   data.CheckedInToday,
 	}
-	if data.Streak > 0 {
+	switch {
+	case data.TodayCheckIn != nil:
+		c := data.TodayCheckIn
+		item.Detail = i18n.Tf(ctx, "dash.today.checkin.done", c.Mood, c.Energy, c.At)
+	case data.Streak > 0:
 		item.Detail = i18n.Tf(ctx, "dash.today.streak", streakKPI(ctx, data))
 	}
 	return item

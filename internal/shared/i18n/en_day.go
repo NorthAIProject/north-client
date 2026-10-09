@@ -218,4 +218,8 @@ var englishDay = map[string]string{
 	"day.body.weight":    "Weight (kg)",
 	"day.body.height":    "Height (cm)",
 	"day.body.measure":   "Save weight",
+
+	// The streak tile's line about today's check-in.
+	"day.streak.today":  "Today: mood %[1]d · energy %[2]d · %[3]s",
+	"day.streak.notyet": "No check-in yet today",
 }

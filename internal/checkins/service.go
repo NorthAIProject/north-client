@@ -2,11 +2,14 @@ package checkins
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 
+	"github.com/NorthAIProject/north-client/internal/checkins/checkin"
 	"github.com/NorthAIProject/north-client/internal/goals"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
@@ -67,6 +70,15 @@ type Input struct {
 	Challenges    string
 	Notes         string
 	RelatedGoalID *uuid.UUID
+
+	// Stress and SleepQuality are optional 1–5 scales; nil means not given.
+	Stress       *int
+	SleepQuality *int
+	Tags         []string
+
+	// Source is the surface writing. It is stored only when this write
+	// creates the day's check-in; edits keep the original. Blank is unknown.
+	Source checkin.Source
 }
 
 // Validate checks a check-in before it is stored.
@@ -78,6 +90,12 @@ func Validate(in Input) (Input, error) {
 	}
 	if in.Energy < 1 || in.Energy > 5 {
 		errs = errs.Add("energy", "Pick an energy level from 1 to 5.")
+	}
+	if in.Stress != nil && (*in.Stress < 1 || *in.Stress > 5) {
+		errs = errs.Add("stress", "Pick a stress level from 1 to 5.")
+	}
+	if in.SleepQuality != nil && (*in.SleepQuality < 1 || *in.SleepQuality > 5) {
+		errs = errs.Add("sleep_quality", "Pick a sleep quality from 1 to 5.")
 	}
 
 	in.Wins = strings.TrimSpace(in.Wins)
@@ -93,6 +111,21 @@ func Validate(in Input) (Input, error) {
 		errs = errs.Add("notes", "Keep notes under 1000 characters.")
 	}
 
+	in.Tags = checkin.NormalizeTags(in.Tags)
+	if len(in.Tags) > checkin.MaxTags {
+		errs = errs.Add("tags", fmt.Sprintf("Use at most %d tags.", checkin.MaxTags))
+	}
+	for _, tag := range in.Tags {
+		if utf8.RuneCountInString(tag) > checkin.MaxTagLength {
+			errs = errs.Add("tags", fmt.Sprintf("Keep each tag to %d characters.", checkin.MaxTagLength))
+			break
+		}
+	}
+
+	if in.Source == "" {
+		in.Source = checkin.SourceUnknown
+	}
+
 	return in, errs.OrNil()
 }
 
@@ -103,7 +136,10 @@ func LocalDate(user users.User, at time.Time) time.Time {
 	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, loc)
 }
 
-// UpsertToday creates or updates today's check-in in the user's timezone.
+// UpsertToday creates or replaces today's check-in in the user's timezone.
+// Every content field is written as given: this is the full form (web or app),
+// where a field left blank is a deliberate clear. A writer that knows only some
+// fields uses MergeToday instead. The source is kept from the first save.
 func (s *Service) UpsertToday(ctx context.Context, user users.User, in Input) (CheckIn, error) {
 	clean, err := Validate(in)
 	if err != nil {
@@ -112,16 +148,82 @@ func (s *Service) UpsertToday(ctx context.Context, user users.User, in Input) (C
 	if err = s.checkGoal(ctx, user.ID, clean.RelatedGoalID); err != nil {
 		return CheckIn{}, err
 	}
+	return s.saveToday(ctx, user, clean)
+}
 
-	checkIn, err := s.repo.Upsert(ctx, user.ID, Write{
-		LocalDate:     LocalDate(user, time.Now()),
-		Mood:          clean.Mood,
-		Energy:        clean.Energy,
-		Wins:          clean.Wins,
-		Challenges:    clean.Challenges,
-		Notes:         clean.Notes,
-		RelatedGoalID: clean.RelatedGoalID,
-	})
+// MergeToday records a partial check-in: whatever the writer gave replaces
+// today's value, and everything it left blank keeps what is already there.
+//
+// The coach, MCP and capture write through here. They know mood and energy and
+// perhaps a note; replacing the whole row with that erased the wins and
+// challenges written on the form that morning.
+func (s *Service) MergeToday(ctx context.Context, user users.User, in Input) (CheckIn, error) {
+	// Only a goal this writer named is checked. One already on today's entry
+	// was valid when it was linked, and a goal completed since must not make
+	// the coach's check-in fail.
+	if err := s.checkGoal(ctx, user.ID, in.RelatedGoalID); err != nil {
+		return CheckIn{}, err
+	}
+
+	existing, err := s.repo.GetByDate(ctx, user.ID, LocalDate(user, time.Now()))
+	switch {
+	case err == nil:
+		in = mergeInto(existing, in)
+	case !apperr.Is(err, apperr.ErrNotFound):
+		return CheckIn{}, err
+	}
+
+	clean, err := Validate(in)
+	if err != nil {
+		return CheckIn{}, err
+	}
+	return s.saveToday(ctx, user, clean)
+}
+
+// mergeInto lays a partial input over an existing check-in. Mood and energy
+// always come from the writer; every optional field does only when it was
+// given. Source is the writer's, though the store keeps the original.
+func mergeInto(base CheckIn, patch Input) Input {
+	out := Input{
+		Mood:          patch.Mood,
+		Energy:        patch.Energy,
+		Source:        patch.Source,
+		Wins:          base.Wins,
+		Challenges:    base.Challenges,
+		Notes:         base.Notes,
+		RelatedGoalID: base.RelatedGoalID,
+		Stress:        base.Stress,
+		SleepQuality:  base.SleepQuality,
+		Tags:          base.Tags,
+	}
+	if strings.TrimSpace(patch.Wins) != "" {
+		out.Wins = patch.Wins
+	}
+	if strings.TrimSpace(patch.Challenges) != "" {
+		out.Challenges = patch.Challenges
+	}
+	if strings.TrimSpace(patch.Notes) != "" {
+		out.Notes = patch.Notes
+	}
+	if patch.RelatedGoalID != nil {
+		out.RelatedGoalID = patch.RelatedGoalID
+	}
+	if patch.Stress != nil {
+		out.Stress = patch.Stress
+	}
+	if patch.SleepQuality != nil {
+		out.SleepQuality = patch.SleepQuality
+	}
+	if len(checkin.NormalizeTags(patch.Tags)) > 0 {
+		out.Tags = patch.Tags
+	}
+	return out
+}
+
+// saveToday stores an already validated check-in for today and tells the
+// hooks about it.
+func (s *Service) saveToday(ctx context.Context, user users.User, clean Input) (CheckIn, error) {
+	checkIn, err := s.repo.Upsert(ctx, user.ID, writeFrom(LocalDate(user, time.Now()), clean))
 	if err != nil {
 		return CheckIn{}, err
 	}
@@ -135,6 +237,28 @@ func (s *Service) UpsertToday(ctx context.Context, user users.User, in Input) (C
 		}
 	}
 	return checkIn, nil
+}
+
+func writeFrom(localDate time.Time, clean Input) Write {
+	return Write{
+		LocalDate:     localDate,
+		Mood:          clean.Mood,
+		Energy:        clean.Energy,
+		Wins:          clean.Wins,
+		Challenges:    clean.Challenges,
+		Notes:         clean.Notes,
+		RelatedGoalID: clean.RelatedGoalID,
+		Stress:        clean.Stress,
+		SleepQuality:  clean.SleepQuality,
+		Tags:          clean.Tags,
+		Source:        clean.Source,
+	}
+}
+
+// Version fingerprints this person's check-ins. It changes on every save,
+// edit and delete, so a display holding the old value knows it is stale.
+func (s *Service) Version(ctx context.Context, userID uuid.UUID) (string, error) {
+	return s.repo.Version(ctx, userID)
 }
 
 func (s *Service) Get(ctx context.Context, id, userID uuid.UUID) (CheckIn, error) {
@@ -179,14 +303,7 @@ func (s *Service) Update(ctx context.Context, id, userID uuid.UUID, in Input) (C
 	if err = s.checkGoal(ctx, userID, clean.RelatedGoalID); err != nil {
 		return CheckIn{}, err
 	}
-	checkIn, err := s.repo.Update(ctx, id, userID, Write{
-		Mood:          clean.Mood,
-		Energy:        clean.Energy,
-		Wins:          clean.Wins,
-		Challenges:    clean.Challenges,
-		Notes:         clean.Notes,
-		RelatedGoalID: clean.RelatedGoalID,
-	})
+	checkIn, err := s.repo.Update(ctx, id, userID, writeFrom(time.Time{}, clean))
 	if err != nil {
 		return CheckIn{}, err
 	}
