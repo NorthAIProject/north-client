@@ -2,6 +2,8 @@ package insights
 
 import (
 	"context"
+	"sort"
+	"time"
 
 	"golang.org/x/sync/errgroup"
 
@@ -40,6 +42,10 @@ type metric struct {
 
 	// Href is the domain page this metric's detail links back up to.
 	Href string
+
+	// Health marks a metric synced from a health provider. Those get a row
+	// in the health list and are placed against the person's own usual.
+	Health bool
 
 	load func(ctx context.Context, s *Service, user users.User, rg timerange.Range) ([]point, error)
 }
@@ -126,30 +132,58 @@ func metrics() []metric {
 				return sessionMetric(ctx, s, user, rg, true)
 			},
 		},
-		// Synced from Apple Health on the phone, one daily aggregate per
-		// metric: a day's steps or active energy, the day's resting heart
-		// rate as Apple computes it, the day's mean HRV. Averaged across days
-		// in wider buckets, like every other per-day measurement here.
+		// Synced from a health provider, folded to one value per day: a
+		// day's steps or active energy, the day's resting heart rate as Apple
+		// computes it, the day's mean HRV. Averaged across days in wider
+		// buckets, like every other per-day measurement here. The order here
+		// is the order of the health list.
 		{
-			Key: "steps", Decimals: 0, Label: "Steps", Mean: true, Better: 1,
+			Key: "steps", Decimals: 0, Label: "Steps", Mean: true, Better: 1, Health: true,
 			Href: "/app/insights/training",
-			load: healthMetric("steps"),
+			load: healthMetric("steps", dayTotal),
 		},
 		{
-			Key: "active-energy", Decimals: 0, Label: "Active energy", Unit: "kcal", Mean: true, Better: 1,
+			Key: "active-energy", Decimals: 0, Label: "Active energy", Unit: "kcal", Mean: true, Better: 1, Health: true,
 			Href: "/app/insights/training",
-			load: healthMetric("active_calories"),
+			load: healthMetric("active_calories", dayTotal),
+		},
+		{
+			Key: "exercise-minutes", Decimals: 0, Label: "Exercise minutes", Unit: "min", Mean: true, Better: 1, Health: true,
+			Href: "/app/insights/training",
+			load: healthMetric("exercise_minutes", dayTotal),
+		},
+		{
+			Key: "stand-hours", Decimals: 0, Label: "Stand hours", Mean: true, Better: 1, Health: true,
+			Href: "/app/insights/training",
+			load: healthMetric("stand_hours", dayTotal),
+		},
+		{
+			Key: "daylight", Decimals: 0, Label: "Time in daylight", Unit: "min", Mean: true, Better: 1, Health: true,
+			Href: "/app/insights/body",
+			load: healthMetric("time_in_daylight", dayTotal),
 		},
 		{
 			// Lower is fitter, which is why Better is -1.
-			Key: "resting-heart-rate", Decimals: 0, Label: "Resting heart rate", Unit: "bpm", Mean: true, Better: -1,
+			Key: "resting-heart-rate", Decimals: 0, Label: "Resting heart rate", Unit: "bpm", Mean: true, Better: -1, Health: true,
 			Href: "/app/insights/body",
-			load: healthMetric("resting_heart_rate"),
+			load: healthMetric("resting_heart_rate", dayMean),
 		},
 		{
-			Key: "hrv", Decimals: 0, Label: "Heart rate variability", Unit: "ms", Mean: true, Better: 1,
+			Key: "hrv", Decimals: 0, Label: "Heart rate variability", Unit: "ms", Mean: true, Better: 1, Health: true,
 			Href: "/app/insights/body",
-			load: healthMetric("hrv_sdnn"),
+			load: healthMetric("hrv_sdnn", dayMean),
+		},
+		{
+			Key: "vo2max", Decimals: 1, Label: "VO2 max", Mean: true, Better: 1, Health: true,
+			Href: "/app/insights/training",
+			load: healthMetric("vo2max", dayMean),
+		},
+		{
+			// No Better: whether weight going down is good news depends on
+			// the goal, and the chip must not guess.
+			Key: "weight", Decimals: 1, Label: "Weight", Unit: "kg", Mean: true, Health: true,
+			Href: "/app/insights/body",
+			load: healthMetric("body_mass", dayMean),
 		},
 		{
 			Key: "notes", Label: "Goal notes", Better: 1,
@@ -209,9 +243,21 @@ func sessionMetric(ctx context.Context, s *Service, user users.User, rg timerang
 	return out, nil
 }
 
-// healthMetric loads one synced health reading per point, dated by when the
-// reading starts. A deployment without health data shows the metric empty.
-func healthMetric(name string) func(ctx context.Context, s *Service, user users.User, rg timerange.Range) ([]point, error) {
+// dayFold is how a day's readings of one health metric become its value.
+type dayFold int
+
+const (
+	// dayTotal adds them: steps can arrive as several samples in a day.
+	dayTotal dayFold = iota
+	// dayMean averages them: two weigh-ins in a morning are one weight.
+	dayMean
+)
+
+// healthMetric loads one synced health metric as one point per local day,
+// oldest first, dated at the start of the day. Folding to days keeps every
+// average on this page an average of days, however often a provider syncs.
+// A deployment without health data shows the metric empty.
+func healthMetric(name string, fold dayFold) func(ctx context.Context, s *Service, user users.User, rg timerange.Range) ([]point, error) {
 	return func(ctx context.Context, s *Service, user users.User, rg timerange.Range) ([]point, error) {
 		if s.health == nil {
 			return nil, nil
@@ -220,10 +266,22 @@ func healthMetric(name string) func(ctx context.Context, s *Service, user users.
 		if err != nil {
 			return nil, err
 		}
-		out := make([]point, 0, len(rows))
+		loc := rg.Location()
+		sums := map[time.Time]float64{}
+		counts := map[time.Time]int{}
 		for _, r := range rows {
-			out = append(out, point{At: r.StartedAt, Value: r.Value})
+			d := timerange.StartOfDay(r.StartedAt.In(loc))
+			sums[d] += r.Value
+			counts[d]++
 		}
+		out := make([]point, 0, len(sums))
+		for d, v := range sums {
+			if fold == dayMean {
+				v /= float64(counts[d])
+			}
+			out = append(out, point{At: d, Value: v})
+		}
+		sort.Slice(out, func(i, j int) bool { return out[i].At.Before(out[j].At) })
 		return out, nil
 	}
 }
@@ -245,6 +303,10 @@ type MetricData struct {
 
 	Points []point
 	Prior  []point
+
+	// Usual places the window's latest day against the weeks before it.
+	// Only health metrics carry one, and only once there is a baseline.
+	Usual *Usual
 }
 
 // Metric loads one metric for a window and for the window before it.
@@ -274,6 +336,17 @@ func (s *Service) Metric(ctx context.Context, user users.User, rg timerange.Rang
 
 	if err := g.Wait(); err != nil {
 		return MetricData{}, err
+	}
+
+	if m.Health && len(out.Points) > 0 {
+		latest := out.Points[len(out.Points)-1].At
+		points, err := m.load(ctx, s, user, usualWindow(latest))
+		if err != nil {
+			return MetricData{}, err
+		}
+		if u, ok := usualOf(points); ok {
+			out.Usual = &u
+		}
 	}
 	return out, nil
 }

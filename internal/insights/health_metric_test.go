@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/health"
+	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
@@ -42,8 +43,9 @@ func TestHealthMetricsReadTheSyncedReadings(t *testing.T) {
 	if fake.asked != "resting_heart_rate" {
 		t.Errorf("asked health for %q, want resting_heart_rate", fake.asked)
 	}
-	if len(data.Points) != 1 || data.Points[0].Value != 52 || !data.Points[0].At.Equal(day) {
-		t.Errorf("points = %+v, want one 52 on %v", data.Points, day)
+	// Readings fold to one point per local day, dated at its start.
+	if len(data.Points) != 1 || data.Points[0].Value != 52 || !data.Points[0].At.Equal(timerange.StartOfDay(day)) {
+		t.Errorf("points = %+v, want one 52 on %v", data.Points, timerange.StartOfDay(day))
 	}
 	if data.Metric.Better != -1 {
 		t.Error("a falling resting heart rate must read as improvement")
