@@ -3,6 +3,7 @@ package planimport_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"html"
 	"mime/multipart"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/ai/fake"
@@ -281,4 +283,104 @@ func postForm(t *testing.T, ctx context.Context, handler http.HandlerFunc, path 
 	rec := httptest.NewRecorder()
 	handler(rec, req)
 	return rec
+}
+
+// A dayless plan with options: only the first option counts toward the day,
+// the one day is saved on all seven, and a personal food in an option is
+// created once rather than once per day.
+func TestEveryDayMealPlanWithOptionsSavesSevenDaysAndOnePersonalFood(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+
+	for _, in := range []meals.IngredientInput{
+		{Name: "Grilled chicken breast", Category: meals.CategoryProtein, Per100g: meals.Macros{Calories: 165, ProteinG: 31, FatG: 3.6}},
+		{Name: "Plain white rice", Category: meals.CategoryCarb, Per100g: meals.Macros{Calories: 130, ProteinG: 2.7, FatG: 0.3, CarbG: 28}},
+	} {
+		if _, err := f.ingredients.Create(ctx, f.user.ID, in); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Option 3 alone carries 140 g of carbs: far over a low-carb day's 31 g,
+	// and harmless as long as it is not the option counted.
+	csv := "Meal,Option,Food,Quantity,Unit,Protein,Carbs,Fat\n" +
+		"Lunch,Meat,Grilled chicken breast,100,g,,,\n" +
+		"Lunch,Fish,Coach's fish,150,g,30,0,3\n" +
+		"Lunch,Rice bowl,Plain white rice,500,g,,,\n"
+	draft, err := f.svc.ParseMeal(ctx, f.user, "plan.csv", []byte(csv), "")
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if !draft.EveryDay || len(draft.Days) != 1 {
+		t.Fatalf("draft = %+v, want one every-day day", draft)
+	}
+	lunch := draft.Days[0].Meals[0]
+	if len(lunch.Alternatives) != 2 || lunch.Alternatives[1].Foods[0].Macros == nil {
+		t.Fatalf("lunch = %+v, want the alternatives' foods resolved too", lunch)
+	}
+
+	draft.PlanType = string(meal.LowCarb)
+	draft.Days[0].Meals[0].Alternatives[0].Foods[0].SaveAsMine = true
+	draft = f.svc.PreviewMeal(ctx, f.user.ID, draft)
+	day := draft.Days[0]
+	if day.Totals == nil || !within(day.Totals.ProteinG, 31) || day.Totals.CarbG > 0.01 {
+		t.Fatalf("totals = %+v, want the chicken alone", day.Totals)
+	}
+	if day.Weekday == nil || *day.Weekday != int(time.Monday) || len(day.Over) != 0 {
+		t.Fatalf("day = %+v, want it measured once, as Monday, and within target", day)
+	}
+
+	saved, _, err := f.svc.CommitMeal(ctx, f.user, draft, false)
+	if err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+	if len(saved.Days) != 7 {
+		t.Fatalf("days = %d, want 7", len(saved.Days))
+	}
+	for _, d := range saved.Days {
+		slot := d.Meals[0]
+		if len(d.Meals) != 1 || len(slot.Alternatives) != 2 || slot.OptionLabel != "Meat" || slot.Alternatives[0].OptionLabel != "Fish" {
+			t.Fatalf("%s = %+v, want lunch with its three options", d.Weekday, d.Meals)
+		}
+	}
+	if found, _ := f.ingredients.Search(ctx, f.user.ID, "Coach's fish", 5); len(found) != 1 {
+		t.Fatalf("personal ingredients = %d, want exactly 1 for seven days", len(found))
+	}
+}
+
+// The JSON API carries options, every-day, notes and the imported-line
+// fields through preview untouched.
+func TestMealImportAPICarriesOptionsAndNotes(t *testing.T) {
+	f := newFixture(t)
+	ctx := auth.ContextWithUser(context.Background(), f.user)
+	r := chi.NewRouter()
+	planimport.NewAPI(f.svc, nil).Routes(r)
+
+	body := `{"name":"Plano","planType":"","mode":"","hasTarget":false,"canConfirm":false,"unparsed":[],
+	  "everyDay":true,"notes":"Beber água.",
+	  "days":[{"label":"Every day","meals":[{"name":"Almoço","optionLabel":"Prato – carne",
+	    "foods":[{"food":"Chicken","unit":"g","quantity":125,"matchedName":"","saveAsMine":false,"sourceText":"125 g frango"}],
+	    "alternatives":[{"label":"Prato – peixe","foods":[{"food":"Hake","unit":"posta","quantity":1,"grams":150,"estimated":true,"matchedName":"","saveAsMine":false}]}]}]}]}`
+	req := httptest.NewRequest(http.MethodPost, "/nutrition/import/preview", strings.NewReader(body)).WithContext(ctx)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("preview: %d %s", rec.Code, rec.Body.String())
+	}
+
+	var got planimport.MealDraft
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	m := got.Days[0].Meals[0]
+	if !got.EveryDay || got.Notes != "Beber água." || m.OptionLabel != "Prato – carne" || m.Foods[0].SourceText != "125 g frango" {
+		t.Fatalf("draft = %+v", got)
+	}
+	if len(m.Alternatives) != 1 || m.Alternatives[0].Label != "Prato – peixe" || !m.Alternatives[0].Foods[0].Estimated || *m.Alternatives[0].Foods[0].Grams != 150 {
+		t.Fatalf("alternatives = %+v", m.Alternatives)
+	}
+	if m.Alternatives[0].Foods[0].Checks == nil {
+		t.Fatalf("alternative foods were not previewed")
+	}
 }

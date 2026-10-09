@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 	"time"
 
@@ -62,17 +63,30 @@ func (s *Service) PreviewMeal(ctx context.Context, userID uuid.UUID, d MealDraft
 		day := &d.Days[di]
 		var total meal.Macros
 		for mi := range day.Meals {
-			for fi := range day.Meals[mi].Foods {
-				food := &day.Meals[mi].Foods[fi]
+			m := &day.Meals[mi]
+			// Only the first option counts toward the day; the others are
+			// resolved so they can be saved, and eaten instead of it.
+			for fi := range m.Foods {
+				food := &m.Foods[fi]
 				s.resolveFood(ctx, userID, food)
 				if food.Macros != nil {
 					total = total.Add(meal.Macros{Calories: food.Macros.Calories, ProteinG: food.Macros.ProteinG, CarbG: food.Macros.CarbG, FatG: food.Macros.FatG})
 				}
 			}
+			for oi := range m.Alternatives {
+				for fi := range m.Alternatives[oi].Foods {
+					s.resolveFood(ctx, userID, &m.Alternatives[oi].Foods[fi])
+				}
+			}
 		}
 		day.Totals = macroGrams(total)
 		day.Target, day.Remaining, day.Over = nil, nil, []string{}
-		if meal.Mode(d.Mode) == meal.Easy {
+		switch {
+		case d.EveryDay:
+			// Every day of the week is this day, so it is measured once,
+			// as the Monday it is saved as first.
+			day.Weekday = util.Ptr(int(meal.WeekOrder[0]))
+		case meal.Mode(d.Mode) == meal.Easy:
 			day.Weekday = nil
 			if di < meal.MaxDays {
 				day.Weekday = util.Ptr(int(meal.WeekOrder[di]))
@@ -303,15 +317,67 @@ func statedMismatch(f *FoodDraft, m meal.Macros, name string) []string {
 // the personal ingredients to create first.
 type importPlan struct {
 	input meals.MealPlanInput
-	days  []meals.DayDraft
+	// days are the drafted days, one per day of the draft. An every-day plan
+	// has one, saved as seven copies by daysToSave.
+	days     []meals.DayDraft
+	everyDay bool
 	// mine lists the portions whose ingredient is still to be created, by
-	// position, with what to create.
+	// position in days, with what to create. Listing them against the
+	// drafted day rather than its copies creates each one once.
 	mine []minePortion
 }
 
+// minePortion is a portion of days[day].Meals[meal] waiting for its personal
+// ingredient. option 0 is the slot's default; option N is Alternatives[N-1].
 type minePortion struct {
-	day, meal, portion int
-	ingredient         meals.IngredientInput
+	day, meal, option, portion int
+	ingredient                 meals.IngredientInput
+}
+
+// setIngredient fills in the id of the personal ingredient created for m.
+func (p importPlan) setIngredient(m minePortion, id uuid.UUID) {
+	slot := &p.days[m.day].Meals[m.meal]
+	portions := slot.Portions
+	if m.option > 0 {
+		portions = slot.Alternatives[m.option-1].Portions
+	}
+	portions[m.portion].IngredientID = id
+}
+
+// daysToSave is the days meals.CreatePlan stores: the drafted days, or seven
+// independent copies of an every-day plan's one day.
+func (p importPlan) daysToSave() []meals.DayDraft {
+	if !p.everyDay || len(p.days) != 1 {
+		return p.days
+	}
+	out := make([]meals.DayDraft, len(meal.WeekOrder))
+	for i := range out {
+		out[i] = copyDay(p.days[0])
+	}
+	return out
+}
+
+func copyDay(d meals.DayDraft) meals.DayDraft {
+	out := meals.DayDraft{Meals: make([]meals.MealDraft, len(d.Meals))}
+	for i, m := range d.Meals {
+		c := m
+		c.Portions = slices.Clone(m.Portions)
+		c.Alternatives = make([]meals.MealOptionDraft, len(m.Alternatives))
+		for j, alt := range m.Alternatives {
+			c.Alternatives[j] = meals.MealOptionDraft{Label: alt.Label, Portions: slices.Clone(alt.Portions)}
+		}
+		out.Meals[i] = c
+	}
+	return out
+}
+
+// draftOption is one option of a meal on its way to being saved.
+type draftOption struct {
+	label    string
+	portions []meals.MealIngredientInput
+	// mine is, per entry, the index in portions of a food still to be
+	// created as a personal ingredient, and what to create.
+	mine []minePortion
 }
 
 // mealPlanFromDraft converts a previewed draft into what meals.CreatePlan
@@ -328,9 +394,17 @@ func mealPlanFromDraft(d MealDraft) (importPlan, []string) {
 	if len(d.Days) > meal.MaxDays {
 		problems = append(problems, fmt.Sprintf("A plan holds at most %d days; remove %d.", meal.MaxDays, len(d.Days)-meal.MaxDays))
 	}
+	if d.EveryDay && len(d.Days) != 1 {
+		problems = append(problems, fmt.Sprintf("A plan eaten every day has exactly one day; this one has %d.", len(d.Days)))
+	}
 
-	out := importPlan{input: meals.MealPlanInput{Name: d.Name, Settings: settings}}
-	if settings.Mode == meal.Easy {
+	out := importPlan{input: meals.MealPlanInput{Name: d.Name, Settings: settings, Notes: d.Notes}, everyDay: d.EveryDay}
+	switch {
+	case d.EveryDay && settings.Mode == meal.Advanced:
+		out.input.Weekdays = slices.Clone(meal.WeekOrder)
+	case d.EveryDay:
+		out.input.DayCount = len(meal.WeekOrder)
+	case settings.Mode == meal.Easy:
 		out.input.DayCount = len(d.Days)
 	}
 
@@ -339,7 +413,7 @@ func mealPlanFromDraft(d MealDraft) (importPlan, []string) {
 		if label == "" {
 			label = fmt.Sprintf("day %d", di+1)
 		}
-		if settings.Mode == meal.Advanced {
+		if settings.Mode == meal.Advanced && !d.EveryDay {
 			if day.Weekday == nil {
 				problems = append(problems, fmt.Sprintf("Choose which day of the week %s is.", label))
 				continue
@@ -353,23 +427,53 @@ func mealPlanFromDraft(d MealDraft) (importPlan, []string) {
 			if name == "" {
 				name = fmt.Sprintf("Meal %d", mi+1)
 			}
-			md := meals.MealDraft{Name: name}
-			for _, f := range m.Foods {
-				if !f.Ready() {
-					problems = append(problems, fmt.Sprintf("%s, %s: %q isn't ready — %s", label, name, f.Food, strings.Join(f.Checks, " ")))
-					continue
+			var opts []draftOption
+			for oi, opt := range m.Options() {
+				where := label + ", " + name
+				if len(m.Alternatives) > 0 {
+					where += " (" + m.OptionName(oi) + ")"
 				}
-				portion := meals.MealIngredientInput{QuantityGrams: *f.Grams}
-				if f.IngredientID != nil {
-					portion.IngredientID = *f.IngredientID
-				} else {
-					out.mine = append(out.mine, minePortion{day: len(out.days), meal: len(dd.Meals), portion: len(md.Portions), ingredient: personalIngredient(f)})
+				o := draftOption{label: strings.TrimSpace(opt.Label)}
+				for _, f := range opt.Foods {
+					if !f.Ready() {
+						problems = append(problems, fmt.Sprintf("%s: %q isn't ready — %s", where, f.Food, strings.Join(f.Checks, " ")))
+						continue
+					}
+					portion := meals.MealIngredientInput{QuantityGrams: *f.Grams, SourceText: f.SourceText, Estimated: f.Estimated}
+					if f.IngredientID != nil {
+						portion.IngredientID = *f.IngredientID
+					} else {
+						o.mine = append(o.mine, minePortion{portion: len(o.portions), ingredient: personalIngredient(f)})
+					}
+					o.portions = append(o.portions, portion)
 				}
-				md.Portions = append(md.Portions, portion)
+				// An option left with no food is dropped, and the next one
+				// takes its place: a slot is never saved around an empty default.
+				if len(o.portions) > 0 {
+					opts = append(opts, o)
+				}
 			}
-			if len(md.Portions) > 0 {
-				dd.Meals = append(dd.Meals, md)
+			if len(opts) == 0 {
+				continue
 			}
+
+			md := meals.MealDraft{Name: name, OptionLabel: opts[0].label, Portions: opts[0].portions}
+			for oi, o := range opts {
+				if oi > 0 {
+					// The meals service needs every alternative told apart by
+					// a label; one the file left unnamed is named by its place.
+					altLabel := o.label
+					if altLabel == "" {
+						altLabel = fmt.Sprintf("Option %d", oi+1)
+					}
+					md.Alternatives = append(md.Alternatives, meals.MealOptionDraft{Label: altLabel, Portions: o.portions})
+				}
+				for _, mp := range o.mine {
+					mp.day, mp.meal, mp.option = len(out.days), len(dd.Meals), oi
+					out.mine = append(out.mine, mp)
+				}
+			}
+			dd.Meals = append(dd.Meals, md)
 		}
 		out.days = append(out.days, dd)
 	}
