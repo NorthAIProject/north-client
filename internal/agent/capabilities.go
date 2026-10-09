@@ -32,8 +32,10 @@ import (
 	"github.com/NorthAIProject/north-client/internal/habits"
 	"github.com/NorthAIProject/north-client/internal/hydration"
 	"github.com/NorthAIProject/north-client/internal/meals"
+	"github.com/NorthAIProject/north-client/internal/media"
 	"github.com/NorthAIProject/north-client/internal/medications"
 	"github.com/NorthAIProject/north-client/internal/notifications"
+	"github.com/NorthAIProject/north-client/internal/planimport"
 	"github.com/NorthAIProject/north-client/internal/preferences"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/sleep"
@@ -102,6 +104,14 @@ type Services struct {
 
 	// Medications is what someone takes and when; see medications.go.
 	Medications *medications.Service
+
+	// PlanImport and Media import a plan from a file sent in chat
+	// (import_plan_from_attachment). Media finds the file the person sent;
+	// PlanImport reads and saves it. Left nil on the MCP server, which has no
+	// chat to send a file in, so the tool does not exist there. Documents,
+	// when set, keeps the file's advice as a note.
+	PlanImport *planimport.Service
+	Media      *media.Service
 
 	// SiteURL is the public origin, used to build the absolute asset URLs a
 	// tool hands back. Environment-specific on purpose: an agent talking to a
@@ -221,6 +231,9 @@ func Build(svc Services) *Registry {
 		if svc.FoodLog != nil && svc.Users != nil {
 			r.Register(logPlannedMeal(svc.MealPlans, svc.FoodLog, svc.Users))
 		}
+	}
+	if svc.PlanImport != nil && svc.Media != nil && svc.Users != nil {
+		r.Register(importPlanFromAttachment(svc.PlanImport, svc.Media, svc.Users, svc.Documents))
 	}
 	if svc.Workouts != nil && svc.Users != nil {
 		r.Register(createWorkoutPlan(svc.Workouts, svc.Users))

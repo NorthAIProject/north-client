@@ -694,6 +694,11 @@ func routes(
 		Stats:       statsSvc,
 		Preferences: preferencesSvc,
 		Medications: medicationSvc,
+
+		// A plan from a file sent in chat. Only here: the MCP server has no
+		// chat to send one in.
+		PlanImport: planImportSvc,
+		Media:      mediaSvc,
 	})
 
 	agentTools.Record(auditRecorder)
