@@ -243,6 +243,49 @@ func activityName(code string) string {
 	return code
 }
 
+// patternMetrics are the Apple Health figures patterns compare mood and
+// recovery against. Heart figures are a day's average; the rest are totals.
+var patternMetrics = []struct {
+	name string
+	mean bool
+	set  func(f *stat.DayFacts, v float64)
+}{
+	{name: "steps", set: func(f *stat.DayFacts, v float64) { f.Steps = &v }},
+	{name: "time_in_daylight", set: func(f *stat.DayFacts, v float64) { f.DaylightMin = &v }},
+	{name: "stand_hours", set: func(f *stat.DayFacts, v float64) { f.StandHours = &v }},
+	{name: "hrv_sdnn", mean: true, set: func(f *stat.DayFacts, v float64) { f.HRV = &v }},
+	{name: "resting_heart_rate", mean: true, set: func(f *stat.DayFacts, v float64) { f.RestingHR = &v }},
+}
+
+// outdoor reports whether a session's code is one done outside. Codes do not
+// say where a run happened, so a treadmill run counts as outdoor until
+// sessions carry where they were done.
+func outdoor(code string) bool {
+	if strings.HasPrefix(code, "cycling_stationary") {
+		return false
+	}
+	for _, prefix := range []string{"running", "walking", "cycling", "hiking"} {
+		if strings.HasPrefix(code, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// dailySums totals readings per local day, oldest first.
+func dailySums(rows []health.Stored, loc *time.Location) []stat.DayValue {
+	sums := map[time.Time]float64{}
+	for _, r := range rows {
+		sums[timerange.StartOfDay(r.StartedAt.In(loc))] += r.Value
+	}
+	out := make([]stat.DayValue, 0, len(sums))
+	for d, v := range sums {
+		out = append(out, stat.DayValue{Day: d, Value: v})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Day.Before(out[j].Day) })
+	return out
+}
+
 // dailyMeans averages readings per local day, oldest first.
 func dailyMeans(rows []health.Stored, loc *time.Location) []stat.DayValue {
 	sums := map[time.Time][2]float64{}
@@ -370,6 +413,7 @@ func (s *Service) Patterns(ctx context.Context, user users.User, rg timerange.Ra
 		checks  []checkins.CheckIn
 		sets    []lifts.Set
 		acts    []activity.Session
+		healthy = make([][]health.Stored, len(patternMetrics))
 	)
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() (err error) { nights, err = s.Nights(gctx, user, window); return })
@@ -388,6 +432,14 @@ func (s *Service) Patterns(ctx context.Context, user users.User, rg timerange.Ra
 	}
 	if s.src.Activity != nil {
 		g.Go(func() (err error) { acts, err = s.src.Activity.ListBetween(gctx, user.ID, window); return })
+	}
+	if s.src.Health != nil {
+		for i, m := range patternMetrics {
+			g.Go(func() (err error) {
+				healthy[i], err = s.src.Health.Between(gctx, user.ID, m.name, window.Since, window.Until)
+				return
+			})
+		}
 	}
 	if err := g.Wait(); err != nil {
 		return nil, 0, err
@@ -435,6 +487,20 @@ func (s *Service) Patterns(ctx context.Context, user users.User, rg timerange.Ra
 	for _, a := range acts {
 		if f := at(a.StartedAt); f != nil && a.EndedAt != nil {
 			f.Trained = true
+			if outdoor(a.ActivityCode) {
+				f.OutdoorWorkout = true
+			}
+		}
+	}
+	for i, m := range patternMetrics {
+		daily := dailySums(healthy[i], loc)
+		if m.mean {
+			daily = dailyMeans(healthy[i], loc)
+		}
+		for _, dv := range daily {
+			if f := at(dv.Day); f != nil {
+				m.set(f, dv.Value)
+			}
 		}
 	}
 

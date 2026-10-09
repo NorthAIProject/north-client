@@ -131,3 +131,87 @@ func TestPatternsNeedEnoughDaysAndRankByStrength(t *testing.T) {
 		t.Errorf("four days reported %+v", got)
 	}
 }
+
+// find returns the finding with key, or nil.
+func find(found []stat.Finding, key string) *stat.Finding {
+	for i := range found {
+		if found[i].Key == key {
+			return &found[i]
+		}
+	}
+	return nil
+}
+
+func TestPatternsMoodAgainstDayMeasures(t *testing.T) {
+	t.Parallel()
+	var days []stat.DayFacts
+	for d := 1; d <= 12; d++ {
+		good := d%2 == 0
+		f := stat.DayFacts{Date: day(d), Mood: util.Ptr(3)}
+		steps, daylight, stand, sleep := 4000.0, 20.0, 6.0, 360
+		if good {
+			f.Mood = util.Ptr(4)
+			steps, daylight, stand, sleep = 11000, 90, 11, 480
+			f.OutdoorWorkout = true
+		}
+		f.Steps, f.DaylightMin, f.StandHours = &steps, &daylight, &stand
+		f.SleepMinutes = util.Ptr(sleep)
+		days = append(days, f)
+	}
+	found := stat.Patterns(days)
+	for key, want := range map[string]string{
+		"mood_sleep":    "after 7+ hours of sleep",
+		"mood_steps":    "11,000 steps or more",
+		"mood_daylight": "1h 30m or more in daylight",
+		"mood_stand":    "11 stand hours or more",
+		"mood_outdoor":  "on days you train outdoors",
+	} {
+		f := find(found, key)
+		if f == nil {
+			t.Errorf("%s missing from %+v", key, found)
+			continue
+		}
+		if f.Diff != 1 || !strings.Contains(f.Title, "1.0 points higher") || !strings.Contains(f.Title, want) {
+			t.Errorf("%s = %q diff %v, want %q", key, f.Title, f.Diff, want)
+		}
+	}
+}
+
+func TestPatternsRecoveryTheDayAfterTraining(t *testing.T) {
+	t.Parallel()
+	var days []stat.DayFacts
+	for d := 1; d <= 12; d++ {
+		trained := d%2 == 1
+		f := stat.DayFacts{Date: day(d), Trained: trained}
+		// The day after training: HRV down 8 ms, resting HR up 3 bpm.
+		hrv, rhr := 60.0, 52.0
+		if d > 1 && !trained {
+			hrv, rhr = 52, 55
+		}
+		f.HRV, f.RestingHR = &hrv, &rhr
+		days = append(days, f)
+	}
+	found := stat.Patterns(days)
+	if f := find(found, "hrv_training"); f == nil || f.Diff != -8 || !strings.Contains(f.Title, "8 ms lower the day after training") {
+		t.Errorf("hrv finding %+v", f)
+	}
+	if f := find(found, "rhr_training"); f == nil || f.Diff != 3 || !strings.Contains(f.Title, "3 bpm higher the day after training") {
+		t.Errorf("rhr finding %+v", f)
+	}
+}
+
+func TestPatternsSkipMeasuresWithTooFewDays(t *testing.T) {
+	t.Parallel()
+	var days []stat.DayFacts
+	for d := 1; d <= 12; d++ {
+		f := stat.DayFacts{Date: day(d), Mood: util.Ptr(3 + d%2)}
+		if d <= 4 {
+			steps := float64(1000 * d)
+			f.Steps = &steps
+		}
+		days = append(days, f)
+	}
+	if f := find(stat.Patterns(days), "mood_steps"); f != nil {
+		t.Errorf("four step days reported %+v", f)
+	}
+}
