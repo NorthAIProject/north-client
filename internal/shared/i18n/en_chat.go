@@ -68,6 +68,7 @@ var englishChat = map[string]string{
 	"chat.tool.workout.write":  "editing your workout plan",
 	"chat.tool.mealplan.write": "building your meal plan",
 	"chat.tool.workout.create": "building your workout plan",
+	"chat.tool.planimport":     "importing your plan",
 	"chat.tool.workout.week":   "changing your training week",
 	"chat.tool.lifts":          "reading your lifts",
 	"chat.tool.stats":          "reading your stats",
