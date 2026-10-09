@@ -399,7 +399,10 @@ func mealPlanFromDraft(d MealDraft) (importPlan, []string) {
 		problems = append(problems, fmt.Sprintf("A plan eaten every day has exactly one day; this one has %d.", len(d.Days)))
 	}
 
-	out := importPlan{input: meals.MealPlanInput{Name: d.Name, Settings: settings, Notes: d.Notes}, everyDay: d.EveryDay}
+	// Notes past what meals keeps are cut, not refused: the meals are the
+	// import, and a long page of advice should not cost them.
+	notes := clip(strings.TrimSpace(d.Notes), meals.MaxPlanNotesRunes)
+	out := importPlan{input: meals.MealPlanInput{Name: d.Name, Settings: settings, Notes: notes}, everyDay: d.EveryDay}
 	switch {
 	case d.EveryDay && settings.Mode == meal.Advanced:
 		out.input.Weekdays = slices.Clone(meal.WeekOrder)

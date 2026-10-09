@@ -68,12 +68,19 @@ type MealPlanInput struct {
 	Notes string
 }
 
+// MaxPlanNotesRunes caps a plan's notes: room for a nutritionist's page of
+// advice, not a whole document.
+const MaxPlanNotesRunes = 8000
+
 func ValidateMealPlan(in MealPlanInput) (MealPlanInput, error) {
 	var errs apperr.FieldErrors
 
 	in.Name, errs = validatePlanName(in.Name, errs)
 	in.Settings, errs = validateSettings(in.Settings, errs)
 	in.Notes = strings.TrimSpace(in.Notes)
+	if utf8.RuneCountInString(in.Notes) > MaxPlanNotesRunes {
+		errs = errs.Add("notes", fmt.Sprintf("Keep the notes to %d characters.", MaxPlanNotesRunes))
+	}
 
 	switch {
 	case len(in.Weekdays) > 0 && in.Settings.Mode != meal.Advanced:
