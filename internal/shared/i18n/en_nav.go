@@ -48,6 +48,8 @@ var englishNav = map[string]string{
 	"nav.meal-plans.desc":           "Build plans, track totals.",
 	"nav.import-training-plan":      "Import training plan",
 	"nav.import-training-plan.desc": "Bring in a plan from a file or photo.",
+	"nav.import-hevy":               "Import from Hevy",
+	"nav.import-hevy.desc":          "Bring your workout history from Hevy.",
 	"nav.import-meal-plan":          "Import meal plan",
 	"nav.import-meal-plan.desc":     "Bring in a meal plan from a file or photo.",
 	"nav.food-log":                  "Food log",

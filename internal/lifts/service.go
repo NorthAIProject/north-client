@@ -2,6 +2,7 @@ package lifts
 
 import (
 	"context"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -44,6 +45,11 @@ type Service struct {
 	// sessions and prescriptions are for recaps; see WithRecaps.
 	sessions      Sessions
 	prescriptions Prescriptions
+
+	// activities, weights and matchers are for imports; see WithImports.
+	activities Activities
+	weights    BodyWeights
+	matchers   ExerciseMatchers
 }
 
 // NewService takes the exercise catalog for per-muscle sets; nil leaves
@@ -321,4 +327,46 @@ func (s *Service) NextSetNumber(ctx context.Context, user users.User, slug, name
 // Between lists the sets inside a window, newest first.
 func (s *Service) Between(ctx context.Context, user users.User, rg timerange.Range) ([]Set, error) {
 	return s.repo.ListBetween(ctx, user.ID, rg.Since, rg.Until)
+}
+
+// MatchExercise is the catalog slug a typed exercise name means, or "" when
+// none fits or no catalog is wired. A set logged by name alone then still
+// reaches the muscles its exercise works.
+func (s *Service) MatchExercise(ctx context.Context, name string) (string, error) {
+	if s.matchers == nil {
+		return "", nil
+	}
+	m, err := s.matchers.Matcher(ctx)
+	if err != nil {
+		return "", err
+	}
+	slug, _ := m.Match(name)
+	return slug, nil
+}
+
+// Today is the sets logged since local midnight, oldest first, and the names
+// of exercises done in the last fortnight, most recent first — what a form
+// for the next set offers.
+func (s *Service) Today(ctx context.Context, user users.User) ([]Set, []string, error) {
+	now := s.now().In(user.Location())
+	since := now.AddDate(0, 0, -14)
+	sets, err := s.repo.ListBetween(ctx, user.ID, since, now.Add(time.Minute))
+	if err != nil {
+		return nil, nil, err
+	}
+	midnight := timerange.StartOfDay(now)
+	var today []Set
+	var names []string
+	seen := map[string]bool{}
+	for _, set := range sets { // newest first
+		if !set.PerformedAt.Before(midnight) {
+			today = append(today, set)
+		}
+		if !seen[set.Key()] {
+			seen[set.Key()] = true
+			names = append(names, set.ExerciseName)
+		}
+	}
+	slices.Reverse(today)
+	return today, names, nil
 }

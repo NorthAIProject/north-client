@@ -46,6 +46,7 @@ var knownNonDestinations = map[string]string{
 	"/app/capture/panel":           "capture box embedded in My Day and the food log",
 
 	"/app/fitness/activities/sessions": "activity session list fragment",
+	"/app/lifts/today":                 "set logger card fragment",
 
 	// Actions with side effects. "Go to page" must not start an export.
 	"/app/settings/export.zip": "quota-consuming download",
