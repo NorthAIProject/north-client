@@ -2,6 +2,7 @@ package coach
 
 import (
 	"errors"
+	"regexp"
 	"strings"
 	"unicode/utf8"
 
@@ -24,18 +25,23 @@ const maxAttachmentChars = 24_000
 // import tool so the model does not conclude the rest of a plan is lost.
 const truncatedNote = "[truncated; the full file is still available to import_plan_from_attachment]"
 
+// closingAttachmentTag matches anything a model might read as the end of an
+// attachment block: any letter case, and spaces either side of the slash.
+var closingAttachmentTag = regexp.MustCompile(`(?i)<\s*/\s*attachment`)
+
 // attachmentBlock wraps a document's text in the tags the system prompt
 // tells the model to read as data, never as instructions.
 //
-// A closing tag inside the text is broken up, so a file cannot end its own
-// block early and have what follows read as if the person wrote it.
+// A closing tag inside the text, in any spelling, loses its "<", so a file
+// cannot end its own block early and have what follows read as if the person
+// wrote it.
 func attachmentBlock(name, text string) string {
 	truncated := false
 	if utf8.RuneCountInString(text) > maxAttachmentChars {
 		text = string([]rune(text)[:maxAttachmentChars])
 		truncated = true
 	}
-	text = strings.ReplaceAll(text, "</attachment", "</ attachment")
+	text = closingAttachmentTag.ReplaceAllString(text, "&lt;/attachment")
 
 	var b strings.Builder
 	b.WriteString(`<attachment name="` + name + `">` + "\n")
