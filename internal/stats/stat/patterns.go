@@ -26,6 +26,16 @@ type DayFacts struct {
 	Mood       *int // check-in, 1-5
 	Trained    bool // a workout or lifted sets on Date
 	Soreness   int  // sore regions recorded on Date
+
+	// From Apple Health: Date's totals, and the day's average HRV and
+	// resting heart rate.
+	Steps       *float64
+	DaylightMin *float64
+	StandHours  *float64
+	HRV         *float64 // ms
+	RestingHR   *float64 // bpm
+	// OutdoorWorkout is a run, walk, hike or ride outside on Date.
+	OutdoorWorkout bool
 }
 
 // Group is one side of a comparison.
@@ -151,13 +161,71 @@ var splits = []split{
 			return fmt.Sprintf("Check-in mood averages %.1f on %d training days, %.1f on %d rest days.",
 				a.Mean, a.N, b.Mean, b.N)
 		},
-		value: func(_, cur DayFacts) (float64, bool) {
-			if cur.Mood == nil {
-				return 0, false
-			}
-			return float64(*cur.Mood), true
+		value: moodOf,
+		inA:   func(_, cur DayFacts) (bool, bool) { return cur.Trained, true },
+	},
+	{
+		key: "mood_sleep", unit: "/5", scale: 1,
+		aLabel: "After 7 hours or more", bLabel: "After less than 7 hours",
+		title: func(d float64) string {
+			return fmt.Sprintf("Your mood is %.1f points %s after 7+ hours of sleep", math.Abs(d), higher(d))
 		},
-		inA: func(_, cur DayFacts) (bool, bool) { return cur.Trained, true },
+		detail: func(a, b Group) string {
+			return fmt.Sprintf("Check-in mood averages %.1f on %d days after 7+ hours, %.1f on %d days after less.",
+				a.Mean, a.N, b.Mean, b.N)
+		},
+		value: moodOf,
+		inA: func(_, cur DayFacts) (bool, bool) {
+			if cur.SleepMinutes == nil {
+				return false, false
+			}
+			return *cur.SleepMinutes >= 7*60, true
+		},
+	},
+	{
+		key: "mood_outdoor", unit: "/5", scale: 1,
+		aLabel: "Days you trained outdoors", bLabel: "Other days",
+		title: func(d float64) string {
+			return fmt.Sprintf("Your mood is %.1f points %s on days you train outdoors", math.Abs(d), higher(d))
+		},
+		detail: func(a, b Group) string {
+			return fmt.Sprintf("Check-in mood averages %.1f on %d days with an outdoor workout, %.1f on %d other days.",
+				a.Mean, a.N, b.Mean, b.N)
+		},
+		value: moodOf,
+		inA:   func(_, cur DayFacts) (bool, bool) { return cur.OutdoorWorkout, true },
+	},
+	{
+		// Apple Health's HRV is the day's average, not a morning reading, so
+		// the claim is about the day after, not the morning after.
+		key: "hrv_training", unit: "ms", scale: 10,
+		aLabel: "The day after training", bLabel: "The day after rest",
+		title: func(d float64) string {
+			return fmt.Sprintf("Your HRV is %.0f ms %s the day after training", math.Abs(d), higher(d))
+		},
+		detail: func(a, b Group) string {
+			return fmt.Sprintf("HRV averages %.0f ms on %d days after training, %.0f ms on %d days after rest.",
+				a.Mean, a.N, b.Mean, b.N)
+		},
+		value: func(_, cur DayFacts) (float64, bool) { return valueOf(cur.HRV) },
+		inA:   func(prev, _ DayFacts) (bool, bool) { return prev.Trained, true },
+
+		requirePrevForGrouping: true,
+	},
+	{
+		key: "rhr_training", unit: "bpm", scale: 3,
+		aLabel: "The day after training", bLabel: "The day after rest",
+		title: func(d float64) string {
+			return fmt.Sprintf("Your resting heart rate is %.0f bpm %s the day after training", math.Abs(d), higher(d))
+		},
+		detail: func(a, b Group) string {
+			return fmt.Sprintf("Resting heart rate averages %.0f bpm on %d days after training, %.0f bpm on %d days after rest.",
+				a.Mean, a.N, b.Mean, b.N)
+		},
+		value: func(_, cur DayFacts) (float64, bool) { return valueOf(cur.RestingHR) },
+		inA:   func(prev, _ DayFacts) (bool, bool) { return prev.Trained, true },
+
+		requirePrevForGrouping: true,
 	},
 	{
 		key: "energy_training", unit: "/5", scale: 1,
@@ -179,6 +247,20 @@ var splits = []split{
 	},
 }
 
+func moodOf(_, cur DayFacts) (float64, bool) {
+	if cur.Mood == nil {
+		return 0, false
+	}
+	return float64(*cur.Mood), true
+}
+
+func valueOf(v *float64) (float64, bool) {
+	if v == nil {
+		return 0, false
+	}
+	return *v, true
+}
+
 func sleepOf(d DayFacts) (float64, bool) {
 	if d.SleepMinutes == nil {
 		return 0, false
@@ -194,8 +276,7 @@ func Patterns(days []DayFacts) []Finding {
 	for _, d := range days {
 		byDate[d.Date.Format(time.DateOnly)] = d
 	}
-	screen := screenSplit(days)
-	all := append(append([]split(nil), splits...), screen...)
+	all := append(append(append([]split(nil), splits...), screenSplit(days)...), moodSplits(days)...)
 
 	var out []Finding
 	for _, sp := range all {
@@ -240,17 +321,15 @@ func Patterns(days []DayFacts) []Finding {
 // screenSplit compares sleep after high- and low-screen days, split at the
 // median of the days that have a figure.
 func screenSplit(days []DayFacts) []split {
-	var values []float64
-	for _, d := range days {
-		if d.ScreenMin != nil {
-			values = append(values, float64(*d.ScreenMin))
+	median, ok := medianOf(days, func(d DayFacts) (float64, bool) {
+		if d.ScreenMin == nil {
+			return 0, false
 		}
-	}
-	if len(values) < 2*MinGroup {
+		return float64(*d.ScreenMin), true
+	})
+	if !ok {
 		return nil
 	}
-	sort.Float64s(values)
-	median := values[len(values)/2]
 	return []split{{
 		key: "sleep_screen", unit: "min", scale: 60,
 		aLabel: "After heavy screen days", bLabel: "After lighter ones",
@@ -270,4 +349,86 @@ func screenSplit(days []DayFacts) []split {
 		},
 		requirePrevForGrouping: true,
 	}}
+}
+
+// medianOf is the middle of the days' values of a measure, when enough days
+// have one for both halves of a split to clear MinGroup.
+func medianOf(days []DayFacts, of func(DayFacts) (float64, bool)) (float64, bool) {
+	var values []float64
+	for _, d := range days {
+		if v, ok := of(d); ok {
+			values = append(values, v)
+		}
+	}
+	if len(values) < 2*MinGroup {
+		return 0, false
+	}
+	sort.Float64s(values)
+	return values[len(values)/2], true
+}
+
+// moodSplits compares mood on days at or above the person's own median of a
+// measure with the days below it. A fixed line ("10,000 steps") would put
+// almost every day on one side for someone who walks far more, or less.
+func moodSplits(days []DayFacts) []split {
+	measures := []struct {
+		key string
+		of  func(DayFacts) (float64, bool)
+		// round snaps the median to a figure worth saying aloud; the split
+		// uses the rounded figure, so the sentence is exactly true.
+		round func(float64) float64
+		what  func(float64) string
+	}{
+		{
+			key: "mood_steps", of: func(d DayFacts) (float64, bool) { return valueOf(d.Steps) },
+			round: func(v float64) float64 { return math.Round(v/100) * 100 },
+			what:  func(v float64) string { return thousands(v) + " steps or more" },
+		},
+		{
+			key: "mood_daylight", of: func(d DayFacts) (float64, bool) { return valueOf(d.DaylightMin) },
+			round: func(v float64) float64 { return math.Round(v/5) * 5 },
+			what:  func(v float64) string { return mins(v) + " or more in daylight" },
+		},
+		{
+			key: "mood_stand", of: func(d DayFacts) (float64, bool) { return valueOf(d.StandHours) },
+			round: math.Round,
+			what:  func(v float64) string { return fmt.Sprintf("%.0f stand hours or more", v) },
+		},
+	}
+	var out []split
+	for _, m := range measures {
+		median, ok := medianOf(days, m.of)
+		if !ok {
+			continue
+		}
+		line := m.round(median)
+		what := m.what(line)
+		of := m.of
+		out = append(out, split{
+			key: m.key, unit: "/5", scale: 1,
+			aLabel: "Days with " + what, bLabel: "Other days",
+			title: func(d float64) string {
+				return fmt.Sprintf("Your mood is %.1f points %s on days with %s", math.Abs(d), higher(d), what)
+			},
+			detail: func(a, b Group) string {
+				return fmt.Sprintf("Check-in mood averages %.1f on %d days with %s, %.1f on %d other days.",
+					a.Mean, a.N, what, b.Mean, b.N)
+			},
+			value: moodOf,
+			inA: func(_, cur DayFacts) (bool, bool) {
+				v, ok := of(cur)
+				return ok && v >= line, ok
+			},
+		})
+	}
+	return out
+}
+
+// thousands writes a whole number with comma separators: 11000 is "11,000".
+func thousands(v float64) string {
+	s := fmt.Sprintf("%.0f", v)
+	for i := len(s) - 3; i > 0; i -= 3 {
+		s = s[:i] + "," + s[i:]
+	}
+	return s
 }
