@@ -106,7 +106,8 @@ func (h *Handler) planDetail(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, apperr.ErrNotFound)
 		return
 	}
-	h.renderPlan(w, r, http.StatusOK, id, nutritionpages.PlanPage{})
+	// option names the meal option a change just landed on, so its tab opens.
+	h.renderPlan(w, r, http.StatusOK, id, nutritionpages.PlanPage{OpenOption: r.URL.Query().Get("option")})
 }
 
 // renderPlan renders a plan's page, carrying any refused form in page.
@@ -331,6 +332,35 @@ func (h *Handler) removeMeal(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, planURL(planID), http.StatusSeeOther)
 }
 
+// addOption adds an empty option to a meal slot; a blank label is numbered
+// by the service.
+func (h *Handler) addOption(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+
+	mealID, err := uuid.Parse(chi.URLParam(r, "mealID"))
+	if err != nil {
+		h.fail(w, r, apperr.ErrNotFound)
+		return
+	}
+	if err = r.ParseForm(); err != nil {
+		h.fail(w, r, apperr.ErrValidation)
+		return
+	}
+
+	planID, err := h.plans.PlanIDOfMeal(r.Context(), mealID, user.ID)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	added, err := h.plans.AddOption(r.Context(), user.ID, planID, mealID, r.PostFormValue("option_label"))
+	if err != nil {
+		h.changeFailed(w, r, planID, "option:"+mealID.String(), err)
+		return
+	}
+
+	http.Redirect(w, r, optionURL(planID, added.ID), http.StatusSeeOther)
+}
+
 func (h *Handler) addIngredientToMeal(w http.ResponseWriter, r *http.Request) {
 	user := auth.MustUser(r.Context())
 
@@ -359,7 +389,7 @@ func (h *Handler) addIngredientToMeal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, planURL(planID), http.StatusSeeOther)
+	http.Redirect(w, r, optionURL(planID, mealID), http.StatusSeeOther)
 }
 
 // addIngredientsToMeal takes the reviewed lines of a spoken meal.
@@ -401,7 +431,7 @@ func (h *Handler) addIngredientsToMeal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, planURL(planID), http.StatusSeeOther)
+	http.Redirect(w, r, optionURL(planID, mealID), http.StatusSeeOther)
 }
 
 func (h *Handler) removeIngredientFromMeal(w http.ResponseWriter, r *http.Request) {
@@ -430,6 +460,12 @@ func (h *Handler) removeIngredientFromMeal(w http.ResponseWriter, r *http.Reques
 // a refused change renders the plan at the form's own URL, and going "back"
 // there after a confirmed retry would be a GET on a POST-only route.
 func planURL(id uuid.UUID) string { return "/app/nutrition/plans/" + id.String() }
+
+// optionURL is the plan's page with one meal option's tab open, for a change
+// that landed on an option other than the first.
+func optionURL(planID, mealID uuid.UUID) string {
+	return planURL(planID) + "?option=" + mealID.String()
+}
 
 // optionalFloat reads a number field the person may leave blank; blank or
 // unreadable is nil.
