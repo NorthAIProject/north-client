@@ -3,9 +3,10 @@
   "readiness": {
     "low": true,
     "hrv": 38,
-    "hrvBaseline": 52,
+    "hrvBaseline": 52.07142857142857,
     "restingHeartRate": 61,
-    "restingHeartRateBaseline": 56
+    "restingHeartRateBaseline": 56.07142857142857,
+    "reason": "Heart rate variability is below your usual: 38ms on Wed 7 Oct, usually 51ms–53ms. Resting heart rate is above your usual: 61bpm on Wed 7 Oct, usually 55bpm–57bpm."
   },
   "session": "Lower body"
 }

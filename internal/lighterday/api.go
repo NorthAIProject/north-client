@@ -6,6 +6,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/insights/score"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 )
 
@@ -23,14 +24,18 @@ func (a *API) Routes(r chi.Router) {
 }
 
 type ReadinessView struct {
-	// Low is true when HRV is more than 10% under its 14-day average or
-	// resting heart rate more than 5% over it.
+	// Low is true when today's recovery scores uneven or low against the
+	// person's usual — the same recovery GET /insights/recovery reports.
 	Low bool `json:"low"`
-	// The readings, when Health has them: this morning's and the baseline.
+	// The readings, when Health has them: today's and the usual (the mean of
+	// the 28 days before). Kept for builds that word the reason themselves.
 	HRV         *float64 `json:"hrv,omitempty"`
 	HRVBaseline *float64 `json:"hrvBaseline,omitempty"`
 	RHR         *float64 `json:"restingHeartRate,omitempty"`
 	RHRBaseline *float64 `json:"restingHeartRateBaseline,omitempty"`
+	// Reason says which signals are off their usual, in the words the
+	// Progress screen uses. Empty when none are.
+	Reason string `json:"reason,omitempty"`
 }
 
 type LighterView struct {
@@ -72,12 +77,16 @@ func (a *API) choose(w http.ResponseWriter, r *http.Request) {
 }
 
 func project(t Today) LighterView {
-	v := LighterView{Offered: t.Offered(), Session: t.Session, Choice: t.Choice, Readiness: ReadinessView{Low: t.Readiness.Low}}
-	if t.Readiness.HasHRV {
-		v.Readiness.HRV, v.Readiness.HRVBaseline = ptr(t.Readiness.HRV), ptr(t.Readiness.HRVBaseline)
+	r := t.Recovery
+	v := LighterView{
+		Offered: t.Offered(), Session: t.Session, Choice: t.Choice,
+		Readiness: ReadinessView{Low: r.Low(), Reason: r.Why()},
 	}
-	if t.Readiness.HasRHR {
-		v.Readiness.RHR, v.Readiness.RHRBaseline = ptr(t.Readiness.RHR), ptr(t.Readiness.RHRBaseline)
+	if sig, ok := r.Signal(score.RecoveryHRV); ok {
+		v.Readiness.HRV, v.Readiness.HRVBaseline = ptr(sig.Usual.Latest.Value), ptr(sig.Usual.Baseline.Mean)
+	}
+	if sig, ok := r.Signal(score.RecoveryRestingHR); ok {
+		v.Readiness.RHR, v.Readiness.RHRBaseline = ptr(sig.Usual.Latest.Value), ptr(sig.Usual.Baseline.Mean)
 	}
 	return v
 }

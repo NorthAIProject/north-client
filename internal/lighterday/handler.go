@@ -59,10 +59,9 @@ func (h *Handler) choose(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) render(w http.ResponseWriter, r *http.Request, t Today) {
-	rd := t.Readiness
 	card := lighterpages.Card{
 		Offered: t.Offered(), Session: t.Session, Choice: t.Choice,
-		Why: lighterpages.WhyLine(rd.HRV, rd.HRVBaseline, rd.HasHRV, rd.RHR, rd.RHRBaseline, rd.HasRHR),
+		Why: t.Recovery.Why(),
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := lighterpages.Fragment(card).Render(r.Context(), w); err != nil {

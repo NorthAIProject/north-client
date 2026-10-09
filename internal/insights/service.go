@@ -102,7 +102,10 @@ type Service struct {
 	plan          TrainingPlan
 	recaps        Recaps
 	stats         StatsReader
-	siteURL       string
+	// nightly is set instead of stats by NewRecoverySource, which needs only
+	// the sleep page's nights.
+	nightly SleepReader
+	siteURL string
 }
 
 // StatsReader is the slice of stats.Service the stats pages need.

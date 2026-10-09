@@ -4384,6 +4384,24 @@ paths:
                 $ref: '#/components/schemas/InsightsHealth'
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /insights/recovery:
+    get:
+      operationId: getInsightsRecovery
+      summary: Today's recovery against the person's own usual
+      description: |
+        A 0-100 score from the latest HRV (higher is better), resting heart rate (lower is better)
+        and last night's sleep (longer is better), each against the 28 days before it. A day at the
+        usual scores 75. Readings older than yesterday are left out, and fewer than two fresh
+        signals means hasData is false. Each signal's key opens GET /insights/metrics/{key}.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InsightsRecovery'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /insights/timeline:
     get:
       operationId: getInsightsTimeline
@@ -6144,15 +6162,20 @@ components:
           properties:
             low:
               type: boolean
+              description: Today's recovery scores uneven or low — the same rule as GET /insights/recovery.
             hrv:
               type: number
-              description: This morning's HRV (ms), when Health has it.
+              description: Today's HRV (ms), when Health has it.
             hrvBaseline:
               type: number
+              description: The usual — the mean of the 28 days before.
             restingHeartRate:
               type: number
             restingHeartRateBaseline:
               type: number
+            reason:
+              type: string
+              description: Which signals are off their usual, in the Progress screen's words. Absent when none are.
         session:
           type: string
           description: Today's plan session, when there is one.
@@ -10997,6 +11020,40 @@ components:
           description: above, usual or below. An open string so a new state never breaks decoding.
         text:
           type: string
+    InsightsRecovery:
+      type: object
+      required: [hasData, points, verdict, label, sentence, signals]
+      properties:
+        hasData:
+          type: boolean
+        points:
+          type: integer
+        verdict:
+          type: string
+          description: strong, ok, uneven, low or unknown. An open string.
+        label:
+          type: string
+          description: The words beside the number, empty when hasData is false.
+        sentence:
+          type: string
+          description: The whole recovery as one line, as the coach reads it. Empty when hasData is false.
+        signals:
+          type: array
+          items:
+            $ref: '#/components/schemas/InsightsRecoverySignal'
+    InsightsRecoverySignal:
+      type: object
+      required: [key, label, latest, usual]
+      properties:
+        key:
+          type: string
+          description: A metric key for GET /insights/metrics/{key}, e.g. hrv, resting-heart-rate, sleep.
+        label:
+          type: string
+        latest:
+          type: string
+        usual:
+          $ref: '#/components/schemas/InsightsUsualRange'
     InsightsHealth:
       type: object
       required: [metrics]

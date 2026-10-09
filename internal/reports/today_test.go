@@ -1,50 +1,74 @@
 package reports
 
 import (
+	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/NorthAIProject/north-client/internal/health"
+	"github.com/NorthAIProject/north-client/internal/insights"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
-func samples(now time.Time, today float64, baseline ...float64) []health.Stored {
-	out := []health.Stored{{Value: today, StartedAt: now.Add(-2 * time.Hour)}}
-	for i, v := range baseline {
-		out = append(out, health.Stored{Value: v, StartedAt: now.AddDate(0, 0, -(i + 2))})
-	}
-	return out
+// morning is a Health store: two weeks of HRV around 60 ms (±4) and resting
+// heart rate around 52 bpm (±2), then this morning's values. A zero leaves
+// that metric out.
+type morning struct {
+	at             time.Time
+	hrv, restingHR float64
 }
 
-// Readiness is decided in code so the briefing can only repeat it.
-func TestReadiness(t *testing.T) {
+func (m morning) Between(_ context.Context, _ uuid.UUID, metric string, _, _ time.Time) ([]health.Stored, error) {
+	base, spread, today := 60.0, 4.0, m.hrv
+	if metric == "resting_heart_rate" {
+		base, spread, today = 52, 2, m.restingHR
+	}
+	if today == 0 {
+		return nil, nil
+	}
+	out := []health.Stored{{Value: today, StartedAt: m.at.Add(-2 * time.Hour)}}
+	for d := 1; d <= 14; d++ {
+		out = append(out, health.Stored{Value: base + spread*float64(d%3-1), StartedAt: m.at.AddDate(0, 0, -d)})
+	}
+	return out, nil
+}
+
+type failing struct{}
+
+func (failing) Recovery(context.Context, users.User, time.Time) (insights.RecoveryData, error) {
+	return insights.RecoveryData{}, errors.New("health is down")
+}
+
+// Readiness is decided in code, by the same recovery rule as the lighter-day
+// offer, so the briefing can only repeat it.
+func TestReadinessIsTheRecoveryRule(t *testing.T) {
 	now := time.Date(2026, 9, 30, 7, 0, 0, 0, time.UTC)
+	user := users.User{Timezone: "UTC"}
 	cases := []struct {
-		name     string
-		hrv, rhr []health.Stored
-		low      bool
-		lines    int
+		name    string
+		reader  Recovery
+		verdict string
 	}{
-		{"steady", samples(now, 58, 60, 60), samples(now, 52, 52, 52), false, 3},
-		{"HRV down 15%", samples(now, 51, 60, 60), samples(now, 52, 52, 52), true, 3},
-		{"HRV down 5% is noise", samples(now, 57, 60, 60), nil, false, 2},
-		{"resting HR up 8%", nil, samples(now, 56, 52, 52), true, 2},
-		{"nothing this morning", []health.Stored{{Value: 60, StartedAt: now.AddDate(0, 0, -3)}}, nil, false, 0},
-		{"no history to compare", []health.Stored{{Value: 40, StartedAt: now.Add(-time.Hour)}}, nil, false, 0},
+		{"steady", insights.NewRecoverySource(morning{at: now, hrv: 58, restingHR: 53}, nil), "Readiness: normal."},
+		{"HRV down, resting HR up", insights.NewRecoverySource(morning{at: now, hrv: 48, restingHR: 57}, nil), "Readiness: LOW"},
+		{"one signal is not enough", insights.NewRecoverySource(morning{at: now, hrv: 48}, nil), ""},
+		{"a reader that fails costs only its lines", failing{}, ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			r := ReadinessFrom(tc.hrv, tc.rhr, now)
-			if r.Low != tc.low {
-				t.Fatalf("low = %v, want %v (%+v)", r.Low, tc.low, r)
+			lines := NewTodayContext(tc.reader, nil, nil).Load(context.Background(), user, now)
+			if tc.verdict == "" {
+				if len(lines) != 0 {
+					t.Fatalf("lines = %q, want none", lines)
+				}
+				return
 			}
-			lines := r.Lines()
-			if len(lines) != tc.lines {
-				t.Fatalf("lines = %q, want %d", lines, tc.lines)
-			}
-			if tc.low && !strings.Contains(lines[len(lines)-1], "LOW") {
-				t.Fatalf("verdict line = %q", lines[len(lines)-1])
+			if len(lines) != 2 || !strings.HasPrefix(lines[0], "Recovery today: ") || !strings.HasPrefix(lines[1], tc.verdict) {
+				t.Fatalf("lines = %q, want a recovery line then %q", lines, tc.verdict)
 			}
 		})
 	}
@@ -52,7 +76,7 @@ func TestReadiness(t *testing.T) {
 
 // Only the daily briefing gets a Today section, and it comes first.
 func TestTodaySectionIsDailyOnly(t *testing.T) {
-	review := ReviewContext{Today: []string{"Readiness: LOW — recovery markers are off their baseline this morning."}}
+	review := ReviewContext{Today: []string{"Readiness: LOW — recovery is under this person's usual this morning."}}
 	user := users.User{DisplayName: "Ana", Timezone: "Europe/Lisbon"}
 	start := time.Date(2026, 9, 30, 0, 0, 0, 0, time.UTC)
 
