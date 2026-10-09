@@ -75,12 +75,12 @@ func MuscleWeights(primary, secondary []string) map[string]float64 {
 // toward none.
 type Weights map[string]map[string]float64
 
-// Fatigue is each muscle's fatigue at now, 0 (fresh) to 1 (spent): every set
-// adds its muscle weight, halving every FatigueHalfLife. Sets after now or
-// older than the scan window are ignored.
+// Fatigue is each muscle's fatigue at now, 0 (fresh) to 1 (spent): every
+// working set adds its muscle weight, halving every FatigueHalfLife.
+// Warm-ups, sets after now and sets older than the scan window are ignored.
 func Fatigue(sets []Set, weights Weights, now time.Time) map[string]float64 {
 	raw := map[string]float64{}
-	for _, s := range sets {
+	for _, s := range Working(sets) {
 		age := now.Sub(s.PerformedAt)
 		if age < 0 || age > fatigueScan {
 			continue
@@ -144,6 +144,9 @@ func LoadOf(sets []Set, weights Weights, now time.Time) Load {
 		}
 		if s.PerformedAt.After(load.LastSession) {
 			load.LastSession = s.PerformedAt
+		}
+		if !s.Counts() {
+			continue
 		}
 		muscles, ok := weights[s.ExerciseSlug]
 		if !ok && now.Sub(s.PerformedAt) <= fatigueScan {

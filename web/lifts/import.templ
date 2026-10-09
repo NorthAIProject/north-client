@@ -1,0 +1,132 @@
+package lifts
+
+import (
+	"strconv"
+
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/alert"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
+)
+
+// Imported is what an import did, as the page reports it.
+type Imported struct {
+	Workouts   int
+	Duplicates int
+	Sets       int
+	Skipped    int
+	Unmatched  []string
+}
+
+// ImportPage takes a Hevy export. result is nil before an upload.
+templ ImportPage(user users.User, result *Imported, errMsg string) {
+	@layout.App("Import from Hevy", user, layout.BuildNav(ctx, "/app/fitness")) {
+		<div class="mx-auto w-full max-w-2xl space-y-6 p-6 md:p-8">
+			<header>
+				@ui.MonoLabel("Import")
+				<h1 class="mt-2 text-2xl font-medium tracking-tight">Bring your Hevy history</h1>
+				<p class="text-muted-foreground mt-1 text-sm">
+					Every workout becomes a session here, with its sets, warm-ups and effort, so your records,
+					the muscle map and the coach start from what you have already done.
+				</p>
+			</header>
+			if errMsg != "" {
+				@alert.Alert(alert.Props{Variant: alert.VariantDestructive}) {
+					@alert.Description() {
+						{ errMsg }
+					}
+				}
+			}
+			if result != nil {
+				@importResult(*result)
+			}
+			@card.Card() {
+				@card.Content(card.ContentProps{Class: "space-y-4 pt-6"}) {
+					@importDrop()
+					<ol class="text-muted-foreground list-decimal space-y-1 pl-4 text-xs">
+						<li>In Hevy: Profile → Settings → Export &amp; Import Data → Export Workouts.</li>
+						<li>Save the CSV, then drop it here. Up to 10 MB.</li>
+						<li>Importing the same file again adds nothing twice.</li>
+					</ol>
+				}
+			}
+			@button.Button(button.Props{Href: "/app/training", Variant: button.VariantGhost}) {
+				Back to training
+			}
+		</div>
+	}
+}
+
+templ importResult(r Imported) {
+	@alert.Alert() {
+		@alert.Title() {
+			if r.Workouts == 0 && r.Duplicates > 0 {
+				Already imported
+			} else {
+				Imported { strconv.Itoa(r.Workouts) } workouts, { strconv.Itoa(r.Sets) } sets
+			}
+		}
+		@alert.Description() {
+			<ul class="space-y-1" data-testid="import-result">
+				if r.Duplicates > 0 {
+					<li>{ strconv.Itoa(r.Duplicates) } workouts were already here and were left as they were.</li>
+				}
+				if r.Skipped > 0 {
+					<li>{ strconv.Itoa(r.Skipped) } rows were not lifting sets (cardio, timed holds, or impossible numbers) and were skipped.</li>
+				}
+				if len(r.Unmatched) > 0 {
+					<li>
+						These exercises are not in the catalog, so they count toward records and volume but not the muscle map:
+						for i, name := range r.Unmatched {
+							if i > 0 {
+								{ ", " }
+							}
+							<span class="text-foreground">{ name }</span>
+						}
+					</li>
+				}
+			</ul>
+		}
+	}
+}
+
+// importDrop is a drop target built as the plan import's is: no templUI
+// dropzone exists, and Alpine only tracks drag-over state before submitting
+// the same multipart form the file input uses.
+templ importDrop() {
+	<form
+		method="post"
+		action="/app/lifts/import"
+		enctype="multipart/form-data"
+		x-data="{ over: false, busy: false }"
+		@dragover.prevent="over = true"
+		@dragleave.prevent="over = false"
+		@drop.prevent="over = false; busy = true; $refs.file.files = $event.dataTransfer.files; $el.submit()"
+	>
+		@ui.CSRFInput()
+		<label
+			for="file"
+			:class="over ? 'border-signal bg-signal/8' : 'border-hairline bg-surface'"
+			class="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-md border border-dashed px-4 py-10 text-center transition-colors duration-150"
+		>
+			@icon.Icon("file-up")(icon.Props{Class: "text-muted-foreground size-5"})
+			<span class="text-sm font-medium" x-text="busy ? 'Importing your workouts…' : 'Drop your Hevy CSV, or browse'">Drop your Hevy CSV, or browse</span>
+			<!-- Hidden native input: templUI Input cannot sit inside a drop
+			     target without drawing its own field chrome. -->
+			<input
+				id="file"
+				type="file"
+				name="file"
+				accept=".csv,text/csv"
+				class="sr-only"
+				x-ref="file"
+				x-bind:disabled="busy"
+				onchange="this.form.requestSubmit()"
+				@change="busy = true"
+			/>
+		</label>
+	</form>
+}

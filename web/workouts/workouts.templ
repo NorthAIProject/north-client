@@ -14,6 +14,7 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/exerciseart"
 	"github.com/NorthAIProject/north-client/web/shared/exerciserow"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
+	liftpages "github.com/NorthAIProject/north-client/web/lifts"
 	"github.com/NorthAIProject/north-client/web/shared/muscleviewer"
 	"github.com/NorthAIProject/north-client/web/shared/workoutsummary"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
@@ -439,6 +440,7 @@ templ PlanPage(user users.User, v PlanView) {
 					@workoutsummary.ReadinessCard(*v.Readiness)
 				</section>
 			}
+			@liftpages.LoaderCard()
 			@card.Card(card.Props{Class: "mb-6"}) {
 				@card.Header() {
 					@card.Title(card.TitleProps{Class: "text-base"}) {

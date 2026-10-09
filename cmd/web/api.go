@@ -79,6 +79,7 @@ func mountAPI(r chi.Router, sessions auth.SessionResolver, apis apiSet) {
 			apis.knowledge.UploadRoutes(r)
 			apis.formChecks.UploadRoutes(r)
 			apis.planImport.UploadRoutes(r)
+			apis.lifts.UploadRoutes(r)
 		})
 	})
 }

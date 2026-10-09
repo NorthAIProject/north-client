@@ -4892,6 +4892,40 @@ paths:
           $ref: '#/components/responses/ValidationError'
         '500':
           $ref: '#/components/responses/InternalError'
+  /lifts/import/hevy:
+    post:
+      operationId: importHevyWorkouts
+      summary: Import workout history from a Hevy export
+      description: >-
+        Each workout in the CSV becomes a finished strength session with its
+        sets, warm-ups, drop sets and effort. Importing the same file again
+        adds nothing; a workout Apple Health already recorded keeps that
+        session and gains the sets. Exercise names are matched to the catalog;
+        names with no match are kept as typed and listed in unmatched. A file
+        that is not a Hevy export is a 422 with the reason in fields.file.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: The CSV from Hevy's Export Workouts. Up to 10 MB.
+      responses:
+        '200':
+          description: What the import did
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LiftImport'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
   /lifts/sessions/{sessionID}/recap:
     parameters:
       - name: sessionID
@@ -6477,6 +6511,15 @@ components:
           type: string
           format: uuid
           description: The timed workout this set belongs to. Ignored when it is not the caller's.
+        kind:
+          type: string
+          enum: [warmup, work, drop]
+          description: warmup sets are left out of volume, records and fatigue; defaults to work
+        rir:
+          type: integer
+          minimum: 0
+          maximum: 10
+          description: "Reps in reserve: 0 is to failure."
     LiftSet:
       type: object
       required: [id, exerciseKey, exerciseName, exerciseSlug, setNumber, weightKg, reps, e1rmKg, performedAt]
@@ -6505,6 +6548,35 @@ components:
         activitySessionId:
           type: string
           format: uuid
+        kind:
+          type: string
+          enum: [warmup, work, drop]
+          description: warmup sets are left out of volume, records and fatigue; defaults to work
+        rir:
+          type: integer
+          minimum: 0
+          maximum: 10
+          description: "Reps in reserve: 0 is to failure."
+    LiftImport:
+      type: object
+      required: [workouts, duplicates, sets, skipped, unmatched]
+      properties:
+        workouts:
+          type: integer
+          description: Workouts whose sets were imported.
+        duplicates:
+          type: integer
+          description: Workouts already imported by an earlier upload, left alone.
+        sets:
+          type: integer
+        skipped:
+          type: integer
+          description: Rows that were not lifting sets (cardio, timed) or held impossible numbers.
+        unmatched:
+          type: array
+          items:
+            type: string
+          description: Exercise names with no catalog entry, kept as typed.
     LiftLastExercise:
       type: object
       required: [key, name, performedOn, sets]
