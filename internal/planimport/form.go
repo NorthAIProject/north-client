@@ -179,6 +179,12 @@ func applyMealAction(d *MealDraft, a reviewAction) {
 			deleteOption(m, p[2])
 		}
 	}
+	dropEmpty(d)
+}
+
+// dropEmpty removes the meals left with no option and the days left with no
+// meal.
+func dropEmpty(d *MealDraft) {
 	for i := range d.Days {
 		d.Days[i].Meals = slices.DeleteFunc(d.Days[i].Meals, func(m MealDraftMeal) bool { return len(m.Foods) == 0 && len(m.Alternatives) == 0 })
 	}

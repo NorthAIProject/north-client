@@ -23,6 +23,7 @@ type Service struct {
 	workouts    *workouts.Service
 	mealPlans   *meals.MealPlanService
 	ingredients *meals.IngredientService
+	quota       QuotaConsumer
 
 	// inFlight holds the users with a parse running. One import at a time per
 	// person: a second upload while the first is still being read is almost
@@ -39,6 +40,10 @@ type Options struct {
 	Workouts    *workouts.Service
 	MealPlans   *meals.MealPlanService
 	Ingredients *meals.IngredientService
+	// Quota is spent by ImportForCoach, one plan import per call. The import
+	// pages spend theirs in their route middleware, so they never reach it.
+	// Nil counts nothing.
+	Quota QuotaConsumer
 }
 
 func NewService(opts Options) *Service {
@@ -47,6 +52,7 @@ func NewService(opts Options) *Service {
 		workouts:    opts.Workouts,
 		mealPlans:   opts.MealPlans,
 		ingredients: opts.Ingredients,
+		quota:       opts.Quota,
 	}
 }
 

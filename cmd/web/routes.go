@@ -387,6 +387,7 @@ func routes(
 		Workouts:    workoutSvc,
 		MealPlans:   mealPlanSvc,
 		Ingredients: mealIngredientSvc,
+		Quota:       quotaSvc,
 	})
 	planImportHandler := planimport.NewHandler(planImportSvc, quotaSvc)
 
