@@ -52,6 +52,20 @@ func TestConversationListShape(t *testing.T) {
 	}})
 }
 
+// POST /conversations/{id}/attachments answers with this. Kind stays an open
+// string: "file" joins "image", and a closed enum on the client would refuse
+// the whole response the day another kind appears.
+func TestChatAttachmentShape(t *testing.T) {
+	t.Parallel()
+
+	apitest.AssertGolden(t, "chat_attachment.golden.json", projectAttachment(conversations.Attachment{
+		MediaID:  uuid.MustParse("55555555-5555-5555-5555-555555555555"),
+		Kind:     "file",
+		MIMEType: "application/pdf",
+		Name:     "dieta.pdf",
+	}))
+}
+
 // The tool call turn is the coach talking to itself; a client that showed it
 // would render an empty bubble between the question and the answer.
 func TestToolPlumbingTurnsAreNotMessages(t *testing.T) {
