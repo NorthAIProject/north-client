@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
+	"github.com/NorthAIProject/north-client/web/shared/live"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
 	"github.com/NorthAIProject/north-client/web/shared/ui/dialog"
@@ -21,7 +22,7 @@ templ cardGrid(data Data) {
 		@sleepCard(data.Sleep)
 		@workoutsCard(data.Workouts)
 		@nutrientsCard(data.Nutrients)
-		@streakCard(data.Streak, data.Level)
+		@streakCard(data.StreakTile, data.Level)
 	</section>
 }
 
@@ -255,13 +256,36 @@ templ workoutsDetail(w WorkoutsCard) {
 	}
 }
 
-templ streakCard(streak, level int) {
-	@dayCard("streak", "day.card.streak", "var(--color-ember)", icon.Flame(icon.Props{Class: "size-4"}), i18n.Tf(ctx, "day.streak.level", level), streakDetail(streak)) {
+templ streakCard(tile StreakTile, level int) {
+	@dayCard("streak", "day.card.streak", "var(--color-ember)", icon.Flame(icon.Props{Class: "size-4"}), i18n.Tf(ctx, "day.streak.level", level), streakDetail(tile.Streak)) {
+		@StreakLive(tile)
+	}
+}
+
+// StreakLive is the tile's face, and it refreshes itself: at once after a
+// check-in is saved in this tab, and every 20s for saves made elsewhere. Only
+// the face swaps, never the dialog around it, so the dialog's script state is
+// untouched. A span, because it sits inside the tile's button.
+templ StreakLive(tile StreakTile) {
+	<span
+		id="day-streak-live"
+		class="flex flex-col gap-1"
+		hx-get={ StreakTileURL(tile.Version) }
+		hx-trigger={ live.CheckInTrigger }
+		hx-swap="outerHTML"
+	>
 		<span class="flex items-center gap-2">
 			@icon.Flame(icon.Props{Class: "size-8 text-ember"})
-			<span class="text-ember text-4xl font-semibold tabular-nums">{ strconv.Itoa(streak) }</span>
+			<span class="text-ember text-4xl font-semibold tabular-nums">{ strconv.Itoa(tile.Streak) }</span>
 		</span>
-	}
+		<span class="text-muted-foreground text-xs tabular-nums" data-streak-today>
+			if tile.Today != nil {
+				{ i18n.Tf(ctx, "day.streak.today", tile.Today.Mood, tile.Today.Energy, tile.Today.At) }
+			} else {
+				{ i18n.T(ctx, "day.streak.notyet") }
+			}
+		</span>
+	</span>
 }
 
 templ streakDetail(streak int) {

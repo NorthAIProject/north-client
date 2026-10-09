@@ -21,6 +21,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/caffeine"
 	caffeinecalc "github.com/NorthAIProject/north-client/internal/caffeine/caffeine"
 	"github.com/NorthAIProject/north-client/internal/calculator"
+	"github.com/NorthAIProject/north-client/internal/checkins/checkin"
 	"github.com/NorthAIProject/north-client/internal/dashboard"
 	"github.com/NorthAIProject/north-client/internal/day/day"
 	"github.com/NorthAIProject/north-client/internal/fasting"
@@ -120,6 +121,12 @@ type (
 	CheckInTotals interface {
 		Total(ctx context.Context, userID uuid.UUID) (int, error)
 	}
+	// CheckIns is today's check-in and the fingerprint the live streak tile
+	// polls. checkins.Service satisfies it.
+	CheckIns interface {
+		Today(ctx context.Context, user users.User) (checkin.CheckIn, error)
+		Version(ctx context.Context, userID uuid.UUID) (string, error)
+	}
 )
 
 // The trackers' timeline kinds live with the rest of the feed's, in the
@@ -160,6 +167,7 @@ type Options struct {
 	Milestones    Milestones
 	Preferences   Preferences
 	CheckInTotals CheckInTotals
+	CheckIns      CheckIns
 
 	// Now is the clock. Nil means time.Now; tests pin it.
 	Now func() time.Time
@@ -186,6 +194,7 @@ type Service struct {
 	milestones    Milestones
 	preferences   Preferences
 	checkInTotals CheckInTotals
+	checkIns      CheckIns
 }
 
 func NewService(opts Options) *Service {
@@ -214,6 +223,7 @@ func NewService(opts Options) *Service {
 		milestones:    opts.Milestones,
 		preferences:   opts.Preferences,
 		checkInTotals: opts.CheckInTotals,
+		checkIns:      opts.CheckIns,
 	}
 }
 
@@ -231,6 +241,11 @@ type Snapshot struct {
 	Body     day.Body
 	Streak   int
 	Level    int
+	// TodayCheckIn is today's entry, nil until there is one. It is about the
+	// reader's today whichever date is on screen, like the streak.
+	TodayCheckIn *checkin.CheckIn
+	// CheckInVersion is what the live streak tile sends back when it polls.
+	CheckInVersion string
 
 	Caffeine   day.Caffeine
 	Fast       *day.Fast
@@ -417,6 +432,12 @@ func (s *Service) Load(ctx context.Context, user users.User, date time.Time) (Sn
 		g.Go(func() error {
 			total, err := s.checkInTotals.Total(gctx, user.ID)
 			snap.Level = day.LevelFor(total)
+			return err
+		})
+	}
+	if s.checkIns != nil {
+		g.Go(func() (err error) {
+			snap.TodayCheckIn, snap.CheckInVersion, err = s.todayCheckIn(gctx, user)
 			return err
 		})
 	}
@@ -846,4 +867,59 @@ func mean(vs []float64) *float64 {
 		total += v
 	}
 	return util.Ptr(total / float64(len(vs)))
+}
+
+// StreakTile is what the live streak tile draws.
+type StreakTile struct {
+	Streak       int
+	TodayCheckIn *checkin.CheckIn
+	Version      string
+}
+
+// CheckInVersion fingerprints the reader's check-ins; empty when check-ins
+// are not wired, which the tile treats as never changing.
+func (s *Service) CheckInVersion(ctx context.Context, userID uuid.UUID) (string, error) {
+	if s.checkIns == nil {
+		return "", nil
+	}
+	return s.checkIns.Version(ctx, userID)
+}
+
+// LoadStreakTile is the streak and today's check-in alone, for the tile's
+// refresh: three small queries rather than the whole day.
+func (s *Service) LoadStreakTile(ctx context.Context, user users.User) (StreakTile, error) {
+	var tile StreakTile
+	g, gctx := errgroup.WithContext(ctx)
+	if s.streaks != nil {
+		g.Go(func() (err error) { tile.Streak, err = s.streaks.Streak(gctx, user); return })
+	}
+	if s.checkIns != nil {
+		g.Go(func() (err error) {
+			tile.TodayCheckIn, tile.Version, err = s.todayCheckIn(gctx, user)
+			return err
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return StreakTile{}, err
+	}
+	return tile, nil
+}
+
+// todayCheckIn is today's entry, nil when there is none yet, and the version.
+// The version is read first, so a save landing in between shows up on the
+// next poll instead of hiding behind a version that already includes it.
+func (s *Service) todayCheckIn(ctx context.Context, user users.User) (*checkin.CheckIn, string, error) {
+	version, err := s.checkIns.Version(ctx, user.ID)
+	if err != nil {
+		return nil, "", err
+	}
+	c, err := s.checkIns.Today(ctx, user)
+	switch {
+	case err == nil:
+		return &c, version, nil
+	case apperr.Is(err, apperr.ErrNotFound):
+		return nil, version, nil
+	default:
+		return nil, "", err
+	}
 }

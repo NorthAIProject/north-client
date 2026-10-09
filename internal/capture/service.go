@@ -10,6 +10,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/biometrics"
 	"github.com/NorthAIProject/north-client/internal/checkins"
+	"github.com/NorthAIProject/north-client/internal/checkins/checkin"
 	"github.com/NorthAIProject/north-client/internal/habits"
 	"github.com/NorthAIProject/north-client/internal/hydration"
 	"github.com/NorthAIProject/north-client/internal/meals"
@@ -193,10 +194,13 @@ func (s *Service) write(ctx context.Context, user users.User, item Item) error {
 		return err
 
 	case KindCheckIn:
-		_, err := s.checkIns.UpsertToday(ctx, user, checkins.Input{
+		// Merge, not replace: a captured line carries mood, energy and maybe
+		// a note, and must not erase the rest of today's entry.
+		_, err := s.checkIns.MergeToday(ctx, user, checkins.Input{
 			Mood:   item.CheckIn.Mood,
 			Energy: item.CheckIn.Energy,
 			Notes:  item.CheckIn.Notes,
+			Source: checkin.SourceCapture,
 		})
 		return err
 

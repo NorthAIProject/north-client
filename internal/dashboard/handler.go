@@ -27,6 +27,33 @@ func NewHandler(svc *Service) *Handler {
 func (h *Handler) Routes(r chi.Router) {
 	r.Get("/overview", h.show)
 	r.Get("/overview/panels", h.panels)
+	r.Get("/overview/today", h.today)
+}
+
+// today redraws the part of the overview a check-in changes: the next step
+// and the Today card. It is the live region's poll, so it first compares the
+// check-in version the page holds and answers 204 when nothing moved, which
+// costs one small query instead of the dozen a full load runs.
+func (h *Handler) today(w http.ResponseWriter, r *http.Request) {
+	version, err := h.svc.CheckInVersion(r.Context(), auth.MustUser(r.Context()))
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	if r.URL.Query().Get("v") == version {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	data, err := h.load(r)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := app.TodayLive(data).Render(r.Context(), w); err != nil {
+		middleware.FromContext(r.Context()).Error("render dashboard today", slog.Any("error", err))
+	}
 }
 
 func (h *Handler) show(w http.ResponseWriter, r *http.Request) {
@@ -120,6 +147,8 @@ func buildDashboardData(snap Snapshot) (app.DashboardData, error) {
 		NewsTickerEnabled: snap.NewsTickerEnabled,
 		Range:             mapRange(snap.Range),
 		CheckedInToday:    snap.CheckedInToday,
+		TodayCheckIn:      mapTodayCheckIn(snap),
+		CheckInVersion:    snap.CheckInVersion,
 		Streak:            snap.Streak,
 		GoalActivity7d:    snap.GoalActivity7d,
 		PendingMemories:   snap.PendingMemories,
@@ -188,6 +217,20 @@ func buildKindDonut(feed []Entry) (map[string]any, bool, error) {
 		return nil, false, err
 	}
 	return option, true, nil
+}
+
+// mapTodayCheckIn is today's numbers and the time it was last filed, in the
+// reader's zone.
+func mapTodayCheckIn(snap Snapshot) *app.TodayCheckInView {
+	c := snap.TodayCheckIn
+	if c == nil {
+		return nil
+	}
+	return &app.TodayCheckInView{
+		Mood:   c.Mood,
+		Energy: c.Energy,
+		At:     c.UpdatedAt.In(snap.Range.Location()).Format("15:04"),
+	}
 }
 
 func mapRange(rg timerange.Range) app.RangeView {

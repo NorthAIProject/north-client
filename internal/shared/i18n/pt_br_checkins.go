@@ -57,4 +57,24 @@ var portugueseBrazilianCheckins = map[string]string{
 	"checkins.scale.option": "%[1]s %[2]d de 5",
 	"checkins.scale.low":    "Baixo",
 	"checkins.scale.high":   "Alto",
+
+	"checkins.q.stress":     "Qual é o seu nível de estresse?",
+	"checkins.q.sleep":      "Como você dormiu?",
+	"checkins.field.stress": "Estresse",
+	"checkins.field.sleep":  "Qualidade do sono",
+	"checkins.scale.skip":   "Pular",
+	"checkins.tags":         "Tags (opcional)",
+	"checkins.ph.tags":      "Separadas por vírgula, ex. viagem, doente",
+
+	"checkins.meta.at":     "Registrado às %[1]s",
+	"checkins.meta.edited": "editado às %[1]s",
+	"checkins.meta.stress": "estresse %[1]d/5",
+	"checkins.meta.sleep":  "sono %[1]d/5",
+
+	"checkins.source.web":     "Navegador",
+	"checkins.source.ios":     "App do iPhone",
+	"checkins.source.siri":    "Siri",
+	"checkins.source.coach":   "Conversa com o treinador",
+	"checkins.source.mcp":     "Assistente de IA",
+	"checkins.source.capture": "Registro rápido",
 }

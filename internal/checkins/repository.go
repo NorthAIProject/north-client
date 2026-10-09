@@ -3,6 +3,7 @@ package checkins
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -10,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/NorthAIProject/north-client/internal/checkins/checkin"
 	checkinsdb "github.com/NorthAIProject/north-client/internal/checkins/db"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
@@ -22,7 +24,7 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 	return &Repository{q: checkinsdb.New(pool)}
 }
 
-// Write is a check-in to store.
+// Write is a check-in to store. Every field is written as given.
 type Write struct {
 	LocalDate     time.Time
 	Mood, Energy  int
@@ -30,6 +32,11 @@ type Write struct {
 	Challenges    string
 	Notes         string
 	RelatedGoalID *uuid.UUID
+	Stress        *int
+	SleepQuality  *int
+	Tags          []string
+	// Source is recorded when the row is created and never changed after.
+	Source checkin.Source
 }
 
 func (r *Repository) Upsert(ctx context.Context, userID uuid.UUID, w Write) (CheckIn, error) {
@@ -42,6 +49,10 @@ func (r *Repository) Upsert(ctx context.Context, userID uuid.UUID, w Write) (Che
 		Challenges:    w.Challenges,
 		Notes:         w.Notes,
 		RelatedGoalID: w.RelatedGoalID,
+		Source:        string(w.Source),
+		Stress:        toInt16(w.Stress),
+		SleepQuality:  toInt16(w.SleepQuality),
+		Tags:          tagsOrEmpty(w.Tags),
 	})
 	if err != nil {
 		return CheckIn{}, apperr.Wrap(err, "upsert check-in")
@@ -121,6 +132,9 @@ func (r *Repository) Update(ctx context.Context, id, userID uuid.UUID, w Write) 
 		Challenges:    w.Challenges,
 		Notes:         w.Notes,
 		RelatedGoalID: w.RelatedGoalID,
+		Stress:        toInt16(w.Stress),
+		SleepQuality:  toInt16(w.SleepQuality),
+		Tags:          tagsOrEmpty(w.Tags),
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -177,6 +191,10 @@ func fromDB(row checkinsdb.CheckIn) CheckIn {
 		Challenges:    row.Challenges,
 		Notes:         row.Notes,
 		RelatedGoalID: row.RelatedGoalID,
+		Stress:        fromInt16(row.Stress),
+		SleepQuality:  fromInt16(row.SleepQuality),
+		Tags:          tagsOrEmpty(row.Tags),
+		Source:        checkin.Source(row.Source),
 		CreatedAt:     row.CreatedAt,
 		UpdatedAt:     row.UpdatedAt,
 	}
@@ -184,6 +202,31 @@ func fromDB(row checkinsdb.CheckIn) CheckIn {
 		c.LocalDate = row.LocalDate.Time
 	}
 	return c
+}
+
+func toInt16(v *int) *int16 {
+	if v == nil {
+		return nil
+	}
+	n := int16(*v)
+	return &n
+}
+
+func fromInt16(v *int16) *int {
+	if v == nil {
+		return nil
+	}
+	n := int(*v)
+	return &n
+}
+
+// tagsOrEmpty keeps tags non-nil: the column is NOT NULL, and an empty JSON
+// array reads better to clients than null.
+func tagsOrEmpty(tags []string) []string {
+	if tags == nil {
+		return []string{}
+	}
+	return tags
 }
 
 func toDate(t time.Time) pgtype.Date {
@@ -202,4 +245,14 @@ func (r *Repository) Count(ctx context.Context, userID uuid.UUID) (int, error) {
 		return 0, apperr.Wrap(err, "count check-ins")
 	}
 	return int(n), nil
+}
+
+// Version is a cheap fingerprint of every check-in this person has: it changes
+// on any save, edit or delete. The web's live displays poll it.
+func (r *Repository) Version(ctx context.Context, userID uuid.UUID) (string, error) {
+	row, err := r.q.CheckInVersion(ctx, userID)
+	if err != nil {
+		return "", apperr.Wrap(err, "check-in version")
+	}
+	return fmt.Sprintf("%d-%d", row.Latest.UnixMicro(), row.Total), nil
 }

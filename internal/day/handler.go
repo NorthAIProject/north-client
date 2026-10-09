@@ -15,6 +15,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/bodymap"
 	caffeinecalc "github.com/NorthAIProject/north-client/internal/caffeine/caffeine"
+	"github.com/NorthAIProject/north-client/internal/checkins/checkin"
 	"github.com/NorthAIProject/north-client/internal/dashboard"
 	"github.com/NorthAIProject/north-client/internal/day/day"
 	"github.com/NorthAIProject/north-client/internal/screentime/screen"
@@ -53,6 +54,55 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Get("/", h.show)
 	r.Post("/day/rules", h.saveRules)
 	r.Get("/day/trends", h.trends)
+	r.Get("/day/checkin", h.streakTile)
+}
+
+// streakTile redraws the streak card's face for its live poll. It answers 204
+// when the check-in version the page holds is still current, so the 20-second
+// poll is one small query.
+func (h *Handler) streakTile(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+
+	version, err := h.svc.CheckInVersion(r.Context(), user.ID)
+	if err != nil {
+		h.tileFailed(w, r, err)
+		return
+	}
+	if r.URL.Query().Get("v") == version {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	tile, err := h.svc.LoadStreakTile(r.Context(), user)
+	if err != nil {
+		h.tileFailed(w, r, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	view := streakTileView(tile.Streak, tile.TodayCheckIn, tile.Version, user.Location())
+	if err := daypages.StreakLive(view).Render(r.Context(), w); err != nil {
+		middleware.FromContext(r.Context()).Error("render streak tile", slog.Any("error", err))
+	}
+}
+
+func (h *Handler) tileFailed(w http.ResponseWriter, r *http.Request, err error) {
+	middleware.FromContext(r.Context()).Error("load streak tile", slog.Any("error", err))
+	http.Error(w, i18n.T(r.Context(), "day.error"), http.StatusInternalServerError)
+}
+
+// streakTileView is the tile's face: the streak, and today's numbers with the
+// time they were last filed in the reader's zone.
+func streakTileView(streak int, today *checkin.CheckIn, version string, loc *time.Location) daypages.StreakTile {
+	tile := daypages.StreakTile{Streak: streak, Version: version}
+	if today != nil {
+		tile.Today = &daypages.TodayCheckIn{
+			Mood:   today.Mood,
+			Energy: today.Energy,
+			At:     today.UpdatedAt.In(loc).Format("15:04"),
+		}
+	}
+	return tile
 }
 
 func (h *Handler) show(w http.ResponseWriter, r *http.Request) {
@@ -131,6 +181,7 @@ func BuildView(ctx context.Context, s Snapshot) daypages.Data {
 		Streak:    s.Streak,
 	}
 
+	data.StreakTile = streakTileView(s.Streak, s.TodayCheckIn, s.CheckInVersion, s.Now.Location())
 	data.Level = s.Level
 	data.Vitals = []daypages.Vital{
 		{

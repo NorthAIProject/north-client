@@ -196,6 +196,11 @@ type Snapshot struct {
 	// Today's operational state. Deliberately not range-scoped: "have I
 	// checked in" is a question about now, whichever window is on screen.
 	CheckedInToday bool
+	// TodayCheckIn is today's entry when CheckedInToday.
+	TodayCheckIn *checkins.CheckIn
+	// CheckInVersion fingerprints the person's check-ins, so a live display
+	// can ask "has anything changed" without reloading the page.
+	CheckInVersion string
 	Streak         int
 	// GoalActivity7d is notes + goal-linked check-ins in the last 7 local days.
 	// Independent of Range. Zero means none — the template hides the line.
@@ -254,11 +259,17 @@ func (s *Service) Load(ctx context.Context, user users.User, rg timerange.Range)
 		})
 	}
 
+	g.Go(func() (err error) {
+		snap.CheckInVersion, err = s.checkins.Version(gctx, user.ID)
+		return err
+	})
+
 	g.Go(func() error {
-		_, err := s.checkins.Today(gctx, user)
+		today, err := s.checkins.Today(gctx, user)
 		switch {
 		case err == nil:
 			snap.CheckedInToday = true
+			snap.TodayCheckIn = &today
 			return nil
 		case apperr.Is(err, apperr.ErrNotFound):
 			return nil
@@ -661,4 +672,10 @@ func buildHydrationSummary(rg timerange.Range, today hydration.Day, recent []hyd
 		Percent:  pct,
 		Days:     out,
 	}
+}
+
+// CheckInVersion is the fingerprint Load puts in Snapshot.CheckInVersion, on
+// its own, so the overview's live Today card can poll it for one query.
+func (s *Service) CheckInVersion(ctx context.Context, user users.User) (string, error) {
+	return s.checkins.Version(ctx, user.ID)
 }
