@@ -493,7 +493,9 @@
                   "remove_meal",
                   "add_food",
                   "remove_food",
-                  "set_grams"
+                  "set_grams",
+                  "add_option",
+                  "remove_option"
                 ],
                 "type": "string"
               }
