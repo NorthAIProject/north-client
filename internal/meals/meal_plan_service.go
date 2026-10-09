@@ -496,22 +496,23 @@ func (s *MealPlanService) AddMeal(ctx context.Context, dayID, userID uuid.UUID, 
 	return added, err
 }
 
-// AddOption adds an empty option, labelled, to the end of the meal slot that
-// mealID — any of the slot's options — belongs to. A new option is empty, so
-// it needs no overage check.
+// AddOption adds an empty option to the end of the meal slot that mealID —
+// any of the slot's options — belongs to. A blank label becomes "Option N",
+// N being the new option's position in the slot, so no two options read the
+// same. A new option is empty, so it needs no overage check.
 func (s *MealPlanService) AddOption(ctx context.Context, userID, planID, mealID uuid.UUID, label string) (meal.Meal, error) {
-	label, err := validateOptionLabel(label)
-	if err != nil {
-		return meal.Meal{}, err
-	}
+	label = strings.TrimSpace(label)
 	var added meal.Meal
-	err = s.repo.WithPlanLocked(ctx, planID, userID, func(tx *PlanTx, plan MealPlan) error {
-		m, ok := findMeal(plan, mealID)
+	err := s.repo.WithPlanLocked(ctx, planID, userID, func(tx *PlanTx, plan MealPlan) error {
+		slot, ok := findSlot(plan, mealID)
 		if !ok {
 			return apperr.ErrNotFound
 		}
+		if label == "" {
+			label = fmt.Sprintf("Option %d", len(slot.Options())+1)
+		}
 		var addErr error
-		added, addErr = tx.AddOption(ctx, planID, m.DayID, m.MealNumber, m.Name, label)
+		added, addErr = tx.AddOption(ctx, planID, slot.DayID, slot.MealNumber, slot.Name, label)
 		return addErr
 	})
 	return added, err
@@ -537,6 +538,21 @@ func (s *MealPlanService) RemoveMeal(ctx context.Context, mealID, userID uuid.UU
 }
 
 // findMeal finds a meal of the plan by id, default or alternative.
+// findSlot finds the slot — its default, holding the alternatives — that any
+// of its options' IDs names.
+func findSlot(plan MealPlan, mealID uuid.UUID) (Meal, bool) {
+	for _, d := range plan.Days {
+		for _, slot := range d.Meals {
+			for _, m := range slot.Options() {
+				if m.ID == mealID {
+					return slot, true
+				}
+			}
+		}
+	}
+	return Meal{}, false
+}
+
 func findMeal(plan MealPlan, mealID uuid.UUID) (Meal, bool) {
 	for _, d := range plan.Days {
 		for _, slot := range d.Meals {
