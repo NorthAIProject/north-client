@@ -1,0 +1,11 @@
+{
+  "offered": true,
+  "readiness": {
+    "low": true,
+    "hrv": 38,
+    "hrvBaseline": 52,
+    "restingHeartRate": 61,
+    "restingHeartRateBaseline": 56
+  },
+  "session": "Lower body"
+}

@@ -110,6 +110,9 @@ type Day struct {
 	// IsNext marks the one day to train next: the session of the week's first
 	// unfinished day from today on. See GET /training/week for which day.
 	IsNext bool `json:"isNext"`
+	// Lighter marks today when the person chose a lighter session this
+	// morning; its exercises' thisWeekSets are already reduced.
+	Lighter bool `json:"lighter,omitempty"`
 }
 
 type DayExercise struct {
@@ -393,9 +396,14 @@ func projectDetail(p StoredPlan, problems []string, progress WeekProgress, activ
 	days := make([]Day, 0, len(p.Plan.Days))
 	for dayIndex, d := range p.Plan.Days {
 		exercises := make([]DayExercise, 0, len(d.Exercises))
+		lighter := progress.Lighter(p.IntakeID, dayIndex)
+		volume := progress.Volume
+		if lighter {
+			volume = VolumeDeload
+		}
 		for i, e := range d.Exercises {
 			exercises = append(exercises, DayExercise{
-				Name: e.Name, Sets: e.Sets, ThisWeekSets: progress.Volume.SetsFor(i, e.Sets), Reps: e.Reps, Load: e.Load, RestSeconds: e.RestSeconds, Equipment: e.Equipment,
+				Name: e.Name, Sets: e.Sets, ThisWeekSets: volume.SetsFor(i, e.Sets), Reps: e.Reps, Load: e.Load, RestSeconds: e.RestSeconds, Equipment: e.Equipment,
 				FormCues: e.FormCues, Substitute: e.Substitute, CatalogSlug: e.CatalogSlug, HasArt: e.HasIllustration(),
 				Primary: nonNil(e.Primary), Secondary: nonNil(e.Secondary),
 			})
@@ -403,6 +411,7 @@ func projectDetail(p StoredPlan, problems []string, progress WeekProgress, activ
 		days = append(days, Day{
 			Weekday: d.Weekday, StartTime: d.StartTime, Focus: d.Focus, Exercises: exercises,
 			CompletedThisWeek: progress.Trained(p.IntakeID, dayIndex), IsNext: progress.IsNext(p.IntakeID, dayIndex),
+			Lighter: lighter,
 		})
 	}
 	if problems == nil {

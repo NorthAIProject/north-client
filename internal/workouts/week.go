@@ -115,6 +115,20 @@ type WeekProgress struct {
 	// Volume is this week's choice from the weekly review, and every Day
 	// already has its sets adjusted for it.
 	Volume Volume
+
+	// LighterToday is today's weekday when the person chose a lighter
+	// session this morning; empty otherwise, and empty for any week but the
+	// current one. It wins over Volume for that day only.
+	LighterToday string
+}
+
+// VolumeOn is the volume a day trains at this week: a deload on a day taken
+// lighter, the week's volume on every other.
+func (w WeekProgress) VolumeOn(weekday string) Volume {
+	if w.LighterToday != "" && strings.EqualFold(strings.TrimSpace(weekday), w.LighterToday) {
+		return VolumeDeload
+	}
+	return w.Volume
 }
 
 // Done reports whether weekday was finished this week.
@@ -143,6 +157,20 @@ func (w WeekProgress) DoneToday(now time.Time) (PlanDay, bool) {
 func (w WeekProgress) Trained(intake uuid.UUID, index int) bool {
 	for _, d := range w.Days {
 		if d.IntakeID == intake && d.DayIndex == index && d.Completed {
+			return true
+		}
+	}
+	return false
+}
+
+// Lighter reports whether the plan day at index of intake's plan falls on
+// today this week and was taken lighter this morning.
+func (w WeekProgress) Lighter(intake uuid.UUID, index int) bool {
+	if w.LighterToday == "" {
+		return false
+	}
+	for _, d := range w.Days {
+		if d.IntakeID == intake && d.DayIndex == index && d.Weekday == w.LighterToday {
 			return true
 		}
 	}
@@ -474,6 +502,14 @@ func (s *Service) resolve(ctx context.Context, user users.User, week StoredWeek,
 		return WeekProgress{}, err
 	}
 	out := WeekProgress{Start: start, Custom: week.Custom, Completed: done, Volume: volume}
+	// A lighter day belongs to the week it was chosen in: resolving next week
+	// on the same morning must not lighten next week's same weekday.
+	if local := now.In(loc); !local.Before(start) && local.Before(start.AddDate(0, 0, 7)) {
+		out.LighterToday, err = s.lighterToday(ctx, user, now)
+		if err != nil {
+			return WeekProgress{}, err
+		}
+	}
 
 	plans := make(map[uuid.UUID]StoredPlan)
 	var home *StoredPlan
@@ -503,7 +539,7 @@ func (s *Service) resolve(ctx context.Context, user users.User, week StoredWeek,
 		if slot.DayIndex < 0 || slot.DayIndex >= len(p.Plan.Days) {
 			continue
 		}
-		day := volume.Day(p.Plan.Days[slot.DayIndex])
+		day := out.VolumeOn(slot.Weekday).Day(p.Plan.Days[slot.DayIndex])
 		day.Weekday = slot.Weekday
 		day.StartTime = startTimeOn(home, slot.Weekday, day.StartTime)
 		out.Days = append(out.Days, WeekDay{
