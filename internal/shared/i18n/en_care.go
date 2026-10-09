@@ -71,6 +71,31 @@ var englishCare = map[string]string{
 	"care.rem.delete":   "Delete",
 	"care.rem.everyday": "Every day",
 
+	// Medications: recorded as stated, never advised on.
+	"care.meds.title":           "Medications",
+	"care.meds.desc":            "Doses as you take them. The app keeps the record; it never suggests a dose.",
+	"care.meds.none":            "No medications tracked yet.",
+	"care.meds.today":           "Today",
+	"care.meds.take":            "Taken",
+	"care.meds.skip":            "Skip",
+	"care.meds.undo":            "Undo",
+	"care.meds.status.taken":    "Taken",
+	"care.meds.status.skipped":  "Skipped",
+	"care.meds.status.due":      "Due",
+	"care.meds.status.upcoming": "Later",
+	"care.meds.asneeded":        "As needed",
+	"care.meds.asneeded.none":   "None today",
+	"care.meds.tookone":         "Took one",
+	"care.meds.manage":          "Your medications",
+	"care.meds.stop":            "Stop",
+	"care.meds.name":            "Name",
+	"care.meds.name.ph":         "Metformin",
+	"care.meds.dose":            "Dose",
+	"care.meds.dose.ph":         "500 mg",
+	"care.meds.times":           "Times",
+	"care.meds.times.help":      "HH:MM, separated by commas. Leave empty for as needed.",
+	"care.meds.add":             "Add medication",
+
 	// Three-letter weekday abbreviations, in Go's Weekday order starting at
 	// Sunday. Abbreviations rather than full names because they sit in a row of
 	// seven checkboxes on a phone.

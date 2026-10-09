@@ -23,6 +23,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/conversations"
 	"github.com/NorthAIProject/north-client/internal/documents"
 	"github.com/NorthAIProject/north-client/internal/goals"
+	"github.com/NorthAIProject/north-client/internal/medications/medication"
 	"github.com/NorthAIProject/north-client/internal/memories"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/social/friend"
@@ -54,6 +55,13 @@ type Exporter struct {
 	checkIns      *checkins.Service
 	storage       documents.Storage
 	friends       Friends
+	medications   Medications
+}
+
+// Medications is every medication and dose as an export needs them.
+// medications.Service satisfies it; nil leaves medications.md out.
+type Medications interface {
+	History(ctx context.Context, user users.User) ([]medication.Medication, []medication.Dose, error)
 }
 
 // Friends is the social graph as an export needs it. social.Service
@@ -73,6 +81,7 @@ type Options struct {
 	CheckIns      *checkins.Service
 	Storage       documents.Storage
 	Friends       Friends
+	Medications   Medications
 }
 
 func NewExporter(o Options) *Exporter {
@@ -84,6 +93,7 @@ func NewExporter(o Options) *Exporter {
 		checkIns:      o.CheckIns,
 		storage:       o.Storage,
 		friends:       o.Friends,
+		medications:   o.Medications,
 	}
 }
 
@@ -131,6 +141,9 @@ func (e *Exporter) WriteZip(ctx context.Context, user users.User, w io.Writer) e
 	if err := e.writeFriends(ctx, zw, user); err != nil {
 		problems = append(problems, "friends: "+err.Error())
 	}
+	if err := e.writeMedications(ctx, zw, user); err != nil {
+		problems = append(problems, "medications: "+err.Error())
+	}
 
 	if len(problems) > 0 {
 		if err := writeFile(zw, "INCOMPLETE.txt", strings.Join(append(
@@ -155,6 +168,7 @@ func (e *Exporter) writeManifest(zw *zip.Writer, user users.User) error {
 			"documents/ — your notes and uploads, unchanged",
 			"conversations/ — one Markdown file per conversation",
 			"friends.md — your handle, who you follow, who follows you, who you blocked",
+			"medications.md — what you take, on what schedule, and every dose you logged",
 		},
 		"not_included": []string{
 			"the search index and the passages derived from your documents; " +
@@ -181,6 +195,7 @@ readable whether or not Khepri exists.
 - `+"`memories.md`"+` — the durable facts Khepri was told it may use in coaching.
 - `+"`documents/`"+` — your notes and uploaded files, exactly as you gave them.
 - `+"`conversations/`"+` — one file per conversation, oldest message first.
+- `+"`medications.md`"+` — what you take and every dose you logged, stopped ones included.
 
 The search index is not here on purpose. It is built from the files above and
 can be rebuilt from them, so it is Khepri's working state rather than anything
@@ -523,4 +538,52 @@ func (e *Exporter) writeFriends(ctx context.Context, zw *zip.Writer, user users.
 	section("Requests waiting for you", people(o.Requests, ""))
 	section("Blocked", o.Blocked)
 	return writeFile(zw, "friends.md", b.String())
+}
+
+// writeMedications is each medication as it was described, stopped ones
+// included, then every dose logged, newest day first. A stopped medication is
+// part of the record: what someone took last year can matter to a doctor now.
+func (e *Exporter) writeMedications(ctx context.Context, zw *zip.Writer, user users.User) error {
+	if e.medications == nil {
+		return nil
+	}
+	meds, doses, err := e.medications.History(ctx, user)
+	if err != nil {
+		return err
+	}
+
+	var b strings.Builder
+	b.WriteString("# Medications\n\n")
+	if len(meds) == 0 {
+		b.WriteString("Nothing recorded yet.\n")
+		return writeFile(zw, "medications.md", b.String())
+	}
+
+	loc := user.Location()
+	for _, m := range meds {
+		fmt.Fprintf(&b, "## %s\n\n", m.Label())
+		fmt.Fprintf(&b, "_%s · started %s", medication.Schedule(m), m.CreatedAt.In(loc).Format("2 Jan 2006"))
+		if m.StoppedAt != nil {
+			fmt.Fprintf(&b, " · stopped %s", m.StoppedAt.In(loc).Format("2 Jan 2006"))
+		}
+		b.WriteString("_\n\n")
+		if notes := strings.TrimSpace(m.Notes); notes != "" {
+			fmt.Fprintf(&b, "%s\n\n", notes)
+		}
+	}
+
+	b.WriteString("## Doses\n\n")
+	if len(doses) == 0 {
+		b.WriteString("None logged.\n")
+	}
+	for _, d := range doses {
+		slot := "unscheduled"
+		if d.Slot != nil {
+			slot = *d.Slot
+		}
+		fmt.Fprintf(&b, "- %s · %s · %s · %s (logged %s)\n",
+			d.LogDate.Format("2006-01-02"), slot, d.Label(), d.Status, d.LoggedAt.In(loc).Format("15:04"))
+	}
+
+	return writeFile(zw, "medications.md", b.String())
 }

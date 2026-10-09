@@ -27,6 +27,8 @@ const (
 	KindCrewCheckIn       = nudge.KindCrewCheckIn
 	KindWeekReview        = nudge.KindWeekReview
 	KindDecisionRevisit   = nudge.KindDecisionRevisit
+
+	KindMedicationReminder = nudge.KindMedicationReminder
 )
 
 // CategoryCheckIn is the iOS notification category that puts mood buttons

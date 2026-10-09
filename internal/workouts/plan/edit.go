@@ -178,17 +178,9 @@ const maxRepsLength = 32
 // SetPrescription changes how much of an exercise to do, leaving the movement
 // alone. The inverse of Swap.
 func SetPrescription(p Plan, day, index, sets int, reps string, restSeconds int) (Plan, error) {
-	reps = strings.TrimSpace(reps)
-
-	switch {
-	case sets < 1:
-		return Plan{}, fmt.Errorf("an exercise needs at least one set, not %d", sets)
-	case reps == "":
-		return Plan{}, fmt.Errorf("an exercise needs a rep range")
-	case len(reps) > maxRepsLength:
-		return Plan{}, fmt.Errorf("a rep range is at most %d characters", maxRepsLength)
-	case restSeconds < 0:
-		return Plan{}, fmt.Errorf("rest cannot be negative")
+	reps, err := validPrescription(sets, reps, restSeconds)
+	if err != nil {
+		return Plan{}, err
 	}
 
 	out, err := copyFor(p, day, index)
@@ -201,6 +193,132 @@ func SetPrescription(p Plan, day, index, sets int, reps string, restSeconds int)
 	ex.Reps = reps
 	ex.RestSeconds = restSeconds
 
+	return out, nil
+}
+
+// validPrescription checks one exercise's dose and returns the rep range
+// trimmed. Shared by the single and the bulk edit so both refuse the same
+// nonsense.
+func validPrescription(sets int, reps string, restSeconds int) (string, error) {
+	reps = strings.TrimSpace(reps)
+
+	switch {
+	case sets < 1:
+		return "", fmt.Errorf("an exercise needs at least one set, not %d", sets)
+	case reps == "":
+		return "", fmt.Errorf("an exercise needs a rep range")
+	case len(reps) > maxRepsLength:
+		return "", fmt.Errorf("a rep range is at most %d characters", maxRepsLength)
+	case restSeconds < 0:
+		return "", fmt.Errorf("rest cannot be negative")
+	}
+	return reps, nil
+}
+
+// PrescriptionChange is a dose change for many exercises at once. A nil field
+// is left as each exercise already has it.
+//
+// AddSets is relative — "one more set on everything" — and cannot be combined
+// with Sets, which is absolute. Asking for both is ambiguous, not additive.
+//
+// Load is the weight as text, the way a plan writes it ("100 kg", "RPE 8");
+// an empty string clears it.
+type PrescriptionChange struct {
+	Sets        *int
+	AddSets     int
+	Reps        *string
+	RestSeconds *int
+	Load        *string
+}
+
+// ApplyPrescription changes the dose of every exercise match accepts, across
+// all days, and reports what changed, one line per exercise.
+//
+// One edit rather than a loop of SetPrescription calls because "every exercise
+// to three sets" is one decision: it should land as one new plan version, and
+// a half-applied version must not exist if the tenth exercise is refused.
+//
+// Matching nothing is an error. A bulk edit that touched no exercise is almost
+// always a filter that was wrong, and storing an identical plan as a new
+// version would hide that.
+func ApplyPrescription(p Plan, match func(day int, ex Exercise) bool, ch PrescriptionChange) (Plan, []string, error) {
+	if ch.Sets != nil && ch.AddSets != 0 {
+		return Plan{}, nil, fmt.Errorf("give either a set count or sets to add, not both")
+	}
+	if ch.Sets == nil && ch.AddSets == 0 && ch.Reps == nil && ch.RestSeconds == nil && ch.Load == nil {
+		return Plan{}, nil, fmt.Errorf("nothing to change: give sets, sets to add, reps, rest or load")
+	}
+	var load string
+	if ch.Load != nil {
+		load = strings.TrimSpace(*ch.Load)
+		if len(load) > maxRepsLength {
+			return Plan{}, nil, fmt.Errorf("a load is at most %d characters", maxRepsLength)
+		}
+	}
+
+	out := p
+	out.Days = append([]PlanDay(nil), p.Days...)
+
+	var changed []string
+	for d := range out.Days {
+		exercises := append([]Exercise(nil), out.Days[d].Exercises...)
+		for i, ex := range exercises {
+			if !match(d, ex) {
+				continue
+			}
+
+			sets, reps, rest := ex.Sets, ex.Reps, ex.RestSeconds
+			if ch.Sets != nil {
+				sets = *ch.Sets
+			}
+			sets += ch.AddSets
+			if ch.Reps != nil {
+				reps = *ch.Reps
+			}
+			if ch.RestSeconds != nil {
+				rest = *ch.RestSeconds
+			}
+
+			reps, err := validPrescription(sets, reps, rest)
+			if err != nil {
+				return Plan{}, nil, fmt.Errorf("%s on %s: %w", ex.Name, out.Days[d].Weekday, err)
+			}
+
+			exercises[i].Sets = sets
+			exercises[i].Reps = reps
+			exercises[i].RestSeconds = rest
+			if ch.Load != nil {
+				exercises[i].Load = load
+			}
+
+			line := fmt.Sprintf("%s — %s: %d x %s, %ds rest", out.Days[d].Weekday, ex.Name, sets, reps, rest)
+			if exercises[i].Load != "" {
+				line += " @ " + exercises[i].Load
+			}
+			changed = append(changed, line)
+		}
+		out.Days[d].Exercises = exercises
+	}
+
+	if len(changed) == 0 {
+		return Plan{}, nil, fmt.Errorf("no exercise in this plan matched")
+	}
+	return out, changed, nil
+}
+
+// SetStartTimes sets or clears the start time of several days in one edit.
+func SetStartTimes(p Plan, days []int, startTime string) (Plan, error) {
+	if len(days) == 0 {
+		return Plan{}, fmt.Errorf("name at least one day")
+	}
+
+	out := p
+	for _, day := range days {
+		var err error
+		if out, err = SetStartTime(out, day, startTime); err != nil {
+			return Plan{}, err
+		}
+	}
 	return out, nil
 }
 

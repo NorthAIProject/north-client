@@ -2,6 +2,8 @@ package coach_test
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -184,6 +186,75 @@ func TestApprovingRunsTheToolAndResumesTheReply(t *testing.T) {
 		t.Fatalf("pending approval: %v", err)
 	} else if ok {
 		t.Error("the call is still pending after being approved")
+	}
+
+	waitForReply(t, h, conversationID, 2*time.Second)
+}
+
+// "Everything from 2 sets to 3" is one decision, so it is one card: a single
+// set_workout_prescription call held whole, carrying the filter the person
+// has to read, and run exactly once when they approve.
+func TestABulkPlanEditIsOneApproval(t *testing.T) {
+	t.Parallel()
+
+	bulkEdit := ai.Tool{
+		Name:        "set_workout_prescription",
+		Description: "Change sets, reps, rest or load across a plan.",
+		Parameters:  ai.Object("the change", map[string]*ai.Schema{"day": ai.String("a day"), "sets": ai.Integer("sets")}, "day"),
+	}
+	args := `{"day":"","sets":3,"only_if_sets":2}`
+	tools := &stubTools{
+		tools:    []ai.Tool{bulkEdit},
+		results:  map[string]string{"set_workout_prescription": "Updated 9 exercises."},
+		readOnly: map[string]bool{"set_workout_prescription": false},
+	}
+	client := &fake.Client{Responses: []fake.Response{
+		fake.Calling(fake.ToolCall("set_workout_prescription", args)),
+		{Text: "Done — every exercise that was on two sets is on three."},
+	}}
+
+	h := newToolHarness(t, client, tools)
+	conversationID := newConversation(t, h)
+
+	stream, err := h.coach.SendMessage(context.Background(), h.user, conversationID, "increase everything from 2 sets to 3")
+	if err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	if _, drainErr := drain(stream); drainErr != nil {
+		t.Fatalf("drain: %v", drainErr)
+	}
+
+	pending, ok, err := h.coach.PendingApproval(context.Background(), h.user, conversationID)
+	if err != nil || !ok {
+		t.Fatalf("pending approval: ok=%v err=%v", ok, err)
+	}
+	if len(pending.Calls) != 1 {
+		t.Fatalf("%d calls pending, want the one", len(pending.Calls))
+	}
+	var stored, sent map[string]any
+	if err := json.Unmarshal(pending.Calls[0].Arguments, &stored); err != nil {
+		t.Fatalf("pending arguments: %v", err)
+	}
+	_ = json.Unmarshal([]byte(args), &sent)
+	if fmt.Sprint(stored) != fmt.Sprint(sent) {
+		t.Fatalf("pending arguments = %v, want the filter as sent, %v", stored, sent)
+	}
+	if len(tools.calls) != 0 {
+		t.Fatalf("the edit ran %d times before approval", len(tools.calls))
+	}
+
+	if err = h.coach.ResolvePending(context.Background(), h.user, conversationID, pending.MessageID, true); err != nil {
+		t.Fatalf("approve: %v", err)
+	}
+	resumed, err := h.coach.Resume(context.Background(), h.user, conversationID)
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	if _, drainErr := drain(resumed); drainErr != nil {
+		t.Fatalf("drain resumed: %v", drainErr)
+	}
+	if len(tools.calls) != 1 {
+		t.Errorf("the edit ran %d times, want exactly 1", len(tools.calls))
 	}
 
 	waitForReply(t, h, conversationID, 2*time.Second)

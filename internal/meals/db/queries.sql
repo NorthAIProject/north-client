@@ -145,10 +145,10 @@ WHERE m.id = $1 AND mp.user_id = $2;
 -- name: ListMealsByPlan :many
 SELECT * FROM meals WHERE meal_plan_id = $1 ORDER BY day_id, meal_number;
 
--- name: DeleteMealOwned :exec
-DELETE FROM meals
-USING meal_plans
-WHERE meals.id = $1 AND meals.meal_plan_id = meal_plans.id AND meal_plans.user_id = $2;
+-- name: DeleteMealOfPlan :exec
+-- Callers hold the plan's lock and have checked it is the user's; the plan id
+-- keeps a meal id from another plan from matching.
+DELETE FROM meals WHERE id = $1 AND meal_plan_id = $2;
 
 -- name: UpdateMealTotalMacros :exec
 UPDATE meals SET total_macros = $2 WHERE id = $1;
@@ -177,7 +177,14 @@ JOIN meal_plans mp ON mp.id = m.meal_plan_id
 WHERE mi.id = $1 AND mp.user_id = $2;
 
 -- name: DeleteMealIngredient :exec
-DELETE FROM meal_ingredients WHERE id = $1;
+DELETE FROM meal_ingredients WHERE id = $1 AND meal_id = $2;
+
+-- name: UpdateMealIngredientQuantity :one
+-- A new quantity with its macros, worked out by the caller like an insert's.
+UPDATE meal_ingredients
+SET quantity_grams = $3, calories = $4, protein_g = $5, fat_g = $6, carbs_g = $7
+WHERE id = $1 AND meal_id = $2
+RETURNING *;
 
 -- name: SumMealIngredientMacros :one
 SELECT

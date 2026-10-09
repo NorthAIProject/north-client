@@ -8,6 +8,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/habits"
 	"github.com/NorthAIProject/north-client/internal/hydration"
 	"github.com/NorthAIProject/north-client/internal/meals"
+	"github.com/NorthAIProject/north-client/internal/medications"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/sleep"
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -25,6 +26,8 @@ type Options struct {
 	Hydration *hydration.Service
 	Sleep     *sleep.Service
 	Habits    *habits.Service
+	// Medications is optional: without it the page has no medications card.
+	Medications *medications.Service
 }
 
 type Service struct {
@@ -33,6 +36,7 @@ type Service struct {
 	hydration *hydration.Service
 	sleep     *sleep.Service
 	habits    *habits.Service
+	meds      *medications.Service
 }
 
 func NewService(opts Options) *Service {
@@ -42,6 +46,7 @@ func NewService(opts Options) *Service {
 		hydration: opts.Hydration,
 		sleep:     opts.Sleep,
 		habits:    opts.Habits,
+		meds:      opts.Medications,
 	}
 }
 
@@ -61,6 +66,8 @@ type Snapshot struct {
 	LastNight      sleep.Log
 	SleptLastNight bool
 	Habits         []habits.Stats
+	Medications    []medications.Medication
+	MedicationDay  medications.Day
 
 	HydrationSeries []DayPoint
 	SleepSeries     []DayPoint
@@ -152,6 +159,15 @@ func (s *Service) Load(ctx context.Context, user users.User) (Snapshot, error) {
 		return Snapshot{}, err
 	}
 	snap.SleepSeries = buildSleepSeries(user, sleepLogs)
+
+	if s.meds != nil {
+		if snap.Medications, err = s.meds.List(ctx, user, true); err != nil {
+			return Snapshot{}, err
+		}
+		if snap.MedicationDay, err = s.meds.Today(ctx, user); err != nil {
+			return Snapshot{}, err
+		}
+	}
 
 	return snap, nil
 }

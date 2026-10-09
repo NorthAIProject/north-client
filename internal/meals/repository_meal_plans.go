@@ -217,6 +217,59 @@ func (tx *PlanTx) AddPortions(ctx context.Context, planID, mealID uuid.UUID, por
 	return added, nil
 }
 
+// Plan reads the plan back inside the transaction, seeing the changes made
+// so far; with its meals' ingredients when withIngredients is set.
+// apperr.ErrNotFound if the plan is not the user's.
+func (tx *PlanTx) Plan(ctx context.Context, planID, userID uuid.UUID, withIngredients bool) (MealPlan, error) {
+	row, err := tx.q.GetMealPlan(ctx, mealsdb.GetMealPlanParams{ID: planID, UserID: userID})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return MealPlan{}, apperr.ErrNotFound
+		}
+		return MealPlan{}, apperr.Wrap(err, "get meal plan")
+	}
+	return loadPlan(ctx, tx.q, row, withIngredients)
+}
+
+// RemoveMeal deletes a meal of the plan with its ingredients and recalculates
+// the plan's totals.
+func (tx *PlanTx) RemoveMeal(ctx context.Context, planID, mealID uuid.UUID) error {
+	if err := tx.q.DeleteMealOfPlan(ctx, mealsdb.DeleteMealOfPlanParams{ID: mealID, MealPlanID: planID}); err != nil {
+		return apperr.Wrap(err, "delete meal")
+	}
+	return apperr.Wrap(recalculatePlanTotals(ctx, tx.q, planID), "recalculate plan totals after removing meal")
+}
+
+// RemovePortion deletes one ingredient of a meal and recalculates the meal's
+// and the plan's totals.
+func (tx *PlanTx) RemovePortion(ctx context.Context, planID, mealID, portionID uuid.UUID) error {
+	if err := tx.q.DeleteMealIngredient(ctx, mealsdb.DeleteMealIngredientParams{ID: portionID, MealID: mealID}); err != nil {
+		return apperr.Wrap(err, "delete meal ingredient")
+	}
+	return apperr.Wrap(recalculateTotals(ctx, tx.q, mealID, planID), "recalculate totals after removing ingredient")
+}
+
+// SetPortionGrams changes how much of an ingredient a meal has, storing the
+// macros the caller worked out for the new quantity, and recalculates the
+// meal's and the plan's totals. apperr.ErrNotFound if the portion is not in
+// the meal.
+func (tx *PlanTx) SetPortionGrams(ctx context.Context, planID, mealID, portionID uuid.UUID, grams float64, macros Macros) (MealIngredient, error) {
+	row, err := tx.q.UpdateMealIngredientQuantity(ctx, mealsdb.UpdateMealIngredientQuantityParams{
+		ID: portionID, MealID: mealID, QuantityGrams: grams,
+		Calories: macros.Calories, ProteinG: macros.ProteinG, FatG: macros.FatG, CarbsG: macros.CarbG,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return MealIngredient{}, apperr.ErrNotFound
+		}
+		return MealIngredient{}, apperr.Wrap(err, "update meal ingredient quantity")
+	}
+	if err := recalculateTotals(ctx, tx.q, mealID, planID); err != nil {
+		return MealIngredient{}, apperr.Wrap(err, "recalculate totals after changing a quantity")
+	}
+	return mealIngredientFromDB(row), nil
+}
+
 // PlanIDOfMeal resolves the plan a meal belongs to, so a change to the meal
 // can lock that plan. apperr.ErrNotFound if the meal is not the user's.
 func (r *Repository) PlanIDOfMeal(ctx context.Context, mealID, userID uuid.UUID) (uuid.UUID, error) {
@@ -240,14 +293,22 @@ func (r *Repository) PlanIDOfDay(ctx context.Context, dayID, userID uuid.UUID) (
 // PlanIDOfMealIngredient resolves the plan a meal's ingredient belongs to.
 // apperr.ErrNotFound if it is not the user's.
 func (r *Repository) PlanIDOfMealIngredient(ctx context.Context, mealIngredientID, userID uuid.UUID) (uuid.UUID, error) {
+	planID, _, err := r.LocateMealIngredient(ctx, mealIngredientID, userID)
+	return planID, err
+}
+
+// LocateMealIngredient resolves the plan and meal a meal's ingredient belongs
+// to. apperr.ErrNotFound if it is not the user's.
+func (r *Repository) LocateMealIngredient(ctx context.Context, mealIngredientID, userID uuid.UUID) (planID, mealID uuid.UUID, err error) {
 	owned, err := r.q.GetMealIngredientOwned(ctx, mealsdb.GetMealIngredientOwnedParams{ID: mealIngredientID, UserID: userID})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return uuid.Nil, apperr.ErrNotFound
+			return uuid.Nil, uuid.Nil, apperr.ErrNotFound
 		}
-		return uuid.Nil, apperr.Wrap(err, "get meal ingredient")
+		return uuid.Nil, uuid.Nil, apperr.Wrap(err, "get meal ingredient")
 	}
-	return r.PlanIDOfMeal(ctx, owned.OwnedMealID, userID)
+	planID, err = r.PlanIDOfMeal(ctx, owned.OwnedMealID, userID)
+	return planID, owned.OwnedMealID, err
 }
 
 // GetMeal loads a single meal, checking ownership via its parent plan.
@@ -262,39 +323,6 @@ func (r *Repository) GetMeal(ctx context.Context, mealID, userID uuid.UUID) (Mea
 		return Meal{}, apperr.Wrap(err, "get meal")
 	}
 	return mealFromDB(row), nil
-}
-
-func (r *Repository) RemoveMeal(ctx context.Context, mealID, userID uuid.UUID) error {
-	m, err := r.GetMeal(ctx, mealID, userID)
-	if err != nil {
-		return err
-	}
-	return r.inTx(ctx, func(q *mealsdb.Queries) error {
-		if err := q.DeleteMealOwned(ctx, mealsdb.DeleteMealOwnedParams{ID: mealID, UserID: userID}); err != nil {
-			return apperr.Wrap(err, "delete meal")
-		}
-		return apperr.Wrap(recalculatePlanTotals(ctx, q, m.MealPlanID), "recalculate plan totals after removing meal")
-	})
-}
-
-func (r *Repository) RemoveIngredient(ctx context.Context, mealIngredientID, userID uuid.UUID) error {
-	owned, err := r.q.GetMealIngredientOwned(ctx, mealsdb.GetMealIngredientOwnedParams{ID: mealIngredientID, UserID: userID})
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return apperr.ErrNotFound
-		}
-		return apperr.Wrap(err, "get meal ingredient")
-	}
-	m, err := r.GetMeal(ctx, owned.OwnedMealID, userID)
-	if err != nil {
-		return err
-	}
-	return r.inTx(ctx, func(q *mealsdb.Queries) error {
-		if err := q.DeleteMealIngredient(ctx, mealIngredientID); err != nil {
-			return apperr.Wrap(err, "delete meal ingredient")
-		}
-		return apperr.Wrap(recalculateTotals(ctx, q, owned.OwnedMealID, m.MealPlanID), "recalculate totals after removing ingredient")
-	})
 }
 
 // inTx runs fn in a transaction, committing only if it returns nil.
