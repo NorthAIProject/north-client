@@ -60,7 +60,11 @@ func (s *Service) begin(userID uuid.UUID) error {
 func (s *Service) end(userID uuid.UUID) { s.inFlight.Delete(userID) }
 
 // ParseWorkout reads a workout plan out of a file. It writes nothing.
-func (s *Service) ParseWorkout(ctx context.Context, user users.User, filename string, data []byte) (WorkoutDraft, error) {
+//
+// hint is the person's own request about the file, passed to the reader for a
+// document or a photo; a spreadsheet or JSON is read whole. Empty from the
+// import pages.
+func (s *Service) ParseWorkout(ctx context.Context, user users.User, filename string, data []byte, hint string) (WorkoutDraft, error) {
 	if err := s.begin(user.ID); err != nil {
 		return WorkoutDraft{}, err
 	}
@@ -78,7 +82,7 @@ func (s *Service) ParseWorkout(ctx context.Context, user users.User, filename st
 		return WorkoutFromJSON(src.Filename, src.JSON)
 	}
 
-	name, rows, unparsed, err := s.reader.ReadWorkout(ctx, user, src)
+	name, rows, unparsed, err := s.reader.ReadWorkout(ctx, user, src, hint)
 	if err != nil {
 		return WorkoutDraft{}, err
 	}
@@ -86,8 +90,8 @@ func (s *Service) ParseWorkout(ctx context.Context, user users.User, filename st
 }
 
 // ParseMeal reads a meal plan out of a file and previews it against the
-// person's target. It writes nothing.
-func (s *Service) ParseMeal(ctx context.Context, user users.User, filename string, data []byte) (MealDraft, error) {
+// person's target. It writes nothing. hint is as for ParseWorkout.
+func (s *Service) ParseMeal(ctx context.Context, user users.User, filename string, data []byte, hint string) (MealDraft, error) {
 	if err := s.begin(user.ID); err != nil {
 		return MealDraft{}, err
 	}
@@ -105,14 +109,11 @@ func (s *Service) ParseMeal(ctx context.Context, user users.User, filename strin
 	case KindJSON:
 		draft, err = MealFromJSON(src.Filename, src.JSON)
 	default:
-		var (
-			name     string
-			rows     []MealRow
-			unparsed []string
-		)
-		name, rows, unparsed, err = s.reader.ReadMeal(ctx, user, src)
+		var reading MealReading
+		reading, err = s.reader.ReadMeal(ctx, user, src, hint)
 		if err == nil {
-			draft, err = buildMeal(nameOr(name, src.Filename), rows, unparsed)
+			reading.Name = nameOr(reading.Name, src.Filename)
+			draft, err = buildMeal(reading)
 		}
 	}
 	if err != nil {

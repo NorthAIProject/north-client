@@ -146,7 +146,7 @@ func MealFromJSON(filename string, data []byte) (MealDraft, error) {
 			}
 		}
 	}
-	return buildMeal(nameOr(name, filename), rows, nil)
+	return buildMeal(MealReading{Name: nameOr(name, filename), Rows: rows})
 }
 
 func mealRow(day, mealName string, f jsonMealItem) MealRow {

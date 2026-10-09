@@ -2,6 +2,7 @@ package planimport
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/FACorreiaa/go-utils/pkg/util"
@@ -22,10 +23,36 @@ type WorkoutRow struct {
 }
 
 // MealRow is one food as written in the source.
+//
+// Option names which of the meal's interchangeable options the food belongs
+// to ("Opção 2"), or is empty for a meal with one. FoodEN is the reader's
+// catalog stand-in for Food, and GramsEstimate its estimate of a vague
+// amount; both are empty from a spreadsheet.
 type MealRow struct {
-	Day, Meal, Food, Quantity, Unit, Protein, Carbs, Fat string
-	Uncertain                                            bool
+	Day, Meal, Option, Food, Quantity, Unit, Protein, Carbs, Fat string
+	FoodEN, GramsEstimate                                        string
+	Uncertain                                                    bool
 }
+
+// MealReading is everything a reader made of a meal plan, still as text.
+type MealReading struct {
+	Name     string
+	Rows     []MealRow
+	Unparsed []string
+	// Notes is the file's advice, recipes and guidance.
+	Notes string
+	// SameAs lists meals the file said are the same as another ("Jantar
+	// igual ao almoço"), copied by buildMeal rather than repeated as rows.
+	SameAs []SameMeal
+}
+
+// SameMeal says meal Meal is eaten the same as meal SameAs.
+type SameMeal struct {
+	Meal, SameAs string
+}
+
+// everyDayLabel names the one day of a plan that named none.
+const everyDayLabel = "Every day"
 
 const uncertainFlag = "Check this row — the reader wasn't sure about it."
 
@@ -98,52 +125,30 @@ func buildWorkout(name string, rows []WorkoutRow, unparsed []string) (WorkoutDra
 	return draft, nil
 }
 
-// buildMeal groups rows into days, then meals, in first-seen order.
-func buildMeal(name string, rows []MealRow, unparsed []string) (MealDraft, error) {
-	draft := MealDraft{Name: strings.TrimSpace(name), Days: []MealDayDraft{}, Unparsed: unparsed}
+// buildMeal groups rows into days, then meals, then options, in first-seen
+// order. A meal's first option becomes its Foods; the rest its Alternatives.
+// A plan whose rows name no day becomes one day eaten every day.
+func buildMeal(reading MealReading) (MealDraft, error) {
+	draft := MealDraft{
+		Name: strings.TrimSpace(reading.Name), Days: []MealDayDraft{}, Unparsed: reading.Unparsed,
+		Notes: strings.TrimSpace(reading.Notes),
+	}
 	dayIndex := map[string]int{}
 	mealIndex := map[string]int{}
+	optionIndex := map[string]int{}
+	anyDay := false
 
-	for _, row := range rows {
-		foodName := strings.TrimSpace(row.Food)
-		if foodName == "" {
+	for _, row := range reading.Rows {
+		if strings.TrimSpace(row.Food) == "" {
 			if line := joinNonEmpty(row.Day, row.Meal, row.Quantity, row.Unit, row.Protein, row.Carbs, row.Fat); line != "" {
 				draft.Unparsed = append(draft.Unparsed, line)
 			}
 			continue
 		}
-
-		food := FoodDraft{Food: foodName, Unit: strings.TrimSpace(row.Unit), Candidates: []Candidate{}, Flags: []string{}}
-
-		qty, unitFromQty, ok := parseAmount(row.Quantity)
-		if !ok {
-			food.Flags = append(food.Flags, fmt.Sprintf("Quantity %q isn't a number.", strings.TrimSpace(row.Quantity)))
-		}
-		food.Quantity = qty
-		if food.Unit == "" {
-			food.Unit = unitFromQty
-		}
-
-		for _, m := range []struct {
-			label string
-			raw   string
-			dst   **float64
-		}{
-			{"Protein", row.Protein, &food.StatedProteinG},
-			{"Carbs", row.Carbs, &food.StatedCarbG},
-			{"Fat", row.Fat, &food.StatedFatG},
-		} {
-			v, flag := parseGrams(m.label, m.raw)
-			*m.dst = v
-			if flag != "" {
-				food.Flags = append(food.Flags, flag)
-			}
-		}
-		if row.Uncertain {
-			food.Flags = append(food.Flags, uncertainFlag)
-		}
+		food := foodFromRow(row)
 
 		dayLabel := strings.TrimSpace(row.Day)
+		anyDay = anyDay || dayLabel != ""
 		dKey := dayKey(dayLabel)
 		di, seen := dayIndex[dKey]
 		if !seen {
@@ -164,22 +169,184 @@ func buildMeal(name string, rows []MealRow, unparsed []string) (MealDraft, error
 			mi = len(draft.Days[di].Meals) - 1
 			mealIndex[mKey] = mi
 		}
-		draft.Days[di].Meals[mi].Foods = append(draft.Days[di].Meals[mi].Foods, food)
+		m := &draft.Days[di].Meals[mi]
+
+		label := strings.TrimSpace(row.Option)
+		oKey := mKey + "\x00" + dayKey(label)
+		oi, seen := optionIndex[oKey]
+		if !seen {
+			// Positions: 0 is the first option, n is Alternatives[n-1].
+			oi = len(m.Alternatives) + 1
+			if len(m.Foods) == 0 && len(m.Alternatives) == 0 {
+				oi = 0
+				m.OptionLabel = label
+			} else {
+				if label == "" {
+					label = fmt.Sprintf("Option %d", oi+1)
+				}
+				m.Alternatives = append(m.Alternatives, MealDraftOption{Label: label, Foods: []FoodDraft{}})
+			}
+			optionIndex[oKey] = oi
+		}
+		if oi == 0 {
+			m.Foods = append(m.Foods, food)
+		} else {
+			m.Alternatives[oi-1].Foods = append(m.Alternatives[oi-1].Foods, food)
+		}
 	}
 
 	if len(draft.Days) == 0 {
 		return MealDraft{}, refuse(ReasonNotAPlan, "No foods were found in this file, so it doesn't look like a meal plan.")
 	}
+	for _, same := range reading.SameAs {
+		copySameMeal(&draft, same)
+	}
+	if !anyDay {
+		draft.EveryDay = true
+		draft.Days[0].Label = everyDayLabel
+	}
 	draft.Normalize()
 	return draft, nil
 }
 
-func joinNonEmpty(cells ...string) string {
+// foodFromRow reads one food line's text into numbers.
+func foodFromRow(row MealRow) FoodDraft {
+	original := strings.TrimSpace(row.Food)
+	food := FoodDraft{
+		Food: original, Unit: strings.TrimSpace(row.Unit), Candidates: []Candidate{}, Flags: []string{},
+		SourceText: joinWords(row.Quantity, row.Unit, original),
+	}
+	if en := strings.TrimSpace(row.FoodEN); en != "" {
+		food.Food = en
+	}
+
+	qty, unitFromQty, ok := parseAmount(row.Quantity)
+	if !ok {
+		food.Flags = append(food.Flags, fmt.Sprintf("Quantity %q isn't a number.", strings.TrimSpace(row.Quantity)))
+	}
+	food.Quantity = qty
+	if food.Unit == "" {
+		food.Unit = unitFromQty
+	}
+
+	for _, m := range []struct {
+		label string
+		raw   string
+		dst   **float64
+	}{
+		{"Protein", row.Protein, &food.StatedProteinG},
+		{"Carbs", row.Carbs, &food.StatedCarbG},
+		{"Fat", row.Fat, &food.StatedFatG},
+	} {
+		v, flag := parseGrams(m.label, m.raw)
+		*m.dst = v
+		if flag != "" {
+			food.Flags = append(food.Flags, flag)
+		}
+	}
+
+	if !exactGrams(food) {
+		if g, _, ok := parseAmount(row.GramsEstimate); ok && g != nil && *g > 0 {
+			food.Grams, food.Estimated = g, true
+			amount := joinWords(row.Quantity, row.Unit)
+			if amount == "" {
+				amount = original
+			}
+			food.Flags = append(food.Flags, fmt.Sprintf("Estimated weight for %q. Check it.", amount))
+		}
+	}
+	if row.Uncertain {
+		food.Flags = append(food.Flags, uncertainFlag)
+	}
+	return food
+}
+
+// exactGrams reports whether a line's quantity is already a weight, which no
+// estimate is ever preferred over.
+func exactGrams(f FoodDraft) bool {
+	per, ok := gramsPer[normalizeUnit(f.Unit)]
+	return f.Quantity != nil && ok && per > 0
+}
+
+// copySameMeal gives meal same.Meal a copy of same.SameAs's options on every
+// day that has the latter, adding the meal where the day lacks it.
+func copySameMeal(d *MealDraft, same SameMeal) {
+	target, source := dayKey(same.Meal), dayKey(same.SameAs)
+	if target == "" || source == "" || target == source {
+		return
+	}
+	for di := range d.Days {
+		day := &d.Days[di]
+		si, ti := -1, -1
+		for mi, m := range day.Meals {
+			switch dayKey(m.Name) {
+			case source:
+				si = mi
+			case target:
+				ti = mi
+			}
+		}
+		if si < 0 {
+			continue
+		}
+		copied := cloneMeal(day.Meals[si])
+		if ti < 0 {
+			copied.Name = strings.TrimSpace(same.Meal)
+			day.Meals = append(day.Meals, copied)
+			continue
+		}
+		copied.Name = day.Meals[ti].Name
+		day.Meals[ti] = copied
+	}
+}
+
+// cloneMeal deep-copies a meal, so a copy edited on review leaves the
+// original alone.
+func cloneMeal(m MealDraftMeal) MealDraftMeal {
+	out := MealDraftMeal{Name: m.Name, OptionLabel: m.OptionLabel, Foods: cloneFoods(m.Foods)}
+	for _, alt := range m.Alternatives {
+		out.Alternatives = append(out.Alternatives, MealDraftOption{Label: alt.Label, Foods: cloneFoods(alt.Foods)})
+	}
+	return out
+}
+
+func cloneFoods(foods []FoodDraft) []FoodDraft {
+	out := make([]FoodDraft, len(foods))
+	for i, f := range foods {
+		f.Quantity = clonePtr(f.Quantity)
+		f.Grams = clonePtr(f.Grams)
+		f.StatedProteinG = clonePtr(f.StatedProteinG)
+		f.StatedCarbG = clonePtr(f.StatedCarbG)
+		f.StatedFatG = clonePtr(f.StatedFatG)
+		f.IngredientID = clonePtr(f.IngredientID)
+		f.Macros = clonePtr(f.Macros)
+		f.Candidates = slices.Clone(f.Candidates)
+		f.Flags = slices.Clone(f.Flags)
+		f.Checks = slices.Clone(f.Checks)
+		out[i] = f
+	}
+	return out
+}
+
+func clonePtr[T any](p *T) *T {
+	if p == nil {
+		return nil
+	}
+	v := *p
+	return &v
+}
+
+func joinNonEmpty(cells ...string) string { return joinTrimmed(" · ", cells) }
+
+// joinWords puts cells back into the line they were read from: "2 fatias pão".
+func joinWords(cells ...string) string { return joinTrimmed(" ", cells) }
+
+func joinTrimmed(sep string, cells []string) string {
 	var parts []string
 	for _, c := range cells {
 		if c = strings.TrimSpace(c); c != "" {
 			parts = append(parts, c)
 		}
 	}
-	return strings.Join(parts, " · ")
+	return strings.Join(parts, sep)
 }

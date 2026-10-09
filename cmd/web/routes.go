@@ -383,7 +383,7 @@ func routes(
 	// document or a photo reaches the model, and FastModel for the reason
 	// capture uses it — this is transcription, not writing.
 	planImportSvc := planimport.NewService(planimport.Options{
-		Reader:      planimport.NewAIReader(runner, cfg.AI.FastModel),
+		Reader:      planimport.NewAIReader(runner, cfg.AI.FastModel, mealIngredientSvc.SharedNames),
 		Workouts:    workoutSvc,
 		MealPlans:   mealPlanSvc,
 		Ingredients: mealIngredientSvc,
