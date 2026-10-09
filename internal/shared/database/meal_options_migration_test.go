@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	beforeMealOptions = 20261009130000 // the migration just before options
-	mealOptions       = 20261009150000 // a meal slot holds several options
+	beforeMealOptions = 20261009150000 // the migration just before options
+	mealOptions       = 20261010090000 // a meal slot holds several options
 )
 
 // Existing meals become their slot's first option; a slot then takes further
