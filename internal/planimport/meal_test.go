@@ -147,3 +147,24 @@ func TestMealPlanFromDraftCutsALongOptionLabel(t *testing.T) {
 		t.Fatalf("label = %q (%d runes), want it cut to %d ending in …", got, utf8.RuneCountInString(got), meals.MaxOptionLabelRunes)
 	}
 }
+
+// meals refuses notes over its cap; a file's longer notes are cut to fit,
+// marked as cut, rather than failing the whole import.
+func TestMealPlanFromDraftCutsLongNotes(t *testing.T) {
+	t.Parallel()
+
+	d := everyDayDraft(meal.Easy)
+	d.Notes = strings.Repeat("água ", meals.MaxPlanNotesRunes)
+	plan, problems := mealPlanFromDraft(d)
+	if len(problems) > 0 {
+		t.Fatalf("problems = %q", problems)
+	}
+	notes := plan.input.Notes
+	if utf8.RuneCountInString(notes) > meals.MaxPlanNotesRunes || !strings.HasSuffix(notes, "…") {
+		t.Fatalf("notes = %d runes ending %q, want at most %d ending in …",
+			utf8.RuneCountInString(notes), notes[len(notes)-10:], meals.MaxPlanNotesRunes)
+	}
+	if _, err := meals.ValidateMealPlan(plan.input); err != nil {
+		t.Fatalf("the cut notes still fail validation: %v", err)
+	}
+}
