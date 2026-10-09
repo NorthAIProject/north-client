@@ -168,10 +168,10 @@ func (s *Service) CommitMeal(ctx context.Context, user users.User, d MealDraft, 
 		if err != nil {
 			return meals.MealPlan{}, d, err
 		}
-		plan.days[m.day].Meals[m.meal].Portions[m.portion].IngredientID = created.ID
+		plan.setIngredient(m, created.ID)
 	}
 
-	saved, err := s.mealPlans.CreatePlan(ctx, user.ID, plan.input, plan.days, confirmOverage)
+	saved, err := s.mealPlans.CreatePlan(ctx, user.ID, plan.input, plan.daysToSave(), confirmOverage)
 	return saved, d, err
 }
 
