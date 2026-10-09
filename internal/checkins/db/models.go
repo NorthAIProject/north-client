@@ -23,4 +23,8 @@ type CheckIn struct {
 	RelatedGoalID *uuid.UUID
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
+	Source        string
+	Stress        *int16
+	SleepQuality  *int16
+	Tags          []string
 }

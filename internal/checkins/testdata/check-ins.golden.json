@@ -9,7 +9,15 @@
     "notes": "",
     "relatedGoalId": "b2b2b2b2-b2b2-b2b2-b2b2-b2b2b2b2b2b2",
     "relatedGoalTitle": "Run a half marathon",
-    "updatedAt": "2026-09-24T20:00:00Z"
+    "updatedAt": "2026-09-24T20:00:00Z",
+    "createdAt": "2026-09-24T07:30:00Z",
+    "source": "siri",
+    "stress": 2,
+    "sleepQuality": 4,
+    "tags": [
+      "travel",
+      "race week"
+    ]
   },
   "recent": [
     {
@@ -22,7 +30,28 @@
       "notes": "",
       "relatedGoalId": "b2b2b2b2-b2b2-b2b2-b2b2-b2b2b2b2b2b2",
       "relatedGoalTitle": "Run a half marathon",
-      "updatedAt": "2026-09-24T20:00:00Z"
+      "updatedAt": "2026-09-24T20:00:00Z",
+      "createdAt": "2026-09-24T07:30:00Z",
+      "source": "siri",
+      "stress": 2,
+      "sleepQuality": 4,
+      "tags": [
+        "travel",
+        "race week"
+      ]
+    },
+    {
+      "id": "e6e6e6e6-e6e6-e6e6-e6e6-e6e6e6e6e6e6",
+      "localDate": "2026-09-23",
+      "mood": 3,
+      "energy": 3,
+      "wins": "",
+      "challenges": "",
+      "notes": "",
+      "updatedAt": "2026-09-23T21:00:00Z",
+      "createdAt": "2026-09-23T21:00:00Z",
+      "source": "unknown",
+      "tags": []
     }
   ],
   "streak": 6

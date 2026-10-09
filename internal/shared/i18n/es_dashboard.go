@@ -81,4 +81,6 @@ var spanishDashboard = map[string]string{
 	"range.month":     "Últimos 30 días",
 	"range.quarter":   "Últimos 90 días",
 	"range.year":      "Últimos 12 meses",
+
+	"dash.today.checkin.done": "Ánimo %[1]d · energía %[2]d · %[3]s",
 }

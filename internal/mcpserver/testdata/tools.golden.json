@@ -184,7 +184,7 @@
   },
   {
     "name": "create_check_in",
-    "description": "Record today's check-in. Writing again on the same day replaces that day's entry rather than adding a second one, so this is safe to call twice.",
+    "description": "Record today's check-in. Writing again on the same day updates that day's entry rather than adding a second one: fields you leave out keep what was already recorded, so this is safe to call twice.",
     "inputSchema": {
       "additionalProperties": false,
       "description": "today's check-in",
@@ -204,6 +204,22 @@
         "notes": {
           "description": "anything else worth telling the coach",
           "type": "string"
+        },
+        "sleep_quality": {
+          "description": "optional: how well the user slept last night, 1 (badly) to 5 (very well)",
+          "type": "integer"
+        },
+        "stress": {
+          "description": "optional: how stressed the user feels, 1 (calm) to 5 (very stressed)",
+          "type": "integer"
+        },
+        "tags": {
+          "description": "optional: up to 8 short labels for the day, such as travel or sick",
+          "items": {
+            "description": "one short lowercase label",
+            "type": "string"
+          },
+          "type": "array"
         },
         "wins": {
           "description": "what went well",

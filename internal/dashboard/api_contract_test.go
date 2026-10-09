@@ -16,6 +16,7 @@ func TestTodayResponseShape(t *testing.T) {
 
 	at := time.Date(2026, 9, 24, 7, 15, 0, 0, time.UTC)
 	quality := 4
+	stress := 2
 	progress := 40
 	target := time.Date(2026, 12, 31, 0, 0, 0, 0, time.UTC)
 
@@ -73,6 +74,10 @@ func TestTodayResponseShape(t *testing.T) {
 				CreatedAt: at,
 			}},
 			Briefing: "Easy day. Hydrate before the evening session.",
+			TodayCheckIn: &dashboard.TodayCheckIn{
+				Mood: 4, Energy: 3, Stress: &stress, SleepQuality: &quality,
+				Source: "siri", At: at,
+			},
 		},
 	})
 }

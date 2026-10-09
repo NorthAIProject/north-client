@@ -7,10 +7,33 @@ package checkinsdb
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+const checkInVersion = `-- name: CheckInVersion :one
+SELECT
+    COUNT(*)::bigint AS total,
+    COALESCE(MAX(updated_at), 'epoch'::timestamptz)::timestamptz AS latest
+FROM check_ins
+WHERE user_id = $1
+`
+
+type CheckInVersionRow struct {
+	Total  int64
+	Latest time.Time
+}
+
+// A cheap fingerprint of this person's check-ins for the web's live displays:
+// an edit moves the newest updated_at, a delete moves the count.
+func (q *Queries) CheckInVersion(ctx context.Context, userID uuid.UUID) (CheckInVersionRow, error) {
+	row := q.db.QueryRow(ctx, checkInVersion, userID)
+	var i CheckInVersionRow
+	err := row.Scan(&i.Total, &i.Latest)
+	return i, err
+}
 
 const countCheckIns = `-- name: CountCheckIns :one
 SELECT COUNT(*)::bigint FROM check_ins WHERE user_id = $1
@@ -41,7 +64,7 @@ func (q *Queries) DeleteCheckIn(ctx context.Context, arg DeleteCheckInParams) (i
 }
 
 const getCheckIn = `-- name: GetCheckIn :one
-SELECT id, user_id, local_date, mood, energy, wins, challenges, notes, related_goal_id, created_at, updated_at FROM check_ins WHERE id = $1 AND user_id = $2
+SELECT id, user_id, local_date, mood, energy, wins, challenges, notes, related_goal_id, created_at, updated_at, source, stress, sleep_quality, tags FROM check_ins WHERE id = $1 AND user_id = $2
 `
 
 type GetCheckInParams struct {
@@ -64,12 +87,16 @@ func (q *Queries) GetCheckIn(ctx context.Context, arg GetCheckInParams) (CheckIn
 		&i.RelatedGoalID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Source,
+		&i.Stress,
+		&i.SleepQuality,
+		&i.Tags,
 	)
 	return i, err
 }
 
 const getCheckInByDate = `-- name: GetCheckInByDate :one
-SELECT id, user_id, local_date, mood, energy, wins, challenges, notes, related_goal_id, created_at, updated_at FROM check_ins WHERE user_id = $1 AND local_date = $2
+SELECT id, user_id, local_date, mood, energy, wins, challenges, notes, related_goal_id, created_at, updated_at, source, stress, sleep_quality, tags FROM check_ins WHERE user_id = $1 AND local_date = $2
 `
 
 type GetCheckInByDateParams struct {
@@ -92,6 +119,10 @@ func (q *Queries) GetCheckInByDate(ctx context.Context, arg GetCheckInByDatePara
 		&i.RelatedGoalID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Source,
+		&i.Stress,
+		&i.SleepQuality,
+		&i.Tags,
 	)
 	return i, err
 }
@@ -130,7 +161,7 @@ func (q *Queries) ListCheckInDates(ctx context.Context, arg ListCheckInDatesPara
 }
 
 const listCheckIns = `-- name: ListCheckIns :many
-SELECT id, user_id, local_date, mood, energy, wins, challenges, notes, related_goal_id, created_at, updated_at FROM check_ins
+SELECT id, user_id, local_date, mood, energy, wins, challenges, notes, related_goal_id, created_at, updated_at, source, stress, sleep_quality, tags FROM check_ins
 WHERE user_id = $1
 ORDER BY local_date DESC
 LIMIT $2
@@ -162,6 +193,10 @@ func (q *Queries) ListCheckIns(ctx context.Context, arg ListCheckInsParams) ([]C
 			&i.RelatedGoalID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Source,
+			&i.Stress,
+			&i.SleepQuality,
+			&i.Tags,
 		); err != nil {
 			return nil, err
 		}
@@ -174,7 +209,7 @@ func (q *Queries) ListCheckIns(ctx context.Context, arg ListCheckInsParams) ([]C
 }
 
 const listCheckInsBetween = `-- name: ListCheckInsBetween :many
-SELECT id, user_id, local_date, mood, energy, wins, challenges, notes, related_goal_id, created_at, updated_at FROM check_ins
+SELECT id, user_id, local_date, mood, energy, wins, challenges, notes, related_goal_id, created_at, updated_at, source, stress, sleep_quality, tags FROM check_ins
 WHERE user_id = $1 AND local_date >= $2 AND local_date < $3
 ORDER BY local_date DESC
 `
@@ -208,6 +243,10 @@ func (q *Queries) ListCheckInsBetween(ctx context.Context, arg ListCheckInsBetwe
 			&i.RelatedGoalID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Source,
+			&i.Stress,
+			&i.SleepQuality,
+			&i.Tags,
 		); err != nil {
 			return nil, err
 		}
@@ -220,7 +259,7 @@ func (q *Queries) ListCheckInsBetween(ctx context.Context, arg ListCheckInsBetwe
 }
 
 const listCheckInsSince = `-- name: ListCheckInsSince :many
-SELECT id, user_id, local_date, mood, energy, wins, challenges, notes, related_goal_id, created_at, updated_at FROM check_ins
+SELECT id, user_id, local_date, mood, energy, wins, challenges, notes, related_goal_id, created_at, updated_at, source, stress, sleep_quality, tags FROM check_ins
 WHERE user_id = $1 AND local_date >= $2
 ORDER BY local_date DESC
 LIMIT $3
@@ -253,6 +292,10 @@ func (q *Queries) ListCheckInsSince(ctx context.Context, arg ListCheckInsSincePa
 			&i.RelatedGoalID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Source,
+			&i.Stress,
+			&i.SleepQuality,
+			&i.Tags,
 		); err != nil {
 			return nil, err
 		}
@@ -272,9 +315,12 @@ SET mood            = $3,
     challenges      = $6,
     notes           = $7,
     related_goal_id = $8,
+    stress          = $9,
+    sleep_quality   = $10,
+    tags            = $11,
     updated_at      = now()
 WHERE id = $1 AND user_id = $2
-RETURNING id, user_id, local_date, mood, energy, wins, challenges, notes, related_goal_id, created_at, updated_at
+RETURNING id, user_id, local_date, mood, energy, wins, challenges, notes, related_goal_id, created_at, updated_at, source, stress, sleep_quality, tags
 `
 
 type UpdateCheckInParams struct {
@@ -286,6 +332,9 @@ type UpdateCheckInParams struct {
 	Challenges    string
 	Notes         string
 	RelatedGoalID *uuid.UUID
+	Stress        *int16
+	SleepQuality  *int16
+	Tags          []string
 }
 
 func (q *Queries) UpdateCheckIn(ctx context.Context, arg UpdateCheckInParams) (CheckIn, error) {
@@ -298,6 +347,9 @@ func (q *Queries) UpdateCheckIn(ctx context.Context, arg UpdateCheckInParams) (C
 		arg.Challenges,
 		arg.Notes,
 		arg.RelatedGoalID,
+		arg.Stress,
+		arg.SleepQuality,
+		arg.Tags,
 	)
 	var i CheckIn
 	err := row.Scan(
@@ -312,15 +364,20 @@ func (q *Queries) UpdateCheckIn(ctx context.Context, arg UpdateCheckInParams) (C
 		&i.RelatedGoalID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Source,
+		&i.Stress,
+		&i.SleepQuality,
+		&i.Tags,
 	)
 	return i, err
 }
 
 const upsertCheckIn = `-- name: UpsertCheckIn :one
 INSERT INTO check_ins (
-    user_id, local_date, mood, energy, wins, challenges, notes, related_goal_id
+    user_id, local_date, mood, energy, wins, challenges, notes, related_goal_id,
+    source, stress, sleep_quality, tags
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
 )
 ON CONFLICT (user_id, local_date) DO UPDATE SET
     mood            = EXCLUDED.mood,
@@ -329,8 +386,11 @@ ON CONFLICT (user_id, local_date) DO UPDATE SET
     challenges      = EXCLUDED.challenges,
     notes           = EXCLUDED.notes,
     related_goal_id = EXCLUDED.related_goal_id,
+    stress          = EXCLUDED.stress,
+    sleep_quality   = EXCLUDED.sleep_quality,
+    tags            = EXCLUDED.tags,
     updated_at      = now()
-RETURNING id, user_id, local_date, mood, energy, wins, challenges, notes, related_goal_id, created_at, updated_at
+RETURNING id, user_id, local_date, mood, energy, wins, challenges, notes, related_goal_id, created_at, updated_at, source, stress, sleep_quality, tags
 `
 
 type UpsertCheckInParams struct {
@@ -342,8 +402,15 @@ type UpsertCheckInParams struct {
 	Challenges    string
 	Notes         string
 	RelatedGoalID *uuid.UUID
+	Source        string
+	Stress        *int16
+	SleepQuality  *int16
+	Tags          []string
 }
 
+// Every content column is written: the caller has already merged anything it
+// means to keep (see Service.MergeToday). source is set on insert only: it
+// records where the day's check-in was first created.
 func (q *Queries) UpsertCheckIn(ctx context.Context, arg UpsertCheckInParams) (CheckIn, error) {
 	row := q.db.QueryRow(ctx, upsertCheckIn,
 		arg.UserID,
@@ -354,6 +421,10 @@ func (q *Queries) UpsertCheckIn(ctx context.Context, arg UpsertCheckInParams) (C
 		arg.Challenges,
 		arg.Notes,
 		arg.RelatedGoalID,
+		arg.Source,
+		arg.Stress,
+		arg.SleepQuality,
+		arg.Tags,
 	)
 	var i CheckIn
 	err := row.Scan(
@@ -368,6 +439,10 @@ func (q *Queries) UpsertCheckIn(ctx context.Context, arg UpsertCheckInParams) (C
 		&i.RelatedGoalID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Source,
+		&i.Stress,
+		&i.SleepQuality,
+		&i.Tags,
 	)
 	return i, err
 }

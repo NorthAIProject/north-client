@@ -83,3 +83,48 @@ func TestSummaryOrdersClauses(t *testing.T) {
 		t.Fatalf("summary mismatch\n got: %q\nwant: %q", got, want)
 	}
 }
+
+func TestNormalizeTags(t *testing.T) {
+	t.Parallel()
+	got := checkin.NormalizeTags([]string{"  Travel ", "", "SICK", "travel", "  ", "race day"})
+	want := []string{"travel", "sick", "race day"}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("NormalizeTags = %q, want %q", got, want)
+	}
+	if got := checkin.NormalizeTags(nil); got == nil || len(got) != 0 {
+		t.Fatalf("nil input should give an empty, non-nil slice, got %#v", got)
+	}
+}
+
+// A save seconds after the first (a double tap, a retry) is not an edit worth
+// showing; one an hour later is.
+func TestEdited(t *testing.T) {
+	t.Parallel()
+	at := time.Date(2026, 10, 9, 8, 0, 0, 0, time.UTC)
+	for name, tc := range map[string]struct {
+		updated time.Time
+		want    bool
+	}{
+		"same instant": {at, false},
+		"a retry":      {at.Add(20 * time.Second), false},
+		"an hour on":   {at.Add(time.Hour), true},
+	} {
+		c := checkin.CheckIn{CreatedAt: at, UpdatedAt: tc.updated}
+		if got := c.Edited(); got != tc.want {
+			t.Errorf("%s: Edited() = %v, want %v", name, got, tc.want)
+		}
+	}
+}
+
+func TestSummaryCarriesTheExtras(t *testing.T) {
+	t.Parallel()
+	stress, sleep := 4, 2
+	c := checkin.CheckIn{
+		LocalDate: day(t), Mood: 3, Energy: 3,
+		Stress: &stress, SleepQuality: &sleep, Tags: []string{"travel", "sick"},
+	}
+	want := "2 Jan — mood 3/5, energy 3/5. Stress 4/5. Sleep quality 2/5. Tags: travel, sick"
+	if got := c.Summary(); got != want {
+		t.Fatalf("summary mismatch\n got: %q\nwant: %q", got, want)
+	}
+}
