@@ -86,4 +86,7 @@ var englishDashboard = map[string]string{
 	"range.month":     "Last 30 days",
 	"range.quarter":   "Last 90 days",
 	"range.year":      "Last 12 months",
+
+	// The check-in row once done: today's numbers and when.
+	"dash.today.checkin.done": "Mood %[1]d · energy %[2]d · %[3]s",
 }

@@ -15,7 +15,7 @@ func renderCheckinsIn(t *testing.T, locale users.Locale, streak int, inst Instru
 	var b strings.Builder
 	ctx := i18n.WithLocale(context.Background(), string(locale))
 	user := users.User{DisplayName: "Ana", Locale: locale}
-	page := IndexPage(user, nil, CheckInForm{}, nil, streak, false, nil, inst)
+	page := IndexPage(user, CheckInForm{}, nil, false, nil, LiveData{Streak: streak, Instruments: inst})
 	if err := page.Render(ctx, &b); err != nil {
 		t.Fatalf("render %s: %v", locale, err)
 	}

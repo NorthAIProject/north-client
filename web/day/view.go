@@ -10,6 +10,7 @@ package day
 import (
 	"fmt"
 	"math"
+	"net/url"
 	"sort"
 	"time"
 
@@ -34,7 +35,9 @@ type Data struct {
 	Workouts WorkoutsCard
 	Streak   int
 	Level    int
-	Body     BodyCard
+	// StreakTile is the live part of the streak card.
+	StreakTile StreakTile
+	Body       BodyCard
 
 	Fast       FastCard
 	Nutrients  NutrientsCard
@@ -472,4 +475,26 @@ type FastRow struct {
 	Target   string
 	Fraction float64
 	Met      bool
+}
+
+// StreakTile is the streak card's face: the streak and today's check-in. It
+// refreshes itself, so it carries the version it was drawn from.
+type StreakTile struct {
+	Streak int
+	// Today is nil until today's check-in exists.
+	Today *TodayCheckIn
+	// Version is the check-in fingerprint sent back on each poll.
+	Version string
+}
+
+// TodayCheckIn is today's numbers and when they were last filed, HH:MM in the
+// reader's zone.
+type TodayCheckIn struct {
+	Mood, Energy int
+	At           string
+}
+
+// StreakTileURL is where the tile re-fetches itself.
+func StreakTileURL(version string) string {
+	return "/app/day/checkin?v=" + url.QueryEscape(version)
 }

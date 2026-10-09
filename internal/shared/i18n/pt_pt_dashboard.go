@@ -81,4 +81,6 @@ var portugueseEuropeanDashboard = map[string]string{
 	"range.month":     "Últimos 30 dias",
 	"range.quarter":   "Últimos 90 dias",
 	"range.year":      "Últimos 12 meses",
+
+	"dash.today.checkin.done": "Humor %[1]d · energia %[2]d · %[3]s",
 }

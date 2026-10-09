@@ -62,6 +62,9 @@ func TestUntranslatedStringsAreAccountedFor(t *testing.T) {
 			"oauth.new.email":         true, // "Email" is the ordinary pt-PT spelling; pt-BR uses "E-mail"
 			"nav.coach-insights.nav":  true, // "coaching" is borrowed unchanged, like nav.fitness
 			"land.app.beta":           true, // "Beta" is borrowed unchanged
+			"checkins.source.siri":    true, // Siri is a product name
+			"checkins.field.stress":   true, // "stress" is the everyday pt-PT word
+			"checkins.meta.stress":    true, // same borrowing as checkins.field.stress
 		},
 		"pt-BR": {
 			"nav.cardio-insights.nav": true, // "Cardio" is the everyday word here too
@@ -74,6 +77,8 @@ func TestUntranslatedStringsAreAccountedFor(t *testing.T) {
 			"settings.prefs.imperial": true,
 			"nav.coach-insights.nav":  true, // "coaching" is borrowed unchanged, like nav.fitness
 			"land.app.beta":           true,
+			"checkins.source.siri":    true, // Siri is a product name
+			"checkins.tags":           false,
 		},
 		"es": {
 			"nav.cardio-insights.nav": true, // "Cardio" is the everyday word here too
@@ -89,6 +94,7 @@ func TestUntranslatedStringsAreAccountedFor(t *testing.T) {
 			"land.price.pro":          true, // the plan's name, not a word
 			"nav.coach-insights.nav":  true, // "coaching" is borrowed unchanged, like nav.fitness
 			"land.app.beta":           true, // "Beta" is spelled the same
+			"checkins.source.siri":    true, // Siri is a product name
 		},
 	}
 

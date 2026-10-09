@@ -9,6 +9,8 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/checkins"
+	"github.com/NorthAIProject/north-client/internal/checkins/checkin"
 	"github.com/NorthAIProject/north-client/internal/conversations"
 	"github.com/NorthAIProject/north-client/internal/goals/goal"
 	"github.com/NorthAIProject/north-client/internal/nudges/nudge"
@@ -51,6 +53,21 @@ type TodaySnapshot struct {
 	Deltas           DeltasResponse     `json:"deltas"`
 	Nudges           []NudgeResponse    `json:"nudges"`
 	Briefing         string             `json:"briefing,omitempty"`
+	// TodayCheckIn is present only once today's check-in exists.
+	TodayCheckIn *TodayCheckIn `json:"todayCheckIn,omitempty"`
+}
+
+// TodayCheckIn is today's check-in at a glance, for the Today tile.
+type TodayCheckIn struct {
+	Mood   int `json:"mood"`
+	Energy int `json:"energy"`
+	// Stress and SleepQuality are 1–5, absent when not given.
+	Stress       *int `json:"stress,omitempty"`
+	SleepQuality *int `json:"sleepQuality,omitempty"`
+	// Source is where it was first created; open-ended, like CheckIn.source.
+	Source string `json:"source"`
+	// At is when it was last filed or changed.
+	At time.Time `json:"at"`
 }
 
 type Goal struct {
@@ -163,6 +180,22 @@ func projectSnapshot(snapshot Snapshot) TodaySnapshot {
 		Deltas:           DeltasResponse{Hydration: projectDelta(snapshot.Deltas.Hydration), SleepHours: projectDelta(snapshot.Deltas.SleepHours), Calories: projectDelta(snapshot.Deltas.Calories), CheckIns: projectDelta(snapshot.Deltas.CheckIns)},
 		Nudges:           projectNudges(snapshot.Nudges),
 		Briefing:         briefingText(snapshot.Briefing),
+		TodayCheckIn:     projectTodayCheckIn(snapshot.TodayCheckIn),
+	}
+}
+
+func projectTodayCheckIn(c *checkins.CheckIn) *TodayCheckIn {
+	if c == nil {
+		return nil
+	}
+	source := string(c.Source)
+	if source == "" {
+		source = string(checkin.SourceUnknown)
+	}
+	return &TodayCheckIn{
+		Mood: c.Mood, Energy: c.Energy,
+		Stress: c.Stress, SleepQuality: c.SleepQuality,
+		Source: source, At: c.UpdatedAt,
 	}
 }
 
