@@ -134,21 +134,37 @@ func metricComparisons(m metric, current, prior float64, hasPrior bool) []highli
 
 // usualView words a latest day against the person's usual range: the mean
 // give or take one standard deviation, which about two days in three fall in.
+//
+// The state follows the numbers as shown, not as stored: a resting heart rate
+// of 52 against a range shown as 52–54 is within it, whatever the decimals
+// behind the rounding say.
 func usualView(m metric, u Usual) insightpages.UsualView {
-	low := formatMetric(m, math.Max(u.Baseline.Mean-u.Baseline.SD, 0))
-	high := formatMetric(m, u.Baseline.Mean+u.Baseline.SD)
+	lowValue := math.Max(u.Baseline.Mean-u.Baseline.SD, 0)
+	highValue := u.Baseline.Mean + u.Baseline.SD
+	low, high := formatMetric(m, lowValue), formatMetric(m, highValue)
+	state := u.State
+	shown := func(v float64) float64 { return roundTo(v, m.Decimals) }
+	if latest := shown(u.Latest.Value); latest >= shown(lowValue) && latest <= shown(highValue) {
+		state = stat.Usual
+	}
 	lead := map[string]string{
 		stat.Above: "Above your usual",
 		stat.Usual: "Within your usual range",
 		stat.Below: "Below your usual",
-	}[u.State]
+	}[state]
 	return insightpages.UsualView{
 		Day: u.Latest.At, Latest: u.Latest.Value,
 		Mean: u.Baseline.Mean, SD: u.Baseline.SD, Low: low, High: high,
-		Days: u.Baseline.Days, Z: math.Round(u.Z*100) / 100, State: u.State,
+		Days: u.Baseline.Days, Z: math.Round(u.Z*100) / 100, State: state,
 		Text: fmt.Sprintf("%s: %s on %s, usually %s–%s.",
 			lead, formatMetric(m, u.Latest.Value), u.Latest.At.Format("Mon 2 Jan"), low, high),
 	}
+}
+
+// roundTo rounds v to decimals places, the way formatMetric shows it.
+func roundTo(v float64, decimals int) float64 {
+	scale := math.Pow(10, float64(decimals))
+	return math.Round(v*scale) / scale
 }
 
 // formatMetric renders a metric's value at its own precision.
