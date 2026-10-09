@@ -134,7 +134,7 @@ func TestAddOptionTakesTheFirstFreeOptionNumber(t *testing.T) {
 		t.Fatalf("create plan: %v", err)
 	}
 	slot := plan.Days[0].Meals[0]
-	if err := f.svc.RemoveMeal(f.ctx, slot.Alternatives[0].ID, f.userID); err != nil {
+	if err = f.svc.RemoveMeal(f.ctx, slot.Alternatives[0].ID, f.userID); err != nil {
 		t.Fatalf("remove option 2: %v", err)
 	}
 
