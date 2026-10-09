@@ -89,7 +89,8 @@ func TestBuildMealCopiesASameAsSlotOnEveryDayItAppears(t *testing.T) {
 			{Day: "Monday", Meal: "Almoço", Option: "Prato – carne", Food: "frango", Quantity: "125", Unit: "g"},
 			{Day: "Monday", Meal: "Almoço", Option: "Prato – peixe", Food: "pescada", Quantity: "150", Unit: "g"},
 			{Day: "Monday", Meal: "Lanche", Food: "maçã", Quantity: "1"},
-			{Day: "Tuesday", Meal: "Almoço", Food: "massa", Quantity: "110", Unit: "g"},
+			{Day: "Tuesday", Meal: "Almoço", Option: "A", Food: "massa", Quantity: "110", Unit: "g"},
+			{Day: "Tuesday", Meal: "Almoço", Option: "B", Food: "arroz", Quantity: "110", Unit: "g"},
 			{Day: "Tuesday", Meal: "JANTAR", Food: "sopa", Quantity: "300", Unit: "ml"},
 			{Day: "Wednesday", Meal: "Lanche", Food: "pera", Quantity: "1"},
 		},
@@ -117,10 +118,28 @@ func TestBuildMealCopiesASameAsSlotOnEveryDayItAppears(t *testing.T) {
 		t.Fatalf("lunch changed with dinner: %+v", lunch)
 	}
 
-	// An existing slot keeps its own name and takes lunch's options.
+	// An existing slot keeps its own name and takes lunch's options, with
+	// its own soup kept in each of them, after lunch's foods.
 	tue := draft.Days[1].Meals
-	if len(tue) != 2 || tue[1].Name != "JANTAR" || tue[1].Foods[0].Food != "massa" {
+	if len(tue) != 2 || tue[1].Name != "JANTAR" || len(tue[1].Alternatives) != 1 {
 		t.Fatalf("Tuesday meals = %+v", tue)
+	}
+	tueDinner := tue[1]
+	for _, opt := range tueDinner.Options() {
+		if len(opt.Foods) != 2 || opt.Foods[1].Food != "sopa" {
+			t.Fatalf("Tuesday dinner option %q = %+v, want lunch's food then the soup", opt.Label, opt.Foods)
+		}
+	}
+	if tueDinner.OptionLabel != "A" || tueDinner.Foods[0].Food != "massa" || tueDinner.Alternatives[0].Foods[0].Food != "arroz" {
+		t.Fatalf("Tuesday dinner = %+v, want lunch's options A and B", tueDinner)
+	}
+	// Each option's soup is its own line.
+	*tueDinner.Foods[1].Quantity = 1
+	if *tueDinner.Alternatives[0].Foods[1].Quantity != 300 {
+		t.Fatalf("the options share the soup line")
+	}
+	if len(draft.Unparsed) != 0 {
+		t.Fatalf("unparsed = %q, want none", draft.Unparsed)
 	}
 	// No lunch on Wednesday: nothing to copy.
 	if wed := draft.Days[2].Meals; len(wed) != 1 {
@@ -153,4 +172,25 @@ func containsFlag(flags []string, want string) bool {
 		}
 	}
 	return false
+}
+
+// A same_as whose source is nowhere in the plan is reported, not dropped,
+// and no empty meal is made for it.
+func TestBuildMealReportsASameAsWhoseSourceIsMissing(t *testing.T) {
+	t.Parallel()
+
+	draft, err := buildMeal(MealReading{
+		Rows:   []MealRow{{Meal: "Lanche", Food: "maçã", Quantity: "1"}},
+		SameAs: []SameMeal{{Meal: "Jantar", SameAs: "Almoço"}},
+	})
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	if meals := draft.Days[0].Meals; len(meals) != 1 || meals[0].Name != "Lanche" {
+		t.Fatalf("meals = %+v, want Lanche alone", meals)
+	}
+	want := "Jantar: same as Almoço — no meal called Almoço was found"
+	if len(draft.Unparsed) != 1 || draft.Unparsed[0] != want {
+		t.Fatalf("unparsed = %q, want %q", draft.Unparsed, want)
+	}
 }

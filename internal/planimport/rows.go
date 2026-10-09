@@ -199,7 +199,12 @@ func buildMeal(reading MealReading) (MealDraft, error) {
 		return MealDraft{}, refuse(ReasonNotAPlan, "No foods were found in this file, so it doesn't look like a meal plan.")
 	}
 	for _, same := range reading.SameAs {
-		copySameMeal(&draft, same)
+		if !copySameMeal(&draft, same) {
+			// The model was told not to repeat the target's rows, so a
+			// source that isn't there would lose the meal without a trace.
+			draft.Unparsed = append(draft.Unparsed, fmt.Sprintf("%s: same as %s — no meal called %s was found",
+				strings.TrimSpace(same.Meal), strings.TrimSpace(same.SameAs), strings.TrimSpace(same.SameAs)))
+		}
 	}
 	if !anyDay {
 		draft.EveryDay = true
@@ -269,12 +274,16 @@ func exactGrams(f FoodDraft) bool {
 }
 
 // copySameMeal gives meal same.Meal a copy of same.SameAs's options on every
-// day that has the latter, adding the meal where the day lacks it.
-func copySameMeal(d *MealDraft, same SameMeal) {
+// day that has the latter, adding the meal where the day lacks it. Foods the
+// target already had of its own ("sopa + prato idêntico ao almoço") are
+// added to every copied option, after the copied foods. It reports whether
+// the source meal was found on any day.
+func copySameMeal(d *MealDraft, same SameMeal) bool {
 	target, source := dayKey(same.Meal), dayKey(same.SameAs)
 	if target == "" || source == "" || target == source {
-		return
+		return true
 	}
+	found := false
 	for di := range d.Days {
 		day := &d.Days[di]
 		si, ti := -1, -1
@@ -289,15 +298,25 @@ func copySameMeal(d *MealDraft, same SameMeal) {
 		if si < 0 {
 			continue
 		}
+		found = true
 		copied := cloneMeal(day.Meals[si])
 		if ti < 0 {
 			copied.Name = strings.TrimSpace(same.Meal)
 			day.Meals = append(day.Meals, copied)
 			continue
 		}
+		var own []FoodDraft
+		for _, opt := range day.Meals[ti].Options() {
+			own = append(own, opt.Foods...)
+		}
 		copied.Name = day.Meals[ti].Name
+		copied.Foods = append(copied.Foods, cloneFoods(own)...)
+		for ai := range copied.Alternatives {
+			copied.Alternatives[ai].Foods = append(copied.Alternatives[ai].Foods, cloneFoods(own)...)
+		}
 		day.Meals[ti] = copied
 	}
+	return found
 }
 
 // cloneMeal deep-copies a meal, so a copy edited on review leaves the
