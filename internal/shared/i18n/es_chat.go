@@ -32,8 +32,9 @@ var spanishChat = map[string]string{
 	"chat.feedback.yes":        "Sí",
 	"chat.feedback.no":         "No",
 
-	"chat.attach":      "Adjuntar una foto",
-	"chat.placeholder": "¿En qué estás trabajando?",
+	"chat.attach":        "Adjuntar una foto o un archivo",
+	"chat.attach_remove": "Quitar el archivo",
+	"chat.placeholder":   "¿En qué estás trabajando?",
 
 	"chat.approval.title": "Khepri quiere cambiar algo",
 	"chat.approval.yes":   "Sí, adelante",

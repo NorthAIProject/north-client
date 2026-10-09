@@ -249,6 +249,39 @@ func (q *Queries) LatestUserMediaCreatedAt(ctx context.Context, arg LatestUserMe
 	return created_at, err
 }
 
+const latestUserMediaOfKinds = `-- name: LatestUserMediaOfKinds :one
+SELECT id, user_id, kind, mime_type, size_bytes, storage_key, original_name, created_at FROM media
+WHERE user_id = $1
+  AND kind = ANY($2::text[])
+  AND ($3::text = '' OR lower(original_name) = lower($3::text))
+ORDER BY created_at DESC, id DESC
+LIMIT 1
+`
+
+type LatestUserMediaOfKindsParams struct {
+	UserID uuid.UUID
+	Kinds  []string
+	Name   string
+}
+
+// The newest of a person's files of the given kinds, optionally the newest
+// with a given name, compared case-insensitively.
+func (q *Queries) LatestUserMediaOfKinds(ctx context.Context, arg LatestUserMediaOfKindsParams) (Medium, error) {
+	row := q.db.QueryRow(ctx, latestUserMediaOfKinds, arg.UserID, arg.Kinds, arg.Name)
+	var i Medium
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Kind,
+		&i.MimeType,
+		&i.SizeBytes,
+		&i.StorageKey,
+		&i.OriginalName,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const listAnalyses = `-- name: ListAnalyses :many
 SELECT id, media_id, user_id, status, analysis, error, model, provider, created_at, updated_at FROM form_analyses
 WHERE user_id = $1 AND status = 'done'

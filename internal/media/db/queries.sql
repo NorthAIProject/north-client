@@ -20,6 +20,16 @@ WHERE user_id = $1 AND kind = $2
 ORDER BY created_at DESC
 LIMIT 1;
 
+-- name: LatestUserMediaOfKinds :one
+-- The newest of a person's files of the given kinds, optionally the newest
+-- with a given name, compared case-insensitively.
+SELECT * FROM media
+WHERE user_id = @user_id
+  AND kind = ANY(@kinds::text[])
+  AND (@name::text = '' OR lower(original_name) = lower(@name::text))
+ORDER BY created_at DESC, id DESC
+LIMIT 1;
+
 -- name: CreateAnalysis :one
 INSERT INTO form_analyses (media_id, user_id)
 VALUES ($1, $2)

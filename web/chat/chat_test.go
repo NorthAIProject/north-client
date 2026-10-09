@@ -17,7 +17,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/watches"
 )
 
-func TestComposerAcceptsAPhoto(t *testing.T) {
+func TestComposerAcceptsAPhotoOrAFile(t *testing.T) {
 	var buf bytes.Buffer
 	err := Page(
 		users.User{DisplayName: "Fernando"},
@@ -36,12 +36,62 @@ func TestComposerAcceptsAPhoto(t *testing.T) {
 	for _, want := range []string{
 		`hx-encoding="multipart/form-data"`,
 		`name="attachment"`,
-		`accept="image/jpeg,image/png,image/webp,image/gif"`,
-		`aria-label="Attach a photo"`,
+		`accept="image/jpeg,image/png,image/webp,image/gif,.pdf,.docx,.xlsx,.csv,.tsv,.txt,.md,.json"`,
+		`aria-label="Attach a photo or file"`,
+		// A document shows as its name, with a way to take it back off.
+		`x-text="fileName"`,
+		`aria-label="Remove the file"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("composer missing %q", want)
 		}
+	}
+}
+
+// A PDF is not an image: rendering one through <img> shows a broken picture.
+func TestAFileRendersAsABadgeNotAPicture(t *testing.T) {
+	pdf := conversations.Attachment{
+		MediaID:  uuid.MustParse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
+		Kind:     "file",
+		MIMEType: "application/pdf",
+		Name:     "dieta.pdf",
+	}
+	id := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	renders := map[string]templ.Component{
+		"stored":  Bubble(conversations.Message{Role: ai.RoleUser, Parts: []conversations.Attachment{pdf}}, time.UTC),
+		"pending": PendingExchange(id, "", &pdf),
+	}
+	for name, c := range renders {
+		var buf bytes.Buffer
+		if err := c.Render(context.Background(), &buf); err != nil {
+			t.Fatal(err)
+		}
+		body := buf.String()
+		if strings.Contains(body, "<img") {
+			t.Errorf("%s turn renders the PDF as an image", name)
+		}
+		if !strings.Contains(body, "data-attachment-file") || !strings.Contains(body, "dieta.pdf") {
+			t.Errorf("%s turn does not name the file", name)
+		}
+	}
+
+	var pending bytes.Buffer
+	if err := PendingExchange(id, "", &pdf).Render(context.Background(), &pending); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(pending.String(), "media=bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb") {
+		t.Error("the stream does not carry the file's id")
+	}
+}
+
+func TestAPendingPhotoStillShowsAsAPicture(t *testing.T) {
+	photo := conversations.Attachment{MediaID: uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"), Kind: "image", Name: "squat.jpg"}
+	var buf bytes.Buffer
+	if err := PendingExchange(uuid.New(), "form?", &photo).Render(context.Background(), &buf); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), `src="/app/media/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"`) {
+		t.Error("a pending photo should show as itself")
 	}
 }
 
@@ -144,7 +194,7 @@ func TestStreamingBubbleKeepsACaret(t *testing.T) {
 	id := uuid.MustParse("11111111-1111-1111-1111-111111111111")
 
 	var pending bytes.Buffer
-	if err := PendingExchange(id, "How did training go?", uuid.Nil).Render(context.Background(), &pending); err != nil {
+	if err := PendingExchange(id, "How did training go?", nil).Render(context.Background(), &pending); err != nil {
 		t.Fatal(err)
 	}
 	var resume bytes.Buffer
@@ -361,7 +411,7 @@ func TestBubbleHasNoInlineAvatar(t *testing.T) {
 	renders := map[string]templ.Component{
 		"stored":  Bubble(conversations.Message{Role: ai.RoleModel, Content: "A reply."}, time.UTC),
 		"user":    Bubble(conversations.Message{Role: ai.RoleUser, Content: "A question."}, time.UTC),
-		"pending": PendingExchange(id, "How did training go?", uuid.Nil),
+		"pending": PendingExchange(id, "How did training go?", nil),
 		"resume":  ResumeExchange(id),
 	}
 	for name, c := range renders {

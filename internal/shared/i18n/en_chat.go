@@ -36,8 +36,9 @@ var englishChat = map[string]string{
 	"chat.feedback.yes":        "Yes",
 	"chat.feedback.no":         "No",
 
-	"chat.attach":      "Attach a photo",
-	"chat.placeholder": "What are you working on?",
+	"chat.attach":        "Attach a photo or file",
+	"chat.attach_remove": "Remove the file",
+	"chat.placeholder":   "What are you working on?",
 
 	"chat.approval.title": "Khepri wants to change something",
 	"chat.approval.yes":   "Yes, go ahead",
