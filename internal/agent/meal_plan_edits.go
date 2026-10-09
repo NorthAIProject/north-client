@@ -568,10 +568,12 @@ func describeMealPlan(b *strings.Builder, plan meals.MealPlan, target *meals.Mac
 // that reads exactly like it: "Monday: …", "Tuesday–Sunday: …", "Tuesday,
 // Thursday: …". An imported every-day plan is seven copies of one day, and
 // listing each — or each again once one day of it is edited — would hand the
-// model the same meals seven times.
+// model the same meals seven times. "Every day (…)" heads them only when days
+// are all of the plan's days and read alike; a few changed days that match
+// are just their span.
 func describeMealDays(b *strings.Builder, plan meals.MealPlan, days []meal.Day, target *meals.Macros) {
 	groups := groupDays(plan, days, target)
-	if len(groups) == 1 && len(days) > 1 {
+	if len(groups) == 1 && len(days) > 1 && len(days) == len(plan.Days) {
 		fmt.Fprintf(b, "\nEvery day (%s): %s", weekdaySpan(groups[0].days), groups[0].body)
 		return
 	}
