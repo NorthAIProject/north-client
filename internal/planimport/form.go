@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -16,13 +17,15 @@ import (
 //
 // The draft travels as JSON in one hidden field, and the fields a person can
 // edit are posted on top of it, named by position: "d0.e2.sets" is the third
-// exercise of the first day. Nothing in either is trusted — a commit
+// exercise of the first day, and "d0.m1.o2.f0.grams" the first food of the
+// third option of the second meal (o0 is a meal's first option, oN its Nth
+// alternative). Nothing in either is trusted — a commit
 // re-validates every value and recomputes every number — so the hidden JSON
 // only saves re-reading the file, not checking it.
 
 // reviewAction is what the pressed button asked for.
 type reviewAction struct {
-	verb string // update, delete-day, delete-exercise, delete-meal, delete-food, save, save-confirm
+	verb string // update, delete-day, delete-exercise, delete-meal, delete-option, delete-food, save, save-confirm
 	path []int
 }
 
@@ -120,33 +123,41 @@ func mealFromForm(r *http.Request) (MealDraft, reviewAction, error) {
 		for j := range day.Meals {
 			m := &day.Meals[j]
 			m.Name = r.PostFormValue(fmt.Sprintf("d%d.m%d.name", i, j))
-			for k := range m.Foods {
-				f := &m.Foods[k]
-				key := func(field string) string { return r.PostFormValue(fmt.Sprintf("d%d.m%d.f%d.%s", i, j, k, field)) }
-
-				f.Grams = nil
-				if v, err := strconv.ParseFloat(strings.TrimSpace(key("grams")), 64); err == nil && v > 0 {
-					f.Grams = &v
-				}
-
-				switch choice := key("ingredient"); choice {
-				case "mine":
-					f.IngredientID, f.SaveAsMine = nil, true
-				case "":
-					f.IngredientID, f.SaveAsMine = nil, false
-				default:
-					if id, err := uuid.Parse(choice); err == nil {
-						f.IngredientID, f.SaveAsMine = &id, false
-					}
-				}
+			foodsFromForm(r, fmt.Sprintf("d%d.m%d.o0", i, j), m.Foods)
+			for o := range m.Alternatives {
+				foodsFromForm(r, fmt.Sprintf("d%d.m%d.o%d", i, j, o+1), m.Alternatives[o].Foods)
 			}
 		}
 	}
 	return d, parseAction(r.PostFormValue("action")), nil
 }
 
-// applyMealAction removes what a delete button named, and any meal or day
-// that leaves empty.
+// foodsFromForm reads one option's food lines, posted under prefix.
+func foodsFromForm(r *http.Request, prefix string, foods []FoodDraft) {
+	for k := range foods {
+		f := &foods[k]
+		key := func(field string) string { return r.PostFormValue(fmt.Sprintf("%s.f%d.%s", prefix, k, field)) }
+
+		f.Grams = nil
+		if v, err := strconv.ParseFloat(strings.TrimSpace(key("grams")), 64); err == nil && v > 0 {
+			f.Grams = &v
+		}
+
+		switch choice := key("ingredient"); choice {
+		case "mine":
+			f.IngredientID, f.SaveAsMine = nil, true
+		case "":
+			f.IngredientID, f.SaveAsMine = nil, false
+		default:
+			if id, err := uuid.Parse(choice); err == nil {
+				f.IngredientID, f.SaveAsMine = &id, false
+			}
+		}
+	}
+}
+
+// applyMealAction removes what a delete button named, and any option, meal
+// or day that leaves empty.
 func applyMealAction(d *MealDraft, a reviewAction) {
 	p := a.path
 	switch {
@@ -155,18 +166,52 @@ func applyMealAction(d *MealDraft, a reviewAction) {
 	case a.verb == "delete-meal" && len(p) == 2 && p[0] < len(d.Days) && p[1] < len(d.Days[p[0]].Meals):
 		day := &d.Days[p[0]]
 		day.Meals = append(day.Meals[:p[1]], day.Meals[p[1]+1:]...)
-	case a.verb == "delete-food" && len(p) == 3 && p[0] < len(d.Days) && p[1] < len(d.Days[p[0]].Meals) && p[2] < len(d.Days[p[0]].Meals[p[1]].Foods):
+	case a.verb == "delete-option" && len(p) == 3 && p[0] < len(d.Days) && p[1] < len(d.Days[p[0]].Meals):
+		deleteOption(&d.Days[p[0]].Meals[p[1]], p[2])
+	case a.verb == "delete-food" && len(p) == 4 && p[0] < len(d.Days) && p[1] < len(d.Days[p[0]].Meals):
 		m := &d.Days[p[0]].Meals[p[1]]
-		m.Foods = append(m.Foods[:p[2]], m.Foods[p[2]+1:]...)
-		if len(m.Foods) == 0 {
-			day := &d.Days[p[0]]
-			day.Meals = append(day.Meals[:p[1]], day.Meals[p[1]+1:]...)
+		foods := optionFoods(m, p[2])
+		if foods == nil || p[3] >= len(*foods) {
+			break
+		}
+		*foods = append((*foods)[:p[3]], (*foods)[p[3]+1:]...)
+		if len(*foods) == 0 {
+			deleteOption(m, p[2])
 		}
 	}
-	for i := len(d.Days) - 1; i >= 0; i-- {
-		if len(d.Days[i].Meals) == 0 {
-			d.Days = append(d.Days[:i], d.Days[i+1:]...)
-		}
+	for i := range d.Days {
+		d.Days[i].Meals = slices.DeleteFunc(d.Days[i].Meals, func(m MealDraftMeal) bool { return len(m.Foods) == 0 && len(m.Alternatives) == 0 })
+	}
+	d.Days = slices.DeleteFunc(d.Days, func(day MealDayDraft) bool { return len(day.Meals) == 0 })
+}
+
+// optionFoods is option o's food lines (0 being the first option), or nil
+// when the meal has no such option.
+func optionFoods(m *MealDraftMeal, o int) *[]FoodDraft {
+	switch {
+	case o == 0:
+		return &m.Foods
+	case o <= len(m.Alternatives):
+		return &m.Alternatives[o-1].Foods
+	}
+	return nil
+}
+
+// deleteOption removes option o. Removing the first promotes the next
+// option to be the one counted; removing the only one empties the meal,
+// which applyMealAction then drops.
+func deleteOption(m *MealDraftMeal, o int) {
+	switch {
+	case o == 0 && len(m.Alternatives) > 0:
+		next := m.Alternatives[0]
+		m.OptionLabel, m.Foods, m.Alternatives = next.Label, next.Foods, m.Alternatives[1:]
+	case o == 0:
+		m.OptionLabel, m.Foods = "", nil
+	case o <= len(m.Alternatives):
+		m.Alternatives = append(m.Alternatives[:o-1], m.Alternatives[o:]...)
+	}
+	if len(m.Alternatives) == 0 {
+		m.Alternatives = nil
 	}
 }
 
