@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
@@ -433,7 +434,7 @@ func mealPlanFromDraft(d MealDraft) (importPlan, []string) {
 				if len(m.Alternatives) > 0 {
 					where += " (" + m.OptionName(oi) + ")"
 				}
-				o := draftOption{label: strings.TrimSpace(opt.Label)}
+				o := draftOption{label: clip(strings.TrimSpace(opt.Label), meals.MaxOptionLabelRunes)}
 				for _, f := range opt.Foods {
 					if !f.Ready() {
 						problems = append(problems, fmt.Sprintf("%s: %q isn't ready — %s", where, f.Food, strings.Join(f.Checks, " ")))
@@ -490,6 +491,15 @@ func personalIngredient(f FoodDraft) meals.IngredientInput {
 		ServingSizeGrams: *f.Grams,
 		Per100g:          meals.Macros{ProteinG: p, CarbG: c, FatG: fat, Calories: 4*p + 4*c + 9*fat},
 	}
+}
+
+// clip cuts s to at most limit runes, the last of them an ellipsis when
+// anything was cut, so a file's overlong text still fits what meals stores.
+func clip(s string, limit int) string {
+	if utf8.RuneCountInString(s) <= limit {
+		return s
+	}
+	return strings.TrimSpace(string([]rune(s)[:limit-1])) + "…"
 }
 
 func appendOnce(list []string, s string) []string {

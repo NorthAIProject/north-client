@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 
@@ -467,12 +468,20 @@ func validateMealName(name string) (string, error) {
 	return name, nil
 }
 
+// MaxOptionLabelRunes caps the label that tells a slot's options apart. A
+// label is a tab's title, not a description.
+const MaxOptionLabelRunes = 60
+
 // validateOptionLabel checks the label that tells an alternative apart from
 // its slot's other options; without one, two options would read the same.
 func validateOptionLabel(label string) (string, error) {
 	label = strings.TrimSpace(label)
-	if label == "" {
+	switch {
+	case label == "":
 		return "", apperr.FieldErrors{}.Add("option_label", "Give the option a label.").OrNil()
+	case utf8.RuneCountInString(label) > MaxOptionLabelRunes:
+		return "", apperr.FieldErrors{}.Add("option_label",
+			fmt.Sprintf("Keep the label to %d characters.", MaxOptionLabelRunes)).OrNil()
 	}
 	return label, nil
 }
@@ -497,11 +506,17 @@ func (s *MealPlanService) AddMeal(ctx context.Context, dayID, userID uuid.UUID, 
 }
 
 // AddOption adds an empty option to the end of the meal slot that mealID —
-// any of the slot's options — belongs to. A blank label becomes "Option N",
-// N being the new option's position in the slot, so no two options read the
-// same. A new option is empty, so it needs no overage check.
+// any of the slot's options — belongs to. A blank label becomes the first
+// "Option N" the slot does not use, so no two options read the same. A new
+// option is empty, so it needs no overage check.
 func (s *MealPlanService) AddOption(ctx context.Context, userID, planID, mealID uuid.UUID, label string) (meal.Meal, error) {
 	label = strings.TrimSpace(label)
+	if label != "" {
+		var err error
+		if label, err = validateOptionLabel(label); err != nil {
+			return meal.Meal{}, err
+		}
+	}
 	var added meal.Meal
 	err := s.repo.WithPlanLocked(ctx, planID, userID, func(tx *PlanTx, plan MealPlan) error {
 		slot, ok := findSlot(plan, mealID)
@@ -509,7 +524,7 @@ func (s *MealPlanService) AddOption(ctx context.Context, userID, planID, mealID 
 			return apperr.ErrNotFound
 		}
 		if label == "" {
-			label = fmt.Sprintf("Option %d", len(slot.Options())+1)
+			label = freeOptionLabel(slot)
 		}
 		var addErr error
 		added, addErr = tx.AddOption(ctx, planID, slot.DayID, slot.MealNumber, slot.Name, label)
@@ -537,7 +552,22 @@ func (s *MealPlanService) RemoveMeal(ctx context.Context, mealID, userID uuid.UU
 	})
 }
 
-// findMeal finds a meal of the plan by id, default or alternative.
+// freeOptionLabel is the first "Option N", N from 2, that none of slot's
+// options carries in any letter case. Counting the slot's options instead
+// would repeat a label once a middle option is gone.
+func freeOptionLabel(slot Meal) string {
+	used := map[string]bool{}
+	for _, o := range slot.Options() {
+		used[strings.ToLower(strings.TrimSpace(o.OptionLabel))] = true
+	}
+	for n := 2; ; n++ {
+		label := fmt.Sprintf("Option %d", n)
+		if !used[strings.ToLower(label)] {
+			return label
+		}
+	}
+}
+
 // findSlot finds the slot — its default, holding the alternatives — that any
 // of its options' IDs names.
 func findSlot(plan MealPlan, mealID uuid.UUID) (Meal, bool) {
@@ -553,6 +583,7 @@ func findSlot(plan MealPlan, mealID uuid.UUID) (Meal, bool) {
 	return Meal{}, false
 }
 
+// findMeal finds a meal of the plan by id, default or alternative.
 func findMeal(plan MealPlan, mealID uuid.UUID) (Meal, bool) {
 	for _, d := range plan.Days {
 		for _, slot := range d.Meals {

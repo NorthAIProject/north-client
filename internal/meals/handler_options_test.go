@@ -31,14 +31,14 @@ func TestAddOptionFormAddsAnOptionAndOpensIt(t *testing.T) {
 	plan := f.lunchWithOption(t)
 	slot := plan.Days[0].Meals[0]
 
-	// A blank label takes the next position in the slot: lunch has two.
+	// A blank label takes the first "Option N" free: lunch has "Opção 2".
 	rec := f.postForm(t, "/nutrition/meals/"+slot.ID.String()+"/options", url.Values{"option_label": {"  "}})
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
 	}
 	alts := f.reload(t, plan.ID).Days[0].Meals[0].Alternatives
-	if len(alts) != 2 || alts[1].OptionLabel != "Option 3" {
-		t.Fatalf("alternatives = %+v, want a second one labelled Option 3", alts)
+	if len(alts) != 2 || alts[1].OptionLabel != "Option 2" {
+		t.Fatalf("alternatives = %+v, want a second one labelled Option 2", alts)
 	}
 	if want := "/app/nutrition/plans/" + plan.ID.String() + "?option=" + alts[1].ID.String(); rec.Header().Get("Location") != want {
 		t.Fatalf("location = %q, want %q", rec.Header().Get("Location"), want)
