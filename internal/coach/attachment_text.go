@@ -25,6 +25,17 @@ const maxAttachmentChars = 24_000
 // import tool so the model does not conclude the rest of a plan is lost.
 const truncatedNote = "[truncated; the full file is still available to import_plan_from_attachment]"
 
+// ErrNoTextLayer is what an AttachmentTexter returns for a PDF whose text
+// cannot be extracted. The file is not broken: import_plan_from_attachment
+// sends the PDF itself to the model, so the note says that instead.
+var ErrNoTextLayer = errors.New("this PDF has no text that can be extracted")
+
+// noTextLayerNote is the note for such a PDF, naming the tool that can still
+// read it.
+func noTextLayerNote(name string) string {
+	return "[" + name + " is a PDF whose text can't be extracted here; it can still be imported as a plan with import_plan_from_attachment]"
+}
+
 // closingAttachmentTag matches anything a model might read as the end of an
 // attachment block: any letter case, and spaces either side of the slash.
 var closingAttachmentTag = regexp.MustCompile(`(?i)<\s*/\s*attachment`)

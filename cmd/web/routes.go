@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 
@@ -764,7 +765,11 @@ func routes(
 			if err != nil {
 				return "", err
 			}
-			return planimport.ExtractText(m.OriginalName, data)
+			text, err := planimport.ExtractText(m.OriginalName, data)
+			if errors.Is(err, planimport.ErrNoTextLayer) {
+				return "", coach.ErrNoTextLayer
+			}
+			return text, err
 		}),
 		Model:     cfg.AI.Model,
 		FastModel: cfg.AI.FastModel,

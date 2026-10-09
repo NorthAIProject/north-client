@@ -195,7 +195,8 @@ type AttachmentLoader interface {
 //
 // A refusal the person should hear (a password-protected PDF, an unsupported
 // type) is returned as an apperr.FieldErrors, whose message is passed to the
-// model; any other error is logged and summarised.
+// model. ErrNoTextLayer marks a PDF with no extractable text, which can still
+// be imported. Any other error is logged and summarised.
 type AttachmentTexter interface {
 	AttachmentText(ctx context.Context, userID, mediaID uuid.UUID) (string, error)
 }
@@ -481,6 +482,9 @@ func (s *Service) inlinePhoto(ctx context.Context, user users.User, part convers
 func (s *Service) documentText(ctx context.Context, user users.User, part conversations.Attachment) string {
 	name := attachmentName(part.Name)
 	text, err := s.attachmentText.AttachmentText(ctx, user.ID, part.MediaID)
+	if apperr.Is(err, ErrNoTextLayer) {
+		return noTextLayerNote(name)
+	}
 	if err != nil {
 		middleware.FromContext(ctx).Warn("chat attachment could not be read",
 			slog.String("media_id", part.MediaID.String()),

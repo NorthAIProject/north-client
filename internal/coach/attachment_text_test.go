@@ -235,3 +235,18 @@ func TestPhotosAndFilesInOneTurnEachGoTheirOwnWay(t *testing.T) {
 		t.Fatal("the file was not read into the turn")
 	}
 }
+
+// A PDF with no text layer is not unreadable: the import tool sends it to the
+// model as a document. The note says so, so the coach offers the import
+// rather than telling the person the file is broken.
+func TestAPDFWithoutATextLayerPointsAtTheImportTool(t *testing.T) {
+	h := fileHarness(t, coach.AttachmentTextFunc(func(context.Context, uuid.UUID, uuid.UUID) (string, error) {
+		return "", coach.ErrNoTextLayer
+	}), nil)
+
+	parts := sendFiles(t, h, "", pdfAttachment(uuid.New()))
+	want := "[dieta.pdf is a PDF whose text can't be extracted here; it can still be imported as a plan with import_plan_from_attachment]"
+	if last := parts[len(parts)-1].Text; last != want {
+		t.Fatalf("last part = %q, want %q", last, want)
+	}
+}
