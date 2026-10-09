@@ -47,6 +47,8 @@ var portugueseEuropeanNav = map[string]string{
 	"nav.meal-plans.desc":           "Cria planos, acompanha os totais.",
 	"nav.import-training-plan":      "Importar plano de treino",
 	"nav.import-training-plan.desc": "Traz um plano de um ficheiro ou fotografia.",
+	"nav.import-hevy":               "Importar do Hevy",
+	"nav.import-hevy.desc":          "Traz o teu histórico de treinos do Hevy.",
 	"nav.import-meal-plan":          "Importar plano alimentar",
 	"nav.import-meal-plan.desc":     "Traz um plano alimentar de um ficheiro ou fotografia.",
 	"nav.food-log":                  "Diário alimentar",

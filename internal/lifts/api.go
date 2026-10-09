@@ -1,6 +1,7 @@
 package lifts
 
 import (
+	"bytes"
 	"net/http"
 	"time"
 
@@ -31,6 +32,52 @@ func (a *API) Routes(r chi.Router) {
 	r.Get("/lifts/sessions/{sessionID}/recap", a.recap)
 }
 
+// UploadRoutes go in the API's upload group, whose body cap fits a file.
+func (a *API) UploadRoutes(r chi.Router) {
+	r.Post("/lifts/import/hevy", a.importHevy)
+}
+
+// LiftImportView is what an import did.
+type LiftImportView struct {
+	Workouts   int      `json:"workouts"`
+	Duplicates int      `json:"duplicates"`
+	Sets       int      `json:"sets"`
+	Skipped    int      `json:"skipped"`
+	Unmatched  []string `json:"unmatched"`
+}
+
+// importHevy takes a Hevy workout export as the multipart field "file".
+func (a *API) importHevy(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, MaxImportBytes+(1<<20))
+	if err := r.ParseMultipartForm(4 << 20); err != nil {
+		msg := "That upload could not be read."
+		var tooBig *http.MaxBytesError
+		if apperr.As(err, &tooBig) {
+			msg = "This file is larger than 10 MB."
+		}
+		httpx.Error(w, apperr.FieldErrors{}.Add("file", msg), msg)
+		return
+	}
+	defer func() { _ = r.MultipartForm.RemoveAll() }()
+	data, msg := formFile(r)
+	if msg != "" {
+		httpx.Error(w, apperr.FieldErrors{}.Add("file", msg), msg)
+		return
+	}
+	res, err := a.svc.ImportHevy(r.Context(), auth.MustUser(r.Context()), bytes.NewReader(data))
+	if err != nil {
+		httpx.Error(w, err, "The workouts could not be imported.")
+		return
+	}
+	unmatched := res.Unmatched
+	if unmatched == nil {
+		unmatched = []string{}
+	}
+	httpx.WriteJSON(w, http.StatusOK, LiftImportView{
+		Workouts: res.Workouts, Duplicates: res.Duplicates, Sets: res.Sets, Skipped: res.Skipped, Unmatched: unmatched,
+	})
+}
+
 type LiftSetRequest struct {
 	ExerciseName      string     `json:"exerciseName"`
 	ExerciseSlug      string     `json:"exerciseSlug,omitempty"`
@@ -39,6 +86,8 @@ type LiftSetRequest struct {
 	Reps              int        `json:"reps"`
 	PerformedAt       *time.Time `json:"performedAt,omitempty"`
 	ActivitySessionID *uuid.UUID `json:"activitySessionId,omitempty"`
+	Kind              string     `json:"kind,omitempty"`
+	RIR               *int       `json:"rir,omitempty"`
 }
 
 type LiftSetView struct {
@@ -52,6 +101,8 @@ type LiftSetView struct {
 	E1RMKg            float64    `json:"e1rmKg"`
 	PerformedAt       time.Time  `json:"performedAt"`
 	ActivitySessionID *uuid.UUID `json:"activitySessionId,omitempty"`
+	Kind              string     `json:"kind"`
+	RIR               *int       `json:"rir,omitempty"`
 }
 
 type LiftLastExercise struct {
@@ -223,8 +274,17 @@ func ProjectSet(s Set) LiftSetView {
 	return LiftSetView{
 		ID: s.ID, ExerciseKey: s.Key(), ExerciseName: s.ExerciseName, ExerciseSlug: s.ExerciseSlug,
 		SetNumber: s.SetNumber, WeightKg: s.WeightKg, Reps: s.Reps, E1RMKg: util.RoundHalfUpToScale(s.E1RM(), 1),
-		PerformedAt: s.PerformedAt, ActivitySessionID: s.ActivitySessionID,
+		PerformedAt: s.PerformedAt, ActivitySessionID: s.ActivitySessionID, Kind: kindOrWork(s.Kind), RIR: s.RIR,
 	}
+}
+
+// kindOrWork names a set's kind on the wire. A set built in code without one
+// is a work set, as every set before kinds existed was.
+func kindOrWork(kind string) string {
+	if kind == "" {
+		return lift.KindWork
+	}
+	return kind
 }
 
 // ProjectLast answers in the order the keys were asked for, leaving out

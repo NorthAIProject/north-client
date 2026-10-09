@@ -274,6 +274,8 @@ func logLiftSet(svc *lifts.Service, userSvc *users.Service) Capability {
 		Reps      int     `json:"reps"`
 		Sets      int     `json:"sets"`
 		SetNumber int     `json:"set_number"`
+		Kind      string  `json:"kind"`
+		RIR       *int    `json:"rir"`
 	}
 	return Capability{
 		Tool: ai.Tool{
@@ -287,6 +289,8 @@ func logLiftSet(svc *lifts.Service, userSvc *users.Service) Capability {
 				"reps":       ai.Integer("reps in each set"),
 				"sets":       ai.Integer("how many sets at this weight and reps; defaults to 1"),
 				"set_number": ai.Integer("the number of the first set, when they said; optional"),
+				"kind":       ai.Enum("warmup for a warm-up set, drop for a drop set; work otherwise", lift.Kinds...),
+				"rir":        ai.Integer("reps in reserve when they said, 0 meaning to failure ('RPE 8' is 2); optional"),
 			}, "exercise", "weight_kg", "reps"),
 		},
 		Invoke: func(ctx context.Context, userID uuid.UUID, raw json.RawMessage) (string, error) {
@@ -309,9 +313,13 @@ func logLiftSet(svc *lifts.Service, userSvc *users.Service) Capability {
 			for i := range count {
 				if last, err = svc.Log(ctx, user, lifts.LogInput{
 					ExerciseName: in.Exercise, ExerciseSlug: in.Slug, SetNumber: number + i, WeightKg: in.WeightKg, Reps: in.Reps,
+					Kind: in.Kind, RIR: in.RIR,
 				}); err != nil {
 					return "", err
 				}
+			}
+			if !last.Counts() {
+				return fmt.Sprintf("Logged %d warm-up set(s) of %s: %.1f kg × %d.", count, last.ExerciseName, last.WeightKg, last.Reps), nil
 			}
 			return fmt.Sprintf("Logged %d set(s) of %s: %.1f kg × %d (est. 1RM %.1f kg).",
 				count, last.ExerciseName, last.WeightKg, last.Reps, util.RoundHalfUpToScale(last.E1RM(), 1)), nil

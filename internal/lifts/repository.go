@@ -31,6 +31,8 @@ func (r *Repository) Create(ctx context.Context, userID uuid.UUID, s Set) (Set, 
 		WeightKg:          s.WeightKg,
 		Reps:              int32(s.Reps),
 		PerformedAt:       s.PerformedAt,
+		Kind:              s.Kind,
+		Rir:               rirToDB(s.RIR),
 	})
 	if err != nil {
 		return Set{}, apperr.Wrap(err, "create set log")
@@ -103,5 +105,23 @@ func fromDB(row liftsdb.SetLog) Set {
 		WeightKg:          row.WeightKg,
 		Reps:              int(row.Reps),
 		PerformedAt:       row.PerformedAt,
+		Kind:              row.Kind,
+		RIR:               rirFromDB(row.Rir),
 	}
+}
+
+func rirToDB(rir *int) *int16 {
+	if rir == nil {
+		return nil
+	}
+	v := int16(*rir)
+	return &v
+}
+
+func rirFromDB(rir *int16) *int {
+	if rir == nil {
+		return nil
+	}
+	v := int(*rir)
+	return &v
 }

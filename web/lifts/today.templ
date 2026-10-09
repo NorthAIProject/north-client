@@ -1,0 +1,170 @@
+// Package lifts renders the web's set logger and the Hevy import page.
+package lifts
+
+import (
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
+	"github.com/NorthAIProject/north-client/web/shared/ui/input"
+	"github.com/NorthAIProject/north-client/web/shared/ui/label"
+	"github.com/NorthAIProject/north-client/web/shared/ui/radio"
+)
+
+// Today is the set logger: today's sets, and a form for the next one.
+type Today struct {
+	Sets []SetRow
+	// Recent are exercise names done lately, offered as the form's
+	// suggestions, most recent first.
+	Recent []string
+	// Form keeps what was typed, so the next set of the same exercise is one
+	// tap: the exercise, weight and reps stay filled in after logging.
+	Form  SetForm
+	Error string
+}
+
+// SetRow is one logged set as the list shows it.
+type SetRow struct {
+	ID       string
+	Exercise string
+	Load     string // "80 kg × 5"
+	Warmup   bool
+	Drop     bool
+	RIR      string // "2 in reserve", or empty
+}
+
+// SetForm is the form's values.
+type SetForm struct {
+	Exercise string
+	WeightKg string
+	Reps     string
+	Kind     string
+	RIR      string
+}
+
+// LoaderCard is the placeholder a page embeds; it loads TodayCard over HTMX
+// so the page that hosts it needs no lifting data of its own.
+templ LoaderCard() {
+	<div hx-get="/app/lifts/today" hx-trigger="load" hx-swap="outerHTML" data-testid="set-logger-loading"></div>
+}
+
+// TodayCard is swapped in whole after every log and undo.
+templ TodayCard(t Today) {
+	<section id="set-logger" class="mb-6" data-testid="set-logger">
+		@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+			@card.Header() {
+				<div class="flex items-baseline justify-between gap-3">
+					@card.Title(card.TitleProps{Class: "text-base"}) {
+						Log a set
+					}
+					<a href="/app/lifts/import" class="text-muted-foreground hover:text-foreground text-xs underline-offset-4 hover:underline">Import from Hevy</a>
+				</div>
+				@card.Description() {
+					Each set feeds your records, the muscle map and what the coach knows.
+				}
+			}
+			@card.Content(card.ContentProps{Class: "space-y-4"}) {
+				@setForm(t)
+				if len(t.Sets) > 0 {
+					@setList(t.Sets)
+				}
+			}
+		}
+	</section>
+}
+
+templ setForm(t Today) {
+	<form
+		hx-post="/app/lifts/sets"
+		hx-target="#set-logger"
+		hx-swap="outerHTML"
+		class="space-y-3"
+	>
+		@ui.CSRFInput()
+		<div class="space-y-1.5">
+			@label.Label(label.Props{For: "set-exercise"}) {
+				Exercise
+			}
+			@input.Input(input.Props{
+				ID: "set-exercise", Name: "exercise", Value: t.Form.Exercise, Placeholder: "Bench press", Required: true,
+				Attributes: templ.Attributes{"list": "set-exercise-recent", "autocomplete": "off", "maxlength": "120"},
+			})
+			<!-- Native datalist: suggestions without a combobox's script, and the
+			     input still takes any name. No templUI component covers it. -->
+			<datalist id="set-exercise-recent">
+				for _, name := range t.Recent {
+					<option value={ name }></option>
+				}
+			</datalist>
+		</div>
+		<div class="grid grid-cols-3 gap-2">
+			<div class="space-y-1.5">
+				@label.Label(label.Props{For: "set-weight"}) {
+					Kg
+				}
+				@input.Input(input.Props{ID: "set-weight", Name: "weight_kg", Type: input.TypeNumber, Value: t.Form.WeightKg, Placeholder: "0", Attributes: templ.Attributes{"step": "0.5", "min": "0", "max": "600", "inputmode": "decimal"}})
+			</div>
+			<div class="space-y-1.5">
+				@label.Label(label.Props{For: "set-reps"}) {
+					Reps
+				}
+				@input.Input(input.Props{ID: "set-reps", Name: "reps", Type: input.TypeNumber, Value: t.Form.Reps, Placeholder: "8", Required: true, Attributes: templ.Attributes{"min": "1", "max": "100", "inputmode": "numeric"}})
+			</div>
+			<div class="space-y-1.5">
+				@label.Label(label.Props{For: "set-rir"}) {
+					In reserve
+				}
+				@input.Input(input.Props{ID: "set-rir", Name: "rir", Type: input.TypeNumber, Value: t.Form.RIR, Placeholder: "—", Attributes: templ.Attributes{"min": "0", "max": "10", "inputmode": "numeric", "aria-describedby": "set-rir-help"}})
+			</div>
+		</div>
+		<p id="set-rir-help" class="text-muted-foreground text-xs">In reserve: reps you had left. 0 is to failure; leave it empty if unsure.</p>
+		<fieldset class="flex flex-wrap gap-4">
+			<legend class="sr-only">Kind of set</legend>
+			@kindOption("work", "Work", t.Form.Kind)
+			@kindOption("warmup", "Warm-up", t.Form.Kind)
+			@kindOption("drop", "Drop set", t.Form.Kind)
+		</fieldset>
+		if t.Error != "" {
+			<p class="text-destructive text-sm" role="alert">{ t.Error }</p>
+		}
+		@button.Button(button.Props{Type: button.TypeSubmit, Class: "w-full"}) {
+			Log set
+		}
+	</form>
+}
+
+templ kindOption(value, text, current string) {
+	<div class="flex items-center gap-2">
+		@radio.Radio(radio.Props{ID: "set-kind-" + value, Name: "kind", Value: value, Checked: value == current || (current == "" && value == "work")})
+		@label.Label(label.Props{For: "set-kind-" + value, Class: "text-sm font-normal"}) {
+			{ text }
+		}
+	</div>
+}
+
+templ setList(sets []SetRow) {
+	<ul class="divide-border divide-y" aria-label="Today's sets">
+		for _, s := range sets {
+			<li class={ "flex items-center justify-between gap-3 py-2 text-sm", templ.KV("text-muted-foreground", s.Warmup) }>
+				<span class="min-w-0 truncate">
+					<span class="font-medium">{ s.Exercise }</span>
+					<span class="tabular-nums"> · { s.Load }</span>
+					if s.Warmup {
+						<span class="font-mono text-[10px] tracking-[0.14em] uppercase"> · Warm-up</span>
+					} else if s.Drop {
+						<span class="font-mono text-[10px] tracking-[0.14em] uppercase"> · Drop</span>
+					}
+					if s.RIR != "" {
+						<span class="text-muted-foreground"> · { s.RIR }</span>
+					}
+				</span>
+				<form hx-post={ "/app/lifts/sets/" + s.ID + "/delete" } hx-target="#set-logger" hx-swap="outerHTML">
+					@ui.CSRFInput()
+					@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeIcon, Attributes: templ.Attributes{"aria-label": "Remove " + s.Exercise + " " + s.Load}}) {
+						@icon.Icon("x")(icon.Props{Class: "size-4"})
+					}
+				</form>
+			</li>
+		}
+	</ul>
+}

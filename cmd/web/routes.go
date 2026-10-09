@@ -432,7 +432,9 @@ func routes(
 	supplementSvc := supplements.NewService(supplements.NewRepository(pool))
 	screenTimeSvc := screentime.NewService(screentime.NewRepository(pool))
 	sorenessSvc := soreness.NewService(soreness.NewRepository(pool))
-	liftSvc := lifts.NewService(lifts.NewRepository(pool), exerciseSvc).WithRecaps(activitySvc, workoutSvc)
+	liftSvc := lifts.NewService(lifts.NewRepository(pool), exerciseSvc).
+		WithRecaps(activitySvc, workoutSvc).
+		WithImports(activitySvc, biometricSvc, exerciseSvc)
 	workoutHandler.WithRecaps(liftSvc).WithLoads(liftSvc)
 	milestoneSvc := milestones.NewService(milestones.NewRepository(pool))
 
@@ -1123,6 +1125,7 @@ func routes(
 				supplements.NewHandler(supplementSvc).Routes(r)
 				screentime.NewHandler(screenTimeSvc).Routes(r)
 				soreness.NewHandler(sorenessSvc).Routes(r)
+				lifts.NewHandler(liftSvc).Routes(r)
 				milestones.NewHandler(milestoneSvc).Routes(r)
 				health.NewWebHandler(healthSvc).Routes(r)
 				dashboardHandler.Routes(r)

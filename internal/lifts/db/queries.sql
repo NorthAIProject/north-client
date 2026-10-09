@@ -1,12 +1,12 @@
 -- name: CreateSetLog :one
 -- An activity session that is not the person's own is dropped rather than
 -- linked, so a set can never attach to somebody else's workout.
-INSERT INTO set_logs (user_id, activity_session_id, log_date, exercise_slug, exercise_name, set_number, weight_kg, reps, performed_at)
+INSERT INTO set_logs (user_id, activity_session_id, log_date, exercise_slug, exercise_name, set_number, weight_kg, reps, performed_at, kind, rir)
 VALUES (
     sqlc.arg(user_id),
     (SELECT a.id FROM activity_sessions a WHERE a.id = sqlc.narg(activity_session_id) AND a.user_id = sqlc.arg(user_id)),
     sqlc.arg(log_date), sqlc.arg(exercise_slug), sqlc.arg(exercise_name), sqlc.arg(set_number),
-    sqlc.arg(weight_kg), sqlc.arg(reps), sqlc.arg(performed_at)
+    sqlc.arg(weight_kg), sqlc.arg(reps), sqlc.arg(performed_at), sqlc.arg(kind), sqlc.narg(rir)
 )
 RETURNING *;
 
