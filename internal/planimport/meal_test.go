@@ -4,10 +4,12 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
 
+	"github.com/NorthAIProject/north-client/internal/meals"
 	"github.com/NorthAIProject/north-client/internal/meals/meal"
 )
 
@@ -126,5 +128,22 @@ func TestMealPlanFromDraftPromotesAnOptionWhenTheFirstIsEmpty(t *testing.T) {
 	}
 	if plan.mine[0].option != 0 || plan.mine[0].portion != 1 {
 		t.Fatalf("mine = %+v, want it to follow the promoted option", plan.mine)
+	}
+}
+
+// The meals service refuses an option label over its cap; a file's long one
+// is cut to fit rather than failing the whole import.
+func TestMealPlanFromDraftCutsALongOptionLabel(t *testing.T) {
+	t.Parallel()
+
+	d := everyDayDraft(meal.Easy)
+	d.Days[0].Meals[0].Alternatives[0].Label = strings.Repeat("ç", meals.MaxOptionLabelRunes+20)
+	plan, problems := mealPlanFromDraft(d)
+	if len(problems) > 0 {
+		t.Fatalf("problems = %q", problems)
+	}
+	got := plan.days[0].Meals[0].Alternatives[0].Label
+	if utf8.RuneCountInString(got) != meals.MaxOptionLabelRunes || !strings.HasSuffix(got, "…") {
+		t.Fatalf("label = %q (%d runes), want it cut to %d ending in …", got, utf8.RuneCountInString(got), meals.MaxOptionLabelRunes)
 	}
 }

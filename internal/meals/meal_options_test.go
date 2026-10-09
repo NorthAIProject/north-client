@@ -1,6 +1,7 @@
 package meals_test
 
 import (
+	"errors"
 	"slices"
 	"strings"
 	"testing"
@@ -101,10 +102,10 @@ func TestAddOptionAppendsAnEmptyAlternative(t *testing.T) {
 	if added.OptionIndex != 3 || added.OptionLabel != "Opção 3" || added.Name != "Almoço" || added.MealNumber != slot.MealNumber {
 		t.Fatalf("added = %+v", added)
 	}
-	// A blank label is the option's position, so no two options read alike.
+	// A blank label is the first "Option N" the slot does not use yet.
 	unlabelled, err := f.svc.AddOption(f.ctx, f.userID, plan.ID, slot.ID, "  ")
-	if err != nil || unlabelled.OptionLabel != "Option 4" {
-		t.Fatalf("unlabelled option = %+v, err = %v; want Option 4", unlabelled, err)
+	if err != nil || unlabelled.OptionLabel != "Option 2" {
+		t.Fatalf("unlabelled option = %+v, err = %v; want Option 2", unlabelled, err)
 	}
 	other := f.easyPlan(t, easyMid, 1)
 	if _, err := f.svc.AddOption(f.ctx, f.userID, other.ID, slot.ID, "Opção 4"); !apperr.Is(err, apperr.ErrNotFound) {
@@ -112,6 +113,54 @@ func TestAddOptionAppendsAnEmptyAlternative(t *testing.T) {
 	}
 	if got := f.reload(t, plan.ID).Days[0].Meals[0].Alternatives; len(got) != 3 || got[1].ID != added.ID {
 		t.Fatalf("alternatives = %+v", got)
+	}
+}
+
+// Removing a middle option frees its "Option N"; a blank add takes the first
+// free number rather than the slot's size, which would repeat "Option 3" and
+// have a logged "Option 3" land on either.
+func TestAddOptionTakesTheFirstFreeOptionNumber(t *testing.T) {
+	f := newPlanFixture(t, "options-free-number@north.test")
+	days := []meals.DayDraft{{Meals: []meals.MealDraft{{
+		Name:     "Almoço",
+		Portions: []meals.MealIngredientInput{{IngredientID: f.chicken.ID, QuantityGrams: 100}},
+		Alternatives: []meals.MealOptionDraft{
+			{Label: "Option 2", Portions: []meals.MealIngredientInput{{IngredientID: f.rice.ID, QuantityGrams: 100}}},
+			{Label: "OPTION 3", Portions: []meals.MealIngredientInput{{IngredientID: f.rice.ID, QuantityGrams: 150}}},
+		},
+	}}}}
+	plan, err := f.svc.CreatePlan(f.ctx, f.userID, meals.MealPlanInput{Name: "Free numbers", Settings: easyMid, DayCount: 1}, days, false)
+	if err != nil {
+		t.Fatalf("create plan: %v", err)
+	}
+	slot := plan.Days[0].Meals[0]
+	if err := f.svc.RemoveMeal(f.ctx, slot.Alternatives[0].ID, f.userID); err != nil {
+		t.Fatalf("remove option 2: %v", err)
+	}
+
+	added, err := f.svc.AddOption(f.ctx, f.userID, plan.ID, slot.ID, "")
+	if err != nil || added.OptionLabel != "Option 2" {
+		t.Fatalf("blank add = %+v, err = %v; want Option 2", added, err)
+	}
+	// "OPTION 3" is taken whatever its case, so the next is 4.
+	next, err := f.svc.AddOption(f.ctx, f.userID, plan.ID, slot.ID, "")
+	if err != nil || next.OptionLabel != "Option 4" {
+		t.Fatalf("second blank add = %+v, err = %v; want Option 4", next, err)
+	}
+}
+
+func TestAddOptionRefusesALabelOverTheCap(t *testing.T) {
+	f := newPlanFixture(t, "options-label-cap@north.test")
+	plan := f.lunchWithOption(t)
+	slot := plan.Days[0].Meals[0]
+
+	_, err := f.svc.AddOption(f.ctx, f.userID, plan.ID, slot.ID, strings.Repeat("ç", meals.MaxOptionLabelRunes+1))
+	var fields apperr.FieldErrors
+	if !errors.As(err, &fields) || len(fields) != 1 || fields[0].Field != "option_label" {
+		t.Fatalf("err = %v, want an option_label field error", err)
+	}
+	if _, err := f.svc.AddOption(f.ctx, f.userID, plan.ID, slot.ID, strings.Repeat("ç", meals.MaxOptionLabelRunes)); err != nil {
+		t.Fatalf("a label at the cap: %v", err)
 	}
 }
 
@@ -227,6 +276,7 @@ func TestApplyChangesRefusesAnOptionTheSlotLacks(t *testing.T) {
 		{Op: meals.OpRemoveOption, Meal: "almoço", Option: 1},
 		{Op: meals.OpRemoveOption, Meal: "almoço"},
 		{Op: meals.OpAddOption, Meal: "almoço"},
+		{Op: meals.OpAddOption, Meal: "almoço", OptionLabel: strings.Repeat("x", meals.MaxOptionLabelRunes+1)},
 		{Op: meals.OpRemoveMeal, Meal: "almoço", Option: 2},
 	} {
 		if _, _, err := f.svc.ApplyChanges(f.ctx, plan.ID, f.userID, []meals.PlanChange{c}, false); !apperr.Is(err, apperr.ErrValidation) {

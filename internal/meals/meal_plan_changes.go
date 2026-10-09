@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 
@@ -189,6 +190,9 @@ func validatePlanChange(c PlanChange) error {
 	case OpAddOption:
 		if c.OptionLabel == "" {
 			return invalid("give the new option a label")
+		}
+		if utf8.RuneCountInString(c.OptionLabel) > MaxOptionLabelRunes {
+			return invalid("keep the option label to %d characters", MaxOptionLabelRunes)
 		}
 	case OpRemoveOption:
 		if c.Option < 2 {
