@@ -1,0 +1,80 @@
+{
+  "id": "33333333-bbbb-bbbb-bbbb-333333333333",
+  "name": "Plano do nutricionista",
+  "description": "",
+  "planType": "mid_carb",
+  "mode": "easy",
+  "dayCount": 1,
+  "totalMacros": {
+    "calories": 165,
+    "proteinG": 31,
+    "fatG": 3.6,
+    "carbG": 0
+  },
+  "objective": "",
+  "activityLevel": "",
+  "gender": "",
+  "notes": "Beber 2 L de água por dia.",
+  "days": [
+    {
+      "id": "66666666-bbbb-bbbb-bbbb-666666666666",
+      "weekday": 1,
+      "meals": [
+        {
+          "id": "44444444-bbbb-bbbb-bbbb-444444444444",
+          "mealNumber": 1,
+          "name": "Almoço",
+          "optionLabel": "Opção 1",
+          "totalMacros": {
+            "calories": 165,
+            "proteinG": 31,
+            "fatG": 3.6,
+            "carbG": 0
+          },
+          "ingredients": [
+            {
+              "id": "55555555-bbbb-bbbb-bbbb-555555555555",
+              "ingredientId": "11111111-bbbb-bbbb-bbbb-111111111111",
+              "name": "Chicken breast",
+              "quantityGrams": 100,
+              "macros": {
+                "calories": 165,
+                "proteinG": 31,
+                "fatG": 3.6,
+                "carbG": 0
+              }
+            }
+          ],
+          "alternatives": [
+            {
+              "id": "44444444-cccc-cccc-cccc-444444444444",
+              "optionLabel": "Opção 2",
+              "totalMacros": {
+                "calories": 206,
+                "proteinG": 44,
+                "fatG": 2,
+                "carbG": 0
+              },
+              "ingredients": [
+                {
+                  "id": "55555555-cccc-cccc-cccc-555555555555",
+                  "ingredientId": "22222222-bbbb-bbbb-bbbb-222222222222",
+                  "name": "Cod",
+                  "quantityGrams": 250,
+                  "macros": {
+                    "calories": 206,
+                    "proteinG": 44,
+                    "fatG": 2,
+                    "carbG": 0
+                  },
+                  "sourceText": "peixe branco à vontade",
+                  "estimated": true
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
