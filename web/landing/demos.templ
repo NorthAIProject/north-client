@@ -3,6 +3,8 @@ package landing
 import (
 	"fmt"
 
+	"github.com/NorthAIProject/north-client/internal/bodymap"
+
 	"github.com/NorthAIProject/north-client/web/shared/ui/aspectratio"
 	"github.com/NorthAIProject/north-client/web/shared/ui/badge"
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
@@ -209,7 +211,7 @@ templ heatKey(name string, swatch string) {
 }
 
 templ muscleRow(m muscleLoad) {
-	<li data-north-muscle={ m.Key } data-north-share={ fmt.Sprintf("%d", m.Share) } data-north-role={ m.Role }>
+	<li data-north-muscle={ figureRegion(m.Key) } data-north-share={ fmt.Sprintf("%d", m.Share) } data-north-role={ m.Role }>
 		<div class="flex items-baseline justify-between gap-4">
 			<span class="text-sm">{ m.Group }</span>
 			<span class="font-mono text-[11px] tabular-nums text-muted-foreground">{ fmt.Sprintf("%d%%", m.Share) }</span>
@@ -634,4 +636,13 @@ templ equipmentToggle(key string, name string, checked bool) {
 			{ name }
 		}
 	</div>
+}
+
+// figureRegion is the body figure region a muscle shows on: rhomboids light
+// the upper back, which is the skin over them.
+func figureRegion(muscle string) string {
+	if region, ok := bodymap.RegionOf(muscle); ok {
+		return region
+	}
+	return muscle
 }

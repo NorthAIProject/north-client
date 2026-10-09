@@ -11,10 +11,9 @@ import (
 // comment describes a two-file sync checklist; these tests are what stops the
 // checklist from being the only thing enforcing it.
 //
-// The tables used to live in viewer.js and moved here when the asset build
-// started reading them too — tools/model/build-body.mjs decides which meshes go
-// into body.glb from this same list, so the model and the code that reads it
-// cannot disagree.
+// The tables live apart from viewer.js because the asset builds read them too:
+// tools/model/build-body.mjs keeps these atlas meshes, and scripts/bodymap
+// turns them into the figure's skin regions.
 const musclesJS = "../../../web/assets/js/shared/muscle-viewer/muscles.js"
 
 func TestEveryMuscleGroupIsKnownToTheViewer(t *testing.T) {
@@ -26,7 +25,7 @@ func TestEveryMuscleGroupIsKnownToTheViewer(t *testing.T) {
 
 	for _, key := range MuscleGroups {
 		if !aliases[key] {
-			t.Errorf("%q is in MuscleGroups but has no MUSCLE_ALIASES entry — the viewer can never colour it", key)
+			t.Errorf("%q is in MuscleGroups but has no MUSCLE_ALIASES entry — the figure has no skin for it", key)
 		}
 		if !info[key] {
 			t.Errorf("%q is in MuscleGroups but has no MUSCLE_INFO entry — clicking it shows nothing", key)
@@ -38,23 +37,6 @@ func TestEveryMuscleGroupIsKnownToTheViewer(t *testing.T) {
 	for key := range aliases {
 		if !IsMuscleGroup(key) {
 			t.Errorf("MUSCLE_ALIASES has %q, which is not in MuscleGroups — the AI schema can never produce it", key)
-		}
-	}
-}
-
-func TestUnmodelledGroupsAreCanonicalAndHaveNoMeshes(t *testing.T) {
-	t.Parallel()
-
-	source := readMuscleTables(t)
-
-	for _, key := range UnmodelledGroups {
-		if !IsMuscleGroup(key) {
-			t.Errorf("%q is listed as unmodelled but is not a MuscleGroups key", key)
-		}
-		// An unmodelled key with meshes is a stale entry: it means the model
-		// gained the mesh and nobody removed the apology the UI still shows.
-		if got := aliasCount(t, source, key); got != 0 {
-			t.Errorf("%q is listed as unmodelled but MUSCLE_ALIASES gives it %d mesh name(s) — drop it from UnmodelledGroups", key, got)
 		}
 	}
 }
@@ -141,9 +123,4 @@ func aliasesFor(t *testing.T, source, key string) []string {
 		names = append(names, match[1])
 	}
 	return names
-}
-
-func aliasCount(t *testing.T, source, key string) int {
-	t.Helper()
-	return len(aliasesFor(t, source, key))
 }

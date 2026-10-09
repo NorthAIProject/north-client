@@ -569,7 +569,7 @@ func routes(
 		Preferences:   preferencesSvc,
 		CheckInTotals: checkinSvc,
 	})
-	dayHandler := day.NewHandler(daySvc)
+	dayHandler := day.NewHandler(daySvc).WithBodyMaps(liftSvc)
 
 	// Insights reuses the dashboard's timeline rather than reimplementing the
 	// merge across eight slices. Two copies of that would drift.

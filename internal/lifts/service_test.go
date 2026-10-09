@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/NorthAIProject/north-client/internal/bodymap"
 	"github.com/NorthAIProject/north-client/internal/exercises"
 	"github.com/NorthAIProject/north-client/internal/lifts"
 	"github.com/NorthAIProject/north-client/internal/lifts/lift"
@@ -127,6 +128,49 @@ func TestReadinessReadsMusclesFromTheCatalog(t *testing.T) {
 	}
 	if load.Unmapped != 1 {
 		t.Errorf("unmapped = %d, want the typed-in set", load.Unmapped)
+	}
+}
+
+func TestBodyMapHeatsTheSquatsMuscles(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	user, err := users.NewService(users.NewRepository(pool)).Register(ctx, users.Registration{
+		Email: "bodymap@example.com", PasswordHash: "$2a$12$notarealhashbutthatisfineheretestonly", DisplayName: "B", Timezone: "UTC",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc := lifts.NewService(lifts.NewRepository(pool), catalog{
+		"barbell-squat": {Slug: "barbell-squat", Primary: []string{"quads", "glutes"}, Secondary: []string{"hamstrings"}},
+	})
+
+	empty, err := svc.BodyMap(ctx, user, 7)
+	if err != nil || !empty.LastSession.IsZero() || len(empty.Regions) != len(bodymap.Regions) {
+		t.Fatalf("no sets: map = %+v, err = %v", empty, err)
+	}
+
+	yesterday := time.Now().AddDate(0, 0, -1)
+	if _, err = svc.Log(ctx, user, lifts.LogInput{ExerciseName: "Squat", ExerciseSlug: "barbell-squat", SetNumber: 1, WeightKg: 100, Reps: 5, PerformedAt: &yesterday}); err != nil {
+		t.Fatal(err)
+	}
+
+	m, err := svc.BodyMap(ctx, user, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	heat := map[string]float64{}
+	for _, r := range m.Regions {
+		heat[r.Region] = r.Intensity
+	}
+	if heat["quads"] <= 0 || heat["glutes"] != heat["quads"] || heat["hamstrings"] <= 0 || heat["hamstrings"] >= heat["quads"] {
+		t.Errorf("heat = %v, want quads = glutes > hamstrings > 0", heat)
+	}
+	if heat["chest"] != 0 {
+		t.Errorf("chest = %v, want untouched", heat["chest"])
+	}
+
+	if _, err = svc.BodyMap(ctx, user, 0); err == nil {
+		t.Error("days = 0 was accepted")
 	}
 }
 
