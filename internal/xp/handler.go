@@ -4,10 +4,13 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/NorthAIProject/north-client/internal/achievements"
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	lbpages "github.com/NorthAIProject/north-client/web/leaderboard"
@@ -35,11 +38,24 @@ var boards = map[string][2]string{
 
 // kindLabels say what each kind pays for, rules included.
 var kindLabels = map[string]string{
-	KindWorkout:   fmt.Sprintf("Workouts of %d min or more (up to %d a day)", WorkoutMinMinutes, WorkoutsPaidPerDay),
-	KindHabitKept: "Habits kept on their days",
-	KindStreakDay: fmt.Sprintf("Check-in streak days (from day %d)", StreakDayFrom),
-	KindMilestone: "Milestones reached",
-	KindGoal:      "Goals achieved",
+	KindWorkout:      fmt.Sprintf("Workouts of %d min or more (up to %d a day)", WorkoutMinMinutes, WorkoutsPaidPerDay),
+	KindHabitKept:    "Habits kept on their days",
+	KindStreakDay:    fmt.Sprintf("Check-in streak days (from day %d)", StreakDayFrom),
+	KindMilestone:    "Milestones reached",
+	KindGoal:         "Goals achieved",
+	KindStreakMark:   "Check-in streaks reaching " + markList() + " days",
+	KindWeekReviewed: "Weekly reviews done",
+	KindChallengeMet: "Crew challenges met",
+}
+
+// markList is the streak marks as a sentence: "7, 30, 100 or 365".
+func markList() string {
+	marks := make([]string, 0, len(achievements.StreakMarks))
+	for _, m := range achievements.StreakMarks {
+		marks = append(marks, strconv.Itoa(m))
+	}
+	last := len(marks) - 1
+	return strings.Join(marks[:last], ", ") + " or " + marks[last]
 }
 
 // switchLabels name the sharing switch each metric needs, as the Friends page

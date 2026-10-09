@@ -117,6 +117,20 @@ func (s *Service) AreaStreak(ctx context.Context, userID uuid.UUID, area, label 
 		fmt.Sprintf("%s on track %d weeks running", label, weeks), "", at)
 }
 
+// CrewChallengeMet records a crew's weekly challenge met by one member, once
+// per member, crew and week. It sits with what the challenge counted: check-ins
+// are a streak, workouts are training.
+func (s *Service) CrewChallengeMet(ctx context.Context, userID, crewID uuid.UUID, crewName, kind string, target int, weekStart, at time.Time) {
+	category, unit := achievement.CategoryStreaks, "check-ins"
+	if kind == "workouts" {
+		category, unit = achievement.CategoryTraining, "workouts"
+	}
+	s.record(ctx, userID, category, achievement.KindCrewChallengeMet,
+		fmt.Sprintf("crew:%s:%s", crewID, weekStart.Format("2006-01-02")),
+		"Met the "+crewName+" challenge",
+		fmt.Sprintf("%d %s in the week of %s", target, unit, weekStart.Format("2 Jan")), at)
+}
+
 // Feed is the viewer's own achievements and those friends share with them,
 // newest first, before the cursor (zero time means now).
 func (s *Service) Feed(ctx context.Context, viewerID uuid.UUID, before time.Time) ([]Item, error) {

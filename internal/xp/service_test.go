@@ -137,6 +137,57 @@ func TestSummaryCountsOnlyWhatTheRulesPay(t *testing.T) {
 	}
 }
 
+// A weekly review, a streak reaching a mark, and a crew challenge met each
+// pay, in the week they happen and all time.
+func TestSummaryPaysReviewsStreakMarksAndChallenges(t *testing.T) {
+	t.Parallel()
+	pool := testdb.New(t)
+	ctx := context.Background()
+	ana := person(t, pool, "ana@example.com", "Ana")
+	tue := time.Date(2026, 9, 29, 9, 0, 0, 0, time.UTC)
+
+	// Reviews: one saved this week, one the week before. The week a review
+	// plans does not matter; when it was done does.
+	exec(t, pool, `INSERT INTO weekly_focus (user_id, week_start, reviewed_at) VALUES ($1, '2026-10-05', $2)`, ana.ID, tue)
+	exec(t, pool, `INSERT INTO weekly_focus (user_id, week_start, reviewed_at) VALUES ($1, '2026-09-28', $2)`, ana.ID, tue.AddDate(0, 0, -7))
+
+	// Check-ins Wednesday 23 to Tuesday 29 September: the seventh day of the
+	// run, a mark, falls this week. Nothing reaches thirty.
+	for d := time.Date(2026, 9, 23, 0, 0, 0, 0, time.UTC); !d.After(tue); d = d.AddDate(0, 0, 1) {
+		exec(t, pool, `INSERT INTO check_ins (user_id, local_date, mood, energy) VALUES ($1, $2, 3, 3)`, ana.ID, d.Format(time.DateOnly))
+	}
+
+	// A crew challenge closed on Monday morning.
+	exec(t, pool, `INSERT INTO achievements (user_id, category, kind, title, occurred_at, source_key)
+		VALUES ($1, 'training', 'crew_challenge_met', 'Met the Runners challenge', $2, 'crew:x:2026-09-21')`,
+		ana.ID, time.Date(2026, 9, 28, 7, 30, 0, 0, time.UTC))
+
+	s, err := newService(pool).Summary(ctx, ana, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	week := map[string]int{}
+	for _, e := range s.Week {
+		week[e.Kind] = e.Count
+	}
+	want := map[string]int{xp.KindWeekReviewed: 1, xp.KindStreakMark: 1, xp.KindChallengeMet: 1}
+	for kind, n := range want {
+		if week[kind] != n {
+			t.Errorf("week %s = %d, want %d", kind, week[kind], n)
+		}
+	}
+	// Streak days are days 3 to 7 of the run, and Monday and Tuesday of those
+	// are this week.
+	wantWeek := xp.PointsWeekReviewed + xp.PointsStreakMark + xp.PointsChallengeMet + 2*xp.PointsStreakDay
+	if s.WeekTotal != wantWeek {
+		t.Errorf("week total = %d, want %d", s.WeekTotal, wantWeek)
+	}
+	wantAll := 2*xp.PointsWeekReviewed + xp.PointsStreakMark + xp.PointsChallengeMet + 5*xp.PointsStreakDay
+	if s.Total != wantAll {
+		t.Errorf("total = %d, want %d", s.Total, wantAll)
+	}
+}
+
 // The board holds the viewer and the friends who share that metric; somebody
 // who does not share, or is blocked, is not on it.
 func TestBoardShowsOnlyFriendsWhoShare(t *testing.T) {

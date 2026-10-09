@@ -30,6 +30,50 @@ func (q *Queries) AddMember(ctx context.Context, arg AddMemberParams) (int64, er
 	return result.RowsAffected(), nil
 }
 
+const challengesOf = `-- name: ChallengesOf :many
+SELECT c.id, c.name, ch.kind, ch.target, ch.created_at
+FROM crew_members m
+JOIN crews c ON c.id = m.crew_id
+JOIN crew_challenges ch ON ch.crew_id = c.id
+WHERE m.user_id = $1
+ORDER BY c.created_at
+`
+
+type ChallengesOfRow struct {
+	ID        uuid.UUID
+	Name      string
+	Kind      string
+	Target    int16
+	CreatedAt time.Time
+}
+
+// The user's crews that have a challenge, with it and when it was last set.
+func (q *Queries) ChallengesOf(ctx context.Context, userID uuid.UUID) ([]ChallengesOfRow, error) {
+	rows, err := q.db.Query(ctx, challengesOf, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ChallengesOfRow{}
+	for rows.Next() {
+		var i ChallengesOfRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Kind,
+			&i.Target,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const clearChallenge = `-- name: ClearChallenge :exec
 DELETE FROM crew_challenges WHERE crew_id = $1
 `

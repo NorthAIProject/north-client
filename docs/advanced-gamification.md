@@ -210,6 +210,30 @@ owner asked for Norviq's leaderboards and gamification. Built in
 - **Not built:** daily goal ring, rest days, badges, the per-account switch
   and cohort rollout, analytics events.
 
+**Update, 2026-10-08 — effort that was not paying.** A gap review against
+Norviq found three kinds of real effort that earned nothing. All three are
+still derived on read, and none adds a table:
+
+| Kind | Counted from | XP | Cap |
+|---|---|---|---|
+| `week_reviewed` | `weekly_focus.reviewed_at` | 25 | one per planned week; the server picks the week, so old weeks cannot be filed to farm it |
+| `streak_mark` | the check-in run reaching 7, 30, 100 or 365 days (`achievements.StreakMarks`) | 50 | once per mark per run; a run that breaks and comes back pays again, because the days were done again |
+| `challenge_met` | `achievements` rows of kind `crew_challenge_met` | 30 | one per crew per week |
+
+A crew's challenge used to repeat with no result. `crews.ChallengeSweeper`
+now closes each crew's week on the member's Monday morning (07:00–09:00 local,
+the same window as area streaks) and records `crew_challenge_met` for each
+member who reached the target. A challenge set after the week ended does not
+count for it. The moment is filed under what it counted: check-ins under
+streaks, workouts under training, so it is shared only by those switches.
+
+`GET /xp` keeps `week[]` to the first five kinds, because shipped iOS builds
+decode its `kind` as a closed enum and a new value would fail the whole
+response. Every kind is in `earned[]`, whose `kind` is open-ended.
+
+Still not copied from Norviq: ranking by portfolio return (a wealth metric),
+and XP for pressing a check-in button.
+
 ---
 
 ## Schema sketch
@@ -349,9 +373,10 @@ each is a way the mechanics above become the thing they were built not to be.
 - Merging the check-in streak into the daily-goal streak.
 - Storing a total or a level.
 - Retroactive awards.
-- A leaderboard with another person's name on it. (Friends and kudos are
-  fine; ranking people against each other is still out — see the update
-  under "Leagues, friends, leaderboards".)
+- A leaderboard of strangers, or one that ranks money, body numbers or
+  anything but effort. (Since 2026-10-02 friends who opt in are ranked by XP,
+  streaks and workouts; see the updates under "Leagues, friends,
+  leaderboards".)
 - Any mechanic that makes a missed rest day, a paused goal, or an abandoned
   goal read as a failure. The product exists for month eight; people who get
   there have paused and abandoned things.
