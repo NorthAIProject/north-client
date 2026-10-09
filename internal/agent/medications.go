@@ -143,9 +143,9 @@ func updateMedication(svc *medications.Service, userSvc *users.Service) Capabili
 			}
 			patch := medications.Patch{Name: in.NewName, Dose: in.Dose, Times: in.Times, Remind: in.Remind}
 			if in.Days != nil {
-				days, err := medicationDays(*in.Days)
-				if err != nil {
-					return "", err
+				days, daysErr := medicationDays(*in.Days)
+				if daysErr != nil {
+					return "", daysErr
 				}
 				patch.Days = &days
 			}

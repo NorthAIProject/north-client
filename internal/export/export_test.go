@@ -84,7 +84,7 @@ func TestExportCarriesEverythingAPersonPutIn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := medSvc.LogDose(ctx, user, med.ID, "", nil); err != nil {
+	if _, err = medSvc.LogDose(ctx, user, med.ID, "", nil); err != nil {
 		t.Fatal(err)
 	}
 

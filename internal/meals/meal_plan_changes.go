@@ -48,11 +48,6 @@ var PlanChangeOps = []PlanChangeOp{OpAddMeal, OpRemoveMeal, OpAddFood, OpRemoveF
 
 func (o PlanChangeOp) Valid() bool { return slices.Contains(PlanChangeOps, o) }
 
-// usesFood reports whether the op names a food within the meal.
-func (o PlanChangeOp) usesFood() bool {
-	return o == OpAddFood || o == OpRemoveFood || o == OpSetGrams
-}
-
 // PlanChange is one edit to a plan's meals.
 type PlanChange struct {
 	Op PlanChangeOp
@@ -105,22 +100,22 @@ func (s *MealPlanService) ApplyChanges(ctx context.Context, planID, userID uuid.
 	err = s.repo.WithPlanLocked(ctx, planID, userID, func(tx *PlanTx, plan MealPlan) error {
 		// The lock-time plan has no ingredients, and is the "before" the
 		// overage rule compares against; this copy is edited as we go.
-		working, err := tx.Plan(ctx, planID, userID, true)
-		if err != nil {
-			return err
+		working, planErr := tx.Plan(ctx, planID, userID, true)
+		if planErr != nil {
+			return planErr
 		}
 		ed := planEditor{tx: tx, plan: &working, foods: foods}
 		for i, c := range changes {
-			done, err := ed.apply(ctx, c)
-			if err != nil {
-				return apperr.Wrap(err, "change %d (%s)", i+1, c.Op)
+			done, applyErr := ed.apply(ctx, c)
+			if applyErr != nil {
+				return apperr.Wrap(applyErr, "change %d (%s)", i+1, c.Op)
 			}
 			applied = append(applied, done)
 		}
 
-		after, err := tx.Plan(ctx, planID, userID, false)
-		if err != nil {
-			return err
+		after, afterErr := tx.Plan(ctx, planID, userID, false)
+		if afterErr != nil {
+			return afterErr
 		}
 		return checkOverage(active, plan, after.State(), false, confirm)
 	})
@@ -306,7 +301,7 @@ func (ed planEditor) applyToDay(ctx context.Context, day *meal.Day, c PlanChange
 
 	switch c.Op {
 	case OpRemoveMeal:
-		if err := ed.tx.RemoveMeal(ctx, planID, m.ID); err != nil {
+		if err = ed.tx.RemoveMeal(ctx, planID, m.ID); err != nil {
 			return dayResult{}, err
 		}
 		name := m.Name
@@ -315,10 +310,10 @@ func (ed planEditor) applyToDay(ctx context.Context, day *meal.Day, c PlanChange
 
 	case OpAddFood:
 		ingredient := ed.foods[c.IngredientID]
-		added, err := ed.tx.AddPortions(ctx, planID, m.ID, []NewPortion{{
+		added, addErr := ed.tx.AddPortions(ctx, planID, m.ID, []NewPortion{{
 			IngredientID: ingredient.ID, QuantityGrams: c.Grams, Macros: ingredient.MacrosFor(c.Grams),
 		}})
-		if err != nil {
+		if addErr != nil {
 			return dayResult{}, err
 		}
 		added[0].IngredientName = ingredient.Name
