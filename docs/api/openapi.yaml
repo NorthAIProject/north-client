@@ -318,6 +318,45 @@ paths:
           $ref: '#/components/responses/ValidationError'
         '429':
           $ref: '#/components/responses/RateLimited'
+  /conversations/{id}/attachments:
+    parameters:
+      - $ref: '#/components/parameters/ConversationID'
+    post:
+      operationId: uploadChatAttachment
+      summary: Upload a photo or document for the next reply to carry
+      description: |
+        Stores the file and answers with its reference. Send its `mediaId` on
+        replyInConversation: a photo is shown to the coach, a document (PDF,
+        DOCX, XLSX, CSV, TSV, TXT, MD or JSON) is read into the turn as text.
+        The extension is matched without regard to case and the bytes must
+        agree with it. Spends no message quota; the reply does.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: A photo or document up to 8 MB.
+      responses:
+        '201':
+          description: Stored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatAttachment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '#/components/responses/ContentTooLarge'
+        '422':
+          $ref: '#/components/responses/ValidationError'
   /conversations/{id}/resume:
     parameters:
       - $ref: '#/components/parameters/ConversationID'
@@ -8700,6 +8739,9 @@ components:
           format: uuid
         kind:
           type: string
+          description: >-
+            "image" or "file" today. An open string, not an enum: treat any
+            other value as a file.
         mimeType:
           type: string
         name:
@@ -8732,6 +8774,7 @@ components:
         mediaId:
           type: string
           format: uuid
+          description: A photo or document from uploadChatAttachment.
         begin:
           type: boolean
           description: Open a new reflection with the coach's first question.

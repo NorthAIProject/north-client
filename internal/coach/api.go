@@ -50,6 +50,12 @@ func (a *API) Routes(r chi.Router) {
 	r.Put("/conversations/{id}/messages/{messageID}/helpful", a.rate)
 }
 
+// UploadRoutes are the routes that take a file; mount them in the upload
+// group, whose body cap fits one.
+func (a *API) UploadRoutes(r chi.Router) {
+	r.Post("/conversations/{id}/attachments", a.uploadAttachment)
+}
+
 // ConversationSummary is a row in the conversation list.
 type ConversationSummary struct {
 	ID        uuid.UUID `json:"id"`
@@ -116,7 +122,8 @@ type StartRequest struct {
 
 type ReplyRequest struct {
 	Text string `json:"text"`
-	// MediaID is a photo or document already uploaded to this account.
+	// MediaID is a photo or document already uploaded to this account, by
+	// POST /conversations/{id}/attachments.
 	MediaID *uuid.UUID `json:"mediaId,omitempty"`
 	// Begin asks a new reflection to open with the coach's first question
 	// instead of answering a message.
@@ -291,6 +298,58 @@ func (a *API) reply(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.relay(w, r, conversation.ID, stream)
+}
+
+// uploadAttachment stores a photo or document for the next reply to carry, and
+// answers with its reference: send it as mediaId on replyInConversation.
+//
+// It spends no quota. Nothing reaches a model here; the reply that carries the
+// file is what costs a message.
+func (a *API) uploadAttachment(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+	id, ok := pathID(w, r, "id")
+	if !ok {
+		return
+	}
+	if _, err := a.svc.Conversations().Get(r.Context(), id, user.ID); err != nil {
+		httpx.Error(w, err, "That conversation was not found.")
+		return
+	}
+	if a.media == nil {
+		httpx.Error(w, apperr.ErrUnavailable, "Attachments are not available right now.")
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxChatUpload)
+	if err := r.ParseMultipartForm(maxChatUpload); err != nil {
+		var tooBig *http.MaxBytesError
+		if apperr.As(err, &tooBig) {
+			httpx.Error(w, httpx.ErrTooLarge, "That file is larger than 8 MB.")
+			return
+		}
+		httpx.Error(w, apperr.FieldErrors{}.Add("file", "That upload could not be read."), "That upload could not be read.")
+		return
+	}
+	defer func() { _ = r.MultipartForm.RemoveAll() }()
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		httpx.Error(w, apperr.FieldErrors{}.Add("file", "Choose a file first."), "Choose a file first.")
+		return
+	}
+	defer func() { _ = file.Close() }()
+
+	stored, err := a.media.StoreChatAttachment(r.Context(), user.ID, header.Filename, header.Size, file)
+	if err != nil {
+		var fields apperr.FieldErrors
+		if apperr.As(err, &fields) && len(fields) > 0 {
+			httpx.Error(w, err, fields[0].Message)
+			return
+		}
+		httpx.Error(w, err, "That file could not be stored.")
+		return
+	}
+	httpx.WriteJSON(w, http.StatusCreated, projectAttachment(stored))
 }
 
 // resume streams the rest of a reply whose turn stopped for approval. It spends
