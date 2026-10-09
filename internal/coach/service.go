@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/FACorreiaa/go-utils/pkg/util"
@@ -134,6 +135,12 @@ type Service struct {
 	// finished: on every channel, since they are not looking at the thread.
 	// Nil disables it.
 	away Inbox
+
+	// resolving holds the conversations whose approval is being run right
+	// now, so a second tap on Allow cannot run the same write twice. In
+	// memory because khepri-web runs one replica; a second one needs a lock
+	// in the database instead.
+	resolving sync.Map
 
 	model     string
 	fastModel string

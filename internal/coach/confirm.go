@@ -105,6 +105,14 @@ func (s *Service) latestTurn(ctx context.Context, conversationID uuid.UUID) ([]c
 // the model gets a turn to answer, because a person who says no is owed an
 // acknowledgement rather than silence.
 func (s *Service) ResolvePending(ctx context.Context, user users.User, conversationID, messageID uuid.UUID, approve bool) error {
+	// Taken before the pending check: until the results are written the turn
+	// still reads as pending, so a second tap would pass that check and run
+	// the write again.
+	if _, busy := s.resolving.LoadOrStore(conversationID, struct{}{}); busy {
+		return apperr.Wrap(apperr.ErrConflict, "this approval is already being resolved")
+	}
+	defer s.resolving.Delete(conversationID)
+
 	pending, ok, err := s.PendingApproval(ctx, user, conversationID)
 	if err != nil {
 		return err
@@ -122,6 +130,13 @@ func (s *Service) ResolvePending(ctx context.Context, user users.User, conversat
 	if messageID != uuid.Nil && messageID != pending.MessageID {
 		return apperr.Wrap(apperr.ErrConflict, "this approval is for a turn that has already moved on")
 	}
+
+	// Detached from the caller. A write such as a new training plan takes
+	// minutes, longer than a phone waits; if hanging up cancelled it, the
+	// write would stop half done, the result would go unrecorded and the turn
+	// would wait for approval forever.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), generationTimeout)
+	defer cancel()
 
 	results := make([]ai.ToolResult, 0, len(pending.Calls))
 	if approve {
