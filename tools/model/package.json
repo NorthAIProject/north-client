@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Build pipeline for web/assets/models/body.glb. Not part of the Go build or the deployed application.",
+  "description": "Build pipeline for tools/model/body-source.glb, the input to scripts/bodymap. Not part of the Go build or the deployed application.",
   "scripts": {
     "build-body": "node build-body.mjs"
   },

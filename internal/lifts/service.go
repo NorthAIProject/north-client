@@ -2,6 +2,7 @@ package lifts
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"sort"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/NorthAIProject/north-client/internal/bodymap"
 	"github.com/NorthAIProject/north-client/internal/exercises"
 	"github.com/NorthAIProject/north-client/internal/lifts/lift"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
@@ -273,20 +275,47 @@ func (s *Service) catalog(ctx context.Context, sets []Set) (map[string]exercises
 // Readiness is how fatigued or detrained each muscle is now, from a year of
 // sets — far enough back to notice a muscle left alone for months.
 func (s *Service) Readiness(ctx context.Context, user users.User) (lift.Load, error) {
-	now := s.now().In(user.Location())
-	sets, err := s.repo.ListBetween(ctx, user.ID, now.Add(-history), now.Add(time.Minute))
+	sets, weights, now, err := s.yearOfSets(ctx, user)
 	if err != nil {
 		return lift.Load{}, err
 	}
+	return lift.LoadOf(sets, weights, now), nil
+}
+
+// BodyMapMaxDays bounds how far back the body figure's heat may look.
+const BodyMapMaxDays = 28
+
+// BodyMap is the body figure: which regions the last days of training heated,
+// and when each was last trained. A year of sets is read so that a muscle
+// left alone for months still knows when it was last worked.
+func (s *Service) BodyMap(ctx context.Context, user users.User, days int) (bodymap.Map, error) {
+	if days < 1 || days > BodyMapMaxDays {
+		return bodymap.Map{}, apperr.FieldErrors{}.Add("days", fmt.Sprintf("Use a number of days from 1 to %d.", BodyMapMaxDays))
+	}
+	sets, weights, now, err := s.yearOfSets(ctx, user)
+	if err != nil {
+		return bodymap.Map{}, err
+	}
+	return bodymap.FromHeat(lift.HeatOf(sets, weights, now, user.Location(), days)), nil
+}
+
+// yearOfSets is the person's sets from the last year, the catalog muscle
+// weights of the exercises in them, and the moment they were read at.
+func (s *Service) yearOfSets(ctx context.Context, user users.User) ([]Set, lift.Weights, time.Time, error) {
+	now := s.now().In(user.Location())
+	sets, err := s.repo.ListBetween(ctx, user.ID, now.Add(-history), now.Add(time.Minute))
+	if err != nil {
+		return nil, nil, now, err
+	}
 	catalog, err := s.catalog(ctx, sets)
 	if err != nil {
-		return lift.Load{}, err
+		return nil, nil, now, err
 	}
 	weights := make(lift.Weights, len(catalog))
 	for slug, e := range catalog {
 		weights[slug] = lift.MuscleWeights(e.Primary, e.Secondary)
 	}
-	return lift.LoadOf(sets, weights, now), nil
+	return sets, weights, now, nil
 }
 
 // Recent is the last fortnight, for the coach.

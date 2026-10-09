@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Builds web/assets/models/body.glb from its two source assets.
+ * Builds tools/model/body-source.glb from its two source assets; scripts/bodymap
+ * turns that into the figure the apps draw.
  *
  * The viewer needs one file containing two things that ship separately: an
  * anatomical muscle set whose meshes are individually named (so a workout can
@@ -12,7 +13,7 @@
  *   node tools/model/build-body.mjs \
  *     --muscles ~/Downloads/z-anatomy-body.glb \
  *     --skin    ~/Downloads/athletic-body.glb \
- *     --out     web/assets/models/body.glb
+ *     --out     tools/model/body-source.glb
  *
  * See ./README.md for where the sources come from and how to tune the alignment.
  */
@@ -49,7 +50,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "../..");
 
 const DEFAULTS = {
-  out: "web/assets/models/body.glb",
+  out: "tools/model/body-source.glb",
   // The node name and material name the runtime looks for to tell skin from muscle.
   // viewer.js's isUnderSkinNode() walks parents looking for exactly this.
   skinNode: "skin",

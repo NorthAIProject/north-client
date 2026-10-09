@@ -1,48 +1,50 @@
-# body.glb
+# body-map.glb
 
-The figure rendered by the muscle viewer
-(`web/assets/js/shared/muscle-viewer/viewer.js`). Two layers, both real assets — no
-procedural or primitive geometry.
+The body figure every client draws: the web viewer
+(`web/assets/js/shared/muscle-viewer/viewer.js`) loads this file, and iOS loads the
+same meshes as `BodyMap.usdz`. Both are written by `go run ./scripts/bodymap`, along
+with the flat no-WebGL figure (`web/shared/muscleviewer/figure_gen.go`). Do not edit
+any of them by hand; change the tool or its source and rebuild.
 
-Built by `tools/model/build-body.mjs`. That script and its README are the authority
-on how to regenerate this file, what the sources have to look like, and how to fix
-the alignment when it goes wrong. This file records only what the current asset *is*.
+## What is in it
 
-## Layers
+One node per region under a root called `body`. Each region is a patch of skin named
+after a muscle key (`quads`, `delts`, `traps`…), with its own mesh and its own
+material of the same name, so a client recolours a region by setting one material
+colour and resolves a tap by the hit mesh's name. `base` is skin with no muscle under
+it: head, hands, feet, knees and elbows.
 
-**Muscles** — [hpfrei/body-anatomy-3d-viewer](https://github.com/hpfrei/body-anatomy-3d-viewer)
-(`public/body.glb`), built on anatomical data from [Z-Anatomy](https://www.z-anatomy.com/).
-Licensed [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). Pruned from
-the full atlas (826 meshes: skeleton, organs, cartilage, teeth, facial muscles,
-hand/foot detail) down to the 116 meshes matching North's 15 highlightable muscle
-groups — every anatomical head and both sides, named as in the source (e.g.
-`Vastus lateralis muscle`, `Vastus lateralis muscle.001`). ~76,000 triangles.
+The regions are the keys in `internal/bodymap.Regions`; the tool fails if the file
+and that list disagree. Muscles with no skin of their own are folded server-side
+(`bodymap.Fold`: rhomboids show on `traps`, serratus on `abs`), so clients only ever
+receive region keys.
 
-**Skin** — the outer body. Opaque since NOR-6; the muscles are sealed inside it and
-only surface as a glow where an exercise works them.
+Plain float32 positions and normals and uint16 indices, about 920 KB, no extensions:
+any glTF loader reads it without a decoder. The figure stands on the origin (soles at
+y = 0, centred in x and z) and faces +z.
 
-> **Current state.** The skin is still
-> [Human Body Base Mesh Male](https://sketchfab.com/3d-models/human-body-base-mesh-male-3678451d8ccb435e833f8a10729c09f5)
-> by [ferrumiron6](https://sketchfab.com/ferrumiron6), CC BY 4.0. `prepare-skin.mjs`
-> folds its T-pose arms down around the shoulders and stamps a skin-tone albedo
-> so the glow has surface in front of the arm and chest muscles. A purpose-made
-> arms-down PBR body would still look better — see `tools/model/README.md`.
+## How it is made
 
-Per CC BY-SA's ShareAlike clause the combined asset is licensed **CC BY-SA 4.0**,
-whatever the skin's own licence. Attribution for every source lives in the site
-footer (`web/landing/sections.templ`, `siteFooter()`).
+`scripts/bodymap` reads `tools/model/body-source.glb` — the anatomical atlas fitted
+inside an outer skin, built by `tools/model/build-body.mjs` — and:
 
-## Compression
+1. refits the atlas to the skin (the source fit stretched the headless atlas to the
+   full height of the body, about a tenth too tall);
+2. welds the skin and smooths it with one step of Loop subdivision;
+3. gives every skin triangle the key of the nearest muscle surface within 5 cm,
+   then smooths the borders and drops specks;
+4. splits the skin by key and writes the three outputs.
 
-`EXT_meshopt_compression` + `KHR_mesh_quantization`. Meshopt rather than Draco — see
-the header of `web/assets/js/vendor/three-gltf-loader.module.js` for why.
+`-debug-svg <path>` writes flat-shaded front/back previews with every region in its
+own colour, which is the quickest way to check a change.
 
-## Contract with the runtime
+## Licence
 
-Two things in this file are load-bearing, and `build-body.mjs` asserts both:
-
-- the outer body hangs under a node named **`skin`**, with its material named
-  `skin-material`. `isUnderSkinNode()` in `viewer.js` walks parents looking for
-  exactly that name to decide what is body and what is muscle.
-- every muscle mesh is named as in `web/assets/js/shared/muscle-viewer/muscles.js`.
-  A mesh the viewer can't resolve to a muscle key is hidden, not drawn.
+Muscles: [Z-Anatomy](https://www.z-anatomy.com/) via
+[hpfrei/body-anatomy-3d-viewer](https://github.com/hpfrei/body-anatomy-3d-viewer),
+[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). Skin:
+[Human Body Base Mesh Male](https://sketchfab.com/3d-models/human-body-base-mesh-male-3678451d8ccb435e833f8a10729c09f5)
+by [ferrumiron6](https://sketchfab.com/ferrumiron6), CC BY 4.0. The regions are cut
+from the atlas's geometry, so the figure is CC BY-SA 4.0 like the combined source.
+Attribution lives in the site footer (`siteFooter()` in `web/landing/sections.templ`)
+and in the iOS app's acknowledgements.

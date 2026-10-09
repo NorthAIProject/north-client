@@ -12,6 +12,8 @@ import (
 	"math"
 	"sort"
 	"time"
+
+	"github.com/NorthAIProject/north-client/internal/bodymap"
 )
 
 // Data is everything the page renders.
@@ -167,10 +169,13 @@ type BodyCard struct {
 
 	Soreness []SoreRegion
 
-	// Muscles to light on the 3D body, by how sore: painful, sore, stiff.
-	Painful []string
-	Sore    []string
-	Stiff   []string
+	// HeightMissing is a weight with no height to make a BMI from.
+	HeightMissing bool
+
+	// Map is what recent training heated, for the figure; nil when it could
+	// not be read, which leaves the figure untrained rather than the page
+	// broken.
+	Map *bodymap.Map
 }
 
 // SoreRegion is one sore place, as a chip.

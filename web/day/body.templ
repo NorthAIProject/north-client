@@ -1,7 +1,10 @@
 package day
 
 import (
+	"context"
 	"strconv"
+
+	"github.com/NorthAIProject/north-client/internal/bodymap"
 
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/web/shared/muscleviewer"
@@ -12,53 +15,26 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/selectbox"
 )
 
-// bodyPanel is the anatomical 3D body — the same model and viewer the
-// training pages use — with sore muscles glowing by severity, and the latest
-// weight, BMI and blood pressure beneath it. Its button opens the forms that
-// change them.
+// bodyPanel is the body figure, coloured by what the last week of logged sets
+// trained (the same figure and payload as the iOS card and GET /body/map),
+// with the latest weight, BMI and blood pressure beneath it. Soreness stays a
+// row of chips: the figure means training, and one colour means one thing.
+//
+// The dialog's forms swap only #body-chips, so saving a target or a reading
+// never reloads the canvas.
 templ bodyPanel(data Data) {
 	{{ b := data.Body }}
 	@dialog.Dialog(dialog.Props{ID: "day-body"}) {
 		<section class="border-hairline bg-surface relative overflow-hidden rounded-2xl border p-4" aria-label={ i18n.T(ctx, "day.body") } data-testid="body-panel">
 			@muscleviewer.Viewer(muscleviewer.Props{
-				ID:          "day-body-viewer",
-				Primary:     b.Painful,
-				Secondary:   b.Sore,
-				Stabilizers: b.Stiff,
-				HideLegend:  true,
+				ID:         "day-body-viewer",
+				Map:        bodyMapOrEmpty(b.Map),
+				HideLegend: true,
 			})
-			<div class="mt-3 grid grid-cols-3 gap-2">
-				if b.HasWeight {
-					<div class="bg-background/80 border-hairline rounded-xl border px-2 py-1.5 shadow-sm">
-						<p class="text-lg font-semibold tabular-nums">{ b.Weight }<span class="text-muted-foreground text-[10px] font-normal"> kg</span></p>
-						if b.HasGoal {
-							<p class="text-muted-foreground text-[10px] leading-tight tabular-nums">{ i18n.Tf(ctx, "day.body.togoal", b.ToGoal) }</p>
-						}
-					</div>
-				}
-				if b.HasBMI {
-					<div class="bg-background/80 border-hairline rounded-xl border px-2 py-1.5 shadow-sm">
-						<p class="text-lg font-semibold tabular-nums"><span class="text-muted-foreground text-[10px] font-normal">BMI </span>{ b.BMI }</p>
-						<p class={ "text-[10px] leading-tight font-medium", bmiClass(b.BMICategory) }>{ i18n.T(ctx, "day.bmi." + b.BMICategory) }</p>
-					</div>
-				}
-				if b.HasBloodPressure {
-					<div class="bg-background/80 border-hairline rounded-xl border px-2 py-1.5 shadow-sm">
-						<p class="text-lg font-semibold tabular-nums">{ b.BloodPressure }</p>
-						<p class="text-muted-foreground text-[10px] leading-tight">mmHg</p>
-					</div>
-				}
-			</div>
-			if !b.HasWeight {
-				<p class="text-muted-foreground mt-2 text-sm">{ i18n.T(ctx, "day.body.none") }</p>
+			if caption := bodyCaption(ctx, b.Map); caption != "" {
+				<p class="text-muted-foreground mt-2 text-center text-xs" data-testid="body-caption">{ caption }</p>
 			}
-			<div class="mt-3 flex flex-wrap gap-1.5" data-testid="soreness">
-				for _, s := range b.Soreness {
-					<span class={ "rounded-full px-2 py-0.5 text-xs font-medium", sorenessClass(s.Severity) }>
-						{ i18n.T(ctx, "day.region." + s.Region) } · { i18n.T(ctx, "day.severity." + strconv.Itoa(s.Severity)) }
-					</span>
-				}
-			</div>
+			@bodyChips(b)
 			@dialog.Trigger(dialog.TriggerProps{For: "day-body"}) {
 				@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Class: "mt-3 w-full"}) {
 					{ i18n.T(ctx, "day.body.edit") }
@@ -76,8 +52,51 @@ templ bodyPanel(data Data) {
 	}
 }
 
+// bodyChips is the stats and soreness under the figure, and the swap target
+// for the body dialog's forms.
+templ bodyChips(b BodyCard) {
+	<div id="body-chips" data-testid="body-chips">
+		<div class="mt-3 grid grid-cols-3 gap-2">
+			if b.HasWeight {
+				<div class="bg-background/80 border-hairline rounded-xl border px-2 py-1.5 shadow-sm">
+					<p class="text-lg font-semibold tabular-nums">{ b.Weight }<span class="text-muted-foreground text-[10px] font-normal"> kg</span></p>
+					if b.HasGoal {
+						<p class="text-muted-foreground text-[10px] leading-tight tabular-nums">{ i18n.Tf(ctx, "day.body.togoal", b.ToGoal) }</p>
+					}
+				</div>
+			}
+			if b.HasBMI {
+				<div class="bg-background/80 border-hairline rounded-xl border px-2 py-1.5 shadow-sm">
+					<p class="text-lg font-semibold tabular-nums"><span class="text-muted-foreground text-[10px] font-normal">BMI </span>{ b.BMI }</p>
+					<p class={ "text-[10px] leading-tight font-medium", bmiClass(b.BMICategory) }>{ i18n.T(ctx, "day.bmi." + b.BMICategory) }</p>
+				</div>
+			} else if b.HeightMissing {
+				<a href="/app/calculator" class="bg-background/80 border-hairline flex items-center rounded-xl border px-2 py-1.5 text-sm shadow-sm" data-testid="add-height">
+					<span class="text-muted-foreground text-[10px] font-normal">BMI&nbsp;</span>{ i18n.T(ctx, "day.body.addHeight") }
+				</a>
+			}
+			if b.HasBloodPressure {
+				<div class="bg-background/80 border-hairline rounded-xl border px-2 py-1.5 shadow-sm">
+					<p class="text-lg font-semibold tabular-nums">{ b.BloodPressure }</p>
+					<p class="text-muted-foreground text-[10px] leading-tight">mmHg</p>
+				</div>
+			}
+		</div>
+		if !b.HasWeight {
+			<p class="text-muted-foreground mt-2 text-sm">{ i18n.T(ctx, "day.body.none") }</p>
+		}
+		<div class="mt-3 flex flex-wrap gap-1.5" data-testid="soreness">
+			for _, s := range b.Soreness {
+				<span class={ "rounded-full px-2 py-0.5 text-xs font-medium", sorenessClass(s.Severity) }>
+					{ i18n.T(ctx, "day.region." + s.Region) } · { i18n.T(ctx, "day.severity." + strconv.Itoa(s.Severity)) }
+				</span>
+			}
+		</div>
+	</div>
+}
+
 templ bodyForms(data Data) {
-	<form method="post" action="/app/soreness" class="space-y-2">
+	<form method="post" action="/app/soreness" class="space-y-2" { bodyFormSwap("/app/soreness")... }>
 		@ui.CSRFInput()
 		<p class="text-sm font-medium">{ i18n.T(ctx, "day.soreness.add") }</p>
 		@selectbox.SelectBox() {
@@ -100,7 +119,7 @@ templ bodyForms(data Data) {
 			}
 		</div>
 	</form>
-	<form method="post" action="/app/settings/target-weight" class="space-y-2">
+	<form method="post" action="/app/settings/target-weight" class="space-y-2" { bodyFormSwap("/app/settings/target-weight")... }>
 		@ui.CSRFInput()
 		<label for="target_weight_kg" class="text-sm font-medium">{ i18n.T(ctx, "day.body.goal") }</label>
 		<div class="flex gap-2">
@@ -110,7 +129,7 @@ templ bodyForms(data Data) {
 			}
 		</div>
 	</form>
-	<form method="post" action="/app/blood-pressure" class="space-y-2">
+	<form method="post" action="/app/blood-pressure" class="space-y-2" { bodyFormSwap("/app/blood-pressure")... }>
 		@ui.CSRFInput()
 		<p class="text-sm font-medium">{ i18n.T(ctx, "day.body.bp") }</p>
 		<div class="flex gap-2">
@@ -124,6 +143,40 @@ templ bodyForms(data Data) {
 	@button.Button(button.Props{Href: "/app/calculator", Variant: button.VariantOutline, Class: "w-full"}) {
 		{ i18n.T(ctx, "day.body.record") }
 	}
+}
+
+// bodyFormSwap posts a body form with htmx and keeps only #body-chips from
+// the /app page the handler redirects to. Every form carries its own copy:
+// htmx 4 does not inherit attributes.
+func bodyFormSwap(action string) templ.Attributes {
+	return templ.Attributes{
+		"hx-post":   action,
+		"hx-target": "#body-chips",
+		"hx-select": "#body-chips",
+		"hx-swap":   "outerHTML",
+	}
+}
+
+// bodyMapOrEmpty keeps the figure in body-map mode with no heat when the map
+// could not be read, rather than falling back to an exercise's tiers.
+func bodyMapOrEmpty(m *bodymap.Map) *bodymap.Map {
+	if m != nil {
+		return m
+	}
+	return &bodymap.Map{Regions: bodymap.Project(nil)}
+}
+
+// bodyCaption says why the figure is cold: never trained, or not lately.
+func bodyCaption(ctx context.Context, m *bodymap.Map) string {
+	switch {
+	case m == nil:
+		return ""
+	case m.LastSession.IsZero():
+		return i18n.T(ctx, "bodymap.empty")
+	case len(bodymap.Hottest(m.Regions)) == 0:
+		return i18n.Tf(ctx, "day.body.quiet", m.Days)
+	}
+	return ""
 }
 
 func bmiClass(category string) string {
