@@ -1,6 +1,7 @@
 package lifts
 
 import (
+	"bytes"
 	"net/http"
 	"time"
 
@@ -29,6 +30,52 @@ func (a *API) Routes(r chi.Router) {
 	r.Post("/lifts/sets", a.log)
 	r.Delete("/lifts/sets/{setID}", a.undo)
 	r.Get("/lifts/sessions/{sessionID}/recap", a.recap)
+}
+
+// UploadRoutes go in the API's upload group, whose body cap fits a file.
+func (a *API) UploadRoutes(r chi.Router) {
+	r.Post("/lifts/import/hevy", a.importHevy)
+}
+
+// LiftImportView is what an import did.
+type LiftImportView struct {
+	Workouts   int      `json:"workouts"`
+	Duplicates int      `json:"duplicates"`
+	Sets       int      `json:"sets"`
+	Skipped    int      `json:"skipped"`
+	Unmatched  []string `json:"unmatched"`
+}
+
+// importHevy takes a Hevy workout export as the multipart field "file".
+func (a *API) importHevy(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, MaxImportBytes+(1<<20))
+	if err := r.ParseMultipartForm(4 << 20); err != nil {
+		msg := "That upload could not be read."
+		var tooBig *http.MaxBytesError
+		if apperr.As(err, &tooBig) {
+			msg = "This file is larger than 10 MB."
+		}
+		httpx.Error(w, apperr.FieldErrors{}.Add("file", msg), msg)
+		return
+	}
+	defer func() { _ = r.MultipartForm.RemoveAll() }()
+	data, msg := formFile(r)
+	if msg != "" {
+		httpx.Error(w, apperr.FieldErrors{}.Add("file", msg), msg)
+		return
+	}
+	res, err := a.svc.ImportHevy(r.Context(), auth.MustUser(r.Context()), bytes.NewReader(data))
+	if err != nil {
+		httpx.Error(w, err, "The workouts could not be imported.")
+		return
+	}
+	unmatched := res.Unmatched
+	if unmatched == nil {
+		unmatched = []string{}
+	}
+	httpx.WriteJSON(w, http.StatusOK, LiftImportView{
+		Workouts: res.Workouts, Duplicates: res.Duplicates, Sets: res.Sets, Skipped: res.Skipped, Unmatched: unmatched,
+	})
 }
 
 type LiftSetRequest struct {

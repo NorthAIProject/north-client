@@ -46,6 +46,8 @@ var portugueseBrazilianNav = map[string]string{
 	"nav.meal-plans.desc":           "Monte planos, acompanhe os totais.",
 	"nav.import-training-plan":      "Importar plano de treino",
 	"nav.import-training-plan.desc": "Traga um plano de um arquivo ou foto.",
+	"nav.import-hevy":               "Importar do Hevy",
+	"nav.import-hevy.desc":          "Traga seu histórico de treinos do Hevy.",
 	"nav.import-meal-plan":          "Importar plano alimentar",
 	"nav.import-meal-plan.desc":     "Traga um plano alimentar de um arquivo ou foto.",
 	"nav.food-log":                  "Diário alimentar",

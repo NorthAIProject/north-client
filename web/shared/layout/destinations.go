@@ -221,6 +221,11 @@ func Destinations() []Destination {
 			Keywords:    []string{"workout", "upload", "spreadsheet", "pdf", "coach", "import"},
 		},
 		{
+			Key: "nav.import-hevy", Label: "Import from Hevy", Href: "/app/lifts/import", Icon: "file-up", Group: GroupBody,
+			Description: "Bring your workout history from Hevy.",
+			Keywords:    []string{"hevy", "history", "workouts", "sets", "csv", "import", "lifting"},
+		},
+		{
 			Key: "nav.training-plans", Label: "Training plans", Href: "/app/training/plans", Icon: "clipboard-list", Group: GroupBody,
 			Description: "Every plan you have saved.",
 			Keywords:    []string{"workout", "saved", "history", "programs"},
