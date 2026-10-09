@@ -105,7 +105,7 @@ func TestDescribeMealPlanListsOptionsAndCollapsesIdenticalDays(t *testing.T) {
 	got := b.String()
 
 	for _, want := range []string{
-		"Every day (Monday, Tuesday): 920 kcal",
+		"Every day (Monday–Tuesday): 920 kcal",
 		"\n  Breakfast (300 kcal): 80 g Oats",
 		`Almoço (option 1 "Frango", counted, 620 kcal): 150 g Chicken`,
 		`    option 2 "Peixe" (580 kcal): 200 g Hake (estimated)`,
@@ -141,4 +141,48 @@ func TestDescribeMealPlanListsOptionsAndCollapsesIdenticalDays(t *testing.T) {
 	if !strings.Contains(got, "\nMonday: ") || !strings.Contains(got, "\nTuesday: ") || strings.Contains(got, "Every day") {
 		t.Errorf("different days were collapsed:\n%s", got)
 	}
+
+	// Days that differ are grouped with the days they match: one day by
+	// name, a run as a span, scattered days listed.
+	b.Reset()
+	edited := week
+	edited.Days = append([]meal.Day(nil), week.Days...)
+	edited.Days[0] = withBreakfastGrams(edited.Days[0], 60) // Monday
+	describeMealPlan(&b, edited, nil)
+	if blocks := dayBlocks(b.String()); len(blocks) != 2 ||
+		!strings.HasPrefix(blocks[0], "Monday: ") || !strings.HasPrefix(blocks[1], "Tuesday–Sunday: ") {
+		t.Errorf("a Monday-only change = %q, want Monday and Tuesday–Sunday", blocks)
+	}
+
+	b.Reset()
+	edited.Days = append([]meal.Day(nil), week.Days...)
+	edited.Days[1] = withBreakfastGrams(edited.Days[1], 60) // Tuesday
+	edited.Days[3] = withBreakfastGrams(edited.Days[3], 60) // Thursday
+	describeMealPlan(&b, edited, nil)
+	if blocks := dayBlocks(b.String()); len(blocks) != 2 ||
+		!strings.HasPrefix(blocks[0], "Monday, Wednesday, Friday, Saturday, Sunday: ") ||
+		!strings.HasPrefix(blocks[1], "Tuesday, Thursday: ") {
+		t.Errorf("scattered changes = %q, want two groups listing their days", blocks)
+	}
+}
+
+// withBreakfastGrams is day with its first meal's first food reweighed,
+// copied so the plan it came from is untouched.
+func withBreakfastGrams(day meal.Day, grams float64) meal.Day {
+	day.Meals = append([]meal.Meal(nil), day.Meals...)
+	day.Meals[0].Ingredients = append([]meal.MealIngredient(nil), day.Meals[0].Ingredients...)
+	day.Meals[0].Ingredients[0].QuantityGrams = grams
+	return day
+}
+
+// dayBlocks is a plan description's day headings with what follows them on
+// the line, without the plan's own first line.
+func dayBlocks(description string) []string {
+	var out []string
+	for _, line := range strings.Split(description, "\n")[1:] {
+		if !strings.HasPrefix(line, " ") {
+			out = append(out, line)
+		}
+	}
+	return out
 }

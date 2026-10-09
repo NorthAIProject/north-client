@@ -564,46 +564,59 @@ func describeMealPlan(b *strings.Builder, plan meals.MealPlan, target *meals.Mac
 	describeMealDays(b, plan, plan.Days, target)
 }
 
-// describeMealDays writes days, each on a new line. Days that would read exactly
-// alike are written once: an imported every-day plan is seven copies of one
-// day, and listing each would hand the model the same meals seven times.
+// describeMealDays writes days, each distinct day once, headed by every day
+// that reads exactly like it: "Monday: …", "Tuesday–Sunday: …", "Tuesday,
+// Thursday: …". An imported every-day plan is seven copies of one day, and
+// listing each — or each again once one day of it is edited — would hand the
+// model the same meals seven times.
 func describeMealDays(b *strings.Builder, plan meals.MealPlan, days []meal.Day, target *meals.Macros) {
-	bodies := make([]string, len(days))
-	for i, day := range days {
-		var body strings.Builder
-		describeDayBody(&body, plan, day, target)
-		bodies[i] = body.String()
-	}
-	if len(days) > 1 && allSame(bodies) {
-		fmt.Fprintf(b, "\nEvery day (%s): %s", weekdaySpan(days), bodies[0])
+	groups := groupDays(plan, days, target)
+	if len(groups) == 1 && len(days) > 1 {
+		fmt.Fprintf(b, "\nEvery day (%s): %s", weekdaySpan(groups[0].days), groups[0].body)
 		return
 	}
-	for i, day := range days {
-		fmt.Fprintf(b, "\n%s: %s", day.Weekday, bodies[i])
+	for _, g := range groups {
+		fmt.Fprintf(b, "\n%s: %s", weekdaySpan(g.days), g.body)
 	}
 }
 
-func allSame(values []string) bool {
-	for _, v := range values[1:] {
-		if v != values[0] {
-			return false
+// dayGroup is days that read exactly alike, and how they read.
+type dayGroup struct {
+	days []meal.Day
+	body string
+}
+
+// groupDays groups days by their description, in the order each group's
+// first day comes.
+func groupDays(plan meals.MealPlan, days []meal.Day, target *meals.Macros) []dayGroup {
+	var groups []dayGroup
+	at := map[string]int{}
+	for _, day := range days {
+		var body strings.Builder
+		describeDayBody(&body, plan, day, target)
+		key := body.String()
+		if i, ok := at[key]; ok {
+			groups[i].days = append(groups[i].days, day)
+			continue
 		}
+		at[key] = len(groups)
+		groups = append(groups, dayGroup{days: []meal.Day{day}, body: key})
 	}
-	return true
+	return groups
 }
 
-// weekdaySpan names days: "Monday–Sunday" for a whole week in order, else
-// each one.
+// weekdaySpan names days: one by its name, a run of consecutive weekdays as
+// "Tuesday–Sunday", anything else listed.
 func weekdaySpan(days []meal.Day) string {
 	names := make([]string, len(days))
-	whole := len(days) == len(meal.WeekOrder)
+	consecutive := len(days) > 1
 	for i, day := range days {
 		names[i] = day.Weekday.String()
-		if whole && day.Weekday != meal.WeekOrder[i] {
-			whole = false
+		if i > 0 && consecutive {
+			consecutive = slices.Index(meal.WeekOrder, day.Weekday) == slices.Index(meal.WeekOrder, days[i-1].Weekday)+1
 		}
 	}
-	if whole {
+	if consecutive {
 		return names[0] + "–" + names[len(names)-1]
 	}
 	return strings.Join(names, ", ")
