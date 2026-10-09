@@ -43,6 +43,9 @@ type stubReader struct {
 	meal  planimport.MealReading
 	hint  string
 	reads int
+	// started and release, when set, hold the read open until the test
+	// lets it finish.
+	started, release chan struct{}
 }
 
 func (r *stubReader) ReadWorkout(context.Context, users.User, planimport.Source, string) (string, []planimport.WorkoutRow, []string, error) {
@@ -52,6 +55,10 @@ func (r *stubReader) ReadWorkout(context.Context, users.User, planimport.Source,
 func (r *stubReader) ReadMeal(_ context.Context, _ users.User, _ planimport.Source, hint string) (planimport.MealReading, error) {
 	r.hint = hint
 	r.reads++
+	if r.started != nil {
+		close(r.started)
+		<-r.release
+	}
 	return r.meal, nil
 }
 
@@ -229,6 +236,11 @@ func TestImportForCoachStopsWhenTheQuotaIsSpent(t *testing.T) {
 	if reader.reads != 0 {
 		t.Fatalf("a refused import still read the file")
 	}
+	// The refusal let go of the person's import slot: the next try is
+	// refused for the quota again, not as busy.
+	if _, err := svc.ImportForCoach(context.Background(), f.user, "plan.txt", []byte("Lunch"), planimport.CoachImport{Kind: planimport.CoachImportMeal}); !errors.Is(err, planimport.ErrQuotaUsed) {
+		t.Fatalf("second try: err = %v, want ErrQuotaUsed", err)
+	}
 }
 
 func TestImportForCoachRefusesAnUnknownKindOrPlanType(t *testing.T) {
@@ -291,4 +303,36 @@ func workoutWeekdays(res planimport.CoachResult) string {
 		days = append(days, d.Weekday)
 	}
 	return strings.Join(days, ",")
+}
+
+func TestImportForCoachSpendsNothingOnARefusedFileOrWhileBusy(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	q := &countingQuota{}
+	reader := &stubReader{started: make(chan struct{}), release: make(chan struct{})}
+	svc := f.coachService(nil, reader, q)
+	req := planimport.CoachImport{Kind: planimport.CoachImportMeal}
+
+	if _, err := svc.ImportForCoach(ctx, f.user, "plan.exe", []byte("MZ"), req); planimport.ReasonOf(err) != planimport.ReasonUnsupported {
+		t.Fatalf("unsupported file: err = %v", err)
+	}
+	if q.spent != 0 {
+		t.Fatalf("an unsupported file spent the quota")
+	}
+
+	done := make(chan error)
+	go func() {
+		_, err := svc.ImportForCoach(ctx, f.user, "plan.txt", []byte("Lunch: frango"), req)
+		done <- err
+	}()
+	<-reader.started
+
+	if _, err := svc.ImportForCoach(ctx, f.user, "plan.txt", []byte("Lunch: frango"), req); planimport.ReasonOf(err) != planimport.ReasonBusy {
+		t.Fatalf("second import: err = %v, want busy", err)
+	}
+	close(reader.release)
+	<-done
+	if q.spent != 1 {
+		t.Fatalf("quota spent %d times, want once: the busy import must spend nothing", q.spent)
+	}
 }

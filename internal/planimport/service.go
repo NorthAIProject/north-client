@@ -65,21 +65,47 @@ func (s *Service) begin(userID uuid.UUID) error {
 
 func (s *Service) end(userID uuid.UUID) { s.inFlight.Delete(userID) }
 
+// spendFunc charges the person for an import, refusing it when they can't
+// afford one.
+type spendFunc func(ctx context.Context, user users.User) error
+
+// hold opens and checks the file, takes the person's import slot, and then
+// spends, in that order, so a refused file or a double tap costs nothing.
+// On success the caller holds the slot and must end it.
+func (s *Service) hold(ctx context.Context, user users.User, filename string, data []byte, spend spendFunc) (Source, error) {
+	src, err := Open(filename, data)
+	if err != nil {
+		return Source{}, err
+	}
+	if err := s.begin(user.ID); err != nil {
+		return Source{}, err
+	}
+	if spend != nil {
+		if err := spend(ctx, user); err != nil {
+			s.end(user.ID)
+			return Source{}, err
+		}
+	}
+	return src, nil
+}
+
 // ParseWorkout reads a workout plan out of a file. It writes nothing.
 //
 // hint is the person's own request about the file, passed to the reader for a
 // document or a photo; a spreadsheet or JSON is read whole. Empty from the
 // import pages.
 func (s *Service) ParseWorkout(ctx context.Context, user users.User, filename string, data []byte, hint string) (WorkoutDraft, error) {
-	if err := s.begin(user.ID); err != nil {
-		return WorkoutDraft{}, err
-	}
-	defer s.end(user.ID)
+	return s.parseWorkout(ctx, user, filename, data, hint, nil)
+}
 
-	src, err := Open(filename, data)
+// parseWorkout is ParseWorkout, spending spend (nil for nothing) once the file
+// is accepted and the person's import slot taken.
+func (s *Service) parseWorkout(ctx context.Context, user users.User, filename string, data []byte, hint string, spend spendFunc) (WorkoutDraft, error) {
+	src, err := s.hold(ctx, user, filename, data, spend)
 	if err != nil {
 		return WorkoutDraft{}, err
 	}
+	defer s.end(user.ID)
 
 	switch src.Kind {
 	case KindCSV, KindTSV, KindXLSX:
@@ -98,15 +124,16 @@ func (s *Service) ParseWorkout(ctx context.Context, user users.User, filename st
 // ParseMeal reads a meal plan out of a file and previews it against the
 // person's target. It writes nothing. hint is as for ParseWorkout.
 func (s *Service) ParseMeal(ctx context.Context, user users.User, filename string, data []byte, hint string) (MealDraft, error) {
-	if err := s.begin(user.ID); err != nil {
-		return MealDraft{}, err
-	}
-	defer s.end(user.ID)
+	return s.parseMeal(ctx, user, filename, data, hint, nil)
+}
 
-	src, err := Open(filename, data)
+// parseMeal is ParseMeal, spending as parseWorkout does.
+func (s *Service) parseMeal(ctx context.Context, user users.User, filename string, data []byte, hint string, spend spendFunc) (MealDraft, error) {
+	src, err := s.hold(ctx, user, filename, data, spend)
 	if err != nil {
 		return MealDraft{}, err
 	}
+	defer s.end(user.ID)
 
 	var draft MealDraft
 	switch src.Kind {

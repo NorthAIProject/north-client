@@ -76,13 +76,13 @@ type CoachResult struct {
 // left out and reported rather than guessed at. A workout's unnamed days take
 // the weekdays asked for, or are spread over the week.
 //
-// The request is checked before anything is spent: an unknown kind or plan
-// type, or a meal plan for someone with no macro target, costs no import.
+// One plan import is spent only once the request, the file and the person's
+// import slot have all been accepted: an unknown kind or plan type, a meal
+// plan for someone with no macro target, a refused file, or a second import
+// while one is running costs nothing. A failed read or save after that keeps
+// the spend, as the import pages do.
 func (s *Service) ImportForCoach(ctx context.Context, user users.User, filename string, data []byte, req CoachImport) (CoachResult, error) {
 	if err := s.checkCoachImport(ctx, user.ID, req); err != nil {
-		return CoachResult{}, err
-	}
-	if err := s.spendImport(ctx, user); err != nil {
 		return CoachResult{}, err
 	}
 	if req.Kind == CoachImportWorkout {
@@ -146,7 +146,7 @@ func waitFor(d time.Duration) string {
 }
 
 func (s *Service) importMealForCoach(ctx context.Context, user users.User, filename string, data []byte, req CoachImport) (CoachResult, error) {
-	d, err := s.ParseMeal(ctx, user, filename, data, req.Hint)
+	d, err := s.parseMeal(ctx, user, filename, data, req.Hint, s.spendImport)
 	if err != nil {
 		return CoachResult{}, err
 	}
@@ -176,7 +176,7 @@ func (s *Service) importMealForCoach(ctx context.Context, user users.User, filen
 }
 
 func (s *Service) importWorkoutForCoach(ctx context.Context, user users.User, filename string, data []byte, req CoachImport) (CoachResult, error) {
-	d, err := s.ParseWorkout(ctx, user, filename, data, req.Hint)
+	d, err := s.parseWorkout(ctx, user, filename, data, req.Hint, s.spendImport)
 	if err != nil {
 		return CoachResult{}, err
 	}
