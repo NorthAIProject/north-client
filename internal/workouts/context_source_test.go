@@ -23,10 +23,18 @@ func (f *fakeActivityTracker) CompletedWeekdays(context.Context, uuid.UUID, *tim
 }
 
 func TestContextSource_CompletedAndPending(t *testing.T) {
-	today := time.Now().Weekday().String()
+	plan := goodPlan()
+	client := &fake.Client{}
+	client.Handler = func(_ context.Context, _ ai.Request) (fake.Response, error) {
+		return fake.Response{Text: planJSON(t, plan)}, nil
+	}
+	svc, user := newService(t, client)
+
+	// Today in the user's zone, which is what the context source reads: the
+	// machine's own zone is a day apart for an hour around midnight.
+	today := time.Now().In(user.Location()).Weekday().String()
 	// A plan that passes validation, with its first day moved to today and
 	// the others kept off it.
-	plan := goodPlan()
 	plan.Days[0].Weekday, plan.Days[0].Focus = today, "Upper A"
 	others := []string{"Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"}
 	next := 0
@@ -37,12 +45,6 @@ func TestContextSource_CompletedAndPending(t *testing.T) {
 		plan.Days[i].Weekday = others[next]
 		next++
 	}
-
-	client := &fake.Client{}
-	client.Handler = func(_ context.Context, _ ai.Request) (fake.Response, error) {
-		return fake.Response{Text: planJSON(t, plan)}, nil
-	}
-	svc, user := newService(t, client)
 
 	ctx := context.Background()
 	_, err := svc.CreatePlan(ctx, user, dumbbellIntake())
