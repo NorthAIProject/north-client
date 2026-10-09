@@ -74,7 +74,7 @@ func TestLogDosePicksTheSlotAndUpserts(t *testing.T) {
 	}
 
 	slot := "08:00"
-	if _, err := svc.LogDose(ctx, user, med.ID, medication.StatusSkipped, &slot); err != nil {
+	if _, err = svc.LogDose(ctx, user, med.ID, medication.StatusSkipped, &slot); err != nil {
 		t.Fatal(err)
 	}
 	doses, err := svc.TodayDoses(ctx, user)
@@ -108,7 +108,7 @@ func TestAsNeededDosesEachKeepTheirOwnRow(t *testing.T) {
 	}
 
 	for range 2 {
-		if _, err := svc.LogDose(ctx, user, inhaler.ID, "", nil); err != nil {
+		if _, err = svc.LogDose(ctx, user, inhaler.ID, "", nil); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -130,7 +130,7 @@ func TestUndoPutsTheSlotBack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.UndoDose(ctx, user, dose.ID); err != nil {
+	if err = svc.UndoDose(ctx, user, dose.ID); err != nil {
 		t.Fatal(err)
 	}
 	day, err := svc.Today(ctx, user)

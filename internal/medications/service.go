@@ -149,9 +149,9 @@ func (s *Service) LogDose(ctx context.Context, user users.User, medID uuid.UUID,
 		}
 		slot = &t
 	default:
-		logs, err := s.repo.DosesOn(ctx, user.ID, date)
-		if err != nil {
-			return Dose{}, err
+		logs, logsErr := s.repo.DosesOn(ctx, user.ID, date)
+		if logsErr != nil {
+			return Dose{}, logsErr
 		}
 		picked, ok := medication.PickSlot(med, logs, local)
 		if !ok {

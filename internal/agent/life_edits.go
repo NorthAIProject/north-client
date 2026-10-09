@@ -72,8 +72,8 @@ func updateGoal(svc *goals.Service) Capability {
 				case strings.EqualFold(date, "none"):
 					input.TargetDate = time.Time{}
 				case date != "":
-					parsed, err := time.Parse(time.DateOnly, date)
-					if err != nil {
+					parsed, parseErr := time.Parse(time.DateOnly, date)
+					if parseErr != nil {
 						return "", fmt.Errorf("a target date is YYYY-MM-DD, not %q", date)
 					}
 					input.TargetDate = parsed

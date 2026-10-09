@@ -232,7 +232,7 @@ func TestABulkPlanEditIsOneApproval(t *testing.T) {
 		t.Fatalf("%d calls pending, want the one", len(pending.Calls))
 	}
 	var stored, sent map[string]any
-	if err := json.Unmarshal(pending.Calls[0].Arguments, &stored); err != nil {
+	if err = json.Unmarshal(pending.Calls[0].Arguments, &stored); err != nil {
 		t.Fatalf("pending arguments: %v", err)
 	}
 	_ = json.Unmarshal([]byte(args), &sent)

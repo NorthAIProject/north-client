@@ -785,9 +785,9 @@ func getWorkoutPlan(svc *workouts.Service) Capability {
 
 			var stored workouts.StoredPlan
 			if strings.TrimSpace(in.Plan) != "" {
-				plans, err := svc.ListCurrentPlans(ctx, userID, 50)
-				if err != nil {
-					return "", err
+				plans, listErr := svc.ListCurrentPlans(ctx, userID, 50)
+				if listErr != nil {
+					return "", listErr
 				}
 				if stored, err = pickPlan(plans, in.Plan); err != nil {
 					return "", err
