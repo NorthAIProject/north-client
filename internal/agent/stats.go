@@ -28,7 +28,7 @@ func getStats(svc *stats.Service, userSvc *users.Service) Capability {
 			Name: "get_stats",
 			Description: "Read this person's stats for an area over a window: sleep (average, debt, bedtime consistency, stages), " +
 				"cardio (distance, pace, best 5K, resting heart rate), eating (adherence to targets, protein per kg, top foods, late eating), " +
-				"or patterns (what moves together across days: sleep after late caffeine, mood against sleep, steps, daylight, stand hours and outdoor workouts, " +
+				"or patterns (what moves together across days: sleep after late caffeine, mood against sleep, steps, daylight, stand hours, outdoor workouts and mindful sessions, " +
 				"HRV and resting heart rate the day after training). Use it before commenting on trends.",
 			Parameters: ai.Object("what to read", map[string]*ai.Schema{
 				"area":  ai.Enum("the area", "sleep", "cardio", "eating", "patterns"),

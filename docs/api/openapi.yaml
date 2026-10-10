@@ -4389,7 +4389,7 @@ paths:
         required: true
         schema:
           type: string
-        description: e.g. sleep, water, mood, energy, burn, sessions, or a key from GET /insights/health (steps, active-energy, exercise-minutes, stand-hours, daylight, resting-heart-rate, hrv, vo2max, weight)
+        description: e.g. sleep, water, mood, energy, burn, sessions, or a key from GET /insights/health (steps, walking-running-distance, active-energy, exercise-minutes, stand-hours, flights-climbed, daylight, mindful-minutes, resting-heart-rate, walking-heart-rate, hrv, respiratory-rate, blood-oxygen, vo2max, weight)
     get:
       operationId: getInsightMetric
       summary: One metric over a window, beside the window before it
