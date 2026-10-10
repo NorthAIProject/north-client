@@ -36,6 +36,19 @@ func TestCardioShape(t *testing.T) {
 	apitest.AssertGolden(t, "stats_cardio.golden.json", stats.ProjectCardio("week", st))
 }
 
+func TestCardioKindShape(t *testing.T) {
+	t.Parallel()
+	outdoor := false
+	run := func(day, minutes int, km, hr float64) stat.Session {
+		return stat.Session{
+			Code: "running", Name: "Running", At: *tp(day, 7, 0), Seconds: minutes * 60,
+			DistanceM: km * 1000, AvgHR: hr, ElevationM: 40, Indoor: &outdoor,
+		}
+	}
+	k := stat.KindDetail("Running", []stat.Session{run(1, 30, 5, 158), run(8, 31, 5, 156), run(15, 58, 10, 152)})
+	apitest.AssertGolden(t, "stats_cardio_kind.golden.json", stats.ProjectCardioKind(k))
+}
+
 func TestEatingShape(t *testing.T) {
 	t.Parallel()
 	apitest.AssertGolden(t, "stats_eating.golden.json", stats.ProjectEating("week", stat.Eating([]stat.FoodEntry{
