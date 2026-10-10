@@ -229,6 +229,7 @@ func Build(svc Services) *Registry {
 			createMealPlan(svc.MealPlans, svc.Ingredients),
 			getMealPlan(svc.MealPlans),
 			editMealPlan(svc.MealPlans, svc.Ingredients),
+			deleteMealPlan(svc.MealPlans),
 		)
 		if svc.FoodLog != nil && svc.Users != nil {
 			r.Register(logPlannedMeal(svc.MealPlans, svc.FoodLog, svc.Users))

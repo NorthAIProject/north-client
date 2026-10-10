@@ -67,6 +67,9 @@ var portugueseBrazilianChat = map[string]string{
 	"chat.tool.alerts.write":   "criando um lembrete",
 	"chat.tool.log":            "anotando isso para você",
 
+	// A whole meal plan being removed.
+	"chat.tool.mealplan.delete": "apagando um plano alimentar",
+
 	"chat.caption.briefing":  "Resumo · %[1]s",
 	"chat.caption.standing":  "Tarefa recorrente",
 	"chat.caption.from":      "De %[1]s",

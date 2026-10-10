@@ -457,6 +457,25 @@
     "readOnly": false
   },
   {
+    "name": "delete_meal_plan",
+    "description": "Delete one of this person's meal plans, with all its days and meals, when they ask to remove it. Name the plan exactly as get_meal_plan or their plans list shows it. If no plan or several plans have that name, nothing is deleted and their plans are listed so you can ask which they mean.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "description": "which plan to delete",
+      "properties": {
+        "plan": {
+          "description": "the plan's name, as the person or get_meal_plan shows it",
+          "type": "string"
+        }
+      },
+      "required": [
+        "plan"
+      ],
+      "type": "object"
+    },
+    "readOnly": false
+  },
+  {
     "name": "edit_meal_plan",
     "description": "Change the meals in one of this person's meal plans. Put every change they asked for in one call: the changes are applied together or not at all. Ops: add_meal (an empty meal at the end of the day), remove_meal (the meal with all its options), add_food (grams of a catalog food added to a meal), remove_food (every portion of that food in the meal), set_grams (the meal holds exactly that many grams of a food already in it), add_option (an empty option named option_label after the meal's last one), remove_option (option 2 or later). A meal can hold several interchangeable options; option 1 is the default, the one the day's totals count. add_food, remove_food and set_grams change option 1 unless option says otherwise; an option number a target day's meal does not have refuses the whole change, so name days when the days differ. Leave days out to change every day of the plan; a change applies on the days where its meal (and food) exist, and is refused only if it matches on none. Use get_meal_plan first to see the meal, option and food names. A result that would take a day further over its macro target is refused with the amounts and nothing is saved: shrink the change, or tell the person and ask. Set allow_over_target only after the person has explicitly accepted an overage that a refused call reported; easy plans never go over, whatever it says.",
     "inputSchema": {
