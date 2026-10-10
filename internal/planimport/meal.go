@@ -40,6 +40,33 @@ var countUnits = map[string]bool{
 	"scoop": true, "scoops": true, "egg": true, "eggs": true, "medium": true, "large": true, "small": true,
 }
 
+// typicalCount is what one of a counted portion usually weighs, for when
+// the catalog has no serving size to go by. Plans written by dietitians count
+// in these far more than in grams; without a weight the line would be lost.
+// Every use is flagged as an estimate.
+var typicalCount = map[string]float64{
+	"slice": 30, "slices": 30, "fatia": 30, "fatias": 30,
+	"piece": 120, "pieces": 120, "peça": 120, "peças": 120, "peca": 120, "pecas": 120,
+	"unit": 100, "units": 100, "unidade": 100, "unidades": 100,
+	"can": 120, "cans": 120, "lata": 120, "latas": 120,
+	"yogurt": 125, "yogurts": 125, "yoghurt": 125, "iogurte": 125, "iogurtes": 125,
+	"egg": 50, "eggs": 50, "ovo": 50, "ovos": 50,
+	"scoop": 30, "scoops": 30,
+	"serving": 100, "servings": 100, "portion": 100, "portions": 100, "dose": 100, "doses": 100, "porção": 100, "porções": 100,
+	"tortita": 8, "tortitas": 8, "rice cake": 8, "rice cakes": 8,
+	"handful": 30, "handfuls": 30, "punhado": 30, "punhados": 30,
+}
+
+// kitchenMeasures are spoons and cups, read at their usual weight and
+// flagged every time.
+var kitchenMeasures = map[string]float64{
+	"cup": 240, "cups": 240, "chávena": 240, "chávenas": 240, "chavena": 240, "chavenas": 240,
+	"glass": 200, "glasses": 200, "copo": 200, "copos": 200,
+	"tbsp": 15, "tablespoon": 15, "tablespoons": 15, "colher de sopa": 15, "colheres de sopa": 15,
+	"colher de sobremesa": 10, "colheres de sobremesa": 10, "dessertspoon": 10, "dessertspoons": 10,
+	"tsp": 5, "teaspoon": 5, "teaspoons": 5, "colher de chá": 5, "colheres de chá": 5, "colher de cha": 5, "colheres de cha": 5,
+}
+
 // statedTolerance is how far the catalog may disagree with the file before the
 // line is flagged: 15%, and never less than 2 g, so rounding on a label does
 // not cry wolf.
@@ -276,16 +303,33 @@ func (s *Service) derivedGrams(f *FoodDraft, ingredient *meals.Ingredient) *floa
 		f.Flags = appendOnce(f.Flags, fmt.Sprintf("Read %g %s as %g g. Change it if this isn't a watery drink.", qty, f.Unit, g))
 		return &g
 	}
-	if countUnits[unit] && ingredient != nil && ingredient.ServingSizeGrams > 0 {
+	_, typical := typicalCount[unit]
+	if (countUnits[unit] || typical) && ingredient != nil && ingredient.ServingSizeGrams > 0 {
 		g := qty * ingredient.ServingSizeGrams
 		label := f.Unit
 		if label == "" {
 			label = "serving"
 		}
+		f.Estimated = true
 		f.Flags = appendOnce(f.Flags, fmt.Sprintf("Assumed 1 %s = %g g (the catalog's serving). Check it.", label, ingredient.ServingSizeGrams))
 		return &g
 	}
+	if per, ok := typicalCount[unit]; ok {
+		return estimatedGrams(f, qty, per)
+	}
+	if per, ok := kitchenMeasures[unit]; ok {
+		return estimatedGrams(f, qty, per)
+	}
 	return nil
+}
+
+// estimatedGrams weighs a counted or measured amount at its usual weight and
+// says so on the line.
+func estimatedGrams(f *FoodDraft, qty, per float64) *float64 {
+	g := qty * per
+	f.Estimated = true
+	f.Flags = appendOnce(f.Flags, fmt.Sprintf("Assumed 1 %s ≈ %g g. Check it.", strings.TrimSpace(f.Unit), per))
+	return &g
 }
 
 // normalizeUnit folds "G.", " kg" and "Slices" to the keys the unit tables use.
