@@ -164,3 +164,31 @@ func TestUsualStateFollowsTheNumbersAsShown(t *testing.T) {
 		t.Errorf("51 against 52–54 = %q", v.State)
 	}
 }
+
+// The types the phone started sending reach the health list on their own:
+// a catalog entry is all a new metric needs.
+func TestNewHealthTypesAppearInTheList(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 10, 9, 20, 0, 0, 0, time.UTC)
+	today := timerange.StartOfDay(now)
+	f := datedHealth{}
+	f.add("distance_walking_running", today, 3, func(int) float64 { return 2.5 })
+	f.add("flights_climbed", today, 3, func(int) float64 { return 8 })
+	f.add("mindful_minutes", today, 3, func(int) float64 { return 10 })
+	f.add("walking_hr_avg", today, 3, func(int) float64 { return 98 })
+	f.add("respiratory_rate", today, 3, func(int) float64 { return 14.5 })
+	f.add("spo2", today, 3, func(int) float64 { return 97 })
+
+	rows, err := (&Service{health: f}).Health(context.Background(), users.User{Timezone: "UTC"}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, r := range rows {
+		got = append(got, r.Metric.Key+"="+formatMetric(r.Metric, r.Recent[len(r.Recent)-1].Value))
+	}
+	want := "walking-running-distance=2.5km,flights-climbed=8,mindful-minutes=10min,walking-heart-rate=98bpm,respiratory-rate=14.5/min,blood-oxygen=97%"
+	if strings.Join(got, ",") != want {
+		t.Errorf("health list =\n%s\nwant\n%s", strings.Join(got, ","), want)
+	}
+}

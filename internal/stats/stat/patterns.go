@@ -34,6 +34,7 @@ type DayFacts struct {
 	StandHours  *float64
 	HRV         *float64 // ms
 	RestingHR   *float64 // bpm
+	MindfulMin  *float64 // minutes of mindful sessions
 	// OutdoorWorkout is a run, walk, hike or ride outside on Date.
 	OutdoorWorkout bool
 }
@@ -276,7 +277,7 @@ func Patterns(days []DayFacts) []Finding {
 	for _, d := range days {
 		byDate[d.Date.Format(time.DateOnly)] = d
 	}
-	all := append(append(append([]split(nil), splits...), screenSplit(days)...), moodSplits(days)...)
+	all := append(append(append(append([]split(nil), splits...), screenSplit(days)...), moodSplits(days)...), mindfulSplit(days)...)
 
 	var out []Finding
 	for _, sp := range all {
@@ -431,4 +432,35 @@ func thousands(v float64) string {
 		s = s[:i] + "," + s[i:]
 	}
 	return s
+}
+
+// mindfulSplit compares mood on days with a mindful session against days
+// without one. A day with no reading counts as none, but only for someone
+// who logs mindfulness at all: for anyone else every day is unknown.
+func mindfulSplit(days []DayFacts) []split {
+	tracked := false
+	for _, d := range days {
+		if d.MindfulMin != nil && *d.MindfulMin > 0 {
+			tracked = true
+			break
+		}
+	}
+	if !tracked {
+		return nil
+	}
+	return []split{{
+		key: "mood_mindful", unit: "/5", scale: 1,
+		aLabel: "Days with a mindful session", bLabel: "Days without",
+		title: func(d float64) string {
+			return fmt.Sprintf("Your mood is %.1f points %s on days you take a mindful moment", math.Abs(d), higher(d))
+		},
+		detail: func(a, b Group) string {
+			return fmt.Sprintf("Check-in mood averages %.1f on %d days with a mindful session, %.1f on %d days without.",
+				a.Mean, a.N, b.Mean, b.N)
+		},
+		value: moodOf,
+		inA: func(_, cur DayFacts) (bool, bool) {
+			return cur.MindfulMin != nil && *cur.MindfulMin > 0, true
+		},
+	}}
 }
