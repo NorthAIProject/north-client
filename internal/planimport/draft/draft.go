@@ -153,6 +153,9 @@ type FoodDraft struct {
 	// Grams as the reader's estimate of a vague amount, not the file's number.
 	SourceText string `json:"sourceText,omitempty"`
 	Estimated  bool   `json:"estimated,omitempty"`
+	// Optional is a food the plan offers but does not count: shown with its
+	// own macros, left out of the day's total.
+	Optional bool `json:"optional,omitempty"`
 
 	StatedProteinG *float64 `json:"statedProteinG,omitempty"`
 	StatedCarbG    *float64 `json:"statedCarbG,omitempty"`

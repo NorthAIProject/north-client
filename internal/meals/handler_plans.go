@@ -456,6 +456,30 @@ func (h *Handler) removeIngredientFromMeal(w http.ResponseWriter, r *http.Reques
 	http.Redirect(w, r, planURL(planID), http.StatusSeeOther)
 }
 
+// setIngredientOptional marks a food optional (shown, not counted) or counted
+// again. The form says which with optional=true|false; counting it again is
+// checked against the target like adding it.
+func (h *Handler) setIngredientOptional(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		h.fail(w, r, apperr.ErrNotFound)
+		return
+	}
+	planID, err := h.plans.PlanIDOfMealIngredient(r.Context(), id, user.ID)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	optional := r.FormValue("optional") == "true"
+	if _, err := h.plans.SetIngredientOptional(r.Context(), id, user.ID, optional, r.FormValue("confirm_overage") == "true"); err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	http.Redirect(w, r, planURL(planID), http.StatusSeeOther)
+}
+
 // planURL is where every plan change lands. Explicit rather than the Referer:
 // a refused change renders the plan at the form's own URL, and going "back"
 // there after a confirmed retry would be a GET on a POST-only route.

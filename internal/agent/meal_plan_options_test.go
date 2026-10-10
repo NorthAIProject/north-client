@@ -211,3 +211,13 @@ func dayBlocks(description string) []string {
 	}
 	return out
 }
+
+func TestAnOptionalFoodIsDescribedAsNotCounted(t *testing.T) {
+	got := describeFoods(meals.Meal{Ingredients: []meals.MealIngredient{
+		{IngredientName: "Wholemeal bread", QuantityGrams: 60},
+		{IngredientName: "Jam", QuantityGrams: 15, Optional: true},
+	}})
+	if got != "60 g Wholemeal bread, 15 g Jam (optional, not counted)" {
+		t.Fatalf("describeFoods = %q", got)
+	}
+}

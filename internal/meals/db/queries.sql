@@ -173,8 +173,8 @@ UPDATE meals SET total_macros = $2 WHERE id = $1;
 -- Meal ingredients
 
 -- name: CreateMealIngredient :one
-INSERT INTO meal_ingredients (meal_id, ingredient_id, quantity_grams, calories, protein_g, fat_g, carbs_g, source_text, estimated)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+INSERT INTO meal_ingredients (meal_id, ingredient_id, quantity_grams, calories, protein_g, fat_g, carbs_g, source_text, estimated, optional)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 RETURNING *;
 
 -- name: ListMealIngredients :many
@@ -203,14 +203,21 @@ SET quantity_grams = $3, calories = $4, protein_g = $5, fat_g = $6, carbs_g = $7
 WHERE id = $1 AND meal_id = $2
 RETURNING *;
 
+-- name: SetMealIngredientOptional :one
+UPDATE meal_ingredients
+SET optional = $3
+WHERE id = $1 AND meal_id = $2
+RETURNING *;
+
 -- name: SumMealIngredientMacros :one
+-- An optional food is shown but never counted.
 SELECT
     COALESCE(SUM(calories), 0)::double precision  AS calories,
     COALESCE(SUM(protein_g), 0)::double precision AS protein_g,
     COALESCE(SUM(fat_g), 0)::double precision     AS fat_g,
     COALESCE(SUM(carbs_g), 0)::double precision   AS carbs_g
 FROM meal_ingredients
-WHERE meal_id = $1;
+WHERE meal_id = $1 AND NOT optional;
 
 -- Food logs
 
