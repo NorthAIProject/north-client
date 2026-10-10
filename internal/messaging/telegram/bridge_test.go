@@ -209,3 +209,32 @@ func TestAnyOtherFailureStillApologises(t *testing.T) {
 		t.Fatalf("generic failure = %q", text)
 	}
 }
+
+// A file the service will refuse anyway is not pulled across the network
+// first: the refusal needs only the name and size Telegram already sent.
+func TestARefusedDocumentIsNotDownloadedByTheBridge(t *testing.T) {
+	for _, file := range []messaging.InboundFile{
+		{Kind: messaging.KindFile, FileID: "big", Name: "dieta.pdf", SizeBytes: 9 << 20},
+		{Kind: messaging.KindFile, FileID: "zip", Name: "photos.zip", SizeBytes: 1 << 10},
+	} {
+		api := newBotAPI(t)
+		b := &bridge{
+			messages:    okHandler{},
+			client:      api.client(),
+			log:         slog.Default(),
+			typingEvery: time.Hour,
+		}
+
+		b.answer(context.Background(), messaging.InboundMessage{
+			Platform:   messaging.PlatformTelegram,
+			ExternalID: "884422",
+			Attachment: &file,
+		}, "")
+
+		for _, call := range api.sent() {
+			if call.method == "getFile" {
+				t.Fatalf("the bridge downloaded %s, which the service refuses", file.Name)
+			}
+		}
+	}
+}

@@ -67,6 +67,9 @@ var spanishChat = map[string]string{
 	"chat.tool.alerts.write":   "creando un recordatorio",
 	"chat.tool.log":            "anotándolo por ti",
 
+	// A whole meal plan being removed.
+	"chat.tool.mealplan.delete": "borrando un plan de comidas",
+
 	"chat.caption.briefing":  "Resumen · %[1]s",
 	"chat.caption.standing":  "Tarea programada",
 	"chat.caption.from":      "De %[1]s",

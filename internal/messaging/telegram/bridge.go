@@ -170,13 +170,17 @@ func (b *bridge) answer(ctx context.Context, in messaging.InboundMessage, callba
 	}
 
 	if err := b.fillAttachment(ctx, &in); err != nil {
-		// Only photos are fetched here now, so this copy is about a photo. A
-		// recording that cannot be downloaded is answered by the messaging
-		// service instead, in the person's own language, because that is where
-		// the download moved to.
+		// Only photos and documents are fetched here now, so this copy names
+		// one of them. A recording that cannot be downloaded is answered by the
+		// messaging service instead, in the person's own language, because that
+		// is where the download moved to.
 		b.log.Warn("telegram could not download an attachment", "error", err, "kind", in.Attachment.Kind)
+		what := "photo"
+		if in.Attachment.Kind == messaging.KindFile {
+			what = "file"
+		}
 		_ = b.client.Send(ctx, in.ExternalID, messaging.OutboundMessage{
-			Text: "I could not download that photo. Try sending it again?",
+			Text: "I could not download that " + what + ". Try sending it again?",
 		})
 		return
 	}
@@ -223,6 +227,11 @@ func (b *bridge) fillAttachment(ctx context.Context, in *messaging.InboundMessag
 	// Photos are still fetched here: there is no equivalent cheap refusal, and
 	// the media service needs the bytes in order to store them.
 	if in.Attachment.Kind == messaging.KindVoice {
+		return nil
+	}
+	// A document the service will refuse on its name or size is left too:
+	// the refusal needs neither its bytes nor a 10 MB download.
+	if in.Attachment.Kind == messaging.KindFile && !messaging.AcceptsFile(*in.Attachment) {
 		return nil
 	}
 	data, mime, err := b.client.File(ctx, in.Attachment.FileID)

@@ -55,7 +55,7 @@ type InboundMessage struct {
 }
 
 // Attachment kinds. The field below is a free string so a platform can name
-// something these do not, but naming the two North acts on keeps the adapters
+// something these do not, but naming the ones North acts on keeps the adapters
 // and the service agreeing about the spelling.
 //
 // Not the same string space as conversations.Message.Parts[].Kind, which
@@ -63,6 +63,8 @@ type InboundMessage struct {
 const (
 	KindImage = "image"
 	KindVoice = "voice"
+	// KindFile is a document to read: a diet PDF, a spreadsheet.
+	KindFile = "file"
 )
 
 // InboundFile is a photo, a voice note, or another file that arrived with a

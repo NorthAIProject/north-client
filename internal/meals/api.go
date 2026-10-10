@@ -50,6 +50,7 @@ func (a *API) Routes(r chi.Router) {
 	r.Delete("/nutrition/plan-days/{dayID}", a.removeDay)
 	r.Post("/nutrition/plan-days/{dayID}/meals", a.addMeal)
 	r.Delete("/nutrition/meals/{mealID}", a.removeMeal)
+	r.Post("/nutrition/meals/{mealID}/options", a.addOption)
 	r.Post("/nutrition/meals/{mealID}/ingredients", a.addMealIngredient)
 	r.Post("/nutrition/meals/{mealID}/ingredients/batch", a.addMealIngredients)
 	r.Delete("/nutrition/meal-ingredients/{mealIngredientID}", a.removeMealIngredient)
@@ -233,6 +234,12 @@ type DayOverrideRequest struct {
 
 type MealRequest struct {
 	Name string `json:"name"`
+}
+
+// OptionRequest adds an option to a meal. An empty label becomes the first
+// "Option N" the meal does not use.
+type OptionRequest struct {
+	Label string `json:"label"`
 }
 
 type PortionRequest struct {
@@ -493,6 +500,31 @@ func (a *API) addMeal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.writePlan(w, r, http.StatusCreated, added.MealPlanID)
+}
+
+// addOption adds an empty option to the meal mealID — any of its options —
+// and answers with the whole plan, as adding a meal does, so a client
+// refreshes in one call.
+func (a *API) addOption(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r, "mealID")
+	if !ok {
+		return
+	}
+	var req OptionRequest
+	if !readJSON(w, r, &req) {
+		return
+	}
+	userID := auth.MustUser(r.Context()).ID
+	planID, err := a.plans.PlanIDOfMeal(r.Context(), id, userID)
+	if err != nil {
+		httpx.Error(w, err, "The option could not be added.")
+		return
+	}
+	if _, err = a.plans.AddOption(r.Context(), userID, planID, id, req.Label); err != nil {
+		httpx.Error(w, err, "The option could not be added.")
+		return
+	}
+	a.writePlan(w, r, http.StatusCreated, planID)
 }
 
 func (a *API) removeMeal(w http.ResponseWriter, r *http.Request) {
