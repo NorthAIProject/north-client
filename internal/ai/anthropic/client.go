@@ -94,7 +94,8 @@ func New(opts Options) (*Client, error) {
 func (c *Client) Name() string { return "anthropic" }
 
 func (c *Client) Generate(ctx context.Context, req ai.Request) (*ai.Response, error) {
-	msg, err := c.sdk.Messages.New(ctx, c.params(req))
+	p := c.params(req)
+	msg, err := c.sdk.Messages.New(ctx, p, requestOptions(p)...)
 	if err != nil {
 		return nil, c.classify(err)
 	}
@@ -142,7 +143,7 @@ func (c *Client) params(req ai.Request) sdk.MessageNewParams {
 		c.thinking != "" && maxTokens < minThinkingTokens:
 		p.Thinking = sdk.ThinkingConfigParamUnion{OfDisabled: &sdk.ThinkingConfigDisabledParam{}}
 	case c.thinking == "adaptive":
-		p.Thinking = sdk.ThinkingConfigParamUnion{OfAdaptive: &sdk.ThinkingConfigAdaptiveParam{}}
+		p.Thinking = sdk.ThinkingConfigParamUnion{OfAdaptive: adaptiveThinking()}
 	}
 	// Effort and format share output_config; each is set on its own field so
 	// neither overwrites the other.
@@ -159,6 +160,33 @@ func (c *Client) params(req ai.Request) sdk.MessageNewParams {
 		}}
 	}
 	return p
+}
+
+// thinkingBindingBeta enables block_binding on a thinking config.
+const thinkingBindingBeta = "thinking-binding-controls-2026-08-01"
+
+// adaptiveThinking asks the API to drop, rather than refuse, a replayed
+// thinking block whose conversation has changed since it was made. A turn
+// resumed after an approval always has: the write it approved changes the
+// context in the system prompt, and a file read into the first message is
+// only a note by then. Refusing would end the conversation for this provider;
+// dropping costs the model only its earlier reasoning. The SDK's non-beta
+// type has no field for it, so it travels as an extra field with its beta.
+func adaptiveThinking() *sdk.ThinkingConfigAdaptiveParam {
+	t := &sdk.ThinkingConfigAdaptiveParam{}
+	t.SetExtraFields(map[string]any{
+		"block_binding": map[string]any{"prefix_mismatch_behavior": "drop_block"},
+	})
+	return t
+}
+
+// requestOptions carries the beta that block_binding needs, only on requests
+// that send it.
+func requestOptions(p sdk.MessageNewParams) []option.RequestOption {
+	if p.Thinking.OfAdaptive == nil {
+		return nil
+	}
+	return []option.RequestOption{option.WithHeaderAdd("anthropic-beta", thinkingBindingBeta)}
 }
 
 func fromMessage(msg *sdk.Message) *ai.Response {
