@@ -301,6 +301,10 @@ func (s *Service) importOne(ctx context.Context, userID uuid.UUID, a apiActivity
 		ElevationGainM:  a.TotalElevationGain,
 		AverageSpeedMS:  a.AverageSpeed,
 		SummaryPolyline: a.Map.SummaryPolyline,
+
+		AverageHeartrate: a.AverageHeartrate,
+		MaxHeartrate:     a.MaxHeartrate,
+		Trainer:          a.indoor(),
 	}); err != nil {
 		return false, false, err
 	}
@@ -316,6 +320,11 @@ func (s *Service) importOne(ctx context.Context, userID uuid.UUID, a apiActivity
 		EndedAt:      startedAt.Add(a.duration()),
 		WeightKg:     weightKg,
 		Calories:     a.Calories,
+		DistanceM:    a.Distance,
+		AvgHR:        a.AverageHeartrate,
+		MaxHR:        a.MaxHeartrate,
+		ElevationM:   a.TotalElevationGain,
+		Indoor:       a.where(),
 	})
 	if err != nil {
 		return false, mapped, err

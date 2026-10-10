@@ -25,6 +25,9 @@ type StravaActivity struct {
 	SummaryPolyline     string
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
+	AverageHeartrate    *float32
+	MaxHeartrate        *float32
+	Trainer             bool
 }
 
 type StravaConnection struct {

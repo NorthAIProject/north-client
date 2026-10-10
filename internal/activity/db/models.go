@@ -27,4 +27,8 @@ type ActivitySession struct {
 	UpdatedAt          time.Time
 	DistanceM          *float64
 	PlanWeekday        *string
+	AvgHr              *float32
+	MaxHr              *float32
+	ElevationM         *float64
+	Indoor             *bool
 }

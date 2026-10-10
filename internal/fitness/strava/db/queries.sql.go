@@ -85,7 +85,7 @@ func (q *Queries) GetStravaConnection(ctx context.Context, userID uuid.UUID) (St
 }
 
 const listStravaActivitiesBetween = `-- name: ListStravaActivitiesBetween :many
-SELECT id, user_id, strava_id, name, sport_type, start_date, distance_m, moving_time_s, elapsed_time_s, total_elevation_gain_m, average_speed_ms, summary_polyline, created_at, updated_at FROM strava_activities
+SELECT id, user_id, strava_id, name, sport_type, start_date, distance_m, moving_time_s, elapsed_time_s, total_elevation_gain_m, average_speed_ms, summary_polyline, created_at, updated_at, average_heartrate, max_heartrate, trainer FROM strava_activities
 WHERE user_id = $1
   AND start_date >= $2::timestamptz
   AND start_date <  $3::timestamptz
@@ -132,6 +132,9 @@ func (q *Queries) ListStravaActivitiesBetween(ctx context.Context, arg ListStrav
 			&i.SummaryPolyline,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.AverageHeartrate,
+			&i.MaxHeartrate,
+			&i.Trainer,
 		); err != nil {
 			return nil, err
 		}
@@ -144,7 +147,7 @@ func (q *Queries) ListStravaActivitiesBetween(ctx context.Context, arg ListStrav
 }
 
 const listStravaActivitiesPage = `-- name: ListStravaActivitiesPage :many
-SELECT id, user_id, strava_id, name, sport_type, start_date, distance_m, moving_time_s, elapsed_time_s, total_elevation_gain_m, average_speed_ms, summary_polyline, created_at, updated_at FROM strava_activities
+SELECT id, user_id, strava_id, name, sport_type, start_date, distance_m, moving_time_s, elapsed_time_s, total_elevation_gain_m, average_speed_ms, summary_polyline, created_at, updated_at, average_heartrate, max_heartrate, trainer FROM strava_activities
 WHERE user_id = $1
 ORDER BY start_date DESC
 LIMIT $3::int
@@ -191,6 +194,9 @@ func (q *Queries) ListStravaActivitiesPage(ctx context.Context, arg ListStravaAc
 			&i.SummaryPolyline,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.AverageHeartrate,
+			&i.MaxHeartrate,
+			&i.Trainer,
 		); err != nil {
 			return nil, err
 		}
@@ -411,9 +417,11 @@ const upsertStravaActivity = `-- name: UpsertStravaActivity :exec
 INSERT INTO strava_activities (
     user_id, strava_id, name, sport_type, start_date,
     distance_m, moving_time_s, elapsed_time_s,
-    total_elevation_gain_m, average_speed_ms, summary_polyline
+    total_elevation_gain_m, average_speed_ms, summary_polyline,
+    average_heartrate, max_heartrate, trainer
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
+    $12, $13, $14
 )
 ON CONFLICT (user_id, strava_id) DO UPDATE SET
     name                   = EXCLUDED.name,
@@ -425,6 +433,9 @@ ON CONFLICT (user_id, strava_id) DO UPDATE SET
     total_elevation_gain_m = EXCLUDED.total_elevation_gain_m,
     average_speed_ms       = EXCLUDED.average_speed_ms,
     summary_polyline       = EXCLUDED.summary_polyline,
+    average_heartrate      = EXCLUDED.average_heartrate,
+    max_heartrate          = EXCLUDED.max_heartrate,
+    trainer                = EXCLUDED.trainer,
     updated_at             = now()
 `
 
@@ -440,6 +451,9 @@ type UpsertStravaActivityParams struct {
 	TotalElevationGainM float64
 	AverageSpeedMs      float64
 	SummaryPolyline     string
+	AverageHeartrate    *float32
+	MaxHeartrate        *float32
+	Trainer             bool
 }
 
 func (q *Queries) UpsertStravaActivity(ctx context.Context, arg UpsertStravaActivityParams) error {
@@ -455,6 +469,9 @@ func (q *Queries) UpsertStravaActivity(ctx context.Context, arg UpsertStravaActi
 		arg.TotalElevationGainM,
 		arg.AverageSpeedMs,
 		arg.SummaryPolyline,
+		arg.AverageHeartrate,
+		arg.MaxHeartrate,
+		arg.Trainer,
 	)
 	return err
 }

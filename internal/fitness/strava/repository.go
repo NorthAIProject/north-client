@@ -200,11 +200,23 @@ func (r *Repository) SaveActivity(ctx context.Context, userID uuid.UUID, a Activ
 		TotalElevationGainM: a.ElevationGainM,
 		AverageSpeedMs:      a.AverageSpeedMS,
 		SummaryPolyline:     a.SummaryPolyline,
+		AverageHeartrate:    measured(a.AverageHeartrate),
+		MaxHeartrate:        measured(a.MaxHeartrate),
+		Trainer:             a.Trainer,
 	})
 	if err != nil {
 		return apperr.Wrap(err, "save strava activity")
 	}
 	return nil
+}
+
+// measured stores a heart rate, or NULL when nothing measured one.
+func measured(v float64) *float32 {
+	if v <= 0 {
+		return nil
+	}
+	f := float32(v)
+	return &f
 }
 
 // ActivitiesBetween returns the activities in a half-open window, oldest

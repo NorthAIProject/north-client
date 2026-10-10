@@ -94,6 +94,12 @@ type Activity struct {
 	ElevationGainM float64
 	AverageSpeedMS float64
 
+	// Heart rate is zero when nothing measured it.
+	AverageHeartrate float64
+	MaxHeartrate     float64
+	// Trainer is a treadmill, indoor trainer or virtual session.
+	Trainer bool
+
 	// SummaryPolyline is Google-encoded. Empty for anything without GPS,
 	// which the viewer handles rather than hides.
 	SummaryPolyline string
