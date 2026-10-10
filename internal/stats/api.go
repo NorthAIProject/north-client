@@ -2,6 +2,7 @@ package stats
 
 import (
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -24,6 +25,7 @@ func NewAPI(svc *Service) *API { return &API{svc: svc} }
 func (a *API) Routes(r chi.Router) {
 	r.Get("/stats/sleep", a.sleep)
 	r.Get("/stats/cardio", a.cardio)
+	r.Get("/stats/cardio/kinds/{name}", a.cardioKind)
 	r.Get("/stats/eating", a.eating)
 	r.Get("/stats/patterns", a.patterns)
 }
@@ -64,6 +66,47 @@ type StatsKind struct {
 	Sessions   int     `json:"sessions"`
 	Minutes    int     `json:"minutes"`
 	DistanceKm float64 `json:"distanceKm"`
+	// Measure is "pace" or "speed"; the averages are 0 when not measured.
+	Measure  string  `json:"measure,omitempty"`
+	AvgPace  float64 `json:"avgPaceSeconds,omitempty"`
+	AvgSpeed float64 `json:"avgSpeedKmh,omitempty"`
+	AvgHR    float64 `json:"avgHeartRate,omitempty"`
+}
+
+// StatsBest is one personal best. Unit says how to read Value: "s" (a
+// time), "km", "km/h", "m" or "min".
+type StatsBest struct {
+	Key   string  `json:"key"`
+	Label string  `json:"label"`
+	Value float64 `json:"value"`
+	Unit  string  `json:"unit"`
+	Date  string  `json:"date"`
+}
+
+// StatsCardioKind is one activity type over the last year.
+type StatsCardioKind struct {
+	Name string `json:"name"`
+	// Measure is "pace" (seconds per km) or "speed" (km/h): an open string.
+	Measure    string  `json:"measure"`
+	Sessions   int     `json:"sessions"`
+	Minutes    int     `json:"minutes"`
+	DistanceKm float64 `json:"distanceKm"`
+	ElevationM float64 `json:"elevationM"`
+	Indoor     int     `json:"indoor"`
+	Outdoor    int     `json:"outdoor"`
+	// AvgPace is seconds per km and AvgSpeed km/h; 0 when not measured.
+	AvgPace  float64 `json:"avgPaceSeconds"`
+	AvgSpeed float64 `json:"avgSpeedKmh"`
+	AvgHR    float64 `json:"avgHeartRate"`
+	// Monthly is pace or speed (per Measure) by month; Efficiency is metres
+	// per heartbeat by month.
+	Monthly    []StatsDayValue `json:"monthly"`
+	Efficiency []StatsDayValue `json:"efficiency"`
+	Bests      []StatsBest     `json:"bests"`
+	// UsualDay is a weekday name, empty until there are enough sessions;
+	// UsualHour is -1 then.
+	UsualDay  string `json:"usualDay"`
+	UsualHour int    `json:"usualHour"`
 }
 
 type StatsRuns struct {
@@ -180,6 +223,37 @@ func (a *API) cardio(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, ProjectCardio(rg.Key, st))
 }
 
+func (a *API) cardioKind(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+	// Names have spaces ("Indoor running"); a router handed the raw path
+	// would leave them escaped.
+	name := chi.URLParam(r, "name")
+	if unescaped, err := url.PathUnescape(name); err == nil {
+		name = unescaped
+	}
+	st, err := a.svc.CardioKind(r.Context(), user, name, time.Now())
+	if err != nil {
+		httpx.Error(w, err, "That activity could not be loaded.")
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, ProjectCardioKind(st))
+}
+
+// ProjectCardioKind is one activity type as the API returns it.
+func ProjectCardioKind(k stat.KindStats) StatsCardioKind {
+	out := StatsCardioKind{
+		Name: k.Name, Measure: k.Measure, Sessions: k.Sessions, Minutes: k.Seconds / 60,
+		DistanceKm: k.DistanceKm, ElevationM: k.ElevationM, Indoor: k.Indoor, Outdoor: k.Outdoor,
+		AvgPace: k.AvgPace, AvgSpeed: k.AvgSpeed, AvgHR: k.AvgHR,
+		Monthly: days(k.Monthly), Efficiency: days(k.Efficiency), Bests: []StatsBest{},
+		UsualDay: k.UsualDay, UsualHour: k.UsualHour,
+	}
+	for _, b := range k.Bests {
+		out.Bests = append(out.Bests, StatsBest{Key: b.Key, Label: b.Label, Value: b.Value, Unit: b.Unit, Date: b.At.Format(time.DateOnly)})
+	}
+	return out
+}
+
 func (a *API) eating(w http.ResponseWriter, r *http.Request) {
 	user, rg := a.window(r)
 	st, err := a.svc.Eating(r.Context(), user, rg)
@@ -241,7 +315,10 @@ func ProjectCardio(key string, st CardioStats) StatsCardio {
 		Recent: []StatsSession{}, RestingHR: days(st.RestingHR), HRV: days(st.HRV), VO2Max: days(st.VO2Max),
 	}
 	for _, k := range st.ByKind {
-		out.ByKind = append(out.ByKind, StatsKind{Name: k.Name, Sessions: k.Sessions, Minutes: k.Seconds / 60, DistanceKm: k.DistanceKm})
+		out.ByKind = append(out.ByKind, StatsKind{
+			Name: k.Name, Sessions: k.Sessions, Minutes: k.Seconds / 60, DistanceKm: k.DistanceKm,
+			Measure: k.Measure, AvgPace: k.AvgPace, AvgSpeed: k.AvgSpeed, AvgHR: k.AvgHR,
+		})
 	}
 	for _, s := range st.Recent {
 		out.Recent = append(out.Recent, StatsSession{

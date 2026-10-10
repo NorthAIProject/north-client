@@ -117,3 +117,45 @@ func TestPatternsTrustTheIndoorFlag(t *testing.T) {
 		}
 	}
 }
+
+// One activity type's page reads only its own sessions: a treadmill run is
+// "Indoor running", not "Running", and a gym session is not cardio.
+func TestCardioKindKeepsToItsOwnSessions(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
+	indoor, outdoor := true, false
+	at := func(days int) (time.Time, *time.Time) {
+		start := now.AddDate(0, 0, -days)
+		end := start.Add(30 * time.Minute)
+		return start, &end
+	}
+	km, hr := 5000.0, 150.0
+	var sessions fakeActivity
+	for i, where := range []*bool{&outdoor, &outdoor, &indoor, nil} {
+		start, end := at(i + 1)
+		sessions = append(sessions, activity.Session{
+			ActivityCode: "running_fast", StartedAt: start, EndedAt: end,
+			DistanceM: &km, AvgHR: &hr, Indoor: where,
+		})
+	}
+	start, end := at(5)
+	sessions = append(sessions, activity.Session{ActivityCode: "strength_training", StartedAt: start, EndedAt: end})
+
+	svc := stats.NewService(stats.Sources{Activity: sessions})
+	user := users.User{ID: uuid.New(), Timezone: "UTC"}
+	running, err := svc.CardioKind(context.Background(), user, "Running", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Two flagged outdoor and one that did not say.
+	if running.Sessions != 3 || running.Outdoor != 2 || running.Indoor != 0 || running.AvgHR != 150 || running.AvgPace != 360 {
+		t.Errorf("running = %+v", running)
+	}
+	treadmill, err := svc.CardioKind(context.Background(), user, "Indoor running", now)
+	if err != nil || treadmill.Sessions != 1 || treadmill.Indoor != 1 {
+		t.Errorf("indoor running = %+v, %v", treadmill, err)
+	}
+	if none, _ := svc.CardioKind(context.Background(), user, "Rowing", now); none.Sessions != 0 {
+		t.Errorf("no rowing = %+v", none)
+	}
+}
