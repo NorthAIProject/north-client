@@ -223,3 +223,33 @@ func TestBuildMealReportsASameAsWhoseSourceIsMissing(t *testing.T) {
 		t.Fatalf("unparsed = %q, want %q", draft.Unparsed, want)
 	}
 }
+
+// An optional food — "compota 0% (opcional)" — stays in its meal, marked, so
+// the plan shows it without counting it.
+func TestBuildMealKeepsAnOptionalFoodMarked(t *testing.T) {
+	t.Parallel()
+
+	draft, err := buildMeal(MealReading{Rows: []MealRow{
+		{Meal: "Pequeno-almoço", Food: "pão", FoodEN: "Wholemeal bread", GramsEstimate: "60"},
+		{Meal: "Pequeno-almoço", Food: "compota 0%", FoodEN: "Jam", Quantity: "1", Unit: "colher de sopa", Optional: true},
+	}})
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	foods := draft.Days[0].Meals[0].Foods
+	if len(foods) != 2 || foods[0].Optional || !foods[1].Optional {
+		t.Fatalf("foods = %+v, want the jam kept and marked optional", foods)
+	}
+}
+
+func TestTheReaderMarksOptionalFoods(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		in   string
+		want bool
+	}{{"yes", true}, {"Yes", true}, {"sim", true}, {"", false}, {"no", false}, {"maybe", false}} {
+		if got := isYes(c.in); got != c.want {
+			t.Errorf("isYes(%q) = %v, want %v", c.in, got, c.want)
+		}
+	}
+}

@@ -20,6 +20,11 @@ design, balance, complete or improve the plan. You copy what is written.
     "1 fruta" → "150");
   - leave it "" only when the quantity is already grams or kilograms. An
     estimate is always better than none: an empty one drops the food.
+- `optional` is "yes" for a food the source offers but does not require:
+  "(opcional)", "(optional)", "se gostar", "se quiser", "quando apetece",
+  "a gosto" when it means "if you like". Write it as its own row in the meal
+  and option it belongs to, with its quantity and estimate like any food; the
+  app shows it without counting it. Leave `optional` "" for every other food.
 - Copy protein, carbs and fat only when the source states them for that food,
   as numbers of grams ("30", not "30g"). A total for a whole meal or day is not
   a food's macros: leave the food's fields empty and put that line in

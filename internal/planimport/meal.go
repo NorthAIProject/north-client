@@ -97,7 +97,7 @@ func (s *Service) PreviewMeal(ctx context.Context, userID uuid.UUID, d MealDraft
 			for fi := range m.Foods {
 				food := &m.Foods[fi]
 				s.resolveFood(ctx, userID, food)
-				if food.Macros != nil {
+				if food.Macros != nil && !food.Optional {
 					total = total.Add(meal.Macros{Calories: food.Macros.Calories, ProteinG: food.Macros.ProteinG, CarbG: food.Macros.CarbG, FatG: food.Macros.FatG})
 				}
 			}
@@ -487,7 +487,7 @@ func mealPlanFromDraft(d MealDraft) (importPlan, []string) {
 						problems = append(problems, fmt.Sprintf("%s: %q isn't ready — %s", where, f.Food, strings.Join(f.Checks, " ")))
 						continue
 					}
-					portion := meals.MealIngredientInput{QuantityGrams: *f.Grams, SourceText: f.SourceText, Estimated: f.Estimated}
+					portion := meals.MealIngredientInput{QuantityGrams: *f.Grams, SourceText: f.SourceText, Estimated: f.Estimated, Optional: f.Optional}
 					if f.IngredientID != nil {
 						portion.IngredientID = *f.IngredientID
 					} else {
