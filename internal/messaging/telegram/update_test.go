@@ -248,3 +248,26 @@ func TestAVoiceNoteInAGroupIsStillLeft(t *testing.T) {
 		t.Fatalf("intent = %v, want leaveChat", got)
 	}
 }
+
+// A document that is not a photo arrives as a file, with the name and size
+// Telegram gave, so the messaging service can refuse it before it is fetched.
+func TestAPrivateDocumentIsAFile(t *testing.T) {
+	raw := []byte(`{"update_id":11,"message":{"chat":{"id":884422,"type":"private"},"caption":"import my diet","document":{"file_id":"doc1","file_name":"dieta.pdf","mime_type":"application/pdf","file_size":48213},"date":1755300000}}`)
+
+	u, ok := decodeUpdate(raw)
+	if !ok {
+		t.Fatal("update did not parse")
+	}
+	msg, _, got := u.inbound()
+	if got != answerUpdate {
+		t.Fatalf("intent = %v, want answerUpdate", got)
+	}
+	if msg.Text != "import my diet" {
+		t.Fatalf("caption = %q", msg.Text)
+	}
+	a := msg.Attachment
+	if a == nil || a.Kind != messaging.KindFile || a.FileID != "doc1" || a.Name != "dieta.pdf" ||
+		a.MIMEType != "application/pdf" || a.SizeBytes != 48213 {
+		t.Fatalf("attachment = %+v, want the PDF as a file with its name and size", a)
+	}
+}
