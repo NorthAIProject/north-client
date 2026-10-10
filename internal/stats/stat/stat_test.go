@@ -215,3 +215,29 @@ func TestPatternsSkipMeasuresWithTooFewDays(t *testing.T) {
 		t.Errorf("four step days reported %+v", f)
 	}
 }
+
+func TestPatternsMoodOnMindfulDays(t *testing.T) {
+	t.Parallel()
+	var days []stat.DayFacts
+	for d := 1; d <= 12; d++ {
+		f := stat.DayFacts{Date: day(d), Mood: util.Ptr(3)}
+		if d%2 == 0 {
+			f.Mood = util.Ptr(4)
+			minutes := 10.0
+			f.MindfulMin = &minutes
+		}
+		days = append(days, f)
+	}
+	f := find(stat.Patterns(days), "mood_mindful")
+	if f == nil || f.Diff != 1 || f.A.N != 6 || f.B.N != 6 || !strings.Contains(f.Title, "mindful moment") {
+		t.Fatalf("mindful finding = %+v", f)
+	}
+
+	// Someone who never logs mindfulness gets no claim about it.
+	for i := range days {
+		days[i].MindfulMin = nil
+	}
+	if f := find(stat.Patterns(days), "mood_mindful"); f != nil {
+		t.Errorf("untracked mindfulness reported %+v", f)
+	}
+}

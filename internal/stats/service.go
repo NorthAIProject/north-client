@@ -255,6 +255,7 @@ var patternMetrics = []struct {
 	{name: "stand_hours", set: func(f *stat.DayFacts, v float64) { f.StandHours = &v }},
 	{name: "hrv_sdnn", mean: true, set: func(f *stat.DayFacts, v float64) { f.HRV = &v }},
 	{name: "resting_heart_rate", mean: true, set: func(f *stat.DayFacts, v float64) { f.RestingHR = &v }},
+	{name: "mindful_minutes", set: func(f *stat.DayFacts, v float64) { f.MindfulMin = &v }},
 }
 
 // outdoor reports whether a session was done outside. The provider's own
