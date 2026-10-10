@@ -32,8 +32,9 @@ var portugueseEuropeanChat = map[string]string{
 	"chat.feedback.yes":        "Sim",
 	"chat.feedback.no":         "Não",
 
-	"chat.attach":      "Anexar uma foto",
-	"chat.placeholder": "Em que estás a trabalhar?",
+	"chat.attach":        "Anexar uma foto ou um ficheiro",
+	"chat.attach_remove": "Remover o ficheiro",
+	"chat.placeholder":   "Em que estás a trabalhar?",
 
 	"chat.approval.title": "O Khepri quer alterar algo",
 	"chat.approval.yes":   "Sim, avança",
@@ -59,6 +60,7 @@ var portugueseEuropeanChat = map[string]string{
 	"chat.tool.workout.write":  "editar o teu plano de treino",
 	"chat.tool.mealplan.write": "a montar o teu plano alimentar",
 	"chat.tool.workout.create": "a montar o teu plano de treino",
+	"chat.tool.planimport":     "importar o teu plano",
 	"chat.tool.workout.week":   "a mudar a tua semana de treino",
 	"chat.tool.lifts":          "a ver as tuas cargas",
 	"chat.tool.stats":          "a ver as tuas estatísticas",

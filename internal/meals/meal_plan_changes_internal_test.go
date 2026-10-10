@@ -1,11 +1,16 @@
 package meals
 
 import (
+	"context"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
+	mealsdb "github.com/NorthAIProject/north-client/internal/meals/db"
 	"github.com/NorthAIProject/north-client/internal/meals/meal"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
@@ -50,5 +55,40 @@ func TestPickPortionsFindsEveryPortionOfOneFood(t *testing.T) {
 	}
 	if _, err := pickPortions(m, uuid.Nil, "rice"); !apperr.Is(err, apperr.ErrValidation) {
 		t.Fatalf("ambiguous err = %v", err)
+	}
+}
+
+var errDatabaseDown = errors.New("database down")
+
+// downDB is a database every statement fails against.
+type downDB struct{}
+
+func (downDB) Exec(context.Context, string, ...any) (pgconn.CommandTag, error) {
+	return pgconn.CommandTag{}, errDatabaseDown
+}
+
+func (downDB) Query(context.Context, string, ...any) (pgx.Rows, error) { return nil, errDatabaseDown }
+
+func (downDB) QueryRow(context.Context, string, ...any) pgx.Row { return downRow{} }
+
+type downRow struct{}
+
+func (downRow) Scan(...any) error { return errDatabaseDown }
+
+// A failed write in add_food used to return the earlier, nil error, so the
+// change looked applied while nothing was written.
+func TestAddFoodReportsAFailedWrite(t *testing.T) {
+	oats := Ingredient{ID: uuid.New(), Name: "Oats", Per100g: Macros{CarbG: 60}}
+	plan := MealPlan{ID: uuid.New(), Days: []meal.Day{{
+		ID: uuid.New(), Weekday: time.Monday,
+		Meals: []meal.Meal{{ID: uuid.New(), Name: "Breakfast", MealNumber: 1, OptionIndex: 1}},
+	}}}
+	ed := planEditor{tx: &PlanTx{q: mealsdb.New(downDB{})}, plan: &plan, foods: map[uuid.UUID]Ingredient{oats.ID: oats}}
+
+	_, err := ed.applyToDay(context.Background(), &plan.Days[0], PlanChange{
+		Op: OpAddFood, Meal: "Breakfast", IngredientID: oats.ID, Grams: 30,
+	})
+	if !errors.Is(err, errDatabaseDown) {
+		t.Fatalf("err = %v, want the failed write", err)
 	}
 }

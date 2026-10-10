@@ -127,6 +127,10 @@ type Service struct {
 	// that does not send a photo gets.
 	attachments AttachmentLoader
 
+	// attachmentText reads a document sent this turn as text, so the model
+	// reads what the file says. Nil leaves documents as a "[file: name]" note.
+	attachmentText AttachmentTexter
+
 	// inbox records a web-bell note when a reply arrived from another surface.
 	// Nil disables it.
 	inbox Inbox
@@ -185,6 +189,25 @@ type AttachmentLoader interface {
 	LoadInline(ctx context.Context, userID, mediaID uuid.UUID) (mime string, data []byte, err error)
 }
 
+// AttachmentTexter reads a document this person sent as plain text: a PDF's
+// words, a spreadsheet's rows. The wiring in cmd/web satisfies it with the
+// media service and planimport's reader, which this package must not import.
+//
+// A refusal the person should hear (a password-protected PDF, an unsupported
+// type) is returned as an apperr.FieldErrors, whose message is passed to the
+// model. ErrNoTextLayer marks a PDF with no extractable text, which can still
+// be imported. Any other error is logged and summarised.
+type AttachmentTexter interface {
+	AttachmentText(ctx context.Context, userID, mediaID uuid.UUID) (string, error)
+}
+
+// AttachmentTextFunc lets a function be used as an AttachmentTexter.
+type AttachmentTextFunc func(ctx context.Context, userID, mediaID uuid.UUID) (string, error)
+
+func (f AttachmentTextFunc) AttachmentText(ctx context.Context, userID, mediaID uuid.UUID) (string, error) {
+	return f(ctx, userID, mediaID)
+}
+
 type Options struct {
 	Registry       *ai.Registry
 	Conversations  *conversations.Service
@@ -234,6 +257,10 @@ type Options struct {
 	// that does not send one.
 	Attachments AttachmentLoader
 
+	// AttachmentText reads a document sent this turn into it as text. Nil
+	// leaves documents as a note naming the file.
+	AttachmentText AttachmentTexter
+
 	// Inbox records a web note when a reply arrived from Telegram. Nil
 	// leaves the bell unchanged.
 	Inbox Inbox
@@ -260,22 +287,23 @@ func (s *Service) WithAway(in Inbox) *Service {
 
 func NewService(opts Options) *Service {
 	return &Service{
-		conversations: opts.Conversations,
-		contextB:      opts.ContextBuilder,
-		promptB:       opts.PromptBuilder,
-		queue:         opts.Queue,
-		runner:        ai.NewRunner(opts.Registry, opts.Chains),
-		tools:         opts.Tools,
-		declines:      opts.Declines,
-		external:      opts.ExternalLookups,
-		links:         opts.ExerciseLinks,
-		own:           opts.Own,
-		analytics:     opts.Analytics,
-		funnel:        opts.Funnel,
-		attachments:   opts.Attachments,
-		inbox:         opts.Inbox,
-		model:         opts.Model,
-		fastModel:     opts.FastModel,
+		conversations:  opts.Conversations,
+		contextB:       opts.ContextBuilder,
+		promptB:        opts.PromptBuilder,
+		queue:          opts.Queue,
+		runner:         ai.NewRunner(opts.Registry, opts.Chains),
+		tools:          opts.Tools,
+		declines:       opts.Declines,
+		external:       opts.ExternalLookups,
+		links:          opts.ExerciseLinks,
+		own:            opts.Own,
+		analytics:      opts.Analytics,
+		funnel:         opts.Funnel,
+		attachments:    opts.Attachments,
+		attachmentText: opts.AttachmentText,
+		inbox:          opts.Inbox,
+		model:          opts.Model,
+		fastModel:      opts.FastModel,
 	}
 }
 
@@ -401,13 +429,14 @@ func firstMessage(in Incoming) string {
 	return ""
 }
 
-// hydrateCurrentTurn puts the latest photo's bytes on the last user message.
+// hydrateCurrentTurn puts the latest turn's files on the last user message: a
+// photo's bytes for the model to see, a document's text for it to read.
 //
 // Only the current turn: every earlier file is already a text note from
-// ToAIMessages. Re-inlining the last month of progress photos would be a
-// silent context-window tax.
+// ToAIMessages. Re-inlining the last month of progress photos, or re-reading
+// last week's diet PDF, would be a silent context-window tax.
 func (s *Service) hydrateCurrentTurn(ctx context.Context, user users.User, stored []conversations.Message, messages []ai.Message) []ai.Message {
-	if s.attachments == nil || len(stored) == 0 || len(messages) == 0 {
+	if (s.attachments == nil && s.attachmentText == nil) || len(stored) == 0 || len(messages) == 0 {
 		return messages
 	}
 
@@ -421,21 +450,48 @@ func (s *Service) hydrateCurrentTurn(ctx context.Context, user users.User, store
 			continue
 		}
 		for _, part := range last.Parts {
-			if part.Kind != "image" {
-				continue
+			switch part.Kind {
+			case attachmentImage:
+				if inline, ok := s.inlinePhoto(ctx, user, part); ok {
+					messages[i].Parts = append(messages[i].Parts, inline)
+				}
+			case attachmentFile:
+				if s.attachmentText != nil {
+					messages[i].Parts = append(messages[i].Parts, ai.TextPart(s.documentText(ctx, user, part)))
+				}
 			}
-			mime, data, err := s.attachments.LoadInline(ctx, user.ID, part.MediaID)
-			if err != nil || len(data) == 0 {
-				continue
-			}
-			messages[i].Parts = append(messages[i].Parts, ai.Part{
-				InlineData: data,
-				MIMEType:   mime,
-			})
 		}
 		break
 	}
 	return messages
+}
+
+func (s *Service) inlinePhoto(ctx context.Context, user users.User, part conversations.Attachment) (ai.Part, bool) {
+	if s.attachments == nil {
+		return ai.Part{}, false
+	}
+	mime, data, err := s.attachments.LoadInline(ctx, user.ID, part.MediaID)
+	if err != nil || len(data) == 0 {
+		return ai.Part{}, false
+	}
+	return ai.Part{InlineData: data, MIMEType: mime}, true
+}
+
+// documentText is a document's text wrapped as an attachment, or a note
+// saying why it could not be read.
+func (s *Service) documentText(ctx context.Context, user users.User, part conversations.Attachment) string {
+	name := attachmentName(part.Name)
+	text, err := s.attachmentText.AttachmentText(ctx, user.ID, part.MediaID)
+	if apperr.Is(err, ErrNoTextLayer) {
+		return noTextLayerNote(name)
+	}
+	if err != nil {
+		middleware.FromContext(ctx).Warn("chat attachment could not be read",
+			slog.String("media_id", part.MediaID.String()),
+			slog.Any("error", err))
+		return "[" + name + " could not be read: " + unreadableReason(err) + "]"
+	}
+	return attachmentBlock(name, text)
 }
 
 // startChat asks each provider in the user's chain until one of them begins a

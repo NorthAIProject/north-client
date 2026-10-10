@@ -14,6 +14,7 @@ type (
 	MealDraft       = draft.MealDraft
 	MealDayDraft    = draft.MealDayDraft
 	MealDraftMeal   = draft.MealDraftMeal
+	MealDraftOption = draft.MealDraftOption
 	FoodDraft       = draft.FoodDraft
 	Candidate       = draft.Candidate
 	MacroGrams      = draft.MacroGrams

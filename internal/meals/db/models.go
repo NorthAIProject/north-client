@@ -62,6 +62,8 @@ type Meal struct {
 	TotalMacros []byte
 	CreatedAt   time.Time
 	DayID       uuid.UUID
+	OptionIndex int16
+	OptionLabel string
 }
 
 type MealIngredient struct {
@@ -74,6 +76,8 @@ type MealIngredient struct {
 	FatG          float64
 	CarbsG        float64
 	CreatedAt     time.Time
+	SourceText    string
+	Estimated     bool
 }
 
 type MealPlan struct {
@@ -90,6 +94,7 @@ type MealPlan struct {
 	PlanType      string
 	CustomCarbPct *float64
 	Mode          string
+	Notes         string
 }
 
 type MealPlanDay struct {

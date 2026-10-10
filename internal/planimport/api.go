@@ -63,7 +63,7 @@ func (a *API) parseWorkout(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	draft, err := a.svc.ParseWorkout(r.Context(), auth.MustUser(r.Context()), name, data)
+	draft, err := a.svc.ParseWorkout(r.Context(), auth.MustUser(r.Context()), name, data, "")
 	if err != nil {
 		writeError(w, err, "The file could not be imported.")
 		return
@@ -76,7 +76,7 @@ func (a *API) parseMeal(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	draft, err := a.svc.ParseMeal(r.Context(), auth.MustUser(r.Context()), name, data)
+	draft, err := a.svc.ParseMeal(r.Context(), auth.MustUser(r.Context()), name, data, "")
 	if err != nil {
 		writeError(w, err, "The file could not be imported.")
 		return

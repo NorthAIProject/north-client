@@ -18,6 +18,10 @@ RETURNING *;
 SELECT * FROM ingredients
 WHERE id = $1 AND (user_id IS NULL OR user_id = $2);
 
+-- name: ListSharedIngredientNames :many
+-- The shared catalog's names, for an importer matching a plan's food lines.
+SELECT name FROM ingredients WHERE user_id IS NULL ORDER BY name;
+
 -- name: SearchIngredients :many
 -- Visible ingredients are the shared/global set plus the user's own.
 --
@@ -70,8 +74,8 @@ DELETE FROM user_diet_preferences WHERE user_id = $1 AND diet_id = $2;
 -- Meal plans
 
 -- name: CreateMealPlan :one
-INSERT INTO meal_plans (user_id, name, description, objective, activity_level, gender, plan_type, custom_carb_pct, mode)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+INSERT INTO meal_plans (user_id, name, description, objective, activity_level, gender, plan_type, custom_carb_pct, mode, notes)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 RETURNING *;
 
 -- name: GetMealPlan :one
@@ -131,8 +135,17 @@ DELETE FROM meal_plan_days WHERE id = $1;
 -- name: CreateMeal :one
 -- Numbered after the day's last meal. Callers hold the plan's lock, so two
 -- meals added at once cannot take the same number.
-INSERT INTO meals (meal_plan_id, day_id, name, meal_number)
-VALUES ($1, $2, $3, (SELECT COALESCE(MAX(meal_number), 0) + 1 FROM meals WHERE day_id = $2))
+INSERT INTO meals (meal_plan_id, day_id, name, option_label, meal_number)
+VALUES ($1, $2, $3, $4, (SELECT COALESCE(MAX(meal_number), 0) + 1 FROM meals WHERE day_id = $2))
+RETURNING *;
+
+-- name: CreateMealOption :one
+-- A further option of a day's meal slot, numbered after the slot's last.
+-- Callers hold the plan's lock, as for CreateMeal.
+INSERT INTO meals (meal_plan_id, day_id, name, meal_number, option_index, option_label)
+VALUES ($1, $2, $3, $4,
+    (SELECT COALESCE(MAX(option_index), 0) + 1 FROM meals WHERE day_id = $2 AND meal_number = $4),
+    $5)
 RETURNING *;
 
 -- name: GetMealOwned :one
@@ -143,12 +156,16 @@ JOIN meal_plans mp ON mp.id = m.meal_plan_id
 WHERE m.id = $1 AND mp.user_id = $2;
 
 -- name: ListMealsByPlan :many
-SELECT * FROM meals WHERE meal_plan_id = $1 ORDER BY day_id, meal_number;
+SELECT * FROM meals WHERE meal_plan_id = $1 ORDER BY day_id, meal_number, option_index;
 
 -- name: DeleteMealOfPlan :exec
 -- Callers hold the plan's lock and have checked it is the user's; the plan id
 -- keeps a meal id from another plan from matching.
 DELETE FROM meals WHERE id = $1 AND meal_plan_id = $2;
+
+-- name: DeleteMealSlot :exec
+-- Every option of a day's meal slot. Callers hold the plan's lock.
+DELETE FROM meals WHERE meal_plan_id = $1 AND day_id = $2 AND meal_number = $3;
 
 -- name: UpdateMealTotalMacros :exec
 UPDATE meals SET total_macros = $2 WHERE id = $1;
@@ -156,8 +173,8 @@ UPDATE meals SET total_macros = $2 WHERE id = $1;
 -- Meal ingredients
 
 -- name: CreateMealIngredient :one
-INSERT INTO meal_ingredients (meal_id, ingredient_id, quantity_grams, calories, protein_g, fat_g, carbs_g)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO meal_ingredients (meal_id, ingredient_id, quantity_grams, calories, protein_g, fat_g, carbs_g, source_text, estimated)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 RETURNING *;
 
 -- name: ListMealIngredients :many

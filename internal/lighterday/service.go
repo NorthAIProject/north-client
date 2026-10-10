@@ -1,7 +1,7 @@
 // Package lighterday offers an easier session on a morning the body has not
-// recovered: when heart-rate variability is down or resting heart rate is up
-// against their two-week baseline, the person may train about 60% of today's
-// sets instead of the plan. It is an offer they take or decline, never a
+// recovered: when today's recovery (insights.RecoveryData.Low) is under the
+// person's usual, they may train about 60% of today's sets instead of the
+// plan. It is an offer they take or decline, never a
 // change made for them, and it lasts one day.
 package lighterday
 
@@ -10,14 +10,12 @@ import (
 	"errors"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/NorthAIProject/north-client/internal/health"
+	"github.com/NorthAIProject/north-client/internal/insights"
 	lighterdaydb "github.com/NorthAIProject/north-client/internal/lighterday/db"
-	"github.com/NorthAIProject/north-client/internal/reports"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -29,19 +27,10 @@ const (
 	ChoiceKeep    = "keep"
 )
 
-// The Health metrics readiness is read from, as the briefing reads them.
-const (
-	metricHRV       = "hrv_sdnn"
-	metricRestingHR = "resting_heart_rate"
-)
-
-// baselineDays matches the briefing's window, so the offer and the briefing
-// never disagree about the same morning.
-const baselineDays = 14
-
-// HealthReader reads stored Health samples. health.Repository satisfies it.
-type HealthReader interface {
-	Between(ctx context.Context, userID uuid.UUID, metric string, since, until time.Time) ([]health.Stored, error)
+// Recovery reads today's recovery, the same one the Progress screen, the
+// briefing and the coach read. insights.RecoverySource satisfies it.
+type Recovery interface {
+	Recovery(ctx context.Context, user users.User, now time.Time) (insights.RecoveryData, error)
 }
 
 // SessionReader says whether a plan session falls today and whether it is
@@ -53,7 +42,7 @@ type SessionReader interface {
 
 // Today is what the morning looks like for the offer.
 type Today struct {
-	Readiness reports.Readiness
+	Recovery insights.RecoveryData
 	// Session is today's plan session, if there is one.
 	Session string
 	Due     bool
@@ -65,7 +54,7 @@ type Today struct {
 // Offered reports whether the offer should show: a low morning, a session
 // still to do, and no answer yet.
 func (t Today) Offered() bool {
-	return t.Readiness.Low && t.Due && !t.Done && t.Choice == ""
+	return t.Recovery.Low() && t.Due && !t.Done && t.Choice == ""
 }
 
 // Lighter reports whether today trains lighter.
@@ -73,13 +62,13 @@ func (t Today) Lighter() bool { return t.Choice == ChoiceLighter }
 
 type Service struct {
 	q        *lighterdaydb.Queries
-	health   HealthReader
+	recovery Recovery
 	sessions SessionReader
 	now      func() time.Time
 }
 
-func NewService(pool *pgxpool.Pool, h HealthReader, s SessionReader) *Service {
-	return &Service{q: lighterdaydb.New(pool), health: h, sessions: s, now: time.Now}
+func NewService(pool *pgxpool.Pool, r Recovery, s SessionReader) *Service {
+	return &Service{q: lighterdaydb.New(pool), recovery: r, sessions: s, now: time.Now}
 }
 
 // WithClock fixes now, for tests.
@@ -91,17 +80,12 @@ func (s *Service) Today(ctx context.Context, user users.User) (Today, error) {
 	today := timerange.StartOfDay(now.In(user.Location()))
 	var out Today
 
-	if s.health != nil {
-		since := now.AddDate(0, 0, -baselineDays)
-		hrv, err := s.health.Between(ctx, user.ID, metricHRV, since, now)
+	if s.recovery != nil {
+		r, err := s.recovery.Recovery(ctx, user, now)
 		if err != nil {
 			return Today{}, err
 		}
-		rhr, err := s.health.Between(ctx, user.ID, metricRestingHR, since, now)
-		if err != nil {
-			return Today{}, err
-		}
-		out.Readiness = reports.ReadinessFrom(hrv, rhr, now)
+		out.Recovery = r
 	}
 	if s.sessions != nil {
 		title, _, due, err := s.sessions.DueToday(ctx, user, today)

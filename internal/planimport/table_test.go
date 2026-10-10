@@ -212,3 +212,30 @@ func TestCellParsers(t *testing.T) {
 		}
 	}
 }
+
+func TestMealFromRowsReadsAnOptionColumnAndRepeatsADaylessPlan(t *testing.T) {
+	t.Parallel()
+
+	rows := [][]string{
+		{"Meal", "Option", "Food", "Qty", "Unit"},
+		{"Breakfast", "A", "Oats", "60", "g"},
+		{"", "", "Milk", "200", "ml"},
+		{"", "B", "Eggs", "2", ""},
+		{"Lunch", "", "Rice", "110", "g"},
+	}
+	draft, err := MealFromRows("plan.csv", rows)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if !draft.EveryDay || len(draft.Days) != 1 || draft.Days[0].Label != "Every day" {
+		t.Fatalf("draft = %+v, want one every-day day", draft)
+	}
+	breakfast := draft.Days[0].Meals[0]
+	if breakfast.OptionLabel != "A" || len(breakfast.Foods) != 2 || len(breakfast.Alternatives) != 1 || breakfast.Alternatives[0].Label != "B" {
+		t.Fatalf("breakfast = %+v, want milk under option A and eggs as option B", breakfast)
+	}
+	// A new meal starts without the last meal's option.
+	if lunch := draft.Days[0].Meals[1]; lunch.OptionLabel != "" || len(lunch.Alternatives) != 0 {
+		t.Fatalf("lunch = %+v", lunch)
+	}
+}

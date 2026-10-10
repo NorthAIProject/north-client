@@ -69,6 +69,10 @@ func contentBlocks(m ai.Message) []sdk.ContentBlockParamUnion {
 		case len(part.InlineData) > 0 && readableImage[part.MIMEType]:
 			blocks = append(blocks, sdk.NewImageBlockBase64(part.MIMEType,
 				base64.StdEncoding.EncodeToString(part.InlineData)))
+		case len(part.InlineData) > 0 && part.MIMEType == "application/pdf":
+			blocks = append(blocks, sdk.NewDocumentBlock(sdk.Base64PDFSourceParam{
+				Data: base64.StdEncoding.EncodeToString(part.InlineData),
+			}))
 		case len(part.InlineData) > 0 || part.FileURI != "":
 			// Claude cannot take this kind of file inline. Naming it keeps
 			// the turn honest without failing the whole request.

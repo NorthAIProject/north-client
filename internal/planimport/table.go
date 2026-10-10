@@ -22,6 +22,7 @@ var (
 	mealColumns = map[string][]string{
 		"day":      {"day", "days", "weekday", "date"},
 		"meal":     {"meal", "meals", "meal name", "time"},
+		"option":   {"option", "options", "choice", "alternative", "opcao"},
 		"food":     {"food", "foods", "item", "food item", "ingredient", "ingredients", "name"},
 		"quantity": {"quantity", "qty", "amount", "serving", "portion"},
 		"unit":     {"unit", "units", "uom", "measure"},
@@ -140,8 +141,8 @@ func MealFromRows(filename string, rows [][]string) (MealDraft, error) {
 	}
 
 	var (
-		out               []MealRow
-		lastDay, lastMeal string
+		out                           []MealRow
+		lastDay, lastMeal, lastOption string
 	)
 	for _, row := range data {
 		if blankRow(row) {
@@ -150,6 +151,7 @@ func MealFromRows(filename string, rows [][]string) (MealDraft, error) {
 		r := MealRow{
 			Day:      cell(row, cols, "day"),
 			Meal:     cell(row, cols, "meal"),
+			Option:   cell(row, cols, "option"),
 			Food:     cell(row, cols, "food"),
 			Quantity: cell(row, cols, "quantity"),
 			Unit:     cell(row, cols, "unit"),
@@ -160,16 +162,22 @@ func MealFromRows(filename string, rows [][]string) (MealDraft, error) {
 		if r.Day == "" {
 			r.Day = lastDay
 		} else if r.Day != lastDay {
-			lastMeal = ""
+			lastMeal, lastOption = "", ""
 		}
 		if r.Meal == "" {
 			r.Meal = lastMeal
+		} else if r.Meal != lastMeal {
+			lastOption = ""
 		}
-		lastDay, lastMeal = r.Day, r.Meal
+		// An option written once above its foods, like a day or a meal.
+		if r.Option == "" && r.Meal == lastMeal {
+			r.Option = lastOption
+		}
+		lastDay, lastMeal, lastOption = r.Day, r.Meal, r.Option
 		out = append(out, r)
 	}
 
-	return buildMeal(nameOr(title, filename), out, nil)
+	return buildMeal(MealReading{Name: nameOr(title, filename), Rows: out})
 }
 
 func cell(row []string, cols map[string]int, field string) string {

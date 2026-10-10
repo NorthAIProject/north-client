@@ -213,3 +213,32 @@ func TestAnImageTypeClaudeCannotReadIsNamedNotSent(t *testing.T) {
 		t.Errorf("png sent as %v, want an image block", got[1])
 	}
 }
+
+// A PDF goes as a base64 document block, which Claude reads page by page.
+func TestAPDFIsSentAsADocumentBlock(t *testing.T) {
+	api, client := newFakeAPI(t, textMessage("ok"))
+	_, err := client.Generate(context.Background(), ai.Request{Messages: []ai.Message{{
+		Role: ai.RoleUser,
+		Parts: []ai.Part{
+			{InlineData: []byte("%PDF-1.4"), MIMEType: "application/pdf"},
+			ai.TextPart("read my plan"),
+		},
+	}}})
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	got := blocks(sent(t, api)[0])
+	if len(got) != 2 {
+		t.Fatalf("blocks = %v", got)
+	}
+	source, _ := got[0]["source"].(map[string]any)
+	if got[0]["type"] != "document" || source["type"] != "base64" || source["media_type"] != "application/pdf" || source["data"] != "JVBERi0xLjQ=" {
+		t.Errorf("pdf block = %v, want a base64 document block", got[0])
+	}
+	body := api.body(t, 0)
+	for _, key := range []string{"temperature", "top_p", "top_k"} {
+		if _, ok := body[key]; ok {
+			t.Errorf("request carries %s; Haiku 5.5 refuses it", key)
+		}
+	}
+}

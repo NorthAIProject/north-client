@@ -97,12 +97,29 @@ type MealIngredientView struct {
 	Name          string     `json:"name"`
 	QuantityGrams float64    `json:"quantityGrams"`
 	Macros        MacrosView `json:"macros"`
+	// SourceText is the line an imported plan had for this food; Estimated
+	// marks a food and quantity the importer guessed at.
+	SourceText string `json:"sourceText,omitempty"`
+	Estimated  bool   `json:"estimated,omitempty"`
 }
 
+// MealView is a meal slot's default option, with the slot's other options.
+// Only the default counts toward the day's status.
 type MealView struct {
+	ID           uuid.UUID            `json:"id"`
+	MealNumber   int                  `json:"mealNumber"`
+	Name         string               `json:"name"`
+	OptionLabel  string               `json:"optionLabel,omitempty"`
+	TotalMacros  MacrosView           `json:"totalMacros"`
+	Ingredients  []MealIngredientView `json:"ingredients"`
+	Alternatives []MealOptionView     `json:"alternatives,omitempty"`
+}
+
+// MealOptionView is an alternative option of a meal slot: eaten instead of
+// the default, under the slot's name.
+type MealOptionView struct {
 	ID          uuid.UUID            `json:"id"`
-	MealNumber  int                  `json:"mealNumber"`
-	Name        string               `json:"name"`
+	OptionLabel string               `json:"optionLabel"`
 	TotalMacros MacrosView           `json:"totalMacros"`
 	Ingredients []MealIngredientView `json:"ingredients"`
 }
@@ -151,6 +168,8 @@ type PlanDetail struct {
 	Objective     string `json:"objective"`
 	ActivityLevel string `json:"activityLevel"`
 	Gender        string `json:"gender"`
+	// Notes is free text an imported plan carried beside its meals.
+	Notes string `json:"notes,omitempty"`
 	// Target is the person's current macro target, absent until the
 	// calculator has produced one.
 	Target *MacrosView   `json:"target,omitempty"`
@@ -509,7 +528,7 @@ func (a *API) addMealIngredients(w http.ResponseWriter, r *http.Request) {
 	}
 	lines := make([]MealIngredientInput, len(req.Portions))
 	for i, p := range req.Portions {
-		lines[i] = MealIngredientInput(p)
+		lines[i] = MealIngredientInput{IngredientID: p.IngredientID, QuantityGrams: p.QuantityGrams}
 	}
 	added, err := a.plans.AddIngredients(r.Context(), id, auth.MustUser(r.Context()).ID, lines, req.ConfirmOverage)
 	if err != nil {
@@ -674,7 +693,16 @@ func projectMealIngredient(mi MealIngredient) MealIngredientView {
 	return MealIngredientView{
 		ID: mi.ID, IngredientID: mi.IngredientID, Name: mi.IngredientName,
 		QuantityGrams: mi.QuantityGrams, Macros: MacrosView(mi.Macros),
+		SourceText: mi.SourceText, Estimated: mi.Estimated,
 	}
+}
+
+func projectMealIngredients(in []MealIngredient) []MealIngredientView {
+	out := make([]MealIngredientView, 0, len(in))
+	for _, mi := range in {
+		out = append(out, projectMealIngredient(mi))
+	}
+	return out
 }
 
 func summarizePlan(p MealPlan) PlanSummary {
@@ -690,7 +718,7 @@ func summarizePlan(p MealPlan) PlanSummary {
 func projectPlan(plan MealPlan, target *Macros) PlanDetail {
 	out := PlanDetail{
 		PlanSummary: summarizePlan(plan), Objective: plan.Objective, ActivityLevel: plan.ActivityLevel,
-		Gender: plan.Gender, Target: macrosViewPtr(target), Days: make([]PlanDayView, 0, len(plan.Days)),
+		Gender: plan.Gender, Notes: plan.Notes, Target: macrosViewPtr(target), Days: make([]PlanDayView, 0, len(plan.Days)),
 	}
 	var statuses []meal.DayStatus
 	if target != nil {
@@ -711,11 +739,14 @@ func projectPlan(plan MealPlan, target *Macros) PlanDetail {
 		}
 		for _, m := range d.Meals {
 			mv := MealView{
-				ID: m.ID, MealNumber: m.MealNumber, Name: m.Name, TotalMacros: MacrosView(m.TotalMacros),
-				Ingredients: make([]MealIngredientView, 0, len(m.Ingredients)),
+				ID: m.ID, MealNumber: m.MealNumber, Name: m.Name, OptionLabel: m.OptionLabel,
+				TotalMacros: MacrosView(m.TotalMacros), Ingredients: projectMealIngredients(m.Ingredients),
 			}
-			for _, mi := range m.Ingredients {
-				mv.Ingredients = append(mv.Ingredients, projectMealIngredient(mi))
+			for _, alt := range m.Alternatives {
+				mv.Alternatives = append(mv.Alternatives, MealOptionView{
+					ID: alt.ID, OptionLabel: alt.OptionLabel, TotalMacros: MacrosView(alt.TotalMacros),
+					Ingredients: projectMealIngredients(alt.Ingredients),
+				})
 			}
 			day.Meals = append(day.Meals, mv)
 		}
