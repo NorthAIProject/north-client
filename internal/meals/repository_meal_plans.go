@@ -50,6 +50,7 @@ type NewPortion struct {
 	Macros        Macros
 	SourceText    string
 	Estimated     bool
+	Optional      bool
 }
 
 // CreatePlan writes a plan, its days and any meals, options and portions they
@@ -125,7 +126,7 @@ func (tx *PlanTx) createPortion(ctx context.Context, mealID uuid.UUID, p NewPort
 	row, err := tx.q.CreateMealIngredient(ctx, mealsdb.CreateMealIngredientParams{
 		MealID: mealID, IngredientID: p.IngredientID, QuantityGrams: p.QuantityGrams,
 		Calories: p.Macros.Calories, ProteinG: p.Macros.ProteinG, FatG: p.Macros.FatG, CarbsG: p.Macros.CarbG,
-		SourceText: p.SourceText, Estimated: p.Estimated,
+		SourceText: p.SourceText, Estimated: p.Estimated, Optional: p.Optional,
 	})
 	if err != nil {
 		return MealIngredient{}, apperr.Wrap(err, "create meal ingredient")
@@ -337,6 +338,25 @@ func (tx *PlanTx) SetPortionGrams(ctx context.Context, planID, mealID, portionID
 	}
 	if err := recalculateTotals(ctx, tx.q, mealID, planID); err != nil {
 		return MealIngredient{}, apperr.Wrap(err, "recalculate totals after changing a quantity")
+	}
+	return mealIngredientFromDB(row), nil
+}
+
+// SetPortionOptional marks one ingredient of a meal as optional (shown, not
+// counted) or counted, and recalculates the meal's and the plan's totals.
+// apperr.ErrNotFound if the portion is not in the meal.
+func (tx *PlanTx) SetPortionOptional(ctx context.Context, planID, mealID, portionID uuid.UUID, optional bool) (MealIngredient, error) {
+	row, err := tx.q.SetMealIngredientOptional(ctx, mealsdb.SetMealIngredientOptionalParams{
+		ID: portionID, MealID: mealID, Optional: optional,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return MealIngredient{}, apperr.ErrNotFound
+		}
+		return MealIngredient{}, apperr.Wrap(err, "set meal ingredient optional")
+	}
+	if err := recalculateTotals(ctx, tx.q, mealID, planID); err != nil {
+		return MealIngredient{}, apperr.Wrap(err, "recalculate totals after marking an ingredient optional")
 	}
 	return mealIngredientFromDB(row), nil
 }
@@ -554,6 +574,7 @@ func mealIngredientFromDB(row mealsdb.MealIngredient) MealIngredient {
 		Macros:        Macros{Calories: row.Calories, ProteinG: row.ProteinG, FatG: row.FatG, CarbG: row.CarbsG},
 		SourceText:    row.SourceText,
 		Estimated:     row.Estimated,
+		Optional:      row.Optional,
 		CreatedAt:     row.CreatedAt,
 	}
 }
@@ -566,6 +587,7 @@ func mealIngredientFromListRow(row mealsdb.ListMealIngredientsRow) MealIngredien
 		Macros:         Macros{Calories: row.Calories, ProteinG: row.ProteinG, FatG: row.FatG, CarbG: row.CarbsG},
 		SourceText:     row.SourceText,
 		Estimated:      row.Estimated,
+		Optional:       row.Optional,
 		CreatedAt:      row.CreatedAt,
 	}
 }

@@ -152,9 +152,9 @@ func (q *Queries) CreateMeal(ctx context.Context, arg CreateMealParams) (Meal, e
 
 const createMealIngredient = `-- name: CreateMealIngredient :one
 
-INSERT INTO meal_ingredients (meal_id, ingredient_id, quantity_grams, calories, protein_g, fat_g, carbs_g, source_text, estimated)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-RETURNING id, meal_id, ingredient_id, quantity_grams, calories, protein_g, fat_g, carbs_g, created_at, source_text, estimated
+INSERT INTO meal_ingredients (meal_id, ingredient_id, quantity_grams, calories, protein_g, fat_g, carbs_g, source_text, estimated, optional)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+RETURNING id, meal_id, ingredient_id, quantity_grams, calories, protein_g, fat_g, carbs_g, created_at, source_text, estimated, optional
 `
 
 type CreateMealIngredientParams struct {
@@ -167,6 +167,7 @@ type CreateMealIngredientParams struct {
 	CarbsG        float64
 	SourceText    string
 	Estimated     bool
+	Optional      bool
 }
 
 // Meal ingredients
@@ -181,6 +182,7 @@ func (q *Queries) CreateMealIngredient(ctx context.Context, arg CreateMealIngred
 		arg.CarbsG,
 		arg.SourceText,
 		arg.Estimated,
+		arg.Optional,
 	)
 	var i MealIngredient
 	err := row.Scan(
@@ -195,6 +197,7 @@ func (q *Queries) CreateMealIngredient(ctx context.Context, arg CreateMealIngred
 		&i.CreatedAt,
 		&i.SourceText,
 		&i.Estimated,
+		&i.Optional,
 	)
 	return i, err
 }
@@ -554,7 +557,7 @@ func (q *Queries) GetIngredient(ctx context.Context, arg GetIngredientParams) (I
 }
 
 const getMealIngredientOwned = `-- name: GetMealIngredientOwned :one
-SELECT mi.id, mi.meal_id, mi.ingredient_id, mi.quantity_grams, mi.calories, mi.protein_g, mi.fat_g, mi.carbs_g, mi.created_at, mi.source_text, mi.estimated, mi.meal_id AS owned_meal_id
+SELECT mi.id, mi.meal_id, mi.ingredient_id, mi.quantity_grams, mi.calories, mi.protein_g, mi.fat_g, mi.carbs_g, mi.created_at, mi.source_text, mi.estimated, mi.optional, mi.meal_id AS owned_meal_id
 FROM meal_ingredients mi
 JOIN meals m ON m.id = mi.meal_id
 JOIN meal_plans mp ON mp.id = m.meal_plan_id
@@ -578,6 +581,7 @@ type GetMealIngredientOwnedRow struct {
 	CreatedAt     time.Time
 	SourceText    string
 	Estimated     bool
+	Optional      bool
 	OwnedMealID   uuid.UUID
 }
 
@@ -597,6 +601,7 @@ func (q *Queries) GetMealIngredientOwned(ctx context.Context, arg GetMealIngredi
 		&i.CreatedAt,
 		&i.SourceText,
 		&i.Estimated,
+		&i.Optional,
 		&i.OwnedMealID,
 	)
 	return i, err
@@ -885,7 +890,7 @@ func (q *Queries) ListFoodLogsByRange(ctx context.Context, arg ListFoodLogsByRan
 }
 
 const listMealIngredients = `-- name: ListMealIngredients :many
-SELECT mi.id, mi.meal_id, mi.ingredient_id, mi.quantity_grams, mi.calories, mi.protein_g, mi.fat_g, mi.carbs_g, mi.created_at, mi.source_text, mi.estimated, i.name AS ingredient_name
+SELECT mi.id, mi.meal_id, mi.ingredient_id, mi.quantity_grams, mi.calories, mi.protein_g, mi.fat_g, mi.carbs_g, mi.created_at, mi.source_text, mi.estimated, mi.optional, i.name AS ingredient_name
 FROM meal_ingredients mi
 JOIN ingredients i ON i.id = mi.ingredient_id
 WHERE mi.meal_id = $1
@@ -904,6 +909,7 @@ type ListMealIngredientsRow struct {
 	CreatedAt      time.Time
 	SourceText     string
 	Estimated      bool
+	Optional       bool
 	IngredientName string
 }
 
@@ -929,6 +935,7 @@ func (q *Queries) ListMealIngredients(ctx context.Context, mealID uuid.UUID) ([]
 			&i.CreatedAt,
 			&i.SourceText,
 			&i.Estimated,
+			&i.Optional,
 			&i.IngredientName,
 		); err != nil {
 			return nil, err
@@ -1307,6 +1314,39 @@ func (q *Queries) SearchIngredients(ctx context.Context, arg SearchIngredientsPa
 	return items, nil
 }
 
+const setMealIngredientOptional = `-- name: SetMealIngredientOptional :one
+UPDATE meal_ingredients
+SET optional = $3
+WHERE id = $1 AND meal_id = $2
+RETURNING id, meal_id, ingredient_id, quantity_grams, calories, protein_g, fat_g, carbs_g, created_at, source_text, estimated, optional
+`
+
+type SetMealIngredientOptionalParams struct {
+	ID       uuid.UUID
+	MealID   uuid.UUID
+	Optional bool
+}
+
+func (q *Queries) SetMealIngredientOptional(ctx context.Context, arg SetMealIngredientOptionalParams) (MealIngredient, error) {
+	row := q.db.QueryRow(ctx, setMealIngredientOptional, arg.ID, arg.MealID, arg.Optional)
+	var i MealIngredient
+	err := row.Scan(
+		&i.ID,
+		&i.MealID,
+		&i.IngredientID,
+		&i.QuantityGrams,
+		&i.Calories,
+		&i.ProteinG,
+		&i.FatG,
+		&i.CarbsG,
+		&i.CreatedAt,
+		&i.SourceText,
+		&i.Estimated,
+		&i.Optional,
+	)
+	return i, err
+}
+
 const setMealReminderEnabled = `-- name: SetMealReminderEnabled :one
 UPDATE meal_reminders SET enabled = $3, updated_at = now() WHERE id = $1 AND user_id = $2
 RETURNING id, user_id, label, time_of_day, days_of_week, enabled, last_fired_local_date, created_at, updated_at
@@ -1342,7 +1382,7 @@ SELECT
     COALESCE(SUM(fat_g), 0)::double precision     AS fat_g,
     COALESCE(SUM(carbs_g), 0)::double precision   AS carbs_g
 FROM meal_ingredients
-WHERE meal_id = $1
+WHERE meal_id = $1 AND NOT optional
 `
 
 type SumMealIngredientMacrosRow struct {
@@ -1352,6 +1392,7 @@ type SumMealIngredientMacrosRow struct {
 	CarbsG   float64
 }
 
+// An optional food is shown but never counted.
 func (q *Queries) SumMealIngredientMacros(ctx context.Context, mealID uuid.UUID) (SumMealIngredientMacrosRow, error) {
 	row := q.db.QueryRow(ctx, sumMealIngredientMacros, mealID)
 	var i SumMealIngredientMacrosRow
@@ -1442,7 +1483,7 @@ const updateMealIngredientQuantity = `-- name: UpdateMealIngredientQuantity :one
 UPDATE meal_ingredients
 SET quantity_grams = $3, calories = $4, protein_g = $5, fat_g = $6, carbs_g = $7
 WHERE id = $1 AND meal_id = $2
-RETURNING id, meal_id, ingredient_id, quantity_grams, calories, protein_g, fat_g, carbs_g, created_at, source_text, estimated
+RETURNING id, meal_id, ingredient_id, quantity_grams, calories, protein_g, fat_g, carbs_g, created_at, source_text, estimated, optional
 `
 
 type UpdateMealIngredientQuantityParams struct {
@@ -1479,6 +1520,7 @@ func (q *Queries) UpdateMealIngredientQuantity(ctx context.Context, arg UpdateMe
 		&i.CreatedAt,
 		&i.SourceText,
 		&i.Estimated,
+		&i.Optional,
 	)
 	return i, err
 }

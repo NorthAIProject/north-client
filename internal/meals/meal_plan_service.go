@@ -165,6 +165,9 @@ type MealIngredientInput struct {
 	// marks a food and quantity the importer guessed at. See MealIngredient.
 	SourceText string
 	Estimated  bool
+	// Optional is a food the plan offers but does not count; see
+	// MealIngredient.
+	Optional bool
 }
 
 func ValidateMealIngredient(in MealIngredientInput) (MealIngredientInput, error) {
@@ -659,7 +662,8 @@ func (s *MealPlanService) AddIngredients(ctx context.Context, mealID, userID uui
 }
 
 // portions validates lines and works out the macros each adds, from the
-// ingredient's per-100g profile.
+// ingredient's per-100g profile. The total leaves optional lines out: they
+// are offered, not eaten as part of the meal.
 func (s *MealPlanService) portions(ctx context.Context, userID uuid.UUID, lines []MealIngredientInput) ([]NewPortion, Macros, error) {
 	out := make([]NewPortion, len(lines))
 	var total Macros
@@ -675,11 +679,45 @@ func (s *MealPlanService) portions(ctx context.Context, userID uuid.UUID, lines 
 		macros := ingredient.MacrosFor(clean.QuantityGrams)
 		out[i] = NewPortion{
 			IngredientID: clean.IngredientID, QuantityGrams: clean.QuantityGrams, Macros: macros,
-			SourceText: strings.TrimSpace(clean.SourceText), Estimated: clean.Estimated,
+			SourceText: strings.TrimSpace(clean.SourceText), Estimated: clean.Estimated, Optional: clean.Optional,
 		}
-		total = total.Add(macros)
+		if !clean.Optional {
+			total = total.Add(macros)
+		}
 	}
 	return out, total, nil
+}
+
+// SetIngredientOptional marks one ingredient of a meal as optional (shown,
+// not counted) or counted. Counting a food again can take its day over the
+// target, which is refused with an *OverageError unless confirm is set, the
+// same as adding it would be.
+func (s *MealPlanService) SetIngredientOptional(ctx context.Context, mealIngredientID, userID uuid.UUID, optional, confirm bool) (MealIngredient, error) {
+	planID, mealID, err := s.repo.LocateMealIngredient(ctx, mealIngredientID, userID)
+	if err != nil {
+		return MealIngredient{}, err
+	}
+	active, err := s.requireTarget(ctx, userID)
+	if err != nil {
+		return MealIngredient{}, err
+	}
+	var updated MealIngredient
+	err = s.repo.WithPlanLocked(ctx, planID, userID, func(tx *PlanTx, plan MealPlan) error {
+		if _, ok := plan.DayIndexOfMeal(mealID); !ok {
+			return apperr.ErrNotFound
+		}
+		var setErr error
+		updated, setErr = tx.SetPortionOptional(ctx, planID, mealID, mealIngredientID, optional)
+		if setErr != nil {
+			return setErr
+		}
+		after, afterErr := tx.Plan(ctx, planID, userID, false)
+		if afterErr != nil {
+			return afterErr
+		}
+		return checkOverage(active, plan, after.State(), false, confirm)
+	})
+	return updated, err
 }
 
 // RemoveIngredient takes one ingredient off a meal, under the plan's lock for

@@ -78,6 +78,7 @@ type MealIngredient struct {
 	CreatedAt     time.Time
 	SourceText    string
 	Estimated     bool
+	Optional      bool
 }
 
 type MealPlan struct {

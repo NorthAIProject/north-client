@@ -49,10 +49,13 @@ const (
 	// OpRemoveOption deletes the meal's Option, which must be 2 or later: the
 	// first option goes only with the whole meal.
 	OpRemoveOption PlanChangeOp = "remove_option"
+	// OpSetOptional marks every portion of the food in the meal's Option as
+	// optional (shown, not counted) when Optional is set, or counted when not.
+	OpSetOptional PlanChangeOp = "set_optional"
 )
 
 // PlanChangeOps lists every op, in the order a tool schema offers them.
-var PlanChangeOps = []PlanChangeOp{OpAddMeal, OpRemoveMeal, OpAddFood, OpRemoveFood, OpSetGrams, OpAddOption, OpRemoveOption}
+var PlanChangeOps = []PlanChangeOp{OpAddMeal, OpRemoveMeal, OpAddFood, OpRemoveFood, OpSetGrams, OpAddOption, OpRemoveOption, OpSetOptional}
 
 func (o PlanChangeOp) Valid() bool { return slices.Contains(PlanChangeOps, o) }
 
@@ -80,6 +83,9 @@ type PlanChange struct {
 	Option int
 	// OptionLabel names the option add_option adds.
 	OptionLabel string
+	// Optional is whether add_food adds the food as optional (shown, not
+	// counted), and what set_optional sets.
+	Optional bool
 }
 
 // AppliedChange is what one change did.
@@ -183,7 +189,7 @@ func validatePlanChange(c PlanChange) error {
 		if c.IngredientID == uuid.Nil {
 			return invalid("name the food to add")
 		}
-	case OpRemoveFood, OpSetGrams:
+	case OpRemoveFood, OpSetGrams, OpSetOptional:
 		if c.IngredientID == uuid.Nil && c.Food == "" {
 			return invalid("name the food to change")
 		}
@@ -369,6 +375,7 @@ func (ed planEditor) applyToDay(ctx context.Context, day *meal.Day, c PlanChange
 		ingredient := ed.foods[c.IngredientID]
 		added, addErr := ed.tx.AddPortions(ctx, planID, m.ID, []NewPortion{{
 			IngredientID: ingredient.ID, QuantityGrams: c.Grams, Macros: ingredient.MacrosFor(c.Grams),
+			Optional: c.Optional,
 		}})
 		if addErr != nil {
 			return dayResult{}, apperr.Wrap(addErr, "add %s to %s on %s", ingredient.Name, m.DisplayName(), day.Weekday)
@@ -386,6 +393,19 @@ func (ed planEditor) applyToDay(ctx context.Context, day *meal.Day, c PlanChange
 		return dayResult{noFood: true}, nil
 	}
 	food := m.Ingredients[portions[0]].IngredientName
+
+	if c.Op == OpSetOptional {
+		for _, p := range portions {
+			portion := &m.Ingredients[p]
+			updated, err := ed.tx.SetPortionOptional(ctx, planID, m.ID, portion.ID, c.Optional)
+			if err != nil {
+				return dayResult{}, err
+			}
+			updated.IngredientName = portion.IngredientName
+			*portion = updated
+		}
+		return dayResult{changed: true, meal: m.DisplayName(), food: food}, nil
+	}
 
 	if c.Op == OpSetGrams {
 		// One portion keeps the food, at the new weight, with its snapshot
@@ -607,6 +627,9 @@ func (a AppliedChange) String() string {
 		what = fmt.Sprintf("removed %s", a.Meal)
 	case OpAddFood:
 		what = fmt.Sprintf("added %.0f g %s to %s", a.Change.Grams, a.Food, a.Meal)
+		if a.Change.Optional {
+			what += " as optional"
+		}
 	case OpRemoveFood:
 		what = fmt.Sprintf("removed %s from %s", a.Food, a.Meal)
 	case OpSetGrams:
@@ -615,6 +638,12 @@ func (a AppliedChange) String() string {
 		what = fmt.Sprintf("added the option %s", a.Meal)
 	case OpRemoveOption:
 		what = fmt.Sprintf("removed the option %s", a.Meal)
+	case OpSetOptional:
+		if a.Change.Optional {
+			what = fmt.Sprintf("made %s in %s optional (not counted)", a.Food, a.Meal)
+		} else {
+			what = fmt.Sprintf("counted %s in %s again", a.Food, a.Meal)
+		}
 	}
 	return what + " on " + strings.Join(weekdayNames(a.Weekdays), ", ")
 }

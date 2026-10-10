@@ -288,6 +288,9 @@ type MealIngredient struct {
 	// Estimated marks a food and quantity the importer guessed at, from a
 	// vague or unmatched line.
 	Estimated bool
+	// Optional marks a food the plan offers but does not count: it is shown
+	// with its own macros and left out of the meal's total.
+	Optional bool
 
 	CreatedAt time.Time
 }
