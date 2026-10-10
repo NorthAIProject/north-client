@@ -215,16 +215,63 @@ func (s *Service) Cardio(ctx context.Context, user users.User, rg timerange.Rang
 		if sess.EndedAt == nil || sess.ActivityCode == strength {
 			continue
 		}
-		c := stat.Session{
-			Code: sess.ActivityCode, Name: activityName(sess.ActivityCode),
-			At: sess.StartedAt.In(rg.Location()), Seconds: int(sess.Elapsed(*sess.EndedAt).Seconds()),
-		}
-		c.DistanceM = util.Val(sess.DistanceM)
-		c.Kcal = util.Val(sess.CaloriesBurned)
-		cardio = append(cardio, c)
+		cardio = append(cardio, cardioSession(sess, rg.Location()))
 	}
 	out.CardioStats = stat.Cardio(cardio, rg.Since, rg.Until)
 	return out, nil
+}
+
+// cardioSession is a finished session as the cardio stats read it.
+func cardioSession(sess activity.Session, loc *time.Location) stat.Session {
+	return stat.Session{
+		Code: sess.ActivityCode, Name: kindName(sess),
+		At: sess.StartedAt.In(loc), Seconds: int(sess.Elapsed(*sess.EndedAt).Seconds()),
+		DistanceM: util.Val(sess.DistanceM), Kcal: util.Val(sess.CaloriesBurned),
+		AvgHR: util.Val(sess.AvgHR), ElevationM: util.Val(sess.ElevationM), Indoor: sess.Indoor,
+	}
+}
+
+// kindName is the activity type a session is counted under. A treadmill run
+// and an indoor ride are their own types: their pace and climb are not
+// comparable with the road's, and mixing them would blur both trends.
+func kindName(sess activity.Session) string {
+	name := activityName(sess.ActivityCode)
+	indoor := (sess.Indoor != nil && *sess.Indoor) || strings.HasPrefix(sess.ActivityCode, "cycling_stationary")
+	switch {
+	case indoor && name == "Running":
+		return "Indoor running"
+	case indoor && name == "Cycling":
+		return "Indoor cycling"
+	}
+	return name
+}
+
+// KindWindowDays is how far back one activity type's page reads, whatever
+// window the cardio page shows: bests and a month-by-month trend need a year.
+const KindWindowDays = 365
+
+// CardioKind looks closely at one activity type over the last year. A type
+// with no sessions comes back empty rather than as an error, so a link to it
+// never breaks.
+func (s *Service) CardioKind(ctx context.Context, user users.User, name string, now time.Time) (stat.KindStats, error) {
+	if s.src.Activity == nil {
+		return stat.KindDetail(name, nil), nil
+	}
+	loc := user.Location()
+	until := now.In(loc)
+	rg := timerange.Between(timerange.StartOfDay(until).AddDate(0, 0, -KindWindowDays), until)
+	sessions, err := s.src.Activity.ListBetween(ctx, user.ID, rg)
+	if err != nil {
+		return stat.KindStats{}, err
+	}
+	var mine []stat.Session
+	for _, sess := range sessions {
+		if sess.EndedAt == nil || sess.ActivityCode == strength || kindName(sess) != name {
+			continue
+		}
+		mine = append(mine, cardioSession(sess, loc))
+	}
+	return stat.KindDetail(name, mine), nil
 }
 
 // activityName is how a session is grouped: the catalog splits running and
