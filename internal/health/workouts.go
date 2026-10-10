@@ -34,6 +34,16 @@ type Workout struct {
 	// estimate is used instead — a watch that read someone's heart rate knows
 	// more than a table does, but only when it actually reported.
 	Calories float64
+
+	// What the device measured. Zero means unknown; a heart rate outside
+	// what a human heart does is treated as unknown rather than refusing
+	// the sync over one bad sensor reading.
+	DistanceM    float64
+	AvgHeartRate float64
+	MaxHeartRate float64
+	ElevationM   float64
+	// Indoor is nil when the device did not say.
+	Indoor *bool
 }
 
 // ActivityImporter is the slice of activity.Service this package needs.
@@ -90,6 +100,11 @@ func (s *Service) IngestWorkouts(ctx context.Context, userID uuid.UUID, source s
 			EndedAt:      w.EndedAt,
 			WeightKg:     weightKg,
 			Calories:     w.Calories,
+			DistanceM:    w.DistanceM,
+			AvgHR:        heartRate(w.AvgHeartRate),
+			MaxHR:        heartRate(w.MaxHeartRate),
+			ElevationM:   w.ElevationM,
+			Indoor:       w.Indoor,
 		}); err != nil {
 			return Result{}, err
 		}
@@ -99,6 +114,15 @@ func (s *Service) IngestWorkouts(ctx context.Context, userID uuid.UUID, source s
 	}
 
 	return Result{Written: written}, nil
+}
+
+// heartRate keeps a reading a human heart can make and drops the rest as
+// unknown: a strap that lost contact reports 0 or 255, not a heart rate.
+func heartRate(bpm float64) float64 {
+	if bpm < 20 || bpm > 250 {
+		return 0
+	}
+	return bpm
 }
 
 // currentWeight reads the weight a calorie estimate needs.

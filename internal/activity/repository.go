@@ -177,11 +177,39 @@ func fromDB(row activitydb.ActivitySession) Session {
 		EndedAt:            row.EndedAt,
 		CaloriesBurned:     row.CaloriesBurned,
 		DistanceM:          row.DistanceM,
+		AvgHR:              widen(row.AvgHr),
+		MaxHR:              widen(row.MaxHr),
+		ElevationM:         row.ElevationM,
+		Indoor:             row.Indoor,
 		ExternalID:         row.ExternalID,
 		CreatedAt:          row.CreatedAt,
 		UpdatedAt:          row.UpdatedAt,
 		PlanWeekday:        util.Val(row.PlanWeekday),
 	}
+}
+
+// widen reads a real column as the float64 the domain uses.
+func widen(v *float32) *float64 {
+	if v == nil {
+		return nil
+	}
+	return util.Ptr(float64(*v))
+}
+
+// narrow writes a measured figure to a real column; zero is "not measured".
+func narrow(v float64) *float32 {
+	if v <= 0 {
+		return nil
+	}
+	return util.Ptr(float32(v))
+}
+
+// positive is a measured figure, or nil for "not measured".
+func positive(v float64) *float64 {
+	if v <= 0 {
+		return nil
+	}
+	return util.Ptr(v)
 }
 
 // Import writes an already-finished session from a provider sync.
@@ -216,10 +244,29 @@ func (r *Repository) Import(ctx context.Context, in ImportInput) (Session, bool,
 		EndedAt:          &endedAt,
 		CaloriesBurned:   calories,
 		ExternalID:       &externalID,
+		DistanceM:        positive(in.DistanceM),
+		AvgHr:            narrow(in.AvgHR),
+		MaxHr:            narrow(in.MaxHR),
+		ElevationM:       positive(in.ElevationM),
+		Indoor:           in.Indoor,
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return Session{}, false, nil // already imported
+			// Already imported. Fill in what this import knows that the
+			// first did not, so a re-sync backfills new measurements.
+			if fillErr := r.q.FillImportedActivitySession(ctx, activitydb.FillImportedActivitySessionParams{
+				DistanceM:  positive(in.DistanceM),
+				AvgHr:      narrow(in.AvgHR),
+				MaxHr:      narrow(in.MaxHR),
+				ElevationM: positive(in.ElevationM),
+				Indoor:     in.Indoor,
+				UserID:     in.UserID,
+				Source:     in.Source,
+				ExternalID: &externalID,
+			}); fillErr != nil {
+				return Session{}, false, apperr.Wrap(fillErr, "fill imported activity session")
+			}
+			return Session{}, false, nil
 		}
 		return Session{}, false, apperr.Wrap(err, "import activity session")
 	}

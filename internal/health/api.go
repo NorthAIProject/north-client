@@ -60,6 +60,13 @@ type SampleWorkout struct {
 	EndedAt    time.Time `json:"endedAt"`
 	// Calories is the device's active energy; zero means unknown.
 	Calories float64 `json:"calories,omitempty"`
+	// What the watch measured; zero or absent means unknown.
+	DistanceM    float64 `json:"distanceM,omitempty"`
+	AvgHeartRate float64 `json:"avgHeartRate,omitempty"`
+	MaxHeartRate float64 `json:"maxHeartRate,omitempty"`
+	ElevationM   float64 `json:"elevationM,omitempty"`
+	// Indoor is Apple Health's indoor-workout flag; absent when not set.
+	Indoor *bool `json:"indoor,omitempty"`
 }
 
 type SyncRequest struct {

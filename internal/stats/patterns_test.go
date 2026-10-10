@@ -82,3 +82,38 @@ func TestPatternsReadAppleHealthAndOutdoorSessions(t *testing.T) {
 		t.Errorf("%s missing from %+v", key, found)
 	}
 }
+
+// A treadmill run is not an outdoor workout once the provider says so, even
+// though its activity code is a run.
+func TestPatternsTrustTheIndoorFlag(t *testing.T) {
+	t.Parallel()
+	user := users.User{ID: uuid.New(), Timezone: "UTC"}
+	today := timerange.StartOfDay(time.Now().UTC())
+	indoor := true
+
+	var checks fakeCheckIns
+	var sessions fakeActivity
+	for i := 1; i <= 12; i++ {
+		d := today.AddDate(0, 0, -i)
+		mood := 3
+		if i%2 == 0 {
+			mood = 4
+			ended := d.Add(8 * time.Hour)
+			sessions = append(sessions, activity.Session{
+				ActivityCode: "running_fast", StartedAt: d.Add(7 * time.Hour), EndedAt: &ended, Indoor: &indoor,
+			})
+		}
+		checks = append(checks, checkins.CheckIn{LocalDate: d, Mood: mood, Energy: 3})
+	}
+
+	svc := stats.NewService(stats.Sources{CheckIns: checks, Activity: sessions})
+	found, _, err := svc.Patterns(context.Background(), user, timerange.Parse(timerange.KeyMonth, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range found {
+		if f.Key == "mood_outdoor" {
+			t.Errorf("treadmill runs counted as outdoor: %q", f.Title)
+		}
+	}
+}

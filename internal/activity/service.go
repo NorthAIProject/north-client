@@ -287,6 +287,14 @@ type ImportInput struct {
 	// Calories is the provider's own figure when it has one. Zero means
 	// "unknown", and Import falls back to the MET estimate.
 	Calories float64
+
+	// What the provider measured. Zero is "not measured" and stored as NULL.
+	DistanceM  float64
+	AvgHR      float64
+	MaxHR      float64
+	ElevationM float64
+	// Indoor is nil when the provider did not say.
+	Indoor *bool
 }
 
 // Import records a finished session from a provider, reporting false when it
