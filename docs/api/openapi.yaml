@@ -2965,6 +2965,41 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+  /nutrition/meals/{mealID}/options:
+    parameters:
+      - name: mealID
+        in: path
+        required: true
+        description: Any of the meal's options.
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: addMealOption
+      summary: Add an empty option to a meal; answers with the plan
+      description: >-
+        The new option goes after the meal's last one. An empty or missing label
+        becomes the first "Option N" the meal does not use. A new option is
+        empty, so it never takes a day over its target.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MealOptionRequest'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MealPlanDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
   /nutrition/meals/{mealID}/ingredients:
     parameters:
       - name: mealID
@@ -10755,6 +10790,13 @@ components:
       properties:
         name:
           type: string
+    MealOptionRequest:
+      type: object
+      properties:
+        label:
+          type: string
+          maxLength: 60
+          description: The option's name, such as "Peixe"; empty or absent for the first free "Option N".
     PortionRequest:
       type: object
       required: [ingredientId, quantityGrams]
