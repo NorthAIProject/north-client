@@ -52,6 +52,7 @@ var toolStatusKeys = map[string]string{
 	"get_stats":                "chat.tool.stats",
 	"create_meal_plan":         "chat.tool.mealplan.write",
 	"edit_meal_plan":           "chat.tool.mealplan.write",
+	"delete_meal_plan":         "chat.tool.mealplan.delete",
 	"get_meal_plan":            "chat.tool.nutrition",
 
 	"import_plan_from_attachment": "chat.tool.planimport",
