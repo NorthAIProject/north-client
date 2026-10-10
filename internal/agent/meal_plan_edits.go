@@ -58,7 +58,9 @@ func getMealPlan(plans *meals.MealPlanService) Capability {
 		Tool: ai.Tool{
 			Name: "get_meal_plan",
 			Description: "Read one of this person's meal plans: each day's meals with every food and its weight, and each day's " +
-				"calories and macros against their target. Read it before editing a plan or answering what is in it. " +
+				"calories and macros against their target. A meal with several options lists them numbered; option 1 is the " +
+				"one the day's totals count. Days that are all the same are shown once. Read it before editing a plan or " +
+				"answering what is in it. " +
 				"With several plans and none named, it lists them and shows the most recently changed one.",
 			Parameters: params,
 		},
@@ -116,11 +118,15 @@ func editMealPlan(plans *meals.MealPlanService, ingredients *meals.IngredientSer
 		Tool: ai.Tool{
 			Name: "edit_meal_plan",
 			Description: "Change the meals in one of this person's meal plans. Put every change they asked for in one call: the " +
-				"changes are applied together or not at all. Ops: add_meal (an empty meal at the end of the day), remove_meal, " +
-				"add_food (grams of a catalog food added to a meal), remove_food (every portion of that food in the meal), " +
-				"set_grams (the meal holds exactly that many grams of a food already in it). Leave days out to change every day " +
+				"changes are applied together or not at all. Ops: add_meal (an empty meal at the end of the day), remove_meal (the " +
+				"meal with all its options), add_food (grams of a catalog food added to a meal), remove_food (every portion of that " +
+				"food in the meal), set_grams (the meal holds exactly that many grams of a food already in it), add_option (an empty " +
+				"option named option_label after the meal's last one), remove_option (option 2 or later). A meal can hold several " +
+				"interchangeable options; option 1 is the default, the one the day's totals count. add_food, remove_food and " +
+				"set_grams change option 1 unless option says otherwise; an option number a target day's meal does not have " +
+				"refuses the whole change, so name days when the days differ. Leave days out to change every day " +
 				"of the plan; a change applies on the days where its meal (and food) exist, and is refused only if it matches on " +
-				"none. Use get_meal_plan first to see the meal and food names. A result that would take a day further over its " +
+				"none. Use get_meal_plan first to see the meal, option and food names. A result that would take a day further over its " +
 				"macro target is refused with the amounts and nothing is saved: shrink the change, or tell the person and ask. " +
 				"Set allow_over_target only after the person has explicitly accepted an overage that a refused call reported; " +
 				"easy plans never go over, whatever it says.",
@@ -132,6 +138,9 @@ func editMealPlan(plans *meals.MealPlanService, ingredients *meals.IngredientSer
 					"meal":  ai.String("the meal's name, such as 'Breakfast'"),
 					"food":  ai.String("the food: a plain catalog name for add_food, the name the plan shows for remove_food and set_grams"),
 					"grams": ai.Number("grams to add (add_food) or to leave (set_grams)"),
+					"option": ai.Integer("which of the meal's options, counting from 1 as get_meal_plan lists them; 1 is the " +
+						"default option counted in the day's totals; omit for 1"),
+					"option_label": ai.String("the new option's name, for add_option, such as 'Peixe'"),
 				}, "op", "meal")),
 				"allow_over_target": ai.Boolean("true only once the person accepted going over their target, after a refusal said by how much"),
 			}, "changes"),
@@ -186,12 +195,13 @@ func editMealPlan(plans *meals.MealPlanService, ingredients *meals.IngredientSer
 				}
 			}
 			b.WriteString("\n\nThe changed days now:")
+			var days []meal.Day
 			for _, day := range stored.Days {
 				if changed[day.Weekday] {
-					b.WriteString("\n")
-					describeDay(&b, stored, day, target)
+					days = append(days, day)
 				}
 			}
+			describeMealDays(&b, stored, days, target)
 			return b.String(), nil
 		},
 	}
@@ -199,8 +209,9 @@ func editMealPlan(plans *meals.MealPlanService, ingredients *meals.IngredientSer
 
 func logPlannedMeal(plans *meals.MealPlanService, foodLog *meals.FoodLogService, userSvc *users.Service) Capability {
 	type args struct {
-		Meal string `json:"meal"`
-		Plan string `json:"plan"`
+		Meal   string `json:"meal"`
+		Plan   string `json:"plan"`
+		Option string `json:"option"`
 	}
 
 	return Capability{
@@ -212,6 +223,8 @@ func logPlannedMeal(plans *meals.MealPlanService, foodLog *meals.FoodLogService,
 			Parameters: ai.Object("the meal they ate", map[string]*ai.Schema{
 				"meal": ai.String("the meal's name in the plan, such as 'Breakfast'"),
 				"plan": ai.String("the plan's name; empty for their most recently changed plan"),
+				"option": ai.String("which of the meal's options they ate: its number, such as '2', or its name, such as " +
+					"'Peixe'; empty for option 1"),
 			}, "meal"),
 		},
 		// Every call is another entry: eating the meal twice is two meals.
@@ -240,7 +253,7 @@ func logPlannedMeal(plans *meals.MealPlanService, foodLog *meals.FoodLogService,
 			if err != nil {
 				return "", err
 			}
-			planned, err := todaysMeal(full, now.Weekday(), in.Meal)
+			planned, err := todaysMeal(full, now.Weekday(), in.Meal, in.Option)
 			if err != nil {
 				return "", err
 			}
@@ -253,18 +266,20 @@ func logPlannedMeal(plans *meals.MealPlanService, foodLog *meals.FoodLogService,
 			}
 			m := entry.Macros
 			return fmt.Sprintf("Logged %s from %q for today (%s): %.0f kcal, %.0f g protein, %.0f g carbs, %.0f g fat.",
-				planned.Name, full.Name, now.Weekday(), m.Calories, m.ProteinG, m.CarbG, m.FatG), nil
+				planned.DisplayName(), full.Name, now.Weekday(), m.Calories, m.ProteinG, m.CarbG, m.FatG), nil
 		},
 	}
 }
 
 // changeArg is one change as the model writes it.
 type changeArg struct {
-	Op    string   `json:"op"`
-	Days  []string `json:"days"`
-	Meal  string   `json:"meal"`
-	Food  string   `json:"food"`
-	Grams float64  `json:"grams"`
+	Op          string   `json:"op"`
+	Days        []string `json:"days"`
+	Meal        string   `json:"meal"`
+	Food        string   `json:"food"`
+	Grams       float64  `json:"grams"`
+	Option      int      `json:"option"`
+	OptionLabel string   `json:"option_label"`
 }
 
 // planChangesFromArgs turns the model's changes into the service's, checking
@@ -293,9 +308,15 @@ func planChangeFromArg(a changeArg) (meals.PlanChange, error) {
 	if !op.Valid() {
 		return meals.PlanChange{}, invalid("%q is not a change; use one of %s", a.Op, opNames())
 	}
-	c := meals.PlanChange{Op: op, Meal: strings.TrimSpace(a.Meal), Food: strings.TrimSpace(a.Food), Grams: a.Grams}
+	c := meals.PlanChange{
+		Op: op, Meal: strings.TrimSpace(a.Meal), Food: strings.TrimSpace(a.Food), Grams: a.Grams,
+		Option: a.Option, OptionLabel: strings.TrimSpace(a.OptionLabel),
+	}
 	if c.Meal == "" {
 		return meals.PlanChange{}, invalid("name the meal")
+	}
+	if c.Option < 0 {
+		return meals.PlanChange{}, invalid("count options from 1; option 1 is the one the day's totals count")
 	}
 
 	days, err := parseWeekdays(a.Days)
@@ -305,7 +326,7 @@ func planChangeFromArg(a changeArg) (meals.PlanChange, error) {
 	c.Days = days
 
 	switch op {
-	case meals.OpAddMeal, meals.OpRemoveMeal:
+	case meals.OpAddMeal, meals.OpRemoveMeal, meals.OpAddOption, meals.OpRemoveOption:
 		c.Food, c.Grams = "", 0
 	case meals.OpAddFood, meals.OpSetGrams:
 		if c.Food == "" {
@@ -423,8 +444,9 @@ func mealPlanNames(list []meals.MealPlan) string {
 	return strings.Join(out, ", ")
 }
 
-// todaysMeal finds a meal on the plan's day for weekday.
-func todaysMeal(plan meals.MealPlan, weekday time.Weekday, name string) (meals.Meal, error) {
+// todaysMeal finds a meal on the plan's day for weekday, and the option of it
+// named by option: its number or its label; empty is option 1.
+func todaysMeal(plan meals.MealPlan, weekday time.Weekday, name, option string) (meals.Meal, error) {
 	if strings.TrimSpace(name) == "" {
 		return meals.Meal{}, apperr.Wrap(apperr.ErrValidation, "name the meal to log")
 	}
@@ -449,11 +471,75 @@ func todaysMeal(plan meals.MealPlan, weekday time.Weekday, name string) (meals.M
 		return meals.Meal{}, apperr.Wrap(apperr.ErrNotFound,
 			"%s in %q has no meal called %q; its meals are %s", weekday, plan.Name, name, strings.Join(names, ", "))
 	}
-	if len(day.Meals[m].Ingredients) == 0 {
-		return meals.Meal{}, apperr.Wrap(apperr.ErrValidation,
-			"%s on %s has nothing in it yet, so there is nothing to log", day.Meals[m].Name, weekday)
+	chosen, err := pickLoggedOption(day.Meals[m], option, weekday)
+	if err != nil {
+		return meals.Meal{}, err
 	}
-	return day.Meals[m], nil
+	if len(chosen.Ingredients) == 0 {
+		return meals.Meal{}, apperr.Wrap(apperr.ErrValidation,
+			"%s on %s has nothing in it yet, so there is nothing to log", chosen.DisplayName(), weekday)
+	}
+	return chosen, nil
+}
+
+// pickLoggedOption finds one of slot's options by its number ("2") or by its
+// label, matched exactly and then as a unique part of one, ignoring case.
+// Empty is option 1.
+func pickLoggedOption(slot meals.Meal, want string, weekday time.Weekday) (meals.Meal, error) {
+	want = strings.TrimSpace(want)
+	options := slot.Options()
+	if want == "" {
+		return slot, nil
+	}
+	if n, err := strconv.Atoi(want); err == nil {
+		if n < 1 || n > len(options) {
+			return meals.Meal{}, apperr.Wrap(apperr.ErrNotFound,
+				"there is no option %d: %s on %s has %s", n, slot.Name, weekday, optionCount(len(options)))
+		}
+		return options[n-1], nil
+	}
+
+	needle := strings.ToLower(want)
+	var hits []int
+	for k, o := range options {
+		if strings.ToLower(o.OptionLabel) == needle {
+			return o, nil
+		}
+		if strings.Contains(strings.ToLower(o.OptionLabel), needle) {
+			hits = append(hits, k)
+		}
+	}
+	switch len(hits) {
+	case 1:
+		return options[hits[0]], nil
+	case 0:
+		all := make([]int, len(options))
+		for k := range options {
+			all[k] = k
+		}
+		return meals.Meal{}, apperr.Wrap(apperr.ErrNotFound,
+			"%s on %s has no option called %q; its options are %s", slot.Name, weekday, want, optionNames(options, all))
+	default:
+		return meals.Meal{}, apperr.Wrap(apperr.ErrValidation,
+			"%q matches several options of %s (%s); say which", want, slot.Name, optionNames(options, hits))
+	}
+}
+
+func optionCount(n int) string {
+	if n == 1 {
+		return "only one option"
+	}
+	return fmt.Sprintf("%d options", n)
+}
+
+// optionNames lists the options at positions as get_meal_plan numbers them,
+// by position from 1: 2 "Peixe".
+func optionNames(options []meals.Meal, positions []int) string {
+	out := make([]string, len(positions))
+	for i, k := range positions {
+		out[i] = fmt.Sprintf("%d %q", k+1, options[k].OptionLabel)
+	}
+	return strings.Join(out, ", ")
 }
 
 // explainOverage adds to an overage refusal what the model can do about it.
@@ -475,18 +561,75 @@ func describeMealPlan(b *strings.Builder, plan meals.MealPlan, target *meals.Mac
 	if target == nil {
 		b.WriteString(" They have no macro target yet, so the days are not measured against one.")
 	}
-	for _, day := range plan.Days {
-		b.WriteString("\n")
-		describeDay(b, plan, day, target)
+	describeMealDays(b, plan, plan.Days, target)
+}
+
+// describeMealDays writes days, each distinct day once, headed by every day
+// that reads exactly like it: "Monday: …", "Tuesday–Sunday: …", "Tuesday,
+// Thursday: …". An imported every-day plan is seven copies of one day, and
+// listing each — or each again once one day of it is edited — would hand the
+// model the same meals seven times. "Every day (…)" heads them only when days
+// are all of the plan's days and read alike; a few changed days that match
+// are just their span.
+func describeMealDays(b *strings.Builder, plan meals.MealPlan, days []meal.Day, target *meals.Macros) {
+	groups := groupDays(plan, days, target)
+	if len(groups) == 1 && len(days) > 1 && len(days) == len(plan.Days) {
+		fmt.Fprintf(b, "\nEvery day (%s): %s", weekdaySpan(groups[0].days), groups[0].body)
+		return
+	}
+	for _, g := range groups {
+		fmt.Fprintf(b, "\n%s: %s", weekdaySpan(g.days), g.body)
 	}
 }
 
-// describeDay writes one day: its totals against its target, then each meal
-// with its foods.
-func describeDay(b *strings.Builder, plan meals.MealPlan, day meal.Day, target *meals.Macros) {
+// dayGroup is days that read exactly alike, and how they read.
+type dayGroup struct {
+	days []meal.Day
+	body string
+}
+
+// groupDays groups days by their description, in the order each group's
+// first day comes.
+func groupDays(plan meals.MealPlan, days []meal.Day, target *meals.Macros) []dayGroup {
+	var groups []dayGroup
+	at := map[string]int{}
+	for _, day := range days {
+		var body strings.Builder
+		describeDayBody(&body, plan, day, target)
+		key := body.String()
+		if i, ok := at[key]; ok {
+			groups[i].days = append(groups[i].days, day)
+			continue
+		}
+		at[key] = len(groups)
+		groups = append(groups, dayGroup{days: []meal.Day{day}, body: key})
+	}
+	return groups
+}
+
+// weekdaySpan names days: one by its name, a run of consecutive weekdays as
+// "Tuesday–Sunday", anything else listed.
+func weekdaySpan(days []meal.Day) string {
+	names := make([]string, len(days))
+	consecutive := len(days) > 1
+	for i, day := range days {
+		names[i] = day.Weekday.String()
+		if i > 0 && consecutive {
+			consecutive = slices.Index(meal.WeekOrder, day.Weekday) == slices.Index(meal.WeekOrder, days[i-1].Weekday)+1
+		}
+	}
+	if consecutive {
+		return names[0] + "–" + names[len(names)-1]
+	}
+	return strings.Join(names, ", ")
+}
+
+// describeDayBody writes one day after its name: its totals against its
+// target, then each meal with its foods and, where it has them, its options.
+func describeDayBody(b *strings.Builder, plan meals.MealPlan, day meal.Day, target *meals.Macros) {
 	consumed := day.Consumed()
-	fmt.Fprintf(b, "%s: %.0f kcal, %.0f g protein, %.0f g carbs, %.0f g fat.",
-		day.Weekday, consumed.Calories, consumed.ProteinG, consumed.CarbG, consumed.FatG)
+	fmt.Fprintf(b, "%.0f kcal, %.0f g protein, %.0f g carbs, %.0f g fat.",
+		consumed.Calories, consumed.ProteinG, consumed.CarbG, consumed.FatG)
 	if target != nil {
 		status := meal.StatusOf(meal.ResolveDayTarget(*target, plan.Settings, day.Override), consumed)
 		fmt.Fprintf(b, " Target %.0f kcal, %.0f g protein, %.0f g carbs, %.0f g fat.",
@@ -500,13 +643,36 @@ func describeDay(b *strings.Builder, plan meals.MealPlan, day meal.Day, target *
 		b.WriteString("\n  No meals yet.")
 	}
 	for _, m := range day.Meals {
-		foods := make([]string, len(m.Ingredients))
-		for j, ing := range m.Ingredients {
-			foods[j] = fmt.Sprintf("%.0f g %s", ing.QuantityGrams, ing.IngredientName)
+		if len(m.Alternatives) == 0 {
+			fmt.Fprintf(b, "\n  %s (%.0f kcal): %s", m.Name, m.TotalMacros.Calories, describeFoods(m))
+			continue
 		}
-		if len(foods) == 0 {
-			foods = []string{"nothing yet"}
+		fmt.Fprintf(b, "\n  %s (option 1%s, counted, %.0f kcal): %s", m.Name, quotedLabel(m), m.TotalMacros.Calories, describeFoods(m))
+		for k, alt := range m.Alternatives {
+			fmt.Fprintf(b, "\n    option %d%s (%.0f kcal): %s", k+2, quotedLabel(alt), alt.TotalMacros.Calories, describeFoods(alt))
 		}
-		fmt.Fprintf(b, "\n  %s (%.0f kcal): %s", m.Name, m.TotalMacros.Calories, strings.Join(foods, ", "))
 	}
+}
+
+func quotedLabel(m meals.Meal) string {
+	if m.OptionLabel == "" {
+		return ""
+	}
+	return " " + strconv.Quote(m.OptionLabel)
+}
+
+// describeFoods lists a meal option's foods by weight, marking the ones an
+// import estimated.
+func describeFoods(m meals.Meal) string {
+	if len(m.Ingredients) == 0 {
+		return "nothing yet"
+	}
+	foods := make([]string, len(m.Ingredients))
+	for j, ing := range m.Ingredients {
+		foods[j] = fmt.Sprintf("%.0f g %s", ing.QuantityGrams, ing.IngredientName)
+		if ing.Estimated {
+			foods[j] += " (estimated)"
+		}
+	}
+	return strings.Join(foods, ", ")
 }

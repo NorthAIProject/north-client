@@ -35,7 +35,7 @@
   },
   {
     "name": "get_meal_plan",
-    "description": "Read one of this person's meal plans: each day's meals with every food and its weight, and each day's calories and macros against their target. Read it before editing a plan or answering what is in it. With several plans and none named, it lists them and shows the most recently changed one.",
+    "description": "Read one of this person's meal plans: each day's meals with every food and its weight, and each day's calories and macros against their target. A meal with several options lists them numbered; option 1 is the one the day's totals count. Days that are all the same are shown once. Read it before editing a plan or answering what is in it. With several plans and none named, it lists them and shows the most recently changed one.",
     "inputSchema": {
       "additionalProperties": false,
       "description": "which plan",

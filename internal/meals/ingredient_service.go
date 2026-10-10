@@ -75,6 +75,12 @@ func (s *IngredientService) Get(ctx context.Context, id, userID uuid.UUID) (Ingr
 	return s.repo.GetIngredient(ctx, id, userID)
 }
 
+// SharedNames lists the shared catalog's ingredient names, A to Z: the
+// vocabulary an importer maps a plan's food lines onto.
+func (s *IngredientService) SharedNames(ctx context.Context) ([]string, error) {
+	return s.repo.SharedIngredientNames(ctx)
+}
+
 // Search returns the shared/global set plus the user's own.
 func (s *IngredientService) Search(ctx context.Context, userID uuid.UUID, query string, limit int) ([]Ingredient, error) {
 	if limit <= 0 || limit > 100 {

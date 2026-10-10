@@ -1,6 +1,7 @@
 package media
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -14,7 +15,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/ai/prompts"
-	"github.com/NorthAIProject/north-client/internal/coach"
+	"github.com/NorthAIProject/north-client/internal/conversations"
 	"github.com/NorthAIProject/north-client/internal/jobs"
 	"github.com/NorthAIProject/north-client/internal/media/analysis"
 	"github.com/NorthAIProject/north-client/internal/shared/aiattr"
@@ -31,10 +32,20 @@ const MaxVideoBytes int64 = 200 << 20 // 200 MB
 // a 20 MB phone dump does not help the coach and blows the request.
 const MaxImageBytes int64 = 8 << 20 // 8 MB
 
+// MaxFileBytes bounds a document sent in chat: a diet PDF or a spreadsheet.
+// Kept at a photo's size so one chat upload limit covers both.
+const MaxFileBytes int64 = 8 << 20 // 8 MB
+
 const (
 	KindVideo = "video"
 	KindImage = "image"
+	// KindFile is a document sent in chat, read as text rather than seen.
+	KindFile = "file"
 )
+
+// ErrNoChatFile is LatestChatFile's answer when this person has sent no file,
+// or none by the name asked for.
+var ErrNoChatFile = apperr.Wrap(apperr.ErrNotFound, "no file has been sent in chat")
 
 // signedURLLifetime is how long a playback link stays valid. Long enough to
 // watch a clip several times, short enough that a leaked URL expires.
@@ -56,6 +67,39 @@ var allowedImageTypes = map[string]string{
 	"image/png":  ".png",
 	"image/gif":  ".gif",
 	"image/webp": ".webp",
+}
+
+// fileType is a document extension the chat takes: what its leading bytes must
+// sniff as, and the MIME type it is stored under.
+type fileType struct {
+	// sniff is the type http.DetectContentType must report, or "text" for any
+	// UTF-8 text. Text formats have no signature, so a CSV can only be told
+	// from a renamed photo by being text at all.
+	sniff string
+	mime  string
+}
+
+const sniffText = "text"
+
+// allowedFileTypes are the documents planimport.ExtractText can read. The
+// Office formats are zip containers and sniff as one; checking inside the zip
+// is the reader's job.
+var allowedFileTypes = map[string]fileType{
+	".pdf":  {sniff: "application/pdf", mime: "application/pdf"},
+	".docx": {sniff: "application/zip", mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
+	".xlsx": {sniff: "application/zip", mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},
+	".csv":  {sniff: sniffText, mime: "text/csv"},
+	".tsv":  {sniff: sniffText, mime: "text/tab-separated-values"},
+	".txt":  {sniff: sniffText, mime: "text/plain"},
+	".md":   {sniff: sniffText, mime: "text/markdown"},
+	".json": {sniff: sniffText, mime: "application/json"},
+}
+
+// imageExtensions route a chat upload to the photo path even when its bytes
+// are not a photo we read, so the refusal talks about photos.
+var imageExtensions = map[string]bool{
+	".jpg": true, ".jpeg": true, ".png": true, ".gif": true,
+	".webp": true, ".heic": true, ".heif": true,
 }
 
 type Service struct {
@@ -290,6 +334,28 @@ func (s *Service) UploadImage(ctx context.Context, userID uuid.UUID, filename st
 	})
 }
 
+// UploadFile stores a document the coach should read this turn: a PDF, a Word
+// or Excel file, or plain text.
+//
+// The extension decides what the file is meant to be, matched without regard
+// to case because the iOS Files app keeps whatever name the file had. The
+// bytes must then agree with it, so a photo renamed to .csv is refused here
+// rather than read as garbage later.
+func (s *Service) UploadFile(ctx context.Context, userID uuid.UUID, filename string, size int64, body io.Reader) (Media, error) {
+	return s.storeUpload(ctx, storeUpload{
+		UserID:    userID,
+		Filename:  filename,
+		Size:      size,
+		Body:      body,
+		Kind:      KindFile,
+		MaxBytes:  MaxFileBytes,
+		FileTypes: allowedFileTypes,
+		Field:     "attachment",
+		TooBig:    fmt.Sprintf("That file is over %d MB. Send a smaller one.", MaxFileBytes>>20),
+		BadType:   "I can read PDF, Word (.docx), Excel (.xlsx), CSV, TSV, text, Markdown and JSON files, or a photo.",
+	})
+}
+
 type storeUpload struct {
 	UserID   uuid.UUID
 	Filename string
@@ -297,10 +363,18 @@ type storeUpload struct {
 	Body     io.Reader
 	Kind     string
 	MaxBytes int64
-	Allowed  map[string]string
-	Field    string
-	TooBig   string
-	BadType  string
+
+	// Allowed maps a sniffed MIME type to the stored extension: the bytes
+	// alone say what the file is. Used when FileTypes is nil.
+	Allowed map[string]string
+
+	// FileTypes maps a filename extension to what the bytes must sniff as.
+	// Set for documents, whose text formats have no signature to go by.
+	FileTypes map[string]fileType
+
+	Field   string
+	TooBig  string
+	BadType string
 }
 
 func (s *Service) storeUpload(ctx context.Context, in storeUpload) (Media, error) {
@@ -318,10 +392,9 @@ func (s *Service) storeUpload(ctx context.Context, in storeUpload) (Media, error
 	}
 	header = header[:n]
 
-	mimeType := sniffMIME(header)
-	extension, ok := in.Allowed[mimeType]
-	if !ok {
-		return Media{}, apperr.FieldErrors{{Field: in.Field, Message: in.BadType}}
+	extension, mimeType, refusal := in.identify(header)
+	if refusal != "" {
+		return Media{}, apperr.FieldErrors{{Field: in.Field, Message: refusal}}
 	}
 
 	mediaID := uuid.New()
@@ -349,6 +422,47 @@ func (s *Service) storeUpload(ctx context.Context, in storeUpload) (Media, error
 		return Media{}, err
 	}
 	return record, nil
+}
+
+// identify names the extension and MIME type an upload is stored under, or
+// says why it is refused.
+func (in storeUpload) identify(header []byte) (extension, mimeType, refusal string) {
+	if in.FileTypes != nil {
+		return identifyFile(in.Filename, header, in.FileTypes, in.BadType)
+	}
+	mimeType = sniffMIME(header)
+	extension, ok := in.Allowed[mimeType]
+	if !ok {
+		return "", "", in.BadType
+	}
+	return extension, mimeType, ""
+}
+
+func identifyFile(filename string, header []byte, types map[string]fileType, badType string) (extension, mimeType, refusal string) {
+	extension = strings.ToLower(filepath.Ext(strings.TrimSpace(filename)))
+	want, ok := types[extension]
+	if !ok {
+		return "", "", badType
+	}
+	// Checked before the sniff, which calls nothing at all plain text.
+	if len(header) == 0 {
+		return "", "", "That file is empty."
+	}
+
+	sniffed := http.DetectContentType(header)
+	if want.sniff == sniffText {
+		// Any text type in UTF-8: a Markdown file that opens with an HTML
+		// comment sniffs as text/html, and is still text. UTF-16 sniffs as
+		// octet-stream or as another charset, and no reader here takes it.
+		if !strings.HasPrefix(sniffed, "text/") || !strings.HasSuffix(sniffed, "charset=utf-8") {
+			return "", "", fmt.Sprintf("That %s file is not plain UTF-8 text. Save it as UTF-8 and send it again.", extension)
+		}
+		return extension, want.mime, ""
+	}
+	if normaliseMIME(sniffed) != want.sniff {
+		return "", "", fmt.Sprintf("That does not look like a real %s file. Export it again and send the new copy.", extension)
+	}
+	return extension, want.mime, ""
 }
 
 func (s *Service) GetMedia(ctx context.Context, id, userID uuid.UUID) (Media, error) {
@@ -405,32 +519,117 @@ func (s *Service) LoadInline(ctx context.Context, userID, mediaID uuid.UUID) (st
 	return s.ReadBytes(ctx, userID, mediaID)
 }
 
-// StoreChatImage / LoadChatImage are the names the chat handler calls.
+// ReadFile loads a photo or a document sent in chat, with its record, for a
+// reader that needs the bytes: the coach reading a document's text, or an
+// import of the plan in it. Another account's file, and a video, are not found.
+func (s *Service) ReadFile(ctx context.Context, userID, id uuid.UUID) (Media, []byte, error) {
+	record, err := s.chatMedia(ctx, id, userID)
+	if err != nil {
+		return Media{}, nil, err
+	}
+	data, err := s.readStored(ctx, record)
+	if err != nil {
+		return Media{}, nil, err
+	}
+	return record, data, nil
+}
+
+// LatestChatFile is the newest photo or document this person sent, with its
+// bytes. A non-empty name picks the newest whose original filename matches it,
+// ignoring case. Nothing sent, or nothing by that name, is ErrNoChatFile.
+func (s *Service) LatestChatFile(ctx context.Context, userID uuid.UUID, name string) (Media, []byte, error) {
+	record, err := s.repo.LatestOfKinds(ctx, userID, []string{KindFile, KindImage}, strings.TrimSpace(name))
+	if err != nil {
+		if apperr.Is(err, apperr.ErrNotFound) {
+			return Media{}, nil, ErrNoChatFile
+		}
+		return Media{}, nil, err
+	}
+	data, err := s.readStored(ctx, record)
+	if err != nil {
+		return Media{}, nil, err
+	}
+	return record, data, nil
+}
+
+// chatMedia is GetMedia limited to what a chat turn can carry.
+func (s *Service) chatMedia(ctx context.Context, id, userID uuid.UUID) (Media, error) {
+	record, err := s.repo.GetMedia(ctx, id, userID)
+	if err != nil {
+		return Media{}, err
+	}
+	if record.Kind != KindImage && record.Kind != KindFile {
+		return Media{}, apperr.Wrap(apperr.ErrNotFound, "media %s is a %s, not a chat attachment", id, record.Kind)
+	}
+	return record, nil
+}
+
+// readStored reads a chat file's bytes, refusing more than an upload could
+// have stored.
+func (s *Service) readStored(ctx context.Context, record Media) ([]byte, error) {
+	object, err := s.storage.Get(ctx, record.StorageKey)
+	if err != nil {
+		return nil, apperr.Wrap(err, "open stored file")
+	}
+	defer func() { _ = object.Close() }()
+
+	limit := max(MaxFileBytes, MaxImageBytes)
+	data, err := io.ReadAll(io.LimitReader(object, limit+1))
+	if err != nil {
+		return nil, apperr.Wrap(err, "read stored file")
+	}
+	if int64(len(data)) > limit {
+		return nil, apperr.Wrap(apperr.ErrValidation, "stored file is larger than a chat upload")
+	}
+	return data, nil
+}
+
+// StoreChatAttachment / LoadChatAttachment are the names the chat handler
+// calls.
 //
 // They exist so the coach package never imports this one: we already implement
 // coach.ContextSource, and a reverse import would be a cycle.
-func (s *Service) StoreChatImage(ctx context.Context, userID uuid.UUID, filename string, size int64, body io.Reader) (coach.ChatImage, error) {
-	m, err := s.UploadImage(ctx, userID, filename, size, body)
-	if err != nil {
-		return coach.ChatImage{}, err
+//
+// A photo is stored as one, for the model to see; anything else is a document,
+// for the coach to read. A file named like a photo goes the photo's way even
+// when its bytes are not one, so the refusal talks about photos.
+func (s *Service) StoreChatAttachment(ctx context.Context, userID uuid.UUID, filename string, size int64, body io.Reader) (conversations.Attachment, error) {
+	header := make([]byte, 512)
+	n, err := io.ReadFull(body, header)
+	if err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
+		return conversations.Attachment{}, apperr.Wrap(err, "read upload")
 	}
-	return toChatImage(m), nil
+	header = header[:n]
+	full := io.MultiReader(bytes.NewReader(header), body)
+
+	upload := s.UploadFile
+	_, isPhoto := allowedImageTypes[sniffMIME(header)]
+	if isPhoto || imageExtensions[strings.ToLower(filepath.Ext(filename))] {
+		upload = s.UploadImage
+	}
+	m, err := upload(ctx, userID, filename, size, full)
+	if err != nil {
+		return conversations.Attachment{}, err
+	}
+	return toChatAttachment(m), nil
 }
 
-func (s *Service) LoadChatImage(ctx context.Context, id, userID uuid.UUID) (coach.ChatImage, error) {
-	m, err := s.GetMedia(ctx, id, userID)
+// LoadChatAttachment is a photo or document this account sent, as the turn
+// carries it. Another account's file, and a video, are not found.
+func (s *Service) LoadChatAttachment(ctx context.Context, id, userID uuid.UUID) (conversations.Attachment, error) {
+	m, err := s.chatMedia(ctx, id, userID)
 	if err != nil {
-		return coach.ChatImage{}, err
+		return conversations.Attachment{}, err
 	}
-	return toChatImage(m), nil
+	return toChatAttachment(m), nil
 }
 
-func toChatImage(m Media) coach.ChatImage {
-	return coach.ChatImage{
-		ID:           m.ID,
-		Kind:         m.Kind,
-		MIMEType:     m.MIMEType,
-		OriginalName: m.OriginalName,
+func toChatAttachment(m Media) conversations.Attachment {
+	return conversations.Attachment{
+		MediaID:  m.ID,
+		Kind:     m.Kind,
+		MIMEType: m.MIMEType,
+		Name:     m.OriginalName,
 	}
 }
 

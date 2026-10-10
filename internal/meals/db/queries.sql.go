@@ -113,22 +113,28 @@ func (q *Queries) CreateIngredient(ctx context.Context, arg CreateIngredientPara
 
 const createMeal = `-- name: CreateMeal :one
 
-INSERT INTO meals (meal_plan_id, day_id, name, meal_number)
-VALUES ($1, $2, $3, (SELECT COALESCE(MAX(meal_number), 0) + 1 FROM meals WHERE day_id = $2))
-RETURNING id, meal_plan_id, meal_number, name, total_macros, created_at, day_id
+INSERT INTO meals (meal_plan_id, day_id, name, option_label, meal_number)
+VALUES ($1, $2, $3, $4, (SELECT COALESCE(MAX(meal_number), 0) + 1 FROM meals WHERE day_id = $2))
+RETURNING id, meal_plan_id, meal_number, name, total_macros, created_at, day_id, option_index, option_label
 `
 
 type CreateMealParams struct {
-	MealPlanID uuid.UUID
-	DayID      uuid.UUID
-	Name       string
+	MealPlanID  uuid.UUID
+	DayID       uuid.UUID
+	Name        string
+	OptionLabel string
 }
 
 // Meals (within a day)
 // Numbered after the day's last meal. Callers hold the plan's lock, so two
 // meals added at once cannot take the same number.
 func (q *Queries) CreateMeal(ctx context.Context, arg CreateMealParams) (Meal, error) {
-	row := q.db.QueryRow(ctx, createMeal, arg.MealPlanID, arg.DayID, arg.Name)
+	row := q.db.QueryRow(ctx, createMeal,
+		arg.MealPlanID,
+		arg.DayID,
+		arg.Name,
+		arg.OptionLabel,
+	)
 	var i Meal
 	err := row.Scan(
 		&i.ID,
@@ -138,15 +144,17 @@ func (q *Queries) CreateMeal(ctx context.Context, arg CreateMealParams) (Meal, e
 		&i.TotalMacros,
 		&i.CreatedAt,
 		&i.DayID,
+		&i.OptionIndex,
+		&i.OptionLabel,
 	)
 	return i, err
 }
 
 const createMealIngredient = `-- name: CreateMealIngredient :one
 
-INSERT INTO meal_ingredients (meal_id, ingredient_id, quantity_grams, calories, protein_g, fat_g, carbs_g)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, meal_id, ingredient_id, quantity_grams, calories, protein_g, fat_g, carbs_g, created_at
+INSERT INTO meal_ingredients (meal_id, ingredient_id, quantity_grams, calories, protein_g, fat_g, carbs_g, source_text, estimated)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+RETURNING id, meal_id, ingredient_id, quantity_grams, calories, protein_g, fat_g, carbs_g, created_at, source_text, estimated
 `
 
 type CreateMealIngredientParams struct {
@@ -157,6 +165,8 @@ type CreateMealIngredientParams struct {
 	ProteinG      float64
 	FatG          float64
 	CarbsG        float64
+	SourceText    string
+	Estimated     bool
 }
 
 // Meal ingredients
@@ -169,6 +179,8 @@ func (q *Queries) CreateMealIngredient(ctx context.Context, arg CreateMealIngred
 		arg.ProteinG,
 		arg.FatG,
 		arg.CarbsG,
+		arg.SourceText,
+		arg.Estimated,
 	)
 	var i MealIngredient
 	err := row.Scan(
@@ -181,15 +193,58 @@ func (q *Queries) CreateMealIngredient(ctx context.Context, arg CreateMealIngred
 		&i.FatG,
 		&i.CarbsG,
 		&i.CreatedAt,
+		&i.SourceText,
+		&i.Estimated,
+	)
+	return i, err
+}
+
+const createMealOption = `-- name: CreateMealOption :one
+INSERT INTO meals (meal_plan_id, day_id, name, meal_number, option_index, option_label)
+VALUES ($1, $2, $3, $4,
+    (SELECT COALESCE(MAX(option_index), 0) + 1 FROM meals WHERE day_id = $2 AND meal_number = $4),
+    $5)
+RETURNING id, meal_plan_id, meal_number, name, total_macros, created_at, day_id, option_index, option_label
+`
+
+type CreateMealOptionParams struct {
+	MealPlanID  uuid.UUID
+	DayID       uuid.UUID
+	Name        string
+	MealNumber  int16
+	OptionLabel string
+}
+
+// A further option of a day's meal slot, numbered after the slot's last.
+// Callers hold the plan's lock, as for CreateMeal.
+func (q *Queries) CreateMealOption(ctx context.Context, arg CreateMealOptionParams) (Meal, error) {
+	row := q.db.QueryRow(ctx, createMealOption,
+		arg.MealPlanID,
+		arg.DayID,
+		arg.Name,
+		arg.MealNumber,
+		arg.OptionLabel,
+	)
+	var i Meal
+	err := row.Scan(
+		&i.ID,
+		&i.MealPlanID,
+		&i.MealNumber,
+		&i.Name,
+		&i.TotalMacros,
+		&i.CreatedAt,
+		&i.DayID,
+		&i.OptionIndex,
+		&i.OptionLabel,
 	)
 	return i, err
 }
 
 const createMealPlan = `-- name: CreateMealPlan :one
 
-INSERT INTO meal_plans (user_id, name, description, objective, activity_level, gender, plan_type, custom_carb_pct, mode)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-RETURNING id, user_id, name, description, objective, activity_level, gender, total_macros, created_at, updated_at, plan_type, custom_carb_pct, mode
+INSERT INTO meal_plans (user_id, name, description, objective, activity_level, gender, plan_type, custom_carb_pct, mode, notes)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+RETURNING id, user_id, name, description, objective, activity_level, gender, total_macros, created_at, updated_at, plan_type, custom_carb_pct, mode, notes
 `
 
 type CreateMealPlanParams struct {
@@ -202,6 +257,7 @@ type CreateMealPlanParams struct {
 	PlanType      string
 	CustomCarbPct *float64
 	Mode          string
+	Notes         string
 }
 
 // Meal plans
@@ -216,6 +272,7 @@ func (q *Queries) CreateMealPlan(ctx context.Context, arg CreateMealPlanParams) 
 		arg.PlanType,
 		arg.CustomCarbPct,
 		arg.Mode,
+		arg.Notes,
 	)
 	var i MealPlan
 	err := row.Scan(
@@ -232,6 +289,7 @@ func (q *Queries) CreateMealPlan(ctx context.Context, arg CreateMealPlanParams) 
 		&i.PlanType,
 		&i.CustomCarbPct,
 		&i.Mode,
+		&i.Notes,
 	)
 	return i, err
 }
@@ -429,6 +487,22 @@ func (q *Queries) DeleteMealReminder(ctx context.Context, arg DeleteMealReminder
 	return err
 }
 
+const deleteMealSlot = `-- name: DeleteMealSlot :exec
+DELETE FROM meals WHERE meal_plan_id = $1 AND day_id = $2 AND meal_number = $3
+`
+
+type DeleteMealSlotParams struct {
+	MealPlanID uuid.UUID
+	DayID      uuid.UUID
+	MealNumber int16
+}
+
+// Every option of a day's meal slot. Callers hold the plan's lock.
+func (q *Queries) DeleteMealSlot(ctx context.Context, arg DeleteMealSlotParams) error {
+	_, err := q.db.Exec(ctx, deleteMealSlot, arg.MealPlanID, arg.DayID, arg.MealNumber)
+	return err
+}
+
 const deleteUserDiets = `-- name: DeleteUserDiets :exec
 DELETE FROM user_diet_preferences WHERE user_id = $1
 `
@@ -480,7 +554,7 @@ func (q *Queries) GetIngredient(ctx context.Context, arg GetIngredientParams) (I
 }
 
 const getMealIngredientOwned = `-- name: GetMealIngredientOwned :one
-SELECT mi.id, mi.meal_id, mi.ingredient_id, mi.quantity_grams, mi.calories, mi.protein_g, mi.fat_g, mi.carbs_g, mi.created_at, mi.meal_id AS owned_meal_id
+SELECT mi.id, mi.meal_id, mi.ingredient_id, mi.quantity_grams, mi.calories, mi.protein_g, mi.fat_g, mi.carbs_g, mi.created_at, mi.source_text, mi.estimated, mi.meal_id AS owned_meal_id
 FROM meal_ingredients mi
 JOIN meals m ON m.id = mi.meal_id
 JOIN meal_plans mp ON mp.id = m.meal_plan_id
@@ -502,6 +576,8 @@ type GetMealIngredientOwnedRow struct {
 	FatG          float64
 	CarbsG        float64
 	CreatedAt     time.Time
+	SourceText    string
+	Estimated     bool
 	OwnedMealID   uuid.UUID
 }
 
@@ -519,13 +595,15 @@ func (q *Queries) GetMealIngredientOwned(ctx context.Context, arg GetMealIngredi
 		&i.FatG,
 		&i.CarbsG,
 		&i.CreatedAt,
+		&i.SourceText,
+		&i.Estimated,
 		&i.OwnedMealID,
 	)
 	return i, err
 }
 
 const getMealOwned = `-- name: GetMealOwned :one
-SELECT m.id, m.meal_plan_id, m.meal_number, m.name, m.total_macros, m.created_at, m.day_id FROM meals m
+SELECT m.id, m.meal_plan_id, m.meal_number, m.name, m.total_macros, m.created_at, m.day_id, m.option_index, m.option_label FROM meals m
 JOIN meal_plans mp ON mp.id = m.meal_plan_id
 WHERE m.id = $1 AND mp.user_id = $2
 `
@@ -548,12 +626,14 @@ func (q *Queries) GetMealOwned(ctx context.Context, arg GetMealOwnedParams) (Mea
 		&i.TotalMacros,
 		&i.CreatedAt,
 		&i.DayID,
+		&i.OptionIndex,
+		&i.OptionLabel,
 	)
 	return i, err
 }
 
 const getMealPlan = `-- name: GetMealPlan :one
-SELECT id, user_id, name, description, objective, activity_level, gender, total_macros, created_at, updated_at, plan_type, custom_carb_pct, mode FROM meal_plans WHERE id = $1 AND user_id = $2
+SELECT id, user_id, name, description, objective, activity_level, gender, total_macros, created_at, updated_at, plan_type, custom_carb_pct, mode, notes FROM meal_plans WHERE id = $1 AND user_id = $2
 `
 
 type GetMealPlanParams struct {
@@ -578,6 +658,7 @@ func (q *Queries) GetMealPlan(ctx context.Context, arg GetMealPlanParams) (MealP
 		&i.PlanType,
 		&i.CustomCarbPct,
 		&i.Mode,
+		&i.Notes,
 	)
 	return i, err
 }
@@ -804,7 +885,7 @@ func (q *Queries) ListFoodLogsByRange(ctx context.Context, arg ListFoodLogsByRan
 }
 
 const listMealIngredients = `-- name: ListMealIngredients :many
-SELECT mi.id, mi.meal_id, mi.ingredient_id, mi.quantity_grams, mi.calories, mi.protein_g, mi.fat_g, mi.carbs_g, mi.created_at, i.name AS ingredient_name
+SELECT mi.id, mi.meal_id, mi.ingredient_id, mi.quantity_grams, mi.calories, mi.protein_g, mi.fat_g, mi.carbs_g, mi.created_at, mi.source_text, mi.estimated, i.name AS ingredient_name
 FROM meal_ingredients mi
 JOIN ingredients i ON i.id = mi.ingredient_id
 WHERE mi.meal_id = $1
@@ -821,6 +902,8 @@ type ListMealIngredientsRow struct {
 	FatG           float64
 	CarbsG         float64
 	CreatedAt      time.Time
+	SourceText     string
+	Estimated      bool
 	IngredientName string
 }
 
@@ -844,6 +927,8 @@ func (q *Queries) ListMealIngredients(ctx context.Context, mealID uuid.UUID) ([]
 			&i.FatG,
 			&i.CarbsG,
 			&i.CreatedAt,
+			&i.SourceText,
+			&i.Estimated,
 			&i.IngredientName,
 		); err != nil {
 			return nil, err
@@ -927,7 +1012,7 @@ func (q *Queries) ListMealPlanDaysByUser(ctx context.Context, userID uuid.UUID) 
 }
 
 const listMealPlans = `-- name: ListMealPlans :many
-SELECT id, user_id, name, description, objective, activity_level, gender, total_macros, created_at, updated_at, plan_type, custom_carb_pct, mode FROM meal_plans WHERE user_id = $1 ORDER BY created_at DESC
+SELECT id, user_id, name, description, objective, activity_level, gender, total_macros, created_at, updated_at, plan_type, custom_carb_pct, mode, notes FROM meal_plans WHERE user_id = $1 ORDER BY created_at DESC
 `
 
 func (q *Queries) ListMealPlans(ctx context.Context, userID uuid.UUID) ([]MealPlan, error) {
@@ -953,6 +1038,7 @@ func (q *Queries) ListMealPlans(ctx context.Context, userID uuid.UUID) ([]MealPl
 			&i.PlanType,
 			&i.CustomCarbPct,
 			&i.Mode,
+			&i.Notes,
 		); err != nil {
 			return nil, err
 		}
@@ -999,7 +1085,7 @@ func (q *Queries) ListMealReminders(ctx context.Context, userID uuid.UUID) ([]Me
 }
 
 const listMealsByPlan = `-- name: ListMealsByPlan :many
-SELECT id, meal_plan_id, meal_number, name, total_macros, created_at, day_id FROM meals WHERE meal_plan_id = $1 ORDER BY day_id, meal_number
+SELECT id, meal_plan_id, meal_number, name, total_macros, created_at, day_id, option_index, option_label FROM meals WHERE meal_plan_id = $1 ORDER BY day_id, meal_number, option_index
 `
 
 func (q *Queries) ListMealsByPlan(ctx context.Context, mealPlanID uuid.UUID) ([]Meal, error) {
@@ -1019,6 +1105,8 @@ func (q *Queries) ListMealsByPlan(ctx context.Context, mealPlanID uuid.UUID) ([]
 			&i.TotalMacros,
 			&i.CreatedAt,
 			&i.DayID,
+			&i.OptionIndex,
+			&i.OptionLabel,
 		); err != nil {
 			return nil, err
 		}
@@ -1074,8 +1162,33 @@ func (q *Queries) ListNotYetFiredMealReminders(ctx context.Context, arg ListNotY
 	return items, nil
 }
 
+const listSharedIngredientNames = `-- name: ListSharedIngredientNames :many
+SELECT name FROM ingredients WHERE user_id IS NULL ORDER BY name
+`
+
+// The shared catalog's names, for an importer matching a plan's food lines.
+func (q *Queries) ListSharedIngredientNames(ctx context.Context) ([]string, error) {
+	rows, err := q.db.Query(ctx, listSharedIngredientNames)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		items = append(items, name)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockMealPlan = `-- name: LockMealPlan :one
-SELECT id, user_id, name, description, objective, activity_level, gender, total_macros, created_at, updated_at, plan_type, custom_carb_pct, mode FROM meal_plans WHERE id = $1 AND user_id = $2 FOR UPDATE
+SELECT id, user_id, name, description, objective, activity_level, gender, total_macros, created_at, updated_at, plan_type, custom_carb_pct, mode, notes FROM meal_plans WHERE id = $1 AND user_id = $2 FOR UPDATE
 `
 
 type LockMealPlanParams struct {
@@ -1102,6 +1215,7 @@ func (q *Queries) LockMealPlan(ctx context.Context, arg LockMealPlanParams) (Mea
 		&i.PlanType,
 		&i.CustomCarbPct,
 		&i.Mode,
+		&i.Notes,
 	)
 	return i, err
 }
@@ -1328,7 +1442,7 @@ const updateMealIngredientQuantity = `-- name: UpdateMealIngredientQuantity :one
 UPDATE meal_ingredients
 SET quantity_grams = $3, calories = $4, protein_g = $5, fat_g = $6, carbs_g = $7
 WHERE id = $1 AND meal_id = $2
-RETURNING id, meal_id, ingredient_id, quantity_grams, calories, protein_g, fat_g, carbs_g, created_at
+RETURNING id, meal_id, ingredient_id, quantity_grams, calories, protein_g, fat_g, carbs_g, created_at, source_text, estimated
 `
 
 type UpdateMealIngredientQuantityParams struct {
@@ -1363,6 +1477,8 @@ func (q *Queries) UpdateMealIngredientQuantity(ctx context.Context, arg UpdateMe
 		&i.FatG,
 		&i.CarbsG,
 		&i.CreatedAt,
+		&i.SourceText,
+		&i.Estimated,
 	)
 	return i, err
 }

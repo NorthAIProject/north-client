@@ -15,8 +15,9 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/selectbox"
 )
 
-// MealOption is one entry in the "log a meal" dropdown — a plan/meal pair
-// flattened to a label, since a food log entry only needs the meal's id.
+// MealOption is one entry in the "log a meal" dropdown — a plan's meal
+// option flattened to a label, since a food log entry only needs the
+// option's own meal id.
 type MealOption struct {
 	ID    string
 	Label string
@@ -25,9 +26,14 @@ type MealOption struct {
 templ LogPage(user users.User, entries []meal.FoodLogEntry, progressSummary string, hasProgress bool, recommendationMsg string, hasRecommendation bool, allIngredients []meal.Ingredient, mealOptions []MealOption) {
 	@layout.App("Food log", user, nav(ctx)) {
 		<div class="mx-auto w-full max-w-2xl space-y-6 p-6 md:p-8">
-			<header>
-				@ui.MonoLabel("Nutrition")
-				<h1 class="mt-2 text-2xl font-medium tracking-tight">Today's log</h1>
+			<header class="flex items-end justify-between gap-4">
+				<div>
+					@ui.MonoLabel("Nutrition")
+					<h1 class="mt-2 text-2xl font-medium tracking-tight">Today's log</h1>
+				</div>
+				@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Href: "/app/nutrition/import"}) {
+					Import a meal plan
+				}
 			</header>
 			if hasProgress {
 				@card.Card(card.Props{Class: "border-hairline bg-surface"}) {

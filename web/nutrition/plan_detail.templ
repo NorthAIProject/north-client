@@ -13,6 +13,7 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/badge"
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
 	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/collapsible"
 	"github.com/NorthAIProject/north-client/web/shared/ui/dialog"
 	"github.com/NorthAIProject/north-client/web/shared/ui/dictate"
 	"github.com/NorthAIProject/north-client/web/shared/ui/form"
@@ -21,6 +22,7 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/progress"
 	"github.com/NorthAIProject/north-client/web/shared/ui/radio"
 	"github.com/NorthAIProject/north-client/web/shared/ui/selectbox"
+	"github.com/NorthAIProject/north-client/web/shared/ui/tabs"
 )
 
 templ PlanDetailPage(user users.User, page PlanPage) {
@@ -58,6 +60,9 @@ templ PlanDetailPage(user users.User, page PlanPage) {
 			if page.Overage != nil {
 				@overageAlert(*page.Overage)
 			}
+			if page.Plan.Notes != "" {
+				@planNotes(page.Plan.Notes)
+			}
 			@settingsCard(page)
 			for i, d := range page.Plan.Days {
 				@dayCard(page, d, statusAt(page.statuses(), i))
@@ -70,6 +75,8 @@ templ PlanDetailPage(user users.User, page PlanPage) {
 		@dialog.Script()
 		@progress.Script()
 		@dictate.Script()
+		@tabs.Script()
+		@collapsible.Script()
 	}
 }
 
@@ -286,48 +293,168 @@ func progressVariant(m macroRow) progress.Variant {
 	return progress.VariantDefault
 }
 
+// mealBlock is one meal slot. A slot with options shows each in a tab of its
+// own, keyed by the option's meal row, so every per-meal route keeps working;
+// only the first option counts toward the day.
 templ mealBlock(page PlanPage, m meal.Meal, status *meal.DayStatus) {
 	<section class="border-hairline space-y-3 border-t pt-4">
-		<div class="flex items-center justify-between">
-			<h3 class="font-medium">{ m.Name }</h3>
-			<div class="flex items-center gap-2">
-				<span class="text-muted-foreground text-sm">{ fmt.Sprintf("%.0f kcal", m.TotalMacros.Calories) }</span>
-				<form method="post" action={ templ.SafeURL("/app/nutrition/meals/" + m.ID.String() + "/delete") }>
-					@ui.CSRFInput()
-					@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm}) {
-						Remove meal
-					}
-				</form>
+		if len(m.Alternatives) == 0 {
+			<div class="flex items-center justify-between">
+				<h3 class="font-medium">{ m.Name }</h3>
+				<div class="flex items-center gap-2">
+					<span class="text-muted-foreground text-sm">{ fmt.Sprintf("%.0f kcal", m.TotalMacros.Calories) }</span>
+					@removeMealButton(m, "Remove meal")
+				</div>
 			</div>
-		</div>
-		if len(m.Ingredients) > 0 {
-			<ul class="space-y-1">
-				for _, mi := range m.Ingredients {
-					<li class="flex items-center justify-between text-sm">
-						<span>{ mi.IngredientName } · { fmt.Sprintf("%.0fg", mi.QuantityGrams) }</span>
-						<div class="flex items-center gap-2">
-							<span class="text-muted-foreground">{ fmt.Sprintf("%.0f kcal", mi.Macros.Calories) }</span>
-							<form method="post" action={ templ.SafeURL("/app/nutrition/meal-ingredients/" + mi.ID.String() + "/delete") }>
-								@ui.CSRFInput()
-								@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm}) {
-									Remove
-								}
-							</form>
-						</div>
-					</li>
-				}
-			</ul>
+			@optionBody(page, m, status, true)
+		} else {
+			<div class="flex items-center justify-between">
+				<h3 class="font-medium">{ m.Name }</h3>
+				@removeMealButton(m, "Remove meal (all options)")
+			</div>
+			@mealOptionTabs(page, m, status)
 		}
-		if status != nil {
-			@addPortionForm(page, m, *status)
-			@capturepages.MealVoice(capturepages.MealVoiceData{MealID: m.ID.String()})
-		}
+		@addOptionForm(page, m)
 	</section>
+}
+
+templ mealOptionTabs(page PlanPage, slot meal.Meal, status *meal.DayStatus) {
+	{{ open := page.openOption(slot) }}
+	@tabs.Tabs(tabs.Props{ID: "options-" + slot.ID.String()}) {
+		@tabs.List(tabs.ListProps{Class: "h-auto max-w-full flex-wrap justify-start"}) {
+			for i, o := range slot.Options() {
+				@tabs.Trigger(tabs.TriggerProps{Value: o.ID.String(), IsActive: o.ID.String() == open, Class: "flex-none"}) {
+					{ optionTabLabel(o, i) }
+					if i == 0 {
+						@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
+							Counted
+						}
+					}
+				}
+			}
+		}
+		for i, o := range slot.Options() {
+			@tabs.Content(tabs.ContentProps{Value: o.ID.String(), IsActive: o.ID.String() == open, Class: "space-y-3 pt-3"}) {
+				<div class="flex items-center justify-between">
+					<span class="text-muted-foreground text-sm">
+						if i == 0 {
+							{ fmt.Sprintf("%.0f kcal · counts toward the day", o.TotalMacros.Calories) }
+						} else {
+							{ fmt.Sprintf("%.0f kcal · instead of option 1, not counted", o.TotalMacros.Calories) }
+						}
+					</span>
+					if i > 0 {
+						@removeMealButton(o, "Remove option")
+					}
+				</div>
+				@optionBody(page, o, status, i == 0)
+			}
+		}
+	}
+}
+
+// removeMealButton posts to the meal's delete route; the service removes the
+// whole slot for a default and only the option for an alternative.
+templ removeMealButton(m meal.Meal, text string) {
+	<form method="post" action={ templ.SafeURL("/app/nutrition/meals/" + m.ID.String() + "/delete") }>
+		@ui.CSRFInput()
+		@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm}) {
+			{ text }
+		}
+	</form>
+}
+
+// optionBody is one option's portions and the forms that add to it. counted
+// is false for an alternative, whose portions leave the day's totals alone.
+templ optionBody(page PlanPage, m meal.Meal, status *meal.DayStatus, counted bool) {
+	if len(m.Ingredients) > 0 {
+		<ul class="space-y-1">
+			for _, mi := range m.Ingredients {
+				@portionRow(mi)
+			}
+		</ul>
+	}
+	if status != nil {
+		@addPortionForm(page, m, *status, counted)
+		@capturepages.MealVoice(capturepages.MealVoiceData{MealID: m.ID.String()})
+	}
+}
+
+// portionRow is one portion. An imported line keeps the file's own words
+// under it, and a portion the import had to guess is marked as such.
+templ portionRow(mi meal.MealIngredient) {
+	<li class="flex items-center justify-between gap-2 text-sm">
+		<div class="min-w-0">
+			<div class="flex flex-wrap items-center gap-2">
+				<span>{ mi.IngredientName } · { fmt.Sprintf("%.0fg", mi.QuantityGrams) }</span>
+				if mi.Estimated {
+					@badge.Badge(badge.Props{Variant: badge.VariantOutline}) {
+						estimated
+					}
+				}
+			</div>
+			if mi.SourceText != "" {
+				<p class="text-muted-foreground text-xs">{ mi.SourceText }</p>
+			}
+		</div>
+		<div class="flex shrink-0 items-center gap-2">
+			<span class="text-muted-foreground">{ fmt.Sprintf("%.0f kcal", mi.Macros.Calories) }</span>
+			<form method="post" action={ templ.SafeURL("/app/nutrition/meal-ingredients/" + mi.ID.String() + "/delete") }>
+				@ui.CSRFInput()
+				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm}) {
+					Remove
+				}
+			</form>
+		</div>
+	</li>
+}
+
+// addOptionForm adds an empty option to the slot. A blank label is numbered
+// by its position.
+templ addOptionForm(page PlanPage, slot meal.Meal) {
+	{{ scope := "option:" + slot.ID.String() }}
+	<form method="post" action={ templ.SafeURL("/app/nutrition/meals/" + slot.ID.String() + "/options") } class="flex items-center gap-2">
+		@ui.CSRFInput()
+		@input.Input(input.Props{
+			Name: "option_label", Placeholder: "Option label (optional)", Class: "h-8 text-sm",
+			Disabled: page.Target == nil, HasError: page.errorFor(scope, "option_label") != "",
+		})
+		@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm, Disabled: page.Target == nil}) {
+			Add option
+		}
+	</form>
+	@fieldMessage(page.errorFor(scope, "option_label"))
+}
+
+// planNotes is the advice and recipes an imported file carried beside its
+// meals, as written: escaped text with its line breaks kept.
+templ planNotes(notes string) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+		@collapsible.Collapsible() {
+			@collapsible.Trigger(collapsible.TriggerProps{Class: "cursor-pointer"}) {
+				@card.Header() {
+					@card.Title() {
+						From your plan
+					}
+					@card.Description() {
+						Advice and recipes from the file you imported. Show them.
+					}
+				}
+			}
+			@collapsible.Content() {
+				@card.Content() {
+					<p class="text-muted-foreground text-sm whitespace-pre-wrap">{ notes }</p>
+				}
+			}
+		}
+	}
 }
 
 // addPortionForm adds an ingredient to a meal, showing what the day has left
 // and, as the person picks a food and a weight, what would remain after it.
-templ addPortionForm(page PlanPage, m meal.Meal, status meal.DayStatus) {
+// An option that is not counted changes nothing the day has left, so it
+// shows neither.
+templ addPortionForm(page PlanPage, m meal.Meal, status meal.DayStatus, counted bool) {
 	{{ scope := "portion:" + m.ID.String() }}
 	<form
 		method="post"
@@ -362,10 +489,12 @@ templ addPortionForm(page PlanPage, m meal.Meal, status meal.DayStatus) {
 				Add
 			}
 		</div>
-		<p class="text-muted-foreground text-xs">
-			<span x-show="!id || !grams">{ remainingLine(status) }</span>
-			<span x-show="id && grams" x-cloak x-text={ previewText }></span>
-		</p>
+		if counted {
+			<p class="text-muted-foreground text-xs">
+				<span x-show="!id || !grams">{ remainingLine(status) }</span>
+				<span x-show="id && grams" x-cloak x-text={ previewText }></span>
+			</p>
+		}
 		@fieldMessage(page.errorFor(scope, "ingredient_id"))
 		@fieldMessage(page.errorFor(scope, "quantity_grams"))
 	</form>
@@ -440,7 +569,7 @@ templ gramsField(page PlanPage, scope, id, name, text string, value *float64, li
 		@input.Input(input.Props{
 			ID: id, Name: name, Type: input.TypeNumber, Value: gramsValue(value), Placeholder: fmt.Sprintf("up to %.0f", limit),
 			Attributes: templ.Attributes{"min": "0", "max": strconv.FormatFloat(limit, 'f', 0, 64), "step": "any"},
-			HasError: page.errorFor(scope, name) != "",
+			HasError:   page.errorFor(scope, name) != "",
 		})
 		@fieldMessage(page.errorFor(scope, name))
 	}

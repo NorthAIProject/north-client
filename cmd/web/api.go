@@ -79,6 +79,7 @@ func mountAPI(r chi.Router, sessions auth.SessionResolver, apis apiSet) {
 			r.Use(middleware.MaxBody(maxUploadBody))
 			r.Use(auth.RequireBearer(sessions))
 			apis.knowledge.UploadRoutes(r)
+			apis.coach.UploadRoutes(r)
 			apis.formChecks.UploadRoutes(r)
 			apis.planImport.UploadRoutes(r)
 			apis.lifts.UploadRoutes(r)

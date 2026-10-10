@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 
@@ -363,7 +364,14 @@ func routes(
 
 	// A lighter day: on a low-readiness morning the person may take today's
 	// session at about 60%. Workouts reads the answer for today's sets.
-	lighterSvc := lighterday.NewService(pool, healthSvc, workoutSvc)
+	//
+	// Low means today's recovery is under the person's usual: the one rule
+	// the briefing, the Progress screen and the coach read too. Its nights
+	// come from the same sleep stats the sleep page reads.
+	recoverySrc := insights.NewRecoverySource(healthSvc, stats.NewService(stats.Sources{
+		Sleep: sleep.NewService(sleep.NewRepository(pool)), Health: healthSvc,
+	}))
+	lighterSvc := lighterday.NewService(pool, recoverySrc, workoutSvc)
 	workoutSvc.WithLighter(lighterSvc)
 	lighterHandler := lighterday.NewHandler(lighterSvc)
 
@@ -383,10 +391,11 @@ func routes(
 	// document or a photo reaches the model, and FastModel for the reason
 	// capture uses it — this is transcription, not writing.
 	planImportSvc := planimport.NewService(planimport.Options{
-		Reader:      planimport.NewAIReader(runner, cfg.AI.FastModel),
+		Reader:      planimport.NewAIReader(runner, cfg.AI.FastModel, mealIngredientSvc.SharedNames),
 		Workouts:    workoutSvc,
 		MealPlans:   mealPlanSvc,
 		Ingredients: mealIngredientSvc,
+		Quota:       quotaSvc,
 	})
 	planImportHandler := planimport.NewHandler(planImportSvc, quotaSvc)
 
@@ -694,6 +703,11 @@ func routes(
 		Stats:       statsSvc,
 		Preferences: preferencesSvc,
 		Medications: medicationSvc,
+
+		// A plan from a file sent in chat. Only here: the MCP server has no
+		// chat to send one in.
+		PlanImport: planImportSvc,
+		Media:      mediaSvc,
 	})
 
 	agentTools.Record(auditRecorder)
@@ -734,6 +748,9 @@ func routes(
 			// hydration, because a device's resting numbers are read the same
 			// way — as background, before anything else is interpreted.
 			health.NewContextSource(healthSvc, nil),
+			// Today's recovery, in the words the Progress screen uses, read
+			// after the week of device numbers it is built from.
+			insights.NewRecoveryContextSource(insightsSvc, nil),
 			habits.NewContextSource(habitSvc),
 			reports.NewContextSource(reportSvc),
 			integrations.NewContextSource(integrationSvc),
@@ -751,10 +768,23 @@ func routes(
 		Analytics:   coach.NewAnalytics(posthogClient).WithMetrics(metricsReg),
 		Funnel:      funnel,
 		Attachments: mediaSvc,
-		Model:       cfg.AI.Model,
-		FastModel:   cfg.AI.FastModel,
+		// A document sent in chat is read into the turn as text. Wired here
+		// because coach must not import media or planimport: both import it.
+		AttachmentText: coach.AttachmentTextFunc(func(ctx context.Context, userID, mediaID uuid.UUID) (string, error) {
+			m, data, err := mediaSvc.ReadFile(ctx, userID, mediaID)
+			if err != nil {
+				return "", err
+			}
+			text, err := planimport.ExtractText(m.OriginalName, data)
+			if errors.Is(err, planimport.ErrNoTextLayer) {
+				return "", coach.ErrNoTextLayer
+			}
+			return text, err
+		}),
+		Model:     cfg.AI.Model,
+		FastModel: cfg.AI.FastModel,
 	})
-	coachHandler := coach.NewHandler(coachSvc, quotaSvc).WithImages(mediaSvc)
+	coachHandler := coach.NewHandler(coachSvc, quotaSvc).WithMedia(mediaSvc)
 
 	// Wired after construction: the bell and the coach both already exist,
 	// and a cycle of constructors would be worse than two setters.

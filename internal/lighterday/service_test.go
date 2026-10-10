@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/health"
+	"github.com/NorthAIProject/north-client/internal/insights"
 	"github.com/NorthAIProject/north-client/internal/lighterday"
 	"github.com/NorthAIProject/north-client/internal/shared/database/testdb"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
@@ -17,20 +18,37 @@ import (
 // Wednesday 7 October 2026, 07:30: a morning with readings.
 var morning = time.Date(2026, 10, 7, 7, 30, 0, 0, time.UTC)
 
-// readings is a Health store: a two-week baseline and this morning's value.
+// readings is a Health store: two weeks that wobble around a usual (HRV
+// 48-56 ms, resting heart rate 54-58 bpm) and this morning's value.
 type readings struct{ hrvToday, rhrToday float64 }
 
-func (r readings) Between(_ context.Context, _ uuid.UUID, metric string, _, _ time.Time) ([]health.Stored, error) {
+func (r readings) Between(_ context.Context, _ uuid.UUID, metric string, since, until time.Time) ([]health.Stored, error) {
 	base, today := 52.0, r.hrvToday
 	if metric == "resting_heart_rate" {
 		base, today = 56, r.rhrToday
 	}
 	var out []health.Stored
-	for d := 2; d <= 14; d++ {
-		out = append(out, health.Stored{Value: base, StartedAt: morning.AddDate(0, 0, -d)})
+	for d := 1; d <= 14; d++ {
+		// About the day-to-day spread a watch shows: HRV ±4 ms, resting
+		// heart rate ±2 bpm.
+		wobble := float64(d%3-1) * 2
+		if metric == "hrv_sdnn" {
+			wobble *= 2
+		}
+		out = append(out, health.Stored{Value: base + wobble, StartedAt: morning.AddDate(0, 0, -d)})
 	}
-	return append(out, health.Stored{Value: today, StartedAt: morning.Add(-time.Hour)}), nil
+	out = append(out, health.Stored{Value: today, StartedAt: morning.Add(-time.Hour)})
+	var in []health.Stored
+	for _, s := range out {
+		if !s.StartedAt.Before(since) && s.StartedAt.Before(until) {
+			in = append(in, s)
+		}
+	}
+	return in, nil
 }
+
+// recovery is today's recovery from those readings, as the app wires it.
+func (r readings) recovery() lighterday.Recovery { return insights.NewRecoverySource(r, nil) }
 
 type session struct{ due, done bool }
 
@@ -42,7 +60,7 @@ func (s session) CompletedToday(context.Context, users.User, time.Time) (bool, s
 	return s.done, "", nil
 }
 
-func user(t *testing.T) (users.User, func(h lighterday.HealthReader, s lighterday.SessionReader) *lighterday.Service) {
+func user(t *testing.T) (users.User, func(h readings, s lighterday.SessionReader) *lighterday.Service) {
 	t.Helper()
 	pool := testdb.New(t)
 	u, err := users.NewService(users.NewRepository(pool)).Register(context.Background(), users.Registration{
@@ -51,8 +69,8 @@ func user(t *testing.T) (users.User, func(h lighterday.HealthReader, s lighterda
 	if err != nil {
 		t.Fatal(err)
 	}
-	return u, func(h lighterday.HealthReader, s lighterday.SessionReader) *lighterday.Service {
-		return lighterday.NewService(pool, h, s).WithClock(func() time.Time { return morning })
+	return u, func(h readings, s lighterday.SessionReader) *lighterday.Service {
+		return lighterday.NewService(pool, h.recovery(), s).WithClock(func() time.Time { return morning })
 	}
 }
 
@@ -64,7 +82,7 @@ func TestOfferedOnALowMorning(t *testing.T) {
 	svc := build(readings{hrvToday: 38, rhrToday: 56}, session{due: true})
 
 	today, err := svc.Today(ctx, u)
-	if err != nil || !today.Offered() || !today.Readiness.Low {
+	if err != nil || !today.Offered() || !today.Recovery.Low() {
 		t.Fatalf("today = %+v, %v", today, err)
 	}
 	if _, err = svc.Choose(ctx, u, lighterday.ChoiceLighter); err != nil {

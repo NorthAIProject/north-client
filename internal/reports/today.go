@@ -7,7 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/NorthAIProject/north-client/internal/health"
+	"github.com/NorthAIProject/north-client/internal/insights"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
@@ -15,27 +15,11 @@ import (
 // what training is planned, and what the calendar holds. The weekly review has
 // no use for any of it, so only the daily briefing reads it.
 
-// Metric names as the phone syncs them; see internal/day for the same list.
-const (
-	metricHRV       = "hrv_sdnn"
-	metricRestingHR = "resting_heart_rate"
-)
-
-// readinessBaselineDays is the window a morning is compared against. Two weeks
-// smooths out one bad night without hiding a trend that has lasted a week.
-const readinessBaselineDays = 14
-
-// Thresholds for calling a morning low. HRV below its baseline and resting
-// heart rate above its baseline are the two signs of an under-recovered body
-// that the phone reliably has; the margins are wide enough that ordinary
-// day-to-day noise does not trip them.
-const (
-	lowHRVDrop        = 0.10
-	highRestingHRRise = 0.05
-)
-
-type HealthReader interface {
-	Between(ctx context.Context, userID uuid.UUID, metric string, since, until time.Time) ([]health.Stored, error)
+// Recovery reads today's recovery: the one rule for whether a morning is low,
+// shared with the lighter-day offer, the Progress screen and the coach.
+// insights.RecoverySource satisfies it.
+type Recovery interface {
+	Recovery(ctx context.Context, user users.User, now time.Time) (insights.RecoveryData, error)
 }
 
 type SessionReader interface {
@@ -51,13 +35,13 @@ type CalendarReader interface {
 // that fails costs only its own lines: a calendar that cannot be reached must
 // not cost somebody their briefing.
 type TodayContext struct {
-	health   HealthReader
+	recovery Recovery
 	sessions SessionReader
 	calendar CalendarReader
 }
 
-func NewTodayContext(h HealthReader, s SessionReader, c CalendarReader) *TodayContext {
-	return &TodayContext{health: h, sessions: s, calendar: c}
+func NewTodayContext(r Recovery, s SessionReader, c CalendarReader) *TodayContext {
+	return &TodayContext{recovery: r, sessions: s, calendar: c}
 }
 
 // maxCalendarLines keeps the briefing about today rather than a week's diary.
@@ -65,7 +49,7 @@ const maxCalendarLines = 6
 
 func (t *TodayContext) Load(ctx context.Context, user users.User, now time.Time) []string {
 	var lines []string
-	if t.health != nil {
+	if t.recovery != nil {
 		lines = append(lines, t.readiness(ctx, user, now)...)
 	}
 	if t.sessions != nil {
@@ -84,93 +68,22 @@ func (t *TodayContext) Load(ctx context.Context, user users.User, now time.Time)
 	return lines
 }
 
-// Readiness is the verdict the briefing may repeat. It is decided here, from
-// numbers, so the model never has to judge recovery on its own.
-type Readiness struct {
-	HRV, HRVBaseline float64
-	RHR, RHRBaseline float64
-	HasHRV, HasRHR   bool
-	Low              bool
-}
-
+// readiness is the verdict the briefing may repeat. It is decided from
+// numbers, so the model never has to judge recovery on its own, and by the
+// same rule as the lighter-day offer, so the two never disagree.
 func (t *TodayContext) readiness(ctx context.Context, user users.User, now time.Time) []string {
-	since := now.AddDate(0, 0, -readinessBaselineDays)
-	hrv, errHRV := t.health.Between(ctx, user.ID, metricHRV, since, now)
-	rhr, errRHR := t.health.Between(ctx, user.ID, metricRestingHR, since, now)
-	if errHRV != nil {
-		hrv = nil
-	}
-	if errRHR != nil {
-		rhr = nil
-	}
-	r := ReadinessFrom(hrv, rhr, now)
-	return r.Lines()
-}
-
-// ReadinessFrom compares the last day's readings with the ones before it.
-func ReadinessFrom(hrv, rhr []health.Stored, now time.Time) Readiness {
-	var r Readiness
-	r.HRV, r.HRVBaseline, r.HasHRV = latestAgainstBaseline(hrv, now)
-	r.RHR, r.RHRBaseline, r.HasRHR = latestAgainstBaseline(rhr, now)
-	if r.HasHRV && r.HRV < r.HRVBaseline*(1-lowHRVDrop) {
-		r.Low = true
-	}
-	if r.HasRHR && r.RHR > r.RHRBaseline*(1+highRestingHRRise) {
-		r.Low = true
-	}
-	return r
-}
-
-// latestAgainstBaseline is the newest reading of the last 24 hours and the
-// mean of everything older in the window. No reading today, or nothing to
-// compare it with, is no claim at all.
-func latestAgainstBaseline(samples []health.Stored, now time.Time) (latest, baseline float64, ok bool) {
-	dayAgo := now.Add(-24 * time.Hour)
-	var latestAt time.Time
-	var sum float64
-	var n int
-	for _, s := range samples {
-		if s.StartedAt.After(dayAgo) {
-			if s.StartedAt.After(latestAt) {
-				latest, latestAt = s.Value, s.StartedAt
-			}
-			continue
-		}
-		sum += s.Value
-		n++
-	}
-	if latestAt.IsZero() || n == 0 {
-		return 0, 0, false
-	}
-	return latest, sum / float64(n), true
-}
-
-func (r Readiness) Lines() []string {
-	var lines []string
-	if r.HasHRV {
-		lines = append(lines, fmt.Sprintf("HRV this morning: %.0f ms (%d-day average %.0f ms, %+.0f%%)",
-			r.HRV, readinessBaselineDays, r.HRVBaseline, pctChange(r.HRV, r.HRVBaseline)))
-	}
-	if r.HasRHR {
-		lines = append(lines, fmt.Sprintf("Resting heart rate: %.0f bpm (%d-day average %.0f bpm, %+.0f%%)",
-			r.RHR, readinessBaselineDays, r.RHRBaseline, pctChange(r.RHR, r.RHRBaseline)))
-	}
-	switch {
-	case !r.HasHRV && !r.HasRHR:
+	r, err := t.recovery.Recovery(ctx, user, now)
+	if err != nil {
 		return nil
-	case r.Low:
-		lines = append(lines, "Readiness: LOW — recovery markers are off their baseline this morning.")
-	default:
-		lines = append(lines, "Readiness: normal.")
 	}
-	return lines
-}
-
-func pctChange(value, base float64) float64 {
-	if base == 0 {
-		return 0
+	line, ok := r.Sentence()
+	if !ok {
+		return nil
 	}
-	return (value - base) / base * 100
+	if r.Low() {
+		return []string{line, "Readiness: LOW — recovery is under this person's usual this morning."}
+	}
+	return []string{line, "Readiness: normal."}
 }
 
 func (t *TodayContext) session(ctx context.Context, user users.User, now time.Time) []string {

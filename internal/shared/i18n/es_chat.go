@@ -32,8 +32,9 @@ var spanishChat = map[string]string{
 	"chat.feedback.yes":        "Sí",
 	"chat.feedback.no":         "No",
 
-	"chat.attach":      "Adjuntar una foto",
-	"chat.placeholder": "¿En qué estás trabajando?",
+	"chat.attach":        "Adjuntar una foto o un archivo",
+	"chat.attach_remove": "Quitar el archivo",
+	"chat.placeholder":   "¿En qué estás trabajando?",
 
 	"chat.approval.title": "Khepri quiere cambiar algo",
 	"chat.approval.yes":   "Sí, adelante",
@@ -57,6 +58,7 @@ var spanishChat = map[string]string{
 	"chat.tool.workout.write":  "editando tu entrenamiento",
 	"chat.tool.mealplan.write": "creando tu plan de comidas",
 	"chat.tool.workout.create": "creando tu plan de entrenamiento",
+	"chat.tool.planimport":     "importando tu plan",
 	"chat.tool.workout.week":   "cambiando tu semana de entreno",
 	"chat.tool.lifts":          "revisando tus levantamientos",
 	"chat.tool.stats":          "revisando tus estadísticas",
