@@ -45,6 +45,7 @@ type harnessOptions struct {
 	voice  *stubVoice
 	files  *stubFiles
 	stats  *stubStats
+	stored *stubAttachments
 }
 
 // stubStats stands in for the insights service, recording the window it was
@@ -123,6 +124,9 @@ func newHarness(t *testing.T, client *fake.Client, opts harnessOptions) harness 
 	}
 	if opts.files != nil {
 		msgOpts.Files = opts.files
+	}
+	if opts.stored != nil {
+		msgOpts.Attachments = opts.stored
 	}
 
 	return harness{

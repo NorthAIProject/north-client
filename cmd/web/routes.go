@@ -839,6 +839,8 @@ func routes(
 		// rather than a second way in — the gap ask_coach still has.
 		Quotas: quotaSvc,
 		Images: mediaSvc,
+		// Documents go through the same store as the app's chat uploads.
+		Attachments: mediaSvc,
 
 		// The same service the web recorder uses. A voice note becomes the
 		// sentence the person would have typed, and the coach answers that —

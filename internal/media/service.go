@@ -95,6 +95,14 @@ var allowedFileTypes = map[string]fileType{
 	".json": {sniff: sniffText, mime: "application/json"},
 }
 
+// AcceptsFileName reports whether UploadFile takes a document by this name,
+// by its extension alone. For an adapter that must refuse a file before it
+// downloads it; the bytes are still checked when it is stored.
+func AcceptsFileName(filename string) bool {
+	_, ok := allowedFileTypes[strings.ToLower(filepath.Ext(strings.TrimSpace(filename)))]
+	return ok
+}
+
 // imageExtensions route a chat upload to the photo path even when its bytes
 // are not a photo we read, so the refusal talks about photos.
 var imageExtensions = map[string]bool{

@@ -15,6 +15,11 @@ var portugueseBrazilianTelegram = map[string]string{
 	"tg.toomany":     "Tentativas demais. Espere um minuto e tente seu código de novo.",
 	"tg.photofailed": "Não deu para salvar essa foto.",
 
+	// Documents: what the bot reads, and what it says when it cannot.
+	"tg.file.refused":     "Consigo ler arquivos PDF, Word (.docx), Excel (.xlsx), CSV, TSV, de texto, Markdown e JSON de até %[1]d MB. Envie um desses.",
+	"tg.file.unavailable": "Ainda não consigo salvar arquivos neste servidor. Anexe pelo app do Khepri.",
+	"tg.file.failed":      "Não deu para salvar esse arquivo. Pode enviar de novo?",
+
 	"tg.voice.unavailable": "Ainda não consigo ouvir áudios neste servidor. Escreve aí que eu respondo do mesmo jeito.",
 	"tg.voice.toolong":     "Esse áudio é mais longo do que eu consigo ouvir. Tenta um mais curto, ou escreve.",
 	"tg.voice.toobig":      "Essa gravação é maior do que eu consigo processar. Tenta uma mais curta.",
