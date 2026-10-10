@@ -1,0 +1,50 @@
+{
+  "name": "Running",
+  "measure": "pace",
+  "sessions": 3,
+  "minutes": 119,
+  "distanceKm": 20,
+  "elevationM": 120,
+  "indoor": 0,
+  "outdoor": 3,
+  "avgPaceSeconds": 357,
+  "avgSpeedKmh": 0,
+  "avgHeartRate": 155.3,
+  "monthly": [
+    {
+      "date": "2026-09-01",
+      "value": 357
+    }
+  ],
+  "efficiency": [
+    {
+      "date": "2026-09-01",
+      "value": 1.07
+    }
+  ],
+  "bests": [
+    {
+      "key": "fastest_5k",
+      "label": "Fastest 5 km",
+      "value": 1740,
+      "unit": "s",
+      "date": "2026-09-15"
+    },
+    {
+      "key": "fastest_10k",
+      "label": "Fastest 10 km",
+      "value": 3480,
+      "unit": "s",
+      "date": "2026-09-15"
+    },
+    {
+      "key": "longest",
+      "label": "Longest run",
+      "value": 10,
+      "unit": "km",
+      "date": "2026-09-15"
+    }
+  ],
+  "usualDay": "Tuesday",
+  "usualHour": 7
+}
