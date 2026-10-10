@@ -194,7 +194,7 @@ func TestAnUnknownScopeIsTreatedAsReadOnly(t *testing.T) {
 // set_alert — do not register. See internal/agent/capabilities.go.
 func TestTheToolCountIsWhatWeThinkItIs(t *testing.T) {
 	const (
-		wantFull     = 47
+		wantFull     = 48
 		wantReadOnly = 15
 	)
 
@@ -236,10 +236,11 @@ func TestEveryToolDeclaresWhetherItWrites(t *testing.T) {
 		"move_workout_exercise":    true,
 		"set_workout_start_time":   true,
 
-		// Meal plans: building one, changing one, eating from one.
+		// Meal plans: building one, changing one, eating from one, deleting one.
 		"create_meal_plan": true,
 		"edit_meal_plan":   true,
 		"log_planned_meal": true,
+		"delete_meal_plan": true,
 
 		// Goals, habits and the weight to aim at.
 		"update_goal":       true,

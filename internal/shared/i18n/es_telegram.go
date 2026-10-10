@@ -15,6 +15,11 @@ var spanishTelegram = map[string]string{
 	"tg.toomany":     "Demasiados intentos. Espera un minuto y prueba tu código otra vez.",
 	"tg.photofailed": "No se ha podido guardar esa foto.",
 
+	// Documents: what the bot reads, and what it says when it cannot.
+	"tg.file.refused":     "Puedo leer archivos PDF, Word (.docx), Excel (.xlsx), CSV, TSV, de texto, Markdown y JSON de hasta %[1]d MB. Envía uno de esos.",
+	"tg.file.unavailable": "Todavía no puedo guardar archivos en este servidor. Adjúntalo en la app de Khepri.",
+	"tg.file.failed":      "No se ha podido guardar ese archivo. ¿Lo envías otra vez?",
+
 	"tg.voice.unavailable": "Todavía no puedo escuchar notas de voz en este servidor. Escríbelo y te respondo igual.",
 	"tg.voice.toolong":     "Esa nota de voz es más larga de lo que puedo escuchar. Prueba con una más corta, o escríbelo.",
 	"tg.voice.toobig":      "Esa grabación es más grande de lo que puedo procesar. Prueba con una más corta.",

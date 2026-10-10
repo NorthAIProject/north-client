@@ -147,6 +147,9 @@ type LiftSetRequest struct {
 	ActivitySessionID *uuid.UUID `json:"activitySessionId,omitempty"`
 	Kind              string     `json:"kind,omitempty"`
 	RIR               *int       `json:"rir,omitempty"`
+	// ClientID makes a retried upload safe: the same id again answers with
+	// the set already logged.
+	ClientID *uuid.UUID `json:"clientId,omitempty"`
 }
 
 type LiftSetView struct {

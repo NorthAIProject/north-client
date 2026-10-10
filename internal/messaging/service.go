@@ -91,6 +91,7 @@ type Service struct {
 	links     *Repository
 	quotas    Quotas
 	images    Images
+	documents Attachments
 	voice     Voice
 	files     Files
 	transport Transport
@@ -120,6 +121,11 @@ type Options struct {
 	// Images stores a photo from a platform. Nil refuses the file and asks
 	// the person to use the web app.
 	Images Images
+
+	// Attachments stores a document — a diet PDF, a spreadsheet — the way the
+	// app's own chat stores one, so the coach reads it the same way. Nil
+	// refuses documents and asks the person to use the app.
+	Attachments Attachments
 
 	// Voice turns a voice note into words before the coach sees it. Nil
 	// refuses voice notes in words, which is what a deployment with no
@@ -163,6 +169,7 @@ func NewService(opts Options) *Service {
 		links:       opts.Links,
 		quotas:      opts.Quotas,
 		images:      opts.Images,
+		documents:   opts.Attachments,
 		voice:       opts.Voice,
 		files:       opts.Files,
 		transport:   opts.Transport,
@@ -307,6 +314,12 @@ func (s *Service) coachTurn(ctx context.Context, user users.User, in InboundMess
 		return said, nil
 	}
 
+	// A document the coach cannot read is answered before the turn is
+	// metered: it never reaches the coach, so it costs nothing.
+	if refusal, refused := fileRefusal(ctx, in.Attachment); refused {
+		return OutboundMessage{Text: refusal}, nil
+	}
+
 	refusal, allowed, err := s.meter(ctx, user)
 	if err != nil {
 		return OutboundMessage{}, err
@@ -334,6 +347,9 @@ func (s *Service) incomingFrom(ctx context.Context, userID uuid.UUID, in Inbound
 	out := coach.Incoming{Text: in.Text, Source: coach.SourceTelegram}
 	if in.Attachment == nil || len(in.Attachment.Bytes) == 0 {
 		return out, "", nil
+	}
+	if in.Attachment.Kind == KindFile {
+		return s.incomingDocument(ctx, userID, out, *in.Attachment)
 	}
 	if s.images == nil {
 		return coach.Incoming{}, "I can see you sent a photo, but I cannot store it right now. Try the web app.", nil

@@ -77,6 +77,9 @@ var englishChat = map[string]string{
 	"chat.tool.alerts.write":   "setting a reminder",
 	"chat.tool.log":            "logging that for you",
 
+	// A whole meal plan being removed.
+	"chat.tool.mealplan.delete": "deleting a meal plan",
+
 	// Captions above a proactive bubble (_reviews/muse-chat-contract.md,
 	// "Proactive messages"). Rendered uppercase by CSS, written in sentence
 	// case here so screen readers do not spell them out.

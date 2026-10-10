@@ -24,6 +24,11 @@ var englishTelegram = map[string]string{
 	"tg.toomany":     "Too many attempts. Wait a minute and try your code again.",
 	"tg.photofailed": "That photo could not be stored.",
 
+	// Documents: what the bot reads, and what it says when it cannot.
+	"tg.file.refused":     "I can read PDF, Word (.docx), Excel (.xlsx), CSV, TSV, text, Markdown and JSON files up to %[1]d MB. Send one of those.",
+	"tg.file.unavailable": "I cannot store files on this server yet. Attach it in the Khepri app instead.",
+	"tg.file.failed":      "That file could not be stored. Try sending it again?",
+
 	// Voice notes. Each one names what actually happened, because "something
 	// went wrong" after somebody has spoken a sentence tells them nothing about
 	// whether saying it again would work.

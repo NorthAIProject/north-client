@@ -24,4 +24,5 @@ type SetLog struct {
 	PerformedAt       time.Time
 	Kind              string
 	Rir               *int16
+	ClientID          *uuid.UUID
 }

@@ -20,7 +20,9 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 	return &Repository{q: liftsdb.New(pool)}
 }
 
-func (r *Repository) Create(ctx context.Context, userID uuid.UUID, s Set) (Set, error) {
+// Create logs a set. A clientID this account already logged a set under
+// returns that set instead of logging another; nil always logs a new one.
+func (r *Repository) Create(ctx context.Context, userID uuid.UUID, s Set, clientID *uuid.UUID) (Set, error) {
 	row, err := r.q.CreateSetLog(ctx, liftsdb.CreateSetLogParams{
 		UserID:            userID,
 		ActivitySessionID: s.ActivitySessionID,
@@ -33,6 +35,7 @@ func (r *Repository) Create(ctx context.Context, userID uuid.UUID, s Set) (Set, 
 		PerformedAt:       s.PerformedAt,
 		Kind:              s.Kind,
 		Rir:               rirToDB(s.RIR),
+		ClientID:          clientID,
 	})
 	if err != nil {
 		return Set{}, apperr.Wrap(err, "create set log")

@@ -57,6 +57,7 @@ type tgDoc struct {
 	FileID   string `json:"file_id"`
 	FileName string `json:"file_name"`
 	MIMEType string `json:"mime_type"`
+	FileSize int64  `json:"file_size"`
 }
 
 // tgVoice is a voice note: what the microphone button produces, always Opus in
@@ -248,6 +249,22 @@ func attachmentFrom(voice *tgVoice, photos []tgPhoto, doc *tgDoc) *messaging.Inb
 			FileID:   doc.FileID,
 			MIMEType: doc.MIMEType,
 			Name:     name,
+		}
+	}
+	if doc != nil && doc.FileID != "" {
+		// Any other document is a file, whatever its type: the messaging
+		// service decides what it reads, and answers the rest with what it
+		// does, rather than the message vanishing here.
+		name := doc.FileName
+		if name == "" {
+			name = "document"
+		}
+		return &messaging.InboundFile{
+			Kind:      messaging.KindFile,
+			FileID:    doc.FileID,
+			MIMEType:  doc.MIMEType,
+			SizeBytes: doc.FileSize,
+			Name:      name,
 		}
 	}
 	return nil
