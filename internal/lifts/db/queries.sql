@@ -1,13 +1,19 @@
 -- name: CreateSetLog :one
 -- An activity session that is not the person's own is dropped rather than
 -- linked, so a set can never attach to somebody else's workout.
-INSERT INTO set_logs (user_id, activity_session_id, log_date, exercise_slug, exercise_name, set_number, weight_kg, reps, performed_at, kind, rir)
+--
+-- A client_id this account already logged a set under returns that set,
+-- unchanged: the request is a retry. The update writes back the value already
+-- there, because DO NOTHING would return no row at all. A NULL client_id never
+-- conflicts, so a set without one is always a new row.
+INSERT INTO set_logs (user_id, activity_session_id, log_date, exercise_slug, exercise_name, set_number, weight_kg, reps, performed_at, kind, rir, client_id)
 VALUES (
     sqlc.arg(user_id),
     (SELECT a.id FROM activity_sessions a WHERE a.id = sqlc.narg(activity_session_id) AND a.user_id = sqlc.arg(user_id)),
     sqlc.arg(log_date), sqlc.arg(exercise_slug), sqlc.arg(exercise_name), sqlc.arg(set_number),
-    sqlc.arg(weight_kg), sqlc.arg(reps), sqlc.arg(performed_at), sqlc.arg(kind), sqlc.narg(rir)
+    sqlc.arg(weight_kg), sqlc.arg(reps), sqlc.arg(performed_at), sqlc.arg(kind), sqlc.narg(rir), sqlc.narg(client_id)
 )
+ON CONFLICT (user_id, client_id) DO UPDATE SET client_id = set_logs.client_id
 RETURNING *;
 
 -- name: DeleteSetLog :execrows
