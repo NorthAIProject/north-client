@@ -1,6 +1,7 @@
 package insights
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/shared/apitest"
 	"github.com/NorthAIProject/north-client/internal/shared/viz"
 	"github.com/NorthAIProject/north-client/internal/stats/stat"
+	"github.com/NorthAIProject/north-client/internal/users"
 	insightpages "github.com/NorthAIProject/north-client/web/insights"
 	"github.com/NorthAIProject/north-client/web/shared/ui/chart"
 )
@@ -55,6 +57,13 @@ func TestInsightsShapes(t *testing.T) {
 		Trend:   insightpages.TrendView{Direction: 1, Pct: 6, Word: "Up 6%", HasPrior: true},
 		HasData: true, Health: true, Usual: &usual,
 	}))
+	rough := time.Date(2026, 9, 24, 0, 0, 0, 0, time.UTC)
+	roughHealth, roughNights := roughMorning(rough)
+	recovery, err := (&Service{health: roughHealth, stats: roughNights}).Recovery(context.Background(), users.User{Timezone: "UTC"}, rough.Add(8*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	apitest.AssertGolden(t, "insights-recovery.golden.json", projectRecovery(recovery))
 	apitest.AssertGolden(t, "insights-health.golden.json", projectHealth([]HealthRow{
 		{
 			Metric: metric{Key: "steps", Label: "Steps"},

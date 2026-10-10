@@ -34,6 +34,7 @@ func (a *API) Routes(r chi.Router) {
 	r.Get("/insights", a.summary)
 	r.Get("/insights/metrics/{key}", a.metric)
 	r.Get("/insights/health", a.health)
+	r.Get("/insights/recovery", a.recovery)
 	r.Get("/insights/timeline", a.timeline)
 	r.Get("/insights/body", a.body)
 	r.Get("/insights/mind", a.mind)
@@ -167,6 +168,27 @@ type UsualRange struct {
 	Text  string `json:"text"`
 }
 
+// RecoveryView is today's recovery: a 0-100 number against the person's own
+// usual, the words for it, and the signals behind it.
+type RecoveryView struct {
+	HasData bool `json:"hasData"`
+	Points  int  `json:"points"`
+	// Verdict is strong, ok, uneven, low or unknown: an open string, like
+	// the area scores'.
+	Verdict  string               `json:"verdict"`
+	Label    string               `json:"label"`
+	Sentence string               `json:"sentence"`
+	Signals  []RecoverySignalView `json:"signals"`
+}
+
+// RecoverySignalView is one input to recovery, worded like the health list.
+type RecoverySignalView struct {
+	Key    string      `json:"key"`
+	Label  string      `json:"label"`
+	Latest string      `json:"latest"`
+	Usual  *UsualRange `json:"usual"`
+}
+
 // HealthList is the health metrics a person has recent readings for.
 type HealthList struct {
 	Metrics []HealthMetric `json:"metrics"`
@@ -223,6 +245,32 @@ func (a *API) health(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, projectHealth(rows))
+}
+
+func (a *API) recovery(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+	data, err := a.svc.Recovery(r.Context(), user, time.Now())
+	if err != nil {
+		httpx.Error(w, err, "Recovery could not be loaded.")
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, projectRecovery(data))
+}
+
+func projectRecovery(r RecoveryData) RecoveryView {
+	out := RecoveryView{
+		HasData: r.Score.HasData, Points: r.Score.Points, Verdict: string(r.Score.Verdict()),
+		Label: recoveryWords[r.Score.Verdict()], Signals: []RecoverySignalView{},
+	}
+	out.Sentence, _ = r.Sentence()
+	for _, sig := range r.Signals {
+		out.Signals = append(out.Signals, RecoverySignalView{
+			Key: sig.Metric.Key, Label: sig.Metric.Label,
+			Latest: formatMetric(sig.Metric, sig.Usual.Latest.Value),
+			Usual:  projectUsual(usualView(sig.Metric, sig.Usual)),
+		})
+	}
+	return out
 }
 
 func projectHealth(rows []HealthRow) HealthList {
