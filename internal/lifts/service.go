@@ -74,6 +74,10 @@ type LogInput struct {
 	Kind string
 	// RIR is reps in reserve, 0 to lift.MaxRIR; nil when not given.
 	RIR *int
+	// ClientID is the id the client gave the set before sending it, so a
+	// retry of the same upload returns the set already logged rather than
+	// logging it twice. Nil logs a new set every time.
+	ClientID *uuid.UUID
 }
 
 // Log records a set against the local day it was done on.
@@ -120,7 +124,7 @@ func (s *Service) Log(ctx context.Context, user users.User, in LogInput) (Set, e
 		PerformedAt:       at,
 		Kind:              kind,
 		RIR:               in.RIR,
-	})
+	}, in.ClientID)
 }
 
 // Undo removes a set logged by mistake.

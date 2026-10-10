@@ -5111,7 +5111,7 @@ paths:
               $ref: '#/components/schemas/LiftSetInput'
       responses:
         '201':
-          description: Logged
+          description: Logged, or already logged under the same clientId
           content:
             application/json:
               schema:
@@ -7009,6 +7009,14 @@ components:
           minimum: 0
           maximum: 10
           description: "Reps in reserve: 0 is to failure."
+        clientId:
+          type: string
+          format: uuid
+          description: >-
+            An id the client generates for the set before sending it. Sending the
+            same clientId again — a retry after a lost response — logs nothing new
+            and answers 201 with the set already logged. Scoped to the account.
+            Omit it and every request logs a new set.
     LiftSet:
       type: object
       required: [id, exerciseKey, exerciseName, exerciseSlug, setNumber, weightKg, reps, e1rmKg, performedAt]

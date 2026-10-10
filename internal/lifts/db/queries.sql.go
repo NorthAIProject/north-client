@@ -14,14 +14,15 @@ import (
 )
 
 const createSetLog = `-- name: CreateSetLog :one
-INSERT INTO set_logs (user_id, activity_session_id, log_date, exercise_slug, exercise_name, set_number, weight_kg, reps, performed_at, kind, rir)
+INSERT INTO set_logs (user_id, activity_session_id, log_date, exercise_slug, exercise_name, set_number, weight_kg, reps, performed_at, kind, rir, client_id)
 VALUES (
     $1,
     (SELECT a.id FROM activity_sessions a WHERE a.id = $2 AND a.user_id = $1),
     $3, $4, $5, $6,
-    $7, $8, $9, $10, $11
+    $7, $8, $9, $10, $11, $12
 )
-RETURNING id, user_id, activity_session_id, log_date, exercise_slug, exercise_name, set_number, weight_kg, reps, performed_at, kind, rir
+ON CONFLICT (user_id, client_id) DO UPDATE SET client_id = set_logs.client_id
+RETURNING id, user_id, activity_session_id, log_date, exercise_slug, exercise_name, set_number, weight_kg, reps, performed_at, kind, rir, client_id
 `
 
 type CreateSetLogParams struct {
@@ -36,10 +37,16 @@ type CreateSetLogParams struct {
 	PerformedAt       time.Time
 	Kind              string
 	Rir               *int16
+	ClientID          *uuid.UUID
 }
 
 // An activity session that is not the person's own is dropped rather than
 // linked, so a set can never attach to somebody else's workout.
+//
+// A client_id this account already logged a set under returns that set,
+// unchanged: the request is a retry. The update writes back the value already
+// there, because DO NOTHING would return no row at all. A NULL client_id never
+// conflicts, so a set without one is always a new row.
 func (q *Queries) CreateSetLog(ctx context.Context, arg CreateSetLogParams) (SetLog, error) {
 	row := q.db.QueryRow(ctx, createSetLog,
 		arg.UserID,
@@ -53,6 +60,7 @@ func (q *Queries) CreateSetLog(ctx context.Context, arg CreateSetLogParams) (Set
 		arg.PerformedAt,
 		arg.Kind,
 		arg.Rir,
+		arg.ClientID,
 	)
 	var i SetLog
 	err := row.Scan(
@@ -68,6 +76,7 @@ func (q *Queries) CreateSetLog(ctx context.Context, arg CreateSetLogParams) (Set
 		&i.PerformedAt,
 		&i.Kind,
 		&i.Rir,
+		&i.ClientID,
 	)
 	return i, err
 }
@@ -90,7 +99,7 @@ func (q *Queries) DeleteSetLog(ctx context.Context, arg DeleteSetLogParams) (int
 }
 
 const listSetsBetween = `-- name: ListSetsBetween :many
-SELECT id, user_id, activity_session_id, log_date, exercise_slug, exercise_name, set_number, weight_kg, reps, performed_at, kind, rir FROM set_logs
+SELECT id, user_id, activity_session_id, log_date, exercise_slug, exercise_name, set_number, weight_kg, reps, performed_at, kind, rir, client_id FROM set_logs
 WHERE user_id = $1 AND performed_at >= $2 AND performed_at < $3
 ORDER BY performed_at DESC
 `
@@ -124,6 +133,7 @@ func (q *Queries) ListSetsBetween(ctx context.Context, arg ListSetsBetweenParams
 			&i.PerformedAt,
 			&i.Kind,
 			&i.Rir,
+			&i.ClientID,
 		); err != nil {
 			return nil, err
 		}
@@ -136,7 +146,7 @@ func (q *Queries) ListSetsBetween(ctx context.Context, arg ListSetsBetweenParams
 }
 
 const listSetsForExercises = `-- name: ListSetsForExercises :many
-SELECT id, user_id, activity_session_id, log_date, exercise_slug, exercise_name, set_number, weight_kg, reps, performed_at, kind, rir FROM set_logs
+SELECT id, user_id, activity_session_id, log_date, exercise_slug, exercise_name, set_number, weight_kg, reps, performed_at, kind, rir, client_id FROM set_logs
 WHERE user_id = $1
   AND performed_at >= $2
   AND (CASE WHEN exercise_slug <> '' THEN exercise_slug ELSE lower(btrim(exercise_name)) END) = ANY($3::text[])
@@ -174,6 +184,7 @@ func (q *Queries) ListSetsForExercises(ctx context.Context, arg ListSetsForExerc
 			&i.PerformedAt,
 			&i.Kind,
 			&i.Rir,
+			&i.ClientID,
 		); err != nil {
 			return nil, err
 		}
@@ -186,7 +197,7 @@ func (q *Queries) ListSetsForExercises(ctx context.Context, arg ListSetsForExerc
 }
 
 const listSetsForExercisesBefore = `-- name: ListSetsForExercisesBefore :many
-SELECT id, user_id, activity_session_id, log_date, exercise_slug, exercise_name, set_number, weight_kg, reps, performed_at, kind, rir FROM set_logs
+SELECT id, user_id, activity_session_id, log_date, exercise_slug, exercise_name, set_number, weight_kg, reps, performed_at, kind, rir, client_id FROM set_logs
 WHERE user_id = $1
   AND performed_at >= $2
   AND performed_at < $3
@@ -231,6 +242,7 @@ func (q *Queries) ListSetsForExercisesBefore(ctx context.Context, arg ListSetsFo
 			&i.PerformedAt,
 			&i.Kind,
 			&i.Rir,
+			&i.ClientID,
 		); err != nil {
 			return nil, err
 		}
@@ -243,7 +255,7 @@ func (q *Queries) ListSetsForExercisesBefore(ctx context.Context, arg ListSetsFo
 }
 
 const listSetsForSession = `-- name: ListSetsForSession :many
-SELECT id, user_id, activity_session_id, log_date, exercise_slug, exercise_name, set_number, weight_kg, reps, performed_at, kind, rir FROM set_logs
+SELECT id, user_id, activity_session_id, log_date, exercise_slug, exercise_name, set_number, weight_kg, reps, performed_at, kind, rir, client_id FROM set_logs
 WHERE user_id = $1 AND activity_session_id = $2
 ORDER BY performed_at, set_number
 `
@@ -276,6 +288,7 @@ func (q *Queries) ListSetsForSession(ctx context.Context, arg ListSetsForSession
 			&i.PerformedAt,
 			&i.Kind,
 			&i.Rir,
+			&i.ClientID,
 		); err != nil {
 			return nil, err
 		}
