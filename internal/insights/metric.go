@@ -143,6 +143,11 @@ func metrics() []metric {
 			load: healthMetric("steps", dayTotal),
 		},
 		{
+			Key: "walking-running-distance", Decimals: 1, Label: "Walking and running distance", Unit: "km", Mean: true, Better: 1, Health: true,
+			Href: "/app/insights/training",
+			load: healthMetric("distance_walking_running", dayTotal),
+		},
+		{
 			Key: "active-energy", Decimals: 0, Label: "Active energy", Unit: "kcal", Mean: true, Better: 1, Health: true,
 			Href: "/app/insights/training",
 			load: healthMetric("active_calories", dayTotal),
@@ -158,9 +163,19 @@ func metrics() []metric {
 			load: healthMetric("stand_hours", dayTotal),
 		},
 		{
+			Key: "flights-climbed", Decimals: 0, Label: "Flights climbed", Mean: true, Better: 1, Health: true,
+			Href: "/app/insights/training",
+			load: healthMetric("flights_climbed", dayTotal),
+		},
+		{
 			Key: "daylight", Decimals: 0, Label: "Time in daylight", Unit: "min", Mean: true, Better: 1, Health: true,
 			Href: "/app/insights/body",
 			load: healthMetric("time_in_daylight", dayTotal),
+		},
+		{
+			Key: "mindful-minutes", Decimals: 0, Label: "Mindful minutes", Unit: "min", Mean: true, Better: 1, Health: true,
+			Href: "/app/insights/mind",
+			load: healthMetric("mindful_minutes", dayTotal),
 		},
 		{
 			// Lower is fitter, which is why Better is -1.
@@ -169,9 +184,27 @@ func metrics() []metric {
 			load: healthMetric("resting_heart_rate", dayMean),
 		},
 		{
+			// Heart rate while walking: lower at the same walk is fitter.
+			Key: "walking-heart-rate", Decimals: 0, Label: "Walking heart rate", Unit: "bpm", Mean: true, Better: -1, Health: true,
+			Href: "/app/insights/body",
+			load: healthMetric("walking_hr_avg", dayMean),
+		},
+		{
 			Key: "hrv", Decimals: 0, Label: "Heart rate variability", Unit: "ms", Mean: true, Better: 1, Health: true,
 			Href: "/app/insights/body",
 			load: healthMetric("hrv_sdnn", dayMean),
+		},
+		{
+			// No Better: breaths per minute at rest are read against the
+			// person's usual, where a rise is worth noticing but not "worse".
+			Key: "respiratory-rate", Decimals: 1, Label: "Respiratory rate", Unit: "/min", Mean: true, Health: true,
+			Href: "/app/insights/body",
+			load: healthMetric("respiratory_rate", dayMean),
+		},
+		{
+			Key: "blood-oxygen", Decimals: 0, Label: "Blood oxygen", Unit: "%", Mean: true, Better: 1, Health: true,
+			Href: "/app/insights/body",
+			load: healthMetric("spo2", dayMean),
 		},
 		{
 			Key: "vo2max", Decimals: 1, Label: "VO2 max", Mean: true, Better: 1, Health: true,

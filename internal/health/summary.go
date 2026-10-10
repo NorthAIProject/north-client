@@ -56,6 +56,11 @@ var headlines = []headline{
 	{metric: "time_in_daylight", label: "Time in daylight (min)", agg: perDay, decimals: 0},
 	{metric: "stand_hours", label: "Stand hours", agg: perDay, decimals: 0},
 	{metric: "sleep_asleep", label: "Sleep", agg: perDay, decimals: 0},
+	{metric: "walking_hr_avg", label: "Walking heart rate", agg: mean, decimals: 0},
+	{metric: "respiratory_rate", label: "Respiratory rate (breaths/min)", agg: mean, decimals: 1},
+	{metric: "distance_walking_running", label: "Walking and running distance", agg: perDay, decimals: 1},
+	{metric: "flights_climbed", label: "Flights climbed", agg: perDay, decimals: 0},
+	{metric: "mindful_minutes", label: "Mindful minutes", agg: perDay, decimals: 0},
 }
 
 // value is the one number a window of readings comes to.
