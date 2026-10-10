@@ -20,7 +20,8 @@ import (
 // read in that window too; it is never shown, so holding it back costs nothing.
 // Once the reply has committed, failures arrive on the channel as before.
 func (c *Client) Chat(ctx context.Context, req ai.Request) (<-chan ai.StreamChunk, error) {
-	stream := c.sdk.Messages.NewStreaming(ctx, c.params(req))
+	p := c.params(req)
+	stream := c.sdk.Messages.NewStreaming(ctx, p, requestOptions(p)...)
 
 	var msg sdk.Message
 	var held []sdk.MessageStreamEventUnion
