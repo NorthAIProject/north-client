@@ -31,7 +31,7 @@ func TestOpenRefusesWithAReasonAndAFieldError(t *testing.T) {
 		{"pdf that is not a pdf", "plan.pdf", []byte("day,exercise"), ReasonUnreadable},
 		{"encrypted pdf", "plan.pdf", minimalPDF(t, []string{"Squat 3x5"}, true), ReasonPasswordProtected},
 		{"pdf over the page limit", "plan.pdf", minimalPDF(t, make21Pages(), false), ReasonTooLong},
-		{"scanned pdf", "plan.pdf", minimalPDF(t, []string{" "}, false), ReasonUnreadable},
+		{"pdf with a header and nothing readable after it", "plan.pdf", []byte("%PDF-1.4\nthis is not a pdf body"), ReasonUnreadable},
 		{"invalid json", "plan.json", []byte("{days:"), ReasonUnreadable},
 		{"not utf-8", "plan.txt", []byte{0xff, 0xfe, 0x00, 0x41}, ReasonUnreadable},
 		{"text over the length limit", "plan.md", []byte(strings.Repeat("squat ", MaxTextChars/5)), ReasonTooLong},
@@ -137,5 +137,27 @@ func TestOpenReadsEachKind(t *testing.T) {
 				tc.check(t, src)
 			}
 		})
+	}
+}
+
+// A PDF whose text layer yields nothing (a scan, or a Canva export the text
+// reader cannot follow) is not refused: its bytes go to the model, which
+// reads the pages as a document.
+func TestOpenKeepsAPDFWithoutATextLayerAsADocument(t *testing.T) {
+	t.Parallel()
+
+	data := minimalPDF(t, []string{" "}, false)
+	src, err := Open("plano.pdf", data)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	if src.Kind != KindPDFDocument {
+		t.Fatalf("kind = %q, want %q", src.Kind, KindPDFDocument)
+	}
+	if src.MIME != "application/pdf" || !bytes.Equal(src.Document, data) {
+		t.Fatalf("source = %q with %d bytes, want the PDF's own bytes as application/pdf", src.MIME, len(src.Document))
+	}
+	if src.Text != "" || src.Structured() {
+		t.Fatalf("source = %+v, want no text and a model read", src)
 	}
 }

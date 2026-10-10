@@ -318,6 +318,45 @@ paths:
           $ref: '#/components/responses/ValidationError'
         '429':
           $ref: '#/components/responses/RateLimited'
+  /conversations/{id}/attachments:
+    parameters:
+      - $ref: '#/components/parameters/ConversationID'
+    post:
+      operationId: uploadChatAttachment
+      summary: Upload a photo or document for the next reply to carry
+      description: |
+        Stores the file and answers with its reference. Send its `mediaId` on
+        replyInConversation: a photo is shown to the coach, a document (PDF,
+        DOCX, XLSX, CSV, TSV, TXT, MD or JSON) is read into the turn as text.
+        The extension is matched without regard to case and the bytes must
+        agree with it. Spends no message quota; the reply does.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: A photo or document up to 8 MB.
+      responses:
+        '201':
+          description: Stored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatAttachment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '#/components/responses/ContentTooLarge'
+        '422':
+          $ref: '#/components/responses/ValidationError'
   /conversations/{id}/resume:
     parameters:
       - $ref: '#/components/parameters/ConversationID'
@@ -8131,6 +8170,17 @@ components:
           type: array
           items:
             type: string
+        everyDay:
+          type: boolean
+          description: >-
+            The file named no days. The draft then has exactly one day, which
+            preview measures once (as Monday) and commit saves on all seven
+            weekdays. Absent means false.
+        notes:
+          type: string
+          description: >-
+            Advice, recipes and general guidance the file carried beside its
+            meals (markdown, in the file's language). Saved with the plan.
     MealImportDay:
       type: object
       required: [label, meals]
@@ -8158,9 +8208,33 @@ components:
     MealImportMeal:
       type: object
       required: [name, foods]
+      description: >-
+        A meal slot. foods is its first option, the only one counted toward
+        the day; alternatives are the other options, eaten instead of it. A
+        client that ignores alternatives round-trips foods alone and saves the
+        first option.
       properties:
         name:
           type: string
+        foods:
+          type: array
+          items:
+            $ref: '#/components/schemas/MealImportFood'
+        optionLabel:
+          type: string
+          description: What the file called the first option ("Opção 1"); absent when unnamed.
+        alternatives:
+          type: array
+          description: The meal's further options, in the file's order. Absent when there are none.
+          items:
+            $ref: '#/components/schemas/MealImportOption'
+    MealImportOption:
+      type: object
+      required: [label, foods]
+      properties:
+        label:
+          type: string
+          description: What the file called this option; empty when unnamed (saved as "Option N").
         foods:
           type: array
           items:
@@ -8180,6 +8254,14 @@ components:
           type: number
           format: double
           description: The weight that will be stored. Null when it cannot be known; edit it on review.
+        sourceText:
+          type: string
+          description: >-
+            The line as the file wrote it ("2 fatias pão integral"), kept
+            because food may be an English catalog stand-in for it.
+        estimated:
+          type: boolean
+          description: grams is the reader's estimate of a vague amount, not the file's number. Absent means false.
         statedProteinG:
           type: number
           format: double
@@ -8693,6 +8775,9 @@ components:
           format: uuid
         kind:
           type: string
+          description: >-
+            "image" or "file" today. An open string, not an enum: treat any
+            other value as a file.
         mimeType:
           type: string
         name:
@@ -8725,6 +8810,7 @@ components:
         mediaId:
           type: string
           format: uuid
+          description: A photo or document from uploadChatAttachment.
         begin:
           type: boolean
           description: Open a new reflection with the coach's first question.
@@ -10253,6 +10339,14 @@ components:
           type: number
         macros:
           $ref: '#/components/schemas/Macros'
+        sourceText:
+          type: string
+          description: The line an imported plan had for this food. Absent when there was none.
+        estimated:
+          type: boolean
+          description: |
+            The importer guessed this food and quantity from a vague or
+            unmatched line. Absent when false.
     MealPlanType:
       type: string
       enum: [no_carb, low_carb, mid_carb, high_carb, custom]
@@ -10320,6 +10414,9 @@ components:
     MealPlanMeal:
       type: object
       required: [id, mealNumber, name, totalMacros, ingredients]
+      description: |
+        A meal slot's default option. The day's status counts it and not its
+        alternatives, which are eaten instead of it.
       properties:
         id:
           type: string
@@ -10328,6 +10425,32 @@ components:
           type: integer
           description: Order within its day.
         name:
+          type: string
+        optionLabel:
+          type: string
+          description: Tells the option apart from the slot's others. Absent when unlabelled.
+        totalMacros:
+          $ref: '#/components/schemas/Macros'
+        ingredients:
+          type: array
+          items:
+            $ref: '#/components/schemas/MealPortion'
+        alternatives:
+          type: array
+          description: The slot's other options, in order. Absent when there are none.
+          items:
+            $ref: '#/components/schemas/MealPlanOption'
+    MealPlanOption:
+      type: object
+      required: [id, optionLabel, totalMacros, ingredients]
+      description: |
+        An alternative option of a meal slot, under the slot's name. Logging
+        it logs this option's id.
+      properties:
+        id:
+          type: string
+          format: uuid
+        optionLabel:
           type: string
         totalMacros:
           $ref: '#/components/schemas/Macros'
@@ -10375,6 +10498,9 @@ components:
               type: string
             gender:
               type: string
+            notes:
+              type: string
+              description: Free text an imported plan carried beside its meals. Absent when there is none.
             target:
               $ref: '#/components/schemas/Macros'
               description: The active macro target from the calculator; absent until there is one.

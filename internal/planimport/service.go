@@ -23,6 +23,7 @@ type Service struct {
 	workouts    *workouts.Service
 	mealPlans   *meals.MealPlanService
 	ingredients *meals.IngredientService
+	quota       QuotaConsumer
 
 	// inFlight holds the users with a parse running. One import at a time per
 	// person: a second upload while the first is still being read is almost
@@ -39,6 +40,10 @@ type Options struct {
 	Workouts    *workouts.Service
 	MealPlans   *meals.MealPlanService
 	Ingredients *meals.IngredientService
+	// Quota is spent by ImportForCoach, one plan import per call. The import
+	// pages spend theirs in their route middleware, so they never reach it.
+	// Nil counts nothing.
+	Quota QuotaConsumer
 }
 
 func NewService(opts Options) *Service {
@@ -47,6 +52,7 @@ func NewService(opts Options) *Service {
 		workouts:    opts.Workouts,
 		mealPlans:   opts.MealPlans,
 		ingredients: opts.Ingredients,
+		quota:       opts.Quota,
 	}
 }
 
@@ -59,17 +65,47 @@ func (s *Service) begin(userID uuid.UUID) error {
 
 func (s *Service) end(userID uuid.UUID) { s.inFlight.Delete(userID) }
 
-// ParseWorkout reads a workout plan out of a file. It writes nothing.
-func (s *Service) ParseWorkout(ctx context.Context, user users.User, filename string, data []byte) (WorkoutDraft, error) {
-	if err := s.begin(user.ID); err != nil {
-		return WorkoutDraft{}, err
-	}
-	defer s.end(user.ID)
+// spendFunc charges the person for an import, refusing it when they can't
+// afford one.
+type spendFunc func(ctx context.Context, user users.User) error
 
+// hold opens and checks the file, takes the person's import slot, and then
+// spends, in that order, so a refused file or a double tap costs nothing.
+// On success the caller holds the slot and must end it.
+func (s *Service) hold(ctx context.Context, user users.User, filename string, data []byte, spend spendFunc) (Source, error) {
 	src, err := Open(filename, data)
+	if err != nil {
+		return Source{}, err
+	}
+	if err := s.begin(user.ID); err != nil {
+		return Source{}, err
+	}
+	if spend != nil {
+		if err := spend(ctx, user); err != nil {
+			s.end(user.ID)
+			return Source{}, err
+		}
+	}
+	return src, nil
+}
+
+// ParseWorkout reads a workout plan out of a file. It writes nothing.
+//
+// hint is the person's own request about the file, passed to the reader for a
+// document or a photo; a spreadsheet or JSON is read whole. Empty from the
+// import pages.
+func (s *Service) ParseWorkout(ctx context.Context, user users.User, filename string, data []byte, hint string) (WorkoutDraft, error) {
+	return s.parseWorkout(ctx, user, filename, data, hint, nil)
+}
+
+// parseWorkout is ParseWorkout, spending spend (nil for nothing) once the file
+// is accepted and the person's import slot taken.
+func (s *Service) parseWorkout(ctx context.Context, user users.User, filename string, data []byte, hint string, spend spendFunc) (WorkoutDraft, error) {
+	src, err := s.hold(ctx, user, filename, data, spend)
 	if err != nil {
 		return WorkoutDraft{}, err
 	}
+	defer s.end(user.ID)
 
 	switch src.Kind {
 	case KindCSV, KindTSV, KindXLSX:
@@ -78,7 +114,7 @@ func (s *Service) ParseWorkout(ctx context.Context, user users.User, filename st
 		return WorkoutFromJSON(src.Filename, src.JSON)
 	}
 
-	name, rows, unparsed, err := s.reader.ReadWorkout(ctx, user, src)
+	name, rows, unparsed, err := s.reader.ReadWorkout(ctx, user, src, hint)
 	if err != nil {
 		return WorkoutDraft{}, err
 	}
@@ -86,17 +122,18 @@ func (s *Service) ParseWorkout(ctx context.Context, user users.User, filename st
 }
 
 // ParseMeal reads a meal plan out of a file and previews it against the
-// person's target. It writes nothing.
-func (s *Service) ParseMeal(ctx context.Context, user users.User, filename string, data []byte) (MealDraft, error) {
-	if err := s.begin(user.ID); err != nil {
-		return MealDraft{}, err
-	}
-	defer s.end(user.ID)
+// person's target. It writes nothing. hint is as for ParseWorkout.
+func (s *Service) ParseMeal(ctx context.Context, user users.User, filename string, data []byte, hint string) (MealDraft, error) {
+	return s.parseMeal(ctx, user, filename, data, hint, nil)
+}
 
-	src, err := Open(filename, data)
+// parseMeal is ParseMeal, spending as parseWorkout does.
+func (s *Service) parseMeal(ctx context.Context, user users.User, filename string, data []byte, hint string, spend spendFunc) (MealDraft, error) {
+	src, err := s.hold(ctx, user, filename, data, spend)
 	if err != nil {
 		return MealDraft{}, err
 	}
+	defer s.end(user.ID)
 
 	var draft MealDraft
 	switch src.Kind {
@@ -105,14 +142,11 @@ func (s *Service) ParseMeal(ctx context.Context, user users.User, filename strin
 	case KindJSON:
 		draft, err = MealFromJSON(src.Filename, src.JSON)
 	default:
-		var (
-			name     string
-			rows     []MealRow
-			unparsed []string
-		)
-		name, rows, unparsed, err = s.reader.ReadMeal(ctx, user, src)
+		var reading MealReading
+		reading, err = s.reader.ReadMeal(ctx, user, src, hint)
 		if err == nil {
-			draft, err = buildMeal(nameOr(name, src.Filename), rows, unparsed)
+			reading.Name = nameOr(reading.Name, src.Filename)
+			draft, err = buildMeal(reading)
 		}
 	}
 	if err != nil {
@@ -130,6 +164,17 @@ func (s *Service) CommitWorkout(ctx context.Context, user users.User, d WorkoutD
 	return s.workouts.ImportPlan(ctx, user, p)
 }
 
+// recoverEveryDay marks as every-day a draft whose one day still carries
+// the "Every day" label parsing gave it. Old iOS builds drop the everyDay
+// field when they send a draft back, and without this the plan would save
+// as Monday alone.
+func recoverEveryDay(d MealDraft) MealDraft {
+	if !d.EveryDay && len(d.Days) == 1 && strings.EqualFold(strings.TrimSpace(d.Days[0].Label), everyDayLabel) {
+		d.EveryDay = true
+	}
+	return d
+}
+
 // CommitMeal saves a reviewed meal draft as a plan.
 //
 // The draft is previewed again first, so what is saved is what the server
@@ -141,6 +186,7 @@ func (s *Service) CommitWorkout(ctx context.Context, user users.User, d WorkoutD
 // change to a meal plan is: always on an easy plan, until confirmed on an
 // advanced one.
 func (s *Service) CommitMeal(ctx context.Context, user users.User, d MealDraft, confirmOverage bool) (meals.MealPlan, MealDraft, error) {
+	d = recoverEveryDay(d)
 	d = s.PreviewMeal(ctx, user.ID, d)
 
 	plan, problems := mealPlanFromDraft(d)
@@ -167,10 +213,10 @@ func (s *Service) CommitMeal(ctx context.Context, user users.User, d MealDraft, 
 		if err != nil {
 			return meals.MealPlan{}, d, err
 		}
-		plan.days[m.day].Meals[m.meal].Portions[m.portion].IngredientID = created.ID
+		plan.setIngredient(m, created.ID)
 	}
 
-	saved, err := s.mealPlans.CreatePlan(ctx, user.ID, plan.input, plan.days, confirmOverage)
+	saved, err := s.mealPlans.CreatePlan(ctx, user.ID, plan.input, plan.daysToSave(), confirmOverage)
 	return saved, d, err
 }
 

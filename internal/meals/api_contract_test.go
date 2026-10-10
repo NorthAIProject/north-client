@@ -87,3 +87,39 @@ func TestNutritionShapes(t *testing.T) {
 		},
 	})
 }
+
+// A slot's options project under its default, not as meals of their own, and
+// the imported-line fields appear only where they are set.
+func TestPlanDetailWithOptionsShape(t *testing.T) {
+	t.Parallel()
+
+	chicken := uuid.MustParse("11111111-bbbb-bbbb-bbbb-111111111111")
+	fish := uuid.MustParse("22222222-bbbb-bbbb-bbbb-222222222222")
+	plan := MealPlan{
+		ID: uuid.MustParse("33333333-bbbb-bbbb-bbbb-333333333333"), Name: "Plano do nutricionista",
+		Settings:    meal.PlanSettings{Type: meal.MidCarb, Mode: meal.Easy},
+		Notes:       "Beber 2 L de água por dia.",
+		TotalMacros: Macros{Calories: 165, ProteinG: 31, FatG: 3.6},
+		Days: []meal.Day{{
+			ID: uuid.MustParse("66666666-bbbb-bbbb-bbbb-666666666666"), Weekday: 1,
+			Meals: []meal.Meal{{
+				ID: uuid.MustParse("44444444-bbbb-bbbb-bbbb-444444444444"), MealNumber: 1, OptionIndex: 1,
+				Name: "Almoço", OptionLabel: "Opção 1", TotalMacros: Macros{Calories: 165, ProteinG: 31, FatG: 3.6},
+				Ingredients: []meal.MealIngredient{{
+					ID: uuid.MustParse("55555555-bbbb-bbbb-bbbb-555555555555"), IngredientID: chicken,
+					IngredientName: "Chicken breast", QuantityGrams: 100, Macros: Macros{Calories: 165, ProteinG: 31, FatG: 3.6},
+				}},
+				Alternatives: []meal.Meal{{
+					ID: uuid.MustParse("44444444-cccc-cccc-cccc-444444444444"), MealNumber: 1, OptionIndex: 2,
+					Name: "Almoço", OptionLabel: "Opção 2", TotalMacros: Macros{Calories: 206, ProteinG: 44, FatG: 2},
+					Ingredients: []meal.MealIngredient{{
+						ID: uuid.MustParse("55555555-cccc-cccc-cccc-555555555555"), IngredientID: fish,
+						IngredientName: "Cod", QuantityGrams: 250, Macros: Macros{Calories: 206, ProteinG: 44, FatG: 2},
+						SourceText: "peixe branco à vontade", Estimated: true,
+					}},
+				}},
+			}},
+		}},
+	}
+	apitest.AssertGolden(t, "nutrition-plan-with-options.golden.json", projectPlan(plan, nil))
+}

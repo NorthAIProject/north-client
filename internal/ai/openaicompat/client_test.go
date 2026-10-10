@@ -576,3 +576,37 @@ func TestAudioFormatNamesWhatTheDialectKnows(t *testing.T) {
 		}
 	}
 }
+
+// A PDF is a file part in this dialect. Sent as image_url, a provider parses
+// the document as a picture and the model sees nothing.
+func TestChatSendsInlinePDFsAsFileParts(t *testing.T) {
+	t.Parallel()
+
+	c, received := newClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"choices":[{"message":{"content":"ok"}}]}`)
+	})
+
+	_, err := c.Generate(context.Background(), ai.Request{
+		Messages: []ai.Message{{
+			Role:  ai.RoleUser,
+			Parts: []ai.Part{{InlineData: []byte("%PDF-1.4"), MIMEType: "application/pdf"}},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	messages := (*received)[0]["messages"].([]any)
+	content, ok := messages[0].(map[string]any)["content"].([]any)
+	if !ok {
+		t.Fatalf("content = %T, want a parts array", messages[0].(map[string]any)["content"])
+	}
+	part := content[0].(map[string]any)
+	if part["type"] != "file" {
+		t.Fatalf("type = %v, want file", part["type"])
+	}
+	file := part["file"].(map[string]any)
+	if file["filename"] != "document.pdf" || file["file_data"] != "data:application/pdf;base64,JVBERi0xLjQ=" {
+		t.Fatalf("file = %+v", file)
+	}
+}

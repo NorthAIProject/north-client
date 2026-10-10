@@ -56,7 +56,7 @@ func (h *Handler) workoutParse(w http.ResponseWriter, r *http.Request) {
 	name, data, err := formUpload(r)
 	if err == nil {
 		var d WorkoutDraft
-		if d, err = h.svc.ParseWorkout(r.Context(), user, name, data); err == nil {
+		if d, err = h.svc.ParseWorkout(r.Context(), user, name, data, ""); err == nil {
 			h.render(w, r, http.StatusOK, pages.WorkoutReviewPage(user, pages.WorkoutReview{Draft: d, DraftJSON: encode(d)}))
 			return
 		}
@@ -70,7 +70,7 @@ func (h *Handler) mealParse(w http.ResponseWriter, r *http.Request) {
 	name, data, err := formUpload(r)
 	if err == nil {
 		var d MealDraft
-		if d, err = h.svc.ParseMeal(r.Context(), user, name, data); err == nil {
+		if d, err = h.svc.ParseMeal(r.Context(), user, name, data, ""); err == nil {
 			h.render(w, r, http.StatusOK, pages.MealReviewPage(user, h.mealView(d, nil)))
 			return
 		}

@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/meals/meal"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	nutritionpages "github.com/NorthAIProject/north-client/web/nutrition"
 )
@@ -49,7 +50,7 @@ func (h *Handler) logIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mealOptions, err := h.mealOptions(ctx, user.ID)
+	mealOptions, err := h.mealOptions(ctx, user.ID, today.Weekday())
 	if err != nil {
 		h.fail(w, r, err)
 		return
@@ -72,29 +73,59 @@ func (h *Handler) progressSummary(ctx context.Context, userID uuid.UUID, date ti
 	return progress.Summary(), true, nil
 }
 
-// mealOptions flattens every plan's meals into "Plan – Mon – Meal" options for the
-// log-a-meal dropdown. MealPlanService has no "list all meals" query of its
-// own, so this loads each plan in full — fine at the size a person's own
+// mealOptions lists the meals of every plan that can be logged today, for
+// the log-a-meal dropdown. MealPlanService has no "list all meals" query of
+// its own, so this loads each plan in full — fine at the size a person's own
 // meal plans realistically reach, not a per-message hot path.
-func (h *Handler) mealOptions(ctx context.Context, userID uuid.UUID) ([]nutritionpages.MealOption, error) {
+func (h *Handler) mealOptions(ctx context.Context, userID uuid.UUID, today time.Weekday) ([]nutritionpages.MealOption, error) {
 	plans, err := h.plans.ListPlans(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
 
-	var opts []nutritionpages.MealOption
+	full := make([]meal.MealPlan, 0, len(plans))
 	for _, p := range plans {
-		full, err := h.plans.GetPlan(ctx, p.ID, userID)
+		plan, err := h.plans.GetPlan(ctx, p.ID, userID)
 		if err != nil {
 			return nil, err
 		}
-		for _, d := range full.Days {
-			for _, m := range d.Meals {
-				opts = append(opts, nutritionpages.MealOption{ID: m.ID.String(), Label: p.Name + " – " + d.Weekday.String()[:3] + " – " + m.Name})
+		full = append(full, plan)
+	}
+	return mealPickerOptions(full, today), nil
+}
+
+// mealPickerOptions flattens each plan's meals, every option of every slot,
+// into "Plan – Meal · Option" entries. A plan with a day for today offers
+// only that day: an every-day plan would otherwise list each meal seven
+// times over. A plan without one offers all its days, "Plan – Mon – Meal".
+func mealPickerOptions(plans []meal.MealPlan, today time.Weekday) []nutritionpages.MealOption {
+	var opts []nutritionpages.MealOption
+	for _, p := range plans {
+		days, prefixDay := todaysDays(p, today)
+		for _, d := range days {
+			prefix := p.Name + " – "
+			if prefixDay {
+				prefix += d.Weekday.String()[:3] + " – "
+			}
+			for _, slot := range d.Meals {
+				for _, m := range slot.Options() {
+					opts = append(opts, nutritionpages.MealOption{ID: m.ID.String(), Label: prefix + m.DisplayName()})
+				}
 			}
 		}
 	}
-	return opts, nil
+	return opts
+}
+
+// todaysDays is the plan's day for today when it has one; otherwise every
+// day, which then need their weekday to tell them apart.
+func todaysDays(p meal.MealPlan, today time.Weekday) (days []meal.Day, prefixDay bool) {
+	for _, d := range p.Days {
+		if d.Weekday == today {
+			return []meal.Day{d}, false
+		}
+	}
+	return p.Days, true
 }
 
 func (h *Handler) logIngredient(w http.ResponseWriter, r *http.Request) {

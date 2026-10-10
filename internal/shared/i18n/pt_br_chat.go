@@ -32,8 +32,9 @@ var portugueseBrazilianChat = map[string]string{
 	"chat.feedback.yes":        "Sim",
 	"chat.feedback.no":         "Não",
 
-	"chat.attach":      "Anexar uma foto",
-	"chat.placeholder": "No que você está trabalhando?",
+	"chat.attach":        "Anexar uma foto ou um arquivo",
+	"chat.attach_remove": "Remover o arquivo",
+	"chat.placeholder":   "No que você está trabalhando?",
 
 	"chat.approval.title": "O Khepri quer mudar algo",
 	"chat.approval.yes":   "Sim, pode ir",
@@ -57,6 +58,7 @@ var portugueseBrazilianChat = map[string]string{
 	"chat.tool.workout.write":  "editando seu plano de treino",
 	"chat.tool.mealplan.write": "montando seu plano alimentar",
 	"chat.tool.workout.create": "montando seu plano de treino",
+	"chat.tool.planimport":     "importando seu plano",
 	"chat.tool.workout.week":   "mudando sua semana de treino",
 	"chat.tool.lifts":          "vendo suas cargas",
 	"chat.tool.stats":          "vendo suas estatísticas",

@@ -458,7 +458,7 @@
   },
   {
     "name": "edit_meal_plan",
-    "description": "Change the meals in one of this person's meal plans. Put every change they asked for in one call: the changes are applied together or not at all. Ops: add_meal (an empty meal at the end of the day), remove_meal, add_food (grams of a catalog food added to a meal), remove_food (every portion of that food in the meal), set_grams (the meal holds exactly that many grams of a food already in it). Leave days out to change every day of the plan; a change applies on the days where its meal (and food) exist, and is refused only if it matches on none. Use get_meal_plan first to see the meal and food names. A result that would take a day further over its macro target is refused with the amounts and nothing is saved: shrink the change, or tell the person and ask. Set allow_over_target only after the person has explicitly accepted an overage that a refused call reported; easy plans never go over, whatever it says.",
+    "description": "Change the meals in one of this person's meal plans. Put every change they asked for in one call: the changes are applied together or not at all. Ops: add_meal (an empty meal at the end of the day), remove_meal (the meal with all its options), add_food (grams of a catalog food added to a meal), remove_food (every portion of that food in the meal), set_grams (the meal holds exactly that many grams of a food already in it), add_option (an empty option named option_label after the meal's last one), remove_option (option 2 or later). A meal can hold several interchangeable options; option 1 is the default, the one the day's totals count. add_food, remove_food and set_grams change option 1 unless option says otherwise; an option number a target day's meal does not have refuses the whole change, so name days when the days differ. Leave days out to change every day of the plan; a change applies on the days where its meal (and food) exist, and is refused only if it matches on none. Use get_meal_plan first to see the meal, option and food names. A result that would take a day further over its macro target is refused with the amounts and nothing is saved: shrink the change, or tell the person and ask. Set allow_over_target only after the person has explicitly accepted an overage that a refused call reported; easy plans never go over, whatever it says.",
     "inputSchema": {
       "additionalProperties": false,
       "description": "the changes to make",
@@ -509,8 +509,18 @@
                   "remove_meal",
                   "add_food",
                   "remove_food",
-                  "set_grams"
+                  "set_grams",
+                  "add_option",
+                  "remove_option"
                 ],
+                "type": "string"
+              },
+              "option": {
+                "description": "which of the meal's options, counting from 1 as get_meal_plan lists them; 1 is the default option counted in the day's totals; omit for 1",
+                "type": "integer"
+              },
+              "option_label": {
+                "description": "the new option's name, for add_option, such as 'Peixe'",
                 "type": "string"
               }
             },
@@ -570,7 +580,7 @@
   },
   {
     "name": "get_meal_plan",
-    "description": "Read one of this person's meal plans: each day's meals with every food and its weight, and each day's calories and macros against their target. Read it before editing a plan or answering what is in it. With several plans and none named, it lists them and shows the most recently changed one.",
+    "description": "Read one of this person's meal plans: each day's meals with every food and its weight, and each day's calories and macros against their target. A meal with several options lists them numbered; option 1 is the one the day's totals count. Days that are all the same are shown once. Read it before editing a plan or answering what is in it. With several plans and none named, it lists them and shows the most recently changed one.",
     "inputSchema": {
       "additionalProperties": false,
       "description": "which plan",
@@ -795,6 +805,10 @@
       "properties": {
         "meal": {
           "description": "the meal's name in the plan, such as 'Breakfast'",
+          "type": "string"
+        },
+        "option": {
+          "description": "which of the meal's options they ate: its number, such as '2', or its name, such as 'Peixe'; empty for option 1",
           "type": "string"
         },
         "plan": {
