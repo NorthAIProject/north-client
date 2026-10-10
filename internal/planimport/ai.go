@@ -84,7 +84,7 @@ type workoutReply struct {
 type mealReply struct {
 	modelReply
 	Rows []struct {
-		Day, Meal, Option, Food, Quantity, Unit, Protein, Carbs, Fat, Confidence string
+		Day, Meal, Option, Food, Quantity, Unit, Protein, Carbs, Fat, Confidence, Optional string
 
 		FoodEN        string `json:"food_en"`
 		GramsEstimate string `json:"grams_estimate"`
@@ -142,10 +142,11 @@ var mealSchema = replySchema("one food", map[string]string{
 	"quantity":       "the quantity as written, or empty",
 	"unit":           "the unit as written, or empty",
 	"grams_estimate": "estimated grams when quantity and unit are not already grams, as a number; otherwise empty",
+	"optional":       "\"yes\" when the source offers this food as optional — \"(opcional)\", \"se gostar\", \"quando apetece\" — so it is shown but not counted; otherwise empty",
 	"protein":        "grams of protein if the source states it for this food, or empty",
 	"carbs":          "grams of carbohydrate if the source states it for this food, or empty",
 	"fat":            "grams of fat if the source states it for this food, or empty",
-}, []string{"day", "meal", "option", "food", "food_en", "quantity", "unit", "grams_estimate", "protein", "carbs", "fat"}, map[string]*ai.Schema{
+}, []string{"day", "meal", "option", "food", "food_en", "quantity", "unit", "grams_estimate", "optional", "protein", "carbs", "fat"}, map[string]*ai.Schema{
 	"notes": ai.String("the plan's advice, recipes and general guidance, cleaned of letter-spacing, in the source's language, as markdown; empty when there is none"),
 	"same_as": ai.Array("meals the source says are the same as another meal, instead of repeating their foods",
 		ai.Object("one meal eaten the same as another", map[string]*ai.Schema{
@@ -201,7 +202,8 @@ func (r *AIReader) ReadMeal(ctx context.Context, user users.User, src Source, hi
 		out.Rows = append(out.Rows, MealRow{
 			Day: row.Day, Meal: row.Meal, Option: row.Option, Food: row.Food, FoodEN: row.FoodEN,
 			Quantity: row.Quantity, Unit: row.Unit, GramsEstimate: row.GramsEstimate,
-			Protein: row.Protein, Carbs: row.Carbs, Fat: row.Fat,
+			Optional: isYes(row.Optional),
+			Protein:  row.Protein, Carbs: row.Carbs, Fat: row.Fat,
 			Uncertain: strings.EqualFold(row.Confidence, "low"),
 		})
 	}
@@ -308,4 +310,13 @@ func (r *AIReader) read(ctx context.Context, user users.User, src Source, hint, 
 		return err
 	}
 	return nil
+}
+
+// isYes reads a reader's yes/no column: anything but a plain yes is no.
+func isYes(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "yes", "y", "true", "sim":
+		return true
+	}
+	return false
 }

@@ -54,6 +54,7 @@ func (a *API) Routes(r chi.Router) {
 	r.Post("/nutrition/meals/{mealID}/ingredients", a.addMealIngredient)
 	r.Post("/nutrition/meals/{mealID}/ingredients/batch", a.addMealIngredients)
 	r.Delete("/nutrition/meal-ingredients/{mealIngredientID}", a.removeMealIngredient)
+	r.Put("/nutrition/meal-ingredients/{mealIngredientID}/optional", a.setMealIngredientOptional)
 
 	r.Get("/nutrition/log", a.showLog)
 	r.Post("/nutrition/log/ingredients", a.logIngredient)
@@ -102,6 +103,9 @@ type MealIngredientView struct {
 	// marks a food and quantity the importer guessed at.
 	SourceText string `json:"sourceText,omitempty"`
 	Estimated  bool   `json:"estimated,omitempty"`
+	// Optional is a food the plan offers but does not count: its macros are
+	// its own and left out of the meal's total.
+	Optional bool `json:"optional,omitempty"`
 }
 
 // MealView is a meal slot's default option, with the slot's other options.
@@ -245,7 +249,15 @@ type OptionRequest struct {
 type PortionRequest struct {
 	IngredientID   uuid.UUID `json:"ingredientId"`
 	QuantityGrams  float64   `json:"quantityGrams"`
+	Optional       bool      `json:"optional"`
 	ConfirmOverage bool      `json:"confirmOverage"`
+}
+
+// OptionalRequest marks a meal's food optional (shown, not counted) or
+// counted.
+type OptionalRequest struct {
+	Optional       bool `json:"optional"`
+	ConfirmOverage bool `json:"confirmOverage"`
 }
 
 type PortionLine struct {
@@ -541,7 +553,7 @@ func (a *API) addMealIngredient(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	added, err := a.plans.AddIngredient(r.Context(), id, auth.MustUser(r.Context()).ID,
-		MealIngredientInput{IngredientID: req.IngredientID, QuantityGrams: req.QuantityGrams}, req.ConfirmOverage)
+		MealIngredientInput{IngredientID: req.IngredientID, QuantityGrams: req.QuantityGrams, Optional: req.Optional}, req.ConfirmOverage)
 	if err != nil {
 		writeChangeError(w, err, "The ingredient could not be added.")
 		return
@@ -572,6 +584,30 @@ func (a *API) addMealIngredients(w http.ResponseWriter, r *http.Request) {
 		out.Portions = append(out.Portions, projectMealIngredient(mi))
 	}
 	httpx.WriteJSON(w, http.StatusCreated, out)
+}
+
+// setMealIngredientOptional marks one of a meal's foods optional or counted,
+// answering with the whole plan so a client refreshes its totals in one call.
+func (a *API) setMealIngredientOptional(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r, "mealIngredientID")
+	if !ok {
+		return
+	}
+	var req OptionalRequest
+	if !readJSON(w, r, &req) {
+		return
+	}
+	userID := auth.MustUser(r.Context()).ID
+	planID, err := a.plans.PlanIDOfMealIngredient(r.Context(), id, userID)
+	if err != nil {
+		httpx.Error(w, err, "The ingredient could not be changed.")
+		return
+	}
+	if _, err := a.plans.SetIngredientOptional(r.Context(), id, userID, req.Optional, req.ConfirmOverage); err != nil {
+		writeChangeError(w, err, "The ingredient could not be changed.")
+		return
+	}
+	a.writePlan(w, r, http.StatusOK, planID)
 }
 
 func (a *API) removeMealIngredient(w http.ResponseWriter, r *http.Request) {
@@ -725,7 +761,7 @@ func projectMealIngredient(mi MealIngredient) MealIngredientView {
 	return MealIngredientView{
 		ID: mi.ID, IngredientID: mi.IngredientID, Name: mi.IngredientName,
 		QuantityGrams: mi.QuantityGrams, Macros: MacrosView(mi.Macros),
-		SourceText: mi.SourceText, Estimated: mi.Estimated,
+		SourceText: mi.SourceText, Estimated: mi.Estimated, Optional: mi.Optional,
 	}
 }
 

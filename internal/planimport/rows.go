@@ -32,6 +32,8 @@ type MealRow struct {
 	Day, Meal, Option, Food, Quantity, Unit, Protein, Carbs, Fat string
 	FoodEN, GramsEstimate                                        string
 	Uncertain                                                    bool
+	// Optional is a food the source offers but does not count.
+	Optional bool
 }
 
 // MealReading is everything a reader made of a meal plan, still as text.
@@ -220,6 +222,7 @@ func foodFromRow(row MealRow) FoodDraft {
 	food := FoodDraft{
 		Food: original, Unit: strings.TrimSpace(row.Unit), Candidates: []Candidate{}, Flags: []string{},
 		SourceText: joinWords(row.Quantity, row.Unit, original),
+		Optional:   row.Optional,
 	}
 	if en := strings.TrimSpace(row.FoodEN); en != "" {
 		food.Food = en

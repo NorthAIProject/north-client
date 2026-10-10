@@ -59,6 +59,7 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Post("/nutrition/meals/{mealID}/ingredients", h.addIngredientToMeal)
 	r.Post("/nutrition/meals/{mealID}/ingredients/batch", h.addIngredientsToMeal)
 	r.Post("/nutrition/meal-ingredients/{id}/delete", h.removeIngredientFromMeal)
+	r.Post("/nutrition/meal-ingredients/{id}/optional", h.setIngredientOptional)
 
 	r.Get("/nutrition/log", h.logIndex)
 	r.Post("/nutrition/log/ingredients", h.logIngredient)
