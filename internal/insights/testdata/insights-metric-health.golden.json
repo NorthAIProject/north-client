@@ -1,0 +1,67 @@
+{
+  "range": {
+    "key": "week",
+    "label": "Last 7 days",
+    "options": [
+      {
+        "key": "week",
+        "label": "Last 7 days"
+      },
+      {
+        "key": "month",
+        "label": "Last 30 days"
+      }
+    ]
+  },
+  "key": "steps",
+  "label": "Steps",
+  "headline": "9400",
+  "note": "average across 7 logged days",
+  "chart": {
+    "labels": [
+      "Mon",
+      "Tue",
+      "Wed"
+    ],
+    "series": [
+      {
+        "label": "Sleep",
+        "values": [
+          7.2,
+          6.8,
+          7.9
+        ]
+      }
+    ]
+  },
+  "trend": {
+    "direction": 1,
+    "pct": 6,
+    "word": "Up 6%",
+    "hasPrior": true
+  },
+  "comparison": {
+    "currentLabel": "",
+    "currentValue": "",
+    "currentPct": 0,
+    "priorLabel": "",
+    "priorValue": "",
+    "priorPct": 0,
+    "hasPrior": false
+  },
+  "highlights": [],
+  "hasData": true,
+  "health": true,
+  "usual": {
+    "day": "2026-09-24",
+    "latest": 11200,
+    "mean": 9000,
+    "sd": 1100,
+    "low": "7900",
+    "high": "10100",
+    "days": 28,
+    "z": 2,
+    "state": "above",
+    "text": "Above your usual: 11200 on Thu 24 Sep, usually 7900–10100."
+  }
+}

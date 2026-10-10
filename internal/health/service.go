@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/stats/stat"
 )
 
 type Service struct {
@@ -60,13 +61,24 @@ func (s *Service) Summary(ctx context.Context, userID uuid.UUID, now time.Time, 
 	}
 	since := now.AddDate(0, 0, -days)
 
+	// The usual is the same weeks the insights pages place a day against,
+	// taken before the window so the window is never compared with itself.
+	usualSince := since.AddDate(0, 0, -stat.BaselineWindow)
+
 	lines := make([]string, 0, len(headlines))
 	for _, h := range headlines {
 		stats, err := s.repo.Stats(ctx, userID, h.metric, since, now)
 		if err != nil {
 			return nil, err
 		}
-		if line, ok := h.describe(stats, days); ok {
+		if stats.readings == 0 {
+			continue
+		}
+		usual, err := s.repo.Stats(ctx, userID, h.metric, usualSince, since)
+		if err != nil {
+			return nil, err
+		}
+		if line, ok := h.describe(stats, days, usual); ok {
 			lines = append(lines, line)
 		}
 	}

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"math"
 	"strings"
+
+	"github.com/NorthAIProject/north-client/internal/stats/stat"
 )
 
 // aggregation decides which number off a window of readings means something.
@@ -52,23 +54,34 @@ var headlines = []headline{
 	{metric: "body_mass", label: "Weight", agg: mean, decimals: 1},
 	{metric: "exercise_minutes", label: "Exercise minutes", agg: perDay, decimals: 0},
 	{metric: "time_in_daylight", label: "Time in daylight (min)", agg: perDay, decimals: 0},
+	{metric: "stand_hours", label: "Stand hours", agg: perDay, decimals: 0},
+	{metric: "sleep_asleep", label: "Sleep", agg: perDay, decimals: 0},
 }
 
-// describe renders one metric's window as a sentence, or reports that there is
-// nothing to say.
-func (h headline) describe(stats metricStats, days int) (string, bool) {
+// value is the one number a window of readings comes to.
+func (h headline) value(stats metricStats) (float64, bool) {
 	if stats.readings == 0 {
-		return "", false
+		return 0, false
 	}
-
-	value := stats.average
 	if h.agg == perDay {
 		// Guarded even though readings > 0 implies days > 0: a divide by zero
 		// here would render "+Inf steps" into somebody's prompt.
 		if stats.days == 0 {
-			return "", false
+			return 0, false
 		}
-		value = stats.total / float64(stats.days)
+		return stats.total / float64(stats.days), true
+	}
+	return stats.average, true
+}
+
+// describe renders one metric's window as a sentence, or reports that there is
+// nothing to say. usual is the same metric over the weeks before the window;
+// with enough days in it, the sentence says what the window is usually, so
+// the coach can tell a normal week from an unusual one without a second look.
+func (h headline) describe(stats metricStats, days int, usual metricStats) (string, bool) {
+	value, ok := h.value(stats)
+	if !ok {
+		return "", false
 	}
 
 	unit := stats.unit
@@ -84,7 +97,13 @@ func (h headline) describe(stats metricStats, days int) (string, bool) {
 	if h.agg == perDay {
 		text += " per day"
 	}
-	return text + fmt.Sprintf(" (%s over %d days)", plural(int(stats.readings), "reading"), days), true
+	note := fmt.Sprintf("%s over %d days", plural(int(stats.readings), "reading"), days)
+	if usual.days >= stat.BaselineMinDays {
+		if before, ok := h.value(usual); ok {
+			note += "; usually " + formatNumber(before, h.decimals)
+		}
+	}
+	return text + " (" + note + ")", true
 }
 
 func plural(n int, noun string) string {
