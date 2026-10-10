@@ -8480,6 +8480,9 @@ components:
         estimated:
           type: boolean
           description: grams is the reader's estimate of a vague amount, not the file's number. Absent means false.
+        optional:
+          type: boolean
+          description: The file offers this food as optional; it is shown but not counted. Absent means false.
         statedProteinG:
           type: number
           format: double

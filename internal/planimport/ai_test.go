@@ -257,7 +257,7 @@ func TestMealSchemaRequiresEveryField(t *testing.T) {
 	t.Parallel()
 
 	row := mealSchema.Properties["rows"].Items
-	if got := strings.Join(row.Required, ","); got != "day,meal,option,food,food_en,quantity,unit,grams_estimate,protein,carbs,fat,confidence" {
+	if got := strings.Join(row.Required, ","); got != "day,meal,option,food,food_en,quantity,unit,grams_estimate,optional,protein,carbs,fat,confidence" {
 		t.Fatalf("row required = %s", got)
 	}
 	if got := strings.Join(mealSchema.Required, ","); got != "is_plan,not_plan_reason,name,rows,unparsed,notes,same_as" {

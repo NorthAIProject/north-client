@@ -388,6 +388,11 @@ templ foodRow(i, j, o, k int, f draft.FoodDraft) {
 						estimated
 					}
 				}
+				if f.Optional {
+					@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
+						optional · not counted
+					}
+				}
 				for _, flag := range f.Flags {
 					@badge.Badge(badge.Props{Variant: badge.VariantOutline, Class: "whitespace-normal text-left"}) {
 						{ flag }

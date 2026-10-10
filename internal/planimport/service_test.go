@@ -428,3 +428,48 @@ func TestMealImportAPICarriesOptionsAndNotes(t *testing.T) {
 		t.Fatalf("alternative foods were not previewed")
 	}
 }
+
+// An optional food is previewed with its own macros but left out of the
+// day's total, and saved marked so the plan leaves it out too.
+func TestAnOptionalImportedFoodIsShownButNotCounted(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	for _, in := range []meals.IngredientInput{
+		{Name: "Grilled chicken breast", Category: meals.CategoryProtein, Per100g: meals.Macros{Calories: 165, ProteinG: 31, FatG: 3.6}},
+		{Name: "Plain white rice", Category: meals.CategoryCarb, Per100g: meals.Macros{Calories: 130, ProteinG: 2.7, FatG: 0.3, CarbG: 28}},
+	} {
+		if _, err := f.ingredients.Create(ctx, f.user.ID, in); err != nil {
+			t.Fatal(err)
+		}
+	}
+	csv := "Meal,Food,Quantity,Unit\n" +
+		"Lunch,Grilled chicken breast,100,g\n" +
+		"Lunch,Plain white rice,500,g\n"
+	draft, err := f.svc.ParseMeal(ctx, f.user, "plan.csv", []byte(csv), "")
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	draft.PlanType = string(meal.LowCarb)
+	draft.Days[0].Meals[0].Foods[1].Optional = true // the rice, "se quiser"
+	draft = f.svc.PreviewMeal(ctx, f.user.ID, draft)
+
+	day := draft.Days[0]
+	if day.Totals == nil || !within(day.Totals.ProteinG, 31) || day.Totals.CarbG > 0.01 || len(day.Over) != 0 {
+		t.Fatalf("day = %+v, want the chicken alone counted and the day within target", day)
+	}
+	if rice := day.Meals[0].Foods[1]; rice.Macros == nil || rice.Macros.CarbG < 100 {
+		t.Fatalf("rice = %+v, want it resolved with its own macros", rice)
+	}
+
+	saved, _, err := f.svc.CommitMeal(ctx, f.user, draft, false)
+	if err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+	lunch := saved.Days[0].Meals[0]
+	if len(lunch.Ingredients) != 2 || !lunch.Ingredients[1].Optional || lunch.Ingredients[0].Optional {
+		t.Fatalf("lunch = %+v, want the rice saved optional", lunch.Ingredients)
+	}
+	if lunch.TotalMacros.CarbG > 0.01 {
+		t.Fatalf("lunch total = %+v, want the optional rice left out", lunch.TotalMacros)
+	}
+}
