@@ -87,16 +87,23 @@ func (s *Service) Consistency(ctx context.Context, user users.User, now time.Tim
 
 // Sentence is the consistency as the coach reads it.
 func (c ConsistencyData) Sentence() string {
-	line := fmt.Sprintf("Consistency: active %d days this week", c.ThisWeek)
+	line := "Consistency: active " + dayCount(c.ThisWeek) + " this week"
 	if c.UsualPerWeek > 0 {
 		line += fmt.Sprintf(" (usually %.1f)", c.UsualPerWeek)
 	}
-	line += fmt.Sprintf("; current streak %d days, longest %d and longest gap %d in the last %d weeks",
-		c.CurrentStreak, c.LongestStreak, c.LongestGap, consistencyWeeks)
+	line += fmt.Sprintf("; current streak %s, longest %s and longest gap %s in the last %d weeks",
+		dayCount(c.CurrentStreak), dayCount(c.LongestStreak), dayCount(c.LongestGap), consistencyWeeks)
 	if c.CheckInStreak > 0 {
-		line += fmt.Sprintf("; check-in streak %d days", c.CheckInStreak)
+		line += "; check-in streak " + dayCount(c.CheckInStreak)
 	}
 	return line + "."
+}
+
+func dayCount(n int) string {
+	if n == 1 {
+		return "1 day"
+	}
+	return fmt.Sprintf("%d days", n)
 }
 
 // ConsistencyContextSource tells the coach how steadily the person shows up,
