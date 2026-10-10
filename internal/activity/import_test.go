@@ -196,3 +196,56 @@ func TestImportKeepsWorkoutsThatOnlyTouch(t *testing.T) {
 		t.Fatalf("lift import = %v, %v; want imported", imported, err)
 	}
 }
+
+// What a provider measured is stored, and a later import that knows more
+// fills the gaps without overwriting what is already there: that is how the
+// Strava backfill adds heart rate to sessions imported before it existed.
+func TestImportStoresMeasurementsAndAReimportOnlyFillsGaps(t *testing.T) {
+	svc, user := newService(t, withWeight(80))
+	ctx := context.Background()
+
+	first := importInput("hr-1")
+	first.UserID = user.ID
+	first.DistanceM = 10_000
+	if _, _, err := svc.Import(ctx, first); err != nil {
+		t.Fatalf("first import: %v", err)
+	}
+
+	again := first
+	again.DistanceM = 9_000 // a different figure must not replace the stored one
+	again.AvgHR, again.MaxHR, again.ElevationM = 148, 171, 85
+	indoor := false
+	again.Indoor = &indoor
+	if _, imported, err := svc.Import(ctx, again); err != nil || imported {
+		t.Fatalf("re-import: imported %v, %v", imported, err)
+	}
+
+	sessions, err := svc.List(ctx, user.ID, 50)
+	if err != nil || len(sessions) != 1 {
+		t.Fatalf("list: %d sessions, %v", len(sessions), err)
+	}
+	s := sessions[0]
+	if s.DistanceM == nil || *s.DistanceM != 10_000 {
+		t.Errorf("distance = %v, want the first 10000 kept", s.DistanceM)
+	}
+	if s.AvgHR == nil || *s.AvgHR != 148 || s.MaxHR == nil || *s.MaxHR != 171 {
+		t.Errorf("heart rate = %v / %v, want 148 / 171", s.AvgHR, s.MaxHR)
+	}
+	if s.ElevationM == nil || *s.ElevationM != 85 || s.Indoor == nil || *s.Indoor {
+		t.Errorf("elevation %v indoor %v", s.ElevationM, s.Indoor)
+	}
+}
+
+// Unmeasured is NULL, not zero: a session without a strap has no heart rate.
+func TestImportLeavesUnmeasuredFieldsEmpty(t *testing.T) {
+	svc, user := newService(t, withWeight(80))
+	in := importInput("no-hr")
+	in.UserID = user.ID
+	session, _, err := svc.Import(context.Background(), in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.DistanceM != nil || session.AvgHR != nil || session.ElevationM != nil || session.Indoor != nil {
+		t.Errorf("unmeasured fields stored: %+v", session)
+	}
+}

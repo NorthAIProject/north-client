@@ -147,3 +147,34 @@ func TestOnePostCanCarryReadingsAndWorkoutsTogether(t *testing.T) {
 		t.Errorf("got %d readings, want 1 — the readings half of the payload was dropped", len(stored))
 	}
 }
+
+// What the watch measured reaches the session; a heart rate no heart makes
+// (a strap that lost contact) is stored as unknown instead of failing the sync.
+func TestAWorkoutKeepsWhatTheWatchMeasured(t *testing.T) {
+	svc, activitySvc, user := newServiceWithWorkouts(t)
+	ctx := context.Background()
+	indoor := true
+
+	if _, err := svc.IngestWorkouts(ctx, user.ID, "apple_health", []health.Workout{{
+		ActivityCode: "running_fast", ExternalID: "hk-measured",
+		StartedAt: at("2026-08-15T07:00:00Z"), EndedAt: at("2026-08-15T07:42:00Z"),
+		DistanceM: 8200, AvgHeartRate: 156, MaxHeartRate: 255, ElevationM: 12, Indoor: &indoor,
+	}}); err != nil {
+		t.Fatalf("ingest: %v", err)
+	}
+
+	sessions, err := activitySvc.List(ctx, user.ID, 10)
+	if err != nil || len(sessions) != 1 {
+		t.Fatalf("sessions = %d, %v", len(sessions), err)
+	}
+	s := sessions[0]
+	if s.DistanceM == nil || *s.DistanceM != 8200 || s.AvgHR == nil || *s.AvgHR != 156 {
+		t.Errorf("distance %v avg HR %v", s.DistanceM, s.AvgHR)
+	}
+	if s.MaxHR != nil {
+		t.Errorf("max HR 255 stored as %v, want unknown", *s.MaxHR)
+	}
+	if s.ElevationM == nil || *s.ElevationM != 12 || s.Indoor == nil || !*s.Indoor {
+		t.Errorf("elevation %v indoor %v", s.ElevationM, s.Indoor)
+	}
+}

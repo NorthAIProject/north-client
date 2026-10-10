@@ -257,10 +257,19 @@ var patternMetrics = []struct {
 	{name: "resting_heart_rate", mean: true, set: func(f *stat.DayFacts, v float64) { f.RestingHR = &v }},
 }
 
-// outdoor reports whether a session's code is one done outside. Codes do not
-// say where a run happened, so a treadmill run counts as outdoor until
-// sessions carry where they were done.
-func outdoor(code string) bool {
+// outdoor reports whether a session was done outside. The provider's own
+// flag wins when it sent one; otherwise the code decides, and a run with no
+// flag counts as outdoor, which is where most runs without a treadmill
+// flag happened.
+func outdoor(sess activity.Session) bool {
+	if sess.Indoor != nil {
+		return !*sess.Indoor && moves(sess.ActivityCode)
+	}
+	return moves(sess.ActivityCode)
+}
+
+// moves reports an activity that covers ground and so can be done outside.
+func moves(code string) bool {
 	if strings.HasPrefix(code, "cycling_stationary") {
 		return false
 	}
@@ -487,7 +496,7 @@ func (s *Service) Patterns(ctx context.Context, user users.User, rg timerange.Ra
 	for _, a := range acts {
 		if f := at(a.StartedAt); f != nil && a.EndedAt != nil {
 			f.Trained = true
-			if outdoor(a.ActivityCode) {
+			if outdoor(a) {
 				f.OutdoorWorkout = true
 			}
 		}

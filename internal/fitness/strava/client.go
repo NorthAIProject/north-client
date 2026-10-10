@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/FACorreiaa/go-utils/pkg/util"
+
 	"golang.org/x/oauth2"
 
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
@@ -149,6 +151,12 @@ type apiActivity struct {
 	TotalElevationGain float64 `json:"total_elevation_gain"`
 	AverageSpeed       float64 `json:"average_speed"`
 
+	// Heart rate is present only when the athlete recorded with a strap or
+	// watch; zero otherwise. Trainer marks a treadmill or indoor trainer.
+	AverageHeartrate float64 `json:"average_heartrate"`
+	MaxHeartrate     float64 `json:"max_heartrate"`
+	Trainer          bool    `json:"trainer"`
+
 	// Map carries the route. The list endpoint returns only the summary
 	// polyline, which is exactly the resolution a route drawn a few hundred
 	// pixels wide can show — fetching full streams would cost one request per
@@ -213,6 +221,26 @@ func fetchActivities(ctx context.Context, accessToken string, after time.Time) (
 }
 
 // startedAt parses Strava's ISO-8601 start_date, which is always UTC.
+// indoor reports a session done inside: Strava's trainer flag, or a virtual
+// ride or run, which is always on a trainer or treadmill.
+func (a apiActivity) indoor() bool {
+	return a.Trainer || strings.HasPrefix(a.sport(), "Virtual")
+}
+
+// where says where a session happened, as far as Strava can tell: inside
+// when flagged, outside when it has a GPS route, and unknown otherwise — a
+// manual entry without a route could have been either.
+func (a apiActivity) where() *bool {
+	switch {
+	case a.indoor():
+		return util.Ptr(true)
+	case a.Map.SummaryPolyline != "":
+		return util.Ptr(false)
+	default:
+		return nil
+	}
+}
+
 func (a apiActivity) startedAt() (time.Time, error) {
 	t, err := time.Parse(time.RFC3339, a.StartDate)
 	if err != nil {

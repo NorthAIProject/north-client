@@ -70,12 +70,29 @@ ORDER BY ended_at DESC;
 -- UNIQUE (source, external_id) index, so re-importing is a no-op.
 INSERT INTO activity_sessions (
     user_id, activity_code, source, status, weight_kg_snapshot,
-    started_at, ended_at, calories_burned, external_id
+    started_at, ended_at, calories_burned, external_id,
+    distance_m, avg_hr, max_hr, elevation_m, indoor
 ) VALUES (
-    $1, $2, $3, 'completed', $4, $5, $6, $7, $8
+    $1, $2, $3, 'completed', $4, $5, $6, $7, $8,
+    sqlc.narg(distance_m), sqlc.narg(avg_hr), sqlc.narg(max_hr), sqlc.narg(elevation_m), sqlc.narg(indoor)
 )
 ON CONFLICT (source, external_id) WHERE external_id IS NOT NULL DO NOTHING
 RETURNING *;
+
+-- name: FillImportedActivitySession :exec
+-- What a re-import knows that the first import did not: a provider that
+-- started sending heart rate, or an older row from before these columns.
+-- Only empty fields are filled; nothing already recorded is overwritten.
+UPDATE activity_sessions
+SET distance_m  = COALESCE(distance_m, sqlc.narg(distance_m)),
+    avg_hr      = COALESCE(avg_hr, sqlc.narg(avg_hr)),
+    max_hr      = COALESCE(max_hr, sqlc.narg(max_hr)),
+    elevation_m = COALESCE(elevation_m, sqlc.narg(elevation_m)),
+    indoor      = COALESCE(indoor, sqlc.narg(indoor)),
+    updated_at  = now()
+WHERE user_id = sqlc.arg(user_id)
+  AND source = sqlc.arg(source)
+  AND external_id = sqlc.arg(external_id);
 
 -- name: LogActivitySession :one
 -- A finished session written in one shot by the person who did it, rather
