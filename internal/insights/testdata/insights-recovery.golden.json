@@ -1,0 +1,60 @@
+{
+  "hasData": true,
+  "points": 0,
+  "verdict": "low",
+  "label": "Under your usual",
+  "sentence": "Recovery today: 0/100, under your usual. Heart rate variability — Below your usual: 38ms on Thu 24 Sep, usually 56ms–58ms. Resting heart rate — Above your usual: 60bpm on Thu 24 Sep, usually 52bpm–54bpm. Sleep — Below your usual: 5.5h on Thu 24 Sep, usually 7.5h–8.0h.",
+  "signals": [
+    {
+      "key": "hrv",
+      "label": "Heart rate variability",
+      "latest": "38ms",
+      "usual": {
+        "day": "2026-09-24",
+        "latest": 38,
+        "mean": 57,
+        "sd": 1.387777332977422,
+        "low": "56ms",
+        "high": "58ms",
+        "days": 28,
+        "z": -13.69,
+        "state": "below",
+        "text": "Below your usual: 38ms on Thu 24 Sep, usually 56ms–58ms."
+      }
+    },
+    {
+      "key": "resting-heart-rate",
+      "label": "Resting heart rate",
+      "latest": "60bpm",
+      "usual": {
+        "day": "2026-09-24",
+        "latest": 60,
+        "mean": 53,
+        "sd": 0.816496580927726,
+        "low": "52bpm",
+        "high": "54bpm",
+        "days": 28,
+        "z": 8.57,
+        "state": "above",
+        "text": "Above your usual: 60bpm on Thu 24 Sep, usually 52bpm–54bpm."
+      }
+    },
+    {
+      "key": "sleep",
+      "label": "Sleep",
+      "latest": "5.5h",
+      "usual": {
+        "day": "2026-09-24",
+        "latest": 5.5,
+        "mean": 7.75,
+        "sd": 0.2041241452319315,
+        "low": "7.5h",
+        "high": "8.0h",
+        "days": 28,
+        "z": -11.02,
+        "state": "below",
+        "text": "Below your usual: 5.5h on Thu 24 Sep, usually 7.5h–8.0h."
+      }
+    }
+  ]
+}
