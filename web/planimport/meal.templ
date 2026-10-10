@@ -14,6 +14,7 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/badge"
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
 	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/collapsible"
 	"github.com/NorthAIProject/north-client/web/shared/ui/input"
 	"github.com/NorthAIProject/north-client/web/shared/ui/selectbox"
 	"github.com/NorthAIProject/north-client/web/shared/ui/table"
@@ -30,7 +31,11 @@ type MealReview struct {
 	NeedsConfirm bool
 }
 
-func foodField(d, m, f int, name string) string { return fmt.Sprintf("d%d.m%d.f%d.%s", d, m, f, name) }
+// foodField names a food line's field: food f of option o (0 being the
+// meal's first option) of meal m on day d.
+func foodField(d, m, o, f int, name string) string {
+	return fmt.Sprintf("d%d.m%d.o%d.f%d.%s", d, m, o, f, name)
+}
 
 func grams(v *float64) string {
 	if v == nil {
@@ -138,7 +143,9 @@ templ MealReviewPage(user users.User, v MealReview) {
 							</label>
 						}
 						<p class="text-muted-foreground text-xs sm:col-span-3">
-							if v.Draft.Mode == string(meal.Advanced) {
+							if v.Draft.EveryDay {
+								Your file names no days, so this day is eaten every day: it is saved on all seven, and checked once.
+							} else if v.Draft.Mode == string(meal.Advanced) {
 								Advanced: pick each day's weekday; a day over its target can be saved once you confirm it.
 							} else {
 								Easy: days run from Monday in order, and no day may go over its target.
@@ -154,8 +161,11 @@ templ MealReviewPage(user users.User, v MealReview) {
 				if len(v.Draft.Unparsed) > 0 {
 					@unparsedList(v.Draft.Unparsed)
 				}
+				if v.Draft.Notes != "" {
+					@planNotes(v.Draft.Notes)
+				}
 				for i, day := range v.Draft.Days {
-					@mealDay(i, day, v.Draft.Mode == string(meal.Advanced))
+					@mealDay(i, day, v.Draft.Mode == string(meal.Advanced), v.Draft.EveryDay)
 				}
 				if v.NeedsConfirm && v.Draft.CanConfirm && anyOver(v.Draft.Days) {
 					@alert.Alert(alert.Props{Variant: alert.VariantDestructive}) {
@@ -187,6 +197,32 @@ templ MealReviewPage(user users.User, v MealReview) {
 		</div>
 		@selectbox.Script()
 		@input.Script()
+		@collapsible.Script()
+	}
+}
+
+// planNotes shows the advice, recipes and guidance the file carried beside
+// its meals. They are saved with the plan as written, so nothing here is
+// editable.
+templ planNotes(notes string) {
+	@card.Card() {
+		@collapsible.Collapsible() {
+			@collapsible.Trigger(collapsible.TriggerProps{Class: "cursor-pointer"}) {
+				@card.Header() {
+					@card.Title() {
+						Notes from your plan
+					}
+					@card.Description() {
+						Advice and recipes from your file, saved with the plan. Show them.
+					}
+				}
+			}
+			@collapsible.Content() {
+				@card.Content() {
+					<p class="text-muted-foreground text-sm whitespace-pre-wrap">{ notes }</p>
+				}
+			}
+		}
 	}
 }
 
@@ -226,7 +262,7 @@ templ modePicker(selected string) {
 	}
 }
 
-templ mealDay(i int, day draft.MealDayDraft, advanced bool) {
+templ mealDay(i int, day draft.MealDayDraft, advanced, everyDay bool) {
 	@card.Card(card.Props{Class: overClass(day)}) {
 		@card.Header(card.HeaderProps{Class: "flex flex-row flex-wrap items-center justify-between gap-3"}) {
 			<div>
@@ -244,7 +280,11 @@ templ mealDay(i int, day draft.MealDayDraft, advanced bool) {
 				}
 			</div>
 			<div class="flex items-center gap-2">
-				if advanced {
+				if everyDay {
+					@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
+						Every day
+					}
+				} else if advanced {
 					@mealWeekdayPicker(fmt.Sprintf("d%d.weekday", i), day.Weekday)
 				} else if day.Weekday != nil {
 					<span class="text-muted-foreground text-sm">{ time.Weekday(*day.Weekday).String() }</span>
@@ -269,41 +309,67 @@ templ mealDay(i int, day draft.MealDayDraft, advanced bool) {
 							Remove meal
 						}
 					</div>
-					<div class="overflow-x-auto">
-						@table.Table() {
-							@table.Header() {
-								@table.Row() {
-									@table.Head() {
-										From your file
-									}
-									@table.Head() {
-										Ingredient
-									}
-									@table.Head() {
-										Grams
-									}
-									@table.Head() {
-										Macros
-									}
-									@table.Head() {
-										<span class="sr-only">Remove</span>
-									}
-								}
-							}
-							@table.Body() {
-								for k, f := range m.Foods {
-									@foodRow(i, j, k, f)
-								}
-							}
-						}
-					</div>
+					for o, opt := range m.Options() {
+						@mealOption(i, j, o, m, opt)
+					}
 				</div>
 			}
 		}
 	}
 }
 
-templ foodRow(i, j, k int, f draft.FoodDraft) {
+// mealOption is one option of a meal and its foods. A meal with a single
+// option shows no option header, as before options existed.
+templ mealOption(i, j, o int, m draft.MealDraftMeal, opt draft.MealDraftOption) {
+	<div class={ "space-y-1", templ.KV("border-l-2 border-border pl-3", len(m.Alternatives) > 0) }>
+		if len(m.Alternatives) > 0 {
+			<div class="flex flex-wrap items-center gap-2">
+				<span class="text-sm font-medium">{ m.OptionName(o) }</span>
+				if o == 0 {
+					@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
+						counted
+					}
+				}
+				@button.Button(button.Props{
+					Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm,
+					Attributes: templ.Attributes{"name": "action", "value": fmt.Sprintf("delete-option:%d:%d:%d", i, j, o), "formnovalidate": true, "aria-label": "Remove " + m.OptionName(o)},
+				}) {
+					Remove option
+				}
+			</div>
+		}
+		<div class="overflow-x-auto">
+			@table.Table() {
+				@table.Header() {
+					@table.Row() {
+						@table.Head() {
+							From your file
+						}
+						@table.Head() {
+							Ingredient
+						}
+						@table.Head() {
+							Grams
+						}
+						@table.Head() {
+							Macros
+						}
+						@table.Head() {
+							<span class="sr-only">Remove</span>
+						}
+					}
+				}
+				@table.Body() {
+					for k, f := range opt.Foods {
+						@foodRow(i, j, o, k, f)
+					}
+				}
+			}
+		</div>
+	</div>
+}
+
+templ foodRow(i, j, o, k int, f draft.FoodDraft) {
 	@table.Row() {
 		@table.Cell(table.CellProps{Class: "min-w-40 align-top"}) {
 			<div class="font-medium">{ f.Food }</div>
@@ -313,7 +379,15 @@ templ foodRow(i, j, k int, f draft.FoodDraft) {
 					· file says { s }
 				}
 			</div>
+			if f.SourceText != "" {
+				<div class="text-muted-foreground text-xs italic">“{ f.SourceText }”</div>
+			}
 			<div class="mt-1 flex flex-wrap gap-1">
+				if f.Estimated {
+					@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
+						estimated
+					}
+				}
 				for _, flag := range f.Flags {
 					@badge.Badge(badge.Props{Variant: badge.VariantOutline, Class: "whitespace-normal text-left"}) {
 						{ flag }
@@ -328,7 +402,7 @@ templ foodRow(i, j, k int, f draft.FoodDraft) {
 		}
 		@table.Cell(table.CellProps{Class: "min-w-48 align-top"}) {
 			@selectbox.SelectBox() {
-				@selectbox.Trigger(selectbox.TriggerProps{Name: foodField(i, j, k, "ingredient"), HasError: ingredientValue(f) == ""}) {
+				@selectbox.Trigger(selectbox.TriggerProps{Name: foodField(i, j, o, k, "ingredient"), HasError: ingredientValue(f) == ""}) {
 					@selectbox.Value(selectbox.ValueProps{Placeholder: "Choose an ingredient"})
 				}
 				@selectbox.Content() {
@@ -351,7 +425,7 @@ templ foodRow(i, j, k int, f draft.FoodDraft) {
 			}
 		}
 		@table.Cell(table.CellProps{Class: "align-top"}) {
-			@input.Input(input.Props{Name: foodField(i, j, k, "grams"), Type: input.TypeNumber, Value: grams(f.Grams), Class: "w-24", HasError: f.Grams == nil, Attributes: templ.Attributes{"step": "any", "min": "0"}})
+			@input.Input(input.Props{Name: foodField(i, j, o, k, "grams"), Type: input.TypeNumber, Value: grams(f.Grams), Class: "w-24", HasError: f.Grams == nil, Attributes: templ.Attributes{"step": "any", "min": "0"}})
 		}
 		@table.Cell(table.CellProps{Class: "align-top font-mono text-xs"}) {
 			{ macroLine(f.Macros) }
@@ -359,7 +433,7 @@ templ foodRow(i, j, k int, f draft.FoodDraft) {
 		@table.Cell(table.CellProps{Class: "align-top"}) {
 			@button.Button(button.Props{
 				Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm,
-				Attributes: templ.Attributes{"name": "action", "value": fmt.Sprintf("delete-food:%d:%d:%d", i, j, k), "formnovalidate": true, "aria-label": "Remove " + f.Food},
+				Attributes: templ.Attributes{"name": "action", "value": fmt.Sprintf("delete-food:%d:%d:%d:%d", i, j, o, k), "formnovalidate": true, "aria-label": "Remove " + f.Food},
 			}) {
 				Remove
 			}

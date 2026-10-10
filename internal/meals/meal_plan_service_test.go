@@ -3,9 +3,11 @@ package meals_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -226,6 +228,22 @@ func TestValidationKeepsCustomCarbsToAdvanced(t *testing.T) {
 		Name: "Plan", Weekdays: []time.Weekday{time.Monday}, Settings: easyMid,
 	})
 	fieldError(t, err, "weekdays")
+}
+
+func TestValidationCapsPlanNotes(t *testing.T) {
+	t.Parallel()
+
+	_, err := meals.ValidateMealPlan(meals.MealPlanInput{
+		Name: "Plan", DayCount: 1, Settings: easyMid, Notes: strings.Repeat("á", meals.MaxPlanNotesRunes+1),
+	})
+	fieldError(t, err, "notes")
+
+	in, err := meals.ValidateMealPlan(meals.MealPlanInput{
+		Name: "Plan", DayCount: 1, Settings: easyMid, Notes: " " + strings.Repeat("á", meals.MaxPlanNotesRunes) + " ",
+	})
+	if err != nil || utf8.RuneCountInString(in.Notes) != meals.MaxPlanNotesRunes {
+		t.Fatalf("notes at the cap: err = %v, %d runes", err, utf8.RuneCountInString(in.Notes))
+	}
 }
 
 // With no target there is nothing to hold a plan to, so nothing is let through

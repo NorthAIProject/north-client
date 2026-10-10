@@ -66,6 +66,9 @@ type PlanPage struct {
 	Problem Problem
 	// Overage is a change refused for taking a day over its target.
 	Overage *OverageNotice
+	// OpenOption is the ID of the meal option a change just landed on, whose
+	// tab opens first; empty opens each slot's first option.
+	OpenOption string
 }
 
 // Problem is a rejected form's field errors. Scope names the form, so two
@@ -109,6 +112,31 @@ func (p PlanPage) statuses() []meal.DayStatus {
 		return nil
 	}
 	return p.Plan.State().Statuses(*p.Target)
+}
+
+// openOption is the option of a slot whose tab opens first: the one with a
+// refused form, else the one a change just landed on, else the first.
+func (p PlanPage) openOption(slot meal.Meal) string {
+	open := slot.ID.String()
+	for _, o := range slot.Options() {
+		id := o.ID.String()
+		if p.Problem.Scope == "portion:"+id {
+			return id
+		}
+		if p.OpenOption == id {
+			open = id
+		}
+	}
+	return open
+}
+
+// optionTabLabel names an option in its slot's tabs: its label, or its
+// position when it has none (an unlabelled default).
+func optionTabLabel(o meal.Meal, i int) string {
+	if o.OptionLabel != "" {
+		return o.OptionLabel
+	}
+	return fmt.Sprintf("Option %d", i+1)
 }
 
 func (p PlanPage) advanced() bool { return p.Plan.Settings.Mode == meal.Advanced }
