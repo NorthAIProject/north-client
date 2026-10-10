@@ -628,6 +628,7 @@ func routes(
 		Plan:          workoutSvc,
 		Recaps:        liftSvc,
 		Stats:         statsSvc,
+		Sets:          liftSvc,
 		SiteURL:       cfg.BaseURL,
 	})
 	insightsHandler := insights.NewHandler(insightsSvc)
@@ -751,6 +752,8 @@ func routes(
 			// Today's recovery, in the words the Progress screen uses, read
 			// after the week of device numbers it is built from.
 			insights.NewRecoveryContextSource(insightsSvc, nil),
+			// How steadily they show up, from the consistency page.
+			insights.NewConsistencyContextSource(insightsSvc, nil),
 			habits.NewContextSource(habitSvc),
 			reports.NewContextSource(reportSvc),
 			integrations.NewContextSource(integrationSvc),

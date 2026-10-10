@@ -76,6 +76,10 @@ type Options struct {
 	// section of nutrition. Optional: without it those pages say so.
 	Stats StatsReader
 
+	// Sets lets lifted sets count as a training day on the consistency
+	// page, for sets logged without a timed session. Optional.
+	Sets SetReader
+
 	// SiteURL is the base a digest links back to. Empty sends the numbers
 	// without a link, which is the right degradation for a deployment that
 	// has not been told its own address.
@@ -102,6 +106,7 @@ type Service struct {
 	plan          TrainingPlan
 	recaps        Recaps
 	stats         StatsReader
+	sets          SetReader
 	// nightly is set instead of stats by NewRecoverySource, which needs only
 	// the sleep page's nights.
 	nightly SleepReader
@@ -131,6 +136,11 @@ type LiftStats interface {
 	Stats(ctx context.Context, user users.User, rg timerange.Range) (lifts.Stats, error)
 }
 
+// SetReader is the slice of lifts.Service the consistency page needs.
+type SetReader interface {
+	Between(ctx context.Context, user users.User, rg timerange.Range) ([]lifts.Set, error)
+}
+
 // HealthReadings is the slice of health.Service the metrics need.
 type HealthReadings interface {
 	Between(ctx context.Context, userID uuid.UUID, metric string, since, until time.Time) ([]health.Stored, error)
@@ -157,6 +167,7 @@ func NewService(opts Options) *Service {
 		plan:          opts.Plan,
 		recaps:        opts.Recaps,
 		stats:         opts.Stats,
+		sets:          opts.Sets,
 		siteURL:       opts.SiteURL,
 	}
 }
