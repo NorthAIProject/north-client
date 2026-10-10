@@ -1,11 +1,20 @@
 package meals_test
 
 import (
+	"encoding/json"
 	"errors"
 	"math"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
+
+	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/meals"
+	"github.com/NorthAIProject/north-client/internal/users"
 )
 
 // An optional food — "compota 0% (opcional)" — is part of the meal as shown
@@ -113,5 +122,45 @@ func TestPlanChangesMarkAFoodOptional(t *testing.T) {
 	}
 	if got := applied[0].String(); got != "made Chicken breast in Almoço optional (not counted) on Monday" {
 		t.Errorf("summary = %q", got)
+	}
+}
+
+func (f planFixture) putJSON(t *testing.T, userID uuid.UUID, target, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	r := chi.NewRouter()
+	meals.NewAPI(meals.HandlerOptions{Plans: f.svc}).Routes(r)
+	req := httptest.NewRequest(http.MethodPut, target, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(auth.ContextWithUser(req.Context(), users.User{ID: userID, Timezone: "UTC"}))
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	return rec
+}
+
+func TestAPIMarksAFoodOptional(t *testing.T) {
+	f := newPlanFixture(t, "optional-api@north.test")
+	plan := f.lunchWithOption(t)
+	chicken := f.reload(t, plan.ID).Days[0].Meals[0].Ingredients[0]
+	target := "/nutrition/meal-ingredients/" + chicken.ID.String() + "/optional"
+
+	rec := f.putJSON(t, f.userID, target, `{"optional":true}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
+	}
+	var detail meals.PlanDetail
+	if err := json.Unmarshal(rec.Body.Bytes(), &detail); err != nil {
+		t.Fatal(err)
+	}
+	got := detail.Days[0].Meals[0]
+	if !got.Ingredients[0].Optional || got.TotalMacros.Calories != 0 {
+		t.Fatalf("answer = %+v, want the food optional and the meal counting nothing", got)
+	}
+
+	stranger := newUser(t, f.pool, "optional-api-stranger@north.test")
+	if rec = f.putJSON(t, stranger.ID, target, `{"optional":false}`); rec.Code != http.StatusNotFound {
+		t.Fatalf("another person's food: status = %d", rec.Code)
+	}
+	if !f.reload(t, plan.ID).Days[0].Meals[0].Ingredients[0].Optional {
+		t.Fatal("a stranger changed the food")
 	}
 }

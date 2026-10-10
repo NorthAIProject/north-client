@@ -3083,6 +3083,42 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+  /nutrition/meal-ingredients/{mealIngredientID}/optional:
+    parameters:
+      - name: mealIngredientID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      operationId: setMealPortionOptional
+      summary: Mark a meal's food optional (shown, not counted) or counted
+      description: |
+        Answers with the whole plan so the client refreshes its totals in one
+        call. Counting a food again that takes its day further over the target
+        is a 409.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OptionalRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MealPlanDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/MacroOverage'
+        '422':
+          $ref: '#/components/responses/ValidationError'
   /nutrition/log:
     get:
       operationId: getFoodLog
@@ -10529,6 +10565,12 @@ components:
           description: |
             The importer guessed this food and quantity from a vague or
             unmatched line. Absent when false.
+        optional:
+          type: boolean
+          description: |
+            A food the plan offers but does not count: its macros are its own
+            and left out of the meal's, day's and plan's totals. Absent when
+            false.
     MealPlanType:
       type: string
       enum: [no_carb, low_carb, mid_carb, high_carb, custom]
@@ -10814,9 +10856,22 @@ components:
           format: uuid
         quantityGrams:
           type: number
+        optional:
+          type: boolean
+          description: Add the food as optional (shown, not counted).
         confirmOverage:
           type: boolean
           description: Advanced plans only; save even though the day goes over.
+    OptionalRequest:
+      type: object
+      required: [optional]
+      properties:
+        optional:
+          type: boolean
+          description: true shows the food without counting it; false counts it.
+        confirmOverage:
+          type: boolean
+          description: Advanced plans only; count it even though the day goes over.
     PortionLine:
       type: object
       required: [ingredientId, quantityGrams]
