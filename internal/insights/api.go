@@ -11,6 +11,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
+	"github.com/NorthAIProject/north-client/internal/stats/stat"
 	insightpages "github.com/NorthAIProject/north-client/web/insights"
 	"github.com/NorthAIProject/north-client/web/shared/ui/chart"
 )
@@ -34,6 +35,7 @@ func (a *API) Routes(r chi.Router) {
 	r.Get("/insights", a.summary)
 	r.Get("/insights/metrics/{key}", a.metric)
 	r.Get("/insights/health", a.health)
+	r.Get("/insights/consistency", a.consistency)
 	r.Get("/insights/recovery", a.recovery)
 	r.Get("/insights/timeline", a.timeline)
 	r.Get("/insights/body", a.body)
@@ -189,6 +191,33 @@ type RecoverySignalView struct {
 	Usual  *UsualRange `json:"usual"`
 }
 
+// ConsistencyView is how steadily someone shows up over twelve weeks.
+type ConsistencyView struct {
+	// Days run from a Monday eleven weeks back to today, so a client can
+	// lay them out seven to a column.
+	Days          []ConsistencyDay  `json:"days"`
+	Weeks         []ConsistencyWeek `json:"weeks"`
+	CurrentStreak int               `json:"currentStreak"`
+	LongestStreak int               `json:"longestStreak"`
+	LongestGap    int               `json:"longestGap"`
+	BestWeek      ConsistencyWeek   `json:"bestWeek"`
+	ThisWeek      int               `json:"thisWeek"`
+	UsualPerWeek  float64           `json:"usualPerWeek"`
+	CheckInStreak int               `json:"checkInStreak"`
+	Sentence      string            `json:"sentence"`
+}
+
+type ConsistencyDay struct {
+	Date      string `json:"date"`
+	Trained   bool   `json:"trained"`
+	CheckedIn bool   `json:"checkedIn"`
+}
+
+type ConsistencyWeek struct {
+	Start string `json:"start"`
+	Days  int    `json:"days"`
+}
+
 // HealthList is the health metrics a person has recent readings for.
 type HealthList struct {
 	Metrics []HealthMetric `json:"metrics"`
@@ -269,6 +298,35 @@ func projectRecovery(r RecoveryData) RecoveryView {
 			Latest: formatMetric(sig.Metric, sig.Usual.Latest.Value),
 			Usual:  projectUsual(usualView(sig.Metric, sig.Usual)),
 		})
+	}
+	return out
+}
+
+func (a *API) consistency(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+	data, err := a.svc.Consistency(r.Context(), user, time.Now())
+	if err != nil {
+		httpx.Error(w, err, "Consistency could not be loaded.")
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, projectConsistency(data))
+}
+
+func projectConsistency(c ConsistencyData) ConsistencyView {
+	week := func(w stat.WeekCount) ConsistencyWeek {
+		return ConsistencyWeek{Start: w.Start.Format(time.DateOnly), Days: w.Days}
+	}
+	out := ConsistencyView{
+		Days: []ConsistencyDay{}, Weeks: []ConsistencyWeek{},
+		CurrentStreak: c.CurrentStreak, LongestStreak: c.LongestStreak, LongestGap: c.LongestGap,
+		BestWeek: week(c.BestWeek), ThisWeek: c.ThisWeek, UsualPerWeek: c.UsualPerWeek,
+		CheckInStreak: c.CheckInStreak, Sentence: c.Sentence(),
+	}
+	for _, d := range c.Days {
+		out.Days = append(out.Days, ConsistencyDay{Date: d.Day.Format(time.DateOnly), Trained: d.Trained, CheckedIn: d.CheckedIn})
+	}
+	for _, w := range c.Weeks {
+		out.Weeks = append(out.Weeks, week(w))
 	}
 	return out
 }
