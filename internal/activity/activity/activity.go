@@ -170,10 +170,17 @@ type Session struct {
 	EndedAt            *time.Time
 	CaloriesBurned     *float64
 
-	// DistanceM is how far the session went, when the person said. Nil for
-	// a timer session and for a provider import, whose distance lives with
-	// the provider's own record.
+	// DistanceM is how far the session went, when the person or the
+	// provider said. Nil for a timer session and anything without GPS.
 	DistanceM *float64
+
+	// What a device measured, when it did. Nil is unknown, never zero.
+	AvgHR      *float64 // beats per minute
+	MaxHR      *float64
+	ElevationM *float64 // climb
+	// Indoor is a treadmill, an indoor ride or a pool. Nil when the
+	// provider did not say.
+	Indoor *bool
 
 	ExternalID *string
 

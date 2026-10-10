@@ -11664,6 +11664,20 @@ components:
           format: date-time
         calories:
           type: number
+        distanceM:
+          type: number
+          description: Metres covered, when the watch measured it.
+        avgHeartRate:
+          type: number
+          description: Average heart rate (bpm). Readings outside 20-250 are treated as unknown.
+        maxHeartRate:
+          type: number
+        elevationM:
+          type: number
+          description: Metres climbed.
+        indoor:
+          type: boolean
+          description: Apple Health's indoor-workout flag; absent when the workout does not say.
     HealthSyncResult:
       type: object
       required: [readings, workouts]
