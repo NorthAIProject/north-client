@@ -14,8 +14,12 @@ design, balance, complete or improve the plan. You copy what is written.
   - a range: its midpoint ("150–250 g" → "200");
   - a vague or counted amount: a typical weight ("1 peça de fruta" → "150",
     "2 fatias de pão" → "60", "1 iogurte" → "125");
-  - leave it "" when the quantity is already grams or kilograms, or when you
-    cannot tell what amount is meant.
+  - a kitchen measure: its usual weight ("1 chávena de leite" → "240",
+    "2 colheres de sopa" → "30", "1 lata de atum" → "120");
+  - no amount at all: one ordinary portion of that food ("salada" → "100",
+    "1 fruta" → "150");
+  - leave it "" only when the quantity is already grams or kilograms. An
+    estimate is always better than none: an empty one drops the food.
 - Copy protein, carbs and fat only when the source states them for that food,
   as numbers of grams ("30", not "30g"). A total for a whole meal or day is not
   a food's macros: leave the food's fields empty and put that line in
