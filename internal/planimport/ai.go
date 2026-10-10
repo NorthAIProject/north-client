@@ -203,7 +203,7 @@ func (r *AIReader) ReadMeal(ctx context.Context, user users.User, src Source, hi
 			Day: row.Day, Meal: row.Meal, Option: row.Option, Food: row.Food, FoodEN: row.FoodEN,
 			Quantity: row.Quantity, Unit: row.Unit, GramsEstimate: row.GramsEstimate,
 			Optional: isYes(row.Optional),
-			Protein: row.Protein, Carbs: row.Carbs, Fat: row.Fat,
+			Protein:  row.Protein, Carbs: row.Carbs, Fat: row.Fat,
 			Uncertain: strings.EqualFold(row.Confidence, "low"),
 		})
 	}

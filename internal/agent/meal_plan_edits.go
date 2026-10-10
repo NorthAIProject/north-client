@@ -121,7 +121,9 @@ func editMealPlan(plans *meals.MealPlanService, ingredients *meals.IngredientSer
 				"changes are applied together or not at all. Ops: add_meal (an empty meal at the end of the day), remove_meal (the " +
 				"meal with all its options), add_food (grams of a catalog food added to a meal), remove_food (every portion of that " +
 				"food in the meal), set_grams (the meal holds exactly that many grams of a food already in it), add_option (an empty " +
-				"option named option_label after the meal's last one), remove_option (option 2 or later). A meal can hold several " +
+				"option named option_label after the meal's last one), remove_option (option 2 or later), set_optional (mark a food " +
+				"already in the meal optional — shown, not counted — with optional true, or counted again with optional false). A " +
+				"food added with optional true is shown but never counted. A meal can hold several " +
 				"interchangeable options; option 1 is the default, the one the day's totals count. add_food, remove_food and " +
 				"set_grams change option 1 unless option says otherwise; an option number a target day's meal does not have " +
 				"refuses the whole change, so name days when the days differ. Leave days out to change every day " +
@@ -141,6 +143,8 @@ func editMealPlan(plans *meals.MealPlanService, ingredients *meals.IngredientSer
 					"option": ai.Integer("which of the meal's options, counting from 1 as get_meal_plan lists them; 1 is the " +
 						"default option counted in the day's totals; omit for 1"),
 					"option_label": ai.String("the new option's name, for add_option, such as 'Peixe'"),
+					"optional": ai.Boolean("for add_food, add it as optional (shown, not counted); for set_optional, true " +
+						"makes the food optional and false counts it again"),
 				}, "op", "meal")),
 				"allow_over_target": ai.Boolean("true only once the person accepted going over their target, after a refusal said by how much"),
 			}, "changes"),
@@ -280,6 +284,7 @@ type changeArg struct {
 	Grams       float64  `json:"grams"`
 	Option      int      `json:"option"`
 	OptionLabel string   `json:"option_label"`
+	Optional    bool     `json:"optional"`
 }
 
 // planChangesFromArgs turns the model's changes into the service's, checking
@@ -310,7 +315,7 @@ func planChangeFromArg(a changeArg) (meals.PlanChange, error) {
 	}
 	c := meals.PlanChange{
 		Op: op, Meal: strings.TrimSpace(a.Meal), Food: strings.TrimSpace(a.Food), Grams: a.Grams,
-		Option: a.Option, OptionLabel: strings.TrimSpace(a.OptionLabel),
+		Option: a.Option, OptionLabel: strings.TrimSpace(a.OptionLabel), Optional: a.Optional,
 	}
 	if c.Meal == "" {
 		return meals.PlanChange{}, invalid("name the meal")
@@ -335,7 +340,7 @@ func planChangeFromArg(a changeArg) (meals.PlanChange, error) {
 		if c.Grams <= 0 || c.Grams > maxFoodGrams {
 			return meals.PlanChange{}, invalid("%q needs a weight between 1 and %d g", c.Food, maxFoodGrams)
 		}
-	case meals.OpRemoveFood:
+	case meals.OpRemoveFood, meals.OpSetOptional:
 		if c.Food == "" {
 			return meals.PlanChange{}, invalid("name the food")
 		}
@@ -672,6 +677,9 @@ func describeFoods(m meals.Meal) string {
 		foods[j] = fmt.Sprintf("%.0f g %s", ing.QuantityGrams, ing.IngredientName)
 		if ing.Estimated {
 			foods[j] += " (estimated)"
+		}
+		if ing.Optional {
+			foods[j] += " (optional, not counted)"
 		}
 	}
 	return strings.Join(foods, ", ")
