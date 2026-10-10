@@ -9,7 +9,9 @@
       "name": "Running",
       "sessions": 1,
       "minutes": 30,
-      "distanceKm": 6
+      "distanceKm": 6,
+      "measure": "pace",
+      "avgPaceSeconds": 300
     }
   ],
   "weeklyKm": [

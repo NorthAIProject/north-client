@@ -27,7 +27,7 @@ func getStats(svc *stats.Service, userSvc *users.Service) Capability {
 		Tool: ai.Tool{
 			Name: "get_stats",
 			Description: "Read this person's stats for an area over a window: sleep (average, debt, bedtime consistency, stages), " +
-				"cardio (distance, pace, best 5K, resting heart rate), eating (adherence to targets, protein per kg, top foods, late eating), " +
+				"cardio (distance, pace or speed and heart rate per activity type, best 5K, resting heart rate), eating (adherence to targets, protein per kg, top foods, late eating), " +
 				"or patterns (what moves together across days: sleep after late caffeine, mood against sleep, steps, daylight, stand hours and outdoor workouts, " +
 				"HRV and resting heart rate the day after training). Use it before commenting on trends.",
 			Parameters: ai.Object("what to read", map[string]*ai.Schema{
@@ -79,7 +79,17 @@ func getStats(svc *stats.Service, userSvc *users.Service) Capability {
 				}
 				fmt.Fprintf(&b, "%d sessions, %s, %.1f km, %.0f kcal.", st.Sessions, durfmt.HoursMinutes(st.Seconds/60), st.DistanceKm, st.Kcal)
 				for _, k := range st.ByKind {
-					fmt.Fprintf(&b, " %s: %d sessions, %s.", k.Name, k.Sessions, durfmt.HoursMinutes(k.Seconds/60))
+					fmt.Fprintf(&b, " %s: %d sessions, %s", k.Name, k.Sessions, durfmt.HoursMinutes(k.Seconds/60))
+					switch {
+					case k.AvgPace > 0:
+						fmt.Fprintf(&b, ", %.1f km at %d:%02d/km", k.DistanceKm, int(k.AvgPace)/60, int(k.AvgPace)%60)
+					case k.AvgSpeed > 0:
+						fmt.Fprintf(&b, ", %.1f km at %.1f km/h", k.DistanceKm, k.AvgSpeed)
+					}
+					if k.AvgHR > 0 {
+						fmt.Fprintf(&b, ", average heart rate %.0f bpm", k.AvgHR)
+					}
+					b.WriteString(".")
 				}
 				if r := st.Runs; r.Count > 0 && r.AvgPace > 0 {
 					fmt.Fprintf(&b, " Runs: %d, average pace %d:%02d/km, best %d:%02d/km, longest %.1f km.",

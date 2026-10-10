@@ -194,6 +194,12 @@ type Session struct {
 	Seconds   int
 	DistanceM float64
 	Kcal      float64
+
+	// What a device measured; zero is not measured.
+	AvgHR      float64
+	ElevationM float64
+	// Indoor is nil when the provider did not say.
+	Indoor *bool
 }
 
 // IsRun reports whether a session is a run, which gets pace and records.
@@ -215,6 +221,13 @@ type Kind struct {
 	Sessions   int
 	Seconds    int
 	DistanceKm float64
+
+	// Measure, AvgPace, AvgSpeed and AvgHR are as in KindStats, over the
+	// window.
+	Measure  string
+	AvgPace  float64
+	AvgSpeed float64
+	AvgHR    float64
 }
 
 // Runs is what a runner looks at.
@@ -290,9 +303,15 @@ func Cardio(sessions []Session, since, until time.Time) CardioStats {
 	st.Runs.AvgPace = math.Round(mean(paces))
 	st.Runs.BestPace = math.Round(st.Runs.BestPace)
 	st.Runs.Best5K = math.Round(st.Runs.Best5K)
+	byName := map[string][]Session{}
+	for _, s := range sessions {
+		byName[s.Name] = append(byName[s.Name], s)
+	}
 	for _, name := range order {
 		k := kinds[name]
 		k.DistanceKm = util.RoundHalfUpToScale(k.DistanceKm, 1)
+		detail := KindDetail(name, byName[name])
+		k.Measure, k.AvgPace, k.AvgSpeed, k.AvgHR = detail.Measure, detail.AvgPace, detail.AvgSpeed, detail.AvgHR
 		st.ByKind = append(st.ByKind, *k)
 	}
 	sort.SliceStable(st.ByKind, func(i, j int) bool { return st.ByKind[i].Seconds > st.ByKind[j].Seconds })

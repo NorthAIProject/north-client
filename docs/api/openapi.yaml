@@ -4878,6 +4878,29 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '500':
           $ref: '#/components/responses/InternalError'
+  /stats/cardio/kinds/{name}:
+    get:
+      operationId: getCardioKind
+      summary: One activity type over the last year — pace or speed trend, heart-rate efficiency, bests and habits
+      description: |
+        name is an activity type as GET /stats/cardio lists it in byKind (e.g. Running, Indoor running,
+        Cycling, Walking). Reads the last 365 days whatever range the cardio page shows. A type with no
+        sessions returns zeros, not 404.
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatsCardioKind'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /stats/cardio:
     get:
       operationId: getCardioStats
@@ -6644,6 +6667,82 @@ components:
           type: integer
         distanceKm:
           type: number
+        measure:
+          type: string
+          description: pace (seconds per km) or speed (km/h). An open string.
+        avgPaceSeconds:
+          type: number
+        avgSpeedKmh:
+          type: number
+        avgHeartRate:
+          type: number
+    StatsCardioKind:
+      type: object
+      required: [name, measure, sessions, minutes, distanceKm, elevationM, indoor, outdoor, avgPaceSeconds, avgSpeedKmh, avgHeartRate, monthly, efficiency, bests, usualDay, usualHour]
+      properties:
+        name:
+          type: string
+        measure:
+          type: string
+          description: pace (seconds per km) or speed (km/h). An open string.
+        sessions:
+          type: integer
+        minutes:
+          type: integer
+        distanceKm:
+          type: number
+        elevationM:
+          type: number
+        indoor:
+          type: integer
+          description: Sessions the provider marked indoor. indoor + outdoor can be fewer than sessions.
+        outdoor:
+          type: integer
+        avgPaceSeconds:
+          type: number
+          description: 0 when not measured, and for a speed activity.
+        avgSpeedKmh:
+          type: number
+        avgHeartRate:
+          type: number
+          description: 0 without heart rate.
+        monthly:
+          type: array
+          description: Pace or speed (per measure) by month, oldest first, months with a measured session only.
+          items:
+            $ref: '#/components/schemas/StatsDayValue'
+        efficiency:
+          type: array
+          description: Metres per heartbeat by month; rising means fitter. Empty without heart rate.
+          items:
+            $ref: '#/components/schemas/StatsDayValue'
+        bests:
+          type: array
+          items:
+            $ref: '#/components/schemas/StatsBest'
+        usualDay:
+          type: string
+          description: Weekday name, empty until there are 3 or more sessions.
+        usualHour:
+          type: integer
+          description: Hour of day sessions usually start, -1 until there are 3 or more.
+    StatsBest:
+      type: object
+      required: [key, label, value, unit, date]
+      properties:
+        key:
+          type: string
+          description: fastest_5k, fastest_10k, longest, fastest_20k, most_climb, longest_session. An open string.
+        label:
+          type: string
+        value:
+          type: number
+        unit:
+          type: string
+          description: How to read value — s (a time), km, km/h, m or min. An open string.
+        date:
+          type: string
+          format: date
     StatsRuns:
       type: object
       required: [count, distanceKm, avgPaceSeconds, bestPaceSeconds, longestKm, best5kSeconds]
