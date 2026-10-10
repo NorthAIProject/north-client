@@ -4441,6 +4441,23 @@ paths:
                 $ref: '#/components/schemas/InsightsRecovery'
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /insights/consistency:
+    get:
+      operationId: getInsightsConsistency
+      summary: How steadily this person shows up over twelve weeks
+      description: |
+        An active day has a finished workout, lifted sets or a check-in. Days run from the Monday eleven
+        weeks back to today, so they lay out seven to a column. The current streak still counts while
+        today is empty; a gap counts only once it has closed.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InsightsConsistency'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /insights/timeline:
     get:
       operationId: getInsightsTimeline
@@ -11279,6 +11296,56 @@ components:
           type: string
         usual:
           $ref: '#/components/schemas/InsightsUsualRange'
+    InsightsConsistency:
+      type: object
+      required: [days, weeks, currentStreak, longestStreak, longestGap, bestWeek, thisWeek, usualPerWeek, checkInStreak, sentence]
+      properties:
+        days:
+          type: array
+          items:
+            $ref: '#/components/schemas/InsightsConsistencyDay'
+        weeks:
+          type: array
+          items:
+            $ref: '#/components/schemas/InsightsConsistencyWeek'
+        currentStreak:
+          type: integer
+        longestStreak:
+          type: integer
+        longestGap:
+          type: integer
+        bestWeek:
+          $ref: '#/components/schemas/InsightsConsistencyWeek'
+        thisWeek:
+          type: integer
+          description: Active days so far this Monday-to-Sunday week.
+        usualPerWeek:
+          type: number
+          description: Average active days in the finished weeks.
+        checkInStreak:
+          type: integer
+        sentence:
+          type: string
+    InsightsConsistencyDay:
+      type: object
+      required: [date, trained, checkedIn]
+      properties:
+        date:
+          type: string
+          format: date
+        trained:
+          type: boolean
+        checkedIn:
+          type: boolean
+    InsightsConsistencyWeek:
+      type: object
+      required: [start, days]
+      properties:
+        start:
+          type: string
+          format: date
+        days:
+          type: integer
     InsightsHealth:
       type: object
       required: [metrics]

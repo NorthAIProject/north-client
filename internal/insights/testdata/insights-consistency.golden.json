@@ -1,0 +1,80 @@
+{
+  "days": [
+    {
+      "date": "2026-09-28",
+      "trained": false,
+      "checkedIn": false
+    },
+    {
+      "date": "2026-09-29",
+      "trained": true,
+      "checkedIn": true
+    },
+    {
+      "date": "2026-09-30",
+      "trained": false,
+      "checkedIn": false
+    },
+    {
+      "date": "2026-10-01",
+      "trained": false,
+      "checkedIn": false
+    },
+    {
+      "date": "2026-10-02",
+      "trained": false,
+      "checkedIn": false
+    },
+    {
+      "date": "2026-10-03",
+      "trained": false,
+      "checkedIn": false
+    },
+    {
+      "date": "2026-10-04",
+      "trained": false,
+      "checkedIn": false
+    },
+    {
+      "date": "2026-10-05",
+      "trained": false,
+      "checkedIn": false
+    },
+    {
+      "date": "2026-10-06",
+      "trained": true,
+      "checkedIn": false
+    },
+    {
+      "date": "2026-10-07",
+      "trained": true,
+      "checkedIn": false
+    },
+    {
+      "date": "2026-10-08",
+      "trained": false,
+      "checkedIn": true
+    }
+  ],
+  "weeks": [
+    {
+      "start": "2026-09-28",
+      "days": 1
+    },
+    {
+      "start": "2026-10-05",
+      "days": 3
+    }
+  ],
+  "currentStreak": 3,
+  "longestStreak": 3,
+  "longestGap": 6,
+  "bestWeek": {
+    "start": "2026-10-05",
+    "days": 3
+  },
+  "thisWeek": 3,
+  "usualPerWeek": 1,
+  "checkInStreak": 1,
+  "sentence": "Consistency: active 3 days this week (usually 1.0); current streak 3 days, longest 3 days and longest gap 6 days in the last 12 weeks; check-in streak 1 day."
+}
