@@ -392,6 +392,11 @@ templ portionRow(mi meal.MealIngredient) {
 						estimated
 					}
 				}
+				if mi.Optional {
+					@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
+						optional · not counted
+					}
+				}
 			</div>
 			if mi.SourceText != "" {
 				<p class="text-muted-foreground text-xs">{ mi.SourceText }</p>
@@ -399,6 +404,17 @@ templ portionRow(mi meal.MealIngredient) {
 		</div>
 		<div class="flex shrink-0 items-center gap-2">
 			<span class="text-muted-foreground">{ fmt.Sprintf("%.0f kcal", mi.Macros.Calories) }</span>
+			<form method="post" action={ templ.SafeURL("/app/nutrition/meal-ingredients/" + mi.ID.String() + "/optional") }>
+				@ui.CSRFInput()
+				<input type="hidden" name="optional" value={ fmt.Sprint(!mi.Optional) }/>
+				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm}) {
+					if mi.Optional {
+						Count it
+					} else {
+						Make optional
+					}
+				}
+			</form>
 			<form method="post" action={ templ.SafeURL("/app/nutrition/meal-ingredients/" + mi.ID.String() + "/delete") }>
 				@ui.CSRFInput()
 				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm}) {
