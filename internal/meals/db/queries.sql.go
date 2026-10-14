@@ -113,9 +113,9 @@ func (q *Queries) CreateIngredient(ctx context.Context, arg CreateIngredientPara
 
 const createMeal = `-- name: CreateMeal :one
 
-INSERT INTO meals (meal_plan_id, day_id, name, option_label, meal_number)
-VALUES ($1, $2, $3, $4, (SELECT COALESCE(MAX(meal_number), 0) + 1 FROM meals WHERE day_id = $2))
-RETURNING id, meal_plan_id, meal_number, name, total_macros, created_at, day_id, option_index, option_label
+INSERT INTO meals (meal_plan_id, day_id, name, option_label, optional, meal_number)
+VALUES ($1, $2, $3, $4, $5, (SELECT COALESCE(MAX(meal_number), 0) + 1 FROM meals WHERE day_id = $2))
+RETURNING id, meal_plan_id, meal_number, name, total_macros, created_at, day_id, option_index, option_label, optional
 `
 
 type CreateMealParams struct {
@@ -123,6 +123,7 @@ type CreateMealParams struct {
 	DayID       uuid.UUID
 	Name        string
 	OptionLabel string
+	Optional    bool
 }
 
 // Meals (within a day)
@@ -134,6 +135,7 @@ func (q *Queries) CreateMeal(ctx context.Context, arg CreateMealParams) (Meal, e
 		arg.DayID,
 		arg.Name,
 		arg.OptionLabel,
+		arg.Optional,
 	)
 	var i Meal
 	err := row.Scan(
@@ -146,6 +148,7 @@ func (q *Queries) CreateMeal(ctx context.Context, arg CreateMealParams) (Meal, e
 		&i.DayID,
 		&i.OptionIndex,
 		&i.OptionLabel,
+		&i.Optional,
 	)
 	return i, err
 }
@@ -203,11 +206,12 @@ func (q *Queries) CreateMealIngredient(ctx context.Context, arg CreateMealIngred
 }
 
 const createMealOption = `-- name: CreateMealOption :one
-INSERT INTO meals (meal_plan_id, day_id, name, meal_number, option_index, option_label)
+INSERT INTO meals (meal_plan_id, day_id, name, meal_number, option_index, option_label, optional)
 VALUES ($1, $2, $3, $4,
     (SELECT COALESCE(MAX(option_index), 0) + 1 FROM meals WHERE day_id = $2 AND meal_number = $4),
-    $5)
-RETURNING id, meal_plan_id, meal_number, name, total_macros, created_at, day_id, option_index, option_label
+    $5,
+    COALESCE((SELECT bool_or(optional) FROM meals WHERE day_id = $2 AND meal_number = $4), false))
+RETURNING id, meal_plan_id, meal_number, name, total_macros, created_at, day_id, option_index, option_label, optional
 `
 
 type CreateMealOptionParams struct {
@@ -219,7 +223,8 @@ type CreateMealOptionParams struct {
 }
 
 // A further option of a day's meal slot, numbered after the slot's last.
-// Callers hold the plan's lock, as for CreateMeal.
+// Callers hold the plan's lock, as for CreateMeal. It takes the slot's optional
+// flag, which belongs to the slot rather than to one option.
 func (q *Queries) CreateMealOption(ctx context.Context, arg CreateMealOptionParams) (Meal, error) {
 	row := q.db.QueryRow(ctx, createMealOption,
 		arg.MealPlanID,
@@ -239,6 +244,7 @@ func (q *Queries) CreateMealOption(ctx context.Context, arg CreateMealOptionPara
 		&i.DayID,
 		&i.OptionIndex,
 		&i.OptionLabel,
+		&i.Optional,
 	)
 	return i, err
 }
@@ -608,7 +614,7 @@ func (q *Queries) GetMealIngredientOwned(ctx context.Context, arg GetMealIngredi
 }
 
 const getMealOwned = `-- name: GetMealOwned :one
-SELECT m.id, m.meal_plan_id, m.meal_number, m.name, m.total_macros, m.created_at, m.day_id, m.option_index, m.option_label FROM meals m
+SELECT m.id, m.meal_plan_id, m.meal_number, m.name, m.total_macros, m.created_at, m.day_id, m.option_index, m.option_label, m.optional FROM meals m
 JOIN meal_plans mp ON mp.id = m.meal_plan_id
 WHERE m.id = $1 AND mp.user_id = $2
 `
@@ -633,6 +639,7 @@ func (q *Queries) GetMealOwned(ctx context.Context, arg GetMealOwnedParams) (Mea
 		&i.DayID,
 		&i.OptionIndex,
 		&i.OptionLabel,
+		&i.Optional,
 	)
 	return i, err
 }
@@ -1092,7 +1099,7 @@ func (q *Queries) ListMealReminders(ctx context.Context, userID uuid.UUID) ([]Me
 }
 
 const listMealsByPlan = `-- name: ListMealsByPlan :many
-SELECT id, meal_plan_id, meal_number, name, total_macros, created_at, day_id, option_index, option_label FROM meals WHERE meal_plan_id = $1 ORDER BY day_id, meal_number, option_index
+SELECT id, meal_plan_id, meal_number, name, total_macros, created_at, day_id, option_index, option_label, optional FROM meals WHERE meal_plan_id = $1 ORDER BY day_id, meal_number, option_index
 `
 
 func (q *Queries) ListMealsByPlan(ctx context.Context, mealPlanID uuid.UUID) ([]Meal, error) {
@@ -1114,6 +1121,7 @@ func (q *Queries) ListMealsByPlan(ctx context.Context, mealPlanID uuid.UUID) ([]
 			&i.DayID,
 			&i.OptionIndex,
 			&i.OptionLabel,
+			&i.Optional,
 		); err != nil {
 			return nil, err
 		}
@@ -1373,6 +1381,28 @@ func (q *Queries) SetMealReminderEnabled(ctx context.Context, arg SetMealReminde
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const setMealSlotOptional = `-- name: SetMealSlotOptional :exec
+UPDATE meals SET optional = $4 WHERE meal_plan_id = $1 AND day_id = $2 AND meal_number = $3
+`
+
+type SetMealSlotOptionalParams struct {
+	MealPlanID uuid.UUID
+	DayID      uuid.UUID
+	MealNumber int16
+	Optional   bool
+}
+
+// Every option of a day's meal slot. Callers hold the plan's lock.
+func (q *Queries) SetMealSlotOptional(ctx context.Context, arg SetMealSlotOptionalParams) error {
+	_, err := q.db.Exec(ctx, setMealSlotOptional,
+		arg.MealPlanID,
+		arg.DayID,
+		arg.MealNumber,
+		arg.Optional,
+	)
+	return err
 }
 
 const sumMealIngredientMacros = `-- name: SumMealIngredientMacros :one

@@ -51,6 +51,7 @@ func (a *API) Routes(r chi.Router) {
 	r.Post("/nutrition/plan-days/{dayID}/meals", a.addMeal)
 	r.Delete("/nutrition/meals/{mealID}", a.removeMeal)
 	r.Post("/nutrition/meals/{mealID}/options", a.addOption)
+	r.Put("/nutrition/meals/{mealID}/optional", a.setMealOptional)
 	r.Post("/nutrition/meals/{mealID}/ingredients", a.addMealIngredient)
 	r.Post("/nutrition/meals/{mealID}/ingredients/batch", a.addMealIngredients)
 	r.Delete("/nutrition/meal-ingredients/{mealIngredientID}", a.removeMealIngredient)
@@ -109,12 +110,16 @@ type MealIngredientView struct {
 }
 
 // MealView is a meal slot's default option, with the slot's other options.
-// Only the default counts toward the day's status.
+// Only the default counts toward the day's status, and not even that when the
+// slot is optional.
 type MealView struct {
-	ID           uuid.UUID            `json:"id"`
-	MealNumber   int                  `json:"mealNumber"`
-	Name         string               `json:"name"`
-	OptionLabel  string               `json:"optionLabel,omitempty"`
+	ID          uuid.UUID `json:"id"`
+	MealNumber  int       `json:"mealNumber"`
+	Name        string    `json:"name"`
+	OptionLabel string    `json:"optionLabel,omitempty"`
+	// Optional is a meal the plan offers but does not count: its total is
+	// its own and left out of the day's status. It covers every option.
+	Optional     bool                 `json:"optional"`
 	TotalMacros  MacrosView           `json:"totalMacros"`
 	Ingredients  []MealIngredientView `json:"ingredients"`
 	Alternatives []MealOptionView     `json:"alternatives,omitempty"`
@@ -253,8 +258,8 @@ type PortionRequest struct {
 	ConfirmOverage bool      `json:"confirmOverage"`
 }
 
-// OptionalRequest marks a meal's food optional (shown, not counted) or
-// counted.
+// OptionalRequest marks a meal, or a meal's food, optional (shown, not
+// counted) or counted.
 type OptionalRequest struct {
 	Optional       bool `json:"optional"`
 	ConfirmOverage bool `json:"confirmOverage"`
@@ -610,6 +615,26 @@ func (a *API) setMealIngredientOptional(w http.ResponseWriter, r *http.Request) 
 	a.writePlan(w, r, http.StatusOK, planID)
 }
 
+// setMealOptional marks a meal slot, every option of it, optional or counted,
+// answering with the whole plan so a client refreshes its totals in one call.
+func (a *API) setMealOptional(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r, "mealID")
+	if !ok {
+		return
+	}
+	var req OptionalRequest
+	if !readJSON(w, r, &req) {
+		return
+	}
+	userID := auth.MustUser(r.Context()).ID
+	plan, err := a.plans.SetMealOptional(r.Context(), id, userID, req.Optional, req.ConfirmOverage)
+	if err != nil {
+		writeChangeError(w, err, "The meal could not be changed.")
+		return
+	}
+	a.writePlan(w, r, http.StatusOK, plan.ID)
+}
+
 func (a *API) removeMealIngredient(w http.ResponseWriter, r *http.Request) {
 	a.remove(w, r, "mealIngredientID", a.plans.RemoveIngredient, "The ingredient could not be removed.")
 }
@@ -807,7 +832,7 @@ func projectPlan(plan MealPlan, target *Macros) PlanDetail {
 		}
 		for _, m := range d.Meals {
 			mv := MealView{
-				ID: m.ID, MealNumber: m.MealNumber, Name: m.Name, OptionLabel: m.OptionLabel,
+				ID: m.ID, MealNumber: m.MealNumber, Name: m.Name, OptionLabel: m.OptionLabel, Optional: m.Optional,
 				TotalMacros: MacrosView(m.TotalMacros), Ingredients: projectMealIngredients(m.Ingredients),
 			}
 			for _, alt := range m.Alternatives {
