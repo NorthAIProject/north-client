@@ -253,3 +253,55 @@ func TestTheReaderMarksOptionalFoods(t *testing.T) {
 		}
 	}
 }
+
+// A meal the source offers but does not require — "Ceia (opcional)" — keeps
+// its foods and is marked as a whole, under its name without the marker, so
+// rows that write the heading either way land in the same meal.
+func TestBuildMealMarksAnOptionalMeal(t *testing.T) {
+	t.Parallel()
+
+	draft, err := buildMeal(MealReading{Rows: []MealRow{
+		{Meal: "Almoço", Food: "arroz", FoodEN: "Rice", Quantity: "100", Unit: "g"},
+		{Meal: "Ceia (opcional)", Food: "iogurte", FoodEN: "Plain yogurt", GramsEstimate: "125"},
+		{Meal: "Ceia", Food: "chá", FoodEN: "Tea", GramsEstimate: "200"},
+		{Meal: "Pré-treino", Food: "banana", FoodEN: "Banana", GramsEstimate: "120", MealOptional: true},
+	}})
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	got := draft.Days[0].Meals
+	if len(got) != 3 {
+		t.Fatalf("meals = %+v, want Almoço, Ceia and Pré-treino", got)
+	}
+	if got[0].Optional {
+		t.Errorf("Almoço is optional, want it counted")
+	}
+	if got[1].Name != "Ceia" || !got[1].Optional || len(got[1].Foods) != 2 {
+		t.Errorf("Ceia = %+v, want one optional meal named Ceia holding both foods", got[1])
+	}
+	if got[2].Name != "Pré-treino" || !got[2].Optional {
+		t.Errorf("Pré-treino = %+v, want it optional as the reader said", got[2])
+	}
+}
+
+func TestSplitOptionalMarker(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		in       string
+		name     string
+		optional bool
+	}{
+		{"Ceia (opcional)", "Ceia", true},
+		{"  Snack (Optional) ", "Snack", true},
+		{"Lanche - opcional", "Lanche", true},
+		{"Merenda [facultativa]", "Merenda", true},
+		{"Pré-treino", "Pré-treino", false},
+		{"Opcional", "Opcional", false},
+		{"Refeição opcional extra", "Refeição opcional extra", false},
+	} {
+		name, optional := splitOptionalMarker(c.in)
+		if name != c.name || optional != c.optional {
+			t.Errorf("splitOptionalMarker(%q) = %q, %v; want %q, %v", c.in, name, optional, c.name, c.optional)
+		}
+	}
+}
