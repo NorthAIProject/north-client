@@ -95,6 +95,9 @@ func TestUntranslatedStringsAreAccountedFor(t *testing.T) {
 			"nav.coach-insights.nav":  true, // "coaching" is borrowed unchanged, like nav.fitness
 			"land.app.beta":           true, // "Beta" is spelled the same
 			"checkins.source.siri":    true, // Siri is a product name
+			"social.country.258":      true, // "Mozambique" is the Spanish spelling too
+			"social.country.61":       true, // "Australia", same spelling
+			"social.country.91":       true, // "India", same spelling
 		},
 	}
 

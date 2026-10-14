@@ -4,7 +4,9 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/NorthAIProject/north-client/internal/habits"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
@@ -91,5 +93,27 @@ func TestWeekdayLabelBounds(t *testing.T) {
 		if got := weekdayLabel(ctx, d); got != "" {
 			t.Errorf("weekday %d renders as %q, want empty", d, got)
 		}
+	}
+}
+
+// A habit's schedule and its life domain were English straight from the domain
+// type; both now follow the reader's language.
+func TestHabitScheduleAndDomainAreTranslated(t *testing.T) {
+	ctx := i18n.WithLocale(context.Background(), "es")
+	h := habits.Habit{Days: []time.Weekday{time.Friday, time.Monday, time.Wednesday}}
+	if got, en := habitSchedule(ctx, h), "Mon, Wed, Fri"; got == en || got == "" {
+		t.Errorf("schedule = %q, want Spanish weekdays", got)
+	}
+	if got := domainLabel(ctx, "health"); got == "Health" || got == "" {
+		t.Errorf("domain = %q, want Spanish", got)
+	}
+	if got := domainLabel(ctx, "astrology"); got != "astrology" {
+		t.Errorf("unknown domain = %q, want the stored value", got)
+	}
+	if got := habitStreak(ctx, 1); got != "Racha de 1 día" {
+		t.Errorf("singular streak = %q", got)
+	}
+	if got := habitStreak(ctx, 4); got != "Racha de 4 días" {
+		t.Errorf("plural streak = %q", got)
 	}
 }

@@ -1,10 +1,12 @@
 package activity
 
 import (
+	"context"
 	"fmt"
 	"time"
 
 	"github.com/NorthAIProject/north-client/internal/activity/activity"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
@@ -17,17 +19,17 @@ import (
 )
 
 templ Page(user users.User, active activity.Session, hasActive bool, recent []activity.Session, todayCalories float64, errMsg string) {
-	@layout.App("Activity", user, layout.BuildNav(ctx, "/app/fitness")) {
+	@layout.App(i18n.T(ctx, "activity.title"), user, layout.BuildNav(ctx, "/app/fitness")) {
 		<div class="mx-auto w-full max-w-2xl space-y-6 p-6 md:p-8">
 			<header>
-				@ui.MonoLabel("Fitness")
-				<h1 class="mt-2 text-2xl font-medium tracking-tight">Activity</h1>
+				@ui.MonoLabel(i18n.T(ctx, "nav.fitness"))
+				<h1 class="mt-2 text-2xl font-medium tracking-tight">{ i18n.T(ctx, "activity.title") }</h1>
 				<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
-					Calorie burn estimated from your weight and the activity's MET value.
+					{ i18n.T(ctx, "activity.intro") }
 				</p>
 				if todayCalories > 0 {
 					<p class="text-signal mt-3 text-sm font-medium">
-						{ fmt.Sprintf("~%.0f kcal burned today", todayCalories) }
+						{ i18n.Tf(ctx, "activity.today.burned", todayCalories) }
 					</p>
 				}
 			</header>
@@ -42,7 +44,7 @@ templ Page(user users.User, active activity.Session, hasActive bool, recent []ac
 			@logCard()
 			if len(recent) > 0 {
 				<section class="space-y-3">
-					<h2 class="text-sm font-medium">Recent</h2>
+					<h2 class="text-sm font-medium">{ i18n.T(ctx, "activity.recent") }</h2>
 					for _, s := range recent {
 						@sessionCard(s)
 					}
@@ -58,7 +60,7 @@ templ startCard() {
 	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 		@card.Header() {
 			@card.Title() {
-				Start a session
+				{ i18n.T(ctx, "activity.start.title") }
 			}
 		}
 		@card.Content() {
@@ -66,23 +68,23 @@ templ startCard() {
 				@ui.CSRFInput()
 				@form.Item() {
 					@label.Label() {
-						Activity
+						{ i18n.T(ctx, "activity.field.activity") }
 					}
 					@selectbox.SelectBox() {
 						@selectbox.Trigger(selectbox.TriggerProps{ID: "activity_code", Name: "activity_code"}) {
-							@selectbox.Value(selectbox.ValueProps{Placeholder: "Choose one"})
+							@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "activity.choose")})
 						}
 						@selectbox.Content() {
 							for _, m := range activity.METTable {
 								@selectbox.Item(selectbox.ItemProps{Value: m.Code}) {
-									{ m.Name }
+									{ metName(ctx, m) }
 								}
 							}
 						}
 					}
 				}
 				@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90"}) {
-					Start
+					{ i18n.T(ctx, "activity.start") }
 				}
 			</form>
 		}
@@ -97,10 +99,10 @@ templ logCard() {
 	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 		@card.Header() {
 			@card.Title() {
-				Log a finished session
+				{ i18n.T(ctx, "activity.log.title") }
 			}
 			@card.Description() {
-				A run you already did, with its distance. Leave the start blank if it just ended.
+				{ i18n.T(ctx, "activity.log.desc") }
 			}
 		}
 		@card.Content() {
@@ -108,16 +110,16 @@ templ logCard() {
 				@ui.CSRFInput()
 				@form.Item() {
 					@label.Label() {
-						Activity
+						{ i18n.T(ctx, "activity.field.activity") }
 					}
 					@selectbox.SelectBox() {
 						@selectbox.Trigger(selectbox.TriggerProps{ID: "log_activity_code", Name: "activity_code"}) {
-							@selectbox.Value(selectbox.ValueProps{Placeholder: "Choose one"})
+							@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "activity.choose")})
 						}
 						@selectbox.Content() {
 							for _, m := range activity.METTable {
 								@selectbox.Item(selectbox.ItemProps{Value: m.Code}) {
-									{ m.Name }
+									{ metName(ctx, m) }
 								}
 							}
 						}
@@ -126,25 +128,25 @@ templ logCard() {
 				<div class="grid gap-4 sm:grid-cols-2">
 					@form.Item() {
 						@label.Label(label.Props{For: "log_minutes"}) {
-							Minutes
+							{ i18n.T(ctx, "activity.field.minutes") }
 						}
 						@input.Input(input.Props{ID: "log_minutes", Name: "minutes", Type: input.TypeNumber, Required: true, Attributes: templ.Attributes{"min": "1", "max": "1440", "step": "1"}})
 					}
 					@form.Item() {
 						@label.Label(label.Props{For: "log_distance_km"}) {
-							Distance (km, optional)
+							{ i18n.T(ctx, "activity.field.distance") }
 						}
 						@input.Input(input.Props{ID: "log_distance_km", Name: "distance_km", Type: input.TypeNumber, Attributes: templ.Attributes{"min": "0", "step": "0.01"}})
 					}
 				</div>
 				@form.Item() {
 					@label.Label(label.Props{For: "log_started_at"}) {
-						Started (optional)
+						{ i18n.T(ctx, "activity.field.started") }
 					}
 					@input.Input(input.Props{ID: "log_started_at", Name: "started_at", Type: input.TypeDateTime})
 				}
 				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
-					Log session
+					{ i18n.T(ctx, "activity.log.submit") }
 				}
 			</form>
 		}
@@ -155,13 +157,13 @@ templ activeCard(s activity.Session) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 		@card.Header() {
 			@card.Title() {
-				{ activityName(s.ActivityCode) }
+				{ activityName(ctx, s.ActivityCode) }
 			}
 			@card.Description() {
 				if s.Status == activity.StatusPaused {
-					Paused
+					{ i18n.T(ctx, "activity.status.paused") }
 				} else {
-					In progress
+					{ i18n.T(ctx, "activity.status.running") }
 				}
 			}
 		}
@@ -171,27 +173,27 @@ templ activeCard(s activity.Session) {
 					<form method="post" action={ templ.SafeURL("/app/activity/" + s.ID.String() + "/resume") }>
 						@ui.CSRFInput()
 						@button.Button(button.Props{Type: button.TypeSubmit}) {
-							Resume
+							{ i18n.T(ctx, "activity.resume") }
 						}
 					</form>
 				} else {
 					<form method="post" action={ templ.SafeURL("/app/activity/" + s.ID.String() + "/pause") }>
 						@ui.CSRFInput()
 						@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
-							Pause
+							{ i18n.T(ctx, "activity.pause") }
 						}
 					</form>
 				}
 				<form method="post" action={ templ.SafeURL("/app/activity/" + s.ID.String() + "/stop") }>
 					@ui.CSRFInput()
 					@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90"}) {
-						Stop
+						{ i18n.T(ctx, "activity.stop") }
 					}
 				</form>
 				<form method="post" action={ templ.SafeURL("/app/activity/" + s.ID.String() + "/cancel") }>
 					@ui.CSRFInput()
 					@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost}) {
-						Cancel
+						{ i18n.T(ctx, "activity.cancel") }
 					}
 				</form>
 			</div>
@@ -203,9 +205,9 @@ templ sessionCard(s activity.Session) {
 	@card.Card(card.Props{Class: "border-hairline"}) {
 		@card.Content(card.ContentProps{Class: "py-4"}) {
 			<div class="flex items-center justify-between text-sm">
-				<span>{ activityName(s.ActivityCode) }</span>
+				<span>{ activityName(ctx, s.ActivityCode) }</span>
 				<span class="text-muted-foreground">
-					{ sessionSummary(s) }
+					{ sessionSummary(ctx, s) }
 				</span>
 			</div>
 		}
@@ -214,8 +216,8 @@ templ sessionCard(s activity.Session) {
 
 // sessionSummary is the one line a finished session reads as: when, how
 // long, how far and at what pace when known, and the burn.
-func sessionSummary(s activity.Session) string {
-	out := s.StartedAt.Format("2 Jan")
+func sessionSummary(ctx context.Context, s activity.Session) string {
+	out := i18n.Date(ctx, s.StartedAt, "2 Jan")
 	if s.EndedAt != nil {
 		out += " · " + formatMinutes(s.Elapsed(*s.EndedAt))
 	}
@@ -241,9 +243,20 @@ func formatPace(d time.Duration) string {
 	return fmt.Sprintf("%d:%02d", int(d/time.Minute), int(d%time.Minute/time.Second))
 }
 
-func activityName(code string) string {
+func activityName(ctx context.Context, code string) string {
 	if m, ok := activity.LookupMET(code); ok {
-		return m.Name
+		return metName(ctx, m)
 	}
 	return code
+}
+
+// metName is the activity's name in the reader's language. The MET table keeps
+// its English name as the fallback, so an entry added there before the
+// catalogue still reads as a word rather than a key.
+func metName(ctx context.Context, m activity.MET) string {
+	key := "activity.met." + m.Code
+	if got := i18n.T(ctx, key); got != key {
+		return got
+	}
+	return m.Name
 }

@@ -89,4 +89,16 @@ var englishDashboard = map[string]string{
 
 	// The check-in row once done: today's numbers and when.
 	"dash.today.checkin.done": "Mood %[1]d · energy %[2]d · %[3]s",
+
+	// Feed rows: how long ago, kept short. Older than a week is a date.
+	"dash.feed.now":     "just now",
+	"dash.feed.minutes": "%[1]dm ago",
+	"dash.feed.hours":   "%[1]dh ago",
+	"dash.feed.days":    "%[1]dd ago",
+
+	"dash.goals.week.one":  "1 this week",
+	"dash.goals.week.many": "%[1]d this week",
+	"dash.habits.kept":     "%[1]d kept of %[2]d scheduled",
+	"dash.habits.best":     "best streak %[1]d",
+	"dash.hydration.today": "Today %[1]d%% · %[2]s",
 }

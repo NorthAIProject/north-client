@@ -286,7 +286,7 @@ templ moodHeatmap(inst Instruments) {
 				@templ.JSONScript("checkins-mood-heatmap-option", inst.Heatmap)
 				@ui.EChartsMount("checkins-mood-heatmap", "checkins-mood-heatmap-option", "border-hairline min-h-32 w-full rounded-md border")
 			} else {
-				<p class="text-muted-foreground text-sm">Check in to see your pattern.</p>
+				<p class="text-muted-foreground text-sm">{ i18n.T(ctx, "checkins.heatmap.empty") }</p>
 			}
 		}
 	}
@@ -311,14 +311,14 @@ templ SavedPanel(c checkin.CheckIn, streak int, m *moments.Moment) {
 		}
 		@card.Card(card.Props{Class: "border-signal/30 bg-signal/5"}) {
 			@card.Content() {
-				<p class="font-mono text-[10px] uppercase tracking-[0.14em] text-signal">Logged</p>
-				<p class="mt-2 text-lg font-medium tracking-tight">{ c.Label() }</p>
+				<p class="font-mono text-[10px] uppercase tracking-[0.14em] text-signal">{ i18n.T(ctx, "checkins.logged") }</p>
+				<p class="mt-2 text-lg font-medium tracking-tight">{ checkinLabel(ctx, c) }</p>
 				if c.RelatedGoalTitle != "" {
-					<p class="text-muted-foreground mt-1 text-sm">Related: { c.RelatedGoalTitle }</p>
+					<p class="text-muted-foreground mt-1 text-sm">{ i18n.Tf(ctx, "checkins.related", c.RelatedGoalTitle) }</p>
 				}
 				if streak > 0 {
 					<p class="text-muted-foreground mt-1 text-sm">
-						{ strconv.Itoa(streak) }-day streak. Same time tomorrow.
+						{ streakSaved(ctx, streak) }
 					</p>
 				}
 				<div class="mt-5 flex flex-col gap-2 sm:flex-row">
@@ -663,7 +663,7 @@ templ historyCard(c checkin.CheckIn, loc *time.Location) {
 	@card.Card(card.Props{Class: "border-hairline"}) {
 		@card.Content(card.ContentProps{Class: "py-4"}) {
 			<div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-				<p class="text-sm font-medium">{ c.Label() }</p>
+				<p class="text-sm font-medium">{ checkinLabel(ctx, c) }</p>
 				<p class="text-muted-foreground font-mono text-[10px] tabular-nums" data-checkin-meta>
 					{ entryTimes(ctx, c, loc) }
 					if label := SourceLabel(ctx, c.Source); label != "" {
@@ -672,7 +672,7 @@ templ historyCard(c checkin.CheckIn, loc *time.Location) {
 				</p>
 			</div>
 			<p class="text-muted-foreground mt-1 text-xs tabular-nums">
-				Mood { strconv.Itoa(c.Mood) }/5 · energy { strconv.Itoa(c.Energy) }/5
+				{ i18n.Tf(ctx, "checkins.meta.moodenergy", c.Mood, c.Energy) }
 				if c.Stress != nil {
 					· { i18n.Tf(ctx, "checkins.meta.stress", *c.Stress) }
 				}
@@ -690,7 +690,7 @@ templ historyCard(c checkin.CheckIn, loc *time.Location) {
 				</div>
 			}
 			if c.RelatedGoalTitle != "" {
-				<p class="text-muted-foreground mt-1 text-sm">Related: { c.RelatedGoalTitle }</p>
+				<p class="text-muted-foreground mt-1 text-sm">{ i18n.Tf(ctx, "checkins.related", c.RelatedGoalTitle) }</p>
 			}
 			if c.Wins != "" {
 				<p class="text-muted-foreground mt-1 text-sm">Wins: { c.Wins }</p>
@@ -730,4 +730,19 @@ func SourceLabel(ctx context.Context, s checkin.Source) string {
 	default:
 		return ""
 	}
+}
+
+// checkinLabel is checkin.CheckIn.Label in the reader's language. The domain
+// method stays English: it is what the coach reads.
+func checkinLabel(ctx context.Context, c checkin.CheckIn) string {
+	return i18n.Tf(ctx, "checkins.label", i18n.Date(ctx, c.LocalDate, "Mon 2 Jan"), c.Mood, c.Energy)
+}
+
+// streakSaved has a singular because "1-day streak" is not how any of these
+// languages count one day.
+func streakSaved(ctx context.Context, streak int) string {
+	if streak == 1 {
+		return i18n.T(ctx, "checkins.streak.saved.one")
+	}
+	return i18n.Tf(ctx, "checkins.streak.saved.many", streak)
 }
