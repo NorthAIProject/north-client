@@ -1,7 +1,6 @@
 package workoutsummary
 
 import (
-	"fmt"
 	"strings"
 	"time"
 
@@ -20,14 +19,23 @@ type Readiness struct {
 	// Fresh are muscles trained this past week that have already recovered.
 	Fresh []string
 	// Stale is each detrained muscle with how long since it was worked,
-	// longest gap first: "Quads · 25 days".
-	Stale []string
-	When  string
+	// longest gap first.
+	Stale []StaleMuscle
+	// LastSession is when the most recent set was logged, in the load's zone.
+	LastSession time.Time
+}
+
+// StaleMuscle is a muscle going untrained. Kept as data so the card can say
+// "25 days" in the reader's language; muscle names stay English, like the
+// exercise catalogue they come from.
+type StaleMuscle struct {
+	Name string
+	Days int
 }
 
 // NewReadiness shapes a Load for the card.
 func NewReadiness(l lift.Load) Readiness {
-	r := Readiness{When: "Last session " + l.LastSession.In(l.At.Location()).Format("Mon 2 Jan")}
+	r := Readiness{LastSession: l.LastSession.In(l.At.Location())}
 	for _, m := range l.Muscles {
 		switch {
 		case m.State == lift.StateFatigued:
@@ -40,7 +48,7 @@ func NewReadiness(l lift.Load) Readiness {
 	}
 	for _, m := range l.Detrained() {
 		days := int(l.At.Sub(m.LastTrained).Hours() / 24)
-		r.Stale = append(r.Stale, fmt.Sprintf("%s · %d days", muscleLabel(m.Muscle), days))
+		r.Stale = append(r.Stale, StaleMuscle{Name: muscleLabel(m.Muscle), Days: days})
 	}
 	return r
 }

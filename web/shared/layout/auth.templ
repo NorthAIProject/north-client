@@ -1,6 +1,9 @@
 package layout
 
-import "github.com/NorthAIProject/north-client/web/shared/ui"
+import (
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+)
 
 // Auth is the layout for signed-out pages: a single centred card with no
 // navigation, so there is nothing to do on the page except the one thing it is
@@ -35,7 +38,7 @@ templ authShell(title string, widthClass string) {
 						@ui.BrandLockup("/", "size-7", "text-xl font-medium tracking-tight")
 					</div>
 					<div class="mt-3">
-						@ui.MonoLabel("Continue your thread")
+						@ui.MonoLabel(i18n.T(ctx, "layout.auth.tagline"))
 					</div>
 				</div>
 				{ children... }
