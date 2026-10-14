@@ -1,12 +1,14 @@
 package workouts
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"time"
 
 	"github.com/google/uuid"
 
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/ui/badge"
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
@@ -115,19 +117,14 @@ func (v WeekView) closed(weekday string) bool {
 	return false
 }
 
-func (v WeekView) title() string {
+// text words a key that differs between this week and next: key + ".this"
+// or key + ".next". Whole sentences rather than "Change" + "this week",
+// because the phrase does not split the same way in every language.
+func (v WeekView) text(ctx context.Context, key string) string {
 	if v.NextWeek {
-		return "Next week"
+		return i18n.T(ctx, key+".next")
 	}
-	return "This week"
-}
-
-// lowerTitle is title() mid-sentence: "Change this week".
-func (v WeekView) lowerTitle() string {
-	if v.NextWeek {
-		return "next week"
-	}
-	return "this week"
+	return i18n.T(ctx, key+".this")
 }
 
 func (v WeekView) query() string {
@@ -149,7 +146,7 @@ templ WeekCard(v WeekView) {
 			}
 			@card.Content() {
 				if len(v.Days) == 0 {
-					<p class="text-muted-foreground text-sm">A rest week — nothing is scheduled.</p>
+					<p class="text-muted-foreground text-sm">{ i18n.T(ctx, "workouts.week.rest") }</p>
 				}
 				<ul class="divide-border divide-y">
 					for _, d := range v.Days {
@@ -166,13 +163,13 @@ templ WeekCard(v WeekView) {
 							"hx-swap":   "outerHTML",
 						},
 					}) {
-						Change { v.lowerTitle() }
+						{ v.text(ctx, "workouts.week.change") }
 					}
 					if v.Custom {
 						<form hx-post={ "/app/training/week/reset" + v.query() } hx-target={ "#" + weekDOMID } hx-swap="outerHTML">
 							@ui.CSRFInput()
 							@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Type: button.TypeSubmit}) {
-								Back to your usual week
+								{ i18n.T(ctx, "workouts.week.reset") }
 							}
 						</form>
 					}
@@ -186,12 +183,12 @@ templ weekHeader(v WeekView) {
 	<div class="flex flex-wrap items-start justify-between gap-3">
 		<div>
 			@card.Title(card.TitleProps{Class: "text-base"}) {
-				{ v.title() }
+				{ v.text(ctx, "workouts.week.title") }
 			}
 			<p class="text-muted-foreground mt-1 text-sm">
-				{ strconv.Itoa(len(v.Days)) } training days from { v.Start.Format("Mon 2 Jan") }
+				{ i18n.Tf(ctx, "workouts.week.summary", len(v.Days), i18n.Date(ctx, v.Start, "Mon 2 Jan")) }
 				if v.Custom {
-					· changed from your usual week
+					· { i18n.T(ctx, "workouts.week.custom") }
 				}
 			</p>
 		</div>
@@ -205,9 +202,9 @@ templ weekHeader(v WeekView) {
 			},
 		}) {
 			if v.NextWeek {
-				This week
+				{ i18n.T(ctx, "workouts.week.title.this") }
 			} else {
-				Next week
+				{ i18n.T(ctx, "workouts.week.title.next") }
 			}
 		}
 	</div>
@@ -215,7 +212,7 @@ templ weekHeader(v WeekView) {
 
 templ weekDayRow(d WeekDayView) {
 	<li class="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5">
-		<span class="w-24 shrink-0 text-sm font-medium">{ d.Date.Format("Mon 2 Jan") }</span>
+		<span class="w-24 shrink-0 text-sm font-medium">{ i18n.Date(ctx, d.Date, "Mon 2 Jan") }</span>
 		<span class="min-w-0 flex-1 text-sm">
 			{ d.Focus }
 			if d.FromOtherPlan {
@@ -227,11 +224,11 @@ templ weekDayRow(d WeekDayView) {
 		}
 		if d.Completed {
 			@badge.Badge(badge.Props{Variant: badge.VariantOutline, Class: "border-signal/40 text-signal"}) {
-				Completed
+				{ i18n.T(ctx, "workouts.status.completed") }
 			}
 		} else if d.IsNext {
 			@badge.Badge(badge.Props{Class: "bg-signal text-background"}) {
-				Next
+				{ i18n.T(ctx, "workouts.status.next") }
 			}
 		}
 	</li>
@@ -245,10 +242,10 @@ templ WeekEditor(v WeekView) {
 		@card.Card() {
 			@card.Header() {
 				@card.Title(card.TitleProps{Class: "text-base"}) {
-					Change { v.lowerTitle() }
+					{ v.text(ctx, "workouts.week.change") }
 				}
 				<p class="text-muted-foreground mt-1 text-sm">
-					Pick the days you can train. Each day gets the next session of your plan, and anything left over carries into the following week.
+					{ i18n.T(ctx, "workouts.week.editor.lede") }
 				</p>
 			}
 			@card.Content() {
@@ -280,7 +277,7 @@ templ WeekEditor(v WeekView) {
 								"hx-swap":    "outerHTML",
 							},
 						}) {
-							Save { v.lowerTitle() }
+							{ v.text(ctx, "workouts.week.save") }
 						}
 						@button.Button(button.Props{
 							Variant: button.VariantGhost,
@@ -292,7 +289,7 @@ templ WeekEditor(v WeekView) {
 								"hx-swap":    "outerHTML",
 							},
 						}) {
-							Cancel
+							{ i18n.T(ctx, "workouts.cancel") }
 						}
 					</div>
 				</form>
@@ -306,7 +303,7 @@ templ WeekEditor(v WeekView) {
 // dayCountButtons suggest a whole week for a number of days.
 templ dayCountButtons(v WeekView) {
 	<fieldset>
-		<legend class="mb-2 text-sm font-medium">How many days?</legend>
+		<legend class="mb-2 text-sm font-medium">{ i18n.T(ctx, "workouts.week.howmany") }</legend>
 		<div class="flex flex-wrap gap-1.5">
 			for n := 1; n <= 7; n++ {
 				@button.Button(button.Props{
@@ -318,7 +315,7 @@ templ dayCountButtons(v WeekView) {
 						"hx-target":  "#" + weekDOMID,
 						"hx-swap":    "outerHTML",
 						"hx-vals":    fmt.Sprintf(`{"days": "%d"}`, n),
-						"aria-label": fmt.Sprintf("%d days", n),
+						"aria-label": i18n.Tf(ctx, "workouts.week.ndays", n),
 					},
 				}) {
 					{ strconv.Itoa(n) }
@@ -337,13 +334,13 @@ func dayCountVariant(selected bool) button.Variant {
 
 templ weekdayToggles(v WeekView) {
 	<fieldset>
-		<legend class="mb-2 text-sm font-medium">Which days?</legend>
+		<legend class="mb-2 text-sm font-medium">{ i18n.T(ctx, "workouts.week.which") }</legend>
 		<div class="flex flex-wrap gap-x-4 gap-y-2">
 			for _, wd := range weekdays {
 				<div class="flex items-center gap-2">
 					@checkbox.Checkbox(checkbox.Props{ID: "week-" + wd, Name: "weekday", Value: wd, Checked: v.trains(wd), Disabled: v.closed(wd)})
 					@label.Label(label.Props{For: "week-" + wd}) {
-						{ wd[:3] }
+						{ weekdayShort(ctx, wd) }
 					}
 				</div>
 			}
@@ -355,7 +352,7 @@ templ sourcePicker(v WeekView) {
 	if len(v.Plans) > 1 {
 		<div>
 			@label.Label(label.Props{For: "week-plan-" + v.Render}) {
-				Fill the days from
+				{ i18n.T(ctx, "workouts.week.source") }
 			}
 			@selectbox.SelectBox(selectbox.Props{Class: "mt-2"}) {
 				@selectbox.Trigger(selectbox.TriggerProps{ID: "week-plan-" + v.Render, Name: "plan"}) {
@@ -364,7 +361,7 @@ templ sourcePicker(v WeekView) {
 				@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
 					for _, p := range v.Plans {
 						@selectbox.Item(selectbox.ItemProps{Value: p.ID.String(), Selected: p.ID == v.Source}) {
-							{ p.Name } · { strconv.Itoa(p.Days) } days
+							{ p.Name } · { i18n.Tf(ctx, "workouts.week.ndays", p.Days) }
 						}
 					}
 				}
@@ -381,7 +378,7 @@ templ matchingPlans(v WeekView) {
 			<div class="flex flex-wrap items-center justify-between gap-2">
 				<span>
 					<span class="font-medium">{ p.Name }</span>
-					<span class="text-muted-foreground">is built for { strconv.Itoa(p.Days) } days.</span>
+					<span class="text-muted-foreground">{ i18n.Tf(ctx, "workouts.week.builtfor", p.Days) }</span>
 				</span>
 				@button.Button(button.Props{
 					Variant: button.VariantOutline,
@@ -394,7 +391,7 @@ templ matchingPlans(v WeekView) {
 						"hx-vals":    fmt.Sprintf(`{"plan": "%s", "days": "%d"}`, p.ID, p.Days),
 					},
 				}) {
-					Use it this week
+					{ i18n.T(ctx, "workouts.week.useit") }
 				}
 			</div>
 		}
@@ -406,15 +403,15 @@ templ matchingPlans(v WeekView) {
 templ sessionPickers(v WeekView) {
 	if len(v.Days) > 0 {
 		<fieldset class="space-y-2">
-			<legend class="mb-1 text-sm font-medium">Sessions</legend>
+			<legend class="mb-1 text-sm font-medium">{ i18n.T(ctx, "workouts.week.sessions") }</legend>
 			for _, wd := range weekdays {
 				if d, ok := v.day(wd); ok {
 					<div class="flex flex-wrap items-center gap-3">
-						<span class="w-24 shrink-0 text-sm">{ d.Date.Format("Mon 2 Jan") }</span>
+						<span class="w-24 shrink-0 text-sm">{ i18n.Date(ctx, d.Date, "Mon 2 Jan") }</span>
 						if d.Completed {
 							<span class="text-sm">{ d.Focus }</span>
 							@badge.Badge(badge.Props{Variant: badge.VariantOutline, Class: "border-signal/40 text-signal"}) {
-								Completed
+								{ i18n.T(ctx, "workouts.status.completed") }
 							}
 						} else {
 							@selectbox.SelectBox(selectbox.Props{Class: "min-w-0 flex-1"}) {
@@ -423,7 +420,7 @@ templ sessionPickers(v WeekView) {
 								}
 								@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
 									@selectbox.Item(selectbox.ItemProps{Value: "", Selected: d.Pinned == ""}) {
-										Next in your plan · { d.Focus }
+										{ i18n.T(ctx, "workouts.week.nextinplan") } · { d.Focus }
 									}
 									for _, o := range v.Sessions {
 										@selectbox.Item(selectbox.ItemProps{Value: o.Value, Selected: d.Pinned == o.Value}) {
@@ -444,11 +441,11 @@ templ sessionPickers(v WeekView) {
 templ FollowCard(planID uuid.UUID) {
 	@card.Card(card.Props{Class: "mb-6"}) {
 		@card.Content(card.ContentProps{Class: "flex flex-wrap items-center justify-between gap-3 pt-6"}) {
-			<p class="text-muted-foreground text-sm">You are not following this plan right now.</p>
+			<p class="text-muted-foreground text-sm">{ i18n.T(ctx, "workouts.follow.lede") }</p>
 			<form method="post" action={ templ.SafeURL(fmt.Sprintf("/app/training/%s/activate", planID)) }>
 				@ui.CSRFInput()
 				@button.Button(button.Props{Size: button.SizeSm, Type: button.TypeSubmit}) {
-					Follow this plan
+					{ i18n.T(ctx, "workouts.follow.button") }
 				}
 			</form>
 		}

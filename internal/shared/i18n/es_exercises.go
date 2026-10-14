@@ -1,3 +1,78 @@
 package i18n
 
-var spanishExercises = map[string]string{}
+var spanishExercises = map[string]string{
+	"exercises.browse.lede":         "Lo que trabaja cada movimiento, mostrado en el modelo. El entrenador elige de este mismo catálogo cuando te escribe un plan.",
+	"exercises.browse.count":        "%[1]d ejercicios",
+	"exercises.browse.range":        "Mostrando %[1]d-%[2]d de %[3]d ejercicios",
+	"exercises.browse.none":         "No hay resultados. Prueba con un filtro más amplio.",
+	"exercises.browse.clearfilters": "Quitar filtros",
+
+	"exercises.filter.search":    "Buscar por nombre",
+	"exercises.filter.muscle":    "Cualquier músculo",
+	"exercises.filter.category":  "Cualquier tipo",
+	"exercises.filter.equipment": "Cualquier material",
+	"exercises.filter.submit":    "Filtrar",
+	"exercises.filter.clear":     "Limpiar",
+
+	"exercises.page.prev": "Anterior",
+	"exercises.page.next": "Siguiente",
+
+	"exercises.detail.primary":   "Principales",
+	"exercises.detail.secondary": "Secundarios",
+	"exercises.detail.video":     "Ver el movimiento",
+	"exercises.detail.howto":     "Cómo se hace",
+
+	"exercises.next.label":  "Y ahora",
+	"exercises.next.noplan": "Crea un plan de entrenamiento y el entrenador elegirá movimientos como este por ti.",
+	"exercises.next.build":  "Crear un plan de entrenamiento",
+	"exercises.next.inplan": "Ya está en tu plan: %[1]s.",
+	"exercises.next.open":   "Abrir tu plan",
+	"exercises.next.add":    "Todavía no está en tu plan. Añádelo a un día:",
+
+	"exercises.similar.title": "Más ejercicios de %[1]s",
+	"exercises.similar.all":   "Ver todos",
+
+	"exercises.partial.before": "Lo que trabaja",
+	"exercises.partial.after":  ".",
+
+	"exercises.muscle.quads":      "Cuádriceps",
+	"exercises.muscle.glutes":     "Glúteos",
+	"exercises.muscle.hamstrings": "Isquiotibiales",
+	"exercises.muscle.calves":     "Gemelos",
+	"exercises.muscle.adductors":  "Aductores",
+	"exercises.muscle.traps":      "Trapecios",
+	"exercises.muscle.delts":      "Deltoides",
+	"exercises.muscle.biceps":     "Bíceps",
+	"exercises.muscle.triceps":    "Tríceps",
+	"exercises.muscle.forearms":   "Antebrazos",
+	"exercises.muscle.lats":       "Dorsales",
+	"exercises.muscle.rhomboids":  "Romboides",
+	"exercises.muscle.erectors":   "Erectores espinales",
+	"exercises.muscle.serratus":   "Serrato",
+	"exercises.muscle.abs":        "Abdominales",
+	"exercises.muscle.chest":      "Pecho",
+	"exercises.muscle.neck":       "Cuello",
+
+	"exercises.category.strength":              "Fuerza",
+	"exercises.category.cardio":                "Cardiovascular",
+	"exercises.category.stretching":            "Estiramientos",
+	"exercises.category.plyometrics":           "Pliometría",
+	"exercises.category.powerlifting":          "Levantamiento de potencia",
+	"exercises.category.olympic_weightlifting": "Halterofilia",
+	"exercises.category.strongman":             "Pruebas de fuerza",
+
+	"exercises.difficulty.beginner":     "Principiante",
+	"exercises.difficulty.intermediate": "Intermedio",
+	"exercises.difficulty.expert":       "Avanzado",
+
+	"exercises.equipment.none":            "Sin material",
+	"exercises.equipment.barbell":         "Barra",
+	"exercises.equipment.dumbbell":        "Mancuerna",
+	"exercises.equipment.kettlebell":      "Pesa rusa",
+	"exercises.equipment.machine":         "Máquina",
+	"exercises.equipment.bench":           "Banco",
+	"exercises.equipment.pull_up_bar":     "Barra de dominadas",
+	"exercises.equipment.resistance_band": "Banda elástica",
+	"exercises.equipment.bike":            "Bicicleta",
+	"exercises.equipment.other":           "Otro",
+}

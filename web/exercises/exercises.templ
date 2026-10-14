@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/NorthAIProject/north-client/internal/exercises/exercise"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/workouts/plan"
 	"github.com/NorthAIProject/north-client/web/shared/exerciseart"
@@ -23,23 +24,23 @@ import (
 )
 
 templ Browse(user users.User, found []exercise.Exercise, f Filters, p Page) {
-	@layout.App("Exercises", user, layout.BuildNav(ctx, "/app/fitness")) {
+	@layout.App(i18n.T(ctx, "nav.exercises"), user, layout.BuildNav(ctx, "/app/fitness")) {
 		<div class="mx-auto w-full max-w-4xl space-y-6 p-6 md:p-8">
 			<header>
-				@ui.MonoLabel("Fitness")
-				<h1 class="mt-2 text-2xl font-medium tracking-tight">Exercises</h1>
+				@ui.MonoLabel(i18n.T(ctx, "nav.fitness"))
+				<h1 class="mt-2 text-2xl font-medium tracking-tight">{ i18n.T(ctx, "nav.exercises") }</h1>
 				<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
-					What each movement trains, shown on the model. The coach picks from this same catalog when it writes you a plan.
+					{ i18n.T(ctx, "exercises.browse.lede") }
 				</p>
 			</header>
 			@filterForm(f)
 			<p class="text-muted-foreground font-mono text-[10px] uppercase tracking-[0.14em]">
-				{ summary(len(found), p) }
+				{ summary(ctx, len(found), p) }
 			</p>
 			if len(found) == 0 {
 				<div class="border-hairline text-muted-foreground rounded-lg border border-dashed px-4 py-8 text-center text-sm">
-					<p>Nothing matched. Try a broader filter.</p>
-					<a href="/app/exercises" class="text-signal mt-2 inline-block text-xs hover:underline">Clear filters</a>
+					<p>{ i18n.T(ctx, "exercises.browse.none") }</p>
+					<a href="/app/exercises" class="text-signal mt-2 inline-block text-xs hover:underline">{ i18n.T(ctx, "exercises.browse.clearfilters") }</a>
 				</div>
 			} else {
 				<ul class="space-y-2">
@@ -64,51 +65,51 @@ templ filterForm(f Filters) {
 		@input.Input(input.Props{
 			Name:        "q",
 			Value:       f.Query,
-			Placeholder: "Search by name",
+			Placeholder: i18n.T(ctx, "exercises.filter.search"),
 			Type:        input.TypeSearch,
 		})
 		@selectbox.SelectBox() {
 			@selectbox.Trigger(selectbox.TriggerProps{ID: "muscle", Name: "muscle"}) {
-				@selectbox.Value(selectbox.ValueProps{Placeholder: "Any muscle"})
+				@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "exercises.filter.muscle")})
 			}
 			@selectbox.Content() {
 				for _, key := range plan.MuscleGroups {
 					@selectbox.Item(selectbox.ItemProps{Value: key, Selected: f.Muscle == key}) {
-						{ humanize(key) }
+						{ muscleLabel(ctx, key) }
 					}
 				}
 			}
 		}
 		@selectbox.SelectBox() {
 			@selectbox.Trigger(selectbox.TriggerProps{ID: "category", Name: "category"}) {
-				@selectbox.Value(selectbox.ValueProps{Placeholder: "Any type"})
+				@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "exercises.filter.category")})
 			}
 			@selectbox.Content() {
 				for _, category := range exercise.Categories {
 					@selectbox.Item(selectbox.ItemProps{Value: category, Selected: f.Category == category}) {
-						{ humanize(category) }
+						{ categoryLabel(ctx, category) }
 					}
 				}
 			}
 		}
 		@selectbox.SelectBox() {
 			@selectbox.Trigger(selectbox.TriggerProps{ID: "equipment", Name: "equipment"}) {
-				@selectbox.Value(selectbox.ValueProps{Placeholder: "Any equipment"})
+				@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "exercises.filter.equipment")})
 			}
 			@selectbox.Content() {
 				for _, item := range equipmentOptions {
 					@selectbox.Item(selectbox.ItemProps{Value: item, Selected: f.Equipment == item}) {
-						{ humanize(item) }
+						{ equipmentLabel(ctx, item) }
 					}
 				}
 			}
 		}
 		<div class="flex gap-2 sm:col-span-2 lg:col-span-4">
 			@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90"}) {
-				Filter
+				{ i18n.T(ctx, "exercises.filter.submit") }
 			}
 			@button.Button(button.Props{Href: "/app/exercises", Variant: button.VariantGhost}) {
-				Clear
+				{ i18n.T(ctx, "exercises.filter.clear") }
 			}
 		</div>
 	</form>
@@ -124,7 +125,7 @@ templ row(e exercise.Exercise) {
 			<span class="min-w-0 flex-1 text-sm font-medium">{ e.Name }</span>
 			for _, key := range e.Primary {
 				@badge.Badge(badge.Props{Variant: badge.VariantDefault}) {
-					{ humanize(key) }
+					{ muscleLabel(ctx, key) }
 				}
 			}
 			@exerciserow.Equipment(e)
@@ -150,11 +151,11 @@ templ Detail(user users.User, v DetailView) {
 							Class: "border-hairline bg-surface rounded-lg border p-4",
 						})
 					}
-					@muscleCard("Primary", e.Primary)
-					@muscleCard("Secondary", e.Secondary)
+					@muscleCard(i18n.T(ctx, "exercises.detail.primary"), e.Primary)
+					@muscleCard(i18n.T(ctx, "exercises.detail.secondary"), e.Secondary)
 					if e.VideoURL != "" {
 						@button.Button(button.Props{Href: e.VideoURL, Variant: button.VariantOutline, Target: "_blank"}) {
-							Watch the movement
+							{ i18n.T(ctx, "exercises.detail.video") }
 						}
 					}
 				</div>
@@ -163,7 +164,7 @@ templ Detail(user users.User, v DetailView) {
 				@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 					@card.Header() {
 						@card.Title() {
-							How to do it
+							{ i18n.T(ctx, "exercises.detail.howto") }
 						}
 					}
 					@card.Content() {
@@ -186,19 +187,19 @@ templ Detail(user users.User, v DetailView) {
 templ detailHeader(e exercise.Exercise) {
 	<header>
 		<a href="/app/exercises" class="text-muted-foreground hover:text-foreground font-mono text-[10px] uppercase tracking-[0.14em]">
-			&larr; Exercises
+			&larr; { i18n.T(ctx, "nav.exercises") }
 		</a>
 		<h1 class="mt-2 text-2xl font-medium tracking-tight">{ e.Name }</h1>
 		<div class="mt-3 flex flex-wrap items-center gap-2">
 			@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
-				{ humanize(e.Category) }
+				{ categoryLabel(ctx, e.Category) }
 			}
 			@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
-				{ humanize(e.Difficulty) }
+				{ difficultyLabel(ctx, e.Difficulty) }
 			}
 			if e.NeedsEquipment() {
 				@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
-					{ humanize(e.Equipment) }
+					{ equipmentLabel(ctx, e.Equipment) }
 				}
 			}
 		</div>
@@ -211,28 +212,28 @@ templ detailHeader(e exercise.Exercise) {
 // JavaScript and lands on the plan with the exercise in it.
 templ nextStep(v DetailView) {
 	<section data-exercise-next class="border-hairline bg-surface rounded-lg border p-4">
-		@ui.MonoLabel("What next")
+		@ui.MonoLabel(i18n.T(ctx, "exercises.next.label"))
 		if !v.HasPlan() {
 			<p class="mt-2 text-sm leading-relaxed">
-				Build a training plan and the coach will pick movements like this one for you.
+				{ i18n.T(ctx, "exercises.next.noplan") }
 			</p>
 			<div class="mt-3">
 				@button.Button(button.Props{Href: "/app/training", Class: "bg-signal text-background hover:bg-signal/90"}) {
-					Build a training plan
+					{ i18n.T(ctx, "exercises.next.build") }
 				}
 			</div>
 		} else {
-			if days := v.inPlanOn(); len(days) > 0 {
+			if days := v.inPlanOn(ctx); len(days) > 0 {
 				<p class="mt-2 text-sm leading-relaxed">
-					Already in your plan on { strings.Join(days, ", ") }.
+					{ i18n.Tf(ctx, "exercises.next.inplan", strings.Join(days, ", ")) }
 				</p>
 				<div class="mt-3">
 					@button.Button(button.Props{Href: v.planHref(), Class: "bg-signal text-background hover:bg-signal/90"}) {
-						Open your plan
+						{ i18n.T(ctx, "exercises.next.open") }
 					}
 				</div>
 			} else {
-				<p class="mt-2 text-sm leading-relaxed">Not in your plan yet. Add it to a day:</p>
+				<p class="mt-2 text-sm leading-relaxed">{ i18n.T(ctx, "exercises.next.add") }</p>
 			}
 			<ul class="mt-3 flex flex-wrap gap-2">
 				for _, day := range v.Days {
@@ -242,7 +243,7 @@ templ nextStep(v DetailView) {
 								@ui.CSRFInput()
 								<input type="hidden" name="catalog_slug" value={ v.Exercise.Slug }/>
 								@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Size: button.SizeSm}) {
-									+ { dayLabel(day) }
+									+ { dayLabel(ctx, day) }
 								}
 							</form>
 						</li>
@@ -258,12 +259,12 @@ templ nextStep(v DetailView) {
 templ similarList(e exercise.Exercise, similar []exercise.Exercise) {
 	<section class="space-y-2">
 		<div class="flex items-baseline justify-between gap-3">
-			@ui.MonoLabel("Also trains " + humanize(e.Primary[0]))
+			@ui.MonoLabel(i18n.Tf(ctx, "exercises.similar.title", muscleLabel(ctx, e.Primary[0])))
 			<a
 				href={ templ.SafeURL(Filters{Muscle: e.Primary[0]}.pageURL(1)) }
 				class="text-signal text-xs hover:underline"
 			>
-				See all
+				{ i18n.T(ctx, "exercises.similar.all") }
 			</a>
 		</div>
 		<ul class="space-y-2">
@@ -306,7 +307,7 @@ templ MusclePartial(e exercise.Exercise) {
 			@viewer("coach-muscles-"+e.Slug, e)
 		}
 		<figcaption class="text-muted-foreground mt-2 text-xs">
-			What <a href={ templ.SafeURL("/app/exercises/" + e.Slug) } class="underline underline-offset-2">{ e.Name }</a> trains.
+			{ i18n.T(ctx, "exercises.partial.before") } <a href={ templ.SafeURL("/app/exercises/" + e.Slug) } class="underline underline-offset-2">{ e.Name }</a>{ i18n.T(ctx, "exercises.partial.after") }
 			// The licence wants credit wherever the artwork appears, and a
 			// transcript can hold many of these — so it goes in the caption
 			// that is already here rather than adding a block per message.
@@ -332,7 +333,7 @@ templ pageLinks(f Filters, p Page) {
 					@pagination.Previous(pagination.PreviousProps{
 						Href:     f.pageURL(p.Number - 1),
 						Disabled: !window.HasPrevious,
-						Label:    "Previous",
+						Label:    i18n.T(ctx, "exercises.page.prev"),
 					})
 				}
 				// A window that does not reach page 1 gets an explicit link to
@@ -376,7 +377,7 @@ templ pageLinks(f Filters, p Page) {
 					@pagination.Next(pagination.NextProps{
 						Href:     f.pageURL(p.Number + 1),
 						Disabled: !window.HasNext,
-						Label:    "Next",
+						Label:    i18n.T(ctx, "exercises.page.next"),
 					})
 				}
 			}
@@ -391,7 +392,7 @@ templ muscleCard(label string, keys []string) {
 			<div class="mt-2 flex flex-wrap gap-2">
 				for _, key := range keys {
 					@badge.Badge(badge.Props{Variant: badge.VariantDefault}) {
-						{ humanize(key) }
+						{ muscleLabel(ctx, key) }
 					}
 				}
 			</div>
