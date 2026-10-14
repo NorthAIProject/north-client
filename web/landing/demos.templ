@@ -1,9 +1,12 @@
 package landing
 
 import (
+	"context"
 	"fmt"
+	"strings"
 
 	"github.com/NorthAIProject/north-client/internal/bodymap"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 
 	"github.com/NorthAIProject/north-client/web/shared/ui/aspectratio"
 	"github.com/NorthAIProject/north-client/web/shared/ui/badge"
@@ -35,6 +38,14 @@ type muscleLoad struct {
 	Share int
 }
 
+// Roles are identifiers: the WebGL scene reads them back from data-north-role,
+// so they never change with the language. The legend translates them.
+const (
+	rolePrimary    = "Primary"
+	roleSecondary  = "Secondary"
+	roleStabiliser = "Stabiliser"
+)
+
 type exercise struct {
 	Key   string
 	Name  string
@@ -42,69 +53,73 @@ type exercise struct {
 	Loads []muscleLoad
 }
 
-func exercises() []exercise {
+// exercises is demo data: the shares are illustrative, and the names and cues
+// are copy, so they come from the catalogue. Key and the muscle keys are
+// identifiers the WebGL scene reads, and stay as they are.
+func exercises(ctx context.Context) []exercise {
+	t := func(key string) string { return i18n.T(ctx, key) }
 	return []exercise{
 		{
 			Key:  "squat",
-			Name: "Barbell squat",
-			Cue:  "Brace before you descend, not after. Knees track over the middle toe.",
+			Name: t("land.ex.squat"),
+			Cue:  t("land.ex.squat.cue"),
 			Loads: []muscleLoad{
-				{"quads", "Quadriceps", "Primary", 38},
-				{"glutes", "Gluteus maximus", "Primary", 27},
-				{"erectors", "Erector spinae", "Secondary", 13},
-				{"adductors", "Adductors", "Secondary", 12},
-				{"hamstrings", "Hamstrings", "Stabiliser", 6},
-				{"calves", "Calves", "Stabiliser", 4},
+				{"quads", t("land.mus.quads"), rolePrimary, 38},
+				{"glutes", t("land.mus.glutes"), rolePrimary, 27},
+				{"erectors", t("land.mus.erectors"), roleSecondary, 13},
+				{"adductors", t("land.mus.adductors"), roleSecondary, 12},
+				{"hamstrings", t("land.mus.hamstrings"), roleStabiliser, 6},
+				{"calves", t("land.mus.calves"), roleStabiliser, 4},
 			},
 		},
 		{
 			Key:  "rdl",
-			Name: "Romanian deadlift",
-			Cue:  "Push the hips back until the hamstrings complain. The bar stays against the leg.",
+			Name: t("land.ex.rdl"),
+			Cue:  t("land.ex.rdl.cue"),
 			Loads: []muscleLoad{
-				{"hamstrings", "Hamstrings", "Primary", 40},
-				{"glutes", "Gluteus maximus", "Primary", 26},
-				{"erectors", "Erector spinae", "Secondary", 18},
-				{"lats", "Latissimus dorsi", "Stabiliser", 9},
-				{"forearms", "Forearms", "Stabiliser", 7},
+				{"hamstrings", t("land.mus.hamstrings"), rolePrimary, 40},
+				{"glutes", t("land.mus.glutes"), rolePrimary, 26},
+				{"erectors", t("land.mus.erectors"), roleSecondary, 18},
+				{"lats", t("land.mus.lats"), roleStabiliser, 9},
+				{"forearms", t("land.mus.forearms"), roleStabiliser, 7},
 			},
 		},
 		{
 			Key:  "bench",
-			Name: "Bench press",
-			Cue:  "Shoulder blades set. The bar touches the chest, not the neck.",
+			Name: t("land.ex.bench"),
+			Cue:  t("land.ex.bench.cue"),
 			Loads: []muscleLoad{
-				{"chest", "Pectorals", "Primary", 42},
-				{"triceps", "Triceps", "Primary", 22},
-				{"delts", "Anterior deltoid", "Secondary", 18},
-				{"serratus", "Serratus anterior", "Stabiliser", 10},
-				{"abs", "Abdominals", "Stabiliser", 8},
+				{"chest", t("land.mus.chest"), rolePrimary, 42},
+				{"triceps", t("land.mus.triceps"), rolePrimary, 22},
+				{"delts", t("land.mus.delts"), roleSecondary, 18},
+				{"serratus", t("land.mus.serratus"), roleStabiliser, 10},
+				{"abs", t("land.mus.abs"), roleStabiliser, 8},
 			},
 		},
 		{
 			Key:  "press",
-			Name: "Overhead press",
-			Cue:  "Ribs down. The bar finishes over the ears, not in front of them.",
+			Name: t("land.ex.press"),
+			Cue:  t("land.ex.press.cue"),
 			Loads: []muscleLoad{
-				{"delts", "Anterior deltoid", "Primary", 34},
-				{"triceps", "Triceps", "Primary", 24},
-				{"traps", "Upper trapezius", "Secondary", 16},
-				{"serratus", "Serratus anterior", "Secondary", 12},
-				{"erectors", "Erector spinae", "Stabiliser", 8},
-				{"abs", "Abdominals", "Stabiliser", 6},
+				{"delts", t("land.mus.delts"), rolePrimary, 34},
+				{"triceps", t("land.mus.triceps"), rolePrimary, 24},
+				{"traps", t("land.mus.traps.upper"), roleSecondary, 16},
+				{"serratus", t("land.mus.serratus"), roleSecondary, 12},
+				{"erectors", t("land.mus.erectors"), roleStabiliser, 8},
+				{"abs", t("land.mus.abs"), roleStabiliser, 6},
 			},
 		},
 		{
 			Key:  "pullup",
-			Name: "Pull-up",
-			Cue:  "Start from a dead hang. Pull the elbows to the ribs rather than the chin to the bar.",
+			Name: t("land.ex.pullup"),
+			Cue:  t("land.ex.pullup.cue"),
 			Loads: []muscleLoad{
-				{"lats", "Latissimus dorsi", "Primary", 37},
-				{"biceps", "Biceps", "Primary", 21},
-				{"rhomboids", "Rhomboids", "Secondary", 15},
-				{"traps", "Lower trapezius", "Secondary", 12},
-				{"forearms", "Forearms", "Stabiliser", 9},
-				{"abs", "Abdominals", "Stabiliser", 6},
+				{"lats", t("land.mus.lats"), rolePrimary, 37},
+				{"biceps", t("land.mus.biceps"), rolePrimary, 21},
+				{"rhomboids", t("land.mus.rhomboids"), roleSecondary, 15},
+				{"traps", t("land.mus.traps.lower"), roleSecondary, 12},
+				{"forearms", t("land.mus.forearms"), roleStabiliser, 9},
+				{"abs", t("land.mus.abs"), roleStabiliser, 6},
 			},
 		},
 	}
@@ -112,11 +127,11 @@ func exercises() []exercise {
 
 templ muscleDemo() {
 	<section id="muscle" class="relative border-t border-hairline py-24" x-data="northMuscle">
-		@waypoint("Week 3")
+		@waypoint(i18n.T(ctx, "land.waypoint.week3"))
 		@sectionHeading(
-			"Fitness intelligence",
-			"See where the work actually lands.",
-			"Khepri reads your plan as anatomy, not as a list of names. Pick a lift and watch the load distribute — the same model that decides what your week is allowed to stack.",
+			i18n.T(ctx, "land.muscle.eyebrow"),
+			i18n.T(ctx, "land.muscle.title"),
+			i18n.T(ctx, "land.muscle.body"),
 		)
 		@card.Card(card.Props{Class: "mt-10 overflow-hidden border-hairline bg-surface p-0"}) {
 			@card.Content(card.ContentProps{Class: "grid gap-0 p-0 lg:grid-cols-[1.1fr_1fr]"}) {
@@ -124,9 +139,9 @@ templ muscleDemo() {
 					@tabs.Tabs(tabs.Props{ID: "muscle-tabs"}) {
 						@tabs.List(tabs.ListProps{
 							Class:      "grid w-full grid-cols-2 gap-1 bg-transparent p-0 sm:grid-cols-4 h-auto",
-							Attributes: templ.Attributes{"role": "tablist", "aria-label": "Exercise"},
+							Attributes: templ.Attributes{"role": "tablist", "aria-label": i18n.T(ctx, "land.muscle.tabs.aria")},
 						}) {
-							for i, ex := range exercises() {
+							for i, ex := range exercises(ctx) {
 								@tabs.Trigger(tabs.TriggerProps{
 									Value:    ex.Key,
 									IsActive: i == 0,
@@ -159,24 +174,24 @@ templ muscleDemo() {
 								x-show="!ready || failed"
 								class="pointer-events-none absolute inset-0 flex items-center justify-center"
 							>
-								<span
-									class="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground"
-									x-text="failed ? 'Preview unavailable — the readout is beside it' : 'Loading model'"
-								>Loading model</span>
+								<span class="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+									<span x-show="!failed">{ i18n.T(ctx, "land.muscle.loading") }</span>
+									<span x-show="failed" x-cloak>{ i18n.T(ctx, "land.muscle.failed") }</span>
+								</span>
 							</div>
 						}
 						<div class="mt-3 flex flex-wrap items-center justify-between gap-3">
 							<div class="flex items-center gap-3">
-								@heatKey("Primary", "bg-ember")
-								@heatKey("Secondary", "bg-ember/55")
-								@heatKey("Stabiliser", "bg-ember/25")
+								@heatKey(i18n.T(ctx, "land.muscle.role.primary"), "bg-ember")
+								@heatKey(i18n.T(ctx, "land.muscle.role.secondary"), "bg-ember/55")
+								@heatKey(i18n.T(ctx, "land.muscle.role.stabiliser"), "bg-ember/25")
 							</div>
-							@monoLabel("Drag to rotate")
+							@monoLabel(i18n.T(ctx, "land.muscle.drag"))
 						</div>
 					</div>
 				</div>
 				<div class="p-5">
-					for i, ex := range exercises() {
+					for i, ex := range exercises(ctx) {
 						@tabs.Content(tabs.ContentProps{
 							TabsID:   "muscle-tabs",
 							Value:    ex.Key,
@@ -187,7 +202,7 @@ templ muscleDemo() {
 								"data-north-lift": ex.Key,
 							},
 						}) {
-							@monoLabel("Load distribution")
+							@monoLabel(i18n.T(ctx, "land.muscle.load"))
 							<h3 class="mt-2 text-xl font-medium tracking-[-0.02em]">{ ex.Name }</h3>
 							<p class="mt-2 text-sm leading-relaxed text-muted-foreground">{ ex.Cue }</p>
 							<ul class="mt-5 space-y-3">
@@ -224,9 +239,9 @@ templ muscleRow(m muscleLoad) {
 
 func roleShade(role string) string {
 	switch role {
-	case "Primary":
+	case rolePrimary:
 		return "bg-ember"
-	case "Secondary":
+	case roleSecondary:
 		return "bg-ember/55"
 	default:
 		return "bg-ember/25"
@@ -245,15 +260,15 @@ func barWidth(share int) templ.SafeCSS {
 templ goalDemo() {
 	<section class="relative border-t border-hairline py-24" x-data="northGoal">
 		@sectionHeading(
-			"Context-aware coaching",
-			"Say it badly. That is the point.",
-			"Nobody arrives with a well-formed goal. Type the way you would actually type it and watch Khepri turn it into something a training block can be built from.",
+			i18n.T(ctx, "land.goal.eyebrow"),
+			i18n.T(ctx, "land.goal.title"),
+			i18n.T(ctx, "land.goal.body"),
 		)
 		@card.Card(card.Props{Class: "mt-10 border-hairline bg-surface"}) {
 			@card.Content(card.ContentProps{Class: "grid gap-8 lg:grid-cols-2"}) {
 				<div>
 					@label.Label(label.Props{For: "goal-input", Class: "font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground"}) {
-						What you would actually write
+						{ i18n.T(ctx, "land.goal.input") }
 					}
 					@textarea.Textarea(textarea.Props{
 						ID:    "goal-input",
@@ -263,14 +278,15 @@ templ goalDemo() {
 							"x-model":                 "input",
 							"x-on:keydown.meta.enter": "run()",
 						},
-						Value: "i wanna get stronger idk maybe lose a bit too, gym like 3x if im lucky, home has dumbbells and a pullup bar. back goes out sometimes",
+						Value: i18n.T(ctx, "land.goal.sample"),
 					})
 					<div class="mt-4 flex flex-wrap items-center gap-3">
 						@button.Button(button.Props{
 							Class:      "bg-signal text-background hover:bg-signal/90",
 							Attributes: templ.Attributes{"x-on:click": "run()", "x-bind:disabled": "running"},
 						}) {
-							<span x-text="running ? 'Reading…' : 'Structure this'">Structure this</span>
+							<span x-show="!running">{ i18n.T(ctx, "land.goal.run") }</span>
+							<span x-show="running" x-cloak>{ i18n.T(ctx, "land.goal.running") }</span>
 							@icon.WandSparkles(icon.Props{Class: "size-4"})
 						}
 						@button.Button(button.Props{
@@ -278,30 +294,29 @@ templ goalDemo() {
 							Attributes: templ.Attributes{"x-on:click": "reset()"},
 						}) {
 							@icon.RotateCcw(icon.Props{Class: "size-3.5"})
-							Reset
+							{ i18n.T(ctx, "land.goal.reset") }
 						}
 					</div>
 					<p class="mt-4 text-xs leading-relaxed text-muted-foreground">
-						The same parser runs on your first message after signup, so the first plan
-						already respects the equipment and the limits you mentioned in passing.
+						{ i18n.T(ctx, "land.goal.note") }
 					</p>
 				</div>
 				<div class="rounded-lg border border-hairline bg-background/40 p-5">
 					<div class="flex items-center justify-between">
-						@monoLabel("Structured goal")
+						@monoLabel(i18n.T(ctx, "land.goal.structured"))
 						<span x-show="running" x-cloak class="text-signal">
 							@icon.LoaderCircle(icon.Props{Class: "size-3.5 motion-safe:animate-spin"})
 						</span>
 					</div>
 					<dl class="mt-4 space-y-3">
-						@goalField("Objective", "out.objective")
-						@goalField("Horizon", "out.horizon")
-						@goalField("Commitment", "out.commitment")
-						@goalField("Equipment", "out.equipment")
-						@goalField("Constraint", "out.constraint")
+						@goalField(i18n.T(ctx, "land.goal.field.objective"), "out.objective")
+						@goalField(i18n.T(ctx, "land.goal.field.horizon"), "out.horizon")
+						@goalField(i18n.T(ctx, "land.goal.field.commitment"), "out.commitment")
+						@goalField(i18n.T(ctx, "land.goal.field.equipment"), "out.equipment")
+						@goalField(i18n.T(ctx, "land.goal.field.constraint"), "out.constraint")
 					</dl>
 					@separator.Separator(separator.Props{Class: "my-5 bg-hairline"})
-					@monoLabel("First week")
+					@monoLabel(i18n.T(ctx, "land.goal.firstweek"))
 					<ol class="mt-3 space-y-2">
 						<template x-for="(s, i) in out.sessions" x-bind:key="i">
 							<li class="flex items-baseline gap-3 text-sm">
@@ -343,38 +358,41 @@ type surface struct {
 	Messages []threadTurn
 }
 
-func surfaces() []surface {
+// surfaces is the continuity demo. Surface names and their window chrome are
+// product names and stay as they are; the conversation is copy.
+func surfaces(ctx context.Context) []surface {
+	t := func(key string) string { return i18n.T(ctx, key) }
 	return []surface{
 		{
 			Key: "web", Name: "Web", Chrome: "north.app/coach", Icon: icon.Globe(icon.Props{Class: "size-3.5"}),
-			Gap: "Monday, 07:12",
+			Gap: t("land.surf.web.gap"),
 			Messages: []threadTurn{
-				{"", "", true, "Back is fine but I only slept five hours. Do I still squat today?"},
-				{"", "", false, "No. You have squatted heavy on under six hours twice this year and both times the following week went missing. Do the Wednesday session today — dumbbell work and the carry — and move the squat to Thursday."},
+				{"", "", true, t("land.surf.web.1")},
+				{"", "", false, t("land.surf.web.2")},
 			},
 		},
 		{
 			Key: "telegram", Name: "Telegram", Chrome: "Khepri · online", Icon: icon.Send(icon.Props{Class: "size-3.5"}),
-			Gap: "Thursday, 18:40 — from the gym floor",
+			Gap: t("land.surf.tg.gap"),
 			Messages: []threadTurn{
-				{"", "", true, "squatting now. 80 felt heavy"},
-				{"", "", false, "It should. That is 5kg above anything you have done since March, on the session we moved. Stop at three sets and tell me how the back feels in the morning."},
+				{"", "", true, t("land.surf.tg.1")},
+				{"", "", false, t("land.surf.tg.2")},
 			},
 		},
 		{
-			Key: "discord", Name: "Discord", Chrome: "#training", Icon: icon.Hash(icon.Props{Class: "size-3.5"}),
-			Gap: "Friday, 21:05 — in your accountability server",
+			Key: "discord", Name: "Discord", Chrome: t("land.surf.dc.chrome"), Icon: icon.Hash(icon.Props{Class: "size-3.5"}),
+			Gap: t("land.surf.dc.gap"),
 			Messages: []threadTurn{
-				{"", "", true, "@Khepri post my week"},
-				{"", "", false, "Three sessions, one moved for sleep, 80kg squat for three — a March best. Carry is still the weak link at 40 minutes against a 90 minute target."},
+				{"", "", true, t("land.surf.dc.1")},
+				{"", "", false, t("land.surf.dc.2")},
 			},
 		},
 		{
 			Key: "whatsapp", Name: "WhatsApp", Chrome: "Khepri", Icon: icon.MessageCircle(icon.Props{Class: "size-3.5"}),
-			Gap: "Sunday, 09:30",
+			Gap: t("land.surf.wa.gap"),
 			Messages: []threadTurn{
-				{"", "", false, "You told me on Monday that five hours of sleep is your line. You have hit it four nights this week. Before we add load, that is the thing worth fixing."},
-				{"", "", true, "fair"},
+				{"", "", false, t("land.surf.wa.1")},
+				{"", "", true, t("land.surf.wa.2")},
 			},
 		},
 	}
@@ -382,19 +400,19 @@ func surfaces() []surface {
 
 templ platformDemo() {
 	<section class="relative border-t border-hairline py-24" x-data="northSurfaces">
-		@waypoint("Week 12")
+		@waypoint(i18n.T(ctx, "land.waypoint.week12"))
 		@sectionHeading(
-			"Available everywhere",
-			"Four apps. One conversation. Nothing repeated back.",
-			"Khepri is not four bots sharing a name. Move between surfaces and it keeps the thread — including the thing you said on Monday that you have already forgotten.",
+			i18n.T(ctx, "land.surf.eyebrow"),
+			i18n.T(ctx, "land.surf.title"),
+			i18n.T(ctx, "land.surf.body"),
 		)
 		<div class="mt-10">
 			@tabs.Tabs(tabs.Props{ID: "surface-tabs"}) {
 				@tabs.List(tabs.ListProps{
 					Class:      "flex h-auto w-full flex-wrap gap-1 border border-hairline bg-surface p-1",
-					Attributes: templ.Attributes{"role": "tablist", "aria-label": "Surface"},
+					Attributes: templ.Attributes{"role": "tablist", "aria-label": i18n.T(ctx, "land.surf.tabs.aria")},
 				}) {
-					for i, s := range surfaces() {
+					for i, s := range surfaces(ctx) {
 						@tabs.Trigger(tabs.TriggerProps{
 							Value:    s.Key,
 							IsActive: i == 0,
@@ -411,7 +429,7 @@ templ platformDemo() {
 					}
 				}
 				<div class="mt-4" x-on:mouseenter="pause()" x-on:focusin="pause()">
-					for i, s := range surfaces() {
+					for i, s := range surfaces(ctx) {
 						@tabs.Content(tabs.ContentProps{Value: s.Key, IsActive: i == 0, Attributes: templ.Attributes{"role": "tabpanel"}}) {
 							@surfacePanel(s)
 						}
@@ -451,7 +469,7 @@ templ surfacePanel(s surface) {
 		</div>
 		<div class="flex items-center gap-2 border-t border-hairline px-5 py-3 text-muted-foreground">
 			@icon.MessageSquare(icon.Props{Class: "size-3.5"})
-			@monoLabel("Same memory, whichever window you are in")
+			@monoLabel(i18n.T(ctx, "land.surf.footer"))
 		</div>
 	</div>
 }
@@ -479,9 +497,9 @@ templ surfaceMessage(m threadTurn) {
 templ toolsDemo() {
 	<section class="relative border-t border-hairline py-24">
 		@sectionHeading(
-			"Two minutes in",
-			"Numbers are the easy part.",
-			"Anything can compute a BMI. The work is knowing what it is worth — and what to do on Tuesday.",
+			i18n.T(ctx, "land.tools.eyebrow"),
+			i18n.T(ctx, "land.tools.title"),
+			i18n.T(ctx, "land.tools.body"),
 		)
 		<div class="mt-10 grid gap-5 lg:grid-cols-2">
 			@bmiPanel()
@@ -496,13 +514,13 @@ templ bmiPanel() {
 			@card.Content(card.ContentProps{Class: "flex h-full flex-col"}) {
 				<div class="flex items-center gap-2 text-muted-foreground">
 					@icon.Scale(icon.Props{Class: "size-3.5"})
-					@monoLabel("Body mass index")
+					@monoLabel(i18n.T(ctx, "land.bmi.label"))
 				</div>
 				<div class="mt-5 space-y-6" x-on:input="sync()">
 					<div>
 						<div class="flex items-baseline justify-between">
 							@label.Label(label.Props{For: "bmi-height", Class: "text-sm"}) {
-								Height
+								{ i18n.T(ctx, "land.bmi.height") }
 							}
 							<span class="font-mono text-sm tabular-nums" x-text="height + ' cm'">178 cm</span>
 						</div>
@@ -511,7 +529,7 @@ templ bmiPanel() {
 					<div>
 						<div class="flex items-baseline justify-between">
 							@label.Label(label.Props{For: "bmi-weight", Class: "text-sm"}) {
-								Weight
+								{ i18n.T(ctx, "land.bmi.weight") }
 							}
 							<span class="font-mono text-sm tabular-nums" x-text="weight + ' kg'">82 kg</span>
 						</div>
@@ -521,17 +539,17 @@ templ bmiPanel() {
 				@separator.Separator(separator.Props{Class: "mb-6 mt-auto bg-hairline"})
 				<div class="flex items-end justify-between">
 					<div>
-						@monoLabel("Index")
-						<div class="mt-1 font-mono text-4xl tabular-nums tracking-tight" x-text="bmi">25.9</div>
+						@monoLabel(i18n.T(ctx, "land.bmi.index"))
+						<div class="mt-1 font-mono text-4xl tabular-nums tracking-tight" x-text="bmi">{ strings.Replace("25.9", ".", i18n.T(ctx, "land.bmi.decimal"), 1) }</div>
 					</div>
 					@badge.Badge(badge.Props{Variant: badge.VariantOutline, Class: "border-hairline"}) {
-						<span x-text="band">Overweight</span>
+						<span x-text="band">{ i18n.T(ctx, "land.bmi.band.over") }</span>
 					}
 				</div>
 				<div class="mt-5 flex items-start gap-2 rounded-md bg-signal/10 p-3">
 					@icon.Compass(icon.Props{Class: "mt-0.5 size-3.5 shrink-0 text-signal"})
 					<p class="text-xs leading-relaxed text-foreground/90" x-text="reading">
-						BMI cannot tell muscle from anything else.
+						{ i18n.T(ctx, "land.bmi.default") }
 					</p>
 				</div>
 			}
@@ -545,32 +563,32 @@ templ goalSetterPanel() {
 			@card.Content(card.ContentProps{}) {
 				<div class="flex items-center gap-2 text-muted-foreground">
 					@icon.Target(icon.Props{Class: "size-3.5"})
-					@monoLabel("Set a goal")
+					@monoLabel(i18n.T(ctx, "land.setter.label"))
 				</div>
 				<div class="mt-5 space-y-5">
 					<div>
 						@label.Label(label.Props{Class: "text-sm"}) {
-							What are you after
+							{ i18n.T(ctx, "land.setter.after") }
 						}
 						@selectbox.SelectBox() {
 							@selectbox.Trigger(selectbox.TriggerProps{
 								Class:      "mt-2 border-hairline bg-background/50",
 								Attributes: templ.Attributes{"x-on:change": "goal = $event.target.value"},
 							}) {
-								@selectbox.Value(selectbox.ValueProps{Placeholder: "Pick one"})
+								@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "land.setter.pick")})
 							}
 							@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
 								@selectbox.Item(selectbox.ItemProps{Value: "strength", Selected: true}) {
-									Get stronger
+									{ i18n.T(ctx, "land.setter.goal.strength") }
 								}
 								@selectbox.Item(selectbox.ItemProps{Value: "leaner"}) {
-									Get leaner
+									{ i18n.T(ctx, "land.setter.goal.leaner") }
 								}
 								@selectbox.Item(selectbox.ItemProps{Value: "endurance"}) {
-									Last longer
+									{ i18n.T(ctx, "land.setter.goal.endurance") }
 								}
 								@selectbox.Item(selectbox.ItemProps{Value: "pain"}) {
-									Stop hurting
+									{ i18n.T(ctx, "land.setter.goal.pain") }
 								}
 							}
 						}
@@ -578,7 +596,7 @@ templ goalSetterPanel() {
 					<div>
 						<div class="flex items-baseline justify-between">
 							@label.Label(label.Props{For: "setter-days", Class: "text-sm"}) {
-								Days you can train
+								{ i18n.T(ctx, "land.setter.days") }
 							}
 							<span class="font-mono text-sm tabular-nums" x-text="days">3</span>
 						</div>
@@ -586,19 +604,19 @@ templ goalSetterPanel() {
 					</div>
 					<div>
 						@label.Label(label.Props{Class: "text-sm"}) {
-							What you have
+							{ i18n.T(ctx, "land.setter.have") }
 						}
 						<div class="mt-3 flex flex-wrap gap-x-5 gap-y-2.5">
-							@equipmentToggle("barbell", "Barbell", true)
-							@equipmentToggle("dumbbells", "Dumbbells", true)
-							@equipmentToggle("pullup", "Pull-up bar", false)
-							@equipmentToggle("none", "Nothing at all", false)
+							@equipmentToggle("barbell", i18n.T(ctx, "land.setter.kit.barbell"), true)
+							@equipmentToggle("dumbbells", i18n.T(ctx, "land.setter.kit.dumbbells"), true)
+							@equipmentToggle("pullup", i18n.T(ctx, "land.setter.kit.pullup"), false)
+							@equipmentToggle("none", i18n.T(ctx, "land.setter.kit.none"), false)
 						</div>
 					</div>
 				</div>
 				@separator.Separator(separator.Props{Class: "my-6 bg-hairline"})
 				<div class="rounded-lg border border-hairline bg-background/40 p-4">
-					@monoLabel("What your week becomes")
+					@monoLabel(i18n.T(ctx, "land.setter.week"))
 					<p class="mt-2 text-sm leading-relaxed text-foreground/90" x-text="summary"></p>
 					<ol class="mt-4 space-y-2">
 						<template x-for="(s, i) in split" x-bind:key="i">
@@ -614,7 +632,7 @@ templ goalSetterPanel() {
 					FullWidth: true,
 					Class:     "mt-5 bg-signal text-background hover:bg-signal/90",
 				}) {
-					Start this plan
+					{ i18n.T(ctx, "land.setter.start") }
 					@icon.ArrowRight(icon.Props{Class: "size-4"})
 				}
 			}
