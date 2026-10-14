@@ -83,4 +83,15 @@ var spanishDashboard = map[string]string{
 	"range.year":      "Últimos 12 meses",
 
 	"dash.today.checkin.done": "Ánimo %[1]d · energía %[2]d · %[3]s",
+
+	"dash.feed.now":     "ahora mismo",
+	"dash.feed.minutes": "hace %[1]d min",
+	"dash.feed.hours":   "hace %[1]d h",
+	"dash.feed.days":    "hace %[1]d d",
+
+	"dash.goals.week.one":  "1 esta semana",
+	"dash.goals.week.many": "%[1]d esta semana",
+	"dash.habits.kept":     "%[1]d cumplidos de %[2]d previstos",
+	"dash.habits.best":     "mejor racha: %[1]d",
+	"dash.hydration.today": "Hoy %[1]d%% · %[2]s",
 }

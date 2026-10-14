@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -115,5 +116,74 @@ func TestTheTimelinePanelKeepsItsOwnDescription(t *testing.T) {
 	}
 	if strings.Count(html, "Everything across Khepri") != 1 {
 		t.Error("the header's sentence appears somewhere other than the header")
+	}
+}
+
+// The panels' counting lines are sentences, not numbers glued to English.
+func TestHabitsAndHydrationLinesAreTranslated(t *testing.T) {
+	data := DashboardData{
+		Habits:    HabitsView{HasHabits: true, Kept: 5, Scheduled: 7, BestStreak: 3},
+		Hydration: HydrationView{TodayML: 1500, TargetML: 2000, Percent: 75},
+	}
+	cases := map[users.Locale][]string{
+		users.LocaleEN:   {"5 kept of 7 scheduled", "best streak 3", "Today 75% · 1.5 L"},
+		users.LocalePTPT: {"5 cumpridos de 7 previstos", "melhor sequência: 3", "Hoje 75% · 1.5 L"},
+		users.LocalePTBR: {"5 cumpridos de 7 previstos", "melhor sequência: 3", "Hoje 75% · 1.5 L"},
+		users.LocaleES:   {"5 cumplidos de 7 previstos", "mejor racha: 3", "Hoy 75% · 1.5 L"},
+	}
+	for locale, wants := range cases {
+		ctx := i18n.WithLocale(context.Background(), string(locale))
+		var b strings.Builder
+		if err := habitsPanel(data).Render(ctx, &b); err != nil {
+			t.Fatalf("render habits %s: %v", locale, err)
+		}
+		if err := hydrationPanel(data).Render(ctx, &b); err != nil {
+			t.Fatalf("render hydration %s: %v", locale, err)
+		}
+		for _, want := range wants {
+			if !strings.Contains(b.String(), want) {
+				t.Errorf("%s: panels do not contain %q", locale, want)
+			}
+		}
+	}
+}
+
+// Feed rows say how long ago in the reader's language, and a row older than a
+// week names the month in it too.
+func TestRelativeTimeIsTranslated(t *testing.T) {
+	es := i18n.WithLocale(context.Background(), string(users.LocaleES))
+	pt := i18n.WithLocale(context.Background(), string(users.LocalePTPT))
+	en := context.Background()
+
+	cases := []struct {
+		ctx  context.Context
+		ago  time.Duration
+		want string
+	}{
+		{en, 10 * time.Second, "just now"},
+		{en, 5 * time.Minute, "5m ago"},
+		{es, 10 * time.Second, "ahora mismo"},
+		{es, 3 * time.Hour, "hace 3 h"},
+		{pt, 2 * 24 * time.Hour, "há 2 d"},
+	}
+	for _, c := range cases {
+		if got := relativeTime(c.ctx, time.Now().Add(-c.ago)); got != c.want {
+			t.Errorf("relativeTime(-%s) = %q, want %q", c.ago, got, c.want)
+		}
+	}
+
+	august := time.Date(2025, time.August, 4, 12, 0, 0, 0, time.UTC)
+	if got := relativeTime(es, august); got != "4 ago" {
+		t.Errorf("Spanish date = %q, want %q", got, "4 ago")
+	}
+}
+
+func TestGoalActivityLabelIsTranslated(t *testing.T) {
+	pt := i18n.WithLocale(context.Background(), string(users.LocalePTBR))
+	if got := goalActivityLabel(pt, 3); got != "3 nesta semana" {
+		t.Errorf("pt-BR: got %q", got)
+	}
+	if got := goalActivityLabel(context.Background(), 1); got != "1 this week" {
+		t.Errorf("en: got %q", got)
 	}
 }

@@ -222,4 +222,6 @@ var englishDay = map[string]string{
 	// The streak tile's line about today's check-in.
 	"day.streak.today":  "Today: mood %[1]d · energy %[2]d · %[3]s",
 	"day.streak.notyet": "No check-in yet today",
+
+	"day.body.bmi": "BMI",
 }

@@ -398,7 +398,7 @@ templ reflectionClose(c conversations.Conversation) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 		@card.Header() {
 			@card.Title() {
-				Reflection summary
+				{ i18n.T(ctx, "chat.reflection.summary") }
 			}
 		}
 		@card.Content(card.ContentProps{Class: proseClasses}) {
@@ -486,8 +486,8 @@ templ Bubble(m conversations.Message, loc *time.Location) {
 					@click={ "navigator.clipboard.writeText(" + jsString(m.Content) + "); copied = true; setTimeout(() => copied = false, 1500)" }
 					class="text-muted-foreground hover:text-foreground text-xs opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100"
 				>
-					<span x-show="!copied">Copy</span>
-					<span x-show="copied" x-cloak>Copied</span>
+					<span x-show="!copied">{ i18n.T(ctx, "chat.copy") }</span>
+					<span x-show="copied" x-cloak>{ i18n.T(ctx, "chat.copied") }</span>
 				</button>
 				@MessageFeedback(m)
 			</div>
@@ -632,7 +632,7 @@ templ sources(m conversations.Message) {
 				hx-swap="outerHTML"
 				class="text-muted-foreground hover:text-foreground text-xs underline underline-offset-2"
 			>
-				{ sourceLabel(len(refs)) }
+				{ sourceLabel(ctx, len(refs)) }
 			</button>
 		</div>
 	}
@@ -650,11 +650,11 @@ func sourcesURL(refs []string) string {
 	return "/app/knowledge/passages?" + q.Encode()
 }
 
-func sourceLabel(n int) string {
+func sourceLabel(ctx context.Context, n int) string {
 	if n == 1 {
-		return "1 source"
+		return i18n.T(ctx, "chat.sources.one")
 	}
-	return fmt.Sprintf("%d sources", n)
+	return i18n.Tf(ctx, "chat.sources.many", n)
 }
 
 // PendingExchange is what the composer swaps in on submit: the user's turn, and
@@ -712,18 +712,18 @@ templ attachmentThumbs(parts []conversations.Attachment) {
 			<div class="mb-2">
 				@badge.Badge(badge.Props{Variant: badge.VariantSecondary, Class: "max-w-full gap-1.5 py-1", Attributes: templ.Attributes{"data-attachment-file": ""}}) {
 					@icon.Paperclip(icon.Props{Class: "size-3"})
-					<span class="truncate">{ fileLabel(p.Name) }</span>
+					<span class="truncate">{ fileLabel(ctx, p.Name) }</span>
 				}
 			</div>
 		}
 	}
 }
 
-func fileLabel(name string) string {
+func fileLabel(ctx context.Context, name string) string {
 	if name = strings.TrimSpace(name); name != "" {
 		return name
 	}
-	return "file"
+	return i18n.T(ctx, "chat.file")
 }
 
 templ composer(conversationID uuid.UUID, draft string) {
@@ -951,7 +951,7 @@ templ toolApprovalCard(conversationID uuid.UUID, pending []PendingTool) {
 			<form method="post" action={ templ.SafeURL(resolveURL(conversationID, pending[0].MessageID, "decline")) } class="flex-1">
 				@ui.CSRFInput()
 				@button.Button(button.Props{Type: "submit", Variant: button.VariantOutline, Class: "min-h-11 w-full"}) {
-					No
+					{ i18n.T(ctx, "chat.approval.no") }
 				}
 			</form>
 		</div>
