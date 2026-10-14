@@ -1,6 +1,7 @@
 package workouts
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/exercises/exercise"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/workouts/plan"
 	"github.com/NorthAIProject/north-client/web/shared/exerciseart"
@@ -61,32 +63,33 @@ func (f IntakeForm) hasEquipment(item string) bool {
 // equipmentOptions are the values the plan validator understands. Keeping the
 // form and the validator on the same vocabulary is what makes the equipment
 // constraint enforceable rather than aspirational.
-var equipmentOptions = []struct{ Value, Label string }{
-	{"dumbbell", "Dumbbells"},
-	{"barbell", "Barbell"},
-	{"kettlebell", "Kettlebells"},
-	{"pull-up bar", "Pull-up bar"},
-	{"bench", "Bench"},
-	{"resistance band", "Resistance bands"},
-	{"machine", "Machines / cables"},
-	{"treadmill", "Treadmill"},
-	{"bike", "Bike"},
-	{"rower", "Rower"},
+// Key is the catalogue key of the label; Value is what the form posts and
+// stays English, because it is the validator's vocabulary.
+var equipmentOptions = []struct{ Value, Key string }{
+	{"dumbbell", "workouts.intake.equip.dumbbell"},
+	{"barbell", "workouts.intake.equip.barbell"},
+	{"kettlebell", "workouts.intake.equip.kettlebell"},
+	{"pull-up bar", "workouts.intake.equip.pullupbar"},
+	{"bench", "workouts.intake.equip.bench"},
+	{"resistance band", "workouts.intake.equip.band"},
+	{"machine", "workouts.intake.equip.machine"},
+	{"treadmill", "workouts.intake.equip.treadmill"},
+	{"bike", "workouts.intake.equip.bike"},
+	{"rower", "workouts.intake.equip.rower"},
 }
 
 templ IntakePage(user users.User, f IntakeForm) {
-	@layout.App("Build a plan", user, layout.BuildNav(ctx, "/app/fitness")) {
+	@layout.App(i18n.T(ctx, "workouts.intake.page"), user, layout.BuildNav(ctx, "/app/fitness")) {
 		<div class="mx-auto w-full max-w-2xl p-6 md:p-8">
 			<header class="mb-6">
-				<h1 class="text-2xl font-semibold tracking-tight">Build your training plan</h1>
+				<h1 class="text-2xl font-semibold tracking-tight">{ i18n.T(ctx, "workouts.intake.title") }</h1>
 				<p class="text-muted-foreground mt-1 text-sm">
-					Khepri only programmes what you can actually do. Be honest about the
-					equipment and the time — the plan is checked against your answers.
+					{ i18n.T(ctx, "workouts.intake.lede") }
 				</p>
 				<p class="text-muted-foreground mt-2 text-sm">
-					Already have a plan from a coach or a spreadsheet?
+					{ i18n.T(ctx, "workouts.intake.import.q") }
 					@button.Button(button.Props{Variant: button.VariantLink, Href: "/app/training/import", Class: "h-auto p-0"}) {
-						Import it from a file
+						{ i18n.T(ctx, "workouts.intake.import.link") }
 					}
 				</p>
 			</header>
@@ -101,41 +104,41 @@ templ IntakePage(user users.User, f IntakeForm) {
 				@card.Content() {
 					<form method="post" action="/app/training/new" class="space-y-5 pt-6">
 						@ui.CSRFInput()
-						@field("goal", "What are you training for?", f.fieldError("goal")) {
+						@field("goal", i18n.T(ctx, "workouts.intake.goal"), f.fieldError("goal")) {
 							@dictate.Field(dictate.Props{Target: "goal"}) {
 								@textarea.Textarea(textarea.Props{
 									ID:          "goal",
 									Name:        "goal",
 									Value:       f.Goal,
-									Placeholder: "Get stronger overall, and be able to do 10 pull-ups by the spring.",
+									Placeholder: i18n.T(ctx, "workouts.intake.goal.ph"),
 									Rows:        3,
 									HasError:    f.fieldError("goal") != "",
 								})
 							}
 						}
-						@field("experience", "How much have you trained before?", f.fieldError("experience")) {
+						@field("experience", i18n.T(ctx, "workouts.intake.experience"), f.fieldError("experience")) {
 							@selectbox.SelectBox() {
 								@selectbox.Trigger(selectbox.TriggerProps{ID: "experience", Name: "experience"}) {
-									@selectbox.Value(selectbox.ValueProps{Placeholder: "Choose one"})
+									@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "workouts.intake.experience.ph")})
 								}
 								@selectbox.Content() {
 									@selectbox.Item(selectbox.ItemProps{Value: "beginner", Selected: f.Experience == "beginner"}) {
-										New to training
+										{ i18n.T(ctx, "workouts.intake.exp.beginner") }
 									}
 									@selectbox.Item(selectbox.ItemProps{Value: "returning", Selected: f.Experience == "returning"}) {
-										Coming back after a break
+										{ i18n.T(ctx, "workouts.intake.exp.returning") }
 									}
 									@selectbox.Item(selectbox.ItemProps{Value: "intermediate", Selected: f.Experience == "intermediate"}) {
-										A year or two of consistent training
+										{ i18n.T(ctx, "workouts.intake.exp.intermediate") }
 									}
 									@selectbox.Item(selectbox.ItemProps{Value: "advanced", Selected: f.Experience == "advanced"}) {
-										Several years, I know my numbers
+										{ i18n.T(ctx, "workouts.intake.exp.advanced") }
 									}
 								}
 							}
 						}
 						<div class="grid gap-5 sm:grid-cols-2">
-							@field("days_per_week", "Days per week", f.fieldError("days_per_week")) {
+							@field("days_per_week", i18n.T(ctx, "workouts.intake.days"), f.fieldError("days_per_week")) {
 								@input.Input(input.Props{
 									ID:         "days_per_week",
 									Name:       "days_per_week",
@@ -146,7 +149,7 @@ templ IntakePage(user users.User, f IntakeForm) {
 									Attributes: templ.Attributes{"min": "1", "max": "7"},
 								})
 							}
-							@field("session_minutes", "Minutes per session", f.fieldError("session_minutes")) {
+							@field("session_minutes", i18n.T(ctx, "workouts.intake.minutes"), f.fieldError("session_minutes")) {
 								@input.Input(input.Props{
 									ID:         "session_minutes",
 									Name:       "session_minutes",
@@ -160,10 +163,10 @@ templ IntakePage(user users.User, f IntakeForm) {
 						</div>
 						@form.Item() {
 							@label.Label() {
-								What equipment do you have?
+								{ i18n.T(ctx, "workouts.intake.equipment") }
 							}
 							@form.Description() {
-								Leave everything unticked for bodyweight only. Nothing outside this list will appear in your plan.
+								{ i18n.T(ctx, "workouts.intake.equipment.desc") }
 							}
 							<div class="grid gap-3 pt-1 sm:grid-cols-2">
 								for _, option := range equipmentOptions {
@@ -175,29 +178,29 @@ templ IntakePage(user users.User, f IntakeForm) {
 											Checked: f.hasEquipment(option.Value),
 										})
 										@label.Label(label.Props{For: "equipment-" + option.Value, Class: "font-normal"}) {
-											{ option.Label }
+											{ i18n.T(ctx, option.Key) }
 										}
 									</div>
 								}
 							</div>
 						}
-						@field("limitations", "Injuries or anything to work around?", f.fieldError("limitations")) {
+						@field("limitations", i18n.T(ctx, "workouts.intake.limitations"), f.fieldError("limitations")) {
 							@dictate.Field(dictate.Props{Target: "limitations"}) {
 								@textarea.Textarea(textarea.Props{
 									ID:          "limitations",
 									Name:        "limitations",
 									Value:       f.Limitations,
-									Placeholder: "Left shoulder is fine pressing but not overhead. Optional.",
+									Placeholder: i18n.T(ctx, "workouts.intake.limitations.ph"),
 									Rows:        2,
 									HasError:    f.fieldError("limitations") != "",
 								})
 							}
 						}
 						@button.Button(button.Props{Type: button.TypeSubmit, FullWidth: true}) {
-							Build my plan
+							{ i18n.T(ctx, "workouts.intake.submit") }
 						}
 						<p class="text-muted-foreground text-center text-xs">
-							This takes a few seconds while Khepri writes and checks the plan.
+							{ i18n.T(ctx, "workouts.intake.wait") }
 						</p>
 					</form>
 				}
@@ -233,22 +236,22 @@ type PlanSummary struct {
 // and the one /app/training resolves to. Saying so is the difference between a
 // list of plans and a list where one of them is the one you are following.
 templ PlansPage(user users.User, plans []PlanSummary) {
-	@layout.App("Training plans", user, layout.BuildNav(ctx, "/app/fitness")) {
+	@layout.App(i18n.T(ctx, "nav.training-plans"), user, layout.BuildNav(ctx, "/app/fitness")) {
 		<div class="mx-auto w-full max-w-3xl space-y-6 p-6 md:p-8">
 			<header class="flex items-start justify-between gap-4">
 				<div>
-					@ui.MonoLabel("Fitness")
-					<h1 class="mt-2 text-2xl font-medium tracking-tight">Training plans</h1>
+					@ui.MonoLabel(i18n.T(ctx, "nav.fitness"))
+					<h1 class="mt-2 text-2xl font-medium tracking-tight">{ i18n.T(ctx, "nav.training-plans") }</h1>
 					<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
-						Every plan you have built. Opening one shows it as it stands now, including any changes you have made.
+						{ i18n.T(ctx, "workouts.plans.lede") }
 					</p>
 				</div>
 				<div class="flex shrink-0 gap-2">
 					@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Href: "/app/training/import"}) {
-						Import
+						{ i18n.T(ctx, "workouts.plans.import") }
 					}
 					@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Href: "/app/training/new"}) {
-						New plan
+						{ i18n.T(ctx, "workouts.plans.new") }
 					}
 				</div>
 			</header>
@@ -270,11 +273,11 @@ templ planRow(p PlanSummary, current bool) {
 			<span class="min-w-0 flex-1 text-sm font-medium">{ p.Name }</span>
 			if current {
 				@badge.Badge(badge.Props{Variant: badge.VariantDefault}) {
-					Following
+					{ i18n.T(ctx, "workouts.plans.following") }
 				}
 			}
 			<span class="text-muted-foreground shrink-0 font-mono text-[10px] uppercase tracking-[0.14em]">
-				{ strconv.Itoa(p.Weeks) } weeks · { strconv.Itoa(p.Days) }/week · { p.CreatedAt.Format("2 Jan 2006") }
+				{ i18n.Tf(ctx, "workouts.plans.row", p.Weeks, p.Days) } · { i18n.Date(ctx, p.CreatedAt, "2 Jan 2006") }
 			</span>
 		</a>
 	</li>
@@ -326,10 +329,12 @@ func (v PlanView) IsNext(dayIndex int) bool {
 // Picker is the panel that chooses a catalog exercise. Swapping one and adding
 // one differ only in their heading and where they post, so they share it.
 type Picker struct {
-	// Heading names what is being chosen.
-	Heading string
-	// Note is the line under it; empty renders nothing.
-	Note string
+	// Adding tells the add panel from the swap panel. Subject is the
+	// exercise being replaced, or the weekday being added to. Both are
+	// stored raw and worded at render time, because the constructors run in
+	// the handler without the request's locale.
+	Adding  bool
+	Subject string
 
 	Query       string
 	Suggestions []exercise.Exercise
@@ -348,8 +353,7 @@ type Picker struct {
 // SwapPicker configures the panel for replacing one exercise.
 func SwapPicker(v PlanView, dayIndex, index int, currentName string) Picker {
 	return Picker{
-		Heading:   "Replacing " + currentName,
-		Note:      "Sets, reps and rest stay as they are — only the movement changes.",
+		Subject:   currentName,
 		PostURL:   swapURL(v.ID, dayIndex, index),
 		SearchURL: swapURL(v.ID, dayIndex, index),
 		CancelURL: dayURL(v.ID, dayIndex),
@@ -359,12 +363,28 @@ func SwapPicker(v PlanView, dayIndex, index int, currentName string) Picker {
 // AddPicker configures the panel for adding one to the end of a day.
 func AddPicker(v PlanView, dayIndex int, weekday string) Picker {
 	return Picker{
-		Heading:   "Add to " + weekday,
-		Note:      fmt.Sprintf("Starts at %d×%s with %ds rest. Change it after.", plan.DefaultSets, plan.DefaultReps, plan.DefaultRestSeconds),
+		Adding:    true,
+		Subject:   weekday,
 		PostURL:   exercisesURL(v.ID, dayIndex),
 		SearchURL: addURL(v.ID, dayIndex),
 		CancelURL: dayURL(v.ID, dayIndex),
 	}
+}
+
+// heading names what is being chosen.
+func (p Picker) heading(ctx context.Context) string {
+	if p.Adding {
+		return i18n.Tf(ctx, "workouts.picker.add", weekdayName(ctx, p.Subject))
+	}
+	return i18n.Tf(ctx, "workouts.picker.swap", p.Subject)
+}
+
+// note is the line under the heading.
+func (p Picker) note(ctx context.Context) string {
+	if p.Adding {
+		return i18n.Tf(ctx, "workouts.picker.add.note", plan.DefaultSets, plan.DefaultReps, plan.DefaultRestSeconds)
+	}
+	return i18n.T(ctx, "workouts.picker.swap.note")
 }
 
 // The day card is the HTMX swap target for every edit, so its id has to be
@@ -410,18 +430,18 @@ templ PlanPage(user users.User, v PlanView) {
 				<div>
 					<h1 class="text-2xl font-semibold tracking-tight">{ v.Plan.Name }</h1>
 					<p class="text-muted-foreground mt-1 text-sm">
-						{ strconv.Itoa(v.Plan.WeeksTotal) } weeks · { strconv.Itoa(len(v.Plan.Days)) } days a week · built { v.CreatedAt.Format("2 January 2006") }
+						{ i18n.Tf(ctx, "workouts.plan.meta", v.Plan.WeeksTotal, len(v.Plan.Days), i18n.Date(ctx, v.CreatedAt, "2 January 2006")) }
 					</p>
 				</div>
 				<div class="flex shrink-0 gap-2">
 					@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Href: "/app/training/plans"}) {
-						All plans
+						{ i18n.T(ctx, "workouts.plan.all") }
 					}
 					@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Href: "/app/training/import"}) {
-						Import
+						{ i18n.T(ctx, "workouts.plans.import") }
 					}
 					@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Href: "/app/training/new"}) {
-						New plan
+						{ i18n.T(ctx, "workouts.plans.new") }
 					}
 				</div>
 			</header>
@@ -444,7 +464,7 @@ templ PlanPage(user users.User, v PlanView) {
 			@card.Card(card.Props{Class: "mb-6"}) {
 				@card.Header() {
 					@card.Title(card.TitleProps{Class: "text-base"}) {
-						Why this plan
+						{ i18n.T(ctx, "workouts.plan.why") }
 					}
 				}
 				@card.Content() {
@@ -533,7 +553,7 @@ templ dayShell(v PlanView, dayIndex int, day plan.PlanDay) {
 			@card.Header() {
 				<div class="flex items-center gap-3">
 					@card.Title(card.TitleProps{Class: "text-base"}) {
-						{ day.Weekday }
+						{ weekdayName(ctx, day.Weekday) }
 					}
 					@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
 						{ day.Focus }
@@ -545,7 +565,7 @@ templ dayShell(v PlanView, dayIndex int, day plan.PlanDay) {
 			@card.Content() {
 				if len(day.Exercises) == 0 {
 					<p class="text-muted-foreground border-hairline rounded-lg border border-dashed px-4 py-6 text-center text-sm">
-						Nothing in this session yet.
+						{ i18n.T(ctx, "workouts.day.empty") }
 					</p>
 				}
 				<ul class="divide-border divide-y">
@@ -562,7 +582,7 @@ templ dayShell(v PlanView, dayIndex int, day plan.PlanDay) {
 					},
 				}) {
 					@icon.Plus(icon.Props{Class: "size-3.5"})
-					Add exercise
+					{ i18n.T(ctx, "workouts.day.add") }
 				}
 			}
 		}
@@ -576,11 +596,11 @@ templ dayStatus(v PlanView, dayIndex int) {
 	if v.Done(dayIndex) {
 		@badge.Badge(badge.Props{Variant: badge.VariantOutline, Class: "border-signal/40 text-signal gap-1", Attributes: templ.Attributes{"data-testid": "day-completed"}}) {
 			@icon.CircleCheck(icon.Props{Class: "size-3"})
-			Completed
+			{ i18n.T(ctx, "workouts.status.completed") }
 		}
 	} else if v.IsNext(dayIndex) {
 		@badge.Badge(badge.Props{Class: "bg-signal text-background", Attributes: templ.Attributes{"data-testid": "day-next"}}) {
-			Next
+			{ i18n.T(ctx, "workouts.status.next") }
 		}
 	}
 }
@@ -594,12 +614,12 @@ templ startTimeControl(v PlanView, dayIndex int, day plan.PlanDay) {
 			x-show="!editing"
 			x-on:click="editing = true"
 			class="text-muted-foreground hover:text-foreground text-sm underline decoration-dotted underline-offset-4"
-			title="Set when this session starts"
+			title={ i18n.T(ctx, "workouts.start.title") }
 		>
 			if day.StartTime != "" {
-				Starts at { day.StartTime }
+				{ i18n.Tf(ctx, "workouts.start.at", day.StartTime) }
 			} else {
-				Set a start time
+				{ i18n.T(ctx, "workouts.start.set") }
 			}
 		</button>
 		<form
@@ -612,18 +632,18 @@ templ startTimeControl(v PlanView, dayIndex int, day plan.PlanDay) {
 		>
 			@ui.CSRFInput()
 			<label class="text-muted-foreground text-xs">
-				Starts at
+				{ i18n.T(ctx, "workouts.start.label") }
 				@input.Input(input.Props{Name: "start_time", Type: input.TypeTime, Value: day.StartTime, Class: "w-28"})
 			</label>
 			@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm}) {
-				Save
+				{ i18n.T(ctx, "workouts.save") }
 			}
 			@button.Button(button.Props{
 				Variant:    button.VariantGhost,
 				Size:       button.SizeSm,
 				Attributes: templ.Attributes{"x-on:click.prevent": "editing = false"},
 			}) {
-				Cancel
+				{ i18n.T(ctx, "workouts.cancel") }
 			}
 		</form>
 	</div>
@@ -650,7 +670,7 @@ templ planProblems(problems []string) {
 	// an error. Nothing was rejected.
 	@alert.Alert(alert.Props{Variant: alert.VariantDefault, Class: "mb-6"}) {
 		@alert.Title() {
-			This plan no longer matches your intake
+			{ i18n.T(ctx, "workouts.problems.title") }
 		}
 		@alert.Description() {
 			<ul class="list-disc space-y-1 pl-4">
@@ -679,27 +699,27 @@ func anyIllustrated(p plan.Plan) bool {
 // prescription is the sets×reps label. An imported plan can leave either out,
 // and "0×" would read as an instruction to do nothing, so what was not stated
 // is not shown.
-func prescription(ex plan.Exercise) string {
+func prescription(ctx context.Context, ex plan.Exercise) string {
 	switch {
 	case ex.Sets > 0 && ex.Reps != "":
 		return fmt.Sprintf("%d×%s", ex.Sets, ex.Reps)
 	case ex.Sets > 0:
-		return fmt.Sprintf("%d sets", ex.Sets)
+		return i18n.Tf(ctx, "workouts.ex.nsets", ex.Sets)
 	case ex.Reps != "":
-		return ex.Reps + " reps"
+		return i18n.Tf(ctx, "workouts.ex.nreps", ex.Reps)
 	default:
-		return "Set sets & reps"
+		return i18n.T(ctx, "workouts.ex.setprescription")
 	}
 }
 
 // exerciseDetails joins the load, rest and equipment that are known.
-func exerciseDetails(ex plan.Exercise) string {
+func exerciseDetails(ctx context.Context, ex plan.Exercise) string {
 	var parts []string
 	if ex.Load != "" {
-		parts = append(parts, "Load "+ex.Load)
+		parts = append(parts, i18n.Tf(ctx, "workouts.ex.load", ex.Load))
 	}
 	if ex.RestSeconds > 0 {
-		parts = append(parts, fmt.Sprintf("Rest %ds", ex.RestSeconds))
+		parts = append(parts, i18n.Tf(ctx, "workouts.ex.restfor", ex.RestSeconds))
 	}
 	if ex.Equipment != "" {
 		parts = append(parts, ex.Equipment)
@@ -738,9 +758,9 @@ templ exerciseRow(v PlanView, dayIndex, index int, ex plan.Exercise, dayLength i
 							type="button"
 							x-on:click="editing = !editing"
 							class="text-muted-foreground hover:text-foreground shrink-0 font-mono text-sm underline decoration-dotted underline-offset-4"
-							title="Change sets, reps and rest"
+							title={ i18n.T(ctx, "workouts.ex.edit.title") }
 						>
-							{ prescription(ex) }
+							{ prescription(ctx, ex) }
 						</button>
 					</div>
 					<form
@@ -753,32 +773,32 @@ templ exerciseRow(v PlanView, dayIndex, index int, ex plan.Exercise, dayLength i
 					>
 						@ui.CSRFInput()
 						<label class="text-muted-foreground text-xs">
-							Sets
+							{ i18n.T(ctx, "workouts.ex.sets") }
 							@input.Input(input.Props{
 								Name: "sets", Type: input.TypeNumber,
 								Value: strconv.Itoa(ex.Sets), Class: "w-16",
 							})
 						</label>
 						<label class="text-muted-foreground text-xs">
-							Reps
+							{ i18n.T(ctx, "workouts.ex.reps") }
 							@input.Input(input.Props{Name: "reps", Value: ex.Reps, Class: "w-24"})
 						</label>
 						<label class="text-muted-foreground text-xs">
-							Rest (s)
+							{ i18n.T(ctx, "workouts.ex.rest") }
 							@input.Input(input.Props{
 								Name: "rest_seconds", Type: input.TypeNumber,
 								Value: strconv.Itoa(ex.RestSeconds), Class: "w-20",
 							})
 						</label>
 						@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm}) {
-							Save
+							{ i18n.T(ctx, "workouts.save") }
 						}
 						@button.Button(button.Props{
 							Variant:    button.VariantGhost,
 							Size:       button.SizeSm,
 							Attributes: templ.Attributes{"x-on:click.prevent": "editing = false"},
 						}) {
-							Cancel
+							{ i18n.T(ctx, "workouts.cancel") }
 						}
 					</form>
 				</div>
@@ -788,9 +808,9 @@ templ exerciseRow(v PlanView, dayIndex, index int, ex plan.Exercise, dayLength i
 					<p class="text-muted-foreground mt-1 text-sm">{ ex.FormCues }</p>
 				}
 				<p class="text-muted-foreground/70 mt-1 text-xs">
-					{ exerciseDetails(ex) }
+					{ exerciseDetails(ctx, ex) }
 					if ex.Substitute != "" {
-						· No equipment? { ex.Substitute }
+						· { i18n.Tf(ctx, "workouts.ex.substitute", ex.Substitute) }
 					}
 				</p>
 				<div class="mt-2 flex flex-wrap items-center gap-2">
@@ -798,12 +818,12 @@ templ exerciseRow(v PlanView, dayIndex, index int, ex plan.Exercise, dayLength i
 					// goes while you are fresh — so the ends simply have no
 					// button rather than a disabled one that does nothing.
 					if index > 0 {
-						@moveForm(v, dayIndex, index, "up", "Move earlier in the session") {
+						@moveForm(v, dayIndex, index, "up", i18n.T(ctx, "workouts.ex.moveup")) {
 							@icon.ArrowUp(icon.Props{Class: "size-3.5"})
 						}
 					}
 					if index < dayLength-1 {
-						@moveForm(v, dayIndex, index, "down", "Move later in the session") {
+						@moveForm(v, dayIndex, index, "down", i18n.T(ctx, "workouts.ex.movedown")) {
 							@icon.ArrowDown(icon.Props{Class: "size-3.5"})
 						}
 					}
@@ -817,7 +837,7 @@ templ exerciseRow(v PlanView, dayIndex, index int, ex plan.Exercise, dayLength i
 						},
 					}) {
 						@icon.Repeat(icon.Props{Class: "size-3.5"})
-						Swap
+						{ i18n.T(ctx, "workouts.ex.swap") }
 					}
 					// Confirmed because there is no undo in the interface yet.
 					// The previous plan is still stored — editing only ever
@@ -829,7 +849,7 @@ templ exerciseRow(v PlanView, dayIndex, index int, ex plan.Exercise, dayLength i
 						hx-post={ removeURL(v.ID, dayIndex, index) }
 						hx-target="#plan-body"
 						hx-swap="outerHTML"
-						hx-confirm={ fmt.Sprintf("Remove %s from this session?", ex.Name) }
+						hx-confirm={ i18n.Tf(ctx, "workouts.ex.remove.confirm", ex.Name) }
 					>
 						@ui.CSRFInput()
 						@button.Button(button.Props{
@@ -838,7 +858,7 @@ templ exerciseRow(v PlanView, dayIndex, index int, ex plan.Exercise, dayLength i
 							Type:    button.TypeSubmit,
 						}) {
 							@icon.Trash2(icon.Props{Class: "size-3.5"})
-							Remove
+							{ i18n.T(ctx, "workouts.ex.remove") }
 						}
 					</form>
 				</div>
@@ -849,7 +869,7 @@ templ exerciseRow(v PlanView, dayIndex, index int, ex plan.Exercise, dayLength i
 						@dialog.Trigger(dialog.TriggerProps{For: id, Class: "mt-2 inline-flex"}) {
 							@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm}) {
 								@icon.Dumbbell(icon.Props{Class: "size-3.5"})
-								View muscles
+								{ i18n.T(ctx, "workouts.ex.muscles") }
 							}
 						}
 						@dialog.Content() {
@@ -912,7 +932,7 @@ templ moveForm(v PlanView, dayIndex, index int, direction, label string) {
 templ pickerPanel(p Picker) {
 	<li class="bg-surface -mx-4 px-4 py-4">
 		<div class="flex items-baseline justify-between gap-4">
-			<p class="text-sm font-medium">{ p.Heading }</p>
+			<p class="text-sm font-medium">{ p.heading(ctx) }</p>
 			@button.Button(button.Props{
 				Variant: button.VariantGhost,
 				Size:    button.SizeSm,
@@ -922,12 +942,10 @@ templ pickerPanel(p Picker) {
 					"hx-swap":   "outerHTML",
 				},
 			}) {
-				Cancel
+				{ i18n.T(ctx, "workouts.cancel") }
 			}
 		</div>
-		if p.Note != "" {
-			<p class="text-muted-foreground mt-1 text-xs">{ p.Note }</p>
-		}
+		<p class="text-muted-foreground mt-1 text-xs">{ p.note(ctx) }</p>
 		<form
 			class="mt-3"
 			hx-get={ p.SearchURL }
@@ -939,11 +957,11 @@ templ pickerPanel(p Picker) {
 				Name:        "q",
 				Value:       p.Query,
 				Type:        input.TypeSearch,
-				Placeholder: "Search the catalog",
+				Placeholder: i18n.T(ctx, "workouts.picker.search"),
 			})
 		</form>
 		if p.Query == "" && len(p.Suggestions) > 0 {
-			@ui.MonoLabel("Suggested")
+			@ui.MonoLabel(i18n.T(ctx, "workouts.picker.suggested"))
 			<ul class="mt-2 space-y-1">
 				for _, option := range p.Suggestions {
 					@pickerOption(p, option)
@@ -951,9 +969,9 @@ templ pickerPanel(p Picker) {
 			</ul>
 		}
 		if p.Query != "" {
-			@ui.MonoLabel("Matches")
+			@ui.MonoLabel(i18n.T(ctx, "workouts.picker.matches"))
 			if len(p.Matches) == 0 {
-				<p class="text-muted-foreground mt-2 text-sm">Nothing matched. Try a shorter search.</p>
+				<p class="text-muted-foreground mt-2 text-sm">{ i18n.T(ctx, "workouts.picker.none") }</p>
 			} else {
 				<ul class="mt-2 space-y-1">
 					for _, option := range p.Matches {
