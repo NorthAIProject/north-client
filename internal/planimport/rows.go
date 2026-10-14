@@ -2,6 +2,7 @@ package planimport
 
 import (
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -34,6 +35,9 @@ type MealRow struct {
 	Uncertain                                                    bool
 	// Optional is a food the source offers but does not count.
 	Optional bool
+	// MealOptional is a whole meal the source offers but does not count
+	// ("Ceia (opcional)"). One row saying so is enough for the meal.
+	MealOptional bool
 }
 
 // MealReading is everything a reader made of a meal plan, still as text.
@@ -163,7 +167,7 @@ func buildMeal(reading MealReading) (MealDraft, error) {
 			dayIndex[dKey] = di
 		}
 
-		mealName := strings.TrimSpace(row.Meal)
+		mealName, markedOptional := splitOptionalMarker(row.Meal)
 		mKey := dKey + "\x00" + dayKey(mealName)
 		mi, seen := mealIndex[mKey]
 		if !seen {
@@ -172,6 +176,7 @@ func buildMeal(reading MealReading) (MealDraft, error) {
 			mealIndex[mKey] = mi
 		}
 		m := &draft.Days[di].Meals[mi]
+		m.Optional = m.Optional || markedOptional || row.MealOptional
 
 		label := strings.TrimSpace(row.Option)
 		oKey := mKey + "\x00" + dayKey(label)
@@ -288,7 +293,9 @@ func exactGrams(f FoodDraft) bool {
 // added to every copied option, after the copied foods. It reports whether
 // the source meal was found on any day.
 func copySameMeal(d *MealDraft, same SameMeal) bool {
-	target, source := dayKey(same.Meal), dayKey(same.SameAs)
+	targetName, targetOptional := splitOptionalMarker(same.Meal)
+	sourceName, _ := splitOptionalMarker(same.SameAs)
+	target, source := dayKey(targetName), dayKey(sourceName)
 	if target == "" || source == "" || target == source {
 		return true
 	}
@@ -309,11 +316,13 @@ func copySameMeal(d *MealDraft, same SameMeal) bool {
 		}
 		found = true
 		copied := cloneMeal(day.Meals[si])
+		copied.Optional = targetOptional
 		if ti < 0 {
-			copied.Name = strings.TrimSpace(same.Meal)
+			copied.Name = targetName
 			day.Meals = append(day.Meals, copied)
 			continue
 		}
+		copied.Optional = copied.Optional || day.Meals[ti].Optional
 		var own []FoodDraft
 		for _, opt := range day.Meals[ti].Options() {
 			own = append(own, opt.Foods...)
@@ -326,6 +335,22 @@ func copySameMeal(d *MealDraft, same SameMeal) bool {
 		day.Meals[ti] = copied
 	}
 	return found
+}
+
+// optionalMarker is a meal heading's own note that the meal is optional:
+// "Ceia (opcional)", "Snack - optional", "Lanche [facultativo]".
+var optionalMarker = regexp.MustCompile(`(?i)\s*(?:[-–—:]\s*)?[(\[]?\s*(?:opcional|optional|facultativ[oa])\s*[)\]]?\s*$`)
+
+// splitOptionalMarker trims a meal heading and takes any optional marker off
+// its end, saying whether there was one. A heading that is nothing but the
+// marker is kept as it is.
+func splitOptionalMarker(heading string) (string, bool) {
+	heading = strings.TrimSpace(heading)
+	loc := optionalMarker.FindStringIndex(heading)
+	if loc == nil || loc[0] == 0 {
+		return heading, false
+	}
+	return strings.TrimSpace(heading[:loc[0]]), true
 }
 
 // cloneMeal deep-copies a meal, so a copy edited on review leaves the
