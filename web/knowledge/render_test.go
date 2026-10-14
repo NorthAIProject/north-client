@@ -342,7 +342,7 @@ func TestInlineSearchOffersFullPageWhenThereIsMore(t *testing.T) {
 }
 
 func TestDocumentDetailKeepsNotesPlain(t *testing.T) {
-	got := documentDetail(document.Document{
+	got := documentDetail(context.Background(), document.Document{
 		Title:      "A note",
 		SourceKind: document.SourceNote,
 		MIME:       "text/markdown",

@@ -1,9 +1,10 @@
 package knowledge
 
 import (
-	"fmt"
+	"context"
 
 	"github.com/NorthAIProject/north-client/internal/documents/document"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
 	"github.com/NorthAIProject/north-client/web/shared/ui/input"
@@ -20,15 +21,15 @@ type SearchView struct {
 }
 
 templ SearchPage(user users.User, view SearchView) {
-	@layout.App("Search knowledge", user, layout.BuildNav(ctx, "/app/knowledge")) {
+	@layout.App(i18n.T(ctx, "knowledge.search.title"), user, layout.BuildNav(ctx, "/app/knowledge")) {
 		<div class="mx-auto w-full max-w-3xl p-6 md:p-8">
 			<header class="border-b border-hairline pb-6">
 				<a href="/app/knowledge" class="text-muted-foreground hover:text-foreground font-mono text-[10px] uppercase tracking-[0.14em]">
-					&larr; Knowledge
+					{ "← " + i18n.T(ctx, "knowledge.title") }
 				</a>
-				<h1 class="mt-2 text-2xl font-medium tracking-tight">Search passages</h1>
+				<h1 class="mt-2 text-2xl font-medium tracking-tight">{ i18n.T(ctx, "knowledge.search.heading") }</h1>
 				<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
-					Find what Khepri has read across your notes and files.
+					{ i18n.T(ctx, "knowledge.search.intro") }
 				</p>
 			</header>
 			<div class="mt-6">
@@ -58,14 +59,14 @@ templ searchForm(view SearchView) {
 			Name:        "q",
 			Value:       view.Query,
 			Type:        input.TypeSearch,
-			Placeholder: "Search passages…",
+			Placeholder: i18n.T(ctx, "knowledge.search.ph"),
 			Attributes: templ.Attributes{
 				"autocomplete": "off",
-				"aria-label":   "Search what Khepri has read",
+				"aria-label":   i18n.T(ctx, "knowledge.search.aria"),
 			},
 		})
 		<div id="knowledge-search-indicator" class="htmx-indicator text-muted-foreground absolute right-3 top-1/2 -translate-y-1/2 text-xs">
-			Searching…
+			{ i18n.T(ctx, "knowledge.search.searching") }
 		</div>
 	</form>
 }
@@ -94,16 +95,16 @@ templ searchPanel(view SearchView) {
 templ searchResultsBody(view SearchView) {
 	if view.Query == "" {
 		<p class="text-muted-foreground text-sm">
-			Type a phrase to search what Khepri has read.
+			{ i18n.T(ctx, "knowledge.search.prompt") }
 		</p>
 	} else if len(view.Hits) == 0 && !view.Append {
 		<p class="text-muted-foreground text-sm">
-			Nothing matched. Khepri can only find what it has read.
+			{ i18n.T(ctx, "knowledge.search.none") }
 		</p>
 	} else {
 		if !view.Append {
 			<p class="text-muted-foreground mb-3 font-mono text-[11px] tabular-nums">
-				{ searchCountLabel(view) }
+				{ searchCountLabel(ctx, view) }
 			</p>
 		}
 		<div id="knowledge-search-results-list" class="border-hairline divide-y divide-hairline overflow-hidden rounded-md border">
@@ -133,19 +134,19 @@ templ searchTail(view SearchView) {
 				hx-swap="outerHTML"
 				hx-select="#knowledge-search-append"
 			>
-				Show more
+				{ i18n.T(ctx, "knowledge.search.more") }
 			</a>
 		}
 	</div>
 }
 
-func searchCountLabel(view SearchView) string {
+func searchCountLabel(ctx context.Context, view SearchView) string {
 	n := len(view.Hits) + view.Offset
 	if view.HasMore {
-		return fmt.Sprintf("%d+ passages", n)
+		return i18n.Tf(ctx, "knowledge.search.count.more", n)
 	}
 	if n == 1 {
-		return "1 passage"
+		return i18n.T(ctx, "knowledge.search.count.one")
 	}
-	return fmt.Sprintf("%d passages", n)
+	return i18n.Tf(ctx, "knowledge.search.count.many", n)
 }
