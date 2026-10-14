@@ -67,27 +67,27 @@ type Registration struct {
 // It exists so a caller can collect account problems alongside problems it
 // found itself (a rejected password, say) and report them in one pass, without
 // that collection having the side effect of creating an account.
-// Messages here are looked up in English explicitly rather than written inline.
-// Signup happens before there is an account, so there is no chosen language to
-// honour yet and English is the only honest answer — but the string still lives
-// in one place, so the day logged-out pages resolve a locale this becomes a
-// one-line change instead of a hunt.
+// Messages are in the language the visitor was reading when they signed up
+// (reg.Locale, resolved from the landing page, the switcher or
+// Accept-Language). An empty or unknown locale reads English, because
+// i18n.Translate falls back to it.
 func (s *Service) ValidateRegistration(reg Registration) (Registration, error) {
 	var errs apperr.FieldErrors
+	tag := string(reg.Locale)
 
 	email := strings.TrimSpace(reg.Email)
 	if email == "" {
-		errs = errs.Add("email", i18n.Translate(i18n.DefaultLocale, "users.err.email.required"))
+		errs = errs.Add("email", i18n.Translate(tag, "users.err.email.required"))
 	} else if !validEmail(email) {
-		errs = errs.Add("email", i18n.Translate(i18n.DefaultLocale, "users.err.email.invalid"))
+		errs = errs.Add("email", i18n.Translate(tag, "users.err.email.invalid"))
 	}
 
 	name := strings.TrimSpace(reg.DisplayName)
 	switch {
 	case name == "":
-		errs = errs.Add("display_name", i18n.Translate(i18n.DefaultLocale, "users.err.name.required"))
+		errs = errs.Add("display_name", i18n.Translate(tag, "users.err.name.required"))
 	case len(name) > 100:
-		errs = errs.Add("display_name", i18n.Translate(i18n.DefaultLocale, "users.err.name.toolong"))
+		errs = errs.Add("display_name", i18n.Translate(tag, "users.err.name.toolong"))
 	}
 
 	// An unrecognised zone falls back to UTC rather than refusing the account.
