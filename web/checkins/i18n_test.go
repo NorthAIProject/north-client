@@ -4,7 +4,9 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/NorthAIProject/north-client/internal/checkins/checkin"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
@@ -68,6 +70,39 @@ func TestTheScaleIsAnnouncedInTheChosenLanguage(t *testing.T) {
 	for _, want := range []string{"Ánimo en una escala de 1 a 5", "Ánimo 1 de 5"} {
 		if !strings.Contains(html, want) {
 			t.Errorf("expected the screen-reader text %q", want)
+		}
+	}
+}
+
+// The receipt after a save: the day, the streak line and the label all follow
+// the locale, including the weekday and month names.
+func TestSavedPanelIsTranslated(t *testing.T) {
+	c := checkin.CheckIn{
+		LocalDate:        time.Date(2026, time.March, 2, 0, 0, 0, 0, time.UTC),
+		Mood:             4,
+		Energy:           3,
+		RelatedGoalTitle: "Run 10k",
+	}
+	cases := map[users.Locale][]string{
+		users.LocaleEN:   {"Logged", "Mon 2 Mar — mood 4 · energy 3", "Related: Run 10k", "3-day streak"},
+		users.LocalePTPT: {"Registado", "humor 4 · energia 3", "Relacionado: Run 10k", "Sequência de 3 dias"},
+		users.LocalePTBR: {"Registrado", "humor 4 · energia 3", "Sequência de 3 dias"},
+		users.LocaleES:   {"Registrado", "ánimo 4 · energía 3", "Racha de 3 días", "mar"},
+	}
+	for locale, wants := range cases {
+		var b strings.Builder
+		ctx := i18n.WithLocale(context.Background(), string(locale))
+		if err := SavedPanel(c, 3, nil).Render(ctx, &b); err != nil {
+			t.Fatalf("render %s: %v", locale, err)
+		}
+		html := b.String()
+		for _, want := range wants {
+			if !strings.Contains(html, want) {
+				t.Errorf("%s: saved panel does not contain %q", locale, want)
+			}
+		}
+		if locale != users.LocaleEN && strings.Contains(html, "Same time tomorrow") {
+			t.Errorf("%s: English streak line leaked", locale)
 		}
 	}
 }

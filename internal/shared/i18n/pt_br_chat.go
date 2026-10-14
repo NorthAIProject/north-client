@@ -87,4 +87,12 @@ var portugueseBrazilianChat = map[string]string{
 	"chat.watch.day.4":   "quinta-feira",
 	"chat.watch.day.5":   "sexta-feira",
 	"chat.watch.day.6":   "sábado",
+
+	"chat.reflection.summary": "Resumo da reflexão",
+	"chat.copy":               "Copiar",
+	"chat.copied":             "Copiado",
+
+	"chat.sources.one":  "1 fonte",
+	"chat.sources.many": "%[1]d fontes",
+	"chat.file":         "arquivo",
 }

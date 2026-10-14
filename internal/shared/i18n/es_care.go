@@ -99,4 +99,12 @@ var spanishCare = map[string]string{
 	"weekday.short.4": "Jue",
 	"weekday.short.5": "Vie",
 	"weekday.short.6": "Sáb",
+
+	"care.habits.streak.one":  "Racha de 1 día",
+	"care.habits.streak.many": "Racha de %[1]d días",
+	"care.habits.kept":        "cumplido %[1]d de %[2]d esta semana",
+	"care.habits.markdone":    "Marcar como hecho",
+	"care.habits.nottoday":    "Hoy no toca",
+
+	"care.water.at": "%[1]s a las %[2]s",
 }

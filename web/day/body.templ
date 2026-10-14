@@ -67,12 +67,12 @@ templ bodyChips(b BodyCard) {
 			}
 			if b.HasBMI {
 				<div class="bg-background/80 border-hairline rounded-xl border px-2 py-1.5 shadow-sm">
-					<p class="text-lg font-semibold tabular-nums"><span class="text-muted-foreground text-[10px] font-normal">BMI </span>{ b.BMI }</p>
+					<p class="text-lg font-semibold tabular-nums"><span class="text-muted-foreground text-[10px] font-normal">{ i18n.T(ctx, "day.body.bmi") } </span>{ b.BMI }</p>
 					<p class={ "text-[10px] leading-tight font-medium", bmiClass(b.BMICategory) }>{ i18n.T(ctx, "day.bmi." + b.BMICategory) }</p>
 				</div>
 			} else if b.HeightMissing {
 				<a href="/app/calculator" class="bg-background/80 border-hairline flex items-center rounded-xl border px-2 py-1.5 text-sm shadow-sm" data-testid="add-height">
-					<span class="text-muted-foreground text-[10px] font-normal">BMI&nbsp;</span>{ i18n.T(ctx, "day.body.addHeight") }
+					<span class="text-muted-foreground text-[10px] font-normal">{ i18n.T(ctx, "day.body.bmi") }&nbsp;</span>{ i18n.T(ctx, "day.body.addHeight") }
 				</a>
 			}
 			if b.HasBloodPressure {

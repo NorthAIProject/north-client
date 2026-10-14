@@ -87,4 +87,12 @@ var spanishChat = map[string]string{
 	"chat.watch.day.4":   "jueves",
 	"chat.watch.day.5":   "viernes",
 	"chat.watch.day.6":   "sábado",
+
+	"chat.reflection.summary": "Resumen de la reflexión",
+	"chat.copy":               "Copiar",
+	"chat.copied":             "Copiado",
+
+	"chat.sources.one":  "1 fuente",
+	"chat.sources.many": "%[1]d fuentes",
+	"chat.file":         "archivo",
 }

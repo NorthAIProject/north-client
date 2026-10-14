@@ -106,4 +106,12 @@ var englishCare = map[string]string{
 	"weekday.short.4": "Thu",
 	"weekday.short.5": "Fri",
 	"weekday.short.6": "Sat",
+
+	"care.habits.streak.one":  "1 day streak",
+	"care.habits.streak.many": "%[1]d day streak",
+	"care.habits.kept":        "kept %[1]d of %[2]d this week",
+	"care.habits.markdone":    "Mark done",
+	"care.habits.nottoday":    "Not today",
+
+	"care.water.at": "%[1]s at %[2]s",
 }
