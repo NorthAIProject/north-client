@@ -1,14 +1,19 @@
 package exercises
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/exercises/exercise"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 )
 
 // Filters carries the raw query-string values back into the form, so a
@@ -102,6 +107,39 @@ var equipmentOptions = []string{
 	exercise.EquipmentOther,
 }
 
+// muscleLabel, categoryLabel, difficultyLabel and equipmentLabel name a
+// stored catalog value in the reader's language.
+func muscleLabel(ctx context.Context, key string) string {
+	return vocabulary(ctx, "exercises.muscle.", key)
+}
+
+func categoryLabel(ctx context.Context, category string) string {
+	return vocabulary(ctx, "exercises.category.", category)
+}
+
+func difficultyLabel(ctx context.Context, difficulty string) string {
+	return vocabulary(ctx, "exercises.difficulty.", difficulty)
+}
+
+func equipmentLabel(ctx context.Context, item string) string {
+	return vocabulary(ctx, "exercises.equipment.", item)
+}
+
+// vocabulary looks a stored value up under prefix, with spaces and hyphens
+// folded to underscores ("pull-up bar" is "pull_up_bar"). A value the
+// catalogue does not know — the filter echoes whatever was in the URL — falls
+// back to humanize rather than rendering a key.
+func vocabulary(ctx context.Context, prefix, value string) string {
+	if value == "" {
+		return ""
+	}
+	key := prefix + strings.NewReplacer(" ", "_", "-", "_").Replace(value)
+	if label := i18n.T(ctx, key); label != key {
+		return label
+	}
+	return humanize(value)
+}
+
 // humanize turns a stored value ("olympic_weightlifting", "pull-up bar") into
 // something readable, without a second table to keep in sync.
 func humanize(value string) string {
@@ -117,11 +155,11 @@ func humanize(value string) string {
 // It used to say "Showing 60 of 186", which was true and useless: there was no
 // way to reach the other 126. Now that page links exist it names the range, so
 // the count on screen and the number of pages agree.
-func summary(shown int, p Page) string {
+func summary(ctx context.Context, shown int, p Page) string {
 	if shown == p.Total {
-		return fmt.Sprintf("%d exercises", p.Total)
+		return i18n.Tf(ctx, "exercises.browse.count", p.Total)
 	}
-	return fmt.Sprintf("Showing %d-%d of %d exercises", p.FirstRow, p.FirstRow+shown-1, p.Total)
+	return i18n.Tf(ctx, "exercises.browse.range", p.FirstRow, p.FirstRow+shown-1, p.Total)
 }
 
 // DetailView is the detail page: the exercise, and what the reader can do with
@@ -150,11 +188,11 @@ func (v DetailView) HasPlan() bool { return v.PlanID != uuid.Nil }
 
 // inPlanOn is the weekdays that already include the exercise, for the
 // "already in your plan" line.
-func (v DetailView) inPlanOn() []string {
+func (v DetailView) inPlanOn(ctx context.Context) []string {
 	var out []string
 	for _, day := range v.Days {
 		if day.Includes {
-			out = append(out, day.Weekday)
+			out = append(out, weekdayName(ctx, day.Weekday))
 		}
 	}
 	return out
@@ -172,9 +210,23 @@ func (v DetailView) addHref(day PlanDayOption) string {
 }
 
 // dayLabel names a plan day by weekday and focus, the way the plan page does.
-func dayLabel(day PlanDayOption) string {
+func dayLabel(ctx context.Context, day PlanDayOption) string {
 	if day.Focus == "" {
-		return day.Weekday
+		return weekdayName(ctx, day.Weekday)
 	}
-	return day.Weekday + " · " + day.Focus
+	return weekdayName(ctx, day.Weekday) + " · " + day.Focus
+}
+
+// weekdayName names a plan's English weekday ("Monday") in the reader's
+// language, capitalised. A label that is not a weekday is shown as written.
+func weekdayName(ctx context.Context, label string) string {
+	label = strings.TrimSpace(label)
+	for d := time.Sunday; d <= time.Saturday; d++ {
+		if strings.EqualFold(d.String(), label) {
+			name := i18n.T(ctx, "weekday.long."+strconv.Itoa(int(d)))
+			r, size := utf8.DecodeRuneInString(name)
+			return string(unicode.ToUpper(r)) + name[size:]
+		}
+	}
+	return label
 }

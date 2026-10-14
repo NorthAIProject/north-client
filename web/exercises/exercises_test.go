@@ -190,13 +190,13 @@ func TestPageOneURLOmitsThePageParameter(t *testing.T) {
 func TestSummaryNamesTheRangeOnScreenRatherThanJustACount(t *testing.T) {
 	t.Parallel()
 
-	got := summary(24, Page{Number: 2, Last: 19, Total: 455, FirstRow: 25})
+	got := summary(context.Background(), 24, Page{Number: 2, Last: 19, Total: 455, FirstRow: 25})
 	if want := "Showing 25-48 of 455 exercises"; got != want {
 		t.Errorf("summary = %q, want %q", got, want)
 	}
 
 	// A result that fits on one page should not be described as a range.
-	if got := summary(3, onePage(3)); got != "3 exercises" {
+	if got := summary(context.Background(), 3, onePage(3)); got != "3 exercises" {
 		t.Errorf("single-page summary = %q, want %q", got, "3 exercises")
 	}
 }
