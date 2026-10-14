@@ -1,14 +1,17 @@
 package fitness
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/FACorreiaa/go-utils/pkg/util"
 
 	"github.com/NorthAIProject/north-client/internal/fitness/strava"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/viz"
 )
 
@@ -54,42 +57,39 @@ func trendState(status strava.Status, trend strava.Trend) trendStateKind {
 // trendState already uses: decide in Go, phrase at the edge.
 
 // trendSentence is what the chart means, in one line.
-func trendSentence(trend strava.Trend) string {
+func trendSentence(ctx context.Context, trend strava.Trend) string {
 	switch trend.Shape {
 	case strava.ShapeNoHistory:
-		return "Nothing recorded in this window yet."
+		return i18n.T(ctx, "fitness.trend.nohistory")
 	case strava.ShapeTooNew:
 		// Deliberately not a verdict. There is training here, but not yet
 		// enough of it to say whether this week is a lot or a little, and
 		// inventing a trend out of a fortnight would be a confident lie.
-		return fmt.Sprintf(
-			"%s so far this week. A few more weeks and this will start comparing them.",
-			humanMinutes(trend.RecentMinutes),
-		)
+		return i18n.Tf(ctx, "fitness.trend.toonew", humanMinutes(trend.RecentMinutes))
 	default:
-		return fmt.Sprintf("%s this week — %s.", humanMinutes(trend.RecentMinutes), comparison(trend))
+		return i18n.Tf(ctx, "fitness.trend.sentence", humanMinutes(trend.RecentMinutes), comparison(ctx, trend))
 	}
 }
 
 // comparison is the clause that puts this week next to a normal one.
-func comparison(trend strava.Trend) string {
+func comparison(ctx context.Context, trend strava.Trend) string {
 	switch trend.Shape {
 	case strava.ShapeBigWeek:
-		return fmt.Sprintf("%s more than you normally do", proportion(trend.Ratio))
+		return i18n.Tf(ctx, "fitness.trend.big", proportion(ctx, trend.Ratio))
 	case strava.ShapeBuilding:
-		return fmt.Sprintf("%s above your normal", proportion(trend.Ratio))
+		return i18n.Tf(ctx, "fitness.trend.building", proportion(ctx, trend.Ratio))
 	case strava.ShapeSteady:
-		return "about what you normally do"
+		return i18n.T(ctx, "fitness.trend.steady")
 	case strava.ShapeEasier:
-		return fmt.Sprintf("%s below your normal, an easier week", proportion(trend.Ratio))
+		return i18n.Tf(ctx, "fitness.trend.easier", proportion(ctx, trend.Ratio))
 	default:
-		return "well below your normal"
+		return i18n.T(ctx, "fitness.trend.below")
 	}
 }
 
 // proportion says how far off normal in the words people use, rather than as a
 // percentage nobody reads aloud. "A third above" lands; "up 34.2%" does not.
-func proportion(ratio float64) string {
+func proportion(ctx context.Context, ratio float64) string {
 	off := ratio - 1
 	if off < 0 {
 		off = -off
@@ -97,17 +97,17 @@ func proportion(ratio float64) string {
 
 	switch {
 	case off >= 0.9:
-		return "nearly double"
+		return i18n.T(ctx, "fitness.trend.double")
 	case off >= 0.6:
-		return "half again"
+		return i18n.T(ctx, "fitness.trend.halfagain")
 	case off >= 0.4:
-		return "a half"
+		return i18n.T(ctx, "fitness.trend.half")
 	case off >= 0.28:
-		return "a third"
+		return i18n.T(ctx, "fitness.trend.third")
 	case off >= 0.2:
-		return "a quarter"
+		return i18n.T(ctx, "fitness.trend.quarter")
 	default:
-		return "a little"
+		return i18n.T(ctx, "fitness.trend.little")
 	}
 }
 
@@ -116,11 +116,11 @@ func proportion(ratio float64) string {
 // Only shown once it is worth saying. One week is not a streak, it is a week,
 // and congratulating somebody for it reads as a machine trying to be
 // encouraging.
-func streakSentence(trend strava.Trend) string {
+func streakSentence(ctx context.Context, trend strava.Trend) string {
 	if trend.StreakWeeks < 2 {
 		return ""
 	}
-	return fmt.Sprintf("%d weeks running without a gap.", trend.StreakWeeks)
+	return i18n.Tf(ctx, "fitness.trend.streak", trend.StreakWeeks)
 }
 
 // ---------------------------------------------------------------------------
@@ -132,10 +132,10 @@ func streakSentence(trend strava.Trend) string {
 // family the server does not know about, or quietly omit one it does. The
 // colours are the same --north-sport-* tokens the legend uses, which
 // web/fitness/palette_test.go pins to the stylesheet.
-func trendChartOption(trend strava.Trend) ([]byte, error) {
+func trendChartOption(ctx context.Context, trend strava.Trend) ([]byte, error) {
 	labels := make([]string, 0, len(trend.Days))
 	for _, day := range trend.Days {
-		labels = append(labels, day.Date.Format("2 Jan"))
+		labels = append(labels, i18n.Date(ctx, day.Date, "2 Jan"))
 	}
 
 	bands := make([]viz.TrendBand, 0, len(strava.Families))
@@ -149,13 +149,20 @@ func trendChartOption(trend strava.Trend) ([]byte, error) {
 			}
 		}
 		bands = append(bands, viz.TrendBand{
-			Label:  family.Label(),
+			Label:  familyLabel(ctx, family),
 			Color:  sportColorVar(family),
 			Values: round1s(values),
 		})
 	}
 
-	return viz.TrainingTrendJSON(labels, bands, "Your normal", round1s(trend.Normal))
+	return viz.TrainingTrendJSON(labels, bands, i18n.T(ctx, "fitness.trend.normal"), round1s(trend.Normal))
+}
+
+// familyLabel is a sport family as the legend shows it, in the reader's
+// language. Keyed by the English label, which is the identifier the strava
+// package already exposes.
+func familyLabel(ctx context.Context, f strava.SportFamily) string {
+	return i18n.T(ctx, "fitness.family."+strings.ToLower(f.Label()))
 }
 
 // sportColorVar is the CSS custom property holding a family's colour.
@@ -263,14 +270,14 @@ func stravaActivityURL(session strava.Session) string {
 // routeWhen is when a session happened, as the list reads it: the day, then
 // the time. The flat list has no day heading to inherit a date from, so every
 // row carries its own.
-func routeWhen(session strava.Session, loc *time.Location) string {
+func routeWhen(ctx context.Context, session strava.Session, loc *time.Location) string {
 	if session.StartedAt.IsZero() {
 		return ""
 	}
 	if loc == nil {
 		loc = time.UTC
 	}
-	return session.StartedAt.In(loc).Format("Mon 2 Jan 15:04")
+	return i18n.Date(ctx, session.StartedAt.In(loc), "Mon 2 Jan 15:04")
 }
 
 // routeDayKey is the calendar day a session belongs to, in the reader's zone.

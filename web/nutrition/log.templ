@@ -24,15 +24,15 @@ type MealOption struct {
 }
 
 templ LogPage(user users.User, entries []meal.FoodLogEntry, progressSummary string, hasProgress bool, recommendationMsg string, hasRecommendation bool, allIngredients []meal.Ingredient, mealOptions []MealOption) {
-	@layout.App("Food log", user, nav(ctx)) {
+	@layout.App(i18n.T(ctx, "nav.food-log"), user, nav(ctx)) {
 		<div class="mx-auto w-full max-w-2xl space-y-6 p-6 md:p-8">
 			<header class="flex items-end justify-between gap-4">
 				<div>
-					@ui.MonoLabel("Nutrition")
-					<h1 class="mt-2 text-2xl font-medium tracking-tight">Today's log</h1>
+					@ui.MonoLabel(i18n.T(ctx, "nutrition.mono"))
+					<h1 class="mt-2 text-2xl font-medium tracking-tight">{ i18n.T(ctx, "nutrition.log.title") }</h1>
 				</div>
 				@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Href: "/app/nutrition/import"}) {
-					Import a meal plan
+					{ i18n.T(ctx, "nutrition.log.import") }
 				}
 			</header>
 			if hasProgress {
@@ -64,7 +64,7 @@ templ LogPage(user users.User, entries []meal.FoodLogEntry, progressSummary stri
 			@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 				@card.Header() {
 					@card.Title() {
-						Log an ingredient
+						{ i18n.T(ctx, "nutrition.log.ingredient.title") }
 					}
 				}
 				@card.Content() {
@@ -73,7 +73,7 @@ templ LogPage(user users.User, entries []meal.FoodLogEntry, progressSummary stri
 						<div class="flex-1">
 							@selectbox.SelectBox() {
 								@selectbox.Trigger(selectbox.TriggerProps{Name: "ingredient_id"}) {
-									@selectbox.Value(selectbox.ValueProps{Placeholder: "Choose an ingredient"})
+									@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "nutrition.ingredient.choose")})
 								}
 								@selectbox.Content() {
 									for _, ing := range allIngredients {
@@ -85,10 +85,10 @@ templ LogPage(user users.User, entries []meal.FoodLogEntry, progressSummary stri
 							}
 						</div>
 						<div class="w-24">
-							@input.Input(input.Props{Name: "quantity_grams", Type: input.TypeNumber, Placeholder: "grams"})
+							@input.Input(input.Props{Name: "quantity_grams", Type: input.TypeNumber, Placeholder: i18n.T(ctx, "nutrition.grams")})
 						</div>
 						@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
-							Log
+							{ i18n.T(ctx, "nutrition.log.submit") }
 						}
 					</form>
 				}
@@ -97,7 +97,7 @@ templ LogPage(user users.User, entries []meal.FoodLogEntry, progressSummary stri
 				@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 					@card.Header() {
 						@card.Title() {
-							Log a meal
+							{ i18n.T(ctx, "nutrition.log.meal.title") }
 						}
 					}
 					@card.Content() {
@@ -106,7 +106,7 @@ templ LogPage(user users.User, entries []meal.FoodLogEntry, progressSummary stri
 							<div class="flex-1">
 								@selectbox.SelectBox() {
 									@selectbox.Trigger(selectbox.TriggerProps{Name: "meal_id"}) {
-										@selectbox.Value(selectbox.ValueProps{Placeholder: "Choose a meal"})
+										@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "nutrition.log.meal.choose")})
 									}
 									@selectbox.Content() {
 										for _, m := range mealOptions {
@@ -118,7 +118,7 @@ templ LogPage(user users.User, entries []meal.FoodLogEntry, progressSummary stri
 								}
 							</div>
 							@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
-								Log
+								{ i18n.T(ctx, "nutrition.log.submit") }
 							}
 						</form>
 					}
@@ -126,7 +126,7 @@ templ LogPage(user users.User, entries []meal.FoodLogEntry, progressSummary stri
 			}
 			if len(entries) > 0 {
 				<section class="space-y-2">
-					<h2 class="text-sm font-medium">Logged today</h2>
+					<h2 class="text-sm font-medium">{ i18n.T(ctx, "nutrition.log.today") }</h2>
 					for _, e := range entries {
 						@logEntryRow(e)
 					}
@@ -145,7 +145,7 @@ templ logEntryRow(e meal.FoodLogEntry) {
 			<form method="post" action={ templ.SafeURL("/app/nutrition/log/" + e.ID.String() + "/delete") }>
 				@ui.CSRFInput()
 				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm}) {
-					Remove
+					{ i18n.T(ctx, "nutrition.remove") }
 				}
 			</form>
 		</div>

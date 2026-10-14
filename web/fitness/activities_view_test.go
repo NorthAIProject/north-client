@@ -93,7 +93,7 @@ func TestTheSentenceSaysWhatIsHappening(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if got := trendSentence(tt.trend); got != tt.want {
+			if got := trendSentence(context.Background(), tt.trend); got != tt.want {
 				t.Errorf("sentence = %q, want %q", got, tt.want)
 			}
 		})
@@ -104,7 +104,7 @@ func TestTheSentenceSaysWhatIsHappening(t *testing.T) {
 func TestAShortHistoryIsToldTheTruth(t *testing.T) {
 	t.Parallel()
 
-	got := trendSentence(strava.Trend{Shape: strava.ShapeTooNew, RecentMinutes: 95})
+	got := trendSentence(context.Background(), strava.Trend{Shape: strava.ShapeTooNew, RecentMinutes: 95})
 
 	if strings.Contains(got, "normal") && !strings.Contains(got, "start comparing") {
 		t.Errorf("a two-week account was compared to a normal it does not have: %q", got)
@@ -118,10 +118,10 @@ func TestAShortHistoryIsToldTheTruth(t *testing.T) {
 func TestTheStreakLineOnlyAppearsWhenItIsWorthSaying(t *testing.T) {
 	t.Parallel()
 
-	if got := streakSentence(strava.Trend{StreakWeeks: 1}); got != "" {
+	if got := streakSentence(context.Background(), strava.Trend{StreakWeeks: 1}); got != "" {
 		t.Errorf("a single week was announced as a streak: %q", got)
 	}
-	if got := streakSentence(strava.Trend{StreakWeeks: 9}); got != "9 weeks running without a gap." {
+	if got := streakSentence(context.Background(), strava.Trend{StreakWeeks: 9}); got != "9 weeks running without a gap." {
 		t.Errorf("streak line = %q", got)
 	}
 }

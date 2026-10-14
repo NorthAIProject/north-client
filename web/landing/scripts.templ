@@ -1,6 +1,10 @@
 package landing
 
 import (
+	"context"
+	"strings"
+
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/web/shared/ui/checkbox"
 	"github.com/NorthAIProject/north-client/web/shared/ui/label"
 	"github.com/NorthAIProject/north-client/web/shared/ui/selectbox"
@@ -24,7 +28,28 @@ templ landingScripts() {
 	@label.Script()
 	@checkbox.Script()
 	@selectbox.Script()
+	// Before the page script, which reads it as soon as it runs.
+	@templ.JSONScript("north-landing-copy", scriptCopy(ctx))
 	@landingBehaviour()
+}
+
+// scriptCopyPrefixes are the catalogue stems landing.js speaks with. The demos
+// compute their sentences in the browser, so the words have to travel with the
+// page; the script fills the {placeholders} itself.
+var scriptCopyPrefixes = []string{"land.goal.", "land.bmi.", "land.setter."}
+
+// scriptCopy is every string under those stems, in the visitor's language.
+func scriptCopy(ctx context.Context) map[string]string {
+	out := map[string]string{}
+	for _, key := range i18n.Keys() {
+		for _, prefix := range scriptCopyPrefixes {
+			if strings.HasPrefix(key, prefix) {
+				out[key] = i18n.T(ctx, key)
+				break
+			}
+		}
+	}
+	return out
 }
 
 var landingScriptOnce = templ.NewOnceHandle()
