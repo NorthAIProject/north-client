@@ -3,8 +3,10 @@ package care
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/habits"
@@ -155,6 +157,38 @@ func daysSummary(ctx context.Context, days []int) string {
 		}
 	}
 	return strings.Join(labels, ", ")
+}
+
+// habitSchedule is habit.Habit.Schedule in the reader's language, in week
+// order like the original.
+func habitSchedule(ctx context.Context, h habits.Habit) string {
+	if h.IsDaily() {
+		return i18n.T(ctx, "care.rem.everyday")
+	}
+	var days []int
+	for day := time.Sunday; day <= time.Saturday; day++ {
+		if slices.Contains(h.Days, day) {
+			days = append(days, int(day))
+		}
+	}
+	return daysSummary(ctx, days)
+}
+
+// habitStreak has a singular: "1 days" is wrong in every one of these languages.
+func habitStreak(ctx context.Context, n int) string {
+	if n == 1 {
+		return i18n.T(ctx, "care.habits.streak.one")
+	}
+	return i18n.Tf(ctx, "care.habits.streak.many", n)
+}
+
+// domainLabel names a life domain, or shows the stored value when this build
+// does not know it.
+func domainLabel(ctx context.Context, domain string) string {
+	if !lifedomain.Valid(domain) {
+		return domain
+	}
+	return i18n.T(ctx, "lifedomain."+domain)
 }
 
 func litres(ml int) string { return fmt.Sprintf("%.1fL", float64(ml)/1000) }
@@ -376,7 +410,7 @@ templ waterCard(day hydration.Day, entries []hydration.Entry, f WaterForm) {
 				<ul class="mt-4 space-y-1">
 					for _, e := range entries {
 						<li class="text-muted-foreground flex items-center justify-between text-xs">
-							<span>{ amountLabel(e.AmountML) } at { e.LoggedAt.Format("15:04") }</span>
+							<span>{ i18n.Tf(ctx, "care.water.at", amountLabel(e.AmountML), e.LoggedAt.Format("15:04")) }</span>
 							<form method="post" action={ templ.SafeURL("/app/care/water/" + e.ID.String() + "/undo") } { panelSwapAttrs()... }>
 								@ui.CSRFInput()
 								@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm}) {
@@ -568,18 +602,18 @@ templ habitRow(s habits.Stats) {
 			<div class="flex flex-wrap items-center gap-2">
 				<span class="text-sm font-medium">{ s.Habit.Name }</span>
 				@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
-					{ s.Habit.Domain }
+					{ domainLabel(ctx, s.Habit.Domain) }
 				}
 				if s.Streak > 0 {
 					<span class="text-signal font-mono text-[10px] uppercase tracking-[0.14em]">
-						{ strconv.Itoa(s.Streak) } day streak
+						{ habitStreak(ctx, s.Streak) }
 					</span>
 				}
 			</div>
 			<p class="text-muted-foreground mt-0.5 text-xs">
-				{ s.Habit.Schedule() }
+				{ habitSchedule(ctx, s.Habit) }
 				if s.Scheduled > 0 {
-					· kept { strconv.Itoa(s.Kept) } of { strconv.Itoa(s.Scheduled) } this week
+					· { i18n.Tf(ctx, "care.habits.kept", s.Kept, s.Scheduled) }
 				}
 			</p>
 		</div>
@@ -594,14 +628,14 @@ templ habitRow(s habits.Stats) {
 						}
 					} else {
 						@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Class: "bg-signal text-background hover:bg-signal/90"}) {
-							Mark done
+							{ i18n.T(ctx, "care.habits.markdone") }
 						}
 					}
 				</form>
 			} else {
 				// Not due today is not the same as missed, and should not read
 				// like a failure.
-				<span class="text-muted-foreground text-xs">Not today</span>
+				<span class="text-muted-foreground text-xs">{ i18n.T(ctx, "care.habits.nottoday") }</span>
 			}
 			<form method="post" action={ templ.SafeURL("/app/care/habits/" + s.Habit.ID.String() + "/delete") } { panelSwapAttrs()... }>
 				@ui.CSRFInput()

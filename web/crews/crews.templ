@@ -1,9 +1,11 @@
 package crews
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/NorthAIProject/north-client/internal/crews/crew"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
@@ -30,15 +32,23 @@ func (f CreateForm) fieldError(name string) string {
 	return f.Errors[name]
 }
 
-func challengeLabel(c *crew.Challenge) string {
+func challengeLabel(ctx context.Context, c *crew.Challenge) string {
 	if c == nil {
-		return "No challenge this week."
+		return i18n.T(ctx, "crews.challenge.none")
 	}
-	noun := "check-ins"
 	if c.Kind == crew.ChallengeWorkouts {
-		noun = "workouts"
+		return i18n.Tf(ctx, "crews.challenge.workouts", c.Target)
 	}
-	return fmt.Sprintf("%d %s each, Monday to Sunday.", c.Target, noun)
+	return i18n.Tf(ctx, "crews.challenge.checkins", c.Target)
+}
+
+// pick chooses the singular or plural form of a counted string; the singular
+// is not "1 people" in any of these languages.
+func pick(ctx context.Context, n int, one, many string) string {
+	if n == 1 {
+		return i18n.T(ctx, one)
+	}
+	return i18n.Tf(ctx, many, n)
 }
 
 func percent(done, target int) int {
@@ -49,13 +59,13 @@ func percent(done, target int) int {
 }
 
 templ IndexPage(user users.User, mine []crew.Crew, f CreateForm) {
-	@layout.App("Crews", user, layout.BuildNav(ctx, "/app/crews")) {
+	@layout.App(i18n.T(ctx, "crews.title"), user, layout.BuildNav(ctx, "/app/crews")) {
 		<div class="mx-auto w-full max-w-3xl space-y-6 p-6 md:p-8">
 			<header>
-				@ui.MonoLabel("Progress")
-				<h1 class="mt-2 text-2xl font-medium tracking-tight">Crews</h1>
+				@ui.MonoLabel(i18n.T(ctx, "crews.mono"))
+				<h1 class="mt-2 text-2xl font-medium tracking-tight">{ i18n.T(ctx, "crews.title") }</h1>
 				<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
-					A few people keeping each other going. Crewmates see who checked in and trained today, streaks, and the week's challenge. Nothing else.
+					{ i18n.T(ctx, "crews.intro") }
 				</p>
 			</header>
 			if len(mine) > 0 {
@@ -65,7 +75,7 @@ templ IndexPage(user users.User, mine []crew.Crew, f CreateForm) {
 							for _, c := range mine {
 								<li class="flex items-center justify-between py-3">
 									<a class="text-sm font-medium hover:underline" href={ templ.SafeURL("/app/crews/" + c.ID.String()) }>{ c.Name }</a>
-									<span class="text-muted-foreground text-xs">{ fmt.Sprint(c.Members) } people</span>
+									<span class="text-muted-foreground text-xs">{ pick(ctx, c.Members, "crews.members.one", "crews.members.many") }</span>
 								</li>
 							}
 						</ul>
@@ -75,10 +85,10 @@ templ IndexPage(user users.User, mine []crew.Crew, f CreateForm) {
 			@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 				@card.Header() {
 					@card.Title() {
-						Start a crew
+						{ i18n.T(ctx, "crews.start.title") }
 					}
 					@card.Description() {
-						Up to eight people. Two is an accountability partner.
+						{ i18n.T(ctx, "crews.start.desc") }
 					}
 				}
 				@card.Content() {
@@ -86,9 +96,9 @@ templ IndexPage(user users.User, mine []crew.Crew, f CreateForm) {
 						@ui.CSRFInput()
 						@form.Item(form.ItemProps{Class: "flex-1"}) {
 							@label.Label(label.Props{For: "name", Error: f.fieldError("name")}) {
-								Name
+								{ i18n.T(ctx, "crews.name") }
 							}
-							@input.Input(input.Props{ID: "name", Name: "name", Value: f.Name, Placeholder: "e.g. Morning runners", HasError: f.fieldError("name") != ""})
+							@input.Input(input.Props{ID: "name", Name: "name", Value: f.Name, Placeholder: i18n.T(ctx, "crews.name.placeholder"), HasError: f.fieldError("name") != ""})
 							if f.fieldError("name") != "" {
 								@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
 									{ f.fieldError("name") }
@@ -96,7 +106,7 @@ templ IndexPage(user users.User, mine []crew.Crew, f CreateForm) {
 							}
 						}
 						@button.Button(button.Props{Type: button.TypeSubmit}) {
-							Create
+							{ i18n.T(ctx, "crews.create") }
 						}
 					</form>
 				}
@@ -110,14 +120,14 @@ templ BoardPage(user users.User, b crew.Board, joinURL string) {
 	@layout.App(b.Name, user, layout.BuildNav(ctx, "/app/crews")) {
 		<div class="mx-auto w-full max-w-3xl space-y-6 p-6 md:p-8">
 			<header>
-				@ui.MonoLabel("Crew")
+				@ui.MonoLabel(i18n.T(ctx, "crews.board.mono"))
 				<h1 class="mt-2 text-2xl font-medium tracking-tight">{ b.Name }</h1>
-				<p class="text-muted-foreground mt-1 text-sm">{ challengeLabel(b.Challenge) }</p>
+				<p class="text-muted-foreground mt-1 text-sm">{ challengeLabel(ctx, b.Challenge) }</p>
 			</header>
 			@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 				@card.Header() {
 					@card.Title() {
-						Today
+						{ i18n.T(ctx, "crews.today") }
 					}
 				}
 				@card.Content() {
@@ -128,35 +138,35 @@ templ BoardPage(user users.User, b crew.Board, joinURL string) {
 									<div class="min-w-0 flex-1">
 										<p class="truncate text-sm font-medium">
 											if m.Me {
-												You
+												{ i18n.T(ctx, "crews.you") }
 											} else {
 												{ m.DisplayName }
 											}
 											if m.Owner {
-												<span class="text-muted-foreground text-xs"> · owner</span>
+												<span class="text-muted-foreground text-xs"> · { i18n.T(ctx, "crews.owner") }</span>
 											}
 										</p>
-										<p class="text-muted-foreground text-xs">{ fmt.Sprint(m.Streak) }-day check-in streak</p>
+										<p class="text-muted-foreground text-xs">{ i18n.Tf(ctx, "crews.streak", m.Streak) }</p>
 									</div>
 									if m.CheckedIn {
 										@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
-											Checked in
+											{ i18n.T(ctx, "crews.checkedin") }
 										}
 									} else {
 										@badge.Badge(badge.Props{Variant: badge.VariantOutline}) {
-											Not yet
+											{ i18n.T(ctx, "crews.notyet") }
 										}
 									}
 									if m.WorkedOut {
 										@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
-											Trained
+											{ i18n.T(ctx, "crews.trained") }
 										}
 									}
 									if b.IsOwner && !m.Me {
 										<form method="post" action={ templ.SafeURL("/app/crews/" + b.ID.String() + "/members/" + m.ID.String() + "/remove") }>
 											@ui.CSRFInput()
 											@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm}) {
-												Remove
+												{ i18n.T(ctx, "crews.remove") }
 											}
 										</form>
 									}
@@ -175,10 +185,10 @@ templ BoardPage(user users.User, b crew.Board, joinURL string) {
 			@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 				@card.Header() {
 					@card.Title() {
-						Invite to the crew
+						{ i18n.T(ctx, "crews.invite.title") }
 					}
 					@card.Description() {
-						{ fmt.Sprint(len(b.Members)) } of up to { fmt.Sprint(crew.MaxMembers) }. Anyone with the link can join.
+						{ i18n.Tf(ctx, "crews.invite.desc", len(b.Members), crew.MaxMembers) }
 					}
 				}
 				@card.Content() {
@@ -194,7 +204,7 @@ templ BoardPage(user users.User, b crew.Board, joinURL string) {
 			<form method="post" action={ templ.SafeURL("/app/crews/" + b.ID.String() + "/leave") }>
 				@ui.CSRFInput()
 				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost}) {
-					Leave crew
+					{ i18n.T(ctx, "crews.leave") }
 				}
 			</form>
 		</div>
@@ -209,7 +219,7 @@ templ challengeCard(b crew.Board) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 		@card.Header() {
 			@card.Title() {
-				Weekly challenge
+				{ i18n.T(ctx, "crews.challenge.title") }
 			}
 		}
 		@card.Content() {
@@ -217,33 +227,33 @@ templ challengeCard(b crew.Board) {
 				@ui.CSRFInput()
 				@form.Item() {
 					@label.Label(label.Props{For: "kind"}) {
-						What
+						{ i18n.T(ctx, "crews.challenge.what") }
 					}
 					@selectbox.SelectBox() {
 						@selectbox.Trigger(selectbox.TriggerProps{ID: "kind", Name: "kind"}) {
-							@selectbox.Value(selectbox.ValueProps{Placeholder: "Choose"})
+							@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "crews.challenge.choose")})
 						}
 						@selectbox.Content(selectbox.ContentProps{}) {
 							@selectbox.Item(selectbox.ItemProps{Value: crew.ChallengeCheckIns, Selected: b.Challenge != nil && b.Challenge.Kind == crew.ChallengeCheckIns}) {
-								Check-ins
+								{ i18n.T(ctx, "crews.challenge.opt.checkins") }
 							}
 							@selectbox.Item(selectbox.ItemProps{Value: crew.ChallengeWorkouts, Selected: b.Challenge != nil && b.Challenge.Kind == crew.ChallengeWorkouts}) {
-								Workouts
+								{ i18n.T(ctx, "crews.challenge.opt.workouts") }
 							}
 							@selectbox.Item(selectbox.ItemProps{Value: "none", Selected: b.Challenge == nil}) {
-								No challenge
+								{ i18n.T(ctx, "crews.challenge.opt.none") }
 							}
 						}
 					}
 				}
 				@form.Item() {
 					@label.Label(label.Props{For: "target"}) {
-						Times a week
+						{ i18n.T(ctx, "crews.challenge.times") }
 					}
 					@input.Input(input.Props{ID: "target", Name: "target", Type: input.TypeNumber, Value: targetValue(b.Challenge), Attributes: templ.Attributes{"min": "1", "max": "7"}})
 				}
 				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantSecondary}) {
-					Set
+					{ i18n.T(ctx, "crews.challenge.set") }
 				}
 			</form>
 		}
@@ -259,23 +269,23 @@ func targetValue(c *crew.Challenge) string {
 
 // JoinPage is /i/c/<code> for somebody not signed in.
 templ JoinPage(c crew.Crew) {
-	@layout.Auth("Join " + c.Name) {
+	@layout.Auth(i18n.Tf(ctx, "crews.join.title", c.Name)) {
 		@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 			@card.Header() {
 				@card.Title() {
-					Join { c.Name } on Khepri
+					{ i18n.Tf(ctx, "crews.join.heading", c.Name) }
 				}
 				@card.Description() {
-					{ fmt.Sprint(c.Members) } people keeping each other going. In a crew you see each other's check-ins, training, streaks and the week's challenge. Nothing else.
+					{ pick(ctx, c.Members, "crews.join.desc.one", "crews.join.desc.many") }
 				}
 			}
 			@card.Content() {
 				<div class="flex flex-col gap-2">
 					@button.Button(button.Props{Href: "/signup", FullWidth: true}) {
-						Create your account
+						{ i18n.T(ctx, "crews.join.signup") }
 					}
 					@button.Button(button.Props{Href: "/login", Variant: button.VariantGhost, FullWidth: true}) {
-						I already have one
+						{ i18n.T(ctx, "crews.join.login") }
 					}
 				</div>
 			}

@@ -1,6 +1,7 @@
 package lighterday
 
 import (
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
 )
@@ -25,22 +26,22 @@ templ Fragment(c Card) {
 	<div id={ CardID }>
 		if c.Offered {
 			<div class="border-hairline bg-surface mb-3 space-y-2 rounded-lg border p-3">
-				<p class="text-sm font-medium">Lighter day?</p>
+				<p class="text-sm font-medium">{ i18n.T(ctx, "lighterday.title") }</p>
 				<p class="text-muted-foreground text-xs">
-					Your body has not caught up this morning. { c.Why } Train about 60% of today's sets for { c.Session }, or keep the plan.
+					{ i18n.T(ctx, "lighterday.body") } { c.Why } { i18n.Tf(ctx, "lighterday.offer", c.Session) }
 				</p>
 				<form hx-post="/app/today/lighter" hx-target={ "#" + CardID } hx-swap="outerHTML" hx-disable="find button" method="post" action="/app/today/lighter" class="flex gap-2">
 					@ui.CSRFInput()
 					@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Attributes: templ.Attributes{"name": "choice", "value": "lighter"}}) {
-						Take it lighter
+						{ i18n.T(ctx, "lighterday.lighter") }
 					}
 					@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Variant: button.VariantOutline, Attributes: templ.Attributes{"name": "choice", "value": "keep"}}) {
-						Keep the plan
+						{ i18n.T(ctx, "lighterday.keep") }
 					}
 				</form>
 			</div>
 		} else if c.Choice == "lighter" {
-			<p class="text-muted-foreground mb-3 text-xs">Lighter day: today's sets are cut to about 60%. Tomorrow is back to the plan.</p>
+			<p class="text-muted-foreground mb-3 text-xs">{ i18n.T(ctx, "lighterday.chosen") }</p>
 		}
 	</div>
 }

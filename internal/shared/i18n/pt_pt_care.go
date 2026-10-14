@@ -99,4 +99,12 @@ var portugueseEuropeanCare = map[string]string{
 	"weekday.short.4": "Qui",
 	"weekday.short.5": "Sex",
 	"weekday.short.6": "Sáb",
+
+	"care.habits.streak.one":  "Sequência de 1 dia",
+	"care.habits.streak.many": "Sequência de %[1]d dias",
+	"care.habits.kept":        "cumprido %[1]d de %[2]d esta semana",
+	"care.habits.markdone":    "Marcar como feito",
+	"care.habits.nottoday":    "Hoje não",
+
+	"care.water.at": "%[1]s às %[2]s",
 }

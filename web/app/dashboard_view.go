@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/url"
-	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -248,19 +247,19 @@ func panelsHref(key string) string {
 
 // relativeTime keeps a feed row short. Anything older than a week is a date,
 // because "9 days ago" is harder to place than "4 Aug".
-func relativeTime(t time.Time) string {
+func relativeTime(ctx context.Context, t time.Time) string {
 	d := time.Since(t)
 	switch {
 	case d < time.Minute:
-		return "just now"
+		return i18n.T(ctx, "dash.feed.now")
 	case d < time.Hour:
-		return fmt.Sprintf("%dm ago", int(d.Minutes()))
+		return i18n.Tf(ctx, "dash.feed.minutes", int(d.Minutes()))
 	case d < 24*time.Hour:
-		return fmt.Sprintf("%dh ago", int(d.Hours()))
+		return i18n.Tf(ctx, "dash.feed.hours", int(d.Hours()))
 	case d < 7*24*time.Hour:
-		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
+		return i18n.Tf(ctx, "dash.feed.days", int(d.Hours()/24))
 	default:
-		return t.Format("2 Jan")
+		return i18n.Date(ctx, t, "2 Jan")
 	}
 }
 
@@ -434,14 +433,14 @@ func streakKPI(ctx context.Context, data DashboardData) string {
 	}
 }
 
-func goalActivityLabel(n int) string {
+func goalActivityLabel(ctx context.Context, n int) string {
 	switch {
 	case n <= 0:
 		return ""
 	case n == 1:
-		return "1 this week"
+		return i18n.T(ctx, "dash.goals.week.one")
 	default:
-		return strconv.Itoa(n) + " this week"
+		return i18n.Tf(ctx, "dash.goals.week.many", n)
 	}
 }
 

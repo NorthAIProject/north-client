@@ -4,9 +4,11 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/NorthAIProject/north-client/internal/connections"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
+	"github.com/NorthAIProject/north-client/internal/toolaudit"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
@@ -136,6 +138,95 @@ func TestConnectionsRendersInTheChosenLanguage(t *testing.T) {
 			if !strings.Contains(html, want) {
 				t.Errorf("%s: page does not contain %q", locale, want)
 			}
+		}
+	}
+}
+
+func renderConnectionsIn(t *testing.T, locale users.Locale, telegram TelegramPanel) string {
+	t.Helper()
+	ctx := i18n.WithLocale(context.Background(), string(locale))
+	svc := connections.NewService(nil, nil, "https://north.example.com")
+	previews := make([]connections.Setup, 0, len(connections.ClientKinds))
+	for _, kind := range connections.ClientKinds {
+		previews = append(previews, svc.Preview(kind))
+	}
+	var b strings.Builder
+	page := ConnectionsPage(
+		users.User{DisplayName: "Ana", Locale: locale},
+		nil, ConnectForm{}, nil, connections.Setup{}, previews, enabledPanel(),
+		telegram, CalendarPanel{}, "https://north.example.com/mcp",
+	)
+	if err := page.Render(ctx, &b); err != nil {
+		t.Fatalf("render %s: %v", locale, err)
+	}
+	return b.String()
+}
+
+// The Telegram steps, the provider choice and the self-hosted tab were the
+// prose left in English after the headings were converted.
+func TestConnectionsProseIsTranslated(t *testing.T) {
+	telegram := TelegramPanel{Enabled: true, BotUsername: "khepri_bot"}
+	cases := map[users.Locale][]string{
+		users.LocaleEN:   {"Install Telegram", "Use my own API key", "standalone MCP server", "Setup prompt"},
+		users.LocalePTPT: {"Instala o Telegram", "Usar a minha própria chave de API", "servidor MCP autónomo", "Instruções de configuração"},
+		users.LocalePTBR: {"Instale o Telegram", "Usar minha própria chave de API", "servidor MCP independente", "Instruções de configuração"},
+		users.LocaleES:   {"Instala Telegram", "Usar mi propia clave de API", "servidor MCP independiente", "Instrucciones de configuración"},
+	}
+	for locale, wants := range cases {
+		html := renderConnectionsIn(t, locale, telegram)
+		for _, want := range wants {
+			if !strings.Contains(html, want) {
+				t.Errorf("%s: connections page does not contain %q", locale, want)
+			}
+		}
+	}
+
+	englishOnly := []string{"Install Telegram", "Use Khepri", "Use my own API key", "Setup prompt", "standalone MCP server", "Revoking means"}
+	for _, locale := range []users.Locale{users.LocalePTPT, users.LocalePTBR, users.LocaleES} {
+		html := renderConnectionsIn(t, locale, telegram)
+		for _, leak := range englishOnly {
+			if strings.Contains(html, leak) {
+				t.Errorf("%s: English %q is still on the connections page", locale, leak)
+			}
+		}
+	}
+}
+
+func TestActivityRendersInTheChosenLanguage(t *testing.T) {
+	executions := []toolaudit.Execution{
+		{Tool: "create_goal", Surface: toolaudit.SurfaceCoach, Outcome: toolaudit.OutcomeExecuted, CreatedAt: time.Date(2026, 10, 3, 9, 0, 0, 0, time.UTC)},
+		{Tool: "log_checkin", Surface: toolaudit.SurfaceMCP, Outcome: toolaudit.OutcomeDeclined, CreatedAt: time.Date(2026, 10, 3, 9, 0, 0, 0, time.UTC)},
+	}
+	cases := map[users.Locale][]string{
+		users.LocaleEN:   {"Activity", "Done", "You said no", "Coach", "Connected agent", "3 Oct 2026"},
+		users.LocalePTPT: {"Atividade", "Feito", "Disseste que não", "Treinador", "Agente ligado", "3 out 2026"},
+		users.LocalePTBR: {"Atividade", "Feito", "Você recusou", "Treinador", "Agente conectado", "3 out 2026"},
+		users.LocaleES:   {"Actividad", "Hecho", "Dijiste que no", "Entrenador", "Agente conectado", "3 oct 2026"},
+	}
+	for locale, wants := range cases {
+		ctx := i18n.WithLocale(context.Background(), string(locale))
+		var b strings.Builder
+		if err := ActivityPage(users.User{DisplayName: "Ana", Locale: locale}, executions).Render(ctx, &b); err != nil {
+			t.Fatalf("render %s: %v", locale, err)
+		}
+		for _, want := range wants {
+			if !strings.Contains(b.String(), want) {
+				t.Errorf("%s: activity page does not contain %q", locale, want)
+			}
+		}
+	}
+}
+
+func TestPhotoCheckinsHeadingIsTranslated(t *testing.T) {
+	cases := map[users.Locale]string{
+		users.LocaleEN:   "Photo check-ins",
+		users.LocalePTPT: "Registos com foto",
+		users.LocalePTBR: "Check-ins com foto",
+		users.LocaleES:   "Registros con foto",
+	}
+	for locale, want := range cases {
+		if html := renderSettingsIn(t, locale); !strings.Contains(html, want) {
+			t.Errorf("%s: expected %q", locale, want)
 		}
 	}
 }

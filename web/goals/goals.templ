@@ -2,6 +2,7 @@ package goals
 
 import (
 	"context"
+	"encoding/json"
 	"slices"
 	"strconv"
 
@@ -115,14 +116,14 @@ templ IndexPage(user users.User, list []goal.Goal, inst Instruments, f GoalForm)
 				@ui.MonoLabel(i18n.T(ctx, "goals.mono"))
 				<div class="mt-2 flex items-start justify-between gap-4">
 					<div>
-						<h1 class="text-2xl font-medium tracking-tight">Goals</h1>
+						<h1 class="text-2xl font-medium tracking-tight">{ i18n.T(ctx, "nav.goals") }</h1>
 						<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
 							{ i18n.T(ctx, "goals.intro") }
 						</p>
 					</div>
 					@button.Button(button.Props{Size: button.SizeSm, Attributes: templ.Attributes{"@click": "open = !open"}}) {
 						@icon.Plus(icon.Props{Class: "size-4"})
-						New goal
+						{ i18n.T(ctx, "goals.new") }
 					}
 				</div>
 			</header>
@@ -135,7 +136,7 @@ templ IndexPage(user users.User, list []goal.Goal, inst Instruments, f GoalForm)
 							@ui.CSRFInput()
 							@goalFields(f)
 							@button.Button(button.Props{Type: button.TypeSubmit, FullWidth: true}) {
-								Add goal
+								{ i18n.T(ctx, "goals.create") }
 							}
 						</form>
 					}
@@ -210,7 +211,7 @@ templ categoryDonut(inst Instruments) {
 				@templ.JSONScript("goals-category-donut-option", inst.CategoryDonut)
 				@ui.EChartsMount("goals-category-donut", "goals-category-donut-option", "min-h-48 w-full max-w-sm mx-auto")
 			} else {
-				<p class="text-muted-foreground text-sm">No active goals yet.</p>
+				<p class="text-muted-foreground text-sm">{ i18n.T(ctx, "goals.bycategory.empty") }</p>
 			}
 		}
 	}
@@ -233,14 +234,14 @@ templ goalCard(g goal.Goal) {
 					<div class="text-muted-foreground mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
 						<span>{ categoryLabel(ctx, g.Category) }</span>
 						<span>·</span>
-						<span class={ templ.KV("text-destructive", g.Overdue()) }>{ g.Deadline() }</span>
+						<span class={ templ.KV("text-destructive", g.Overdue()) }>{ deadlineLabel(ctx, g) }</span>
 						if hasProgress(g) {
 							<span>·</span>
-							<span>{ g.ProgressLabel() }</span>
+							<span>{ progressLabel(ctx, g) }</span>
 						}
 						if g.LatestUpdate != nil {
 							<span>·</span>
-							<span>Last note { g.LatestUpdate.CreatedAt.Format("2 Jan") }</span>
+							<span>{ i18n.Tf(ctx, "goals.lastnote", i18n.Date(ctx, g.LatestUpdate.CreatedAt, "2 Jan")) }</span>
 						}
 					</div>
 					if hasProgress(g) {
@@ -277,7 +278,7 @@ templ DetailPage(user users.User, g goal.Goal, updates []goal.Update, f GoalForm
 		<div class="mx-auto w-full max-w-3xl p-6 md:p-8" x-data={ "{ editing: " + boolJS(f.Open) + " }" }>
 			<a href="/app/goals" class="text-muted-foreground hover:text-foreground mb-4 inline-flex items-center gap-1 text-sm">
 				@icon.ArrowLeft(icon.Props{Class: "size-4"})
-				All goals
+				{ i18n.T(ctx, "goals.back") }
 			</a>
 			if m != nil {
 				<div class="mb-6">
@@ -298,12 +299,12 @@ templ DetailPage(user users.User, g goal.Goal, updates []goal.Update, f GoalForm
 				<div class="text-muted-foreground mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
 					<span>{ categoryLabel(ctx, g.Category) }</span>
 					<span>·</span>
-					<span class={ templ.KV("text-destructive", g.Overdue()) }>{ g.Deadline() }</span>
+					<span class={ templ.KV("text-destructive", g.Overdue()) }>{ deadlineLabel(ctx, g) }</span>
 					<span>·</span>
 					<span>{ statusLabel(ctx, g.Status) }</span>
 					if hasProgress(g) {
 						<span>·</span>
-						<span>{ g.ProgressLabel() }</span>
+						<span>{ progressLabel(ctx, g) }</span>
 					}
 				</div>
 			</header>
@@ -335,7 +336,7 @@ templ DetailPage(user users.User, g goal.Goal, updates []goal.Update, f GoalForm
 			@milestonesCard(g, f)
 			@progressForm(g, f.UpdateError)
 			if len(updates) > 0 {
-				<h2 class="mt-8 mb-3 text-sm font-medium">Progress</h2>
+				<h2 class="mt-8 mb-3 text-sm font-medium">{ i18n.T(ctx, "goals.updates") }</h2>
 				<div class="space-y-3">
 					for _, u := range updates {
 						@updateCard(u)
@@ -360,13 +361,13 @@ templ goalDetails(g goal.Goal) {
 				<dl class="space-y-4 pt-6 text-sm">
 					if g.Motivation != "" {
 						<div>
-							<dt class="text-muted-foreground text-xs uppercase tracking-wide">Why it matters</dt>
+							<dt class="text-muted-foreground text-xs uppercase tracking-wide">{ i18n.T(ctx, "goals.why") }</dt>
 							<dd class="mt-1">{ g.Motivation }</dd>
 						</div>
 					}
 					if g.Success != "" {
 						<div>
-							<dt class="text-muted-foreground text-xs uppercase tracking-wide">Done when</dt>
+							<dt class="text-muted-foreground text-xs uppercase tracking-wide">{ i18n.T(ctx, "goals.donewhen") }</dt>
 							<dd class="mt-1">{ g.Success }</dd>
 						</div>
 					}
@@ -410,7 +411,7 @@ templ milestonesCard(g goal.Goal, f GoalForm) {
 				if len(g.Milestones) == 0 {
 					{ i18n.T(ctx, "goals.milestones.desc") }
 				} else {
-					{ g.ProgressLabel() } complete.
+					{ i18n.Tf(ctx, "goals.ms.done", progressLabel(ctx, g)) }
 				}
 			}
 		}
@@ -443,7 +444,7 @@ templ milestoneRow(g goal.Goal, m goal.Milestone, f GoalForm) {
 					{ m.Title }
 				</p>
 				if m.HasDeadline() {
-					<p class="text-muted-foreground mt-0.5 text-xs">{ m.TargetDate.Format("2 Jan 2006") }</p>
+					<p class="text-muted-foreground mt-0.5 text-xs">{ i18n.Date(ctx, m.TargetDate, "2 Jan 2006") }</p>
 				}
 			</div>
 			<div class="flex shrink-0 flex-wrap items-center justify-end gap-1">
@@ -482,7 +483,7 @@ templ milestoneDeleteButton(g goal.Goal, m goal.Milestone) {
 	<form
 		method="post"
 		action={ templ.SafeURL("/app/goals/" + g.ID.String() + "/milestones/" + m.ID.String() + "/delete") }
-		@submit="if (!confirm('Remove this milestone?')) $event.preventDefault()"
+		@submit={ "if (!confirm(" + jsString(i18n.T(ctx, "goals.ms.remove.confirm")) + ")) $event.preventDefault()" }
 	>
 		@ui.CSRFInput()
 		@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Variant: button.VariantGhost}) {
@@ -551,7 +552,7 @@ templ addMilestoneForm(g goal.Goal, f GoalForm) {
 			</div>
 		</div>
 		@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm}) {
-			Add milestone
+			{ i18n.T(ctx, "goals.ms.create") }
 		}
 	</form>
 }
@@ -617,18 +618,18 @@ templ progressForm(g goal.Goal, errMsg string) {
 				<div class="flex items-end gap-3">
 					<div class="w-32">
 						@label.Label(label.Props{For: "progress", Class: "text-xs"}) {
-							Progress %
+							{ i18n.T(ctx, "goals.progress.pct") }
 						}
 						@input.Input(input.Props{
 							ID:          "progress",
 							Name:        "progress",
 							Type:        input.TypeNumber,
-							Placeholder: "optional",
+							Placeholder: i18n.T(ctx, "goals.progress.pct.ph"),
 							Attributes:  templ.Attributes{"min": "0", "max": "100"},
 						})
 					</div>
 					@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm}) {
-						Add note
+						{ i18n.T(ctx, "goals.progress.add") }
 					}
 				</div>
 			</form>
@@ -639,7 +640,7 @@ templ progressForm(g goal.Goal, errMsg string) {
 templ updateCard(u goal.Update) {
 	<div class="border-border rounded-lg border p-4">
 		<div class="text-muted-foreground mb-1 flex items-center gap-2 text-xs">
-			<span>{ u.CreatedAt.Format("2 January 2006, 15:04") }</span>
+			<span>{ i18n.Date(ctx, u.CreatedAt, "2 January 2006, 15:04") }</span>
 			if u.Progress != nil {
 				<span>·</span>
 				<span>{ strconv.Itoa(*u.Progress) }%</span>
@@ -654,7 +655,7 @@ templ dangerZone(g goal.Goal) {
 		<form
 			method="post"
 			action={ templ.SafeURL("/app/goals/" + g.ID.String() + "/delete") }
-			@submit="if (!confirm('Delete this goal, its milestones, and every note on it? This cannot be undone.')) $event.preventDefault()"
+			@submit={ "if (!confirm(" + jsString(i18n.T(ctx, "goals.delete.confirm")) + ")) $event.preventDefault()" }
 		>
 			@ui.CSRFInput()
 			<button type="submit" class="text-muted-foreground hover:text-destructive text-sm transition-colors">
@@ -744,6 +745,45 @@ templ field(name, labelText, errMsg string) {
 			}
 		}
 	}
+}
+
+// deadlineLabel is goal.Goal.Deadline in the reader's language. The domain
+// method stays English because the coach's context reads it; the page does not.
+func deadlineLabel(ctx context.Context, g goal.Goal) string {
+	if !g.HasDeadline() {
+		return i18n.T(ctx, "goals.deadline.none")
+	}
+	days := g.DaysRemaining()
+	switch {
+	case days < 0:
+		return i18n.Tf(ctx, "goals.deadline.ago", i18n.Date(ctx, g.TargetDate, "2 Jan 2006"), -days)
+	case days == 0:
+		return i18n.T(ctx, "goals.deadline.today")
+	case days == 1:
+		return i18n.T(ctx, "goals.deadline.tomorrow")
+	case days < 30:
+		return i18n.Tf(ctx, "goals.deadline.in", i18n.Date(ctx, g.TargetDate, "2 Jan"), days)
+	default:
+		return i18n.Date(ctx, g.TargetDate, "2 January 2006")
+	}
+}
+
+// progressLabel is goal.Goal.ProgressLabel with the "of" translated.
+func progressLabel(ctx context.Context, g goal.Goal) string {
+	if g.MilestoneTotal > 0 {
+		return i18n.Tf(ctx, "goals.progress.of", g.MilestoneDone, g.MilestoneTotal)
+	}
+	return g.ProgressLabel()
+}
+
+// jsString quotes s as a JavaScript string literal, for a translated confirm()
+// inside an Alpine handler. JSON is a subset of JavaScript string syntax.
+func jsString(s string) string {
+	encoded, err := json.Marshal(s)
+	if err != nil {
+		return `""`
+	}
+	return string(encoded)
 }
 
 // boolJS renders a Go bool as a JavaScript literal for an Alpine x-data.
