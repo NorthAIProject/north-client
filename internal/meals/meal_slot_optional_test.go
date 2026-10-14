@@ -100,7 +100,7 @@ func TestCountingAnOptionalMealAgainChecksTheTarget(t *testing.T) {
 	}
 	slot := f.reload(t, plan.ID).Days[0].Meals[0]
 
-	if _, err := f.svc.AddIngredients(f.ctx, slot.ID, f.userID, []meals.MealIngredientInput{{IngredientID: f.rice.ID, QuantityGrams: 1000}}, false); err != nil {
+	if _, err = f.svc.AddIngredients(f.ctx, slot.ID, f.userID, []meals.MealIngredientInput{{IngredientID: f.rice.ID, QuantityGrams: 1000}}, false); err != nil {
 		t.Fatalf("adding to an optional meal is never an overage: %v", err)
 	}
 
