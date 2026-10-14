@@ -92,12 +92,13 @@ func (s *Service) PreviewMeal(ctx context.Context, userID uuid.UUID, d MealDraft
 		var total meal.Macros
 		for mi := range day.Meals {
 			m := &day.Meals[mi]
-			// Only the first option counts toward the day; the others are
-			// resolved so they can be saved, and eaten instead of it.
+			// Only the first option counts toward the day, and not even that
+			// when the meal is optional; the others are resolved so they can
+			// be saved, and eaten instead of it.
 			for fi := range m.Foods {
 				food := &m.Foods[fi]
 				s.resolveFood(ctx, userID, food)
-				if food.Macros != nil && !food.Optional {
+				if food.Macros != nil && !food.Optional && !m.Optional {
 					total = total.Add(meal.Macros{Calories: food.Macros.Calories, ProteinG: food.Macros.ProteinG, CarbG: food.Macros.CarbG, FatG: food.Macros.FatG})
 				}
 			}
@@ -505,7 +506,7 @@ func mealPlanFromDraft(d MealDraft) (importPlan, []string) {
 				continue
 			}
 
-			md := meals.MealDraft{Name: name, OptionLabel: opts[0].label, Portions: opts[0].portions}
+			md := meals.MealDraft{Name: name, OptionLabel: opts[0].label, Optional: m.Optional, Portions: opts[0].portions}
 			for oi, o := range opts {
 				if oi > 0 {
 					// The meals service needs every alternative told apart by

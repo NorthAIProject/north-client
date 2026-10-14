@@ -135,17 +135,19 @@ DELETE FROM meal_plan_days WHERE id = $1;
 -- name: CreateMeal :one
 -- Numbered after the day's last meal. Callers hold the plan's lock, so two
 -- meals added at once cannot take the same number.
-INSERT INTO meals (meal_plan_id, day_id, name, option_label, meal_number)
-VALUES ($1, $2, $3, $4, (SELECT COALESCE(MAX(meal_number), 0) + 1 FROM meals WHERE day_id = $2))
+INSERT INTO meals (meal_plan_id, day_id, name, option_label, optional, meal_number)
+VALUES ($1, $2, $3, $4, $5, (SELECT COALESCE(MAX(meal_number), 0) + 1 FROM meals WHERE day_id = $2))
 RETURNING *;
 
 -- name: CreateMealOption :one
 -- A further option of a day's meal slot, numbered after the slot's last.
--- Callers hold the plan's lock, as for CreateMeal.
-INSERT INTO meals (meal_plan_id, day_id, name, meal_number, option_index, option_label)
+-- Callers hold the plan's lock, as for CreateMeal. It takes the slot's optional
+-- flag, which belongs to the slot rather than to one option.
+INSERT INTO meals (meal_plan_id, day_id, name, meal_number, option_index, option_label, optional)
 VALUES ($1, $2, $3, $4,
     (SELECT COALESCE(MAX(option_index), 0) + 1 FROM meals WHERE day_id = $2 AND meal_number = $4),
-    $5)
+    $5,
+    COALESCE((SELECT bool_or(optional) FROM meals WHERE day_id = $2 AND meal_number = $4), false))
 RETURNING *;
 
 -- name: GetMealOwned :one
@@ -166,6 +168,10 @@ DELETE FROM meals WHERE id = $1 AND meal_plan_id = $2;
 -- name: DeleteMealSlot :exec
 -- Every option of a day's meal slot. Callers hold the plan's lock.
 DELETE FROM meals WHERE meal_plan_id = $1 AND day_id = $2 AND meal_number = $3;
+
+-- name: SetMealSlotOptional :exec
+-- Every option of a day's meal slot. Callers hold the plan's lock.
+UPDATE meals SET optional = $4 WHERE meal_plan_id = $1 AND day_id = $2 AND meal_number = $3;
 
 -- name: UpdateMealTotalMacros :exec
 UPDATE meals SET total_macros = $2 WHERE id = $1;
