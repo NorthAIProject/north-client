@@ -32,7 +32,8 @@ import (
 type PlanChangeOp string
 
 const (
-	// OpAddMeal adds an empty meal at the end of each day that lacks it.
+	// OpAddMeal adds an empty meal at the end of each day that lacks it,
+	// optional (shown, not counted) when Optional is set.
 	OpAddMeal PlanChangeOp = "add_meal"
 	// OpRemoveMeal deletes the meal with its foods, every option of it.
 	OpRemoveMeal PlanChangeOp = "remove_meal"
@@ -52,10 +53,13 @@ const (
 	// OpSetOptional marks every portion of the food in the meal's Option as
 	// optional (shown, not counted) when Optional is set, or counted when not.
 	OpSetOptional PlanChangeOp = "set_optional"
+	// OpSetMealOptional marks the whole meal, every option of it, as optional
+	// (shown, not counted) when Optional is set, or counted when not.
+	OpSetMealOptional PlanChangeOp = "set_meal_optional"
 )
 
 // PlanChangeOps lists every op, in the order a tool schema offers them.
-var PlanChangeOps = []PlanChangeOp{OpAddMeal, OpRemoveMeal, OpAddFood, OpRemoveFood, OpSetGrams, OpAddOption, OpRemoveOption, OpSetOptional}
+var PlanChangeOps = []PlanChangeOp{OpAddMeal, OpRemoveMeal, OpAddFood, OpRemoveFood, OpSetGrams, OpAddOption, OpRemoveOption, OpSetOptional, OpSetMealOptional}
 
 func (o PlanChangeOp) Valid() bool { return slices.Contains(PlanChangeOps, o) }
 
@@ -83,8 +87,9 @@ type PlanChange struct {
 	Option int
 	// OptionLabel names the option add_option adds.
 	OptionLabel string
-	// Optional is whether add_food adds the food as optional (shown, not
-	// counted), and what set_optional sets.
+	// Optional is whether add_meal adds the meal, or add_food the food, as
+	// optional (shown, not counted), and what set_optional and
+	// set_meal_optional set.
 	Optional bool
 }
 
@@ -208,7 +213,7 @@ func validatePlanChange(c PlanChange) error {
 	switch {
 	case c.Option < 0:
 		return invalid("count options from 1")
-	case c.Option > 1 && (c.Op == OpAddMeal || c.Op == OpRemoveMeal || c.Op == OpAddOption):
+	case c.Option > 1 && (c.Op == OpAddMeal || c.Op == OpRemoveMeal || c.Op == OpAddOption || c.Op == OpSetMealOptional):
 		return invalid("%s applies to the whole meal, not one option", c.Op)
 	}
 	if (c.Op == OpAddFood || c.Op == OpSetGrams) && c.Grams <= 0 {
@@ -321,7 +326,7 @@ func (ed planEditor) applyToDay(ctx context.Context, day *meal.Day, c PlanChange
 		if _, exists := exactMeal(*day, c.Meal); exists {
 			return dayResult{}, nil
 		}
-		added, err := ed.tx.AddMeal(ctx, planID, day.ID, c.Meal, "")
+		added, err := ed.tx.AddMeal(ctx, planID, day.ID, c.Meal, "", c.Optional)
 		if err != nil {
 			return dayResult{}, err
 		}
@@ -354,6 +359,16 @@ func (ed planEditor) applyToDay(ctx context.Context, day *meal.Day, c PlanChange
 		}
 		slot.Alternatives = append(slot.Alternatives, added)
 		return dayResult{changed: true, meal: added.DisplayName()}, nil
+
+	case OpSetMealOptional:
+		if err = ed.tx.SetSlotOptional(ctx, planID, *slot, c.Optional); err != nil {
+			return dayResult{}, err
+		}
+		slot.Optional = c.Optional
+		for k := range slot.Alternatives {
+			slot.Alternatives[k].Optional = c.Optional
+		}
+		return dayResult{changed: true, meal: slot.Name}, nil
 	}
 
 	m, err := pickOption(slot, c.Option, day.Weekday)
@@ -623,6 +638,9 @@ func (a AppliedChange) String() string {
 	switch a.Change.Op {
 	case OpAddMeal:
 		what = fmt.Sprintf("added the meal %s", a.Meal)
+		if a.Change.Optional {
+			what += " as optional"
+		}
 	case OpRemoveMeal:
 		what = fmt.Sprintf("removed %s", a.Meal)
 	case OpAddFood:
@@ -643,6 +661,12 @@ func (a AppliedChange) String() string {
 			what = fmt.Sprintf("made %s in %s optional (not counted)", a.Food, a.Meal)
 		} else {
 			what = fmt.Sprintf("counted %s in %s again", a.Food, a.Meal)
+		}
+	case OpSetMealOptional:
+		if a.Change.Optional {
+			what = fmt.Sprintf("made %s optional (not counted)", a.Meal)
+		} else {
+			what = fmt.Sprintf("counted %s again", a.Meal)
 		}
 	}
 	return what + " on " + strings.Join(weekdayNames(a.Weekdays), ", ")
