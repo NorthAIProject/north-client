@@ -221,3 +221,29 @@ func TestAnOptionalFoodIsDescribedAsNotCounted(t *testing.T) {
 		t.Fatalf("describeFoods = %q", got)
 	}
 }
+
+func TestAnOptionalMealIsDescribedAsNotCounted(t *testing.T) {
+	plan := optionPlan()
+	for i := range plan.Days {
+		plan.Days[i].Meals[0].Optional = true
+		plan.Days[i].Meals[1].Optional = true
+	}
+	var b strings.Builder
+	describeMealPlan(&b, plan, nil)
+	got := b.String()
+
+	for _, want := range []string{
+		"Every day (Monday–Tuesday): 0 kcal",
+		"\n  Breakfast (optional meal, not counted, 300 kcal): 80 g Oats",
+		`Almoço (optional meal, not counted, option 1 "Frango", 620 kcal): 150 g Chicken`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("description lacks %q:\n%s", want, got)
+		}
+	}
+
+	c, err := planChangeFromArg(changeArg{Op: "set_meal_optional", Meal: "Almoço", Food: "rice", Optional: true})
+	if err != nil || c.Op != meals.OpSetMealOptional || !c.Optional || c.Food != "" {
+		t.Fatalf("set_meal_optional = %+v, %v", c, err)
+	}
+}
