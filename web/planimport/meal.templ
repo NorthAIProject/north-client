@@ -1,12 +1,15 @@
 package planimport
 
 import (
+	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/NorthAIProject/north-client/internal/meals/meal"
 	"github.com/NorthAIProject/north-client/internal/planimport/draft"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
@@ -44,19 +47,29 @@ func grams(v *float64) string {
 	return fmt.Sprintf("%g", *v)
 }
 
-func macroLine(m *draft.MacroGrams) string {
+func macroLine(ctx context.Context, m *draft.MacroGrams) string {
 	if m == nil {
 		return "—"
 	}
-	return fmt.Sprintf("%.0f P · %.0f C · %.0f F", m.ProteinG, m.CarbG, m.FatG)
+	return i18n.Tf(ctx, "planimport.macros", m.ProteinG, m.CarbG, m.FatG)
 }
 
-func stated(f draft.FoodDraft) string {
+// macroLetters are the protein, carb and fat abbreviations in the reader's
+// language, held as one space-separated string: Spanish and Portuguese name
+// fat "G", and pt-PT writes carbs "HC".
+func macroLetters(ctx context.Context) [3]string {
+	letters := [3]string{"P", "C", "F"}
+	copy(letters[:], strings.Fields(i18n.T(ctx, "planimport.macro.letters")))
+	return letters
+}
+
+func stated(ctx context.Context, f draft.FoodDraft) string {
+	letters := macroLetters(ctx)
 	var parts []string
 	for _, s := range []struct {
 		v     *float64
 		label string
-	}{{f.StatedProteinG, "P"}, {f.StatedCarbG, "C"}, {f.StatedFatG, "F"}} {
+	}{{f.StatedProteinG, letters[0]}, {f.StatedCarbG, letters[1]}, {f.StatedFatG, letters[2]}} {
 		if s.v != nil {
 			parts = append(parts, fmt.Sprintf("%.0f %s", *s.v, s.label))
 		}
@@ -90,6 +103,22 @@ func hasStatedMacros(f draft.FoodDraft) bool {
 // values meal.Meal stores: 0 is Sunday.
 var mealWeekdays = []time.Weekday{time.Monday, time.Tuesday, time.Wednesday, time.Thursday, time.Friday, time.Saturday, time.Sunday}
 
+// mealWeekdayName names a stored weekday (0 is Sunday) in the reader's
+// language.
+func mealWeekdayName(ctx context.Context, d int) string {
+	return i18n.T(ctx, "weekday.long."+strconv.Itoa(d))
+}
+
+// bandLabel names a preset carb band. A band this build has no copy for
+// shows the label it carries, rather than a key.
+func bandLabel(ctx context.Context, band meal.CarbBand) string {
+	key := "planimport.band." + string(band.Type)
+	if got := i18n.T(ctx, key); got != key {
+		return got
+	}
+	return band.Label
+}
+
 func anyOver(days []draft.MealDayDraft) bool {
 	for _, d := range days {
 		if len(d.Over) > 0 {
@@ -100,15 +129,13 @@ func anyOver(days []draft.MealDayDraft) bool {
 }
 
 templ MealReviewPage(user users.User, v MealReview) {
-	@layout.App("Review import", user, layout.BuildNav(ctx, "/app/fitness")) {
+	@layout.App(i18n.T(ctx, "planimport.review.title"), user, layout.BuildNav(ctx, "/app/fitness")) {
 		<div class="mx-auto w-full max-w-5xl space-y-6 p-6 md:p-8">
 			<header>
-				@ui.MonoLabel("Import")
-				<h1 class="mt-2 text-2xl font-medium tracking-tight">Check your meal plan</h1>
+				@ui.MonoLabel(i18n.T(ctx, "planimport.label"))
+				<h1 class="mt-2 text-2xl font-medium tracking-tight">{ i18n.T(ctx, "planimport.meal.heading") }</h1>
 				<p class="text-muted-foreground mt-1 text-sm">
-					Each food is matched to an ingredient and weighed in grams, then every day is measured
-					against what's left of your macro target. Your target itself doesn't change.
-					Nothing is saved until you press Save.
+					{ i18n.T(ctx, "planimport.meal.intro") }
 				</p>
 			</header>
 			if v.Error != "" {
@@ -125,35 +152,35 @@ templ MealReviewPage(user users.User, v MealReview) {
 				@card.Card() {
 					@card.Content(card.ContentProps{Class: "grid gap-4 pt-6 sm:grid-cols-3"}) {
 						<label class="block space-y-1 sm:col-span-3">
-							<span class="text-muted-foreground text-xs">Plan name</span>
+							<span class="text-muted-foreground text-xs">{ i18n.T(ctx, "planimport.plan_name") }</span>
 							@input.Input(input.Props{Name: "name", Value: v.Draft.Name, Required: true})
 						</label>
 						<div class="space-y-1">
-							<span class="text-muted-foreground text-xs">Mode</span>
+							<span class="text-muted-foreground text-xs">{ i18n.T(ctx, "planimport.meal.mode") }</span>
 							@modePicker(v.Draft.Mode)
 						</div>
 						<div class="space-y-1">
-							<span class="text-muted-foreground text-xs">Carb type</span>
+							<span class="text-muted-foreground text-xs">{ i18n.T(ctx, "planimport.meal.carb_type") }</span>
 							@planTypePicker(v.Draft.PlanType, v.Draft.Mode == string(meal.Advanced))
 						</div>
 						if v.Draft.PlanType == string(meal.Custom) {
 							<label class="block space-y-1">
-								<span class="text-muted-foreground text-xs">Carbs, % of target</span>
+								<span class="text-muted-foreground text-xs">{ i18n.T(ctx, "planimport.meal.custom_pct") }</span>
 								@input.Input(input.Props{Name: "custom_carb_pct", Type: input.TypeNumber, Value: grams(v.Draft.CustomCarbPct)})
 							</label>
 						}
 						<p class="text-muted-foreground text-xs sm:col-span-3">
 							if v.Draft.EveryDay {
-								Your file names no days, so this day is eaten every day: it is saved on all seven, and checked once.
+								{ i18n.T(ctx, "planimport.meal.every_day") }
 							} else if v.Draft.Mode == string(meal.Advanced) {
-								Advanced: pick each day's weekday; a day over its target can be saved once you confirm it.
+								{ i18n.T(ctx, "planimport.meal.advanced_help") }
 							} else {
-								Easy: days run from Monday in order, and no day may go over its target.
+								{ i18n.T(ctx, "planimport.meal.easy_help") }
 							}
 						</p>
 						if !v.Draft.HasTarget {
 							<p class="text-destructive text-xs sm:col-span-3">
-								You have no macro target yet. <a href="/app/calculator" class="underline">Work it out in the calculator</a>; meal plans are built on it.
+								{ i18n.T(ctx, "planimport.meal.no_target") } <a href="/app/calculator" class="underline">{ i18n.T(ctx, "planimport.meal.no_target.link") }</a>{ i18n.T(ctx, "planimport.meal.no_target.after") }
 							</p>
 						}
 					}
@@ -170,13 +197,13 @@ templ MealReviewPage(user users.User, v MealReview) {
 				if v.NeedsConfirm && v.Draft.CanConfirm && anyOver(v.Draft.Days) {
 					@alert.Alert(alert.Props{Variant: alert.VariantDestructive}) {
 						@alert.Title() {
-							Some days go over your target
+							{ i18n.T(ctx, "planimport.meal.over.title") }
 						}
 						@alert.Description() {
-							<p>The days marked above exceed what your target leaves. Change them, or save anyway.</p>
+							<p>{ i18n.T(ctx, "planimport.meal.over.body") }</p>
 							<div class="mt-3">
 								@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantDestructive, Attributes: templ.Attributes{"name": "action", "value": "save-confirm"}}) {
-									Confirm and save anyway
+									{ i18n.T(ctx, "planimport.meal.over.confirm") }
 								}
 							</div>
 						}
@@ -184,13 +211,13 @@ templ MealReviewPage(user users.User, v MealReview) {
 				}
 				<div class="flex flex-wrap items-center justify-end gap-2">
 					@button.Button(button.Props{Href: "/app/nutrition/plans", Variant: button.VariantGhost}) {
-						Cancel import
+						{ i18n.T(ctx, "planimport.cancel_import") }
 					}
 					@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Attributes: templ.Attributes{"name": "action", "value": "update", "formnovalidate": true}}) {
-						Recalculate
+						{ i18n.T(ctx, "planimport.meal.recalculate") }
 					}
 					@button.Button(button.Props{Type: button.TypeSubmit, Attributes: templ.Attributes{"name": "action", "value": "save"}}) {
-						Save plan
+						{ i18n.T(ctx, "planimport.save_plan") }
 					}
 				</div>
 			</form>
@@ -210,10 +237,10 @@ templ planNotes(notes string) {
 			@collapsible.Trigger(collapsible.TriggerProps{Class: "cursor-pointer"}) {
 				@card.Header() {
 					@card.Title() {
-						Notes from your plan
+						{ i18n.T(ctx, "planimport.meal.notes.title") }
 					}
 					@card.Description() {
-						Advice and recipes from your file, saved with the plan. Show them.
+						{ i18n.T(ctx, "planimport.meal.notes.body") }
 					}
 				}
 			}
@@ -229,17 +256,17 @@ templ planNotes(notes string) {
 templ planTypePicker(selected string, advanced bool) {
 	@selectbox.SelectBox() {
 		@selectbox.Trigger(selectbox.TriggerProps{Name: "plan_type", HasError: selected == ""}) {
-			@selectbox.Value(selectbox.ValueProps{Placeholder: "Choose one"})
+			@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "planimport.meal.choose_one")})
 		}
 		@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
 			for _, band := range meal.CarbBands {
 				@selectbox.Item(selectbox.ItemProps{Value: string(band.Type), Selected: string(band.Type) == selected}) {
-					{ fmt.Sprintf("%s (%.0f–%.0f%%)", band.Label, band.MinPct, band.MaxPct) }
+					{ fmt.Sprintf("%s (%.0f–%.0f%%)", bandLabel(ctx, band), band.MinPct, band.MaxPct) }
 				}
 			}
 			if advanced {
 				@selectbox.Item(selectbox.ItemProps{Value: string(meal.Custom), Selected: selected == string(meal.Custom)}) {
-					Custom
+					{ i18n.T(ctx, "planimport.meal.custom") }
 				}
 			}
 		}
@@ -253,10 +280,10 @@ templ modePicker(selected string) {
 		}
 		@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
 			@selectbox.Item(selectbox.ItemProps{Value: string(meal.Easy), Selected: selected != string(meal.Advanced)}) {
-				Easy
+				{ i18n.T(ctx, "planimport.meal.easy") }
 			}
 			@selectbox.Item(selectbox.ItemProps{Value: string(meal.Advanced), Selected: selected == string(meal.Advanced)}) {
-				Advanced
+				{ i18n.T(ctx, "planimport.meal.advanced") }
 			}
 		}
 	}
@@ -267,12 +294,12 @@ templ mealDay(i int, day draft.MealDayDraft, advanced, everyDay bool) {
 		@card.Header(card.HeaderProps{Class: "flex flex-row flex-wrap items-center justify-between gap-3"}) {
 			<div>
 				@card.Title() {
-					{ dayLabel(day.Label, i) }
+					{ dayLabel(ctx, day.Label, i) }
 				}
 				<p class="text-muted-foreground mt-1 font-mono text-xs">
-					{ macroLine(day.Totals) }
+					{ macroLine(ctx, day.Totals) }
 					if day.Target != nil {
-						<span>· target { macroLine(day.Target) } · left { macroLine(day.Remaining) }</span>
+						<span>{ i18n.Tf(ctx, "planimport.meal.target_left", macroLine(ctx, day.Target), macroLine(ctx, day.Remaining)) }</span>
 					}
 				</p>
 				for _, o := range day.Over {
@@ -282,18 +309,18 @@ templ mealDay(i int, day draft.MealDayDraft, advanced, everyDay bool) {
 			<div class="flex items-center gap-2">
 				if everyDay {
 					@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
-						Every day
+						{ i18n.T(ctx, "planimport.meal.every_day.badge") }
 					}
 				} else if advanced {
 					@mealWeekdayPicker(fmt.Sprintf("d%d.weekday", i), day.Weekday)
 				} else if day.Weekday != nil {
-					<span class="text-muted-foreground text-sm">{ time.Weekday(*day.Weekday).String() }</span>
+					<span class="text-muted-foreground text-sm">{ mealWeekdayName(ctx, *day.Weekday) }</span>
 				}
 				@button.Button(button.Props{
 					Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm,
 					Attributes: templ.Attributes{"name": "action", "value": fmt.Sprintf("delete-day:%d", i), "formnovalidate": true},
 				}) {
-					Remove day
+					{ i18n.T(ctx, "planimport.remove_day") }
 				}
 			</div>
 		}
@@ -301,12 +328,12 @@ templ mealDay(i int, day draft.MealDayDraft, advanced, everyDay bool) {
 			for j, m := range day.Meals {
 				<div class="space-y-2">
 					<div class="flex items-center gap-2">
-						@input.Input(input.Props{Name: fmt.Sprintf("d%d.m%d.name", i, j), Value: m.Name, Placeholder: fmt.Sprintf("Meal %d", j+1), Class: "max-w-xs"})
+						@input.Input(input.Props{Name: fmt.Sprintf("d%d.m%d.name", i, j), Value: m.Name, Placeholder: i18n.Tf(ctx, "planimport.meal.meal_n", j+1), Class: "max-w-xs"})
 						@button.Button(button.Props{
 							Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm,
 							Attributes: templ.Attributes{"name": "action", "value": fmt.Sprintf("delete-meal:%d:%d", i, j), "formnovalidate": true},
 						}) {
-							Remove meal
+							{ i18n.T(ctx, "planimport.meal.remove_meal") }
 						}
 					</div>
 					for o, opt := range m.Options() {
@@ -327,14 +354,14 @@ templ mealOption(i, j, o int, m draft.MealDraftMeal, opt draft.MealDraftOption) 
 				<span class="text-sm font-medium">{ m.OptionName(o) }</span>
 				if o == 0 {
 					@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
-						counted
+						{ i18n.T(ctx, "planimport.meal.counted") }
 					}
 				}
 				@button.Button(button.Props{
 					Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm,
-					Attributes: templ.Attributes{"name": "action", "value": fmt.Sprintf("delete-option:%d:%d:%d", i, j, o), "formnovalidate": true, "aria-label": "Remove " + m.OptionName(o)},
+					Attributes: templ.Attributes{"name": "action", "value": fmt.Sprintf("delete-option:%d:%d:%d", i, j, o), "formnovalidate": true, "aria-label": i18n.Tf(ctx, "planimport.remove_named", m.OptionName(o))},
 				}) {
-					Remove option
+					{ i18n.T(ctx, "planimport.meal.remove_option") }
 				}
 			</div>
 		}
@@ -343,19 +370,19 @@ templ mealOption(i, j, o int, m draft.MealDraftMeal, opt draft.MealDraftOption) 
 				@table.Header() {
 					@table.Row() {
 						@table.Head() {
-							From your file
+							{ i18n.T(ctx, "planimport.meal.col.file") }
 						}
 						@table.Head() {
-							Ingredient
+							{ i18n.T(ctx, "planimport.meal.col.ingredient") }
 						}
 						@table.Head() {
-							Grams
+							{ i18n.T(ctx, "planimport.meal.col.grams") }
 						}
 						@table.Head() {
-							Macros
+							{ i18n.T(ctx, "planimport.meal.col.macros") }
 						}
 						@table.Head() {
-							<span class="sr-only">Remove</span>
+							<span class="sr-only">{ i18n.T(ctx, "planimport.remove") }</span>
 						}
 					}
 				}
@@ -375,8 +402,8 @@ templ foodRow(i, j, o, k int, f draft.FoodDraft) {
 			<div class="font-medium">{ f.Food }</div>
 			<div class="text-muted-foreground text-xs">
 				{ amount(f) }
-				if s := stated(f); s != "" {
-					· file says { s }
+				if s := stated(ctx, f); s != "" {
+					{ " " + i18n.Tf(ctx, "planimport.meal.file_says", s) }
 				}
 			</div>
 			if f.SourceText != "" {
@@ -385,12 +412,12 @@ templ foodRow(i, j, o, k int, f draft.FoodDraft) {
 			<div class="mt-1 flex flex-wrap gap-1">
 				if f.Estimated {
 					@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
-						estimated
+						{ i18n.T(ctx, "planimport.meal.estimated") }
 					}
 				}
 				if f.Optional {
 					@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
-						optional · not counted
+						{ i18n.T(ctx, "planimport.meal.optional") }
 					}
 				}
 				for _, flag := range f.Flags {
@@ -408,7 +435,7 @@ templ foodRow(i, j, o, k int, f draft.FoodDraft) {
 		@table.Cell(table.CellProps{Class: "min-w-48 align-top"}) {
 			@selectbox.SelectBox() {
 				@selectbox.Trigger(selectbox.TriggerProps{Name: foodField(i, j, o, k, "ingredient"), HasError: ingredientValue(f) == ""}) {
-					@selectbox.Value(selectbox.ValueProps{Placeholder: "Choose an ingredient"})
+					@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "planimport.meal.choose_ingredient")})
 				}
 				@selectbox.Content() {
 					for _, c := range f.Candidates {
@@ -423,7 +450,7 @@ templ foodRow(i, j, o, k int, f draft.FoodDraft) {
 					}
 					if hasStatedMacros(f) {
 						@selectbox.Item(selectbox.ItemProps{Value: "mine", Selected: f.SaveAsMine}) {
-							Save as my own food (file's macros)
+							{ i18n.T(ctx, "planimport.meal.save_mine") }
 						}
 					}
 				}
@@ -433,14 +460,14 @@ templ foodRow(i, j, o, k int, f draft.FoodDraft) {
 			@input.Input(input.Props{Name: foodField(i, j, o, k, "grams"), Type: input.TypeNumber, Value: grams(f.Grams), Class: "w-24", HasError: f.Grams == nil, Attributes: templ.Attributes{"step": "any", "min": "0"}})
 		}
 		@table.Cell(table.CellProps{Class: "align-top font-mono text-xs"}) {
-			{ macroLine(f.Macros) }
+			{ macroLine(ctx, f.Macros) }
 		}
 		@table.Cell(table.CellProps{Class: "align-top"}) {
 			@button.Button(button.Props{
 				Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm,
-				Attributes: templ.Attributes{"name": "action", "value": fmt.Sprintf("delete-food:%d:%d:%d:%d", i, j, o, k), "formnovalidate": true, "aria-label": "Remove " + f.Food},
+				Attributes: templ.Attributes{"name": "action", "value": fmt.Sprintf("delete-food:%d:%d:%d:%d", i, j, o, k), "formnovalidate": true, "aria-label": i18n.Tf(ctx, "planimport.remove_named", f.Food)},
 			}) {
-				Remove
+				{ i18n.T(ctx, "planimport.remove") }
 			}
 		}
 	}
@@ -465,12 +492,12 @@ func candidateListed(f draft.FoodDraft) bool {
 templ mealWeekdayPicker(name string, selected *int) {
 	@selectbox.SelectBox() {
 		@selectbox.Trigger(selectbox.TriggerProps{Name: name, Class: "w-40", HasError: selected == nil}) {
-			@selectbox.Value(selectbox.ValueProps{Placeholder: "Day of the week"})
+			@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "planimport.weekday_ph")})
 		}
 		@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
 			for _, d := range mealWeekdays {
 				@selectbox.Item(selectbox.ItemProps{Value: fmt.Sprint(int(d)), Selected: selected != nil && *selected == int(d)}) {
-					{ d.String() }
+					{ mealWeekdayName(ctx, int(d)) }
 				}
 			}
 		}

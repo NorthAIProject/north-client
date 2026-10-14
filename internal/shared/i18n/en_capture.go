@@ -29,4 +29,25 @@ var englishCapture = map[string]string{
 	"capture.kind.weight":  "Weight",
 	"capture.kind.checkin": "Check-in",
 	"capture.kind.food":    "Food",
+
+	"capture.cost":       "Reading it costs a moment. Saving is one tap.",
+	"capture.start_over": "Start over",
+	"capture.save":       "Save",
+	"capture.estimated":  "estimated",
+
+	// The words beside each editable number in the preview.
+	"capture.unit.water":  "ml of water",
+	"capture.unit.sleep":  "minutes asleep",
+	"capture.unit.mood":   "mood",
+	"capture.unit.energy": "energy",
+	"capture.unit.food":   "g of %[1]s",
+
+	// A meal's "say what's in it" box on the food log.
+	"capture.foods.ph":        "Or say what's in it: 200 g chicken breast, 100 g rice and two eggs",
+	"capture.foods.find":      "Find ingredients",
+	"capture.foods.none":      "No food found in that. Name each food and how much, such as \"150 g salmon\".",
+	"capture.foods.add":       "Add to meal",
+	"capture.foods.not_added": "Not added:",
+	"capture.foods.which":     "Which %[1]s?",
+	"capture.foods.ambiguous": "More than one ingredient matches. Choose one, then tick it.",
 }

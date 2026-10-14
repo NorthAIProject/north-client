@@ -1,10 +1,12 @@
 package planimport
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 
 	"github.com/NorthAIProject/north-client/internal/planimport/draft"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
@@ -25,7 +27,15 @@ type WorkoutReview struct {
 	Error     string
 }
 
+// weekdays are the values the review posts back, which stay English: the
+// server parses them. Only what the picker shows is translated.
 var weekdays = []string{"Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"}
+
+// weekdayName shows weekdays[i] in the reader's language. weekdays starts on
+// Monday; the shared weekday keys count from Sunday, as time.Weekday does.
+func weekdayName(ctx context.Context, i int) string {
+	return i18n.T(ctx, "weekday.long."+strconv.Itoa((i+1)%7))
+}
 
 func missingSets(d draft.WorkoutDraft) bool {
 	for _, day := range d.Days {
@@ -47,26 +57,25 @@ func optInt(n *int) string {
 
 func field(day, ex int, name string) string { return fmt.Sprintf("d%d.e%d.%s", day, ex, name) }
 
-func dayLabel(label string, i int) string {
+func dayLabel(ctx context.Context, label string, i int) string {
 	if label == "" {
-		return fmt.Sprintf("Training day %d", i+1)
+		return i18n.Tf(ctx, "planimport.workout.day", i+1)
 	}
 	return label
 }
 
 templ WorkoutReviewPage(user users.User, v WorkoutReview) {
-	@layout.App("Review import", user, layout.BuildNav(ctx, "/app/fitness")) {
+	@layout.App(i18n.T(ctx, "planimport.review.title"), user, layout.BuildNav(ctx, "/app/fitness")) {
 		<div class="mx-auto w-full max-w-5xl space-y-6 p-6 md:p-8">
 			<header>
-				@ui.MonoLabel("Import")
-				<h1 class="mt-2 text-2xl font-medium tracking-tight">Check your workout plan</h1>
+				@ui.MonoLabel(i18n.T(ctx, "planimport.label"))
+				<h1 class="mt-2 text-2xl font-medium tracking-tight">{ i18n.T(ctx, "planimport.workout.heading") }</h1>
 				<p class="text-muted-foreground mt-1 text-sm">
-					This is what was read from your file. Blank cells weren't in it. Fix anything that's
-					wrong, give each day a day of the week, then save. Nothing is saved until you do.
+					{ i18n.T(ctx, "planimport.workout.intro") }
 				</p>
 				if missingSets(v.Draft) {
 					<p class="text-muted-foreground mt-2 text-sm">
-						Exercises without a set count won't appear in a live workout until you give them one — here or later on the plan.
+						{ i18n.T(ctx, "planimport.workout.no_sets") }
 					</p>
 				}
 			</header>
@@ -82,7 +91,7 @@ templ WorkoutReviewPage(user users.User, v WorkoutReview) {
 				<input type="hidden" name="draft" value={ v.DraftJSON }/>
 				@defaultSubmit()
 				<label class="block space-y-1">
-					<span class="text-muted-foreground text-xs">Plan name</span>
+					<span class="text-muted-foreground text-xs">{ i18n.T(ctx, "planimport.plan_name") }</span>
 					@input.Input(input.Props{Name: "name", Value: v.Draft.Name, Required: true})
 				</label>
 				if len(v.Draft.Unparsed) > 0 {
@@ -93,10 +102,10 @@ templ WorkoutReviewPage(user users.User, v WorkoutReview) {
 				}
 				<div class="flex flex-wrap items-center justify-end gap-2">
 					@button.Button(button.Props{Href: "/app/training", Variant: button.VariantGhost}) {
-						Cancel import
+						{ i18n.T(ctx, "planimport.cancel_import") }
 					}
 					@button.Button(button.Props{Type: button.TypeSubmit, Attributes: templ.Attributes{"name": "action", "value": "save"}}) {
-						Save plan
+						{ i18n.T(ctx, "planimport.save_plan") }
 					}
 				</div>
 			</form>
@@ -110,7 +119,7 @@ templ workoutDay(i int, day draft.WorkoutDayDraft) {
 	@card.Card() {
 		@card.Header(card.HeaderProps{Class: "flex flex-row flex-wrap items-center justify-between gap-3"}) {
 			@card.Title() {
-				{ dayLabel(day.Label, i) }
+				{ dayLabel(ctx, day.Label, i) }
 			}
 			<div class="flex items-center gap-2">
 				@weekdayPicker(fmt.Sprintf("d%d.weekday", i), day.Weekday)
@@ -118,7 +127,7 @@ templ workoutDay(i int, day draft.WorkoutDayDraft) {
 					Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm,
 					Attributes: templ.Attributes{"name": "action", "value": fmt.Sprintf("delete-day:%d", i), "formnovalidate": true},
 				}) {
-					Remove day
+					{ i18n.T(ctx, "planimport.remove_day") }
 				}
 			</div>
 		}
@@ -128,25 +137,25 @@ templ workoutDay(i int, day draft.WorkoutDayDraft) {
 					@table.Header() {
 						@table.Row() {
 							@table.Head() {
-								Exercise
+								{ i18n.T(ctx, "planimport.workout.col.exercise") }
 							}
 							@table.Head() {
-								Sets
+								{ i18n.T(ctx, "planimport.workout.col.sets") }
 							}
 							@table.Head() {
-								Reps
+								{ i18n.T(ctx, "planimport.workout.col.reps") }
 							}
 							@table.Head() {
-								Load
+								{ i18n.T(ctx, "planimport.workout.col.load") }
 							}
 							@table.Head() {
-								Rest (s)
+								{ i18n.T(ctx, "planimport.workout.col.rest") }
 							}
 							@table.Head() {
-								Notes
+								{ i18n.T(ctx, "planimport.workout.col.notes") }
 							}
 							@table.Head() {
-								<span class="sr-only">Remove</span>
+								<span class="sr-only">{ i18n.T(ctx, "planimport.remove") }</span>
 							}
 						}
 					}
@@ -193,9 +202,9 @@ templ exerciseRow(i, j int, ex draft.ExerciseDraft) {
 		@table.Cell(table.CellProps{Class: "align-top"}) {
 			@button.Button(button.Props{
 				Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm,
-				Attributes: templ.Attributes{"name": "action", "value": fmt.Sprintf("delete-exercise:%d:%d", i, j), "formnovalidate": true, "aria-label": "Remove " + ex.Name},
+				Attributes: templ.Attributes{"name": "action", "value": fmt.Sprintf("delete-exercise:%d:%d", i, j), "formnovalidate": true, "aria-label": i18n.Tf(ctx, "planimport.remove_named", ex.Name)},
 			}) {
-				Remove
+				{ i18n.T(ctx, "planimport.remove") }
 			}
 		}
 	}
@@ -204,12 +213,12 @@ templ exerciseRow(i, j int, ex draft.ExerciseDraft) {
 templ weekdayPicker(name, selected string) {
 	@selectbox.SelectBox() {
 		@selectbox.Trigger(selectbox.TriggerProps{Name: name, Class: "w-40", HasError: selected == ""}) {
-			@selectbox.Value(selectbox.ValueProps{Placeholder: "Day of the week"})
+			@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "planimport.weekday_ph")})
 		}
 		@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
-			for _, d := range weekdays {
+			for i, d := range weekdays {
 				@selectbox.Item(selectbox.ItemProps{Value: d, Selected: d == selected}) {
-					{ d }
+					{ weekdayName(ctx, i) }
 				}
 			}
 		}
@@ -219,10 +228,10 @@ templ weekdayPicker(name, selected string) {
 templ unparsedList(lines []string) {
 	@alert.Alert() {
 		@alert.Title() {
-			Not imported
+			{ i18n.T(ctx, "planimport.unparsed.title") }
 		}
 		@alert.Description() {
-			<p>These lines looked like part of the plan but couldn't be turned into rows. Add them yourself if they matter.</p>
+			<p>{ i18n.T(ctx, "planimport.unparsed.body") }</p>
 			<ul class="mt-2 list-disc space-y-0.5 pl-5">
 				for _, line := range lines {
 					<li>&ldquo;{ line }&rdquo;</li>
@@ -242,6 +251,6 @@ templ defaultSubmit() {
 		Class:      "sr-only",
 		Attributes: templ.Attributes{"name": "action", "value": "update", "tabindex": "-1", "aria-hidden": "true", "formnovalidate": true},
 	}) {
-		Update
+		{ i18n.T(ctx, "planimport.update") }
 	}
 }

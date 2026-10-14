@@ -1,3 +1,95 @@
 package i18n
 
-var portugueseBrazilianKnowledge = map[string]string{}
+var portugueseBrazilianKnowledge = map[string]string{
+	"knowledge.title": "Conhecimento",
+	"knowledge.intro": "Notas e arquivos que o treinador pode citar. Ele só usa o que leu aqui e sempre diz de onde veio cada resposta.",
+
+	"knowledge.meter.read":       "lidos",
+	"knowledge.meter.passages":   "trechos",
+	"knowledge.meter.waiting":    "%[1]d na fila",
+	"knowledge.meter.unreadable": "%[1]d ilegíveis",
+	"knowledge.meter.label":      "%[1]d lidos, %[2]d na fila, %[3]d ilegíveis",
+	"knowledge.rebuild":          "Reconstruir índice",
+
+	"knowledge.run.running": "O índice está sendo atualizado agora.",
+	"knowledge.run.failed":  "Última verificação: %[1]s — não foi possível ler %[2]d de %[3]d.",
+	"knowledge.run.nothing": "Última verificação: %[1]s — nada para ler.",
+	"knowledge.run.current": "Última verificação: %[1]s — estava tudo atualizado.",
+	"knowledge.run.read":    "Última verificação: %[1]s — lidos %[2]d de %[3]d.",
+
+	"knowledge.filter.all":     "Tudo",
+	"knowledge.filter.notes":   "Notas",
+	"knowledge.filter.files":   "Arquivos",
+	"knowledge.filter.waiting": "Na fila",
+
+	"knowledge.attention.title":    "Precisa de atenção",
+	"knowledge.attention.gap.one":  "1 trecho pode ser buscado por palavras, mas ainda não por significado.",
+	"knowledge.attention.gap.many": "%[1]d trechos podem ser buscados por palavras, mas ainda não por significado.",
+	"knowledge.attention.embed":    "Completar embeddings",
+	"knowledge.read_again":         "Ler de novo",
+	"knowledge.remove":             "Remover",
+
+	"knowledge.status.read":     "lido",
+	"knowledge.status.waiting":  "na fila",
+	"knowledge.status.failed":   "não foi possível ler",
+	"knowledge.status.empty":    "está vazio",
+	"knowledge.status.stale":    "mudou desde a leitura",
+	"knowledge.status.stuck":    "ainda na fila",
+	"knowledge.status.outdated": "lido com um método antigo",
+
+	"knowledge.add.title":      "Adicionar à biblioteca",
+	"knowledge.add.formats":    "PDF, Markdown ou texto simples, até 8 MB.",
+	"knowledge.add.note_label": "Ou escreva uma nota",
+	"knowledge.add.title_ph":   "ex.: Anotações da fisio, março",
+	"knowledge.add.body_ph":    "Títulos em Markdown ajudam o Khepri a citar a parte certa.",
+	"knowledge.add.save":       "Salvar nota",
+	"knowledge.drop.title":     "Solte um arquivo ou procure",
+	"knowledge.drop.formats":   "PDF · Markdown · texto",
+
+	"knowledge.empty.title": "O treinador ainda não tem nada para citar",
+	"knowledge.empty.body":  "Adicione uma nota ou solte um arquivo PDF, Markdown ou de texto. O Khepri só usa o que leu aqui.",
+	"knowledge.empty.cta":   "Escrever uma nota",
+
+	"knowledge.col.type":    "Tipo",
+	"knowledge.col.kind":    "Tipo",
+	"knowledge.col.name":    "Nome",
+	"knowledge.col.size":    "Tamanho",
+	"knowledge.col.lines":   "Linhas",
+	"knowledge.col.status":  "Situação",
+	"knowledge.col.read":    "Lido",
+	"knowledge.col.actions": "Ações",
+
+	"knowledge.type.note":      "nota",
+	"knowledge.type.text":      "texto",
+	"knowledge.type.code.note": "NOTA",
+
+	"knowledge.detail.upload": "arquivo enviado",
+	"knowledge.detail.lines":  "%[1]d linhas",
+	"knowledge.detail.read":   "lido em %[1]s",
+
+	"knowledge.export.body": "Leve tudo o que o Khepri sabe sobre você: Markdown e os arquivos originais.",
+	"knowledge.export.cta":  "Baixar exportação",
+
+	"knowledge.doc.showing":  "Mostrando as linhas %[1]d–%[2]d, o trecho que foi citado.",
+	"knowledge.doc.reread":   "Ler de novo",
+	"knowledge.doc.contents": "Sumário",
+
+	"knowledge.results.none_inline": "Nada encontrado. O Khepri só encontra o que leu — confira na lista abaixo se algo ainda está na fila.",
+	"knowledge.results.all":         "Ver todos os trechos",
+	"knowledge.results.gone":        "Os documentos por trás desta resposta não estão mais no seu conhecimento.",
+	"knowledge.sources.one":         "1 fonte",
+	"knowledge.sources.many":        "%[1]d fontes",
+
+	"knowledge.search.title":      "Buscar no conhecimento",
+	"knowledge.search.heading":    "Buscar trechos",
+	"knowledge.search.intro":      "Encontre o que o Khepri leu nas suas notas e arquivos.",
+	"knowledge.search.ph":         "Buscar trechos…",
+	"knowledge.search.aria":       "Buscar no que o Khepri leu",
+	"knowledge.search.searching":  "Buscando…",
+	"knowledge.search.prompt":     "Digite uma frase para buscar no que o Khepri leu.",
+	"knowledge.search.none":       "Nada encontrado. O Khepri só encontra o que leu.",
+	"knowledge.search.more":       "Mostrar mais",
+	"knowledge.search.count.one":  "1 trecho",
+	"knowledge.search.count.many": "%[1]d trechos",
+	"knowledge.search.count.more": "%[1]d+ trechos",
+}
