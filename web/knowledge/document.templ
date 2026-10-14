@@ -6,6 +6,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/documents/document"
 	"github.com/NorthAIProject/north-client/internal/documents/parse"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
@@ -45,7 +46,7 @@ templ DocumentPage(user users.User, view DocumentView) {
 		<div class="mx-auto w-full max-w-4xl space-y-6 p-6 md:p-8">
 			<header class="space-y-3">
 				<a href="/app/knowledge" class="text-muted-foreground hover:text-foreground font-mono text-[10px] uppercase tracking-[0.14em]">
-					← Knowledge
+					{ "← " + i18n.T(ctx, "knowledge.title") }
 				</a>
 				<div class="flex flex-wrap items-center gap-2">
 					<h1 class="text-2xl font-medium tracking-tight">{ view.Document.Title }</h1>
@@ -53,25 +54,25 @@ templ DocumentPage(user users.User, view DocumentView) {
 				</div>
 				<dl class="text-muted-foreground mt-3 grid grid-cols-2 gap-x-6 gap-y-2 text-xs sm:grid-cols-4">
 					<div>
-						<dt class="text-[10px] uppercase tracking-wide opacity-70">Kind</dt>
-						<dd class="mt-0.5 text-foreground">{ fileTypeLabel(view.Document) }</dd>
+						<dt class="text-[10px] uppercase tracking-wide opacity-70">{ i18n.T(ctx, "knowledge.col.kind") }</dt>
+						<dd class="mt-0.5 text-foreground">{ fileTypeLabel(ctx, view.Document) }</dd>
 					</div>
 					<div>
-						<dt class="text-[10px] uppercase tracking-wide opacity-70">Size</dt>
+						<dt class="text-[10px] uppercase tracking-wide opacity-70">{ i18n.T(ctx, "knowledge.col.size") }</dt>
 						<dd class="mt-0.5 text-foreground tabular-nums">{ documentSize(view.Document) }</dd>
 					</div>
 					<div>
-						<dt class="text-[10px] uppercase tracking-wide opacity-70">Lines</dt>
+						<dt class="text-[10px] uppercase tracking-wide opacity-70">{ i18n.T(ctx, "knowledge.col.lines") }</dt>
 						<dd class="mt-0.5 text-foreground tabular-nums">{ documentLines(view.Document) }</dd>
 					</div>
 					<div>
-						<dt class="text-[10px] uppercase tracking-wide opacity-70">Read</dt>
-						<dd class="mt-0.5 text-foreground">{ readWhen(view.Document) }</dd>
+						<dt class="text-[10px] uppercase tracking-wide opacity-70">{ i18n.T(ctx, "knowledge.col.read") }</dt>
+						<dd class="mt-0.5 text-foreground">{ readWhen(ctx, view.Document) }</dd>
 					</div>
 				</dl>
 				if view.Highlight {
 					<p class="text-muted-foreground text-sm">
-						{ fmt.Sprintf("Showing lines %d–%d, the passage that was quoted.", view.FromLine, view.ToLine) }
+						{ i18n.Tf(ctx, "knowledge.doc.showing", view.FromLine, view.ToLine) }
 					</p>
 				}
 			</header>
@@ -92,13 +93,13 @@ templ DocumentPage(user users.User, view DocumentView) {
 				<form method="post" action={ templ.SafeURL("/app/knowledge/" + view.Document.ID.String() + "/reindex") }>
 					@ui.CSRFInput()
 					@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Variant: button.VariantOutline}) {
-						Read it again
+						{ i18n.T(ctx, "knowledge.doc.reread") }
 					}
 				</form>
 				<form method="post" action={ templ.SafeURL("/app/knowledge/" + view.Document.ID.String() + "/delete") }>
 					@ui.CSRFInput()
 					@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Variant: button.VariantOutline}) {
-						Remove
+						{ i18n.T(ctx, "knowledge.remove") }
 					}
 				</form>
 			</div>
@@ -110,7 +111,7 @@ templ DocumentPage(user users.User, view DocumentView) {
 templ outline(headings []parse.Heading) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 		@card.Content(card.ContentProps{Class: "py-4"}) {
-			<p class="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Contents</p>
+			<p class="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">{ i18n.T(ctx, "knowledge.doc.contents") }</p>
 			<ul class="mt-3 space-y-1">
 				for _, h := range headings {
 					<li style={ indentFor(h.Level) }>

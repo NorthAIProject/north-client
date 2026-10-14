@@ -25,4 +25,23 @@ var portugueseBrazilianCapture = map[string]string{
 	"capture.kind.weight":  "Peso",
 	"capture.kind.checkin": "Registro",
 	"capture.kind.food":    "Comida",
+
+	"capture.cost":       "Ler leva um instante. Salvar é um toque.",
+	"capture.start_over": "Recomeçar",
+	"capture.save":       "Salvar",
+	"capture.estimated":  "estimado",
+
+	"capture.unit.water":  "ml de água",
+	"capture.unit.sleep":  "minutos dormindo",
+	"capture.unit.mood":   "humor",
+	"capture.unit.energy": "energia",
+	"capture.unit.food":   "g de %[1]s",
+
+	"capture.foods.ph":        "Ou diga o que tem: 200 g de peito de frango, 100 g de arroz e dois ovos",
+	"capture.foods.find":      "Encontrar ingredientes",
+	"capture.foods.none":      "Nenhum alimento encontrado. Diga cada alimento e a quantidade, por exemplo \"150 g de salmão\".",
+	"capture.foods.add":       "Adicionar à refeição",
+	"capture.foods.not_added": "Não adicionado:",
+	"capture.foods.which":     "Qual %[1]s?",
+	"capture.foods.ambiguous": "Mais de um ingrediente corresponde. Escolha um e marque.",
 }

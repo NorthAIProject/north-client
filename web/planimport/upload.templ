@@ -1,6 +1,10 @@
 package planimport
 
 import (
+	"context"
+	"encoding/json"
+
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
@@ -23,11 +27,11 @@ const (
 // bytes either way.
 const accept = ".pdf,.docx,.txt,.md,.csv,.tsv,.xlsx,.json,.jpg,.jpeg,.png,.webp,.heic,image/*"
 
-func (k Kind) title() string {
+func (k Kind) title(ctx context.Context) string {
 	if k == Meal {
-		return "Import a meal plan"
+		return i18n.T(ctx, "planimport.upload.title.meal")
 	}
-	return "Import a workout plan"
+	return i18n.T(ctx, "planimport.upload.title.workout")
 }
 
 func (k Kind) action() string {
@@ -44,6 +48,9 @@ func (k Kind) back() string {
 	return "/app/training"
 }
 
+// columns names the header row a spreadsheet needs. These stay English in
+// every language: they are the literal headers internal/planimport matches,
+// not copy, and a translated name would be a header nothing reads.
 func (k Kind) columns() string {
 	if k == Meal {
 		return "day, meal, food, quantity, unit, protein, carbs, fat"
@@ -52,15 +59,15 @@ func (k Kind) columns() string {
 }
 
 templ UploadPage(user users.User, kind Kind, errMsg string) {
-	@layout.App(kind.title(), user, layout.BuildNav(ctx, "/app/fitness")) {
+	@layout.App(kind.title(ctx), user, layout.BuildNav(ctx, "/app/fitness")) {
 		<div class="mx-auto w-full max-w-2xl space-y-6 p-6 md:p-8">
 			<header>
-				@ui.MonoLabel("Import")
-				<h1 class="mt-2 text-2xl font-medium tracking-tight">{ kind.title() }</h1>
+				@ui.MonoLabel(i18n.T(ctx, "planimport.label"))
+				<h1 class="mt-2 text-2xl font-medium tracking-tight">{ kind.title(ctx) }</h1>
 				<p class="text-muted-foreground mt-1 text-sm">
-					Nothing is saved until you've checked what was read and pressed Save.
+					{ i18n.T(ctx, "planimport.upload.intro") }
 					if kind == Meal {
-						Your macro target stays as it is; foods are measured against it.
+						{ " " + i18n.T(ctx, "planimport.upload.intro.meal") }
 					}
 				</p>
 			</header>
@@ -75,14 +82,14 @@ templ UploadPage(user users.User, kind Kind, errMsg string) {
 				@card.Content(card.ContentProps{Class: "space-y-4 pt-6"}) {
 					@uploadDrop(kind)
 					<div class="text-muted-foreground space-y-1 text-xs">
-						<p>PDF (up to 20 pages), Word, text or Markdown, a CSV, TSV or Excel (.xlsx) sheet, JSON, or a photo. Up to 10 MB.</p>
-						<p>Spreadsheets need a header row; the first sheet is read. Columns: { kind.columns() }. Others are ignored.</p>
-						<p>Anything the file doesn't say is left blank for you to fill in — never guessed.</p>
+						<p>{ i18n.T(ctx, "planimport.upload.formats") }</p>
+						<p>{ i18n.Tf(ctx, "planimport.upload.sheets", kind.columns()) }</p>
+						<p>{ i18n.T(ctx, "planimport.upload.blank") }</p>
 					</div>
 				}
 			}
 			@button.Button(button.Props{Href: kind.back(), Variant: button.VariantGhost}) {
-				Cancel
+				{ i18n.T(ctx, "planimport.cancel") }
 			}
 		</div>
 	}
@@ -108,7 +115,7 @@ templ uploadDrop(kind Kind) {
 			class="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-md border border-dashed px-4 py-10 text-center transition-colors duration-150"
 		>
 			@icon.Icon("file-up")(icon.Props{Class: "text-muted-foreground size-5"})
-			<span class="text-sm font-medium" x-text="busy ? 'Reading your plan…' : 'Drop a file, or browse'">Drop a file, or browse</span>
+			<span class="text-sm font-medium" x-text={ dropText(ctx) }>{ i18n.T(ctx, "planimport.upload.drop") }</span>
 			<!-- Hidden native input: templUI Input cannot sit inside a drop
 			     target without drawing its own field chrome. -->
 			<input
@@ -124,4 +131,13 @@ templ uploadDrop(kind Kind) {
 			/>
 		</label>
 	</form>
+}
+
+// dropText is the Alpine expression that swaps the drop label while a file
+// uploads. Both strings are JSON-quoted, so an apostrophe in a translation
+// cannot end the expression early.
+func dropText(ctx context.Context) string {
+	busy, _ := json.Marshal(i18n.T(ctx, "planimport.upload.reading"))
+	idle, _ := json.Marshal(i18n.T(ctx, "planimport.upload.drop"))
+	return "busy ? " + string(busy) + " : " + string(idle)
 }
