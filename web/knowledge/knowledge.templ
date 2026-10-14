@@ -7,10 +7,12 @@
 package knowledge
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
 	"github.com/NorthAIProject/north-client/internal/documents/document"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
@@ -70,7 +72,7 @@ type Instruments struct {
 }
 
 templ IndexPage(user users.User, view View, form NoteForm) {
-	@layout.App("Knowledge", user, layout.BuildNav(ctx, "/app/knowledge")) {
+	@layout.App(i18n.T(ctx, "knowledge.title"), user, layout.BuildNav(ctx, "/app/knowledge")) {
 		<div class="mx-auto w-full max-w-7xl p-6 md:p-8">
 			@pageHeader(view)
 			if len(view.Problems) > 0 || view.EmbeddingGap > 0 {
@@ -101,10 +103,9 @@ templ IndexPage(user users.User, view View, form NoteForm) {
 templ pageHeader(view View) {
 	<header class="flex flex-col gap-6 border-b border-hairline pb-6 lg:flex-row lg:items-end lg:justify-between">
 		<div class="max-w-xl">
-			<h1 class="text-2xl font-medium tracking-tight text-balance">Knowledge</h1>
+			<h1 class="text-2xl font-medium tracking-tight text-balance">{ i18n.T(ctx, "knowledge.title") }</h1>
 			<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
-				Notes and files the coach can quote. It only uses what it has read here,
-				and it says where each answer came from.
+				{ i18n.T(ctx, "knowledge.intro") }
 			</p>
 		</div>
 		@indexMeter(view)
@@ -114,7 +115,7 @@ templ pageHeader(view View) {
 // indexMeter is the index as a bar and a line of counts, not a card of KPIs.
 templ indexMeter(view View) {
 	<div class="w-full max-w-md space-y-2 lg:text-right">
-		<div class="flex h-1.5 overflow-hidden rounded-full bg-muted" role="img" aria-label={ meterLabel(view.Counts) }>
+		<div class="flex h-1.5 overflow-hidden rounded-full bg-muted" role="img" aria-label={ meterLabel(ctx, view.Counts) }>
 			if view.Counts.Ready > 0 {
 				<div class="bg-signal h-full" style={ meterWidth(view.Counts.Ready, view.Counts) }></div>
 			}
@@ -126,23 +127,23 @@ templ indexMeter(view View) {
 			}
 		</div>
 		<div class="text-muted-foreground flex flex-wrap items-baseline gap-x-3 gap-y-1 font-mono text-[11px] tabular-nums lg:justify-end">
-			<span><span class="text-foreground">{ fmt.Sprint(view.Counts.Ready) }</span> read</span>
-			<span><span class="text-foreground">{ fmt.Sprint(view.Counts.Chunks) }</span> passages</span>
+			<span><span class="text-foreground">{ fmt.Sprint(view.Counts.Ready) }</span> { i18n.T(ctx, "knowledge.meter.read") }</span>
+			<span><span class="text-foreground">{ fmt.Sprint(view.Counts.Chunks) }</span> { i18n.T(ctx, "knowledge.meter.passages") }</span>
 			if view.Counts.Pending > 0 {
-				<span>{ fmt.Sprint(view.Counts.Pending) } waiting</span>
+				<span>{ i18n.Tf(ctx, "knowledge.meter.waiting", view.Counts.Pending) }</span>
 			}
 			if view.Counts.Failed > 0 {
-				<span class="text-destructive">{ fmt.Sprint(view.Counts.Failed) } unreadable</span>
+				<span class="text-destructive">{ i18n.Tf(ctx, "knowledge.meter.unreadable", view.Counts.Failed) }</span>
 			}
 		</div>
 		<div class="flex flex-wrap items-center gap-3 lg:justify-end">
 			if view.HasRun {
-				<p class="text-muted-foreground text-xs">{ runSummary(view.LastRun) }</p>
+				<p class="text-muted-foreground text-xs">{ runSummary(ctx, view.LastRun) }</p>
 			}
 			<form method="post" action="/app/knowledge/reindex">
 				@ui.CSRFInput()
 				@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Variant: button.VariantGhost}) {
-					Rebuild index
+					{ i18n.T(ctx, "knowledge.rebuild") }
 				}
 			</form>
 		</div>
@@ -152,10 +153,10 @@ templ indexMeter(view View) {
 templ libraryToolbar(view View) {
 	<div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 		<div class="bg-muted inline-flex h-9 w-fit items-center rounded-lg p-[3px]">
-			@filterTab("all", "All", len(view.Documents))
-			@filterTab("notes", "Notes", countNotes(view.Documents))
-			@filterTab("files", "Files", countFiles(view.Documents))
-			@filterTab("waiting", "Waiting", countWaiting(view.Documents))
+			@filterTab("all", i18n.T(ctx, "knowledge.filter.all"), len(view.Documents))
+			@filterTab("notes", i18n.T(ctx, "knowledge.filter.notes"), countNotes(view.Documents))
+			@filterTab("files", i18n.T(ctx, "knowledge.filter.files"), countFiles(view.Documents))
+			@filterTab("waiting", i18n.T(ctx, "knowledge.filter.waiting"), countWaiting(view.Documents))
 		</div>
 		<div class="min-w-0 sm:max-w-xs sm:flex-1">
 			<form method="get" action="/app/knowledge/search" class="flex gap-2">
@@ -164,14 +165,14 @@ templ libraryToolbar(view View) {
 						ID:          "knowledge-search",
 						Name:        "q",
 						Type:        input.TypeSearch,
-						Placeholder: "Search passages…",
+						Placeholder: i18n.T(ctx, "knowledge.search.ph"),
 						Attributes: templ.Attributes{
 							"hx-get":       "/app/knowledge/search",
 							"hx-trigger":   "input changed delay:300ms, search",
 							"hx-target":    "#knowledge-search-results",
 							"hx-swap":      "innerHTML",
 							"autocomplete": "off",
-							"aria-label":   "Search what Khepri has read",
+							"aria-label":   i18n.T(ctx, "knowledge.search.aria"),
 						},
 					})
 				</div>
@@ -196,7 +197,7 @@ templ filterTab(value, label string, n int) {
 templ attention(view View) {
 	@alert.Alert(alert.Props{Class: "border-hairline bg-surface"}) {
 		@alert.Title() {
-			Needs attention
+			{ i18n.T(ctx, "knowledge.attention.title") }
 		}
 		@alert.Description() {
 			<div class="mt-2 divide-y divide-hairline">
@@ -207,12 +208,12 @@ templ attention(view View) {
 			if view.EmbeddingGap > 0 {
 				<div class="mt-3 flex flex-wrap items-center gap-3">
 					<p class="text-muted-foreground text-xs leading-relaxed">
-						{ fmt.Sprintf("%d passage(s) are searchable by word but not yet by meaning.", view.EmbeddingGap) }
+						{ embeddingGapLine(ctx, view.EmbeddingGap) }
 					</p>
 					<form method="post" action="/app/knowledge/retry-embeddings">
 						@ui.CSRFInput()
 						@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Variant: button.VariantOutline}) {
-							Catch up embeddings
+							{ i18n.T(ctx, "knowledge.attention.embed") }
 						}
 					</form>
 				</div>
@@ -238,7 +239,7 @@ templ problemRow(p document.Problem) {
 			<form method="post" action={ templ.SafeURL("/app/knowledge/" + p.DocumentID.String() + "/reindex") }>
 				@ui.CSRFInput()
 				@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Variant: button.VariantOutline}) {
-					Read again
+					{ i18n.T(ctx, "knowledge.read_again") }
 				}
 			</form>
 		}
@@ -249,23 +250,23 @@ templ problemBadge(kind string) {
 	switch kind {
 		case document.ProblemFailed:
 			@badge.Badge(badge.Props{Variant: badge.VariantDestructive}) {
-				could not read
+				{ i18n.T(ctx, "knowledge.status.failed") }
 			}
 		case document.ProblemEmpty:
 			@badge.Badge(badge.Props{Variant: badge.VariantDestructive}) {
-				nothing in it
+				{ i18n.T(ctx, "knowledge.status.empty") }
 			}
 		case document.ProblemStale:
 			@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
-				changed since read
+				{ i18n.T(ctx, "knowledge.status.stale") }
 			}
 		case document.ProblemStuck:
 			@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
-				still waiting
+				{ i18n.T(ctx, "knowledge.status.stuck") }
 			}
 		default:
 			@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
-				read an older way
+				{ i18n.T(ctx, "knowledge.status.outdated") }
 			}
 	}
 }
@@ -274,9 +275,9 @@ templ problemBadge(kind string) {
 templ addNote(f NoteForm) {
 	<div class="space-y-5">
 		<div>
-			<h2 class="text-sm font-medium">Add to the library</h2>
+			<h2 class="text-sm font-medium">{ i18n.T(ctx, "knowledge.add.title") }</h2>
 			<p class="text-muted-foreground mt-1 text-xs leading-relaxed">
-				PDF, Markdown, or plain text, up to 8 MB.
+				{ i18n.T(ctx, "knowledge.add.formats") }
 			</p>
 		</div>
 		@uploadDrop(f)
@@ -285,13 +286,13 @@ templ addNote(f NoteForm) {
 			@ui.CSRFInput()
 			@form.Item() {
 				@label.Label(label.Props{For: "title", Error: f.fieldError("title")}) {
-					Or write a note
+					{ i18n.T(ctx, "knowledge.add.note_label") }
 				}
 				@input.Input(input.Props{
 					ID:          "title",
 					Name:        "title",
 					Value:       f.Title,
-					Placeholder: "e.g. Physio notes, March",
+					Placeholder: i18n.T(ctx, "knowledge.add.title_ph"),
 					HasError:    f.fieldError("title") != "",
 				})
 				if f.fieldError("title") != "" {
@@ -308,7 +309,7 @@ templ addNote(f NoteForm) {
 						ID:          "body",
 						Name:        "body",
 						Rows:        5,
-						Placeholder: "Markdown headings help Khepri quote the right part.",
+						Placeholder: i18n.T(ctx, "knowledge.add.body_ph"),
 						Value:       f.Body,
 						HasError:    f.fieldError("body") != "",
 					})
@@ -320,7 +321,7 @@ templ addNote(f NoteForm) {
 				}
 			}
 			@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90 w-full"}) {
-				Save note
+				{ i18n.T(ctx, "knowledge.add.save") }
 			}
 		</form>
 	</div>
@@ -346,8 +347,8 @@ templ uploadDrop(f NoteForm) {
 			class="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-md border border-dashed px-4 py-8 text-center transition-colors duration-150"
 		>
 			@icon.Icon("file-up")(icon.Props{Class: "text-muted-foreground size-5"})
-			<span class="text-sm font-medium">Drop a file, or browse</span>
-			<span class="text-muted-foreground text-xs">PDF · Markdown · text</span>
+			<span class="text-sm font-medium">{ i18n.T(ctx, "knowledge.drop.title") }</span>
+			<span class="text-muted-foreground text-xs">{ i18n.T(ctx, "knowledge.drop.formats") }</span>
 			<!-- Hidden native input: templUI Input cannot sit inside a drop
 			     target without drawing its own field chrome. -->
 			<input
@@ -371,11 +372,11 @@ templ uploadDrop(f NoteForm) {
 templ documentLibrary(view View) {
 	if len(view.Documents) == 0 {
 		@ui.Empty(ui.EmptyProps{
-			Title: "The coach has nothing to quote yet",
-			Body:  "Add a note, or drop a PDF, Markdown, or text file. Khepri only uses what it has read here.",
+			Title: i18n.T(ctx, "knowledge.empty.title"),
+			Body:  i18n.T(ctx, "knowledge.empty.body"),
 		}) {
 			@button.Button(button.Props{Href: "#add-note", Class: "bg-signal text-background hover:bg-signal/90"}) {
-				Write a note
+				{ i18n.T(ctx, "knowledge.empty.cta") }
 			}
 		}
 	} else {
@@ -384,25 +385,25 @@ templ documentLibrary(view View) {
 				@table.Header() {
 					@table.Row() {
 						@table.Head(table.HeadProps{Class: "w-12 pl-3"}) {
-							Type
+							{ i18n.T(ctx, "knowledge.col.type") }
 						}
 						@table.Head() {
-							Name
+							{ i18n.T(ctx, "knowledge.col.name") }
 						}
 						@table.Head(table.HeadProps{Class: "hidden sm:table-cell"}) {
-							Size
+							{ i18n.T(ctx, "knowledge.col.size") }
 						}
 						@table.Head(table.HeadProps{Class: "hidden md:table-cell"}) {
-							Lines
+							{ i18n.T(ctx, "knowledge.col.lines") }
 						}
 						@table.Head() {
-							Status
+							{ i18n.T(ctx, "knowledge.col.status") }
 						}
 						@table.Head(table.HeadProps{Class: "hidden lg:table-cell"}) {
-							Read
+							{ i18n.T(ctx, "knowledge.col.read") }
 						}
 						@table.Head(table.HeadProps{Class: "w-0 pr-3 text-right"}) {
-							<span class="sr-only">Actions</span>
+							<span class="sr-only">{ i18n.T(ctx, "knowledge.col.actions") }</span>
 						}
 					}
 				}
@@ -451,13 +452,13 @@ templ documentRow(d document.Document) {
 			@statusBadge(d)
 		}
 		@table.Cell(table.CellProps{Class: "text-muted-foreground hidden text-xs lg:table-cell"}) {
-			{ readWhen(d) }
+			{ readWhen(ctx, d) }
 		}
 		@table.Cell(table.CellProps{Class: "pr-3 text-right"}) {
 			<form method="post" action={ templ.SafeURL("/app/knowledge/" + d.ID.String() + "/delete") }>
 				@ui.CSRFInput()
 				@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Variant: button.VariantGhost}) {
-					Remove
+					{ i18n.T(ctx, "knowledge.remove") }
 				}
 			</form>
 		}
@@ -467,9 +468,9 @@ templ documentRow(d document.Document) {
 templ typeMark(d document.Document) {
 	<span
 		class="bg-muted text-muted-foreground inline-flex size-8 items-center justify-center rounded-md font-mono text-[9px] font-medium tracking-wide"
-		title={ fileTypeLabel(d) }
+		title={ fileTypeLabel(ctx, d) }
 	>
-		{ typeCode(d) }
+		{ typeCode(ctx, d) }
 	</span>
 }
 
@@ -478,20 +479,20 @@ templ statusBadge(d document.Document) {
 		case document.StatusReady:
 			if d.IsStale() {
 				@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
-					changed since read
+					{ i18n.T(ctx, "knowledge.status.stale") }
 				}
 			} else {
 				@badge.Badge(badge.Props{Class: "border-signal/40 bg-signal/12 text-signal", Variant: badge.VariantOutline}) {
-					read
+					{ i18n.T(ctx, "knowledge.status.read") }
 				}
 			}
 		case document.StatusFailed:
 			@badge.Badge(badge.Props{Variant: badge.VariantDestructive}) {
-				could not read
+				{ i18n.T(ctx, "knowledge.status.failed") }
 			}
 		default:
 			@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
-				waiting
+				{ i18n.T(ctx, "knowledge.status.waiting") }
 			}
 	}
 }
@@ -499,7 +500,7 @@ templ statusBadge(d document.Document) {
 templ exportSection() {
 	<div class="border-hairline border-t pt-4">
 		<p class="text-muted-foreground text-xs leading-relaxed">
-			Take everything Khepri knows about you — Markdown and original files.
+			{ i18n.T(ctx, "knowledge.export.body") }
 		</p>
 		<div class="mt-2">
 			@button.Button(button.Props{
@@ -507,37 +508,37 @@ templ exportSection() {
 				Variant: button.VariantGhost,
 				Size:    button.SizeSm,
 			}) {
-				Download export
+				{ i18n.T(ctx, "knowledge.export.cta") }
 			}
 		</div>
 	</div>
 }
 
 // documentDetail is the one line under a title on the document page.
-func documentDetail(d document.Document) string {
+func documentDetail(ctx context.Context, d document.Document) string {
 	parts := make([]string, 0, 5)
 
 	if d.SourceKind == document.SourceUpload {
-		parts = append(parts, "uploaded file")
-		if label := fileTypeLabel(d); label != "" {
+		parts = append(parts, i18n.T(ctx, "knowledge.detail.upload"))
+		if label := fileTypeLabel(ctx, d); label != "" {
 			parts = append(parts, label)
 		}
 		if d.ByteSize > 0 {
 			parts = append(parts, humanSize(d.ByteSize))
 		}
 	} else {
-		parts = append(parts, "note")
+		parts = append(parts, i18n.T(ctx, "knowledge.type.note"))
 	}
 	if d.LineCount > 0 {
-		parts = append(parts, fmt.Sprintf("%d lines", d.LineCount))
+		parts = append(parts, i18n.Tf(ctx, "knowledge.detail.lines", d.LineCount))
 	}
 	if d.IndexedAt != nil {
-		parts = append(parts, "read "+d.IndexedAt.In(d.CreatedAt.Location()).Format("2 Jan 2006"))
+		parts = append(parts, i18n.Tf(ctx, "knowledge.detail.read", i18n.Date(ctx, d.IndexedAt.In(d.CreatedAt.Location()), "2 Jan 2006")))
 	}
 	return strings.Join(parts, " · ")
 }
 
-func fileTypeLabel(d document.Document) string {
+func fileTypeLabel(ctx context.Context, d document.Document) string {
 	switch {
 	case strings.Contains(strings.ToLower(d.MIME), "pdf"):
 		return "PDF"
@@ -546,13 +547,13 @@ func fileTypeLabel(d document.Document) string {
 	case strings.Contains(strings.ToLower(d.MIME), "csv"):
 		return "CSV"
 	case d.SourceKind == document.SourceUpload:
-		return "text"
+		return i18n.T(ctx, "knowledge.type.text")
 	default:
-		return "note"
+		return i18n.T(ctx, "knowledge.type.note")
 	}
 }
 
-func typeCode(d document.Document) string {
+func typeCode(ctx context.Context, d document.Document) string {
 	switch {
 	case strings.Contains(strings.ToLower(d.MIME), "pdf"):
 		return "PDF"
@@ -563,7 +564,7 @@ func typeCode(d document.Document) string {
 	case d.SourceKind == document.SourceUpload:
 		return "TXT"
 	default:
-		return "NOTE"
+		return i18n.T(ctx, "knowledge.type.code.note")
 	}
 }
 
@@ -578,11 +579,11 @@ func humanSize(n int64) string {
 	}
 }
 
-func readWhen(d document.Document) string {
+func readWhen(ctx context.Context, d document.Document) string {
 	if d.IndexedAt == nil {
 		return "—"
 	}
-	return d.IndexedAt.In(d.CreatedAt.Location()).Format("2 Jan")
+	return i18n.Date(ctx, d.IndexedAt.In(d.CreatedAt.Location()), "2 Jan")
 }
 
 func documentSize(d document.Document) string {
@@ -660,25 +661,34 @@ func meterWidth(n int, c document.Counts) string {
 	return fmt.Sprintf("width:%.1f%%", float64(n)/float64(total)*100)
 }
 
-func meterLabel(c document.Counts) string {
-	return fmt.Sprintf("%d read, %d waiting, %d unreadable", c.Ready, c.Pending, c.Failed)
+func meterLabel(ctx context.Context, c document.Counts) string {
+	return i18n.Tf(ctx, "knowledge.meter.label", c.Ready, c.Pending, c.Failed)
+}
+
+// embeddingGapLine says how many passages wait for meaning search. One is
+// its own sentence: "1 passage are" reads as a bug in every language.
+func embeddingGapLine(ctx context.Context, n int) string {
+	if n == 1 {
+		return i18n.T(ctx, "knowledge.attention.gap.one")
+	}
+	return i18n.Tf(ctx, "knowledge.attention.gap.many", n)
 }
 
 // runSummary describes the last indexing pass in the terms a person would use.
-func runSummary(run document.IndexRun) string {
+func runSummary(ctx context.Context, run document.IndexRun) string {
 	if run.CompletedAt == nil {
-		return "Indexing is running now."
+		return i18n.T(ctx, "knowledge.run.running")
 	}
 
-	when := run.CompletedAt.Format("2 Jan, 15:04")
+	when := i18n.Date(ctx, *run.CompletedAt, "2 Jan, 15:04")
 	switch {
 	case run.Failed > 0:
-		return fmt.Sprintf("Last checked %s — %d of %d could not be read.", when, run.Failed, run.Seen)
+		return i18n.Tf(ctx, "knowledge.run.failed", when, run.Failed, run.Seen)
 	case run.Seen == 0:
-		return fmt.Sprintf("Last checked %s — nothing to read.", when)
+		return i18n.Tf(ctx, "knowledge.run.nothing", when)
 	case run.Unchanged == run.Seen:
-		return fmt.Sprintf("Last checked %s — everything was already up to date.", when)
+		return i18n.Tf(ctx, "knowledge.run.current", when)
 	default:
-		return fmt.Sprintf("Last checked %s — read %d of %d.", when, run.Added+run.Updated, run.Seen)
+		return i18n.Tf(ctx, "knowledge.run.read", when, run.Added+run.Updated, run.Seen)
 	}
 }

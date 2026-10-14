@@ -1,10 +1,11 @@
 package knowledge
 
 import (
-	"fmt"
+	"context"
 	"net/url"
 
 	"github.com/NorthAIProject/north-client/internal/documents/document"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 )
 
 // SearchResults is the fragment the library search box swaps in.
@@ -13,8 +14,7 @@ templ SearchResults(query string, hits []document.Hit, hasMore bool) {
 		<!-- nothing typed yet; an empty region reads better than a prompt -->
 	} else if len(hits) == 0 {
 		<p class="text-muted-foreground mt-3 text-sm">
-			Nothing matched. Khepri can only find what it has read — check the list below for
-			anything still waiting.
+			{ i18n.T(ctx, "knowledge.results.none_inline") }
 		</p>
 	} else {
 		<div class="border-hairline mt-3 divide-y divide-hairline overflow-hidden rounded-md border">
@@ -25,7 +25,7 @@ templ SearchResults(query string, hits []document.Hit, hasMore bool) {
 		if hasMore {
 			<p class="mt-2">
 				<a href={ templ.SafeURL("/app/knowledge/search?q=" + url.QueryEscape(query)) } class="text-sm font-medium hover:underline">
-					See all passages
+					{ i18n.T(ctx, "knowledge.results.all") }
 				</a>
 			</p>
 		}
@@ -37,7 +37,7 @@ templ Passages(hits []document.Hit) {
 	<div class="border-hairline mt-2 divide-y divide-hairline overflow-hidden rounded-md border">
 		if len(hits) == 0 {
 			<p class="text-muted-foreground px-3 py-2 text-xs">
-				The documents behind this reply are no longer in your knowledge.
+				{ i18n.T(ctx, "knowledge.results.gone") }
 			</p>
 		}
 		for _, h := range hits {
@@ -95,9 +95,9 @@ func excerpt(content string) string {
 }
 
 // sourceCount labels a reply's disclosure.
-func sourceCount(n int) string {
+func sourceCount(ctx context.Context, n int) string {
 	if n == 1 {
-		return "1 source"
+		return i18n.T(ctx, "knowledge.sources.one")
 	}
-	return fmt.Sprintf("%d sources", n)
+	return i18n.Tf(ctx, "knowledge.sources.many", n)
 }

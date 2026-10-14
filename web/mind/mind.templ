@@ -1,10 +1,11 @@
 package mind
 
 import (
+	"context"
 	"fmt"
-	"strconv"
 
 	"github.com/NorthAIProject/north-client/internal/mind/journal"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
@@ -44,13 +45,13 @@ func (f JournalForm) fieldError(name string) string {
 func (f JournalForm) moodSelected(n int) bool { return f.Mood != nil && *f.Mood == n }
 
 templ IndexPage(user users.User, entries []journal.Entry, inst Instruments, f JournalForm) {
-	@layout.App("Mind", user, layout.BuildNav(ctx, "/app/mind")) {
+	@layout.App(i18n.T(ctx, "mind.title"), user, layout.BuildNav(ctx, "/app/mind")) {
 		<div class="mx-auto w-full max-w-6xl space-y-6 p-6 md:p-8">
 			<header>
-				@ui.MonoLabel("Mind")
-				<h1 class="mt-2 text-2xl font-medium tracking-tight">How you've been</h1>
+				@ui.MonoLabel(i18n.T(ctx, "mind.title"))
+				<h1 class="mt-2 text-2xl font-medium tracking-tight">{ i18n.T(ctx, "mind.heading") }</h1>
 				<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
-					A trend from your check-ins, and a place for reflections that don't fit a 1-5 scale.
+					{ i18n.T(ctx, "mind.intro") }
 				</p>
 			</header>
 			@kpiStrip(inst)
@@ -58,7 +59,7 @@ templ IndexPage(user users.User, entries []journal.Entry, inst Instruments, f Jo
 			@journalFormCard(f)
 			if len(entries) > 0 {
 				<section class="space-y-3">
-					<h2 class="text-sm font-medium">Journal</h2>
+					<h2 class="text-sm font-medium">{ i18n.T(ctx, "mind.journal") }</h2>
 					for _, e := range entries {
 						@entryCard(e)
 					}
@@ -74,9 +75,9 @@ templ IndexPage(user users.User, entries []journal.Entry, inst Instruments, f Jo
 
 templ kpiStrip(inst Instruments) {
 	@ui.KpiStrip() {
-		@kpiCell("Avg mood", avgMoodKPI(inst), "/app/check-ins", "Check in")
-		@kpiCell("Avg energy", avgEnergyKPI(inst), "/app/check-ins", "Check in")
-		@kpiCell("Check-ins", checkInCountKPI(inst), "/app/check-ins", "View")
+		@kpiCell(i18n.T(ctx, "mind.kpi.mood"), avgMoodKPI(inst), "/app/check-ins", i18n.T(ctx, "mind.check_in"))
+		@kpiCell(i18n.T(ctx, "mind.kpi.energy"), avgEnergyKPI(inst), "/app/check-ins", i18n.T(ctx, "mind.check_in"))
+		@kpiCell(i18n.T(ctx, "mind.kpi.checkins"), checkInCountKPI(ctx, inst), "/app/check-ins", i18n.T(ctx, "mind.view"))
 	}
 }
 
@@ -98,30 +99,30 @@ func avgEnergyKPI(inst Instruments) string {
 	return fmt.Sprintf("%.1f/5", inst.AvgEnergy)
 }
 
-func checkInCountKPI(inst Instruments) string {
+func checkInCountKPI(ctx context.Context, inst Instruments) string {
 	if inst.CheckInCount <= 0 {
 		return "—"
 	}
-	return strconv.Itoa(inst.CheckInCount) + " in 14d"
+	return i18n.Tf(ctx, "mind.kpi.checkins.value", inst.CheckInCount)
 }
 
 templ moodChart(inst Instruments) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 		@card.Header() {
 			@card.Title() {
-				Mood & energy
+				{ i18n.T(ctx, "mind.chart.title") }
 			}
 			@card.Description() {
-				Trailing fourteen days from your check-ins.
+				{ i18n.T(ctx, "mind.chart.desc") }
 			}
 		}
 		@card.Content() {
 			if inst.HasData {
 				@chart.Chart(inst.MoodChart)
 			} else {
-				<p class="text-muted-foreground mb-4 text-sm">No check-ins yet in this window.</p>
+				<p class="text-muted-foreground mb-4 text-sm">{ i18n.T(ctx, "mind.chart.empty") }</p>
 				@button.Button(button.Props{Href: "/app/check-ins", Class: "bg-signal text-background hover:bg-signal/90"}) {
-					Check in
+					{ i18n.T(ctx, "mind.check_in") }
 				}
 			}
 		}
@@ -132,10 +133,10 @@ templ journalFormCard(f JournalForm) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 		@card.Header() {
 			@card.Title() {
-				Write something
+				{ i18n.T(ctx, "mind.form.title") }
 			}
 			@card.Description() {
-				Optional mood rating. No structure required.
+				{ i18n.T(ctx, "mind.form.desc") }
 			}
 		}
 		@card.Content() {
@@ -143,7 +144,7 @@ templ journalFormCard(f JournalForm) {
 				@ui.CSRFInput()
 				@form.Item() {
 					@label.Label(label.Props{For: "content"}) {
-						Reflection
+						{ i18n.T(ctx, "mind.form.reflection") }
 					}
 					// Value, not children: the component renders p.Value and has no
 					// children block, so a reflection handed to it that way was
@@ -153,7 +154,7 @@ templ journalFormCard(f JournalForm) {
 							ID:          "content",
 							Name:        "content",
 							Rows:        4,
-							Placeholder: "What's on your mind?",
+							Placeholder: i18n.T(ctx, "mind.form.ph"),
 							Value:       f.Content,
 							HasError:    f.fieldError("content") != "",
 						})
@@ -166,15 +167,15 @@ templ journalFormCard(f JournalForm) {
 				}
 				@form.Item() {
 					@label.Label() {
-						Mood (optional)
+						{ i18n.T(ctx, "mind.form.mood") }
 					}
 					@selectbox.SelectBox() {
 						@selectbox.Trigger(selectbox.TriggerProps{ID: "mood", Name: "mood"}) {
-							@selectbox.Value(selectbox.ValueProps{Placeholder: "No rating"})
+							@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "mind.form.no_rating")})
 						}
 						@selectbox.Content() {
 							@selectbox.Item(selectbox.ItemProps{Value: "", Selected: f.Mood == nil}) {
-								No rating
+								{ i18n.T(ctx, "mind.form.no_rating") }
 							}
 							for i := 1; i <= 5; i++ {
 								@selectbox.Item(selectbox.ItemProps{Value: fmt.Sprintf("%d", i), Selected: f.moodSelected(i)}) {
@@ -185,7 +186,7 @@ templ journalFormCard(f JournalForm) {
 					}
 				}
 				@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90"}) {
-					Save entry
+					{ i18n.T(ctx, "mind.form.save") }
 				}
 			</form>
 		}
@@ -196,9 +197,9 @@ templ entryCard(e journal.Entry) {
 	@card.Card(card.Props{Class: "border-hairline"}) {
 		@card.Content(card.ContentProps{Class: "py-4"}) {
 			<p class="text-muted-foreground text-xs">
-				{ e.CreatedAt.Format("2 Jan 2006") }
+				{ i18n.Date(ctx, e.CreatedAt, "2 Jan 2006") }
 				if e.Mood != nil {
-					· mood { fmt.Sprintf("%d/5", *e.Mood) }
+					{ " " + i18n.Tf(ctx, "mind.entry.mood", *e.Mood) }
 				}
 			</p>
 			<p class="mt-1 text-sm">{ e.Content }</p>
