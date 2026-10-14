@@ -295,22 +295,27 @@ func progressVariant(m macroRow) progress.Variant {
 
 // mealBlock is one meal slot. A slot with options shows each in a tab of its
 // own, keyed by the option's meal row, so every per-meal route keeps working;
-// only the first option counts toward the day.
+// only the first option counts toward the day, and none does when the slot is
+// optional.
 templ mealBlock(page PlanPage, m meal.Meal, status *meal.DayStatus) {
 	<section class="border-hairline space-y-3 border-t pt-4">
 		if len(m.Alternatives) == 0 {
-			<div class="flex items-center justify-between">
-				<h3 class="font-medium">{ m.Name }</h3>
+			<div class="flex flex-wrap items-center justify-between gap-2">
+				@mealHeading(m)
 				<div class="flex items-center gap-2">
 					<span class="text-muted-foreground text-sm">{ fmt.Sprintf("%.0f kcal", m.TotalMacros.Calories) }</span>
+					@mealOptionalButton(m)
 					@removeMealButton(m, "Remove meal")
 				</div>
 			</div>
-			@optionBody(page, m, status, true)
+			@optionBody(page, m, status, !m.Optional)
 		} else {
-			<div class="flex items-center justify-between">
-				<h3 class="font-medium">{ m.Name }</h3>
-				@removeMealButton(m, "Remove meal (all options)")
+			<div class="flex flex-wrap items-center justify-between gap-2">
+				@mealHeading(m)
+				<div class="flex items-center gap-2">
+					@mealOptionalButton(m)
+					@removeMealButton(m, "Remove meal (all options)")
+				</div>
 			</div>
 			@mealOptionTabs(page, m, status)
 		}
@@ -325,7 +330,7 @@ templ mealOptionTabs(page PlanPage, slot meal.Meal, status *meal.DayStatus) {
 			for i, o := range slot.Options() {
 				@tabs.Trigger(tabs.TriggerProps{Value: o.ID.String(), IsActive: o.ID.String() == open, Class: "flex-none"}) {
 					{ optionTabLabel(o, i) }
-					if i == 0 {
+					if i == 0 && !slot.Optional {
 						@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
 							Counted
 						}
@@ -337,7 +342,9 @@ templ mealOptionTabs(page PlanPage, slot meal.Meal, status *meal.DayStatus) {
 			@tabs.Content(tabs.ContentProps{Value: o.ID.String(), IsActive: o.ID.String() == open, Class: "space-y-3 pt-3"}) {
 				<div class="flex items-center justify-between">
 					<span class="text-muted-foreground text-sm">
-						if i == 0 {
+						if slot.Optional {
+							{ fmt.Sprintf("%.0f kcal · optional meal, not counted", o.TotalMacros.Calories) }
+						} else if i == 0 {
 							{ fmt.Sprintf("%.0f kcal · counts toward the day", o.TotalMacros.Calories) }
 						} else {
 							{ fmt.Sprintf("%.0f kcal · instead of option 1, not counted", o.TotalMacros.Calories) }
@@ -347,10 +354,39 @@ templ mealOptionTabs(page PlanPage, slot meal.Meal, status *meal.DayStatus) {
 						@removeMealButton(o, "Remove option")
 					}
 				</div>
-				@optionBody(page, o, status, i == 0)
+				@optionBody(page, o, status, i == 0 && !slot.Optional)
 			}
 		}
 	}
+}
+
+// mealHeading is a slot's name, marked when the slot is optional.
+templ mealHeading(m meal.Meal) {
+	<div class="flex flex-wrap items-center gap-2">
+		<h3 class="font-medium">{ m.Name }</h3>
+		if m.Optional {
+			@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
+				optional · not counted
+			}
+		}
+	</div>
+}
+
+// mealOptionalButton switches a slot, every option of it, between optional
+// (shown, not counted) and counted. Counting it again is checked against the
+// target like adding its food.
+templ mealOptionalButton(m meal.Meal) {
+	<form method="post" action={ templ.SafeURL("/app/nutrition/meals/" + m.ID.String() + "/optional") }>
+		@ui.CSRFInput()
+		<input type="hidden" name="optional" value={ fmt.Sprint(!m.Optional) }/>
+		@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm}) {
+			if m.Optional {
+				Count meal
+			} else {
+				Make meal optional
+			}
+		}
+	</form>
 }
 
 // removeMealButton posts to the meal's delete route; the service removes the

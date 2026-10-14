@@ -25,6 +25,7 @@
           "mealNumber": 1,
           "name": "Almoço",
           "optionLabel": "Opção 1",
+          "optional": false,
           "totalMacros": {
             "calories": 165,
             "proteinG": 31,

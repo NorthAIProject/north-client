@@ -215,10 +215,13 @@ type Day struct {
 
 // Consumed is what the day's meals add up to: each slot's default option.
 // Alternatives are interchangeable with their default, not eaten on top of
-// it, so they are not counted.
+// it, so they are not counted. Nor are optional meals.
 func (d Day) Consumed() Macros {
 	var total Macros
 	for _, m := range d.Meals {
+		if m.Optional {
+			continue
+		}
 		total = total.Add(m.TotalMacros)
 	}
 	return total
@@ -242,6 +245,10 @@ type Meal struct {
 	// empty for a slot's only option.
 	OptionLabel string
 	Name        string
+	// Optional marks a meal the plan offers but does not count ("Ceia
+	// (opcional)"): it is shown with its own total and left out of the
+	// day's. It belongs to the slot, so every option carries the same value.
+	Optional bool
 
 	TotalMacros Macros
 	Ingredients []MealIngredient
