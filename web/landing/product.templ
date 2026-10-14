@@ -1,8 +1,10 @@
 package landing
 
 import (
+	"context"
 	"strconv"
 
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/web/shared/ui/card"
 	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
 )
@@ -14,12 +16,12 @@ import (
 
 // tourLinks is the strip under the hero that jumps to each section.
 templ tourLinks() {
-	<nav aria-label="Product tour" class="-mx-1 mt-12 flex flex-wrap gap-2">
-		@tourLink("#day", "Your day")
-		@tourLink("#patterns", "Stats & patterns")
-		@tourLink("#coach-builds", "Plans by chat")
+	<nav aria-label={ i18n.T(ctx, "land.tour.aria") } class="-mx-1 mt-12 flex flex-wrap gap-2">
+		@tourLink("#day", i18n.T(ctx, "land.tour.day"))
+		@tourLink("#patterns", i18n.T(ctx, "land.tour.patterns"))
+		@tourLink("#coach-builds", i18n.T(ctx, "land.tour.plans"))
 		@tourLink("#iphone", "iPhone")
-		@tourLink("#muscle", "Training anatomy")
+		@tourLink("#muscle", i18n.T(ctx, "land.tour.muscle"))
 	</nav>
 }
 
@@ -33,29 +35,34 @@ type mockEntry struct {
 	Time, Title, Detail, Color, Icon string
 }
 
-var mockDay = []mockEntry{
-	{"21:10", "Magnesium glycinate", "supplement", "var(--color-day-protein)", "pill"},
-	{"19:40", "Salmon, rice & greens", "640 kcal · 42 g protein", "var(--color-day-food)", "utensils"},
-	{"18:05", "Back squat 5×5", "102.5 kg · new best", "var(--color-day-fat)", "dumbbell"},
-	{"13:10", "Water", "500 ml", "var(--color-day-water)", "droplet"},
-	{"12:30", "Chicken bowl", "650 kcal", "var(--color-day-food)", "utensils"},
-	{"10:05", "Espresso", "63 mg caffeine", "var(--color-day-caffeine)", "coffee"},
-	{"07:10", "Woke up", "7h 25m · 1h 20m deep", "var(--color-day-sleep)", "moon"},
+// mockDay is a made-up day. Titles and details are copy; amounts that read
+// the same in every language stay literal.
+func mockDay(ctx context.Context) []mockEntry {
+	t := func(key string) string { return i18n.T(ctx, key) }
+	return []mockEntry{
+		{"21:10", t("land.day.mock.1.title"), t("land.day.mock.1.detail"), "var(--color-day-protein)", "pill"},
+		{"19:40", t("land.day.mock.2.title"), t("land.day.mock.2.detail"), "var(--color-day-food)", "utensils"},
+		{"18:05", t("land.day.mock.3.title"), t("land.day.mock.3.detail"), "var(--color-day-fat)", "dumbbell"},
+		{"13:10", t("land.day.mock.4.title"), "500 ml", "var(--color-day-water)", "droplet"},
+		{"12:30", t("land.day.mock.5.title"), "650 kcal", "var(--color-day-food)", "utensils"},
+		{"10:05", t("land.day.mock.6.title"), t("land.day.mock.6.detail"), "var(--color-day-caffeine)", "coffee"},
+		{"07:10", t("land.day.mock.7.title"), t("land.day.mock.7.detail"), "var(--color-day-sleep)", "moon"},
+	}
 }
 
 templ dayDemo() {
 	<section id="day" class="border-hairline relative scroll-mt-20 border-t py-24">
 		@sectionHeading(
-			"My Day",
-			"Your whole day on one page.",
-			"Meals, water, caffeine, supplements, sleep stages, workouts and fasts land on one timeline, beside the numbers that matter today. Apple Health fills most of it in; the rest is one tap or one sentence to the coach.",
+			i18n.T(ctx, "land.day.eyebrow"),
+			i18n.T(ctx, "land.day.title"),
+			i18n.T(ctx, "land.day.body"),
 		)
 		<div class="mt-10 grid gap-6 lg:grid-cols-[minmax(0,22rem)_1fr]">
 			@card.Card(card.Props{Class: "border-hairline bg-surface overflow-hidden"}) {
 				@card.Content(card.ContentProps{Class: "relative space-y-2 py-5"}) {
 					<div aria-hidden="true" class="absolute inset-y-4 left-[4.6rem] border-l-2 border-dashed border-[var(--color-day-fat)] opacity-60"></div>
-					<p class="text-day-fat relative mb-1 pl-16 text-[10px] font-medium">Fasting · 14h 20m so far</p>
-					for _, e := range mockDay {
+					<p class="text-day-fat relative mb-1 pl-16 text-[10px] font-medium">{ i18n.T(ctx, "land.day.fasting") }</p>
+					for _, e := range mockDay(ctx) {
 						<div class="relative flex items-center gap-3">
 							<span class="text-muted-foreground w-10 shrink-0 text-right text-[11px] tabular-nums">{ e.Time }</span>
 							<div class="ml-3 flex min-w-0 flex-1 items-center gap-2.5 rounded-xl border border-[color-mix(in_oklch,var(--mock)_22%,transparent)] bg-[color-mix(in_oklch,var(--mock)_11%,var(--color-surface))] px-3 py-1.5" style={ "--mock:" + e.Color }>
@@ -73,15 +80,15 @@ templ dayDemo() {
 			}
 			<div class="space-y-6">
 				<div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
-					@mockGauge("72", "mg", "Caffeine", "var(--color-day-caffeine)", 18)
-					@mockGauge("68", "%", "Energy", "var(--color-day-move)", 68)
-					@mockGauge("84", "min", "Sunlight", "var(--color-day-sun)", 84)
-					@mockGauge("3h 12m", "", "Screen time", "var(--color-day-screen)", 53)
+					@mockGauge("72", "mg", i18n.T(ctx, "land.day.gauge.caffeine"), "var(--color-day-caffeine)", 18)
+					@mockGauge("68", "%", i18n.T(ctx, "land.day.gauge.energy"), "var(--color-day-move)", 68)
+					@mockGauge("84", "min", i18n.T(ctx, "land.day.gauge.sun"), "var(--color-day-sun)", 84)
+					@mockGauge("3h 12m", "", i18n.T(ctx, "land.day.gauge.screen"), "var(--color-day-screen)", 53)
 				</div>
 				<div class="grid gap-3 sm:grid-cols-3">
-					@mockFact("layers", "Every tracker", "Food and macros, water, caffeine with what is still active, supplements and 15 nutrients, fasting phases, screen time, soreness, blood pressure.")
-					@mockFact("heart-pulse", "Apple Health, synced", "Sleep stages, HRV, resting heart rate, steps, VO2 max, daylight and workouts arrive on their own.")
-					@mockFact("person-standing", "A body that shows it", "A 3D body lights up sore muscles, next to your weight, BMI and the distance to your goal.")
+					@mockFact("layers", i18n.T(ctx, "land.day.fact.1.title"), i18n.T(ctx, "land.day.fact.1.body"))
+					@mockFact("heart-pulse", i18n.T(ctx, "land.day.fact.2.title"), i18n.T(ctx, "land.day.fact.2.body"))
+					@mockFact("person-standing", i18n.T(ctx, "land.day.fact.3.title"), i18n.T(ctx, "land.day.fact.3.body"))
 				</div>
 			</div>
 		</div>
@@ -117,19 +124,19 @@ templ mockFact(iconName, title, body string) {
 templ statsDemo() {
 	<section id="patterns" class="border-hairline relative scroll-mt-20 border-t py-24">
 		@sectionHeading(
-			"Stats & patterns",
-			"It notices what you would miss.",
-			"Because everything lives in one place, Khepri can line your days up against each other: what you lift, run, eat and sleep, and what moves together. Stated as what went together, never dressed up as proof.",
+			i18n.T(ctx, "land.stats.eyebrow"),
+			i18n.T(ctx, "land.stats.title"),
+			i18n.T(ctx, "land.stats.body"),
 		)
 		<div class="mt-10 grid gap-4 md:grid-cols-2">
-			@mockPattern("You sleep 42 min less after late caffeine", "6h 38m on 8 nights after coffee past 14:00, 7h 20m on 20 other nights.", "After late caffeine (8)", "6h 38m", 90, "Other nights (20)", "7h 20m", 100)
-			@mockPattern("Your energy is 0.8 points higher after 7+ hours", "Check-in energy averages 3.9 after 7+ hours of sleep and 3.1 after less.", "After 7+ hours (19)", "3.9/5", 100, "After less (9)", "3.1/5", 79)
+			@mockPattern(i18n.T(ctx, "land.stats.p1.title"), i18n.T(ctx, "land.stats.p1.detail"), i18n.T(ctx, "land.stats.p1.a"), "6h 38m", 90, i18n.T(ctx, "land.stats.p1.b"), "7h 20m", 100)
+			@mockPattern(i18n.T(ctx, "land.stats.p2.title"), i18n.T(ctx, "land.stats.p2.detail"), i18n.T(ctx, "land.stats.p2.a"), i18n.T(ctx, "land.stats.p2.a.value"), 100, i18n.T(ctx, "land.stats.p2.b"), i18n.T(ctx, "land.stats.p2.b.value"), 79)
 		</div>
 		<div class="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-			@mockStat("Back squat", "127 kg", "est. 1RM · +9 kg this month")
-			@mockStat("Best 5K", "24:12", "at 4:50 /km")
-			@mockStat("Protein", "1.8 g/kg", "on target 22 of 30 days")
-			@mockStat("Sleep debt", "2h 10m", "short of 8h, last 7 nights")
+			@mockStat(i18n.T(ctx, "land.lift.backsquat"), "127 kg", i18n.T(ctx, "land.stats.squat.note"))
+			@mockStat(i18n.T(ctx, "land.stats.5k"), "24:12", i18n.T(ctx, "land.stats.5k.note"))
+			@mockStat(i18n.T(ctx, "land.stats.protein"), i18n.T(ctx, "land.stats.protein.value"), i18n.T(ctx, "land.stats.protein.note"))
+			@mockStat(i18n.T(ctx, "land.stats.sleep"), "2h 10m", i18n.T(ctx, "land.stats.sleep.note"))
 		</div>
 	</section>
 }
@@ -170,23 +177,23 @@ templ mockStat(label, value, note string) {
 templ coachBuildsDemo() {
 	<section id="coach-builds" class="border-hairline relative scroll-mt-20 border-t py-24">
 		@sectionHeading(
-			"Plans by chat",
-			"Ask for a plan. Get a plan, saved.",
-			"The coach does not write you an essay to copy. It builds the meal plan or the training block, logs what you tell it, and shows you a card to approve before anything is saved — on the web, in Telegram or on your phone.",
+			i18n.T(ctx, "land.builds.eyebrow"),
+			i18n.T(ctx, "land.builds.title"),
+			i18n.T(ctx, "land.builds.body"),
 		)
 		<div class="mt-10 grid gap-4 lg:grid-cols-2">
 			@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 				@card.Content(card.ContentProps{Class: "space-y-3 py-5"}) {
-					@chatBubble(true, "Make me a meal plan for a cut, around 2,100 kcal. No fish, I train in the evening.")
-					@approvalCard("Create meal plan", "Cutting — 2,100 kcal · 4 meals · 31 ingredients from the catalog")
-					@chatBubble(false, "Saved. 2,096 kcal and 168 g protein a day, with the biggest meal after training. It is under Meal plans; tap a meal to log it.")
+					@chatBubble(true, i18n.T(ctx, "land.builds.1.user"))
+					@approvalCard(i18n.T(ctx, "land.builds.1.card.title"), i18n.T(ctx, "land.builds.1.card.body"))
+					@chatBubble(false, i18n.T(ctx, "land.builds.1.reply"))
 				}
 			}
 			@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 				@card.Content(card.ContentProps{Class: "space-y-3 py-5"}) {
-					@chatBubble(true, "did 3x5 squats at 100 today, quads a bit sore. also had a double espresso at 4")
-					@approvalCard("Log 3 sets · record soreness · log caffeine", "Back squat 100 kg × 5 ×3 · quads 2/3 · espresso 126 mg")
-					@chatBubble(false, "Logged. That is 4 kg up on your estimated max since August. The 4pm coffee is past your cutoff — on nights like that you have slept about 40 minutes less.")
+					@chatBubble(true, i18n.T(ctx, "land.builds.2.user"))
+					@approvalCard(i18n.T(ctx, "land.builds.2.card.title"), i18n.T(ctx, "land.builds.2.card.body"))
+					@chatBubble(false, i18n.T(ctx, "land.builds.2.reply"))
 				}
 			}
 		</div>
@@ -213,8 +220,8 @@ templ approvalCard(title, body string) {
 		</div>
 		<p class="text-muted-foreground mt-1 text-xs">{ body }</p>
 		<div class="mt-2 flex gap-2">
-			<span class="bg-signal text-background rounded-md px-2.5 py-1 text-[11px] font-medium">Approve</span>
-			<span class="border-hairline rounded-md border px-2.5 py-1 text-[11px]">Change</span>
+			<span class="bg-signal text-background rounded-md px-2.5 py-1 text-[11px] font-medium">{ i18n.T(ctx, "land.builds.approve") }</span>
+			<span class="border-hairline rounded-md border px-2.5 py-1 text-[11px]">{ i18n.T(ctx, "land.builds.change") }</span>
 		</div>
 	</div>
 }
@@ -224,15 +231,15 @@ templ iphoneSection() {
 		<div class="grid items-center gap-12 lg:grid-cols-[1fr_20rem]">
 			<div>
 				@sectionHeading(
-					"On your iPhone",
-					"The gym is where the numbers happen.",
-					"The iPhone app is the same Khepri, with the parts a phone is for: a workout that asks for the weight before every set, Apple Health synced in the background, and My Day on the Today tab.",
+					i18n.T(ctx, "land.iphone.eyebrow"),
+					i18n.T(ctx, "land.iphone.title"),
+					i18n.T(ctx, "land.iphone.body"),
 				)
 				<ul class="mt-8 space-y-4">
-					@phoneFeature("dumbbell", "Every set, weighed", "The weight and reps are asked before the workout moves on, prefilled from your last set or last time. Records and estimated maxes follow on their own.")
-					@phoneFeature("heart-pulse", "Apple Health, both ways", "Sleep stages, HRV, resting heart rate, steps, VO2 max and workouts flow in; finished workouts flow back out.")
-					@phoneFeature("timer", "Rest on the Lock Screen", "A Live Activity counts your rest down and tells you what is next.")
-					@phoneFeature("chart-line", "Stats in your pocket", "Sleep, cardio, eating, lifting and patterns, the same numbers as the web.")
+					@phoneFeature("dumbbell", i18n.T(ctx, "land.iphone.1.title"), i18n.T(ctx, "land.iphone.1.body"))
+					@phoneFeature("heart-pulse", i18n.T(ctx, "land.iphone.2.title"), i18n.T(ctx, "land.iphone.2.body"))
+					@phoneFeature("timer", i18n.T(ctx, "land.iphone.3.title"), i18n.T(ctx, "land.iphone.3.body"))
+					@phoneFeature("chart-line", i18n.T(ctx, "land.iphone.4.title"), i18n.T(ctx, "land.iphone.4.body"))
 				</ul>
 				@appButtons(false)
 			</div>
@@ -258,28 +265,28 @@ templ phoneMock() {
 	<div aria-hidden="true" class="border-hairline bg-background mx-auto w-full max-w-[18rem] rounded-[2.5rem] border-[6px] p-3 shadow-2xl shadow-black/20">
 		<div class="bg-foreground/80 mx-auto mb-4 h-5 w-24 rounded-full"></div>
 		<div class="px-2">
-			<p class="text-muted-foreground font-mono text-[9px] tracking-[0.14em] uppercase">Exercise 1 of 5 · 18:42</p>
-			<p class="mt-2 text-lg font-semibold">Back squat</p>
-			<p class="text-muted-foreground text-xs">Set 2 of 5 · 5 reps</p>
+			<p class="text-muted-foreground font-mono text-[9px] tracking-[0.14em] uppercase">{ i18n.T(ctx, "land.phone.exercise") }</p>
+			<p class="mt-2 text-lg font-semibold">{ i18n.T(ctx, "land.lift.backsquat") }</p>
+			<p class="text-muted-foreground text-xs">{ i18n.T(ctx, "land.phone.set") }</p>
 		</div>
 		<div class="bg-surface border-hairline mt-4 rounded-2xl border p-4">
-			<p class="text-muted-foreground text-center text-[10px] font-medium tracking-[0.1em] uppercase">Weight</p>
+			<p class="text-muted-foreground text-center text-[10px] font-medium tracking-[0.1em] uppercase">{ i18n.T(ctx, "land.phone.weight") }</p>
 			<div class="mt-2 flex items-center justify-between">
 				<span class="text-signal flex size-8 items-center justify-center rounded-full border border-current">
 					@icon.Icon("minus")(icon.Props{Class: "size-4"})
 				</span>
-				<span class="text-3xl font-semibold tabular-nums">102.5<span class="text-muted-foreground text-sm font-normal"> kg</span></span>
+				<span class="text-3xl font-semibold tabular-nums">{ i18n.T(ctx, "land.phone.kg") }<span class="text-muted-foreground text-sm font-normal">kg</span></span>
 				<span class="text-signal flex size-8 items-center justify-center rounded-full border border-current">
 					@icon.Icon("plus")(icon.Props{Class: "size-4"})
 				</span>
 			</div>
-			<p class="text-muted-foreground mt-3 text-center text-[11px]">Last time: 100 × 5, 100 × 5, 100 × 4</p>
+			<p class="text-muted-foreground mt-3 text-center text-[11px]">{ i18n.T(ctx, "land.phone.last") }</p>
 			<div class="border-hairline mt-3 flex items-center justify-between border-t pt-3 text-sm">
-				<span>5 reps</span>
+				<span>{ i18n.T(ctx, "land.phone.reps") }</span>
 				<span class="text-muted-foreground">− +</span>
 			</div>
 		</div>
-		<div class="bg-signal text-background mt-4 rounded-xl py-2.5 text-center text-sm font-semibold">Log Set</div>
-		<p class="text-muted-foreground mt-3 mb-2 text-center text-[11px]">Rest 2:00 after this set</p>
+		<div class="bg-signal text-background mt-4 rounded-xl py-2.5 text-center text-sm font-semibold">{ i18n.T(ctx, "land.phone.log") }</div>
+		<p class="text-muted-foreground mt-3 mb-2 text-center text-[11px]">{ i18n.T(ctx, "land.phone.rest") }</p>
 	</div>
 }

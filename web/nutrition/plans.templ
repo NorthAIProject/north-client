@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/NorthAIProject/north-client/internal/meals/meal"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
@@ -20,14 +21,14 @@ import (
 )
 
 templ PlansIndexPage(user users.User, plans []meal.MealPlan, target *meal.Macros, f PlanForm) {
-	@layout.App("Meal plans", user, nav(ctx)) {
+	@layout.App(i18n.T(ctx, "nav.meal-plans"), user, nav(ctx)) {
 		<div class="mx-auto w-full max-w-2xl space-y-6 p-6 md:p-8">
 			<header>
-				@ui.MonoLabel("Nutrition")
+				@ui.MonoLabel(i18n.T(ctx, "nutrition.mono"))
 				<div class="mt-2 flex items-center justify-between gap-4">
-					<h1 class="text-2xl font-medium tracking-tight">Meal plans</h1>
+					<h1 class="text-2xl font-medium tracking-tight">{ i18n.T(ctx, "nav.meal-plans") }</h1>
 					@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Href: "/app/nutrition/import"}) {
-						Import from file
+						{ i18n.T(ctx, "nutrition.plans.import") }
 					}
 				</div>
 			</header>
@@ -35,7 +36,7 @@ templ PlansIndexPage(user users.User, plans []meal.MealPlan, target *meal.Macros
 			@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 				@card.Header() {
 					@card.Title() {
-						New plan
+						{ i18n.T(ctx, "nutrition.plans.new") }
 					}
 				}
 				@card.Content() {
@@ -44,7 +45,7 @@ templ PlansIndexPage(user users.User, plans []meal.MealPlan, target *meal.Macros
 			}
 			if len(plans) > 0 {
 				<section class="space-y-3">
-					<h2 class="text-sm font-medium">Your plans</h2>
+					<h2 class="text-sm font-medium">{ i18n.T(ctx, "nutrition.plans.yours") }</h2>
 					for _, p := range plans {
 						@planCard(p)
 					}
@@ -62,18 +63,18 @@ templ targetNotice(target *meal.Macros) {
 	if target == nil {
 		@alert.Alert() {
 			@alert.Title() {
-				Work out your macro target first
+				{ i18n.T(ctx, "nutrition.target.missing.title") }
 			}
 			@alert.Description() {
-				Meal plans are built on the daily target from the
-				<a href="/app/calculator" class="underline">calculator</a>.
+				{ i18n.T(ctx, "nutrition.target.missing.before") }
+				<a href="/app/calculator" class="underline">{ i18n.T(ctx, "nutrition.target.missing.link") }</a>.
 			}
 		}
 	} else {
 		@card.Card(card.Props{Class: "border-hairline"}) {
 			@card.Content(card.ContentProps{Class: "py-4"}) {
-				@ui.MonoLabel("Your daily target")
-				<p class="text-signal mt-1 text-sm font-medium">{ targetLine(*target) }</p>
+				@ui.MonoLabel(i18n.T(ctx, "nutrition.target.label"))
+				<p class="text-signal mt-1 text-sm font-medium">{ targetLine(ctx, *target) }</p>
 			}
 		}
 	}
@@ -90,27 +91,27 @@ templ newPlanForm(target *meal.Macros, f PlanForm) {
 		<fieldset class="space-y-5" disabled?={ target == nil }>
 			@form.Item() {
 				@label.Label(label.Props{For: "name"}) {
-					Name
+					{ i18n.T(ctx, "nutrition.field.name") }
 				}
 				@input.Input(input.Props{ID: "name", Name: "name", Value: f.Name, Required: true, HasError: f.fieldError("name") != ""})
 				@fieldMessage(f.fieldError("name"))
 			}
 			@form.Item() {
 				@label.Label(label.Props{For: "description"}) {
-					Description (optional)
+					{ i18n.T(ctx, "nutrition.field.description") }
 				}
 				@input.Input(input.Props{ID: "description", Name: "description", Value: f.Description})
 			}
 			@form.Item() {
-				@ui.MonoLabel("Mode")
-				@modeChoice("new-mode-easy", meal.Easy, "Easy — pick a carb level and a number of days", f.mode() == meal.Easy)
-				@modeChoice("new-mode-advanced", meal.Advanced, "Advanced — custom carbs, chosen weekdays, a different target per day", f.mode() == meal.Advanced)
+				@ui.MonoLabel(i18n.T(ctx, "nutrition.field.mode"))
+				@modeChoice("new-mode-easy", meal.Easy, i18n.T(ctx, "nutrition.mode.easy.desc"), f.mode() == meal.Easy)
+				@modeChoice("new-mode-advanced", meal.Advanced, i18n.T(ctx, "nutrition.mode.advanced.desc"), f.mode() == meal.Advanced)
 			}
 			@planTypeFields("new", target, f.planType(), f.CustomCarbPct, f.Errors)
 			<div x-show="mode === 'easy'">
 				@form.Item() {
 					@label.Label(label.Props{For: "day_count"}) {
-						Days, starting Monday
+						{ i18n.T(ctx, "nutrition.field.daycount") }
 					}
 					@input.Input(input.Props{
 						ID: "day_count", Name: "day_count", Type: input.TypeNumber, Value: f.dayCount(),
@@ -121,7 +122,7 @@ templ newPlanForm(target *meal.Macros, f PlanForm) {
 			</div>
 			<div x-show="mode === 'advanced'" x-cloak>
 				@form.Item() {
-					@ui.MonoLabel("Weekdays")
+					@ui.MonoLabel(i18n.T(ctx, "nutrition.field.weekdays"))
 					<div class="flex flex-wrap gap-4">
 						for _, wd := range meal.WeekOrder {
 							<div class="flex items-center gap-2">
@@ -130,7 +131,7 @@ templ newPlanForm(target *meal.Macros, f PlanForm) {
 									Checked: f.hasWeekday(wd),
 								})
 								@label.Label(label.Props{For: "weekday-" + strconv.Itoa(int(wd))}) {
-									{ wd.String()[:3] }
+									{ weekdayShort(ctx, wd) }
 								}
 							</div>
 						}
@@ -140,7 +141,7 @@ templ newPlanForm(target *meal.Macros, f PlanForm) {
 			</div>
 			@fieldMessage(f.fieldError("macro_target"))
 			@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90"}) {
-				Create plan
+				{ i18n.T(ctx, "nutrition.plans.create") }
 			}
 		</fieldset>
 	</form>
@@ -159,7 +160,7 @@ templ modeChoice(id string, m meal.Mode, text string, checked bool) {
 // share of the carb target. The surrounding x-data holds mode and type.
 templ planTypeFields(prefix string, target *meal.Macros, selected meal.PlanType, customPct string, errs map[string]string) {
 	@form.Item() {
-		@ui.MonoLabel("Carbs")
+		@ui.MonoLabel(i18n.T(ctx, "nutrition.macro.carbs"))
 		for _, b := range meal.CarbBands {
 			<div class="flex items-center gap-2">
 				@radio.Radio(radio.Props{
@@ -167,7 +168,7 @@ templ planTypeFields(prefix string, target *meal.Macros, selected meal.PlanType,
 					Checked: selected == b.Type, Attributes: templ.Attributes{"x-model": "type"},
 				})
 				@label.Label(label.Props{For: prefix + "-type-" + string(b.Type)}) {
-					{ bandLabel(b, target) }
+					{ bandLabel(ctx, b, target) }
 				}
 			</div>
 		}
@@ -177,7 +178,7 @@ templ planTypeFields(prefix string, target *meal.Macros, selected meal.PlanType,
 				Checked: selected == meal.Custom, Attributes: templ.Attributes{"x-model": "type"},
 			})
 			@label.Label(label.Props{For: prefix + "-type-custom"}) {
-				Custom share of your carbs
+				{ i18n.T(ctx, "nutrition.type.custom.choice") }
 			}
 		</div>
 		@fieldMessage(errs["plan_type"])
@@ -185,7 +186,7 @@ templ planTypeFields(prefix string, target *meal.Macros, selected meal.PlanType,
 	<div x-show="mode === 'advanced' && type === 'custom'" x-cloak>
 		@form.Item() {
 			@label.Label(label.Props{For: prefix + "-custom-carb-pct"}) {
-				Share of your carb target (%)
+				{ i18n.T(ctx, "nutrition.field.custompct") }
 			}
 			@input.Input(input.Props{
 				ID: prefix + "-custom-carb-pct", Name: "custom_carb_pct", Type: input.TypeNumber, Value: customPct,
@@ -212,9 +213,9 @@ templ planCard(p meal.MealPlan) {
 					<span class="font-medium">{ p.Name }</span>
 					<div class="flex items-center gap-2">
 						@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
-							{ planTypeLabel(p.Settings) }
+							{ planTypeLabel(ctx, p.Settings) }
 						}
-						<span class="text-muted-foreground text-sm">{ daysLabel(len(p.Days)) }</span>
+						<span class="text-muted-foreground text-sm">{ daysLabel(ctx, len(p.Days)) }</span>
 					</div>
 				</div>
 			}
