@@ -1,54 +1,41 @@
 package legal
 
-import "github.com/NorthAIProject/north-client/web/shared/layout"
+import (
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
+	"github.com/NorthAIProject/north-client/web/shared/layout"
+)
 
 // FacebookDataDeletion is the page Meta asks every app using Facebook Login to
 // link as its "Data Deletion Instructions URL". It says what Khepri keeps from
 // Facebook and how to remove it, without needing an account to read it.
 templ FacebookDataDeletion() {
-	@layout.Public("Facebook data", signedIn(ctx)) {
-		@document("Your Facebook data in Khepri") {
+	@layout.Public(i18n.T(ctx, "legal.fb.page"), signedIn(ctx)) {
+		@document(i18n.T(ctx, "legal.fb.title")) {
 			<p class="lead">
-				Khepri uses Facebook only to find friends of yours who are already
-				here. You choose to connect it from Friends, and you can take it
-				away again at any time.
+				@prose(ctx, "legal.fb.lead")
 			</p>
-			@section("What Khepri keeps") {
+			@section(i18n.T(ctx, "legal.fb.keeps.h")) {
 				<p>
-					Your Facebook account's app-scoped ID, linked to your Khepri
-					account, so friends who connect later can find you. Nothing else:
-					not your name or photo from Facebook, not your friends list, and
-					not the access token Facebook hands over while you connect. That
-					token is used once to read which of your friends use Khepri and is
-					then thrown away.
+					@prose(ctx, "legal.fb.keeps.p1")
 				</p>
 				<p>
-					The Khepri accounts that a connection found are kept for one hour
-					so you can follow them, then deleted.
+					@prose(ctx, "legal.fb.keeps.p2")
 				</p>
 			}
-			@section("How to delete it") {
+			@section(i18n.T(ctx, "legal.fb.delete.h")) {
 				<ol>
 					<li>
-						Sign in to Khepri, open <a href="/app/friends">Friends</a>, and
-						choose <strong>Disconnect Facebook</strong>. The link and any
-						results are deleted at once.
+						@prose(ctx, "legal.fb.delete.disconnect")
 					</li>
 					<li>
-						Or delete your Khepri account under
-						<a href="/app/settings">Settings</a>, which deletes everything,
-						including the Facebook link.
+						@prose(ctx, "legal.fb.delete.account")
 					</li>
 					<li>
-						You can also remove Khepri from Facebook itself, under
-						Settings &amp; privacy → Settings → Apps and websites. Khepri
-						then cannot read anything new from Facebook; disconnect in Khepri
-						as well to delete the link it holds.
+						@prose(ctx, "legal.fb.delete.facebook")
 					</li>
 				</ol>
 				<p>
-					If you cannot sign in, write to { ContactEmail } from the address
-					on your account and we will delete it for you.
+					@prose(ctx, "legal.fb.delete.email", ContactEmail)
 				</p>
 			}
 		}

@@ -1,12 +1,13 @@
 package calculator
 
 import (
+	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/NorthAIProject/north-client/internal/biometrics"
 	"github.com/NorthAIProject/north-client/internal/calculator/macroplan"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
@@ -56,21 +57,31 @@ func (f PlanForm) fieldError(name string) string {
 // without it: "moderate" and "heavy" are several hundred calories a day apart,
 // and nothing in those two words says which one someone training four times a
 // week should pick.
-func choiceLabel(value string, descriptions map[string]string) string {
-	label := humanize(value)
-	if description, ok := descriptions[value]; ok {
-		return label + " — " + description
-	}
-	return label
+//
+// kind is the catalogue stem ("activity", "goal", "split"); every option has a
+// label and a description under it, keyed by the enum value.
+func choiceLabel(ctx context.Context, kind, value string) string {
+	return optionLabel(ctx, kind, value) + " — " + i18n.T(ctx, "calculator."+kind+"."+value+".desc")
 }
 
-// humanize turns an enum value ("extra_heavy") into a label ("Extra heavy").
-func humanize(value string) string {
-	if value == "" {
-		return ""
-	}
-	spaced := strings.ReplaceAll(value, "_", " ")
-	return strings.ToUpper(spaced[:1]) + spaced[1:]
+// optionLabel is an option's name alone ("Moderate", "Maintenance").
+func optionLabel(ctx context.Context, kind, value string) string {
+	return i18n.T(ctx, "calculator."+kind+"."+value)
+}
+
+// planSummary is the stored plan in one line, in the reader's language. The
+// same facts as macroplan.MacroPlan.Summary, which stays English for the
+// coach's context.
+func planSummary(ctx context.Context, plan macroplan.MacroPlan) string {
+	return i18n.Tf(ctx, "calculator.plan.summary",
+		optionLabel(ctx, "goal", plan.Goal), kcal(plan.CalorieGoal), kcal(plan.BMR), kcal(plan.TDEE),
+		i18n.T(ctx, "calculator.split."+plan.MacroSplit+".short"),
+		kcal(plan.ProteinG), kcal(plan.FatG), kcal(plan.CarbG))
+}
+
+// kcal rounds a quantity to a whole number for display.
+func kcal(v float64) string {
+	return fmt.Sprintf("%.0f", v)
 }
 
 // currentMeasurements renders the stored metric biometrics in the person's own
@@ -79,22 +90,22 @@ func humanize(value string) string {
 //
 // Replaces biometrics.Summary() here, which is metric-only — it is still the
 // right thing for the coach's context, which is not shown to anyone.
-func currentMeasurements(bio biometrics.Biometric, units string) string {
+func currentMeasurements(ctx context.Context, bio biometrics.Biometric, units string) string {
 	weight, height := macroplan.Display(bio.WeightKg, bio.HeightCm, units)
-	return fmt.Sprintf("%.1f %s, %.1f %s, %d years old.",
-		weight, macroplan.WeightUnit(units),
-		height, macroplan.HeightUnit(units),
+	return i18n.Tf(ctx, "calculator.bio.current",
+		fmt.Sprintf("%.1f", weight), macroplan.WeightUnit(units),
+		fmt.Sprintf("%.1f", height), macroplan.HeightUnit(units),
 		bio.AgeYears(time.Now()))
 }
 
 templ Page(user users.User, bio biometrics.Biometric, hasBio bool, plan macroplan.MacroPlan, hasPlan bool, bioForm BiometricsForm, planForm PlanForm, units string) {
-	@layout.App("Calculator", user, layout.BuildNav(ctx, "/app/fitness")) {
+	@layout.App(i18n.T(ctx, "calculator.page"), user, layout.BuildNav(ctx, "/app/fitness")) {
 		<div class="mx-auto w-full max-w-2xl space-y-6 p-6 md:p-8">
 			<header>
-				@ui.MonoLabel("Fitness")
-				<h1 class="mt-2 text-2xl font-medium tracking-tight">Calorie & macro calculator</h1>
+				@ui.MonoLabel(i18n.T(ctx, "nav.fitness"))
+				<h1 class="mt-2 text-2xl font-medium tracking-tight">{ i18n.T(ctx, "calculator.heading") }</h1>
 				<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
-					Mifflin-St Jeor, scaled by your own activity and goal.
+					{ i18n.T(ctx, "calculator.intro") }
 				</p>
 			</header>
 			@biometricsCard(bio, hasBio, bioForm, units)
@@ -112,13 +123,13 @@ templ biometricsCard(bio biometrics.Biometric, hasBio bool, f BiometricsForm, un
 	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 		@card.Header() {
 			@card.Title() {
-				Your measurements
+				{ i18n.T(ctx, "calculator.bio.title") }
 			}
 			@card.Description() {
 				if hasBio {
-					{ currentMeasurements(bio, units) }
+					{ currentMeasurements(ctx, bio, units) }
 				} else {
-					Needed before a plan can be generated.
+					{ i18n.T(ctx, "calculator.bio.empty") }
 				}
 			}
 		}
@@ -128,7 +139,7 @@ templ biometricsCard(bio biometrics.Biometric, hasBio bool, f BiometricsForm, un
 				<div class="grid grid-cols-2 gap-4">
 					@form.Item() {
 						@label.Label(label.Props{For: "weight"}) {
-							{ "Weight (" + macroplan.WeightUnit(units) + ")" }
+							{ i18n.Tf(ctx, "calculator.bio.weight", macroplan.WeightUnit(units)) }
 						}
 						@input.Input(input.Props{ID: "weight", Name: "weight", Type: input.TypeNumber, Attributes: templ.Attributes{"step": "0.1"}, Value: f.Weight, Required: true, HasError: f.fieldError("weight_kg") != ""})
 						if f.fieldError("weight_kg") != "" {
@@ -139,7 +150,7 @@ templ biometricsCard(bio biometrics.Biometric, hasBio bool, f BiometricsForm, un
 					}
 					@form.Item() {
 						@label.Label(label.Props{For: "height"}) {
-							{ "Height (" + macroplan.HeightUnit(units) + ")" }
+							{ i18n.Tf(ctx, "calculator.bio.height", macroplan.HeightUnit(units)) }
 						}
 						@input.Input(input.Props{ID: "height", Name: "height", Type: input.TypeNumber, Attributes: templ.Attributes{"step": "0.1"}, Value: f.Height, Required: true, HasError: f.fieldError("height_cm") != ""})
 						if f.fieldError("height_cm") != "" {
@@ -151,7 +162,7 @@ templ biometricsCard(bio biometrics.Biometric, hasBio bool, f BiometricsForm, un
 				</div>
 				@form.Item() {
 					@label.Label(label.Props{For: "date_of_birth"}) {
-						Date of birth
+						{ i18n.T(ctx, "calculator.bio.dob") }
 					}
 					@input.Input(input.Props{ID: "date_of_birth", Name: "date_of_birth", Type: input.TypeDate, Value: f.DateOfBirth, Required: true, HasError: f.fieldError("date_of_birth") != ""})
 					if f.fieldError("date_of_birth") != "" {
@@ -162,24 +173,24 @@ templ biometricsCard(bio biometrics.Biometric, hasBio bool, f BiometricsForm, un
 				}
 				@form.Item() {
 					@label.Label() {
-						Sex
+						{ i18n.T(ctx, "calculator.bio.sex") }
 					}
 					@selectbox.SelectBox() {
 						@selectbox.Trigger(selectbox.TriggerProps{ID: "sex", Name: "sex"}) {
-							@selectbox.Value(selectbox.ValueProps{Placeholder: "Choose one"})
+							@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "calculator.bio.choose")})
 						}
 						@selectbox.Content() {
 							@selectbox.Item(selectbox.ItemProps{Value: biometrics.SexMale, Selected: f.Sex == biometrics.SexMale}) {
-								Male
+								{ i18n.T(ctx, "calculator.bio.male") }
 							}
 							@selectbox.Item(selectbox.ItemProps{Value: biometrics.SexFemale, Selected: f.Sex == biometrics.SexFemale}) {
-								Female
+								{ i18n.T(ctx, "calculator.bio.female") }
 							}
 						}
 					}
 				}
 				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
-					Save measurements
+					{ i18n.T(ctx, "calculator.bio.save") }
 				}
 			</form>
 		}
@@ -190,13 +201,13 @@ templ planCard(plan macroplan.MacroPlan, hasPlan bool, f PlanForm) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 		@card.Header() {
 			@card.Title() {
-				Generate a plan
+				{ i18n.T(ctx, "calculator.plan.title") }
 			}
 			@card.Description() {
 				if hasPlan {
-					{ plan.Summary() }
+					{ planSummary(ctx, plan) }
 				} else {
-					Record your measurements above first.
+					{ i18n.T(ctx, "calculator.plan.empty") }
 				}
 			}
 		}
@@ -205,16 +216,16 @@ templ planCard(plan macroplan.MacroPlan, hasPlan bool, f PlanForm) {
 				@ui.CSRFInput()
 				@form.Item() {
 					@label.Label() {
-						Activity level
+						{ i18n.T(ctx, "calculator.plan.activity") }
 					}
 					@selectbox.SelectBox() {
 						@selectbox.Trigger(selectbox.TriggerProps{ID: "activity_level", Name: "activity_level"}) {
-							@selectbox.Value(selectbox.ValueProps{Placeholder: "Moderate"})
+							@selectbox.Value(selectbox.ValueProps{Placeholder: optionLabel(ctx, "activity", macroplan.ActivityModerate)})
 						}
 						@selectbox.Content() {
 							for _, level := range macroplan.ActivityLevels {
 								@selectbox.Item(selectbox.ItemProps{Value: level, Selected: f.ActivityLevel == level}) {
-									{ choiceLabel(level, macroplan.ActivityDescriptions) }
+									{ choiceLabel(ctx, "activity", level) }
 								}
 							}
 						}
@@ -222,16 +233,16 @@ templ planCard(plan macroplan.MacroPlan, hasPlan bool, f PlanForm) {
 				}
 				@form.Item() {
 					@label.Label() {
-						Goal
+						{ i18n.T(ctx, "calculator.plan.goal") }
 					}
 					@selectbox.SelectBox() {
 						@selectbox.Trigger(selectbox.TriggerProps{ID: "goal", Name: "goal"}) {
-							@selectbox.Value(selectbox.ValueProps{Placeholder: "Maintenance"})
+							@selectbox.Value(selectbox.ValueProps{Placeholder: optionLabel(ctx, "goal", macroplan.GoalMaintenance)})
 						}
 						@selectbox.Content() {
 							for _, goal := range macroplan.Goals {
 								@selectbox.Item(selectbox.ItemProps{Value: goal, Selected: f.Goal == goal}) {
-									{ choiceLabel(goal, macroplan.GoalDescriptions) }
+									{ choiceLabel(ctx, "goal", goal) }
 								}
 							}
 						}
@@ -239,16 +250,16 @@ templ planCard(plan macroplan.MacroPlan, hasPlan bool, f PlanForm) {
 				}
 				@form.Item() {
 					@label.Label() {
-						Macro split
+						{ i18n.T(ctx, "calculator.plan.split") }
 					}
 					@selectbox.SelectBox() {
 						@selectbox.Trigger(selectbox.TriggerProps{ID: "macro_split", Name: "macro_split"}) {
-							@selectbox.Value(selectbox.ValueProps{Placeholder: "Moderate carb"})
+							@selectbox.Value(selectbox.ValueProps{Placeholder: optionLabel(ctx, "split", macroplan.SplitModerateCarb)})
 						}
 						@selectbox.Content() {
 							for _, split := range macroplan.Splits {
 								@selectbox.Item(selectbox.ItemProps{Value: split, Selected: f.MacroSplit == split}) {
-									{ choiceLabel(split, macroplan.SplitDescriptions) }
+									{ choiceLabel(ctx, "split", split) }
 								}
 							}
 						}
@@ -260,7 +271,7 @@ templ planCard(plan macroplan.MacroPlan, hasPlan bool, f PlanForm) {
 					}
 				}
 				@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90"}) {
-					Generate plan
+					{ i18n.T(ctx, "calculator.plan.submit") }
 				}
 			</form>
 		}
@@ -277,10 +288,10 @@ templ goalComparison(plan macroplan.MacroPlan) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 		@card.Header() {
 			@card.Title() {
-				What each goal would cost
+				{ i18n.T(ctx, "calculator.compare.title") }
 			}
 			@card.Description() {
-				{ fmt.Sprintf("Against a TDEE of %.0f kcal a day.", plan.TDEE) }
+				{ i18n.Tf(ctx, "calculator.compare.desc", kcal(plan.TDEE)) }
 			}
 		}
 		@card.Content() {
@@ -288,9 +299,9 @@ templ goalComparison(plan macroplan.MacroPlan) {
 				for _, goal := range macroplan.Goals {
 					<div class="flex items-baseline justify-between gap-4">
 						<dt class="text-sm">
-							{ macroplan.GoalLabel(goal) }
+							{ optionLabel(ctx, "goal", goal) }
 							if goal == plan.Goal {
-								<span class="text-signal ml-2 font-mono text-[10px] uppercase tracking-[0.14em]">Yours</span>
+								<span class="text-signal ml-2 font-mono text-[10px] uppercase tracking-[0.14em]">{ i18n.T(ctx, "calculator.compare.yours") }</span>
 							}
 						</dt>
 						<dd class="text-sm font-medium tabular-nums">

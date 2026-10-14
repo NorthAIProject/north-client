@@ -35,7 +35,7 @@ func TestNewReadinessSortsMusclesIntoTiers(t *testing.T) {
 	if strings.Join(r.Fresh, ",") != "lats" {
 		t.Errorf("fresh = %v, want lats (trained five days ago, recovered)", r.Fresh)
 	}
-	if strings.Join(r.Stale, ",") != "Quads · 30 days" {
+	if len(r.Stale) != 1 || r.Stale[0].Name != "Quads" || r.Stale[0].Days != 30 {
 		t.Errorf("stale = %v", r.Stale)
 	}
 }

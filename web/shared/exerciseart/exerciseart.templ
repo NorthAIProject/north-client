@@ -30,6 +30,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/web/shared/ui/aspectratio"
 )
 
@@ -71,7 +72,7 @@ templ Frames(p Props) {
 				x-init="start()"
 				class="text-foreground relative h-full w-full"
 				role="img"
-				aria-label={ fmt.Sprintf("Illustration of %s", p.Name) }
+				aria-label={ i18n.Tf(ctx, "layout.art.aria", p.Name) }
 			>
 				for frame := 1; frame <= frameCount; frame++ {
 					// Stacked rather than swapping one element's mask URL, so
@@ -101,11 +102,11 @@ templ Frames(p Props) {
 // left to each caller to remember.
 templ Credit() {
 	<p class="text-muted-foreground text-xs">
-		Exercise illustrations by
+		{ i18n.T(ctx, "layout.art.credit.by") }
 		<a href="https://bryllim.com" class="underline underline-offset-2" target="_blank" rel="noopener noreferrer">Bryl Lim</a>
-		and
+		{ i18n.T(ctx, "layout.art.credit.and") }
 		<a href="https://github.com/everkinetic/data" class="underline underline-offset-2" target="_blank" rel="noopener noreferrer">Everkinetic</a>,
-		licensed
+		{ i18n.T(ctx, "layout.art.credit.licensed") }
 		<a href="https://creativecommons.org/licenses/by-sa/4.0/" class="underline underline-offset-2" target="_blank" rel="noopener noreferrer">CC BY-SA 4.0</a>.
 	</p>
 }

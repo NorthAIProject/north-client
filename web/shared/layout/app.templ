@@ -1,6 +1,7 @@
 package layout
 
 import (
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
@@ -180,7 +181,7 @@ templ signOutButton() {
 			Class:     "justify-start",
 		}) {
 			@icon.Icon("log-out")(icon.Props{Class: "size-4"})
-			<span class="group-data-[tui-sidebar-state=collapsed]:hidden">Sign out</span>
+			<span class="group-data-[tui-sidebar-state=collapsed]:hidden">{ i18n.T(ctx, "layout.signout") }</span>
 		}
 	</form>
 }

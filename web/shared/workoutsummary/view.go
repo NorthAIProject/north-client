@@ -7,22 +7,32 @@
 package workoutsummary
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/NorthAIProject/north-client/internal/activity/activity"
 	"github.com/NorthAIProject/north-client/internal/lifts/lift"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/viz"
 	"github.com/NorthAIProject/north-client/web/shared/ui/chart"
 )
 
 // Recap is one finished workout as the card draws it.
+//
+// The title and the start time are kept as data rather than as sentences, so
+// the card can say them in the reader's language: NewRecap has no request to
+// read a locale from.
 type Recap struct {
-	Title    string
-	When     string
-	Sentence string
+	PlanWeekday string
+	Focus       string
+	// StartedAt is already in the reader's zone; zero when unknown.
+	StartedAt time.Time
+	Sentence  string
 
 	Duration string
 	Sets     string
@@ -49,15 +59,16 @@ type ExerciseRow struct {
 // between two cards on one page.
 func NewRecap(id string, r lift.Recap, loc *time.Location) Recap {
 	out := Recap{
-		Title:    recapTitle(r),
-		Sentence: r.Sentence,
-		Duration: minutes(r.Duration),
-		Sets:     setsLabel(r.SetsDone, r.SetsPrescribed),
-		Volume:   kg(r.VolumeKg),
-		Calories: "—",
+		PlanWeekday: r.PlanWeekday,
+		Focus:       r.Focus,
+		Sentence:    r.Sentence,
+		Duration:    minutes(r.Duration),
+		Sets:        setsLabel(r.SetsDone, r.SetsPrescribed),
+		Volume:      kg(r.VolumeKg),
+		Calories:    "—",
 	}
 	if !r.StartedAt.IsZero() {
-		out.When = r.StartedAt.In(loc).Format("Mon 2 Jan, 15:04")
+		out.StartedAt = r.StartedAt.In(loc)
 	}
 	if r.Calories > 0 {
 		out.Calories = fmt.Sprintf("%.0f kcal", r.Calories)
@@ -90,15 +101,64 @@ func NewRecap(id string, r lift.Recap, loc *time.Location) Recap {
 	return out
 }
 
-func recapTitle(r lift.Recap) string {
+// TitleIn names the workout by its plan day and focus, in the reader's
+// language.
+func (r Recap) TitleIn(ctx context.Context) string {
+	day := weekdayIn(ctx, r.PlanWeekday)
 	switch {
-	case r.PlanWeekday != "" && r.Focus != "":
-		return r.PlanWeekday + " · " + r.Focus
-	case r.PlanWeekday != "":
-		return r.PlanWeekday
+	case day != "" && r.Focus != "":
+		return day + " · " + r.Focus
+	case day != "":
+		return day
 	default:
-		return "Last workout"
+		return i18n.T(ctx, "layout.recap.last")
 	}
+}
+
+// WhenIn is the start time, with the weekday and month in the reader's
+// language. Empty when the start is unknown.
+func (r Recap) WhenIn(ctx context.Context) string {
+	if r.StartedAt.IsZero() {
+		return ""
+	}
+	return i18n.Date(ctx, r.StartedAt, "Mon 2 Jan, 15:04")
+}
+
+// ChartIn is the chart with its series named in the reader's language. The
+// datasets are copied: Recap is a value, and two renders must not share one
+// translated slice.
+func (r Recap) ChartIn(ctx context.Context) chart.Props {
+	out := r.Chart
+	keys := []string{"layout.recap.series.now", "layout.recap.series.before"}
+	out.Data.Datasets = append([]chart.Dataset(nil), r.Chart.Data.Datasets...)
+	for i := range out.Data.Datasets {
+		if i < len(keys) {
+			out.Data.Datasets[i].Label = i18n.T(ctx, keys[i])
+		}
+	}
+	return out
+}
+
+// weekdayIn translates an English weekday name ("Monday") through the
+// calendar names the i18n package already holds, capitalised because it opens
+// a title. Anything that is not a weekday name is returned unchanged.
+func weekdayIn(ctx context.Context, english string) string {
+	// 1 January 2023 was a Sunday, so adding the weekday's index lands on it.
+	sunday := time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC)
+	for wd := time.Sunday; wd <= time.Saturday; wd++ {
+		if wd.String() == english {
+			return capitalise(i18n.Date(ctx, sunday.AddDate(0, 0, int(wd)), "Monday"))
+		}
+	}
+	return english
+}
+
+func capitalise(s string) string {
+	r, size := utf8.DecodeRuneInString(s)
+	if r == utf8.RuneError {
+		return s
+	}
+	return string(unicode.ToUpper(r)) + s[size:]
 }
 
 func setsLabel(done, prescribed int) string {
@@ -158,7 +218,8 @@ type Week struct {
 
 // WeekDay is one plan day in the strip.
 type WeekDay struct {
-	Short string
+	// Date is the day itself; the card names it in the reader's language.
+	Date  time.Time
 	Focus string
 	Done  bool
 	Today bool
@@ -172,7 +233,7 @@ func NewWeek(a activity.Adherence, now time.Time) Week {
 	for _, d := range a.Days {
 		date := d.Date.In(now.Location())
 		out.Days = append(out.Days, WeekDay{
-			Short: date.Format("Mon"),
+			Date:  date,
 			Focus: d.Focus,
 			Done:  d.Done,
 			Today: date.Equal(today),

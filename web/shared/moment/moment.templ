@@ -5,6 +5,7 @@ package moment
 
 import (
 	"github.com/NorthAIProject/north-client/internal/moments"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/web/shared/mascot"
 	"github.com/NorthAIProject/north-client/web/shared/ui/card"
 )
@@ -16,7 +17,7 @@ templ Card(m moments.Moment) {
 		@card.Content(card.ContentProps{Class: "flex items-center gap-4"}) {
 			@mascot.Mascot(mascot.Props{Size: mascot.SizeMd, Gesture: mascot.StateCelebrate})
 			<div>
-				<p class="font-mono text-[10px] uppercase tracking-[0.14em] text-signal">Moment</p>
+				<p class="font-mono text-[10px] uppercase tracking-[0.14em] text-signal">{ i18n.T(ctx, "layout.moment.label") }</p>
 				<p class="mt-1 text-lg font-medium tracking-tight">{ m.Title }</p>
 				<p class="text-muted-foreground mt-1 text-sm">{ m.Body }</p>
 			</div>
