@@ -1,6 +1,7 @@
 package fitness
 
 import (
+	"context"
 	"testing"
 	"time"
 )
@@ -40,10 +41,10 @@ func TestRecentDetailOnlyShowsWhatTheSessionHas(t *testing.T) {
 }
 
 func TestRecentTitleDropsTheIntensity(t *testing.T) {
-	if got := recentTitle(RecentRow{Name: "Walking (brisk pace)"}); got != "Walking" {
+	if got := recentTitle(context.Background(), RecentRow{Name: "Walking (brisk pace)"}); got != "Walking" {
 		t.Fatalf("title = %q", got)
 	}
-	if got := recentTitle(RecentRow{Name: "custom_thing"}); got != "Custom thing" {
+	if got := recentTitle(context.Background(), RecentRow{Name: "custom_thing"}); got != "Custom thing" {
 		t.Fatalf("title = %q", got)
 	}
 }

@@ -1,10 +1,12 @@
 package nutrition
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 
 	"github.com/NorthAIProject/north-client/internal/meals/meal"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
 	capturepages "github.com/NorthAIProject/north-client/web/capture"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
@@ -29,9 +31,9 @@ templ PlanDetailPage(user users.User, page PlanPage) {
 	@layout.App(page.Plan.Name, user, nav(ctx)) {
 		<div class="mx-auto w-full max-w-2xl space-y-6 p-6 md:p-8">
 			<div class="flex items-center justify-between gap-4">
-				<a href="/app/nutrition/plans" class="text-muted-foreground hover:text-foreground text-sm">← All plans</a>
+				<a href="/app/nutrition/plans" class="text-muted-foreground hover:text-foreground text-sm">{ i18n.T(ctx, "nutrition.detail.back") }</a>
 				@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Href: "/app/nutrition/import"}) {
-					Import another plan
+					{ i18n.T(ctx, "nutrition.detail.import") }
 				}
 			</div>
 			<header class="flex items-start justify-between gap-4">
@@ -42,17 +44,17 @@ templ PlanDetailPage(user users.User, page PlanPage) {
 					}
 					<div class="mt-2 flex flex-wrap gap-2">
 						@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
-							{ planTypeLabel(page.Plan.Settings) }
+							{ planTypeLabel(ctx, page.Plan.Settings) }
 						}
 						@badge.Badge(badge.Props{Variant: badge.VariantOutline}) {
-							{ modeLabel(page.Plan.Settings.Mode) }
+							{ modeLabel(ctx, page.Plan.Settings.Mode) }
 						}
 					</div>
 				</div>
 				<form method="post" action={ templ.SafeURL("/app/nutrition/plans/" + page.Plan.ID.String() + "/delete") }>
 					@ui.CSRFInput()
 					@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm}) {
-						Delete plan
+						{ i18n.T(ctx, "nutrition.detail.delete") }
 					}
 				</form>
 			</header>
@@ -83,12 +85,12 @@ templ PlanDetailPage(user users.User, page PlanPage) {
 templ overageAlert(o OverageNotice) {
 	@alert.Alert(alert.Props{Variant: alert.VariantDestructive}) {
 		@alert.Title() {
-			That would go over your target
+			{ i18n.T(ctx, "nutrition.overage.title") }
 		}
 		@alert.Description() {
 			<ul class="mt-1 space-y-1">
 				for _, d := range o.Days {
-					<li>{ overageLine(d) }</li>
+					<li>{ overageLine(ctx, d) }</li>
 				}
 			</ul>
 			if o.CanConfirm {
@@ -99,11 +101,11 @@ templ overageAlert(o OverageNotice) {
 					}
 					<input type="hidden" name="confirm_overage" value="1"/>
 					@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantDestructive, Size: button.SizeSm}) {
-						Save anyway
+						{ i18n.T(ctx, "nutrition.overage.confirm") }
 					}
 				</form>
 			} else {
-				<p class="mt-2">Easy plans stay within your target. Choose a smaller portion, remove something, or switch the plan to advanced.</p>
+				<p class="mt-2">{ i18n.T(ctx, "nutrition.overage.easy") }</p>
 			}
 		}
 	}
@@ -114,7 +116,7 @@ templ settingsCard(page PlanPage) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 		@card.Header() {
 			@card.Title() {
-				Plan settings
+				{ i18n.T(ctx, "nutrition.settings.title") }
 			}
 		}
 		@card.Content(card.ContentProps{Class: "space-y-4"}) {
@@ -129,20 +131,20 @@ templ settingsCard(page PlanPage) {
 				<fieldset class="space-y-4" disabled?={ page.Target == nil }>
 					@form.Item() {
 						@label.Label(label.Props{For: "plan-name"}) {
-							Name
+							{ i18n.T(ctx, "nutrition.field.name") }
 						}
 						@input.Input(input.Props{ID: "plan-name", Name: "name", Value: page.Plan.Name, Required: true, HasError: page.errorFor("settings", "name") != ""})
 						@fieldMessage(page.errorFor("settings", "name"))
 					}
 					@form.Item() {
 						@label.Label(label.Props{For: "plan-description"}) {
-							Description (optional)
+							{ i18n.T(ctx, "nutrition.field.description") }
 						}
 						@input.Input(input.Props{ID: "plan-description", Name: "description", Value: page.Plan.Description})
 					}
 					@planTypeFields("settings", page.Target, s.Type, gramsValue(s.CustomCarbPct), settingsErrors(page))
 					@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
-						Save settings
+						{ i18n.T(ctx, "nutrition.settings.save") }
 					}
 				</fieldset>
 			</form>
@@ -155,9 +157,9 @@ templ settingsCard(page PlanPage) {
 					<input type="hidden" name="description" value={ page.Plan.Description }/>
 					<input type="hidden" name="plan_type" value={ string(s.Type) }/>
 					<input type="hidden" name="mode" value={ string(meal.Advanced) }/>
-					<p class="text-muted-foreground mb-2 text-sm">Advanced mode lets each day have its own carbs, protein and fat, and lets you go over once you confirm.</p>
+					<p class="text-muted-foreground mb-2 text-sm">{ i18n.T(ctx, "nutrition.settings.advanced.desc") }</p>
 					@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm, Disabled: page.Target == nil}) {
-						Switch to advanced
+						{ i18n.T(ctx, "nutrition.settings.toadvanced") }
 					}
 				</form>
 			}
@@ -181,7 +183,7 @@ templ switchToEasy(page PlanPage) {
 	}
 	@dialog.Trigger(dialog.TriggerProps{For: "switch-to-easy"}) {
 		@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantGhost, Size: button.SizeSm, Disabled: page.Target == nil}) {
-			Switch to easy
+			{ i18n.T(ctx, "nutrition.settings.toeasy") }
 		}
 	}
 	@dialog.Dialog(dialog.Props{ID: "switch-to-easy"}) {
@@ -198,10 +200,10 @@ templ switchToEasy(page PlanPage) {
 				<input type="hidden" name="confirm_reset" value="1"/>
 				@dialog.Header() {
 					@dialog.Title() {
-						Switch to easy?
+						{ i18n.T(ctx, "nutrition.settings.toeasy.title") }
 					}
 					@dialog.Description() {
-						Every day goes back to the plan's default target, and its own carbs, protein and fat are dropped. A day already over that target has to be trimmed first.
+						{ i18n.T(ctx, "nutrition.settings.toeasy.desc") }
 					}
 				}
 				<div class="py-4">
@@ -210,11 +212,11 @@ templ switchToEasy(page PlanPage) {
 				@dialog.Footer() {
 					@dialog.Close() {
 						@button.Button(button.Props{Variant: button.VariantOutline, Type: button.TypeButton}) {
-							Keep advanced
+							{ i18n.T(ctx, "nutrition.settings.keepadvanced") }
 						}
 					}
 					@button.Button(button.Props{Type: button.TypeSubmit}) {
-						Switch to easy
+						{ i18n.T(ctx, "nutrition.settings.toeasy") }
 					}
 				}
 			</form>
@@ -228,9 +230,9 @@ templ dayCard(page PlanPage, d meal.Day, status *meal.DayStatus) {
 			<div class="flex items-start justify-between gap-4">
 				<div class="space-y-1">
 					@card.Title() {
-						{ d.Weekday.String() }
+						{ weekdayName(ctx, d.Weekday) }
 					}
-					if label := overrideLabel(d.Override); label != "" {
+					if label := overrideLabel(ctx, d.Override); label != "" {
 						@badge.Badge(badge.Props{Variant: badge.VariantOutline}) {
 							{ label }
 						}
@@ -255,9 +257,9 @@ templ dayCard(page PlanPage, d meal.Day, status *meal.DayStatus) {
 			}
 			<form method="post" action={ templ.SafeURL("/app/nutrition/days/" + d.ID.String() + "/meals") } class="flex gap-2">
 				@ui.CSRFInput()
-				@input.Input(input.Props{Name: "name", Placeholder: "Add a meal, e.g. Breakfast", Required: true, Disabled: page.Target == nil, HasError: page.errorFor("meal:"+d.ID.String(), "name") != ""})
+				@input.Input(input.Props{Name: "name", Placeholder: i18n.T(ctx, "nutrition.meal.add.placeholder"), Required: true, Disabled: page.Target == nil, HasError: page.errorFor("meal:"+d.ID.String(), "name") != ""})
 				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Disabled: page.Target == nil}) {
-					Add meal
+					{ i18n.T(ctx, "nutrition.meal.add") }
 				}
 			</form>
 			@fieldMessage(page.errorFor("meal:"+d.ID.String(), "name"))
@@ -274,11 +276,11 @@ func statusAt(statuses []meal.DayStatus, i int) *meal.DayStatus {
 
 templ dayStatus(s meal.DayStatus) {
 	<div class="space-y-2">
-		for _, m := range macroRows(s) {
+		for _, m := range macroRows(ctx, s) {
 			<div>
 				<div class="flex justify-between text-sm">
 					<span>{ m.Name }</span>
-					<span class={ templ.KV("text-destructive font-medium", m.isOver()), templ.KV("text-muted-foreground", !m.isOver()) }>{ m.summary() }</span>
+					<span class={ templ.KV("text-destructive font-medium", m.isOver()), templ.KV("text-muted-foreground", !m.isOver()) }>{ m.summary(ctx) }</span>
 				</div>
 				@progress.Progress(progress.Props{Value: m.percent(), Max: 100, Size: progress.SizeSm, Variant: progressVariant(m)})
 			</div>
@@ -303,14 +305,14 @@ templ mealBlock(page PlanPage, m meal.Meal, status *meal.DayStatus) {
 				<h3 class="font-medium">{ m.Name }</h3>
 				<div class="flex items-center gap-2">
 					<span class="text-muted-foreground text-sm">{ fmt.Sprintf("%.0f kcal", m.TotalMacros.Calories) }</span>
-					@removeMealButton(m, "Remove meal")
+					@removeMealButton(m, i18n.T(ctx, "nutrition.meal.remove"))
 				</div>
 			</div>
 			@optionBody(page, m, status, true)
 		} else {
 			<div class="flex items-center justify-between">
 				<h3 class="font-medium">{ m.Name }</h3>
-				@removeMealButton(m, "Remove meal (all options)")
+				@removeMealButton(m, i18n.T(ctx, "nutrition.meal.remove.all"))
 			</div>
 			@mealOptionTabs(page, m, status)
 		}
@@ -324,10 +326,10 @@ templ mealOptionTabs(page PlanPage, slot meal.Meal, status *meal.DayStatus) {
 		@tabs.List(tabs.ListProps{Class: "h-auto max-w-full flex-wrap justify-start"}) {
 			for i, o := range slot.Options() {
 				@tabs.Trigger(tabs.TriggerProps{Value: o.ID.String(), IsActive: o.ID.String() == open, Class: "flex-none"}) {
-					{ optionTabLabel(o, i) }
+					{ optionTabLabel(ctx, o, i) }
 					if i == 0 {
 						@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
-							Counted
+							{ i18n.T(ctx, "nutrition.option.counted") }
 						}
 					}
 				}
@@ -338,13 +340,13 @@ templ mealOptionTabs(page PlanPage, slot meal.Meal, status *meal.DayStatus) {
 				<div class="flex items-center justify-between">
 					<span class="text-muted-foreground text-sm">
 						if i == 0 {
-							{ fmt.Sprintf("%.0f kcal · counts toward the day", o.TotalMacros.Calories) }
+							{ i18n.Tf(ctx, "nutrition.option.counts", o.TotalMacros.Calories) }
 						} else {
-							{ fmt.Sprintf("%.0f kcal · instead of option 1, not counted", o.TotalMacros.Calories) }
+							{ i18n.Tf(ctx, "nutrition.option.instead", o.TotalMacros.Calories) }
 						}
 					</span>
 					if i > 0 {
-						@removeMealButton(o, "Remove option")
+						@removeMealButton(o, i18n.T(ctx, "nutrition.option.remove"))
 					}
 				</div>
 				@optionBody(page, o, status, i == 0)
@@ -389,12 +391,12 @@ templ portionRow(mi meal.MealIngredient) {
 				<span>{ mi.IngredientName } · { fmt.Sprintf("%.0fg", mi.QuantityGrams) }</span>
 				if mi.Estimated {
 					@badge.Badge(badge.Props{Variant: badge.VariantOutline}) {
-						estimated
+						{ i18n.T(ctx, "nutrition.portion.estimated") }
 					}
 				}
 				if mi.Optional {
 					@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
-						optional · not counted
+						{ i18n.T(ctx, "nutrition.portion.optional") }
 					}
 				}
 			</div>
@@ -409,16 +411,16 @@ templ portionRow(mi meal.MealIngredient) {
 				<input type="hidden" name="optional" value={ fmt.Sprint(!mi.Optional) }/>
 				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm}) {
 					if mi.Optional {
-						Count it
+						{ i18n.T(ctx, "nutrition.portion.count") }
 					} else {
-						Make optional
+						{ i18n.T(ctx, "nutrition.portion.makeoptional") }
 					}
 				}
 			</form>
 			<form method="post" action={ templ.SafeURL("/app/nutrition/meal-ingredients/" + mi.ID.String() + "/delete") }>
 				@ui.CSRFInput()
 				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm}) {
-					Remove
+					{ i18n.T(ctx, "nutrition.remove") }
 				}
 			</form>
 		</div>
@@ -432,11 +434,11 @@ templ addOptionForm(page PlanPage, slot meal.Meal) {
 	<form method="post" action={ templ.SafeURL("/app/nutrition/meals/" + slot.ID.String() + "/options") } class="flex items-center gap-2">
 		@ui.CSRFInput()
 		@input.Input(input.Props{
-			Name: "option_label", Placeholder: "Option label (optional)", Class: "h-8 text-sm",
+			Name: "option_label", Placeholder: i18n.T(ctx, "nutrition.option.label.placeholder"), Class: "h-8 text-sm",
 			Disabled: page.Target == nil, HasError: page.errorFor(scope, "option_label") != "",
 		})
 		@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm, Disabled: page.Target == nil}) {
-			Add option
+			{ i18n.T(ctx, "nutrition.option.add") }
 		}
 	</form>
 	@fieldMessage(page.errorFor(scope, "option_label"))
@@ -450,10 +452,10 @@ templ planNotes(notes string) {
 			@collapsible.Trigger(collapsible.TriggerProps{Class: "cursor-pointer"}) {
 				@card.Header() {
 					@card.Title() {
-						From your plan
+						{ i18n.T(ctx, "nutrition.notes.title") }
 					}
 					@card.Description() {
-						Advice and recipes from the file you imported. Show them.
+						{ i18n.T(ctx, "nutrition.notes.desc") }
 					}
 				}
 			}
@@ -484,7 +486,7 @@ templ addPortionForm(page PlanPage, m meal.Meal, status meal.DayStatus, counted 
 			<div class="flex-1">
 				@selectbox.SelectBox() {
 					@selectbox.Trigger(selectbox.TriggerProps{Name: "ingredient_id", HasError: page.errorFor(scope, "ingredient_id") != ""}) {
-						@selectbox.Value(selectbox.ValueProps{Placeholder: "Choose an ingredient"})
+						@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "nutrition.ingredient.choose")})
 					}
 					@selectbox.Content() {
 						for _, ing := range page.Ingredients {
@@ -497,18 +499,18 @@ templ addPortionForm(page PlanPage, m meal.Meal, status meal.DayStatus, counted 
 			</div>
 			<div class="w-24">
 				@input.Input(input.Props{
-					Name: "quantity_grams", Type: input.TypeNumber, Placeholder: "grams",
+					Name: "quantity_grams", Type: input.TypeNumber, Placeholder: i18n.T(ctx, "nutrition.grams"),
 					HasError: page.errorFor(scope, "quantity_grams") != "", Attributes: templ.Attributes{"x-model.number": "grams", "min": "1"},
 				})
 			</div>
 			@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
-				Add
+				{ i18n.T(ctx, "nutrition.add") }
 			}
 		</div>
 		if counted {
 			<p class="text-muted-foreground text-xs">
-				<span x-show="!id || !grams">{ remainingLine(status) }</span>
-				<span x-show="id && grams" x-cloak x-text={ previewText }></span>
+				<span x-show="!id || !grams">{ remainingLine(ctx, status) }</span>
+				<span x-show="id && grams" x-cloak x-text={ previewText(ctx) }></span>
 			</p>
 		}
 		@fieldMessage(page.errorFor(scope, "ingredient_id"))
@@ -527,7 +529,7 @@ templ dayOverrideDialog(page PlanPage, d meal.Day) {
 	}
 	@dialog.Trigger(dialog.TriggerProps{For: id}) {
 		@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantGhost, Size: button.SizeSm}) {
-			Change day
+			{ i18n.T(ctx, "nutrition.day.change") }
 		}
 	}
 	@dialog.Dialog(dialog.Props{ID: id, Open: page.Problem.Scope == scope}) {
@@ -536,31 +538,31 @@ templ dayOverrideDialog(page PlanPage, d meal.Day) {
 				@ui.CSRFInput()
 				@dialog.Header() {
 					@dialog.Title() {
-						{ d.Weekday.String() }
+						{ weekdayName(ctx, d.Weekday) }
 					}
 					@dialog.Description() {
-						Give this day its own target. Blank fields follow the plan; nothing can go above your daily target.
+						{ i18n.T(ctx, "nutrition.day.change.desc") }
 					}
 				}
 				@form.Item() {
-					@ui.MonoLabel("Carbs")
-					@carbTypeChoice(id+"-carb-plan", "", "Follow the plan", current == "")
+					@ui.MonoLabel(i18n.T(ctx, "nutrition.macro.carbs"))
+					@carbTypeChoice(id+"-carb-plan", "", i18n.T(ctx, "nutrition.day.followplan"), current == "")
 					for _, b := range meal.CarbBands {
-						@carbTypeChoice(id+"-carb-"+string(b.Type), string(b.Type), b.Label+" day", current == string(b.Type))
+						@carbTypeChoice(id+"-carb-"+string(b.Type), string(b.Type), dayTypeLabel(ctx, b.Type), current == string(b.Type))
 					}
 					@fieldMessage(page.errorFor(scope, "carb_type"))
 				}
-				@gramsField(page, scope, id+"-carb-g", "carb_g", "Or exact carb grams", d.Override.CarbG, page.Target.CarbG)
-				@gramsField(page, scope, id+"-protein-g", "protein_g", "Protein (g)", d.Override.ProteinG, page.Target.ProteinG)
-				@gramsField(page, scope, id+"-fat-g", "fat_g", "Fat (g)", d.Override.FatG, page.Target.FatG)
+				@gramsField(page, scope, id+"-carb-g", "carb_g", i18n.T(ctx, "nutrition.day.carbgrams"), d.Override.CarbG, page.Target.CarbG)
+				@gramsField(page, scope, id+"-protein-g", "protein_g", i18n.T(ctx, "nutrition.field.protein"), d.Override.ProteinG, page.Target.ProteinG)
+				@gramsField(page, scope, id+"-fat-g", "fat_g", i18n.T(ctx, "nutrition.field.fat"), d.Override.FatG, page.Target.FatG)
 				@dialog.Footer() {
 					@dialog.Close() {
 						@button.Button(button.Props{Variant: button.VariantOutline, Type: button.TypeButton}) {
-							Cancel
+							{ i18n.T(ctx, "nutrition.cancel") }
 						}
 					}
 					@button.Button(button.Props{Type: button.TypeSubmit}) {
-						Save day
+						{ i18n.T(ctx, "nutrition.day.save") }
 					}
 				}
 			</form>
@@ -583,7 +585,7 @@ templ gramsField(page PlanPage, scope, id, name, text string, value *float64, li
 			{ text }
 		}
 		@input.Input(input.Props{
-			ID: id, Name: name, Type: input.TypeNumber, Value: gramsValue(value), Placeholder: fmt.Sprintf("up to %.0f", limit),
+			ID: id, Name: name, Type: input.TypeNumber, Value: gramsValue(value), Placeholder: i18n.Tf(ctx, "nutrition.day.upto", limit),
 			Attributes: templ.Attributes{"min": "0", "max": strconv.FormatFloat(limit, 'f', 0, 64), "step": "any"},
 			HasError:   page.errorFor(scope, name) != "",
 		})
@@ -599,13 +601,13 @@ templ removeDay(d meal.Day) {
 		<form method="post" action={ action }>
 			@ui.CSRFInput()
 			@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm}) {
-				Remove day
+				{ i18n.T(ctx, "nutrition.day.remove") }
 			}
 		</form>
 	} else {
 		@dialog.Trigger(dialog.TriggerProps{For: "remove-" + d.ID.String()}) {
 			@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantGhost, Size: button.SizeSm}) {
-				Remove day
+				{ i18n.T(ctx, "nutrition.day.remove") }
 			}
 		}
 		@dialog.Dialog(dialog.Props{ID: "remove-" + d.ID.String()}) {
@@ -614,20 +616,20 @@ templ removeDay(d meal.Day) {
 					@ui.CSRFInput()
 					@dialog.Header() {
 						@dialog.Title() {
-							{ "Remove " + d.Weekday.String() + "?" }
+							{ i18n.Tf(ctx, "nutrition.day.remove.title", weekdayInSentence(ctx, d.Weekday)) }
 						}
 						@dialog.Description() {
-							{ fmt.Sprintf("Its %d meals go with it.", len(d.Meals)) }
+							{ removeDayLine(ctx, len(d.Meals)) }
 						}
 					}
 					@dialog.Footer() {
 						@dialog.Close() {
 							@button.Button(button.Props{Variant: button.VariantOutline, Type: button.TypeButton}) {
-								Keep it
+								{ i18n.T(ctx, "nutrition.day.keep") }
 							}
 						}
 						@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantDestructive}) {
-							Remove day
+							{ i18n.T(ctx, "nutrition.day.remove") }
 						}
 					}
 				</form>
@@ -644,26 +646,34 @@ templ addDayCard(page PlanPage) {
 				<div class="w-48">
 					@selectbox.SelectBox() {
 						@selectbox.Trigger(selectbox.TriggerProps{Name: "weekday"}) {
-							@selectbox.Value(selectbox.ValueProps{Placeholder: "Choose a weekday"})
+							@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "nutrition.day.choose")})
 						}
 						@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
 							for _, wd := range free {
 								@selectbox.Item(selectbox.ItemProps{Value: strconv.Itoa(int(wd))}) {
-									{ wd.String() }
+									{ weekdayName(ctx, wd) }
 								}
 							}
 						}
 					}
 				</div>
 				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
-					Add day
+					{ i18n.T(ctx, "nutrition.day.add") }
 				}
 			} else {
 				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
-					{ "Add " + free[0].String() }
+					{ i18n.Tf(ctx, "nutrition.day.add.named", weekdayName(ctx, free[0])) }
 				}
 			}
 		</form>
 		@fieldMessage(page.errorFor("days", "weekday"))
 	}
+}
+
+// removeDayLine warns what goes with a day that still has meals.
+func removeDayLine(ctx context.Context, meals int) string {
+	if meals == 1 {
+		return i18n.T(ctx, "nutrition.day.remove.one")
+	}
+	return i18n.Tf(ctx, "nutrition.day.remove.many", meals)
 }
