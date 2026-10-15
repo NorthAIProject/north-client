@@ -11,6 +11,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/meals/meal"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	nutritionpages "github.com/NorthAIProject/north-client/web/nutrition"
 )
 
@@ -40,7 +41,7 @@ func (h *Handler) logIndex(w http.ResponseWriter, r *http.Request) {
 			h.fail(w, r, err)
 			return
 		}
-		recommendationMsg = rec.Message
+		recommendationMsg = i18n.T(ctx, rec.Key)
 		hasRecommendation = true
 	}
 
@@ -70,7 +71,7 @@ func (h *Handler) progressSummary(ctx context.Context, userID uuid.UUID, date ti
 		}
 		return "", false, err
 	}
-	return progress.Summary(), true, nil
+	return progress.SummaryIn(ctx), true, nil
 }
 
 // mealOptions lists the meals of every plan that can be logged today, for

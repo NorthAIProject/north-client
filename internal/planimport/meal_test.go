@@ -43,7 +43,7 @@ func everyDayDraft(mode meal.Mode) MealDraft {
 func TestMealPlanFromAnEveryDayDraftSavesSevenDaysWithTheirOptions(t *testing.T) {
 	t.Parallel()
 
-	plan, problems := mealPlanFromDraft(everyDayDraft(meal.Easy))
+	plan, problems := mealPlanFromDraft("en", everyDayDraft(meal.Easy))
 	if len(problems) > 0 {
 		t.Fatalf("problems = %q", problems)
 	}
@@ -86,7 +86,7 @@ func TestMealPlanFromAnEveryDayDraftSavesSevenDaysWithTheirOptions(t *testing.T)
 func TestMealPlanFromAnAdvancedEveryDayDraftNamesEveryWeekday(t *testing.T) {
 	t.Parallel()
 
-	plan, problems := mealPlanFromDraft(everyDayDraft(meal.Advanced))
+	plan, problems := mealPlanFromDraft("en", everyDayDraft(meal.Advanced))
 	if len(problems) > 0 {
 		t.Fatalf("problems = %q, want no weekday to choose", problems)
 	}
@@ -96,7 +96,7 @@ func TestMealPlanFromAnAdvancedEveryDayDraftNamesEveryWeekday(t *testing.T) {
 
 	two := everyDayDraft(meal.Easy)
 	two.Days = append(two.Days, two.Days[0])
-	if _, problems := mealPlanFromDraft(two); len(problems) == 0 || !strings.Contains(strings.Join(problems, " "), "one day") {
+	if _, problems := mealPlanFromDraft("en", two); len(problems) == 0 || !strings.Contains(strings.Join(problems, " "), "one day") {
 		t.Fatalf("problems = %q, want an every-day plan held to one day", problems)
 	}
 }
@@ -107,7 +107,7 @@ func TestMealPlanFromDraftNeedsEveryOptionReady(t *testing.T) {
 	d := everyDayDraft(meal.Easy)
 	d.Days[0].Meals[0].Alternatives[0].Foods[0].IngredientID = nil
 	d.Days[0].Meals[0].Alternatives[0].Foods[0].Checks = []string{"Pick the ingredient this is."}
-	_, problems := mealPlanFromDraft(d)
+	_, problems := mealPlanFromDraft("en", d)
 	if got := strings.Join(problems, " "); !strings.Contains(got, "Opção 2") || !strings.Contains(got, "Plain yogurt") {
 		t.Fatalf("problems = %q, want the option and the food named", got)
 	}
@@ -118,7 +118,7 @@ func TestMealPlanFromDraftPromotesAnOptionWhenTheFirstIsEmpty(t *testing.T) {
 
 	d := everyDayDraft(meal.Easy)
 	d.Days[0].Meals[0].Foods = nil
-	plan, problems := mealPlanFromDraft(d)
+	plan, problems := mealPlanFromDraft("en", d)
 	if len(problems) > 0 {
 		t.Fatalf("problems = %q", problems)
 	}
@@ -138,7 +138,7 @@ func TestMealPlanFromDraftCutsALongOptionLabel(t *testing.T) {
 
 	d := everyDayDraft(meal.Easy)
 	d.Days[0].Meals[0].Alternatives[0].Label = strings.Repeat("ç", meals.MaxOptionLabelRunes+20)
-	plan, problems := mealPlanFromDraft(d)
+	plan, problems := mealPlanFromDraft("en", d)
 	if len(problems) > 0 {
 		t.Fatalf("problems = %q", problems)
 	}
@@ -155,7 +155,7 @@ func TestMealPlanFromDraftCutsLongNotes(t *testing.T) {
 
 	d := everyDayDraft(meal.Easy)
 	d.Notes = strings.Repeat("água ", meals.MaxPlanNotesRunes)
-	plan, problems := mealPlanFromDraft(d)
+	plan, problems := mealPlanFromDraft("en", d)
 	if len(problems) > 0 {
 		t.Fatalf("problems = %q", problems)
 	}

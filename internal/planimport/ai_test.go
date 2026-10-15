@@ -34,7 +34,7 @@ func TestAIReaderTranscribesThroughTheSameCellParsers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
-	draft, err := buildWorkout(name, rows, unparsed)
+	draft, err := buildWorkout("en", name, rows, unparsed)
 	if err != nil {
 		t.Fatalf("build: %v", err)
 	}
@@ -157,7 +157,7 @@ func TestAIReaderReadsOptionsStandInsNotesAndSameAs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
-	draft, err := buildMeal(reading)
+	draft, err := buildMeal("en", reading)
 	if err != nil {
 		t.Fatalf("build: %v", err)
 	}

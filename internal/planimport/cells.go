@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 )
 
 // Cell parsers shared by the spreadsheet and JSON readers, and by the model's
@@ -25,7 +27,7 @@ var (
 // sets of ten, returned as reps so the caller can fill an empty reps cell. A
 // range such as "3-4" is not a number of sets anyone can do, so it is flagged
 // rather than rounded.
-func parseSets(raw string) (sets *int, reps string, flag string) {
+func parseSets(tag, raw string) (sets *int, reps string, flag string) {
 	raw = strings.ToLower(strings.TrimSpace(raw))
 	if raw == "" {
 		return nil, "", ""
@@ -38,13 +40,13 @@ func parseSets(raw string) (sets *int, reps string, flag string) {
 		n, _ := strconv.Atoi(m[1])
 		return &n, strings.TrimSpace(m[2]), ""
 	}
-	return nil, "", fmt.Sprintf("Sets %q isn't a single number — enter one.", raw)
+	return nil, "", fmt.Sprintf(i18n.Translate(tag, "planimport.flag.sets"), raw)
 }
 
 // parseRest reads a rest period into seconds: "90", "90s", "2 min", "1:30",
 // "1.5 min". A bare number is seconds, which is how rest is written in every
 // plan that does not say otherwise.
-func parseRest(raw string) (*int, string) {
+func parseRest(tag, raw string) (*int, string) {
 	raw = strings.ToLower(strings.TrimSpace(raw))
 	if raw == "" {
 		return nil, ""
@@ -64,7 +66,7 @@ func parseRest(raw string) (*int, string) {
 		n := int(math.Round(v))
 		return &n, ""
 	}
-	return nil, fmt.Sprintf("Rest %q couldn't be read as a time.", raw)
+	return nil, fmt.Sprintf(i18n.Translate(tag, "planimport.flag.rest"), raw)
 }
 
 // parseAmount reads "150", "150g", "1/2", "1 1/2 cups", "2,5 kg" into a number
@@ -108,10 +110,11 @@ func parseNumber(s string) (float64, bool) {
 }
 
 // parseGrams reads a macro cell: "30", "30g", "30 g". Anything else is flagged.
-func parseGrams(label, raw string) (*float64, string) {
+// label is the macro's capitalised name in tag's language.
+func parseGrams(tag, label, raw string) (*float64, string) {
 	v, unit, ok := parseAmount(raw)
 	if !ok || (unit != "" && !strings.EqualFold(unit, "g")) || (v != nil && *v < 0) {
-		return nil, fmt.Sprintf("%s %q isn't a number of grams.", label, strings.TrimSpace(raw))
+		return nil, fmt.Sprintf(i18n.Translate(tag, "planimport.flag.grams"), label, strings.TrimSpace(raw))
 	}
 	return v, ""
 }

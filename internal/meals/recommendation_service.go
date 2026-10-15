@@ -40,7 +40,10 @@ func NewGoalRecommendationService(progress *TrackMealProgressService, goals Macr
 // can still talk about this in its own words, but the decision of what to
 // suggest is made here, reproducibly.
 type Recommendation struct {
+	// Message is the suggestion in English, for the coach. Key names it in
+	// the catalogue, for a person reading it in their own language.
 	Message              string
+	Key                  string
 	SuggestedCalorieGoal float64
 	SuggestedSplit       string
 	Reason               string
@@ -59,6 +62,7 @@ func (s *GoalRecommendationService) Recommend(ctx context.Context, userID uuid.U
 	if adherence < adherenceFloor {
 		return Recommendation{
 			Message: "Logging has been inconsistent the last couple of weeks — try logging every meal for a few days before adjusting targets.",
+			Key:     "nutrition.rec.inconsistent",
 			Reason:  "low adherence",
 		}, nil
 	}
@@ -78,6 +82,7 @@ func (s *GoalRecommendationService) Recommend(ctx context.Context, userID uuid.U
 		if avgDelta > driftThresholdKcal {
 			return Recommendation{
 				Message:              "You're averaging over your cutting target — consider tightening portions or your macro split.",
+				Key:                  "nutrition.rec.cut",
 				SuggestedCalorieGoal: goal.CalorieGoal,
 				Reason:               "trailing average over cutting goal",
 			}, nil
@@ -86,6 +91,7 @@ func (s *GoalRecommendationService) Recommend(ctx context.Context, userID uuid.U
 		if avgDelta < -driftThresholdKcal {
 			return Recommendation{
 				Message:              "You're averaging under your bulking target — consider raising your calorie goal or adding a snack.",
+				Key:                  "nutrition.rec.bulk",
 				SuggestedCalorieGoal: goal.CalorieGoal,
 				Reason:               "trailing average under bulking goal",
 			}, nil
@@ -94,12 +100,13 @@ func (s *GoalRecommendationService) Recommend(ctx context.Context, userID uuid.U
 		if avgDelta > driftThresholdKcal || avgDelta < -driftThresholdKcal {
 			return Recommendation{
 				Message: "Your logged intake has been drifting from your maintenance target — worth a look next time you plan meals.",
+				Key:     "nutrition.rec.drift",
 				Reason:  "trailing average off maintenance goal",
 			}, nil
 		}
 	}
 
-	return Recommendation{Message: "You're on track — no changes needed.", Reason: "within tolerance"}, nil
+	return Recommendation{Message: "You're on track — no changes needed.", Key: "nutrition.rec.ok", Reason: "within tolerance"}, nil
 }
 
 func (s *GoalRecommendationService) averageDelta(ctx context.Context, userID uuid.UUID, days int) (float64, error) {

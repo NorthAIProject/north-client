@@ -24,7 +24,7 @@ func TestWorkoutFromRowsMapsColumnsWithoutInventingValues(t *testing.T) {
 		{"Day 2", "", "3", "10", "", "", "superset with above", ""},
 	}
 
-	draft, err := WorkoutFromRows("block3.xlsx", rows)
+	draft, err := WorkoutFromRows("en", "block3.xlsx", rows)
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -74,7 +74,7 @@ func TestWorkoutFromRowsMapsColumnsWithoutInventingValues(t *testing.T) {
 func TestWorkoutFromRowsNeedsAnExerciseColumn(t *testing.T) {
 	t.Parallel()
 
-	_, err := WorkoutFromRows("x.csv", [][]string{{"date", "steps"}, {"Mon", "9000"}})
+	_, err := WorkoutFromRows("en", "x.csv", [][]string{{"date", "steps"}, {"Mon", "9000"}})
 	if ReasonOf(err) != ReasonNotAPlan {
 		t.Fatalf("err = %v, want not a plan", err)
 	}
@@ -86,7 +86,7 @@ func TestWorkoutFromRowsNeedsAnExerciseColumn(t *testing.T) {
 func TestWorkoutFromRowsWithoutDayColumnIsOneUnlabelledDay(t *testing.T) {
 	t.Parallel()
 
-	draft, err := WorkoutFromRows("full_body-a.csv", [][]string{{"exercise", "sets"}, {"Squat", "3"}, {"Row", "3"}})
+	draft, err := WorkoutFromRows("en", "full_body-a.csv", [][]string{{"exercise", "sets"}, {"Squat", "3"}, {"Row", "3"}})
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -107,7 +107,7 @@ func TestMealFromRowsKeepsStatedMacrosAndFlagsBadCells(t *testing.T) {
 		{"Tue", "Breakfast", "Toast", "1 1/2", "slices", "", "", "", ""},
 	}
 
-	draft, err := MealFromRows("week.csv", rows)
+	draft, err := MealFromRows("en", "week.csv", rows)
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -153,7 +153,7 @@ func TestWorkoutFromJSONAcceptsBothShapes(t *testing.T) {
 	named := `{"name":"Block 3","days":[{"day":1,"exercises":[{"exercise":"Squat","sets":"3","reps":"5","rest":120,"notes":null}]}]}`
 
 	for _, raw := range []string{bare, named} {
-		draft, err := WorkoutFromJSON("plan.json", []byte(raw))
+		draft, err := WorkoutFromJSON("en", "plan.json", []byte(raw))
 		if err != nil {
 			t.Fatalf("parse %s: %v", raw, err)
 		}
@@ -173,7 +173,7 @@ func TestMealFromJSONAcceptsFoodRowsAndNamedMeals(t *testing.T) {
 	    {"name":"Lunch","foods":[{"food":"Rice","quantity":"200","unit":"g"}]}
 	  ]}
 	]`
-	draft, err := MealFromJSON("plan.json", []byte(raw))
+	draft, err := MealFromJSON("en", "plan.json", []byte(raw))
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -187,10 +187,10 @@ func TestJSONOfTheWrongPlanIsNotAPlan(t *testing.T) {
 	t.Parallel()
 
 	meal := `[{"day":"Monday","meals":[{"food":"Oats"}]}]`
-	if _, err := WorkoutFromJSON("x.json", []byte(meal)); ReasonOf(err) != ReasonNotAPlan {
+	if _, err := WorkoutFromJSON("en", "x.json", []byte(meal)); ReasonOf(err) != ReasonNotAPlan {
 		t.Fatalf("workout from meal JSON: err = %v, want not a plan", err)
 	}
-	if _, err := MealFromJSON("x.json", []byte(`{"steps": 9000}`)); ReasonOf(err) != ReasonNotAPlan {
+	if _, err := MealFromJSON("en", "x.json", []byte(`{"steps": 9000}`)); ReasonOf(err) != ReasonNotAPlan {
 		t.Fatalf("meal from other JSON: err = %v, want not a plan", err)
 	}
 }
@@ -199,7 +199,7 @@ func TestCellParsers(t *testing.T) {
 	t.Parallel()
 
 	for raw, want := range map[string]*int{"90": intp(90), "90s": intp(90), "2 min": intp(120), "1.5 min": intp(90), "1:30": intp(90), "": nil, "long": nil} {
-		got, _ := parseRest(raw)
+		got, _ := parseRest("en", raw)
 		if (got == nil) != (want == nil) || (got != nil && *got != *want) {
 			t.Errorf("parseRest(%q) = %v, want %v", raw, got, want)
 		}
@@ -223,7 +223,7 @@ func TestMealFromRowsReadsAnOptionColumnAndRepeatsADaylessPlan(t *testing.T) {
 		{"", "B", "Eggs", "2", ""},
 		{"Lunch", "", "Rice", "110", "g"},
 	}
-	draft, err := MealFromRows("plan.csv", rows)
+	draft, err := MealFromRows("en", "plan.csv", rows)
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}

@@ -54,7 +54,7 @@ func (h *Handler) createIngredient(w http.ResponseWriter, r *http.Request) {
 
 	if _, err := h.ingredients.Create(r.Context(), user.ID, in); err != nil {
 		var fieldErrs apperr.FieldErrors
-		if apperr.As(err, &fieldErrs) {
+		if apperr.As(localize(r.Context(), err), &fieldErrs) {
 			form.Errors = fieldErrs.Messages()
 			results, listErr := h.ingredients.Search(r.Context(), user.ID, "", 50)
 			if listErr != nil {
