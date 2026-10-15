@@ -38,6 +38,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/nudges"
 	"github.com/NorthAIProject/north-client/internal/onboarding"
 	"github.com/NorthAIProject/north-client/internal/planimport"
+	"github.com/NorthAIProject/north-client/internal/recaps"
 	"github.com/NorthAIProject/north-client/internal/reports"
 	"github.com/NorthAIProject/north-client/internal/screentime"
 	"github.com/NorthAIProject/north-client/internal/settings"
@@ -146,6 +147,7 @@ func mountJSON(r chi.Router, sessions auth.SessionResolver, apis apiSet) {
 		apis.crews.Routes(r)
 		apis.xp.Routes(r)
 		apis.weekly.Routes(r)
+		apis.recaps.Routes(r)
 		apis.inbox.Routes(r)
 		apis.lighter.Routes(r)
 	})
@@ -197,6 +199,7 @@ type apiSet struct {
 	crews        *crews.API
 	xp           *xp.API
 	weekly       *weekly.API
+	recaps       *recaps.API
 	inbox        *inbox.API
 	lighter      *lighterday.API
 }

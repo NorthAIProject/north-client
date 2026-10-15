@@ -69,6 +69,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/preferences"
 	"github.com/NorthAIProject/north-client/internal/push"
 	"github.com/NorthAIProject/north-client/internal/quota"
+	"github.com/NorthAIProject/north-client/internal/recaps"
 	"github.com/NorthAIProject/north-client/internal/reports"
 	"github.com/NorthAIProject/north-client/internal/screentime"
 	"github.com/NorthAIProject/north-client/internal/settings"
@@ -654,6 +655,16 @@ func routes(
 	reportSvc.WithFocus(weeklySvc)
 	weeklyHandler := weekly.NewHandler(weeklySvc)
 
+	// The "your week" recap reads the logs the slices above already keep,
+	// and posts to the friends feed through achievements.
+	recapSvc := recaps.NewService(recaps.Options{
+		Sessions:     activitySvc,
+		Sets:         liftSvc,
+		Food:         foodLogSvc,
+		CheckIns:     checkinSvc,
+		Achievements: achievementSvc,
+	})
+
 	// The capture inbox saves here; the worker suggests where each item goes.
 	inboxSvc := inbox.NewService(pool, inbox.Options{
 		Queue: queue, Goals: goalSvc, Notes: documentSvc, Journal: mindSvc, Users: userSvc,
@@ -1047,6 +1058,7 @@ func routes(
 			crews:        crews.NewAPI(crewSvc, cfg.BaseURL),
 			xp:           xp.NewAPI(xpSvc),
 			weekly:       weekly.NewAPI(weeklySvc),
+			recaps:       recaps.NewAPI(recapSvc),
 			inbox:        inbox.NewAPI(inboxSvc),
 			lighter:      lighterday.NewAPI(lighterSvc),
 		})

@@ -33,6 +33,10 @@ const (
 	KindWeekReviewed     = "week_reviewed"
 	KindAreaStreak       = "area_streak"
 	KindCrewChallengeMet = "crew_challenge_met"
+	// KindRecapShared is a 7- or 30-day recap the person posted on purpose.
+	// It sits in training: the feed's category is a closed list in the
+	// shipped app, and a recap is mostly what was trained.
+	KindRecapShared = "recap_shared"
 )
 
 // Item is one achievement in a feed.

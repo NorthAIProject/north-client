@@ -131,6 +131,42 @@ func (s *Service) CrewChallengeMet(ctx context.Context, userID, crewID uuid.UUID
 		fmt.Sprintf("%d %s in the week of %s", target, unit, weekStart.Format("2 Jan")), at)
 }
 
+// Post shows a moment the person chose to share, unlike the side effects
+// above: it reports a failure, and posting the same sourceKey again refreshes
+// its title and detail in place.
+func (s *Service) Post(ctx context.Context, userID uuid.UUID, category, kind, sourceKey, title, detail string, at time.Time) (Item, error) {
+	row, err := s.q.Post(ctx, achievementsdb.PostParams{
+		UserID: userID, Category: category, Kind: kind, Title: title, Detail: detail,
+		OccurredAt: at, SourceKey: sourceKey,
+	})
+	if err != nil {
+		return Item{}, apperr.Wrap(err, "post achievement")
+	}
+	return Item{
+		ID: row.ID, UserID: userID, Category: category, Kind: kind, Title: title, Detail: detail,
+		OccurredAt: row.OccurredAt, Mine: true,
+	}, nil
+}
+
+// OwnBetween is the person's own achievements in [since, until), newest
+// first.
+func (s *Service) OwnBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]Item, error) {
+	rows, err := s.q.OwnAchievementsBetween(ctx, achievementsdb.OwnAchievementsBetweenParams{
+		UserID: userID, Since: since, Until: until,
+	})
+	if err != nil {
+		return nil, apperr.Wrap(err, "own achievements")
+	}
+	out := make([]Item, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, Item{
+			ID: r.ID, UserID: userID, Category: r.Category, Kind: r.Kind, Title: r.Title, Detail: r.Detail,
+			OccurredAt: r.OccurredAt, Mine: true,
+		})
+	}
+	return out, nil
+}
+
 // Feed is the viewer's own achievements and those friends share with them,
 // newest first, before the cursor (zero time means now).
 func (s *Service) Feed(ctx context.Context, viewerID uuid.UUID, before time.Time) ([]Item, error) {
