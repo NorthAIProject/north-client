@@ -32,8 +32,8 @@ func (f atlasFit) apply(p vec3) vec3 {
 
 // fitAtlas searches scale, width and offset by coordinate descent, coarse to
 // fine, against sampled atlas vertices scored on a signed-distance grid of the
-// skin.
-func fitAtlas(skin mesh, muscles []triangle) atlasFit {
+// skin. The field comes back with the fit, for reporting on it.
+func fitAtlas(skin mesh, muscles []triangle) (atlasFit, distanceField) {
 	lo, hi := skin.bounds()
 	fit := atlasFit{floor: vec3{(lo[0] + hi[0]) / 2, lo[1], (lo[2] + hi[2]) / 2}, scale: 1, scaleX: 1}
 	field := newDistanceField(skin, fitVoxel)
@@ -80,7 +80,7 @@ func fitAtlas(skin mesh, muscles []triangle) atlasFit {
 		}
 	}
 	log.Printf("atlas fit: scale %.3f, width ×%.3f, shift y %+.3f z %+.3f, cost %.6f", fit.scale, fit.scaleX, fit.shiftY, fit.shiftZ, best)
-	return fit
+	return fit, field
 }
 
 // distanceField is the skin's signed distance (positive outside) sampled on a
