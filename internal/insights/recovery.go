@@ -166,8 +166,10 @@ func (r RecoveryData) WhyIn(ctx context.Context) string {
 		if v.State != stat.Above && v.State != stat.Below {
 			continue
 		}
+		low, high := usualBounds(sig.Usual)
 		parts = append(parts, i18n.Tf(ctx, "insights.recovery.why."+v.State,
-			metricLabel(ctx, sig.Metric), formatMetric(sig.Metric, v.Latest), i18n.Date(ctx, v.Day, "Mon 2 Jan"), v.Low, v.High))
+			metricLabel(ctx, sig.Metric), readMetric(ctx, sig.Metric, v.Latest), i18n.Date(ctx, v.Day, "Mon 2 Jan"),
+			readMetric(ctx, sig.Metric, low), readMetric(ctx, sig.Metric, high)))
 	}
 	return strings.Join(parts, " ")
 }
