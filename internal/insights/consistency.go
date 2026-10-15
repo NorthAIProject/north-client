@@ -2,12 +2,12 @@ package insights
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"golang.org/x/sync/errgroup"
 
 	"github.com/NorthAIProject/north-client/internal/coach"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/stats/stat"
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -85,25 +85,31 @@ func (s *Service) Consistency(ctx context.Context, user users.User, now time.Tim
 	return out, nil
 }
 
-// Sentence is the consistency as the coach reads it.
+// Sentence is the consistency as the coach reads it: English, because the
+// coach's context is a prompt rather than a page. The API asks SentenceIn.
 func (c ConsistencyData) Sentence() string {
-	line := "Consistency: active " + dayCount(c.ThisWeek) + " this week"
+	return c.SentenceIn(context.Background())
+}
+
+// SentenceIn is Sentence in ctx's language.
+func (c ConsistencyData) SentenceIn(ctx context.Context) string {
+	line := i18n.Tf(ctx, "insights.consistency.line.week", dayCount(ctx, c.ThisWeek))
 	if c.UsualPerWeek > 0 {
-		line += fmt.Sprintf(" (usually %.1f)", c.UsualPerWeek)
+		line += i18n.Tf(ctx, "insights.consistency.line.usual", c.UsualPerWeek)
 	}
-	line += fmt.Sprintf("; current streak %s, longest %s and longest gap %s in the last %d weeks",
-		dayCount(c.CurrentStreak), dayCount(c.LongestStreak), dayCount(c.LongestGap), consistencyWeeks)
+	line += i18n.Tf(ctx, "insights.consistency.line.streaks",
+		dayCount(ctx, c.CurrentStreak), dayCount(ctx, c.LongestStreak), dayCount(ctx, c.LongestGap), consistencyWeeks)
 	if c.CheckInStreak > 0 {
-		line += "; check-in streak " + dayCount(c.CheckInStreak)
+		line += i18n.Tf(ctx, "insights.consistency.line.checkins", dayCount(ctx, c.CheckInStreak))
 	}
 	return line + "."
 }
 
-func dayCount(n int) string {
+func dayCount(ctx context.Context, n int) string {
 	if n == 1 {
-		return "1 day"
+		return i18n.T(ctx, "insights.consistency.days.one")
 	}
-	return fmt.Sprintf("%d days", n)
+	return i18n.Tf(ctx, "insights.consistency.days.many", n)
 }
 
 // ConsistencyContextSource tells the coach how steadily the person shows up,

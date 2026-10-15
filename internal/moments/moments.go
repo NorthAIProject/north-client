@@ -19,7 +19,12 @@
 // words live in one place.
 package moments
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
+)
 
 // Kinds, as they reach the funnel (analytics.EventMomentShown).
 const (
@@ -35,38 +40,36 @@ type Moment struct {
 	Body  string
 }
 
-// streakCopy is what a check-in streak earns at each threshold, and nothing in
-// between. Sparse on purpose: a card every day is wallpaper by day four.
-var streakCopy = map[int]Moment{
-	3:   {Kind: KindStreak, Title: "Three days running", Body: "That is a habit starting. Same time tomorrow."},
-	7:   {Kind: KindStreak, Title: "A full week", Body: "Seven check-ins in a row. Khepri has a real picture of you now."},
-	14:  {Kind: KindStreak, Title: "Two weeks", Body: "The reviews get sharper from here. Keep feeding them."},
-	30:  {Kind: KindStreak, Title: "Thirty days", Body: "A month of showing up. Most people never get here."},
-	60:  {Kind: KindStreak, Title: "Sixty days", Body: "Two months. This is who you are now, not something you are trying."},
-	100: {Kind: KindStreak, Title: "One hundred days", Body: "A hundred check-ins. Khepri remembers every one."},
-}
+// streakMarks are the check-in streaks that earn a card, and nothing in
+// between. Sparse on purpose: a card every day is wallpaper by day four. The
+// words are in the moments catalogue, under moments.streak.<n>.
+var streakMarks = map[int]bool{3: true, 7: true, 14: true, 30: true, 60: true, 100: true}
 
 // ForStreak reports whether a check-in streak of n days is worth a card, and
-// which. Only the exact thresholds qualify: day 8 is not a moment, day 7 was.
-func ForStreak(n int) (Moment, bool) {
-	m, ok := streakCopy[n]
-	return m, ok
+// which, in the request's language. Only the exact thresholds qualify: day 8
+// is not a moment, day 7 was.
+func ForStreak(ctx context.Context, n int) (Moment, bool) {
+	if !streakMarks[n] {
+		return Moment{}, false
+	}
+	key := fmt.Sprintf("moments.streak.%d", n)
+	return Moment{Kind: KindStreak, Title: i18n.T(ctx, key+".title"), Body: i18n.T(ctx, key+".body")}, true
 }
 
 // ForGoalAchieved is the card for a goal moved to achieved.
-func ForGoalAchieved(title string) Moment {
+func ForGoalAchieved(ctx context.Context, title string) Moment {
 	return Moment{
 		Kind:  KindGoal,
-		Title: fmt.Sprintf("“%s” — achieved", title),
-		Body:  "You named it, you did it. Khepri will remember this one.",
+		Title: i18n.Tf(ctx, "moments.goal.title", title),
+		Body:  i18n.T(ctx, "moments.goal.body"),
 	}
 }
 
 // ForMilestoneCompleted is the card for a checkpoint on the way to a goal.
-func ForMilestoneCompleted(goalTitle, milestoneTitle string) Moment {
+func ForMilestoneCompleted(ctx context.Context, goalTitle, milestoneTitle string) Moment {
 	return Moment{
 		Kind:  KindMilestone,
-		Title: "Checkpoint reached",
-		Body:  fmt.Sprintf("“%s”, on the way to “%s”.", milestoneTitle, goalTitle),
+		Title: i18n.T(ctx, "moments.milestone.title"),
+		Body:  i18n.Tf(ctx, "moments.milestone.body", milestoneTitle, goalTitle),
 	}
 }

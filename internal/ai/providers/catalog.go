@@ -9,6 +9,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/ai/anthropic"
 	"github.com/NorthAIProject/north-client/internal/ai/gemini"
 	"github.com/NorthAIProject/north-client/internal/ai/openaicompat"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 )
 
 // BYOProvider is one backend a user may bring their own key for.
@@ -60,6 +61,13 @@ type BYOProvider struct {
 
 	SupportsJSONSchema bool
 
+	// SeesImages means the provider's default model reads photos. A person
+	// who set a text-only model still gets a clear refusal from the provider;
+	// this decides whether their key is offered for photos at all, which
+	// matters for progress-check estimates: a provider that cannot see is
+	// never sent body photos only to fail.
+	SeesImages bool
+
 	// Note is one line under the option in the settings page.
 	Note string
 
@@ -92,19 +100,19 @@ var Catalog = []BYOProvider{
 	{
 		Name: "openrouter", Label: "OpenRouter",
 		BaseURL: "https://openrouter.ai/api/v1", DefaultModel: "anthropic/claude-sonnet-4.5",
-		KeyHint: "sk-or-v1-…", VerifyPath: "/key", SupportsJSONSchema: true,
+		KeyHint: "sk-or-v1-…", VerifyPath: "/key", SupportsJSONSchema: true, SeesImages: true,
 		Note: "One key, most models — including Claude and GPT. The simplest choice.",
 	},
 	{
 		Name: "openai", Label: "OpenAI",
 		BaseURL: "https://api.openai.com/v1", DefaultModel: "gpt-4.1",
-		KeyHint: "sk-…", VerifyPath: "/models", SupportsJSONSchema: true,
+		KeyHint: "sk-…", VerifyPath: "/models", SupportsJSONSchema: true, SeesImages: true,
 		Note: "Needs no new code: openaicompat speaks OpenAI's dialect already.",
 	},
 	{
 		Name: "xai", Label: "xAI (Grok)",
 		BaseURL: "https://api.x.ai/v1", DefaultModel: "grok-4",
-		KeyHint: "xai-…", SupportsJSONSchema: true,
+		KeyHint: "xai-…", SupportsJSONSchema: true, SeesImages: true,
 	},
 	{
 		Name: "nvidia", Label: "NVIDIA",
@@ -117,7 +125,7 @@ var Catalog = []BYOProvider{
 		// equivalent endpoint under a shared base URL, so its keys are stored
 		// without a live check.
 		Name: "gemini", Label: "Google Gemini",
-		DefaultModel: "gemini-2.5-pro", KeyHint: "AIza…",
+		DefaultModel: "gemini-2.5-pro", KeyHint: "AIza…", SeesImages: true,
 	},
 	{
 		// BaseURL is supplied per user: each person runs their own Hermes
@@ -131,10 +139,23 @@ var Catalog = []BYOProvider{
 		// Native Messages API through the official SDK; see internal/ai/anthropic.
 		Name: "anthropic", Label: "Anthropic (Claude)",
 		BaseURL: "https://api.anthropic.com", DefaultModel: "claude-opus-5",
-		KeyHint: "sk-ant-…", VerifyPath: "/v1/models", KeyHeader: "x-api-key",
+		KeyHint: "sk-ant-…", VerifyPath: "/v1/models", KeyHeader: "x-api-key", SeesImages: true,
 		VerifyHeaders: map[string]string{"anthropic-version": "2023-06-01"},
 		Note:          "Claude on your own Anthropic account. Billed to that account.",
 	},
+}
+
+// NoteIn is Note in tag's language, for the settings page. A note with no
+// catalogue entry reads as written rather than as a key.
+func (p BYOProvider) NoteIn(tag string) string {
+	if p.Note == "" {
+		return ""
+	}
+	key := "conn.provider.note." + p.Name
+	if got := i18n.Translate(tag, key); got != key {
+		return got
+	}
+	return p.Note
 }
 
 // ByName finds a catalogue entry.

@@ -67,6 +67,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/onboarding"
 	"github.com/NorthAIProject/north-client/internal/planimport"
 	"github.com/NorthAIProject/north-client/internal/preferences"
+	"github.com/NorthAIProject/north-client/internal/progresschecks"
 	"github.com/NorthAIProject/north-client/internal/push"
 	"github.com/NorthAIProject/north-client/internal/quota"
 	"github.com/NorthAIProject/north-client/internal/recaps"
@@ -124,7 +125,7 @@ func routes(
 	funnel := analytics.New(posthogClient)
 
 	userRepo := users.NewRepository(pool)
-	userSvc := users.NewService(userRepo)
+	userSvc := users.NewService(userRepo).WithAppearanceRecorder(funnel)
 
 	sessions := auth.NewSessionStore(pool, cfg.SessionLifetime)
 	authSvc := auth.NewService(userSvc, sessions, auth.ServiceOptions{
@@ -245,22 +246,8 @@ func routes(
 	// share the record of both having happened.
 	accountSvc := account.NewService(account.NewRepository(pool), storage, slog.Default())
 
-	// Export reads across profile, goals, check-ins, memories, documents and
-	// conversations, which is why it is its own package rather than a method on
-	// any one of them.
 	// Built here rather than with the care slices below: the export reads it.
 	medicationSvc := medications.NewService(medications.NewRepository(pool))
-
-	exportHandler := export.NewHandler(export.NewExporter(export.Options{
-		Documents:     documentSvc,
-		Memories:      memorySvc,
-		Conversations: conversationSvc,
-		Goals:         goalSvc,
-		CheckIns:      checkinSvc,
-		Storage:       storage,
-		Friends:       socialSvc,
-		Medications:   medicationSvc,
-	}), quotaSvc, accountSvc)
 
 	// Built before workouts: the plan generator picks from this catalog, so
 	// the catalog has to exist before the thing that reads it.
@@ -293,6 +280,26 @@ func routes(
 	// so biometrics is constructed first and passed in as a lookup rather
 	// than each depending on its concrete type.
 	biometricSvc := biometrics.NewService(biometrics.NewRepository(pool))
+
+	// Progress checks keep their photos in media and write a scale weight
+	// through biometrics, so both exist first.
+	progressSvc := progresschecks.NewService(progresschecks.NewRepository(pool), mediaSvc, biometricSvc)
+
+	// Export reads across profile, goals, check-ins, memories, documents,
+	// conversations, medications and progress checks, which is why it is its
+	// own package rather than a method on any one of them. Built once the last
+	// of those exists.
+	exportHandler := export.NewHandler(export.NewExporter(export.Options{
+		Documents:     documentSvc,
+		Memories:      memorySvc,
+		Conversations: conversationSvc,
+		Goals:         goalSvc,
+		CheckIns:      checkinSvc,
+		Storage:       storage,
+		Friends:       socialSvc,
+		Medications:   medicationSvc,
+		Progress:      progressSvc,
+	}), quotaSvc, accountSvc)
 
 	calculatorSvc := calculator.NewService(calculator.NewRepository(pool), biometricSvc)
 
@@ -415,6 +422,16 @@ func routes(
 	aicredSvc := aicreds.NewService(aicreds.NewRepository(pool), sealer, slog.Default())
 	aicredSvc = aicredSvc.WithToolProbe(aicreds.NewToolProbe()).
 		WithMeter(spend.NewMeter(spend.NewRepository(pool)))
+
+	// Progress-check photos may be estimated by the person's own provider or
+	// Khepri's Anthropic client, never by the free chain; see
+	// progresschecks.Assist. Without an Anthropic key, Get fails and only a
+	// connected provider that sees photos can estimate.
+	var appVision ai.Client
+	if c, err := registry.Get("anthropic"); err == nil {
+		appVision = c
+	}
+	progressSvc.WithAssist(progresschecks.NewAssist(aicredSvc, appVision))
 
 	// North as an MCP *client*: the calendar somebody connected, reached over
 	// somebody else's server. The opposite direction from the /mcp route below,
@@ -587,7 +604,7 @@ func routes(
 		CheckInTotals: checkinSvc,
 		CheckIns:      checkinSvc,
 	})
-	dayHandler := day.NewHandler(daySvc).WithBodyMaps(liftSvc)
+	dayHandler := day.NewHandler(daySvc).WithBodyMaps(liftSvc).WithProgress(progressSvc)
 
 	// Insights reuses the dashboard's timeline rather than reimplementing the
 	// merge across eight slices. Two copies of that would drift.
@@ -753,6 +770,7 @@ func routes(
 			fasting.NewContextSource(fastingSvc),
 			supplements.NewContextSource(supplementSvc),
 			medications.NewContextSource(medicationSvc),
+			progresschecks.NewContextSource(progressSvc),
 			screentime.NewContextSource(screenTimeSvc),
 			soreness.NewContextSource(sorenessSvc),
 			lifts.NewContextSource(liftSvc),
@@ -807,7 +825,7 @@ func routes(
 		Chats:  conversationSvc,
 		Photos: mediaSvc,
 		Facts:  memorySvc,
-	}).WithTraining(workoutSvc).WithSchedules(notificationSvc)
+	}).WithTraining(workoutSvc).WithSchedules(notificationSvc).WithProgressChecks(progressSvc)
 	coachSvc.WithInbox(coach.InboxFunc(nudgeSvc.RaiseFromUser)).
 		WithAway(coach.InboxFunc(nudgeSvc.RaiseProactive))
 	mediaSvc.WithOnReady(func(ctx context.Context, userID, analysisID uuid.UUID) {
@@ -1027,6 +1045,7 @@ func routes(
 			fasting:      fasting.NewAPI(fastingSvc),
 			supplements:  supplements.NewAPI(supplementSvc),
 			medications:  medications.NewAPI(medicationSvc),
+			progress:     progresschecks.NewAPI(progressSvc, liftSvc, quotaSvc),
 			screenTime:   screentime.NewAPI(screenTimeSvc),
 			soreness:     soreness.NewAPI(sorenessSvc),
 			milestones:   milestones.NewAPI(milestoneSvc),
@@ -1113,6 +1132,9 @@ func routes(
 		// account's own setting. The other order would let a laptop's browser
 		// settings override what somebody chose in Khepri.
 		r.Use(middleware.Locale)
+		// Before LoadUser for the same reason: a visitor's cookie, which
+		// LoadUser replaces with the account's own appearance when it has one.
+		r.Use(middleware.Appearance)
 		// Before LoadUser for the same reason as Locale: the snippet this feeds
 		// is rendered for signed-out visitors too, and the landing page is the
 		// one page whose numbers it exists to collect. LoadUser then adds the
@@ -1156,6 +1178,12 @@ func routes(
 		// — and this route would not help them if they found it, because
 		// LoadUser overwrites the cookie with the account's own setting.
 		r.Post("/locale", setLocale)
+
+		// The appearance switcher on the public pages. Unlike /locale it also
+		// writes the account when somebody is signed in, because the switcher
+		// is shown to them too and a toggle that LoadUser then ignored would
+		// visibly do nothing.
+		r.Post("/appearance", setAppearance(userSvc))
 
 		authHandler.Routes(r)
 
@@ -1233,6 +1261,7 @@ func routes(
 				calculatorHandler.Routes(r)
 				mealsHandler.Routes(r)
 				planImportHandler.Routes(r)
+				progresschecks.NewHandler(progressSvc, quotaSvc).Routes(r)
 				fitnessHandler.Routes(r)
 			})
 		})

@@ -61,7 +61,7 @@ func (h *Handler) choose(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) render(w http.ResponseWriter, r *http.Request, t Today) {
 	card := lighterpages.Card{
 		Offered: t.Offered(), Session: t.Session, Choice: t.Choice,
-		Why: t.Recovery.Why(),
+		Why: t.Recovery.WhyIn(r.Context()),
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := lighterpages.Fragment(card).Render(r.Context(), w); err != nil {

@@ -290,21 +290,53 @@ func buildTrainingView(ctx context.Context, data TrainingData) (insightpages.Tra
 		TotalTime:    formatDuration(totalSeconds),
 		HasSessions:  len(rows) > 0,
 		Lifting:      buildLiftingView(ctx, data.Lifts),
-		Plan:         buildPlanAdherence(data),
+		Plan:         buildPlanAdherence(ctx, data),
 		Recap:        buildRecap(data),
 	}, nil
 }
 
-func buildPlanAdherence(data TrainingData) insightpages.PlanAdherenceView {
+func buildPlanAdherence(ctx context.Context, data TrainingData) insightpages.PlanAdherenceView {
 	if !data.HasPlan {
 		return insightpages.PlanAdherenceView{}
 	}
+	week := workoutsummary.NewWeek(data.Week, data.Now)
+	week.Sentence = weekSentence(ctx, data.Week)
 	return insightpages.PlanAdherenceView{
 		HasPlan:  true,
-		Week:     workoutsummary.NewWeek(data.Week, data.Now),
+		Week:     week,
 		Done:     data.Adherence.Done,
 		Planned:  data.Adherence.Planned,
-		Sentence: data.Adherence.Sentence,
+		Sentence: adherenceSentence(ctx, data.Adherence),
+	}
+}
+
+// weekSentence is this week's plan in the reader's language. It says what
+// activity.ThisWeek's English Sentence says, which the coach keeps reading.
+func weekSentence(ctx context.Context, a activity.Adherence) string {
+	switch {
+	case a.Planned == 0:
+		return ""
+	case a.Planned == 1 && a.Done == 1:
+		return i18n.T(ctx, "insights.plan.week.done.one")
+	case a.Done == a.Planned:
+		return i18n.Tf(ctx, "insights.plan.week.done.many", a.Planned)
+	case a.Planned == 1:
+		return i18n.Tf(ctx, "insights.plan.week.partial.one", a.Done)
+	default:
+		return i18n.Tf(ctx, "insights.plan.week.partial.many", a.Done, a.Planned)
+	}
+}
+
+// adherenceSentence is activity.PlanAdherence's Sentence over the selected
+// range, in the reader's language.
+func adherenceSentence(ctx context.Context, a activity.Adherence) string {
+	switch a.Planned {
+	case 0:
+		return ""
+	case 1:
+		return i18n.Tf(ctx, "insights.plan.range.one", a.Done)
+	default:
+		return i18n.Tf(ctx, "insights.plan.range.many", a.Done, a.Planned)
 	}
 }
 
@@ -412,11 +444,10 @@ func rangeLabel(ctx context.Context, rg timerange.Range) string {
 	return translated(ctx, rg.LabelKey(), rg.Label)
 }
 
-// kindLabel names a timeline entry kind. dashboard words its kinds in English
-// for the dashboard; the insights feed carries its own copy, and an unknown
-// kind keeps the dashboard's word rather than showing a catalogue key.
+// kindLabel names a timeline entry kind in the reader's language, with the
+// same words the dashboard feed uses.
 func kindLabel(ctx context.Context, k dashboard.EntryKind) string {
-	return translated(ctx, "insights.kind."+string(k), k.Label())
+	return k.LabelIn(ctx)
 }
 
 // translated is the catalogue's word for key, or fallback when the catalogue

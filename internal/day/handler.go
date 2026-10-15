@@ -7,6 +7,8 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/FACorreiaa/go-utils/pkg/util"
@@ -18,6 +20,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/checkins/checkin"
 	"github.com/NorthAIProject/north-client/internal/dashboard"
 	"github.com/NorthAIProject/north-client/internal/day/day"
+	"github.com/NorthAIProject/north-client/internal/progresschecks/progresscheck"
 	"github.com/NorthAIProject/north-client/internal/screentime/screen"
 	"github.com/NorthAIProject/north-client/internal/shared/durfmt"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
@@ -31,6 +34,7 @@ import (
 type Handler struct {
 	svc      *Service
 	bodyMaps BodyMaps
+	progress Progress
 }
 
 func NewHandler(svc *Service) *Handler { return &Handler{svc: svc} }
@@ -46,6 +50,19 @@ const bodyMapDays = 7
 // WithBodyMaps colours the body figure from logged sets.
 func (h *Handler) WithBodyMaps(maps BodyMaps) *Handler {
 	h.bodyMaps = maps
+	return h
+}
+
+// Progress is the progress-check reminder and the latest check, for the
+// body card. progresschecks.Service satisfies it.
+type Progress interface {
+	Due(ctx context.Context, user users.User, now time.Time) (progresscheck.Schedule, bool, error)
+	Latest(ctx context.Context, user users.User) (progresscheck.Check, bool, error)
+}
+
+// WithProgress shows the progress-check chip and latest waist on the body card.
+func (h *Handler) WithProgress(p Progress) *Handler {
+	h.progress = p
 	return h
 }
 
@@ -123,6 +140,13 @@ func (h *Handler) show(w http.ResponseWriter, r *http.Request) {
 			data.Body.Map = &m
 		} else {
 			middleware.FromContext(r.Context()).Warn("load body map", slog.Any("error", err))
+		}
+	}
+
+	if h.progress != nil {
+		// Like the map: a chip that cannot load is left out, not an error page.
+		if err := h.loadProgress(r, user, &data.Body); err != nil {
+			middleware.FromContext(r.Context()).Warn("load progress check", slog.Any("error", err))
 		}
 	}
 
@@ -516,4 +540,19 @@ func BuildTrends(t Trends) daypages.TrendsData {
 		})
 	}
 	return out
+}
+
+func (h *Handler) loadProgress(r *http.Request, user users.User, body *daypages.BodyCard) error {
+	_, due, err := h.progress.Due(r.Context(), user, time.Now())
+	if err != nil {
+		return err
+	}
+	body.ProgressDue = due
+	latest, ok, err := h.progress.Latest(r.Context(), user)
+	if err != nil || !ok || latest.WaistCm == nil {
+		return err
+	}
+	body.LastWaist = strings.TrimSuffix(strconv.FormatFloat(*latest.WaistCm, 'f', 1, 64), ".0")
+	body.LastCheckOn = i18n.Date(r.Context(), latest.MeasuredOn, "2 Jan")
+	return nil
 }

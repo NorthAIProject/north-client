@@ -1,79 +1,153 @@
 package ui
 
 import (
-	"github.com/templui/templui/components/button"
-	"github.com/templui/templui/components/icon"
+	"context"
+
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
+	"github.com/NorthAIProject/north-client/internal/shared/middleware"
+	"github.com/NorthAIProject/north-client/internal/shared/theme"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
 )
 
 type ThemeSwitcherProps struct {
 	Class string
 }
 
+// ThemeSwitcher cycles the appearance System → Light → Dark on the public
+// pages.
+//
+// A form first, so it works with no script at all: it posts the next
+// appearance to /appearance, which sets the cookie (and the account, when
+// somebody is signed in) and sends the visitor back. With the script, the
+// submit is intercepted, the class is applied on the spot, and the same form is
+// sent with fetch, which answers 204.
+//
+// Nothing is kept in localStorage any more. The server renders the class, so a
+// browser-side copy could only ever disagree with it — which is where the old
+// switcher's dark flash on every light page came from.
 templ ThemeSwitcher(props ...ThemeSwitcherProps) {
 	{{ var p ThemeSwitcherProps }}
 	if len(props) > 0 {
 		{{ p = props[0] }}
 	}
+	{{ current := theme.AppearanceFrom(ctx) }}
+	<form method="post" action="/appearance" class="contents" data-theme-switcher>
+		@CSRFInput()
+		<input type="hidden" name="next" value={ middleware.Path(ctx) }/>
+		<input type="hidden" name="appearance" value={ string(nextAppearance(current)) } data-theme-switcher-next/>
+		@button.Button(button.Props{
+			Type:    button.TypeSubmit,
+			Size:    button.SizeIcon,
+			Variant: button.VariantGhost,
+			Class:   p.Class,
+			Attributes: templ.Attributes{
+				"aria-label":        switcherLabel(ctx, current),
+				"title":             switcherLabel(ctx, current),
+				"data-label-system": switcherLabel(ctx, theme.System),
+				"data-label-light":  switcherLabel(ctx, theme.Light),
+				"data-label-dark":   switcherLabel(ctx, theme.Dark),
+			},
+		}) {
+			// Spans because the icon component takes only a class, and the
+			// script needs something to find each one by.
+			<span data-theme-icon="system" class={ iconVisibility(current, theme.System) } aria-hidden="true">
+				@icon.Monitor(icon.Props{Class: "size-5"})
+			</span>
+			<span data-theme-icon="light" class={ iconVisibility(current, theme.Light) } aria-hidden="true">
+				@icon.Sun(icon.Props{Class: "size-5"})
+			</span>
+			<span data-theme-icon="dark" class={ iconVisibility(current, theme.Dark) } aria-hidden="true">
+				@icon.Moon(icon.Props{Class: "size-5"})
+			</span>
+		}
+	</form>
+	@themeSwitcherOnce.Once() {
+		@themeSwitcherScript()
+	}
+}
+
+var themeSwitcherOnce = templ.NewOnceHandle()
+
+// nextAppearance is the step the button takes from a.
+func nextAppearance(a theme.Appearance) theme.Appearance {
+	switch a {
+	case theme.System:
+		return theme.Light
+	case theme.Light:
+		return theme.Dark
+	default:
+		return theme.System
+	}
+}
+
+// switcherLabel says what the page is now and what a press will do, which an
+// icon alone cannot.
+func switcherLabel(ctx context.Context, a theme.Appearance) string {
+	return i18n.T(ctx, "appearance.switch."+string(a))
+}
+
+func iconVisibility(current, a theme.Appearance) string {
+	if current == a {
+		return "inline-flex"
+	}
+	return "hidden"
+}
+
+// themeSwitcherScript applies a choice without a reload. The order of the
+// cycle lives in nextAppearance on the server too; the two are three entries
+// long and tested together in themeswitcher_test.go.
+templ themeSwitcherScript() {
 	<script nonce={ templ.GetNonce(ctx) }>
-		(function() {
-			function getThemePreference() {
-				return localStorage.getItem('themePreference') || 'system';
+		(function () {
+			var order = ["system", "light", "dark"];
+			var query = window.matchMedia("(prefers-color-scheme: dark)");
+
+			function show(chosen) {
+				var next = order[(order.indexOf(chosen) + 1) % order.length];
+				document.querySelectorAll("form[data-theme-switcher]").forEach(function (form) {
+					form.querySelector("[data-theme-switcher-next]").value = next;
+					var btn = form.querySelector("button");
+					var label = btn.getAttribute("data-label-" + chosen);
+					btn.setAttribute("aria-label", label);
+					btn.setAttribute("title", label);
+					form.querySelectorAll("[data-theme-icon]").forEach(function (icon) {
+						var on = icon.getAttribute("data-theme-icon") === chosen;
+						icon.classList.toggle("hidden", !on);
+						icon.classList.toggle("inline-flex", on);
+					});
+				});
 			}
 
-			function applyTheme() {
-				const preference = getThemePreference();
-				let isDark = false;
+			document.addEventListener("submit", function (event) {
+				var form = event.target;
+				if (!form.matches || !form.matches("form[data-theme-switcher]")) return;
+				event.preventDefault();
 
-				if (preference === 'system') {
-					isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-				} else {
-					isDark = preference === 'dark';
-				}
+				// Captured before show() moves the hidden field on to the next step.
+				var body = new URLSearchParams(new FormData(form));
+				var chosen = body.get("appearance");
+				var root = document.documentElement;
+				var dark = chosen === "dark" || (chosen === "system" && query.matches);
 
-				document.documentElement.classList.toggle('dark', isDark);
-				document.dispatchEvent(new CustomEvent('theme-changed'));
-			}
+				root.setAttribute("data-appearance", chosen);
+				root.classList.toggle("dark", dark);
+				show(chosen);
+				document.dispatchEvent(new CustomEvent("theme-changed", {
+					bubbles: true,
+					detail: { appearance: chosen, dark: dark },
+				}));
 
-			function cycleTheme() {
-				const current = getThemePreference();
-				let next;
-
-				if (current === 'system') {
-					const isDarkNow = window.matchMedia('(prefers-color-scheme: dark)').matches;
-					next = isDarkNow ? 'light' : 'dark';
-				} else {
-					next = current === 'light' ? 'dark' : 'light';
-				}
-
-				localStorage.setItem('themePreference', next);
-				applyTheme();
-			}
-
-			applyTheme();
-
-			window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-				if (getThemePreference() === 'system') {
-					applyTheme();
-				}
-			});
-
-			document.addEventListener('click', (e) => {
-				const themeSwitcher = e.target.closest('[data-theme-switcher]');
-				if (themeSwitcher) {
-					e.preventDefault();
-					cycleTheme();
-				}
+				fetch(form.action, {
+					method: "POST",
+					credentials: "same-origin",
+					headers: { "X-CSRF-Token": body.get("csrf_token") || "" },
+					body: body,
+				}).catch(function () {
+					// The page already shows the choice; a lost save only means
+					// the next page load forgets it.
+				});
 			});
 		})();
 	</script>
-	@button.Button(button.Props{
-		Size:    button.SizeIcon,
-		Variant: button.VariantGhost,
-		Class:   p.Class,
-		Attributes: templ.Attributes{
-			"data-theme-switcher": "true",
-		},
-	}) {
-		@icon.Eclipse(icon.Props{Class: "size-5"})
-	}
 }

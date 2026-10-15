@@ -1,0 +1,33 @@
+{
+  "checks": [
+    {
+      "id": "88888888-8888-8888-8888-888888888888",
+      "measuredOn": "2026-10-15",
+      "weightKg": 100,
+      "weightCarried": false,
+      "waistCm": 96,
+      "hipsCm": 108,
+      "chestCm": 104,
+      "source": "assisted",
+      "assistConfidence": "medium",
+      "assistNotes": "Waist estimate from the side photo; edited by you.",
+      "complete": true,
+      "photos": [
+        {
+          "pose": "front",
+          "url": "https://storage.test/front.jpg?sig=x"
+        },
+        {
+          "pose": "side",
+          "url": "https://storage.test/side.jpg?sig=x"
+        }
+      ],
+      "createdAt": "2026-10-15T08:30:00Z"
+    }
+  ],
+  "schedule": {
+    "cadence": "weekly",
+    "nextDueOn": "2026-10-22",
+    "due": false
+  }
+}

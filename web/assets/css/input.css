@@ -71,6 +71,7 @@
      ember  = physical effort / heat scale only
      surface / hairline = instrument panels and rules */
   --color-signal: var(--north-signal);
+  --color-signal-foreground: var(--north-signal-foreground);
   --color-agent: var(--north-agent);
   --color-ember: var(--north-ember);
   --color-surface: var(--north-surface);
@@ -127,6 +128,8 @@
 }
 
 :root {
+  /* Native controls (date/time pickers, scrollbars) follow the theme. */
+  color-scheme: light;
   --radius: 0.65rem;
   /* Cool-biased neutrals: night navigation, not pure gray or terminal black. */
   --background: oklch(0.995 0.002 250);
@@ -145,7 +148,10 @@
   --accent-foreground: oklch(0.22 0.02 250);
   --destructive: oklch(0.577 0.245 27.325);
   --border: oklch(0.91 0.008 250);
-  --input: oklch(0.91 0.008 250);
+  /* Darker than --border: at 0.91 an input's edge was 1.3:1 on a card and
+     fields read as bare text. 0.66 gives 3:1, the WCAG minimum for a
+     field's boundary. */
+  --input: oklch(0.66 0.01 250);
   --ring: oklch(0.55 0.08 218);
   --sidebar: oklch(0.985 0.004 250);
   --sidebar-foreground: oklch(0.16 0.01 250);
@@ -159,7 +165,10 @@
   /* signal: bearing / continuity / primary CTA.
      agent: coach speaking only (thread attribution, never nav chrome).
      ember: physical effort / heat only (form, load) — never marketing fills. */
-  --north-signal: oklch(0.55 0.14 218);
+  /* 0.53, not 0.55: at 0.55 neither white nor ink text reached 4.5:1 on the
+     signal fill, and signal is the primary-action colour. */
+  --north-signal: oklch(0.53 0.14 218);
+  --north-signal-foreground: oklch(0.99 0.002 250);
   --north-agent: oklch(0.52 0.19 288);
   --north-ember: oklch(0.62 0.15 62);
   --north-surface: oklch(0.985 0.004 250);
@@ -210,6 +219,7 @@
 }
 
 .dark {
+  color-scheme: dark;
   /* Void: cool night navigation (~#1C1C1F with blue bias), not pure black. */
   --background: oklch(0.145 0.006 250);
   --foreground: oklch(0.97 0.004 250);
@@ -239,6 +249,8 @@
   --sidebar-ring: oklch(0.65 0.1 218);
 
   --north-signal: oklch(0.74 0.15 218);
+  /* Dark signal is a light cyan: white on it is about 2:1, ink is 9:1. */
+  --north-signal-foreground: oklch(0.16 0.02 250);
   --north-agent: oklch(0.63 0.19 288);
   --north-ember: oklch(0.76 0.16 62);
   --north-surface: oklch(0.19 0.01 250);

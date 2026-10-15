@@ -41,6 +41,9 @@ const (
 	KindImage = "image"
 	// KindFile is a document sent in chat, read as text rather than seen.
 	KindFile = "file"
+	// KindProgressPhoto is a body photo taken for a progress check. Its own
+	// kind so it never counts as a chat photo, photo evidence or a document.
+	KindProgressPhoto = "progress_photo"
 )
 
 // ErrNoChatFile is LatestChatFile's answer when this person has sent no file,
@@ -342,6 +345,37 @@ func (s *Service) UploadImage(ctx context.Context, userID uuid.UUID, filename st
 	})
 }
 
+// UploadProgressPhoto stores one pose of a progress check. Private like every
+// upload: the key is under the user's prefix and only a signed URL reads it.
+func (s *Service) UploadProgressPhoto(ctx context.Context, userID uuid.UUID, filename string, size int64, body io.Reader) (Media, error) {
+	return s.storeUpload(ctx, storeUpload{
+		UserID:   userID,
+		Filename: filename,
+		Size:     size,
+		Body:     body,
+		Kind:     KindProgressPhoto,
+		MaxBytes: MaxImageBytes,
+		Allowed:  allowedImageTypes,
+		Field:    "photo",
+		TooBig:   fmt.Sprintf("That photo is over %d MB. Choose a smaller one.", MaxImageBytes>>20),
+		BadType:  "That does not look like a photo. Use a JPEG, PNG or WebP.",
+	})
+}
+
+// DeleteOwned removes one of this person's files: the record, then the object.
+// An object that will not delete is logged by the caller's error, not hidden;
+// the record is gone either way, so nothing links to it again.
+func (s *Service) DeleteOwned(ctx context.Context, userID, id uuid.UUID) error {
+	key, err := s.repo.DeleteMedia(ctx, id, userID)
+	if err != nil {
+		return err
+	}
+	if err := s.storage.Delete(ctx, key); err != nil {
+		return apperr.Wrap(err, "delete stored object")
+	}
+	return nil
+}
+
 // UploadFile stores a document the coach should read this turn: a PDF, a Word
 // or Excel file, or plain text.
 //
@@ -502,7 +536,7 @@ func (s *Service) ReadBytes(ctx context.Context, userID, mediaID uuid.UUID) (str
 	if err != nil {
 		return "", nil, err
 	}
-	if record.Kind != KindImage {
+	if record.Kind != KindImage && record.Kind != KindProgressPhoto {
 		return "", nil, apperr.Wrap(apperr.ErrValidation, "only photos can be sent inline")
 	}
 
@@ -639,6 +673,16 @@ func toChatAttachment(m Media) conversations.Attachment {
 		MIMEType: m.MIMEType,
 		Name:     m.OriginalName,
 	}
+}
+
+// SignedURL is a time-limited link to one of this person's files. Another
+// account's file is not found.
+func (s *Service) SignedURL(ctx context.Context, userID, id uuid.UUID) (string, error) {
+	record, err := s.repo.GetMedia(ctx, id, userID)
+	if err != nil {
+		return "", err
+	}
+	return s.PlaybackURL(ctx, record)
 }
 
 // PlaybackURL is a time-limited link to the clip, so video bytes go straight

@@ -34,6 +34,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/nudges"
 	"github.com/NorthAIProject/north-client/internal/onboarding"
 	"github.com/NorthAIProject/north-client/internal/planimport"
+	"github.com/NorthAIProject/north-client/internal/progresschecks"
 	"github.com/NorthAIProject/north-client/internal/reports"
 	"github.com/NorthAIProject/north-client/internal/settings"
 	"github.com/NorthAIProject/north-client/internal/workouts"
@@ -78,6 +79,7 @@ func apiRouter(t *testing.T) chi.Router {
 		mind:       mind.NewAPI(nil),
 		nutrition:  meals.NewAPI(meals.HandlerOptions{}),
 		planImport: planimport.NewAPI(nil, nil),
+		progress:   progresschecks.NewAPI(nil, nil, nil),
 		decisions:  decisions.NewAPI(nil),
 		nudges:     nudges.NewAPI(nil),
 		devices:    apns.NewAPI(nil),

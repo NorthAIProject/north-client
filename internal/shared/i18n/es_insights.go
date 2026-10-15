@@ -387,4 +387,21 @@ var spanishInsights = map[string]string{
 	"insights.metric.name.vo2max":                   "VO2 máx.",
 	"insights.metric.name.weight":                   "Peso",
 	"insights.metric.name.notes":                    "Notas de objetivos",
+
+	"insights.recovery.why.above": "%[1]s: por encima de lo habitual, %[2]s el %[3]s (normalmente %[4]s–%[5]s).",
+	"insights.recovery.why.below": "%[1]s: por debajo de lo habitual, %[2]s el %[3]s (normalmente %[4]s–%[5]s).",
+
+	"insights.consistency.line.week":     "Constancia: activo %[1]s esta semana",
+	"insights.consistency.line.usual":    " (normalmente %.1[1]f)",
+	"insights.consistency.line.streaks":  "; racha actual de %[1]s, la más larga de %[2]s y el mayor parón de %[3]s en las últimas %[4]d semanas",
+	"insights.consistency.line.checkins": "; racha de registros de %[1]s",
+	"insights.consistency.days.one":      "1 día",
+	"insights.consistency.days.many":     "%[1]d días",
+
+	"insights.plan.week.done.one":     "La sesión de esta semana está hecha.",
+	"insights.plan.week.done.many":    "Las %[1]d sesiones de esta semana, hechas.",
+	"insights.plan.week.partial.one":  "%[1]d de 1 sesión hecha esta semana.",
+	"insights.plan.week.partial.many": "%[1]d de %[2]d sesiones hechas esta semana.",
+	"insights.plan.range.one":         "%[1]d de 1 sesión planificada hecha.",
+	"insights.plan.range.many":        "%[1]d de %[2]d sesiones planificadas hechas.",
 }

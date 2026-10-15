@@ -171,6 +171,7 @@ func userFromDB(row authdb.User) users.User {
 	u.CoachingStyle = util.Val(row.CoachingStyle)
 	u.CoachingTone = users.Tone(row.CoachingTone)
 	u.OnboardedAt = row.OnboardedAt
+	u.Appearance = users.StoredAppearance(row.Appearance)
 	return u
 }
 

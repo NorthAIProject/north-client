@@ -322,6 +322,12 @@ func Destinations() []Destination {
 			Nav:         NavPlacement{Show: true},
 		},
 		{
+			Key: "nav.progress-check", Label: "Progress check", Href: "/app/progress", Icon: "ruler", Group: GroupProgress,
+			Description: "Photos, weight and measurements on a schedule you choose.",
+			Keywords:    []string{"measurements", "waist", "photos", "weight", "body", "check"},
+			Nav:         NavPlacement{Show: true},
+		},
+		{
 			Key: "nav.recap", Label: "Your recap", Href: "/app/recap", Icon: "calendar-check", Group: GroupProgress,
 			Description: "Your last 7 or 30 days, to keep or to share.",
 			Keywords:    []string{"recap", "week", "month", "summary", "share", "streak"},

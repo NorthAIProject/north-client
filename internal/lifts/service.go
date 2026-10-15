@@ -2,7 +2,6 @@ package lifts
 
 import (
 	"context"
-	"fmt"
 	"slices"
 	"sort"
 	"strings"
@@ -16,6 +15,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/exercises"
 	"github.com/NorthAIProject/north-client/internal/lifts/lift"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n/fieldmsg"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
@@ -294,7 +294,7 @@ const BodyMapMaxDays = 28
 // left alone for months still knows when it was last worked.
 func (s *Service) BodyMap(ctx context.Context, user users.User, days int) (bodymap.Map, error) {
 	if days < 1 || days > BodyMapMaxDays {
-		return bodymap.Map{}, apperr.FieldErrors{}.Add("days", fmt.Sprintf("Use a number of days from 1 to %d.", BodyMapMaxDays))
+		return bodymap.Map{}, apperr.FieldErrors{}.Add("days", fieldmsg.English("lifts.err.days", BodyMapMaxDays))
 	}
 	sets, weights, now, err := s.yearOfSets(ctx, user)
 	if err != nil {

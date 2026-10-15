@@ -12,6 +12,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/quota"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 )
 
 // API is plan import for native clients: upload a file, get a draft back,
@@ -65,7 +66,7 @@ func (a *API) parseWorkout(w http.ResponseWriter, r *http.Request) {
 	}
 	draft, err := a.svc.ParseWorkout(r.Context(), auth.MustUser(r.Context()), name, data, "")
 	if err != nil {
-		writeError(w, err, "The file could not be imported.")
+		writeError(w, r, err, i18n.T(r.Context(), "planimport.api.import"))
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, draft)
@@ -78,7 +79,7 @@ func (a *API) parseMeal(w http.ResponseWriter, r *http.Request) {
 	}
 	draft, err := a.svc.ParseMeal(r.Context(), auth.MustUser(r.Context()), name, data, "")
 	if err != nil {
-		writeError(w, err, "The file could not be imported.")
+		writeError(w, r, err, i18n.T(r.Context(), "planimport.api.import"))
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, draft)
@@ -87,12 +88,12 @@ func (a *API) parseMeal(w http.ResponseWriter, r *http.Request) {
 func (a *API) commitWorkout(w http.ResponseWriter, r *http.Request) {
 	var draft WorkoutDraft
 	if err := httpx.ReadJSON(w, r, &draft, httpx.ReadOptions{}); err != nil {
-		httpx.Error(w, err, "That plan could not be read.")
+		httpx.Error(w, err, i18n.T(r.Context(), "planimport.api.read"))
 		return
 	}
 	stored, err := a.svc.CommitWorkout(r.Context(), auth.MustUser(r.Context()), draft)
 	if err != nil {
-		writeError(w, err, "The plan could not be saved.")
+		writeError(w, r, err, i18n.T(r.Context(), "planimport.api.save"))
 		return
 	}
 	httpx.WriteJSON(w, http.StatusCreated, ImportedPlan{PlanID: stored.ID})
@@ -101,7 +102,7 @@ func (a *API) commitWorkout(w http.ResponseWriter, r *http.Request) {
 func (a *API) previewMeal(w http.ResponseWriter, r *http.Request) {
 	var draft MealDraft
 	if err := httpx.ReadJSON(w, r, &draft, httpx.ReadOptions{}); err != nil {
-		httpx.Error(w, err, "That plan could not be read.")
+		httpx.Error(w, err, i18n.T(r.Context(), "planimport.api.read"))
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, a.svc.PreviewMeal(r.Context(), auth.MustUser(r.Context()).ID, draft))
@@ -110,7 +111,7 @@ func (a *API) previewMeal(w http.ResponseWriter, r *http.Request) {
 func (a *API) commitMeal(w http.ResponseWriter, r *http.Request) {
 	var req MealCommitRequest
 	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{}); err != nil {
-		httpx.Error(w, err, "That plan could not be read.")
+		httpx.Error(w, err, i18n.T(r.Context(), "planimport.api.read"))
 		return
 	}
 
@@ -126,14 +127,14 @@ func (a *API) commitMeal(w http.ResponseWriter, r *http.Request) {
 	case apperr.As(err, &over):
 		// The same 409 every other change to a meal plan gets; canConfirm says
 		// whether asking again with confirmOverage will save it.
-		httpx.WriteJSON(w, http.StatusConflict, meals.ProjectOverage(over))
-	case apperr.As(err, &fields):
+		httpx.WriteJSON(w, http.StatusConflict, meals.ProjectOverage(r.Context(), over))
+	case apperr.As(meals.Localize(r.Context(), err), &fields):
 		httpx.WriteJSON(w, http.StatusUnprocessableEntity, MealCommitRefusal{
-			Error: httpx.ErrorDetail{Message: "Some foods need attention before saving.", Fields: fields.Messages()},
+			Error: httpx.ErrorDetail{Message: i18n.T(r.Context(), "planimport.api.attention"), Fields: fields.Messages()},
 			Draft: previewed,
 		})
 	default:
-		httpx.Error(w, err, "The plan could not be saved.")
+		httpx.Error(w, err, i18n.T(r.Context(), "planimport.api.save"))
 	}
 }
 
@@ -142,10 +143,10 @@ func (a *API) commitMeal(w http.ResponseWriter, r *http.Request) {
 func readUpload(w http.ResponseWriter, r *http.Request) (string, []byte, bool) {
 	r.Body = http.MaxBytesReader(w, r.Body, MaxBytes+(1<<20))
 	if err := r.ParseMultipartForm(4 << 20); err != nil {
-		msg := "That upload could not be read."
+		msg := i18n.T(r.Context(), "planimport.err.upload")
 		var tooBig *http.MaxBytesError
 		if apperr.As(err, &tooBig) {
-			msg = "This file is larger than 10 MB."
+			msg = i18n.T(r.Context(), "planimport.err.toolarge")
 		}
 		httpx.Error(w, apperr.FieldErrors{}.Add("file", msg), msg)
 		return "", nil, false
@@ -154,14 +155,16 @@ func readUpload(w http.ResponseWriter, r *http.Request) (string, []byte, bool) {
 
 	file, header, err := r.FormFile("file")
 	if err != nil {
-		httpx.Error(w, apperr.FieldErrors{}.Add("file", "Choose a file first."), "Choose a file first.")
+		msg := i18n.T(r.Context(), "planimport.err.nofile")
+		httpx.Error(w, apperr.FieldErrors{}.Add("file", msg), msg)
 		return "", nil, false
 	}
 	defer func() { _ = file.Close() }()
 
 	data, err := io.ReadAll(io.LimitReader(file, MaxBytes+1))
 	if err != nil {
-		httpx.Error(w, apperr.FieldErrors{}.Add("file", "That upload could not be read."), "That upload could not be read.")
+		msg := i18n.T(r.Context(), "planimport.err.upload")
+		httpx.Error(w, apperr.FieldErrors{}.Add("file", msg), msg)
 		return "", nil, false
 	}
 	return header.Filename, data, true
@@ -169,15 +172,15 @@ func readUpload(w http.ResponseWriter, r *http.Request) (string, []byte, bool) {
 
 // writeError answers with the refusal's own sentence when there is one: the
 // person needs "this PDF is password-protected", not "could not be imported".
-func writeError(w http.ResponseWriter, err error, fallback string) {
+func writeError(w http.ResponseWriter, r *http.Request, err error, fallback string) {
 	var fe *FileError
 	if apperr.As(err, &fe) {
 		httpx.Error(w, err, fe.Message)
 		return
 	}
 	var fields apperr.FieldErrors
-	if apperr.As(err, &fields) && len(fields) > 0 {
-		httpx.Error(w, err, fields[0].Message)
+	if localized := meals.Localize(r.Context(), err); apperr.As(localized, &fields) && len(fields) > 0 {
+		httpx.Error(w, localized, fields[0].Message)
 		return
 	}
 	httpx.Error(w, err, fallback)

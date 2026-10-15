@@ -56,6 +56,10 @@ type Best struct {
 	// "min".
 	Unit string
 	At   time.Time
+
+	// labelKey is Label's catalogue key, for In. Key alone cannot name it:
+	// "longest" is a run, a ride, a walk or a swim depending on the kind.
+	labelKey string
 }
 
 // habitMinSessions is the fewest sessions before a usual day or hour is
@@ -207,25 +211,25 @@ func bests(name string, sessions []Session) []Best {
 
 	switch {
 	case strings.Contains(n, "run"):
-		keep(Best{Key: "fastest_5k", Label: "Fastest 5 km", Unit: "s"}, lower, timeFor(5))
-		keep(Best{Key: "fastest_10k", Label: "Fastest 10 km", Unit: "s"}, lower, timeFor(10))
-		keep(Best{Key: "longest", Label: "Longest run", Unit: "km"}, higher, longest)
+		keep(Best{Key: "fastest_5k", Label: "Fastest 5 km", labelKey: "stats.best.fastest_5k", Unit: "s"}, lower, timeFor(5))
+		keep(Best{Key: "fastest_10k", Label: "Fastest 10 km", labelKey: "stats.best.fastest_10k", Unit: "s"}, lower, timeFor(10))
+		keep(Best{Key: "longest", Label: "Longest run", labelKey: "stats.best.longest_run", Unit: "km"}, higher, longest)
 	case isSpeedKind(name):
-		keep(Best{Key: "longest", Label: "Longest ride", Unit: "km"}, higher, longest)
-		keep(Best{Key: "fastest_20k", Label: "Fastest ride over 20 km", Unit: "km/h"}, higher, func(s Session) (float64, bool) {
+		keep(Best{Key: "longest", Label: "Longest ride", labelKey: "stats.best.longest_ride", Unit: "km"}, higher, longest)
+		keep(Best{Key: "fastest_20k", Label: "Fastest ride over 20 km", labelKey: "stats.best.fastest_20k", Unit: "km/h"}, higher, func(s Session) (float64, bool) {
 			if s.DistanceM < 20_000 || s.Seconds <= 0 {
 				return 0, false
 			}
 			return util.RoundHalfUpToScale(s.DistanceM/1000/(float64(s.Seconds)/3600), 1), true
 		})
-		keep(Best{Key: "most_climb", Label: "Most climbing", Unit: "m"}, higher, climb)
+		keep(Best{Key: "most_climb", Label: "Most climbing", labelKey: "stats.best.most_climb", Unit: "m"}, higher, climb)
 	case strings.Contains(n, "walk") || strings.Contains(n, "hik"):
-		keep(Best{Key: "longest", Label: "Longest walk", Unit: "km"}, higher, longest)
-		keep(Best{Key: "most_climb", Label: "Most climbing", Unit: "m"}, higher, climb)
+		keep(Best{Key: "longest", Label: "Longest walk", labelKey: "stats.best.longest_walk", Unit: "km"}, higher, longest)
+		keep(Best{Key: "most_climb", Label: "Most climbing", labelKey: "stats.best.most_climb", Unit: "m"}, higher, climb)
 	case strings.Contains(n, "swim"):
-		keep(Best{Key: "longest", Label: "Longest swim", Unit: "km"}, higher, longest)
+		keep(Best{Key: "longest", Label: "Longest swim", labelKey: "stats.best.longest_swim", Unit: "km"}, higher, longest)
 	default:
-		keep(Best{Key: "longest_session", Label: "Longest session", Unit: "min"}, higher, func(s Session) (float64, bool) {
+		keep(Best{Key: "longest_session", Label: "Longest session", labelKey: "stats.best.longest_session", Unit: "min"}, higher, func(s Session) (float64, bool) {
 			return math.Round(float64(s.Seconds) / 60), s.Seconds > 0
 		})
 	}

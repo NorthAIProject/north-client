@@ -18,6 +18,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/meals/meal"
 	"github.com/NorthAIProject/north-client/internal/quota"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/workouts"
@@ -81,7 +82,13 @@ type CoachResult struct {
 // plan for someone with no macro target, a refused file, or a second import
 // while one is running costs nothing. A failed read or save after that keeps
 // the spend, as the import pages do.
+//
+// The whole import runs in English: everything it reports — what was
+// skipped and why, which days are over — is read by the coach, not shown to
+// the person, and the coach's context is English. Names it gives unnamed
+// options and meals are English too.
 func (s *Service) ImportForCoach(ctx context.Context, user users.User, filename string, data []byte, req CoachImport) (CoachResult, error) {
+	ctx = i18n.WithLocale(ctx, i18n.DefaultLocale)
 	if err := s.checkCoachImport(ctx, user.ID, req); err != nil {
 		return CoachResult{}, err
 	}

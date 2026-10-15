@@ -10,6 +10,7 @@ import (
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
+	"github.com/NorthAIProject/north-client/internal/shared/theme"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
@@ -66,6 +67,11 @@ func (m *Middleware) LoadUser(next http.Handler) http.Handler {
 		// have to resolve the session again to find it.
 		ctx := ContextWithUser(r.Context(), session.User)
 		ctx = i18n.WithLocale(ctx, string(session.User.Locale))
+
+		// Appearance follows the same rule, with one difference: an account
+		// that has never chosen keeps the visitor cookie rather than the
+		// default, so a choice made on the landing page survives signing up.
+		ctx = theme.WithAppearance(ctx, theme.Effective(session.User.Appearance, theme.FromCookie(r)))
 
 		// The same string the server sends as PostHog's DistinctId. Without it
 		// the browser's anonymous session and the account are two unrelated

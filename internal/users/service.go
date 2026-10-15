@@ -9,16 +9,34 @@ import (
 
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
+	"github.com/NorthAIProject/north-client/internal/shared/theme"
 )
 
 // Service holds account rules. It is the only place that decides what a valid
 // profile looks like, so the web form and a future MCP tool cannot drift apart.
 type Service struct {
 	repo *Repository
+
+	// appearance is told when somebody's appearance actually changes. Nil
+	// records nothing.
+	appearance AppearanceRecorder
+}
+
+// AppearanceRecorder hears about a changed appearance. analytics.Funnel is the
+// implementation; an interface because internal/analytics reaches this package
+// through internal/config, and importing it back would be a cycle.
+type AppearanceRecorder interface {
+	AppearanceChanged(ctx context.Context, userID uuid.UUID, appearance, surface string)
 }
 
 func NewService(repo *Repository) *Service {
 	return &Service{repo: repo}
+}
+
+// WithAppearanceRecorder wires the appearance_changed event.
+func (s *Service) WithAppearanceRecorder(r AppearanceRecorder) *Service {
+	s.appearance = r
+	return s
 }
 
 func (s *Service) ByID(ctx context.Context, id uuid.UUID) (User, error) {
@@ -202,17 +220,76 @@ func (s *Service) UpdateProfile(ctx context.Context, id uuid.UUID, p Profile) (U
 	// not be blocked from editing their name.
 	locale := ResolveLocale(string(p.Locale))
 
+	// Appearance gets tone's treatment: three fixed choices, so anything else
+	// came from a hand-made request and is refused rather than rewritten. Nil
+	// is not a choice — it is a client that did not send the field — and
+	// leaves the stored value alone.
+	var appearance *theme.Appearance
+	if p.Appearance != nil {
+		a, ok := theme.Parse(string(*p.Appearance))
+		if !ok {
+			errs = errs.Add("appearance", i18n.T(ctx, "users.err.appearance.invalid"))
+		}
+		appearance = &a
+	}
+
 	if err := errs.OrNil(); err != nil {
 		return User{}, err
 	}
 
-	return s.repo.UpdateProfile(ctx, id, Profile{
+	// Read first only when there is an appearance to compare, so a profile
+	// save that does not touch it costs no extra query.
+	var before theme.Appearance
+	if appearance != nil {
+		current, err := s.repo.ByID(ctx, id)
+		if err != nil {
+			return User{}, err
+		}
+		before = current.Appearance
+	}
+
+	updated, err := s.repo.UpdateProfile(ctx, id, Profile{
 		DisplayName:   name,
 		Timezone:      tz,
 		Locale:        locale,
 		CoachingStyle: strings.TrimSpace(p.CoachingStyle),
 		CoachingTone:  tone,
+		Appearance:    appearance,
 	})
+	if err != nil {
+		return User{}, err
+	}
+
+	if appearance != nil && *appearance != before {
+		s.recordAppearance(ctx, id, *appearance, p.Surface)
+	}
+	return updated, nil
+}
+
+// SetAppearance stores an appearance on its own, for the switcher that has no
+// profile form around it. It reports whether the stored value changed.
+//
+// An invalid value is refused, as UpdateProfile refuses one.
+func (s *Service) SetAppearance(ctx context.Context, id uuid.UUID, value, surface string) (bool, error) {
+	a, ok := theme.Parse(value)
+	if !ok {
+		return false, apperr.FieldErrors{}.Add("appearance", i18n.T(ctx, "users.err.appearance.invalid"))
+	}
+	changed, err := s.repo.SetAppearance(ctx, id, a)
+	if err != nil {
+		return false, err
+	}
+	if changed {
+		s.recordAppearance(ctx, id, a, surface)
+	}
+	return changed, nil
+}
+
+func (s *Service) recordAppearance(ctx context.Context, id uuid.UUID, a theme.Appearance, surface string) {
+	if s.appearance == nil {
+		return
+	}
+	s.appearance.AppearanceChanged(ctx, id, string(a), surface)
 }
 
 func validEmail(s string) bool {

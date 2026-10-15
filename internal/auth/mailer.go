@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 )
 
 // Mailer delivers transactional account email. Auth depends on the interface
@@ -50,25 +52,16 @@ func (m *CaptureMailer) Send(_ context.Context, msg Message) error {
 	return nil
 }
 
-// passwordResetEmail builds the body of a forget-password message.
-func passwordResetEmail(displayName, resetURL string) Message {
-	greeting := "Hi"
+// passwordResetEmail builds the body of a forget-password message in the
+// recipient's language. tag is the account's locale, not the request's: the
+// email is read later, in an inbox, by the person who owns the account.
+func passwordResetEmail(tag, displayName, resetURL string) Message {
+	greeting := i18n.Translate(tag, "auth.email.hi")
 	if displayName != "" {
-		greeting = "Hi " + displayName
+		greeting = fmt.Sprintf(i18n.Translate(tag, "auth.email.hi.name"), displayName)
 	}
 	return Message{
-		Subject: "Reset your Khepri password",
-		Body: fmt.Sprintf(`%s,
-
-Someone asked to reset the password on your Khepri account.
-
-Open this link to choose a new password (it expires in one hour):
-
-%s
-
-If you did not ask for this, you can ignore this email. Your password will stay the same.
-
-— Khepri
-`, greeting, resetURL),
+		Subject: i18n.Translate(tag, "auth.email.subject"),
+		Body:    fmt.Sprintf(i18n.Translate(tag, "auth.email.body"), greeting, resetURL),
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/notifications"
+	"github.com/NorthAIProject/north-client/internal/shared/theme"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
@@ -123,5 +124,24 @@ func TestTheSavedCoachingStyleIsInTheBox(t *testing.T) {
 
 	if !strings.Contains(html, "Be blunt about sleep.</textarea>") {
 		t.Error("the coaching style box renders empty, so saving the profile would erase it")
+	}
+}
+
+// A chosen appearance is shown selected; one never chosen selects nothing, so
+// saving the profile posts no appearance and leaves "never chosen" alone.
+func TestAppearanceSelectMarksOnlyAChoiceThatWasMade(t *testing.T) {
+	html := renderSettings(t, ProfileForm{Appearance: theme.Light}, NotificationsForm{})
+	if !strings.Contains(html, `data-tui-selectbox-value="light" data-tui-selectbox-selected="true"`) {
+		t.Error("the chosen appearance is not marked selected")
+	}
+
+	html = renderSettings(t, ProfileForm{}, NotificationsForm{})
+	if !strings.Contains(html, `name="appearance"`) {
+		t.Fatal("the appearance select is missing")
+	}
+	for _, a := range theme.Appearances {
+		if strings.Contains(html, `data-tui-selectbox-value="`+string(a)+`" data-tui-selectbox-selected="true"`) {
+			t.Errorf("%s is preselected for an account that never chose", a)
+		}
 	}
 }

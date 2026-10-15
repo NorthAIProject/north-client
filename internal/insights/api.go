@@ -310,10 +310,10 @@ func (a *API) consistency(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, err, "Consistency could not be loaded.")
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectConsistency(data))
+	httpx.WriteJSON(w, http.StatusOK, projectConsistency(r.Context(), data))
 }
 
-func projectConsistency(c ConsistencyData) ConsistencyView {
+func projectConsistency(ctx context.Context, c ConsistencyData) ConsistencyView {
 	week := func(w stat.WeekCount) ConsistencyWeek {
 		return ConsistencyWeek{Start: w.Start.Format(time.DateOnly), Days: w.Days}
 	}
@@ -321,7 +321,7 @@ func projectConsistency(c ConsistencyData) ConsistencyView {
 		Days: []ConsistencyDay{}, Weeks: []ConsistencyWeek{},
 		CurrentStreak: c.CurrentStreak, LongestStreak: c.LongestStreak, LongestGap: c.LongestGap,
 		BestWeek: week(c.BestWeek), ThisWeek: c.ThisWeek, UsualPerWeek: c.UsualPerWeek,
-		CheckInStreak: c.CheckInStreak, Sentence: c.Sentence(),
+		CheckInStreak: c.CheckInStreak, Sentence: c.SentenceIn(ctx),
 	}
 	for _, d := range c.Days {
 		out.Days = append(out.Days, ConsistencyDay{Date: d.Day.Format(time.DateOnly), Trained: d.Trained, CheckedIn: d.CheckedIn})

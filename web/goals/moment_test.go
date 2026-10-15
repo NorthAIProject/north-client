@@ -23,7 +23,7 @@ func renderDetail(t *testing.T, m *moments.Moment) string {
 // Marking a goal achieved used to be a redirect and nothing else. The detail
 // page now shows the card once, above the goal, when the redirect says so.
 func TestDetailPageShowsTheMomentOnce(t *testing.T) {
-	m := moments.ForGoalAchieved("Run a half marathon")
+	m := moments.ForGoalAchieved(context.Background(), "Run a half marathon")
 	html := renderDetail(t, &m)
 	for _, want := range []string{`data-moment="goal_achieved"`, "Run a half marathon", `celebrate`} {
 		if !strings.Contains(html, want) {

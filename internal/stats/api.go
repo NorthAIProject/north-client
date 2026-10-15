@@ -9,6 +9,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/stats/stat"
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -236,7 +237,9 @@ func (a *API) cardioKind(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, err, "That activity could not be loaded.")
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, ProjectCardioKind(st))
+	// Bests' labels read in the caller's language; the name does not, since
+	// it is what the client sends back to ask for this kind again.
+	httpx.WriteJSON(w, http.StatusOK, ProjectCardioKind(st.In(i18n.LocaleFrom(r.Context()))))
 }
 
 // ProjectCardioKind is one activity type as the API returns it.
@@ -271,7 +274,9 @@ func (a *API) patterns(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, err, "Patterns could not be loaded.")
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, ProjectPatterns(rg.Key, days, found))
+	// Worded for the person here, at the edge: Patterns stays English because
+	// the coach reads the same findings.
+	httpx.WriteJSON(w, http.StatusOK, ProjectPatterns(rg.Key, days, stat.Localize(i18n.LocaleFrom(r.Context()), found)))
 }
 
 func days(values []stat.DayValue) []StatsDayValue {

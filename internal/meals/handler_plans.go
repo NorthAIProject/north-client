@@ -71,7 +71,7 @@ func (h *Handler) createPlan(w http.ResponseWriter, r *http.Request) {
 	plan, err := h.plans.CreatePlan(r.Context(), user.ID, in, nil, false)
 	if err != nil {
 		var fieldErrs apperr.FieldErrors
-		if apperr.As(err, &fieldErrs) {
+		if apperr.As(localize(r.Context(), err), &fieldErrs) {
 			form.Errors = fieldErrs.Messages()
 			h.renderPlansIndex(w, r, http.StatusUnprocessableEntity, form)
 			return
@@ -143,9 +143,9 @@ func (h *Handler) changeFailed(w http.ResponseWriter, r *http.Request, planID uu
 	switch {
 	case apperr.As(err, &over):
 		h.renderPlan(w, r, http.StatusConflict, planID, nutritionpages.PlanPage{Overage: &nutritionpages.OverageNotice{
-			Message: over.Error(), CanConfirm: over.Verdict.CanConfirm, Days: over.Verdict.Over, Repost: repostOf(r),
+			Message: over.MessageIn(r.Context()), CanConfirm: over.Verdict.CanConfirm, Days: over.Verdict.Over, Repost: repostOf(r),
 		}})
-	case apperr.As(err, &fieldErrs):
+	case apperr.As(localize(r.Context(), err), &fieldErrs):
 		h.renderPlan(w, r, http.StatusUnprocessableEntity, planID, nutritionpages.PlanPage{
 			Problem: nutritionpages.Problem{Scope: scope, Errors: fieldErrs.Messages()},
 		})

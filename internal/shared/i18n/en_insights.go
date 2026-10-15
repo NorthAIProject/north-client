@@ -423,4 +423,24 @@ var englishInsights = map[string]string{
 	"insights.metric.name.vo2max":                   "VO2 max",
 	"insights.metric.name.weight":                   "Weight",
 	"insights.metric.name.notes":                    "Goal notes",
+
+	// Why recovery is off: one sentence per signal outside its usual range.
+	"insights.recovery.why.above": "%[1]s is above your usual: %[2]s on %[3]s, usually %[4]s–%[5]s.",
+	"insights.recovery.why.below": "%[1]s is below your usual: %[2]s on %[3]s, usually %[4]s–%[5]s.",
+
+	// The consistency line, assembled in order: week, usual, streaks, check-ins.
+	"insights.consistency.line.week":     "Consistency: active %[1]s this week",
+	"insights.consistency.line.usual":    " (usually %.1[1]f)",
+	"insights.consistency.line.streaks":  "; current streak %[1]s, longest %[2]s and longest gap %[3]s in the last %[4]d weeks",
+	"insights.consistency.line.checkins": "; check-in streak %[1]s",
+	"insights.consistency.days.one":      "1 day",
+	"insights.consistency.days.many":     "%[1]d days",
+
+	// Plan adherence: this week, then the selected range.
+	"insights.plan.week.done.one":     "This week's session is done.",
+	"insights.plan.week.done.many":    "All %[1]d sessions done this week.",
+	"insights.plan.week.partial.one":  "%[1]d of 1 session done this week.",
+	"insights.plan.week.partial.many": "%[1]d of %[2]d sessions done this week.",
+	"insights.plan.range.one":         "%[1]d of 1 planned session done.",
+	"insights.plan.range.many":        "%[1]d of %[2]d planned sessions done.",
 }
