@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/a-h/templ"
 )
 
 var pathData = regexp.MustCompile(` d="([^"]*)"`)
@@ -188,5 +190,37 @@ func TestUnknownNameFallsBackToThePlug(t *testing.T) {
 	}
 	if !strings.Contains(b.String(), "<svg") {
 		t.Error("unknown provider rendered no icon at all")
+	}
+}
+
+// TestStoreMarksMatchTheirSource pins the two platform marks on the landing
+// page's store badges, the same way TestVendoredMarksMatchTheirSource pins the
+// provider marks. They are not providers, so BrandFor does not reach them.
+func TestStoreMarksMatchTheirSource(t *testing.T) {
+	tests := []struct {
+		name    string
+		mark    templ.Component
+		lengths []int
+	}{
+		{name: "apple", mark: BrandApple(), lengths: []int{508, 173}},
+		{name: "android", mark: BrandAndroid(), lengths: []int{973}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var b strings.Builder
+			if err := tt.mark.Render(context.Background(), &b); err != nil {
+				t.Fatalf("render: %v", err)
+			}
+			matches := pathData.FindAllStringSubmatch(b.String(), -1)
+			if len(matches) != len(tt.lengths) {
+				t.Fatalf("got %d paths, want %d", len(matches), len(tt.lengths))
+			}
+			for i, m := range matches {
+				if len(m[1]) != tt.lengths[i] {
+					t.Errorf("path %d is %d characters, want %d", i, len(m[1]), tt.lengths[i])
+				}
+			}
+		})
 	}
 }
