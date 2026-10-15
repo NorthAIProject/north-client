@@ -77,8 +77,9 @@ var spanishPlanImport = map[string]string{
 	"planimport.meal.choose_ingredient": "Elige un ingrediente",
 	"planimport.meal.save_mine":         "Guardar como alimento propio (macros del archivo)",
 
-	"planimport.band.no_carb":   "Sin carbohidratos",
-	"planimport.band.low_carb":  "Bajo en carbohidratos",
-	"planimport.band.mid_carb":  "Carbohidratos moderados",
-	"planimport.band.high_carb": "Alto en carbohidratos",
+	"planimport.band.no_carb":       "Sin carbohidratos",
+	"planimport.band.low_carb":      "Bajo en carbohidratos",
+	"planimport.band.mid_carb":      "Carbohidratos moderados",
+	"planimport.band.high_carb":     "Alto en carbohidratos",
+	"planimport.meal.slot_optional": "comida opcional · no cuenta",
 }

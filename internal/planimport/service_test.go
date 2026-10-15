@@ -473,3 +473,47 @@ func TestAnOptionalImportedFoodIsShownButNotCounted(t *testing.T) {
 		t.Fatalf("lunch total = %+v, want the optional rice left out", lunch.TotalMacros)
 	}
 }
+
+// An optional meal is previewed with its own macros but left out of the
+// day's total, and saved optional so the plan leaves it out too.
+func TestAnOptionalImportedMealIsShownButNotCounted(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	for _, in := range []meals.IngredientInput{
+		{Name: "Grilled chicken breast", Category: meals.CategoryProtein, Per100g: meals.Macros{Calories: 165, ProteinG: 31, FatG: 3.6}},
+		{Name: "Plain white rice", Category: meals.CategoryCarb, Per100g: meals.Macros{Calories: 130, ProteinG: 2.7, FatG: 0.3, CarbG: 28}},
+	} {
+		if _, err := f.ingredients.Create(ctx, f.user.ID, in); err != nil {
+			t.Fatal(err)
+		}
+	}
+	csv := "Meal,Food,Quantity,Unit\n" +
+		"Lunch,Grilled chicken breast,100,g\n" +
+		"Ceia (opcional),Plain white rice,500,g\n"
+	draft, err := f.svc.ParseMeal(ctx, f.user, "plan.csv", []byte(csv), "")
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	draft.PlanType = string(meal.LowCarb)
+	draft = f.svc.PreviewMeal(ctx, f.user.ID, draft)
+
+	day := draft.Days[0]
+	if ceia := day.Meals[1]; ceia.Name != "Ceia" || !ceia.Optional || ceia.Foods[0].Macros == nil {
+		t.Fatalf("ceia = %+v, want an optional meal named Ceia with its rice resolved", ceia)
+	}
+	if day.Totals == nil || !within(day.Totals.ProteinG, 31) || day.Totals.CarbG > 0.01 || len(day.Over) != 0 {
+		t.Fatalf("day = %+v, want the lunch alone counted and the day within target", day)
+	}
+
+	saved, _, err := f.svc.CommitMeal(ctx, f.user, draft, false)
+	if err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+	got := saved.Days[0].Meals
+	if len(got) != 2 || got[0].Optional || !got[1].Optional || got[1].Name != "Ceia" {
+		t.Fatalf("meals = %+v, want Lunch counted and Ceia saved optional", got)
+	}
+	if got[1].TotalMacros.CarbG < 100 || saved.TotalMacros.CarbG > 0.01 {
+		t.Fatalf("ceia total %+v, plan total %+v: want Ceia's own total kept and the plan's without it", got[1].TotalMacros, saved.TotalMacros)
+	}
+}

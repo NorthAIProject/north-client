@@ -77,8 +77,9 @@ var portugueseEuropeanPlanImport = map[string]string{
 	"planimport.meal.choose_ingredient": "Escolhe um ingrediente",
 	"planimport.meal.save_mine":         "Guardar como alimento meu (macros do ficheiro)",
 
-	"planimport.band.no_carb":   "Sem hidratos",
-	"planimport.band.low_carb":  "Poucos hidratos",
-	"planimport.band.mid_carb":  "Hidratos moderados",
-	"planimport.band.high_carb": "Muitos hidratos",
+	"planimport.band.no_carb":       "Sem hidratos",
+	"planimport.band.low_carb":      "Poucos hidratos",
+	"planimport.band.mid_carb":      "Hidratos moderados",
+	"planimport.band.high_carb":     "Muitos hidratos",
+	"planimport.meal.slot_optional": "refeição opcional · não conta",
 }

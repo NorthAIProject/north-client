@@ -189,10 +189,12 @@ type DayDraft struct {
 }
 
 // MealDraft is a meal slot to create: its default option's portions, and the
-// slot's other options. Only the default counts toward the day's target.
+// slot's other options. Only the default counts toward the day's target, and
+// not even that when the slot is Optional.
 type MealDraft struct {
 	Name         string
 	OptionLabel  string
+	Optional     bool
 	Portions     []MealIngredientInput
 	Alternatives []MealOptionDraft
 }
@@ -307,7 +309,7 @@ func (s *MealPlanService) PlanIDOfMealIngredient(ctx context.Context, mealIngred
 // newMeals validates a day's drafted meals and works out their portions,
 // returning them with what the day's defaults add up to. Alternatives are
 // worked out the same way but never counted: one is eaten instead of its
-// default, not as well.
+// default, not as well. An optional slot is not counted either.
 func (s *MealPlanService) newMeals(ctx context.Context, userID uuid.UUID, drafts []MealDraft) ([]NewMeal, Macros, error) {
 	out := make([]NewMeal, 0, len(drafts))
 	var consumed Macros
@@ -320,7 +322,7 @@ func (s *MealPlanService) newMeals(ctx context.Context, userID uuid.UUID, drafts
 		if err != nil {
 			return nil, Macros{}, err
 		}
-		slot := NewMeal{Name: name, OptionLabel: strings.TrimSpace(draft.OptionLabel), Portions: portions}
+		slot := NewMeal{Name: name, OptionLabel: strings.TrimSpace(draft.OptionLabel), Optional: draft.Optional, Portions: portions}
 		for _, alt := range draft.Alternatives {
 			label, err := validateOptionLabel(alt.Label)
 			if err != nil {
@@ -333,7 +335,9 @@ func (s *MealPlanService) newMeals(ctx context.Context, userID uuid.UUID, drafts
 			slot.Alternatives = append(slot.Alternatives, NewMeal{Name: name, OptionLabel: label, Portions: altPortions})
 		}
 		out = append(out, slot)
-		consumed = consumed.Add(total)
+		if !draft.Optional {
+			consumed = consumed.Add(total)
+		}
 	}
 	return out, consumed, nil
 }
@@ -509,7 +513,7 @@ func (s *MealPlanService) AddMeal(ctx context.Context, dayID, userID uuid.UUID, 
 	var added Meal
 	err = s.repo.WithPlanLocked(ctx, planID, userID, func(tx *PlanTx, _ MealPlan) error {
 		var addErr error
-		added, addErr = tx.AddMeal(ctx, planID, dayID, name, "")
+		added, addErr = tx.AddMeal(ctx, planID, dayID, name, "", false)
 		return addErr
 	})
 	return added, err
@@ -622,8 +626,8 @@ func (s *MealPlanService) AddIngredient(ctx context.Context, mealID, userID uuid
 // The portions are checked together against the meal's day, and written
 // together or not at all: a bad line — a missing quantity, an id this account
 // cannot see — or a day the batch would take over refuses the whole batch
-// instead of leaving half a meal behind. An alternative option never counts
-// toward its day, so adding to one is never an overage.
+// instead of leaving half a meal behind. An alternative option or an optional
+// meal never counts toward its day, so adding to one is never an overage.
 func (s *MealPlanService) AddIngredients(ctx context.Context, mealID, userID uuid.UUID, in []MealIngredientInput, confirm bool) ([]MealIngredient, error) {
 	if len(in) == 0 {
 		return nil, apperr.FieldErrors{}.Add("ingredient_id", "Choose at least one ingredient.").OrNil()
@@ -647,7 +651,8 @@ func (s *MealPlanService) AddIngredients(ctx context.Context, mealID, userID uui
 		if !ok {
 			return apperr.ErrNotFound
 		}
-		if !alternative {
+		m, _ := findMeal(plan, mealID)
+		if !alternative && !m.Optional {
 			after := plan.State()
 			after.Days[i].Consumed = after.Days[i].Consumed.Add(total)
 			if overErr := checkOverage(active, plan, after, false, confirm); overErr != nil {
@@ -716,6 +721,38 @@ func (s *MealPlanService) SetIngredientOptional(ctx context.Context, mealIngredi
 			return afterErr
 		}
 		return checkOverage(active, plan, after.State(), false, confirm)
+	})
+	return updated, err
+}
+
+// SetMealOptional marks a meal slot — whichever of its options mealID names —
+// as optional (shown, not counted) or counted. Counting a meal again can take
+// its day over the target, which is refused with an *OverageError unless
+// confirm is set, the same as adding its food would be.
+func (s *MealPlanService) SetMealOptional(ctx context.Context, mealID, userID uuid.UUID, optional, confirm bool) (MealPlan, error) {
+	planID, err := s.repo.PlanIDOfMeal(ctx, mealID, userID)
+	if err != nil {
+		return MealPlan{}, err
+	}
+	active, err := s.requireTarget(ctx, userID)
+	if err != nil {
+		return MealPlan{}, err
+	}
+	var updated MealPlan
+	err = s.repo.WithPlanLocked(ctx, planID, userID, func(tx *PlanTx, plan MealPlan) error {
+		slot, ok := findSlot(plan, mealID)
+		if !ok {
+			return apperr.ErrNotFound
+		}
+		if setErr := tx.SetSlotOptional(ctx, planID, slot, optional); setErr != nil {
+			return setErr
+		}
+		var afterErr error
+		updated, afterErr = tx.Plan(ctx, planID, userID, true)
+		if afterErr != nil {
+			return afterErr
+		}
+		return checkOverage(active, plan, updated.State(), false, confirm)
 	})
 	return updated, err
 }

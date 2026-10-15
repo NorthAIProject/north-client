@@ -84,8 +84,9 @@ var englishPlanImport = map[string]string{
 	"planimport.meal.save_mine":         "Save as my own food (file's macros)",
 
 	// Preset carb bands, by meal.PlanType.
-	"planimport.band.no_carb":   "No carb",
-	"planimport.band.low_carb":  "Low carb",
-	"planimport.band.mid_carb":  "Mid carb",
-	"planimport.band.high_carb": "High carb",
+	"planimport.band.no_carb":       "No carb",
+	"planimport.band.low_carb":      "Low carb",
+	"planimport.band.mid_carb":      "Mid carb",
+	"planimport.band.high_carb":     "High carb",
+	"planimport.meal.slot_optional": "optional meal · not counted",
 }

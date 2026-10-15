@@ -85,6 +85,7 @@ type mealReply struct {
 	modelReply
 	Rows []struct {
 		Day, Meal, Option, Food, Quantity, Unit, Protein, Carbs, Fat, Confidence, Optional string
+		MealOptional                                                                       string `json:"meal_optional"`
 
 		FoodEN        string `json:"food_en"`
 		GramsEstimate string `json:"grams_estimate"`
@@ -136,6 +137,7 @@ var workoutSchema = replySchema("one exercise", map[string]string{
 var mealSchema = replySchema("one food", map[string]string{
 	"day":            "the day heading, as written, or empty when the plan has no days",
 	"meal":           "the meal heading, as written, or empty",
+	"meal_optional":  "\"yes\" when the source offers the whole meal as optional — \"Ceia (opcional)\", \"se tiver fome\", \"facultativo\" — so it is shown but not counted; otherwise empty",
 	"option":         "which of the meal's interchangeable options this food belongs to, as labelled (\"Opção 2\"), or empty when the meal has one",
 	"food":           "the food name in the source's language, with words broken by letter-spacing rejoined",
 	"food_en":        "the catalog name that fits this food, else a plain grocery-style English name",
@@ -146,7 +148,7 @@ var mealSchema = replySchema("one food", map[string]string{
 	"protein":        "grams of protein if the source states it for this food, or empty",
 	"carbs":          "grams of carbohydrate if the source states it for this food, or empty",
 	"fat":            "grams of fat if the source states it for this food, or empty",
-}, []string{"day", "meal", "option", "food", "food_en", "quantity", "unit", "grams_estimate", "optional", "protein", "carbs", "fat"}, map[string]*ai.Schema{
+}, []string{"day", "meal", "meal_optional", "option", "food", "food_en", "quantity", "unit", "grams_estimate", "optional", "protein", "carbs", "fat"}, map[string]*ai.Schema{
 	"notes": ai.String("the plan's advice, recipes and general guidance, cleaned of letter-spacing, in the source's language, as markdown; empty when there is none"),
 	"same_as": ai.Array("meals the source says are the same as another meal, instead of repeating their foods",
 		ai.Object("one meal eaten the same as another", map[string]*ai.Schema{
@@ -202,8 +204,8 @@ func (r *AIReader) ReadMeal(ctx context.Context, user users.User, src Source, hi
 		out.Rows = append(out.Rows, MealRow{
 			Day: row.Day, Meal: row.Meal, Option: row.Option, Food: row.Food, FoodEN: row.FoodEN,
 			Quantity: row.Quantity, Unit: row.Unit, GramsEstimate: row.GramsEstimate,
-			Optional: isYes(row.Optional),
-			Protein:  row.Protein, Carbs: row.Carbs, Fat: row.Fat,
+			Optional: isYes(row.Optional), MealOptional: isYes(row.MealOptional),
+			Protein: row.Protein, Carbs: row.Carbs, Fat: row.Fat,
 			Uncertain: strings.EqualFold(row.Confidence, "low"),
 		})
 	}

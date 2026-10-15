@@ -109,6 +109,9 @@ type MealDraftMeal struct {
 	Foods        []FoodDraft       `json:"foods"`
 	OptionLabel  string            `json:"optionLabel,omitempty"`
 	Alternatives []MealDraftOption `json:"alternatives,omitempty"`
+	// Optional is a meal the plan offers but does not count ("Ceia
+	// (opcional)"): shown with its own macros, left out of the day's total.
+	Optional bool `json:"optional,omitempty"`
 }
 
 // MealDraftOption is a further option of a meal: eaten instead of the first,
