@@ -9181,6 +9181,17 @@ components:
         coachingTone:
           type: string
           enum: [direct, warm, analytical, tough_love]
+        appearance:
+          type: string
+          description: >-
+            How the person wants the app drawn: one of `system`, `light` or
+            `dark`. A plain string rather than an enum on purpose, so a value
+            added later cannot break decoding of the whole profile in a shipped
+            app. Absent when the person has never chosen; each client
+            then applies its own default — iOS follows the system — and the
+            server never reports the web's default in its place. On PUT,
+            leaving it out keeps the stored value; any other string is refused
+            with a 422 naming the field.
     Preferences:
       type: object
       required: [unitsSystem, defaultGoal, defaultMacroSplit]

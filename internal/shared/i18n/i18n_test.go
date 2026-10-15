@@ -62,7 +62,6 @@ func TestUntranslatedStringsAreAccountedFor(t *testing.T) {
 			"settings.prefs.imperial":   true, // the system's name and both unit abbreviations are international
 			"oauth.new.email":           true, // "Email" is the ordinary pt-PT spelling; pt-BR uses "E-mail"
 			"nav.coach-insights.nav":    true, // "coaching" is borrowed unchanged, like nav.fitness
-			"land.app.beta":             true, // "Beta" is borrowed unchanged
 			"checkins.source.siri":      true, // Siri is a product name
 			"checkins.field.stress":     true, // "stress" is the everyday pt-PT word
 			"checkins.meta.stress":      true, // same borrowing as checkins.field.stress
@@ -78,7 +77,6 @@ func TestUntranslatedStringsAreAccountedFor(t *testing.T) {
 			"palette.empty.after":       true,
 			"settings.prefs.imperial":   true,
 			"nav.coach-insights.nav":    true, // "coaching" is borrowed unchanged, like nav.fitness
-			"land.app.beta":             true,
 			"checkins.source.siri":      true, // Siri is a product name
 			"checkins.tags":             false,
 			"exercises.category.cardio": true, // same borrowing as nav.cardio-insights.nav
@@ -96,7 +94,6 @@ func TestUntranslatedStringsAreAccountedFor(t *testing.T) {
 			"lifedomain.personal":       true, // "Personal" is spelled the same
 			"land.price.pro":            true, // the plan's name, not a word
 			"nav.coach-insights.nav":    true, // "coaching" is borrowed unchanged, like nav.fitness
-			"land.app.beta":             true, // "Beta" is spelled the same
 			"checkins.source.siri":      true, // Siri is a product name
 			"social.country.258":        true, // "Mozambique" is the Spanish spelling too
 			"social.country.61":         true, // "Australia", same spelling

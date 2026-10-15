@@ -20,15 +20,29 @@ SELECT * FROM users WHERE email = $1;
 SELECT EXISTS (SELECT 1 FROM users WHERE email = $1);
 
 -- name: UpdateUserProfile :one
+-- A NULL appearance leaves the stored one alone. Clients built before the
+-- column existed send a profile without it, and a full-replace update must not
+-- read that as "forget what this person chose".
 UPDATE users
-SET display_name   = $2,
-    timezone       = $3,
-    coaching_style = $4,
-    coaching_tone  = $5,
-    locale         = $6,
+SET display_name   = @display_name,
+    timezone       = @timezone,
+    coaching_style = @coaching_style,
+    coaching_tone  = @coaching_tone,
+    locale         = @locale,
+    appearance     = COALESCE(sqlc.narg(appearance), appearance),
     updated_at     = now()
-WHERE id = $1
+WHERE id = @id
 RETURNING *;
+
+-- name: SetUserAppearance :execrows
+-- Writes the appearance only when it differs, so the affected-row count says
+-- whether anything changed — which is what decides whether the change is
+-- reported, without a read beforehand that a concurrent save could outrun.
+UPDATE users
+SET appearance = sqlc.arg(appearance)::text,
+    updated_at = now()
+WHERE id = @id
+  AND appearance IS DISTINCT FROM sqlc.arg(appearance)::text;
 
 -- name: UpdateUserPassword :exec
 UPDATE users

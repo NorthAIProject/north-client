@@ -14,7 +14,7 @@ import (
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (email, password_hash, display_name, timezone, locale)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at, tier, onboarded_at, coaching_tone, locale, handle, phone_e164, phone_verified_at
+RETURNING id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at, tier, onboarded_at, coaching_tone, locale, handle, phone_e164, phone_verified_at, appearance
 `
 
 type CreateUserParams struct {
@@ -50,6 +50,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.Handle,
 		&i.PhoneE164,
 		&i.PhoneVerifiedAt,
+		&i.Appearance,
 	)
 	return i, err
 }
@@ -57,7 +58,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 const createUserWithID = `-- name: CreateUserWithID :one
 INSERT INTO users (id, email, password_hash, display_name, timezone, locale)
 VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at, tier, onboarded_at, coaching_tone, locale, handle, phone_e164, phone_verified_at
+RETURNING id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at, tier, onboarded_at, coaching_tone, locale, handle, phone_e164, phone_verified_at, appearance
 `
 
 type CreateUserWithIDParams struct {
@@ -97,6 +98,7 @@ func (q *Queries) CreateUserWithID(ctx context.Context, arg CreateUserWithIDPara
 		&i.Handle,
 		&i.PhoneE164,
 		&i.PhoneVerifiedAt,
+		&i.Appearance,
 	)
 	return i, err
 }
@@ -113,7 +115,7 @@ func (q *Queries) EmailExists(ctx context.Context, email string) (bool, error) {
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at, tier, onboarded_at, coaching_tone, locale, handle, phone_e164, phone_verified_at FROM users WHERE email = $1
+SELECT id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at, tier, onboarded_at, coaching_tone, locale, handle, phone_e164, phone_verified_at, appearance FROM users WHERE email = $1
 `
 
 func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
@@ -135,12 +137,13 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.Handle,
 		&i.PhoneE164,
 		&i.PhoneVerifiedAt,
+		&i.Appearance,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at, tier, onboarded_at, coaching_tone, locale, handle, phone_e164, phone_verified_at FROM users WHERE id = $1
+SELECT id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at, tier, onboarded_at, coaching_tone, locale, handle, phone_e164, phone_verified_at, appearance FROM users WHERE id = $1
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
@@ -162,12 +165,13 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 		&i.Handle,
 		&i.PhoneE164,
 		&i.PhoneVerifiedAt,
+		&i.Appearance,
 	)
 	return i, err
 }
 
 const listOnboardedUsers = `-- name: ListOnboardedUsers :many
-SELECT id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at, tier, onboarded_at, coaching_tone, locale, handle, phone_e164, phone_verified_at FROM users
+SELECT id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at, tier, onboarded_at, coaching_tone, locale, handle, phone_e164, phone_verified_at, appearance FROM users
 WHERE onboarded_at IS NOT NULL
   AND ($1::uuid = '00000000-0000-0000-0000-000000000000' OR id > $1)
 ORDER BY id
@@ -206,6 +210,7 @@ func (q *Queries) ListOnboardedUsers(ctx context.Context, arg ListOnboardedUsers
 			&i.Handle,
 			&i.PhoneE164,
 			&i.PhoneVerifiedAt,
+			&i.Appearance,
 		); err != nil {
 			return nil, err
 		}
@@ -223,7 +228,7 @@ SET onboarded_at = now(),
     updated_at   = now()
 WHERE id = $1
   AND onboarded_at IS NULL
-RETURNING id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at, tier, onboarded_at, coaching_tone, locale, handle, phone_e164, phone_verified_at
+RETURNING id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at, tier, onboarded_at, coaching_tone, locale, handle, phone_e164, phone_verified_at, appearance
 `
 
 // Sets the first-run flag once. A second call returns the row unchanged.
@@ -246,8 +251,33 @@ func (q *Queries) MarkUserOnboarded(ctx context.Context, id uuid.UUID) (User, er
 		&i.Handle,
 		&i.PhoneE164,
 		&i.PhoneVerifiedAt,
+		&i.Appearance,
 	)
 	return i, err
+}
+
+const setUserAppearance = `-- name: SetUserAppearance :execrows
+UPDATE users
+SET appearance = $1::text,
+    updated_at = now()
+WHERE id = $2
+  AND appearance IS DISTINCT FROM $1::text
+`
+
+type SetUserAppearanceParams struct {
+	Appearance string
+	ID         uuid.UUID
+}
+
+// Writes the appearance only when it differs, so the affected-row count says
+// whether anything changed — which is what decides whether the change is
+// reported, without a read beforehand that a concurrent save could outrun.
+func (q *Queries) SetUserAppearance(ctx context.Context, arg SetUserAppearanceParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setUserAppearance, arg.Appearance, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const updateUserPassword = `-- name: UpdateUserPassword :exec
@@ -269,33 +299,39 @@ func (q *Queries) UpdateUserPassword(ctx context.Context, arg UpdateUserPassword
 
 const updateUserProfile = `-- name: UpdateUserProfile :one
 UPDATE users
-SET display_name   = $2,
-    timezone       = $3,
-    coaching_style = $4,
-    coaching_tone  = $5,
-    locale         = $6,
+SET display_name   = $1,
+    timezone       = $2,
+    coaching_style = $3,
+    coaching_tone  = $4,
+    locale         = $5,
+    appearance     = COALESCE($6, appearance),
     updated_at     = now()
-WHERE id = $1
-RETURNING id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at, tier, onboarded_at, coaching_tone, locale, handle, phone_e164, phone_verified_at
+WHERE id = $7
+RETURNING id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at, tier, onboarded_at, coaching_tone, locale, handle, phone_e164, phone_verified_at, appearance
 `
 
 type UpdateUserProfileParams struct {
-	ID            uuid.UUID
 	DisplayName   string
 	Timezone      string
 	CoachingStyle *string
 	CoachingTone  string
 	Locale        string
+	Appearance    *string
+	ID            uuid.UUID
 }
 
+// A NULL appearance leaves the stored one alone. Clients built before the
+// column existed send a profile without it, and a full-replace update must not
+// read that as "forget what this person chose".
 func (q *Queries) UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) (User, error) {
 	row := q.db.QueryRow(ctx, updateUserProfile,
-		arg.ID,
 		arg.DisplayName,
 		arg.Timezone,
 		arg.CoachingStyle,
 		arg.CoachingTone,
 		arg.Locale,
+		arg.Appearance,
+		arg.ID,
 	)
 	var i User
 	err := row.Scan(
@@ -314,6 +350,7 @@ func (q *Queries) UpdateUserProfile(ctx context.Context, arg UpdateUserProfilePa
 		&i.Handle,
 		&i.PhoneE164,
 		&i.PhoneVerifiedAt,
+		&i.Appearance,
 	)
 	return i, err
 }
@@ -323,7 +360,7 @@ UPDATE users
 SET tier       = $2,
     updated_at = now()
 WHERE id = $1
-RETURNING id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at, tier, onboarded_at, coaching_tone, locale, handle, phone_e164, phone_verified_at
+RETURNING id, email, password_hash, display_name, timezone, coaching_style, created_at, updated_at, tier, onboarded_at, coaching_tone, locale, handle, phone_e164, phone_verified_at, appearance
 `
 
 type UpdateUserTierParams struct {
@@ -352,6 +389,7 @@ func (q *Queries) UpdateUserTier(ctx context.Context, arg UpdateUserTierParams) 
 		&i.Handle,
 		&i.PhoneE164,
 		&i.PhoneVerifiedAt,
+		&i.Appearance,
 	)
 	return i, err
 }

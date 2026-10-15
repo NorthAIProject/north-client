@@ -86,7 +86,7 @@ func SetCookie(w http.ResponseWriter, r *http.Request, tag string) {
 		Expires:  time.Now().Add(cookieLifetime),
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
-		Secure:   r.TLS != nil,
+		Secure:   servedOverHTTPS(r),
 	}
 	if _, served := catalogues[tag]; !served {
 		c.Value = ""
@@ -102,4 +102,12 @@ func Served() []string {
 	out := make([]string, len(names))
 	copy(out, names)
 	return out
+}
+
+// servedOverHTTPS reports whether the visitor reached the site over HTTPS. In
+// the cluster TLS ends at the ingress, so r.TLS is always nil there and the
+// forwarded scheme is what says so. A forged header can only add Secure, which
+// costs nothing.
+func servedOverHTTPS(r *http.Request) bool {
+	return r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
 }

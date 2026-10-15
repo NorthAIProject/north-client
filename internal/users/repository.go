@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/theme"
 	usersdb "github.com/NorthAIProject/north-client/internal/users/db"
 )
 
@@ -136,6 +137,15 @@ type Profile struct {
 	Locale        Locale
 	CoachingStyle string
 	CoachingTone  Tone
+
+	// Appearance is nil to leave the stored value as it is. A profile is
+	// saved whole, and the clients that predate this field send it without
+	// one; nil is how "they did not say" stays different from a choice.
+	Appearance *theme.Appearance
+
+	// Surface names where the save came from — web, ios — for the
+	// appearance_changed event. Never stored.
+	Surface string
 }
 
 func (r *Repository) UpdateProfile(ctx context.Context, id uuid.UUID, p Profile) (User, error) {
@@ -158,6 +168,7 @@ func (r *Repository) UpdateProfile(ctx context.Context, id uuid.UUID, p Profile)
 		CoachingStyle: style,
 		CoachingTone:  string(tone),
 		Locale:        string(locale),
+		Appearance:    appearanceColumn(p.Appearance),
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -166,6 +177,25 @@ func (r *Repository) UpdateProfile(ctx context.Context, id uuid.UUID, p Profile)
 		return User{}, apperr.Wrap(err, "update profile")
 	}
 	return fromDB(row), nil
+}
+
+// SetAppearance stores a validated appearance and reports whether it differed
+// from what was stored. The service decides what is valid; this only writes.
+func (r *Repository) SetAppearance(ctx context.Context, id uuid.UUID, a theme.Appearance) (bool, error) {
+	n, err := r.q.SetUserAppearance(ctx, usersdb.SetUserAppearanceParams{ID: id, Appearance: string(a)})
+	if err != nil {
+		return false, apperr.Wrap(err, "set appearance")
+	}
+	return n > 0, nil
+}
+
+// appearanceColumn maps "not given" to NULL, which the query reads as "keep".
+func appearanceColumn(a *theme.Appearance) *string {
+	if a == nil {
+		return nil
+	}
+	s := string(*a)
+	return &s
 }
 
 func (r *Repository) ListOnboarded(ctx context.Context, after uuid.UUID, limit int) ([]User, error) {

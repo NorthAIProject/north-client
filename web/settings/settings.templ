@@ -13,6 +13,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/preferences"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
+	"github.com/NorthAIProject/north-client/internal/shared/theme"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
 	"github.com/NorthAIProject/north-client/web/shared/mascot"
@@ -39,7 +40,14 @@ type ProfileForm struct {
 	Locale        users.Locale
 	CoachingStyle string
 	CoachingTone  users.Tone
-	Errors        map[string]string
+
+	// Appearance is the stored choice, or empty when the person never made
+	// one. Empty renders no item selected, and the select then posts nothing,
+	// which the handler reads as "unchanged": saving a name must not pin an
+	// unchosen account to whatever the web default happens to be today.
+	Appearance theme.Appearance
+
+	Errors map[string]string
 }
 
 func (f ProfileForm) fieldError(name string) string { return f.Errors[name] }
@@ -67,7 +75,13 @@ func ProfileFormFor(u users.User) ProfileForm {
 	return ProfileForm{
 		DisplayName: u.DisplayName, Timezone: u.Timezone, Locale: u.Locale,
 		CoachingStyle: u.CoachingStyle, CoachingTone: u.CoachingTone,
+		Appearance: u.Appearance,
 	}
+}
+
+// appearanceKey names an appearance in the message catalogue.
+func appearanceKey(a theme.Appearance) string {
+	return "appearance." + string(a)
 }
 
 // NotificationsForm carries what Khepri may say without being asked.
@@ -348,6 +362,36 @@ templ profileCard(f ProfileForm) {
 					}
 					@form.Description() {
 						{ i18n.T(ctx, "settings.profile.language.desc") }
+					}
+				}
+				// Saved with the rest of the profile. The redirect that follows a
+				// save re-renders the whole document, which is what applies the new
+				// class to <html> — no swap, so no selectbox left blank by one.
+				@form.Item() {
+					@label.Label(label.Props{For: "appearance"}) {
+						{ i18n.T(ctx, "settings.profile.appearance") }
+					}
+					@selectbox.SelectBox() {
+						@selectbox.Trigger(selectbox.TriggerProps{ID: "appearance", Name: "appearance", HasError: f.fieldError("appearance") != ""}) {
+							// Never chosen: the placeholder names what is being shown
+							// right now, without selecting it.
+							@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, appearanceKey(theme.AppearanceFrom(ctx)))})
+						}
+						@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
+							for _, a := range theme.Appearances {
+								@selectbox.Item(selectbox.ItemProps{Value: string(a), Selected: f.Appearance == a}) {
+									{ i18n.T(ctx, appearanceKey(a)) }
+								}
+							}
+						}
+					}
+					@form.Description() {
+						{ i18n.T(ctx, "settings.profile.appearance.desc") }
+					}
+					if f.fieldError("appearance") != "" {
+						@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+							{ f.fieldError("appearance") }
+						}
 					}
 				}
 				@form.Item() {

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/shared/theme"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
@@ -35,6 +36,7 @@ func TestTheSessionUserMatchesTheStoredUser(t *testing.T) {
 	}
 
 	userSvc := users.NewService(users.NewRepository(pool))
+	light := theme.Light
 
 	// Move every field the projection could forget away from its zero value, so
 	// a dropped assignment shows up as a difference rather than as two zeroes
@@ -45,6 +47,7 @@ func TestTheSessionUserMatchesTheStoredUser(t *testing.T) {
 		CoachingStyle: "short answers, no preamble",
 		CoachingTone:  users.ToneToughLove,
 		Locale:        users.LocalePTBR,
+		Appearance:    &light,
 	})
 	if err != nil {
 		t.Fatalf("update profile: %v", err)
