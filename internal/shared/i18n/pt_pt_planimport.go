@@ -37,7 +37,7 @@ var portugueseEuropeanPlanImport = map[string]string{
 	"planimport.workout.col.rest":     "Descanso (s)",
 	"planimport.workout.col.notes":    "Notas",
 
-	"planimport.macros":        "%[1].0f P · %[2].0f HC · %[3].0f G",
+	"planimport.macros":        "%.0[1]f P · %.0[2]f HC · %.0[3]f G",
 	"planimport.macro.letters": "P HC G",
 
 	"planimport.meal.heading":           "Verifica o teu plano alimentar",

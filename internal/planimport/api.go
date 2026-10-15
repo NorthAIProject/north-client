@@ -126,7 +126,7 @@ func (a *API) commitMeal(w http.ResponseWriter, r *http.Request) {
 	case apperr.As(err, &over):
 		// The same 409 every other change to a meal plan gets; canConfirm says
 		// whether asking again with confirmOverage will save it.
-		httpx.WriteJSON(w, http.StatusConflict, meals.ProjectOverage(over))
+		httpx.WriteJSON(w, http.StatusConflict, meals.ProjectOverage(r.Context(), over))
 	case apperr.As(err, &fields):
 		httpx.WriteJSON(w, http.StatusUnprocessableEntity, MealCommitRefusal{
 			Error: httpx.ErrorDetail{Message: "Some foods need attention before saving.", Fields: fields.Messages()},

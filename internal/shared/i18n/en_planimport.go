@@ -43,7 +43,7 @@ var englishPlanImport = map[string]string{
 
 	// The meal review. Macros read protein · carbs · fat; the letters are
 	// one space-separated string so each language can name its own.
-	"planimport.macros":        "%[1].0f P · %[2].0f C · %[3].0f F",
+	"planimport.macros":        "%.0[1]f P · %.0[2]f C · %.0[3]f F",
 	"planimport.macro.letters": "P C F",
 
 	"planimport.meal.heading":           "Check your meal plan",
