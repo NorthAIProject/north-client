@@ -124,7 +124,7 @@ templ row(e exercise.Exercise) {
 			@exerciserow.Thumbnail(e, "art-row-", "w-16")
 			<span class="min-w-0 flex-1 text-sm font-medium">{ e.Name }</span>
 			for _, key := range e.Primary {
-				@badge.Badge(badge.Props{Variant: badge.VariantDefault}) {
+				@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
 					{ muscleLabel(ctx, key) }
 				}
 			}
@@ -391,7 +391,7 @@ templ muscleCard(label string, keys []string) {
 			@ui.MonoLabel(label)
 			<div class="mt-2 flex flex-wrap gap-2">
 				for _, key := range keys {
-					@badge.Badge(badge.Props{Variant: badge.VariantDefault}) {
+					@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
 						{ muscleLabel(ctx, key) }
 					}
 				}

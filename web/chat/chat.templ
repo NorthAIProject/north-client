@@ -27,9 +27,6 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/textarea"
 )
 
-// signalCTA is the shared continuity primary for coach entry points.
-const signalCTA = "bg-signal text-background hover:bg-signal/90"
-
 // proseClasses styles rendered markdown.
 //
 // Written as arbitrary variants rather than a stylesheet rule so the styling
@@ -158,7 +155,7 @@ templ Empty(user users.User, list []conversations.Conversation, stats CoachStats
 			<div class="flex flex-wrap items-center justify-center gap-2">
 				<form method="post" action="/app/chat">
 					@ui.CSRFInput()
-					@button.Button(button.Props{Type: button.TypeSubmit, Class: signalCTA}) {
+					@button.Button(button.Props{Type: button.TypeSubmit}) {
 						@icon.Plus(icon.Props{Class: "size-4"})
 						{ i18n.T(ctx, "chat.new") }
 					}
@@ -305,11 +302,14 @@ templ threadList(list []conversations.Conversation, current uuid.UUID, stats Coa
 	></div>
 }
 
+// coachKpiStrip sits in the 240px thread column, so it cannot use
+// ui.KpiStrip: that strip goes to five columns at lg, and two labels in a
+// fifth of 240px ran into each other. Same look, always two columns.
 templ coachKpiStrip(stats CoachStats) {
-	@ui.KpiStrip() {
+	<div class="border-hairline bg-surface/60 grid grid-cols-2 gap-3 rounded-lg border p-4">
 		@ui.KpiCell(ui.KpiCellProps{Label: i18n.T(ctx, "chat.kpi.threads"), Value: fmt.Sprintf("%d", stats.ThreadCount)})
 		@ui.KpiCell(ui.KpiCellProps{Label: i18n.T(ctx, "chat.kpi.messages"), Value: fmt.Sprintf("%d", stats.MessagesThisWeek)})
-	}
+	</div>
 }
 
 templ threadLink(c conversations.Conversation, active bool) {
@@ -780,9 +780,10 @@ templ composer(conversationID uuid.UUID, draft string) {
 					@change="pick($event.target.files[0])"
 				/>
 				@button.Button(button.Props{
-					Type:  button.TypeButton,
-					Size:  button.SizeIcon,
-					Class: "min-h-11 min-w-11",
+					Type:    button.TypeButton,
+					Variant: button.VariantOutline,
+					Size:    button.SizeIcon,
+					Class:   "min-h-11 min-w-11",
 					Attributes: templ.Attributes{
 						"@click":     "$refs.file.click()",
 						"aria-label": i18n.T(ctx, "chat.attach"),
@@ -792,7 +793,7 @@ templ composer(conversationID uuid.UUID, draft string) {
 				}
 				// Fills the box and stops there. Enter still sends, and the
 				// person presses it after reading what was heard.
-				@dictate.Button(dictate.Props{Target: "message"})
+				@dictate.Button(dictate.Props{Target: "message", Variant: button.VariantOutline})
 				@textarea.Textarea(textarea.Props{
 					ID:          "message",
 					Name:        "message",

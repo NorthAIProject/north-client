@@ -13,35 +13,62 @@ type DonutSegment struct {
 	Value int
 }
 
-// GaugeOptionJSON returns an ECharts gauge option for a 0–100 percent.
+// GaugeOptionJSON returns an ECharts gauge option for a 0–100 percent: a
+// signal-coloured arc over a hairline track, with the percent in the middle.
+//
+// Built as a plain option map, like TrainingTrendJSON. go-echarts types the
+// axis line colour as a string, and a gauge needs it as stops — [[1, colour]]
+// — or ECharts draws no track and no progress arc at all. The library also
+// emits an empty legend, which ECharts fills with the series name.
+//
+// The title is the series' data name for tooltips and screen readers only.
+// Every card that mounts a gauge already prints its own heading, and the
+// gauge's own title sits on top of the percent.
 func GaugeOptionJSON(title string, percent int) ([]byte, error) {
 	percent = clampPercent(percent)
-	g := charts.NewGauge()
-	g.SetGlobalOptions(
-		charts.WithTitleOpts(opts.Title{Title: title, Show: opts.Bool(false)}),
-	)
-	g.AddSeries("value", []opts.GaugeData{
-		{Value: float64(percent), Name: title},
-	}, charts.WithSeriesOpts(func(s *charts.SingleSeries) {
-		s.Min = 0
-		s.Max = 100
-		s.StartAngle = 210
-		s.EndAngle = -30
-		s.Progress = &opts.Progress{Show: opts.Bool(true), Width: 10}
-		s.AxisLine = &opts.AxisLine{
-			LineStyle: &opts.LineStyle{Width: 10, Color: "var(--border)"},
-		}
-		s.AxisTick = &opts.AxisTick{Show: opts.Bool(false)}
-		s.SplitLine = &opts.SplitLine{Show: opts.Bool(false)}
-		s.AxisLabel = &opts.AxisLabel{Show: opts.Bool(false)}
-		s.Pointer = &opts.Pointer{Show: opts.Bool(false)}
-		s.Detail = &opts.Detail{
-			Formatter: "{value}%",
-			Color:     "var(--foreground)",
-			FontSize:  18,
-		}
-	}))
-	return json.Marshal(g.JSON())
+	option := map[string]any{
+		"legend":  map[string]any{"show": false},
+		"tooltip": map[string]any{"show": false},
+		"series": []map[string]any{{
+			"type":       "gauge",
+			"name":       title,
+			"min":        0,
+			"max":        100,
+			"startAngle": 210,
+			"endAngle":   -30,
+			"radius":     "90%",
+			"center":     []string{"50%", "55%"},
+			"progress": map[string]any{
+				"show":      true,
+				"width":     10,
+				"roundCap":  true,
+				"itemStyle": map[string]any{"color": "var(--north-signal)"},
+			},
+			"axisLine": map[string]any{
+				"roundCap": true,
+				"lineStyle": map[string]any{
+					"width": 10,
+					"color": [][]any{{1, "var(--border)"}},
+				},
+			},
+			"axisTick":  map[string]any{"show": false},
+			"splitLine": map[string]any{"show": false},
+			"axisLabel": map[string]any{"show": false},
+			"pointer":   map[string]any{"show": false},
+			"anchor":    map[string]any{"show": false},
+			"title":     map[string]any{"show": false},
+			"detail": map[string]any{
+				"valueAnimation": true,
+				"formatter":      "{value}%",
+				"color":          "var(--foreground)",
+				"fontSize":       20,
+				"fontWeight":     600,
+				"offsetCenter":   []string{"0", "0"},
+			},
+			"data": []map[string]any{{"value": percent, "name": title}},
+		}},
+	}
+	return json.Marshal(option)
 }
 
 // HeatmapCell is one day in a mood heatmap.
@@ -103,25 +130,63 @@ func HeatmapJSON(rowLabel string, cells []HeatmapCell) ([]byte, error) {
 	return json.Marshal(hm.JSON())
 }
 
+// donutPalette colours the slices of a category donut, in order. North
+// tokens rather than the ECharts default palette, whose blue and yellow are
+// not North's and which never follows the theme. Signal, agent and ember lead
+// because they are the palette's three accents; the sport and tracker
+// families fill out the rest. echarts-init.js resolves each var() against the
+// live theme.
+var donutPalette = []string{
+	"var(--north-signal)",
+	"var(--north-agent)",
+	"var(--north-ember)",
+	"var(--north-sport-walk)",
+	"var(--north-day-protein)",
+	"var(--north-sport-swim)",
+	"var(--north-day-move)",
+	"var(--north-sport-ride)",
+	"var(--north-sport-other)",
+}
+
 // DonutOptionJSON returns an ECharts donut for category splits.
+//
+// A plain option map, like the gauge: the legend and the palette both need
+// theme tokens, and go-echarts otherwise emits its own default palette and an
+// unstyled legend that ECharts paints #333 — unreadable on the dark card.
 func DonutOptionJSON(segments []DonutSegment) ([]byte, error) {
-	data := make([]opts.PieData, 0, len(segments))
+	data := make([]map[string]any, 0, len(segments))
 	for _, s := range segments {
 		if s.Value <= 0 {
 			continue
 		}
-		data = append(data, opts.PieData{Name: s.Label, Value: s.Value})
+		data = append(data, map[string]any{"name": s.Label, "value": s.Value})
 	}
-	pie := charts.NewPie()
-	pie.SetGlobalOptions(charts.WithTitleOpts(opts.Title{Show: opts.Bool(false)}))
-	pie.AddSeries("split", data,
-		charts.WithSeriesOpts(func(s *charts.SingleSeries) {
-			s.Radius = []string{"55%", "75%"}
-			s.Center = []string{"50%", "50%"}
-		}),
-		charts.WithLabelOpts(opts.Label{Show: opts.Bool(true), Color: "var(--foreground)"}),
-	)
-	return json.Marshal(pie.JSON())
+	option := map[string]any{
+		"color":   donutPalette,
+		"tooltip": map[string]any{"trigger": "item"},
+		"legend": map[string]any{
+			"show":          true,
+			"type":          "scroll",
+			"top":           0,
+			"itemWidth":     8,
+			"itemHeight":    8,
+			"icon":          "circle",
+			"textStyle":     map[string]any{"color": "var(--muted-foreground)", "fontSize": 11},
+			"pageTextStyle": map[string]any{"color": "var(--muted-foreground)"},
+		},
+		"series": []map[string]any{{
+			"name":      "split",
+			"type":      "pie",
+			"radius":    []string{"50%", "70%"},
+			"center":    []string{"50%", "56%"},
+			"itemStyle": map[string]any{"borderColor": "var(--card)", "borderWidth": 2},
+			// The legend names the slices. Outside labels as well collided
+			// with the legend and were clipped at the edge of narrow cards.
+			"label": map[string]any{"show": false},
+			"data":  data,
+		}},
+	}
+	return json.Marshal(option)
 }
 
 // UnmarshalOption decodes ECharts JSON into a map for templ.JSONScript.
