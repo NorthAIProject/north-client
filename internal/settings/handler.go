@@ -28,6 +28,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/preferences"
 	"github.com/NorthAIProject/north-client/internal/push"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/NorthAIProject/north-client/internal/toolaudit"
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -655,7 +656,7 @@ func (h *Handler) renderConnections(
 
 	var setup connections.Setup
 	if issued != nil {
-		setup = h.connections.Instructions(issued.Kind, issued.Token)
+		setup = h.connections.Instructions(issued.Kind, issued.Token).In(i18n.LocaleFrom(ctx))
 	}
 
 	// One preview per client, so the page can show what setup involves before
@@ -664,7 +665,7 @@ func (h *Handler) renderConnections(
 	// reached for it would be the first one in this codebase to do so.
 	previews := make([]connections.Setup, 0, len(connections.ClientKinds))
 	for _, kind := range connections.ClientKinds {
-		previews = append(previews, h.connections.Preview(kind))
+		previews = append(previews, h.connections.Preview(kind).In(i18n.LocaleFrom(ctx)))
 	}
 
 	provider := settingspages.ProviderPanel{
