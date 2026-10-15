@@ -1,0 +1,36 @@
+package i18n
+
+// englishRecap is /app/recap, the last 7 or 30 days, and the "your week"
+// strip on My Day.
+var englishRecap = map[string]string{
+	"recap.title":            "Your recap",
+	"recap.mono":             "Recap",
+	"recap.strip":            "Your week",
+	"recap.private":          "Private to you",
+	"recap.totals":           "Totals",
+	"recap.daily":            "Daily activity",
+	"recap.daily.desc":       "What each day had: training, food, a check-in.",
+	"recap.empty":            "Nothing logged in this period yet.",
+	"recap.highlights":       "Highlights",
+	"recap.delta":            "Compared with the period before",
+	"recap.post":             "Post to friends",
+	"recap.share":            "Share",
+	"recap.copied":           "Copied",
+	"recap.posted":           "Posted to your friends feed.",
+	"recap.posted.feed":      "See the feed",
+	"recap.hidden":           "Posted, but friends can't see it yet.",
+	"recap.hidden.desc":      "Recaps show with your training, and you're not sharing training with friends.",
+	"recap.hidden.fix":       "Share training and post",
+	"recap.error":            "The recap could not be loaded.",
+	"recap.tile.active":      "Active days",
+	"recap.tile.workouts":    "Workouts",
+	"recap.tile.sets":        "Sets",
+	"recap.tile.food":        "Foods logged",
+	"recap.tile.checkins":    "Check-ins",
+	"recap.tile.streak":      "Check-in streak",
+	"recap.chart.training":   "Training",
+	"recap.chart.food":       "Food",
+	"recap.chart.checkins":   "Check-in",
+	"recap.share.text.week":  "My last 7 days on Khepri — %[1]s",
+	"recap.share.text.month": "My last 30 days on Khepri — %[1]s",
+}

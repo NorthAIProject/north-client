@@ -56,6 +56,7 @@ type Achievements interface {
 	OwnBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]achievement.Item, error)
 	Post(ctx context.Context, userID uuid.UUID, category, kind, sourceKey, title, detail string, at time.Time) (achievement.Item, error)
 	Sharing(ctx context.Context, userID uuid.UUID) (achievement.Sharing, error)
+	SetSharing(ctx context.Context, userID uuid.UUID, in achievement.Sharing) (achievement.Sharing, error)
 }
 
 // Options are the sources. All are required: a recap missing one would show
@@ -207,7 +208,12 @@ func (s *Service) Load(ctx context.Context, user users.User, key string) (recap.
 
 // Share posts the recap to the friends feed. Sharing the same window twice on
 // the same day updates the one post with the latest numbers.
-func (s *Service) Share(ctx context.Context, user users.User, key string) (recap.Shared, error) {
+//
+// A recap sits in the training category, so followers see it only while
+// training is shared. shareTraining turns that on in the same step, for the
+// person who was told it was off and chose to share anyway; the other
+// categories are left as they were.
+func (s *Service) Share(ctx context.Context, user users.User, key string, shareTraining bool) (recap.Shared, error) {
 	r, err := s.Load(ctx, user, key)
 	if err != nil {
 		return recap.Shared{}, err
@@ -221,15 +227,21 @@ func (s *Service) Share(ctx context.Context, user users.User, key string) (recap
 	if err != nil {
 		return recap.Shared{}, err
 	}
+	if shareTraining && !sharing.Training {
+		sharing.Training = true
+		if sharing, err = s.achievements.SetSharing(ctx, user.ID, sharing); err != nil {
+			return recap.Shared{}, err
+		}
+	}
 	return recap.Shared{ID: item.ID, TrainingShared: sharing.Training}, nil
 }
 
 // Title names a shared recap in the feed.
 func Title(key string) string {
 	if key == recap.KeyMonth {
-		return "Shared their last 30 days"
+		return "Recap · last 30 days"
 	}
-	return "Shared their last 7 days"
+	return "Recap · last 7 days"
 }
 
 // Detail is a shared recap's numbers in one line, leaving out what is zero:

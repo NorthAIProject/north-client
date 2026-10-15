@@ -3959,7 +3959,7 @@ paths:
         Posts it as a recap_shared item in the training category. Sharing the
         same range again the same day updates that one post with the latest
         numbers. trainingShared false means followers cannot see it until
-        training is shared (PUT /social/sharing).
+        training is shared; send shareTraining true to turn it on here.
       tags: [recap]
       requestBody:
         required: true
@@ -3972,6 +3972,9 @@ paths:
                 range:
                   type: string
                   enum: [week, month]
+                shareTraining:
+                  type: boolean
+                  description: Also turn on training sharing so followers can see the post. Other categories are left as they are.
       responses:
         '200':
           description: OK

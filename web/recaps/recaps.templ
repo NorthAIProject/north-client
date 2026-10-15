@@ -1,0 +1,245 @@
+package recaps
+
+import (
+	"fmt"
+
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/alert"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/chart"
+	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
+)
+
+templ Page(user users.User, v View) {
+	@layout.App(i18n.T(ctx, "recap.title"), user, layout.BuildNav(ctx, "/app")) {
+		<div class="mx-auto w-full max-w-3xl space-y-5 p-4 pb-28 md:p-6 md:pb-28">
+			<header>
+				@ui.MonoLabel(i18n.T(ctx, "recap.mono"))
+				<h1 class="mt-2 text-2xl font-medium tracking-tight">{ i18n.T(ctx, "recap.title") }</h1>
+			</header>
+			<div id="recap-panels">
+				@Panels(v)
+			</div>
+		</div>
+		@chart.Script()
+	}
+}
+
+// rangeToggle swaps the panels rather than the page. Each option is a real
+// link too, so the page works with JavaScript off.
+templ rangeToggle(v View) {
+	<nav
+		aria-label={ i18n.T(ctx, "dash.range") }
+		class="border-hairline bg-surface/60 flex shrink-0 gap-1 rounded-lg border p-1"
+	>
+		for _, opt := range v.Options {
+			<a
+				href={ templ.SafeURL("/app/recap?range=" + opt.Key) }
+				hx-get={ "/app/recap/panels?range=" + opt.Key }
+				hx-target="#recap-panels"
+				hx-swap="innerHTML"
+				hx-push-url={ "/app/recap?range=" + opt.Key }
+				if opt.Selected {
+					aria-current="true"
+					class="bg-signal text-background rounded-md px-3 py-1.5 text-xs font-medium whitespace-nowrap"
+				} else {
+					class="text-muted-foreground hover:bg-accent/60 hover:text-foreground rounded-md px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors"
+				}
+			>
+				{ opt.Label }
+			</a>
+		}
+	</nav>
+}
+
+// Panels is everything below the header, the toggle included, swapped whole
+// when the range changes so the selection, tiles and chart never disagree.
+templ Panels(v View) {
+	<div class="space-y-5" data-testid="recap-panels">
+		<div class="flex flex-wrap items-center justify-between gap-3">
+			<p class="text-muted-foreground flex items-center gap-1.5 text-sm">
+				@icon.Lock(icon.Props{Class: "size-3.5"})
+				{ v.Period } · { i18n.T(ctx, "recap.private") }
+			</p>
+			@rangeToggle(v)
+		</div>
+		@notice(v)
+		<section class="border-hairline bg-surface/60 grid grid-cols-2 gap-4 rounded-lg border p-4 sm:grid-cols-3" aria-label={ i18n.T(ctx, "recap.totals") }>
+			for _, t := range v.Tiles {
+				@tile(t)
+			}
+		</section>
+		@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+			@card.Header() {
+				@card.Title() {
+					{ i18n.T(ctx, "recap.daily") }
+				}
+				@card.Description() {
+					{ i18n.T(ctx, "recap.daily.desc") }
+				}
+			}
+			@card.Content() {
+				if v.HasActivity {
+					@chart.Chart(v.Chart)
+				} else {
+					<p class="text-muted-foreground text-sm">{ i18n.T(ctx, "recap.empty") }</p>
+				}
+			}
+		}
+		if len(v.Highlights) > 0 {
+			@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+				@card.Header() {
+					@card.Title() {
+						{ i18n.T(ctx, "recap.highlights") }
+					}
+				}
+				@card.Content() {
+					<ul class="divide-hairline divide-y">
+						for _, h := range v.Highlights {
+							<li class="py-2.5">
+								<p class="text-sm">{ h.Title }</p>
+								<p class="text-muted-foreground text-xs">
+									{ i18n.Date(ctx, h.OccurredAt, "Mon 2 Jan") }
+									if h.Detail != "" {
+										· { h.Detail }
+									}
+								</p>
+							</li>
+						}
+					</ul>
+				}
+			}
+		}
+		@shareBar(v)
+	</div>
+}
+
+templ tile(t Tile) {
+	<div class="space-y-1">
+		<p class="text-muted-foreground font-mono text-[10px] uppercase tracking-[0.14em]">{ t.Label }</p>
+		<div class="flex items-baseline gap-2">
+			<p class="text-2xl font-medium tabular-nums">{ fmt.Sprint(t.Value) }</p>
+			if t.HasPrior && t.Delta != 0 {
+				<span
+					class={ "inline-flex items-center gap-0.5 font-mono text-[10px] tabular-nums",
+						templ.KV("text-signal", t.Delta > 0),
+						templ.KV("text-muted-foreground", t.Delta < 0) }
+					title={ i18n.T(ctx, "recap.delta") }
+				>
+					if t.Delta > 0 {
+						@icon.Icon("trending-up")(icon.Props{Class: "size-3"})
+						{ fmt.Sprintf("+%d", t.Delta) }
+					} else {
+						@icon.Icon("trending-down")(icon.Props{Class: "size-3"})
+						{ fmt.Sprint(t.Delta) }
+					}
+				</span>
+			}
+		</div>
+	</div>
+}
+
+templ notice(v View) {
+	switch v.Notice {
+		case NoticePosted:
+			@alert.Alert() {
+				@alert.Title() {
+					{ i18n.T(ctx, "recap.posted") }
+				}
+				@alert.Description() {
+					<a href="/app/friends" class="text-signal hover:underline">{ i18n.T(ctx, "recap.posted.feed") }</a>
+				}
+			}
+		case NoticeHidden:
+			@alert.Alert() {
+				@alert.Title() {
+					{ i18n.T(ctx, "recap.hidden") }
+				}
+				@alert.Description() {
+					<p>{ i18n.T(ctx, "recap.hidden.desc") }</p>
+					<form method="post" action="/app/recap/share" class="mt-2">
+						@ui.CSRFInput()
+						<input type="hidden" name="range" value={ v.Key }/>
+						<input type="hidden" name="share_training" value="1"/>
+						@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm}) {
+							{ i18n.T(ctx, "recap.hidden.fix") }
+						}
+					</form>
+				}
+			}
+	}
+}
+
+// shareBar posts to the friends feed (a plain form) or hands the recap to the
+// system share sheet. navigator.share is missing on most desktop browsers, so
+// the same button copies the text and link there instead.
+templ shareBar(v View) {
+	<div class="flex flex-wrap gap-2">
+		<form method="post" action="/app/recap/share">
+			@ui.CSRFInput()
+			<input type="hidden" name="range" value={ v.Key }/>
+			@button.Button(button.Props{Type: button.TypeSubmit}) {
+				@icon.Users(icon.Props{Class: "size-4"})
+				{ i18n.T(ctx, "recap.post") }
+			}
+		</form>
+		<div x-data="{ copied: false }">
+			@button.Button(button.Props{
+				Type:    button.TypeButton,
+				Variant: button.VariantOutline,
+				Attributes: templ.Attributes{
+					"data-share-text": v.ShareText,
+					"data-share-url":  v.ShareURL,
+					"x-on:click": `const t = $el.dataset.shareText, u = $el.dataset.shareUrl;
+						if (navigator.share) { navigator.share({ text: t, url: u }).catch(() => {}) }
+						else { navigator.clipboard.writeText(u ? t + ' ' + u : t).then(() => { copied = true; setTimeout(() => copied = false, 2000) }) }`,
+				},
+			}) {
+				@icon.Share(icon.Props{Class: "size-4"})
+				<span x-show="!copied">{ i18n.T(ctx, "recap.share") }</span>
+				<span x-show="copied" x-cloak>{ i18n.T(ctx, "recap.copied") }</span>
+			}
+		</div>
+	</div>
+}
+
+// StripLoader is the placeholder My Day renders; the strip arrives after the
+// page so the recap's reads never slow the first paint.
+templ StripLoader() {
+	<div hx-get="/app/recap/strip" hx-trigger="load" hx-swap="outerHTML" class="min-h-14"></div>
+}
+
+// StripView is the "your week" line on My Day: a link to the recap. The page
+// it lands in loads chart.Script(); a script arriving with the swap would
+// miss DOMContentLoaded and never draw.
+templ StripView(s Strip) {
+	<a
+		href="/app/recap?range=week"
+		class="border-hairline bg-surface hover:bg-accent/40 flex items-center gap-4 rounded-xl border px-4 py-3 transition-colors"
+		data-testid="recap-strip"
+	>
+		<div class="shrink-0">
+			@chart.Chart(s.Chart)
+		</div>
+		@ui.MonoLabel(i18n.T(ctx, "recap.strip"))
+		<span class="text-muted-foreground ml-auto flex items-center gap-3 text-sm tabular-nums">
+			<span title={ i18n.T(ctx, "recap.tile.active") }>
+				@icon.CalendarCheck(icon.Props{Class: "mr-1 inline size-3.5"})
+				{ fmt.Sprint(s.ActiveDays) }
+			</span>
+			<span title={ i18n.T(ctx, "recap.tile.workouts") }>
+				@icon.Dumbbell(icon.Props{Class: "mr-1 inline size-3.5"})
+				{ fmt.Sprint(s.Workouts) }
+			</span>
+			<span title={ i18n.T(ctx, "recap.tile.checkins") }>
+				@icon.SmilePlus(icon.Props{Class: "mr-1 inline size-3.5"})
+				{ fmt.Sprint(s.CheckIns) }
+			</span>
+			@icon.ChevronRight(icon.Props{Class: "size-4"})
+		</span>
+	</a>
+}

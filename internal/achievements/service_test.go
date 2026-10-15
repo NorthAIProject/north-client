@@ -222,11 +222,11 @@ func TestPostRefreshesInPlace(t *testing.T) {
 	ana := person(t, pool, "ana@north.test", "Ana")
 
 	first := time.Now().Add(-time.Hour).Truncate(time.Microsecond)
-	a, err := ach.Post(ctx, ana.ID, "training", "recap_shared", "week:2026-10-15", "Shared their last 7 days", "2 active days", first)
+	a, err := ach.Post(ctx, ana.ID, "training", "recap_shared", "week:2026-10-15", "Recap · last 7 days", "2 active days", first)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := ach.Post(ctx, ana.ID, "training", "recap_shared", "week:2026-10-15", "Shared their last 7 days", "3 active days", time.Now())
+	b, err := ach.Post(ctx, ana.ID, "training", "recap_shared", "week:2026-10-15", "Recap · last 7 days", "3 active days", time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}

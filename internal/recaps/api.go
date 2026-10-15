@@ -65,6 +65,9 @@ type RecapView struct {
 
 type ShareRequest struct {
 	Range string `json:"range"`
+	// ShareTraining also turns on training sharing, so followers can see
+	// the post. Absent leaves sharing as it is.
+	ShareTraining bool `json:"shareTraining"`
 }
 
 type ShareView struct {
@@ -93,7 +96,7 @@ func (a *API) share(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, err, "The request body could not be read.")
 		return
 	}
-	shared, err := a.svc.Share(r.Context(), auth.MustUser(r.Context()), req.Range)
+	shared, err := a.svc.Share(r.Context(), auth.MustUser(r.Context()), req.Range, req.ShareTraining)
 	if err != nil {
 		httpx.Error(w, err, "The recap could not be shared.")
 		return

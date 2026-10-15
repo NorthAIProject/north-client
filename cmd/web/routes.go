@@ -664,6 +664,7 @@ func routes(
 		CheckIns:     checkinSvc,
 		Achievements: achievementSvc,
 	})
+	recapHandler := recaps.NewHandler(recapSvc, cfg.BaseURL)
 
 	// The capture inbox saves here; the worker suggests where each item goes.
 	inboxSvc := inbox.NewService(pool, inbox.Options{
@@ -1221,6 +1222,7 @@ func routes(
 				crewHandler.Routes(r)
 				xpHandler.Routes(r)
 				weeklyHandler.Routes(r)
+				recapHandler.Routes(r)
 				inboxHandler.Routes(r)
 				lighterHandler.Routes(r)
 				careHandler.Routes(r)

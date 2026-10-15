@@ -59,6 +59,7 @@ type fakeAchievements struct {
 	own      []achievement.Item
 	training bool
 	posts    []posted
+	set      []achievement.Sharing
 }
 
 func (f *fakeAchievements) OwnBetween(context.Context, uuid.UUID, time.Time, time.Time) ([]achievement.Item, error) {
@@ -71,7 +72,13 @@ func (f *fakeAchievements) Post(_ context.Context, _ uuid.UUID, category, kind, 
 }
 
 func (f *fakeAchievements) Sharing(context.Context, uuid.UUID) (achievement.Sharing, error) {
-	return achievement.Sharing{Training: f.training}, nil
+	return achievement.Sharing{Training: f.training, Goals: true}, nil
+}
+
+func (f *fakeAchievements) SetSharing(_ context.Context, _ uuid.UUID, in achievement.Sharing) (achievement.Sharing, error) {
+	f.set = append(f.set, in)
+	f.training = in.Training
+	return in, nil
 }
 
 // Lisbon is UTC+1 in October, so a workout ending at 23:30 UTC belongs to the
@@ -171,7 +178,7 @@ func TestLoadRejectsOtherRanges(t *testing.T) {
 
 func TestHighlightsSkipSharedRecapsAndCap(t *testing.T) {
 	t.Parallel()
-	ach := &fakeAchievements{own: []achievement.Item{{Kind: achievement.KindRecapShared, Title: "Shared their last 7 days"}}}
+	ach := &fakeAchievements{own: []achievement.Item{{Kind: achievement.KindRecapShared, Title: "Recap · last 7 days"}}}
 	for range 7 {
 		ach.own = append(ach.own, achievement.Item{Kind: achievement.KindWorkoutCompleted, Title: "Finished Legs"})
 	}
@@ -192,7 +199,7 @@ func TestHighlightsSkipSharedRecapsAndCap(t *testing.T) {
 func TestSharePostsToTraining(t *testing.T) {
 	t.Parallel()
 	ach := &fakeAchievements{training: false}
-	shared, err := newService(ach).Share(context.Background(), person, recap.KeyWeek)
+	shared, err := newService(ach).Share(context.Background(), person, recap.KeyWeek, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +214,7 @@ func TestSharePostsToTraining(t *testing.T) {
 		category:  achievement.CategoryTraining,
 		kind:      achievement.KindRecapShared,
 		sourceKey: "week:2026-10-15",
-		title:     "Shared their last 7 days",
+		title:     "Recap · last 7 days",
 		detail:    "3 active days · 1 workout · 3 sets · 2 foods logged · 1 check-in",
 	}
 	if got != want {
@@ -222,5 +229,29 @@ func TestDetailLeavesOutZeros(t *testing.T) {
 	}
 	if got, want := recaps.Detail(recap.Totals{ActiveDays: 1, Sets: 1}), "1 active day · 1 set"; got != want {
 		t.Errorf("Detail = %q, want %q", got, want)
+	}
+}
+
+func TestShareCanTurnOnTraining(t *testing.T) {
+	t.Parallel()
+	ach := &fakeAchievements{}
+	shared, err := newService(ach).Share(context.Background(), person, recap.KeyWeek, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !shared.TrainingShared {
+		t.Error("trainingShared = false after asking to share training")
+	}
+	if len(ach.set) != 1 || !ach.set[0].Training || !ach.set[0].Goals {
+		t.Errorf("sharing saved = %+v, want training on and goals kept", ach.set)
+	}
+
+	// Already on: nothing to save.
+	ach.set = nil
+	if _, err := newService(ach).Share(context.Background(), person, recap.KeyWeek, true); err != nil {
+		t.Fatal(err)
+	}
+	if len(ach.set) != 0 {
+		t.Errorf("sharing saved again = %+v, want no write", ach.set)
 	}
 }
