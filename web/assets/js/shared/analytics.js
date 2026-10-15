@@ -79,4 +79,18 @@
   if (cfg.record) {
     window.posthog.startSessionRecording();
   }
+
+  // Super properties: every event says which appearance was chosen and which
+  // one is actually on screen. They differ for "system", and counting System
+  // users as light or dark is what lets the default be decided on numbers.
+  // Read from <html>, which the server renders and the switcher updates.
+  function registerAppearance() {
+    var root = document.documentElement;
+    window.posthog.register({
+      appearance_setting: root.getAttribute("data-appearance") || "unknown",
+      color_scheme: root.classList.contains("dark") ? "dark" : "light",
+    });
+  }
+  registerAppearance();
+  document.addEventListener("theme-changed", registerAppearance);
 })();

@@ -67,8 +67,10 @@
             onMuscleClick: (key) => this.select(key),
           });
           this.viewer.setHeat(this.heat);
-          // The theme switcher (web/shared/ui/themeswitcher.templ) announces
-          // a change; the figure's tokens have to be read again.
+          // The page announces every appearance change (the switcher, or the
+          // OS flipping while the setting is "system"); the figure's tokens
+          // have to be read again. Read from the class rather than the event
+          // detail so any source of the change is honoured the same way.
           this.onTheme = () => this.viewer && this.viewer.setTheme(document.documentElement.classList.contains("dark"));
           document.addEventListener("theme-changed", this.onTheme);
         } catch (err) {
