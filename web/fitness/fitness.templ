@@ -429,15 +429,7 @@ templ doneTodayLine(d plan.PlanDay) {
 	</p>
 }
 
-// CompletedLine reads "Wednesday completed — Push", in English.
-//
-// Kept for callers outside this package that have not been converted yet;
-// CompletedLineIn is the same line in the request's language.
-func CompletedLine(d plan.PlanDay) string {
-	return CompletedLineIn(context.Background(), d)
-}
-
-// CompletedLineIn is CompletedLine in the request's language.
+// CompletedLineIn reads "Wednesday completed — Push" in the request's language.
 func CompletedLineIn(ctx context.Context, d plan.PlanDay) string {
 	day := weekdayName(ctx, d.Weekday)
 	if d.Focus == "" {

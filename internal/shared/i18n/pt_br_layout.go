@@ -33,4 +33,7 @@ var portugueseBrazilianLayout = map[string]string{
 	"layout.art.credit.by":       "Ilustrações de exercícios por",
 	"layout.art.credit.and":      "e",
 	"layout.art.credit.licensed": "com licença",
+	"layout.muscle.primary":      "Principal",
+	"layout.muscle.secondary":    "Secundário",
+	"layout.muscle.stabiliser":   "Estabilizador",
 }

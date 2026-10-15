@@ -54,7 +54,7 @@ var spanishExercises = map[string]string{
 	"exercises.muscle.neck":       "Cuello",
 
 	"exercises.category.strength":              "Fuerza",
-	"exercises.category.cardio":                "Cardiovascular",
+	"exercises.category.cardio":                "Cardio",
 	"exercises.category.stretching":            "Estiramientos",
 	"exercises.category.plyometrics":           "Pliometría",
 	"exercises.category.powerlifting":          "Levantamiento de potencia",

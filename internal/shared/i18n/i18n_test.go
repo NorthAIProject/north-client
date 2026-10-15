@@ -51,53 +51,57 @@ func TestUntranslatedStringsAreAccountedFor(t *testing.T) {
 	// Keep this short: each entry is a string nobody will notice going stale.
 	allowed := map[string]map[string]bool{
 		"pt-PT": {
-			"nav.cardio-insights.nav": true, // "Cardio" is the everyday word here too
-			"conn.tg.title":           true, // Telegram is a product name
-			"nav.fitness":             true,
-			"land.price.pro":          true, // the plan's name, not a word
-			"land.vision.3.value":     true, // "Zero" is Portuguese for zero
-			"lifedomain.fitness":      true, // same borrowing as nav.fitness
-			"palette.empty.after":     true, // a full stop
-			"settings.prefs.imperial": true, // the system's name and both unit abbreviations are international
-			"oauth.new.email":         true, // "Email" is the ordinary pt-PT spelling; pt-BR uses "E-mail"
-			"nav.coach-insights.nav":  true, // "coaching" is borrowed unchanged, like nav.fitness
-			"land.app.beta":           true, // "Beta" is borrowed unchanged
-			"checkins.source.siri":    true, // Siri is a product name
-			"checkins.field.stress":   true, // "stress" is the everyday pt-PT word
-			"checkins.meta.stress":    true, // same borrowing as checkins.field.stress
+			"nav.cardio-insights.nav":   true, // "Cardio" is the everyday word here too
+			"conn.tg.title":             true, // Telegram is a product name
+			"nav.fitness":               true,
+			"land.price.pro":            true, // the plan's name, not a word
+			"land.vision.3.value":       true, // "Zero" is Portuguese for zero
+			"lifedomain.fitness":        true, // same borrowing as nav.fitness
+			"palette.empty.after":       true, // a full stop
+			"settings.prefs.imperial":   true, // the system's name and both unit abbreviations are international
+			"oauth.new.email":           true, // "Email" is the ordinary pt-PT spelling; pt-BR uses "E-mail"
+			"nav.coach-insights.nav":    true, // "coaching" is borrowed unchanged, like nav.fitness
+			"land.app.beta":             true, // "Beta" is borrowed unchanged
+			"checkins.source.siri":      true, // Siri is a product name
+			"checkins.field.stress":     true, // "stress" is the everyday pt-PT word
+			"checkins.meta.stress":      true, // same borrowing as checkins.field.stress
+			"exercises.category.cardio": true, // same borrowing as nav.cardio-insights.nav
 		},
 		"pt-BR": {
-			"nav.cardio-insights.nav": true, // "Cardio" is the everyday word here too
-			"conn.tg.title":           true, // Telegram is a product name
-			"nav.fitness":             true,
-			"land.price.pro":          true, // the plan's name, not a word
-			"land.vision.3.value":     true, // "Zero" is Portuguese for zero
-			"lifedomain.fitness":      true, // same borrowing as nav.fitness
-			"palette.empty.after":     true,
-			"settings.prefs.imperial": true,
-			"nav.coach-insights.nav":  true, // "coaching" is borrowed unchanged, like nav.fitness
-			"land.app.beta":           true,
-			"checkins.source.siri":    true, // Siri is a product name
-			"checkins.tags":           false,
+			"nav.cardio-insights.nav":   true, // "Cardio" is the everyday word here too
+			"conn.tg.title":             true, // Telegram is a product name
+			"nav.fitness":               true,
+			"land.price.pro":            true, // the plan's name, not a word
+			"land.vision.3.value":       true, // "Zero" is Portuguese for zero
+			"lifedomain.fitness":        true, // same borrowing as nav.fitness
+			"palette.empty.after":       true,
+			"settings.prefs.imperial":   true,
+			"nav.coach-insights.nav":    true, // "coaching" is borrowed unchanged, like nav.fitness
+			"land.app.beta":             true,
+			"checkins.source.siri":      true, // Siri is a product name
+			"checkins.tags":             false,
+			"exercises.category.cardio": true, // same borrowing as nav.cardio-insights.nav
 		},
 		"es": {
-			"nav.cardio-insights.nav": true, // "Cardio" is the everyday word here too
-			"conn.tg.title":           true, // Telegram is a product name
-			"nav.fitness":             true,
-			"palette.empty.after":     true,
-			"settings.prefs.imperial": true,
-			"chat.feedback.no":        true, // "No" is "No" in Spanish
-			"chat.approval.no":        true,
-			"tg.confirm.no":           true,
-			"lifedomain.fitness":      true, // borrowed unchanged
-			"lifedomain.personal":     true, // "Personal" is spelled the same
-			"land.price.pro":          true, // the plan's name, not a word
-			"nav.coach-insights.nav":  true, // "coaching" is borrowed unchanged, like nav.fitness
-			"land.app.beta":           true, // "Beta" is spelled the same
-			"checkins.source.siri":    true, // Siri is a product name
-			"social.country.258":      true, // "Mozambique" is the Spanish spelling too
-			"social.country.61":       true, // "Australia", same spelling
-			"social.country.91":       true, // "India", same spelling
+			"nav.cardio-insights.nav":   true, // "Cardio" is the everyday word here too
+			"conn.tg.title":             true, // Telegram is a product name
+			"nav.fitness":               true,
+			"palette.empty.after":       true,
+			"settings.prefs.imperial":   true,
+			"chat.feedback.no":          true, // "No" is "No" in Spanish
+			"chat.approval.no":          true,
+			"tg.confirm.no":             true,
+			"lifedomain.fitness":        true, // borrowed unchanged
+			"lifedomain.personal":       true, // "Personal" is spelled the same
+			"land.price.pro":            true, // the plan's name, not a word
+			"nav.coach-insights.nav":    true, // "coaching" is borrowed unchanged, like nav.fitness
+			"land.app.beta":             true, // "Beta" is spelled the same
+			"checkins.source.siri":      true, // Siri is a product name
+			"social.country.258":        true, // "Mozambique" is the Spanish spelling too
+			"social.country.61":         true, // "Australia", same spelling
+			"social.country.91":         true, // "India", same spelling
+			"decisions.held.no":         true, // "No" is "No" in Spanish
+			"exercises.category.cardio": true, // same borrowing as nav.cardio-insights.nav
 		},
 	}
 

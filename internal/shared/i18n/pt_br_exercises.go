@@ -54,7 +54,7 @@ var portugueseBrazilianExercises = map[string]string{
 	"exercises.muscle.neck":       "Pescoço",
 
 	"exercises.category.strength":              "Força",
-	"exercises.category.cardio":                "Cardiovascular",
+	"exercises.category.cardio":                "Cardio",
 	"exercises.category.stretching":            "Alongamento",
 	"exercises.category.plyometrics":           "Pliometria",
 	"exercises.category.powerlifting":          "Levantamento básico",

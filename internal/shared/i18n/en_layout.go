@@ -36,4 +36,7 @@ var englishLayout = map[string]string{
 	"layout.art.credit.by":       "Exercise illustrations by",
 	"layout.art.credit.and":      "and",
 	"layout.art.credit.licensed": "licensed",
+	"layout.muscle.primary":      "Primary",
+	"layout.muscle.secondary":    "Secondary",
+	"layout.muscle.stabiliser":   "Stabiliser",
 }
