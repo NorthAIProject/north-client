@@ -3,6 +3,7 @@ package progresschecks
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -17,6 +18,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/lifts"
 	"github.com/NorthAIProject/north-client/internal/media"
 	"github.com/NorthAIProject/north-client/internal/progresschecks/progresscheck"
+	"github.com/NorthAIProject/north-client/internal/quota"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -33,11 +35,14 @@ const bodyMapDays = 7
 // API is progress checks for native clients. Routes go in the JSON group;
 // UploadRoutes in the upload group, whose body cap fits photos.
 type API struct {
-	svc  *Service
-	maps BodyMaps
+	svc    *Service
+	maps   BodyMaps
+	quotas *quota.Service
 }
 
-func NewAPI(svc *Service, maps BodyMaps) *API { return &API{svc: svc, maps: maps} }
+func NewAPI(svc *Service, maps BodyMaps, quotas *quota.Service) *API {
+	return &API{svc: svc, maps: maps, quotas: quotas}
+}
 
 func (a *API) Routes(r chi.Router) {
 	r.Get("/progress/checks", a.list)
@@ -45,10 +50,12 @@ func (a *API) Routes(r chi.Router) {
 	r.Get("/progress/schedule", a.schedule)
 	r.Put("/progress/schedule", a.setSchedule)
 	r.Get("/body/current", a.body)
+	r.Get("/progress/assist", a.assist)
 }
 
 func (a *API) UploadRoutes(r chi.Router) {
 	r.Post("/progress/checks", a.create)
+	r.With(a.quotas.GuardJSON(quota.ProgressEstimate)).Post("/progress/checks/estimate", a.estimate)
 }
 
 // maxCheckUpload fits three photos at media's cap plus the framing.
@@ -398,4 +405,90 @@ func ProjectBody(b Body, muscles []lifts.BodyMapMuscle) BodyCurrentView {
 		out.BMIBand = string(day.CategoryFor(*b.BMI))
 	}
 	return out
+}
+
+// ProgressAssistView says whether photos can be estimated for this person,
+// and by whom, so the client can name the provider before sending anything.
+type ProgressAssistView struct {
+	Available bool `json:"available"`
+	// ProviderLabel is the provider as a person knows it, e.g. "OpenAI".
+	ProviderLabel string `json:"providerLabel,omitempty"`
+	// OwnProvider is the person's own connected key, billed to them.
+	OwnProvider bool `json:"ownProvider"`
+}
+
+// ProgressEstimateView is a model's reading of the photos. Nothing is saved:
+// the client fills its form, and a save sends source "assisted" with the
+// confidence and notes. Absent measurements were not visible.
+type ProgressEstimateView struct {
+	WaistCm *float64 `json:"waistCm,omitempty"`
+	HipsCm  *float64 `json:"hipsCm,omitempty"`
+	ChestCm *float64 `json:"chestCm,omitempty"`
+	// Confidence is low, medium or high, as an open string.
+	Confidence string `json:"confidence"`
+	Notes      string `json:"notes"`
+}
+
+type ProgressEstimateResult struct {
+	Estimate      ProgressEstimateView `json:"estimate"`
+	ProviderLabel string               `json:"providerLabel"`
+	OwnProvider   bool                 `json:"ownProvider"`
+}
+
+func (a *API) assist(w http.ResponseWriter, r *http.Request) {
+	dest, err := a.svc.AssistDestination(r.Context(), auth.MustUser(r.Context()))
+	if errors.Is(err, ErrAssistUnavailable) {
+		httpx.WriteJSON(w, http.StatusOK, ProgressAssistView{})
+		return
+	}
+	if err != nil {
+		httpx.Error(w, err, "Photo estimates could not be checked.")
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, ProgressAssistView{Available: true, ProviderLabel: dest.Label, OwnProvider: dest.Own})
+}
+
+// estimate reads measurements off the photos in a multipart body with the
+// same pose parts as create. It stores nothing.
+func (a *API) estimate(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+	r.Body = http.MaxBytesReader(w, r.Body, maxCheckUpload)
+	if err := r.ParseMultipartForm(4 << 20); err != nil {
+		httpx.Error(w, apperr.FieldErrors{}.Add("front", "The photos could not be read."), "The photos could not be read.")
+		return
+	}
+	defer func() { _ = r.MultipartForm.RemoveAll() }()
+
+	uploads, closeAll, err := formPhotos(r)
+	defer closeAll()
+	if err != nil {
+		httpx.Error(w, err, "The photos could not be read.")
+		return
+	}
+	est, dest, err := a.svc.Estimate(r.Context(), user, uploads)
+	if err != nil {
+		httpx.Error(w, err, estimateFailure(err))
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, ProgressEstimateResult{
+		Estimate:      ProjectEstimate(est),
+		ProviderLabel: dest.Label,
+		OwnProvider:   dest.Own,
+	})
+}
+
+// estimateFailure is the sentence for a refused estimate. Field errors carry
+// their own; the rest say what the person can still do.
+func estimateFailure(err error) string {
+	if errors.Is(err, ErrAssistUnavailable) {
+		return "Photo estimates aren't available. Enter your measurements by hand."
+	}
+	return "The photos couldn't be estimated right now. Enter your measurements by hand, or try again."
+}
+
+func ProjectEstimate(e Estimate) ProgressEstimateView {
+	return ProgressEstimateView{
+		WaistCm: e.WaistCm, HipsCm: e.HipsCm, ChestCm: e.ChestCm,
+		Confidence: e.Confidence, Notes: e.Notes,
+	}
 }

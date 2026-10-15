@@ -54,4 +54,19 @@ var portugueseBrazilianProgress = map[string]string{
 
 	"day.progress.due":  "Registro de progresso pendente",
 	"day.progress.last": "Cintura %s cm · %s",
+
+	// Photo estimates.
+	"progress.estimate":             "Estimar a partir das fotos",
+	"progress.estimate.working":     "Estimando…",
+	"progress.estimate.consent":     "Envia estas fotos para %s para estimar cintura, quadril e peito. Nada é salvo até você salvar o registro.",
+	"progress.estimate.consent.own": "Envia estas fotos para %s, com sua própria chave, para estimar cintura, quadril e peito. Nada é salvo até você salvar o registro.",
+	"progress.estimate.label":       "Estimativa, não uma medição",
+	"progress.confidence.low":       "confiança baixa",
+	"progress.confidence.medium":    "confiança média",
+	"progress.confidence.high":      "confiança alta",
+	"progress.estimate.filled":      "Os campos vazios foram preenchidos. Confira com uma fita métrica se puder e depois salve.",
+	"progress.estimate.none":        "Não foi possível estimar nada a partir destas fotos.",
+	"progress.estimate.kept":        "Os números que você já tinha digitado foram mantidos.",
+	"progress.estimate.unavailable": "As estimativas por foto não estão disponíveis agora. Digite suas medidas à mão.",
+	"progress.estimate.failed":      "Não foi possível estimar as fotos. Digite suas medidas à mão ou tente de novo.",
 }
