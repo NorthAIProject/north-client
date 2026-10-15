@@ -149,8 +149,9 @@
   --destructive: oklch(0.577 0.245 27.325);
   --border: oklch(0.91 0.008 250);
   /* Darker than --border: at 0.91 an input's edge was 1.3:1 on a card and
-     fields read as bare text. Mirrored to iOS by sync-theme.py. */
-  --input: oklch(0.82 0.01 250);
+     fields read as bare text. 0.66 gives 3:1, the WCAG minimum for a
+     field's boundary. */
+  --input: oklch(0.66 0.01 250);
   --ring: oklch(0.55 0.08 218);
   --sidebar: oklch(0.985 0.004 250);
   --sidebar-foreground: oklch(0.16 0.01 250);

@@ -61,7 +61,9 @@ templ Switch(props ...Props) {
 					"transition-colors",
 					// Background colors. North: the off track was bg-input, about
 					// 1.2:1 on a card, so an off switch read as no switch at all.
-					"bg-muted-foreground/35",
+					// 80% in light and 35% in dark each give 3:1 on a card, the
+					// WCAG minimum for a control's state.
+					"bg-muted-foreground/80 dark:bg-muted-foreground/35",
 					"peer-checked:bg-primary",
 					// Focus styles
 					"peer-focus-visible:outline-none peer-focus-visible:ring-2",

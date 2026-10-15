@@ -780,9 +780,10 @@ templ composer(conversationID uuid.UUID, draft string) {
 					@change="pick($event.target.files[0])"
 				/>
 				@button.Button(button.Props{
-					Type:  button.TypeButton,
-					Size:  button.SizeIcon,
-					Class: "min-h-11 min-w-11",
+					Type:    button.TypeButton,
+					Variant: button.VariantOutline,
+					Size:    button.SizeIcon,
+					Class:   "min-h-11 min-w-11",
 					Attributes: templ.Attributes{
 						"@click":     "$refs.file.click()",
 						"aria-label": i18n.T(ctx, "chat.attach"),
@@ -792,7 +793,7 @@ templ composer(conversationID uuid.UUID, draft string) {
 				}
 				// Fills the box and stops there. Enter still sends, and the
 				// person presses it after reading what was heard.
-				@dictate.Button(dictate.Props{Target: "message"})
+				@dictate.Button(dictate.Props{Target: "message", Variant: button.VariantOutline})
 				@textarea.Textarea(textarea.Props{
 					ID:          "message",
 					Name:        "message",
