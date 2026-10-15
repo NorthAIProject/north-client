@@ -86,6 +86,8 @@ var spanishNav = map[string]string{
 	"nav.mind-insights":           "Análisis de la mente",
 	"nav.mind-insights.desc":      "Ánimo y reflexión a lo largo del tiempo.",
 	"nav.mind-insights.nav":       "Mente",
+	"nav.progress-check":          "Registro de progreso",
+	"nav.progress-check.desc":     "Fotos, peso y medidas con la frecuencia que elijas.",
 	"nav.progress-insights":       "Análisis de progreso",
 	"nav.progress-insights.desc":  "Cómo avanzan tus objetivos.",
 	"nav.progress-insights.nav":   "Progreso",

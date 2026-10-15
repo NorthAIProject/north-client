@@ -5125,6 +5125,222 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '500':
           $ref: '#/components/responses/InternalError'
+  /body/current:
+    get:
+      operationId: getBodyCurrent
+      summary: Everything the body figure is drawn from
+      description: |
+        The figure's shape comes from the latest progress check, as four morph
+        weights the server works out so every client draws the same body; muscles
+        are the same seven-day heat as /body/map. With no check yet the morph
+        weights are all 0 and the figure is drawn as modelled.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BodyCurrent'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /progress/checks:
+    get:
+      operationId: listProgressChecks
+      summary: Progress checks, newest first, with the reminder cadence
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: How many checks, 1 to 52. Defaults to 12.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 52
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProgressChecks'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      operationId: createProgressCheck
+      summary: Save a progress check the person confirmed, with its photos
+      description: |
+        Multipart: a photo per pose (front and side make a complete check; back
+        is optional) and a `check` part holding the ProgressCheckInput JSON. A
+        check needs at least one photo or one measurement. Photos are JPEG, PNG
+        or WebP up to 8 MB each; convert HEIC before sending. Numbers are never
+        saved from a model on their own: send what the person confirmed.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                check:
+                  type: string
+                  description: ProgressCheckInput, as JSON.
+                front:
+                  type: string
+                  format: binary
+                side:
+                  type: string
+                  format: binary
+                back:
+                  type: string
+                  format: binary
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProgressCheckCreated'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /progress/checks/estimate:
+    post:
+      operationId: estimateProgressCheck
+      summary: Estimate waist, hips and chest from photos, storing nothing
+      description: |
+        Multipart with the same front, side and back parts as createProgressCheck;
+        front or side is required. Photos go only to the provider
+        GET /progress/assist names — the person's own connected key when it reads
+        photos, otherwise Khepri's Anthropic client — and never to any other.
+        Nothing is stored. Show the result as an estimate; when the person saves,
+        send source "assisted" with the confidence and notes. Each photo is JPEG,
+        PNG or WebP, at most 3.5 MB.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                front:
+                  type: string
+                  format: binary
+                side:
+                  type: string
+                  format: binary
+                back:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProgressEstimateResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /progress/assist:
+    get:
+      operationId: getProgressAssist
+      summary: Whether photos can be estimated, and which provider would read them
+      description: |
+        Name the provider to the person before sending photos to
+        POST /progress/checks/estimate. Unavailable means the manual form only.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProgressAssist'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /progress/checks/{checkID}:
+    parameters:
+      - name: checkID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      operationId: deleteProgressCheck
+      summary: Delete a check and its photos
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProgressChecks'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /progress/schedule:
+    get:
+      operationId: getProgressSchedule
+      summary: The progress-check reminder, and whether a check is due today
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProgressSchedule'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    put:
+      operationId: setProgressSchedule
+      summary: Choose a cadence, or turn the reminder off with an empty one
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cadence]
+              properties:
+                cadence:
+                  type: string
+                  description: weekly, biweekly or monthly; empty turns the reminder off.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProgressSchedule'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /lifts/stats:
     get:
       operationId: getLiftStats
@@ -7309,6 +7525,217 @@ components:
           type: string
           format: date
           description: Date the region was last trained, inside the window or not. Absent if never.
+    BodyMorph:
+      type: object
+      required: [waist, hips, chest, overall]
+      description: How far each morph target pushes the figure's skin out, 0 (as modelled) to 1.
+      properties:
+        waist:
+          type: number
+          format: double
+        hips:
+          type: number
+          format: double
+        chest:
+          type: number
+          format: double
+        overall:
+          type: number
+          format: double
+          description: A soft whole-body term from BMI, never above 0.4.
+    BodyCurrent:
+      type: object
+      required: [morph, muscles]
+      properties:
+        sourceCheckId:
+          type: string
+          format: uuid
+          description: The progress check the shape came from. Absent before the first check.
+        measuredOn:
+          type: string
+          format: date
+        weightKg:
+          type: number
+          format: double
+        bmi:
+          type: number
+          format: double
+        bmiBand:
+          type: string
+          description: The WHO band (underweight, healthy, overweight, obese), as an open string. A label for context, not a judgement; show it only where BMI is shown.
+        morph:
+          $ref: '#/components/schemas/BodyMorph'
+        muscles:
+          type: array
+          items:
+            $ref: '#/components/schemas/BodyMapMuscle'
+    ProgressCheckInput:
+      type: object
+      description: The `check` part of createProgressCheck. Every number is optional and metric.
+      properties:
+        measuredOn:
+          type: string
+          format: date
+          description: Defaults to today in the person's timezone. A past date is history only and never changes the current weight.
+        cadence:
+          type: string
+          description: Also sets the reminder cadence (weekly, biweekly, monthly).
+        weightKg:
+          type: number
+          format: double
+          description: The scale reading. Omitted, the last known weight is copied and marked carried.
+        waistCm:
+          type: number
+          format: double
+        hipsCm:
+          type: number
+          format: double
+        chestCm:
+          type: number
+          format: double
+        thighCm:
+          type: number
+          format: double
+        armCm:
+          type: number
+          format: double
+        source:
+          type: string
+          description: manual (default) or assisted, when the numbers began as a photo estimate the person accepted or edited.
+        assistConfidence:
+          type: string
+          description: low, medium or high, from the estimate.
+        assistNotes:
+          type: string
+          description: The estimate's one-line note, up to 280 characters.
+    ProgressPhoto:
+      type: object
+      required: [pose, url]
+      properties:
+        pose:
+          type: string
+          description: front, side or back, as an open string.
+        url:
+          type: string
+          description: A signed link to the private photo, valid for two hours.
+    ProgressCheck:
+      type: object
+      required: [id, measuredOn, weightCarried, source, complete, photos, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        measuredOn:
+          type: string
+          format: date
+        weightKg:
+          type: number
+          format: double
+        weightCarried:
+          type: boolean
+          description: The weight was copied from the last known one, not read off a scale for this check.
+        waistCm:
+          type: number
+          format: double
+        hipsCm:
+          type: number
+          format: double
+        chestCm:
+          type: number
+          format: double
+        thighCm:
+          type: number
+          format: double
+        armCm:
+          type: number
+          format: double
+        source:
+          type: string
+          description: manual or assisted, as an open string.
+        assistConfidence:
+          type: string
+        assistNotes:
+          type: string
+        complete:
+          type: boolean
+          description: Has both front and side photos.
+        photos:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProgressPhoto'
+        createdAt:
+          type: string
+          format: date-time
+    ProgressSchedule:
+      type: object
+      required: [due]
+      properties:
+        cadence:
+          type: string
+          description: weekly, biweekly or monthly, as an open string. Absent when no reminder is set.
+        nextDueOn:
+          type: string
+          format: date
+        due:
+          type: boolean
+          description: A check is due today. Skipping a window leaves it due; nothing else counts against it.
+    ProgressChecks:
+      type: object
+      required: [checks, schedule]
+      properties:
+        checks:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProgressCheck'
+        schedule:
+          $ref: '#/components/schemas/ProgressSchedule'
+    ProgressAssist:
+      type: object
+      required: [available, ownProvider]
+      properties:
+        available:
+          type: boolean
+        providerLabel:
+          type: string
+          description: The provider as a person knows it, e.g. "OpenAI". Absent when unavailable.
+        ownProvider:
+          type: boolean
+          description: The person's own connected key, billed to their account.
+    ProgressEstimate:
+      type: object
+      required: [confidence, notes]
+      properties:
+        waistCm:
+          type: number
+          description: Absent when the photos did not show it.
+        hipsCm:
+          type: number
+        chestCm:
+          type: number
+        confidence:
+          type: string
+          description: low, medium or high, as an open string.
+        notes:
+          type: string
+          description: One short line on what limited the estimate, in the person's language.
+    ProgressEstimateResult:
+      type: object
+      required: [estimate, providerLabel, ownProvider]
+      properties:
+        estimate:
+          $ref: '#/components/schemas/ProgressEstimate'
+        providerLabel:
+          type: string
+        ownProvider:
+          type: boolean
+    ProgressCheckCreated:
+      type: object
+      required: [check, body]
+      properties:
+        check:
+          $ref: '#/components/schemas/ProgressCheck'
+        body:
+          $ref: '#/components/schemas/BodyCurrent'
     LiftMuscleSets:
       type: object
       required: [muscle, sets]

@@ -118,6 +118,24 @@ func (q *Queries) CreateMedia(ctx context.Context, arg CreateMediaParams) (Mediu
 	return i, err
 }
 
+const deleteMedia = `-- name: DeleteMedia :one
+DELETE FROM media WHERE id = $1 AND user_id = $2
+RETURNING storage_key
+`
+
+type DeleteMediaParams struct {
+	ID     uuid.UUID
+	UserID uuid.UUID
+}
+
+// Owner-scoped. Returns the storage key so the caller can remove the object.
+func (q *Queries) DeleteMedia(ctx context.Context, arg DeleteMediaParams) (string, error) {
+	row := q.db.QueryRow(ctx, deleteMedia, arg.ID, arg.UserID)
+	var storage_key string
+	err := row.Scan(&storage_key)
+	return storage_key, err
+}
+
 const failAnalysis = `-- name: FailAnalysis :exec
 UPDATE form_analyses
 SET status = 'failed', error = $2, updated_at = now()

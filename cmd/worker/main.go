@@ -64,6 +64,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/notifications"
 	"github.com/NorthAIProject/north-client/internal/nudges"
 	"github.com/NorthAIProject/north-client/internal/preferences"
+	"github.com/NorthAIProject/north-client/internal/progresschecks"
 	"github.com/NorthAIProject/north-client/internal/push"
 	"github.com/NorthAIProject/north-client/internal/quota"
 	"github.com/NorthAIProject/north-client/internal/reports"
@@ -468,7 +469,9 @@ func run() error {
 		// 30 and 90 days after a decision: did it hold?
 		WithDecisions(decisions.NewService(decisions.NewRepository(pool))).
 		// Dose reminders the person scheduled; raised even in quiet hours.
-		WithMedications(medications.NewService(medications.NewRepository(pool)))
+		WithMedications(medications.NewService(medications.NewRepository(pool))).
+		// The progress-check cadence the person chose.
+		WithProgressChecks(progresschecks.NewService(progresschecks.NewRepository(pool), mediaSvc, biometricSvc))
 	worker.Register(jobs.KindSweepNudges, nudges.NewSweeper(nudgeSvc, log).HandleSweep)
 
 	// Strava imports and the coach's tools finish workouts and save check-ins
