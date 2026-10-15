@@ -23,8 +23,13 @@ func TestRecapShapes(t *testing.T) {
 		Prior:         recap.Totals{ActiveDays: 1, Workouts: 1},
 		CheckInStreak: 4,
 		Days: []recap.Day{
-			{Date: day(9)}, {Date: day(10), Sets: 3}, {Date: day(11)}, {Date: day(12), FoodLogs: 2},
-			{Date: day(13)}, {Date: day(14)}, {Date: day(15), Workouts: 1, CheckIns: 1},
+			{Date: day(9)},
+			{Date: day(10), Sets: 3},
+			{Date: day(11)},
+			{Date: day(12), FoodLogs: 2},
+			{Date: day(13)},
+			{Date: day(14)},
+			{Date: day(15), Workouts: 1, CheckIns: 1},
 		},
 		Highlights: []recap.Highlight{{
 			Kind: achievement.KindWorkoutCompleted, Title: "Finished Legs", Detail: "52 min",

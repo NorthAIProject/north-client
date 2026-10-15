@@ -109,7 +109,9 @@ func newService(ach *fakeAchievements) *recaps.Service {
 			{}, // still running: no end, not counted
 		},
 		Sets: fakeSets{
-			{LogDate: date(2026, 10, 10)}, {LogDate: date(2026, 10, 10)}, {LogDate: date(2026, 10, 10)},
+			{LogDate: date(2026, 10, 10)},
+			{LogDate: date(2026, 10, 10)},
+			{LogDate: date(2026, 10, 10)},
 			{LogDate: date(2026, 9, 1)}, // outside both windows
 		},
 		Food:         fakeFood{{LogDate: date(2026, 10, 12)}, {LogDate: date(2026, 10, 12)}},
