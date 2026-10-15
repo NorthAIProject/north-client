@@ -288,12 +288,12 @@ func pageCheck(r *http.Request, c Check, older *Check) progresspages.Check {
 		if v == nil {
 			continue
 		}
-		chip := progresspages.Chip{Key: f.key, Value: number(*v) + " " + f.unit}
+		chip := progresspages.Chip{Key: f.key, Value: readNumber(r.Context(), *v) + " " + f.unit}
 		if f.unit == "kg" && c.WeightCarried {
 			chip.Carried = true
 		} else if older != nil {
 			if was := f.get(older.Measurements); was != nil && (f.unit != "kg" || !older.WeightCarried) {
-				chip.Delta = delta(*v - *was)
+				chip.Delta = delta(r.Context(), *v-*was)
 			}
 		}
 		out.Chips = append(out.Chips, chip)
@@ -357,18 +357,26 @@ func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 	}
 }
 
+// number is a measurement as a form field holds it: always a decimal point,
+// because the browser parses it back.
 func number(v float64) string {
 	return strings.TrimSuffix(fmt.Sprintf("%.1f", v), ".0")
 }
 
+// readNumber is a measurement as a person reads it, in their decimal mark.
+func readNumber(ctx context.Context, v float64) string {
+	s := i18n.Decimal(ctx, v, 1)
+	return strings.TrimSuffix(strings.TrimSuffix(s, ".0"), ",0")
+}
+
 // delta is a change with its sign; no change is not shown.
-func delta(d float64) string {
+func delta(ctx context.Context, d float64) string {
 	d = math.Round(d*10) / 10
 	switch {
 	case d > 0:
-		return "+" + number(d)
+		return "+" + readNumber(ctx, d)
 	case d < 0:
-		return "−" + number(-d)
+		return "−" + readNumber(ctx, -d)
 	default:
 		return ""
 	}
