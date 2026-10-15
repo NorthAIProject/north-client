@@ -136,4 +136,9 @@ var spanishNav = map[string]string{
 	"palette.hint.navigate": "navegar",
 	"palette.hint.open":     "abrir",
 	"palette.hint.close":    "cerrar",
+	"nav.weekly.desc":       "Repasa la semana y elige un foco para la siguiente.",
+	"nav.friends.desc":      "Las personas que sigues y tu enlace de invitación.",
+	"nav.leaderboard.desc":  "Tu XP y tu nivel, en un ranking con los amigos que comparten los suyos.",
+	"nav.crews.desc":        "Unas pocas personas que se ayudan a no parar.",
+	"nav.inbox.desc":        "Lo que guardas para ordenar después, con el coach sugiriendo dónde va cada cosa.",
 }

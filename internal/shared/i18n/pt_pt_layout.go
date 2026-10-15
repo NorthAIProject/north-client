@@ -36,4 +36,6 @@ var portugueseEuropeanLayout = map[string]string{
 	"layout.muscle.primary":      "Principal",
 	"layout.muscle.secondary":    "Secundário",
 	"layout.muscle.stabiliser":   "Estabilizador",
+	"layout.search":              "Pesquisar…",
+	"layout.sidebar.toggle":      "Mostrar ou ocultar a barra lateral",
 }

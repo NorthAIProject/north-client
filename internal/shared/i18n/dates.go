@@ -84,6 +84,7 @@ var romanceLayouts = map[string]string{
 	"Jan 2, 2006 3:04 PM":    "2 Jan 2006, 15:04",
 	"Mon, Jan 2":             "Mon, 2 Jan",
 	"Monday, January 2":      "Monday, 2 de January",
+	"Monday, 2 January":      "Monday, 2 de January",
 	"Monday, 2 January 2006": "Monday, 2 de January de 2006",
 }
 

@@ -260,10 +260,7 @@ func BuildView(ctx context.Context, s Snapshot) daypages.Data {
 }
 
 func dateLabel(ctx context.Context, t time.Time) string {
-	return fmt.Sprintf("%s, %d %s",
-		i18n.T(ctx, fmt.Sprintf("weekday.long.%d", int(t.Weekday()))),
-		t.Day(),
-		i18n.T(ctx, fmt.Sprintf("month.long.%d", int(t.Month()))))
+	return i18n.Date(ctx, t, "Monday, 2 January")
 }
 
 func percentVital(key string, v *int, color string) daypages.Vital {

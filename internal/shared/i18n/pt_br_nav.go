@@ -135,4 +135,9 @@ var portugueseBrazilianNav = map[string]string{
 	"palette.hint.navigate": "navegar",
 	"palette.hint.open":     "abrir",
 	"palette.hint.close":    "fechar",
+	"nav.weekly.desc":       "Revise a semana e escolha um foco para a próxima.",
+	"nav.friends.desc":      "As pessoas que você segue e seu link de convite.",
+	"nav.leaderboard.desc":  "Seu XP e nível, num ranking com os amigos que compartilham os deles.",
+	"nav.crews.desc":        "Um pequeno grupo que se ajuda a não parar.",
+	"nav.inbox.desc":        "O que você guarda para organizar depois, com o coach sugerindo onde vai cada coisa.",
 }

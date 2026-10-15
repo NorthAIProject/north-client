@@ -36,4 +36,6 @@ var spanishLayout = map[string]string{
 	"layout.muscle.primary":      "Principal",
 	"layout.muscle.secondary":    "Secundario",
 	"layout.muscle.stabiliser":   "Estabilizador",
+	"layout.search":              "Buscar…",
+	"layout.sidebar.toggle":      "Mostrar u ocultar la barra lateral",
 }
