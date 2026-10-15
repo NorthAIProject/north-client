@@ -179,6 +179,14 @@ type BodyCard struct {
 	// not be read, which leaves the figure untrained rather than the page
 	// broken.
 	Map *bodymap.Map
+
+	// ProgressDue is a scheduled progress check falling due: a quiet chip
+	// linking to it, never a modal.
+	ProgressDue bool
+	// LastWaist and LastCheckOn are the latest progress check's waist and
+	// date, empty when there is none or it has no waist.
+	LastWaist   string
+	LastCheckOn string
 }
 
 // SoreRegion is one sore place, as a chip.

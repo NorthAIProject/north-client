@@ -129,6 +129,7 @@ type Service struct {
 	weekly    weeklySource
 	decisions decisionSource
 	meds      medicationSource
+	progress  progressSource
 	now       func() time.Time
 }
 
@@ -510,6 +511,12 @@ func (s *Service) Evaluate(ctx context.Context, user users.User) (int, error) {
 	created += n
 
 	n, err = s.evalPhotoSchedule(ctx, user, today)
+	if err != nil {
+		return created, err
+	}
+	created += n
+
+	n, err = s.evalProgressCheck(ctx, user, now)
 	if err != nil {
 		return created, err
 	}

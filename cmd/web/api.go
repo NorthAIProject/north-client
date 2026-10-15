@@ -38,6 +38,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/nudges"
 	"github.com/NorthAIProject/north-client/internal/onboarding"
 	"github.com/NorthAIProject/north-client/internal/planimport"
+	"github.com/NorthAIProject/north-client/internal/progresschecks"
 	"github.com/NorthAIProject/north-client/internal/reports"
 	"github.com/NorthAIProject/north-client/internal/screentime"
 	"github.com/NorthAIProject/north-client/internal/settings"
@@ -83,6 +84,7 @@ func mountAPI(r chi.Router, sessions auth.SessionResolver, apis apiSet) {
 			apis.formChecks.UploadRoutes(r)
 			apis.planImport.UploadRoutes(r)
 			apis.lifts.UploadRoutes(r)
+			apis.progress.UploadRoutes(r)
 		})
 	})
 }
@@ -114,6 +116,7 @@ func mountJSON(r chi.Router, sessions auth.SessionResolver, apis apiSet) {
 		apis.fasting.Routes(r)
 		apis.supplements.Routes(r)
 		apis.medications.Routes(r)
+		apis.progress.Routes(r)
 		apis.screenTime.Routes(r)
 		apis.soreness.Routes(r)
 		apis.milestones.Routes(r)
@@ -165,6 +168,7 @@ type apiSet struct {
 	fasting      *fasting.API
 	supplements  *supplements.API
 	medications  *medications.API
+	progress     *progresschecks.API
 	screenTime   *screentime.API
 	soreness     *soreness.API
 	milestones   *milestones.API

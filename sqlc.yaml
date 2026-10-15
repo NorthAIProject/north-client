@@ -552,6 +552,15 @@ sql:
         overrides: *overrides
   - engine: postgresql
     schema: migrations
+    queries: internal/progresschecks/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: progresschecksdb
+        out: internal/progresschecks/db
+        overrides: *overrides
+  - engine: postgresql
+    schema: migrations
     queries: internal/screentime/db/queries.sql
     gen:
       go:

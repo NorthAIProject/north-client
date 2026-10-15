@@ -61,3 +61,8 @@ WHERE id = $1;
 UPDATE form_analyses
 SET status = 'failed', error = $2, updated_at = now()
 WHERE id = $1;
+
+-- name: DeleteMedia :one
+-- Owner-scoped. Returns the storage key so the caller can remove the object.
+DELETE FROM media WHERE id = $1 AND user_id = $2
+RETURNING storage_key;

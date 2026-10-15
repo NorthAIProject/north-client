@@ -36,6 +36,8 @@ const (
 	QuickCapture    Action = "quick_capture"
 	VoiceCapture    Action = "voice_capture"
 	PlanImport      Action = "plan_import"
+
+	ProgressEstimate Action = "progress_estimate"
 )
 
 // Limit is one account's allowance for one action.
