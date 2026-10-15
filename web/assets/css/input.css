@@ -194,9 +194,10 @@
   /* The body figure: untrained muscle is a cool grey-blue, skin with no
      muscle under it (head, hands, joints) a plain neutral, and training heat
      ramps from heat-low up to ember. Mirrored to iOS by sync-theme.py. */
-  --north-body-idle: oklch(0.72 0.04 250);
-  --north-body-base: oklch(0.74 0.01 250);
-  --north-heat-low: oklch(0.82 0.11 78);
+  --north-body-idle: oklch(0.58 0.045 250);
+  --north-body-shell: oklch(0.86 0.02 250);
+  --north-body-core: oklch(0.32 0.02 250);
+  --north-heat-low: oklch(0.78 0.09 85);
 
   /* Muse chat tokens. Aliases, not new colours: the contract maps each role
      onto a token North already has. Repeated under .dark so they resolve
@@ -265,9 +266,10 @@
   --north-day-screen: oklch(0.7 0.15 280);
   --north-day-now: oklch(0.7 0.2 25);
 
-  --north-body-idle: oklch(0.47 0.045 250);
-  --north-body-base: oklch(0.47 0.012 250);
-  --north-heat-low: oklch(0.8 0.12 78);
+  --north-body-idle: oklch(0.43 0.05 250);
+  --north-body-shell: oklch(0.74 0.03 250);
+  --north-body-core: oklch(0.17 0.015 250);
+  --north-heat-low: oklch(0.58 0.08 82);
 
   --muse-canvas: var(--background);
   --muse-agent-bubble: var(--card);

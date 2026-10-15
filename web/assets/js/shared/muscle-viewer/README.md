@@ -30,13 +30,13 @@ present in one file but not the other either highlights nothing
 produced by the model — both fail quietly, not loudly, so this checklist is
 the only thing keeping them aligned.
 
-`build-body.mjs` is the one place that fails loudly: it refuses to write a
-`body.glb` that has no geometry for some key in `MUSCLE_ALIASES`.
+`build-body.mjs` and `scripts/bodymap` fail loudly: neither writes a figure that
+has no geometry for some key in `MUSCLE_ALIASES` / `bodymap.Regions`.
 
 ## Adding a new muscle key
 
-1. Confirm the target mesh(es) exist in `body.glb` under their Z-Anatomy
-   names (see `web/assets/models/README.md`).
+1. Confirm the target mesh(es) exist in `tools/model/body-source.glb` under
+   their Z-Anatomy names (see `web/assets/models/README.md`).
 2. Add the key + its mesh-name aliases to `MUSCLE_ALIASES` in `muscles.js`.
 3. Add a display name + description to `MUSCLE_INFO` in the same file.
 4. Add the key to `MuscleGroups` in `internal/workouts/plan/muscle.go`.
@@ -45,21 +45,27 @@ the only thing keeping them aligned.
 
 ## How the figure is drawn
 
-`body-map.glb` is the skin of a body cut into one region per muscle key (see
-`web/assets/models/README.md`). Every region has its own material, so colouring is
-setting a colour: untrained regions are `--north-body-idle`, skin with no muscle
-under it is `--north-body-base`, and heat ramps from `--north-heat-low` to
-`--north-ember`. The tokens live in `web/assets/css/input.css` and are mirrored to
-iOS.
+`body-map.glb` is the muscles of an anatomical atlas, one mesh per muscle key, inside
+the skin of a body (see `web/assets/models/README.md`). The skin is drawn twice from
+one geometry: back faces opaque in `--north-body-core`, so the inside of the body is
+a dark cavity, and front faces translucent in `--north-body-shell`, firmed up at the
+silhouette by a fresnel rim. Every muscle has its own material, so colouring is
+setting a colour: untrained muscle is `--north-body-idle`, and heat ramps from
+`--north-heat-low` to `--north-ember`. The tokens live in `web/assets/css/input.css`
+and are mirrored to iOS; the in-app wrapper re-reads them on `theme-changed`.
 
 Every colour is decided on the server. `muscleviewer.templ` turns either an
 exercise's tiers or a body map (`internal/bodymap`) into region heat, folds muscles
-without skin into the region over them, and hands the viewer a finished
+without a mesh into the one over them, and hands the viewer a finished
 `{region: 0..1}` map plus the localized tap details. Without WebGL the same heat
-paints the flat front/back SVG generated beside it.
+paints the flat front/back SVG generated beside it, which projects the same meshes.
 
 The figure sways slowly around a front three-quarter view (back three-quarter when
-back muscles are the hottest), never under reduced motion; drag turns it.
+back muscles are the hottest), never under reduced motion; drag turns it. Only the
+muscles answer a tap.
+
+`scripts/bodymap/preview/` draws the figure on its own, for checking a change to the
+asset, the viewer or the tokens.
 
 ## Adding a new exercise
 

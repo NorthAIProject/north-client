@@ -30,17 +30,13 @@ import { MUSCLE_INFO } from "./muscles.js";
 import { readCSSColor } from "../css-color.js";
 
 const MODEL_PATH = "/assets/models/body-map.glb";
-// The two skin meshes. "base" is skin with no muscle under it: head, hands,
-// feet, joints. "shell" is the rest.
-const BASE_REGION = "base";
-const SHELL_REGION = "shell";
-const SHELL_OPACITY = 0.25;
+const SHELL_REGION = "shell"; // the skin; every other mesh is a muscle
+const SHELL_OPACITY = 0.3;
 
 // Fallbacks for the colour tokens in web/assets/css/input.css, used only when a
 // page has not loaded the stylesheet.
 const FALLBACK = {
   idle: 0x7d8ca1,
-  base: 0x8b9097,
   shell: 0xc9d3df,
   core: 0x242b35,
   heatLow: 0xf0d6a0,
@@ -117,7 +113,6 @@ function hasWebGL() {
 function readColours() {
   return {
     idle: readCSSColor("--north-body-idle", FALLBACK.idle),
-    base: readCSSColor("--north-body-base", FALLBACK.base),
     shell: readCSSColor("--north-body-shell", FALLBACK.shell),
     core: readCSSColor("--north-body-core", FALLBACK.core),
     heatLow: readCSSColor("--north-heat-low", FALLBACK.heatLow),
@@ -196,11 +191,8 @@ export async function createViewer(canvas, options = {}) {
     strength: { value: palette.rimStrength },
   };
 
-  const { figure, regions, layers, height } = await loadFigure(colours, rim, {
-    variant: options.variant || "a",
-    shellOpacity: options.shellOpacity ?? SHELL_OPACITY,
-    model: options.model,
-  });
+  // options.model lets scripts/bodymap/preview compare asset builds.
+  const { figure, regions, shell, height } = await loadFigure(colours, rim, options.model);
   const group = new THREE.Group();
   group.add(figure);
   scene.add(group);
@@ -353,10 +345,8 @@ export async function createViewer(canvas, options = {}) {
   }
 
   function paintSkin() {
-    for (const layer of layers) {
-      layer.coreMaterial.color.copy(colours.core);
-      layer.material.color.copy(layer.ghost ? colours.shell : colours.base);
-    }
+    shell.core.color.copy(colours.core);
+    shell.ghost.color.copy(colours.shell);
   }
 
   function setHeat(next = {}) {
@@ -428,11 +418,9 @@ export async function createViewer(canvas, options = {}) {
         region.mesh.geometry.dispose();
         region.material.dispose();
       }
-      for (const layer of layers) {
-        layer.mesh.geometry.dispose();
-        layer.material.dispose();
-        layer.coreMaterial.dispose();
-      }
+      shell.geometry.dispose();
+      shell.core.dispose();
+      shell.ghost.dispose();
       shadowGeometry.dispose();
       shadowMaterial.dispose();
       shadowTexture.dispose();
@@ -445,12 +433,12 @@ export async function createViewer(canvas, options = {}) {
 }
 
 /**
- * Loads body-map.glb: the two skin meshes become layers, every other mesh is a
- * muscle region with its own material, keyed by the mesh's name. The file
- * stands on the origin (soles at y = 0, centred), so nothing needs measuring
- * beyond its height.
+ * Loads body-map.glb: the skin becomes the shell, every other mesh a muscle
+ * region with its own material, keyed by the mesh's name. The file stands on
+ * the origin (soles at y = 0, centred), so nothing needs measuring beyond its
+ * height.
  */
-async function loadFigure(colours, rim, { variant, shellOpacity, model }) {
+async function loadFigure(colours, rim, model) {
   // Versioned like the module itself: /assets/ is served immutable for a year.
   const version = new URL(import.meta.url).searchParams.get("v");
   const path = model || MODEL_PATH;
@@ -464,11 +452,11 @@ async function loadFigure(colours, rim, { variant, shellOpacity, model }) {
   });
 
   const regions = {};
-  const layers = [];
+  let shell = null;
   for (const obj of meshes) {
     if (obj.material) obj.material.dispose();
-    if (obj.name === SHELL_REGION || obj.name === BASE_REGION) {
-      layers.push(skinLayer(obj, colours, rim, { variant, shellOpacity }));
+    if (obj.name === SHELL_REGION) {
+      shell = skinLayers(obj, colours, rim);
       continue;
     }
     const material = new THREE.MeshStandardMaterial({
@@ -481,8 +469,9 @@ async function loadFigure(colours, rim, { variant, shellOpacity, model }) {
     obj.material = material;
     regions[obj.name] = { mesh: obj, material };
   }
+  if (!shell) throw new Error("body-map.glb has no shell mesh");
   const box = new THREE.Box3().setFromObject(figure);
-  return { figure, regions, layers, height: box.max.y - box.min.y };
+  return { figure, regions, shell, height: box.max.y - box.min.y };
 }
 
 /**
@@ -490,36 +479,29 @@ async function loadFigure(colours, rim, { variant, shellOpacity, model }) {
  * the body: opaque and dark, the cavity the muscles sit in, always behind
  * them. The front faces are the shell: translucent, firming up at the
  * silhouette through the rim's alpha, so the body's outline stays readable
- * with the muscles showing through. Variant "b" keeps the base skin (head,
- * hands, feet, joints) solid clay instead.
+ * with the muscles showing through.
  */
-function skinLayer(obj, colours, rim, { variant, shellOpacity }) {
-  const ghost = !(obj.name === BASE_REGION && variant === "b");
-  const coreMaterial = new THREE.MeshStandardMaterial({
+function skinLayers(obj, colours, rim) {
+  const core = new THREE.MeshStandardMaterial({
     color: colours.core,
     roughness: 0.85,
     metalness: 0,
     side: THREE.BackSide,
   });
-  const core = new THREE.Mesh(obj.geometry, coreMaterial);
-  core.name = `${obj.name}-core`;
-  core.position.copy(obj.position);
-  core.quaternion.copy(obj.quaternion);
-  core.scale.copy(obj.scale);
-  obj.parent.add(core);
+  const inside = new THREE.Mesh(obj.geometry, core);
+  inside.name = "shell-core";
+  obj.parent.add(inside);
 
-  const material = ghost
-    ? new THREE.MeshStandardMaterial({
-        color: colours.shell,
-        roughness: 0.4,
-        metalness: 0,
-        transparent: true,
-        opacity: shellOpacity,
-        depthWrite: false,
-      })
-    : new THREE.MeshStandardMaterial({ color: colours.base, roughness: 0.62, metalness: 0 });
-  addRim(material, rim, ghost ? 0.6 : 0);
-  obj.material = material;
-  obj.renderOrder = ghost ? 1 : 0;
-  return { name: obj.name, mesh: obj, material, core, coreMaterial, ghost };
+  const ghost = new THREE.MeshStandardMaterial({
+    color: colours.shell,
+    roughness: 0.4,
+    metalness: 0,
+    transparent: true,
+    opacity: SHELL_OPACITY,
+    depthWrite: false,
+  });
+  addRim(ghost, rim, 0.6);
+  obj.material = ghost;
+  obj.renderOrder = 1;
+  return { geometry: obj.geometry, core, ghost };
 }

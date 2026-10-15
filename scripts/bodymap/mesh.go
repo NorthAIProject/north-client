@@ -155,21 +155,6 @@ func (m mesh) normals() []vec3 {
 	return out
 }
 
-// adjacency lists each triangle's edge neighbours.
-func (m mesh) adjacency() [][]int {
-	out := make([][]int, len(m.tris))
-	for _, fs := range m.edgeFaces() {
-		for _, a := range fs {
-			for _, b := range fs {
-				if a != b {
-					out[a] = append(out[a], b)
-				}
-			}
-		}
-	}
-	return out
-}
-
 func (m mesh) triangle(i int) triangle {
 	t := m.tris[i]
 	return triangle{m.verts[t[0]], m.verts[t[1]], m.verts[t[2]]}

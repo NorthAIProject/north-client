@@ -40,6 +40,7 @@
       failed: false,
       viewer: null,
       observer: null,
+      onTheme: null,
       selected: null,
       heat: props.heat || {},
       details: props.details || {},
@@ -66,6 +67,10 @@
             onMuscleClick: (key) => this.select(key),
           });
           this.viewer.setHeat(this.heat);
+          // The theme switcher (web/shared/ui/themeswitcher.templ) announces
+          // a change; the figure's tokens have to be read again.
+          this.onTheme = () => this.viewer && this.viewer.setTheme(document.documentElement.classList.contains("dark"));
+          document.addEventListener("theme-changed", this.onTheme);
         } catch (err) {
           this.failed = true;
         }
@@ -92,6 +97,8 @@
       // Frees the WebGL context but keeps the props, so scrolling or opening
       // the dialog again reloads clean.
       teardown() {
+        if (this.onTheme) document.removeEventListener("theme-changed", this.onTheme);
+        this.onTheme = null;
         if (this.viewer) this.viewer.destroy();
         this.viewer = null;
         this.ready = false;

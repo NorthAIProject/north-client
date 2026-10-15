@@ -3,24 +3,30 @@
 //
 // tools/model/body-source.glb carries an outer skin and the Z-Anatomy muscle
 // meshes fitted inside it (see tools/model/README.md). This tool refits the
-// atlas to the skin, groups its meshes by muscle key, and splits the skin into
-// "shell" (skin over muscle) and "base" (skin with no muscle within -radius:
-// head, hands, feet, joints). Clients draw the skin's back faces opaque and
-// dark and its front faces translucent, so the muscles show through a body.
+// atlas to the skin, fits each arm on its own, tucks any muscle still poking
+// out back under the skin, and groups the atlas meshes by muscle key. Clients
+// draw the skin's back faces opaque and dark and its front faces translucent,
+// so the muscles show through a body.
 //
 // Outputs, all committed:
 //
-//   - -glb:    the meshes for three.js — shell, base, then one node per key —
-//     plain float32 and uint16 so no decoder is needed.
+//   - -glb:    the meshes for three.js — "shell" and one node per key —
+//     quantized (KHR_mesh_quantization), which the vendored loader reads
+//     without a decoder.
 //   - -figure: a generated Go file with front and back SVG outlines, the
 //     fallback when a browser has no WebGL. Skipped when empty.
 //   - -usdz:   the same meshes for RealityKit on iOS (needs macOS's usdcat and
 //     usdzip, both in /usr/bin). Skipped when empty.
+//   - -ibl:    the web viewer's studio light rig as an equirectangular PNG,
+//     for RealityKit's image-based lighting. Skipped when empty.
 //
-// Run it from the repository root:
+// Run it from the repository root (task bodymap does):
 //
 //	go run ./scripts/bodymap \
-//	  -usdz ../north-ios-app/khepri/khepri/Resources/BodyMap.usdz
+//	  -usdz ../north-ios-app/khepri/khepri/Resources/BodyMap.usdz \
+//	  -ibl ../north-ios-app/khepri/khepri/Resources/BodyStudio.png
+//
+// scripts/bodymap/preview is a page for looking at the result.
 package main
 
 import (
@@ -41,9 +47,8 @@ func main() {
 	outGLB := flag.String("glb", "web/assets/models/body-map.glb", "meshes for the web viewer")
 	outFigure := flag.String("figure", "web/shared/muscleviewer/figure_gen.go", "generated SVG outlines; skipped when empty")
 	outUSDZ := flag.String("usdz", "", "meshes for iOS; skipped when empty")
-	radius := flag.Float64("radius", 0.05, "how far under the skin a muscle may sit and still claim it, in metres")
-	subdivide := flag.Bool("subdivide", false, "smooth the skin with one step of Loop subdivision (four times the triangles)")
-	debugSVG := flag.String("debug-svg", "", "write a flat-shaded front/back preview of the skin labels here")
+	outIBL := flag.String("ibl", "", "studio light rig for iOS, as an equirectangular PNG; skipped when empty")
+	subdivide := flag.Bool("subdivide", true, "smooth the skin with one step of Loop subdivision (four times the triangles)")
 	flag.Parse()
 
 	aliases, err := readAliases(*musclesJS)
@@ -73,18 +78,11 @@ func main() {
 	reportFit(field, muscleTris)
 	fitArms(field, muscleTris, muscleKeys)
 	reportFit(field, muscleTris)
-	pushInside(field, skin, muscleTris)
-
-	idx := newMuscleIndex(muscleTris, muscleKeys, *radius)
-	vertexLabels := labelVertices(skin, idx, *radius)
-	smoothVertices(vertexLabels, skin.vertexNeighbours(), 4)
-	skin, labels := splitByLabels(skin, vertexLabels)
-	dropIslands(labels, skin.adjacency(), 60)
+	pushInside(field, skin, muscleTris, muscleKeys)
 
 	// Stand the figure on the origin: soles at y = 0, centred in x and z, so
 	// every client can frame it without measuring it first. The muscles share
 	// the skin's space, so they move with it.
-	lo, hi = skin.bounds()
 	centre := vec3{(lo[0] + hi[0]) / 2, lo[1], (lo[2] + hi[2]) / 2}
 	for i, v := range skin.verts {
 		skin.verts[i] = v.sub(centre)
@@ -93,20 +91,12 @@ func main() {
 		muscleTris[i] = triangle{t[0].sub(centre), t[1].sub(centre), t[2].sub(centre)}
 	}
 
-	if *debugSVG != "" {
-		if err := writeDebugSVG(*debugSVG, skin, labels); err != nil {
-			log.Fatal(err)
-		}
-		if err := os.WriteFile(strings.TrimSuffix(*debugSVG, ".svg")+"-flat.svg", []byte(figureSVG(skin, labels)), 0o644); err != nil {
-			log.Fatal(err)
-		}
-	}
-
 	muscles := muscleRegions(muscleTris, muscleKeys)
 	if err := checkCoverage(muscles); err != nil {
 		log.Fatal(err)
 	}
-	regions := append(buildRegions(skin, collapseLabels(labels)), muscles...)
+	shell := skinRegion(skin)
+	regions := append([]region{shell}, muscles...)
 	for _, r := range regions {
 		log.Printf("  %-11s %6d vertices %6d triangles", r.key, len(r.verts), len(r.tris))
 	}
@@ -117,7 +107,7 @@ func main() {
 		log.Printf("wrote %s (%.0f KB)", *outGLB, float64(info.Size())/1024)
 	}
 	if *outFigure != "" {
-		if err := writeFigure(*outFigure, skin, labels); err != nil {
+		if err := writeFigure(*outFigure, shell, muscles); err != nil {
 			log.Fatal(err)
 		}
 		log.Printf("wrote %s", *outFigure)
@@ -127,6 +117,12 @@ func main() {
 			log.Fatal(err)
 		}
 		log.Printf("wrote %s", *outUSDZ)
+	}
+	if *outIBL != "" {
+		if err := writeStudioPNG(*outIBL, 512, 256); err != nil {
+			log.Fatal(err)
+		}
+		log.Printf("wrote %s", *outIBL)
 	}
 }
 
@@ -194,57 +190,6 @@ func reportFit(field distanceField, muscles []triangle) {
 		}
 	}
 	log.Printf("atlas fit: %.1f%% of muscle vertices outside the skin, farthest %.0f mm", 100*float64(outside)/float64(total), farthest*1000)
-}
-
-// region is one named mesh of the figure, indexed on its own.
-type region struct {
-	key     string
-	verts   []vec3
-	normals []vec3
-	tris    [][3]int
-}
-
-// buildRegions splits the skin by label. A vertex on a border is copied into
-// each region that uses it with the same normal, so the shading stays smooth
-// across the seam.
-func buildRegions(skin mesh, labels []string) []region {
-	normals := skin.normals()
-	byKey := map[string]*region{}
-	remap := map[string]map[int]int{}
-	for i, t := range skin.tris {
-		key := labels[i]
-		r, ok := byKey[key]
-		if !ok {
-			r = &region{key: key}
-			byKey[key] = r
-			remap[key] = map[int]int{}
-		}
-		var face [3]int
-		for k, v := range t {
-			at, ok := remap[key][v]
-			if !ok {
-				at = len(r.verts)
-				remap[key][v] = at
-				r.verts = append(r.verts, skin.verts[v])
-				r.normals = append(r.normals, normals[v])
-			}
-			face[k] = at
-		}
-		r.tris = append(r.tris, face)
-	}
-	out := make([]region, 0, len(byKey))
-	for _, r := range byKey {
-		out = append(out, *r)
-	}
-	// Shell first, then base: the clients tell them apart by name, but a tool
-	// that opens the file directly sees the body before the parts.
-	sort.Slice(out, func(i, j int) bool {
-		if (out[i].key == shellRegion) != (out[j].key == shellRegion) {
-			return out[i].key == shellRegion
-		}
-		return out[i].key < out[j].key
-	})
-	return out
 }
 
 // checkCoverage fails when the figure and internal/bodymap disagree: every
