@@ -16,6 +16,25 @@
   // whole job is one getPropertyValue.
   var CSS_VAR = /^var\(\s*(--[A-Za-z0-9_-]+)\s*\)$/;
 
+  // The tokens are oklch(), which a canvas paints but ECharts' own colour
+  // parser does not read: anything it derives (a hover lift, a gradient)
+  // comes out black. A 1x1 canvas turns any CSS colour into rgba().
+  var probe = null;
+  function toRGBA(value) {
+    if (!probe) {
+      var canvas = document.createElement("canvas");
+      canvas.width = canvas.height = 1;
+      probe = canvas.getContext("2d", { willReadFrequently: true });
+      if (!probe) return value;
+    }
+    probe.clearRect(0, 0, 1, 1);
+    probe.fillStyle = "#000";
+    probe.fillStyle = value;
+    probe.fillRect(0, 0, 1, 1);
+    var d = probe.getImageData(0, 0, 1, 1).data;
+    return "rgba(" + d[0] + "," + d[1] + "," + d[2] + "," + +(d[3] / 255).toFixed(3) + ")";
+  }
+
   function resolveColors(node) {
     if (typeof node === "string") {
       var match = node.match(CSS_VAR);
@@ -25,7 +44,7 @@
         .trim();
       // An unset property leaves the string alone rather than becoming an
       // empty colour, so a typo is visible instead of invisible.
-      return value || node;
+      return value ? toRGBA(value) : node;
     }
     if (Array.isArray(node)) {
       return node.map(resolveColors);
