@@ -142,7 +142,7 @@ func buildCardioView(ctx context.Context, rg timerange.Range, st stats.CardioSta
 		if k.DistanceKm > 0 {
 			value += fmt.Sprintf(" · %.1f km", k.DistanceKm)
 		}
-		view.Kinds = append(view.Kinds, insightpages.Bar{Label: fmt.Sprintf("%s (%d)", k.Name, k.Sessions), Value: value, Pct: k.Seconds * 100 / most})
+		view.Kinds = append(view.Kinds, insightpages.Bar{Label: fmt.Sprintf("%s (%d)", stats.KindLabel(i18n.LocaleFrom(ctx), k.Name), k.Sessions), Value: value, Pct: k.Seconds * 100 / most})
 	}
 
 	if r := st.Runs; r.Count > 0 {
@@ -255,7 +255,9 @@ func buildEatingView(ctx context.Context, st stat.EatingStats) insightpages.Eati
 
 func buildPatternsView(ctx context.Context, rg timerange.Range, days int, found []stat.Finding) insightpages.PatternsView {
 	view := insightpages.PatternsView{Range: rangeView(ctx, rg), Days: days}
-	for _, f := range found {
+	// The findings' English feeds the coach; the page reads them in the
+	// reader's language.
+	for _, f := range stat.Localize(i18n.LocaleFrom(ctx), found) {
 		most := math.Max(math.Abs(f.A.Mean), math.Abs(f.B.Mean))
 		if most == 0 {
 			most = 1
