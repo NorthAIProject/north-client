@@ -70,8 +70,8 @@ func (s *Service) evalFirstWeekCheck(ctx context.Context, user users.User, today
 	_, inserted, err := s.Raise(ctx, user, Draft{
 		Kind:      KindFirstWeekCheck,
 		DedupeKey: today.Format("2006-01-02"),
-		Title:     "How did yesterday go?",
-		Body:      "Thirty seconds. What happened, or send a photo of where you are now.",
+		Title:     text(user, "nudges.firstweek.check.title"),
+		Body:      text(user, "nudges.firstweek.check.body"),
 		Href:      "/app/chat",
 	})
 	if err != nil {
@@ -97,8 +97,8 @@ func (s *Service) evalFirstWeekEvidence(ctx context.Context, user users.User, to
 	_, inserted, err := s.Raise(ctx, user, Draft{
 		Kind:      KindFirstWeekEvidence,
 		DedupeKey: today.Format("2006-01-02"),
-		Title:     "Send one photo",
-		Body:      "A lift, a meal, or how you look today. I will coach from what I see.",
+		Title:     text(user, "nudges.firstweek.evidence.title"),
+		Body:      text(user, "nudges.firstweek.evidence.body"),
 		Href:      "/app/chat",
 	})
 	if err != nil {
@@ -114,8 +114,8 @@ func (s *Service) evalFirstWeekReview(ctx context.Context, user users.User, toda
 	_, inserted, err := s.Raise(ctx, user, Draft{
 		Kind:      KindFirstWeekReview,
 		DedupeKey: today.Format("2006-01-02"),
-		Title:     "Your first week",
-		Body:      "Open the coach and tell me what stuck. I will keep what matters.",
+		Title:     text(user, "nudges.firstweek.review.title"),
+		Body:      text(user, "nudges.firstweek.review.body"),
 		Href:      "/app/chat",
 	})
 	if err != nil {
@@ -165,13 +165,13 @@ func (s *Service) evalWorkoutToday(ctx context.Context, user users.User, today t
 		href = "/app/fitness"
 	}
 	if title == "" {
-		title = "Today's session"
+		title = text(user, "nudges.workout.default")
 	}
 
 	_, inserted, err := s.Raise(ctx, user, Draft{
 		Kind:      KindWorkoutToday,
 		DedupeKey: today.Format("2006-01-02"),
-		Title:     "Start today's session",
+		Title:     text(user, "nudges.workout.title"),
 		Body:      title,
 		Href:      href,
 	})
@@ -218,8 +218,8 @@ func (s *Service) evalPhotoSchedule(ctx context.Context, user users.User, today 
 	_, inserted, err := s.Raise(ctx, user, Draft{
 		Kind:      KindPhotoAsk,
 		DedupeKey: cycle,
-		Title:     "Send a photo",
-		Body:      "Your photo check-in is due. A lift, a meal, or how you look today.",
+		Title:     text(user, "nudges.photo.ask.title"),
+		Body:      text(user, "nudges.photo.ask.body"),
 		Href:      "/app/chat",
 	})
 	if err != nil {
@@ -240,8 +240,8 @@ func (s *Service) evalPhotoSchedule(ctx context.Context, user users.User, today 
 	_, inserted, err = s.Raise(ctx, user, Draft{
 		Kind:      KindPhotoReminder,
 		DedupeKey: cycle,
-		Title:     "Still waiting on that photo",
-		Body:      "A reminder: send one photo so I can coach from what I see.",
+		Title:     text(user, "nudges.photo.reminder.title"),
+		Body:      text(user, "nudges.photo.reminder.body"),
 		Href:      "/app/chat",
 	})
 	if err != nil {

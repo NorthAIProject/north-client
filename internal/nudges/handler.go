@@ -11,6 +11,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/auth"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/htmx"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	nudgepages "github.com/NorthAIProject/north-client/web/nudges"
 )
@@ -143,9 +144,9 @@ func (h *Handler) renderBell(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case apperr.Is(err, apperr.ErrNotFound):
-		http.Error(w, "Not found.", http.StatusNotFound)
+		http.Error(w, i18n.T(r.Context(), "nudges.err.notfound"), http.StatusNotFound)
 	default:
 		middleware.FromContext(r.Context()).Error("nudge request failed", slog.Any("error", err))
-		http.Error(w, "Something went wrong.", http.StatusInternalServerError)
+		http.Error(w, i18n.T(r.Context(), "nudges.err.failed"), http.StatusInternalServerError)
 	}
 }

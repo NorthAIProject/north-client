@@ -56,7 +56,7 @@ func (s *Service) evalMealReminders(ctx context.Context, user users.User, today,
 			Kind:      KindMealReminder,
 			DedupeKey: today.Format("2006-01-02") + ":" + r.ID.String(),
 			Title:     r.Label,
-			Body:      "Log what you ate when you get a moment.",
+			Body:      text(user, "nudges.meal.body"),
 			Href:      "/app/nutrition/log",
 		})
 		if raiseErr != nil {
