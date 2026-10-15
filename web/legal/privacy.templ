@@ -1,124 +1,200 @@
 package legal
 
-import (
-	"github.com/NorthAIProject/north-client/internal/shared/i18n"
-	"github.com/NorthAIProject/north-client/web/shared/layout"
-)
+import "github.com/NorthAIProject/north-client/web/shared/layout"
 
-// Privacy is the privacy policy. Every paragraph is one catalogue key under
-// legal.privacy; see prose for why the markup lives in the catalogue.
 templ Privacy() {
-	@layout.Public(i18n.T(ctx, "legal.privacy.page"), signedIn(ctx)) {
-		@document(i18n.T(ctx, "legal.privacy.title")) {
+	@layout.Public("Privacy", signedIn(ctx)) {
+		@document("Privacy policy") {
 			<p class="lead">
-				@prose(ctx, "legal.privacy.lead")
+				Khepri holds an unusual amount of information about the people who
+				use it — what they weigh, how they slept, where they ran, and what
+				they wrote in a journal at eleven at night. This page says exactly
+				what is stored, where it goes, and how to get it back or delete it.
 			</p>
 			<p>
-				@prose(ctx, "legal.privacy.controller", OperatorName, OperatorAddress, ContactEmail)
+				{ OperatorName } ({ OperatorAddress }) is the controller of that
+				data. Questions, requests and complaints:
+				<a href={ templ.SafeURL("mailto:" + ContactEmail) }>{ ContactEmail }</a>.
 			</p>
-			@section(i18n.T(ctx, "legal.privacy.stored.h")) {
+			@section("What is stored") {
 				<p>
-					@prose(ctx, "legal.privacy.stored.p")
+					Only what you or an integration you connected put there.
+					Nothing is bought from a data broker and nothing is inferred
+					from third-party tracking.
 				</p>
 				<ul>
 					<li>
-						@prose(ctx, "legal.privacy.stored.account")
+						<strong>Account</strong> — email address, display name, a
+						password hash (never the password), timezone, coaching-tone
+						preference. If you sign in with Google or a passkey, the
+						identifier that provider gives us.
 					</li>
 					<li>
-						@prose(ctx, "legal.privacy.stored.health")
+						<strong>Health and body data</strong> — weight, body
+						measurements, sleep, hydration, and any biometric readings
+						you record or a connected device pushes.
 					</li>
 					<li>
-						@prose(ctx, "legal.privacy.stored.activity")
+						<strong>Activity and location</strong> — workouts, training
+						plans, activity sessions, and, if you connect Strava, your
+						activities including the route traces they carry. A route
+						trace is location data about where you actually were.
+					</li>
+					<li><strong>Nutrition</strong> — foods, meal plans and what you logged.</li>
+					<li>
+						<strong>Your writing</strong> — check-ins, journal entries,
+						decisions, goals, and every message you exchange with the
+						coach.
 					</li>
 					<li>
-						@prose(ctx, "legal.privacy.stored.nutrition")
+						<strong>Memory</strong> — durable facts the system derives
+						from your conversations so it does not have to ask twice.
+						You can see, edit, pin and delete these.
 					</li>
 					<li>
-						@prose(ctx, "legal.privacy.stored.writing")
+						<strong>Documents</strong> — files you upload, the text
+						extracted from them, and numeric embeddings of that text
+						used for search.
 					</li>
 					<li>
-						@prose(ctx, "legal.privacy.stored.memory")
+						<strong>Integrations</strong> — access tokens for services
+						you connect, encrypted at rest; your Telegram chat
+						identifier if you link it; tokens issued to agents you
+						authorise.
 					</li>
 					<li>
-						@prose(ctx, "legal.privacy.stored.documents")
-					</li>
-					<li>
-						@prose(ctx, "legal.privacy.stored.integrations")
-					</li>
-					<li>
-						@prose(ctx, "legal.privacy.stored.operational")
+						<strong>Operational records</strong> — sign-in events,
+						account activity, model usage and cost, and error logs.
 					</li>
 				</ul>
 			}
-			@section(i18n.T(ctx, "legal.privacy.consent.h")) {
+			@section("Health data needs your explicit consent") {
 				<p>
-					@prose(ctx, "legal.privacy.consent.p1")
+					Most of the list above is ordinary personal data. Weight,
+					sleep, biometrics and anything health-related in your journal
+					are <em>special category</em> data under Article 9 of the UK
+					and EU GDPR, and are processed <strong>only on your explicit
+					consent</strong>, given when you create an account and record
+					it.
 				</p>
 				<p>
-					@prose(ctx, "legal.privacy.consent.p2")
+					You can withdraw that consent at any time by deleting the data
+					or your account. Withdrawal does not undo processing that
+					already happened, and Khepri stops working in any meaningful
+					way without it — a coach with no health data is a chat window.
 				</p>
 			}
-			@section(i18n.T(ctx, "legal.privacy.where.h")) {
+			@section("Where your data goes") {
 				<p>
-					@prose(ctx, "legal.privacy.where.p")
+					Khepri is not advertising-funded and sells nothing to anyone.
+					Data reaches other companies only where the product cannot
+					work otherwise:
 				</p>
 				<ul>
 					<li>
-						@prose(ctx, "legal.privacy.where.ai")
+						<strong>AI providers.</strong> This is the disclosure that
+						matters most. To answer you, the coach sends the model your
+						message together with the context it assembled — which can
+						include your goals, recent conversations, check-ins,
+						training and nutrition summaries, and passages from your
+						own documents. Which company receives it depends on the
+						provider configured for your account, and you may supply
+						your own API key instead, in which case your data goes to
+						your provider under your own agreement with them.
 					</li>
 					<li>
-						@prose(ctx, "legal.privacy.where.strava")
+						<strong>Strava</strong> — only if you connect it, and only
+						to read your activities.
 					</li>
 					<li>
-						@prose(ctx, "legal.privacy.where.telegram")
+						<strong>Telegram</strong> — only if you link a chat. Your
+						messages and the coach's replies pass through Telegram's
+						servers, under Telegram's own policy.
 					</li>
 					<li>
-						@prose(ctx, "legal.privacy.where.analytics.events")
+						<strong>Product analytics.</strong> A small number of
+						events — account created, onboarding finished, a source
+						connected, the coach answered — recorded against your
+						account identifier to see whether the product works. No
+						health data, no message content, no document text.
 						<br/>
-						@prose(ctx, "legal.privacy.where.analytics.pages")
+						Your browser also reports the pages you open. Inside the
+						application that is the address only, with anything after
+						the <code>?</code> removed, so a page's contents and any
+						link that carries a token are not included. On the public
+						pages — the home page, sign-up, sign-in, these policies,
+						and the screen that asks whether to connect an agent — it
+						also reports which buttons and links get clicked, which is
+						how we tell a page that reads well from one that does not.
 						<br/>
-						@prose(ctx, "legal.privacy.where.analytics.sessions")
+						The home page and the connect-an-agent screen additionally
+						record the session itself, so we can see where a first-time
+						visitor gets stuck. Everything typed into a field is masked
+						before it leaves the browser, and no page you reach after
+						signing in is ever recorded.
 					</li>
 					<li>
-						@prose(ctx, "legal.privacy.where.hosting")
+						<strong>Hosting, storage and email</strong> — the servers
+						the application runs on, object storage for files you
+						upload, and a mail provider for account email such as
+						password resets.
 					</li>
 				</ul>
 			}
-			@section(i18n.T(ctx, "legal.privacy.kept.h")) {
+			@section("How long it is kept") {
 				<p>
-					@prose(ctx, "legal.privacy.kept.p1")
+					Until you delete it. Long conversations are summarised rather
+					than discarded, because the point of the product is that it
+					remembers — so a thread you had months ago may survive as a
+					summary after its individual messages are compacted.
 				</p>
 				<p>
-					@prose(ctx, "legal.privacy.kept.p2")
+					Deleting your account removes your data. Backups and logs
+					containing incidental records may persist for a short period
+					before rotating out.
 				</p>
 			}
-			@section(i18n.T(ctx, "legal.privacy.rights.h")) {
+			@section("What you can do") {
 				<p>
-					@prose(ctx, "legal.privacy.rights.p")
+					Under the UK and EU GDPR you may access, correct, delete,
+					export, restrict or object to the processing of your data, and
+					withdraw consent. Two of these need no request at all:
 				</p>
 				<ul>
 					<li>
-						@prose(ctx, "legal.privacy.rights.export")
+						<strong>Export</strong> — Settings → a complete archive of
+						your data, downloaded immediately.
 					</li>
 					<li>
-						@prose(ctx, "legal.privacy.rights.delete")
+						<strong>Deletion</strong> — Settings → delete account.
 					</li>
 				</ul>
 				<p>
-					@prose(ctx, "legal.privacy.rights.other", ContactEmail)
+					For anything else, write to
+					<a href={ templ.SafeURL("mailto:" + ContactEmail) }>{ ContactEmail }</a>.
+					If you are unhappy with the response you may complain to your
+					data protection authority — in the UK, the Information
+					Commissioner's Office.
 				</p>
 			}
-			@section(i18n.T(ctx, "legal.privacy.security.h")) {
+			@section("Security, honestly stated") {
 				<p>
-					@prose(ctx, "legal.privacy.security.p1")
+					Passwords are hashed. Integration tokens are encrypted at rest.
+					Sessions are protected against cross-site request forgery, and
+					you can see your account's sign-in history.
 				</p>
 				<p>
-					@prose(ctx, "legal.privacy.security.p2")
+					Khepri is built and run by a very small team. It is not
+					independently audited and holds no security certification. If
+					that is not an acceptable custodian for your health data, the
+					honest advice is not to store it here.
 				</p>
 			}
-			@section(i18n.T(ctx, "legal.privacy.changes.h")) {
+			@section("Changes") {
 				<p>
-					@prose(ctx, "legal.privacy.changes.p")
+					Material changes will be announced in the application before
+					they take effect. The date at the top of this page is when it
+					last changed.
 				</p>
 			}
 		}

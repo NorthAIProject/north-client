@@ -9,20 +9,14 @@ package legal
 
 import (
 	"context"
-	"fmt"
-	"html"
-	"time"
-
-	"github.com/a-h/templ"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
-	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 )
 
 // LastUpdated is shown on both documents. Bump it whenever the substance
 // changes — not for a typo, and never without re-reading what the application
 // actually stores.
-var LastUpdated = time.Date(2026, time.August, 29, 0, 0, 0, 0, time.UTC)
+const LastUpdated = "29 August 2026"
 
 // The details a lawyer, not a program, has to supply.
 //
@@ -48,23 +42,4 @@ func Placeholders() []string {
 func signedIn(ctx context.Context) bool {
 	_, ok := auth.UserFrom(ctx)
 	return ok
-}
-
-// prose renders one paragraph of a policy from the catalogue.
-//
-// A paragraph is one key, inline markup included (<strong>, <em>, links),
-// because a translator has to move emphasis and links along with the words
-// around them: splitting a sentence at every tag forces the English word order
-// on every language. The catalogue is constant Go source reviewed like code, so
-// rendering it unescaped is no different from the markup that used to sit in
-// the template. The arguments are not trusted the same way and are escaped.
-func prose(ctx context.Context, key string, args ...any) templ.Component {
-	if len(args) == 0 {
-		return templ.Raw(i18n.T(ctx, key))
-	}
-	escaped := make([]any, len(args))
-	for i, a := range args {
-		escaped[i] = html.EscapeString(fmt.Sprint(a))
-	}
-	return templ.Raw(i18n.Tf(ctx, key, escaped...))
 }
