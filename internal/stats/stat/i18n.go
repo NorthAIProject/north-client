@@ -40,7 +40,7 @@ func (f Finding) In(tag string) Finding {
 	case f.Key == "sleep_screen":
 		thr = mins(f.threshold)
 	case moodMeasures[f.Key]:
-		thr = fmt.Sprintf(i18n.Translate(tag, "stats.pattern."+f.Key+".what"), measureValue(tag, f.Key, f.threshold))
+		thr = i18n.TranslateF(tag, "stats.pattern."+f.Key+".what", measureValue(tag, f.Key, f.threshold))
 	}
 
 	direction := ".up"
@@ -49,8 +49,8 @@ func (f Finding) In(tag string) Finding {
 	}
 
 	out := f
-	out.Title = fmt.Sprintf(i18n.Translate(tag, prefix+".title"+direction), amount(tag, f.Unit, f.Diff), thr)
-	out.Detail = fmt.Sprintf(i18n.Translate(tag, prefix+".detail"),
+	out.Title = i18n.TranslateF(tag, prefix+".title"+direction, amount(tag, f.Unit, f.Diff), thr)
+	out.Detail = i18n.TranslateF(tag, prefix+".detail",
 		amount(tag, f.Unit, f.A.Mean), f.A.N, amount(tag, f.Unit, f.B.Mean), f.B.N, thr)
 	out.A.Label = i18n.Translate(tag, prefix+".a")
 	if moodMeasures[f.Key] {
@@ -77,9 +77,9 @@ func amount(tag, unit string, v float64) string {
 	case "min":
 		return mins(v)
 	case "/5":
-		return decimal(tag, math.Abs(v), 1)
+		return i18n.FormatDecimal(tag, math.Abs(v), 1)
 	default:
-		return decimal(tag, math.Abs(v), 0)
+		return i18n.FormatDecimal(tag, math.Abs(v), 0)
 	}
 }
 
@@ -91,18 +91,8 @@ func measureValue(tag, key string, v float64) string {
 	case "mood_daylight":
 		return mins(v)
 	default:
-		return decimal(tag, v, 0)
+		return i18n.FormatDecimal(tag, v, 0)
 	}
-}
-
-// decimal is %.*f with the reader's decimal mark: a comma everywhere this
-// build serves except English.
-func decimal(tag string, v float64, places int) string {
-	s := fmt.Sprintf("%.*f", places, v)
-	if tag != i18n.DefaultLocale {
-		s = strings.Replace(s, ".", ",", 1)
-	}
-	return s
 }
 
 // grouped is a whole number with the reader's thousands separator: 11,000 in

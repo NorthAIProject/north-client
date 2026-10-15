@@ -343,7 +343,7 @@ templ trendsStrip(data DashboardData) {
 			Label: i18n.T(ctx, "dash.kpi.streak"), Value: streakKPI(ctx, data),
 			Href: "/app/check-ins", CTA: i18n.T(ctx, "dash.kpi.checkcta"),
 		})
-		@kpiCellWithDelta(i18n.T(ctx, "dash.kpi.water"), waterKPI(data), "/app/care", i18n.T(ctx, "dash.kpi.logwater"), data.Deltas.Hydration)
+		@kpiCellWithDelta(i18n.T(ctx, "dash.kpi.water"), waterKPI(ctx, data), "/app/care", i18n.T(ctx, "dash.kpi.logwater"), data.Deltas.Hydration)
 		@kpiCellWithDelta(i18n.T(ctx, "dash.kpi.sleep"), sleepKPI(data), "/app/care", i18n.T(ctx, "dash.kpi.logsleep"), data.Deltas.SleepHours)
 		@kpiCellWithDelta(i18n.T(ctx, "dash.kpi.burned"), caloriesKPI(data), "/app/fitness", i18n.T(ctx, "dash.kpi.activity"), data.Deltas.Calories)
 	}
@@ -572,7 +572,7 @@ templ hydrationPanel(data DashboardData) {
 	@panel(i18n.T(ctx, "dash.hydration.title"), hydrationDescription(ctx, data)) {
 		if data.Hydration.HasData() {
 			<p class="text-signal mb-3 text-sm font-medium tabular-nums">
-				{ i18n.Tf(ctx, "dash.hydration.today", data.Hydration.Percent, formatLitres(data.Hydration.TodayML)) }
+				{ i18n.Tf(ctx, "dash.hydration.today", data.Hydration.Percent, formatLitres(ctx, data.Hydration.TodayML)) }
 			</p>
 			@chart.Chart(data.HydrationChart)
 		} else {

@@ -75,7 +75,7 @@ func lookup(table []Message, msg string) (string, []any, bool) {
 // English is a key's English with args filled in: what a service writes when
 // it builds a message from the catalogue rather than a literal.
 func English(key string, args ...any) string {
-	return fmt.Sprintf(i18n.Translate(i18n.DefaultLocale, key), args...)
+	return i18n.TranslateF(i18n.DefaultLocale, key, args...)
 }
 
 // Mismatches lists every entry whose English is not what its key says in the

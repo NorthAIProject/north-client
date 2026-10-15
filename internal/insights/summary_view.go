@@ -106,7 +106,7 @@ func pinnedCards(ctx context.Context, data SummaryData) []insightpages.PinnedCar
 	if total, points := hydrationSeries(data, loc); total > 0 {
 		out = append(out, insightpages.PinnedCard{
 			Label: i18n.T(ctx, "insights.pinned.water"), Icon: "droplet", Href: metricHref("water"),
-			Value:    formatLitres(total),
+			Value:    formatLitres(ctx, total),
 			Note:     i18n.Tf(ctx, "insights.pinned.water.note", len(data.Body.Hydration)),
 			Chart:    viz.Sparkline("insights-pinned-water", labels, points),
 			HasChart: true,
@@ -267,12 +267,12 @@ func burnSeries(data SummaryData, loc *time.Location) []float64 {
 // third caller appears — the Telegram digest will be one — they belong in a
 // leaf of their own rather than in a third copy.
 
-func formatLitres(ml int) string {
+func formatLitres(ctx context.Context, ml int) string {
 	if ml <= 0 {
 		return "—"
 	}
 	if ml >= 1000 {
-		return fmt.Sprintf("%.1f L", float64(ml)/1000)
+		return i18n.Decimal(ctx, float64(ml)/1000, 1) + " L"
 	}
 	return fmt.Sprintf("%d ml", ml)
 }
@@ -366,8 +366,8 @@ func dayTable(ctx context.Context, data SummaryData) ([]insightpages.DayRow, boo
 		rows[i] = insightpages.DayRow{
 			Label: bucketLabel(ctx, data.Range, b),
 			Cells: []insightpages.DayCell{
-				{Label: i18n.T(ctx, "insights.days.sleep"), Value: fmt.Sprintf("%.1fh", sleep[i]), Filled: sleep[i] > 0},
-				{Label: i18n.T(ctx, "insights.days.water"), Value: formatLitres(int(water[i])), Filled: water[i] > 0},
+				{Label: i18n.T(ctx, "insights.days.sleep"), Value: i18n.Decimal(ctx, sleep[i], 1) + "h", Filled: sleep[i] > 0},
+				{Label: i18n.T(ctx, "insights.days.water"), Value: formatLitres(ctx, int(water[i])), Filled: water[i] > 0},
 				{Label: i18n.T(ctx, "insights.days.checkin"), Value: i18n.T(ctx, "insights.days.yes"), Filled: checkIns[i] > 0},
 			},
 		}

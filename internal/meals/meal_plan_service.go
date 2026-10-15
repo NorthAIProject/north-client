@@ -595,7 +595,7 @@ func freeOptionLabel(tag string, slot Meal) string {
 		used[strings.ToLower(strings.TrimSpace(o.OptionLabel))] = true
 	}
 	for n := 2; ; n++ {
-		label := fmt.Sprintf(i18n.Translate(tag, "nutrition.option.numbered"), n)
+		label := i18n.TranslateF(tag, "nutrition.option.numbered", n)
 		if !used[strings.ToLower(label)] {
 			return label
 		}

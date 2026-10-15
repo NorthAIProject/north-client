@@ -2,7 +2,6 @@ package planimport
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"sync"
 
@@ -237,9 +236,9 @@ func workoutPlanFromDraft(tag string, d WorkoutDraft) (plan.Plan, []string) {
 		if strings.TrimSpace(day.Weekday) == "" {
 			label := day.Label
 			if label == "" {
-				label = fmt.Sprintf(i18n.Translate(tag, "planimport.problem.trainingday"), i+1)
+				label = i18n.TranslateF(tag, "planimport.problem.trainingday", i+1)
 			}
-			problems = append(problems, fmt.Sprintf(i18n.Translate(tag, "planimport.problem.weekday"), label))
+			problems = append(problems, i18n.TranslateF(tag, "planimport.problem.weekday", label))
 		}
 		pd := plan.PlanDay{Weekday: day.Weekday}
 		if _, isWeekday := weekdayOf(day.Label); !isWeekday {

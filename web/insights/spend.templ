@@ -1,6 +1,7 @@
 package insights
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
@@ -49,7 +50,7 @@ templ SpendBody(view SpendView) {
 			<div class="grid gap-3 sm:grid-cols-3">
 				@statTile(i18n.T(ctx, "insights.spend.cost"), view.TotalCost, i18n.T(ctx, "insights.spend.cost.note"), DeltaView{})
 				@statTile(i18n.T(ctx, "insights.spend.generations"), fmt.Sprintf("%d", view.Generations), i18n.T(ctx, "insights.spend.generations.note"), DeltaView{})
-				@statTile(i18n.T(ctx, "insights.spend.tokens"), formatTokens(view.TotalTokens), i18n.T(ctx, "insights.spend.tokens.note"), DeltaView{})
+				@statTile(i18n.T(ctx, "insights.spend.tokens"), formatTokens(ctx, view.TotalTokens), i18n.T(ctx, "insights.spend.tokens.note"), DeltaView{})
 			</div>
 			@spendTable(i18n.T(ctx, "insights.spend.surfaces"), view.Surfaces)
 			@spendTable(i18n.T(ctx, "insights.spend.models"), view.Models)
@@ -72,7 +73,7 @@ templ spendTable(title string, rows []SpendRow) {
 							<div class="bg-signal h-full rounded-full" style={ fmt.Sprintf("width: %d%%", r.Pct) }></div>
 						</div>
 						<p class="text-muted-foreground text-xs tabular-nums">
-							{ i18n.Tf(ctx, "insights.spend.row", r.Generations, formatTokens(r.Tokens)) }
+							{ i18n.Tf(ctx, "insights.spend.row", r.Generations, formatTokens(ctx, r.Tokens)) }
 						</p>
 					</div>
 				}
@@ -83,10 +84,10 @@ templ spendTable(title string, rows []SpendRow) {
 
 // formatTokens keeps a six-figure token count readable. Exact numbers matter
 // to nobody here; the order of magnitude is the whole message.
-func formatTokens(n int64) string {
+func formatTokens(ctx context.Context, n int64) string {
 	switch {
 	case n >= 1_000_000:
-		return fmt.Sprintf("%.1fM", float64(n)/1_000_000)
+		return i18n.Decimal(ctx, float64(n)/1_000_000, 1) + "M"
 	case n >= 1_000:
 		return fmt.Sprintf("%.0fk", float64(n)/1_000)
 	default:

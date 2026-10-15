@@ -93,8 +93,8 @@ func kcal(v float64) string {
 func currentMeasurements(ctx context.Context, bio biometrics.Biometric, units string) string {
 	weight, height := macroplan.Display(bio.WeightKg, bio.HeightCm, units)
 	return i18n.Tf(ctx, "calculator.bio.current",
-		fmt.Sprintf("%.1f", weight), macroplan.WeightUnit(units),
-		fmt.Sprintf("%.1f", height), macroplan.HeightUnit(units),
+		i18n.Decimal(ctx, weight, 1), macroplan.WeightUnit(units),
+		i18n.Decimal(ctx, height, 1), macroplan.HeightUnit(units),
 		bio.AgeYears(time.Now()))
 }
 
