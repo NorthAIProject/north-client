@@ -2,11 +2,11 @@ package layout
 
 import (
 	"context"
-	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"io"
 	"strings"
 	"testing"
 
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
 )
 

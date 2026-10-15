@@ -327,13 +327,23 @@ templ mealDay(i int, day draft.MealDayDraft, advanced, everyDay bool) {
 		@card.Content(card.ContentProps{Class: "space-y-5"}) {
 			for j, m := range day.Meals {
 				<div class="space-y-2">
-					<div class="flex items-center gap-2">
+					<div class="flex flex-wrap items-center gap-2">
 						@input.Input(input.Props{Name: fmt.Sprintf("d%d.m%d.name", i, j), Value: m.Name, Placeholder: i18n.Tf(ctx, "planimport.meal.meal_n", j+1), Class: "max-w-xs"})
 						@button.Button(button.Props{
 							Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm,
 							Attributes: templ.Attributes{"name": "action", "value": fmt.Sprintf("delete-meal:%d:%d", i, j), "formnovalidate": true},
 						}) {
 							{ i18n.T(ctx, "planimport.meal.remove_meal") }
+						}
+						@button.Button(button.Props{
+							Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm,
+							Attributes: templ.Attributes{"name": "action", "value": fmt.Sprintf("toggle-meal-optional:%d:%d", i, j), "formnovalidate": true},
+						}) {
+							if m.Optional {
+								{ i18n.T(ctx, "nutrition.meal.count") }
+							} else {
+								{ i18n.T(ctx, "nutrition.meal.make.optional") }
+							}
 						}
 						if m.Optional {
 							@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {

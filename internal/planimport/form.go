@@ -25,7 +25,7 @@ import (
 
 // reviewAction is what the pressed button asked for.
 type reviewAction struct {
-	verb string // update, delete-day, delete-exercise, delete-meal, delete-option, delete-food, save, save-confirm
+	verb string // update, delete-day, delete-exercise, delete-meal, delete-option, delete-food, toggle-meal-optional, save, save-confirm
 	path []int
 }
 
@@ -157,12 +157,16 @@ func foodsFromForm(r *http.Request, prefix string, foods []FoodDraft) {
 }
 
 // applyMealAction removes what a delete button named, and any option, meal
-// or day that leaves empty.
+// or day that leaves empty, or switches the named meal between optional and
+// counted.
 func applyMealAction(d *MealDraft, a reviewAction) {
 	p := a.path
 	switch {
 	case a.verb == "delete-day" && len(p) == 1 && p[0] < len(d.Days):
 		d.Days = append(d.Days[:p[0]], d.Days[p[0]+1:]...)
+	case a.verb == "toggle-meal-optional" && len(p) == 2 && p[0] < len(d.Days) && p[1] < len(d.Days[p[0]].Meals):
+		m := &d.Days[p[0]].Meals[p[1]]
+		m.Optional = !m.Optional
 	case a.verb == "delete-meal" && len(p) == 2 && p[0] < len(d.Days) && p[1] < len(d.Days[p[0]].Meals):
 		day := &d.Days[p[0]]
 		day.Meals = append(day.Meals[:p[1]], day.Meals[p[1]+1:]...)
