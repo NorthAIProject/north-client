@@ -1,6 +1,9 @@
 package onboarding
 
 import (
+	"context"
+
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/lifedomain"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
@@ -61,25 +64,14 @@ func (f Form) stylePreset() string {
 	return styleDirect
 }
 
-func focusLabel(area string) string {
-	switch area {
-	case lifedomain.Fitness:
-		return "Fitness"
-	case lifedomain.Health:
-		return "Health"
-	case lifedomain.Work:
-		return "Work"
-	case lifedomain.Learning:
-		return "Learning"
-	case lifedomain.Personal:
-		return "Personal"
-	default:
-		return area
-	}
+// focusLabel names a focus area through the shared life-domain vocabulary,
+// the same words goals use for their categories.
+func focusLabel(ctx context.Context, area string) string {
+	return i18n.T(ctx, "lifedomain."+area)
 }
 
 templ FormPage(f Form) {
-	@layout.AuthWide("Welcome to Khepri") {
+	@layout.AuthWide(i18n.T(ctx, "onboarding.page")) {
 		@checkbox.Script()
 		@mascot.Script()
 		@card.Card() {
@@ -88,17 +80,17 @@ templ FormPage(f Form) {
 					@mascot.Mascot(mascot.Props{Size: mascot.SizeMd, State: mascot.StateListening})
 				</div>
 				@card.Title() {
-					Tell Khepri where to start
+					{ i18n.T(ctx, "onboarding.title") }
 				}
 				@card.Description() {
-					Three quick answers. Khepri uses them to coach you from day one — not from a blank slate.
+					{ i18n.T(ctx, "onboarding.desc") }
 				}
 			}
 			@card.Content() {
 				if f.fieldError("focus_areas") != "" || f.fieldError("coaching_style") != "" || f.fieldError("goal_title") != "" {
 					@alert.Alert(alert.Props{Variant: alert.VariantDestructive, Class: "mb-4"}) {
 						@alert.Description() {
-							Fix the highlighted fields and try again.
+							{ i18n.T(ctx, "onboarding.fix") }
 						}
 					}
 				}
@@ -111,9 +103,9 @@ templ FormPage(f Form) {
 					@ui.CSRFInput()
 					<section class="space-y-3">
 						@label.Label(label.Props{For: "focus-fitness"}) {
-							What do you want Khepri focused on?
+							{ i18n.T(ctx, "onboarding.focus.label") }
 						}
-						<p class="text-muted-foreground text-sm">Pick one or more.</p>
+						<p class="text-muted-foreground text-sm">{ i18n.T(ctx, "onboarding.focus.hint") }</p>
 						<div class="grid grid-cols-2 gap-3">
 							for _, area := range focusAreas {
 								<label class="flex items-center gap-2 text-sm">
@@ -123,7 +115,7 @@ templ FormPage(f Form) {
 										Value:   area,
 										Checked: f.focusChecked(area),
 									})
-									{ focusLabel(area) }
+									{ focusLabel(ctx, area) }
 								</label>
 							}
 						</div>
@@ -133,13 +125,13 @@ templ FormPage(f Form) {
 					</section>
 					<section class="space-y-3">
 						@label.Label(label.Props{For: "style-direct"}) {
-							How should Khepri coach you?
+							{ i18n.T(ctx, "onboarding.style.label") }
 						}
 						<div class="space-y-2">
-							@styleOption("style-direct", styleDirect, "Direct", "Skip pep talks. Challenge me.", f)
-							@styleOption("style-supportive", styleSupportive, "Supportive", "Warm, encouraging, celebrates progress.", f)
-							@styleOption("style-socratic", styleSocratic, "Socratic", "Ask questions. Help me think it through.", f)
-							@styleOption("style-custom", styleCustom, "Custom", "Describe it in your own words.", f)
+							@styleOption("style-direct", styleDirect, i18n.T(ctx, "onboarding.style.direct"), i18n.T(ctx, "onboarding.style.direct.desc"), f)
+							@styleOption("style-supportive", styleSupportive, i18n.T(ctx, "onboarding.style.supportive"), i18n.T(ctx, "onboarding.style.supportive.desc"), f)
+							@styleOption("style-socratic", styleSocratic, i18n.T(ctx, "onboarding.style.socratic"), i18n.T(ctx, "onboarding.style.socratic.desc"), f)
+							@styleOption("style-custom", styleCustom, i18n.T(ctx, "onboarding.style.custom"), i18n.T(ctx, "onboarding.style.custom.desc"), f)
 						</div>
 						<div x-show="preset === 'custom'" x-cloak class="space-y-2">
 							@dictate.Field(dictate.Props{Target: "coaching_style_custom"}) {
@@ -147,7 +139,7 @@ templ FormPage(f Form) {
 									ID:          "coaching_style_custom",
 									Name:        "coaching_style_custom",
 									Rows:        3,
-									Placeholder: "E.g. \"Be direct, skip the pep talks.\"",
+									Placeholder: i18n.T(ctx, "onboarding.style.placeholder"),
 									Value:       f.StyleCustom,
 								})
 							}
@@ -158,13 +150,13 @@ templ FormPage(f Form) {
 					</section>
 					<section class="space-y-2">
 						@label.Label(label.Props{For: "goal_title"}) {
-							One goal you are working toward right now
+							{ i18n.T(ctx, "onboarding.goal.label") }
 						}
 						@input.Input(input.Props{
 							ID:          "goal_title",
 							Name:        "goal_title",
 							Value:       f.GoalTitle,
-							Placeholder: "E.g. Run a 10K by November",
+							Placeholder: i18n.T(ctx, "onboarding.goal.placeholder"),
 						})
 						if f.fieldError("goal_title") != "" {
 							<p class="text-destructive text-sm">{ f.fieldError("goal_title") }</p>
@@ -175,7 +167,7 @@ templ FormPage(f Form) {
 						Class:     "bg-signal text-background hover:bg-signal/90",
 						FullWidth: true,
 					}) {
-						Start with Khepri
+						{ i18n.T(ctx, "onboarding.submit") }
 					}
 				</form>
 			}
@@ -192,7 +184,7 @@ templ FormPage(f Form) {
 				Variant: button.VariantGhost,
 				Class:   "text-muted-foreground",
 			}) {
-				Skip for now
+				{ i18n.T(ctx, "onboarding.skip") }
 			}
 		</form>
 		@dictate.Script()
@@ -220,7 +212,7 @@ templ styleOption(id, value, title, desc string, f Form) {
 // thread is the conversation seeded from the answers, or empty when none was
 // opened — a deployment with no AI provider, or a provider that was down.
 templ DonePage(user users.User, thread string) {
-	@layout.AuthWide("You are set up") {
+	@layout.AuthWide(i18n.T(ctx, "onboarding.done.page")) {
 		@mascot.Script()
 		@card.Card() {
 			@card.Header() {
@@ -232,13 +224,13 @@ templ DonePage(user users.User, thread string) {
 					@mascot.Mascot(mascot.Props{Size: mascot.SizeLg, Gesture: mascot.StateCelebrate})
 				</div>
 				@card.Title() {
-					Khepri knows where to start, { user.FirstName() }
+					{ i18n.Tf(ctx, "onboarding.done.title", user.FirstName()) }
 				}
 				@card.Description() {
 					if thread != "" {
-						Your focus areas, coaching style, and first goal are in place. Khepri is already writing back.
+						{ i18n.T(ctx, "onboarding.done.writing") }
 					} else {
-						Your focus areas, coaching style, and first goal are in place. Talk to Khepri whenever you are ready.
+						{ i18n.T(ctx, "onboarding.done.ready") }
 					}
 				}
 			}
@@ -250,7 +242,7 @@ templ DonePage(user users.User, thread string) {
 							Class:     "bg-signal text-background hover:bg-signal/90 w-full",
 							FullWidth: true,
 						}) {
-							Read what Khepri said
+							{ i18n.T(ctx, "onboarding.done.read") }
 						}
 					} else {
 						<form method="post" action="/app/chat">
@@ -260,7 +252,7 @@ templ DonePage(user users.User, thread string) {
 								Class:     "bg-signal text-background hover:bg-signal/90 w-full",
 								FullWidth: true,
 							}) {
-								Talk to Khepri
+								{ i18n.T(ctx, "onboarding.done.talk") }
 							}
 						</form>
 					}
@@ -269,7 +261,7 @@ templ DonePage(user users.User, thread string) {
 						Variant:   button.VariantOutline,
 						FullWidth: true,
 					}) {
-						Go to dashboard
+						{ i18n.T(ctx, "onboarding.done.dashboard") }
 					}
 				</div>
 			}

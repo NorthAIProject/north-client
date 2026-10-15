@@ -143,7 +143,7 @@ templ composer(data Data) {
 			Attributes:  composerAttributes(data),
 		})
 		<div class="flex items-center justify-between gap-3">
-			<p class="text-xs text-muted-foreground">Reading it costs a moment. Saving is one tap.</p>
+			<p class="text-xs text-muted-foreground">{ i18n.T(ctx, "capture.cost") }</p>
 			<div class="flex items-center gap-2">
 				// The transcript lands in the box above, not in a preview: the
 				// person reads what was heard before anything is parsed from it,
@@ -202,11 +202,11 @@ templ preview(data Data) {
 				Class:      "min-h-11",
 				Attributes: templ.Attributes{"formaction": "/app/capture", "formmethod": "get", "hx-get": restartURL(data), "hx-target": "#" + PanelID},
 			}) {
-				Start over
+				{ i18n.T(ctx, "capture.start_over") }
 			}
 			if data.Draft.AnyWritable() {
 				@button.Button(button.Props{Type: button.TypeSubmit, Class: "min-h-11"}) {
-					Save <span x-text="count" class="ml-1 tabular-nums"></span>
+					{ i18n.T(ctx, "capture.save") } <span x-text="count" class="ml-1 tabular-nums"></span>
 				}
 			}
 		</div>
@@ -253,7 +253,7 @@ templ itemRow(index int, item captured.Item) {
 					}
 					if item.Uncertain {
 						@badge.Badge(badge.Props{Variant: badge.VariantOutline}) {
-							estimated
+							{ i18n.T(ctx, "capture.estimated") }
 						}
 					}
 				</div>
@@ -277,12 +277,12 @@ templ valueFields(index int, item captured.Item) {
 		case captured.KindWater:
 			<div class="flex items-center gap-2">
 				@numberInput(fmt.Sprintf("items[%d].amount_ml", index), strconv.Itoa(item.Water.AmountML))
-				<span class="text-sm text-muted-foreground">ml of water</span>
+				<span class="text-sm text-muted-foreground">{ i18n.T(ctx, "capture.unit.water") }</span>
 			</div>
 		case captured.KindSleep:
 			<div class="flex items-center gap-2">
 				@numberInput(fmt.Sprintf("items[%d].minutes", index), strconv.Itoa(item.Sleep.Minutes))
-				<span class="text-sm text-muted-foreground">minutes asleep</span>
+				<span class="text-sm text-muted-foreground">{ i18n.T(ctx, "capture.unit.sleep") }</span>
 			</div>
 		case captured.KindWeight:
 			<div class="flex items-center gap-2">
@@ -292,14 +292,14 @@ templ valueFields(index int, item captured.Item) {
 		case captured.KindCheckIn:
 			<div class="flex flex-wrap items-center gap-2">
 				@numberInput(fmt.Sprintf("items[%d].mood", index), strconv.Itoa(item.CheckIn.Mood))
-				<span class="text-sm text-muted-foreground">mood</span>
+				<span class="text-sm text-muted-foreground">{ i18n.T(ctx, "capture.unit.mood") }</span>
 				@numberInput(fmt.Sprintf("items[%d].energy", index), strconv.Itoa(item.CheckIn.Energy))
-				<span class="text-sm text-muted-foreground">energy</span>
+				<span class="text-sm text-muted-foreground">{ i18n.T(ctx, "capture.unit.energy") }</span>
 			</div>
 		case captured.KindFood:
 			<div class="flex items-center gap-2">
 				@numberInput(fmt.Sprintf("items[%d].grams", index), strconv.FormatFloat(item.Food.Grams, 'f', -1, 64))
-				<span class="text-sm text-muted-foreground">g of { foodName(item) }</span>
+				<span class="text-sm text-muted-foreground">{ i18n.Tf(ctx, "capture.unit.food", foodName(item)) }</span>
 			</div>
 		case captured.KindHabit:
 			<p class="text-sm">{ item.Habit.Name }</p>

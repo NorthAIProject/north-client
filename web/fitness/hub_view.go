@@ -1,11 +1,15 @@
 package fitness
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/web/shared/ui/chart"
 )
 
@@ -138,11 +142,11 @@ func recentDetail(r RecentRow) []string {
 
 // recentTitle shortens the MET table's names, which carry intensity in
 // brackets, to what a list row needs: "Walking (brisk pace)" reads as Walking.
-func recentTitle(r RecentRow) string {
+func recentTitle(ctx context.Context, r RecentRow) string {
 	name, _, _ := strings.Cut(r.Name, " (")
 	name = strings.ReplaceAll(name, "_", " ")
 	if name == "" {
-		return "Session"
+		return i18n.T(ctx, "fitness.recent.session")
 	}
 	return strings.ToUpper(name[:1]) + name[1:]
 }
@@ -172,22 +176,22 @@ func recentIcon(r RecentRow) string {
 }
 
 // when renders a timestamp as the list does: 25 Sep · 17:25.
-func when(t time.Time, loc *time.Location) string {
-	return t.In(loc).Format("2 Jan · 15:04")
+func when(ctx context.Context, t time.Time, loc *time.Location) string {
+	return i18n.Date(ctx, t.In(loc), "2 Jan · 15:04")
 }
 
 // ago renders how long since a sync, in the one unit that matters.
-func ago(t time.Time, now time.Time) string {
+func ago(ctx context.Context, t time.Time, now time.Time) string {
 	d := now.Sub(t)
 	switch {
 	case d < time.Minute:
-		return "just now"
+		return i18n.T(ctx, "fitness.ago.now")
 	case d < time.Hour:
-		return fmt.Sprintf("%dm ago", int(d.Minutes()))
+		return i18n.Tf(ctx, "fitness.ago.min", int(d.Minutes()))
 	case d < 48*time.Hour:
-		return fmt.Sprintf("%dh ago", int(d.Hours()))
+		return i18n.Tf(ctx, "fitness.ago.hours", int(d.Hours()))
 	default:
-		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
+		return i18n.Tf(ctx, "fitness.ago.days", int(d.Hours()/24))
 	}
 }
 
@@ -272,15 +276,55 @@ func deltaClass(v float64) string {
 // vo2Band is a coarse reading of a VO2 max estimate. Deliberately not age or
 // sex adjusted: the hub does not know enough to grade someone precisely, and a
 // falsely exact label is worse than a rough one.
-func vo2Band(v float64) string {
+func vo2Band(ctx context.Context, v float64) string {
 	switch {
 	case v >= 50:
-		return "Excellent"
+		return i18n.T(ctx, "fitness.vo2.excellent")
 	case v >= 43:
-		return "Good"
+		return i18n.T(ctx, "fitness.vo2.good")
 	case v >= 36:
-		return "Fair"
+		return i18n.T(ctx, "fitness.vo2.fair")
 	default:
-		return "Low"
+		return i18n.T(ctx, "fitness.vo2.low")
 	}
+}
+
+// aSunday anchors the weekday helpers below: adding n days to it lands on
+// time.Weekday(n), which i18n.Date can then name in the reader's language.
+var aSunday = time.Date(2024, time.January, 7, 12, 0, 0, 0, time.UTC)
+
+// weekdayName names a plan day ("Wednesday", as the plan stores it) in the
+// request's language, lower case as the Romance languages write it mid-sentence.
+// A name that is not an English weekday is returned as it came.
+func weekdayName(ctx context.Context, english string) string {
+	for n := range 7 {
+		if time.Weekday(n).String() == english {
+			return i18n.Date(ctx, aSunday.AddDate(0, 0, n), "Monday")
+		}
+	}
+	return english
+}
+
+// barLabel is the weekly strip's day label. The hub builds those as English
+// two-letter abbreviations ("Mo", "Tu"); English keeps them, other languages
+// get their own three-letter short names, since two letters are ambiguous in
+// Portuguese (seg/sex, qua/qui).
+func barLabel(ctx context.Context, label string) string {
+	if i18n.LocaleFrom(ctx) == i18n.DefaultLocale {
+		return label
+	}
+	for n := range 7 {
+		if strings.HasPrefix(time.Weekday(n).String(), label) && len(label) >= 2 {
+			return capitalize(i18n.Date(ctx, aSunday.AddDate(0, 0, n), "Mon"))
+		}
+	}
+	return label
+}
+
+func capitalize(s string) string {
+	r, size := utf8.DecodeRuneInString(s)
+	if r == utf8.RuneError {
+		return s
+	}
+	return string(unicode.ToUpper(r)) + s[size:]
 }

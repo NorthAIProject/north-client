@@ -1,9 +1,11 @@
 package form
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/NorthAIProject/north-client/internal/media/analysis"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
@@ -16,13 +18,12 @@ import (
 )
 
 templ IndexPage(user users.User, analyses []analysis.Analysis, errMsg string) {
-	@layout.App("Form check", user, layout.BuildNav(ctx, "/app/fitness")) {
+	@layout.App(i18n.T(ctx, "form.title"), user, layout.BuildNav(ctx, "/app/fitness")) {
 		<div class="mx-auto w-full max-w-2xl p-6 md:p-8">
 			<header class="mb-6">
-				<h1 class="text-2xl font-semibold tracking-tight">Form check</h1>
+				<h1 class="text-2xl font-semibold tracking-tight">{ i18n.T(ctx, "form.title") }</h1>
 				<p class="text-muted-foreground mt-1 text-sm">
-					Upload a clip of a working set. Khepri watches it and points at the
-					moments worth fixing — you can see each one for yourself.
+					{ i18n.T(ctx, "form.lede") }
 				</p>
 			</header>
 			if errMsg != "" {
@@ -44,18 +45,17 @@ templ IndexPage(user users.User, analyses []analysis.Analysis, errMsg string) {
 							Required:   true,
 						})
 						<p class="text-muted-foreground text-xs">
-							MP4, MOV, or WebM, under 200 MB. Film from the side, full body in
-							frame, one set.
+							{ i18n.T(ctx, "form.upload.help") }
 						</p>
 						@button.Button(button.Props{Type: button.TypeSubmit, FullWidth: true}) {
 							@icon.Upload(icon.Props{Class: "size-4"})
-							Analyse my form
+							{ i18n.T(ctx, "form.upload.submit") }
 						}
 					</form>
 				}
 			}
 			if len(analyses) > 0 {
-				<h2 class="mb-3 text-sm font-medium">Previous checks</h2>
+				<h2 class="mb-3 text-sm font-medium">{ i18n.T(ctx, "form.previous") }</h2>
 				<div class="space-y-2">
 					for _, a := range analyses {
 						@analysisLink(a)
@@ -77,10 +77,10 @@ templ analysisLink(a analysis.Analysis) {
 				if a.Result != nil {
 					{ a.Result.Exercise }
 				} else {
-					Form check
+					{ i18n.T(ctx, "form.title") }
 				}
 			</p>
-			<p class="text-muted-foreground text-xs">{ a.CreatedAt.Format("2 January, 15:04") }</p>
+			<p class="text-muted-foreground text-xs">{ i18n.Date(ctx, a.CreatedAt, "2 January, 15:04") }</p>
 		</div>
 		if a.Result != nil {
 			@issueCountBadge(*a.Result)
@@ -91,21 +91,21 @@ templ analysisLink(a analysis.Analysis) {
 templ issueCountBadge(result analysis.FormAnalysis) {
 	if result.Clean() {
 		@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
-			Looks clean
+			{ i18n.T(ctx, "form.badge.clean") }
 		}
 	} else if !result.Trustworthy() {
 		@badge.Badge(badge.Props{Variant: badge.VariantOutline}) {
-			Unclear footage
+			{ i18n.T(ctx, "form.badge.unclear") }
 		}
 	} else {
 		@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
-			{ fmt.Sprintf("%d to fix", len(result.Issues)) }
+			{ i18n.Tf(ctx, "form.badge.tofix", len(result.Issues)) }
 		}
 	}
 }
 
 templ AnalysisPage(user users.User, item analysis.Analysis, playbackURL string) {
-	@layout.App("Form check", user, layout.BuildNav(ctx, "/app/fitness")) {
+	@layout.App(i18n.T(ctx, "form.title"), user, layout.BuildNav(ctx, "/app/fitness")) {
 		<div
 			class="mx-auto w-full max-w-3xl p-6 md:p-8"
 			x-data="{ seek(seconds) { const v = $refs.clip; if (v) { v.currentTime = seconds; v.play(); } } }"
@@ -115,11 +115,11 @@ templ AnalysisPage(user users.User, item analysis.Analysis, playbackURL string) 
 					if item.Result != nil {
 						{ item.Result.Exercise }
 					} else {
-						Form check
+						{ i18n.T(ctx, "form.title") }
 					}
 				</h1>
 				@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Href: "/app/form"}) {
-					New check
+					{ i18n.T(ctx, "form.new") }
 				}
 			</header>
 			<video
@@ -151,7 +151,7 @@ templ StatusFragment(item analysis.Analysis) {
 				@card.Content() {
 					<div class="text-muted-foreground flex items-center gap-3 py-6 text-sm">
 						<span class="border-muted-foreground/30 border-t-muted-foreground size-4 animate-spin rounded-full border-2"></span>
-						Khepri is watching your set. This usually takes under a minute.
+						{ i18n.T(ctx, "form.status.watching") }
 					</div>
 				}
 			}
@@ -160,13 +160,13 @@ templ StatusFragment(item analysis.Analysis) {
 		<div id="analysis-status">
 			@alert.Alert(alert.Props{Variant: alert.VariantDestructive}) {
 				@alert.Title() {
-					That did not work
+					{ i18n.T(ctx, "form.status.failed") }
 				}
 				@alert.Description() {
 					if item.Error != "" {
 						{ item.Error }
 					} else {
-						Something went wrong analysing that video.
+						{ i18n.T(ctx, "form.status.failed.desc") }
 					}
 				}
 			}
@@ -183,7 +183,7 @@ templ result(a analysis.FormAnalysis) {
 		@card.Header() {
 			<div class="flex items-center justify-between gap-3">
 				@card.Title(card.TitleProps{Class: "text-base"}) {
-					What Khepri saw
+					{ i18n.T(ctx, "form.result.title") }
 				}
 				@confidenceBadge(a.Confidence)
 			</div>
@@ -198,21 +198,19 @@ templ result(a analysis.FormAnalysis) {
 		// faults, and the fix is a better camera angle.
 		@alert.Alert() {
 			@alert.Description() {
-				Khepri could not see the movement clearly enough to judge it. Try
-				filming from the side, further back, with your whole body in frame.
+				{ i18n.T(ctx, "form.result.unclear") }
 			}
 		}
 	} else if len(a.Issues) == 0 {
 		@alert.Alert() {
 			@alert.Description() {
-				Nothing worth changing in this set. Keep the load where it is and
-				film again if it starts to feel different.
+				{ i18n.T(ctx, "form.result.clean") }
 			}
 		}
 	} else {
 		<h2 class="mb-3 text-sm font-medium">
-			{ fmt.Sprintf("%d thing(s) to work on", len(a.Issues)) }
-			<span class="text-muted-foreground font-normal">— tap a timestamp to jump there</span>
+			{ issuesHeading(ctx, len(a.Issues)) }
+			<span class="text-muted-foreground font-normal">— { i18n.T(ctx, "form.result.tap") }</span>
 		</h2>
 		<div class="space-y-3">
 			for _, issue := range a.Issues {
@@ -220,6 +218,15 @@ templ result(a analysis.FormAnalysis) {
 			}
 		</div>
 	}
+}
+
+// issuesHeading counts what to work on, with the singular spelled out: "1
+// things" reads as a bug in every language this ships in.
+func issuesHeading(ctx context.Context, n int) string {
+	if n == 1 {
+		return i18n.T(ctx, "form.result.issues.one")
+	}
+	return i18n.Tf(ctx, "form.result.issues.many", n)
 }
 
 templ issueCard(issue analysis.FormIssue) {
@@ -252,15 +259,15 @@ templ confidenceBadge(confidence string) {
 	switch confidence {
 		case analysis.ConfidenceHigh:
 			@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
-				Clear footage
+				{ i18n.T(ctx, "form.badge.clear") }
 			}
 		case analysis.ConfidenceMedium:
 			@badge.Badge(badge.Props{Variant: badge.VariantOutline}) {
-				Mostly clear
+				{ i18n.T(ctx, "form.badge.mostly") }
 			}
 		default:
 			@badge.Badge(badge.Props{Variant: badge.VariantOutline}) {
-				Unclear footage
+				{ i18n.T(ctx, "form.badge.unclear") }
 			}
 	}
 }
@@ -269,15 +276,15 @@ templ severityBadge(severity string) {
 	switch severity {
 		case analysis.SeverityCritical:
 			@badge.Badge(badge.Props{Variant: badge.VariantDestructive}) {
-				Fix before adding load
+				{ i18n.T(ctx, "form.severity.critical") }
 			}
 		case analysis.SeverityModerate:
 			@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
-				Worth fixing
+				{ i18n.T(ctx, "form.severity.moderate") }
 			}
 		default:
 			@badge.Badge(badge.Props{Variant: badge.VariantOutline}) {
-				Minor
+				{ i18n.T(ctx, "form.severity.minor") }
 			}
 	}
 }

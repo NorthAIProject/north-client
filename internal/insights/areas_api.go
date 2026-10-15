@@ -68,7 +68,7 @@ func (a *API) areas(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	view, err := projectAreas(data, focus)
+	view, err := projectAreas(r.Context(), data, focus)
 	if err != nil {
 		httpx.Error(w, err, "Areas could not be loaded.")
 		return
@@ -76,13 +76,13 @@ func (a *API) areas(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, view)
 }
 
-func projectAreas(data Areas, focus []string) (AreasView, error) {
+func projectAreas(ctx context.Context, data Areas, focus []string) (AreasView, error) {
 	out := AreasView{Weeks: make([]string, 0, len(data.Weeks)), Areas: make([]AreaView, 0, len(data.Areas)), Focus: nonNil(focus)}
 	for _, monday := range data.Weeks {
 		out.Weeks = append(out.Weeks, monday.Format(time.DateOnly))
 	}
 	for i, area := range data.Areas {
-		card, err := scoreCard(domains[i], area.Now)
+		card, err := scoreCard(ctx, domains[i], area.Now)
 		if err != nil {
 			return AreasView{}, err
 		}

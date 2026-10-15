@@ -1,0 +1,49 @@
+package i18n
+
+// englishCrews is the crews index, a crew's board, and the public join page.
+var englishCrews = map[string]string{
+	"crews.mono":         "Progress",
+	"crews.title":        "Crews",
+	"crews.intro":        "A few people keeping each other going. Crewmates see who checked in and trained today, streaks, and the week's challenge. Nothing else.",
+	"crews.members.one":  "1 person",
+	"crews.members.many": "%[1]d people",
+
+	"crews.start.title":      "Start a crew",
+	"crews.start.desc":       "Up to eight people. Two is an accountability partner.",
+	"crews.name":             "Name",
+	"crews.name.placeholder": "e.g. Morning runners",
+	"crews.create":           "Create",
+
+	"crews.board.mono":   "Crew",
+	"crews.today":        "Today",
+	"crews.you":          "You",
+	"crews.owner":        "owner",
+	"crews.streak":       "%[1]d-day check-in streak",
+	"crews.checkedin":    "Checked in",
+	"crews.notyet":       "Not yet",
+	"crews.trained":      "Trained",
+	"crews.remove":       "Remove",
+	"crews.invite.title": "Invite to the crew",
+	"crews.invite.desc":  "%[1]d of up to %[2]d. Anyone with the link can join.",
+	"crews.leave":        "Leave crew",
+
+	"crews.challenge.none":     "No challenge this week.",
+	"crews.challenge.checkins": "%[1]d check-ins each, Monday to Sunday.",
+	"crews.challenge.workouts": "%[1]d workouts each, Monday to Sunday.",
+
+	"crews.challenge.title":        "Weekly challenge",
+	"crews.challenge.what":         "What",
+	"crews.challenge.choose":       "Choose",
+	"crews.challenge.opt.checkins": "Check-ins",
+	"crews.challenge.opt.workouts": "Workouts",
+	"crews.challenge.opt.none":     "No challenge",
+	"crews.challenge.times":        "Times a week",
+	"crews.challenge.set":          "Set",
+
+	"crews.join.title":     "Join %[1]s",
+	"crews.join.heading":   "Join %[1]s on Khepri",
+	"crews.join.desc.one":  "1 person keeping going and looking for company. In a crew you see each other's check-ins, training, streaks and the week's challenge. Nothing else.",
+	"crews.join.desc.many": "%[1]d people keeping each other going. In a crew you see each other's check-ins, training, streaks and the week's challenge. Nothing else.",
+	"crews.join.signup":    "Create your account",
+	"crews.join.login":     "I already have one",
+}

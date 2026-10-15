@@ -1,16 +1,18 @@
 package insights
 
 import (
+	"context"
 	"math"
 
 	"github.com/NorthAIProject/north-client/internal/insights/highlight"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/viz"
 	insightpages "github.com/NorthAIProject/north-client/web/insights"
 )
 
-func buildCoachView(data CoachData) (insightpages.CoachView, error) {
+func buildCoachView(ctx context.Context, data CoachData) (insightpages.CoachView, error) {
 	loc := data.Range.Location()
-	labels := bucketLabels(data.Range)
+	labels := bucketLabels(ctx, data.Range)
 
 	var yours, theirs []point
 	var rated, helpful int
@@ -40,7 +42,7 @@ func buildCoachView(data CoachData) (insightpages.CoachView, error) {
 	}
 
 	view := insightpages.CoachView{
-		Range:        rangeView(data.Range),
+		Range:        rangeView(ctx, data.Range),
 		Turns:        len(yours) + len(theirs),
 		YourMessages: len(yours),
 		CoachReplies: len(theirs),
@@ -56,15 +58,16 @@ func buildCoachView(data CoachData) (insightpages.CoachView, error) {
 
 	yourSeries := bucketed(data.Range, yours)
 	view.Chart = viz.GroupedBar("insights-coach-turns", labels, []viz.BarSeries{
-		{Label: "You", Values: yourSeries},
-		{Label: "Coach", Values: bucketed(data.Range, theirs)},
+		{Label: i18n.T(ctx, "insights.coach.chart.you"), Values: yourSeries},
+		{Label: i18n.T(ctx, "insights.coach.chart.coach"), Values: bucketed(data.Range, theirs)},
 	})
 
 	view.Highlights = highlight.Find(highlight.Input{
 		Series: []highlight.Series{{
-			Label: "Messages", Decimals: 0,
+			Label: i18n.T(ctx, "insights.series.messages"), Decimals: 0,
 			Period: periodNoun(data.Range), Labels: labels, Values: yourSeries,
 		}},
+		Locale: i18n.LocaleFrom(ctx),
 	}, maxHighlights)
 
 	return view, nil

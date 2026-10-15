@@ -1,6 +1,7 @@
 package insights
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -26,7 +27,7 @@ func weekRange(t *testing.T) timerange.Range {
 // makes the total appear to shrink.
 func TestTimelineViewChips(t *testing.T) {
 	rg := weekRange(t)
-	view := buildTimelineView(TimelineData{
+	view := buildTimelineView(context.Background(), TimelineData{
 		Range: rg,
 		Kind:  string(dashboard.KindSleep),
 		Total: 9,
@@ -78,7 +79,7 @@ func TestBodyViewFillsEveryBucket(t *testing.T) {
 	day0 := buckets[0].Start
 	day3 := buckets[3].Start
 
-	view, err := buildBodyView(BodyData{
+	view, err := buildBodyView(context.Background(), BodyData{
 		Range: rg,
 		Hydration: []hydration.Day{
 			{Date: day0, TotalML: 500},
@@ -112,7 +113,7 @@ func TestBodyViewFillsEveryBucket(t *testing.T) {
 }
 
 func TestBodyViewEmptyWindowReportsNoData(t *testing.T) {
-	view, err := buildBodyView(BodyData{Range: weekRange(t)})
+	view, err := buildBodyView(context.Background(), BodyData{Range: weekRange(t)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +137,7 @@ func TestMindViewAveragesOverDaysRecorded(t *testing.T) {
 	rg := weekRange(t)
 	buckets := rg.Buckets()
 
-	view, err := buildMindView(MindData{
+	view, err := buildMindView(context.Background(), MindData{
 		Range: rg,
 		CheckIns: []checkins.CheckIn{
 			{LocalDate: buckets[0].Start, Mood: 4, Energy: 2},

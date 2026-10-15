@@ -3,6 +3,7 @@ package auth
 import (
 	"net/url"
 
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/ui/alert"
@@ -47,14 +48,14 @@ type LoginForm struct {
 }
 
 templ LoginPage(f LoginForm) {
-	@layout.Auth("Sign in") {
+	@layout.Auth(i18n.T(ctx, "auth.signin.page")) {
 		@card.Card() {
 			@card.Header() {
 				@card.Title() {
-					Welcome back
+					{ i18n.T(ctx, "auth.signin.title") }
 				}
 				@card.Description() {
-					Sign in to continue with your coach.
+					{ i18n.T(ctx, "auth.signin.desc") }
 				}
 			}
 			@card.Content() {
@@ -73,7 +74,7 @@ templ LoginPage(f LoginForm) {
 					}
 					@form.Item() {
 						@label.Label(label.Props{For: "email"}) {
-							Email
+							{ i18n.T(ctx, "auth.field.email") }
 						}
 						@input.Input(input.Props{
 							ID:       "email",
@@ -90,11 +91,11 @@ templ LoginPage(f LoginForm) {
 					@form.Item() {
 						<div class="flex items-center justify-between gap-2">
 							@label.Label(label.Props{For: "password"}) {
-								Password
+								{ i18n.T(ctx, "auth.field.password") }
 							}
 							if f.Options.PasswordResetEnabled {
 								<a href="/forgot-password" class="text-muted-foreground hover:text-foreground text-xs font-medium underline-offset-4 hover:underline">
-									Forgot password?
+									{ i18n.T(ctx, "auth.signin.forgot") }
 								</a>
 							}
 						</div>
@@ -109,15 +110,15 @@ templ LoginPage(f LoginForm) {
 						})
 					}
 					@button.Button(button.Props{Type: button.TypeSubmit, FullWidth: true, Class: "bg-signal text-background hover:bg-signal/90"}) {
-						Sign in
+						{ i18n.T(ctx, "auth.signin.submit") }
 					}
 				</form>
 				<p id="passkey-error" class="text-destructive mt-3 hidden text-sm" role="alert"></p>
 			}
 		}
 		<p class="text-muted-foreground mt-6 text-center text-sm">
-			No account?
-			<a href="/signup" class="text-foreground font-medium underline underline-offset-4">Create one</a>
+			{ i18n.T(ctx, "auth.signin.noaccount") }
+			<a href="/signup" class="text-foreground font-medium underline underline-offset-4">{ i18n.T(ctx, "auth.signin.create") }</a>
 		</p>
 		// Powers the show/hide toggle on password inputs. Guarded by a
 		// OnceHandle, so including it per page renders it exactly once.
@@ -142,7 +143,7 @@ templ altAuthButtons(opts AuthOptions, next string, mode string) {
 					Href:      googleAuthHref(next),
 				}) {
 					@icon.BrandGoogle()
-					Continue with Google
+					{ i18n.T(ctx, "auth.alt.google") }
 				}
 			}
 			if opts.PasskeyEnabled {
@@ -155,7 +156,7 @@ templ altAuthButtons(opts AuthOptions, next string, mode string) {
 						"data-passkey-mode": mode,
 					},
 				}) {
-					Use a passkey
+					{ i18n.T(ctx, "auth.alt.passkey") }
 				}
 			}
 			<div class="relative py-1">
@@ -163,7 +164,7 @@ templ altAuthButtons(opts AuthOptions, next string, mode string) {
 					<div class="border-border w-full border-t"></div>
 				</div>
 				<div class="relative flex justify-center text-xs uppercase">
-					<span class="bg-card text-muted-foreground px-2">or</span>
+					<span class="bg-card text-muted-foreground px-2">{ i18n.T(ctx, "auth.alt.or") }</span>
 				</div>
 			</div>
 		</div>

@@ -13,7 +13,7 @@ import (
 // carry makes Icon error, templ flushes nothing, and the page 200s empty —
 // which no type check catches.
 func TestSummaryPanelsRender(t *testing.T) {
-	view, err := buildSummaryView(wellLogged(t))
+	view, err := buildSummaryView(context.Background(), wellLogged(t))
 	if err != nil {
 		t.Fatalf("buildSummaryView: %v", err)
 	}
@@ -35,7 +35,7 @@ func TestSummaryPanelsRender(t *testing.T) {
 }
 
 func TestSummaryPanelsOfAnEmptyWindowRenderOneSentence(t *testing.T) {
-	view, err := buildSummaryView(SummaryData{Range: weekRange(t)})
+	view, err := buildSummaryView(context.Background(), SummaryData{Range: weekRange(t)})
 	if err != nil {
 		t.Fatalf("buildSummaryView: %v", err)
 	}

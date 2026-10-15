@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/weekly/week"
 	"github.com/NorthAIProject/north-client/internal/workouts/plan"
@@ -52,45 +53,46 @@ func rankValue(g week.Goal, i int) string {
 	return fmt.Sprint(i + 1)
 }
 
+// volumes are the three training choices. title and hint are catalogue keys.
 var volumes = []struct {
 	value plan.Volume
 	title string
 	hint  string
 }{
-	{plan.VolumeHold, "Hold", "Train the plan as written."},
-	{plan.VolumeBuild, "Build", "One extra set on each day's first two exercises."},
-	{plan.VolumeDeload, "Deload", "About 60% of the sets, to recover."},
+	{plan.VolumeHold, "weekly.volume.hold", "weekly.volume.hold.hint"},
+	{plan.VolumeBuild, "weekly.volume.build", "weekly.volume.build.hint"},
+	{plan.VolumeDeload, "weekly.volume.deload", "weekly.volume.deload.hint"},
 }
 
 templ Page(user users.User, rv week.Review, f Form) {
-	@layout.App("Weekly review", user, layout.BuildNav(ctx, "/app/weekly")) {
+	@layout.App(i18n.T(ctx, "weekly.title"), user, layout.BuildNav(ctx, "/app/weekly")) {
 		<div class="mx-auto w-full max-w-3xl space-y-6 p-6 md:p-8">
 			<header>
-				@ui.MonoLabel("Weekly review")
-				<h1 class="mt-2 text-2xl font-medium tracking-tight">Plan the week of { rv.Planning.Format("2 Jan") }</h1>
+				@ui.MonoLabel(i18n.T(ctx, "weekly.title"))
+				<h1 class="mt-2 text-2xl font-medium tracking-tight">{ i18n.Tf(ctx, "weekly.h1", i18n.Date(ctx, rv.Planning, "2 Jan")) }</h1>
 				<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
-					How the week of { rv.Reviewing.Format("2 Jan") } went, then up to three priorities, your goals in order, and how hard to train.
+					{ i18n.Tf(ctx, "weekly.lede", i18n.Date(ctx, rv.Reviewing, "2 Jan")) }
 				</p>
 			</header>
 			if f.Saved {
-				<p class="text-sm" role="status">Saved. The coach, your goals and your training plan use this week's focus now.</p>
+				<p class="text-sm" role="status">{ i18n.T(ctx, "weekly.saved") }</p>
 			}
 			@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 				@card.Header() {
 					@card.Title() {
-						The week that happened
+						{ i18n.T(ctx, "weekly.happened") }
 					}
 				}
 				@card.Content() {
 					if rv.Last != nil && len(rv.Last.Priorities) > 0 {
-						<p class="text-muted-foreground mb-3 text-sm">You chose: { strings.Join(rv.Last.Priorities, "; ") }</p>
+						<p class="text-muted-foreground mb-3 text-sm">{ i18n.Tf(ctx, "weekly.chose", strings.Join(rv.Last.Priorities, "; ")) }</p>
 					}
 					if rv.Report != nil && rv.Report.Ready {
 						<div class="prose prose-sm max-w-none">
 							@markdown.Render(rv.Report.Body)
 						</div>
 					} else {
-						<p class="text-muted-foreground text-sm">Your weekly report is being written. Reload in a minute, or plan the week now.</p>
+						<p class="text-muted-foreground text-sm">{ i18n.T(ctx, "weekly.writing") }</p>
 					}
 				}
 			}
@@ -99,15 +101,15 @@ templ Page(user users.User, rv week.Review, f Form) {
 				@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 					@card.Header() {
 						@card.Title() {
-							Priorities
+							{ i18n.T(ctx, "weekly.priorities") }
 						}
 						@card.Description() {
-							Up to three things this week is for.
+							{ i18n.T(ctx, "weekly.priorities.desc") }
 						}
 					}
 					@card.Content(card.ContentProps{Class: "space-y-3"}) {
 						for i, p := range f.Priorities {
-							@input.Input(input.Props{ID: fmt.Sprintf("priority-%d", i), Name: "priority", Value: p, Placeholder: fmt.Sprintf("Priority %d", i+1), HasError: f.fieldError("priorities") != ""})
+							@input.Input(input.Props{ID: fmt.Sprintf("priority-%d", i), Name: "priority", Value: p, Placeholder: i18n.Tf(ctx, "weekly.priority", i+1), HasError: f.fieldError("priorities") != ""})
 						}
 						if f.fieldError("priorities") != "" {
 							@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
@@ -120,17 +122,17 @@ templ Page(user users.User, rv week.Review, f Form) {
 					@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 						@card.Header() {
 							@card.Title() {
-								Goals in order
+								{ i18n.T(ctx, "weekly.goals") }
 							}
 							@card.Description() {
-								1 is first. The coach and your goals list follow this order.
+								{ i18n.T(ctx, "weekly.goals.desc") }
 							}
 						}
 						@card.Content() {
 							<ul class="divide-y divide-hairline">
 								for i, g := range rv.Goals {
 									<li class="flex items-center gap-3 py-2">
-										@input.Input(input.Props{ID: "rank-" + g.ID.String(), Name: "rank_" + g.ID.String(), Type: input.TypeNumber, Value: rankValue(g, i), Class: "w-16", Attributes: templ.Attributes{"min": "1", "aria-label": "Order of " + g.Title}})
+										@input.Input(input.Props{ID: "rank-" + g.ID.String(), Name: "rank_" + g.ID.String(), Type: input.TypeNumber, Value: rankValue(g, i), Class: "w-16", Attributes: templ.Attributes{"min": "1", "aria-label": i18n.Tf(ctx, "weekly.goals.order", g.Title)}})
 										<span class="text-sm">{ g.Title }</span>
 									</li>
 								}
@@ -146,7 +148,7 @@ templ Page(user users.User, rv week.Review, f Form) {
 				@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 					@card.Header() {
 						@card.Title() {
-							Training this week
+							{ i18n.T(ctx, "weekly.training") }
 						}
 					}
 					@card.Content(card.ContentProps{Class: "space-y-3"}) {
@@ -154,15 +156,15 @@ templ Page(user users.User, rv week.Review, f Form) {
 							<div class="flex items-start gap-3">
 								@radio.Radio(radio.Props{ID: "volume-" + string(v.value), Name: "volume", Value: string(v.value), Checked: f.Volume == v.value})
 								@label.Label(label.Props{For: "volume-" + string(v.value)}) {
-									<span class="font-medium">{ v.title }</span>
-									<span class="text-muted-foreground block text-xs">{ v.hint }</span>
+									<span class="font-medium">{ i18n.T(ctx, v.title) }</span>
+									<span class="text-muted-foreground block text-xs">{ i18n.T(ctx, v.hint) }</span>
 								}
 							</div>
 						}
 					}
 				}
 				@button.Button(button.Props{Type: button.TypeSubmit}) {
-					Save the week
+					{ i18n.T(ctx, "weekly.save") }
 				}
 			</form>
 		</div>

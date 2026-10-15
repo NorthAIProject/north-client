@@ -1,7 +1,6 @@
 package app
 
 import (
-	"strconv"
 
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -393,7 +392,7 @@ templ trainingPanel(data DashboardData) {
 		if data.DoneToday != nil {
 			<p class="text-muted-foreground mb-2 flex items-center gap-1.5 text-xs">
 				@icon.CircleCheck(icon.Props{Class: "text-signal size-3.5"})
-				{ fitnesspages.CompletedLine(*data.DoneToday) }
+				{ fitnesspages.CompletedLineIn(ctx, *data.DoneToday) }
 			</p>
 		}
 		if data.HasPlan() {
@@ -418,7 +417,7 @@ templ trainingPanel(data DashboardData) {
 }
 
 templ goalsPanel(data DashboardData) {
-	@panel(i18n.T(ctx, "dash.goals.title"), goalActivityLabel(data.GoalActivity7d)) {
+	@panel(i18n.T(ctx, "dash.goals.title"), goalActivityLabel(ctx, data.GoalActivity7d)) {
 		if len(data.Goals) == 0 {
 			@emptyAction(i18n.T(ctx, "dash.goals.empty"), "/app/goals", i18n.T(ctx, "dash.goals.cta"))
 		} else {
@@ -512,7 +511,7 @@ templ timelineRow(e TimelineEntryView) {
 			}
 		</span>
 		<span class="text-muted-foreground shrink-0 font-mono text-[10px] whitespace-nowrap tabular-nums">
-			{ relativeTime(e.At) }
+			{ relativeTime(ctx, e.At) }
 		</span>
 	</a>
 }
@@ -555,9 +554,9 @@ templ habitsPanel(data DashboardData) {
 				@ui.EChartsMount("dashboard-habit-gauge", "dashboard-habit-gauge-option", "min-h-48 w-full")
 			}
 			<p class="text-muted-foreground mt-2 text-xs">
-				{ strconv.Itoa(data.Habits.Kept) } kept of { strconv.Itoa(data.Habits.Scheduled) } scheduled
+				{ i18n.Tf(ctx, "dash.habits.kept", data.Habits.Kept, data.Habits.Scheduled) }
 				if data.Habits.BestStreak > 0 {
-					<span>· best streak { strconv.Itoa(data.Habits.BestStreak) }</span>
+					<span>· { i18n.Tf(ctx, "dash.habits.best", data.Habits.BestStreak) }</span>
 				}
 			</p>
 		} else {
@@ -573,7 +572,7 @@ templ hydrationPanel(data DashboardData) {
 	@panel(i18n.T(ctx, "dash.hydration.title"), hydrationDescription(ctx, data)) {
 		if data.Hydration.HasData() {
 			<p class="text-signal mb-3 text-sm font-medium tabular-nums">
-				Today { strconv.Itoa(data.Hydration.Percent) }% · { formatLitres(data.Hydration.TodayML) }
+				{ i18n.Tf(ctx, "dash.hydration.today", data.Hydration.Percent, formatLitres(data.Hydration.TodayML)) }
 			</p>
 			@chart.Chart(data.HydrationChart)
 		} else {

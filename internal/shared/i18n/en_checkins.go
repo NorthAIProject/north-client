@@ -84,4 +84,12 @@ var englishCheckins = map[string]string{
 	"checkins.source.coach":   "Coach chat",
 	"checkins.source.mcp":     "AI assistant",
 	"checkins.source.capture": "Quick capture",
+
+	"checkins.heatmap.empty":     "Check in to see your pattern.",
+	"checkins.logged":            "Logged",
+	"checkins.related":           "Related: %[1]s",
+	"checkins.streak.saved.one":  "1-day streak. Same time tomorrow.",
+	"checkins.streak.saved.many": "%[1]d-day streak. Same time tomorrow.",
+	"checkins.meta.moodenergy":   "Mood %[1]d/5 · energy %[2]d/5",
+	"checkins.label":             "%[1]s — mood %[2]d · energy %[3]d",
 }

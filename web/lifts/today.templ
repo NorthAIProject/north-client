@@ -2,6 +2,7 @@
 package lifts
 
 import (
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
 	"github.com/NorthAIProject/north-client/web/shared/ui/card"
@@ -55,12 +56,12 @@ templ TodayCard(t Today) {
 			@card.Header() {
 				<div class="flex items-baseline justify-between gap-3">
 					@card.Title(card.TitleProps{Class: "text-base"}) {
-						Log a set
+						{ i18n.T(ctx, "lifts.today.title") }
 					}
-					<a href="/app/lifts/import" class="text-muted-foreground hover:text-foreground text-xs underline-offset-4 hover:underline">Import from Hevy</a>
+					<a href="/app/lifts/import" class="text-muted-foreground hover:text-foreground text-xs underline-offset-4 hover:underline">{ i18n.T(ctx, "lifts.today.import") }</a>
 				</div>
 				@card.Description() {
-					Each set feeds your records, the muscle map and what the coach knows.
+					{ i18n.T(ctx, "lifts.today.desc") }
 				}
 			}
 			@card.Content(card.ContentProps{Class: "space-y-4"}) {
@@ -83,10 +84,10 @@ templ setForm(t Today) {
 		@ui.CSRFInput()
 		<div class="space-y-1.5">
 			@label.Label(label.Props{For: "set-exercise"}) {
-				Exercise
+				{ i18n.T(ctx, "lifts.form.exercise") }
 			}
 			@input.Input(input.Props{
-				ID: "set-exercise", Name: "exercise", Value: t.Form.Exercise, Placeholder: "Bench press", Required: true,
+				ID: "set-exercise", Name: "exercise", Value: t.Form.Exercise, Placeholder: i18n.T(ctx, "lifts.form.exercise.ph"), Required: true,
 				Attributes: templ.Attributes{"list": "set-exercise-recent", "autocomplete": "off", "maxlength": "120"},
 			})
 			<!-- Native datalist: suggestions without a combobox's script, and the
@@ -100,35 +101,35 @@ templ setForm(t Today) {
 		<div class="grid grid-cols-3 gap-2">
 			<div class="space-y-1.5">
 				@label.Label(label.Props{For: "set-weight"}) {
-					Kg
+					{ i18n.T(ctx, "lifts.form.kg") }
 				}
 				@input.Input(input.Props{ID: "set-weight", Name: "weight_kg", Type: input.TypeNumber, Value: t.Form.WeightKg, Placeholder: "0", Attributes: templ.Attributes{"step": "0.5", "min": "0", "max": "600", "inputmode": "decimal"}})
 			</div>
 			<div class="space-y-1.5">
 				@label.Label(label.Props{For: "set-reps"}) {
-					Reps
+					{ i18n.T(ctx, "lifts.form.reps") }
 				}
 				@input.Input(input.Props{ID: "set-reps", Name: "reps", Type: input.TypeNumber, Value: t.Form.Reps, Placeholder: "8", Required: true, Attributes: templ.Attributes{"min": "1", "max": "100", "inputmode": "numeric"}})
 			</div>
 			<div class="space-y-1.5">
 				@label.Label(label.Props{For: "set-rir"}) {
-					In reserve
+					{ i18n.T(ctx, "lifts.form.rir") }
 				}
 				@input.Input(input.Props{ID: "set-rir", Name: "rir", Type: input.TypeNumber, Value: t.Form.RIR, Placeholder: "—", Attributes: templ.Attributes{"min": "0", "max": "10", "inputmode": "numeric", "aria-describedby": "set-rir-help"}})
 			</div>
 		</div>
-		<p id="set-rir-help" class="text-muted-foreground text-xs">In reserve: reps you had left. 0 is to failure; leave it empty if unsure.</p>
+		<p id="set-rir-help" class="text-muted-foreground text-xs">{ i18n.T(ctx, "lifts.form.rir.help") }</p>
 		<fieldset class="flex flex-wrap gap-4">
-			<legend class="sr-only">Kind of set</legend>
-			@kindOption("work", "Work", t.Form.Kind)
-			@kindOption("warmup", "Warm-up", t.Form.Kind)
-			@kindOption("drop", "Drop set", t.Form.Kind)
+			<legend class="sr-only">{ i18n.T(ctx, "lifts.form.kind") }</legend>
+			@kindOption("work", i18n.T(ctx, "lifts.kind.work"), t.Form.Kind)
+			@kindOption("warmup", i18n.T(ctx, "lifts.kind.warmup"), t.Form.Kind)
+			@kindOption("drop", i18n.T(ctx, "lifts.kind.drop"), t.Form.Kind)
 		</fieldset>
 		if t.Error != "" {
 			<p class="text-destructive text-sm" role="alert">{ t.Error }</p>
 		}
 		@button.Button(button.Props{Type: button.TypeSubmit, Class: "w-full"}) {
-			Log set
+			{ i18n.T(ctx, "lifts.form.submit") }
 		}
 	</form>
 }
@@ -143,16 +144,16 @@ templ kindOption(value, text, current string) {
 }
 
 templ setList(sets []SetRow) {
-	<ul class="divide-border divide-y" aria-label="Today's sets">
+	<ul class="divide-border divide-y" aria-label={ i18n.T(ctx, "lifts.list.aria") }>
 		for _, s := range sets {
 			<li class={ "flex items-center justify-between gap-3 py-2 text-sm", templ.KV("text-muted-foreground", s.Warmup) }>
 				<span class="min-w-0 truncate">
 					<span class="font-medium">{ s.Exercise }</span>
 					<span class="tabular-nums"> · { s.Load }</span>
 					if s.Warmup {
-						<span class="font-mono text-[10px] tracking-[0.14em] uppercase"> · Warm-up</span>
+						<span class="font-mono text-[10px] tracking-[0.14em] uppercase"> · { i18n.T(ctx, "lifts.kind.warmup") }</span>
 					} else if s.Drop {
-						<span class="font-mono text-[10px] tracking-[0.14em] uppercase"> · Drop</span>
+						<span class="font-mono text-[10px] tracking-[0.14em] uppercase"> · { i18n.T(ctx, "lifts.list.drop") }</span>
 					}
 					if s.RIR != "" {
 						<span class="text-muted-foreground"> · { s.RIR }</span>
@@ -160,7 +161,7 @@ templ setList(sets []SetRow) {
 				</span>
 				<form hx-post={ "/app/lifts/sets/" + s.ID + "/delete" } hx-target="#set-logger" hx-swap="outerHTML">
 					@ui.CSRFInput()
-					@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeIcon, Attributes: templ.Attributes{"aria-label": "Remove " + s.Exercise + " " + s.Load}}) {
+					@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeIcon, Attributes: templ.Attributes{"aria-label": i18n.Tf(ctx, "lifts.list.remove", s.Exercise, s.Load)}}) {
 						@icon.Icon("x")(icon.Props{Class: "size-4"})
 					}
 				</form>

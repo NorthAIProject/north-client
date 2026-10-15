@@ -1,0 +1,92 @@
+package i18n
+
+// englishPlanImport is importing a workout or meal plan from a file: the
+// upload page and both review pages. Spreadsheet column names are not here:
+// they are the literal headers the importer matches, and stay English.
+var englishPlanImport = map[string]string{
+	"planimport.label":         "Import",
+	"planimport.cancel":        "Cancel",
+	"planimport.cancel_import": "Cancel import",
+	"planimport.save_plan":     "Save plan",
+	"planimport.plan_name":     "Plan name",
+	"planimport.remove":        "Remove",
+	"planimport.remove_named":  "Remove %[1]s",
+	"planimport.remove_day":    "Remove day",
+	"planimport.weekday_ph":    "Day of the week",
+	"planimport.update":        "Update",
+	"planimport.review.title":  "Review import",
+
+	"planimport.upload.title.meal":    "Import a meal plan",
+	"planimport.upload.title.workout": "Import a workout plan",
+	"planimport.upload.intro":         "Nothing is saved until you've checked what was read and pressed Save.",
+	"planimport.upload.intro.meal":    "Your macro target stays as it is; foods are measured against it.",
+	"planimport.upload.formats":       "PDF (up to 20 pages), Word, text or Markdown, a CSV, TSV or Excel (.xlsx) sheet, JSON, or a photo. Up to 10 MB.",
+	"planimport.upload.sheets":        "Spreadsheets need a header row; the first sheet is read. Columns: %[1]s. Others are ignored.",
+	"planimport.upload.blank":         "Anything the file doesn't say is left blank for you to fill in — never guessed.",
+	"planimport.upload.drop":          "Drop a file, or browse",
+	"planimport.upload.reading":       "Reading your plan…",
+
+	"planimport.unparsed.title": "Not imported",
+	"planimport.unparsed.body":  "These lines looked like part of the plan but couldn't be turned into rows. Add them yourself if they matter.",
+
+	// The workout review.
+	"planimport.workout.heading":      "Check your workout plan",
+	"planimport.workout.intro":        "This is what was read from your file. Blank cells weren't in it. Fix anything that's wrong, give each day a day of the week, then save. Nothing is saved until you do.",
+	"planimport.workout.no_sets":      "Exercises without a set count won't appear in a live workout until you give them one — here or later on the plan.",
+	"planimport.workout.day":          "Training day %[1]d",
+	"planimport.workout.col.exercise": "Exercise",
+	"planimport.workout.col.sets":     "Sets",
+	"planimport.workout.col.reps":     "Reps",
+	"planimport.workout.col.load":     "Load",
+	"planimport.workout.col.rest":     "Rest (s)",
+	"planimport.workout.col.notes":    "Notes",
+
+	// The meal review. Macros read protein · carbs · fat; the letters are
+	// one space-separated string so each language can name its own.
+	"planimport.macros":        "%[1].0f P · %[2].0f C · %[3].0f F",
+	"planimport.macro.letters": "P C F",
+
+	"planimport.meal.heading":           "Check your meal plan",
+	"planimport.meal.intro":             "Each food is matched to an ingredient and weighed in grams, then every day is measured against what's left of your macro target. Your target itself doesn't change. Nothing is saved until you press Save.",
+	"planimport.meal.mode":              "Mode",
+	"planimport.meal.carb_type":         "Carb type",
+	"planimport.meal.custom_pct":        "Carbs, % of target",
+	"planimport.meal.every_day":         "Your file names no days, so this day is eaten every day: it is saved on all seven, and checked once.",
+	"planimport.meal.advanced_help":     "Advanced: pick each day's weekday; a day over its target can be saved once you confirm it.",
+	"planimport.meal.easy_help":         "Easy: days run from Monday in order, and no day may go over its target.",
+	"planimport.meal.no_target":         "You have no macro target yet.",
+	"planimport.meal.no_target.link":    "Work it out in the calculator",
+	"planimport.meal.no_target.after":   "; meal plans are built on it.",
+	"planimport.meal.over.title":        "Some days go over your target",
+	"planimport.meal.over.body":         "The days marked above exceed what your target leaves. Change them, or save anyway.",
+	"planimport.meal.over.confirm":      "Confirm and save anyway",
+	"planimport.meal.recalculate":       "Recalculate",
+	"planimport.meal.notes.title":       "Notes from your plan",
+	"planimport.meal.notes.body":        "Advice and recipes from your file, saved with the plan. Show them.",
+	"planimport.meal.choose_one":        "Choose one",
+	"planimport.meal.custom":            "Custom",
+	"planimport.meal.easy":              "Easy",
+	"planimport.meal.advanced":          "Advanced",
+	"planimport.meal.target_left":       "· target %[1]s · left %[2]s",
+	"planimport.meal.every_day.badge":   "Every day",
+	"planimport.meal.meal_n":            "Meal %[1]d",
+	"planimport.meal.remove_meal":       "Remove meal",
+	"planimport.meal.remove_option":     "Remove option",
+	"planimport.meal.counted":           "counted",
+	"planimport.meal.col.file":          "From your file",
+	"planimport.meal.col.ingredient":    "Ingredient",
+	"planimport.meal.col.grams":         "Grams",
+	"planimport.meal.col.macros":        "Macros",
+	"planimport.meal.file_says":         "· file says %[1]s",
+	"planimport.meal.estimated":         "estimated",
+	"planimport.meal.optional":          "optional · not counted",
+	"planimport.meal.choose_ingredient": "Choose an ingredient",
+	"planimport.meal.save_mine":         "Save as my own food (file's macros)",
+
+	// Preset carb bands, by meal.PlanType.
+	"planimport.band.no_carb":       "No carb",
+	"planimport.band.low_carb":      "Low carb",
+	"planimport.band.mid_carb":      "Mid carb",
+	"planimport.band.high_carb":     "High carb",
+	"planimport.meal.slot_optional": "optional meal · not counted",
+}

@@ -1,0 +1,26 @@
+package i18n
+
+// spanishWeekly is the weekly review in Spanish.
+var spanishWeekly = map[string]string{
+	"weekly.title":              "Revisión semanal",
+	"weekly.h1":                 "Planifica la semana del %[1]s",
+	"weekly.lede":               "Cómo fue la semana del %[1]s, y después hasta tres prioridades, tus objetivos en orden y cuánto entrenar.",
+	"weekly.saved":              "Guardado. El entrenador, tus objetivos y tu plan de entrenamiento ya usan el foco de esta semana.",
+	"weekly.happened":           "La semana que pasó",
+	"weekly.chose":              "Elegiste: %[1]s",
+	"weekly.writing":            "Se está escribiendo tu informe semanal. Recarga en un minuto o planifica la semana ya.",
+	"weekly.priorities":         "Prioridades",
+	"weekly.priorities.desc":    "Hasta tres cosas para las que es esta semana.",
+	"weekly.priority":           "Prioridad %[1]d",
+	"weekly.goals":              "Objetivos en orden",
+	"weekly.goals.desc":         "El 1 va primero. El entrenador y tu lista de objetivos siguen este orden.",
+	"weekly.goals.order":        "Orden de %[1]s",
+	"weekly.training":           "Entrenamiento esta semana",
+	"weekly.volume.hold":        "Mantener",
+	"weekly.volume.hold.hint":   "Entrena el plan tal como está.",
+	"weekly.volume.build":       "Subir",
+	"weekly.volume.build.hint":  "Una serie extra en los dos primeros ejercicios de cada día.",
+	"weekly.volume.deload":      "Descarga",
+	"weekly.volume.deload.hint": "Alrededor del 60 % de las series, para recuperar.",
+	"weekly.save":               "Guardar la semana",
+}

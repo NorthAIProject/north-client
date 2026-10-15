@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
 )
 
@@ -250,6 +251,20 @@ func TestSettingsSubPagesLightTheSettingsItem(t *testing.T) {
 		for _, item := range g.Items {
 			if item.Href == "/app/settings" && !item.Active {
 				t.Error("Settings is not active on its own page")
+			}
+		}
+	}
+}
+
+// LabelIn and DescriptionIn fall back to the English in this file when a key
+// is missing, so an untranslated destination looks fine in English and ships
+// English into every other language's menu. Translate returns the key itself
+// when no catalogue has it.
+func TestEveryDestinationHasCatalogueKeys(t *testing.T) {
+	for _, d := range Destinations() {
+		for _, key := range []string{d.Key, d.Key + ".desc"} {
+			if i18n.Translate(i18n.DefaultLocale, key) == key {
+				t.Errorf("%s: no catalogue entry for %q", d.Href, key)
 			}
 		}
 	}

@@ -1,10 +1,11 @@
 package inbox
 
 import (
-	"fmt"
+	"context"
 
 	"github.com/NorthAIProject/north-client/internal/goals/goal"
 	"github.com/NorthAIProject/north-client/internal/inbox/item"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
@@ -20,17 +21,17 @@ type AddForm struct {
 	Error string
 }
 
-func suggestionLabel(s *item.Suggestion) string {
+func suggestionLabel(ctx context.Context, s *item.Suggestion) string {
 	switch s.Destination {
 	case item.DestinationGoalNote:
-		return "A note on " + s.GoalTitle
+		return i18n.Tf(ctx, "inbox.suggest.goal", s.GoalTitle)
 	case item.DestinationKnowledge:
 		if s.Title != "" {
-			return "Knowledge: " + s.Title
+			return i18n.Tf(ctx, "inbox.suggest.knowledge_titled", s.Title)
 		}
-		return "Knowledge"
+		return i18n.T(ctx, "inbox.dest.knowledge")
 	default:
-		return "Journal"
+		return i18n.T(ctx, "inbox.dest.journal")
 	}
 }
 
@@ -44,13 +45,13 @@ func goalIDValue(s *item.Suggestion) string {
 // Each filing choice is its own small form with hidden fields: templUI has no
 // hidden-input component, and a hidden field has no look or behaviour to share.
 templ Page(user users.User, items []item.Item, open int, active []goal.Goal, f AddForm) {
-	@layout.App("Inbox", user, layout.BuildNav(ctx, "/app/inbox")) {
+	@layout.App(i18n.T(ctx, "inbox.title"), user, layout.BuildNav(ctx, "/app/inbox")) {
 		<div class="mx-auto w-full max-w-3xl space-y-6 p-6 md:p-8">
 			<header>
-				@ui.MonoLabel("Capture")
-				<h1 class="mt-2 text-2xl font-medium tracking-tight">Inbox</h1>
+				@ui.MonoLabel(i18n.T(ctx, "inbox.label"))
+				<h1 class="mt-2 text-2xl font-medium tracking-tight">{ i18n.T(ctx, "inbox.title") }</h1>
 				<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
-					Save now, decide later. The coach suggests where each thing belongs; nothing is filed until you say so.
+					{ i18n.T(ctx, "inbox.intro") }
 				</p>
 			</header>
 			@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
@@ -58,7 +59,7 @@ templ Page(user users.User, items []item.Item, open int, active []goal.Goal, f A
 					<form method="post" action="/app/inbox" class="space-y-3">
 						@ui.CSRFInput()
 						@form.Item() {
-							@textarea.Textarea(textarea.Props{ID: "text", Name: "text", Rows: 3, Value: f.Text, Placeholder: "A thought, a link, something that happened…", HasError: f.Error != ""})
+							@textarea.Textarea(textarea.Props{ID: "text", Name: "text", Rows: 3, Value: f.Text, Placeholder: i18n.T(ctx, "inbox.ph"), HasError: f.Error != ""})
 							if f.Error != "" {
 								@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
 									{ f.Error }
@@ -66,47 +67,47 @@ templ Page(user users.User, items []item.Item, open int, active []goal.Goal, f A
 							}
 						}
 						@button.Button(button.Props{Type: button.TypeSubmit}) {
-							Save to Inbox
+							{ i18n.T(ctx, "inbox.save") }
 						}
 					</form>
 				}
 			}
 			if len(items) == 0 {
-				<p class="text-muted-foreground text-sm">Nothing waiting.</p>
+				<p class="text-muted-foreground text-sm">{ i18n.T(ctx, "inbox.empty") }</p>
 			} else {
-				<p class="text-muted-foreground text-sm">{ fmt.Sprint(open) } waiting</p>
+				<p class="text-muted-foreground text-sm">{ i18n.Tf(ctx, "inbox.waiting", open) }</p>
 			}
 			for _, it := range items {
 				@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 					@card.Content(card.ContentProps{Class: "space-y-3 pt-6"}) {
 						<p class="text-sm whitespace-pre-line">{ it.Text }</p>
 						if it.Suggestion != nil {
-							<p class="text-muted-foreground text-xs">Suggested: { suggestionLabel(it.Suggestion) }. { it.Suggestion.Why }</p>
+							<p class="text-muted-foreground text-xs">{ i18n.Tf(ctx, "inbox.suggested", suggestionLabel(ctx, it.Suggestion), it.Suggestion.Why) }</p>
 							<form method="post" action={ templ.SafeURL("/app/inbox/" + it.ID.String() + "/file") }>
 								@ui.CSRFInput()
 								<input type="hidden" name="destination" value={ it.Suggestion.Destination }/>
 								<input type="hidden" name="goal_id" value={ goalIDValue(it.Suggestion) }/>
 								<input type="hidden" name="title" value={ it.Suggestion.Title }/>
 								@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm}) {
-									File as suggested
+									{ i18n.T(ctx, "inbox.file_suggested") }
 								}
 							</form>
 						} else {
-							<p class="text-muted-foreground text-xs">The coach is still looking at this one.</p>
+							<p class="text-muted-foreground text-xs">{ i18n.T(ctx, "inbox.pending") }</p>
 						}
 						<div class="flex flex-wrap items-end gap-2">
 							<form method="post" action={ templ.SafeURL("/app/inbox/" + it.ID.String() + "/file") }>
 								@ui.CSRFInput()
 								<input type="hidden" name="destination" value={ item.DestinationJournal }/>
 								@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Size: button.SizeSm}) {
-									Journal
+									{ i18n.T(ctx, "inbox.dest.journal") }
 								}
 							</form>
 							<form method="post" action={ templ.SafeURL("/app/inbox/" + it.ID.String() + "/file") }>
 								@ui.CSRFInput()
 								<input type="hidden" name="destination" value={ item.DestinationKnowledge }/>
 								@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Size: button.SizeSm}) {
-									Knowledge
+									{ i18n.T(ctx, "inbox.dest.knowledge") }
 								}
 							</form>
 							if len(active) > 0 {
@@ -115,7 +116,7 @@ templ Page(user users.User, items []item.Item, open int, active []goal.Goal, f A
 									<input type="hidden" name="destination" value={ item.DestinationGoalNote }/>
 									@selectbox.SelectBox() {
 										@selectbox.Trigger(selectbox.TriggerProps{ID: "goal-" + it.ID.String(), Name: "goal_id"}) {
-											@selectbox.Value(selectbox.ValueProps{Placeholder: "A goal"})
+											@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "inbox.goal_ph")})
 										}
 										@selectbox.Content(selectbox.ContentProps{}) {
 											for _, g := range active {
@@ -126,14 +127,14 @@ templ Page(user users.User, items []item.Item, open int, active []goal.Goal, f A
 										}
 									}
 									@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Size: button.SizeSm}) {
-										Goal note
+										{ i18n.T(ctx, "inbox.dest.goal") }
 									}
 								</form>
 							}
 							<form method="post" action={ templ.SafeURL("/app/inbox/" + it.ID.String() + "/dismiss") }>
 								@ui.CSRFInput()
 								@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm}) {
-									Dismiss
+									{ i18n.T(ctx, "inbox.dismiss") }
 								}
 							</form>
 						</div>

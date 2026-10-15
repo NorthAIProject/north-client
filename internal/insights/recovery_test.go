@@ -72,7 +72,7 @@ func TestRecoveryAfterARoughNight(t *testing.T) {
 		t.Fatalf("recovery = %d %s with %d signals", r.Score.Points, r.Score.Verdict(), len(r.Signals))
 	}
 	for _, sig := range r.Signals {
-		if usualView(sig.Metric, sig.Usual).State == stat.Usual {
+		if usualView(context.Background(), sig.Metric, sig.Usual).State == stat.Usual {
 			t.Errorf("%s read as usual after a rough night", sig.Key)
 		}
 	}
@@ -83,7 +83,7 @@ func TestRecoveryAfterARoughNight(t *testing.T) {
 		t.Errorf("sentence = %q", line)
 	}
 
-	view := projectRecovery(r)
+	view := projectRecovery(context.Background(), r)
 	if view.Verdict != "low" || view.Label != "Under your usual" || len(view.Signals) != 3 || view.Signals[2].Key != "sleep" {
 		t.Errorf("view = %+v", view)
 	}
@@ -105,7 +105,7 @@ func TestRecoveryLeavesOutStaleReadings(t *testing.T) {
 	if _, ok := r.Sentence(); ok {
 		t.Error("no recovery still produced a sentence")
 	}
-	if view := projectRecovery(r); view.HasData || view.Verdict != "unknown" || view.Signals == nil {
+	if view := projectRecovery(context.Background(), r); view.HasData || view.Verdict != "unknown" || view.Signals == nil {
 		t.Errorf("view = %+v", view)
 	}
 }

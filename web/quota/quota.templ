@@ -1,6 +1,10 @@
 package quota
 
 import (
+	"context"
+	"time"
+
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/web/shared/ui/alert"
 	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
 )
@@ -11,14 +15,48 @@ import (
 // it, so the refusal lands where their attention already is. The htmx-config in
 // the base layout is what lets a 429 swap at all — without the rule for that
 // status this renders into nothing.
+//
+// action and retryAfter arrive as phrases already written by the caller, so
+// only the sentence around them is translated here. RefusedFor takes the raw
+// values and translates all of it.
 templ Refused(action, retryAfter string) {
 	@alert.Alert(alert.Props{Variant: alert.VariantDestructive}) {
 		@icon.TriangleAlert(icon.Props{Class: "size-4"})
 		@alert.Title() {
-			You have hit the limit on { action }
+			{ i18n.Tf(ctx, "quota.title", action) }
 		}
 		@alert.Description() {
-			Nothing was lost. Try again { retryAfter }.
+			{ i18n.Tf(ctx, "quota.body", retryAfter) }
 		}
+	}
+}
+
+// RefusedFor is Refused in the reader's language throughout: action is the
+// quota action's wire name ("coach_message") and retryAfter the wait.
+templ RefusedFor(action string, retryAfter time.Duration) {
+	@Refused(ActionLabel(ctx, action), DelayLabel(ctx, retryAfter))
+}
+
+// ActionLabel names a quota action the way a person would. An action with no
+// catalogue entry falls back to its wire name, which is visibly wrong rather
+// than silently English.
+func ActionLabel(ctx context.Context, action string) string {
+	return i18n.T(ctx, "quota.action."+action)
+}
+
+// DelayLabel renders a wait as something worth reading. "in 47 minutes" is
+// useful; "in 2823 seconds" is a number a person has to do arithmetic on.
+func DelayLabel(ctx context.Context, d time.Duration) string {
+	switch {
+	case d < time.Minute:
+		return i18n.T(ctx, "quota.delay.underminute")
+	case d < 2*time.Minute:
+		return i18n.T(ctx, "quota.delay.minute")
+	case d < time.Hour:
+		return i18n.Tf(ctx, "quota.delay.minutes", int(d.Minutes()))
+	case d < 2*time.Hour:
+		return i18n.T(ctx, "quota.delay.hour")
+	default:
+		return i18n.Tf(ctx, "quota.delay.hours", int(d.Hours()))
 	}
 }
