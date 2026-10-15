@@ -36,7 +36,7 @@ func (s *Service) evalMedicationReminders(ctx context.Context, user users.User, 
 			Kind:      KindMedicationReminder,
 			DedupeKey: today.Format("2006-01-02") + ":" + r.Medication.ID.String() + ":" + r.Slot,
 			Title:     r.Medication.Label(),
-			Body:      "Your " + r.Slot + " dose. Mark it taken or skipped when you can.",
+			Body:      text(user, "nudges.medication.body", r.Slot),
 			Href:      "/app/care",
 			Alarm:     true,
 		})

@@ -271,7 +271,7 @@ func (h *Handler) renderSaved(w http.ResponseWriter, r *http.Request, user users
 // momentFor is the card a just-saved check-in earns, if its streak landed on
 // a threshold, and the funnel event that says it was shown. Nil otherwise.
 func (h *Handler) momentFor(r *http.Request, user users.User, streak int) *moments.Moment {
-	m, ok := moments.ForStreak(streak)
+	m, ok := moments.ForStreak(r.Context(), streak)
 	if !ok {
 		return nil
 	}
