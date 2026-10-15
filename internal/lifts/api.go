@@ -16,6 +16,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/lifts/lift"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 )
 
@@ -61,7 +62,8 @@ func (a *API) bodyMap(w http.ResponseWriter, r *http.Request) {
 	if raw := r.URL.Query().Get("days"); raw != "" {
 		n, err := strconv.Atoi(raw)
 		if err != nil {
-			httpx.Error(w, apperr.FieldErrors{}.Add("days", "Use a whole number of days."), "Use a whole number of days.")
+			msg := i18n.T(r.Context(), "lifts.api.days")
+			httpx.Error(w, apperr.FieldErrors{}.Add("days", msg), msg)
 			return
 		}
 		days = n
@@ -69,7 +71,7 @@ func (a *API) bodyMap(w http.ResponseWriter, r *http.Request) {
 	user := auth.MustUser(r.Context())
 	m, err := a.svc.BodyMap(r.Context(), user, days)
 	if err != nil {
-		httpx.Error(w, err, "The body map could not be loaded.")
+		httpx.Error(w, localize(r.Context(), err), i18n.T(r.Context(), "lifts.api.bodymap"))
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, NewBodyMapView(m, user.Location()))
@@ -109,23 +111,24 @@ type LiftImportView struct {
 func (a *API) importHevy(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, MaxImportBytes+(1<<20))
 	if err := r.ParseMultipartForm(4 << 20); err != nil {
-		msg := "That upload could not be read."
+		msg := i18n.T(r.Context(), "lifts.err.upload")
 		var tooBig *http.MaxBytesError
 		if apperr.As(err, &tooBig) {
-			msg = "This file is larger than 10 MB."
+			msg = i18n.T(r.Context(), "lifts.err.toolarge")
 		}
 		httpx.Error(w, apperr.FieldErrors{}.Add("file", msg), msg)
 		return
 	}
 	defer func() { _ = r.MultipartForm.RemoveAll() }()
-	data, msg := formFile(r)
-	if msg != "" {
+	data, msgKey := formFile(r)
+	if msgKey != "" {
+		msg := i18n.T(r.Context(), msgKey)
 		httpx.Error(w, apperr.FieldErrors{}.Add("file", msg), msg)
 		return
 	}
 	res, err := a.svc.ImportHevy(r.Context(), auth.MustUser(r.Context()), bytes.NewReader(data))
 	if err != nil {
-		httpx.Error(w, err, "The workouts could not be imported.")
+		httpx.Error(w, localize(r.Context(), err), i18n.T(r.Context(), "lifts.api.import"))
 		return
 	}
 	unmatched := res.Unmatched
@@ -255,15 +258,17 @@ type LiftRecapView struct {
 func (a *API) recap(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "sessionID"))
 	if err != nil {
-		httpx.Error(w, apperr.ErrNotFound, "Not found.")
+		httpx.Error(w, apperr.ErrNotFound, i18n.T(r.Context(), "lifts.api.notfound"))
 		return
 	}
 	recap, err := a.svc.Recap(r.Context(), auth.MustUser(r.Context()), id)
 	if err != nil {
-		httpx.Error(w, err, "That workout's recap could not be loaded.")
+		httpx.Error(w, err, i18n.T(r.Context(), "lifts.api.recap"))
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, ProjectRecap(recap))
+	view := ProjectRecap(recap)
+	view.Sentence = recap.SentenceIn(i18n.LocaleFrom(r.Context()))
+	httpx.WriteJSON(w, http.StatusOK, view)
 }
 
 // ProjectRecap is the wire shape of a recap.
@@ -289,7 +294,7 @@ func (a *API) stats(w http.ResponseWriter, r *http.Request) {
 	user := auth.MustUser(r.Context())
 	st, err := a.svc.Stats(r.Context(), user, timerange.Parse(r.URL.Query().Get("range"), user.Location()))
 	if err != nil {
-		httpx.Error(w, err, "Lifting stats could not be loaded.")
+		httpx.Error(w, err, i18n.T(r.Context(), "lifts.api.stats"))
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, ProjectStats(st))
@@ -299,7 +304,7 @@ func (a *API) last(w http.ResponseWriter, r *http.Request) {
 	keys := r.URL.Query()["exercise"]
 	last, err := a.svc.Last(r.Context(), auth.MustUser(r.Context()), keys)
 	if err != nil {
-		httpx.Error(w, err, "The last workout could not be loaded.")
+		httpx.Error(w, err, i18n.T(r.Context(), "lifts.api.last"))
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, ProjectLast(keys, last))
@@ -308,12 +313,12 @@ func (a *API) last(w http.ResponseWriter, r *http.Request) {
 func (a *API) log(w http.ResponseWriter, r *http.Request) {
 	var req LiftSetRequest
 	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 4 << 10}); err != nil {
-		httpx.Error(w, err, "The request body could not be read.")
+		httpx.Error(w, err, i18n.T(r.Context(), "lifts.api.body"))
 		return
 	}
 	set, err := a.svc.Log(r.Context(), auth.MustUser(r.Context()), LogInput(req))
 	if err != nil {
-		httpx.Error(w, err, "The set could not be logged.")
+		httpx.Error(w, localize(r.Context(), err), i18n.T(r.Context(), "lifts.api.log"))
 		return
 	}
 	httpx.WriteJSON(w, http.StatusCreated, ProjectSet(set))
@@ -322,11 +327,11 @@ func (a *API) log(w http.ResponseWriter, r *http.Request) {
 func (a *API) undo(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "setID"))
 	if err != nil {
-		httpx.Error(w, apperr.ErrNotFound, "No such set.")
+		httpx.Error(w, apperr.ErrNotFound, i18n.T(r.Context(), "lifts.api.nosuch"))
 		return
 	}
 	if err := a.svc.Undo(r.Context(), auth.MustUser(r.Context()), id); err != nil {
-		httpx.Error(w, err, "That set could not be removed.")
+		httpx.Error(w, err, i18n.T(r.Context(), "lifts.api.remove"))
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

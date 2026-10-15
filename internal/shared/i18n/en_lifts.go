@@ -37,4 +37,55 @@ var englishLifts = map[string]string{
 	"lifts.result.duplicates": "%[1]d workouts were already here and were left as they were.",
 	"lifts.result.skipped":    "%[1]d rows were not lifting sets (cardio, timed holds, or impossible numbers) and were skipped.",
 	"lifts.result.unmatched":  "These exercises are not in the catalog, so they count toward records and volume but not the muscle map:",
+
+	// Written by internal/lifts: the set list's effort and load, form and API
+	// errors, and the one-line recap of a finished workout.
+	"lifts.list.rir":        "%[1]d in reserve",
+	"lifts.list.failure":    "to failure",
+	"lifts.list.bodyweight": "bodyweight × %[1]d",
+	"lifts.err.form":        "That form could not be read.",
+	"lifts.err.name":        "Name the exercise.",
+	"lifts.err.weight":      "Enter the weight in kilograms, or leave it empty for bodyweight.",
+	"lifts.err.reps":        "Enter how many reps.",
+	"lifts.err.rir":         "Enter reps in reserve as a whole number, or leave it empty.",
+	"lifts.err.notfound":    "That set was not found.",
+	"lifts.err.partial":     "The import stopped part way. The workouts counted above were saved; the rest were not.",
+	"lifts.err.nofile":      "Choose your Hevy CSV first.",
+	"lifts.err.upload":      "That upload could not be read.",
+	"lifts.err.toolarge":    "This file is larger than 10 MB.",
+	"lifts.err.generic":     "Something went wrong. Try again in a moment.",
+	// Field errors from the service. The English must match what
+	// internal/lifts writes, which its fieldmsg table test checks.
+	"lifts.err.setno":        "Enter a set number between 1 and 50.",
+	"lifts.err.weight.range": "Enter a weight between 0 and 600 kg.",
+	"lifts.err.reps.range":   "Enter between 1 and 100 reps.",
+	"lifts.err.kind":         "Choose work, warm-up or drop set.",
+	"lifts.err.rir.range":    "Enter reps in reserve between 0 and 10.",
+	"lifts.err.days":         "Use a number of days from 1 to %[1]d.",
+	"lifts.err.notexport":    "That file is not a Hevy workout export. In Hevy: Profile → Settings → Export & Import Data → Export Workouts.",
+	"lifts.api.days":         "Use a whole number of days.",
+	"lifts.api.bodymap":      "The body map could not be loaded.",
+	"lifts.api.import":       "The workouts could not be imported.",
+	"lifts.api.notfound":     "Not found.",
+	"lifts.api.recap":        "That workout's recap could not be loaded.",
+	"lifts.api.stats":        "Lifting stats could not be loaded.",
+	"lifts.api.last":         "The last workout could not be loaded.",
+	"lifts.api.body":         "The request body could not be read.",
+	"lifts.api.log":          "The set could not be logged.",
+	"lifts.api.nosuch":       "No such set.",
+	"lifts.api.remove":       "That set could not be removed.",
+	// A finished workout in one line: "42 minutes, 4 of 5 sets, 1,980 kg."
+	// The parts are joined with a comma and the line ends with a full stop.
+	"lifts.recap.minute":  "1 minute",
+	"lifts.recap.minutes": "%[1]d minutes",
+	"lifts.recap.hour":    "1 hour",
+	"lifts.recap.hours":   "%[1]d hours",
+	// %[1]s is the hours part, %[2]s the minutes part, each already counted.
+	"lifts.recap.hours.minutes": "%[1]s %[2]s",
+	"lifts.recap.set":           "1 set",
+	"lifts.recap.sets":          "%[1]d sets",
+	"lifts.recap.sets.of":       "%[1]d of %[2]d sets",
+	// %[1]s is the exercise, %[2]s the change in kilograms, already formatted.
+	"lifts.recap.up":   "%[1]s estimated max up %[2]s kg.",
+	"lifts.recap.down": "%[1]s estimated max down %[2]s kg.",
 }
