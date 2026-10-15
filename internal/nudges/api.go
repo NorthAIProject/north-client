@@ -11,6 +11,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/auth"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 )
 
 // API is the web's notification bell for native clients: the open nudges,
@@ -49,12 +50,12 @@ func (a *API) list(w http.ResponseWriter, r *http.Request) {
 	userID := auth.MustUser(r.Context()).ID
 	list, err := a.svc.ListOpen(r.Context(), userID, listDefault)
 	if err != nil {
-		httpx.Error(w, err, "Notifications could not be loaded.")
+		httpx.Error(w, err, i18n.T(r.Context(), "nudges.err.load"))
 		return
 	}
 	unread, err := a.svc.CountUnread(r.Context(), userID)
 	if err != nil {
-		httpx.Error(w, err, "Notifications could not be loaded.")
+		httpx.Error(w, err, i18n.T(r.Context(), "nudges.err.load"))
 		return
 	}
 	out := NudgeList{Nudges: make([]NudgeView, 0, len(list)), Unread: unread}
@@ -77,7 +78,7 @@ func (a *API) open(w http.ResponseWriter, r *http.Request) {
 		channel = analytics.ChannelPush
 	}
 	n, err := a.svc.Open(r.Context(), id, auth.MustUser(r.Context()).ID, channel)
-	a.respond(w, n, err)
+	a.respond(w, r, n, err)
 }
 
 func (a *API) read(w http.ResponseWriter, r *http.Request) {
@@ -86,7 +87,7 @@ func (a *API) read(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	n, err := a.svc.MarkRead(r.Context(), id, auth.MustUser(r.Context()).ID)
-	a.respond(w, n, err)
+	a.respond(w, r, n, err)
 }
 
 func (a *API) dismiss(w http.ResponseWriter, r *http.Request) {
@@ -95,12 +96,12 @@ func (a *API) dismiss(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	n, err := a.svc.Dismiss(r.Context(), id, auth.MustUser(r.Context()).ID)
-	a.respond(w, n, err)
+	a.respond(w, r, n, err)
 }
 
-func (a *API) respond(w http.ResponseWriter, n Nudge, err error) {
+func (a *API) respond(w http.ResponseWriter, r *http.Request, n Nudge, err error) {
 	if err != nil {
-		httpx.Error(w, err, "The notification could not be updated.")
+		httpx.Error(w, err, i18n.T(r.Context(), "nudges.err.update"))
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, project(n))
@@ -113,7 +114,7 @@ func project(n Nudge) NudgeView {
 func nudgeID(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
 	id, err := uuid.Parse(chi.URLParam(r, "nudgeID"))
 	if err != nil {
-		httpx.Error(w, apperr.ErrNotFound, "Not found.")
+		httpx.Error(w, apperr.ErrNotFound, i18n.T(r.Context(), "nudges.err.notfound"))
 		return uuid.Nil, false
 	}
 	return id, true

@@ -15,6 +15,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/meals"
 	"github.com/NorthAIProject/north-client/internal/notifications"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
@@ -641,12 +642,12 @@ func (s *Service) evalEveningReflection(ctx context.Context, user users.User, pr
 	draft := Draft{
 		Kind:      KindEveningReflection,
 		DedupeKey: today.Format("2006-01-02"),
-		Title:     "How did today go?",
-		Body:      "Two taps: how you feel, and one thing that went well.",
+		Title:     text(user, "nudges.evening.title"),
+		Body:      text(user, "nudges.evening.body"),
 		Href:      "/app/check-ins",
 	}
 	if checkedIn {
-		draft.Body = "You checked in. One line in the journal about today?"
+		draft.Body = text(user, "nudges.evening.body.journal")
 		draft.Href = "/app/mind"
 	}
 
@@ -675,15 +676,15 @@ func (s *Service) evalDecisionRevisit(ctx context.Context, user users.User, now 
 	if err != nil || !ok {
 		return 0, err
 	}
-	when := "A month ago"
+	body := "nudges.decision.body.month"
 	if due.Mark >= 90 {
-		when = "Three months ago"
+		body = "nudges.decision.body.quarter"
 	}
 	_, inserted, err := s.Raise(ctx, user, Draft{
 		Kind:      KindDecisionRevisit,
 		DedupeKey: fmt.Sprintf("decision:%s:%d", due.ID, due.Mark),
-		Title:     "Did it hold?",
-		Body:      when + " you decided: " + due.Title + ". How did it turn out?",
+		Title:     text(user, "nudges.decision.title"),
+		Body:      text(user, body, due.Title),
 		Href:      "/app/decisions/" + due.ID.String(),
 	})
 	if err != nil || !inserted {
@@ -716,8 +717,8 @@ func (s *Service) evalWeekReview(ctx context.Context, user users.User, prefs not
 	_, inserted, err := s.Raise(ctx, user, Draft{
 		Kind:      KindWeekReview,
 		DedupeKey: monday.Format("2006-01-02"),
-		Title:     "Plan next week",
-		Body:      "Two minutes: how this week went, and up to three things for the next.",
+		Title:     text(user, "nudges.week.title"),
+		Body:      text(user, "nudges.week.body"),
 		Href:      "/app/weekly",
 	})
 	if err != nil || !inserted {
@@ -768,8 +769,8 @@ func (s *Service) evalStreakAtRisk(ctx context.Context, user users.User, today, 
 	_, inserted, err := s.Raise(ctx, user, Draft{
 		Kind:      KindStreakAtRisk,
 		DedupeKey: today.Format("2006-01-02"),
-		Title:     fmt.Sprintf("Your %d-day streak ends at midnight", streak),
-		Body:      "One check-in keeps it. Thirty seconds.",
+		Title:     text(user, "nudges.streak.title", streak),
+		Body:      text(user, "nudges.streak.body"),
 		Href:      "/app/check-ins",
 	})
 	if err != nil {
@@ -797,10 +798,10 @@ func (s *Service) evalMissedCheckIn(ctx context.Context, user users.User, today 
 	var quiet int
 	if ok {
 		quiet = daysBetween(last, today)
-		body = fmt.Sprintf("It has been %d days since your last check-in.", quiet)
+		body = text(user, "nudges.missed.body.days", quiet)
 	} else {
 		quiet = daysBetween(onboardedLocal(user, today), today)
-		body = "You have not checked in since joining."
+		body = text(user, "nudges.missed.body.never")
 	}
 	if !missedCheckInDue(quiet) {
 		return 0, nil
@@ -809,7 +810,7 @@ func (s *Service) evalMissedCheckIn(ctx context.Context, user users.User, today 
 	_, inserted, err := s.Raise(ctx, user, Draft{
 		Kind:      KindMissedCheckIn,
 		DedupeKey: today.Format("2006-01-02"),
-		Title:     "Check in with yourself",
+		Title:     text(user, "nudges.missed.title"),
 		Body:      body,
 		Href:      "/app/check-ins",
 	})
@@ -868,15 +869,18 @@ func (s *Service) evalGoalDeadlines(ctx context.Context, user users.User, today 
 			continue
 		}
 
-		body := "Due today."
-		if until > 0 {
-			body = fmt.Sprintf("Due in %d days.", until)
+		body := text(user, "nudges.goal.body.today")
+		switch {
+		case until == 1:
+			body = text(user, "nudges.goal.body.tomorrow")
+		case until > 1:
+			body = text(user, "nudges.goal.body.days", until)
 		}
 
 		_, inserted, err := s.Raise(ctx, user, Draft{
 			Kind:      KindGoalDeadline,
 			DedupeKey: g.ID.String() + ":" + due.Format("2006-01-02"),
-			Title:     fmt.Sprintf("“%s” is due %s", g.Title, due.Format("Monday")),
+			Title:     text(user, "nudges.goal.title", g.Title, weekday(user, due)),
 			Body:      body,
 			Href:      "/app/goals/" + g.ID.String(),
 		})
@@ -942,8 +946,8 @@ func (s *Service) evalCrewCheckIn(ctx context.Context, user users.User, today, n
 	_, inserted, err := s.Raise(ctx, user, Draft{
 		Kind:      KindCrewCheckIn,
 		DedupeKey: today.Format("2006-01-02"),
-		Title:     crewTitle(names),
-		Body:      "Your turn: two taps.",
+		Title:     crewTitle(user, names),
+		Body:      text(user, "nudges.crew.body"),
 		Href:      "/app/check-ins",
 	})
 	if err != nil || !inserted {
@@ -953,13 +957,31 @@ func (s *Service) evalCrewCheckIn(ctx context.Context, user users.User, today, n
 }
 
 // crewTitle names up to two people and counts the rest.
-func crewTitle(names []string) string {
+func crewTitle(user users.User, names []string) string {
 	switch len(names) {
 	case 1:
-		return names[0] + " checked in today"
+		return text(user, "nudges.crew.one", names[0])
 	case 2:
-		return names[0] + " and " + names[1] + " checked in today"
+		return text(user, "nudges.crew.two", names[0], names[1])
 	default:
-		return fmt.Sprintf("%s, %s and %d more checked in today", names[0], names[1], len(names)-2)
+		return text(user, "nudges.crew.many", names[0], names[1], len(names)-2)
 	}
+}
+
+// text is a nudge's words in the recipient's language.
+//
+// A nudge is stored with its title and body, so the language is fixed when it
+// is raised: the recipient's, read from their account, since a sweep has no
+// request to carry one. An account with no locale reads English.
+func text(user users.User, key string, args ...any) string {
+	s := i18n.Translate(string(user.Locale), key)
+	if len(args) == 0 {
+		return s
+	}
+	return fmt.Sprintf(s, args...)
+}
+
+// weekday names t's day of the week in the recipient's language.
+func weekday(user users.User, t time.Time) string {
+	return i18n.FormatTime(string(user.Locale), t, "Monday")
 }
