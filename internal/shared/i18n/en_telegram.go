@@ -51,4 +51,8 @@ var englishTelegram = map[string]string{
 	"tg.quota.minute": "You have reached your coach message limit. Try again in less than a minute.",
 	"tg.quota.hour":   "You have reached your coach message limit. Try again in about an hour.",
 	"tg.quota.n":      "You have reached your coach message limit. Try again in %[1]d minutes.",
+
+	// The insights digest. %[1]s is the window's label in lower case, %[2]s as
+	// written; a language that leads with the label uses the second.
+	"tg.digest.empty": "Nothing logged %[1]s yet.",
 }
