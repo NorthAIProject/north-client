@@ -1,6 +1,7 @@
 package insights
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -10,7 +11,7 @@ import (
 
 func mustSpendView(t *testing.T, data SpendData) insightpages.SpendView {
 	t.Helper()
-	view, err := buildSpendView(data)
+	view, err := buildSpendView(context.Background(), data)
 	if err != nil {
 		t.Fatalf("buildSpendView: %v", err)
 	}

@@ -1,6 +1,7 @@
 package insights
 
 import (
+	"context"
 	"testing"
 
 	"github.com/NorthAIProject/north-client/internal/calculator"
@@ -10,7 +11,7 @@ import (
 
 func mustNutritionView(t *testing.T, data NutritionData) insightpages.NutritionView {
 	t.Helper()
-	view, err := buildNutritionView(data)
+	view, err := buildNutritionView(context.Background(), data)
 	if err != nil {
 		t.Fatalf("buildNutritionView: %v", err)
 	}

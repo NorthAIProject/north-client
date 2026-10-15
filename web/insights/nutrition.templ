@@ -1,6 +1,8 @@
 package insights
 
 import (
+	"context"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/ui/chart"
@@ -33,30 +35,30 @@ type NutritionView struct {
 }
 
 templ Nutrition(user users.User, view NutritionView) {
-	@page("Nutrition", "nutrition", "/app/insights/nutrition/body", user, view.Range) {
+	@page(sectionTitle(ctx, "nutrition"), "nutrition", "/app/insights/nutrition/body", user, view.Range) {
 		@NutritionBody(view)
 	}
 }
 
 templ NutritionBody(view NutritionView) {
 	if !view.HasData {
-		@emptyState("No food logged in this window.", "Log a meal", "/app/nutrition")
+		@emptyState(i18n.T(ctx, "insights.nutrition.empty"), i18n.T(ctx, "insights.nutrition.cta"), "/app/nutrition")
 	} else {
 		<div class="space-y-6">
 			<div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-				@statTile("Average day", view.AvgCalories, goalNote(view.HasGoal, view.GoalCalories), DeltaView{})
-				@statTile("Average protein", view.AvgProtein, goalNote(view.HasGoal, view.GoalProtein), DeltaView{})
-				@statTile("Days logged", formatCount(view.DaysLogged), "in this window", DeltaView{})
-				@statTile("Entries", formatCount(view.Entries), "meals and ingredients", DeltaView{})
+				@statTile(i18n.T(ctx, "insights.nutrition.avgDay"), view.AvgCalories, goalNote(ctx, view.HasGoal, view.GoalCalories), DeltaView{})
+				@statTile(i18n.T(ctx, "insights.nutrition.avgProtein"), view.AvgProtein, goalNote(ctx, view.HasGoal, view.GoalProtein), DeltaView{})
+				@statTile(i18n.T(ctx, "insights.nutrition.days"), formatCount(view.DaysLogged), i18n.T(ctx, "insights.nutrition.days.note"), DeltaView{})
+				@statTile(i18n.T(ctx, "insights.nutrition.entries"), formatCount(view.Entries), i18n.T(ctx, "insights.nutrition.entries.note"), DeltaView{})
 			</div>
 			<div class="grid gap-3 lg:grid-cols-3">
 				<div class="border-hairline bg-surface/60 space-y-3 rounded-lg border p-4 lg:col-span-2">
-					@ui.MonoLabel("Calories")
+					@ui.MonoLabel(i18n.T(ctx, "insights.nutrition.calories"))
 					@chart.Chart(view.CaloriesChart)
 				</div>
 				if view.HasSplit {
 					<div class="border-hairline bg-surface/60 space-y-3 rounded-lg border p-4">
-						@ui.MonoLabel("Where they came from")
+						@ui.MonoLabel(i18n.T(ctx, "insights.nutrition.split"))
 						@templ.JSONScript("insights-nutrition-split-option", view.MacroSplit)
 						@ui.EChartsMount("insights-nutrition-split", "insights-nutrition-split-option", "min-h-48 w-full")
 					</div>
@@ -72,9 +74,9 @@ templ NutritionBody(view NutritionView) {
 
 // goalNote states the target beside the average, or says there is none. A
 // blank note would leave the reader unsure whether they had met anything.
-func goalNote(hasGoal bool, goal string) string {
+func goalNote(ctx context.Context, hasGoal bool, goal string) string {
 	if !hasGoal {
-		return "no plan set"
+		return i18n.T(ctx, "insights.nutrition.noGoal")
 	}
-	return "goal " + goal
+	return i18n.Tf(ctx, "insights.nutrition.goal", goal)
 }

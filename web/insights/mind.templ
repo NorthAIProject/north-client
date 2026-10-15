@@ -1,6 +1,7 @@
 package insights
 
 import (
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/ui/card"
@@ -24,7 +25,7 @@ type MindView struct {
 }
 
 templ Mind(user users.User, view MindView) {
-	@page("Mind", "mind", "/app/insights/mind/body", user, view.Range) {
+	@page(sectionTitle(ctx, "mind"), "mind", "/app/insights/mind/body", user, view.Range) {
 		@MindPanels(view)
 	}
 }
@@ -32,18 +33,18 @@ templ Mind(user users.User, view MindView) {
 templ MindPanels(view MindView) {
 	<div class="space-y-6">
 		<div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-			@statTile("Check-ins", formatCount(view.CheckInCount), "days recorded", DeltaView{})
-			@statTile("Average mood", formatScore(view.AvgMood), "over days recorded", DeltaView{})
-			@statTile("Average energy", formatScore(view.AvgEnergy), "over days recorded", DeltaView{})
-			@statTile("Journal entries", formatCount(view.JournalCount), "", DeltaView{})
+			@statTile(i18n.T(ctx, "insights.mind.checkins"), formatCount(view.CheckInCount), i18n.T(ctx, "insights.mind.checkins.note"), DeltaView{})
+			@statTile(i18n.T(ctx, "insights.mind.mood"), formatScore(view.AvgMood), i18n.T(ctx, "insights.mind.overDays"), DeltaView{})
+			@statTile(i18n.T(ctx, "insights.mind.energy"), formatScore(view.AvgEnergy), i18n.T(ctx, "insights.mind.overDays"), DeltaView{})
+			@statTile(i18n.T(ctx, "insights.mind.journal"), formatCount(view.JournalCount), "", DeltaView{})
 		</div>
 		@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 			@card.Header() {
 				@card.Title() {
-					Mood & energy
+					{ i18n.T(ctx, "insights.mind.moodEnergy") }
 				}
 				@card.Description() {
-					One point per day. Gaps are days you did not check in.
+					{ i18n.T(ctx, "insights.mind.moodEnergy.desc") }
 				}
 			}
 			@card.Content() {
@@ -54,24 +55,24 @@ templ MindPanels(view MindView) {
 						@ui.EChartsMount("insights-mind-heatmap", "insights-mind-heatmap-option", "border-hairline mt-4 min-h-32 w-full rounded-md border")
 					}
 				} else {
-					@emptyState("No check-ins in this window.", "Check in", "/app/check-ins")
+					@emptyState(i18n.T(ctx, "insights.mind.moodEnergy.empty"), i18n.T(ctx, "insights.mind.moodEnergy.cta"), "/app/check-ins")
 				}
 			}
 		}
 		@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 			@card.Header() {
 				@card.Title() {
-					Journalling
+					{ i18n.T(ctx, "insights.mind.journalling") }
 				}
 				@card.Description() {
-					Entries written per day.
+					{ i18n.T(ctx, "insights.mind.journalling.desc") }
 				}
 			}
 			@card.Content() {
 				if view.HasJournal {
 					@chart.Chart(view.JournalChart)
 				} else {
-					@emptyState("Nothing written in this window.", "Open the journal", "/app/mind")
+					@emptyState(i18n.T(ctx, "insights.mind.journalling.empty"), i18n.T(ctx, "insights.mind.journalling.cta"), "/app/mind")
 				}
 			}
 		}

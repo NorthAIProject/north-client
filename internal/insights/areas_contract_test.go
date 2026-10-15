@@ -1,6 +1,7 @@
 package insights
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -20,9 +21,9 @@ func TestAreasShape(t *testing.T) {
 			now = score.New("body", []score.Component{{Key: "sleep_duration", Earned: 25, Weight: 40, Known: true}, {Key: "hydration", Earned: 30, Weight: 30, Known: true}})
 			trend = []AreaPoint{{Points: 64, HasData: true}, {Points: now.Points, HasData: true}}
 		}
-		data.Areas = append(data.Areas, Area{Key: d.Key, Label: d.Label, Now: now, Trend: trend})
+		data.Areas = append(data.Areas, Area{Key: d.Key, Label: d.Label(context.Background()), Now: now, Trend: trend})
 	}
-	view, err := projectAreas(data, []string{"Priorities: Three runs", "Training: deload week, about 60% of the plan's sets"})
+	view, err := projectAreas(context.Background(), data, []string{"Priorities: Three runs", "Training: deload week, about 60% of the plan's sets"})
 	if err != nil {
 		t.Fatal(err)
 	}

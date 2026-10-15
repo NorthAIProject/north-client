@@ -89,7 +89,7 @@ func TestMetricPlacesTheLatestDayAgainstTheUsual(t *testing.T) {
 		t.Errorf("usual = %+v", *data.Usual)
 	}
 
-	view, err := buildMetricView(data)
+	view, err := buildMetricView(context.Background(), data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +140,7 @@ func TestHealthListsWhatThePersonTracksInCatalogOrder(t *testing.T) {
 		t.Errorf("resting heart rate row recent %d usual %+v", len(rows[1].Recent), rows[1].Usual)
 	}
 
-	list := projectHealth(rows)
+	list := projectHealth(context.Background(), rows)
 	if list.Metrics[0].Latest != "9000" || list.Metrics[0].Day != "2026-10-07" || list.Metrics[1].Usual == nil {
 		t.Errorf("projected %+v", list)
 	}
@@ -155,12 +155,12 @@ func TestUsualStateFollowsTheNumbersAsShown(t *testing.T) {
 		Latest:   point{At: time.Date(2026, 10, 9, 0, 0, 0, 0, time.UTC), Value: 52},
 		Baseline: stat.Baseline{Mean: 53, SD: 0.83, Days: 28}, Z: -1.2, State: stat.Below,
 	}
-	v := usualView(m, u)
+	v := usualView(context.Background(), m, u)
 	if v.State != stat.Usual || v.Text != "Within your usual range: 52bpm on Fri 9 Oct, usually 52bpm–54bpm." {
 		t.Errorf("view = %q %q", v.State, v.Text)
 	}
 	u.Latest.Value = 51
-	if v := usualView(m, u); v.State != stat.Below {
+	if v := usualView(context.Background(), m, u); v.State != stat.Below {
 		t.Errorf("51 against 52–54 = %q", v.State)
 	}
 }

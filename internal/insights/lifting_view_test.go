@@ -14,7 +14,7 @@ import (
 
 func TestLiftingViewIsEmptyWithoutSets(t *testing.T) {
 	t.Parallel()
-	if v := buildLiftingView(lifts.Stats{}); v.HasSets {
+	if v := buildLiftingView(context.Background(), lifts.Stats{}); v.HasSets {
 		t.Errorf("no sets but HasSets: %+v", v)
 	}
 }
@@ -28,7 +28,7 @@ func TestLiftingViewAddsUp(t *testing.T) {
 	sets := []lift.Set{set(17, 105, 5), set(3, 100, 5)}
 	rg := timerange.Parse(timerange.KeyMonth, time.UTC)
 	rg.Since, rg.Until = day(1), day(29)
-	v := buildLiftingView(lifts.Stats{
+	v := buildLiftingView(context.Background(), lifts.Stats{
 		Range: rg, Sets: sets, Exercises: lift.ByExercise(sets), Records: lift.Records(sets),
 		Weekly: lift.WeeklyVolume(sets, rg.Since, rg.Until), Muscles: []lifts.MuscleSets{{Muscle: "lower_back", Sets: 2}, {Muscle: "quads", Sets: 1}},
 		PriorVolumeKg: 500,
@@ -54,7 +54,7 @@ func TestTrainingPanelsRenderLifting(t *testing.T) {
 		{ExerciseName: "Squat", LogDate: day, PerformedAt: day, WeightKg: 100, Reps: 5, SetNumber: 1},
 		{ExerciseName: "Squat", LogDate: day.AddDate(0, 0, 7), PerformedAt: day.AddDate(0, 0, 7), WeightKg: 110, Reps: 5, SetNumber: 1},
 	}
-	view, err := buildTrainingView(TrainingData{
+	view, err := buildTrainingView(context.Background(), TrainingData{
 		Range: timerange.Parse(timerange.KeyMonth, time.UTC),
 		Lifts: lifts.Stats{Sets: sets, Exercises: lift.ByExercise(sets), Records: lift.Records(sets)},
 	})

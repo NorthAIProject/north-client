@@ -1,10 +1,12 @@
 package insights
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"strings"
 
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/shared/viz"
 	"github.com/NorthAIProject/north-client/internal/stats"
@@ -38,90 +40,95 @@ func duration(seconds float64) string {
 	return fmt.Sprintf("%d:%02d", s/60, s%60)
 }
 
-// plural is n and the noun, singular for one.
-func plural(n int, one, many string) string {
+// plural is the catalogue string for n: key+".one" for one, key+".many"
+// otherwise, each formatted with n as its first argument.
+func plural(ctx context.Context, key string, n int) string {
 	if n == 1 {
-		return fmt.Sprintf("%d %s", n, one)
+		return i18n.Tf(ctx, key+".one", n)
 	}
-	return fmt.Sprintf("%d %s", n, many)
+	return i18n.Tf(ctx, key+".many", n)
 }
 
 func pct(share float64) int { return int(math.Round(share * 100)) }
 
-func buildSleepView(rg timerange.Range, st stat.SleepStats) insightpages.SleepView {
-	view := insightpages.SleepView{Range: rangeView(rg), HasData: len(st.Nights) > 0}
+func buildSleepView(ctx context.Context, rg timerange.Range, st stat.SleepStats) insightpages.SleepView {
+	view := insightpages.SleepView{Range: rangeView(ctx, rg), HasData: len(st.Nights) > 0}
 	if !view.HasData {
 		return view
 	}
+	nightsNote := i18n.T(ctx, "insights.sleep.nights.many")
+	if len(st.Nights) == 1 {
+		nightsNote = i18n.T(ctx, "insights.sleep.nights.one")
+	}
 	view.Tiles = []insightpages.Row{
-		{Label: "Average", Value: hm(st.AvgMinutes), Note: "over " + plural(len(st.Nights), "night", "nights")},
-		{Label: "Sleep debt", Value: hm(st.DebtMinutes), Note: "short of 8 hours, last 7 nights"},
-		{Label: "8 hours or more", Value: fmt.Sprintf("%d of %d", st.NightsOnTgt, len(st.Nights)), Note: map[bool]string{true: "night", false: "nights"}[len(st.Nights) == 1]},
+		{Label: i18n.T(ctx, "insights.sleep.average"), Value: hm(st.AvgMinutes), Note: plural(ctx, "insights.sleep.average.note", len(st.Nights))},
+		{Label: i18n.T(ctx, "insights.sleep.debt"), Value: hm(st.DebtMinutes), Note: i18n.T(ctx, "insights.sleep.debt.note")},
+		{Label: i18n.T(ctx, "insights.sleep.target"), Value: i18n.Tf(ctx, "insights.stats.nOfM", st.NightsOnTgt, len(st.Nights)), Note: nightsNote},
 	}
 	if st.HasTimes {
-		view.Tiles = append(view.Tiles, insightpages.Row{Label: "Usual bedtime", Value: st.AvgBedtime, Note: "up at " + st.AvgWake})
+		view.Tiles = append(view.Tiles, insightpages.Row{Label: i18n.T(ctx, "insights.sleep.usualBedtime"), Value: st.AvgBedtime, Note: i18n.Tf(ctx, "insights.sleep.upAt", st.AvgWake)})
 	}
 
 	labels := make([]string, len(st.Nights))
 	hours := make([]float64, len(st.Nights))
 	for i, n := range st.Nights {
-		labels[i] = n.Date.Format("Jan 2")
+		labels[i] = i18n.Date(ctx, n.Date, "Jan 2")
 		hours[i] = math.Round(float64(n.Minutes)/6) / 10
 	}
-	view.Nights = viz.Bar("insights-sleep-nights", "hours", labels, hours)
+	view.Nights = viz.Bar("insights-sleep-nights", i18n.T(ctx, "insights.sleep.chart.hours"), labels, hours)
 
 	if st.HasTimes {
 		view.Schedule = append(view.Schedule,
-			insightpages.Row{Label: "Bedtime", Value: st.AvgBedtime, Note: fmt.Sprintf("varies by ±%s", hm(st.BedtimeSpread))},
-			insightpages.Row{Label: "Wake time", Value: st.AvgWake, Note: fmt.Sprintf("varies by ±%s", hm(st.WakeSpread))},
+			insightpages.Row{Label: i18n.T(ctx, "insights.sleep.bedtime"), Value: st.AvgBedtime, Note: i18n.Tf(ctx, "insights.sleep.varies", hm(st.BedtimeSpread))},
+			insightpages.Row{Label: i18n.T(ctx, "insights.sleep.wake"), Value: st.AvgWake, Note: i18n.Tf(ctx, "insights.sleep.varies", hm(st.WakeSpread))},
 		)
 	}
 	if st.WeekdayAvg > 0 {
-		view.Schedule = append(view.Schedule, insightpages.Row{Label: "Weekdays", Value: hm(st.WeekdayAvg)})
+		view.Schedule = append(view.Schedule, insightpages.Row{Label: i18n.T(ctx, "insights.stats.weekdays"), Value: hm(st.WeekdayAvg)})
 	}
 	if st.WeekendAvg > 0 {
-		view.Schedule = append(view.Schedule, insightpages.Row{Label: "Weekends", Value: hm(st.WeekendAvg)})
+		view.Schedule = append(view.Schedule, insightpages.Row{Label: i18n.T(ctx, "insights.stats.weekends"), Value: hm(st.WeekendAvg)})
 	}
 
 	for _, stage := range []string{"deep", "rem", "core"} {
 		if share, ok := st.StageShare[stage]; ok {
-			label := map[string]string{"deep": "Deep", "rem": "REM", "core": "Core"}[stage]
+			label := i18n.T(ctx, "insights.sleep.stage."+stage)
 			view.Stages = append(view.Stages, insightpages.Bar{Label: label, Value: fmt.Sprintf("%d%%", pct(share)), Pct: pct(share)})
 		}
 	}
 	if st.Best != nil {
-		view.Extremes = append(view.Extremes, insightpages.Row{Label: "Longest", Value: hm(st.Best.Minutes), Note: st.Best.Date.Format("Mon, Jan 2")})
+		view.Extremes = append(view.Extremes, insightpages.Row{Label: i18n.T(ctx, "insights.sleep.longest"), Value: hm(st.Best.Minutes), Note: i18n.Date(ctx, st.Best.Date, "Mon, Jan 2")})
 	}
 	if st.Worst != nil {
-		view.Extremes = append(view.Extremes, insightpages.Row{Label: "Shortest", Value: hm(st.Worst.Minutes), Note: st.Worst.Date.Format("Mon, Jan 2")})
+		view.Extremes = append(view.Extremes, insightpages.Row{Label: i18n.T(ctx, "insights.sleep.shortest"), Value: hm(st.Worst.Minutes), Note: i18n.Date(ctx, st.Worst.Date, "Mon, Jan 2")})
 	}
 	return view
 }
 
-func buildCardioView(rg timerange.Range, st stats.CardioStats) insightpages.CardioView {
-	view := insightpages.CardioView{Range: rangeView(rg), HasData: st.Sessions > 0}
+func buildCardioView(ctx context.Context, rg timerange.Range, st stats.CardioStats) insightpages.CardioView {
+	view := insightpages.CardioView{Range: rangeView(ctx, rg), HasData: st.Sessions > 0}
 	view.Tiles = []insightpages.Row{
-		{Label: "Sessions", Value: formatCountInt(st.Sessions)},
-		{Label: "Time", Value: hm(st.Seconds / 60)},
+		{Label: i18n.T(ctx, "insights.cardio.sessions"), Value: formatCountInt(st.Sessions)},
+		{Label: i18n.T(ctx, "insights.cardio.time"), Value: hm(st.Seconds / 60)},
 	}
 	if st.DistanceKm > 0 {
-		view.Tiles = append(view.Tiles, insightpages.Row{Label: "Distance", Value: fmt.Sprintf("%.1f km", st.DistanceKm)})
+		view.Tiles = append(view.Tiles, insightpages.Row{Label: i18n.T(ctx, "insights.cardio.distance"), Value: fmt.Sprintf("%.1f km", st.DistanceKm)})
 	}
 	if st.Kcal > 0 {
-		view.Tiles = append(view.Tiles, insightpages.Row{Label: "Burned", Value: fmt.Sprintf("%.0f kcal", st.Kcal)})
+		view.Tiles = append(view.Tiles, insightpages.Row{Label: i18n.T(ctx, "insights.cardio.burned"), Value: fmt.Sprintf("%.0f kcal", st.Kcal)})
 	}
 	// Distance when there is some; without it (a timer session, a class)
 	// time is what there is to chart.
 	weekly, unit := st.WeeklyKm, "km"
-	view.WeeklyTitle = "Distance per week"
+	view.WeeklyTitle = i18n.T(ctx, "insights.cardio.weekly.distance")
 	if st.DistanceKm == 0 {
 		weekly, unit = st.WeeklyMins, "min"
-		view.WeeklyTitle = "Time per week"
+		view.WeeklyTitle = i18n.T(ctx, "insights.cardio.weekly.time")
 	}
 	labels := make([]string, len(weekly))
 	values := make([]float64, len(weekly))
 	for i, w := range weekly {
-		labels[i] = w.Day.Format("Jan 2")
+		labels[i] = i18n.Date(ctx, w.Day, "Jan 2")
 		values[i] = w.Value
 	}
 	view.Weekly = viz.Bar("insights-cardio-weekly", unit, labels, values)
@@ -140,23 +147,23 @@ func buildCardioView(rg timerange.Range, st stats.CardioStats) insightpages.Card
 
 	if r := st.Runs; r.Count > 0 {
 		view.HasRuns = true
-		view.Runs = []insightpages.Row{{Label: "Runs", Value: formatCountInt(r.Count)}}
+		view.Runs = []insightpages.Row{{Label: i18n.T(ctx, "insights.cardio.runs"), Value: formatCountInt(r.Count)}}
 		if r.DistanceKm > 0 {
 			view.Runs = append(view.Runs,
-				insightpages.Row{Label: "Distance", Value: fmt.Sprintf("%.1f km", r.DistanceKm)},
-				insightpages.Row{Label: "Longest", Value: fmt.Sprintf("%.1f km", r.LongestKm)},
+				insightpages.Row{Label: i18n.T(ctx, "insights.cardio.distance"), Value: fmt.Sprintf("%.1f km", r.DistanceKm)},
+				insightpages.Row{Label: i18n.T(ctx, "insights.cardio.longest"), Value: fmt.Sprintf("%.1f km", r.LongestKm)},
 			)
 		}
 		if r.AvgPace > 0 {
 			view.Runs = append(view.Runs,
-				insightpages.Row{Label: "Average pace", Value: pace(r.AvgPace)},
-				insightpages.Row{Label: "Best pace", Value: pace(r.BestPace)},
+				insightpages.Row{Label: i18n.T(ctx, "insights.cardio.avgPace"), Value: pace(r.AvgPace)},
+				insightpages.Row{Label: i18n.T(ctx, "insights.cardio.bestPace"), Value: pace(r.BestPace)},
 			)
 		} else {
-			view.Runs = append(view.Runs, insightpages.Row{Label: "Pace", Value: "—", Note: "needs a run with a distance"})
+			view.Runs = append(view.Runs, insightpages.Row{Label: i18n.T(ctx, "insights.cardio.pace"), Value: "—", Note: i18n.T(ctx, "insights.cardio.pace.note")})
 		}
 		if r.Best5K > 0 {
-			view.Runs = append(view.Runs, insightpages.Row{Label: "Best 5K", Value: duration(r.Best5K), Note: "at the pace of your fastest 5K+ run"})
+			view.Runs = append(view.Runs, insightpages.Row{Label: i18n.T(ctx, "insights.cardio.best5k"), Value: duration(r.Best5K), Note: i18n.T(ctx, "insights.cardio.best5k.note")})
 		}
 	}
 	for _, s := range st.Recent {
@@ -164,7 +171,7 @@ func buildCardioView(rg timerange.Range, st stats.CardioStats) insightpages.Card
 		if s.DistanceM > 0 {
 			value = fmt.Sprintf("%.1f km · %s", s.DistanceM/1000, value)
 		}
-		note := s.At.Format("Mon, Jan 2")
+		note := i18n.Date(ctx, s.At, "Mon, Jan 2")
 		if p := s.PaceSeconds(); p > 0 && s.IsRun() {
 			note += " · " + pace(p)
 		}
@@ -175,9 +182,9 @@ func buildCardioView(rg timerange.Range, st stats.CardioStats) insightpages.Card
 		values      []stat.DayValue
 		decimals    int
 	}{
-		{"Resting heart rate", "bpm", st.RestingHR, 0},
-		{"HRV", "ms", st.HRV, 0},
-		{"VO2 max", "", st.VO2Max, 1},
+		{i18n.T(ctx, "insights.cardio.restingHR"), "bpm", st.RestingHR, 0},
+		{i18n.T(ctx, "insights.cardio.hrv"), "ms", st.HRV, 0},
+		{i18n.T(ctx, "insights.cardio.vo2max"), "", st.VO2Max, 1},
 	} {
 		if len(h.values) == 0 {
 			continue
@@ -186,7 +193,8 @@ func buildCardioView(rg timerange.Range, st stats.CardioStats) insightpages.Card
 		row := insightpages.Row{Label: h.label, Value: strings.TrimSpace(fmt.Sprintf("%.*f %s", h.decimals, last, h.unit))}
 		if len(h.values) > 1 {
 			change := last - h.values[0].Value
-			row.Note = fmt.Sprintf("%+.*f since %s", h.decimals, change, h.values[0].Day.Format("Jan 2"))
+			row.Note = i18n.Tf(ctx, "insights.cardio.since",
+				fmt.Sprintf("%+.*f", h.decimals, change), i18n.Date(ctx, h.values[0].Day, "Jan 2"))
 		}
 		view.Heart = append(view.Heart, row)
 	}
@@ -195,57 +203,58 @@ func buildCardioView(rg timerange.Range, st stats.CardioStats) insightpages.Card
 
 func formatCountInt(n int) string { return fmt.Sprintf("%d", n) }
 
-var slotLabels = map[string]string{
-	"morning": "Morning (before 11)", "midday": "Midday (11–15)", "afternoon": "Afternoon (15–18)",
-	"evening": "Evening (18–21)", "late": "Late (after 21)",
+// slotLabel names a time-of-day slot. An unknown slot reads as nothing, as
+// it did when this was a map lookup.
+func slotLabel(ctx context.Context, key string) string {
+	return translated(ctx, "insights.eating.slot."+key, "")
 }
 
-func buildEatingView(st stat.EatingStats) insightpages.EatingView {
+func buildEatingView(ctx context.Context, st stat.EatingStats) insightpages.EatingView {
 	view := insightpages.EatingView{HasData: st.DaysLogged > 0}
 	if !view.HasData {
 		return view
 	}
 	view.Tiles = []insightpages.Row{
-		{Label: "Average day", Value: fmt.Sprintf("%.0f kcal", st.AvgKcal), Note: fmt.Sprintf("P %.0f · C %.0f · F %.0f g", st.AvgProtein, st.AvgCarb, st.AvgFat)},
+		{Label: i18n.T(ctx, "insights.eating.averageDay"), Value: fmt.Sprintf("%.0f kcal", st.AvgKcal), Note: i18n.Tf(ctx, "insights.eating.macros", st.AvgProtein, st.AvgCarb, st.AvgFat)},
 	}
 	if st.GoalKcal > 0 {
 		view.Tiles = append(view.Tiles, insightpages.Row{
-			Label: "On target", Value: fmt.Sprintf("%d of %s", st.OnTargetDays, plural(st.DaysLogged, "day", "days")),
-			Note: fmt.Sprintf("within 10%% of %.0f kcal", st.GoalKcal),
+			Label: i18n.T(ctx, "insights.eating.onTarget"), Value: i18n.Tf(ctx, "insights.eating.ofDays", st.OnTargetDays, plural(ctx, "insights.eating.days", st.DaysLogged)),
+			Note: i18n.Tf(ctx, "insights.eating.onTarget.note", st.GoalKcal),
 		})
 	}
 	if st.GoalProtein > 0 {
 		view.Tiles = append(view.Tiles, insightpages.Row{
-			Label: "Protein goal met", Value: fmt.Sprintf("%d of %s", st.ProteinDays, plural(st.DaysLogged, "day", "days")),
-			Note: fmt.Sprintf("goal %.0f g", st.GoalProtein),
+			Label: i18n.T(ctx, "insights.eating.proteinMet"), Value: i18n.Tf(ctx, "insights.eating.ofDays", st.ProteinDays, plural(ctx, "insights.eating.days", st.DaysLogged)),
+			Note: i18n.Tf(ctx, "insights.eating.proteinMet.note", st.GoalProtein),
 		})
 	}
 	if st.ProteinPerKg > 0 {
-		view.Tiles = append(view.Tiles, insightpages.Row{Label: "Protein per kg", Value: fmt.Sprintf("%.1f g", st.ProteinPerKg), Note: "1.6–2.2 g supports muscle gain"})
+		view.Tiles = append(view.Tiles, insightpages.Row{Label: i18n.T(ctx, "insights.eating.proteinPerKg"), Value: fmt.Sprintf("%.1f g", st.ProteinPerKg), Note: i18n.T(ctx, "insights.eating.proteinPerKg.note")})
 	}
 	for _, s := range st.BySlot {
 		view.Slots = append(view.Slots, insightpages.Bar{
-			Label: slotLabels[s.Key], Value: fmt.Sprintf("%d%%", pct(s.Share)), Pct: pct(s.Share),
+			Label: slotLabel(ctx, s.Key), Value: fmt.Sprintf("%d%%", pct(s.Share)), Pct: pct(s.Share),
 		})
 	}
 	for _, f := range st.TopFoods {
 		view.Foods = append(view.Foods, insightpages.Row{Label: f.Label, Value: fmt.Sprintf("×%d", f.Count), Note: fmt.Sprintf("%.0f kcal", f.Kcal)})
 	}
 	view.Notes = []insightpages.Row{
-		{Label: "Days logged", Value: formatCountInt(st.DaysLogged)},
-		{Label: "Late eating", Value: plural(st.LateDays, "day", "days"), Note: "last food after your kitchen closes"},
+		{Label: i18n.T(ctx, "insights.eating.daysLogged"), Value: formatCountInt(st.DaysLogged)},
+		{Label: i18n.T(ctx, "insights.eating.late"), Value: plural(ctx, "insights.eating.days", st.LateDays), Note: i18n.T(ctx, "insights.eating.late.note")},
 	}
 	if st.WeekdayKcal > 0 && st.WeekendKcal > 0 {
 		view.Notes = append(view.Notes,
-			insightpages.Row{Label: "Weekdays", Value: fmt.Sprintf("%.0f kcal", st.WeekdayKcal)},
-			insightpages.Row{Label: "Weekends", Value: fmt.Sprintf("%.0f kcal", st.WeekendKcal)},
+			insightpages.Row{Label: i18n.T(ctx, "insights.stats.weekdays"), Value: fmt.Sprintf("%.0f kcal", st.WeekdayKcal)},
+			insightpages.Row{Label: i18n.T(ctx, "insights.stats.weekends"), Value: fmt.Sprintf("%.0f kcal", st.WeekendKcal)},
 		)
 	}
 	return view
 }
 
-func buildPatternsView(rg timerange.Range, days int, found []stat.Finding) insightpages.PatternsView {
-	view := insightpages.PatternsView{Range: rangeView(rg), Days: days}
+func buildPatternsView(ctx context.Context, rg timerange.Range, days int, found []stat.Finding) insightpages.PatternsView {
+	view := insightpages.PatternsView{Range: rangeView(ctx, rg), Days: days}
 	for _, f := range found {
 		most := math.Max(math.Abs(f.A.Mean), math.Abs(f.B.Mean))
 		if most == 0 {
@@ -257,7 +266,7 @@ func buildPatternsView(rg timerange.Range, days int, found []stat.Finding) insig
 				value = hm(int(math.Round(g.Mean)))
 			}
 			return insightpages.Bar{
-				Label: fmt.Sprintf("%s (%d days)", g.Label, g.N), Value: value,
+				Label: i18n.Tf(ctx, "insights.patterns.group", g.Label, g.N), Value: value,
 				Pct: int(math.Round(math.Abs(g.Mean) / most * 100)),
 			}
 		}

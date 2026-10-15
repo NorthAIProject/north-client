@@ -1,6 +1,7 @@
 package insights
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -74,7 +75,7 @@ func quarterRange(t *testing.T) timerange.Range {
 
 func mustSummaryView(t *testing.T, data SummaryData) insightpages.SummaryView {
 	t.Helper()
-	view, err := buildSummaryView(data)
+	view, err := buildSummaryView(context.Background(), data)
 	if err != nil {
 		t.Fatalf("buildSummaryView: %v", err)
 	}

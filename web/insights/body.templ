@@ -1,6 +1,9 @@
 package insights
 
 import (
+	"context"
+
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/ui/card"
@@ -40,7 +43,7 @@ type BodyView struct {
 }
 
 templ Body(user users.User, view BodyView) {
-	@page("Body", "body", "/app/insights/body/body", user, view.Range) {
+	@page(sectionTitle(ctx, "body"), "body", "/app/insights/body/body", user, view.Range) {
 		@BodyPanels(view)
 	}
 }
@@ -48,43 +51,43 @@ templ Body(user users.User, view BodyView) {
 templ BodyPanels(view BodyView) {
 	<div class="space-y-6">
 		<div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-			@statTile("Water", formatLitres(view.TotalWaterML), "total for the window", DeltaView{})
-			@statTile("Nights logged", formatCount(view.Nights), "", DeltaView{})
-			@statTile("Average sleep", formatHours(view.AvgSleep), "over nights recorded", DeltaView{})
-			@statTile("Sleep quality", formatScore(view.AvgQuality), qualityNote(view), DeltaView{})
+			@statTile(i18n.T(ctx, "insights.body.water"), formatLitres(view.TotalWaterML), i18n.T(ctx, "insights.body.water.note"), DeltaView{})
+			@statTile(i18n.T(ctx, "insights.body.nights"), formatCount(view.Nights), "", DeltaView{})
+			@statTile(i18n.T(ctx, "insights.body.avgSleep"), formatHours(view.AvgSleep), i18n.T(ctx, "insights.body.avgSleep.note"), DeltaView{})
+			@statTile(i18n.T(ctx, "insights.body.quality"), formatScore(view.AvgQuality), qualityNote(ctx, view), DeltaView{})
 		</div>
 		<div class="grid gap-4 lg:grid-cols-2">
 			@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 				@card.Header() {
 					@card.Title() {
-						Hydration
+						{ i18n.T(ctx, "insights.body.hydration") }
 					}
 					@card.Description() {
-						Daily intake in millilitres.
+						{ i18n.T(ctx, "insights.body.hydration.desc") }
 					}
 				}
 				@card.Content() {
 					if view.HasWater {
 						@chart.Chart(view.WaterChart)
 					} else {
-						@emptyState("No water logged in this window.", "Log water", "/app/care")
+						@emptyState(i18n.T(ctx, "insights.body.hydration.empty"), i18n.T(ctx, "insights.body.hydration.cta"), "/app/care")
 					}
 				}
 			}
 			@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 				@card.Header() {
 					@card.Title() {
-						Sleep
+						{ i18n.T(ctx, "insights.body.sleep") }
 					}
 					@card.Description() {
-						Hours per night. Gaps are nights you did not log.
+						{ i18n.T(ctx, "insights.body.sleep.desc") }
 					}
 				}
 				@card.Content() {
 					if view.HasSleep {
 						@chart.Chart(view.SleepChart)
 					} else {
-						@emptyState("No sleep logged in this window.", "Log sleep", "/app/care")
+						@emptyState(i18n.T(ctx, "insights.body.sleep.empty"), i18n.T(ctx, "insights.body.sleep.cta"), "/app/care")
 					}
 				}
 			}
@@ -92,10 +95,10 @@ templ BodyPanels(view BodyView) {
 		@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 			@card.Header() {
 				@card.Title() {
-					Habits
+					{ i18n.T(ctx, "insights.body.habits") }
 				}
 				@card.Description() {
-					Adherence across your active habits.
+					{ i18n.T(ctx, "insights.body.habits.desc") }
 				}
 			}
 			@card.Content() {
@@ -115,7 +118,7 @@ templ BodyPanels(view BodyView) {
 										<span class="text-muted-foreground shrink-0 font-mono text-[10px] tabular-nums">
 											{ formatCount(h.Kept) }/{ formatCount(h.Scheduled) }
 											if h.Streak > 0 {
-												<span>· streak { formatCount(h.Streak) }</span>
+												<span>· { i18n.Tf(ctx, "insights.body.habits.streak", h.Streak) }</span>
 											}
 										</span>
 									</div>
@@ -125,7 +128,7 @@ templ BodyPanels(view BodyView) {
 						</ul>
 					</div>
 				} else {
-					@emptyState("No habits yet.", "Add a habit", "/app/care")
+					@emptyState(i18n.T(ctx, "insights.body.habits.empty"), i18n.T(ctx, "insights.body.habits.cta"), "/app/care")
 				}
 			}
 		}
@@ -135,12 +138,13 @@ templ BodyPanels(view BodyView) {
 // qualityNote says what the average is actually an average of. Quality is
 // optional on a sleep log, so the count is the difference between a claim and
 // a misleading one.
-func qualityNote(view BodyView) string {
-	if view.QualityCount == 0 {
-		return "no nights rated"
+func qualityNote(ctx context.Context, view BodyView) string {
+	switch view.QualityCount {
+	case 0:
+		return i18n.T(ctx, "insights.body.quality.none")
+	case 1:
+		return i18n.T(ctx, "insights.body.quality.one")
+	default:
+		return i18n.Tf(ctx, "insights.body.quality.many", view.QualityCount)
 	}
-	if view.QualityCount == 1 {
-		return "from 1 rated night"
-	}
-	return "from " + formatCount(view.QualityCount) + " rated nights"
 }
