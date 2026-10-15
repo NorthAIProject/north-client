@@ -9,4 +9,7 @@ var englishLighterDay = map[string]string{
 	"lighterday.lighter": "Take it lighter",
 	"lighterday.keep":    "Keep the plan",
 	"lighterday.chosen":  "Lighter day: today's sets are cut to about 60%. Tomorrow is back to the plan.",
+
+	"lighterday.error.choice":    "Choose lighter or keep.",
+	"lighterday.error.nosession": "There is no session left to do today.",
 }

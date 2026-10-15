@@ -17,6 +17,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/insights"
 	lighterdaydb "github.com/NorthAIProject/north-client/internal/lighterday/db"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
@@ -112,14 +113,14 @@ func (s *Service) Today(ctx context.Context, user users.User) (Today, error) {
 // nothing.
 func (s *Service) Choose(ctx context.Context, user users.User, choice string) (Today, error) {
 	if choice != ChoiceLighter && choice != ChoiceKeep {
-		return Today{}, apperr.FieldErrors{}.Add("choice", "Choose lighter or keep.")
+		return Today{}, apperr.FieldErrors{}.Add("choice", i18n.T(ctx, "lighterday.error.choice"))
 	}
 	t, err := s.Today(ctx, user)
 	if err != nil {
 		return Today{}, err
 	}
 	if choice == ChoiceLighter && (!t.Due || t.Done) {
-		return Today{}, apperr.FieldErrors{}.Add("choice", "There is no session left to do today.")
+		return Today{}, apperr.FieldErrors{}.Add("choice", i18n.T(ctx, "lighterday.error.nosession"))
 	}
 	today := timerange.StartOfDay(s.now().In(user.Location()))
 	if err = s.q.SetChoice(ctx, lighterdaydb.SetChoiceParams{UserID: user.ID, Day: date(today), Choice: choice}); err != nil {

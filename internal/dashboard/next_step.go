@@ -1,5 +1,11 @@
 package dashboard
 
+import (
+	"context"
+
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
+)
+
 // NextStep is the one action a fresh account should take next.
 //
 // The dashboard already composes today's home. This is the same question
@@ -25,59 +31,48 @@ const (
 	StepKindPush = "push"
 )
 
-var (
-	stepGoal = NextStep{
-		Kind:    stepKindGoal,
-		Eyebrow: "Start here",
-		Title:   "Name one thing you are working toward",
-		Body:    "Khepri reads your goals before every reply. One is enough.",
-		CTA:     "Add a goal",
-		Href:    "/app/goals",
+// nextSteps maps each step's kind to where it leads. Its words live in the
+// catalogue under "dash.step.<kind>.*": the native app shows them verbatim,
+// so they are read in the caller's language rather than stored here.
+var nextSteps = map[string]string{
+	stepKindGoal:    "/app/goals",
+	stepKindCheckIn: "/app/check-ins",
+	stepKindChat:    "/app/chat",
+	StepKindPush:    "/app/settings#notifications",
+}
+
+// nextStep builds the card for kind in ctx's language.
+func nextStep(ctx context.Context, kind string) NextStep {
+	key := "dash.step." + kind + "."
+	return NextStep{
+		Kind:    kind,
+		Eyebrow: i18n.T(ctx, key+"eyebrow"),
+		Title:   i18n.T(ctx, key+"title"),
+		Body:    i18n.T(ctx, key+"body"),
+		CTA:     i18n.T(ctx, key+"cta"),
+		Href:    nextSteps[kind],
 	}
-	stepCheckIn = NextStep{
-		Kind:    stepKindCheckIn,
-		Eyebrow: "Today",
-		Title:   "How did today go?",
-		Body:    "Thirty seconds. Mood, energy, what went well.",
-		CTA:     "Check in",
-		Href:    "/app/check-ins",
-	}
-	stepChat = NextStep{
-		Kind:    stepKindChat,
-		Eyebrow: "Coach",
-		Title:   "Talk to Khepri about the week",
-		Body:    "It already has your goals. Start with what is in the way.",
-		CTA:     "Open the coach",
-		Href:    "/app/chat",
-	}
-	stepPush = NextStep{
-		Kind:    StepKindPush,
-		Eyebrow: "Stay on track",
-		Title:   "Let Khepri reach you",
-		Body:    "A short note on this device when you have not checked in, a goal is due, or it is a training day.",
-		CTA:     "Turn on nudges",
-		Href:    "/app/settings#notifications",
-	}
-)
+}
 
 // PickNextStep returns the first missing activation step. Goal, then today's
 // check-in, then a coach thread, then — once all three are there — the offer
 // to be nudged on this device. Returning users who have everything see nothing.
+// The words are in ctx's language; Kind and Href never change with it.
 //
 // Push comes last rather than first because a nudge is only worth receiving
 // once there is something to be nudged about, and because asking for
 // notification permission before somebody has seen the product is how the
 // permission gets refused for good.
-func PickNextStep(s Snapshot) (NextStep, bool) {
+func PickNextStep(ctx context.Context, s Snapshot) (NextStep, bool) {
 	switch {
 	case len(s.Goals) == 0:
-		return stepGoal, true
+		return nextStep(ctx, stepKindGoal), true
 	case !s.CheckedInToday:
-		return stepCheckIn, true
+		return nextStep(ctx, stepKindCheckIn), true
 	case s.LastThread == nil:
-		return stepChat, true
+		return nextStep(ctx, stepKindChat), true
 	case s.PushOffered:
-		return stepPush, true
+		return nextStep(ctx, StepKindPush), true
 	default:
 		return NextStep{}, false
 	}
