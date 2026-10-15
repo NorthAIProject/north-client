@@ -66,8 +66,12 @@ templ targetNotice(target *meal.Macros) {
 				{ i18n.T(ctx, "nutrition.target.missing.title") }
 			}
 			@alert.Description() {
-				{ i18n.T(ctx, "nutrition.target.missing.before") }
-				<a href="/app/calculator" class="underline">{ i18n.T(ctx, "nutrition.target.missing.link") }</a>.
+				// One paragraph: Description lays its children out as a grid,
+				// so a bare link and full stop each landed on their own row.
+				<p>
+					{ i18n.T(ctx, "nutrition.target.missing.before") }
+					<a href="/app/calculator" class="underline">{ i18n.T(ctx, "nutrition.target.missing.link") }</a>.
+				</p>
 			}
 		}
 	} else {

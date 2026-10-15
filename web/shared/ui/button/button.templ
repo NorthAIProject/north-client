@@ -126,7 +126,11 @@ func (b Props) variantClasses() string {
 	case VariantLink:
 		return "text-primary underline-offset-4 hover:underline"
 	default:
-		return "bg-primary text-primary-foreground shadow-xs hover:bg-primary/90"
+		// North: the default button is the primary action, and the primary
+		// action is signal, not the near-black --primary. Signal-foreground
+		// keeps the label at 4.5:1 or better in both themes (light text on
+		// the light theme's teal, ink on the dark theme's cyan).
+		return "bg-signal text-signal-foreground shadow-xs hover:bg-signal/90"
 	}
 }
 
