@@ -14,6 +14,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/meals"
 	"github.com/NorthAIProject/north-client/internal/meals/meal"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 )
 
 // candidateLimit caps the ingredients offered for one food line.
@@ -144,7 +145,7 @@ func (s *Service) PreviewMeal(ctx context.Context, userID uuid.UUID, d MealDraft
 		d.Days[di].Target = macroGrams(st.Target)
 		d.Days[di].Remaining = macroGrams(st.Remaining)
 		if st.IsOver() {
-			d.Days[di].Over = overList(st.Over)
+			d.Days[di].Over = overList(ctx, st.Over)
 		}
 	}
 	d.CanConfirm = meal.CheckWrite(*active, nil, state, false).CanConfirm
@@ -198,14 +199,15 @@ func planState(d MealDraft, settings meal.PlanSettings) (meal.PlanState, []int) 
 	return state, index
 }
 
-func overList(o meal.Macros) []string {
+// overList is what a day is over by, one macro a line, in ctx's language.
+func overList(ctx context.Context, o meal.Macros) []string {
 	out := []string{}
 	for _, m := range []struct {
-		label string
+		macro string
 		over  float64
 	}{{"protein", o.ProteinG}, {"carbs", o.CarbG}, {"fat", o.FatG}} {
 		if m.over >= 0.5 {
-			out = append(out, fmt.Sprintf("%s over by %.0f g", m.label, math.Ceil(m.over)))
+			out = append(out, i18n.Tf(ctx, "planimport.over", i18n.T(ctx, "nutrition.macro."+m.macro+".lower"), math.Ceil(m.over)))
 		}
 	}
 	return out
@@ -227,7 +229,7 @@ func (s *Service) resolveFood(ctx context.Context, userID uuid.UUID, f *FoodDraf
 		if err != nil {
 			// An id this account cannot see, or one deleted since the parse.
 			f.IngredientID = nil
-			f.Checks = append(f.Checks, "The chosen ingredient isn't available. Pick another.")
+			f.Checks = append(f.Checks, i18n.T(ctx, "planimport.check.unavailable"))
 		} else {
 			ingredient = &ing
 			f.SaveAsMine = false
@@ -250,7 +252,7 @@ func (s *Service) resolveFood(ctx context.Context, userID uuid.UUID, f *FoodDraf
 	}
 
 	if f.Grams == nil {
-		f.Grams = s.derivedGrams(f, ingredient)
+		f.Grams = s.derivedGrams(ctx, f, ingredient)
 	}
 	if f.Grams != nil && *f.Grams <= 0 {
 		f.Grams = nil
@@ -258,15 +260,15 @@ func (s *Service) resolveFood(ctx context.Context, userID uuid.UUID, f *FoodDraf
 
 	switch {
 	case f.Grams == nil:
-		f.Checks = append(f.Checks, "Enter the weight in grams.")
+		f.Checks = append(f.Checks, i18n.T(ctx, "planimport.check.grams"))
 	case ingredient != nil:
 		m := ingredient.MacrosFor(*f.Grams)
 		f.Macros = macroGrams(m)
-		f.Checks = append(f.Checks, statedMismatch(f, m, ingredient.Name)...)
+		f.Checks = append(f.Checks, statedMismatch(ctx, f, m, ingredient.Name)...)
 	case f.SaveAsMine:
 		if !f.CanSaveAsMine() {
 			f.SaveAsMine = false
-			f.Checks = append(f.Checks, "Saving as your own food needs protein, carbs and fat from the file.")
+			f.Checks = append(f.Checks, i18n.T(ctx, "planimport.check.mine"))
 		} else {
 			f.Macros = &MacroGrams{
 				ProteinG: *f.StatedProteinG, CarbG: *f.StatedCarbG, FatG: *f.StatedFatG,
@@ -277,9 +279,9 @@ func (s *Service) resolveFood(ctx context.Context, userID uuid.UUID, f *FoodDraf
 
 	if ingredient == nil && !f.SaveAsMine {
 		if len(f.Candidates) == 0 {
-			f.Checks = append(f.Checks, fmt.Sprintf("Nothing in the catalog matches %q.", f.Food))
+			f.Checks = append(f.Checks, i18n.Tf(ctx, "planimport.check.nomatch", f.Food))
 		} else {
-			f.Checks = append(f.Checks, "Pick the ingredient this is.")
+			f.Checks = append(f.Checks, i18n.T(ctx, "planimport.check.pick"))
 		}
 	}
 }
@@ -288,7 +290,7 @@ func (s *Service) resolveFood(ctx context.Context, userID uuid.UUID, f *FoodDraf
 // conversion that is an assumption rather than arithmetic. The flag goes in
 // Flags rather than Checks because it describes how the number was first
 // arrived at, and has to survive the later previews that no longer derive it.
-func (s *Service) derivedGrams(f *FoodDraft, ingredient *meals.Ingredient) *float64 {
+func (s *Service) derivedGrams(ctx context.Context, f *FoodDraft, ingredient *meals.Ingredient) *float64 {
 	if f.Quantity == nil {
 		return nil
 	}
@@ -301,7 +303,7 @@ func (s *Service) derivedGrams(f *FoodDraft, ingredient *meals.Ingredient) *floa
 	}
 	if per, ok := liquidUnits[unit]; ok {
 		g := qty * per
-		f.Flags = appendOnce(f.Flags, fmt.Sprintf("Read %g %s as %g g. Change it if this isn't a watery drink.", qty, f.Unit, g))
+		f.Flags = appendOnce(f.Flags, i18n.Tf(ctx, "planimport.flag.drink", qty, f.Unit, g))
 		return &g
 	}
 	_, typical := typicalCount[unit]
@@ -309,27 +311,27 @@ func (s *Service) derivedGrams(f *FoodDraft, ingredient *meals.Ingredient) *floa
 		g := qty * ingredient.ServingSizeGrams
 		label := f.Unit
 		if label == "" {
-			label = "serving"
+			label = i18n.T(ctx, "planimport.unit.serving")
 		}
 		f.Estimated = true
-		f.Flags = appendOnce(f.Flags, fmt.Sprintf("Assumed 1 %s = %g g (the catalog's serving). Check it.", label, ingredient.ServingSizeGrams))
+		f.Flags = appendOnce(f.Flags, i18n.Tf(ctx, "planimport.flag.serving", label, ingredient.ServingSizeGrams))
 		return &g
 	}
 	if per, ok := typicalCount[unit]; ok {
-		return estimatedGrams(f, qty, per)
+		return estimatedGrams(ctx, f, qty, per)
 	}
 	if per, ok := kitchenMeasures[unit]; ok {
-		return estimatedGrams(f, qty, per)
+		return estimatedGrams(ctx, f, qty, per)
 	}
 	return nil
 }
 
 // estimatedGrams weighs a counted or measured amount at its usual weight and
 // says so on the line.
-func estimatedGrams(f *FoodDraft, qty, per float64) *float64 {
+func estimatedGrams(ctx context.Context, f *FoodDraft, qty, per float64) *float64 {
 	g := qty * per
 	f.Estimated = true
-	f.Flags = appendOnce(f.Flags, fmt.Sprintf("Assumed 1 %s ≈ %g g. Check it.", strings.TrimSpace(f.Unit), per))
+	f.Flags = appendOnce(f.Flags, i18n.Tf(ctx, "planimport.flag.measure", strings.TrimSpace(f.Unit), per))
 	return &g
 }
 
@@ -338,7 +340,7 @@ func normalizeUnit(unit string) string {
 	return strings.ToLower(strings.TrimSuffix(strings.TrimSpace(unit), "."))
 }
 
-func statedMismatch(f *FoodDraft, m meal.Macros, name string) []string {
+func statedMismatch(ctx context.Context, f *FoodDraft, m meal.Macros, name string) []string {
 	var out []string
 	for _, c := range []struct {
 		label  string
@@ -353,7 +355,7 @@ func statedMismatch(f *FoodDraft, m meal.Macros, name string) []string {
 			continue
 		}
 		if math.Abs(c.got-*c.stated) > math.Max(2, *c.stated*statedTolerance) {
-			out = append(out, fmt.Sprintf("The file says %.0f g %s; %s at %.0f g has %.0f g.", *c.stated, c.label, name, *f.Grams, c.got))
+			out = append(out, i18n.Tf(ctx, "planimport.check.stated", *c.stated, i18n.T(ctx, "nutrition.macro."+c.label+".lower"), name, *f.Grams, c.got))
 		}
 	}
 	return out
@@ -427,21 +429,22 @@ type draftOption struct {
 }
 
 // mealPlanFromDraft converts a previewed draft into what meals.CreatePlan
-// stores, or reports what still needs the person's attention.
-func mealPlanFromDraft(d MealDraft) (importPlan, []string) {
+// stores, or reports what still needs the person's attention. Problems, and
+// the names it gives an unnamed meal or option, are in tag's language.
+func mealPlanFromDraft(tag string, d MealDraft) (importPlan, []string) {
 	var problems []string
 	settings, ok := planSettings(d)
 	if !ok {
-		problems = append(problems, "Choose a carb type for the plan.")
+		problems = append(problems, i18n.Translate(tag, "planimport.problem.carbtype"))
 	}
 	if !d.HasTarget {
-		problems = append(problems, "Work out your macro target in the calculator first; meal plans are built on it.")
+		problems = append(problems, i18n.Translate(tag, "nutrition.err.target"))
 	}
 	if len(d.Days) > meal.MaxDays {
-		problems = append(problems, fmt.Sprintf("A plan holds at most %d days; remove %d.", meal.MaxDays, len(d.Days)-meal.MaxDays))
+		problems = append(problems, fmt.Sprintf(i18n.Translate(tag, "planimport.problem.maxdays"), meal.MaxDays, len(d.Days)-meal.MaxDays))
 	}
 	if d.EveryDay && len(d.Days) != 1 {
-		problems = append(problems, fmt.Sprintf("A plan eaten every day has exactly one day; this one has %d.", len(d.Days)))
+		problems = append(problems, fmt.Sprintf(i18n.Translate(tag, "planimport.problem.everyday"), len(d.Days)))
 	}
 
 	// Notes past what meals keeps are cut, not refused: the meals are the
@@ -460,11 +463,11 @@ func mealPlanFromDraft(d MealDraft) (importPlan, []string) {
 	for di, day := range d.Days {
 		label := day.Label
 		if label == "" {
-			label = fmt.Sprintf("day %d", di+1)
+			label = fmt.Sprintf(i18n.Translate(tag, "planimport.problem.day"), di+1)
 		}
 		if settings.Mode == meal.Advanced && !d.EveryDay {
 			if day.Weekday == nil {
-				problems = append(problems, fmt.Sprintf("Choose which day of the week %s is.", label))
+				problems = append(problems, fmt.Sprintf(i18n.Translate(tag, "planimport.problem.weekday"), label))
 				continue
 			}
 			out.input.Weekdays = append(out.input.Weekdays, time.Weekday(*day.Weekday))
@@ -474,18 +477,18 @@ func mealPlanFromDraft(d MealDraft) (importPlan, []string) {
 		for mi, m := range day.Meals {
 			name := strings.TrimSpace(m.Name)
 			if name == "" {
-				name = fmt.Sprintf("Meal %d", mi+1)
+				name = fmt.Sprintf(i18n.Translate(tag, "planimport.meal.meal_n"), mi+1)
 			}
 			var opts []draftOption
 			for oi, opt := range m.Options() {
 				where := label + ", " + name
 				if len(m.Alternatives) > 0 {
-					where += " (" + m.OptionName(oi) + ")"
+					where += " (" + optionName(tag, m, oi) + ")"
 				}
 				o := draftOption{label: clip(strings.TrimSpace(opt.Label), meals.MaxOptionLabelRunes)}
 				for _, f := range opt.Foods {
 					if !f.Ready() {
-						problems = append(problems, fmt.Sprintf("%s: %q isn't ready — %s", where, f.Food, strings.Join(f.Checks, " ")))
+						problems = append(problems, fmt.Sprintf(i18n.Translate(tag, "planimport.problem.notready"), where, f.Food, strings.Join(f.Checks, " ")))
 						continue
 					}
 					portion := meals.MealIngredientInput{QuantityGrams: *f.Grams, SourceText: f.SourceText, Estimated: f.Estimated, Optional: f.Optional}
@@ -513,7 +516,7 @@ func mealPlanFromDraft(d MealDraft) (importPlan, []string) {
 					// a label; one the file left unnamed is named by its place.
 					altLabel := o.label
 					if altLabel == "" {
-						altLabel = fmt.Sprintf("Option %d", oi+1)
+						altLabel = fmt.Sprintf(i18n.Translate(tag, "nutrition.option.numbered"), oi+1)
 					}
 					md.Alternatives = append(md.Alternatives, meals.MealOptionDraft{Label: altLabel, Portions: o.portions})
 				}
@@ -531,6 +534,15 @@ func mealPlanFromDraft(d MealDraft) (importPlan, []string) {
 
 // personalIngredient scales the file's stated macros for this portion to the
 // per-100 g profile every ingredient is stored as.
+// optionName is MealDraftMeal.OptionName in tag's language: the option's own
+// label, or its number when the file gave it none.
+func optionName(tag string, m MealDraftMeal, o int) string {
+	if opts := m.Options(); o >= 0 && o < len(opts) && opts[o].Label != "" {
+		return opts[o].Label
+	}
+	return fmt.Sprintf(i18n.Translate(tag, "nutrition.option.numbered"), o+1)
+}
+
 func personalIngredient(f FoodDraft) meals.IngredientInput {
 	scale := 100 / *f.Grams
 	p, c, fat := *f.StatedProteinG*scale, *f.StatedCarbG*scale, *f.StatedFatG*scale

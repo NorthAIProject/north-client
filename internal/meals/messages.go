@@ -71,3 +71,8 @@ func gramsMessage(macro string) fieldmsg.Message {
 func localize(ctx context.Context, err error) error {
 	return fieldmsg.Localize(ctx, err, fieldMessages)
 }
+
+// Localize says err's field messages from this package in ctx's language,
+// for a caller outside it that shows a meals refusal to a person — plan
+// import saving a plan through CreatePlan.
+func Localize(ctx context.Context, err error) error { return localize(ctx, err) }

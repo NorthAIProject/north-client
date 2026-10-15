@@ -2,7 +2,7 @@ package planimport
 
 import (
 	"context"
-	"strconv"
+	"fmt"
 	"strings"
 	"sync"
 
@@ -12,6 +12,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/meals"
 	"github.com/NorthAIProject/north-client/internal/meals/meal"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/workouts"
 	"github.com/NorthAIProject/north-client/internal/workouts/plan"
@@ -107,18 +108,19 @@ func (s *Service) parseWorkout(ctx context.Context, user users.User, filename st
 	}
 	defer s.end(user.ID)
 
+	tag := i18n.LocaleFrom(ctx)
 	switch src.Kind {
 	case KindCSV, KindTSV, KindXLSX:
-		return WorkoutFromRows(src.Filename, src.Rows)
+		return WorkoutFromRows(tag, src.Filename, src.Rows)
 	case KindJSON:
-		return WorkoutFromJSON(src.Filename, src.JSON)
+		return WorkoutFromJSON(tag, src.Filename, src.JSON)
 	}
 
 	name, rows, unparsed, err := s.reader.ReadWorkout(ctx, user, src, hint)
 	if err != nil {
 		return WorkoutDraft{}, err
 	}
-	return buildWorkout(nameOr(name, src.Filename), rows, unparsed)
+	return buildWorkout(tag, nameOr(name, src.Filename), rows, unparsed)
 }
 
 // ParseMeal reads a meal plan out of a file and previews it against the
@@ -136,17 +138,18 @@ func (s *Service) parseMeal(ctx context.Context, user users.User, filename strin
 	defer s.end(user.ID)
 
 	var draft MealDraft
+	tag := i18n.LocaleFrom(ctx)
 	switch src.Kind {
 	case KindCSV, KindTSV, KindXLSX:
-		draft, err = MealFromRows(src.Filename, src.Rows)
+		draft, err = MealFromRows(tag, src.Filename, src.Rows)
 	case KindJSON:
-		draft, err = MealFromJSON(src.Filename, src.JSON)
+		draft, err = MealFromJSON(tag, src.Filename, src.JSON)
 	default:
 		var reading MealReading
 		reading, err = s.reader.ReadMeal(ctx, user, src, hint)
 		if err == nil {
 			reading.Name = nameOr(reading.Name, src.Filename)
-			draft, err = buildMeal(reading)
+			draft, err = buildMeal(tag, reading)
 		}
 	}
 	if err != nil {
@@ -157,7 +160,7 @@ func (s *Service) parseMeal(ctx context.Context, user users.User, filename strin
 
 // CommitWorkout saves a reviewed workout draft as a plan.
 func (s *Service) CommitWorkout(ctx context.Context, user users.User, d WorkoutDraft) (workouts.StoredPlan, error) {
-	p, problems := workoutPlanFromDraft(d)
+	p, problems := workoutPlanFromDraft(i18n.LocaleFrom(ctx), d)
 	if len(problems) > 0 {
 		return workouts.StoredPlan{}, apperr.FieldErrors{{Field: "plan", Message: strings.Join(problems, " ")}}
 	}
@@ -189,7 +192,7 @@ func (s *Service) CommitMeal(ctx context.Context, user users.User, d MealDraft, 
 	d = recoverEveryDay(d)
 	d = s.PreviewMeal(ctx, user.ID, d)
 
-	plan, problems := mealPlanFromDraft(d)
+	plan, problems := mealPlanFromDraft(i18n.LocaleFrom(ctx), d)
 	if len(problems) > 0 {
 		return meals.MealPlan{}, d, apperr.FieldErrors{{Field: "plan", Message: strings.Join(problems, " ")}}
 	}
@@ -224,8 +227,9 @@ func (s *Service) CommitMeal(ctx context.Context, user users.User, d MealDraft, 
 //
 // Unstated numbers become zero, which the plan type reads as "not stated" for
 // imported plans. A day label that is not itself a weekday becomes the day's
-// focus, so "Push A" stays visible on the plan page.
-func workoutPlanFromDraft(d WorkoutDraft) (plan.Plan, []string) {
+// focus, so "Push A" stays visible on the plan page. Problems are in tag's
+// language.
+func workoutPlanFromDraft(tag string, d WorkoutDraft) (plan.Plan, []string) {
 	var problems []string
 	out := plan.Plan{Name: strings.TrimSpace(d.Name)}
 
@@ -233,9 +237,9 @@ func workoutPlanFromDraft(d WorkoutDraft) (plan.Plan, []string) {
 		if strings.TrimSpace(day.Weekday) == "" {
 			label := day.Label
 			if label == "" {
-				label = "training day " + strconv.Itoa(i+1)
+				label = fmt.Sprintf(i18n.Translate(tag, "planimport.problem.trainingday"), i+1)
 			}
-			problems = append(problems, "Choose which day of the week "+label+" is.")
+			problems = append(problems, fmt.Sprintf(i18n.Translate(tag, "planimport.problem.weekday"), label))
 		}
 		pd := plan.PlanDay{Weekday: day.Weekday}
 		if _, isWeekday := weekdayOf(day.Label); !isWeekday {
