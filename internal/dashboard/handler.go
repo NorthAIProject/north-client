@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 
@@ -8,6 +9,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/shared/viz"
@@ -97,10 +99,10 @@ func (h *Handler) load(r *http.Request) (app.DashboardData, error) {
 	if err != nil {
 		return app.DashboardData{}, err
 	}
-	return buildDashboardData(snap)
+	return buildDashboardData(r.Context(), snap)
 }
 
-func buildDashboardData(snap Snapshot) (app.DashboardData, error) {
+func buildDashboardData(ctx context.Context, snap Snapshot) (app.DashboardData, error) {
 	labels := make([]string, len(snap.CheckIns.Days))
 	mood := make([]int, len(snap.CheckIns.Days))
 	energy := make([]int, len(snap.CheckIns.Days))
@@ -127,7 +129,7 @@ func buildDashboardData(snap Snapshot) (app.DashboardData, error) {
 	if err != nil {
 		return app.DashboardData{}, err
 	}
-	heatmapRaw, err := viz.HeatmapJSON("Mood", heatmap)
+	heatmapRaw, err := viz.HeatmapJSON(i18n.T(ctx, "dash.mood.series"), heatmap)
 	if err != nil {
 		return app.DashboardData{}, err
 	}
@@ -136,12 +138,12 @@ func buildDashboardData(snap Snapshot) (app.DashboardData, error) {
 		return app.DashboardData{}, err
 	}
 
-	activityDonut, hasDonut, err := buildKindDonut(snap.Timeline)
+	activityDonut, hasDonut, err := buildKindDonut(ctx, snap.Timeline)
 	if err != nil {
 		return app.DashboardData{}, err
 	}
 
-	step, hasStep := PickNextStep(snap)
+	step, hasStep := PickNextStep(ctx, snap)
 
 	return app.DashboardData{
 		NewsTickerEnabled: snap.NewsTickerEnabled,
@@ -163,10 +165,10 @@ func buildDashboardData(snap Snapshot) (app.DashboardData, error) {
 		Hydration:         mapHydration(snap.Hydration),
 		Sleep:             mapSleep(snap.Sleep),
 		ActivityCalories:  snap.ActivityCalories,
-		Timeline:          mapTimeline(snap.Timeline),
+		Timeline:          mapTimeline(ctx, snap.Timeline),
 		Deltas:            mapDeltas(snap.Deltas),
 		MoodChart:         viz.MoodEnergyLine("dashboard-mood-energy", labels, mood, energy),
-		HydrationChart:    viz.Bar("dashboard-hydration", "Water (ml)", hydrationLabels, hydrationTotals),
+		HydrationChart:    viz.Bar("dashboard-hydration", i18n.T(ctx, "dash.hydration.series"), hydrationLabels, hydrationTotals),
 		HabitGaugeOption:  habitGaugeOption,
 		CheckInHeatmap:    checkInHeatmapOption,
 		ActivityDonut:     activityDonut,
@@ -189,7 +191,7 @@ func buildDashboardData(snap Snapshot) (app.DashboardData, error) {
 // buildKindDonut splits the window's activity by which slice it came from.
 // It is the "where did my effort go" panel, and it is built from the feed that
 // is already in memory rather than from a twelfth query.
-func buildKindDonut(feed []Entry) (map[string]any, bool, error) {
+func buildKindDonut(ctx context.Context, feed []Entry) (map[string]any, bool, error) {
 	if len(feed) == 0 {
 		return nil, false, nil
 	}
@@ -205,7 +207,7 @@ func buildKindDonut(feed []Entry) (map[string]any, bool, error) {
 
 	segments := make([]viz.DonutSegment, 0, len(order))
 	for _, k := range order {
-		segments = append(segments, viz.DonutSegment{Label: k.Label(), Value: counts[k]})
+		segments = append(segments, viz.DonutSegment{Label: k.LabelIn(ctx), Value: counts[k]})
 	}
 
 	raw, err := viz.DonutOptionJSON(segments)
@@ -246,12 +248,12 @@ func mapRange(rg timerange.Range) app.RangeView {
 	return app.RangeView{Key: rg.Key, Label: rg.Label, Options: options}
 }
 
-func mapTimeline(feed []Entry) []app.TimelineEntryView {
+func mapTimeline(ctx context.Context, feed []Entry) []app.TimelineEntryView {
 	out := make([]app.TimelineEntryView, len(feed))
 	for i, e := range feed {
 		out[i] = app.TimelineEntryView{
 			Kind:   string(e.Kind),
-			Label:  e.Kind.Label(),
+			Label:  e.Kind.LabelIn(ctx),
 			At:     e.At,
 			Title:  e.Title,
 			Detail: e.Detail,

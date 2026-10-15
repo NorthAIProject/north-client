@@ -19,4 +19,6 @@ var portugueseEuropeanQuota = map[string]string{
 	"quota.delay.minutes":     "daqui a %[1]d minutos",
 	"quota.delay.hour":        "daqui a cerca de uma hora",
 	"quota.delay.hours":       "daqui a %[1]d horas",
+
+	"quota.api": "Esgotaste o limite de %[1]s por agora. Tenta de novo %[2]s.",
 }

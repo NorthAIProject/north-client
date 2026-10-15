@@ -67,7 +67,7 @@ func TestInsightsShapes(t *testing.T) {
 	thursday := time.Date(2026, 10, 8, 0, 0, 0, 0, time.UTC)
 	trainedOn := map[time.Time]bool{thursday.AddDate(0, 0, -1): true, thursday.AddDate(0, 0, -2): true, thursday.AddDate(0, 0, -9): true}
 	checkedOn := map[time.Time]bool{thursday: true, thursday.AddDate(0, 0, -9): true}
-	apitest.AssertGolden(t, "insights-consistency.golden.json", projectConsistency(ConsistencyData{
+	apitest.AssertGolden(t, "insights-consistency.golden.json", projectConsistency(context.Background(), ConsistencyData{
 		Consistency: stat.ConsistencyOf(trainedOn, checkedOn, thursday, 2), CheckInStreak: 1,
 	}))
 	apitest.AssertGolden(t, "insights-health.golden.json", projectHealth(context.Background(), []HealthRow{
@@ -163,6 +163,6 @@ func TestInsightsTrainingPlanAndRecapShape(t *testing.T) {
 	}
 	rng := insightpages.RangeView{Key: "week", Label: "Last 7 days"}
 	out := projectTraining(insightpages.TrainingView{Range: rng}, nil)
-	out.Plan, out.Recap = projectPlanWeek(data), projectRecap(data)
+	out.Plan, out.Recap = projectPlanWeek(context.Background(), data), projectRecap(data)
 	apitest.AssertGolden(t, "insights-training-plan.golden.json", out)
 }

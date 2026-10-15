@@ -12,6 +12,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/activity/activity"
 	caffeinecalc "github.com/NorthAIProject/north-client/internal/caffeine/caffeine"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
@@ -60,7 +61,18 @@ type Entry struct {
 	Icon string
 }
 
-// Label is the kind rendered for a human, used by the feed's filter chips.
+// LabelIn is the kind in ctx's language, for the feed's filter chips and the
+// activity donut. The words are the insights feed's ("insights.kind.*"), which
+// shows the same kinds; a kind with no catalogue entry keeps Label's English.
+func (k EntryKind) LabelIn(ctx context.Context) string {
+	key := "insights.kind." + string(k)
+	if s := i18n.T(ctx, key); s != key {
+		return s
+	}
+	return k.Label()
+}
+
+// Label is the kind in English, the fallback for LabelIn.
 func (k EntryKind) Label() string {
 	switch k {
 	case KindCheckIn:
@@ -156,14 +168,14 @@ func (s *Service) checkInEntries(ctx context.Context, user users.User, rg timera
 
 	out := make([]Entry, 0, len(list))
 	for _, c := range list {
-		detail := fmt.Sprintf("Mood %d · Energy %d", c.Mood, c.Energy)
+		detail := i18n.Tf(ctx, "dash.feed.checkin.detail", c.Mood, c.Energy)
 		if c.Wins != "" {
 			detail += " · " + firstLine(c.Wins)
 		}
 		out = append(out, Entry{
 			Kind:   KindCheckIn,
 			At:     c.CreatedAt,
-			Title:  "Checked in",
+			Title:  i18n.T(ctx, "dash.feed.checkin"),
 			Detail: detail,
 			Href:   "/app/check-ins",
 			Icon:   "smile",
@@ -186,7 +198,7 @@ func (s *Service) hydrationEntries(ctx context.Context, user users.User, rg time
 		out = append(out, Entry{
 			Kind:  KindHydration,
 			At:    e.LoggedAt,
-			Title: fmt.Sprintf("Drank %s", formatML(e.AmountML)),
+			Title: i18n.Tf(ctx, "dash.feed.drank", formatML(e.AmountML)),
 			Href:  "/app/care",
 			Icon:  "droplet",
 		})
@@ -207,13 +219,13 @@ func (s *Service) sleepEntries(ctx context.Context, user users.User, rg timerang
 	for _, l := range list {
 		detail := ""
 		if l.Quality != nil {
-			detail = fmt.Sprintf("Quality %d/5", *l.Quality)
+			detail = i18n.Tf(ctx, "dash.feed.sleep.quality", *l.Quality)
 		}
 		out = append(out, Entry{
 			Kind: KindSleep,
 			// The morning the sleep counts toward, not when it was typed in.
 			At:     l.LocalDate,
-			Title:  fmt.Sprintf("Slept %s", formatMinutes(l.DurationMinutes)),
+			Title:  i18n.Tf(ctx, "dash.feed.slept", formatMinutes(l.DurationMinutes)),
 			Detail: detail,
 			Href:   "/app/care",
 			Icon:   "moon",
@@ -247,14 +259,14 @@ func (s *Service) habitEntries(ctx context.Context, user users.User, rg timerang
 
 	out := make([]Entry, 0, len(done))
 	for _, c := range done {
-		name := names[c.HabitID]
-		if name == "" {
-			name = "a habit"
+		title := i18n.T(ctx, "dash.feed.habit.unnamed")
+		if name := names[c.HabitID]; name != "" {
+			title = i18n.Tf(ctx, "dash.feed.habit", name)
 		}
 		out = append(out, Entry{
 			Kind:  KindHabit,
 			At:    c.CompletedAt,
-			Title: "Kept " + name,
+			Title: title,
 			Href:  "/app/care",
 			Icon:  "circle-check",
 		})
@@ -276,7 +288,7 @@ func (s *Service) journalEntries(ctx context.Context, user users.User, rg timera
 		out = append(out, Entry{
 			Kind:   KindJournal,
 			At:     e.CreatedAt,
-			Title:  "Wrote in the journal",
+			Title:  i18n.T(ctx, "dash.feed.journal"),
 			Detail: firstLine(e.Content),
 			Href:   "/app/mind",
 			Icon:   "notebook-pen",
@@ -303,7 +315,7 @@ func (s *Service) goalNoteEntries(ctx context.Context, user users.User, rg timer
 		out = append(out, Entry{
 			Kind:   KindGoalNote,
 			At:     u.CreatedAt,
-			Title:  "Progress on " + u.GoalTitle,
+			Title:  i18n.Tf(ctx, "dash.feed.goalnote", u.GoalTitle),
 			Detail: detail,
 			Href:   "/app/goals/" + u.GoalID.String(),
 			Icon:   "flag",
@@ -326,7 +338,7 @@ func (s *Service) goalEntries(ctx context.Context, user users.User, rg timerange
 		out = append(out, Entry{
 			Kind:  KindGoal,
 			At:    g.CreatedAt,
-			Title: "Set a goal: " + g.Title,
+			Title: i18n.Tf(ctx, "dash.feed.goal", g.Title),
 			Href:  "/app/goals/" + g.ID.String(),
 			Icon:  "target",
 		})
@@ -408,7 +420,7 @@ func (s *Service) caffeineEntries(ctx context.Context, user users.User, rg timer
 	out := make([]Entry, 0, len(list))
 	for _, e := range list {
 		out = append(out, Entry{
-			Kind: KindCaffeine, At: e.LoggedAt, Title: caffeinecalc.DisplayName(e.Label), Detail: fmt.Sprintf("%d mg caffeine", e.MG),
+			Kind: KindCaffeine, At: e.LoggedAt, Title: caffeinecalc.DisplayName(e.Label), Detail: i18n.Tf(ctx, "dash.feed.caffeine", e.MG),
 			Href: "/app", Icon: "coffee",
 		})
 	}
@@ -443,11 +455,11 @@ func (s *Service) fastingEntries(ctx context.Context, user users.User, rg timera
 	var out []Entry
 	for _, f := range list {
 		if rg.Contains(f.StartedAt) {
-			out = append(out, Entry{Kind: KindFasting, At: f.StartedAt, Title: "Started fasting", Href: "/app", Icon: "timer"})
+			out = append(out, Entry{Kind: KindFasting, At: f.StartedAt, Title: i18n.T(ctx, "dash.feed.fast.start"), Href: "/app", Icon: "timer"})
 		}
 		if f.EndedAt != nil && rg.Contains(*f.EndedAt) {
 			out = append(out, Entry{
-				Kind: KindFasting, At: *f.EndedAt, Title: "Broke the fast",
+				Kind: KindFasting, At: *f.EndedAt, Title: i18n.T(ctx, "dash.feed.fast.end"),
 				Detail: formatMinutes(int(f.EndedAt.Sub(f.StartedAt).Minutes())), Href: "/app", Icon: "timer-off",
 			})
 		}
