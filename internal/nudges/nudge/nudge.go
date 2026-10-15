@@ -39,6 +39,10 @@ const (
 	// KindMedicationReminder is a scheduled dose whose time has come. It is
 	// the alarm the person set, so quiet hours do not hold it back.
 	KindMedicationReminder = "medication_reminder"
+
+	// KindProgressCheckDue is the progress check the person scheduled
+	// (weekly, every two weeks, monthly) falling due.
+	KindProgressCheckDue = "progress_check_due"
 )
 
 // Nudge is one scheduled accountability note for a person.

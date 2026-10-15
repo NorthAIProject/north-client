@@ -95,6 +95,18 @@ func (r *Repository) GetMedia(ctx context.Context, id, userID uuid.UUID) (Media,
 	return mediaFromDB(row), nil
 }
 
+// DeleteMedia removes a record this person owns and returns its storage key.
+func (r *Repository) DeleteMedia(ctx context.Context, id, userID uuid.UUID) (string, error) {
+	key, err := r.q.DeleteMedia(ctx, mediadb.DeleteMediaParams{ID: id, UserID: userID})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", apperr.ErrNotFound
+		}
+		return "", apperr.Wrap(err, "delete media")
+	}
+	return key, nil
+}
+
 // LatestOfKinds is the person's newest media of one of kinds, and with name
 // set, the newest whose original name matches it case-insensitively.
 func (r *Repository) LatestOfKinds(ctx context.Context, userID uuid.UUID, kinds []string, name string) (Media, error) {
