@@ -6,8 +6,8 @@ import (
 	"net/http"
 
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
-	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 )
 
