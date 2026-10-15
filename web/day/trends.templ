@@ -20,7 +20,10 @@ templ Trends(data TrendsData) {
 			for _, c := range data.Cards {
 				<div class="border-hairline bg-surface rounded-2xl border p-4" data-testid={ "trend-" + c.Key }>
 					<div class="flex items-center justify-between gap-2">
-						<span class="text-xs font-semibold tracking-wide uppercase" style={ "color:" + c.Color }>{ i18n.T(ctx, "day.trend." + c.Key) }</span>
+						<span class="flex items-center gap-1.5 text-xs font-semibold tracking-wide uppercase">
+							@swatch(c.Color)
+							{ i18n.T(ctx, "day.trend." + c.Key) }
+						</span>
 						<span class="text-muted-foreground text-[10px] tracking-wide uppercase">{ trendMeta(ctx, c) }</span>
 					</div>
 					<p class="mt-2 text-2xl font-semibold tabular-nums">
@@ -34,7 +37,10 @@ templ Trends(data TrendsData) {
 		</div>
 		if len(data.Fasts) > 0 {
 			<div class="border-hairline bg-surface rounded-2xl border p-4" data-testid="trend-fasts">
-				<p class="text-day-fat text-xs font-semibold tracking-wide uppercase">{ i18n.T(ctx, "day.trend.fasts") }</p>
+				<p class="flex items-center gap-1.5 text-xs font-semibold tracking-wide uppercase">
+					@swatch("var(--color-day-fat)")
+					{ i18n.T(ctx, "day.trend.fasts") }
+				</p>
 				<ul class="mt-3 space-y-2">
 					for _, f := range data.Fasts {
 						<li class="grid grid-cols-[6rem_1fr_4rem] items-center gap-3 text-sm tabular-nums">
