@@ -98,6 +98,8 @@ func (h *Handler) mealOptions(ctx context.Context, userID uuid.UUID, today time.
 // into "Plan – Meal · Option" entries. A plan with a day for today offers
 // only that day: an every-day plan would otherwise list each meal seven
 // times over. A plan without one offers all its days, "Plan – Mon – Meal".
+// An optional meal says so, "Plan – Ceia (optional)": logging it is a choice
+// the plan leaves to the person.
 func mealPickerOptions(plans []meal.MealPlan, today time.Weekday) []nutritionpages.MealOption {
 	var opts []nutritionpages.MealOption
 	for _, p := range plans {
@@ -109,7 +111,11 @@ func mealPickerOptions(plans []meal.MealPlan, today time.Weekday) []nutritionpag
 			}
 			for _, slot := range d.Meals {
 				for _, m := range slot.Options() {
-					opts = append(opts, nutritionpages.MealOption{ID: m.ID.String(), Label: prefix + m.DisplayName()})
+					label := prefix + m.DisplayName()
+					if slot.Optional {
+						label += " (optional)"
+					}
+					opts = append(opts, nutritionpages.MealOption{ID: m.ID.String(), Label: label})
 				}
 			}
 		}
