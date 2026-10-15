@@ -128,7 +128,7 @@ func (s Series) peak(tag string) []finding {
 	}
 
 	return []finding{{
-		text: fmt.Sprintf(i18n.Translate(tag, "insights.highlight.peak"),
+		text: i18n.TranslateF(tag, "insights.highlight.peak",
 			lower(s.Label), s.Labels[at], s.amount(best)),
 		rank: best / mean,
 	}}
@@ -152,7 +152,7 @@ func (s Series) run(tag string) []finding {
 	}
 
 	return []finding{{
-		text: fmt.Sprintf(i18n.Translate(tag, "insights.highlight.run"),
+		text: i18n.TranslateF(tag, "insights.highlight.run",
 			lower(s.Label), longest, s.periods(tag, longest)),
 		rank: float64(longest),
 	}}
@@ -176,7 +176,7 @@ func (s Series) gap(tag string) []finding {
 	}
 
 	return []finding{{
-		text: fmt.Sprintf(i18n.Translate(tag, "insights.highlight.gap"),
+		text: i18n.TranslateF(tag, "insights.highlight.gap",
 			s.Label, lower(s.Label), longest, s.periods(tag, longest)),
 		rank: float64(longest) / 2, // a gap is worth saying, but less than a run
 	}}
@@ -200,7 +200,7 @@ func (c Comparison) change(tag string) []finding {
 		key = "insights.highlight.change.down"
 	}
 	return []finding{{
-		text: fmt.Sprintf(i18n.Translate(tag, key), c.Label, math.Abs(delta)*100),
+		text: i18n.TranslateF(tag, key, c.Label, math.Abs(delta)*100),
 		rank: math.Abs(delta) * 10,
 	}}
 }

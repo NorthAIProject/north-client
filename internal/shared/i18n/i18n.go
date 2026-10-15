@@ -121,8 +121,17 @@ func T(ctx context.Context, key string) string {
 // Tf is T with formatting, for the handful of strings carrying a count or a
 // name. Argument order can differ between languages, so every such string uses
 // explicit indexes ("%[1]s") rather than bare verbs.
+//
+// Float arguments come out with the locale's decimal separator; see
+// FormatDecimal.
 func Tf(ctx context.Context, key string, args ...any) string {
-	return fmt.Sprintf(Translate(LocaleFrom(ctx), key), args...)
+	return TranslateF(LocaleFrom(ctx), key, args...)
+}
+
+// TranslateF is Translate with formatting, for the worker and anything else
+// that holds a user's locale rather than a request.
+func TranslateF(tag, key string, args ...any) string {
+	return fmt.Sprintf(Translate(tag, key), localizeArgs(tag, args)...)
 }
 
 // Translate looks a key up in one locale, without a request. Exported for the
