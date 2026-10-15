@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	authpages "github.com/NorthAIProject/north-client/web/auth"
@@ -91,7 +92,7 @@ func (h *Handler) showSignup(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) submitSignup(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		render(w, r, http.StatusBadRequest, authpages.SignupPage(authpages.SignupForm{
-			Error:   "That form could not be read. Please try again.",
+			Error:   i18n.T(r.Context(), "auth.err.form"),
 			Options: h.formOpts(),
 		}))
 		return
@@ -120,7 +121,7 @@ func (h *Handler) submitSignup(w http.ResponseWriter, r *http.Request) {
 		}
 
 		middleware.FromContext(r.Context()).Error("signup failed", slog.Any("error", err))
-		form.Error = "Something went wrong creating your account. Please try again."
+		form.Error = i18n.T(r.Context(), "auth.err.signup")
 		render(w, r, http.StatusInternalServerError, authpages.SignupPage(form))
 		return
 	}
@@ -147,7 +148,7 @@ func (h *Handler) showLogin(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) submitLogin(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		render(w, r, http.StatusBadRequest, authpages.LoginPage(authpages.LoginForm{
-			Error:   "That form could not be read. Please try again.",
+			Error:   i18n.T(r.Context(), "auth.err.form"),
 			Options: h.formOpts(),
 		}))
 		return
@@ -165,13 +166,13 @@ func (h *Handler) submitLogin(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if apperr.Is(err, ErrInvalidCredentials) {
 			// 401 rather than 422: the credentials were readable and wrong.
-			form.Error = "Email or password is incorrect."
+			form.Error = i18n.T(r.Context(), "auth.err.credentials")
 			render(w, r, http.StatusUnauthorized, authpages.LoginPage(form))
 			return
 		}
 
 		middleware.FromContext(r.Context()).Error("login failed", slog.Any("error", err))
-		form.Error = "Something went wrong signing you in. Please try again."
+		form.Error = i18n.T(r.Context(), "auth.err.signin")
 		render(w, r, http.StatusInternalServerError, authpages.LoginPage(form))
 		return
 	}
@@ -226,7 +227,7 @@ func (h *Handler) googleStart(w http.ResponseWriter, r *http.Request) {
 	state, err := newOpaqueToken(googleStateBytes)
 	if err != nil {
 		middleware.FromContext(r.Context()).Error("google oauth state", slog.Any("error", err))
-		http.Error(w, "Could not start Google sign-in.", http.StatusInternalServerError)
+		http.Error(w, i18n.T(r.Context(), "auth.err.google.start"), http.StatusInternalServerError)
 		return
 	}
 
@@ -253,7 +254,7 @@ func (h *Handler) googleStart(w http.ResponseWriter, r *http.Request) {
 
 	url, err := h.svc.GoogleAuthCodeURL(state)
 	if err != nil {
-		http.Error(w, "Google sign-in is unavailable.", http.StatusServiceUnavailable)
+		http.Error(w, i18n.T(r.Context(), "auth.err.google.unavailable"), http.StatusServiceUnavailable)
 		return
 	}
 	http.Redirect(w, r, url, http.StatusFound)
@@ -269,7 +270,7 @@ func (h *Handler) googleCallback(w http.ResponseWriter, r *http.Request) {
 
 	if errParam := r.URL.Query().Get("error"); errParam != "" {
 		render(w, r, http.StatusBadRequest, authpages.LoginPage(authpages.LoginForm{
-			Error:   "Google sign-in was cancelled or denied.",
+			Error:   i18n.T(r.Context(), "auth.err.google.denied"),
 			Options: h.formOpts(),
 		}))
 		return
@@ -278,7 +279,7 @@ func (h *Handler) googleCallback(w http.ResponseWriter, r *http.Request) {
 	cookie, err := r.Cookie(googleStateCookie)
 	if err != nil || cookie.Value == "" {
 		render(w, r, http.StatusBadRequest, authpages.LoginPage(authpages.LoginForm{
-			Error:   "Google sign-in expired. Please try again.",
+			Error:   i18n.T(r.Context(), "auth.err.google.expired"),
 			Options: h.formOpts(),
 		}))
 		return
@@ -287,7 +288,7 @@ func (h *Handler) googleCallback(w http.ResponseWriter, r *http.Request) {
 	storedState, next := splitStateCookie(cookie.Value)
 	if subtle.ConstantTimeCompare([]byte(storedState), []byte(r.URL.Query().Get("state"))) != 1 {
 		render(w, r, http.StatusBadRequest, authpages.LoginPage(authpages.LoginForm{
-			Error:   "Google sign-in could not be verified. Please try again.",
+			Error:   i18n.T(r.Context(), "auth.err.google.state"),
 			Options: h.formOpts(),
 		}))
 		return
@@ -297,7 +298,7 @@ func (h *Handler) googleCallback(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		middleware.FromContext(r.Context()).Error("google oauth failed", slog.Any("error", err))
 		render(w, r, http.StatusBadGateway, authpages.LoginPage(authpages.LoginForm{
-			Error:   "Google sign-in failed. Please try again.",
+			Error:   i18n.T(r.Context(), "auth.err.google.failed"),
 			Options: h.formOpts(),
 		}))
 		return
@@ -341,7 +342,7 @@ func (h *Handler) passkeyRegisterBegin(w http.ResponseWriter, r *http.Request) {
 	}
 	var in PasskeyRegisterBeginInput
 	if err := decodeJSON(w, r, &in); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body."})
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": i18n.T(r.Context(), "auth.err.body")})
 		return
 	}
 	ceremony, err := h.svc.PasskeyRegisterBegin(r.Context(), in)
@@ -359,7 +360,7 @@ func (h *Handler) passkeyRegisterFinish(w http.ResponseWriter, r *http.Request) 
 	}
 	var in PasskeyRegisterFinishInput
 	if err := decodeJSON(w, r, &in); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body."})
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": i18n.T(r.Context(), "auth.err.body")})
 		return
 	}
 	user, token, err := h.svc.PasskeyRegisterFinish(r.Context(), in, h.mw.RequestMetadata(r))
@@ -403,7 +404,7 @@ func (h *Handler) passkeyLoginFinish(w http.ResponseWriter, r *http.Request) {
 	}
 	var in PasskeyLoginFinishInput
 	if err := decodeJSON(w, r, &in); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body."})
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": i18n.T(r.Context(), "auth.err.body")})
 		return
 	}
 	user, token, err := h.svc.PasskeyLoginFinish(r.Context(), in, h.mw.RequestMetadata(r))
@@ -431,17 +432,17 @@ func writePasskeyError(w http.ResponseWriter, r *http.Request, err error) {
 		return
 	}
 	if apperr.Is(err, ErrInvalidCredentials) {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "Passkey sign-in failed."})
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": i18n.T(r.Context(), "auth.err.passkey.failed")})
 		return
 	}
 	msg := err.Error()
 	// Client-facing ceremony errors (expired challenge, parse failures).
 	if msg == "invalid or expired passkey challenge" || msg == "invalid passkey ceremony" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "That passkey step expired. Please try again."})
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": i18n.T(r.Context(), "auth.err.passkey.expired")})
 		return
 	}
 	middleware.FromContext(r.Context()).Error("passkey failed", slog.Any("error", err))
-	writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Something went wrong with the passkey. Please try again."})
+	writeJSON(w, http.StatusInternalServerError, map[string]string{"error": i18n.T(r.Context(), "auth.err.passkey.generic")})
 }
 
 // maxCeremonyBytes bounds a passkey ceremony body.
@@ -478,7 +479,7 @@ func (h *Handler) submitForgotPassword(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := r.ParseForm(); err != nil {
 		render(w, r, http.StatusBadRequest, authpages.ForgotPasswordPage(authpages.ForgotPasswordForm{
-			Error: "That form could not be read. Please try again.",
+			Error: i18n.T(r.Context(), "auth.err.form"),
 		}))
 		return
 	}
@@ -493,7 +494,7 @@ func (h *Handler) submitForgotPassword(w http.ResponseWriter, r *http.Request) {
 		}
 
 		middleware.FromContext(r.Context()).Error("password reset request failed", slog.Any("error", err))
-		form.Error = "Something went wrong. Please try again."
+		form.Error = i18n.T(r.Context(), "auth.err.generic")
 		render(w, r, http.StatusInternalServerError, authpages.ForgotPasswordPage(form))
 		return
 	}
@@ -516,7 +517,7 @@ func (h *Handler) showResetPassword(w http.ResponseWriter, r *http.Request) {
 	token := r.URL.Query().Get("token")
 	if token == "" {
 		render(w, r, http.StatusBadRequest, authpages.ResetPasswordPage(authpages.ResetPasswordForm{
-			Error: "This reset link is missing or incomplete. Request a new one from the sign-in page.",
+			Error: i18n.T(r.Context(), "auth.err.reset.missing"),
 		}))
 		return
 	}
@@ -531,7 +532,7 @@ func (h *Handler) submitResetPassword(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := r.ParseForm(); err != nil {
 		render(w, r, http.StatusBadRequest, authpages.ResetPasswordPage(authpages.ResetPasswordForm{
-			Error: "That form could not be read. Please try again.",
+			Error: i18n.T(r.Context(), "auth.err.form"),
 		}))
 		return
 	}
@@ -544,7 +545,7 @@ func (h *Handler) submitResetPassword(w http.ResponseWriter, r *http.Request) {
 	}, h.mw.RequestMetadata(r))
 	if err != nil {
 		if apperr.Is(err, ErrInvalidResetToken) {
-			form.Error = "This reset link is invalid or has expired. Request a new one."
+			form.Error = i18n.T(r.Context(), "auth.err.reset.invalid")
 			render(w, r, http.StatusUnauthorized, authpages.ResetPasswordPage(form))
 			return
 		}
@@ -557,7 +558,7 @@ func (h *Handler) submitResetPassword(w http.ResponseWriter, r *http.Request) {
 		}
 
 		middleware.FromContext(r.Context()).Error("password reset failed", slog.Any("error", err))
-		form.Error = "Something went wrong resetting your password. Please try again."
+		form.Error = i18n.T(r.Context(), "auth.err.reset.failed")
 		render(w, r, http.StatusInternalServerError, authpages.ResetPasswordPage(form))
 		return
 	}
