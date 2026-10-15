@@ -9,6 +9,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/calculator"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 )
 
 // MacroGoalLookup is the progress/recommendation services' view of the
@@ -57,6 +58,16 @@ func (p Progress) Summary() string {
 		p.Date.Format("2 Jan"), p.Logged.Calories, p.Goal.Calories, delta, direction,
 		p.Logged.ProteinG, p.Logged.FatG, p.Logged.CarbG,
 	)
+}
+
+// SummaryIn is Summary for a person, in ctx's language.
+func (p Progress) SummaryIn(ctx context.Context) string {
+	key, delta := "nutrition.progress.under", -p.DeltaCalories
+	if p.OverCalories() {
+		key, delta = "nutrition.progress.over", p.DeltaCalories
+	}
+	return i18n.Tf(ctx, key, i18n.Date(ctx, p.Date, "2 Jan"), p.Logged.Calories, p.Goal.Calories, delta,
+		p.Logged.ProteinG, p.Logged.FatG, p.Logged.CarbG)
 }
 
 // ForDay computes progress for a single date. apperr.ErrNotFound if the user

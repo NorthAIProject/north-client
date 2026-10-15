@@ -32,7 +32,9 @@ type Recap struct {
 	Focus       string
 	// StartedAt is already in the reader's zone; zero when unknown.
 	StartedAt time.Time
-	Sentence  string
+	// Sentence is the recap's English line; the card shows SentenceIn.
+	Sentence string
+	source   lift.Recap
 
 	Duration string
 	Sets     string
@@ -55,6 +57,14 @@ type ExerciseRow struct {
 	HasChange bool
 }
 
+// SentenceIn is the recap's line in the reader's language.
+func (r Recap) SentenceIn(ctx context.Context) string {
+	if r.source.Sentence == "" {
+		return r.Sentence
+	}
+	return r.source.SentenceIn(i18n.LocaleFrom(ctx))
+}
+
 // NewRecap shapes a recap for the card. id names the chart, and must differ
 // between two cards on one page.
 func NewRecap(id string, r lift.Recap, loc *time.Location) Recap {
@@ -62,6 +72,7 @@ func NewRecap(id string, r lift.Recap, loc *time.Location) Recap {
 		PlanWeekday: r.PlanWeekday,
 		Focus:       r.Focus,
 		Sentence:    r.Sentence,
+		source:      r,
 		Duration:    minutes(r.Duration),
 		Sets:        setsLabel(r.SetsDone, r.SetsPrescribed),
 		Volume:      kg(r.VolumeKg),

@@ -10,6 +10,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/weekly/week"
 	"github.com/NorthAIProject/north-client/internal/workouts/plan"
 )
@@ -70,7 +71,7 @@ type FocusRequest struct {
 func (a *API) review(w http.ResponseWriter, r *http.Request) {
 	rv, err := a.svc.Review(r.Context(), auth.MustUser(r.Context()))
 	if err != nil {
-		httpx.Error(w, err, "The weekly review could not be loaded.")
+		httpx.Error(w, err, i18n.T(r.Context(), "weekly.api.review"))
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, projectReview(rv))
@@ -79,14 +80,14 @@ func (a *API) review(w http.ResponseWriter, r *http.Request) {
 func (a *API) setFocus(w http.ResponseWriter, r *http.Request) {
 	var req FocusRequest
 	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 16 << 10}); err != nil {
-		httpx.Error(w, err, "The request body could not be read.")
+		httpx.Error(w, err, i18n.T(r.Context(), "weekly.api.body"))
 		return
 	}
 	f, err := a.svc.SetFocus(r.Context(), auth.MustUser(r.Context()), Input{
 		Priorities: req.Priorities, GoalOrder: req.GoalOrder, Volume: plan.Volume(req.Volume),
 	})
 	if err != nil {
-		httpx.Error(w, err, "The week's focus could not be saved.")
+		httpx.Error(w, localize(r.Context(), err), i18n.T(r.Context(), "weekly.api.save"))
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, projectFocus(f))
