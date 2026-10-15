@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/ui/card"
@@ -100,7 +101,7 @@ type MuscleRow struct {
 }
 
 templ Training(user users.User, view TrainingView) {
-	@page("Training", "training", "/app/insights/training/body", user, view.Range) {
+	@page(sectionTitle(ctx, "training"), "training", "/app/insights/training/body", user, view.Range) {
 		@TrainingPanels(view)
 	}
 }
@@ -111,32 +112,32 @@ templ TrainingPanels(view TrainingView) {
 			@planSection(view)
 		}
 		<div class="grid gap-3 sm:grid-cols-3">
-			@statTile("Burned", formatKcal(view.Calories), "against the window before", view.Delta)
-			@statTile("Sessions", formatCount(view.SessionCount), "completed", DeltaView{})
-			@statTile("Time moving", timeLabel(view), "", DeltaView{})
+			@statTile(i18n.T(ctx, "insights.training.burned"), formatKcal(view.Calories), i18n.T(ctx, "insights.training.burned.note"), view.Delta)
+			@statTile(i18n.T(ctx, "insights.training.sessions"), formatCount(view.SessionCount), i18n.T(ctx, "insights.training.sessions.note"), DeltaView{})
+			@statTile(i18n.T(ctx, "insights.training.time"), timeLabel(view), "", DeltaView{})
 		</div>
 		<div class="grid gap-4 lg:grid-cols-3">
 			@card.Card(card.Props{Class: "border-hairline bg-surface lg:col-span-2"}) {
 				@card.Header() {
 					@card.Title() {
-						Energy burned
+						{ i18n.T(ctx, "insights.training.energy") }
 					}
 					@card.Description() {
-						Kilocalories per day from completed sessions.
+						{ i18n.T(ctx, "insights.training.energy.desc") }
 					}
 				}
 				@card.Content() {
 					if view.HasSessions {
 						@chart.Chart(view.BurnChart)
 					} else {
-						@emptyState("No sessions in this window.", "Start one", "/app/fitness")
+						@emptyState(i18n.T(ctx, "insights.training.empty"), i18n.T(ctx, "insights.training.cta"), "/app/fitness")
 					}
 				}
 			}
 			@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 				@card.Header() {
 					@card.Title() {
-						By activity
+						{ i18n.T(ctx, "insights.training.kinds") }
 					}
 				}
 				@card.Content() {
@@ -144,7 +145,7 @@ templ TrainingPanels(view TrainingView) {
 						@templ.JSONScript("insights-training-donut-option", view.KindDonut)
 						@ui.EChartsMount("insights-training-donut", "insights-training-donut-option", "min-h-48 w-full")
 					} else {
-						@emptyState("Nothing to split yet.", "", "")
+						@emptyState(i18n.T(ctx, "insights.training.kinds.empty"), "", "")
 					}
 				}
 			}
@@ -153,12 +154,12 @@ templ TrainingPanels(view TrainingView) {
 		@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 			@card.Header() {
 				@card.Title() {
-					Sessions
+					{ i18n.T(ctx, "insights.training.sessions") }
 				}
 			}
 			@card.Content() {
 				if len(view.Sessions) == 0 {
-					@emptyState("No sessions in this window.", "Start one", "/app/fitness")
+					@emptyState(i18n.T(ctx, "insights.training.empty"), i18n.T(ctx, "insights.training.cta"), "/app/fitness")
 				} else {
 					<ul class="divide-border -my-2 divide-y">
 						for _, s := range view.Sessions {
@@ -169,7 +170,7 @@ templ TrainingPanels(view TrainingView) {
 									if s.Calories > 0 {
 										<span>· { formatKcal(s.Calories) }</span>
 									}
-									<span>· { relativeTime(s.At) }</span>
+									<span>· { relativeTime(ctx, s.At) }</span>
 								</span>
 							</li>
 						}
@@ -188,7 +189,7 @@ templ planSection(view TrainingView) {
 			@card.Card(card.Props{Class: "border-hairline bg-surface lg:col-span-2"}) {
 				@card.Header() {
 					@card.Title() {
-						Plan this week
+						{ i18n.T(ctx, "insights.training.plan") }
 					}
 				}
 				@card.Content() {
@@ -197,7 +198,7 @@ templ planSection(view TrainingView) {
 						if view.Plan.Planned > 0 {
 							<div class="border-hairline border-t pt-3">
 								<div class="flex items-baseline justify-between gap-2">
-									<p class="text-muted-foreground font-mono text-[10px] uppercase tracking-[0.14em]">In this window</p>
+									<p class="text-muted-foreground font-mono text-[10px] uppercase tracking-[0.14em]">{ i18n.T(ctx, "insights.training.plan.window") }</p>
 									<p class="text-xl font-medium tabular-nums">{ view.Plan.Rate() }</p>
 								</div>
 								<p class="text-muted-foreground text-xs">{ view.Plan.Sentence }</p>
@@ -224,27 +225,27 @@ func timeLabel(view TrainingView) string {
 
 templ lifting(view LiftingView) {
 	<section class="space-y-4" data-testid="insights-lifting">
-		<h2 class="font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Lifting</h2>
+		<h2 class="font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">{ i18n.T(ctx, "insights.lifting.title") }</h2>
 		if !view.HasSets {
 			@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 				@card.Content() {
-					@emptyState("No sets logged in this window. Log the weight of each set during a workout in the app.", "Open training", "/app/training")
+					@emptyState(i18n.T(ctx, "insights.lifting.empty"), i18n.T(ctx, "insights.lifting.cta"), "/app/training")
 				}
 			}
 		} else {
 			<div class="grid gap-3 sm:grid-cols-3">
-				@statTile("Volume", view.Volume, "weight × reps, against the window before", view.Delta)
-				@statTile("Sets", formatCount(view.Sets), "logged with a weight", DeltaView{})
-				@statTile("Workouts", formatCount(view.Workouts), "with sets logged", DeltaView{})
+				@statTile(i18n.T(ctx, "insights.lifting.volume"), view.Volume, i18n.T(ctx, "insights.lifting.volume.note"), view.Delta)
+				@statTile(i18n.T(ctx, "insights.lifting.sets"), formatCount(view.Sets), i18n.T(ctx, "insights.lifting.sets.note"), DeltaView{})
+				@statTile(i18n.T(ctx, "insights.lifting.workouts"), formatCount(view.Workouts), i18n.T(ctx, "insights.lifting.workouts.note"), DeltaView{})
 			</div>
 			<div class="grid gap-4 lg:grid-cols-3">
 				@card.Card(card.Props{Class: "border-hairline bg-surface lg:col-span-2"}) {
 					@card.Header() {
 						@card.Title() {
-							Exercises
+							{ i18n.T(ctx, "insights.lifting.exercises") }
 						}
 						@card.Description() {
-							Best set and estimated one-rep max (Epley), with the change across this window.
+							{ i18n.T(ctx, "insights.lifting.exercises.desc") }
 						}
 					}
 					@card.Content() {
@@ -252,11 +253,11 @@ templ lifting(view LiftingView) {
 							<table class="w-full text-sm">
 								<thead class="text-muted-foreground font-mono text-[10px] uppercase tracking-[0.1em]">
 									<tr>
-										<th class="px-2 py-1 text-left font-normal">Exercise</th>
-										<th class="px-2 py-1 text-right font-normal">Sets</th>
-										<th class="px-2 py-1 text-right font-normal">Best</th>
-										<th class="px-2 py-1 text-right font-normal">Est. 1RM</th>
-										<th class="hidden px-2 py-1 text-right font-normal sm:table-cell">Volume</th>
+										<th class="px-2 py-1 text-left font-normal">{ i18n.T(ctx, "insights.lifting.col.exercise") }</th>
+										<th class="px-2 py-1 text-right font-normal">{ i18n.T(ctx, "insights.lifting.col.sets") }</th>
+										<th class="px-2 py-1 text-right font-normal">{ i18n.T(ctx, "insights.lifting.col.best") }</th>
+										<th class="px-2 py-1 text-right font-normal">{ i18n.T(ctx, "insights.lifting.col.e1rm") }</th>
+										<th class="hidden px-2 py-1 text-right font-normal sm:table-cell">{ i18n.T(ctx, "insights.lifting.col.volume") }</th>
 									</tr>
 								</thead>
 								<tbody class="divide-border divide-y">
@@ -284,15 +285,15 @@ templ lifting(view LiftingView) {
 				@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 					@card.Header() {
 						@card.Title() {
-							Records
+							{ i18n.T(ctx, "insights.lifting.records") }
 						}
 						@card.Description() {
-							Sets that beat every earlier estimated max.
+							{ i18n.T(ctx, "insights.lifting.records.desc") }
 						}
 					}
 					@card.Content() {
 						if len(view.Records) == 0 {
-							@emptyState("No new records in this window.", "", "")
+							@emptyState(i18n.T(ctx, "insights.lifting.records.empty"), "", "")
 						} else {
 							<ul class="divide-border -my-2 divide-y" data-testid="lifting-records">
 								for _, r := range view.Records {
@@ -301,7 +302,7 @@ templ lifting(view LiftingView) {
 											<span class="truncate text-sm font-medium">{ r.Exercise }</span>
 											<span class="text-signal shrink-0 text-xs tabular-nums">+{ r.Gain }</span>
 										</div>
-										<p class="text-muted-foreground text-xs tabular-nums">{ r.Lift } · est. { r.E1RM } · { r.On }</p>
+										<p class="text-muted-foreground text-xs tabular-nums">{ r.Lift } · { i18n.Tf(ctx, "insights.lifting.records.est", r.E1RM) } · { r.On }</p>
 									</li>
 								}
 							</ul>
@@ -314,7 +315,7 @@ templ lifting(view LiftingView) {
 					@card.Card(card.Props{Class: "border-hairline bg-surface lg:col-span-2"}) {
 						@card.Header() {
 							@card.Title() {
-								Weekly volume
+								{ i18n.T(ctx, "insights.lifting.weekly") }
 							}
 						}
 						@card.Content() {
@@ -326,10 +327,10 @@ templ lifting(view LiftingView) {
 					@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 						@card.Header() {
 							@card.Title() {
-								Sets per muscle
+								{ i18n.T(ctx, "insights.lifting.muscles") }
 							}
 							@card.Description() {
-								Counted where the muscle is a primary mover.
+								{ i18n.T(ctx, "insights.lifting.muscles.desc") }
 							}
 						}
 						@card.Content() {

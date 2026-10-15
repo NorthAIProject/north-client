@@ -74,7 +74,7 @@ func (s *Service) AreaTrend(ctx context.Context, user users.User, weeks int, now
 	// summaryScores returns one score per entry in domains, in the same
 	// order; buildSummaryView relies on that too.
 	for d, dom := range domains {
-		a := Area{Key: dom.Key, Label: dom.Label, Trend: make([]AreaPoint, 0, weeks)}
+		a := Area{Key: dom.Key, Label: dom.Label(ctx), Trend: make([]AreaPoint, 0, weeks)}
 		for w := range mondays {
 			sc := scores[w][d]
 			a.Trend = append(a.Trend, AreaPoint{Points: sc.Points, HasData: sc.HasData})

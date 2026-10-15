@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/ui/chart"
@@ -88,7 +89,7 @@ templ Metric(user users.User, view MetricView) {
 
 templ MetricBody(view MetricView) {
 	if !view.HasData {
-		@emptyState("Nothing logged for this in the window you picked.", "Back to the summary", "/app/insights")
+		@emptyState(i18n.T(ctx, "insights.metric.empty"), i18n.T(ctx, "insights.metric.cta"), "/app/insights")
 	} else {
 		<div class="space-y-6">
 			<div class="border-hairline bg-surface/60 space-y-4 rounded-lg border p-4">
@@ -124,7 +125,7 @@ templ MetricBody(view MetricView) {
 // one word, and nothing at all when there is no window to compare against.
 templ trendRow(t TrendView) {
 	<div class="border-hairline bg-surface/60 flex items-center justify-between rounded-lg border px-4 py-3">
-		<p class="text-muted-foreground font-mono text-[10px] uppercase tracking-[0.14em]">Trend</p>
+		<p class="text-muted-foreground font-mono text-[10px] uppercase tracking-[0.14em]">{ i18n.T(ctx, "insights.metric.trend") }</p>
 		if t.HasPrior {
 			<span
 				class={ "inline-flex items-center gap-1 text-sm font-medium",
@@ -139,7 +140,7 @@ templ trendRow(t TrendView) {
 				{ t.Word }
 			</span>
 		} else {
-			<span class="text-muted-foreground text-sm">Not enough history</span>
+			<span class="text-muted-foreground text-sm">{ i18n.T(ctx, "insights.metric.trend.none") }</span>
 		}
 	</div>
 }
@@ -148,14 +149,14 @@ templ trendRow(t TrendView) {
 // in the same shape as the trend row above it.
 templ usualRow(u UsualView) {
 	<div class="border-hairline bg-surface/60 space-y-1 rounded-lg border px-4 py-3">
-		<p class="text-muted-foreground font-mono text-[10px] uppercase tracking-[0.14em]">Against your usual</p>
+		<p class="text-muted-foreground font-mono text-[10px] uppercase tracking-[0.14em]">{ i18n.T(ctx, "insights.metric.usual") }</p>
 		<p class={ "text-sm", templ.KV("text-signal", u.State != "usual") }>{ u.Text }</p>
 	</div>
 }
 
 templ comparison(c ComparisonView) {
 	<section class="space-y-3">
-		@ui.MonoLabel("Against the window before")
+		@ui.MonoLabel(i18n.T(ctx, "insights.metric.compare"))
 		<div class="border-hairline bg-surface/60 space-y-3 rounded-lg border p-4">
 			@comparisonBar(c.CurrentLabel, c.CurrentValue, c.CurrentPct, true)
 			@comparisonBar(c.PriorLabel, c.PriorValue, c.PriorPct, false)

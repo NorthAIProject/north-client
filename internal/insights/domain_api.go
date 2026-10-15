@@ -225,7 +225,7 @@ func (a *API) timeline(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, err, domainError)
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectTimeline(buildTimelineView(data)))
+	httpx.WriteJSON(w, http.StatusOK, projectTimeline(buildTimelineView(r.Context(), data)))
 }
 
 func (a *API) body(w http.ResponseWriter, r *http.Request) {
@@ -235,7 +235,7 @@ func (a *API) body(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, err, domainError)
 		return
 	}
-	view, err := buildBodyView(data)
+	view, err := buildBodyView(r.Context(), data)
 	if err != nil {
 		httpx.Error(w, err, domainError)
 		return
@@ -250,13 +250,13 @@ func (a *API) mind(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, err, domainError)
 		return
 	}
-	view, err := buildMindView(data)
+	view, err := buildMindView(r.Context(), data)
 	if err != nil {
 		httpx.Error(w, err, domainError)
 		return
 	}
 	mood, energy := moodEnergyBuckets(data)
-	httpx.WriteJSON(w, http.StatusOK, projectMind(view, bucketLabels(data.Range), mood, energy))
+	httpx.WriteJSON(w, http.StatusOK, projectMind(view, bucketLabels(r.Context(), data.Range), mood, energy))
 }
 
 func (a *API) progress(w http.ResponseWriter, r *http.Request) {
@@ -266,12 +266,12 @@ func (a *API) progress(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, err, domainError)
 		return
 	}
-	view, err := buildProgressView(data)
+	view, err := buildProgressView(r.Context(), data)
 	if err != nil {
 		httpx.Error(w, err, domainError)
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectProgress(view, goalStatusSegments(data.Active)))
+	httpx.WriteJSON(w, http.StatusOK, projectProgress(view, goalStatusSegments(r.Context(), data.Active)))
 }
 
 func (a *API) training(w http.ResponseWriter, r *http.Request) {
@@ -281,7 +281,7 @@ func (a *API) training(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, err, domainError)
 		return
 	}
-	view, err := buildTrainingView(data)
+	view, err := buildTrainingView(r.Context(), data)
 	if err != nil {
 		httpx.Error(w, err, domainError)
 		return
@@ -298,12 +298,12 @@ func (a *API) nutrition(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, err, domainError)
 		return
 	}
-	view, err := buildNutritionView(data)
+	view, err := buildNutritionView(r.Context(), data)
 	if err != nil {
 		httpx.Error(w, err, domainError)
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectNutrition(view, macroSegments(data.Days)))
+	httpx.WriteJSON(w, http.StatusOK, projectNutrition(view, macroSegments(r.Context(), data.Days)))
 }
 
 func (a *API) coach(w http.ResponseWriter, r *http.Request) {
@@ -313,7 +313,7 @@ func (a *API) coach(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, err, domainError)
 		return
 	}
-	view, err := buildCoachView(data)
+	view, err := buildCoachView(r.Context(), data)
 	if err != nil {
 		httpx.Error(w, err, domainError)
 		return
@@ -328,7 +328,7 @@ func (a *API) spend(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, err, domainError)
 		return
 	}
-	view, err := buildSpendView(data)
+	view, err := buildSpendView(r.Context(), data)
 	if err != nil {
 		httpx.Error(w, err, domainError)
 		return

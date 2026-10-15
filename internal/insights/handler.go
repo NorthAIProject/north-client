@@ -81,7 +81,7 @@ func (h *Handler) summary(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	view, err := buildSummaryView(data)
+	view, err := buildSummaryView(r.Context(), data)
 	if err != nil {
 		h.fail(w, r, err)
 		return
@@ -96,7 +96,7 @@ func (h *Handler) summaryPanels(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	view, err := buildSummaryView(data)
+	view, err := buildSummaryView(r.Context(), data)
 	if err != nil {
 		h.fail(w, r, err)
 		return
@@ -111,7 +111,7 @@ func (h *Handler) timeline(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	h.render(w, r, insightpages.Timeline(user, buildTimelineView(data)))
+	h.render(w, r, insightpages.Timeline(user, buildTimelineView(r.Context(), data)))
 }
 
 func (h *Handler) timelineBody(w http.ResponseWriter, r *http.Request) {
@@ -121,7 +121,7 @@ func (h *Handler) timelineBody(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	h.render(w, r, insightpages.TimelineBody(buildTimelineView(data)))
+	h.render(w, r, insightpages.TimelineBody(buildTimelineView(r.Context(), data)))
 }
 
 func (h *Handler) body(w http.ResponseWriter, r *http.Request) {
@@ -131,7 +131,7 @@ func (h *Handler) body(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	view, err := buildBodyView(data)
+	view, err := buildBodyView(r.Context(), data)
 	if err != nil {
 		h.fail(w, r, err)
 		return
@@ -146,7 +146,7 @@ func (h *Handler) bodyBody(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	view, err := buildBodyView(data)
+	view, err := buildBodyView(r.Context(), data)
 	if err != nil {
 		h.fail(w, r, err)
 		return
@@ -161,7 +161,7 @@ func (h *Handler) mind(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	view, err := buildMindView(data)
+	view, err := buildMindView(r.Context(), data)
 	if err != nil {
 		h.fail(w, r, err)
 		return
@@ -176,7 +176,7 @@ func (h *Handler) mindBody(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	view, err := buildMindView(data)
+	view, err := buildMindView(r.Context(), data)
 	if err != nil {
 		h.fail(w, r, err)
 		return
@@ -191,7 +191,7 @@ func (h *Handler) progress(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	view, err := buildProgressView(data)
+	view, err := buildProgressView(r.Context(), data)
 	if err != nil {
 		h.fail(w, r, err)
 		return
@@ -206,7 +206,7 @@ func (h *Handler) progressBody(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	view, err := buildProgressView(data)
+	view, err := buildProgressView(r.Context(), data)
 	if err != nil {
 		h.fail(w, r, err)
 		return
@@ -221,7 +221,7 @@ func (h *Handler) training(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	view, err := buildTrainingView(data)
+	view, err := buildTrainingView(r.Context(), data)
 	if err != nil {
 		h.fail(w, r, err)
 		return
@@ -236,7 +236,7 @@ func (h *Handler) trainingBody(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	view, err := buildTrainingView(data)
+	view, err := buildTrainingView(r.Context(), data)
 	if err != nil {
 		h.fail(w, r, err)
 		return
@@ -253,7 +253,7 @@ func (h *Handler) nutrition(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	view, err := buildNutritionView(data)
+	view, err := buildNutritionView(r.Context(), data)
 	if err != nil {
 		h.fail(w, r, err)
 		return
@@ -268,7 +268,7 @@ func (h *Handler) nutritionBody(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	view, err := buildNutritionView(data)
+	view, err := buildNutritionView(r.Context(), data)
 	if err != nil {
 		h.fail(w, r, err)
 		return
@@ -283,7 +283,7 @@ func (h *Handler) coach(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	view, err := buildCoachView(data)
+	view, err := buildCoachView(r.Context(), data)
 	if err != nil {
 		h.fail(w, r, err)
 		return
@@ -298,7 +298,7 @@ func (h *Handler) coachBody(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	view, err := buildCoachView(data)
+	view, err := buildCoachView(r.Context(), data)
 	if err != nil {
 		h.fail(w, r, err)
 		return
@@ -313,7 +313,7 @@ func (h *Handler) spend(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	view, err := buildSpendView(data)
+	view, err := buildSpendView(r.Context(), data)
 	if err != nil {
 		h.fail(w, r, err)
 		return
@@ -328,7 +328,7 @@ func (h *Handler) spendBody(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	view, err := buildSpendView(data)
+	view, err := buildSpendView(r.Context(), data)
 	if err != nil {
 		h.fail(w, r, err)
 		return
@@ -362,7 +362,7 @@ func (h *Handler) metricView(w http.ResponseWriter, r *http.Request) (insightpag
 		h.fail(w, r, err)
 		return insightpages.MetricView{}, false
 	}
-	view, err := buildMetricView(data)
+	view, err := buildMetricView(r.Context(), data)
 	if err != nil {
 		h.fail(w, r, err)
 		return insightpages.MetricView{}, false
@@ -412,7 +412,7 @@ func (h *Handler) statsPage(kind string, panels bool) http.HandlerFunc {
 				h.fail(w, r, err)
 				return
 			}
-			view := buildSleepView(rg, st)
+			view := buildSleepView(ctx, rg, st)
 			if panels {
 				h.render(w, r, insightpages.SleepPanels(view))
 				return
@@ -424,7 +424,7 @@ func (h *Handler) statsPage(kind string, panels bool) http.HandlerFunc {
 				h.fail(w, r, err)
 				return
 			}
-			view := buildCardioView(rg, st)
+			view := buildCardioView(ctx, rg, st)
 			if panels {
 				h.render(w, r, insightpages.CardioPanels(view))
 				return
@@ -436,7 +436,7 @@ func (h *Handler) statsPage(kind string, panels bool) http.HandlerFunc {
 				h.fail(w, r, err)
 				return
 			}
-			view := buildPatternsView(rg, days, found)
+			view := buildPatternsView(ctx, rg, days, found)
 			if panels {
 				h.render(w, r, insightpages.PatternsPanels(view))
 				return
