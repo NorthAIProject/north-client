@@ -75,8 +75,8 @@ templ IndexPage(user users.User, entries []journal.Entry, inst Instruments, f Jo
 
 templ kpiStrip(inst Instruments) {
 	@ui.KpiStrip() {
-		@kpiCell(i18n.T(ctx, "mind.kpi.mood"), avgMoodKPI(inst), "/app/check-ins", i18n.T(ctx, "mind.check_in"))
-		@kpiCell(i18n.T(ctx, "mind.kpi.energy"), avgEnergyKPI(inst), "/app/check-ins", i18n.T(ctx, "mind.check_in"))
+		@kpiCell(i18n.T(ctx, "mind.kpi.mood"), avgMoodKPI(ctx, inst), "/app/check-ins", i18n.T(ctx, "mind.check_in"))
+		@kpiCell(i18n.T(ctx, "mind.kpi.energy"), avgEnergyKPI(ctx, inst), "/app/check-ins", i18n.T(ctx, "mind.check_in"))
 		@kpiCell(i18n.T(ctx, "mind.kpi.checkins"), checkInCountKPI(ctx, inst), "/app/check-ins", i18n.T(ctx, "mind.view"))
 	}
 }
@@ -85,18 +85,18 @@ templ kpiCell(label, value, href, cta string) {
 	@ui.KpiCell(ui.KpiCellProps{Label: label, Value: value, Href: href, CTA: cta})
 }
 
-func avgMoodKPI(inst Instruments) string {
+func avgMoodKPI(ctx context.Context, inst Instruments) string {
 	if inst.CheckInCount <= 0 {
 		return "—"
 	}
-	return fmt.Sprintf("%.1f/5", inst.AvgMood)
+	return i18n.Decimal(ctx, inst.AvgMood, 1) + "/5"
 }
 
-func avgEnergyKPI(inst Instruments) string {
+func avgEnergyKPI(ctx context.Context, inst Instruments) string {
 	if inst.CheckInCount <= 0 {
 		return "—"
 	}
-	return fmt.Sprintf("%.1f/5", inst.AvgEnergy)
+	return i18n.Decimal(ctx, inst.AvgEnergy, 1) + "/5"
 }
 
 func checkInCountKPI(ctx context.Context, inst Instruments) string {

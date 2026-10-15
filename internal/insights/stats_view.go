@@ -112,7 +112,7 @@ func buildCardioView(ctx context.Context, rg timerange.Range, st stats.CardioSta
 		{Label: i18n.T(ctx, "insights.cardio.time"), Value: hm(st.Seconds / 60)},
 	}
 	if st.DistanceKm > 0 {
-		view.Tiles = append(view.Tiles, insightpages.Row{Label: i18n.T(ctx, "insights.cardio.distance"), Value: fmt.Sprintf("%.1f km", st.DistanceKm)})
+		view.Tiles = append(view.Tiles, insightpages.Row{Label: i18n.T(ctx, "insights.cardio.distance"), Value: i18n.Decimal(ctx, st.DistanceKm, 1) + " km"})
 	}
 	if st.Kcal > 0 {
 		view.Tiles = append(view.Tiles, insightpages.Row{Label: i18n.T(ctx, "insights.cardio.burned"), Value: fmt.Sprintf("%.0f kcal", st.Kcal)})
@@ -140,7 +140,7 @@ func buildCardioView(ctx context.Context, rg timerange.Range, st stats.CardioSta
 	for _, k := range st.ByKind {
 		value := hm(k.Seconds / 60)
 		if k.DistanceKm > 0 {
-			value += fmt.Sprintf(" · %.1f km", k.DistanceKm)
+			value += " · " + i18n.Decimal(ctx, k.DistanceKm, 1) + " km"
 		}
 		view.Kinds = append(view.Kinds, insightpages.Bar{Label: fmt.Sprintf("%s (%d)", stats.KindLabel(i18n.LocaleFrom(ctx), k.Name), k.Sessions), Value: value, Pct: k.Seconds * 100 / most})
 	}
@@ -150,8 +150,8 @@ func buildCardioView(ctx context.Context, rg timerange.Range, st stats.CardioSta
 		view.Runs = []insightpages.Row{{Label: i18n.T(ctx, "insights.cardio.runs"), Value: formatCountInt(r.Count)}}
 		if r.DistanceKm > 0 {
 			view.Runs = append(view.Runs,
-				insightpages.Row{Label: i18n.T(ctx, "insights.cardio.distance"), Value: fmt.Sprintf("%.1f km", r.DistanceKm)},
-				insightpages.Row{Label: i18n.T(ctx, "insights.cardio.longest"), Value: fmt.Sprintf("%.1f km", r.LongestKm)},
+				insightpages.Row{Label: i18n.T(ctx, "insights.cardio.distance"), Value: i18n.Decimal(ctx, r.DistanceKm, 1) + " km"},
+				insightpages.Row{Label: i18n.T(ctx, "insights.cardio.longest"), Value: i18n.Decimal(ctx, r.LongestKm, 1) + " km"},
 			)
 		}
 		if r.AvgPace > 0 {
@@ -169,7 +169,7 @@ func buildCardioView(ctx context.Context, rg timerange.Range, st stats.CardioSta
 	for _, s := range st.Recent {
 		value := hm(s.Seconds / 60)
 		if s.DistanceM > 0 {
-			value = fmt.Sprintf("%.1f km · %s", s.DistanceM/1000, value)
+			value = i18n.Decimal(ctx, s.DistanceM/1000, 1) + " km · " + value
 		}
 		note := i18n.Date(ctx, s.At, "Mon, Jan 2")
 		if p := s.PaceSeconds(); p > 0 && s.IsRun() {
@@ -190,7 +190,7 @@ func buildCardioView(ctx context.Context, rg timerange.Range, st stats.CardioSta
 			continue
 		}
 		last := h.values[len(h.values)-1].Value
-		row := insightpages.Row{Label: h.label, Value: strings.TrimSpace(fmt.Sprintf("%.*f %s", h.decimals, last, h.unit))}
+		row := insightpages.Row{Label: h.label, Value: strings.TrimSpace(i18n.Decimal(ctx, last, h.decimals) + " " + h.unit)}
 		if len(h.values) > 1 {
 			change := last - h.values[0].Value
 			row.Note = i18n.Tf(ctx, "insights.cardio.since",
@@ -230,7 +230,7 @@ func buildEatingView(ctx context.Context, st stat.EatingStats) insightpages.Eati
 		})
 	}
 	if st.ProteinPerKg > 0 {
-		view.Tiles = append(view.Tiles, insightpages.Row{Label: i18n.T(ctx, "insights.eating.proteinPerKg"), Value: fmt.Sprintf("%.1f g", st.ProteinPerKg), Note: i18n.T(ctx, "insights.eating.proteinPerKg.note")})
+		view.Tiles = append(view.Tiles, insightpages.Row{Label: i18n.T(ctx, "insights.eating.proteinPerKg"), Value: i18n.Decimal(ctx, st.ProteinPerKg, 1) + " g", Note: i18n.T(ctx, "insights.eating.proteinPerKg.note")})
 	}
 	for _, s := range st.BySlot {
 		view.Slots = append(view.Slots, insightpages.Bar{
@@ -263,7 +263,7 @@ func buildPatternsView(ctx context.Context, rg timerange.Range, days int, found 
 			most = 1
 		}
 		format := func(g stat.Group) insightpages.Bar {
-			value := fmt.Sprintf("%.1f%s", g.Mean, f.Unit)
+			value := i18n.Decimal(ctx, g.Mean, 1) + f.Unit
 			if f.Unit == "min" {
 				value = hm(int(math.Round(g.Mean)))
 			}

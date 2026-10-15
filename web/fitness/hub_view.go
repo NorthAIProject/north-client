@@ -92,20 +92,24 @@ func (w WeekView) avgMinutesPerDay() string {
 }
 
 // compact renders a count the way a glance reads it: 950, 6.5k, 30.9k, 1.2M.
-func compact(v float64) string {
+func compact(ctx context.Context, v float64) string {
 	switch a := math.Abs(v); {
 	case a >= 1_000_000:
-		return trimZero(fmt.Sprintf("%.1f", v/1_000_000)) + "M"
+		return trimZero(i18n.Decimal(ctx, v/1_000_000, 1)) + "M"
 	case a >= 1000:
-		return trimZero(fmt.Sprintf("%.1f", v/1000)) + "k"
+		return trimZero(i18n.Decimal(ctx, v/1000, 1)) + "k"
 	default:
 		return fmt.Sprintf("%.0f", v)
 	}
 }
 
-func trimZero(s string) string { return strings.TrimSuffix(s, ".0") }
+// trimZero drops a trailing zero decimal in either locale's mark: "10.0" and
+// "10,0" both read "10".
+func trimZero(s string) string {
+	return strings.TrimSuffix(strings.TrimSuffix(s, ".0"), ",0")
+}
 
-func oneDecimal(v float64) string { return fmt.Sprintf("%.1f", v) }
+func oneDecimal(ctx context.Context, v float64) string { return i18n.Decimal(ctx, v, 1) }
 
 // shortDuration renders a session length as 1h 51m or 48m.
 func shortDuration(d time.Duration) string {
@@ -126,10 +130,10 @@ func pace(r RecentRow) string {
 }
 
 // recentDetail is the line under a session's name: only the parts it has.
-func recentDetail(r RecentRow) []string {
+func recentDetail(ctx context.Context, r RecentRow) []string {
 	parts := []string{shortDuration(r.Duration)}
 	if r.DistanceKm >= 0.1 {
-		parts = append(parts, oneDecimal(r.DistanceKm)+" km")
+		parts = append(parts, oneDecimal(ctx, r.DistanceKm)+" km")
 	}
 	if p := pace(r); p != "" {
 		parts = append(parts, p)
@@ -254,8 +258,8 @@ func (t Trend) recentRows(limit int) []TrendRow {
 	return out
 }
 
-func signed(v float64, format string) string {
-	s := fmt.Sprintf(format, v)
+func signed(ctx context.Context, v float64, prec int) string {
+	s := i18n.Decimal(ctx, v, prec)
 	if v > 0 {
 		return "+" + s
 	}

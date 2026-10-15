@@ -67,7 +67,7 @@ func (r Recap) SentenceIn(ctx context.Context) string {
 
 // NewRecap shapes a recap for the card. id names the chart, and must differ
 // between two cards on one page.
-func NewRecap(id string, r lift.Recap, loc *time.Location) Recap {
+func NewRecap(ctx context.Context, id string, r lift.Recap, loc *time.Location) Recap {
 	out := Recap{
 		PlanWeekday: r.PlanWeekday,
 		Focus:       r.Focus,
@@ -75,7 +75,7 @@ func NewRecap(id string, r lift.Recap, loc *time.Location) Recap {
 		source:      r,
 		Duration:    minutes(r.Duration),
 		Sets:        setsLabel(r.SetsDone, r.SetsPrescribed),
-		Volume:      kg(r.VolumeKg),
+		Volume:      kg(ctx, r.VolumeKg),
 		Calories:    "—",
 	}
 	if !r.StartedAt.IsZero() {
@@ -89,9 +89,9 @@ func NewRecap(id string, r lift.Recap, loc *time.Location) Recap {
 	var now, before []float64
 	withVolume := false
 	for _, e := range r.Exercises {
-		row := ExerciseRow{Name: e.Name, Best: e.Best, HasChange: e.HasPrevious, Change: e.Change}
+		row := ExerciseRow{Name: e.Name, Best: e.BestIn(i18n.LocaleFrom(ctx)), HasChange: e.HasPrevious, Change: e.Change}
 		if e.E1RM > 0 {
-			row.E1RM = kg(e.E1RM)
+			row.E1RM = kg(ctx, e.E1RM)
 		}
 		out.Exercises = append(out.Exercises, row)
 
@@ -187,14 +187,14 @@ func minutes(d time.Duration) string {
 	return fmt.Sprintf("%dh %02dm", m/60, m%60)
 }
 
-func kg(v float64) string {
+func kg(ctx context.Context, v float64) string {
 	if v >= 1000 {
 		return thousands(int(math.Round(v))) + " kg"
 	}
 	if v == math.Trunc(v) {
 		return fmt.Sprintf("%.0f kg", v)
 	}
-	return fmt.Sprintf("%.1f kg", v)
+	return i18n.Decimal(ctx, v, 1) + " kg"
 }
 
 func thousands(n int) string {
@@ -210,13 +210,13 @@ func thousands(n int) string {
 }
 
 // ChangeLabel reads "+2.5 kg" or "−1 kg".
-func ChangeLabel(v float64) string {
+func ChangeLabel(ctx context.Context, v float64) string {
 	sign := "+"
 	if v < 0 {
 		sign = "−"
 		v = -v
 	}
-	return sign + kg(v)
+	return sign + kg(ctx, v)
 }
 
 // Week is a plan's Monday–Sunday week as a strip of days.

@@ -81,7 +81,7 @@ func TestPlanPageLeadsWithThisWeeksRecap(t *testing.T) {
 	current := []lift.Set{{ExerciseName: "Goblet squat", WeightKg: 24, Reps: 10, PerformedAt: time.Date(2026, 9, 28, 18, 0, 0, 0, time.UTC)}}
 	rc := lift.BuildRecap(40*time.Minute, 250, 3, current, earlier)
 	rc.PlanWeekday, rc.Focus = "Monday", "Push"
-	card := workoutsummary.NewRecap("plan-recap", rc, time.UTC)
+	card := workoutsummary.NewRecap(context.Background(), "plan-recap", rc, time.UTC)
 
 	html := renderView(t, PlanView{
 		ID: uuid.MustParse("11111111-1111-1111-1111-111111111111"), Plan: threeDays(),

@@ -77,9 +77,9 @@ func amount(tag, unit string, v float64) string {
 	case "min":
 		return mins(v)
 	case "/5":
-		return decimal(tag, math.Abs(v), 1)
+		return i18n.FormatDecimal(tag, math.Abs(v), 1)
 	default:
-		return decimal(tag, math.Abs(v), 0)
+		return i18n.FormatDecimal(tag, math.Abs(v), 0)
 	}
 }
 
@@ -91,18 +91,8 @@ func measureValue(tag, key string, v float64) string {
 	case "mood_daylight":
 		return mins(v)
 	default:
-		return decimal(tag, v, 0)
+		return i18n.FormatDecimal(tag, v, 0)
 	}
-}
-
-// decimal is %.*f with the reader's decimal mark: a comma everywhere this
-// build serves except English.
-func decimal(tag string, v float64, places int) string {
-	s := fmt.Sprintf("%.*f", places, v)
-	if tag != i18n.DefaultLocale {
-		s = strings.Replace(s, ".", ",", 1)
-	}
-	return s
 }
 
 // grouped is a whole number with the reader's thousands separator: 11,000 in

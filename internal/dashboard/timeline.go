@@ -198,7 +198,7 @@ func (s *Service) hydrationEntries(ctx context.Context, user users.User, rg time
 		out = append(out, Entry{
 			Kind:  KindHydration,
 			At:    e.LoggedAt,
-			Title: i18n.Tf(ctx, "dash.feed.drank", formatML(e.AmountML)),
+			Title: i18n.Tf(ctx, "dash.feed.drank", formatML(ctx, e.AmountML)),
 			Href:  "/app/care",
 			Icon:  "droplet",
 		})
@@ -481,9 +481,9 @@ func firstLine(s string) string {
 	return s
 }
 
-func formatML(ml int) string {
+func formatML(ctx context.Context, ml int) string {
 	if ml >= 1000 {
-		return fmt.Sprintf("%.1f L", float64(ml)/1000)
+		return i18n.Decimal(ctx, float64(ml)/1000, 1) + " L"
 	}
 	return fmt.Sprintf("%d ml", ml)
 }

@@ -51,10 +51,10 @@ templ Body(user users.User, view BodyView) {
 templ BodyPanels(view BodyView) {
 	<div class="space-y-6">
 		<div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-			@statTile(i18n.T(ctx, "insights.body.water"), formatLitres(view.TotalWaterML), i18n.T(ctx, "insights.body.water.note"), DeltaView{})
+			@statTile(i18n.T(ctx, "insights.body.water"), formatLitres(ctx, view.TotalWaterML), i18n.T(ctx, "insights.body.water.note"), DeltaView{})
 			@statTile(i18n.T(ctx, "insights.body.nights"), formatCount(view.Nights), "", DeltaView{})
 			@statTile(i18n.T(ctx, "insights.body.avgSleep"), formatHours(view.AvgSleep), i18n.T(ctx, "insights.body.avgSleep.note"), DeltaView{})
-			@statTile(i18n.T(ctx, "insights.body.quality"), formatScore(view.AvgQuality), qualityNote(ctx, view), DeltaView{})
+			@statTile(i18n.T(ctx, "insights.body.quality"), formatScore(ctx, view.AvgQuality), qualityNote(ctx, view), DeltaView{})
 		</div>
 		<div class="grid gap-4 lg:grid-cols-2">
 			@card.Card(card.Props{Class: "border-hairline bg-surface"}) {

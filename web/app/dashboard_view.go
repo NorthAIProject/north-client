@@ -220,9 +220,9 @@ func progressPct(g goal.Goal) int {
 	return pct
 }
 
-func formatLitres(ml int) string {
+func formatLitres(ctx context.Context, ml int) string {
 	if ml >= 1000 {
-		return fmt.Sprintf("%.1f L", float64(ml)/1000)
+		return i18n.Decimal(ctx, float64(ml)/1000, 1) + " L"
 	}
 	return fmt.Sprintf("%d ml", ml)
 }
@@ -311,7 +311,7 @@ func todayItems(ctx context.Context, data DashboardData) []TodayItem {
 			Key:    TodayWater,
 			Icon:   "droplet",
 			Label:  i18n.T(ctx, "dash.today.water"),
-			Detail: waterKPI(data),
+			Detail: waterKPI(ctx, data),
 			Href:   "/app/care",
 			CTA:    i18n.T(ctx, "dash.kpi.logwater"),
 			Done:   data.Hydration.TodayML >= data.Hydration.TargetML,
@@ -444,11 +444,11 @@ func goalActivityLabel(ctx context.Context, n int) string {
 	}
 }
 
-func waterKPI(data DashboardData) string {
+func waterKPI(ctx context.Context, data DashboardData) string {
 	if data.Hydration.TargetML <= 0 && data.Hydration.TodayML <= 0 {
 		return "—"
 	}
-	return fmt.Sprintf("%s / %s", formatLitres(data.Hydration.TodayML), formatLitres(data.Hydration.TargetML))
+	return fmt.Sprintf("%s / %s", formatLitres(ctx, data.Hydration.TodayML), formatLitres(ctx, data.Hydration.TargetML))
 }
 
 func sleepKPI(data DashboardData) string {
