@@ -123,7 +123,7 @@ func routes(
 	funnel := analytics.New(posthogClient)
 
 	userRepo := users.NewRepository(pool)
-	userSvc := users.NewService(userRepo)
+	userSvc := users.NewService(userRepo).WithAppearanceRecorder(funnel)
 
 	sessions := auth.NewSessionStore(pool, cfg.SessionLifetime)
 	authSvc := auth.NewService(userSvc, sessions, auth.ServiceOptions{
@@ -1100,6 +1100,9 @@ func routes(
 		// account's own setting. The other order would let a laptop's browser
 		// settings override what somebody chose in Khepri.
 		r.Use(middleware.Locale)
+		// Before LoadUser for the same reason: a visitor's cookie, which
+		// LoadUser replaces with the account's own appearance when it has one.
+		r.Use(middleware.Appearance)
 		// Before LoadUser for the same reason as Locale: the snippet this feeds
 		// is rendered for signed-out visitors too, and the landing page is the
 		// one page whose numbers it exists to collect. LoadUser then adds the
@@ -1143,6 +1146,12 @@ func routes(
 		// — and this route would not help them if they found it, because
 		// LoadUser overwrites the cookie with the account's own setting.
 		r.Post("/locale", setLocale)
+
+		// The appearance switcher on the public pages. Unlike /locale it also
+		// writes the account when somebody is signed in, because the switcher
+		// is shown to them too and a toggle that LoadUser then ignored would
+		// visibly do nothing.
+		r.Post("/appearance", setAppearance(userSvc))
 
 		authHandler.Routes(r)
 

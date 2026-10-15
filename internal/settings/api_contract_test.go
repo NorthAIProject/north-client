@@ -9,6 +9,8 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/meals/meal"
 	"github.com/NorthAIProject/north-client/internal/shared/apitest"
+	"github.com/NorthAIProject/north-client/internal/shared/theme"
+	"github.com/NorthAIProject/north-client/internal/users"
 )
 
 var contractAt = time.Date(2026, 9, 24, 7, 15, 0, 0, time.UTC)
@@ -19,10 +21,17 @@ func TestSettingsShapes(t *testing.T) {
 	yes := true
 	id := uuid.MustParse("12121212-1212-1212-1212-121212121212")
 
-	apitest.AssertGolden(t, "profile.golden.json", Profile{
-		Email: "ana@example.com", DisplayName: "Ana", Timezone: "Europe/Lisbon", Locale: "en",
-		CoachingStyle: "Be direct. Skip pep talks. Challenge me.", CoachingTone: "direct",
-	})
+	// Never chosen: the field is absent, not "dark", so the app applies its own
+	// default (follow the system) rather than the web's.
+	apitest.AssertGolden(t, "profile.golden.json", projectProfile(users.User{
+		Email: "ana@example.com", DisplayName: "Ana", Timezone: "Europe/Lisbon", Locale: users.LocaleEN,
+		CoachingStyle: "Be direct. Skip pep talks. Challenge me.", CoachingTone: users.ToneDirect,
+	}))
+	apitest.AssertGolden(t, "profile-appearance.golden.json", projectProfile(users.User{
+		Email: "ana@example.com", DisplayName: "Ana", Timezone: "Europe/Lisbon", Locale: users.LocaleEN,
+		CoachingStyle: "Be direct. Skip pep talks. Challenge me.", CoachingTone: users.ToneDirect,
+		Appearance: theme.Light,
+	}))
 	apitest.AssertGolden(t, "diets.golden.json", projectDiets(
 		[]meal.Diet{
 			{ID: id, Code: "vegetarian", Name: "Vegetarian", Description: "No meat or fish."},

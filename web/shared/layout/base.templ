@@ -2,6 +2,7 @@ package layout
 
 import (
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
+	"github.com/NorthAIProject/north-client/internal/shared/theme"
 	"github.com/NorthAIProject/north-client/web/shared/analytics"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/utils"
@@ -12,17 +13,26 @@ import (
 // It carries no navigation of its own: the signed-out pages and the application
 // shell want different chrome, so that choice belongs to the layout above this
 // one rather than to the document.
+//
+// The appearance is decided on the server (theme.AppearanceFrom) and drawn into
+// the first byte of the document, so no mode ever flashes the other one first.
+// Only "system" needs the browser: that answer lives in the OS, and the inline
+// script in <head> reads it before the stylesheet arrives.
 templ Base(title string) {
+	{{ appearance := theme.AppearanceFrom(ctx) }}
 	<!DOCTYPE html>
-	<html lang={ i18n.LocaleFrom(ctx) } class="h-full dark">
+	<html lang={ i18n.LocaleFrom(ctx) } class={ htmlClass(appearance) } data-appearance={ string(appearance) }>
 		<head>
 			<meta charset="UTF-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
-			<meta name="theme-color" content="#1C1C1F"/>
+			@appearanceHead(appearance)
 			<meta name="mobile-web-app-capable" content="yes"/>
 			<meta name="apple-mobile-web-app-capable" content="yes"/>
 			<meta name="apple-mobile-web-app-title" content={ ui.ProductName }/>
-			<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+			// Translucent puts white status-bar text over the page, which is
+			// right on dark and unreadable on light. "default" lets iOS draw the
+			// bar from theme-color, which follows the scheme in every mode.
+			<meta name="apple-mobile-web-app-status-bar-style" content={ statusBarStyle(appearance) }/>
 			<link rel="manifest" href="/manifest.webmanifest"/>
 			<link rel="apple-touch-icon" href="/assets/brand/pwa-180.png"/>
 			<link rel="preload" href="/assets/fonts/geist/geist-variable.woff2" as="font" type="font/woff2" crossorigin="anonymous"/>
@@ -138,6 +148,77 @@ templ analyticsSnippet() {
 		<script src="/assets/js/vendor/posthog.min.js"></script>
 		<script src="/assets/js/shared/analytics.js"></script>
 	}
+}
+
+// themeColorLight and themeColorDark tint the browser chrome and the installed
+// app's status bar. Light is --background from the :root tokens; dark is the
+// colour this meta carried before there was a choice.
+const (
+	themeColorLight = "#FCFDFF"
+	themeColorDark  = "#1C1C1F"
+)
+
+// appearanceHead declares the scheme to the browser and, before any stylesheet
+// can paint, settles the one mode the server cannot: system.
+//
+// The script is rendered for every mode, not only system, because the public
+// switcher can move a page into system without a reload, and it is this
+// listener that then follows the OS. It acts only while data-appearance says
+// system, so on a light or dark page it is inert.
+//
+// It announces each change as theme-changed on document — the event the
+// landing figure and the muscle viewer already listen for — bubbling, so a
+// listener on window hears it too.
+templ appearanceHead(a theme.Appearance) {
+	if a == theme.System {
+		<meta name="color-scheme" content="light dark"/>
+		<meta name="theme-color" media="(prefers-color-scheme: light)" content={ themeColorLight }/>
+		<meta name="theme-color" media="(prefers-color-scheme: dark)" content={ themeColorDark }/>
+	} else {
+		<meta name="color-scheme" content={ string(a) }/>
+		<meta name="theme-color" content={ themeColor(a) }/>
+	}
+	<script nonce={ templ.GetNonce(ctx) }>
+		(function () {
+			var root = document.documentElement;
+			var query = window.matchMedia("(prefers-color-scheme: dark)");
+			function follow() {
+				if (root.getAttribute("data-appearance") !== "system") return;
+				var dark = query.matches;
+				if (root.classList.contains("dark") === dark) return;
+				root.classList.toggle("dark", dark);
+				document.dispatchEvent(new CustomEvent("theme-changed", {
+					bubbles: true,
+					detail: { appearance: "system", dark: dark },
+				}));
+			}
+			follow();
+			query.addEventListener("change", follow);
+		})();
+	</script>
+}
+
+// htmlClass is the document's class: dark carries the .dark token set, light
+// carries none, and system is left for the head script to decide.
+func htmlClass(a theme.Appearance) string {
+	if a == theme.Dark {
+		return "h-full dark"
+	}
+	return "h-full"
+}
+
+func themeColor(a theme.Appearance) string {
+	if a == theme.Light {
+		return themeColorLight
+	}
+	return themeColorDark
+}
+
+func statusBarStyle(a theme.Appearance) string {
+	if a == theme.Dark {
+		return "black-translucent"
+	}
+	return "default"
 }
 
 // pageTitle suffixes the product name so a browser tab is identifiable among a
