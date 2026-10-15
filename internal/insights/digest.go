@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/rasterize"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -26,12 +27,13 @@ func (s *Service) Digest(ctx context.Context, user users.User, rg timerange.Rang
 	if err != nil {
 		return "", nil, err
 	}
-	return renderDigest(view, s.siteURL), renderDigestCard(view), nil
+	return renderDigest(string(user.Locale), view, s.siteURL), renderDigestCard(string(user.Locale), view), nil
 }
 
 // digestView loads the window and builds the view both the words and the
 // picture are read from.
 func (s *Service) digestView(ctx context.Context, user users.User, rg timerange.Range) (insightpages.SummaryView, error) {
+	ctx = digestContext(ctx, user)
 	data, err := s.Summary(ctx, user, rg)
 	if err != nil {
 		return insightpages.SummaryView{}, err
@@ -39,16 +41,32 @@ func (s *Service) digestView(ctx context.Context, user users.User, rg timerange.
 	return buildSummaryView(ctx, data)
 }
 
+// digestContext carries the recipient's language.
+//
+// The scheduled digest runs from the worker with no request behind it, so
+// nothing upstream has set a locale; /stats does arrive through a request, but
+// the reader is the account holder either way. Taking the locale from the user
+// rather than trusting the context makes both paths read the same.
+func digestContext(ctx context.Context, user users.User) context.Context {
+	return i18n.WithLocale(ctx, string(user.Locale))
+}
+
 // renderDigestCard draws the card, or returns nothing.
 //
 // A failure to draw is not a failure to send: the words carry the substance
 // and the picture supports them, so a digest without its card is still worth
 // delivering. The same position Send already takes on a refused illustration.
-func renderDigestCard(view insightpages.SummaryView) []byte {
+//
+// The card's labels come from the view, already in tag's language; its
+// subtitle is the one sentence digestCard writes itself, so it is reworded
+// here in the recipient's language — the same words as the message above it.
+func renderDigestCard(tag string, view insightpages.SummaryView) []byte {
 	if view.Empty || view.Judged == 0 {
 		return nil
 	}
-	raw, err := rasterize.RenderCard(digestCard(view))
+	card := digestCard(view)
+	card.Subtitle = onTrack(tag, view)
+	raw, err := rasterize.RenderCard(card)
 	if err != nil {
 		return nil
 	}
@@ -60,15 +78,22 @@ func renderDigestCard(view insightpages.SummaryView) []byte {
 // Plain text with light bold and nothing else. The Telegram client converts
 // Markdown to HTML and, when the platform rejects it, retries with the markup
 // stripped — so a table or a heading would survive neither path.
-func renderDigest(view insightpages.SummaryView, siteURL string) string {
+//
+// tag is the recipient's locale. The view's own words (range, domains,
+// verdicts, highlights) are already in it, because digestView built the view
+// under the same locale; the sentences written here are the only ones left.
+// "On track" is the page's own key, so the digest still says what the page says.
+func renderDigest(tag string, view insightpages.SummaryView, siteURL string) string {
 	if view.Empty || view.Judged == 0 {
-		return "Nothing logged " + strings.ToLower(view.Range.Label) + " yet."
+		// Both forms of the label go in: English reads it mid-sentence in lower
+		// case, the others lead with it as a heading.
+		return fmt.Sprintf(i18n.Translate(tag, "tg.digest.empty"), strings.ToLower(view.Range.Label), view.Range.Label)
 	}
 
 	var b strings.Builder
 
 	fmt.Fprintf(&b, "*%s*\n", view.Range.Label)
-	fmt.Fprintf(&b, "%d of %d on track.\n", view.OnTrack, view.Judged)
+	b.WriteString(onTrack(tag, view) + ".\n")
 
 	for _, s := range view.Scores {
 		// An unscored domain is left out rather than printed as "no data".
@@ -92,4 +117,9 @@ func renderDigest(view insightpages.SummaryView, siteURL string) string {
 	}
 
 	return b.String()
+}
+
+// onTrack is the page's "n of m on track", in tag's language.
+func onTrack(tag string, view insightpages.SummaryView) string {
+	return fmt.Sprintf(i18n.Translate(tag, "insights.summary.onTrack"), view.OnTrack, view.Judged)
 }
