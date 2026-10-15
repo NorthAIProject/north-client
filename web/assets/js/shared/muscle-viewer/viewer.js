@@ -2,15 +2,17 @@
  * The body figure (NOR-8). One module for every caller: My Day's body card, the
  * plan page's Muscles card, exercise pages and the landing demo.
  *
- * The figure is body-map.glb: the skin of a body cut into one region per muscle
- * key, built by scripts/bodymap from the anatomical atlas (attribution in
- * siteFooter(), web/landing/sections.templ). Each region is its own mesh and
- * material, named after its key, so colouring a muscle is setting one colour —
- * no geometry is reloaded — and a tap resolves to a key by the mesh's name.
+ * The figure is body-map.glb, built by scripts/bodymap from the anatomical
+ * atlas (attribution in siteFooter(), web/landing/sections.templ): the muscles
+ * themselves, one mesh per muscle key, inside the body's skin. The skin is
+ * drawn twice from one geometry — its back faces opaque and dark, so the inside
+ * of the body reads as the cavity the muscles sit in, and its front faces as a
+ * translucent shell that firms up at the silhouette. Colouring a muscle is
+ * setting one colour — no geometry is reloaded — and a tap resolves to a key by
+ * the mesh's name.
  *
  * Untrained muscle is a cool grey-blue; trained muscle ramps from a pale amber
- * to ember. Skin with no muscle under it (head, hands, feet, joints) is a plain
- * neutral, so the muscle regions read as structure even with nothing trained.
+ * to ember.
  *
  * Ways to drive the colour, all ending in setHeat():
  *   - setHeat({quads: 0.8, ...})  — region key → 0..1. The body map: server
@@ -28,13 +30,15 @@ import { MUSCLE_INFO } from "./muscles.js";
 import { readCSSColor } from "../css-color.js";
 
 const MODEL_PATH = "/assets/models/body-map.glb";
-const BASE_REGION = "base";
+const SHELL_REGION = "shell"; // the skin; every other mesh is a muscle
+const SHELL_OPACITY = 0.3;
 
 // Fallbacks for the colour tokens in web/assets/css/input.css, used only when a
 // page has not loaded the stylesheet.
 const FALLBACK = {
   idle: 0x7d8ca1,
-  base: 0x8b9097,
+  shell: 0xc9d3df,
+  core: 0x242b35,
   heatLow: 0xf0d6a0,
   ember: 0xe8973c,
 };
@@ -109,7 +113,8 @@ function hasWebGL() {
 function readColours() {
   return {
     idle: readCSSColor("--north-body-idle", FALLBACK.idle),
-    base: readCSSColor("--north-body-base", FALLBACK.base),
+    shell: readCSSColor("--north-body-shell", FALLBACK.shell),
+    core: readCSSColor("--north-body-core", FALLBACK.core),
     heatLow: readCSSColor("--north-heat-low", FALLBACK.heatLow),
     ember: readCSSColor("--north-ember", FALLBACK.ember),
   };
@@ -117,18 +122,25 @@ function readColours() {
 
 // A fresnel rim, injected into the standard material so roughness and the
 // environment keep working. It is what stops a dark body dissolving into a
-// dark card. The uniforms are shared, so a theme change is one assignment.
-function addRim(material, rim) {
+// dark card. The colour uniforms are shared, so a theme change is one
+// assignment. rimAlpha also firms a translucent material up at the silhouette,
+// which is how the shell keeps the body's outline while showing through.
+function addRim(material, rim, rimAlpha = 0) {
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uRimColor = rim.color;
     shader.uniforms.uRimStrength = rim.strength;
+    shader.uniforms.uRimAlpha = { value: rimAlpha };
     shader.fragmentShader = shader.fragmentShader
-      .replace("#include <common>", "#include <common>\nuniform vec3 uRimColor;\nuniform float uRimStrength;")
+      .replace(
+        "#include <common>",
+        "#include <common>\nuniform vec3 uRimColor;\nuniform float uRimStrength;\nuniform float uRimAlpha;",
+      )
       .replace(
         "#include <opaque_fragment>",
         `{
-          float rim = 1.0 - abs(dot(normalize(normal), normalize(vViewPosition)));
-          outgoingLight += uRimColor * pow(rim, 2.5) * uRimStrength;
+          float rim = pow(1.0 - abs(dot(normalize(normal), normalize(vViewPosition))), 2.5);
+          outgoingLight += uRimColor * rim * uRimStrength;
+          diffuseColor.a = min(1.0, diffuseColor.a + rim * uRimAlpha);
         }
         #include <opaque_fragment>`,
       );
@@ -179,7 +191,8 @@ export async function createViewer(canvas, options = {}) {
     strength: { value: palette.rimStrength },
   };
 
-  const { figure, regions, height } = await loadFigure(colours, rim);
+  // options.model lets scripts/bodymap/preview compare asset builds.
+  const { figure, regions, shell, height } = await loadFigure(colours, rim, options.model);
   const group = new THREE.Group();
   group.add(figure);
   scene.add(group);
@@ -237,6 +250,7 @@ export async function createViewer(canvas, options = {}) {
   canvas.addEventListener("pointerup", onPointerUp);
   canvas.addEventListener("pointercancel", onPointerUp);
 
+  // Only the muscles answer a tap: the skin is a body, not a thing to ask about.
   const raycaster = new THREE.Raycaster();
   const pointer = new THREE.Vector2();
   const meshes = Object.values(regions).map((r) => r.mesh);
@@ -249,7 +263,7 @@ export async function createViewer(canvas, options = {}) {
     pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
     raycaster.setFromCamera(pointer, camera);
     const hit = raycaster.intersectObjects(meshes, false)[0];
-    const key = hit && hit.object.name !== BASE_REGION ? hit.object.name : null;
+    const key = hit ? hit.object.name : null;
     select(key);
     if (options.onMuscleClick) {
       options.onMuscleClick(key, key ? MUSCLE_INFO[key] || null : null, {
@@ -259,10 +273,16 @@ export async function createViewer(canvas, options = {}) {
     }
   }
 
+  // The selected muscle glows in its own colour, so a tap is seen to land.
+  function highlight(region, on) {
+    if (on) region.material.emissive.copy(region.material.color).multiplyScalar(0.45);
+    else region.material.emissive.setScalar(0);
+  }
+
   function select(key) {
-    if (selected && regions[selected]) regions[selected].material.emissive.setScalar(0);
+    if (selected && regions[selected]) highlight(regions[selected], false);
     selected = key;
-    if (selected && regions[selected]) regions[selected].material.emissive.setScalar(0.05);
+    if (selected && regions[selected]) highlight(regions[selected], true);
   }
 
   // -------------------------------------------------------------------------
@@ -317,18 +337,23 @@ export async function createViewer(canvas, options = {}) {
   let heat = {};
   const scratch = new THREE.Color();
 
-  function colourFor(key, intensity) {
-    if (key === BASE_REGION) return colours.base;
+  function colourFor(intensity) {
     if (!(intensity > 0)) return colours.idle;
-    // Even a light touch reads as warm: start a quarter of the way up the ramp.
-    const t = 0.25 + 0.75 * Math.min(1, intensity);
+    // Even a light touch reads as warm: start a little way up the ramp.
+    const t = 0.15 + 0.85 * Math.min(1, intensity);
     return scratch.copy(colours.heatLow).lerp(colours.ember, t);
+  }
+
+  function paintSkin() {
+    shell.core.color.copy(colours.core);
+    shell.ghost.color.copy(colours.shell);
   }
 
   function setHeat(next = {}) {
     heat = { ...next };
     for (const [key, region] of Object.entries(regions)) {
-      region.material.color.copy(colourFor(key, heat[key] || 0));
+      region.material.color.copy(colourFor(heat[key] || 0));
+      if (key === selected) highlight(region, true);
     }
     let front = 0;
     let back = 0;
@@ -357,6 +382,7 @@ export async function createViewer(canvas, options = {}) {
     setHeat(next);
   }
 
+  paintSkin();
   setHeat({});
 
   return {
@@ -376,6 +402,7 @@ export async function createViewer(canvas, options = {}) {
       rim.color.value.set(palette.rim);
       rim.strength.value = palette.rimStrength;
       colours = readColours();
+      paintSkin();
       setHeat(heat);
     },
     destroy() {
@@ -391,6 +418,9 @@ export async function createViewer(canvas, options = {}) {
         region.mesh.geometry.dispose();
         region.material.dispose();
       }
+      shell.geometry.dispose();
+      shell.core.dispose();
+      shell.ghost.dispose();
       shadowGeometry.dispose();
       shadowMaterial.dispose();
       shadowTexture.dispose();
@@ -403,31 +433,75 @@ export async function createViewer(canvas, options = {}) {
 }
 
 /**
- * Loads body-map.glb and gives every region its own material, keyed by the
- * mesh's name. The file stands on the origin (soles at y = 0, centred), so
- * nothing needs measuring beyond its height.
+ * Loads body-map.glb: the skin becomes the shell, every other mesh a muscle
+ * region with its own material, keyed by the mesh's name. The file stands on
+ * the origin (soles at y = 0, centred), so nothing needs measuring beyond its
+ * height.
  */
-async function loadFigure(colours, rim) {
+async function loadFigure(colours, rim, model) {
   // Versioned like the module itself: /assets/ is served immutable for a year.
   const version = new URL(import.meta.url).searchParams.get("v");
-  const url = version ? `${MODEL_PATH}?v=${version}` : MODEL_PATH;
+  const path = model || MODEL_PATH;
+  const url = version ? `${path}?v=${version}` : path;
   const gltf = await new GLTFLoader().loadAsync(url);
   const figure = gltf.scene;
 
-  const regions = {};
+  const meshes = [];
   figure.traverse((obj) => {
-    if (!obj.isMesh) return;
+    if (obj.isMesh) meshes.push(obj);
+  });
+
+  const regions = {};
+  let shell = null;
+  for (const obj of meshes) {
     if (obj.material) obj.material.dispose();
+    if (obj.name === SHELL_REGION) {
+      shell = skinLayers(obj, colours, rim);
+      continue;
+    }
     const material = new THREE.MeshStandardMaterial({
-      color: obj.name === BASE_REGION ? colours.base : colours.idle,
-      roughness: 0.62,
+      color: colours.idle,
+      roughness: 0.55,
       metalness: 0,
       emissive: 0x000000,
     });
     addRim(material, rim);
     obj.material = material;
     regions[obj.name] = { mesh: obj, material };
-  });
+  }
+  if (!shell) throw new Error("body-map.glb has no shell mesh");
   const box = new THREE.Box3().setFromObject(figure);
-  return { figure, regions, height: box.max.y - box.min.y };
+  return { figure, regions, shell, height: box.max.y - box.min.y };
+}
+
+/**
+ * The skin, drawn twice from one geometry. The back faces are the inside of
+ * the body: opaque and dark, the cavity the muscles sit in, always behind
+ * them. The front faces are the shell: translucent, firming up at the
+ * silhouette through the rim's alpha, so the body's outline stays readable
+ * with the muscles showing through.
+ */
+function skinLayers(obj, colours, rim) {
+  const core = new THREE.MeshStandardMaterial({
+    color: colours.core,
+    roughness: 0.85,
+    metalness: 0,
+    side: THREE.BackSide,
+  });
+  const inside = new THREE.Mesh(obj.geometry, core);
+  inside.name = "shell-core";
+  obj.parent.add(inside);
+
+  const ghost = new THREE.MeshStandardMaterial({
+    color: colours.shell,
+    roughness: 0.4,
+    metalness: 0,
+    transparent: true,
+    opacity: SHELL_OPACITY,
+    depthWrite: false,
+  });
+  addRim(ghost, rim, 0.6);
+  obj.material = ghost;
+  obj.renderOrder = 1;
+  return { geometry: obj.geometry, core, ghost };
 }

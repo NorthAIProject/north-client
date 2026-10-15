@@ -32,10 +32,13 @@ func (f atlasFit) apply(p vec3) vec3 {
 
 // fitAtlas searches scale, width and offset by coordinate descent, coarse to
 // fine, against sampled atlas vertices scored on a signed-distance grid of the
-// skin.
-func fitAtlas(skin mesh, muscles []triangle) atlasFit {
+// skin. The descent is greedy and the score has more than one valley (a
+// taller atlas shifted down scores close to a shorter one shifted up), so it
+// starts from several scales and keeps the best. The field comes back with
+// the fit, for reporting on it.
+func fitAtlas(skin mesh, muscles []triangle) (atlasFit, distanceField) {
 	lo, hi := skin.bounds()
-	fit := atlasFit{floor: vec3{(lo[0] + hi[0]) / 2, lo[1], (lo[2] + hi[2]) / 2}, scale: 1, scaleX: 1}
+	floor := vec3{(lo[0] + hi[0]) / 2, lo[1], (lo[2] + hi[2]) / 2}
 	field := newDistanceField(skin, fitVoxel)
 
 	var samples []vec3
@@ -43,44 +46,42 @@ func fitAtlas(skin mesh, muscles []triangle) atlasFit {
 		samples = append(samples, muscles[i][0])
 	}
 
-	cost := func(f atlasFit) float64 {
-		var sum float64
-		for _, p := range samples {
-			signed := field.at(f.apply(p))
-			if signed > 0 {
-				sum += 20 * signed * signed // through the skin
-			} else if depth := -signed; depth > snugDepth {
-				sum += (depth - snugDepth) * (depth - snugDepth) // sunk too deep
-			}
+	var fit atlasFit
+	best := math.Inf(1)
+	for _, scale := range []float64{0.7, 0.8, 0.9, 1} {
+		start := atlasFit{floor: floor, scale: scale, scaleX: 1}
+		if candidate, cost := descend(field, samples, start); cost < best {
+			best, fit = cost, candidate
 		}
-		return sum / float64(len(samples))
 	}
+	log.Printf("atlas fit: scale %.3f, width ×%.3f, shift y %+.3f z %+.3f, cost %.6f", fit.scale, fit.scaleX, fit.shiftY, fit.shiftZ, best)
+	return fit, field
+}
 
-	best := cost(fit)
-	log.Printf("atlas fit: start cost %.6f", best)
-	steps := []float64{0.04, 0.02, 0.01, 0.005, 0.0025}
+// descend improves a fit by coordinate descent, coarse steps to fine.
+func descend(field distanceField, samples []vec3, fit atlasFit) (atlasFit, float64) {
+	best := field.misfit(samples, fit.apply)
 	params := []func(*atlasFit) *float64{
 		func(f *atlasFit) *float64 { return &f.scale },
 		func(f *atlasFit) *float64 { return &f.scaleX },
 		func(f *atlasFit) *float64 { return &f.shiftY },
 		func(f *atlasFit) *float64 { return &f.shiftZ },
 	}
-	for _, step := range steps {
+	for _, step := range []float64{0.04, 0.02, 0.01, 0.005, 0.0025} {
 		for improved := true; improved; {
 			improved = false
 			for _, param := range params {
 				for _, dir := range []float64{-1, 1} {
 					trial := fit
 					*param(&trial) += dir * step
-					if c := cost(trial); c < best {
+					if c := field.misfit(samples, trial.apply); c < best {
 						best, fit, improved = c, trial, true
 					}
 				}
 			}
 		}
 	}
-	log.Printf("atlas fit: scale %.3f, width ×%.3f, shift y %+.3f z %+.3f, cost %.6f", fit.scale, fit.scaleX, fit.shiftY, fit.shiftZ, best)
-	return fit
+	return fit, best
 }
 
 // distanceField is the skin's signed distance (positive outside) sampled on a
@@ -100,12 +101,8 @@ func newDistanceField(skin mesh, voxel float64) distanceField {
 	for k := range 3 {
 		f.n[k] = int(math.Ceil((hi[k]-lo[k])/voxel)) + 1
 	}
-	tris := make([]triangle, len(skin.tris))
-	for i := range skin.tris {
-		tris[i] = skin.triangle(i)
-	}
-	inside := f.insideMask(tris)
-	idx := newMuscleIndex(tris, make([]string, len(tris)), fitPad)
+	idx := skinIndex(skin)
+	inside := f.insideMask(idx.tris)
 	f.values = make([]float64, f.n[0]*f.n[1]*f.n[2])
 	for x := range f.n[0] {
 		for y := range f.n[1] {
@@ -175,6 +172,21 @@ func zAt(t triangle, x, y float64) (float64, bool) {
 		return 0, false
 	}
 	return a*t[0][2] + b*t[1][2] + c*t[2][2], true
+}
+
+// misfit scores where a transform puts the sampled atlas points: through the
+// skin costs most, sunk deeper than snugDepth a little, just under it nothing.
+func (f distanceField) misfit(samples []vec3, apply func(vec3) vec3) float64 {
+	var sum float64
+	for _, p := range samples {
+		signed := f.at(apply(p))
+		if signed > 0 {
+			sum += 20 * signed * signed // through the skin
+		} else if depth := -signed; depth > snugDepth {
+			sum += (depth - snugDepth) * (depth - snugDepth) // sunk too deep
+		}
+	}
+	return sum / float64(len(samples))
 }
 
 // at is the nearest voxel's value; a point off the grid is outside.
