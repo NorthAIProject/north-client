@@ -67,6 +67,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/onboarding"
 	"github.com/NorthAIProject/north-client/internal/planimport"
 	"github.com/NorthAIProject/north-client/internal/preferences"
+	"github.com/NorthAIProject/north-client/internal/progresschecks"
 	"github.com/NorthAIProject/north-client/internal/push"
 	"github.com/NorthAIProject/north-client/internal/quota"
 	"github.com/NorthAIProject/north-client/internal/reports"
@@ -244,22 +245,8 @@ func routes(
 	// share the record of both having happened.
 	accountSvc := account.NewService(account.NewRepository(pool), storage, slog.Default())
 
-	// Export reads across profile, goals, check-ins, memories, documents and
-	// conversations, which is why it is its own package rather than a method on
-	// any one of them.
 	// Built here rather than with the care slices below: the export reads it.
 	medicationSvc := medications.NewService(medications.NewRepository(pool))
-
-	exportHandler := export.NewHandler(export.NewExporter(export.Options{
-		Documents:     documentSvc,
-		Memories:      memorySvc,
-		Conversations: conversationSvc,
-		Goals:         goalSvc,
-		CheckIns:      checkinSvc,
-		Storage:       storage,
-		Friends:       socialSvc,
-		Medications:   medicationSvc,
-	}), quotaSvc, accountSvc)
 
 	// Built before workouts: the plan generator picks from this catalog, so
 	// the catalog has to exist before the thing that reads it.
@@ -292,6 +279,26 @@ func routes(
 	// so biometrics is constructed first and passed in as a lookup rather
 	// than each depending on its concrete type.
 	biometricSvc := biometrics.NewService(biometrics.NewRepository(pool))
+
+	// Progress checks keep their photos in media and write a scale weight
+	// through biometrics, so both exist first.
+	progressSvc := progresschecks.NewService(progresschecks.NewRepository(pool), mediaSvc, biometricSvc)
+
+	// Export reads across profile, goals, check-ins, memories, documents,
+	// conversations, medications and progress checks, which is why it is its
+	// own package rather than a method on any one of them. Built once the last
+	// of those exists.
+	exportHandler := export.NewHandler(export.NewExporter(export.Options{
+		Documents:     documentSvc,
+		Memories:      memorySvc,
+		Conversations: conversationSvc,
+		Goals:         goalSvc,
+		CheckIns:      checkinSvc,
+		Storage:       storage,
+		Friends:       socialSvc,
+		Medications:   medicationSvc,
+		Progress:      progressSvc,
+	}), quotaSvc, accountSvc)
 
 	calculatorSvc := calculator.NewService(calculator.NewRepository(pool), biometricSvc)
 
@@ -586,7 +593,7 @@ func routes(
 		CheckInTotals: checkinSvc,
 		CheckIns:      checkinSvc,
 	})
-	dayHandler := day.NewHandler(daySvc).WithBodyMaps(liftSvc)
+	dayHandler := day.NewHandler(daySvc).WithBodyMaps(liftSvc).WithProgress(progressSvc)
 
 	// Insights reuses the dashboard's timeline rather than reimplementing the
 	// merge across eight slices. Two copies of that would drift.
@@ -741,6 +748,7 @@ func routes(
 			fasting.NewContextSource(fastingSvc),
 			supplements.NewContextSource(supplementSvc),
 			medications.NewContextSource(medicationSvc),
+			progresschecks.NewContextSource(progressSvc),
 			screentime.NewContextSource(screenTimeSvc),
 			soreness.NewContextSource(sorenessSvc),
 			lifts.NewContextSource(liftSvc),
@@ -795,7 +803,7 @@ func routes(
 		Chats:  conversationSvc,
 		Photos: mediaSvc,
 		Facts:  memorySvc,
-	}).WithTraining(workoutSvc).WithSchedules(notificationSvc)
+	}).WithTraining(workoutSvc).WithSchedules(notificationSvc).WithProgressChecks(progressSvc)
 	coachSvc.WithInbox(coach.InboxFunc(nudgeSvc.RaiseFromUser)).
 		WithAway(coach.InboxFunc(nudgeSvc.RaiseProactive))
 	mediaSvc.WithOnReady(func(ctx context.Context, userID, analysisID uuid.UUID) {
@@ -1015,6 +1023,7 @@ func routes(
 			fasting:      fasting.NewAPI(fastingSvc),
 			supplements:  supplements.NewAPI(supplementSvc),
 			medications:  medications.NewAPI(medicationSvc),
+			progress:     progresschecks.NewAPI(progressSvc, liftSvc),
 			screenTime:   screentime.NewAPI(screenTimeSvc),
 			soreness:     soreness.NewAPI(sorenessSvc),
 			milestones:   milestones.NewAPI(milestoneSvc),
@@ -1228,6 +1237,7 @@ func routes(
 				calculatorHandler.Routes(r)
 				mealsHandler.Routes(r)
 				planImportHandler.Routes(r)
+				progresschecks.NewHandler(progressSvc).Routes(r)
 				fitnessHandler.Routes(r)
 			})
 		})

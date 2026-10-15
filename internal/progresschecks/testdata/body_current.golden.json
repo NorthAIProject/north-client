@@ -1,0 +1,24 @@
+{
+  "sourceCheckId": "88888888-8888-8888-8888-888888888888",
+  "measuredOn": "2026-10-15",
+  "weightKg": 100,
+  "bmi": 29.2,
+  "bmiBand": "overweight",
+  "morph": {
+    "waist": 0.307,
+    "hips": 0.266,
+    "chest": 0.153,
+    "overall": 0.192
+  },
+  "muscles": [
+    {
+      "id": "abs",
+      "intensity": 0
+    },
+    {
+      "id": "quads",
+      "intensity": 0.62,
+      "lastTrainedOn": "2026-10-14"
+    }
+  ]
+}

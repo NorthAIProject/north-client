@@ -85,6 +85,20 @@ templ bodyChips(b BodyCard) {
 		if !b.HasWeight {
 			<p class="text-muted-foreground mt-2 text-sm">{ i18n.T(ctx, "day.body.none") }</p>
 		}
+		if b.ProgressDue || b.LastWaist != "" {
+			<div class="mt-3 flex flex-wrap items-center gap-2 text-xs">
+				if b.ProgressDue {
+					<a href="/app/progress" class="border-signal/40 bg-signal/10 rounded-full border px-2 py-0.5 font-medium" data-testid="progress-due-chip">
+						{ i18n.T(ctx, "day.progress.due") }
+					</a>
+				}
+				if b.LastWaist != "" {
+					<a href="/app/progress" class="text-muted-foreground tabular-nums" data-testid="progress-last">
+						{ i18n.Tf(ctx, "day.progress.last", b.LastWaist, b.LastCheckOn) }
+					</a>
+				}
+			</div>
+		}
 		<div class="mt-3 flex flex-wrap gap-1.5" data-testid="soreness">
 			for _, s := range b.Soreness {
 				<span class={ "rounded-full px-2 py-0.5 text-xs font-medium", sorenessClass(s.Severity) }>

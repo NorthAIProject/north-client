@@ -25,6 +25,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/medications/medication"
 	"github.com/NorthAIProject/north-client/internal/memories"
+	"github.com/NorthAIProject/north-client/internal/progresschecks/progresscheck"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/social/friend"
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -56,6 +57,14 @@ type Exporter struct {
 	storage       documents.Storage
 	friends       Friends
 	medications   Medications
+	progress      ProgressChecks
+}
+
+// ProgressChecks is every progress check and its photos as an export needs
+// them. progresschecks.Service satisfies it; nil leaves them out.
+type ProgressChecks interface {
+	History(ctx context.Context, user users.User) ([]progresscheck.Check, error)
+	PhotoBytes(ctx context.Context, user users.User, mediaID uuid.UUID) (string, []byte, error)
 }
 
 // Medications is every medication and dose as an export needs them.
@@ -82,6 +91,7 @@ type Options struct {
 	Storage       documents.Storage
 	Friends       Friends
 	Medications   Medications
+	Progress      ProgressChecks
 }
 
 func NewExporter(o Options) *Exporter {
@@ -94,6 +104,7 @@ func NewExporter(o Options) *Exporter {
 		storage:       o.Storage,
 		friends:       o.Friends,
 		medications:   o.Medications,
+		progress:      o.Progress,
 	}
 }
 
@@ -144,6 +155,9 @@ func (e *Exporter) WriteZip(ctx context.Context, user users.User, w io.Writer) e
 	if err := e.writeMedications(ctx, zw, user); err != nil {
 		problems = append(problems, "medications: "+err.Error())
 	}
+	if err := e.writeProgressChecks(ctx, zw, user); err != nil {
+		problems = append(problems, "progress checks: "+err.Error())
+	}
 
 	if len(problems) > 0 {
 		if err := writeFile(zw, "INCOMPLETE.txt", strings.Join(append(
@@ -169,6 +183,7 @@ func (e *Exporter) writeManifest(zw *zip.Writer, user users.User) error {
 			"conversations/ — one Markdown file per conversation",
 			"friends.md — your handle, who you follow, who follows you, who you blocked",
 			"medications.md — what you take, on what schedule, and every dose you logged",
+			"progress-checks.md and progress-photos/ — your measurements and the photos taken with them",
 		},
 		"not_included": []string{
 			"the search index and the passages derived from your documents; " +
@@ -196,6 +211,7 @@ readable whether or not Khepri exists.
 - `+"`documents/`"+` — your notes and uploaded files, exactly as you gave them.
 - `+"`conversations/`"+` — one file per conversation, oldest message first.
 - `+"`medications.md`"+` — what you take and every dose you logged, stopped ones included.
+- `+"`progress-checks.md`"+` and `+"`progress-photos/`"+` — your measurements, and the photos taken with them.
 
 The search index is not here on purpose. It is built from the files above and
 can be rebuilt from them, so it is Khepri's working state rather than anything
@@ -586,4 +602,81 @@ func (e *Exporter) writeMedications(ctx context.Context, zw *zip.Writer, user us
 	}
 
 	return writeFile(zw, "medications.md", b.String())
+}
+
+// writeProgressChecks is every progress check, newest first, with each photo
+// beside it under progress-photos/. A photo that will not read back is named
+// in the list rather than failing the rest.
+func (e *Exporter) writeProgressChecks(ctx context.Context, zw *zip.Writer, user users.User) error {
+	if e.progress == nil {
+		return nil
+	}
+	checks, err := e.progress.History(ctx, user)
+	if err != nil {
+		return err
+	}
+
+	var b strings.Builder
+	b.WriteString("# Progress checks\n\n")
+	if len(checks) == 0 {
+		b.WriteString("Nothing recorded yet.\n")
+		return writeFile(zw, "progress-checks.md", b.String())
+	}
+	b.WriteString("Metric: kg and cm. \"carried\" marks a weight copied from the last known one.\n\n")
+
+	for _, c := range checks {
+		day := c.MeasuredOn.Format("2006-01-02")
+		fmt.Fprintf(&b, "## %s\n\n", day)
+		for _, m := range []struct {
+			label string
+			v     *float64
+			unit  string
+		}{
+			{"Weight", c.WeightKg, "kg"},
+			{"Waist", c.WaistCm, "cm"},
+			{"Hips", c.HipsCm, "cm"},
+			{"Chest", c.ChestCm, "cm"},
+			{"Thigh", c.ThighCm, "cm"},
+			{"Arm", c.ArmCm, "cm"},
+		} {
+			if m.v == nil {
+				continue
+			}
+			fmt.Fprintf(&b, "- %s: %.1f %s", m.label, *m.v, m.unit)
+			if m.unit == "kg" && c.WeightCarried {
+				b.WriteString(" (carried)")
+			}
+			b.WriteString("\n")
+		}
+		if c.Source == progresscheck.SourceAssisted {
+			b.WriteString("- Began as a photo estimate you confirmed.\n")
+		}
+		for _, p := range c.Photos {
+			mime, data, err := e.progress.PhotoBytes(ctx, user, p.MediaID)
+			if err != nil {
+				fmt.Fprintf(&b, "- Photo (%s): could not be read back from storage.\n", p.Pose)
+				continue
+			}
+			name := fmt.Sprintf("progress-photos/%s-%s-%s%s", day, c.ID.String()[:8], p.Pose, photoExt(mime))
+			if err := writeFile(zw, name, string(data)); err != nil {
+				return err
+			}
+			fmt.Fprintf(&b, "- Photo (%s): %s\n", p.Pose, name)
+		}
+		b.WriteString("\n")
+	}
+	return writeFile(zw, "progress-checks.md", b.String())
+}
+
+func photoExt(mime string) string {
+	switch mime {
+	case "image/png":
+		return ".png"
+	case "image/webp":
+		return ".webp"
+	case "image/gif":
+		return ".gif"
+	default:
+		return ".jpg"
+	}
 }
