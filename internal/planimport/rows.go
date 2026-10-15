@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"github.com/FACorreiaa/go-utils/pkg/util"
+
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 )
 
 // Every reader — spreadsheet, JSON, and the model — ends in the same place: a
@@ -60,13 +62,16 @@ type SameMeal struct {
 // everyDayLabel names the one day of a plan that named none.
 const everyDayLabel = "Every day"
 
-const uncertainFlag = "Check this row — the reader wasn't sure about it."
+// uncertainFlag marks a row the reader said it was unsure of.
+const uncertainFlag = "planimport.flag.uncertain"
 
 // buildWorkout groups rows into days in the order the days first appear.
 //
 // Rows for the same day need not be contiguous: a sheet sorted by exercise
 // still describes the same Monday.
-func buildWorkout(name string, rows []WorkoutRow, unparsed []string) (WorkoutDraft, error) {
+//
+// tag is the language its flags are written in.
+func buildWorkout(tag, name string, rows []WorkoutRow, unparsed []string) (WorkoutDraft, error) {
 	draft := WorkoutDraft{Name: strings.TrimSpace(name), Days: []WorkoutDayDraft{}, Unparsed: unparsed}
 	index := map[string]int{}
 
@@ -87,7 +92,7 @@ func buildWorkout(name string, rows []WorkoutRow, unparsed []string) (WorkoutDra
 			Flags: []string{},
 		}
 
-		sets, reps, flag := parseSets(row.Sets)
+		sets, reps, flag := parseSets(tag, row.Sets)
 		ex.Sets = sets
 		if flag != "" {
 			ex.Flags = append(ex.Flags, flag)
@@ -96,17 +101,17 @@ func buildWorkout(name string, rows []WorkoutRow, unparsed []string) (WorkoutDra
 			if ex.Reps == "" {
 				ex.Reps = reps
 			} else if !strings.EqualFold(ex.Reps, reps) {
-				ex.Flags = append(ex.Flags, fmt.Sprintf("Sets said %q but reps said %q — check which is right.", row.Sets, row.Reps))
+				ex.Flags = append(ex.Flags, fmt.Sprintf(i18n.Translate(tag, "planimport.flag.setsreps"), row.Sets, row.Reps))
 			}
 		}
 
-		rest, flag := parseRest(row.Rest)
+		rest, flag := parseRest(tag, row.Rest)
 		ex.RestSeconds = rest
 		if flag != "" {
 			ex.Flags = append(ex.Flags, flag)
 		}
 		if row.Uncertain {
-			ex.Flags = append(ex.Flags, uncertainFlag)
+			ex.Flags = append(ex.Flags, i18n.Translate(tag, uncertainFlag))
 		}
 
 		label := strings.TrimSpace(row.Day)
@@ -134,7 +139,7 @@ func buildWorkout(name string, rows []WorkoutRow, unparsed []string) (WorkoutDra
 // buildMeal groups rows into days, then meals, then options, in first-seen
 // order. A meal's first option becomes its Foods; the rest its Alternatives.
 // A plan whose rows name no day becomes one day eaten every day.
-func buildMeal(reading MealReading) (MealDraft, error) {
+func buildMeal(tag string, reading MealReading) (MealDraft, error) {
 	draft := MealDraft{
 		Name: strings.TrimSpace(reading.Name), Days: []MealDayDraft{}, Unparsed: reading.Unparsed,
 		Notes: strings.TrimSpace(reading.Notes),
@@ -151,7 +156,7 @@ func buildMeal(reading MealReading) (MealDraft, error) {
 			}
 			continue
 		}
-		food := foodFromRow(row)
+		food := foodFromRow(tag, row)
 
 		dayLabel := strings.TrimSpace(row.Day)
 		anyDay = anyDay || dayLabel != ""
@@ -189,7 +194,7 @@ func buildMeal(reading MealReading) (MealDraft, error) {
 				m.OptionLabel = label
 			} else {
 				if label == "" {
-					label = fmt.Sprintf("Option %d", oi+1)
+					label = fmt.Sprintf(i18n.Translate(tag, "nutrition.option.numbered"), oi+1)
 				}
 				m.Alternatives = append(m.Alternatives, MealDraftOption{Label: label, Foods: []FoodDraft{}})
 			}
@@ -222,7 +227,7 @@ func buildMeal(reading MealReading) (MealDraft, error) {
 }
 
 // foodFromRow reads one food line's text into numbers.
-func foodFromRow(row MealRow) FoodDraft {
+func foodFromRow(tag string, row MealRow) FoodDraft {
 	original := strings.TrimSpace(row.Food)
 	food := FoodDraft{
 		Food: original, Unit: strings.TrimSpace(row.Unit), Candidates: []Candidate{}, Flags: []string{},
@@ -246,13 +251,13 @@ func foodFromRow(row MealRow) FoodDraft {
 			if amount == "" {
 				amount = original
 			}
-			estimateFlag = fmt.Sprintf("Estimated weight for %q. Check it.", amount)
+			estimateFlag = fmt.Sprintf(i18n.Translate(tag, "planimport.flag.estimated"), amount)
 		}
 	}
 	// A quantity an estimate stood in for ("150–250") is already flagged as
 	// estimated; saying it isn't a number as well is the same warning twice.
 	if !ok && !food.Estimated {
-		food.Flags = append(food.Flags, fmt.Sprintf("Quantity %q isn't a number.", strings.TrimSpace(row.Quantity)))
+		food.Flags = append(food.Flags, fmt.Sprintf(i18n.Translate(tag, "planimport.flag.quantity"), strings.TrimSpace(row.Quantity)))
 	}
 
 	for _, m := range []struct {
@@ -260,11 +265,11 @@ func foodFromRow(row MealRow) FoodDraft {
 		raw   string
 		dst   **float64
 	}{
-		{"Protein", row.Protein, &food.StatedProteinG},
-		{"Carbs", row.Carbs, &food.StatedCarbG},
-		{"Fat", row.Fat, &food.StatedFatG},
+		{i18n.Translate(tag, "nutrition.macro.protein"), row.Protein, &food.StatedProteinG},
+		{i18n.Translate(tag, "nutrition.macro.carbs"), row.Carbs, &food.StatedCarbG},
+		{i18n.Translate(tag, "nutrition.macro.fat"), row.Fat, &food.StatedFatG},
 	} {
-		v, flag := parseGrams(m.label, m.raw)
+		v, flag := parseGrams(tag, m.label, m.raw)
 		*m.dst = v
 		if flag != "" {
 			food.Flags = append(food.Flags, flag)
@@ -275,7 +280,7 @@ func foodFromRow(row MealRow) FoodDraft {
 		food.Flags = append(food.Flags, estimateFlag)
 	}
 	if row.Uncertain {
-		food.Flags = append(food.Flags, uncertainFlag)
+		food.Flags = append(food.Flags, i18n.Translate(tag, uncertainFlag))
 	}
 	return food
 }

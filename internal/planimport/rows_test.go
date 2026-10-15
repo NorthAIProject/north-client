@@ -9,7 +9,7 @@ import (
 func TestBuildMealGroupsOptionsInFirstSeenOrder(t *testing.T) {
 	t.Parallel()
 
-	draft, err := buildMeal(MealReading{Name: "Plano", Rows: []MealRow{
+	draft, err := buildMeal("en", MealReading{Name: "Plano", Rows: []MealRow{
 		{Meal: "Pequeno-almoço", Option: "Opção 1", Food: "pão integral", Quantity: "2", Unit: "fatias"},
 		{Meal: "Pequeno-almoço", Option: "Opção 2", Food: "iogurte natural", Quantity: "1"},
 		{Meal: "Almoço", Food: "arroz", Quantity: "110", Unit: "g"},
@@ -43,7 +43,7 @@ func TestBuildMealGroupsOptionsInFirstSeenOrder(t *testing.T) {
 func TestBuildMealUsesTheStandInNameAndKeepsTheSourceLine(t *testing.T) {
 	t.Parallel()
 
-	draft, err := buildMeal(MealReading{Rows: []MealRow{
+	draft, err := buildMeal("en", MealReading{Rows: []MealRow{
 		{Meal: "Lanche", Food: "pão integral", FoodEN: "Wholemeal bread", Quantity: "2", Unit: "fatias", GramsEstimate: "60"},
 		{Meal: "Lanche", Food: "queijo fresco", FoodEN: "Fresh cheese", Quantity: "30", Unit: "g", GramsEstimate: "35"},
 		{Meal: "Lanche", Food: "fruta", FoodEN: "Apple", GramsEstimate: "150 g"},
@@ -87,7 +87,7 @@ func TestBuildMealUsesTheStandInNameAndKeepsTheSourceLine(t *testing.T) {
 func TestBuildMealFlagsAnEstimatedRangeOnce(t *testing.T) {
 	t.Parallel()
 
-	draft, err := buildMeal(MealReading{Rows: []MealRow{
+	draft, err := buildMeal("en", MealReading{Rows: []MealRow{
 		{Meal: "Almoço", Food: "arroz", FoodEN: "White rice", Quantity: "150–250", Unit: "g", GramsEstimate: "200"},
 		{Meal: "Almoço", Food: "feijão", FoodEN: "Beans", Quantity: "150–250", Unit: "g"},
 	}})
@@ -113,7 +113,7 @@ func TestBuildMealFlagsAnEstimatedRangeOnce(t *testing.T) {
 func TestBuildMealCopiesASameAsSlotOnEveryDayItAppears(t *testing.T) {
 	t.Parallel()
 
-	draft, err := buildMeal(MealReading{
+	draft, err := buildMeal("en", MealReading{
 		Rows: []MealRow{
 			{Day: "Monday", Meal: "Almoço", Option: "Prato – carne", Food: "frango", Quantity: "125", Unit: "g"},
 			{Day: "Monday", Meal: "Almoço", Option: "Prato – peixe", Food: "pescada", Quantity: "150", Unit: "g"},
@@ -179,7 +179,7 @@ func TestBuildMealCopiesASameAsSlotOnEveryDayItAppears(t *testing.T) {
 func TestBuildMealWithoutDaysIsAnEveryDayPlan(t *testing.T) {
 	t.Parallel()
 
-	draft, err := buildMeal(MealReading{
+	draft, err := buildMeal("en", MealReading{
 		Rows:  []MealRow{{Meal: "Almoço", Food: "arroz", Quantity: "110", Unit: "g"}, {Meal: "Jantar", Food: "sopa"}},
 		Notes: "Beber 1,5 L de água por dia.",
 	})
@@ -208,7 +208,7 @@ func containsFlag(flags []string, want string) bool {
 func TestBuildMealReportsASameAsWhoseSourceIsMissing(t *testing.T) {
 	t.Parallel()
 
-	draft, err := buildMeal(MealReading{
+	draft, err := buildMeal("en", MealReading{
 		Rows:   []MealRow{{Meal: "Lanche", Food: "maçã", Quantity: "1"}},
 		SameAs: []SameMeal{{Meal: "Jantar", SameAs: "Almoço"}},
 	})
@@ -229,7 +229,7 @@ func TestBuildMealReportsASameAsWhoseSourceIsMissing(t *testing.T) {
 func TestBuildMealKeepsAnOptionalFoodMarked(t *testing.T) {
 	t.Parallel()
 
-	draft, err := buildMeal(MealReading{Rows: []MealRow{
+	draft, err := buildMeal("en", MealReading{Rows: []MealRow{
 		{Meal: "Pequeno-almoço", Food: "pão", FoodEN: "Wholemeal bread", GramsEstimate: "60"},
 		{Meal: "Pequeno-almoço", Food: "compota 0%", FoodEN: "Jam", Quantity: "1", Unit: "colher de sopa", Optional: true},
 	}})
@@ -260,7 +260,7 @@ func TestTheReaderMarksOptionalFoods(t *testing.T) {
 func TestBuildMealMarksAnOptionalMeal(t *testing.T) {
 	t.Parallel()
 
-	draft, err := buildMeal(MealReading{Rows: []MealRow{
+	draft, err := buildMeal("en", MealReading{Rows: []MealRow{
 		{Meal: "Almoço", Food: "arroz", FoodEN: "Rice", Quantity: "100", Unit: "g"},
 		{Meal: "Ceia (opcional)", Food: "iogurte", FoodEN: "Plain yogurt", GramsEstimate: "125"},
 		{Meal: "Ceia", Food: "chá", FoodEN: "Tea", GramsEstimate: "200"},

@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 )
 
 // The review page posts the whole draft back on every button press.
@@ -61,6 +62,7 @@ func workoutFromForm(r *http.Request) (WorkoutDraft, reviewAction, error) {
 	}
 	d.Normalize()
 
+	tag := i18n.LocaleFrom(r.Context())
 	d.Name = r.PostFormValue("name")
 	for i := range d.Days {
 		day := &d.Days[i]
@@ -73,8 +75,8 @@ func workoutFromForm(r *http.Request) (WorkoutDraft, reviewAction, error) {
 			ex.Reps = key("reps")
 			ex.Load = key("load")
 			ex.Notes = key("notes")
-			ex.Sets = formInt(key("sets"), "Sets", &ex.Flags)
-			ex.RestSeconds = formInt(key("rest"), "Rest", &ex.Flags)
+			ex.Sets = formInt(tag, key("sets"), "planimport.flag.sets.whole", &ex.Flags)
+			ex.RestSeconds = formInt(tag, key("rest"), "planimport.flag.rest.whole", &ex.Flags)
 		}
 	}
 	return d, parseAction(r.PostFormValue("action")), nil
@@ -227,15 +229,15 @@ func deleteOption(m *MealDraftMeal, o int) {
 
 // formInt reads an optional whole number typed on the review page. Blank is
 // "not stated"; anything else that is not a whole number is flagged rather
-// than guessed at.
-func formInt(raw, label string, flags *[]string) *int {
+// than guessed at, with the message flagKey names in tag's language.
+func formInt(tag, raw, flagKey string, flags *[]string) *int {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return nil
 	}
 	n, err := strconv.Atoi(raw)
 	if err != nil || n < 0 {
-		*flags = appendOnce(*flags, fmt.Sprintf("%s %q isn't a whole number.", label, raw))
+		*flags = appendOnce(*flags, fmt.Sprintf(i18n.Translate(tag, flagKey), raw))
 		return nil
 	}
 	return &n

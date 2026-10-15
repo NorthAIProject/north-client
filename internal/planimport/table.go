@@ -98,7 +98,8 @@ func splitHeader(rows [][]string, columns map[string][]string, required string) 
 }
 
 // WorkoutFromRows maps a spreadsheet onto a workout draft.
-func WorkoutFromRows(filename string, rows [][]string) (WorkoutDraft, error) {
+// tag is the language its flags are written in.
+func WorkoutFromRows(tag, filename string, rows [][]string) (WorkoutDraft, error) {
 	cols, data, title, err := splitHeader(rows, workoutColumns, "exercise")
 	if err != nil {
 		return WorkoutDraft{}, err
@@ -130,11 +131,12 @@ func WorkoutFromRows(filename string, rows [][]string) (WorkoutDraft, error) {
 		out = append(out, r)
 	}
 
-	return buildWorkout(nameOr(title, filename), out, nil)
+	return buildWorkout(tag, nameOr(title, filename), out, nil)
 }
 
 // MealFromRows maps a spreadsheet onto a meal draft.
-func MealFromRows(filename string, rows [][]string) (MealDraft, error) {
+// tag is the language its flags are written in.
+func MealFromRows(tag, filename string, rows [][]string) (MealDraft, error) {
 	cols, data, title, err := splitHeader(rows, mealColumns, "food")
 	if err != nil {
 		return MealDraft{}, err
@@ -177,7 +179,7 @@ func MealFromRows(filename string, rows [][]string) (MealDraft, error) {
 		out = append(out, r)
 	}
 
-	return buildMeal(MealReading{Name: nameOr(title, filename), Rows: out})
+	return buildMeal(tag, MealReading{Name: nameOr(title, filename), Rows: out})
 }
 
 func cell(row []string, cols map[string]int, field string) string {

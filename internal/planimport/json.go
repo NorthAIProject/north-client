@@ -80,7 +80,8 @@ type jsonWorkoutItem struct {
 }
 
 // WorkoutFromJSON maps the workout JSON shape onto a draft.
-func WorkoutFromJSON(filename string, data []byte) (WorkoutDraft, error) {
+// tag is the language its flags are written in.
+func WorkoutFromJSON(tag, filename string, data []byte) (WorkoutDraft, error) {
 	var days []jsonWorkoutDay
 	name, ok := decodeDays(data, &days)
 	if !ok {
@@ -101,7 +102,7 @@ func WorkoutFromJSON(filename string, data []byte) (WorkoutDraft, error) {
 			})
 		}
 	}
-	return buildWorkout(nameOr(name, filename), rows, nil)
+	return buildWorkout(tag, nameOr(name, filename), rows, nil)
 }
 
 type jsonMealDay struct {
@@ -125,7 +126,8 @@ type jsonMealItem struct {
 }
 
 // MealFromJSON maps the meal JSON shape onto a draft.
-func MealFromJSON(filename string, data []byte) (MealDraft, error) {
+// tag is the language its flags are written in.
+func MealFromJSON(tag, filename string, data []byte) (MealDraft, error) {
 	var days []jsonMealDay
 	name, ok := decodeDays(data, &days)
 	if !ok {
@@ -146,7 +148,7 @@ func MealFromJSON(filename string, data []byte) (MealDraft, error) {
 			}
 		}
 	}
-	return buildMeal(MealReading{Name: nameOr(name, filename), Rows: rows})
+	return buildMeal(tag, MealReading{Name: nameOr(name, filename), Rows: rows})
 }
 
 func mealRow(day, mealName string, f jsonMealItem) MealRow {

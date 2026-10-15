@@ -1,6 +1,7 @@
 package planimport
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -14,6 +15,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/quota"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	pages "github.com/NorthAIProject/north-client/web/planimport"
 )
@@ -62,7 +64,7 @@ func (h *Handler) workoutParse(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	h.logFailure(r, "plan import: workout file refused", err)
-	h.render(w, r, httpx.Status(err), pages.UploadPage(user, pages.Workout, message(err)))
+	h.render(w, r, httpx.Status(err), pages.UploadPage(user, pages.Workout, message(r.Context(), err)))
 }
 
 func (h *Handler) mealParse(w http.ResponseWriter, r *http.Request) {
@@ -71,19 +73,19 @@ func (h *Handler) mealParse(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		var d MealDraft
 		if d, err = h.svc.ParseMeal(r.Context(), user, name, data, ""); err == nil {
-			h.render(w, r, http.StatusOK, pages.MealReviewPage(user, h.mealView(d, nil)))
+			h.render(w, r, http.StatusOK, pages.MealReviewPage(user, h.mealView(r.Context(), d, nil)))
 			return
 		}
 	}
 	h.logFailure(r, "plan import: meal file refused", err)
-	h.render(w, r, httpx.Status(err), pages.UploadPage(user, pages.Meal, message(err)))
+	h.render(w, r, httpx.Status(err), pages.UploadPage(user, pages.Meal, message(r.Context(), err)))
 }
 
 func (h *Handler) workoutReview(w http.ResponseWriter, r *http.Request) {
 	user := auth.MustUser(r.Context())
 	d, action, err := workoutFromForm(r)
 	if err != nil {
-		h.render(w, r, http.StatusUnprocessableEntity, pages.UploadPage(user, pages.Workout, "That review expired. Upload the file again."))
+		h.render(w, r, http.StatusUnprocessableEntity, pages.UploadPage(user, pages.Workout, i18n.T(r.Context(), "planimport.err.expired")))
 		return
 	}
 	applyWorkoutAction(&d, action)
@@ -94,7 +96,7 @@ func (h *Handler) workoutReview(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "/app/training/"+stored.ID.String(), http.StatusSeeOther)
 			return
 		}
-		h.render(w, r, httpx.Status(err), pages.WorkoutReviewPage(user, pages.WorkoutReview{Draft: d, DraftJSON: encode(d), Error: message(err)}))
+		h.render(w, r, httpx.Status(err), pages.WorkoutReviewPage(user, pages.WorkoutReview{Draft: d, DraftJSON: encode(d), Error: message(r.Context(), err)}))
 		return
 	}
 
@@ -105,7 +107,7 @@ func (h *Handler) mealReview(w http.ResponseWriter, r *http.Request) {
 	user := auth.MustUser(r.Context())
 	d, action, err := mealFromForm(r)
 	if err != nil {
-		h.render(w, r, http.StatusUnprocessableEntity, pages.UploadPage(user, pages.Meal, "That review expired. Upload the file again."))
+		h.render(w, r, http.StatusUnprocessableEntity, pages.UploadPage(user, pages.Meal, i18n.T(r.Context(), "planimport.err.expired")))
 		return
 	}
 	applyMealAction(&d, action)
@@ -116,17 +118,17 @@ func (h *Handler) mealReview(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "/app/nutrition/plans/"+saved.ID.String(), http.StatusSeeOther)
 			return
 		}
-		h.render(w, r, httpx.Status(err), pages.MealReviewPage(user, h.mealView(previewed, err)))
+		h.render(w, r, httpx.Status(err), pages.MealReviewPage(user, h.mealView(r.Context(), previewed, err)))
 		return
 	}
 
 	d = h.svc.PreviewMeal(r.Context(), user.ID, d)
-	h.render(w, r, http.StatusOK, pages.MealReviewPage(user, h.mealView(d, nil)))
+	h.render(w, r, http.StatusOK, pages.MealReviewPage(user, h.mealView(r.Context(), d, nil)))
 }
 
 // mealView assembles the page data, turning a refused save into what the
 // page shows: the overage to confirm, or the reason to fix.
-func (h *Handler) mealView(d MealDraft, err error) pages.MealReview {
+func (h *Handler) mealView(ctx context.Context, d MealDraft, err error) pages.MealReview {
 	view := pages.MealReview{Draft: d, DraftJSON: encode(d)}
 	var over *meals.OverageError
 	switch {
@@ -134,9 +136,9 @@ func (h *Handler) mealView(d MealDraft, err error) pages.MealReview {
 	case apperr.As(err, &over) && over.Verdict.CanConfirm:
 		view.NeedsConfirm = true
 	case apperr.As(err, &over):
-		view.Error = "Easy plans can't go over your target: " + over.Error() + " Change those days, or switch to Advanced to save it anyway."
+		view.Error = i18n.Tf(ctx, "planimport.err.overeasy", over.MessageIn(ctx))
 	default:
-		view.Error = message(err)
+		view.Error = message(ctx, err)
 	}
 	return view
 }
@@ -146,33 +148,34 @@ func formUpload(r *http.Request) (string, []byte, error) {
 	// token; this reads the file it left in memory or on disk.
 	file, header, err := r.FormFile("file")
 	if err != nil {
-		return "", nil, apperr.FieldErrors{}.Add("file", "Choose a file first.")
+		return "", nil, apperr.FieldErrors{}.Add("file", i18n.T(r.Context(), "planimport.err.nofile"))
 	}
 	defer func() { _ = file.Close() }()
 
 	data, err := io.ReadAll(io.LimitReader(file, MaxBytes+1))
 	if err != nil {
-		return "", nil, apperr.FieldErrors{}.Add("file", "That upload could not be read.")
+		return "", nil, apperr.FieldErrors{}.Add("file", i18n.T(r.Context(), "planimport.err.upload"))
 	}
 	return header.Filename, data, nil
 }
 
 // message is the sentence to show for a refusal. Only validation and
 // conflicts carry one meant for the person; anything else is a fault on our
-// side and says so in general terms.
-func message(err error) string {
+// side and says so in general terms. A file's own refusal is in English;
+// everything else is in ctx's language.
+func message(ctx context.Context, err error) string {
 	var fe *FileError
 	if apperr.As(err, &fe) {
 		return fe.Message
 	}
 	var fields apperr.FieldErrors
-	if apperr.As(err, &fields) && len(fields) > 0 {
+	if apperr.As(meals.Localize(ctx, err), &fields) && len(fields) > 0 {
 		return fields[0].Message
 	}
 	if apperr.Is(err, apperr.ErrValidation) {
-		return "Some of the plan isn't valid yet. Check the highlighted rows."
+		return i18n.T(ctx, "planimport.err.invalid")
 	}
-	return "The file couldn't be imported right now. Try again in a moment."
+	return i18n.T(ctx, "planimport.err.failed")
 }
 
 func encode(v any) string {
