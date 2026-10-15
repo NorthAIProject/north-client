@@ -179,8 +179,8 @@ func writeError(w http.ResponseWriter, r *http.Request, err error, fallback stri
 		return
 	}
 	var fields apperr.FieldErrors
-	if err := meals.Localize(r.Context(), err); apperr.As(err, &fields) && len(fields) > 0 {
-		httpx.Error(w, err, fields[0].Message)
+	if localized := meals.Localize(r.Context(), err); apperr.As(localized, &fields) && len(fields) > 0 {
+		httpx.Error(w, localized, fields[0].Message)
 		return
 	}
 	httpx.Error(w, err, fallback)
