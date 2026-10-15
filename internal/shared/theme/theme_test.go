@@ -90,3 +90,31 @@ func TestAppearanceFromAnEmptyContextIsTheDefault(t *testing.T) {
 		t.Fatalf("AppearanceFrom = %q, want system", got)
 	}
 }
+
+func TestTheCookieIsSecureBehindATLSTerminatingIngress(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		proto  string
+		secure bool
+	}{
+		{"plain http", "", false},
+		{"https at the ingress", "https", true},
+		{"http at the ingress", "http", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := httptest.NewRequest(http.MethodPost, "/appearance", nil)
+			if tc.proto != "" {
+				r.Header.Set("X-Forwarded-Proto", tc.proto)
+			}
+			w := httptest.NewRecorder()
+			SetCookie(w, r, Light)
+			cookies := w.Result().Cookies()
+			if len(cookies) != 1 {
+				t.Fatalf("got %d cookies, want 1", len(cookies))
+			}
+			if cookies[0].Secure != tc.secure {
+				t.Errorf("Secure = %v, want %v", cookies[0].Secure, tc.secure)
+			}
+		})
+	}
+}
