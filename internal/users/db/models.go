@@ -27,4 +27,6 @@ type User struct {
 	Handle          *string
 	PhoneE164       *string
 	PhoneVerifiedAt *time.Time
+	// Chosen appearance: system, light or dark. NULL until the user picks one; clients apply their own default.
+	Appearance *string
 }
