@@ -109,7 +109,8 @@ templ hero() {
 				<p class="mt-7 max-w-[54ch] text-lg leading-relaxed text-muted-foreground">
 					{ i18n.T(ctx, "land.hero.lede") }
 				</p>
-				<div class="mt-9 flex flex-wrap items-center gap-3">
+				@appButtons("mt-9")
+				<div class="mt-4 flex flex-wrap items-center gap-3">
 					@button.Button(button.Props{Href: ctaHref(ctx), Size: button.SizeLg, Class: "bg-signal text-background hover:bg-signal/90"}) {
 						{ ctaLabel(ctx) }
 						@icon.ArrowRight(icon.Props{Class: "size-4"})
@@ -122,7 +123,6 @@ templ hero() {
 					@icon.Check(icon.Props{Class: "size-3.5 text-signal"})
 					{ i18n.T(ctx, "land.hero.free") }
 				</p>
-				@appButtons(false)
 				@tourLinks()
 			</div>
 			@heroThread()
