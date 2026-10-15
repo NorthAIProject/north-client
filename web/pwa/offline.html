@@ -78,13 +78,74 @@
   <body>
     <main>
       <p class="eyebrow">Khepri</p>
-      <h1>You're offline</h1>
-      <p>
+      <h1 data-i18n="title">You're offline</h1>
+      <p data-i18n="body">
         Khepri keeps your coach, your goals and your check-ins on the server, so
         it needs a connection to show them. Nothing you had already saved is
         lost — this page is only what the app can reach right now.
       </p>
-      <button type="button" onclick="location.reload()">Try again</button>
+      <button type="button" data-i18n="retry" onclick="location.reload()">Try again</button>
     </main>
+
+    <!--
+      The language is chosen here, in the browser, not on the server.
+
+      The service worker precaches this page once, at install, and serves that
+      copy for every failed navigation afterwards. A page rendered for the
+      request's locale would freeze whatever language was in force at install
+      time, for everyone on the device, until the next cache bump. So all four
+      languages ship in the file and the browser's own preference picks one,
+      with English in the markup for anything that does not run the script.
+
+      The picking mirrors i18n.Negotiate: a bare "pt" is Brazilian, any other
+      Portuguese region is European.
+    -->
+    <script>
+      (function () {
+        var copy = {
+          es: {
+            doc: "Sin conexión — Khepri",
+            title: "Estás sin conexión",
+            body: "Khepri guarda tu entrenador, tus objetivos y tus registros en el servidor, así que necesita conexión para mostrártelos. No se ha perdido nada de lo que ya habías guardado — esta página es solo lo que la app puede alcanzar ahora mismo.",
+            retry: "Intentar de nuevo",
+          },
+          "pt-PT": {
+            doc: "Sem ligação — Khepri",
+            title: "Estás sem ligação",
+            body: "O Khepri guarda o teu treinador, os teus objetivos e os teus registos no servidor, por isso precisa de ligação para os mostrar. Nada do que já tinhas guardado se perdeu — esta página é apenas o que a app consegue alcançar neste momento.",
+            retry: "Tentar outra vez",
+          },
+          "pt-BR": {
+            doc: "Sem conexão — Khepri",
+            title: "Você está sem conexão",
+            body: "O Khepri guarda seu treinador, suas metas e seus registros no servidor, então precisa de conexão para mostrá-los. Nada do que você já tinha salvado foi perdido — esta página é só o que o app consegue acessar agora.",
+            retry: "Tentar de novo",
+          },
+        };
+
+        function pick(langs) {
+          for (var i = 0; i < langs.length; i++) {
+            var l = String(langs[i] || "").toLowerCase();
+            if (l === "en" || l.indexOf("en-") === 0) return "en";
+            if (l === "es" || l.indexOf("es-") === 0) return "es";
+            if (l === "pt" || l === "pt-br") return "pt-BR";
+            if (l.indexOf("pt-") === 0) return "pt-PT";
+          }
+          return "en";
+        }
+
+        var nav = window.navigator || {};
+        var tag = pick(nav.languages && nav.languages.length ? nav.languages : [nav.language]);
+        var t = copy[tag];
+        if (!t) return;
+
+        document.documentElement.lang = tag;
+        document.title = t.doc;
+        var nodes = document.querySelectorAll("[data-i18n]");
+        for (var i = 0; i < nodes.length; i++) {
+          nodes[i].textContent = t[nodes[i].getAttribute("data-i18n")];
+        }
+      })();
+    </script>
   </body>
 </html>

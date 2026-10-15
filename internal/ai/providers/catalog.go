@@ -9,6 +9,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/ai/anthropic"
 	"github.com/NorthAIProject/north-client/internal/ai/gemini"
 	"github.com/NorthAIProject/north-client/internal/ai/openaicompat"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 )
 
 // BYOProvider is one backend a user may bring their own key for.
@@ -135,6 +136,19 @@ var Catalog = []BYOProvider{
 		VerifyHeaders: map[string]string{"anthropic-version": "2023-06-01"},
 		Note:          "Claude on your own Anthropic account. Billed to that account.",
 	},
+}
+
+// NoteIn is Note in tag's language, for the settings page. A note with no
+// catalogue entry reads as written rather than as a key.
+func (p BYOProvider) NoteIn(tag string) string {
+	if p.Note == "" {
+		return ""
+	}
+	key := "conn.provider.note." + p.Name
+	if got := i18n.Translate(tag, key); got != key {
+		return got
+	}
+	return p.Note
 }
 
 // ByName finds a catalogue entry.
