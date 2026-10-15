@@ -322,6 +322,11 @@ func Destinations() []Destination {
 			Nav:         NavPlacement{Show: true},
 		},
 		{
+			Key: "nav.recap", Label: "Your recap", Href: "/app/recap", Icon: "calendar-check", Group: GroupProgress,
+			Description: "Your last 7 or 30 days, to keep or to share.",
+			Keywords:    []string{"recap", "week", "month", "summary", "share", "streak"},
+		},
+		{
 			Key: "nav.insights", Label: "Insights", Href: "/app/insights", Icon: "chart-line", Group: GroupProgress,
 			Description: "How every part of it has been going.",
 			Keywords:    []string{"charts", "trends", "analytics", "stats", "score", "summary"},

@@ -3,10 +3,12 @@ package day
 import (
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
+	recappages "github.com/NorthAIProject/north-client/web/recaps"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
 	"github.com/NorthAIProject/north-client/web/shared/muscleviewer"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/chart"
 	"github.com/NorthAIProject/north-client/web/shared/ui/checkbox"
 	"github.com/NorthAIProject/north-client/web/shared/ui/dialog"
 	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
@@ -18,6 +20,9 @@ templ Page(user users.User, data Data) {
 	@layout.App(i18n.T(ctx, "nav.my-day"), user, layout.BuildNav(ctx, "/app")) {
 		<div class="mx-auto w-full max-w-7xl space-y-5 p-4 pb-28 md:p-6 md:pb-28">
 			@header(data)
+			if data.IsToday {
+				@recappages.StripLoader()
+			}
 			<div class="grid gap-5 lg:grid-cols-[18rem_minmax(0,1fr)] xl:grid-cols-[18rem_minmax(0,1fr)_17rem]">
 				<div class="order-2 lg:order-1 lg:row-span-2">
 					@rail(data)
@@ -37,6 +42,9 @@ templ Page(user users.User, data Data) {
 		@muscleviewer.Script()
 		@checkbox.Script()
 		@input.Script()
+		// For the recap strip's sparkline, which arrives after the page: the
+		// chart script must already be running to see it land.
+		@chart.Script()
 	}
 }
 

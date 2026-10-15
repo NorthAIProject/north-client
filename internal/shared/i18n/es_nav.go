@@ -68,6 +68,7 @@ var spanishNav = map[string]string{
 	"nav.crews":          "Grupos",
 	"nav.inbox":          "Bandeja de entrada",
 	"nav.weekly":         "Planificar la semana",
+	"nav.recap":          "Tu resumen",
 	"nav.decisions.desc": "Las decisiones que tomaste, y por qué.",
 
 	"nav.goals":                   "Objetivos",
@@ -137,6 +138,7 @@ var spanishNav = map[string]string{
 	"palette.hint.open":     "abrir",
 	"palette.hint.close":    "cerrar",
 	"nav.weekly.desc":       "Repasa la semana y elige un foco para la siguiente.",
+	"nav.recap.desc":        "Tus últimos 7 o 30 días, para guardar o compartir.",
 	"nav.friends.desc":      "Las personas que sigues y tu enlace de invitación.",
 	"nav.leaderboard.desc":  "Tu XP y tu nivel, en un ranking con los amigos que comparten los suyos.",
 	"nav.crews.desc":        "Unas pocas personas que se ayudan a no parar.",
