@@ -237,7 +237,7 @@ func formInt(tag, raw, flagKey string, flags *[]string) *int {
 	}
 	n, err := strconv.Atoi(raw)
 	if err != nil || n < 0 {
-		*flags = appendOnce(*flags, fmt.Sprintf(i18n.Translate(tag, flagKey), raw))
+		*flags = appendOnce(*flags, i18n.TranslateF(tag, flagKey, raw))
 		return nil
 	}
 	return &n

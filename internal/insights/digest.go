@@ -87,7 +87,7 @@ func renderDigest(tag string, view insightpages.SummaryView, siteURL string) str
 	if view.Empty || view.Judged == 0 {
 		// Both forms of the label go in: English reads it mid-sentence in lower
 		// case, the others lead with it as a heading.
-		return fmt.Sprintf(i18n.Translate(tag, "tg.digest.empty"), strings.ToLower(view.Range.Label), view.Range.Label)
+		return i18n.TranslateF(tag, "tg.digest.empty", strings.ToLower(view.Range.Label), view.Range.Label)
 	}
 
 	var b strings.Builder
@@ -121,5 +121,5 @@ func renderDigest(tag string, view insightpages.SummaryView, siteURL string) str
 
 // onTrack is the page's "n of m on track", in tag's language.
 func onTrack(tag string, view insightpages.SummaryView) string {
-	return fmt.Sprintf(i18n.Translate(tag, "insights.summary.onTrack"), view.OnTrack, view.Judged)
+	return i18n.TranslateF(tag, "insights.summary.onTrack", view.OnTrack, view.Judged)
 }

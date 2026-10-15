@@ -154,11 +154,11 @@ func (r Recap) SentenceIn(tag string) string {
 	}
 	switch {
 	case r.SetsPrescribed > 0 && r.SetsDone > 0:
-		parts = append(parts, fmt.Sprintf(i18n.Translate(tag, "lifts.recap.sets.of"), r.SetsDone, r.SetsPrescribed))
+		parts = append(parts, i18n.TranslateF(tag, "lifts.recap.sets.of", r.SetsDone, r.SetsPrescribed))
 	case r.SetsDone == 1:
 		parts = append(parts, i18n.Translate(tag, "lifts.recap.set"))
 	case r.SetsDone > 0:
-		parts = append(parts, fmt.Sprintf(i18n.Translate(tag, "lifts.recap.sets"), r.SetsDone))
+		parts = append(parts, i18n.TranslateF(tag, "lifts.recap.sets", r.SetsDone))
 	}
 	if r.VolumeKg > 0 {
 		parts = append(parts, groupThousands(tag, int(math.Round(r.VolumeKg)))+" kg")
@@ -175,7 +175,7 @@ func (r Recap) SentenceIn(tag string) string {
 	if delta < 0 {
 		key, delta = "lifts.recap.down", -delta
 	}
-	return strings.TrimSpace(sentence + " " + fmt.Sprintf(i18n.Translate(tag, key), change.Name, decimal(tag, delta)))
+	return strings.TrimSpace(sentence + " " + i18n.TranslateF(tag, key, change.Name, decimal(tag, delta)))
 }
 
 // biggestChange is the exercise whose estimated max moved most against last
@@ -200,11 +200,11 @@ func formatMinutes(tag string, d time.Duration) string {
 	m := mins % 60
 	minutes := i18n.Translate(tag, "lifts.recap.minute")
 	if m != 1 {
-		minutes = fmt.Sprintf(i18n.Translate(tag, "lifts.recap.minutes"), m)
+		minutes = i18n.TranslateF(tag, "lifts.recap.minutes", m)
 	}
 	hours := i18n.Translate(tag, "lifts.recap.hour")
 	if h != 1 {
-		hours = fmt.Sprintf(i18n.Translate(tag, "lifts.recap.hours"), h)
+		hours = i18n.TranslateF(tag, "lifts.recap.hours", h)
 	}
 	switch {
 	case h == 0:
@@ -212,7 +212,7 @@ func formatMinutes(tag string, d time.Duration) string {
 	case m == 0:
 		return hours
 	default:
-		return fmt.Sprintf(i18n.Translate(tag, "lifts.recap.hours.minutes"), hours, minutes)
+		return i18n.TranslateF(tag, "lifts.recap.hours.minutes", hours, minutes)
 	}
 }
 

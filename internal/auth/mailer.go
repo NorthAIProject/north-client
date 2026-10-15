@@ -2,7 +2,6 @@ package auth
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
@@ -58,10 +57,10 @@ func (m *CaptureMailer) Send(_ context.Context, msg Message) error {
 func passwordResetEmail(tag, displayName, resetURL string) Message {
 	greeting := i18n.Translate(tag, "auth.email.hi")
 	if displayName != "" {
-		greeting = fmt.Sprintf(i18n.Translate(tag, "auth.email.hi.name"), displayName)
+		greeting = i18n.TranslateF(tag, "auth.email.hi.name", displayName)
 	}
 	return Message{
 		Subject: i18n.Translate(tag, "auth.email.subject"),
-		Body:    fmt.Sprintf(i18n.Translate(tag, "auth.email.body"), greeting, resetURL),
+		Body:    i18n.TranslateF(tag, "auth.email.body", greeting, resetURL),
 	}
 }

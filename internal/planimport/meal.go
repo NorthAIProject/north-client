@@ -2,7 +2,6 @@ package planimport
 
 import (
 	"context"
-	"fmt"
 	"math"
 	"slices"
 	"strings"
@@ -441,10 +440,10 @@ func mealPlanFromDraft(tag string, d MealDraft) (importPlan, []string) {
 		problems = append(problems, i18n.Translate(tag, "nutrition.err.target"))
 	}
 	if len(d.Days) > meal.MaxDays {
-		problems = append(problems, fmt.Sprintf(i18n.Translate(tag, "planimport.problem.maxdays"), meal.MaxDays, len(d.Days)-meal.MaxDays))
+		problems = append(problems, i18n.TranslateF(tag, "planimport.problem.maxdays", meal.MaxDays, len(d.Days)-meal.MaxDays))
 	}
 	if d.EveryDay && len(d.Days) != 1 {
-		problems = append(problems, fmt.Sprintf(i18n.Translate(tag, "planimport.problem.everyday"), len(d.Days)))
+		problems = append(problems, i18n.TranslateF(tag, "planimport.problem.everyday", len(d.Days)))
 	}
 
 	// Notes past what meals keeps are cut, not refused: the meals are the
@@ -463,11 +462,11 @@ func mealPlanFromDraft(tag string, d MealDraft) (importPlan, []string) {
 	for di, day := range d.Days {
 		label := day.Label
 		if label == "" {
-			label = fmt.Sprintf(i18n.Translate(tag, "planimport.problem.day"), di+1)
+			label = i18n.TranslateF(tag, "planimport.problem.day", di+1)
 		}
 		if settings.Mode == meal.Advanced && !d.EveryDay {
 			if day.Weekday == nil {
-				problems = append(problems, fmt.Sprintf(i18n.Translate(tag, "planimport.problem.weekday"), label))
+				problems = append(problems, i18n.TranslateF(tag, "planimport.problem.weekday", label))
 				continue
 			}
 			out.input.Weekdays = append(out.input.Weekdays, time.Weekday(*day.Weekday))
@@ -477,7 +476,7 @@ func mealPlanFromDraft(tag string, d MealDraft) (importPlan, []string) {
 		for mi, m := range day.Meals {
 			name := strings.TrimSpace(m.Name)
 			if name == "" {
-				name = fmt.Sprintf(i18n.Translate(tag, "planimport.meal.meal_n"), mi+1)
+				name = i18n.TranslateF(tag, "planimport.meal.meal_n", mi+1)
 			}
 			var opts []draftOption
 			for oi, opt := range m.Options() {
@@ -488,7 +487,7 @@ func mealPlanFromDraft(tag string, d MealDraft) (importPlan, []string) {
 				o := draftOption{label: clip(strings.TrimSpace(opt.Label), meals.MaxOptionLabelRunes)}
 				for _, f := range opt.Foods {
 					if !f.Ready() {
-						problems = append(problems, fmt.Sprintf(i18n.Translate(tag, "planimport.problem.notready"), where, f.Food, strings.Join(f.Checks, " ")))
+						problems = append(problems, i18n.TranslateF(tag, "planimport.problem.notready", where, f.Food, strings.Join(f.Checks, " ")))
 						continue
 					}
 					portion := meals.MealIngredientInput{QuantityGrams: *f.Grams, SourceText: f.SourceText, Estimated: f.Estimated, Optional: f.Optional}
@@ -516,7 +515,7 @@ func mealPlanFromDraft(tag string, d MealDraft) (importPlan, []string) {
 					// a label; one the file left unnamed is named by its place.
 					altLabel := o.label
 					if altLabel == "" {
-						altLabel = fmt.Sprintf(i18n.Translate(tag, "nutrition.option.numbered"), oi+1)
+						altLabel = i18n.TranslateF(tag, "nutrition.option.numbered", oi+1)
 					}
 					md.Alternatives = append(md.Alternatives, meals.MealOptionDraft{Label: altLabel, Portions: o.portions})
 				}
@@ -540,7 +539,7 @@ func optionName(tag string, m MealDraftMeal, o int) string {
 	if opts := m.Options(); o >= 0 && o < len(opts) && opts[o].Label != "" {
 		return opts[o].Label
 	}
-	return fmt.Sprintf(i18n.Translate(tag, "nutrition.option.numbered"), o+1)
+	return i18n.TranslateF(tag, "nutrition.option.numbered", o+1)
 }
 
 func personalIngredient(f FoodDraft) meals.IngredientInput {
