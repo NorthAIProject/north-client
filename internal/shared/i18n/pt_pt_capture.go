@@ -25,4 +25,23 @@ var portugueseEuropeanCapture = map[string]string{
 	"capture.kind.weight":  "Peso",
 	"capture.kind.checkin": "Registo",
 	"capture.kind.food":    "Comida",
+
+	"capture.cost":       "Ler demora um momento. Guardar é um toque.",
+	"capture.start_over": "Recomeçar",
+	"capture.save":       "Guardar",
+	"capture.estimated":  "estimado",
+
+	"capture.unit.water":  "ml de água",
+	"capture.unit.sleep":  "minutos a dormir",
+	"capture.unit.mood":   "humor",
+	"capture.unit.energy": "energia",
+	"capture.unit.food":   "g de %[1]s",
+
+	"capture.foods.ph":        "Ou diz o que leva: 200 g de peito de frango, 100 g de arroz e dois ovos",
+	"capture.foods.find":      "Encontrar ingredientes",
+	"capture.foods.none":      "Não encontrei nenhum alimento. Indica cada alimento e a quantidade, por exemplo \"150 g de salmão\".",
+	"capture.foods.add":       "Adicionar à refeição",
+	"capture.foods.not_added": "Não adicionado:",
+	"capture.foods.which":     "Qual %[1]s?",
+	"capture.foods.ambiguous": "Há mais do que um ingrediente que corresponde. Escolhe um e marca-o.",
 }

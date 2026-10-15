@@ -101,4 +101,12 @@ var englishChat = map[string]string{
 	"chat.watch.day.4":   "Thursday",
 	"chat.watch.day.5":   "Friday",
 	"chat.watch.day.6":   "Saturday",
+
+	"chat.reflection.summary": "Reflection summary",
+	"chat.copy":               "Copy",
+	"chat.copied":             "Copied",
+
+	"chat.sources.one":  "1 source",
+	"chat.sources.many": "%[1]d sources",
+	"chat.file":         "file",
 }

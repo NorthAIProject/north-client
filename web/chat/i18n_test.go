@@ -77,3 +77,21 @@ func TestTheDeleteConfirmationIsQuotedAfterTranslation(t *testing.T) {
 		t.Error("the confirm() call is malformed")
 	}
 }
+
+// The citation count under a reply and the fallback attachment name are built
+// in Go, not in the template, so they are checked directly.
+func TestSourceAndFileLabelsAreTranslated(t *testing.T) {
+	cases := map[string][3]string{
+		"en":    {"1 source", "3 sources", "file"},
+		"es":    {"1 fuente", "3 fuentes", "archivo"},
+		"pt-PT": {"1 fonte", "3 fontes", "ficheiro"},
+		"pt-BR": {"1 fonte", "3 fontes", "arquivo"},
+	}
+	for locale, want := range cases {
+		ctx := i18n.WithLocale(context.Background(), locale)
+		got := [3]string{sourceLabel(ctx, 1), sourceLabel(ctx, 3), fileLabel(ctx, " ")}
+		if got != want {
+			t.Errorf("%s: got %q, want %q", locale, got, want)
+		}
+	}
+}

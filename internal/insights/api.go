@@ -1,6 +1,7 @@
 package insights
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"time"
@@ -242,7 +243,7 @@ func (a *API) summary(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, err, "Insights could not be loaded.")
 		return
 	}
-	view, err := buildSummaryView(data)
+	view, err := buildSummaryView(r.Context(), data)
 	if err != nil {
 		httpx.Error(w, err, "Insights could not be loaded.")
 		return
@@ -258,7 +259,7 @@ func (a *API) metric(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, err, "That metric could not be loaded.")
 		return
 	}
-	view, err := buildMetricView(data)
+	view, err := buildMetricView(r.Context(), data)
 	if err != nil {
 		httpx.Error(w, err, "That metric could not be loaded.")
 		return
@@ -273,7 +274,7 @@ func (a *API) health(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, err, "Health could not be loaded.")
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectHealth(rows))
+	httpx.WriteJSON(w, http.StatusOK, projectHealth(r.Context(), rows))
 }
 
 func (a *API) recovery(w http.ResponseWriter, r *http.Request) {
@@ -283,20 +284,20 @@ func (a *API) recovery(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, err, "Recovery could not be loaded.")
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectRecovery(data))
+	httpx.WriteJSON(w, http.StatusOK, projectRecovery(r.Context(), data))
 }
 
-func projectRecovery(r RecoveryData) RecoveryView {
+func projectRecovery(ctx context.Context, r RecoveryData) RecoveryView {
 	out := RecoveryView{
 		HasData: r.Score.HasData, Points: r.Score.Points, Verdict: string(r.Score.Verdict()),
-		Label: recoveryWords[r.Score.Verdict()], Signals: []RecoverySignalView{},
+		Label: recoveryWord(ctx, r.Score.Verdict()), Signals: []RecoverySignalView{},
 	}
-	out.Sentence, _ = r.Sentence()
+	out.Sentence, _ = r.SentenceIn(ctx)
 	for _, sig := range r.Signals {
 		out.Signals = append(out.Signals, RecoverySignalView{
-			Key: sig.Metric.Key, Label: sig.Metric.Label,
+			Key: sig.Metric.Key, Label: metricLabel(ctx, sig.Metric),
 			Latest: formatMetric(sig.Metric, sig.Usual.Latest.Value),
-			Usual:  projectUsual(usualView(sig.Metric, sig.Usual)),
+			Usual:  projectUsual(usualView(ctx, sig.Metric, sig.Usual)),
 		})
 	}
 	return out
@@ -331,12 +332,12 @@ func projectConsistency(c ConsistencyData) ConsistencyView {
 	return out
 }
 
-func projectHealth(rows []HealthRow) HealthList {
+func projectHealth(ctx context.Context, rows []HealthRow) HealthList {
 	out := HealthList{Metrics: []HealthMetric{}}
 	for _, row := range rows {
 		latest := row.Recent[len(row.Recent)-1]
 		metric := HealthMetric{
-			Key: row.Metric.Key, Label: row.Metric.Label,
+			Key: row.Metric.Key, Label: metricLabel(ctx, row.Metric),
 			Latest: formatMetric(row.Metric, latest.Value), Day: latest.At.Format(time.DateOnly),
 			Recent: make([]float64, 0, len(row.Recent)),
 		}
@@ -344,7 +345,7 @@ func projectHealth(rows []HealthRow) HealthList {
 			metric.Recent = append(metric.Recent, p.Value)
 		}
 		if row.Usual != nil {
-			metric.Usual = projectUsual(usualView(row.Metric, *row.Usual))
+			metric.Usual = projectUsual(usualView(ctx, row.Metric, *row.Usual))
 		}
 		out.Metrics = append(out.Metrics, metric)
 	}

@@ -1,9 +1,11 @@
 package nutrition
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/NorthAIProject/north-client/internal/meals/meal"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
@@ -37,22 +39,22 @@ func (f IngredientForm) fieldError(name string) string {
 }
 
 templ IngredientsPage(user users.User, query string, results []meal.Ingredient, f IngredientForm) {
-	@layout.App("Ingredients", user, nav(ctx)) {
+	@layout.App(i18n.T(ctx, "nav.ingredients"), user, nav(ctx)) {
 		<div class="mx-auto w-full max-w-2xl space-y-6 p-6 md:p-8">
 			<header>
-				@ui.MonoLabel("Nutrition")
-				<h1 class="mt-2 text-2xl font-medium tracking-tight">Ingredients</h1>
+				@ui.MonoLabel(i18n.T(ctx, "nutrition.mono"))
+				<h1 class="mt-2 text-2xl font-medium tracking-tight">{ i18n.T(ctx, "nav.ingredients") }</h1>
 				<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
-					Shared ingredients plus anything you've added yourself.
+					{ i18n.T(ctx, "nutrition.ingredients.intro") }
 				</p>
 			</header>
 			@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 				@card.Header() {
 					@card.Title() {
-						Add an ingredient
+						{ i18n.T(ctx, "nutrition.ingredients.add.title") }
 					}
 					@card.Description() {
-						Per 100g.
+						{ i18n.T(ctx, "nutrition.ingredients.add.per100") }
 					}
 				}
 				@card.Content() {
@@ -61,7 +63,7 @@ templ IngredientsPage(user users.User, query string, results []meal.Ingredient, 
 						<div class="grid grid-cols-2 gap-4">
 							@form.Item() {
 								@label.Label(label.Props{For: "name"}) {
-									Name
+									{ i18n.T(ctx, "nutrition.field.name") }
 								}
 								@input.Input(input.Props{ID: "name", Name: "name", Value: f.Name, Required: true, HasError: f.fieldError("name") != ""})
 								if f.fieldError("name") != "" {
@@ -72,23 +74,23 @@ templ IngredientsPage(user users.User, query string, results []meal.Ingredient, 
 							}
 							@form.Item() {
 								@label.Label(label.Props{For: "brand"}) {
-									Brand (optional)
+									{ i18n.T(ctx, "nutrition.field.brand") }
 								}
 								@input.Input(input.Props{ID: "brand", Name: "brand", Value: f.Brand})
 							}
 						</div>
 						@form.Item() {
 							@label.Label() {
-								Category
+								{ i18n.T(ctx, "nutrition.field.category") }
 							}
 							@selectbox.SelectBox() {
 								@selectbox.Trigger(selectbox.TriggerProps{ID: "category", Name: "category"}) {
-									@selectbox.Value(selectbox.ValueProps{Placeholder: "Other"})
+									@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "nutrition.category.other")})
 								}
 								@selectbox.Content() {
 									for _, c := range meal.Categories {
 										@selectbox.Item(selectbox.ItemProps{Value: c, Selected: f.Category == c}) {
-											{ categoryLabel(c) }
+											{ categoryLabel(ctx, c) }
 										}
 									}
 								}
@@ -97,7 +99,7 @@ templ IngredientsPage(user users.User, query string, results []meal.Ingredient, 
 						<div class="grid grid-cols-2 gap-4">
 							@form.Item() {
 								@label.Label(label.Props{For: "calories_per_100g"}) {
-									Calories / 100g
+									{ i18n.T(ctx, "nutrition.field.calories") }
 								}
 								@input.Input(input.Props{ID: "calories_per_100g", Name: "calories_per_100g", Type: input.TypeNumber, Value: f.Calories, Required: true, HasError: f.fieldError("calories_per_100g") != ""})
 								if f.fieldError("calories_per_100g") != "" {
@@ -108,7 +110,7 @@ templ IngredientsPage(user users.User, query string, results []meal.Ingredient, 
 							}
 							@form.Item() {
 								@label.Label(label.Props{For: "serving_size_grams"}) {
-									Serving size (g)
+									{ i18n.T(ctx, "nutrition.field.serving") }
 								}
 								@input.Input(input.Props{ID: "serving_size_grams", Name: "serving_size_grams", Type: input.TypeNumber, Value: f.ServingSizeGrams, Placeholder: "100"})
 							}
@@ -116,25 +118,25 @@ templ IngredientsPage(user users.User, query string, results []meal.Ingredient, 
 						<div class="grid grid-cols-3 gap-4">
 							@form.Item() {
 								@label.Label(label.Props{For: "protein_g_per_100g"}) {
-									Protein (g)
+									{ i18n.T(ctx, "nutrition.field.protein") }
 								}
 								@input.Input(input.Props{ID: "protein_g_per_100g", Name: "protein_g_per_100g", Type: input.TypeNumber, Value: f.ProteinG})
 							}
 							@form.Item() {
 								@label.Label(label.Props{For: "fat_g_per_100g"}) {
-									Fat (g)
+									{ i18n.T(ctx, "nutrition.field.fat") }
 								}
 								@input.Input(input.Props{ID: "fat_g_per_100g", Name: "fat_g_per_100g", Type: input.TypeNumber, Value: f.FatG})
 							}
 							@form.Item() {
 								@label.Label(label.Props{For: "carbs_g_per_100g"}) {
-									Carbs (g)
+									{ i18n.T(ctx, "nutrition.field.carbs") }
 								}
 								@input.Input(input.Props{ID: "carbs_g_per_100g", Name: "carbs_g_per_100g", Type: input.TypeNumber, Value: f.CarbG})
 							}
 						</div>
 						@button.Button(button.Props{Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90"}) {
-							Add ingredient
+							{ i18n.T(ctx, "nutrition.ingredients.add.submit") }
 						}
 					</form>
 				}
@@ -142,15 +144,15 @@ templ IngredientsPage(user users.User, query string, results []meal.Ingredient, 
 			@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 				@card.Header() {
 					@card.Title() {
-						Search
+						{ i18n.T(ctx, "nutrition.ingredients.search.title") }
 					}
 				}
 				@card.Content() {
 					<form method="get" action="/app/nutrition/ingredients" class="mb-4">
-						@input.Input(input.Props{Name: "q", Value: query, Placeholder: "Search ingredients…"})
+						@input.Input(input.Props{Name: "q", Value: query, Placeholder: i18n.T(ctx, "nutrition.ingredients.search.placeholder")})
 					</form>
 					if len(results) == 0 {
-						<p class="text-muted-foreground text-sm">No ingredients found.</p>
+						<p class="text-muted-foreground text-sm">{ i18n.T(ctx, "nutrition.ingredients.none") }</p>
 					} else {
 						<ul class="space-y-2">
 							for _, ing := range results {
@@ -170,42 +172,31 @@ templ ingredientRow(user users.User, ing meal.Ingredient) {
 	<li class="border-hairline flex items-center justify-between rounded-lg border px-3 py-2 text-sm">
 		<div>
 			<span class="font-medium">{ ing.Name }</span>
-			<span class="text-muted-foreground ml-2">{ categoryLabel(ing.Category) } · { fmt.Sprintf("%.0f kcal/100g", ing.Per100g.Calories) }</span>
+			<span class="text-muted-foreground ml-2">{ categoryLabel(ctx, ing.Category) } · { fmt.Sprintf("%.0f kcal/100g", ing.Per100g.Calories) }</span>
 		</div>
 		if ing.UserID == nil {
 			@badge.Badge(badge.Props{Variant: badge.VariantOutline}) {
-				Shared
+				{ i18n.T(ctx, "nutrition.ingredients.shared") }
 			}
 		} else if *ing.UserID == user.ID {
 			<form method="post" action={ templ.SafeURL("/app/nutrition/ingredients/" + ing.ID.String() + "/delete") }>
 				@ui.CSRFInput()
 				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm}) {
-					Delete
+					{ i18n.T(ctx, "nutrition.delete") }
 				}
 			</form>
 		}
 	</li>
 }
 
-func categoryLabel(c string) string {
+// categoryLabel names a food category. An unknown one reads as Other, as it
+// always has.
+func categoryLabel(ctx context.Context, c string) string {
 	switch c {
-	case meal.CategoryProtein:
-		return "Protein"
-	case meal.CategoryCarb:
-		return "Carb"
-	case meal.CategoryFat:
-		return "Fat"
-	case meal.CategoryDairy:
-		return "Dairy"
-	case meal.CategoryVegetable:
-		return "Vegetable"
-	case meal.CategoryFruit:
-		return "Fruit"
-	case meal.CategoryBeverage:
-		return "Beverage"
-	case meal.CategorySnack:
-		return "Snack"
+	case meal.CategoryProtein, meal.CategoryCarb, meal.CategoryFat, meal.CategoryDairy,
+		meal.CategoryVegetable, meal.CategoryFruit, meal.CategoryBeverage, meal.CategorySnack:
+		return i18n.T(ctx, "nutrition.category."+c)
 	default:
-		return "Other"
+		return i18n.T(ctx, "nutrition.category.other")
 	}
 }

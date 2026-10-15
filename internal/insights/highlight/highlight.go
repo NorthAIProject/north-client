@@ -16,6 +16,10 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"unicode"
+	"unicode/utf8"
+
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 )
 
 // Series is one metric over a window, already bucketed for its chart.
@@ -28,9 +32,9 @@ type Series struct {
 	// whole point of the metric.
 	Decimals int
 
-	// Period is the singular noun for one bucket — "day", "week", "month".
-	// Without it a run or a gap reads "unlogged for 10 in a row", and ten of
-	// what is exactly what the reader wanted to know.
+	// Period names one bucket — "hour", "day", "week", "month" — as a code
+	// the sentence translates. Without it a run or a gap reads "unlogged for
+	// 10 in a row", and ten of what is exactly what the reader wanted to know.
 	Period string
 
 	Values []float64
@@ -48,6 +52,11 @@ type Comparison struct {
 type Input struct {
 	Series      []Series
 	Comparisons []Comparison
+
+	// Locale is the BCP 47 tag the sentences are written in. Empty reads
+	// English, which is what a caller with no reader behind it should get.
+	// Labels arrive already in this language; the rules only word around them.
+	Locale string
 }
 
 // finding is a candidate sentence and how much it deserves the space.
@@ -75,12 +84,12 @@ func Find(in Input, limit int) []string {
 	var found []finding
 
 	for _, s := range in.Series {
-		found = append(found, s.peak()...)
-		found = append(found, s.run()...)
-		found = append(found, s.gap()...)
+		found = append(found, s.peak(in.Locale)...)
+		found = append(found, s.run(in.Locale)...)
+		found = append(found, s.gap(in.Locale)...)
 	}
 	for _, c := range in.Comparisons {
-		found = append(found, c.change()...)
+		found = append(found, c.change(in.Locale)...)
 	}
 
 	sort.SliceStable(found, func(i, j int) bool { return found[i].rank > found[j].rank })
@@ -96,7 +105,7 @@ func Find(in Input, limit int) []string {
 }
 
 // peak names the standout bucket, when there is one.
-func (s Series) peak() []finding {
+func (s Series) peak(tag string) []finding {
 	best, at := 0.0, -1
 	var total float64
 	var n int
@@ -119,14 +128,14 @@ func (s Series) peak() []finding {
 	}
 
 	return []finding{{
-		text: fmt.Sprintf("Your best %s was %s, at %s.",
+		text: fmt.Sprintf(i18n.Translate(tag, "insights.highlight.peak"),
 			lower(s.Label), s.Labels[at], s.amount(best)),
 		rank: best / mean,
 	}}
 }
 
 // run reports the longest unbroken stretch of logged buckets.
-func (s Series) run() []finding {
+func (s Series) run(tag string) []finding {
 	longest, current := 0, 0
 	for _, v := range s.Values {
 		if v > 0 {
@@ -143,14 +152,14 @@ func (s Series) run() []finding {
 	}
 
 	return []finding{{
-		text: fmt.Sprintf("You logged %s %d %s in a row.",
-			lower(s.Label), longest, s.periods(longest)),
+		text: fmt.Sprintf(i18n.Translate(tag, "insights.highlight.run"),
+			lower(s.Label), longest, s.periods(tag, longest)),
 		rank: float64(longest),
 	}}
 }
 
 // gap reports the longest stretch with nothing recorded.
-func (s Series) gap() []finding {
+func (s Series) gap(tag string) []finding {
 	longest, current := 0, 0
 	for _, v := range s.Values {
 		if v == 0 {
@@ -167,13 +176,14 @@ func (s Series) gap() []finding {
 	}
 
 	return []finding{{
-		text: fmt.Sprintf("%s went unlogged for %d %s.", s.Label, longest, s.periods(longest)),
+		text: fmt.Sprintf(i18n.Translate(tag, "insights.highlight.gap"),
+			s.Label, lower(s.Label), longest, s.periods(tag, longest)),
 		rank: float64(longest) / 2, // a gap is worth saying, but less than a run
 	}}
 }
 
 // change compares a total with the window before it.
-func (c Comparison) change() []finding {
+func (c Comparison) change(tag string) []finding {
 	// No prior window means no claim, which is the rule the whole section
 	// follows: a first week is not an improvement on anything.
 	if c.Prior <= 0 {
@@ -185,13 +195,12 @@ func (c Comparison) change() []finding {
 		return nil
 	}
 
-	direction := "higher"
+	key := "insights.highlight.change.up"
 	if delta < 0 {
-		direction = "lower"
+		key = "insights.highlight.change.down"
 	}
 	return []finding{{
-		text: fmt.Sprintf("%s is %.0f%% %s than the window before.",
-			c.Label, math.Abs(delta)*100, direction),
+		text: fmt.Sprintf(i18n.Translate(tag, key), c.Label, math.Abs(delta)*100),
 		rank: math.Abs(delta) * 10,
 	}}
 }
@@ -203,25 +212,37 @@ func (s Series) amount(v float64) string {
 
 // periods names n buckets: "3 days", "1 month". Falls back to "times" for a
 // series that did not say what its buckets are, so the sentence still reads.
-func (s Series) periods(n int) string {
-	if s.Period == "" {
-		return "times"
+// A period with no translation keeps the old English pluralisation, so a new
+// grain reads clumsily rather than as a catalogue key.
+func (s Series) periods(tag string, n int) string {
+	period := s.Period
+	if period == "" {
+		period = "time"
+	}
+	form := "many"
+	if n == 1 {
+		form = "one"
+	}
+	key := "insights.highlight.period." + period + "." + form
+	if word := i18n.Translate(tag, key); word != key {
+		return word
 	}
 	if n == 1 {
-		return s.Period
+		return period
 	}
-	return s.Period + "s"
+	return period + "s"
 }
 
 // lower makes a label fit mid-sentence without lowercasing an acronym.
 func lower(label string) string {
-	if label == "" {
+	first, size := utf8.DecodeRuneInString(label)
+	if first == utf8.RuneError {
 		return label
 	}
-	for _, r := range label[1:] {
-		if r >= 'A' && r <= 'Z' {
+	for _, r := range label[size:] {
+		if unicode.IsUpper(r) {
 			return label
 		}
 	}
-	return string(label[0]|0x20) + label[1:]
+	return string(unicode.ToLower(first)) + label[size:]
 }

@@ -1,9 +1,10 @@
 package vault
 
 import (
-	"fmt"
+	"context"
 	"time"
 
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
@@ -33,22 +34,22 @@ func (f Form) fieldError(name string) string {
 }
 
 templ Page(user users.User, conn View, form Form) {
-	@layout.App("Vault sync", user, layout.BuildNav(ctx, "/app/settings/vault")) {
+	@layout.App(i18n.T(ctx, "settings.vault.title"), user, layout.BuildNav(ctx, "/app/settings/vault")) {
 		<div class="mx-auto w-full max-w-2xl space-y-8 p-6 md:p-8">
 			<header>
 				<a href="/app/settings" class="text-muted-foreground hover:text-foreground font-mono text-[10px] uppercase tracking-[0.14em]">
-					&larr; Settings
+					&larr; { i18n.T(ctx, "settings.mono") }
 				</a>
-				<h1 class="mt-2 text-2xl font-medium tracking-tight">Vault folder</h1>
+				<h1 class="mt-2 text-2xl font-medium tracking-tight">{ i18n.T(ctx, "settings.vault.heading") }</h1>
 				<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
-					Point Khepri at an Obsidian or markdown folder on this machine. The worker must run where it can read that path.
+					{ i18n.T(ctx, "settings.vault.intro") }
 				</p>
 			</header>
 			if conn.RootPath != "" {
 				<section class="border-hairline bg-surface space-y-3 rounded-lg border p-4">
-					<p class="text-sm"><span class="text-muted-foreground">Connected:</span> { conn.RootPath }</p>
+					<p class="text-sm"><span class="text-muted-foreground">{ i18n.T(ctx, "settings.vault.connected") }</span> { conn.RootPath }</p>
 					if conn.LastSyncAt != nil {
-						<p class="text-muted-foreground text-xs">Last sync: { conn.LastSyncAt.Format("Jan 2, 2006 3:04 PM") }</p>
+						<p class="text-muted-foreground text-xs">{ i18n.Tf(ctx, "settings.vault.lastsync", i18n.Date(ctx, *conn.LastSyncAt, "Jan 2, 2006 3:04 PM")) }</p>
 					}
 					if conn.LastError != "" {
 						<p class="text-destructive text-xs">{ conn.LastError }</p>
@@ -57,25 +58,25 @@ templ Page(user users.User, conn View, form Form) {
 						<form method="post" action="/app/settings/vault/sync">
 							@ui.CSRFInput()
 							@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm}) {
-								Sync now
+								{ i18n.T(ctx, "settings.vault.sync") }
 							}
 						</form>
 						<form method="post" action="/app/settings/vault/disconnect">
 							@ui.CSRFInput()
 							@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Variant: button.VariantOutline}) {
-								Disconnect
+								{ i18n.T(ctx, "settings.vault.disconnect") }
 							}
 						</form>
 					</div>
 				</section>
 			}
 			<section class="border-hairline bg-surface space-y-4 rounded-lg border p-4">
-				<h2 class="text-sm font-medium">{ connectTitle(conn) }</h2>
+				<h2 class="text-sm font-medium">{ connectTitle(ctx, conn) }</h2>
 				<form method="post" action="/app/settings/vault/connect" class="space-y-4">
 					@ui.CSRFInput()
 					<div class="space-y-2">
 						@label.Label(label.Props{For: "root_path"}) {
-							Folder path
+							{ i18n.T(ctx, "settings.vault.path") }
 						}
 						@input.Input(input.Props{
 							ID:          "root_path",
@@ -91,7 +92,7 @@ templ Page(user users.User, conn View, form Form) {
 						}
 					</div>
 					@button.Button(button.Props{Type: button.TypeSubmit}) {
-						Save and sync
+						{ i18n.T(ctx, "settings.vault.save") }
 					}
 				</form>
 			</section>
@@ -100,11 +101,11 @@ templ Page(user users.User, conn View, form Form) {
 	}
 }
 
-func connectTitle(conn View) string {
+func connectTitle(ctx context.Context, conn View) string {
 	if conn.RootPath != "" {
-		return "Change folder"
+		return i18n.T(ctx, "settings.vault.change")
 	}
-	return "Connect a folder"
+	return i18n.T(ctx, "settings.vault.connect")
 }
 
 func formValue(conn View, form Form) string {
@@ -121,6 +122,12 @@ func ariaInvalid(msg string) string {
 	return "false"
 }
 
-func FormatUpdated(t time.Time) string {
-	return fmt.Sprintf("updated %s", t.Format(time.Kitchen))
+// FormatUpdated reads "updated 3:04PM" in English and a 24-hour clock in the
+// other locales, none of which write AM/PM.
+func FormatUpdated(ctx context.Context, t time.Time) string {
+	layout := "15:04"
+	if i18n.LocaleFrom(ctx) == i18n.DefaultLocale {
+		layout = time.Kitchen
+	}
+	return i18n.Tf(ctx, "settings.vault.updated", t.Format(layout))
 }

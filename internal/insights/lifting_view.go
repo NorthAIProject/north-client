@@ -1,12 +1,14 @@
 package insights
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/NorthAIProject/north-client/internal/lifts"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/viz"
 	insightpages "github.com/NorthAIProject/north-client/web/insights"
 )
@@ -15,7 +17,7 @@ import (
 // accessories, and the page is about the main lifts.
 const liftingExercises = 8
 
-func buildLiftingView(st lifts.Stats) insightpages.LiftingView {
+func buildLiftingView(ctx context.Context, st lifts.Stats) insightpages.LiftingView {
 	if len(st.Sets) == 0 {
 		return insightpages.LiftingView{}
 	}
@@ -30,7 +32,7 @@ func buildLiftingView(st lifts.Stats) insightpages.LiftingView {
 	labels := make([]string, len(st.Weekly))
 	totals := make([]float64, len(st.Weekly))
 	for i, w := range st.Weekly {
-		labels[i] = w.Day.Format("Jan 2")
+		labels[i] = i18n.Date(ctx, w.Day, "Jan 2")
 		totals[i] = w.Value
 	}
 	view.HasWeekly = len(st.Weekly) > 1
@@ -55,7 +57,7 @@ func buildLiftingView(st lifts.Stats) insightpages.LiftingView {
 			Lift:     fmt.Sprintf("%s × %d", formatKg(r.Set.WeightKg), r.Set.Reps),
 			E1RM:     formatKg(r.E1RM),
 			Gain:     formatKg(util.RoundHalfUpToScale(r.E1RM-r.Previous, 1)),
-			On:       r.Set.LogDate.Format("Mon, Jan 2"),
+			On:       i18n.Date(ctx, r.Set.LogDate, "Mon, Jan 2"),
 		})
 	}
 
@@ -65,7 +67,7 @@ func buildLiftingView(st lifts.Stats) insightpages.LiftingView {
 	}
 	for _, m := range st.Muscles {
 		view.Muscles = append(view.Muscles, insightpages.MuscleRow{
-			Name: muscleLabel(m.Muscle), Sets: m.Sets, Pct: m.Sets * 100 / most,
+			Name: muscleLabel(ctx, m.Muscle), Sets: m.Sets, Pct: m.Sets * 100 / most,
 		})
 	}
 	return view
@@ -90,8 +92,13 @@ func formatKg(v float64) string {
 	return fmt.Sprintf("%.1f kg", v)
 }
 
-// muscleLabel turns a muscle key ("lower_back") into words ("Lower back").
-func muscleLabel(key string) string {
+// muscleLabel turns a muscle key ("lower_back") into words ("Lower back"):
+// the body figure's name for it when the catalogue has one, so the page and
+// the figure agree, and the key spelled out otherwise.
+func muscleLabel(ctx context.Context, key string) string {
+	if name := i18n.T(ctx, "muscle."+key); name != "muscle."+key {
+		return name
+	}
 	words := strings.ReplaceAll(key, "_", " ")
 	if words == "" {
 		return ""

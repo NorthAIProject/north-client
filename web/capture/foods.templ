@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/capture/captured"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/ui/alert"
 	"github.com/NorthAIProject/north-client/web/shared/ui/badge"
@@ -71,7 +72,7 @@ templ mealVoiceComposer(data MealVoiceData) {
 			Name:        "text",
 			Value:       data.Text,
 			Rows:        2,
-			Placeholder: "Or say what's in it: 200 g chicken breast, 100 g rice and two eggs",
+			Placeholder: i18n.T(ctx, "capture.foods.ph"),
 			Attributes:  templ.Attributes{"maxlength": strconv.Itoa(captured.MaxText)},
 		})
 		<div class="flex items-center justify-end gap-2">
@@ -83,7 +84,7 @@ templ mealVoiceComposer(data MealVoiceData) {
 				Variant: button.VariantOutline,
 			})
 			@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
-				Find ingredients
+				{ i18n.T(ctx, "capture.foods.find") }
 			}
 		</div>
 	</form>
@@ -92,7 +93,7 @@ templ mealVoiceComposer(data MealVoiceData) {
 templ mealVoiceReview(data MealVoiceData) {
 	if len(data.Draft.Lines) == 0 {
 		<p class="text-sm text-muted-foreground">
-			No food found in that. Name each food and how much, such as "150 g salmon".
+			{ i18n.T(ctx, "capture.foods.none") }
 		</p>
 	} else {
 		<form
@@ -107,7 +108,7 @@ templ mealVoiceReview(data MealVoiceData) {
 			if anyChoosable(data.Draft.Lines) {
 				<div class="flex justify-end">
 					@button.Button(button.Props{Type: button.TypeSubmit}) {
-						Add to meal
+						{ i18n.T(ctx, "capture.foods.add") }
 					}
 				</div>
 			}
@@ -115,7 +116,7 @@ templ mealVoiceReview(data MealVoiceData) {
 	}
 	if len(data.Draft.Unparsed) > 0 {
 		<div class="text-xs text-muted-foreground">
-			<p>Not added:</p>
+			<p>{ i18n.T(ctx, "capture.foods.not_added") }</p>
 			<ul class="mt-1 space-y-0.5">
 				for _, text := range data.Draft.Unparsed {
 					<li>&ldquo;{ text }&rdquo;</li>
@@ -151,7 +152,7 @@ templ mealVoiceLine(index int, line captured.FoodLine) {
 						<div class="min-w-0 flex-1">
 							@selectbox.SelectBox() {
 								@selectbox.Trigger(selectbox.TriggerProps{Name: "ingredient_id_" + n}) {
-									@selectbox.Value(selectbox.ValueProps{Placeholder: "Which " + line.Query + "?"})
+									@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.Tf(ctx, "capture.foods.which", line.Query)})
 								}
 								@selectbox.Content() {
 									for _, c := range line.Candidates {
@@ -171,7 +172,7 @@ templ mealVoiceLine(index int, line captured.FoodLine) {
 					}
 					if line.Uncertain {
 						@badge.Badge(badge.Props{Variant: badge.VariantOutline}) {
-							estimated
+							{ i18n.T(ctx, "capture.estimated") }
 						}
 					}
 				</div>
@@ -181,7 +182,7 @@ templ mealVoiceLine(index int, line captured.FoodLine) {
 				if line.Problem != "" {
 					<p class="text-xs text-destructive">{ line.Problem }</p>
 				} else if line.IngredientID == uuid.Nil {
-					<p class="text-xs text-muted-foreground">More than one ingredient matches. Choose one, then tick it.</p>
+					<p class="text-xs text-muted-foreground">{ i18n.T(ctx, "capture.foods.ambiguous") }</p>
 				}
 			</div>
 		</div>

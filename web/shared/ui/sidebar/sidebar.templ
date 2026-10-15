@@ -3,6 +3,7 @@
 package sidebar
 
 import "context"
+import "github.com/NorthAIProject/north-client/internal/shared/i18n"
 import "github.com/NorthAIProject/north-client/web/shared/utils"
 import "github.com/NorthAIProject/north-client/web/shared/ui/icon"
 import "github.com/NorthAIProject/north-client/web/shared/ui/button"
@@ -432,7 +433,7 @@ templ Trigger(props ...TriggerProps) {
 			Class:   "size-7",
 		}) {
 			@icon.PanelLeft(icon.Props{Class: "size-4"})
-			<span class="sr-only">Toggle Sidebar</span>
+			<span class="sr-only">{ i18n.T(ctx, "layout.sidebar.toggle") }</span>
 		}
 	}
 	<!-- Desktop: Sidebar Trigger -->
@@ -453,7 +454,7 @@ templ Trigger(props ...TriggerProps) {
 			)},
 		) {
 			@icon.PanelLeft(icon.Props{Class: "size-4"})
-			<span class="sr-only">Toggle Sidebar</span>
+			<span class="sr-only">{ i18n.T(ctx, "layout.sidebar.toggle") }</span>
 		}
 	</div>
 }

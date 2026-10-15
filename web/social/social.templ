@@ -1,11 +1,12 @@
 package social
 
 import (
-	"fmt"
+	"context"
 	"strings"
 	"time"
 
 	"github.com/NorthAIProject/north-client/internal/achievements/achievement"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/social/friend"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
@@ -37,17 +38,17 @@ type FeedSection struct {
 	Sharing achievement.Sharing
 }
 
-func ago(t time.Time) string {
+func ago(ctx context.Context, t time.Time) string {
 	d := time.Since(t)
 	switch {
 	case d < time.Hour:
-		return fmt.Sprintf("%dm ago", max(1, int(d.Minutes())))
+		return i18n.Tf(ctx, "social.ago.minutes", max(1, int(d.Minutes())))
 	case d < 24*time.Hour:
-		return fmt.Sprintf("%dh ago", int(d.Hours()))
+		return i18n.Tf(ctx, "social.ago.hours", int(d.Hours()))
 	case d < 7*24*time.Hour:
-		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
+		return i18n.Tf(ctx, "social.ago.days", int(d.Hours()/24))
 	default:
-		return t.Format("2 Jan")
+		return i18n.Date(ctx, t, "2 Jan")
 	}
 }
 
@@ -82,21 +83,21 @@ func initials(name string) string {
 	return out
 }
 
-func at(handle string) string {
+func at(ctx context.Context, handle string) string {
 	if handle == "" {
-		return "no handle"
+		return i18n.T(ctx, "social.nohandle")
 	}
 	return "@" + handle
 }
 
 templ FriendsPage(user users.User, o friend.Overview, inviteURL string, f FriendsForm, feed FeedSection, share ShareLinks, finding Finding) {
-	@layout.App("Friends", user, layout.BuildNav(ctx, "/app/friends")) {
+	@layout.App(i18n.T(ctx, "social.title"), user, layout.BuildNav(ctx, "/app/friends")) {
 		<div class="mx-auto w-full max-w-3xl space-y-6 p-6 md:p-8">
 			<header>
-				@ui.MonoLabel("Progress")
-				<h1 class="mt-2 text-2xl font-medium tracking-tight">Friends</h1>
+				@ui.MonoLabel(i18n.T(ctx, "social.mono"))
+				<h1 class="mt-2 text-2xl font-medium tracking-tight">{ i18n.T(ctx, "social.title") }</h1>
 				<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
-					People who follow you only see what you choose to share. Nobody follows you without your yes.
+					{ i18n.T(ctx, "social.intro") }
 				</p>
 			</header>
 			if feed.Enabled {
@@ -114,15 +115,15 @@ templ FriendsPage(user users.User, o friend.Overview, inviteURL string, f Friend
 				@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 					@card.Header() {
 						@card.Title() {
-							Waiting for your yes
+							{ i18n.T(ctx, "social.requests.title") }
 						}
 					}
 					@card.Content() {
 						<ul class="divide-y divide-hairline">
 							for _, c := range o.Requests {
 								@personRow(c.Person, "") {
-									@action(c.ID.String(), "accept", "Accept", button.VariantDefault)
-									@action(c.ID.String(), "remove", "Decline", button.VariantGhost)
+									@action(c.ID.String(), "accept", i18n.T(ctx, "social.accept"), button.VariantDefault)
+									@action(c.ID.String(), "remove", i18n.T(ctx, "social.decline"), button.VariantGhost)
 								}
 							}
 						</ul>
@@ -133,20 +134,20 @@ templ FriendsPage(user users.User, o friend.Overview, inviteURL string, f Friend
 				@sharingCard(feed.Sharing)
 			}
 			@followCard(f)
-			@listCard("Following", "Nobody yet. Follow somebody by their handle, or share your link.", o.Following, true)
-			@listCard("Followers", "Nobody follows you yet.", o.Followers, false)
+			@listCard(i18n.T(ctx, "social.following.title"), i18n.T(ctx, "social.following.empty"), o.Following, true)
+			@listCard(i18n.T(ctx, "social.followers.title"), i18n.T(ctx, "social.followers.empty"), o.Followers, false)
 			if len(o.Blocked) > 0 {
 				@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 					@card.Header() {
 						@card.Title() {
-							Blocked
+							{ i18n.T(ctx, "social.blocked.title") }
 						}
 					}
 					@card.Content() {
 						<ul class="divide-y divide-hairline">
 							for _, p := range o.Blocked {
 								@personRow(p, "") {
-									@action(p.ID.String(), "unblock", "Unblock", button.VariantGhost)
+									@action(p.ID.String(), "unblock", i18n.T(ctx, "social.unblock"), button.VariantGhost)
 								}
 							}
 						</ul>
@@ -165,10 +166,10 @@ templ inviteCard(url string, joined int, share ShareLinks) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 		@card.Header() {
 			@card.Title() {
-				Your invite link
+				{ i18n.T(ctx, "social.invite.title") }
 			}
 			@card.Description() {
-				Anyone who joins through it follows you, and you follow them.
+				{ i18n.T(ctx, "social.invite.desc") }
 			}
 		}
 		@card.Content() {
@@ -178,18 +179,18 @@ templ inviteCard(url string, joined int, share ShareLinks) {
 			</div>
 			<div class="mt-3 flex flex-wrap gap-2">
 				@button.Button(button.Props{Href: share.X, Target: "_blank", Variant: button.VariantOutline, Size: button.SizeSm}) {
-					Share on X
+					{ i18n.T(ctx, "social.invite.share.x") }
 				}
 				@button.Button(button.Props{Href: share.Facebook, Target: "_blank", Variant: button.VariantOutline, Size: button.SizeSm}) {
-					Share on Facebook
+					{ i18n.T(ctx, "social.invite.share.facebook") }
 				}
 			</div>
 			if joined > 0 {
 				<p class="text-muted-foreground mt-3 text-sm">
 					if joined == 1 {
-						1 person joined through your links.
+						{ i18n.T(ctx, "social.invite.joined.one") }
 					} else {
-						{ joined } people joined through your links.
+						{ i18n.Tf(ctx, "social.invite.joined.many", joined) }
 					}
 				</p>
 			}
@@ -201,10 +202,10 @@ templ handleCard(f FriendsForm) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 		@card.Header() {
 			@card.Title() {
-				Your handle
+				{ i18n.T(ctx, "social.handle.title") }
 			}
 			@card.Description() {
-				How friends find you. Without one, only your invite link does.
+				{ i18n.T(ctx, "social.handle.desc") }
 			}
 		}
 		@card.Content() {
@@ -212,9 +213,9 @@ templ handleCard(f FriendsForm) {
 				@ui.CSRFInput()
 				@form.Item(form.ItemProps{Class: "flex-1"}) {
 					@label.Label(label.Props{For: "handle", Error: f.fieldError("handle")}) {
-						Handle
+						{ i18n.T(ctx, "social.handle.label") }
 					}
-					@input.Input(input.Props{ID: "handle", Name: "handle", Value: f.Handle, Placeholder: "e.g. ana_runs", HasError: f.fieldError("handle") != ""})
+					@input.Input(input.Props{ID: "handle", Name: "handle", Value: f.Handle, Placeholder: i18n.T(ctx, "social.handle.placeholder"), HasError: f.fieldError("handle") != ""})
 					if f.fieldError("handle") != "" {
 						@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
 							{ f.fieldError("handle") }
@@ -222,7 +223,7 @@ templ handleCard(f FriendsForm) {
 					}
 				}
 				@button.Button(button.Props{Type: button.TypeSubmit}) {
-					Save
+					{ i18n.T(ctx, "social.save") }
 				}
 			</form>
 		}
@@ -233,7 +234,7 @@ templ followCard(f FriendsForm) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 		@card.Header() {
 			@card.Title() {
-				Follow somebody
+				{ i18n.T(ctx, "social.follow.title") }
 			}
 		}
 		@card.Content() {
@@ -241,7 +242,7 @@ templ followCard(f FriendsForm) {
 				@ui.CSRFInput()
 				@form.Item(form.ItemProps{Class: "flex-1"}) {
 					@label.Label(label.Props{For: "follow", Error: f.fieldError("follow")}) {
-						Their handle
+						{ i18n.T(ctx, "social.follow.label") }
 					}
 					@input.Input(input.Props{ID: "follow", Name: "follow", Value: f.Follow, Placeholder: "@handle", HasError: f.fieldError("follow") != ""})
 					if f.fieldError("follow") != "" {
@@ -251,7 +252,7 @@ templ followCard(f FriendsForm) {
 					}
 				}
 				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantSecondary}) {
-					Ask to follow
+					{ i18n.T(ctx, "social.follow.ask") }
 				}
 			</form>
 		}
@@ -273,11 +274,11 @@ templ listCard(title, empty string, list []friend.Connection, following bool) {
 					for _, c := range list {
 						@personRow(c.Person, c.Status) {
 							if following {
-								@action(c.ID.String(), "unfollow", unfollowLabel(c.Status), button.VariantGhost)
+								@action(c.ID.String(), "unfollow", unfollowLabel(ctx, c.Status), button.VariantGhost)
 							} else {
-								@action(c.ID.String(), "remove", "Remove", button.VariantGhost)
+								@action(c.ID.String(), "remove", i18n.T(ctx, "social.remove"), button.VariantGhost)
 							}
-							@action(c.ID.String(), "block", "Block", button.VariantGhost)
+							@action(c.ID.String(), "block", i18n.T(ctx, "social.block"), button.VariantGhost)
 						}
 					}
 				</ul>
@@ -286,11 +287,18 @@ templ listCard(title, empty string, list []friend.Connection, following bool) {
 	}
 }
 
-func unfollowLabel(status string) string {
-	if status == friend.StatusPending {
-		return "Withdraw"
+func kudosCount(ctx context.Context, n int) string {
+	if n == 1 {
+		return i18n.T(ctx, "social.feed.kudos.one")
 	}
-	return "Unfollow"
+	return i18n.Tf(ctx, "social.feed.kudos", n)
+}
+
+func unfollowLabel(ctx context.Context, status string) string {
+	if status == friend.StatusPending {
+		return i18n.T(ctx, "social.withdraw")
+	}
+	return i18n.T(ctx, "social.unfollow")
 }
 
 templ personRow(p friend.Person, status string) {
@@ -302,11 +310,11 @@ templ personRow(p friend.Person, status string) {
 		}
 		<div class="min-w-0 flex-1">
 			<p class="truncate text-sm font-medium">{ p.DisplayName }</p>
-			<p class="text-muted-foreground truncate text-xs">{ at(p.Handle) }</p>
+			<p class="text-muted-foreground truncate text-xs">{ at(ctx, p.Handle) }</p>
 		</div>
 		if status == friend.StatusPending {
 			@badge.Badge(badge.Props{Variant: badge.VariantOutline}) {
-				Waiting
+				{ i18n.T(ctx, "social.waiting") }
 			}
 		}
 		<div class="flex gap-1">
@@ -327,23 +335,23 @@ templ action(id, verb, text string, variant button.Variant) {
 
 // InvitePage is /i/<code>, for somebody who is not signed in.
 templ InvitePage(p friend.InvitePreview) {
-	@layout.Auth(p.Inviter.DisplayName + " invited you") {
+	@layout.Auth(i18n.Tf(ctx, "social.invitepage.title", p.Inviter.DisplayName)) {
 		@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 			@card.Header() {
 				@card.Title() {
-					{ p.Inviter.DisplayName } invited you to Khepri
+					{ i18n.Tf(ctx, "social.invitepage.heading", p.Inviter.DisplayName) }
 				}
 				@card.Description() {
-					A coach that remembers your goals, your training and how your days go, and helps you keep going. When you join, you follow each other.
+					{ i18n.T(ctx, "social.invitepage.desc") }
 				}
 			}
 			@card.Content() {
 				<div class="flex flex-col gap-2">
 					@button.Button(button.Props{Href: "/signup", FullWidth: true}) {
-						Create your account
+						{ i18n.T(ctx, "social.invitepage.signup") }
 					}
 					@button.Button(button.Props{Href: "/login", Variant: button.VariantGhost, FullWidth: true}) {
-						I already have one
+						{ i18n.T(ctx, "social.invitepage.login") }
 					}
 				</div>
 			}
@@ -355,15 +363,15 @@ templ feedCard(items []achievement.Item) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface", ID: "feed"}) {
 		@card.Header() {
 			@card.Title() {
-				Recent
+				{ i18n.T(ctx, "social.feed.title") }
 			}
 			@card.Description() {
-				Your moments and the ones friends share with you.
+				{ i18n.T(ctx, "social.feed.desc") }
 			}
 		}
 		@card.Content() {
 			if len(items) == 0 {
-				<p class="text-muted-foreground text-sm">Nothing yet. Finish a workout, keep a streak, or complete a goal, and it shows here.</p>
+				<p class="text-muted-foreground text-sm">{ i18n.T(ctx, "social.feed.empty") }</p>
 			} else {
 				<ul class="divide-y divide-hairline">
 					for _, it := range items {
@@ -377,12 +385,12 @@ templ feedCard(items []achievement.Item) {
 								<p class="text-sm">
 									<span class="font-medium">
 										if it.Mine {
-											You
+											{ i18n.T(ctx, "social.feed.you") }
 										} else {
 											{ it.DisplayName }
 										}
 									</span>
-									<span class="text-muted-foreground">· { ago(it.OccurredAt) }</span>
+									<span class="text-muted-foreground">· { ago(ctx, it.OccurredAt) }</span>
 								</p>
 								<p class="text-sm">{ it.Title }</p>
 								if it.Detail != "" {
@@ -392,7 +400,7 @@ templ feedCard(items []achievement.Item) {
 							if it.Mine {
 								if it.Kudos > 0 {
 									@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
-										{ fmt.Sprint(it.Kudos) } kudos
+										{ kudosCount(ctx, it.Kudos) }
 									}
 								}
 							} else {
@@ -411,7 +419,7 @@ templ kudosButton(it achievement.Item) {
 		<form method="post" action={ templ.SafeURL("/app/friends/kudos/" + it.ID.String() + "/undo") }>
 			@ui.CSRFInput()
 			@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantSecondary, Size: button.SizeSm}) {
-				Kudos · { fmt.Sprint(it.Kudos) }
+				{ i18n.Tf(ctx, "social.feed.kudos.count", it.Kudos) }
 			}
 		</form>
 	} else {
@@ -419,9 +427,9 @@ templ kudosButton(it achievement.Item) {
 			@ui.CSRFInput()
 			@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Size: button.SizeSm}) {
 				if it.Kudos > 0 {
-					Kudos · { fmt.Sprint(it.Kudos) }
+					{ i18n.Tf(ctx, "social.feed.kudos.count", it.Kudos) }
 				} else {
-					Give kudos
+					{ i18n.T(ctx, "social.feed.kudos.give") }
 				}
 			}
 		</form>
@@ -432,21 +440,21 @@ templ sharingCard(s achievement.Sharing) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 		@card.Header() {
 			@card.Title() {
-				What followers see
+				{ i18n.T(ctx, "social.sharing.title") }
 			}
 			@card.Description() {
-				Off until you turn it on. Your journal, decisions, food and health numbers are never shared.
+				{ i18n.T(ctx, "social.sharing.desc") }
 			}
 		}
 		@card.Content() {
 			<form method="post" action="/app/friends/sharing" class="space-y-4">
 				@ui.CSRFInput()
-				@shareSwitch("share_training", "Workouts you finish, and how many this week", s.Training)
-				@shareSwitch("share_streaks", "Check-in streaks (7, 30, 100 days…) and your current one", s.Streaks)
-				@shareSwitch("share_goals", "Goals and milestones you complete", s.Goals)
-				@shareSwitch("share_xp", "Your XP and level, on friends' leaderboards", s.XP)
+				@shareSwitch("share_training", i18n.T(ctx, "social.sharing.training"), s.Training)
+				@shareSwitch("share_streaks", i18n.T(ctx, "social.sharing.streaks"), s.Streaks)
+				@shareSwitch("share_goals", i18n.T(ctx, "social.sharing.goals"), s.Goals)
+				@shareSwitch("share_xp", i18n.T(ctx, "social.sharing.xp"), s.XP)
 				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantSecondary}) {
-					Save
+					{ i18n.T(ctx, "social.save") }
 				}
 			</form>
 		}

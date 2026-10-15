@@ -1,8 +1,10 @@
 package workoutsummary
 
 import (
+	"context"
 	"strings"
 
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/web/shared/muscleviewer"
 	"github.com/NorthAIProject/north-client/web/shared/ui/card"
 	"github.com/NorthAIProject/north-client/web/shared/ui/chart"
@@ -18,10 +20,10 @@ templ RecapCard(r Recap) {
 		@card.Header() {
 			<div class="flex items-baseline justify-between gap-3">
 				@card.Title(card.TitleProps{Class: "text-base"}) {
-					{ r.Title }
+					{ r.TitleIn(ctx) }
 				}
-				if r.When != "" {
-					<span class="text-muted-foreground shrink-0 font-mono text-[10px] tabular-nums">{ r.When }</span>
+				if when := r.WhenIn(ctx); when != "" {
+					<span class="text-muted-foreground shrink-0 font-mono text-[10px] tabular-nums">{ when }</span>
 				}
 			</div>
 			if r.Sentence != "" {
@@ -32,14 +34,14 @@ templ RecapCard(r Recap) {
 		}
 		@card.Content() {
 			<dl class="grid grid-cols-2 gap-3 sm:grid-cols-4">
-				@tile("Time", r.Duration)
-				@tile("Sets", r.Sets)
-				@tile("Volume", r.Volume)
-				@tile("Burned", r.Calories)
+				@tile(i18n.T(ctx, "layout.recap.time"), r.Duration)
+				@tile(i18n.T(ctx, "layout.recap.sets"), r.Sets)
+				@tile(i18n.T(ctx, "layout.recap.volume"), r.Volume)
+				@tile(i18n.T(ctx, "layout.recap.burned"), r.Calories)
 			</dl>
 			if r.HasChart {
 				<div class="mt-4">
-					@chart.Chart(r.Chart)
+					@chart.Chart(r.ChartIn(ctx))
 				</div>
 			}
 			if len(r.Exercises) > 0 {
@@ -52,7 +54,7 @@ templ RecapCard(r Recap) {
 									{ e.Best }
 								}
 								if e.E1RM != "" {
-									<span>· est. { e.E1RM }</span>
+									<span>· { i18n.Tf(ctx, "layout.recap.est", e.E1RM) }</span>
 								}
 								if e.HasChange && e.Change > 0 {
 									<span class="text-signal">{ ChangeLabel(e.Change) }</span>
@@ -91,10 +93,10 @@ templ WeekStrip(w Week) {
 						templ.KV("border-signal/40 bg-signal/10", d.Done),
 						templ.KV("border-hairline", !d.Done),
 						templ.KV("ring-signal/50 ring-1", d.Today && !d.Done) }
-					aria-label={ weekDayLabel(d) }
+					aria-label={ weekDayLabel(ctx, d) }
 				>
 					<span class="flex items-center justify-between gap-1 font-mono text-[10px] uppercase tracking-[0.1em]">
-						{ d.Short }
+						{ i18n.Date(ctx, d.Date, "Mon") }
 						if d.Done {
 							@icon.CircleCheck(icon.Props{Class: "text-signal size-3.5"})
 						} else if d.Past {
@@ -110,16 +112,17 @@ templ WeekStrip(w Week) {
 	</div>
 }
 
-func weekDayLabel(d WeekDay) string {
+func weekDayLabel(ctx context.Context, d WeekDay) string {
+	day := i18n.Date(ctx, d.Date, "Mon")
 	switch {
 	case d.Done:
-		return d.Short + ": completed"
+		return i18n.Tf(ctx, "layout.week.done", day)
 	case d.Today:
-		return d.Short + ": today, not done yet"
+		return i18n.Tf(ctx, "layout.week.today", day)
 	case d.Past:
-		return d.Short + ": missed"
+		return i18n.Tf(ctx, "layout.week.missed", day)
 	default:
-		return d.Short + ": coming up"
+		return i18n.Tf(ctx, "layout.week.upcoming", day)
 	}
 }
 
@@ -130,12 +133,12 @@ templ ReadinessCard(r Readiness) {
 		@card.Header() {
 			<div class="flex items-baseline justify-between gap-3">
 				@card.Title(card.TitleProps{Class: "text-base"}) {
-					Muscles
+					{ i18n.T(ctx, "layout.readiness.title") }
 				}
-				<span class="text-muted-foreground shrink-0 font-mono text-[10px]">{ r.When }</span>
+				<span class="text-muted-foreground shrink-0 font-mono text-[10px]">{ i18n.Tf(ctx, "layout.readiness.last", i18n.Date(ctx, r.LastSession, "Mon 2 Jan")) }</span>
 			</div>
 			@card.Description() {
-				From your logged sets.
+				{ i18n.T(ctx, "layout.readiness.desc") }
 			}
 		}
 		@card.Content() {
@@ -147,13 +150,13 @@ templ ReadinessCard(r Readiness) {
 				HideLegend:  true,
 			})
 			<div class="mt-3 flex flex-wrap items-center gap-3">
-				@legendSwatch("bg-ember", "Fatigued")
-				@legendSwatch("bg-ember/55", "Recovering")
-				@legendSwatch("bg-ember/25", "Trained this week")
+				@legendSwatch("bg-ember", i18n.T(ctx, "layout.readiness.fatigued"))
+				@legendSwatch("bg-ember/55", i18n.T(ctx, "layout.readiness.recovering"))
+				@legendSwatch("bg-ember/25", i18n.T(ctx, "layout.readiness.trained"))
 			</div>
 			if len(r.Stale) > 0 {
 				<p class="text-muted-foreground mt-3 text-sm">
-					<span class="text-foreground font-medium">Going stale:</span> { strings.Join(r.Stale, ", ") }
+					<span class="text-foreground font-medium">{ i18n.T(ctx, "layout.readiness.stale") }</span> { staleList(ctx, r.Stale) }
 				</p>
 			}
 		}
@@ -165,4 +168,13 @@ templ legendSwatch(color, label string) {
 		<span class={ "size-2 rounded-[2px]", color }></span>
 		<span class="text-muted-foreground font-mono text-[10px] tracking-[0.14em] uppercase">{ label }</span>
 	</span>
+}
+
+// staleList reads "Quads · 25 days, Calves · 18 days".
+func staleList(ctx context.Context, stale []StaleMuscle) string {
+	parts := make([]string, 0, len(stale))
+	for _, m := range stale {
+		parts = append(parts, i18n.Tf(ctx, "layout.readiness.stale.days", m.Name, m.Days))
+	}
+	return strings.Join(parts, ", ")
 }

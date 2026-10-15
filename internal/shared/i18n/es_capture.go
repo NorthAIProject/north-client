@@ -25,4 +25,23 @@ var spanishCapture = map[string]string{
 	"capture.kind.weight":  "Peso",
 	"capture.kind.checkin": "Registro",
 	"capture.kind.food":    "Comida",
+
+	"capture.cost":       "Leerlo lleva un momento. Guardarlo, un toque.",
+	"capture.start_over": "Empezar de nuevo",
+	"capture.save":       "Guardar",
+	"capture.estimated":  "estimado",
+
+	"capture.unit.water":  "ml de agua",
+	"capture.unit.sleep":  "minutos dormido",
+	"capture.unit.mood":   "ánimo",
+	"capture.unit.energy": "energía",
+	"capture.unit.food":   "g de %[1]s",
+
+	"capture.foods.ph":        "O di lo que lleva: 200 g de pechuga de pollo, 100 g de arroz y dos huevos",
+	"capture.foods.find":      "Buscar ingredientes",
+	"capture.foods.none":      "No encontré ningún alimento. Nombra cada alimento y la cantidad, por ejemplo \"150 g de salmón\".",
+	"capture.foods.add":       "Añadir a la comida",
+	"capture.foods.not_added": "No añadido:",
+	"capture.foods.which":     "¿Qué %[1]s?",
+	"capture.foods.ambiguous": "Coincide más de un ingrediente. Elige uno y márcalo.",
 }

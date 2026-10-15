@@ -1,7 +1,10 @@
 package decisions
 
 import (
+	"context"
+
 	"github.com/NorthAIProject/north-client/internal/decisions/decision"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
@@ -25,11 +28,26 @@ type DecisionForm struct {
 	Errors    map[string]string
 }
 
-var heldChoices = []struct{ value, label string }{
-	{"", "Not yet"},
-	{decision.HeldYes, "Yes"},
-	{decision.HeldPartly, "Partly"},
-	{decision.HeldNo, "No"},
+// heldChoices are the answers to "did it hold?". id names the radio, so it
+// stays the same in every language; the label is looked up per request.
+var heldChoices = []struct{ value, id string }{
+	{"", "not-yet"},
+	{decision.HeldYes, "yes"},
+	{decision.HeldPartly, "partly"},
+	{decision.HeldNo, "no"},
+}
+
+// heldLabel names a stored "held" value in the reader's language. An unknown
+// value shows as stored, which is what the card always did.
+func heldLabel(ctx context.Context, value string) string {
+	if value == "" {
+		return i18n.T(ctx, "decisions.held.none")
+	}
+	key := "decisions.held." + value
+	if got := i18n.T(ctx, key); got != key {
+		return got
+	}
+	return value
 }
 
 func (f DecisionForm) fieldError(name string) string {
@@ -51,21 +69,21 @@ func FormFor(d decision.Decision) DecisionForm {
 }
 
 templ IndexPage(user users.User, list []decision.Decision, f DecisionForm) {
-	@layout.App("Decisions", user, layout.BuildNav(ctx, "/app/decisions")) {
+	@layout.App(i18n.T(ctx, "decisions.title"), user, layout.BuildNav(ctx, "/app/decisions")) {
 		<div class="mx-auto w-full max-w-6xl space-y-6 p-6 md:p-8">
 			<header>
-				@ui.MonoLabel("Mind")
-				<h1 class="mt-2 text-2xl font-medium tracking-tight">Decisions</h1>
+				@ui.MonoLabel(i18n.T(ctx, "decisions.label"))
+				<h1 class="mt-2 text-2xl font-medium tracking-tight">{ i18n.T(ctx, "decisions.title") }</h1>
 				<p class="text-muted-foreground mt-1 text-sm leading-relaxed">
-					What you chose, what you turned down, and why.
+					{ i18n.T(ctx, "decisions.intro") }
 				</p>
 			</header>
-			@decisionFormCard("/app/decisions", "Log a decision", "Save decision", f, false)
+			@decisionFormCard("/app/decisions", i18n.T(ctx, "decisions.form.new"), i18n.T(ctx, "decisions.form.save"), f, false)
 			if len(list) == 0 {
-				<p class="text-muted-foreground text-sm">Nothing recorded yet. The first one is the one you'll want later.</p>
+				<p class="text-muted-foreground text-sm">{ i18n.T(ctx, "decisions.empty") }</p>
 			} else {
 				<section class="space-y-3">
-					<h2 class="text-sm font-medium">Recent</h2>
+					<h2 class="text-sm font-medium">{ i18n.T(ctx, "decisions.recent") }</h2>
 					for _, d := range list {
 						@decisionCard(d)
 					}
@@ -78,25 +96,25 @@ templ IndexPage(user users.User, list []decision.Decision, f DecisionForm) {
 }
 
 templ ShowPage(user users.User, d decision.Decision, f DecisionForm) {
-	@layout.App("Decisions", user, layout.BuildNav(ctx, "/app/decisions")) {
+	@layout.App(i18n.T(ctx, "decisions.title"), user, layout.BuildNav(ctx, "/app/decisions")) {
 		<div class="mx-auto w-full max-w-6xl space-y-6 p-6 md:p-8">
 			<header>
-				@ui.MonoLabel("Mind")
+				@ui.MonoLabel(i18n.T(ctx, "decisions.label"))
 				<h1 class="mt-2 text-2xl font-medium tracking-tight">{ d.Title }</h1>
 				<p class="text-muted-foreground mt-1 text-sm">
-					{ d.DecidedAt.Format("2 January 2006") }
+					{ i18n.Date(ctx, d.DecidedAt, "2 January 2006") }
 				</p>
 			</header>
-			@decisionFormCard("/app/decisions/"+d.ID.String(), "Edit", "Save changes", f, true)
+			@decisionFormCard("/app/decisions/"+d.ID.String(), i18n.T(ctx, "decisions.edit"), i18n.T(ctx, "decisions.form.save_changes"), f, true)
 			<form method="post" action={ templ.SafeURL("/app/decisions/" + d.ID.String() + "/delete") }>
 				@ui.CSRFInput()
 				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantDestructive}) {
-					Delete
+					{ i18n.T(ctx, "decisions.delete") }
 				}
 			</form>
 			<p>
 				@button.Button(button.Props{Href: "/app/decisions", Variant: button.VariantGhost}) {
-					Back to decisions
+					{ i18n.T(ctx, "decisions.back") }
 				}
 			</p>
 		</div>
@@ -120,13 +138,13 @@ templ decisionFormCard(action, heading, submit string, f DecisionForm, withOutco
 				@ui.CSRFInput()
 				@form.Item() {
 					@label.Label(label.Props{For: "title", Error: f.fieldError("title")}) {
-						The decision
+						{ i18n.T(ctx, "decisions.form.title") }
 					}
 					@input.Input(input.Props{
 						ID:          "title",
 						Name:        "title",
 						Value:       f.Title,
-						Placeholder: "e.g. Quit the evening client",
+						Placeholder: i18n.T(ctx, "decisions.form.title_ph"),
 						HasError:    f.fieldError("title") != "",
 					})
 					if f.fieldError("title") != "" {
@@ -137,14 +155,14 @@ templ decisionFormCard(action, heading, submit string, f DecisionForm, withOutco
 				}
 				@form.Item() {
 					@label.Label(label.Props{For: "options", Error: f.fieldError("options")}) {
-						Options considered
+						{ i18n.T(ctx, "decisions.form.options") }
 					}
 					@dictate.Field(dictate.Props{Target: "options"}) {
 						@textarea.Textarea(textarea.Props{
 							ID:          "options",
 							Name:        "options",
 							Rows:        3,
-							Placeholder: "What else was on the table?",
+							Placeholder: i18n.T(ctx, "decisions.form.options_ph"),
 							Value:       f.Options,
 							HasError:    f.fieldError("options") != "",
 						})
@@ -157,14 +175,14 @@ templ decisionFormCard(action, heading, submit string, f DecisionForm, withOutco
 				}
 				@form.Item() {
 					@label.Label(label.Props{For: "rationale", Error: f.fieldError("rationale")}) {
-						Why this one
+						{ i18n.T(ctx, "decisions.form.rationale") }
 					}
 					@dictate.Field(dictate.Props{Target: "rationale"}) {
 						@textarea.Textarea(textarea.Props{
 							ID:          "rationale",
 							Name:        "rationale",
 							Rows:        3,
-							Placeholder: "What tipped it?",
+							Placeholder: i18n.T(ctx, "decisions.form.rationale_ph"),
 							Value:       f.Rationale,
 							HasError:    f.fieldError("rationale") != "",
 						})
@@ -178,14 +196,14 @@ templ decisionFormCard(action, heading, submit string, f DecisionForm, withOutco
 				if withOutcome {
 					@form.Item() {
 						@label.Label(label.Props{For: "outcome", Error: f.fieldError("outcome")}) {
-							How it turned out
+							{ i18n.T(ctx, "decisions.form.outcome") }
 						}
 						@dictate.Field(dictate.Props{Target: "outcome"}) {
 							@textarea.Textarea(textarea.Props{
 								ID:          "outcome",
 								Name:        "outcome",
 								Rows:        3,
-								Placeholder: "Looking back — what actually happened?",
+								Placeholder: i18n.T(ctx, "decisions.form.outcome_ph"),
 								Value:       f.Outcome,
 								HasError:    f.fieldError("outcome") != "",
 							})
@@ -198,14 +216,14 @@ templ decisionFormCard(action, heading, submit string, f DecisionForm, withOutco
 					}
 					@form.Item() {
 						@label.Label(label.Props{Error: f.fieldError("held")}) {
-							Did it hold?
+							{ i18n.T(ctx, "decisions.form.held") }
 						}
 						<div class="flex flex-wrap gap-4">
 							for _, c := range heldChoices {
 								<div class="flex items-center gap-2">
-									@radio.Radio(radio.Props{ID: "held-" + c.label, Name: "held", Value: c.value, Checked: f.Held == c.value})
-									@label.Label(label.Props{For: "held-" + c.label}) {
-										{ c.label }
+									@radio.Radio(radio.Props{ID: "held-" + c.id, Name: "held", Value: c.value, Checked: f.Held == c.value})
+									@label.Label(label.Props{For: "held-" + c.id}) {
+										{ heldLabel(ctx, c.value) }
 									}
 								</div>
 							}
@@ -223,22 +241,22 @@ templ decisionFormCard(action, heading, submit string, f DecisionForm, withOutco
 templ decisionCard(d decision.Decision) {
 	@card.Card(card.Props{Class: "border-hairline"}) {
 		@card.Content(card.ContentProps{Class: "space-y-2 py-4"}) {
-			<p class="text-muted-foreground text-xs">{ d.DecidedAt.Format("2 Jan 2006") }</p>
+			<p class="text-muted-foreground text-xs">{ i18n.Date(ctx, d.DecidedAt, "2 Jan 2006") }</p>
 			<h3 class="text-sm font-medium">{ d.Title }</h3>
 			if d.Options != "" {
-				<p class="text-muted-foreground text-sm">Options: { d.Options }</p>
+				<p class="text-muted-foreground text-sm">{ i18n.Tf(ctx, "decisions.card.options", d.Options) }</p>
 			}
 			if d.Rationale != "" {
-				<p class="text-muted-foreground text-sm">Why: { d.Rationale }</p>
+				<p class="text-muted-foreground text-sm">{ i18n.Tf(ctx, "decisions.card.why", d.Rationale) }</p>
 			}
 			if d.Outcome != "" {
-				<p class="text-muted-foreground text-sm">Outcome: { d.Outcome }</p>
+				<p class="text-muted-foreground text-sm">{ i18n.Tf(ctx, "decisions.card.outcome", d.Outcome) }</p>
 			}
 			if d.Held != "" {
-				<p class="text-muted-foreground text-sm">Held: { d.Held }</p>
+				<p class="text-muted-foreground text-sm">{ i18n.Tf(ctx, "decisions.card.held", heldLabel(ctx, d.Held)) }</p>
 			}
 			@button.Button(button.Props{Href: "/app/decisions/" + d.ID.String(), Variant: button.VariantGhost, Size: button.SizeSm}) {
-				Edit
+				{ i18n.T(ctx, "decisions.edit") }
 			}
 		}
 	}

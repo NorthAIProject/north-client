@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/ui/alert"
@@ -30,14 +31,14 @@ type SignupForm struct {
 func (f SignupForm) fieldError(name string) string { return f.Errors[name] }
 
 templ SignupPage(f SignupForm) {
-	@layout.Auth("Create your account") {
+	@layout.Auth(i18n.T(ctx, "auth.signup.title")) {
 		@card.Card() {
 			@card.Header() {
 				@card.Title() {
-					Create your account
+					{ i18n.T(ctx, "auth.signup.title") }
 				}
 				@card.Description() {
-					Khepri remembers your goals and your progress. Start by telling it who you are.
+					{ i18n.T(ctx, "auth.signup.desc") }
 				}
 			}
 			@card.Content() {
@@ -57,14 +58,14 @@ templ SignupPage(f SignupForm) {
 							Href:      "/auth/google",
 						}) {
 							@icon.BrandGoogle()
-							Continue with Google
+							{ i18n.T(ctx, "auth.alt.google") }
 						}
 						<div class="relative py-1">
 							<div class="absolute inset-0 flex items-center" aria-hidden="true">
 								<div class="border-border w-full border-t"></div>
 							</div>
 							<div class="relative flex justify-center text-xs uppercase">
-								<span class="bg-card text-muted-foreground px-2">or</span>
+								<span class="bg-card text-muted-foreground px-2">{ i18n.T(ctx, "auth.alt.or") }</span>
 							</div>
 						</div>
 					</div>
@@ -75,7 +76,7 @@ templ SignupPage(f SignupForm) {
 					// briefing lands at their 07:00 without asking. The server
 					// still defaults to UTC if this is absent or unparseable.
 					<input type="hidden" name="timezone" id="timezone" x-data x-init="$el.value = Intl.DateTimeFormat().resolvedOptions().timeZone" value={ f.Timezone }/>
-					@field("display_name", "Name", f.fieldError("display_name")) {
+					@field("display_name", i18n.T(ctx, "auth.field.name"), f.fieldError("display_name")) {
 						@input.Input(input.Props{
 							ID:       "display_name",
 							Name:     "display_name",
@@ -88,7 +89,7 @@ templ SignupPage(f SignupForm) {
 							},
 						})
 					}
-					@field("email", "Email", f.fieldError("email")) {
+					@field("email", i18n.T(ctx, "auth.field.email"), f.fieldError("email")) {
 						@input.Input(input.Props{
 							ID:       "email",
 							Name:     "email",
@@ -111,18 +112,18 @@ templ SignupPage(f SignupForm) {
 								"data-passkey-mode": "register",
 							},
 						}) {
-							Create account with a passkey
+							{ i18n.T(ctx, "auth.signup.passkey") }
 						}
 						<div class="relative py-1">
 							<div class="absolute inset-0 flex items-center" aria-hidden="true">
 								<div class="border-border w-full border-t"></div>
 							</div>
 							<div class="relative flex justify-center text-xs uppercase">
-								<span class="bg-card text-muted-foreground px-2">or with password</span>
+								<span class="bg-card text-muted-foreground px-2">{ i18n.T(ctx, "auth.signup.orpassword") }</span>
 							</div>
 						</div>
 					}
-					@field("password", "Password", f.fieldError("password")) {
+					@field("password", i18n.T(ctx, "auth.field.password"), f.fieldError("password")) {
 						@input.Input(input.Props{
 							ID:       "password",
 							Name:     "password",
@@ -135,11 +136,11 @@ templ SignupPage(f SignupForm) {
 						})
 						if f.fieldError("password") == "" {
 							@form.Description() {
-								At least 12 characters. A short sentence works well.
+								{ i18n.T(ctx, "auth.password.hint") }
 							}
 						}
 					}
-					@field("password_confirmation", "Confirm password", f.fieldError("password_confirmation")) {
+					@field("password_confirmation", i18n.T(ctx, "auth.field.confirm"), f.fieldError("password_confirmation")) {
 						@input.Input(input.Props{
 							ID:       "password_confirmation",
 							Name:     "password_confirmation",
@@ -152,7 +153,7 @@ templ SignupPage(f SignupForm) {
 						})
 					}
 					@button.Button(button.Props{Type: button.TypeSubmit, FullWidth: true, Class: "bg-signal text-background hover:bg-signal/90"}) {
-						Create account
+						{ i18n.T(ctx, "auth.signup.submit") }
 					}
 					@consent()
 				</form>
@@ -160,8 +161,8 @@ templ SignupPage(f SignupForm) {
 			}
 		}
 		<p class="text-muted-foreground mt-6 text-center text-sm">
-			Already have an account?
-			<a href="/login" class="text-foreground font-medium underline underline-offset-4">Sign in</a>
+			{ i18n.T(ctx, "auth.signup.have") }
+			<a href="/login" class="text-foreground font-medium underline underline-offset-4">{ i18n.T(ctx, "auth.signin.submit") }</a>
 		</p>
 		@input.Script()
 		@label.Script()
@@ -196,12 +197,10 @@ templ field(name, labelText, errMsg string) {
 // reviews the policy; the copy is written so that either shape reads correctly.
 templ consent() {
 	<p class="text-muted-foreground mt-4 text-center text-xs leading-relaxed">
-		By creating an account you agree to the
-		<a href="/terms" class="underline underline-offset-4 hover:text-foreground">terms</a>
-		and the
-		<a href="/privacy" class="underline underline-offset-4 hover:text-foreground">privacy policy</a>
-		, and you explicitly consent to Khepri storing and processing the health
-		data you choose to record — weight, sleep, activity and anything
-		health-related you write. You can export or delete all of it at any time.
+		{ i18n.T(ctx, "auth.consent.agree") }
+		<a href="/terms" class="underline underline-offset-4 hover:text-foreground">{ i18n.T(ctx, "auth.consent.terms") }</a>
+		{ i18n.T(ctx, "auth.consent.and") }
+		<a href="/privacy" class="underline underline-offset-4 hover:text-foreground">{ i18n.T(ctx, "auth.consent.privacy") }</a>
+		{ i18n.T(ctx, "auth.consent.health") }
 	</p>
 }

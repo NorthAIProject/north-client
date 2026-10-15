@@ -15,6 +15,32 @@
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+  // The demos' words come from the server's catalogue, rendered as JSON just
+  // above this script (scriptCopy in web/landing/scripts.templ), so a page in
+  // Spanish structures a goal in Spanish. tr fills {placeholders}; a missing
+  // key renders as itself, which is visibly wrong rather than silently English.
+  const copy = (() => {
+    const el = document.getElementById("north-landing-copy");
+    try {
+      return el ? JSON.parse(el.textContent) : {};
+    } catch (err) {
+      console.error("[landing] copy unreadable", err);
+      return {};
+    }
+  })();
+
+  function tr(key, vars) {
+    let s = copy[key] || key;
+    if (vars) {
+      for (const [name, value] of Object.entries(vars)) s = s.split(`{${name}}`).join(String(value));
+    }
+    return s;
+  }
+
+  // A plan line can open with a placeholder ("{pull}, press…"), which is a
+  // lower-case word in every language.
+  const capitalise = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
   // The page script is cache-busted by the server; reuse the same query for the
   // lazily imported module so a rebuild is not masked by an immutable header.
   function assetURL(path) {
@@ -184,8 +210,7 @@
     });
 
     Alpine.data("northGoal", () => ({
-      input:
-        "i wanna get stronger idk maybe lose a bit too, gym like 3x if im lucky, home has dumbbells and a pullup bar. back goes out sometimes",
+      input: tr("land.goal.sample"),
       running: false,
       out: blankGoal(),
 
@@ -301,28 +326,22 @@
       },
 
       get bmi() {
-        return this.raw.toFixed(1);
+        return this.raw.toFixed(1).replace(".", tr("land.bmi.decimal"));
+      },
+
+      get bandKey() {
+        if (this.raw < 18.5) return "under";
+        if (this.raw < 25) return "normal";
+        if (this.raw < 30) return "over";
+        return "obese";
       },
 
       get band() {
-        if (this.raw < 18.5) return "Under";
-        if (this.raw < 25) return "Normal";
-        if (this.raw < 30) return "Over";
-        return "Obese";
+        return tr(`land.bmi.band.${this.bandKey}`);
       },
 
       get reading() {
-        const n = this.bmi;
-        if (this.raw < 18.5) {
-          return `At ${this.height}cm and ${this.weight}kg the index reads ${n}, which usually means eating is the training. Khepri would put food and sleep ahead of any programme for the first month.`;
-        }
-        if (this.raw < 25) {
-          return `${n} sits inside the range everyone chases, and it still tells you nothing about whether you can carry a pack for ninety minutes. Khepri tracks that instead.`;
-        }
-        if (this.raw < 30) {
-          return `The index says ${n} and cannot tell muscle from anything else. Khepri watches waist, resting heart rate, and whether your lifts still climb while you eat less — those three disagree with BMI often enough to be the ones worth measuring.`;
-        }
-        return `At ${n} the number is loud, and it is still one weak signal. The first thing Khepri would change is not your weight but how many sessions in a row you finish.`;
+        return tr(`land.bmi.read.${this.bandKey}`, { h: this.height, w: this.weight, n: this.bmi });
       },
     }));
 
@@ -357,62 +376,38 @@
 
       get owned() {
         const names = [];
-        if (this.kit.barbell) names.push("a barbell");
-        if (this.kit.dumbbells) names.push("dumbbells");
-        if (this.kit.pullup) names.push("a pull-up bar");
-        return names.length ? names.join(" and ") : "nothing but the floor";
+        if (this.kit.barbell) names.push(tr("land.setter.owned.barbell"));
+        if (this.kit.dumbbells) names.push(tr("land.setter.owned.dumbbells"));
+        if (this.kit.pullup) names.push(tr("land.setter.owned.pullup"));
+        return names.length ? names.join(tr("land.setter.owned.and")) : tr("land.setter.owned.none");
       },
 
       get summary() {
-        const objective = {
-          strength: "getting stronger",
-          leaner: "getting leaner",
-          endurance: "lasting longer",
-          pain: "training without pain",
-        }[this.goal];
-        return `${this.days} ${this.days === 1 ? "day" : "days"} a week, ${objective}, with ${this.owned}. Khepri would spend the first three weeks proving you can hold the schedule before adding any load.`;
+        const key = this.days === 1 ? "land.setter.summary.one" : "land.setter.summary.many";
+        return tr(key, {
+          days: this.days,
+          objective: tr(`land.setter.obj.${this.goal}`),
+          owned: this.owned,
+        });
       },
 
       get split() {
-        const heavy = this.kit.barbell ? "Barbell" : this.kit.dumbbells ? "Dumbbell" : "Bodyweight";
-        const pull = this.kit.pullup ? "pull-ups" : this.kit.dumbbells ? "rows" : "inverted rows";
+        const heavy = tr(
+          this.kit.barbell ? "land.goal.heavy.barbell" : this.kit.dumbbells ? "land.goal.heavy.dumbbell" : "land.goal.heavy.bodyweight",
+        );
+        const pull = tr(
+          this.kit.pullup ? "land.goal.pull.pullups" : this.kit.dumbbells ? "land.goal.pull.rows" : "land.goal.pull.inverted",
+        );
 
-        const library = {
-          strength: [
-            { day: "Day 1", work: `${heavy} squat, hinge, and a carry` },
-            { day: "Day 2", work: `Press, ${pull}, and a loaded carry` },
-            { day: "Day 3", work: `${heavy} hinge and single-leg work` },
-            { day: "Day 4", work: "Repeat day 1 at a lighter load" },
-            { day: "Day 5", work: "Press variation and arms" },
-            { day: "Day 6", work: "Easy walk and mobility" },
-          ],
-          leaner: [
-            { day: "Day 1", work: `${heavy} full body, then twenty minutes easy` },
-            { day: "Day 2", work: `${pull}, press, and intervals` },
-            { day: "Day 3", work: "Long easy effort, conversational pace" },
-            { day: "Day 4", work: `${heavy} full body, heavier and shorter` },
-            { day: "Day 5", work: "Intervals and core" },
-            { day: "Day 6", work: "Walk, and eat like it is a training day" },
-          ],
-          endurance: [
-            { day: "Day 1", work: "Easy aerobic hour, nose breathing" },
-            { day: "Day 2", work: `Strength: ${heavy} squat and ${pull}` },
-            { day: "Day 3", work: "Tempo effort, thirty minutes" },
-            { day: "Day 4", work: "Long slow distance" },
-            { day: "Day 5", work: "Hills or intervals" },
-            { day: "Day 6", work: "Recovery walk" },
-          ],
-          pain: [
-            { day: "Day 1", work: "Hinge pattern, unloaded, plus breathing work" },
-            { day: "Day 2", work: `Isometrics and ${pull} at low load` },
-            { day: "Day 3", work: "Walk, and one tolerance test" },
-            { day: "Day 4", work: "Add load to the pattern that stayed quiet" },
-            { day: "Day 5", work: "Full body, everything sub-maximal" },
-            { day: "Day 6", work: "Easy movement only" },
-          ],
-        };
-
-        return library[this.goal].slice(0, Number(this.days));
+        // Six days per goal in the catalogue: land.setter.<goal>.1 … .6.
+        const days = [];
+        for (let n = 1; n <= Number(this.days); n++) {
+          days.push({
+            day: tr("land.setter.day", { n }),
+            work: capitalise(tr(`land.setter.${this.goal}.${n}`, { heavy, pull })),
+          });
+        }
+        return days;
       },
     }));
   });
@@ -429,72 +424,74 @@
   function parseGoal(text) {
     const t = (text || "").toLowerCase();
 
-    const explicit = t.match(/([1-7])\s*(?:x|times|days?|sessions?)/);
+    // The keyword lists cover the four languages the page is served in, so the
+    // demo answers a visitor who types in their own.
+    const explicit = t.match(/([1-7])\s*(?:x|times|days?|sessions?|veces|d[ií]as?|vezes|sesi[oó]n(?:es)?|sess(?:ão|ões)|treinos?)/);
     const days = explicit ? Number(explicit[1]) : 3;
 
     const kit = [];
-    if (/barbell|squat rack|the gym|gym\b/.test(t)) kit.push("barbell");
-    if (/dumbbell|db\b/.test(t)) kit.push("dumbbells");
-    if (/pull ?-?up|chin ?-?up/.test(t)) kit.push("pull-up bar");
-    if (/kettlebell|kb\b/.test(t)) kit.push("kettlebell");
-    if (/band/.test(t)) kit.push("bands");
-    if (!kit.length) kit.push("bodyweight only");
+    if (/barbell|squat rack|the gym|gym\b|gimnasio|gin[aá]sio|academia/.test(t)) kit.push("barbell");
+    if (/dumbbell|db\b|mancuerna|halter/.test(t)) kit.push("dumbbells");
+    if (/pull ?-?up|chin ?-?up|dominada|barra fixa|elevaç/.test(t)) kit.push("pullup");
+    if (/kettlebell|kb\b|pesa rusa/.test(t)) kit.push("kettlebell");
+    if (/band|el[aá]stic/.test(t)) kit.push("bands");
+    if (!kit.length) kit.push("none");
 
-    const wantsLean = /lose|leaner|lean|fat|weight off|slim|cut/.test(t);
-    const wantsStrong = /strong|strength|lift|muscle|bigger|gains/.test(t);
-    const wantsEndurance = /run|hike|cycle|endurance|cardio|marathon|fitter/.test(t);
+    const wantsLean = /lose|leaner|lean|fat|weight off|slim|cut|perder|adelgaz|grasa|gordura|emagrec|secar|definir/.test(t);
+    const wantsStrong = /strong|strength|lift|muscle|bigger|gains|fuert|fuerza|m[uú]sculo|forte|for[cç]a|massa/.test(t);
+    const wantsEndurance = /run|hike|cycle|endurance|cardio|marathon|fitter|correr|corrida|senderismo|caminhad|trilha|resist[eê]ncia|marat[oó]n|maratona|bici/.test(t);
 
-    let objective = "Build a habit that survives a bad week, then add load";
+    let objective = tr("land.goal.obj.habit");
     if (wantsStrong && wantsLean) {
-      objective = "Add strength while losing fat — strength leads, the deficit follows it";
+      objective = tr("land.goal.obj.both");
     } else if (wantsStrong) {
-      objective = "Add strength on the main patterns: squat, hinge, press, pull";
+      objective = tr("land.goal.obj.strong");
     } else if (wantsLean) {
-      objective = "Lose fat without losing the strength you already have";
+      objective = tr("land.goal.obj.lean");
     } else if (wantsEndurance) {
-      objective = "Raise the aerobic base, then add the specific work";
+      objective = tr("land.goal.obj.endurance");
     }
 
-    let constraint = "None mentioned — say so later and the plan changes";
-    if (/back/.test(t)) {
-      constraint = "Lower back flares up — the hinge is patterned before it is loaded";
-    } else if (/knee/.test(t)) {
-      constraint = "Knee to work around — depth and volume progress separately";
-    } else if (/shoulder/.test(t)) {
-      constraint = "Shoulder to work around — pressing angle is chosen before load";
-    } else if (/if i'?m lucky|busy|no time|work|kids|travel/.test(t)) {
-      constraint = "The week goes wrong often — sessions are built to survive it";
+    const hasBack = /back|espalda|costas|lumbar|lombar/.test(t);
+    const hasKnee = /knee|rodilla|joelho/.test(t);
+    const hasShoulder = /shoulder|hombro|ombro/.test(t);
+
+    let constraint = tr("land.goal.con.none");
+    if (hasBack) {
+      constraint = tr("land.goal.con.back");
+    } else if (hasKnee) {
+      constraint = tr("land.goal.con.knee");
+    } else if (hasShoulder) {
+      constraint = tr("land.goal.con.shoulder");
+    } else if (/if i'?m lucky|busy|no time|work|kids|travel|suerte|sin tiempo|trabajo|niños|hijos|viaj|sorte|sem tempo|trabalho|filhos|miúdos|crianças/.test(t)) {
+      constraint = tr("land.goal.con.busy");
     }
 
-    const heavy = kit.includes("barbell") ? "Barbell" : kit.includes("dumbbells") ? "Dumbbell" : "Bodyweight";
-    const pull = kit.includes("pull-up bar") ? "pull-ups" : kit.includes("dumbbells") ? "rows" : "inverted rows";
-    const cautious = /back|knee|shoulder/.test(t);
+    const heavy = tr(
+      kit.includes("barbell") ? "land.goal.heavy.barbell" : kit.includes("dumbbells") ? "land.goal.heavy.dumbbell" : "land.goal.heavy.bodyweight",
+    );
+    const pull = tr(
+      kit.includes("pullup") ? "land.goal.pull.pullups" : kit.includes("dumbbells") ? "land.goal.pull.rows" : "land.goal.pull.inverted",
+    );
+    const cautious = hasBack || hasKnee || hasShoulder;
 
     const sessions = [
-      {
-        day: "Session 1",
-        work: cautious ? `${heavy} squat to a box, ${pull}, and a loaded carry` : `${heavy} squat, ${pull}, and a loaded carry`,
-      },
-      {
-        day: "Session 2",
-        work: cautious ? "Hip hinge unloaded, press, and split squats" : `${heavy} hinge, press, and split squats`,
-      },
-      {
-        day: "Session 3",
-        work: wantsLean ? "Full body at a lighter load, then twenty easy minutes" : "Full body, one heavy set per pattern",
-      },
-    ].slice(0, Math.max(2, Math.min(3, days)));
+      tr(cautious ? "land.goal.s1.cautious" : "land.goal.s1", { heavy, pull }),
+      tr(cautious ? "land.goal.s2.cautious" : "land.goal.s2", { heavy }),
+      tr(wantsLean ? "land.goal.s3.lean" : "land.goal.s3"),
+    ]
+      .slice(0, Math.max(2, Math.min(3, days)))
+      .map((work, i) => ({ day: tr("land.goal.session", { n: i + 1 }), work: capitalise(work) }));
 
     return {
       objective,
-      horizon: "Twelve weeks, reviewed every third week",
-      commitment: `${days} ${days === 1 ? "session" : "sessions"} a week, 45 to 60 minutes`,
-      equipment: kit.join(", "),
+      horizon: tr("land.goal.horizon"),
+      commitment: tr(days === 1 ? "land.goal.commit.one" : "land.goal.commit.many", { n: days }),
+      // "kettlebell" is borrowed unchanged in every language the page speaks.
+      equipment: kit.map((k) => (k === "kettlebell" ? k : tr(`land.goal.kit.${k}`))).join(", "),
       constraint,
       sessions,
-      measure: wantsLean
-        ? "In week six, either the squat goes up 5kg or the same weight moves at a lower bodyweight. One of the two, not both."
-        : "In week six, the main lift adds 5kg for the same number of clean reps. If it does not, the problem is recovery, not programming.",
+      measure: tr(wantsLean ? "land.goal.measure.lean" : "land.goal.measure"),
     };
   }
 })();

@@ -77,4 +77,12 @@ var portugueseEuropeanCheckins = map[string]string{
 	"checkins.source.coach":   "Conversa com o treinador",
 	"checkins.source.mcp":     "Assistente de IA",
 	"checkins.source.capture": "Registo rápido",
+
+	"checkins.heatmap.empty":     "Faz um registo para veres o teu padrão.",
+	"checkins.logged":            "Registado",
+	"checkins.related":           "Relacionado: %[1]s",
+	"checkins.streak.saved.one":  "Sequência de 1 dia. Amanhã à mesma hora.",
+	"checkins.streak.saved.many": "Sequência de %[1]d dias. Amanhã à mesma hora.",
+	"checkins.meta.moodenergy":   "Humor %[1]d/5 · energia %[2]d/5",
+	"checkins.label":             "%[1]s — humor %[2]d · energia %[3]d",
 }

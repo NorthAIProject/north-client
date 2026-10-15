@@ -1,0 +1,31 @@
+package i18n
+
+// spanishReports is the weekly report list and a single report in Spanish.
+var spanishReports = map[string]string{
+	"reports.mono":           "Revisión",
+	"reports.h1":             "Informes semanales",
+	"reports.lede":           "Tu semana por escrito, a partir de lo que de verdad registraste.",
+	"reports.generate":       "Generar esta semana",
+	"reports.cooldown.long":  "Ya se generó en esta hora. Lee la revisión actual o espera un poco.",
+	"reports.cooldown":       "Ya se generó en esta hora.",
+	"reports.current":        "Actuales",
+	"reports.archived":       "Archivados",
+	"reports.empty.title":    "Aún no hay revisión",
+	"reports.empty.body":     "Tu semana por escrito, a partir de lo que de verdad registraste — registros, objetivos y entrenamiento.",
+	"reports.status.pending": "pendiente",
+	"reports.status.ready":   "listo",
+	"reports.status.failed":  "fallido",
+	"reports.archive":        "Archivar",
+	"reports.regenerate":     "Regenerar",
+	"reports.isarchived":     "Esta revisión está archivada. Genera una nueva desde la lista.",
+	"reports.writing":        "Escribiendo esta semana… actualiza en un momento.",
+	"reports.failed":         "Ese intento falló.",
+	"reports.useful.yes":     "Marcado como útil. Gracias.",
+	"reports.useful.no":      "Marcado como no útil.",
+	"reports.useful.ask":     "¿Te ha sido útil?",
+	"reports.undo":           "Deshacer",
+	"reports.label.pending":  "Generando",
+	"reports.label.failed":   "Falló",
+	"reports.label.ready":    "Listo",
+	"reports.label.readyon":  "Listo · %[1]s",
+}

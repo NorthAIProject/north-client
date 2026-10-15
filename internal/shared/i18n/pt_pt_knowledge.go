@@ -1,0 +1,95 @@
+package i18n
+
+var portugueseEuropeanKnowledge = map[string]string{
+	"knowledge.title": "Conhecimento",
+	"knowledge.intro": "Notas e ficheiros que o treinador pode citar. Só usa o que leu aqui e diz sempre de onde vem cada resposta.",
+
+	"knowledge.meter.read":       "lidos",
+	"knowledge.meter.passages":   "passagens",
+	"knowledge.meter.waiting":    "%[1]d em espera",
+	"knowledge.meter.unreadable": "%[1]d ilegíveis",
+	"knowledge.meter.label":      "%[1]d lidos, %[2]d em espera, %[3]d ilegíveis",
+	"knowledge.rebuild":          "Reconstruir índice",
+
+	"knowledge.run.running": "O índice está a ser atualizado agora.",
+	"knowledge.run.failed":  "Última verificação: %[1]s — não foi possível ler %[2]d de %[3]d.",
+	"knowledge.run.nothing": "Última verificação: %[1]s — nada para ler.",
+	"knowledge.run.current": "Última verificação: %[1]s — estava tudo atualizado.",
+	"knowledge.run.read":    "Última verificação: %[1]s — lidos %[2]d de %[3]d.",
+
+	"knowledge.filter.all":     "Tudo",
+	"knowledge.filter.notes":   "Notas",
+	"knowledge.filter.files":   "Ficheiros",
+	"knowledge.filter.waiting": "Em espera",
+
+	"knowledge.attention.title":    "Requer atenção",
+	"knowledge.attention.gap.one":  "1 passagem pode ser pesquisada por palavras, mas ainda não por significado.",
+	"knowledge.attention.gap.many": "%[1]d passagens podem ser pesquisadas por palavras, mas ainda não por significado.",
+	"knowledge.attention.embed":    "Completar embeddings",
+	"knowledge.read_again":         "Ler novamente",
+	"knowledge.remove":             "Remover",
+
+	"knowledge.status.read":     "lido",
+	"knowledge.status.waiting":  "em espera",
+	"knowledge.status.failed":   "não foi possível ler",
+	"knowledge.status.empty":    "está vazio",
+	"knowledge.status.stale":    "alterado desde a leitura",
+	"knowledge.status.stuck":    "ainda em espera",
+	"knowledge.status.outdated": "lido com um método antigo",
+
+	"knowledge.add.title":      "Adicionar à biblioteca",
+	"knowledge.add.formats":    "PDF, Markdown ou texto simples, até 8 MB.",
+	"knowledge.add.note_label": "Ou escreve uma nota",
+	"knowledge.add.title_ph":   "p. ex. Notas da fisioterapia, março",
+	"knowledge.add.body_ph":    "Os títulos em Markdown ajudam o Khepri a citar a parte certa.",
+	"knowledge.add.save":       "Guardar nota",
+	"knowledge.drop.title":     "Larga um ficheiro ou procura",
+	"knowledge.drop.formats":   "PDF · Markdown · texto",
+
+	"knowledge.empty.title": "O treinador ainda não tem nada para citar",
+	"knowledge.empty.body":  "Adiciona uma nota ou larga um ficheiro PDF, Markdown ou de texto. O Khepri só usa o que leu aqui.",
+	"knowledge.empty.cta":   "Escrever uma nota",
+
+	"knowledge.col.type":    "Tipo",
+	"knowledge.col.kind":    "Tipo",
+	"knowledge.col.name":    "Nome",
+	"knowledge.col.size":    "Tamanho",
+	"knowledge.col.lines":   "Linhas",
+	"knowledge.col.status":  "Estado",
+	"knowledge.col.read":    "Lido",
+	"knowledge.col.actions": "Ações",
+
+	"knowledge.type.note":      "nota",
+	"knowledge.type.text":      "texto",
+	"knowledge.type.code.note": "NOTA",
+
+	"knowledge.detail.upload": "ficheiro carregado",
+	"knowledge.detail.lines":  "%[1]d linhas",
+	"knowledge.detail.read":   "lido a %[1]s",
+
+	"knowledge.export.body": "Leva tudo o que o Khepri sabe sobre ti: Markdown e os ficheiros originais.",
+	"knowledge.export.cta":  "Transferir exportação",
+
+	"knowledge.doc.showing":  "A mostrar as linhas %[1]d–%[2]d, a passagem que foi citada.",
+	"knowledge.doc.reread":   "Ler novamente",
+	"knowledge.doc.contents": "Índice",
+
+	"knowledge.results.none_inline": "Nada corresponde. O Khepri só encontra o que leu — vê na lista abaixo se algo ainda está em espera.",
+	"knowledge.results.all":         "Ver todas as passagens",
+	"knowledge.results.gone":        "Os documentos por trás desta resposta já não estão no teu conhecimento.",
+	"knowledge.sources.one":         "1 fonte",
+	"knowledge.sources.many":        "%[1]d fontes",
+
+	"knowledge.search.title":      "Pesquisar no conhecimento",
+	"knowledge.search.heading":    "Pesquisar passagens",
+	"knowledge.search.intro":      "Encontra o que o Khepri leu nas tuas notas e ficheiros.",
+	"knowledge.search.ph":         "Pesquisar passagens…",
+	"knowledge.search.aria":       "Pesquisar no que o Khepri leu",
+	"knowledge.search.searching":  "A pesquisar…",
+	"knowledge.search.prompt":     "Escreve uma frase para pesquisar no que o Khepri leu.",
+	"knowledge.search.none":       "Nada corresponde. O Khepri só encontra o que leu.",
+	"knowledge.search.more":       "Mostrar mais",
+	"knowledge.search.count.one":  "1 passagem",
+	"knowledge.search.count.many": "%[1]d passagens",
+	"knowledge.search.count.more": "%[1]d+ passagens",
+}

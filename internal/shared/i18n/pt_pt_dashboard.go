@@ -83,4 +83,15 @@ var portugueseEuropeanDashboard = map[string]string{
 	"range.year":      "Últimos 12 meses",
 
 	"dash.today.checkin.done": "Humor %[1]d · energia %[2]d · %[3]s",
+
+	"dash.feed.now":     "agora mesmo",
+	"dash.feed.minutes": "há %[1]d min",
+	"dash.feed.hours":   "há %[1]d h",
+	"dash.feed.days":    "há %[1]d d",
+
+	"dash.goals.week.one":  "1 esta semana",
+	"dash.goals.week.many": "%[1]d esta semana",
+	"dash.habits.kept":     "%[1]d cumpridos de %[2]d previstos",
+	"dash.habits.best":     "melhor sequência: %[1]d",
+	"dash.hydration.today": "Hoje %[1]d%% · %[2]s",
 }

@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 
@@ -310,7 +311,7 @@ templ connectionRow(conn connections.Connection) {
 				{ conn.Kind.Label() } · { conn.TokenPrefix }…
 			</p>
 			<p class="text-muted-foreground mt-0.5 text-xs">
-				Added { conn.CreatedAt.Format("2 Jan 2006") } ·
+				{ i18n.Tf(ctx, "settings.conn.added", i18n.Date(ctx, conn.CreatedAt, "2 Jan 2006")) } ·
 				@ConnectionStatus(conn, 0)
 				// An OAuth access token lasts an hour and is replaced in
 				// place, so a past expiry means "needs refreshing", not
@@ -341,10 +342,10 @@ const pollLimit = 24
 templ ConnectionStatus(conn connections.Connection, tries int) {
 	if conn.Used() {
 		<span id={ statusID(conn) } class="text-signal">
-			connected · last used { conn.LastUsedAt.Format("2 Jan, 15:04") }
+			{ i18n.Tf(ctx, "settings.conn.status.used", i18n.Date(ctx, *conn.LastUsedAt, "2 Jan, 15:04")) }
 		</span>
 	} else if tries >= pollLimit {
-		<span id={ statusID(conn) }>not used yet</span>
+		<span id={ statusID(conn) }>{ i18n.T(ctx, "settings.conn.status.unused") }</span>
 	} else {
 		<span
 			id={ statusID(conn) }
@@ -443,7 +444,7 @@ templ telegramCode(p TelegramPanel) {
 					{ i18n.T(ctx, "conn.tg.open") }
 				}
 			}
-			@copyBlock("Or send this code yourself", "telegram-code", "text", p.Code)
+			@copyBlock(i18n.T(ctx, "settings.conn.tg.code.copy"), "telegram-code", "text", p.Code)
 		</div>
 		@telegramHowTo(p, true)
 	</div>
@@ -452,13 +453,13 @@ templ telegramCode(p TelegramPanel) {
 templ telegramLinked(link messaging.Link) {
 	<div class="flex flex-wrap items-center justify-between gap-3">
 		<div class="min-w-0">
-			<p class="text-signal text-sm font-medium">Connected</p>
+			<p class="text-signal text-sm font-medium">{ i18n.T(ctx, "settings.conn.tg.connected") }</p>
 			<p class="text-muted-foreground mt-0.5 text-xs">
-				{ i18n.Tf(ctx, "conn.tg.linked", link.CreatedAt.Format("2 Jan 2006")) }
+				{ i18n.Tf(ctx, "conn.tg.linked", i18n.Date(ctx, link.CreatedAt, "2 Jan 2006")) }
 				if link.LastSeenAt != nil {
-					· last message { link.LastSeenAt.Format("2 Jan, 15:04") }
+					· { i18n.Tf(ctx, "settings.conn.tg.lastmsg", i18n.Date(ctx, *link.LastSeenAt, "2 Jan, 15:04")) }
 				} else {
-					· no messages yet
+					· { i18n.T(ctx, "settings.conn.tg.nomsg") }
 				}
 			</p>
 		</div>
@@ -484,24 +485,24 @@ templ telegramStart(p TelegramPanel) {
 // hasCode flips step 3 from "press the button" to "send the code you just got".
 templ telegramHowTo(p TelegramPanel, hasCode bool) {
 	<ol class="text-muted-foreground list-decimal space-y-2 pl-5 text-sm leading-relaxed">
-		<li>Install Telegram on your phone if you do not have it.</li>
+		<li>{ i18n.T(ctx, "settings.conn.tg.step1") }</li>
 		<li>
 			if link := p.BotLink(); link != "" {
-				{ i18n.T(ctx, "conn.tg.openbot") }
+				{ i18n.T(ctx, "settings.conn.tg.step2.open") }
 				<a href={ templ.SafeURL(link) } target="_blank" rel="noopener noreferrer" class="text-foreground underline underline-offset-4">
 					{ p.Handle() }
 				</a>
-				in Telegram and start a chat. You do not need to type anything yet.
+				{ i18n.T(ctx, "settings.conn.tg.step2.rest") }
 			} else {
 				{ i18n.T(ctx, "conn.tg.manual") }
 			}
 		</li>
 		if hasCode {
-			<li>Tap Open in Telegram. If Telegram does not open, send the code above as a message in that chat.</li>
+			<li>{ i18n.T(ctx, "settings.conn.tg.step3.code") }</li>
 		} else {
-			<li>Come back here and press Get a link code. A short code will appear on this page.</li>
+			<li>{ i18n.T(ctx, "settings.conn.tg.step3.start") }</li>
 		}
-		<li>The bot replies to confirm. After that, talk to it the same way you talk in the web chat.</li>
+		<li>{ i18n.T(ctx, "settings.conn.tg.step4") }</li>
 	</ol>
 }
 
@@ -521,14 +522,14 @@ templ telegramDisconnectDialog() {
 					{ i18n.T(ctx, "conn.tg.disconnect.title") }
 				}
 				@dialog.Description() {
-					{ i18n.T(ctx, "conn.tg.disconnect.desc") } To connect again
-					you would get a new code.
+					// The catalogue sentence already ends with how to reconnect.
+					{ i18n.T(ctx, "conn.tg.disconnect.desc") }
 				}
 			}
 			@dialog.Footer() {
 				@dialog.Close() {
 					@button.Button(button.Props{Variant: button.VariantOutline, Type: button.TypeButton}) {
-						Keep it
+						{ i18n.T(ctx, "settings.conn.tg.keep") }
 					}
 				}
 				<form method="post" action="/app/settings/messaging/telegram/disconnect">
@@ -565,7 +566,7 @@ templ providerCard(p ProviderPanel) {
 			} else {
 				if p.Current != nil && p.Current.Failing() {
 					@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
-						{ p.Current.LastError } Khepri's own model is answering in the meantime.
+						{ p.Current.LastError } { i18n.T(ctx, "settings.conn.ai.fallback") }
 					}
 				}
 				// A working key that cannot run the coach's tools. Said plainly
@@ -588,7 +589,7 @@ templ providerCard(p ProviderPanel) {
 						<label class="flex items-start gap-2 text-sm">
 							<input type="radio" name="mode" value="north" x-model="mode" checked?={ p.Current == nil } class="mt-1"/>
 							<span>
-								<span class="font-medium">Use Khepri's AI</span>
+								<span class="font-medium">{ i18n.T(ctx, "settings.conn.ai.khepri") }</span>
 								<span class="text-muted-foreground block text-xs leading-relaxed">
 									{ i18n.T(ctx, "conn.ai.free") }
 								</span>
@@ -597,7 +598,7 @@ templ providerCard(p ProviderPanel) {
 						<label class="flex items-start gap-2 text-sm">
 							<input type="radio" name="mode" value="own" x-model="mode" checked?={ p.Current != nil } class="mt-1"/>
 							<span>
-								<span class="font-medium">Use my own API key</span>
+								<span class="font-medium">{ i18n.T(ctx, "settings.conn.ai.own") }</span>
 								<span class="text-muted-foreground block text-xs leading-relaxed">
 									{ i18n.T(ctx, "conn.ai.pays") }
 								</span>
@@ -658,7 +659,7 @@ templ providerCard(p ProviderPanel) {
 							// a key hint exists to prevent.
 							@input.Input(input.Props{
 								ID: "api_key", Name: "api_key", Type: input.TypePassword,
-								Placeholder: keyPlaceholder(p), HasError: p.Form.fieldError("api_key") != "",
+								Placeholder: keyPlaceholder(ctx, p), HasError: p.Form.fieldError("api_key") != "",
 								Attributes: templ.Attributes{
 									":placeholder": "hints[provider] ? hints[provider].key : ''",
 								},
@@ -792,13 +793,13 @@ templ providerTile(entry providers.BYOProvider, selected bool) {
 
 // keyPlaceholder shows the shape of the credential for the selected provider,
 // so somebody can tell at a glance whether they pasted the right thing.
-func keyPlaceholder(p ProviderPanel) string {
+func keyPlaceholder(ctx context.Context, p ProviderPanel) string {
 	for _, entry := range p.Catalog {
 		if entry.Name == p.Form.Provider {
 			return entry.KeyHint
 		}
 	}
-	return "Your provider's API key"
+	return i18n.T(ctx, "settings.conn.ai.key.ph")
 }
 
 func defaultModel(p ProviderPanel) string {
@@ -922,7 +923,7 @@ templ agentPanel(f ConnectForm, p connections.Setup) {
 			<p class="text-muted-foreground mb-2 text-sm leading-relaxed">
 				{ i18n.T(ctx, "conn.connect.handoff") }
 			</p>
-			@copyBlock("Setup prompt", "preview-prompt-"+string(p.Kind), "text", p.Prompt)
+			@copyBlock(i18n.T(ctx, "settings.conn.setup.prompt"),"preview-prompt-"+string(p.Kind), "text", p.Prompt)
 		</div>
 		<form method="post" action="/app/settings/connections" class="border-hairline space-y-4 border-t pt-5">
 			@ui.CSRFInput()
@@ -964,15 +965,14 @@ templ agentPanel(f ConnectForm, p connections.Setup) {
 templ selfHostedPanel() {
 	<div class="space-y-4 text-sm leading-relaxed">
 		<p class="text-muted-foreground">
-			Khepri also ships a standalone MCP server (<code class="font-mono">cmd/mcp-server</code>)
-			built to serve a single private deployment. It is a different surface with
-			different rules, and no key you create here will reach it.
+			// Split around the <code> names, which are identifiers and stay as they are.
+			{ i18n.T(ctx, "settings.conn.self.intro.before") }<code class="font-mono">cmd/mcp-server</code>{ i18n.T(ctx, "settings.conn.self.intro.after") }
 		</p>
 		<ul class="text-muted-foreground list-disc space-y-1.5 pl-5">
-			<li>Its credential is <code class="font-mono">MCP_API_TOKEN</code> from the environment, not a key from this page.</li>
-			<li>Every call acts as the one account in <code class="font-mono">MCP_USER_ID</code>, whoever made it.</li>
-			<li>Revoking means editing the environment and restarting, not clicking a button.</li>
-			<li>It listens on <code class="font-mono">MCP_LISTEN_ADDR</code> — <code class="font-mono">127.0.0.1:8093</code> by default. Keep it on a tailnet or a loopback; it has no per-user isolation to lose.</li>
+			<li>{ i18n.T(ctx, "settings.conn.self.cred.before") } <code class="font-mono">MCP_API_TOKEN</code> { i18n.T(ctx, "settings.conn.self.cred.after") }</li>
+			<li>{ i18n.T(ctx, "settings.conn.self.acts.before") } <code class="font-mono">MCP_USER_ID</code>{ i18n.T(ctx, "settings.conn.self.acts.after") }</li>
+			<li>{ i18n.T(ctx, "settings.conn.self.revoke") }</li>
+			<li>{ i18n.T(ctx, "settings.conn.self.listen.before") } <code class="font-mono">MCP_LISTEN_ADDR</code> — <code class="font-mono">127.0.0.1:8093</code> { i18n.T(ctx, "settings.conn.self.listen.after") }</li>
 		</ul>
 		<p class="text-muted-foreground">
 			{ i18n.T(ctx, "conn.hosted") }
@@ -1014,7 +1014,7 @@ templ calendarConnected(c integrations.Connection) {
 			<div class="min-w-0">
 				<p class="truncate font-mono text-sm">{ c.Endpoint }</p>
 				if c.Healthy() {
-					<p class="text-muted-foreground mt-1 text-xs">Answering normally.</p>
+					<p class="text-muted-foreground mt-1 text-xs">{ i18n.T(ctx, "settings.conn.cal.healthy") }</p>
 				} else {
 					<p class="mt-1 text-xs text-red-600 dark:text-red-400">{ c.LastError }</p>
 				}

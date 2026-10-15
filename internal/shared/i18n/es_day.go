@@ -220,4 +220,6 @@ var spanishDay = map[string]string{
 
 	"day.streak.today":  "Hoy: ánimo %[1]d · energía %[2]d · %[3]s",
 	"day.streak.notyet": "Aún sin registro hoy",
+
+	"day.body.bmi": "IMC",
 }

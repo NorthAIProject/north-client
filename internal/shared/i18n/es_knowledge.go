@@ -1,0 +1,95 @@
+package i18n
+
+var spanishKnowledge = map[string]string{
+	"knowledge.title": "Conocimiento",
+	"knowledge.intro": "Notas y archivos que el entrenador puede citar. Solo usa lo que ha leído aquí y siempre dice de dónde sale cada respuesta.",
+
+	"knowledge.meter.read":       "leídos",
+	"knowledge.meter.passages":   "pasajes",
+	"knowledge.meter.waiting":    "%[1]d en espera",
+	"knowledge.meter.unreadable": "%[1]d ilegibles",
+	"knowledge.meter.label":      "%[1]d leídos, %[2]d en espera, %[3]d ilegibles",
+	"knowledge.rebuild":          "Reconstruir índice",
+
+	"knowledge.run.running": "El índice se está actualizando ahora.",
+	"knowledge.run.failed":  "Última revisión: %[1]s — no se pudieron leer %[2]d de %[3]d.",
+	"knowledge.run.nothing": "Última revisión: %[1]s — nada que leer.",
+	"knowledge.run.current": "Última revisión: %[1]s — todo estaba ya al día.",
+	"knowledge.run.read":    "Última revisión: %[1]s — leídos %[2]d de %[3]d.",
+
+	"knowledge.filter.all":     "Todo",
+	"knowledge.filter.notes":   "Notas",
+	"knowledge.filter.files":   "Archivos",
+	"knowledge.filter.waiting": "En espera",
+
+	"knowledge.attention.title":    "Requiere atención",
+	"knowledge.attention.gap.one":  "1 pasaje se puede buscar por palabras, pero aún no por significado.",
+	"knowledge.attention.gap.many": "%[1]d pasajes se pueden buscar por palabras, pero aún no por significado.",
+	"knowledge.attention.embed":    "Completar embeddings",
+	"knowledge.read_again":         "Volver a leer",
+	"knowledge.remove":             "Eliminar",
+
+	"knowledge.status.read":     "leído",
+	"knowledge.status.waiting":  "en espera",
+	"knowledge.status.failed":   "no se pudo leer",
+	"knowledge.status.empty":    "está vacío",
+	"knowledge.status.stale":    "cambió desde la lectura",
+	"knowledge.status.stuck":    "sigue en espera",
+	"knowledge.status.outdated": "leído con un método antiguo",
+
+	"knowledge.add.title":      "Añadir a la biblioteca",
+	"knowledge.add.formats":    "PDF, Markdown o texto plano, hasta 8 MB.",
+	"knowledge.add.note_label": "O escribe una nota",
+	"knowledge.add.title_ph":   "p. ej. Notas de fisio, marzo",
+	"knowledge.add.body_ph":    "Los encabezados de Markdown ayudan a Khepri a citar la parte correcta.",
+	"knowledge.add.save":       "Guardar nota",
+	"knowledge.drop.title":     "Suelta un archivo o explora",
+	"knowledge.drop.formats":   "PDF · Markdown · texto",
+
+	"knowledge.empty.title": "El entrenador aún no tiene nada que citar",
+	"knowledge.empty.body":  "Añade una nota o suelta un archivo PDF, Markdown o de texto. Khepri solo usa lo que ha leído aquí.",
+	"knowledge.empty.cta":   "Escribir una nota",
+
+	"knowledge.col.type":    "Tipo",
+	"knowledge.col.kind":    "Tipo",
+	"knowledge.col.name":    "Nombre",
+	"knowledge.col.size":    "Tamaño",
+	"knowledge.col.lines":   "Líneas",
+	"knowledge.col.status":  "Estado",
+	"knowledge.col.read":    "Leído",
+	"knowledge.col.actions": "Acciones",
+
+	"knowledge.type.note":      "nota",
+	"knowledge.type.text":      "texto",
+	"knowledge.type.code.note": "NOTA",
+
+	"knowledge.detail.upload": "archivo subido",
+	"knowledge.detail.lines":  "%[1]d líneas",
+	"knowledge.detail.read":   "leído el %[1]s",
+
+	"knowledge.export.body": "Llévate todo lo que Khepri sabe de ti: Markdown y los archivos originales.",
+	"knowledge.export.cta":  "Descargar exportación",
+
+	"knowledge.doc.showing":  "Mostrando las líneas %[1]d–%[2]d, el pasaje que se citó.",
+	"knowledge.doc.reread":   "Volver a leerlo",
+	"knowledge.doc.contents": "Contenido",
+
+	"knowledge.results.none_inline": "No hubo coincidencias. Khepri solo encuentra lo que ha leído: revisa la lista de abajo por si algo sigue en espera.",
+	"knowledge.results.all":         "Ver todos los pasajes",
+	"knowledge.results.gone":        "Los documentos de esta respuesta ya no están en tu conocimiento.",
+	"knowledge.sources.one":         "1 fuente",
+	"knowledge.sources.many":        "%[1]d fuentes",
+
+	"knowledge.search.title":      "Buscar en el conocimiento",
+	"knowledge.search.heading":    "Buscar pasajes",
+	"knowledge.search.intro":      "Encuentra lo que Khepri ha leído en tus notas y archivos.",
+	"knowledge.search.ph":         "Buscar pasajes…",
+	"knowledge.search.aria":       "Buscar en lo que Khepri ha leído",
+	"knowledge.search.searching":  "Buscando…",
+	"knowledge.search.prompt":     "Escribe una frase para buscar en lo que Khepri ha leído.",
+	"knowledge.search.none":       "No hubo coincidencias. Khepri solo encuentra lo que ha leído.",
+	"knowledge.search.more":       "Mostrar más",
+	"knowledge.search.count.one":  "1 pasaje",
+	"knowledge.search.count.many": "%[1]d pasajes",
+	"knowledge.search.count.more": "%[1]d+ pasajes",
+}
