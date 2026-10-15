@@ -1,6 +1,7 @@
 package lift_test
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -83,5 +84,24 @@ func TestRecapSummaryTellsTheCoachWhichDayAndWhatChanged(t *testing.T) {
 		"  Back squat: 2 sets, 1,025 kg volume, best 105 kg × 5 (last time 1,000 kg volume, e1RM +5.8 kg)"
 	if got != want {
 		t.Fatalf("got\n%s\nwant\n%s", got, want)
+	}
+}
+
+func TestRecapSentenceInEuropeanPortuguese(t *testing.T) {
+	t.Parallel()
+
+	earlier := append(squats(17, 100, 100), set("Back squat", 17, 60, 8))
+	current := append(squats(24, 100, 105), set("Back squat", 24, 60, 8))
+	rc := lift.BuildRecap(65*time.Minute, 0, 4, current, earlier)
+
+	if want := "1 hora e 5 minutos, 3 de 4 séries, 1.505 kg. Back squat: máximo estimado +5,8 kg."; rc.SentenceIn("pt-PT") != want {
+		t.Fatalf("pt-PT sentence = %q, want %q", rc.SentenceIn("pt-PT"), want)
+	}
+	// The stored sentence stays English: the coach reads it.
+	if !strings.HasPrefix(rc.Sentence, "1 hour 5 minutes, 3 of 4 sets, 1,505 kg.") {
+		t.Fatalf("English sentence = %q", rc.Sentence)
+	}
+	if got := lift.BuildRecap(time.Minute, 0, 0, []lift.Set{set("Push-up", 24, 0, 20)}, nil).SentenceIn("pt-PT"); got != "1 minuto, 1 série." {
+		t.Fatalf("one of each = %q", got)
 	}
 }

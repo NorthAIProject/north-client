@@ -784,8 +784,8 @@ templ providerTile(entry providers.BYOProvider, selected bool) {
 				</span>
 				<span class="text-sm font-medium">{ entry.Label }</span>
 			</span>
-			if entry.Note != "" {
-				<span class="text-muted-foreground text-xs leading-relaxed">{ entry.Note }</span>
+			if note := entry.NoteIn(i18n.LocaleFrom(ctx)); note != "" {
+				<span class="text-muted-foreground text-xs leading-relaxed">{ note }</span>
 			}
 		</span>
 	</label>

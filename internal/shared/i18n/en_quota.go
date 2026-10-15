@@ -21,4 +21,7 @@ var englishQuota = map[string]string{
 	"quota.delay.minutes":     "in %[1]d minutes",
 	"quota.delay.hour":        "in about an hour",
 	"quota.delay.hours":       "in %[1]d hours",
+
+	// The API's 429 message: an action name, then a wait.
+	"quota.api": "You have used all your %[1]s for now. Try again %[2]s.",
 }

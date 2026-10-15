@@ -387,4 +387,21 @@ var portugueseBrazilianInsights = map[string]string{
 	"insights.metric.name.vo2max":                   "VO2 máx.",
 	"insights.metric.name.weight":                   "Peso",
 	"insights.metric.name.notes":                    "Notas de metas",
+
+	"insights.recovery.why.above": "%[1]s: acima do habitual, %[2]s (%[3]s), normalmente %[4]s–%[5]s.",
+	"insights.recovery.why.below": "%[1]s: abaixo do habitual, %[2]s (%[3]s), normalmente %[4]s–%[5]s.",
+
+	"insights.consistency.line.week":     "Constância: ativo %[1]s nesta semana",
+	"insights.consistency.line.usual":    " (normalmente %.1[1]f)",
+	"insights.consistency.line.streaks":  "; sequência atual de %[1]s, a mais longa de %[2]s e a maior pausa de %[3]s nas últimas %[4]d semanas",
+	"insights.consistency.line.checkins": "; sequência de registros de %[1]s",
+	"insights.consistency.days.one":      "1 dia",
+	"insights.consistency.days.many":     "%[1]d dias",
+
+	"insights.plan.week.done.one":     "A sessão desta semana está feita.",
+	"insights.plan.week.done.many":    "Todas as %[1]d sessões desta semana foram feitas.",
+	"insights.plan.week.partial.one":  "%[1]d de 1 sessão feita nesta semana.",
+	"insights.plan.week.partial.many": "%[1]d de %[2]d sessões feitas nesta semana.",
+	"insights.plan.range.one":         "%[1]d de 1 sessão planejada feita.",
+	"insights.plan.range.many":        "%[1]d de %[2]d sessões planejadas feitas.",
 }

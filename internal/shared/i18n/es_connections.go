@@ -78,4 +78,16 @@ var spanishConnections = map[string]string{
 	"conn.cal.token.ph":      "Déjalo vacío si el servidor no necesita token",
 	"conn.cal.token.desc":    "Se guarda cifrado. No se vuelve a mostrar después de guardarlo.",
 	"conn.cal.connect":       "Conectar calendario",
+
+	"conn.setup.label.command": "un comando",
+	"conn.setup.label.shell":   "terminal",
+	"conn.setup.label.details": "datos de conexión",
+	"conn.setup.safe.claude":   "Si ese archivo está en un repositorio git, usa esta versión y guarda la clave en tu entorno — .mcp.json acaba en un commit más a menudo de lo que parece.",
+	"conn.setup.safe.codex":    "Ese comando escribe esto, que también puedes escribir tú. Codex lee la clave del entorno, así que el archivo nunca la contiene.",
+
+	"conn.provider.note.openrouter": "Una sola clave, casi todos los modelos — Claude y GPT incluidos. La opción más sencilla.",
+	"conn.provider.note.openai":     "No necesita código nuevo: openaicompat ya habla el dialecto de OpenAI.",
+	"conn.provider.note.nvidia":     "Modelos gratuitos, y lo que ya usa el plan gratuito de Khepri.",
+	"conn.provider.note.hermes":     "Tu propia instancia de Hermes — tailnet, red local o pública. La URL y la clave se quedan en esta cuenta.",
+	"conn.provider.note.anthropic":  "Claude en tu propia cuenta de Anthropic. Se factura a esa cuenta.",
 }

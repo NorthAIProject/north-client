@@ -88,4 +88,19 @@ var englishConnections = map[string]string{
 	"conn.cal.token.ph":      "Leave empty if the server needs no token",
 	"conn.cal.token.desc":    "Stored encrypted. It is never shown again after you save it.",
 	"conn.cal.connect":       "Connect calendar",
+
+	// Setup prose built in internal/connections (Setup.In). The commands, file
+	// names and the agent prompt around it are not copy and stay as written.
+	"conn.setup.label.command": "one command",
+	"conn.setup.label.shell":   "shell",
+	"conn.setup.label.details": "connection details",
+	"conn.setup.safe.claude":   "If that file lives in a git repository, use this version instead and keep the key in your environment — .mcp.json is committed more often than people expect.",
+	"conn.setup.safe.codex":    "That command writes this, which you can also write yourself. Codex reads the key from the environment, so the file never contains it.",
+
+	// One line under each provider in the AI settings, from providers.Catalog.
+	"conn.provider.note.openrouter": "One key, most models — including Claude and GPT. The simplest choice.",
+	"conn.provider.note.openai":     "Needs no new code: openaicompat speaks OpenAI's dialect already.",
+	"conn.provider.note.nvidia":     "Free models, and what Khepri's own free tier already runs on.",
+	"conn.provider.note.hermes":     "Your own Hermes instance — tailnet, LAN, or public. URL and key stay on this account.",
+	"conn.provider.note.anthropic":  "Claude on your own Anthropic account. Billed to that account.",
 }

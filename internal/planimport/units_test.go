@@ -1,6 +1,7 @@
 package planimport
 
 import (
+	"context"
 	"testing"
 
 	"github.com/NorthAIProject/north-client/internal/meals"
@@ -33,7 +34,7 @@ func TestKitchenMeasuresBecomeEstimatedWeights(t *testing.T) {
 	for _, c := range cases {
 		qty := c.qty
 		f := &FoodDraft{Food: "x", Quantity: &qty, Unit: c.unit}
-		got := (*Service)(nil).derivedGrams(f, c.ingredient)
+		got := (*Service)(nil).derivedGrams(context.Background(), f, c.ingredient)
 		if got == nil || *got != c.want {
 			t.Errorf("%g %s: grams = %v, want %g", c.qty, c.unit, got, c.want)
 			continue
@@ -47,11 +48,11 @@ func TestKitchenMeasuresBecomeEstimatedWeights(t *testing.T) {
 func TestGramsStayExactAndUnknownUnitsStayEmpty(t *testing.T) {
 	qty := 150.0
 	f := &FoodDraft{Food: "rice", Quantity: &qty, Unit: "g"}
-	if got := (*Service)(nil).derivedGrams(f, nil); got == nil || *got != 150 || f.Estimated {
+	if got := (*Service)(nil).derivedGrams(context.Background(), f, nil); got == nil || *got != 150 || f.Estimated {
 		t.Errorf("150 g: grams = %v, estimated = %v; want exactly 150, not estimated", got, f.Estimated)
 	}
 	f = &FoodDraft{Food: "x", Quantity: &qty, Unit: "bananas worth"}
-	if got := (*Service)(nil).derivedGrams(f, nil); got != nil {
+	if got := (*Service)(nil).derivedGrams(context.Background(), f, nil); got != nil {
 		t.Errorf("unknown unit: grams = %v, want none", *got)
 	}
 }

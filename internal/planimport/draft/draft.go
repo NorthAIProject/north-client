@@ -3,8 +3,6 @@
 package draft
 
 import (
-	"fmt"
-
 	"github.com/google/uuid"
 )
 
@@ -126,16 +124,6 @@ type MealDraftOption struct {
 // the meal; adding or removing an option is not.
 func (m MealDraftMeal) Options() []MealDraftOption {
 	return append([]MealDraftOption{{Label: m.OptionLabel, Foods: m.Foods}}, m.Alternatives...)
-}
-
-// OptionName is what option o (0 being the first) is shown as: its label, or
-// "Option N" when the file gave it none.
-func (m MealDraftMeal) OptionName(o int) string {
-	opts := m.Options()
-	if o >= 0 && o < len(opts) && opts[o].Label != "" {
-		return opts[o].Label
-	}
-	return fmt.Sprintf("Option %d", o+1)
 }
 
 // FoodDraft is one food line.

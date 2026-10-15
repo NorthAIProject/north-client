@@ -2,6 +2,7 @@ package lifts
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"log/slog"
@@ -17,6 +18,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/lifts/lift"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	pages "github.com/NorthAIProject/north-client/web/lifts"
 )
@@ -50,7 +52,7 @@ func (h *Handler) today(w http.ResponseWriter, r *http.Request) {
 // successful responses.
 func (h *Handler) logSet(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		h.renderToday(w, r, pages.SetForm{}, "That form could not be read.")
+		h.renderToday(w, r, pages.SetForm{}, i18n.T(r.Context(), "lifts.err.form"))
 		return
 	}
 	user := auth.MustUser(r.Context())
@@ -61,9 +63,9 @@ func (h *Handler) logSet(w http.ResponseWriter, r *http.Request) {
 		Kind:     r.PostFormValue("kind"),
 		RIR:      strings.TrimSpace(r.PostFormValue("rir")),
 	}
-	in, msg := parseSetForm(form)
-	if msg != "" {
-		h.renderToday(w, r, form, msg)
+	in, msgKey := parseSetForm(form)
+	if msgKey != "" {
+		h.renderToday(w, r, form, i18n.T(r.Context(), msgKey))
 		return
 	}
 
@@ -79,7 +81,7 @@ func (h *Handler) logSet(w http.ResponseWriter, r *http.Request) {
 	}
 	if _, err = h.svc.Log(r.Context(), user, in); err != nil {
 		var fields apperr.FieldErrors
-		if apperr.As(err, &fields) && len(fields) > 0 {
+		if apperr.As(localize(r.Context(), err), &fields) && len(fields) > 0 {
 			h.renderToday(w, r, form, fields[0].Message)
 			return
 		}
@@ -90,28 +92,29 @@ func (h *Handler) logSet(w http.ResponseWriter, r *http.Request) {
 	h.renderToday(w, r, form, "")
 }
 
-// parseSetForm reads the form into a LogInput, or a message for the person.
+// parseSetForm reads the form into a LogInput, or the catalogue key of a
+// message for the person.
 func parseSetForm(f pages.SetForm) (LogInput, string) {
 	in := LogInput{ExerciseName: f.Exercise, Kind: f.Kind}
 	if in.ExerciseName == "" {
-		return in, "Name the exercise."
+		return in, "lifts.err.name"
 	}
 	if f.WeightKg != "" {
 		kg, err := strconv.ParseFloat(strings.ReplaceAll(f.WeightKg, ",", "."), 64)
 		if err != nil {
-			return in, "Enter the weight in kilograms, or leave it empty for bodyweight."
+			return in, "lifts.err.weight"
 		}
 		in.WeightKg = kg
 	}
 	reps, err := strconv.Atoi(f.Reps)
 	if err != nil {
-		return in, "Enter how many reps."
+		return in, "lifts.err.reps"
 	}
 	in.Reps = reps
 	if f.RIR != "" {
 		rir, err := strconv.Atoi(f.RIR)
 		if err != nil {
-			return in, "Enter reps in reserve as a whole number, or leave it empty."
+			return in, "lifts.err.rir"
 		}
 		in.RIR = &rir
 	}
@@ -121,7 +124,7 @@ func parseSetForm(f pages.SetForm) (LogInput, string) {
 func (h *Handler) undoSet(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "setID"))
 	if err != nil {
-		h.renderToday(w, r, pages.SetForm{}, "That set was not found.")
+		h.renderToday(w, r, pages.SetForm{}, i18n.T(r.Context(), "lifts.err.notfound"))
 		return
 	}
 	if err := h.svc.Undo(r.Context(), auth.MustUser(r.Context()), id); err != nil && !apperr.Is(err, apperr.ErrNotFound) {
@@ -138,20 +141,20 @@ func (h *Handler) renderToday(w http.ResponseWriter, r *http.Request, form pages
 		h.fail(w, r, "load today's sets", err)
 		return
 	}
-	h.render(w, r, http.StatusOK, pages.TodayCard(pages.Today{Sets: setRows(sets), Recent: recent, Form: form, Error: msg}))
+	h.render(w, r, http.StatusOK, pages.TodayCard(pages.Today{Sets: setRows(r.Context(), sets), Recent: recent, Form: form, Error: msg}))
 }
 
-func setRows(sets []Set) []pages.SetRow {
+func setRows(ctx context.Context, sets []Set) []pages.SetRow {
 	rows := make([]pages.SetRow, len(sets))
 	for i, s := range sets {
 		row := pages.SetRow{
-			ID: s.ID.String(), Exercise: s.ExerciseName, Load: loadLabel(s),
+			ID: s.ID.String(), Exercise: s.ExerciseName, Load: loadLabel(ctx, s),
 			Warmup: s.Kind == lift.KindWarmup, Drop: s.Kind == lift.KindDrop,
 		}
 		if s.RIR != nil {
-			row.RIR = fmt.Sprintf("%d in reserve", *s.RIR)
+			row.RIR = i18n.Tf(ctx, "lifts.list.rir", *s.RIR)
 			if *s.RIR == 0 {
-				row.RIR = "to failure"
+				row.RIR = i18n.T(ctx, "lifts.list.failure")
 			}
 		}
 		rows[i] = row
@@ -159,9 +162,9 @@ func setRows(sets []Set) []pages.SetRow {
 	return rows
 }
 
-func loadLabel(s Set) string {
+func loadLabel(ctx context.Context, s Set) string {
 	if s.WeightKg <= 0 {
-		return fmt.Sprintf("bodyweight × %d", s.Reps)
+		return i18n.Tf(ctx, "lifts.list.bodyweight", s.Reps)
 	}
 	return fmt.Sprintf("%s kg × %d", strconv.FormatFloat(s.WeightKg, 'f', -1, 64), s.Reps)
 }
@@ -172,21 +175,21 @@ func (h *Handler) importPage(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) importUpload(w http.ResponseWriter, r *http.Request) {
 	user := auth.MustUser(r.Context())
-	data, msg := formFile(r)
-	if msg != "" {
-		h.render(w, r, http.StatusUnprocessableEntity, pages.ImportPage(user, nil, msg))
+	data, msgKey := formFile(r)
+	if msgKey != "" {
+		h.render(w, r, http.StatusUnprocessableEntity, pages.ImportPage(user, nil, i18n.T(r.Context(), msgKey)))
 		return
 	}
 	res, err := h.svc.ImportHevy(r.Context(), user, bytes.NewReader(data))
 	if err != nil {
 		var fields apperr.FieldErrors
-		if apperr.As(err, &fields) && len(fields) > 0 {
+		if apperr.As(localize(r.Context(), err), &fields) && len(fields) > 0 {
 			h.render(w, r, http.StatusUnprocessableEntity, pages.ImportPage(user, nil, fields[0].Message))
 			return
 		}
 		middleware.FromContext(r.Context()).Error("import hevy", slog.Any("error", err))
 		h.render(w, r, http.StatusInternalServerError, pages.ImportPage(user, imported(res),
-			"The import stopped part way. The workouts counted above were saved; the rest were not."))
+			i18n.T(r.Context(), "lifts.err.partial")))
 		return
 	}
 	h.render(w, r, http.StatusOK, pages.ImportPage(user, imported(res), ""))
@@ -196,26 +199,27 @@ func imported(res ImportResult) *pages.Imported {
 	return &pages.Imported{Workouts: res.Workouts, Duplicates: res.Duplicates, Sets: res.Sets, Skipped: res.Skipped, Unmatched: res.Unmatched}
 }
 
-// formFile reads the upload the CSRF middleware has already parsed.
+// formFile reads the upload the CSRF middleware has already parsed, or
+// names the catalogue key of what is wrong with it.
 func formFile(r *http.Request) ([]byte, string) {
 	file, _, err := r.FormFile("file")
 	if err != nil {
-		return nil, "Choose your Hevy CSV first."
+		return nil, "lifts.err.nofile"
 	}
 	defer func() { _ = file.Close() }()
 	data, err := io.ReadAll(io.LimitReader(file, MaxImportBytes+1))
 	if err != nil {
-		return nil, "That upload could not be read."
+		return nil, "lifts.err.upload"
 	}
 	if len(data) > MaxImportBytes {
-		return nil, "This file is larger than 10 MB."
+		return nil, "lifts.err.toolarge"
 	}
 	return data, ""
 }
 
 func (h *Handler) fail(w http.ResponseWriter, r *http.Request, what string, err error) {
 	middleware.FromContext(r.Context()).Error(what, slog.Any("error", err))
-	http.Error(w, "Something went wrong. Try again in a moment.", httpx.Status(err))
+	http.Error(w, i18n.T(r.Context(), "lifts.err.generic"), httpx.Status(err))
 }
 
 func (h *Handler) render(w http.ResponseWriter, r *http.Request, status int, c templ.Component) {

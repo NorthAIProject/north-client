@@ -2,6 +2,7 @@ package i18n
 
 import (
 	"context"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -160,6 +161,23 @@ func TestTranslationsAreServedForRealLocales(t *testing.T) {
 		ctx := WithLocale(context.Background(), locale)
 		if got := T(ctx, "nav.settings"); got != want {
 			t.Errorf("%s: nav.settings = %q, want %q", locale, got, want)
+		}
+	}
+}
+
+// Go reads an explicit argument index only directly before the verb: "%.0[1]f"
+// works, "%[1].0f" prints "%!f(BADINDEX)" in every language. The mistake
+// compiles, passes review and ships a broken number, so it is caught here.
+func TestFormatIndexesSitBeforeTheVerb(t *testing.T) {
+	misplaced := regexp.MustCompile(`%\[\d+\][-+# 0]*\d*\.?\d*[a-zA-Z]`)
+	for locale, catalogue := range catalogues {
+		for key, value := range catalogue {
+			for _, m := range misplaced.FindAllString(value, -1) {
+				if regexp.MustCompile(`^%\[\d+\][a-zA-Z]$`).MatchString(m) {
+					continue // "%[1]s": index right before the verb, fine
+				}
+				t.Errorf("%s: %s: %q puts the index before a width or precision; write it as %%.0[1]f", locale, key, m)
+			}
 		}
 	}
 }

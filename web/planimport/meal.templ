@@ -119,6 +119,15 @@ func bandLabel(ctx context.Context, band meal.CarbBand) string {
 	return band.Label
 }
 
+// optionName is what option o of m is shown as: the file's own label, or its
+// number in the reader's language.
+func optionName(ctx context.Context, m draft.MealDraftMeal, o int) string {
+	if opts := m.Options(); o >= 0 && o < len(opts) && opts[o].Label != "" {
+		return opts[o].Label
+	}
+	return i18n.Tf(ctx, "nutrition.option.numbered", o+1)
+}
+
 func anyOver(days []draft.MealDayDraft) bool {
 	for _, d := range days {
 		if len(d.Over) > 0 {
@@ -366,7 +375,7 @@ templ mealOption(i, j, o int, m draft.MealDraftMeal, opt draft.MealDraftOption) 
 	<div class={ "space-y-1", templ.KV("border-l-2 border-border pl-3", len(m.Alternatives) > 0) }>
 		if len(m.Alternatives) > 0 {
 			<div class="flex flex-wrap items-center gap-2">
-				<span class="text-sm font-medium">{ m.OptionName(o) }</span>
+				<span class="text-sm font-medium">{ optionName(ctx, m, o) }</span>
 				if o == 0 {
 					@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
 						{ i18n.T(ctx, "planimport.meal.counted") }
@@ -374,7 +383,7 @@ templ mealOption(i, j, o int, m draft.MealDraftMeal, opt draft.MealDraftOption) 
 				}
 				@button.Button(button.Props{
 					Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm,
-					Attributes: templ.Attributes{"name": "action", "value": fmt.Sprintf("delete-option:%d:%d:%d", i, j, o), "formnovalidate": true, "aria-label": i18n.Tf(ctx, "planimport.remove_named", m.OptionName(o))},
+					Attributes: templ.Attributes{"name": "action", "value": fmt.Sprintf("delete-option:%d:%d:%d", i, j, o), "formnovalidate": true, "aria-label": i18n.Tf(ctx, "planimport.remove_named", optionName(ctx, m, o))},
 				}) {
 					{ i18n.T(ctx, "planimport.meal.remove_option") }
 				}

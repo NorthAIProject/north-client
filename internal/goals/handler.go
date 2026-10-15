@@ -149,7 +149,7 @@ func (h *Handler) momentFrom(r *http.Request, user users.User, g goal.Goal) *mom
 	var m moments.Moment
 	switch {
 	case done == "goal":
-		m = moments.ForGoalAchieved(g.Title)
+		m = moments.ForGoalAchieved(r.Context(), g.Title)
 	case strings.HasPrefix(done, "milestone:"):
 		mid, err := uuid.Parse(strings.TrimPrefix(done, "milestone:"))
 		if err != nil {
@@ -165,7 +165,7 @@ func (h *Handler) momentFrom(r *http.Request, user users.User, g goal.Goal) *mom
 		if found == nil {
 			return nil
 		}
-		m = moments.ForMilestoneCompleted(g.Title, found.Title)
+		m = moments.ForMilestoneCompleted(r.Context(), g.Title, found.Title)
 	default:
 		return nil
 	}

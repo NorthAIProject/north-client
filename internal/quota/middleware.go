@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	quotapages "github.com/NorthAIProject/north-client/web/quota"
 )
 
@@ -67,22 +68,24 @@ func (s *Service) guard(action Action, refuse refusal) func(http.Handler) http.H
 }
 
 // refuse writes the 429 and the panel that replaces whatever asked for the
-// work.
+// work, in the reader's language.
 func (s *Service) refuse(w http.ResponseWriter, r *http.Request, action Action, decision Decision) {
 	w.Header().Set("Retry-After", strconv.Itoa(retrySeconds(decision)))
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusTooManyRequests)
 
-	if err := quotapages.Refused(describe(action), humanDelay(decision.RetryAfter)).Render(r.Context(), w); err != nil {
+	if err := quotapages.RefusedFor(string(action), decision.RetryAfter).Render(r.Context(), w); err != nil {
 		s.log.Error("rendering the quota refusal failed", slog.Any("error", err))
 	}
 }
 
 // refuseJSON is refuse's 429 for the API, with the sentence as its message.
-func (s *Service) refuseJSON(w http.ResponseWriter, _ *http.Request, action Action, decision Decision) {
+// The native app shows the message verbatim, so it is translated here.
+func (s *Service) refuseJSON(w http.ResponseWriter, r *http.Request, action Action, decision Decision) {
+	ctx := r.Context()
 	w.Header().Set("Retry-After", strconv.Itoa(retrySeconds(decision)))
 	httpx.WriteJSON(w, http.StatusTooManyRequests, httpx.ErrorBody{Error: httpx.ErrorDetail{
-		Message: "You have used all your " + describe(action) + " for now. Try again " + humanDelay(decision.RetryAfter) + ".",
+		Message: i18n.Tf(ctx, "quota.api", quotapages.ActionLabel(ctx, string(action)), quotapages.DelayLabel(ctx, decision.RetryAfter)),
 	}})
 }
 
@@ -92,46 +95,4 @@ func retrySeconds(decision Decision) int {
 		seconds = 1
 	}
 	return seconds
-}
-
-// describe names an action the way a person would, since the wire name appears
-// in the sentence they read.
-func describe(action Action) string {
-	switch action {
-	case CoachMessage:
-		return "coach messages"
-	case DocumentUpload:
-		return "uploads"
-	case DocumentReindex:
-		return "reindexing"
-	case ReportGenerate:
-		return "report generation"
-	case MediaAnalysis:
-		return "video analysis"
-	case QuickCapture:
-		return "quick capture"
-	case VoiceCapture:
-		return "voice notes"
-	case PlanImport:
-		return "plan imports"
-	default:
-		return string(action)
-	}
-}
-
-// humanDelay renders a wait as something worth reading. "in 47 minutes" is
-// useful; "in 2823 seconds" is a number a person has to do arithmetic on.
-func humanDelay(d time.Duration) string {
-	switch {
-	case d < time.Minute:
-		return "in less than a minute"
-	case d < 2*time.Minute:
-		return "in about a minute"
-	case d < time.Hour:
-		return "in " + strconv.Itoa(int(d.Minutes())) + " minutes"
-	case d < 2*time.Hour:
-		return "in about an hour"
-	default:
-		return "in " + strconv.Itoa(int(d.Hours())) + " hours"
-	}
 }

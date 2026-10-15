@@ -24,4 +24,15 @@ var englishWeekly = map[string]string{
 	"weekly.volume.deload":      "Deload",
 	"weekly.volume.deload.hint": "About 60% of the sets, to recover.",
 	"weekly.save":               "Save the week",
+
+	// Errors from internal/weekly. The field errors' English must match what
+	// its service writes, which its fieldmsg table test checks.
+	"weekly.err.priority.long": "Keep each priority under 120 characters.",
+	"weekly.err.priority.many": "Pick at most three priorities.",
+	"weekly.err.volume":        "Choose hold, build or deload.",
+	"weekly.err.read":          "That request could not be read.",
+	"weekly.err.generic":       "Something went wrong.",
+	"weekly.api.review":        "The weekly review could not be loaded.",
+	"weekly.api.body":          "The request body could not be read.",
+	"weekly.api.save":          "The week's focus could not be saved.",
 }

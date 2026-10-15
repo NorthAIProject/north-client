@@ -37,4 +37,6 @@ var portugueseEuropeanTelegram = map[string]string{
 	"tg.quota.minute": "Chegaste ao teu limite de mensagens com o treinador. Tenta outra vez daqui a menos de um minuto.",
 	"tg.quota.hour":   "Chegaste ao teu limite de mensagens com o treinador. Tenta outra vez daqui a cerca de uma hora.",
 	"tg.quota.n":      "Chegaste ao teu limite de mensagens com o treinador. Tenta outra vez daqui a %[1]d minutos.",
+
+	"tg.digest.empty": "%[2]s: ainda não há nada registado.",
 }

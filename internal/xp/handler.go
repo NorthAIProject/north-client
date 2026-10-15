@@ -1,6 +1,7 @@
 package xp
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/achievements"
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	lbpages "github.com/NorthAIProject/north-client/web/leaderboard"
 )
@@ -36,34 +38,40 @@ var boards = map[string][2]string{
 	"workouts": {MetricWorkouts, ""},
 }
 
-// kindLabels say what each kind pays for, rules included.
-var kindLabels = map[string]string{
-	KindWorkout:      fmt.Sprintf("Workouts of %d min or more (up to %d a day)", WorkoutMinMinutes, WorkoutsPaidPerDay),
-	KindHabitKept:    "Habits kept on their days",
-	KindStreakDay:    fmt.Sprintf("Check-in streak days (from day %d)", StreakDayFrom),
-	KindMilestone:    "Milestones reached",
-	KindGoal:         "Goals achieved",
-	KindStreakMark:   "Check-in streaks reaching " + markList() + " days",
-	KindWeekReviewed: "Weekly reviews done",
-	KindChallengeMet: "Crew challenges met",
+// kindLabel says what a kind pays for, rules included, in the request's
+// language. A kind without a label reads as its code.
+func kindLabel(ctx context.Context, kind string) string {
+	switch kind {
+	case KindWorkout:
+		return i18n.Tf(ctx, "xp.kind.workout", WorkoutMinMinutes, WorkoutsPaidPerDay)
+	case KindStreakDay:
+		return i18n.Tf(ctx, "xp.kind.streak_day", StreakDayFrom)
+	case KindStreakMark:
+		return i18n.Tf(ctx, "xp.kind.streak_mark", markList(ctx))
+	case KindHabitKept, KindMilestone, KindGoal, KindWeekReviewed, KindChallengeMet:
+		return i18n.T(ctx, "xp.kind."+kind)
+	}
+	return kind
 }
 
 // markList is the streak marks as a sentence: "7, 30, 100 or 365".
-func markList() string {
+func markList(ctx context.Context) string {
 	marks := make([]string, 0, len(achievements.StreakMarks))
 	for _, m := range achievements.StreakMarks {
 		marks = append(marks, strconv.Itoa(m))
 	}
 	last := len(marks) - 1
-	return strings.Join(marks[:last], ", ") + " or " + marks[last]
+	return i18n.Tf(ctx, "xp.marks.or", strings.Join(marks[:last], ", "), marks[last])
 }
 
-// switchLabels name the sharing switch each metric needs, as the Friends page
+// switchLabel names the sharing switch a metric needs, as the Friends page
 // words it.
-var switchLabels = map[string]string{
-	MetricXP:       "Your XP and level",
-	MetricStreak:   "Check-in streaks",
-	MetricWorkouts: "Workouts you finish",
+func switchLabel(ctx context.Context, metric string) string {
+	switch metric {
+	case MetricXP, MetricStreak, MetricWorkouts:
+		return i18n.T(ctx, "xp.switch."+metric)
+	}
+	return ""
 }
 
 func (h *Handler) page(w http.ResponseWriter, r *http.Request) {
@@ -91,13 +99,13 @@ func (h *Handler) page(w http.ResponseWriter, r *http.Request) {
 			Number: summary.Level.Number, Title: summary.Level.Title, Total: summary.Total,
 			Floor: summary.Level.Floor, Next: summary.Level.Next,
 		},
-		WeekTotal: summary.WeekTotal, Board: key, Sharing: board.Sharing, ShareSwitch: switchLabels[board.Metric],
+		WeekTotal: summary.WeekTotal, Board: key, Sharing: board.Sharing, ShareSwitch: switchLabel(r.Context(), board.Metric),
 	}
 	for _, e := range summary.Week {
-		p.Week = append(p.Week, lbpages.Kind{Label: kindLabels[e.Kind], Count: e.Count, Points: e.Points})
+		p.Week = append(p.Week, lbpages.Kind{Label: kindLabel(r.Context(), e.Kind), Count: e.Count, Points: e.Points})
 	}
 	for _, e := range board.Entries {
-		row := lbpages.Row{Rank: e.Rank, Name: e.DisplayName, Handle: e.Handle, Value: valueText(board.Metric, e.Value), Me: e.Me}
+		row := lbpages.Row{Rank: e.Rank, Name: e.DisplayName, Handle: e.Handle, Value: valueText(r.Context(), board.Metric, e.Value), Me: e.Me}
 		if e.Level != nil {
 			row.Level = e.Level.Title
 		}
@@ -110,23 +118,24 @@ func (h *Handler) page(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func valueText(metric string, v int) string {
+func valueText(ctx context.Context, metric string, v int) string {
 	switch metric {
 	case MetricStreak:
 		if v == 1 {
-			return "1 day"
+			return i18n.T(ctx, "xp.value.day.one")
 		}
-		return fmt.Sprintf("%d days", v)
+		return i18n.Tf(ctx, "xp.value.day.many", v)
 	case MetricWorkouts:
 		if v == 1 {
-			return "1 workout"
+			return i18n.T(ctx, "xp.value.workout.one")
 		}
-		return fmt.Sprintf("%d workouts", v)
+		return i18n.Tf(ctx, "xp.value.workout.many", v)
 	}
+	// XP is the unit's name in every language North speaks.
 	return fmt.Sprintf("%d XP", v)
 }
 
 func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 	middleware.FromContext(r.Context()).Error("leaderboard request failed", slog.Any("error", err))
-	http.Error(w, "Something went wrong.", http.StatusInternalServerError)
+	http.Error(w, i18n.T(r.Context(), "xp.err.failed"), http.StatusInternalServerError)
 }
