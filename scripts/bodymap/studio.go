@@ -88,8 +88,11 @@ func writeStudioPNG(path string, w, h int) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	return png.Encode(f, img)
+	if err := png.Encode(f, img); err != nil {
+		_ = f.Close()
+		return err
+	}
+	return f.Close()
 }
 
 func srgb8(linear float64) uint8 {
