@@ -47,6 +47,15 @@
       inspect: Boolean(props.inspect),
 
       init() {
+        // Follows the page when its appearance changes after load: the public
+        // switcher, or the OS flipping while the setting is "system". Read from
+        // the class rather than the event detail so any source of the change
+        // is honoured the same way.
+        this.themeHandler = () => {
+          if (this.viewer) this.viewer.setTheme(document.documentElement.classList.contains("dark"));
+        };
+        document.addEventListener("theme-changed", this.themeHandler);
+
         this.observer = new IntersectionObserver(
           (entries) => {
             if (entries.some((e) => e.isIntersecting)) this.load();
@@ -106,6 +115,7 @@
       },
 
       destroy() {
+        if (this.themeHandler) document.removeEventListener("theme-changed", this.themeHandler);
         if (this.observer) this.observer.disconnect();
         this.teardown();
       },
