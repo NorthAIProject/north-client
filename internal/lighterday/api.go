@@ -1,6 +1,7 @@
 package lighterday
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -59,7 +60,7 @@ func (a *API) show(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, err, "Today could not be loaded.")
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, project(t))
+	httpx.WriteJSON(w, http.StatusOK, project(r.Context(), t))
 }
 
 func (a *API) choose(w http.ResponseWriter, r *http.Request) {
@@ -73,14 +74,14 @@ func (a *API) choose(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, err, "That could not be saved.")
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, project(t))
+	httpx.WriteJSON(w, http.StatusOK, project(r.Context(), t))
 }
 
-func project(t Today) LighterView {
+func project(ctx context.Context, t Today) LighterView {
 	r := t.Recovery
 	v := LighterView{
 		Offered: t.Offered(), Session: t.Session, Choice: t.Choice,
-		Readiness: ReadinessView{Low: r.Low(), Reason: r.Why()},
+		Readiness: ReadinessView{Low: r.Low(), Reason: r.WhyIn(ctx)},
 	}
 	if sig, ok := r.Signal(score.RecoveryHRV); ok {
 		v.Readiness.HRV, v.Readiness.HRVBaseline = ptr(sig.Usual.Latest.Value), ptr(sig.Usual.Baseline.Mean)

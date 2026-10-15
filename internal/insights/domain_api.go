@@ -1,6 +1,7 @@
 package insights
 
 import (
+	"context"
 	"net/http"
 	"time"
 
@@ -287,7 +288,7 @@ func (a *API) training(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := projectTraining(view, sessionKindSegments(data.Sessions))
-	out.Plan, out.Recap = projectPlanWeek(data), projectRecap(data)
+	out.Plan, out.Recap = projectPlanWeek(r.Context(), data), projectRecap(data)
 	httpx.WriteJSON(w, http.StatusOK, out)
 }
 
@@ -399,15 +400,15 @@ func projectTraining(v insightpages.TrainingView, kinds []viz.DonutSegment) Insi
 	return out
 }
 
-func projectPlanWeek(data TrainingData) *TrainingPlanWeek {
+func projectPlanWeek(ctx context.Context, data TrainingData) *TrainingPlanWeek {
 	if !data.HasPlan {
 		return nil
 	}
 	today := data.Now.Format("2006-01-02")
 	out := &TrainingPlanWeek{
-		Sentence: data.Week.Sentence, Done: data.Week.Done, Planned: data.Week.Planned,
+		Sentence: weekSentence(ctx, data.Week), Done: data.Week.Done, Planned: data.Week.Planned,
 		Days:      make([]TrainingPlanDay, 0, len(data.Week.Days)),
-		RangeDone: data.Adherence.Done, RangePlanned: data.Adherence.Planned, RangeSentence: data.Adherence.Sentence,
+		RangeDone: data.Adherence.Done, RangePlanned: data.Adherence.Planned, RangeSentence: adherenceSentence(ctx, data.Adherence),
 	}
 	for _, d := range data.Week.Days {
 		date := d.Date.Format("2006-01-02")

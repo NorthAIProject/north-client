@@ -19,4 +19,6 @@ var portugueseBrazilianQuota = map[string]string{
 	"quota.delay.minutes":     "em %[1]d minutos",
 	"quota.delay.hour":        "em cerca de uma hora",
 	"quota.delay.hours":       "em %[1]d horas",
+
+	"quota.api": "Você usou todo o limite de %[1]s por enquanto. Tente de novo %[2]s.",
 }

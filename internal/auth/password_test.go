@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -33,7 +34,7 @@ func TestValidatePassword(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			err := ValidatePassword(tt.password)
+			err := ValidatePassword(context.Background(), tt.password)
 			if tt.wantErr && err == nil {
 				t.Fatalf("expected %q to be rejected", tt.name)
 			}

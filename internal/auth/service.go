@@ -177,14 +177,14 @@ func (s *Service) Signup(ctx context.Context, in SignupInput, meta Metadata) (us
 		errs = append(errs, fieldErrs...)
 	}
 
-	if err := ValidatePassword(in.Password); err != nil {
+	if err := ValidatePassword(ctx, in.Password); err != nil {
 		var fieldErrs apperr.FieldErrors
 		if !apperr.As(err, &fieldErrs) {
 			return users.User{}, "", err
 		}
 		errs = append(errs, fieldErrs...)
 	} else if !ConfirmationMatches(in.Password, in.PasswordConfirmation) {
-		errs = errs.Add("password_confirmation", "Passwords do not match.")
+		errs = errs.Add("password_confirmation", i18n.T(ctx, "auth.err.mismatch"))
 	}
 
 	if err := errs.OrNil(); err != nil {
@@ -206,7 +206,7 @@ func (s *Service) Signup(ctx context.Context, in SignupInput, meta Metadata) (us
 			// usable signup form: a silent success would strand the real owner.
 			return users.User{}, "", apperr.FieldErrors{{
 				Field:   "email",
-				Message: "An account with that email already exists.",
+				Message: i18n.T(ctx, "auth.err.taken"),
 			}}
 		}
 		return users.User{}, "", err
@@ -281,10 +281,10 @@ func (s *Service) Logout(ctx context.Context, token string) error {
 func (s *Service) RequestPasswordReset(ctx context.Context, email string) error {
 	email = strings.TrimSpace(email)
 	if email == "" {
-		return apperr.FieldErrors{{Field: "email", Message: "Email is required."}}
+		return apperr.FieldErrors{{Field: "email", Message: i18n.T(ctx, "users.err.email.required")}}
 	}
 	if !looksLikeEmail(email) {
-		return apperr.FieldErrors{{Field: "email", Message: "That does not look like a valid email address."}}
+		return apperr.FieldErrors{{Field: "email", Message: i18n.T(ctx, "users.err.email.invalid")}}
 	}
 
 	user, err := s.users.ByEmail(ctx, email)
@@ -315,7 +315,7 @@ func (s *Service) RequestPasswordReset(ctx context.Context, email string) error 
 	}
 
 	resetURL := s.baseURL + "/reset-password?token=" + url.QueryEscape(raw)
-	msg := passwordResetEmail(user.FirstName(), resetURL)
+	msg := passwordResetEmail(string(user.Locale), user.FirstName(), resetURL)
 	msg.To = user.Email
 
 	if err := s.mailer.Send(ctx, msg); err != nil {
@@ -346,14 +346,14 @@ func (s *Service) ResetPassword(ctx context.Context, in ResetPasswordInput, meta
 	}
 
 	var errs apperr.FieldErrors
-	if err := ValidatePassword(in.Password); err != nil {
+	if err := ValidatePassword(ctx, in.Password); err != nil {
 		var fieldErrs apperr.FieldErrors
 		if !apperr.As(err, &fieldErrs) {
 			return users.User{}, "", err
 		}
 		errs = append(errs, fieldErrs...)
 	} else if !ConfirmationMatches(in.Password, in.PasswordConfirmation) {
-		errs = errs.Add("password_confirmation", "Passwords do not match.")
+		errs = errs.Add("password_confirmation", i18n.T(ctx, "auth.err.mismatch"))
 	}
 	if err := errs.OrNil(); err != nil {
 		return users.User{}, "", err

@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"context"
 	"net/http"
 	"time"
 
@@ -153,12 +154,12 @@ func (a *API) today(w http.ResponseWriter, r *http.Request) {
 
 	httpx.WriteJSON(w, http.StatusOK, TodayResponse{
 		User:     auth.ProjectUser(user),
-		Snapshot: projectSnapshot(snapshot),
+		Snapshot: projectSnapshot(r.Context(), snapshot),
 	})
 }
 
-func projectSnapshot(snapshot Snapshot) TodaySnapshot {
-	step, hasStep := PickNextStep(snapshot)
+func projectSnapshot(ctx context.Context, snapshot Snapshot) TodaySnapshot {
+	step, hasStep := PickNextStep(ctx, snapshot)
 	var nextStep *NextStepResponse
 	if hasStep {
 		nextStep = &NextStepResponse{Kind: step.Kind, Eyebrow: step.Eyebrow, Title: step.Title, Body: step.Body, CTA: step.CTA, Href: step.Href}
@@ -176,7 +177,7 @@ func projectSnapshot(snapshot Snapshot) TodaySnapshot {
 		Hydration:        HydrationResponse{TodayML: snapshot.Hydration.TodayML, TargetML: snapshot.Hydration.TargetML, Percent: snapshot.Hydration.Percent},
 		Sleep:            SleepResponse{Logged: snapshot.Sleep.Logged, DurationMinutes: snapshot.Sleep.DurationMinutes, Quality: snapshot.Sleep.Quality},
 		ActivityCalories: snapshot.ActivityCalories,
-		Timeline:         projectTimeline(snapshot.Timeline),
+		Timeline:         projectTimeline(ctx, snapshot.Timeline),
 		Deltas:           DeltasResponse{Hydration: projectDelta(snapshot.Deltas.Hydration), SleepHours: projectDelta(snapshot.Deltas.SleepHours), Calories: projectDelta(snapshot.Deltas.Calories), CheckIns: projectDelta(snapshot.Deltas.CheckIns)},
 		Nudges:           projectNudges(snapshot.Nudges),
 		Briefing:         briefingText(snapshot.Briefing),
@@ -223,10 +224,10 @@ func projectThread(thread *conversations.Conversation) *Thread {
 	return &Thread{ID: thread.ID, Title: thread.Title, Kind: thread.Kind, UpdatedAt: thread.UpdatedAt}
 }
 
-func projectTimeline(entries []Entry) []TimelineResponse {
+func projectTimeline(ctx context.Context, entries []Entry) []TimelineResponse {
 	out := make([]TimelineResponse, len(entries))
 	for i, entry := range entries {
-		out[i] = TimelineResponse{Kind: string(entry.Kind), Label: entry.Kind.Label(), At: entry.At, Title: entry.Title, Detail: entry.Detail, Href: entry.Href, Icon: entry.Icon}
+		out[i] = TimelineResponse{Kind: string(entry.Kind), Label: entry.Kind.LabelIn(ctx), At: entry.At, Title: entry.Title, Detail: entry.Detail, Href: entry.Href, Icon: entry.Icon}
 	}
 	return out
 }

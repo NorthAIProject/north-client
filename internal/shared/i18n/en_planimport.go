@@ -43,7 +43,7 @@ var englishPlanImport = map[string]string{
 
 	// The meal review. Macros read protein · carbs · fat; the letters are
 	// one space-separated string so each language can name its own.
-	"planimport.macros":        "%[1].0f P · %[2].0f C · %[3].0f F",
+	"planimport.macros":        "%.0[1]f P · %.0[2]f C · %.0[3]f F",
 	"planimport.macro.letters": "P C F",
 
 	"planimport.meal.heading":           "Check your meal plan",
@@ -89,4 +89,53 @@ var englishPlanImport = map[string]string{
 	"planimport.band.mid_carb":      "Mid carb",
 	"planimport.band.high_carb":     "High carb",
 	"planimport.meal.slot_optional": "optional meal · not counted",
+
+	// Written by internal/planimport rather than a template: what each line
+	// still needs (checks), how a number was arrived at (flags), what keeps a
+	// plan from saving, and errors. The coach's imports read these in English.
+	"planimport.check.unavailable": "The chosen ingredient isn't available. Pick another.",
+	"planimport.check.grams":       "Enter the weight in grams.",
+	"planimport.check.mine":        "Saving as your own food needs protein, carbs and fat from the file.",
+	"planimport.check.nomatch":     "Nothing in the catalog matches %[1]q.",
+	"planimport.check.pick":        "Pick the ingredient this is.",
+	// The file's own figure for a macro against the catalog's: grams stated,
+	// the macro as it reads in a line, the ingredient, the grams weighed, and
+	// what the catalog gives for them.
+	"planimport.check.stated":    "The file says %.0[1]f g %[2]s; %[3]s at %.0[4]f g has %.0[5]f g.",
+	"planimport.flag.drink":      "Read %[1]g %[2]s as %[3]g g. Change it if this isn't a watery drink.",
+	"planimport.flag.serving":    "Assumed 1 %[1]s = %[2]g g (the catalog's serving). Check it.",
+	"planimport.flag.measure":    "Assumed 1 %[1]s ≈ %[2]g g. Check it.",
+	"planimport.unit.serving":    "serving",
+	"planimport.flag.uncertain":  "Check this row — the reader wasn't sure about it.",
+	"planimport.flag.setsreps":   "Sets said %[1]q but reps said %[2]q — check which is right.",
+	"planimport.flag.sets":       "Sets %[1]q isn't a single number — enter one.",
+	"planimport.flag.rest":       "Rest %[1]q couldn't be read as a time.",
+	"planimport.flag.sets.whole": "Sets %[1]q isn't a whole number.",
+	"planimport.flag.rest.whole": "Rest %[1]q isn't a whole number.",
+	"planimport.flag.estimated":  "Estimated weight for %[1]q. Check it.",
+	"planimport.flag.quantity":   "Quantity %[1]q isn't a number.",
+	// %[1]s is a macro's capitalised name, %[2]q the cell as written.
+	"planimport.flag.grams": "%[1]s %[2]q isn't a number of grams.",
+	// A day over its target, per macro: the macro as it reads in a line, then grams.
+	"planimport.over":                "%[1]s over by %.0[2]f g",
+	"planimport.problem.carbtype":    "Choose a carb type for the plan.",
+	"planimport.problem.maxdays":     "A plan holds at most %[1]d days; remove %[2]d.",
+	"planimport.problem.everyday":    "A plan eaten every day has exactly one day; this one has %[1]d.",
+	"planimport.problem.day":         "day %[1]d",
+	"planimport.problem.trainingday": "training day %[1]d",
+	"planimport.problem.weekday":     "Choose which day of the week %[1]s is.",
+	// Where, the food as the file wrote it, then what it still needs.
+	"planimport.problem.notready": "%[1]s: %[2]q isn't ready — %[3]s",
+	"planimport.err.expired":      "That review expired. Upload the file again.",
+	// %[1]s is the overage sentence, already ending in a full stop.
+	"planimport.err.overeasy":  "Easy plans can't go over your target: %[1]s Change those days, or switch to Advanced to save it anyway.",
+	"planimport.err.nofile":    "Choose a file first.",
+	"planimport.err.upload":    "That upload could not be read.",
+	"planimport.err.toolarge":  "This file is larger than 10 MB.",
+	"planimport.err.invalid":   "Some of the plan isn't valid yet. Check the highlighted rows.",
+	"planimport.err.failed":    "The file couldn't be imported right now. Try again in a moment.",
+	"planimport.api.import":    "The file could not be imported.",
+	"planimport.api.read":      "That plan could not be read.",
+	"planimport.api.save":      "The plan could not be saved.",
+	"planimport.api.attention": "Some foods need attention before saving.",
 }

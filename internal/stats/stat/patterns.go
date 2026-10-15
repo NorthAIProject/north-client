@@ -59,6 +59,11 @@ type Finding struct {
 	// Strength ranks findings: the difference relative to the measure's
 	// usual size, so 40 minutes of sleep and one point of mood compare.
 	Strength float64
+
+	// threshold is the line a split was drawn at (minutes of screen time,
+	// steps, daylight minutes, stand hours), kept so In can word the sentence
+	// again in another language. Zero for splits with a fixed line.
+	threshold float64
 }
 
 // MinGroup is the fewest days either side needs before a difference is
@@ -74,6 +79,7 @@ type split struct {
 	value                  func(prev, cur DayFacts) (float64, bool)
 	inA                    func(prev, cur DayFacts) (bool, bool)
 	requirePrevForGrouping bool
+	threshold              float64
 }
 
 func mins(v float64) string {
@@ -313,6 +319,7 @@ func Patterns(days []DayFacts) []Finding {
 		out = append(out, Finding{
 			Key: sp.key, Title: sp.title(diff), Detail: sp.detail(ga, gb), Unit: sp.unit,
 			A: ga, B: gb, Diff: diff, Strength: math.Abs(diff) / sp.scale,
+			threshold: sp.threshold,
 		})
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Strength > out[j].Strength })
@@ -332,7 +339,7 @@ func screenSplit(days []DayFacts) []split {
 		return nil
 	}
 	return []split{{
-		key: "sleep_screen", unit: "min", scale: 60,
+		key: "sleep_screen", unit: "min", scale: 60, threshold: median,
 		aLabel: "After heavy screen days", bLabel: "After lighter ones",
 		title: func(d float64) string {
 			return fmt.Sprintf("You sleep %s %s after days with more than %s of screen time", mins(d), more(d), mins(median))
@@ -406,7 +413,7 @@ func moodSplits(days []DayFacts) []split {
 		what := m.what(line)
 		of := m.of
 		out = append(out, split{
-			key: m.key, unit: "/5", scale: 1,
+			key: m.key, unit: "/5", scale: 1, threshold: line,
 			aLabel: "Days with " + what, bLabel: "Other days",
 			title: func(d float64) string {
 				return fmt.Sprintf("Your mood is %.1f points %s on days with %s", math.Abs(d), higher(d), what)

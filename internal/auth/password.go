@@ -1,12 +1,14 @@
 package auth
 
 import (
+	"context"
 	"crypto/subtle"
 	"unicode/utf8"
 
 	"golang.org/x/crypto/bcrypt"
 
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 )
 
 // bcryptCost is the work factor. The default (10) is too low for 2026 hardware;
@@ -22,9 +24,10 @@ const minPasswordLength = 12
 // of a passphrase meaningless. Rejecting is honest; truncating is not.
 const maxPasswordLength = 72
 
-// HashPassword validates and hashes a plaintext password.
+// HashPassword validates and hashes a plaintext password. Every caller has
+// already validated it for the person, so a refusal here reads English.
 func HashPassword(plaintext string) (string, error) {
-	if err := ValidatePassword(plaintext); err != nil {
+	if err := ValidatePassword(context.Background(), plaintext); err != nil {
 		return "", err
 	}
 
@@ -35,17 +38,18 @@ func HashPassword(plaintext string) (string, error) {
 	return string(hash), nil
 }
 
-// ValidatePassword reports whether a password is acceptable.
-func ValidatePassword(plaintext string) error {
+// ValidatePassword reports whether a password is acceptable, in ctx's
+// language.
+func ValidatePassword(ctx context.Context, plaintext string) error {
 	var errs apperr.FieldErrors
 
 	switch {
 	case plaintext == "":
-		errs = errs.Add("password", "Password is required.")
+		errs = errs.Add("password", i18n.T(ctx, "auth.err.password.required"))
 	case utf8.RuneCountInString(plaintext) < minPasswordLength:
-		errs = errs.Add("password", "Use at least 12 characters. A short sentence works well.")
+		errs = errs.Add("password", i18n.T(ctx, "auth.err.password.short"))
 	case len(plaintext) > maxPasswordLength:
-		errs = errs.Add("password", "Password must be 72 bytes or fewer.")
+		errs = errs.Add("password", i18n.T(ctx, "auth.err.password.long"))
 	}
 
 	return errs.OrNil()

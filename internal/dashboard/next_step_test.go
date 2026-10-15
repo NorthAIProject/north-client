@@ -1,11 +1,13 @@
 package dashboard_test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/NorthAIProject/north-client/internal/conversations"
 	"github.com/NorthAIProject/north-client/internal/dashboard"
 	"github.com/NorthAIProject/north-client/internal/goals"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 )
 
 func TestPickNextStep(t *testing.T) {
@@ -29,7 +31,7 @@ func TestPickNextStep(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, ok := dashboard.PickNextStep(tt.snap)
+			got, ok := dashboard.PickNextStep(context.Background(), tt.snap)
 			if ok != tt.ok {
 				t.Fatalf("ok = %v, want %v", ok, tt.ok)
 			}
@@ -47,7 +49,7 @@ func TestPickNextStep(t *testing.T) {
 }
 
 func TestPickNextStepGoalCopy(t *testing.T) {
-	got, ok := dashboard.PickNextStep(dashboard.Snapshot{})
+	got, ok := dashboard.PickNextStep(context.Background(), dashboard.Snapshot{})
 	if !ok {
 		t.Fatal("fresh account has no next step")
 	}
@@ -59,5 +61,35 @@ func TestPickNextStepGoalCopy(t *testing.T) {
 	}
 	if got.Href != "/app/goals" {
 		t.Fatalf("href = %q", got.Href)
+	}
+}
+
+// The native app shows the card verbatim, so its words follow the reader's
+// language while kind and href stay the wire values.
+func TestPickNextStepSpeaksTheReadersLanguage(t *testing.T) {
+	goal := goals.Goal{Title: "Lift"}
+	tests := []struct {
+		locale, eyebrow, title, cta string
+	}{
+		{locale: "es", eyebrow: "Hoy", title: "¿Qué tal ha ido hoy?", cta: "Hacer el registro"},
+		{locale: "pt-PT", eyebrow: "Hoje", title: "Como correu o dia?", cta: "Fazer o registo"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.locale, func(t *testing.T) {
+			ctx := i18n.WithLocale(context.Background(), tt.locale)
+			got, ok := dashboard.PickNextStep(ctx, dashboard.Snapshot{Goals: []goals.Goal{goal}})
+			if !ok {
+				t.Fatal("no next step")
+			}
+			if got.Kind != "checkin" || got.Href != "/app/check-ins" {
+				t.Fatalf("kind/href = %q %q; the wire values must not change with the locale", got.Kind, got.Href)
+			}
+			if got.Eyebrow != tt.eyebrow || got.Title != tt.title || got.CTA != tt.cta {
+				t.Fatalf("card = %q / %q / %q", got.Eyebrow, got.Title, got.CTA)
+			}
+			if got.Body == "" || got.Body == "Thirty seconds. Mood, energy, what went well." {
+				t.Fatalf("body = %q, want it translated", got.Body)
+			}
+		})
 	}
 }

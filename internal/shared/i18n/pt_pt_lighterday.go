@@ -8,4 +8,7 @@ var portugueseEuropeanLighterDay = map[string]string{
 	"lighterday.lighter": "Ir mais leve",
 	"lighterday.keep":    "Manter o plano",
 	"lighterday.chosen":  "Dia mais leve: as séries de hoje ficam em cerca de 60%. Amanhã voltas ao plano.",
+
+	"lighterday.error.choice":    "Escolhe ir mais leve ou manter o plano.",
+	"lighterday.error.nosession": "Hoje já não tens nenhuma sessão por fazer.",
 }

@@ -37,4 +37,6 @@ var spanishTelegram = map[string]string{
 	"tg.quota.minute": "Has llegado a tu límite de mensajes con el entrenador. Inténtalo de nuevo en menos de un minuto.",
 	"tg.quota.hour":   "Has llegado a tu límite de mensajes con el entrenador. Inténtalo de nuevo dentro de una hora aproximadamente.",
 	"tg.quota.n":      "Has llegado a tu límite de mensajes con el entrenador. Inténtalo de nuevo en %[1]d minutos.",
+
+	"tg.digest.empty": "%[2]s: aún no hay nada registrado.",
 }

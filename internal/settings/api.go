@@ -22,6 +22,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/preferences"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/theme"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
@@ -463,7 +464,7 @@ func (a *API) createConnection(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, err, "That connection could not be created.")
 		return
 	}
-	setup := a.h.connections.Instructions(issued.Kind, issued.Token)
+	setup := a.h.connections.Instructions(issued.Kind, issued.Token).In(i18n.LocaleFrom(r.Context()))
 	httpx.WriteJSON(w, http.StatusCreated, CreatedConnection{
 		Connection: projectConnection(issued.Connection),
 		Token:      issued.Token,

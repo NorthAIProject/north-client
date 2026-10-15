@@ -14,7 +14,7 @@ import (
 // first. When a moment is passed, the panel leads with it; when none is, the
 // receipt reads as before.
 func TestSavedPanelLeadsWithTheMomentWhenThereIsOne(t *testing.T) {
-	m, ok := moments.ForStreak(7)
+	m, ok := moments.ForStreak(context.Background(), 7)
 	if !ok {
 		t.Fatal("day 7 should be a moment")
 	}

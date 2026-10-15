@@ -4,14 +4,17 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/meals/meal"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 )
 
 // MealPlanService owns meal plans and holds every change to them to the
@@ -214,7 +217,12 @@ type OverageError struct {
 	Verdict meal.Verdict
 }
 
-func (e *OverageError) Error() string {
+// Error is the refusal in English, which is what the coach reads.
+func (e *OverageError) Error() string { return e.MessageIn(context.Background()) }
+
+// MessageIn is the refusal as one sentence in ctx's language: each day, and
+// how far over it would be on each macro.
+func (e *OverageError) MessageIn(ctx context.Context) string {
 	days := make([]string, 0, len(e.Verdict.Over))
 	for _, d := range e.Verdict.Over {
 		var parts []string
@@ -223,12 +231,23 @@ func (e *OverageError) Error() string {
 			over float64
 		}{{"protein", d.Status.Over.ProteinG}, {"carbs", d.Status.Over.CarbG}, {"fat", d.Status.Over.FatG}} {
 			if m.over >= 0.5 {
-				parts = append(parts, fmt.Sprintf("%.0f g over on %s", m.over, m.name))
+				parts = append(parts, i18n.Tf(ctx, "nutrition.overage.msg.part", m.over, i18n.T(ctx, "nutrition.macro."+m.name+".lower")))
 			}
 		}
-		days = append(days, fmt.Sprintf("%s would be %s", d.Weekday, strings.Join(parts, " and ")))
+		weekday := i18n.T(ctx, "weekday.long."+strconv.Itoa(int(d.Weekday)))
+		days = append(days, i18n.Tf(ctx, "nutrition.overage.msg.day", weekday, strings.Join(parts, i18n.T(ctx, "nutrition.overage.msg.and"))))
 	}
-	return strings.Join(days, "; ") + "."
+	return capitalise(strings.Join(days, "; ") + ".")
+}
+
+// capitalise upper-cases a sentence's first letter: a weekday opens it, and
+// Spanish and Portuguese write weekdays in lower case.
+func capitalise(s string) string {
+	r, size := utf8.DecodeRuneInString(s)
+	if r == utf8.RuneError {
+		return s
+	}
+	return string(unicode.ToUpper(r)) + s[size:]
 }
 
 func (e *OverageError) Unwrap() error { return apperr.ErrConflict }
@@ -538,7 +557,7 @@ func (s *MealPlanService) AddOption(ctx context.Context, userID, planID, mealID 
 			return apperr.ErrNotFound
 		}
 		if label == "" {
-			label = freeOptionLabel(slot)
+			label = freeOptionLabel(i18n.LocaleFrom(ctx), slot)
 		}
 		var addErr error
 		added, addErr = tx.AddOption(ctx, planID, slot.DayID, slot.MealNumber, slot.Name, label)
@@ -567,15 +586,16 @@ func (s *MealPlanService) RemoveMeal(ctx context.Context, mealID, userID uuid.UU
 }
 
 // freeOptionLabel is the first "Option N", N from 2, that none of slot's
-// options carries in any letter case. Counting the slot's options instead
-// would repeat a label once a middle option is gone.
-func freeOptionLabel(slot Meal) string {
+// options carries in any letter case, in the language tag names: the label is
+// stored, and read by the person who added the option. Counting the slot's
+// options instead would repeat a label once a middle option is gone.
+func freeOptionLabel(tag string, slot Meal) string {
 	used := map[string]bool{}
 	for _, o := range slot.Options() {
 		used[strings.ToLower(strings.TrimSpace(o.OptionLabel))] = true
 	}
 	for n := 2; ; n++ {
-		label := fmt.Sprintf("Option %d", n)
+		label := fmt.Sprintf(i18n.Translate(tag, "nutrition.option.numbered"), n)
 		if !used[strings.ToLower(label)] {
 			return label
 		}

@@ -10,7 +10,7 @@ import (
 func TestDigestNamesEveryScoredDomain(t *testing.T) {
 	view := mustSummaryView(t, wellLogged(t))
 
-	got := renderDigest(view, "https://north.test")
+	got := renderDigest("en", view, "https://north.test")
 
 	for _, want := range []string{"Body", "Mind", "Training"} {
 		if !strings.Contains(got, want) {
@@ -25,7 +25,7 @@ func TestDigestSaysTheSameWordsAsThePage(t *testing.T) {
 	// way to tell which one is lying.
 	view := mustSummaryView(t, wellLogged(t))
 
-	got := renderDigest(view, "https://north.test")
+	got := renderDigest("en", view, "https://north.test")
 
 	for _, s := range view.Scores {
 		if !s.HasData {
@@ -47,7 +47,7 @@ func TestDigestSkipsDomainsWithNothingLogged(t *testing.T) {
 	// learns to skip, and it teaches them to skip the rest with it.
 	view := mustSummaryView(t, wellLogged(t))
 
-	got := renderDigest(view, "https://north.test")
+	got := renderDigest("en", view, "https://north.test")
 
 	if strings.Contains(got, "Nutrition") {
 		t.Errorf("digest mentions an unscored domain:\n%s", got)
@@ -57,7 +57,7 @@ func TestDigestSkipsDomainsWithNothingLogged(t *testing.T) {
 func TestDigestLinksToTheWindowItDescribes(t *testing.T) {
 	view := mustSummaryView(t, wellLogged(t))
 
-	got := renderDigest(view, "https://north.test")
+	got := renderDigest("en", view, "https://north.test")
 
 	want := "https://north.test/app/insights?range=" + view.Range.Key
 	if !strings.Contains(got, want) {
@@ -70,7 +70,7 @@ func TestDigestWithoutASiteURLStillReads(t *testing.T) {
 	// than a message ending in a broken link.
 	view := mustSummaryView(t, wellLogged(t))
 
-	got := renderDigest(view, "")
+	got := renderDigest("en", view, "")
 
 	if strings.Contains(got, "http") {
 		t.Errorf("digest invented a link:\n%s", got)
@@ -83,7 +83,7 @@ func TestDigestWithoutASiteURLStillReads(t *testing.T) {
 func TestDigestOfAnEmptyWindowSaysSoInOneLine(t *testing.T) {
 	view := mustSummaryView(t, SummaryData{Range: weekRange(t)})
 
-	got := renderDigest(view, "https://north.test")
+	got := renderDigest("en", view, "https://north.test")
 
 	if got == "" {
 		t.Fatal("empty window produced no message at all")
@@ -98,7 +98,7 @@ func TestDigestIsPlainEnoughForTelegram(t *testing.T) {
 	// table or a heading would survive neither path.
 	view := mustSummaryView(t, wellLogged(t))
 
-	got := renderDigest(view, "https://north.test")
+	got := renderDigest("en", view, "https://north.test")
 
 	for _, banned := range []string{"|", "#", "```"} {
 		if strings.Contains(got, banned) {
