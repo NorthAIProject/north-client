@@ -3,6 +3,8 @@ package connections
 import (
 	"fmt"
 	"strings"
+
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 )
 
 // Setup is everything a user needs to point one agent at Khepri: the config a
@@ -41,7 +43,28 @@ type Setup struct {
 
 	// Prompt is the client-agnostic instruction to paste into an agent that is
 	// already running, for people who would rather not open a config file.
+	//
+	// English in every locale: the agent is its reader, and it names tools and
+	// fields that are English identifiers whatever language the person reads.
 	Prompt string
+
+	// configLabelKey and safeNoteKey are the catalogue keys of ConfigLabel and
+	// SafeNote, for In. Empty when the field is empty or not copy.
+	configLabelKey string
+	safeNoteKey    string
+}
+
+// In returns the setup with its prose — the config label and the safe-form
+// note — in tag's language. Everything a person copies stays exactly as it
+// is: commands, file names, URLs, the key and the agent prompt.
+func (s Setup) In(tag string) Setup {
+	if s.configLabelKey != "" {
+		s.ConfigLabel = i18n.Translate(tag, s.configLabelKey)
+	}
+	if s.safeNoteKey != "" {
+		s.SafeNote = i18n.Translate(tag, s.safeNoteKey)
+	}
+	return s
 }
 
 // PlaceholderToken stands in for a real key when the settings page shows what
@@ -84,7 +107,7 @@ func (s *Service) Instructions(kind ClientKind, token string) Setup {
 	case ClientClaudeCode:
 		// The CLI first: it needs no file, no path, and no JSON, which is the
 		// whole difficulty for someone who has not edited one before.
-		setup.ConfigLabel = "one command"
+		setup.ConfigLabel, setup.configLabelKey = "one command", "conn.setup.label.command"
 		setup.ConfigLang = "bash"
 		setup.Config = fmt.Sprintf(`claude mcp add --transport http north %s \
   --header "Authorization: Bearer %s"`, url, token)
@@ -93,6 +116,7 @@ func (s *Service) Instructions(kind ClientKind, token string) Setup {
 		setup.SafeLang = "json"
 		setup.SafeNote = "If that file lives in a git repository, use this version instead and keep " +
 			"the key in your environment — .mcp.json is committed more often than people expect."
+		setup.safeNoteKey = "conn.setup.safe.claude"
 		setup.Safe = fmt.Sprintf(`{
   "mcpServers": {
     "north": {
@@ -115,7 +139,7 @@ func (s *Service) Instructions(kind ClientKind, token string) Setup {
 		// Verified against codex-cli 0.147.0: `codex mcp add --url` writes
 		// exactly the TOML below, and the flag is --bearer-token-env-var. There
 		// is no --header option for HTTP servers.
-		setup.ConfigLabel = "one command"
+		setup.ConfigLabel, setup.configLabelKey = "one command", "conn.setup.label.command"
 		setup.ConfigLang = "bash"
 		setup.Config = fmt.Sprintf(
 			`codex mcp add north --url %s --bearer-token-env-var NORTH_MCP_TOKEN`, url)
@@ -124,13 +148,14 @@ func (s *Service) Instructions(kind ClientKind, token string) Setup {
 		setup.SafeLang = "toml"
 		setup.SafeNote = "That command writes this, which you can also write yourself. Codex reads " +
 			"the key from the environment, so the file never contains it."
+		setup.safeNoteKey = "conn.setup.safe.codex"
 		setup.Safe = fmt.Sprintf(`[mcp_servers.north]
 url = %q
 bearer_token_env_var = "NORTH_MCP_TOKEN"`, url)
 		setup.Export = "export NORTH_MCP_TOKEN=" + token
 
 	case ClientHermes:
-		setup.ConfigLabel = "shell"
+		setup.ConfigLabel, setup.configLabelKey = "shell", "conn.setup.label.shell"
 		setup.ConfigLang = "bash"
 		setup.Config = fmt.Sprintf(`hermes mcp add north --url %s --auth header
 # When prompted for the header:
@@ -139,7 +164,7 @@ bearer_token_env_var = "NORTH_MCP_TOKEN"`, url)
 	default:
 		// Anything else speaks the protocol but not a config format Khepri can
 		// guess, so give it the two facts every MCP client needs and stop.
-		setup.ConfigLabel = "connection details"
+		setup.ConfigLabel, setup.configLabelKey = "connection details", "conn.setup.label.details"
 		setup.ConfigLang = "text"
 		setup.Config = fmt.Sprintf(`Transport: streamable HTTP
 URL:       %s

@@ -78,4 +78,16 @@ var portugueseEuropeanConnections = map[string]string{
 	"conn.cal.token.ph":      "Deixa vazio se o servidor não precisar de token",
 	"conn.cal.token.desc":    "Guardado encriptado. Nunca mais é mostrado depois de o gravares.",
 	"conn.cal.connect":       "Ligar calendário",
+
+	"conn.setup.label.command": "um comando",
+	"conn.setup.label.shell":   "terminal",
+	"conn.setup.label.details": "dados de ligação",
+	"conn.setup.safe.claude":   "Se esse ficheiro estiver num repositório git, usa antes esta versão e guarda a chave no teu ambiente — o .mcp.json vai parar a um commit mais vezes do que se pensa.",
+	"conn.setup.safe.codex":    "Esse comando escreve isto, que também podes escrever tu. O Codex lê a chave do ambiente, por isso o ficheiro nunca a contém.",
+
+	"conn.provider.note.openrouter": "Uma só chave, quase todos os modelos — incluindo Claude e GPT. A opção mais simples.",
+	"conn.provider.note.openai":     "Não precisa de código novo: o openaicompat já fala o dialeto da OpenAI.",
+	"conn.provider.note.nvidia":     "Modelos gratuitos, e aquilo em que o plano gratuito do Khepri já corre.",
+	"conn.provider.note.hermes":     "A tua própria instância do Hermes — tailnet, rede local ou pública. O URL e a chave ficam nesta conta.",
+	"conn.provider.note.anthropic":  "O Claude na tua própria conta da Anthropic. Faturado a essa conta.",
 }
