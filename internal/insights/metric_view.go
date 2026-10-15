@@ -34,7 +34,7 @@ func buildMetricView(ctx context.Context, data MetricData) (insightpages.MetricV
 		Range:     rangeView(ctx, data.Range),
 		Key:       m.Key,
 		Label:     label,
-		Headline:  formatMetric(m, current),
+		Headline:  readMetric(ctx, m, current),
 		Note:      metricNote(ctx, m, len(data.Points)),
 		Href:      m.Href,
 		HrefLabel: i18n.T(ctx, "insights.metric.domainLink"),
@@ -120,10 +120,10 @@ func comparisonView(ctx context.Context, m metric, current, prior float64, hasPr
 
 	return insightpages.ComparisonView{
 		CurrentLabel: i18n.T(ctx, "insights.metric.compare.current"),
-		CurrentValue: formatMetric(m, current),
+		CurrentValue: readMetric(ctx, m, current),
 		CurrentPct:   int(math.Round(current / scale * 100)),
 		PriorLabel:   i18n.T(ctx, "insights.metric.compare.prior"),
-		PriorValue:   formatMetric(m, prior),
+		PriorValue:   readMetric(ctx, m, prior),
 		PriorPct:     int(math.Round(prior / scale * 100)),
 		HasPrior:     true,
 	}
@@ -146,8 +146,7 @@ func metricComparisons(label string, current, prior float64, hasPrior bool) []hi
 // The sentence is in ctx's language; a ctx with no reader reads English, which
 // is what the coach's context lines want.
 func usualView(ctx context.Context, m metric, u Usual) insightpages.UsualView {
-	lowValue := math.Max(u.Baseline.Mean-u.Baseline.SD, 0)
-	highValue := u.Baseline.Mean + u.Baseline.SD
+	lowValue, highValue := usualBounds(u)
 	low, high := formatMetric(m, lowValue), formatMetric(m, highValue)
 	state := u.State
 	shown := func(v float64) float64 { return roundTo(v, m.Decimals) }
@@ -164,8 +163,15 @@ func usualView(ctx context.Context, m metric, u Usual) insightpages.UsualView {
 		Mean: u.Baseline.Mean, SD: u.Baseline.SD, Low: low, High: high,
 		Days: u.Baseline.Days, Z: math.Round(u.Z*100) / 100, State: state,
 		Text: i18n.Tf(ctx, "insights.usual.text",
-			lead, formatMetric(m, u.Latest.Value), i18n.Date(ctx, u.Latest.At, "Mon 2 Jan"), low, high),
+			lead, readMetric(ctx, m, u.Latest.Value), i18n.Date(ctx, u.Latest.At, "Mon 2 Jan"),
+			readMetric(ctx, m, lowValue), readMetric(ctx, m, highValue)),
 	}
+}
+
+// usualBounds is the usual range: the mean give or take one standard
+// deviation, never below zero.
+func usualBounds(u Usual) (low, high float64) {
+	return math.Max(u.Baseline.Mean-u.Baseline.SD, 0), u.Baseline.Mean + u.Baseline.SD
 }
 
 // roundTo rounds v to decimals places, the way formatMetric shows it.
@@ -174,9 +180,16 @@ func roundTo(v float64, decimals int) float64 {
 	return math.Round(v*scale) / scale
 }
 
-// formatMetric renders a metric's value at its own precision.
+// formatMetric renders a metric's value at its own precision, always with a
+// decimal point. It is for the API's string fields, which keep one format for
+// every client; a sentence or a page a person reads uses readMetric.
 func formatMetric(m metric, v float64) string {
 	return fmt.Sprintf("%.*f%s", m.Decimals, v, m.Unit)
+}
+
+// readMetric is formatMetric in the reader's decimal mark.
+func readMetric(ctx context.Context, m metric, v float64) string {
+	return i18n.Decimal(ctx, v, m.Decimals) + m.Unit
 }
 
 func metricNote(ctx context.Context, m metric, n int) string {
