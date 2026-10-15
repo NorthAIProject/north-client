@@ -13,7 +13,6 @@
 package highlight
 
 import (
-	"fmt"
 	"math"
 	"sort"
 	"unicode"
@@ -129,7 +128,7 @@ func (s Series) peak(tag string) []finding {
 
 	return []finding{{
 		text: i18n.TranslateF(tag, "insights.highlight.peak",
-			lower(s.Label), s.Labels[at], s.amount(best)),
+			lower(s.Label), s.Labels[at], s.amount(tag, best)),
 		rank: best / mean,
 	}}
 }
@@ -205,9 +204,10 @@ func (c Comparison) change(tag string) []finding {
 	}}
 }
 
-// amount renders a value at the precision the metric deserves.
-func (s Series) amount(v float64) string {
-	return fmt.Sprintf("%.*f%s", s.Decimals, v, s.Unit)
+// amount renders a value at the precision the metric deserves, with tag's
+// decimal mark.
+func (s Series) amount(tag string, v float64) string {
+	return i18n.FormatDecimal(tag, v, s.Decimals) + s.Unit
 }
 
 // periods names n buckets: "3 days", "1 month". Falls back to "times" for a

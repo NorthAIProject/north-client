@@ -1,6 +1,7 @@
 package insights
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -269,9 +270,9 @@ templ lifting(view LiftingView) {
 											<td class="px-2 py-2 text-right tabular-nums">
 												{ e.E1RM }
 												if e.Change > 0 {
-													<span class="text-signal ml-1 text-xs">{ changeLabel(e.Change) }</span>
+													<span class="text-signal ml-1 text-xs">{ changeLabel(ctx, e.Change) }</span>
 												} else if e.Change < 0 {
-													<span class="text-muted-foreground ml-1 text-xs">{ changeLabel(e.Change) }</span>
+													<span class="text-muted-foreground ml-1 text-xs">{ changeLabel(ctx, e.Change) }</span>
 												}
 											</td>
 											<td class="text-muted-foreground hidden px-2 py-2 text-right tabular-nums sm:table-cell">{ e.Volume }</td>
@@ -355,18 +356,18 @@ templ lifting(view LiftingView) {
 	</section>
 }
 
-func changeLabel(kg float64) string {
+func changeLabel(ctx context.Context, kg float64) string {
 	sign := "+"
 	if kg < 0 {
 		sign = "−"
 		kg = -kg
 	}
-	return sign + formatKgShort(kg)
+	return sign + formatKgShort(ctx, kg)
 }
 
-func formatKgShort(v float64) string {
+func formatKgShort(ctx context.Context, v float64) string {
 	if v == float64(int64(v)) {
 		return fmt.Sprintf("%.0f kg", v)
 	}
-	return fmt.Sprintf("%.1f kg", v)
+	return i18n.Decimal(ctx, v, 1) + " kg"
 }

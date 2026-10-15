@@ -23,7 +23,7 @@ func buildLiftingView(ctx context.Context, st lifts.Stats) insightpages.LiftingV
 	}
 	view := insightpages.LiftingView{
 		HasSets:  true,
-		Volume:   formatKg(st.VolumeKg()),
+		Volume:   formatKg(ctx, st.VolumeKg()),
 		Delta:    deltaView(st.VolumeKg(), st.PriorVolumeKg),
 		Sets:     len(st.Sets),
 		Workouts: workoutCount(st),
@@ -43,7 +43,7 @@ func buildLiftingView(ctx context.Context, st lifts.Stats) insightpages.LiftingV
 			break
 		}
 		row := insightpages.LiftExerciseRow{
-			Name: e.Name, Sets: e.Sets, Best: formatKg(e.BestWeightKg), E1RM: formatKg(e.BestE1RM), Volume: formatKg(e.VolumeKg),
+			Name: e.Name, Sets: e.Sets, Best: formatKg(ctx, e.BestWeightKg), E1RM: formatKg(ctx, e.BestE1RM), Volume: formatKg(ctx, e.VolumeKg),
 		}
 		if n := len(e.Trend); n > 1 {
 			row.Change = util.RoundHalfUpToScale(e.Trend[n-1].Value-e.Trend[0].Value, 1)
@@ -54,9 +54,9 @@ func buildLiftingView(ctx context.Context, st lifts.Stats) insightpages.LiftingV
 	for _, r := range st.Records {
 		view.Records = append(view.Records, insightpages.LiftRecordRow{
 			Exercise: r.Set.ExerciseName,
-			Lift:     fmt.Sprintf("%s × %d", formatKg(r.Set.WeightKg), r.Set.Reps),
-			E1RM:     formatKg(r.E1RM),
-			Gain:     formatKg(util.RoundHalfUpToScale(r.E1RM-r.Previous, 1)),
+			Lift:     fmt.Sprintf("%s × %d", formatKg(ctx, r.Set.WeightKg), r.Set.Reps),
+			E1RM:     formatKg(ctx, r.E1RM),
+			Gain:     formatKg(ctx, util.RoundHalfUpToScale(r.E1RM-r.Previous, 1)),
 			On:       i18n.Date(ctx, r.Set.LogDate, "Mon, Jan 2"),
 		})
 	}
@@ -85,11 +85,11 @@ func workoutCount(st lifts.Stats) int {
 	return len(seen)
 }
 
-func formatKg(v float64) string {
+func formatKg(ctx context.Context, v float64) string {
 	if v == float64(int64(v)) {
 		return fmt.Sprintf("%.0f kg", v)
 	}
-	return fmt.Sprintf("%.1f kg", v)
+	return i18n.Decimal(ctx, v, 1) + " kg"
 }
 
 // muscleLabel turns a muscle key ("lower_back") into words ("Lower back"):

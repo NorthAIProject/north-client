@@ -57,9 +57,9 @@ templ RecapCard(r Recap) {
 									<span>· { i18n.Tf(ctx, "layout.recap.est", e.E1RM) }</span>
 								}
 								if e.HasChange && e.Change > 0 {
-									<span class="text-signal">{ ChangeLabel(e.Change) }</span>
+									<span class="text-signal">{ ChangeLabel(ctx, e.Change) }</span>
 								} else if e.HasChange && e.Change < 0 {
-									<span>{ ChangeLabel(e.Change) }</span>
+									<span>{ ChangeLabel(ctx, e.Change) }</span>
 								}
 							</span>
 						</li>

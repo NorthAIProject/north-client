@@ -291,7 +291,7 @@ func buildTrainingView(ctx context.Context, data TrainingData) (insightpages.Tra
 		HasSessions:  len(rows) > 0,
 		Lifting:      buildLiftingView(ctx, data.Lifts),
 		Plan:         buildPlanAdherence(ctx, data),
-		Recap:        buildRecap(data),
+		Recap:        buildRecap(ctx, data),
 	}, nil
 }
 
@@ -340,11 +340,11 @@ func adherenceSentence(ctx context.Context, a activity.Adherence) string {
 	}
 }
 
-func buildRecap(data TrainingData) *workoutsummary.Recap {
+func buildRecap(ctx context.Context, data TrainingData) *workoutsummary.Recap {
 	if !data.HasRecap {
 		return nil
 	}
-	return util.Ptr(workoutsummary.NewRecap("insights-training-recap", data.Recap, data.Range.Location()))
+	return util.Ptr(workoutsummary.NewRecap(ctx, "insights-training-recap", data.Recap, data.Range.Location()))
 }
 
 // The helpers below hold the numbers behind the gauges and donuts. The page

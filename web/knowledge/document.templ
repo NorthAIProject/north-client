@@ -59,7 +59,7 @@ templ DocumentPage(user users.User, view DocumentView) {
 					</div>
 					<div>
 						<dt class="text-[10px] uppercase tracking-wide opacity-70">{ i18n.T(ctx, "knowledge.col.size") }</dt>
-						<dd class="mt-0.5 text-foreground tabular-nums">{ documentSize(view.Document) }</dd>
+						<dd class="mt-0.5 text-foreground tabular-nums">{ documentSize(ctx, view.Document) }</dd>
 					</div>
 					<div>
 						<dt class="text-[10px] uppercase tracking-wide opacity-70">{ i18n.T(ctx, "knowledge.col.lines") }</dt>

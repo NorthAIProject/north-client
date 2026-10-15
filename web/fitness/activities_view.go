@@ -221,10 +221,10 @@ func totalDistanceKm(trend strava.Trend) float64 { return trend.DistanceM / 1000
 
 // routeSummary is one session's numbers, in the order they are read: how far,
 // how long, how fast, how much up.
-func routeSummary(session strava.Session) string {
+func routeSummary(ctx context.Context, session strava.Session) string {
 	out := formatDuration(session.MovingTimeS)
 	if session.DistanceM > 0 {
-		out = fmt.Sprintf("%.1f km · %s", session.DistanceM/1000, out)
+		out = i18n.Decimal(ctx, session.DistanceM/1000, 1) + " km · " + out
 		if pace := paceMinPerKm(session); pace != "" {
 			out += " · " + pace
 		}

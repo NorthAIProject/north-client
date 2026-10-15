@@ -105,3 +105,18 @@ func TestRecapSentenceInEuropeanPortuguese(t *testing.T) {
 		t.Fatalf("one of each = %q", got)
 	}
 }
+
+// The heaviest set reads with the reader's decimal mark, while Best stays
+// English for the coach and the API.
+func TestRecapBestInTheReadersDecimalMark(t *testing.T) {
+	t.Parallel()
+
+	rc := lift.BuildRecap(30*time.Minute, 0, 0, []lift.Set{set("Bench press", 24, 22.5, 8)}, nil)
+	e := rc.Exercises[0]
+	if e.Best != "22.5 kg × 8" {
+		t.Fatalf("Best = %q", e.Best)
+	}
+	if got := e.BestIn("es"); got != "22,5 kg × 8" {
+		t.Fatalf("BestIn(es) = %q", got)
+	}
+}

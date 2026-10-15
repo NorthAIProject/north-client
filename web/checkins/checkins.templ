@@ -2,7 +2,6 @@ package checkins
 
 import (
 	"context"
-	"fmt"
 	"net/url"
 	"strconv"
 	"strings"
@@ -198,8 +197,8 @@ templ Live(data LiveData) {
 templ kpiStrip(streak int, inst Instruments) {
 	@ui.KpiStrip() {
 		@kpiCell(i18n.T(ctx, "checkins.kpi.streak"), streakKPI(ctx, streak), "/app/check-ins", i18n.T(ctx, "checkins.kpi.checkcta"))
-		@kpiCell(i18n.T(ctx, "checkins.kpi.avgmood"), avgMoodKPI(inst), "", "")
-		@kpiCell(i18n.T(ctx, "checkins.kpi.avgenergy"), avgEnergyKPI(inst), "", "")
+		@kpiCell(i18n.T(ctx, "checkins.kpi.avgmood"), avgMoodKPI(ctx, inst), "", "")
+		@kpiCell(i18n.T(ctx, "checkins.kpi.avgenergy"), avgEnergyKPI(ctx, inst), "", "")
 		@kpiCell(i18n.T(ctx, "checkins.kpi.logged"), checkInCountKPI(ctx, inst), "", "")
 	}
 }
@@ -219,18 +218,18 @@ func streakKPI(ctx context.Context, streak int) string {
 	}
 }
 
-func avgMoodKPI(inst Instruments) string {
+func avgMoodKPI(ctx context.Context, inst Instruments) string {
 	if inst.CheckInCount <= 0 {
 		return "—"
 	}
-	return fmt.Sprintf("%.1f/5", inst.AvgMood)
+	return i18n.Decimal(ctx, inst.AvgMood, 1) + "/5"
 }
 
-func avgEnergyKPI(inst Instruments) string {
+func avgEnergyKPI(ctx context.Context, inst Instruments) string {
 	if inst.CheckInCount <= 0 {
 		return "—"
 	}
-	return fmt.Sprintf("%.1f/5", inst.AvgEnergy)
+	return i18n.Decimal(ctx, inst.AvgEnergy, 1) + "/5"
 }
 
 func checkInCountKPI(ctx context.Context, inst Instruments) string {

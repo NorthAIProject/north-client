@@ -214,7 +214,7 @@ func BuildView(ctx context.Context, s Snapshot) daypages.Data {
 	data.Water = daypages.WaterCard{
 		TotalML:  fmt.Sprintf("%d", s.Water.TotalML),
 		TargetML: fmt.Sprintf("%d", s.Water.TargetML),
-		Litres:   litres(s.Water.TotalML) + " L",
+		Litres:   litres(ctx, s.Water.TotalML) + " L",
 		Fraction: s.Water.Fraction(),
 	}
 	data.Activity = daypages.ActivityCard{Rings: []daypages.Ring{
@@ -228,7 +228,7 @@ func BuildView(ctx context.Context, s Snapshot) daypages.Data {
 		Minutes: fmt.Sprintf("%d", s.Workouts.Minutes),
 		Labels:  s.Workouts.Labels,
 	}
-	data.Body = bodyCard(s.Body)
+	data.Body = bodyCard(ctx, s.Body)
 
 	// The rail reads the wider window when there is one, so the evening
 	// before and the small hours after show beside the date.
@@ -388,14 +388,14 @@ func sleepCard(s *day.Sleep) daypages.SleepCard {
 	return out
 }
 
-func bodyCard(b day.Body) daypages.BodyCard {
+func bodyCard(ctx context.Context, b day.Body) daypages.BodyCard {
 	out := daypages.BodyCard{}
 	if b.TargetWeightKg != nil {
 		out.Target = fmt.Sprintf("%.1f", *b.TargetWeightKg)
 	}
 	if d, ok := b.ToGoal(); ok {
 		out.HasGoal = true
-		out.ToGoal = fmt.Sprintf("%.1f", d)
+		out.ToGoal = i18n.Decimal(ctx, d, 1)
 	}
 	if bp := b.BloodPressure; bp != nil {
 		out.HasBloodPressure = true
@@ -406,12 +406,12 @@ func bodyCard(b day.Body) daypages.BodyCard {
 	}
 	if b.WeightKg != nil {
 		out.HasWeight = true
-		out.Weight = fmt.Sprintf("%.1f", *b.WeightKg)
+		out.Weight = i18n.Decimal(ctx, *b.WeightKg, 1)
 		out.HeightMissing = b.HeightCm == nil
 	}
 	if b.BMI != nil {
 		out.HasBMI = true
-		out.BMI = fmt.Sprintf("%.1f", util.RoundHalfUpToScale(*b.BMI, 1))
+		out.BMI = i18n.Decimal(ctx, util.RoundHalfUpToScale(*b.BMI, 1), 1)
 		out.BMICategory = string(b.Category())
 	}
 	return out
@@ -473,7 +473,7 @@ func kindColor(k dashboard.EntryKind) string {
 	}
 }
 
-func litres(ml int) string { return fmt.Sprintf("%.1f", float64(ml)/1000) }
+func litres(ctx context.Context, ml int) string { return i18n.Decimal(ctx, float64(ml)/1000, 1) }
 
 // trends renders the trend cards as a fragment. The Overview loads it after
 // the page, so a slow twelve-week query never holds up the dashboard.
@@ -486,21 +486,21 @@ func (h *Handler) trends(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := daypages.Trends(BuildTrends(t)).Render(r.Context(), w); err != nil {
+	if err := daypages.Trends(BuildTrends(r.Context(), t)).Render(r.Context(), w); err != nil {
 		middleware.FromContext(r.Context()).Error("render trends", slog.Any("error", err))
 	}
 }
 
 // BuildTrends turns trends into cards, in a fixed order, leaving out any with
 // nothing to show.
-func BuildTrends(t Trends) daypages.TrendsData {
+func BuildTrends(ctx context.Context, t Trends) daypages.TrendsData {
 	var out daypages.TrendsData
 	add := func(s day.Series, color string, decimals int) {
 		if !s.HasData() {
 			return
 		}
 		out.Cards = append(out.Cards, daypages.TrendCard{
-			Key: s.Key, Value: fmt.Sprintf("%.*f", decimals, s.Headline), Unit: s.Unit,
+			Key: s.Key, Value: i18n.Decimal(ctx, s.Headline, decimals), Unit: s.Unit,
 			Count: s.Count, Window: s.Window, Line: day.Sparkline(s, 100, 32), Color: color,
 		})
 	}
@@ -511,7 +511,7 @@ func BuildTrends(t Trends) daypages.TrendsData {
 	add(t.Caffeine, "var(--color-day-caffeine)", 0)
 	for _, f := range t.Fasts {
 		out.Fasts = append(out.Fasts, daypages.FastRow{
-			Date: f.StartedAt.Format("Mon 2 Jan"), Hours: fmt.Sprintf("%.1f", f.Hours),
+			Date: f.StartedAt.Format("Mon 2 Jan"), Hours: i18n.Decimal(ctx, f.Hours, 1),
 			Target: fmt.Sprintf("%d", f.TargetHours), Fraction: math.Min(f.Hours/float64(max(f.TargetHours, 1)), 1), Met: f.Met(),
 		})
 	}

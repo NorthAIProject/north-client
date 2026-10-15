@@ -15,10 +15,14 @@ import (
 // RecapExercise is one movement in a finished session, against the last time
 // it was logged when that exists.
 type RecapExercise struct {
-	Name           string
-	Sets           int
-	VolumeKg       float64
+	Name     string
+	Sets     int
+	VolumeKg float64
+	// Best is the heaviest set in English, "22.5 kg × 8", for the coach and the
+	// API. A person reads BestIn.
 	Best           string
+	BestWeightKg   float64
+	BestReps       int
 	E1RM           float64
 	PreviousE1RM   float64
 	Change         float64
@@ -106,7 +110,8 @@ func summarise(sets, earlier []Set) RecapExercise {
 	}
 	row.VolumeKg = util.RoundHalfUpToScale(row.VolumeKg, 1)
 	if haveBest {
-		row.Best = fmt.Sprintf("%s × %d", formatKg(best.WeightKg), best.Reps)
+		row.BestWeightKg, row.BestReps = best.WeightKg, best.Reps
+		row.Best = row.BestIn(i18n.DefaultLocale)
 		row.E1RM = util.RoundHalfUpToScale(best.E1RM(), 1)
 	}
 	prev := LastWorkout(filterKey(earlier, sets[0].Key()))
@@ -132,6 +137,15 @@ func summarise(sets, earlier []Set) RecapExercise {
 		row.Change = util.RoundHalfUpToScale(row.E1RM-row.PreviousE1RM, 1)
 	}
 	return row
+}
+
+// BestIn is the heaviest set with tag's decimal mark: "22,5 kg × 8" in
+// Spanish. A row built by hand with only Best set keeps Best.
+func (e RecapExercise) BestIn(tag string) string {
+	if e.BestWeightKg <= 0 {
+		return e.Best
+	}
+	return fmt.Sprintf("%s × %d", formatKg(tag, e.BestWeightKg), e.BestReps)
 }
 
 func filterKey(sets []Set, key string) []Set {
@@ -175,7 +189,7 @@ func (r Recap) SentenceIn(tag string) string {
 	if delta < 0 {
 		key, delta = "lifts.recap.down", -delta
 	}
-	return strings.TrimSpace(sentence + " " + i18n.TranslateF(tag, key, change.Name, decimal(tag, delta)))
+	return strings.TrimSpace(sentence + " " + i18n.TranslateF(tag, key, change.Name, i18n.FormatDecimal(tag, delta, 1)))
 }
 
 // biggestChange is the exercise whose estimated max moved most against last
@@ -225,22 +239,16 @@ func separators(tag string) (thousands, decimalMark string) {
 	return ".", ","
 }
 
-// decimal is v to one decimal place, with tag's decimal mark.
-func decimal(tag string, v float64) string {
-	_, mark := separators(tag)
-	return strings.Replace(fmt.Sprintf("%.1f", v), ".", mark, 1)
-}
-
 func groupThousands(tag string, n int) string {
 	sep, _ := separators(tag)
 	return strings.ReplaceAll(comma(n), ",", sep)
 }
 
-func formatKg(v float64) string {
+func formatKg(tag string, v float64) string {
 	if v == float64(int64(v)) {
 		return fmt.Sprintf("%.0f kg", v)
 	}
-	return fmt.Sprintf("%.1f kg", v)
+	return i18n.FormatDecimal(tag, v, 1) + " kg"
 }
 
 func comma(n int) string {

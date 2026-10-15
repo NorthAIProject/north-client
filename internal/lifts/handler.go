@@ -166,7 +166,8 @@ func loadLabel(ctx context.Context, s Set) string {
 	if s.WeightKg <= 0 {
 		return i18n.Tf(ctx, "lifts.list.bodyweight", s.Reps)
 	}
-	return fmt.Sprintf("%s kg × %d", strconv.FormatFloat(s.WeightKg, 'f', -1, 64), s.Reps)
+	// Precision -1 is the shortest exact form: "20 kg", "22.5 kg".
+	return fmt.Sprintf("%s kg × %d", i18n.Decimal(ctx, s.WeightKg, -1), s.Reps)
 }
 
 func (h *Handler) importPage(w http.ResponseWriter, r *http.Request) {

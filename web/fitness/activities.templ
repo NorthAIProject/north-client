@@ -191,7 +191,7 @@ templ sessionRow(session strava.Session, loc *time.Location) {
 			<span class="min-w-0 flex-1 truncate text-sm">{ session.Name }</span>
 		}
 		<span class="text-muted-foreground font-mono text-[11px]">
-			{ routeSummary(session) }
+			{ routeSummary(ctx, session) }
 		</span>
 		if day := routeDayKey(session, loc); day != "" {
 			@button.Button(button.Props{
