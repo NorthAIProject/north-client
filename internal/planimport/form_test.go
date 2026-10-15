@@ -110,3 +110,31 @@ func TestMealFormDeletingAnOptionsLastFoodDeletesTheOption(t *testing.T) {
 		t.Fatalf("meal = %+v, want the fish option promoted", m)
 	}
 }
+
+// The review's Make meal optional / Count meal button flips the meal, and the
+// flag travels in the draft so the next post keeps it.
+func TestMealFormTogglesAMealOptional(t *testing.T) {
+	t.Parallel()
+
+	d := optionsDraft()
+	applyMealAction(&d, parseAction("toggle-meal-optional:0:0"))
+	if !d.Days[0].Meals[0].Optional {
+		t.Fatal("the meal is counted after Make meal optional")
+	}
+
+	form := url.Values{"d0.m0.name": {"Almoço"}, "action": {"update"}}
+	again, action, err := mealFromForm(reviewRequest(t, d, form))
+	if err != nil {
+		t.Fatal(err)
+	}
+	applyMealAction(&again, action)
+	if !again.Days[0].Meals[0].Optional {
+		t.Fatal("the optional flag was lost on the next post")
+	}
+
+	applyMealAction(&again, parseAction("toggle-meal-optional:0:0"))
+	applyMealAction(&again, parseAction("toggle-meal-optional:5:0"))
+	if again.Days[0].Meals[0].Optional {
+		t.Fatal("Count meal left the meal optional")
+	}
+}
