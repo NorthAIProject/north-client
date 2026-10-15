@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 )
 
@@ -79,13 +80,13 @@ func (h *Handler) render(w http.ResponseWriter, r *http.Request, status int, c t
 func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case apperr.Is(err, apperr.ErrNotFound):
-		http.Error(w, "Not found.", http.StatusNotFound)
+		http.Error(w, i18n.T(r.Context(), "nutrition.err.notfound"), http.StatusNotFound)
 	case apperr.Is(err, apperr.ErrValidation):
-		http.Error(w, "That request could not be read.", http.StatusUnprocessableEntity)
+		http.Error(w, i18n.T(r.Context(), "nutrition.err.read"), http.StatusUnprocessableEntity)
 	case apperr.Is(err, apperr.ErrConflict):
-		http.Error(w, "That conflicts with existing data.", http.StatusConflict)
+		http.Error(w, i18n.T(r.Context(), "nutrition.err.conflict"), http.StatusConflict)
 	default:
 		middleware.FromContext(r.Context()).Error("nutrition request failed", slog.Any("error", err))
-		http.Error(w, "Something went wrong.", http.StatusInternalServerError)
+		http.Error(w, i18n.T(r.Context(), "nutrition.err.generic"), http.StatusInternalServerError)
 	}
 }
