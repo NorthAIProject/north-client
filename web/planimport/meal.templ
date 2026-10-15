@@ -335,6 +335,11 @@ templ mealDay(i int, day draft.MealDayDraft, advanced, everyDay bool) {
 						}) {
 							{ i18n.T(ctx, "planimport.meal.remove_meal") }
 						}
+						if m.Optional {
+							@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
+								{ i18n.T(ctx, "planimport.meal.slot_optional") }
+							}
+						}
 					</div>
 					for o, opt := range m.Options() {
 						@mealOption(i, j, o, m, opt)

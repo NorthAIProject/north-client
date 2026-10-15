@@ -64,6 +64,7 @@ type Meal struct {
 	DayID       uuid.UUID
 	OptionIndex int16
 	OptionLabel string
+	Optional    bool
 }
 
 type MealIngredient struct {

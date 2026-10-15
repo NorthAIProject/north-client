@@ -36,7 +36,9 @@ type NewDay struct {
 type NewMeal struct {
 	Name        string
 	OptionLabel string
-	Portions    []NewPortion
+	// Optional is the slot's: set on the default, it covers the alternatives.
+	Optional bool
+	Portions []NewPortion
 	// Alternatives are the slot's further options, in order. Their own
 	// Alternatives are ignored.
 	Alternatives []NewMeal
@@ -89,7 +91,7 @@ func (r *Repository) CreatePlan(ctx context.Context, userID uuid.UUID, plan NewP
 // createSlot writes a meal slot's default and its alternatives with their
 // portions and each meal's own total, leaving the plan's total to the caller.
 func (tx *PlanTx) createSlot(ctx context.Context, planID, dayID uuid.UUID, m NewMeal) error {
-	created, err := tx.AddMeal(ctx, planID, dayID, m.Name, m.OptionLabel)
+	created, err := tx.AddMeal(ctx, planID, dayID, m.Name, m.OptionLabel, m.Optional)
 	if err != nil {
 		return err
 	}
@@ -243,15 +245,16 @@ func (tx *PlanTx) RemoveDay(ctx context.Context, planID, dayID uuid.UUID) error 
 }
 
 // AddMeal adds a meal slot at the end of a day, as the slot's default option.
-func (tx *PlanTx) AddMeal(ctx context.Context, planID, dayID uuid.UUID, name, optionLabel string) (Meal, error) {
-	row, err := tx.q.CreateMeal(ctx, mealsdb.CreateMealParams{MealPlanID: planID, DayID: dayID, Name: name, OptionLabel: optionLabel})
+func (tx *PlanTx) AddMeal(ctx context.Context, planID, dayID uuid.UUID, name, optionLabel string, optional bool) (Meal, error) {
+	row, err := tx.q.CreateMeal(ctx, mealsdb.CreateMealParams{MealPlanID: planID, DayID: dayID, Name: name, OptionLabel: optionLabel, Optional: optional})
 	if err != nil {
 		return Meal{}, apperr.Wrap(err, "create meal")
 	}
 	return mealFromDB(row), nil
 }
 
-// AddOption adds an empty option to a day's meal slot, after its last one.
+// AddOption adds an empty option to a day's meal slot, after its last one. It
+// takes the slot's optional flag.
 func (tx *PlanTx) AddOption(ctx context.Context, planID, dayID uuid.UUID, mealNumber int, name, optionLabel string) (Meal, error) {
 	row, err := tx.q.CreateMealOption(ctx, mealsdb.CreateMealOptionParams{
 		MealPlanID: planID, DayID: dayID, Name: name, MealNumber: int16(mealNumber), OptionLabel: optionLabel,
@@ -359,6 +362,19 @@ func (tx *PlanTx) SetPortionOptional(ctx context.Context, planID, mealID, portio
 		return MealIngredient{}, apperr.Wrap(err, "recalculate totals after marking an ingredient optional")
 	}
 	return mealIngredientFromDB(row), nil
+}
+
+// SetSlotOptional marks a day's meal slot, every option of it, as optional
+// (shown, not counted) or counted, and recalculates the plan's totals. Each
+// meal keeps its own total.
+func (tx *PlanTx) SetSlotOptional(ctx context.Context, planID uuid.UUID, slot Meal, optional bool) error {
+	err := tx.q.SetMealSlotOptional(ctx, mealsdb.SetMealSlotOptionalParams{
+		MealPlanID: planID, DayID: slot.DayID, MealNumber: int16(slot.MealNumber), Optional: optional,
+	})
+	if err != nil {
+		return apperr.Wrap(err, "set meal slot optional")
+	}
+	return apperr.Wrap(recalculatePlanTotals(ctx, tx.q, planID), "recalculate plan totals after marking a meal optional")
 }
 
 // PlanIDOfMeal resolves the plan a meal belongs to, so a change to the meal
@@ -504,7 +520,7 @@ func recalculateMealTotal(ctx context.Context, q *mealsdb.Queries, mealID uuid.U
 // meal's own total — used after a meal or day is removed, where there is no
 // meal left to recompute. Only each slot's default counts, the same meals
 // loadPlan puts in a day's Meals: alternatives replace their default, they are
-// not eaten on top of it.
+// not eaten on top of it. An optional slot does not count at all.
 func recalculatePlanTotals(ctx context.Context, q *mealsdb.Queries, planID uuid.UUID) error {
 	siblings, err := q.ListMealsByPlan(ctx, planID)
 	if err != nil {
@@ -522,6 +538,9 @@ func recalculatePlanTotals(ctx context.Context, q *mealsdb.Queries, planID uuid.
 			continue
 		}
 		counted[key] = true
+		if sibling.Optional {
+			continue
+		}
 		planTotal = planTotal.Add(macrosFromJSON(sibling.TotalMacros))
 	}
 	return apperr.Wrap(q.UpdateMealPlanTotalMacros(ctx, mealsdb.UpdateMealPlanTotalMacrosParams{ID: planID, TotalMacros: macrosToJSON(planTotal)}), "update plan total macros")
@@ -561,7 +580,7 @@ func dayFromDB(row mealsdb.MealPlanDay) meal.Day {
 func mealFromDB(row mealsdb.Meal) Meal {
 	return Meal{
 		ID: row.ID, MealPlanID: row.MealPlanID, DayID: row.DayID, MealNumber: int(row.MealNumber), Name: row.Name,
-		OptionIndex: int(row.OptionIndex), OptionLabel: row.OptionLabel,
+		OptionIndex: int(row.OptionIndex), OptionLabel: row.OptionLabel, Optional: row.Optional,
 		TotalMacros: macrosFromJSON(row.TotalMacros),
 		CreatedAt:   row.CreatedAt,
 	}

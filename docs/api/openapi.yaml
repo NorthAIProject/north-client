@@ -3000,6 +3000,44 @@ paths:
           $ref: '#/components/responses/NotFound'
         '422':
           $ref: '#/components/responses/ValidationError'
+  /nutrition/meals/{mealID}/optional:
+    parameters:
+      - name: mealID
+        in: path
+        required: true
+        description: Any option of the slot; the change covers every option.
+        schema:
+          type: string
+          format: uuid
+    put:
+      operationId: setMealOptional
+      summary: Mark a whole meal optional (shown, not counted) or counted
+      description: |
+        An optional meal keeps its own total but is left out of its day's
+        status and the plan's total. Answers with the whole plan so the client
+        refreshes its totals in one call. Counting a meal again that takes its
+        day further over the target is a 409.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OptionalRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MealPlanDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/MacroOverage'
+        '422':
+          $ref: '#/components/responses/ValidationError'
   /nutrition/meals/{mealID}/ingredients:
     parameters:
       - name: mealID
@@ -8441,6 +8479,12 @@ components:
         optionLabel:
           type: string
           description: What the file called the first option ("Opção 1"); absent when unnamed.
+        optional:
+          type: boolean
+          description: |
+            The file offers the whole meal as optional ("Ceia (opcional)"): it is
+            previewed with its own macros, left out of the day's totals, and
+            saved optional. Absent when false; a client should send it back.
         alternatives:
           type: array
           description: The meal's further options, in the file's order. Absent when there are none.
@@ -10643,7 +10687,8 @@ components:
       required: [id, mealNumber, name, totalMacros, ingredients]
       description: |
         A meal slot's default option. The day's status counts it and not its
-        alternatives, which are eaten instead of it.
+        alternatives, which are eaten instead of it; an optional slot is not
+        counted at all.
       properties:
         id:
           type: string
@@ -10656,6 +10701,11 @@ components:
         optionLabel:
           type: string
           description: Tells the option apart from the slot's others. Absent when unlabelled.
+        optional:
+          type: boolean
+          description: |
+            The plan offers this meal but does not count it: its totalMacros are
+            its own and left out of the day's status. Covers every option.
         totalMacros:
           $ref: '#/components/schemas/Macros'
         ingredients:
@@ -10871,7 +10921,7 @@ components:
       properties:
         optional:
           type: boolean
-          description: true shows the food without counting it; false counts it.
+          description: true shows the meal or food without counting it; false counts it.
         confirmOverage:
           type: boolean
           description: Advanced plans only; count it even though the day goes over.

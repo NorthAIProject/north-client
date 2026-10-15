@@ -123,7 +123,10 @@ func editMealPlan(plans *meals.MealPlanService, ingredients *meals.IngredientSer
 				"food in the meal), set_grams (the meal holds exactly that many grams of a food already in it), add_option (an empty " +
 				"option named option_label after the meal's last one), remove_option (option 2 or later), set_optional (mark a food " +
 				"already in the meal optional — shown, not counted — with optional true, or counted again with optional false). A " +
-				"food added with optional true is shown but never counted. A meal can hold several " +
+				"food added with optional true is shown but never counted. set_meal_optional marks the whole meal, every option, " +
+				"optional with optional true (shown, its own kcal, left out of the day's totals) or counted again with optional " +
+				"false; add_meal with optional true adds an optional meal. Mark a meal optional only when the person or their plan " +
+				"says it is. A meal can hold several " +
 				"interchangeable options; option 1 is the default, the one the day's totals count. add_food, remove_food and " +
 				"set_grams change option 1 unless option says otherwise; an option number a target day's meal does not have " +
 				"refuses the whole change, so name days when the days differ. Leave days out to change every day " +
@@ -143,8 +146,8 @@ func editMealPlan(plans *meals.MealPlanService, ingredients *meals.IngredientSer
 					"option": ai.Integer("which of the meal's options, counting from 1 as get_meal_plan lists them; 1 is the " +
 						"default option counted in the day's totals; omit for 1"),
 					"option_label": ai.String("the new option's name, for add_option, such as 'Peixe'"),
-					"optional": ai.Boolean("for add_food, add it as optional (shown, not counted); for set_optional, true " +
-						"makes the food optional and false counts it again"),
+					"optional": ai.Boolean("for add_meal or add_food, add it as optional (shown, not counted); for set_optional " +
+						"and set_meal_optional, true makes the food or meal optional and false counts it again"),
 				}, "op", "meal")),
 				"allow_over_target": ai.Boolean("true only once the person accepted going over their target, after a refusal said by how much"),
 			}, "changes"),
@@ -331,7 +334,7 @@ func planChangeFromArg(a changeArg) (meals.PlanChange, error) {
 	c.Days = days
 
 	switch op {
-	case meals.OpAddMeal, meals.OpRemoveMeal, meals.OpAddOption, meals.OpRemoveOption:
+	case meals.OpAddMeal, meals.OpRemoveMeal, meals.OpAddOption, meals.OpRemoveOption, meals.OpSetMealOptional:
 		c.Food, c.Grams = "", 0
 	case meals.OpAddFood, meals.OpSetGrams:
 		if c.Food == "" {
@@ -648,11 +651,19 @@ func describeDayBody(b *strings.Builder, plan meals.MealPlan, day meal.Day, targ
 		b.WriteString("\n  No meals yet.")
 	}
 	for _, m := range day.Meals {
+		optional := ""
+		if m.Optional {
+			optional = "optional meal, not counted, "
+		}
 		if len(m.Alternatives) == 0 {
-			fmt.Fprintf(b, "\n  %s (%.0f kcal): %s", m.Name, m.TotalMacros.Calories, describeFoods(m))
+			fmt.Fprintf(b, "\n  %s (%s%.0f kcal): %s", m.Name, optional, m.TotalMacros.Calories, describeFoods(m))
 			continue
 		}
-		fmt.Fprintf(b, "\n  %s (option 1%s, counted, %.0f kcal): %s", m.Name, quotedLabel(m), m.TotalMacros.Calories, describeFoods(m))
+		counted := "counted, "
+		if m.Optional {
+			counted = ""
+		}
+		fmt.Fprintf(b, "\n  %s (%soption 1%s, %s%.0f kcal): %s", m.Name, optional, quotedLabel(m), counted, m.TotalMacros.Calories, describeFoods(m))
 		for k, alt := range m.Alternatives {
 			fmt.Fprintf(b, "\n    option %d%s (%.0f kcal): %s", k+2, quotedLabel(alt), alt.TotalMacros.Calories, describeFoods(alt))
 		}

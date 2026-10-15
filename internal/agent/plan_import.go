@@ -186,9 +186,12 @@ func describeImportedMealPlan(b *strings.Builder, plan meals.MealPlan, res plani
 			fmt.Fprintf(b, "\n%s's meals (other days differ; get_meal_plan shows each):", day.Weekday)
 		}
 		for _, m := range day.Meals {
-			if n := len(m.Options()); n > 1 {
+			switch n := len(m.Options()); {
+			case m.Optional:
+				fmt.Fprintf(b, "\n- %s: optional meal, not counted, %d option(s), %.0f kcal", m.Name, n, m.TotalMacros.Calories)
+			case n > 1:
 				fmt.Fprintf(b, "\n- %s: %d options; option 1 counted, %.0f kcal", m.Name, n, m.TotalMacros.Calories)
-			} else {
+			default:
 				fmt.Fprintf(b, "\n- %s: 1 option, %.0f kcal", m.Name, m.TotalMacros.Calories)
 			}
 		}

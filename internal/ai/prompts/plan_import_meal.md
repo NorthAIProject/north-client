@@ -25,6 +25,12 @@ design, balance, complete or improve the plan. You copy what is written.
   "a gosto" when it means "if you like". Write it as its own row in the meal
   and option it belongs to, with its quantity and estimate like any food; the
   app shows it without counting it. Leave `optional` "" for every other food.
+- `meal_optional` is "yes" on every row of a meal the source offers as a
+  whole but does not require: a heading or note such as "Ceia (opcional)",
+  "Snack (optional)", "facultativo", "se tiver fome", "só se necessário". Keep
+  its foods as rows like any meal; the app shows the meal without counting it.
+  A meal is optional only when the source says so: never because it is a
+  snack, small, or eaten on some days. Leave `meal_optional` "" otherwise.
 - Copy protein, carbs and fat only when the source states them for that food,
   as numbers of grams ("30", not "30g"). A total for a whole meal or day is not
   a food's macros: leave the food's fields empty and put that line in
@@ -76,6 +82,7 @@ not a skipped line.
     "Day 1"). "" when the plan has no days: the app repeats it every day.
   - `meal`: the meal heading ("Pequeno-almoço", "Meal 2", "Post-workout"), or
     "".
+  - `meal_optional`: as above, the same on every row of the meal.
   - `option`, `food`, `food_en`, `quantity`, `unit`, `grams_estimate`,
     `protein`, `carbs`, `fat`: as above, or "".
   - `confidence`: "low" when you had to guess which food a number belongs to,
