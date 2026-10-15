@@ -1,11 +1,13 @@
 package insights
 
 import (
+	"context"
+
 	"github.com/NorthAIProject/north-client/internal/spend"
 	insightpages "github.com/NorthAIProject/north-client/web/insights"
 )
 
-func buildSpendView(data SpendData) (insightpages.SpendView, error) {
+func buildSpendView(ctx context.Context, data SpendData) (insightpages.SpendView, error) {
 	var totalCost, totalTokens, generations int64
 	for _, s := range data.Surfaces {
 		totalCost += s.CostMicros
@@ -14,7 +16,7 @@ func buildSpendView(data SpendData) (insightpages.SpendView, error) {
 	}
 
 	view := insightpages.SpendView{
-		Range:       rangeView(data.Range),
+		Range:       rangeView(ctx, data.Range),
 		TotalCost:   euros(totalCost),
 		TotalTokens: totalTokens,
 		Generations: generations,
@@ -23,7 +25,7 @@ func buildSpendView(data SpendData) (insightpages.SpendView, error) {
 
 	for _, s := range data.Surfaces {
 		view.Surfaces = append(view.Surfaces, insightpages.SpendRow{
-			Label:       surfaceLabel(s.Surface),
+			Label:       surfaceLabel(ctx, s.Surface),
 			Cost:        euros(s.CostMicros),
 			Generations: s.Generations,
 			Tokens:      s.InputTokens + s.OutputTokens,
@@ -65,31 +67,8 @@ func share(part, total int64) int {
 // surfaceLabel turns a spend surface constant into something readable. An
 // unknown surface renders its own name rather than being dropped — a new one
 // appearing in this list is information, not a bug to hide.
-func surfaceLabel(surface string) string {
-	if label, ok := surfaceLabels[surface]; ok {
-		return label
-	}
-	return surface
-}
-
-var surfaceLabels = map[string]string{
-	"coach":                "Coaching chat",
-	"telegram":             "Telegram",
-	"mcp":                  "Agent connections",
-	"conversation_title":   "Naming conversations",
-	"conversation_summary": "Summarising conversations",
-	"memory_extraction":    "Extracting memories",
-	"weekly_review":        "Weekly review",
-	"daily_briefing":       "Daily briefing",
-	"standing_task":        "Standing tasks",
-	"form_analysis":        "Form analysis",
-	"workout_plan":         "Workout plans",
-	"quick_capture":        "Quick capture",
-	"voice_capture":        "Voice notes",
-	"telegram_voice":       "Telegram voice notes",
-	"dictation":            "Dictation",
-	"embedding":            "Indexing knowledge",
-	"unknown":              "Unattributed",
+func surfaceLabel(ctx context.Context, surface string) string {
+	return translated(ctx, "insights.spend.surface."+surface, surface)
 }
 
 // modelLabel prefers the model name, falling back to the provider for a

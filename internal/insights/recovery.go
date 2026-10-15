@@ -10,6 +10,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/coach"
 	"github.com/NorthAIProject/north-client/internal/insights/score"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/stats/stat"
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -110,14 +111,11 @@ func mustMetric(key string) metric {
 	return m
 }
 
-// recoveryWords are the words beside the recovery number. They name the
+// recoveryWord is the words beside the recovery number. They name the
 // comparison, never a diagnosis: the score knows the person's own usual and
 // nothing about medicine.
-var recoveryWords = map[score.Verdict]string{
-	score.VerdictStrong: "Above your usual",
-	score.VerdictOK:     "About your usual",
-	score.VerdictUneven: "A little under your usual",
-	score.VerdictLow:    "Under your usual",
+func recoveryWord(ctx context.Context, v score.Verdict) string {
+	return translated(ctx, "insights.recovery."+string(v), "")
 }
 
 // Low reports a morning to go easier on: a recovery that scores uneven or
@@ -133,16 +131,25 @@ func (r RecoveryData) Low() bool {
 
 // Sentence is the recovery as one line: the number, its words, and each
 // signal's own sentence. The coach and the screen read the same one.
+//
+// English, because its readers outside this package — the coach's context and
+// the morning report — are prompts rather than people. The API asks
+// SentenceIn with the caller's request.
 func (r RecoveryData) Sentence() (string, bool) {
+	return r.SentenceIn(context.Background())
+}
+
+// SentenceIn is Sentence in ctx's language.
+func (r RecoveryData) SentenceIn(ctx context.Context) (string, bool) {
 	if !r.Score.HasData {
 		return "", false
 	}
 	parts := make([]string, 0, len(r.Signals))
 	for _, sig := range r.Signals {
-		parts = append(parts, sig.Metric.Label+" — "+usualView(sig.Metric, sig.Usual).Text)
+		parts = append(parts, metricLabel(ctx, sig.Metric)+" — "+usualView(ctx, sig.Metric, sig.Usual).Text)
 	}
-	return fmt.Sprintf("Recovery today: %d/100, %s. %s", r.Score.Points,
-		strings.ToLower(recoveryWords[r.Score.Verdict()]), strings.Join(parts, " ")), true
+	return i18n.Tf(ctx, "insights.recovery.sentence", r.Score.Points,
+		strings.ToLower(recoveryWord(ctx, r.Score.Verdict())), strings.Join(parts, " ")), true
 }
 
 // Why is what pulled the recovery off its usual: the sentences of the
@@ -150,7 +157,7 @@ func (r RecoveryData) Sentence() (string, bool) {
 func (r RecoveryData) Why() string {
 	var parts []string
 	for _, sig := range r.Signals {
-		v := usualView(sig.Metric, sig.Usual)
+		v := usualView(context.Background(), sig.Metric, sig.Usual)
 		if v.State == stat.Usual {
 			continue
 		}

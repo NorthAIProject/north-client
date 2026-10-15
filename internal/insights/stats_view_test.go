@@ -29,7 +29,7 @@ func TestStatsPanelsRender(t *testing.T) {
 	day := func(d int) time.Time { return time.Date(2026, 9, d, 0, 0, 0, 0, time.UTC) }
 	at := func(d, h int) *time.Time { t := day(d).Add(time.Duration(h) * time.Hour); return &t }
 
-	sleepHTML := renderString(t, insightpages.SleepPanels(buildSleepView(rg, stat.Sleep([]stat.Night{
+	sleepHTML := renderString(t, insightpages.SleepPanels(buildSleepView(context.Background(), rg, stat.Sleep([]stat.Night{
 		{Date: day(2), Minutes: 450, Start: at(1, 23), End: at(2, 7), Stages: map[string]int{"deep": 80, "rem": 90, "core": 280}},
 		{Date: day(3), Minutes: 400},
 	}, 480))))
@@ -39,7 +39,7 @@ func TestStatsPanelsRender(t *testing.T) {
 		}
 	}
 
-	cardioHTML := renderString(t, insightpages.CardioPanels(buildCardioView(rg, stats.CardioStats{
+	cardioHTML := renderString(t, insightpages.CardioPanels(buildCardioView(context.Background(), rg, stats.CardioStats{
 		CardioStats: stat.Cardio([]stat.Session{{Code: "running", Name: "Running", At: day(2), Seconds: 1500, DistanceM: 5000}}, rg.Since, rg.Until),
 	})))
 	for _, want := range []string{`data-testid="insights-cardio"`, "5:00 /km", "Best 5K", "25:00"} {
@@ -48,7 +48,7 @@ func TestStatsPanelsRender(t *testing.T) {
 		}
 	}
 
-	patternsHTML := renderString(t, insightpages.PatternsPanels(buildPatternsView(rg, 90, []stat.Finding{{
+	patternsHTML := renderString(t, insightpages.PatternsPanels(buildPatternsView(context.Background(), rg, 90, []stat.Finding{{
 		Title: "You sleep 42 min less after late caffeine", Unit: "min",
 		A: stat.Group{Label: "After late caffeine", Mean: 398, N: 8}, B: stat.Group{Label: "Other nights", Mean: 440, N: 20},
 	}})))
@@ -60,7 +60,7 @@ func TestStatsPanelsRender(t *testing.T) {
 
 	eatingHTML := renderString(t, insightpages.NutritionBody(insightpages.NutritionView{
 		HasData: true,
-		Eating:  buildEatingView(stat.Eating([]stat.FoodEntry{{At: *at(2, 22), Date: day(2), Label: "Pizza", Kcal: 900}}, 2000, 150, 80, 21)),
+		Eating:  buildEatingView(context.Background(), stat.Eating([]stat.FoodEntry{{At: *at(2, 22), Date: day(2), Label: "Pizza", Kcal: 900}}, 2000, 150, 80, 21)),
 	}))
 	for _, want := range []string{`data-testid="insights-eating"`, "Pizza", "Late (after 21)"} {
 		if !strings.Contains(eatingHTML, want) {

@@ -1,10 +1,12 @@
 package insights
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
 
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
@@ -33,29 +35,45 @@ type DeltaView struct {
 	HasPrior  bool
 }
 
-// section names the insights page being viewed, for the sub-nav.
+// section names the insights page being viewed, for the sub-nav. Its label is
+// the catalogue's "insights.section.<Key>", which the summary's rings share.
 type section struct {
-	Key   string
-	Label string
-	Href  string
-	Icon  string
+	Key  string
+	Href string
+	Icon string
 }
 
 func sections() []section {
 	return []section{
-		{Key: "summary", Label: "Summary", Href: "/app/insights", Icon: "gauge"},
-		{Key: "timeline", Label: "Activity", Href: "/app/insights/timeline", Icon: "list"},
-		{Key: "body", Label: "Body", Href: "/app/insights/body", Icon: "heart-pulse"},
-		{Key: "mind", Label: "Mind", Href: "/app/insights/mind", Icon: "brain"},
-		{Key: "progress", Label: "Progress", Href: "/app/insights/progress", Icon: "target"},
-		{Key: "training", Label: "Training", Href: "/app/insights/training", Icon: "dumbbell"},
-		{Key: "nutrition", Label: "Nutrition", Href: "/app/insights/nutrition", Icon: "utensils"},
-		{Key: "sleep", Label: "Sleep", Href: "/app/insights/sleep", Icon: "moon"},
-		{Key: "cardio", Label: "Cardio", Href: "/app/insights/cardio", Icon: "footprints"},
-		{Key: "patterns", Label: "Patterns", Href: "/app/insights/patterns", Icon: "sparkles"},
-		{Key: "coach", Label: "Coaching", Href: "/app/insights/coach", Icon: "messages-square"},
-		{Key: "spend", Label: "Spend", Href: "/app/insights/spend", Icon: "receipt"},
+		{Key: "summary", Href: "/app/insights", Icon: "gauge"},
+		{Key: "timeline", Href: "/app/insights/timeline", Icon: "list"},
+		{Key: "body", Href: "/app/insights/body", Icon: "heart-pulse"},
+		{Key: "mind", Href: "/app/insights/mind", Icon: "brain"},
+		{Key: "progress", Href: "/app/insights/progress", Icon: "target"},
+		{Key: "training", Href: "/app/insights/training", Icon: "dumbbell"},
+		{Key: "nutrition", Href: "/app/insights/nutrition", Icon: "utensils"},
+		{Key: "sleep", Href: "/app/insights/sleep", Icon: "moon"},
+		{Key: "cardio", Href: "/app/insights/cardio", Icon: "footprints"},
+		{Key: "patterns", Href: "/app/insights/patterns", Icon: "sparkles"},
+		{Key: "coach", Href: "/app/insights/coach", Icon: "messages-square"},
+		{Key: "spend", Href: "/app/insights/spend", Icon: "receipt"},
 	}
+}
+
+// sectionNavKeys are the sections whose name is a loanword every language
+// keeps ("Cardio", "Coaching"). They read the sidebar's entry for the same
+// page rather than carry a second copy of a word that is not translated.
+var sectionNavKeys = map[string]string{
+	"cardio": "nav.cardio-insights.nav",
+	"coach":  "nav.coach-insights.nav",
+}
+
+// sectionTitle is a section's name, for a page heading and the sub-nav.
+func sectionTitle(ctx context.Context, key string) string {
+	if navKey, ok := sectionNavKeys[key]; ok {
+		return i18n.T(ctx, navKey)
+	}
+	return i18n.T(ctx, "insights.section."+key)
 }
 
 // page is the shell every insights view shares: title, sub-nav, range
@@ -69,10 +87,10 @@ templ page(title, active, bodyHref string, user users.User, rg RangeView) {
 			<header class="space-y-4">
 				<div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
 					<div>
-						@ui.MonoLabel("Insights")
+						@ui.MonoLabel(i18n.T(ctx, "insights.label"))
 						<h1 class="mt-2 text-2xl font-medium tracking-tight">{ title }</h1>
 						<p class="text-muted-foreground mt-1 max-w-2xl text-sm leading-relaxed">
-							How it has been going, { rg.Label }.
+							{ i18n.Tf(ctx, "insights.intro", rg.Label) }
 						</p>
 					</div>
 					@rangeSelector(bodyHref, rg)
@@ -89,7 +107,7 @@ templ page(title, active, bodyHref string, user users.User, rg RangeView) {
 }
 
 templ sectionNav(active string) {
-	<nav aria-label="Insights sections" class="-mx-1 flex gap-1 overflow-x-auto">
+	<nav aria-label={ i18n.T(ctx, "insights.nav.sections") } class="-mx-1 flex gap-1 overflow-x-auto">
 		for _, s := range sections() {
 			<a
 				href={ templ.SafeURL(s.Href) }
@@ -101,7 +119,7 @@ templ sectionNav(active string) {
 				}
 			>
 				@icon.Icon(s.Icon)(icon.Props{Class: "size-3.5"})
-				{ s.Label }
+				{ sectionTitle(ctx, s.Key) }
 			</a>
 		}
 	</nav>
@@ -111,7 +129,7 @@ templ sectionNav(active string) {
 // hx-get, so the page still works with JavaScript off.
 templ rangeSelector(bodyHref string, rg RangeView) {
 	<nav
-		aria-label="Time period"
+		aria-label={ i18n.T(ctx, "insights.nav.period") }
 		class="border-hairline bg-surface/60 -mx-1 flex shrink-0 gap-1 overflow-x-auto rounded-lg border p-1"
 	>
 		for _, opt := range rg.Options {
@@ -245,18 +263,18 @@ func formatCount(n int) string {
 	return fmt.Sprintf("%d", n)
 }
 
-func relativeTime(t time.Time) string {
+func relativeTime(ctx context.Context, t time.Time) string {
 	d := time.Since(t)
 	switch {
 	case d < time.Minute:
-		return "just now"
+		return i18n.T(ctx, "insights.ago.now")
 	case d < time.Hour:
-		return fmt.Sprintf("%dm ago", int(d.Minutes()))
+		return i18n.Tf(ctx, "insights.ago.minutes", int(d.Minutes()))
 	case d < 24*time.Hour:
-		return fmt.Sprintf("%dh ago", int(d.Hours()))
+		return i18n.Tf(ctx, "insights.ago.hours", int(d.Hours()))
 	case d < 7*24*time.Hour:
-		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
+		return i18n.Tf(ctx, "insights.ago.days", int(d.Hours()/24))
 	default:
-		return t.Format("2 Jan")
+		return i18n.Date(ctx, t, "2 Jan")
 	}
 }

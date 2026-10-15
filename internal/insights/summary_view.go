@@ -1,62 +1,55 @@
 package insights
 
 import (
+	"context"
 	"fmt"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/NorthAIProject/north-client/internal/insights/highlight"
 	"github.com/NorthAIProject/north-client/internal/insights/score"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/shared/viz"
 	insightpages "github.com/NorthAIProject/north-client/web/insights"
 )
 
-// domain names a scored area for the summary: what to call it, which icon it
-// wears, and which detail page its card opens.
+// domain names a scored area for the summary: which catalogue key names it,
+// which icon it wears, and which detail page its card opens.
 type domain struct {
-	Key   string
-	Label string
-	Icon  string
-	Href  string
+	Key  string
+	Icon string
+	Href string
+}
+
+// Label is the domain's name in the reader's language. The section keys are
+// shared with the sub-nav, so a ring and its tab cannot be called different
+// things.
+func (d domain) Label(ctx context.Context) string {
+	return i18n.T(ctx, "insights.section."+d.Key)
 }
 
 // domains is the order the rings appear in, chosen to read as a day does:
 // what the body did, how it felt, what it was for, what was trained.
 var domains = []domain{
-	{Key: "body", Label: "Body", Icon: "heart-pulse", Href: "/app/insights/body"},
-	{Key: "mind", Label: "Mind", Icon: "brain", Href: "/app/insights/mind"},
-	{Key: "progress", Label: "Progress", Icon: "target", Href: "/app/insights/progress"},
-	{Key: "training", Label: "Training", Icon: "dumbbell", Href: "/app/insights/training"},
-	{Key: "nutrition", Label: "Nutrition", Icon: "utensils", Href: "/app/insights/nutrition"},
+	{Key: "body", Icon: "heart-pulse", Href: "/app/insights/body"},
+	{Key: "mind", Icon: "brain", Href: "/app/insights/mind"},
+	{Key: "progress", Icon: "target", Href: "/app/insights/progress"},
+	{Key: "training", Icon: "dumbbell", Href: "/app/insights/training"},
+	{Key: "nutrition", Icon: "utensils", Href: "/app/insights/nutrition"},
 }
 
-// componentLabels turns a score component's key into something a person reads.
-// Without it a breakdown row renders the identifier, which is a leak.
-var componentLabels = map[string]string{
-	"sleep_duration":      "Sleep duration",
-	"bedtime_consistency": "Bedtime",
-	"hydration":           "Water",
-	"habits":              "Habits",
-	"checkin_coverage":    "Check-ins",
-	"mood":                "Mood",
-	"journal":             "Journal",
-	"notes":               "Goal notes",
-	"overdue":             "Milestones",
-	"streak":              "Streak",
-	"frequency":           "Sessions",
-	"volume":              "Burn",
-	"consistency":         "Spread",
-	"calories":            "Calories",
-	"protein":             "Protein",
-	"food_logging":        "Meals logged",
+// componentLabel turns a score component's key into something a person reads.
+// Without it a breakdown row renders the identifier, which is a leak; a key
+// the catalogue does not know yet renders as nothing, as it always has.
+func componentLabel(ctx context.Context, key string) string {
+	return translated(ctx, "insights.component."+key, "")
 }
 
-// verdictWords are the words beside the number.
-var verdictWords = map[score.Verdict]string{
-	score.VerdictStrong: "Strong",
-	score.VerdictOK:     "OK",
-	score.VerdictUneven: "Uneven",
-	score.VerdictLow:    "Low",
+// verdictWord is the word beside the number.
+func verdictWord(ctx context.Context, v score.Verdict) string {
+	return translated(ctx, "insights.verdict."+string(v), "")
 }
 
 // onTrackFrom is the verdict at which a domain counts toward "n of m on track".
@@ -67,12 +60,12 @@ const onTrackFrom = 70
 const maxHighlights = 3
 
 // buildSummaryView assembles the rings, the pinned cards and the counts.
-func buildSummaryView(data SummaryData) (insightpages.SummaryView, error) {
+func buildSummaryView(ctx context.Context, data SummaryData) (insightpages.SummaryView, error) {
 	scores := summaryScores(data)
 
-	view := insightpages.SummaryView{Range: rangeView(data.Range)}
+	view := insightpages.SummaryView{Range: rangeView(ctx, data.Range)}
 	for i, d := range domains {
-		card, err := scoreCard(d, scores[i])
+		card, err := scoreCard(ctx, d, scores[i])
 		if err != nil {
 			return insightpages.SummaryView{}, err
 		}
@@ -86,9 +79,9 @@ func buildSummaryView(data SummaryData) (insightpages.SummaryView, error) {
 		}
 	}
 
-	view.Pinned = pinnedCards(data)
-	view.Days, view.HasDays = dayTable(data)
-	view.Highlights = highlight.Find(summaryHighlights(data), maxHighlights)
+	view.Pinned = pinnedCards(ctx, data)
+	view.Days, view.HasDays = dayTable(ctx, data)
+	view.Highlights = highlight.Find(summaryHighlights(ctx, data), maxHighlights)
 
 	// One sentence beats four empty rings and a grid of dashes. Judged is the
 	// right test: a window where nothing could be scored is a window where
@@ -105,16 +98,16 @@ func metricHref(key string) string { return "/app/insights/metric/" + key }
 
 // pinnedCards is the headline number from each domain that has one, with the
 // shape of the window beside it.
-func pinnedCards(data SummaryData) []insightpages.PinnedCard {
+func pinnedCards(ctx context.Context, data SummaryData) []insightpages.PinnedCard {
 	loc := data.Range.Location()
-	labels := bucketLabels(data.Range)
+	labels := bucketLabels(ctx, data.Range)
 	var out []insightpages.PinnedCard
 
 	if total, points := hydrationSeries(data, loc); total > 0 {
 		out = append(out, insightpages.PinnedCard{
-			Label: "Water", Icon: "droplet", Href: metricHref("water"),
+			Label: i18n.T(ctx, "insights.pinned.water"), Icon: "droplet", Href: metricHref("water"),
 			Value:    formatLitres(total),
-			Note:     fmt.Sprintf("across %d days", len(data.Body.Hydration)),
+			Note:     i18n.Tf(ctx, "insights.pinned.water.note", len(data.Body.Hydration)),
 			Chart:    viz.Sparkline("insights-pinned-water", labels, points),
 			HasChart: true,
 		})
@@ -123,9 +116,9 @@ func pinnedCards(data SummaryData) []insightpages.PinnedCard {
 	if n := len(data.Body.Nights); n > 0 {
 		nightly := bucketedMean(data.Range, sleepPoints(data, loc))
 		out = append(out, insightpages.PinnedCard{
-			Label: "Sleep", Icon: "moon", Href: metricHref("sleep"),
+			Label: i18n.T(ctx, "insights.pinned.sleep"), Icon: "moon", Href: metricHref("sleep"),
 			Value:    formatHours(data.Body.SleepTrend.AverageMinutes),
-			Note:     fmt.Sprintf("average of %d nights", n),
+			Note:     i18n.Tf(ctx, "insights.pinned.sleep.note", n),
 			Chart:    viz.Sparkline("insights-pinned-sleep", labels, nightly),
 			HasChart: true,
 		})
@@ -133,9 +126,9 @@ func pinnedCards(data SummaryData) []insightpages.PinnedCard {
 
 	if n := len(data.Mind.CheckIns); n > 0 {
 		out = append(out, insightpages.PinnedCard{
-			Label: "Check-ins", Icon: "smile", Href: metricHref("checkins"),
+			Label: i18n.T(ctx, "insights.pinned.checkins"), Icon: "smile", Href: metricHref("checkins"),
 			Value:    fmt.Sprintf("%d", n),
-			Note:     fmt.Sprintf("%d day streak", data.Progress.Streak),
+			Note:     i18n.Tf(ctx, "insights.pinned.checkins.note", data.Progress.Streak),
 			Chart:    viz.Sparkline("insights-pinned-checkins", labels, checkInPoints(data, loc)),
 			HasChart: true,
 		})
@@ -143,7 +136,7 @@ func pinnedCards(data SummaryData) []insightpages.PinnedCard {
 
 	if n := len(data.Training.Sessions); n > 0 {
 		out = append(out, insightpages.PinnedCard{
-			Label: "Training", Icon: "dumbbell", Href: metricHref("sessions"),
+			Label: i18n.T(ctx, "insights.pinned.training"), Icon: "dumbbell", Href: metricHref("sessions"),
 			Value:    fmt.Sprintf("%d", n),
 			Note:     formatKcalSummary(data.Training.Calories),
 			Delta:    deltaView(data.Training.Calories, data.Training.Prior),
@@ -174,21 +167,22 @@ func summaryScores(data SummaryData) []score.Score {
 	}
 }
 
-func scoreCard(d domain, s score.Score) (insightpages.ScoreCard, error) {
+func scoreCard(ctx context.Context, d domain, s score.Score) (insightpages.ScoreCard, error) {
+	label := d.Label(ctx)
 	card := insightpages.ScoreCard{
 		Key:      d.Key,
-		Label:    d.Label,
+		Label:    label,
 		Icon:     d.Icon,
 		Href:     d.Href,
 		Points:   s.Points,
-		Verdict:  verdictWords[s.Verdict()],
+		Verdict:  verdictWord(ctx, s.Verdict()),
 		Coverage: s.Coverage,
 		HasData:  s.HasData,
 	}
 
 	for _, c := range s.Components {
 		card.Components = append(card.Components, insightpages.ComponentRow{
-			Label:  componentLabels[c.Key],
+			Label:  componentLabel(ctx, c.Key),
 			Earned: c.Earned,
 			Weight: c.Weight,
 			Known:  c.Known,
@@ -196,18 +190,35 @@ func scoreCard(d domain, s score.Score) (insightpages.ScoreCard, error) {
 	}
 
 	if r, ok := s.Reason(); ok {
-		card.Reason = fmt.Sprintf("%s carried this; %s cost the most.",
-			componentLabels[r.Best], componentLabels[r.Worst])
+		best, worst := componentLabel(ctx, r.Best), componentLabel(ctx, r.Worst)
+		// Both cases are passed so each language picks what its sentence
+		// needs: English keeps the labels as they stand mid-sentence.
+		card.Reason = i18n.Tf(ctx, "insights.score.reason",
+			best, worst, lowerFirst(best), lowerFirst(worst))
 	}
 
 	if s.HasData {
-		opt, err := option(viz.GaugeOptionJSON(d.Label, s.Points))
+		opt, err := option(viz.GaugeOptionJSON(label, s.Points))
 		if err != nil {
 			return insightpages.ScoreCard{}, err
 		}
 		card.Option = opt
 	}
 	return card, nil
+}
+
+// lowerFirst makes a label fit mid-sentence without lowercasing an acronym.
+func lowerFirst(label string) string {
+	first, size := utf8.DecodeRuneInString(label)
+	if first == utf8.RuneError {
+		return label
+	}
+	for _, r := range label[size:] {
+		if unicode.IsUpper(r) {
+			return label
+		}
+	}
+	return string(unicode.ToLower(first)) + label[size:]
 }
 
 // The series behind each pinned card's sparkline. Each mirrors how its detail
@@ -291,16 +302,16 @@ func formatKcalSummary(kcal float64) string {
 // check-in is not an observation, so check-ins are counted on their card and
 // left out here. Water is in litres and sleep in hours because the rules
 // render the number as it stands, and "2000 ml" reads worse than "2.0L".
-func summaryHighlights(data SummaryData) highlight.Input {
+func summaryHighlights(ctx context.Context, data SummaryData) highlight.Input {
 	loc := data.Range.Location()
-	labels := bucketLabels(data.Range)
+	labels := bucketLabels(ctx, data.Range)
 	period := periodNoun(data.Range)
 
-	in := highlight.Input{}
+	in := highlight.Input{Locale: i18n.LocaleFrom(ctx)}
 
 	if len(data.Body.Nights) > 0 {
 		in.Series = append(in.Series, highlight.Series{
-			Label: "Sleep", Unit: "h", Decimals: 1, Period: period, Labels: labels,
+			Label: i18n.T(ctx, "insights.series.sleep"), Unit: "h", Decimals: 1, Period: period, Labels: labels,
 			Values: bucketedMean(data.Range, sleepPoints(data, loc)),
 		})
 	}
@@ -312,17 +323,17 @@ func summaryHighlights(data SummaryData) highlight.Input {
 			litres[i] = v / 1000
 		}
 		in.Series = append(in.Series, highlight.Series{
-			Label: "Water", Unit: "L", Decimals: 1, Period: period, Labels: labels, Values: litres,
+			Label: i18n.T(ctx, "insights.series.water"), Unit: "L", Decimals: 1, Period: period, Labels: labels, Values: litres,
 		})
 	}
 
 	if len(data.Training.Sessions) > 0 {
 		in.Series = append(in.Series, highlight.Series{
-			Label: "Burn", Unit: "kcal", Decimals: 0, Period: period, Labels: labels,
+			Label: i18n.T(ctx, "insights.series.burn"), Unit: "kcal", Decimals: 0, Period: period, Labels: labels,
 			Values: burnSeries(data, loc),
 		})
 		in.Comparisons = append(in.Comparisons, highlight.Comparison{
-			Label: "Burn", Current: data.Training.Calories, Prior: data.Training.Prior,
+			Label: i18n.T(ctx, "insights.series.burn"), Current: data.Training.Calories, Prior: data.Training.Prior,
 		})
 	}
 
@@ -336,7 +347,7 @@ const maxDayRows = 31
 
 // dayTable lists the window one day at a time, the way the activity view lists
 // a week: a mark per metric per day, and a dash where nothing was logged.
-func dayTable(data SummaryData) ([]insightpages.DayRow, bool) {
+func dayTable(ctx context.Context, data SummaryData) ([]insightpages.DayRow, bool) {
 	if data.Range.Grain != timerange.GrainDay {
 		return nil, false
 	}
@@ -353,11 +364,11 @@ func dayTable(data SummaryData) ([]insightpages.DayRow, bool) {
 	rows := make([]insightpages.DayRow, len(buckets))
 	for i, b := range buckets {
 		rows[i] = insightpages.DayRow{
-			Label: b.Label,
+			Label: bucketLabel(ctx, data.Range, b),
 			Cells: []insightpages.DayCell{
-				{Label: "Sleep", Value: fmt.Sprintf("%.1fh", sleep[i]), Filled: sleep[i] > 0},
-				{Label: "Water", Value: formatLitres(int(water[i])), Filled: water[i] > 0},
-				{Label: "Check-in", Value: "Yes", Filled: checkIns[i] > 0},
+				{Label: i18n.T(ctx, "insights.days.sleep"), Value: fmt.Sprintf("%.1fh", sleep[i]), Filled: sleep[i] > 0},
+				{Label: i18n.T(ctx, "insights.days.water"), Value: formatLitres(int(water[i])), Filled: water[i] > 0},
+				{Label: i18n.T(ctx, "insights.days.checkin"), Value: i18n.T(ctx, "insights.days.yes"), Filled: checkIns[i] > 0},
 			},
 		}
 	}

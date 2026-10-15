@@ -36,7 +36,7 @@ func (s *Service) digestView(ctx context.Context, user users.User, rg timerange.
 	if err != nil {
 		return insightpages.SummaryView{}, err
 	}
-	return buildSummaryView(data)
+	return buildSummaryView(ctx, data)
 }
 
 // renderDigestCard draws the card, or returns nothing.

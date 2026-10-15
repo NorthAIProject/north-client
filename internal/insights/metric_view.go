@@ -1,10 +1,12 @@
 package insights
 
 import (
+	"context"
 	"fmt"
 	"math"
 
 	"github.com/NorthAIProject/north-client/internal/insights/highlight"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/viz"
 	"github.com/NorthAIProject/north-client/internal/stats/stat"
 	insightpages "github.com/NorthAIProject/north-client/web/insights"
@@ -15,9 +17,10 @@ import (
 // the honest reading of a number that wobbled.
 const steadyBand = 0.05
 
-func buildMetricView(data MetricData) (insightpages.MetricView, error) {
+func buildMetricView(ctx context.Context, data MetricData) (insightpages.MetricView, error) {
 	m := data.Metric
-	labels := bucketLabels(data.Range)
+	label := metricLabel(ctx, m)
+	labels := bucketLabels(ctx, data.Range)
 
 	series := bucketed(data.Range, data.Points)
 	if m.Mean {
@@ -28,30 +31,31 @@ func buildMetricView(data MetricData) (insightpages.MetricView, error) {
 	prior := aggregate(m, data.Prior)
 
 	view := insightpages.MetricView{
-		Range:     rangeView(data.Range),
+		Range:     rangeView(ctx, data.Range),
 		Key:       m.Key,
-		Label:     m.Label,
+		Label:     label,
 		Headline:  formatMetric(m, current),
-		Note:      metricNote(m, len(data.Points)),
+		Note:      metricNote(ctx, m, len(data.Points)),
 		Href:      m.Href,
-		HrefLabel: "See the whole domain",
-		Chart:     viz.Bar("insights-metric-"+m.Key, m.Label, labels, series),
+		HrefLabel: i18n.T(ctx, "insights.metric.domainLink"),
+		Chart:     viz.Bar("insights-metric-"+m.Key, label, labels, series),
 		HasData:   len(data.Points) > 0,
 		Health:    m.Health,
 	}
 	if data.Usual != nil {
-		u := usualView(m, *data.Usual)
+		u := usualView(ctx, m, *data.Usual)
 		view.Usual = &u
 	}
 
-	view.Trend = trendView(m, current, prior, len(data.Prior) > 0)
-	view.Comparison = comparisonView(m, current, prior, len(data.Prior) > 0)
+	view.Trend = trendView(ctx, m, current, prior, len(data.Prior) > 0)
+	view.Comparison = comparisonView(ctx, m, current, prior, len(data.Prior) > 0)
 	view.Highlights = highlight.Find(highlight.Input{
 		Series: []highlight.Series{{
-			Label: m.Label, Unit: m.Unit, Decimals: m.Decimals,
+			Label: label, Unit: m.Unit, Decimals: m.Decimals,
 			Period: periodNoun(data.Range), Labels: labels, Values: series,
 		}},
-		Comparisons: metricComparisons(m, current, prior, len(data.Prior) > 0),
+		Comparisons: metricComparisons(label, current, prior, len(data.Prior) > 0),
+		Locale:      i18n.LocaleFrom(ctx),
 	}, maxHighlights)
 
 	return view, nil
@@ -74,7 +78,7 @@ func aggregate(m metric, points []point) float64 {
 	return total
 }
 
-func trendView(m metric, current, prior float64, hasPrior bool) insightpages.TrendView {
+func trendView(ctx context.Context, m metric, current, prior float64, hasPrior bool) insightpages.TrendView {
 	if !hasPrior || prior <= 0 {
 		return insightpages.TrendView{}
 	}
@@ -84,13 +88,13 @@ func trendView(m metric, current, prior float64, hasPrior bool) insightpages.Tre
 
 	switch {
 	case math.Abs(delta) < steadyBand:
-		out.Word = "Steady"
+		out.Word = i18n.T(ctx, "insights.metric.trend.steady")
 	case delta > 0:
 		out.Direction = 1
-		out.Word = fmt.Sprintf("Up %.0f%%", out.Pct)
+		out.Word = i18n.Tf(ctx, "insights.metric.trend.up", out.Pct)
 	default:
 		out.Direction = -1
-		out.Word = fmt.Sprintf("Down %.0f%%", out.Pct)
+		out.Word = i18n.Tf(ctx, "insights.metric.trend.down", out.Pct)
 	}
 
 	// Better flips the reading for a metric where less is the good news. No
@@ -102,7 +106,7 @@ func trendView(m metric, current, prior float64, hasPrior bool) insightpages.Tre
 	return out
 }
 
-func comparisonView(m metric, current, prior float64, hasPrior bool) insightpages.ComparisonView {
+func comparisonView(ctx context.Context, m metric, current, prior float64, hasPrior bool) insightpages.ComparisonView {
 	if !hasPrior {
 		return insightpages.ComparisonView{}
 	}
@@ -115,21 +119,21 @@ func comparisonView(m metric, current, prior float64, hasPrior bool) insightpage
 	}
 
 	return insightpages.ComparisonView{
-		CurrentLabel: "This window",
+		CurrentLabel: i18n.T(ctx, "insights.metric.compare.current"),
 		CurrentValue: formatMetric(m, current),
 		CurrentPct:   int(math.Round(current / scale * 100)),
-		PriorLabel:   "The one before",
+		PriorLabel:   i18n.T(ctx, "insights.metric.compare.prior"),
 		PriorValue:   formatMetric(m, prior),
 		PriorPct:     int(math.Round(prior / scale * 100)),
 		HasPrior:     true,
 	}
 }
 
-func metricComparisons(m metric, current, prior float64, hasPrior bool) []highlight.Comparison {
+func metricComparisons(label string, current, prior float64, hasPrior bool) []highlight.Comparison {
 	if !hasPrior {
 		return nil
 	}
-	return []highlight.Comparison{{Label: m.Label, Current: current, Prior: prior}}
+	return []highlight.Comparison{{Label: label, Current: current, Prior: prior}}
 }
 
 // usualView words a latest day against the person's usual range: the mean
@@ -138,7 +142,10 @@ func metricComparisons(m metric, current, prior float64, hasPrior bool) []highli
 // The state follows the numbers as shown, not as stored: a resting heart rate
 // of 52 against a range shown as 52–54 is within it, whatever the decimals
 // behind the rounding say.
-func usualView(m metric, u Usual) insightpages.UsualView {
+//
+// The sentence is in ctx's language; a ctx with no reader reads English, which
+// is what the coach's context lines want.
+func usualView(ctx context.Context, m metric, u Usual) insightpages.UsualView {
 	lowValue := math.Max(u.Baseline.Mean-u.Baseline.SD, 0)
 	highValue := u.Baseline.Mean + u.Baseline.SD
 	low, high := formatMetric(m, lowValue), formatMetric(m, highValue)
@@ -147,17 +154,17 @@ func usualView(m metric, u Usual) insightpages.UsualView {
 	if latest := shown(u.Latest.Value); latest >= shown(lowValue) && latest <= shown(highValue) {
 		state = stat.Usual
 	}
-	lead := map[string]string{
-		stat.Above: "Above your usual",
-		stat.Usual: "Within your usual range",
-		stat.Below: "Below your usual",
-	}[state]
+	lead := ""
+	switch state {
+	case stat.Above, stat.Usual, stat.Below:
+		lead = i18n.T(ctx, "insights.usual."+state)
+	}
 	return insightpages.UsualView{
 		Day: u.Latest.At, Latest: u.Latest.Value,
 		Mean: u.Baseline.Mean, SD: u.Baseline.SD, Low: low, High: high,
 		Days: u.Baseline.Days, Z: math.Round(u.Z*100) / 100, State: state,
-		Text: fmt.Sprintf("%s: %s on %s, usually %s–%s.",
-			lead, formatMetric(m, u.Latest.Value), u.Latest.At.Format("Mon 2 Jan"), low, high),
+		Text: i18n.Tf(ctx, "insights.usual.text",
+			lead, formatMetric(m, u.Latest.Value), i18n.Date(ctx, u.Latest.At, "Mon 2 Jan"), low, high),
 	}
 }
 
@@ -172,13 +179,19 @@ func formatMetric(m metric, v float64) string {
 	return fmt.Sprintf("%.*f%s", m.Decimals, v, m.Unit)
 }
 
-func metricNote(m metric, n int) string {
+func metricNote(ctx context.Context, m metric, n int) string {
 	switch {
 	case n == 0:
 		return ""
 	case m.Mean:
-		return fmt.Sprintf("average across %d logged days", n)
+		return i18n.Tf(ctx, "insights.metric.note.mean", n)
 	default:
-		return fmt.Sprintf("across %d entries", n)
+		return i18n.Tf(ctx, "insights.metric.note.total", n)
 	}
+}
+
+// metricLabel is a metric's name in the reader's language. m.Label stays the
+// English name, which the coach's context lines are written in.
+func metricLabel(ctx context.Context, m metric) string {
+	return translated(ctx, "insights.metric.name."+m.Key, m.Label)
 }

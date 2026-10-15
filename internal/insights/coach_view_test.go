@@ -1,6 +1,7 @@
 package insights
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -11,7 +12,7 @@ import (
 
 func mustCoachView(t *testing.T, data CoachData) insightpages.CoachView {
 	t.Helper()
-	view, err := buildCoachView(data)
+	view, err := buildCoachView(context.Background(), data)
 	if err != nil {
 		t.Fatalf("buildCoachView: %v", err)
 	}
