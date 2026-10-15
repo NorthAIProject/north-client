@@ -8,13 +8,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/NorthAIProject/north-client/internal/analytics"
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/config"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
+	"github.com/NorthAIProject/north-client/internal/shared/theme"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/assets"
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -35,6 +38,52 @@ func setLocale(w http.ResponseWriter, r *http.Request) {
 		next = "/"
 	}
 	http.Redirect(w, r, next, http.StatusSeeOther)
+}
+
+// appearanceSetter is the slice of users.Service setAppearance needs.
+type appearanceSetter interface {
+	SetAppearance(ctx context.Context, id uuid.UUID, value, surface string) (bool, error)
+}
+
+// setAppearance remembers an appearance: always in the cookie, and on the
+// account too when somebody is signed in — LoadUser prefers the account, so a
+// cookie alone would be overruled on the next page.
+//
+// A script asks with fetch and gets a 204, having already applied the class
+// itself; a plain form post is sent back to the page it came from. The custom
+// CSRF header is what tells them apart, since only a script can set one.
+func setAppearance(svc appearanceSetter) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+
+		a, ok := theme.Parse(r.PostFormValue("appearance"))
+		if !ok {
+			http.Error(w, i18n.T(r.Context(), "users.err.appearance.invalid"), http.StatusBadRequest)
+			return
+		}
+
+		if user, signedIn := auth.UserFrom(r.Context()); signedIn {
+			if _, err := svc.SetAppearance(r.Context(), user.ID, string(a), analytics.AppearanceFromSwitcher); err != nil {
+				middleware.FromContext(r.Context()).Error("could not save appearance", slog.Any("error", err))
+				http.Error(w, "Your appearance could not be saved.", http.StatusInternalServerError)
+				return
+			}
+		}
+		theme.SetCookie(w, r, a)
+
+		if r.Header.Get(middleware.CSRFHeaderName) != "" || r.Header.Get("HX-Request") == "true" {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next := r.PostFormValue("next")
+		if !auth.SafeRedirect(next) {
+			next = "/"
+		}
+		http.Redirect(w, r, next, http.StatusSeeOther)
+	}
 }
 
 func healthz(pool *pgxpool.Pool) http.HandlerFunc {

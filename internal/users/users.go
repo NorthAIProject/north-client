@@ -14,6 +14,7 @@ import (
 	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
 
+	"github.com/NorthAIProject/north-client/internal/shared/theme"
 	usersdb "github.com/NorthAIProject/north-client/internal/users/db"
 )
 
@@ -198,6 +199,11 @@ type User struct {
 	// Locale is the language every surface renders in and the coach answers in.
 	Locale Locale
 
+	// Appearance is light, dark or system, as this person chose it. Empty
+	// means they never have: each client then applies its own default, which
+	// is why this is not resolved to one here.
+	Appearance theme.Appearance
+
 	// CoachingStyle is the user's own description of how they want to be
 	// coached. Empty until they set one.
 	CoachingStyle string
@@ -260,5 +266,23 @@ func fromDB(row usersdb.User) User {
 	}
 	u.CoachingStyle = util.Val(row.CoachingStyle)
 	u.OnboardedAt = row.OnboardedAt
+	u.Appearance = StoredAppearance(row.Appearance)
 	return u
+}
+
+// StoredAppearance reads the nullable column. NULL, and a value this build does
+// not know, both read as "never chosen", so the caller's default applies rather
+// than a value nothing can render.
+//
+// Exported because internal/auth builds a User from its own session join and
+// must read the column exactly this way.
+func StoredAppearance(col *string) theme.Appearance {
+	if col == nil {
+		return ""
+	}
+	a := theme.Appearance(*col)
+	if !a.Valid() {
+		return ""
+	}
+	return a
 }
