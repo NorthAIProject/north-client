@@ -25,6 +25,8 @@ func TestFormatTimeNamesMonthsAndWeekdaysInEachLocale(t *testing.T) {
 		{"pt-PT", "Mon 2 Jan, 15:04", "seg 4 mai, 09:30"},
 		{"pt-PT", "2 January 2006", "4 de maio de 2026"},
 		{"pt-BR", "Monday", "segunda-feira"},
+		{"es", "Monday, 2 January", "lunes, 4 de mayo"},
+		{"en", "Monday, 2 January", "Monday, 4 May"},
 		{"pt-BR", "Jan 2, 2006 3:04 PM", "4 mai 2026, 09:30"},
 		{"fr", "2 Jan", "4 May"}, // not served: English, never a blank
 	}

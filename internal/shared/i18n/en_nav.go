@@ -139,4 +139,9 @@ var englishNav = map[string]string{
 	"palette.hint.navigate": "navigate",
 	"palette.hint.open":     "open",
 	"palette.hint.close":    "close",
+	"nav.weekly.desc":       "Review the week and choose a focus for the next one.",
+	"nav.friends.desc":      "People you follow, and your invite link.",
+	"nav.leaderboard.desc":  "Your XP and level, ranked with the friends who share theirs.",
+	"nav.crews.desc":        "A few people keeping each other going.",
+	"nav.inbox.desc":        "Things saved to sort later, with the coach suggesting where each goes.",
 }

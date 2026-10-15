@@ -39,4 +39,6 @@ var englishLayout = map[string]string{
 	"layout.muscle.primary":      "Primary",
 	"layout.muscle.secondary":    "Secondary",
 	"layout.muscle.stabiliser":   "Stabiliser",
+	"layout.search":              "Search…",
+	"layout.sidebar.toggle":      "Toggle sidebar",
 }

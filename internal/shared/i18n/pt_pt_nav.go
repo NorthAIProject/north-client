@@ -136,4 +136,9 @@ var portugueseEuropeanNav = map[string]string{
 	"palette.hint.navigate": "navegar",
 	"palette.hint.open":     "abrir",
 	"palette.hint.close":    "fechar",
+	"nav.weekly.desc":       "Revê a semana e escolhe um foco para a próxima.",
+	"nav.friends.desc":      "As pessoas que segues e o teu link de convite.",
+	"nav.leaderboard.desc":  "O teu XP e nível, num ranking com os amigos que partilham os deles.",
+	"nav.crews.desc":        "Um pequeno grupo que se ajuda a não parar.",
+	"nav.inbox.desc":        "O que guardas para arrumar depois, com o coach a sugerir onde vai cada coisa.",
 }
