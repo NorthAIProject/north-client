@@ -3922,6 +3922,67 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '422':
           $ref: '#/components/responses/ValidationError'
+  /recap:
+    get:
+      operationId: getRecap
+      summary: What the person did over the last 7 or 30 days
+      description: >-
+        Rolling window ending today in the person's zone, with the same span
+        just before it in prior for deltas. days holds every day in the window,
+        empty ones included. Nothing is stored; it is read from sessions, sets,
+        food and check-ins each time.
+      tags: [recap]
+      parameters:
+        - name: range
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [week, month]
+            default: week
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Recap'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /recap/share:
+    post:
+      operationId: shareRecap
+      summary: Post the recap to the friends feed
+      description: >-
+        Posts it as a recap_shared item in the training category. Sharing the
+        same range again the same day updates that one post with the latest
+        numbers. trainingShared false means followers cannot see it until
+        training is shared (PUT /social/sharing).
+      tags: [recap]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [range]
+              properties:
+                range:
+                  type: string
+                  enum: [week, month]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecapShared'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
   /inbox:
     get:
       operationId: listInbox
@@ -6197,6 +6258,91 @@ components:
         reviewedAt:
           type: string
           format: date-time
+    RecapTotals:
+      type: object
+      required: [activeDays, workouts, sets, foodLogs, checkIns]
+      properties:
+        activeDays:
+          type: integer
+          description: Days with at least one workout, set, food log or check-in.
+        workouts:
+          type: integer
+        sets:
+          type: integer
+        foodLogs:
+          type: integer
+        checkIns:
+          type: integer
+    RecapDay:
+      type: object
+      required: [date, workouts, sets, foodLogs, checkIns]
+      properties:
+        date:
+          type: string
+          format: date
+        workouts:
+          type: integer
+        sets:
+          type: integer
+        foodLogs:
+          type: integer
+        checkIns:
+          type: integer
+    RecapHighlight:
+      type: object
+      required: [kind, title, detail, occurredAt]
+      properties:
+        kind:
+          type: string
+          description: An achievement kind. An open set; do not switch on it exhaustively.
+        title:
+          type: string
+        detail:
+          type: string
+        occurredAt:
+          type: string
+          format: date-time
+    Recap:
+      type: object
+      required: [range, since, until, totals, prior, checkInStreak, days, highlights]
+      properties:
+        range:
+          type: string
+          description: week or month. Open on purpose so a later window does not break older clients.
+        since:
+          type: string
+          format: date
+          description: First day, inclusive.
+        until:
+          type: string
+          format: date
+          description: Last day (today), inclusive.
+        totals:
+          $ref: '#/components/schemas/RecapTotals'
+        prior:
+          $ref: '#/components/schemas/RecapTotals'
+        checkInStreak:
+          type: integer
+          description: The check-in streak as of today, not a total over the window.
+        days:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecapDay'
+        highlights:
+          type: array
+          description: The person's own achievements in the window, newest first, at most five.
+          items:
+            $ref: '#/components/schemas/RecapHighlight'
+    RecapShared:
+      type: object
+      required: [id, trainingShared]
+      properties:
+        id:
+          type: string
+          format: uuid
+        trainingShared:
+          type: boolean
+          description: Whether followers can see the post; false until training is shared.
     WeeklyReview:
       type: object
       required: [reviewing, planning, goals]

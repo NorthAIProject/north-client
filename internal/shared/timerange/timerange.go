@@ -68,10 +68,16 @@ func (r Range) LabelKey() string { return "range." + r.Key }
 // today, because a hand-edited `?range=` in the address bar must not be able to
 // take a page down.
 func Parse(q string, loc *time.Location) Range {
+	return ParseAt(q, loc, time.Now())
+}
+
+// ParseAt is Parse as of a given instant, for callers that carry their own
+// clock so their tests can pin the day.
+func ParseAt(q string, loc *time.Location, at time.Time) Range {
 	if loc == nil {
 		loc = time.UTC
 	}
-	now := time.Now().In(loc)
+	now := at.In(loc)
 	today := StartOfDay(now)
 
 	switch q {
