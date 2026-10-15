@@ -1,7 +1,9 @@
 package xp
 
 import (
+	"context"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/FACorreiaa/go-utils/pkg/util"
@@ -10,6 +12,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 )
 
 // API is XP, levels and the friends leaderboard for native clients. Mount
@@ -79,10 +82,10 @@ type BoardView struct {
 func (a *API) summary(w http.ResponseWriter, r *http.Request) {
 	s, err := a.svc.Summary(r.Context(), auth.MustUser(r.Context()), time.Now())
 	if err != nil {
-		httpx.Error(w, err, "Your XP could not be loaded.")
+		httpx.Error(w, err, i18n.T(r.Context(), "xp.err.summary"))
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectSummary(s))
+	httpx.WriteJSON(w, http.StatusOK, projectSummary(r.Context(), s))
 }
 
 func (a *API) board(w http.ResponseWriter, r *http.Request) {
@@ -93,23 +96,36 @@ func (a *API) board(w http.ResponseWriter, r *http.Request) {
 	}
 	b, err := a.svc.Board(r.Context(), auth.MustUser(r.Context()), metric, q.Get("period"), time.Now())
 	if err != nil {
-		httpx.Error(w, err, "The leaderboard could not be loaded.")
+		httpx.Error(w, err, i18n.T(r.Context(), "xp.err.board"))
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectBoard(b))
+	httpx.WriteJSON(w, http.StatusOK, projectBoard(r.Context(), b))
 }
 
-func projectLevel(l Level) LevelView {
-	v := LevelView{Number: l.Number, Title: l.Title, Floor: l.Floor}
+// projectLevel carries the level's title in the caller's language. The app
+// shows title as it arrives; number is what identifies the level.
+func projectLevel(ctx context.Context, l Level) LevelView {
+	v := LevelView{Number: l.Number, Title: levelTitle(ctx, l.Title), Floor: l.Floor}
 	if l.Next > 0 {
 		v.Next = util.Ptr(l.Next)
 	}
 	return v
 }
 
-func projectSummary(s Summary) SummaryView {
+// levelTitle translates a level title. Titles are kept as the English word,
+// and the leaderboard catalogue already names each one under that word; a
+// title it does not know reads as itself rather than as a key.
+func levelTitle(ctx context.Context, title string) string {
+	key := "leaderboard.level." + strings.ToLower(title)
+	if got := i18n.T(ctx, key); got != key {
+		return got
+	}
+	return title
+}
+
+func projectSummary(ctx context.Context, s Summary) SummaryView {
 	out := SummaryView{
-		Total: s.Total, Level: projectLevel(s.Level), WeekTotal: s.WeekTotal,
+		Total: s.Total, Level: projectLevel(ctx, s.Level), WeekTotal: s.WeekTotal,
 		Week: make([]EarnedView, 0, len(firstKinds)), Earned: make([]EarnedView, 0, len(s.Week)),
 	}
 	for _, e := range s.Week {
@@ -121,14 +137,14 @@ func projectSummary(s Summary) SummaryView {
 	return out
 }
 
-func projectBoard(b Board) BoardView {
+func projectBoard(ctx context.Context, b Board) BoardView {
 	out := BoardView{Metric: b.Metric, Period: b.Period, Sharing: b.Sharing, Entries: make([]EntryView, 0, len(b.Entries))}
 	for _, e := range b.Entries {
 		v := EntryView{
 			Rank: e.Rank, UserID: e.UserID, DisplayName: e.DisplayName, Handle: e.Handle, Value: e.Value, Me: e.Me,
 		}
 		if e.Level != nil {
-			v.Level = util.Ptr(projectLevel(*e.Level))
+			v.Level = util.Ptr(projectLevel(ctx, *e.Level))
 		}
 		out.Entries = append(out.Entries, v)
 	}
