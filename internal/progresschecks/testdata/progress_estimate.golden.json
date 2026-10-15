@@ -1,0 +1,10 @@
+{
+  "estimate": {
+    "waistCm": 95.2,
+    "hipsCm": 104,
+    "confidence": "medium",
+    "notes": "Chest hidden by arms."
+  },
+  "providerLabel": "Anthropic (Claude)",
+  "ownProvider": false
+}

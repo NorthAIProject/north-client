@@ -28,7 +28,7 @@ templ RecapCard(r Recap) {
 			</div>
 			if r.Sentence != "" {
 				@card.Description() {
-					{ r.Sentence }
+					{ r.SentenceIn(ctx) }
 				}
 			}
 		}

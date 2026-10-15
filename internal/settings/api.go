@@ -13,6 +13,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/account"
 	"github.com/NorthAIProject/north-client/internal/aicreds"
+	"github.com/NorthAIProject/north-client/internal/analytics"
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/connections"
 	"github.com/NorthAIProject/north-client/internal/meals/meal"
@@ -21,6 +22,8 @@ import (
 	"github.com/NorthAIProject/north-client/internal/preferences"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
+	"github.com/NorthAIProject/north-client/internal/shared/theme"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
@@ -82,13 +85,35 @@ type Profile struct {
 	CoachingStyle string `json:"coachingStyle"`
 	// CoachingTone is direct, warm, analytical or tough_love.
 	CoachingTone string `json:"coachingTone"`
+
+	// Appearance is system, light or dark, and absent when the person never
+	// chose: the app applies its own default then, so the server must not
+	// report the web's. A pointer both ways — on a PUT, absent means
+	// "unchanged", because the builds that predate it send the profile
+	// without it.
+	Appearance *string `json:"appearance,omitempty"`
 }
 
 func projectProfile(u users.User) Profile {
-	return Profile{
+	p := Profile{
 		Email: u.Email, DisplayName: u.DisplayName, Timezone: u.Timezone, Locale: string(u.Locale),
 		CoachingStyle: u.CoachingStyle, CoachingTone: string(u.CoachingTone),
 	}
+	if u.Appearance != "" {
+		a := string(u.Appearance)
+		p.Appearance = &a
+	}
+	return p
+}
+
+// requestedAppearance carries a submitted appearance through unvalidated —
+// users.Service refuses a bad one — and keeps "not sent" as nil.
+func requestedAppearance(s *string) *theme.Appearance {
+	if s == nil {
+		return nil
+	}
+	a := theme.Appearance(*s)
+	return &a
 }
 
 func (a *API) getProfile(w http.ResponseWriter, r *http.Request) {
@@ -107,6 +132,8 @@ func (a *API) putProfile(w http.ResponseWriter, r *http.Request) {
 		Locale:        users.ResolveLocale(req.Locale),
 		CoachingStyle: strings.TrimSpace(req.CoachingStyle),
 		CoachingTone:  users.Tone(strings.TrimSpace(req.CoachingTone)),
+		Appearance:    requestedAppearance(req.Appearance),
+		Surface:       analytics.AppearanceFromIOS,
 	})
 	if err != nil {
 		httpx.Error(w, err, "Your profile could not be saved.")
@@ -437,7 +464,7 @@ func (a *API) createConnection(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, err, "That connection could not be created.")
 		return
 	}
-	setup := a.h.connections.Instructions(issued.Kind, issued.Token)
+	setup := a.h.connections.Instructions(issued.Kind, issued.Token).In(i18n.LocaleFrom(r.Context()))
 	httpx.WriteJSON(w, http.StatusCreated, CreatedConnection{
 		Connection: projectConnection(issued.Connection),
 		Token:      issued.Token,

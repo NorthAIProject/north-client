@@ -409,6 +409,11 @@ type QuotaConfig struct {
 	// photo costs a model call — a spreadsheet is read by code — but every
 	// upload is counted, so the bound does not depend on which file arrives.
 	PlanImports int
+
+	// ProgressEstimates bounds reading measurements off progress-check photos.
+	// Each is a vision call on up to six photos, and a person checks weekly at
+	// most, so a handful an hour covers retakes.
+	ProgressEstimates int
 }
 
 // Limits renders the config as the per-action budgets the quota package wants.
@@ -416,15 +421,16 @@ type QuotaConfig struct {
 // stays the single owner of that decision.
 func (q QuotaConfig) Limits() map[quota.Action]quota.Limit {
 	return map[quota.Action]quota.Limit{
-		quota.CoachMessage:    {PerWindow: q.CoachMessages},
-		quota.DocumentUpload:  {PerWindow: q.DocumentUploads},
-		quota.DocumentReindex: {PerWindow: q.DocumentReindexes},
-		quota.ReportGenerate:  {PerWindow: q.ReportGenerations},
-		quota.MediaAnalysis:   {PerWindow: q.MediaAnalyses},
-		quota.AccountExport:   {PerWindow: q.AccountExports},
-		quota.QuickCapture:    {PerWindow: q.QuickCaptures},
-		quota.VoiceCapture:    {PerWindow: q.VoiceCaptures},
-		quota.PlanImport:      {PerWindow: q.PlanImports},
+		quota.CoachMessage:     {PerWindow: q.CoachMessages},
+		quota.DocumentUpload:   {PerWindow: q.DocumentUploads},
+		quota.DocumentReindex:  {PerWindow: q.DocumentReindexes},
+		quota.ReportGenerate:   {PerWindow: q.ReportGenerations},
+		quota.MediaAnalysis:    {PerWindow: q.MediaAnalyses},
+		quota.AccountExport:    {PerWindow: q.AccountExports},
+		quota.QuickCapture:     {PerWindow: q.QuickCaptures},
+		quota.VoiceCapture:     {PerWindow: q.VoiceCaptures},
+		quota.PlanImport:       {PerWindow: q.PlanImports},
+		quota.ProgressEstimate: {PerWindow: q.ProgressEstimates},
 	}
 }
 
@@ -772,6 +778,7 @@ func Load() (*Config, error) {
 		{"QUOTA_QUICK_CAPTURES_PER_HOUR", 60, &cfg.Quota.QuickCaptures},
 		{"QUOTA_VOICE_CAPTURES_PER_HOUR", 40, &cfg.Quota.VoiceCaptures},
 		{"QUOTA_PLAN_IMPORTS_PER_HOUR", 20, &cfg.Quota.PlanImports},
+		{"QUOTA_PROGRESS_ESTIMATES_PER_HOUR", 10, &cfg.Quota.ProgressEstimates},
 		// Low because an export reads the whole account — every document out of
 		// the bucket included — and nobody needs their entire history four times
 		// in an hour.
@@ -788,6 +795,7 @@ func Load() (*Config, error) {
 		{"QUOTA_PRO_QUICK_CAPTURES_PER_HOUR", 600, &cfg.QuotaPro.QuickCaptures},
 		{"QUOTA_PRO_VOICE_CAPTURES_PER_HOUR", 400, &cfg.QuotaPro.VoiceCaptures},
 		{"QUOTA_PRO_PLAN_IMPORTS_PER_HOUR", 100, &cfg.QuotaPro.PlanImports},
+		{"QUOTA_PRO_PROGRESS_ESTIMATES_PER_HOUR", 30, &cfg.QuotaPro.ProgressEstimates},
 		// Not raised as far as the rest: an export reads every document in the
 		// account out of the bucket, and paying for the product does not make
 		// that cheap.

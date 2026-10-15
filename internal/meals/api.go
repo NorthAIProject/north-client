@@ -13,6 +13,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/meals/meal"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 )
 
 // API is nutrition for native clients: the web /nutrition pages' ingredient
@@ -331,7 +332,7 @@ func (a *API) searchIngredients(w http.ResponseWriter, r *http.Request) {
 	userID := auth.MustUser(r.Context()).ID
 	list, err := a.ingredients.Search(r.Context(), userID, r.URL.Query().Get("q"), 60)
 	if err != nil {
-		httpx.Error(w, err, "Ingredients could not be loaded.")
+		httpx.Error(w, localize(r.Context(), err), i18n.T(r.Context(), "nutrition.api.ingredients.load"))
 		return
 	}
 	out := IngredientList{Ingredients: make([]IngredientView, 0, len(list))}
@@ -352,20 +353,20 @@ func (a *API) createIngredient(w http.ResponseWriter, r *http.Request) {
 		Per100g: Macros(req.Per100g),
 	})
 	if err != nil {
-		httpx.Error(w, err, "The ingredient could not be saved.")
+		httpx.Error(w, localize(r.Context(), err), i18n.T(r.Context(), "nutrition.api.ingredient.save"))
 		return
 	}
 	httpx.WriteJSON(w, http.StatusCreated, projectIngredient(in, userID))
 }
 
 func (a *API) deleteIngredient(w http.ResponseWriter, r *http.Request) {
-	a.remove(w, r, "ingredientID", a.ingredients.Delete, "The ingredient could not be deleted.")
+	a.remove(w, r, "ingredientID", a.ingredients.Delete, "nutrition.api.ingredient.delete")
 }
 
 func (a *API) planOptions(w http.ResponseWriter, r *http.Request) {
 	target, err := a.plans.ActiveTarget(r.Context(), auth.MustUser(r.Context()).ID)
 	if err != nil {
-		httpx.Error(w, err, "Meal plan options could not be loaded.")
+		httpx.Error(w, localize(r.Context(), err), i18n.T(r.Context(), "nutrition.api.options.load"))
 		return
 	}
 	out := PlanOptions{Target: macrosViewPtr(target), MaxDays: meal.MaxDays}
@@ -387,7 +388,7 @@ func (a *API) planOptions(w http.ResponseWriter, r *http.Request) {
 func (a *API) listPlans(w http.ResponseWriter, r *http.Request) {
 	plans, err := a.plans.ListPlans(r.Context(), auth.MustUser(r.Context()).ID)
 	if err != nil {
-		httpx.Error(w, err, "Meal plans could not be loaded.")
+		httpx.Error(w, localize(r.Context(), err), i18n.T(r.Context(), "nutrition.api.plans.load"))
 		return
 	}
 	out := PlanList{Plans: make([]PlanSummary, 0, len(plans))}
@@ -413,7 +414,7 @@ func (a *API) createPlan(w http.ResponseWriter, r *http.Request) {
 		DayCount: req.DayCount, Weekdays: weekdays,
 	}, nil, false)
 	if err != nil {
-		httpx.Error(w, err, "The meal plan could not be saved.")
+		httpx.Error(w, localize(r.Context(), err), i18n.T(r.Context(), "nutrition.api.plan.save"))
 		return
 	}
 	a.writePlan(w, r, http.StatusCreated, plan.ID)
@@ -442,14 +443,14 @@ func (a *API) updatePlan(w http.ResponseWriter, r *http.Request) {
 		ConfirmReset: req.ConfirmReset, ConfirmOverage: req.ConfirmOverage,
 	})
 	if err != nil {
-		writeChangeError(w, err, "The meal plan could not be saved.")
+		writeChangeError(w, r, err, i18n.T(r.Context(), "nutrition.api.plan.save"))
 		return
 	}
 	a.writePlan(w, r, http.StatusOK, id)
 }
 
 func (a *API) deletePlan(w http.ResponseWriter, r *http.Request) {
-	a.remove(w, r, "planID", a.plans.DeletePlan, "The meal plan could not be deleted.")
+	a.remove(w, r, "planID", a.plans.DeletePlan, "nutrition.api.plan.delete")
 }
 
 func (a *API) addDay(w http.ResponseWriter, r *http.Request) {
@@ -467,7 +468,7 @@ func (a *API) addDay(w http.ResponseWriter, r *http.Request) {
 		weekday = &wd
 	}
 	if _, err := a.plans.AddDay(r.Context(), id, auth.MustUser(r.Context()).ID, weekday); err != nil {
-		httpx.Error(w, err, "The day could not be added.")
+		httpx.Error(w, localize(r.Context(), err), i18n.T(r.Context(), "nutrition.api.day.add"))
 		return
 	}
 	a.writePlan(w, r, http.StatusCreated, id)
@@ -485,21 +486,21 @@ func (a *API) updateDay(w http.ResponseWriter, r *http.Request) {
 	userID := auth.MustUser(r.Context()).ID
 	planID, err := a.plans.PlanIDOfDay(r.Context(), id, userID)
 	if err != nil {
-		httpx.Error(w, err, "The day could not be saved.")
+		httpx.Error(w, localize(r.Context(), err), i18n.T(r.Context(), "nutrition.api.day.save"))
 		return
 	}
 	err = a.plans.UpdateDay(r.Context(), id, userID, meal.DayOverride{
 		CarbType: req.CarbType, CarbG: req.CarbG, ProteinG: req.ProteinG, FatG: req.FatG,
 	}, req.ConfirmOverage)
 	if err != nil {
-		writeChangeError(w, err, "The day could not be saved.")
+		writeChangeError(w, r, err, i18n.T(r.Context(), "nutrition.api.day.save"))
 		return
 	}
 	a.writePlan(w, r, http.StatusOK, planID)
 }
 
 func (a *API) removeDay(w http.ResponseWriter, r *http.Request) {
-	a.remove(w, r, "dayID", a.plans.RemoveDay, "The day could not be removed.")
+	a.remove(w, r, "dayID", a.plans.RemoveDay, "nutrition.api.day.remove")
 }
 
 func (a *API) addMeal(w http.ResponseWriter, r *http.Request) {
@@ -513,7 +514,7 @@ func (a *API) addMeal(w http.ResponseWriter, r *http.Request) {
 	}
 	added, err := a.plans.AddMeal(r.Context(), id, auth.MustUser(r.Context()).ID, req.Name)
 	if err != nil {
-		httpx.Error(w, err, "The meal could not be added.")
+		httpx.Error(w, localize(r.Context(), err), i18n.T(r.Context(), "nutrition.api.meal.add"))
 		return
 	}
 	a.writePlan(w, r, http.StatusCreated, added.MealPlanID)
@@ -534,18 +535,18 @@ func (a *API) addOption(w http.ResponseWriter, r *http.Request) {
 	userID := auth.MustUser(r.Context()).ID
 	planID, err := a.plans.PlanIDOfMeal(r.Context(), id, userID)
 	if err != nil {
-		httpx.Error(w, err, "The option could not be added.")
+		httpx.Error(w, localize(r.Context(), err), i18n.T(r.Context(), "nutrition.api.option.add"))
 		return
 	}
 	if _, err = a.plans.AddOption(r.Context(), userID, planID, id, req.Label); err != nil {
-		httpx.Error(w, err, "The option could not be added.")
+		httpx.Error(w, localize(r.Context(), err), i18n.T(r.Context(), "nutrition.api.option.add"))
 		return
 	}
 	a.writePlan(w, r, http.StatusCreated, planID)
 }
 
 func (a *API) removeMeal(w http.ResponseWriter, r *http.Request) {
-	a.remove(w, r, "mealID", a.plans.RemoveMeal, "The meal could not be removed.")
+	a.remove(w, r, "mealID", a.plans.RemoveMeal, "nutrition.api.meal.remove")
 }
 
 func (a *API) addMealIngredient(w http.ResponseWriter, r *http.Request) {
@@ -560,7 +561,7 @@ func (a *API) addMealIngredient(w http.ResponseWriter, r *http.Request) {
 	added, err := a.plans.AddIngredient(r.Context(), id, auth.MustUser(r.Context()).ID,
 		MealIngredientInput{IngredientID: req.IngredientID, QuantityGrams: req.QuantityGrams, Optional: req.Optional}, req.ConfirmOverage)
 	if err != nil {
-		writeChangeError(w, err, "The ingredient could not be added.")
+		writeChangeError(w, r, err, i18n.T(r.Context(), "nutrition.api.ingredient.add"))
 		return
 	}
 	httpx.WriteJSON(w, http.StatusCreated, projectMealIngredient(added))
@@ -581,7 +582,7 @@ func (a *API) addMealIngredients(w http.ResponseWriter, r *http.Request) {
 	}
 	added, err := a.plans.AddIngredients(r.Context(), id, auth.MustUser(r.Context()).ID, lines, req.ConfirmOverage)
 	if err != nil {
-		writeChangeError(w, err, "The ingredients could not be added.")
+		writeChangeError(w, r, err, i18n.T(r.Context(), "nutrition.api.ingredients.add"))
 		return
 	}
 	out := MealPortionList{Portions: make([]MealIngredientView, 0, len(added))}
@@ -605,11 +606,11 @@ func (a *API) setMealIngredientOptional(w http.ResponseWriter, r *http.Request) 
 	userID := auth.MustUser(r.Context()).ID
 	planID, err := a.plans.PlanIDOfMealIngredient(r.Context(), id, userID)
 	if err != nil {
-		httpx.Error(w, err, "The ingredient could not be changed.")
+		httpx.Error(w, localize(r.Context(), err), i18n.T(r.Context(), "nutrition.api.ingredient.change"))
 		return
 	}
 	if _, err := a.plans.SetIngredientOptional(r.Context(), id, userID, req.Optional, req.ConfirmOverage); err != nil {
-		writeChangeError(w, err, "The ingredient could not be changed.")
+		writeChangeError(w, r, err, i18n.T(r.Context(), "nutrition.api.ingredient.change"))
 		return
 	}
 	a.writePlan(w, r, http.StatusOK, planID)
@@ -629,14 +630,14 @@ func (a *API) setMealOptional(w http.ResponseWriter, r *http.Request) {
 	userID := auth.MustUser(r.Context()).ID
 	plan, err := a.plans.SetMealOptional(r.Context(), id, userID, req.Optional, req.ConfirmOverage)
 	if err != nil {
-		writeChangeError(w, err, "The meal could not be changed.")
+		writeChangeError(w, r, err, i18n.T(r.Context(), "nutrition.api.meal.change"))
 		return
 	}
 	a.writePlan(w, r, http.StatusOK, plan.ID)
 }
 
 func (a *API) removeMealIngredient(w http.ResponseWriter, r *http.Request) {
-	a.remove(w, r, "mealIngredientID", a.plans.RemoveIngredient, "The ingredient could not be removed.")
+	a.remove(w, r, "mealIngredientID", a.plans.RemoveIngredient, "nutrition.api.ingredient.remove")
 }
 
 func (a *API) showLog(w http.ResponseWriter, r *http.Request) {
@@ -652,7 +653,7 @@ func (a *API) logIngredient(w http.ResponseWriter, r *http.Request) {
 	if _, err := a.foodLog.LogIngredient(r.Context(), user.ID, LogIngredientInput{
 		IngredientID: req.IngredientID, QuantityGrams: req.QuantityGrams, LogDate: time.Now().In(user.Location()),
 	}); err != nil {
-		httpx.Error(w, err, "That could not be logged.")
+		httpx.Error(w, localize(r.Context(), err), i18n.T(r.Context(), "nutrition.api.log"))
 		return
 	}
 	a.writeLog(w, r, http.StatusCreated)
@@ -665,7 +666,7 @@ func (a *API) logMeal(w http.ResponseWriter, r *http.Request) {
 	}
 	user := auth.MustUser(r.Context())
 	if _, err := a.foodLog.LogMeal(r.Context(), user.ID, LogMealInput{MealID: req.MealID, LogDate: time.Now().In(user.Location())}); err != nil {
-		httpx.Error(w, err, "The meal could not be logged.")
+		httpx.Error(w, localize(r.Context(), err), i18n.T(r.Context(), "nutrition.api.meal.log"))
 		return
 	}
 	a.writeLog(w, r, http.StatusCreated)
@@ -677,7 +678,7 @@ func (a *API) deleteLogEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := a.foodLog.Delete(r.Context(), id, auth.MustUser(r.Context()).ID); err != nil {
-		httpx.Error(w, err, "The entry could not be deleted.")
+		httpx.Error(w, localize(r.Context(), err), i18n.T(r.Context(), "nutrition.api.entry.delete"))
 		return
 	}
 	a.writeLog(w, r, http.StatusOK)
@@ -690,7 +691,7 @@ func (a *API) writeLog(w http.ResponseWriter, r *http.Request, status int) {
 	today := time.Now().In(user.Location())
 	entries, err := a.foodLog.Day(r.Context(), user.ID, today)
 	if err != nil {
-		httpx.Error(w, err, "The food log could not be loaded.")
+		httpx.Error(w, localize(r.Context(), err), i18n.T(r.Context(), "nutrition.api.log.load"))
 		return
 	}
 	out := FoodLog{Date: today.Format("2006-01-02"), Entries: make([]FoodLogEntryView, 0, len(entries))}
@@ -707,16 +708,16 @@ func (a *API) writeLog(w http.ResponseWriter, r *http.Request, status int) {
 	progress, err := a.progress.ForDay(r.Context(), user.ID, today)
 	switch {
 	case err == nil:
-		p := &NutritionProgress{Goal: MacrosView(progress.Goal), Logged: MacrosView(progress.Logged), Summary: progress.Summary()}
+		p := &NutritionProgress{Goal: MacrosView(progress.Goal), Logged: MacrosView(progress.Logged), Summary: progress.SummaryIn(r.Context())}
 		if rec, recErr := a.recommend.Recommend(r.Context(), user.ID); recErr == nil {
-			p.Recommendation = rec.Message
+			p.Recommendation = i18n.T(r.Context(), rec.Key)
 		} else if !apperr.Is(recErr, apperr.ErrNotFound) {
-			httpx.Error(w, recErr, "The food log could not be loaded.")
+			httpx.Error(w, localize(r.Context(), recErr), i18n.T(r.Context(), "nutrition.api.log.load"))
 			return
 		}
 		out.Progress = p
 	case !apperr.Is(err, apperr.ErrNotFound):
-		httpx.Error(w, err, "The food log could not be loaded.")
+		httpx.Error(w, localize(r.Context(), err), i18n.T(r.Context(), "nutrition.api.log.load"))
 		return
 	}
 	httpx.WriteJSON(w, status, out)
@@ -726,12 +727,12 @@ func (a *API) writePlan(w http.ResponseWriter, r *http.Request, status int, id u
 	userID := auth.MustUser(r.Context()).ID
 	plan, err := a.plans.GetPlan(r.Context(), id, userID)
 	if err != nil {
-		httpx.Error(w, err, "The meal plan could not be loaded.")
+		httpx.Error(w, localize(r.Context(), err), i18n.T(r.Context(), "nutrition.api.plan.load"))
 		return
 	}
 	target, err := a.plans.ActiveTarget(r.Context(), userID)
 	if err != nil {
-		httpx.Error(w, err, "The meal plan could not be loaded.")
+		httpx.Error(w, localize(r.Context(), err), i18n.T(r.Context(), "nutrition.api.plan.load"))
 		return
 	}
 	httpx.WriteJSON(w, status, projectPlan(plan, target))
@@ -739,19 +740,20 @@ func (a *API) writePlan(w http.ResponseWriter, r *http.Request, status int, id u
 
 // writeChangeError answers a refused change: a 409 MacroOverage when it would
 // take a day over its target, the usual error body otherwise.
-func writeChangeError(w http.ResponseWriter, err error, message string) {
+func writeChangeError(w http.ResponseWriter, r *http.Request, err error, message string) {
 	var over *OverageError
 	if !errors.As(err, &over) {
-		httpx.Error(w, err, message)
+		httpx.Error(w, localize(r.Context(), err), message)
 		return
 	}
-	httpx.WriteJSON(w, http.StatusConflict, ProjectOverage(over))
+	httpx.WriteJSON(w, http.StatusConflict, ProjectOverage(r.Context(), over))
 }
 
-// ProjectOverage is the 409 body for a refused change. Exported so plan
-// import answers an over-target plan in the same shape as the plan pages.
-func ProjectOverage(over *OverageError) MacroOverage {
-	out := MacroOverage{Message: over.Error(), CanConfirm: over.Verdict.CanConfirm, Days: make([]DayOverageView, 0, len(over.Verdict.Over))}
+// ProjectOverage is the 409 body for a refused change, its message in ctx's
+// language. Exported so plan import answers an over-target plan in the same
+// shape as the plan pages.
+func ProjectOverage(ctx context.Context, over *OverageError) MacroOverage {
+	out := MacroOverage{Message: over.MessageIn(ctx), CanConfirm: over.Verdict.CanConfirm, Days: make([]DayOverageView, 0, len(over.Verdict.Over))}
 	for _, d := range over.Verdict.Over {
 		out.Days = append(out.Days, DayOverageView{
 			DayID: d.DayID, Weekday: int(d.Weekday),
@@ -762,14 +764,14 @@ func ProjectOverage(over *OverageError) MacroOverage {
 }
 
 func (a *API) remove(w http.ResponseWriter, r *http.Request, param string,
-	del func(ctx context.Context, id, userID uuid.UUID) error, message string,
+	del func(ctx context.Context, id, userID uuid.UUID) error, messageKey string,
 ) {
 	id, ok := pathID(w, r, param)
 	if !ok {
 		return
 	}
 	if err := del(r.Context(), id, auth.MustUser(r.Context()).ID); err != nil {
-		httpx.Error(w, err, message)
+		httpx.Error(w, err, i18n.T(r.Context(), messageKey))
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -859,7 +861,7 @@ func macrosViewPtr(m *Macros) *MacrosView {
 func pathID(w http.ResponseWriter, r *http.Request, name string) (uuid.UUID, bool) {
 	id, err := uuid.Parse(chi.URLParam(r, name))
 	if err != nil {
-		httpx.Error(w, apperr.ErrNotFound, "Not found.")
+		httpx.Error(w, apperr.ErrNotFound, i18n.T(r.Context(), "nutrition.err.notfound"))
 		return uuid.Nil, false
 	}
 	return id, true
@@ -867,7 +869,7 @@ func pathID(w http.ResponseWriter, r *http.Request, name string) (uuid.UUID, boo
 
 func readJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
 	if err := httpx.ReadJSON(w, r, dst, httpx.ReadOptions{MaxBytes: 16 << 10}); err != nil {
-		httpx.Error(w, err, "The request body could not be read.")
+		httpx.Error(w, localize(r.Context(), err), i18n.T(r.Context(), "nutrition.api.body"))
 		return false
 	}
 	return true

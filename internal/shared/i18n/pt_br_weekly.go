@@ -23,4 +23,13 @@ var portugueseBrazilianWeekly = map[string]string{
 	"weekly.volume.deload":      "Descarga",
 	"weekly.volume.deload.hint": "Cerca de 60% das séries, para recuperar.",
 	"weekly.save":               "Salvar a semana",
+
+	"weekly.err.priority.long": "Cada prioridade precisa ter menos de 120 caracteres.",
+	"weekly.err.priority.many": "Escolha no máximo três prioridades.",
+	"weekly.err.volume":        "Escolha Manter, Aumentar ou Descarga.",
+	"weekly.err.read":          "Não foi possível ler a solicitação.",
+	"weekly.err.generic":       "Algo deu errado.",
+	"weekly.api.review":        "Não foi possível carregar a revisão semanal.",
+	"weekly.api.body":          "Não foi possível ler o corpo da solicitação.",
+	"weekly.api.save":          "Não foi possível salvar o foco da semana.",
 }

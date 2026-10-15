@@ -2,7 +2,6 @@ package insights
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"time"
 
@@ -153,16 +152,22 @@ func (r RecoveryData) SentenceIn(ctx context.Context) (string, bool) {
 }
 
 // Why is what pulled the recovery off its usual: the sentences of the
-// signals outside their usual range, or "" when none are.
+// signals outside their usual range, or "" when none are. English; the
+// lighter-day offer, which a person reads, asks WhyIn.
 func (r RecoveryData) Why() string {
+	return r.WhyIn(context.Background())
+}
+
+// WhyIn is Why in ctx's language.
+func (r RecoveryData) WhyIn(ctx context.Context) string {
 	var parts []string
 	for _, sig := range r.Signals {
-		v := usualView(context.Background(), sig.Metric, sig.Usual)
-		if v.State == stat.Usual {
+		v := usualView(ctx, sig.Metric, sig.Usual)
+		if v.State != stat.Above && v.State != stat.Below {
 			continue
 		}
-		parts = append(parts, fmt.Sprintf("%s is %s your usual: %s on %s, usually %s–%s.",
-			sig.Metric.Label, v.State, formatMetric(sig.Metric, v.Latest), v.Day.Format("Mon 2 Jan"), v.Low, v.High))
+		parts = append(parts, i18n.Tf(ctx, "insights.recovery.why."+v.State,
+			metricLabel(ctx, sig.Metric), formatMetric(sig.Metric, v.Latest), i18n.Date(ctx, v.Day, "Mon 2 Jan"), v.Low, v.High))
 	}
 	return strings.Join(parts, " ")
 }

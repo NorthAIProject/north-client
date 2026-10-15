@@ -114,6 +114,23 @@ const (
 	// a goal achieved, a milestone completed. Whether accounts that hit the
 	// first one retain better is the question internal/moments exists to ask.
 	EventMomentShown = "moment_shown"
+
+	// EventAppearanceChanged is somebody choosing light, dark or system, on
+	// whichever surface. Not on the activation path: it answers which default
+	// the web should have, and whether light mode is worth the audit. It also
+	// sets the appearance as a person property, which is the only way the iOS
+	// choice reaches PostHog — the app carries no SDK.
+	EventAppearanceChanged = "appearance_changed"
+)
+
+// Surfaces for EventAppearanceChanged: where the choice was made.
+const (
+	// AppearanceFromSettings is the web settings page.
+	AppearanceFromSettings = "web_settings"
+	// AppearanceFromSwitcher is the cycling button on the public pages.
+	AppearanceFromSwitcher = "web_switcher"
+	// AppearanceFromIOS is the native API, whose only client is the iOS app.
+	AppearanceFromIOS = "ios"
 )
 
 // Sources for EventSourceConnected.
@@ -296,6 +313,17 @@ func (p *Funnel) MCPToolCalled(ctx context.Context, userID uuid.UUID, tool, issu
 // internal/moments kinds.
 func (p *Funnel) MomentShown(ctx context.Context, userID uuid.UUID, kind string) {
 	p.capture(ctx, userID, EventMomentShown, posthog.Properties{"kind": kind})
+}
+
+// AppearanceChanged records an appearance that actually changed. Callers fire
+// it only on a change, so a profile saved with the same value is not counted
+// as a choice. surface is one of the AppearanceFrom constants.
+func (p *Funnel) AppearanceChanged(ctx context.Context, userID uuid.UUID, appearance, surface string) {
+	p.capture(ctx, userID, EventAppearanceChanged, posthog.Properties{
+		"appearance": appearance,
+		"surface":    surface,
+		"$set":       map[string]any{"appearance": appearance},
+	})
 }
 
 // captureAnon records an event that has no account behind it yet.

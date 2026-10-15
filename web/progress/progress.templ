@@ -1,0 +1,407 @@
+package progress
+
+import (
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/alert"
+	"github.com/NorthAIProject/north-client/web/shared/ui/badge"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/dialog"
+	"github.com/NorthAIProject/north-client/web/shared/ui/form"
+	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
+	"github.com/NorthAIProject/north-client/web/shared/ui/input"
+	"github.com/NorthAIProject/north-client/web/shared/ui/label"
+	"github.com/NorthAIProject/north-client/web/shared/ui/radio"
+)
+
+var photoScript = templ.NewOnceHandle()
+
+templ Page(user users.User, data Data) {
+	@layout.App(i18n.T(ctx, "progress.title"), user, layout.BuildNav(ctx, "/app/progress")) {
+		@dialog.Script()
+		@input.Script()
+		@label.Script()
+		@photoScript.Once() {
+			<script src="/assets/js/shared/progress-photo.js"></script>
+		}
+		<div class="mx-auto w-full max-w-3xl space-y-6 p-6 md:p-8" data-testid="progress-page">
+			<header>
+				@ui.MonoLabel(i18n.T(ctx, "progress.label"))
+				<h1 class="mt-2 text-2xl font-medium tracking-tight">{ i18n.T(ctx, "progress.title") }</h1>
+				<p class="text-muted-foreground mt-1 text-sm">{ i18n.T(ctx, "progress.intro") }</p>
+			</header>
+			if data.Due {
+				@alert.Alert(alert.Props{Attributes: templ.Attributes{"data-testid": "progress-due"}}) {
+					@alert.Description() {
+						{ i18n.T(ctx, "progress.due") }
+					}
+				}
+			}
+			@newCheck(data)
+			@reminder(data)
+			@history(data)
+		</div>
+	}
+}
+
+// reminder is the cadence. Radios rather than a selectbox: three choices and
+// off read at a glance, and the form is a plain POST.
+templ reminder(data Data) {
+	@card.Card() {
+		@card.Header() {
+			@card.Title() {
+				{ i18n.T(ctx, "progress.reminder") }
+			}
+			@card.Description() {
+				if data.NextDueOn != "" {
+					{ i18n.Tf(ctx, "progress.reminder.next", data.NextDueOn) }
+				} else {
+					{ i18n.T(ctx, "progress.reminder.none") }
+				}
+			}
+		}
+		@card.Content() {
+			<form method="post" action="/app/progress/schedule" class="space-y-4" data-testid="progress-schedule">
+				@ui.CSRFInput()
+				<fieldset class="flex flex-wrap gap-4">
+					<legend class="sr-only">{ i18n.T(ctx, "progress.reminder") }</legend>
+					for _, c := range []string{"weekly", "biweekly", "monthly", ""} {
+						<div class="flex items-center gap-2">
+							@radio.Radio(radio.Props{ID: "cadence-" + cadenceID(c), Name: "cadence", Value: cadenceValue(c), Checked: data.Cadence == c})
+							@label.Label(label.Props{For: "cadence-" + cadenceID(c)}) {
+								{ i18n.T(ctx, "progress.cadence." + cadenceID(c)) }
+							}
+						</div>
+					}
+				</fieldset>
+				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Size: button.SizeSm}) {
+					{ i18n.T(ctx, "progress.reminder.save") }
+				}
+			</form>
+		}
+	}
+}
+
+// newCheck is one multipart form: photos and numbers save together.
+templ newCheck(data Data) {
+	@card.Card() {
+		@card.Header() {
+			@card.Title() {
+				{ i18n.T(ctx, "progress.new") }
+			}
+			@card.Description() {
+				{ i18n.T(ctx, "progress.new.help") }
+			}
+		}
+		@card.Content() {
+			<form method="post" action="/app/progress" enctype="multipart/form-data" class="space-y-6" data-testid="progress-form" x-data="{ saving: false }" @submit="saving = true">
+				@ui.CSRFInput()
+				<div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+					for _, pose := range Poses {
+						@poseSlot(pose.Name, pose.Required, data.Last)
+					}
+				</div>
+				<p class="text-muted-foreground flex items-center gap-1.5 text-xs">
+					@icon.Icon("lock")(icon.Props{Class: "size-3.5"})
+					{ i18n.T(ctx, "progress.private") }
+				</p>
+				@Fields(data.Today, data.Assist, data.Form)
+				@button.Button(button.Props{
+					Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90",
+					Attributes: templ.Attributes{"x-bind:disabled": "saving", "data-testid": "progress-save"},
+				}) {
+					<span x-show="!saving">{ i18n.T(ctx, "progress.save") }</span>
+					<span x-show="saving" x-cloak>{ i18n.T(ctx, "progress.saving") }</span>
+				}
+			</form>
+		}
+	}
+}
+
+// Fields is the numbers half of the new-check form: the estimate button, the
+// date and measurements, and their errors. A component of its own because an
+// estimate answers with it: swapping only this part keeps the chosen photos,
+// which a file input cannot be handed back.
+templ Fields(today string, assist Assist, f Form) {
+	<div id="progress-fields" class="space-y-4" data-testid="progress-fields">
+		if assist.Available {
+			@estimateButton(assist)
+		}
+		if f.EstimateError != "" {
+			@alert.Alert(alert.Props{Variant: alert.VariantDestructive, Attributes: templ.Attributes{"data-testid": "progress-estimate-error"}}) {
+				@alert.Description() {
+					{ f.EstimateError }
+				}
+			}
+		}
+		if f.Estimate != nil {
+			@estimateNote(*f.Estimate)
+		}
+		<div class="grid grid-cols-2 gap-4 sm:grid-cols-3">
+			@form.Item() {
+				@label.Label(label.Props{For: "measured_on"}) {
+					{ i18n.T(ctx, "progress.date") }
+				}
+				@input.Input(input.Props{
+					ID: "measured_on", Name: "measured_on", Type: input.TypeDate,
+					Value: orDefault(f.MeasuredOn, today), Attributes: templ.Attributes{"max": today},
+					HasError: f.fieldError("measured_on") != "",
+				})
+			}
+			for _, m := range f.measurements() {
+				@form.Item() {
+					@label.Label(label.Props{For: "m_" + m.Name}) {
+						{ i18n.T(ctx, m.Key) } <span class="text-muted-foreground">({ m.Unit })</span>
+					}
+					@input.Input(input.Props{
+						ID: "m_" + m.Name, Name: m.Name, Type: input.TypeNumber, Value: m.Value,
+						Attributes: templ.Attributes{"step": "0.1", "min": "0", "inputmode": "decimal"},
+						HasError:   f.fieldError(m.Field) != "",
+					})
+					if m.Name == "waist" {
+						@form.Description() {
+							{ i18n.T(ctx, "progress.m.waist.help") }
+						}
+					}
+				}
+			}
+		</div>
+		// Plain hidden inputs, like ui.CSRFInput: no component draws nothing.
+		<input type="hidden" name="source" value={ f.Source }/>
+		<input type="hidden" name="assist_confidence" value={ f.AssistConfidence }/>
+		<input type="hidden" name="assist_notes" value={ f.AssistNotes }/>
+		for _, msg := range formErrors(f) {
+			@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+				{ msg }
+			}
+		}
+	</div>
+}
+
+// estimateButton posts the whole form, photos included, and swaps only the
+// fields. The provider is named before anything is sent.
+templ estimateButton(assist Assist) {
+	<div class="border-hairline bg-surface space-y-2 rounded-md border p-3" data-testid="progress-assist">
+		@button.Button(button.Props{
+			Type: button.TypeButton, Variant: button.VariantOutline, Size: button.SizeSm, Class: "group",
+			Attributes: templ.Attributes{
+				"hx-post":     "/app/progress/estimate",
+				"hx-encoding": "multipart/form-data",
+				"hx-include":  "closest form",
+				"hx-target":   "#progress-fields",
+				"hx-swap":     "outerHTML",
+				"data-testid": "progress-estimate",
+			},
+		}) {
+			@icon.Icon("sparkles")(icon.Props{Class: "size-4"})
+			<span class="group-[.htmx-request]:hidden">{ i18n.T(ctx, "progress.estimate") }</span>
+			<span class="hidden group-[.htmx-request]:inline">{ i18n.T(ctx, "progress.estimate.working") }</span>
+		}
+		<p class="text-muted-foreground text-xs" data-testid="progress-assist-consent">
+			if assist.Own {
+				{ i18n.Tf(ctx, "progress.estimate.consent.own", assist.Label) }
+			} else {
+				{ i18n.Tf(ctx, "progress.estimate.consent", assist.Label) }
+			}
+		</p>
+	</div>
+}
+
+// estimateNote says what the estimate did. Labelled an estimate every time:
+// the person is about to save these numbers as theirs.
+templ estimateNote(n EstimateNote) {
+	@alert.Alert(alert.Props{Attributes: templ.Attributes{"data-testid": "progress-estimate-note", "role": "status"}}) {
+		// Wraps rather than clamping to one line: on a phone the clamp cut off
+		// the confidence, which is the part of the title that matters.
+		@alert.Title(alert.TitleProps{Class: "line-clamp-none"}) {
+			{ i18n.T(ctx, "progress.estimate.label") } · { i18n.T(ctx, "progress.confidence." + n.Confidence) }
+		}
+		@alert.Description() {
+			if n.Notes != "" {
+				<p>{ n.Notes }</p>
+			}
+			if n.Filled > 0 {
+				<p>{ i18n.T(ctx, "progress.estimate.filled") }</p>
+			} else if n.Kept == 0 {
+				<p>{ i18n.T(ctx, "progress.estimate.none") }</p>
+			}
+			if n.Kept > 0 {
+				<p>{ i18n.T(ctx, "progress.estimate.kept") }</p>
+			}
+		}
+	}
+}
+
+// poseSlot is one pose: the last check's photo for comparison, then the new
+// one. The file input is native and hidden inside its label: templUI's Input
+// draws its own field chrome and cannot be the whole tap target, and
+// capture="environment" opens the rear camera on a phone.
+templ poseSlot(pose string, required bool, last *Check) {
+	<div class="space-y-2" x-data="northProgressPhoto()" data-testid={ "pose-" + pose }>
+		<p class="text-sm font-medium">
+			{ i18n.T(ctx, "progress.pose." + pose) }
+			if !required {
+				<span class="text-muted-foreground font-normal">{ i18n.T(ctx, "progress.optional") }</span>
+			}
+		</p>
+		<div class="grid grid-cols-2 gap-2">
+			<figure class="border-hairline bg-surface aspect-[3/4] overflow-hidden rounded-md border">
+				if p, ok := lastPhoto(last, pose); ok {
+					<img src={ p.URL } alt={ i18n.T(ctx, "progress.last") } class="size-full object-cover" loading="lazy"/>
+				} else {
+					<div class="text-muted-foreground flex size-full items-center justify-center p-2 text-center text-[11px]">{ i18n.T(ctx, "progress.last.none") }</div>
+				}
+			</figure>
+			<label
+				for={ "photo-" + pose }
+				class="border-hairline bg-surface hover:border-signal relative flex aspect-[3/4] cursor-pointer items-center justify-center overflow-hidden rounded-md border border-dashed transition-colors"
+			>
+				<img x-show="preview" x-bind:src="preview" alt="" class="absolute inset-0 size-full object-cover" x-cloak/>
+				<span x-show="!preview" class="text-muted-foreground flex flex-col items-center gap-1 p-2 text-center text-[11px]">
+					@icon.Icon("camera")(icon.Props{Class: "size-4"})
+					<span x-show="!busy">{ i18n.T(ctx, "progress.photo.add") }</span>
+					<span x-show="busy" x-cloak>{ i18n.T(ctx, "progress.photo.preparing") }</span>
+				</span>
+				<input
+					id={ "photo-" + pose }
+					type="file"
+					name={ pose }
+					accept="image/*"
+					capture="environment"
+					class="sr-only"
+					x-ref="file"
+					@change="pick($event)"
+				/>
+			</label>
+		</div>
+		<div class="text-muted-foreground flex justify-between text-[11px]">
+			<span>{ i18n.T(ctx, "progress.last") }</span>
+			<span>{ i18n.T(ctx, "progress.now") }</span>
+		</div>
+	</div>
+}
+
+templ history(data Data) {
+	<section class="space-y-3" aria-labelledby="progress-history" data-testid="progress-history">
+		<h2 id="progress-history" class="text-lg font-medium">{ i18n.T(ctx, "progress.history") }</h2>
+		if len(data.Checks) == 0 {
+			@ui.Empty(ui.EmptyProps{Title: i18n.T(ctx, "progress.history.empty"), Body: i18n.T(ctx, "progress.history.empty.help")})
+		}
+		for _, c := range data.Checks {
+			@checkRow(c)
+		}
+	</section>
+}
+
+templ checkRow(c Check) {
+	@card.Card(card.Props{Attributes: templ.Attributes{"data-testid": "progress-check"}}) {
+		@card.Content(card.ContentProps{Class: "space-y-3 pt-6"}) {
+			<div class="flex items-center justify-between gap-2">
+				<p class="font-medium">{ c.Date }</p>
+				<div class="flex items-center gap-2">
+					if c.Assisted {
+						@badge.Badge(badge.Props{Variant: badge.VariantOutline}) {
+							{ i18n.T(ctx, "progress.assisted") }
+						}
+					}
+					@deleteCheck(c.ID)
+				</div>
+			</div>
+			if len(c.Chips) > 0 {
+				<div class="flex flex-wrap gap-2">
+					for _, chip := range c.Chips {
+						<span class="border-hairline bg-surface rounded-lg border px-2 py-1 text-sm tabular-nums">
+							<span class="text-muted-foreground mr-1 text-xs">{ i18n.T(ctx, chip.Key) }</span>{ chip.Value }
+							if chip.Delta != "" {
+								<span class="text-muted-foreground ml-1 text-xs">{ chip.Delta }</span>
+							}
+							if chip.Carried {
+								<span class="text-muted-foreground ml-1 text-xs">· { i18n.T(ctx, "progress.carried") }</span>
+							}
+						</span>
+					}
+				</div>
+			}
+			if len(c.Photos) > 0 {
+				<div class="flex gap-2">
+					for _, p := range c.Photos {
+						<a href={ templ.SafeURL(p.URL) } target="_blank" rel="noopener" class="border-hairline block w-20 overflow-hidden rounded-md border">
+							<img src={ p.URL } alt={ i18n.T(ctx, "progress.pose."+p.Pose) } class="aspect-[3/4] w-full object-cover" loading="lazy"/>
+						</a>
+					}
+				</div>
+			}
+		}
+	}
+}
+
+templ deleteCheck(id string) {
+	@dialog.Dialog(dialog.Props{ID: "delete-" + id}) {
+		@dialog.Trigger(dialog.TriggerProps{For: "delete-" + id}) {
+			@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Attributes: templ.Attributes{"aria-label": i18n.T(ctx, "progress.delete")}}) {
+				@icon.Icon("trash-2")(icon.Props{Class: "size-4"})
+			}
+		}
+		@dialog.Content(dialog.ContentProps{Class: "sm:max-w-sm"}) {
+			@dialog.Header() {
+				@dialog.Title() {
+					{ i18n.T(ctx, "progress.delete.title") }
+				}
+				@dialog.Description() {
+					{ i18n.T(ctx, "progress.delete.body") }
+				}
+			}
+			@dialog.Footer() {
+				@dialog.Close() {
+					@button.Button(button.Props{Variant: button.VariantOutline}) {
+						{ i18n.T(ctx, "progress.cancel") }
+					}
+				}
+				<form method="post" action={ templ.SafeURL("/app/progress/" + id + "/delete") }>
+					@ui.CSRFInput()
+					@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantDestructive}) {
+						{ i18n.T(ctx, "progress.delete") }
+					}
+				</form>
+			}
+		}
+	}
+}
+
+func cadenceID(c string) string {
+	if c == "" {
+		return "off"
+	}
+	return c
+}
+
+// cadenceValue is what the radio posts; off posts an empty cadence.
+func cadenceValue(c string) string { return c }
+
+func orDefault(v, fallback string) string {
+	if v == "" {
+		return fallback
+	}
+	return v
+}
+
+func lastPhoto(last *Check, pose string) (Photo, bool) {
+	if last == nil {
+		return Photo{}, false
+	}
+	return last.Photo(pose)
+}
+
+// formErrors lists the refusal messages in field order, photos first.
+func formErrors(f Form) []string {
+	var out []string
+	for _, k := range []string{"front", "side", "back", "measured_on", "weight_kg", "waist_cm", "hips_cm", "chest_cm", "thigh_cm", "arm_cm"} {
+		if msg := f.fieldError(k); msg != "" {
+			out = append(out, msg)
+		}
+	}
+	return out
+}

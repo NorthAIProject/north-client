@@ -201,3 +201,31 @@ func TestTheAnonymousPathIsAlsoSilentWithoutAClient(t *testing.T) {
 		})
 	}
 }
+
+// appearance_changed is how the iOS choice reaches PostHog at all, so both the
+// event and the person property it sets are the contract.
+func TestAppearanceChangedCarriesTheChoiceAndSetsItOnThePerson(t *testing.T) {
+	t.Parallel()
+
+	rec := &recorder{}
+	user := uuid.New()
+	analytics.New(rec).AppearanceChanged(context.Background(), user, "light", analytics.AppearanceFromIOS)
+
+	if len(rec.captures) != 1 {
+		t.Fatalf("captured %d events, want 1", len(rec.captures))
+	}
+	got := rec.captures[0]
+	if got.Event != "appearance_changed" {
+		t.Errorf("event is %q, want appearance_changed", got.Event)
+	}
+	if got.DistinctId != user.String() {
+		t.Errorf("attributed to %q, want the user id", got.DistinctId)
+	}
+	if got.Properties["appearance"] != "light" || got.Properties["surface"] != "ios" {
+		t.Errorf("properties = %v, want appearance=light surface=ios", got.Properties)
+	}
+	set, _ := got.Properties["$set"].(map[string]any)
+	if set["appearance"] != "light" {
+		t.Errorf("$set = %v, want appearance=light on the person", got.Properties["$set"])
+	}
+}

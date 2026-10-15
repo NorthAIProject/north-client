@@ -88,6 +88,8 @@ var englishNav = map[string]string{
 	"nav.mind-insights":           "Mind insights",
 	"nav.mind-insights.desc":      "Mood and reflection over time.",
 	"nav.mind-insights.nav":       "Mind",
+	"nav.progress-check":          "Progress check",
+	"nav.progress-check.desc":     "Photos, weight and measurements on a schedule you choose.",
 	"nav.progress-insights":       "Progress insights",
 	"nav.progress-insights.desc":  "How your goals are moving.",
 	"nav.progress-insights.nav":   "Progress",

@@ -95,7 +95,7 @@ func (s *Service) DigestIfWorthSending(ctx context.Context, user users.User, rg 
 	if view.Empty || view.Judged == 0 {
 		return "", nil, false, nil
 	}
-	return renderDigest(view, s.siteURL), renderDigestCard(view), true, nil
+	return renderDigest(string(user.Locale), view, s.siteURL), renderDigestCard(string(user.Locale), view), true, nil
 }
 
 // Digester renders one person's window. *Service is the implementation; the

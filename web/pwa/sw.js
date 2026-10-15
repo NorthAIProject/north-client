@@ -17,9 +17,23 @@
 // Bumping this name is what retires the previous cache. Old caches are deleted
 // on activate, so a deploy that changes an asset cannot leave somebody pinned
 // to the previous one.
-const CACHE = "north-shell-v6";
+const CACHE = "north-shell-v7";
 
 const OFFLINE_URL = "/offline.html";
+
+// offlineText is the one line served when even the offline page is missing
+// from the cache, in the browser's language. Same picking as offline.html.
+function offlineText() {
+  const langs = self.navigator.languages || [self.navigator.language];
+  for (const raw of langs) {
+    const l = String(raw || "").toLowerCase();
+    if (l === "en" || l.startsWith("en-")) break;
+    if (l === "es" || l.startsWith("es-")) return "Estás sin conexión.";
+    if (l === "pt" || l === "pt-br") return "Você está sem conexão.";
+    if (l.startsWith("pt-")) return "Estás sem ligação.";
+  }
+  return "You are offline.";
+}
 
 // The shell, and only the shell. Deliberately excludes the Three.js, GSAP and
 // Lenis bundles used by the marketing landing: they are large, they are lazy
@@ -109,7 +123,7 @@ self.addEventListener("fetch", (event) => {
           const cached = await caches.match(OFFLINE_URL);
           return (
             cached ||
-            new Response("You are offline.", {
+            new Response(offlineText(), {
               status: 503,
               headers: { "Content-Type": "text/plain; charset=utf-8" },
             })

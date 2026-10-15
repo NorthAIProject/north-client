@@ -18,6 +18,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/account"
 	"github.com/NorthAIProject/north-client/internal/aicreds"
+	"github.com/NorthAIProject/north-client/internal/analytics"
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/config"
 	"github.com/NorthAIProject/north-client/internal/connections"
@@ -28,7 +29,9 @@ import (
 	"github.com/NorthAIProject/north-client/internal/preferences"
 	"github.com/NorthAIProject/north-client/internal/push"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
+	"github.com/NorthAIProject/north-client/internal/shared/theme"
 	"github.com/NorthAIProject/north-client/internal/toolaudit"
 	"github.com/NorthAIProject/north-client/internal/users"
 	settingspages "github.com/NorthAIProject/north-client/web/settings"
@@ -315,11 +318,20 @@ func (h *Handler) updateProfile(w http.ResponseWriter, r *http.Request) {
 		Locale:        users.ResolveLocale(r.PostFormValue("locale")),
 		CoachingStyle: strings.TrimSpace(r.PostFormValue("coaching_style")),
 		CoachingTone:  users.Tone(strings.TrimSpace(r.PostFormValue("coaching_tone"))),
+		Appearance:    theme.Appearance(strings.TrimSpace(r.PostFormValue("appearance"))),
+	}
+
+	// An empty select is "not chosen", not a choice: it leaves the stored value
+	// alone. Anything else is validated by the service.
+	var appearance *theme.Appearance
+	if form.Appearance != "" {
+		appearance = &form.Appearance
 	}
 
 	if _, err := h.users.UpdateProfile(r.Context(), user.ID, users.Profile{
 		DisplayName: form.DisplayName, Timezone: form.Timezone, Locale: form.Locale,
 		CoachingStyle: form.CoachingStyle, CoachingTone: form.CoachingTone,
+		Appearance: appearance, Surface: analytics.AppearanceFromSettings,
 	}); err != nil {
 		var fieldErrs apperr.FieldErrors
 		if apperr.As(err, &fieldErrs) {
@@ -655,7 +667,7 @@ func (h *Handler) renderConnections(
 
 	var setup connections.Setup
 	if issued != nil {
-		setup = h.connections.Instructions(issued.Kind, issued.Token)
+		setup = h.connections.Instructions(issued.Kind, issued.Token).In(i18n.LocaleFrom(ctx))
 	}
 
 	// One preview per client, so the page can show what setup involves before
@@ -664,7 +676,7 @@ func (h *Handler) renderConnections(
 	// reached for it would be the first one in this codebase to do so.
 	previews := make([]connections.Setup, 0, len(connections.ClientKinds))
 	for _, kind := range connections.ClientKinds {
-		previews = append(previews, h.connections.Preview(kind))
+		previews = append(previews, h.connections.Preview(kind).In(i18n.LocaleFrom(ctx)))
 	}
 
 	provider := settingspages.ProviderPanel{

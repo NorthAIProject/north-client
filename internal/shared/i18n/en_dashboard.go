@@ -101,4 +101,41 @@ var englishDashboard = map[string]string{
 	"dash.habits.kept":     "%[1]d kept of %[2]d scheduled",
 	"dash.habits.best":     "best streak %[1]d",
 	"dash.hydration.today": "Today %[1]d%% · %[2]s",
+
+	// The next-step card, by kind. The native app shows these verbatim.
+	"dash.step.goal.eyebrow":    "Start here",
+	"dash.step.goal.title":      "Name one thing you are working toward",
+	"dash.step.goal.body":       "Khepri reads your goals before every reply. One is enough.",
+	"dash.step.goal.cta":        "Add a goal",
+	"dash.step.checkin.eyebrow": "Today",
+	"dash.step.checkin.title":   "How did today go?",
+	"dash.step.checkin.body":    "Thirty seconds. Mood, energy, what went well.",
+	"dash.step.checkin.cta":     "Check in",
+	"dash.step.chat.eyebrow":    "Coach",
+	"dash.step.chat.title":      "Talk to Khepri about the week",
+	"dash.step.chat.body":       "It already has your goals. Start with what is in the way.",
+	"dash.step.chat.cta":        "Open the coach",
+	"dash.step.push.eyebrow":    "Stay on track",
+	"dash.step.push.title":      "Let Khepri reach you",
+	"dash.step.push.body":       "A short note on this device when you have not checked in, a goal is due, or it is a training day.",
+	"dash.step.push.cta":        "Turn on nudges",
+
+	// Chart series names.
+	"dash.mood.series":      "Mood",
+	"dash.hydration.series": "Water (ml)",
+
+	// Feed row titles and details. Names and amounts arrive formatted.
+	"dash.feed.checkin":        "Checked in",
+	"dash.feed.checkin.detail": "Mood %[1]d · Energy %[2]d",
+	"dash.feed.drank":          "Drank %[1]s",
+	"dash.feed.slept":          "Slept %[1]s",
+	"dash.feed.sleep.quality":  "Quality %[1]d/5",
+	"dash.feed.habit":          "Kept %[1]s",
+	"dash.feed.habit.unnamed":  "Kept a habit",
+	"dash.feed.journal":        "Wrote in the journal",
+	"dash.feed.goalnote":       "Progress on %[1]s",
+	"dash.feed.goal":           "Set a goal: %[1]s",
+	"dash.feed.caffeine":       "%[1]d mg caffeine",
+	"dash.feed.fast.start":     "Started fasting",
+	"dash.feed.fast.end":       "Broke the fast",
 }
