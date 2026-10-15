@@ -43,18 +43,7 @@ func fitAtlas(skin mesh, muscles []triangle) (atlasFit, distanceField) {
 		samples = append(samples, muscles[i][0])
 	}
 
-	cost := func(f atlasFit) float64 {
-		var sum float64
-		for _, p := range samples {
-			signed := field.at(f.apply(p))
-			if signed > 0 {
-				sum += 20 * signed * signed // through the skin
-			} else if depth := -signed; depth > snugDepth {
-				sum += (depth - snugDepth) * (depth - snugDepth) // sunk too deep
-			}
-		}
-		return sum / float64(len(samples))
-	}
+	cost := func(f atlasFit) float64 { return field.misfit(samples, f.apply) }
 
 	best := cost(fit)
 	log.Printf("atlas fit: start cost %.6f", best)
@@ -175,6 +164,21 @@ func zAt(t triangle, x, y float64) (float64, bool) {
 		return 0, false
 	}
 	return a*t[0][2] + b*t[1][2] + c*t[2][2], true
+}
+
+// misfit scores where a transform puts the sampled atlas points: through the
+// skin costs most, sunk deeper than snugDepth a little, just under it nothing.
+func (f distanceField) misfit(samples []vec3, apply func(vec3) vec3) float64 {
+	var sum float64
+	for _, p := range samples {
+		signed := f.at(apply(p))
+		if signed > 0 {
+			sum += 20 * signed * signed // through the skin
+		} else if depth := -signed; depth > snugDepth {
+			sum += (depth - snugDepth) * (depth - snugDepth) // sunk too deep
+		}
+	}
+	return sum / float64(len(samples))
 }
 
 // at is the nearest voxel's value; a point off the grid is outside.
