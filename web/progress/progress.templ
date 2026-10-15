@@ -108,40 +108,7 @@ templ newCheck(data Data) {
 					@icon.Icon("lock")(icon.Props{Class: "size-3.5"})
 					{ i18n.T(ctx, "progress.private") }
 				</p>
-				<div class="grid grid-cols-2 gap-4 sm:grid-cols-3">
-					@form.Item() {
-						@label.Label(label.Props{For: "measured_on"}) {
-							{ i18n.T(ctx, "progress.date") }
-						}
-						@input.Input(input.Props{
-							ID: "measured_on", Name: "measured_on", Type: input.TypeDate,
-							Value: orDefault(data.Form.MeasuredOn, data.Today), Attributes: templ.Attributes{"max": data.Today},
-							HasError: data.Form.fieldError("measured_on") != "",
-						})
-					}
-					for _, m := range data.Form.measurements() {
-						@form.Item() {
-							@label.Label(label.Props{For: "m_" + m.Name}) {
-								{ i18n.T(ctx, m.Key) } <span class="text-muted-foreground">({ m.Unit })</span>
-							}
-							@input.Input(input.Props{
-								ID: "m_" + m.Name, Name: m.Name, Type: input.TypeNumber, Value: m.Value,
-								Attributes: templ.Attributes{"step": "0.1", "min": "0", "inputmode": "decimal"},
-								HasError:   data.Form.fieldError(m.Field) != "",
-							})
-							if m.Name == "waist" {
-								@form.Description() {
-									{ i18n.T(ctx, "progress.m.waist.help") }
-								}
-							}
-						}
-					}
-				</div>
-				for _, msg := range formErrors(data.Form) {
-					@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
-						{ msg }
-					}
-				}
+				@Fields(data.Today, data.Assist, data.Form)
 				@button.Button(button.Props{
 					Type: button.TypeSubmit, Class: "bg-signal text-background hover:bg-signal/90",
 					Attributes: templ.Attributes{"x-bind:disabled": "saving", "data-testid": "progress-save"},
@@ -150,6 +117,120 @@ templ newCheck(data Data) {
 					<span x-show="saving" x-cloak>{ i18n.T(ctx, "progress.saving") }</span>
 				}
 			</form>
+		}
+	}
+}
+
+// Fields is the numbers half of the new-check form: the estimate button, the
+// date and measurements, and their errors. A component of its own because an
+// estimate answers with it: swapping only this part keeps the chosen photos,
+// which a file input cannot be handed back.
+templ Fields(today string, assist Assist, f Form) {
+	<div id="progress-fields" class="space-y-4" data-testid="progress-fields">
+		if assist.Available {
+			@estimateButton(assist)
+		}
+		if f.EstimateError != "" {
+			@alert.Alert(alert.Props{Variant: alert.VariantDestructive, Attributes: templ.Attributes{"data-testid": "progress-estimate-error"}}) {
+				@alert.Description() {
+					{ f.EstimateError }
+				}
+			}
+		}
+		if f.Estimate != nil {
+			@estimateNote(*f.Estimate)
+		}
+		<div class="grid grid-cols-2 gap-4 sm:grid-cols-3">
+			@form.Item() {
+				@label.Label(label.Props{For: "measured_on"}) {
+					{ i18n.T(ctx, "progress.date") }
+				}
+				@input.Input(input.Props{
+					ID: "measured_on", Name: "measured_on", Type: input.TypeDate,
+					Value: orDefault(f.MeasuredOn, today), Attributes: templ.Attributes{"max": today},
+					HasError: f.fieldError("measured_on") != "",
+				})
+			}
+			for _, m := range f.measurements() {
+				@form.Item() {
+					@label.Label(label.Props{For: "m_" + m.Name}) {
+						{ i18n.T(ctx, m.Key) } <span class="text-muted-foreground">({ m.Unit })</span>
+					}
+					@input.Input(input.Props{
+						ID: "m_" + m.Name, Name: m.Name, Type: input.TypeNumber, Value: m.Value,
+						Attributes: templ.Attributes{"step": "0.1", "min": "0", "inputmode": "decimal"},
+						HasError:   f.fieldError(m.Field) != "",
+					})
+					if m.Name == "waist" {
+						@form.Description() {
+							{ i18n.T(ctx, "progress.m.waist.help") }
+						}
+					}
+				}
+			}
+		</div>
+		// Plain hidden inputs, like ui.CSRFInput: no component draws nothing.
+		<input type="hidden" name="source" value={ f.Source }/>
+		<input type="hidden" name="assist_confidence" value={ f.AssistConfidence }/>
+		<input type="hidden" name="assist_notes" value={ f.AssistNotes }/>
+		for _, msg := range formErrors(f) {
+			@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+				{ msg }
+			}
+		}
+	</div>
+}
+
+// estimateButton posts the whole form, photos included, and swaps only the
+// fields. The provider is named before anything is sent.
+templ estimateButton(assist Assist) {
+	<div class="border-hairline bg-surface space-y-2 rounded-md border p-3" data-testid="progress-assist">
+		@button.Button(button.Props{
+			Type: button.TypeButton, Variant: button.VariantOutline, Size: button.SizeSm, Class: "group",
+			Attributes: templ.Attributes{
+				"hx-post":     "/app/progress/estimate",
+				"hx-encoding": "multipart/form-data",
+				"hx-include":  "closest form",
+				"hx-target":   "#progress-fields",
+				"hx-swap":     "outerHTML",
+				"data-testid": "progress-estimate",
+			},
+		}) {
+			@icon.Icon("sparkles")(icon.Props{Class: "size-4"})
+			<span class="group-[.htmx-request]:hidden">{ i18n.T(ctx, "progress.estimate") }</span>
+			<span class="hidden group-[.htmx-request]:inline">{ i18n.T(ctx, "progress.estimate.working") }</span>
+		}
+		<p class="text-muted-foreground text-xs" data-testid="progress-assist-consent">
+			if assist.Own {
+				{ i18n.Tf(ctx, "progress.estimate.consent.own", assist.Label) }
+			} else {
+				{ i18n.Tf(ctx, "progress.estimate.consent", assist.Label) }
+			}
+		</p>
+	</div>
+}
+
+// estimateNote says what the estimate did. Labelled an estimate every time:
+// the person is about to save these numbers as theirs.
+templ estimateNote(n EstimateNote) {
+	@alert.Alert(alert.Props{Attributes: templ.Attributes{"data-testid": "progress-estimate-note", "role": "status"}}) {
+		// Wraps rather than clamping to one line: on a phone the clamp cut off
+		// the confidence, which is the part of the title that matters.
+		@alert.Title(alert.TitleProps{Class: "line-clamp-none"}) {
+			{ i18n.T(ctx, "progress.estimate.label") } · { i18n.T(ctx, "progress.confidence." + n.Confidence) }
+		}
+		@alert.Description() {
+			if n.Notes != "" {
+				<p>{ n.Notes }</p>
+			}
+			if n.Filled > 0 {
+				<p>{ i18n.T(ctx, "progress.estimate.filled") }</p>
+			} else if n.Kept == 0 {
+				<p>{ i18n.T(ctx, "progress.estimate.none") }</p>
+			}
+			if n.Kept > 0 {
+				<p>{ i18n.T(ctx, "progress.estimate.kept") }</p>
+			}
 		}
 	}
 }

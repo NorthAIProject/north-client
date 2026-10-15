@@ -5212,6 +5212,69 @@ paths:
           $ref: '#/components/responses/ValidationError'
         '500':
           $ref: '#/components/responses/InternalError'
+  /progress/checks/estimate:
+    post:
+      operationId: estimateProgressCheck
+      summary: Estimate waist, hips and chest from photos, storing nothing
+      description: |
+        Multipart with the same front, side and back parts as createProgressCheck;
+        front or side is required. Photos go only to the provider
+        GET /progress/assist names — the person's own connected key when it reads
+        photos, otherwise Khepri's Anthropic client — and never to any other.
+        Nothing is stored. Show the result as an estimate; when the person saves,
+        send source "assisted" with the confidence and notes. Each photo is JPEG,
+        PNG or WebP, at most 3.5 MB.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                front:
+                  type: string
+                  format: binary
+                side:
+                  type: string
+                  format: binary
+                back:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProgressEstimateResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /progress/assist:
+    get:
+      operationId: getProgressAssist
+      summary: Whether photos can be estimated, and which provider would read them
+      description: |
+        Name the provider to the person before sending photos to
+        POST /progress/checks/estimate. Unavailable means the manual form only.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProgressAssist'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /progress/checks/{checkID}:
     parameters:
       - name: checkID
@@ -7626,6 +7689,45 @@ components:
             $ref: '#/components/schemas/ProgressCheck'
         schedule:
           $ref: '#/components/schemas/ProgressSchedule'
+    ProgressAssist:
+      type: object
+      required: [available, ownProvider]
+      properties:
+        available:
+          type: boolean
+        providerLabel:
+          type: string
+          description: The provider as a person knows it, e.g. "OpenAI". Absent when unavailable.
+        ownProvider:
+          type: boolean
+          description: The person's own connected key, billed to their account.
+    ProgressEstimate:
+      type: object
+      required: [confidence, notes]
+      properties:
+        waistCm:
+          type: number
+          description: Absent when the photos did not show it.
+        hipsCm:
+          type: number
+        chestCm:
+          type: number
+        confidence:
+          type: string
+          description: low, medium or high, as an open string.
+        notes:
+          type: string
+          description: One short line on what limited the estimate, in the person's language.
+    ProgressEstimateResult:
+      type: object
+      required: [estimate, providerLabel, ownProvider]
+      properties:
+        estimate:
+          $ref: '#/components/schemas/ProgressEstimate'
+        providerLabel:
+          type: string
+        ownProvider:
+          type: boolean
     ProgressCheckCreated:
       type: object
       required: [check, body]

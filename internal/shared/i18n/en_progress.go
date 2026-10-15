@@ -56,4 +56,19 @@ var englishProgress = map[string]string{
 
 	"day.progress.due":  "Progress check due",
 	"day.progress.last": "Waist %s cm · %s",
+
+	// Photo estimates.
+	"progress.estimate":             "Estimate from photos",
+	"progress.estimate.working":     "Estimating…",
+	"progress.estimate.consent":     "Sends these photos to %s to estimate waist, hips and chest. Nothing is saved until you save the check.",
+	"progress.estimate.consent.own": "Sends these photos to %s, on your own key, to estimate waist, hips and chest. Nothing is saved until you save the check.",
+	"progress.estimate.label":       "Estimate, not a measurement",
+	"progress.confidence.low":       "low confidence",
+	"progress.confidence.medium":    "medium confidence",
+	"progress.confidence.high":      "high confidence",
+	"progress.estimate.filled":      "Empty fields were filled in. Check them against a tape if you can, then save.",
+	"progress.estimate.none":        "Nothing could be estimated from these photos.",
+	"progress.estimate.kept":        "Numbers you had already entered were kept.",
+	"progress.estimate.unavailable": "Photo estimates aren't available right now. Enter your measurements by hand.",
+	"progress.estimate.failed":      "The photos couldn't be estimated. Enter your measurements by hand, or try again.",
 }

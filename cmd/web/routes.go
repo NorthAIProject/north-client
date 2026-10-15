@@ -422,6 +422,16 @@ func routes(
 	aicredSvc = aicredSvc.WithToolProbe(aicreds.NewToolProbe()).
 		WithMeter(spend.NewMeter(spend.NewRepository(pool)))
 
+	// Progress-check photos may be estimated by the person's own provider or
+	// Khepri's Anthropic client, never by the free chain; see
+	// progresschecks.Assist. Without an Anthropic key, Get fails and only a
+	// connected provider that sees photos can estimate.
+	var appVision ai.Client
+	if c, err := registry.Get("anthropic"); err == nil {
+		appVision = c
+	}
+	progressSvc.WithAssist(progresschecks.NewAssist(aicredSvc, appVision))
+
 	// North as an MCP *client*: the calendar somebody connected, reached over
 	// somebody else's server. The opposite direction from the /mcp route below,
 	// which is North serving its own tools to an agent.
@@ -1023,7 +1033,7 @@ func routes(
 			fasting:      fasting.NewAPI(fastingSvc),
 			supplements:  supplements.NewAPI(supplementSvc),
 			medications:  medications.NewAPI(medicationSvc),
-			progress:     progresschecks.NewAPI(progressSvc, liftSvc),
+			progress:     progresschecks.NewAPI(progressSvc, liftSvc, quotaSvc),
 			screenTime:   screentime.NewAPI(screenTimeSvc),
 			soreness:     soreness.NewAPI(sorenessSvc),
 			milestones:   milestones.NewAPI(milestoneSvc),
@@ -1237,7 +1247,7 @@ func routes(
 				calculatorHandler.Routes(r)
 				mealsHandler.Routes(r)
 				planImportHandler.Routes(r)
-				progresschecks.NewHandler(progressSvc).Routes(r)
+				progresschecks.NewHandler(progressSvc, quotaSvc).Routes(r)
 				fitnessHandler.Routes(r)
 			})
 		})

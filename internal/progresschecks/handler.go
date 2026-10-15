@@ -1,6 +1,8 @@
 package progresschecks
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math"
@@ -14,6 +16,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/progresschecks/progresscheck"
+	"github.com/NorthAIProject/north-client/internal/quota"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
@@ -23,16 +26,20 @@ import (
 
 // Handler is the progress-check page. Must be behind RequireAuth.
 type Handler struct {
-	svc *Service
+	svc    *Service
+	quotas *quota.Service
 }
 
-func NewHandler(svc *Service) *Handler { return &Handler{svc: svc} }
+func NewHandler(svc *Service, quotas *quota.Service) *Handler {
+	return &Handler{svc: svc, quotas: quotas}
+}
 
 func (h *Handler) Routes(r chi.Router) {
 	r.Get("/progress", h.show)
 	r.Post("/progress", h.create)
 	r.Post("/progress/schedule", h.setSchedule)
 	r.Post("/progress/{id}/delete", h.delete)
+	r.With(h.quotas.Guard(quota.ProgressEstimate)).Post("/progress/estimate", h.estimate)
 }
 
 func (h *Handler) show(w http.ResponseWriter, r *http.Request) {
@@ -50,11 +57,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 	}
 	defer func() { _ = r.MultipartForm.RemoveAll() }()
 
-	form := progresspages.Form{
-		MeasuredOn: r.FormValue("measured_on"),
-		Weight:     r.FormValue("weight"), Waist: r.FormValue("waist"), Hips: r.FormValue("hips"),
-		Chest: r.FormValue("chest"), Thigh: r.FormValue("thigh"), Arm: r.FormValue("arm"),
-	}
+	form := readForm(r)
 	in, err := formInput(form)
 	if err == nil {
 		uploads, closeAll, photoErr := formPhotos(r)
@@ -74,6 +77,110 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/app/progress", http.StatusSeeOther)
+}
+
+// estimate reads measurements off the chosen photos and answers the form's
+// fields, filled where they were empty. Nothing is stored; the person saves.
+// Every handled outcome renders the fields, at 422 when refused, so htmx
+// swaps the message into place.
+func (h *Handler) estimate(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+	r.Body = http.MaxBytesReader(w, r.Body, maxCheckUpload)
+	if err := r.ParseMultipartForm(4 << 20); err != nil {
+		h.renderFields(w, r, http.StatusUnprocessableEntity, progresspages.Form{
+			Errors: map[string]string{"front": i18n.T(r.Context(), "progress.error.upload")},
+		})
+		return
+	}
+	defer func() { _ = r.MultipartForm.RemoveAll() }()
+
+	form := readForm(r)
+	uploads, closeAll, err := formPhotos(r)
+	defer closeAll()
+	var est Estimate
+	if err == nil {
+		est, _, err = h.svc.Estimate(r.Context(), user, uploads)
+	}
+	if err != nil {
+		var fe apperr.FieldErrors
+		switch {
+		case apperr.As(err, &fe):
+			form.Errors = fe.Messages()
+		case errors.Is(err, ErrAssistUnavailable):
+			form.EstimateError = i18n.T(r.Context(), "progress.estimate.unavailable")
+		default:
+			middleware.FromContext(r.Context()).Warn("progress estimate failed", slog.Any("error", err))
+			form.EstimateError = i18n.T(r.Context(), "progress.estimate.failed")
+		}
+		h.renderFields(w, r, http.StatusUnprocessableEntity, form)
+		return
+	}
+	h.renderFields(w, r, http.StatusOK, applyEstimate(form, est))
+}
+
+// applyEstimate fills the empty fields. A number the person typed is a tape
+// reading and outranks a model's estimate, so it stays.
+func applyEstimate(form progresspages.Form, est Estimate) progresspages.Form {
+	note := &progresspages.EstimateNote{Confidence: est.Confidence, Notes: est.Notes}
+	for _, f := range []struct {
+		dst *string
+		v   *float64
+	}{
+		{&form.Waist, est.WaistCm}, {&form.Hips, est.HipsCm}, {&form.Chest, est.ChestCm},
+	} {
+		switch {
+		case f.v == nil:
+		case strings.TrimSpace(*f.dst) == "":
+			*f.dst = number(*f.v)
+			note.Filled++
+		default:
+			note.Kept++
+		}
+	}
+	if note.Filled > 0 {
+		form.Source = progresscheck.SourceAssisted
+		form.AssistConfidence, form.AssistNotes = est.Confidence, est.Notes
+	}
+	form.Estimate = note
+	return form
+}
+
+// readForm is the new-check form's text fields as posted.
+func readForm(r *http.Request) progresspages.Form {
+	return progresspages.Form{
+		MeasuredOn: r.FormValue("measured_on"),
+		Weight:     r.FormValue("weight"), Waist: r.FormValue("waist"), Hips: r.FormValue("hips"),
+		Chest: r.FormValue("chest"), Thigh: r.FormValue("thigh"), Arm: r.FormValue("arm"),
+		Source: r.FormValue("source"), AssistConfidence: r.FormValue("assist_confidence"),
+		AssistNotes: r.FormValue("assist_notes"),
+	}
+}
+
+func (h *Handler) renderFields(w http.ResponseWriter, r *http.Request, status int, form progresspages.Form) {
+	user := auth.MustUser(r.Context())
+	assist, err := h.assist(r.Context(), user)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
+	today := localDate(user, time.Now()).Format(time.DateOnly)
+	if err := progresspages.Fields(today, assist, form).Render(r.Context(), w); err != nil {
+		middleware.FromContext(r.Context()).Error("render progress fields", slog.Any("error", err))
+	}
+}
+
+// assist is where this person's photos would go for an estimate.
+func (h *Handler) assist(ctx context.Context, user users.User) (progresspages.Assist, error) {
+	dest, err := h.svc.AssistDestination(ctx, user)
+	if errors.Is(err, ErrAssistUnavailable) {
+		return progresspages.Assist{}, nil
+	}
+	if err != nil {
+		return progresspages.Assist{}, err
+	}
+	return progresspages.Assist{Available: true, Label: dest.Label, Own: dest.Own}, nil
 }
 
 func (h *Handler) setSchedule(w http.ResponseWriter, r *http.Request) {
@@ -153,6 +260,9 @@ func (h *Handler) page(r *http.Request, user users.User, form progresspages.Form
 		data.Checks[i] = pageCheck(r, c, older)
 	}
 	data.Last = lastPhotos(data.Checks)
+	if data.Assist, err = h.assist(ctx, user); err != nil {
+		return progresspages.Data{}, err
+	}
 	return data, nil
 }
 
@@ -227,6 +337,10 @@ func formInput(f progresspages.Form) (Input, error) {
 			continue
 		}
 		*field.dst = &v
+	}
+	in.Source = f.Source
+	if in.Source == progresscheck.SourceAssisted {
+		in.AssistConfidence, in.AssistNotes = f.AssistConfidence, f.AssistNotes
 	}
 	return in, errs.OrNil()
 }

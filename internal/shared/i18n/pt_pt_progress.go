@@ -54,4 +54,19 @@ var portugueseEuropeanProgress = map[string]string{
 
 	"day.progress.due":  "Registo de progresso por fazer",
 	"day.progress.last": "Cintura %s cm · %s",
+
+	// Photo estimates.
+	"progress.estimate":             "Estimar a partir das fotografias",
+	"progress.estimate.working":     "A estimar…",
+	"progress.estimate.consent":     "Envia estas fotografias para %s para estimar cintura, anca e peito. Nada é guardado até guardares o registo.",
+	"progress.estimate.consent.own": "Envia estas fotografias para %s, com a tua própria chave, para estimar cintura, anca e peito. Nada é guardado até guardares o registo.",
+	"progress.estimate.label":       "Estimativa, não uma medição",
+	"progress.confidence.low":       "confiança baixa",
+	"progress.confidence.medium":    "confiança média",
+	"progress.confidence.high":      "confiança alta",
+	"progress.estimate.filled":      "Os campos vazios foram preenchidos. Confirma-os com uma fita métrica se puderes e depois guarda.",
+	"progress.estimate.none":        "Não foi possível estimar nada a partir destas fotografias.",
+	"progress.estimate.kept":        "Os números que já tinhas introduzido foram mantidos.",
+	"progress.estimate.unavailable": "As estimativas por fotografia não estão disponíveis agora. Introduz as medidas à mão.",
+	"progress.estimate.failed":      "Não foi possível estimar as fotografias. Introduz as medidas à mão ou tenta outra vez.",
 }
