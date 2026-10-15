@@ -61,3 +61,15 @@ func TestMealPickerFallsBackToEveryDayWhenAPlanHasNoneToday(t *testing.T) {
 		t.Fatalf("labels = %q, want %q", labels, want)
 	}
 }
+
+func TestMealPickerMarksAnOptionalMeal(t *testing.T) {
+	ceia := pickerMeal("Ceia", "")
+	ceia.Optional = true
+	plan := meal.MealPlan{Name: "Plano", Days: []meal.Day{pickerDay(time.Monday, pickerMeal("Almoço", ""), ceia)}}
+
+	labels := pickerLabels(mealPickerOptions([]meal.MealPlan{plan}, time.Monday))
+	want := []string{"Plano – Almoço", "Plano – Ceia (optional)"}
+	if !slices.Equal(labels, want) {
+		t.Fatalf("labels = %q, want %q", labels, want)
+	}
+}
