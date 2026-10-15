@@ -1,8 +1,10 @@
 package insights
 
 import (
+	"context"
 	"time"
 
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 )
 
@@ -34,14 +36,30 @@ func bucketed(rg timerange.Range, points []point) []float64 {
 	return out
 }
 
-// bucketLabels is the buckets' captions, in order.
-func bucketLabels(rg timerange.Range) []string {
+// bucketLabels is the buckets' captions, in order, in the reader's language.
+//
+// timerange words its captions in English because it has no reader to ask;
+// the layouts below are the ones it uses, so an English page reads exactly as
+// it did and every other language gets its own month names.
+func bucketLabels(ctx context.Context, rg timerange.Range) []string {
 	buckets := rg.Buckets()
 	out := make([]string, len(buckets))
 	for i, b := range buckets {
-		out[i] = b.Label
+		out[i] = bucketLabel(ctx, rg, b)
 	}
 	return out
+}
+
+// bucketLabel is one bucket's caption in the reader's language.
+func bucketLabel(ctx context.Context, rg timerange.Range, b timerange.Bucket) string {
+	switch rg.Grain {
+	case timerange.GrainHour:
+		return b.Label
+	case timerange.GrainMonth:
+		return i18n.Date(ctx, b.Start, "Jan")
+	default:
+		return i18n.Date(ctx, b.Start, "2 Jan")
+	}
 }
 
 // bucketedMean averages the readings in each bucket instead of summing them.

@@ -1,6 +1,8 @@
 package insights
 
 import (
+	"context"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/ui/card"
@@ -37,7 +39,7 @@ type ProgressView struct {
 }
 
 templ Progress(user users.User, view ProgressView) {
-	@page("Progress", "progress", "/app/insights/progress/body", user, view.Range) {
+	@page(sectionTitle(ctx, "progress"), "progress", "/app/insights/progress/body", user, view.Range) {
 		@ProgressPanels(view)
 	}
 }
@@ -45,21 +47,21 @@ templ Progress(user users.User, view ProgressView) {
 templ ProgressPanels(view ProgressView) {
 	<div class="space-y-6">
 		<div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-			@statTile("Active goals", formatCount(view.ActiveCount), openedNote(view), DeltaView{})
-			@statTile("Average progress", percentLabel(view.AvgProgress), "across active goals", DeltaView{})
-			@statTile("Check-in streak", streakLabel(view.Streak), "", DeltaView{})
-			@statTile("Overdue milestones", formatCount(view.Overdue), overdueNote(view), DeltaView{})
+			@statTile(i18n.T(ctx, "insights.progress.active"), formatCount(view.ActiveCount), openedNote(ctx, view), DeltaView{})
+			@statTile(i18n.T(ctx, "insights.progress.average"), percentLabel(view.AvgProgress), i18n.T(ctx, "insights.progress.average.note"), DeltaView{})
+			@statTile(i18n.T(ctx, "insights.progress.streak"), streakLabel(ctx, view.Streak), "", DeltaView{})
+			@statTile(i18n.T(ctx, "insights.progress.overdue"), formatCount(view.Overdue), overdueNote(ctx, view), DeltaView{})
 		</div>
 		<div class="grid gap-4 lg:grid-cols-3">
 			@card.Card(card.Props{Class: "border-hairline bg-surface lg:col-span-2"}) {
 				@card.Header() {
 					@card.Title() {
-						Where each goal stands
+						{ i18n.T(ctx, "insights.progress.goals") }
 					}
 				}
 				@card.Content() {
 					if len(view.Goals) == 0 {
-						@emptyState("No active goals.", "Add a goal", "/app/goals")
+						@emptyState(i18n.T(ctx, "insights.progress.goals.empty"), i18n.T(ctx, "insights.progress.addGoal"), "/app/goals")
 					} else {
 						<ul class="space-y-4">
 							for _, g := range view.Goals {
@@ -80,7 +82,7 @@ templ ProgressPanels(view ProgressView) {
 										if g.HasProgress {
 											@progress.Progress(progress.Props{Value: g.Progress, Max: 100, Size: progress.SizeSm})
 										} else {
-											<p class="text-muted-foreground text-xs">No progress recorded yet.</p>
+											<p class="text-muted-foreground text-xs">{ i18n.T(ctx, "insights.progress.goals.none") }</p>
 										}
 									</a>
 								</li>
@@ -92,7 +94,7 @@ templ ProgressPanels(view ProgressView) {
 			@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 				@card.Header() {
 					@card.Title() {
-						By status
+						{ i18n.T(ctx, "insights.progress.status") }
 					}
 				}
 				@card.Content() {
@@ -100,7 +102,7 @@ templ ProgressPanels(view ProgressView) {
 						@templ.JSONScript("insights-progress-donut-option", view.StatusDonut)
 						@ui.EChartsMount("insights-progress-donut", "insights-progress-donut-option", "min-h-48 w-full")
 					} else {
-						@emptyState("No goals yet.", "Add a goal", "/app/goals")
+						@emptyState(i18n.T(ctx, "insights.progress.status.empty"), i18n.T(ctx, "insights.progress.addGoal"), "/app/goals")
 					}
 				}
 			}
@@ -108,17 +110,17 @@ templ ProgressPanels(view ProgressView) {
 		@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 			@card.Header() {
 				@card.Title() {
-					Updates written
+					{ i18n.T(ctx, "insights.progress.notes") }
 				}
 				@card.Description() {
-					Progress notes per day.
+					{ i18n.T(ctx, "insights.progress.notes.desc") }
 				}
 			}
 			@card.Content() {
 				if view.HasNotes {
 					@chart.Chart(view.NotesChart)
 				} else {
-					@emptyState("No progress notes in this window.", "Open goals", "/app/goals")
+					@emptyState(i18n.T(ctx, "insights.progress.notes.empty"), i18n.T(ctx, "insights.progress.notes.cta"), "/app/goals")
 				}
 			}
 		}
@@ -132,32 +134,32 @@ func percentLabel(pct int) string {
 	return formatCount(pct) + "%"
 }
 
-func streakLabel(days int) string {
+func streakLabel(ctx context.Context, days int) string {
 	if days <= 0 {
 		return "—"
 	}
 	if days == 1 {
-		return "1 day"
+		return i18n.T(ctx, "insights.progress.streak.one")
 	}
-	return formatCount(days) + " days"
+	return i18n.Tf(ctx, "insights.progress.streak.many", days)
 }
 
-func openedNote(view ProgressView) string {
+func openedNote(ctx context.Context, view ProgressView) string {
 	switch view.OpenedCount {
 	case 0:
-		return "none opened in this window"
+		return i18n.T(ctx, "insights.progress.opened.none")
 	case 1:
-		return "1 opened in this window"
+		return i18n.T(ctx, "insights.progress.opened.one")
 	default:
-		return formatCount(view.OpenedCount) + " opened in this window"
+		return i18n.Tf(ctx, "insights.progress.opened.many", view.OpenedCount)
 	}
 }
 
 // overdueNote is deliberately quiet when the count is zero. A dashboard that
 // congratulates you for having nothing wrong is noise.
-func overdueNote(view ProgressView) string {
+func overdueNote(ctx context.Context, view ProgressView) string {
 	if view.Overdue == 0 {
 		return ""
 	}
-	return "past their target date"
+	return i18n.T(ctx, "insights.progress.overdue.note")
 }

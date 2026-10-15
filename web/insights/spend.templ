@@ -3,6 +3,7 @@ package insights
 import (
 	"fmt"
 
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
 )
@@ -35,23 +36,23 @@ type SpendView struct {
 }
 
 templ Spend(user users.User, view SpendView) {
-	@page("Model spend", "spend", "/app/insights/spend/body", user, view.Range) {
+	@page(i18n.T(ctx, "insights.spend.title"), "spend", "/app/insights/spend/body", user, view.Range) {
 		@SpendBody(view)
 	}
 }
 
 templ SpendBody(view SpendView) {
 	if !view.HasData {
-		@emptyState("No model calls in this window.", "", "")
+		@emptyState(i18n.T(ctx, "insights.spend.empty"), "", "")
 	} else {
 		<div class="space-y-6">
 			<div class="grid gap-3 sm:grid-cols-3">
-				@statTile("Cost", view.TotalCost, "this window", DeltaView{})
-				@statTile("Generations", fmt.Sprintf("%d", view.Generations), "model calls", DeltaView{})
-				@statTile("Tokens", formatTokens(view.TotalTokens), "in and out", DeltaView{})
+				@statTile(i18n.T(ctx, "insights.spend.cost"), view.TotalCost, i18n.T(ctx, "insights.spend.cost.note"), DeltaView{})
+				@statTile(i18n.T(ctx, "insights.spend.generations"), fmt.Sprintf("%d", view.Generations), i18n.T(ctx, "insights.spend.generations.note"), DeltaView{})
+				@statTile(i18n.T(ctx, "insights.spend.tokens"), formatTokens(view.TotalTokens), i18n.T(ctx, "insights.spend.tokens.note"), DeltaView{})
 			</div>
-			@spendTable("Where it went", view.Surfaces)
-			@spendTable("Which model answered", view.Models)
+			@spendTable(i18n.T(ctx, "insights.spend.surfaces"), view.Surfaces)
+			@spendTable(i18n.T(ctx, "insights.spend.models"), view.Models)
 		</div>
 	}
 }
@@ -71,7 +72,7 @@ templ spendTable(title string, rows []SpendRow) {
 							<div class="bg-signal h-full rounded-full" style={ fmt.Sprintf("width: %d%%", r.Pct) }></div>
 						</div>
 						<p class="text-muted-foreground text-xs tabular-nums">
-							{ fmt.Sprintf("%d calls · %s tokens", r.Generations, formatTokens(r.Tokens)) }
+							{ i18n.Tf(ctx, "insights.spend.row", r.Generations, formatTokens(r.Tokens)) }
 						</p>
 					</div>
 				}

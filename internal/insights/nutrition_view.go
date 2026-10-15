@@ -1,16 +1,18 @@
 package insights
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/NorthAIProject/north-client/internal/insights/highlight"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/viz"
 	insightpages "github.com/NorthAIProject/north-client/web/insights"
 )
 
-func buildNutritionView(data NutritionData) (insightpages.NutritionView, error) {
+func buildNutritionView(ctx context.Context, data NutritionData) (insightpages.NutritionView, error) {
 	loc := data.Range.Location()
-	labels := bucketLabels(data.Range)
+	labels := bucketLabels(ctx, data.Range)
 
 	kcal := make([]point, 0, len(data.Days))
 	var totalKcal, totalProtein float64
@@ -26,13 +28,13 @@ func buildNutritionView(data NutritionData) (insightpages.NutritionView, error) 
 	series := bucketedMean(data.Range, kcal)
 
 	view := insightpages.NutritionView{
-		Range:         rangeView(data.Range),
+		Range:         rangeView(ctx, data.Range),
 		DaysLogged:    len(data.Days),
 		Entries:       data.Entries,
 		HasGoal:       data.HasGoal,
 		CaloriesChart: viz.Bar("insights-nutrition-calories", "kcal", labels, series),
 		HasData:       len(data.Days) > 0,
-		Eating:        buildEatingView(data.Eating),
+		Eating:        buildEatingView(ctx, data.Eating),
 	}
 
 	if n := float64(len(data.Days)); n > 0 {
@@ -46,7 +48,7 @@ func buildNutritionView(data NutritionData) (insightpages.NutritionView, error) 
 
 	// Grams, not calories: the donut answers "what did this come from", and
 	// the three macros are what somebody adjusts.
-	segments := macroSegments(data.Days)
+	segments := macroSegments(ctx, data.Days)
 	split, err := option(viz.DonutOptionJSON(segments))
 	if err != nil {
 		return insightpages.NutritionView{}, err
@@ -56,16 +58,17 @@ func buildNutritionView(data NutritionData) (insightpages.NutritionView, error) 
 
 	view.Highlights = highlight.Find(highlight.Input{
 		Series: []highlight.Series{{
-			Label: "Calories", Unit: " kcal", Decimals: 0,
+			Label: i18n.T(ctx, "insights.series.calories"), Unit: " kcal", Decimals: 0,
 			Period: periodNoun(data.Range), Labels: labels, Values: series,
 		}},
+		Locale: i18n.LocaleFrom(ctx),
 	}, maxHighlights)
 
 	return view, nil
 }
 
 // macroSegments totals the window's grams of each macro.
-func macroSegments(days []NutritionDay) []viz.DonutSegment {
+func macroSegments(ctx context.Context, days []NutritionDay) []viz.DonutSegment {
 	var protein, fat, carb float64
 	for _, d := range days {
 		protein += d.Macros.ProteinG
@@ -73,9 +76,9 @@ func macroSegments(days []NutritionDay) []viz.DonutSegment {
 		carb += d.Macros.CarbG
 	}
 	return []viz.DonutSegment{
-		{Label: "Protein", Value: int(protein)},
-		{Label: "Fat", Value: int(fat)},
-		{Label: "Carbs", Value: int(carb)},
+		{Label: i18n.T(ctx, "insights.nutrition.macro.protein"), Value: int(protein)},
+		{Label: i18n.T(ctx, "insights.nutrition.macro.fat"), Value: int(fat)},
+		{Label: i18n.T(ctx, "insights.nutrition.macro.carbs"), Value: int(carb)},
 	}
 }
 

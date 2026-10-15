@@ -1,6 +1,7 @@
 package insights
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -123,7 +124,7 @@ func TestMetricViewChartsEveryBucket(t *testing.T) {
 
 func mustMetricView(t *testing.T, data MetricData) insightpages.MetricView {
 	t.Helper()
-	view, err := buildMetricView(data)
+	view, err := buildMetricView(context.Background(), data)
 	if err != nil {
 		t.Fatalf("buildMetricView: %v", err)
 	}

@@ -3,6 +3,7 @@ package insights
 import (
 	"time"
 
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/ui/card"
 	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
@@ -38,7 +39,7 @@ type TimelineView struct {
 }
 
 templ Timeline(user users.User, view TimelineView) {
-	@page("Activity", "timeline", "/app/insights/timeline/body", user, view.Range) {
+	@page(sectionTitle(ctx, "timeline"), "timeline", "/app/insights/timeline/body", user, view.Range) {
 		@TimelineBody(view)
 	}
 }
@@ -49,7 +50,7 @@ templ TimelineBody(view TimelineView) {
 		@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 			@card.Content() {
 				if len(view.Entries) == 0 {
-					@emptyState("Nothing logged in this window.", "Check in", "/app/check-ins")
+					@emptyState(i18n.T(ctx, "insights.timeline.empty"), i18n.T(ctx, "insights.timeline.cta"), "/app/check-ins")
 				} else {
 					<ul class="divide-border -my-3 divide-y">
 						for _, e := range view.Entries {
@@ -60,7 +61,7 @@ templ TimelineBody(view TimelineView) {
 					</ul>
 					if view.Overflow {
 						<p class="text-muted-foreground border-border mt-4 border-t pt-4 text-xs">
-							Showing the most recent entries only. Narrow the window to see the rest.
+							{ i18n.T(ctx, "insights.timeline.overflow") }
 						</p>
 					}
 				}
@@ -72,7 +73,7 @@ templ TimelineBody(view TimelineView) {
 // filterRow keeps every chip a real link so the filter survives without
 // JavaScript, and swaps the panel when htmx is available.
 templ filterRow(view TimelineView) {
-	<nav aria-label="Filter by kind" class="-mx-1 flex flex-wrap gap-1">
+	<nav aria-label={ i18n.T(ctx, "insights.timeline.filter") } class="-mx-1 flex flex-wrap gap-1">
 		for _, chip := range view.Chips {
 			<a
 				href={ templ.SafeURL(chipHref("/app/insights/timeline", view.Range.Key, chip.Key)) }
@@ -112,7 +113,7 @@ templ entryRow(e EntryRow) {
 		</span>
 		<span class="shrink-0 text-right">
 			<span class="text-muted-foreground block font-mono text-[10px] whitespace-nowrap tabular-nums">
-				{ relativeTime(e.At) }
+				{ relativeTime(ctx, e.At) }
 			</span>
 			<span class="text-muted-foreground block font-mono text-[10px] whitespace-nowrap opacity-60">
 				{ e.Label }

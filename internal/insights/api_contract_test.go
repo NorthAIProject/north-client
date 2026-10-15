@@ -63,14 +63,14 @@ func TestInsightsShapes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	apitest.AssertGolden(t, "insights-recovery.golden.json", projectRecovery(recovery))
+	apitest.AssertGolden(t, "insights-recovery.golden.json", projectRecovery(context.Background(), recovery))
 	thursday := time.Date(2026, 10, 8, 0, 0, 0, 0, time.UTC)
 	trainedOn := map[time.Time]bool{thursday.AddDate(0, 0, -1): true, thursday.AddDate(0, 0, -2): true, thursday.AddDate(0, 0, -9): true}
 	checkedOn := map[time.Time]bool{thursday: true, thursday.AddDate(0, 0, -9): true}
 	apitest.AssertGolden(t, "insights-consistency.golden.json", projectConsistency(ConsistencyData{
 		Consistency: stat.ConsistencyOf(trainedOn, checkedOn, thursday, 2), CheckInStreak: 1,
 	}))
-	apitest.AssertGolden(t, "insights-health.golden.json", projectHealth([]HealthRow{
+	apitest.AssertGolden(t, "insights-health.golden.json", projectHealth(context.Background(), []HealthRow{
 		{
 			Metric: metric{Key: "steps", Label: "Steps"},
 			Recent: []point{{At: usual.Day.AddDate(0, 0, -1), Value: 8800}, {At: usual.Day, Value: 11200}},

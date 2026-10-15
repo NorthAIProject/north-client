@@ -1,6 +1,7 @@
 package insights
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/dashboard"
 	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/habits"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/shared/viz"
 	insightpages "github.com/NorthAIProject/north-client/web/insights"
@@ -21,12 +23,12 @@ import (
 // goals/view.go does it: a templ file that constructs an ECharts option is a
 // templ file nobody can test.
 
-func buildTimelineView(data TimelineData) insightpages.TimelineView {
+func buildTimelineView(ctx context.Context, data TimelineData) insightpages.TimelineView {
 	rows := make([]insightpages.EntryRow, len(data.Entries))
 	for i, e := range data.Entries {
 		rows[i] = insightpages.EntryRow{
 			Kind:   string(e.Kind),
-			Label:  e.Kind.Label(),
+			Label:  kindLabel(ctx, e.Kind),
 			At:     e.At,
 			Title:  e.Title,
 			Detail: e.Detail,
@@ -53,7 +55,7 @@ func buildTimelineView(data TimelineData) insightpages.TimelineView {
 	}
 	chips := make([]insightpages.FilterChip, 0, len(kinds)+1)
 	chips = append(chips, insightpages.FilterChip{
-		Key: "", Label: "Everything", Count: data.Total, Selected: data.Kind == "",
+		Key: "", Label: i18n.T(ctx, "insights.timeline.everything"), Count: data.Total, Selected: data.Kind == "",
 	})
 	for _, k := range kinds {
 		n := data.Counts[k]
@@ -61,21 +63,21 @@ func buildTimelineView(data TimelineData) insightpages.TimelineView {
 			continue
 		}
 		chips = append(chips, insightpages.FilterChip{
-			Key: string(k), Label: k.Label(), Count: n, Selected: data.Kind == string(k),
+			Key: string(k), Label: kindLabel(ctx, k), Count: n, Selected: data.Kind == string(k),
 		})
 	}
 
 	return insightpages.TimelineView{
-		Range:    rangeView(data.Range),
+		Range:    rangeView(ctx, data.Range),
 		Entries:  rows,
 		Chips:    chips,
 		Overflow: data.Overflow,
 	}
 }
 
-func buildBodyView(data BodyData) (insightpages.BodyView, error) {
+func buildBodyView(ctx context.Context, data BodyData) (insightpages.BodyView, error) {
 	loc := data.Range.Location()
-	labels := bucketLabels(data.Range)
+	labels := bucketLabels(ctx, data.Range)
 
 	// Both series are daily measurements, so a bucket wider than a day holds
 	// their average rather than their sum: a week of eight-hour nights is an
@@ -98,9 +100,9 @@ func buildBodyView(data BodyData) (insightpages.BodyView, error) {
 	sleepHours := bucketedMean(data.Range, sleepPoints)
 
 	view := insightpages.BodyView{
-		Range:        rangeView(data.Range),
-		WaterChart:   viz.Bar("insights-body-water", "Water (ml)", labels, water),
-		SleepChart:   viz.SingleLine("insights-body-sleep", "Hours slept", labels, sleepHours, nil, nil),
+		Range:        rangeView(ctx, data.Range),
+		WaterChart:   viz.Bar("insights-body-water", i18n.T(ctx, "insights.body.chart.water"), labels, water),
+		SleepChart:   viz.SingleLine("insights-body-sleep", i18n.T(ctx, "insights.body.chart.sleep"), labels, sleepHours, nil, nil),
 		TotalWaterML: totalWaterML,
 		Nights:       len(data.Nights),
 		AvgSleep:     data.SleepTrend.AverageMinutes,
@@ -124,7 +126,7 @@ func buildBodyView(data BodyData) (insightpages.BodyView, error) {
 		}
 		sort.SliceStable(rows, func(i, j int) bool { return rows[i].Rate > rows[j].Rate })
 
-		gauge, err := option(viz.GaugeOptionJSON("Adherence", habitAdherence(data.Habits)))
+		gauge, err := option(viz.GaugeOptionJSON(i18n.T(ctx, "insights.body.chart.adherence"), habitAdherence(data.Habits)))
 		if err != nil {
 			return insightpages.BodyView{}, err
 		}
@@ -136,10 +138,10 @@ func buildBodyView(data BodyData) (insightpages.BodyView, error) {
 	return view, nil
 }
 
-func buildMindView(data MindData) (insightpages.MindView, error) {
+func buildMindView(ctx context.Context, data MindData) (insightpages.MindView, error) {
 	loc := data.Range.Location()
 	buckets := data.Range.Buckets()
-	labels := bucketLabels(data.Range)
+	labels := bucketLabels(ctx, data.Range)
 
 	mood, energy := moodEnergyBuckets(data)
 	cells := make([]viz.HeatmapCell, len(buckets))
@@ -150,11 +152,11 @@ func buildMindView(data MindData) (insightpages.MindView, error) {
 	}
 	journalCount := bucketed(data.Range, journalPoints)
 
-	for i, b := range buckets {
-		cells[i] = viz.HeatmapCell{Label: b.Label, Value: mood[i]}
+	for i := range buckets {
+		cells[i] = viz.HeatmapCell{Label: labels[i], Value: mood[i]}
 	}
 
-	heatmap, err := option(viz.HeatmapJSON("Mood", cells))
+	heatmap, err := option(viz.HeatmapJSON(i18n.T(ctx, "insights.mind.chart.mood"), cells))
 	if err != nil {
 		return insightpages.MindView{}, err
 	}
@@ -162,9 +164,9 @@ func buildMindView(data MindData) (insightpages.MindView, error) {
 	avgMood, avgEnergy, rated := averageMoodEnergy(mood, energy)
 
 	return insightpages.MindView{
-		Range:        rangeView(data.Range),
+		Range:        rangeView(ctx, data.Range),
 		MoodChart:    viz.MoodEnergyLine("insights-mind-mood", labels, mood, energy),
-		JournalChart: viz.Bar("insights-mind-journal", "Entries", labels, journalCount),
+		JournalChart: viz.Bar("insights-mind-journal", i18n.T(ctx, "insights.mind.chart.entries"), labels, journalCount),
 		MoodHeatmap:  heatmap,
 		CheckInCount: rated,
 		JournalCount: len(data.Journal),
@@ -175,9 +177,9 @@ func buildMindView(data MindData) (insightpages.MindView, error) {
 	}, nil
 }
 
-func buildProgressView(data ProgressData) (insightpages.ProgressView, error) {
+func buildProgressView(ctx context.Context, data ProgressData) (insightpages.ProgressView, error) {
 	loc := data.Range.Location()
-	labels := bucketLabels(data.Range)
+	labels := bucketLabels(ctx, data.Range)
 
 	notePoints := make([]point, 0, len(data.Notes))
 	for _, n := range data.Notes {
@@ -208,7 +210,7 @@ func buildProgressView(data ProgressData) (insightpages.ProgressView, error) {
 	}
 	sort.SliceStable(rows, func(i, j int) bool { return rows[i].Progress > rows[j].Progress })
 
-	segments := goalStatusSegments(data.Active)
+	segments := goalStatusSegments(ctx, data.Active)
 	donut, err := option(viz.DonutOptionJSON(segments))
 	if err != nil {
 		return insightpages.ProgressView{}, err
@@ -220,9 +222,9 @@ func buildProgressView(data ProgressData) (insightpages.ProgressView, error) {
 	}
 
 	return insightpages.ProgressView{
-		Range:       rangeView(data.Range),
+		Range:       rangeView(ctx, data.Range),
 		Goals:       rows,
-		NotesChart:  viz.Bar("insights-progress-notes", "Updates", labels, notes),
+		NotesChart:  viz.Bar("insights-progress-notes", i18n.T(ctx, "insights.progress.chart.updates"), labels, notes),
 		StatusDonut: donut,
 		HasDonut:    len(segments) > 0,
 		ActiveCount: active,
@@ -235,9 +237,9 @@ func buildProgressView(data ProgressData) (insightpages.ProgressView, error) {
 	}, nil
 }
 
-func buildTrainingView(data TrainingData) (insightpages.TrainingView, error) {
+func buildTrainingView(ctx context.Context, data TrainingData) (insightpages.TrainingView, error) {
 	loc := data.Range.Location()
-	labels := bucketLabels(data.Range)
+	labels := bucketLabels(ctx, data.Range)
 	burnPoints := make([]point, 0, len(data.Sessions))
 
 	var (
@@ -277,7 +279,7 @@ func buildTrainingView(data TrainingData) (insightpages.TrainingView, error) {
 	}
 
 	return insightpages.TrainingView{
-		Range:        rangeView(data.Range),
+		Range:        rangeView(ctx, data.Range),
 		Sessions:     rows,
 		BurnChart:    viz.Bar("insights-training-burn", "kcal", labels, burn),
 		KindDonut:    donut,
@@ -287,7 +289,7 @@ func buildTrainingView(data TrainingData) (insightpages.TrainingView, error) {
 		SessionCount: len(rows),
 		TotalTime:    formatDuration(totalSeconds),
 		HasSessions:  len(rows) > 0,
-		Lifting:      buildLiftingView(data.Lifts),
+		Lifting:      buildLiftingView(ctx, data.Lifts),
 		Plan:         buildPlanAdherence(data),
 		Recap:        buildRecap(data),
 	}, nil
@@ -348,7 +350,7 @@ func moodEnergyBuckets(data MindData) (mood, energy []int) {
 
 // goalStatusSegments counts goals by status, in the order each status first
 // appears.
-func goalStatusSegments(gs []goals.Goal) []viz.DonutSegment {
+func goalStatusSegments(ctx context.Context, gs []goals.Goal) []viz.DonutSegment {
 	byStatus := map[string]int{}
 	var order []string
 	for _, g := range gs {
@@ -359,7 +361,7 @@ func goalStatusSegments(gs []goals.Goal) []viz.DonutSegment {
 	}
 	segments := make([]viz.DonutSegment, 0, len(order))
 	for _, st := range order {
-		segments = append(segments, viz.DonutSegment{Label: statusLabel(st), Value: byStatus[st]})
+		segments = append(segments, viz.DonutSegment{Label: statusLabel(ctx, st), Value: byStatus[st]})
 	}
 	return segments
 }
@@ -392,13 +394,39 @@ func sessionName(sess activity.Session) string {
 	return sess.ActivityCode
 }
 
-func rangeView(rg timerange.Range) insightpages.RangeView {
+func rangeView(ctx context.Context, rg timerange.Range) insightpages.RangeView {
 	all := timerange.All(rg.Location())
 	options := make([]insightpages.RangeOption, len(all))
 	for i, r := range all {
-		options[i] = insightpages.RangeOption{Key: r.Key, Label: r.Label, Selected: r.Key == rg.Key}
+		options[i] = insightpages.RangeOption{Key: r.Key, Label: rangeLabel(ctx, r), Selected: r.Key == rg.Key}
 	}
-	return insightpages.RangeView{Key: rg.Key, Label: rg.Label, Options: options}
+	return insightpages.RangeView{Key: rg.Key, Label: rangeLabel(ctx, rg), Options: options}
+}
+
+// rangeLabel names a range in the reader's language. A range with no selector
+// key — an explicit span — has no catalogue entry and keeps its own label.
+func rangeLabel(ctx context.Context, rg timerange.Range) string {
+	if rg.Key == "" {
+		return rg.Label
+	}
+	return translated(ctx, rg.LabelKey(), rg.Label)
+}
+
+// kindLabel names a timeline entry kind. dashboard words its kinds in English
+// for the dashboard; the insights feed carries its own copy, and an unknown
+// kind keeps the dashboard's word rather than showing a catalogue key.
+func kindLabel(ctx context.Context, k dashboard.EntryKind) string {
+	return translated(ctx, "insights.kind."+string(k), k.Label())
+}
+
+// translated is the catalogue's word for key, or fallback when the catalogue
+// has none. For keys built from data — a kind, a muscle, a surface — where a
+// new value must read as its own name rather than as "insights.kind.x".
+func translated(ctx context.Context, key, fallback string) string {
+	if s := i18n.T(ctx, key); s != key {
+		return s
+	}
+	return fallback
 }
 
 // deltaView mirrors the dashboard's rule: no prior window means no claim.
@@ -452,16 +480,10 @@ func anyPositive(values []float64) bool {
 	return false
 }
 
-func statusLabel(status string) string {
+func statusLabel(ctx context.Context, status string) string {
 	switch status {
-	case "active":
-		return "Active"
-	case "achieved":
-		return "Achieved"
-	case "paused":
-		return "Paused"
-	case "abandoned":
-		return "Abandoned"
+	case "active", "achieved", "paused", "abandoned":
+		return i18n.T(ctx, "insights.status."+status)
 	default:
 		return status
 	}
