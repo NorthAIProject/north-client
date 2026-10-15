@@ -113,6 +113,9 @@ func (s *Service) PasskeyRegisterBegin(ctx context.Context, in PasskeyRegisterBe
 		Email:       in.Email,
 		DisplayName: in.DisplayName,
 		Timezone:    in.Timezone,
+		// Only for the language of the validation messages: the row is
+		// written by Finish, which resolves its own.
+		Locale: users.ResolveLocale(i18n.LocaleFrom(ctx)),
 	}
 	clean, err := s.users.ValidateRegistration(reg)
 	if err != nil {
@@ -125,7 +128,7 @@ func (s *Service) PasskeyRegisterBegin(ctx context.Context, in PasskeyRegisterBe
 	if byEmailErr == nil && existing.ID != uuid.Nil {
 		return PasskeyCeremony{}, apperr.FieldErrors{{
 			Field:   "email",
-			Message: "An account with that email already exists.",
+			Message: i18n.T(ctx, "auth.err.taken"),
 		}}
 	} else if byEmailErr != nil && !apperr.Is(byEmailErr, apperr.ErrNotFound) {
 		return PasskeyCeremony{}, byEmailErr
@@ -218,7 +221,7 @@ func (s *Service) PasskeyRegisterFinish(ctx context.Context, in PasskeyRegisterF
 		if apperr.Is(err, apperr.ErrConflict) {
 			return users.User{}, "", apperr.FieldErrors{{
 				Field:   "email",
-				Message: "An account with that email already exists.",
+				Message: i18n.T(ctx, "auth.err.taken"),
 			}}
 		}
 		return users.User{}, "", err

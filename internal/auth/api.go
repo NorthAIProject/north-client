@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
@@ -119,7 +120,7 @@ func (a *API) me(w http.ResponseWriter, r *http.Request) {
 func (a *API) signup(w http.ResponseWriter, r *http.Request) {
 	var req SignupRequest
 	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 64 << 10}); err != nil {
-		httpx.Error(w, err, "The request body must be a valid signup request.")
+		httpx.Error(w, err, i18n.T(r.Context(), "auth.api.body.signup"))
 		return
 	}
 
@@ -131,14 +132,14 @@ func (a *API) signup(w http.ResponseWriter, r *http.Request) {
 		Timezone:             req.Timezone,
 	}, a.mw.RequestMetadata(r))
 	if err != nil {
-		a.writeAuthError(w, err, "That account could not be created.")
+		a.writeAuthError(w, err, i18n.T(r.Context(), "auth.api.signup"))
 		return
 	}
 
 	// The API returns the token; it does not set the browser cookie.
 	session, err := a.sessions.Resolve(r.Context(), token)
 	if err != nil {
-		a.writeAuthError(w, err, "Something went wrong.")
+		a.writeAuthError(w, err, i18n.T(r.Context(), "auth.api.generic"))
 		return
 	}
 	httpx.WriteJSON(w, http.StatusCreated, AuthResponse{Token: token, ExpiresAt: session.ExpiresAt, User: ProjectUser(user)})
@@ -147,19 +148,19 @@ func (a *API) signup(w http.ResponseWriter, r *http.Request) {
 func (a *API) login(w http.ResponseWriter, r *http.Request) {
 	var req LoginRequest
 	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 64 << 10}); err != nil {
-		httpx.Error(w, err, "The request body must be a valid login request.")
+		httpx.Error(w, err, i18n.T(r.Context(), "auth.api.body.login"))
 		return
 	}
 
 	user, token, err := a.service.Login(r.Context(), LoginInput(req), a.mw.RequestMetadata(r))
 	if err != nil {
-		a.writeAuthError(w, err, "Email or password is incorrect.")
+		a.writeAuthError(w, err, i18n.T(r.Context(), "auth.err.credentials"))
 		return
 	}
 
 	session, err := a.sessions.Resolve(r.Context(), token)
 	if err != nil {
-		a.writeAuthError(w, err, "Something went wrong.")
+		a.writeAuthError(w, err, i18n.T(r.Context(), "auth.api.generic"))
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, AuthResponse{Token: token, ExpiresAt: session.ExpiresAt, User: ProjectUser(user)})
@@ -168,12 +169,12 @@ func (a *API) login(w http.ResponseWriter, r *http.Request) {
 func (a *API) google(w http.ResponseWriter, r *http.Request) {
 	var req GoogleRequest
 	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 16 << 10}); err != nil {
-		httpx.Error(w, err, "The request body must contain a Google ID token.")
+		httpx.Error(w, err, i18n.T(r.Context(), "auth.api.body.google"))
 		return
 	}
 	user, token, expiresAt, err := a.service.CompleteGoogleIDToken(r.Context(), req.IDToken, a.mw.RequestMetadata(r))
 	if err != nil {
-		a.writeAuthError(w, err, "Google sign-in could not be completed.")
+		a.writeAuthError(w, err, i18n.T(r.Context(), "auth.api.google"))
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, AuthResponse{Token: token, ExpiresAt: expiresAt, User: ProjectUser(user)})
@@ -182,7 +183,7 @@ func (a *API) google(w http.ResponseWriter, r *http.Request) {
 func (a *API) apple(w http.ResponseWriter, r *http.Request) {
 	var req AppleRequest
 	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 32 << 10}); err != nil {
-		httpx.Error(w, err, "The request body must contain an Apple identity token.")
+		httpx.Error(w, err, i18n.T(r.Context(), "auth.api.body.apple"))
 		return
 	}
 	user, token, expiresAt, err := a.service.CompleteAppleSignIn(r.Context(), AppleSignInInput{
@@ -192,7 +193,7 @@ func (a *API) apple(w http.ResponseWriter, r *http.Request) {
 		Email:         req.Email,
 	}, a.mw.RequestMetadata(r))
 	if err != nil {
-		a.writeAuthError(w, err, "Apple sign-in could not be completed.")
+		a.writeAuthError(w, err, i18n.T(r.Context(), "auth.api.apple"))
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, AuthResponse{Token: token, ExpiresAt: expiresAt, User: ProjectUser(user)})
@@ -201,11 +202,11 @@ func (a *API) apple(w http.ResponseWriter, r *http.Request) {
 func (a *API) logout(w http.ResponseWriter, r *http.Request) {
 	token, ok := bearerToken(r)
 	if !ok {
-		httpx.Error(w, apperr.ErrUnauthenticated, "A bearer token is required.")
+		httpx.Error(w, apperr.ErrUnauthenticated, i18n.T(r.Context(), "auth.api.bearer"))
 		return
 	}
 	if err := a.service.Logout(r.Context(), token); err != nil {
-		a.writeAuthError(w, err, "Something went wrong signing you out.")
+		a.writeAuthError(w, err, i18n.T(r.Context(), "auth.api.signout"))
 		return
 	}
 	httpx.WriteJSON(w, http.StatusNoContent, nil)
@@ -214,11 +215,11 @@ func (a *API) logout(w http.ResponseWriter, r *http.Request) {
 func (a *API) forgotPassword(w http.ResponseWriter, r *http.Request) {
 	var req ForgotPasswordRequest
 	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 16 << 10}); err != nil {
-		httpx.Error(w, err, "The request body must contain an email address.")
+		httpx.Error(w, err, i18n.T(r.Context(), "auth.api.body.email"))
 		return
 	}
 	if err := a.service.RequestPasswordReset(r.Context(), req.Email); err != nil {
-		a.writeAuthError(w, err, "The password reset request could not be processed.")
+		a.writeAuthError(w, err, i18n.T(r.Context(), "auth.api.reset"))
 		return
 	}
 	httpx.WriteJSON(w, http.StatusAccepted, nil)
