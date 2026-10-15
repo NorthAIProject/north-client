@@ -72,3 +72,18 @@ var progresscheckBaseline = bodymap.Baseline{
 	Hips:  bodymap.Girth{From: 0.52, To: 0.76},
 	Chest: bodymap.Girth{From: 0.53, To: 0.74},
 }
+
+func TestProgressEstimateShape(t *testing.T) {
+	t.Parallel()
+	est := progresschecks.Estimate{WaistCm: ptr(95.2), HipsCm: ptr(104), Confidence: "medium", Notes: "Chest hidden by arms."}
+	apitest.AssertGolden(t, "progress_estimate.golden.json", progresschecks.ProgressEstimateResult{
+		Estimate: progresschecks.ProjectEstimate(est), ProviderLabel: "Anthropic (Claude)",
+	})
+}
+
+func TestProgressAssistShape(t *testing.T) {
+	t.Parallel()
+	apitest.AssertGolden(t, "progress_assist.golden.json", progresschecks.ProgressAssistView{
+		Available: true, ProviderLabel: "OpenAI", OwnProvider: true,
+	})
+}

@@ -41,6 +41,10 @@ const (
 	SurfaceVoiceCapture  = "voice_capture"
 	SurfacePlanImport    = "plan_import"
 
+	// SurfaceProgressEstimate is reading tape measurements off progress-check
+	// photos.
+	SurfaceProgressEstimate = "progress_estimate"
+
 	// SurfaceTelegramVoice is dictation on a phone, kept apart from
 	// SurfaceVoiceCapture because they are different products with different
 	// costs: the web recorder uploads a minute of WAV the browser prepared,

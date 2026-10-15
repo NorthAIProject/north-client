@@ -15,7 +15,28 @@ type Data struct {
 	Last   *Check
 	Checks []Check
 
-	Form Form
+	Assist Assist
+	Form   Form
+}
+
+// Assist is where photos would go for an estimate. Zero when none may, and
+// the page then offers the manual form only.
+type Assist struct {
+	Available bool
+	// Label is the provider, named on the page before anything is sent.
+	Label string
+	// Own is the person's own connected key.
+	Own bool
+}
+
+// EstimateNote is what an estimate just did, shown under the numbers.
+type EstimateNote struct {
+	Confidence string // low, medium, high
+	Notes      string
+	// Filled is how many empty fields it filled; numbers already typed stay.
+	Filled int
+	// Kept is how many it estimated but left alone because a number was typed.
+	Kept int
 }
 
 // Check is one saved check as the history shows it.
@@ -64,6 +85,16 @@ type Form struct {
 	Thigh      string
 	Arm        string
 	Errors     map[string]string
+
+	// Source is "assisted" once an estimate filled a field; the save carries
+	// it with the estimate's confidence and notes.
+	Source           string
+	AssistConfidence string
+	AssistNotes      string
+
+	// Estimate is the estimate just shown; EstimateError why one failed.
+	Estimate      *EstimateNote
+	EstimateError string
 }
 
 func (f Form) fieldError(name string) string { return f.Errors[name] }

@@ -34,6 +34,7 @@ type Service struct {
 	repo    *Repository
 	photos  Photos
 	weights Weights
+	assist  *Assist
 	now     func() time.Time
 }
 
