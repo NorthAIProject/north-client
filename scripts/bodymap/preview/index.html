@@ -57,9 +57,15 @@
       const dark = q.get("theme") !== "light";
       document.documentElement.classList.toggle("dark", dark);
       const status = document.getElementById("status");
+      const canvas = document.getElementById("figure");
+      // ?w=150&h=220 draws the figure at a card's size, for judging it small.
+      if (q.get("w") && q.get("h")) {
+        canvas.style.width = `${q.get("w")}px`;
+        canvas.style.height = `${q.get("h")}px`;
+      }
       try {
         const { createViewer } = await import("/assets/js/shared/muscle-viewer/viewer.js");
-        const viewer = await createViewer(document.getElementById("figure"), {
+        const viewer = await createViewer(canvas, {
           dark,
           reduced: true,
           variant: q.get("variant") || "a",

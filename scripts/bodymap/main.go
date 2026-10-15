@@ -71,6 +71,9 @@ func main() {
 		muscleTris[i] = triangle{fit.apply(t[0]), fit.apply(t[1]), fit.apply(t[2])}
 	}
 	reportFit(field, muscleTris)
+	fitArms(field, muscleTris, muscleKeys)
+	reportFit(field, muscleTris)
+	pushInside(field, skin, muscleTris)
 
 	idx := newMuscleIndex(muscleTris, muscleKeys, *radius)
 	vertexLabels := labelVertices(skin, idx, *radius)
