@@ -120,16 +120,17 @@ func alpineData(ctx context.Context, p Props) string {
 	return "northMuscleViewer(" + string(data) + ")"
 }
 
-// regionStyle colours one region of the flat figure the way the 3D one is:
-// untrained grey-blue, else a mix from pale amber toward ember.
-// Built here from fixed tokens and a number, so it is safe CSS as it stands.
+// regionStyle colours one muscle of the flat figure the way the 3D one is:
+// untrained grey-blue, else a mix from muted ochre toward ember. Same ramp as
+// colourFor in viewer.js. Built here from fixed tokens and a number, so it is
+// safe CSS as it stands.
 func regionStyle(h map[string]float64, region string) templ.SafeCSS {
 	const stroke = "; stroke: var(--north-surface); stroke-width: 0.8"
 	v, ok := h[region]
 	if !ok || v <= 0 {
 		return templ.SafeCSS("fill: var(--north-body-idle)" + stroke)
 	}
-	t := 0.25 + 0.75*min(v, 1)
+	t := 0.15 + 0.85*min(v, 1)
 	return templ.SafeCSS(fmt.Sprintf("fill: color-mix(in oklch, var(--north-ember) %.0f%%, var(--north-heat-low))", t*100) + stroke)
 }
 
@@ -219,11 +220,12 @@ templ Viewer(p Props) {
 	</div>
 }
 
-// flatView is one side of the no-WebGL figure. Regions are tappable like the
-// 3D ones and open the same callout.
+// flatView is one side of the no-WebGL figure: the body's dark inside with
+// the muscles on it, as the 3D one. Muscles are tappable like the 3D ones and
+// open the same callout.
 templ flatView(v figureView, h map[string]float64) {
 	<svg viewBox={ v.ViewBox } class="size-full" aria-hidden="true">
-		<path d={ v.Silhouette } fill-rule="evenodd" style="fill: var(--north-body-base)"></path>
+		<path d={ v.Silhouette } fill-rule="evenodd" style="fill: var(--north-body-core)"></path>
 		for _, r := range v.Regions {
 			<path
 				d={ r.D }

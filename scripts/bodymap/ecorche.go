@@ -5,10 +5,8 @@ import (
 	"strings"
 )
 
-// shellRegion is skin with muscle under it. Clients draw its back faces opaque
-// and dark and its front faces translucent, so the muscles show through a
-// body. baseRegion skin (head, hands, feet, joints) is the same unless a
-// client chooses to keep it solid.
+// shellRegion names the skin mesh. Clients draw its back faces opaque and
+// dark and its front faces translucent, so the muscles show through a body.
 const shellRegion = "shell"
 
 // isMuscle rejects atlas meshes that resolve to a key by containment but are
@@ -42,19 +40,17 @@ func orientOutward(tris []triangle) []triangle {
 	return tris
 }
 
-// collapseLabels keeps baseRegion and turns every muscle label into
-// shellRegion: the skin's job is to be a body around the muscles, not to stand
-// in for them.
-func collapseLabels(labels []string) []string {
-	out := make([]string, len(labels))
-	for i, l := range labels {
-		if l == baseRegion {
-			out[i] = baseRegion
-		} else {
-			out[i] = shellRegion
-		}
-	}
-	return out
+// region is one named mesh of the figure, indexed on its own.
+type region struct {
+	key     string
+	verts   []vec3
+	normals []vec3
+	tris    [][3]int
+}
+
+// skinRegion is the whole skin as one mesh, with smooth normals.
+func skinRegion(skin mesh) region {
+	return region{key: shellRegion, verts: skin.verts, normals: skin.normals(), tris: skin.tris}
 }
 
 // muscleRegions groups the fitted atlas triangles by muscle key, welds each

@@ -1,9 +1,13 @@
 # Model tools
 
-Builds `tools/model/body-source.glb`: the anatomical atlas fitted inside an outer
-skin. It is not served. `go run ./scripts/bodymap` turns it into the figure every
-client draws (`web/assets/models/body-map.glb`, the iOS `BodyMap.usdz` and the flat
-fallback); see `web/assets/models/README.md`.
+Builds `tools/model/body-source.glb`: the anatomical atlas placed inside an outer
+skin. It is not served. `task bodymap` (`go run ./scripts/bodymap`) turns it into the
+figure every client draws (`web/assets/models/body-map.glb`, the iOS `BodyMap.usdz`
+and the flat fallback); see `web/assets/models/README.md`.
+
+**The raw sources are not on disk any more.** `body-source.glb` is committed and is
+the only input the figure needs; the scripts here are the record of how it was made
+and are only needed to rebuild it from fresh downloads.
 
 This is a build-time tool. It is not part of the Go build, it is not deployed, and
 nothing in the application imports it. It exists because `body.glb` is generated from
@@ -64,9 +68,8 @@ because a group with no geometry can never be highlighted and nothing else would
    reconciled with it without a rig, and the previous version of this asset worked
    around that by cropping the arms off at the shoulders — which is why the figure
    used to have hollow stumps where its deltoids should be.
-2. **No albedo needed.** The runtime renders the body as a matte mannequin in a
-   theme neutral (`THEME` in `viewer.js`) and drops any baked colour map. A normal
-   map is still worth having: it is shape, and the runtime keeps it.
+2. **No albedo needed.** The runtime draws the skin as a translucent shell over the
+   muscles and drops any baked colour map, UVs included.
 3. **Roughly human proportions.** See alignment below.
 
 ## Alignment is the fragile part
@@ -78,9 +81,9 @@ human of ordinary proportions, and wrong otherwise.
 
 Matching total height is also why this fit is off in a way that matters: the atlas
 has no skull, so it gets stretched to the top of the head and every muscle sits about
-a tenth of the body too high. `scripts/bodymap` refits the atlas to the skin itself
-before it labels anything, so the figure is right even though this file is not. Check
-a change with `go run ./scripts/bodymap -debug-svg /tmp/body.svg`.
+a tenth of the body too high. `scripts/bodymap` refits the atlas to the skin itself,
+so the figure is right even though this file is not. Check a change with the preview
+page in `scripts/bodymap/preview/`.
 
 The fit measures world-space bounds (`fit.mjs`), node transforms included, and the
 build fails if the fitted skin is not within 10% of the muscle height. Fitting against

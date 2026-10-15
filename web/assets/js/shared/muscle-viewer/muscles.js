@@ -4,8 +4,8 @@
  *
  * MUSCLE_ALIASES is read by the asset builds, not the browser:
  * tools/model/build-body.mjs keeps these atlas meshes in body-source.glb, and
- * scripts/bodymap turns the skin over them into the figure's regions. The viewer
- * imports only MUSCLE_INFO.
+ * scripts/bodymap groups them into the figure's muscles, one mesh per key. The
+ * viewer imports only MUSCLE_INFO.
  *
  * Nothing here may import three.js, or the build script can't load it.
  *
@@ -19,13 +19,11 @@
 // not match these exact Z-Anatomy labels.
 //
 // Deep layers are deliberately left out. The atlas models the abdominal wall as four
-// stacked sheets and the spinal erectors as eleven, and the viewer draws a muscle as
-// a translucent glow that does not write depth — so every extra layer along the same
-// view ray adds opacity without adding information, and the torso turns into one flat
-// orange slab. Listing only the layers a person could actually point to on their own
-// body keeps the highlight legible, and it says the same thing: this exercise works
-// your abs. Anything omitted here is also omitted from body.glb, since
-// tools/model/build-body.mjs builds the asset from this table.
+// stacked sheets and the spinal erectors as eleven; only the outermost show on the
+// figure, and listing only the layers a person could actually point to on their own
+// body says the same thing: this exercise works your abs. Anything omitted here is
+// also omitted from body-source.glb, since tools/model/build-body.mjs builds the asset
+// from this table.
 export const MUSCLE_ALIASES = {
   quads: [
     "rectus femoris muscle",

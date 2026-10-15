@@ -1,8 +1,11 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"math"
+	"sort"
+	"strings"
 )
 
 // The skin's arms were folded down from a T-pose rigidly, and the atlas arms
@@ -98,17 +101,15 @@ func fitArms(field distanceField, muscles []triangle, keys []string) {
 }
 
 // pushInside moves any muscle vertex still outside the skin to just under its
-// nearest skin point, so no muscle pokes through the body. A vertex farther
-// out than pushLimit is left alone: that is a fit problem to look at, not one
-// to hide. Welding later keeps the moved copies of a vertex together, since
-// every copy moves the same way.
-func pushInside(field distanceField, skin mesh, muscles []triangle) {
-	tris := make([]triangle, len(skin.tris))
-	for i := range skin.tris {
-		tris[i] = skin.triangle(i)
-	}
-	idx := newMuscleIndex(tris, make([]string, len(tris)), fitPad)
-	var moved, left int
+// nearest skin point, so no muscle pokes through the body: the calves, say,
+// bulge past this slimmer skin and come to hug it instead. A vertex farther
+// out than pushLimit is left alone and logged by muscle: that is a fit problem
+// to look at, not one to hide. Welding later keeps the moved copies of a
+// vertex together, since every copy moves the same way.
+func pushInside(field distanceField, skin mesh, muscles []triangle, keys []string) {
+	idx := skinIndex(skin)
+	var moved int
+	left := map[string]int{}
 	for i, t := range muscles {
 		for k, p := range t {
 			if field.at(p) <= 0 {
@@ -116,17 +117,22 @@ func pushInside(field distanceField, skin mesh, muscles []triangle) {
 			}
 			_, c, ok := idx.closest(p, fitPad)
 			if !ok || p.sub(c).length() > pushLimit {
-				left++
+				left[keys[i]]++
 				continue
 			}
 			muscles[i][k] = c.sub(p.sub(c).normalized().scale(pushDepth))
 			moved++
 		}
 	}
-	log.Printf("push inside: %d vertices moved under the skin, %d left outside (farther than %.0f mm)", moved, left, pushLimit*1000)
+	var where []string
+	for key, n := range left {
+		where = append(where, fmt.Sprintf("%s %d", key, n))
+	}
+	sort.Strings(where)
+	log.Printf("push inside: %d vertices moved under the skin; left outside (farther than %.0f mm): %s", moved, pushLimit*1000, strings.Join(where, ", "))
 }
 
 const (
-	pushDepth = 0.002 // metres under the skin a pushed vertex ends up
-	pushLimit = 0.02  // metres: farther out than this is left as a visible misfit
+	pushDepth = 0.002  // metres under the skin a pushed vertex ends up
+	pushLimit = fitPad // metres: farther out than this is left as a visible misfit
 )
