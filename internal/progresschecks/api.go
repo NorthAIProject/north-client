@@ -1,0 +1,401 @@
+package progresschecks
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
+
+	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/bodymap"
+	"github.com/NorthAIProject/north-client/internal/day/day"
+	"github.com/NorthAIProject/north-client/internal/lifts"
+	"github.com/NorthAIProject/north-client/internal/media"
+	"github.com/NorthAIProject/north-client/internal/progresschecks/progresscheck"
+	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/httpx"
+	"github.com/NorthAIProject/north-client/internal/users"
+)
+
+// BodyMaps is what recent training heated. lifts.Service satisfies it.
+type BodyMaps interface {
+	BodyMap(ctx context.Context, user users.User, days int) (bodymap.Map, error)
+}
+
+// bodyMapDays is the heat window /body/current carries, the same as Today's.
+const bodyMapDays = 7
+
+// API is progress checks for native clients. Routes go in the JSON group;
+// UploadRoutes in the upload group, whose body cap fits photos.
+type API struct {
+	svc  *Service
+	maps BodyMaps
+}
+
+func NewAPI(svc *Service, maps BodyMaps) *API { return &API{svc: svc, maps: maps} }
+
+func (a *API) Routes(r chi.Router) {
+	r.Get("/progress/checks", a.list)
+	r.Delete("/progress/checks/{checkID}", a.delete)
+	r.Get("/progress/schedule", a.schedule)
+	r.Put("/progress/schedule", a.setSchedule)
+	r.Get("/body/current", a.body)
+}
+
+func (a *API) UploadRoutes(r chi.Router) {
+	r.Post("/progress/checks", a.create)
+}
+
+// maxCheckUpload fits three photos at media's cap plus the framing.
+const maxCheckUpload = 3*media.MaxImageBytes + 1<<20
+
+// ProgressCheckRequest is the "check" part of the multipart upload. Every
+// number is optional; measuredOn defaults to today. Cadence, when present,
+// also sets the reminder cadence.
+type ProgressCheckRequest struct {
+	MeasuredOn       string   `json:"measuredOn,omitempty"`
+	Cadence          string   `json:"cadence,omitempty"`
+	WeightKg         *float64 `json:"weightKg,omitempty"`
+	WaistCm          *float64 `json:"waistCm,omitempty"`
+	HipsCm           *float64 `json:"hipsCm,omitempty"`
+	ChestCm          *float64 `json:"chestCm,omitempty"`
+	ThighCm          *float64 `json:"thighCm,omitempty"`
+	ArmCm            *float64 `json:"armCm,omitempty"`
+	Source           string   `json:"source,omitempty"`
+	AssistConfidence string   `json:"assistConfidence,omitempty"`
+	AssistNotes      string   `json:"assistNotes,omitempty"`
+}
+
+// ScheduleRequest sets the cadence; an empty cadence turns the reminder off.
+type ScheduleRequest struct {
+	Cadence string `json:"cadence"`
+}
+
+// ProgressPhotoView is one pose. URL is signed and lasts two hours.
+type ProgressPhotoView struct {
+	Pose string `json:"pose"`
+	URL  string `json:"url"`
+}
+
+type ProgressCheckView struct {
+	ID            uuid.UUID `json:"id"`
+	MeasuredOn    string    `json:"measuredOn"`
+	WeightKg      *float64  `json:"weightKg,omitempty"`
+	WeightCarried bool      `json:"weightCarried"`
+	WaistCm       *float64  `json:"waistCm,omitempty"`
+	HipsCm        *float64  `json:"hipsCm,omitempty"`
+	ChestCm       *float64  `json:"chestCm,omitempty"`
+	ThighCm       *float64  `json:"thighCm,omitempty"`
+	ArmCm         *float64  `json:"armCm,omitempty"`
+	// Source is manual or assisted, as an open string.
+	Source           string              `json:"source"`
+	AssistConfidence *string             `json:"assistConfidence,omitempty"`
+	AssistNotes      string              `json:"assistNotes,omitempty"`
+	Complete         bool                `json:"complete"`
+	Photos           []ProgressPhotoView `json:"photos"`
+	CreatedAt        time.Time           `json:"createdAt"`
+}
+
+// ProgressScheduleView is the reminder. Cadence and NextDueOn are absent when
+// no cadence is set.
+type ProgressScheduleView struct {
+	Cadence   string `json:"cadence,omitempty"`
+	NextDueOn string `json:"nextDueOn,omitempty"`
+	Due       bool   `json:"due"`
+}
+
+type ProgressChecksView struct {
+	Checks   []ProgressCheckView  `json:"checks"`
+	Schedule ProgressScheduleView `json:"schedule"`
+}
+
+// BodyMorphView is the figure's shape, each target 0..1.
+type BodyMorphView = bodymap.Shape
+
+// BodyCurrentView is everything the figure is drawn from. The shape comes
+// from the latest progress check; muscles are the same heat as /body/map.
+type BodyCurrentView struct {
+	SourceCheckID *uuid.UUID            `json:"sourceCheckId,omitempty"`
+	MeasuredOn    string                `json:"measuredOn,omitempty"`
+	WeightKg      *float64              `json:"weightKg,omitempty"`
+	BMI           *float64              `json:"bmi,omitempty"`
+	BMIBand       string                `json:"bmiBand,omitempty"`
+	Morph         BodyMorphView         `json:"morph"`
+	Muscles       []lifts.BodyMapMuscle `json:"muscles"`
+}
+
+type ProgressCheckCreated struct {
+	Check ProgressCheckView `json:"check"`
+	Body  BodyCurrentView   `json:"body"`
+}
+
+func (a *API) list(w http.ResponseWriter, r *http.Request) {
+	limit := DefaultLimit
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 || n > MaxLimit {
+			httpx.Error(w, apperr.FieldErrors{}.Add("limit", "Use a limit from 1 to 52."), "Use a limit from 1 to 52.")
+			return
+		}
+		limit = n
+	}
+	a.respondList(w, r, http.StatusOK, limit)
+}
+
+func (a *API) create(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+	r.Body = http.MaxBytesReader(w, r.Body, maxCheckUpload)
+	if err := r.ParseMultipartForm(4 << 20); err != nil {
+		httpx.Error(w, apperr.FieldErrors{}.Add("front", "The photos could not be read."), "The photos could not be read.")
+		return
+	}
+	defer func() { _ = r.MultipartForm.RemoveAll() }()
+
+	var req ProgressCheckRequest
+	if raw := r.FormValue("check"); raw != "" {
+		dec := json.NewDecoder(strings.NewReader(raw))
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&req); err != nil {
+			httpx.Error(w, apperr.Wrap(apperr.ErrValidation, "decode check: %v", err), "The check could not be read.")
+			return
+		}
+	}
+	in, cadence, err := req.input()
+	if err != nil {
+		httpx.Error(w, err, "The check could not be read.")
+		return
+	}
+
+	uploads, closeAll, err := formPhotos(r)
+	defer closeAll()
+	if err != nil {
+		httpx.Error(w, err, "The photos could not be read.")
+		return
+	}
+
+	check, err := a.svc.Save(r.Context(), user, in, uploads)
+	if err != nil {
+		httpx.Error(w, err, "The check could not be saved.")
+		return
+	}
+	if cadence != "" {
+		if _, err = a.svc.SetCadence(r.Context(), user, cadence); err != nil {
+			httpx.Error(w, err, "The check was saved, but the reminder could not be set.")
+			return
+		}
+	}
+
+	view, err := a.project(r.Context(), user, check)
+	if err != nil {
+		httpx.Error(w, err, "The check was saved, but could not be loaded.")
+		return
+	}
+	body, err := a.bodyView(r.Context(), user)
+	if err != nil {
+		httpx.Error(w, err, "The check was saved, but the figure could not be loaded.")
+		return
+	}
+	httpx.WriteJSON(w, http.StatusCreated, ProgressCheckCreated{Check: view, Body: body})
+}
+
+func (req ProgressCheckRequest) input() (Input, progresscheck.Cadence, error) {
+	in := Input{
+		Measurements: progresscheck.Measurements{
+			WeightKg: req.WeightKg, WaistCm: req.WaistCm, HipsCm: req.HipsCm,
+			ChestCm: req.ChestCm, ThighCm: req.ThighCm, ArmCm: req.ArmCm,
+		},
+		Source: req.Source, AssistConfidence: req.AssistConfidence, AssistNotes: req.AssistNotes,
+	}
+	if req.MeasuredOn != "" {
+		on, err := time.Parse(time.DateOnly, req.MeasuredOn)
+		if err != nil {
+			return Input{}, "", apperr.FieldErrors{}.Add("measuredOn", "The date is YYYY-MM-DD.")
+		}
+		in.MeasuredOn = on
+	}
+	var cadence progresscheck.Cadence
+	if req.Cadence != "" {
+		c, ok := progresscheck.ParseCadence(req.Cadence)
+		if !ok {
+			return Input{}, "", apperr.FieldErrors{}.Add("cadence", "Cadence is weekly, biweekly or monthly.")
+		}
+		cadence = c
+	}
+	return in, cadence, nil
+}
+
+// formPhotos opens each pose's file field that is present. The returned func
+// closes them all, and is safe to call when nothing opened.
+func formPhotos(r *http.Request) ([]PhotoUpload, func(), error) {
+	var uploads []PhotoUpload
+	var closers []func() error
+	closeAll := func() {
+		for _, c := range closers {
+			_ = c()
+		}
+	}
+	for _, pose := range progresscheck.Poses {
+		file, header, err := r.FormFile(string(pose))
+		if err == http.ErrMissingFile {
+			continue
+		}
+		if err != nil {
+			return nil, closeAll, apperr.FieldErrors{}.Add(string(pose), "That photo could not be read.")
+		}
+		closers = append(closers, file.Close)
+		uploads = append(uploads, PhotoUpload{Pose: pose, Filename: header.Filename, Size: header.Size, Body: file})
+	}
+	return uploads, closeAll, nil
+}
+
+func (a *API) delete(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(chi.URLParam(r, "checkID"))
+	if err != nil {
+		httpx.Error(w, apperr.ErrNotFound, "No such progress check.")
+		return
+	}
+	if err := a.svc.Delete(r.Context(), auth.MustUser(r.Context()), id); err != nil {
+		httpx.Error(w, err, "The check could not be deleted.")
+		return
+	}
+	a.respondList(w, r, http.StatusOK, DefaultLimit)
+}
+
+func (a *API) schedule(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+	sched, due, err := a.svc.Due(r.Context(), user, time.Now())
+	if err != nil {
+		httpx.Error(w, err, "The reminder could not be loaded.")
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, ProjectSchedule(sched, due))
+}
+
+func (a *API) setSchedule(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+	var req ScheduleRequest
+	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 1 << 10}); err != nil {
+		httpx.Error(w, err, "The request body could not be read.")
+		return
+	}
+	if strings.TrimSpace(req.Cadence) == "" {
+		if err := a.svc.StopSchedule(r.Context(), user); err != nil {
+			httpx.Error(w, err, "The reminder could not be turned off.")
+			return
+		}
+	} else {
+		cadence, ok := progresscheck.ParseCadence(req.Cadence)
+		if !ok {
+			httpx.Error(w, apperr.FieldErrors{}.Add("cadence", "Cadence is weekly, biweekly or monthly."), "Cadence is weekly, biweekly or monthly.")
+			return
+		}
+		if _, err := a.svc.SetCadence(r.Context(), user, cadence); err != nil {
+			httpx.Error(w, err, "The reminder could not be set.")
+			return
+		}
+	}
+	a.schedule(w, r)
+}
+
+func (a *API) body(w http.ResponseWriter, r *http.Request) {
+	view, err := a.bodyView(r.Context(), auth.MustUser(r.Context()))
+	if err != nil {
+		httpx.Error(w, err, "The body could not be loaded.")
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, view)
+}
+
+func (a *API) respondList(w http.ResponseWriter, r *http.Request, status, limit int) {
+	user := auth.MustUser(r.Context())
+	checks, err := a.svc.List(r.Context(), user, limit)
+	if err != nil {
+		httpx.Error(w, err, "Your progress checks could not be loaded.")
+		return
+	}
+	sched, due, err := a.svc.Due(r.Context(), user, time.Now())
+	if err != nil {
+		httpx.Error(w, err, "The reminder could not be loaded.")
+		return
+	}
+	out := ProgressChecksView{Checks: make([]ProgressCheckView, len(checks)), Schedule: ProjectSchedule(sched, due)}
+	for i, c := range checks {
+		if out.Checks[i], err = a.project(r.Context(), user, c); err != nil {
+			httpx.Error(w, err, "Your progress checks could not be loaded.")
+			return
+		}
+	}
+	httpx.WriteJSON(w, status, out)
+}
+
+func (a *API) project(ctx context.Context, user users.User, c Check) (ProgressCheckView, error) {
+	urls := make(map[uuid.UUID]string, len(c.Photos))
+	for _, p := range c.Photos {
+		u, err := a.svc.PhotoURL(ctx, user, p.MediaID)
+		if err != nil {
+			return ProgressCheckView{}, err
+		}
+		urls[p.MediaID] = u
+	}
+	return ProjectCheck(c, urls), nil
+}
+
+func (a *API) bodyView(ctx context.Context, user users.User) (BodyCurrentView, error) {
+	body, err := a.svc.Body(ctx, user)
+	if err != nil {
+		return BodyCurrentView{}, err
+	}
+	var heat lifts.BodyMapView
+	if a.maps != nil {
+		m, err := a.maps.BodyMap(ctx, user, bodyMapDays)
+		if err != nil {
+			return BodyCurrentView{}, err
+		}
+		heat = lifts.NewBodyMapView(m, user.Location())
+	}
+	return ProjectBody(body, heat.Muscles), nil
+}
+
+// ProjectCheck is one check's payload; urls maps each photo's media id to its
+// signed link.
+func ProjectCheck(c Check, urls map[uuid.UUID]string) ProgressCheckView {
+	out := ProgressCheckView{
+		ID: c.ID, MeasuredOn: c.MeasuredOn.Format(time.DateOnly),
+		WeightKg: c.WeightKg, WeightCarried: c.WeightCarried,
+		WaistCm: c.WaistCm, HipsCm: c.HipsCm, ChestCm: c.ChestCm, ThighCm: c.ThighCm, ArmCm: c.ArmCm,
+		Source: c.Source, AssistConfidence: c.AssistConfidence, AssistNotes: c.AssistNotes,
+		Complete: c.Complete(), Photos: make([]ProgressPhotoView, len(c.Photos)), CreatedAt: c.CreatedAt,
+	}
+	for i, p := range c.Photos {
+		out.Photos[i] = ProgressPhotoView{Pose: string(p.Pose), URL: urls[p.MediaID]}
+	}
+	return out
+}
+
+func ProjectSchedule(s Schedule, due bool) ProgressScheduleView {
+	if s.Cadence == "" {
+		return ProgressScheduleView{}
+	}
+	return ProgressScheduleView{Cadence: string(s.Cadence), NextDueOn: s.NextDueOn.Format(time.DateOnly), Due: due}
+}
+
+// ProjectBody is the /body/current payload.
+func ProjectBody(b Body, muscles []lifts.BodyMapMuscle) BodyCurrentView {
+	out := BodyCurrentView{WeightKg: b.WeightKg, BMI: b.BMI, Morph: b.Shape, Muscles: muscles}
+	if out.Muscles == nil {
+		out.Muscles = []lifts.BodyMapMuscle{}
+	}
+	if b.Check != nil {
+		out.SourceCheckID = &b.Check.ID
+		out.MeasuredOn = b.Check.MeasuredOn.Format(time.DateOnly)
+	}
+	if b.BMI != nil {
+		out.BMIBand = string(day.CategoryFor(*b.BMI))
+	}
+	return out
+}
