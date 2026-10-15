@@ -18,6 +18,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/account"
 	"github.com/NorthAIProject/north-client/internal/aicreds"
+	"github.com/NorthAIProject/north-client/internal/analytics"
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/config"
 	"github.com/NorthAIProject/north-client/internal/connections"
@@ -29,6 +30,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/push"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
+	"github.com/NorthAIProject/north-client/internal/shared/theme"
 	"github.com/NorthAIProject/north-client/internal/toolaudit"
 	"github.com/NorthAIProject/north-client/internal/users"
 	settingspages "github.com/NorthAIProject/north-client/web/settings"
@@ -315,11 +317,20 @@ func (h *Handler) updateProfile(w http.ResponseWriter, r *http.Request) {
 		Locale:        users.ResolveLocale(r.PostFormValue("locale")),
 		CoachingStyle: strings.TrimSpace(r.PostFormValue("coaching_style")),
 		CoachingTone:  users.Tone(strings.TrimSpace(r.PostFormValue("coaching_tone"))),
+		Appearance:    theme.Appearance(strings.TrimSpace(r.PostFormValue("appearance"))),
+	}
+
+	// An empty select is "not chosen", not a choice: it leaves the stored value
+	// alone. Anything else is validated by the service.
+	var appearance *theme.Appearance
+	if form.Appearance != "" {
+		appearance = &form.Appearance
 	}
 
 	if _, err := h.users.UpdateProfile(r.Context(), user.ID, users.Profile{
 		DisplayName: form.DisplayName, Timezone: form.Timezone, Locale: form.Locale,
 		CoachingStyle: form.CoachingStyle, CoachingTone: form.CoachingTone,
+		Appearance: appearance, Surface: analytics.AppearanceFromSettings,
 	}); err != nil {
 		var fieldErrs apperr.FieldErrors
 		if apperr.As(err, &fieldErrs) {
