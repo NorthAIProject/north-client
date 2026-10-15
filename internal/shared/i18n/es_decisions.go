@@ -23,12 +23,10 @@ var spanishDecisions = map[string]string{
 	"decisions.form.outcome_ph":   "Mirando atrás, ¿qué pasó en realidad?",
 	"decisions.form.held":         "¿Se mantuvo?",
 
-	// "No" alone would match the English and read as untranslated to the
-	// parity test; "Para nada" is the natural emphatic answer here.
 	"decisions.held.none":   "Todavía no",
 	"decisions.held.yes":    "Sí",
 	"decisions.held.partly": "En parte",
-	"decisions.held.no":     "Para nada",
+	"decisions.held.no":     "No",
 
 	"decisions.card.options": "Opciones: %[1]s",
 	"decisions.card.why":     "Por qué: %[1]s",

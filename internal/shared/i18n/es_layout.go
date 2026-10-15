@@ -33,4 +33,7 @@ var spanishLayout = map[string]string{
 	"layout.art.credit.by":       "Ilustraciones de ejercicios de",
 	"layout.art.credit.and":      "y",
 	"layout.art.credit.licensed": "con licencia",
+	"layout.muscle.primary":      "Principal",
+	"layout.muscle.secondary":    "Secundario",
+	"layout.muscle.stabiliser":   "Estabilizador",
 }

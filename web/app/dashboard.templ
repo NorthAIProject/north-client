@@ -392,7 +392,7 @@ templ trainingPanel(data DashboardData) {
 		if data.DoneToday != nil {
 			<p class="text-muted-foreground mb-2 flex items-center gap-1.5 text-xs">
 				@icon.CircleCheck(icon.Props{Class: "text-signal size-3.5"})
-				{ fitnesspages.CompletedLine(*data.DoneToday) }
+				{ fitnesspages.CompletedLineIn(ctx, *data.DoneToday) }
 			</p>
 		}
 		if data.HasPlan() {
