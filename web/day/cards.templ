@@ -40,8 +40,10 @@ templ dayCard(id, titleKey, color string, ic templ.Component, meta string, detai
 				class="border-hairline bg-surface hover:border-ring focus-visible:ring-ring flex min-h-40 w-full flex-col rounded-2xl border p-3 sm:min-h-44 sm:p-4 text-left shadow-sm transition-colors focus-visible:ring-2 focus-visible:outline-none"
 			>
 				<span class="flex w-full items-center justify-between gap-1">
-					<span class="flex min-w-0 items-center gap-1.5 truncate text-sm font-medium" style={ "color:" + color }>
-						@ic
+					<span class="text-foreground flex min-w-0 items-center gap-1.5 truncate text-sm font-medium">
+						<span class="flex shrink-0" style={ "color:" + color }>
+							@ic
+						</span>
 						{ i18n.T(ctx, titleKey) }
 					</span>
 					<span class="text-muted-foreground text-xs tabular-nums">{ meta }</span>
@@ -73,14 +75,23 @@ templ foodCard(f FoodCard) {
 			</svg>
 			<span class="space-y-1 text-right text-sm tabular-nums">
 				for _, m := range f.Macros {
-					<span class="block">
+					<span class="flex items-center justify-end gap-1.5">
+						@swatch(m.Color)
 						<span class="text-muted-foreground text-xs">{ m.Letter }</span>
-						<span class="font-semibold" style={ "color:" + m.Color }>{ m.Grams }</span>
+						<span class="font-semibold">{ m.Grams }</span>
 					</span>
 				}
 			</span>
 		</span>
 	}
+}
+
+// swatch carries a tracker's colour beside a number. The colour itself is
+// never the text: carb yellow and exercise lime fall to about 2:1 on a white
+// card, so the figure stays in the foreground colour and the dot says which
+// ring it belongs to.
+templ swatch(color string) {
+	<span class="inline-block size-2 shrink-0 rounded-full" style={ "background:" + color } aria-hidden="true"></span>
 }
 
 templ foodDetail(f FoodCard) {
@@ -94,7 +105,10 @@ templ foodDetail(f FoodCard) {
 		</dd>
 		for _, m := range f.Macros {
 			<dt class="text-muted-foreground">{ i18n.T(ctx, "day.food." + m.Key) }</dt>
-			<dd class="font-medium" style={ "color:" + m.Color }>{ m.Grams } g</dd>
+			<dd class="flex items-center gap-1.5 font-medium">
+				@swatch(m.Color)
+				{ m.Grams } g
+			</dd>
 			<dd class="text-muted-foreground text-right">
 				if f.HasGoal {
 					{ m.Goal } g
@@ -158,7 +172,10 @@ templ activityCard(a ActivityCard) {
 			</svg>
 			<span class="space-y-1 text-right text-sm font-semibold tabular-nums">
 				for _, r := range a.Rings {
-					<span class="block" style={ "color:" + r.Color }>{ r.Value }</span>
+					<span class="flex items-center justify-end gap-1.5">
+						@swatch(r.Color)
+						{ r.Value }
+					</span>
 				}
 			</span>
 		</span>
@@ -169,7 +186,11 @@ templ activityDetail(a ActivityCard) {
 	<dl class="grid grid-cols-2 gap-y-2 text-sm tabular-nums">
 		for _, r := range a.Rings {
 			<dt class="text-muted-foreground">{ i18n.T(ctx, "day.activity." + r.Key) }</dt>
-			<dd class="text-right"><span class="font-medium" style={ "color:" + r.Color }>{ r.Value }</span> / { r.Goal } { r.Unit }</dd>
+			<dd class="flex items-center justify-end gap-1.5">
+				@swatch(r.Color)
+				<span class="font-medium">{ r.Value }</span>
+				<span class="text-muted-foreground">/ { r.Goal } { r.Unit }</span>
+			</dd>
 		}
 	</dl>
 }
@@ -359,7 +380,7 @@ templ nutrientsCard(n NutrientsCard) {
 				{ strconv.Itoa(n.Covered) }<span class="text-muted-foreground text-sm font-normal">/{ strconv.Itoa(n.Total) }</span>
 			</span>
 			if len(n.Missing) > 0 {
-				<span class="text-day-fat mt-1 line-clamp-2 text-xs">{ missingNames(ctx, n.Missing, 3) }</span>
+				<span class="text-muted-foreground mt-1 line-clamp-2 text-xs">{ missingNames(ctx, n.Missing, 3) }</span>
 			}
 		</span>
 	}
