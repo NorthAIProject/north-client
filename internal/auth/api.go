@@ -9,8 +9,8 @@ import (
 	"github.com/google/uuid"
 
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
-	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
