@@ -101,7 +101,7 @@ func buildWorkout(tag, name string, rows []WorkoutRow, unparsed []string) (Worko
 			if ex.Reps == "" {
 				ex.Reps = reps
 			} else if !strings.EqualFold(ex.Reps, reps) {
-				ex.Flags = append(ex.Flags, fmt.Sprintf(i18n.Translate(tag, "planimport.flag.setsreps"), row.Sets, row.Reps))
+				ex.Flags = append(ex.Flags, i18n.TranslateF(tag, "planimport.flag.setsreps", row.Sets, row.Reps))
 			}
 		}
 
@@ -194,7 +194,7 @@ func buildMeal(tag string, reading MealReading) (MealDraft, error) {
 				m.OptionLabel = label
 			} else {
 				if label == "" {
-					label = fmt.Sprintf(i18n.Translate(tag, "nutrition.option.numbered"), oi+1)
+					label = i18n.TranslateF(tag, "nutrition.option.numbered", oi+1)
 				}
 				m.Alternatives = append(m.Alternatives, MealDraftOption{Label: label, Foods: []FoodDraft{}})
 			}
@@ -251,13 +251,13 @@ func foodFromRow(tag string, row MealRow) FoodDraft {
 			if amount == "" {
 				amount = original
 			}
-			estimateFlag = fmt.Sprintf(i18n.Translate(tag, "planimport.flag.estimated"), amount)
+			estimateFlag = i18n.TranslateF(tag, "planimport.flag.estimated", amount)
 		}
 	}
 	// A quantity an estimate stood in for ("150–250") is already flagged as
 	// estimated; saying it isn't a number as well is the same warning twice.
 	if !ok && !food.Estimated {
-		food.Flags = append(food.Flags, fmt.Sprintf(i18n.Translate(tag, "planimport.flag.quantity"), strings.TrimSpace(row.Quantity)))
+		food.Flags = append(food.Flags, i18n.TranslateF(tag, "planimport.flag.quantity", strings.TrimSpace(row.Quantity)))
 	}
 
 	for _, m := range []struct {

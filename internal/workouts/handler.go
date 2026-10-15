@@ -101,7 +101,7 @@ func (h *Handler) planView(ctx context.Context, user users.User, stored StoredPl
 			return workoutpages.PlanView{}, err
 		}
 		if ok {
-			view.Recap = util.Ptr(workoutsummary.NewRecap("plan-recap", recap, user.Location()))
+			view.Recap = util.Ptr(workoutsummary.NewRecap(ctx, "plan-recap", recap, user.Location()))
 		}
 	}
 	if h.loads != nil {

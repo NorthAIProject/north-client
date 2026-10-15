@@ -34,8 +34,8 @@ templ MindPanels(view MindView) {
 	<div class="space-y-6">
 		<div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
 			@statTile(i18n.T(ctx, "insights.mind.checkins"), formatCount(view.CheckInCount), i18n.T(ctx, "insights.mind.checkins.note"), DeltaView{})
-			@statTile(i18n.T(ctx, "insights.mind.mood"), formatScore(view.AvgMood), i18n.T(ctx, "insights.mind.overDays"), DeltaView{})
-			@statTile(i18n.T(ctx, "insights.mind.energy"), formatScore(view.AvgEnergy), i18n.T(ctx, "insights.mind.overDays"), DeltaView{})
+			@statTile(i18n.T(ctx, "insights.mind.mood"), formatScore(ctx, view.AvgMood), i18n.T(ctx, "insights.mind.overDays"), DeltaView{})
+			@statTile(i18n.T(ctx, "insights.mind.energy"), formatScore(ctx, view.AvgEnergy), i18n.T(ctx, "insights.mind.overDays"), DeltaView{})
 			@statTile(i18n.T(ctx, "insights.mind.journal"), formatCount(view.JournalCount), "", DeltaView{})
 		</div>
 		@card.Card(card.Props{Class: "border-hairline bg-surface"}) {

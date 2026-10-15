@@ -222,7 +222,7 @@ func sessionSummary(ctx context.Context, s activity.Session) string {
 		out += " · " + formatMinutes(s.Elapsed(*s.EndedAt))
 	}
 	if s.DistanceM != nil && *s.DistanceM > 0 {
-		out += fmt.Sprintf(" · %.1f km", *s.DistanceM/1000)
+		out += " · " + i18n.Decimal(ctx, *s.DistanceM/1000, 1) + " km"
 		if pace, ok := s.Pace(); ok {
 			out += " · " + formatPace(pace) + " /km"
 		}

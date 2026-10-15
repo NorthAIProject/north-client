@@ -182,8 +182,8 @@ templ weekCard(data HubData) {
 		@panelHeading(i18n.T(ctx, "fitness.week.label"))
 		<div class="grid grid-cols-3 gap-2 px-5 pt-4 text-center">
 			@weekStat(fmt.Sprintf("%.0f", data.Week.Minutes), i18n.T(ctx, "fitness.week.active"), i18n.Tf(ctx, "fitness.week.perday", data.Week.avgMinutesPerDay()))
-			@weekStat(compact(data.Week.Calories), i18n.T(ctx, "fitness.week.burned"), "")
-			@weekStat(oneDecimal(data.Week.DistanceKm), "km", sessionsLabel(ctx, data.Week.Sessions))
+			@weekStat(compact(ctx, data.Week.Calories), i18n.T(ctx, "fitness.week.burned"), "")
+			@weekStat(oneDecimal(ctx, data.Week.DistanceKm), "km", sessionsLabel(ctx, data.Week.Sessions))
 		</div>
 		// Hand-rolled rather than chart.Chart: seven proportional bars with no
 		// axes and a marker on today is a few divs, and a canvas would add a
@@ -278,7 +278,7 @@ templ recentItem(r RecentRow, loc *time.Location) {
 		</span>
 		<div class="min-w-0 flex-1">
 			<p class="truncate text-sm font-medium">{ recentTitle(ctx, r) }</p>
-			<p class="text-muted-foreground truncate text-xs tabular-nums">{ strings.Join(recentDetail(r), " · ") }</p>
+			<p class="text-muted-foreground truncate text-xs tabular-nums">{ strings.Join(recentDetail(ctx, r), " · ") }</p>
 		</div>
 		<time class="text-muted-foreground shrink-0 text-xs tabular-nums" datetime={ r.EndedAt.Format(time.RFC3339) }>
 			{ when(ctx, r.EndedAt, loc) }
@@ -293,12 +293,12 @@ templ bodyCard(data HubData) {
 				@ui.MonoLabel(i18n.T(ctx, "fitness.weight.label"))
 				if data.Weight != nil {
 					<p class="mt-2 text-2xl font-semibold tracking-tight tabular-nums">
-						{ oneDecimal(data.Weight.Kg) }
+						{ oneDecimal(ctx, data.Weight.Kg) }
 						<span class="text-muted-foreground text-sm font-normal">kg</span>
 					</p>
 					<p class="text-muted-foreground mt-0.5 text-xs">
 						if data.Weight.HasDelta {
-							{ i18n.Tf(ctx, "fitness.weight.since", signed(data.Weight.DeltaKg, "%.1f")) }
+							{ i18n.Tf(ctx, "fitness.weight.since", signed(ctx, data.Weight.DeltaKg, 1)) }
 						}
 						{ i18n.Date(ctx, data.Weight.At.In(data.Location), "2 Jan") }
 					</p>
@@ -317,11 +317,11 @@ templ stepsCard(t Trend, loc *time.Location) {
 		@panelHeading(i18n.T(ctx, "fitness.steps.label"))
 		<div class="flex items-end justify-between gap-4 px-5 pt-3">
 			<p class="text-3xl font-semibold tracking-tight tabular-nums">
-				{ compact(latest.Value) }
+				{ compact(ctx, latest.Value) }
 				<span class="text-muted-foreground text-sm font-normal">{ i18n.T(ctx, "fitness.steps.unit") }</span>
 			</p>
 			<div class="text-muted-foreground text-right text-xs tabular-nums">
-				<p>{ i18n.Tf(ctx, "fitness.week.perday", compact(t.perDay())) }</p>
+				<p>{ i18n.Tf(ctx, "fitness.week.perday", compact(ctx, t.perDay())) }</p>
 				<p>{ i18n.Date(ctx, latest.Day, "2 Jan") }</p>
 			</div>
 		</div>
@@ -333,11 +333,11 @@ templ stepsCard(t Trend, loc *time.Location) {
 			for _, row := range t.recentRows(5) {
 				<li class="flex items-center justify-between px-3 py-2.5">
 					<div>
-						<p class="text-sm font-medium tabular-nums">{ i18n.Tf(ctx, "fitness.steps.row", compact(row.Value)) }</p>
+						<p class="text-sm font-medium tabular-nums">{ i18n.Tf(ctx, "fitness.steps.row", compact(ctx, row.Value)) }</p>
 						<p class="text-muted-foreground text-[11px]">{ i18n.Date(ctx, row.Day, "2 Jan") }</p>
 					</div>
 					if row.HasDelta {
-						<span class={ "text-xs tabular-nums", deltaClass(row.Delta) }>{ signed(row.Delta, "%.0f") }</span>
+						<span class={ "text-xs tabular-nums", deltaClass(row.Delta) }>{ signed(ctx, row.Delta, 0) }</span>
 					}
 				</li>
 			}
@@ -351,7 +351,7 @@ templ vo2Card(t Trend) {
 		@panelHeading(i18n.T(ctx, "fitness.vo2.label"))
 		<div class="flex items-end justify-between gap-4 px-5 pt-3">
 			<p class="text-3xl font-semibold tracking-tight tabular-nums">
-				{ oneDecimal(latest.Value) }
+				{ oneDecimal(ctx, latest.Value) }
 				<span class="text-muted-foreground text-sm font-normal">ml/kg/min</span>
 			</p>
 			<div class="text-right text-xs tabular-nums">
@@ -693,11 +693,11 @@ type CardioView struct {
 	RestingHR       float64
 }
 
-func kg(v float64) string {
+func kg(ctx context.Context, v float64) string {
 	if v == float64(int64(v)) {
 		return fmt.Sprintf("%.0f kg", v)
 	}
-	return fmt.Sprintf("%.1f kg", v)
+	return i18n.Decimal(ctx, v, 1) + " kg"
 }
 
 func paceLabel(seconds float64) string {
@@ -722,7 +722,7 @@ templ strengthCard(v StrengthView) {
 			<div class="grid grid-cols-3 gap-3">
 				@miniStat(fmt.Sprintf("%d", v.Workouts), "", i18n.T(ctx, "fitness.strength.workouts"))
 				@miniStat(fmt.Sprintf("%d", v.Sets), "", i18n.T(ctx, "fitness.strength.sets"))
-				@miniStat(fmt.Sprintf("%.1f", v.VolumeKg/1000), "t", i18n.T(ctx, "fitness.strength.volume"))
+				@miniStat(i18n.Decimal(ctx, v.VolumeKg/1000, 1), "t", i18n.T(ctx, "fitness.strength.volume"))
 			</div>
 			<ul class="divide-border divide-y text-sm">
 				for _, e := range v.Exercises {
@@ -730,18 +730,18 @@ templ strengthCard(v StrengthView) {
 						<div class="flex items-baseline justify-between gap-3">
 							<span class="truncate font-medium">{ e.Name }</span>
 							if e.ChangeKg > 0 {
-								<span class="text-signal shrink-0 text-xs tabular-nums">+{ kg(e.ChangeKg) }</span>
+								<span class="text-signal shrink-0 text-xs tabular-nums">+{ kg(ctx, e.ChangeKg) }</span>
 							}
 						</div>
-						<p class="text-muted-foreground text-xs tabular-nums">{ i18n.Tf(ctx, "fitness.strength.best", kg(e.BestKg), kg(e.E1RMKg)) }</p>
+						<p class="text-muted-foreground text-xs tabular-nums">{ i18n.Tf(ctx, "fitness.strength.best", kg(ctx, e.BestKg), kg(ctx, e.E1RMKg)) }</p>
 					</li>
 				}
 			</ul>
 			if v.Record != nil {
 				<div class="bg-signal/10 rounded-lg px-3 py-2 text-xs">
 					<span class="text-signal font-semibold">{ i18n.T(ctx, "fitness.strength.record") }</span>
-					· { v.Record.Exercise } { kg(v.Record.WeightKg) } × { fmt.Sprintf("%d", v.Record.Reps) }
-					<span class="text-muted-foreground">{ i18n.Tf(ctx, "fitness.strength.est", kg(v.Record.E1RMKg), i18n.Date(ctx, v.Record.On, "2 Jan")) }</span>
+					· { v.Record.Exercise } { kg(ctx, v.Record.WeightKg) } × { fmt.Sprintf("%d", v.Record.Reps) }
+					<span class="text-muted-foreground">{ i18n.Tf(ctx, "fitness.strength.est", kg(ctx, v.Record.E1RMKg), i18n.Date(ctx, v.Record.On, "2 Jan")) }</span>
 				</div>
 			}
 		</div>
@@ -757,7 +757,7 @@ templ cardioCard(v CardioView) {
 			<div class="grid grid-cols-3 gap-3">
 				@miniStat(fmt.Sprintf("%d", v.Sessions), "", i18n.T(ctx, "fitness.cardio.sessions"))
 				if v.DistanceKm > 0 {
-					@miniStat(fmt.Sprintf("%.1f", v.DistanceKm), "km", i18n.T(ctx, "fitness.cardio.distance"))
+					@miniStat(i18n.Decimal(ctx, v.DistanceKm, 1), "km", i18n.T(ctx, "fitness.cardio.distance"))
 				} else {
 					@miniStat(fmt.Sprintf("%d", v.Runs), "", i18n.T(ctx, "fitness.cardio.runs"))
 				}
@@ -766,7 +766,7 @@ templ cardioCard(v CardioView) {
 			<dl class="divide-border divide-y text-sm">
 				if v.Runs > 0 {
 					if v.LongestKm > 0 {
-						<div class="flex justify-between py-2"><dt class="text-muted-foreground">{ i18n.T(ctx, "fitness.cardio.longest") }</dt><dd class="tabular-nums">{ fmt.Sprintf("%.1f km", v.LongestKm) }</dd></div>
+						<div class="flex justify-between py-2"><dt class="text-muted-foreground">{ i18n.T(ctx, "fitness.cardio.longest") }</dt><dd class="tabular-nums">{ i18n.Decimal(ctx, v.LongestKm, 1) + " km" }</dd></div>
 					}
 				}
 				if v.BestPaceSeconds > 0 {

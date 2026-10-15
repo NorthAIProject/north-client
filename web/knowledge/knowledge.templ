@@ -436,7 +436,7 @@ templ documentRow(d document.Document) {
 		}
 		@table.Cell(table.CellProps{Class: "text-muted-foreground hidden tabular-nums sm:table-cell"}) {
 			if d.SourceKind == document.SourceUpload && d.ByteSize > 0 {
-				{ humanSize(d.ByteSize) }
+				{ humanSize(ctx, d.ByteSize) }
 			} else {
 				<span class="text-muted-foreground/50">—</span>
 			}
@@ -524,7 +524,7 @@ func documentDetail(ctx context.Context, d document.Document) string {
 			parts = append(parts, label)
 		}
 		if d.ByteSize > 0 {
-			parts = append(parts, humanSize(d.ByteSize))
+			parts = append(parts, humanSize(ctx, d.ByteSize))
 		}
 	} else {
 		parts = append(parts, i18n.T(ctx, "knowledge.type.note"))
@@ -568,14 +568,14 @@ func typeCode(ctx context.Context, d document.Document) string {
 	}
 }
 
-func humanSize(n int64) string {
+func humanSize(ctx context.Context, n int64) string {
 	switch {
 	case n < 1024:
 		return fmt.Sprintf("%d B", n)
 	case n < 1024*1024:
 		return fmt.Sprintf("%d KB", (n+512)/1024)
 	default:
-		return fmt.Sprintf("%.1f MB", float64(n)/(1024*1024))
+		return i18n.Decimal(ctx, float64(n)/(1024*1024), 1) + " MB"
 	}
 }
 
@@ -586,11 +586,11 @@ func readWhen(ctx context.Context, d document.Document) string {
 	return i18n.Date(ctx, d.IndexedAt.In(d.CreatedAt.Location()), "2 Jan")
 }
 
-func documentSize(d document.Document) string {
+func documentSize(ctx context.Context, d document.Document) string {
 	if d.ByteSize <= 0 {
 		return "—"
 	}
-	return humanSize(d.ByteSize)
+	return humanSize(ctx, d.ByteSize)
 }
 
 func documentLines(d document.Document) string {

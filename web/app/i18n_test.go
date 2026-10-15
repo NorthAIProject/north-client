@@ -127,9 +127,9 @@ func TestHabitsAndHydrationLinesAreTranslated(t *testing.T) {
 	}
 	cases := map[users.Locale][]string{
 		users.LocaleEN:   {"5 kept of 7 scheduled", "best streak 3", "Today 75% · 1.5 L"},
-		users.LocalePTPT: {"5 cumpridos de 7 previstos", "melhor sequência: 3", "Hoje 75% · 1.5 L"},
-		users.LocalePTBR: {"5 cumpridos de 7 previstos", "melhor sequência: 3", "Hoje 75% · 1.5 L"},
-		users.LocaleES:   {"5 cumplidos de 7 previstos", "mejor racha: 3", "Hoy 75% · 1.5 L"},
+		users.LocalePTPT: {"5 cumpridos de 7 previstos", "melhor sequência: 3", "Hoje 75% · 1,5 L"},
+		users.LocalePTBR: {"5 cumpridos de 7 previstos", "melhor sequência: 3", "Hoje 75% · 1,5 L"},
+		users.LocaleES:   {"5 cumplidos de 7 previstos", "mejor racha: 3", "Hoy 75% · 1,5 L"},
 	}
 	for locale, wants := range cases {
 		ctx := i18n.WithLocale(context.Background(), string(locale))

@@ -191,11 +191,11 @@ func domainLabel(ctx context.Context, domain string) string {
 	return i18n.T(ctx, "lifedomain."+domain)
 }
 
-func litres(ml int) string { return fmt.Sprintf("%.1fL", float64(ml)/1000) }
+func litres(ctx context.Context, ml int) string { return i18n.Decimal(ctx, float64(ml)/1000, 1) + "L" }
 
-func amountLabel(ml int) string {
+func amountLabel(ctx context.Context, ml int) string {
 	if ml >= 1000 {
-		return litres(ml)
+		return litres(ctx, ml)
 	}
 	return fmt.Sprintf("%dml", ml)
 }
@@ -243,7 +243,7 @@ templ Panel(user users.User, data Data, forms Forms) {
 
 templ kpiStrip(data Data) {
 	@ui.KpiStrip() {
-		@kpiCell(i18n.T(ctx, "care.kpi.water"), waterKPI(data), "", "")
+		@kpiCell(i18n.T(ctx, "care.kpi.water"), waterKPI(ctx, data), "", "")
 		@kpiCell(i18n.T(ctx, "care.kpi.sleep"), sleepKPI(data), "", "")
 		@kpiCell(i18n.T(ctx, "care.kpi.habits"), habitKPI(data), "", "")
 		@kpiCell(i18n.T(ctx, "care.kpi.due"), dueKPI(ctx, data), "", "")
@@ -255,8 +255,8 @@ templ kpiCell(label, value, href, cta string) {
 	@ui.KpiCell(ui.KpiCellProps{Label: label, Value: value, Href: href, CTA: cta})
 }
 
-func waterKPI(data Data) string {
-	return fmt.Sprintf("%s / %s", litres(data.Water.TotalML), litres(data.Water.TargetML))
+func waterKPI(ctx context.Context, data Data) string {
+	return fmt.Sprintf("%s / %s", litres(ctx, data.Water.TotalML), litres(ctx, data.Water.TargetML))
 }
 
 func sleepKPI(data Data) string {
@@ -385,7 +385,7 @@ templ waterCard(day hydration.Day, entries []hydration.Entry, f WaterForm) {
 				{ i18n.T(ctx, "care.water.title") }
 			}
 			@card.Description() {
-				{ i18n.Tf(ctx, "care.water.desc", litres(day.TotalML), litres(day.TargetML)) }
+				{ i18n.Tf(ctx, "care.water.desc", litres(ctx, day.TotalML), litres(ctx, day.TargetML)) }
 			}
 		}
 		@card.Content() {
@@ -401,7 +401,7 @@ templ waterCard(day hydration.Day, entries []hydration.Entry, f WaterForm) {
 						@ui.CSRFInput()
 						<input type="hidden" name="amount_ml" value={ strconv.Itoa(amount) }/>
 						@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Size: button.SizeSm}) {
-							+ { amountLabel(amount) }
+							+ { amountLabel(ctx, amount) }
 						}
 					</form>
 				}
@@ -410,7 +410,7 @@ templ waterCard(day hydration.Day, entries []hydration.Entry, f WaterForm) {
 				<ul class="mt-4 space-y-1">
 					for _, e := range entries {
 						<li class="text-muted-foreground flex items-center justify-between text-xs">
-							<span>{ i18n.Tf(ctx, "care.water.at", amountLabel(e.AmountML), e.LoggedAt.Format("15:04")) }</span>
+							<span>{ i18n.Tf(ctx, "care.water.at", amountLabel(ctx, e.AmountML), e.LoggedAt.Format("15:04")) }</span>
 							<form method="post" action={ templ.SafeURL("/app/care/water/" + e.ID.String() + "/undo") } { panelSwapAttrs()... }>
 								@ui.CSRFInput()
 								@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm}) {

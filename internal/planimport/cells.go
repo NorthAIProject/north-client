@@ -1,7 +1,6 @@
 package planimport
 
 import (
-	"fmt"
 	"math"
 	"regexp"
 	"strconv"
@@ -40,7 +39,7 @@ func parseSets(tag, raw string) (sets *int, reps string, flag string) {
 		n, _ := strconv.Atoi(m[1])
 		return &n, strings.TrimSpace(m[2]), ""
 	}
-	return nil, "", fmt.Sprintf(i18n.Translate(tag, "planimport.flag.sets"), raw)
+	return nil, "", i18n.TranslateF(tag, "planimport.flag.sets", raw)
 }
 
 // parseRest reads a rest period into seconds: "90", "90s", "2 min", "1:30",
@@ -66,7 +65,7 @@ func parseRest(tag, raw string) (*int, string) {
 		n := int(math.Round(v))
 		return &n, ""
 	}
-	return nil, fmt.Sprintf(i18n.Translate(tag, "planimport.flag.rest"), raw)
+	return nil, i18n.TranslateF(tag, "planimport.flag.rest", raw)
 }
 
 // parseAmount reads "150", "150g", "1/2", "1 1/2 cups", "2,5 kg" into a number
@@ -114,7 +113,7 @@ func parseNumber(s string) (float64, bool) {
 func parseGrams(tag, label, raw string) (*float64, string) {
 	v, unit, ok := parseAmount(raw)
 	if !ok || (unit != "" && !strings.EqualFold(unit, "g")) || (v != nil && *v < 0) {
-		return nil, fmt.Sprintf(i18n.Translate(tag, "planimport.flag.grams"), label, strings.TrimSpace(raw))
+		return nil, i18n.TranslateF(tag, "planimport.flag.grams", label, strings.TrimSpace(raw))
 	}
 	return v, ""
 }
