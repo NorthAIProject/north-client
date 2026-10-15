@@ -2,6 +2,7 @@ package nutrition
 
 import (
 	"context"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -43,10 +44,15 @@ func TestDayCardRendersInTheChosenLanguage(t *testing.T) {
 			t.Errorf("es: missing %q", want)
 		}
 	}
-	for _, english := range []string{"Monday", "Add meal", "Remove day", "This day:", "g left"} {
+	for _, english := range []string{"Monday", "Add meal", "Remove day", "This day:"} {
 		if strings.Contains(html, english) {
 			t.Errorf("es: still shows English %q", english)
 		}
+	}
+	// "g left" alone also matches Tailwind's "rounded-lg left-[50%]", whose
+	// place in the class list is not fixed; the English line has a number.
+	if m := regexp.MustCompile(`\d g left`).FindString(html); m != "" {
+		t.Errorf("es: still shows English %q", m)
 	}
 }
 
