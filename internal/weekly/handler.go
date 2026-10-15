@@ -13,6 +13,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/NorthAIProject/north-client/internal/workouts/plan"
 	weeklypages "github.com/NorthAIProject/north-client/web/weekly"
@@ -52,7 +53,7 @@ func (h *Handler) save(w http.ResponseWriter, r *http.Request) {
 	in := Input{Priorities: r.PostForm["priority"], GoalOrder: goalOrder(r), Volume: plan.Volume(r.PostFormValue("volume"))}
 	if _, err := h.svc.SetFocus(r.Context(), user, in); err != nil {
 		var fieldErrs apperr.FieldErrors
-		if !apperr.As(err, &fieldErrs) {
+		if !apperr.As(localize(r.Context(), err), &fieldErrs) {
 			h.fail(w, r, err)
 			return
 		}
@@ -116,9 +117,9 @@ func (h *Handler) render(w http.ResponseWriter, r *http.Request, status int, c t
 
 func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 	if apperr.Is(err, apperr.ErrValidation) {
-		http.Error(w, "That request could not be read.", http.StatusUnprocessableEntity)
+		http.Error(w, i18n.T(r.Context(), "weekly.err.read"), http.StatusUnprocessableEntity)
 		return
 	}
 	middleware.FromContext(r.Context()).Error("weekly review failed", slog.Any("error", err))
-	http.Error(w, "Something went wrong.", http.StatusInternalServerError)
+	http.Error(w, i18n.T(r.Context(), "weekly.err.generic"), http.StatusInternalServerError)
 }
