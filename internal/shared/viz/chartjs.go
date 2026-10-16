@@ -245,3 +245,13 @@ func AreaLine(id string, labels []string, values []float64, colorVar string) cha
 		BeginAtZero: &beginZero,
 	}
 }
+
+// StackedBar draws several named series stacked into one bar per label, for a
+// chart whose question is what each bar was made of.
+func StackedBar(id string, labels []string, series []BarSeries) chart.Props {
+	p := GroupedBar(id, labels, series)
+	p.Stacked = true
+	p.ShowYGrid = false
+	p.ShowYLabels = false
+	return p
+}

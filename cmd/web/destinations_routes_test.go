@@ -31,6 +31,8 @@ var knownNonDestinations = map[string]string{
 	"/app/connections/pill":        "topbar prompt to connect an agent",
 	"/app/knowledge/passages":      "document passage fragment",
 	"/app/insights/panels":         "insights range swap",
+	"/app/recap/panels":            "recap range swap",
+	"/app/recap/strip":             "My Day your-week strip fragment",
 	"/app/insights/timeline/body":  "insights range swap",
 	"/app/insights/body/body":      "insights range swap",
 	"/app/insights/mind/body":      "insights range swap",

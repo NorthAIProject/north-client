@@ -1,0 +1,79 @@
+{
+  "range": "week",
+  "since": "2026-10-09",
+  "until": "2026-10-15",
+  "totals": {
+    "activeDays": 3,
+    "workouts": 1,
+    "sets": 3,
+    "foodLogs": 2,
+    "checkIns": 1
+  },
+  "prior": {
+    "activeDays": 1,
+    "workouts": 1,
+    "sets": 0,
+    "foodLogs": 0,
+    "checkIns": 0
+  },
+  "checkInStreak": 4,
+  "days": [
+    {
+      "date": "2026-10-09",
+      "workouts": 0,
+      "sets": 0,
+      "foodLogs": 0,
+      "checkIns": 0
+    },
+    {
+      "date": "2026-10-10",
+      "workouts": 0,
+      "sets": 3,
+      "foodLogs": 0,
+      "checkIns": 0
+    },
+    {
+      "date": "2026-10-11",
+      "workouts": 0,
+      "sets": 0,
+      "foodLogs": 0,
+      "checkIns": 0
+    },
+    {
+      "date": "2026-10-12",
+      "workouts": 0,
+      "sets": 0,
+      "foodLogs": 2,
+      "checkIns": 0
+    },
+    {
+      "date": "2026-10-13",
+      "workouts": 0,
+      "sets": 0,
+      "foodLogs": 0,
+      "checkIns": 0
+    },
+    {
+      "date": "2026-10-14",
+      "workouts": 0,
+      "sets": 0,
+      "foodLogs": 0,
+      "checkIns": 0
+    },
+    {
+      "date": "2026-10-15",
+      "workouts": 1,
+      "sets": 0,
+      "foodLogs": 0,
+      "checkIns": 1
+    }
+  ],
+  "highlights": [
+    {
+      "kind": "workout_completed",
+      "title": "Finished Legs",
+      "detail": "52 min",
+      "occurredAt": "2026-10-14T23:30:00Z"
+    }
+  ]
+}
