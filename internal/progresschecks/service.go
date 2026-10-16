@@ -318,3 +318,13 @@ func renameField(err error, field string) error {
 	}
 	return out
 }
+
+// Shape is the figure's shape from the latest check, the same four numbers
+// /body/current carries, for a page that draws the figure itself.
+func (s *Service) Shape(ctx context.Context, user users.User) (bodymap.Shape, error) {
+	b, err := s.Body(ctx, user)
+	if err != nil {
+		return bodymap.Shape{}, err
+	}
+	return b.Shape, nil
+}

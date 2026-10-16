@@ -110,3 +110,21 @@ under surface `progress_compare`.
   chain, so this text, unlike the photos, does reach those providers.
 - **API.** `POST /progress/compare` makes one; `GET /progress/checks` carries
   `comparison` and `canCompare`.
+
+## The figure takes its shape from the latest check
+
+Today's body figure is shaped by the latest check's waist, hips and chest
+(and BMI, softly). The server works out four weights, `bodymap.Shape`, from
+the measurements over height against `bodymap.ShellBaseline`; the web page
+renders them into the figure's props, and `/body/current` returns the same
+four numbers for iOS, so the clients cannot disagree.
+
+The mesh side lives in `scripts/bodymap` and `web/assets/models/README.md`:
+four shape keys on the skin only, so the same muscles sit inside a wider
+body. `ShellBaseline` is generated from the mesh by the same run that writes
+the shape keys, in `internal/bodymap/baseline_gen.go`, so rebuilding the
+figure can never leave the server's weights describing a different mesh.
+
+Only the person's own figure is shaped. An exercise's figure, which shows
+what a movement works, stays as modelled. iOS draws the figure as modelled
+until it applies the shape keys (see the models README).

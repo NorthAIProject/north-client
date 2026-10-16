@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"sort"
 )
 
 // idleColour is the untrained-muscle grey-blue the clients start from; they
@@ -19,7 +20,8 @@ var (
 
 // glbBudget is the most body-map.glb may weigh. It is fetched on every page
 // with the figure, and the Today page is the first thing a person opens.
-const glbBudget = 1_500_000
+// Raised from 1.5 MB for the shell's shape keys, which add about 0.3 MB.
+const glbBudget = 2_000_000
 
 // quantizer maps metres onto one int16 grid for the whole figure, so every
 // mesh shares a step and seams between them stay exact. The root node's
@@ -140,6 +142,49 @@ func writeRegionsGLB(path string, regions []region) error {
 		return len(doc.Accessors) - 1
 	}
 
+	// addMorph writes a shape key as a sparse accessor: only the vertices it
+	// moves, as int16 steps of the same grid the positions use, so the root
+	// node's scale turns them into metres too (KHR_mesh_quantization allows
+	// SHORT morph positions).
+	addMorph := func(t morphTarget, vertexCount int) int {
+		idx := make([]int, 0, len(t.deltas))
+		for i := range t.deltas {
+			idx = append(idx, i)
+		}
+		sort.Ints(idx)
+		var ib, vb bytes.Buffer
+		lo := []float64{0, 0, 0}
+		hi := []float64{0, 0, 0}
+		for _, i := range idx {
+			if vertexCount > math.MaxUint16 {
+				_ = binary.Write(&ib, binary.LittleEndian, uint32(i))
+			} else {
+				_ = binary.Write(&ib, binary.LittleEndian, uint16(i))
+			}
+			d := t.deltas[i]
+			for k := range 3 {
+				c := int16(math.Round(d[k] / q.step))
+				_ = binary.Write(&vb, binary.LittleEndian, c)
+				lo[k], hi[k] = math.Min(lo[k], float64(c)), math.Max(hi[k], float64(c))
+			}
+		}
+		indexType := componentUnsignedShort
+		if vertexCount > math.MaxUint16 {
+			indexType = componentUnsignedInt
+		}
+		iv := addView(ib.Bytes(), 0, 0)
+		vv := addView(vb.Bytes(), 0, 0)
+		doc.Accessors = append(doc.Accessors, gltfAccessor{
+			ComponentType: componentShort, Count: vertexCount, Type: "VEC3", Min: lo, Max: hi,
+			Sparse: map[string]any{
+				"count":   len(idx),
+				"indices": map[string]any{"bufferView": iv, "componentType": indexType},
+				"values":  map[string]any{"bufferView": vv},
+			},
+		})
+		return len(doc.Accessors) - 1
+	}
+
 	for _, r := range regions {
 		position := addPositions(r.verts)
 		normal := addNormals(r.normals)
@@ -152,12 +197,26 @@ func writeRegionsGLB(path string, regions []region) error {
 			spec["alphaMode"] = "BLEND"
 		}
 		doc.Materials = append(doc.Materials, spec)
-		mesh := len(doc.Meshes)
-		doc.Meshes = append(doc.Meshes, gltfMesh{Name: r.key, Primitives: []gltfPrimitive{{
+		prim := gltfPrimitive{
 			Attributes: map[string]int{"POSITION": position, "NORMAL": normal},
 			Indices:    &indices,
 			Material:   &material,
-		}}})
+		}
+		m := gltfMesh{Name: r.key}
+		for _, t := range r.morphs {
+			prim.Targets = append(prim.Targets, map[string]int{"POSITION": addMorph(t, len(r.verts))})
+			m.Weights = append(m.Weights, 0)
+		}
+		if len(r.morphs) > 0 {
+			names := make([]string, len(r.morphs))
+			for i, t := range r.morphs {
+				names[i] = t.name
+			}
+			m.Extras = map[string]any{"targetNames": names}
+		}
+		m.Primitives = []gltfPrimitive{prim}
+		mesh := len(doc.Meshes)
+		doc.Meshes = append(doc.Meshes, m)
 		doc.Nodes = append(doc.Nodes, gltfNode{Name: r.key, Mesh: &mesh})
 		doc.Nodes[0].Children = append(doc.Nodes[0].Children, len(doc.Nodes)-1)
 	}

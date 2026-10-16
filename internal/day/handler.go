@@ -58,6 +58,7 @@ func (h *Handler) WithBodyMaps(maps BodyMaps) *Handler {
 type Progress interface {
 	Due(ctx context.Context, user users.User, now time.Time) (progresscheck.Schedule, bool, error)
 	Latest(ctx context.Context, user users.User) (progresscheck.Check, bool, error)
+	Shape(ctx context.Context, user users.User) (bodymap.Shape, error)
 }
 
 // WithProgress shows the progress-check chip and latest waist on the body card.
@@ -548,6 +549,13 @@ func (h *Handler) loadProgress(r *http.Request, user users.User, body *daypages.
 		return err
 	}
 	body.ProgressDue = due
+	shape, err := h.progress.Shape(r.Context(), user)
+	if err != nil {
+		return err
+	}
+	if !shape.Zero() {
+		body.Shape = &shape
+	}
 	latest, ok, err := h.progress.Latest(r.Context(), user)
 	if err != nil || !ok || latest.WaistCm == nil {
 		return err

@@ -72,6 +72,20 @@
         if (q.get("heat") !== "none") {
           viewer.setHeat({ quads: 1, glutes: 0.5, chest: 0.6, delts: 0.3, abs: 0.1, lats: 0.8 });
         }
+        // ?shape=0.5 sets every shape key; ?shape=waist:1,hips:0.4 sets some.
+        if (q.get("shape")) {
+          const raw = q.get("shape");
+          const shape = {};
+          if (raw.includes(":")) {
+            for (const part of raw.split(",")) {
+              const [name, value] = part.split(":");
+              shape[name] = Number(value);
+            }
+          } else {
+            for (const name of ["waist", "hips", "chest", "overall"]) shape[name] = Number(raw);
+          }
+          viewer.setShape(shape);
+        }
         viewer.face(q.get("side") || "front");
         status.textContent = `ok ${location.search}`;
       } catch (err) {

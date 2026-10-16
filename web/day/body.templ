@@ -29,6 +29,7 @@ templ bodyPanel(data Data) {
 			@muscleviewer.Viewer(muscleviewer.Props{
 				ID:         "day-body-viewer",
 				Map:        bodyMapOrEmpty(b.Map),
+				Shape:      b.Shape,
 				HideLegend: true,
 			})
 			if caption := bodyCaption(ctx, b.Map); caption != "" {
