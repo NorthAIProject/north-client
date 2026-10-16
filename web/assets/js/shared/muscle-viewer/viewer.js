@@ -5,11 +5,11 @@
  * The figure is body-map.glb, built by scripts/bodymap from the anatomical
  * atlas (attribution in siteFooter(), web/landing/sections.templ): the muscles
  * themselves, one mesh per muscle key, inside the body's skin. The skin is
- * drawn twice from one geometry — its back faces opaque and dark, so the inside
- * of the body reads as the cavity the muscles sit in, and its front faces as a
- * translucent shell that firms up at the silhouette. Colouring a muscle is
- * setting one colour — no geometry is reloaded — and a tap resolves to a key by
- * the mesh's name.
+ * drawn as an outline only, clear facing the camera and firm at the
+ * silhouette, so the muscles read as the body and the skin as its edge; its
+ * shape keys (setShape) widen that edge to a person's measurements. Colouring
+ * a muscle is setting one colour — no geometry is reloaded — and a tap
+ * resolves to a key by the mesh's name.
  *
  * Untrained muscle is a cool grey-blue; trained muscle ramps from a pale amber
  * to ember.
@@ -31,14 +31,17 @@ import { readCSSColor } from "../css-color.js";
 
 const MODEL_PATH = "/assets/models/body-map.glb";
 const SHELL_REGION = "shell"; // the skin; every other mesh is a muscle
-const SHELL_OPACITY = 0.3;
+// The skin is an outline: clear where it faces the camera, firming up only
+// where it turns away, so the muscles read as the body and the skin as its
+// edge. A filled skin read as a second, grey person around the muscles.
+const SHELL_EDGE_ALPHA = 0.9;
+const SHELL_EDGE_POWER = 4; // higher is a thinner edge
 
 // Fallbacks for the colour tokens in web/assets/css/input.css, used only when a
 // page has not loaded the stylesheet.
 const FALLBACK = {
   idle: 0x7d8ca1,
   shell: 0xc9d3df,
-  core: 0x242b35,
   heatLow: 0xf0d6a0,
   ember: 0xe8973c,
 };
@@ -114,7 +117,6 @@ function readColours() {
   return {
     idle: readCSSColor("--north-body-idle", FALLBACK.idle),
     shell: readCSSColor("--north-body-shell", FALLBACK.shell),
-    core: readCSSColor("--north-body-core", FALLBACK.core),
     heatLow: readCSSColor("--north-heat-low", FALLBACK.heatLow),
     ember: readCSSColor("--north-ember", FALLBACK.ember),
   };
@@ -125,20 +127,21 @@ function readColours() {
 // dark card. The colour uniforms are shared, so a theme change is one
 // assignment. rimAlpha also firms a translucent material up at the silhouette,
 // which is how the shell keeps the body's outline while showing through.
-function addRim(material, rim, rimAlpha = 0) {
+function addRim(material, rim, rimAlpha = 0, rimPower = 2.5) {
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uRimColor = rim.color;
     shader.uniforms.uRimStrength = rim.strength;
     shader.uniforms.uRimAlpha = { value: rimAlpha };
+    shader.uniforms.uRimPower = { value: rimPower };
     shader.fragmentShader = shader.fragmentShader
       .replace(
         "#include <common>",
-        "#include <common>\nuniform vec3 uRimColor;\nuniform float uRimStrength;\nuniform float uRimAlpha;",
+        "#include <common>\nuniform vec3 uRimColor;\nuniform float uRimStrength;\nuniform float uRimAlpha;\nuniform float uRimPower;",
       )
       .replace(
         "#include <opaque_fragment>",
         `{
-          float rim = pow(1.0 - abs(dot(normalize(normal), normalize(vViewPosition))), 2.5);
+          float rim = pow(1.0 - abs(dot(normalize(normal), normalize(vViewPosition))), uRimPower);
           outgoingLight += uRimColor * rim * uRimStrength;
           diffuseColor.a = min(1.0, diffuseColor.a + rim * uRimAlpha);
         }
@@ -345,7 +348,6 @@ export async function createViewer(canvas, options = {}) {
   }
 
   function paintSkin() {
-    shell.core.color.copy(colours.core);
     shell.ghost.color.copy(colours.shell);
   }
 
@@ -385,14 +387,29 @@ export async function createViewer(canvas, options = {}) {
   paintSkin();
   setHeat({});
 
+  // setShape shapes the skin to a person's measurements: { waist, hips,
+  // chest, overall }, each 0 (as modelled) to 1, worked out by the server
+  // (bodymap.Shape). Unknown or missing keys leave that shape key at 0; the
+  // muscles never move.
+  function setShape(shape = {}) {
+    for (const [name, index] of Object.entries(shell.targets)) {
+      const value = Math.min(1, Math.max(0, Number(shape[name]) || 0));
+      for (const mesh of shell.meshes) {
+        if (mesh.morphTargetInfluences) mesh.morphTargetInfluences[index] = value;
+      }
+    }
+  }
+
   return {
     setHeat,
     setMuscleGroups,
+    setShape,
     setLoads,
     select,
-    // Turn to show the front or the back, for a caller with its own toggle.
+    // Turn to show the front, the back or the profile, for a caller with its
+    // own toggle.
     face(side) {
-      facing = side === "back" ? Math.PI + FRONT_YAW : FRONT_YAW;
+      facing = { back: Math.PI + FRONT_YAW, side: Math.PI / 2 }[side] ?? FRONT_YAW;
       dragOffset = 0;
     },
     setTheme(isDark) {
@@ -419,7 +436,6 @@ export async function createViewer(canvas, options = {}) {
         region.material.dispose();
       }
       shell.geometry.dispose();
-      shell.core.dispose();
       shell.ghost.dispose();
       shadowGeometry.dispose();
       shadowMaterial.dispose();
@@ -475,33 +491,21 @@ async function loadFigure(colours, rim, model) {
 }
 
 /**
- * The skin, drawn twice from one geometry. The back faces are the inside of
- * the body: opaque and dark, the cavity the muscles sit in, always behind
- * them. The front faces are the shell: translucent, firming up at the
- * silhouette through the rim's alpha, so the body's outline stays readable
- * with the muscles showing through.
+ * The skin, drawn as the body's outline: clear where it faces the camera,
+ * firming up only at the silhouette, so the muscles inside read as the body.
+ * It is the only mesh the shape keys move.
  */
 function skinLayers(obj, colours, rim) {
-  const core = new THREE.MeshStandardMaterial({
-    color: colours.core,
-    roughness: 0.85,
-    metalness: 0,
-    side: THREE.BackSide,
-  });
-  const inside = new THREE.Mesh(obj.geometry, core);
-  inside.name = "shell-core";
-  obj.parent.add(inside);
-
   const ghost = new THREE.MeshStandardMaterial({
     color: colours.shell,
     roughness: 0.4,
     metalness: 0,
     transparent: true,
-    opacity: SHELL_OPACITY,
+    opacity: 0,
     depthWrite: false,
   });
-  addRim(ghost, rim, 0.6);
+  addRim(ghost, rim, SHELL_EDGE_ALPHA, SHELL_EDGE_POWER);
   obj.material = ghost;
   obj.renderOrder = 1;
-  return { geometry: obj.geometry, core, ghost };
+  return { geometry: obj.geometry, ghost, meshes: [obj], targets: obj.morphTargetDictionary || {} };
 }

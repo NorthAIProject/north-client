@@ -15,10 +15,40 @@ anatomical atlas. Each node has its own mesh and a material of the same name, so
 client recolours a muscle by setting one material colour and resolves a tap by the
 hit mesh's name.
 
-Clients draw the shell twice from the one geometry: its back faces opaque and dark,
-which makes the inside of the body a cavity the muscles sit in, and its front faces
-translucent, firmed up at the silhouette, so the body's outline reads with the
-muscles showing through. The shell is never a tap target.
+The web viewer draws the shell as an outline only: clear where it faces the
+camera, firm at the silhouette, so the muscles read as the body and the skin as
+its edge. (It used to be drawn twice, an opaque dark inside and a grey
+translucent front, which read as a second, grey person standing around the
+muscles.) The shell is never a tap target.
+
+The shell carries four shape keys (glTF morph targets, named in
+`mesh.extras.targetNames`): `waist`, `hips`, `chest` and `overall`. Each is 0
+(as modelled) to 1. The server works the weights out from a person's latest
+progress check (`bodymap.Shape`, read against `bodymap.ShellBaseline`, which
+this tool generates in `internal/bodymap/baseline_gen.go`), and the web
+viewer applies them with `setShape`. Only the skin moves; the muscles stay
+where they are, so a heavier body is the same muscles in a wider skin.
+
+- `waist`, `hips` and `chest` push the torso's skin straight out from its
+  axis, the same distance all round at a given height, so the muscle relief
+  is not magnified into rolls. Each reaches about a tenth of the height up
+  and down from its landmark and eases off smoothly, so neighbouring keys
+  blend into one outline. The waist leans forward, the hips backward; the
+  chest widens evenly.
+- Each is solved, by measuring, to reach a fixed girth over height at full
+  strength: waist 0.75, hips 0.80, chest 0.82. As modelled the shell measures
+  about 0.46, 0.58 and 0.61. Girths are taken the way a tape takes them:
+  around the convex hull of the torso's slice.
+- `overall` moves the body out along its normals, at most 15 mm; the server
+  caps the weight at 0.4. It leaves the hands and the head alone.
+- Arms and hands never move with the bands: below the armpit each arm is its
+  own piece of skin, found by connectivity, and no band reaches above the
+  armpit. At extreme weights the waist's sides can reach the hanging arms.
+- The keys are sparse int16 accessors on the positions' own grid, about
+  0.1 MB in all.
+
+iOS does not read the shape keys yet: `BodyMap.usdz` is written without
+blend shapes until the RealityKit spike settles how iOS will apply them.
 
 The muscle keys are `internal/bodymap.Regions`; the tool fails if the file and that
 list disagree. Muscles with no mesh of their own are folded server-side
@@ -27,7 +57,8 @@ receive region keys.
 
 Positions are int16 and normals int8 (`KHR_mesh_quantization`, which the vendored
 three.js loader reads natively); the root node's translation and scale map the grid
-back to metres. About 1.4 MB; the tool refuses to write more than 1.5 MB. The figure
+back to metres. About 1.5 MB with the shape keys; the tool refuses to write
+more than 2 MB. The figure
 stands on the origin (soles at y = 0, centred in x and z) and faces +z.
 
 ## How it is made
@@ -50,7 +81,8 @@ means the fit needs looking at before anything is committed.
 
 `scripts/bodymap/preview/` is a page that draws the file with the real viewer and
 nothing else around it, plus a headless-Chrome script for screenshots of both themes
-and sides. Use it to check a change.
+and sides (`SIDES=side` for the profile, `SHAPE=0.5` or `SHAPE=waist:1,hips:0.4`
+for a shaped figure). Use it to check a change.
 
 ## Licence
 

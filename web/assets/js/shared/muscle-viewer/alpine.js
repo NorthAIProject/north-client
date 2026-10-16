@@ -45,6 +45,7 @@
       heat: props.heat || {},
       details: props.details || {},
       inspect: Boolean(props.inspect),
+      shape: props.shape || null,
 
       init() {
         this.observer = new IntersectionObserver(
@@ -67,6 +68,7 @@
             onMuscleClick: (key) => this.select(key),
           });
           this.viewer.setHeat(this.heat);
+          if (this.shape) this.viewer.setShape(this.shape);
           // The page announces every appearance change (the switcher, or the
           // OS flipping while the setting is "system"); the figure's tokens
           // have to be read again. Read from the class rather than the event
