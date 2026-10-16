@@ -112,9 +112,9 @@ func (s *Service) AssistDestination(ctx context.Context, user users.User) (Desti
 // few hundred kilobytes.
 const maxEstimatePhoto = 3_500_000
 
-// estimateAttempts is one call and one retry on a reply that is not the JSON
+// readAttempts is one call and one retry on a reply that is not the JSON
 // asked for.
-const estimateAttempts = 2
+const readAttempts = 2
 
 // estimateMIME is what every provider in the catalogue reads.
 var estimateMIME = map[string]bool{"image/jpeg": true, "image/png": true, "image/webp": true}
@@ -141,40 +141,52 @@ func (s *Service) Estimate(ctx context.Context, user users.User, uploads []Photo
 		return Estimate{}, dest, err
 	}
 	parts = append(parts, reference...)
-	locale := users.LocaleDefault
-	if user.Locale.Valid() {
-		locale = user.Locale
-	}
-	parts = append(parts, ai.TextPart("Estimate today's waist, hips and chest. Write the notes in "+locale.Language()+"."))
+	parts = append(parts, ai.TextPart("Estimate today's waist, hips and chest. Write the notes in "+language(user)+"."))
 
-	system, err := prompts.Raw(prompts.ProgressEstimate)
-	if err != nil {
-		return Estimate{}, dest, apperr.Wrap(err, "load progress estimate prompt")
-	}
-
+	var reply estimateReply
 	ctx = aiattr.WithUser(ctx, user.ID, spend.SurfaceProgressEstimate)
+	if err := dest.readJSON(ctx, prompts.ProgressEstimate, parts, estimateSchema, 400, &reply); err != nil {
+		return Estimate{}, dest, err
+	}
+	return reply.estimate().Clean(), dest, nil
+}
+
+// readJSON sends one schema-constrained request to the destination and
+// decodes the reply into out, asking once more when the reply is not the JSON
+// asked for. No temperature or prefill: Haiku 5.5 refuses both.
+func (d Destination) readJSON(ctx context.Context, prompt string, parts []ai.Part, schema *ai.Schema, maxTokens int, out any) error {
+	system, err := prompts.Raw(prompt)
+	if err != nil {
+		return apperr.Wrap(err, "load prompt %s", prompt)
+	}
 	messages := []ai.Message{{Role: ai.RoleUser, Parts: parts}}
-	for attempt := 1; attempt <= estimateAttempts; attempt++ {
-		resp, genErr := dest.client.Generate(ctx, ai.Request{
+	for attempt := 1; attempt <= readAttempts; attempt++ {
+		resp, genErr := d.client.Generate(ctx, ai.Request{
 			System:         system,
 			Messages:       messages,
-			ResponseSchema: estimateSchema,
-			MaxTokens:      400,
+			ResponseSchema: schema,
+			MaxTokens:      maxTokens,
 		})
 		if genErr != nil {
-			return Estimate{}, dest, fmt.Errorf("progress estimate via %s: %v: %w", dest.client.Name(), genErr, apperr.ErrUnavailable)
+			return fmt.Errorf("%s via %s: %v: %w", prompt, d.client.Name(), genErr, apperr.ErrUnavailable)
 		}
-
-		var reply estimateReply
-		if decErr := json.Unmarshal(ai.JSONReply(resp.Text), &reply); decErr == nil {
-			return reply.estimate().Clean(), dest, nil
+		if decErr := json.Unmarshal(ai.JSONReply(resp.Text), out); decErr == nil {
+			return nil
 		}
 		messages = append(messages,
 			ai.ModelText(resp.Text),
-			ai.UserText("That was not valid JSON matching the schema. Return the estimate again, correctly."),
+			ai.UserText("That was not valid JSON matching the schema. Answer again, correctly."),
 		)
 	}
-	return Estimate{}, dest, fmt.Errorf("progress estimate via %s: reply was not the JSON asked for: %w", dest.client.Name(), apperr.ErrUnavailable)
+	return fmt.Errorf("%s via %s: reply was not the JSON asked for: %w", prompt, d.client.Name(), apperr.ErrUnavailable)
+}
+
+// language is the person's language as a model should be told it.
+func language(user users.User) string {
+	if user.Locale.Valid() {
+		return user.Locale.Language()
+	}
+	return users.LocaleDefault.Language()
 }
 
 // readEstimatePhotos checks each photo is one a provider can read. Front or
@@ -226,23 +238,9 @@ func (s *Service) estimateReference(ctx context.Context, user users.User) ([]ai.
 		if c.WaistCm == nil {
 			continue
 		}
-		var images []ai.Part
-		for _, pose := range []progresscheck.Pose{progresscheck.Front, progresscheck.Side} {
-			photo, ok := c.Photo(pose)
-			if !ok {
-				continue
-			}
-			mime, data, readErr := s.photos.ReadBytes(ctx, user.ID, photo.MediaID)
-			if apperr.Is(readErr, apperr.ErrNotFound) {
-				continue
-			}
-			if readErr != nil {
-				return nil, apperr.Wrap(readErr, "read earlier progress photo")
-			}
-			if !estimateMIME[mime] {
-				continue
-			}
-			images = append(images, ai.TextPart("Earlier, "+string(pose)+":"), ai.Part{InlineData: data, MIMEType: mime})
+		images, photoErr := s.storedPhotos(ctx, user, c, "Earlier")
+		if photoErr != nil {
+			return nil, photoErr
 		}
 		if len(images) == 0 {
 			continue
@@ -287,4 +285,29 @@ func (r estimateReply) estimate() Estimate {
 		WaistCm: &r.WaistCm, HipsCm: &r.HipsCm, ChestCm: &r.ChestCm,
 		Confidence: r.Confidence, Notes: strings.TrimSpace(r.Notes),
 	}
+}
+
+// storedPhotos are a saved check's front and side photos as model input, each
+// labelled "<label>, <pose>:". A photo whose file is gone, or of a type no
+// provider reads, is left out rather than failing the request.
+func (s *Service) storedPhotos(ctx context.Context, user users.User, c Check, label string) ([]ai.Part, error) {
+	var parts []ai.Part
+	for _, pose := range []progresscheck.Pose{progresscheck.Front, progresscheck.Side} {
+		photo, ok := c.Photo(pose)
+		if !ok {
+			continue
+		}
+		mime, data, err := s.photos.ReadBytes(ctx, user.ID, photo.MediaID)
+		if apperr.Is(err, apperr.ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			return nil, apperr.Wrap(err, "read progress photo")
+		}
+		if !estimateMIME[mime] {
+			continue
+		}
+		parts = append(parts, ai.TextPart(label+", "+string(pose)+":"), ai.Part{InlineData: data, MIMEType: mime})
+	}
+	return parts, nil
 }

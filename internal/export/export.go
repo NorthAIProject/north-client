@@ -65,6 +65,7 @@ type Exporter struct {
 type ProgressChecks interface {
 	History(ctx context.Context, user users.User) ([]progresscheck.Check, error)
 	PhotoBytes(ctx context.Context, user users.User, mediaID uuid.UUID) (string, []byte, error)
+	SavedComparison(ctx context.Context, user users.User) (cmp progresscheck.Comparison, stale, ok bool, err error)
 }
 
 // Medications is every medication and dose as an export needs them.
@@ -623,6 +624,18 @@ func (e *Exporter) writeProgressChecks(ctx context.Context, zw *zip.Writer, user
 		return writeFile(zw, "progress-checks.md", b.String())
 	}
 	b.WriteString("Metric: kg and cm. \"carried\" marks a weight copied from the last known one.\n\n")
+
+	cmp, _, ok, err := e.progress.SavedComparison(ctx, user)
+	if err != nil {
+		return err
+	}
+	if ok {
+		fmt.Fprintf(&b, "## First and latest compared (%s to %s)\n\n", cmp.FromOn.Format("2006-01-02"), cmp.ToOn.Format("2006-01-02"))
+		fmt.Fprintf(&b, "An observation from photos by %s, %s confidence, not a measurement.\n\n%s\n\n", cmp.Provider, cmp.Confidence, cmp.Summary)
+		if cmp.Limits != "" {
+			fmt.Fprintf(&b, "Limits: %s\n\n", cmp.Limits)
+		}
+	}
 
 	for _, c := range checks {
 		day := c.MeasuredOn.Format("2006-01-02")

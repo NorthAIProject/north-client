@@ -30,6 +30,13 @@ func (s *ContextSource) Collect(ctx context.Context, req coach.ContextRequest, i
 	if line := progresscheck.Summary(checks); line != "" {
 		into.FitnessSummary = append(into.FitnessSummary, line)
 	}
+	cmp, _, ok, err := s.svc.SavedComparison(ctx, req.User)
+	if err != nil {
+		return err
+	}
+	if ok {
+		into.FitnessSummary = append(into.FitnessSummary, cmp.CoachLine())
+	}
 	return nil
 }
 

@@ -13,7 +13,7 @@ var portugueseEuropeanQuota = map[string]string{
 	"quota.action.quick_capture":     "capturas rápidas",
 	"quota.action.voice_capture":     "notas de voz",
 	"quota.action.plan_import":       "importações de planos",
-	"quota.action.progress_estimate": "estimativas por fotografia",
+	"quota.action.progress_estimate": "estimativas e comparações de fotografias",
 
 	"quota.delay.underminute": "daqui a menos de um minuto",
 	"quota.delay.minute":      "daqui a cerca de um minuto",

@@ -29,5 +29,6 @@
     "cadence": "weekly",
     "nextDueOn": "2026-10-22",
     "due": false
-  }
+  },
+  "canCompare": false
 }

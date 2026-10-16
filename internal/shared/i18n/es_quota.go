@@ -13,7 +13,7 @@ var spanishQuota = map[string]string{
 	"quota.action.quick_capture":     "capturas rápidas",
 	"quota.action.voice_capture":     "notas de voz",
 	"quota.action.plan_import":       "importaciones de planes",
-	"quota.action.progress_estimate": "estimaciones por foto",
+	"quota.action.progress_estimate": "estimaciones y comparaciones de fotos",
 
 	"quota.delay.underminute": "en menos de un minuto",
 	"quota.delay.minute":      "en un minuto, más o menos",

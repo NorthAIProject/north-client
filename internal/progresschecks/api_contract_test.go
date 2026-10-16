@@ -87,3 +87,14 @@ func TestProgressAssistShape(t *testing.T) {
 		Available: true, ProviderLabel: "OpenAI", OwnProvider: true,
 	})
 }
+
+func TestProgressComparisonShape(t *testing.T) {
+	t.Parallel()
+	apitest.AssertGolden(t, "progress_comparison.golden.json", progresschecks.ProjectComparison(progresschecks.Comparison{
+		FromCheckID: uuid.MustParse("77777777-7777-7777-7777-777777777777"), ToCheckID: checkID,
+		FromOn: date(2026, 9, 1), ToOn: date(2026, 10, 15),
+		Summary:    "The waist looks narrower from the side; little visible change at the hips.",
+		Confidence: "medium", Limits: "Different light in the first photos.",
+		Provider: "Anthropic (Claude)", CreatedAt: time.Date(2026, 10, 15, 9, 0, 0, 0, time.UTC),
+	}, true))
+}

@@ -180,3 +180,59 @@ func sortPhotos(photos []Photo) {
 }
 
 func date(t time.Time) pgtype.Date { return pgtype.Date{Time: t, Valid: true} }
+
+// FirstAndLatestWithPhotos are the two checks a comparison reads: the oldest
+// and the newest with a front or side photo. ErrNotFound when there is none;
+// the two are the same check when there is only one.
+func (r *Repository) FirstAndLatestWithPhotos(ctx context.Context, userID uuid.UUID) (first, latest Check, err error) {
+	oldest, err := r.q.OldestCheckWithPhotos(ctx, userID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Check{}, Check{}, apperr.ErrNotFound
+	}
+	if err != nil {
+		return Check{}, Check{}, apperr.Wrap(err, "oldest progress check with photos")
+	}
+	newest, err := r.q.NewestCheckWithPhotos(ctx, userID)
+	if err != nil {
+		return Check{}, Check{}, apperr.Wrap(err, "newest progress check with photos")
+	}
+	checks, err := r.withPhotos(ctx, userID, []Check{fromDB(oldest), fromDB(newest)})
+	if err != nil {
+		return Check{}, Check{}, err
+	}
+	if checks[0].ID == checks[1].ID {
+		// withPhotos indexes by id, so both copies point at one slot; the
+		// photos landed on the second.
+		checks[0] = checks[1]
+	}
+	return checks[0], checks[1], nil
+}
+
+// SaveComparison stores the person's comparison, replacing the last one.
+func (r *Repository) SaveComparison(ctx context.Context, userID uuid.UUID, c Comparison) error {
+	if err := r.q.UpsertComparison(ctx, progresschecksdb.UpsertComparisonParams{
+		UserID: userID, FromCheckID: c.FromCheckID, ToCheckID: c.ToCheckID,
+		Summary: c.Summary, Confidence: c.Confidence, Limits: c.Limits, ProviderLabel: c.Provider,
+	}); err != nil {
+		return apperr.Wrap(err, "save progress comparison")
+	}
+	return nil
+}
+
+// Comparison is the person's latest comparison; ErrNotFound when they have
+// none, or when a check it compared was deleted.
+func (r *Repository) Comparison(ctx context.Context, userID uuid.UUID) (Comparison, error) {
+	row, err := r.q.GetComparison(ctx, userID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Comparison{}, apperr.ErrNotFound
+	}
+	if err != nil {
+		return Comparison{}, apperr.Wrap(err, "get progress comparison")
+	}
+	return Comparison{
+		FromCheckID: row.FromCheckID, ToCheckID: row.ToCheckID,
+		FromOn: row.FromOn.Time, ToOn: row.ToOn.Time,
+		Summary: row.Summary, Confidence: row.Confidence, Limits: row.Limits,
+		Provider: row.ProviderLabel, CreatedAt: row.CreatedAt,
+	}, nil
+}

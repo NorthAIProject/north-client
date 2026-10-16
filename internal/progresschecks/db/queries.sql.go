@@ -7,6 +7,7 @@ package progresschecksdb
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -145,6 +146,45 @@ func (q *Queries) GetCheck(ctx context.Context, arg GetCheckParams) (ProgressChe
 	return i, err
 }
 
+const getComparison = `-- name: GetComparison :one
+SELECT cmp.from_check_id, cmp.to_check_id, cmp.summary, cmp.confidence, cmp.limits,
+       cmp.provider_label, cmp.created_at,
+       f.measured_on AS from_on, t.measured_on AS to_on
+FROM progress_check_comparisons cmp
+JOIN progress_checks f ON f.id = cmp.from_check_id
+JOIN progress_checks t ON t.id = cmp.to_check_id
+WHERE cmp.user_id = $1
+`
+
+type GetComparisonRow struct {
+	FromCheckID   uuid.UUID
+	ToCheckID     uuid.UUID
+	Summary       string
+	Confidence    string
+	Limits        string
+	ProviderLabel string
+	CreatedAt     time.Time
+	FromOn        pgtype.Date
+	ToOn          pgtype.Date
+}
+
+func (q *Queries) GetComparison(ctx context.Context, userID uuid.UUID) (GetComparisonRow, error) {
+	row := q.db.QueryRow(ctx, getComparison, userID)
+	var i GetComparisonRow
+	err := row.Scan(
+		&i.FromCheckID,
+		&i.ToCheckID,
+		&i.Summary,
+		&i.Confidence,
+		&i.Limits,
+		&i.ProviderLabel,
+		&i.CreatedAt,
+		&i.FromOn,
+		&i.ToOn,
+	)
+	return i, err
+}
+
 const getSchedule = `-- name: GetSchedule :one
 SELECT user_id, cadence, next_due_on, updated_at FROM progress_check_schedules WHERE user_id = $1
 `
@@ -240,6 +280,102 @@ func (q *Queries) ListChecks(ctx context.Context, arg ListChecksParams) ([]Progr
 		return nil, err
 	}
 	return items, nil
+}
+
+const newestCheckWithPhotos = `-- name: NewestCheckWithPhotos :one
+SELECT c.id, c.user_id, c.measured_on, c.weight_kg, c.weight_carried, c.waist_cm, c.hips_cm, c.chest_cm, c.thigh_cm, c.arm_cm, c.source, c.assist_confidence, c.assist_notes, c.created_at FROM progress_checks c
+WHERE c.user_id = $1
+  AND EXISTS (SELECT 1 FROM progress_check_photos p WHERE p.check_id = c.id AND p.pose IN ('front', 'side'))
+ORDER BY c.measured_on DESC, c.created_at DESC
+LIMIT 1
+`
+
+func (q *Queries) NewestCheckWithPhotos(ctx context.Context, userID uuid.UUID) (ProgressCheck, error) {
+	row := q.db.QueryRow(ctx, newestCheckWithPhotos, userID)
+	var i ProgressCheck
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.MeasuredOn,
+		&i.WeightKg,
+		&i.WeightCarried,
+		&i.WaistCm,
+		&i.HipsCm,
+		&i.ChestCm,
+		&i.ThighCm,
+		&i.ArmCm,
+		&i.Source,
+		&i.AssistConfidence,
+		&i.AssistNotes,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const oldestCheckWithPhotos = `-- name: OldestCheckWithPhotos :one
+SELECT c.id, c.user_id, c.measured_on, c.weight_kg, c.weight_carried, c.waist_cm, c.hips_cm, c.chest_cm, c.thigh_cm, c.arm_cm, c.source, c.assist_confidence, c.assist_notes, c.created_at FROM progress_checks c
+WHERE c.user_id = $1
+  AND EXISTS (SELECT 1 FROM progress_check_photos p WHERE p.check_id = c.id AND p.pose IN ('front', 'side'))
+ORDER BY c.measured_on ASC, c.created_at ASC
+LIMIT 1
+`
+
+// The first check a comparison starts from: the oldest with a front or side
+// photo, the poses that show a change.
+func (q *Queries) OldestCheckWithPhotos(ctx context.Context, userID uuid.UUID) (ProgressCheck, error) {
+	row := q.db.QueryRow(ctx, oldestCheckWithPhotos, userID)
+	var i ProgressCheck
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.MeasuredOn,
+		&i.WeightKg,
+		&i.WeightCarried,
+		&i.WaistCm,
+		&i.HipsCm,
+		&i.ChestCm,
+		&i.ThighCm,
+		&i.ArmCm,
+		&i.Source,
+		&i.AssistConfidence,
+		&i.AssistNotes,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const upsertComparison = `-- name: UpsertComparison :exec
+INSERT INTO progress_check_comparisons (
+    user_id, from_check_id, to_check_id, summary, confidence, limits, provider_label
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+ON CONFLICT (user_id) DO UPDATE SET
+    from_check_id = EXCLUDED.from_check_id, to_check_id = EXCLUDED.to_check_id,
+    summary = EXCLUDED.summary, confidence = EXCLUDED.confidence, limits = EXCLUDED.limits,
+    provider_label = EXCLUDED.provider_label, created_at = now()
+`
+
+type UpsertComparisonParams struct {
+	UserID        uuid.UUID
+	FromCheckID   uuid.UUID
+	ToCheckID     uuid.UUID
+	Summary       string
+	Confidence    string
+	Limits        string
+	ProviderLabel string
+}
+
+func (q *Queries) UpsertComparison(ctx context.Context, arg UpsertComparisonParams) error {
+	_, err := q.db.Exec(ctx, upsertComparison,
+		arg.UserID,
+		arg.FromCheckID,
+		arg.ToCheckID,
+		arg.Summary,
+		arg.Confidence,
+		arg.Limits,
+		arg.ProviderLabel,
+	)
+	return err
 }
 
 const upsertSchedule = `-- name: UpsertSchedule :one

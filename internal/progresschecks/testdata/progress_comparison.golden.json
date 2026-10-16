@@ -1,0 +1,12 @@
+{
+  "fromCheckId": "77777777-7777-7777-7777-777777777777",
+  "toCheckId": "88888888-8888-8888-8888-888888888888",
+  "fromOn": "2026-09-01",
+  "toOn": "2026-10-15",
+  "summary": "The waist looks narrower from the side; little visible change at the hips.",
+  "confidence": "medium",
+  "limits": "Different light in the first photos.",
+  "providerLabel": "Anthropic (Claude)",
+  "stale": true,
+  "createdAt": "2026-10-15T09:00:00Z"
+}
