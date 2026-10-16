@@ -72,6 +72,7 @@ var portugueseBrazilianChat = map[string]string{
 
 	"chat.caption.briefing":  "Resumo · %[1]s",
 	"chat.caption.standing":  "Tarefa recorrente",
+	"chat.caption.checkin":   "Seu coach mandou uma mensagem",
 	"chat.caption.from":      "De %[1]s",
 	"chat.caption.proactive": "Sem você pedir",
 

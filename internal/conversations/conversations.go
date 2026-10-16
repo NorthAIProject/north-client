@@ -150,6 +150,9 @@ const (
 const (
 	SourceDailyBriefing = "Daily briefing"
 	SourceStandingTask  = "Standing task"
+	// SourceCoachCheckIn is the coach's one unprompted message of the day:
+	// it noticed something (internal/outreach) and spoke first.
+	SourceCoachCheckIn = "Coach check-in"
 )
 
 // Provenance is where a model turn came from. The zero value is an ordinary

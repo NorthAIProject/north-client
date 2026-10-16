@@ -43,6 +43,13 @@ const (
 	// KindProgressCheckDue is the progress check the person scheduled
 	// (weekly, every two weeks, monthly) falling due.
 	KindProgressCheckDue = "progress_check_due"
+	// KindCoachLighter is the coach saying it lightened today's session on a
+	// low-recovery morning (or offering to), with an undo. Raised by
+	// internal/outreach, never by the nudge sweep.
+	KindCoachLighter = "coach_lighter"
+	// KindCoachMissed is the coach offering to move a session missed
+	// yesterday, or to let it go. Raised by internal/outreach.
+	KindCoachMissed = "coach_missed"
 )
 
 // Nudge is one scheduled accountability note for a person.

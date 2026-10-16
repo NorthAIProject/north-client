@@ -30,7 +30,7 @@ func TestAllPromptsParse(t *testing.T) {
 func TestNamedPromptsExist(t *testing.T) {
 	t.Parallel()
 
-	for _, name := range []string{CoachSystem, WorkoutPlan, FormAnalysis, ConversationTitle, ReflectionSession, PlanImportWorkout, PlanImportMeal, MealPlan, ProgressEstimate, ProgressCompare} {
+	for _, name := range []string{CoachSystem, WorkoutPlan, FormAnalysis, ConversationTitle, ReflectionSession, PlanImportWorkout, PlanImportMeal, MealPlan, ProgressEstimate, ProgressCompare, CoachOutreach} {
 		body, err := Raw(name)
 		if err != nil {
 			t.Errorf("%s: %v", name, err)

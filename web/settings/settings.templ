@@ -86,23 +86,25 @@ func appearanceKey(a theme.Appearance) string {
 
 // NotificationsForm carries what Khepri may say without being asked.
 type NotificationsForm struct {
-	NudgeMissedCheckIn bool
-	NudgeGoalDeadline  bool
-	CoachActivity      bool
-	TrainingReminders  bool
-	WeeklyReportAuto   bool
-	DailyBriefingAuto  bool
-	StatsDigestCadence string
-	PhotoAskEnabled    bool
-	PhotoEveryDays     int
-	PhotoReminderDays  int
-	QuietHoursEnabled  bool
-	QuietStart         string
-	QuietEnd           string
-	BriefingHour       int
-	EveningReflection  bool
-	EveningHour        int
-	Errors             map[string]string
+	NudgeMissedCheckIn   bool
+	NudgeGoalDeadline    bool
+	CoachActivity        bool
+	TrainingReminders    bool
+	WeeklyReportAuto     bool
+	DailyBriefingAuto    bool
+	StatsDigestCadence   string
+	PhotoAskEnabled      bool
+	PhotoEveryDays       int
+	PhotoReminderDays    int
+	QuietHoursEnabled    bool
+	QuietStart           string
+	QuietEnd             string
+	BriefingHour         int
+	EveningReflection    bool
+	EveningHour          int
+	CoachCheckIns        bool
+	CoachAdjustsTraining bool
+	Errors               map[string]string
 
 	// PushEnabled is whether this deployment can send Web Push at all. The
 	// browser decides the rest — permission, subscription — in push.js.
@@ -148,22 +150,24 @@ func (f NotificationsForm) devicesLine(ctx context.Context) string {
 
 func NotificationsFormFor(p notifications.Prefs, photo notifications.Schedule) NotificationsForm {
 	return NotificationsForm{
-		NudgeMissedCheckIn: p.NudgeMissedCheckIn,
-		NudgeGoalDeadline:  p.NudgeGoalDeadline,
-		CoachActivity:      p.CoachActivity,
-		TrainingReminders:  p.TrainingReminders,
-		WeeklyReportAuto:   p.WeeklyReportAuto,
-		DailyBriefingAuto:  p.DailyBriefingAuto,
-		StatsDigestCadence: p.Cadence(),
-		PhotoAskEnabled:    photo.Enabled,
-		PhotoEveryDays:     photo.EveryDays,
-		PhotoReminderDays:  photo.ReminderDays,
-		QuietHoursEnabled:  p.QuietHoursEnabled,
-		QuietStart:         p.QuietStart,
-		QuietEnd:           p.QuietEnd,
-		BriefingHour:       p.BriefingHour,
-		EveningReflection:  p.EveningReflection,
-		EveningHour:        p.EveningHour,
+		NudgeMissedCheckIn:   p.NudgeMissedCheckIn,
+		NudgeGoalDeadline:    p.NudgeGoalDeadline,
+		CoachActivity:        p.CoachActivity,
+		TrainingReminders:    p.TrainingReminders,
+		WeeklyReportAuto:     p.WeeklyReportAuto,
+		DailyBriefingAuto:    p.DailyBriefingAuto,
+		StatsDigestCadence:   p.Cadence(),
+		PhotoAskEnabled:      photo.Enabled,
+		PhotoEveryDays:       photo.EveryDays,
+		PhotoReminderDays:    photo.ReminderDays,
+		QuietHoursEnabled:    p.QuietHoursEnabled,
+		QuietStart:           p.QuietStart,
+		QuietEnd:             p.QuietEnd,
+		BriefingHour:         p.BriefingHour,
+		EveningReflection:    p.EveningReflection,
+		EveningHour:          p.EveningHour,
+		CoachCheckIns:        p.CoachCheckIns,
+		CoachAdjustsTraining: p.CoachAdjustsTraining,
 	}
 }
 
@@ -184,6 +188,9 @@ func NotificationsFormFrom(in notifications.Input) NotificationsForm {
 		BriefingHour:       intOr(in.BriefingHour, notifications.DefaultBriefingHour),
 		EveningReflection:  in.EveningReflection != nil && *in.EveningReflection,
 		EveningHour:        intOr(in.EveningHour, notifications.DefaultEveningHour),
+		// Absent means the form did not send them: show the defaults.
+		CoachCheckIns:        in.CoachCheckIns == nil || *in.CoachCheckIns,
+		CoachAdjustsTraining: in.CoachAdjustsTraining == nil || *in.CoachAdjustsTraining,
 	}
 }
 
@@ -494,6 +501,31 @@ templ notificationsCard(f NotificationsForm) {
 					})
 					@label.Label(label.Props{For: "training_reminders"}) {
 						{ i18n.T(ctx, "settings.notif.training") }
+					}
+				}
+				// Plain hidden input, like ui.CSRFInput: it marks that this
+				// form carries the two switches below.
+				<input type="hidden" name="coach_toggles" value="1"/>
+				@form.Item() {
+					@switchcomp.Switch(switchcomp.Props{
+						ID: "coach_check_ins", Name: "coach_check_ins", Checked: f.CoachCheckIns,
+					})
+					@label.Label(label.Props{For: "coach_check_ins"}) {
+						{ i18n.T(ctx, "settings.notif.checkins") }
+					}
+					@form.Description() {
+						{ i18n.T(ctx, "settings.notif.checkins.desc") }
+					}
+				}
+				@form.Item() {
+					@switchcomp.Switch(switchcomp.Props{
+						ID: "coach_adjusts_training", Name: "coach_adjusts_training", Checked: f.CoachAdjustsTraining,
+					})
+					@label.Label(label.Props{For: "coach_adjusts_training"}) {
+						{ i18n.T(ctx, "settings.notif.adjusts") }
+					}
+					@form.Description() {
+						{ i18n.T(ctx, "settings.notif.adjusts.desc") }
 					}
 				}
 				@separator.Separator()

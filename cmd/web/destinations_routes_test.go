@@ -27,6 +27,7 @@ var knownNonDestinations = map[string]string{
 	"/app/overview/panels":         "dashboard range swap",
 	"/app/day/trends":              "overview trend cards fragment",
 	"/app/today/lighter":           "lighter-day offer on the dashboard training panel",
+	"/app/outreach":                "fragment: the coach's message of the day on Today",
 	"/app/nudges/bell":             "topbar poll",
 	"/app/connections/pill":        "topbar prompt to connect an agent",
 	"/app/knowledge/passages":      "document passage fragment",
