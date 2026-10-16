@@ -85,6 +85,7 @@ var englishChat = map[string]string{
 	// case here so screen readers do not spell them out.
 	"chat.caption.briefing":  "Briefing · %[1]s",
 	"chat.caption.standing":  "Standing task",
+	"chat.caption.checkin":   "Your coach checked in",
 	"chat.caption.from":      "From %[1]s",
 	"chat.caption.proactive": "Unprompted",
 

@@ -30,6 +30,8 @@ const (
 
 	KindMedicationReminder = nudge.KindMedicationReminder
 	KindProgressCheckDue   = nudge.KindProgressCheckDue
+	KindCoachLighter       = nudge.KindCoachLighter
+	KindCoachMissed        = nudge.KindCoachMissed
 )
 
 // CategoryCheckIn is the iOS notification category that puts mood buttons
@@ -37,12 +39,25 @@ const (
 // silently drops the buttons.
 const CategoryCheckIn = "CHECKIN"
 
+// CategoryCoachLighter and CategoryCoachMissed put the coach's one-tap
+// answers under its banner: Undo for a session it lightened, Today /
+// Tomorrow / Let it go for a missed one. Same contract as CategoryCheckIn:
+// the app registers these exact names.
+const (
+	CategoryCoachLighter = "COACH_LIGHTER"
+	CategoryCoachMissed  = "COACH_MISSED"
+)
+
 // PushCategory is the notification category a kind of nudge is sent with, or
 // empty for a plain banner. Only the nudges that ask for a check-in get one.
 func PushCategory(kind string) string {
 	switch kind {
 	case KindMissedCheckIn, KindStreakAtRisk, KindCrewCheckIn, KindEveningReflection:
 		return CategoryCheckIn
+	case KindCoachLighter:
+		return CategoryCoachLighter
+	case KindCoachMissed:
+		return CategoryCoachMissed
 	default:
 		return ""
 	}

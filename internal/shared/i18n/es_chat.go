@@ -72,6 +72,7 @@ var spanishChat = map[string]string{
 
 	"chat.caption.briefing":  "Resumen · %[1]s",
 	"chat.caption.standing":  "Tarea programada",
+	"chat.caption.checkin":   "Tu coach te escribe",
 	"chat.caption.from":      "De %[1]s",
 	"chat.caption.proactive": "Sin preguntar",
 

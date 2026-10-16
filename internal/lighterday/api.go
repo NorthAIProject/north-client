@@ -48,6 +48,10 @@ type LighterView struct {
 	Session string `json:"session,omitempty"`
 	// Choice is today's answer: lighter, keep, or absent.
 	Choice string `json:"choice,omitempty"`
+	// Source is who chose: person, or coach when the coach lightened a low
+	// morning itself. Absent with no choice. An open string. A lighter day
+	// is undone with PUT choice=keep.
+	Source string `json:"source,omitempty"`
 }
 
 type ChoiceRequest struct {
@@ -80,7 +84,7 @@ func (a *API) choose(w http.ResponseWriter, r *http.Request) {
 func project(ctx context.Context, t Today) LighterView {
 	r := t.Recovery
 	v := LighterView{
-		Offered: t.Offered(), Session: t.Session, Choice: t.Choice,
+		Offered: t.Offered(), Session: t.Session, Choice: t.Choice, Source: t.Source,
 		Readiness: ReadinessView{Low: r.Low(), Reason: r.WhyIn(ctx)},
 	}
 	if sig, ok := r.Signal(score.RecoveryHRV); ok {
