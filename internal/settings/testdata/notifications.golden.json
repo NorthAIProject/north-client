@@ -14,5 +14,7 @@
   "photoReminderDays": 2,
   "briefingHour": 7,
   "eveningReflection": true,
-  "eveningHour": 21
+  "eveningHour": 21,
+  "coachCheckIns": false,
+  "coachAdjustsTraining": false
 }
