@@ -266,6 +266,11 @@ func Destinations() []Destination {
 			Keywords:    []string{"food", "diet", "upload", "spreadsheet", "pdf", "import"},
 		},
 		{
+			Key: "nav.generate-meal-plan", Label: "Build a meal plan", Href: "/app/nutrition/plans/generate", Icon: "sparkles", Group: GroupBody,
+			Description: "Let the coach build one to your macros.",
+			Keywords:    []string{"food", "diet", "ai", "generate", "create", "macros"},
+		},
+		{
 			Key: "nav.food-log", Label: "Food log", Href: "/app/nutrition/log", Icon: "notebook-pen", Group: GroupBody,
 			Description: "Log today, see progress.",
 			Keywords:    []string{"diary", "eat", "nutrition", "calories", "track"},

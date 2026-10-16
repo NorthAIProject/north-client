@@ -30,6 +30,8 @@ func (a *API) Routes(r chi.Router) {
 	r.Post("/training/import", a.commitWorkout)
 	r.Post("/nutrition/import/preview", a.previewMeal)
 	r.Post("/nutrition/import", a.commitMeal)
+	r.Get("/nutrition/plans/intake", a.mealIntake)
+	r.With(a.quotas.GuardJSON(quota.MealPlanGenerate)).Post("/nutrition/plans/generate", a.generateMeal)
 }
 
 func (a *API) UploadRoutes(r chi.Router) {

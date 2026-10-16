@@ -52,6 +52,8 @@ var englishNav = map[string]string{
 	"nav.import-hevy.desc":          "Bring your workout history from Hevy.",
 	"nav.import-meal-plan":          "Import meal plan",
 	"nav.import-meal-plan.desc":     "Bring in a meal plan from a file or photo.",
+	"nav.generate-meal-plan":        "Build a meal plan",
+	"nav.generate-meal-plan.desc":   "Let the coach build one to your macros.",
 	"nav.food-log":                  "Food log",
 	"nav.food-log.desc":             "Log today, see progress.",
 	"nav.strava-activities":         "Strava activities",

@@ -43,6 +43,7 @@ const (
 	StandingTask        = "standing_task.md"
 	PlanImportWorkout   = "plan_import_workout.md"
 	PlanImportMeal      = "plan_import_meal.md"
+	MealPlan            = "meal_plan.md"
 	ProgressEstimate    = "progress_estimate.md"
 	ProgressCompare     = "progress_compare.md"
 )

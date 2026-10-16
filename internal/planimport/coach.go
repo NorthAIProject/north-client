@@ -125,18 +125,24 @@ func (s *Service) checkCoachImport(ctx context.Context, userID uuid.UUID, req Co
 // spendImport counts the import against the person's plan-import budget. With
 // no quota wired in, nothing is counted.
 func (s *Service) spendImport(ctx context.Context, user users.User) error {
+	return s.spend(ctx, user, quota.PlanImport, ErrQuotaUsed)
+}
+
+// spend counts one action against the person's budget for it, refusing with
+// used once it is spent. With no quota wired in, nothing is counted.
+func (s *Service) spend(ctx context.Context, user users.User, action quota.Action, used error) error {
 	if s.quota == nil {
 		return nil
 	}
-	decision, err := s.quota.Consume(ctx, user.ID, string(user.Tier), quota.PlanImport)
+	decision, err := s.quota.Consume(ctx, user.ID, string(user.Tier), action)
 	if err != nil {
 		// Consume fails open by design; an error here is a counter problem,
 		// not the person's.
-		middleware.FromContext(ctx).Warn("could not check the plan import quota", slog.Any("error", err))
+		middleware.FromContext(ctx).Warn("could not check the quota", slog.String("action", string(action)), slog.Any("error", err))
 		return nil
 	}
 	if !decision.Allowed {
-		return fmt.Errorf("%w. Try again in %s", ErrQuotaUsed, waitFor(decision.RetryAfter))
+		return fmt.Errorf("%w. Try again in %s", used, waitFor(decision.RetryAfter))
 	}
 	return nil
 }

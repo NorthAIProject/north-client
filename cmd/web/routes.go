@@ -404,6 +404,10 @@ func routes(
 		MealPlans:   mealPlanSvc,
 		Ingredients: mealIngredientSvc,
 		Quota:       quotaSvc,
+		// Building a meal plan is writing, not transcription, so it gets
+		// the main model, as the workout generator does.
+		Planner: planimport.NewAIMealPlanner(runner, cfg.AI.Model, mealIngredientSvc.SharedCatalog),
+		Diets:   mealDietSvc.UserDietNames,
 	})
 	planImportHandler := planimport.NewHandler(planImportSvc, quotaSvc)
 
