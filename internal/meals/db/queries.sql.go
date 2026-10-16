@@ -330,6 +330,47 @@ func (q *Queries) CreateMealPlanDay(ctx context.Context, arg CreateMealPlanDayPa
 	return i, err
 }
 
+const createMealPlanIntake = `-- name: CreateMealPlanIntake :one
+INSERT INTO meal_plan_intakes (user_id, objective, days, meals_per_day, plan_type, exclusions, notes)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id, user_id, objective, days, meals_per_day, plan_type, exclusions, notes, created_at
+`
+
+type CreateMealPlanIntakeParams struct {
+	UserID      uuid.UUID
+	Objective   string
+	Days        int16
+	MealsPerDay int16
+	PlanType    string
+	Exclusions  []string
+	Notes       string
+}
+
+func (q *Queries) CreateMealPlanIntake(ctx context.Context, arg CreateMealPlanIntakeParams) (MealPlanIntake, error) {
+	row := q.db.QueryRow(ctx, createMealPlanIntake,
+		arg.UserID,
+		arg.Objective,
+		arg.Days,
+		arg.MealsPerDay,
+		arg.PlanType,
+		arg.Exclusions,
+		arg.Notes,
+	)
+	var i MealPlanIntake
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Objective,
+		&i.Days,
+		&i.MealsPerDay,
+		&i.PlanType,
+		&i.Exclusions,
+		&i.Notes,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const createMealReminder = `-- name: CreateMealReminder :one
 
 INSERT INTO meal_reminders (user_id, label, time_of_day, days_of_week)
@@ -780,6 +821,30 @@ func (q *Queries) InsertFoodLog(ctx context.Context, arg InsertFoodLogParams) (F
 	return i, err
 }
 
+const latestMealPlanIntake = `-- name: LatestMealPlanIntake :one
+SELECT id, user_id, objective, days, meals_per_day, plan_type, exclusions, notes, created_at FROM meal_plan_intakes
+WHERE user_id = $1
+ORDER BY created_at DESC
+LIMIT 1
+`
+
+func (q *Queries) LatestMealPlanIntake(ctx context.Context, userID uuid.UUID) (MealPlanIntake, error) {
+	row := q.db.QueryRow(ctx, latestMealPlanIntake, userID)
+	var i MealPlanIntake
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Objective,
+		&i.Days,
+		&i.MealsPerDay,
+		&i.PlanType,
+		&i.Exclusions,
+		&i.Notes,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const listDiets = `-- name: ListDiets :many
 
 SELECT id, code, name, description FROM diets ORDER BY name
@@ -1166,6 +1231,45 @@ func (q *Queries) ListNotYetFiredMealReminders(ctx context.Context, arg ListNotY
 			&i.LastFiredLocalDate,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSharedIngredientMacros = `-- name: ListSharedIngredientMacros :many
+SELECT name, protein_g_per_100g, carbs_g_per_100g, fat_g_per_100g
+FROM ingredients WHERE user_id IS NULL ORDER BY name
+`
+
+type ListSharedIngredientMacrosRow struct {
+	Name            string
+	ProteinGPer100g float64
+	CarbsGPer100g   float64
+	FatGPer100g     float64
+}
+
+// The shared catalog with its macros, for the meal plan generator to build
+// portions from.
+func (q *Queries) ListSharedIngredientMacros(ctx context.Context) ([]ListSharedIngredientMacrosRow, error) {
+	rows, err := q.db.Query(ctx, listSharedIngredientMacros)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListSharedIngredientMacrosRow{}
+	for rows.Next() {
+		var i ListSharedIngredientMacrosRow
+		if err := rows.Scan(
+			&i.Name,
+			&i.ProteinGPer100g,
+			&i.CarbsGPer100g,
+			&i.FatGPer100g,
 		); err != nil {
 			return nil, err
 		}

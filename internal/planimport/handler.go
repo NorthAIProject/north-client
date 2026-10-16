@@ -43,6 +43,9 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Get("/nutrition/import", h.mealUpload)
 	r.With(h.quotas.Guard(quota.PlanImport)).Post("/nutrition/import", h.mealParse)
 	r.Post("/nutrition/import/review", h.mealReview)
+
+	r.Get("/nutrition/plans/generate", h.mealGenerateForm)
+	r.With(h.quotas.Guard(quota.MealPlanGenerate)).Post("/nutrition/plans/generate", h.mealGenerate)
 }
 
 func (h *Handler) workoutUpload(w http.ResponseWriter, r *http.Request) {

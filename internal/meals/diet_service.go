@@ -37,3 +37,26 @@ func (s *DietPreferenceService) AddUserDiet(ctx context.Context, userID, dietID 
 func (s *DietPreferenceService) RemoveUserDiet(ctx context.Context, userID, dietID uuid.UUID) error {
 	return s.repo.RemoveUserDiet(ctx, userID, dietID)
 }
+
+// UserDietNames is the person's diet preferences by name.
+func (s *DietPreferenceService) UserDietNames(ctx context.Context, userID uuid.UUID) ([]string, error) {
+	diets, err := s.UserDiets(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	names := make([]string, len(diets))
+	for i, d := range diets {
+		names[i] = d.Name
+	}
+	return names, nil
+}
+
+// Exclusions are the foods the person last said they won't eat when asking
+// for a meal plan, or none.
+func (s *DietPreferenceService) Exclusions(ctx context.Context, userID uuid.UUID) ([]string, error) {
+	intake, err := s.repo.LatestMealPlanIntake(ctx, userID)
+	if err != nil || intake == nil {
+		return nil, err
+	}
+	return intake.Exclusions, nil
+}

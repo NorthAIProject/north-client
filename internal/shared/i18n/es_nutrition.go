@@ -234,4 +234,9 @@ var spanishNutrition = map[string]string{
 	"nutrition.overage.msg.day":       "%[1]s: te pasarías %[2]s",
 	"nutrition.overage.msg.part":      "%.0[1]f g de %[2]s",
 	"nutrition.overage.msg.and":       " y ",
+	"nutrition.err.objective":         "Elige definición, mantenimiento o volumen.",
+	"nutrition.err.mealsperday":       "Elige entre 1 y 8 comidas al día.",
+	"nutrition.err.exclusions.many":   "Indica como máximo 30 alimentos a evitar.",
+	"nutrition.err.exclusions.long":   "Cada alimento a evitar debe tener menos de 60 caracteres.",
+	"nutrition.err.intake.notes":      "Usa menos de 500 caracteres.",
 }

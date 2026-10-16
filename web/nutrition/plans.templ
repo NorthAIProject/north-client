@@ -27,9 +27,14 @@ templ PlansIndexPage(user users.User, plans []meal.MealPlan, target *meal.Macros
 				@ui.MonoLabel(i18n.T(ctx, "nutrition.mono"))
 				<div class="mt-2 flex items-center justify-between gap-4">
 					<h1 class="text-2xl font-medium tracking-tight">{ i18n.T(ctx, "nav.meal-plans") }</h1>
-					@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Href: "/app/nutrition/import"}) {
-						{ i18n.T(ctx, "nutrition.plans.import") }
-					}
+					<div class="flex flex-wrap justify-end gap-2">
+						@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Href: "/app/nutrition/import"}) {
+							{ i18n.T(ctx, "nutrition.plans.import") }
+						}
+						@button.Button(button.Props{Size: button.SizeSm, Href: "/app/nutrition/plans/generate"}) {
+							{ i18n.T(ctx, "planimport.generate.button") }
+						}
+					</div>
 				</div>
 			</header>
 			@targetNotice(target)

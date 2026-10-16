@@ -48,6 +48,11 @@ var fieldMessages = []fieldmsg.Message{
 	{English: "Give the reminder a name, like \"log lunch\".", Key: "nutrition.err.reminder.label"},
 	{English: "Enter a time as HH:MM.", Key: "nutrition.err.reminder.time"},
 	{English: "Days must be between 0 (Sunday) and 6 (Saturday).", Key: "nutrition.err.reminder.days"},
+	{English: "Choose cutting, maintenance or bulking.", Key: "nutrition.err.objective"},
+	{English: "Choose between 1 and 8 meals a day.", Key: "nutrition.err.mealsperday"},
+	{English: "List at most 30 foods to leave out.", Key: "nutrition.err.exclusions.many"},
+	{English: "Keep each food to leave out under 60 characters.", Key: "nutrition.err.exclusions.long"},
+	{English: "Keep this under 500 characters.", Key: "nutrition.err.intake.notes"},
 }
 
 // gramsMessage matches checkGrams' refusal for one macro. The limit is the
