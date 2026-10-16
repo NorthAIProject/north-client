@@ -47,6 +47,11 @@ type Props struct {
 	// HideLegend drops the primary/secondary/stabiliser key, for a caller
 	// whose colours mean something else and who draws its own.
 	HideLegend bool
+
+	// Shape, when set, shapes the figure's skin to a person's measurements
+	// (the shell's shape keys). Only the person's own body takes one; an
+	// exercise's figure stays as modelled.
+	Shape *bodymap.Shape
 }
 
 // Tier intensities for an exercise's muscles, matching the legend.
@@ -116,6 +121,7 @@ func alpineData(ctx context.Context, p Props) string {
 		"heat":    heat(p),
 		"details": details(ctx, p),
 		"inspect": p.Map != nil,
+		"shape":   p.Shape,
 	})
 	return "northMuscleViewer(" + string(data) + ")"
 }

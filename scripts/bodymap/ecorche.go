@@ -46,6 +46,7 @@ type region struct {
 	verts   []vec3
 	normals []vec3
 	tris    [][3]int
+	morphs  []morphTarget // the shell's shape keys; none on a muscle
 }
 
 // skinRegion is the whole skin as one mesh, with smooth normals.

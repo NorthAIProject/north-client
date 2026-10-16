@@ -187,6 +187,10 @@ type BodyCard struct {
 	// date, empty when there is none or it has no waist.
 	LastWaist   string
 	LastCheckOn string
+
+	// Shape is the figure's shape from the latest progress check; nil draws
+	// the figure as modelled.
+	Shape *bodymap.Shape
 }
 
 // SoreRegion is one sore place, as a chip.
