@@ -23,17 +23,9 @@ type Girth struct {
 	From, To float64
 }
 
-// Baseline is the mesh's own girths at each band. Measured off the shell by
-// scripts/bodymap when it writes the morph targets; until those exist these are
-// typical adult ratios, so a shape can be computed and stored ahead of the mesh.
+// Baseline is the mesh's own girths at each band, measured off the shell by
+// scripts/bodymap when it writes the shape keys; see ShellBaseline in
+// baseline_gen.go.
 type Baseline struct {
 	Waist, Hips, Chest Girth
-}
-
-// ShellBaseline is the figure's baseline. Replaced by generated values when
-// the shell gains morph targets.
-var ShellBaseline = Baseline{
-	Waist: Girth{From: 0.43, To: 0.72},
-	Hips:  Girth{From: 0.52, To: 0.76},
-	Chest: Girth{From: 0.53, To: 0.74},
 }

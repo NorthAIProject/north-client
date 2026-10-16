@@ -47,13 +47,16 @@ type gltfNode struct {
 type gltfMesh struct {
 	Name       string          `json:"name,omitempty"`
 	Primitives []gltfPrimitive `json:"primitives"`
+	Weights    []float64       `json:"weights,omitempty"`
+	Extras     map[string]any  `json:"extras,omitempty"`
 }
 
 type gltfPrimitive struct {
-	Attributes map[string]int `json:"attributes"`
-	Indices    *int           `json:"indices,omitempty"`
-	Material   *int           `json:"material,omitempty"`
-	Mode       *int           `json:"mode,omitempty"`
+	Attributes map[string]int   `json:"attributes"`
+	Indices    *int             `json:"indices,omitempty"`
+	Material   *int             `json:"material,omitempty"`
+	Mode       *int             `json:"mode,omitempty"`
+	Targets    []map[string]int `json:"targets,omitempty"`
 }
 
 type gltfAccessor struct {

@@ -385,14 +385,29 @@ export async function createViewer(canvas, options = {}) {
   paintSkin();
   setHeat({});
 
+  // setShape shapes the skin to a person's measurements: { waist, hips,
+  // chest, overall }, each 0 (as modelled) to 1, worked out by the server
+  // (bodymap.Shape). Unknown or missing keys leave that shape key at 0; the
+  // muscles never move.
+  function setShape(shape = {}) {
+    for (const [name, index] of Object.entries(shell.targets)) {
+      const value = Math.min(1, Math.max(0, Number(shape[name]) || 0));
+      for (const mesh of shell.meshes) {
+        if (mesh.morphTargetInfluences) mesh.morphTargetInfluences[index] = value;
+      }
+    }
+  }
+
   return {
     setHeat,
     setMuscleGroups,
+    setShape,
     setLoads,
     select,
-    // Turn to show the front or the back, for a caller with its own toggle.
+    // Turn to show the front, the back or the profile, for a caller with its
+    // own toggle.
     face(side) {
-      facing = side === "back" ? Math.PI + FRONT_YAW : FRONT_YAW;
+      facing = { back: Math.PI + FRONT_YAW, side: Math.PI / 2 }[side] ?? FRONT_YAW;
       dragOffset = 0;
     },
     setTheme(isDark) {
@@ -503,5 +518,7 @@ function skinLayers(obj, colours, rim) {
   addRim(ghost, rim, 0.6);
   obj.material = ghost;
   obj.renderOrder = 1;
-  return { geometry: obj.geometry, core, ghost };
+  // The glTF names the shape keys on the loaded mesh only; the inside copy
+  // shares the geometry but numbers them, so both are driven by index.
+  return { geometry: obj.geometry, core, ghost, meshes: [obj, inside], targets: obj.morphTargetDictionary || {} };
 }

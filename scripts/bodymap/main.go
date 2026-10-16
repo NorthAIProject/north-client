@@ -19,6 +19,10 @@
 //     usdzip, both in /usr/bin). Skipped when empty.
 //   - -ibl:    the web viewer's studio light rig as an equirectangular PNG,
 //     for RealityKit's image-based lighting. Skipped when empty.
+//   - -baseline: a generated Go file with the shell's own girths at waist,
+//     hips and chest, as modelled and at each shape key's full strength.
+//     internal/bodymap reads a person's measurements against it, so the
+//     server's shape weights and the mesh's shape keys always agree.
 //
 // Run it from the repository root (task bodymap does):
 //
@@ -48,6 +52,7 @@ func main() {
 	outFigure := flag.String("figure", "web/shared/muscleviewer/figure_gen.go", "generated SVG outlines; skipped when empty")
 	outUSDZ := flag.String("usdz", "", "meshes for iOS; skipped when empty")
 	outIBL := flag.String("ibl", "", "studio light rig for iOS, as an equirectangular PNG; skipped when empty")
+	outBaseline := flag.String("baseline", "internal/bodymap/baseline_gen.go", "generated Go file with the shell's girths, which the server reads shapes against")
 	subdivide := flag.Bool("subdivide", true, "smooth the skin with one step of Loop subdivision (four times the triangles)")
 	flag.Parse()
 
@@ -92,10 +97,17 @@ func main() {
 	}
 
 	muscles := muscleRegions(muscleTris, muscleKeys)
-	if err := checkCoverage(muscles); err != nil {
+	if err = checkCoverage(muscles); err != nil {
 		log.Fatal(err)
 	}
 	shell := skinRegion(skin)
+	morphs, baseline, err := buildShellMorphs(skin, shell.normals)
+	if err != nil {
+		log.Fatal(err)
+	}
+	shell.morphs = morphs
+	log.Printf("shell girths over height: waist %.3f→%.2f, hips %.3f→%.2f, chest %.3f→%.2f",
+		baseline.Waist.From, baseline.Waist.To, baseline.Hips.From, baseline.Hips.To, baseline.Chest.From, baseline.Chest.To)
 	regions := append([]region{shell}, muscles...)
 	for _, r := range regions {
 		log.Printf("  %-11s %6d vertices %6d triangles", r.key, len(r.verts), len(r.tris))
@@ -106,6 +118,10 @@ func main() {
 	if info, err := os.Stat(*outGLB); err == nil {
 		log.Printf("wrote %s (%.0f KB)", *outGLB, float64(info.Size())/1024)
 	}
+	if err := writeBaseline(*outBaseline, baseline); err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("wrote %s", *outBaseline)
 	if *outFigure != "" {
 		if err := writeFigure(*outFigure, shell, muscles); err != nil {
 			log.Fatal(err)
