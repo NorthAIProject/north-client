@@ -1,6 +1,6 @@
 -- name: CreateIntake :one
-INSERT INTO workout_intakes (user_id, goal, experience, days_per_week, session_minutes, equipment, limitations, imported)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+INSERT INTO workout_intakes (user_id, goal, experience, days_per_week, session_minutes, equipment, limitations, imported, weekdays)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 RETURNING *;
 
 -- name: GetIntake :one

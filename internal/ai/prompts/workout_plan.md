@@ -8,6 +8,8 @@ These come from what the person actually told you. Violating any of them makes
 the plan unusable, and the plan will be rejected and regenerated.
 
 - Produce **exactly** as many training days as they said they can train.
+- When they named the weekdays they can train, give the days exactly those
+  weekday names, one each.
 - Use **only** equipment they listed as available. If they listed dumbbells and
   a pull-up bar, there are no barbell squats in this plan. Bodyweight is always
   available.

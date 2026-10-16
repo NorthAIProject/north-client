@@ -44,12 +44,22 @@ type IntakeForm struct {
 	SessionMinutes int
 	Equipment      []string
 	Limitations    string
+	Weekdays       []string
 
 	Errors map[string]string
 	Error  string
 }
 
 func (f IntakeForm) fieldError(name string) string { return f.Errors[name] }
+
+func (f IntakeForm) hasWeekday(wd string) bool {
+	for _, d := range f.Weekdays {
+		if strings.EqualFold(d, wd) {
+			return true
+		}
+	}
+	return false
+}
 
 func (f IntakeForm) hasEquipment(item string) bool {
 	for _, e := range f.Equipment {
@@ -161,6 +171,29 @@ templ IntakePage(user users.User, f IntakeForm) {
 								})
 							}
 						</div>
+						@form.Item() {
+							@label.Label(label.Props{Error: f.fieldError("weekdays")}) {
+								{ i18n.T(ctx, "workouts.intake.weekdays") }
+							}
+							@form.Description() {
+								{ i18n.T(ctx, "workouts.intake.weekdays.desc") }
+							}
+							<div class="flex flex-wrap gap-x-4 gap-y-2 pt-1">
+								for _, wd := range weekdays {
+									<div class="flex items-center gap-2">
+										@checkbox.Checkbox(checkbox.Props{ID: "intake-" + wd, Name: "weekdays", Value: wd, Checked: f.hasWeekday(wd)})
+										@label.Label(label.Props{For: "intake-" + wd, Class: "font-normal"}) {
+											{ weekdayShort(ctx, wd) }
+										}
+									</div>
+								}
+							</div>
+							if f.fieldError("weekdays") != "" {
+								@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+									{ f.fieldError("weekdays") }
+								}
+							}
+						}
 						@form.Item() {
 							@label.Label() {
 								{ i18n.T(ctx, "workouts.intake.equipment") }

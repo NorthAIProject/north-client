@@ -81,6 +81,7 @@ func (r *Repository) CreateIntake(ctx context.Context, userID uuid.UUID, in Inta
 		SessionMinutes: int16(in.SessionMinutes),
 		Equipment:      in.Equipment,
 		Limitations:    in.Limitations,
+		Weekdays:       nonNil(in.Weekdays),
 	})
 	if err != nil {
 		return StoredIntake{}, apperr.Wrap(err, "create intake")
@@ -102,6 +103,7 @@ func (r *Repository) CreateImportedIntake(ctx context.Context, userID uuid.UUID,
 		SessionMinutes: importedSessionMinutes,
 		Equipment:      []string{},
 		Imported:       true,
+		Weekdays:       []string{},
 	})
 	if err != nil {
 		return StoredIntake{}, apperr.Wrap(err, "create imported intake")
@@ -252,6 +254,7 @@ func intakeFromDB(row workoutsdb.WorkoutIntake) StoredIntake {
 			SessionMinutes: int(row.SessionMinutes),
 			Equipment:      row.Equipment,
 			Limitations:    row.Limitations,
+			Weekdays:       row.Weekdays,
 		},
 	}
 }
