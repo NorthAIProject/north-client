@@ -146,6 +146,9 @@ type IntakeRequest struct {
 	// Equipment the person has, from the web intake's list.
 	Equipment   []string `json:"equipment"`
 	Limitations string   `json:"limitations"`
+	// Weekdays are the days they can train, "Monday".."Sunday", as many as
+	// daysPerWeek; empty or absent lets the plan pick.
+	Weekdays []string `json:"weekdays,omitempty"`
 }
 
 type StartTimeRequest struct {
@@ -199,6 +202,7 @@ func (a *API) createPlan(w http.ResponseWriter, r *http.Request) {
 		Goal: strings.TrimSpace(req.Goal), Experience: strings.TrimSpace(req.Experience),
 		DaysPerWeek: req.DaysPerWeek, SessionMinutes: req.SessionMinutes,
 		Equipment: req.Equipment, Limitations: strings.TrimSpace(req.Limitations),
+		Weekdays: req.Weekdays,
 	})
 	if err != nil {
 		httpx.Error(w, err, "A plan could not be made. Try again in a moment.")
@@ -216,7 +220,7 @@ func (a *API) latestIntake(w http.ResponseWriter, r *http.Request) {
 	in := stored.Intake
 	httpx.WriteJSON(w, http.StatusOK, IntakeRequest{
 		Goal: in.Goal, Experience: in.Experience, DaysPerWeek: in.DaysPerWeek, SessionMinutes: in.SessionMinutes,
-		Equipment: nonNil(in.Equipment), Limitations: in.Limitations,
+		Equipment: nonNil(in.Equipment), Limitations: in.Limitations, Weekdays: in.Weekdays,
 	})
 }
 

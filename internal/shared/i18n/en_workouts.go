@@ -21,6 +21,8 @@ var englishWorkouts = map[string]string{
 	"workouts.intake.exp.advanced":     "Several years, I know my numbers",
 	"workouts.intake.days":             "Days per week",
 	"workouts.intake.minutes":          "Minutes per session",
+	"workouts.intake.weekdays":         "Which days?",
+	"workouts.intake.weekdays.desc":    "Optional. Tick the days you can train and they set the days per week; leave them empty and Khepri spreads the days across your week.",
 	"workouts.intake.equipment":        "What equipment do you have?",
 	"workouts.intake.equipment.desc":   "Leave everything unticked for bodyweight only. Nothing outside this list will appear in your plan.",
 	"workouts.intake.equip.dumbbell":   "Dumbbells",

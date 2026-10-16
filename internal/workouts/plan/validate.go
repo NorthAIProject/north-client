@@ -2,6 +2,7 @@ package plan
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -34,12 +35,24 @@ func Validate(plan Plan, intake Intake) []string {
 			len(plan.Days), intake.DaysPerWeek))
 	}
 
+	if problem := weekdayProblem(plan, intake); problem != "" {
+		problems = append(problems, problem)
+	}
+
 	available := availableEquipment(intake.Equipment)
 
 	for _, day := range plan.Days {
 		if len(day.Exercises) == 0 {
 			problems = append(problems, fmt.Sprintf("%s has no exercises", dayLabel(day)))
 			continue
+		}
+
+		if limit := intake.SessionMinutes; limit > 0 {
+			if minutes := EstimateMinutes(day); float64(minutes) > float64(limit)*sessionTolerance {
+				problems = append(problems, fmt.Sprintf(
+					"%s takes about %d minutes with warm-up and rest, but they have %d; cut sets or exercises",
+					dayLabel(day), minutes, limit))
+			}
 		}
 
 		for _, ex := range day.Exercises {
@@ -227,4 +240,52 @@ func dayLabel(day PlanDay) string {
 		return label
 	}
 	return "one of the training days"
+}
+
+// weekdayProblem is what is wrong with the days a plan trains on, when the
+// person named the weekdays they can train: the plan must use exactly those.
+func weekdayProblem(p Plan, intake Intake) string {
+	if len(intake.Weekdays) == 0 {
+		return ""
+	}
+	want, err := NormalizeWeekdays(intake.Weekdays)
+	if err != nil {
+		return ""
+	}
+	labels := make([]string, len(p.Days))
+	for i, d := range p.Days {
+		labels[i] = d.Weekday
+	}
+	got, err := NormalizeWeekdays(labels)
+	if err == nil && slices.Equal(got, want) {
+		return ""
+	}
+	return fmt.Sprintf("the plan trains on %s but they can only train on %s; give each day one of those weekdays",
+		strings.Join(labels, ", "), strings.Join(want, ", "))
+}
+
+// Session length is estimated, not timed: warm-up, then every set's work and
+// the rest after it. Close enough to tell a 45-minute session from a
+// 90-minute one, which is the mistake worth catching.
+const (
+	warmUpMinutes      = 5
+	workSecondsPerSet  = 45
+	defaultRestSeconds = 90
+	// sessionTolerance lets an estimate run 15% past the time they have
+	// before the plan is sent back: the estimate is rough, and a plan
+	// rejected over a minute or two is worse than one that runs over by that.
+	sessionTolerance = 1.15
+)
+
+// EstimateMinutes is roughly how long a day takes, rounded up.
+func EstimateMinutes(day PlanDay) int {
+	seconds := warmUpMinutes * 60
+	for _, ex := range day.Exercises {
+		rest := ex.RestSeconds
+		if rest <= 0 {
+			rest = defaultRestSeconds
+		}
+		seconds += max(ex.Sets, 0) * (workSecondsPerSet + rest)
+	}
+	return (seconds + 59) / 60
 }

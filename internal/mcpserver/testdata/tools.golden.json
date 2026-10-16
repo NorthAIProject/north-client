@@ -443,6 +443,23 @@
         "session_minutes": {
           "description": "minutes per session, 10 to 240",
           "type": "integer"
+        },
+        "weekdays": {
+          "description": "the days they can train, as many as days_per_week, when they named them; empty otherwise",
+          "items": {
+            "description": "a weekday",
+            "enum": [
+              "Monday",
+              "Tuesday",
+              "Wednesday",
+              "Thursday",
+              "Friday",
+              "Saturday",
+              "Sunday"
+            ],
+            "type": "string"
+          },
+          "type": "array"
         }
       },
       "required": [
