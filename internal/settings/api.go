@@ -219,6 +219,11 @@ type Notifications struct {
 	// EveningReflection asks each evening, at EveningHour, how the day went.
 	EveningReflection bool `json:"eveningReflection"`
 	EveningHour       int  `json:"eveningHour"`
+	// CoachCheckIns lets the coach message first, at most once a day, when
+	// it notices something. CoachAdjustsTraining lets it lighten a session
+	// itself on a low-recovery morning, with an undo; off, it only offers.
+	CoachCheckIns        bool `json:"coachCheckIns"`
+	CoachAdjustsTraining bool `json:"coachAdjustsTraining"`
 }
 
 // NotificationsUpdate is Notifications as a client sends it. The timing fields
@@ -229,6 +234,10 @@ type NotificationsUpdate struct {
 	BriefingHour      *int  `json:"briefingHour,omitempty"`
 	EveningReflection *bool `json:"eveningReflection,omitempty"`
 	EveningHour       *int  `json:"eveningHour,omitempty"`
+	// Optional for the same reason: an app that predates them keeps what is
+	// saved.
+	CoachCheckIns        *bool `json:"coachCheckIns,omitempty"`
+	CoachAdjustsTraining *bool `json:"coachAdjustsTraining,omitempty"`
 }
 
 func (a *API) getNotifications(w http.ResponseWriter, r *http.Request) {
@@ -254,6 +263,7 @@ func (a *API) putNotifications(w http.ResponseWriter, r *http.Request) {
 	}
 	n, err := a.h.notifications.Upsert(r.Context(), user.ID, notifications.Input{
 		BriefingHour: req.BriefingHour, EveningReflection: req.EveningReflection, EveningHour: req.EveningHour,
+		CoachCheckIns: req.CoachCheckIns, CoachAdjustsTraining: req.CoachAdjustsTraining,
 		NudgeMissedCheckIn: req.NudgeMissedCheckIn, NudgeGoalDeadline: req.NudgeGoalDeadline,
 		CoachActivity: req.CoachActivity, TrainingReminders: req.TrainingReminders,
 		WeeklyReportAuto: req.WeeklyReportAuto, DailyBriefingAuto: req.DailyBriefingAuto,
@@ -283,6 +293,7 @@ func projectNotifications(n notifications.Prefs, photo notifications.Schedule) N
 		QuietHoursEnabled:  n.QuietHoursEnabled, QuietStart: n.QuietStart, QuietEnd: n.QuietEnd,
 		PhotoAskEnabled: photo.Enabled, PhotoEveryDays: photo.EveryDays, PhotoReminderDays: photo.ReminderDays,
 		BriefingHour: n.BriefingHour, EveningReflection: n.EveningReflection, EveningHour: n.EveningHour,
+		CoachCheckIns: n.CoachCheckIns, CoachAdjustsTraining: n.CoachAdjustsTraining,
 	}
 }
 

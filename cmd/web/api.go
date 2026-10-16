@@ -37,6 +37,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/news"
 	"github.com/NorthAIProject/north-client/internal/nudges"
 	"github.com/NorthAIProject/north-client/internal/onboarding"
+	"github.com/NorthAIProject/north-client/internal/outreach"
 	"github.com/NorthAIProject/north-client/internal/planimport"
 	"github.com/NorthAIProject/north-client/internal/progresschecks"
 	"github.com/NorthAIProject/north-client/internal/recaps"
@@ -153,6 +154,7 @@ func mountJSON(r chi.Router, sessions auth.SessionResolver, apis apiSet) {
 		apis.recaps.Routes(r)
 		apis.inbox.Routes(r)
 		apis.lighter.Routes(r)
+		apis.outreach.Routes(r)
 	})
 }
 
@@ -206,4 +208,5 @@ type apiSet struct {
 	recaps       *recaps.API
 	inbox        *inbox.API
 	lighter      *lighterday.API
+	outreach     *outreach.API
 }

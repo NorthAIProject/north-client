@@ -122,6 +122,10 @@ const (
 	// for onboarded accounts and stores any new in-app notes.
 	KindSweepNudges Kind = "sweep_nudges"
 
+	// KindSweepOutreach lets the coach message first, at most once a day per
+	// person, when it notices a low-recovery morning or a missed session.
+	KindSweepOutreach Kind = "sweep_outreach"
+
 	// KindSweepReports enqueues the weekly review for accounts that asked for
 	// it, once their own week has closed. Hourly, because "their own week"
 	// closes at a different absolute time in every timezone.

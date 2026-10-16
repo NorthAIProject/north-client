@@ -400,6 +400,11 @@ func (h *Handler) updateNotifications(w http.ResponseWriter, r *http.Request) {
 		BriefingHour:       formHour(r, "briefing_hour"),
 		EveningReflection:  formSwitch(r, "evening_reflection", "evening_hour"),
 		EveningHour:        formHour(r, "evening_hour"),
+		// coach_toggles is a hidden marker only this build's form sends: a
+		// page rendered before these switches existed leaves both as saved
+		// rather than reading their absence as "off".
+		CoachCheckIns:        formSwitch(r, "coach_check_ins", "coach_toggles"),
+		CoachAdjustsTraining: formSwitch(r, "coach_adjusts_training", "coach_toggles"),
 	}
 
 	every, _ := strconv.Atoi(strings.TrimSpace(r.PostFormValue("photo_every_days")))

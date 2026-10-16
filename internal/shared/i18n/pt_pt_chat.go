@@ -74,6 +74,7 @@ var portugueseEuropeanChat = map[string]string{
 
 	"chat.caption.briefing":  "Resumo · %[1]s",
 	"chat.caption.standing":  "Tarefa recorrente",
+	"chat.caption.checkin":   "O teu coach escreveu-te",
 	"chat.caption.from":      "De %[1]s",
 	"chat.caption.proactive": "Sem pedires",
 

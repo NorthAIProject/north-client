@@ -1,6 +1,7 @@
 package lighterday
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 
@@ -9,15 +10,26 @@ import (
 	"github.com/NorthAIProject/north-client/internal/auth"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
+	"github.com/NorthAIProject/north-client/internal/users"
 	lighterpages "github.com/NorthAIProject/north-client/web/lighterday"
 )
 
 // Handler serves the offer as an HTMX fragment for the dashboard.
 type Handler struct {
 	svc *Service
+	// coveredBy reports a day the coach already spoke about this morning in
+	// its own message, which carries the same answers: the card stays out of
+	// the way rather than offering a second Undo.
+	coveredBy func(context.Context, users.User) bool
 }
 
 func NewHandler(svc *Service) *Handler { return &Handler{svc: svc} }
+
+// WithCoveredBy hides the card on days covered reports.
+func (h *Handler) WithCoveredBy(covered func(context.Context, users.User) bool) *Handler {
+	h.coveredBy = covered
+	return h
+}
 
 // Routes mount under /app.
 func (h *Handler) Routes(r chi.Router) {
@@ -26,6 +38,10 @@ func (h *Handler) Routes(r chi.Router) {
 }
 
 func (h *Handler) show(w http.ResponseWriter, r *http.Request) {
+	if h.coveredBy != nil && h.coveredBy(r.Context(), auth.MustUser(r.Context())) {
+		h.render(w, r, Today{})
+		return
+	}
 	t, err := h.svc.Today(r.Context(), auth.MustUser(r.Context()))
 	if err != nil {
 		// The dashboard must not lose its training panel over an offer.
@@ -61,7 +77,8 @@ func (h *Handler) choose(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) render(w http.ResponseWriter, r *http.Request, t Today) {
 	card := lighterpages.Card{
 		Offered: t.Offered(), Session: t.Session, Choice: t.Choice,
-		Why: t.Recovery.WhyIn(r.Context()),
+		ByCoach: t.Source == SourceCoach,
+		Why:     t.Recovery.WhyIn(r.Context()),
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := lighterpages.Fragment(card).Render(r.Context(), w); err != nil {

@@ -15,6 +15,8 @@ type Card struct {
 	Session string
 	// Choice is today's answer: lighter, keep, or empty.
 	Choice string
+	// ByCoach is a lighter day the coach chose on a low morning.
+	ByCoach bool
 	// Why is what is off its usual, in the Progress screen's words, e.g.
 	// "Heart rate variability: below your usual: 38ms on Wed 7 Oct, …".
 	Why string
@@ -41,7 +43,21 @@ templ Fragment(c Card) {
 				</form>
 			</div>
 		} else if c.Choice == "lighter" {
-			<p class="text-muted-foreground mb-3 text-xs">{ i18n.T(ctx, "lighterday.chosen") }</p>
+			// Undo is choosing to keep the plan: the same answer, so the same
+			// endpoint, and nothing new to get wrong.
+			<form hx-post="/app/today/lighter" hx-target={ "#" + CardID } hx-swap="outerHTML" hx-disable="find button" method="post" action="/app/today/lighter" class="mb-3 flex items-center justify-between gap-2">
+				@ui.CSRFInput()
+				<p class="text-muted-foreground text-xs">
+					if c.ByCoach {
+						{ i18n.T(ctx, "lighterday.chosen.coach") }
+					} else {
+						{ i18n.T(ctx, "lighterday.chosen") }
+					}
+				</p>
+				@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Variant: button.VariantOutline, Attributes: templ.Attributes{"name": "choice", "value": "keep", "data-testid": "lighter-undo"}}) {
+					{ i18n.T(ctx, "lighterday.undo") }
+				}
+			</form>
 		}
 	</div>
 }

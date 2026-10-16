@@ -22,6 +22,8 @@ templ Page(user users.User, data Data) {
 			@header(data)
 			if data.IsToday {
 				@recappages.StripLoader()
+				// The coach's message, on a day it chose to speak first.
+				<div hx-get="/app/outreach" hx-trigger="load" hx-swap="outerHTML"></div>
 			}
 			<div class="grid gap-5 lg:grid-cols-[18rem_minmax(0,1fr)] xl:grid-cols-[18rem_minmax(0,1fr)_17rem]">
 				<div class="order-2 lg:order-1 lg:row-span-2">

@@ -1,0 +1,13 @@
+{
+  "outreach": {
+    "id": "55555555-5555-5555-5555-555555555555",
+    "day": "2026-10-16",
+    "trigger": "missed_session",
+    "body": "Thursday's Upper B didn't happen. Today is free if you want it, or let it go.",
+    "session": "Upper B",
+    "actions": [
+      "today",
+      "let_go"
+    ]
+  }
+}

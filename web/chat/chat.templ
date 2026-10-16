@@ -518,6 +518,8 @@ func captionText(ctx context.Context, m conversations.Message, loc *time.Locatio
 		return i18n.Tf(ctx, "chat.caption.briefing", m.CreatedAt.In(loc).Format("15:04"))
 	case conversations.SourceStandingTask:
 		return i18n.T(ctx, "chat.caption.standing")
+	case conversations.SourceCoachCheckIn:
+		return i18n.T(ctx, "chat.caption.checkin")
 	case "":
 		return i18n.T(ctx, "chat.caption.proactive")
 	default:

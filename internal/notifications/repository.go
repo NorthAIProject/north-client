@@ -36,20 +36,22 @@ func (r *Repository) Get(ctx context.Context, userID uuid.UUID) (Prefs, error) {
 
 func (r *Repository) Upsert(ctx context.Context, userID uuid.UUID, in Input) (Prefs, error) {
 	row, err := r.q.UpsertUserNotificationPrefs(ctx, notificationsdb.UpsertUserNotificationPrefsParams{
-		UserID:             userID,
-		NudgeMissedCheckin: in.NudgeMissedCheckIn,
-		NudgeGoalDeadline:  in.NudgeGoalDeadline,
-		WeeklyReportAuto:   in.WeeklyReportAuto,
-		DailyBriefingAuto:  in.DailyBriefingAuto,
-		StatsDigestCadence: in.StatsDigestCadence,
-		CoachActivity:      in.CoachActivity,
-		TrainingReminders:  in.TrainingReminders,
-		QuietHoursEnabled:  in.QuietHoursEnabled,
-		QuietStart:         in.QuietStart,
-		QuietEnd:           in.QuietEnd,
-		BriefingHour:       int16(valueOr(in.BriefingHour, DefaultBriefingHour)),
-		EveningReflection:  util.BoolValOrDefault(in.EveningReflection, false),
-		EveningHour:        int16(valueOr(in.EveningHour, DefaultEveningHour)),
+		UserID:               userID,
+		NudgeMissedCheckin:   in.NudgeMissedCheckIn,
+		NudgeGoalDeadline:    in.NudgeGoalDeadline,
+		WeeklyReportAuto:     in.WeeklyReportAuto,
+		DailyBriefingAuto:    in.DailyBriefingAuto,
+		StatsDigestCadence:   in.StatsDigestCadence,
+		CoachActivity:        in.CoachActivity,
+		TrainingReminders:    in.TrainingReminders,
+		QuietHoursEnabled:    in.QuietHoursEnabled,
+		QuietStart:           in.QuietStart,
+		QuietEnd:             in.QuietEnd,
+		BriefingHour:         int16(valueOr(in.BriefingHour, DefaultBriefingHour)),
+		EveningReflection:    util.BoolValOrDefault(in.EveningReflection, false),
+		EveningHour:          int16(valueOr(in.EveningHour, DefaultEveningHour)),
+		CoachCheckIns:        util.BoolValOrDefault(in.CoachCheckIns, true),
+		CoachAdjustsTraining: util.BoolValOrDefault(in.CoachAdjustsTraining, true),
 	})
 	if err != nil {
 		return Prefs{}, apperr.Wrap(err, "upsert notification prefs")

@@ -36,6 +36,10 @@ type Input struct {
 	BriefingHour      *int
 	EveningReflection *bool
 	EveningHour       *int
+
+	// Nil keeps what is saved, for the same reason as the three above.
+	CoachCheckIns        *bool
+	CoachAdjustsTraining *bool
 }
 
 // Validate normalises the window and rejects times the column would refuse.
@@ -108,18 +112,20 @@ const (
 // opt-in because generating one spends a model call.
 func defaults() Prefs {
 	return Prefs{
-		NudgeMissedCheckIn: true,
-		NudgeGoalDeadline:  true,
-		CoachActivity:      true,
-		TrainingReminders:  true,
-		WeeklyReportAuto:   false,
-		DailyBriefingAuto:  false,
-		QuietHoursEnabled:  false,
-		QuietStart:         defaultQuietStart,
-		QuietEnd:           defaultQuietEnd,
-		BriefingHour:       DefaultBriefingHour,
-		EveningReflection:  false,
-		EveningHour:        DefaultEveningHour,
+		NudgeMissedCheckIn:   true,
+		NudgeGoalDeadline:    true,
+		CoachActivity:        true,
+		TrainingReminders:    true,
+		WeeklyReportAuto:     false,
+		DailyBriefingAuto:    false,
+		QuietHoursEnabled:    false,
+		QuietStart:           defaultQuietStart,
+		QuietEnd:             defaultQuietEnd,
+		BriefingHour:         DefaultBriefingHour,
+		EveningReflection:    false,
+		EveningHour:          DefaultEveningHour,
+		CoachCheckIns:        true,
+		CoachAdjustsTraining: true,
 	}
 }
 
@@ -148,7 +154,8 @@ func (s *Service) Upsert(ctx context.Context, userID uuid.UUID, in Input) (Prefs
 	if err != nil {
 		return Prefs{}, err
 	}
-	if clean.BriefingHour == nil || clean.EveningReflection == nil || clean.EveningHour == nil {
+	if clean.BriefingHour == nil || clean.EveningReflection == nil || clean.EveningHour == nil ||
+		clean.CoachCheckIns == nil || clean.CoachAdjustsTraining == nil {
 		current, err := s.Get(ctx, userID)
 		if err != nil {
 			return Prefs{}, err
@@ -168,6 +175,12 @@ func (in Input) Keeping(p Prefs) Input {
 	}
 	if in.EveningHour == nil {
 		in.EveningHour = &p.EveningHour
+	}
+	if in.CoachCheckIns == nil {
+		in.CoachCheckIns = &p.CoachCheckIns
+	}
+	if in.CoachAdjustsTraining == nil {
+		in.CoachAdjustsTraining = &p.CoachAdjustsTraining
 	}
 	return in
 }

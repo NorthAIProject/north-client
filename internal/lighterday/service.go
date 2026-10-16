@@ -1,8 +1,12 @@
 // Package lighterday offers an easier session on a morning the body has not
 // recovered: when today's recovery (insights.RecoveryData.Low) is under the
 // person's usual, they may train about 60% of today's sets instead of the
-// plan. It is an offer they take or decline, never a
-// change made for them, and it lasts one day.
+// plan. It lasts one day.
+//
+// Usually it is an offer the person takes or declines. When they let the
+// coach adjust their training (notifications.Prefs.CoachAdjustsTraining), the
+// coach takes it for them on a low morning and says so, and they can undo it:
+// a choice with source "coach", reverted by choosing to keep the plan.
 package lighterday
 
 import (
@@ -28,6 +32,12 @@ const (
 	ChoiceKeep    = "keep"
 )
 
+// Who made the choice.
+const (
+	SourcePerson = "person"
+	SourceCoach  = "coach"
+)
+
 // Recovery reads today's recovery, the same one the Progress screen, the
 // briefing and the coach read. insights.RecoverySource satisfies it.
 type Recovery interface {
@@ -50,6 +60,9 @@ type Today struct {
 	Done    bool
 	// Choice is what the person answered today: lighter, keep, or empty.
 	Choice string
+	// Source is who made the choice: the person, or the coach on a low
+	// morning. Empty with no choice.
+	Source string
 }
 
 // Offered reports whether the offer should show: a low morning, a session
@@ -100,11 +113,11 @@ func (s *Service) Today(ctx context.Context, user users.User) (Today, error) {
 			}
 		}
 	}
-	choice, err := s.choice(ctx, user, today)
+	choice, source, err := s.choice(ctx, user, today)
 	if err != nil {
 		return Today{}, err
 	}
-	out.Choice = choice
+	out.Choice, out.Source = choice, source
 	return out, nil
 }
 
@@ -112,6 +125,15 @@ func (s *Service) Today(ctx context.Context, user users.User) (Today, error) {
 // still to do today; keeping the plan is always allowed, since it changes
 // nothing.
 func (s *Service) Choose(ctx context.Context, user users.User, choice string) (Today, error) {
+	return s.ChooseAs(ctx, user, choice, SourcePerson)
+}
+
+// ChooseAs is Choose on someone's behalf: SourceCoach when the coach lightens
+// a low morning itself. Undoing it is Choose(ChoiceKeep), by the person.
+func (s *Service) ChooseAs(ctx context.Context, user users.User, choice, source string) (Today, error) {
+	if source != SourcePerson && source != SourceCoach {
+		source = SourcePerson
+	}
 	if choice != ChoiceLighter && choice != ChoiceKeep {
 		return Today{}, apperr.FieldErrors{}.Add("choice", i18n.T(ctx, "lighterday.error.choice"))
 	}
@@ -123,29 +145,29 @@ func (s *Service) Choose(ctx context.Context, user users.User, choice string) (T
 		return Today{}, apperr.FieldErrors{}.Add("choice", i18n.T(ctx, "lighterday.error.nosession"))
 	}
 	today := timerange.StartOfDay(s.now().In(user.Location()))
-	if err = s.q.SetChoice(ctx, lighterdaydb.SetChoiceParams{UserID: user.ID, Day: date(today), Choice: choice}); err != nil {
+	if err = s.q.SetChoice(ctx, lighterdaydb.SetChoiceParams{UserID: user.ID, Day: date(today), Choice: choice, Source: source}); err != nil {
 		return Today{}, apperr.Wrap(err, "save lighter day")
 	}
-	t.Choice = choice
+	t.Choice, t.Source = choice, source
 	return t, nil
 }
 
 // LighterOn reports whether the person chose a lighter session on the local
 // day containing at. It satisfies workouts.LighterSource.
 func (s *Service) LighterOn(ctx context.Context, user users.User, at time.Time) (bool, error) {
-	choice, err := s.choice(ctx, user, timerange.StartOfDay(at.In(user.Location())))
+	choice, _, err := s.choice(ctx, user, timerange.StartOfDay(at.In(user.Location())))
 	return choice == ChoiceLighter, err
 }
 
-func (s *Service) choice(ctx context.Context, user users.User, day time.Time) (string, error) {
-	c, err := s.q.GetChoice(ctx, lighterdaydb.GetChoiceParams{UserID: user.ID, Day: date(day)})
+func (s *Service) choice(ctx context.Context, user users.User, day time.Time) (choice, source string, err error) {
+	row, err := s.q.GetChoice(ctx, lighterdaydb.GetChoiceParams{UserID: user.ID, Day: date(day)})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", nil
+		return "", "", nil
 	}
 	if err != nil {
-		return "", apperr.Wrap(err, "load lighter day")
+		return "", "", apperr.Wrap(err, "load lighter day")
 	}
-	return c, nil
+	return row.Choice, row.Source, nil
 }
 
 func date(t time.Time) pgtype.Date {

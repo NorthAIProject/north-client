@@ -50,6 +50,9 @@ const (
 	// first and latest progress-check photos.
 	SurfaceProgressCompare = "progress_compare"
 
+	// SurfaceCoachOutreach is the coach's one unprompted message of the day.
+	SurfaceCoachOutreach = "coach_outreach"
+
 	// SurfaceTelegramVoice is dictation on a phone, kept apart from
 	// SurfaceVoiceCapture because they are different products with different
 	// costs: the web recorder uploads a minute of WAV the browser prepared,
