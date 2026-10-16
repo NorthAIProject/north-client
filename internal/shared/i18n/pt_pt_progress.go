@@ -69,4 +69,20 @@ var portugueseEuropeanProgress = map[string]string{
 	"progress.estimate.kept":        "Os números que já tinhas introduzido foram mantidos.",
 	"progress.estimate.unavailable": "As estimativas por fotografia não estão disponíveis agora. Introduz as medidas à mão.",
 	"progress.estimate.failed":      "Não foi possível estimar as fotografias. Introduz as medidas à mão ou tenta outra vez.",
+
+	// Comparing the first and latest checks.
+	"progress.compare.title":       "Primeiro e último, comparados",
+	"progress.compare.intro":       "Tens dois registos com fotografias. Compara-os para ver o que mudou.",
+	"progress.compare.label":       "Observação a partir de fotografias, não uma medição",
+	"progress.compare.limits":      "Limitações: %s",
+	"progress.compare.by":          "Lido por %s.",
+	"progress.compare.stale":       "Tens um registo mais recente. Compara outra vez para o incluir.",
+	"progress.compare.button":      "Comparar primeiro e último",
+	"progress.compare.again":       "Comparar outra vez",
+	"progress.compare.working":     "A comparar…",
+	"progress.compare.consent":     "Envia as fotografias de frente e de lado do teu primeiro e último registo para %s. O resultado fica guardado aqui e o teu coach pode lê-lo.",
+	"progress.compare.consent.own": "Envia as fotografias de frente e de lado do teu primeiro e último registo para %s, com a tua própria chave. O resultado fica guardado aqui e o teu coach pode lê-lo.",
+	"progress.compare.need":        "Para comparar são precisos dois registos com uma fotografia de frente ou de lado.",
+	"progress.compare.unavailable": "As comparações de fotografias não estão disponíveis agora.",
+	"progress.compare.failed":      "Não foi possível comparar as fotografias agora. Tenta mais tarde.",
 }

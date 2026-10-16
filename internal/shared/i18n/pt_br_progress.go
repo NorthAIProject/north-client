@@ -69,4 +69,20 @@ var portugueseBrazilianProgress = map[string]string{
 	"progress.estimate.kept":        "Os números que você já tinha digitado foram mantidos.",
 	"progress.estimate.unavailable": "As estimativas por foto não estão disponíveis agora. Digite suas medidas à mão.",
 	"progress.estimate.failed":      "Não foi possível estimar as fotos. Digite suas medidas à mão ou tente de novo.",
+
+	// Comparing the first and latest checks.
+	"progress.compare.title":       "Primeiro e último, comparados",
+	"progress.compare.intro":       "Você tem dois registros com fotos. Compare-os para ver o que mudou.",
+	"progress.compare.label":       "Observação a partir de fotos, não uma medição",
+	"progress.compare.limits":      "Limitações: %s",
+	"progress.compare.by":          "Lido por %s.",
+	"progress.compare.stale":       "Você tem um registro mais recente. Compare de novo para incluí-lo.",
+	"progress.compare.button":      "Comparar primeiro e último",
+	"progress.compare.again":       "Comparar de novo",
+	"progress.compare.working":     "Comparando…",
+	"progress.compare.consent":     "Envia as fotos de frente e de lado do seu primeiro e último registro para %s. O resultado fica salvo aqui e seu coach pode lê-lo.",
+	"progress.compare.consent.own": "Envia as fotos de frente e de lado do seu primeiro e último registro para %s, com sua própria chave. O resultado fica salvo aqui e seu coach pode lê-lo.",
+	"progress.compare.need":        "Para comparar, são necessários dois registros com uma foto de frente ou de lado.",
+	"progress.compare.unavailable": "As comparações de fotos não estão disponíveis agora.",
+	"progress.compare.failed":      "Não foi possível comparar as fotos agora. Tente mais tarde.",
 }

@@ -17,6 +17,25 @@ type Data struct {
 
 	Assist Assist
 	Form   Form
+
+	// Comparison is the saved first-versus-latest comparison, nil when none.
+	Comparison *Comparison
+	// CanCompare is two checks with a front or side photo to compare.
+	CanCompare bool
+	// CompareError is why the last comparison was refused.
+	CompareError string
+}
+
+// Comparison is a model's observation of visible change between the first and
+// the latest check with photos.
+type Comparison struct {
+	From, To   string // display dates
+	Summary    string
+	Confidence string // low, medium, high
+	Limits     string
+	Provider   string
+	// Stale is a newer check with photos since.
+	Stale bool
 }
 
 // Assist is where photos would go for an estimate. Zero when none may, and

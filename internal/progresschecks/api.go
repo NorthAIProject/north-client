@@ -51,6 +51,7 @@ func (a *API) Routes(r chi.Router) {
 	r.Put("/progress/schedule", a.setSchedule)
 	r.Get("/body/current", a.body)
 	r.Get("/progress/assist", a.assist)
+	r.With(a.quotas.GuardJSON(quota.ProgressEstimate)).Post("/progress/compare", a.compare)
 }
 
 func (a *API) UploadRoutes(r chi.Router) {
@@ -119,6 +120,30 @@ type ProgressScheduleView struct {
 type ProgressChecksView struct {
 	Checks   []ProgressCheckView  `json:"checks"`
 	Schedule ProgressScheduleView `json:"schedule"`
+	// Comparison is the latest first-versus-latest photo comparison, absent
+	// when there is none.
+	Comparison *ProgressComparisonView `json:"comparison,omitempty"`
+	// CanCompare is two checks with a front or side photo to compare.
+	CanCompare bool `json:"canCompare"`
+}
+
+// ProgressComparisonView is a model's observation of what visibly changed
+// between the first and the latest check with photos. Show it labelled as an
+// observation, not a measurement.
+type ProgressComparisonView struct {
+	FromCheckID uuid.UUID `json:"fromCheckId"`
+	ToCheckID   uuid.UUID `json:"toCheckId"`
+	FromOn      string    `json:"fromOn"`
+	ToOn        string    `json:"toOn"`
+	Summary     string    `json:"summary"`
+	// Confidence is low, medium or high, as an open string.
+	Confidence string `json:"confidence"`
+	Limits     string `json:"limits,omitempty"`
+	// ProviderLabel is who read the photos.
+	ProviderLabel string `json:"providerLabel"`
+	// Stale is a newer check with photos since; comparing again covers it.
+	Stale     bool      `json:"stale"`
+	CreatedAt time.Time `json:"createdAt"`
 }
 
 // BodyMorphView is the figure's shape, each target 0..1.
@@ -331,6 +356,19 @@ func (a *API) respondList(w http.ResponseWriter, r *http.Request, status, limit 
 		return
 	}
 	out := ProgressChecksView{Checks: make([]ProgressCheckView, len(checks)), Schedule: ProjectSchedule(sched, due)}
+	cmp, stale, ok, err := a.svc.SavedComparison(r.Context(), user)
+	if err != nil {
+		httpx.Error(w, err, "Your progress checks could not be loaded.")
+		return
+	}
+	if ok {
+		view := ProjectComparison(cmp, stale)
+		out.Comparison = &view
+	}
+	if out.CanCompare, err = a.svc.CanCompare(r.Context(), user); err != nil {
+		httpx.Error(w, err, "Your progress checks could not be loaded.")
+		return
+	}
 	for i, c := range checks {
 		if out.Checks[i], err = a.project(r.Context(), user, c); err != nil {
 			httpx.Error(w, err, "Your progress checks could not be loaded.")
@@ -490,5 +528,37 @@ func ProjectEstimate(e Estimate) ProgressEstimateView {
 	return ProgressEstimateView{
 		WaistCm: e.WaistCm, HipsCm: e.HipsCm, ChestCm: e.ChestCm,
 		Confidence: e.Confidence, Notes: e.Notes,
+	}
+}
+
+// compare describes what changed between the first and latest checks with
+// photos, stores it, and answers with it.
+func (a *API) compare(w http.ResponseWriter, r *http.Request) {
+	cmp, err := a.svc.Compare(r.Context(), auth.MustUser(r.Context()))
+	if err != nil {
+		httpx.Error(w, err, compareFailure(err))
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, ProjectComparison(cmp, false))
+}
+
+func compareFailure(err error) string {
+	var fe apperr.FieldErrors
+	switch {
+	case apperr.As(err, &fe):
+		return "Comparing needs two checks with a front or side photo."
+	case errors.Is(err, ErrAssistUnavailable):
+		return "Photo comparisons aren't available right now."
+	default:
+		return "The photos couldn't be compared right now. Try again later."
+	}
+}
+
+func ProjectComparison(c Comparison, stale bool) ProgressComparisonView {
+	return ProgressComparisonView{
+		FromCheckID: c.FromCheckID, ToCheckID: c.ToCheckID,
+		FromOn: c.FromOn.Format(time.DateOnly), ToOn: c.ToOn.Format(time.DateOnly),
+		Summary: c.Summary, Confidence: c.Confidence, Limits: c.Limits,
+		ProviderLabel: c.Provider, Stale: stale, CreatedAt: c.CreatedAt,
 	}
 }
