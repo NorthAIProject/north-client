@@ -85,3 +85,28 @@ adapter locally against a stub server, set `ANTHROPIC_API_KEY` to any string
 and `ANTHROPIC_BASE_URL` to the stub. The SDK honours that variable. The stub
 answers `POST /v1/messages` with a Messages API body whose text is the
 estimate JSON.
+
+## Comparing first and latest
+
+"Compare first and latest" sends the front and side photos of the person's
+oldest check that has one and their newest, with each check's date and tape
+measurements, and asks for a short neutral observation of visible change: by
+area and pose, cautious where the photo setups differ, in the person's
+language. Up to four images per call. It follows the same destination rules as
+estimates and shares their quota (10 an hour free, 30 pro). Spend is recorded
+under surface `progress_compare`.
+
+- **Stored, one per person.** `progress_check_comparisons` keeps the latest
+  comparison; comparing again replaces it. Both checks cascade, so deleting
+  either deletes the observation: text derived from photos never outlives
+  them. It is included in the data export.
+- **Stale.** When a newer check with photos exists, the page and the API
+  (`stale: true`) say so and offer to compare again. Nothing re-runs on its
+  own, so nothing is spent without the person pressing the button.
+- **The coach reads it as text.** `progresschecks.ContextSource` adds the
+  observation to the coach's fitness summary, dated and labelled "a model's
+  observation from photos, not a measurement". The coach never sees the
+  photos. For a person on the free tier the coach runs on the free provider
+  chain, so this text, unlike the photos, does reach those providers.
+- **API.** `POST /progress/compare` makes one; `GET /progress/checks` carries
+  `comparison` and `canCompare`.

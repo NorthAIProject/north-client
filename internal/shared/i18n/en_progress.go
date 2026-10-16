@@ -71,4 +71,20 @@ var englishProgress = map[string]string{
 	"progress.estimate.kept":        "Numbers you had already entered were kept.",
 	"progress.estimate.unavailable": "Photo estimates aren't available right now. Enter your measurements by hand.",
 	"progress.estimate.failed":      "The photos couldn't be estimated. Enter your measurements by hand, or try again.",
+
+	// Comparing the first and latest checks.
+	"progress.compare.title":       "First and latest, compared",
+	"progress.compare.intro":       "You have two checks with photos. Compare them to see what changed.",
+	"progress.compare.label":       "Observation from photos, not a measurement",
+	"progress.compare.limits":      "Limits: %s",
+	"progress.compare.by":          "Read by %s.",
+	"progress.compare.stale":       "You have a newer check since. Compare again to include it.",
+	"progress.compare.button":      "Compare first and latest",
+	"progress.compare.again":       "Compare again",
+	"progress.compare.working":     "Comparing…",
+	"progress.compare.consent":     "Sends the front and side photos of your first and latest checks to %s. The result is saved here and your coach can read it.",
+	"progress.compare.consent.own": "Sends the front and side photos of your first and latest checks to %s, on your own key. The result is saved here and your coach can read it.",
+	"progress.compare.need":        "Comparing needs two checks with a front or side photo.",
+	"progress.compare.unavailable": "Photo comparisons aren't available right now.",
+	"progress.compare.failed":      "The photos couldn't be compared right now. Try again later.",
 }

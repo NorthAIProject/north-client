@@ -42,6 +42,9 @@ templ Page(user users.User, data Data) {
 			}
 			@newCheck(data)
 			@reminder(data)
+			if data.Comparison != nil || data.CanCompare {
+				@comparison(data)
+			}
 			@history(data)
 		</div>
 	}
@@ -404,4 +407,76 @@ func formErrors(f Form) []string {
 		}
 	}
 	return out
+}
+
+// comparison is the saved first-versus-latest observation and the button that
+// makes or refreshes it. A plain POST: the call takes a few seconds and the
+// page it lands on is the whole result.
+templ comparison(data Data) {
+	@card.Card(card.Props{ID: "progress-compare", Attributes: templ.Attributes{"data-testid": "progress-compare"}}) {
+		@card.Header() {
+			@card.Title() {
+				{ i18n.T(ctx, "progress.compare.title") }
+			}
+			@card.Description() {
+				if c := data.Comparison; c != nil {
+					{ c.From + " → " + c.To }
+				} else {
+					{ i18n.T(ctx, "progress.compare.intro") }
+				}
+			}
+		}
+		@card.Content(card.ContentProps{Class: "space-y-4"}) {
+			if c := data.Comparison; c != nil {
+				<div class="space-y-2" data-testid="progress-comparison">
+					// Wraps rather than staying on one line: on a phone the badge ran
+					// past the card and cut off the confidence.
+					@badge.Badge(badge.Props{Variant: badge.VariantOutline, Class: "h-auto whitespace-normal"}) {
+						{ i18n.T(ctx, "progress.compare.label") } · { i18n.T(ctx, "progress.confidence." + c.Confidence) }
+					}
+					<p class="text-sm leading-relaxed">{ c.Summary }</p>
+					if c.Limits != "" {
+						<p class="text-muted-foreground text-xs">{ i18n.Tf(ctx, "progress.compare.limits", c.Limits) }</p>
+					}
+					<p class="text-muted-foreground text-xs">{ i18n.Tf(ctx, "progress.compare.by", c.Provider) }</p>
+					if c.Stale {
+						<p class="text-muted-foreground text-xs" data-testid="progress-compare-stale">{ i18n.T(ctx, "progress.compare.stale") }</p>
+					}
+				</div>
+			}
+			if data.CompareError != "" {
+				@alert.Alert(alert.Props{Variant: alert.VariantDestructive, Attributes: templ.Attributes{"data-testid": "progress-compare-error"}}) {
+					@alert.Description() {
+						{ data.CompareError }
+					}
+				}
+			}
+			if data.CanCompare && data.Assist.Available {
+				<form method="post" action="/app/progress/compare" class="space-y-2" x-data="{ comparing: false }" @submit="comparing = true">
+					@ui.CSRFInput()
+					@button.Button(button.Props{
+						Type: button.TypeSubmit, Variant: button.VariantOutline, Size: button.SizeSm,
+						Attributes: templ.Attributes{"x-bind:disabled": "comparing", "data-testid": "progress-compare-button"},
+					}) {
+						@icon.Icon("git-compare")(icon.Props{Class: "size-4"})
+						<span x-show="!comparing">
+							if data.Comparison != nil {
+								{ i18n.T(ctx, "progress.compare.again") }
+							} else {
+								{ i18n.T(ctx, "progress.compare.button") }
+							}
+						</span>
+						<span x-show="comparing" x-cloak>{ i18n.T(ctx, "progress.compare.working") }</span>
+					}
+					<p class="text-muted-foreground text-xs">
+						if data.Assist.Own {
+							{ i18n.Tf(ctx, "progress.compare.consent.own", data.Assist.Label) }
+						} else {
+							{ i18n.Tf(ctx, "progress.compare.consent", data.Assist.Label) }
+						}
+					</p>
+				</form>
+			}
+		}
+	}
 }

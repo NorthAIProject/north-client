@@ -47,10 +47,7 @@ func (e Estimate) Clean() Estimate {
 		e.Confidence = "low"
 	}
 
-	e.Notes = strings.Join(strings.Fields(e.Notes), " ")
-	if r := []rune(e.Notes); len(r) > maxEstimateNotes {
-		e.Notes = strings.TrimSpace(string(r[:maxEstimateNotes-1])) + "…"
-	}
+	e.Notes = clip(e.Notes, maxEstimateNotes)
 	return e
 }
 

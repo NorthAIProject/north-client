@@ -44,6 +44,7 @@ const (
 	PlanImportWorkout   = "plan_import_workout.md"
 	PlanImportMeal      = "plan_import_meal.md"
 	ProgressEstimate    = "progress_estimate.md"
+	ProgressCompare     = "progress_compare.md"
 )
 
 // Render executes a prompt template with the given data.

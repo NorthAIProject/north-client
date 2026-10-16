@@ -13,7 +13,7 @@ var portugueseBrazilianQuota = map[string]string{
 	"quota.action.quick_capture":     "capturas rápidas",
 	"quota.action.voice_capture":     "notas de voz",
 	"quota.action.plan_import":       "importações de planos",
-	"quota.action.progress_estimate": "estimativas por foto",
+	"quota.action.progress_estimate": "estimativas e comparações de fotos",
 
 	"quota.delay.underminute": "em menos de um minuto",
 	"quota.delay.minute":      "em cerca de um minuto",

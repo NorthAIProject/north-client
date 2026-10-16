@@ -15,7 +15,7 @@ var englishQuota = map[string]string{
 	"quota.action.quick_capture":     "quick capture",
 	"quota.action.voice_capture":     "voice notes",
 	"quota.action.plan_import":       "plan imports",
-	"quota.action.progress_estimate": "photo estimates",
+	"quota.action.progress_estimate": "photo estimates and comparisons",
 
 	"quota.delay.underminute": "in less than a minute",
 	"quota.delay.minute":      "in about a minute",

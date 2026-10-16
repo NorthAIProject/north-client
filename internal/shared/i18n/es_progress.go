@@ -69,4 +69,20 @@ var spanishProgress = map[string]string{
 	"progress.estimate.kept":        "Se han mantenido los números que ya habías introducido.",
 	"progress.estimate.unavailable": "Las estimaciones por foto no están disponibles ahora. Introduce tus medidas a mano.",
 	"progress.estimate.failed":      "No se pudieron estimar las fotos. Introduce tus medidas a mano o inténtalo de nuevo.",
+
+	// Comparing the first and latest checks.
+	"progress.compare.title":       "Primero y último, comparados",
+	"progress.compare.intro":       "Tienes dos registros con fotos. Compáralos para ver qué ha cambiado.",
+	"progress.compare.label":       "Observación a partir de fotos, no una medida",
+	"progress.compare.limits":      "Límites: %s",
+	"progress.compare.by":          "Leído por %s.",
+	"progress.compare.stale":       "Tienes un registro más reciente. Vuelve a comparar para incluirlo.",
+	"progress.compare.button":      "Comparar primero y último",
+	"progress.compare.again":       "Comparar de nuevo",
+	"progress.compare.working":     "Comparando…",
+	"progress.compare.consent":     "Envía las fotos de frente y de perfil de tu primer y último registro a %s. El resultado se guarda aquí y tu coach puede leerlo.",
+	"progress.compare.consent.own": "Envía las fotos de frente y de perfil de tu primer y último registro a %s, con tu propia clave. El resultado se guarda aquí y tu coach puede leerlo.",
+	"progress.compare.need":        "Para comparar hacen falta dos registros con una foto de frente o de perfil.",
+	"progress.compare.unavailable": "Las comparaciones de fotos no están disponibles ahora.",
+	"progress.compare.failed":      "No se pudieron comparar las fotos ahora. Inténtalo más tarde.",
 }
