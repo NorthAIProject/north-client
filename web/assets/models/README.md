@@ -15,10 +15,11 @@ anatomical atlas. Each node has its own mesh and a material of the same name, so
 client recolours a muscle by setting one material colour and resolves a tap by the
 hit mesh's name.
 
-Clients draw the shell twice from the one geometry: its back faces opaque and dark,
-which makes the inside of the body a cavity the muscles sit in, and its front faces
-translucent, firmed up at the silhouette, so the body's outline reads with the
-muscles showing through. The shell is never a tap target.
+The web viewer draws the shell as an outline only: clear where it faces the
+camera, firm at the silhouette, so the muscles read as the body and the skin as
+its edge. (It used to be drawn twice, an opaque dark inside and a grey
+translucent front, which read as a second, grey person standing around the
+muscles.) The shell is never a tap target.
 
 The shell carries four shape keys (glTF morph targets, named in
 `mesh.extras.targetNames`): `waist`, `hips`, `chest` and `overall`. Each is 0
