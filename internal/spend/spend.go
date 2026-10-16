@@ -37,6 +37,7 @@ const (
 	SurfaceStandingTask  = "standing_task"
 	SurfaceFormAnalysis  = "form_analysis"
 	SurfaceWorkoutPlan   = "workout_plan"
+	SurfaceMealPlan      = "meal_plan"
 	SurfaceQuickCapture  = "quick_capture"
 	SurfaceVoiceCapture  = "voice_capture"
 	SurfacePlanImport    = "plan_import"

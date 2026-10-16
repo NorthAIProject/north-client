@@ -414,6 +414,11 @@ type QuotaConfig struct {
 	// Each is a vision call on up to six photos, and a person checks weekly at
 	// most, so a handful an hour covers retakes.
 	ProgressEstimates int
+
+	// MealPlanGenerations bounds building a meal plan with the coach. Each is
+	// up to three model calls per provider carrying the whole food catalog,
+	// the most expensive request in nutrition.
+	MealPlanGenerations int
 }
 
 // Limits renders the config as the per-action budgets the quota package wants.
@@ -431,6 +436,7 @@ func (q QuotaConfig) Limits() map[quota.Action]quota.Limit {
 		quota.VoiceCapture:     {PerWindow: q.VoiceCaptures},
 		quota.PlanImport:       {PerWindow: q.PlanImports},
 		quota.ProgressEstimate: {PerWindow: q.ProgressEstimates},
+		quota.MealPlanGenerate: {PerWindow: q.MealPlanGenerations},
 	}
 }
 
@@ -779,6 +785,7 @@ func Load() (*Config, error) {
 		{"QUOTA_VOICE_CAPTURES_PER_HOUR", 40, &cfg.Quota.VoiceCaptures},
 		{"QUOTA_PLAN_IMPORTS_PER_HOUR", 20, &cfg.Quota.PlanImports},
 		{"QUOTA_PROGRESS_ESTIMATES_PER_HOUR", 10, &cfg.Quota.ProgressEstimates},
+		{"QUOTA_MEAL_PLAN_GENERATIONS_PER_HOUR", 10, &cfg.Quota.MealPlanGenerations},
 		// Low because an export reads the whole account — every document out of
 		// the bucket included — and nobody needs their entire history four times
 		// in an hour.
@@ -796,6 +803,7 @@ func Load() (*Config, error) {
 		{"QUOTA_PRO_VOICE_CAPTURES_PER_HOUR", 400, &cfg.QuotaPro.VoiceCaptures},
 		{"QUOTA_PRO_PLAN_IMPORTS_PER_HOUR", 100, &cfg.QuotaPro.PlanImports},
 		{"QUOTA_PRO_PROGRESS_ESTIMATES_PER_HOUR", 30, &cfg.QuotaPro.ProgressEstimates},
+		{"QUOTA_PRO_MEAL_PLAN_GENERATIONS_PER_HOUR", 30, &cfg.QuotaPro.MealPlanGenerations},
 		// Not raised as far as the rest: an export reads every document in the
 		// account out of the bucket, and paying for the product does not make
 		// that cheap.

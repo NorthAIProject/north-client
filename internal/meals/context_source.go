@@ -11,7 +11,8 @@ import (
 )
 
 // ContextSource reports today's logged intake versus the macro goal, plus
-// the user's standing diet preferences, into Context.Nutrition.
+// the user's standing diet preferences and the foods they won't eat, into
+// Context.Nutrition.
 type ContextSource struct {
 	progress *TrackMealProgressService
 	diets    *DietPreferenceService
@@ -24,6 +25,16 @@ func NewContextSource(progress *TrackMealProgressService, diets *DietPreferenceS
 func (s *ContextSource) Name() string { return "nutrition" }
 
 func (s *ContextSource) Collect(ctx context.Context, req coach.ContextRequest, into *coach.Context) error {
+	// Before the target, which a new account has not got: foods someone
+	// won't eat matter to every food the coach suggests, target or not.
+	exclusions, err := s.diets.Exclusions(ctx, req.User.ID)
+	if err != nil {
+		return err
+	}
+	if len(exclusions) > 0 {
+		into.Nutrition = append(into.Nutrition, fmt.Sprintf("Won't eat: %s", strings.Join(exclusions, ", ")))
+	}
+
 	today := localMidnight(req.User.Location(), time.Now())
 
 	progress, err := s.progress.ForDay(ctx, req.User.ID, today)

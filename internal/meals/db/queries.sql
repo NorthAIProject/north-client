@@ -22,6 +22,12 @@ WHERE id = $1 AND (user_id IS NULL OR user_id = $2);
 -- The shared catalog's names, for an importer matching a plan's food lines.
 SELECT name FROM ingredients WHERE user_id IS NULL ORDER BY name;
 
+-- name: ListSharedIngredientMacros :many
+-- The shared catalog with its macros, for the meal plan generator to build
+-- portions from.
+SELECT name, protein_g_per_100g, carbs_g_per_100g, fat_g_per_100g
+FROM ingredients WHERE user_id IS NULL ORDER BY name;
+
 -- name: SearchIngredients :many
 -- Visible ingredients are the shared/global set plus the user's own.
 --
@@ -286,3 +292,14 @@ WHERE user_id = $1 AND enabled AND (last_fired_local_date IS DISTINCT FROM sqlc.
 
 -- name: MarkMealReminderFired :exec
 UPDATE meal_reminders SET last_fired_local_date = $2, updated_at = now() WHERE id = $1;
+
+-- name: CreateMealPlanIntake :one
+INSERT INTO meal_plan_intakes (user_id, objective, days, meals_per_day, plan_type, exclusions, notes)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING *;
+
+-- name: LatestMealPlanIntake :one
+SELECT * FROM meal_plan_intakes
+WHERE user_id = $1
+ORDER BY created_at DESC
+LIMIT 1;

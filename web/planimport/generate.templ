@@ -1,0 +1,178 @@
+package planimport
+
+import (
+	"fmt"
+	"strconv"
+	"strings"
+
+	"github.com/NorthAIProject/north-client/internal/meals/meal"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/alert"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/dictate"
+	"github.com/NorthAIProject/north-client/web/shared/ui/form"
+	"github.com/NorthAIProject/north-client/web/shared/ui/input"
+	"github.com/NorthAIProject/north-client/web/shared/ui/label"
+	"github.com/NorthAIProject/north-client/web/shared/ui/selectbox"
+	"github.com/NorthAIProject/north-client/web/shared/ui/textarea"
+)
+
+// MealGenerateForm is the "build me a meal plan" form, as last submitted or
+// as last saved.
+type MealGenerateForm struct {
+	Objective   string
+	Days        int
+	MealsPerDay int
+	PlanType    string
+	Exclusions  []string
+	Notes       string
+
+	// NoTarget is set when the person has no macro target yet: the form
+	// sends them to the calculator instead.
+	NoTarget bool
+	Errors   map[string]string
+	Error    string
+}
+
+func (f MealGenerateForm) fieldError(name string) string { return f.Errors[name] }
+
+var objectives = []string{"cutting", "maintenance", "bulking"}
+
+templ MealGeneratePage(user users.User, f MealGenerateForm) {
+	@layout.App(i18n.T(ctx, "planimport.generate.page"), user, layout.BuildNav(ctx, "/app/fitness")) {
+		<div class="mx-auto w-full max-w-2xl space-y-6 p-6 md:p-8">
+			<header>
+				@ui.MonoLabel(i18n.T(ctx, "planimport.generate.label"))
+				<h1 class="mt-2 text-2xl font-medium tracking-tight">{ i18n.T(ctx, "planimport.generate.title") }</h1>
+				<p class="text-muted-foreground mt-1 text-sm">{ i18n.T(ctx, "planimport.generate.lede") }</p>
+			</header>
+			if f.Error != "" {
+				@alert.Alert(alert.Props{Variant: alert.VariantDestructive}) {
+					@alert.Description() {
+						{ f.Error }
+					}
+				}
+			}
+			if f.NoTarget {
+				@card.Card() {
+					@card.Content(card.ContentProps{Class: "space-y-4 pt-6"}) {
+						<p class="text-sm">{ i18n.T(ctx, "planimport.generate.notarget") }</p>
+						@button.Button(button.Props{Href: "/app/calculator"}) {
+							{ i18n.T(ctx, "planimport.generate.calculator") }
+						}
+					}
+				}
+			} else {
+				@card.Card() {
+					@card.Content() {
+						<form method="post" action="/app/nutrition/plans/generate" class="space-y-5 pt-6" x-data="{ busy: false }" x-on:submit="busy = true">
+							@ui.CSRFInput()
+							@generateField("objective", i18n.T(ctx, "planimport.generate.objective"), f.fieldError("objective")) {
+								@selectbox.SelectBox() {
+									@selectbox.Trigger(selectbox.TriggerProps{ID: "objective", Name: "objective", HasError: f.fieldError("objective") != ""}) {
+										@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "planimport.meal.choose_one")})
+									}
+									@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
+										for _, o := range objectives {
+											@selectbox.Item(selectbox.ItemProps{Value: o, Selected: f.Objective == o}) {
+												{ i18n.T(ctx, "planimport.generate.objective." + o) }
+											}
+										}
+									}
+								}
+							}
+							<div class="grid gap-5 sm:grid-cols-2">
+								@generateField("days", i18n.T(ctx, "planimport.generate.days"), f.fieldError("days")) {
+									@input.Input(input.Props{
+										ID: "days", Name: "days", Type: input.TypeNumber, Value: countValue(f.Days), Required: true,
+										HasError: f.fieldError("days") != "", Attributes: templ.Attributes{"min": "1", "max": "7"},
+									})
+								}
+								@generateField("meals_per_day", i18n.T(ctx, "planimport.generate.meals"), f.fieldError("meals_per_day")) {
+									@input.Input(input.Props{
+										ID: "meals_per_day", Name: "meals_per_day", Type: input.TypeNumber, Value: countValue(f.MealsPerDay), Required: true,
+										HasError: f.fieldError("meals_per_day") != "", Attributes: templ.Attributes{"min": "1", "max": "8"},
+									})
+								}
+							</div>
+							@generateField("plan_type", i18n.T(ctx, "planimport.generate.plantype"), f.fieldError("plan_type")) {
+								@selectbox.SelectBox() {
+									@selectbox.Trigger(selectbox.TriggerProps{ID: "plan_type", Name: "plan_type", HasError: f.fieldError("plan_type") != ""}) {
+										@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "planimport.meal.choose_one")})
+									}
+									@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
+										for _, band := range meal.CarbBands {
+											@selectbox.Item(selectbox.ItemProps{Value: string(band.Type), Selected: string(band.Type) == f.PlanType}) {
+												{ fmt.Sprintf("%s (%.0f–%.0f%%)", bandLabel(ctx, band), band.MinPct, band.MaxPct) }
+											}
+										}
+									}
+								}
+								@form.Description() {
+									{ i18n.T(ctx, "planimport.generate.plantype.desc") }
+								}
+							}
+							@generateField("exclusions", i18n.T(ctx, "planimport.generate.exclusions"), f.fieldError("exclusions")) {
+								@dictate.Field(dictate.Props{Target: "exclusions"}) {
+									@textarea.Textarea(textarea.Props{
+										ID: "exclusions", Name: "exclusions", Value: strings.Join(f.Exclusions, ", "), Rows: 2,
+										Placeholder: i18n.T(ctx, "planimport.generate.exclusions.ph"), HasError: f.fieldError("exclusions") != "",
+									})
+								}
+								@form.Description() {
+									{ i18n.T(ctx, "planimport.generate.exclusions.desc") }
+								}
+							}
+							@generateField("notes", i18n.T(ctx, "planimport.generate.notes"), f.fieldError("notes")) {
+								@dictate.Field(dictate.Props{Target: "notes"}) {
+									@textarea.Textarea(textarea.Props{
+										ID: "notes", Name: "notes", Value: f.Notes, Rows: 2,
+										Placeholder: i18n.T(ctx, "planimport.generate.notes.ph"), HasError: f.fieldError("notes") != "",
+									})
+								}
+							}
+							@button.Button(button.Props{Type: button.TypeSubmit, FullWidth: true, Attributes: templ.Attributes{"x-bind:disabled": "busy"}}) {
+								<span x-show="!busy">{ i18n.T(ctx, "planimport.generate.submit") }</span>
+								<span x-show="busy" x-cloak>{ i18n.T(ctx, "planimport.generate.busy") }</span>
+							}
+							<p class="text-muted-foreground text-center text-xs">{ i18n.T(ctx, "planimport.generate.wait") }</p>
+						</form>
+					}
+				}
+			}
+			@button.Button(button.Props{Href: "/app/nutrition/plans", Variant: button.VariantGhost}) {
+				{ i18n.T(ctx, "planimport.cancel") }
+			}
+		</div>
+		@input.Script()
+		@label.Script()
+		@textarea.Script()
+		@selectbox.Script()
+		@dictate.Script()
+	}
+}
+
+templ generateField(name, labelText, errMsg string) {
+	@form.Item() {
+		@label.Label(label.Props{For: name, Error: errMsg}) {
+			{ labelText }
+		}
+		{ children... }
+		if errMsg != "" {
+			@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+				{ errMsg }
+			}
+		}
+	}
+}
+
+func countValue(n int) string {
+	if n == 0 {
+		return ""
+	}
+	return strconv.Itoa(n)
+}

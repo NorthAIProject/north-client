@@ -253,7 +253,12 @@ var englishNutrition = map[string]string{
 	// An overage as one sentence, for the API: each day, then what is over.
 	// %[1]s is a weekday as it reads mid-sentence; the first letter of the
 	// whole message is capitalised.
-	"nutrition.overage.msg.day":  "%[1]s would be %[2]s",
-	"nutrition.overage.msg.part": "%.0[1]f g over on %[2]s",
-	"nutrition.overage.msg.and":  " and ",
+	"nutrition.overage.msg.day":     "%[1]s would be %[2]s",
+	"nutrition.overage.msg.part":    "%.0[1]f g over on %[2]s",
+	"nutrition.overage.msg.and":     " and ",
+	"nutrition.err.objective":       "Choose cutting, maintenance or bulking.",
+	"nutrition.err.mealsperday":     "Choose between 1 and 8 meals a day.",
+	"nutrition.err.exclusions.many": "List at most 30 foods to leave out.",
+	"nutrition.err.exclusions.long": "Keep each food to leave out under 60 characters.",
+	"nutrition.err.intake.notes":    "Keep this under 500 characters.",
 }

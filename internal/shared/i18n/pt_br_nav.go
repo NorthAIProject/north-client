@@ -50,6 +50,8 @@ var portugueseBrazilianNav = map[string]string{
 	"nav.import-hevy.desc":          "Traga seu histórico de treinos do Hevy.",
 	"nav.import-meal-plan":          "Importar plano alimentar",
 	"nav.import-meal-plan.desc":     "Traga um plano alimentar de um arquivo ou foto.",
+	"nav.generate-meal-plan":        "Criar um plano alimentar",
+	"nav.generate-meal-plan.desc":   "Deixe o coach montar um nas suas macros.",
 	"nav.food-log":                  "Diário alimentar",
 	"nav.food-log.desc":             "Registre hoje, veja o progresso.",
 	"nav.strava-activities":         "Atividades do Strava",

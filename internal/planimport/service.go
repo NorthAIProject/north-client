@@ -24,6 +24,8 @@ type Service struct {
 	mealPlans   *meals.MealPlanService
 	ingredients *meals.IngredientService
 	quota       QuotaConsumer
+	planner     MealPlanner
+	diets       DietNames
 
 	// inFlight holds the users with a parse running. One import at a time per
 	// person: a second upload while the first is still being read is almost
@@ -44,6 +46,11 @@ type Options struct {
 	// pages spend theirs in their route middleware, so they never reach it.
 	// Nil counts nothing.
 	Quota QuotaConsumer
+	// Planner drafts meal plans from an intake. Nil turns generation off.
+	Planner MealPlanner
+	// Diets are the person's diet preferences, offered to the planner. May
+	// be nil.
+	Diets DietNames
 }
 
 func NewService(opts Options) *Service {
@@ -53,6 +60,8 @@ func NewService(opts Options) *Service {
 		mealPlans:   opts.MealPlans,
 		ingredients: opts.Ingredients,
 		quota:       opts.Quota,
+		planner:     opts.Planner,
+		diets:       opts.Diets,
 	}
 }
 

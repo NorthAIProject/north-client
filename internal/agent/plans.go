@@ -11,6 +11,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/meals"
 	"github.com/NorthAIProject/north-client/internal/meals/meal"
+	"github.com/NorthAIProject/north-client/internal/planimport"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/workouts"
@@ -136,23 +137,29 @@ func createMealPlan(plans *meals.MealPlanService, ingredients *meals.IngredientS
 				return "", err
 			}
 
-			var b strings.Builder
-			fmt.Fprintf(&b, "Created the meal plan %q (%s, %d days).", stored.Name, stored.Settings.Type.Label(), len(stored.Days))
-			for _, day := range stored.Days {
-				total := day.Consumed()
-				fmt.Fprintf(&b, "\n%s: %.0f kcal, %.0f g protein, %.0f g carbs, %.0f g fat.",
-					day.Weekday, total.Calories, total.ProteinG, total.CarbG, total.FatG)
-				for _, m := range day.Meals {
-					names := make([]string, len(m.Ingredients))
-					for j, ing := range m.Ingredients {
-						names[j] = fmt.Sprintf("%.0f g %s", ing.QuantityGrams, ing.IngredientName)
-					}
-					fmt.Fprintf(&b, "\n  %s (%.0f kcal): %s", m.Name, m.TotalMacros.Calories, strings.Join(names, ", "))
-				}
-			}
-			return b.String(), nil
+			return createdMealPlanSummary(stored), nil
 		},
 	}
+}
+
+// createdMealPlanSummary is a saved plan as a tool result: each day's totals and
+// each meal's foods, so the coach can talk about the plan it just made.
+func createdMealPlanSummary(stored meals.MealPlan) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Created the meal plan %q (%s, %d days).", stored.Name, stored.Settings.Type.Label(), len(stored.Days))
+	for _, day := range stored.Days {
+		total := day.Consumed()
+		fmt.Fprintf(&b, "\n%s: %.0f kcal, %.0f g protein, %.0f g carbs, %.0f g fat.",
+			day.Weekday, total.Calories, total.ProteinG, total.CarbG, total.FatG)
+		for _, m := range day.Meals {
+			names := make([]string, len(m.Ingredients))
+			for j, ing := range m.Ingredients {
+				names[j] = fmt.Sprintf("%.0f g %s", ing.QuantityGrams, ing.IngredientName)
+			}
+			fmt.Fprintf(&b, "\n  %s (%.0f kcal): %s", m.Name, m.TotalMacros.Calories, strings.Join(names, ", "))
+		}
+	}
+	return b.String()
 }
 
 func createWorkoutPlan(svc *workouts.Service, userSvc *users.Service) Capability {
@@ -202,6 +209,60 @@ func createWorkoutPlan(svc *workouts.Service, userSvc *users.Service) Capability
 				return "", err
 			}
 			return "Created and saved the new training plan:\n" + stored.Plan.Summary(), nil
+		},
+	}
+}
+
+func generateMealPlan(imports *planimport.Service, userSvc *users.Service) Capability {
+	type args struct {
+		Objective   string   `json:"objective"`
+		Days        int      `json:"days"`
+		MealsPerDay int      `json:"meals_per_day"`
+		PlanType    string   `json:"plan_type"`
+		Exclusions  []string `json:"exclusions"`
+		Notes       string   `json:"notes"`
+	}
+
+	planTypes := make([]string, len(meal.CarbBands))
+	for i, b := range meal.CarbBands {
+		planTypes[i] = string(b.Type)
+	}
+
+	return Capability{
+		Tool: ai.Tool{
+			Name: "generate_meal_plan",
+			Description: "Build and save a meal plan for this person from what they want: their objective, how many different " +
+				"days, how many meals a day, and the foods they won't eat. Prefer it to create_meal_plan whenever they ask you " +
+				"to make them a plan; use create_meal_plan only to save a plan whose foods you have already agreed with them. " +
+				"Every day is built from the catalog, held to their macro target, and checked against what they asked before it " +
+				"is saved. Without a target the plan cannot be made: offer calculate_macros first. Ask for the number of meals " +
+				"and anything they won't eat when they have not said, rather than guessing.",
+			Parameters: ai.Object("what to build the plan around", map[string]*ai.Schema{
+				"objective":     ai.Enum("the aim", meals.Objectives...),
+				"days":          ai.Integer("how many different days, 1 to 7; one day is eaten every day"),
+				"meals_per_day": ai.Integer("meals a day, 1 to 8"),
+				"plan_type":     ai.Enum("the carb level; mid_carb when they have not said", planTypes...),
+				"exclusions":    ai.Array("foods they can't or won't eat, in their words; empty for none", ai.String("one food or group, such as 'dairy'")),
+				"notes":         ai.String("anything else they asked for, such as 'cheap' or 'quick breakfasts'; optional"),
+			}, "objective", "days", "meals_per_day", "plan_type", "exclusions"),
+		},
+		Invoke: func(ctx context.Context, userID uuid.UUID, raw json.RawMessage) (string, error) {
+			in, err := Decode[args](raw)
+			if err != nil {
+				return "", err
+			}
+			user, err := userSvc.ByID(ctx, userID)
+			if err != nil {
+				return "", err
+			}
+			stored, err := imports.GenerateMealForCoach(ctx, user, meals.MealPlanIntake{
+				Objective: in.Objective, Days: in.Days, MealsPerDay: in.MealsPerDay,
+				PlanType: meal.PlanType(in.PlanType), Exclusions: in.Exclusions, Notes: in.Notes,
+			})
+			if err != nil {
+				return "", err
+			}
+			return createdMealPlanSummary(stored), nil
 		},
 	}
 }
