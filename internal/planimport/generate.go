@@ -54,7 +54,7 @@ func (s *Service) GenerateMeal(ctx context.Context, user users.User, in meals.Me
 		return MealDraft{}, apperr.FieldErrors{}.Add("macro_target", "Work out your macro target in the calculator first; meal plans are built on it.")
 	}
 
-	if err := s.begin(user.ID); err != nil {
+	if err = s.begin(user.ID); err != nil {
 		return MealDraft{}, err
 	}
 	defer s.end(user.ID)
@@ -183,21 +183,83 @@ var plantNotDairy = []string{"almond", "peanut", "cashew", "coconut", "oat", "so
 // that belong to them. English only: an exclusion in another language is
 // still in the prompt, and only an exact word match is checked here.
 var exclusionGroups = map[string][]exclusionTerm{
-	"dairy": {{word: "milk", unless: plantNotDairy}, {word: "butter", unless: plantNotDairy}, {word: "cream", unless: plantNotDairy},
-		{word: "cheese"}, {word: "yogurt"}, {word: "yoghurt"}, {word: "whey"}, {word: "casein"}, {word: "kefir"},
-		{word: "ricotta"}, {word: "mozzarella"}, {word: "parmesan"}, {word: "cheddar"}, {word: "feta"}, {word: "cottage"}, {word: "ghee"}},
+	"dairy": {
+		{word: "milk", unless: plantNotDairy},
+		{word: "butter", unless: plantNotDairy},
+		{word: "cream", unless: plantNotDairy},
+		{word: "cheese"},
+		{word: "yogurt"},
+		{word: "yoghurt"},
+		{word: "whey"},
+		{word: "casein"},
+		{word: "kefir"},
+		{word: "ricotta"},
+		{word: "mozzarella"},
+		{word: "parmesan"},
+		{word: "cheddar"},
+		{word: "feta"},
+		{word: "cottage"},
+		{word: "ghee"},
+	},
 	"lactose": {{word: "milk", unless: plantNotDairy}, {word: "cream", unless: plantNotDairy}, {word: "yogurt"}, {word: "yoghurt"}, {word: "cheese"}, {word: "whey"}},
-	"gluten": {{word: "wheat", unless: []string{"buckwheat"}}, {word: "bread"}, {word: "pasta"}, {word: "couscous"}, {word: "barley"}, {word: "rye"},
-		{word: "seitan"}, {word: "bagel"}, {word: "baguette"}, {word: "croissant"}, {word: "noodle", unless: []string{"rice"}}, {word: "spaghetti"}, {word: "bulgur"}},
-	"meat": {{word: "beef"}, {word: "pork"}, {word: "chicken"}, {word: "turkey"}, {word: "lamb"}, {word: "ham"}, {word: "bacon"},
-		{word: "sausage"}, {word: "veal"}, {word: "steak"}, {word: "duck"}, {word: "chorizo"}, {word: "salami"}},
+	"gluten": {
+		{word: "wheat", unless: []string{"buckwheat"}},
+		{word: "bread"},
+		{word: "pasta"},
+		{word: "couscous"},
+		{word: "barley"},
+		{word: "rye"},
+		{word: "seitan"},
+		{word: "bagel"},
+		{word: "baguette"},
+		{word: "croissant"},
+		{word: "noodle", unless: []string{"rice"}},
+		{word: "spaghetti"},
+		{word: "bulgur"},
+	},
+	"meat": {
+		{word: "beef"},
+		{word: "pork"},
+		{word: "chicken"},
+		{word: "turkey"},
+		{word: "lamb"},
+		{word: "ham"},
+		{word: "bacon"},
+		{word: "sausage"},
+		{word: "veal"},
+		{word: "steak"},
+		{word: "duck"},
+		{word: "chorizo"},
+		{word: "salami"},
+	},
 	"red meat": {{word: "beef"}, {word: "pork"}, {word: "lamb"}, {word: "veal"}, {word: "steak"}, {word: "ham"}, {word: "bacon"}},
 	"pork":     {{word: "pork"}, {word: "ham"}, {word: "bacon"}, {word: "chorizo"}, {word: "salami"}, {word: "prosciutto"}},
-	"fish": {{word: "salmon"}, {word: "tuna"}, {word: "cod"}, {word: "sardine"}, {word: "mackerel"}, {word: "trout"}, {word: "anchovy"},
-		{word: "anchovies"}, {word: "tilapia"}, {word: "hake"}, {word: "haddock"}, {word: "herring"}},
+	"fish": {
+		{word: "salmon"},
+		{word: "tuna"},
+		{word: "cod"},
+		{word: "sardine"},
+		{word: "mackerel"},
+		{word: "trout"},
+		{word: "anchovy"},
+		{word: "anchovies"},
+		{word: "tilapia"},
+		{word: "hake"},
+		{word: "haddock"},
+		{word: "herring"},
+	},
 	"shellfish": {{word: "shrimp"}, {word: "prawn"}, {word: "crab"}, {word: "lobster"}, {word: "mussel"}, {word: "clam"}, {word: "oyster"}, {word: "scallop"}, {word: "squid"}, {word: "octopus"}},
-	"nuts": {{word: "almond"}, {word: "walnut"}, {word: "cashew"}, {word: "pecan"}, {word: "pistachio"}, {word: "hazelnut"},
-		{word: "macadamia"}, {word: "peanut"}, {word: "nut", unless: []string{"coconut", "nutmeg"}}},
+	"nuts": {
+		{word: "almond"},
+		{word: "walnut"},
+		{word: "cashew"},
+		{word: "pecan"},
+		{word: "pistachio"},
+		{word: "hazelnut"},
+		{word: "macadamia"},
+		{word: "peanut"},
+		{word: "nut", unless: []string{"coconut", "nutmeg"}},
+	},
 	"soy": {{word: "soy"}, {word: "soya"}, {word: "tofu"}, {word: "tempeh"}, {word: "edamame"}, {word: "miso"}},
 	"egg": {{word: "egg", unless: []string{"eggplant"}}, {word: "mayonnaise"}},
 }
@@ -290,7 +352,7 @@ func (s *Service) GenerateMealForCoach(ctx context.Context, user users.User, in 
 	if err != nil {
 		return meals.MealPlan{}, err
 	}
-	if err := s.spend(ctx, user, quota.MealPlanGenerate, ErrGenerateQuotaUsed); err != nil {
+	if err = s.spend(ctx, user, quota.MealPlanGenerate, ErrGenerateQuotaUsed); err != nil {
 		return meals.MealPlan{}, err
 	}
 	d, err := s.GenerateMeal(ctx, user, in)

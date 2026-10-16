@@ -67,8 +67,10 @@ func TestCheckGeneratedHoldsTheShapeTheyAskedFor(t *testing.T) {
 
 	optional := good
 	optional.Optional = true
-	withYogurt := MealDraftMeal{Name: "Snack", Foods: []FoodDraft{food("Greek yogurt", 170)},
-		Alternatives: []MealDraftOption{{Label: "Swap", Foods: []FoodDraft{{Food: "Cheddar"}}}}}
+	withYogurt := MealDraftMeal{
+		Name: "Snack", Foods: []FoodDraft{food("Greek yogurt", 170)},
+		Alternatives: []MealDraftOption{{Label: "Swap", Foods: []FoodDraft{{Food: "Cheddar"}}}},
+	}
 
 	got := strings.Join(checkGenerated(MealDraft{Days: []MealDayDraft{day(good, optional), day(good, withYogurt)}}, in), "\n")
 	for _, want := range []string{
@@ -95,14 +97,18 @@ func TestCheckFitNamesUnmatchedFoodsAndEveryMacroOffTarget(t *testing.T) {
 	matched.IngredientID = util.Ptr(uuid.New())
 	target := &MacroGrams{ProteinG: 150, CarbG: 70, FatG: 60}
 
-	fits := MealDraft{Days: []MealDayDraft{{Label: "Monday", Meals: []MealDraftMeal{{Name: "Lunch", Foods: []FoodDraft{matched}}},
-		Totals: &MacroGrams{ProteinG: 140, CarbG: 66, FatG: 55.4}, Target: target}}}
+	fits := MealDraft{Days: []MealDayDraft{{
+		Label: "Monday", Meals: []MealDraftMeal{{Name: "Lunch", Foods: []FoodDraft{matched}}},
+		Totals: &MacroGrams{ProteinG: 140, CarbG: 66, FatG: 55.4}, Target: target,
+	}}}
 	if got := checkFit(fits); len(got) != 0 {
 		t.Fatalf("a day at 93%% of each macro was refused: %q", got)
 	}
 
-	off := MealDraft{Days: []MealDayDraft{{Label: "Monday", Meals: []MealDraftMeal{{Name: "Lunch", Foods: []FoodDraft{matched, food("Moon cheese", 30)}}},
-		Totals: &MacroGrams{ProteinG: 100, CarbG: 80, FatG: 60.4}, Target: target}}}
+	off := MealDraft{Days: []MealDayDraft{{
+		Label: "Monday", Meals: []MealDraftMeal{{Name: "Lunch", Foods: []FoodDraft{matched, food("Moon cheese", 30)}}},
+		Totals: &MacroGrams{ProteinG: 100, CarbG: 80, FatG: 60.4}, Target: target,
+	}}}
 	got := strings.Join(checkFit(off), "\n")
 	for _, want := range []string{
 		`"Moon cheese" in Monday, Lunch is not a catalog food`,

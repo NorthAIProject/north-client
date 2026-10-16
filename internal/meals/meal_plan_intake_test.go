@@ -17,8 +17,10 @@ import (
 func TestValidateMealPlanIntake(t *testing.T) {
 	t.Parallel()
 
-	good := meals.MealPlanIntake{Objective: " cutting ", Days: 3, MealsPerDay: 4, PlanType: meal.LowCarb,
-		Exclusions: []string{" peanuts", "", "Peanuts", "dairy"}, Notes: "  cheap  "}
+	good := meals.MealPlanIntake{
+		Objective: " cutting ", Days: 3, MealsPerDay: 4, PlanType: meal.LowCarb,
+		Exclusions: []string{" peanuts", "", "Peanuts", "dairy"}, Notes: "  cheap  ",
+	}
 	clean, err := meals.ValidateMealPlanIntake(good)
 	if err != nil {
 		t.Fatalf("valid intake refused: %v", err)
@@ -27,8 +29,10 @@ func TestValidateMealPlanIntake(t *testing.T) {
 		t.Fatalf("clean = %+v", clean)
 	}
 
-	_, err = meals.ValidateMealPlanIntake(meals.MealPlanIntake{Objective: "shredding", Days: 8, MealsPerDay: 0, PlanType: meal.Custom,
-		Exclusions: []string{strings.Repeat("x", 61)}, Notes: strings.Repeat("y", 501)})
+	_, err = meals.ValidateMealPlanIntake(meals.MealPlanIntake{
+		Objective: "shredding", Days: 8, MealsPerDay: 0, PlanType: meal.Custom,
+		Exclusions: []string{strings.Repeat("x", 61)}, Notes: strings.Repeat("y", 501),
+	})
 	var fields apperr.FieldErrors
 	if !apperr.As(err, &fields) {
 		t.Fatalf("err = %v", err)
