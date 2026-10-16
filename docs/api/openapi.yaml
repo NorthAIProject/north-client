@@ -4192,6 +4192,67 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '422':
           $ref: '#/components/responses/ValidationError'
+  /outreach/today:
+    get:
+      operationId: getOutreachToday
+      summary: The coach's unprompted message today, if it sent one
+      description: |
+        At most one a day, sent when the coach noticed something: a
+        low-recovery morning (it lightened the session, or offers to) or a
+        session missed yesterday (it offers to move it). Show it with its
+        actions; answer with POST /outreach/{id}/actions.
+      tags: [training]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OutreachToday'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /outreach/{id}/actions:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: The outreach id, or "today" for today's (what a notification button sends).
+        schema:
+          type: string
+    post:
+      operationId: answerOutreach
+      summary: Answer the coach's message
+      description: |
+        Applies one of the message's actions (undo the lighter day, take it
+        lighter, keep the plan, move the missed session to today or tomorrow,
+        or let it go) and records it. The first answer counts: a second one is
+        409. Only today's message can be answered.
+      tags: [training]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action:
+                  type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Outreach'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
   /crews:
     get:
       operationId: listCrews
@@ -6817,6 +6878,47 @@ components:
           type: string
           enum: [lighter, keep]
           description: Today's answer; absent until given.
+        source:
+          type: string
+          description: Who chose, person or coach, as an open string. coach is a low morning the coach lightened itself; undo it with PUT choice=keep.
+    OutreachToday:
+      type: object
+      properties:
+        outreach:
+          $ref: '#/components/schemas/Outreach'
+    Outreach:
+      type: object
+      required: [id, day, trigger, body, actions]
+      properties:
+        id:
+          type: string
+          format: uuid
+        day:
+          type: string
+          format: date
+        trigger:
+          type: string
+          description: low_recovery or missed_session, as an open string.
+        body:
+          type: string
+          description: The coach's message, in the person's language.
+        session:
+          type: string
+          description: The plan session concerned.
+        actions:
+          type: array
+          description: The answers still open (undo, lighter, keep, today, tomorrow, let_go), as open strings. Empty once answered.
+          items:
+            type: string
+        action:
+          type: string
+          description: The answer given.
+        outcome:
+          type: string
+          description: What the answer did, in the person's language.
+        actedAt:
+          type: string
+          format: date-time
     CrewList:
       type: object
       required: [crews]
@@ -9982,6 +10084,12 @@ components:
           minimum: 0
           maximum: 23
           description: Local hour of the evening reflection. Optional on PUT; left out, the saved hour is kept.
+        coachCheckIns:
+          type: boolean
+          description: The coach may message first, at most once a day, when it notices something (a low-recovery morning, a missed session). Optional on PUT; left out, the saved value is kept.
+        coachAdjustsTraining:
+          type: boolean
+          description: On a low-recovery morning the coach lightens the session itself, with an undo; off, it only offers. Optional on PUT; left out, the saved value is kept.
     AISettings:
       type: object
       required: [enabled, providers]

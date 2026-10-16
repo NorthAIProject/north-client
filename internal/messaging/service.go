@@ -100,6 +100,7 @@ type Service struct {
 	art       Art
 	stats     Stats
 	siteURL   string
+	outreach  OutreachAnswers
 
 	redeemLimit *ratelimit.Limiters
 
@@ -190,6 +191,20 @@ func NewService(opts Options) *Service {
 	return s
 }
 
+// OutreachAnswers takes a tapped button under the coach's unprompted message.
+// handled is false for anything that is not one, which goes to the coach as
+// usual. outreach.Service satisfies it; defined here so this package never
+// imports the one that sends through it.
+type OutreachAnswers interface {
+	AnswerFromChat(ctx context.Context, user users.User, text string) (reply string, handled bool)
+}
+
+// WithOutreach routes taps on the coach's outreach buttons to their action.
+func (s *Service) WithOutreach(o OutreachAnswers) *Service {
+	s.outreach = o
+	return s
+}
+
 // Handle turns one inbound platform message into one reply.
 //
 // This is the whole adapter. It resolves who is speaking, meters the turn,
@@ -245,6 +260,14 @@ func (s *Service) Handle(ctx context.Context, in InboundMessage) (OutboundMessag
 	// confirmation would look like an answer to it.
 	if out, handled, err := s.runCommand(ctx, user, in); handled {
 		return out, err
+	}
+
+	// A tap on an outreach button is an answer, not something to say to the
+	// coach: applied directly, and never metered as a turn.
+	if s.outreach != nil {
+		if reply, handled := s.outreach.AnswerFromChat(ctx, user, in.Text); handled {
+			return OutboundMessage{Text: reply}, nil
+		}
 	}
 
 	return s.coachTurn(ctx, user, in)

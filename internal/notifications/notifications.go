@@ -60,6 +60,14 @@ type Prefs struct {
 	EveningReflection bool
 	EveningHour       int
 
+	// CoachCheckIns lets the coach message first, at most once a day, when it
+	// notices something: a low-recovery morning, a missed session. On by
+	// default: a coach who never speaks first is the gap this closes.
+	CoachCheckIns bool
+	// CoachAdjustsTraining lets the coach lighten a session itself on a
+	// low-recovery morning, with an undo. Off, it only offers.
+	CoachAdjustsTraining bool
+
 	UpdatedAt time.Time
 }
 
@@ -74,6 +82,8 @@ func (p Prefs) AllowsNudge(kind string) bool {
 		return p.NudgeMissedCheckIn
 	case "goal_deadline":
 		return p.NudgeGoalDeadline
+	case "coach_lighter", "coach_missed":
+		return p.CoachCheckIns
 	case "workout_today":
 		return p.TrainingReminders
 	case "evening_reflection":
@@ -138,21 +148,23 @@ func parseHourMinute(s string) (int, bool) {
 
 func fromDB(row notificationsdb.UserNotificationPref) Prefs {
 	return Prefs{
-		UserID:             row.UserID,
-		NudgeMissedCheckIn: row.NudgeMissedCheckin,
-		NudgeGoalDeadline:  row.NudgeGoalDeadline,
-		CoachActivity:      row.CoachActivity,
-		TrainingReminders:  row.TrainingReminders,
-		WeeklyReportAuto:   row.WeeklyReportAuto,
-		DailyBriefingAuto:  row.DailyBriefingAuto,
-		StatsDigestCadence: row.StatsDigestCadence,
-		QuietHoursEnabled:  row.QuietHoursEnabled,
-		QuietStart:         row.QuietStart,
-		QuietEnd:           row.QuietEnd,
-		BriefingHour:       int(row.BriefingHour),
-		EveningReflection:  row.EveningReflection,
-		EveningHour:        int(row.EveningHour),
-		UpdatedAt:          row.UpdatedAt,
+		UserID:               row.UserID,
+		NudgeMissedCheckIn:   row.NudgeMissedCheckin,
+		NudgeGoalDeadline:    row.NudgeGoalDeadline,
+		CoachActivity:        row.CoachActivity,
+		TrainingReminders:    row.TrainingReminders,
+		WeeklyReportAuto:     row.WeeklyReportAuto,
+		DailyBriefingAuto:    row.DailyBriefingAuto,
+		StatsDigestCadence:   row.StatsDigestCadence,
+		QuietHoursEnabled:    row.QuietHoursEnabled,
+		QuietStart:           row.QuietStart,
+		QuietEnd:             row.QuietEnd,
+		BriefingHour:         int(row.BriefingHour),
+		EveningReflection:    row.EveningReflection,
+		EveningHour:          int(row.EveningHour),
+		CoachCheckIns:        row.CoachCheckIns,
+		CoachAdjustsTraining: row.CoachAdjustsTraining,
+		UpdatedAt:            row.UpdatedAt,
 	}
 }
 

@@ -63,6 +63,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/news"
 	"github.com/NorthAIProject/north-client/internal/notifications"
 	"github.com/NorthAIProject/north-client/internal/nudges"
+	"github.com/NorthAIProject/north-client/internal/outreach"
 	"github.com/NorthAIProject/north-client/internal/preferences"
 	"github.com/NorthAIProject/north-client/internal/progresschecks"
 	"github.com/NorthAIProject/north-client/internal/push"
@@ -444,7 +445,8 @@ func run() error {
 	recoverySrc := insights.NewRecoverySource(healthReadings, stats.NewService(stats.Sources{
 		Sleep: sleep.NewService(sleep.NewRepository(pool)), Health: healthReadings,
 	}))
-	workoutSvc.WithLighter(lighterday.NewService(pool, recoverySrc, workoutSvc))
+	lighterSvc := lighterday.NewService(pool, recoverySrc, workoutSvc)
+	workoutSvc.WithLighter(lighterSvc)
 
 	nudgeSvc := nudges.NewService(nudges.NewRepository(pool), userSvc, checkinSvc, goalSvc).
 		WithPrefs(notificationSvc).
@@ -546,6 +548,28 @@ func run() error {
 	worker.Register(jobs.KindSweepWatches,
 		watches.NewSweeper(watchSvc, standingCoach, nudgeSvc, log).HandleSweep)
 
+	// The coach speaking first: hourly, at most once a day per person, on a
+	// low-recovery morning (it lightens the session, with an undo) or the
+	// morning after a missed session (it offers to move it). Same coach and
+	// context as a standing task. See internal/outreach.
+	outreachOpts := outreach.Options{
+		Repository: outreach.NewRepository(pool),
+		Prefs:      notificationSvc,
+		Lighter:    lighterSvc,
+		Training:   workoutSvc,
+		Writer:     standingCoach,
+		Chats:      memoryExtract.Conversations,
+		Notifier:   nudgeSvc,
+		Users:      userSvc,
+		Log:        log,
+	}
+	if messagingSvc != nil {
+		// Only when Telegram is configured: a nil *messaging.Service in the
+		// interface would not compare equal to nil.
+		outreachOpts.Chat = messagingSvc
+	}
+	worker.Register(jobs.KindSweepOutreach, outreach.NewSweeper(outreach.NewService(outreachOpts)).HandleSweep)
+
 	// Compaction of long threads. The coach enqueues this from the reply pump
 	// once a conversation outgrows the context window; the sweep catches the
 	// ones it never saw — threads continued from Telegram or MCP, and enqueues
@@ -563,6 +587,7 @@ func run() error {
 	worker.RegisterPeriodic(15*time.Minute, jobs.KindSweepEmbeddings, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepMemories, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepNudges, struct{}{})
+	worker.RegisterPeriodic(time.Hour, jobs.KindSweepOutreach, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepReports, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepBriefings, struct{}{})
 	worker.RegisterPeriodic(15*time.Minute, jobs.KindSweepWatches, struct{}{})

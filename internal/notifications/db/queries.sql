@@ -25,9 +25,10 @@ INSERT INTO user_notification_prefs (
     user_id, nudge_missed_checkin, nudge_goal_deadline,
     weekly_report_auto, daily_briefing_auto, quiet_hours_enabled, quiet_start, quiet_end,
     coach_activity, training_reminders, stats_digest_cadence,
-    briefing_hour, evening_reflection, evening_hour
+    briefing_hour, evening_reflection, evening_hour,
+    coach_check_ins, coach_adjusts_training
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
 ON CONFLICT (user_id) DO UPDATE
 SET nudge_missed_checkin = EXCLUDED.nudge_missed_checkin,
     nudge_goal_deadline  = EXCLUDED.nudge_goal_deadline,
@@ -42,6 +43,8 @@ SET nudge_missed_checkin = EXCLUDED.nudge_missed_checkin,
     briefing_hour        = EXCLUDED.briefing_hour,
     evening_reflection   = EXCLUDED.evening_reflection,
     evening_hour         = EXCLUDED.evening_hour,
+    coach_check_ins        = EXCLUDED.coach_check_ins,
+    coach_adjusts_training = EXCLUDED.coach_adjusts_training,
     updated_at           = now()
 RETURNING *;
 

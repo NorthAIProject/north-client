@@ -13,7 +13,7 @@ import (
 )
 
 const getChoice = `-- name: GetChoice :one
-SELECT choice FROM lighter_days WHERE user_id = $1 AND day = $2
+SELECT choice, source FROM lighter_days WHERE user_id = $1 AND day = $2
 `
 
 type GetChoiceParams struct {
@@ -21,25 +21,36 @@ type GetChoiceParams struct {
 	Day    pgtype.Date
 }
 
-func (q *Queries) GetChoice(ctx context.Context, arg GetChoiceParams) (string, error) {
+type GetChoiceRow struct {
+	Choice string
+	Source string
+}
+
+func (q *Queries) GetChoice(ctx context.Context, arg GetChoiceParams) (GetChoiceRow, error) {
 	row := q.db.QueryRow(ctx, getChoice, arg.UserID, arg.Day)
-	var choice string
-	err := row.Scan(&choice)
-	return choice, err
+	var i GetChoiceRow
+	err := row.Scan(&i.Choice, &i.Source)
+	return i, err
 }
 
 const setChoice = `-- name: SetChoice :exec
-INSERT INTO lighter_days (user_id, day, choice) VALUES ($1, $2, $3)
-ON CONFLICT (user_id, day) DO UPDATE SET choice = EXCLUDED.choice, decided_at = now()
+INSERT INTO lighter_days (user_id, day, choice, source) VALUES ($1, $2, $3, $4)
+ON CONFLICT (user_id, day) DO UPDATE SET choice = EXCLUDED.choice, source = EXCLUDED.source, decided_at = now()
 `
 
 type SetChoiceParams struct {
 	UserID uuid.UUID
 	Day    pgtype.Date
 	Choice string
+	Source string
 }
 
 func (q *Queries) SetChoice(ctx context.Context, arg SetChoiceParams) error {
-	_, err := q.db.Exec(ctx, setChoice, arg.UserID, arg.Day, arg.Choice)
+	_, err := q.db.Exec(ctx, setChoice,
+		arg.UserID,
+		arg.Day,
+		arg.Choice,
+		arg.Source,
+	)
 	return err
 }

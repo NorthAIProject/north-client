@@ -364,6 +364,16 @@ sql:
 
   - engine: postgresql
     schema: migrations
+    queries: internal/outreach/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: outreachdb
+        out: internal/outreach/db
+        overrides: *overrides
+
+  - engine: postgresql
+    schema: migrations
     queries: internal/lighterday/db/queries.sql
     gen:
       go:

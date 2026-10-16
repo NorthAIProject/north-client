@@ -65,6 +65,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/notifications"
 	"github.com/NorthAIProject/north-client/internal/nudges"
 	"github.com/NorthAIProject/north-client/internal/onboarding"
+	"github.com/NorthAIProject/north-client/internal/outreach"
 	"github.com/NorthAIProject/north-client/internal/planimport"
 	"github.com/NorthAIProject/north-client/internal/preferences"
 	"github.com/NorthAIProject/north-client/internal/progresschecks"
@@ -381,7 +382,13 @@ func routes(
 	}))
 	lighterSvc := lighterday.NewService(pool, recoverySrc, workoutSvc)
 	workoutSvc.WithLighter(lighterSvc)
-	lighterHandler := lighterday.NewHandler(lighterSvc)
+	// The coach speaking first (internal/outreach) is built once messaging
+	// exists, below; the lighter-day card asks it whether today's message
+	// already covers recovery, so it is read through this variable.
+	var outreachSvc *outreach.Service
+	lighterHandler := lighterday.NewHandler(lighterSvc).WithCoveredBy(func(ctx context.Context, u users.User) bool {
+		return outreachSvc != nil && outreachSvc.CoversRecovery(ctx, u)
+	})
 
 	mealsOpts := meals.HandlerOptions{
 		Ingredients: mealIngredientSvc,
@@ -901,6 +908,22 @@ func routes(
 
 	messagingSvc := messaging.NewService(messagingOpts)
 	nudgeSvc.WithFanout(messagingSvc)
+
+	// Answers to the coach's unprompted message: the Today card, the API a
+	// notification button calls, and taps on its Telegram buttons. The
+	// worker sends the messages; this process only applies answers, so no
+	// writer is needed here.
+	outreachSvc = outreach.NewService(outreach.Options{
+		Repository: outreach.NewRepository(pool),
+		Prefs:      notificationSvc,
+		Lighter:    lighterSvc,
+		Training:   workoutSvc,
+		Chats:      conversationSvc,
+		Notifier:   nudgeSvc,
+		Chat:       messagingSvc,
+		Users:      userSvc,
+	})
+	messagingSvc.WithOutreach(outreachSvc)
 	// Resolving "start today's session" asks the plan whether today's day is
 	// really finished; without it any logged walk would close it.
 	nudgeSvc.WithTraining(workoutSvc)
@@ -1085,6 +1108,7 @@ func routes(
 			recaps:       recaps.NewAPI(recapSvc),
 			inbox:        inbox.NewAPI(inboxSvc),
 			lighter:      lighterday.NewAPI(lighterSvc),
+			outreach:     outreach.NewAPI(outreachSvc),
 		})
 	})
 
@@ -1257,6 +1281,7 @@ func routes(
 				recapHandler.Routes(r)
 				inboxHandler.Routes(r)
 				lighterHandler.Routes(r)
+				outreach.NewHandler(outreachSvc).Routes(r)
 				careHandler.Routes(r)
 				// The medications card's writes, rendered back through the care page.
 				medications.NewHandler(medicationSvc, careHandler).Routes(r)
