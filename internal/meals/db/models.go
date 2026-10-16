@@ -110,6 +110,18 @@ type MealPlanDay struct {
 	CreatedAt  time.Time
 }
 
+type MealPlanIntake struct {
+	ID          uuid.UUID
+	UserID      uuid.UUID
+	Objective   string
+	Days        int16
+	MealsPerDay int16
+	PlanType    string
+	Exclusions  []string
+	Notes       string
+	CreatedAt   time.Time
+}
+
 type MealReminder struct {
 	ID                 uuid.UUID
 	UserID             uuid.UUID

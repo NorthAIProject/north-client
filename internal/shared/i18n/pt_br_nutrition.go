@@ -234,4 +234,9 @@ var portugueseBrazilianNutrition = map[string]string{
 	"nutrition.overage.msg.day":       "%[1]s: você passaria %[2]s",
 	"nutrition.overage.msg.part":      "%.0[1]f g de %[2]s",
 	"nutrition.overage.msg.and":       " e ",
+	"nutrition.err.objective":         "Escolha definição, manutenção ou ganho de massa.",
+	"nutrition.err.mealsperday":       "Escolha entre 1 e 8 refeições por dia.",
+	"nutrition.err.exclusions.many":   "Informe no máximo 30 alimentos a evitar.",
+	"nutrition.err.exclusions.long":   "Cada alimento a evitar deve ter menos de 60 caracteres.",
+	"nutrition.err.intake.notes":      "Use menos de 500 caracteres.",
 }

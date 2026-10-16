@@ -238,6 +238,9 @@ func Build(svc Services) *Registry {
 	if svc.PlanImport != nil && svc.Media != nil && svc.Users != nil {
 		r.Register(importPlanFromAttachment(svc.PlanImport, svc.Media, svc.Users, svc.Documents))
 	}
+	if svc.PlanImport != nil && svc.Users != nil {
+		r.Register(generateMealPlan(svc.PlanImport, svc.Users))
+	}
 	if svc.Workouts != nil && svc.Users != nil {
 		r.Register(createWorkoutPlan(svc.Workouts, svc.Users))
 	}

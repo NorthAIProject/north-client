@@ -38,6 +38,7 @@ const (
 	PlanImport      Action = "plan_import"
 
 	ProgressEstimate Action = "progress_estimate"
+	MealPlanGenerate Action = "meal_plan_generate"
 )
 
 // Limit is one account's allowance for one action.
