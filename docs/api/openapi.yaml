@@ -10380,6 +10380,13 @@ components:
             type: string
         limitations:
           type: string
+        weekdays:
+          type: array
+          description: >-
+            The days they can train, Monday to Sunday spelled out in English,
+            as many as daysPerWeek. Absent or empty lets the plan choose.
+          items:
+            type: string
     StartTimeRequest:
       type: object
       required: [startTime]

@@ -613,6 +613,7 @@ func (h *Handler) showIntake(w http.ResponseWriter, r *http.Request) {
 			SessionMinutes: previous.Intake.SessionMinutes,
 			Equipment:      previous.Intake.Equipment,
 			Limitations:    previous.Intake.Limitations,
+			Weekdays:       previous.Intake.Weekdays,
 		}
 	}
 
@@ -634,6 +635,12 @@ func (h *Handler) submitIntake(w http.ResponseWriter, r *http.Request) {
 		SessionMinutes: atoiOr(r.PostFormValue("session_minutes"), 0),
 		Equipment:      r.PostForm["equipment"],
 		Limitations:    strings.TrimSpace(r.PostFormValue("limitations")),
+		Weekdays:       r.PostForm["weekdays"],
+	}
+	// Ticked days are the count: asking for both and refusing a mismatch
+	// would only make someone count their own ticks.
+	if len(form.Weekdays) > 0 {
+		form.DaysPerWeek = len(form.Weekdays)
 	}
 
 	plan, err := h.svc.CreatePlan(r.Context(), user, Intake{
@@ -643,6 +650,7 @@ func (h *Handler) submitIntake(w http.ResponseWriter, r *http.Request) {
 		SessionMinutes: form.SessionMinutes,
 		Equipment:      form.Equipment,
 		Limitations:    form.Limitations,
+		Weekdays:       form.Weekdays,
 	})
 	if err != nil {
 		var fieldErrs apperr.FieldErrors
