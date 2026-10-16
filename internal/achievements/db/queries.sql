@@ -67,3 +67,17 @@ DELETE FROM kudos WHERE achievement_id = $1 AND user_id = $2;
 -- name: OwnAchievements :many
 SELECT id, category, kind, title, detail, occurred_at FROM achievements
 WHERE user_id = $1 ORDER BY occurred_at DESC;
+
+-- name: OwnAchievementsBetween :many
+SELECT id, category, kind, title, detail, occurred_at FROM achievements
+WHERE user_id = sqlc.arg('user_id') AND occurred_at >= sqlc.arg('since') AND occurred_at < sqlc.arg('until')
+ORDER BY occurred_at DESC;
+
+-- name: Post :one
+-- A moment the person chose to show. Posting the same one again refreshes
+-- its words rather than adding a row, and keeps occurred_at, so a re-post
+-- does not jump to the top of every friend's feed.
+INSERT INTO achievements (user_id, category, kind, title, detail, occurred_at, source_key)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+ON CONFLICT (user_id, kind, source_key) DO UPDATE SET title = EXCLUDED.title, detail = EXCLUDED.detail
+RETURNING id, occurred_at;

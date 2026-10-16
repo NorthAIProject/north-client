@@ -179,6 +179,94 @@ func (q *Queries) OwnAchievements(ctx context.Context, userID uuid.UUID) ([]OwnA
 	return items, nil
 }
 
+const ownAchievementsBetween = `-- name: OwnAchievementsBetween :many
+SELECT id, category, kind, title, detail, occurred_at FROM achievements
+WHERE user_id = $1 AND occurred_at >= $2 AND occurred_at < $3
+ORDER BY occurred_at DESC
+`
+
+type OwnAchievementsBetweenParams struct {
+	UserID uuid.UUID
+	Since  time.Time
+	Until  time.Time
+}
+
+type OwnAchievementsBetweenRow struct {
+	ID         uuid.UUID
+	Category   string
+	Kind       string
+	Title      string
+	Detail     string
+	OccurredAt time.Time
+}
+
+func (q *Queries) OwnAchievementsBetween(ctx context.Context, arg OwnAchievementsBetweenParams) ([]OwnAchievementsBetweenRow, error) {
+	rows, err := q.db.Query(ctx, ownAchievementsBetween, arg.UserID, arg.Since, arg.Until)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []OwnAchievementsBetweenRow{}
+	for rows.Next() {
+		var i OwnAchievementsBetweenRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Category,
+			&i.Kind,
+			&i.Title,
+			&i.Detail,
+			&i.OccurredAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const post = `-- name: Post :one
+INSERT INTO achievements (user_id, category, kind, title, detail, occurred_at, source_key)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+ON CONFLICT (user_id, kind, source_key) DO UPDATE SET title = EXCLUDED.title, detail = EXCLUDED.detail
+RETURNING id, occurred_at
+`
+
+type PostParams struct {
+	UserID     uuid.UUID
+	Category   string
+	Kind       string
+	Title      string
+	Detail     string
+	OccurredAt time.Time
+	SourceKey  string
+}
+
+type PostRow struct {
+	ID         uuid.UUID
+	OccurredAt time.Time
+}
+
+// A moment the person chose to show. Posting the same one again refreshes
+// its words rather than adding a row, and keeps occurred_at, so a re-post
+// does not jump to the top of every friend's feed.
+func (q *Queries) Post(ctx context.Context, arg PostParams) (PostRow, error) {
+	row := q.db.QueryRow(ctx, post,
+		arg.UserID,
+		arg.Category,
+		arg.Kind,
+		arg.Title,
+		arg.Detail,
+		arg.OccurredAt,
+		arg.SourceKey,
+	)
+	var i PostRow
+	err := row.Scan(&i.ID, &i.OccurredAt)
+	return i, err
+}
+
 const record = `-- name: Record :one
 INSERT INTO achievements (user_id, category, kind, title, detail, occurred_at, source_key)
 VALUES ($1, $2, $3, $4, $5, $6, $7)
