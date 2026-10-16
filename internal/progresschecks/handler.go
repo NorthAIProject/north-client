@@ -40,6 +40,7 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Post("/progress/schedule", h.setSchedule)
 	r.Post("/progress/{id}/delete", h.delete)
 	r.With(h.quotas.Guard(quota.ProgressEstimate)).Post("/progress/estimate", h.estimate)
+	r.With(h.quotas.Guard(quota.ProgressEstimate)).Post("/progress/compare", h.compare)
 }
 
 func (h *Handler) show(w http.ResponseWriter, r *http.Request) {
@@ -217,13 +218,41 @@ func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/app/progress", http.StatusSeeOther)
 }
 
+// compare describes what changed between the first and latest checks with
+// photos, saves it, and shows the page with it. A refusal renders the page
+// with the reason beside the button.
+func (h *Handler) compare(w http.ResponseWriter, r *http.Request) {
+	_, err := h.svc.Compare(r.Context(), auth.MustUser(r.Context()))
+	if err == nil {
+		http.Redirect(w, r, "/app/progress#progress-compare", http.StatusSeeOther)
+		return
+	}
+	var fe apperr.FieldErrors
+	var msg string
+	switch {
+	case apperr.As(err, &fe):
+		msg = i18n.T(r.Context(), "progress.compare.need")
+	case errors.Is(err, ErrAssistUnavailable):
+		msg = i18n.T(r.Context(), "progress.compare.unavailable")
+	default:
+		middleware.FromContext(r.Context()).Warn("progress compare failed", slog.Any("error", err))
+		msg = i18n.T(r.Context(), "progress.compare.failed")
+	}
+	h.renderPage(w, r, http.StatusUnprocessableEntity, progresspages.Form{}, msg)
+}
+
 func (h *Handler) render(w http.ResponseWriter, r *http.Request, status int, form progresspages.Form) {
+	h.renderPage(w, r, status, form, "")
+}
+
+func (h *Handler) renderPage(w http.ResponseWriter, r *http.Request, status int, form progresspages.Form, compareErr string) {
 	user := auth.MustUser(r.Context())
 	data, err := h.page(r, user, form)
 	if err != nil {
 		h.fail(w, r, err)
 		return
 	}
+	data.CompareError = compareErr
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
 	if err := progresspages.Page(user, data).Render(r.Context(), w); err != nil {
@@ -262,6 +291,20 @@ func (h *Handler) page(r *http.Request, user users.User, form progresspages.Form
 	data.Last = lastPhotos(data.Checks)
 	if data.Assist, err = h.assist(ctx, user); err != nil {
 		return progresspages.Data{}, err
+	}
+	if data.CanCompare, err = h.svc.CanCompare(ctx, user); err != nil {
+		return progresspages.Data{}, err
+	}
+	cmp, stale, ok, err := h.svc.SavedComparison(ctx, user)
+	if err != nil {
+		return progresspages.Data{}, err
+	}
+	if ok {
+		data.Comparison = &progresspages.Comparison{
+			From: i18n.Date(ctx, cmp.FromOn, "2 Jan 2006"), To: i18n.Date(ctx, cmp.ToOn, "2 Jan 2006"),
+			Summary: cmp.Summary, Confidence: cmp.Confidence, Limits: cmp.Limits,
+			Provider: cmp.Provider, Stale: stale,
+		}
 	}
 	return data, nil
 }

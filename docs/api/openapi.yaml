@@ -5321,6 +5321,35 @@ paths:
           $ref: '#/components/responses/Unavailable'
         '500':
           $ref: '#/components/responses/InternalError'
+  /progress/compare:
+    post:
+      operationId: compareProgressChecks
+      summary: Describe what visibly changed between the first and latest checks with photos
+      description: |
+        Reads the front and side photos of the person's oldest and newest checks
+        that have one, and stores a short neutral observation of visible change,
+        replacing the previous comparison. The photos go only to the provider
+        GET /progress/assist names, never to any other. The observation is also
+        given to the coach, as text and labelled as a model's observation.
+        Deleting either check deletes the comparison. Shares the photo-estimate
+        quota.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProgressComparison'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /progress/assist:
     get:
       operationId: getProgressAssist
@@ -7830,7 +7859,7 @@ components:
           description: A check is due today. Skipping a window leaves it due; nothing else counts against it.
     ProgressChecks:
       type: object
-      required: [checks, schedule]
+      required: [checks, schedule, canCompare]
       properties:
         checks:
           type: array
@@ -7838,6 +7867,44 @@ components:
             $ref: '#/components/schemas/ProgressCheck'
         schedule:
           $ref: '#/components/schemas/ProgressSchedule'
+        comparison:
+          $ref: '#/components/schemas/ProgressComparison'
+        canCompare:
+          type: boolean
+          description: Two checks with a front or side photo exist to compare.
+    ProgressComparison:
+      type: object
+      required: [fromCheckId, toCheckId, fromOn, toOn, summary, confidence, providerLabel, stale, createdAt]
+      properties:
+        fromCheckId:
+          type: string
+          format: uuid
+        toCheckId:
+          type: string
+          format: uuid
+        fromOn:
+          type: string
+          format: date
+        toOn:
+          type: string
+          format: date
+        summary:
+          type: string
+          description: A model's neutral observation of visible change, in the person's language. Not a measurement.
+        confidence:
+          type: string
+          description: low, medium or high, as an open string.
+        limits:
+          type: string
+          description: What made the photos hard to compare. Absent when nothing did.
+        providerLabel:
+          type: string
+        stale:
+          type: boolean
+          description: A newer check with photos has come since; comparing again covers it.
+        createdAt:
+          type: string
+          format: date-time
     ProgressAssist:
       type: object
       required: [available, ownProvider]

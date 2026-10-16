@@ -14,3 +14,5 @@ type (
 	Schedule     = progresscheck.Schedule
 	Measurements = progresscheck.Measurements
 )
+
+type Comparison = progresscheck.Comparison

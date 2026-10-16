@@ -45,6 +45,10 @@ const (
 	// photos.
 	SurfaceProgressEstimate = "progress_estimate"
 
+	// SurfaceProgressCompare is describing what changed between a person's
+	// first and latest progress-check photos.
+	SurfaceProgressCompare = "progress_compare"
+
 	// SurfaceTelegramVoice is dictation on a phone, kept apart from
 	// SurfaceVoiceCapture because they are different products with different
 	// costs: the web recorder uploads a minute of WAV the browser prepared,
