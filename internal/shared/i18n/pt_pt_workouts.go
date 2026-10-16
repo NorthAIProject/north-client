@@ -19,6 +19,8 @@ var portugueseEuropeanWorkouts = map[string]string{
 	"workouts.intake.exp.advanced":     "Vários anos, sei as minhas marcas",
 	"workouts.intake.days":             "Dias por semana",
 	"workouts.intake.minutes":          "Minutos por sessão",
+	"workouts.intake.weekdays":         "Que dias?",
+	"workouts.intake.weekdays.desc":    "Opcional. Marca os dias em que podes treinar e eles definem os dias por semana; se os deixares vazios, o Khepri distribui os dias pela tua semana.",
 	"workouts.intake.equipment":        "Que material tens?",
 	"workouts.intake.equipment.desc":   "Deixa tudo por marcar para treinar só com o peso do corpo. Nada fora desta lista vai aparecer no teu plano.",
 	"workouts.intake.equip.dumbbell":   "Halteres",

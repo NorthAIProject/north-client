@@ -156,6 +156,9 @@ type Intake struct {
 	SessionMinutes int
 	Equipment      []string
 	Limitations    string
+	// Weekdays are the days they can train, Monday first, as many as
+	// DaysPerWeek. Empty when they gave only a count.
+	Weekdays []string
 }
 
 // Summary renders a plan compactly for the coach's context, so the chat coach

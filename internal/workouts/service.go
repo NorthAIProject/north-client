@@ -19,6 +19,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/NorthAIProject/north-client/internal/spend"
 	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/internal/workouts/plan"
 )
 
 // generationAttempts is how many times a plan may be generated.
@@ -159,7 +160,25 @@ func ValidateIntake(in Intake) error {
 		errs = errs.Add("limitations", "Keep this under 1000 characters.")
 	}
 
+	if len(in.Weekdays) > 0 {
+		if _, err := plan.NormalizeWeekdays(in.Weekdays); err != nil {
+			errs = errs.Add("weekdays", "Choose each weekday at most once.")
+		} else if len(in.Weekdays) != in.DaysPerWeek {
+			errs = errs.Add("weekdays", fmt.Sprintf("Choose exactly %d weekdays, one for each training day, or none.", in.DaysPerWeek))
+		}
+	}
+
 	return errs.OrNil()
+}
+
+// normalizeIntake orders the chosen weekdays Monday first and spells them as
+// the plan does, so they compare equal to the days a plan names. Called once
+// the intake is valid.
+func normalizeIntake(in Intake) Intake {
+	if days, err := plan.NormalizeWeekdays(in.Weekdays); err == nil {
+		in.Weekdays = days
+	}
+	return in
 }
 
 // Generate produces a plan that satisfies the intake. It does not persist:
@@ -173,6 +192,7 @@ func (s *Service) Generate(ctx context.Context, user users.User, in Intake) (Pla
 	if err := ValidateIntake(in); err != nil {
 		return Plan{}, "", err
 	}
+	in = normalizeIntake(in)
 
 	log := middleware.FromContext(ctx)
 
@@ -280,6 +300,7 @@ func (s *Service) CreatePlan(ctx context.Context, user users.User, in Intake) (S
 	if err := ValidateIntake(in); err != nil {
 		return StoredPlan{}, err
 	}
+	in = normalizeIntake(in)
 
 	intake, err := s.repo.CreateIntake(ctx, user.ID, in)
 	if err != nil {
@@ -902,6 +923,9 @@ func intakeRequest(in Intake) string {
 
 	fmt.Fprintf(&b, "Goal: %s\n", in.Goal)
 	fmt.Fprintf(&b, "I can train exactly %d days a week.\n", in.DaysPerWeek)
+	if len(in.Weekdays) > 0 {
+		fmt.Fprintf(&b, "Those days are %s: use exactly these weekdays for the training days.\n", strings.Join(in.Weekdays, ", "))
+	}
 	fmt.Fprintf(&b, "Each session can be at most %d minutes, including warm-up.\n", in.SessionMinutes)
 
 	if len(in.Equipment) == 0 {

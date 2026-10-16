@@ -22,6 +22,7 @@ type WorkoutIntake struct {
 	Limitations    string
 	CreatedAt      time.Time
 	Imported       bool
+	Weekdays       []string
 }
 
 type WorkoutPlan struct {

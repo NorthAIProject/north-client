@@ -163,6 +163,7 @@ func createWorkoutPlan(svc *workouts.Service, userSvc *users.Service) Capability
 		SessionMinutes int      `json:"session_minutes"`
 		Equipment      []string `json:"equipment"`
 		Limitations    string   `json:"limitations"`
+		Weekdays       []string `json:"weekdays"`
 	}
 
 	return Capability{
@@ -179,6 +180,8 @@ func createWorkoutPlan(svc *workouts.Service, userSvc *users.Service) Capability
 				"session_minutes": ai.Integer("minutes per session, 10 to 240"),
 				"equipment":       ai.Array("equipment they have, such as barbell, dumbbell, kettlebell, bands, machines, pull-up bar, or none", ai.String("one piece of equipment")),
 				"limitations":     ai.String("injuries or movements to avoid; optional"),
+				"weekdays": ai.Array("the days they can train, as many as days_per_week, when they named them; empty otherwise",
+					ai.Enum("a weekday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")),
 			}, "goal", "experience", "days_per_week", "session_minutes", "equipment"),
 		},
 		Invoke: func(ctx context.Context, userID uuid.UUID, raw json.RawMessage) (string, error) {
@@ -193,6 +196,7 @@ func createWorkoutPlan(svc *workouts.Service, userSvc *users.Service) Capability
 			stored, err := svc.CreatePlan(ctx, user, workouts.Intake{
 				Goal: in.Goal, Experience: in.Experience, DaysPerWeek: in.DaysPerWeek,
 				SessionMinutes: in.SessionMinutes, Equipment: in.Equipment, Limitations: in.Limitations,
+				Weekdays: in.Weekdays,
 			})
 			if err != nil {
 				return "", err
