@@ -648,6 +648,17 @@ func (q *Queries) Members(ctx context.Context, crewID uuid.UUID) ([]MembersRow, 
 	return items, nil
 }
 
+const messageBody = `-- name: MessageBody :one
+SELECT body FROM crew_messages WHERE id = $1
+`
+
+func (q *Queries) MessageBody(ctx context.Context, id uuid.UUID) (string, error) {
+	row := q.db.QueryRow(ctx, messageBody, id)
+	var body string
+	err := row.Scan(&body)
+	return body, err
+}
+
 const messageByClientID = `-- name: MessageByClientID :one
 SELECT id FROM crew_messages WHERE author_id = $1 AND client_id = $2
 `
@@ -662,6 +673,17 @@ func (q *Queries) MessageByClientID(ctx context.Context, arg MessageByClientIDPa
 	var id uuid.UUID
 	err := row.Scan(&id)
 	return id, err
+}
+
+const messageCrewSize = `-- name: MessageCrewSize :one
+SELECT count(*) FROM crew_members WHERE crew_id = (SELECT crew_id FROM crew_messages WHERE id = $1)
+`
+
+func (q *Queries) MessageCrewSize(ctx context.Context, id uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, messageCrewSize, id)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
 const messageForViewer = `-- name: MessageForViewer :one
@@ -1110,6 +1132,30 @@ type SetChallengeParams struct {
 func (q *Queries) SetChallenge(ctx context.Context, arg SetChallengeParams) error {
 	_, err := q.db.Exec(ctx, setChallenge, arg.CrewID, arg.Kind, arg.Target)
 	return err
+}
+
+const setHidden = `-- name: SetHidden :one
+UPDATE crew_messages SET hidden_at = CASE WHEN $1::boolean THEN coalesce(hidden_at, now()) END
+WHERE id = $2
+RETURNING id, crew_id, channel_id
+`
+
+type SetHiddenParams struct {
+	Hide bool
+	ID   uuid.UUID
+}
+
+type SetHiddenRow struct {
+	ID        uuid.UUID
+	CrewID    uuid.UUID
+	ChannelID uuid.UUID
+}
+
+func (q *Queries) SetHidden(ctx context.Context, arg SetHiddenParams) (SetHiddenRow, error) {
+	row := q.db.QueryRow(ctx, setHidden, arg.Hide, arg.ID)
+	var i SetHiddenRow
+	err := row.Scan(&i.ID, &i.CrewID, &i.ChannelID)
+	return i, err
 }
 
 const setMemberRole = `-- name: SetMemberRole :execrows

@@ -61,6 +61,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/messaging/telegram"
 	"github.com/NorthAIProject/north-client/internal/milestones"
 	"github.com/NorthAIProject/north-client/internal/mind"
+	"github.com/NorthAIProject/north-client/internal/moderation"
 	"github.com/NorthAIProject/north-client/internal/news"
 	"github.com/NorthAIProject/north-client/internal/notifications"
 	"github.com/NorthAIProject/north-client/internal/nudges"
@@ -312,6 +313,16 @@ func routes(
 	crewSvc := crews.NewService(pool, crews.CheckInsFrom(checkinSvc), crews.WorkoutsFrom(activitySvc)).
 		WithBlocks(social.NewRepository(pool))
 	crewHandler := crews.NewHandler(crewSvc, cfg.BaseURL, cfg.Env.IsProduction())
+
+	// Moderation sits under everything people post to each other: the word
+	// filter, the terms, reports that hide, and the operators' queue. Crew
+	// chat registers its messages with it, so reports can hide them.
+	moderationSvc := moderation.NewService(pool).
+		WithOperators(cfg.OperatorUserIDs, apnsSvc, pushSvc).
+		WithLogger(slog.Default())
+	moderationHandler := moderation.NewHandler(moderationSvc)
+	crewChat := crews.NewChat(pool, moderationSvc, moderation.NewFilter(), queue)
+	moderationSvc.Register(crews.MessageSubject, crewChat.Hider())
 
 	// XP is derived from what the slices above record; the leaderboard reads
 	// it and the check-in streak.
@@ -1105,6 +1116,7 @@ func routes(
 			social:       social.NewAPI(socialSvc, cfg.BaseURL),
 			achievements: achievements.NewAPI(achievementSvc),
 			crews:        crews.NewAPI(crewSvc, cfg.BaseURL),
+			moderation:   moderation.NewAPI(moderationSvc),
 			xp:           xp.NewAPI(xpSvc),
 			weekly:       weekly.NewAPI(weeklySvc),
 			recaps:       recaps.NewAPI(recapSvc),
@@ -1278,6 +1290,7 @@ func routes(
 				decisionHandler.Routes(r)
 				socialHandler.Routes(r)
 				crewHandler.Routes(r)
+				moderationHandler.Routes(r)
 				xpHandler.Routes(r)
 				weeklyHandler.Routes(r)
 				recapHandler.Routes(r)

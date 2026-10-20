@@ -184,3 +184,33 @@ func TestSendKeepsADeviceWhenAppleIsUnreachable(t *testing.T) {
 		t.Fatalf("devices = %+v, want one kept and marked failed", left)
 	}
 }
+
+// Crew chat groups its banners per crew; everything else stays in nudges.
+func TestSendThreadSetsThreadID(t *testing.T) {
+	pool := testdb.New(t)
+	sender := &fakeSender{result: apns.Result{Status: 200}}
+	svc, _ := newService(pool, sender)
+	u := seedUser(t, pool, "a@north.test")
+	_, _ = svc.Register(t.Context(), u.ID, input(token("ab")))
+
+	if _, err := svc.SendThread(t.Context(), u.ID, "Iron rats · #general", "Ana: legs", "/app/crews/x", "CREW_MESSAGE", "crew-x"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Send(t.Context(), u.ID, "Check in", "", "/app/nudges/x", ""); err != nil {
+		t.Fatal(err)
+	}
+	thread := func(raw []byte) string {
+		var got struct {
+			APS struct {
+				ThreadID string `json:"thread-id"`
+			} `json:"aps"`
+		}
+		if err := json.Unmarshal(raw, &got); err != nil {
+			t.Fatal(err)
+		}
+		return got.APS.ThreadID
+	}
+	if a, b := thread(sender.payloads[0]), thread(sender.payloads[1]); a != "crew-x" || b != "nudges" {
+		t.Fatalf("thread ids = %q, %q; want crew-x, nudges", a, b)
+	}
+}

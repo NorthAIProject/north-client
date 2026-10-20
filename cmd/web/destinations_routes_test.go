@@ -23,6 +23,8 @@ import (
 // Adding a route here is a decision. Adding a page is not: that goes in the
 // registry, which is what makes it reachable.
 var knownNonDestinations = map[string]string{
+	// Operator-only tool; everybody else gets a 404, so it is in no menu.
+	"/app/ops/moderation": "report queue for OPERATOR_USER_IDS only",
 	// HTMX partials. Fragments of a page, not pages.
 	"/app/overview/panels":         "dashboard range swap",
 	"/app/day/trends":              "overview trend cards fragment",

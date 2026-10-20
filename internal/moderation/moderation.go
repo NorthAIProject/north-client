@@ -3,6 +3,7 @@ package moderation
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -37,9 +38,40 @@ type Subject struct {
 }
 
 // Hider is a slice's side of moderation: hiding one of its things once
-// enough people have reported it, and how many reports that takes there.
+// enough people have reported it, how many reports that takes there, and
+// what an operator reviewing it reads.
 type Hider interface {
-	// Hide must be idempotent: hiding something already hidden is a no-op.
+	// Hide and Unhide must be idempotent.
 	Hide(ctx context.Context, subjectID uuid.UUID) error
+	Unhide(ctx context.Context, subjectID uuid.UUID) error
 	Threshold(ctx context.Context, subjectID uuid.UUID) (int, error)
+	// Excerpt is the reported words, short, for the operator queue; "" when
+	// the subject is gone.
+	Excerpt(ctx context.Context, subjectID uuid.UUID) (string, error)
 }
+
+// ThreadSender delivers a push to every device a person has. The APNs and
+// web-push services are both one.
+type ThreadSender interface {
+	SendThread(ctx context.Context, userID uuid.UUID, title, body, href, category, threadID string) (int, error)
+}
+
+// ReportGroup is one reported subject in the operator queue: every open
+// report on it together.
+type ReportGroup struct {
+	Kind      string
+	SubjectID uuid.UUID
+	AuthorID  *uuid.UUID
+	Reasons   map[string]int
+	Count     int
+	Hidden    bool
+	Excerpt   string
+	FirstAt   time.Time
+}
+
+// Operator decisions on a reported subject.
+const (
+	DecideHide    = "hide"
+	DecideUnhide  = "unhide"
+	DecideDismiss = "dismiss"
+)
