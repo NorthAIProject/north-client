@@ -234,14 +234,18 @@ func (h *Handler) send(w http.ResponseWriter, r *http.Request) {
 
 // refusePost answers the composer with why a post failed, in the slot under
 // it. Not having accepted the rules carries the marker that opens them.
+//
+// Every refusal is a 422, including the two that are really "forbidden": the
+// layout's htmx config discards 4xx responses other than 422 and 429, so a
+// 403 would leave the composer silent. The API keeps the 403s.
 func (h *Handler) refusePost(w http.ResponseWriter, r *http.Request, err error) {
 	ctx := r.Context()
 	var fields apperr.FieldErrors
 	switch {
 	case errors.Is(err, moderation.ErrTermsRequired):
-		h.render(w, r, http.StatusForbidden, crewpages.ComposerRefusal(i18n.T(ctx, "crews.err.terms"), true))
+		h.render(w, r, http.StatusUnprocessableEntity, crewpages.ComposerRefusal(i18n.T(ctx, "crews.err.terms"), true))
 	case errors.Is(err, moderation.ErrSuspended):
-		h.render(w, r, http.StatusForbidden, crewpages.ComposerRefusal(i18n.T(ctx, "crews.err.suspended"), false))
+		h.render(w, r, http.StatusUnprocessableEntity, crewpages.ComposerRefusal(i18n.T(ctx, "crews.err.suspended"), false))
 	case apperr.As(err, &fields):
 		h.render(w, r, http.StatusUnprocessableEntity, crewpages.ComposerRefusal(firstMessage(fields), false))
 	default:
@@ -286,7 +290,7 @@ func (h *Handler) edit(w http.ResponseWriter, r *http.Request) {
 		h.render(w, r, http.StatusUnprocessableEntity, crewpages.MessageEdit(v, *m, firstMessage(fields)))
 	case errors.Is(err, moderation.ErrTermsRequired), errors.Is(err, moderation.ErrSuspended):
 		m.Body = body
-		h.render(w, r, http.StatusForbidden, crewpages.MessageEdit(v, *m, i18n.T(r.Context(), "crews.err.suspended")))
+		h.render(w, r, http.StatusUnprocessableEntity, crewpages.MessageEdit(v, *m, i18n.T(r.Context(), "crews.err.suspended")))
 	default:
 		h.fail(w, r, err)
 	}

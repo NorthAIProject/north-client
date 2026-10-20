@@ -207,7 +207,9 @@ templ pane(v SpaceView) {
 					@icon.Icon("menu")(icon.Props{Class: "size-4"})
 				}
 			}
-			<div class="min-w-0 flex-1">
+			// The title keeps 8rem before it shrinks, so a narrow screen wraps
+			// the tabs onto a second row instead of cutting the name to a letter.
+			<div class="min-w-0 flex-[1_1_8rem]">
 				if v.Tab == TabChat {
 					<h1 class="flex items-center gap-1 truncate text-sm font-medium">
 						@icon.Icon("hash")(icon.Props{Class: "size-4 opacity-60"})
@@ -239,7 +241,7 @@ templ pane(v SpaceView) {
 					}
 				}
 			}
-			<span class="text-muted-foreground inline-flex items-center gap-1 text-xs">
+			<span class="text-muted-foreground hidden items-center gap-1 text-xs sm:inline-flex">
 				@icon.Icon("users")(icon.Props{Class: "size-3.5"})
 				{ pick(ctx, len(v.Space.Members), "crews.members.one", "crews.members.many") }
 			</span>
@@ -288,6 +290,7 @@ templ chatBody(v SpaceView) {
 		x-data="{ near: true }"
 		x-init="$el.scrollTop = $el.scrollHeight; new MutationObserver(() => { if (near) $el.scrollTop = $el.scrollHeight }).observe($refs.list, { childList: true, subtree: true })"
 		@scroll.passive="near = $el.scrollHeight - $el.scrollTop - $el.clientHeight < 120"
+		hx-on::after:swap="if (this.dataset.fromBottom) { this.scrollTop = this.scrollHeight - Number(this.dataset.fromBottom); delete this.dataset.fromBottom }"
 	>
 		if v.Page.HasMore {
 			@olderButton(v.chat(), firstSeq(v.Page))
