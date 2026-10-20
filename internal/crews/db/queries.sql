@@ -308,3 +308,13 @@ WHERE m.id = @id
 
 -- name: MemberSettings :one
 SELECT notify, muted_until FROM crew_members WHERE crew_id = $1 AND user_id = $2;
+
+-- name: MessagesAuthoredBy :many
+-- Everything @author_id posted that they have not deleted, oldest first, for
+-- their data export. Hidden messages are included: they are still theirs.
+SELECT c.name AS crew_name, ch.name AS channel_name, m.body, m.created_at, (m.edited_at IS NOT NULL)::bool AS edited
+FROM crew_messages m
+JOIN crews c ON c.id = m.crew_id
+JOIN crew_channels ch ON ch.id = m.channel_id
+WHERE m.author_id = @author_id AND m.deleted_at IS NULL
+ORDER BY m.created_at, m.seq;

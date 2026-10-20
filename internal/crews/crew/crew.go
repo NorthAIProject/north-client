@@ -224,3 +224,13 @@ type Space struct {
 	Channels   []SpaceChannel
 	Members    []SpaceMember
 }
+
+// ExportedMessage is a message somebody posted, as their data export
+// carries it.
+type ExportedMessage struct {
+	Crew      string    `json:"crew"`
+	Channel   string    `json:"channel"`
+	Body      string    `json:"body"`
+	CreatedAt time.Time `json:"created_at"`
+	Edited    bool      `json:"edited,omitempty"`
+}
