@@ -3,6 +3,7 @@ package crews
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"math"
 	"slices"
 	"strings"
@@ -54,14 +55,16 @@ type Chat struct {
 	queue  *jobs.Queue
 	// sends bounds how fast one person can post. In memory, because the web
 	// runs one replica; a second replica would double the allowance.
-	sends *ratelimit.Limiters
-	now   func() time.Time
+	sends   *ratelimit.Limiters
+	pushers []ThreadSender
+	log     *slog.Logger
+	now     func() time.Time
 }
 
 func NewChat(pool *pgxpool.Pool, mod *moderation.Service, filter *moderation.Filter, queue *jobs.Queue) *Chat {
 	return &Chat{
 		pool: pool, q: crewsdb.New(pool), mod: mod, filter: filter, queue: queue,
-		sends: ratelimit.New(crew.SendsPerMinute), now: time.Now,
+		sends: ratelimit.New(crew.SendsPerMinute), log: slog.Default(), now: time.Now,
 	}
 }
 

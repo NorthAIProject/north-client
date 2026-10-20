@@ -60,6 +60,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/messaging/telegram"
 	"github.com/NorthAIProject/north-client/internal/milestones"
 	"github.com/NorthAIProject/north-client/internal/mind"
+	"github.com/NorthAIProject/north-client/internal/moderation"
 	"github.com/NorthAIProject/north-client/internal/news"
 	"github.com/NorthAIProject/north-client/internal/notifications"
 	"github.com/NorthAIProject/north-client/internal/nudges"
@@ -421,6 +422,12 @@ func run() error {
 	if apnsErr != nil {
 		return apnsErr
 	}
+
+	// Crew chat pushes each new message to the members who asked for it.
+	// Only the push job runs here; the web owns sending and the live hub.
+	crewChat := crews.NewChat(pool, moderation.NewService(pool), moderation.NewFilter(), queue).
+		WithPushers(apnsSvc, pushSvc)
+	worker.Register(jobs.KindCrewMessagePush, crewChat.HandlePushJob)
 
 	// The weekly review's focus sets each week's training volume, and the
 	// Sunday nudge asks for it.
