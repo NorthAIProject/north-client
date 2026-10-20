@@ -54,7 +54,8 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Get("/crews", h.index)
 	r.Get("/crews/{crewID}/live", h.live)
 	r.Post("/crews", h.create)
-	r.Get("/crews/{crewID}", h.board)
+	r.Get("/crews/{crewID}", h.space)
+	h.chatRoutes(r)
 	r.Post("/crews/{crewID}/leave", h.leave)
 	r.Post("/crews/{crewID}/members/{userID}/remove", h.remove)
 	r.Post("/crews/{crewID}/members/{userID}/role", h.role)
@@ -132,21 +133,6 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/app/crews/"+c.ID.String(), http.StatusSeeOther)
 }
 
-func (h *Handler) board(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(chi.URLParam(r, "crewID"))
-	if err != nil {
-		h.fail(w, r, apperr.ErrNotFound)
-		return
-	}
-	user := auth.MustUser(r.Context())
-	b, err := h.svc.Board(r.Context(), id, user.ID)
-	if err != nil {
-		h.fail(w, r, err)
-		return
-	}
-	h.render(w, r, http.StatusOK, crewpages.BoardPage(user, b, JoinURL(h.siteURL, b.Code)))
-}
-
 func (h *Handler) leave(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "crewID"))
 	if err != nil {
@@ -171,7 +157,7 @@ func (h *Handler) remove(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	http.Redirect(w, r, "/app/crews/"+crewID.String(), http.StatusSeeOther)
+	http.Redirect(w, r, "/app/crews/"+crewID.String()+"/challenge", http.StatusSeeOther)
 }
 
 // role makes a member an admin, or a member again.
@@ -190,7 +176,7 @@ func (h *Handler) role(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	http.Redirect(w, r, "/app/crews/"+crewID.String(), http.StatusSeeOther)
+	http.Redirect(w, r, "/app/crews/"+crewID.String()+"/challenge", http.StatusSeeOther)
 }
 
 // challenge sets the weekly challenge, or clears it when kind is "none".
@@ -213,7 +199,7 @@ func (h *Handler) challenge(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	http.Redirect(w, r, "/app/crews/"+crewID.String(), http.StatusSeeOther)
+	http.Redirect(w, r, "/app/crews/"+crewID.String()+"/challenge", http.StatusSeeOther)
 }
 
 func (h *Handler) render(w http.ResponseWriter, r *http.Request, status int, c templ.Component) {

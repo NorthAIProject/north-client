@@ -20,6 +20,7 @@ import (
 	crewsdb "github.com/NorthAIProject/north-client/internal/crews/db"
 	"github.com/NorthAIProject/north-client/internal/crews/live"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
@@ -156,7 +157,7 @@ func (s *Service) Join(ctx context.Context, userID uuid.UUID, code string) (Crew
 		if blocked {
 			// The same words whichever way the block points, so a refusal
 			// never tells anybody they were blocked.
-			return Crew{}, apperr.FieldErrors{}.Add("crew", "You can't join this crew.")
+			return Crew{}, apperr.FieldErrors{}.Add("crew", i18n.T(ctx, "crews.err.blocked-join"))
 		}
 	}
 	limit, err := s.limit(ctx, c.ID, c.OwnerID)
@@ -164,7 +165,7 @@ func (s *Service) Join(ctx context.Context, userID uuid.UUID, code string) (Crew
 		return Crew{}, err
 	}
 	if c.Members >= limit {
-		return Crew{}, apperr.FieldErrors{}.Add("crew", "This crew is full.")
+		return Crew{}, apperr.FieldErrors{}.Add("crew", i18n.T(ctx, "crews.err.full"))
 	}
 	if _, err = s.q.AddMember(ctx, crewsdb.AddMemberParams{CrewID: c.ID, UserID: userID}); err != nil {
 		return Crew{}, apperr.Wrap(err, "join crew")

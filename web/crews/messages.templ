@@ -1,0 +1,342 @@
+package crews
+
+import (
+	"github.com/NorthAIProject/north-client/internal/crews/crew"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/avatar"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/dropdown"
+	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
+	"github.com/NorthAIProject/north-client/web/shared/ui/textarea"
+)
+
+// Messages is what arrived after the page's cursor: the new rows, appended to
+// the transcript, and the cursor moved past them out of band.
+templ Messages(v ChatView, msgs []crew.Message, cursor int64) {
+	@rows(v, msgs)
+	@cursorInput(cursor, true)
+}
+
+// Older is the page before the oldest row shown. It replaces the "load
+// older" button, so it brings its own when there is more still.
+templ Older(v ChatView, p crew.Page) {
+	if p.HasMore {
+		@olderButton(v, firstSeq(p))
+	}
+	@rows(v, p.Messages)
+}
+
+templ rows(v ChatView, msgs []crew.Message) {
+	for i, m := range msgs {
+		@messageRow(v, m, i > 0 && continues(msgs[i-1], m))
+	}
+}
+
+// cursorInput is the newest seq the page has. The tail loader and the read
+// marker both send it as "after".
+templ cursorInput(seq int64, oob bool) {
+	if oob {
+		<input type="hidden" id="crew-cursor" name="after" value={ seqString(seq) } hx-swap-oob="true"/>
+	} else {
+		<input type="hidden" id="crew-cursor" name="after" value={ seqString(seq) }/>
+	}
+}
+
+templ olderButton(v ChatView, before int64) {
+	<div id="crew-older" class="flex justify-center py-2">
+		@button.Button(button.Props{
+			Type:    button.TypeButton,
+			Variant: button.VariantGhost,
+			Size:    button.SizeSm,
+			Attributes: templ.Attributes{
+				"hx-get":    channelURL(v.CrewID, v.Channel.ID) + "/messages?before=" + seqString(before),
+				"hx-target": "#crew-older",
+				"hx-swap":   "outerHTML",
+			},
+		}) {
+			{ i18n.T(ctx, "crews.load-older") }
+		}
+	</div>
+}
+
+// Message is one row on its own, for the live update of that message.
+templ Message(v ChatView, m crew.Message) {
+	@messageRow(v, m, false)
+}
+
+// messageRow is one message. It re-fetches itself when the live stream says
+// it changed: an edit, a reaction, a pin, a delete.
+templ messageRow(v ChatView, m crew.Message, compact bool) {
+	if m.Kind == crew.MessageKindSystem {
+		<article id={ "m-" + m.ID.String() } class="text-muted-foreground px-4 py-2 text-center text-xs">
+			{ i18n.T(ctx, m.Body) }
+		</article>
+	} else {
+		<article
+			id={ "m-" + m.ID.String() }
+			x-data
+			class={ "group relative flex gap-3 px-4 hover:bg-accent/40",
+				templ.KV("pt-3", !compact), templ.KV("pt-0.5", compact),
+				templ.KV("bg-signal/5", m.MentionsMe) }
+			hx-get={ messageURL(v.CrewID, m.ID) }
+			hx-trigger={ "msg-" + m.ID.String() + " from:#crew-live" }
+			hx-swap="outerHTML"
+		>
+			<div class="w-9 shrink-0">
+				if !compact && m.Author != nil {
+					@avatar.Avatar(avatar.Props{Class: "size-9"}) {
+						@avatar.Fallback() {
+							{ initials(m.Author.Name) }
+						}
+					}
+				}
+			</div>
+			<div class="min-w-0 flex-1 pb-1">
+				if m.ReplyTo != nil {
+					@quote(m.ReplyTo)
+				}
+				if !compact && m.Author != nil {
+					<p class="flex items-baseline gap-2 text-sm">
+						<span class="font-medium">{ m.Author.Name }</span>
+						<time class="text-muted-foreground text-xs" datetime={ m.CreatedAt.UTC().Format("2006-01-02T15:04:05Z") }>{ i18n.Date(ctx, v.at(m.CreatedAt), "15:04") }</time>
+						if m.Pinned {
+							<span class="text-muted-foreground inline-flex items-center gap-1 text-xs">
+								@icon.Icon("pin")(icon.Props{Class: "size-3"})
+								{ i18n.T(ctx, "crews.msg.pinned") }
+							</span>
+						}
+					</p>
+				}
+				if m.Deleted {
+					<p class="text-muted-foreground text-sm italic">{ i18n.T(ctx, "crews.msg.deleted") }</p>
+				} else {
+					<p class="text-sm leading-relaxed break-words whitespace-pre-wrap">
+						for _, s := range segments(m.Body) {
+							if s.Mention {
+								<span class="text-signal font-medium">{ s.Text }</span>
+							} else {
+								{ s.Text }
+							}
+						}
+						if m.Edited {
+							<span class="text-muted-foreground text-xs">{ " " + i18n.T(ctx, "crews.msg.edited") }</span>
+						}
+					</p>
+					if len(m.Reactions) > 0 {
+						<div class="mt-1 flex flex-wrap gap-1">
+							for _, r := range m.Reactions {
+								@reactionPill(v, m, r)
+							}
+						</div>
+					}
+				}
+			</div>
+			if !m.Deleted {
+				<div class="absolute top-1 right-2 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+					@messageActions(v, m)
+				</div>
+			}
+		</article>
+	}
+}
+
+templ quote(q *crew.Quote) {
+	<p class="text-muted-foreground mb-0.5 flex items-center gap-1 truncate text-xs">
+		@icon.Icon("reply")(icon.Props{Class: "size-3 shrink-0"})
+		if q.Unavailable {
+			<span class="italic">{ i18n.T(ctx, "crews.msg.unavailable") }</span>
+		} else {
+			<span class="font-medium">{ q.AuthorName }</span>
+			<span class="truncate">{ q.Excerpt }</span>
+		}
+	</p>
+}
+
+// reactionPill toggles the viewer's reaction. The count updates when the
+// live stream brings the message back.
+templ reactionPill(v ChatView, m crew.Message, r crew.Reaction) {
+	<form hx-post={ messageURL(v.CrewID, m.ID) + "/react" } hx-swap="none" class="inline">
+		@ui.CSRFInput()
+		<input type="hidden" name="emoji" value={ r.Emoji }/>
+		<input type="hidden" name="on" value={ onValue(!r.Mine) }/>
+		@button.Button(button.Props{
+			Type:    button.TypeSubmit,
+			Variant: reactionVariant(r.Mine),
+			Size:    button.SizeSm,
+			Class:   "h-7 gap-1 rounded-full px-2 text-xs",
+		}) {
+			<span>{ crew.Glyph(r.Emoji) }</span>
+			<span class="tabular-nums">{ seqString(int64(r.Count)) }</span>
+		}
+	</form>
+}
+
+func reactionVariant(mine bool) button.Variant {
+	if mine {
+		return button.VariantSecondary
+	}
+	return button.VariantOutline
+}
+
+func onValue(on bool) string {
+	if on {
+		return "true"
+	}
+	return "false"
+}
+
+// messageActions is the row's menu. Reply and Report hand the message to the
+// composer and the report dialog by event; the rest post from here.
+templ messageActions(v ChatView, m crew.Message) {
+	@dropdown.Dropdown() {
+		@dropdown.Trigger() {
+			@button.Button(button.Props{
+				Type:       button.TypeButton,
+				Variant:    button.VariantGhost,
+				Size:       button.SizeIcon,
+				Class:      "size-7",
+				Attributes: templ.Attributes{"aria-label": i18n.T(ctx, "crews.msg.actions")},
+			}) {
+				@icon.Icon("ellipsis")(icon.Props{Class: "size-4"})
+			}
+		}
+		@dropdown.Content(dropdown.ContentProps{Placement: dropdown.PlacementBottomEnd, Class: "w-56"}) {
+			<div class="flex flex-wrap gap-0.5 p-1">
+				for _, e := range crew.ReactionEmoji {
+					<form hx-post={ messageURL(v.CrewID, m.ID) + "/react" } hx-swap="none">
+						@ui.CSRFInput()
+						<input type="hidden" name="emoji" value={ e.Key }/>
+						<input type="hidden" name="on" value="true"/>
+						@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeIcon, Class: "size-8 text-base", Attributes: templ.Attributes{"aria-label": e.Key}}) {
+							{ e.Glyph }
+						}
+					</form>
+				}
+			</div>
+			@dropdown.Separator()
+			if m.Author != nil {
+				@dropdown.Item(dropdown.ItemProps{Attributes: templ.Attributes{
+					"type":         "button",
+					"data-id":      m.ID.String(),
+					"data-name":    m.Author.Name,
+					"data-excerpt": excerptOf(m.Body),
+					"@click":       "$dispatch('crew-reply', { id: $el.dataset.id, name: $el.dataset.name, excerpt: $el.dataset.excerpt })",
+				}}) {
+					{ i18n.T(ctx, "crews.msg.reply") }
+				}
+			}
+			if v.mine(m) {
+				@dropdown.Item(dropdown.ItemProps{Attributes: templ.Attributes{
+					"type":      "button",
+					"hx-get":    messageURL(v.CrewID, m.ID) + "/edit",
+					"hx-target": "#m-" + m.ID.String(),
+					"hx-swap":   "outerHTML",
+				}}) {
+					{ i18n.T(ctx, "crews.msg.edit") }
+				}
+			}
+			if v.canManage() {
+				<form hx-post={ messageURL(v.CrewID, m.ID) + "/pin" } hx-swap="none">
+					@ui.CSRFInput()
+					<input type="hidden" name="on" value={ onValue(!m.Pinned) }/>
+					@dropdown.Item() {
+						if m.Pinned {
+							{ i18n.T(ctx, "crews.msg.unpin") }
+						} else {
+							{ i18n.T(ctx, "crews.msg.pin") }
+						}
+					}
+				</form>
+			}
+			if v.canDelete(m) {
+				<form hx-post={ messageURL(v.CrewID, m.ID) + "/delete" } hx-swap="none">
+					@ui.CSRFInput()
+					@dropdown.Item(dropdown.ItemProps{Class: "text-destructive"}) {
+						{ i18n.T(ctx, "crews.msg.delete") }
+					}
+				</form>
+			}
+			if !v.mine(m) && m.Author != nil {
+				@dropdown.Separator()
+				@dropdown.Item(dropdown.ItemProps{Attributes: templ.Attributes{
+					"type":    "button",
+					"data-id": m.ID.String(),
+					"@click":  "$dispatch('crew-report', { id: $el.dataset.id })",
+				}}) {
+					{ i18n.T(ctx, "crews.msg.report") }
+				}
+				// The friends slice owns blocking. A reload afterwards, because
+				// everything the blocked person wrote leaves the page.
+				<form
+					hx-post={ "/app/friends/" + m.Author.ID.String() + "/block" }
+					hx-swap="none"
+					hx-on::after:request="if (ctx.response.status < 400) window.location.reload()"
+				>
+					@ui.CSRFInput()
+					@dropdown.Item(dropdown.ItemProps{Class: "text-destructive"}) {
+						{ i18n.Tf(ctx, "crews.msg.block", m.Author.Name) }
+					}
+				</form>
+			}
+		}
+	}
+}
+
+// MessageEdit is a row turned into its editor.
+templ MessageEdit(v ChatView, m crew.Message, problem string) {
+	<article id={ "m-" + m.ID.String() } class="px-4 py-2">
+		<form
+			hx-post={ messageURL(v.CrewID, m.ID) + "/edit" }
+			hx-target={ "#m-" + m.ID.String() }
+			hx-swap="outerHTML"
+			class="flex flex-col gap-2 pl-12"
+		>
+			@ui.CSRFInput()
+			@textarea.Textarea(textarea.Props{
+				Name:       "body",
+				Value:      m.Body,
+				Rows:       2,
+				AutoResize: true,
+				HasError:   problem != "",
+				Attributes: templ.Attributes{"aria-label": i18n.T(ctx, "crews.msg.edit")},
+			})
+			if problem != "" {
+				<p class="text-destructive text-xs">{ problem }</p>
+			}
+			<div class="flex gap-2">
+				@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm}) {
+					{ i18n.T(ctx, "crews.msg.save") }
+				}
+				@button.Button(button.Props{
+					Type:    button.TypeButton,
+					Variant: button.VariantGhost,
+					Size:    button.SizeSm,
+					Attributes: templ.Attributes{
+						"hx-get":    messageURL(v.CrewID, m.ID),
+						"hx-target": "#m-" + m.ID.String(),
+						"hx-swap":   "outerHTML",
+					},
+				}) {
+					{ i18n.T(ctx, "crews.msg.cancel") }
+				}
+			</div>
+		</form>
+	</article>
+}
+
+// Pins is the pinned-messages sheet's body.
+templ Pins(v ChatView, msgs []crew.Message) {
+	if len(msgs) == 0 {
+		<p class="text-muted-foreground p-4 text-sm">{ i18n.T(ctx, "crews.pins.none") }</p>
+	} else {
+		for _, m := range msgs {
+			<div class="border-border border-b px-4 py-3">
+				if m.Author != nil {
+					<p class="text-sm font-medium">{ m.Author.Name }</p>
+				}
+				<p class="text-sm break-words whitespace-pre-wrap">{ m.Body }</p>
+			</div>
+		}
+	}
+}
