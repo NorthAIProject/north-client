@@ -3,7 +3,6 @@
 # Un término por línea, en minúsculas, sin acentos o con ellos.
 maricón
 maricones
-marica
 sudaca
 sudacas
 negrata

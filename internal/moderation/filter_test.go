@@ -21,6 +21,11 @@ func TestFilter(t *testing.T) {
 		"assassin",
 		"cabrón, que serie",
 		"hit 100kg today!!",
+		"a chink in the armour",
+		"quick fag break then legs",
+		"marica, vamos al gym",
+		"raccoon eyes after that cut",
+		"coon cheese on rice cakes",
 	} {
 		if err := f.Check(ok); err != nil {
 			t.Errorf("Check(%q) = %v; want allowed", ok, err)

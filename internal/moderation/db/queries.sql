@@ -30,3 +30,16 @@ DELETE FROM ugc_suspensions WHERE user_id = $1;
 
 -- name: Suspended :one
 SELECT EXISTS (SELECT 1 FROM ugc_suspensions WHERE user_id = $1 AND (until IS NULL OR until > @now::timestamptz));
+
+-- name: LockSubject :exec
+-- Reports on one subject take turns, so concurrent reporters cannot both
+-- count short of the threshold.
+SELECT pg_advisory_xact_lock(hashtextextended(@subject_kind::text || ':' || @subject_id::text, 0));
+
+-- name: HideDecided :one
+-- Whether the subject was already hidden or unhidden; either way automatic
+-- hiding has had its say.
+SELECT EXISTS (
+    SELECT 1 FROM moderation_actions
+    WHERE subject_kind = $1 AND subject_id = $2 AND action IN ('hide', 'unhide')
+);

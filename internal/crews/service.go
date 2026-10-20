@@ -388,8 +388,9 @@ func (s *Service) Board(ctx context.Context, crewID, viewerID uuid.UUID) (Board,
 	return out, nil
 }
 
-// boardFillers is how many members' signals the board reads at once.
-const boardFillers = 8
+// boardFillers is how many members' signals the board reads at once. The
+// pool holds ten connections, so a board never takes more than a few of them.
+const boardFillers = 4
 
 func (s *Service) fill(ctx context.Context, m *Member, u users.User, now time.Time, ch *Challenge) error {
 	local := now.In(u.Location())
