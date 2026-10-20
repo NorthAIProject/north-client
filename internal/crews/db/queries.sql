@@ -267,3 +267,11 @@ SELECT count(*) FROM crew_members WHERE crew_id = (SELECT crew_id FROM crew_mess
 
 -- name: MessageBody :one
 SELECT body FROM crew_messages WHERE id = $1;
+
+-- name: AuthorBlockedFor :one
+-- Whether the author of message @id and @viewer have blocked each other.
+SELECT EXISTS (
+    SELECT 1 FROM crew_messages m JOIN blocks b
+      ON (b.blocker_id = @viewer AND b.blocked_id = m.author_id) OR (b.blocker_id = m.author_id AND b.blocked_id = @viewer)
+    WHERE m.id = @id
+);

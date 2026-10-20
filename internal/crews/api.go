@@ -9,21 +9,35 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/crews/live"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 )
 
 // API is crews for native clients. Mount behind auth.RequireBearer.
 type API struct {
-	svc     *Service
-	siteURL string
+	svc       *Service
+	siteURL   string
+	chat      *Chat
+	hub       *live.Hub
+	heartbeat time.Duration
 }
 
 func NewAPI(svc *Service, siteURL string) *API {
-	return &API{svc: svc, siteURL: strings.TrimRight(siteURL, "/")}
+	return &API{svc: svc, siteURL: strings.TrimRight(siteURL, "/"), heartbeat: heartbeat}
 }
 
+// WithLive gives the API the chat and the hub its streams read from.
+func (a *API) WithLive(chat *Chat, hub *live.Hub) *API {
+	a.chat, a.hub = chat, hub
+	return a
+}
+
+// WithHeartbeat changes how often a quiet stream pings, for tests.
+func (a *API) WithHeartbeat(d time.Duration) *API { a.heartbeat = d; return a }
+
 func (a *API) Routes(r chi.Router) {
+	r.Get("/crews/{crewID}/live", a.live)
 	r.Get("/crews", a.list)
 	r.Post("/crews", a.create)
 	r.Get("/crews/join/{code}", a.preview)
@@ -252,4 +266,18 @@ func readJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
 		return false
 	}
 	return true
+}
+
+// live streams the crew's events to a member, as JSON.
+func (a *API) live(w http.ResponseWriter, r *http.Request) {
+	crewID, ok := pathID(w, r, "crewID")
+	if !ok {
+		return
+	}
+	viewer := auth.MustUser(r.Context()).ID
+	if _, _, err := a.chat.member(r.Context(), crewID, viewer); err != nil {
+		httpx.Error(w, err, "The crew could not be loaded.")
+		return
+	}
+	serveLive(w, r, a.hub, crewID, a.chat.viewerGate(viewer, apiFrame), a.heartbeat)
 }
