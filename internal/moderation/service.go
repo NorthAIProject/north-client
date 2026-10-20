@@ -54,11 +54,19 @@ func (s *Service) Report(ctx context.Context, reporterID uuid.UUID, sub Subject,
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	q := s.q.WithTx(tx)
+	if err = q.LockSubject(ctx, moderationdb.LockSubjectParams{SubjectKind: sub.Kind, SubjectID: sub.ID.String()}); err != nil {
+		return false, apperr.Wrap(err, "lock subject")
+	}
 
-	author := sub.AuthorID
+	// A subject with no author, a coach message for one, has nobody to
+	// point the report at.
+	var author *uuid.UUID
+	if sub.AuthorID != uuid.Nil {
+		author = &sub.AuthorID
+	}
 	inserted, err := q.InsertReport(ctx, moderationdb.InsertReportParams{
 		ReporterID: reporterID, SubjectKind: sub.Kind, SubjectID: sub.ID,
-		SubjectAuthorID: &author, ScopeID: sub.ScopeID, Reason: reason, Note: note,
+		SubjectAuthorID: author, ScopeID: sub.ScopeID, Reason: reason, Note: note,
 	})
 	if err != nil {
 		return false, apperr.Wrap(err, "insert report")
@@ -74,8 +82,20 @@ func (s *Service) Report(ctx context.Context, reporterID uuid.UUID, sub Subject,
 	if err != nil {
 		return false, err
 	}
-	// Each new reporter adds exactly one, so equality hides once.
-	if count == int64(threshold) {
+	// At or past the threshold, hide unless hiding was already decided: by
+	// an earlier report, or by a moderator who unhid it. The threshold can
+	// fall below the count when a crew shrinks, so this is not equality.
+	if count >= int64(threshold) {
+		decided, decidedErr := q.HideDecided(ctx, moderationdb.HideDecidedParams{SubjectKind: sub.Kind, SubjectID: sub.ID})
+		if decidedErr != nil {
+			return false, apperr.Wrap(decidedErr, "hide decided")
+		}
+		if decided {
+			if err = tx.Commit(ctx); err != nil {
+				return false, apperr.Wrap(err, "commit report")
+			}
+			return false, nil
+		}
 		// The slice hides in its own tables, outside this transaction; Hide
 		// is idempotent, so a failed commit after it only loses the record.
 		if err = h.Hide(ctx, sub.ID); err != nil {

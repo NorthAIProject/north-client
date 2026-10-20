@@ -43,6 +43,27 @@ func (q *Queries) CountReporters(ctx context.Context, arg CountReportersParams) 
 	return count, err
 }
 
+const hideDecided = `-- name: HideDecided :one
+SELECT EXISTS (
+    SELECT 1 FROM moderation_actions
+    WHERE subject_kind = $1 AND subject_id = $2 AND action IN ('hide', 'unhide')
+)
+`
+
+type HideDecidedParams struct {
+	SubjectKind string
+	SubjectID   uuid.UUID
+}
+
+// Whether the subject was already hidden or unhidden; either way automatic
+// hiding has had its say.
+func (q *Queries) HideDecided(ctx context.Context, arg HideDecidedParams) (bool, error) {
+	row := q.db.QueryRow(ctx, hideDecided, arg.SubjectKind, arg.SubjectID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const insertAction = `-- name: InsertAction :exec
 INSERT INTO moderation_actions (actor_id, subject_kind, subject_id, action, reason)
 VALUES ($1, $2, $3, $4, $5)
@@ -97,6 +118,22 @@ func (q *Queries) InsertReport(ctx context.Context, arg InsertReportParams) (int
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const lockSubject = `-- name: LockSubject :exec
+SELECT pg_advisory_xact_lock(hashtextextended($1::text || ':' || $2::text, 0))
+`
+
+type LockSubjectParams struct {
+	SubjectKind string
+	SubjectID   string
+}
+
+// Reports on one subject take turns, so concurrent reporters cannot both
+// count short of the threshold.
+func (q *Queries) LockSubject(ctx context.Context, arg LockSubjectParams) error {
+	_, err := q.db.Exec(ctx, lockSubject, arg.SubjectKind, arg.SubjectID)
+	return err
 }
 
 const reportedBy = `-- name: ReportedBy :many

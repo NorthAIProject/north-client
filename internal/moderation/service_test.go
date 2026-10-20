@@ -207,3 +207,33 @@ func TestCanPost(t *testing.T) {
 		t.Fatalf("after unsuspend: %v", err)
 	}
 }
+
+// A threshold that drops after enough reports are already in (a crew that
+// shrank) still hides on the next report, and a report with no author (a
+// coach message) is accepted.
+func TestReportHidesWhenThresholdDropsBelowCount(t *testing.T) {
+	pool, svc, h := setup(t)
+	ctx := context.Background()
+	sub := moderation.Subject{Kind: "crew_message", ID: uuid.New(), AuthorID: person(t, pool, "Author")}
+	for i := 1; i <= 2; i++ {
+		if _, err := svc.Report(ctx, person(t, pool, fmt.Sprintf("R%d", i)), sub, "spam", ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h.threshold = 2
+	hidden, err := svc.Report(ctx, person(t, pool, "R3"), sub, "spam", "")
+	if err != nil || !hidden || len(h.hidden) != 1 {
+		t.Fatalf("third report after the threshold fell to 2: hidden %v, hides %d, %v", hidden, len(h.hidden), err)
+	}
+	if hidden, err = svc.Report(ctx, person(t, pool, "R4"), sub, "spam", ""); err != nil || hidden || len(h.hidden) != 1 {
+		t.Fatalf("fourth report hid again: hidden %v, hides %d, %v", hidden, len(h.hidden), err)
+	}
+}
+
+func TestReportWithoutAuthor(t *testing.T) {
+	pool, svc, _ := setup(t)
+	sub := moderation.Subject{Kind: "crew_message", ID: uuid.New()}
+	if _, err := svc.Report(context.Background(), person(t, pool, "Reporter"), sub, "other", ""); err != nil {
+		t.Fatalf("report of an authorless subject: %v", err)
+	}
+}
