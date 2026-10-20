@@ -23,6 +23,7 @@ func renderBoardIn(t *testing.T, locale users.Locale) string {
 			{ID: uuid.New(), DisplayName: "Bruno", Streak: 1},
 		},
 		IsOwner: true,
+		MyRole:  crew.RoleOwner,
 	}
 	var b strings.Builder
 	ctx := i18n.WithLocale(context.Background(), string(locale))
