@@ -38,6 +38,7 @@ func (a *API) WithHeartbeat(d time.Duration) *API { a.heartbeat = d; return a }
 
 func (a *API) Routes(r chi.Router) {
 	r.Get("/crews/{crewID}/live", a.live)
+	a.chatRoutes(r)
 	r.Get("/crews", a.list)
 	r.Post("/crews", a.create)
 	r.Get("/crews/join/{code}", a.preview)
@@ -58,6 +59,9 @@ type CrewView struct {
 	// MemberCount is how many are in it; the board lists them in members.
 	MemberCount int    `json:"memberCount"`
 	JoinURL     string `json:"joinUrl"`
+	// Unread and Mentions are filled on the crew list only.
+	Unread   int `json:"unread,omitempty"`
+	Mentions int `json:"mentions,omitempty"`
 }
 
 type CrewList struct {
@@ -109,9 +113,16 @@ func (a *API) list(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, err, "Crews could not be loaded.")
 		return
 	}
+	unread, err := a.unreadByCrew(r)
+	if err != nil {
+		httpx.Error(w, err, "Crews could not be loaded.")
+		return
+	}
 	out := CrewList{Crews: make([]CrewView, 0, len(list))}
 	for _, c := range list {
-		out.Crews = append(out.Crews, a.projectCrew(c))
+		v := a.projectCrew(c)
+		v.Unread, v.Mentions = unread[c.ID].Unread, unread[c.ID].Mentions
+		out.Crews = append(out.Crews, v)
 	}
 	httpx.WriteJSON(w, http.StatusOK, out)
 }

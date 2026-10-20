@@ -624,6 +624,27 @@ func (q *Queries) MemberRole(ctx context.Context, arg MemberRoleParams) (string,
 	return role, err
 }
 
+const memberSettings = `-- name: MemberSettings :one
+SELECT notify, muted_until FROM crew_members WHERE crew_id = $1 AND user_id = $2
+`
+
+type MemberSettingsParams struct {
+	CrewID uuid.UUID
+	UserID uuid.UUID
+}
+
+type MemberSettingsRow struct {
+	Notify     string
+	MutedUntil *time.Time
+}
+
+func (q *Queries) MemberSettings(ctx context.Context, arg MemberSettingsParams) (MemberSettingsRow, error) {
+	row := q.db.QueryRow(ctx, memberSettings, arg.CrewID, arg.UserID)
+	var i MemberSettingsRow
+	err := row.Scan(&i.Notify, &i.MutedUntil)
+	return i, err
+}
+
 const members = `-- name: Members :many
 SELECT u.id, u.display_name, u.handle, u.timezone, u.tier, m.joined_at, m.role
 FROM crew_members m JOIN users u ON u.id = m.user_id

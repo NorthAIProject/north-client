@@ -24,12 +24,15 @@ import (
 )
 
 type (
-	Crew      = crew.Crew
-	Challenge = crew.Challenge
-	Member    = crew.Member
-	Board     = crew.Board
-	Role      = crew.Role
-	Channel   = crew.Channel
+	Crew         = crew.Crew
+	Challenge    = crew.Challenge
+	Member       = crew.Member
+	Board        = crew.Board
+	Role         = crew.Role
+	Channel      = crew.Channel
+	Space        = crew.Space
+	SpaceChannel = crew.SpaceChannel
+	SpaceMember  = crew.SpaceMember
 )
 
 type Service struct {

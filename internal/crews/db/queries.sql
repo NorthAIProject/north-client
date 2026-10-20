@@ -305,3 +305,6 @@ WHERE m.id = @id
       SELECT 1 FROM blocks b
       WHERE (b.blocker_id = mem.user_id AND b.blocked_id = m.author_id)
          OR (b.blocker_id = m.author_id AND b.blocked_id = mem.user_id));
+
+-- name: MemberSettings :one
+SELECT notify, muted_until FROM crew_members WHERE crew_id = $1 AND user_id = $2;

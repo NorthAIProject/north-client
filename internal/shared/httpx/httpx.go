@@ -120,10 +120,12 @@ type ErrorBody struct {
 }
 
 // ErrorDetail carries the message and, for a validation failure, which fields
-// were wrong.
+// were wrong. Code, when set, names a refusal a client handles on its own
+// (terms_required, suspended), since the status alone does not tell them apart.
 type ErrorDetail struct {
 	Message string            `json:"message"`
 	Fields  map[string]string `json:"fields,omitempty"`
+	Code    string            `json:"code,omitempty"`
 }
 
 // Error writes err as JSON with the status Status gives it.

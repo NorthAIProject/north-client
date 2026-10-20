@@ -50,6 +50,8 @@ var englishCrews = map[string]string{
 	"crews.join.signup":       "Create your account",
 	"crews.join.login":        "I already have one",
 	"crews.err.body":          "Write something under 4000 characters.",
+	"crews.sys.spaces":        "This crew now has channels. Everyone in the crew can read what's posted here.",
+	"crews.sys.welcome":       "Welcome to #general. Say hi — everyone in the crew can read this channel.",
 	"crews.err.blocked":       "That message breaks the crew rules.",
 	"crews.err.slow":          "Slow down a little and try again in a minute.",
 	"crews.err.reply":         "That message can't be replied to.",

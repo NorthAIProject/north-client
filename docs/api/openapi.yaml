@@ -4441,6 +4441,477 @@ paths:
           description: Accepted
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /crews/unread:
+    get:
+      operationId: listCrewUnread
+      summary: What you have not read, per crew
+      tags: [crews]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrewUnreadList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /crews/{crewID}/space:
+    parameters:
+      - name: crewID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getCrewSpace
+      summary: The crew's channels, members and your settings (members only)
+      tags: [crews]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrewSpace'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /crews/{crewID}/notifications:
+    parameters:
+      - name: crewID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      operationId: setCrewNotifications
+      summary: Which messages push you, and mute until
+      tags: [crews]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrewNotifyRequest'
+      responses:
+        '204':
+          description: Done
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /crews/{crewID}/channels:
+    parameters:
+      - name: crewID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: createCrewChannel
+      summary: Make a text channel (owner or admin)
+      tags: [crews]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrewChannelRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrewChannel'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /crews/{crewID}/channels/{channelID}:
+    parameters:
+      - name: crewID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: channelID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    patch:
+      operationId: updateCrewChannel
+      summary: Rename a channel or change its topic (owner or admin; #general keeps its name)
+      tags: [crews]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrewChannelRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrewChannel'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    delete:
+      operationId: deleteCrewChannel
+      summary: Delete a channel and its messages (owner or admin; not #general)
+      tags: [crews]
+      responses:
+        '204':
+          description: Done
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /crews/{crewID}/channels/{channelID}/messages:
+    parameters:
+      - name: crewID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: channelID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: listCrewMessages
+      summary: A page of a channel, oldest first
+      tags: [crews]
+      parameters:
+        - name: before
+          in: query
+          description: Older than this seq, for history.
+          schema:
+            type: integer
+            format: int64
+        - name: after
+          in: query
+          description: Newer than this seq, after a live message event.
+          schema:
+            type: integer
+            format: int64
+        - name: limit
+          in: query
+          description: At most this many, 50 by default and 100 at most.
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrewMessagePage'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: sendCrewMessage
+      summary: Post a message; the same clientId again returns the first one
+      tags: [crews]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrewSendMessage'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrewMessage'
+        '403':
+          description: Not allowed to post. error.code is terms_required (accept the terms first) or suspended
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /crews/{crewID}/channels/{channelID}/pins:
+    parameters:
+      - name: crewID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: channelID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: listCrewPins
+      summary: The channel's pinned messages, newest pin first
+      tags: [crews]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrewMessageList'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /crews/{crewID}/channels/{channelID}/read:
+    parameters:
+      - name: crewID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: channelID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: markCrewChannelRead
+      summary: Mark read up to seq; an older seq changes nothing
+      tags: [crews]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrewReadRequest'
+      responses:
+        '204':
+          description: Done
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /crews/{crewID}/messages/{messageID}:
+    parameters:
+      - name: crewID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: messageID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getCrewMessage
+      summary: One message, after a live update event
+      tags: [crews]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrewMessage'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    patch:
+      operationId: editCrewMessage
+      summary: Edit your own message
+      tags: [crews]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrewEditMessage'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrewMessage'
+        '403':
+          description: Not allowed to post. error.code is terms_required (accept the terms first) or suspended
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    delete:
+      operationId: deleteCrewMessage
+      summary: Delete your message, or anyone's as owner or admin
+      tags: [crews]
+      responses:
+        '204':
+          description: Done
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /crews/{crewID}/messages/{messageID}/reactions/{emoji}:
+    parameters:
+      - name: crewID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: messageID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: emoji
+        in: path
+        required: true
+        description: One of fire, muscle, clap, heart, laugh, hundred, trophy, eyes.
+        schema:
+          type: string
+    put:
+      operationId: addCrewReaction
+      summary: React; reacting twice is fine
+      tags: [crews]
+      responses:
+        '204':
+          description: Done
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    delete:
+      operationId: removeCrewReaction
+      summary: Take a reaction back
+      tags: [crews]
+      responses:
+        '204':
+          description: Done
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /crews/{crewID}/messages/{messageID}/pin:
+    parameters:
+      - name: crewID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: messageID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      operationId: pinCrewMessage
+      summary: Pin (owner or admin; 50 per channel)
+      tags: [crews]
+      responses:
+        '204':
+          description: Done
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    delete:
+      operationId: unpinCrewMessage
+      summary: Unpin (owner or admin)
+      tags: [crews]
+      responses:
+        '204':
+          description: Done
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /crews/{crewID}/messages/{messageID}/report:
+    parameters:
+      - name: crewID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: messageID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: reportCrewMessage
+      summary: Report a message; it disappears for you at once
+      tags: [crews]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrewReportRequest'
+      responses:
+        '204':
+          description: Done
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /crews/{crewID}/live:
     parameters:
       - name: crewID
@@ -6694,6 +7165,12 @@ components:
         joinUrl:
           type: string
           format: uri
+        unread:
+          type: integer
+          description: Messages you have not read across the crew's channels; on the crew list only.
+        mentions:
+          type: integer
+          description: How many of the unread are for you; on the crew list only.
     WeeklyFocus:
       type: object
       required: [weekStart, priorities, volume, reviewedAt]
@@ -7058,6 +7535,227 @@ components:
         role:
           type: string
           description: owner, admin or member. Treat any other value as member.
+    CrewPerson:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        handle:
+          type: string
+        role:
+          type: string
+          description: owner, admin or member on the member list; absent on a message author. Treat unknown values as member.
+    CrewChannel:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        topic:
+          type: string
+        kind:
+          type: string
+          description: text today; more kinds come later. Hide kinds you do not know.
+        default:
+          type: boolean
+          description: The crew's #general, which cannot be renamed or deleted.
+        unread:
+          type: integer
+        mentions:
+          type: integer
+    CrewSpace:
+      type: object
+      required: [crew]
+      properties:
+        crew:
+          $ref: '#/components/schemas/Crew'
+        myRole:
+          type: string
+          description: owner, admin or member.
+        notify:
+          type: string
+          description: all, mentions or none.
+        mutedUntil:
+          type: string
+          format: date-time
+        channels:
+          type: array
+          items:
+            $ref: '#/components/schemas/CrewChannel'
+        members:
+          type: array
+          items:
+            $ref: '#/components/schemas/CrewPerson'
+    CrewQuote:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+          format: uuid
+        authorName:
+          type: string
+        excerpt:
+          type: string
+        unavailable:
+          type: boolean
+          description: The quoted message is deleted, hidden, or from someone blocked; show a placeholder.
+    CrewReaction:
+      type: object
+      required: [emoji, count]
+      properties:
+        emoji:
+          type: string
+          description: fire, muscle, clap, heart, laugh, hundred, trophy or eyes. Skip keys you do not know.
+        count:
+          type: integer
+        mine:
+          type: boolean
+    CrewMessage:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+          format: uuid
+        seq:
+          type: integer
+          format: int64
+          description: Orders messages and is the cursor for before and after.
+        channelId:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          description: text or system. Show other kinds as "Update Khepri to see this".
+        body:
+          type: string
+          description: Empty when deleted. A system message's body is already in the reader's language.
+        author:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/CrewPerson'
+        replyTo:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/CrewQuote'
+        mentionsMe:
+          type: boolean
+        reactions:
+          type: array
+          items:
+            $ref: '#/components/schemas/CrewReaction'
+        pinned:
+          type: boolean
+        edited:
+          type: boolean
+        deleted:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+    CrewMessagePage:
+      type: object
+      required: [messages]
+      properties:
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/CrewMessage'
+        hasMore:
+          type: boolean
+    CrewMessageList:
+      type: object
+      required: [messages]
+      properties:
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/CrewMessage'
+    CrewUnread:
+      type: object
+      required: [crewId]
+      properties:
+        crewId:
+          type: string
+          format: uuid
+        unread:
+          type: integer
+        mentions:
+          type: integer
+    CrewUnreadList:
+      type: object
+      required: [crews, total]
+      properties:
+        crews:
+          type: array
+          items:
+            $ref: '#/components/schemas/CrewUnread'
+        total:
+          type: integer
+    CrewChannelRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          description: Lowercased, spaces become dashes, at most 30 characters.
+        topic:
+          type: string
+    CrewSendMessage:
+      type: object
+      required: [body]
+      properties:
+        body:
+          type: string
+          maxLength: 4000
+        replyToId:
+          type: string
+          format: uuid
+        clientId:
+          type: string
+          format: uuid
+          description: Generated once per message by the client, so a resend after a lost response is not a second message.
+    CrewEditMessage:
+      type: object
+      required: [body]
+      properties:
+        body:
+          type: string
+          maxLength: 4000
+    CrewReadRequest:
+      type: object
+      required: [seq]
+      properties:
+        seq:
+          type: integer
+          format: int64
+    CrewReportRequest:
+      type: object
+      required: [reason]
+      properties:
+        reason:
+          type: string
+          description: spam, harassment, hate, sexual, violence, self_harm or other.
+        note:
+          type: string
+    CrewNotifyRequest:
+      type: object
+      required: [notify]
+      properties:
+        notify:
+          type: string
+          description: all, mentions or none.
+        mutedUntil:
+          type: string
+          format: date-time
     CrewLiveEvent:
       type: object
       description: A crew live event. Only ids; fetch the content it points at.
@@ -9265,6 +9963,9 @@ components:
       properties:
         message:
           type: string
+        code:
+          type: string
+          description: Names a refusal the client handles itself, such as terms_required or suspended. Ignore values you do not know.
         fields:
           type: object
           additionalProperties:
