@@ -21,6 +21,37 @@ const (
 	MaxMembersPro = 50
 )
 
+// Role is what a person may do in a crew. The owner is crews.owner_id, the
+// one place ownership lives; every other member is an admin or not.
+type Role string
+
+const (
+	RoleOwner  Role = "owner"
+	RoleAdmin  Role = "admin"
+	RoleMember Role = "member"
+)
+
+// CanManage is true for those who run the crew: the challenge, channels,
+// pins, and removing plain members.
+func (r Role) CanManage() bool { return r == RoleOwner || r == RoleAdmin }
+
+// Channel kinds: text to talk in, board for posts with threads, and wins,
+// where the achievements members already share land.
+const (
+	ChannelText  = "text"
+	ChannelBoard = "board"
+	ChannelWins  = "wins"
+)
+
+type Channel struct {
+	ID        uuid.UUID
+	Kind      string
+	Name      string
+	Topic     string
+	Position  int
+	IsDefault bool
+}
+
 type Crew struct {
 	ID      uuid.UUID
 	Name    string
@@ -45,6 +76,7 @@ type Member struct {
 	WeekProgress int
 	Owner        bool
 	Me           bool
+	Role         Role
 }
 
 // Board is a crew as a member sees it.
@@ -55,4 +87,5 @@ type Board struct {
 	// WeekStart is the Monday the challenge counts from, in the viewer's zone.
 	WeekStart time.Time
 	IsOwner   bool
+	MyRole    Role
 }

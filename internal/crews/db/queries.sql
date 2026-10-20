@@ -27,15 +27,32 @@ WHERE m.user_id = $1
 ORDER BY c.created_at;
 
 -- name: Members :many
-SELECT u.id, u.display_name, u.handle, u.timezone, u.tier, m.joined_at
+SELECT u.id, u.display_name, u.handle, u.timezone, u.tier, m.joined_at, m.role
 FROM crew_members m JOIN users u ON u.id = m.user_id
 WHERE m.crew_id = $1
 ORDER BY m.joined_at;
 
 -- name: OldestOtherMember :one
+-- Who takes over when the owner leaves: the longest-standing admin, else the
+-- longest-standing member.
 SELECT user_id FROM crew_members
 WHERE crew_id = $1 AND user_id <> $2
-ORDER BY joined_at LIMIT 1;
+ORDER BY (role = 'admin') DESC, joined_at LIMIT 1;
+
+-- name: MemberRole :one
+SELECT role FROM crew_members WHERE crew_id = $1 AND user_id = $2;
+
+-- name: SetMemberRole :execrows
+UPDATE crew_members SET role = $3 WHERE crew_id = $1 AND user_id = $2;
+
+-- name: CreateDefaultChannels :exec
+-- Every crew starts with #general and #wins; the crew-spaces migration gave
+-- the same two to crews made before.
+INSERT INTO crew_channels (crew_id, kind, name, is_default, position)
+VALUES ($1, 'text', 'general', true, 0), ($1, 'wins', 'wins', false, 1);
+
+-- name: ListChannels :many
+SELECT * FROM crew_channels WHERE crew_id = $1 ORDER BY position, name;
 
 -- name: SetOwner :exec
 UPDATE crews SET owner_id = $2 WHERE id = $1;

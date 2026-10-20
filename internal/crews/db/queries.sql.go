@@ -119,6 +119,18 @@ func (q *Queries) CreateCrew(ctx context.Context, arg CreateCrewParams) (Crew, e
 	return i, err
 }
 
+const createDefaultChannels = `-- name: CreateDefaultChannels :exec
+INSERT INTO crew_channels (crew_id, kind, name, is_default, position)
+VALUES ($1, 'text', 'general', true, 0), ($1, 'wins', 'wins', false, 1)
+`
+
+// Every crew starts with #general and #wins; the crew-spaces migration gave
+// the same two to crews made before.
+func (q *Queries) CreateDefaultChannels(ctx context.Context, crewID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, createDefaultChannels, crewID)
+	return err
+}
+
 const crewByCode = `-- name: CrewByCode :one
 SELECT id, name, owner_id, code, created_at, visibility, description FROM crews WHERE code = $1
 `
@@ -233,6 +245,40 @@ func (q *Queries) IsMember(ctx context.Context, arg IsMemberParams) (bool, error
 	return exists, err
 }
 
+const listChannels = `-- name: ListChannels :many
+SELECT id, crew_id, kind, name, topic, position, is_default, created_by, created_at FROM crew_channels WHERE crew_id = $1 ORDER BY position, name
+`
+
+func (q *Queries) ListChannels(ctx context.Context, crewID uuid.UUID) ([]CrewChannel, error) {
+	rows, err := q.db.Query(ctx, listChannels, crewID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CrewChannel{}
+	for rows.Next() {
+		var i CrewChannel
+		if err := rows.Scan(
+			&i.ID,
+			&i.CrewID,
+			&i.Kind,
+			&i.Name,
+			&i.Topic,
+			&i.Position,
+			&i.IsDefault,
+			&i.CreatedBy,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listMine = `-- name: ListMine :many
 SELECT c.id, c.name, c.owner_id, c.code, c.created_at, c.visibility, c.description, (SELECT count(*) FROM crew_members m2 WHERE m2.crew_id = c.id) AS members
 FROM crews c JOIN crew_members m ON m.crew_id = c.id
@@ -280,8 +326,24 @@ func (q *Queries) ListMine(ctx context.Context, userID uuid.UUID) ([]ListMineRow
 	return items, nil
 }
 
+const memberRole = `-- name: MemberRole :one
+SELECT role FROM crew_members WHERE crew_id = $1 AND user_id = $2
+`
+
+type MemberRoleParams struct {
+	CrewID uuid.UUID
+	UserID uuid.UUID
+}
+
+func (q *Queries) MemberRole(ctx context.Context, arg MemberRoleParams) (string, error) {
+	row := q.db.QueryRow(ctx, memberRole, arg.CrewID, arg.UserID)
+	var role string
+	err := row.Scan(&role)
+	return role, err
+}
+
 const members = `-- name: Members :many
-SELECT u.id, u.display_name, u.handle, u.timezone, u.tier, m.joined_at
+SELECT u.id, u.display_name, u.handle, u.timezone, u.tier, m.joined_at, m.role
 FROM crew_members m JOIN users u ON u.id = m.user_id
 WHERE m.crew_id = $1
 ORDER BY m.joined_at
@@ -294,6 +356,7 @@ type MembersRow struct {
 	Timezone    string
 	Tier        string
 	JoinedAt    time.Time
+	Role        string
 }
 
 func (q *Queries) Members(ctx context.Context, crewID uuid.UUID) ([]MembersRow, error) {
@@ -312,6 +375,7 @@ func (q *Queries) Members(ctx context.Context, crewID uuid.UUID) ([]MembersRow, 
 			&i.Timezone,
 			&i.Tier,
 			&i.JoinedAt,
+			&i.Role,
 		); err != nil {
 			return nil, err
 		}
@@ -326,7 +390,7 @@ func (q *Queries) Members(ctx context.Context, crewID uuid.UUID) ([]MembersRow, 
 const oldestOtherMember = `-- name: OldestOtherMember :one
 SELECT user_id FROM crew_members
 WHERE crew_id = $1 AND user_id <> $2
-ORDER BY joined_at LIMIT 1
+ORDER BY (role = 'admin') DESC, joined_at LIMIT 1
 `
 
 type OldestOtherMemberParams struct {
@@ -334,6 +398,8 @@ type OldestOtherMemberParams struct {
 	UserID uuid.UUID
 }
 
+// Who takes over when the owner leaves: the longest-standing admin, else the
+// longest-standing member.
 func (q *Queries) OldestOtherMember(ctx context.Context, arg OldestOtherMemberParams) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, oldestOtherMember, arg.CrewID, arg.UserID)
 	var user_id uuid.UUID
@@ -386,6 +452,24 @@ type SetChallengeParams struct {
 func (q *Queries) SetChallenge(ctx context.Context, arg SetChallengeParams) error {
 	_, err := q.db.Exec(ctx, setChallenge, arg.CrewID, arg.Kind, arg.Target)
 	return err
+}
+
+const setMemberRole = `-- name: SetMemberRole :execrows
+UPDATE crew_members SET role = $3 WHERE crew_id = $1 AND user_id = $2
+`
+
+type SetMemberRoleParams struct {
+	CrewID uuid.UUID
+	UserID uuid.UUID
+	Role   string
+}
+
+func (q *Queries) SetMemberRole(ctx context.Context, arg SetMemberRoleParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setMemberRole, arg.CrewID, arg.UserID, arg.Role)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const setOwner = `-- name: SetOwner :exec

@@ -26,6 +26,8 @@ type (
 	Challenge = crew.Challenge
 	Member    = crew.Member
 	Board     = crew.Board
+	Role      = crew.Role
+	Channel   = crew.Channel
 )
 
 type Service struct {
@@ -82,6 +84,9 @@ func (s *Service) Create(ctx context.Context, ownerID uuid.UUID, name string) (C
 	}
 	if _, err = q.AddMember(ctx, crewsdb.AddMemberParams{CrewID: row.ID, UserID: ownerID}); err != nil {
 		return Crew{}, apperr.Wrap(err, "add owner")
+	}
+	if err = q.CreateDefaultChannels(ctx, row.ID); err != nil {
+		return Crew{}, apperr.Wrap(err, "create default channels")
 	}
 	if err = tx.Commit(ctx); err != nil {
 		return Crew{}, apperr.Wrap(err, "commit create crew")
@@ -170,8 +175,39 @@ func (s *Service) Leave(ctx context.Context, crewID, userID uuid.UUID) error {
 	return err
 }
 
-// Remove is the owner taking somebody out.
-func (s *Service) Remove(ctx context.Context, crewID, ownerID, memberID uuid.UUID) error {
+// Remove is somebody who runs the crew taking somebody out. The owner may
+// remove anyone; an admin only plain members.
+func (s *Service) Remove(ctx context.Context, crewID, actorID, memberID uuid.UUID) error {
+	c, err := s.get(ctx, crewID, actorID)
+	if err != nil {
+		return err
+	}
+	actor, err := s.role(ctx, c, actorID)
+	if err != nil {
+		return err
+	}
+	if !actor.CanManage() {
+		return apperr.ErrNotFound
+	}
+	if memberID == actorID {
+		return s.Leave(ctx, crewID, actorID)
+	}
+	if actor != crew.RoleOwner {
+		target, roleErr := s.role(ctx, c, memberID)
+		if roleErr != nil {
+			return roleErr
+		}
+		if target != crew.RoleMember {
+			return apperr.ErrNotFound
+		}
+	}
+	_, err = s.q.RemoveMember(ctx, crewsdb.RemoveMemberParams{CrewID: crewID, UserID: memberID})
+	return err
+}
+
+// SetRole makes a member an admin or a plain member again; only the owner
+// may, and ownership itself is never a role to hand out.
+func (s *Service) SetRole(ctx context.Context, crewID, ownerID, memberID uuid.UUID, role Role) error {
 	c, err := s.get(ctx, crewID, ownerID)
 	if err != nil {
 		return err
@@ -179,20 +215,64 @@ func (s *Service) Remove(ctx context.Context, crewID, ownerID, memberID uuid.UUI
 	if c.OwnerID != ownerID {
 		return apperr.ErrNotFound
 	}
-	if memberID == ownerID {
-		return s.Leave(ctx, crewID, ownerID)
+	if role != crew.RoleAdmin && role != crew.RoleMember {
+		return apperr.FieldErrors{}.Add("role", "Choose admin or member.")
 	}
-	_, err = s.q.RemoveMember(ctx, crewsdb.RemoveMemberParams{CrewID: crewID, UserID: memberID})
-	return err
+	if memberID == ownerID {
+		return apperr.FieldErrors{}.Add("role", "The owner's role can't change.")
+	}
+	n, err := s.q.SetMemberRole(ctx, crewsdb.SetMemberRoleParams{CrewID: crewID, UserID: memberID, Role: string(role)})
+	if err != nil {
+		return apperr.Wrap(err, "set role")
+	}
+	if n == 0 {
+		return apperr.ErrNotFound
+	}
+	return nil
 }
 
-// SetChallenge sets the weekly challenge; only the owner may.
-func (s *Service) SetChallenge(ctx context.Context, crewID, ownerID uuid.UUID, ch *Challenge) error {
-	c, err := s.get(ctx, crewID, ownerID)
+// role is what userID is in crew c; not found if they are not in it.
+func (s *Service) role(ctx context.Context, c crewsdb.Crew, userID uuid.UUID) (Role, error) {
+	if c.OwnerID == userID {
+		return crew.RoleOwner, nil
+	}
+	r, err := s.q.MemberRole(ctx, crewsdb.MemberRoleParams{CrewID: c.ID, UserID: userID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", apperr.ErrNotFound
+	}
+	if err != nil {
+		return "", apperr.Wrap(err, "member role")
+	}
+	return Role(r), nil
+}
+
+// Channels are the crew's channels in order, for members only.
+func (s *Service) Channels(ctx context.Context, crewID, viewerID uuid.UUID) ([]Channel, error) {
+	if _, err := s.get(ctx, crewID, viewerID); err != nil {
+		return nil, err
+	}
+	rows, err := s.q.ListChannels(ctx, crewID)
+	if err != nil {
+		return nil, apperr.Wrap(err, "list channels")
+	}
+	out := make([]Channel, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, Channel{ID: r.ID, Kind: r.Kind, Name: r.Name, Topic: r.Topic, Position: int(r.Position), IsDefault: r.IsDefault})
+	}
+	return out, nil
+}
+
+// SetChallenge sets the weekly challenge; the owner and admins may.
+func (s *Service) SetChallenge(ctx context.Context, crewID, actorID uuid.UUID, ch *Challenge) error {
+	c, err := s.get(ctx, crewID, actorID)
 	if err != nil {
 		return err
 	}
-	if c.OwnerID != ownerID {
+	actor, err := s.role(ctx, c, actorID)
+	if err != nil {
+		return err
+	}
+	if !actor.CanManage() {
 		return apperr.ErrNotFound
 	}
 	if ch == nil {
@@ -261,13 +341,17 @@ func (s *Service) Board(ctx context.Context, crewID, viewerID uuid.UUID) (Board,
 	now := s.now()
 	for _, r := range rows {
 		u := users.User{ID: r.ID, Timezone: r.Timezone}
-		m := Member{ID: r.ID, DisplayName: r.DisplayName, Owner: r.ID == c.OwnerID, Me: r.ID == viewerID}
+		m := Member{ID: r.ID, DisplayName: r.DisplayName, Owner: r.ID == c.OwnerID, Me: r.ID == viewerID, Role: Role(r.Role)}
+		if m.Owner {
+			m.Role = crew.RoleOwner
+		}
 		m.Handle = util.Val(r.Handle)
 		if err := s.fill(ctx, &m, u, now, out.Challenge); err != nil {
 			return Board{}, err
 		}
 		if m.Me {
 			out.WeekStart = weekStart(now.In(u.Location()))
+			out.MyRole = m.Role
 		}
 		out.Members = append(out.Members, m)
 	}
