@@ -89,3 +89,92 @@ JOIN crews c ON c.id = m.crew_id
 JOIN crew_challenges ch ON ch.crew_id = c.id
 WHERE m.user_id = $1
 ORDER BY c.created_at;
+
+-- name: ChannelInCrew :one
+SELECT * FROM crew_channels WHERE id = $1 AND crew_id = $2;
+
+-- name: MemberIDsByHandle :many
+SELECT u.id FROM crew_members m JOIN users u ON u.id = m.user_id
+WHERE m.crew_id = @crew_id AND lower(u.handle::text) = ANY(@handles::text[]);
+
+-- name: InsertMessage :one
+-- A repeated client_id from the same author is the same message sent twice;
+-- no row comes back and the caller looks the first one up.
+INSERT INTO crew_messages (crew_id, channel_id, author_id, kind, body, reply_to_id, mentions, mention_all, client_id)
+VALUES (@crew_id, @channel_id, @author_id, 'text', @body, sqlc.narg(reply_to_id), @mentions, @mention_all, sqlc.narg(client_id))
+ON CONFLICT (author_id, client_id) DO NOTHING
+RETURNING id, seq;
+
+-- name: MessageByClientID :one
+SELECT id FROM crew_messages WHERE author_id = $1 AND client_id = $2;
+
+-- name: InsertSystemMessage :exec
+INSERT INTO crew_messages (crew_id, channel_id, kind, body) VALUES ($1, $2, 'system', $3);
+
+-- The three reads below share one shape: a message as @viewer sees it. A
+-- message is visible when it is not hidden, its author and the viewer have not
+-- blocked each other, and the viewer has not reported it. The quoted reply is
+-- unavailable on the same terms, or when deleted.
+
+-- name: MessagesAfter :many
+SELECT m.id, m.seq, m.channel_id, m.author_id, m.kind, m.body, m.mentions, m.mention_all,
+       m.pinned_at, m.edited_at, m.deleted_at, m.created_at,
+       au.display_name AS author_name, au.handle AS author_handle,
+       r.id AS reply_id, ru.display_name AS reply_author_name, r.body AS reply_body,
+       (r.id IS NOT NULL AND (r.deleted_at IS NOT NULL OR r.hidden_at IS NOT NULL
+         OR EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id = @viewer AND b.blocked_id = r.author_id) OR (b.blocker_id = r.author_id AND b.blocked_id = @viewer))
+         OR EXISTS (SELECT 1 FROM content_reports cr WHERE cr.reporter_id = @viewer AND cr.subject_kind = 'crew_message' AND cr.subject_id = r.id)))::boolean AS reply_unavailable
+FROM crew_messages m
+LEFT JOIN users au ON au.id = m.author_id
+LEFT JOIN crew_messages r ON r.id = m.reply_to_id
+LEFT JOIN users ru ON ru.id = r.author_id
+WHERE m.channel_id = @channel_id AND m.seq > @after
+  AND m.hidden_at IS NULL
+  AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id = @viewer AND b.blocked_id = m.author_id) OR (b.blocker_id = m.author_id AND b.blocked_id = @viewer))
+  AND NOT EXISTS (SELECT 1 FROM content_reports cr WHERE cr.reporter_id = @viewer AND cr.subject_kind = 'crew_message' AND cr.subject_id = m.id)
+ORDER BY m.seq
+LIMIT @lim;
+
+-- name: MessagesBefore :many
+SELECT m.id, m.seq, m.channel_id, m.author_id, m.kind, m.body, m.mentions, m.mention_all,
+       m.pinned_at, m.edited_at, m.deleted_at, m.created_at,
+       au.display_name AS author_name, au.handle AS author_handle,
+       r.id AS reply_id, ru.display_name AS reply_author_name, r.body AS reply_body,
+       (r.id IS NOT NULL AND (r.deleted_at IS NOT NULL OR r.hidden_at IS NOT NULL
+         OR EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id = @viewer AND b.blocked_id = r.author_id) OR (b.blocker_id = r.author_id AND b.blocked_id = @viewer))
+         OR EXISTS (SELECT 1 FROM content_reports cr WHERE cr.reporter_id = @viewer AND cr.subject_kind = 'crew_message' AND cr.subject_id = r.id)))::boolean AS reply_unavailable
+FROM crew_messages m
+LEFT JOIN users au ON au.id = m.author_id
+LEFT JOIN crew_messages r ON r.id = m.reply_to_id
+LEFT JOIN users ru ON ru.id = r.author_id
+WHERE m.channel_id = @channel_id AND m.seq < @before
+  AND m.hidden_at IS NULL
+  AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id = @viewer AND b.blocked_id = m.author_id) OR (b.blocker_id = m.author_id AND b.blocked_id = @viewer))
+  AND NOT EXISTS (SELECT 1 FROM content_reports cr WHERE cr.reporter_id = @viewer AND cr.subject_kind = 'crew_message' AND cr.subject_id = m.id)
+ORDER BY m.seq DESC
+LIMIT @lim;
+
+-- name: MessageForViewer :one
+SELECT m.id, m.seq, m.channel_id, m.author_id, m.kind, m.body, m.mentions, m.mention_all,
+       m.pinned_at, m.edited_at, m.deleted_at, m.created_at,
+       au.display_name AS author_name, au.handle AS author_handle,
+       r.id AS reply_id, ru.display_name AS reply_author_name, r.body AS reply_body,
+       (r.id IS NOT NULL AND (r.deleted_at IS NOT NULL OR r.hidden_at IS NOT NULL
+         OR EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id = @viewer AND b.blocked_id = r.author_id) OR (b.blocker_id = r.author_id AND b.blocked_id = @viewer))
+         OR EXISTS (SELECT 1 FROM content_reports cr WHERE cr.reporter_id = @viewer AND cr.subject_kind = 'crew_message' AND cr.subject_id = r.id)))::boolean AS reply_unavailable
+FROM crew_messages m
+LEFT JOIN users au ON au.id = m.author_id
+LEFT JOIN crew_messages r ON r.id = m.reply_to_id
+LEFT JOIN users ru ON ru.id = r.author_id
+WHERE m.id = @id AND m.crew_id = @crew_id
+  AND m.hidden_at IS NULL
+  AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id = @viewer AND b.blocked_id = m.author_id) OR (b.blocker_id = m.author_id AND b.blocked_id = @viewer))
+  AND NOT EXISTS (SELECT 1 FROM content_reports cr WHERE cr.reporter_id = @viewer AND cr.subject_kind = 'crew_message' AND cr.subject_id = m.id);
+
+-- name: ReactionsFor :many
+-- Reactions on ids as @viewer sees them: none from anyone blocked either way.
+SELECT x.message_id, x.emoji, count(*)::int AS n, bool_or(x.user_id = @viewer)::boolean AS mine
+FROM crew_message_reactions x
+WHERE x.message_id = ANY(@ids::uuid[])
+  AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id = @viewer AND b.blocked_id = x.user_id) OR (b.blocker_id = x.user_id AND b.blocked_id = @viewer))
+GROUP BY x.message_id, x.emoji;

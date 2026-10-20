@@ -13,7 +13,7 @@
 -- member reads it in their own language.
 CREATE TABLE crew_messages (
     id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    seq          bigint GENERATED ALWAYS AS IDENTITY UNIQUE,
+    seq          bigint NOT NULL GENERATED ALWAYS AS IDENTITY UNIQUE,
     crew_id      uuid NOT NULL REFERENCES crews(id) ON DELETE CASCADE,
     channel_id   uuid NOT NULL REFERENCES crew_channels(id) ON DELETE CASCADE,
     author_id    uuid REFERENCES users(id) ON DELETE CASCADE,

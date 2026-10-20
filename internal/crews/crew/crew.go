@@ -90,3 +90,96 @@ type Board struct {
 	IsOwner   bool
 	MyRole    Role
 }
+
+// Message kinds. A system message has no author and its body is an i18n key.
+const (
+	MessageKindText   = "text"
+	MessageKindSystem = "system"
+)
+
+// Chat limits.
+const (
+	MaxBody        = 4000 // runes
+	PageSize       = 50
+	MaxPage        = 100
+	SendsPerMinute = 20
+	MaxChannels    = 20
+	MaxPins        = 50
+)
+
+// Emoji is one reaction people can leave: a stable key, stored, and the
+// glyph shown.
+type Emoji struct {
+	Key   string
+	Glyph string
+}
+
+// ReactionEmoji is the gym set, in the order they are shown. The keys match
+// the CHECK on crew_message_reactions.emoji.
+var ReactionEmoji = []Emoji{
+	{"fire", "🔥"},
+	{"muscle", "💪"},
+	{"clap", "👏"},
+	{"heart", "❤️"},
+	{"laugh", "😂"},
+	{"hundred", "💯"},
+	{"trophy", "🏆"},
+	{"eyes", "👀"},
+}
+
+// Glyph is the emoji for key, or "" when key is not in the set.
+func Glyph(key string) string {
+	for _, e := range ReactionEmoji {
+		if e.Key == key {
+			return e.Glyph
+		}
+	}
+	return ""
+}
+
+// Person is a crewmate as a message shows them.
+type Person struct {
+	ID     uuid.UUID
+	Name   string
+	Handle string
+}
+
+// Quote is the message a reply answers. Unavailable when the viewer may not
+// see it any more: deleted, hidden, or from someone blocked either way.
+type Quote struct {
+	ID          uuid.UUID
+	AuthorName  string
+	Excerpt     string
+	Unavailable bool
+}
+
+type Reaction struct {
+	Emoji string
+	Count int
+	Mine  bool
+}
+
+// Message is one chat message as one viewer sees it.
+type Message struct {
+	ID         uuid.UUID
+	Seq        int64
+	ChannelID  uuid.UUID
+	Author     *Person // nil for a system message
+	Kind       string
+	Body       string
+	ReplyTo    *Quote
+	Mentions   []uuid.UUID
+	MentionsMe bool
+	Reactions  []Reaction
+	Pinned     bool
+	Edited     bool
+	Deleted    bool
+	CreatedAt  time.Time
+}
+
+// Page is a run of messages in ascending order. HasMore says older messages
+// exist before the first one.
+type Page struct {
+	Messages []Message
+	HasMore  bool
+}
