@@ -26,3 +26,15 @@ type CrewChallenge struct {
 	Target    int16
 	CreatedAt time.Time
 }
+
+type CrewChannel struct {
+	ID        uuid.UUID
+	CrewID    uuid.UUID
+	Kind      string
+	Name      string
+	Topic     string
+	Position  int16
+	IsDefault bool
+	CreatedBy *uuid.UUID
+	CreatedAt time.Time
+}
