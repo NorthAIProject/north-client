@@ -11,16 +11,30 @@ import (
 )
 
 type Crew struct {
-	ID        uuid.UUID
-	Name      string
-	OwnerID   uuid.UUID
-	Code      string
-	CreatedAt time.Time
+	ID          uuid.UUID
+	Name        string
+	OwnerID     uuid.UUID
+	Code        string
+	CreatedAt   time.Time
+	Visibility  string
+	Description string
 }
 
 type CrewChallenge struct {
 	CrewID    uuid.UUID
 	Kind      string
 	Target    int16
+	CreatedAt time.Time
+}
+
+type CrewChannel struct {
+	ID        uuid.UUID
+	CrewID    uuid.UUID
+	Kind      string
+	Name      string
+	Topic     string
+	Position  int16
+	IsDefault bool
+	CreatedBy *uuid.UUID
 	CreatedAt time.Time
 }

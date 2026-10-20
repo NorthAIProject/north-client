@@ -41,14 +41,36 @@ type NavGroup struct {
 // component already implements correctly, including the keyboard shortcut and
 // the focus handling that a hand-rolled version would have skipped.
 templ App(title string, user users.User, nav []NavGroup) {
+	@appShell(title, user, nav, false) {
+		{ children... }
+	}
+}
+
+// AppWide is the shell for a page that lays out its own panes edge to edge,
+// such as a crew's chat: the sidebar starts as its icon rail, and main does
+// not scroll, so each pane scrolls on its own.
+templ AppWide(title string, user users.User, nav []NavGroup) {
+	@appShell(title, user, nav, true) {
+		{ children... }
+	}
+}
+
+templ appShell(title string, user users.User, nav []NavGroup, wide bool) {
 	@Base(title) {
-		@sidebar.Layout(sidebar.LayoutProps{Class: "min-h-dvh"}) {
+		// A wide page is held to the viewport so its own panes scroll, not the
+		// document: a chat whose composer sits below the fold is not a chat.
+		{{ shell, inset := "min-h-dvh", "" }}
+		if wide {
+			{{ shell, inset = "h-dvh overflow-hidden", "min-h-0" }}
+		}
+		@sidebar.Layout(sidebar.LayoutProps{Class: shell}) {
 			@sidebar.Sidebar(sidebar.Props{
 				ID:          "app-sidebar",
 				Collapsible: sidebar.CollapsibleIcon,
+				Collapsed:   wide,
 			}) {
 				@sidebar.Header() {
-					@ui.BrandLockup("/app", "size-6", "text-base font-medium tracking-tight")
+					@ui.BrandLockup("/app", "size-6", "text-base font-medium tracking-tight group-data-[tui-sidebar-state=collapsed]:hidden")
 				}
 				@sidebar.Content() {
 					for _, group := range nav {
@@ -59,7 +81,7 @@ templ App(title string, user users.User, nav []NavGroup) {
 					@userFooter(user)
 				}
 			}
-			@sidebar.Inset() {
+			@sidebar.Inset(sidebar.InsetProps{Class: inset}) {
 				<header class="border-border flex min-h-14 shrink-0 items-center gap-2 border-b pt-[env(safe-area-inset-top)] pr-[max(1rem,env(safe-area-inset-right))] pl-[max(1rem,env(safe-area-inset-left))]">
 					@sidebar.Trigger(sidebar.TriggerProps{Target: "app-sidebar"}) {
 						@icon.Icon("panel-left")(icon.Props{Class: "size-4"})
@@ -105,9 +127,15 @@ templ App(title string, user users.User, nav []NavGroup) {
 						></a>
 					</div>
 				</header>
-				<main class="min-h-0 flex-1 overflow-y-auto">
-					{ children... }
-				</main>
+				if wide {
+					<main class="min-h-0 flex-1 overflow-hidden">
+						{ children... }
+					</main>
+				} else {
+					<main class="min-h-0 flex-1 overflow-y-auto">
+						{ children... }
+					</main>
+				}
 			}
 		}
 		@sidebar.Script()

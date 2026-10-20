@@ -52,6 +52,7 @@ func TestUntranslatedStringsAreAccountedFor(t *testing.T) {
 	// Keep this short: each entry is a string nobody will notice going stale.
 	allowed := map[string]map[string]bool{
 		"pt-PT": {
+			"crews.report.reason.spam":  true, // "spam" is borrowed unchanged
 			"nav.cardio-insights.nav":   true, // "Cardio" is the everyday word here too
 			"conn.tg.title":             true, // Telegram is a product name
 			"nav.fitness":               true,
@@ -68,6 +69,7 @@ func TestUntranslatedStringsAreAccountedFor(t *testing.T) {
 			"exercises.category.cardio": true, // same borrowing as nav.cardio-insights.nav
 		},
 		"pt-BR": {
+			"crews.report.reason.spam":  true, // "spam" is borrowed unchanged
 			"nav.cardio-insights.nav":   true, // "Cardio" is the everyday word here too
 			"conn.tg.title":             true, // Telegram is a product name
 			"nav.fitness":               true,
@@ -82,6 +84,8 @@ func TestUntranslatedStringsAreAccountedFor(t *testing.T) {
 			"exercises.category.cardio": true, // same borrowing as nav.cardio-insights.nav
 		},
 		"es": {
+			"crews.report.reason.spam":  true, // "spam" is borrowed unchanged
+			"crews.tab.chat":            true, // "chat" is the everyday Spanish word
 			"nav.cardio-insights.nav":   true, // "Cardio" is the everyday word here too
 			"conn.tg.title":             true, // Telegram is a product name
 			"nav.fitness":               true,

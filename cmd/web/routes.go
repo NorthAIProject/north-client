@@ -32,6 +32,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/connections"
 	"github.com/NorthAIProject/north-client/internal/conversations"
 	"github.com/NorthAIProject/north-client/internal/crews"
+	"github.com/NorthAIProject/north-client/internal/crews/live"
 	"github.com/NorthAIProject/north-client/internal/dailyposts"
 	"github.com/NorthAIProject/north-client/internal/dashboard"
 	"github.com/NorthAIProject/north-client/internal/day"
@@ -62,6 +63,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/messaging/telegram"
 	"github.com/NorthAIProject/north-client/internal/milestones"
 	"github.com/NorthAIProject/north-client/internal/mind"
+	"github.com/NorthAIProject/north-client/internal/moderation"
 	"github.com/NorthAIProject/north-client/internal/news"
 	"github.com/NorthAIProject/north-client/internal/notifications"
 	"github.com/NorthAIProject/north-client/internal/nudges"
@@ -287,10 +289,31 @@ func routes(
 	// through biometrics, so both exist first.
 	progressSvc := progresschecks.NewService(progresschecks.NewRepository(pool), mediaSvc, biometricSvc)
 
+	calculatorSvc := calculator.NewService(calculator.NewRepository(pool), biometricSvc)
+
+	activitySvc := activity.NewService(activity.NewRepository(pool), biometricSvc).WithAchievements(achievementSvc)
+	activityHandler := activity.NewHandler(activitySvc)
+
+	// Crews read check-ins and finished sessions for their boards, and keep
+	// people out of crews whose owner they have a block with.
+	crewSvc := crews.NewService(pool, crews.CheckInsFrom(checkinSvc), crews.WorkoutsFrom(activitySvc)).
+		WithBlocks(social.NewRepository(pool))
+	// Moderation sits under everything people post to each other: the word
+	// filter, the terms, reports that hide, and the operators' queue. Crew
+	// chat registers its messages with it, so reports can hide them.
+	moderationSvc := moderation.NewService(pool).
+		WithOperators(cfg.OperatorUserIDs, apnsSvc, pushSvc).
+		WithLogger(slog.Default())
+	moderationHandler := moderation.NewHandler(moderationSvc)
+	crewChat := crews.NewChat(pool, moderationSvc, moderation.NewFilter(), queue)
+	crewLive := live.NewHub()
+	moderationSvc.Register(crews.MessageSubject, crewChat.Hider())
+	crewHandler := crews.NewHandler(crewSvc, cfg.BaseURL, cfg.Env.IsProduction()).WithLive(crewChat, crewLive)
+
 	// Export reads across profile, goals, check-ins, memories, documents,
-	// conversations, medications and progress checks, which is why it is its
-	// own package rather than a method on any one of them. Built once the last
-	// of those exists.
+	// conversations, medications, progress checks and crew messages, which is
+	// why it is its own package rather than a method on any one of them. Built
+	// once the last of those exists.
 	exportHandler := export.NewHandler(export.NewExporter(export.Options{
 		Documents:     documentSvc,
 		Memories:      memorySvc,
@@ -301,16 +324,8 @@ func routes(
 		Friends:       socialSvc,
 		Medications:   medicationSvc,
 		Progress:      progressSvc,
+		CrewMessages:  crewSvc,
 	}), quotaSvc, accountSvc)
-
-	calculatorSvc := calculator.NewService(calculator.NewRepository(pool), biometricSvc)
-
-	activitySvc := activity.NewService(activity.NewRepository(pool), biometricSvc).WithAchievements(achievementSvc)
-	activityHandler := activity.NewHandler(activitySvc)
-
-	// Crews read check-ins and finished sessions for their boards.
-	crewSvc := crews.NewService(pool, crews.CheckInsFrom(checkinSvc), crews.WorkoutsFrom(activitySvc))
-	crewHandler := crews.NewHandler(crewSvc, cfg.BaseURL, cfg.Env.IsProduction())
 
 	// XP is derived from what the slices above record; the leaderboard reads
 	// it and the check-in streak.
@@ -1106,7 +1121,8 @@ func routes(
 			news:         news.NewAPI(newsSvc),
 			social:       social.NewAPI(socialSvc, cfg.BaseURL),
 			achievements: achievements.NewAPI(achievementSvc),
-			crews:        crews.NewAPI(crewSvc, cfg.BaseURL),
+			crews:        crews.NewAPI(crewSvc, cfg.BaseURL).WithLive(crewChat, crewLive),
+			moderation:   moderation.NewAPI(moderationSvc),
 			xp:           xp.NewAPI(xpSvc),
 			weekly:       weekly.NewAPI(weeklySvc),
 			recaps:       recaps.NewAPI(recapSvc),
@@ -1281,6 +1297,7 @@ func routes(
 				decisionHandler.Routes(r)
 				socialHandler.Routes(r)
 				crewHandler.Routes(r)
+				moderationHandler.Routes(r)
 				xpHandler.Routes(r)
 				weeklyHandler.Routes(r)
 				recapHandler.Routes(r)
@@ -1302,24 +1319,39 @@ func routes(
 		})
 	})
 
-	if telegramClient == nil {
-		return r, nil
-	}
-
-	// Both edges need a moment with a context: the command menu is published
-	// once at boot, and the poller then runs for the life of the process. In
-	// webhook mode there is no poller and this returns after registering.
 	return r, func(ctx context.Context) error {
-		if err := telegramClient.RegisterCommands(ctx); err != nil {
-			// Cosmetic. The commands are matched from the message text and work
-			// regardless; what is lost is the menu that advertises them.
-			slog.Default().Warn("could not publish the telegram command menu", slog.Any("error", err))
-		}
-		if telegramPoller == nil {
+		// One LISTEN connection feeds every open crew stream in this process.
+		// When the process is told to stop, the streams end at once, so the
+		// server's graceful shutdown does not wait out its timeout on them.
+		go func() {
+			if err := live.Listen(ctx, cfg.DatabaseURL, crewLive, slog.Default()); err != nil {
+				slog.Default().Error("crew live listener stopped", slog.Any("error", err))
+			}
+		}()
+		go func() {
+			<-ctx.Done()
+			crewLive.Close()
+		}()
+		if telegramClient == nil {
 			return nil
 		}
-		return telegramPoller.Run(ctx)
+		return runTelegram(ctx, telegramClient, telegramPoller)
 	}
+}
+
+// runTelegram publishes the command menu, then polls for the life of the
+// process. In webhook mode there is no poller and it returns after
+// registering.
+func runTelegram(ctx context.Context, client *telegram.Client, poller *telegram.Poller) error {
+	if err := client.RegisterCommands(ctx); err != nil {
+		// Cosmetic. The commands are matched from the message text and work
+		// regardless; what is lost is the menu that advertises them.
+		slog.Default().Warn("could not publish the telegram command menu", slog.Any("error", err))
+	}
+	if poller == nil {
+		return nil
+	}
+	return poller.Run(ctx)
 }
 
 // healthz reports whether the process can serve traffic. It checks the database

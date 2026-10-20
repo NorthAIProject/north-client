@@ -169,6 +169,10 @@ const (
 	// context window without the coach's own trigger firing — a conversation
 	// resumed from Telegram, or one whose enqueue was lost.
 	KindSweepSummaries Kind = "sweep_summaries"
+
+	// KindCrewMessagePush tells the crewmates who asked for it about a new
+	// message in one of their crews.
+	KindCrewMessagePush Kind = "crew_message_push"
 )
 
 // SummarizeConversationPayload is the job body for KindSummarizeConversation.
@@ -229,6 +233,14 @@ type WeeklyReviewPayload struct {
 	ReportID uuid.UUID `json:"report_id"`
 }
 
+// CrewMessagePushPayload is the job body for KindCrewMessagePush. UserID is
+// the author, so deleting their account drops the job with everything else
+// of theirs.
+type CrewMessagePushPayload struct {
+	UserID    uuid.UUID `json:"user_id"`
+	MessageID uuid.UUID `json:"message_id"`
+}
+
 // Job is a unit of queued work.
 type Job struct {
 	ID          uuid.UUID
@@ -278,6 +290,12 @@ func (q *Queue) Enqueue(ctx context.Context, kind Kind, payload any) (Job, error
 		return Job{}, apperr.Wrap(err, "enqueue %s", kind)
 	}
 	return fromDB(row), nil
+}
+
+// EnqueueTx adds a job inside tx, so it exists exactly when the write that
+// asked for it commits.
+func (q *Queue) EnqueueTx(ctx context.Context, tx pgx.Tx, kind Kind, payload any) (Job, error) {
+	return (&Queue{q: q.q.WithTx(tx)}).Enqueue(ctx, kind, payload)
 }
 
 // Claim takes one eligible job, or returns false when the queue is empty.

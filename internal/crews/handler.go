@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/crews/live"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	crewpages "github.com/NorthAIProject/north-client/web/crews"
@@ -22,14 +23,26 @@ import (
 const JoinCookie = "north_crew"
 
 type Handler struct {
-	svc     *Service
-	siteURL string
-	secure  bool
+	svc       *Service
+	siteURL   string
+	secure    bool
+	chat      *Chat
+	hub       *live.Hub
+	heartbeat time.Duration
 }
 
 func NewHandler(svc *Service, siteURL string, secure bool) *Handler {
-	return &Handler{svc: svc, siteURL: strings.TrimRight(siteURL, "/"), secure: secure}
+	return &Handler{svc: svc, siteURL: strings.TrimRight(siteURL, "/"), secure: secure, heartbeat: heartbeat}
 }
+
+// WithLive gives the pages the chat and the hub their streams read from.
+func (h *Handler) WithLive(chat *Chat, hub *live.Hub) *Handler {
+	h.chat, h.hub = chat, hub
+	return h
+}
+
+// WithHeartbeat changes how often a quiet stream pings, for tests.
+func (h *Handler) WithHeartbeat(d time.Duration) *Handler { h.heartbeat = d; return h }
 
 // PublicRoutes mount outside /app: the join link.
 func (h *Handler) PublicRoutes(r chi.Router) {
@@ -39,10 +52,13 @@ func (h *Handler) PublicRoutes(r chi.Router) {
 // Routes mount under /app.
 func (h *Handler) Routes(r chi.Router) {
 	r.Get("/crews", h.index)
+	r.Get("/crews/{crewID}/live", h.live)
 	r.Post("/crews", h.create)
-	r.Get("/crews/{crewID}", h.board)
+	r.Get("/crews/{crewID}", h.space)
+	h.chatRoutes(r)
 	r.Post("/crews/{crewID}/leave", h.leave)
 	r.Post("/crews/{crewID}/members/{userID}/remove", h.remove)
+	r.Post("/crews/{crewID}/members/{userID}/role", h.role)
 	r.Post("/crews/{crewID}/challenge", h.challenge)
 }
 
@@ -117,21 +133,6 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/app/crews/"+c.ID.String(), http.StatusSeeOther)
 }
 
-func (h *Handler) board(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(chi.URLParam(r, "crewID"))
-	if err != nil {
-		h.fail(w, r, apperr.ErrNotFound)
-		return
-	}
-	user := auth.MustUser(r.Context())
-	b, err := h.svc.Board(r.Context(), id, user.ID)
-	if err != nil {
-		h.fail(w, r, err)
-		return
-	}
-	h.render(w, r, http.StatusOK, crewpages.BoardPage(user, b, JoinURL(h.siteURL, b.Code)))
-}
-
 func (h *Handler) leave(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "crewID"))
 	if err != nil {
@@ -156,7 +157,26 @@ func (h *Handler) remove(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	http.Redirect(w, r, "/app/crews/"+crewID.String(), http.StatusSeeOther)
+	http.Redirect(w, r, "/app/crews/"+crewID.String()+"/challenge", http.StatusSeeOther)
+}
+
+// role makes a member an admin, or a member again.
+func (h *Handler) role(w http.ResponseWriter, r *http.Request) {
+	crewID, err1 := uuid.Parse(chi.URLParam(r, "crewID"))
+	memberID, err2 := uuid.Parse(chi.URLParam(r, "userID"))
+	if err1 != nil || err2 != nil {
+		h.fail(w, r, apperr.ErrNotFound)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		h.fail(w, r, apperr.ErrValidation)
+		return
+	}
+	if err := h.svc.SetRole(r.Context(), crewID, auth.MustUser(r.Context()).ID, memberID, Role(r.PostFormValue("role"))); err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	http.Redirect(w, r, "/app/crews/"+crewID.String()+"/challenge", http.StatusSeeOther)
 }
 
 // challenge sets the weekly challenge, or clears it when kind is "none".
@@ -179,7 +199,7 @@ func (h *Handler) challenge(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	http.Redirect(w, r, "/app/crews/"+crewID.String(), http.StatusSeeOther)
+	http.Redirect(w, r, "/app/crews/"+crewID.String()+"/challenge", http.StatusSeeOther)
 }
 
 func (h *Handler) render(w http.ResponseWriter, r *http.Request, status int, c templ.Component) {
@@ -207,4 +227,22 @@ func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 		middleware.FromContext(r.Context()).Error("crews request failed", slog.Any("error", err))
 		http.Error(w, "Something went wrong.", http.StatusInternalServerError)
 	}
+}
+
+// live streams the crew's events to a member's page as named DOM events.
+// channel is the channel the page has open: its new messages are crew-new,
+// everyone else's are crew-unread.
+func (h *Handler) live(w http.ResponseWriter, r *http.Request) {
+	crewID, err := uuid.Parse(chi.URLParam(r, "crewID"))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	channelID, _ := uuid.Parse(r.URL.Query().Get("channel"))
+	viewer := auth.MustUser(r.Context()).ID
+	if _, _, err = h.chat.member(r.Context(), crewID, viewer); err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	serveLive(w, r, h.hub, crewID, h.chat.viewerGate(viewer, webFrame(channelID)), h.heartbeat)
 }

@@ -169,3 +169,9 @@ func (s *Service) mark(ctx context.Context, fn func(context.Context, uuid.UUID) 
 			slog.String("subscription_id", id.String()))
 	}
 }
+
+// SendThread matches the APNs service so callers treat both alike. Browsers
+// have no threads; the service worker groups by href instead.
+func (s *Service) SendThread(ctx context.Context, userID uuid.UUID, title, body, href, category, _ string) (int, error) {
+	return s.Send(ctx, userID, title, body, href, category)
+}
