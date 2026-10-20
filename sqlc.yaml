@@ -341,6 +341,16 @@ sql:
 
   - engine: postgresql
     schema: migrations
+    queries: internal/moderation/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: moderationdb
+        out: internal/moderation/db
+        overrides: *overrides
+
+  - engine: postgresql
+    schema: migrations
     queries: internal/weekly/db/queries.sql
     gen:
       go:
