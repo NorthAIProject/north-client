@@ -313,8 +313,6 @@ func routes(
 	// people out of crews whose owner they have a block with.
 	crewSvc := crews.NewService(pool, crews.CheckInsFrom(checkinSvc), crews.WorkoutsFrom(activitySvc)).
 		WithBlocks(social.NewRepository(pool))
-	crewHandler := crews.NewHandler(crewSvc, cfg.BaseURL, cfg.Env.IsProduction())
-
 	// Moderation sits under everything people post to each other: the word
 	// filter, the terms, reports that hide, and the operators' queue. Crew
 	// chat registers its messages with it, so reports can hide them.
@@ -325,6 +323,7 @@ func routes(
 	crewChat := crews.NewChat(pool, moderationSvc, moderation.NewFilter(), queue)
 	crewLive := live.NewHub()
 	moderationSvc.Register(crews.MessageSubject, crewChat.Hider())
+	crewHandler := crews.NewHandler(crewSvc, cfg.BaseURL, cfg.Env.IsProduction()).WithLive(crewChat, crewLive)
 
 	// XP is derived from what the slices above record; the leaderboard reads
 	// it and the check-in streak.
@@ -1117,7 +1116,7 @@ func routes(
 			news:         news.NewAPI(newsSvc),
 			social:       social.NewAPI(socialSvc, cfg.BaseURL),
 			achievements: achievements.NewAPI(achievementSvc),
-			crews:        crews.NewAPI(crewSvc, cfg.BaseURL),
+			crews:        crews.NewAPI(crewSvc, cfg.BaseURL).WithLive(crewChat, crewLive),
 			moderation:   moderation.NewAPI(moderationSvc),
 			xp:           xp.NewAPI(xpSvc),
 			weekly:       weekly.NewAPI(weeklySvc),

@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/crews/live"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	crewpages "github.com/NorthAIProject/north-client/web/crews"
@@ -22,14 +23,26 @@ import (
 const JoinCookie = "north_crew"
 
 type Handler struct {
-	svc     *Service
-	siteURL string
-	secure  bool
+	svc       *Service
+	siteURL   string
+	secure    bool
+	chat      *Chat
+	hub       *live.Hub
+	heartbeat time.Duration
 }
 
 func NewHandler(svc *Service, siteURL string, secure bool) *Handler {
-	return &Handler{svc: svc, siteURL: strings.TrimRight(siteURL, "/"), secure: secure}
+	return &Handler{svc: svc, siteURL: strings.TrimRight(siteURL, "/"), secure: secure, heartbeat: heartbeat}
 }
+
+// WithLive gives the pages the chat and the hub their streams read from.
+func (h *Handler) WithLive(chat *Chat, hub *live.Hub) *Handler {
+	h.chat, h.hub = chat, hub
+	return h
+}
+
+// WithHeartbeat changes how often a quiet stream pings, for tests.
+func (h *Handler) WithHeartbeat(d time.Duration) *Handler { h.heartbeat = d; return h }
 
 // PublicRoutes mount outside /app: the join link.
 func (h *Handler) PublicRoutes(r chi.Router) {
@@ -39,6 +52,7 @@ func (h *Handler) PublicRoutes(r chi.Router) {
 // Routes mount under /app.
 func (h *Handler) Routes(r chi.Router) {
 	r.Get("/crews", h.index)
+	r.Get("/crews/{crewID}/live", h.live)
 	r.Post("/crews", h.create)
 	r.Get("/crews/{crewID}", h.board)
 	r.Post("/crews/{crewID}/leave", h.leave)
@@ -227,4 +241,22 @@ func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 		middleware.FromContext(r.Context()).Error("crews request failed", slog.Any("error", err))
 		http.Error(w, "Something went wrong.", http.StatusInternalServerError)
 	}
+}
+
+// live streams the crew's events to a member's page as named DOM events.
+// channel is the channel the page has open: its new messages are crew-new,
+// everyone else's are crew-unread.
+func (h *Handler) live(w http.ResponseWriter, r *http.Request) {
+	crewID, err := uuid.Parse(chi.URLParam(r, "crewID"))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	channelID, _ := uuid.Parse(r.URL.Query().Get("channel"))
+	viewer := auth.MustUser(r.Context()).ID
+	if _, _, err = h.chat.member(r.Context(), crewID, viewer); err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	serveLive(w, r, h.hub, crewID, h.chat.viewerGate(viewer, webFrame(channelID)), h.heartbeat)
 }

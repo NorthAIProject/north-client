@@ -45,6 +45,27 @@ func (q *Queries) AddReaction(ctx context.Context, arg AddReactionParams) error 
 	return err
 }
 
+const authorBlockedFor = `-- name: AuthorBlockedFor :one
+SELECT EXISTS (
+    SELECT 1 FROM crew_messages m JOIN blocks b
+      ON (b.blocker_id = $1 AND b.blocked_id = m.author_id) OR (b.blocker_id = m.author_id AND b.blocked_id = $1)
+    WHERE m.id = $2
+)
+`
+
+type AuthorBlockedForParams struct {
+	Viewer uuid.UUID
+	ID     uuid.UUID
+}
+
+// Whether the author of message @id and @viewer have blocked each other.
+func (q *Queries) AuthorBlockedFor(ctx context.Context, arg AuthorBlockedForParams) (bool, error) {
+	row := q.db.QueryRow(ctx, authorBlockedFor, arg.Viewer, arg.ID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const challengesOf = `-- name: ChallengesOf :many
 SELECT c.id, c.name, ch.kind, ch.target, ch.created_at
 FROM crew_members m

@@ -4441,6 +4441,38 @@ paths:
           description: Accepted
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /crews/{crewID}/live:
+    parameters:
+      - name: crewID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: streamCrewLive
+      summary: Stream the crew's live events (members only)
+      description: |
+        Server-Sent Events. Each event is a signal, never content: on
+        `message` fetch `messages?after=<seq>`, on `update` refetch that one
+        message, on `channels` refetch the channel and member lists, and on
+        `resync` refetch everything open. `removed` with your own `userId`
+        ends the stream. Event names (`type` in the data) are open: ignore
+        ones you do not know. The data is a CrewLiveEvent as JSON. A `: ping`
+        comment arrives every 20 seconds.
+      tags: [crews]
+      responses:
+        '200':
+          description: The event stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /crews/{crewID}/challenge:
     parameters:
       - name: crewID
@@ -7026,6 +7058,29 @@ components:
         role:
           type: string
           description: owner, admin or member. Treat any other value as member.
+    CrewLiveEvent:
+      type: object
+      description: A crew live event. Only ids; fetch the content it points at.
+      required: [type, crewId]
+      properties:
+        type:
+          type: string
+          description: Known values message, update, channels, removed, resync. Others may come; ignore them.
+        crewId:
+          type: string
+          format: uuid
+        channelId:
+          type: string
+          format: uuid
+        messageId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        seq:
+          type: integer
+          format: int64
     ModerationTerms:
       type: object
       required: [version, accepted]
