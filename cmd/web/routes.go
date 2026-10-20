@@ -307,8 +307,10 @@ func routes(
 	activitySvc := activity.NewService(activity.NewRepository(pool), biometricSvc).WithAchievements(achievementSvc)
 	activityHandler := activity.NewHandler(activitySvc)
 
-	// Crews read check-ins and finished sessions for their boards.
-	crewSvc := crews.NewService(pool, crews.CheckInsFrom(checkinSvc), crews.WorkoutsFrom(activitySvc))
+	// Crews read check-ins and finished sessions for their boards, and keep
+	// people out of crews whose owner they have a block with.
+	crewSvc := crews.NewService(pool, crews.CheckInsFrom(checkinSvc), crews.WorkoutsFrom(activitySvc)).
+		WithBlocks(social.NewRepository(pool))
 	crewHandler := crews.NewHandler(crewSvc, cfg.BaseURL, cfg.Env.IsProduction())
 
 	// XP is derived from what the slices above record; the leaderboard reads

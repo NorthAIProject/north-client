@@ -14,11 +14,12 @@ const (
 	ChallengeWorkouts = "workouts"
 )
 
-// Size limits, by the owner's tier: a crew is small on purpose, and Pro lets
-// a club or a team use one.
+// Size limits, by the owner's tier: big enough for a gym crew's channels to
+// feel alive, and Pro lets a club or a team use one.
+// Whether larger crews are a paid feature is decided in a later phase.
 const (
-	MaxMembers    = 8
-	MaxMembersPro = 50
+	MaxMembers    = 25
+	MaxMembersPro = 100
 )
 
 // Role is what a person may do in a crew. The owner is crews.owner_id, the
