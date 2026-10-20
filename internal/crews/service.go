@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/NorthAIProject/north-client/internal/crews/crew"
 	crewsdb "github.com/NorthAIProject/north-client/internal/crews/db"
@@ -361,25 +362,34 @@ func (s *Service) Board(ctx context.Context, crewID, viewerID uuid.UUID) (Board,
 		return Board{}, apperr.Wrap(err, "get challenge")
 	}
 
+	// Each member's signals are a few queries; a crew can be a hundred
+	// people, so fill a few at a time rather than one after another.
 	now := s.now()
-	for _, r := range rows {
-		u := users.User{ID: r.ID, Timezone: r.Timezone}
+	out.Members = make([]Member, len(rows))
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(boardFillers)
+	for i, r := range rows {
 		m := Member{ID: r.ID, DisplayName: r.DisplayName, Owner: r.ID == c.OwnerID, Me: r.ID == viewerID, Role: Role(r.Role)}
 		if m.Owner {
 			m.Role = crew.RoleOwner
 		}
 		m.Handle = util.Val(r.Handle)
-		if err := s.fill(ctx, &m, u, now, out.Challenge); err != nil {
-			return Board{}, err
-		}
+		u := users.User{ID: r.ID, Timezone: r.Timezone}
 		if m.Me {
 			out.WeekStart = weekStart(now.In(u.Location()))
 			out.MyRole = m.Role
 		}
-		out.Members = append(out.Members, m)
+		out.Members[i] = m
+		g.Go(func() error { return s.fill(gctx, &out.Members[i], u, now, out.Challenge) })
+	}
+	if err = g.Wait(); err != nil {
+		return Board{}, err
 	}
 	return out, nil
 }
+
+// boardFillers is how many members' signals the board reads at once.
+const boardFillers = 8
 
 func (s *Service) fill(ctx context.Context, m *Member, u users.User, now time.Time, ch *Challenge) error {
 	local := now.In(u.Location())

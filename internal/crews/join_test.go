@@ -85,3 +85,44 @@ func members(t *testing.T, pool *pgxpool.Pool, crewID uuid.UUID) int {
 	}
 	return int(n)
 }
+
+// The board lists members in the order they joined, each with their own
+// role and the viewer marked, however the rows are filled.
+func TestBoardKeepsJoinOrder(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	svc := service(pool)
+	owner := person(t, pool, "owner@north.test", "Owner")
+	c, _ := svc.Create(ctx, owner.ID, "Twelve")
+	want := []string{"Owner"}
+	var viewer uuid.UUID
+	for i := 1; i < 12; i++ {
+		u := person(t, pool, fmt.Sprintf("m%d@north.test", i), fmt.Sprintf("M%02d", i))
+		if _, err := svc.Join(ctx, u.ID, c.Code); err != nil {
+			t.Fatal(err)
+		}
+		want = append(want, u.DisplayName)
+		if i == 7 {
+			viewer = u.ID
+		}
+	}
+
+	board, err := svc.Board(ctx, c.ID, viewer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(board.Members) != len(want) {
+		t.Fatalf("%d members; want %d", len(board.Members), len(want))
+	}
+	for i, m := range board.Members {
+		if m.DisplayName != want[i] || m.Me != (m.ID == viewer) {
+			t.Fatalf("member %d = %s (me %v); want %s", i, m.DisplayName, m.Me, want[i])
+		}
+		if (i == 0) != (m.Role == crew.RoleOwner) {
+			t.Fatalf("member %d role %q", i, m.Role)
+		}
+	}
+	if board.MyRole != crew.RoleMember || board.WeekStart.IsZero() {
+		t.Fatalf("viewer role %q, week start %v", board.MyRole, board.WeekStart)
+	}
+}
