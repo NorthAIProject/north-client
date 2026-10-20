@@ -28,6 +28,7 @@ import (
 // terms, and the chat service over it.
 type room struct {
 	pool    *pgxpool.Pool
+	mod     *moderation.Service
 	svc     *crews.Service
 	chat    *crews.Chat
 	crew    crews.Crew
@@ -42,7 +43,9 @@ func newRoom(t *testing.T) room {
 	pool := testdb.New(t)
 	ctx := context.Background()
 	r := room{pool: pool, svc: service(pool)}
-	r.chat = crews.NewChat(pool, moderation.NewService(pool), moderation.NewFilter(), jobs.NewQueue(pool))
+	r.mod = moderation.NewService(pool)
+	r.chat = crews.NewChat(pool, r.mod, moderation.NewFilter(), jobs.NewQueue(pool))
+	r.mod.Register(crews.MessageSubject, r.chat.Hider())
 	r.owner = handled(t, pool, "owner@north.test", "Owner", "owner")
 	r.ana = handled(t, pool, "ana@north.test", "Ana", "ana")
 	r.leo = handled(t, pool, "leo@north.test", "Leo", "leo")

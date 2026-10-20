@@ -4417,6 +4417,30 @@ paths:
           $ref: '#/components/responses/NotFound'
         '422':
           $ref: '#/components/responses/ValidationError'
+  /moderation/terms:
+    get:
+      operationId: getModerationTerms
+      summary: Whether the current community terms are accepted
+      description: Posting anywhere people see each other's words needs the current version accepted first.
+      tags: [moderation]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModerationTerms'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: acceptModerationTerms
+      summary: Accept the current community terms
+      tags: [moderation]
+      responses:
+        '204':
+          description: Accepted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /crews/{crewID}/challenge:
     parameters:
       - name: crewID
@@ -7002,6 +7026,14 @@ components:
         role:
           type: string
           description: owner, admin or member. Treat any other value as member.
+    ModerationTerms:
+      type: object
+      required: [version, accepted]
+      properties:
+        version:
+          type: integer
+        accepted:
+          type: boolean
     CrewRoleRequest:
       type: object
       required: [role]

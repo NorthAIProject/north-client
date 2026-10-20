@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/ai/providers"
 	"github.com/NorthAIProject/north-client/internal/quota"
@@ -39,6 +41,10 @@ type Config struct {
 	// silently collapses every limiter into one shared bucket — set it to the
 	// pod network CIDR there. See internal/shared/middleware.ClientIP.
 	TrustedProxies middleware.TrustedProxies
+
+	// OperatorUserIDs are the accounts that review reported content at
+	// /app/ops/moderation and get a push for every new report. Not a secret.
+	OperatorUserIDs []uuid.UUID
 
 	// AuthAttemptsPerMinute bounds sign-in, sign-up and password-reset attempts
 	// from one address; AuthAttemptsPerEmailPerMinute bounds them against one
@@ -768,6 +774,12 @@ func Load() (*Config, error) {
 	}
 	cfg.TrustedProxies = trusted
 
+	operators, err := parseOperators(os.Getenv("OPERATOR_USER_IDS"))
+	if err != nil {
+		problems = append(problems, err.Error())
+	}
+	cfg.OperatorUserIDs = operators
+
 	// Per hour, not per minute: these are human actions with bursty shapes, and
 	// three coach messages in a row is somebody thinking out loud rather than
 	// somebody abusing the service.
@@ -1400,6 +1412,20 @@ type NewsConfig struct {
 
 // Enabled reports whether the ticker can run at all on this deployment.
 func (c NewsConfig) Enabled() bool { return c.FeedsBaseURL != "" }
+
+// parseOperators reads OPERATOR_USER_IDS, comma-separated user ids. A
+// malformed id fails boot: a typo would otherwise leave reports unreviewed.
+func parseOperators(raw string) ([]uuid.UUID, error) {
+	var out []uuid.UUID
+	for _, part := range splitList(raw) {
+		id, err := uuid.Parse(part)
+		if err != nil {
+			return nil, fmt.Errorf("OPERATOR_USER_IDS: %q is not a user id", part)
+		}
+		out = append(out, id)
+	}
+	return out, nil
+}
 
 // splitList parses a comma-separated list, trimming and dropping empties.
 func splitList(raw string) []string {

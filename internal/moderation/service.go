@@ -2,6 +2,8 @@ package moderation
 
 import (
 	"context"
+	"log/slog"
+	"slices"
 	"time"
 	"unicode/utf8"
 
@@ -13,15 +15,37 @@ import (
 )
 
 type Service struct {
-	pool   *pgxpool.Pool
-	q      *moderationdb.Queries
-	hiders map[string]Hider
-	now    func() time.Time
+	pool      *pgxpool.Pool
+	q         *moderationdb.Queries
+	hiders    map[string]Hider
+	operators []uuid.UUID
+	pushers   []ThreadSender
+	log       *slog.Logger
+	now       func() time.Time
 }
 
 func NewService(pool *pgxpool.Pool) *Service {
-	return &Service{pool: pool, q: moderationdb.New(pool), hiders: map[string]Hider{}, now: time.Now}
+	return &Service{pool: pool, q: moderationdb.New(pool), hiders: map[string]Hider{}, log: slog.Default(), now: time.Now}
 }
+
+// WithOperators names who reviews reports and how they hear about new ones:
+// each pusher (APNs, web push) gets every new report. Nil pushers are
+// skipped.
+func (s *Service) WithOperators(ids []uuid.UUID, pushers ...ThreadSender) *Service {
+	s.operators = ids
+	for _, p := range pushers {
+		if p != nil {
+			s.pushers = append(s.pushers, p)
+		}
+	}
+	return s
+}
+
+// WithLogger sets where best-effort failures are logged.
+func (s *Service) WithLogger(log *slog.Logger) *Service { s.log = log; return s }
+
+// IsOperator says whether userID reviews reports.
+func (s *Service) IsOperator(userID uuid.UUID) bool { return slices.Contains(s.operators, userID) }
 
 // WithClock fixes now, for tests.
 func (s *Service) WithClock(now func() time.Time) *Service { s.now = now; return s }
@@ -94,6 +118,7 @@ func (s *Service) Report(ctx context.Context, reporterID uuid.UUID, sub Subject,
 			if err = tx.Commit(ctx); err != nil {
 				return false, apperr.Wrap(err, "commit report")
 			}
+			s.tellOperators(ctx, reason)
 			return false, nil
 		}
 		// The slice hides in its own tables, outside this transaction; Hide
@@ -111,7 +136,84 @@ func (s *Service) Report(ctx context.Context, reporterID uuid.UUID, sub Subject,
 	if err = tx.Commit(ctx); err != nil {
 		return false, apperr.Wrap(err, "commit report")
 	}
+	s.tellOperators(ctx, reason)
 	return hidden, nil
+}
+
+// tellOperators pushes every operator about a new report. Best effort: the
+// report is stored either way, and the queue shows it.
+func (s *Service) tellOperators(ctx context.Context, reason string) {
+	for _, op := range s.operators {
+		for _, p := range s.pushers {
+			if _, err := p.SendThread(ctx, op, "New report", reason, "/app/ops/moderation", "", "moderation"); err != nil {
+				s.log.Warn("moderation: could not push operator", slog.String("operator_id", op.String()), slog.Any("error", err))
+			}
+		}
+	}
+}
+
+// OpenReports is the operator queue: every subject with open reports,
+// oldest first.
+func (s *Service) OpenReports(ctx context.Context) ([]ReportGroup, error) {
+	rows, err := s.q.OpenReports(ctx)
+	if err != nil {
+		return nil, apperr.Wrap(err, "open reports")
+	}
+	out := make([]ReportGroup, 0, len(rows))
+	for _, r := range rows {
+		g := ReportGroup{Kind: r.SubjectKind, SubjectID: r.SubjectID, Count: int(r.N), Hidden: r.Hidden, FirstAt: r.FirstAt, Reasons: map[string]int{}}
+		if r.AuthorID != uuid.Nil {
+			g.AuthorID = &r.AuthorID
+		}
+		for _, reason := range r.Reasons {
+			g.Reasons[reason]++
+		}
+		if h, ok := s.hiders[r.SubjectKind]; ok {
+			if g.Excerpt, err = h.Excerpt(ctx, r.SubjectID); err != nil {
+				return nil, err
+			}
+		}
+		out = append(out, g)
+	}
+	return out, nil
+}
+
+// Decide is an operator's call on a reported subject. hide and unhide go
+// through the owning slice and on the record; every decision closes the
+// subject's open reports. Non-operators are not found.
+func (s *Service) Decide(ctx context.Context, operatorID uuid.UUID, kind string, subjectID uuid.UUID, action string) error {
+	if !s.IsOperator(operatorID) {
+		return apperr.ErrNotFound
+	}
+	h, ok := s.hiders[kind]
+	if !ok {
+		return apperr.ErrNotFound
+	}
+	status := "dismissed"
+	switch action {
+	case DecideHide:
+		if err := h.Hide(ctx, subjectID); err != nil {
+			return err
+		}
+		status = "actioned"
+	case DecideUnhide:
+		if err := h.Unhide(ctx, subjectID); err != nil {
+			return err
+		}
+	case DecideDismiss:
+	default:
+		return apperr.FieldErrors{}.Add("action", "Choose hide, unhide or dismiss.")
+	}
+	return s.inTx(ctx, "decide", func(q *moderationdb.Queries) error {
+		if action != DecideDismiss {
+			if err := q.InsertAction(ctx, moderationdb.InsertActionParams{
+				ActorID: &operatorID, SubjectKind: kind, SubjectID: subjectID, Action: action, Reason: "operator",
+			}); err != nil {
+				return err
+			}
+		}
+		return q.CloseReports(ctx, moderationdb.CloseReportsParams{Status: status, SubjectKind: kind, SubjectID: subjectID})
+	})
 }
 
 // ReportedBy says which of ids reporterID has reported, so a list can drop

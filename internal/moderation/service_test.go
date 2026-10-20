@@ -33,6 +33,7 @@ func person(t *testing.T, pool *pgxpool.Pool, name string) uuid.UUID {
 type hider struct {
 	mu        sync.Mutex
 	hidden    []uuid.UUID
+	unhidden  []uuid.UUID
 	threshold int
 }
 
@@ -43,7 +44,29 @@ func (h *hider) Hide(_ context.Context, id uuid.UUID) error {
 	return nil
 }
 
+func (h *hider) Unhide(_ context.Context, id uuid.UUID) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.unhidden = append(h.unhidden, id)
+	return nil
+}
+
 func (h *hider) Threshold(context.Context, uuid.UUID) (int, error) { return h.threshold, nil }
+
+func (h *hider) Excerpt(context.Context, uuid.UUID) (string, error) { return "the words", nil }
+
+// pusher records what operators were sent.
+type pusher struct {
+	mu   sync.Mutex
+	sent []uuid.UUID
+}
+
+func (p *pusher) SendThread(_ context.Context, userID uuid.UUID, _, _, _, _, _ string) (int, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.sent = append(p.sent, userID)
+	return 1, nil
+}
 
 func fieldError(err error, field string) string {
 	var fe apperr.FieldErrors
@@ -235,5 +258,75 @@ func TestReportWithoutAuthor(t *testing.T) {
 	sub := moderation.Subject{Kind: "crew_message", ID: uuid.New()}
 	if _, err := svc.Report(context.Background(), person(t, pool, "Reporter"), sub, "other", ""); err != nil {
 		t.Fatalf("report of an authorless subject: %v", err)
+	}
+}
+
+// An operator's call closes the reports: hide or unhide goes through the
+// slice and on the record; dismiss only closes them. Non-operators are not
+// let in.
+func TestDecide(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	op := person(t, pool, "Operator")
+	svc := moderation.NewService(pool).WithOperators([]uuid.UUID{op}, nil)
+	h := &hider{threshold: 3}
+	svc.Register("crew_message", h)
+	author := person(t, pool, "Author")
+	a := moderation.Subject{Kind: "crew_message", ID: uuid.New(), AuthorID: author}
+	b := moderation.Subject{Kind: "crew_message", ID: uuid.New(), AuthorID: author}
+	for _, sub := range []moderation.Subject{a, b} {
+		if _, err := svc.Report(ctx, person(t, pool, "R"+sub.ID.String()[:4]), sub, "spam", ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	open, err := svc.OpenReports(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(open) != 2 || open[0].Count != 1 || open[0].Reasons["spam"] != 1 || open[0].Excerpt != "the words" {
+		t.Fatalf("open = %+v", open)
+	}
+
+	if err = svc.Decide(ctx, author, "crew_message", a.ID, "hide"); !apperr.Is(err, apperr.ErrNotFound) {
+		t.Fatalf("a non-operator deciding: %v", err)
+	}
+	if err = svc.Decide(ctx, op, "crew_message", a.ID, "hide"); err != nil {
+		t.Fatal(err)
+	}
+	if err = svc.Decide(ctx, op, "crew_message", a.ID, "unhide"); err != nil {
+		t.Fatal(err)
+	}
+	if err = svc.Decide(ctx, op, "crew_message", b.ID, "dismiss"); err != nil {
+		t.Fatal(err)
+	}
+	if err = svc.Decide(ctx, op, "crew_message", b.ID, "explode"); fieldError(err, "action") == "" {
+		t.Fatalf("an unknown action: %v", err)
+	}
+	if len(h.hidden) != 1 || len(h.unhidden) != 1 {
+		t.Fatalf("hidden %v, unhidden %v", h.hidden, h.unhidden)
+	}
+	if open, err = svc.OpenReports(ctx); err != nil || len(open) != 0 {
+		t.Fatalf("after deciding both: %+v, %v", open, err)
+	}
+}
+
+// Operators hear about every new report, once.
+func TestOperatorPushedOnReport(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	ops := []uuid.UUID{person(t, pool, "Op1"), person(t, pool, "Op2")}
+	p := &pusher{}
+	svc := moderation.NewService(pool).WithOperators(ops, p)
+	svc.Register("crew_message", &hider{threshold: 3})
+	sub := moderation.Subject{Kind: "crew_message", ID: uuid.New(), AuthorID: person(t, pool, "Author")}
+	reporter := person(t, pool, "Reporter")
+	for range 2 {
+		if _, err := svc.Report(ctx, reporter, sub, "hate", ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(p.sent) != 2 {
+		t.Fatalf("operators pushed %d times; want once each", len(p.sent))
 	}
 }

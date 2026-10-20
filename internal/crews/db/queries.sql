@@ -256,3 +256,14 @@ DELETE FROM crew_channels WHERE id = $1;
 
 -- name: SetNotify :execrows
 UPDATE crew_members SET notify = @notify, muted_until = sqlc.narg(muted_until) WHERE crew_id = @crew_id AND user_id = @user_id;
+
+-- name: SetHidden :one
+UPDATE crew_messages SET hidden_at = CASE WHEN @hide::boolean THEN coalesce(hidden_at, now()) END
+WHERE id = @id
+RETURNING id, crew_id, channel_id;
+
+-- name: MessageCrewSize :one
+SELECT count(*) FROM crew_members WHERE crew_id = (SELECT crew_id FROM crew_messages WHERE id = $1);
+
+-- name: MessageBody :one
+SELECT body FROM crew_messages WHERE id = $1;

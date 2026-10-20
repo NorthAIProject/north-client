@@ -43,3 +43,22 @@ SELECT EXISTS (
     SELECT 1 FROM moderation_actions
     WHERE subject_kind = $1 AND subject_id = $2 AND action IN ('hide', 'unhide')
 );
+
+-- name: OpenReports :many
+-- Open reports, one row per subject, oldest first. hidden is whether the
+-- latest hide/unhide on it was a hide.
+SELECT r.subject_kind, r.subject_id,
+       coalesce((array_agg(r.subject_author_id))[1], '00000000-0000-0000-0000-000000000000')::uuid AS author_id,
+       array_agg(r.reason)::text[] AS reasons,
+       count(*)::int AS n,
+       min(r.created_at)::timestamptz AS first_at,
+       coalesce((SELECT a.action = 'hide' FROM moderation_actions a
+                 WHERE a.subject_kind = r.subject_kind AND a.subject_id = r.subject_id AND a.action IN ('hide', 'unhide')
+                 ORDER BY a.created_at DESC LIMIT 1), false)::boolean AS hidden
+FROM content_reports r
+WHERE r.status = 'open'
+GROUP BY r.subject_kind, r.subject_id
+ORDER BY first_at;
+
+-- name: CloseReports :exec
+UPDATE content_reports SET status = @status WHERE subject_kind = @subject_kind AND subject_id = @subject_id AND status = 'open';

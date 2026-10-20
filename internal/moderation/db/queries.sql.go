@@ -27,6 +27,21 @@ func (q *Queries) AcceptTerms(ctx context.Context, arg AcceptTermsParams) error 
 	return err
 }
 
+const closeReports = `-- name: CloseReports :exec
+UPDATE content_reports SET status = $1 WHERE subject_kind = $2 AND subject_id = $3 AND status = 'open'
+`
+
+type CloseReportsParams struct {
+	Status      string
+	SubjectKind string
+	SubjectID   uuid.UUID
+}
+
+func (q *Queries) CloseReports(ctx context.Context, arg CloseReportsParams) error {
+	_, err := q.db.Exec(ctx, closeReports, arg.Status, arg.SubjectKind, arg.SubjectID)
+	return err
+}
+
 const countReporters = `-- name: CountReporters :one
 SELECT count(*) FROM content_reports WHERE subject_kind = $1 AND subject_id = $2
 `
@@ -134,6 +149,61 @@ type LockSubjectParams struct {
 func (q *Queries) LockSubject(ctx context.Context, arg LockSubjectParams) error {
 	_, err := q.db.Exec(ctx, lockSubject, arg.SubjectKind, arg.SubjectID)
 	return err
+}
+
+const openReports = `-- name: OpenReports :many
+SELECT r.subject_kind, r.subject_id,
+       coalesce((array_agg(r.subject_author_id))[1], '00000000-0000-0000-0000-000000000000')::uuid AS author_id,
+       array_agg(r.reason)::text[] AS reasons,
+       count(*)::int AS n,
+       min(r.created_at)::timestamptz AS first_at,
+       coalesce((SELECT a.action = 'hide' FROM moderation_actions a
+                 WHERE a.subject_kind = r.subject_kind AND a.subject_id = r.subject_id AND a.action IN ('hide', 'unhide')
+                 ORDER BY a.created_at DESC LIMIT 1), false)::boolean AS hidden
+FROM content_reports r
+WHERE r.status = 'open'
+GROUP BY r.subject_kind, r.subject_id
+ORDER BY first_at
+`
+
+type OpenReportsRow struct {
+	SubjectKind string
+	SubjectID   uuid.UUID
+	AuthorID    uuid.UUID
+	Reasons     []string
+	N           int32
+	FirstAt     time.Time
+	Hidden      bool
+}
+
+// Open reports, one row per subject, oldest first. hidden is whether the
+// latest hide/unhide on it was a hide.
+func (q *Queries) OpenReports(ctx context.Context) ([]OpenReportsRow, error) {
+	rows, err := q.db.Query(ctx, openReports)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []OpenReportsRow{}
+	for rows.Next() {
+		var i OpenReportsRow
+		if err := rows.Scan(
+			&i.SubjectKind,
+			&i.SubjectID,
+			&i.AuthorID,
+			&i.Reasons,
+			&i.N,
+			&i.FirstAt,
+			&i.Hidden,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const reportedBy = `-- name: ReportedBy :many
