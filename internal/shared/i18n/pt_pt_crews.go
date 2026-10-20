@@ -48,4 +48,8 @@ var portugueseEuropeanCrews = map[string]string{
 	"crews.join.desc.many": "%[1]d pessoas a puxarem umas pelas outras. Num grupo veem os registos, os treinos, as sequências e o desafio da semana uns dos outros. Mais nada.",
 	"crews.join.signup":    "Criar a tua conta",
 	"crews.join.login":     "Já tenho uma",
+	"crews.err.body":       "Escreve algo com menos de 4000 caracteres.",
+	"crews.err.blocked":    "Essa mensagem viola as regras do grupo.",
+	"crews.err.slow":       "Abranda um pouco e tenta de novo daqui a um minuto.",
+	"crews.err.reply":      "Não é possível responder a essa mensagem.",
 }

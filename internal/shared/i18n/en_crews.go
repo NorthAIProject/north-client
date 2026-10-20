@@ -49,4 +49,8 @@ var englishCrews = map[string]string{
 	"crews.join.desc.many": "%[1]d people keeping each other going. In a crew you see each other's check-ins, training, streaks and the week's challenge. Nothing else.",
 	"crews.join.signup":    "Create your account",
 	"crews.join.login":     "I already have one",
+	"crews.err.body":       "Write something under 4000 characters.",
+	"crews.err.blocked":    "That message breaks the crew rules.",
+	"crews.err.slow":       "Slow down a little and try again in a minute.",
+	"crews.err.reply":      "That message can't be replied to.",
 }
