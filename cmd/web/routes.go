@@ -32,6 +32,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/connections"
 	"github.com/NorthAIProject/north-client/internal/conversations"
 	"github.com/NorthAIProject/north-client/internal/crews"
+	"github.com/NorthAIProject/north-client/internal/dailyposts"
 	"github.com/NorthAIProject/north-client/internal/dashboard"
 	"github.com/NorthAIProject/north-client/internal/day"
 	"github.com/NorthAIProject/north-client/internal/decisions"
@@ -694,6 +695,9 @@ func routes(
 	})
 	recapHandler := recaps.NewHandler(recapSvc, cfg.BaseURL)
 
+	// The daily post: the worker writes it, everyone reads it here.
+	dailyPostSvc := dailyposts.NewService(dailyposts.NewRepository(pool))
+
 	// The capture inbox saves here; the worker suggests where each item goes.
 	inboxSvc := inbox.NewService(pool, inbox.Options{
 		Queue: queue, Goals: goalSvc, Notes: documentSvc, Journal: mindSvc, Users: userSvc,
@@ -1106,6 +1110,7 @@ func routes(
 			xp:           xp.NewAPI(xpSvc),
 			weekly:       weekly.NewAPI(weeklySvc),
 			recaps:       recaps.NewAPI(recapSvc),
+			dailyPosts:   dailyposts.NewAPI(dailyPostSvc),
 			inbox:        inbox.NewAPI(inboxSvc),
 			lighter:      lighterday.NewAPI(lighterSvc),
 			outreach:     outreach.NewAPI(outreachSvc),
@@ -1279,6 +1284,7 @@ func routes(
 				xpHandler.Routes(r)
 				weeklyHandler.Routes(r)
 				recapHandler.Routes(r)
+				dailyposts.NewHandler(dailyPostSvc).Routes(r)
 				inboxHandler.Routes(r)
 				lighterHandler.Routes(r)
 				outreach.NewHandler(outreachSvc).Routes(r)
