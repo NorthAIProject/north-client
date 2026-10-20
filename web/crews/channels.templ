@@ -20,7 +20,7 @@ templ ChannelList(v ChannelListView) {
 		class="flex flex-col gap-0.5 px-2 py-2"
 		aria-label={ i18n.T(ctx, "crews.channels") }
 		hx-get={ crewURL(v.CrewID) + "/channels?channel=" + v.Open.String() }
-		hx-trigger="crew-unread from:#crew-live, crew-channels from:#crew-live"
+		hx-trigger="crew-unread from:#crew-live, crew-channels from:#crew-live, crew-resync from:#crew-live"
 		hx-swap="outerHTML"
 	>
 		for _, ch := range v.Channels {

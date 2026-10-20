@@ -98,6 +98,13 @@ SELECT * FROM crew_channels WHERE id = $1 AND crew_id = $2;
 SELECT u.id FROM crew_members m JOIN users u ON u.id = m.user_id
 WHERE m.crew_id = @crew_id AND lower(u.handle::text) = ANY(@handles::text[]);
 
+-- name: LockChannelForWrite :exec
+-- Taken before inserting a message, so messages in one channel commit in seq
+-- order and a reader's after= cursor can never pass one still in flight. It
+-- also waits for any other open insert into the channel (that insert holds a
+-- key-share lock on the channel row through its foreign key).
+SELECT id FROM crew_channels WHERE id = $1 FOR UPDATE;
+
 -- name: InsertMessage :one
 -- A repeated client_id from the same author is the same message sent twice;
 -- no row comes back and the caller looks the first one up.

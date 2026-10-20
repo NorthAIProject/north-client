@@ -29,8 +29,13 @@ import (
 // open channel's chat, or the challenge tab.
 //
 // #crew-live holds the event stream for the whole page. Every live element
-// listens to it with "from:#crew-live", so it is never swapped away; a resync
-// replaces #crew-pane and the channel list inside it.
+// listens to it with "from:#crew-live", so it is never swapped away.
+//
+// A resync re-reads what may have changed while nothing was listening: the
+// server sends one when its own listener reconnects, and the page raises one
+// when the browser's stream reconnects (not on the first connect, which the
+// page itself just rendered). In a channel it replaces the transcript and the
+// cursor, never the composer, so a half-typed message survives it.
 templ SpacePage(user users.User, v SpaceView) {
 	@layout.AppWide(v.Space.Name, user, layout.BuildNav(ctx, "/app/crews")) {
 		<div
@@ -39,20 +44,33 @@ templ SpacePage(user users.User, v SpaceView) {
 			hx-sse:connect={ liveURL(v.Space.ID, v.Channel.ID) }
 			hx-sse:close="crew-removed"
 			hx-on:crew-removed="window.location.assign('/app/crews')"
+			hx-on::sse:after:connection="if (this.dataset.connected) this.dispatchEvent(new Event('crew-resync')); this.dataset.connected = 'true'"
 		>
 			@rail(v)
 			<aside class="border-border hidden w-60 shrink-0 flex-col border-r lg:flex">
 				@channelColumn(v, true)
 			</aside>
 			@pane(v)
-			<div
-				class="hidden"
-				hx-get={ pageURL(v) }
-				hx-trigger="crew-resync from:#crew-live"
-				hx-select="#crew-pane"
-				hx-target="#crew-pane"
-				hx-swap="outerHTML"
-			></div>
+			if v.Tab == TabChat {
+				<div
+					class="hidden"
+					hx-get={ pageURL(v) }
+					hx-trigger="crew-resync from:#crew-live"
+					hx-select="#crew-scroll"
+					hx-select-oob="#crew-cursor"
+					hx-target="#crew-scroll"
+					hx-swap="outerHTML"
+				></div>
+			} else {
+				<div
+					class="hidden"
+					hx-get={ pageURL(v) }
+					hx-trigger="crew-resync from:#crew-live"
+					hx-select="#crew-pane"
+					hx-target="#crew-pane"
+					hx-swap="outerHTML"
+				></div>
+			}
 		</div>
 		@channelsSheet(v)
 		@termsDialog(pageURL(v))
@@ -303,6 +321,9 @@ templ chatBody(v SpaceView) {
 		</div>
 	</div>
 	@cursorInput(lastSeq(v.Page), false)
+	// A queued request keeps the URL it was built with when it was
+	// triggered, so a fetch queued behind another would ask again for what
+	// that one already appended. The cursor is read again as it is sent.
 	<div
 		id="crew-tail"
 		class="hidden"
@@ -310,6 +331,7 @@ templ chatBody(v SpaceView) {
 		hx-include="#crew-cursor"
 		hx-trigger="crew-new from:#crew-live, crew-sent from:body"
 		hx-sync="this:queue last"
+		hx-on::before:request="const u = new URL(ctx.request.action, location.href); u.searchParams.set('after', document.getElementById('crew-cursor').value); ctx.request.action = u.pathname + u.search"
 		hx-target="#crew-messages"
 		hx-swap="beforeend"
 	></div>

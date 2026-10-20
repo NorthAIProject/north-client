@@ -4931,6 +4931,11 @@ paths:
         ends the stream. Event names (`type` in the data) are open: ignore
         ones you do not know. The data is a CrewLiveEvent as JSON. A `: ping`
         comment arrives every 20 seconds.
+
+        Nothing is replayed. The server sends `resync` only when its own
+        database listener reconnects; when the client's stream reconnects
+        (network change, background, server rollout), the client must treat
+        it as a `resync` itself.
       tags: [crews]
       responses:
         '200':

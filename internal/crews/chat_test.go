@@ -313,3 +313,53 @@ func TestSendNotifiesAndQueues(t *testing.T) {
 		t.Fatalf("%d push jobs, %v; want 1", jobsQueued, err)
 	}
 }
+
+// A message's seq is taken when its row is inserted, not when it commits. If
+// a later send could commit around an earlier one still in flight, a reader
+// would see the later seq first, move its cursor past the earlier one, and
+// never fetch it. A send therefore waits for any write still open on its
+// channel.
+func TestSendWaitsForEarlierWriteInChannel(t *testing.T) {
+	r := newRoom(t)
+	ctx := context.Background()
+	first := r.send(t, r.ana, "first")
+
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err = tx.Exec(ctx, `INSERT INTO crew_messages (crew_id, channel_id, author_id, kind, body) VALUES ($1, $2, $3, 'text', 'in flight')`,
+		r.crew.ID, r.general, r.leo.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	sent := make(chan error, 1)
+	go func() {
+		_, sErr := r.chat.Send(ctx, r.crew.ID, r.general, r.ana.ID, crews.SendInput{Body: "later"})
+		sent <- sErr
+	}()
+	time.Sleep(300 * time.Millisecond)
+
+	page, err := r.chat.List(ctx, r.crew.ID, r.general, r.owner.ID, 0, first.Seq, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := bodies(page.Messages); len(got) != 0 {
+		t.Fatalf("while an earlier write is open, a reader after %d sees %v", first.Seq, got)
+	}
+
+	if err = tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err = <-sent; err != nil {
+		t.Fatal(err)
+	}
+	page, err = r.chat.List(ctx, r.crew.ID, r.general, r.owner.ID, 0, first.Seq, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := bodies(page.Messages); !slices.Equal(got, []string{"in flight", "later"}) {
+		t.Fatalf("after commit = %v", got)
+	}
+}
