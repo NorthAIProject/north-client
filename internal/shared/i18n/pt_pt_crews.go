@@ -49,6 +49,8 @@ var portugueseEuropeanCrews = map[string]string{
 	"crews.join.signup":       "Criar a tua conta",
 	"crews.join.login":        "Já tenho uma",
 	"crews.err.body":          "Escreve algo com menos de 4000 caracteres.",
+	"crews.sys.spaces":        "Este grupo agora tem canais. Todos no grupo podem ler o que é publicado aqui.",
+	"crews.sys.welcome":       "Bem-vindo ao #general. Diz olá — todos no grupo podem ler este canal.",
 	"crews.err.blocked":       "Essa mensagem viola as regras do grupo.",
 	"crews.err.slow":          "Abranda um pouco e tenta de novo daqui a um minuto.",
 	"crews.err.reply":         "Não é possível responder a essa mensagem.",

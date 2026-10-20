@@ -1,0 +1,65 @@
+{
+  "messages": [
+    {
+      "id": "10000000-0000-0000-0000-000000000001",
+      "seq": 1,
+      "channelId": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+      "kind": "system",
+      "body": "Welcome to #general. Say hi — everyone in the crew can read this channel.",
+      "author": null,
+      "replyTo": null,
+      "createdAt": "2026-10-20T07:30:00Z"
+    },
+    {
+      "id": "10000000-0000-0000-0000-000000000002",
+      "seq": 2,
+      "channelId": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+      "kind": "text",
+      "body": "@leo 5k at 7?",
+      "author": {
+        "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        "name": "Ana",
+        "handle": "ana_runs"
+      },
+      "replyTo": {
+        "id": "10000000-0000-0000-0000-000000000009",
+        "unavailable": true
+      },
+      "mentionsMe": true,
+      "reactions": [
+        {
+          "emoji": "fire",
+          "count": 2,
+          "mine": true
+        },
+        {
+          "emoji": "clap",
+          "count": 1
+        }
+      ],
+      "pinned": true,
+      "edited": true,
+      "createdAt": "2026-10-20T07:31:00Z"
+    },
+    {
+      "id": "10000000-0000-0000-0000-000000000003",
+      "seq": 3,
+      "channelId": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+      "kind": "text",
+      "body": "",
+      "author": {
+        "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        "name": "Ana",
+        "handle": "ana_runs"
+      },
+      "replyTo": {
+        "id": "10000000-0000-0000-0000-000000000002",
+        "authorName": "Ana",
+        "excerpt": "@leo 5k at 7?"
+      },
+      "deleted": true,
+      "createdAt": "2026-10-20T07:32:00Z"
+    }
+  ],
+  "hasMore": true
+}

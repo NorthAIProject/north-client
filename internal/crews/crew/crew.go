@@ -199,3 +199,28 @@ const (
 	NotifyMentions = "mentions"
 	NotifyNone     = "none"
 )
+
+// SpaceChannel is a channel in the list beside the chat, with what the
+// viewer has not read in it.
+type SpaceChannel struct {
+	Channel
+	Unread   int
+	Mentions int
+}
+
+// SpaceMember is someone in the crew, as the member list shows them.
+type SpaceMember struct {
+	Person
+	Role Role
+}
+
+// Space is a crew as its chat shows it to one member: the channels, the
+// people, and the member's own role and notification settings.
+type Space struct {
+	Crew
+	MyRole     Role
+	Notify     string
+	MutedUntil *time.Time
+	Channels   []SpaceChannel
+	Members    []SpaceMember
+}

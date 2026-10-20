@@ -3,6 +3,7 @@ package crews_test
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -248,4 +249,32 @@ func TestLiveWebEventNames(t *testing.T) {
 
 	s.hub.Publish(live.Event{Type: live.EventResync, CrewID: r.crew.ID})
 	st.expect(t, "crew-resync")
+}
+
+func TestSendTermsRequired403(t *testing.T) {
+	r := newRoom(t)
+	s := newLiveServer(t, r)
+	zed := handled(t, r.pool, "zed@north.test", "Zed", "zed")
+	if _, err := r.svc.Join(context.Background(), zed.ID, r.crew.Code); err != nil {
+		t.Fatal(err)
+	}
+	req, _ := http.NewRequest(http.MethodPost, s.api.URL+"/crews/"+r.crew.ID.String()+"/channels/"+r.general.String()+"/messages", strings.NewReader(`{"body":"hi"}`))
+	req.Header.Set("X-Test-User", zed.ID.String())
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	var body struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err = json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusForbidden || body.Error.Code != "terms_required" {
+		t.Fatalf("status %d, code %q; want 403 terms_required", resp.StatusCode, body.Error.Code)
+	}
 }

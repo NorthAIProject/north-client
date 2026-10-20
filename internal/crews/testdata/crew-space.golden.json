@@ -1,0 +1,40 @@
+{
+  "crew": {
+    "id": "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee",
+    "name": "Morning runners",
+    "memberCount": 2,
+    "joinUrl": "https://kheprios.com/i/c/q8w3n5k2ht"
+  },
+  "myRole": "admin",
+  "notify": "mentions",
+  "mutedUntil": "2026-10-21T18:00:00Z",
+  "channels": [
+    {
+      "id": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+      "name": "general",
+      "kind": "text",
+      "default": true,
+      "unread": 4,
+      "mentions": 1
+    },
+    {
+      "id": "dddddddd-dddd-dddd-dddd-dddddddddddd",
+      "name": "legs",
+      "topic": "Mondays",
+      "kind": "text"
+    }
+  ],
+  "members": [
+    {
+      "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      "name": "Ana",
+      "handle": "ana_runs",
+      "role": "owner"
+    },
+    {
+      "id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+      "name": "Leo",
+      "role": "admin"
+    }
+  ]
+}

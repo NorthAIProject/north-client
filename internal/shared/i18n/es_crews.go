@@ -49,6 +49,8 @@ var spanishCrews = map[string]string{
 	"crews.join.signup":       "Crear tu cuenta",
 	"crews.join.login":        "Ya tengo una",
 	"crews.err.body":          "Escribe algo de menos de 4000 caracteres.",
+	"crews.sys.spaces":        "Este grupo ya tiene canales. Todos en el grupo pueden leer lo que se publica aquí.",
+	"crews.sys.welcome":       "Te damos la bienvenida a #general. Saluda: todos en el grupo pueden leer este canal.",
 	"crews.err.blocked":       "Ese mensaje incumple las normas del grupo.",
 	"crews.err.slow":          "Ve un poco más despacio y vuelve a intentarlo en un minuto.",
 	"crews.err.reply":         "No se puede responder a ese mensaje.",
