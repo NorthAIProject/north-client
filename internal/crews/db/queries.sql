@@ -52,7 +52,8 @@ INSERT INTO crew_channels (crew_id, kind, name, is_default, position)
 VALUES ($1, 'text', 'general', true, 0), ($1, 'wins', 'wins', false, 1);
 
 -- name: ListChannels :many
-SELECT * FROM crew_channels WHERE crew_id = $1 ORDER BY position, name;
+-- Text channels only: #wins stays out of sight until wins land in it.
+SELECT * FROM crew_channels WHERE crew_id = $1 AND kind = 'text' ORDER BY position, name;
 
 -- name: SetOwner :exec
 UPDATE crews SET owner_id = $2 WHERE id = $1;
@@ -178,3 +179,80 @@ FROM crew_message_reactions x
 WHERE x.message_id = ANY(@ids::uuid[])
   AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id = @viewer AND b.blocked_id = x.user_id) OR (b.blocker_id = x.user_id AND b.blocked_id = @viewer))
 GROUP BY x.message_id, x.emoji;
+
+-- name: DefaultChannel :one
+SELECT id FROM crew_channels WHERE crew_id = $1 AND is_default;
+
+-- name: MessageMeta :one
+-- A message's facts for permission checks, whatever its state.
+SELECT id, crew_id, channel_id, author_id, deleted_at, hidden_at, pinned_at
+FROM crew_messages WHERE id = $1 AND crew_id = $2;
+
+-- name: EditMessage :exec
+UPDATE crew_messages SET body = @body, mentions = @mentions, edited_at = now() WHERE id = @id;
+
+-- name: DeleteMessage :exec
+UPDATE crew_messages SET deleted_at = now(), deleted_by = @deleted_by, body = '', pinned_at = NULL, pinned_by = NULL
+WHERE id = @id AND deleted_at IS NULL;
+
+-- name: ClearReactions :exec
+DELETE FROM crew_message_reactions WHERE message_id = $1;
+
+-- name: AddReaction :exec
+INSERT INTO crew_message_reactions (message_id, user_id, emoji) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING;
+
+-- name: RemoveReaction :exec
+DELETE FROM crew_message_reactions WHERE message_id = $1 AND user_id = $2 AND emoji = $3;
+
+-- name: CountPins :one
+SELECT count(*) FROM crew_messages WHERE channel_id = $1 AND pinned_at IS NOT NULL;
+
+-- name: SetPin :exec
+UPDATE crew_messages SET pinned_at = CASE WHEN @pin::boolean THEN now() END,
+                         pinned_by = CASE WHEN @pin::boolean THEN sqlc.narg(pinned_by)::uuid END
+WHERE id = @id;
+
+-- name: PinnedIDs :many
+SELECT id FROM crew_messages WHERE channel_id = $1 AND pinned_at IS NOT NULL ORDER BY pinned_at DESC;
+
+-- name: MarkRead :exec
+INSERT INTO crew_channel_reads (channel_id, user_id, last_read_seq) VALUES ($1, $2, $3)
+ON CONFLICT (channel_id, user_id) DO UPDATE
+SET last_read_seq = GREATEST(crew_channel_reads.last_read_seq, EXCLUDED.last_read_seq);
+
+-- name: Unread :many
+-- Per text channel of every crew @user_id is in: messages from others since
+-- they last read it (and since they joined), and how many of those are for
+-- them: a mention, @everyone, or a reply to something they wrote.
+SELECT m.crew_id, m.channel_id, count(*)::int AS unread,
+       (count(*) FILTER (WHERE @user_id::uuid = ANY(m.mentions) OR m.mention_all OR r.author_id = @user_id::uuid))::int AS mentions
+FROM crew_members cm
+JOIN crew_channels ch ON ch.crew_id = cm.crew_id AND ch.kind = 'text'
+JOIN crew_messages m ON m.channel_id = ch.id
+LEFT JOIN crew_channel_reads rd ON rd.channel_id = ch.id AND rd.user_id = @user_id::uuid
+LEFT JOIN crew_messages r ON r.id = m.reply_to_id
+WHERE cm.user_id = @user_id::uuid
+  AND m.seq > coalesce(rd.last_read_seq, 0)
+  AND m.created_at >= cm.joined_at
+  AND m.kind = 'text' AND m.author_id <> @user_id::uuid
+  AND m.deleted_at IS NULL AND m.hidden_at IS NULL
+  AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id = @user_id::uuid AND b.blocked_id = m.author_id) OR (b.blocker_id = m.author_id AND b.blocked_id = @user_id::uuid))
+  AND NOT EXISTS (SELECT 1 FROM content_reports cr WHERE cr.reporter_id = @user_id::uuid AND cr.subject_kind = 'crew_message' AND cr.subject_id = m.id)
+GROUP BY m.crew_id, m.channel_id;
+
+-- name: CountChannels :one
+SELECT count(*) FROM crew_channels WHERE crew_id = $1;
+
+-- name: InsertChannel :one
+INSERT INTO crew_channels (crew_id, kind, name, topic, position, created_by)
+VALUES (@crew_id, 'text', @name, @topic, (SELECT coalesce(max(position), 0) + 1 FROM crew_channels WHERE crew_id = @crew_id), @created_by)
+RETURNING *;
+
+-- name: UpdateChannel :one
+UPDATE crew_channels SET name = @name, topic = @topic WHERE id = @id RETURNING *;
+
+-- name: DeleteChannel :exec
+DELETE FROM crew_channels WHERE id = $1;
+
+-- name: SetNotify :execrows
+UPDATE crew_members SET notify = @notify, muted_until = sqlc.narg(muted_until) WHERE crew_id = @crew_id AND user_id = @user_id;

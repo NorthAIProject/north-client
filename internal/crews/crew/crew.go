@@ -183,3 +183,19 @@ type Page struct {
 	Messages []Message
 	HasMore  bool
 }
+
+// Unread is how much of one channel a member has not read, and how much of
+// that is for them: mentions, @everyone, replies to what they wrote.
+type Unread struct {
+	CrewID    uuid.UUID
+	ChannelID uuid.UUID
+	Count     int
+	Mentions  int
+}
+
+// Notify settings: which messages in a crew push a member.
+const (
+	NotifyAll      = "all"
+	NotifyMentions = "mentions"
+	NotifyNone     = "none"
+)
