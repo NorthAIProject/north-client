@@ -22,9 +22,10 @@ func TestCrewShapes(t *testing.T) {
 		Challenge: &Challenge{Kind: crew.ChallengeCheckIns, Target: 5},
 		WeekStart: time.Date(2026, 9, 28, 0, 0, 0, 0, time.UTC),
 		IsOwner:   true,
+		MyRole:    crew.RoleOwner,
 		Members: []Member{
-			{ID: uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"), DisplayName: "Ana", Handle: "ana_runs", CheckedIn: true, Streak: 3, WeekProgress: 3, Owner: true, Me: true},
-			{ID: uuid.MustParse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"), DisplayName: "Leo", WorkedOut: true, Streak: 0, WeekProgress: 1},
+			{ID: uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"), DisplayName: "Ana", Handle: "ana_runs", CheckedIn: true, Streak: 3, WeekProgress: 3, Owner: true, Me: true, Role: crew.RoleOwner},
+			{ID: uuid.MustParse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"), DisplayName: "Leo", WorkedOut: true, Streak: 0, WeekProgress: 1, Role: crew.RoleAdmin},
 		},
 	}))
 }

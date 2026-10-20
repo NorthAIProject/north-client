@@ -32,6 +32,23 @@ func (f CreateForm) fieldError(name string) string {
 	return f.Errors[name]
 }
 
+// canRemove is whether the viewer may take m out: the owner anybody else,
+// an admin only plain members.
+func canRemove(b crew.Board, m crew.Member) bool {
+	if m.Me || !b.MyRole.CanManage() {
+		return false
+	}
+	return b.MyRole == crew.RoleOwner || m.Role == crew.RoleMember
+}
+
+// toggledRole is the role the owner's button on m's row gives them.
+func toggledRole(r crew.Role) crew.Role {
+	if r == crew.RoleAdmin {
+		return crew.RoleMember
+	}
+	return crew.RoleAdmin
+}
+
 func challengeLabel(ctx context.Context, c *crew.Challenge) string {
 	if c == nil {
 		return i18n.T(ctx, "crews.challenge.none")
@@ -143,7 +160,9 @@ templ BoardPage(user users.User, b crew.Board, joinURL string) {
 												{ m.DisplayName }
 											}
 											if m.Owner {
-												<span class="text-muted-foreground text-xs"> · { i18n.T(ctx, "crews.owner") }</span>
+												<span class="text-muted-foreground text-xs">· { i18n.T(ctx, "crews.owner") }</span>
+											} else if m.Role == crew.RoleAdmin {
+												<span class="text-muted-foreground text-xs">· { i18n.T(ctx, "crews.admin") }</span>
 											}
 										</p>
 										<p class="text-muted-foreground text-xs">{ i18n.Tf(ctx, "crews.streak", m.Streak) }</p>
@@ -163,6 +182,19 @@ templ BoardPage(user users.User, b crew.Board, joinURL string) {
 										}
 									}
 									if b.IsOwner && !m.Me {
+										<form method="post" action={ templ.SafeURL("/app/crews/" + b.ID.String() + "/members/" + m.ID.String() + "/role") }>
+											@ui.CSRFInput()
+											<input type="hidden" name="role" value={ string(toggledRole(m.Role)) }/>
+											@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm}) {
+												if m.Role == crew.RoleAdmin {
+													{ i18n.T(ctx, "crews.role.remove-admin") }
+												} else {
+													{ i18n.T(ctx, "crews.role.make-admin") }
+												}
+											}
+										</form>
+									}
+									if canRemove(b, m) {
 										<form method="post" action={ templ.SafeURL("/app/crews/" + b.ID.String() + "/members/" + m.ID.String() + "/remove") }>
 											@ui.CSRFInput()
 											@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm}) {
@@ -198,7 +230,7 @@ templ BoardPage(user users.User, b crew.Board, joinURL string) {
 					</div>
 				}
 			}
-			if b.IsOwner {
+			if b.MyRole.CanManage() {
 				@challengeCard(b)
 			}
 			<form method="post" action={ templ.SafeURL("/app/crews/" + b.ID.String() + "/leave") }>
