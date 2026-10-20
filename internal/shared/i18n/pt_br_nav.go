@@ -70,6 +70,7 @@ var portugueseBrazilianNav = map[string]string{
 	"nav.inbox":          "Caixa de entrada",
 	"nav.weekly":         "Planejar a semana",
 	"nav.recap":          "Seu resumo",
+	"nav.daily":          "Post do dia",
 	"nav.decisions.desc": "As escolhas que você fez, e por quê.",
 
 	"nav.goals":                   "Objetivos",
@@ -142,6 +143,7 @@ var portugueseBrazilianNav = map[string]string{
 	"palette.hint.close":    "fechar",
 	"nav.weekly.desc":       "Revise a semana e escolha um foco para a próxima.",
 	"nav.recap.desc":        "Seus últimos 7 ou 30 dias, para guardar ou compartilhar.",
+	"nav.daily.desc":        "Uma leitura curta por dia, escrita por IA.",
 	"nav.friends.desc":      "As pessoas que você segue e seu link de convite.",
 	"nav.leaderboard.desc":  "Seu XP e nível, num ranking com os amigos que compartilham os deles.",
 	"nav.crews.desc":        "Um pequeno grupo que se ajuda a não parar.",

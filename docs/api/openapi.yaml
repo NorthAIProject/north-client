@@ -3974,6 +3974,55 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '422':
           $ref: '#/components/responses/ValidationError'
+  /daily-posts:
+    get:
+      operationId: getDailyPosts
+      summary: Today's daily post and the ones before it
+      description: >-
+        One short post on wellness, food or wellbeing, written by AI once a UTC
+        day and the same for everyone. today is absent until today's post is
+        written, or on a day no draft passed review. earlier holds up to 13
+        previous posts, newest first. Posts are English in every language.
+        aiGenerated is true for AI-written posts; clients show it.
+      tags: [daily]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DailyPosts'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /daily-posts/{postID}/kudos:
+    parameters:
+      - name: postID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: giveDailyPostKudos
+      summary: Give kudos to a daily post
+      description: Idempotent.
+      tags: [daily]
+      responses:
+        '204':
+          description: Given
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: takeDailyPostKudos
+      summary: Take kudos on a daily post back
+      tags: [daily]
+      responses:
+        '204':
+          description: Taken back
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /recap:
     get:
       operationId: getRecap
@@ -6663,6 +6712,43 @@ components:
         occurredAt:
           type: string
           format: date-time
+    DailyPosts:
+      type: object
+      required: [earlier]
+      properties:
+        today:
+          $ref: '#/components/schemas/DailyPost'
+        earlier:
+          type: array
+          items:
+            $ref: '#/components/schemas/DailyPost'
+    DailyPost:
+      type: object
+      required: [id, date, theme, title, body, aiGenerated, kudos, kudoed]
+      properties:
+        id:
+          type: string
+          format: uuid
+        date:
+          type: string
+          format: date
+          description: The UTC day the post is for.
+        theme:
+          type: string
+          description: A short key such as sleep or hydration. Open on purpose; do not switch on it exhaustively.
+        title:
+          type: string
+        body:
+          type: string
+          description: Plain text; paragraphs are separated by a blank line.
+        aiGenerated:
+          type: boolean
+          description: True when AI wrote the post. Show it.
+        kudos:
+          type: integer
+        kudoed:
+          type: boolean
+          description: Whether the viewer gave kudos.
     Recap:
       type: object
       required: [range, since, until, totals, prior, checkInStreak, days, highlights]
