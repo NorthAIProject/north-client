@@ -47,6 +47,8 @@ const (
 	ProgressEstimate    = "progress_estimate.md"
 	ProgressCompare     = "progress_compare.md"
 	CoachOutreach       = "coach_outreach.md"
+	DailyPost           = "daily_post.md"
+	DailyPostReview     = "daily_post_review.md"
 )
 
 // Render executes a prompt template with the given data.
