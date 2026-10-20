@@ -53,6 +53,10 @@ const (
 	// SurfaceCoachOutreach is the coach's one unprompted message of the day.
 	SurfaceCoachOutreach = "coach_outreach"
 
+	// SurfaceDailyPost is the one post everyone reads each day, and its
+	// review. Billed to no account.
+	SurfaceDailyPost = "daily_post"
+
 	// SurfaceTelegramVoice is dictation on a phone, kept apart from
 	// SurfaceVoiceCapture because they are different products with different
 	// costs: the web recorder uploads a minute of WAV the browser prepared,

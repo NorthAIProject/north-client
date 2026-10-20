@@ -72,6 +72,7 @@ var englishNav = map[string]string{
 	"nav.inbox":          "Inbox",
 	"nav.weekly":         "Plan the week",
 	"nav.recap":          "Your recap",
+	"nav.daily":          "Daily post",
 	"nav.decisions.desc": "The choices you made, and why.",
 
 	"nav.goals":                   "Goals",
@@ -146,6 +147,7 @@ var englishNav = map[string]string{
 	"palette.hint.close":    "close",
 	"nav.weekly.desc":       "Review the week and choose a focus for the next one.",
 	"nav.recap.desc":        "Your last 7 or 30 days, to keep or to share.",
+	"nav.daily.desc":        "One short read a day, written by AI.",
 	"nav.friends.desc":      "People you follow, and your invite link.",
 	"nav.leaderboard.desc":  "Your XP and level, ranked with the friends who share theirs.",
 	"nav.crews.desc":        "A few people keeping each other going.",

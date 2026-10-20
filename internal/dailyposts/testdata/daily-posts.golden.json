@@ -1,0 +1,24 @@
+{
+  "today": {
+    "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+    "date": "2026-10-20",
+    "theme": "hydration",
+    "title": "Water before meals",
+    "body": "First paragraph.\n\nSecond paragraph.",
+    "aiGenerated": true,
+    "kudos": 3,
+    "kudoed": true
+  },
+  "earlier": [
+    {
+      "id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+      "date": "2026-10-19",
+      "theme": "sleep",
+      "title": "A steadier bedtime",
+      "body": "One paragraph.",
+      "aiGenerated": true,
+      "kudos": 0,
+      "kudoed": false
+    }
+  ]
+}
