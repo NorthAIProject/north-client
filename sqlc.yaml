@@ -384,6 +384,16 @@ sql:
 
   - engine: postgresql
     schema: migrations
+    queries: internal/dailyposts/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: dailypostsdb
+        out: internal/dailyposts/db
+        overrides: *overrides
+
+  - engine: postgresql
+    schema: migrations
     queries: internal/lighterday/db/queries.sql
     gen:
       go:

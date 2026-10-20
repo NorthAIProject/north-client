@@ -36,6 +36,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/config"
 	"github.com/NorthAIProject/north-client/internal/conversations"
 	"github.com/NorthAIProject/north-client/internal/crews"
+	"github.com/NorthAIProject/north-client/internal/dailyposts"
 	"github.com/NorthAIProject/north-client/internal/decisions"
 	"github.com/NorthAIProject/north-client/internal/documents"
 	"github.com/NorthAIProject/north-client/internal/exercises"
@@ -577,6 +578,11 @@ func run() error {
 	}
 	worker.Register(jobs.KindSweepOutreach, outreach.NewSweeper(outreach.NewService(outreachOpts)).HandleSweep)
 
+	// The daily post: one short read for everyone, written and reviewed by
+	// the cheap model once a UTC day. See internal/dailyposts.
+	dailyPostWriter := dailyposts.NewWriter(dailyposts.NewRepository(pool), reports.ClientFromChain(runner), cfg.AI.FastModel, log)
+	worker.Register(jobs.KindDailyPost, dailyPostWriter.HandleSweep)
+
 	// Compaction of long threads. The coach enqueues this from the reply pump
 	// once a conversation outgrows the context window; the sweep catches the
 	// ones it never saw — threads continued from Telegram or MCP, and enqueues
@@ -595,6 +601,7 @@ func run() error {
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepMemories, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepNudges, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepOutreach, struct{}{})
+	worker.RegisterPeriodic(time.Hour, jobs.KindDailyPost, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepReports, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepBriefings, struct{}{})
 	worker.RegisterPeriodic(15*time.Minute, jobs.KindSweepWatches, struct{}{})
