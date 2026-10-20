@@ -225,6 +225,11 @@ func (h *Handler) send(w http.ResponseWriter, r *http.Request) {
 	if id, err := uuid.Parse(r.PostFormValue("reply_to")); err == nil {
 		in.ReplyToID = &id
 	}
+	// The composer stamps each message once, so a second Enter while the
+	// first is in flight stores nothing new.
+	if id, err := uuid.Parse(r.PostFormValue("client_id")); err == nil {
+		in.ClientID = &id
+	}
 	if _, err := h.chat.Send(r.Context(), v.CrewID, v.Channel.ID, v.Me, in); err != nil {
 		h.refusePost(w, r, err)
 		return

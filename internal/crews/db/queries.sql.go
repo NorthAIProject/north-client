@@ -561,6 +561,19 @@ func (q *Queries) ListMine(ctx context.Context, userID uuid.UUID) ([]ListMineRow
 	return items, nil
 }
 
+const lockChannelForWrite = `-- name: LockChannelForWrite :exec
+SELECT id FROM crew_channels WHERE id = $1 FOR UPDATE
+`
+
+// Taken before inserting a message, so messages in one channel commit in seq
+// order and a reader's after= cursor can never pass one still in flight. It
+// also waits for any other open insert into the channel (that insert holds a
+// key-share lock on the channel row through its foreign key).
+func (q *Queries) LockChannelForWrite(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, lockChannelForWrite, id)
+	return err
+}
+
 const markRead = `-- name: MarkRead :exec
 INSERT INTO crew_channel_reads (channel_id, user_id, last_read_seq) VALUES ($1, $2, $3)
 ON CONFLICT (channel_id, user_id) DO UPDATE

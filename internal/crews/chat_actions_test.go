@@ -2,10 +2,12 @@ package crews_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/NorthAIProject/north-client/internal/crews"
 	"github.com/NorthAIProject/north-client/internal/crews/crew"
+	"github.com/NorthAIProject/north-client/internal/moderation"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/social"
 )
@@ -181,5 +183,17 @@ func TestCreatePostsWelcome(t *testing.T) {
 	}
 	if len(page.Messages) == 0 || page.Messages[0].Kind != crews.MessageKindSystem || page.Messages[0].Body != "crews.sys.welcome" || page.Messages[0].Author != nil {
 		t.Fatalf("first message = %+v", page.Messages)
+	}
+}
+
+func TestEditRefusedWhenSuspended(t *testing.T) {
+	r := newRoom(t)
+	ctx := context.Background()
+	m := r.send(t, r.ana, "squat 100")
+	if err := r.mod.Suspend(ctx, nil, r.ana.ID, nil, "test"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.chat.Edit(ctx, r.crew.ID, m.ID, r.ana.ID, "squat 200"); !errors.Is(err, moderation.ErrSuspended) {
+		t.Fatalf("a suspended author editing: %v", err)
 	}
 }

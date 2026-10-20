@@ -27,6 +27,10 @@ func (c *Chat) Edit(ctx context.Context, crewID, messageID, actorID uuid.UUID, b
 	if meta.AuthorID == nil || *meta.AuthorID != actorID || meta.DeletedAt != nil {
 		return Message{}, apperr.ErrNotFound
 	}
+	// Rewriting a message is posting it again: a suspension stops both.
+	if err = c.mod.CanPost(ctx, actorID); err != nil {
+		return Message{}, err
+	}
 	if body, err = c.validBody(ctx, body); err != nil {
 		return Message{}, err
 	}

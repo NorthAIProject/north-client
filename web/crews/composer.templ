@@ -18,16 +18,18 @@ templ composer(v ChatView) {
 	<form
 		id="crew-composer"
 		class="border-border flex flex-col gap-1 border-t px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
-		x-data="{ reply: null }"
+		x-data="{ reply: null, cid: window.crypto?.randomUUID?.() ?? '' }"
 		@crew-reply.window="reply = $event.detail; $refs.body.focus()"
 		hx-post={ channelURL(v.CrewID, v.Channel.ID) + "/messages" }
 		hx-target="#crew-composer-error"
 		hx-swap="innerHTML"
-		hx-on::after:request="if (ctx.response.status < 400) { this.reset(); Alpine.$data(this).reply = null; document.getElementById('crew-composer-error').replaceChildren(); document.body.dispatchEvent(new CustomEvent('crew-sent')) }"
+		hx-on::after:request="if (ctx.response.status < 400) { this.reset(); Alpine.$data(this).reply = null; Alpine.$data(this).cid = window.crypto?.randomUUID?.() ?? ''; document.getElementById('crew-composer-error').replaceChildren(); document.body.dispatchEvent(new CustomEvent('crew-sent')) }"
 		hx-on::after:swap="if (this.querySelector('[data-terms-required]')) window.tui.dialog.open('crew-terms')"
 	>
 		@ui.CSRFInput()
 		<input type="hidden" name="reply_to" x-bind:value="reply ? reply.id : ''"/>
+		// One id per message, so a repeated submit is stored once.
+		<input type="hidden" name="client_id" x-bind:value="cid"/>
 		<div x-show="reply" x-cloak class="text-muted-foreground flex items-center gap-2 text-xs">
 			@icon.Icon("reply")(icon.Props{Class: "size-3"})
 			<span class="min-w-0 flex-1 truncate">

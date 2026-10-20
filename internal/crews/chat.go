@@ -110,6 +110,9 @@ func (c *Chat) Send(ctx context.Context, crewID, channelID, authorID uuid.UUID, 
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	q := c.q.WithTx(tx)
+	if err = q.LockChannelForWrite(ctx, channelID); err != nil {
+		return Message{}, apperr.Wrap(err, "lock channel")
+	}
 	row, err := q.InsertMessage(ctx, crewsdb.InsertMessageParams{
 		CrewID: crewID, ChannelID: channelID, AuthorID: &authorID, Body: body,
 		ReplyToID: in.ReplyToID, Mentions: mentions, MentionAll: all && role.CanManage(), ClientID: in.ClientID,

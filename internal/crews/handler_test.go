@@ -137,3 +137,19 @@ func TestOldCrewURLStillWorks(t *testing.T) {
 		t.Fatalf("challenge tab: %d", status)
 	}
 }
+
+func TestComposerClientIDSendsOnce(t *testing.T) {
+	r := newRoom(t)
+	s := newLiveServer(t, r)
+	id := "6f1c1e0e-2b7a-4c7e-9a52-3d1f0b6a9c11"
+	path := "/crews/" + r.crew.ID.String() + "/c/" + r.general.String() + "/messages"
+	for range 2 {
+		if status, html := webPost(t, s.web.URL, path, r.ana, url.Values{"body": {"twice?"}, "client_id": {id}}); status != http.StatusNoContent {
+			t.Fatalf("status %d:\n%s", status, html)
+		}
+	}
+	var n int
+	if err := r.pool.QueryRow(context.Background(), `SELECT count(*) FROM crew_messages WHERE body = 'twice?'`).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("%d rows, %v; want 1", n, err)
+	}
+}
