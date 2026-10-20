@@ -30,6 +30,7 @@ func (a *API) Routes(r chi.Router) {
 	r.Post("/crews/join/{code}", a.join)
 	r.Get("/crews/{crewID}", a.board)
 	r.Delete("/crews/{crewID}/members/{userID}", a.remove)
+	r.Put("/crews/{crewID}/members/{userID}/role", a.setRole)
 	r.Put("/crews/{crewID}/challenge", a.setChallenge)
 	r.Delete("/crews/{crewID}/challenge", a.clearChallenge)
 }
@@ -67,6 +68,8 @@ type MemberView struct {
 	WeekProgress int  `json:"weekProgress"`
 	Owner        bool `json:"owner"`
 	Me           bool `json:"me"`
+	// Role is owner, admin or member; clients treat anything else as member.
+	Role string `json:"role"`
 }
 
 type BoardView struct {
@@ -75,6 +78,11 @@ type BoardView struct {
 	Members   []MemberView   `json:"members"`
 	WeekStart time.Time      `json:"weekStart"`
 	IsOwner   bool           `json:"isOwner"`
+	MyRole    string         `json:"myRole"`
+}
+
+type RoleRequest struct {
+	Role string `json:"role"`
 }
 
 type CreateRequest struct {
@@ -162,6 +170,27 @@ func (a *API) remove(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// setRole makes a member an admin or a member again; owner only.
+func (a *API) setRole(w http.ResponseWriter, r *http.Request) {
+	crewID, ok := pathID(w, r, "crewID")
+	if !ok {
+		return
+	}
+	memberID, ok := pathID(w, r, "userID")
+	if !ok {
+		return
+	}
+	var req RoleRequest
+	if !readJSON(w, r, &req) {
+		return
+	}
+	if err := a.svc.SetRole(r.Context(), crewID, auth.MustUser(r.Context()).ID, memberID, Role(req.Role)); err != nil {
+		httpx.Error(w, err, "The role could not be changed.")
+		return
+	}
+	a.board(w, r)
+}
+
 func (a *API) setChallenge(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(w, r, "crewID")
 	if !ok {
@@ -195,14 +224,14 @@ func (a *API) projectCrew(c Crew) CrewView {
 }
 
 func (a *API) projectBoard(b Board) BoardView {
-	out := BoardView{CrewView: a.projectCrew(b.Crew), Members: make([]MemberView, 0, len(b.Members)), WeekStart: b.WeekStart, IsOwner: b.IsOwner}
+	out := BoardView{CrewView: a.projectCrew(b.Crew), Members: make([]MemberView, 0, len(b.Members)), WeekStart: b.WeekStart, IsOwner: b.IsOwner, MyRole: string(b.MyRole)}
 	if b.Challenge != nil {
 		out.Challenge = &ChallengeView{Kind: b.Challenge.Kind, Target: b.Challenge.Target}
 	}
 	for _, m := range b.Members {
 		out.Members = append(out.Members, MemberView{
 			ID: m.ID, DisplayName: m.DisplayName, Handle: m.Handle, CheckedIn: m.CheckedIn, WorkedOut: m.WorkedOut,
-			Streak: m.Streak, WeekProgress: m.WeekProgress, Owner: m.Owner, Me: m.Me,
+			Streak: m.Streak, WeekProgress: m.WeekProgress, Owner: m.Owner, Me: m.Me, Role: string(m.Role),
 		})
 	}
 	return out

@@ -51,6 +51,8 @@ var reservedHandles = map[string]bool{
 	"admin": true, "administrator": true, "api": true, "app": true, "coach": true,
 	"help": true, "khepri": true, "north": true, "official": true, "root": true,
 	"security": true, "staff": true, "support": true, "system": true, "team": true,
+	// What a crew message uses to reach many people at once.
+	"everyone": true, "here": true, "crew": true,
 }
 
 // NormalizeHandle lower-cases and trims, dropping a leading @ somebody typed

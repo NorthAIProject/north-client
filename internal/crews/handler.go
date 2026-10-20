@@ -43,6 +43,7 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Get("/crews/{crewID}", h.board)
 	r.Post("/crews/{crewID}/leave", h.leave)
 	r.Post("/crews/{crewID}/members/{userID}/remove", h.remove)
+	r.Post("/crews/{crewID}/members/{userID}/role", h.role)
 	r.Post("/crews/{crewID}/challenge", h.challenge)
 }
 
@@ -153,6 +154,25 @@ func (h *Handler) remove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.svc.Remove(r.Context(), crewID, auth.MustUser(r.Context()).ID, memberID); err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	http.Redirect(w, r, "/app/crews/"+crewID.String(), http.StatusSeeOther)
+}
+
+// role makes a member an admin, or a member again.
+func (h *Handler) role(w http.ResponseWriter, r *http.Request) {
+	crewID, err1 := uuid.Parse(chi.URLParam(r, "crewID"))
+	memberID, err2 := uuid.Parse(chi.URLParam(r, "userID"))
+	if err1 != nil || err2 != nil {
+		h.fail(w, r, apperr.ErrNotFound)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		h.fail(w, r, apperr.ErrValidation)
+		return
+	}
+	if err := h.svc.SetRole(r.Context(), crewID, auth.MustUser(r.Context()).ID, memberID, Role(r.PostFormValue("role"))); err != nil {
 		h.fail(w, r, err)
 		return
 	}

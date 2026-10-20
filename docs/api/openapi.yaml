@@ -4371,7 +4371,7 @@ paths:
           format: uuid
     delete:
       operationId: removeCrewMember
-      summary: Leave (your own id) or, as owner, remove somebody
+      summary: Leave (your own id) or, as owner or admin, remove somebody
       tags: [crews]
       responses:
         '204':
@@ -4380,6 +4380,43 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+  /crews/{crewID}/members/{userID}/role:
+    parameters:
+      - name: crewID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: userID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      operationId: setCrewMemberRole
+      summary: Make a member an admin, or a member again (owner only)
+      tags: [crews]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrewRoleRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrewBoard'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
   /crews/{crewID}/challenge:
     parameters:
       - name: crewID
@@ -4390,7 +4427,7 @@ paths:
           format: uuid
     put:
       operationId: setCrewChallenge
-      summary: Set the weekly challenge (owner only)
+      summary: Set the weekly challenge (owner or admin)
       tags: [crews]
       requestBody:
         required: true
@@ -4413,7 +4450,7 @@ paths:
           $ref: '#/components/responses/ValidationError'
     delete:
       operationId: clearCrewChallenge
-      summary: Clear the weekly challenge (owner only)
+      summary: Clear the weekly challenge (owner or admin)
       tags: [crews]
       responses:
         '204':
@@ -6962,6 +6999,16 @@ components:
           type: boolean
         me:
           type: boolean
+        role:
+          type: string
+          description: owner, admin or member. Treat any other value as member.
+    CrewRoleRequest:
+      type: object
+      required: [role]
+      properties:
+        role:
+          type: string
+          description: admin or member.
     CrewBoard:
       allOf:
         - $ref: '#/components/schemas/Crew'
@@ -6979,6 +7026,9 @@ components:
               format: date-time
             isOwner:
               type: boolean
+            myRole:
+              type: string
+              description: The viewer's role, owner, admin or member. Treat any other value as member.
     FeedItem:
       type: object
       required: [id, userId, displayName, handle, category, kind, title, detail, occurredAt, kudos, kudoed, mine]
