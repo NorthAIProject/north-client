@@ -19,3 +19,6 @@ const SiteURL = "https://kheprios.com"
 // in search results. Kept here so the card, the manifest, and any future
 // marketing copy cannot drift apart.
 const Tagline = "An AI operating system for personal growth."
+
+// XProfileURL is the founder's X profile, linked from the marketing navbar.
+const XProfileURL = "https://x.com/fatc88"

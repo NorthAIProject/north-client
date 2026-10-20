@@ -7,7 +7,6 @@ import (
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
-	"github.com/NorthAIProject/north-client/web/shared/ui/badge"
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
 	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
 )
@@ -23,8 +22,9 @@ templ Page() {
 	@layout.Public("", signedIn(ctx)) {
 		<div x-data="northBearing" data-landing class="relative">
 			@bearingRail()
+			@hero()
 			<div class="mx-auto w-full max-w-6xl px-6 lg:pl-28 lg:pr-8">
-				@hero()
+				@heroProof()
 				@dayDemo()
 				@statsDemo()
 				@coachBuildsDemo()
@@ -91,43 +91,71 @@ templ sectionHeading(eyebrow string, title string, body string) {
 	</div>
 }
 
+// hero is full-bleed so the card wall can run edge to edge; its text sits in
+// the same column as every other section. Centred: the pill, a two-line
+// headline, the lede, the store badges and the web call to action, with the
+// wall fanned out underneath.
 templ hero() {
-	<section class="relative pb-24 pt-16 md:pt-24">
-		@waypoint(i18n.T(ctx, "land.waypoint.day1"))
-		<div class="grid items-start gap-14 lg:grid-cols-[minmax(0,1fr)_25rem] lg:gap-16">
-			<div>
-				@badge.Badge(badge.Props{Variant: badge.VariantOutline, Class: "h-auto max-w-full gap-2 whitespace-normal border-hairline bg-surface/60 py-1 pl-1.5 pr-3 text-left"}) {
-					<span class="flex size-5 items-center justify-center rounded-full bg-signal/15 text-signal">
-						@icon.Compass(icon.Props{Class: "size-3"})
-					</span>
-					@monoLabel(i18n.T(ctx, "land.hero.badge"))
-				}
-				<h1 class="mt-7 text-[clamp(2.5rem,6vw,4.25rem)] font-medium leading-[0.98] tracking-[-0.035em] text-balance">
-					{ i18n.T(ctx, "land.hero.h1a") }
-					<span class="block text-muted-foreground">{ i18n.T(ctx, "land.hero.h1b") }</span>
-				</h1>
-				<p class="mt-7 max-w-[54ch] text-lg leading-relaxed text-muted-foreground">
-					{ i18n.T(ctx, "land.hero.lede") }
-				</p>
-				@appButtons("mt-9")
-				<div class="mt-4 flex flex-wrap items-center gap-3">
-					@button.Button(button.Props{Href: ctaHref(ctx), Size: button.SizeLg, Class: "bg-signal text-background hover:bg-signal/90"}) {
-						{ ctaLabel(ctx) }
-						@icon.ArrowRight(icon.Props{Class: "size-4"})
-					}
-					@button.Button(button.Props{Href: "#product-film", Size: button.SizeLg, Variant: button.VariantOutline, Class: "border-hairline"}) {
-						{ i18n.T(ctx, "land.hero.see") }
-					}
+	<section class="hero relative isolate overflow-hidden">
+		<div aria-hidden="true" class="pointer-events-none absolute left-1/2 top-0 h-[24rem] w-[42rem] -translate-x-1/2 -translate-y-1/4 rounded-full bg-signal/10 blur-[64px]"></div>
+		<div class="mx-auto w-full max-w-6xl px-6 pt-16 md:pt-24 lg:pl-28 lg:pr-8">
+			<div class="relative">
+				@waypoint(i18n.T(ctx, "land.waypoint.day1"))
+				<div class="mx-auto flex max-w-4xl flex-col items-center text-center">
+					@heroPill()
+					<h1 class="mt-7 text-4xl font-bold leading-[1.06] tracking-[-0.025em] sm:text-5xl lg:text-6xl">
+						<span class="block text-balance">{ i18n.T(ctx, "land.hero.h1a") }</span>
+						<span class="block text-balance text-muted-foreground">{ i18n.T(ctx, "land.hero.h1b") }</span>
+					</h1>
+					<p class="mt-6 max-w-xl text-base leading-relaxed text-muted-foreground sm:text-lg">
+						{ i18n.T(ctx, "land.hero.lede") }
+					</p>
+					@appButtons("mt-9 items-center justify-center")
+					<div class="mt-8 flex flex-wrap items-center justify-center gap-3">
+						@button.Button(button.Props{Href: ctaHref(ctx), Size: button.SizeLg, Class: "bg-signal text-background hover:bg-signal/90"}) {
+							{ ctaLabel(ctx) }
+							@icon.ArrowRight(icon.Props{Class: "size-4"})
+						}
+						@button.Button(button.Props{Href: "#product-film", Size: button.SizeLg, Variant: button.VariantOutline, Class: "border-hairline"}) {
+							{ i18n.T(ctx, "land.hero.see") }
+						}
+					</div>
+					<p class="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
+						@icon.Check(icon.Props{Class: "size-3.5 text-signal"})
+						{ i18n.T(ctx, "land.hero.free") }
+					</p>
 				</div>
-				<p class="mt-5 flex items-center gap-2 text-sm text-muted-foreground">
-					@icon.Check(icon.Props{Class: "size-3.5 text-signal"})
-					{ i18n.T(ctx, "land.hero.free") }
-				</p>
-				@tourLinks()
 			</div>
+		</div>
+		@heroWall()
+	</section>
+}
+
+// heroPill is the eyebrow over the headline, linked to the first section.
+//
+// Hand-rolled rather than badge.Badge: Badge renders a span, and this is a
+// link with its own hover — the border warms to the signal and the arrow
+// nudges right.
+templ heroPill() {
+	<a
+		href="#day"
+		class="group inline-flex max-w-full items-center gap-2 rounded-full border border-border/60 bg-surface/70 py-1 pl-2.5 pr-3 text-xs text-muted-foreground transition-colors hover:border-signal/50 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-signal"
+	>
+		<span class="size-1.5 shrink-0 rounded-full bg-signal"></span>
+		<span class="text-left">{ i18n.T(ctx, "land.hero.badge") }</span>
+		<span aria-hidden="true" class="text-muted-foreground/60 transition-transform group-hover:translate-x-0.5">→</span>
+	</a>
+}
+
+// heroProof is what used to sit beside and under the hero: the tour strip,
+// the product film and the five-month thread. It opens the content column.
+templ heroProof() {
+	<section class="relative pb-24 pt-14">
+		@tourLinks()
+		<div class="mt-10 grid items-start gap-10 lg:grid-cols-[minmax(0,1fr)_22rem]">
+			@heroFilm()
 			@heroThread()
 		</div>
-		@heroFilm()
 	</section>
 }
 
@@ -135,7 +163,7 @@ templ hero() {
 // Muted + playsinline + loop so it autoplays on mobile without becoming a sound
 // assault; the poster covers the first paint before the mp4 is ready.
 templ heroFilm() {
-	<div id="product-film" class="mt-16">
+	<div id="product-film" class="scroll-mt-20">
 		<div class="mb-4 flex flex-wrap items-end justify-between gap-3">
 			<div>
 				@monoLabel(i18n.T(ctx, "land.film.label"))
