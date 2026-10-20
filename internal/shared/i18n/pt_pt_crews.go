@@ -8,7 +8,7 @@ var portugueseEuropeanCrews = map[string]string{
 	"crews.members.many": "%[1]d pessoas",
 
 	"crews.start.title":      "Criar um grupo",
-	"crews.start.desc":       "Até oito pessoas. Com duas, já tens alguém que te pede contas.",
+	"crews.start.desc":       "Até 25 pessoas. Com duas, já tens alguém que te pede contas.",
 	"crews.name":             "Nome",
 	"crews.name.placeholder": "por exemplo, Corredores matinais",
 	"crews.create":           "Criar",

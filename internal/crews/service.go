@@ -35,6 +35,7 @@ type Service struct {
 	q        *crewsdb.Queries
 	checkIns CheckInReader
 	workouts WorkoutReader
+	blocks   BlockChecker
 	now      func() time.Time
 }
 
@@ -51,9 +52,20 @@ type WorkoutReader interface {
 	CountBetween(ctx context.Context, userID uuid.UUID, from, to time.Time) (int, error)
 }
 
+// BlockChecker says whether either of two people has blocked the other.
+// *social.Repository is one; it is narrowed here so crews does not depend on
+// the social slice.
+type BlockChecker interface {
+	Blocked(ctx context.Context, a, b uuid.UUID) (bool, error)
+}
+
 func NewService(pool *pgxpool.Pool, checkIns CheckInReader, workouts WorkoutReader) *Service {
 	return &Service{pool: pool, q: crewsdb.New(pool), checkIns: checkIns, workouts: workouts, now: time.Now}
 }
+
+// WithBlocks keeps people out of crews whose owner they have blocked or been
+// blocked by.
+func (s *Service) WithBlocks(b BlockChecker) *Service { s.blocks = b; return s }
 
 // WithClock fixes now, for tests.
 func (s *Service) WithClock(now func() time.Time) *Service { s.now = now; return s }
@@ -123,6 +135,17 @@ func (s *Service) Join(ctx context.Context, userID uuid.UUID, code string) (Crew
 	}
 	if member {
 		return c, nil
+	}
+	if s.blocks != nil {
+		blocked, blockErr := s.blocks.Blocked(ctx, userID, c.OwnerID)
+		if blockErr != nil {
+			return Crew{}, blockErr
+		}
+		if blocked {
+			// The same words whichever way the block points, so a refusal
+			// never tells anybody they were blocked.
+			return Crew{}, apperr.FieldErrors{}.Add("crew", "You can't join this crew.")
+		}
 	}
 	limit, err := s.limit(ctx, c.ID, c.OwnerID)
 	if err != nil {

@@ -98,7 +98,7 @@ func TestBoard(t *testing.T) {
 	}
 }
 
-// Eight is full for a free owner; the owner leaving hands the crew on; the
+// A free owner's crew fills at MaxMembers; the owner leaving hands the crew on; the
 // last one out deletes it.
 func TestMembership(t *testing.T) {
 	pool := testdb.New(t)

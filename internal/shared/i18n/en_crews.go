@@ -9,7 +9,7 @@ var englishCrews = map[string]string{
 	"crews.members.many": "%[1]d people",
 
 	"crews.start.title":      "Start a crew",
-	"crews.start.desc":       "Up to eight people. Two is an accountability partner.",
+	"crews.start.desc":       "Up to 25 people. Two is an accountability partner.",
 	"crews.name":             "Name",
 	"crews.name.placeholder": "e.g. Morning runners",
 	"crews.create":           "Create",
