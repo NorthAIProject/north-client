@@ -32,6 +32,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/connections"
 	"github.com/NorthAIProject/north-client/internal/conversations"
 	"github.com/NorthAIProject/north-client/internal/crews"
+	"github.com/NorthAIProject/north-client/internal/crews/live"
 	"github.com/NorthAIProject/north-client/internal/dashboard"
 	"github.com/NorthAIProject/north-client/internal/day"
 	"github.com/NorthAIProject/north-client/internal/decisions"
@@ -322,6 +323,7 @@ func routes(
 		WithLogger(slog.Default())
 	moderationHandler := moderation.NewHandler(moderationSvc)
 	crewChat := crews.NewChat(pool, moderationSvc, moderation.NewFilter(), queue)
+	crewLive := live.NewHub()
 	moderationSvc.Register(crews.MessageSubject, crewChat.Hider())
 
 	// XP is derived from what the slices above record; the leaderboard reads
@@ -1311,24 +1313,39 @@ func routes(
 		})
 	})
 
-	if telegramClient == nil {
-		return r, nil
-	}
-
-	// Both edges need a moment with a context: the command menu is published
-	// once at boot, and the poller then runs for the life of the process. In
-	// webhook mode there is no poller and this returns after registering.
 	return r, func(ctx context.Context) error {
-		if err := telegramClient.RegisterCommands(ctx); err != nil {
-			// Cosmetic. The commands are matched from the message text and work
-			// regardless; what is lost is the menu that advertises them.
-			slog.Default().Warn("could not publish the telegram command menu", slog.Any("error", err))
-		}
-		if telegramPoller == nil {
+		// One LISTEN connection feeds every open crew stream in this process.
+		// When the process is told to stop, the streams end at once, so the
+		// server's graceful shutdown does not wait out its timeout on them.
+		go func() {
+			if err := live.Listen(ctx, cfg.DatabaseURL, crewLive, slog.Default()); err != nil {
+				slog.Default().Error("crew live listener stopped", slog.Any("error", err))
+			}
+		}()
+		go func() {
+			<-ctx.Done()
+			crewLive.Close()
+		}()
+		if telegramClient == nil {
 			return nil
 		}
-		return telegramPoller.Run(ctx)
+		return runTelegram(ctx, telegramClient, telegramPoller)
 	}
+}
+
+// runTelegram publishes the command menu, then polls for the life of the
+// process. In webhook mode there is no poller and it returns after
+// registering.
+func runTelegram(ctx context.Context, client *telegram.Client, poller *telegram.Poller) error {
+	if err := client.RegisterCommands(ctx); err != nil {
+		// Cosmetic. The commands are matched from the message text and work
+		// regardless; what is lost is the menu that advertises them.
+		slog.Default().Warn("could not publish the telegram command menu", slog.Any("error", err))
+	}
+	if poller == nil {
+		return nil
+	}
+	return poller.Run(ctx)
 }
 
 // healthz reports whether the process can serve traffic. It checks the database

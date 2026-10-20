@@ -204,8 +204,9 @@ func mailer(cfg *config.Config) auth.Mailer {
 
 // background is work that outlives any one request.
 //
-// Today there is exactly one: the Telegram poller, which has to keep asking
-// for updates for as long as the process runs. It is returned rather than
+// Today: the crew live listener, which holds one LISTEN connection for every
+// open crew stream, and the Telegram poller, which has to keep asking for
+// updates for as long as the process runs. It is returned rather than
 // started here because routes() has no lifecycle — no context to cancel, no
 // place to report a failure — and a goroutine leaked out of a constructor is
 // how a process ends up with two pollers after a test.
