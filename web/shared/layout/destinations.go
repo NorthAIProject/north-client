@@ -197,6 +197,12 @@ func Destinations() []Destination {
 			Keywords:    []string{"chat", "ai", "ask", "assistant", "conversation"},
 			Nav:         NavPlacement{Show: true},
 		},
+		{
+			Key: "nav.daily", Label: "Daily post", Href: "/app/daily", Icon: "newspaper", Group: GroupToday,
+			Description: "One short read a day, written by AI.",
+			Keywords:    []string{"post", "read", "article", "tip", "wellness", "wellbeing", "diet", "board"},
+			Nav:         NavPlacement{Show: true},
+		},
 
 		// Body
 		{
