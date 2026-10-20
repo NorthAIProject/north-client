@@ -17,7 +17,8 @@
       "streak": 3,
       "weekProgress": 3,
       "owner": true,
-      "me": true
+      "me": true,
+      "role": "owner"
     },
     {
       "id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
@@ -28,9 +29,11 @@
       "streak": 0,
       "weekProgress": 1,
       "owner": false,
-      "me": false
+      "me": false,
+      "role": "admin"
     }
   ],
   "weekStart": "2026-09-28T00:00:00Z",
-  "isOwner": true
+  "isOwner": true,
+  "myRole": "owner"
 }

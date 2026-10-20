@@ -9,27 +9,43 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/crews/live"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 )
 
 // API is crews for native clients. Mount behind auth.RequireBearer.
 type API struct {
-	svc     *Service
-	siteURL string
+	svc       *Service
+	siteURL   string
+	chat      *Chat
+	hub       *live.Hub
+	heartbeat time.Duration
 }
 
 func NewAPI(svc *Service, siteURL string) *API {
-	return &API{svc: svc, siteURL: strings.TrimRight(siteURL, "/")}
+	return &API{svc: svc, siteURL: strings.TrimRight(siteURL, "/"), heartbeat: heartbeat}
 }
 
+// WithLive gives the API the chat and the hub its streams read from.
+func (a *API) WithLive(chat *Chat, hub *live.Hub) *API {
+	a.chat, a.hub = chat, hub
+	return a
+}
+
+// WithHeartbeat changes how often a quiet stream pings, for tests.
+func (a *API) WithHeartbeat(d time.Duration) *API { a.heartbeat = d; return a }
+
 func (a *API) Routes(r chi.Router) {
+	r.Get("/crews/{crewID}/live", a.live)
+	a.chatRoutes(r)
 	r.Get("/crews", a.list)
 	r.Post("/crews", a.create)
 	r.Get("/crews/join/{code}", a.preview)
 	r.Post("/crews/join/{code}", a.join)
 	r.Get("/crews/{crewID}", a.board)
 	r.Delete("/crews/{crewID}/members/{userID}", a.remove)
+	r.Put("/crews/{crewID}/members/{userID}/role", a.setRole)
 	r.Put("/crews/{crewID}/challenge", a.setChallenge)
 	r.Delete("/crews/{crewID}/challenge", a.clearChallenge)
 }
@@ -43,6 +59,9 @@ type CrewView struct {
 	// MemberCount is how many are in it; the board lists them in members.
 	MemberCount int    `json:"memberCount"`
 	JoinURL     string `json:"joinUrl"`
+	// Unread and Mentions are filled on the crew list only.
+	Unread   int `json:"unread,omitempty"`
+	Mentions int `json:"mentions,omitempty"`
 }
 
 type CrewList struct {
@@ -67,6 +86,8 @@ type MemberView struct {
 	WeekProgress int  `json:"weekProgress"`
 	Owner        bool `json:"owner"`
 	Me           bool `json:"me"`
+	// Role is owner, admin or member; clients treat anything else as member.
+	Role string `json:"role"`
 }
 
 type BoardView struct {
@@ -75,6 +96,11 @@ type BoardView struct {
 	Members   []MemberView   `json:"members"`
 	WeekStart time.Time      `json:"weekStart"`
 	IsOwner   bool           `json:"isOwner"`
+	MyRole    string         `json:"myRole"`
+}
+
+type RoleRequest struct {
+	Role string `json:"role"`
 }
 
 type CreateRequest struct {
@@ -87,9 +113,16 @@ func (a *API) list(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, err, "Crews could not be loaded.")
 		return
 	}
+	unread, err := a.unreadByCrew(r)
+	if err != nil {
+		httpx.Error(w, err, "Crews could not be loaded.")
+		return
+	}
 	out := CrewList{Crews: make([]CrewView, 0, len(list))}
 	for _, c := range list {
-		out.Crews = append(out.Crews, a.projectCrew(c))
+		v := a.projectCrew(c)
+		v.Unread, v.Mentions = unread[c.ID].Unread, unread[c.ID].Mentions
+		out.Crews = append(out.Crews, v)
 	}
 	httpx.WriteJSON(w, http.StatusOK, out)
 }
@@ -162,6 +195,27 @@ func (a *API) remove(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// setRole makes a member an admin or a member again; owner only.
+func (a *API) setRole(w http.ResponseWriter, r *http.Request) {
+	crewID, ok := pathID(w, r, "crewID")
+	if !ok {
+		return
+	}
+	memberID, ok := pathID(w, r, "userID")
+	if !ok {
+		return
+	}
+	var req RoleRequest
+	if !readJSON(w, r, &req) {
+		return
+	}
+	if err := a.svc.SetRole(r.Context(), crewID, auth.MustUser(r.Context()).ID, memberID, Role(req.Role)); err != nil {
+		httpx.Error(w, err, "The role could not be changed.")
+		return
+	}
+	a.board(w, r)
+}
+
 func (a *API) setChallenge(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(w, r, "crewID")
 	if !ok {
@@ -195,14 +249,14 @@ func (a *API) projectCrew(c Crew) CrewView {
 }
 
 func (a *API) projectBoard(b Board) BoardView {
-	out := BoardView{CrewView: a.projectCrew(b.Crew), Members: make([]MemberView, 0, len(b.Members)), WeekStart: b.WeekStart, IsOwner: b.IsOwner}
+	out := BoardView{CrewView: a.projectCrew(b.Crew), Members: make([]MemberView, 0, len(b.Members)), WeekStart: b.WeekStart, IsOwner: b.IsOwner, MyRole: string(b.MyRole)}
 	if b.Challenge != nil {
 		out.Challenge = &ChallengeView{Kind: b.Challenge.Kind, Target: b.Challenge.Target}
 	}
 	for _, m := range b.Members {
 		out.Members = append(out.Members, MemberView{
 			ID: m.ID, DisplayName: m.DisplayName, Handle: m.Handle, CheckedIn: m.CheckedIn, WorkedOut: m.WorkedOut,
-			Streak: m.Streak, WeekProgress: m.WeekProgress, Owner: m.Owner, Me: m.Me,
+			Streak: m.Streak, WeekProgress: m.WeekProgress, Owner: m.Owner, Me: m.Me, Role: string(m.Role),
 		})
 	}
 	return out
@@ -223,4 +277,18 @@ func readJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
 		return false
 	}
 	return true
+}
+
+// live streams the crew's events to a member, as JSON.
+func (a *API) live(w http.ResponseWriter, r *http.Request) {
+	crewID, ok := pathID(w, r, "crewID")
+	if !ok {
+		return
+	}
+	viewer := auth.MustUser(r.Context()).ID
+	if _, _, err := a.chat.member(r.Context(), crewID, viewer); err != nil {
+		httpx.Error(w, err, "The crew could not be loaded.")
+		return
+	}
+	serveLive(w, r, a.hub, crewID, a.chat.viewerGate(viewer, apiFrame), a.heartbeat)
 }

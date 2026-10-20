@@ -21,6 +21,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/checkins"
 	"github.com/NorthAIProject/north-client/internal/conversations"
+	"github.com/NorthAIProject/north-client/internal/crews/crew"
 	"github.com/NorthAIProject/north-client/internal/documents"
 	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/medications/medication"
@@ -58,6 +59,13 @@ type Exporter struct {
 	friends       Friends
 	medications   Medications
 	progress      ProgressChecks
+	crewMessages  CrewMessages
+}
+
+// CrewMessages is what a person posted in their crews. crews.Service
+// satisfies it; nil leaves crews/messages.json out.
+type CrewMessages interface {
+	AuthoredBy(ctx context.Context, userID uuid.UUID) ([]crew.ExportedMessage, error)
 }
 
 // ProgressChecks is every progress check and its photos as an export needs
@@ -93,6 +101,7 @@ type Options struct {
 	Friends       Friends
 	Medications   Medications
 	Progress      ProgressChecks
+	CrewMessages  CrewMessages
 }
 
 func NewExporter(o Options) *Exporter {
@@ -106,6 +115,7 @@ func NewExporter(o Options) *Exporter {
 		friends:       o.Friends,
 		medications:   o.Medications,
 		progress:      o.Progress,
+		crewMessages:  o.CrewMessages,
 	}
 }
 
@@ -159,6 +169,9 @@ func (e *Exporter) WriteZip(ctx context.Context, user users.User, w io.Writer) e
 	if err := e.writeProgressChecks(ctx, zw, user); err != nil {
 		problems = append(problems, "progress checks: "+err.Error())
 	}
+	if err := e.writeCrewMessages(ctx, zw, user); err != nil {
+		problems = append(problems, "crew messages: "+err.Error())
+	}
 
 	if len(problems) > 0 {
 		if err := writeFile(zw, "INCOMPLETE.txt", strings.Join(append(
@@ -185,6 +198,7 @@ func (e *Exporter) writeManifest(zw *zip.Writer, user users.User) error {
 			"friends.md — your handle, who you follow, who follows you, who you blocked",
 			"medications.md — what you take, on what schedule, and every dose you logged",
 			"progress-checks.md and progress-photos/ — your measurements and the photos taken with them",
+			"crews/messages.json — what you posted in your crews' channels, except what you deleted",
 		},
 		"not_included": []string{
 			"the search index and the passages derived from your documents; " +
@@ -508,6 +522,23 @@ func slug(s string) string {
 		}
 	}
 	return strings.Trim(b.String(), "-")
+}
+
+// writeCrewMessages is what the person posted in crews. Only their own:
+// what crewmates wrote is theirs to export, not this person's.
+func (e *Exporter) writeCrewMessages(ctx context.Context, zw *zip.Writer, user users.User) error {
+	if e.crewMessages == nil {
+		return nil
+	}
+	msgs, err := e.crewMessages.AuthoredBy(ctx, user.ID)
+	if err != nil {
+		return err
+	}
+	body, err := json.MarshalIndent(msgs, "", "  ")
+	if err != nil {
+		return apperr.Wrap(err, "encode crew messages")
+	}
+	return writeFile(zw, "crews/messages.json", string(body)+"\n")
 }
 
 // writeFriends lists connections by name and handle, never by anybody else's

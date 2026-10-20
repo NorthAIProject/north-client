@@ -30,6 +30,42 @@ func (q *Queries) AddMember(ctx context.Context, arg AddMemberParams) (int64, er
 	return result.RowsAffected(), nil
 }
 
+const addReaction = `-- name: AddReaction :exec
+INSERT INTO crew_message_reactions (message_id, user_id, emoji) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING
+`
+
+type AddReactionParams struct {
+	MessageID uuid.UUID
+	UserID    uuid.UUID
+	Emoji     string
+}
+
+func (q *Queries) AddReaction(ctx context.Context, arg AddReactionParams) error {
+	_, err := q.db.Exec(ctx, addReaction, arg.MessageID, arg.UserID, arg.Emoji)
+	return err
+}
+
+const authorBlockedFor = `-- name: AuthorBlockedFor :one
+SELECT EXISTS (
+    SELECT 1 FROM crew_messages m JOIN blocks b
+      ON (b.blocker_id = $1 AND b.blocked_id = m.author_id) OR (b.blocker_id = m.author_id AND b.blocked_id = $1)
+    WHERE m.id = $2
+)
+`
+
+type AuthorBlockedForParams struct {
+	Viewer uuid.UUID
+	ID     uuid.UUID
+}
+
+// Whether the author of message @id and @viewer have blocked each other.
+func (q *Queries) AuthorBlockedFor(ctx context.Context, arg AuthorBlockedForParams) (bool, error) {
+	row := q.db.QueryRow(ctx, authorBlockedFor, arg.Viewer, arg.ID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const challengesOf = `-- name: ChallengesOf :many
 SELECT c.id, c.name, ch.kind, ch.target, ch.created_at
 FROM crew_members m
@@ -74,6 +110,32 @@ func (q *Queries) ChallengesOf(ctx context.Context, userID uuid.UUID) ([]Challen
 	return items, nil
 }
 
+const channelInCrew = `-- name: ChannelInCrew :one
+SELECT id, crew_id, kind, name, topic, position, is_default, created_by, created_at FROM crew_channels WHERE id = $1 AND crew_id = $2
+`
+
+type ChannelInCrewParams struct {
+	ID     uuid.UUID
+	CrewID uuid.UUID
+}
+
+func (q *Queries) ChannelInCrew(ctx context.Context, arg ChannelInCrewParams) (CrewChannel, error) {
+	row := q.db.QueryRow(ctx, channelInCrew, arg.ID, arg.CrewID)
+	var i CrewChannel
+	err := row.Scan(
+		&i.ID,
+		&i.CrewID,
+		&i.Kind,
+		&i.Name,
+		&i.Topic,
+		&i.Position,
+		&i.IsDefault,
+		&i.CreatedBy,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const clearChallenge = `-- name: ClearChallenge :exec
 DELETE FROM crew_challenges WHERE crew_id = $1
 `
@@ -81,6 +143,26 @@ DELETE FROM crew_challenges WHERE crew_id = $1
 func (q *Queries) ClearChallenge(ctx context.Context, crewID uuid.UUID) error {
 	_, err := q.db.Exec(ctx, clearChallenge, crewID)
 	return err
+}
+
+const clearReactions = `-- name: ClearReactions :exec
+DELETE FROM crew_message_reactions WHERE message_id = $1
+`
+
+func (q *Queries) ClearReactions(ctx context.Context, messageID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, clearReactions, messageID)
+	return err
+}
+
+const countChannels = `-- name: CountChannels :one
+SELECT count(*) FROM crew_channels WHERE crew_id = $1
+`
+
+func (q *Queries) CountChannels(ctx context.Context, crewID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countChannels, crewID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
 const countMembers = `-- name: CountMembers :one
@@ -94,8 +176,19 @@ func (q *Queries) CountMembers(ctx context.Context, crewID uuid.UUID) (int64, er
 	return count, err
 }
 
+const countPins = `-- name: CountPins :one
+SELECT count(*) FROM crew_messages WHERE channel_id = $1 AND pinned_at IS NOT NULL
+`
+
+func (q *Queries) CountPins(ctx context.Context, channelID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countPins, channelID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createCrew = `-- name: CreateCrew :one
-INSERT INTO crews (name, owner_id, code) VALUES ($1, $2, $3) RETURNING id, name, owner_id, code, created_at
+INSERT INTO crews (name, owner_id, code) VALUES ($1, $2, $3) RETURNING id, name, owner_id, code, created_at, visibility, description
 `
 
 type CreateCrewParams struct {
@@ -113,12 +206,26 @@ func (q *Queries) CreateCrew(ctx context.Context, arg CreateCrewParams) (Crew, e
 		&i.OwnerID,
 		&i.Code,
 		&i.CreatedAt,
+		&i.Visibility,
+		&i.Description,
 	)
 	return i, err
 }
 
+const createDefaultChannels = `-- name: CreateDefaultChannels :exec
+INSERT INTO crew_channels (crew_id, kind, name, is_default, position)
+VALUES ($1, 'text', 'general', true, 0), ($1, 'wins', 'wins', false, 1)
+`
+
+// Every crew starts with #general and #wins; the crew-spaces migration gave
+// the same two to crews made before.
+func (q *Queries) CreateDefaultChannels(ctx context.Context, crewID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, createDefaultChannels, crewID)
+	return err
+}
+
 const crewByCode = `-- name: CrewByCode :one
-SELECT id, name, owner_id, code, created_at FROM crews WHERE code = $1
+SELECT id, name, owner_id, code, created_at, visibility, description FROM crews WHERE code = $1
 `
 
 func (q *Queries) CrewByCode(ctx context.Context, code string) (Crew, error) {
@@ -130,6 +237,8 @@ func (q *Queries) CrewByCode(ctx context.Context, code string) (Crew, error) {
 		&i.OwnerID,
 		&i.Code,
 		&i.CreatedAt,
+		&i.Visibility,
+		&i.Description,
 	)
 	return i, err
 }
@@ -169,12 +278,62 @@ func (q *Queries) CrewmatesOf(ctx context.Context, userID uuid.UUID) ([]Crewmate
 	return items, nil
 }
 
+const defaultChannel = `-- name: DefaultChannel :one
+SELECT id FROM crew_channels WHERE crew_id = $1 AND is_default
+`
+
+func (q *Queries) DefaultChannel(ctx context.Context, crewID uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, defaultChannel, crewID)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const deleteChannel = `-- name: DeleteChannel :exec
+DELETE FROM crew_channels WHERE id = $1
+`
+
+func (q *Queries) DeleteChannel(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteChannel, id)
+	return err
+}
+
 const deleteCrew = `-- name: DeleteCrew :exec
 DELETE FROM crews WHERE id = $1
 `
 
 func (q *Queries) DeleteCrew(ctx context.Context, id uuid.UUID) error {
 	_, err := q.db.Exec(ctx, deleteCrew, id)
+	return err
+}
+
+const deleteMessage = `-- name: DeleteMessage :exec
+UPDATE crew_messages SET deleted_at = now(), deleted_by = $1, body = '', pinned_at = NULL, pinned_by = NULL
+WHERE id = $2 AND deleted_at IS NULL
+`
+
+type DeleteMessageParams struct {
+	DeletedBy *uuid.UUID
+	ID        uuid.UUID
+}
+
+func (q *Queries) DeleteMessage(ctx context.Context, arg DeleteMessageParams) error {
+	_, err := q.db.Exec(ctx, deleteMessage, arg.DeletedBy, arg.ID)
+	return err
+}
+
+const editMessage = `-- name: EditMessage :exec
+UPDATE crew_messages SET body = $1, mentions = $2, edited_at = now() WHERE id = $3
+`
+
+type EditMessageParams struct {
+	Body     string
+	Mentions []uuid.UUID
+	ID       uuid.UUID
+}
+
+func (q *Queries) EditMessage(ctx context.Context, arg EditMessageParams) error {
+	_, err := q.db.Exec(ctx, editMessage, arg.Body, arg.Mentions, arg.ID)
 	return err
 }
 
@@ -195,7 +354,7 @@ func (q *Queries) GetChallenge(ctx context.Context, crewID uuid.UUID) (CrewChall
 }
 
 const getCrew = `-- name: GetCrew :one
-SELECT id, name, owner_id, code, created_at FROM crews WHERE id = $1
+SELECT id, name, owner_id, code, created_at, visibility, description FROM crews WHERE id = $1
 `
 
 func (q *Queries) GetCrew(ctx context.Context, id uuid.UUID) (Crew, error) {
@@ -207,8 +366,101 @@ func (q *Queries) GetCrew(ctx context.Context, id uuid.UUID) (Crew, error) {
 		&i.OwnerID,
 		&i.Code,
 		&i.CreatedAt,
+		&i.Visibility,
+		&i.Description,
 	)
 	return i, err
+}
+
+const insertChannel = `-- name: InsertChannel :one
+INSERT INTO crew_channels (crew_id, kind, name, topic, position, created_by)
+VALUES ($1, 'text', $2, $3, (SELECT coalesce(max(position), 0) + 1 FROM crew_channels WHERE crew_id = $1), $4)
+RETURNING id, crew_id, kind, name, topic, position, is_default, created_by, created_at
+`
+
+type InsertChannelParams struct {
+	CrewID    uuid.UUID
+	Name      string
+	Topic     string
+	CreatedBy *uuid.UUID
+}
+
+func (q *Queries) InsertChannel(ctx context.Context, arg InsertChannelParams) (CrewChannel, error) {
+	row := q.db.QueryRow(ctx, insertChannel,
+		arg.CrewID,
+		arg.Name,
+		arg.Topic,
+		arg.CreatedBy,
+	)
+	var i CrewChannel
+	err := row.Scan(
+		&i.ID,
+		&i.CrewID,
+		&i.Kind,
+		&i.Name,
+		&i.Topic,
+		&i.Position,
+		&i.IsDefault,
+		&i.CreatedBy,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const insertMessage = `-- name: InsertMessage :one
+INSERT INTO crew_messages (crew_id, channel_id, author_id, kind, body, reply_to_id, mentions, mention_all, client_id)
+VALUES ($1, $2, $3, 'text', $4, $5, $6, $7, $8)
+ON CONFLICT (author_id, client_id) DO NOTHING
+RETURNING id, seq
+`
+
+type InsertMessageParams struct {
+	CrewID     uuid.UUID
+	ChannelID  uuid.UUID
+	AuthorID   *uuid.UUID
+	Body       string
+	ReplyToID  *uuid.UUID
+	Mentions   []uuid.UUID
+	MentionAll bool
+	ClientID   *uuid.UUID
+}
+
+type InsertMessageRow struct {
+	ID  uuid.UUID
+	Seq int64
+}
+
+// A repeated client_id from the same author is the same message sent twice;
+// no row comes back and the caller looks the first one up.
+func (q *Queries) InsertMessage(ctx context.Context, arg InsertMessageParams) (InsertMessageRow, error) {
+	row := q.db.QueryRow(ctx, insertMessage,
+		arg.CrewID,
+		arg.ChannelID,
+		arg.AuthorID,
+		arg.Body,
+		arg.ReplyToID,
+		arg.Mentions,
+		arg.MentionAll,
+		arg.ClientID,
+	)
+	var i InsertMessageRow
+	err := row.Scan(&i.ID, &i.Seq)
+	return i, err
+}
+
+const insertSystemMessage = `-- name: InsertSystemMessage :exec
+INSERT INTO crew_messages (crew_id, channel_id, kind, body) VALUES ($1, $2, 'system', $3)
+`
+
+type InsertSystemMessageParams struct {
+	CrewID    uuid.UUID
+	ChannelID uuid.UUID
+	Body      string
+}
+
+func (q *Queries) InsertSystemMessage(ctx context.Context, arg InsertSystemMessageParams) error {
+	_, err := q.db.Exec(ctx, insertSystemMessage, arg.CrewID, arg.ChannelID, arg.Body)
+	return err
 }
 
 const isMember = `-- name: IsMember :one
@@ -227,20 +479,57 @@ func (q *Queries) IsMember(ctx context.Context, arg IsMemberParams) (bool, error
 	return exists, err
 }
 
+const listChannels = `-- name: ListChannels :many
+SELECT id, crew_id, kind, name, topic, position, is_default, created_by, created_at FROM crew_channels WHERE crew_id = $1 AND kind = 'text' ORDER BY position, name
+`
+
+// Text channels only: #wins stays out of sight until wins land in it.
+func (q *Queries) ListChannels(ctx context.Context, crewID uuid.UUID) ([]CrewChannel, error) {
+	rows, err := q.db.Query(ctx, listChannels, crewID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CrewChannel{}
+	for rows.Next() {
+		var i CrewChannel
+		if err := rows.Scan(
+			&i.ID,
+			&i.CrewID,
+			&i.Kind,
+			&i.Name,
+			&i.Topic,
+			&i.Position,
+			&i.IsDefault,
+			&i.CreatedBy,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listMine = `-- name: ListMine :many
-SELECT c.id, c.name, c.owner_id, c.code, c.created_at, (SELECT count(*) FROM crew_members m2 WHERE m2.crew_id = c.id) AS members
+SELECT c.id, c.name, c.owner_id, c.code, c.created_at, c.visibility, c.description, (SELECT count(*) FROM crew_members m2 WHERE m2.crew_id = c.id) AS members
 FROM crews c JOIN crew_members m ON m.crew_id = c.id
 WHERE m.user_id = $1
 ORDER BY c.created_at
 `
 
 type ListMineRow struct {
-	ID        uuid.UUID
-	Name      string
-	OwnerID   uuid.UUID
-	Code      string
-	CreatedAt time.Time
-	Members   int64
+	ID          uuid.UUID
+	Name        string
+	OwnerID     uuid.UUID
+	Code        string
+	CreatedAt   time.Time
+	Visibility  string
+	Description string
+	Members     int64
 }
 
 func (q *Queries) ListMine(ctx context.Context, userID uuid.UUID) ([]ListMineRow, error) {
@@ -258,6 +547,8 @@ func (q *Queries) ListMine(ctx context.Context, userID uuid.UUID) ([]ListMineRow
 			&i.OwnerID,
 			&i.Code,
 			&i.CreatedAt,
+			&i.Visibility,
+			&i.Description,
 			&i.Members,
 		); err != nil {
 			return nil, err
@@ -270,8 +561,105 @@ func (q *Queries) ListMine(ctx context.Context, userID uuid.UUID) ([]ListMineRow
 	return items, nil
 }
 
+const lockChannelForWrite = `-- name: LockChannelForWrite :exec
+SELECT id FROM crew_channels WHERE id = $1 FOR UPDATE
+`
+
+// Taken before inserting a message, so messages in one channel commit in seq
+// order and a reader's after= cursor can never pass one still in flight. It
+// also waits for any other open insert into the channel (that insert holds a
+// key-share lock on the channel row through its foreign key).
+func (q *Queries) LockChannelForWrite(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, lockChannelForWrite, id)
+	return err
+}
+
+const markRead = `-- name: MarkRead :exec
+INSERT INTO crew_channel_reads (channel_id, user_id, last_read_seq) VALUES ($1, $2, $3)
+ON CONFLICT (channel_id, user_id) DO UPDATE
+SET last_read_seq = GREATEST(crew_channel_reads.last_read_seq, EXCLUDED.last_read_seq)
+`
+
+type MarkReadParams struct {
+	ChannelID   uuid.UUID
+	UserID      uuid.UUID
+	LastReadSeq int64
+}
+
+func (q *Queries) MarkRead(ctx context.Context, arg MarkReadParams) error {
+	_, err := q.db.Exec(ctx, markRead, arg.ChannelID, arg.UserID, arg.LastReadSeq)
+	return err
+}
+
+const memberIDsByHandle = `-- name: MemberIDsByHandle :many
+SELECT u.id FROM crew_members m JOIN users u ON u.id = m.user_id
+WHERE m.crew_id = $1 AND lower(u.handle::text) = ANY($2::text[])
+`
+
+type MemberIDsByHandleParams struct {
+	CrewID  uuid.UUID
+	Handles []string
+}
+
+func (q *Queries) MemberIDsByHandle(ctx context.Context, arg MemberIDsByHandleParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, memberIDsByHandle, arg.CrewID, arg.Handles)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []uuid.UUID{}
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const memberRole = `-- name: MemberRole :one
+SELECT role FROM crew_members WHERE crew_id = $1 AND user_id = $2
+`
+
+type MemberRoleParams struct {
+	CrewID uuid.UUID
+	UserID uuid.UUID
+}
+
+func (q *Queries) MemberRole(ctx context.Context, arg MemberRoleParams) (string, error) {
+	row := q.db.QueryRow(ctx, memberRole, arg.CrewID, arg.UserID)
+	var role string
+	err := row.Scan(&role)
+	return role, err
+}
+
+const memberSettings = `-- name: MemberSettings :one
+SELECT notify, muted_until FROM crew_members WHERE crew_id = $1 AND user_id = $2
+`
+
+type MemberSettingsParams struct {
+	CrewID uuid.UUID
+	UserID uuid.UUID
+}
+
+type MemberSettingsRow struct {
+	Notify     string
+	MutedUntil *time.Time
+}
+
+func (q *Queries) MemberSettings(ctx context.Context, arg MemberSettingsParams) (MemberSettingsRow, error) {
+	row := q.db.QueryRow(ctx, memberSettings, arg.CrewID, arg.UserID)
+	var i MemberSettingsRow
+	err := row.Scan(&i.Notify, &i.MutedUntil)
+	return i, err
+}
+
 const members = `-- name: Members :many
-SELECT u.id, u.display_name, u.handle, u.timezone, u.tier, m.joined_at
+SELECT u.id, u.display_name, u.handle, u.timezone, u.tier, m.joined_at, m.role
 FROM crew_members m JOIN users u ON u.id = m.user_id
 WHERE m.crew_id = $1
 ORDER BY m.joined_at
@@ -284,6 +672,7 @@ type MembersRow struct {
 	Timezone    string
 	Tier        string
 	JoinedAt    time.Time
+	Role        string
 }
 
 func (q *Queries) Members(ctx context.Context, crewID uuid.UUID) ([]MembersRow, error) {
@@ -302,6 +691,386 @@ func (q *Queries) Members(ctx context.Context, crewID uuid.UUID) ([]MembersRow, 
 			&i.Timezone,
 			&i.Tier,
 			&i.JoinedAt,
+			&i.Role,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const messageBody = `-- name: MessageBody :one
+SELECT body FROM crew_messages WHERE id = $1
+`
+
+func (q *Queries) MessageBody(ctx context.Context, id uuid.UUID) (string, error) {
+	row := q.db.QueryRow(ctx, messageBody, id)
+	var body string
+	err := row.Scan(&body)
+	return body, err
+}
+
+const messageByClientID = `-- name: MessageByClientID :one
+SELECT id FROM crew_messages WHERE author_id = $1 AND client_id = $2
+`
+
+type MessageByClientIDParams struct {
+	AuthorID *uuid.UUID
+	ClientID *uuid.UUID
+}
+
+func (q *Queries) MessageByClientID(ctx context.Context, arg MessageByClientIDParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, messageByClientID, arg.AuthorID, arg.ClientID)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const messageCrewSize = `-- name: MessageCrewSize :one
+SELECT count(*) FROM crew_members WHERE crew_id = (SELECT crew_id FROM crew_messages WHERE id = $1)
+`
+
+func (q *Queries) MessageCrewSize(ctx context.Context, id uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, messageCrewSize, id)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const messageForViewer = `-- name: MessageForViewer :one
+SELECT m.id, m.seq, m.channel_id, m.author_id, m.kind, m.body, m.mentions, m.mention_all,
+       m.pinned_at, m.edited_at, m.deleted_at, m.created_at,
+       au.display_name AS author_name, au.handle AS author_handle,
+       r.id AS reply_id, ru.display_name AS reply_author_name, r.body AS reply_body,
+       (r.id IS NOT NULL AND (r.deleted_at IS NOT NULL OR r.hidden_at IS NOT NULL
+         OR EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id = $1 AND b.blocked_id = r.author_id) OR (b.blocker_id = r.author_id AND b.blocked_id = $1))
+         OR EXISTS (SELECT 1 FROM content_reports cr WHERE cr.reporter_id = $1 AND cr.subject_kind = 'crew_message' AND cr.subject_id = r.id)))::boolean AS reply_unavailable
+FROM crew_messages m
+LEFT JOIN users au ON au.id = m.author_id
+LEFT JOIN crew_messages r ON r.id = m.reply_to_id
+LEFT JOIN users ru ON ru.id = r.author_id
+WHERE m.id = $2 AND m.crew_id = $3
+  AND m.hidden_at IS NULL
+  AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id = $1 AND b.blocked_id = m.author_id) OR (b.blocker_id = m.author_id AND b.blocked_id = $1))
+  AND NOT EXISTS (SELECT 1 FROM content_reports cr WHERE cr.reporter_id = $1 AND cr.subject_kind = 'crew_message' AND cr.subject_id = m.id)
+`
+
+type MessageForViewerParams struct {
+	Viewer uuid.UUID
+	ID     uuid.UUID
+	CrewID uuid.UUID
+}
+
+type MessageForViewerRow struct {
+	ID               uuid.UUID
+	Seq              int64
+	ChannelID        uuid.UUID
+	AuthorID         *uuid.UUID
+	Kind             string
+	Body             string
+	Mentions         []uuid.UUID
+	MentionAll       bool
+	PinnedAt         *time.Time
+	EditedAt         *time.Time
+	DeletedAt        *time.Time
+	CreatedAt        time.Time
+	AuthorName       *string
+	AuthorHandle     *string
+	ReplyID          *uuid.UUID
+	ReplyAuthorName  *string
+	ReplyBody        *string
+	ReplyUnavailable bool
+}
+
+func (q *Queries) MessageForViewer(ctx context.Context, arg MessageForViewerParams) (MessageForViewerRow, error) {
+	row := q.db.QueryRow(ctx, messageForViewer, arg.Viewer, arg.ID, arg.CrewID)
+	var i MessageForViewerRow
+	err := row.Scan(
+		&i.ID,
+		&i.Seq,
+		&i.ChannelID,
+		&i.AuthorID,
+		&i.Kind,
+		&i.Body,
+		&i.Mentions,
+		&i.MentionAll,
+		&i.PinnedAt,
+		&i.EditedAt,
+		&i.DeletedAt,
+		&i.CreatedAt,
+		&i.AuthorName,
+		&i.AuthorHandle,
+		&i.ReplyID,
+		&i.ReplyAuthorName,
+		&i.ReplyBody,
+		&i.ReplyUnavailable,
+	)
+	return i, err
+}
+
+const messageMeta = `-- name: MessageMeta :one
+SELECT id, crew_id, channel_id, author_id, deleted_at, hidden_at, pinned_at
+FROM crew_messages WHERE id = $1 AND crew_id = $2
+`
+
+type MessageMetaParams struct {
+	ID     uuid.UUID
+	CrewID uuid.UUID
+}
+
+type MessageMetaRow struct {
+	ID        uuid.UUID
+	CrewID    uuid.UUID
+	ChannelID uuid.UUID
+	AuthorID  *uuid.UUID
+	DeletedAt *time.Time
+	HiddenAt  *time.Time
+	PinnedAt  *time.Time
+}
+
+// A message's facts for permission checks, whatever its state.
+func (q *Queries) MessageMeta(ctx context.Context, arg MessageMetaParams) (MessageMetaRow, error) {
+	row := q.db.QueryRow(ctx, messageMeta, arg.ID, arg.CrewID)
+	var i MessageMetaRow
+	err := row.Scan(
+		&i.ID,
+		&i.CrewID,
+		&i.ChannelID,
+		&i.AuthorID,
+		&i.DeletedAt,
+		&i.HiddenAt,
+		&i.PinnedAt,
+	)
+	return i, err
+}
+
+const messagesAfter = `-- name: MessagesAfter :many
+
+SELECT m.id, m.seq, m.channel_id, m.author_id, m.kind, m.body, m.mentions, m.mention_all,
+       m.pinned_at, m.edited_at, m.deleted_at, m.created_at,
+       au.display_name AS author_name, au.handle AS author_handle,
+       r.id AS reply_id, ru.display_name AS reply_author_name, r.body AS reply_body,
+       (r.id IS NOT NULL AND (r.deleted_at IS NOT NULL OR r.hidden_at IS NOT NULL
+         OR EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id = $1 AND b.blocked_id = r.author_id) OR (b.blocker_id = r.author_id AND b.blocked_id = $1))
+         OR EXISTS (SELECT 1 FROM content_reports cr WHERE cr.reporter_id = $1 AND cr.subject_kind = 'crew_message' AND cr.subject_id = r.id)))::boolean AS reply_unavailable
+FROM crew_messages m
+LEFT JOIN users au ON au.id = m.author_id
+LEFT JOIN crew_messages r ON r.id = m.reply_to_id
+LEFT JOIN users ru ON ru.id = r.author_id
+WHERE m.channel_id = $2 AND m.seq > $3
+  AND m.hidden_at IS NULL
+  AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id = $1 AND b.blocked_id = m.author_id) OR (b.blocker_id = m.author_id AND b.blocked_id = $1))
+  AND NOT EXISTS (SELECT 1 FROM content_reports cr WHERE cr.reporter_id = $1 AND cr.subject_kind = 'crew_message' AND cr.subject_id = m.id)
+ORDER BY m.seq
+LIMIT $4
+`
+
+type MessagesAfterParams struct {
+	Viewer    uuid.UUID
+	ChannelID uuid.UUID
+	After     int64
+	Lim       int32
+}
+
+type MessagesAfterRow struct {
+	ID               uuid.UUID
+	Seq              int64
+	ChannelID        uuid.UUID
+	AuthorID         *uuid.UUID
+	Kind             string
+	Body             string
+	Mentions         []uuid.UUID
+	MentionAll       bool
+	PinnedAt         *time.Time
+	EditedAt         *time.Time
+	DeletedAt        *time.Time
+	CreatedAt        time.Time
+	AuthorName       *string
+	AuthorHandle     *string
+	ReplyID          *uuid.UUID
+	ReplyAuthorName  *string
+	ReplyBody        *string
+	ReplyUnavailable bool
+}
+
+// The three reads below share one shape: a message as @viewer sees it. A
+// message is visible when it is not hidden, its author and the viewer have not
+// blocked each other, and the viewer has not reported it. The quoted reply is
+// unavailable on the same terms, or when deleted.
+func (q *Queries) MessagesAfter(ctx context.Context, arg MessagesAfterParams) ([]MessagesAfterRow, error) {
+	rows, err := q.db.Query(ctx, messagesAfter,
+		arg.Viewer,
+		arg.ChannelID,
+		arg.After,
+		arg.Lim,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []MessagesAfterRow{}
+	for rows.Next() {
+		var i MessagesAfterRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Seq,
+			&i.ChannelID,
+			&i.AuthorID,
+			&i.Kind,
+			&i.Body,
+			&i.Mentions,
+			&i.MentionAll,
+			&i.PinnedAt,
+			&i.EditedAt,
+			&i.DeletedAt,
+			&i.CreatedAt,
+			&i.AuthorName,
+			&i.AuthorHandle,
+			&i.ReplyID,
+			&i.ReplyAuthorName,
+			&i.ReplyBody,
+			&i.ReplyUnavailable,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const messagesAuthoredBy = `-- name: MessagesAuthoredBy :many
+SELECT c.name AS crew_name, ch.name AS channel_name, m.body, m.created_at, (m.edited_at IS NOT NULL)::bool AS edited
+FROM crew_messages m
+JOIN crews c ON c.id = m.crew_id
+JOIN crew_channels ch ON ch.id = m.channel_id
+WHERE m.author_id = $1 AND m.deleted_at IS NULL
+ORDER BY m.created_at, m.seq
+`
+
+type MessagesAuthoredByRow struct {
+	CrewName    string
+	ChannelName string
+	Body        string
+	CreatedAt   time.Time
+	Edited      bool
+}
+
+// Everything @author_id posted that they have not deleted, oldest first, for
+// their data export. Hidden messages are included: they are still theirs.
+func (q *Queries) MessagesAuthoredBy(ctx context.Context, authorID *uuid.UUID) ([]MessagesAuthoredByRow, error) {
+	rows, err := q.db.Query(ctx, messagesAuthoredBy, authorID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []MessagesAuthoredByRow{}
+	for rows.Next() {
+		var i MessagesAuthoredByRow
+		if err := rows.Scan(
+			&i.CrewName,
+			&i.ChannelName,
+			&i.Body,
+			&i.CreatedAt,
+			&i.Edited,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const messagesBefore = `-- name: MessagesBefore :many
+SELECT m.id, m.seq, m.channel_id, m.author_id, m.kind, m.body, m.mentions, m.mention_all,
+       m.pinned_at, m.edited_at, m.deleted_at, m.created_at,
+       au.display_name AS author_name, au.handle AS author_handle,
+       r.id AS reply_id, ru.display_name AS reply_author_name, r.body AS reply_body,
+       (r.id IS NOT NULL AND (r.deleted_at IS NOT NULL OR r.hidden_at IS NOT NULL
+         OR EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id = $1 AND b.blocked_id = r.author_id) OR (b.blocker_id = r.author_id AND b.blocked_id = $1))
+         OR EXISTS (SELECT 1 FROM content_reports cr WHERE cr.reporter_id = $1 AND cr.subject_kind = 'crew_message' AND cr.subject_id = r.id)))::boolean AS reply_unavailable
+FROM crew_messages m
+LEFT JOIN users au ON au.id = m.author_id
+LEFT JOIN crew_messages r ON r.id = m.reply_to_id
+LEFT JOIN users ru ON ru.id = r.author_id
+WHERE m.channel_id = $2 AND m.seq < $3
+  AND m.hidden_at IS NULL
+  AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id = $1 AND b.blocked_id = m.author_id) OR (b.blocker_id = m.author_id AND b.blocked_id = $1))
+  AND NOT EXISTS (SELECT 1 FROM content_reports cr WHERE cr.reporter_id = $1 AND cr.subject_kind = 'crew_message' AND cr.subject_id = m.id)
+ORDER BY m.seq DESC
+LIMIT $4
+`
+
+type MessagesBeforeParams struct {
+	Viewer    uuid.UUID
+	ChannelID uuid.UUID
+	Before    int64
+	Lim       int32
+}
+
+type MessagesBeforeRow struct {
+	ID               uuid.UUID
+	Seq              int64
+	ChannelID        uuid.UUID
+	AuthorID         *uuid.UUID
+	Kind             string
+	Body             string
+	Mentions         []uuid.UUID
+	MentionAll       bool
+	PinnedAt         *time.Time
+	EditedAt         *time.Time
+	DeletedAt        *time.Time
+	CreatedAt        time.Time
+	AuthorName       *string
+	AuthorHandle     *string
+	ReplyID          *uuid.UUID
+	ReplyAuthorName  *string
+	ReplyBody        *string
+	ReplyUnavailable bool
+}
+
+func (q *Queries) MessagesBefore(ctx context.Context, arg MessagesBeforeParams) ([]MessagesBeforeRow, error) {
+	rows, err := q.db.Query(ctx, messagesBefore,
+		arg.Viewer,
+		arg.ChannelID,
+		arg.Before,
+		arg.Lim,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []MessagesBeforeRow{}
+	for rows.Next() {
+		var i MessagesBeforeRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Seq,
+			&i.ChannelID,
+			&i.AuthorID,
+			&i.Kind,
+			&i.Body,
+			&i.Mentions,
+			&i.MentionAll,
+			&i.PinnedAt,
+			&i.EditedAt,
+			&i.DeletedAt,
+			&i.CreatedAt,
+			&i.AuthorName,
+			&i.AuthorHandle,
+			&i.ReplyID,
+			&i.ReplyAuthorName,
+			&i.ReplyBody,
+			&i.ReplyUnavailable,
 		); err != nil {
 			return nil, err
 		}
@@ -316,7 +1085,7 @@ func (q *Queries) Members(ctx context.Context, crewID uuid.UUID) ([]MembersRow, 
 const oldestOtherMember = `-- name: OldestOtherMember :one
 SELECT user_id FROM crew_members
 WHERE crew_id = $1 AND user_id <> $2
-ORDER BY joined_at LIMIT 1
+ORDER BY (role = 'admin') DESC, joined_at LIMIT 1
 `
 
 type OldestOtherMemberParams struct {
@@ -324,11 +1093,158 @@ type OldestOtherMemberParams struct {
 	UserID uuid.UUID
 }
 
+// Who takes over when the owner leaves: the longest-standing admin, else the
+// longest-standing member.
 func (q *Queries) OldestOtherMember(ctx context.Context, arg OldestOtherMemberParams) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, oldestOtherMember, arg.CrewID, arg.UserID)
 	var user_id uuid.UUID
 	err := row.Scan(&user_id)
 	return user_id, err
+}
+
+const pinnedIDs = `-- name: PinnedIDs :many
+SELECT id FROM crew_messages WHERE channel_id = $1 AND pinned_at IS NOT NULL ORDER BY pinned_at DESC
+`
+
+func (q *Queries) PinnedIDs(ctx context.Context, channelID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, pinnedIDs, channelID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []uuid.UUID{}
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const pushMessage = `-- name: PushMessage :one
+SELECT m.crew_id, m.channel_id, m.body, c.name AS crew_name, ch.name AS channel_name,
+       au.display_name AS author_name
+FROM crew_messages m
+JOIN crews c ON c.id = m.crew_id
+JOIN crew_channels ch ON ch.id = m.channel_id
+JOIN users au ON au.id = m.author_id
+WHERE m.id = $1 AND m.deleted_at IS NULL AND m.hidden_at IS NULL
+`
+
+type PushMessageRow struct {
+	CrewID      uuid.UUID
+	ChannelID   uuid.UUID
+	Body        string
+	CrewName    string
+	ChannelName string
+	AuthorName  string
+}
+
+// A message worth a push: posted by a person, and still neither deleted nor
+// hidden by reports.
+func (q *Queries) PushMessage(ctx context.Context, id uuid.UUID) (PushMessageRow, error) {
+	row := q.db.QueryRow(ctx, pushMessage, id)
+	var i PushMessageRow
+	err := row.Scan(
+		&i.CrewID,
+		&i.ChannelID,
+		&i.Body,
+		&i.CrewName,
+		&i.ChannelName,
+		&i.AuthorName,
+	)
+	return i, err
+}
+
+const pushRecipients = `-- name: PushRecipients :many
+SELECT mem.user_id
+FROM crew_messages m
+JOIN crew_members mem ON mem.crew_id = m.crew_id
+LEFT JOIN crew_messages parent ON parent.id = m.reply_to_id
+WHERE m.id = $1
+  AND mem.user_id <> m.author_id
+  AND (mem.muted_until IS NULL OR mem.muted_until <= now())
+  AND (mem.notify = 'all'
+       OR (mem.notify = 'mentions'
+           AND (m.mention_all OR mem.user_id = ANY(m.mentions) OR mem.user_id = parent.author_id)))
+  AND NOT EXISTS (
+      SELECT 1 FROM blocks b
+      WHERE (b.blocker_id = mem.user_id AND b.blocked_id = m.author_id)
+         OR (b.blocker_id = m.author_id AND b.blocked_id = mem.user_id))
+`
+
+// Members who asked to hear about message @id: everyone but the author, not
+// blocked either way with them, not muted, and by notify — all always,
+// mentions when named, @everyone, or replied to.
+func (q *Queries) PushRecipients(ctx context.Context, id uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, pushRecipients, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []uuid.UUID{}
+	for rows.Next() {
+		var user_id uuid.UUID
+		if err := rows.Scan(&user_id); err != nil {
+			return nil, err
+		}
+		items = append(items, user_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const reactionsFor = `-- name: ReactionsFor :many
+SELECT x.message_id, x.emoji, count(*)::int AS n, bool_or(x.user_id = $1)::boolean AS mine
+FROM crew_message_reactions x
+WHERE x.message_id = ANY($2::uuid[])
+  AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id = $1 AND b.blocked_id = x.user_id) OR (b.blocker_id = x.user_id AND b.blocked_id = $1))
+GROUP BY x.message_id, x.emoji
+`
+
+type ReactionsForParams struct {
+	Viewer uuid.UUID
+	Ids    []uuid.UUID
+}
+
+type ReactionsForRow struct {
+	MessageID uuid.UUID
+	Emoji     string
+	N         int32
+	Mine      bool
+}
+
+// Reactions on ids as @viewer sees them: none from anyone blocked either way.
+func (q *Queries) ReactionsFor(ctx context.Context, arg ReactionsForParams) ([]ReactionsForRow, error) {
+	rows, err := q.db.Query(ctx, reactionsFor, arg.Viewer, arg.Ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ReactionsForRow{}
+	for rows.Next() {
+		var i ReactionsForRow
+		if err := rows.Scan(
+			&i.MessageID,
+			&i.Emoji,
+			&i.N,
+			&i.Mine,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const removeMember = `-- name: RemoveMember :execrows
@@ -346,6 +1262,21 @@ func (q *Queries) RemoveMember(ctx context.Context, arg RemoveMemberParams) (int
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const removeReaction = `-- name: RemoveReaction :exec
+DELETE FROM crew_message_reactions WHERE message_id = $1 AND user_id = $2 AND emoji = $3
+`
+
+type RemoveReactionParams struct {
+	MessageID uuid.UUID
+	UserID    uuid.UUID
+	Emoji     string
+}
+
+func (q *Queries) RemoveReaction(ctx context.Context, arg RemoveReactionParams) error {
+	_, err := q.db.Exec(ctx, removeReaction, arg.MessageID, arg.UserID, arg.Emoji)
+	return err
 }
 
 const rename = `-- name: Rename :exec
@@ -378,6 +1309,72 @@ func (q *Queries) SetChallenge(ctx context.Context, arg SetChallengeParams) erro
 	return err
 }
 
+const setHidden = `-- name: SetHidden :one
+UPDATE crew_messages SET hidden_at = CASE WHEN $1::boolean THEN coalesce(hidden_at, now()) END
+WHERE id = $2
+RETURNING id, crew_id, channel_id
+`
+
+type SetHiddenParams struct {
+	Hide bool
+	ID   uuid.UUID
+}
+
+type SetHiddenRow struct {
+	ID        uuid.UUID
+	CrewID    uuid.UUID
+	ChannelID uuid.UUID
+}
+
+func (q *Queries) SetHidden(ctx context.Context, arg SetHiddenParams) (SetHiddenRow, error) {
+	row := q.db.QueryRow(ctx, setHidden, arg.Hide, arg.ID)
+	var i SetHiddenRow
+	err := row.Scan(&i.ID, &i.CrewID, &i.ChannelID)
+	return i, err
+}
+
+const setMemberRole = `-- name: SetMemberRole :execrows
+UPDATE crew_members SET role = $3 WHERE crew_id = $1 AND user_id = $2
+`
+
+type SetMemberRoleParams struct {
+	CrewID uuid.UUID
+	UserID uuid.UUID
+	Role   string
+}
+
+func (q *Queries) SetMemberRole(ctx context.Context, arg SetMemberRoleParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setMemberRole, arg.CrewID, arg.UserID, arg.Role)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const setNotify = `-- name: SetNotify :execrows
+UPDATE crew_members SET notify = $1, muted_until = $2 WHERE crew_id = $3 AND user_id = $4
+`
+
+type SetNotifyParams struct {
+	Notify     string
+	MutedUntil *time.Time
+	CrewID     uuid.UUID
+	UserID     uuid.UUID
+}
+
+func (q *Queries) SetNotify(ctx context.Context, arg SetNotifyParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setNotify,
+		arg.Notify,
+		arg.MutedUntil,
+		arg.CrewID,
+		arg.UserID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const setOwner = `-- name: SetOwner :exec
 UPDATE crews SET owner_id = $2 WHERE id = $1
 `
@@ -390,4 +1387,101 @@ type SetOwnerParams struct {
 func (q *Queries) SetOwner(ctx context.Context, arg SetOwnerParams) error {
 	_, err := q.db.Exec(ctx, setOwner, arg.ID, arg.OwnerID)
 	return err
+}
+
+const setPin = `-- name: SetPin :exec
+UPDATE crew_messages SET pinned_at = CASE WHEN $1::boolean THEN now() END,
+                         pinned_by = CASE WHEN $1::boolean THEN $2::uuid END
+WHERE id = $3
+`
+
+type SetPinParams struct {
+	Pin      bool
+	PinnedBy *uuid.UUID
+	ID       uuid.UUID
+}
+
+func (q *Queries) SetPin(ctx context.Context, arg SetPinParams) error {
+	_, err := q.db.Exec(ctx, setPin, arg.Pin, arg.PinnedBy, arg.ID)
+	return err
+}
+
+const unread = `-- name: Unread :many
+SELECT m.crew_id, m.channel_id, count(*)::int AS unread,
+       (count(*) FILTER (WHERE $1::uuid = ANY(m.mentions) OR m.mention_all OR r.author_id = $1::uuid))::int AS mentions
+FROM crew_members cm
+JOIN crew_channels ch ON ch.crew_id = cm.crew_id AND ch.kind = 'text'
+JOIN crew_messages m ON m.channel_id = ch.id
+LEFT JOIN crew_channel_reads rd ON rd.channel_id = ch.id AND rd.user_id = $1::uuid
+LEFT JOIN crew_messages r ON r.id = m.reply_to_id
+WHERE cm.user_id = $1::uuid
+  AND m.seq > coalesce(rd.last_read_seq, 0)
+  AND m.created_at >= cm.joined_at
+  AND m.kind = 'text' AND m.author_id <> $1::uuid
+  AND m.deleted_at IS NULL AND m.hidden_at IS NULL
+  AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id = $1::uuid AND b.blocked_id = m.author_id) OR (b.blocker_id = m.author_id AND b.blocked_id = $1::uuid))
+  AND NOT EXISTS (SELECT 1 FROM content_reports cr WHERE cr.reporter_id = $1::uuid AND cr.subject_kind = 'crew_message' AND cr.subject_id = m.id)
+GROUP BY m.crew_id, m.channel_id
+`
+
+type UnreadRow struct {
+	CrewID    uuid.UUID
+	ChannelID uuid.UUID
+	Unread    int32
+	Mentions  int32
+}
+
+// Per text channel of every crew @user_id is in: messages from others since
+// they last read it (and since they joined), and how many of those are for
+// them: a mention, @everyone, or a reply to something they wrote.
+func (q *Queries) Unread(ctx context.Context, userID uuid.UUID) ([]UnreadRow, error) {
+	rows, err := q.db.Query(ctx, unread, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []UnreadRow{}
+	for rows.Next() {
+		var i UnreadRow
+		if err := rows.Scan(
+			&i.CrewID,
+			&i.ChannelID,
+			&i.Unread,
+			&i.Mentions,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const updateChannel = `-- name: UpdateChannel :one
+UPDATE crew_channels SET name = $1, topic = $2 WHERE id = $3 RETURNING id, crew_id, kind, name, topic, position, is_default, created_by, created_at
+`
+
+type UpdateChannelParams struct {
+	Name  string
+	Topic string
+	ID    uuid.UUID
+}
+
+func (q *Queries) UpdateChannel(ctx context.Context, arg UpdateChannelParams) (CrewChannel, error) {
+	row := q.db.QueryRow(ctx, updateChannel, arg.Name, arg.Topic, arg.ID)
+	var i CrewChannel
+	err := row.Scan(
+		&i.ID,
+		&i.CrewID,
+		&i.Kind,
+		&i.Name,
+		&i.Topic,
+		&i.Position,
+		&i.IsDefault,
+		&i.CreatedBy,
+		&i.CreatedAt,
+	)
+	return i, err
 }

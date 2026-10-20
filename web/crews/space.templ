@@ -1,0 +1,554 @@
+package crews
+
+import (
+	"github.com/google/uuid"
+
+	"github.com/NorthAIProject/north-client/internal/crews/crew"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/avatar"
+	"github.com/NorthAIProject/north-client/web/shared/ui/badge"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/copybutton"
+	"github.com/NorthAIProject/north-client/web/shared/ui/dialog"
+	"github.com/NorthAIProject/north-client/web/shared/ui/dropdown"
+	"github.com/NorthAIProject/north-client/web/shared/ui/form"
+	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
+	"github.com/NorthAIProject/north-client/web/shared/ui/input"
+	"github.com/NorthAIProject/north-client/web/shared/ui/label"
+	"github.com/NorthAIProject/north-client/web/shared/ui/progress"
+	"github.com/NorthAIProject/north-client/web/shared/ui/radio"
+	"github.com/NorthAIProject/north-client/web/shared/ui/selectbox"
+	"github.com/NorthAIProject/north-client/web/shared/ui/sheet"
+	"github.com/NorthAIProject/north-client/web/shared/ui/textarea"
+)
+
+// SpacePage is a crew's space: the crews rail, the channel list, and the
+// open channel's chat, or the challenge tab.
+//
+// #crew-live holds the event stream for the whole page. Every live element
+// listens to it with "from:#crew-live", so it is never swapped away.
+//
+// A resync re-reads what may have changed while nothing was listening: the
+// server sends one when its own listener reconnects, and the page raises one
+// when the browser's stream reconnects (not on the first connect, which the
+// page itself just rendered). In a channel it replaces the transcript and the
+// cursor, never the composer, so a half-typed message survives it.
+templ SpacePage(user users.User, v SpaceView) {
+	@layout.AppWide(v.Space.Name, user, layout.BuildNav(ctx, "/app/crews")) {
+		<div
+			id="crew-live"
+			class="flex h-full min-h-0"
+			hx-sse:connect={ liveURL(v.Space.ID, v.Channel.ID) }
+			hx-sse:close="crew-removed"
+			hx-on:crew-removed="window.location.assign('/app/crews')"
+			hx-on::sse:after:connection="if (this.dataset.connected) this.dispatchEvent(new Event('crew-resync')); this.dataset.connected = 'true'"
+		>
+			@rail(v)
+			<aside class="border-border hidden w-60 shrink-0 flex-col border-r lg:flex">
+				@channelColumn(v, true)
+			</aside>
+			@pane(v)
+			if v.Tab == TabChat {
+				<div
+					class="hidden"
+					hx-get={ pageURL(v) }
+					hx-trigger="crew-resync from:#crew-live"
+					hx-select="#crew-scroll"
+					hx-select-oob="#crew-cursor"
+					hx-target="#crew-scroll"
+					hx-swap="outerHTML"
+				></div>
+			} else {
+				<div
+					class="hidden"
+					hx-get={ pageURL(v) }
+					hx-trigger="crew-resync from:#crew-live"
+					hx-select="#crew-pane"
+					hx-target="#crew-pane"
+					hx-swap="outerHTML"
+				></div>
+			}
+		</div>
+		@channelsSheet(v)
+		@termsDialog(pageURL(v))
+		@reportDialog(v.Space.ID)
+		@notifyDialog(v)
+		if v.canManage() {
+			@newChannelDialog(v.Space.ID)
+			if v.Tab == TabChat {
+				@editChannelDialog(v)
+			}
+		}
+		@textarea.Script()
+		@dropdown.Script()
+		@sheet.Script()
+		@copybutton.Script()
+		@selectbox.Script()
+		@progress.Script()
+		@label.Script()
+		@avatar.Script()
+	}
+}
+
+func pageURL(v SpaceView) string {
+	if v.Tab == TabChallenge {
+		return crewURL(v.Space.ID) + "/challenge"
+	}
+	return channelURL(v.Space.ID, v.Channel.ID)
+}
+
+// rail is every crew the viewer is in, the open one ringed.
+templ rail(v SpaceView) {
+	<nav class="border-border hidden w-16 shrink-0 flex-col items-center gap-2 border-r py-3 lg:flex" aria-label={ i18n.T(ctx, "crews.title") }>
+		for _, c := range v.Mine {
+			<a href={ templ.SafeURL(crewURL(c.ID)) } class="relative" title={ c.Name } aria-label={ c.Name }>
+				@avatar.Avatar(avatar.Props{Class: "size-10 " + ringClass(c.ID == v.Space.ID)}) {
+					@avatar.Fallback() {
+						{ initials(c.Name) }
+					}
+				}
+				if v.Unread[c.ID] && c.ID != v.Space.ID {
+					@badge.Badge(badge.Props{Class: "absolute -top-0.5 -right-0.5 size-3 rounded-full p-0"})
+				}
+			</a>
+		}
+		@button.Button(button.Props{Href: "/app/crews", Variant: button.VariantGhost, Size: button.SizeIcon, Class: "size-10 rounded-full", Attributes: templ.Attributes{"aria-label": i18n.T(ctx, "crews.start.title")}}) {
+			@icon.Icon("plus")(icon.Props{Class: "size-4"})
+		}
+	</nav>
+}
+
+func ringClass(current bool) string {
+	if current {
+		return "ring-2 ring-primary ring-offset-2 ring-offset-background"
+	}
+	return ""
+}
+
+// channelColumn is the crew's name and menu over its channels. live is false
+// for the copy in the mobile sheet, which must not repeat the list's id.
+templ channelColumn(v SpaceView, live bool) {
+	<div class="border-border flex h-14 shrink-0 items-center gap-1 border-b px-3">
+		<p class="min-w-0 flex-1 truncate text-sm font-medium">{ v.Space.Name }</p>
+		@crewMenu(v)
+	</div>
+	<div class="min-h-0 flex-1 overflow-y-auto">
+		<div class="text-muted-foreground flex items-center justify-between px-4 pt-3 text-xs font-medium tracking-wide uppercase">
+			<span>{ i18n.T(ctx, "crews.channels") }</span>
+			if v.canManage() {
+				@dialog.Trigger(dialog.TriggerProps{For: "crew-new-channel"}) {
+					@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantGhost, Size: button.SizeIcon, Class: "size-6", Attributes: templ.Attributes{"aria-label": i18n.T(ctx, "crews.channel.new")}}) {
+						@icon.Icon("plus")(icon.Props{Class: "size-3.5"})
+					}
+				}
+			}
+		</div>
+		if live {
+			@ChannelList(v.channelList())
+		} else {
+			@channelLinks(v.channelList())
+		}
+	</div>
+}
+
+// channelLinks is the channel list without its live wiring, for the sheet.
+templ channelLinks(v ChannelListView) {
+	<nav class="flex flex-col gap-0.5 px-2 py-2" aria-label={ i18n.T(ctx, "crews.channels") }>
+		for _, ch := range v.Channels {
+			<a
+				href={ templ.SafeURL(channelURL(v.CrewID, ch.ID)) }
+				class={ "flex min-h-11 items-center gap-2 rounded-md px-2 text-sm hover:bg-accent/60", templ.KV("bg-accent font-medium", ch.ID == v.Open) }
+			>
+				@icon.Icon("hash")(icon.Props{Class: "size-4 shrink-0 opacity-60"})
+				<span class="min-w-0 flex-1 truncate">{ ch.Name }</span>
+			</a>
+		}
+	</nav>
+}
+
+templ crewMenu(v SpaceView) {
+	@dropdown.Dropdown() {
+		@dropdown.Trigger() {
+			@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantGhost, Size: button.SizeIcon, Class: "size-8", Attributes: templ.Attributes{"aria-label": i18n.T(ctx, "crews.menu")}}) {
+				@icon.Icon("ellipsis")(icon.Props{Class: "size-4"})
+			}
+		}
+		@dropdown.Content(dropdown.ContentProps{Class: "w-72"}) {
+			@dialog.Trigger(dialog.TriggerProps{For: "crew-notify", Class: "w-full"}) {
+				@dropdown.Item(dropdown.ItemProps{Attributes: templ.Attributes{"type": "button"}}) {
+					<span class="flex items-center gap-2">
+						@icon.Icon("bell")(icon.Props{Class: "size-4"})
+						{ i18n.T(ctx, "crews.notify.title") }
+					</span>
+				}
+			}
+			@dropdown.Separator()
+			@dropdown.Label() {
+				{ i18n.T(ctx, "crews.invite.link") }
+			}
+			<div class="flex items-center gap-1 px-2 pb-2">
+				@input.Input(input.Props{ID: "crew-url", Value: v.JoinURL, Readonly: true, Class: "h-8 font-mono text-xs"})
+				@copybutton.CopyButton(copybutton.Props{TargetID: "crew-url"})
+			</div>
+			@dropdown.Separator()
+			<form method="post" action={ templ.SafeURL(crewURL(v.Space.ID) + "/leave") }>
+				@ui.CSRFInput()
+				@dropdown.Item(dropdown.ItemProps{Class: "text-destructive"}) {
+					<span class="flex items-center gap-2">
+						@icon.Icon("log-out")(icon.Props{Class: "size-4"})
+						{ i18n.T(ctx, "crews.leave") }
+					</span>
+				}
+			</form>
+		}
+	}
+}
+
+// channelsSheet is the channel list on a screen too narrow for its column.
+templ channelsSheet(v SpaceView) {
+	@sheet.Sheet(sheet.Props{ID: "crew-channels-sheet", Side: sheet.SideLeft}) {
+		@sheet.Content(sheet.ContentProps{Class: "flex w-72 flex-col"}) {
+			@channelColumn(v, false)
+		}
+	}
+}
+
+// pane is the open channel's chat, or the challenge.
+templ pane(v SpaceView) {
+	<section id="crew-pane" class="flex min-w-0 flex-1 flex-col">
+		<header class="border-border flex min-h-14 shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b px-3 py-2">
+			@sheet.Trigger(sheet.TriggerProps{For: "crew-channels-sheet", Class: "lg:hidden"}) {
+				@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantGhost, Size: button.SizeIcon, Class: "size-9", Attributes: templ.Attributes{"aria-label": i18n.T(ctx, "crews.channels")}}) {
+					@icon.Icon("menu")(icon.Props{Class: "size-4"})
+				}
+			}
+			// The title keeps 8rem before it shrinks, so a narrow screen wraps
+			// the tabs onto a second row instead of cutting the name to a letter.
+			<div class="min-w-0 flex-[1_1_8rem]">
+				if v.Tab == TabChat {
+					<h1 class="flex items-center gap-1 truncate text-sm font-medium">
+						@icon.Icon("hash")(icon.Props{Class: "size-4 opacity-60"})
+						{ v.Channel.Name }
+					</h1>
+					if v.Channel.Topic != "" {
+						<p class="text-muted-foreground truncate text-xs">{ v.Channel.Topic }</p>
+					}
+				} else {
+					<h1 class="truncate text-sm font-medium">{ v.Space.Name }</h1>
+				}
+			</div>
+			@tabStrip(v)
+			if v.Tab == TabChat {
+				@sheet.Trigger(sheet.TriggerProps{For: "crew-pins", Attributes: templ.Attributes{
+					"hx-get":    channelURL(v.Space.ID, v.Channel.ID) + "/pins",
+					"hx-target": "#crew-pins-body",
+					"hx-swap":   "innerHTML",
+				}}) {
+					@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantGhost, Size: button.SizeIcon, Class: "size-9", Attributes: templ.Attributes{"aria-label": i18n.T(ctx, "crews.pins")}}) {
+						@icon.Icon("pin")(icon.Props{Class: "size-4"})
+					}
+				}
+				if v.canManage() {
+					@dialog.Trigger(dialog.TriggerProps{For: "crew-edit-channel"}) {
+						@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantGhost, Size: button.SizeIcon, Class: "size-9", Attributes: templ.Attributes{"aria-label": i18n.T(ctx, "crews.channel.edit")}}) {
+							@icon.Icon("pencil")(icon.Props{Class: "size-4"})
+						}
+					}
+				}
+			}
+			<span class="text-muted-foreground hidden items-center gap-1 text-xs sm:inline-flex">
+				@icon.Icon("users")(icon.Props{Class: "size-3.5"})
+				{ pick(ctx, len(v.Space.Members), "crews.members.one", "crews.members.many") }
+			</span>
+		</header>
+		if v.Tab == TabChat {
+			@chatBody(v)
+			@pinsSheet()
+		} else {
+			<div class="min-h-0 flex-1 overflow-y-auto">
+				@ChallengePane(v.Board, v.JoinURL)
+			</div>
+		}
+	</section>
+}
+
+// tabStrip switches between the chat and the challenge. They are separate
+// pages with their own URLs, not panels of one page, which is what templUI's
+// tabs component draws; so these are links styled as its triggers.
+templ tabStrip(v SpaceView) {
+	<nav class="bg-muted text-muted-foreground inline-flex h-9 items-center rounded-lg p-1 text-sm">
+		<a
+			href={ templ.SafeURL(channelURL(v.Space.ID, v.Channel.ID)) }
+			class={ "rounded-md px-3 py-1", templ.KV("bg-background text-foreground shadow-sm", v.Tab == TabChat) }
+			if v.Tab == TabChat {
+				aria-current="page"
+			}
+		>{ i18n.T(ctx, "crews.tab.chat") }</a>
+		<a
+			href={ templ.SafeURL(crewURL(v.Space.ID) + "/challenge") }
+			class={ "rounded-md px-3 py-1", templ.KV("bg-background text-foreground shadow-sm", v.Tab == TabChallenge) }
+			if v.Tab == TabChallenge {
+				aria-current="page"
+			}
+		>{ i18n.T(ctx, "crews.tab.challenge") }</a>
+	</nav>
+}
+
+// chatBody is the transcript, its live loaders and the composer.
+//
+// The transcript stays pinned to the bottom while the reader is near it, and
+// leaves them alone once they scroll up to read.
+templ chatBody(v SpaceView) {
+	<div
+		id="crew-scroll"
+		class="min-h-0 flex-1 overflow-y-auto"
+		x-data="{ near: true }"
+		x-init="$el.scrollTop = $el.scrollHeight; new MutationObserver(() => { if (near) $el.scrollTop = $el.scrollHeight }).observe($refs.list, { childList: true, subtree: true })"
+		@scroll.passive="near = $el.scrollHeight - $el.scrollTop - $el.clientHeight < 120"
+		hx-on::after:swap="if (this.dataset.fromBottom) { this.scrollTop = this.scrollHeight - Number(this.dataset.fromBottom); delete this.dataset.fromBottom }"
+	>
+		if v.Page.HasMore {
+			@olderButton(v.chat(), firstSeq(v.Page))
+		}
+		<div id="crew-messages" x-ref="list" class="pb-2">
+			if len(v.Page.Messages) == 0 {
+				@ui.Empty(ui.EmptyProps{Title: i18n.T(ctx, "crews.empty.title"), Body: i18n.T(ctx, "crews.empty.body")})
+			}
+			@rows(v.chat(), v.Page.Messages)
+		</div>
+	</div>
+	@cursorInput(lastSeq(v.Page), false)
+	// A queued request keeps the URL it was built with when it was
+	// triggered, so a fetch queued behind another would ask again for what
+	// that one already appended. The cursor is read again as it is sent.
+	<div
+		id="crew-tail"
+		class="hidden"
+		hx-get={ channelURL(v.Space.ID, v.Channel.ID) + "/messages" }
+		hx-include="#crew-cursor"
+		hx-trigger="crew-new from:#crew-live, crew-sent from:body"
+		hx-sync="this:queue last"
+		hx-on::before:request="const u = new URL(ctx.request.action, location.href); u.searchParams.set('after', document.getElementById('crew-cursor').value); ctx.request.action = u.pathname + u.search"
+		hx-target="#crew-messages"
+		hx-swap="beforeend"
+	></div>
+	// Marks the channel read while the page is in front of the person: on
+	// load, after each new message, and on coming back to the tab.
+	<form
+		class="hidden"
+		hx-post={ channelURL(v.Space.ID, v.Channel.ID) + "/read" }
+		hx-include="#crew-cursor"
+		hx-trigger="load, crew-new[document.visibilityState === 'visible'] from:#crew-live delay:1s, visibilitychange[document.visibilityState === 'visible'] from:document"
+		hx-swap="none"
+	>
+		@ui.CSRFInput()
+	</form>
+	@composer(v.chat())
+}
+
+templ pinsSheet() {
+	@sheet.Sheet(sheet.Props{ID: "crew-pins", Side: sheet.SideRight}) {
+		@sheet.Content(sheet.ContentProps{Class: "flex w-80 flex-col"}) {
+			@sheet.Header() {
+				@sheet.Title() {
+					{ i18n.T(ctx, "crews.pins") }
+				}
+			}
+			<div id="crew-pins-body" class="min-h-0 flex-1 overflow-y-auto"></div>
+		}
+	}
+}
+
+// termsDialog asks for the crew rules before a first post. Accepting returns
+// to this page.
+templ termsDialog(next string) {
+	@dialog.Dialog(dialog.Props{ID: "crew-terms"}) {
+		@dialog.Content() {
+			@dialog.Header() {
+				@dialog.Title() {
+					{ i18n.T(ctx, "moderation.terms.title") }
+				}
+				@dialog.Description() {
+					{ i18n.T(ctx, "moderation.terms.body") }
+				}
+			}
+			<form method="post" action="/app/moderation/terms">
+				@ui.CSRFInput()
+				<input type="hidden" name="next" value={ next }/>
+				@dialog.Footer() {
+					@button.Button(button.Props{Type: button.TypeSubmit}) {
+						{ i18n.T(ctx, "moderation.terms.agree") }
+					}
+				}
+			</form>
+		}
+	}
+}
+
+// reportDialog is one dialog for every message: a row's Report sends its id
+// here by event.
+templ reportDialog(crewID uuid.UUID) {
+	@dialog.Dialog(dialog.Props{ID: "crew-report"}) {
+		@dialog.Content() {
+			<form
+				x-data="{ id: '' }"
+				@crew-report.window="id = $event.detail.id; window.tui.dialog.open('crew-report')"
+				hx-post={ crewURL(crewID) + "/report" }
+				hx-target="#crew-report-error"
+				hx-swap="innerHTML"
+				hx-on::after:request="if (ctx.response.status < 400) { const row = document.getElementById('m-' + Alpine.$data(this).id); if (row) row.remove(); this.reset(); window.tui.dialog.close('crew-report') }"
+				class="flex flex-col gap-4"
+			>
+				@ui.CSRFInput()
+				<input type="hidden" name="message" x-bind:value="id"/>
+				@dialog.Header() {
+					@dialog.Title() {
+						{ i18n.T(ctx, "crews.report.title") }
+					}
+					@dialog.Description() {
+						{ i18n.T(ctx, "crews.report.desc") }
+					}
+				}
+				<fieldset class="flex flex-col gap-2">
+					for i, reason := range reportReasons {
+						<div class="flex items-center gap-2">
+							@radio.Radio(radio.Props{ID: "crew-report-" + reason, Name: "reason", Value: reason, Checked: i == 0})
+							@label.Label(label.Props{For: "crew-report-" + reason}) {
+								{ i18n.T(ctx, "crews.report.reason."+reason) }
+							}
+						</div>
+					}
+				</fieldset>
+				@form.Item() {
+					@label.Label(label.Props{For: "crew-report-note"}) {
+						{ i18n.T(ctx, "crews.report.note") }
+					}
+					@textarea.Textarea(textarea.Props{ID: "crew-report-note", Name: "note", Rows: 2})
+				}
+				<div id="crew-report-error" class="text-destructive text-xs" role="alert"></div>
+				@dialog.Footer() {
+					@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantDestructive}) {
+						{ i18n.T(ctx, "crews.report.send") }
+					}
+				}
+			</form>
+		}
+	}
+}
+
+templ notifyDialog(v SpaceView) {
+	@dialog.Dialog(dialog.Props{ID: "crew-notify"}) {
+		@dialog.Content() {
+			<form method="post" action={ templ.SafeURL(crewURL(v.Space.ID) + "/notifications") } class="flex flex-col gap-4">
+				@ui.CSRFInput()
+				<input type="hidden" name="next" value={ pageURL(v) }/>
+				@dialog.Header() {
+					@dialog.Title() {
+						{ i18n.T(ctx, "crews.notify.title") }
+					}
+				}
+				<fieldset class="flex flex-col gap-2">
+					for _, n := range []string{crew.NotifyAll, crew.NotifyMentions, crew.NotifyNone} {
+						<div class="flex items-center gap-2">
+							@radio.Radio(radio.Props{ID: "crew-notify-" + n, Name: "notify", Value: n, Checked: v.Space.Notify == n})
+							@label.Label(label.Props{For: "crew-notify-" + n}) {
+								{ i18n.T(ctx, "crews.notify."+n) }
+							}
+						</div>
+					}
+				</fieldset>
+				<fieldset class="flex flex-col gap-2">
+					<legend class="mb-1 text-sm font-medium">{ i18n.T(ctx, "crews.notify.mute") }</legend>
+					for _, m := range []string{"off", "hour", "day", "week"} {
+						<div class="flex items-center gap-2">
+							@radio.Radio(radio.Props{ID: "crew-mute-" + m, Name: "mute", Value: m, Checked: m == "off"})
+							@label.Label(label.Props{For: "crew-mute-" + m}) {
+								{ i18n.T(ctx, "crews.notify.mute."+m) }
+							}
+						</div>
+					}
+				</fieldset>
+				@dialog.Footer() {
+					@button.Button(button.Props{Type: button.TypeSubmit}) {
+						{ i18n.T(ctx, "crews.notify.save") }
+					}
+				}
+			</form>
+		}
+	}
+}
+
+templ newChannelDialog(crewID uuid.UUID) {
+	@dialog.Dialog(dialog.Props{ID: "crew-new-channel"}) {
+		@dialog.Content() {
+			<form hx-post={ crewURL(crewID) + "/channels" } hx-target="#crew-new-channel-error" hx-swap="innerHTML" class="flex flex-col gap-4">
+				@ui.CSRFInput()
+				@dialog.Header() {
+					@dialog.Title() {
+						{ i18n.T(ctx, "crews.channel.new") }
+					}
+				}
+				@channelFields("crew-new-channel", "", "", false)
+				<div id="crew-new-channel-error" class="text-destructive text-xs" role="alert"></div>
+				@dialog.Footer() {
+					@button.Button(button.Props{Type: button.TypeSubmit}) {
+						{ i18n.T(ctx, "crews.channel.create") }
+					}
+				}
+			</form>
+		}
+	}
+}
+
+templ editChannelDialog(v SpaceView) {
+	@dialog.Dialog(dialog.Props{ID: "crew-edit-channel"}) {
+		@dialog.Content() {
+			<form hx-post={ channelURL(v.Space.ID, v.Channel.ID) + "/edit" } hx-target="#crew-edit-channel-error" hx-swap="innerHTML" class="flex flex-col gap-4">
+				@ui.CSRFInput()
+				@dialog.Header() {
+					@dialog.Title() {
+						{ i18n.T(ctx, "crews.channel.edit") }
+					}
+				}
+				@channelFields("crew-edit-channel", v.Channel.Name, v.Channel.Topic, v.Channel.IsDefault)
+				<div id="crew-edit-channel-error" class="text-destructive text-xs" role="alert"></div>
+				@dialog.Footer() {
+					@button.Button(button.Props{Type: button.TypeSubmit}) {
+						{ i18n.T(ctx, "crews.channel.save") }
+					}
+				}
+			</form>
+			if !v.Channel.IsDefault {
+				<form hx-post={ channelURL(v.Space.ID, v.Channel.ID) + "/delete" } hx-target="#crew-edit-channel-error" hx-swap="innerHTML" class="mt-2">
+					@ui.CSRFInput()
+					@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Class: "text-destructive"}) {
+						{ i18n.T(ctx, "crews.channel.delete") }
+					}
+				</form>
+			}
+		}
+	}
+}
+
+templ channelFields(prefix, name, topic string, fixedName bool) {
+	@form.Item() {
+		@label.Label(label.Props{For: prefix + "-name"}) {
+			{ i18n.T(ctx, "crews.channel.name") }
+		}
+		@input.Input(input.Props{ID: prefix + "-name", Name: "name", Value: name, Readonly: fixedName, Attributes: templ.Attributes{"maxlength": "30", "required": true}})
+	}
+	@form.Item() {
+		@label.Label(label.Props{For: prefix + "-topic"}) {
+			{ i18n.T(ctx, "crews.channel.topic") }
+		}
+		@input.Input(input.Props{ID: prefix + "-topic", Name: "topic", Value: topic, Attributes: templ.Attributes{"maxlength": "120"}})
+	}
+}
+
+// FormRefusal is a dialog form's error, for its error slot.
+templ FormRefusal(message string) {
+	<p>{ message }</p>
+}

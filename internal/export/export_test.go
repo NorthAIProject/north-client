@@ -12,11 +12,14 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/checkins"
 	"github.com/NorthAIProject/north-client/internal/conversations"
+	"github.com/NorthAIProject/north-client/internal/crews"
 	"github.com/NorthAIProject/north-client/internal/documents"
 	"github.com/NorthAIProject/north-client/internal/export"
 	"github.com/NorthAIProject/north-client/internal/goals"
+	"github.com/NorthAIProject/north-client/internal/jobs"
 	"github.com/NorthAIProject/north-client/internal/medications"
 	"github.com/NorthAIProject/north-client/internal/memories"
+	"github.com/NorthAIProject/north-client/internal/moderation"
 	"github.com/NorthAIProject/north-client/internal/shared/database/testdb"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
@@ -291,4 +294,64 @@ func isPlainText(s string) bool {
 		}
 	}
 	return true
+}
+
+func TestExportIncludesCrewMessages(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	ana := seedUser(t, pool, "ana@north.test")
+	leo := seedUser(t, pool, "leo@north.test")
+
+	svc := crews.NewService(pool, nil, nil)
+	c, err := svc.Create(ctx, ana.ID, "Iron rats")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = svc.Join(ctx, leo.ID, c.Code); err != nil {
+		t.Fatal(err)
+	}
+	mod := moderation.NewService(pool)
+	chat := crews.NewChat(pool, mod, moderation.NewFilter(), jobs.NewQueue(pool))
+	channels, err := svc.Channels(ctx, c.ID, ana.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, u := range []users.User{ana, leo} {
+		if err = mod.AcceptTerms(ctx, u.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	send := func(u users.User, body string) crews.Message {
+		m, sErr := chat.Send(ctx, c.ID, channels[0].ID, u.ID, crews.SendInput{Body: body})
+		if sErr != nil {
+			t.Fatal(sErr)
+		}
+		return m
+	}
+	send(ana, "squat day, who's in")
+	send(leo, "leo's own words")
+	gone := send(ana, "deleted before the export")
+	if err = chat.Delete(ctx, c.ID, gone.ID, ana.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	goalSvc := goals.NewService(goals.NewRepository(pool))
+	files := unzip(t, export.NewExporter(export.Options{
+		Documents:     documents.NewService(documents.NewRepository(pool), nil, nil),
+		Memories:      memories.NewService(memories.NewRepository(pool)),
+		Conversations: conversations.NewService(conversations.NewRepository(pool)),
+		Goals:         goalSvc,
+		CheckIns:      checkins.NewService(checkins.NewRepository(pool), goalSvc),
+		CrewMessages:  svc,
+	}), ana)
+	got, ok := files["crews/messages.json"]
+	if !ok {
+		t.Fatalf("no crews/messages.json in %v", names(files))
+	}
+	if !strings.Contains(got, "squat day, who's in") || !strings.Contains(got, `"crew": "Iron rats"`) || !strings.Contains(got, `"channel": "general"`) {
+		t.Fatalf("Ana's message is missing:\n%s", got)
+	}
+	if strings.Contains(got, "leo's own words") || strings.Contains(got, "deleted before the export") {
+		t.Fatalf("someone else's or a deleted message was exported:\n%s", got)
+	}
 }

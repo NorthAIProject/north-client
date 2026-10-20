@@ -68,7 +68,7 @@ func TestHandles(t *testing.T) {
 	if err != nil || got != "ana_runs" {
 		t.Fatalf("handle = %q, err = %v; want ana_runs", got, err)
 	}
-	for raw, why := range map[string]string{"ab": "too short", "ana runs": "space", "support": "reserved", "ANA_RUNS": "taken, case-blind"} {
+	for raw, why := range map[string]string{"ab": "too short", "ana runs": "space", "support": "reserved", "everyone": "reserved", "here": "reserved", "crew": "reserved", "ANA_RUNS": "taken, case-blind"} {
 		if _, err := svc.SetHandle(ctx, joao.ID, raw); !apperr.Is(err, apperr.ErrValidation) {
 			t.Fatalf("%q (%s) accepted: %v", raw, why, err)
 		}

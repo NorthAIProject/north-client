@@ -85,6 +85,12 @@ type alert struct {
 // the two as interchangeable channels. Every path that sends nothing logs why:
 // a banner that never arrives is otherwise impossible to diagnose.
 func (s *Service) Send(ctx context.Context, userID uuid.UUID, title, body, href, category string) (int, error) {
+	return s.SendThread(ctx, userID, title, body, href, category, "nudges")
+}
+
+// SendThread is Send with the thread iOS groups the banner under: one per
+// crew for crew chat, so a busy crew stacks instead of burying everything.
+func (s *Service) SendThread(ctx context.Context, userID uuid.UUID, title, body, href, category, threadID string) (int, error) {
 	if !s.Enabled() {
 		return 0, nil
 	}
@@ -98,7 +104,7 @@ func (s *Service) Send(ctx context.Context, userID uuid.UUID, title, body, href,
 	}
 
 	raw, err := json.Marshal(payload{
-		APS:  aps{Alert: alert{Title: title, Body: clip(body, maxBodyRunes)}, Sound: "default", ThreadID: "nudges", Category: category},
+		APS:  aps{Alert: alert{Title: title, Body: clip(body, maxBodyRunes)}, Sound: "default", ThreadID: threadID, Category: category},
 		Href: href,
 	})
 	if err != nil {
