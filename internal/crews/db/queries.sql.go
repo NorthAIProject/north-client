@@ -95,7 +95,7 @@ func (q *Queries) CountMembers(ctx context.Context, crewID uuid.UUID) (int64, er
 }
 
 const createCrew = `-- name: CreateCrew :one
-INSERT INTO crews (name, owner_id, code) VALUES ($1, $2, $3) RETURNING id, name, owner_id, code, created_at
+INSERT INTO crews (name, owner_id, code) VALUES ($1, $2, $3) RETURNING id, name, owner_id, code, created_at, visibility, description
 `
 
 type CreateCrewParams struct {
@@ -113,12 +113,14 @@ func (q *Queries) CreateCrew(ctx context.Context, arg CreateCrewParams) (Crew, e
 		&i.OwnerID,
 		&i.Code,
 		&i.CreatedAt,
+		&i.Visibility,
+		&i.Description,
 	)
 	return i, err
 }
 
 const crewByCode = `-- name: CrewByCode :one
-SELECT id, name, owner_id, code, created_at FROM crews WHERE code = $1
+SELECT id, name, owner_id, code, created_at, visibility, description FROM crews WHERE code = $1
 `
 
 func (q *Queries) CrewByCode(ctx context.Context, code string) (Crew, error) {
@@ -130,6 +132,8 @@ func (q *Queries) CrewByCode(ctx context.Context, code string) (Crew, error) {
 		&i.OwnerID,
 		&i.Code,
 		&i.CreatedAt,
+		&i.Visibility,
+		&i.Description,
 	)
 	return i, err
 }
@@ -195,7 +199,7 @@ func (q *Queries) GetChallenge(ctx context.Context, crewID uuid.UUID) (CrewChall
 }
 
 const getCrew = `-- name: GetCrew :one
-SELECT id, name, owner_id, code, created_at FROM crews WHERE id = $1
+SELECT id, name, owner_id, code, created_at, visibility, description FROM crews WHERE id = $1
 `
 
 func (q *Queries) GetCrew(ctx context.Context, id uuid.UUID) (Crew, error) {
@@ -207,6 +211,8 @@ func (q *Queries) GetCrew(ctx context.Context, id uuid.UUID) (Crew, error) {
 		&i.OwnerID,
 		&i.Code,
 		&i.CreatedAt,
+		&i.Visibility,
+		&i.Description,
 	)
 	return i, err
 }
@@ -228,19 +234,21 @@ func (q *Queries) IsMember(ctx context.Context, arg IsMemberParams) (bool, error
 }
 
 const listMine = `-- name: ListMine :many
-SELECT c.id, c.name, c.owner_id, c.code, c.created_at, (SELECT count(*) FROM crew_members m2 WHERE m2.crew_id = c.id) AS members
+SELECT c.id, c.name, c.owner_id, c.code, c.created_at, c.visibility, c.description, (SELECT count(*) FROM crew_members m2 WHERE m2.crew_id = c.id) AS members
 FROM crews c JOIN crew_members m ON m.crew_id = c.id
 WHERE m.user_id = $1
 ORDER BY c.created_at
 `
 
 type ListMineRow struct {
-	ID        uuid.UUID
-	Name      string
-	OwnerID   uuid.UUID
-	Code      string
-	CreatedAt time.Time
-	Members   int64
+	ID          uuid.UUID
+	Name        string
+	OwnerID     uuid.UUID
+	Code        string
+	CreatedAt   time.Time
+	Visibility  string
+	Description string
+	Members     int64
 }
 
 func (q *Queries) ListMine(ctx context.Context, userID uuid.UUID) ([]ListMineRow, error) {
@@ -258,6 +266,8 @@ func (q *Queries) ListMine(ctx context.Context, userID uuid.UUID) ([]ListMineRow
 			&i.OwnerID,
 			&i.Code,
 			&i.CreatedAt,
+			&i.Visibility,
+			&i.Description,
 			&i.Members,
 		); err != nil {
 			return nil, err
