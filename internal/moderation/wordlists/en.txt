@@ -1,0 +1,45 @@
+# Slurs, hate, and sexual-violence or self-harm incitement only — never
+# ordinary swearing. Crews are gym talk; "fucking brutal" is fine.
+# One term per line, lower case; several words match as consecutive words.
+# Matching is whole-word after removing accents, case and leetspeak.
+nigger
+niggers
+nigga
+niggas
+faggot
+faggots
+fag
+fags
+tranny
+trannies
+kike
+kikes
+spic
+spics
+chink
+chinks
+gook
+gooks
+wetback
+wetbacks
+raghead
+ragheads
+towelhead
+towelheads
+sand nigger
+coon
+coons
+retard
+retards
+dyke
+dykes
+shemale
+heil hitler
+sieg heil
+gas the jews
+white power
+kill yourself
+kys
+i will rape you
+ill rape you
+rape you
