@@ -126,5 +126,5 @@ the shape keys, in `internal/bodymap/baseline_gen.go`, so rebuilding the
 figure can never leave the server's weights describing a different mesh.
 
 Only the person's own figure is shaped. An exercise's figure, which shows
-what a movement works, stays as modelled. iOS draws the figure as modelled
-until it applies the shape keys (see the models README).
+what a movement works, stays as modelled. iOS applies the same four weights
+to the skin it builds from `BodyShell.bin` (see the models README).
