@@ -2,7 +2,7 @@
 
 The body figure every client draws: the web viewer
 (`web/assets/js/shared/muscle-viewer/viewer.js`) loads this file, and iOS loads the
-same meshes as `BodyMap.usdz`. Both are written by `task bodymap` (`go run
+same meshes as `BodyMap.usdz` (the muscles) and `BodyShell.bin` (the skin). All are written by `task bodymap` (`go run
 ./scripts/bodymap`), along with the flat no-WebGL figure
 (`web/shared/muscleviewer/figure_gen.go`) and the iOS light rig (`BodyStudio.png`).
 Do not edit any of them by hand; change the tool or its source and rebuild.
@@ -47,8 +47,15 @@ where they are, so a heavier body is the same muscles in a wider skin.
 - The keys are sparse int16 accessors on the positions' own grid, about
   0.1 MB in all.
 
-iOS does not read the shape keys yet: `BodyMap.usdz` is written without
-blend shapes until the RealityKit spike settles how iOS will apply them.
+iOS gets the skin separately, as `BodyShell.bin` (`-shell`; the layout is in
+`scripts/bodymap/shell_bin.go`): float32 points, normals and indices, and
+each shape key as sparse float32 deltas. `BodyMap.usdz` carries only the
+muscles. The app builds the skin mesh from the file and recomputes its
+points when the weights change, which is only when a check is saved.
+RealityKit applies USD blend shapes only through a skeleton, and offers no
+way to read the deformed points back, so a test could not show the keys
+move the skin as the web's do; a mesh built from known points can be tested.
+Like the web, iOS keeps the modelled normals under the keys.
 
 The muscle keys are `internal/bodymap.Regions`; the tool fails if the file and that
 list disagree. Muscles with no mesh of their own are folded server-side
