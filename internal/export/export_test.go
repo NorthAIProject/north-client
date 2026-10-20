@@ -322,9 +322,9 @@ func TestExportIncludesCrewMessages(t *testing.T) {
 		}
 	}
 	send := func(u users.User, body string) crews.Message {
-		m, err := chat.Send(ctx, c.ID, channels[0].ID, u.ID, crews.SendInput{Body: body})
-		if err != nil {
-			t.Fatal(err)
+		m, sErr := chat.Send(ctx, c.ID, channels[0].ID, u.ID, crews.SendInput{Body: body})
+		if sErr != nil {
+			t.Fatal(sErr)
 		}
 		return m
 	}

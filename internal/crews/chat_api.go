@@ -264,7 +264,7 @@ func (a *API) send(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, err, "The request body could not be read.")
 		return
 	}
-	m, err := a.chat.Send(r.Context(), crewID, channelID, auth.MustUser(r.Context()).ID, SendInput{Body: req.Body, ReplyToID: req.ReplyToID, ClientID: req.ClientID})
+	m, err := a.chat.Send(r.Context(), crewID, channelID, auth.MustUser(r.Context()).ID, SendInput(req))
 	if err != nil {
 		postError(w, err, "The message could not be sent.")
 		return
