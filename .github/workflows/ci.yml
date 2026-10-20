@@ -157,5 +157,5 @@ jobs:
           # "0 issues." only when the 45-minute timeout cut it off
           # (dominikh/go-tools#1735, golangci/golangci-lint#6732). v2.13.2
           # bundles the fixed v0.8.1, and a cold run of this module is seconds.
-          version: v2.13.2
+          version: v2.15.0
           working-directory: .
