@@ -1047,6 +1047,81 @@ func (q *Queries) PinnedIDs(ctx context.Context, channelID uuid.UUID) ([]uuid.UU
 	return items, nil
 }
 
+const pushMessage = `-- name: PushMessage :one
+SELECT m.crew_id, m.channel_id, m.body, c.name AS crew_name, ch.name AS channel_name,
+       au.display_name AS author_name
+FROM crew_messages m
+JOIN crews c ON c.id = m.crew_id
+JOIN crew_channels ch ON ch.id = m.channel_id
+JOIN users au ON au.id = m.author_id
+WHERE m.id = $1 AND m.deleted_at IS NULL AND m.hidden_at IS NULL
+`
+
+type PushMessageRow struct {
+	CrewID      uuid.UUID
+	ChannelID   uuid.UUID
+	Body        string
+	CrewName    string
+	ChannelName string
+	AuthorName  string
+}
+
+// A message worth a push: posted by a person, and still neither deleted nor
+// hidden by reports.
+func (q *Queries) PushMessage(ctx context.Context, id uuid.UUID) (PushMessageRow, error) {
+	row := q.db.QueryRow(ctx, pushMessage, id)
+	var i PushMessageRow
+	err := row.Scan(
+		&i.CrewID,
+		&i.ChannelID,
+		&i.Body,
+		&i.CrewName,
+		&i.ChannelName,
+		&i.AuthorName,
+	)
+	return i, err
+}
+
+const pushRecipients = `-- name: PushRecipients :many
+SELECT mem.user_id
+FROM crew_messages m
+JOIN crew_members mem ON mem.crew_id = m.crew_id
+LEFT JOIN crew_messages parent ON parent.id = m.reply_to_id
+WHERE m.id = $1
+  AND mem.user_id <> m.author_id
+  AND (mem.muted_until IS NULL OR mem.muted_until <= now())
+  AND (mem.notify = 'all'
+       OR (mem.notify = 'mentions'
+           AND (m.mention_all OR mem.user_id = ANY(m.mentions) OR mem.user_id = parent.author_id)))
+  AND NOT EXISTS (
+      SELECT 1 FROM blocks b
+      WHERE (b.blocker_id = mem.user_id AND b.blocked_id = m.author_id)
+         OR (b.blocker_id = m.author_id AND b.blocked_id = mem.user_id))
+`
+
+// Members who asked to hear about message @id: everyone but the author, not
+// blocked either way with them, not muted, and by notify — all always,
+// mentions when named, @everyone, or replied to.
+func (q *Queries) PushRecipients(ctx context.Context, id uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, pushRecipients, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []uuid.UUID{}
+	for rows.Next() {
+		var user_id uuid.UUID
+		if err := rows.Scan(&user_id); err != nil {
+			return nil, err
+		}
+		items = append(items, user_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const reactionsFor = `-- name: ReactionsFor :many
 SELECT x.message_id, x.emoji, count(*)::int AS n, bool_or(x.user_id = $1)::boolean AS mine
 FROM crew_message_reactions x

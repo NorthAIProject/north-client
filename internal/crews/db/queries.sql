@@ -275,3 +275,33 @@ SELECT EXISTS (
       ON (b.blocker_id = @viewer AND b.blocked_id = m.author_id) OR (b.blocker_id = m.author_id AND b.blocked_id = @viewer)
     WHERE m.id = @id
 );
+
+-- name: PushMessage :one
+-- A message worth a push: posted by a person, and still neither deleted nor
+-- hidden by reports.
+SELECT m.crew_id, m.channel_id, m.body, c.name AS crew_name, ch.name AS channel_name,
+       au.display_name AS author_name
+FROM crew_messages m
+JOIN crews c ON c.id = m.crew_id
+JOIN crew_channels ch ON ch.id = m.channel_id
+JOIN users au ON au.id = m.author_id
+WHERE m.id = @id AND m.deleted_at IS NULL AND m.hidden_at IS NULL;
+
+-- name: PushRecipients :many
+-- Members who asked to hear about message @id: everyone but the author, not
+-- blocked either way with them, not muted, and by notify — all always,
+-- mentions when named, @everyone, or replied to.
+SELECT mem.user_id
+FROM crew_messages m
+JOIN crew_members mem ON mem.crew_id = m.crew_id
+LEFT JOIN crew_messages parent ON parent.id = m.reply_to_id
+WHERE m.id = @id
+  AND mem.user_id <> m.author_id
+  AND (mem.muted_until IS NULL OR mem.muted_until <= now())
+  AND (mem.notify = 'all'
+       OR (mem.notify = 'mentions'
+           AND (m.mention_all OR mem.user_id = ANY(m.mentions) OR mem.user_id = parent.author_id)))
+  AND NOT EXISTS (
+      SELECT 1 FROM blocks b
+      WHERE (b.blocker_id = mem.user_id AND b.blocked_id = m.author_id)
+         OR (b.blocker_id = m.author_id AND b.blocked_id = mem.user_id));
