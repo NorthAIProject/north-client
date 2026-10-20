@@ -27,7 +27,7 @@ func renderBoardIn(t *testing.T, locale users.Locale) string {
 	}
 	var b strings.Builder
 	ctx := i18n.WithLocale(context.Background(), string(locale))
-	if err := BoardPage(users.User{DisplayName: "Ana", Locale: locale}, board, "https://khepri.test/i/c/x").Render(ctx, &b); err != nil {
+	if err := ChallengePane(board, "https://khepri.test/i/c/x").Render(ctx, &b); err != nil {
 		t.Fatalf("render %s: %v", locale, err)
 	}
 	if b.Len() == 0 {

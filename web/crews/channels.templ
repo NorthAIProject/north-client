@@ -1,0 +1,51 @@
+package crews
+
+import (
+	"strconv"
+
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
+	"github.com/NorthAIProject/north-client/web/shared/ui/badge"
+	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
+)
+
+// ChannelList is the crew's channels with what is unread in each. It fetches
+// itself again when something lands in another channel or the list changes.
+//
+// The rows are links styled as a list, not the app sidebar component: that
+// one is the application's navigation, with its own collapse state, and a
+// second instance would fight it for the keyboard shortcut.
+templ ChannelList(v ChannelListView) {
+	<nav
+		id="crew-channels"
+		class="flex flex-col gap-0.5 px-2 py-2"
+		aria-label={ i18n.T(ctx, "crews.channels") }
+		hx-get={ crewURL(v.CrewID) + "/channels?channel=" + v.Open.String() }
+		hx-trigger="crew-unread from:#crew-live, crew-channels from:#crew-live"
+		hx-swap="outerHTML"
+	>
+		for _, ch := range v.Channels {
+			<a
+				href={ templ.SafeURL(channelURL(v.CrewID, ch.ID)) }
+				class={ "flex min-h-9 items-center gap-2 rounded-md px-2 text-sm transition-colors hover:bg-accent/60",
+					templ.KV("bg-accent text-foreground font-medium", ch.ID == v.Open),
+					templ.KV("text-muted-foreground", ch.ID != v.Open && ch.Unread == 0),
+					templ.KV("text-foreground font-medium", ch.ID != v.Open && ch.Unread > 0) }
+				if ch.ID == v.Open {
+					aria-current="page"
+				}
+			>
+				@icon.Icon("hash")(icon.Props{Class: "size-4 shrink-0 opacity-60"})
+				<span class="min-w-0 flex-1 truncate">{ ch.Name }</span>
+				if ch.Mentions > 0 {
+					@badge.Badge(badge.Props{Variant: badge.VariantDestructive, Class: "h-5 min-w-5 justify-center px-1 tabular-nums"}) {
+						{ "@" + strconv.Itoa(ch.Mentions) }
+					}
+				} else if ch.Unread > 0 && ch.ID != v.Open {
+					@badge.Badge(badge.Props{Variant: badge.VariantSecondary, Class: "h-5 min-w-5 justify-center px-1 tabular-nums"}) {
+						{ strconv.Itoa(ch.Unread) }
+					}
+				}
+			</a>
+		}
+	</nav>
+}

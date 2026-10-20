@@ -1,0 +1,84 @@
+package crews
+
+import (
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
+	"github.com/NorthAIProject/north-client/web/shared/ui/textarea"
+)
+
+// composer posts a message. A sent message is not appended from the response:
+// the response is empty, and "crew-sent" asks the tail loader for what is new,
+// so a message reaches the page by the one path every message takes.
+//
+// A refusal swaps its words into the slot under the box. Not having accepted
+// the crew rules is a refusal with a marker, and the marker opens the rules.
+templ composer(v ChatView) {
+	<form
+		id="crew-composer"
+		class="border-border flex flex-col gap-1 border-t px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+		x-data="{ reply: null }"
+		@crew-reply.window="reply = $event.detail; $refs.body.focus()"
+		hx-post={ channelURL(v.CrewID, v.Channel.ID) + "/messages" }
+		hx-target="#crew-composer-error"
+		hx-swap="innerHTML"
+		hx-on::after:request="if (ctx.response.status < 400) { this.reset(); Alpine.$data(this).reply = null; document.getElementById('crew-composer-error').replaceChildren(); document.body.dispatchEvent(new CustomEvent('crew-sent')) }"
+		hx-on::after:swap="if (this.querySelector('[data-terms-required]')) window.tui.dialog.open('crew-terms')"
+	>
+		@ui.CSRFInput()
+		<input type="hidden" name="reply_to" x-bind:value="reply ? reply.id : ''"/>
+		<div x-show="reply" x-cloak class="text-muted-foreground flex items-center gap-2 text-xs">
+			@icon.Icon("reply")(icon.Props{Class: "size-3"})
+			<span class="min-w-0 flex-1 truncate">
+				// The sentence rides in a data attribute so no translated text
+				// is ever part of a script expression.
+				<span data-template={ i18n.T(ctx, "crews.composer.replying") } x-text="reply && $el.dataset.template.replace('%[1]s', reply.name)"></span>
+				<span class="opacity-70" x-text="reply && reply.excerpt"></span>
+			</span>
+			@button.Button(button.Props{
+				Type:       button.TypeButton,
+				Variant:    button.VariantGhost,
+				Size:       button.SizeIcon,
+				Class:      "size-6",
+				Attributes: templ.Attributes{"@click": "reply = null", "aria-label": i18n.T(ctx, "crews.composer.cancel-reply")},
+			}) {
+				@icon.Icon("x")(icon.Props{Class: "size-3"})
+			}
+		</div>
+		<div class="flex items-end gap-2">
+			@textarea.Textarea(textarea.Props{
+				ID:          "crew-body",
+				Name:        "body",
+				Rows:        1,
+				AutoResize:  true,
+				Placeholder: i18n.Tf(ctx, "crews.composer.placeholder", v.Channel.Name),
+				Class:       "max-h-48 min-h-11 resize-none",
+				Attributes: templ.Attributes{
+					"x-ref":      "body",
+					"maxlength":  "4000",
+					"aria-label": i18n.Tf(ctx, "crews.composer.placeholder", v.Channel.Name),
+					// Enter sends, shift+Enter makes a new line.
+					"@keydown.enter": "if (!$event.shiftKey) { $event.preventDefault(); $el.form.requestSubmit() }",
+				},
+			})
+			@button.Button(button.Props{
+				Type:       button.TypeSubmit,
+				Size:       button.SizeIcon,
+				Class:      "min-h-11 min-w-11",
+				Attributes: templ.Attributes{"aria-label": i18n.T(ctx, "crews.composer.send")},
+			}) {
+				@icon.Icon("arrow-up")(icon.Props{Class: "size-4"})
+			}
+		</div>
+		<div id="crew-composer-error" class="text-destructive text-xs" role="alert"></div>
+	</form>
+}
+
+// ComposerRefusal is why a post was refused, for the slot under the box.
+templ ComposerRefusal(message string, termsRequired bool) {
+	<p>{ message }</p>
+	if termsRequired {
+		<span hidden data-terms-required></span>
+	}
+}
