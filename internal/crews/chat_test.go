@@ -123,7 +123,7 @@ func TestSendAndList(t *testing.T) {
 	m1 := r.send(t, r.ana, "one")
 	m2 := r.send(t, r.ana, "two")
 	m3 := r.send(t, r.ana, "three")
-	if !(m1.Seq < m2.Seq && m2.Seq < m3.Seq) {
+	if m1.Seq >= m2.Seq || m2.Seq >= m3.Seq {
 		t.Fatalf("seqs %d %d %d do not increase", m1.Seq, m2.Seq, m3.Seq)
 	}
 
