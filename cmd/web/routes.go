@@ -288,22 +288,6 @@ func routes(
 	// through biometrics, so both exist first.
 	progressSvc := progresschecks.NewService(progresschecks.NewRepository(pool), mediaSvc, biometricSvc)
 
-	// Export reads across profile, goals, check-ins, memories, documents,
-	// conversations, medications and progress checks, which is why it is its
-	// own package rather than a method on any one of them. Built once the last
-	// of those exists.
-	exportHandler := export.NewHandler(export.NewExporter(export.Options{
-		Documents:     documentSvc,
-		Memories:      memorySvc,
-		Conversations: conversationSvc,
-		Goals:         goalSvc,
-		CheckIns:      checkinSvc,
-		Storage:       storage,
-		Friends:       socialSvc,
-		Medications:   medicationSvc,
-		Progress:      progressSvc,
-	}), quotaSvc, accountSvc)
-
 	calculatorSvc := calculator.NewService(calculator.NewRepository(pool), biometricSvc)
 
 	activitySvc := activity.NewService(activity.NewRepository(pool), biometricSvc).WithAchievements(achievementSvc)
@@ -324,6 +308,23 @@ func routes(
 	crewLive := live.NewHub()
 	moderationSvc.Register(crews.MessageSubject, crewChat.Hider())
 	crewHandler := crews.NewHandler(crewSvc, cfg.BaseURL, cfg.Env.IsProduction()).WithLive(crewChat, crewLive)
+
+	// Export reads across profile, goals, check-ins, memories, documents,
+	// conversations, medications, progress checks and crew messages, which is
+	// why it is its own package rather than a method on any one of them. Built
+	// once the last of those exists.
+	exportHandler := export.NewHandler(export.NewExporter(export.Options{
+		Documents:     documentSvc,
+		Memories:      memorySvc,
+		Conversations: conversationSvc,
+		Goals:         goalSvc,
+		CheckIns:      checkinSvc,
+		Storage:       storage,
+		Friends:       socialSvc,
+		Medications:   medicationSvc,
+		Progress:      progressSvc,
+		CrewMessages:  crewSvc,
+	}), quotaSvc, accountSvc)
 
 	// XP is derived from what the slices above record; the leaderboard reads
 	// it and the check-in streak.

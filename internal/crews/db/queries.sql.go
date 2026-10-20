@@ -932,6 +932,51 @@ func (q *Queries) MessagesAfter(ctx context.Context, arg MessagesAfterParams) ([
 	return items, nil
 }
 
+const messagesAuthoredBy = `-- name: MessagesAuthoredBy :many
+SELECT c.name AS crew_name, ch.name AS channel_name, m.body, m.created_at, (m.edited_at IS NOT NULL)::bool AS edited
+FROM crew_messages m
+JOIN crews c ON c.id = m.crew_id
+JOIN crew_channels ch ON ch.id = m.channel_id
+WHERE m.author_id = $1 AND m.deleted_at IS NULL
+ORDER BY m.created_at, m.seq
+`
+
+type MessagesAuthoredByRow struct {
+	CrewName    string
+	ChannelName string
+	Body        string
+	CreatedAt   time.Time
+	Edited      bool
+}
+
+// Everything @author_id posted that they have not deleted, oldest first, for
+// their data export. Hidden messages are included: they are still theirs.
+func (q *Queries) MessagesAuthoredBy(ctx context.Context, authorID *uuid.UUID) ([]MessagesAuthoredByRow, error) {
+	rows, err := q.db.Query(ctx, messagesAuthoredBy, authorID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []MessagesAuthoredByRow{}
+	for rows.Next() {
+		var i MessagesAuthoredByRow
+		if err := rows.Scan(
+			&i.CrewName,
+			&i.ChannelName,
+			&i.Body,
+			&i.CreatedAt,
+			&i.Edited,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const messagesBefore = `-- name: MessagesBefore :many
 SELECT m.id, m.seq, m.channel_id, m.author_id, m.kind, m.body, m.mentions, m.mention_all,
        m.pinned_at, m.edited_at, m.deleted_at, m.created_at,
