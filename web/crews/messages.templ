@@ -53,6 +53,11 @@ templ olderButton(v ChatView, before int64) {
 				"hx-get":    channelURL(v.CrewID, v.Channel.ID) + "/messages?before=" + seqString(before),
 				"hx-target": "#crew-older",
 				"hx-swap":   "outerHTML",
+				// Rows arrive above the reader. The transcript holds the distance
+				// from its bottom across the swap (see chatBody), which keeps the
+				// message they were on in place; the browser cannot anchor to it,
+				// because the anchor was this button.
+				"hx-on::before:swap": "const s = document.getElementById('crew-scroll'); s.dataset.fromBottom = s.scrollHeight - s.scrollTop",
 			},
 		}) {
 			{ i18n.T(ctx, "crews.load-older") }

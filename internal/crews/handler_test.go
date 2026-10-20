@@ -114,7 +114,9 @@ func TestComposerTermsRequired(t *testing.T) {
 		t.Fatal(err)
 	}
 	status, html := webPost(t, s.web.URL, "/crews/"+r.crew.ID.String()+"/c/"+r.general.String()+"/messages", zed, url.Values{"body": {"hi"}})
-	if status != http.StatusForbidden || !strings.Contains(html, "data-terms-required") {
+	// 422, not 403: the layout's htmx config discards every 4xx except 422
+	// and 429, so a 403 refusal would never reach the slot under the box.
+	if status != http.StatusUnprocessableEntity || !strings.Contains(html, "data-terms-required") {
 		t.Fatalf("status %d:\n%s", status, html)
 	}
 	status, _ = webPost(t, s.web.URL, "/crews/"+r.crew.ID.String()+"/c/"+r.general.String()+"/messages", r.ana, url.Values{"body": {"hi"}})
