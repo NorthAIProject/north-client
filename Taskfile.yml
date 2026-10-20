@@ -172,9 +172,9 @@ tasks:
   # The body figure, for web and iOS alike. The iOS paths assume the sibling
   # checkout; see web/assets/models/README.md.
   bodymap:
-    desc: Rebuild the body figure (web GLB, flat SVG, iOS USDZ and light rig)
+    desc: Rebuild the body figure (web GLB, flat SVG, iOS USDZ, skin and light rig)
     cmds:
-      - go run ./scripts/bodymap -usdz ../north-ios-app/khepri/khepri/Resources/BodyMap.usdz -ibl ../north-ios-app/khepri/khepri/Resources/BodyStudio.png
+      - go run ./scripts/bodymap -usdz ../north-ios-app/khepri/khepri/Resources/BodyMap.usdz -shell ../north-ios-app/khepri/khepri/Resources/BodyShell.bin -ibl ../north-ios-app/khepri/khepri/Resources/BodyStudio.png
 
   build:
     desc: Build all binaries

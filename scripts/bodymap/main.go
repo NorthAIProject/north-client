@@ -5,8 +5,8 @@
 // meshes fitted inside it (see tools/model/README.md). This tool refits the
 // atlas to the skin, fits each arm on its own, tucks any muscle still poking
 // out back under the skin, and groups the atlas meshes by muscle key. Clients
-// draw the skin's back faces opaque and dark and its front faces translucent,
-// so the muscles show through a body.
+// draw the skin as an outline only, clear facing the camera and firm at the
+// silhouette, so the muscles read as the body.
 //
 // Outputs, all committed:
 //
@@ -15,8 +15,11 @@
 //     without a decoder.
 //   - -figure: a generated Go file with front and back SVG outlines, the
 //     fallback when a browser has no WebGL. Skipped when empty.
-//   - -usdz:   the same meshes for RealityKit on iOS (needs macOS's usdcat and
+//   - -usdz:   the muscles for RealityKit on iOS (needs macOS's usdcat and
 //     usdzip, both in /usr/bin). Skipped when empty.
+//   - -shell:  the skin and its shape keys for iOS, which builds the skin
+//     mesh itself so it can apply the keys (see shell_bin.go). Skipped when
+//     empty.
 //   - -ibl:    the web viewer's studio light rig as an equirectangular PNG,
 //     for RealityKit's image-based lighting. Skipped when empty.
 //   - -baseline: a generated Go file with the shell's own girths at waist,
@@ -28,6 +31,7 @@
 //
 //	go run ./scripts/bodymap \
 //	  -usdz ../north-ios-app/khepri/khepri/Resources/BodyMap.usdz \
+//	  -shell ../north-ios-app/khepri/khepri/Resources/BodyShell.bin \
 //	  -ibl ../north-ios-app/khepri/khepri/Resources/BodyStudio.png
 //
 // scripts/bodymap/preview is a page for looking at the result.
@@ -50,7 +54,8 @@ func main() {
 	musclesJS := flag.String("muscles", "web/assets/js/shared/muscle-viewer/muscles.js", "file holding MUSCLE_ALIASES")
 	outGLB := flag.String("glb", "web/assets/models/body-map.glb", "meshes for the web viewer")
 	outFigure := flag.String("figure", "web/shared/muscleviewer/figure_gen.go", "generated SVG outlines; skipped when empty")
-	outUSDZ := flag.String("usdz", "", "meshes for iOS; skipped when empty")
+	outUSDZ := flag.String("usdz", "", "muscle meshes for iOS; skipped when empty")
+	outShell := flag.String("shell", "", "skin mesh and shape keys for iOS; skipped when empty")
 	outIBL := flag.String("ibl", "", "studio light rig for iOS, as an equirectangular PNG; skipped when empty")
 	outBaseline := flag.String("baseline", "internal/bodymap/baseline_gen.go", "generated Go file with the shell's girths, which the server reads shapes against")
 	subdivide := flag.Bool("subdivide", true, "smooth the skin with one step of Loop subdivision (four times the triangles)")
@@ -129,10 +134,19 @@ func main() {
 		log.Printf("wrote %s", *outFigure)
 	}
 	if *outUSDZ != "" {
-		if err := writeUSDZ(*outUSDZ, regions); err != nil {
+		// The skin goes to iOS in -shell instead.
+		if err := writeUSDZ(*outUSDZ, muscles); err != nil {
 			log.Fatal(err)
 		}
 		log.Printf("wrote %s", *outUSDZ)
+	}
+	if *outShell != "" {
+		if err := writeShellBin(*outShell, shell); err != nil {
+			log.Fatal(err)
+		}
+		if info, err := os.Stat(*outShell); err == nil {
+			log.Printf("wrote %s (%.0f KB)", *outShell, float64(info.Size())/1024)
+		}
 	}
 	if *outIBL != "" {
 		if err := writeStudioPNG(*outIBL, 512, 256); err != nil {
