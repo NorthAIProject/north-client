@@ -11,7 +11,7 @@ import (
 	"encoding/json"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
@@ -37,14 +37,21 @@ type Event struct {
 	Seq       int64     `json:"seq,omitempty"`
 }
 
-// Notify queues ev on tx. Postgres delivers it when tx commits and drops it
-// if tx rolls back, so nobody hears about a write that did not happen.
-func Notify(ctx context.Context, tx pgx.Tx, ev Event) error {
+// Execer is a transaction, or a pool for an event that follows a write
+// already committed.
+type Execer interface {
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+}
+
+// Notify queues ev on db. Inside a transaction Postgres delivers it when the
+// transaction commits and drops it on rollback, so nobody hears about a
+// write that did not happen.
+func Notify(ctx context.Context, db Execer, ev Event) error {
 	body, err := json.Marshal(ev)
 	if err != nil {
 		return apperr.Wrap(err, "encode crew event")
 	}
-	if _, err = tx.Exec(ctx, "SELECT pg_notify($1, $2)", Channel, string(body)); err != nil {
+	if _, err = db.Exec(ctx, "SELECT pg_notify($1, $2)", Channel, string(body)); err != nil {
 		return apperr.Wrap(err, "notify crew event")
 	}
 	return nil

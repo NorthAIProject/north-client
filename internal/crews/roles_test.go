@@ -37,10 +37,13 @@ func TestCreateMakesGeneralAndWins(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(channels) != 2 ||
-		channels[0].Name != "general" || channels[0].Kind != crew.ChannelText || !channels[0].IsDefault ||
-		channels[1].Name != "wins" || channels[1].Kind != crew.ChannelWins || channels[1].IsDefault {
+	// #wins exists but is not listed until wins land in it.
+	if len(channels) != 1 || channels[0].Name != "general" || channels[0].Kind != crew.ChannelText || !channels[0].IsDefault {
 		t.Fatalf("channels = %+v", channels)
+	}
+	var wins int
+	if err = pool.QueryRow(ctx, `SELECT count(*) FROM crew_channels WHERE crew_id = $1 AND kind = 'wins'`, c.ID).Scan(&wins); err != nil || wins != 1 {
+		t.Fatalf("%d #wins channels, %v; want 1", wins, err)
 	}
 }
 

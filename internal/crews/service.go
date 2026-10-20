@@ -18,6 +18,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/crews/crew"
 	crewsdb "github.com/NorthAIProject/north-client/internal/crews/db"
+	"github.com/NorthAIProject/north-client/internal/crews/live"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
@@ -100,6 +101,13 @@ func (s *Service) Create(ctx context.Context, ownerID uuid.UUID, name string) (C
 	}
 	if err = q.CreateDefaultChannels(ctx, row.ID); err != nil {
 		return Crew{}, apperr.Wrap(err, "create default channels")
+	}
+	general, err := q.DefaultChannel(ctx, row.ID)
+	if err != nil {
+		return Crew{}, apperr.Wrap(err, "default channel")
+	}
+	if err = q.InsertSystemMessage(ctx, crewsdb.InsertSystemMessageParams{CrewID: row.ID, ChannelID: general, Body: "crews.sys.welcome"}); err != nil {
+		return Crew{}, apperr.Wrap(err, "welcome message")
 	}
 	if err = tx.Commit(ctx); err != nil {
 		return Crew{}, apperr.Wrap(err, "commit create crew")
@@ -186,7 +194,10 @@ func (s *Service) Leave(ctx context.Context, crewID, userID uuid.UUID) error {
 	if c.OwnerID == userID {
 		next, nextErr := s.q.OldestOtherMember(ctx, crewsdb.OldestOtherMemberParams{CrewID: crewID, UserID: userID})
 		if errors.Is(nextErr, pgx.ErrNoRows) {
-			return s.q.DeleteCrew(ctx, crewID)
+			if err = s.q.DeleteCrew(ctx, crewID); err != nil {
+				return apperr.Wrap(err, "delete crew")
+			}
+			return s.removed(ctx, crewID, userID)
 		}
 		if nextErr != nil {
 			return apperr.Wrap(nextErr, "find next owner")
@@ -195,8 +206,16 @@ func (s *Service) Leave(ctx context.Context, crewID, userID uuid.UUID) error {
 			return apperr.Wrap(err, "hand over crew")
 		}
 	}
-	_, err = s.q.RemoveMember(ctx, crewsdb.RemoveMemberParams{CrewID: crewID, UserID: userID})
-	return err
+	if _, err = s.q.RemoveMember(ctx, crewsdb.RemoveMemberParams{CrewID: crewID, UserID: userID}); err != nil {
+		return apperr.Wrap(err, "remove member")
+	}
+	return s.removed(ctx, crewID, userID)
+}
+
+// removed tells anyone watching that userID is out of the crew, so their
+// own open streams close. The removal is already committed.
+func (s *Service) removed(ctx context.Context, crewID, userID uuid.UUID) error {
+	return live.Notify(ctx, s.pool, live.Event{Type: live.EventRemoved, CrewID: crewID, UserID: userID})
 }
 
 // Remove is somebody who runs the crew taking somebody out. The owner may
@@ -225,8 +244,10 @@ func (s *Service) Remove(ctx context.Context, crewID, actorID, memberID uuid.UUI
 			return apperr.ErrNotFound
 		}
 	}
-	_, err = s.q.RemoveMember(ctx, crewsdb.RemoveMemberParams{CrewID: crewID, UserID: memberID})
-	return err
+	if _, err = s.q.RemoveMember(ctx, crewsdb.RemoveMemberParams{CrewID: crewID, UserID: memberID}); err != nil {
+		return apperr.Wrap(err, "remove member")
+	}
+	return s.removed(ctx, crewID, memberID)
 }
 
 // SetRole makes a member an admin or a plain member again; only the owner
