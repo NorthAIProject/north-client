@@ -21,6 +21,8 @@ surrounding theme shows through — never place these on a plate.
 | `khepri-mascot.png` | Companion cutout. Live companion (`shared/mascot/`). |
 | `khepri-mark.png` | Scarab + sun emblem. Stored, not wired into chrome. |
 | `khepri-app-icon.png` | Rounded-square app icon cropped from the lockup. Stored, not swapped onto PWA plates. |
+| `badges/` | Official App Store (black, and white for the dark theme) and Google Play badges for the landing store row. Unaltered artwork — do not recolour or crop. |
+| `hero/` | Small webp copies of the mascot and app icon for the landing hero's card wall. |
 
 Originals with backgrounds live in `source/` for design reference only — never serve them. The retired cube companion is `source/north-mascot-cube.png`. Khepri source stills: `khepri-mascot-original.jpg`, `khepri-emblem-original.jpg`, `khepri-app-icon-lockup.jpg`, `khepri-brand-board.png`.
 

@@ -18,6 +18,16 @@ templ Navbar(signedIn bool) {
 		<div class="mx-auto flex h-14 max-w-6xl items-center justify-between px-6 lg:pl-28 lg:pr-8">
 			@BrandLockup("/", "size-6", "text-base font-medium tracking-tight")
 			<div class="flex items-center gap-1">
+				@button.Button(button.Props{
+					Variant:    button.VariantGhost,
+					Size:       button.SizeSm,
+					Href:       XProfileURL,
+					Target:     "_blank",
+					Class:      "px-2.5 text-muted-foreground hover:text-foreground",
+					Attributes: templ.Attributes{"rel": "noopener noreferrer", "aria-label": i18n.T(ctx, "land.nav.x")},
+				}) {
+					X
+				}
 				@ThemeSwitcher()
 				if signedIn {
 					@button.Button(button.Props{Size: button.SizeSm, Href: "/app", Class: "bg-signal text-background hover:bg-signal/90"}) {

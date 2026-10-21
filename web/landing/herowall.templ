@@ -1,0 +1,245 @@
+package landing
+
+import "github.com/NorthAIProject/north-client/web/shared/ui/icon"
+
+// heroWall is the fan of cards along the bottom of the hero. The geometry —
+// slot position, rotation, sway, dimming, the fade into the page — lives in
+// input.css under .hero-wall, because it is one unit sized against itself.
+templ heroWall() {
+	<div aria-hidden="true" class="hero-wall">
+		<div class="hero-wall-row hero-wall-back hidden md:block">
+			for _, s := range backSlots(ctx) {
+				@wallSlotView(s)
+			}
+		</div>
+		<div class="hero-wall-row hero-wall-front">
+			for _, s := range frontSlots(ctx) {
+				@wallSlotView(s)
+			}
+		</div>
+		<div class="hero-wall-fade"></div>
+	</div>
+}
+
+// wallSlotView positions one card. The slot carries position and rotation;
+// the sway runs on the element inside it so the two transforms never fight.
+//
+// Hand-rolled rather than card.Card: the tile has a fixed aspect ratio and type
+// sized to its own width, and Card's padding, gap and shadow would all have to
+// be overridden. It is decoration, not a content container.
+templ wallSlotView(s wallSlot) {
+	<div class={ "hero-wall-slot", s.Class } style={ templ.SafeCSS(s.Style) }>
+		<div class="hero-wall-sway">
+			<div class="hero-wall-face">
+				<div class="hero-wall-body">
+					@wallCardView(s.Card)
+				</div>
+			</div>
+		</div>
+	</div>
+}
+
+templ wallCardView(c wallCard) {
+	switch c.Kind {
+		case wallMemory:
+			@wallMemoryCard(c)
+		case wallStreak:
+			@wallStreakCard(c)
+		case wallQuote:
+			@wallQuoteCard(c)
+		case wallSleep:
+			@wallSleepCard(c)
+		case wallGoal:
+			@wallGoalCard(c)
+		case wallHabits:
+			@wallHabitsCard(c)
+		case wallJournal:
+			@wallJournalCard(c)
+		case wallTelegram:
+			@wallTelegramCard(c)
+		case wallPlan:
+			@wallPlanCard(c)
+		case wallLift:
+			@wallLiftCard(c)
+		case wallImage:
+			@wallImageCard(c)
+	}
+}
+
+// wallLabel is the instrument voice at card scale: sized in em so it follows
+// the card rather than the page.
+templ wallLabel(text string) {
+	<span class="font-mono text-[0.62em] uppercase leading-tight tracking-[0.14em] text-muted-foreground">{ text }</span>
+}
+
+templ wallMemoryCard(c wallCard) {
+	<div class="flex h-full flex-col">
+		<div class="flex items-center gap-[0.4em]">
+			<span class="size-[0.45em] rounded-full bg-signal"></span>
+			@wallLabel(c.Label)
+		</div>
+		<p class="mt-auto text-[2.2em] font-semibold leading-none tracking-[-0.03em]">{ c.Title }</p>
+		<p class="mt-[0.35em] text-[1.05em] font-medium text-signal">{ c.Body }</p>
+		<p class="mt-[0.8em] border-t border-hairline pt-[0.7em] text-[0.8em] leading-snug text-muted-foreground">{ c.Meta }</p>
+	</div>
+}
+
+templ wallStreakCard(c wallCard) {
+	<div class="flex h-full flex-col items-center justify-center text-center">
+		<span class="flex size-[3em] items-center justify-center rounded-full bg-ember/15 text-ember">
+			@icon.Flame(icon.Props{Class: "size-[1.6em]"})
+		</span>
+		<p class="mt-[0.9em] text-[1.25em] font-semibold leading-tight tracking-[-0.02em]">{ c.Title }</p>
+		<p class="mt-[0.3em] text-[0.8em] text-muted-foreground">{ c.Meta }</p>
+		<div class="mt-[1em] flex gap-[0.3em]">
+			for i := range 7 {
+				<span class={ "size-[0.55em] rounded-full", templ.KV("bg-ember", i < 6), templ.KV("bg-ember/30", i == 6) }></span>
+			}
+		</div>
+	</div>
+}
+
+templ wallQuoteCard(c wallCard) {
+	<div class="flex h-full flex-col">
+		<div class="flex items-center gap-[0.45em]">
+			<img src="/assets/brand/khepri-logo-mark.png" alt="" class="size-[1.4em]"/>
+			<span class="font-mono text-[0.62em] uppercase tracking-[0.14em] text-agent">Khepri</span>
+		</div>
+		<p class="mt-[0.9em] text-[1.12em] font-medium leading-snug tracking-[-0.01em] text-balance">{ c.Body }</p>
+		<div class="mt-auto">
+			@wallLabel(c.Meta)
+		</div>
+	</div>
+}
+
+templ wallSleepCard(c wallCard) {
+	<div class="flex h-full flex-col">
+		<div class="flex items-center gap-[0.4em] text-day-sleep">
+			@icon.Moon(icon.Props{Class: "size-[0.9em]"})
+			@wallLabel(c.Label)
+		</div>
+		<div class="relative mx-auto mt-[1em] size-[6.2em]">
+			<svg viewBox="0 0 36 36" class="size-full -rotate-90">
+				<circle cx="18" cy="18" r="15.5" fill="none" stroke-width="3" class="stroke-hairline"></circle>
+				<circle cx="18" cy="18" r="15.5" fill="none" stroke-width="3" stroke-linecap="round" stroke-dasharray="81.8 97.4" class="stroke-day-sleep"></circle>
+			</svg>
+			<span class="absolute inset-0 flex items-center justify-center text-[1.9em] font-semibold tracking-[-0.03em]">{ c.Title }</span>
+		</div>
+		<p class="mt-auto text-center font-mono text-[0.85em]">{ c.Body }</p>
+		<p class="mt-[0.2em] text-center text-[0.75em] text-muted-foreground">{ c.Meta }</p>
+	</div>
+}
+
+templ wallGoalCard(c wallCard) {
+	<div class="flex h-full flex-col">
+		<div class="flex items-center gap-[0.4em] text-signal">
+			@icon.Target(icon.Props{Class: "size-[0.9em]"})
+			@wallLabel(c.Label)
+		</div>
+		<p class="mt-[1em] text-[1.3em] font-semibold leading-tight tracking-[-0.02em]">{ c.Title }</p>
+		<p class="mt-auto text-[2.6em] font-semibold leading-none tracking-[-0.04em] text-signal">{ c.Body }</p>
+		<div class="mt-[0.7em] h-[0.4em] overflow-hidden rounded-full bg-hairline">
+			<div class="h-full w-[62%] rounded-full bg-signal"></div>
+		</div>
+		<p class="mt-[0.6em] text-[0.75em] text-muted-foreground">{ c.Meta }</p>
+	</div>
+}
+
+templ wallHabitsCard(c wallCard) {
+	<div class="flex h-full flex-col">
+		@wallLabel(c.Label)
+		<div class="mt-[1em] grid grid-cols-7 gap-[0.28em]">
+			for _, week := range wallHabitGrid {
+				for _, done := range week {
+					<span class={ "aspect-square rounded-[0.2em]", templ.KV("bg-signal", done), templ.KV("bg-hairline", !done) }></span>
+				}
+			}
+		</div>
+		<div class="mt-auto flex items-center gap-[0.4em]">
+			@icon.Check(icon.Props{Class: "size-[0.9em] text-signal"})
+			<span class="text-[0.8em] text-muted-foreground">{ c.Meta }</span>
+		</div>
+	</div>
+}
+
+templ wallJournalCard(c wallCard) {
+	<div class="flex h-full flex-col">
+		<div class="flex items-center gap-[0.4em] text-muted-foreground">
+			@icon.NotebookPen(icon.Props{Class: "size-[0.9em]"})
+			@wallLabel(c.Label)
+		</div>
+		<p class="mt-[1em] text-[1.05em] leading-snug text-foreground/90">{ c.Body }</p>
+		<div class="mt-auto space-y-[0.45em]">
+			<span class="block h-[0.3em] w-full rounded-full bg-hairline"></span>
+			<span class="block h-[0.3em] w-4/5 rounded-full bg-hairline"></span>
+			<span class="block h-[0.3em] w-3/5 rounded-full bg-hairline"></span>
+		</div>
+	</div>
+}
+
+templ wallTelegramCard(c wallCard) {
+	<div class="flex h-full flex-col">
+		<div class="flex items-center gap-[0.4em] text-day-water">
+			@icon.Send(icon.Props{Class: "size-[0.9em]"})
+			<span class="font-mono text-[0.62em] uppercase tracking-[0.14em]">Telegram</span>
+		</div>
+		<div class="mt-auto flex flex-col gap-[0.5em]">
+			<p class="ml-auto max-w-[88%] rounded-[0.9em] rounded-br-[0.25em] bg-signal px-[0.75em] py-[0.5em] text-[0.82em] leading-snug text-signal-foreground">{ c.Body }</p>
+			<p class="mr-auto max-w-[88%] rounded-[0.9em] rounded-bl-[0.25em] bg-muted px-[0.75em] py-[0.5em] text-[0.82em] leading-snug">{ c.Meta }</p>
+		</div>
+	</div>
+}
+
+templ wallPlanCard(c wallCard) {
+	<div class="flex h-full flex-col">
+		<div class="flex items-center gap-[0.4em] text-muted-foreground">
+			@icon.Dumbbell(icon.Props{Class: "size-[0.9em]"})
+			@wallLabel(c.Label)
+		</div>
+		<p class="mt-[0.8em] text-[1.05em] font-semibold leading-tight tracking-[-0.01em]">{ c.Title }</p>
+		<ul class="mt-auto space-y-[0.5em]">
+			for i, line := range c.Lines {
+				<li class="flex items-center gap-[0.5em] text-[0.8em]">
+					<span class={ "size-[0.5em] shrink-0 rounded-full", templ.KV("bg-signal", i == 0), templ.KV("border border-muted-foreground/50", i > 0) }></span>
+					<span class={ templ.KV("text-muted-foreground", i > 0) }>{ line }</span>
+				</li>
+			}
+		</ul>
+	</div>
+}
+
+templ wallLiftCard(c wallCard) {
+	<div class="flex h-full flex-col">
+		<div class="flex items-center gap-[0.4em] text-ember">
+			@icon.Trophy(icon.Props{Class: "size-[0.9em]"})
+			@wallLabel(c.Label)
+		</div>
+		<div class="mt-[1.2em] flex h-[4.5em] items-end gap-[0.35em]">
+			for _, h := range []string{"35%", "45%", "50%", "62%", "70%", "100%"} {
+				<span class="flex-1 rounded-t-[0.2em] bg-ember/70 last:bg-ember" style={ templ.SafeCSS("height:" + h) }></span>
+			}
+		</div>
+		<p class="mt-auto text-[1.15em] font-semibold leading-tight tracking-[-0.02em]">{ c.Title }</p>
+		<p class="mt-[0.3em] text-[0.8em] text-muted-foreground">{ c.Meta }</p>
+	</div>
+}
+
+templ wallImageCard(c wallCard) {
+	if c.Cover {
+		<div class="-m-[var(--wall-pad)] flex h-[calc(100%+2*var(--wall-pad))] flex-col">
+			<img src={ c.Image } alt="" loading="lazy" decoding="async" class="min-h-0 flex-1 object-cover object-left-top"/>
+			<div class="border-t border-hairline px-[var(--wall-pad)] py-[0.8em]">
+				@wallLabel(c.Label)
+			</div>
+		</div>
+	} else {
+		<div class="flex h-full flex-col items-center">
+			<div class="flex min-h-0 w-full flex-1 items-center justify-center rounded-[0.8em] bg-[radial-gradient(circle_at_50%_40%,color-mix(in_oklab,var(--north-signal)_18%,transparent),transparent_70%)]">
+				<img src={ c.Image } alt="" loading="lazy" decoding="async" class="max-h-[85%] max-w-[85%] object-contain"/>
+			</div>
+			<div class="pt-[0.8em]">
+				@wallLabel(c.Label)
+			</div>
+		</div>
+	}
+}
