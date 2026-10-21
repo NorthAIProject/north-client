@@ -138,7 +138,7 @@ var Catalog = []BYOProvider{
 	{
 		// Native Messages API through the official SDK; see internal/ai/anthropic.
 		Name: "anthropic", Label: "Anthropic (Claude)",
-		BaseURL: "https://api.anthropic.com", DefaultModel: "claude-opus-5",
+		BaseURL: "https://api.anthropic.com", DefaultModel: "claude-opus-5-5",
 		KeyHint: "sk-ant-…", VerifyPath: "/v1/models", KeyHeader: "x-api-key", SeesImages: true,
 		VerifyHeaders: map[string]string{"anthropic-version": "2023-06-01"},
 		Note:          "Claude on your own Anthropic account. Billed to that account.",

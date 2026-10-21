@@ -80,7 +80,7 @@ func New(opts Options) (*Client, error) {
 
 	model := opts.DefaultModel
 	if model == "" {
-		model = "claude-opus-5"
+		model = "claude-opus-5-5"
 	}
 	return &Client{
 		sdk:          sdk.NewClient(reqOpts...),
