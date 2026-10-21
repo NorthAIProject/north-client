@@ -331,7 +331,9 @@ func TestImportForCoachSpendsNothingOnARefusedFileOrWhileBusy(t *testing.T) {
 		t.Fatalf("second import: err = %v, want busy", err)
 	}
 	close(reader.release)
-	<-done
+	if err := <-done; err != nil {
+		t.Fatalf("first import: %v", err)
+	}
 	if q.spent != 1 {
 		t.Fatalf("quota spent %d times, want once: the busy import must spend nothing", q.spent)
 	}
