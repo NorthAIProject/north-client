@@ -560,3 +560,110 @@ html:has([data-landing]) {
   font-weight: 400;
   color: var(--muted-foreground);
 }
+
+/* Landing hero card wall (web/landing/herowall.templ). Plain CSS rather than
+   utilities because the geometry is one unit: the hero's bottom padding, the
+   wall's height, every slot's offset and the fade are all sized against the
+   one card height, and the per-slot values arrive as custom properties from
+   Go (herowall.go). */
+.hero {
+  --wall-card-h: clamp(11rem, 26vh, 18rem);
+  /* Room for the front row's middle card (it sits 20% below the line). */
+  padding-bottom: calc(var(--wall-card-h) * 0.8 + 3rem);
+}
+@media (min-width: 48rem) {
+  .hero {
+    /* From md the back row shows, arched up 14.6% at its middle. */
+    padding-bottom: calc(var(--wall-card-h) * 1.05 + 3rem);
+  }
+}
+.hero-wall {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  height: calc(var(--wall-card-h) * 1.4);
+  overflow: hidden;
+  pointer-events: none;
+}
+/* Each row is its own stacking context, so a slot's z-index (middle cards
+   on top) only orders it against its own row. */
+.hero-wall-row {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+.hero-wall-front {
+  z-index: 2;
+}
+.hero-wall-slot {
+  position: absolute;
+  bottom: 0;
+  left: var(--x);
+  transform-origin: bottom;
+  /* A phone shows five cards; the full fan angle would tip them out. */
+  rotate: calc(var(--rot) * 0.55);
+  translate: -50% var(--y);
+}
+@media (min-width: 48rem) {
+  .hero-wall-slot {
+    rotate: var(--rot);
+  }
+}
+.hero-wall-back .hero-wall-slot {
+  scale: 0.9;
+}
+.hero-wall-sway {
+  animation: hero-wall-sway 7s ease-in-out infinite;
+  animation-delay: var(--delay);
+}
+.hero-wall-face {
+  height: var(--wall-card-h);
+  aspect-ratio: 2 / 3;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--card);
+  color: var(--card-foreground);
+  box-shadow: 0 24px 48px -12px rgb(0 0 0 / 0.28);
+  container-type: inline-size;
+  filter: brightness(0.92);
+}
+.dark .hero-wall-face {
+  border-color: rgb(255 255 255 / 0.1);
+  box-shadow: 0 24px 48px -12px rgb(0 0 0 / 0.7);
+  filter: brightness(0.7);
+}
+.hero-wall-body {
+  --wall-pad: 0.95em;
+  height: 100%;
+  padding: var(--wall-pad);
+  /* Type follows the card, not the page: 13px on a 176px-wide card. */
+  font-size: 7.4cqi;
+  line-height: 1.3;
+  text-align: left;
+}
+.hero-wall-fade {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  background: linear-gradient(
+    to top,
+    var(--background) 0%,
+    color-mix(in oklch, var(--background) 50%, transparent) 30%,
+    transparent 60%
+  );
+}
+@keyframes hero-wall-sway {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero-wall-sway {
+    animation: none;
+  }
+}

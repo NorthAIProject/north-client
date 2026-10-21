@@ -16,7 +16,7 @@ import (
 
 // tourLinks is the strip under the hero that jumps to each section.
 templ tourLinks() {
-	<nav aria-label={ i18n.T(ctx, "land.tour.aria") } class="-mx-1 mt-12 flex flex-wrap gap-2">
+	<nav aria-label={ i18n.T(ctx, "land.tour.aria") } class="-mx-1 flex flex-wrap gap-2">
 		@tourLink("#day", i18n.T(ctx, "land.tour.day"))
 		@tourLink("#patterns", i18n.T(ctx, "land.tour.patterns"))
 		@tourLink("#coach-builds", i18n.T(ctx, "land.tour.plans"))
@@ -241,7 +241,7 @@ templ iphoneSection() {
 					@phoneFeature("timer", i18n.T(ctx, "land.iphone.3.title"), i18n.T(ctx, "land.iphone.3.body"))
 					@phoneFeature("chart-line", i18n.T(ctx, "land.iphone.4.title"), i18n.T(ctx, "land.iphone.4.body"))
 				</ul>
-				@appButtons("mt-8")
+				@appButtons("mt-8 items-start")
 			</div>
 			@phoneMock()
 		</div>
