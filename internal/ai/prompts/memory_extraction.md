@@ -22,7 +22,7 @@ Only facts the **user clearly stated or firmly affirmed**, such as:
 - Medical diagnoses
 - Secrets, passwords, or tokens
 
-## Critical rule
+## Default to nothing
 
 **Prefer zero facts over inventing one.**
 

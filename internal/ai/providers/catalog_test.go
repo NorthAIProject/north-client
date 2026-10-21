@@ -12,7 +12,7 @@ func TestAnthropicIsAProviderAKeyCanBeBroughtFor(t *testing.T) {
 	if !ok {
 		t.Fatal("anthropic is not in the catalogue")
 	}
-	if entry.DefaultModel != "claude-opus-5" || entry.KeyHeader != "x-api-key" || entry.VerifyPath != "/v1/models" {
+	if entry.DefaultModel != "claude-opus-5-5" || entry.KeyHeader != "x-api-key" || entry.VerifyPath != "/v1/models" {
 		t.Errorf("entry = %+v", entry)
 	}
 
