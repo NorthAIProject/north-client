@@ -125,7 +125,10 @@ func TestOneImportAtATime(t *testing.T) {
 		t.Fatalf("second import err = %v, want busy", err)
 	}
 	close(release)
-	<-done
+	// The fake answers "not a plan", so that is how the first import ends.
+	if err := <-done; ReasonOf(err) != ReasonNotAPlan {
+		t.Fatalf("first import err = %v, want not a plan", err)
+	}
 
 	// Finished means free again.
 	if _, err := svc.ParseWorkout(context.Background(), user, "plan.csv", []byte("exercise\nSquat"), ""); err != nil {
