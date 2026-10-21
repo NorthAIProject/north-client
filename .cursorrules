@@ -3,16 +3,8 @@
 ## What gopls-mcp does (and what it doesn't)
 
 gopls-mcp is **strictly a semantic Go layer** built on top of gopls's type
-checker. It exposes six tools — that's the whole surface area:
-
-| Task | Tool |
-|------|------|
-| Jump to definition | `go_definition` |
-| Find interface implementations | `go_implementation` |
-| Find symbol references | `go_symbol_references` |
-| Trace call relationships | `go_get_call_hierarchy` |
-| Analyze package dependencies | `go_get_dependency_graph` |
-| Preview a symbol rename | `go_dryrun_rename_symbol` |
+checker. It exposes the six tools in the table below — that's the whole
+surface area.
 
 These cannot be replaced by `Grep` + `Read`, because Go's type system makes
 interfaces, scopes, and identity invisible to text search.
@@ -37,8 +29,9 @@ deliberately don't ship duplicates.
 
 ## Routing rules
 
-1. **Semantic relationship?** Use the table above. Never fall back to grep —
-   you'd miss interface satisfaction, shadowing, cross-package identity.
+1. **Semantic relationship?** Use the table above rather than grep — text
+   search misses interface satisfaction, shadowing, cross-package identity.
+   If a tool returns nothing, see Error handling below.
 2. **Text search / file listing / build / mod?** Use `Grep` / `Glob` /
    `Read` / `Bash`. There is no gopls-mcp tool for these.
 3. **Output**: present `file:line` locations, signatures, and docs cleanly.
