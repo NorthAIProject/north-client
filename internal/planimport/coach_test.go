@@ -331,7 +331,10 @@ func TestImportForCoachSpendsNothingOnARefusedFileOrWhileBusy(t *testing.T) {
 		t.Fatalf("second import: err = %v, want busy", err)
 	}
 	close(reader.release)
-	<-done
+	// The stub reader returns no foods, so that is how the first import ends.
+	if err := <-done; planimport.ReasonOf(err) != planimport.ReasonNotAPlan {
+		t.Fatalf("first import: err = %v, want not a plan", err)
+	}
 	if q.spent != 1 {
 		t.Fatalf("quota spent %d times, want once: the busy import must spend nothing", q.spent)
 	}
