@@ -150,6 +150,13 @@ func (s *Service) Redeem(ctx context.Context, inviteeID uuid.UUID, code string) 
 	if err != nil {
 		return false, err
 	}
+	// Both sides now follow each other: either may have just gained a first
+	// follower.
+	if result.Connected && s.awards != nil {
+		now := time.Now()
+		s.awards.Check(ctx, invite.Inviter.ID, now, award.Social)
+		s.awards.Check(ctx, inviteeID, now, award.Social)
+	}
 	if result.Attributed && s.funnel != nil {
 		s.funnel.InviteRedeemed(ctx, inviteeID, invite.Channel)
 	}

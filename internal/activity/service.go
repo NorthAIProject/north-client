@@ -35,6 +35,7 @@ type Service struct {
 	sync         SyncHook
 	achievements Achievements
 	awards       Awards
+	now          func() time.Time
 }
 
 // Achievements records a finished session for friends to see, when its owner
@@ -54,17 +55,12 @@ func (s *Service) WithAchievements(a Achievements) *Service {
 }
 
 // achieve reports a finished session; a session without an end is not one.
-func (s *Service) achieve(ctx context.Context, session Session) {
+func (s *Service) achieve(ctx context.Context, session Session, checkAwards bool) {
 	if session.EndedAt == nil {
 		return
 	}
-	if s.awards != nil {
-		areas := []award.Area{award.Training}
-		if session.Source == SourceStrava {
-			// A synced workout is a day of the connected-device badge.
-			areas = append(areas, award.Body)
-		}
-		s.awards.Check(ctx, session.UserID, *session.EndedAt, areas...)
+	if checkAwards {
+		s.CheckAwards(ctx, session.UserID, session.Source)
 	}
 	if s.achievements == nil {
 		return
@@ -77,8 +73,29 @@ func (s *Service) achieve(ctx context.Context, session Session) {
 		int(session.Elapsed(*session.EndedAt).Minutes()), *session.EndedAt)
 }
 
+// WithClock fixes now, for tests.
+func (s *Service) WithClock(now func() time.Time) *Service {
+	s.now = now
+	return s
+}
+
+// CheckAwards checks the training badges (and the connected-device one for a
+// Strava session) at the moment it runs: a badge is earned when it is
+// noticed, whatever date the workout carries. Batch importers set
+// ImportInput.SkipAwards and call this once after the batch.
+func (s *Service) CheckAwards(ctx context.Context, userID uuid.UUID, source string) {
+	if s.awards == nil {
+		return
+	}
+	areas := []award.Area{award.Training}
+	if source == SourceStrava {
+		areas = append(areas, award.Body)
+	}
+	s.awards.Check(ctx, userID, s.now(), areas...)
+}
+
 func NewService(repo *Repository, lookup BiometricsLookup) *Service {
-	return &Service{repo: repo, biometrics: lookup}
+	return &Service{repo: repo, biometrics: lookup, now: time.Now}
 }
 
 func (s *Service) WithSync(hook SyncHook) *Service {
@@ -167,7 +184,7 @@ func (s *Service) Stop(ctx context.Context, id, userID uuid.UUID) (Session, erro
 	if err != nil {
 		return Session{}, err
 	}
-	s.achieve(ctx, completed)
+	s.achieve(ctx, completed, true)
 
 	if s.sync != nil {
 		title := completed.PlanWeekday
@@ -311,7 +328,7 @@ func (s *Service) Log(ctx context.Context, userID uuid.UUID, in LogInput) (Sessi
 	if err != nil {
 		return Session{}, err
 	}
-	s.achieve(ctx, session)
+	s.achieve(ctx, session, true)
 	if s.sync != nil {
 		_ = s.sync.OnWorkoutCompleted(ctx, userID, in.ActivityCode)
 	}
@@ -342,6 +359,10 @@ type ImportInput struct {
 	ElevationM float64
 	// Indoor is nil when the provider did not say.
 	Indoor *bool
+
+	// SkipAwards leaves the badge check to the caller, who checks once after
+	// the whole batch (see CheckAwards).
+	SkipAwards bool
 }
 
 // Import records a finished session from a provider, reporting false when it
@@ -381,7 +402,7 @@ func (s *Service) Import(ctx context.Context, in ImportInput) (Session, bool, er
 		_ = s.sync.OnWorkoutCompleted(ctx, in.UserID, in.ActivityCode)
 	}
 	if err == nil && created {
-		s.achieve(ctx, session)
+		s.achieve(ctx, session, !in.SkipAwards)
 	}
 	return session, created, err
 }
