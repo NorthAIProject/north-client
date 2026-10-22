@@ -41,6 +41,8 @@ import (
 	"github.com/NorthAIProject/north-client/internal/exercises"
 	"github.com/NorthAIProject/north-client/internal/export"
 	"github.com/NorthAIProject/north-client/internal/fasting"
+	"github.com/NorthAIProject/north-client/internal/firstweek"
+	"github.com/NorthAIProject/north-client/internal/firstweek/logproofs"
 	"github.com/NorthAIProject/north-client/internal/fitness"
 	"github.com/NorthAIProject/north-client/internal/fitness/strava"
 	"github.com/NorthAIProject/north-client/internal/goals"
@@ -382,7 +384,7 @@ func routes(
 	// Declared here rather than with the other lifestyle slices below because
 	// the fitness hub reads it: readings a device pushed are part of what that
 	// page is for.
-	healthSvc := health.NewService(health.NewRepository(pool))
+	healthSvc := health.NewService(health.NewRepository(pool)).WithFunnel(funnel)
 	// Lets one push carry finished workouts as well as readings. The activity
 	// slice owns the dedupe and the calorie estimate, so a synced session is
 	// costed exactly like a manually logged one.
@@ -965,9 +967,18 @@ func routes(
 	// Given the coach so the questionnaire ends in a thread that is already
 	// being answered, rather than an empty chat box the person has to think of
 	// something to say to.
+	firstWeekSvc := firstweek.NewService(firstweek.Options{
+		Repository: firstweek.NewRepository(pool),
+		Goals:      goalSvc,
+		Users:      userSvc,
+		Proofs:     logproofs.For(sleepSvc, activitySvc, liftSvc, foodLogSvc, mindSvc, checkinSvc),
+		Funnel:     funnel,
+		Enabled:    cfg.FirstWeekEnabled,
+	})
 	onboardingSvc := onboarding.NewService(userSvc, memorySvc, goalSvc).
 		WithCoach(coachSvc, slog.Default()).
-		WithFunnel(funnel)
+		WithFunnel(funnel).
+		WithFirstWeek(firstWeekSvc)
 	onboardingHandler := onboarding.NewHandler(onboardingSvc)
 	onboardingAPI := onboarding.NewAPI(onboardingSvc)
 
@@ -1135,6 +1146,7 @@ func routes(
 			inbox:        inbox.NewAPI(inboxSvc),
 			lighter:      lighterday.NewAPI(lighterSvc),
 			outreach:     outreach.NewAPI(outreachSvc),
+			firstWeek:    firstweek.NewAPI(firstWeekSvc),
 		})
 	})
 
