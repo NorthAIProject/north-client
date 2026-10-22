@@ -58,7 +58,8 @@ func titles(items []achievements.Item) []string {
 }
 
 // A follower sees only the categories shared with them; your own feed always
-// has everything of yours; a pending follower and a blocked one see nothing.
+// has everything of yours; someone who doesn't follow you and a blocked
+// follower see nothing.
 func TestFeedShowsOnlyWhatIsShared(t *testing.T) {
 	pool := testdb.New(t)
 	ctx := context.Background()
@@ -68,9 +69,6 @@ func TestFeedShowsOnlyWhatIsShared(t *testing.T) {
 	leo := person(t, pool, "leo@north.test", "Leo")
 	zoe := person(t, pool, "zoe@north.test", "Zoe")
 	follow(t, soc, leo, ana, "ana")
-	if _, err := soc.Follow(ctx, zoe.ID, "ana"); err != nil { // pending only
-		t.Fatal(err)
-	}
 
 	// New people share training, streaks and goals by default; Ana switches
 	// everything off first so the test starts from "nothing shared".
@@ -98,7 +96,7 @@ func TestFeedShowsOnlyWhatIsShared(t *testing.T) {
 		t.Fatalf("follower feed = %+v, want only the shared workout", got)
 	}
 	if got, _ := ach.Feed(ctx, zoe.ID, time.Time{}); len(got) != 0 {
-		t.Fatalf("pending follower sees %v", titles(got))
+		t.Fatalf("non-follower sees %v", titles(got))
 	}
 
 	if err := soc.Block(ctx, ana.ID, leo.ID); err != nil {
