@@ -69,15 +69,14 @@ func TestFriendsRendersInTheChosenLanguage(t *testing.T) {
 func TestNoEnglishLeaksIntoATranslatedFriendsPage(t *testing.T) {
 	englishOnly := []string{
 		"Your invite link",
-		"Waiting for your yes",
+		"Anyone can follow you.",
 		"Your handle",
 		"Follow somebody",
 		"What followers see",
 		"Phone number",
 		"Facebook friends on Khepri",
 		"Give kudos",
-		"Ask to follow",
-		"Withdraw",
+		"Followers see what you switch on here",
 		"Nobody follows you yet.",
 		"already connected to another Khepri account",
 	}

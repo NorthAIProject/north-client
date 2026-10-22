@@ -157,8 +157,8 @@ func (s *Service) Redeem(ctx context.Context, inviteeID uuid.UUID, code string) 
 }
 
 // Follow follows the person with this handle at once; there is no request to
-// approve. They are told once, the first time. A blocked or unknown handle is not found either way, so a block cannot be
-// detected by trying to follow.
+// approve. They are told once, the first time. A blocked or unknown handle is
+// not found either way, so a block cannot be detected by trying to follow.
 func (s *Service) Follow(ctx context.Context, followerID uuid.UUID, handle string) (Connection, error) {
 	target, err := s.repo.PersonByHandle(ctx, NormalizeHandle(handle))
 	if err != nil {
