@@ -22,4 +22,11 @@ var englishFirstWeek = map[string]string{
 	"firstweek.custom.label":  "Something else: my goal below",
 	"firstweek.custom.goal":   "My first week",
 	"firstweek.custom.action": "Do one thing toward your goal, then check in.",
+	"firstweek.card.title":    "Day %d of 7",
+	"firstweek.card.start":    "Your first week starts tomorrow. Each day:",
+	"firstweek.card.today":    "Today",
+	"firstweek.card.button":   "Done",
+	"firstweek.card.done":     "Done for today.",
+	"firstweek.card.progress": "%d of 7 days done",
+	"firstweek.card.last":     "Last day. Your week's review comes next.",
 }

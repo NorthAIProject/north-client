@@ -130,6 +130,7 @@ type Service struct {
 	decisions decisionSource
 	meds      medicationSource
 	progress  progressSource
+	firstWeek firstWeekSource
 	now       func() time.Time
 }
 
@@ -224,6 +225,13 @@ func (s *Service) WithSchedules(sc schedules) *Service {
 
 func (s *Service) WithMeals(m mealSource) *Service {
 	s.meals = m
+	return s
+}
+
+// WithFirstWeek hands the first-week notes to a running programme: its
+// evening note replaces the three fixed ones while it runs.
+func (s *Service) WithFirstWeek(f firstWeekSource) *Service {
+	s.firstWeek = f
 	return s
 }
 
@@ -498,7 +506,7 @@ func (s *Service) Evaluate(ctx context.Context, user users.User) (int, error) {
 	// First-week notes are the point of a new account. Missed-check-in and
 	// deadlines stay silent for a couple of days so a brand-new person is
 	// not told they are already behind.
-	n, err := s.evalFirstWeek(ctx, user, today)
+	n, err := s.evalFirstWeek(ctx, user, prefs, today, now)
 	if err != nil {
 		return created, err
 	}

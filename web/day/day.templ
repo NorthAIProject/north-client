@@ -22,6 +22,8 @@ templ Page(user users.User, data Data) {
 			@header(data)
 			if data.IsToday {
 				@recappages.StripLoader()
+				// The first week's day card, while a new person's week runs.
+				<div hx-get="/app/first-week" hx-trigger="load" hx-swap="outerHTML"></div>
 				// The coach's message, on a day it chose to speak first.
 				<div hx-get="/app/outreach" hx-trigger="load" hx-swap="outerHTML"></div>
 			}

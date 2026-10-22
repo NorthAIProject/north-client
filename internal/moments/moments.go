@@ -31,6 +31,7 @@ const (
 	KindStreak    = "streak"
 	KindGoal      = "goal_achieved"
 	KindMilestone = "milestone_completed"
+	KindFirstWeek = "first_week_three"
 )
 
 // Moment is one card: the mascot, a title, a line.
@@ -71,5 +72,16 @@ func ForMilestoneCompleted(ctx context.Context, goalTitle, milestoneTitle string
 		Kind:  KindMilestone,
 		Title: i18n.T(ctx, "moments.milestone.title"),
 		Body:  i18n.Tf(ctx, "moments.milestone.body", milestoneTitle, goalTitle),
+	}
+}
+
+// ForFirstWeekThree is the card for the first three days of a first week
+// (internal/firstweek) all done: the point where one action a day starts to
+// look like a habit.
+func ForFirstWeekThree(ctx context.Context) Moment {
+	return Moment{
+		Kind:  KindFirstWeek,
+		Title: i18n.T(ctx, "moments.firstweek.three.title"),
+		Body:  i18n.T(ctx, "moments.firstweek.three.body"),
 	}
 }

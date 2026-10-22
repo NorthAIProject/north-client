@@ -1,0 +1,119 @@
+// Package firstweek renders the first week's day card on My Day and the
+// dashboard. internal/firstweek decides what it says.
+package firstweek
+
+import (
+	"fmt"
+
+	"github.com/NorthAIProject/north-client/internal/moments"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
+	"github.com/NorthAIProject/north-client/web/shared/moment"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
+)
+
+// CardID is where the card renders and re-renders after Done.
+const CardID = "first-week-card"
+
+// Card is the week as of today.
+type Card struct {
+	Show bool
+	// Day is the programme day: 0 before the week starts, 1 to 7 during it.
+	Day int
+	// Days are the seven days, done or not.
+	Days []bool
+	// Action is today's one action, in the person's language.
+	Action string
+	Done   bool
+	Moment *moments.Moment
+}
+
+func (c Card) doneCount() int {
+	n := 0
+	for _, d := range c.Days {
+		if d {
+			n++
+		}
+	}
+	return n
+}
+
+// Fragment is loaded with hx-get and swapped after Done. It renders an empty
+// anchor when there is no week to show.
+templ Fragment(c Card) {
+	<div id={ CardID } class="space-y-3">
+		if c.Show {
+			if c.Moment != nil {
+				@moment.Card(*c.Moment)
+			}
+			@card.Card(card.Props{Class: "border-signal/40", Attributes: templ.Attributes{"data-testid": "first-week-card"}}) {
+				@card.Content(card.ContentProps{Class: "space-y-3 pt-5"}) {
+					<div class="flex items-center justify-between gap-3">
+						<p class="text-signal text-xs font-medium tracking-wide uppercase">
+							if c.Day == 0 {
+								{ i18n.T(ctx, "firstweek.card.start") }
+							} else {
+								{ i18n.Tf(ctx, "firstweek.card.title", c.Day) }
+							}
+						</p>
+						if c.Day > 0 {
+							@dots(c)
+						}
+					</div>
+					<p class="text-sm leading-relaxed" data-testid="first-week-action">{ c.Action }</p>
+					if c.Day == 7 {
+						<p class="text-muted-foreground text-xs">{ i18n.T(ctx, "firstweek.card.last") }</p>
+					}
+					if c.Day > 0 {
+						if c.Done {
+							<p class="text-muted-foreground flex items-center gap-1.5 text-xs" data-testid="first-week-done">
+								@icon.Icon("check")(icon.Props{Class: "size-3.5"})
+								{ i18n.T(ctx, "firstweek.card.done") }
+							</p>
+						} else {
+							<form
+								hx-post="/app/first-week/done"
+								hx-target={ "#" + CardID }
+								hx-swap="outerHTML"
+								hx-disable="find button"
+								method="post"
+								action={ templ.SafeURL("/app/first-week/done") }
+							>
+								@ui.CSRFInput()
+								@button.Button(button.Props{
+									Type: button.TypeSubmit, Size: button.SizeSm,
+									Attributes: templ.Attributes{"data-testid": "first-week-mark-done"},
+								}) {
+									{ i18n.T(ctx, "firstweek.card.button") }
+								}
+							</form>
+						}
+					}
+				}
+			}
+		}
+	</div>
+}
+
+// dots are the seven days, filled when done. Plain spans: a seven-step
+// strip is not a progress bar, and templUI has no stepper.
+templ dots(c Card) {
+	<div class="flex items-center gap-1" role="img" aria-label={ i18n.Tf(ctx, "firstweek.card.progress", c.doneCount()) }>
+		for i, done := range c.Days {
+			<span class={ dotClass(i+1, c.Day, done) } data-day={ fmt.Sprint(i + 1) } data-done={ fmt.Sprint(done) }></span>
+		}
+	</div>
+}
+
+func dotClass(day, today int, done bool) string {
+	switch {
+	case done:
+		return "bg-signal size-2 rounded-full"
+	case day == today:
+		return "border-signal size-2 rounded-full border"
+	default:
+		return "bg-muted size-2 rounded-full"
+	}
+}

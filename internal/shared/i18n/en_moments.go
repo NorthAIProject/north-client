@@ -21,5 +21,7 @@ var englishMoments = map[string]string{
 	"moments.goal.body":       "You named it, you did it. Khepri will remember this one.",
 	"moments.milestone.title": "Checkpoint reached",
 	// The checkpoint, then the goal it leads to.
-	"moments.milestone.body": "“%[1]s”, on the way to “%[2]s”.",
+	"moments.milestone.body":        "“%[1]s”, on the way to “%[2]s”.",
+	"moments.firstweek.three.title": "3 of 3 days",
+	"moments.firstweek.three.body":  "Three days, three times. Four to go.",
 }

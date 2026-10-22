@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/conversations"
+	"github.com/NorthAIProject/north-client/internal/firstweek"
 	"github.com/NorthAIProject/north-client/internal/lighterday"
 	"github.com/NorthAIProject/north-client/internal/messaging"
 	"github.com/NorthAIProject/north-client/internal/notifications"
@@ -62,18 +63,26 @@ type Chat interface {
 	ResolveTagged(ctx context.Context, userID uuid.UUID, kind, dedupeKey, updatedText string) error
 }
 
+// FirstWeek is the person's first week, which owns the morning slot while
+// it runs. firstweek.Service satisfies it.
+type FirstWeek interface {
+	Today(ctx context.Context, user users.User) (firstweek.Today, bool, error)
+	MarkDone(ctx context.Context, user users.User) (firstweek.Today, error)
+}
+
 // Users pages the accounts the sweep visits. users.Service satisfies it.
 type Users interface {
 	ListOnboarded(ctx context.Context, after uuid.UUID, limit int) ([]users.User, error)
 }
 
-// Options are the service's collaborators. Lighter and Training may be nil,
-// which turns their trigger off; the rest are needed.
+// Options are the service's collaborators. Lighter, Training and FirstWeek
+// may be nil, which turns their trigger off; the rest are needed.
 type Options struct {
 	Repository *Repository
 	Prefs      Prefs
 	Lighter    Lighter
 	Training   Training
+	FirstWeek  FirstWeek
 	Writer     Writer
 	Chats      Chats
 	Notifier   Notifier
@@ -83,22 +92,23 @@ type Options struct {
 }
 
 type Service struct {
-	repo     *Repository
-	prefs    Prefs
-	lighter  Lighter
-	training Training
-	writer   Writer
-	chats    Chats
-	notifier Notifier
-	chat     Chat
-	users    Users
-	log      *slog.Logger
-	now      func() time.Time
+	repo      *Repository
+	prefs     Prefs
+	lighter   Lighter
+	training  Training
+	firstWeek FirstWeek
+	writer    Writer
+	chats     Chats
+	notifier  Notifier
+	chat      Chat
+	users     Users
+	log       *slog.Logger
+	now       func() time.Time
 }
 
 func NewService(o Options) *Service {
 	s := &Service{
-		repo: o.Repository, prefs: o.Prefs, lighter: o.Lighter, training: o.Training,
+		repo: o.Repository, prefs: o.Prefs, lighter: o.Lighter, training: o.Training, firstWeek: o.FirstWeek,
 		writer: o.Writer, chats: o.Chats, notifier: o.Notifier, chat: o.Chat, users: o.Users,
 		log: o.Log, now: time.Now,
 	}
@@ -116,6 +126,12 @@ func (s *Service) WithClock(now func() time.Time) *Service { s.now = now; return
 const (
 	recoveryFrom, recoveryUntil = 7, 12
 	missedFrom, missedUntil     = 9, 20
+	// The first week's morning: from 08:00, and up to three hours late for a
+	// sweep that missed the hour. Later than that it would read as an
+	// afternoon nag about a morning, so the day goes without.
+	firstWeekFrom, firstWeekUntil = 8, 11
+	// The last day with a morning action message; day 7 is the review's.
+	firstWeekLastMorning = 6
 )
 
 // Evaluate sends today's outreach for one person if something warrants it.
@@ -135,6 +151,21 @@ func (s *Service) Evaluate(ctx context.Context, user users.User) (sent bool, err
 		return false, nil
 	} else if !apperr.Is(err, apperr.ErrNotFound) {
 		return false, err
+	}
+
+	// A running first week owns the morning: the other triggers stay quiet
+	// for the whole week rather than compete for the one message a day.
+	week, inWeek, err := s.runningWeek(ctx, user)
+	if err != nil {
+		return false, err
+	}
+	if inWeek {
+		o, ok, err := s.firstWeekMorning(ctx, user, prefs, week, local)
+		if err != nil || !ok {
+			return false, err
+		}
+		s.send(ctx, user, o)
+		return true, nil
 	}
 
 	o, ok, err := s.lowRecovery(ctx, user, prefs, local)
@@ -166,6 +197,51 @@ func (s *Service) lowRecovery(ctx context.Context, user users.User, prefs notifi
 		facts.Applied = true
 	}
 	return s.repo.Claim(ctx, user.ID, timerange.StartOfDay(local), TriggerLowRecovery, facts)
+}
+
+// runningWeek is the person's first week when it is active and on one of
+// its seven days.
+func (s *Service) runningWeek(ctx context.Context, user users.User) (firstweek.Today, bool, error) {
+	if s.firstWeek == nil {
+		return firstweek.Today{}, false, nil
+	}
+	t, ok, err := s.firstWeek.Today(ctx, user)
+	if err != nil || !ok {
+		return firstweek.Today{}, false, err
+	}
+	return t, t.Programme.Status == firstweek.StatusActive && firstweek.InWeek(t.Day), nil
+}
+
+// firstWeekMorning claims the day's first-week message on days 1 to 6. What
+// the low-recovery and missed-session triggers would have said rides along
+// in the facts, and nothing is changed on the person's behalf that week.
+// A person who gets the daily briefing has had their morning message.
+func (s *Service) firstWeekMorning(ctx context.Context, user users.User, prefs notifications.Prefs, week firstweek.Today, local time.Time) (Outreach, bool, error) {
+	if week.Day > firstWeekLastMorning || prefs.DailyBriefingAuto ||
+		local.Hour() < firstWeekFrom || local.Hour() >= firstWeekUntil {
+		return Outreach{}, false, nil
+	}
+	facts := Facts{FirstWeekDay: week.Day, Template: week.Programme.Template}
+	if week.Day > 1 {
+		facts.YesterdayDone = week.Days[week.Day-2].Done
+	}
+	// The extras are colour, not the reason to write: one that cannot be
+	// read leaves the message without it.
+	if s.lighter != nil {
+		if t, err := s.lighter.Today(ctx, user); err != nil {
+			s.log.Warn("outreach: first week could not read recovery", "user_id", user.ID, "error", err)
+		} else if t.Offered() {
+			facts.Session, facts.Reason = t.Session, t.Recovery.WhyIn(ctx)
+		}
+	}
+	if s.training != nil {
+		if m, ok, err := s.training.MissedYesterday(ctx, user, local); err != nil {
+			s.log.Warn("outreach: first week could not read training", "user_id", user.ID, "error", err)
+		} else if ok {
+			facts.Missed, facts.Weekday = m.Title, m.Weekday
+		}
+	}
+	return s.repo.Claim(ctx, user.ID, timerange.StartOfDay(local), TriggerFirstWeek, facts)
 }
 
 func (s *Service) missedSession(ctx context.Context, user users.User, local time.Time) (Outreach, bool, error) {
@@ -284,6 +360,11 @@ func (s *Service) act(ctx context.Context, user users.User, o Outreach, action s
 		_, err = s.training.MoveMissed(ctx, user, now, workouts.MoveTomorrow)
 	case ActionLetGo:
 		// The rotation already carries an untrained session forward.
+	case ActionDone:
+		if s.firstWeek == nil {
+			return Outreach{}, apperr.Wrap(apperr.ErrNotFound, "the first week is not available")
+		}
+		_, err = s.firstWeek.MarkDone(ctx, user)
 	}
 	if err != nil {
 		return Outreach{}, err
@@ -347,6 +428,8 @@ func chatOptions(ctx context.Context, o Outreach) []messaging.Option {
 func situation(o Outreach) string {
 	f := o.Facts
 	switch o.Trigger {
+	case TriggerFirstWeek:
+		return firstWeekSituation(f)
 	case TriggerLowRecovery:
 		s := fmt.Sprintf("This morning their recovery is under their usual (%s). Today's planned session is %s.", strings.TrimSpace(f.Reason), f.Session)
 		if f.Applied {
@@ -369,10 +452,38 @@ func situation(o Outreach) string {
 	}
 }
 
+// firstWeekSituation is the first week's morning: where they are in the
+// week, yesterday, and the one action for today. The action is given in
+// English for the same reason as the rest; the coach words it in theirs.
+func firstWeekSituation(f Facts) string {
+	en := i18n.WithLocale(context.Background(), "en")
+	var b strings.Builder
+	fmt.Fprintf(&b, "This is day %d of 7 of their first week with you. They chose to work on: %s.", f.FirstWeekDay, i18n.T(en, "firstweek."+f.Template+".label"))
+	switch {
+	case f.FirstWeekDay == 1:
+		b.WriteString(" Today is the first day.")
+	case f.YesterdayDone:
+		b.WriteString(" Yesterday they did the day's action.")
+	default:
+		b.WriteString(" Yesterday's action was not logged.")
+	}
+	b.WriteString(" If their data shows something specific about yesterday for this (last night's sleep, a workout, a meal, a journal entry), name it in one phrase with the number.")
+	if f.Reason != "" {
+		fmt.Fprintf(&b, " Their recovery this morning is under their usual (%s); today's planned session is %s, so the action can be easy.", strings.TrimSpace(f.Reason), f.Session)
+	}
+	if f.Missed != "" {
+		fmt.Fprintf(&b, " Yesterday's planned session, %s (%s), did not happen; mention it only if it fits, without guilt.", f.Missed, f.Weekday)
+	}
+	fmt.Fprintf(&b, " Today's one action: %s They can mark it done with the button.", i18n.T(en, "firstweek."+f.Template+".action"))
+	return b.String()
+}
+
 // fallback is the message when the coach could not write one.
 func fallback(ctx context.Context, o Outreach) string {
 	f := o.Facts
 	switch {
+	case o.Trigger == TriggerFirstWeek:
+		return i18n.Tf(ctx, "outreach.fallback.firstweek", f.FirstWeekDay, i18n.T(ctx, "firstweek."+f.Template+".action"))
 	case o.Trigger == TriggerLowRecovery && f.Applied:
 		return i18n.Tf(ctx, "outreach.fallback.lighter.applied", f.Session)
 	case o.Trigger == TriggerLowRecovery:

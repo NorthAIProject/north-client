@@ -38,6 +38,8 @@ var portugueseBrazilianNudges = map[string]string{
 	"nudges.firstweek.evidence.body":  "Um levantamento, uma refeição ou como você está hoje. Vou treinar você a partir do que eu vir.",
 	"nudges.firstweek.review.title":   "Sua primeira semana",
 	"nudges.firstweek.review.body":    "Abra o treinador e me conte o que ficou. Vou guardar o que importa.",
+	"nudges.firstweek.evening.title":  "Dia %d de 7: ainda em aberto",
+	"nudges.firstweek.evening.body":   "A tarefa de hoje: %s Registre, ou toque em Feito se já fez.",
 	"nudges.workout.title":            "Comece a sessão de hoje",
 	"nudges.workout.default":          "Sessão de hoje",
 	"nudges.photo.ask.title":          "Mande uma foto",
