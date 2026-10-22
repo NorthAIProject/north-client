@@ -54,7 +54,7 @@ var portugueseBrazilianSocial = map[string]string{
 	"social.ago.days":    "há %[1]d d",
 
 	"social.sharing.title":    "O que os seguidores veem",
-	"social.sharing.desc":     "Desligado até você ligar. Seu diário, suas decisões, sua alimentação e seus números de saúde nunca são compartilhados.",
+	"social.sharing.desc":     "Seus seguidores veem o que você ligar aqui. Seu diário, suas decisões, sua alimentação e seus números de saúde nunca são compartilhados.",
 	"social.sharing.training": "Os treinos que você termina, e quantos já fez nesta semana",
 	"social.sharing.streaks":  "Sequências de registros (7, 30, 100 dias…) e a sua sequência atual",
 	"social.sharing.goals":    "Os objetivos e marcos que você conclui",

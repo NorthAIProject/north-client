@@ -56,7 +56,7 @@ var englishSocial = map[string]string{
 	"social.ago.days":    "%[1]dd ago",
 
 	"social.sharing.title":    "What followers see",
-	"social.sharing.desc":     "Off until you turn it on. Your journal, decisions, food and health numbers are never shared.",
+	"social.sharing.desc":     "Followers see what you switch on here. Your journal, decisions, food and health numbers are never shared.",
 	"social.sharing.training": "Workouts you finish, and how many this week",
 	"social.sharing.streaks":  "Check-in streaks (7, 30, 100 days…) and your current one",
 	"social.sharing.goals":    "Goals and milestones you complete",
