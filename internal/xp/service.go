@@ -127,11 +127,11 @@ func (s *Service) Summary(ctx context.Context, user users.User, now time.Time) (
 	if err != nil {
 		return Summary{}, err
 	}
-	all, err := s.earned(ctx, ids, allTime(loc, now))
+	lifetime, err := s.lifetime(ctx, user.ID, loc, now)
 	if err != nil {
 		return Summary{}, err
 	}
-	out := Summary{Week: make([]Earned, 0, len(Kinds())), Total: total(all[user.ID])}
+	out := Summary{Week: make([]Earned, 0, len(Kinds())), Total: lifetime}
 	for _, kind := range Kinds() {
 		n := week[user.ID][kind]
 		out.Week = append(out.Week, Earned{Kind: kind, Count: n, Points: pointsFor(kind, n)})
@@ -139,6 +139,25 @@ func (s *Service) Summary(ctx context.Context, user users.User, now time.Time) (
 	}
 	out.Level = LevelFor(out.Total)
 	return out, nil
+}
+
+// lifetime is the person's XP across all time, counted in loc.
+func (s *Service) lifetime(ctx context.Context, userID uuid.UUID, loc *time.Location, now time.Time) (int, error) {
+	all, err := s.earned(ctx, []uuid.UUID{userID}, allTime(loc, now))
+	if err != nil {
+		return 0, err
+	}
+	return total(all[userID]), nil
+}
+
+// LevelOf is the level a person's lifetime XP has reached, counted in UTC.
+// It does not check the xp sharing switch: the caller decides who may see it.
+func (s *Service) LevelOf(ctx context.Context, userID uuid.UUID, now time.Time) (Level, error) {
+	n, err := s.lifetime(ctx, userID, time.UTC, now)
+	if err != nil {
+		return Level{}, err
+	}
+	return LevelFor(n), nil
 }
 
 // categoryOf is the sharing switch that puts a person on a metric's board.
