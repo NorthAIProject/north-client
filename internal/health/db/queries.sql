@@ -83,3 +83,8 @@ ORDER BY source;
 -- was given, but a person revoking a source is an explicit request to forget.
 DELETE FROM health_metrics
 WHERE user_id = $1 AND source = $2;
+
+-- name: HasHealthFromSource :one
+-- Whether a provider has ever delivered anything for this person: the first
+-- delivery is the moment the source counts as connected.
+SELECT EXISTS (SELECT 1 FROM health_metrics WHERE user_id = $1 AND source = $2);

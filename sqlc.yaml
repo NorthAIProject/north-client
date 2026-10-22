@@ -384,6 +384,16 @@ sql:
 
   - engine: postgresql
     schema: migrations
+    queries: internal/firstweek/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: firstweekdb
+        out: internal/firstweek/db
+        overrides: *overrides
+
+  - engine: postgresql
+    schema: migrations
     queries: internal/dailyposts/db/queries.sql
     gen:
       go:

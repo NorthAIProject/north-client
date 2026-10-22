@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/NorthAIProject/north-client/internal/analytics"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/stats/stat"
 )
@@ -17,10 +18,20 @@ type Service struct {
 	// only accepts readings.
 	activities ActivityImporter
 	biometrics BiometricsLookup
+
+	// funnel is nil-safe: no PostHog key, no events.
+	funnel *analytics.Funnel
 }
 
 func NewService(repo *Repository) *Service {
 	return &Service{repo: repo}
+}
+
+// WithFunnel attaches product analytics: the phone's first delivery counts
+// as Apple Health connected.
+func (s *Service) WithFunnel(f *analytics.Funnel) *Service {
+	s.funnel = f
+	return s
 }
 
 // Ingest records a payload of readings for one provider.
@@ -35,9 +46,24 @@ func (s *Service) Ingest(ctx context.Context, userID uuid.UUID, source string, r
 		return Result{}, err
 	}
 
+	// Apple Health has no connect step: the app simply starts sending. The
+	// first delivery is therefore the moment it counts as a source, and the
+	// check runs only when there is a funnel to tell.
+	first := false
+	if source == SourceAppleHealth && s.funnel != nil {
+		had, err := s.repo.HasFromSource(ctx, userID, source)
+		if err != nil {
+			return Result{}, err
+		}
+		first = !had
+	}
+
 	written, err := s.repo.Save(ctx, userID, source, readings)
 	if err != nil {
 		return Result{}, err
+	}
+	if first && written > 0 {
+		s.funnel.SourceConnected(ctx, userID, analytics.SourceAppleHealth)
 	}
 	return Result{Written: written}, nil
 }
