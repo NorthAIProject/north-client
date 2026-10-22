@@ -5,13 +5,19 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
+
+	"github.com/NorthAIProject/north-client/internal/achievements/achievement"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/social"
 	"github.com/NorthAIProject/north-client/internal/social/facebook"
+	"github.com/NorthAIProject/north-client/internal/users"
 )
 
 // The whole way in, as a browser takes it: the link, a cookie, then the first
@@ -164,5 +170,67 @@ func TestNativeFacebookCallbackRedirectsToTheApp(t *testing.T) {
 		if loc := rec.Header().Get("Location"); rec.Code != http.StatusFound || loc != social.FacebookReturnURL+"?result="+want {
 			t.Fatalf("%s: %d %q, want result=%s", query, rec.Code, loc, want)
 		}
+	}
+}
+
+// sharingStub is just enough of Achievements for the page to show the
+// sharing card.
+type sharingStub struct{ social.Achievements }
+
+func (sharingStub) Feed(context.Context, uuid.UUID, time.Time) ([]achievement.Item, error) {
+	return nil, nil
+}
+
+func (sharingStub) Sharing(context.Context, uuid.UUID) (achievement.Sharing, error) {
+	return achievement.Sharing{}, nil
+}
+
+func TestFriendsPageFollowIsInstant(t *testing.T) {
+	svc, _, _, pool := fixture(t)
+	ctx := context.Background()
+	ana := person(t, pool, "ana@north.test", "Ana")
+	joao := person(t, pool, "joao@north.test", "João")
+	if _, err := svc.SetHandle(ctx, joao.ID, "joao"); err != nil {
+		t.Fatal(err)
+	}
+
+	r := chi.NewRouter()
+	social.NewHandler(svc, "https://kheprios.com", false).WithAchievements(sharingStub{}).Routes(r)
+	do := func(u users.User, method, path string, form url.Values) *httptest.ResponseRecorder {
+		var body *strings.Reader
+		if form != nil {
+			body = strings.NewReader(form.Encode())
+		} else {
+			body = strings.NewReader("")
+		}
+		req := httptest.NewRequest(method, path, body)
+		if form != nil {
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		}
+		req = req.WithContext(auth.ContextWithUser(req.Context(), u))
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+		return rec
+	}
+
+	if rec := do(ana, http.MethodPost, "/friends/follow", url.Values{"follow": {"joao"}}); rec.Code != http.StatusSeeOther {
+		t.Fatalf("follow = %d", rec.Code)
+	}
+
+	a := do(ana, http.MethodGet, "/friends", nil)
+	if a.Code != http.StatusOK || !strings.Contains(a.Body.String(), "João") || !strings.Contains(a.Body.String(), "Unfollow") {
+		t.Fatalf("ana's page = %d, lacks João or Unfollow", a.Code)
+	}
+
+	b := do(joao, http.MethodGet, "/friends", nil)
+	body := b.Body.String()
+	if !strings.Contains(body, "Ana") {
+		t.Fatalf("joao's followers lack Ana")
+	}
+	if strings.Contains(body, "Waiting for your yes") {
+		t.Fatal("requests section still on the page")
+	}
+	if !strings.Contains(body, `id="sharing"`) {
+		t.Fatal("sharing card has no anchor")
 	}
 }

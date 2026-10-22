@@ -3,19 +3,14 @@ package i18n
 var portugueseEuropeanSocial = map[string]string{
 	"social.mono":  "Progresso",
 	"social.title": "Amigos",
-	"social.intro": "Quem te segue só vê o que escolhes partilhar. Ninguém te segue sem o teu sim.",
+	"social.intro": "Quem te segue só vê o que escolhes partilhar. Qualquer pessoa te pode seguir.",
 
-	"social.requests.title": "À espera do teu sim",
-	"social.accept":         "Aceitar",
-	"social.decline":        "Recusar",
-	"social.remove":         "Remover",
-	"social.block":          "Bloquear",
-	"social.unblock":        "Desbloquear",
-	"social.unfollow":       "Deixar de seguir",
-	"social.withdraw":       "Retirar",
-	"social.waiting":        "Pendente",
-	"social.nohandle":       "sem nome de utilizador",
-	"social.save":           "Guardar",
+	"social.remove":   "Remover",
+	"social.block":    "Bloquear",
+	"social.unblock":  "Desbloquear",
+	"social.unfollow": "Deixar de seguir",
+	"social.nohandle": "sem nome de utilizador",
+	"social.save":     "Guardar",
 
 	"social.following.title": "A seguir",
 	"social.following.empty": "Ainda ninguém. Segue alguém pelo nome de utilizador ou partilha o teu link.",
@@ -37,7 +32,7 @@ var portugueseEuropeanSocial = map[string]string{
 
 	"social.follow.title": "Seguir alguém",
 	"social.follow.label": "O nome de utilizador",
-	"social.follow.ask":   "Pedir para seguir",
+	"social.follow.ask":   "Seguir",
 
 	"social.invitepage.title":   "%[1]s convidou-te",
 	"social.invitepage.heading": "%[1]s convidou-te para o Khepri",
@@ -59,7 +54,7 @@ var portugueseEuropeanSocial = map[string]string{
 	"social.ago.days":    "há %[1]d d",
 
 	"social.sharing.title":    "O que os seguidores veem",
-	"social.sharing.desc":     "Desligado até o ligares. O teu diário, as tuas decisões, a alimentação e os números de saúde nunca são partilhados.",
+	"social.sharing.desc":     "Os teus seguidores veem o que ligares aqui. O teu diário, as tuas decisões, a alimentação e os números de saúde nunca são partilhados.",
 	"social.sharing.training": "Os treinos que terminas, e quantos levas esta semana",
 	"social.sharing.streaks":  "Sequências de registos (7, 30, 100 dias…) e a tua sequência atual",
 	"social.sharing.goals":    "Os objetivos e marcos que concluis",

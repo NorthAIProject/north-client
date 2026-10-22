@@ -210,6 +210,9 @@ func TestBoardShowsOnlyFriendsWhoShare(t *testing.T) {
 		}
 	}
 	// Cleo shares nothing; Dan shares but blocks Ana.
+	if _, err := sharing.SetSharing(ctx, cleo.ID, achievements.Sharing{}); err != nil {
+		t.Fatal(err)
+	}
 	if err := socialSvc.Block(ctx, dan.ID, ana.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -233,7 +236,7 @@ func TestBoardShowsOnlyFriendsWhoShare(t *testing.T) {
 		t.Error("an XP board carries levels")
 	}
 
-	// Streaks need the streaks switch, which nobody turned on.
+	// Streaks need the streaks switch: Bo and Cleo stored it off, and Dan blocks Ana.
 	b, err = newService(pool).Board(ctx, ana, xp.MetricStreak, "", now)
 	if err != nil {
 		t.Fatal(err)
@@ -244,5 +247,31 @@ func TestBoardShowsOnlyFriendsWhoShare(t *testing.T) {
 
 	if _, err = newService(pool).Board(ctx, ana, "calories", "", now); err == nil {
 		t.Error("an unknown metric should be refused")
+	}
+}
+
+// A new follower sees a friend on the workouts board with no switch touched.
+func TestNewFollowerOnWorkoutsBoardByDefault(t *testing.T) {
+	t.Parallel()
+	pool := testdb.New(t)
+	ctx := context.Background()
+	socialSvc := social.NewService(social.NewRepository(pool))
+	ana := person(t, pool, "default-ana@example.com", "Ana")
+	bo := person(t, pool, "default-bo@example.com", "Bo")
+	follow(t, socialSvc, ana, bo, "bo_default")
+	session(t, pool, bo.ID, time.Date(2026, 9, 29, 9, 0, 0, 0, time.UTC), 30)
+
+	b, err := newService(pool).Board(ctx, ana, xp.MetricWorkouts, xp.PeriodWeek, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, e := range b.Entries {
+		if e.DisplayName == "Bo" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("board = %+v, want Bo on it", b.Entries)
 	}
 }

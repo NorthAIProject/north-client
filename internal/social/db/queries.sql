@@ -41,8 +41,9 @@ JOIN invites i ON i.code = r.code
 WHERE i.inviter_id = $1;
 
 -- name: UpsertFollow :one
--- A follow request stays pending until accepted; asking again changes
--- nothing, and an accepted follow is never demoted back to pending.
+-- Follow passes 'accepted', so a follow takes effect at once; following again
+-- changes nothing, and an accepted follow is never demoted. A legacy pending
+-- row is promoted when the status passed is 'accepted'.
 INSERT INTO follows (follower_id, followee_id, status, accepted_at)
 VALUES ($1, $2, sqlc.arg('status'), CASE WHEN sqlc.arg('status')::text = 'accepted' THEN now() END)
 ON CONFLICT (follower_id, followee_id) DO UPDATE

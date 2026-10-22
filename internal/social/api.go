@@ -66,7 +66,7 @@ type PersonView struct {
 
 type ConnectionView struct {
 	PersonView
-	// Status is pending or accepted.
+	// Status is accepted; pending is legacy and no longer produced.
 	Status string    `json:"status"`
 	Since  time.Time `json:"since"`
 }
@@ -81,7 +81,7 @@ type SocialOverview struct {
 	Handle    string           `json:"handle"`
 	Invite    InviteView       `json:"invite"`
 	Joined    int              `json:"joined"`
-	Requests  []ConnectionView `json:"requests"`
+	Requests  []ConnectionView `json:"requests"` // always empty: follows are instant; kept so shipped iOS still decodes
 	Followers []ConnectionView `json:"followers"`
 	Following []ConnectionView `json:"following"`
 	Blocked   []PersonView     `json:"blocked"`
@@ -93,7 +93,7 @@ type InvitePreviewView struct {
 }
 
 type RelationshipView struct {
-	// Following is "", pending or accepted.
+	// Following is "" or accepted (pending is legacy).
 	Following  string `json:"following"`
 	FollowsYou bool   `json:"followsYou"`
 	Self       bool   `json:"self"`
@@ -292,7 +292,7 @@ type MatchRequest struct {
 // MatchedPerson is somebody found in your contacts.
 type MatchedPerson struct {
 	PersonView
-	// Following is "", pending or accepted: how you follow them already.
+	// Following is "" or accepted (pending is legacy): how you follow them already.
 	Following string `json:"following"`
 }
 

@@ -951,8 +951,9 @@ type UpsertFollowParams struct {
 	Status     string
 }
 
-// A follow request stays pending until accepted; asking again changes
-// nothing, and an accepted follow is never demoted back to pending.
+// Follow passes 'accepted', so a follow takes effect at once; following again
+// changes nothing, and an accepted follow is never demoted. A legacy pending
+// row is promoted when the status passed is 'accepted'.
 func (q *Queries) UpsertFollow(ctx context.Context, arg UpsertFollowParams) (Follow, error) {
 	row := q.db.QueryRow(ctx, upsertFollow, arg.FollowerID, arg.FolloweeID, arg.Status)
 	var i Follow

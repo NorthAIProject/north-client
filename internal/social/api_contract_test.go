@@ -20,7 +20,6 @@ func TestSocialShapes(t *testing.T) {
 
 	apitest.AssertGolden(t, "social.golden.json", api.projectOverview(Overview{
 		Handle: "me_too", Invite: invite, Joined: 2,
-		Requests:  []Connection{{Person: joao, Status: StatusPending, Since: since}},
 		Followers: []Connection{{Person: ana, Status: StatusAccepted, Since: since}},
 		Following: []Connection{{Person: ana, Status: StatusAccepted, Since: since}},
 	}))
