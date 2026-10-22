@@ -13,6 +13,122 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const activeAreas = `-- name: ActiveAreas :many
+SELECT area::text FROM (
+    SELECT 'training' AS area WHERE EXISTS (
+        SELECT 1 FROM activity_sessions WHERE user_id = $1::uuid
+          AND (started_at >= $2::timestamptz OR ended_at >= $2::timestamptz))
+    UNION ALL SELECT 'lifts' WHERE EXISTS (
+        SELECT 1 FROM set_logs WHERE user_id = $1::uuid AND performed_at >= $2::timestamptz)
+    UNION ALL SELECT 'consistency' WHERE EXISTS (
+        SELECT 1 FROM check_ins WHERE user_id = $1::uuid
+          AND (created_at >= $2::timestamptz OR updated_at >= $2::timestamptz))
+    UNION ALL SELECT 'habits' WHERE EXISTS (
+        SELECT 1 FROM habit_completions WHERE user_id = $1::uuid AND completed_at >= $2::timestamptz)
+    UNION ALL SELECT 'nutrition' WHERE EXISTS (
+        SELECT 1 FROM food_logs WHERE user_id = $1::uuid AND logged_at >= $2::timestamptz)
+    UNION ALL SELECT 'hydration' WHERE EXISTS (
+        SELECT 1 FROM hydration_logs WHERE user_id = $1::uuid AND logged_at >= $2::timestamptz)
+    UNION ALL SELECT 'sleep' WHERE EXISTS (
+        SELECT 1 FROM sleep_logs WHERE user_id = $1::uuid
+          AND (created_at >= $2::timestamptz OR updated_at >= $2::timestamptz))
+    UNION ALL SELECT 'mind' WHERE EXISTS (
+        SELECT 1 FROM journal_entries WHERE user_id = $1::uuid AND created_at >= $2::timestamptz)
+    UNION ALL SELECT 'goals' WHERE EXISTS (
+        SELECT 1 FROM goals WHERE user_id = $1::uuid AND updated_at >= $2::timestamptz)
+        OR EXISTS (SELECT 1 FROM goal_milestones WHERE user_id = $1::uuid
+          AND (created_at >= $2::timestamptz OR completed_at >= $2::timestamptz))
+        OR EXISTS (SELECT 1 FROM weekly_focus WHERE user_id = $1::uuid AND reviewed_at >= $2::timestamptz)
+    UNION ALL SELECT 'body' WHERE EXISTS (
+        SELECT 1 FROM health_metrics WHERE user_id = $1::uuid AND started_at >= $2::timestamptz)
+        OR EXISTS (SELECT 1 FROM progress_checks WHERE user_id = $1::uuid AND created_at >= $2::timestamptz)
+        OR EXISTS (SELECT 1 FROM fasting_sessions WHERE user_id = $1::uuid
+          AND (created_at >= $2::timestamptz OR ended_at >= $2::timestamptz))
+    UNION ALL SELECT 'social' WHERE EXISTS (
+        SELECT 1 FROM follows WHERE followee_id = $1::uuid AND created_at >= $2::timestamptz)
+        OR EXISTS (SELECT 1 FROM achievements WHERE user_id = $1::uuid
+          AND kind = 'crew_challenge_met' AND created_at >= $2::timestamptz)
+) a
+`
+
+type ActiveAreasParams struct {
+	UserID uuid.UUID
+	Since  time.Time
+}
+
+// The areas in which the person has logged something since the given instant:
+// any row in the area's source tables stamped at or after it. The nightly
+// sweep evaluates only these, so a quiet area never earns anything from it.
+func (q *Queries) ActiveAreas(ctx context.Context, arg ActiveAreasParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, activeAreas, arg.UserID, arg.Since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var area string
+		if err := rows.Scan(&area); err != nil {
+			return nil, err
+		}
+		items = append(items, area)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const countActiveUsers = `-- name: CountActiveUsers :one
+SELECT count(*)::int FROM users u WHERE EXISTS (SELECT 1 FROM check_ins x WHERE x.user_id = u.id AND x.created_at >= $1)
+   OR EXISTS (SELECT 1 FROM food_logs x WHERE x.user_id = u.id AND x.logged_at >= $1)
+   OR EXISTS (SELECT 1 FROM hydration_logs x WHERE x.user_id = u.id AND x.logged_at >= $1)
+   OR EXISTS (SELECT 1 FROM sleep_logs x WHERE x.user_id = u.id AND x.created_at >= $1)
+   OR EXISTS (SELECT 1 FROM set_logs x WHERE x.user_id = u.id AND x.performed_at >= $1)
+   OR EXISTS (SELECT 1 FROM activity_sessions x WHERE x.user_id = u.id AND x.started_at >= $1)
+   OR EXISTS (SELECT 1 FROM habit_completions x WHERE x.user_id = u.id AND x.completed_at >= $1)
+   OR EXISTS (SELECT 1 FROM journal_entries x WHERE x.user_id = u.id AND x.created_at >= $1)
+`
+
+// People with any log in the last 90 days, across the tables a badge counts.
+func (q *Queries) CountActiveUsers(ctx context.Context, createdAt time.Time) (int32, error) {
+	row := q.db.QueryRow(ctx, countActiveUsers, createdAt)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const countBadgeEarners = `-- name: CountBadgeEarners :many
+SELECT source_key, count(*)::int AS earned FROM achievements
+WHERE kind = 'badge_earned' GROUP BY source_key
+`
+
+type CountBadgeEarnersRow struct {
+	SourceKey string
+	Earned    int32
+}
+
+// How many people hold each badge.
+func (q *Queries) CountBadgeEarners(ctx context.Context) ([]CountBadgeEarnersRow, error) {
+	rows, err := q.db.Query(ctx, countBadgeEarners)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CountBadgeEarnersRow{}
+	for rows.Next() {
+		var i CountBadgeEarnersRow
+		if err := rows.Scan(&i.SourceKey, &i.Earned); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const countCentury = `-- name: CountCentury :one
 SELECT count(*)::int FROM set_logs
 WHERE user_id = $1 AND kind = 'work' AND weight_kg >= 100 AND reps >= 1
@@ -310,6 +426,36 @@ func (q *Queries) ListBadges(ctx context.Context, userID uuid.UUID) ([]ListBadge
 	return items, nil
 }
 
+const listRarity = `-- name: ListRarity :many
+SELECT badge_id, earned, active FROM badge_rarity
+`
+
+type ListRarityRow struct {
+	BadgeID string
+	Earned  int32
+	Active  int32
+}
+
+func (q *Queries) ListRarity(ctx context.Context) ([]ListRarityRow, error) {
+	rows, err := q.db.Query(ctx, listRarity)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListRarityRow{}
+	for rows.Next() {
+		var i ListRarityRow
+		if err := rows.Scan(&i.BadgeID, &i.Earned, &i.Active); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listWorkSets = `-- name: ListWorkSets :many
 SELECT id, activity_session_id, log_date, exercise_slug, exercise_name, set_number,
        weight_kg, reps, performed_at, kind, rir
@@ -505,4 +651,27 @@ func (q *Queries) Timezone(ctx context.Context, id uuid.UUID) (string, error) {
 	var tz string
 	err := row.Scan(&tz)
 	return tz, err
+}
+
+const upsertRarity = `-- name: UpsertRarity :exec
+INSERT INTO badge_rarity (badge_id, earned, active, computed_at)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (badge_id) DO UPDATE SET earned = EXCLUDED.earned, active = EXCLUDED.active, computed_at = EXCLUDED.computed_at
+`
+
+type UpsertRarityParams struct {
+	BadgeID    string
+	Earned     int32
+	Active     int32
+	ComputedAt time.Time
+}
+
+func (q *Queries) UpsertRarity(ctx context.Context, arg UpsertRarityParams) error {
+	_, err := q.db.Exec(ctx, upsertRarity,
+		arg.BadgeID,
+		arg.Earned,
+		arg.Active,
+		arg.ComputedAt,
+	)
+	return err
 }

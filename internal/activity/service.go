@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/NorthAIProject/north-client/internal/awards/award"
 	"github.com/NorthAIProject/north-client/internal/biometrics"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
@@ -18,6 +19,11 @@ type BiometricsLookup interface {
 	Current(ctx context.Context, userID uuid.UUID) (biometrics.Biometric, error)
 }
 
+// Awards checks a person's badges after a write. awards.Service satisfies it.
+type Awards interface {
+	Check(ctx context.Context, userID uuid.UUID, at time.Time, areas ...award.Area)
+}
+
 // SyncHook is notified when workout sessions complete to synchronize state across clients.
 type SyncHook interface {
 	OnWorkoutCompleted(ctx context.Context, userID uuid.UUID, title string) error
@@ -28,12 +34,18 @@ type Service struct {
 	biometrics   BiometricsLookup
 	sync         SyncHook
 	achievements Achievements
+	awards       Awards
 }
 
 // Achievements records a finished session for friends to see, when its owner
 // shares training. achievements.Service satisfies it.
 type Achievements interface {
 	WorkoutCompleted(ctx context.Context, userID, sessionID uuid.UUID, name string, minutes int, at time.Time)
+}
+
+func (s *Service) WithAwards(a Awards) *Service {
+	s.awards = a
+	return s
 }
 
 func (s *Service) WithAchievements(a Achievements) *Service {
@@ -43,7 +55,18 @@ func (s *Service) WithAchievements(a Achievements) *Service {
 
 // achieve reports a finished session; a session without an end is not one.
 func (s *Service) achieve(ctx context.Context, session Session) {
-	if s.achievements == nil || session.EndedAt == nil {
+	if session.EndedAt == nil {
+		return
+	}
+	if s.awards != nil {
+		areas := []award.Area{award.Training}
+		if session.Source == SourceStrava {
+			// A synced workout is a day of the connected-device badge.
+			areas = append(areas, award.Body)
+		}
+		s.awards.Check(ctx, session.UserID, *session.EndedAt, areas...)
+	}
+	if s.achievements == nil {
 		return
 	}
 	name := session.ActivityCode

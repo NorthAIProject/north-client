@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/NorthAIProject/north-client/internal/awards/award"
 	"github.com/NorthAIProject/north-client/internal/biometrics"
 	"github.com/NorthAIProject/north-client/internal/biometrics/biometric"
 	"github.com/NorthAIProject/north-client/internal/bodymap"
@@ -36,6 +37,17 @@ type Service struct {
 	weights Weights
 	assist  *Assist
 	now     func() time.Time
+	awards  Awards
+}
+
+// Awards checks a person's badges after a write. awards.Service satisfies it.
+type Awards interface {
+	Check(ctx context.Context, userID uuid.UUID, at time.Time, areas ...award.Area)
+}
+
+func (s *Service) WithAwards(a Awards) *Service {
+	s.awards = a
+	return s
 }
 
 func NewService(repo *Repository, photos Photos, weights Weights) *Service {
@@ -107,6 +119,9 @@ func (s *Service) Save(ctx context.Context, user users.User, in Input, uploads [
 		return Check{}, err
 	}
 
+	if s.awards != nil {
+		s.awards.Check(ctx, user.ID, s.now(), award.Body)
+	}
 	if err := s.advance(ctx, user, check.MeasuredOn); err != nil {
 		return Check{}, err
 	}

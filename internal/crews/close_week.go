@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/NorthAIProject/north-client/internal/awards/award"
 	"github.com/NorthAIProject/north-client/internal/crews/crew"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/sweep"
@@ -35,6 +36,7 @@ type ChallengeSweeper struct {
 	accounts     sweep.Accounts
 	svc          *Service
 	achievements ChallengeAchievements
+	awards       Awards
 	log          *slog.Logger
 	now          func() time.Time
 }
@@ -45,6 +47,13 @@ func NewChallengeSweeper(accounts sweep.Accounts, svc *Service, a ChallengeAchie
 	}
 	return &ChallengeSweeper{accounts: accounts, svc: svc, achievements: a, log: log, now: time.Now}
 }
+
+// Awards checks a person's badges after a write. awards.Service satisfies it.
+type Awards interface {
+	Check(ctx context.Context, userID uuid.UUID, at time.Time, areas ...award.Area)
+}
+
+func (s *ChallengeSweeper) WithAwards(a Awards) *ChallengeSweeper { s.awards = a; return s }
 
 // WithClock fixes now, for tests.
 func (s *ChallengeSweeper) WithClock(now func() time.Time) *ChallengeSweeper { s.now = now; return s }
@@ -85,6 +94,9 @@ func (s *ChallengeSweeper) sweepOne(ctx context.Context, now time.Time, user use
 		if done >= int(r.Target) {
 			s.achievements.CrewChallengeMet(ctx, user.ID, r.ID, r.Name, r.Kind, int(r.Target), from, now)
 			recorded = true
+			if s.awards != nil {
+				s.awards.Check(ctx, user.ID, now, award.Social)
+			}
 		}
 	}
 	return recorded, nil

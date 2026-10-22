@@ -43,6 +43,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/ai/providers"
 	"github.com/NorthAIProject/north-client/internal/aicreds"
+	"github.com/NorthAIProject/north-client/internal/awards"
 	"github.com/NorthAIProject/north-client/internal/biometrics"
 	"github.com/NorthAIProject/north-client/internal/caffeine"
 	"github.com/NorthAIProject/north-client/internal/calculator"
@@ -218,8 +219,10 @@ func buildServices(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry
 	userSvc := users.NewService(users.NewRepository(pool))
 	conversationSvc := conversations.NewService(conversations.NewRepository(pool))
 
-	goalSvc := goals.NewService(goals.NewRepository(pool))
-	checkinSvc := checkins.NewService(checkins.NewRepository(pool), goalSvc)
+	// The tools below write for the person, so they check badges like the web does.
+	awardsSvc := awards.NewService(pool)
+	goalSvc := goals.NewService(goals.NewRepository(pool)).WithAwards(awardsSvc)
+	checkinSvc := checkins.NewService(checkins.NewRepository(pool), goalSvc).WithAwards(awardsSvc)
 	memorySvc := memories.NewService(memories.NewRepository(pool))
 
 	// Retrieval only. This process has no object storage and no queue, so it
@@ -238,21 +241,21 @@ func buildServices(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry
 
 	biometricSvc := biometrics.NewService(biometrics.NewRepository(pool))
 	calculatorSvc := calculator.NewService(calculator.NewRepository(pool), biometricSvc)
-	activitySvc := activity.NewService(activity.NewRepository(pool), biometricSvc)
+	activitySvc := activity.NewService(activity.NewRepository(pool), biometricSvc).WithAwards(awardsSvc)
 	workoutSvc.WithActivity(activitySvc)
 
 	mealsRepo := meals.NewRepository(pool)
 	mealDietSvc := meals.NewDietPreferenceService(mealsRepo)
-	foodLogSvc := meals.NewFoodLogService(mealsRepo)
+	foodLogSvc := meals.NewFoodLogService(mealsRepo).WithAwards(awardsSvc)
 	mealProgressSvc := meals.NewTrackMealProgressService(foodLogSvc, calculatorSvc)
 
 	preferencesSvc := preferences.NewService(preferences.NewRepository(pool))
-	mindSvc := mind.NewService(mind.NewRepository(pool), checkinSvc)
+	mindSvc := mind.NewService(mind.NewRepository(pool), checkinSvc).WithAwards(awardsSvc)
 	decisionSvc := decisions.NewService(decisions.NewRepository(pool))
 
-	hydrationSvc := hydration.NewService(hydration.NewRepository(pool))
-	sleepSvc := sleep.NewService(sleep.NewRepository(pool))
-	habitSvc := habits.NewService(habits.NewRepository(pool))
+	hydrationSvc := hydration.NewService(hydration.NewRepository(pool)).WithAwards(awardsSvc)
+	sleepSvc := sleep.NewService(sleep.NewRepository(pool)).WithAwards(awardsSvc)
+	habitSvc := habits.NewService(habits.NewRepository(pool)).WithAwards(awardsSvc)
 	reportSvc := reports.NewService(reports.Options{
 		Repository: reports.NewRepository(pool),
 		Users:      userSvc,
@@ -321,11 +324,11 @@ func buildServices(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry
 		MealPlans:   meals.NewMealPlanService(mealsRepo, calculatorSvc),
 		Caffeine:    caffeine.NewService(caffeine.NewRepository(pool)),
 		Supplements: supplements.NewService(supplements.NewRepository(pool)),
-		Fasting:     fasting.NewService(fasting.NewRepository(pool)),
+		Fasting:     fasting.NewService(fasting.NewRepository(pool)).WithAwards(awardsSvc),
 		ScreenTime:  screentime.NewService(screentime.NewRepository(pool)),
 		Soreness:    soreness.NewService(soreness.NewRepository(pool)),
-		Lifts:       lifts.NewService(lifts.NewRepository(pool), exercises.NewService(exercises.NewRepository(pool))),
-		Health:      health.NewService(health.NewRepository(pool)),
+		Lifts:       lifts.NewService(lifts.NewRepository(pool), exercises.NewService(exercises.NewRepository(pool))).WithAwards(awardsSvc),
+		Health:      health.NewService(health.NewRepository(pool)).WithAwards(awardsSvc),
 
 		// The day's logs and the settings an agent can change, so a client
 		// connected over MCP can do what the coach does.

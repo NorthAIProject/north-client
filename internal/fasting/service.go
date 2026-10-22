@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/NorthAIProject/north-client/internal/awards/award"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -15,8 +16,19 @@ import (
 const DefaultTargetHours = 16
 
 type Service struct {
-	repo *Repository
-	now  func() time.Time
+	repo   *Repository
+	now    func() time.Time
+	awards Awards
+}
+
+// Awards checks a person's badges after a write. awards.Service satisfies it.
+type Awards interface {
+	Check(ctx context.Context, userID uuid.UUID, at time.Time, areas ...award.Area)
+}
+
+func (s *Service) WithAwards(a Awards) *Service {
+	s.awards = a
+	return s
 }
 
 func NewService(repo *Repository) *Service { return &Service{repo: repo, now: time.Now} }
@@ -41,7 +53,11 @@ func (s *Service) Start(ctx context.Context, user users.User, targetHours int, a
 
 // Stop ends the open fast now.
 func (s *Service) Stop(ctx context.Context, user users.User) (Session, error) {
-	return s.repo.Stop(ctx, user.ID, s.now())
+	stopped, err := s.repo.Stop(ctx, user.ID, s.now())
+	if err == nil && s.awards != nil {
+		s.awards.Check(ctx, user.ID, s.now(), award.Body)
+	}
+	return stopped, err
 }
 
 // Current is the open fast, if there is one.

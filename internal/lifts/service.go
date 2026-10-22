@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/NorthAIProject/north-client/internal/awards/award"
 	"github.com/NorthAIProject/north-client/internal/bodymap"
 	"github.com/NorthAIProject/north-client/internal/exercises"
 	"github.com/NorthAIProject/north-client/internal/lifts/lift"
@@ -52,6 +53,18 @@ type Service struct {
 	activities Activities
 	weights    BodyWeights
 	matchers   ExerciseMatchers
+
+	awards Awards
+}
+
+// Awards checks a person's badges after a write. awards.Service satisfies it.
+type Awards interface {
+	Check(ctx context.Context, userID uuid.UUID, at time.Time, areas ...award.Area)
+}
+
+func (s *Service) WithAwards(a Awards) *Service {
+	s.awards = a
+	return s
 }
 
 // NewService takes the exercise catalog for per-muscle sets; nil leaves
@@ -82,6 +95,22 @@ type LogInput struct {
 
 // Log records a set against the local day it was done on.
 func (s *Service) Log(ctx context.Context, user users.User, in LogInput) (Set, error) {
+	set, err := s.logSet(ctx, user, in)
+	if err == nil {
+		s.checkAwards(ctx, user.ID, set.PerformedAt)
+	}
+	return set, err
+}
+
+func (s *Service) checkAwards(ctx context.Context, userID uuid.UUID, at time.Time) {
+	if s.awards != nil {
+		s.awards.Check(ctx, userID, at, award.Lifts)
+	}
+}
+
+// logSet is Log without the badge check, so an import checks once at the end
+// rather than after every set.
+func (s *Service) logSet(ctx context.Context, user users.User, in LogInput) (Set, error) {
 	name := strings.TrimSpace(in.ExerciseName)
 	errs := apperr.FieldErrors{}
 	if name == "" || len(name) > maxNameLen {

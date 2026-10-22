@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
+	"github.com/NorthAIProject/north-client/internal/awards/award"
 	"github.com/NorthAIProject/north-client/internal/checkins"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
@@ -25,8 +27,19 @@ type MoodLookup interface {
 }
 
 type Service struct {
-	repo  *Repository
-	moods MoodLookup
+	repo   *Repository
+	moods  MoodLookup
+	awards Awards
+}
+
+// Awards checks a person's badges after a write. awards.Service satisfies it.
+type Awards interface {
+	Check(ctx context.Context, userID uuid.UUID, at time.Time, areas ...award.Area)
+}
+
+func (s *Service) WithAwards(a Awards) *Service {
+	s.awards = a
+	return s
 }
 
 func NewService(repo *Repository, moods MoodLookup) *Service {
@@ -62,7 +75,11 @@ func (s *Service) Create(ctx context.Context, userID uuid.UUID, in Input) (Journ
 	if err != nil {
 		return JournalEntry{}, err
 	}
-	return s.repo.Create(ctx, userID, clean.Content, clean.Mood)
+	entry, err := s.repo.Create(ctx, userID, clean.Content, clean.Mood)
+	if err == nil && s.awards != nil {
+		s.awards.Check(ctx, userID, time.Now(), award.Mind)
+	}
+	return entry, err
 }
 
 // ListBetween returns the entries written inside a window, newest first.

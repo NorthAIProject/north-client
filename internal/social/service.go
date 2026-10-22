@@ -5,9 +5,11 @@ import (
 	"crypto/rand"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
+	"github.com/NorthAIProject/north-client/internal/awards/award"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/social/phone"
 )
@@ -36,7 +38,15 @@ type Service struct {
 	funnel   Funnel
 	verifier phone.Verifier
 	facebook Facebook
+	awards   Awards
 }
+
+// Awards checks a person's badges after a write. awards.Service satisfies it.
+type Awards interface {
+	Check(ctx context.Context, userID uuid.UUID, at time.Time, areas ...award.Area)
+}
+
+func (s *Service) WithAwards(a Awards) *Service { s.awards = a; return s }
 
 func NewService(repo *Repository) *Service { return &Service{repo: repo} }
 
@@ -187,6 +197,11 @@ func (s *Service) Follow(ctx context.Context, followerID uuid.UUID, handle strin
 			_ = s.inbox.NoteWithPush(ctx, target.ID, KindNewFollower, followerID.String(),
 				me.DisplayName+" followed you", "See who follows you in Friends.", "/app/friends")
 		}
+	}
+	// The followee is the one who earns first_follower, and only for a
+	// follow that was not already there.
+	if before == "" && s.awards != nil {
+		s.awards.Check(ctx, target.ID, time.Now(), award.Social)
 	}
 	return Connection{Person: target, Status: status}, nil
 }

@@ -164,3 +164,67 @@ ORDER BY occurred_at, source_key;
 -- name: MarkBadgeSeen :exec
 UPDATE achievements SET celebrated_at = now()
 WHERE user_id = $1 AND kind = 'badge_earned' AND source_key = $2 AND celebrated_at IS NULL;
+
+-- name: ActiveAreas :many
+-- The areas in which the person has logged something since the given instant:
+-- any row in the area's source tables stamped at or after it. The nightly
+-- sweep evaluates only these, so a quiet area never earns anything from it.
+SELECT area::text FROM (
+    SELECT 'training' AS area WHERE EXISTS (
+        SELECT 1 FROM activity_sessions WHERE user_id = sqlc.arg('user_id')::uuid
+          AND (started_at >= sqlc.arg('since')::timestamptz OR ended_at >= sqlc.arg('since')::timestamptz))
+    UNION ALL SELECT 'lifts' WHERE EXISTS (
+        SELECT 1 FROM set_logs WHERE user_id = sqlc.arg('user_id')::uuid AND performed_at >= sqlc.arg('since')::timestamptz)
+    UNION ALL SELECT 'consistency' WHERE EXISTS (
+        SELECT 1 FROM check_ins WHERE user_id = sqlc.arg('user_id')::uuid
+          AND (created_at >= sqlc.arg('since')::timestamptz OR updated_at >= sqlc.arg('since')::timestamptz))
+    UNION ALL SELECT 'habits' WHERE EXISTS (
+        SELECT 1 FROM habit_completions WHERE user_id = sqlc.arg('user_id')::uuid AND completed_at >= sqlc.arg('since')::timestamptz)
+    UNION ALL SELECT 'nutrition' WHERE EXISTS (
+        SELECT 1 FROM food_logs WHERE user_id = sqlc.arg('user_id')::uuid AND logged_at >= sqlc.arg('since')::timestamptz)
+    UNION ALL SELECT 'hydration' WHERE EXISTS (
+        SELECT 1 FROM hydration_logs WHERE user_id = sqlc.arg('user_id')::uuid AND logged_at >= sqlc.arg('since')::timestamptz)
+    UNION ALL SELECT 'sleep' WHERE EXISTS (
+        SELECT 1 FROM sleep_logs WHERE user_id = sqlc.arg('user_id')::uuid
+          AND (created_at >= sqlc.arg('since')::timestamptz OR updated_at >= sqlc.arg('since')::timestamptz))
+    UNION ALL SELECT 'mind' WHERE EXISTS (
+        SELECT 1 FROM journal_entries WHERE user_id = sqlc.arg('user_id')::uuid AND created_at >= sqlc.arg('since')::timestamptz)
+    UNION ALL SELECT 'goals' WHERE EXISTS (
+        SELECT 1 FROM goals WHERE user_id = sqlc.arg('user_id')::uuid AND updated_at >= sqlc.arg('since')::timestamptz)
+        OR EXISTS (SELECT 1 FROM goal_milestones WHERE user_id = sqlc.arg('user_id')::uuid
+          AND (created_at >= sqlc.arg('since')::timestamptz OR completed_at >= sqlc.arg('since')::timestamptz))
+        OR EXISTS (SELECT 1 FROM weekly_focus WHERE user_id = sqlc.arg('user_id')::uuid AND reviewed_at >= sqlc.arg('since')::timestamptz)
+    UNION ALL SELECT 'body' WHERE EXISTS (
+        SELECT 1 FROM health_metrics WHERE user_id = sqlc.arg('user_id')::uuid AND started_at >= sqlc.arg('since')::timestamptz)
+        OR EXISTS (SELECT 1 FROM progress_checks WHERE user_id = sqlc.arg('user_id')::uuid AND created_at >= sqlc.arg('since')::timestamptz)
+        OR EXISTS (SELECT 1 FROM fasting_sessions WHERE user_id = sqlc.arg('user_id')::uuid
+          AND (created_at >= sqlc.arg('since')::timestamptz OR ended_at >= sqlc.arg('since')::timestamptz))
+    UNION ALL SELECT 'social' WHERE EXISTS (
+        SELECT 1 FROM follows WHERE followee_id = sqlc.arg('user_id')::uuid AND created_at >= sqlc.arg('since')::timestamptz)
+        OR EXISTS (SELECT 1 FROM achievements WHERE user_id = sqlc.arg('user_id')::uuid
+          AND kind = 'crew_challenge_met' AND created_at >= sqlc.arg('since')::timestamptz)
+) a;
+
+-- name: CountActiveUsers :one
+-- People with any log in the last 90 days, across the tables a badge counts.
+SELECT count(*)::int FROM users u WHERE EXISTS (SELECT 1 FROM check_ins x WHERE x.user_id = u.id AND x.created_at >= $1)
+   OR EXISTS (SELECT 1 FROM food_logs x WHERE x.user_id = u.id AND x.logged_at >= $1)
+   OR EXISTS (SELECT 1 FROM hydration_logs x WHERE x.user_id = u.id AND x.logged_at >= $1)
+   OR EXISTS (SELECT 1 FROM sleep_logs x WHERE x.user_id = u.id AND x.created_at >= $1)
+   OR EXISTS (SELECT 1 FROM set_logs x WHERE x.user_id = u.id AND x.performed_at >= $1)
+   OR EXISTS (SELECT 1 FROM activity_sessions x WHERE x.user_id = u.id AND x.started_at >= $1)
+   OR EXISTS (SELECT 1 FROM habit_completions x WHERE x.user_id = u.id AND x.completed_at >= $1)
+   OR EXISTS (SELECT 1 FROM journal_entries x WHERE x.user_id = u.id AND x.created_at >= $1);
+
+-- name: CountBadgeEarners :many
+-- How many people hold each badge.
+SELECT source_key, count(*)::int AS earned FROM achievements
+WHERE kind = 'badge_earned' GROUP BY source_key;
+
+-- name: UpsertRarity :exec
+INSERT INTO badge_rarity (badge_id, earned, active, computed_at)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (badge_id) DO UPDATE SET earned = EXCLUDED.earned, active = EXCLUDED.active, computed_at = EXCLUDED.computed_at;
+
+-- name: ListRarity :many
+SELECT badge_id, earned, active FROM badge_rarity;
