@@ -24,8 +24,7 @@ func renderFriendsIn(t *testing.T, locale users.Locale) string {
 	bruno := friend.Person{ID: uuid.New(), DisplayName: "Bruno Lima", Handle: "bruno"}
 	overview := friend.Overview{
 		Joined:    3,
-		Requests:  []friend.Connection{{Person: bruno, Status: friend.StatusPending}},
-		Following: []friend.Connection{{Person: bruno, Status: friend.StatusPending}},
+		Following: []friend.Connection{{Person: bruno, Status: friend.StatusAccepted}},
 	}
 	feed := FeedSection{
 		Enabled: true,
@@ -52,10 +51,10 @@ func renderFriendsIn(t *testing.T, locale users.Locale) string {
 
 func TestFriendsRendersInTheChosenLanguage(t *testing.T) {
 	cases := map[users.Locale][]string{
-		users.LocaleEN:   {"Friends", "Your invite link", "Waiting for your yes", "3 people joined through your links.", "2h ago", "Text me a code", "Portugal"},
-		users.LocalePTPT: {"Amigos", "O teu link de convite", "À espera do teu sim", "3 pessoas entraram através dos teus links.", "há 2 h", "Envia-me um código por SMS", "Espanha"},
-		users.LocalePTBR: {"Amigos", "Seu link de convite", "Esperando o seu sim", "3 pessoas entraram pelos seus links.", "há 2 h", "Me envie um código por SMS", "Espanha"},
-		users.LocaleES:   {"Amigos", "Tu enlace de invitación", "Esperando tu sí", "3 personas se unieron con tus enlaces.", "hace 2 h", "Envíame un código", "España"},
+		users.LocaleEN:   {"Friends", "Your invite link", "3 people joined through your links.", "2h ago", "Text me a code", "Portugal"},
+		users.LocalePTPT: {"Amigos", "O teu link de convite", "3 pessoas entraram através dos teus links.", "há 2 h", "Envia-me um código por SMS", "Espanha"},
+		users.LocalePTBR: {"Amigos", "Seu link de convite", "3 pessoas entraram pelos seus links.", "há 2 h", "Me envie um código por SMS", "Espanha"},
+		users.LocaleES:   {"Amigos", "Tu enlace de invitación", "3 personas se unieron con tus enlaces.", "hace 2 h", "Envíame un código", "España"},
 	}
 	for locale, wants := range cases {
 		html := renderFriendsIn(t, locale)
@@ -70,15 +69,14 @@ func TestFriendsRendersInTheChosenLanguage(t *testing.T) {
 func TestNoEnglishLeaksIntoATranslatedFriendsPage(t *testing.T) {
 	englishOnly := []string{
 		"Your invite link",
-		"Waiting for your yes",
+		"Anyone can follow you.",
 		"Your handle",
 		"Follow somebody",
 		"What followers see",
 		"Phone number",
 		"Facebook friends on Khepri",
 		"Give kudos",
-		"Ask to follow",
-		"Withdraw",
+		"Followers see what you switch on here",
 		"Nobody follows you yet.",
 		"already connected to another Khepri account",
 	}

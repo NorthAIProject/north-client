@@ -234,6 +234,29 @@ response. Every kind is in `earned[]`, whose `kind` is open-ended.
 Still not copied from Norviq: ranking by portfolio return (a wealth metric),
 and XP for pressing a check-in button.
 
+**Update, 2026-10-21 — open follow and awards.** The product owner asked for
+Strava-style following and Apple Fitness-style awards. The full design is
+`docs/superpowers/specs/2026-10-21-follow-awards-design.md`; what it changes
+here:
+
+- **Follows no longer wait for a yes.** A follow is instant, like a public
+  Strava profile. Blocks still hide each from the other completely, and a
+  person can remove any follower.
+- **Followers see awards and workouts.** Every workout becomes a feed card
+  (time, sets, volume, top lifts, PRs). Body numbers, meals, sleep figures,
+  medications, mood and the journal stay private.
+- **Badges, wider than the list above.** About 34, across every area of the
+  app instead of at most twelve. Each is still earned once, never tiered, and
+  never sent as a push. Badges from sleep, nutrition, fasting, the journal
+  and body data stay on their owner's profile and never reach a follower.
+- **History counts, awarded on the next event.** Nothing is backfilled at
+  deploy. A person who already has 57 workouts earns First, 10 and 50
+  together when they log the next one.
+- **A monthly challenge** with a limited-edition medal, its target set from
+  the person's own last three months. A missed month is never mentioned.
+- **Awards share by default.** A fifth sharing switch, `awards`, is on for
+  everyone, existing accounts included.
+
 ---
 
 ## Schema sketch

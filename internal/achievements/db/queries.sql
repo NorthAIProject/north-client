@@ -29,8 +29,7 @@ WHERE a.occurred_at < sqlc.arg('before')
     OR (
       EXISTS (SELECT 1 FROM follows f
               WHERE f.follower_id = sqlc.arg('viewer') AND f.followee_id = a.user_id AND f.status = 'accepted')
-      AND EXISTS (SELECT 1 FROM achievement_sharing s
-                  WHERE s.user_id = a.user_id AND s.category = a.category AND s.shared)
+      AND sharing_on(a.user_id, a.category)
       AND NOT EXISTS (SELECT 1 FROM blocks b
                       WHERE (b.blocker_id = sqlc.arg('viewer') AND b.blocked_id = a.user_id)
                          OR (b.blocker_id = a.user_id AND b.blocked_id = sqlc.arg('viewer')))
@@ -49,8 +48,7 @@ WHERE a.id = sqlc.arg('id')
     OR (
       EXISTS (SELECT 1 FROM follows f
               WHERE f.follower_id = sqlc.arg('viewer') AND f.followee_id = a.user_id AND f.status = 'accepted')
-      AND EXISTS (SELECT 1 FROM achievement_sharing s
-                  WHERE s.user_id = a.user_id AND s.category = a.category AND s.shared)
+      AND sharing_on(a.user_id, a.category)
       AND NOT EXISTS (SELECT 1 FROM blocks b
                       WHERE (b.blocker_id = sqlc.arg('viewer') AND b.blocked_id = a.user_id)
                          OR (b.blocker_id = a.user_id AND b.blocked_id = sqlc.arg('viewer')))

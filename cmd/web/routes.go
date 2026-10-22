@@ -199,7 +199,7 @@ func routes(
 	achievementSvc.WithInbox(nudgeSvc)
 
 	// Handles, invite links, follows and blocks. The bell tells people about
-	// a follow request or a friend arriving from their link.
+	// a new follower or a friend arriving from their link.
 	socialSvc := social.NewService(social.NewRepository(pool)).WithInbox(nudgeSvc).WithFunnel(funnel)
 	// Verified phone numbers and Connect Facebook are each off without their
 	// credentials, and their cards and API answer as unconfigured.

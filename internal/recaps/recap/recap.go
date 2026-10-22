@@ -72,6 +72,6 @@ type Highlight struct {
 type Shared struct {
 	ID uuid.UUID
 	// TrainingShared is whether followers can see it: a recap sits in the
-	// training category, which is off until the person turns it on.
+	// training category, which is on by default for new people.
 	TrainingShared bool
 }

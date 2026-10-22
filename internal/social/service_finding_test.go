@@ -296,8 +296,8 @@ func TestConnectFacebookImportsFriendsHere(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !got.Connected || got.ImportedAt.IsZero() || len(got.People) != 1 || got.People[0].ID != ana.ID || got.People[0].Status != social.StatusPending {
-		t.Fatalf("import = %+v, want Ana, already asked", got)
+	if !got.Connected || got.ImportedAt.IsZero() || len(got.People) != 1 || got.People[0].ID != ana.ID || got.People[0].Status != social.StatusAccepted {
+		t.Fatalf("import = %+v, want Ana, already followed", got)
 	}
 
 	// Connecting again is finding again.

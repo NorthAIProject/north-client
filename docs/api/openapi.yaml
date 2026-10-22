@@ -3675,7 +3675,12 @@ paths:
   /follows:
     post:
       operationId: follow
-      summary: Ask to follow somebody by handle; it waits for their yes
+      summary: Follow somebody by handle; it takes effect at once
+      description: |
+        Following is open: nobody has to say yes. The returned connection has
+        status `accepted` straight away, and the person followed gets a
+        `new_follower` note. What a follower can see is still decided by the
+        followed person's sharing settings.
       tags: [social]
       requestBody:
         required: true
@@ -3727,7 +3732,12 @@ paths:
           format: uuid
     post:
       operationId: acceptFollower
-      summary: Say yes to a follow request
+      summary: Say yes to a follow request (no longer needed)
+      description: |
+        Deprecated. Follows are accepted the moment they are made, so there
+        are no requests to answer. Calling this for a follower that is
+        already accepted does nothing and still returns 204.
+      deprecated: true
       tags: [social]
       responses:
         '204':
@@ -3808,6 +3818,10 @@ paths:
     get:
       operationId: getSharing
       summary: Which kinds of achievement your followers may see
+      description: |
+        For new accounts training, streaks and goals default to on, because
+        following is open. People who existed before open follow keep
+        everything off until they choose otherwise.
       tags: [social]
       responses:
         '200':
@@ -8139,6 +8153,8 @@ components:
           description: How many accounts came in through your links.
         requests:
           type: array
+          deprecated: true
+          description: Deprecated. Always empty, because follows are accepted at once.
           items:
             $ref: '#/components/schemas/ConnectionView'
         followers:
@@ -8147,7 +8163,7 @@ components:
             $ref: '#/components/schemas/ConnectionView'
         following:
           type: array
-          description: Includes requests you sent that are still pending.
+          description: Everyone you follow. Follows are instant, so none are pending.
           items:
             $ref: '#/components/schemas/ConnectionView'
         blocked:

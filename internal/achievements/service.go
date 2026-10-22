@@ -194,7 +194,12 @@ func (s *Service) Sharing(ctx context.Context, userID uuid.UUID) (Sharing, error
 	if err != nil {
 		return Sharing{}, apperr.Wrap(err, "list sharing")
 	}
-	var out Sharing
+	out := Sharing{
+		Training: achievement.DefaultShared(achievement.CategoryTraining),
+		Streaks:  achievement.DefaultShared(achievement.CategoryStreaks),
+		Goals:    achievement.DefaultShared(achievement.CategoryGoals),
+		XP:       achievement.DefaultShared(achievement.CategoryXP),
+	}
 	for _, r := range rows {
 		switch r.Category {
 		case achievement.CategoryTraining:
