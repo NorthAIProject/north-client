@@ -58,6 +58,24 @@ func (q *Queries) DeleteHealthMetricsBySource(ctx context.Context, arg DeleteHea
 	return err
 }
 
+const hasHealthFromSource = `-- name: HasHealthFromSource :one
+SELECT EXISTS (SELECT 1 FROM health_metrics WHERE user_id = $1 AND source = $2)
+`
+
+type HasHealthFromSourceParams struct {
+	UserID uuid.UUID
+	Source string
+}
+
+// Whether a provider has ever delivered anything for this person: the first
+// delivery is the moment the source counts as connected.
+func (q *Queries) HasHealthFromSource(ctx context.Context, arg HasHealthFromSourceParams) (bool, error) {
+	row := q.db.QueryRow(ctx, hasHealthFromSource, arg.UserID, arg.Source)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const healthMetricStats = `-- name: HealthMetricStats :one
 SELECT
     COUNT(*)                                              AS reading_count,
