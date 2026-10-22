@@ -1,7 +1,6 @@
 package lift
 
 import (
-	"fmt"
 	"sort"
 	"time"
 
@@ -92,17 +91,10 @@ func BuildCard(s CardSession, current, earlier []Set) Card {
 
 func cardExercise(sets []Set) CardExercise {
 	e := CardExercise{Name: sets[len(sets)-1].ExerciseName, Sets: len(sets)}
-	var best Set
-	var haveBest bool
 	for _, s := range sets {
 		e.VolumeKg += s.Volume()
-		if s.WeightKg <= 0 {
-			continue
-		}
-		if !haveBest || s.E1RM() > best.E1RM() {
-			best, haveBest = s, true
-		}
 	}
+	best, haveBest := heaviestSet(sets)
 	e.VolumeKg = util.RoundHalfUpToScale(e.VolumeKg, 1)
 	if haveBest {
 		e.BestWeightKg, e.BestReps = best.WeightKg, best.Reps
@@ -117,5 +109,5 @@ func (e CardExercise) BestIn(tag string) string {
 	if e.BestWeightKg <= 0 {
 		return ""
 	}
-	return fmt.Sprintf("%s × %d", formatKg(tag, e.BestWeightKg), e.BestReps)
+	return bestLabel(tag, e.BestWeightKg, e.BestReps)
 }

@@ -2,6 +2,7 @@ package lifts
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"time"
 
@@ -9,7 +10,6 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/activity/activity"
 	"github.com/NorthAIProject/north-client/internal/lifts/lift"
-	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
 // CardsFor builds the workout card of each completed session in sessionIDs,
@@ -24,7 +24,7 @@ func (s *Service) CardsFor(ctx context.Context, sessionIDs []uuid.UUID) (map[uui
 		return out, nil
 	}
 	if s.sessions == nil {
-		return nil, apperr.Wrap(apperr.ErrNotFound, "cards are not wired")
+		return nil, errors.New("lifts: sessions not wired")
 	}
 	sessions, err := s.sessions.CompletedByIDs(ctx, sessionIDs)
 	if err != nil {
@@ -59,8 +59,8 @@ func (s *Service) CardsFor(ctx context.Context, sessionIDs []uuid.UUID) (map[uui
 }
 
 // cardHistories is, per person, their sets of the exercises in these
-// sessions from the year before the first of them, oldest first, uncapped: one query
-// per person however many sessions they have.
+// sessions from the year before the first of them, oldest first and uncapped.
+// It costs one query per person however many sessions they have.
 func (s *Service) cardHistories(ctx context.Context, sessions []activity.Session, bySession map[uuid.UUID][]Set) (map[uuid.UUID][]Set, error) {
 	type window struct {
 		first, last time.Time
