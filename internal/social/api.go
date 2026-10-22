@@ -81,7 +81,7 @@ type SocialOverview struct {
 	Handle    string           `json:"handle"`
 	Invite    InviteView       `json:"invite"`
 	Joined    int              `json:"joined"`
-	Requests  []ConnectionView `json:"requests"`
+	Requests  []ConnectionView `json:"requests"` // always empty: follows are instant; kept so shipped iOS still decodes
 	Followers []ConnectionView `json:"followers"`
 	Following []ConnectionView `json:"following"`
 	Blocked   []PersonView     `json:"blocked"`
