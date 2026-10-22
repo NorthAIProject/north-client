@@ -121,6 +121,18 @@ const (
 	// sets the appearance as a person property, which is the only way the iOS
 	// choice reaches PostHog — the app carries no SDK.
 	EventAppearanceChanged = "appearance_changed"
+
+	// The first week: a new person's seven days with one goal and one daily
+	// action. Activation is still coach_replied on two days; these say where
+	// in the week people stop.
+	//
+	// EventFirstWeekStarted is day 0 ending with a goal, with its template.
+	EventFirstWeekStarted = "first_week_started"
+	// EventFirstWeekDayCompleted is a day's action done, once per day, with
+	// the day and how it was known: a log found, or a tap.
+	EventFirstWeekDayCompleted = "first_week_day_completed"
+	// EventFirstWeekFinished is the day-7 review opened.
+	EventFirstWeekFinished = "first_week_finished"
 )
 
 // Surfaces for EventAppearanceChanged: where the choice was made.
@@ -139,6 +151,9 @@ const (
 	SourceTelegram = "telegram"
 	SourceDocument = "document"
 	SourceCalendar = "calendar"
+	// SourceAppleHealth is the phone's first health delivery. The app reads
+	// Apple Health and speaks for it, so there is no connect step to count.
+	SourceAppleHealth = "apple_health"
 )
 
 // Ways an account can come into existence, for EventRegistered.
@@ -228,6 +243,22 @@ func (p *Funnel) SourceConnected(ctx context.Context, userID uuid.UUID, source s
 // different when the second day happened in a messaging app.
 func (p *Funnel) CoachReplied(ctx context.Context, userID uuid.UUID, surface string) {
 	p.capture(ctx, userID, EventCoachReplied, posthog.Properties{"surface": surface})
+}
+
+// FirstWeekStarted records a first week begun, with its template.
+func (p *Funnel) FirstWeekStarted(ctx context.Context, userID uuid.UUID, template string) {
+	p.capture(ctx, userID, EventFirstWeekStarted, posthog.Properties{"template": template})
+}
+
+// FirstWeekDayCompleted records one programme day's action done. via is log
+// or tap.
+func (p *Funnel) FirstWeekDayCompleted(ctx context.Context, userID uuid.UUID, day int, via string) {
+	p.capture(ctx, userID, EventFirstWeekDayCompleted, posthog.Properties{"day": day, "via": via})
+}
+
+// FirstWeekFinished records the day-7 review opened.
+func (p *Funnel) FirstWeekFinished(ctx context.Context, userID uuid.UUID) {
+	p.capture(ctx, userID, EventFirstWeekFinished, nil)
 }
 
 // PushSubscribed records a browser opting in to nudges.
