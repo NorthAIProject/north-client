@@ -257,9 +257,7 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID) (Overview, err
 	if err != nil {
 		return Overview{}, err
 	}
-	for _, c := range followers {
-		out.Followers = append(out.Followers, c)
-	}
+	out.Followers = append(out.Followers, followers...)
 	if out.Following, err = s.repo.Following(ctx, userID); err != nil {
 		return Overview{}, err
 	}
