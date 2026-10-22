@@ -468,8 +468,12 @@ func firstWeekSituation(f Facts) string {
 		b.WriteString(" Yesterday's action was not logged.")
 	}
 	b.WriteString(" If their data shows something specific about yesterday for this (last night's sleep, a workout, a meal, a journal entry), name it in one phrase with the number.")
-	if f.Reason != "" {
-		fmt.Fprintf(&b, " Their recovery this morning is under their usual (%s); today's planned session is %s, so the action can be easy.", strings.TrimSpace(f.Reason), f.Session)
+	if f.Session != "" {
+		b.WriteString(" Their recovery this morning is under their usual")
+		if r := strings.TrimSpace(f.Reason); r != "" {
+			fmt.Fprintf(&b, " (%s)", r)
+		}
+		fmt.Fprintf(&b, "; today's planned session is %s, so the action can be easy.", f.Session)
 	}
 	if f.Missed != "" {
 		fmt.Fprintf(&b, " Yesterday's planned session, %s (%s), did not happen; mention it only if it fits, without guilt.", f.Missed, f.Weekday)
