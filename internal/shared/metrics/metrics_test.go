@@ -92,6 +92,25 @@ func TestAJobIsCountedByKindAndOutcome(t *testing.T) {
 	}
 }
 
+// The alert fires on absence, so the series must not exist until a worker
+// ticks. The web binary shares this registry; if it exported a zero here, a
+// dead worker would look like a stale one instead of a missing one — and a
+// live web pod would keep the series present forever.
+func TestTheWorkerHeartbeatIsAbsentUntilTheFirstTick(t *testing.T) {
+	r := metrics.New()
+
+	if body := scrape(t, r); strings.Contains(body, "north_worker_heartbeat_timestamp_seconds ") {
+		t.Fatalf("heartbeat exported before any tick:\n%s", body)
+	}
+
+	r.WorkerHeartbeat(time.Unix(1_790_000_000, 0))
+
+	body := scrape(t, r)
+	if !strings.Contains(body, "north_worker_heartbeat_timestamp_seconds 1.79e+09") {
+		t.Errorf("heartbeat not exported as the tick's unix time; got %s", body)
+	}
+}
+
 // A process with metrics turned off runs the same code paths as one with them
 // on. Without this every call site would need a nil check, and one of them
 // would eventually be forgotten.
@@ -102,6 +121,7 @@ func TestANilRegistryIsSafeToUse(t *testing.T) {
 	r.CoachTokens("openrouter", 10, 20)
 	r.ContextSourceFailed("memories")
 	r.JobFinished("extract_memories", time.Second, false)
+	r.WorkerHeartbeat(time.Now())
 
 	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
 	rec := httptest.NewRecorder()

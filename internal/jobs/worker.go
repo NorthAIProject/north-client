@@ -130,6 +130,11 @@ func (w *Worker) Run(ctx context.Context) error {
 // claimAndRun takes one job and runs it, reporting whether there was one.
 func (w *Worker) claimAndRun(ctx context.Context) (bool, error) {
 	job, ok, err := w.queue.Claim(ctx)
+	if err == nil {
+		// Only a claim that reached the database counts as a tick. A loop
+		// spinning on a dead connection is the failure the heartbeat is for.
+		w.metrics.WorkerHeartbeat(w.now())
+	}
 	if err != nil || !ok {
 		return false, err
 	}
