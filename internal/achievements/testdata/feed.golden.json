@@ -13,6 +13,47 @@
       "kudos": 3,
       "kudoed": true,
       "mine": false
+    },
+    {
+      "id": "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee",
+      "userId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      "displayName": "Ana",
+      "handle": "ana_runs",
+      "category": "training",
+      "kind": "workout_completed",
+      "title": "Finished Weights",
+      "detail": "60 min",
+      "occurredAt": "2026-10-01T06:30:00Z",
+      "kudos": 0,
+      "kudoed": false,
+      "mine": false,
+      "workout": {
+        "sessionId": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+        "name": "Strength training",
+        "activityCode": "strength_training",
+        "startedAt": "2026-10-01T05:30:00Z",
+        "endedAt": "2026-10-01T06:30:00Z",
+        "durationSeconds": 3600,
+        "sets": 9,
+        "volumeKg": 4200,
+        "prs": 1,
+        "exercises": [
+          {
+            "name": "Squat",
+            "sets": 3,
+            "volumeKg": 2000,
+            "best": "100 kg × 5",
+            "pr": true
+          },
+          {
+            "name": "Bench press",
+            "sets": 3,
+            "volumeKg": 1200,
+            "best": "80 kg × 5",
+            "pr": false
+          }
+        ]
+      }
     }
   ]
 }

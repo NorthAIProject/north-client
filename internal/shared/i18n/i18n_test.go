@@ -67,6 +67,10 @@ func TestUntranslatedStringsAreAccountedFor(t *testing.T) {
 			"checkins.field.stress":     true, // "stress" is the everyday pt-PT word
 			"checkins.meta.stress":      true, // same borrowing as checkins.field.stress
 			"exercises.category.cardio": true, // same borrowing as nav.cardio-insights.nav
+			"workoutcard.minutes":       true, // "min", "kg" and "km" are the international unit symbols
+			"workoutcard.volume":        true, // same unit symbol
+			"workoutcard.km":            true, // same unit symbol
+			"workoutcard.pr":            true, // "PR" is the lifters' word for a personal record in every language
 		},
 		"pt-BR": {
 			"crews.report.reason.spam":  true, // "spam" is borrowed unchanged
@@ -82,6 +86,10 @@ func TestUntranslatedStringsAreAccountedFor(t *testing.T) {
 			"checkins.source.siri":      true, // Siri is a product name
 			"checkins.tags":             false,
 			"exercises.category.cardio": true, // same borrowing as nav.cardio-insights.nav
+			"workoutcard.minutes":       true, // "min", "kg" and "km" are the international unit symbols
+			"workoutcard.volume":        true, // same unit symbol
+			"workoutcard.km":            true, // same unit symbol
+			"workoutcard.pr":            true, // "PR" is the lifters' word for a personal record in every language
 		},
 		"es": {
 			"crews.report.reason.spam":  true, // "spam" is borrowed unchanged
@@ -104,6 +112,10 @@ func TestUntranslatedStringsAreAccountedFor(t *testing.T) {
 			"social.country.91":         true, // "India", same spelling
 			"decisions.held.no":         true, // "No" is "No" in Spanish
 			"exercises.category.cardio": true, // same borrowing as nav.cardio-insights.nav
+			"workoutcard.minutes":       true, // "min", "kg" and "km" are the international unit symbols
+			"workoutcard.volume":        true, // same unit symbol
+			"workoutcard.km":            true, // same unit symbol
+			"workoutcard.pr":            true, // "PR" is the lifters' word for a personal record in every language
 		},
 	}
 

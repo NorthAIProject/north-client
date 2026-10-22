@@ -13,7 +13,7 @@ import (
 )
 
 const feed = `-- name: Feed :many
-SELECT a.id, a.user_id, a.category, a.kind, a.title, a.detail, a.occurred_at,
+SELECT a.id, a.user_id, a.category, a.kind, a.title, a.detail, a.occurred_at, a.source_key,
        u.display_name, u.handle,
        (SELECT count(*) FROM kudos k WHERE k.achievement_id = a.id) AS kudos,
        EXISTS (SELECT 1 FROM kudos k WHERE k.achievement_id = a.id AND k.user_id = $1) AS kudoed
@@ -49,6 +49,7 @@ type FeedRow struct {
 	Title       string
 	Detail      string
 	OccurredAt  time.Time
+	SourceKey   string
 	DisplayName string
 	Handle      *string
 	Kudos       int64
@@ -75,6 +76,7 @@ func (q *Queries) Feed(ctx context.Context, arg FeedParams) ([]FeedRow, error) {
 			&i.Title,
 			&i.Detail,
 			&i.OccurredAt,
+			&i.SourceKey,
 			&i.DisplayName,
 			&i.Handle,
 			&i.Kudos,

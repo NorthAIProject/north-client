@@ -96,18 +96,10 @@ func groupInOrder(sets []Set) [][]Set {
 
 func summarise(sets, earlier []Set) RecapExercise {
 	row := RecapExercise{Name: sets[len(sets)-1].ExerciseName, Sets: len(sets)}
-	var best Set
-	var haveBest bool
 	for _, s := range sets {
 		row.VolumeKg += s.Volume()
-		if s.WeightKg <= 0 {
-			continue
-		}
-		if !haveBest || s.E1RM() > best.E1RM() {
-			best = s
-			haveBest = true
-		}
 	}
+	best, haveBest := heaviestSet(sets)
 	row.VolumeKg = util.RoundHalfUpToScale(row.VolumeKg, 1)
 	if haveBest {
 		row.BestWeightKg, row.BestReps = best.WeightKg, best.Reps
@@ -145,7 +137,29 @@ func (e RecapExercise) BestIn(tag string) string {
 	if e.BestWeightKg <= 0 {
 		return e.Best
 	}
-	return fmt.Sprintf("%s × %d", formatKg(tag, e.BestWeightKg), e.BestReps)
+	return bestLabel(tag, e.BestWeightKg, e.BestReps)
+}
+
+// heaviestSet is the set with the highest estimated max, the first of equals.
+// Bodyweight sets have no load to compare and are skipped; false when none
+// is left.
+func heaviestSet(sets []Set) (Set, bool) {
+	var best Set
+	var found bool
+	for _, s := range sets {
+		if s.WeightKg <= 0 {
+			continue
+		}
+		if !found || s.E1RM() > best.E1RM() {
+			best, found = s, true
+		}
+	}
+	return best, found
+}
+
+// bestLabel is a best set as a person reads it: "22,5 kg × 8" in Spanish.
+func bestLabel(tag string, weightKg float64, reps int) string {
+	return fmt.Sprintf("%s × %d", formatKg(tag, weightKg), reps)
 }
 
 func filterKey(sets []Set, key string) []Set {

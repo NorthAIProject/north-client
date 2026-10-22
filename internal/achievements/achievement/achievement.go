@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/NorthAIProject/north-client/internal/lifts/lift"
 )
 
 // Categories a person shares or keeps to themselves, one switch each.
@@ -60,7 +62,12 @@ type Item struct {
 	Title       string
 	Detail      string
 	OccurredAt  time.Time
-	Kudos       int
+	// SourceKey is what the moment is about: the session id for a workout.
+	SourceKey string
+	// Workout is the finished workout's card, set on a workout_completed
+	// item when it could be built.
+	Workout *lift.Card
+	Kudos   int
 	// Kudoed is whether the viewer gave kudos.
 	Kudoed bool
 	// Mine is whether the viewer is its owner.

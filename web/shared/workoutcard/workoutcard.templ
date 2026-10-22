@@ -1,0 +1,62 @@
+package workoutcard
+
+import (
+	"github.com/NorthAIProject/north-client/internal/lifts/lift"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
+	"github.com/NorthAIProject/north-client/web/shared/ui/badge"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+)
+
+// Card is a finished workout as someone else sees it: the stats row, the top
+// two exercises and a chip for each personal record. It never shows calories,
+// heart rate or body numbers. The whole card links to href, the author's
+// workout page; with no href (the author has no handle) it is plain.
+templ Card(c lift.Card, href string) {
+	@card.Card(card.Props{Class: "border-hairline bg-surface-2 mt-2", Attributes: templ.Attributes{"data-testid": "workout-card"}}) {
+		if href != "" {
+			// A hand-rolled anchor: templUI has no block-level link, and the
+			// whole card is the tap target.
+			<a href={ templ.SafeURL(href) } class="block p-3">
+				@body(c)
+			</a>
+		} else {
+			<div class="p-3">
+				@body(c)
+			</div>
+		}
+	}
+}
+
+templ body(c lift.Card) {
+	<p class="text-muted-foreground text-xs">
+		for i, s := range stats(ctx, c) {
+			if i > 0 {
+				<span aria-hidden="true">{ " · " }</span>
+			}
+			<span class="tabular-nums">{ s }</span>
+		}
+	</p>
+	if ex := top(c); len(ex) > 0 {
+		<ul class="mt-2 space-y-1">
+			for _, e := range ex {
+				<li class="flex items-center justify-between gap-2 text-sm">
+					<span class="truncate">{ e.Name }</span>
+					if best := e.BestIn(i18n.LocaleFrom(ctx)); best != "" {
+						<span class="text-muted-foreground shrink-0 tabular-nums text-xs">{ best }</span>
+					}
+				</li>
+			}
+		</ul>
+	}
+	if c.PRs > 0 {
+		<div class="mt-2 flex flex-wrap gap-1">
+			for _, e := range c.Exercises {
+				if e.PR {
+					@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
+						{ i18n.T(ctx, "workoutcard.pr") } · { e.Name }
+					}
+				}
+			}
+		</div>
+	}
+}

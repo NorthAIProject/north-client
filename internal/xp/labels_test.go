@@ -26,8 +26,8 @@ func TestXPLabelsSpeakTheRequestLanguage(t *testing.T) {
 		{"es", func(ctx context.Context) string { return valueText(ctx, MetricStreak, 12) }, "12 días"},
 		{"pt-PT", func(ctx context.Context) string { return valueText(ctx, MetricWorkouts, 1) }, "1 treino"},
 		{"pt-PT", func(ctx context.Context) string { return switchLabel(ctx, MetricXP) }, "O teu XP e nível"},
-		{"", func(ctx context.Context) string { return projectLevel(ctx, LevelFor(6000)).Title }, "Relentless"},
-		{"es", func(ctx context.Context) string { return projectLevel(ctx, LevelFor(0)).Title }, i18n.Translate("es", "leaderboard.level.starter")},
+		{"", func(ctx context.Context) string { return ProjectLevel(ctx, LevelFor(6000)).Title }, "Relentless"},
+		{"es", func(ctx context.Context) string { return ProjectLevel(ctx, LevelFor(0)).Title }, i18n.Translate("es", "leaderboard.level.starter")},
 	}
 	for _, c := range cases {
 		ctx := context.Background()

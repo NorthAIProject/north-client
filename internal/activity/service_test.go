@@ -273,3 +273,58 @@ func TestFinishedPlanSessionCompletesItsDayAndACancelledOneDoesNot(t *testing.T)
 		t.Fatalf("completed = %v, want [Wednesday]", got)
 	}
 }
+
+func TestCountAndListCompleted(t *testing.T) {
+	svc, user := newService(t, withWeight(80))
+	ctx := context.Background()
+	now := time.Now()
+
+	oldest, err := svc.Log(ctx, user.ID, activity.LogInput{ActivityCode: "running_8kmh", StartedAt: now.Add(-72 * time.Hour), Duration: 30 * time.Minute})
+	if err != nil {
+		t.Fatal(err)
+	}
+	middle, err := svc.Log(ctx, user.ID, activity.LogInput{ActivityCode: "running_8kmh", StartedAt: now.Add(-48 * time.Hour), Duration: 30 * time.Minute})
+	if err != nil {
+		t.Fatal(err)
+	}
+	newest, err := svc.Log(ctx, user.ID, activity.LogInput{ActivityCode: "running_8kmh", StartedAt: now.Add(-24 * time.Hour), Duration: 30 * time.Minute})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cancelled, err := svc.Start(ctx, user.ID, "running_8kmh", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = svc.Cancel(ctx, cancelled.ID, user.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = svc.Start(ctx, user.ID, "running_8kmh", ""); err != nil { // still running
+		t.Fatal(err)
+	}
+
+	n, err := svc.CountCompleted(ctx, user.ID)
+	if err != nil || n != 3 {
+		t.Fatalf("count = %d, %v; want 3 (cancelled and running are not workouts)", n, err)
+	}
+
+	all, err := svc.ListCompleted(ctx, user.ID, now.Add(time.Hour), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 3 || all[0].ID != newest.ID || all[1].ID != middle.ID || all[2].ID != oldest.ID {
+		t.Fatalf("list not newest first: %+v", all)
+	}
+
+	older, err := svc.ListCompleted(ctx, user.ID, *all[1].EndedAt, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(older) != 1 || older[0].ID != oldest.ID {
+		t.Fatalf("before the middle one = %+v, want only the oldest", older)
+	}
+
+	byID, err := svc.CompletedByIDs(ctx, []uuid.UUID{oldest.ID, cancelled.ID})
+	if err != nil || len(byID) != 1 || byID[0].ID != oldest.ID {
+		t.Fatalf("by ids = %+v, %v; want only the completed one", byID, err)
+	}
+}

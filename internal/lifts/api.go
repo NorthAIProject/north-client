@@ -37,6 +37,51 @@ func (a *API) Routes(r chi.Router) {
 	r.Get("/body/map", a.bodyMap)
 }
 
+// WorkoutCardView is a finished workout for someone else to read. It carries
+// no calories, heart rate or body numbers.
+type WorkoutCardView struct {
+	SessionID       uuid.UUID             `json:"sessionId"`
+	Name            string                `json:"name"`
+	ActivityCode    string                `json:"activityCode"`
+	StartedAt       time.Time             `json:"startedAt"`
+	EndedAt         time.Time             `json:"endedAt"`
+	DurationSeconds int                   `json:"durationSeconds"`
+	DistanceM       *float64              `json:"distanceM,omitempty"`
+	Sets            int                   `json:"sets"`
+	VolumeKg        float64               `json:"volumeKg"`
+	PRs             int                   `json:"prs"`
+	Exercises       []WorkoutExerciseView `json:"exercises"`
+}
+
+// WorkoutExerciseView is one movement on a card.
+type WorkoutExerciseView struct {
+	Name     string  `json:"name"`
+	Sets     int     `json:"sets"`
+	VolumeKg float64 `json:"volumeKg"`
+	// Best is the heaviest set, "22.5 kg × 8"; absent for bodyweight.
+	Best string `json:"best,omitempty"`
+	PR   bool   `json:"pr"`
+}
+
+// ProjectCard keeps the first limit exercises (limit <= 0 keeps all) and
+// always emits exercises as [] rather than null.
+func ProjectCard(c lift.Card, limit int) WorkoutCardView {
+	ex := c.Exercises
+	if limit > 0 && len(ex) > limit {
+		ex = ex[:limit]
+	}
+	out := WorkoutCardView{
+		SessionID: c.ID, Name: c.Name, ActivityCode: c.ActivityCode,
+		StartedAt: c.StartedAt, EndedAt: c.EndedAt, DurationSeconds: int(c.Duration.Seconds()),
+		DistanceM: c.DistanceM, Sets: c.Sets, VolumeKg: c.VolumeKg, PRs: c.PRs,
+		Exercises: make([]WorkoutExerciseView, 0, len(ex)),
+	}
+	for _, e := range ex {
+		out.Exercises = append(out.Exercises, WorkoutExerciseView{Name: e.Name, Sets: e.Sets, VolumeKg: e.VolumeKg, Best: e.Best, PR: e.PR})
+	}
+	return out
+}
+
 // BodyMapView is the body figure's payload. Muscles lists every region of the
 // figure, untrained ones at intensity 0, so a client needs no region list of
 // its own. Ids are open strings: a figure that gains a region must not break
