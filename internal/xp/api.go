@@ -102,9 +102,9 @@ func (a *API) board(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, projectBoard(r.Context(), b))
 }
 
-// projectLevel carries the level's title in the caller's language. The app
+// ProjectLevel carries the level's title in the caller's language. The app
 // shows title as it arrives; number is what identifies the level.
-func projectLevel(ctx context.Context, l Level) LevelView {
+func ProjectLevel(ctx context.Context, l Level) LevelView {
 	v := LevelView{Number: l.Number, Title: levelTitle(ctx, l.Title), Floor: l.Floor}
 	if l.Next > 0 {
 		v.Next = util.Ptr(l.Next)
@@ -125,7 +125,7 @@ func levelTitle(ctx context.Context, title string) string {
 
 func projectSummary(ctx context.Context, s Summary) SummaryView {
 	out := SummaryView{
-		Total: s.Total, Level: projectLevel(ctx, s.Level), WeekTotal: s.WeekTotal,
+		Total: s.Total, Level: ProjectLevel(ctx, s.Level), WeekTotal: s.WeekTotal,
 		Week: make([]EarnedView, 0, len(firstKinds)), Earned: make([]EarnedView, 0, len(s.Week)),
 	}
 	for _, e := range s.Week {
@@ -144,7 +144,7 @@ func projectBoard(ctx context.Context, b Board) BoardView {
 			Rank: e.Rank, UserID: e.UserID, DisplayName: e.DisplayName, Handle: e.Handle, Value: e.Value, Me: e.Me,
 		}
 		if e.Level != nil {
-			v.Level = util.Ptr(projectLevel(ctx, *e.Level))
+			v.Level = util.Ptr(ProjectLevel(ctx, *e.Level))
 		}
 		out.Entries = append(out.Entries, v)
 	}
