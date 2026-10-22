@@ -31,6 +31,8 @@ type Earned struct {
 type Service struct {
 	q   *awardsdb.Queries
 	log *slog.Logger
+	// failMetric makes one metric error; set only by tests.
+	failMetric metric
 }
 
 func NewService(pool *pgxpool.Pool) *Service {
@@ -57,7 +59,9 @@ func (s *Service) Evaluate(ctx context.Context, userID uuid.UUID, at time.Time, 
 		return nil, err
 	}
 	c := newCounter(ctx, s.q, userID)
+	c.fail = s.failMetric
 	var out []Earned
+	var errs []error
 	for _, b := range award.Catalog() {
 		if !inAreas(b.Area, areas) || held[b.ID] {
 			continue
@@ -65,22 +69,22 @@ func (s *Service) Evaluate(ctx context.Context, userID uuid.UUID, at time.Time, 
 		if _, ok := ruleOf[b.ID]; !ok {
 			continue
 		}
+		// Each rule stands alone: one failing query must not cost the
+		// person the other badges this event earned.
 		n, err := c.progressOf(b)
+		if err == nil && n >= b.Target {
+			var e Earned
+			var ok bool
+			if e, ok, err = s.insert(ctx, userID, b, at); ok {
+				out = append(out, e)
+			}
+		}
 		if err != nil {
-			return out, err
-		}
-		if n < b.Target {
-			continue
-		}
-		e, ok, err := s.insert(ctx, userID, b, at)
-		if err != nil {
-			return out, err
-		}
-		if ok {
-			out = append(out, e)
+			s.log.Warn("awards rule failed", "badge", b.ID, "user_id", userID, "error", err)
+			errs = append(errs, fmt.Errorf("%s: %w", b.ID, err))
 		}
 	}
-	return out, nil
+	return out, errors.Join(errs...)
 }
 
 // Grant records a badge that has no counting rule, such as listened_to_body,

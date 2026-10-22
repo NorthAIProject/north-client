@@ -570,3 +570,32 @@ func TestUnseenThenSeen(t *testing.T) {
 		t.Fatalf("earned = %v", ids(all))
 	}
 }
+
+func TestFailingRuleDoesNotStopOthers(t *testing.T) {
+	e := newEnv(t, "UTC")
+	e.sessions(1, 12)
+	e.exec(`INSERT INTO journal_entries (user_id, content) VALUES ($1, 'x')`)
+	e.svc.FailMetric("workouts")
+	got, err := e.svc.Evaluate(context.Background(), e.user, now)
+	if err == nil {
+		t.Fatal("want the joined rule error")
+	}
+	if fmt.Sprint(ids(got)) != "[journal_1]" {
+		t.Fatalf("earned %v, want journal_1 despite the failing workouts rule", ids(got))
+	}
+}
+
+func TestOneSessionOfRecordsIsOnePR(t *testing.T) {
+	e := newEnv(t, "UTC")
+	e.setLog(1, 60, 5, "work") // history: the baseline
+	for i := 0; i < 4; i++ {   // one later day, four escalating record sets
+		e.setLog(5, float64(70+i*10), 5, "work")
+	}
+	p, err := e.svc.Progress(context.Background(), e.user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p["pr_1"] != 1 {
+		t.Fatalf("pr count = %d, want 1", p["pr_1"])
+	}
+}
