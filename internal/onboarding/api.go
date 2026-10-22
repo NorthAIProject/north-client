@@ -30,6 +30,10 @@ type Request struct {
 	CoachingStyle       string   `json:"coachingStyle"`
 	CoachingStyleCustom string   `json:"coachingStyleCustom"`
 	NearTermGoal        string   `json:"nearTermGoal"`
+	// FirstWeekTemplate is the change picked for the first seven days: sleep,
+	// train, protein, journal or custom, as an open string. Optional; absent
+	// or unknown, the week runs on nearTermGoal.
+	FirstWeekTemplate string `json:"firstWeekTemplate,omitempty"`
 }
 
 type Response struct {
@@ -59,6 +63,7 @@ func (a *API) complete(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, err, "Please complete the required onboarding fields.")
 		return
 	}
+	answers.FirstWeekTemplate = req.FirstWeekTemplate
 
 	onboarded, thread, err := a.svc.Complete(r.Context(), user, answers)
 	if err != nil {
