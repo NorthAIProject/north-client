@@ -183,8 +183,7 @@ WHERE u.id = $1
    OR (
      EXISTS (SELECT 1 FROM follows f
              WHERE f.follower_id = $1 AND f.followee_id = u.id AND f.status = 'accepted')
-     AND EXISTS (SELECT 1 FROM achievement_sharing s
-                 WHERE s.user_id = u.id AND s.category = $2 AND s.shared)
+     AND sharing_on(u.id, $2)
      AND NOT EXISTS (SELECT 1 FROM blocks b
                      WHERE (b.blocker_id = $1 AND b.blocked_id = u.id)
                         OR (b.blocker_id = u.id AND b.blocked_id = $1))
@@ -232,10 +231,7 @@ func (q *Queries) Participants(ctx context.Context, arg ParticipantsParams) ([]P
 }
 
 const shares = `-- name: Shares :one
-SELECT EXISTS (
-    SELECT 1 FROM achievement_sharing
-    WHERE user_id = $1 AND category = $2 AND shared
-)
+SELECT sharing_on($1, $2)
 `
 
 type SharesParams struct {
@@ -246,9 +242,9 @@ type SharesParams struct {
 // Whether a person shares one category with followers.
 func (q *Queries) Shares(ctx context.Context, arg SharesParams) (bool, error) {
 	row := q.db.QueryRow(ctx, shares, arg.UserID, arg.Category)
-	var exists bool
-	err := row.Scan(&exists)
-	return exists, err
+	var sharing_on bool
+	err := row.Scan(&sharing_on)
+	return sharing_on, err
 }
 
 const workoutsFinished = `-- name: WorkoutsFinished :many

@@ -25,8 +25,7 @@ WHERE a.occurred_at < $2
     OR (
       EXISTS (SELECT 1 FROM follows f
               WHERE f.follower_id = $1 AND f.followee_id = a.user_id AND f.status = 'accepted')
-      AND EXISTS (SELECT 1 FROM achievement_sharing s
-                  WHERE s.user_id = a.user_id AND s.category = a.category AND s.shared)
+      AND sharing_on(a.user_id, a.category)
       AND NOT EXISTS (SELECT 1 FROM blocks b
                       WHERE (b.blocker_id = $1 AND b.blocked_id = a.user_id)
                          OR (b.blocker_id = a.user_id AND b.blocked_id = $1))
@@ -339,8 +338,7 @@ WHERE a.id = $1
     OR (
       EXISTS (SELECT 1 FROM follows f
               WHERE f.follower_id = $2 AND f.followee_id = a.user_id AND f.status = 'accepted')
-      AND EXISTS (SELECT 1 FROM achievement_sharing s
-                  WHERE s.user_id = a.user_id AND s.category = a.category AND s.shared)
+      AND sharing_on(a.user_id, a.category)
       AND NOT EXISTS (SELECT 1 FROM blocks b
                       WHERE (b.blocker_id = $2 AND b.blocked_id = a.user_id)
                          OR (b.blocker_id = a.user_id AND b.blocked_id = $2))

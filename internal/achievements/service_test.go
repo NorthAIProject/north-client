@@ -72,6 +72,12 @@ func TestFeedShowsOnlyWhatIsShared(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// New people share training, streaks and goals by default; Ana switches
+	// everything off first so the test starts from "nothing shared".
+	if _, err := ach.SetSharing(ctx, ana.ID, achievements.Sharing{}); err != nil {
+		t.Fatal(err)
+	}
+
 	now := time.Now()
 	ach.WorkoutCompleted(ctx, ana.ID, uuid.New(), "Running", 32, now.Add(-time.Hour))
 	ach.GoalCompleted(ctx, ana.ID, uuid.New(), "Run a 10k", now.Add(-2*time.Hour))
