@@ -174,6 +174,30 @@ func (s *Service) Get(ctx context.Context, id, userID uuid.UUID) (Session, error
 	return s.repo.Get(ctx, id, userID)
 }
 
+// CompletedByIDs is the completed sessions among ids, whoever owns them. It
+// does not check the reader: the caller must already have decided that this
+// person may see these workouts.
+func (s *Service) CompletedByIDs(ctx context.Context, ids []uuid.UUID) ([]Session, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	return s.repo.CompletedByIDs(ctx, ids)
+}
+
+// ListCompleted is the person's finished sessions that ended before a point,
+// newest first. Pass the last ended time seen to page.
+func (s *Service) ListCompleted(ctx context.Context, userID uuid.UUID, before time.Time, limit int) ([]Session, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+	return s.repo.ListCompleted(ctx, userID, before, limit)
+}
+
+// CountCompleted is how many sessions the person has finished.
+func (s *Service) CountCompleted(ctx context.Context, userID uuid.UUID) (int, error) {
+	return s.repo.CountCompleted(ctx, userID)
+}
+
 func (s *Service) Active(ctx context.Context, userID uuid.UUID) (Session, bool, error) {
 	return s.repo.Active(ctx, userID)
 }

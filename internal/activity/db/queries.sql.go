@@ -107,6 +107,66 @@ func (q *Queries) CompleteActivitySession(ctx context.Context, arg CompleteActiv
 	return i, err
 }
 
+const completedSessionsByIDs = `-- name: CompletedSessionsByIDs :many
+SELECT id, user_id, activity_code, source, status, weight_kg_snapshot, started_at, paused_at, total_paused_seconds, ended_at, calories_burned, external_id, created_at, updated_at, distance_m, plan_weekday, avg_hr, max_hr, elevation_m, indoor FROM activity_sessions
+WHERE id = ANY($1::uuid[]) AND status = 'completed'
+`
+
+// Completed sessions by id, whoever owns them. Not owner-scoped: the caller
+// decides whose workouts the reader may see before asking.
+func (q *Queries) CompletedSessionsByIDs(ctx context.Context, ids []uuid.UUID) ([]ActivitySession, error) {
+	rows, err := q.db.Query(ctx, completedSessionsByIDs, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ActivitySession{}
+	for rows.Next() {
+		var i ActivitySession
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.ActivityCode,
+			&i.Source,
+			&i.Status,
+			&i.WeightKgSnapshot,
+			&i.StartedAt,
+			&i.PausedAt,
+			&i.TotalPausedSeconds,
+			&i.EndedAt,
+			&i.CaloriesBurned,
+			&i.ExternalID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DistanceM,
+			&i.PlanWeekday,
+			&i.AvgHr,
+			&i.MaxHr,
+			&i.ElevationM,
+			&i.Indoor,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const countCompletedSessions = `-- name: CountCompletedSessions :one
+SELECT count(*) FROM activity_sessions
+WHERE user_id = $1 AND status = 'completed'
+`
+
+func (q *Queries) CountCompletedSessions(ctx context.Context, userID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countCompletedSessions, userID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createActivitySession = `-- name: CreateActivitySession :one
 INSERT INTO activity_sessions (user_id, activity_code, weight_kg_snapshot, plan_weekday)
 VALUES (
@@ -380,6 +440,62 @@ type ListActivitySessionsBetweenParams struct {
 // something that happened.
 func (q *Queries) ListActivitySessionsBetween(ctx context.Context, arg ListActivitySessionsBetweenParams) ([]ActivitySession, error) {
 	rows, err := q.db.Query(ctx, listActivitySessionsBetween, arg.UserID, arg.EndedAt, arg.EndedAt_2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ActivitySession{}
+	for rows.Next() {
+		var i ActivitySession
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.ActivityCode,
+			&i.Source,
+			&i.Status,
+			&i.WeightKgSnapshot,
+			&i.StartedAt,
+			&i.PausedAt,
+			&i.TotalPausedSeconds,
+			&i.EndedAt,
+			&i.CaloriesBurned,
+			&i.ExternalID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DistanceM,
+			&i.PlanWeekday,
+			&i.AvgHr,
+			&i.MaxHr,
+			&i.ElevationM,
+			&i.Indoor,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCompletedSessions = `-- name: ListCompletedSessions :many
+SELECT id, user_id, activity_code, source, status, weight_kg_snapshot, started_at, paused_at, total_paused_seconds, ended_at, calories_burned, external_id, created_at, updated_at, distance_m, plan_weekday, avg_hr, max_hr, elevation_m, indoor FROM activity_sessions
+WHERE user_id = $1 AND status = 'completed' AND ended_at < $2
+ORDER BY ended_at DESC, id DESC
+LIMIT $3
+`
+
+type ListCompletedSessionsParams struct {
+	UserID uuid.UUID
+	Before *time.Time
+	Lim    int32
+}
+
+// One person's completed sessions that ended before a point, newest first;
+// the caller pages by passing the last ended_at it saw.
+func (q *Queries) ListCompletedSessions(ctx context.Context, arg ListCompletedSessionsParams) ([]ActivitySession, error) {
+	rows, err := q.db.Query(ctx, listCompletedSessions, arg.UserID, arg.Before, arg.Lim)
 	if err != nil {
 		return nil, err
 	}

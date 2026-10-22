@@ -89,6 +89,16 @@ func (r *Repository) ListForExercisesBefore(ctx context.Context, userID uuid.UUI
 	return fromRows(rows), nil
 }
 
+// ListForSessions is every set logged against these workouts, in the order
+// they were done. It is not owner-scoped: the caller authorizes.
+func (r *Repository) ListForSessions(ctx context.Context, sessionIDs []uuid.UUID) ([]Set, error) {
+	rows, err := r.q.ListSetsForSessions(ctx, sessionIDs)
+	if err != nil {
+		return nil, apperr.Wrap(err, "list sets for sessions")
+	}
+	return fromRows(rows), nil
+}
+
 func fromRows(rows []liftsdb.SetLog) []Set {
 	out := make([]Set, len(rows))
 	for i, row := range rows {
