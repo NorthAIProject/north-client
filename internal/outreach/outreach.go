@@ -1,7 +1,10 @@
 // Package outreach is the coach speaking first: once a day at most, when it
 // notices something in the person's day, it acts or offers and says so.
 //
-// Two triggers so far. On a low-recovery morning with a session due, the
+// Three triggers. During a new person's first week (internal/firstweek), the
+// morning message is the week's: yesterday, and today's one action, with a
+// Done button. The other two stay quiet that week; what they would have said
+// goes into the first-week message instead. Otherwise: on a low-recovery morning with a session due, the
 // coach lightens it (or, if the person keeps that to themselves, offers to)
 // and says why, with an undo. The morning after a missed session, it offers
 // to move the session to today or tomorrow, or to let it go.
@@ -21,6 +24,7 @@ import (
 const (
 	TriggerLowRecovery   = "low_recovery"
 	TriggerMissedSession = "missed_session"
+	TriggerFirstWeek     = "first_week"
 )
 
 // Actions, the answers a person can give. They travel as button values, so
@@ -32,6 +36,7 @@ const (
 	ActionToday    = "today"
 	ActionTomorrow = "tomorrow"
 	ActionLetGo    = "let_go"
+	ActionDone     = "done"
 )
 
 // Facts are what the coach acted on or offered.
@@ -49,6 +54,15 @@ type Facts struct {
 	Weekday      string `json:"weekday,omitempty"`
 	TodayFree    bool   `json:"todayFree,omitempty"`
 	TomorrowFree bool   `json:"tomorrowFree,omitempty"`
+
+	// The first week: the programme day, its template, and whether
+	// yesterday's action was done (Day 1 has no yesterday in the week).
+	// Reason and Session carry what the low-recovery and missed-session
+	// triggers noticed, since those stay quiet that week.
+	FirstWeekDay  int    `json:"firstWeekDay,omitempty"`
+	Template      string `json:"template,omitempty"`
+	YesterdayDone bool   `json:"yesterdayDone,omitempty"`
+	Missed        string `json:"missed,omitempty"`
 }
 
 // Outreach is one day's message.
@@ -82,6 +96,8 @@ func (o Outreach) Actions() []string {
 			out = append(out, ActionTomorrow)
 		}
 		return append(out, ActionLetGo)
+	case TriggerFirstWeek:
+		return []string{ActionDone}
 	default:
 		return nil
 	}
@@ -103,8 +119,12 @@ func (o Outreach) Answered() bool { return o.Action != "" }
 // NudgeKind is the notification kind this outreach is raised as: it picks
 // the push category, and so the buttons under the banner.
 func (o Outreach) NudgeKind() string {
-	if o.Trigger == TriggerLowRecovery {
+	switch o.Trigger {
+	case TriggerLowRecovery:
 		return "coach_lighter"
+	case TriggerFirstWeek:
+		return "coach_first_week"
+	default:
+		return "coach_missed"
 	}
-	return "coach_missed"
 }

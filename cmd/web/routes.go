@@ -934,6 +934,17 @@ func routes(
 	messagingSvc := messaging.NewService(messagingOpts)
 	nudgeSvc.WithFanout(messagingSvc)
 
+	// The first week (internal/firstweek): started by onboarding, shown as a
+	// day card, and answered from the coach's morning message.
+	firstWeekSvc := firstweek.NewService(firstweek.Options{
+		Repository: firstweek.NewRepository(pool),
+		Goals:      goalSvc,
+		Users:      userSvc,
+		Proofs:     logproofs.For(sleepSvc, activitySvc, liftSvc, foodLogSvc, mindSvc, checkinSvc),
+		Funnel:     funnel,
+		Enabled:    cfg.FirstWeekEnabled,
+	})
+
 	// Answers to the coach's unprompted message: the Today card, the API a
 	// notification button calls, and taps on its Telegram buttons. The
 	// worker sends the messages; this process only applies answers, so no
@@ -943,6 +954,7 @@ func routes(
 		Prefs:      notificationSvc,
 		Lighter:    lighterSvc,
 		Training:   workoutSvc,
+		FirstWeek:  firstWeekSvc,
 		Chats:      conversationSvc,
 		Notifier:   nudgeSvc,
 		Chat:       messagingSvc,
@@ -967,14 +979,6 @@ func routes(
 	// Given the coach so the questionnaire ends in a thread that is already
 	// being answered, rather than an empty chat box the person has to think of
 	// something to say to.
-	firstWeekSvc := firstweek.NewService(firstweek.Options{
-		Repository: firstweek.NewRepository(pool),
-		Goals:      goalSvc,
-		Users:      userSvc,
-		Proofs:     logproofs.For(sleepSvc, activitySvc, liftSvc, foodLogSvc, mindSvc, checkinSvc),
-		Funnel:     funnel,
-		Enabled:    cfg.FirstWeekEnabled,
-	})
 	onboardingSvc := onboarding.NewService(userSvc, memorySvc, goalSvc).
 		WithCoach(coachSvc, slog.Default()).
 		WithFunnel(funnel).
@@ -1323,6 +1327,7 @@ func routes(
 				inboxHandler.Routes(r)
 				lighterHandler.Routes(r)
 				outreach.NewHandler(outreachSvc).Routes(r)
+				firstweek.NewHandler(firstWeekSvc).Routes(r)
 				careHandler.Routes(r)
 				// The medications card's writes, rendered back through the care page.
 				medications.NewHandler(medicationSvc, careHandler).Routes(r)

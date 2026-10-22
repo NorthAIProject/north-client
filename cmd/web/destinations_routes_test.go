@@ -30,6 +30,7 @@ var knownNonDestinations = map[string]string{
 	"/app/day/trends":              "overview trend cards fragment",
 	"/app/today/lighter":           "lighter-day offer on the dashboard training panel",
 	"/app/outreach":                "fragment: the coach's message of the day on Today",
+	"/app/first-week":              "fragment: the first week's day card on My Day and the dashboard",
 	"/app/nudges/bell":             "topbar poll",
 	"/app/connections/pill":        "topbar prompt to connect an agent",
 	"/app/knowledge/passages":      "document passage fragment",

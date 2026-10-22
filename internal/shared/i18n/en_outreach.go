@@ -22,4 +22,7 @@ var englishOutreach = map[string]string{
 	"outreach.error.action":             "That answer isn't available for this message.",
 	"outreach.error.answered":           "That was already answered.",
 	"outreach.error":                    "That couldn't be done just now. Try again from the app.",
+	"outreach.action.done":              "Done",
+	"outreach.done.done":                "Marked done for today.",
+	"outreach.fallback.firstweek":       "Day %[1]d of 7. Today's one thing: %[2]s",
 }
