@@ -7,6 +7,8 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
@@ -14,6 +16,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/jobs"
 	"github.com/NorthAIProject/north-client/internal/shared/database/testdb"
+	"github.com/NorthAIProject/north-client/internal/shared/metrics"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/google/uuid"
 )
@@ -323,6 +326,53 @@ func TestAPanickingHandlerFailsOnlyItsOwnJob(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("the worker did not survive a panicking handler")
 	}
+}
+
+// An idle worker still ticks: an empty queue is the normal state, and the
+// heartbeat alert must not fire at three in the morning because nobody did
+// anything.
+func TestAnIdleWorkerStillTicksTheHeartbeat(t *testing.T) {
+	q := newQueue(t)
+	reg := metrics.New()
+	tick := time.Unix(1_790_000_000, 0)
+
+	worker := jobs.NewWorker(q, slog.New(slog.NewTextHandler(io.Discard, nil))).
+		WithMetrics(reg).
+		WithClock(func() time.Time { return tick })
+
+	runCtx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	_ = worker.Run(runCtx)
+
+	if body := scrapeMetrics(t, reg); !strings.Contains(body, "north_worker_heartbeat_timestamp_seconds 1.79e+09") {
+		t.Errorf("idle worker did not tick; got %s", body)
+	}
+}
+
+// The failure the heartbeat exists for: a process that is up and looping but
+// cannot reach the queue. Turning the loop is not a tick.
+func TestAWorkerThatCannotReachTheQueueDoesNotTick(t *testing.T) {
+	pool := testdb.New(t)
+	pool.Close()
+	reg := metrics.New()
+
+	worker := jobs.NewWorker(jobs.NewQueue(pool), slog.New(slog.NewTextHandler(io.Discard, nil))).
+		WithMetrics(reg)
+
+	runCtx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	_ = worker.Run(runCtx)
+
+	if body := scrapeMetrics(t, reg); strings.Contains(body, "north_worker_heartbeat_timestamp_seconds ") {
+		t.Errorf("worker ticked without reaching the queue; got %s", body)
+	}
+}
+
+func scrapeMetrics(t *testing.T, reg *metrics.Registry) string {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	reg.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	return rec.Body.String()
 }
 
 // A job runs long after the request that queued it, in another process. Without
