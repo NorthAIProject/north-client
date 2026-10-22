@@ -91,6 +91,17 @@ func (s *Service) IngestWorkouts(ctx context.Context, userID uuid.UUID, source s
 	}
 
 	written, created := 0, 0
+	// One badge check for the whole batch, not one per workout. Deferred so
+	// workouts imported before a failure still get their check.
+	defer func() {
+		if created > 0 && s.awards != nil {
+			areas := []award.Area{award.Training}
+			if source == activity.SourceStrava {
+				areas = append(areas, award.Body)
+			}
+			s.awards.Check(ctx, userID, time.Now(), areas...)
+		}
+	}()
 	for _, w := range workouts {
 		_, fresh, err := s.activities.Import(ctx, activity.ImportInput{
 			UserID:       userID,
@@ -119,14 +130,6 @@ func (s *Service) IngestWorkouts(ctx context.Context, userID uuid.UUID, source s
 		written++
 	}
 
-	// One badge check for the whole batch, not one per workout.
-	if created > 0 && s.awards != nil {
-		areas := []award.Area{award.Training}
-		if source == activity.SourceStrava {
-			areas = append(areas, award.Body)
-		}
-		s.awards.Check(ctx, userID, time.Now(), areas...)
-	}
 	return Result{Written: written}, nil
 }
 
