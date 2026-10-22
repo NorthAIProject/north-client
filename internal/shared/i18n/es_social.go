@@ -112,4 +112,15 @@ var spanishSocial = map[string]string{
 	"workoutcard.minutes": "%[1]d min",
 	"workoutcard.km":      "%[1]s km",
 	"workoutcard.pr":      "PR",
+
+	"profile.workouts":  "Entrenamientos",
+	"profile.followers": "Seguidores",
+	"profile.following": "Siguiendo",
+	"profile.seeall":    "Ver todo",
+	"profile.more":      "Más",
+	"profile.hidden":    "Los entrenamientos no se comparten.",
+	"profile.empty":     "Aún no hay entrenamientos.",
+	"profile.yours":     "Tu perfil",
+	"profile.level":     "Nivel %[1]d · %[2]s",
+	"profile.back":      "Volver al perfil",
 }

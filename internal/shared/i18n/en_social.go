@@ -117,4 +117,15 @@ var englishSocial = map[string]string{
 	"workoutcard.minutes": "%[1]d min",
 	"workoutcard.km":      "%[1]s km",
 	"workoutcard.pr":      "PR",
+
+	"profile.workouts":  "Workouts",
+	"profile.followers": "Followers",
+	"profile.following": "Following",
+	"profile.seeall":    "See all",
+	"profile.more":      "More",
+	"profile.hidden":    "Workouts aren't shared.",
+	"profile.empty":     "No workouts yet.",
+	"profile.yours":     "Your profile",
+	"profile.level":     "Level %[1]d · %[2]s",
+	"profile.back":      "Back to profile",
 }

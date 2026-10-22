@@ -1,6 +1,7 @@
 package leaderboard
 
 import (
+	"net/url"
 	"context"
 	"fmt"
 	"strings"
@@ -193,7 +194,12 @@ templ row(r Row) {
 		}
 		<div class="min-w-0 flex-1">
 			<p class="truncate text-sm">
-				{ r.Name }
+				if r.Handle != "" {
+					// A hand-rolled inline anchor: a name inside a line of text.
+					<a href={ templ.SafeURL("/app/u/" + url.PathEscape(r.Handle)) } class="hover:underline">{ r.Name }</a>
+				} else {
+					{ r.Name }
+				}
 				if r.Me {
 					<span class="text-muted-foreground font-normal">{ i18n.T(ctx, "leaderboard.you") }</span>
 				}
