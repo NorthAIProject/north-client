@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -140,8 +141,8 @@ func TestInviteRedeemConnectsBothWays(t *testing.T) {
 	}
 }
 
-// A follow waits for the other person's yes, and they hear about it once.
-func TestFollowNeedsApproval(t *testing.T) {
+// A follow takes effect at once, and they hear about it once.
+func TestFollowIsInstant(t *testing.T) {
 	svc, inbox, _, pool := fixture(t)
 	ctx := context.Background()
 	ana := person(t, pool, "ana@north.test", "Ana")
@@ -151,34 +152,38 @@ func TestFollowNeedsApproval(t *testing.T) {
 	}
 
 	c, err := svc.Follow(ctx, ana.ID, "@joao")
-	if err != nil || c.Status != social.StatusPending {
+	if err != nil || c.Status != social.StatusAccepted {
 		t.Fatalf("follow = %+v, %v", c, err)
 	}
 	if _, err = svc.Follow(ctx, ana.ID, "joao"); err != nil {
 		t.Fatal(err)
 	}
-	if len(inbox.notes) != 1 || inbox.notes[0].kind != social.KindFollowRequest || inbox.notes[0].to != joao.ID {
-		t.Fatalf("notes = %+v, want one request", inbox.notes)
+	if len(inbox.notes) != 1 || inbox.notes[0].kind != social.KindNewFollower ||
+		inbox.notes[0].to != joao.ID || inbox.notes[0].title != "Ana followed you" {
+		t.Fatalf("notes = %+v, want one new_follower", inbox.notes)
 	}
 
 	joaoView, _ := svc.Overview(ctx, joao.ID)
-	if len(joaoView.Requests) != 1 || len(joaoView.Followers) != 0 {
-		t.Fatalf("before accepting: %+v", joaoView)
+	if len(joaoView.Followers) != 1 || len(joaoView.Requests) != 0 {
+		t.Fatalf("overview: %+v", joaoView)
 	}
+	// A shipped iOS build may still show a stale request and tap Accept.
 	if err = svc.Accept(ctx, joao.ID, ana.ID); err != nil {
-		t.Fatal(err)
+		t.Fatalf("accept of accepted follower: %v", err)
 	}
-	profile, err := svc.Profile(ctx, ana.ID, "joao")
-	if err != nil || profile.Relationship.Following != social.StatusAccepted || profile.Followers != 1 {
-		t.Fatalf("profile = %+v, %v", profile, err)
+	if err = svc.Accept(ctx, joao.ID, uuid.New()); !errors.Is(err, apperr.ErrNotFound) {
+		t.Fatalf("accept of nobody = %v, want not found", err)
 	}
 
-	// Removing a follower is silent and reversible by them asking again.
+	// Removing a follower is silent; following again is instant again.
 	if err := svc.RemoveFollower(ctx, joao.ID, ana.ID); err != nil {
 		t.Fatal(err)
 	}
 	if p, _ := svc.Profile(ctx, ana.ID, "joao"); p.Relationship.Following != "" {
 		t.Fatalf("still following after removal: %+v", p.Relationship)
+	}
+	if c, err = svc.Follow(ctx, ana.ID, "joao"); err != nil || c.Status != social.StatusAccepted {
+		t.Fatalf("refollow = %+v, %v", c, err)
 	}
 }
 
@@ -284,8 +289,8 @@ func TestMatchContacts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(found) != 1 || found[0].ID != ana.ID || found[0].Status != social.StatusPending {
-		t.Fatalf("found = %+v, want only Ana, already asked", found)
+	if len(found) != 1 || found[0].ID != ana.ID || found[0].Status != social.StatusAccepted {
+		t.Fatalf("found = %+v, want only Ana, already followed", found)
 	}
 
 	if _, err := svc.MatchContacts(ctx, me.ID, []string{"ana@north.test"}, nil); !apperr.Is(err, apperr.ErrValidation) {

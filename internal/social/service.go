@@ -26,8 +26,8 @@ type Funnel interface {
 // Nudge kinds this package raises. Plain strings so internal/nudges need not
 // import this package; it treats kinds it does not know as allowed.
 const (
-	KindFollowRequest = "follow_request"
-	KindInviteJoined  = "invite_joined"
+	KindNewFollower  = "new_follower"
+	KindInviteJoined = "invite_joined"
 )
 
 type Service struct {
@@ -156,8 +156,8 @@ func (s *Service) Redeem(ctx context.Context, inviteeID uuid.UUID, code string) 
 	return result.Connected, nil
 }
 
-// Follow asks to follow the person with this handle. It waits for their yes.
-// A blocked or unknown handle is not found either way, so a block cannot be
+// Follow follows the person with this handle at once; there is no request to
+// approve. They are told once, the first time. A blocked or unknown handle is not found either way, so a block cannot be
 // detected by trying to follow.
 func (s *Service) Follow(ctx context.Context, followerID uuid.UUID, handle string) (Connection, error) {
 	target, err := s.repo.PersonByHandle(ctx, NormalizeHandle(handle))
@@ -178,21 +178,33 @@ func (s *Service) Follow(ctx context.Context, followerID uuid.UUID, handle strin
 	if err != nil {
 		return Connection{}, err
 	}
-	status, err := s.repo.Follow(ctx, followerID, target.ID, StatusPending)
+	status, err := s.repo.Follow(ctx, followerID, target.ID, StatusAccepted)
 	if err != nil {
 		return Connection{}, err
 	}
-	if before == "" && status == StatusPending && s.inbox != nil {
+	if before == "" && s.inbox != nil {
 		if me, err := s.repo.PersonByID(ctx, followerID); err == nil {
-			_ = s.inbox.NoteWithPush(ctx, target.ID, KindFollowRequest, followerID.String(),
-				me.DisplayName+" wants to follow you", "Say yes or no in Friends.", "/app/friends")
+			_ = s.inbox.NoteWithPush(ctx, target.ID, KindNewFollower, followerID.String(),
+				me.DisplayName+" followed you", "See who follows you in Friends.", "/app/friends")
 		}
 	}
 	return Connection{Person: target, Status: status}, nil
 }
 
-// Accept says yes to a pending request from followerID.
+// Accept is kept for shipped clients that still show a stale request. Follows
+// are accepted on creation, so an accepted follower is a harmless success and
+// only a follower who does not exist is not found.
 func (s *Service) Accept(ctx context.Context, followeeID, followerID uuid.UUID) error {
+	status, err := s.repo.FollowStatus(ctx, followerID, followeeID)
+	if err != nil {
+		return err
+	}
+	switch status {
+	case StatusAccepted:
+		return nil
+	case "":
+		return apperr.ErrNotFound
+	}
 	ok, err := s.repo.Accept(ctx, followerID, followeeID)
 	if err != nil {
 		return err
@@ -203,13 +215,13 @@ func (s *Service) Accept(ctx context.Context, followeeID, followerID uuid.UUID) 
 	return nil
 }
 
-// RemoveFollower declines a request or removes an accepted follower. They are
-// not told, and may ask again; a block is the way to stop that.
+// RemoveFollower removes a follower. They are not told, and may follow again;
+// a block is the way to stop that.
 func (s *Service) RemoveFollower(ctx context.Context, followeeID, followerID uuid.UUID) error {
 	return s.repo.Unfollow(ctx, followerID, followeeID)
 }
 
-// Unfollow stops following, or withdraws a pending request.
+// Unfollow stops following.
 func (s *Service) Unfollow(ctx context.Context, followerID, followeeID uuid.UUID) error {
 	return s.repo.Unfollow(ctx, followerID, followeeID)
 }
@@ -246,11 +258,7 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID) (Overview, err
 		return Overview{}, err
 	}
 	for _, c := range followers {
-		if c.Status == StatusPending {
-			out.Requests = append(out.Requests, c)
-		} else {
-			out.Followers = append(out.Followers, c)
-		}
+		out.Followers = append(out.Followers, c)
 	}
 	if out.Following, err = s.repo.Following(ctx, userID); err != nil {
 		return Overview{}, err
