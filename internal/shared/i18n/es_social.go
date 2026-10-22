@@ -105,4 +105,11 @@ var spanishSocial = map[string]string{
 	"social.fb.notice.expired":   "Esa conexión con Facebook ha caducado o no se ha podido verificar. Inténtalo de nuevo.",
 	"social.fb.notice.taken":     "Esa cuenta de Facebook ya está conectada a otra cuenta de Khepri.",
 	"social.fb.notice.failed":    "No se ha podido conectar Facebook. Inténtalo de nuevo.",
+
+	"workoutcard.sets":    "%[1]d series",
+	"workoutcard.set":     "1 serie",
+	"workoutcard.volume":  "%[1]s kg",
+	"workoutcard.minutes": "%[1]d min",
+	"workoutcard.km":      "%[1]s km",
+	"workoutcard.pr":      "PR",
 }

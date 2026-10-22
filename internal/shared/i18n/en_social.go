@@ -110,4 +110,11 @@ var englishSocial = map[string]string{
 	"social.fb.notice.expired":   "That Facebook connection expired or could not be verified. Please try again.",
 	"social.fb.notice.taken":     "That Facebook account is already connected to another Khepri account.",
 	"social.fb.notice.failed":    "Connecting Facebook failed. Please try again.",
+
+	"workoutcard.sets":    "%[1]d sets",
+	"workoutcard.set":     "1 set",
+	"workoutcard.volume":  "%[1]s kg",
+	"workoutcard.minutes": "%[1]d min",
+	"workoutcard.km":      "%[1]s km",
+	"workoutcard.pr":      "PR",
 }

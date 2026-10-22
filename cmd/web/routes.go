@@ -502,6 +502,7 @@ func routes(
 		WithRecaps(activitySvc, workoutSvc).
 		WithImports(activitySvc, biometricSvc, exerciseSvc)
 	workoutHandler.WithRecaps(liftSvc).WithLoads(liftSvc)
+	achievementSvc.WithWorkoutCards(liftSvc)
 	milestoneSvc := milestones.NewService(milestones.NewRepository(pool))
 
 	careOpts := care.Options{

@@ -105,4 +105,11 @@ var portugueseBrazilianSocial = map[string]string{
 	"social.fb.notice.expired":   "Essa conexão com o Facebook expirou ou não pôde ser verificada. Tente de novo.",
 	"social.fb.notice.taken":     "Essa conta do Facebook já está conectada a outra conta do Khepri.",
 	"social.fb.notice.failed":    "Não foi possível conectar o Facebook. Tente de novo.",
+
+	"workoutcard.sets":    "%[1]d séries",
+	"workoutcard.set":     "1 série",
+	"workoutcard.volume":  "%[1]s kg",
+	"workoutcard.minutes": "%[1]d min",
+	"workoutcard.km":      "%[1]s km",
+	"workoutcard.pr":      "PR",
 }

@@ -22,6 +22,7 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/label"
 	"github.com/NorthAIProject/north-client/web/shared/ui/selectbox"
 	switchcomp "github.com/NorthAIProject/north-client/web/shared/ui/switch"
+	"github.com/NorthAIProject/north-client/web/shared/workoutcard"
 )
 
 // ShareLinks are ready-made share pages for the invite link.
@@ -328,6 +329,15 @@ templ InvitePage(p friend.InvitePreview) {
 	}
 }
 
+// workoutHref is the author's page for the workout; empty when they have no
+// handle to build it from.
+func workoutHref(it achievement.Item) string {
+	if it.Handle == "" || it.Workout == nil {
+		return ""
+	}
+	return "/app/u/" + it.Handle + "/workouts/" + it.Workout.ID.String()
+}
+
 templ feedCard(items []achievement.Item) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface", ID: "feed"}) {
 		@card.Header() {
@@ -362,7 +372,9 @@ templ feedCard(items []achievement.Item) {
 									<span class="text-muted-foreground">· { ago(ctx, it.OccurredAt) }</span>
 								</p>
 								<p class="text-sm">{ it.Title }</p>
-								if it.Detail != "" {
+								if it.Workout != nil {
+									@workoutcard.Card(*it.Workout, workoutHref(it))
+								} else if it.Detail != "" {
 									<p class="text-muted-foreground text-xs">{ it.Detail }</p>
 								}
 							</div>
