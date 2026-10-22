@@ -11,6 +11,8 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/awards"
+	"github.com/NorthAIProject/north-client/internal/awards/award"
 	"github.com/NorthAIProject/north-client/internal/lifts/lift"
 	"github.com/NorthAIProject/north-client/internal/shared/apitest"
 	"github.com/NorthAIProject/north-client/internal/social"
@@ -48,6 +50,10 @@ func TestProfileShapes(t *testing.T) {
 
 	apitest.AssertGolden(t, "profile.golden.json", projectView(ctx, View{
 		Profile: profile, Shares: Shares{Training: true, XP: true}, Level: &level, Workouts: &n, Recent: cards,
+	}))
+	badge, _ := award.ByID("workouts_1")
+	apitest.AssertGolden(t, "profile-awards.golden.json", projectView(ctx, View{
+		Profile: profile, Shares: Shares{Awards: true}, Awards: []awards.Earned{{Badge: badge, At: ended}},
 	}))
 	// A person who shares nothing: the old fields plus the switches, no more.
 	apitest.AssertGolden(t, "profile-private.golden.json", projectView(ctx, View{Profile: profile}))

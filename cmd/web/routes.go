@@ -509,7 +509,7 @@ func routes(
 		WithAwards(awardsSvc)
 	workoutHandler.WithRecaps(liftSvc).WithLoads(liftSvc)
 	achievementSvc.WithWorkoutCards(liftSvc)
-	profilesSvc := profiles.NewService(socialSvc, achievementSvc, xpSvc, activitySvc, liftSvc)
+	profilesSvc := profiles.NewService(socialSvc, achievementSvc, xpSvc, activitySvc, liftSvc).WithAwards(awardsSvc)
 	profilesHandler := profiles.NewHandler(profilesSvc, socialSvc)
 	milestoneSvc := milestones.NewService(milestones.NewRepository(pool))
 
@@ -1131,6 +1131,7 @@ func routes(
 			social:       social.NewAPI(socialSvc, cfg.BaseURL),
 			profiles:     profiles.NewAPI(profilesSvc),
 			achievements: achievements.NewAPI(achievementSvc),
+			awards:       awards.NewAPI(awardsSvc),
 			crews:        crews.NewAPI(crewSvc, cfg.BaseURL).WithLive(crewChat, crewLive),
 			moderation:   moderation.NewAPI(moderationSvc),
 			xp:           xp.NewAPI(xpSvc),
