@@ -176,7 +176,7 @@ func TestFollowIsInstant(t *testing.T) {
 	}
 
 	// Removing a follower is silent; following again is instant again.
-	if err := svc.RemoveFollower(ctx, joao.ID, ana.ID); err != nil {
+	if err = svc.RemoveFollower(ctx, joao.ID, ana.ID); err != nil {
 		t.Fatal(err)
 	}
 	if p, _ := svc.Profile(ctx, ana.ID, "joao"); p.Relationship.Following != "" {
