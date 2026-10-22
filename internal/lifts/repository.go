@@ -99,6 +99,17 @@ func (r *Repository) ListForSessions(ctx context.Context, sessionIDs []uuid.UUID
 	return fromRows(rows), nil
 }
 
+// ListForExercisesBetween is the whole history of these exercises in
+// [since, before), oldest first. Unlike ListForExercisesBefore it has no row
+// limit, because personal records need every set in the window.
+func (r *Repository) ListForExercisesBetween(ctx context.Context, userID uuid.UUID, keys []string, since, before time.Time) ([]Set, error) {
+	rows, err := r.q.ListSetsForExercisesBetween(ctx, liftsdb.ListSetsForExercisesBetweenParams{UserID: userID, Since: since, Before: before, Keys: keys})
+	if err != nil {
+		return nil, apperr.Wrap(err, "list sets for exercises between")
+	}
+	return fromRows(rows), nil
+}
+
 func fromRows(rows []liftsdb.SetLog) []Set {
 	out := make([]Set, len(rows))
 	for i, row := range rows {

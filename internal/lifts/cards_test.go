@@ -90,3 +90,44 @@ func TestCardsForBatchesAcrossPeople(t *testing.T) {
 		t.Fatalf("no ids: %v, %v", none, err)
 	}
 }
+
+// A regular lifter logs far more than 500 sets a year. The oldest, heaviest
+// set must still count against today's, or a lighter session reads as a PR.
+func TestCardsForSeesTheWholeYearOfHistory(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	reg := users.NewService(users.NewRepository(pool))
+	u, err := reg.Register(ctx, users.Registration{Email: "many-sets@example.com", PasswordHash: "$2a$12$notarealhashbutthatisfineheretestonly", DisplayName: "T", Timezone: "UTC"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	acts := activity.NewService(activity.NewRepository(pool), bodyweight{})
+	svc := lifts.NewService(lifts.NewRepository(pool), nil).WithRecaps(acts, nil)
+
+	now := time.Now().UTC().Truncate(time.Second)
+	for i := 0; i < 520; i++ {
+		at := now.Add(-time.Duration(300*24-i) * time.Hour) // oldest first, all inside the year
+		kg := 60.0
+		if i == 0 {
+			kg = 120 // the oldest set is the heaviest
+		}
+		if _, err = svc.Log(ctx, u, lifts.LogInput{ExerciseName: "Squat", SetNumber: i%50 + 1, WeightKg: kg, Reps: 5, PerformedAt: &at}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	se, err := acts.Log(ctx, u.ID, activity.LogInput{ActivityCode: "strength_training_light", StartedAt: now.Add(-2 * time.Hour), Duration: time.Hour})
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := se.StartedAt.Add(10 * time.Minute)
+	if _, err = svc.Log(ctx, u, lifts.LogInput{ExerciseName: "Squat", SetNumber: 1, WeightKg: 100, Reps: 5, PerformedAt: &at, ActivitySessionID: &se.ID}); err != nil {
+		t.Fatal(err)
+	}
+	cards, err := svc.CardsFor(ctx, []uuid.UUID{se.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c := cards[se.ID]; c.PRs != 0 || c.Exercises[0].PR {
+		t.Fatalf("100 kg is lighter than the 120 kg set from months ago, not a PR: %+v", c)
+	}
+}
