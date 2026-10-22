@@ -41,6 +41,8 @@ import (
 	"github.com/NorthAIProject/north-client/internal/documents"
 	"github.com/NorthAIProject/north-client/internal/exercises"
 	"github.com/NorthAIProject/north-client/internal/fasting"
+	"github.com/NorthAIProject/north-client/internal/firstweek"
+	"github.com/NorthAIProject/north-client/internal/firstweek/logproofs"
 	"github.com/NorthAIProject/north-client/internal/fitness/strava"
 	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/habits"
@@ -578,6 +580,25 @@ func run() error {
 	}
 	worker.Register(jobs.KindSweepOutreach, outreach.NewSweeper(outreach.NewService(outreachOpts)).HandleSweep)
 
+	// The first week (internal/firstweek): days whose log turned up while the
+	// person was not looking are recorded here, and weeks nobody closed are
+	// ended. Runs whatever FIRST_WEEK_ENABLED says: the switch stops new weeks
+	// starting, not running ones finishing.
+	firstWeekSvc := firstweek.NewService(firstweek.Options{
+		Repository: firstweek.NewRepository(pool),
+		Goals:      goalSvc,
+		Users:      userSvc,
+		Proofs: logproofs.For(
+			sleep.NewService(sleep.NewRepository(pool)), activitySvc,
+			lifts.NewService(lifts.NewRepository(pool), exercises.NewService(exercises.NewRepository(pool))),
+			meals.NewFoodLogService(mealsRepo), mind.NewService(mind.NewRepository(pool), checkinSvc), checkinSvc,
+		),
+		Funnel:  funnel,
+		Enabled: cfg.FirstWeekEnabled,
+		Log:     log,
+	})
+	worker.Register(jobs.KindSweepFirstWeek, firstweek.NewSweeper(firstWeekSvc).HandleSweep)
+
 	// The daily post: one short read for everyone, written and reviewed by
 	// the cheap model once a UTC day. See internal/dailyposts.
 	dailyPostWriter := dailyposts.NewWriter(dailyposts.NewRepository(pool), reports.ClientFromChain(runner), cfg.AI.FastModel, log)
@@ -601,6 +622,7 @@ func run() error {
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepMemories, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepNudges, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepOutreach, struct{}{})
+	worker.RegisterPeriodic(time.Hour, jobs.KindSweepFirstWeek, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindDailyPost, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepReports, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepBriefings, struct{}{})

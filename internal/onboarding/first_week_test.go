@@ -82,4 +82,3 @@ func TestNoFirstWeekWhileTheSwitchIsOff(t *testing.T) {
 		t.Error("a first week started with the switch off")
 	}
 }
-

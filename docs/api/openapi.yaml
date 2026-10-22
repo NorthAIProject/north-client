@@ -4330,6 +4330,118 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '422':
           $ref: '#/components/responses/ValidationError'
+  /first-week:
+    get:
+      operationId: getFirstWeek
+      summary: The person's first week
+      description: |
+        Seven days after onboarding with one goal and one small daily action.
+        status is none for a person who never had one. Reading also notices
+        today's and yesterday's logs, so a day logged elsewhere shows as done.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FirstWeek'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /first-week/start:
+    post:
+      operationId: startFirstWeek
+      summary: Start, or on day 0 re-pick, the first week
+      description: |
+        Onboarding starts a week on its own; this is for a template picked
+        afterwards, or a week started again after a skip. A week already past
+        day 0 is 409. 404 while first weeks are turned off on the server.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [template]
+              properties:
+                template:
+                  type: string
+                  description: sleep, train, protein, journal or custom.
+                goalId:
+                  type: string
+                  format: uuid
+                  description: The goal the week is for. Absent keeps the running week's goal, or creates one from the template.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FirstWeek'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /first-week/done:
+    post:
+      operationId: markFirstWeekDayDone
+      summary: Mark today's action done
+      description: |
+        Records today's action done by the person's word. Idempotent: a day
+        already done stays as it was. 409 outside days 1 to 7.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FirstWeek'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /first-week/skip:
+    post:
+      operationId: skipFirstWeek
+      summary: Stop the first week
+      description: |
+        Ends a running week. 409 when none is running.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FirstWeek'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /first-week/finish:
+    post:
+      operationId: finishFirstWeek
+      summary: Close the first week after its review
+      description: |
+        Sent when the day-7 review is opened. 409 before day 7 or when the
+        week is not running.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FirstWeek'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /outreach/today:
     get:
       operationId: getOutreachToday
@@ -7631,6 +7743,53 @@ components:
         source:
           type: string
           description: Who chose, person or coach, as an open string. coach is a low morning the coach lightened itself; undo it with PUT choice=keep.
+    FirstWeek:
+      type: object
+      required: [status, day, totalDays, done, doneCount, days]
+      properties:
+        status:
+          type: string
+          description: active, finished, skipped, abandoned, or none when the person never had a first week. An open string.
+        template:
+          type: string
+          description: sleep, train, protein, journal or custom, as an open string.
+        day:
+          type: integer
+          description: 0 on the start date, 1 to 7 during the week, more after it.
+        totalDays:
+          type: integer
+        startedOn:
+          type: string
+          format: date
+        goalId:
+          type: string
+          format: uuid
+        action:
+          type: string
+          description: The daily action, in the person's language.
+        done:
+          type: boolean
+          description: Today's action done. Always false outside days 1 to 7.
+        doneCount:
+          type: integer
+        days:
+          type: array
+          items:
+            $ref: '#/components/schemas/FirstWeekDay'
+    FirstWeekDay:
+      type: object
+      required: [day, date, done]
+      properties:
+        day:
+          type: integer
+        date:
+          type: string
+          format: date
+        done:
+          type: boolean
+        via:
+          type: string
+          description: log (the matching entry was found) or tap, as an open string.
     OutreachToday:
       type: object
       properties:
@@ -10644,6 +10803,12 @@ components:
           type: string
         nearTermGoal:
           type: string
+        firstWeekTemplate:
+          type: string
+          description: |
+            The change picked for the first seven days: sleep, train, protein,
+            journal or custom, as an open string. Optional; absent or unknown,
+            the first week runs on nearTermGoal.
     OnboardingResponse:
       type: object
       required: [user]

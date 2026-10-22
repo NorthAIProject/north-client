@@ -126,6 +126,10 @@ const (
 	// person, when it notices a low-recovery morning or a missed session.
 	KindSweepOutreach Kind = "sweep_outreach"
 
+	// KindSweepFirstWeek visits every running first week: it records days
+	// whose log turned up and calls a week abandoned three days past its end.
+	KindSweepFirstWeek Kind = "sweep_first_week"
+
 	// KindDailyPost writes the day's post for everyone, once a UTC day.
 	// Hourly, so a failed or refused hour is retried by the next one.
 	KindDailyPost Kind = "daily_post"
