@@ -111,25 +111,6 @@ templ FriendsPage(user users.User, o friend.Overview, inviteURL string, f Friend
 			if finding.Facebook.Enabled || finding.Facebook.Friends.Connected {
 				@facebookCard(finding.Facebook)
 			}
-			if len(o.Requests) > 0 {
-				@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
-					@card.Header() {
-						@card.Title() {
-							{ i18n.T(ctx, "social.requests.title") }
-						}
-					}
-					@card.Content() {
-						<ul class="divide-y divide-hairline">
-							for _, c := range o.Requests {
-								@personRow(c.Person, "") {
-									@action(c.ID.String(), "accept", i18n.T(ctx, "social.accept"), button.VariantDefault)
-									@action(c.ID.String(), "remove", i18n.T(ctx, "social.decline"), button.VariantGhost)
-								}
-							}
-						</ul>
-					}
-				}
-			}
 			if feed.Enabled {
 				@sharingCard(feed.Sharing)
 			}
@@ -146,7 +127,7 @@ templ FriendsPage(user users.User, o friend.Overview, inviteURL string, f Friend
 					@card.Content() {
 						<ul class="divide-y divide-hairline">
 							for _, p := range o.Blocked {
-								@personRow(p, "") {
+								@personRow(p) {
 									@action(p.ID.String(), "unblock", i18n.T(ctx, "social.unblock"), button.VariantGhost)
 								}
 							}
@@ -272,9 +253,9 @@ templ listCard(title, empty string, list []friend.Connection, following bool) {
 			} else {
 				<ul class="divide-y divide-hairline">
 					for _, c := range list {
-						@personRow(c.Person, c.Status) {
+						@personRow(c.Person) {
 							if following {
-								@action(c.ID.String(), "unfollow", unfollowLabel(ctx, c.Status), button.VariantGhost)
+								@action(c.ID.String(), "unfollow", i18n.T(ctx, "social.unfollow"), button.VariantGhost)
 							} else {
 								@action(c.ID.String(), "remove", i18n.T(ctx, "social.remove"), button.VariantGhost)
 							}
@@ -294,14 +275,7 @@ func kudosCount(ctx context.Context, n int) string {
 	return i18n.Tf(ctx, "social.feed.kudos", n)
 }
 
-func unfollowLabel(ctx context.Context, status string) string {
-	if status == friend.StatusPending {
-		return i18n.T(ctx, "social.withdraw")
-	}
-	return i18n.T(ctx, "social.unfollow")
-}
-
-templ personRow(p friend.Person, status string) {
+templ personRow(p friend.Person) {
 	<li class="flex items-center gap-3 py-3">
 		@avatar.Avatar() {
 			@avatar.Fallback() {
@@ -312,11 +286,6 @@ templ personRow(p friend.Person, status string) {
 			<p class="truncate text-sm font-medium">{ p.DisplayName }</p>
 			<p class="text-muted-foreground truncate text-xs">{ at(ctx, p.Handle) }</p>
 		</div>
-		if status == friend.StatusPending {
-			@badge.Badge(badge.Props{Variant: badge.VariantOutline}) {
-				{ i18n.T(ctx, "social.waiting") }
-			}
-		}
 		<div class="flex gap-1">
 			{ children... }
 		</div>
@@ -437,7 +406,7 @@ templ kudosButton(it achievement.Item) {
 }
 
 templ sharingCard(s achievement.Sharing) {
-	@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+	@card.Card(card.Props{ID: "sharing", Class: "border-hairline bg-surface"}) {
 		@card.Header() {
 			@card.Title() {
 				{ i18n.T(ctx, "social.sharing.title") }

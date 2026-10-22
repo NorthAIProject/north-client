@@ -3,19 +3,14 @@ package i18n
 var portugueseEuropeanSocial = map[string]string{
 	"social.mono":  "Progresso",
 	"social.title": "Amigos",
-	"social.intro": "Quem te segue só vê o que escolhes partilhar. Ninguém te segue sem o teu sim.",
+	"social.intro": "Quem te segue só vê o que escolhes partilhar. Qualquer pessoa te pode seguir.",
 
-	"social.requests.title": "À espera do teu sim",
-	"social.accept":         "Aceitar",
-	"social.decline":        "Recusar",
-	"social.remove":         "Remover",
-	"social.block":          "Bloquear",
-	"social.unblock":        "Desbloquear",
-	"social.unfollow":       "Deixar de seguir",
-	"social.withdraw":       "Retirar",
-	"social.waiting":        "Pendente",
-	"social.nohandle":       "sem nome de utilizador",
-	"social.save":           "Guardar",
+	"social.remove":   "Remover",
+	"social.block":    "Bloquear",
+	"social.unblock":  "Desbloquear",
+	"social.unfollow": "Deixar de seguir",
+	"social.nohandle": "sem nome de utilizador",
+	"social.save":     "Guardar",
 
 	"social.following.title": "A seguir",
 	"social.following.empty": "Ainda ninguém. Segue alguém pelo nome de utilizador ou partilha o teu link.",
@@ -37,7 +32,7 @@ var portugueseEuropeanSocial = map[string]string{
 
 	"social.follow.title": "Seguir alguém",
 	"social.follow.label": "O nome de utilizador",
-	"social.follow.ask":   "Pedir para seguir",
+	"social.follow.ask":   "Seguir",
 
 	"social.invitepage.title":   "%[1]s convidou-te",
 	"social.invitepage.heading": "%[1]s convidou-te para o Khepri",

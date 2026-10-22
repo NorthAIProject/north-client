@@ -234,7 +234,7 @@ templ facebookPeople(f friend.FacebookFriends) {
 	} else {
 		<ul class="divide-y divide-hairline">
 			for _, c := range f.People {
-				@personRow(c.Person, c.Status) {
+				@personRow(c.Person) {
 					if c.Status == "" {
 						@followByHandle(c.Handle)
 					} else if c.Status == friend.StatusAccepted {
