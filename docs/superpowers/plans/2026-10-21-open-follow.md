@@ -18,7 +18,7 @@
 - Notification kind for a new follower: `new_follower`. Copy: title `"{name} followed you"`, body `"See who follows you in Friends."`, href `/app/friends`.
 - The one-time notice is a `user_nudges` row: kind `open_follow`, dedupe key `v1`, title `"Khepri now has followers"`, body `"Anyone with your handle can follow you now. Choose what followers see in Friends."`, href `/app/friends#sharing`.
 - Web copy lives in four locales: `internal/shared/i18n/{en,es,pt_pt,pt_br}_social.go`. Every new or changed key goes into all four.
-- Run Go tests with a private cache: `GOCACHE=$(mktemp -d) go test ...` (memory `shared-gocache-wiped-mid-test`).
+- Run Go tests with ONE persistent private cache in the session scratchpad (`GOCACHE=<scratchpad>/gocache go test ...`), never `$(mktemp -d)` per run — that filled the disk on 2026-10-22 (memory `shared-gocache-wiped-mid-test`).
 
 ## Review Focus
 
