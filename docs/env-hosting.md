@@ -250,6 +250,7 @@ one.
 | `AI_FAST_MODEL` | empty | Same. Used for cheaper side work (memory extraction) |
 | `AI_UPLOAD_PROVIDER` | `gemini` | Form video analysis. Needs a provider with a file-upload API; the OpenAI-dialect backends do not have one |
 | `ANTHROPIC_API_KEY` | empty | Khepri's own Claude key, native Messages API. Unset, no client is built |
+| `FIRST_WEEK_ENABLED` | `false` | `true` lets onboarding start a new person's first week (internal/firstweek). Weeks already running carry on when it is turned off |
 | `ANTHROPIC_FIRST` | `false` | `true` puts `anthropic` in front of `AI_PROVIDER_CHAIN`; the chain stays behind it as the fallback. `false` is the rollback |
 | `ANTHROPIC_SCOPE` | `all` | `all` also leads `AI_PROVIDER_CHAIN_FREE`; `paid` leaves free users on their chain |
 | `ANTHROPIC_MODEL` | `claude-haiku-5-5` | Used whenever a caller's model is not a `claude-` name (e.g. an OpenRouter `AI_FAST_MODEL`) |

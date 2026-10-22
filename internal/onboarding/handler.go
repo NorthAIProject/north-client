@@ -36,7 +36,7 @@ func (h *Handler) show(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/app", http.StatusSeeOther)
 		return
 	}
-	render(w, r, http.StatusOK, onboardingpages.FormPage(onboardingpages.Form{}))
+	render(w, r, http.StatusOK, onboardingpages.FormPage(onboardingpages.Form{FirstWeek: h.svc.FirstWeekEnabled()}))
 }
 
 func (h *Handler) complete(w http.ResponseWriter, r *http.Request) {
@@ -52,6 +52,7 @@ func (h *Handler) complete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	form := formFrom(r)
+	form.FirstWeek = h.svc.FirstWeekEnabled()
 	answers, err := ValidateAnswers(form.FocusAreas, form.StylePreset, form.StyleCustom, form.GoalTitle)
 	if err != nil {
 		var fieldErrs apperr.FieldErrors
@@ -64,6 +65,7 @@ func (h *Handler) complete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	answers.FirstWeekTemplate = form.FirstWeekTemplate
 	_, thread, err := h.svc.Complete(r.Context(), user, answers)
 	if err != nil {
 		h.fail(w, r, err)
@@ -108,7 +110,7 @@ func (h *Handler) done(w http.ResponseWriter, r *http.Request) {
 	if id, err := uuid.Parse(r.URL.Query().Get("thread")); err == nil {
 		thread = id.String()
 	}
-	render(w, r, http.StatusOK, onboardingpages.DonePage(user, thread))
+	render(w, r, http.StatusOK, onboardingpages.DonePage(user, thread, h.svc.FirstWeekEnabled()))
 }
 
 func formFrom(r *http.Request) onboardingpages.Form {
@@ -117,6 +119,8 @@ func formFrom(r *http.Request) onboardingpages.Form {
 		StylePreset: r.PostFormValue("coaching_style_preset"),
 		StyleCustom: r.PostFormValue("coaching_style_custom"),
 		GoalTitle:   r.PostFormValue("goal_title"),
+
+		FirstWeekTemplate: r.PostFormValue("first_week_template"),
 	}
 }
 
