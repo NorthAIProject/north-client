@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/awards/award"
 	"github.com/NorthAIProject/north-client/internal/lifts"
 	"github.com/NorthAIProject/north-client/internal/lifts/lift"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
@@ -36,6 +37,8 @@ func (a *API) Routes(r chi.Router) {
 type SharesView struct {
 	Training bool `json:"training"`
 	XP       bool `json:"xp"`
+	// Awards is optional on the wire: a client from before badges ignores it.
+	Awards *bool `json:"awards,omitempty"`
 }
 
 // ProfileView is everything social.ProfileView already carried, under the same
@@ -48,6 +51,9 @@ type ProfileView struct {
 	Workouts *int          `json:"workouts,omitempty"`
 	// RecentWorkouts is absent, not empty, for someone with nothing to show.
 	RecentWorkouts []lifts.WorkoutCardView `json:"recentWorkouts,omitempty"`
+	// Awards are the badges shown, absent when none are or the person keeps
+	// them to themselves.
+	Awards []award.View `json:"awards,omitempty"`
 }
 
 // WorkoutsView is a page of someone's workouts.
@@ -60,9 +66,10 @@ type WorkoutsView struct {
 }
 
 func projectView(ctx context.Context, v View) ProfileView {
+	awardsShared := v.Shares.Awards
 	out := ProfileView{
 		ProfileView: social.ProjectProfile(v.Profile),
-		Shares:      &SharesView{Training: v.Shares.Training, XP: v.Shares.XP},
+		Shares:      &SharesView{Training: v.Shares.Training, XP: v.Shares.XP, Awards: &awardsShared},
 		Workouts:    v.Workouts,
 	}
 	if v.Level != nil {
@@ -71,6 +78,10 @@ func projectView(ctx context.Context, v View) ProfileView {
 	}
 	if v.Recent != nil {
 		out.RecentWorkouts = projectCards(v.Recent, 2)
+	}
+	for _, e := range v.Awards {
+		at := e.At
+		out.Awards = append(out.Awards, e.Badge.Project(ctx, &at, nil, ""))
 	}
 	return out
 }

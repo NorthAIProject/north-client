@@ -1,6 +1,6 @@
 // Package award is the badge catalog: which badges exist, what area each
 // belongs to and how much it takes to earn one. It imports nothing from the
-// app so the achievements types, the web templates and the rule engine can all
+// app but the translation catalogue, so the achievements types, the web templates and the rule engine can all
 // name a badge without importing one another.
 //
 // Names and descriptions are not here. They come from the i18n catalogues by

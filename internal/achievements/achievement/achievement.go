@@ -70,6 +70,14 @@ type Item struct {
 	OccurredAt  time.Time
 	// SourceKey is what the moment is about: the session id for a workout.
 	SourceKey string
+	// Private marks a badge from a private area: never shown to anybody but
+	// its owner.
+	Private bool
+	// BadgeID is the badge on a badge_earned item (the source key), and
+	// Badges every badge of the same moment, this one first, when several
+	// were earned at once and collapsed into one card.
+	BadgeID string
+	Badges  []string
 	// Workout is the finished workout's card, set on a workout_completed
 	// item when it could be built.
 	Workout *lift.Card

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/FACorreiaa/go-utils/pkg/util"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/achievements/achievement"
 	achievementsdb "github.com/NorthAIProject/north-client/internal/achievements/db"
+	"github.com/NorthAIProject/north-client/internal/awards/award"
 	"github.com/NorthAIProject/north-client/internal/lifts/lift"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
@@ -181,12 +183,25 @@ func (s *Service) OwnBetween(ctx context.Context, userID uuid.UUID, since, until
 // Feed is the viewer's own achievements and those friends share with them,
 // newest first, before the cursor (zero time means now).
 func (s *Service) Feed(ctx context.Context, viewerID uuid.UUID, before time.Time) ([]Item, error) {
+	items, _, err := s.FeedPage(ctx, viewerID, before)
+	return items, err
+}
+
+// FeedPage is Feed plus the cursor for the next page: the time of the last row
+// the query returned, set only when the page was full. It is taken from the
+// rows, not from the items, because collapsing a moment's badges and dropping
+// a streak mark make a full page come back with fewer items.
+//
+// A moment whose badges straddle the page boundary shows only the ones in
+// this page, and the rest is skipped by the cursor (they share occurred_at).
+// A person earns several badges at once rarely enough that this is accepted.
+func (s *Service) FeedPage(ctx context.Context, viewerID uuid.UUID, before time.Time) ([]Item, *time.Time, error) {
 	if before.IsZero() {
 		before = time.Now().Add(time.Minute)
 	}
 	rows, err := s.q.Feed(ctx, achievementsdb.FeedParams{Viewer: viewerID, Before: before, Lim: feedPage})
 	if err != nil {
-		return nil, apperr.Wrap(err, "feed")
+		return nil, nil, apperr.Wrap(err, "feed")
 	}
 	out := make([]Item, 0, len(rows))
 	for _, r := range rows {
@@ -194,10 +209,60 @@ func (s *Service) Feed(ctx context.Context, viewerID uuid.UUID, before time.Time
 			ID: r.ID, UserID: r.UserID, DisplayName: r.DisplayName, Handle: util.Val(r.Handle),
 			Category: r.Category, Kind: r.Kind, Title: r.Title, Detail: r.Detail, OccurredAt: r.OccurredAt,
 			Kudos: int(r.Kudos), Kudoed: r.Kudoed, Mine: r.UserID == viewerID, SourceKey: r.SourceKey,
+			Private: r.Private,
 		})
 	}
+	var next *time.Time
+	if len(rows) == feedPage {
+		next = util.Ptr(rows[len(rows)-1].OccurredAt)
+	}
+	out = foldMoments(ctx, out)
 	s.attachCards(ctx, out)
-	return out, nil
+	return out, next, nil
+}
+
+// foldMoments makes a badge item read in the request's locale (never the
+// English title stored with the row), puts the badges earned in one moment on
+// one card, and drops a check-in streak mark whose streak badge is on the same
+// day, which would say the same thing twice.
+func foldMoments(ctx context.Context, items []Item) []Item {
+	type day struct {
+		user uuid.UUID
+		date string
+	}
+	streakBadge := map[day]bool{}
+	for i := range items {
+		it := &items[i]
+		if it.Kind != achievement.KindBadgeEarned {
+			continue
+		}
+		b, ok := award.ByID(it.SourceKey)
+		if !ok {
+			continue
+		}
+		it.BadgeID = b.ID
+		it.Title, it.Detail = b.Name(ctx), b.Description(ctx)
+		if strings.HasPrefix(b.ID, "streak_") {
+			streakBadge[day{it.UserID, it.OccurredAt.UTC().Format("2006-01-02")}] = true
+		}
+	}
+	out := items[:0:0]
+	for _, it := range items {
+		if it.Kind == achievement.KindStreakReached && streakBadge[day{it.UserID, it.OccurredAt.UTC().Format("2006-01-02")}] {
+			continue
+		}
+		if n := len(out); it.BadgeID != "" && n > 0 {
+			if first := &out[n-1]; first.BadgeID != "" && first.UserID == it.UserID && first.OccurredAt.Equal(it.OccurredAt) {
+				if first.Badges == nil {
+					first.Badges = []string{first.BadgeID}
+				}
+				first.Badges = append(first.Badges, it.BadgeID)
+				continue
+			}
+		}
+		out = append(out, it)
+	}
+	return out
 }
 
 // attachCards sets the card of each workout_completed item. It is best effort:
