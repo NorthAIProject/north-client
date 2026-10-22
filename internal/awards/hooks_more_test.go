@@ -224,3 +224,24 @@ func TestBatchImportChecksOnce(t *testing.T) {
 		t.Fatalf("%d checks for two deliveries of 5 workouts, want 1", len(rec.users))
 	}
 }
+
+func TestBatchImportChecksWhatItImportedBeforeAFailure(t *testing.T) {
+	e := newEnv(t, "UTC")
+	ctx := context.Background()
+	rec := &recorder{}
+	act := importer(t, e, rec)
+	bio := biometrics.NewService(biometrics.NewRepository(e.pool))
+	if _, err := bio.Record(ctx, e.user, biometrics.Input{WeightKg: 70, HeightCm: 175, DateOfBirth: time.Date(1990, 1, 1, 0, 0, 0, 0, time.UTC), Sex: "male"}); err != nil {
+		t.Fatal(err)
+	}
+	hs := health.NewService(health.NewRepository(e.pool)).WithAwards(rec).WithWorkouts(act, bio)
+	mk := func(id, code string, daysAgo int) health.Workout {
+		end := now.Add(-time.Duration(daysAgo) * 24 * time.Hour)
+		return health.Workout{ActivityCode: code, ExternalID: id, StartedAt: end.Add(-time.Hour), EndedAt: end}
+	}
+	ws := []health.Workout{mk("a", "running_8kmh", 1), mk("b", "nope", 2), mk("c", "running_8kmh", 3)}
+	if _, err := hs.IngestWorkouts(ctx, e.user, health.SourceAppleHealth, ws); err == nil {
+		t.Fatal("a failing workout did not fail the batch")
+	}
+	rec.only(t, e.user, award.Training)
+}
