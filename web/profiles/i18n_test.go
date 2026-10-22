@@ -78,3 +78,27 @@ func TestNoEnglishLeaksIntoATranslatedProfile(t *testing.T) {
 		}
 	}
 }
+
+func TestCountsLabelsAreSingularForOne(t *testing.T) {
+	want := map[users.Locale][2]string{
+		users.LocaleEN:   {"Follower", "Workout"},
+		users.LocaleES:   {"Seguidor", "Entrenamiento"},
+		users.LocalePTPT: {"Seguidor", "Treino"},
+		users.LocalePTBR: {"Seguidor", "Treino"},
+	}
+	one := 1
+	for locale, w := range want {
+		d := Data{User: users.User{DisplayName: "Ana", Locale: locale}, Name: "Leo", Handle: "leo", Followers: 1, Following: 1, Workouts: &one}
+		ctx := i18n.WithLocale(context.Background(), string(locale))
+		var b strings.Builder
+		if err := ProfilePage(d).Render(ctx, &b); err != nil {
+			t.Fatal(err)
+		}
+		html := b.String()
+		for _, label := range w {
+			if !strings.Contains(html, "</span> "+label+"</span>") {
+				t.Errorf("%s: no singular %q label for a count of 1", locale, label)
+			}
+		}
+	}
+}

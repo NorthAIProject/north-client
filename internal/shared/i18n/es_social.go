@@ -114,6 +114,8 @@ var spanishSocial = map[string]string{
 	"workoutcard.pr":      "PR",
 
 	"profile.workouts":  "Entrenamientos",
+	"profile.follower":  "Seguidor",
+	"profile.workout":   "Entrenamiento",
 	"profile.followers": "Seguidores",
 	"profile.following": "Siguiendo",
 	"profile.seeall":    "Ver todo",

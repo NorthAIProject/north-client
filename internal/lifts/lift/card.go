@@ -60,10 +60,18 @@ func BuildCard(s CardSession, current, earlier []Set) Card {
 	for _, set := range current {
 		inThisWorkout[set.ID] = true
 	}
+	// A record needs something to beat: the first time an exercise is logged
+	// is a baseline, however much the sets ramp up within the workout.
+	hadBefore := map[string]bool{}
+	for _, set := range Working(earlier) {
+		if set.WeightKg > 0 {
+			hadBefore[set.Key()] = true
+		}
+	}
 	prs := map[string]bool{}
 	all := append(append(make([]Set, 0, len(earlier)+len(current)), earlier...), current...)
 	for _, r := range Records(all) {
-		if inThisWorkout[r.Set.ID] {
+		if inThisWorkout[r.Set.ID] && hadBefore[r.Set.Key()] {
 			prs[r.Set.Key()] = true
 		}
 	}
