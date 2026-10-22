@@ -119,6 +119,8 @@ var englishSocial = map[string]string{
 	"workoutcard.pr":      "PR",
 
 	"profile.workouts":  "Workouts",
+	"profile.follower":  "Follower",
+	"profile.workout":   "Workout",
 	"profile.followers": "Followers",
 	"profile.following": "Following",
 	"profile.seeall":    "See all",

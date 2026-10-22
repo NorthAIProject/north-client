@@ -114,6 +114,8 @@ var portugueseBrazilianSocial = map[string]string{
 	"workoutcard.pr":      "PR",
 
 	"profile.workouts":  "Treinos",
+	"profile.follower":  "Seguidor",
+	"profile.workout":   "Treino",
 	"profile.followers": "Seguidores",
 	"profile.following": "Seguindo",
 	"profile.seeall":    "Ver tudo",

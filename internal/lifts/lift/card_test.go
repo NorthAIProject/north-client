@@ -61,6 +61,31 @@ func TestCardFlagsAPROnlyAgainstEarlierSets(t *testing.T) {
 	}
 }
 
+func TestCardFirstTimeRampingSetsIsNotAPR(t *testing.T) {
+	s := cardSession(time.Hour)
+	current := []lift.Set{
+		cardSet("Squat", lift.KindWork, 60, 5, s.StartedAt),
+		cardSet("Squat", lift.KindWork, 80, 5, s.StartedAt.Add(5*time.Minute)),
+	}
+	c := lift.BuildCard(s, current, nil)
+	if c.Exercises[0].PR || c.PRs != 0 {
+		t.Fatalf("first time ever, ramping: PR %v, PRs %d, want none", c.Exercises[0].PR, c.PRs)
+	}
+}
+
+func TestCardRampingOverEarlierHistoryStillFlagsAPR(t *testing.T) {
+	s := cardSession(time.Hour)
+	current := []lift.Set{
+		cardSet("Squat", lift.KindWork, 60, 5, s.StartedAt),
+		cardSet("Squat", lift.KindWork, 105, 5, s.StartedAt.Add(5*time.Minute)),
+	}
+	earlier := []lift.Set{cardSet("Squat", lift.KindWork, 100, 5, s.StartedAt.Add(-72*time.Hour))}
+	c := lift.BuildCard(s, current, earlier)
+	if !c.Exercises[0].PR || c.PRs != 1 {
+		t.Fatalf("beat earlier history: PR %v, PRs %d", c.Exercises[0].PR, c.PRs)
+	}
+}
+
 func TestCardForARunWithNoSets(t *testing.T) {
 	s := cardSession(30 * time.Minute)
 	dist := 5000.0

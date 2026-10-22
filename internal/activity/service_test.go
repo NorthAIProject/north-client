@@ -302,7 +302,8 @@ func TestCountAndListCompleted(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if n, err := svc.CountCompleted(ctx, user.ID); err != nil || n != 3 {
+	n, err := svc.CountCompleted(ctx, user.ID)
+	if err != nil || n != 3 {
 		t.Fatalf("count = %d, %v; want 3 (cancelled and running are not workouts)", n, err)
 	}
 
