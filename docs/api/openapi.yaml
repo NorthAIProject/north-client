@@ -7951,6 +7951,58 @@ components:
           type: boolean
         mine:
           type: boolean
+        workout:
+          $ref: '#/components/schemas/WorkoutCard'
+    WorkoutCard:
+      type: object
+      description: A finished workout for someone else to read. Carries no calories, heart rate or body numbers.
+      required: [sessionId, name, activityCode, startedAt, endedAt, durationSeconds, sets, volumeKg, prs, exercises]
+      properties:
+        sessionId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        activityCode:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: string
+          format: date-time
+        durationSeconds:
+          type: integer
+        distanceM:
+          type: number
+          description: Absent when the workout had no distance.
+        sets:
+          type: integer
+        volumeKg:
+          type: number
+        prs:
+          type: integer
+          description: Exercises where a set of this workout raised the person's best.
+        exercises:
+          type: array
+          description: The first few exercises, most volume first. Always an array.
+          items:
+            $ref: '#/components/schemas/WorkoutExercise'
+    WorkoutExercise:
+      type: object
+      required: [name, sets, volumeKg, pr]
+      properties:
+        name:
+          type: string
+        sets:
+          type: integer
+        volumeKg:
+          type: number
+        best:
+          type: string
+          description: The heaviest set, "22.5 kg × 8". Absent for a bodyweight-only movement.
+        pr:
+          type: boolean
     Feed:
       type: object
       required: [items]

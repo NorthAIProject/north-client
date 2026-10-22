@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/lifts"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 )
@@ -43,6 +44,9 @@ type FeedItem struct {
 	Kudos      int       `json:"kudos"`
 	Kudoed     bool      `json:"kudoed"`
 	Mine       bool      `json:"mine"`
+	// Workout is the finished workout, on a workout_completed item whose card
+	// could be built.
+	Workout *lifts.WorkoutCardView `json:"workout,omitempty"`
 }
 
 type Feed struct {
@@ -86,14 +90,22 @@ func (a *API) feed(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, projectFeed(items))
 }
 
+// feedExercises is how many exercises a feed card names.
+const feedExercises = 2
+
 func projectFeed(items []Item) Feed {
 	out := Feed{Items: make([]FeedItem, 0, len(items))}
 	for _, it := range items {
-		out.Items = append(out.Items, FeedItem{
+		fi := FeedItem{
 			ID: it.ID, UserID: it.UserID, DisplayName: it.DisplayName, Handle: it.Handle,
 			Category: it.Category, Kind: it.Kind, Title: it.Title, Detail: it.Detail, OccurredAt: it.OccurredAt,
 			Kudos: it.Kudos, Kudoed: it.Kudoed, Mine: it.Mine,
-		})
+		}
+		if it.Workout != nil {
+			v := lifts.ProjectCard(*it.Workout, feedExercises)
+			fi.Workout = &v
+		}
+		out.Items = append(out.Items, fi)
 	}
 	if len(items) == feedPage {
 		out.Before = util.Ptr(items[len(items)-1].OccurredAt)
