@@ -3,19 +3,14 @@ package i18n
 var spanishSocial = map[string]string{
 	"social.mono":  "Progreso",
 	"social.title": "Amigos",
-	"social.intro": "Quienes te siguen solo ven lo que decides compartir. Nadie te sigue sin tu sí.",
+	"social.intro": "Quienes te siguen solo ven lo que decides compartir. Cualquiera puede seguirte.",
 
-	"social.requests.title": "Esperando tu sí",
-	"social.accept":         "Aceptar",
-	"social.decline":        "Rechazar",
-	"social.remove":         "Quitar",
-	"social.block":          "Bloquear",
-	"social.unblock":        "Desbloquear",
-	"social.unfollow":       "Dejar de seguir",
-	"social.withdraw":       "Retirar",
-	"social.waiting":        "Pendiente",
-	"social.nohandle":       "sin usuario",
-	"social.save":           "Guardar",
+	"social.remove":   "Quitar",
+	"social.block":    "Bloquear",
+	"social.unblock":  "Desbloquear",
+	"social.unfollow": "Dejar de seguir",
+	"social.nohandle": "sin usuario",
+	"social.save":     "Guardar",
 
 	"social.following.title": "Siguiendo",
 	"social.following.empty": "Nadie todavía. Sigue a alguien por su usuario o comparte tu enlace.",
@@ -37,7 +32,7 @@ var spanishSocial = map[string]string{
 
 	"social.follow.title": "Seguir a alguien",
 	"social.follow.label": "Su usuario",
-	"social.follow.ask":   "Pedir seguir",
+	"social.follow.ask":   "Seguir",
 
 	"social.invitepage.title":   "%[1]s te ha invitado",
 	"social.invitepage.heading": "%[1]s te ha invitado a Khepri",

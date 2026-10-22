@@ -5,18 +5,12 @@ package i18n
 var englishSocial = map[string]string{
 	"social.mono":  "Progress",
 	"social.title": "Friends",
-	"social.intro": "People who follow you only see what you choose to share. Nobody follows you without your yes.",
+	"social.intro": "People who follow you only see what you choose to share. Anyone can follow you.",
 
-	"social.requests.title": "Waiting for your yes",
-	"social.accept":         "Accept",
-	"social.decline":        "Decline",
-	"social.remove":         "Remove",
-	"social.block":          "Block",
-	"social.unblock":        "Unblock",
-	"social.unfollow":       "Unfollow",
-	// A request not yet accepted is withdrawn, not unfollowed.
-	"social.withdraw": "Withdraw",
-	"social.waiting":  "Waiting",
+	"social.remove":   "Remove",
+	"social.block":    "Block",
+	"social.unblock":  "Unblock",
+	"social.unfollow": "Unfollow",
 	"social.nohandle": "no handle",
 	"social.save":     "Save",
 
@@ -40,7 +34,7 @@ var englishSocial = map[string]string{
 
 	"social.follow.title": "Follow somebody",
 	"social.follow.label": "Their handle",
-	"social.follow.ask":   "Ask to follow",
+	"social.follow.ask":   "Follow",
 
 	"social.invitepage.title":   "%[1]s invited you",
 	"social.invitepage.heading": "%[1]s invited you to Khepri",

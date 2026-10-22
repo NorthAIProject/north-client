@@ -3,19 +3,14 @@ package i18n
 var portugueseBrazilianSocial = map[string]string{
 	"social.mono":  "Progresso",
 	"social.title": "Amigos",
-	"social.intro": "Quem segue você só vê o que você escolhe compartilhar. Ninguém segue você sem o seu sim.",
+	"social.intro": "Quem segue você só vê o que você escolhe compartilhar. Qualquer pessoa pode seguir você.",
 
-	"social.requests.title": "Esperando o seu sim",
-	"social.accept":         "Aceitar",
-	"social.decline":        "Recusar",
-	"social.remove":         "Remover",
-	"social.block":          "Bloquear",
-	"social.unblock":        "Desbloquear",
-	"social.unfollow":       "Deixar de seguir",
-	"social.withdraw":       "Cancelar pedido",
-	"social.waiting":        "Pendente",
-	"social.nohandle":       "sem nome de usuário",
-	"social.save":           "Salvar",
+	"social.remove":   "Remover",
+	"social.block":    "Bloquear",
+	"social.unblock":  "Desbloquear",
+	"social.unfollow": "Deixar de seguir",
+	"social.nohandle": "sem nome de usuário",
+	"social.save":     "Salvar",
 
 	"social.following.title": "Seguindo",
 	"social.following.empty": "Ninguém ainda. Siga alguém pelo nome de usuário ou compartilhe o seu link.",
@@ -37,7 +32,7 @@ var portugueseBrazilianSocial = map[string]string{
 
 	"social.follow.title": "Seguir alguém",
 	"social.follow.label": "O nome de usuário",
-	"social.follow.ask":   "Pedir para seguir",
+	"social.follow.ask":   "Seguir",
 
 	"social.invitepage.title":   "%[1]s convidou você",
 	"social.invitepage.heading": "%[1]s convidou você para o Khepri",
