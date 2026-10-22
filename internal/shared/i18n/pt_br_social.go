@@ -59,6 +59,7 @@ var portugueseBrazilianSocial = map[string]string{
 	"social.sharing.streaks":  "Sequências de registros (7, 30, 100 dias…) e a sua sequência atual",
 	"social.sharing.goals":    "Os objetivos e marcos que você conclui",
 	"social.sharing.xp":       "Seu XP e nível, nas classificações dos amigos",
+	"social.sharing.awards":   "Suas conquistas, exceto as privadas",
 
 	"social.phone.title":       "Número de celular",
 	"social.phone.desc":        "Amigos que têm o seu número nos contatos conseguem encontrar você. Ele nunca é mostrado para ninguém.",

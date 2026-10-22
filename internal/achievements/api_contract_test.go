@@ -36,5 +36,5 @@ func TestFeedShapes(t *testing.T) {
 			},
 		},
 	}}))
-	apitest.AssertGolden(t, "sharing.golden.json", SharingView{Training: true, Streaks: false, Goals: true, XP: true})
+	apitest.AssertGolden(t, "sharing.golden.json", SharingView{Training: true, Streaks: false, Goals: true, XP: true, Awards: true})
 }

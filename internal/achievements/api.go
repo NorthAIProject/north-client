@@ -61,6 +61,9 @@ type SharingView struct {
 	Goals    bool `json:"goals"`
 	// XP is XP and level, which puts the person on friends' leaderboards.
 	XP bool `json:"xp"`
+	// Awards is the badges the person has earned, except the private ones,
+	// which are never shared.
+	Awards bool `json:"awards"`
 }
 
 // SharingUpdate is SharingView with xp optional: a client from before the
@@ -70,6 +73,7 @@ type SharingUpdate struct {
 	Streaks  bool  `json:"streaks"`
 	Goals    bool  `json:"goals"`
 	XP       *bool `json:"xp"`
+	Awards   *bool `json:"awards"`
 }
 
 func (a *API) feed(w http.ResponseWriter, r *http.Request) {
@@ -130,15 +134,19 @@ func (a *API) putSharing(w http.ResponseWriter, r *http.Request) {
 	}
 	userID := auth.MustUser(r.Context()).ID
 	in := Sharing{Training: req.Training, Streaks: req.Streaks, Goals: req.Goals}
+	// A client from before xp or awards does not send them; its save keeps
+	// what is stored.
+	current, err := a.svc.Sharing(r.Context(), userID)
+	if err != nil {
+		httpx.Error(w, err, "What friends see could not be saved.")
+		return
+	}
+	in.XP, in.Awards = current.XP, current.Awards
 	if req.XP != nil {
 		in.XP = *req.XP
-	} else {
-		current, err := a.svc.Sharing(r.Context(), userID)
-		if err != nil {
-			httpx.Error(w, err, "What friends see could not be saved.")
-			return
-		}
-		in.XP = current.XP
+	}
+	if req.Awards != nil {
+		in.Awards = *req.Awards
 	}
 	s, err := a.svc.SetSharing(r.Context(), userID, in)
 	if err != nil {

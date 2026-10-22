@@ -8105,6 +8105,13 @@ components:
           description: >-
             XP and level, which puts the person on friends' leaderboards. Always
             in responses; a save that leaves it out keeps it as it was.
+        awards:
+          type: boolean
+          description: >-
+            The badges the person has earned, except the private ones
+            (nutrition, hydration, sleep, mind, body), which are never shared.
+            On unless switched off. Always in responses; a save that leaves it
+            out keeps it as it was.
     LevelView:
       type: object
       required: [number, title, floor]
