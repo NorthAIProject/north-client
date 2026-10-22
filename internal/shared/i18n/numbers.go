@@ -11,9 +11,10 @@ import (
 // usesDecimalComma lists the locales that write "72,5 kg" rather than
 // "72.5 kg". English is the only one served that uses a point.
 //
-// Only the decimal separator changes here. Thousands grouping is not this
-// file's business: most of the app writes "6200 kcal" ungrouped in every
-// language, and the few places that group (lift recaps, stats) do it locally.
+// Decimal and FormatDecimal change only the decimal separator. Most of the
+// app writes "6200 kcal" ungrouped in every language; a place that does group
+// thousands uses Thousands, so the grouping mark never collides with the
+// decimal one ("12.345" in Spanish, "12,345" in English).
 var usesDecimalComma = map[string]bool{
 	"es":    true,
 	"pt-PT": true,
@@ -34,6 +35,34 @@ func Decimal(ctx context.Context, v float64, prec int) string {
 // point, or the browser parses "72,5" as nothing; those stay on strconv.
 func FormatDecimal(tag string, v float64, prec int) string {
 	return localizeSeparator(tag, strconv.FormatFloat(v, 'f', prec, 64))
+}
+
+// Thousands groups n in threes for the request's locale. See FormatThousands.
+func Thousands(ctx context.Context, n int) string {
+	return FormatThousands(LocaleFrom(ctx), n)
+}
+
+// FormatThousands groups n in threes with the mark tag's readers expect: a
+// comma in English, a point where the decimal mark is a comma.
+func FormatThousands(tag string, n int) string {
+	sep := byte(',')
+	if usesDecimalComma[tag] {
+		sep = '.'
+	}
+	digits := strconv.Itoa(n)
+	sign := ""
+	if n < 0 {
+		sign, digits = "-", digits[1:]
+	}
+	var b strings.Builder
+	b.WriteString(sign)
+	for i := range len(digits) {
+		if i > 0 && (len(digits)-i)%3 == 0 {
+			b.WriteByte(sep)
+		}
+		b.WriteByte(digits[i])
+	}
+	return b.String()
 }
 
 func localizeSeparator(tag, formatted string) string {

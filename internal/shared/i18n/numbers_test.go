@@ -50,3 +50,25 @@ func TestTranslateFLocalizesOnlyFloatArguments(t *testing.T) {
 		}
 	}
 }
+
+func TestFormatThousandsGroupsWithTheLocalesMark(t *testing.T) {
+	cases := []struct {
+		tag  string
+		n    int
+		want string
+	}{
+		{"en", 12345, "12,345"},
+		{"es", 12345, "12.345"},
+		{"pt-PT", 1234567, "1.234.567"},
+		{"pt-BR", 1000, "1.000"},
+		{"en", 1000, "1,000"},
+		{"es", 999, "999"},
+		{"en", 0, "0"},
+		{"en", -12345, "-12,345"},
+	}
+	for _, c := range cases {
+		if got := FormatThousands(c.tag, c.n); got != c.want {
+			t.Errorf("FormatThousands(%q, %d) = %q, want %q", c.tag, c.n, got, c.want)
+		}
+	}
+}

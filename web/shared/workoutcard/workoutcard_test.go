@@ -49,7 +49,7 @@ func TestWorkoutCardShowsTopExercisesPRsAndLink(t *testing.T) {
 		},
 	}
 	out := render(t, i18n.WithLocale(context.Background(), "es"), c, "/app/u/leo/workouts/x")
-	for _, want := range []string{"9 series", "12,345 kg", "5,2 km", "102,5 kg × 5", "Squat", "Bench", "PR", `href="/app/u/leo/workouts/x"`} {
+	for _, want := range []string{"9 series", "12.345 kg", "5,2 km", "102,5 kg × 5", "Squat", "Bench", "PR", `href="/app/u/leo/workouts/x"`} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q in %s", want, out)
 		}
