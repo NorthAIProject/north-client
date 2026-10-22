@@ -17,6 +17,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/achievements/achievement"
 	achievementsdb "github.com/NorthAIProject/north-client/internal/achievements/db"
+	"github.com/NorthAIProject/north-client/internal/lifts/lift"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
@@ -29,6 +30,12 @@ type (
 // it.
 type Inbox interface {
 	NoteWithPush(ctx context.Context, userID uuid.UUID, kind, dedupe, title, body, href string) error
+}
+
+// WorkoutCards builds the card of finished workouts, by session id. A session
+// that is missing or not finished is absent from the result.
+type WorkoutCards interface {
+	CardsFor(ctx context.Context, sessionIDs []uuid.UUID) (map[uuid.UUID]lift.Card, error)
 }
 
 // KindKudos is the bell note for kudos received.
@@ -44,6 +51,7 @@ const feedPage = 30
 type Service struct {
 	q     *achievementsdb.Queries
 	inbox Inbox
+	cards WorkoutCards
 	log   *slog.Logger
 }
 
@@ -52,6 +60,9 @@ func NewService(pool *pgxpool.Pool) *Service {
 }
 
 func (s *Service) WithInbox(in Inbox) *Service { s.inbox = in; return s }
+
+// WithWorkoutCards lets the feed show a workout as a card, not a sentence.
+func (s *Service) WithWorkoutCards(w WorkoutCards) *Service { s.cards = w; return s }
 
 // record stores a moment once. Failures are logged, never returned to the
 // caller: an achievement is a side effect of the thing that happened, and the
@@ -182,10 +193,46 @@ func (s *Service) Feed(ctx context.Context, viewerID uuid.UUID, before time.Time
 		out = append(out, Item{
 			ID: r.ID, UserID: r.UserID, DisplayName: r.DisplayName, Handle: util.Val(r.Handle),
 			Category: r.Category, Kind: r.Kind, Title: r.Title, Detail: r.Detail, OccurredAt: r.OccurredAt,
-			Kudos: int(r.Kudos), Kudoed: r.Kudoed, Mine: r.UserID == viewerID,
+			Kudos: int(r.Kudos), Kudoed: r.Kudoed, Mine: r.UserID == viewerID, SourceKey: r.SourceKey,
 		})
 	}
+	s.attachCards(ctx, out)
 	return out, nil
+}
+
+// attachCards sets the card of each workout_completed item. It is best effort:
+// an item whose source is not a session, a session that is gone, or a failed
+// lookup leaves the plain item, and the feed is never failed over a card.
+func (s *Service) attachCards(ctx context.Context, items []Item) {
+	if s.cards == nil {
+		return
+	}
+	var ids []uuid.UUID
+	for _, it := range items {
+		if it.Kind != achievement.KindWorkoutCompleted {
+			continue
+		}
+		if id, err := uuid.Parse(it.SourceKey); err == nil {
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 {
+		return
+	}
+	cards, err := s.cards.CardsFor(ctx, ids)
+	if err != nil {
+		s.log.Warn("could not build workout cards for the feed", "error", err)
+		return
+	}
+	for i := range items {
+		id, err := uuid.Parse(items[i].SourceKey)
+		if err != nil || items[i].Kind != achievement.KindWorkoutCompleted {
+			continue
+		}
+		if c, ok := cards[id]; ok {
+			items[i].Workout = &c
+		}
+	}
 }
 
 // Sharing is which categories the person's followers may see.

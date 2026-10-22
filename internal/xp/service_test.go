@@ -275,3 +275,33 @@ func TestNewFollowerOnWorkoutsBoardByDefault(t *testing.T) {
 		t.Fatalf("board = %+v, want Bo on it", b.Entries)
 	}
 }
+
+// LevelOf is the level Summary shows, for someone else's profile.
+func TestLevelOf(t *testing.T) {
+	t.Parallel()
+	pool := testdb.New(t)
+	ctx := context.Background()
+	ana := person(t, pool, "ana-levelof@example.com", "Ana")
+	for i := range 6 {
+		session(t, pool, ana.ID, time.Date(2026, 9, 1+i*3, 9, 0, 0, 0, time.UTC), 30)
+	}
+	svc := newService(pool)
+	want, err := svc.Summary(ctx, ana, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want.Total == 0 {
+		t.Fatal("fixture earned nothing")
+	}
+	got, err := svc.LevelOf(ctx, ana.ID, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want.Level {
+		t.Fatalf("LevelOf = %+v, Summary level = %+v", got, want.Level)
+	}
+	nobody := person(t, pool, "nobody-levelof@example.com", "Nobody")
+	if l, err := svc.LevelOf(ctx, nobody.ID, now); err != nil || l != xp.LevelFor(0) {
+		t.Fatalf("empty = %+v, %v", l, err)
+	}
+}

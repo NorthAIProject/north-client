@@ -10,7 +10,6 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"strings"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -189,24 +188,12 @@ func minutes(d time.Duration) string {
 
 func kg(ctx context.Context, v float64) string {
 	if v >= 1000 {
-		return thousands(int(math.Round(v))) + " kg"
+		return i18n.Thousands(ctx, int(math.Round(v))) + " kg"
 	}
 	if v == math.Trunc(v) {
 		return fmt.Sprintf("%.0f kg", v)
 	}
 	return i18n.Decimal(ctx, v, 1) + " kg"
-}
-
-func thousands(n int) string {
-	s := fmt.Sprintf("%d", n)
-	var b strings.Builder
-	for i, c := range s {
-		if i > 0 && (len(s)-i)%3 == 0 {
-			b.WriteByte(',')
-		}
-		b.WriteRune(c)
-	}
-	return b.String()
 }
 
 // ChangeLabel reads "+2.5 kg" or "−1 kg".

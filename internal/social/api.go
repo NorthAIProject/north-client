@@ -39,7 +39,6 @@ func (a *API) Routes(r chi.Router) {
 	r.Put("/social/handle", a.setHandle)
 	r.Get("/invites", a.invite)
 	r.Post("/invites/{code}/redeem", a.redeem)
-	r.Get("/profiles/{handle}", a.profile)
 	r.Post("/follows", a.follow)
 	r.Delete("/follows/{userID}", a.unfollow)
 	r.Post("/followers/{userID}/accept", a.accept)
@@ -174,16 +173,13 @@ func (a *API) redeem(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, RedeemView{Redeemed: ok})
 }
 
-func (a *API) profile(w http.ResponseWriter, r *http.Request) {
-	p, err := a.svc.Profile(r.Context(), auth.MustUser(r.Context()).ID, chi.URLParam(r, "handle"))
-	if err != nil {
-		httpx.Error(w, err, "Nobody has that handle.")
-		return
-	}
-	httpx.WriteJSON(w, http.StatusOK, ProfileView{
+// ProjectProfile is the profile as the API sends it. The route lives in
+// profiles, which adds what the person shares; it reuses this projection.
+func ProjectProfile(p Profile) ProfileView {
+	return ProfileView{
 		PersonView: projectPerson(p.Person), Followers: p.Followers, Following: p.Following,
 		Relationship: RelationshipView{Following: p.Relationship.Following, FollowsYou: p.Relationship.FollowsYou, Self: p.Relationship.Self},
-	})
+	}
 }
 
 func (a *API) follow(w http.ResponseWriter, r *http.Request) {

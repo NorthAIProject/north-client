@@ -71,6 +71,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/outreach"
 	"github.com/NorthAIProject/north-client/internal/planimport"
 	"github.com/NorthAIProject/north-client/internal/preferences"
+	"github.com/NorthAIProject/north-client/internal/profiles"
 	"github.com/NorthAIProject/north-client/internal/progresschecks"
 	"github.com/NorthAIProject/north-client/internal/push"
 	"github.com/NorthAIProject/north-client/internal/quota"
@@ -502,6 +503,9 @@ func routes(
 		WithRecaps(activitySvc, workoutSvc).
 		WithImports(activitySvc, biometricSvc, exerciseSvc)
 	workoutHandler.WithRecaps(liftSvc).WithLoads(liftSvc)
+	achievementSvc.WithWorkoutCards(liftSvc)
+	profilesSvc := profiles.NewService(socialSvc, achievementSvc, xpSvc, activitySvc, liftSvc)
+	profilesHandler := profiles.NewHandler(profilesSvc, socialSvc)
 	milestoneSvc := milestones.NewService(milestones.NewRepository(pool))
 
 	careOpts := care.Options{
@@ -1120,6 +1124,7 @@ func routes(
 			calculator:   calculator.NewAPI(calculatorSvc, biometricSvc),
 			news:         news.NewAPI(newsSvc),
 			social:       social.NewAPI(socialSvc, cfg.BaseURL),
+			profiles:     profiles.NewAPI(profilesSvc),
 			achievements: achievements.NewAPI(achievementSvc),
 			crews:        crews.NewAPI(crewSvc, cfg.BaseURL).WithLive(crewChat, crewLive),
 			moderation:   moderation.NewAPI(moderationSvc),
@@ -1296,6 +1301,7 @@ func routes(
 				mindHandler.Routes(r)
 				decisionHandler.Routes(r)
 				socialHandler.Routes(r)
+				profilesHandler.Routes(r)
 				crewHandler.Routes(r)
 				moderationHandler.Routes(r)
 				xpHandler.Routes(r)

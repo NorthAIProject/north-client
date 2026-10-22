@@ -254,6 +254,65 @@ func (q *Queries) ListSetsForExercisesBefore(ctx context.Context, arg ListSetsFo
 	return items, nil
 }
 
+const listSetsForExercisesBetween = `-- name: ListSetsForExercisesBetween :many
+SELECT id, user_id, activity_session_id, log_date, exercise_slug, exercise_name, set_number, weight_kg, reps, performed_at, kind, rir, client_id FROM set_logs
+WHERE user_id = $1
+  AND performed_at >= $2
+  AND performed_at < $3
+  AND (CASE WHEN exercise_slug <> '' THEN exercise_slug ELSE lower(btrim(exercise_name)) END) = ANY($4::text[])
+ORDER BY performed_at, set_number
+`
+
+type ListSetsForExercisesBetweenParams struct {
+	UserID uuid.UUID
+	Since  time.Time
+	Before time.Time
+	Keys   []string
+}
+
+// Every set of the given exercises in [since, before), oldest first, with no
+// limit: a record is only a record against the whole window, so a cap would
+// drop the oldest, heaviest sets and invent personal records. Keys match
+// lift.KeyFor.
+func (q *Queries) ListSetsForExercisesBetween(ctx context.Context, arg ListSetsForExercisesBetweenParams) ([]SetLog, error) {
+	rows, err := q.db.Query(ctx, listSetsForExercisesBetween,
+		arg.UserID,
+		arg.Since,
+		arg.Before,
+		arg.Keys,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SetLog{}
+	for rows.Next() {
+		var i SetLog
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.ActivitySessionID,
+			&i.LogDate,
+			&i.ExerciseSlug,
+			&i.ExerciseName,
+			&i.SetNumber,
+			&i.WeightKg,
+			&i.Reps,
+			&i.PerformedAt,
+			&i.Kind,
+			&i.Rir,
+			&i.ClientID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listSetsForSession = `-- name: ListSetsForSession :many
 SELECT id, user_id, activity_session_id, log_date, exercise_slug, exercise_name, set_number, weight_kg, reps, performed_at, kind, rir, client_id FROM set_logs
 WHERE user_id = $1 AND activity_session_id = $2
@@ -268,6 +327,48 @@ type ListSetsForSessionParams struct {
 // The sets logged during one timed workout, in the order they were done.
 func (q *Queries) ListSetsForSession(ctx context.Context, arg ListSetsForSessionParams) ([]SetLog, error) {
 	rows, err := q.db.Query(ctx, listSetsForSession, arg.UserID, arg.ActivitySessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SetLog{}
+	for rows.Next() {
+		var i SetLog
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.ActivitySessionID,
+			&i.LogDate,
+			&i.ExerciseSlug,
+			&i.ExerciseName,
+			&i.SetNumber,
+			&i.WeightKg,
+			&i.Reps,
+			&i.PerformedAt,
+			&i.Kind,
+			&i.Rir,
+			&i.ClientID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSetsForSessions = `-- name: ListSetsForSessions :many
+SELECT id, user_id, activity_session_id, log_date, exercise_slug, exercise_name, set_number, weight_kg, reps, performed_at, kind, rir, client_id FROM set_logs
+WHERE activity_session_id = ANY($1::uuid[])
+ORDER BY performed_at, set_number
+`
+
+// Every set logged against these workouts, in the order they were done. Not
+// owner-scoped: the caller decides whose workouts the reader may see.
+func (q *Queries) ListSetsForSessions(ctx context.Context, ids []uuid.UUID) ([]SetLog, error) {
+	rows, err := q.db.Query(ctx, listSetsForSessions, ids)
 	if err != nil {
 		return nil, err
 	}

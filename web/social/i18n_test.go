@@ -139,3 +139,25 @@ func TestEveryPhoneCountryHasAName(t *testing.T) {
 		}
 	}
 }
+
+// Names link to the profile only for people who have a handle, and the
+// viewer gets a link to their own once they have one.
+func TestNamesLinkToProfiles(t *testing.T) {
+	html := renderFriendsIn(t, users.LocaleEN)
+	if !strings.Contains(html, `href="/app/u/bruno"`) {
+		t.Error("a person with a handle is not linked")
+	}
+	if strings.Contains(html, "Your profile") {
+		t.Error("Your profile shown without a handle")
+	}
+
+	var b strings.Builder
+	ctx := i18n.WithLocale(context.Background(), "en")
+	page := FriendsPage(users.User{DisplayName: "Ana"}, friend.Overview{Handle: "ana"}, "https://khepri.test/i/abc", FriendsForm{}, FeedSection{}, ShareLinks{}, Finding{})
+	if err := page.Render(ctx, &b); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(b.String(), `href="/app/u/ana"`) || !strings.Contains(b.String(), "Your profile") {
+		t.Error("no link to the viewer's own profile")
+	}
+}

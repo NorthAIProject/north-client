@@ -1,0 +1,249 @@
+// Package profiles is the web page for one person: who they are, what they
+// share and a button to follow them.
+package profiles
+
+import (
+	"context"
+	"math"
+	"net/url"
+	"strings"
+
+	"github.com/NorthAIProject/north-client/internal/lifts/lift"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/avatar"
+	"github.com/NorthAIProject/north-client/web/shared/ui/badge"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/workoutcard"
+)
+
+// Data is one profile as the viewer sees it.
+type Data struct {
+	User      users.User // the viewer
+	Name      string
+	Handle    string
+	Self      bool
+	Follows   bool // the viewer follows them
+	Followers int
+	Following int
+	// Level is shown only when HasLevel; the title arrives translated.
+	HasLevel    bool
+	LevelNumber int
+	LevelTitle  string
+	// Workouts is nil when the person does not share training.
+	Workouts *int
+	Shared   bool
+	Recent   []lift.Card
+}
+
+func initials(name string) string {
+	out := ""
+	for _, f := range strings.Fields(name) {
+		if len(out) == 2 {
+			break
+		}
+		out += strings.ToUpper(string([]rune(f)[0]))
+	}
+	if out == "" {
+		return "?"
+	}
+	return out
+}
+
+func base(handle string) string { return "/app/u/" + url.PathEscape(handle) }
+
+func workoutHref(handle string, c lift.Card) string {
+	return base(handle) + "/workouts/" + c.ID.String()
+}
+
+templ ProfilePage(d Data) {
+	@layout.App("@"+d.Handle, d.User, layout.BuildNav(ctx, "/app/friends")) {
+		<div class="mx-auto w-full max-w-3xl space-y-6 p-6 md:p-8">
+			@header(d)
+			@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+				@card.Header() {
+					@card.Title() {
+						{ i18n.T(ctx, "profile.workouts") }
+					}
+				}
+				@card.Content() {
+					if !d.Shared {
+						<p class="text-muted-foreground text-sm">{ i18n.T(ctx, "profile.hidden") }</p>
+					} else if len(d.Recent) == 0 {
+						<p class="text-muted-foreground text-sm">{ i18n.T(ctx, "profile.empty") }</p>
+					} else {
+						<ul>
+							for _, c := range d.Recent {
+								@item(d.Handle, c)
+							}
+						</ul>
+						<div class="mt-3">
+							@button.Button(button.Props{Href: base(d.Handle) + "/workouts", Variant: button.VariantGhost, Size: button.SizeSm}) {
+								{ i18n.T(ctx, "profile.seeall") }
+							}
+						</div>
+					}
+				}
+			}
+		</div>
+	}
+}
+
+templ header(d Data) {
+	<header class="flex items-start gap-4">
+		@avatar.Avatar() {
+			@avatar.Fallback() {
+				{ initials(d.Name) }
+			}
+		}
+		<div class="min-w-0 flex-1">
+			<h1 class="truncate text-2xl font-medium tracking-tight">{ d.Name }</h1>
+			<p class="text-muted-foreground text-sm">{ "@" + d.Handle }</p>
+			if d.HasLevel {
+				<p class="mt-1 text-sm">{ i18n.Tf(ctx, "profile.level", d.LevelNumber, d.LevelTitle) }</p>
+			}
+			<p class="text-muted-foreground mt-2 flex flex-wrap gap-x-4 text-sm">
+				if d.Workouts != nil {
+					<span><span class="text-foreground tabular-nums">{ i18n.Thousands(ctx, *d.Workouts) }</span> { countLabel(ctx, *d.Workouts, "profile.workout", "profile.workouts") }</span>
+				}
+				<span><span class="text-foreground tabular-nums">{ i18n.Thousands(ctx, d.Followers) }</span> { countLabel(ctx, d.Followers, "profile.follower", "profile.followers") }</span>
+				<span><span class="text-foreground tabular-nums">{ i18n.Thousands(ctx, d.Following) }</span> { i18n.T(ctx, "profile.following") }</span>
+			</p>
+		</div>
+		if !d.Self {
+			if d.Follows {
+				@followForm(d.Handle, "unfollow", i18n.T(ctx, "social.unfollow"), button.VariantOutline)
+			} else {
+				@followForm(d.Handle, "follow", i18n.T(ctx, "social.follow.ask"), button.VariantDefault)
+			}
+		}
+	</header>
+}
+
+templ followForm(handle, verb, text string, variant button.Variant) {
+	<form method="post" action={ templ.SafeURL(base(handle) + "/" + verb) }>
+		@ui.CSRFInput()
+		@button.Button(button.Props{Type: button.TypeSubmit, Variant: variant}) {
+			{ text }
+		}
+	</form>
+}
+
+// item is a workout card with its name and date above it. The card itself
+// does not name the activity, and the profile has no feed title to do it.
+templ item(handle string, c lift.Card) {
+	<li class="mt-3 first:mt-0">
+		<p class="text-sm">
+			<span class="font-medium">{ c.Name }</span>
+			<span class="text-muted-foreground">· { i18n.Date(ctx, c.EndedAt, "2 Jan") }</span>
+		</p>
+		@workoutcard.Card(c, workoutHref(handle, c))
+	</li>
+}
+
+// WorkoutsPage is the full list, with a More link when there is another page.
+templ WorkoutsPage(d Data, cards []lift.Card, more string) {
+	@layout.App(i18n.T(ctx, "profile.workouts"), d.User, layout.BuildNav(ctx, "/app/friends")) {
+		<div class="mx-auto w-full max-w-3xl space-y-6 p-6 md:p-8">
+			@backLink(d.Handle)
+			<h1 class="text-2xl font-medium tracking-tight">{ d.Name } · { i18n.T(ctx, "profile.workouts") }</h1>
+			if !d.Shared {
+				<p class="text-muted-foreground text-sm">{ i18n.T(ctx, "profile.hidden") }</p>
+			} else if len(cards) == 0 {
+				<p class="text-muted-foreground text-sm">{ i18n.T(ctx, "profile.empty") }</p>
+			} else {
+				<ul>
+					for _, c := range cards {
+						@item(d.Handle, c)
+					}
+				</ul>
+				if more != "" {
+					@button.Button(button.Props{Href: base(d.Handle) + "/workouts" + more, Variant: button.VariantOutline}) {
+						{ i18n.T(ctx, "profile.more") }
+					}
+				}
+			}
+		</div>
+	}
+}
+
+templ backLink(handle string) {
+	@button.Button(button.Props{Href: base(handle), Variant: button.VariantGhost, Size: button.SizeSm}) {
+		{ "← " + i18n.T(ctx, "profile.back") }
+	}
+}
+
+// countLabel picks the singular key for exactly one, the plural otherwise.
+func countLabel(ctx context.Context, n int, one, many string) string {
+	if n == 1 {
+		return i18n.T(ctx, one)
+	}
+	return i18n.T(ctx, many)
+}
+
+func setsText(ctx context.Context, n int) string {
+	if n == 1 {
+		return i18n.T(ctx, "workoutcard.set")
+	}
+	return i18n.Tf(ctx, "workoutcard.sets", n)
+}
+
+func volumeText(ctx context.Context, kg float64) string {
+	return i18n.Tf(ctx, "workoutcard.volume", i18n.Thousands(ctx, int(math.Round(kg))))
+}
+
+// statsOnly is the card without its exercises, for the page that lists them all.
+func statsOnly(c lift.Card) lift.Card {
+	c.Exercises = nil
+	c.PRs = 0
+	return c
+}
+
+// WorkoutPage is one workout with every exercise.
+templ WorkoutPage(d Data, c lift.Card) {
+	@layout.App(c.Name, d.User, layout.BuildNav(ctx, "/app/friends")) {
+		<div class="mx-auto w-full max-w-3xl space-y-6 p-6 md:p-8">
+			@backLink(d.Handle)
+			<header>
+				<h1 class="text-2xl font-medium tracking-tight">{ c.Name }</h1>
+				<p class="text-muted-foreground mt-1 text-sm">{ d.Name } · { i18n.Date(ctx, c.EndedAt, "2 Jan 2006") }</p>
+			</header>
+			// The card carries the stats row; the list below has every exercise.
+			@workoutcard.Card(statsOnly(c), "")
+			if len(c.Exercises) > 0 {
+				@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+					@card.Content() {
+						<ul class="divide-y divide-hairline">
+							for _, e := range c.Exercises {
+								<li class="flex items-center justify-between gap-3 py-3 text-sm">
+									<div class="min-w-0">
+										<p class="truncate font-medium">{ e.Name }</p>
+										<p class="text-muted-foreground text-xs tabular-nums">
+											{ setsText(ctx, e.Sets) }
+											if e.VolumeKg > 0 {
+												<span aria-hidden="true">{ " · " }</span>
+												{ volumeText(ctx, e.VolumeKg) }
+											}
+											if best := e.BestIn(i18n.LocaleFrom(ctx)); best != "" {
+												<span aria-hidden="true">{ " · " }</span>
+												{ best }
+											}
+										</p>
+									</div>
+									if e.PR {
+										@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
+											{ i18n.T(ctx, "workoutcard.pr") }
+										}
+									}
+								</li>
+							}
+						</ul>
+					}
+				}
+			}
+		</div>
+	}
+}

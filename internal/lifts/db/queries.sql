@@ -51,3 +51,22 @@ WHERE user_id = sqlc.arg(user_id)
   AND (CASE WHEN exercise_slug <> '' THEN exercise_slug ELSE lower(btrim(exercise_name)) END) = ANY(sqlc.arg(keys)::text[])
 ORDER BY performed_at DESC
 LIMIT 500;
+
+-- name: ListSetsForSessions :many
+-- Every set logged against these workouts, in the order they were done. Not
+-- owner-scoped: the caller decides whose workouts the reader may see.
+SELECT * FROM set_logs
+WHERE activity_session_id = ANY(sqlc.arg(ids)::uuid[])
+ORDER BY performed_at, set_number;
+
+-- name: ListSetsForExercisesBetween :many
+-- Every set of the given exercises in [since, before), oldest first, with no
+-- limit: a record is only a record against the whole window, so a cap would
+-- drop the oldest, heaviest sets and invent personal records. Keys match
+-- lift.KeyFor.
+SELECT * FROM set_logs
+WHERE user_id = sqlc.arg(user_id)
+  AND performed_at >= sqlc.arg(since)
+  AND performed_at < sqlc.arg(before)
+  AND (CASE WHEN exercise_slug <> '' THEN exercise_slug ELSE lower(btrim(exercise_name)) END) = ANY(sqlc.arg(keys)::text[])
+ORDER BY performed_at, set_number;

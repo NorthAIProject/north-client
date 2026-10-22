@@ -17,7 +17,7 @@ ON CONFLICT (user_id, category) DO UPDATE SET shared = EXCLUDED.shared;
 -- Your own achievements, and those of people you follow (accepted) in the
 -- categories they share, minus anybody blocked either way. Newest first,
 -- before a cursor.
-SELECT a.id, a.user_id, a.category, a.kind, a.title, a.detail, a.occurred_at,
+SELECT a.id, a.user_id, a.category, a.kind, a.title, a.detail, a.occurred_at, a.source_key,
        u.display_name, u.handle,
        (SELECT count(*) FROM kudos k WHERE k.achievement_id = a.id) AS kudos,
        EXISTS (SELECT 1 FROM kudos k WHERE k.achievement_id = a.id AND k.user_id = sqlc.arg('viewer')) AS kudoed

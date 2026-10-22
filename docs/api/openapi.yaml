@@ -3659,7 +3659,14 @@ paths:
           type: string
     get:
       operationId: getPublicProfile
-      summary: Somebody's public profile and how you stand to them
+      summary: Somebody's public profile, how you stand to them, and what they share
+      description: |
+        Any signed-in person who is not blocked either way can open a profile;
+        a block and an unknown handle are the same 404. `workouts` and
+        `recentWorkouts` appear only when the owner shares training with you,
+        `level` only when they share xp. Your own profile shows everything.
+        `shares` says which sections you can see. `recentWorkouts` is absent,
+        not empty, when there is nothing to show.
       tags: [social]
       responses:
         '200':
@@ -3668,6 +3675,74 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ProfileView'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /profiles/{handle}/workouts:
+    parameters:
+      - name: handle
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: listProfileWorkouts
+      summary: A page of somebody's finished workouts, newest first
+      description: |
+        Twenty per page, each card with its two biggest exercises. Pass the
+        returned `before` to read the next page; it is absent on the last one.
+        When the owner does not share training, `shared` is false and `items`
+        is empty. Calories, heart rate and body numbers are never included.
+      tags: [social]
+      parameters:
+        - name: before
+          in: query
+          required: false
+          description: Only workouts that ended before this time.
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileWorkouts'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /profiles/{handle}/workouts/{sessionID}:
+    parameters:
+      - name: handle
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: sessionID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getProfileWorkout
+      summary: One of somebody's finished workouts with every exercise
+      description: |
+        404 when training is not shared with you, the workout is not finished,
+        it belongs to someone else, or you are blocked either way.
+      tags: [social]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkoutCard'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -7951,6 +8026,58 @@ components:
           type: boolean
         mine:
           type: boolean
+        workout:
+          $ref: '#/components/schemas/WorkoutCard'
+    WorkoutCard:
+      type: object
+      description: A finished workout for someone else to read. Carries no calories, heart rate or body numbers.
+      required: [sessionId, name, activityCode, startedAt, endedAt, durationSeconds, sets, volumeKg, prs, exercises]
+      properties:
+        sessionId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        activityCode:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: string
+          format: date-time
+        durationSeconds:
+          type: integer
+        distanceM:
+          type: number
+          description: Absent when the workout had no distance.
+        sets:
+          type: integer
+        volumeKg:
+          type: number
+        prs:
+          type: integer
+          description: Exercises where a set of this workout raised the person's best.
+        exercises:
+          type: array
+          description: The first few exercises, most volume first. Always an array.
+          items:
+            $ref: '#/components/schemas/WorkoutExercise'
+    WorkoutExercise:
+      type: object
+      required: [name, sets, volumeKg, pr]
+      properties:
+        name:
+          type: string
+        sets:
+          type: integer
+        volumeKg:
+          type: number
+        best:
+          type: string
+          description: The heaviest set, "22.5 kg × 8". Absent for a bodyweight-only movement.
+        pr:
+          type: boolean
     Feed:
       type: object
       required: [items]
@@ -8191,6 +8318,40 @@ components:
                   type: boolean
                 self:
                   type: boolean
+            shares:
+              type: object
+              description: Which sections of this profile you can see.
+              required: [training, xp]
+              properties:
+                training:
+                  type: boolean
+                xp:
+                  type: boolean
+            level:
+              $ref: '#/components/schemas/LevelView'
+            workouts:
+              type: integer
+              description: Finished workouts; present only when training is shared with you.
+            recentWorkouts:
+              type: array
+              description: Newest five, two exercises each; present only when training is shared and there is at least one.
+              items:
+                $ref: '#/components/schemas/WorkoutCard'
+    ProfileWorkouts:
+      type: object
+      required: [items, shared]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkoutCard'
+        before:
+          type: string
+          format: date-time
+          description: End time of the last item when a full page came back; pass it to read the next page.
+        shared:
+          type: boolean
+          description: False when the owner does not share training with you.
     CaffeineInput:
       type: object
       additionalProperties: false
