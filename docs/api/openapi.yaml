@@ -8163,7 +8163,7 @@ components:
             $ref: '#/components/schemas/ConnectionView'
         following:
           type: array
-          description: Includes requests you sent that are still pending.
+          description: Everyone you follow. Follows are instant, so none are pending.
           items:
             $ref: '#/components/schemas/ConnectionView'
         blocked:
