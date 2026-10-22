@@ -54,7 +54,7 @@ var spanishSocial = map[string]string{
 	"social.ago.days":    "hace %[1]d d",
 
 	"social.sharing.title":    "Lo que ven tus seguidores",
-	"social.sharing.desc":     "Desactivado hasta que lo actives. Tu diario, tus decisiones, tu alimentación y tus datos de salud nunca se comparten.",
+	"social.sharing.desc":     "Tus seguidores ven lo que actives aquí. Tu diario, tus decisiones, tu alimentación y tus datos de salud nunca se comparten.",
 	"social.sharing.training": "Los entrenamientos que terminas y cuántos llevas esta semana",
 	"social.sharing.streaks":  "Rachas de registros (7, 30, 100 días…) y tu racha actual",
 	"social.sharing.goals":    "Los objetivos e hitos que completas",

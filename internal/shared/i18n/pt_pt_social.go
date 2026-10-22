@@ -54,7 +54,7 @@ var portugueseEuropeanSocial = map[string]string{
 	"social.ago.days":    "há %[1]d d",
 
 	"social.sharing.title":    "O que os seguidores veem",
-	"social.sharing.desc":     "Desligado até o ligares. O teu diário, as tuas decisões, a alimentação e os números de saúde nunca são partilhados.",
+	"social.sharing.desc":     "Os teus seguidores veem o que ligares aqui. O teu diário, as tuas decisões, a alimentação e os números de saúde nunca são partilhados.",
 	"social.sharing.training": "Os treinos que terminas, e quantos levas esta semana",
 	"social.sharing.streaks":  "Sequências de registos (7, 30, 100 dias…) e a tua sequência atual",
 	"social.sharing.goals":    "Os objetivos e marcos que concluis",
