@@ -2,9 +2,7 @@ package workoutcard
 
 import (
 	"context"
-	"fmt"
 	"math"
-	"strings"
 
 	"github.com/NorthAIProject/north-client/internal/lifts/lift"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
@@ -34,7 +32,7 @@ func stats(ctx context.Context, c lift.Card) []string {
 		out = append(out, i18n.Tf(ctx, "workoutcard.sets", c.Sets))
 	}
 	if c.VolumeKg > 0 {
-		out = append(out, i18n.Tf(ctx, "workoutcard.volume", thousands(int(math.Round(c.VolumeKg)))))
+		out = append(out, i18n.Tf(ctx, "workoutcard.volume", i18n.Thousands(ctx, int(math.Round(c.VolumeKg)))))
 	}
 	if c.DistanceM != nil && *c.DistanceM > 0 {
 		// One decimal at most, trimmed: "5 km", "5.2 km".
@@ -46,16 +44,4 @@ func stats(ctx context.Context, c lift.Card) []string {
 		out = append(out, i18n.Tf(ctx, "workoutcard.km", i18n.Decimal(ctx, km, prec)))
 	}
 	return out
-}
-
-func thousands(n int) string {
-	s := fmt.Sprintf("%d", n)
-	var b strings.Builder
-	for i, c := range s {
-		if i > 0 && (len(s)-i)%3 == 0 {
-			b.WriteByte(',')
-		}
-		b.WriteRune(c)
-	}
-	return b.String()
 }
