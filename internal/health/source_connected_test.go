@@ -70,5 +70,3 @@ func TestOnlyTheFirstAppleHealthDeliveryCountsAsConnected(t *testing.T) {
 		t.Errorf("event = %q %v, want source_connected apple_health", rec.events[0].Event, rec.events[0].Properties)
 	}
 }
-
-
