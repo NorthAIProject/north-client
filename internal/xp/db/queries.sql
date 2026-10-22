@@ -121,8 +121,7 @@ WHERE u.id = sqlc.arg('viewer')
    OR (
      EXISTS (SELECT 1 FROM follows f
              WHERE f.follower_id = sqlc.arg('viewer') AND f.followee_id = u.id AND f.status = 'accepted')
-     AND EXISTS (SELECT 1 FROM achievement_sharing s
-                 WHERE s.user_id = u.id AND s.category = sqlc.arg('category') AND s.shared)
+     AND sharing_on(u.id, sqlc.arg('category'))
      AND NOT EXISTS (SELECT 1 FROM blocks b
                      WHERE (b.blocker_id = sqlc.arg('viewer') AND b.blocked_id = u.id)
                         OR (b.blocker_id = u.id AND b.blocked_id = sqlc.arg('viewer')))
@@ -130,10 +129,7 @@ WHERE u.id = sqlc.arg('viewer')
 
 -- name: Shares :one
 -- Whether a person shares one category with followers.
-SELECT EXISTS (
-    SELECT 1 FROM achievement_sharing
-    WHERE user_id = sqlc.arg('user_id') AND category = sqlc.arg('category') AND shared
-);
+SELECT sharing_on(sqlc.arg('user_id'), sqlc.arg('category'));
 
 -- name: WorkoutsFinished :many
 -- Finished sessions per person in a window, uncapped: the workouts board

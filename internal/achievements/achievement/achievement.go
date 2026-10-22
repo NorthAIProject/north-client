@@ -24,6 +24,16 @@ func Categories() []string {
 	return []string{CategoryTraining, CategoryStreaks, CategoryGoals, CategoryXP}
 }
 
+// DefaultShared is whether a category is shared with followers by a person who
+// never stored a choice. It mirrors the SQL function sharing_on.
+func DefaultShared(category string) bool {
+	switch category {
+	case CategoryTraining, CategoryStreaks, CategoryGoals:
+		return true
+	}
+	return false
+}
+
 // Kinds of moment, each in one category.
 const (
 	KindWorkoutCompleted = "workout_completed"
