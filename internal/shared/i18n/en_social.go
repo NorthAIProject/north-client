@@ -61,6 +61,7 @@ var englishSocial = map[string]string{
 	"social.sharing.streaks":  "Check-in streaks (7, 30, 100 days…) and your current one",
 	"social.sharing.goals":    "Goals and milestones you complete",
 	"social.sharing.xp":       "Your XP and level, on friends' leaderboards",
+	"social.sharing.awards":   "Your awards, except the private ones",
 
 	"social.phone.title":       "Phone number",
 	"social.phone.desc":        "Friends who have your number in their contacts can find you. It is never shown to anyone.",

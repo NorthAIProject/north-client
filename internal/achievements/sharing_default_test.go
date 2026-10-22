@@ -30,7 +30,7 @@ func TestSharingOnDefaults(t *testing.T) {
 		}
 		return v
 	}
-	for c, want := range map[string]bool{"training": true, "streaks": true, "goals": true, "xp": false} {
+	for c, want := range map[string]bool{"training": true, "streaks": true, "goals": true, "xp": false, "awards": true} {
 		if got := on(c); got != want {
 			t.Errorf("sharing_on(%s) = %v, want %v", c, got, want)
 		}
@@ -70,7 +70,7 @@ func TestNewPersonSharesByDefault(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := (achievements.Sharing{Training: true, Streaks: true, Goals: true, XP: false}); got != want {
+	if want := (achievements.Sharing{Training: true, Streaks: true, Goals: true, XP: false, Awards: true}); got != want {
 		t.Fatalf("Sharing(B) = %+v, want %+v", got, want)
 	}
 	svc.WorkoutCompleted(ctx, b.ID, uuid.New(), "Running", 30, time.Now().Add(-time.Hour))
@@ -106,7 +106,33 @@ func TestPinnedOffStaysOff(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != (achievements.Sharing{}) {
-		t.Fatalf("Sharing(B) = %+v, want all false", got)
+	if want := (achievements.Sharing{Awards: true}); got != want {
+		t.Fatalf("Sharing(B) = %+v, want only awards on", got)
+	}
+}
+
+func TestSharingDefaultsAwardsOn(t *testing.T) {
+	ctx := context.Background()
+	pool := testdb.New(t)
+	svc := achievements.NewService(pool)
+	fresh := person(t, pool, "awards-fresh@north.test", "Fay")
+	pinned := person(t, pool, "awards-pinned@north.test", "Pip")
+	for _, c := range []string{"training", "streaks", "goals"} {
+		if _, err := pool.Exec(ctx, `INSERT INTO achievement_sharing (user_id, category, shared) VALUES ($1, $2, false)`, pinned.ID, c); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for name, id := range map[string]uuid.UUID{"fresh": fresh.ID, "pinned": pinned.ID} {
+		got, err := svc.Sharing(ctx, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !got.Awards {
+			t.Errorf("%s user: Awards = false, want true", name)
+		}
+		var on bool
+		if err := pool.QueryRow(ctx, `SELECT sharing_on($1, 'awards')`, id).Scan(&on); err != nil || !on {
+			t.Errorf("%s user: sharing_on(awards) = %v, %v", name, on, err)
+		}
 	}
 }

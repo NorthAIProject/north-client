@@ -246,6 +246,7 @@ func (s *Service) Sharing(ctx context.Context, userID uuid.UUID) (Sharing, error
 		Streaks:  achievement.DefaultShared(achievement.CategoryStreaks),
 		Goals:    achievement.DefaultShared(achievement.CategoryGoals),
 		XP:       achievement.DefaultShared(achievement.CategoryXP),
+		Awards:   achievement.DefaultShared(achievement.CategoryAwards),
 	}
 	for _, r := range rows {
 		switch r.Category {
@@ -257,6 +258,8 @@ func (s *Service) Sharing(ctx context.Context, userID uuid.UUID) (Sharing, error
 			out.Goals = r.Shared
 		case achievement.CategoryXP:
 			out.XP = r.Shared
+		case achievement.CategoryAwards:
+			out.Awards = r.Shared
 		}
 	}
 	return out, nil
@@ -268,6 +271,7 @@ func (s *Service) SetSharing(ctx context.Context, userID uuid.UUID, in Sharing) 
 		achievement.CategoryStreaks:  in.Streaks,
 		achievement.CategoryGoals:    in.Goals,
 		achievement.CategoryXP:       in.XP,
+		achievement.CategoryAwards:   in.Awards,
 	} {
 		if err := s.q.SetSharing(ctx, achievementsdb.SetSharingParams{UserID: userID, Category: category, Shared: shared}); err != nil {
 			return Sharing{}, apperr.Wrap(err, "set sharing")

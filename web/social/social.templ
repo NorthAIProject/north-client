@@ -461,6 +461,7 @@ templ sharingCard(s achievement.Sharing) {
 				@shareSwitch("share_streaks", i18n.T(ctx, "social.sharing.streaks"), s.Streaks)
 				@shareSwitch("share_goals", i18n.T(ctx, "social.sharing.goals"), s.Goals)
 				@shareSwitch("share_xp", i18n.T(ctx, "social.sharing.xp"), s.XP)
+				@shareSwitch("share_awards", i18n.T(ctx, "social.sharing.awards"), s.Awards)
 				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantSecondary}) {
 					{ i18n.T(ctx, "social.save") }
 				}
