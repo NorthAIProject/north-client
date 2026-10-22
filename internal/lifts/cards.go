@@ -59,7 +59,7 @@ func (s *Service) CardsFor(ctx context.Context, sessionIDs []uuid.UUID) (map[uui
 }
 
 // cardHistories is, per person, their sets of the exercises in these
-// sessions from the year before the first of them, newest first: one query
+// sessions from the year before the first of them, oldest first, uncapped: one query
 // per person however many sessions they have.
 func (s *Service) cardHistories(ctx context.Context, sessions []activity.Session, bySession map[uuid.UUID][]Set) (map[uuid.UUID][]Set, error) {
 	type window struct {
@@ -92,7 +92,7 @@ func (s *Service) cardHistories(ctx context.Context, sessions []activity.Session
 		for k := range w.keys {
 			keys = append(keys, k)
 		}
-		hist, err := s.repo.ListForExercisesBefore(ctx, owner, keys, w.first.Add(-history), w.last)
+		hist, err := s.repo.ListForExercisesBetween(ctx, owner, keys, w.first.Add(-history), w.last)
 		if err != nil {
 			return nil, err
 		}
