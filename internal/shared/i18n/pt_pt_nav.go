@@ -13,6 +13,7 @@ var portugueseEuropeanNav = map[string]string{
 	"nav.group.mind":     "Mente",
 	"nav.group.progress": "Progresso",
 	"nav.group.system":   "Sistema",
+	"nav.group.more":     "Mais",
 
 	"nav.my-day":             "O meu dia",
 	"nav.my-day.desc":        "O teu dia num ecrã: comida, água, sono, movimento.",
