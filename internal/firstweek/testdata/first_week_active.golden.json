@@ -1,0 +1,50 @@
+{
+  "status": "active",
+  "template": "sleep",
+  "day": 3,
+  "totalDays": 7,
+  "startedOn": "2026-10-24",
+  "goalId": "66666666-6666-6666-6666-666666666666",
+  "action": "Wind down 30 minutes before bed, then log how you slept.",
+  "done": true,
+  "doneCount": 2,
+  "days": [
+    {
+      "day": 1,
+      "date": "2026-10-25",
+      "done": true,
+      "via": "log"
+    },
+    {
+      "day": 2,
+      "date": "2026-10-26",
+      "done": false
+    },
+    {
+      "day": 3,
+      "date": "2026-10-27",
+      "done": true,
+      "via": "tap"
+    },
+    {
+      "day": 4,
+      "date": "2026-10-28",
+      "done": false
+    },
+    {
+      "day": 5,
+      "date": "2026-10-29",
+      "done": false
+    },
+    {
+      "day": 6,
+      "date": "2026-10-30",
+      "done": false
+    },
+    {
+      "day": 7,
+      "date": "2026-10-31",
+      "done": false
+    }
+  ]
+}

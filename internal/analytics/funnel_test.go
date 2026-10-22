@@ -35,6 +35,44 @@ func (r *recorder) Enqueue(msg posthog.Message) error {
 	return r.err
 }
 
+// The first-week events are the steps of the activation programme; their
+// names and properties are what the week-one funnel is built on.
+func TestTheFirstWeekEventsCarryTheirProperties(t *testing.T) {
+	t.Parallel()
+
+	rec := &recorder{}
+	f := analytics.New(rec)
+	user := uuid.New()
+	ctx := context.Background()
+
+	f.FirstWeekStarted(ctx, user, "sleep")
+	f.FirstWeekDayCompleted(ctx, user, 3, "tap")
+	f.FirstWeekFinished(ctx, user)
+	f.SourceConnected(ctx, user, analytics.SourceAppleHealth)
+
+	want := []string{"first_week_started", "first_week_day_completed", "first_week_finished", "source_connected"}
+	if len(rec.captures) != len(want) {
+		t.Fatalf("captured %d events, want %d", len(rec.captures), len(want))
+	}
+	for i, name := range want {
+		if rec.captures[i].Event != name {
+			t.Errorf("event %d is %q, want %q", i, rec.captures[i].Event, name)
+		}
+	}
+	if got := rec.captures[0].Properties["template"]; got != "sleep" {
+		t.Errorf("template = %v, want sleep", got)
+	}
+	if got := rec.captures[1].Properties["day"]; got != 3 {
+		t.Errorf("day = %v, want 3", got)
+	}
+	if got := rec.captures[1].Properties["via"]; got != "tap" {
+		t.Errorf("via = %v, want tap", got)
+	}
+	if got := rec.captures[3].Properties["source"]; got != "apple_health" {
+		t.Errorf("source = %v, want apple_health", got)
+	}
+}
+
 func TestTheFunnelEmitsTheEventNamesTheInsightsAreBuiltOn(t *testing.T) {
 	t.Parallel()
 
