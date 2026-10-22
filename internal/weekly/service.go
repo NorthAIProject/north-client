@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/NorthAIProject/north-client/internal/awards/award"
 	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/reports"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
@@ -54,11 +55,22 @@ type Service struct {
 	goals        Goals
 	reports      Reports
 	achievements Achievements
+	awards       Awards
 	now          func() time.Time
 }
 
 func NewService(pool *pgxpool.Pool, g Goals, r Reports) *Service {
 	return &Service{q: weeklydb.New(pool), goals: g, reports: r, now: time.Now}
+}
+
+// Awards checks a person's badges after a write. awards.Service satisfies it.
+type Awards interface {
+	Check(ctx context.Context, userID uuid.UUID, at time.Time, areas ...award.Area)
+}
+
+func (s *Service) WithAwards(a Awards) *Service {
+	s.awards = a
+	return s
 }
 
 func (s *Service) WithAchievements(a Achievements) *Service { s.achievements = a; return s }
@@ -147,6 +159,9 @@ func (s *Service) SetFocus(ctx context.Context, user users.User, in Input) (Focu
 	}
 	if s.achievements != nil {
 		s.achievements.WeekReviewed(ctx, user.ID, planning, s.now())
+	}
+	if s.awards != nil {
+		s.awards.Check(ctx, user.ID, s.now(), award.Goals)
 	}
 	return fromDB(row, user.Location()), nil
 }

@@ -7,6 +7,7 @@ import (
 	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
 
+	"github.com/NorthAIProject/north-client/internal/awards/award"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
@@ -17,8 +18,14 @@ type SyncHook interface {
 }
 
 type FoodLogService struct {
-	repo *Repository
-	sync SyncHook
+	repo   *Repository
+	sync   SyncHook
+	awards Awards
+}
+
+// Awards checks a person's badges after a write. awards.Service satisfies it.
+type Awards interface {
+	Check(ctx context.Context, userID uuid.UUID, at time.Time, areas ...award.Area)
 }
 
 func NewFoodLogService(repo *Repository) *FoodLogService {
@@ -27,6 +34,11 @@ func NewFoodLogService(repo *Repository) *FoodLogService {
 
 func (s *FoodLogService) WithSync(hook SyncHook) *FoodLogService {
 	s.sync = hook
+	return s
+}
+
+func (s *FoodLogService) WithAwards(a Awards) *FoodLogService {
+	s.awards = a
 	return s
 }
 
@@ -91,6 +103,9 @@ func (s *FoodLogService) LogIngredient(ctx context.Context, userID uuid.UUID, in
 func (s *FoodLogService) logged(ctx context.Context, userID uuid.UUID) {
 	if s.sync != nil {
 		_ = s.sync.OnMealLogged(ctx, userID)
+	}
+	if s.awards != nil {
+		s.awards.Check(ctx, userID, time.Now(), award.Nutrition)
 	}
 }
 

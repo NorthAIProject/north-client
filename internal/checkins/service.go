@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/NorthAIProject/north-client/internal/awards/award"
 	"github.com/NorthAIProject/north-client/internal/checkins/checkin"
 	"github.com/NorthAIProject/north-client/internal/goals"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
@@ -32,6 +33,11 @@ type GoalLookup interface {
 }
 
 // SyncHook is notified when check-ins are saved to synchronize state across clients.
+// Awards checks a person's badges after a write. awards.Service satisfies it.
+type Awards interface {
+	Check(ctx context.Context, userID uuid.UUID, at time.Time, areas ...award.Area)
+}
+
 type SyncHook interface {
 	OnCheckInSaved(ctx context.Context, userID uuid.UUID) error
 }
@@ -41,6 +47,7 @@ type Service struct {
 	goals        GoalLookup
 	sync         SyncHook
 	achievements Achievements
+	awards       Awards
 }
 
 // Achievements records check-in streaks worth showing friends.
@@ -51,6 +58,11 @@ type Achievements interface {
 
 func (s *Service) WithAchievements(a Achievements) *Service {
 	s.achievements = a
+	return s
+}
+
+func (s *Service) WithAwards(a Awards) *Service {
+	s.awards = a
 	return s
 }
 
@@ -229,6 +241,9 @@ func (s *Service) saveToday(ctx context.Context, user users.User, clean Input) (
 	}
 	if s.sync != nil {
 		_ = s.sync.OnCheckInSaved(ctx, user.ID)
+	}
+	if s.awards != nil {
+		s.awards.Check(ctx, user.ID, time.Now(), award.Consistency)
 	}
 	if s.achievements != nil {
 		now := time.Now()

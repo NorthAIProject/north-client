@@ -85,6 +85,16 @@ const (
 	// four weeks running.
 	KindSweepAreaStreaks Kind = "sweep_area_streaks"
 
+	// KindSweepBadges is the safety net for badges. Check at write time does
+	// the real work; at 4 a.m. local this evaluates only the areas a person
+	// logged in over the last day, for what arrived without a request of
+	// their own (a Strava sync, a Health push).
+	KindSweepBadges Kind = "sweep_badges"
+
+	// KindSweepRarity recounts, daily, how common each badge is among people
+	// who logged in the last 90 days.
+	KindSweepRarity Kind = "sweep_rarity"
+
 	// KindSweepCrewChallenges closes each crew's week on Monday mornings and
 	// records the members who met its challenge.
 	KindSweepCrewChallenges Kind = "sweep_crew_challenges"
