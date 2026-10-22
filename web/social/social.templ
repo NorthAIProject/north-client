@@ -375,38 +375,44 @@ templ feedCard(items []achievement.Item) {
 			} else {
 				<ul class="divide-y divide-hairline">
 					for _, it := range items {
-						<li class="flex items-start gap-3 py-3">
-							@avatar.Avatar() {
-								@avatar.Fallback() {
-									{ initials(it.DisplayName) }
-								}
-							}
-							<div class="min-w-0 flex-1">
-								<p class="text-sm">
-									<span class="font-medium">
-										if it.Mine {
-											{ i18n.T(ctx, "social.feed.you") }
-										} else {
-											@nameLink(it.DisplayName, it.Handle)
-										}
-									</span>
-									<span class="text-muted-foreground">· { ago(ctx, it.OccurredAt) }</span>
-								</p>
-								<p class="text-sm">{ it.Title }</p>
-								if it.Workout != nil {
-									@workoutcard.Card(*it.Workout, workoutHref(it))
-								} else if it.Detail != "" {
-									<p class="text-muted-foreground text-xs">{ it.Detail }</p>
-								}
-							</div>
-							if it.Mine {
-								if it.Kudos > 0 {
-									@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
-										{ kudosCount(ctx, it.Kudos) }
+						<li class="py-3">
+							<div class="flex items-start gap-3">
+								@avatar.Avatar() {
+									@avatar.Fallback() {
+										{ initials(it.DisplayName) }
 									}
 								}
-							} else {
-								@kudosButton(it)
+								<div class="min-w-0 flex-1">
+									<p class="text-sm">
+										<span class="font-medium">
+											if it.Mine {
+												{ i18n.T(ctx, "social.feed.you") }
+											} else {
+												@nameLink(it.DisplayName, it.Handle)
+											}
+										</span>
+										<span class="text-muted-foreground">· { ago(ctx, it.OccurredAt) }</span>
+									</p>
+									<p class="text-sm">{ it.Title }</p>
+									if it.Workout == nil && it.Detail != "" {
+										<p class="text-muted-foreground text-xs">{ it.Detail }</p>
+									}
+								</div>
+								if it.Mine {
+									if it.Kudos > 0 {
+										@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
+											{ kudosCount(ctx, it.Kudos) }
+										}
+									}
+								} else {
+									@kudosButton(it)
+								}
+							</div>
+							if it.Workout != nil {
+								// Below the row, not inside its text column: the kudos
+								// button takes the right side and would squeeze the
+								// card to a sliver on a phone.
+								@workoutcard.Card(*it.Workout, workoutHref(it))
 							}
 						</li>
 					}

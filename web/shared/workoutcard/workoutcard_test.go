@@ -31,6 +31,9 @@ func TestWorkoutCardOmitsZeroParts(t *testing.T) {
 			t.Errorf("missing %q in %s", want, out)
 		}
 	}
+	if !strings.Contains(out, "w-full") {
+		t.Errorf("the card root should fill its container: %s", out)
+	}
 	for _, bad := range []string{"0 sets", "0 kg", "<a "} {
 		if strings.Contains(out, bad) {
 			t.Errorf("unexpected %q in %s", bad, out)
