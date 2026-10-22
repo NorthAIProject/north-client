@@ -30,6 +30,12 @@ LANGUAGE sql STABLE AS $$
         p_category IN ('training', 'streaks', 'goals'))
 $$;
 
+-- Old "wants to follow you" notes point at an Accept button that no longer
+-- exists; the follow they announced was accepted above.
+UPDATE user_nudges
+   SET dismissed_at = now(), read_at = COALESCE(read_at, now())
+ WHERE kind = 'follow_request' AND dismissed_at IS NULL;
+
 -- Tell everyone once. Dedupe key v1 keeps a re-run from repeating it.
 INSERT INTO user_nudges (user_id, kind, dedupe_key, title, body, href)
 SELECT id, 'open_follow', 'v1',
