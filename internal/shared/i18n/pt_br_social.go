@@ -112,4 +112,15 @@ var portugueseBrazilianSocial = map[string]string{
 	"workoutcard.minutes": "%[1]d min",
 	"workoutcard.km":      "%[1]s km",
 	"workoutcard.pr":      "PR",
+
+	"profile.workouts":  "Treinos",
+	"profile.followers": "Seguidores",
+	"profile.following": "Seguindo",
+	"profile.seeall":    "Ver tudo",
+	"profile.more":      "Mais",
+	"profile.hidden":    "Os treinos não são compartilhados.",
+	"profile.empty":     "Ainda não há treinos.",
+	"profile.yours":     "Seu perfil",
+	"profile.level":     "Nível %[1]d · %[2]s",
+	"profile.back":      "Voltar ao perfil",
 }
