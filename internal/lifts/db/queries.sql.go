@@ -299,3 +299,45 @@ func (q *Queries) ListSetsForSession(ctx context.Context, arg ListSetsForSession
 	}
 	return items, nil
 }
+
+const listSetsForSessions = `-- name: ListSetsForSessions :many
+SELECT id, user_id, activity_session_id, log_date, exercise_slug, exercise_name, set_number, weight_kg, reps, performed_at, kind, rir, client_id FROM set_logs
+WHERE activity_session_id = ANY($1::uuid[])
+ORDER BY performed_at, set_number
+`
+
+// Every set logged against these workouts, in the order they were done. Not
+// owner-scoped: the caller decides whose workouts the reader may see.
+func (q *Queries) ListSetsForSessions(ctx context.Context, ids []uuid.UUID) ([]SetLog, error) {
+	rows, err := q.db.Query(ctx, listSetsForSessions, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SetLog{}
+	for rows.Next() {
+		var i SetLog
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.ActivitySessionID,
+			&i.LogDate,
+			&i.ExerciseSlug,
+			&i.ExerciseName,
+			&i.SetNumber,
+			&i.WeightKg,
+			&i.Reps,
+			&i.PerformedAt,
+			&i.Kind,
+			&i.Rir,
+			&i.ClientID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

@@ -163,6 +163,43 @@ func (r *Repository) ListBetween(ctx context.Context, userID uuid.UUID, since, u
 	return out, nil
 }
 
+// CompletedByIDs is the completed sessions among ids, whoever owns them.
+// Callers authorize: nothing here checks that the reader may see them.
+func (r *Repository) CompletedByIDs(ctx context.Context, ids []uuid.UUID) ([]Session, error) {
+	rows, err := r.q.CompletedSessionsByIDs(ctx, ids)
+	if err != nil {
+		return nil, apperr.Wrap(err, "completed activity sessions by ids")
+	}
+	return fromRows(rows), nil
+}
+
+// ListCompleted is one person's completed sessions that ended before a
+// point, newest first.
+func (r *Repository) ListCompleted(ctx context.Context, userID uuid.UUID, before time.Time, limit int) ([]Session, error) {
+	rows, err := r.q.ListCompletedSessions(ctx, activitydb.ListCompletedSessionsParams{UserID: userID, Before: &before, Lim: int32(limit)})
+	if err != nil {
+		return nil, apperr.Wrap(err, "list completed activity sessions")
+	}
+	return fromRows(rows), nil
+}
+
+// CountCompleted is how many sessions the person has finished.
+func (r *Repository) CountCompleted(ctx context.Context, userID uuid.UUID) (int, error) {
+	n, err := r.q.CountCompletedSessions(ctx, userID)
+	if err != nil {
+		return 0, apperr.Wrap(err, "count completed activity sessions")
+	}
+	return int(n), nil
+}
+
+func fromRows(rows []activitydb.ActivitySession) []Session {
+	out := make([]Session, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, fromDB(row))
+	}
+	return out
+}
+
 func fromDB(row activitydb.ActivitySession) Session {
 	return Session{
 		ID:                 row.ID,

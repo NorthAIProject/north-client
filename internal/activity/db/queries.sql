@@ -105,3 +105,21 @@ INSERT INTO activity_sessions (
     $1, $2, 'manual', 'completed', $3, $4, $5, $6, $7
 )
 RETURNING *;
+
+-- name: CompletedSessionsByIDs :many
+-- Completed sessions by id, whoever owns them. Not owner-scoped: the caller
+-- decides whose workouts the reader may see before asking.
+SELECT * FROM activity_sessions
+WHERE id = ANY(sqlc.arg(ids)::uuid[]) AND status = 'completed';
+
+-- name: ListCompletedSessions :many
+-- One person's completed sessions that ended before a point, newest first;
+-- the caller pages by passing the last ended_at it saw.
+SELECT * FROM activity_sessions
+WHERE user_id = sqlc.arg(user_id) AND status = 'completed' AND ended_at < sqlc.arg(before)
+ORDER BY ended_at DESC, id DESC
+LIMIT sqlc.arg(lim);
+
+-- name: CountCompletedSessions :one
+SELECT count(*) FROM activity_sessions
+WHERE user_id = $1 AND status = 'completed';
