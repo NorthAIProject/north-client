@@ -270,6 +270,11 @@ func (s *Service) Sync(ctx context.Context, userID uuid.UUID) (SyncResult, error
 		}
 	}
 
+	// One badge check for the whole sync, not one per activity.
+	if result.Imported > 0 {
+		s.activity.CheckAwards(ctx, userID, activity.SourceStrava)
+	}
+
 	// Stamped from the newest activity seen rather than "now", so activities
 	// uploaded late (a watch synced hours after a run) are not skipped by
 	// the next window.
@@ -325,6 +330,7 @@ func (s *Service) importOne(ctx context.Context, userID uuid.UUID, a apiActivity
 		MaxHR:        a.MaxHeartrate,
 		ElevationM:   a.TotalElevationGain,
 		Indoor:       a.where(),
+		SkipAwards:   true,
 	})
 	if err != nil {
 		return false, mapped, err

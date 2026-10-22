@@ -97,14 +97,15 @@ type LogInput struct {
 func (s *Service) Log(ctx context.Context, user users.User, in LogInput) (Set, error) {
 	set, err := s.logSet(ctx, user, in)
 	if err == nil {
-		s.checkAwards(ctx, user.ID, set.PerformedAt)
+		s.checkAwards(ctx, user.ID, award.Lifts)
 	}
 	return set, err
 }
 
-func (s *Service) checkAwards(ctx context.Context, userID uuid.UUID, at time.Time) {
+func (s *Service) checkAwards(ctx context.Context, userID uuid.UUID, areas ...award.Area) {
 	if s.awards != nil {
-		s.awards.Check(ctx, userID, at, award.Lifts)
+		// Earned now, whatever date the set carries.
+		s.awards.Check(ctx, userID, s.now(), areas...)
 	}
 }
 
