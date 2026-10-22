@@ -2,6 +2,7 @@ package awards
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -78,6 +79,7 @@ type counter struct {
 	tz   string
 	tzOK bool
 	seen map[metric]int
+	fail metric // test seam: this metric errors
 }
 
 func newCounter(ctx context.Context, q *awardsdb.Queries, user uuid.UUID) *counter {
@@ -101,7 +103,13 @@ func (c *counter) count(m metric) (int, error) {
 	if n, ok := c.seen[m]; ok {
 		return n, nil
 	}
-	n, err := c.compute(m)
+	var n int
+	var err error
+	if c.fail != "" && c.fail == m {
+		err = errors.New("injected failure")
+	} else {
+		n, err = c.compute(m)
+	}
 	if err != nil {
 		return 0, fmt.Errorf("awards: count %s: %w", m, err)
 	}
@@ -220,13 +228,14 @@ func (c *counter) personalRecords() (int, error) {
 			firstSession[s.Key()] = sessionKey(s)
 		}
 	}
-	n := 0
+	// Several record sets of one exercise in one session are one PR.
+	prs := map[string]bool{}
 	for _, rec := range lift.Records(sets) {
-		if sessionKey(rec.Set) != firstSession[rec.Set.Key()] {
-			n++
+		if sk := sessionKey(rec.Set); sk != firstSession[rec.Set.Key()] {
+			prs[rec.Set.Key()+"|"+sk] = true
 		}
 	}
-	return n, nil
+	return len(prs), nil
 }
 
 // sessionKey is the workout a set belongs to; sets outside a workout share
