@@ -225,7 +225,7 @@ func TestCardBestInUsesTheReadersDecimalMark(t *testing.T) {
     - `level` (`LevelView`), only when shared;
     - `workouts` (int), only when shared;
     - `recentWorkouts` (`[]WorkoutCardView`, limit 2 exercises each), only when shared.
-  - Keep `operationId: getPublicProfile`. Move the golden: `internal/social/testdata/public-profile.golden.json` stays as is, and the new `profile.golden.json` holds the full shape.
+  - Keep `operationId: getPublicProfile`. The route must live in `profiles`, because profiles imports social and the reverse would be a cycle. `profiles.ProfileView` embeds `social.ProfileView` (export a `social.ProjectProfile(p social.Profile) ProfileView` if the projection is unexported) and adds the optional fields. `internal/social/testdata/public-profile.golden.json` and its test stay unchanged; the new `profile.golden.json` holds the full shape.
   - `GET /profiles/{handle}/workouts?before=RFC3339` returns `{items: []WorkoutCardView (limit 2), before?: string, shared: bool}`. Its operationId is `listProfileWorkouts`.
   - `GET /profiles/{handle}/workouts/{sessionID}` returns a `WorkoutCardView` with all exercises. Its operationId is `getProfileWorkout`. An unparseable ID returns 404.
   - Errors use `httpx.Error(w, err, "Nobody has that handle.")` for profile and list, and `"Not found."` for the detail.
