@@ -1284,6 +1284,8 @@ func routes(
 
 			r.Group(func(r chi.Router) {
 				r.Use(onboarding.RequireOnboarded)
+				// A running first week shows a smaller rail; see internal/firstweek.
+				r.Use(firstWeekSvc.SimpleNav)
 
 				dayHandler.Routes(r)
 				caffeine.NewHandler(caffeineSvc).Routes(r)

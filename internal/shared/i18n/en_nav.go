@@ -14,6 +14,7 @@ var englishNav = map[string]string{
 	"nav.group.mind":     "Mind",
 	"nav.group.progress": "Progress",
 	"nav.group.system":   "System",
+	"nav.group.more":     "More",
 
 	"nav.my-day":             "My Day",
 	"nav.my-day.desc":        "Your day on one screen: food, water, sleep, movement.",

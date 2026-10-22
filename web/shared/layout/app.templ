@@ -5,6 +5,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/collapsible"
 	"github.com/NorthAIProject/north-client/web/shared/ui/dialog"
 	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
 	"github.com/NorthAIProject/north-client/web/shared/ui/sidebar"
@@ -30,6 +31,10 @@ type NavItem struct {
 type NavGroup struct {
 	Label string
 	Items []NavItem
+	// More is the first week's fold (see WithSimpleNav): the group renders
+	// collapsed behind its label, open when Open is set.
+	More bool
+	Open bool
 }
 
 // App is the shell for every signed-in page.
@@ -139,12 +144,37 @@ templ appShell(title string, user users.User, nav []NavGroup, wide bool) {
 			}
 		}
 		@sidebar.Script()
+		@collapsible.Script()
 		@dialog.Script()
 		@PaletteScripts()
 	}
 }
 
 templ navGroup(group NavGroup) {
+	if group.More {
+		@collapsible.Collapsible(collapsible.Props{Open: group.Open, Attributes: templ.Attributes{"data-testid": "nav-more"}}) {
+			@sidebar.Group() {
+				@collapsible.Trigger(collapsible.TriggerProps{Class: "cursor-pointer"}) {
+					@sidebar.GroupLabel() {
+						{ group.Label }
+						@icon.Icon("chevron-down")(icon.Props{Class: "ml-auto size-3.5"})
+					}
+				}
+				@collapsible.Content() {
+					@sidebar.Menu() {
+						for _, item := range group.Items {
+							@navItem(item)
+						}
+					}
+				}
+			}
+		}
+	} else {
+		@plainNavGroup(group)
+	}
+}
+
+templ plainNavGroup(group NavGroup) {
 	@sidebar.Group() {
 		@sidebar.GroupLabel() {
 			{ group.Label }
