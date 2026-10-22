@@ -110,7 +110,7 @@ func (s *Service) Start(ctx context.Context, user users.User, template string, g
 	}
 
 	tz := user.Timezone
-	if _, err := time.LoadLocation(tz); tz == "" || err != nil {
+	if _, lerr := time.LoadLocation(tz); tz == "" || lerr != nil {
 		tz = "UTC"
 	}
 	p := Programme{UserID: user.ID, GoalID: goal, Template: t, Timezone: tz}
@@ -161,7 +161,7 @@ func (s *Service) Today(ctx context.Context, user users.User) (Today, bool, erro
 	if err != nil {
 		return Today{}, false, err
 	}
-	if err := s.notice(ctx, user, p); err != nil {
+	if err = s.notice(ctx, user, p); err != nil {
 		// A proof that cannot be read leaves the day open; it is not a
 		// reason to hide the week.
 		s.log.Warn("first week proof failed", slog.String("user_id", user.ID.String()), slog.Any("error", err))

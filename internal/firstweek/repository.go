@@ -34,7 +34,7 @@ func (r *Repository) Begin(ctx context.Context, p Programme) (Programme, error) 
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	q := r.q.WithTx(tx)
-	if err := q.ClearDays(ctx, p.UserID); err != nil {
+	if err = q.ClearDays(ctx, p.UserID); err != nil {
 		return Programme{}, apperr.Wrap(err, "clear first week days")
 	}
 	row, err := q.UpsertProgramme(ctx, firstweekdb.UpsertProgrammeParams{

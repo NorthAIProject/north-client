@@ -152,7 +152,7 @@ func TestADayZeroWeekCanBeRepickedButARunningOneCannot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.svc.Start(ctx, f.user, firstweek.TemplateCustom, goal.ID); err != nil {
+	if _, err = f.svc.Start(ctx, f.user, firstweek.TemplateCustom, goal.ID); err != nil {
 		t.Fatalf("start custom: %v", err)
 	}
 	p, err := f.svc.Start(ctx, f.user, firstweek.TemplateTrain, uuid.Nil)
