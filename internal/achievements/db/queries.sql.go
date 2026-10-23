@@ -186,10 +186,10 @@ func (q *Queries) OwnAchievements(ctx context.Context, userID uuid.UUID) ([]OwnA
 }
 
 const ownAchievementsBetween = `-- name: OwnAchievementsBetween :many
-SELECT id, category, kind, title, detail, occurred_at FROM achievements
+SELECT id, category, kind, title, detail, occurred_at, source_key FROM achievements
 WHERE user_id = $1 AND occurred_at >= $2 AND occurred_at < $3
   AND NOT private
-ORDER BY occurred_at DESC
+ORDER BY occurred_at DESC, kind, source_key
 `
 
 type OwnAchievementsBetweenParams struct {
@@ -205,6 +205,7 @@ type OwnAchievementsBetweenRow struct {
 	Title      string
 	Detail     string
 	OccurredAt time.Time
+	SourceKey  string
 }
 
 // Recap highlights can be shared, so a private badge is never among them.
@@ -224,6 +225,7 @@ func (q *Queries) OwnAchievementsBetween(ctx context.Context, arg OwnAchievement
 			&i.Title,
 			&i.Detail,
 			&i.OccurredAt,
+			&i.SourceKey,
 		); err != nil {
 			return nil, err
 		}

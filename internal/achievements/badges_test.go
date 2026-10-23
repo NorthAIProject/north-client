@@ -12,6 +12,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/awards"
 	"github.com/NorthAIProject/north-client/internal/shared/database/testdb"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/social"
 )
 
@@ -125,5 +126,60 @@ func TestAwardsSwitchOffHidesBadges(t *testing.T) {
 	}
 	if len(badgeFeed(t, ach, ana.ID)) != 1 {
 		t.Fatal("owner lost own badge")
+	}
+}
+
+func TestMomentIsNotSplitAcrossPages(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	ach := achievements.NewService(pool)
+	aw := awards.NewService(pool)
+	ana := person(t, pool, "pg-ana@north.test", "Ana")
+	base := time.Now().Add(-time.Hour).Truncate(time.Microsecond)
+	for i := 0; i < 28; i++ {
+		ach.GoalCompleted(ctx, ana.ID, uuid.New(), "g", base.Add(time.Duration(i+1)*time.Minute))
+	}
+	for _, id := range []string{"workouts_1", "pr_1", "century"} {
+		aw.Grant(ctx, ana.ID, base, id)
+	}
+	first, next, err := ach.FeedPage(ctx, ana.ID, time.Time{})
+	if err != nil || next == nil {
+		t.Fatalf("page 1: %v next=%v", err, next)
+	}
+	second, _, err := ach.FeedPage(ctx, ana.ID, *next)
+	if err != nil {
+		t.Fatal(err)
+	}
+	badgeCards, badges := 0, 0
+	for _, it := range append(first, second...) {
+		if it.BadgeID != "" {
+			badgeCards++
+			badges += len(it.Badges)
+		}
+	}
+	if badgeCards != 1 || badges != 3 || len(first) != 28 {
+		t.Fatalf("cards=%d badges=%d first=%d, want 1 card of 3 after 28 items", badgeCards, badges, len(first))
+	}
+}
+
+func TestRecapHighlightsAreLocalisedAndFolded(t *testing.T) {
+	pool := testdb.New(t)
+	ach := achievements.NewService(pool)
+	aw := awards.NewService(pool)
+	ana := person(t, pool, "hl-ana@north.test", "Ana")
+	at := time.Now().Add(-time.Hour)
+	aw.Grant(context.Background(), ana.ID, at, "workouts_1")
+	aw.Grant(context.Background(), ana.ID, at, "pr_1")
+	ctx := i18n.WithLocale(context.Background(), "es")
+	got, err := ach.OwnBetween(ctx, ana.ID, at.Add(-time.Hour), time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || len(got[0].Badges) != 2 {
+		t.Fatalf("highlights = %+v, want one folded card", got)
+	}
+	if want := i18n.Translate("es", "awards.badge."+got[0].BadgeID+".name"); got[0].Title != want ||
+		want == i18n.Translate("en", "awards.badge."+got[0].BadgeID+".name") {
+		t.Fatalf("title = %q, want the Spanish %q", got[0].Title, want)
 	}
 }

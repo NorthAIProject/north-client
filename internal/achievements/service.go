@@ -162,7 +162,7 @@ func (s *Service) Post(ctx context.Context, userID uuid.UUID, category, kind, so
 }
 
 // OwnBetween is the person's own achievements in [since, until), newest
-// first.
+// first, a badge in the request's locale and one card per moment.
 func (s *Service) OwnBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]Item, error) {
 	rows, err := s.q.OwnAchievementsBetween(ctx, achievementsdb.OwnAchievementsBetweenParams{
 		UserID: userID, Since: since, Until: until,
@@ -174,10 +174,10 @@ func (s *Service) OwnBetween(ctx context.Context, userID uuid.UUID, since, until
 	for _, r := range rows {
 		out = append(out, Item{
 			ID: r.ID, UserID: userID, Category: r.Category, Kind: r.Kind, Title: r.Title, Detail: r.Detail,
-			OccurredAt: r.OccurredAt, Mine: true,
+			OccurredAt: r.OccurredAt, Mine: true, SourceKey: r.SourceKey,
 		})
 	}
-	return out, nil
+	return foldMoments(ctx, out), nil
 }
 
 // Feed is the viewer's own achievements and those friends share with them,
@@ -187,14 +187,11 @@ func (s *Service) Feed(ctx context.Context, viewerID uuid.UUID, before time.Time
 	return items, err
 }
 
-// FeedPage is Feed plus the cursor for the next page: the time of the last row
-// the query returned, set only when the page was full. It is taken from the
-// rows, not from the items, because collapsing a moment's badges and dropping
-// a streak mark make a full page come back with fewer items.
-//
-// A moment whose badges straddle the page boundary shows only the ones in
-// this page, and the rest is skipped by the cursor (they share occurred_at).
-// A person earns several badges at once rarely enough that this is accepted.
+// FeedPage is Feed plus the cursor for the next page, set only when the page
+// was full. A moment (badges sharing one timestamp) is never split across
+// pages: see the comment on the cursor below. Collapsing a moment's badges and
+// dropping a streak mark make a full page come back with fewer items, which is
+// why the cursor comes from the rows and not the items.
 func (s *Service) FeedPage(ctx context.Context, viewerID uuid.UUID, before time.Time) ([]Item, *time.Time, error) {
 	if before.IsZero() {
 		before = time.Now().Add(time.Minute)
@@ -202,6 +199,24 @@ func (s *Service) FeedPage(ctx context.Context, viewerID uuid.UUID, before time.
 	rows, err := s.q.Feed(ctx, achievementsdb.FeedParams{Viewer: viewerID, Before: before, Lim: feedPage})
 	if err != nil {
 		return nil, nil, apperr.Wrap(err, "feed")
+	}
+	// A moment's badges share one timestamp, and the next page starts strictly
+	// before the cursor. So on a full page the trailing rows of the last
+	// timestamp T are held back (unless the page is all T) and the cursor is
+	// just after T: the next page begins with the whole moment.
+	var next *time.Time
+	if len(rows) == feedPage {
+		last := rows[len(rows)-1].OccurredAt
+		keep := len(rows)
+		for keep > 0 && rows[keep-1].OccurredAt.Equal(last) {
+			keep--
+		}
+		if keep > 0 {
+			rows = rows[:keep]
+			next = util.Ptr(last.Add(time.Microsecond))
+		} else {
+			next = util.Ptr(last)
+		}
 	}
 	out := make([]Item, 0, len(rows))
 	for _, r := range rows {
@@ -211,10 +226,6 @@ func (s *Service) FeedPage(ctx context.Context, viewerID uuid.UUID, before time.
 			Kudos: int(r.Kudos), Kudoed: r.Kudoed, Mine: r.UserID == viewerID, SourceKey: r.SourceKey,
 			Private: r.Private,
 		})
-	}
-	var next *time.Time
-	if len(rows) == feedPage {
-		next = util.Ptr(rows[len(rows)-1].OccurredAt)
 	}
 	out = foldMoments(ctx, out)
 	s.attachCards(ctx, out)
