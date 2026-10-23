@@ -4389,7 +4389,9 @@ paths:
       summary: Mark today's action done
       description: |
         Records today's action done by the person's word. Idempotent: a day
-        already done stays as it was. 409 outside days 1 to 7.
+        already done stays as it was. Today's coach message, if it is the
+        first week's and still unanswered, is answered with done too. 409
+        outside days 1 to 7.
       responses:
         '200':
           description: OK
@@ -4427,8 +4429,9 @@ paths:
       operationId: finishFirstWeek
       summary: Close the first week after its review
       description: |
-        Sent when the day-7 review is opened. 409 before day 7 or when the
-        week is not running.
+        Sent when the day-7 review is opened. Writes the review from the
+        catalogue if the coach has not written one, so the response always
+        carries `review`. 409 before day 7 or when the week is not running.
       responses:
         '200':
           description: OK
@@ -7776,6 +7779,31 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/FirstWeekDay'
+        review:
+          $ref: '#/components/schemas/FirstWeekReview'
+    FirstWeekReview:
+      type: object
+      description: The day-7 review, once written. Absent before then.
+      required: [text, writtenBy, daysDone, daysByLog, daysByTap, createdAt]
+      properties:
+        text:
+          type: string
+          description: The review, in the person's language.
+        writtenBy:
+          type: string
+          description: coach, or template when the coach could not write it. An open string.
+        daysDone:
+          type: integer
+        daysByLog:
+          type: integer
+        daysByTap:
+          type: integer
+        loggedDays:
+          type: integer
+          description: How many of the seven days the template's log turned up. Absent when the template has no log to check.
+        createdAt:
+          type: string
+          format: date-time
     FirstWeekDay:
       type: object
       required: [day, date, done]

@@ -29,4 +29,17 @@ var englishFirstWeek = map[string]string{
 	"firstweek.card.done":     "Done for today.",
 	"firstweek.card.progress": "%d of 7 days done",
 	"firstweek.card.last":     "Last day. Your week's review comes next.",
+
+	"firstweek.card.review": "See your week",
+	"firstweek.card.over":   "Your first week is done",
+
+	"firstweek.review.title":         "Your first week",
+	"firstweek.review.next":          "What next?",
+	"firstweek.review.next.intro":    "The rest of Khepri is open now. Pick one thing to keep going with.",
+	"firstweek.review.next.habits":   "Build a habit",
+	"firstweek.review.next.training": "Pick a training plan",
+	"firstweek.review.next.crews":    "Join a crew",
+	"firstweek.review.fallback.all":  "Seven days out of seven. You did what you set out to do this week; the next step is keeping it going.",
+	"firstweek.review.fallback.some": "You did %d of 7 days this week. That is a start worth keeping: pick what helped and do it again next week.",
+	"firstweek.review.fallback.none": "This week did not go to plan, and that is useful to know. Pick one small thing for next week and start there.",
 }

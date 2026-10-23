@@ -48,6 +48,23 @@ type View struct {
 	Done      bool      `json:"done"`
 	DoneCount int       `json:"doneCount"`
 	Days      []DayView `json:"days"`
+	// Review is the day-7 review, once written. Opening it is
+	// POST /first-week/finish.
+	Review *ReviewView `json:"review,omitempty"`
+}
+
+// ReviewView is the week looked back on. WrittenBy is an open string: coach
+// or template today.
+type ReviewView struct {
+	Text      string `json:"text"`
+	WrittenBy string `json:"writtenBy"`
+	DaysDone  int    `json:"daysDone"`
+	DaysByLog int    `json:"daysByLog"`
+	DaysByTap int    `json:"daysByTap"`
+	// LoggedDays is how many of the seven days the template's log turned
+	// up; absent when the template has no log to check.
+	LoggedDays *int      `json:"loggedDays,omitempty"`
+	CreatedAt  time.Time `json:"createdAt"`
 }
 
 // DayView is one of the seven days.
@@ -98,7 +115,7 @@ func (a *API) start(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) done(w http.ResponseWriter, r *http.Request) {
-	t, err := a.svc.MarkDone(r.Context(), auth.MustUser(r.Context()))
+	t, err := a.svc.TapDone(r.Context(), auth.MustUser(r.Context()))
 	a.write(w, r, t, err, "Today could not be marked done.")
 }
 
@@ -136,6 +153,12 @@ func Project(ctx context.Context, t Today) View {
 	}
 	for _, d := range t.Days {
 		v.Days = append(v.Days, DayView{Day: d.Day, Date: d.Date.Format(time.DateOnly), Done: d.Done, Via: d.Via})
+	}
+	if rv := p.Review; rv != nil {
+		v.Review = &ReviewView{
+			Text: rv.Text, WrittenBy: rv.WrittenBy, DaysDone: rv.DaysDone, DaysByLog: rv.DaysByLog,
+			DaysByTap: rv.DaysByTap, LoggedDays: rv.LoggedDays, CreatedAt: rv.CreatedAt.UTC(),
+		}
 	}
 	return v
 }

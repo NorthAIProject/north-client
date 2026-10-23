@@ -2,11 +2,13 @@ package outreach_test
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/NorthAIProject/north-client/internal/ai/prompts"
 	"github.com/NorthAIProject/north-client/internal/firstweek"
@@ -15,6 +17,8 @@ import (
 	"github.com/NorthAIProject/north-client/internal/nudges"
 	"github.com/NorthAIProject/north-client/internal/outreach"
 	"github.com/NorthAIProject/north-client/internal/shared/database/testdb"
+	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/workouts"
 )
@@ -30,6 +34,7 @@ func weekDay(day, hour, minute int) time.Time {
 // weekFixture is outreach and the nudge sweep over a real first week, with
 // only the coach and the outside channels stubbed.
 type weekFixture struct {
+	pool     *pgxpool.Pool
 	ctx      context.Context
 	clock    *time.Time
 	user     users.User
@@ -61,7 +66,7 @@ func newWeekFixture(t *testing.T) *weekFixture {
 
 	clock := weekDay(0, 18, 0)
 	f := &weekFixture{
-		ctx: ctx, clock: &clock, user: user,
+		pool: pool, ctx: ctx, clock: &clock, user: user,
 		prefs: &stubPrefs{p: notifications.Defaults()}, lighter: &stubLighter{}, training: &stubTraining{},
 		writer: &stubWriter{}, chat: &stubChat{},
 	}
@@ -144,7 +149,8 @@ func TestTheFirstWeekMorningWindow(t *testing.T) {
 		{"07:59 is too early", weekDay(1, 7, 59), false},
 		{"10:59 still catches up", weekDay(1, 10, 59), true},
 		{"11:00 is too late", weekDay(1, 11, 0), false},
-		{"day 7 belongs to the review", weekDay(7, 8, 30), false},
+		{"day 7 sends the review", weekDay(7, 8, 30), true},
+		{"day 8 is after the week", weekDay(8, 9, 0), false},
 		{"day 0 has no action yet", weekDay(0, 9, 0), false},
 	}
 	for _, c := range cases {
@@ -171,9 +177,103 @@ func TestTheDailyBriefingIsTheMorningMessage(t *testing.T) {
 	}
 }
 
+// Day 7's message is the week's review: the coach is told the count, what
+// it writes is kept as the review, and the banner opens the review page.
+func TestDaySevenSendsTheReview(t *testing.T) {
+	f := newWeekFixture(t)
+	notifier := &stubNotifier{}
+	f.outreach = outreach.NewService(outreach.Options{
+		Repository: outreach.NewRepository(f.pool), Prefs: f.prefs, FirstWeek: f.week,
+		Writer: f.writer, Chats: &stubChats{}, Notifier: notifier, Chat: f.chat,
+	}).WithClock(func() time.Time { return *f.clock })
+	for _, d := range []int{2, 3, 5} {
+		f.at(weekDay(d, 21, 0))
+		if _, err := f.week.MarkDone(f.ctx, f.user); err != nil {
+			t.Fatalf("day %d: %v", d, err)
+		}
+	}
+
+	f.at(weekDay(7, 8, 10))
+	if sent, err := f.outreach.Evaluate(f.ctx, f.user); err != nil || !sent {
+		t.Fatalf("sent %v err %v, want the review", sent, err)
+	}
+	o, _, _ := f.outreach.Today(f.ctx, f.user)
+	if !o.Facts.Review || o.Facts.DaysDone != 3 {
+		t.Errorf("facts = %+v", o.Facts)
+	}
+	s := f.writer.situations[0]
+	for _, want := range []string{"day 7", "3 of the 7 days", "Look back on the week"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("situation is missing %q: %s", want, s)
+		}
+	}
+	wk, _, _ := f.week.Today(f.ctx, f.user)
+	if r := wk.Programme.Review; r == nil || r.Text != o.Body || r.WrittenBy != firstweek.ReviewByCoach || r.DaysDone != 3 {
+		t.Errorf("stored review = %+v, message %q", r, o.Body)
+	}
+	if len(notifier.drafts) != 1 || notifier.drafts[0].Href != "/app/first-week/review" {
+		t.Errorf("drafts = %+v, want one opening the review", notifier.drafts)
+	}
+}
+
+func TestTheReviewFallsBackWhenTheCoachCannotWrite(t *testing.T) {
+	f := newWeekFixture(t)
+	f.writer.err = errors.New("model down")
+	f.at(weekDay(7, 9, 0))
+	if sent, err := f.outreach.Evaluate(f.ctx, f.user); err != nil || !sent {
+		t.Fatalf("sent %v err %v", sent, err)
+	}
+	wk, _, _ := f.week.Today(f.ctx, f.user)
+	want := firstweek.ReviewFallback(i18n.WithLocale(f.ctx, "en"), 0)
+	if r := wk.Programme.Review; r == nil || r.Text != want || r.WrittenBy != firstweek.ReviewByTemplate {
+		t.Errorf("stored review = %+v, want the catalogue's %q", r, want)
+	}
+}
+
+// A review opened before the morning (written from the catalogue, and the
+// week finished) leaves day 7 without a coach message.
+func TestAReviewOpenedEarlyTakesTheMorning(t *testing.T) {
+	f := newWeekFixture(t)
+	f.at(weekDay(7, 7, 0))
+	if _, _, err := f.week.OpenReview(f.ctx, f.user); err != nil {
+		t.Fatal(err)
+	}
+	f.at(weekDay(7, 8, 30))
+	if sent, err := f.outreach.Evaluate(f.ctx, f.user); err != nil || sent {
+		t.Errorf("sent %v err %v, want nothing once the review was opened", sent, err)
+	}
+}
+
+// Done tapped on the card or under the banner answers the morning message,
+// so the answered rate counts it; the Telegram copy is closed too.
+func TestADoneTapElsewhereAnswersTheMorningMessage(t *testing.T) {
+	f := newWeekFixture(t)
+	f.week.WithAnswers(f.outreach)
+	f.at(weekDay(2, 8, 30))
+	if sent, err := f.outreach.Evaluate(f.ctx, f.user); err != nil || !sent {
+		t.Fatalf("sent %v err %v", sent, err)
+	}
+	f.at(weekDay(2, 13, 0))
+	if _, err := f.week.TapDone(f.ctx, f.user); err != nil {
+		t.Fatal(err)
+	}
+	o, _, _ := f.outreach.Today(f.ctx, f.user)
+	if o.Action != outreach.ActionDone || o.ActedAt == nil {
+		t.Errorf("outreach after the tap = action %q acted %v, want done", o.Action, o.ActedAt)
+	}
+	if len(f.chat.resolved) != 1 {
+		t.Errorf("chat resolved %d times, want 1", len(f.chat.resolved))
+	}
+	// The message's own button afterwards is a conflict, not a second answer.
+	if _, err := f.outreach.ActToday(f.ctx, f.user, outreach.ActionDone); !apperr.Is(err, apperr.ErrConflict) {
+		t.Errorf("answering again = %v, want conflict", err)
+	}
+}
+
 // Seven days of hourly sweeps across the clock change: one morning message
-// on days 1 to 6, an evening note only on days left undone, never more than
-// two a day, and none of the old first-week notes.
+// on days 1 to 7 (day 7's is the review), an evening note only on days left
+// undone, never more than two a day, none of the old first-week notes, and
+// nothing from the first week once it is over.
 func TestACompressedFirstWeek(t *testing.T) {
 	f := newWeekFixture(t)
 	doneOn := map[int]bool{2: true, 5: true}
@@ -183,7 +283,7 @@ func TestACompressedFirstWeek(t *testing.T) {
 	seen := map[uuid.UUID]bool{}
 
 	start := weekDay(1, 0, 0)
-	end := weekDay(8, 0, 0)
+	end := weekDay(11, 0, 0)
 	for tick := start; tick.Before(end); tick = tick.Add(time.Hour) {
 		f.at(tick)
 		local := tick.In(lisbon)
@@ -212,6 +312,10 @@ func TestACompressedFirstWeek(t *testing.T) {
 			if got[n] == nil {
 				got[n] = &day{}
 			}
+			if n > firstweek.Days && nd.Kind != nudges.KindCoachFirstWeek && nd.Kind != nudges.KindFirstWeekEvening {
+				// The rest of Khepri's notes are back after the week.
+				continue
+			}
 			switch nd.Kind {
 			case nudges.KindCoachFirstWeek:
 				got[n].morning++
@@ -227,18 +331,17 @@ func TestACompressedFirstWeek(t *testing.T) {
 		}
 	}
 
-	for n := 1; n <= 7; n++ {
+	for n := 1; n <= 10; n++ {
 		d := got[n]
 		if d == nil {
 			d = &day{}
 		}
-		wantMorning := 0
-		if n <= 6 {
-			wantMorning = 1
-		}
-		wantEvening := 1
+		wantMorning, wantEvening := 1, 1
 		if doneOn[n] {
 			wantEvening = 0
+		}
+		if n > firstweek.Days {
+			wantMorning, wantEvening = 0, 0
 		}
 		if d.morning != wantMorning || d.evening != wantEvening {
 			t.Errorf("day %d: morning %d evening %d, want %d and %d", n, d.morning, d.evening, wantMorning, wantEvening)
