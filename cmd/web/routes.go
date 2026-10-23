@@ -961,6 +961,8 @@ func routes(
 		Users:      userSvc,
 	})
 	messagingSvc.WithOutreach(outreachSvc)
+	// A Done tap on the card or under a banner answers the coach's message.
+	firstWeekSvc.WithAnswers(outreachSvc)
 	// Resolving "start today's session" asks the plan whether today's day is
 	// really finished; without it any logged walk would close it.
 	nudgeSvc.WithTraining(workoutSvc)
