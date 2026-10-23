@@ -72,10 +72,10 @@ WHERE user_id = $1 ORDER BY occurred_at DESC;
 
 -- name: OwnAchievementsBetween :many
 -- Recap highlights can be shared, so a private badge is never among them.
-SELECT id, category, kind, title, detail, occurred_at FROM achievements
+SELECT id, category, kind, title, detail, occurred_at, source_key FROM achievements
 WHERE user_id = sqlc.arg('user_id') AND occurred_at >= sqlc.arg('since') AND occurred_at < sqlc.arg('until')
   AND NOT private
-ORDER BY occurred_at DESC;
+ORDER BY occurred_at DESC, kind, source_key;
 
 -- name: Post :one
 -- A moment the person chose to show. Posting the same one again refreshes
