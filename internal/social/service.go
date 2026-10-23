@@ -289,6 +289,11 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID) (Overview, err
 	return out, nil
 }
 
+// HandleOf is the person's own handle, empty when they have none.
+func (s *Service) HandleOf(ctx context.Context, userID uuid.UUID) (string, error) {
+	return s.repo.Handle(ctx, userID)
+}
+
 // Profile is /u/<handle> as viewerID sees it. Blocked either way is not
 // found, like a handle nobody holds.
 func (s *Service) Profile(ctx context.Context, viewerID uuid.UUID, handle string) (Profile, error) {

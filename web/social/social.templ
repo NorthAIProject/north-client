@@ -10,6 +10,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/social/friend"
 	"github.com/NorthAIProject/north-client/internal/users"
+	awardpages "github.com/NorthAIProject/north-client/web/awards"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/ui/avatar"
@@ -359,6 +360,15 @@ func workoutHref(it achievement.Item) string {
 	return "/app/u/" + it.Handle + "/workouts/" + it.Workout.ID.String()
 }
 
+// badgeIDs is every badge of a badge card: the moment's list when several
+// were earned at once, else the one.
+func badgeIDs(it achievement.Item) []string {
+	if len(it.Badges) > 0 {
+		return it.Badges
+	}
+	return []string{it.BadgeID}
+}
+
 templ feedCard(items []achievement.Item) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface", ID: "feed"}) {
 		@card.Header() {
@@ -393,8 +403,12 @@ templ feedCard(items []achievement.Item) {
 										</span>
 										<span class="text-muted-foreground">· { ago(ctx, it.OccurredAt) }</span>
 									</p>
-									<p class="text-sm">{ it.Title }</p>
-									if it.Workout == nil && it.Detail != "" {
+									if it.BadgeID != "" {
+										@awardpages.Feed(badgeIDs(it))
+									} else {
+										<p class="text-sm">{ it.Title }</p>
+									}
+									if it.Workout == nil && it.Detail != "" && len(it.Badges) < 2 {
 										<p class="text-muted-foreground text-xs">{ it.Detail }</p>
 									}
 								</div>

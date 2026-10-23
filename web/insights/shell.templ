@@ -94,6 +94,15 @@ func sectionHref(active string) string {
 // bodyHref is the endpoint that renders just the panels, so switching the
 // range costs one fragment instead of a whole document.
 templ page(title, active, bodyHref string, user users.User, rg RangeView) {
+	@pageAfter(title, active, bodyHref, user, rg, nil) {
+		{ children... }
+	}
+}
+
+// pageAfter is page with one more block below the swapped panels. The range
+// selector re-swaps #insights-panels, so anything that must not change with
+// the range goes here, outside it.
+templ pageAfter(title, active, bodyHref string, user users.User, rg RangeView, after templ.Component) {
 	@layout.App(title, user, layout.BuildNav(ctx, sectionHref(active))) {
 		<div class="mx-auto w-full max-w-6xl space-y-6 p-6 md:p-8">
 			<header class="space-y-4">
@@ -112,6 +121,9 @@ templ page(title, active, bodyHref string, user users.User, rg RangeView) {
 			<div id="insights-panels">
 				{ children... }
 			</div>
+			if after != nil {
+				@after
+			}
 		</div>
 		@progress.Script()
 		@ui.ChartScripts()

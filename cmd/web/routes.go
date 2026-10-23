@@ -511,6 +511,7 @@ func routes(
 	achievementSvc.WithWorkoutCards(liftSvc)
 	profilesSvc := profiles.NewService(socialSvc, achievementSvc, xpSvc, activitySvc, liftSvc).WithAwards(awardsSvc)
 	profilesHandler := profiles.NewHandler(profilesSvc, socialSvc)
+	awardsHandler := awards.NewHandler(awardsSvc, profilesSvc)
 	milestoneSvc := milestones.NewService(milestones.NewRepository(pool))
 
 	careOpts := care.Options{
@@ -685,7 +686,7 @@ func routes(
 		Sets:          liftSvc,
 		SiteURL:       cfg.BaseURL,
 	})
-	insightsHandler := insights.NewHandler(insightsSvc)
+	insightsHandler := insights.NewHandler(insightsSvc).WithAwards(awardsSvc)
 
 	// Built here rather than beside the other slices because a weekly review
 	// reads the whole week through insights: it has to come after everything
@@ -1308,6 +1309,7 @@ func routes(
 				decisionHandler.Routes(r)
 				socialHandler.Routes(r)
 				profilesHandler.Routes(r)
+				awardsHandler.Routes(r)
 				crewHandler.Routes(r)
 				moderationHandler.Routes(r)
 				xpHandler.Routes(r)

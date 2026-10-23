@@ -100,8 +100,11 @@ type SummaryView struct {
 	Empty bool
 }
 
-templ Summary(user users.User, view SummaryView) {
-	@page(sectionTitle(ctx, "summary"), "summary", "/app/insights/panels", user, view.Range) {
+// Summary is the landing page. after is the awards card, kept outside the
+// panels because the range selector swaps those and the card does not depend
+// on the range. May be nil.
+templ Summary(user users.User, view SummaryView, after templ.Component) {
+	@pageAfter(sectionTitle(ctx, "summary"), "summary", "/app/insights/panels", user, view.Range, after) {
 		@SummaryPanels(view)
 	}
 }

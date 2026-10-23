@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/awards"
@@ -18,6 +19,7 @@ import (
 
 type apiEnv struct {
 	t    *testing.T
+	db   *pgxpool.Pool
 	svc  *awards.Service
 	r    chi.Router
 	user users.User
@@ -35,7 +37,7 @@ func newAPIEnv(t *testing.T, email string) *apiEnv {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &apiEnv{t: t, svc: svc, r: r, user: u}
+	return &apiEnv{t: t, db: pool, svc: svc, r: r, user: u}
 }
 
 func (e *apiEnv) do(method, path string, as users.User) *httptest.ResponseRecorder {
@@ -101,3 +103,5 @@ func TestAwardsListSplitsEarnedAndLocked(t *testing.T) {
 		}
 	}
 }
+
+func (e *apiEnv) pool() *pgxpool.Pool { return e.db }
