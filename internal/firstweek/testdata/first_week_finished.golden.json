@@ -1,0 +1,62 @@
+{
+  "status": "finished",
+  "template": "sleep",
+  "day": 7,
+  "totalDays": 7,
+  "startedOn": "2026-10-24",
+  "goalId": "66666666-6666-6666-6666-666666666666",
+  "action": "Wind down 30 minutes before bed, then log how you slept.",
+  "done": false,
+  "doneCount": 5,
+  "days": [
+    {
+      "day": 1,
+      "date": "2026-10-25",
+      "done": true,
+      "via": "log"
+    },
+    {
+      "day": 2,
+      "date": "2026-10-26",
+      "done": true,
+      "via": "log"
+    },
+    {
+      "day": 3,
+      "date": "2026-10-27",
+      "done": true,
+      "via": "tap"
+    },
+    {
+      "day": 4,
+      "date": "2026-10-28",
+      "done": true,
+      "via": "log"
+    },
+    {
+      "day": 5,
+      "date": "2026-10-29",
+      "done": false
+    },
+    {
+      "day": 6,
+      "date": "2026-10-30",
+      "done": true,
+      "via": "log"
+    },
+    {
+      "day": 7,
+      "date": "2026-10-31",
+      "done": false
+    }
+  ],
+  "review": {
+    "text": "Five of seven nights logged, and you wound down early on four of them. Keep the 23:00 cut-off.",
+    "writtenBy": "coach",
+    "daysDone": 5,
+    "daysByLog": 4,
+    "daysByTap": 1,
+    "loggedDays": 5,
+    "createdAt": "2026-10-31T08:04:00Z"
+  }
+}

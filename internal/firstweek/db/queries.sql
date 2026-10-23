@@ -44,3 +44,12 @@ RETURNING *;
 
 -- name: ListDays :many
 SELECT * FROM first_week_days WHERE user_id = $1 ORDER BY day;
+
+-- name: SetReview :one
+-- The review is written once: the coach's morning message on day 7, or the
+-- catalogue's when the review is opened before that message exists. A
+-- second writer keeps the first one's.
+UPDATE first_week_programmes
+SET review = $2
+WHERE user_id = $1 AND review IS NULL
+RETURNING *;

@@ -25,6 +25,7 @@ func NewHandler(svc *Service) *Handler { return &Handler{svc: svc} }
 func (h *Handler) Routes(r chi.Router) {
 	r.Get("/first-week", h.show)
 	r.Post("/first-week/done", h.done)
+	r.Get("/first-week/review", h.review)
 }
 
 func (h *Handler) show(w http.ResponseWriter, r *http.Request) {
@@ -35,15 +36,12 @@ func (h *Handler) show(w http.ResponseWriter, r *http.Request) {
 		middleware.FromContext(r.Context()).Warn("first week unavailable", slog.Any("error", err))
 		ok = false
 	}
-	h.render(w, r, t, ok, false)
+	h.render(w, r, t, ok)
 }
 
 func (h *Handler) done(w http.ResponseWriter, r *http.Request) {
 	user := auth.MustUser(r.Context())
-	before, _, err := h.svc.Today(r.Context(), user)
-	if err == nil {
-		_, err = h.svc.MarkDone(r.Context(), user)
-	}
+	_, err := h.svc.TapDone(r.Context(), user)
 	if err != nil && !apperr.Is(err, apperr.ErrConflict) && !apperr.Is(err, apperr.ErrNotFound) {
 		middleware.FromContext(r.Context()).Error("first week done failed", slog.Any("error", err))
 		http.Error(w, i18n.T(r.Context(), "outreach.error"), http.StatusInternalServerError)
@@ -60,17 +58,18 @@ func (h *Handler) done(w http.ResponseWriter, r *http.Request) {
 		middleware.FromContext(r.Context()).Error("first week reload failed", slog.Any("error", err))
 		ok = false
 	}
-	// The moment is counted once, on the tap that earned it; the card keeps
-	// showing it for the rest of day 3 without counting it again.
-	h.render(w, r, t, ok, t.ThreeOfThree() && !before.ThreeOfThree())
+	h.render(w, r, t, ok)
 }
 
-// render shows the card for a running week on days 0 to 7 and nothing
-// otherwise: once the week is over, the card has nothing to ask.
-func (h *Handler) render(w http.ResponseWriter, r *http.Request, t Today, ok, earned bool) {
-	c := firstweekpages.Card{Show: ok && t.Programme.Status == StatusActive && t.Day >= 0 && t.Day <= Days}
+// render shows the card for a running week from day 0 until the review is
+// opened (or the week is abandoned), and nothing otherwise.
+// The "3 of 3 days" moment is counted where it is earned (Service.complete),
+// so the card shows it for the rest of day 3 without counting it again.
+func (h *Handler) render(w http.ResponseWriter, r *http.Request, t Today, ok bool) {
+	c := firstweekpages.Card{Show: ok && t.Programme.Status == StatusActive && t.Day >= 0}
 	if c.Show {
 		c.Day, c.Done = t.Day, t.Done
+		c.ReviewReady, c.Over = t.Day >= Days, t.Day > Days
 		c.Action = i18n.T(r.Context(), "firstweek."+t.Programme.Template+".action")
 		c.Days = make([]bool, len(t.Days))
 		for i, d := range t.Days {
@@ -79,13 +78,37 @@ func (h *Handler) render(w http.ResponseWriter, r *http.Request, t Today, ok, ea
 		if t.ThreeOfThree() {
 			m := moments.ForFirstWeekThree(r.Context())
 			c.Moment = &m
-			if earned {
-				h.svc.funnel.MomentShown(r.Context(), t.Programme.UserID, m.Kind)
-			}
 		}
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := firstweekpages.Fragment(c).Render(r.Context(), w); err != nil {
 		middleware.FromContext(r.Context()).Error("render first week", slog.Any("error", err))
+	}
+}
+
+// review is the day-7 review. Opening it finishes the week; before day 7,
+// or for a week that has none, it is back to My Day.
+func (h *Handler) review(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+	t, rv, err := h.svc.OpenReview(r.Context(), user)
+	if apperr.Is(err, apperr.ErrConflict) || apperr.Is(err, apperr.ErrNotFound) {
+		http.Redirect(w, r, "/app", http.StatusSeeOther)
+		return
+	}
+	if err != nil {
+		middleware.FromContext(r.Context()).Error("first week review failed", slog.Any("error", err))
+		http.Error(w, i18n.T(r.Context(), "outreach.error"), http.StatusInternalServerError)
+		return
+	}
+	page := firstweekpages.Review{
+		Text: rv.Text, DaysDone: rv.DaysDone, Days: make([]bool, len(t.Days)),
+		Label: i18n.T(r.Context(), "firstweek."+t.Programme.Template+".label"),
+	}
+	for i, d := range t.Days {
+		page.Days[i] = d.Done
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := firstweekpages.ReviewPage(user, page).Render(r.Context(), w); err != nil {
+		middleware.FromContext(r.Context()).Error("render first week review", slog.Any("error", err))
 	}
 }

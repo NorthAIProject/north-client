@@ -80,6 +80,28 @@ func category(template string) string {
 	}
 }
 
+// Who wrote a review.
+const (
+	ReviewByCoach    = "coach"
+	ReviewByTemplate = "template"
+)
+
+// Review is the week looked back on, written once on day 7 and stored as
+// JSON on the programme.
+type Review struct {
+	Text string `json:"text"`
+	// WrittenBy is coach, or template when the coach could not write it.
+	WrittenBy string `json:"writtenBy"`
+	DaysDone  int    `json:"daysDone"`
+	DaysByLog int    `json:"daysByLog"`
+	DaysByTap int    `json:"daysByTap"`
+	// LoggedDays is how many of the seven days the template's log turned
+	// up, whether or not the day was marked done. Absent when the template
+	// has no log to check.
+	LoggedDays *int      `json:"loggedDays,omitempty"`
+	CreatedAt  time.Time `json:"createdAt"`
+}
+
 // Programme is one person's week.
 type Programme struct {
 	UserID     uuid.UUID
@@ -88,6 +110,7 @@ type Programme struct {
 	Timezone   string
 	StartedOn  time.Time // day 0, a date at UTC midnight
 	Status     string
+	Review     *Review
 	CreatedAt  time.Time
 	FinishedAt *time.Time
 }

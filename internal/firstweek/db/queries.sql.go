@@ -179,6 +179,38 @@ func (q *Queries) SetProgrammeStatus(ctx context.Context, arg SetProgrammeStatus
 	return i, err
 }
 
+const setReview = `-- name: SetReview :one
+UPDATE first_week_programmes
+SET review = $2
+WHERE user_id = $1 AND review IS NULL
+RETURNING user_id, goal_id, template, timezone, started_on, status, review, created_at, finished_at
+`
+
+type SetReviewParams struct {
+	UserID uuid.UUID
+	Review []byte
+}
+
+// The review is written once: the coach's morning message on day 7, or the
+// catalogue's when the review is opened before that message exists. A
+// second writer keeps the first one's.
+func (q *Queries) SetReview(ctx context.Context, arg SetReviewParams) (FirstWeekProgramme, error) {
+	row := q.db.QueryRow(ctx, setReview, arg.UserID, arg.Review)
+	var i FirstWeekProgramme
+	err := row.Scan(
+		&i.UserID,
+		&i.GoalID,
+		&i.Template,
+		&i.Timezone,
+		&i.StartedOn,
+		&i.Status,
+		&i.Review,
+		&i.CreatedAt,
+		&i.FinishedAt,
+	)
+	return i, err
+}
+
 const upsertProgramme = `-- name: UpsertProgramme :one
 INSERT INTO first_week_programmes (user_id, goal_id, template, timezone, started_on)
 VALUES ($1, $2, $3, $4, $5)
