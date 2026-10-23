@@ -153,6 +153,7 @@ var portugueseBrazilianLanding = map[string]string{
 	"land.footer.privacy": "Privacidade",
 	"land.footer.terms":   "Termos",
 	"land.footer.source":  "Código",
+	"land.footer.discord": "Junte-se a nós no Discord",
 
 	"land.waypoint.week3":  "Semana 3",
 	"land.waypoint.week12": "Semana 12",

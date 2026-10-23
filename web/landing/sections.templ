@@ -299,6 +299,15 @@ templ siteFooter() {
 					@icon.Github(icon.Props{Class: "size-3.5"})
 					@monoLabel(i18n.T(ctx, "land.footer.source"))
 				</a>
+				<a
+					href={ templ.SafeURL(ui.DiscordURL) }
+					target="_blank"
+					rel="noopener noreferrer"
+					onclick="window.posthog && window.posthog.capture('discord_link_clicked', {surface: 'footer'})"
+					class="rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-signal"
+				>
+					@monoLabel(i18n.T(ctx, "land.footer.discord"))
+				</a>
 				// Only for visitors. A signed-in user's language lives on their
 				// account, and a second control here would write a cookie that
 				// LoadUser ignores — a switch that visibly does nothing.
