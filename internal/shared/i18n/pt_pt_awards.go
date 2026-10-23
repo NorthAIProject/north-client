@@ -93,4 +93,5 @@ var portugueseEuropeanAwards = map[string]string{
 	"awards.page.back":                   "Voltar ao perfil",
 	"awards.profile.title":               "Prémios",
 	"awards.profile.all":                 "Ver tudo",
+	"monthly.met":                        "Desafio cumprido",
 }

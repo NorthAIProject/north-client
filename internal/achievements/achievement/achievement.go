@@ -55,6 +55,9 @@ const (
 	// KindBadgeEarned is a badge from internal/awards/award; the source key
 	// is the badge id.
 	KindBadgeEarned = "badge_earned"
+	// KindMonthlyChallengeMet is a month's challenge reached; the source key
+	// is the local month, "YYYY-MM".
+	KindMonthlyChallengeMet = "monthly_challenge_met"
 )
 
 // Item is one achievement in a feed.

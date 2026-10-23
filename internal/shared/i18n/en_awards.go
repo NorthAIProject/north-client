@@ -93,4 +93,5 @@ var englishAwards = map[string]string{
 	"awards.page.back":                   "Back to profile",
 	"awards.profile.title":               "Awards",
 	"awards.profile.all":                 "See all",
+	"monthly.met":                        "Challenge met",
 }
