@@ -93,4 +93,5 @@ var spanishAwards = map[string]string{
 	"awards.page.back":                   "Volver al perfil",
 	"awards.profile.title":               "Premios",
 	"awards.profile.all":                 "Ver todos",
+	"monthly.met":                        "Reto cumplido",
 }
