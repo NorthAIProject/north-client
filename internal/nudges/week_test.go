@@ -225,3 +225,73 @@ func TestCoachReplyDoesNotFanOutToTelegram(t *testing.T) {
 		t.Fatalf("coach_reply must not echo back to Telegram, got %v", week.notify)
 	}
 }
+
+// runningWeek stands in for internal/firstweek: a programme on day, with
+// today's action done or not.
+func runningWeek(day int, done bool) nudges.FirstWeekFunc {
+	return func(context.Context, users.User) (nudges.FirstWeekDay, bool, error) {
+		return nudges.FirstWeekDay{Day: day, Template: "sleep", Done: done}, true, nil
+	}
+}
+
+// A running programme replaces the fixed notes: the day-1 check that would
+// fire for this person stays quiet.
+func TestARunningFirstWeekReplacesTheFixedNotes(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	now := time.Date(2026, 8, 16, 12, 0, 0, 0, time.UTC)
+	user := mustOnboard(t, pool, seedUser(t, pool, "week-programme@north.test"), time.Date(2026, 8, 15, 9, 0, 0, 0, time.UTC))
+
+	n, err := evalService(pool, now).WithWeek(&stubWeek{count: 1, focus: true}).
+		WithFirstWeek(runningWeek(1, false)).Evaluate(ctx, user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatalf("created = %d, want the day-1 check held back by the programme", n)
+	}
+}
+
+func TestTheFirstWeekEveningNoteAsksOnlyForAnOpenDay(t *testing.T) {
+	// seedUser lives in UTC; the default evening hour is 21.
+	evening := time.Date(2026, 8, 16, 21, 10, 0, 0, time.UTC)
+	cases := []struct {
+		name string
+		now  time.Time
+		done bool
+		want int
+	}{
+		{"open at the evening hour", evening, false, 1},
+		{"already done", evening, true, 0},
+		{"before the evening hour", evening.Add(-2 * time.Hour), false, 0},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			pool := testdb.New(t)
+			ctx := context.Background()
+			user := mustOnboard(t, pool, seedUser(t, pool, "week-evening@north.test"), time.Date(2026, 8, 15, 9, 0, 0, 0, time.UTC))
+			svc := evalService(pool, c.now).WithFirstWeek(runningWeek(1, c.done))
+
+			n, err := svc.Evaluate(ctx, user)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if n != c.want {
+				t.Fatalf("created = %d, want %d", n, c.want)
+			}
+			if c.want == 0 {
+				return
+			}
+			list, _ := svc.ListOpen(ctx, user.ID, 20)
+			if len(list) != 1 || list[0].Kind != nudges.KindFirstWeekEvening || list[0].Title != "Day 1 of 7: still open" {
+				t.Fatalf("open = %#v", list)
+			}
+			if nudges.PushCategory(list[0].Kind) != nudges.CategoryCoachFirstWeek {
+				t.Error("the evening note must carry the Done button")
+			}
+			if prefs := notifications.Defaults(); !prefs.AllowsNudge(nudges.KindFirstWeekEvening) {
+				t.Error("the evening note must be on by default")
+			}
+		})
+	}
+}

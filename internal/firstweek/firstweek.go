@@ -164,3 +164,12 @@ func (t Today) DoneCount() int {
 	}
 	return n
 }
+
+// ThreeOfThree reports day 3 with days 1 to 3 all done: the day the card
+// shows the "3 of 3 days" moment.
+func (t Today) ThreeOfThree() bool {
+	if t.Day != 3 || len(t.Days) < 3 {
+		return false
+	}
+	return t.Days[0].Done && t.Days[1].Done && t.Days[2].Done
+}

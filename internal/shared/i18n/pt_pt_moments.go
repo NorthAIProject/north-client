@@ -15,8 +15,10 @@ var portugueseEuropeanMoments = map[string]string{
 	"moments.streak.100.title": "Cem dias",
 	"moments.streak.100.body":  "Cem registos. O Khepri lembra-se de cada um.",
 
-	"moments.goal.title":      "“%[1]s”: conseguido",
-	"moments.goal.body":       "Disseste-o e fizeste-o. O Khepri vai lembrar-se deste.",
-	"moments.milestone.title": "Marco alcançado",
-	"moments.milestone.body":  "“%[1]s”, a caminho de “%[2]s”.",
+	"moments.goal.title":            "“%[1]s”: conseguido",
+	"moments.goal.body":             "Disseste-o e fizeste-o. O Khepri vai lembrar-se deste.",
+	"moments.milestone.title":       "Marco alcançado",
+	"moments.milestone.body":        "“%[1]s”, a caminho de “%[2]s”.",
+	"moments.firstweek.three.title": "3 de 3 dias",
+	"moments.firstweek.three.body":  "Três dias, três vezes. Faltam quatro.",
 }
