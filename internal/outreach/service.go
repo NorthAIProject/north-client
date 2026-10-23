@@ -160,9 +160,9 @@ func (s *Service) Evaluate(ctx context.Context, user users.User) (sent bool, err
 		return false, err
 	}
 	if inWeek {
-		o, ok, err := s.firstWeekMorning(ctx, user, prefs, week, local)
-		if err != nil || !ok {
-			return false, err
+		o, ok, werr := s.firstWeekMorning(ctx, user, prefs, week, local)
+		if werr != nil || !ok {
+			return false, werr
 		}
 		s.send(ctx, user, o)
 		return true, nil
