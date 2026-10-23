@@ -81,3 +81,32 @@ func TestGlyphContrastOnEveryFace(t *testing.T) {
 		}
 	}
 }
+
+func TestGeometryComesFromJSON(t *testing.T) {
+	s := medals.Load()
+	p := medal.Props{BadgeID: "streak_7", Area: award.Consistency, Size: 96, Monthly: true}
+	var a, b bytes.Buffer
+	_ = medal.CoinWith(s, p).Render(context.Background(), &a)
+	s.Coin.Glyph.Scale = 1.5
+	s.Coin.FaceRadius = 33
+	s.Coin.Scallop.Bumps = 7
+	_ = medal.CoinWith(s, p).Render(context.Background(), &b)
+	if !strings.Contains(b.String(), "scale(1.5)") || !strings.Contains(b.String(), `r="33"`) {
+		t.Errorf("changed geometry not in output: %s", b.String())
+	}
+	if !strings.Contains(a.String(), "scale(1.9)") || a.String() == b.String() {
+		t.Error("output must differ with the json values")
+	}
+}
+
+func TestEachCoinGetsItsOwnGradientID(t *testing.T) {
+	p := medal.Props{BadgeID: "streak_7", Area: award.Consistency, Size: 40}
+	one, two := render(t, p), render(t, p)
+	id := func(s string) string { return strings.SplitN(strings.SplitN(s, `<linearGradient id="`, 2)[1], `"`, 2)[0] }
+	if id(one) == id(two) {
+		t.Errorf("two coins share gradient id %s", id(one))
+	}
+	if !strings.Contains(one, "url(#"+id(one)+")") {
+		t.Error("fill must reference its own id")
+	}
+}

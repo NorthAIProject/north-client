@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"sync/atomic"
 
 	"github.com/NorthAIProject/north-client/docs/medals"
 	"github.com/NorthAIProject/north-client/internal/awards/award"
@@ -21,81 +22,93 @@ type Props struct {
 
 var set = medals.Load()
 
-func gradID(p Props) string {
-	return fmt.Sprintf("m-%s-%t", p.BadgeID, p.Monthly)
-}
+// seq makes every rendered coin's gradient id its own. A badge can be on the
+// page twice, once in a hidden dialog, and Chrome resolves url(#id) to the
+// first match even when that sits in a display:none subtree.
+var seq atomic.Uint64
 
-func rimColour(p Props) string {
+func num(f float64) string { return fmt.Sprint(f) }
+
+func rimColour(s medals.Set, p Props) string {
 	if p.Monthly {
-		return set.Monthly.Rim
+		return s.Monthly.Rim
 	}
-	return set.Areas[string(p.Area)].Rim
+	return s.Areas[string(p.Area)].Rim
 }
 
-func coinStyle(p Props) string {
+func coinStyle(s medals.Set, p Props) string {
 	if p.Locked {
-		return "filter:grayscale(1);opacity:.4"
+		return fmt.Sprintf("filter:grayscale(%s);opacity:%s", num(s.Coin.Locked.Grayscale), num(s.Coin.Locked.Opacity))
 	}
 	return ""
 }
 
-// scallop is the outline of a coin with a ring of bumps, in a 100x100 box.
-func scallop() string {
-	const n, pts = 20, 200
+// scallop is the outline of a coin with a ring of bumps.
+func scallop(s medals.Set) string {
+	c := s.Coin
+	mid := c.ViewBox / 2
 	var b strings.Builder
-	for i := 0; i < pts; i++ {
-		a := 2 * math.Pi * float64(i) / pts
-		r := 47 + 2.5*math.Cos(n*a)
+	for i := 0; i < c.Scallop.Points; i++ {
+		a := 2 * math.Pi * float64(i) / float64(c.Scallop.Points)
+		r := c.Scallop.BaseRadius + c.Scallop.Depth*math.Cos(float64(c.Scallop.Bumps)*a)
 		cmd := "L"
 		if i == 0 {
 			cmd = "M"
 		}
-		fmt.Fprintf(&b, "%s%.2f %.2f", cmd, 50+r*math.Cos(a), 50+r*math.Sin(a))
+		fmt.Fprintf(&b, "%s%.2f %.2f", cmd, mid+r*math.Cos(a), mid+r*math.Sin(a))
 	}
 	b.WriteString("Z")
 	return b.String()
 }
 
-var scallopPath = scallop()
-
 // Coin is a round medal: metallic rim, deep area face, white lucide glyph.
 // Monthly medals get a gold scalloped rim; locked ones are greyscale at 40%.
+// Geometry and colours come from medals.json.
 templ Coin(p Props) {
+	@CoinWith(set, p)
+}
+
+// CoinWith renders from an explicit Set, so a test can prove the output
+// follows the json.
+templ CoinWith(s medals.Set, p Props) {
+	{{ gid := fmt.Sprintf("m%d", seq.Add(1)) }}
+	{{ mid := num(s.Coin.ViewBox / 2) }}
+	{{ vb := num(s.Coin.ViewBox) }}
 	<svg
 		xmlns="http://www.w3.org/2000/svg"
-		viewBox="0 0 100 100"
+		viewBox={ "0 0 " + vb + " " + vb }
 		width={ fmt.Sprint(p.Size) }
 		height={ fmt.Sprint(p.Size) }
 		role="img"
 		aria-label={ p.Label }
-		if coinStyle(p) != "" {
-			style={ coinStyle(p) }
+		if coinStyle(s, p) != "" {
+			style={ coinStyle(s, p) }
 		}
 	>
 		<defs>
-			<linearGradient id={ gradID(p) } x1="0" y1="0" x2="1" y2="1">
+			<linearGradient id={ gid } x1="0" y1="0" x2="1" y2="1">
 				<stop offset="0" stop-color="#ffffff"></stop>
-				<stop offset=".35" stop-color={ rimColour(p) }></stop>
-				<stop offset=".7" stop-color={ set.Areas[string(p.Area)].Fill }></stop>
-				<stop offset="1" stop-color={ rimColour(p) }></stop>
+				<stop offset=".35" stop-color={ rimColour(s, p) }></stop>
+				<stop offset=".7" stop-color={ s.Areas[string(p.Area)].Fill }></stop>
+				<stop offset="1" stop-color={ rimColour(s, p) }></stop>
 			</linearGradient>
 		</defs>
 		if p.Monthly {
-			<path class="scallop" d={ scallopPath } fill={ "url(#" + gradID(p) + ")" }></path>
+			<path class="scallop" d={ scallop(s) } fill={ "url(#" + gid + ")" }></path>
 		} else {
-			<circle cx="50" cy="50" r="48" fill={ "url(#" + gradID(p) + ")" }></circle>
+			<circle cx={ mid } cy={ mid } r={ num(s.Coin.RimRadius) } fill={ "url(#" + gid + ")" }></circle>
 		}
-		<circle cx="50" cy="50" r="40" fill={ set.Areas[string(p.Area)].Fill }></circle>
-		<circle cx="50" cy="50" r="40" fill="none" stroke="rgba(0,0,0,0.18)" stroke-width="1.5"></circle>
+		<circle cx={ mid } cy={ mid } r={ num(s.Coin.FaceRadius) } fill={ s.Areas[string(p.Area)].Fill }></circle>
+		<circle cx={ mid } cy={ mid } r={ num(s.Coin.FaceRadius) } fill="none" stroke={ s.Coin.FaceEdge.Color } stroke-width={ num(s.Coin.FaceEdge.Width) }></circle>
 		<g
-			transform="translate(27.2 27.2) scale(1.9)"
+			transform={ fmt.Sprintf("translate(%s %s) scale(%s)", num(s.Coin.Glyph.Translate), num(s.Coin.Glyph.Translate), num(s.Coin.Glyph.Scale)) }
 			fill="none"
 			stroke="#fff"
-			stroke-width={ fmt.Sprint(set.Stroke) }
+			stroke-width={ num(s.Stroke) }
 			stroke-linecap="round"
 			stroke-linejoin="round"
 		>
-			for _, d := range set.Glyphs[p.BadgeID] {
+			for _, d := range s.Glyphs[p.BadgeID] {
 				<path d={ d }></path>
 			}
 		</g>
