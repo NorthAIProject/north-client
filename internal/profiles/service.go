@@ -33,6 +33,7 @@ const (
 // People opens a profile; an unknown handle and a block are the same not found.
 type People interface {
 	Profile(ctx context.Context, viewerID uuid.UUID, handle string) (social.Profile, error)
+	HandleOf(ctx context.Context, userID uuid.UUID) (string, error)
 }
 
 // Sharing is the owner's switches.
@@ -115,6 +116,21 @@ func (s *Service) open(ctx context.Context, viewer users.User, handle string) (s
 		return social.Profile{}, Shares{}, err
 	}
 	return p, Shares{Training: sh.Training, XP: sh.XP, Awards: sh.Awards}, nil
+}
+
+// Person is who the awards page is about and whether the viewer may see their
+// badges. A block or an unknown handle is ErrNotFound, as for the profile.
+func (s *Service) Person(ctx context.Context, viewer users.User, handle string) (awards.Person, error) {
+	p, shares, err := s.open(ctx, viewer, handle)
+	if err != nil {
+		return awards.Person{}, err
+	}
+	return awards.Person{ID: p.ID, Name: p.DisplayName, Handle: p.Handle, Self: p.Relationship.Self, Shared: shares.Awards}, nil
+}
+
+// HandleOf is the person's handle, empty when they have none.
+func (s *Service) HandleOf(ctx context.Context, userID uuid.UUID) (string, error) {
+	return s.people.HandleOf(ctx, userID)
 }
 
 // View is the profile for handle as viewer sees it. A block or an unknown

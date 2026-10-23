@@ -14,6 +14,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/achievements"
 	"github.com/NorthAIProject/north-client/internal/activity"
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/awards"
 	"github.com/NorthAIProject/north-client/internal/profiles"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
@@ -145,5 +146,33 @@ func TestRunCardHasNoZeroSets(t *testing.T) {
 		if !strings.Contains(rec.Body.String(), "5 km") {
 			t.Errorf("%s lacks the distance", path)
 		}
+	}
+}
+
+func TestProfilePageAwardsStrip(t *testing.T) {
+	w := newWorld(t)
+	leo, ana := person(t, w.pool, "leo-st@n.test", "Leo"), person(t, w.pool, "ana-st@n.test", "Ana")
+	w.handle(t, leo, "leost")
+	aw := awards.NewService(w.pool)
+	at := time.Now().Add(-time.Hour)
+	aw.Grant(context.Background(), leo.ID, at, "workouts_1")
+	aw.Grant(context.Background(), leo.ID, at, "water_week") // private
+	do := w.pageClient(t)
+
+	other := do(ana, http.MethodGet, "/app/u/leost").Body.String()
+	if !strings.Contains(other, "First Workout") || !strings.Contains(other, "/app/u/leost/awards") {
+		t.Error("a follower's view lacks the shared badge or the link to all")
+	}
+	if strings.Contains(other, "A Week of Water") {
+		t.Error("a private badge on another person's profile")
+	}
+	own := do(leo, http.MethodGet, "/app/u/leost").Body.String()
+	if !strings.Contains(own, "A Week of Water") {
+		t.Error("the owner does not see their private badge")
+	}
+
+	w.share(t, leo, achievements.Sharing{Training: true, XP: true, Awards: false})
+	if strings.Contains(do(ana, http.MethodGet, "/app/u/leost").Body.String(), "First Workout") {
+		t.Error("badges show with the awards switch off")
 	}
 }

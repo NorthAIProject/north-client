@@ -12,6 +12,8 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/awards"
+	"github.com/NorthAIProject/north-client/internal/awards/award"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/NorthAIProject/north-client/internal/social"
@@ -62,11 +64,25 @@ func (h *Handler) profile(w http.ResponseWriter, r *http.Request) {
 	}
 	d := h.data(r, v.Profile, v.Shares.Training)
 	d.Workouts, d.Recent = v.Workouts, v.Recent
+	d.Awards = newestAwards(r.Context(), v.Awards, stripCount)
 	if v.Level != nil {
 		l := xp.ProjectLevel(r.Context(), *v.Level)
 		d.HasLevel, d.LevelNumber, d.LevelTitle = true, l.Number, l.Title
 	}
 	h.render(w, r, pages.ProfilePage(d))
+}
+
+// stripCount is how many coins the profile shows before the link to all.
+const stripCount = 8
+
+// newestAwards is the last n badges, newest first.
+func newestAwards(ctx context.Context, held []awards.Earned, n int) []award.View {
+	var out []award.View
+	for i := len(held) - 1; i >= 0 && len(out) < n; i-- {
+		at := held[i].At
+		out = append(out, held[i].Badge.Project(ctx, &at, nil, ""))
+	}
+	return out
 }
 
 func (h *Handler) workouts(w http.ResponseWriter, r *http.Request) {
