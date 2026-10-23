@@ -2,6 +2,7 @@ package firstweek
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -114,11 +115,37 @@ func (r *Repository) Completions(ctx context.Context, userID uuid.UUID) ([]Compl
 	return out, nil
 }
 
+// SetReview stores the week's review unless one is already there, and
+// returns the programme with whichever review it now holds.
+func (r *Repository) SetReview(ctx context.Context, userID uuid.UUID, review Review) (Programme, error) {
+	body, err := json.Marshal(review)
+	if err != nil {
+		return Programme{}, apperr.Wrap(err, "encode first week review")
+	}
+	row, err := r.q.SetReview(ctx, firstweekdb.SetReviewParams{UserID: userID, Review: body})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return r.Get(ctx, userID)
+	}
+	if err != nil {
+		return Programme{}, apperr.Wrap(err, "save first week review")
+	}
+	return fromDB(row), nil
+}
+
 func fromDB(row firstweekdb.FirstWeekProgramme) Programme {
-	return Programme{
+	p := Programme{
 		UserID: row.UserID, GoalID: row.GoalID, Template: row.Template, Timezone: row.Timezone,
 		StartedOn: row.StartedOn.Time, Status: row.Status, CreatedAt: row.CreatedAt, FinishedAt: row.FinishedAt,
 	}
+	if len(row.Review) > 0 {
+		var review Review
+		// A review that cannot be read is treated as not written rather
+		// than failing every read of the week.
+		if err := json.Unmarshal(row.Review, &review); err == nil {
+			p.Review = &review
+		}
+	}
+	return p
 }
 
 func completionFromDB(row firstweekdb.FirstWeekDay) Completion {

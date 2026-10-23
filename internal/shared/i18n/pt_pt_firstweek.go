@@ -27,4 +27,17 @@ var portugueseEuropeanFirstWeek = map[string]string{
 	"firstweek.card.done":     "Feito por hoje.",
 	"firstweek.card.progress": "%d de 7 dias feitos",
 	"firstweek.card.last":     "Último dia. A seguir vem o balanço da tua semana.",
+
+	"firstweek.card.review": "Ver a tua semana",
+	"firstweek.card.over":   "A tua primeira semana terminou",
+
+	"firstweek.review.title":         "A tua primeira semana",
+	"firstweek.review.next":          "E agora?",
+	"firstweek.review.next.intro":    "O resto do Khepri já está aberto. Escolhe uma coisa para continuar.",
+	"firstweek.review.next.habits":   "Criar um hábito",
+	"firstweek.review.next.training": "Escolher um plano de treino",
+	"firstweek.review.next.crews":    "Entrar num grupo",
+	"firstweek.review.fallback.all":  "Sete dias em sete. Fizeste o que te propuseste esta semana; o próximo passo é manter.",
+	"firstweek.review.fallback.some": "Esta semana fizeste %d de 7 dias. É um começo que vale a pena: fica com o que ajudou e repete na próxima semana.",
+	"firstweek.review.fallback.none": "Esta semana não correu como planeado, e isso também é útil saber. Escolhe uma coisa pequena para a próxima semana e começa por aí.",
 }

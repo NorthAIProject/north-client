@@ -63,6 +63,12 @@ type Facts struct {
 	Template      string `json:"template,omitempty"`
 	YesterdayDone bool   `json:"yesterdayDone,omitempty"`
 	Missed        string `json:"missed,omitempty"`
+
+	// Review is day 7's message, the week looked back on: the days done,
+	// and the days the template's log turned up (absent when it has none).
+	Review     bool `json:"review,omitempty"`
+	DaysDone   int  `json:"daysDone,omitempty"`
+	LoggedDays *int `json:"loggedDays,omitempty"`
 }
 
 // Outreach is one day's message.
@@ -115,6 +121,18 @@ func (o Outreach) Offers(action string) bool {
 
 // Answered reports whether the person has answered.
 func (o Outreach) Answered() bool { return o.Action != "" }
+
+// reviewHref is the first week's review page; firstweek owns the route.
+const reviewHref = "/app/first-week/review"
+
+// Href is where the notification opens: the review on day 7, My Day
+// otherwise.
+func (o Outreach) Href() string {
+	if o.Trigger == TriggerFirstWeek && o.Facts.Review {
+		return reviewHref
+	}
+	return "/app"
+}
 
 // NudgeKind is the notification kind this outreach is raised as: it picks
 // the push category, and so the buttons under the banner.

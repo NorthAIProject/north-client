@@ -32,4 +32,24 @@ func TestFirstWeekShape(t *testing.T) {
 	}
 	apitest.AssertGolden(t, "first_week_active.golden.json", firstweek.Project(context.Background(), today))
 	apitest.AssertGolden(t, "first_week_none.golden.json", firstweek.None())
+
+	logged := 5
+	finishedAt := time.Date(2026, 10, 31, 9, 12, 0, 0, time.UTC)
+	p.Status, p.FinishedAt = firstweek.StatusFinished, &finishedAt
+	p.Review = &firstweek.Review{
+		Text: "Five of seven nights logged, and you wound down early on four of them. Keep the 23:00 cut-off.", WrittenBy: firstweek.ReviewByCoach,
+		DaysDone: 5, DaysByLog: 4, DaysByTap: 1, LoggedDays: &logged, CreatedAt: time.Date(2026, 10, 31, 8, 4, 0, 0, time.UTC),
+	}
+	finished := firstweek.Today{Programme: p, Day: 7}
+	for d := 1; d <= firstweek.Days; d++ {
+		s := firstweek.DayState{Day: d, Date: p.DateOf(d)}
+		switch d {
+		case 1, 2, 4, 6:
+			s.Done, s.Via = true, firstweek.ViaLog
+		case 3:
+			s.Done, s.Via = true, firstweek.ViaTap
+		}
+		finished.Days = append(finished.Days, s)
+	}
+	apitest.AssertGolden(t, "first_week_finished.golden.json", firstweek.Project(context.Background(), finished))
 }
