@@ -28,6 +28,11 @@ type Card struct {
 	Action string
 	Done   bool
 	Moment *moments.Moment
+	// ReviewReady is day 7 on: the week's review can be opened.
+	ReviewReady bool
+	// Over is the days after day 7 before the review is opened: nothing
+	// left to do but open it.
+	Over bool
 }
 
 func (c Card) doneCount() int {
@@ -52,7 +57,9 @@ templ Fragment(c Card) {
 				@card.Content(card.ContentProps{Class: "space-y-3 pt-5"}) {
 					<div class="flex items-center justify-between gap-3">
 						<p class="text-signal text-xs font-medium tracking-wide uppercase">
-							if c.Day == 0 {
+							if c.Over {
+								{ i18n.T(ctx, "firstweek.card.over") }
+							} else if c.Day == 0 {
 								{ i18n.T(ctx, "firstweek.card.start") }
 							} else {
 								{ i18n.Tf(ctx, "firstweek.card.title", c.Day) }
@@ -62,11 +69,21 @@ templ Fragment(c Card) {
 							@dots(c)
 						}
 					</div>
-					<p class="text-sm leading-relaxed" data-testid="first-week-action">{ c.Action }</p>
+					if !c.Over {
+						<p class="text-sm leading-relaxed" data-testid="first-week-action">{ c.Action }</p>
+					}
 					if c.Day == 7 {
 						<p class="text-muted-foreground text-xs">{ i18n.T(ctx, "firstweek.card.last") }</p>
 					}
-					if c.Day > 0 {
+					if c.ReviewReady {
+						@button.Button(button.Props{
+							Href: ReviewPath, Variant: button.VariantOutline, Size: button.SizeSm,
+							Attributes: templ.Attributes{"data-testid": "first-week-open-review"},
+						}) {
+							{ i18n.T(ctx, "firstweek.card.review") }
+						}
+					}
+					if c.Day > 0 && !c.Over {
 						if c.Done {
 							<p class="text-muted-foreground flex items-center gap-1.5 text-xs" data-testid="first-week-done">
 								@icon.Icon("check")(icon.Props{Class: "size-3.5"})

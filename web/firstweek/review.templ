@@ -1,0 +1,68 @@
+package firstweek
+
+import (
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
+	"github.com/NorthAIProject/north-client/internal/users"
+	"github.com/NorthAIProject/north-client/web/shared/layout"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+)
+
+// ReviewPath is the day-7 review. Opening it finishes the week.
+const ReviewPath = "/app/first-week/review"
+
+// Review is the week looked back on.
+type Review struct {
+	// Label is what the person chose to work on.
+	Label    string
+	Text     string
+	DaysDone int
+	Days     []bool
+}
+
+// next is one of the "What next?" links: the rest of Khepri the first week
+// kept folded away.
+type next struct {
+	key, href, testID string
+}
+
+var nexts = []next{
+	{"firstweek.review.next.habits", "/app/care", "first-week-next-habits"},
+	{"firstweek.review.next.training", "/app/training/plans", "first-week-next-training"},
+	{"firstweek.review.next.crews", "/app/crews", "first-week-next-crews"},
+}
+
+templ ReviewPage(user users.User, r Review) {
+	@layout.App(i18n.T(ctx, "firstweek.review.title"), user, layout.BuildNav(ctx, "/app")) {
+		<div class="mx-auto w-full max-w-3xl space-y-6 p-6 md:p-8" data-testid="first-week-review">
+			<header>
+				@ui.MonoLabel(r.Label)
+				<h1 class="mt-2 text-2xl font-medium tracking-tight">{ i18n.T(ctx, "firstweek.review.title") }</h1>
+				<p class="text-muted-foreground mt-1 flex items-center gap-3 text-sm">
+					@dots(Card{Days: r.Days, Day: len(r.Days) + 1})
+					{ i18n.Tf(ctx, "firstweek.card.progress", r.DaysDone) }
+				</p>
+			</header>
+			@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
+				@card.Content(card.ContentProps{Class: "pt-6"}) {
+					<p class="text-sm leading-relaxed whitespace-pre-line" data-testid="first-week-review-text">{ r.Text }</p>
+				}
+			}
+			<section class="space-y-3">
+				<h2 class="text-lg font-medium tracking-tight">{ i18n.T(ctx, "firstweek.review.next") }</h2>
+				<p class="text-muted-foreground text-sm">{ i18n.T(ctx, "firstweek.review.next.intro") }</p>
+				<div class="flex flex-wrap gap-2">
+					for _, n := range nexts {
+						@button.Button(button.Props{
+							Href: n.href, Variant: button.VariantOutline, Size: button.SizeSm,
+							Attributes: templ.Attributes{"data-testid": n.testID},
+						}) {
+							{ i18n.T(ctx, n.key) }
+						}
+					}
+				</div>
+			</section>
+		</div>
+	}
+}
