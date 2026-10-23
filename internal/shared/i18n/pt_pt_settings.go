@@ -126,8 +126,9 @@ var portugueseEuropeanSettings = map[string]string{
 	"settings.delete.keep":    "Manter a minha conta",
 	"settings.delete.go":      "Apagar tudo",
 
-	"settings.about.label": "Sobre",
-	"settings.about.body":  "O %[1]s é um sistema operativo para crescimento pessoal. Lembra-se do que lhe dizes, para só teres de explicar uma vez.",
+	"settings.about.label":   "Sobre",
+	"settings.about.body":    "O %[1]s é um sistema operativo para crescimento pessoal. Lembra-se do que lhe dizes, para só teres de explicar uma vez.",
+	"settings.about.discord": "Junta-te a nós no Discord",
 
 	"settings.notif.photo.title": "Registos com foto",
 

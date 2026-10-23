@@ -129,8 +129,9 @@ var portugueseBrazilianSettings = map[string]string{
 	"settings.delete.keep":    "Manter minha conta",
 	"settings.delete.go":      "Excluir tudo",
 
-	"settings.about.label": "Sobre",
-	"settings.about.body":  "O %[1]s é um sistema operacional para crescimento pessoal. Ele lembra o que você conta, então você só precisa explicar uma vez.",
+	"settings.about.label":   "Sobre",
+	"settings.about.body":    "O %[1]s é um sistema operacional para crescimento pessoal. Ele lembra o que você conta, então você só precisa explicar uma vez.",
+	"settings.about.discord": "Junte-se a nós no Discord",
 
 	"settings.notif.photo.title": "Check-ins com foto",
 

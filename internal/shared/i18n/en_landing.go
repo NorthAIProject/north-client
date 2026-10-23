@@ -156,6 +156,7 @@ var englishLanding = map[string]string{
 	"land.footer.privacy": "Privacy",
 	"land.footer.terms":   "Terms",
 	"land.footer.source":  "Source",
+	"land.footer.discord": "Join us on Discord",
 
 	"land.waypoint.week3":  "Week 3",
 	"land.waypoint.week12": "Week 12",
