@@ -12,7 +12,7 @@ func TestRarityLabel(t *testing.T) {
 	for _, c := range []struct {
 		earned, active int
 		want           string
-	}{{0, 0, ""}, {0, 5, "0%"}, {1, 300, "<1%"}, {1, 3, "33%"}, {3, 3, "100%"}, {5, 3, "100%"}} {
+	}{{0, 0, ""}, {0, 5, ""}, {1, 300, "<1%"}, {1, 3, "33%"}, {3, 3, "100%"}, {5, 3, "100%"}} {
 		if got := (awards.Rarity{Earned: c.earned, Active: c.active}).Label(); got != c.want {
 			t.Errorf("%d of %d = %q, want %q", c.earned, c.active, got, c.want)
 		}
@@ -37,5 +37,18 @@ func TestComputeRarity(t *testing.T) {
 	r := got["listened_to_body"]
 	if r.Earned != 1 || got["workouts_1"].Earned != 0 {
 		t.Fatalf("rarity = %+v", got)
+	}
+}
+
+// A badge the viewer holds is never "0%": the daily recount can predate the
+// grant, so an earned view counts at least its holder.
+func TestEarnedViewNeverSaysZeroPercent(t *testing.T) {
+	for _, r := range []awards.Rarity{{}, {Earned: 0, Active: 40}, {Earned: 0, Active: 0}} {
+		if got := r.WithHolder().Label(); got == "0%" || got == "" {
+			t.Errorf("%+v held = %q, want a real share", r, got)
+		}
+	}
+	if got := (awards.Rarity{Earned: 0, Active: 400}).WithHolder().Label(); got != "<1%" {
+		t.Errorf("one holder of 400 = %q, want <1%%", got)
 	}
 }

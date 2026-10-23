@@ -242,15 +242,23 @@ func foldMoments(ctx context.Context, items []Item) []Item {
 		date string
 	}
 	streakBadge := map[day]bool{}
+	known := items[:0:0]
+	for _, it := range items {
+		// A badge the catalog no longer knows has no name to show and no area.
+		if it.Kind == achievement.KindBadgeEarned {
+			if _, ok := award.ByID(it.SourceKey); !ok {
+				continue
+			}
+		}
+		known = append(known, it)
+	}
+	items = known
 	for i := range items {
 		it := &items[i]
 		if it.Kind != achievement.KindBadgeEarned {
 			continue
 		}
-		b, ok := award.ByID(it.SourceKey)
-		if !ok {
-			continue
-		}
+		b, _ := award.ByID(it.SourceKey)
 		it.BadgeID = b.ID
 		it.Title, it.Detail = b.Name(ctx), b.Description(ctx)
 		if strings.HasPrefix(b.ID, "streak_") {
@@ -268,6 +276,9 @@ func foldMoments(ctx context.Context, items []Item) []Item {
 					first.Badges = []string{first.BadgeID}
 				}
 				first.Badges = append(first.Badges, it.BadgeID)
+				// Cheers on any badge of the moment count on its one card.
+				first.Kudos += it.Kudos
+				first.Kudoed = first.Kudoed || it.Kudoed
 				continue
 			}
 		}

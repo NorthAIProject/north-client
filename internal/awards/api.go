@@ -40,7 +40,7 @@ type UnseenView struct {
 
 func projectEarned(ctx context.Context, e Earned, rarities map[string]Rarity) award.View {
 	at := e.At
-	return e.Badge.Project(ctx, &at, nil, rarities[e.Badge.ID].Label())
+	return e.Badge.Project(ctx, &at, nil, rarities[e.Badge.ID].WithHolder().Label())
 }
 
 func (a *API) list(w http.ResponseWriter, r *http.Request) {

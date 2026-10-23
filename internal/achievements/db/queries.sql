@@ -37,8 +37,10 @@ WHERE a.occurred_at < sqlc.arg('before')
     )
   )
 -- Ties break by person, then source key, so the badges of one moment sit side
--- by side and in a stable order for the card they collapse into.
-ORDER BY a.occurred_at DESC, a.user_id, a.kind, a.source_key
+-- by side and in a stable order for the card they collapse into. Shared rows
+-- come before private ones, so the owner's card leads with the badge their
+-- followers see (and cheer).
+ORDER BY a.occurred_at DESC, a.user_id, a.kind, a.private, a.source_key
 LIMIT sqlc.arg('lim');
 
 -- name: Visible :one

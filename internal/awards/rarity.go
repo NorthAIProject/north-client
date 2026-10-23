@@ -21,11 +21,19 @@ type Rarity struct {
 	Active  int
 }
 
+// WithHolder is the rarity of a badge the viewer holds: the daily recount may
+// predate their grant, but a badge they hold has at least one holder.
+func (r Rarity) WithHolder() Rarity {
+	r.Earned = max(r.Earned, 1)
+	r.Active = max(r.Active, 1)
+	return r
+}
+
 // Label is the share of active people who hold the badge, as the shelf shows
-// it: empty when nobody is active (nothing to compare with), "<1%" below one
-// percent, otherwise a whole percent.
+// it: empty when nobody is active or nobody holds it (nothing to say, never
+// "0%"), "<1%" below one percent, otherwise a whole percent.
 func (r Rarity) Label() string {
-	if r.Active <= 0 {
+	if r.Active <= 0 || r.Earned <= 0 {
 		return ""
 	}
 	pct := float64(r.Earned) * 100 / float64(r.Active)
