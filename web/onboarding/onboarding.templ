@@ -3,6 +3,7 @@ package onboarding
 import (
 	"context"
 
+	"github.com/NorthAIProject/north-client/internal/firstweek"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/lifedomain"
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -44,6 +45,19 @@ type Form struct {
 	StyleCustom string
 	GoalTitle   string
 	Errors      map[string]string
+
+	// FirstWeek offers the pick of what to change in the first seven days,
+	// when the server starts first weeks at all.
+	FirstWeek         bool
+	FirstWeekTemplate string
+}
+
+// firstWeekTemplate is the picked template, custom until one is chosen.
+func (f Form) firstWeekTemplate() string {
+	if t, ok := firstweek.NormalizeTemplate(f.FirstWeekTemplate); ok {
+		return t
+	}
+	return firstweek.TemplateCustom
 }
 
 func (f Form) fieldError(name string) string { return f.Errors[name] }
@@ -148,6 +162,17 @@ templ FormPage(f Form) {
 							<p class="text-destructive text-sm">{ f.fieldError("coaching_style") }</p>
 						}
 					</section>
+					if f.FirstWeek {
+						<fieldset class="space-y-3">
+							<legend class="text-sm font-medium">{ i18n.T(ctx, "onboarding.firstweek.label") }</legend>
+							<p class="text-muted-foreground text-sm">{ i18n.T(ctx, "onboarding.firstweek.hint") }</p>
+							<div class="grid gap-2 sm:grid-cols-2">
+								for _, t := range firstweek.Templates {
+									@firstWeekOption(t, f)
+								}
+							</div>
+						</fieldset>
+					}
 					<section class="space-y-2">
 						@label.Label(label.Props{For: "goal_title"}) {
 							{ i18n.T(ctx, "onboarding.goal.label") }
@@ -209,9 +234,24 @@ templ styleOption(id, value, title, desc string, f Form) {
 	</label>
 }
 
+templ firstWeekOption(template string, f Form) {
+	<label class="flex cursor-pointer items-center gap-3 rounded-md border border-border p-3 has-[:checked]:border-signal/50 has-[:checked]:bg-signal/5">
+		@radio.Radio(radio.Props{
+			ID:      "first_week_" + template,
+			Name:    "first_week_template",
+			Value:   template,
+			Checked: f.firstWeekTemplate() == template,
+		})
+		<span class="text-sm font-medium">{ i18n.T(ctx, "firstweek."+template+".label") }</span>
+	</label>
+}
+
 // thread is the conversation seeded from the answers, or empty when none was
 // opened — a deployment with no AI provider, or a provider that was down.
-templ DonePage(user users.User, thread string) {
+//
+// connect shows the "connect one source" step that starts a first week: a
+// coach with nothing of the person's to read has nothing to say on day 1.
+templ DonePage(user users.User, thread string, connect bool) {
 	@layout.AuthWide(i18n.T(ctx, "onboarding.done.page")) {
 		@mascot.Script()
 		@card.Card() {
@@ -256,15 +296,53 @@ templ DonePage(user users.User, thread string) {
 							}
 						</form>
 					}
-					@button.Button(button.Props{
-						Href:      "/app",
-						Variant:   button.VariantOutline,
-						FullWidth: true,
-					}) {
-						{ i18n.T(ctx, "onboarding.done.dashboard") }
+					if !connect {
+						@button.Button(button.Props{
+							Href:      "/app",
+							Variant:   button.VariantOutline,
+							FullWidth: true,
+						}) {
+							{ i18n.T(ctx, "onboarding.done.dashboard") }
+						}
 					}
 				</div>
 			}
 		}
+		if connect {
+			@connectCard()
+		}
+	}
+}
+
+// connectCard is day 0's second step. Each choice goes to the page that
+// already connects that source; logging by hand is a choice too, not a skip.
+templ connectCard() {
+	@card.Card(card.Props{Class: "mt-4"}) {
+		@card.Header() {
+			@card.Title() {
+				{ i18n.T(ctx, "onboarding.done.connect.title") }
+			}
+			@card.Description() {
+				{ i18n.T(ctx, "onboarding.done.connect.desc") }
+			}
+		}
+		@card.Content() {
+			<div class="grid gap-2 sm:grid-cols-2">
+				@connectOption("/app/fitness", "onboarding.done.connect.strava")
+				@connectOption("/app/settings/connections", "onboarding.done.connect.telegram")
+				@connectOption("/app/knowledge", "onboarding.done.connect.upload")
+				@connectOption("/app", "onboarding.done.connect.manual")
+			</div>
+		}
+	}
+}
+
+templ connectOption(href, key string) {
+	@button.Button(button.Props{
+		Href:      href,
+		Variant:   button.VariantOutline,
+		FullWidth: true,
+	}) {
+		{ i18n.T(ctx, key) }
 	}
 }

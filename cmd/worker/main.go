@@ -42,6 +42,8 @@ import (
 	"github.com/NorthAIProject/north-client/internal/documents"
 	"github.com/NorthAIProject/north-client/internal/exercises"
 	"github.com/NorthAIProject/north-client/internal/fasting"
+	"github.com/NorthAIProject/north-client/internal/firstweek"
+	"github.com/NorthAIProject/north-client/internal/firstweek/logproofs"
 	"github.com/NorthAIProject/north-client/internal/fitness/strava"
 	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/habits"
@@ -464,6 +466,24 @@ func run() error {
 	lighterSvc := lighterday.NewService(pool, recoverySrc, workoutSvc).WithAwards(awardsSvc)
 	workoutSvc.WithLighter(lighterSvc)
 
+	// The first week (internal/firstweek): days whose log turned up while the
+	// person was not looking are recorded here, and weeks nobody closed are
+	// ended. Runs whatever FIRST_WEEK_ENABLED says: the switch stops new weeks
+	// starting, not running ones finishing.
+	firstWeekSvc := firstweek.NewService(firstweek.Options{
+		Repository: firstweek.NewRepository(pool),
+		Goals:      goalSvc,
+		Users:      userSvc,
+		Proofs: logproofs.For(
+			sleep.NewService(sleep.NewRepository(pool)), activitySvc,
+			lifts.NewService(lifts.NewRepository(pool), exercises.NewService(exercises.NewRepository(pool))),
+			meals.NewFoodLogService(mealsRepo), mind.NewService(mind.NewRepository(pool), checkinSvc), checkinSvc,
+		),
+		Funnel:  funnel,
+		Enabled: cfg.FirstWeekEnabled,
+		Log:     log,
+	})
+
 	nudgeSvc := nudges.NewService(nudges.NewRepository(pool), userSvc, checkinSvc, goalSvc).
 		WithPrefs(notificationSvc).
 		WithFanout(briefingNotify).
@@ -489,7 +509,10 @@ func run() error {
 		// Dose reminders the person scheduled; raised even in quiet hours.
 		WithMedications(medications.NewService(medications.NewRepository(pool))).
 		// The progress-check cadence the person chose.
-		WithProgressChecks(progresschecks.NewService(progresschecks.NewRepository(pool), mediaSvc, biometricSvc))
+		WithProgressChecks(progresschecks.NewService(progresschecks.NewRepository(pool), mediaSvc, biometricSvc)).
+		// A running first week replaces the fixed first-week notes with its
+		// evening note.
+		WithFirstWeek(firstWeekNudges(firstWeekSvc))
 	worker.Register(jobs.KindSweepNudges, nudges.NewSweeper(nudgeSvc, log).HandleSweep)
 
 	// Strava imports and the coach's tools finish workouts and save check-ins
@@ -573,6 +596,7 @@ func run() error {
 		Prefs:      notificationSvc,
 		Lighter:    lighterSvc,
 		Training:   workoutSvc,
+		FirstWeek:  firstWeekSvc,
 		Writer:     standingCoach,
 		Chats:      memoryExtract.Conversations,
 		Notifier:   nudgeSvc,
@@ -585,6 +609,9 @@ func run() error {
 		outreachOpts.Chat = messagingSvc
 	}
 	worker.Register(jobs.KindSweepOutreach, outreach.NewSweeper(outreach.NewService(outreachOpts)).HandleSweep)
+
+	// The first week's own sweep: logged days noticed, unclosed weeks ended.
+	worker.Register(jobs.KindSweepFirstWeek, firstweek.NewSweeper(firstWeekSvc).HandleSweep)
 
 	// The daily post: one short read for everyone, written and reviewed by
 	// the cheap model once a UTC day. See internal/dailyposts.
@@ -609,6 +636,7 @@ func run() error {
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepMemories, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepNudges, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepOutreach, struct{}{})
+	worker.RegisterPeriodic(time.Hour, jobs.KindSweepFirstWeek, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindDailyPost, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepReports, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepBriefings, struct{}{})
@@ -680,5 +708,17 @@ func parseLevel(s string) slog.Level {
 		return slog.LevelError
 	default:
 		return slog.LevelInfo
+	}
+}
+
+// firstWeekNudges is the running first week as the nudge sweep reads it:
+// days 1 to 7 of an active week, nothing otherwise.
+func firstWeekNudges(svc *firstweek.Service) nudges.FirstWeekFunc {
+	return func(ctx context.Context, user users.User) (nudges.FirstWeekDay, bool, error) {
+		t, ok, err := svc.Today(ctx, user)
+		if err != nil || !ok || t.Programme.Status != firstweek.StatusActive || !firstweek.InWeek(t.Day) {
+			return nudges.FirstWeekDay{}, false, err
+		}
+		return nudges.FirstWeekDay{Day: t.Day, Template: t.Programme.Template, Done: t.Done}, true, nil
 	}
 }

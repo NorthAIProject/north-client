@@ -49,6 +49,39 @@ sweeps and channels.
 - **First answer counts:** a second answer is a 409. Only today's message can
   be answered.
 
+## The first week
+
+While a new person's first week runs (`internal/firstweek`, days 1 to 7 of an
+active programme), it owns the day's one message:
+
+- **Trigger `first_week`**, days 1 to 7, 08:00 to 10:59 local. A sweep later
+  than that skips the day. A person with the daily briefing on gets no
+  first-week message that morning.
+- **Day 7 is the review** (`facts.review`). The coach is told the days done
+  and how often the template's log turned up, and what it writes is stored as
+  `first_week_programmes.review` (`writtenBy: coach`, or `template` when it
+  fell back). The banner opens `/app/first-week/review`. Opening that page, or
+  `POST /api/v1/first-week/finish`, finishes the week and fires
+  `first_week_finished` once; a review opened before the morning is written
+  from the catalogue and the day-7 message is skipped.
+- **Low recovery and missed session stay quiet** for the whole week. What
+  they noticed goes into the first-week situation instead, and the coach does
+  not lighten the session on its own that week.
+- **One answer, `done`**, which calls `firstweek.Service.MarkDone` (via
+  `tap`). Telegram gets the usual `outreach:<id>:done` button. Done tapped
+  anywhere else (the day card, or the banner's button, which calls
+  `/api/v1/first-week/done`) goes through `firstweek.Service.TapDone`, which
+  answers that morning's message with `done` too, so the answered rate counts
+  it.
+- **Evening:** if the day is still open at the person's evening hour, the
+  nudge sweep raises `first_week_evening` (push and Telegram). It replaces the
+  old `first_week_check` / `first_week_evidence` / `first_week_review` notes
+  for people with a programme. At most two messages a day.
+- **Push category `COACH_FIRST_WEEK`** on both `coach_first_week` and
+  `first_week_evening`. **iOS must register this exact name** with one Done
+  action that posts to `/api/v1/first-week/done`; until a build does, the
+  banner arrives without the button (see the CHECKIN contract).
+
 ## Measuring it
 
 `coach_outreach.action` and `acted_at` are the point of the slice. Answered

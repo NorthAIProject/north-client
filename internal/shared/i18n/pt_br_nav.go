@@ -12,6 +12,7 @@ var portugueseBrazilianNav = map[string]string{
 	"nav.group.mind":     "Mente",
 	"nav.group.progress": "Progresso",
 	"nav.group.system":   "Sistema",
+	"nav.group.more":     "Mais",
 
 	"nav.my-day":             "Meu dia",
 	"nav.my-day.desc":        "Seu dia em uma tela: comida, água, sono, movimento.",

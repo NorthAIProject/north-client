@@ -46,6 +46,12 @@ type Registry struct {
 	jobRuns        *prometheus.CounterVec
 	jobDuration    *prometheus.HistogramVec
 
+	// workerHeartbeat is a vector with no labels so that it is absent until the
+	// first tick. The web binary shares this registry and never ticks, so a
+	// series only exists while a worker is actually polling — and an alert on
+	// its absence means exactly "no worker", not "a web pod reported zero".
+	workerHeartbeat *prometheus.GaugeVec
+
 	voiceTranscriptions *prometheus.CounterVec
 	voiceDuration       *prometheus.HistogramVec
 	voiceBytes          *prometheus.CounterVec
@@ -85,6 +91,11 @@ func New() *Registry {
 		Buckets: []float64{0.1, 0.5, 1, 5, 15, 60, 300, 900},
 	}, []string{"kind"})
 
+	r.workerHeartbeat = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "north_worker_heartbeat_timestamp_seconds",
+		Help: "Unix time the job worker last reached the queue.",
+	}, nil)
+
 	r.voiceTranscriptions = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "north_voice_transcriptions_total",
 		Help: "Recordings sent to the recogniser, by surface and outcome.",
@@ -112,7 +123,7 @@ func New() *Registry {
 	}, []string{"surface"})
 
 	r.reg.MustRegister(r.coachDuration, r.coachTokens, r.sourceFailures, r.jobRuns, r.jobDuration,
-		r.voiceTranscriptions, r.voiceDuration, r.voiceBytes)
+		r.workerHeartbeat, r.voiceTranscriptions, r.voiceDuration, r.voiceBytes)
 	return r
 }
 
@@ -171,6 +182,20 @@ func (r *Registry) JobFinished(kind string, d time.Duration, failed bool) {
 	}
 	r.jobRuns.WithLabelValues(kind, outcome).Inc()
 	r.jobDuration.WithLabelValues(kind).Observe(d.Seconds())
+}
+
+// WorkerHeartbeat records that the job worker reached the queue at the given
+// time.
+//
+// It exists because the worker once did nothing for eleven days while every
+// screen reported success: a process can be up, healthy to its probes, and
+// still never run a job. The alert reads how old this is, so it has to move
+// only when the queue was actually queried, not on every turn of the loop.
+func (r *Registry) WorkerHeartbeat(at time.Time) {
+	if r == nil {
+		return
+	}
+	r.workerHeartbeat.WithLabelValues().Set(float64(at.Unix()))
 }
 
 // Handler serves the exposition format.

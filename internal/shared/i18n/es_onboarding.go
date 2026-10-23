@@ -33,4 +33,14 @@ var spanishOnboarding = map[string]string{
 	"onboarding.done.read":      "Leer lo que dijo Khepri",
 	"onboarding.done.talk":      "Hablar con Khepri",
 	"onboarding.done.dashboard": "Ir al panel",
+
+	"onboarding.firstweek.label": "¿Qué quieres cambiar en los próximos 7 días?",
+	"onboarding.firstweek.hint":  "Khepri organiza tu primera semana en torno a eso: una pequeña acción al día.",
+
+	"onboarding.done.connect.title":    "Conecta una fuente",
+	"onboarding.done.connect.desc":     "Khepri te entrena mejor con algo tuyo que leer. Elige una; puedes añadir más después.",
+	"onboarding.done.connect.strava":   "Conectar Strava",
+	"onboarding.done.connect.telegram": "Hablar por Telegram",
+	"onboarding.done.connect.upload":   "Subir un documento",
+	"onboarding.done.connect.manual":   "Lo registraré a mano",
 }
