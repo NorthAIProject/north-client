@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/analytics"
+	"github.com/NorthAIProject/north-client/internal/awards/award"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/stats/stat"
 )
@@ -21,6 +22,18 @@ type Service struct {
 
 	// funnel is nil-safe: no PostHog key, no events.
 	funnel *analytics.Funnel
+
+	awards Awards
+}
+
+// Awards checks a person's badges after a write. awards.Service satisfies it.
+type Awards interface {
+	Check(ctx context.Context, userID uuid.UUID, at time.Time, areas ...award.Area)
+}
+
+func (s *Service) WithAwards(a Awards) *Service {
+	s.awards = a
+	return s
 }
 
 func NewService(repo *Repository) *Service {
@@ -61,6 +74,11 @@ func (s *Service) Ingest(ctx context.Context, userID uuid.UUID, source string, r
 	written, err := s.repo.Save(ctx, userID, source, readings)
 	if err != nil {
 		return Result{}, err
+	}
+	// Only a connected device counts toward connected_30; a typed cuff reading
+	// does not, so it skips the check.
+	if s.awards != nil && written > 0 && source == SourceAppleHealth {
+		s.awards.Check(ctx, userID, time.Now(), award.Body)
 	}
 	if first && written > 0 {
 		s.funnel.SourceConnected(ctx, userID, analytics.SourceAppleHealth)

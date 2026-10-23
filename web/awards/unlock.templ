@@ -1,0 +1,132 @@
+// Package awards is the web side of badges: the unlock moment, the awards
+// page, and the small shelves on the profile, the insights summary and the
+// feed. Every coin is medal.Coin, so web and iOS draw one medal.
+package awards
+
+import (
+	"fmt"
+
+	"github.com/NorthAIProject/north-client/internal/awards/award"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
+	"github.com/NorthAIProject/north-client/web/shared/medal"
+	"github.com/NorthAIProject/north-client/web/shared/ui"
+	"github.com/NorthAIProject/north-client/web/shared/ui/button"
+	"github.com/NorthAIProject/north-client/web/shared/ui/dialog"
+)
+
+// DialogID is the unlock dialog's content element. The app shell's script
+// reads it to hold back a re-check while the dialog is open.
+const DialogID = "awards-unlock-dialog"
+
+func coin(v award.View, size int, locked bool) medal.Props {
+	return medal.Props{BadgeID: v.ID, Area: award.Area(v.Area), Size: size, Locked: locked, Label: v.Name}
+}
+
+// Unlock is the celebration for badges not yet seen. It is rendered closed:
+// the shell's host opens it from hx-on::after:swap with window.tui.dialog.open,
+// the same way the crews terms dialog opens. (The Open prop is no help here:
+// templUI's dialog.js marks a dialog initialised inside getDialog before
+// initDialogs checks that flag, so a swapped-in Open:true dialog never opens.)
+//
+// Dismissing it any way at all (Done, the cross, Escape, a click outside)
+// fires the dialog's close event, which posts every shown badge as seen in
+// one request. "View on profile" is a plain form post that marks them and
+// redirects, because the page is about to be left.
+templ Unlock(awards []award.View) {
+	@dialog.Dialog(dialog.Props{ID: "awards-unlock"}) {
+		@dialog.Content(dialog.ContentProps{
+			Class:      "sm:max-w-sm",
+			Attributes: templ.Attributes{"id": DialogID},
+		}) {
+			<form
+				id="awards-seen"
+				method="post"
+				action="/app/awards/seen"
+				hx-post="/app/awards/seen"
+				hx-trigger={ "close from:#" + DialogID }
+				hx-target="this"
+				hx-swap="none"
+			>
+				@ui.CSRFInput()
+				for _, a := range awards {
+					<input type="hidden" name="badge" value={ a.ID }/>
+				}
+			</form>
+			@dialog.Header() {
+				@dialog.Title() {
+					if len(awards) == 1 {
+						{ i18n.T(ctx, "awards.unlock.title.one") }
+					} else {
+						{ i18n.Tf(ctx, "awards.unlock.title.many", len(awards)) }
+					}
+				}
+			}
+			if len(awards) == 1 {
+				@hero(awards[0])
+			} else {
+				// Padded because the coin overshoots its box while it springs in and a
+				// scrolling list clips whatever leaves it.
+				<ul class="max-h-[50vh] space-y-4 overflow-y-auto p-3">
+					for _, a := range awards {
+						<li class="flex items-center gap-4">
+							<span class="awards-coin-turn shrink-0">
+								@medal.Coin(coin(a, 56, false))
+							</span>
+							<span class="min-w-0">
+								<span class="block text-sm font-medium">{ a.Name }</span>
+								<span class="text-muted-foreground block text-xs">{ a.Description }</span>
+								@rarityLine(a, "text-xs")
+							</span>
+						</li>
+					}
+				</ul>
+			}
+			@dialog.Footer() {
+				<form method="post" action="/app/awards/seen" class="contents">
+					@ui.CSRFInput()
+					<input type="hidden" name="to" value="profile"/>
+					for _, a := range awards {
+						<input type="hidden" name="badge" value={ a.ID }/>
+					}
+					@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
+						{ i18n.T(ctx, "awards.unlock.view") }
+					}
+				</form>
+				@dialog.Close() {
+					@button.Button(button.Props{Type: button.TypeButton}) {
+						{ i18n.T(ctx, "awards.unlock.done") }
+					}
+				}
+			}
+		}
+	}
+}
+
+templ hero(a award.View) {
+	<div class="flex flex-col items-center gap-3 py-2 text-center">
+		<span class="awards-coin-turn">
+			@medal.Coin(coin(a, 128, false))
+		</span>
+		<p class="text-lg font-medium">{ a.Name }</p>
+		<p class="text-muted-foreground text-sm">{ a.Description }</p>
+		if a.EarnedAt != nil {
+			<p class="text-muted-foreground text-xs">{ i18n.Tf(ctx, "awards.unlock.earned", i18n.Date(ctx, *a.EarnedAt, "2 Jan 2006")) }</p>
+		}
+		@rarityLine(a, "text-xs")
+	</div>
+}
+
+// rarityLine is omitted when the share is not known.
+templ rarityLine(a award.View, size string) {
+	if a.Rarity != "" {
+		<span class={ "text-muted-foreground block " + size }>{ i18n.Tf(ctx, "awards.unlock.rarity", a.Rarity) }</span>
+	}
+}
+
+func progressText(a award.View) string {
+	n := 0
+	if a.Progress != nil {
+		n = *a.Progress
+	}
+	return fmt.Sprintf("%d/%d", n, a.Target)
+}

@@ -12,6 +12,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/achievements"
 	"github.com/NorthAIProject/north-client/internal/activity"
+	"github.com/NorthAIProject/north-client/internal/awards"
 	"github.com/NorthAIProject/north-client/internal/biometrics"
 	"github.com/NorthAIProject/north-client/internal/checkins"
 	"github.com/NorthAIProject/north-client/internal/goals"
@@ -46,7 +47,7 @@ func newWorld(t *testing.T) world {
 	soc := social.NewService(social.NewRepository(pool))
 	ach := achievements.NewService(pool)
 	xpSvc := xp.NewService(pool, checkins.NewService(checkins.NewRepository(pool), goals.NewService(goals.NewRepository(pool))))
-	return world{svc: profiles.NewService(soc, ach, xpSvc, acts, liftSvc), soc: soc, ach: ach, acts: acts, pool: pool}
+	return world{svc: profiles.NewService(soc, ach, xpSvc, acts, liftSvc).WithAwards(awards.NewService(pool)), soc: soc, ach: ach, acts: acts, pool: pool}
 }
 
 func person(t *testing.T, pool *pgxpool.Pool, email, name string) users.User {
@@ -158,7 +159,7 @@ func TestOwnProfileShowsEverything(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v.Workouts == nil || *v.Workouts != 1 || len(v.Recent) != 1 || v.Level == nil || v.Shares != (profiles.Shares{Training: true, XP: true}) {
+	if v.Workouts == nil || *v.Workouts != 1 || len(v.Recent) != 1 || v.Level == nil || v.Shares != (profiles.Shares{Training: true, XP: true, Awards: true}) {
 		t.Fatalf("view = %+v", v)
 	}
 	page, err := w.svc.Workouts(ctx, leo, "leo", time.Time{})
@@ -262,5 +263,57 @@ func TestWorkoutsPageByEndedAt(t *testing.T) {
 	}
 	if len(second.Items) != 3 || second.Before != nil {
 		t.Fatalf("second = %d items, before %v", len(second.Items), second.Before)
+	}
+}
+
+func TestProfileBadges(t *testing.T) {
+	w := newWorld(t)
+	ctx := context.Background()
+	aw := awards.NewService(w.pool)
+	leo, ana := person(t, w.pool, "leo-bd@n.test", "Leo"), person(t, w.pool, "ana-bd@n.test", "Ana")
+	w.handle(t, leo, "leobd")
+	w.handle(t, ana, "anabd")
+	at := time.Now().Add(-time.Hour)
+	aw.Grant(ctx, leo.ID, at, "workouts_1")
+	aw.Grant(ctx, leo.ID, at, "water_week") // private
+
+	ids := func(v profiles.View) []string {
+		var out []string
+		for _, e := range v.Awards {
+			out = append(out, e.Badge.ID)
+		}
+		return out
+	}
+	v, err := w.svc.View(ctx, ana, "leobd", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := ids(v); len(got) != 1 || got[0] != "workouts_1" || !v.Shares.Awards {
+		t.Fatalf("other sees %v shares %+v", got, v.Shares)
+	}
+	v, err = w.svc.View(ctx, leo, "leobd", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(v.Awards) != 2 {
+		t.Fatalf("owner sees %v", ids(v))
+	}
+	w.share(t, leo, achievements.Sharing{Training: true, Streaks: true, Goals: true})
+	v, err = w.svc.View(ctx, ana, "leobd", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Awards != nil || v.Shares.Awards {
+		t.Fatalf("awards off still shows %v", ids(v))
+	}
+	v, _ = w.svc.View(ctx, leo, "leobd", now)
+	if len(v.Awards) != 2 {
+		t.Fatal("owner lost badges when switch off")
+	}
+	if err := w.soc.Block(ctx, leo.ID, ana.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.svc.View(ctx, ana, "leobd", now); !isNotFound(err) {
+		t.Fatalf("blocked = %v", err)
 	}
 }

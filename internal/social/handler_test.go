@@ -234,3 +234,42 @@ func TestFriendsPageFollowIsInstant(t *testing.T) {
 		t.Fatal("sharing card has no anchor")
 	}
 }
+
+// recordingSharing keeps what the form saved.
+type recordingSharing struct {
+	sharingStub
+	saved achievement.Sharing
+}
+
+func (r *recordingSharing) SetSharing(_ context.Context, _ uuid.UUID, in achievement.Sharing) (achievement.Sharing, error) {
+	r.saved = in
+	return in, nil
+}
+
+// An unticked checkbox is not sent at all, so the form has to say awards
+// explicitly or a save could never turn them off.
+func TestSharingFormSavesAwards(t *testing.T) {
+	svc, _, _, pool := fixture(t)
+	ana := person(t, pool, "awards-form@north.test", "Ana")
+	rec := &recordingSharing{}
+	r := chi.NewRouter()
+	social.NewHandler(svc, "https://kheprios.com", false).WithAchievements(rec).Routes(r)
+	post := func(form url.Values) {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodPost, "/friends/sharing", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req.WithContext(auth.ContextWithUser(req.Context(), ana)))
+		if w.Code != http.StatusSeeOther {
+			t.Fatalf("POST = %d", w.Code)
+		}
+	}
+	post(url.Values{"share_awards": {"on"}})
+	if !rec.saved.Awards {
+		t.Fatal("share_awards ticked, Awards not saved")
+	}
+	post(url.Values{"share_training": {"on"}})
+	if rec.saved.Awards {
+		t.Fatal("share_awards absent, Awards still on")
+	}
+}

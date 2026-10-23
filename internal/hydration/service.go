@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/NorthAIProject/north-client/internal/awards/award"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -17,7 +18,18 @@ import (
 const maxEntryML = 5000
 
 type Service struct {
-	repo *Repository
+	repo   *Repository
+	awards Awards
+}
+
+// Awards checks a person's badges after a write. awards.Service satisfies it.
+type Awards interface {
+	Check(ctx context.Context, userID uuid.UUID, at time.Time, areas ...award.Area)
+}
+
+func (s *Service) WithAwards(a Awards) *Service {
+	s.awards = a
+	return s
 }
 
 func NewService(repo *Repository) *Service {
@@ -40,7 +52,11 @@ func (s *Service) Log(ctx context.Context, user users.User, amountML int) (Entry
 		return Entry{}, apperr.FieldErrors{}.Add("amount_ml", "That looks like more than one drink — log it in smaller amounts.").OrNil()
 	}
 
-	return s.repo.Create(ctx, user.ID, LocalDate(user, time.Now()), amountML)
+	entry, err := s.repo.Create(ctx, user.ID, LocalDate(user, time.Now()), amountML)
+	if err == nil && s.awards != nil {
+		s.awards.Check(ctx, user.ID, time.Now(), award.Hydration)
+	}
+	return entry, err
 }
 
 // Undo removes an entry. Logging a drink is one tap, so mis-tapping it is

@@ -59,6 +59,7 @@ var portugueseEuropeanSocial = map[string]string{
 	"social.sharing.streaks":  "Sequências de registos (7, 30, 100 dias…) e a tua sequência atual",
 	"social.sharing.goals":    "Os objetivos e marcos que concluis",
 	"social.sharing.xp":       "O teu XP e nível, nas classificações dos amigos",
+	"social.sharing.awards":   "As tuas conquistas, exceto as privadas",
 
 	"social.phone.title":       "Número de telemóvel",
 	"social.phone.desc":        "Os amigos que tenham o teu número nos contactos conseguem encontrar-te. Nunca é mostrado a ninguém.",

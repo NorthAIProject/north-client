@@ -1,0 +1,27 @@
+{
+  "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+  "displayName": "Ana",
+  "handle": "ana_runs",
+  "followers": 12,
+  "following": 9,
+  "relationship": {
+    "following": "accepted",
+    "followsYou": true,
+    "self": false
+  },
+  "shares": {
+    "training": false,
+    "xp": false,
+    "awards": true
+  },
+  "awards": [
+    {
+      "id": "workouts_1",
+      "area": "training",
+      "name": "First Workout",
+      "description": "Finish your first workout.",
+      "earnedAt": "2026-10-20T18:30:00Z",
+      "target": 1
+    }
+  ]
+}

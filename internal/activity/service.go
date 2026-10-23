@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/NorthAIProject/north-client/internal/awards/award"
 	"github.com/NorthAIProject/north-client/internal/biometrics"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
@@ -18,6 +19,11 @@ type BiometricsLookup interface {
 	Current(ctx context.Context, userID uuid.UUID) (biometrics.Biometric, error)
 }
 
+// Awards checks a person's badges after a write. awards.Service satisfies it.
+type Awards interface {
+	Check(ctx context.Context, userID uuid.UUID, at time.Time, areas ...award.Area)
+}
+
 // SyncHook is notified when workout sessions complete to synchronize state across clients.
 type SyncHook interface {
 	OnWorkoutCompleted(ctx context.Context, userID uuid.UUID, title string) error
@@ -28,6 +34,8 @@ type Service struct {
 	biometrics   BiometricsLookup
 	sync         SyncHook
 	achievements Achievements
+	awards       Awards
+	now          func() time.Time
 }
 
 // Achievements records a finished session for friends to see, when its owner
@@ -36,14 +44,25 @@ type Achievements interface {
 	WorkoutCompleted(ctx context.Context, userID, sessionID uuid.UUID, name string, minutes int, at time.Time)
 }
 
+func (s *Service) WithAwards(a Awards) *Service {
+	s.awards = a
+	return s
+}
+
 func (s *Service) WithAchievements(a Achievements) *Service {
 	s.achievements = a
 	return s
 }
 
 // achieve reports a finished session; a session without an end is not one.
-func (s *Service) achieve(ctx context.Context, session Session) {
-	if s.achievements == nil || session.EndedAt == nil {
+func (s *Service) achieve(ctx context.Context, session Session, checkAwards bool) {
+	if session.EndedAt == nil {
+		return
+	}
+	if checkAwards {
+		s.CheckAwards(ctx, session.UserID, session.Source)
+	}
+	if s.achievements == nil {
 		return
 	}
 	name := session.ActivityCode
@@ -54,8 +73,29 @@ func (s *Service) achieve(ctx context.Context, session Session) {
 		int(session.Elapsed(*session.EndedAt).Minutes()), *session.EndedAt)
 }
 
+// WithClock fixes now, for tests.
+func (s *Service) WithClock(now func() time.Time) *Service {
+	s.now = now
+	return s
+}
+
+// CheckAwards checks the training badges (and the connected-device one for a
+// Strava session) at the moment it runs: a badge is earned when it is
+// noticed, whatever date the workout carries. Batch importers set
+// ImportInput.SkipAwards and call this once after the batch.
+func (s *Service) CheckAwards(ctx context.Context, userID uuid.UUID, source string) {
+	if s.awards == nil {
+		return
+	}
+	areas := []award.Area{award.Training}
+	if source == SourceStrava {
+		areas = append(areas, award.Body)
+	}
+	s.awards.Check(ctx, userID, s.now(), areas...)
+}
+
 func NewService(repo *Repository, lookup BiometricsLookup) *Service {
-	return &Service{repo: repo, biometrics: lookup}
+	return &Service{repo: repo, biometrics: lookup, now: time.Now}
 }
 
 func (s *Service) WithSync(hook SyncHook) *Service {
@@ -144,7 +184,7 @@ func (s *Service) Stop(ctx context.Context, id, userID uuid.UUID) (Session, erro
 	if err != nil {
 		return Session{}, err
 	}
-	s.achieve(ctx, completed)
+	s.achieve(ctx, completed, true)
 
 	if s.sync != nil {
 		title := completed.PlanWeekday
@@ -288,7 +328,7 @@ func (s *Service) Log(ctx context.Context, userID uuid.UUID, in LogInput) (Sessi
 	if err != nil {
 		return Session{}, err
 	}
-	s.achieve(ctx, session)
+	s.achieve(ctx, session, true)
 	if s.sync != nil {
 		_ = s.sync.OnWorkoutCompleted(ctx, userID, in.ActivityCode)
 	}
@@ -319,6 +359,10 @@ type ImportInput struct {
 	ElevationM float64
 	// Indoor is nil when the provider did not say.
 	Indoor *bool
+
+	// SkipAwards leaves the badge check to the caller, who checks once after
+	// the whole batch (see CheckAwards).
+	SkipAwards bool
 }
 
 // Import records a finished session from a provider, reporting false when it
@@ -358,7 +402,7 @@ func (s *Service) Import(ctx context.Context, in ImportInput) (Session, bool, er
 		_ = s.sync.OnWorkoutCompleted(ctx, in.UserID, in.ActivityCode)
 	}
 	if err == nil && created {
-		s.achieve(ctx, session)
+		s.achieve(ctx, session, !in.SkipAwards)
 	}
 	return session, created, err
 }

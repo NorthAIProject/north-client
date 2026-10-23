@@ -19,18 +19,21 @@ const (
 	// CategoryXP is XP and level, which is what puts a person on a friend's
 	// leaderboard. No achievement is ever in it.
 	CategoryXP = "xp"
+	// CategoryAwards is the badges a person earns. On by default, like the
+	// first three; a person can switch it off.
+	CategoryAwards = "awards"
 )
 
 // Categories in the order they are offered.
 func Categories() []string {
-	return []string{CategoryTraining, CategoryStreaks, CategoryGoals, CategoryXP}
+	return []string{CategoryTraining, CategoryStreaks, CategoryGoals, CategoryXP, CategoryAwards}
 }
 
 // DefaultShared is whether a category is shared with followers by a person who
 // never stored a choice. It mirrors the SQL function sharing_on.
 func DefaultShared(category string) bool {
 	switch category {
-	case CategoryTraining, CategoryStreaks, CategoryGoals:
+	case CategoryTraining, CategoryStreaks, CategoryGoals, CategoryAwards:
 		return true
 	}
 	return false
@@ -49,6 +52,9 @@ const (
 	// It sits in training: the feed's category is a closed list in the
 	// shipped app, and a recap is mostly what was trained.
 	KindRecapShared = "recap_shared"
+	// KindBadgeEarned is a badge from internal/awards/award; the source key
+	// is the badge id.
+	KindBadgeEarned = "badge_earned"
 )
 
 // Item is one achievement in a feed.
@@ -64,6 +70,14 @@ type Item struct {
 	OccurredAt  time.Time
 	// SourceKey is what the moment is about: the session id for a workout.
 	SourceKey string
+	// Private marks a badge from a private area: never shown to anybody but
+	// its owner.
+	Private bool
+	// BadgeID is the badge on a badge_earned item (the source key), and
+	// Badges every badge of the same moment, this one first, when several
+	// were earned at once and collapsed into one card.
+	BadgeID string
+	Badges  []string
 	// Workout is the finished workout's card, set on a workout_completed
 	// item when it could be built.
 	Workout *lift.Card
@@ -80,4 +94,5 @@ type Sharing struct {
 	Streaks  bool
 	Goals    bool
 	XP       bool
+	Awards   bool
 }

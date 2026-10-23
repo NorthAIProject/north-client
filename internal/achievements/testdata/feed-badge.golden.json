@@ -1,0 +1,38 @@
+{
+  "items": [
+    {
+      "id": "dddddddd-dddd-dddd-dddd-dddddddddddd",
+      "userId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      "displayName": "Ana",
+      "handle": "ana_runs",
+      "category": "goals",
+      "kind": "badge_earned",
+      "title": "First steps",
+      "detail": "Finish a workout",
+      "occurredAt": "2026-10-22T09:00:00Z",
+      "kudos": 2,
+      "kudoed": false,
+      "mine": false,
+      "badgeId": "workouts_1",
+      "area": "training",
+      "badges": [
+        {
+          "id": "workouts_1",
+          "area": "training",
+          "name": "First Workout",
+          "description": "Finish your first workout.",
+          "earnedAt": "2026-10-22T09:00:00Z",
+          "target": 1
+        },
+        {
+          "id": "pr_1",
+          "area": "lifts",
+          "name": "First Personal Record",
+          "description": "Set your first personal record.",
+          "earnedAt": "2026-10-22T09:00:00Z",
+          "target": 1
+        }
+      ]
+    }
+  ]
+}

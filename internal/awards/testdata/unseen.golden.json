@@ -1,0 +1,13 @@
+{
+  "awards": [
+    {
+      "id": "workouts_1",
+      "area": "training",
+      "name": "First Workout",
+      "description": "Finish your first workout.",
+      "earnedAt": "2026-10-22T09:00:00Z",
+      "target": 1,
+      "rarity": "\u003c1%"
+    }
+  ]
+}

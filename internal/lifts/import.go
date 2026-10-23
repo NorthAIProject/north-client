@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/activity"
+	"github.com/NorthAIProject/north-client/internal/awards/award"
 	"github.com/NorthAIProject/north-client/internal/biometrics"
 	"github.com/NorthAIProject/north-client/internal/exercises"
 	"github.com/NorthAIProject/north-client/internal/lifts/hevy"
@@ -92,6 +93,11 @@ func (s *Service) ImportHevy(ctx context.Context, user users.User, r io.Reader) 
 	}
 
 	result := ImportResult{Skipped: parsed.Skipped}
+	defer func() {
+		if result.Sets > 0 || result.Workouts > 0 {
+			s.checkAwards(ctx, user.ID, award.Lifts, award.Training)
+		}
+	}()
 	unmatched := map[string]bool{}
 	for _, w := range parsed.Workouts {
 		if len(w.Sets) == 0 {
@@ -111,7 +117,7 @@ func (s *Service) ImportHevy(ctx context.Context, user users.User, r io.Reader) 
 			if !ok {
 				unmatched[set.Exercise] = true
 			}
-			if _, err := s.Log(ctx, user, LogInput{
+			if _, err := s.logSet(ctx, user, LogInput{
 				ExerciseName:      set.Exercise,
 				ExerciseSlug:      slug,
 				SetNumber:         set.Number,
@@ -145,6 +151,7 @@ func (s *Service) importSession(ctx context.Context, user users.User, w hevy.Wor
 		StartedAt:    w.Start,
 		EndedAt:      w.End,
 		WeightKg:     weightKg,
+		SkipAwards:   true,
 	})
 	switch {
 	case err != nil:

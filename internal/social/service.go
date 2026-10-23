@@ -5,9 +5,11 @@ import (
 	"crypto/rand"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
+	"github.com/NorthAIProject/north-client/internal/awards/award"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/social/phone"
 )
@@ -36,7 +38,15 @@ type Service struct {
 	funnel   Funnel
 	verifier phone.Verifier
 	facebook Facebook
+	awards   Awards
 }
+
+// Awards checks a person's badges after a write. awards.Service satisfies it.
+type Awards interface {
+	Check(ctx context.Context, userID uuid.UUID, at time.Time, areas ...award.Area)
+}
+
+func (s *Service) WithAwards(a Awards) *Service { s.awards = a; return s }
 
 func NewService(repo *Repository) *Service { return &Service{repo: repo} }
 
@@ -140,6 +150,13 @@ func (s *Service) Redeem(ctx context.Context, inviteeID uuid.UUID, code string) 
 	if err != nil {
 		return false, err
 	}
+	// Both sides now follow each other: either may have just gained a first
+	// follower.
+	if result.Connected && s.awards != nil {
+		now := time.Now()
+		s.awards.Check(ctx, invite.Inviter.ID, now, award.Social)
+		s.awards.Check(ctx, inviteeID, now, award.Social)
+	}
 	if result.Attributed && s.funnel != nil {
 		s.funnel.InviteRedeemed(ctx, inviteeID, invite.Channel)
 	}
@@ -187,6 +204,11 @@ func (s *Service) Follow(ctx context.Context, followerID uuid.UUID, handle strin
 			_ = s.inbox.NoteWithPush(ctx, target.ID, KindNewFollower, followerID.String(),
 				me.DisplayName+" followed you", "See who follows you in Friends.", "/app/friends")
 		}
+	}
+	// The followee is the one who earns first_follower, and only for a
+	// follow that was not already there.
+	if before == "" && s.awards != nil {
+		s.awards.Check(ctx, target.ID, time.Now(), award.Social)
 	}
 	return Connection{Person: target, Status: status}, nil
 }
@@ -265,6 +287,11 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID) (Overview, err
 		return Overview{}, err
 	}
 	return out, nil
+}
+
+// HandleOf is the person's own handle, empty when they have none.
+func (s *Service) HandleOf(ctx context.Context, userID uuid.UUID) (string, error) {
+	return s.repo.Handle(ctx, userID)
 }
 
 // Profile is /u/<handle> as viewerID sees it. Blocked either way is not

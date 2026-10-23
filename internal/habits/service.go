@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/NorthAIProject/north-client/internal/awards/award"
 	"github.com/NorthAIProject/north-client/internal/habits/habit"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/lifedomain"
@@ -26,7 +27,18 @@ const adherenceWindow = 7
 const statsLookback = 400
 
 type Service struct {
-	repo *Repository
+	repo   *Repository
+	awards Awards
+}
+
+// Awards checks a person's badges after a write. awards.Service satisfies it.
+type Awards interface {
+	Check(ctx context.Context, userID uuid.UUID, at time.Time, areas ...award.Area)
+}
+
+func (s *Service) WithAwards(a Awards) *Service {
+	s.awards = a
+	return s
 }
 
 func NewService(repo *Repository) *Service {
@@ -130,7 +142,13 @@ func (s *Service) Complete(ctx context.Context, user users.User, id uuid.UUID) e
 	if _, err := s.repo.Get(ctx, id, user.ID); err != nil {
 		return err // also the ownership check
 	}
-	return s.repo.Complete(ctx, id, user.ID, LocalDate(user, time.Now()))
+	if err := s.repo.Complete(ctx, id, user.ID, LocalDate(user, time.Now())); err != nil {
+		return err
+	}
+	if s.awards != nil {
+		s.awards.Check(ctx, user.ID, time.Now(), award.Habits)
+	}
+	return nil
 }
 
 // Uncomplete unticks today, for the inevitable mis-tap.

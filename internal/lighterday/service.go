@@ -14,6 +14,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -78,8 +79,17 @@ type Service struct {
 	q        *lighterdaydb.Queries
 	recovery Recovery
 	sessions SessionReader
+	awards   Awards
 	now      func() time.Time
 }
+
+// Awards grants the badge for listening to a low morning. awards.Service
+// satisfies it.
+type Awards interface {
+	Grant(ctx context.Context, userID uuid.UUID, at time.Time, badgeID string)
+}
+
+func (s *Service) WithAwards(a Awards) *Service { s.awards = a; return s }
 
 func NewService(pool *pgxpool.Pool, r Recovery, s SessionReader) *Service {
 	return &Service{q: lighterdaydb.New(pool), recovery: r, sessions: s, now: time.Now}
@@ -149,6 +159,11 @@ func (s *Service) ChooseAs(ctx context.Context, user users.User, choice, source 
 		return Today{}, apperr.Wrap(err, "save lighter day")
 	}
 	t.Choice, t.Source = choice, source
+	// Easing off on a low morning, by one's own choice, is the badge. The
+	// coach doing it for them is not listening.
+	if s.awards != nil && choice == ChoiceLighter && source == SourcePerson && t.Recovery.Low() {
+		s.awards.Grant(ctx, user.ID, s.now(), "listened_to_body")
+	}
 	return t, nil
 }
 

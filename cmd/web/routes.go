@@ -21,6 +21,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/analytics"
 	"github.com/NorthAIProject/north-client/internal/apns"
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/awards"
 	"github.com/NorthAIProject/north-client/internal/biometrics"
 	"github.com/NorthAIProject/north-client/internal/caffeine"
 	"github.com/NorthAIProject/north-client/internal/calculator"
@@ -170,10 +171,13 @@ func routes(
 	// happen. The bell is attached once nudges exist, for kudos.
 	achievementSvc := achievements.NewService(pool)
 
-	goalSvc := goals.NewService(goals.NewRepository(pool)).WithAchievements(achievementSvc)
+	// Badges, checked by every service below after the write they follow.
+	awardsSvc := awards.NewService(pool)
+
+	goalSvc := goals.NewService(goals.NewRepository(pool)).WithAchievements(achievementSvc).WithAwards(awardsSvc)
 	goalHandler := goals.NewHandler(goalSvc).WithFunnel(funnel)
 
-	checkinSvc := checkins.NewService(checkins.NewRepository(pool), goalSvc).WithAchievements(achievementSvc)
+	checkinSvc := checkins.NewService(checkins.NewRepository(pool), goalSvc).WithAchievements(achievementSvc).WithAwards(awardsSvc)
 	checkinHandler := checkins.NewHandler(checkinSvc, goalSvc).WithFunnel(funnel)
 
 	notificationSvc := notifications.NewService(notifications.NewRepository(pool))
@@ -203,7 +207,7 @@ func routes(
 
 	// Handles, invite links, follows and blocks. The bell tells people about
 	// a new follower or a friend arriving from their link.
-	socialSvc := social.NewService(social.NewRepository(pool)).WithInbox(nudgeSvc).WithFunnel(funnel)
+	socialSvc := social.NewService(social.NewRepository(pool)).WithInbox(nudgeSvc).WithFunnel(funnel).WithAwards(awardsSvc)
 	// Verified phone numbers and Connect Facebook are each off without their
 	// credentials, and their cards and API answer as unconfigured.
 	if v := phoneVerifier(cfg); v != nil {
@@ -290,11 +294,11 @@ func routes(
 
 	// Progress checks keep their photos in media and write a scale weight
 	// through biometrics, so both exist first.
-	progressSvc := progresschecks.NewService(progresschecks.NewRepository(pool), mediaSvc, biometricSvc)
+	progressSvc := progresschecks.NewService(progresschecks.NewRepository(pool), mediaSvc, biometricSvc).WithAwards(awardsSvc)
 
 	calculatorSvc := calculator.NewService(calculator.NewRepository(pool), biometricSvc)
 
-	activitySvc := activity.NewService(activity.NewRepository(pool), biometricSvc).WithAchievements(achievementSvc)
+	activitySvc := activity.NewService(activity.NewRepository(pool), biometricSvc).WithAchievements(achievementSvc).WithAwards(awardsSvc)
 	activityHandler := activity.NewHandler(activitySvc)
 
 	// Crews read check-ins and finished sessions for their boards, and keep
@@ -376,7 +380,7 @@ func routes(
 	mealIngredientSvc := meals.NewIngredientService(mealsRepo)
 	mealDietSvc := meals.NewDietPreferenceService(mealsRepo)
 	mealPlanSvc := meals.NewMealPlanService(mealsRepo, calculatorSvc)
-	foodLogSvc := meals.NewFoodLogService(mealsRepo)
+	foodLogSvc := meals.NewFoodLogService(mealsRepo).WithAwards(awardsSvc)
 	mealProgressSvc := meals.NewTrackMealProgressService(foodLogSvc, calculatorSvc)
 	mealRecommendSvc := meals.NewGoalRecommendationService(mealProgressSvc, calculatorSvc)
 	mealReminderSvc := meals.NewMealReminderService(mealsRepo)
@@ -384,7 +388,7 @@ func routes(
 	// Declared here rather than with the other lifestyle slices below because
 	// the fitness hub reads it: readings a device pushed are part of what that
 	// page is for.
-	healthSvc := health.NewService(health.NewRepository(pool)).WithFunnel(funnel)
+	healthSvc := health.NewService(health.NewRepository(pool)).WithFunnel(funnel).WithAwards(awardsSvc)
 	// Lets one push carry finished workouts as well as readings. The activity
 	// slice owns the dedupe and the calorie estimate, so a synced session is
 	// costed exactly like a manually logged one.
@@ -399,7 +403,7 @@ func routes(
 	recoverySrc := insights.NewRecoverySource(healthSvc, stats.NewService(stats.Sources{
 		Sleep: sleep.NewService(sleep.NewRepository(pool)), Health: healthSvc,
 	}))
-	lighterSvc := lighterday.NewService(pool, recoverySrc, workoutSvc)
+	lighterSvc := lighterday.NewService(pool, recoverySrc, workoutSvc).WithAwards(awardsSvc)
 	workoutSvc.WithLighter(lighterSvc)
 	// The coach speaking first (internal/outreach) is built once messaging
 	// exists, below; the lighter-day card asks it whether today's message
@@ -481,7 +485,7 @@ func routes(
 	// the connections page is where a Telegram link begins, so it needs to be
 	// able to issue a code.
 
-	mindSvc := mind.NewService(mind.NewRepository(pool), checkinSvc)
+	mindSvc := mind.NewService(mind.NewRepository(pool), checkinSvc).WithAwards(awardsSvc)
 	mindHandler := mind.NewHandler(mindSvc, checkinSvc)
 
 	decisionSvc := decisions.NewService(decisions.NewRepository(pool))
@@ -490,24 +494,26 @@ func routes(
 	// Daily lifestyle signals. None of these own a page: they are logged from
 	// /app/care, the same way biometrics and preferences are reached through
 	// calculator and settings.
-	hydrationSvc := hydration.NewService(hydration.NewRepository(pool))
-	sleepSvc := sleep.NewService(sleep.NewRepository(pool))
-	habitSvc := habits.NewService(habits.NewRepository(pool))
+	hydrationSvc := hydration.NewService(hydration.NewRepository(pool)).WithAwards(awardsSvc)
+	sleepSvc := sleep.NewService(sleep.NewRepository(pool)).WithAwards(awardsSvc)
+	habitSvc := habits.NewService(habits.NewRepository(pool)).WithAwards(awardsSvc)
 
 	// My Day's trackers. Each is its own log slice, logged from the day's
 	// quick-add and read back through the day and the coach.
 	caffeineSvc := caffeine.NewService(caffeine.NewRepository(pool))
-	fastingSvc := fasting.NewService(fasting.NewRepository(pool))
+	fastingSvc := fasting.NewService(fasting.NewRepository(pool)).WithAwards(awardsSvc)
 	supplementSvc := supplements.NewService(supplements.NewRepository(pool))
 	screenTimeSvc := screentime.NewService(screentime.NewRepository(pool))
 	sorenessSvc := soreness.NewService(soreness.NewRepository(pool))
 	liftSvc := lifts.NewService(lifts.NewRepository(pool), exerciseSvc).
 		WithRecaps(activitySvc, workoutSvc).
-		WithImports(activitySvc, biometricSvc, exerciseSvc)
+		WithImports(activitySvc, biometricSvc, exerciseSvc).
+		WithAwards(awardsSvc)
 	workoutHandler.WithRecaps(liftSvc).WithLoads(liftSvc)
 	achievementSvc.WithWorkoutCards(liftSvc)
-	profilesSvc := profiles.NewService(socialSvc, achievementSvc, xpSvc, activitySvc, liftSvc)
+	profilesSvc := profiles.NewService(socialSvc, achievementSvc, xpSvc, activitySvc, liftSvc).WithAwards(awardsSvc)
 	profilesHandler := profiles.NewHandler(profilesSvc, socialSvc)
+	awardsHandler := awards.NewHandler(awardsSvc, profilesSvc)
 	milestoneSvc := milestones.NewService(milestones.NewRepository(pool))
 
 	careOpts := care.Options{
@@ -682,7 +688,7 @@ func routes(
 		Sets:          liftSvc,
 		SiteURL:       cfg.BaseURL,
 	})
-	insightsHandler := insights.NewHandler(insightsSvc)
+	insightsHandler := insights.NewHandler(insightsSvc).WithAwards(awardsSvc)
 
 	// Built here rather than beside the other slices because a weekly review
 	// reads the whole week through insights: it has to come after everything
@@ -700,7 +706,7 @@ func routes(
 
 	// The weekly review reads goals and reports, and sets the week's training
 	// volume, so it is wired after both and handed back to workouts.
-	weeklySvc := weekly.NewService(pool, goalSvc, reportSvc).WithAchievements(achievementSvc)
+	weeklySvc := weekly.NewService(pool, goalSvc, reportSvc).WithAchievements(achievementSvc).WithAwards(awardsSvc)
 	workoutSvc.WithVolume(weeklySvc)
 	reportSvc.WithFocus(weeklySvc)
 	weeklyHandler := weekly.NewHandler(weeklySvc)
@@ -1143,6 +1149,7 @@ func routes(
 			social:       social.NewAPI(socialSvc, cfg.BaseURL),
 			profiles:     profiles.NewAPI(profilesSvc),
 			achievements: achievements.NewAPI(achievementSvc),
+			awards:       awards.NewAPI(awardsSvc),
 			crews:        crews.NewAPI(crewSvc, cfg.BaseURL).WithLive(crewChat, crewLive),
 			moderation:   moderation.NewAPI(moderationSvc),
 			xp:           xp.NewAPI(xpSvc),
@@ -1322,6 +1329,7 @@ func routes(
 				decisionHandler.Routes(r)
 				socialHandler.Routes(r)
 				profilesHandler.Routes(r)
+				awardsHandler.Routes(r)
 				crewHandler.Routes(r)
 				moderationHandler.Routes(r)
 				xpHandler.Routes(r)

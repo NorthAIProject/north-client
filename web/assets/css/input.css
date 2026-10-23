@@ -667,3 +667,41 @@ html:has([data-landing]) {
     animation: none;
   }
 }
+
+/* Badge unlock (web/awards/unlock.templ). The coin springs in and then turns
+   once, slowly, about its vertical axis. Reduced motion gets a fade only. */
+@keyframes awards-coin-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.4) rotateY(0deg);
+  }
+  45% {
+    opacity: 1;
+    transform: scale(1.12) rotateY(180deg);
+  }
+  70% {
+    transform: scale(0.97) rotateY(300deg);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotateY(360deg);
+  }
+}
+@keyframes awards-coin-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.awards-coin-turn {
+  animation: awards-coin-in 1.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+  perspective: 600px;
+  transform-style: preserve-3d;
+}
+@media (prefers-reduced-motion: reduce) {
+  .awards-coin-turn {
+    animation: awards-coin-fade 0.4s ease-out both;
+  }
+}

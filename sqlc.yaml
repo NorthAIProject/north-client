@@ -636,3 +636,13 @@ sql:
         package: xpdb
         out: internal/xp/db
         overrides: *overrides
+
+  - engine: postgresql
+    schema: migrations
+    queries: internal/awards/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: awardsdb
+        out: internal/awards/db
+        overrides: *overrides

@@ -35,6 +35,8 @@ var knownNonDestinations = map[string]string{
 	"/app/outreach":                "fragment: the coach's message of the day on Today",
 	"/app/first-week":              "fragment: the first week's day card on My Day and the dashboard",
 	"/app/nudges/bell":             "topbar poll",
+	"/app/awards/unseen":           "badge celebration fragment, loaded by the app shell",
+	"/app/awards":                  "the shelf behind the insights card and the profile strip, not a menu entry",
 	"/app/connections/pill":        "topbar prompt to connect an agent",
 	"/app/knowledge/passages":      "document passage fragment",
 	"/app/insights/panels":         "insights range swap",

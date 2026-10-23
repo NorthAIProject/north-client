@@ -2,5 +2,6 @@
   "training": true,
   "streaks": false,
   "goals": true,
-  "xp": true
+  "xp": true,
+  "awards": true
 }

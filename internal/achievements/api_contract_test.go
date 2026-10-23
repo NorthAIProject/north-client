@@ -1,6 +1,7 @@
 package achievements
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -14,7 +15,7 @@ func TestFeedShapes(t *testing.T) {
 	t.Parallel()
 
 	at := time.Date(2026, 10, 1, 7, 30, 0, 0, time.UTC)
-	apitest.AssertGolden(t, "feed.golden.json", projectFeed([]Item{{
+	apitest.AssertGolden(t, "feed.golden.json", projectFeed(context.Background(), []Item{{
 		ID: uuid.MustParse("dddddddd-dddd-dddd-dddd-dddddddddddd"), UserID: uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
 		DisplayName: "Ana", Handle: "ana_runs", Category: "training", Kind: "workout_completed",
 		Title: "Finished Running", Detail: "32 min", OccurredAt: at, Kudos: 3, Kudoed: true,
@@ -36,5 +37,5 @@ func TestFeedShapes(t *testing.T) {
 			},
 		},
 	}}))
-	apitest.AssertGolden(t, "sharing.golden.json", SharingView{Training: true, Streaks: false, Goals: true, XP: true})
+	apitest.AssertGolden(t, "sharing.golden.json", SharingView{Training: true, Streaks: false, Goals: true, XP: true, Awards: true})
 }

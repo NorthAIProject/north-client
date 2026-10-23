@@ -8,9 +8,11 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/NorthAIProject/north-client/internal/awards/award"
 	"github.com/NorthAIProject/north-client/internal/lifts/lift"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
+	awardpages "github.com/NorthAIProject/north-client/web/awards"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/ui/avatar"
@@ -37,6 +39,9 @@ type Data struct {
 	Workouts *int
 	Shared   bool
 	Recent   []lift.Card
+	// Awards are the newest badges to show, newest first; empty when none are
+	// shared or held.
+	Awards []award.View
 }
 
 func initials(name string) string {
@@ -63,6 +68,7 @@ templ ProfilePage(d Data) {
 	@layout.App("@"+d.Handle, d.User, layout.BuildNav(ctx, "/app/friends")) {
 		<div class="mx-auto w-full max-w-3xl space-y-6 p-6 md:p-8">
 			@header(d)
+			@awardpages.Strip(d.Handle, d.Awards)
 			@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 				@card.Header() {
 					@card.Title() {

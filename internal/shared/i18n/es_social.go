@@ -59,6 +59,7 @@ var spanishSocial = map[string]string{
 	"social.sharing.streaks":  "Rachas de registros (7, 30, 100 días…) y tu racha actual",
 	"social.sharing.goals":    "Los objetivos e hitos que completas",
 	"social.sharing.xp":       "Tu XP y tu nivel, en las clasificaciones de tus amigos",
+	"social.sharing.awards":   "Tus logros, menos los privados",
 
 	"social.phone.title":       "Número de teléfono",
 	"social.phone.desc":        "Los amigos que tengan tu número en sus contactos pueden encontrarte. Nunca se muestra a nadie.",

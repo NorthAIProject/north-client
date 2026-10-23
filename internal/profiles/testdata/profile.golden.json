@@ -11,7 +11,8 @@
   },
   "shares": {
     "training": true,
-    "xp": true
+    "xp": true,
+    "awards": false
   },
   "level": {
     "number": 3,
