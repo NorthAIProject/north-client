@@ -43,6 +43,9 @@ templ Dashboard(user users.User, data DashboardData) {
 			if data.HasNextStep && data.NextStep.Kind == NextStepKindPush {
 				@nextStepCard(data.NextStep)
 			}
+			// The first week's day card, while a new person's week runs. Outside
+			// the live region, so a check-in refresh does not reload it.
+			<div hx-get="/app/first-week" hx-trigger="load" hx-swap="outerHTML"></div>
 			@TodayLive(data)
 			<div id="dashboard-panels">
 				@DashboardPanels(data)

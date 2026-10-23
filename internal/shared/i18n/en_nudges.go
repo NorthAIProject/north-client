@@ -43,6 +43,8 @@ var englishNudges = map[string]string{
 	"nudges.firstweek.evidence.body":  "A lift, a meal, or how you look today. I will coach from what I see.",
 	"nudges.firstweek.review.title":   "Your first week",
 	"nudges.firstweek.review.body":    "Open the coach and tell me what stuck. I will keep what matters.",
+	"nudges.firstweek.evening.title":  "Day %d of 7: still open",
+	"nudges.firstweek.evening.body":   "Today's one thing: %s Log it, or tap Done if it's done.",
 	"nudges.workout.title":            "Start today's session",
 	"nudges.workout.default":          "Today's session",
 	"nudges.photo.ask.title":          "Send a photo",

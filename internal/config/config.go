@@ -74,6 +74,11 @@ type Config struct {
 	// migration runs once, as `main migrate`, in a PreSync hook ahead of both.
 	AutoMigrate bool
 
+	// FirstWeekEnabled (FIRST_WEEK_ENABLED) lets onboarding start a new
+	// person's first week. Off by default until the daily loop is proven; weeks
+	// already running carry on either way.
+	FirstWeekEnabled bool
+
 	// SMTP delivers transactional email. Optional, like the credentials below
 	// it: without a host the password reset journey turns itself off rather
 	// than pretending to send.
@@ -875,6 +880,12 @@ func Load() (*Config, error) {
 		problems = append(problems, err.Error())
 	}
 	cfg.AutoMigrate = autoMigrate
+
+	firstWeek, err := boolValue("FIRST_WEEK_ENABLED", false)
+	if err != nil {
+		problems = append(problems, err.Error())
+	}
+	cfg.FirstWeekEnabled = firstWeek
 
 	anthropicFirst, err := boolValue("ANTHROPIC_FIRST", false)
 	if err != nil {

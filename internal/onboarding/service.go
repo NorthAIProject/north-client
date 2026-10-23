@@ -15,6 +15,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/conversations"
+	"github.com/NorthAIProject/north-client/internal/firstweek"
 	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/memories"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
@@ -63,6 +64,11 @@ type Answers struct {
 	CoachingStyle string
 	NearTermGoal  string
 	GoalCategory  string
+
+	// FirstWeekTemplate is the change picked for the first seven days. Empty,
+	// or a name this server does not know, runs the week on the goal above
+	// (the custom template): clients that never ask still get a week.
+	FirstWeekTemplate string
 }
 
 // Coach opens the first conversation.
@@ -74,6 +80,13 @@ type Answers struct {
 type Coach interface {
 	StartConversation(ctx context.Context, userID uuid.UUID) (conversations.Conversation, error)
 	SendMessage(ctx context.Context, user users.User, conversationID uuid.UUID, text string) (<-chan ai.StreamChunk, error)
+}
+
+// FirstWeek starts the seven days that follow onboarding.
+// firstweek.Service satisfies it.
+type FirstWeek interface {
+	Enabled() bool
+	Start(ctx context.Context, user users.User, template string, goalID uuid.UUID) (firstweek.Programme, error)
 }
 
 type Service struct {
@@ -89,6 +102,10 @@ type Service struct {
 	// funnel is nil-safe, like coach: no PostHog key, no events, same journey.
 	funnel *analytics.Funnel
 
+	// firstWeek is nil when no first week is wired; onboarding then ends
+	// exactly as it did before there was one.
+	firstWeek FirstWeek
+
 	// now is fixed by tests. Only SeedForAgent reads it, to date the memory
 	// recording how an account arrived.
 	now func() time.Time
@@ -98,6 +115,18 @@ type Service struct {
 func (s *Service) WithClock(now func() time.Time) *Service {
 	s.now = now
 	return s
+}
+
+// WithFirstWeek starts a first week when onboarding completes.
+func (s *Service) WithFirstWeek(fw FirstWeek) *Service {
+	s.firstWeek = fw
+	return s
+}
+
+// FirstWeekEnabled reports whether completing onboarding starts a first week,
+// which is what decides whether the form offers the template pick.
+func (s *Service) FirstWeekEnabled() bool {
+	return s.firstWeek != nil && s.firstWeek.Enabled()
 }
 
 // WithFunnel attaches product analytics.
@@ -229,10 +258,11 @@ func (s *Service) Complete(ctx context.Context, user users.User, in Answers) (us
 		return user, uuid.Nil, err
 	}
 
-	if _, err = s.goals.Create(ctx, user.ID, goals.Input{
+	goal, err := s.goals.Create(ctx, user.ID, goals.Input{
 		Title:    in.NearTermGoal,
 		Category: in.GoalCategory,
-	}); err != nil {
+	})
+	if err != nil {
 		return user, uuid.Nil, err
 	}
 
@@ -246,12 +276,31 @@ func (s *Service) Complete(ctx context.Context, user users.User, in Answers) (us
 	// the flattering direction.
 	s.funnel.OnboardingCompleted(ctx, onboarded.ID)
 
+	s.startFirstWeek(ctx, onboarded, in, goal.ID)
+
 	// Seeded last, and deliberately after MarkOnboarded: the context builder
 	// reads the goal and memories written above, so the first reply is only
 	// worth anything once they exist. A failure here is logged, not returned —
 	// somebody who has answered three questions is onboarded whether or not a
 	// provider was reachable in that moment.
 	return onboarded, s.seedFirstConversation(ctx, onboarded, in), nil
+}
+
+// startFirstWeek begins the seven days on the goal just created. Like the
+// first conversation, a failure is logged rather than returned: the person
+// is onboarded either way, and a week can still be started from the app.
+func (s *Service) startFirstWeek(ctx context.Context, user users.User, in Answers, goalID uuid.UUID) {
+	if !s.FirstWeekEnabled() {
+		return
+	}
+	template, ok := firstweek.NormalizeTemplate(in.FirstWeekTemplate)
+	if !ok {
+		template = firstweek.TemplateCustom
+	}
+	if _, err := s.firstWeek.Start(ctx, user, template, goalID); err != nil {
+		s.log.Warn("could not start the first week", slog.Any("error", err),
+			slog.String("user_id", user.ID.String()))
+	}
 }
 
 // seedFirstConversation opens the thread and asks the coach the question the

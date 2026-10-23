@@ -25,11 +25,15 @@ import (
 var knownNonDestinations = map[string]string{
 	// Operator-only tool; everybody else gets a 404, so it is in no menu.
 	"/app/ops/moderation": "report queue for OPERATOR_USER_IDS only",
+	// Exists once per person, from day 7 of their first week; reached from
+	// the day card and the coach's day-7 message, and redirects otherwise.
+	"/app/first-week/review": "the first week's day-7 review",
 	// HTMX partials. Fragments of a page, not pages.
 	"/app/overview/panels":         "dashboard range swap",
 	"/app/day/trends":              "overview trend cards fragment",
 	"/app/today/lighter":           "lighter-day offer on the dashboard training panel",
 	"/app/outreach":                "fragment: the coach's message of the day on Today",
+	"/app/first-week":              "fragment: the first week's day card on My Day and the dashboard",
 	"/app/nudges/bell":             "topbar poll",
 	"/app/awards/unseen":           "badge celebration fragment, loaded by the app shell",
 	"/app/awards":                  "the shelf behind the insights card and the profile strip, not a menu entry",

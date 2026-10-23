@@ -22,4 +22,7 @@ var portugueseEuropeanOutreach = map[string]string{
 	"outreach.error.action":             "Essa resposta não está disponível para esta mensagem.",
 	"outreach.error.answered":           "Isso já foi respondido.",
 	"outreach.error":                    "Não foi possível agora. Tenta a partir da app.",
+	"outreach.action.done":              "Feito",
+	"outreach.done.done":                "Marcado como feito hoje.",
+	"outreach.fallback.firstweek":       "Dia %[1]d de 7. A coisa de hoje: %[2]s",
 }

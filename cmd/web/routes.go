@@ -42,6 +42,8 @@ import (
 	"github.com/NorthAIProject/north-client/internal/exercises"
 	"github.com/NorthAIProject/north-client/internal/export"
 	"github.com/NorthAIProject/north-client/internal/fasting"
+	"github.com/NorthAIProject/north-client/internal/firstweek"
+	"github.com/NorthAIProject/north-client/internal/firstweek/logproofs"
 	"github.com/NorthAIProject/north-client/internal/fitness"
 	"github.com/NorthAIProject/north-client/internal/fitness/strava"
 	"github.com/NorthAIProject/north-client/internal/goals"
@@ -386,7 +388,7 @@ func routes(
 	// Declared here rather than with the other lifestyle slices below because
 	// the fitness hub reads it: readings a device pushed are part of what that
 	// page is for.
-	healthSvc := health.NewService(health.NewRepository(pool)).WithAwards(awardsSvc)
+	healthSvc := health.NewService(health.NewRepository(pool)).WithFunnel(funnel).WithAwards(awardsSvc)
 	// Lets one push carry finished workouts as well as readings. The activity
 	// slice owns the dedupe and the calorie estimate, so a synced session is
 	// costed exactly like a manually logged one.
@@ -938,6 +940,17 @@ func routes(
 	messagingSvc := messaging.NewService(messagingOpts)
 	nudgeSvc.WithFanout(messagingSvc)
 
+	// The first week (internal/firstweek): started by onboarding, shown as a
+	// day card, and answered from the coach's morning message.
+	firstWeekSvc := firstweek.NewService(firstweek.Options{
+		Repository: firstweek.NewRepository(pool),
+		Goals:      goalSvc,
+		Users:      userSvc,
+		Proofs:     logproofs.For(sleepSvc, activitySvc, liftSvc, foodLogSvc, mindSvc, checkinSvc),
+		Funnel:     funnel,
+		Enabled:    cfg.FirstWeekEnabled,
+	})
+
 	// Answers to the coach's unprompted message: the Today card, the API a
 	// notification button calls, and taps on its Telegram buttons. The
 	// worker sends the messages; this process only applies answers, so no
@@ -947,12 +960,15 @@ func routes(
 		Prefs:      notificationSvc,
 		Lighter:    lighterSvc,
 		Training:   workoutSvc,
+		FirstWeek:  firstWeekSvc,
 		Chats:      conversationSvc,
 		Notifier:   nudgeSvc,
 		Chat:       messagingSvc,
 		Users:      userSvc,
 	})
 	messagingSvc.WithOutreach(outreachSvc)
+	// A Done tap on the card or under a banner answers the coach's message.
+	firstWeekSvc.WithAnswers(outreachSvc)
 	// Resolving "start today's session" asks the plan whether today's day is
 	// really finished; without it any logged walk would close it.
 	nudgeSvc.WithTraining(workoutSvc)
@@ -973,7 +989,8 @@ func routes(
 	// something to say to.
 	onboardingSvc := onboarding.NewService(userSvc, memorySvc, goalSvc).
 		WithCoach(coachSvc, slog.Default()).
-		WithFunnel(funnel)
+		WithFunnel(funnel).
+		WithFirstWeek(firstWeekSvc)
 	onboardingHandler := onboarding.NewHandler(onboardingSvc)
 	onboardingAPI := onboarding.NewAPI(onboardingSvc)
 
@@ -1142,6 +1159,7 @@ func routes(
 			inbox:        inbox.NewAPI(inboxSvc),
 			lighter:      lighterday.NewAPI(lighterSvc),
 			outreach:     outreach.NewAPI(outreachSvc),
+			firstWeek:    firstweek.NewAPI(firstWeekSvc),
 		})
 	})
 
@@ -1275,6 +1293,8 @@ func routes(
 
 			r.Group(func(r chi.Router) {
 				r.Use(onboarding.RequireOnboarded)
+				// A running first week shows a smaller rail; see internal/firstweek.
+				r.Use(firstWeekSvc.SimpleNav)
 
 				dayHandler.Routes(r)
 				caffeine.NewHandler(caffeineSvc).Routes(r)
@@ -1319,6 +1339,7 @@ func routes(
 				inboxHandler.Routes(r)
 				lighterHandler.Routes(r)
 				outreach.NewHandler(outreachSvc).Routes(r)
+				firstweek.NewHandler(firstWeekSvc).Routes(r)
 				careHandler.Routes(r)
 				// The medications card's writes, rendered back through the care page.
 				medications.NewHandler(medicationSvc, careHandler).Routes(r)

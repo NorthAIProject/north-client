@@ -35,4 +35,14 @@ var englishOnboarding = map[string]string{
 	"onboarding.done.read":      "Read what Khepri said",
 	"onboarding.done.talk":      "Talk to Khepri",
 	"onboarding.done.dashboard": "Go to dashboard",
+
+	"onboarding.firstweek.label": "What do you want to change in the next 7 days?",
+	"onboarding.firstweek.hint":  "Khepri runs your first week around it: one small action a day.",
+
+	"onboarding.done.connect.title":    "Connect one source",
+	"onboarding.done.connect.desc":     "Khepri coaches better with something of yours to read. Pick one; you can add more later.",
+	"onboarding.done.connect.strava":   "Connect Strava",
+	"onboarding.done.connect.telegram": "Talk on Telegram",
+	"onboarding.done.connect.upload":   "Upload one document",
+	"onboarding.done.connect.manual":   "I'll log by hand",
 }

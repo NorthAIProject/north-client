@@ -20,6 +20,16 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 	return &Repository{pool: pool, q: healthdb.New(pool)}
 }
 
+// HasFromSource reports whether a provider has ever delivered a reading for
+// this person.
+func (r *Repository) HasFromSource(ctx context.Context, userID uuid.UUID, source string) (bool, error) {
+	ok, err := r.q.HasHealthFromSource(ctx, healthdb.HasHealthFromSourceParams{UserID: userID, Source: source})
+	if err != nil {
+		return false, apperr.Wrap(err, "check health source")
+	}
+	return ok, nil
+}
+
 // Save writes a whole payload in one transaction.
 //
 // The transaction is what makes a partial sync impossible. Validation rejects a

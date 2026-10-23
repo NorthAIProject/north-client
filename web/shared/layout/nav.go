@@ -89,5 +89,8 @@ func BuildNav(ctx context.Context, active string) []NavGroup {
 			}
 		}
 	}
+	if simpleNav(ctx) {
+		return foldUnderMore(ctx, groups)
+	}
 	return groups
 }

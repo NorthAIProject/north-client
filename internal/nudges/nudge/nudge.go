@@ -14,13 +14,17 @@ const (
 	KindFirstWeekCheck    = "first_week_check"
 	KindFirstWeekEvidence = "first_week_evidence"
 	KindFirstWeekReview   = "first_week_review"
-	KindWorkoutToday      = "workout_today"
-	KindFormReady         = "form_ready"
-	KindCoachReply        = "coach_reply"
-	KindBriefingReady     = "briefing_ready"
-	KindPhotoAsk          = "photo_ask"
-	KindPhotoReminder     = "photo_reminder"
-	KindMealReminder      = "meal_reminder"
+	// KindFirstWeekEvening is the evening note on a first-week day whose
+	// action is still open. Replaces the three notes above while a programme
+	// (internal/firstweek) runs.
+	KindFirstWeekEvening = "first_week_evening"
+	KindWorkoutToday     = "workout_today"
+	KindFormReady        = "form_ready"
+	KindCoachReply       = "coach_reply"
+	KindBriefingReady    = "briefing_ready"
+	KindPhotoAsk         = "photo_ask"
+	KindPhotoReminder    = "photo_reminder"
+	KindMealReminder     = "meal_reminder"
 	// KindEveningReflection is the nightly "how did today go", opted into
 	// separately from the accountability nudges.
 	KindEveningReflection = "evening_reflection"
@@ -50,6 +54,9 @@ const (
 	// KindCoachMissed is the coach offering to move a session missed
 	// yesterday, or to let it go. Raised by internal/outreach.
 	KindCoachMissed = "coach_missed"
+	// KindCoachFirstWeek is the first week's morning message, with a Done
+	// button. Raised by internal/outreach.
+	KindCoachFirstWeek = "coach_first_week"
 )
 
 // Nudge is one scheduled accountability note for a person.

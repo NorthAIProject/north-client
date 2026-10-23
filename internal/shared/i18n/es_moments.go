@@ -15,8 +15,10 @@ var spanishMoments = map[string]string{
 	"moments.streak.100.title": "Cien días",
 	"moments.streak.100.body":  "Cien registros. Khepri recuerda cada uno.",
 
-	"moments.goal.title":      "“%[1]s”: conseguido",
-	"moments.goal.body":       "Lo dijiste y lo hiciste. Khepri recordará este.",
-	"moments.milestone.title": "Hito alcanzado",
-	"moments.milestone.body":  "“%[1]s”, de camino a “%[2]s”.",
+	"moments.goal.title":            "“%[1]s”: conseguido",
+	"moments.goal.body":             "Lo dijiste y lo hiciste. Khepri recordará este.",
+	"moments.milestone.title":       "Hito alcanzado",
+	"moments.milestone.body":        "“%[1]s”, de camino a “%[2]s”.",
+	"moments.firstweek.three.title": "3 de 3 días",
+	"moments.firstweek.three.body":  "Tres días, tres veces. Quedan cuatro.",
 }
