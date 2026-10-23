@@ -176,6 +176,13 @@ tasks:
     cmds:
       - go run ./scripts/bodymap -usdz ../north-ios-app/khepri/khepri/Resources/BodyMap.usdz -shell ../north-ios-app/khepri/khepri/Resources/BodyShell.bin -ibl ../north-ios-app/khepri/khepri/Resources/BodyStudio.png
 
+  # The coin medals' preview page. Open it via scripts/medals/preview/serve.py.
+  medals:
+    desc: Regenerate the medals preview page (scripts/medals/preview/index.html)
+    cmds:
+      - GOFLAGS=-mod=mod go tool templ generate ./web/shared/medal
+      - go run ./scripts/medals
+
   build:
     desc: Build all binaries
     cmds:

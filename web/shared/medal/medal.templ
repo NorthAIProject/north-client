@@ -1,0 +1,103 @@
+package medal
+
+import (
+	"fmt"
+	"math"
+	"strings"
+
+	"github.com/NorthAIProject/north-client/docs/medals"
+	"github.com/NorthAIProject/north-client/internal/awards/award"
+)
+
+// Props describes one coin. Size is in CSS pixels.
+type Props struct {
+	BadgeID string
+	Area    award.Area
+	Size    int
+	Locked  bool
+	Monthly bool
+	Label   string
+}
+
+var set = medals.Load()
+
+func gradID(p Props) string {
+	return fmt.Sprintf("m-%s-%t", p.BadgeID, p.Monthly)
+}
+
+func rimColour(p Props) string {
+	if p.Monthly {
+		return set.Monthly.Rim
+	}
+	return set.Areas[string(p.Area)].Rim
+}
+
+func coinStyle(p Props) string {
+	if p.Locked {
+		return "filter:grayscale(1);opacity:.4"
+	}
+	return ""
+}
+
+// scallop is the outline of a coin with a ring of bumps, in a 100x100 box.
+func scallop() string {
+	const n, pts = 20, 200
+	var b strings.Builder
+	for i := 0; i < pts; i++ {
+		a := 2 * math.Pi * float64(i) / pts
+		r := 47 + 2.5*math.Cos(n*a)
+		cmd := "L"
+		if i == 0 {
+			cmd = "M"
+		}
+		fmt.Fprintf(&b, "%s%.2f %.2f", cmd, 50+r*math.Cos(a), 50+r*math.Sin(a))
+	}
+	b.WriteString("Z")
+	return b.String()
+}
+
+var scallopPath = scallop()
+
+// Coin is a round medal: metallic rim, deep area face, white lucide glyph.
+// Monthly medals get a gold scalloped rim; locked ones are greyscale at 40%.
+templ Coin(p Props) {
+	<svg
+		xmlns="http://www.w3.org/2000/svg"
+		viewBox="0 0 100 100"
+		width={ fmt.Sprint(p.Size) }
+		height={ fmt.Sprint(p.Size) }
+		role="img"
+		aria-label={ p.Label }
+		if coinStyle(p) != "" {
+			style={ coinStyle(p) }
+		}
+	>
+		<defs>
+			<linearGradient id={ gradID(p) } x1="0" y1="0" x2="1" y2="1">
+				<stop offset="0" stop-color="#ffffff"></stop>
+				<stop offset=".35" stop-color={ rimColour(p) }></stop>
+				<stop offset=".7" stop-color={ set.Areas[string(p.Area)].Fill }></stop>
+				<stop offset="1" stop-color={ rimColour(p) }></stop>
+			</linearGradient>
+		</defs>
+		if p.Monthly {
+			<path class="scallop" d={ scallopPath } fill={ "url(#" + gradID(p) + ")" }></path>
+		} else {
+			<circle cx="50" cy="50" r="48" fill={ "url(#" + gradID(p) + ")" }></circle>
+		}
+		<circle cx="50" cy="50" r="40" fill={ set.Areas[string(p.Area)].Fill }></circle>
+		<circle cx="50" cy="50" r="40" fill="none" stroke="rgba(0,0,0,0.18)" stroke-width="1.5"></circle>
+		<g
+			transform="translate(27.2 27.2) scale(1.9)"
+			fill="none"
+			stroke="#fff"
+			stroke-width={ fmt.Sprint(set.Stroke) }
+			stroke-linecap="round"
+			stroke-linejoin="round"
+		>
+			for _, d := range set.Glyphs[p.BadgeID] {
+				<path d={ d }></path>
+			}
+		</g>
+	</svg>
+}
