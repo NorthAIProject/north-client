@@ -1,5 +1,29 @@
 {
+ "license": "LICENSE-lucide.txt (lucide glyph paths, ISC with Feather MIT portions)",
  "stroke": 2,
+ "coin": {
+  "viewBox": 100,
+  "rimRadius": 48,
+  "faceRadius": 40,
+  "faceEdge": {
+   "color": "rgba(0,0,0,0.18)",
+   "width": 1.5
+  },
+  "glyph": {
+   "translate": 27.2,
+   "scale": 1.9
+  },
+  "scallop": {
+   "bumps": 20,
+   "baseRadius": 47,
+   "depth": 2.5,
+   "points": 200
+  },
+  "locked": {
+   "opacity": 0.4,
+   "grayscale": 1
+  }
+ },
  "areas": {
   "training": {
    "fill": "#C2410C",
