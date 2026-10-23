@@ -127,8 +127,9 @@ var englishSettings = map[string]string{
 	"settings.delete.keep":    "Keep my account",
 	"settings.delete.go":      "Delete everything",
 
-	"settings.about.label": "About",
-	"settings.about.body":  "%[1]s is an operating system for personal growth. It remembers what you tell it, so you only have to explain once.",
+	"settings.about.label":   "About",
+	"settings.about.body":    "%[1]s is an operating system for personal growth. It remembers what you tell it, so you only have to explain once.",
+	"settings.about.discord": "Join us on Discord",
 
 	"settings.notif.photo.title": "Photo check-ins",
 

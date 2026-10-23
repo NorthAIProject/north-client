@@ -152,6 +152,7 @@ var portugueseEuropeanLanding = map[string]string{
 	"land.footer.privacy": "Privacidade",
 	"land.footer.terms":   "Termos",
 	"land.footer.source":  "Código",
+	"land.footer.discord": "Junta-te a nós no Discord",
 
 	"land.waypoint.week3":  "Semana 3",
 	"land.waypoint.week12": "Semana 12",

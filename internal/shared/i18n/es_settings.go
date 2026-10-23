@@ -127,8 +127,9 @@ var spanishSettings = map[string]string{
 	"settings.delete.keep":    "Mantener mi cuenta",
 	"settings.delete.go":      "Eliminar todo",
 
-	"settings.about.label": "Acerca de",
-	"settings.about.body":  "%[1]s es un sistema operativo para el crecimiento personal. Recuerda lo que le cuentas, así que solo tienes que explicarlo una vez.",
+	"settings.about.label":   "Acerca de",
+	"settings.about.body":    "%[1]s es un sistema operativo para el crecimiento personal. Recuerda lo que le cuentas, así que solo tienes que explicarlo una vez.",
+	"settings.about.discord": "Únete a nosotros en Discord",
 
 	"settings.notif.photo.title": "Registros con foto",
 
