@@ -26,6 +26,10 @@ const (
 
 // Private is whether a badge in the area is for its owner's eyes alone: what
 // someone eats, drinks, sleeps, thinks or weighs is not a thing to show off.
+//
+// The feed and kudos filter on the row's stored private flag, the profile and
+// awards pages on this. Never move a badge across the line: add a new id, or
+// the stored rows and the catalogue disagree.
 func (a Area) Private() bool {
 	switch a {
 	case Nutrition, Hydration, Sleep, Mind, Body:

@@ -32,7 +32,7 @@ WHERE a.occurred_at < $2
                          OR (b.blocker_id = a.user_id AND b.blocked_id = $1))
     )
   )
-ORDER BY a.occurred_at DESC, a.user_id, a.kind, a.source_key
+ORDER BY a.occurred_at DESC, a.user_id, a.kind, a.private, a.source_key
 LIMIT $3
 `
 
@@ -62,7 +62,9 @@ type FeedRow struct {
 // categories they share, minus anybody blocked either way. Newest first,
 // before a cursor.
 // Ties break by person, then source key, so the badges of one moment sit side
-// by side and in a stable order for the card they collapse into.
+// by side and in a stable order for the card they collapse into. Shared rows
+// come before private ones, so the owner's card leads with the badge their
+// followers see (and cheer).
 func (q *Queries) Feed(ctx context.Context, arg FeedParams) ([]FeedRow, error) {
 	rows, err := q.db.Query(ctx, feed, arg.Viewer, arg.Before, arg.Lim)
 	if err != nil {

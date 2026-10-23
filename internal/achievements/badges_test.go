@@ -183,3 +183,55 @@ func TestRecapHighlightsAreLocalisedAndFolded(t *testing.T) {
 		t.Fatalf("title = %q, want the Spanish %q", got[0].Title, want)
 	}
 }
+
+// A moment that mixes a private and a shared badge reads as one card on the
+// owner's feed that leads with the shared badge, and carries the cheers any of
+// them got.
+func TestMixedMomentCardLeadsSharedAndSumsKudos(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	ach := achievements.NewService(pool)
+	aw := awards.NewService(pool)
+	soc := social.NewService(social.NewRepository(pool))
+	ana, leo := person(t, pool, "mx-ana@north.test", "Ana"), person(t, pool, "mx-leo@north.test", "Leo")
+	follow(t, soc, leo, ana, "mxana")
+	at := time.Now().Add(-time.Hour)
+	aw.Grant(ctx, ana.ID, at, "water_week") // private; sorts before workouts_1
+	aw.Grant(ctx, ana.ID, at, "workouts_1")
+	seen := badgeFeed(t, ach, leo.ID)
+	if len(seen) != 1 || seen[0].BadgeID != "workouts_1" {
+		t.Fatalf("follower feed = %+v", seen)
+	}
+	if err := ach.GiveKudos(ctx, leo.ID, seen[0].ID, "Leo"); err != nil {
+		t.Fatal(err)
+	}
+	own := badgeFeed(t, ach, ana.ID)
+	if len(own) != 1 {
+		t.Fatalf("owner feed = %d cards, want 1", len(own))
+	}
+	if own[0].BadgeID != "workouts_1" || own[0].Kudos != 1 {
+		t.Fatalf("owner card = badge %q kudos %d, want workouts_1 and 1", own[0].BadgeID, own[0].Kudos)
+	}
+	if len(own[0].Badges) != 2 {
+		t.Fatalf("owner card badges = %v, want both", own[0].Badges)
+	}
+}
+
+// A stored badge whose id the catalogue does not know is not shown at all.
+func TestUnknownBadgeRowIsDropped(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	ach := achievements.NewService(pool)
+	soc := social.NewService(social.NewRepository(pool))
+	ana, leo := person(t, pool, "uk-ana@north.test", "Ana"), person(t, pool, "uk-leo@north.test", "Leo")
+	follow(t, soc, leo, ana, "ukana")
+	if _, err := pool.Exec(ctx, `INSERT INTO achievements (user_id, category, kind, title, detail, occurred_at, source_key)
+		VALUES ($1, 'awards', 'badge_earned', 'Retired', '', now() - interval '1 hour', 'retired_badge_id')`, ana.ID); err != nil {
+		t.Fatal(err)
+	}
+	for _, v := range []uuid.UUID{ana.ID, leo.ID} {
+		if got := badgeFeed(t, ach, v); len(got) != 0 {
+			t.Fatalf("feed of %s = %+v, want the unknown badge dropped", v, got)
+		}
+	}
+}

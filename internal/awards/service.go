@@ -118,6 +118,11 @@ func (s *Service) Progress(ctx context.Context, userID uuid.UUID) (map[string]in
 			}
 			continue
 		}
+		if held[b.ID] {
+			// Done: nothing to hint, and the count may be a costly walk.
+			out[b.ID] = b.Target
+			continue
+		}
 		n, err := c.progressOf(b)
 		if err != nil {
 			return nil, err

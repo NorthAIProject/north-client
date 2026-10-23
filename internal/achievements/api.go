@@ -119,6 +119,10 @@ func projectFeed(ctx context.Context, items []Item) Feed {
 			Category: it.Category, Kind: it.Kind, Title: it.Title, Detail: it.Detail, OccurredAt: it.OccurredAt,
 			Kudos: it.Kudos, Kudoed: it.Kudoed, Mine: it.Mine,
 		}
+		// The stored category is not on the closed wire enum, whatever the row.
+		if it.Category == achievement.CategoryAwards {
+			fi.Category = achievement.CategoryGoals
+		}
 		if it.BadgeID != "" {
 			fi.Category = achievement.CategoryGoals
 			fi.BadgeID = it.BadgeID
