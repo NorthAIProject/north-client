@@ -47,6 +47,8 @@ web/assets/css/sources.generated.css
 # Docs and infra config. Deployment manifests live in LuminaVaultInfra;
 # charts/ and terraform/ here hold only a .gitkeep.
 docs/
+# Except the medal catalog: web/shared/medal embeds it (docs/medals/medals.go).
+!docs/medals/
 charts/
 terraform/
 *.md
