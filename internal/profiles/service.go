@@ -15,6 +15,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/achievements"
 	"github.com/NorthAIProject/north-client/internal/activity"
+	"github.com/NorthAIProject/north-client/internal/awards"
 	"github.com/NorthAIProject/north-client/internal/lifts/lift"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/social"
@@ -32,6 +33,7 @@ const (
 // People opens a profile; an unknown handle and a block are the same not found.
 type People interface {
 	Profile(ctx context.Context, viewerID uuid.UUID, handle string) (social.Profile, error)
+	HandleOf(ctx context.Context, userID uuid.UUID) (string, error)
 }
 
 // Sharing is the owner's switches.
@@ -55,8 +57,13 @@ type Cards interface {
 	CardsFor(ctx context.Context, sessionIDs []uuid.UUID) (map[uuid.UUID]lift.Card, error)
 }
 
+// Badges reads the badges a person holds, whoever asks.
+type Badges interface {
+	Earned(ctx context.Context, userID uuid.UUID) ([]awards.Earned, error)
+}
+
 // Shares is what this viewer may see.
-type Shares struct{ Training, XP bool }
+type Shares struct{ Training, XP, Awards bool }
 
 // View is one profile as one viewer sees it.
 type View struct {
@@ -65,6 +72,9 @@ type View struct {
 	Level    *xp.Level   // nil unless Shares.XP
 	Workouts *int        // completed count; nil unless Shares.Training
 	Recent   []lift.Card // newest 5; nil unless Shares.Training
+	// Awards are the badges held, oldest first; nil unless Shares.Awards.
+	// Another person's never include a private one.
+	Awards []awards.Earned
 }
 
 // Page is one page of a person's workouts, newest first.
@@ -81,11 +91,15 @@ type Service struct {
 	levels   Levels
 	sessions Sessions
 	cards    Cards
+	badges   Badges
 }
 
 func NewService(people People, sharing Sharing, levels Levels, sessions Sessions, cards Cards) *Service {
 	return &Service{people: people, sharing: sharing, levels: levels, sessions: sessions, cards: cards}
 }
+
+// WithAwards lets the profile show badges.
+func (s *Service) WithAwards(b Badges) *Service { s.badges = b; return s }
 
 // open resolves the handle for the viewer and works out what they may see.
 // Nothing about the owner's data is read before this returns.
@@ -95,13 +109,28 @@ func (s *Service) open(ctx context.Context, viewer users.User, handle string) (s
 		return social.Profile{}, Shares{}, err
 	}
 	if p.Relationship.Self {
-		return p, Shares{Training: true, XP: true}, nil
+		return p, Shares{Training: true, XP: true, Awards: true}, nil
 	}
 	sh, err := s.sharing.Sharing(ctx, p.ID)
 	if err != nil {
 		return social.Profile{}, Shares{}, err
 	}
-	return p, Shares{Training: sh.Training, XP: sh.XP}, nil
+	return p, Shares{Training: sh.Training, XP: sh.XP, Awards: sh.Awards}, nil
+}
+
+// Person is who the awards page is about and whether the viewer may see their
+// badges. A block or an unknown handle is ErrNotFound, as for the profile.
+func (s *Service) Person(ctx context.Context, viewer users.User, handle string) (awards.Person, error) {
+	p, shares, err := s.open(ctx, viewer, handle)
+	if err != nil {
+		return awards.Person{}, err
+	}
+	return awards.Person{ID: p.ID, Name: p.DisplayName, Handle: p.Handle, Self: p.Relationship.Self, Shared: shares.Awards}, nil
+}
+
+// HandleOf is the person's handle, empty when they have none.
+func (s *Service) HandleOf(ctx context.Context, userID uuid.UUID) (string, error) {
+	return s.people.HandleOf(ctx, userID)
 }
 
 // View is the profile for handle as viewer sees it. A block or an unknown
@@ -118,6 +147,18 @@ func (s *Service) View(ctx context.Context, viewer users.User, handle string, no
 			return View{}, err
 		}
 		v.Level = &l
+	}
+	if shares.Awards && s.badges != nil {
+		held, err := s.badges.Earned(ctx, p.ID)
+		if err != nil {
+			return View{}, err
+		}
+		for _, e := range held {
+			// Only the owner sees a private badge, whatever the switch.
+			if p.Relationship.Self || !e.Badge.Area.Private() {
+				v.Awards = append(v.Awards, e)
+			}
+		}
 	}
 	if shares.Training {
 		n, err := s.sessions.CountCompleted(ctx, p.ID)

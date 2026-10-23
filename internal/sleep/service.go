@@ -7,6 +7,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+
+	"github.com/NorthAIProject/north-client/internal/awards/award"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -21,7 +24,18 @@ const contextNights = 7
 var clockPattern = regexp.MustCompile(`^([01][0-9]|2[0-3]):[0-5][0-9]$`)
 
 type Service struct {
-	repo *Repository
+	repo   *Repository
+	awards Awards
+}
+
+// Awards checks a person's badges after a write. awards.Service satisfies it.
+type Awards interface {
+	Check(ctx context.Context, userID uuid.UUID, at time.Time, areas ...award.Area)
+}
+
+func (s *Service) WithAwards(a Awards) *Service {
+	s.awards = a
+	return s
 }
 
 func NewService(repo *Repository) *Service {
@@ -90,13 +104,17 @@ func (s *Service) LogFor(ctx context.Context, user users.User, date time.Time, i
 		return Log{}, err
 	}
 
-	return s.repo.Upsert(ctx, user.ID, date, Log{
+	night, err := s.repo.Upsert(ctx, user.ID, date, Log{
 		DurationMinutes: clean.DurationMinutes,
 		Quality:         clean.Quality,
 		Bedtime:         clean.Bedtime,
 		WakeTime:        clean.WakeTime,
 		Notes:           clean.Notes,
 	})
+	if err == nil && s.awards != nil {
+		s.awards.Check(ctx, user.ID, time.Now(), award.Sleep)
+	}
+	return night, err
 }
 
 // Today returns last night's entry, or false when nothing is logged yet.

@@ -3926,6 +3926,54 @@ paths:
                 $ref: '#/components/schemas/Sharing'
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /awards:
+    get:
+      operationId: getAwards
+      summary: Your badges, earned and still to earn
+      description: Names and descriptions come in the request's language. Locked badges carry `progress`.
+      tags: [awards]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Awards'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /awards/unseen:
+    get:
+      operationId: getUnseenAwards
+      summary: Badges earned but not yet celebrated on any device
+      tags: [awards]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnseenAwards'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /awards/{badgeID}/seen:
+    parameters:
+      - name: badgeID
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      operationId: markAwardSeen
+      summary: Say a badge was celebrated
+      description: Repeating it is fine and still 204. An unknown badge, or one you have not earned, is 404.
+      tags: [awards]
+      responses:
+        '204':
+          description: Marked
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /achievements/{achievementID}/kudos:
     parameters:
       - name: achievementID
@@ -8215,6 +8263,61 @@ components:
           type: boolean
         workout:
           $ref: '#/components/schemas/WorkoutCard'
+        badgeId:
+          type: string
+          description: On a badge_earned item (category goals), the badge it is about.
+        area:
+          type: string
+          description: On a badge_earned item, the badge's area.
+        badges:
+          type: array
+          description: On a badge_earned item, every badge earned in the same moment, this one first.
+          items:
+            $ref: '#/components/schemas/AwardView'
+    AwardView:
+      type: object
+      required: [id, area, name, description, target]
+      properties:
+        id:
+          type: string
+        area:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        earnedAt:
+          type: string
+          format: date-time
+          description: Absent on a badge still to earn.
+        progress:
+          type: integer
+          description: Count toward `target`, on a badge still to earn.
+        target:
+          type: integer
+        rarity:
+          type: string
+          description: Share of active people who hold it, such as "12%" or "<1%"; absent when unknown.
+    Awards:
+      type: object
+      required: [earned, locked]
+      properties:
+        earned:
+          type: array
+          items:
+            $ref: '#/components/schemas/AwardView'
+        locked:
+          type: array
+          items:
+            $ref: '#/components/schemas/AwardView'
+    UnseenAwards:
+      type: object
+      required: [awards]
+      properties:
+        awards:
+          type: array
+          items:
+            $ref: '#/components/schemas/AwardView'
     WorkoutCard:
       type: object
       description: A finished workout for someone else to read. Carries no calories, heart rate or body numbers.
@@ -8292,6 +8395,13 @@ components:
           description: >-
             XP and level, which puts the person on friends' leaderboards. Always
             in responses; a save that leaves it out keeps it as it was.
+        awards:
+          type: boolean
+          description: >-
+            The badges the person has earned, except the private ones
+            (nutrition, hydration, sleep, mind, body), which are never shared.
+            On unless switched off. Always in responses; a save that leaves it
+            out keeps it as it was.
     LevelView:
       type: object
       required: [number, title, floor]
@@ -8514,6 +8624,13 @@ components:
                   type: boolean
                 xp:
                   type: boolean
+                awards:
+                  type: boolean
+            awards:
+              type: array
+              description: Badges held, oldest first. For anyone but you, never private ones, and absent when the person keeps awards to themselves.
+              items:
+                $ref: '#/components/schemas/AwardView'
             level:
               $ref: '#/components/schemas/LevelView'
             workouts:

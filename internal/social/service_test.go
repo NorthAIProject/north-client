@@ -8,10 +8,12 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/NorthAIProject/north-client/internal/awards/award"
 	"github.com/NorthAIProject/north-client/internal/shared/database/testdb"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/social"
@@ -295,5 +297,35 @@ func TestMatchContacts(t *testing.T) {
 
 	if _, err := svc.MatchContacts(ctx, me.ID, []string{"ana@north.test"}, nil); !apperr.Is(err, apperr.ErrValidation) {
 		t.Fatalf("a raw email was accepted: %v", err)
+	}
+}
+
+type checks struct {
+	users []uuid.UUID
+	areas [][]award.Area
+}
+
+func (c *checks) Check(_ context.Context, id uuid.UUID, _ time.Time, areas ...award.Area) {
+	c.users = append(c.users, id)
+	c.areas = append(c.areas, areas)
+}
+
+func TestFollowAwardsFollowee(t *testing.T) {
+	svc, _, _, pool := fixture(t)
+	ctx := context.Background()
+	rec := &checks{}
+	svc.WithAwards(rec)
+	ana := person(t, pool, "ana@north.test", "Ana")
+	joao := person(t, pool, "joao@north.test", "João")
+	if _, err := svc.SetHandle(ctx, joao.ID, "joao"); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ {
+		if _, err := svc.Follow(ctx, ana.ID, "joao"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(rec.users) != 1 || rec.users[0] != joao.ID || rec.areas[0][0] != award.Social {
+		t.Fatalf("checks = %v %v, want one Social check for the followee", rec.users, rec.areas)
 	}
 }

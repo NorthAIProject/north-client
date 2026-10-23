@@ -147,7 +147,43 @@ templ appShell(title string, user users.User, nav []NavGroup, wide bool) {
 		@collapsible.Script()
 		@dialog.Script()
 		@PaletteScripts()
+		@awardsHost()
 	}
+}
+
+// awardsHost is where the badge celebration lands. It starts empty and asks
+// for unseen badges on page load, which also covers plain form posts that
+// redirect, and again whenever awards-check fires on body. The endpoint
+// answers 204 when there is nothing to show, which htmx 4 does not swap, so
+// the host stays empty; otherwise the answer is a closed dialog, which the
+// host's after:swap handler opens with templUI's own window.tui.dialog.open.
+// htmx 4 still fires after:swap for an unswapped 204, so the handler marks the
+// dialog it opened (data-shown) and never opens the same one twice: without
+// that, every later check would reopen what the person just dismissed.
+//
+// Nothing sets HX-Trigger per handler: a handler's header can be overwritten
+// by another, and is lost on HX-Redirect. Instead the script below fires
+// awards-check after every successful non-GET htmx request. The event is
+// htmx:after:request (htmx 4 renamed htmx:afterRequest), with the request and
+// response under event.detail.ctx. It holds back while the dialog is open so a
+// request made behind it cannot swap the dialog away mid-read; closing the
+// dialog posts its badges as seen, and that request fires the check again.
+// The id is web/awards.DialogID, repeated here because awards imports layout.
+templ awardsHost() {
+	<div id="awards-host" hx-get="/app/awards/unseen" hx-trigger="load, awards-check from:body" hx-target="this" hx-swap="innerHTML" hx-on::after:swap="const d = this.querySelector('[data-tui-dialog]:not([data-shown])'); if (d) { d.dataset.shown = '1'; window.tui.dialog.open(d) }"></div>
+	<script>
+		if (!window.__awardsCheck) {
+			window.__awardsCheck = true;
+			document.addEventListener("htmx:after:request", function (e) {
+				var ctx = e.detail && e.detail.ctx;
+				if (!ctx || !ctx.request || !ctx.response) return;
+				if (String(ctx.request.method || "").toUpperCase() === "GET") return;
+				if (ctx.response.status >= 400) return;
+				if (document.querySelector("dialog#awards-unlock-dialog[open]")) return;
+				document.body.dispatchEvent(new Event("awards-check"));
+			});
+		}
+	</script>
 }
 
 templ navGroup(group NavGroup) {

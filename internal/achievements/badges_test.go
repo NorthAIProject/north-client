@@ -1,0 +1,237 @@
+package achievements_test
+
+import (
+	"context"
+	"errors"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+
+	"github.com/NorthAIProject/north-client/internal/achievements"
+	"github.com/NorthAIProject/north-client/internal/awards"
+	"github.com/NorthAIProject/north-client/internal/shared/database/testdb"
+	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
+	"github.com/NorthAIProject/north-client/internal/social"
+)
+
+func badgeFeed(t *testing.T, ach *achievements.Service, viewer uuid.UUID) []achievements.Item {
+	t.Helper()
+	got, err := ach.Feed(context.Background(), viewer, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return got
+}
+
+func TestPrivateBadgeNeverLeavesOwner(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	ach := achievements.NewService(pool)
+	aw := awards.NewService(pool)
+	soc := social.NewService(social.NewRepository(pool))
+	ana, leo := person(t, pool, "pb-ana@north.test", "Ana"), person(t, pool, "pb-leo@north.test", "Leo")
+	follow(t, soc, leo, ana, "pbana")
+	at := time.Now().Add(-time.Hour)
+	aw.Grant(ctx, ana.ID, at, "water_week") // hydration: private
+	aw.Grant(ctx, ana.ID, at.Add(-time.Hour), "workouts_1")
+
+	if got := badgeFeed(t, ach, leo.ID); len(got) != 1 || got[0].BadgeID != "workouts_1" {
+		t.Fatalf("follower feed = %+v, want only the public badge", got)
+	}
+	own := badgeFeed(t, ach, ana.ID)
+	if len(own) != 2 {
+		t.Fatalf("own feed = %d items, want both", len(own))
+	}
+	var priv uuid.UUID
+	for _, it := range own {
+		if it.BadgeID == "water_week" {
+			priv = it.ID
+			if !it.Private {
+				t.Fatal("private flag not carried")
+			}
+		}
+	}
+	if err := ach.GiveKudos(ctx, leo.ID, priv, "Leo"); !errors.Is(err, apperr.ErrNotFound) {
+		t.Fatalf("kudos on a private badge = %v, want not found", err)
+	}
+	hl, err := ach.OwnBetween(ctx, ana.ID, at.Add(-3*time.Hour), time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hl) != 1 || hl[0].Title == "" {
+		t.Fatalf("recap highlights = %+v, want only the public badge", hl)
+	}
+}
+
+func TestOneCardPerMoment(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	ach := achievements.NewService(pool)
+	aw := awards.NewService(pool)
+	ana := person(t, pool, "om-ana@north.test", "Ana")
+	at := time.Now().Add(-time.Hour)
+	for _, id := range []string{"workouts_1", "pr_1", "century"} {
+		aw.Grant(ctx, ana.ID, at, id)
+	}
+	aw.Grant(ctx, ana.ID, at.Add(-time.Hour), "workouts_10")
+	got := badgeFeed(t, ach, ana.ID)
+	if len(got) != 2 {
+		t.Fatalf("items = %d, want 2", len(got))
+	}
+	if len(got[0].Badges) != 3 || got[0].Badges[0] != got[0].BadgeID {
+		t.Fatalf("badges = %v first %s", got[0].Badges, got[0].BadgeID)
+	}
+	if got[0].Title == "" || got[0].Title == got[0].BadgeID {
+		t.Fatalf("title = %q, want catalogue copy", got[0].Title)
+	}
+}
+
+func TestStreakBadgeHidesStreakReached(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	ach := achievements.NewService(pool)
+	aw := awards.NewService(pool)
+	ana := person(t, pool, "sb-ana@north.test", "Ana")
+	at := time.Now().Add(-time.Minute)
+	ach.StreakReached(ctx, ana.ID, 7, "2026-10-22", at)
+	if got := badgeFeed(t, ach, ana.ID); len(got) != 1 {
+		t.Fatalf("streak mark alone = %d items", len(got))
+	}
+	aw.Grant(ctx, ana.ID, at, "streak_7")
+	got := badgeFeed(t, ach, ana.ID)
+	if len(got) != 1 || got[0].BadgeID != "streak_7" {
+		t.Fatalf("items = %+v, want only the badge", got)
+	}
+}
+
+func TestAwardsSwitchOffHidesBadges(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	ach := achievements.NewService(pool)
+	aw := awards.NewService(pool)
+	soc := social.NewService(social.NewRepository(pool))
+	ana, leo := person(t, pool, "sw-ana@north.test", "Ana"), person(t, pool, "sw-leo@north.test", "Leo")
+	follow(t, soc, leo, ana, "swana")
+	aw.Grant(ctx, ana.ID, time.Now().Add(-time.Hour), "workouts_1")
+	if len(badgeFeed(t, ach, leo.ID)) != 1 {
+		t.Fatal("badge hidden while the switch is on")
+	}
+	if _, err := ach.SetSharing(ctx, ana.ID, achievements.Sharing{Training: true, Streaks: true, Goals: true}); err != nil {
+		t.Fatal(err)
+	}
+	if got := badgeFeed(t, ach, leo.ID); len(got) != 0 {
+		t.Fatalf("follower sees %+v with awards off", got)
+	}
+	if len(badgeFeed(t, ach, ana.ID)) != 1 {
+		t.Fatal("owner lost own badge")
+	}
+}
+
+func TestMomentIsNotSplitAcrossPages(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	ach := achievements.NewService(pool)
+	aw := awards.NewService(pool)
+	ana := person(t, pool, "pg-ana@north.test", "Ana")
+	base := time.Now().Add(-time.Hour).Truncate(time.Microsecond)
+	for i := 0; i < 28; i++ {
+		ach.GoalCompleted(ctx, ana.ID, uuid.New(), "g", base.Add(time.Duration(i+1)*time.Minute))
+	}
+	for _, id := range []string{"workouts_1", "pr_1", "century"} {
+		aw.Grant(ctx, ana.ID, base, id)
+	}
+	first, next, err := ach.FeedPage(ctx, ana.ID, time.Time{})
+	if err != nil || next == nil {
+		t.Fatalf("page 1: %v next=%v", err, next)
+	}
+	second, _, err := ach.FeedPage(ctx, ana.ID, *next)
+	if err != nil {
+		t.Fatal(err)
+	}
+	badgeCards, badges := 0, 0
+	for _, it := range append(first, second...) {
+		if it.BadgeID != "" {
+			badgeCards++
+			badges += len(it.Badges)
+		}
+	}
+	if badgeCards != 1 || badges != 3 || len(first) != 28 {
+		t.Fatalf("cards=%d badges=%d first=%d, want 1 card of 3 after 28 items", badgeCards, badges, len(first))
+	}
+}
+
+func TestRecapHighlightsAreLocalisedAndFolded(t *testing.T) {
+	pool := testdb.New(t)
+	ach := achievements.NewService(pool)
+	aw := awards.NewService(pool)
+	ana := person(t, pool, "hl-ana@north.test", "Ana")
+	at := time.Now().Add(-time.Hour)
+	aw.Grant(context.Background(), ana.ID, at, "workouts_1")
+	aw.Grant(context.Background(), ana.ID, at, "pr_1")
+	ctx := i18n.WithLocale(context.Background(), "es")
+	got, err := ach.OwnBetween(ctx, ana.ID, at.Add(-time.Hour), time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || len(got[0].Badges) != 2 {
+		t.Fatalf("highlights = %+v, want one folded card", got)
+	}
+	if want := i18n.Translate("es", "awards.badge."+got[0].BadgeID+".name"); got[0].Title != want ||
+		want == i18n.Translate("en", "awards.badge."+got[0].BadgeID+".name") {
+		t.Fatalf("title = %q, want the Spanish %q", got[0].Title, want)
+	}
+}
+
+// A moment that mixes a private and a shared badge reads as one card on the
+// owner's feed that leads with the shared badge, and carries the cheers any of
+// them got.
+func TestMixedMomentCardLeadsSharedAndSumsKudos(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	ach := achievements.NewService(pool)
+	aw := awards.NewService(pool)
+	soc := social.NewService(social.NewRepository(pool))
+	ana, leo := person(t, pool, "mx-ana@north.test", "Ana"), person(t, pool, "mx-leo@north.test", "Leo")
+	follow(t, soc, leo, ana, "mxana")
+	at := time.Now().Add(-time.Hour)
+	aw.Grant(ctx, ana.ID, at, "water_week") // private; sorts before workouts_1
+	aw.Grant(ctx, ana.ID, at, "workouts_1")
+	seen := badgeFeed(t, ach, leo.ID)
+	if len(seen) != 1 || seen[0].BadgeID != "workouts_1" {
+		t.Fatalf("follower feed = %+v", seen)
+	}
+	if err := ach.GiveKudos(ctx, leo.ID, seen[0].ID, "Leo"); err != nil {
+		t.Fatal(err)
+	}
+	own := badgeFeed(t, ach, ana.ID)
+	if len(own) != 1 {
+		t.Fatalf("owner feed = %d cards, want 1", len(own))
+	}
+	if own[0].BadgeID != "workouts_1" || own[0].Kudos != 1 {
+		t.Fatalf("owner card = badge %q kudos %d, want workouts_1 and 1", own[0].BadgeID, own[0].Kudos)
+	}
+	if len(own[0].Badges) != 2 {
+		t.Fatalf("owner card badges = %v, want both", own[0].Badges)
+	}
+}
+
+// A stored badge whose id the catalogue does not know is not shown at all.
+func TestUnknownBadgeRowIsDropped(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	ach := achievements.NewService(pool)
+	soc := social.NewService(social.NewRepository(pool))
+	ana, leo := person(t, pool, "uk-ana@north.test", "Ana"), person(t, pool, "uk-leo@north.test", "Leo")
+	follow(t, soc, leo, ana, "ukana")
+	if _, err := pool.Exec(ctx, `INSERT INTO achievements (user_id, category, kind, title, detail, occurred_at, source_key)
+		VALUES ($1, 'awards', 'badge_earned', 'Retired', '', now() - interval '1 hour', 'retired_badge_id')`, ana.ID); err != nil {
+		t.Fatal(err)
+	}
+	for _, v := range []uuid.UUID{ana.ID, leo.ID} {
+		if got := badgeFeed(t, ach, v); len(got) != 0 {
+			t.Fatalf("feed of %s = %+v, want the unknown badge dropped", v, got)
+		}
+	}
+}

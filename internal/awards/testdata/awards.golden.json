@@ -1,0 +1,23 @@
+{
+  "earned": [
+    {
+      "id": "workouts_1",
+      "area": "training",
+      "name": "First Workout",
+      "description": "Finish your first workout.",
+      "earnedAt": "2026-10-22T09:00:00Z",
+      "target": 1,
+      "rarity": "\u003c1%"
+    }
+  ],
+  "locked": [
+    {
+      "id": "streak_30",
+      "area": "consistency",
+      "name": "30-Day Streak",
+      "description": "Check in 30 days in a row.",
+      "progress": 12,
+      "target": 30
+    }
+  ]
+}

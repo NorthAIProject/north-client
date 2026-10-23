@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/NorthAIProject/north-client/internal/awards/award"
 	"github.com/NorthAIProject/north-client/internal/checkins"
 	"github.com/NorthAIProject/north-client/internal/crews"
 	"github.com/NorthAIProject/north-client/internal/crews/crew"
@@ -138,5 +139,53 @@ func TestChallengeSweeperSkipsAChallengeSetAfterTheWeek(t *testing.T) {
 	}
 	if len(rec.got) != 0 {
 		t.Fatalf("recorded %+v for a challenge that did not exist that week", rec.got)
+	}
+}
+
+type socialChecks struct {
+	users []uuid.UUID
+	areas [][]award.Area
+}
+
+func (c *socialChecks) Check(_ context.Context, id uuid.UUID, _ time.Time, areas ...award.Area) {
+	c.users = append(c.users, id)
+	c.areas = append(c.areas, areas)
+}
+
+// A met challenge is recorded and then checked for crew badges; a quiet
+// Tuesday checks nothing.
+func TestChallengeSweeperChecksSocialBadges(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	cs := checkins.NewService(checkins.NewRepository(pool), nil)
+	svc := crews.NewService(pool, crews.CheckInsFrom(cs), nil)
+	ana := person(t, pool, "ana@north.test", "Ana")
+	c, err := svc.Create(ctx, ana.ID, "Runners")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = svc.SetChallenge(ctx, c.ID, ana.ID, &crews.Challenge{Kind: crew.ChallengeCheckIns, Target: 3}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Exec(ctx, `UPDATE crew_challenges SET created_at = $2 WHERE crew_id = $1`,
+		c.ID, time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range []int{0, 2, 6} {
+		checkIn(t, pool, ana, time.Date(2026, 9, 28+d, 0, 0, 0, 0, time.UTC))
+	}
+	rec := &socialChecks{}
+	sweeper := crews.NewChallengeSweeper(accounts{ana}, svc, &recorder{}, nil).WithAwards(rec)
+	if err = sweeper.WithClock(func() time.Time { return monday.AddDate(0, 0, 1) }).HandleSweep(ctx, nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(rec.users) != 0 {
+		t.Fatalf("Tuesday checked %v", rec.users)
+	}
+	if err = sweeper.WithClock(func() time.Time { return monday }).HandleSweep(ctx, nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(rec.users) != 1 || rec.users[0] != ana.ID || rec.areas[0][0] != award.Social {
+		t.Fatalf("checks = %v %v", rec.users, rec.areas)
 	}
 }

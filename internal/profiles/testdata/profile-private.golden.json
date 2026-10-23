@@ -11,6 +11,7 @@
   },
   "shares": {
     "training": false,
-    "xp": false
+    "xp": false,
+    "awards": false
   }
 }

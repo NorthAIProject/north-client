@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/NorthAIProject/north-client/internal/awards/award"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 )
@@ -20,6 +21,7 @@ const contextGoals = 8
 type Service struct {
 	repo         *Repository
 	achievements Achievements
+	awards       Awards
 }
 
 // Achievements records goals and milestones completed, for friends to see
@@ -27,6 +29,16 @@ type Service struct {
 type Achievements interface {
 	GoalCompleted(ctx context.Context, userID, goalID uuid.UUID, title string, at time.Time)
 	MilestoneReached(ctx context.Context, userID, milestoneID uuid.UUID, title string, at time.Time)
+}
+
+// Awards checks a person's badges after a write. awards.Service satisfies it.
+type Awards interface {
+	Check(ctx context.Context, userID uuid.UUID, at time.Time, areas ...award.Area)
+}
+
+func (s *Service) WithAwards(a Awards) *Service {
+	s.awards = a
+	return s
 }
 
 func (s *Service) WithAchievements(a Achievements) *Service {
@@ -134,6 +146,9 @@ func (s *Service) SetStatus(ctx context.Context, id, userID uuid.UUID, status st
 	g, err := s.repo.SetStatus(ctx, id, userID, status)
 	if err == nil && status == StatusAchieved && s.achievements != nil {
 		s.achievements.GoalCompleted(ctx, userID, g.ID, g.Title, time.Now())
+	}
+	if err == nil && status == StatusAchieved && s.awards != nil {
+		s.awards.Check(ctx, userID, time.Now(), award.Goals)
 	}
 	return g, err
 }
@@ -249,6 +264,9 @@ func (s *Service) SetMilestoneStatus(ctx context.Context, id, userID uuid.UUID, 
 	m, err := s.repo.SetMilestoneStatus(ctx, id, userID, status)
 	if err == nil && status == MilestoneCompleted && s.achievements != nil {
 		s.achievements.MilestoneReached(ctx, userID, m.ID, m.Title, time.Now())
+	}
+	if err == nil && status == MilestoneCompleted && s.awards != nil {
+		s.awards.Check(ctx, userID, time.Now(), award.Goals)
 	}
 	return m, err
 }

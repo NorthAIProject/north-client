@@ -28,6 +28,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/ai/providers"
 	"github.com/NorthAIProject/north-client/internal/analytics"
 	"github.com/NorthAIProject/north-client/internal/apns"
+	"github.com/NorthAIProject/north-client/internal/awards"
 	"github.com/NorthAIProject/north-client/internal/biometrics"
 	"github.com/NorthAIProject/north-client/internal/caffeine"
 	"github.com/NorthAIProject/north-client/internal/calculator"
@@ -189,7 +190,10 @@ func run() error {
 	biometricSvc := biometrics.NewService(biometrics.NewRepository(pool))
 	// Imported workouts and check-ins from Telegram are achievements too.
 	achievementSvc := achievements.NewService(pool)
-	activitySvc := activity.NewService(activity.NewRepository(pool), biometricSvc).WithAchievements(achievementSvc)
+	// Badges checked after the writes this process makes (imports, Telegram,
+	// the coach), and swept nightly.
+	awardsSvc := awards.NewService(pool)
+	activitySvc := activity.NewService(activity.NewRepository(pool), biometricSvc).WithAchievements(achievementSvc).WithAwards(awardsSvc)
 	stravaRepo := strava.NewRepository(pool, sealer)
 	stravaSvc := strava.NewService(strava.Options{
 		Repository:   stravaRepo,
@@ -278,8 +282,8 @@ func run() error {
 	// activity feed on a page, and a review never asks for it. Building the
 	// dashboard here would drag in workouts and conversations to serve a call
 	// that is never made.
-	goalSvc := goals.NewService(goals.NewRepository(pool)).WithAchievements(achievementSvc)
-	checkinSvc := checkins.NewService(checkins.NewRepository(pool), goalSvc).WithAchievements(achievementSvc)
+	goalSvc := goals.NewService(goals.NewRepository(pool)).WithAchievements(achievementSvc).WithAwards(awardsSvc)
+	checkinSvc := checkins.NewService(checkins.NewRepository(pool), goalSvc).WithAchievements(achievementSvc).WithAwards(awardsSvc)
 	userSvc := users.NewService(users.NewRepository(pool))
 	calculatorSvc := calculator.NewService(calculator.NewRepository(pool), biometricSvc)
 	mealsRepo := meals.NewRepository(pool)
@@ -379,7 +383,11 @@ func run() error {
 	worker.Register(jobs.KindSweepCrewChallenges,
 		crews.NewChallengeSweeper(userSvc,
 			crews.NewService(pool, crews.CheckInsFrom(checkinSvc), crews.WorkoutsFrom(activitySvc)),
-			achievementSvc, log).HandleSweep)
+			achievementSvc, log).WithAwards(awardsSvc).HandleSweep)
+
+	// The nightly safety net for badges, and the daily rarity recount.
+	worker.Register(jobs.KindSweepBadges, awards.NewSweeper(userSvc, awardsSvc, log).HandleSweep)
+	worker.Register(jobs.KindSweepRarity, awardsSvc.HandleRarity)
 
 	worker.Register(jobs.KindSweepDigests,
 		insights.NewDigestSweeper(insights.DigestSweeperOptions{
@@ -434,7 +442,7 @@ func run() error {
 
 	// The weekly review's focus sets each week's training volume, and the
 	// Sunday nudge asks for it.
-	weeklySvc := weekly.NewService(pool, goalSvc, reportSvc).WithAchievements(achievementSvc)
+	weeklySvc := weekly.NewService(pool, goalSvc, reportSvc).WithAchievements(achievementSvc).WithAwards(awardsSvc)
 
 	// The coach's suggestion for each captured inbox item, on the fast model:
 	// sorting one note does not need the strong one.
@@ -455,7 +463,7 @@ func run() error {
 	recoverySrc := insights.NewRecoverySource(healthReadings, stats.NewService(stats.Sources{
 		Sleep: sleep.NewService(sleep.NewRepository(pool)), Health: healthReadings,
 	}))
-	lighterSvc := lighterday.NewService(pool, recoverySrc, workoutSvc)
+	lighterSvc := lighterday.NewService(pool, recoverySrc, workoutSvc).WithAwards(awardsSvc)
 	workoutSvc.WithLighter(lighterSvc)
 
 	// The first week (internal/firstweek): days whose log turned up while the
@@ -636,6 +644,8 @@ func run() error {
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepDigests, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepAreaStreaks, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepCrewChallenges, struct{}{})
+	worker.RegisterPeriodic(time.Hour, jobs.KindSweepBadges, struct{}{})
+	worker.RegisterPeriodic(24*time.Hour, jobs.KindSweepRarity, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepSummaries, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepStrava, struct{}{})
 	worker.RegisterPeriodic(24*time.Hour, jobs.KindSweepQuotas, struct{}{})

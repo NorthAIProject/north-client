@@ -1,22 +1,56 @@
 package insights
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 
 	"github.com/a-h/templ"
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/awards"
+	"github.com/NorthAIProject/north-client/internal/awards/award"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/users"
+	awardpages "github.com/NorthAIProject/north-client/web/awards"
 	insightpages "github.com/NorthAIProject/north-client/web/insights"
 )
 
+// Badges reads the badges a person holds. awards.Service satisfies it.
+type Badges interface {
+	Earned(ctx context.Context, userID uuid.UUID) ([]awards.Earned, error)
+}
+
 type Handler struct {
-	svc *Service
+	svc    *Service
+	badges Badges
+}
+
+// WithAwards puts the awards card on the summary.
+func (h *Handler) WithAwards(b Badges) *Handler { h.badges = b; return h }
+
+// awardsCard is the owner's medals for the summary page, or nil when badges
+// are not wired or cannot be read: a missing card must not break the page.
+func (h *Handler) awardsCard(r *http.Request) templ.Component {
+	if h.badges == nil {
+		return nil
+	}
+	ctx := r.Context()
+	held, err := h.badges.Earned(ctx, auth.MustUser(ctx).ID)
+	if err != nil {
+		middleware.FromContext(ctx).Warn("insights: awards card skipped", slog.Any("error", err))
+		return nil
+	}
+	var recent []award.View
+	for i := len(held) - 1; i >= 0 && len(recent) < 6; i-- {
+		at := held[i].At
+		recent = append(recent, held[i].Badge.Project(ctx, &at, nil, ""))
+	}
+	return awardpages.SummaryCard(len(held), len(award.Catalog()), recent)
 }
 
 func NewHandler(svc *Service) *Handler {
@@ -86,7 +120,7 @@ func (h *Handler) summary(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	h.render(w, r, insightpages.Summary(user, view))
+	h.render(w, r, insightpages.Summary(user, view, h.awardsCard(r)))
 }
 
 func (h *Handler) summaryPanels(w http.ResponseWriter, r *http.Request) {

@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/activity"
+	"github.com/NorthAIProject/north-client/internal/awards/award"
 	"github.com/NorthAIProject/north-client/internal/biometrics"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
@@ -89,9 +90,20 @@ func (s *Service) IngestWorkouts(ctx context.Context, userID uuid.UUID, source s
 		return Result{}, err
 	}
 
-	written := 0
+	written, created := 0, 0
+	// One badge check for the whole batch, not one per workout. Deferred so
+	// workouts imported before a failure still get their check.
+	defer func() {
+		if created > 0 && s.awards != nil {
+			areas := []award.Area{award.Training}
+			if source == activity.SourceStrava {
+				areas = append(areas, award.Body)
+			}
+			s.awards.Check(ctx, userID, time.Now(), areas...)
+		}
+	}()
 	for _, w := range workouts {
-		if _, _, err := s.activities.Import(ctx, activity.ImportInput{
+		_, fresh, err := s.activities.Import(ctx, activity.ImportInput{
 			UserID:       userID,
 			ActivityCode: w.ActivityCode,
 			Source:       source,
@@ -105,8 +117,13 @@ func (s *Service) IngestWorkouts(ctx context.Context, userID uuid.UUID, source s
 			MaxHR:        heartRate(w.MaxHeartRate),
 			ElevationM:   w.ElevationM,
 			Indoor:       w.Indoor,
-		}); err != nil {
+			SkipAwards:   true,
+		})
+		if err != nil {
 			return Result{}, err
+		}
+		if fresh {
+			created++
 		}
 		// Counted whether or not it was new: a bridge replaying yesterday has
 		// delivered those workouts, and reporting 0 would read as a failure.

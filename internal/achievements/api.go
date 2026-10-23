@@ -1,14 +1,16 @@
 package achievements
 
 import (
+	"context"
 	"net/http"
 	"time"
 
-	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/NorthAIProject/north-client/internal/achievements/achievement"
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/awards/award"
 	"github.com/NorthAIProject/north-client/internal/lifts"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
@@ -47,6 +49,12 @@ type FeedItem struct {
 	// Workout is the finished workout, on a workout_completed item whose card
 	// could be built.
 	Workout *lifts.WorkoutCardView `json:"workout,omitempty"`
+	// BadgeID, Area and Badges are on a badge_earned item (its category is
+	// goals on the wire): the badge it is about, its area, and every badge
+	// earned in the same moment, this one first, when there were several.
+	BadgeID string       `json:"badgeId,omitempty"`
+	Area    string       `json:"area,omitempty"`
+	Badges  []award.View `json:"badges,omitempty"`
 }
 
 type Feed struct {
@@ -61,6 +69,9 @@ type SharingView struct {
 	Goals    bool `json:"goals"`
 	// XP is XP and level, which puts the person on friends' leaderboards.
 	XP bool `json:"xp"`
+	// Awards is the badges the person has earned, except the private ones,
+	// which are never shared.
+	Awards bool `json:"awards"`
 }
 
 // SharingUpdate is SharingView with xp optional: a client from before the
@@ -70,6 +81,7 @@ type SharingUpdate struct {
 	Streaks  bool  `json:"streaks"`
 	Goals    bool  `json:"goals"`
 	XP       *bool `json:"xp"`
+	Awards   *bool `json:"awards"`
 }
 
 func (a *API) feed(w http.ResponseWriter, r *http.Request) {
@@ -82,18 +94,24 @@ func (a *API) feed(w http.ResponseWriter, r *http.Request) {
 		}
 		before = t
 	}
-	items, err := a.svc.Feed(r.Context(), auth.MustUser(r.Context()).ID, before)
+	items, next, err := a.svc.FeedPage(r.Context(), auth.MustUser(r.Context()).ID, before)
 	if err != nil {
 		httpx.Error(w, err, "The feed could not be loaded.")
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectFeed(items))
+	out := projectFeed(r.Context(), items)
+	out.Before = next
+	httpx.WriteJSON(w, http.StatusOK, out)
 }
 
 // feedExercises is how many exercises a feed card names.
 const feedExercises = 2
 
-func projectFeed(items []Item) Feed {
+// projectFeed is the wire feed. Before is the caller's to set, from FeedPage.
+//
+// The category enum on the wire is closed in the shipped app, so a badge item
+// (stored under "awards") goes out as "goals"; the badge fields say what it is.
+func projectFeed(ctx context.Context, items []Item) Feed {
 	out := Feed{Items: make([]FeedItem, 0, len(items))}
 	for _, it := range items {
 		fi := FeedItem{
@@ -101,14 +119,32 @@ func projectFeed(items []Item) Feed {
 			Category: it.Category, Kind: it.Kind, Title: it.Title, Detail: it.Detail, OccurredAt: it.OccurredAt,
 			Kudos: it.Kudos, Kudoed: it.Kudoed, Mine: it.Mine,
 		}
+		// The stored category is not on the closed wire enum, whatever the row.
+		if it.Category == achievement.CategoryAwards {
+			fi.Category = achievement.CategoryGoals
+		}
+		if it.BadgeID != "" {
+			fi.Category = achievement.CategoryGoals
+			fi.BadgeID = it.BadgeID
+			ids := it.Badges
+			if len(ids) == 0 {
+				ids = []string{it.BadgeID}
+			}
+			for _, id := range ids {
+				if b, ok := award.ByID(id); ok {
+					if fi.Area == "" {
+						fi.Area = string(b.Area)
+					}
+					at := it.OccurredAt
+					fi.Badges = append(fi.Badges, b.Project(ctx, &at, nil, ""))
+				}
+			}
+		}
 		if it.Workout != nil {
 			v := lifts.ProjectCard(*it.Workout, feedExercises)
 			fi.Workout = &v
 		}
 		out.Items = append(out.Items, fi)
-	}
-	if len(items) == feedPage {
-		out.Before = util.Ptr(items[len(items)-1].OccurredAt)
 	}
 	return out
 }
@@ -130,15 +166,19 @@ func (a *API) putSharing(w http.ResponseWriter, r *http.Request) {
 	}
 	userID := auth.MustUser(r.Context()).ID
 	in := Sharing{Training: req.Training, Streaks: req.Streaks, Goals: req.Goals}
+	// A client from before xp or awards does not send them; its save keeps
+	// what is stored.
+	current, err := a.svc.Sharing(r.Context(), userID)
+	if err != nil {
+		httpx.Error(w, err, "What friends see could not be saved.")
+		return
+	}
+	in.XP, in.Awards = current.XP, current.Awards
 	if req.XP != nil {
 		in.XP = *req.XP
-	} else {
-		current, err := a.svc.Sharing(r.Context(), userID)
-		if err != nil {
-			httpx.Error(w, err, "What friends see could not be saved.")
-			return
-		}
-		in.XP = current.XP
+	}
+	if req.Awards != nil {
+		in.Awards = *req.Awards
 	}
 	s, err := a.svc.SetSharing(r.Context(), userID, in)
 	if err != nil {

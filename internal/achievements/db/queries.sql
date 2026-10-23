@@ -17,7 +17,7 @@ ON CONFLICT (user_id, category) DO UPDATE SET shared = EXCLUDED.shared;
 -- Your own achievements, and those of people you follow (accepted) in the
 -- categories they share, minus anybody blocked either way. Newest first,
 -- before a cursor.
-SELECT a.id, a.user_id, a.category, a.kind, a.title, a.detail, a.occurred_at, a.source_key,
+SELECT a.id, a.user_id, a.category, a.kind, a.title, a.detail, a.occurred_at, a.source_key, a.private,
        u.display_name, u.handle,
        (SELECT count(*) FROM kudos k WHERE k.achievement_id = a.id) AS kudos,
        EXISTS (SELECT 1 FROM kudos k WHERE k.achievement_id = a.id AND k.user_id = sqlc.arg('viewer')) AS kudoed
@@ -29,13 +29,18 @@ WHERE a.occurred_at < sqlc.arg('before')
     OR (
       EXISTS (SELECT 1 FROM follows f
               WHERE f.follower_id = sqlc.arg('viewer') AND f.followee_id = a.user_id AND f.status = 'accepted')
+      AND NOT a.private
       AND sharing_on(a.user_id, a.category)
       AND NOT EXISTS (SELECT 1 FROM blocks b
                       WHERE (b.blocker_id = sqlc.arg('viewer') AND b.blocked_id = a.user_id)
                          OR (b.blocker_id = a.user_id AND b.blocked_id = sqlc.arg('viewer')))
     )
   )
-ORDER BY a.occurred_at DESC
+-- Ties break by person, then source key, so the badges of one moment sit side
+-- by side and in a stable order for the card they collapse into. Shared rows
+-- come before private ones, so the owner's card leads with the badge their
+-- followers see (and cheer).
+ORDER BY a.occurred_at DESC, a.user_id, a.kind, a.private, a.source_key
 LIMIT sqlc.arg('lim');
 
 -- name: Visible :one
@@ -48,6 +53,7 @@ WHERE a.id = sqlc.arg('id')
     OR (
       EXISTS (SELECT 1 FROM follows f
               WHERE f.follower_id = sqlc.arg('viewer') AND f.followee_id = a.user_id AND f.status = 'accepted')
+      AND NOT a.private
       AND sharing_on(a.user_id, a.category)
       AND NOT EXISTS (SELECT 1 FROM blocks b
                       WHERE (b.blocker_id = sqlc.arg('viewer') AND b.blocked_id = a.user_id)
@@ -67,9 +73,11 @@ SELECT id, category, kind, title, detail, occurred_at FROM achievements
 WHERE user_id = $1 ORDER BY occurred_at DESC;
 
 -- name: OwnAchievementsBetween :many
-SELECT id, category, kind, title, detail, occurred_at FROM achievements
+-- Recap highlights can be shared, so a private badge is never among them.
+SELECT id, category, kind, title, detail, occurred_at, source_key FROM achievements
 WHERE user_id = sqlc.arg('user_id') AND occurred_at >= sqlc.arg('since') AND occurred_at < sqlc.arg('until')
-ORDER BY occurred_at DESC;
+  AND NOT private
+ORDER BY occurred_at DESC, kind, source_key;
 
 -- name: Post :one
 -- A moment the person chose to show. Posting the same one again refreshes
