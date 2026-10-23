@@ -102,7 +102,9 @@ func TestGeometryComesFromJSON(t *testing.T) {
 func TestEachCoinGetsItsOwnGradientID(t *testing.T) {
 	p := medal.Props{BadgeID: "streak_7", Area: award.Consistency, Size: 40}
 	one, two := render(t, p), render(t, p)
-	id := func(s string) string { return strings.SplitN(strings.SplitN(s, `<linearGradient id="`, 2)[1], `"`, 2)[0] }
+	id := func(s string) string {
+		return strings.SplitN(strings.SplitN(s, `<linearGradient id="`, 2)[1], `"`, 2)[0]
+	}
 	if id(one) == id(two) {
 		t.Errorf("two coins share gradient id %s", id(one))
 	}
