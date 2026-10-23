@@ -82,7 +82,7 @@ func (p Prefs) AllowsNudge(kind string) bool {
 		return p.NudgeMissedCheckIn
 	case "goal_deadline":
 		return p.NudgeGoalDeadline
-	case "coach_lighter", "coach_missed":
+	case "coach_lighter", "coach_missed", "coach_first_week":
 		return p.CoachCheckIns
 	case "workout_today":
 		return p.TrainingReminders
@@ -91,7 +91,7 @@ func (p Prefs) AllowsNudge(kind string) bool {
 	case "week_review":
 		// The same switch as the weekly report: both are "do the week with me".
 		return p.WeeklyReportAuto
-	case "first_week_check", "first_week_evidence", "first_week_review",
+	case "first_week_check", "first_week_evidence", "first_week_review", "first_week_evening",
 		"form_ready", "coach_reply", "briefing_ready", "decision_revisit",
 		"photo_ask", "photo_reminder":
 		return p.CoachActivity

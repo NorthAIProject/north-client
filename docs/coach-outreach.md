@@ -49,6 +49,28 @@ sweeps and channels.
 - **First answer counts:** a second answer is a 409. Only today's message can
   be answered.
 
+## The first week
+
+While a new person's first week runs (`internal/firstweek`, days 1 to 7 of an
+active programme), it owns the day's one message:
+
+- **Trigger `first_week`**, days 1 to 6, 08:00 to 10:59 local. A sweep later
+  than that skips the day. Day 7 is the review's (phase 4). A person with the
+  daily briefing on gets no first-week message that morning.
+- **Low recovery and missed session stay quiet** for the whole week. What
+  they noticed goes into the first-week situation instead, and the coach does
+  not lighten the session on its own that week.
+- **One answer, `done`**, which calls `firstweek.Service.MarkDone` (via
+  `tap`). Telegram gets the usual `outreach:<id>:done` button.
+- **Evening:** if the day is still open at the person's evening hour, the
+  nudge sweep raises `first_week_evening` (push and Telegram). It replaces the
+  old `first_week_check` / `first_week_evidence` / `first_week_review` notes
+  for people with a programme. At most two messages a day.
+- **Push category `COACH_FIRST_WEEK`** on both `coach_first_week` and
+  `first_week_evening`. **iOS must register this exact name** with one Done
+  action that posts to `/api/v1/first-week/done`; until a build does, the
+  banner arrives without the button (see the CHECKIN contract).
+
 ## Measuring it
 
 `coach_outreach.action` and `acted_at` are the point of the slice. Answered

@@ -15,8 +15,10 @@ var portugueseBrazilianMoments = map[string]string{
 	"moments.streak.100.title": "Cem dias",
 	"moments.streak.100.body":  "Cem registros. O Khepri lembra de cada um.",
 
-	"moments.goal.title":      "“%[1]s”: conquistado",
-	"moments.goal.body":       "Você disse e fez. O Khepri vai lembrar deste.",
-	"moments.milestone.title": "Marco alcançado",
-	"moments.milestone.body":  "“%[1]s”, rumo a “%[2]s”.",
+	"moments.goal.title":            "“%[1]s”: conquistado",
+	"moments.goal.body":             "Você disse e fez. O Khepri vai lembrar deste.",
+	"moments.milestone.title":       "Marco alcançado",
+	"moments.milestone.body":        "“%[1]s”, rumo a “%[2]s”.",
+	"moments.firstweek.three.title": "3 de 3 dias",
+	"moments.firstweek.three.body":  "Três dias, três vezes. Faltam quatro.",
 }

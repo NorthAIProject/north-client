@@ -13,6 +13,7 @@ var spanishNav = map[string]string{
 	"nav.group.mind":     "Mente",
 	"nav.group.progress": "Progreso",
 	"nav.group.system":   "Sistema",
+	"nav.group.more":     "Más",
 
 	"nav.my-day":             "Mi día",
 	"nav.my-day.desc":        "Tu día en una pantalla: comida, agua, sueño, movimiento.",

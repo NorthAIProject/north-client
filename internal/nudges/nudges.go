@@ -16,6 +16,7 @@ const (
 	KindFirstWeekCheck    = nudge.KindFirstWeekCheck
 	KindFirstWeekEvidence = nudge.KindFirstWeekEvidence
 	KindFirstWeekReview   = nudge.KindFirstWeekReview
+	KindFirstWeekEvening  = nudge.KindFirstWeekEvening
 	KindWorkoutToday      = nudge.KindWorkoutToday
 	KindFormReady         = nudge.KindFormReady
 	KindCoachReply        = nudge.KindCoachReply
@@ -32,6 +33,7 @@ const (
 	KindProgressCheckDue   = nudge.KindProgressCheckDue
 	KindCoachLighter       = nudge.KindCoachLighter
 	KindCoachMissed        = nudge.KindCoachMissed
+	KindCoachFirstWeek     = nudge.KindCoachFirstWeek
 )
 
 // CategoryCheckIn is the iOS notification category that puts mood buttons
@@ -43,9 +45,13 @@ const CategoryCheckIn = "CHECKIN"
 // answers under its banner: Undo for a session it lightened, Today /
 // Tomorrow / Let it go for a missed one. Same contract as CategoryCheckIn:
 // the app registers these exact names.
+//
+// CategoryCoachFirstWeek puts Done under the first week's morning message
+// and its evening note; the app answers it with POST /api/v1/first-week/done.
 const (
-	CategoryCoachLighter = "COACH_LIGHTER"
-	CategoryCoachMissed  = "COACH_MISSED"
+	CategoryCoachLighter   = "COACH_LIGHTER"
+	CategoryCoachMissed    = "COACH_MISSED"
+	CategoryCoachFirstWeek = "COACH_FIRST_WEEK"
 )
 
 // PushCategory is the notification category a kind of nudge is sent with, or
@@ -58,6 +64,8 @@ func PushCategory(kind string) string {
 		return CategoryCoachLighter
 	case KindCoachMissed:
 		return CategoryCoachMissed
+	case KindCoachFirstWeek, KindFirstWeekEvening:
+		return CategoryCoachFirstWeek
 	default:
 		return ""
 	}

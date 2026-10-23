@@ -7807,7 +7807,7 @@ components:
           format: date
         trigger:
           type: string
-          description: low_recovery or missed_session, as an open string.
+          description: low_recovery, missed_session or first_week, as an open string.
         body:
           type: string
           description: The coach's message, in the person's language.
@@ -7816,7 +7816,7 @@ components:
           description: The plan session concerned.
         actions:
           type: array
-          description: The answers still open (undo, lighter, keep, today, tomorrow, let_go), as open strings. Empty once answered.
+          description: The answers still open (undo, lighter, keep, today, tomorrow, let_go, done), as open strings. Empty once answered.
           items:
             type: string
         action:

@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/NorthAIProject/north-client/internal/notifications"
 	"github.com/NorthAIProject/north-client/internal/shared/lifedomain"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
@@ -11,7 +12,41 @@ import (
 // First-week notes stop after this many local days.
 const firstWeekDays = 7
 
-func (s *Service) evalFirstWeek(ctx context.Context, user users.User, today time.Time) (int, error) {
+// FirstWeekDay is a running first week (internal/firstweek) as the evening
+// note needs it: the programme day, 1 to 7, its template, and whether
+// today's action is done.
+type FirstWeekDay struct {
+	Day      int
+	Template string
+	Done     bool
+}
+
+// firstWeekSource reports the person's running first week; ok is false when
+// none is on one of its seven days. Declared here, with FirstWeekFunc, so
+// this package does not import internal/firstweek.
+type firstWeekSource interface {
+	FirstWeekToday(ctx context.Context, user users.User) (FirstWeekDay, bool, error)
+}
+
+// FirstWeekFunc adapts a function to the first-week source.
+type FirstWeekFunc func(ctx context.Context, user users.User) (FirstWeekDay, bool, error)
+
+func (f FirstWeekFunc) FirstWeekToday(ctx context.Context, user users.User) (FirstWeekDay, bool, error) {
+	return f(ctx, user)
+}
+
+func (s *Service) evalFirstWeek(ctx context.Context, user users.User, prefs notifications.Prefs, today, now time.Time) (int, error) {
+	// A running programme owns the week: its evening note is the only
+	// first-week note, and the morning one comes from internal/outreach.
+	if s.firstWeek != nil {
+		day, ok, err := s.firstWeek.FirstWeekToday(ctx, user)
+		if err != nil {
+			return 0, err
+		}
+		if ok {
+			return s.evalFirstWeekEvening(ctx, user, prefs, day, today, now)
+		}
+	}
 	if s.week == nil {
 		return 0, nil
 	}
@@ -45,6 +80,29 @@ func (s *Service) evalFirstWeek(ctx context.Context, user users.User, today time
 		created += n
 	}
 	return created, nil
+}
+
+// evalFirstWeekEvening asks once, at the person's evening hour, for a
+// first-week day whose action is not done yet. The window is the evening
+// reflection's: a sweep that missed the hour catches up within it, and a day
+// past it is left alone.
+func (s *Service) evalFirstWeekEvening(ctx context.Context, user users.User, prefs notifications.Prefs, day FirstWeekDay, today, now time.Time) (int, error) {
+	hour := now.In(user.Location()).Hour()
+	if day.Done || hour < prefs.EveningHour || hour >= prefs.EveningHour+eveningReflectionWindow {
+		return 0, nil
+	}
+	_, inserted, err := s.Raise(ctx, user, Draft{
+		Kind:      KindFirstWeekEvening,
+		DedupeKey: today.Format("2006-01-02"),
+		Title:     text(user, "nudges.firstweek.evening.title", day.Day),
+		Body:      text(user, "nudges.firstweek.evening.body", text(user, "firstweek."+day.Template+".action")),
+		Href:      "/app",
+		Push:      true,
+	})
+	if err != nil || !inserted {
+		return 0, err
+	}
+	return 1, nil
 }
 
 func (s *Service) evalFirstWeekCheck(ctx context.Context, user users.User, today time.Time) (int, error) {

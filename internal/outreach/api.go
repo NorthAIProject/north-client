@@ -29,13 +29,13 @@ func (a *API) Routes(r chi.Router) {
 type OutreachView struct {
 	ID  uuid.UUID `json:"id"`
 	Day string    `json:"day"`
-	// Trigger is low_recovery or missed_session, as an open string.
+	// Trigger is low_recovery, missed_session or first_week, as an open string.
 	Trigger string `json:"trigger"`
 	Body    string `json:"body"`
 	// Session is the plan session concerned.
 	Session string `json:"session,omitempty"`
 	// Actions are the answers still open: undo, lighter, keep, today,
-	// tomorrow, let_go (open strings). Empty once answered.
+	// tomorrow, let_go, done (open strings). Empty once answered.
 	Actions []string `json:"actions"`
 	// Action is the answer given, and Outcome what it did, in the person's
 	// language.
