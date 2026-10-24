@@ -106,3 +106,26 @@ func TestMonthlyFeedFollowsAwardsSwitch(t *testing.T) {
 		}
 	}
 }
+
+// A recap highlight is localised like the feed card, not the stored English.
+func TestRecapHighlightMonthlyIsLocalised(t *testing.T) {
+	ctx := i18n.WithLocale(context.Background(), "es")
+	pool := testdb.New(t)
+	ach := achievements.NewService(pool)
+	ana := person(t, pool, "rc-ana@north.test", "Ana")
+	at := time.Now().UTC().Add(-time.Hour)
+	if _, err := pool.Exec(ctx, `INSERT INTO monthly_challenges (user_id, month, metric, target) VALUES ($1, '2026-09-01', 'workouts', 12)`, ana.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO achievements (user_id, category, kind, title, detail, occurred_at, source_key, private)
+		VALUES ($1, 'awards', 'monthly_challenge_met', 'Challenge met', '', $2, '2026-09', false)`, ana.ID, at); err != nil {
+		t.Fatal(err)
+	}
+	got, err := ach.OwnBetween(ctx, ana.ID, at.Add(-time.Hour), at.Add(time.Hour))
+	if err != nil || len(got) != 1 {
+		t.Fatalf("recap = %v, %v", got, err)
+	}
+	if !strings.Contains(strings.ToLower(got[0].Title), "septiembre") || strings.Contains(got[0].Title, "Challenge met") || got[0].Detail == "" {
+		t.Fatalf("recap monthly = %q / %q, want Spanish title and a detail", got[0].Title, got[0].Detail)
+	}
+}

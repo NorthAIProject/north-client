@@ -76,10 +76,14 @@ WHERE user_id = $1 ORDER BY occurred_at DESC;
 
 -- name: OwnAchievementsBetween :many
 -- Recap highlights can be shared, so a private badge is never among them.
-SELECT id, category, kind, title, detail, occurred_at, source_key FROM achievements
-WHERE user_id = sqlc.arg('user_id') AND occurred_at >= sqlc.arg('since') AND occurred_at < sqlc.arg('until')
-  AND NOT private
-ORDER BY occurred_at DESC, kind, source_key;
+SELECT a.id, a.category, a.kind, a.title, a.detail, a.occurred_at, a.source_key,
+       mc.metric AS monthly_metric, mc.target AS monthly_target
+FROM achievements a
+LEFT JOIN monthly_challenges mc ON a.kind = 'monthly_challenge_met' AND mc.user_id = a.user_id
+  AND mc.month = CASE WHEN a.kind = 'monthly_challenge_met' THEN (a.source_key || '-01')::date END
+WHERE a.user_id = sqlc.arg('user_id') AND a.occurred_at >= sqlc.arg('since') AND a.occurred_at < sqlc.arg('until')
+  AND NOT a.private
+ORDER BY a.occurred_at DESC, a.kind, a.source_key;
 
 -- name: Post :one
 -- A moment the person chose to show. Posting the same one again refreshes

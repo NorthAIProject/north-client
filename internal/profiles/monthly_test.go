@@ -2,12 +2,16 @@ package profiles_test
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/NorthAIProject/north-client/internal/achievements"
+	"github.com/NorthAIProject/north-client/internal/awards"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
@@ -166,5 +170,44 @@ func TestViewingAnotherProfileNeverCreatesTheirChallenge(t *testing.T) {
 	}
 	if seen.MonthlyChallenge == nil || seen.MonthlyChallenge.Key != "2026-10" {
 		t.Fatalf("a viewer does not see the existing challenge: %v", seen.MonthlyChallenge)
+	}
+}
+
+// brokenMonthly is the real awards service whose monthly reads fail.
+type brokenMonthly struct{ *awards.Service }
+
+func (brokenMonthly) MonthlyMedals(context.Context, uuid.UUID) ([]awards.MonthlyMedal, error) {
+	return nil, errors.New("monthly store down")
+}
+
+func (brokenMonthly) Monthly(context.Context, uuid.UUID, time.Time) (awards.MonthlyChallenge, error) {
+	return awards.MonthlyChallenge{}, errors.New("monthly store down")
+}
+
+func (brokenMonthly) PeekMonthly(context.Context, uuid.UUID, time.Time) (awards.MonthlyChallenge, bool, error) {
+	return awards.MonthlyChallenge{}, false, errors.New("monthly store down")
+}
+
+// A failed monthly read hides the card; the profile (and its badges) still load.
+func TestProfileSurvivesAFailedMonthlyRead(t *testing.T) {
+	w := newWorld(t)
+	ctx := context.Background()
+	leo, ana := person(t, w.pool, "leo-bk@n.test", "Leo"), person(t, w.pool, "ana-bk@n.test", "Ana")
+	w.handle(t, leo, "leobk")
+	awards.NewService(w.pool).Grant(ctx, leo.ID, time.Now().Add(-time.Hour), "workouts_1")
+	w.svc.WithAwards(brokenMonthly{awards.NewService(w.pool)})
+
+	for _, viewer := range []users.User{ana, leo} {
+		v, err := w.svc.View(ctx, viewer, "leobk", oct20)
+		if err != nil {
+			t.Fatalf("View failed on a monthly error: %v", err)
+		}
+		if v.MonthlyChallenge != nil || len(v.Monthly) != 0 || len(v.Awards) != 1 {
+			t.Fatalf("view = %+v, want badges only", v)
+		}
+	}
+	rec := w.pageClient(t)(ana, http.MethodGet, "/app/u/leobk")
+	if rec.Code != http.StatusOK || strings.Contains(rec.Body.String(), `id="monthly-challenge"`) {
+		t.Fatalf("page %d, card shown or 500", rec.Code)
 	}
 }

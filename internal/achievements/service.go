@@ -175,6 +175,7 @@ func (s *Service) OwnBetween(ctx context.Context, userID uuid.UUID, since, until
 		out = append(out, Item{
 			ID: r.ID, UserID: userID, Category: r.Category, Kind: r.Kind, Title: r.Title, Detail: r.Detail,
 			OccurredAt: r.OccurredAt, Mine: true, SourceKey: r.SourceKey,
+			MonthlyMetric: util.Val(r.MonthlyMetric), MonthlyTarget: int(util.Val(r.MonthlyTarget)),
 		})
 	}
 	return foldMoments(ctx, out), nil

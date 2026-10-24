@@ -18,29 +18,26 @@ func TestPickMonthly(t *testing.T) {
 	oct := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC) // 31 days
 	sep := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)  // 30 days
 	cases := []struct {
-		name     string
-		h        awards.MonthlyHistory
-		start    time.Time
-		daysLeft int
-		metric   awards.MonthlyMetric
-		target   int
+		name   string
+		h      awards.MonthlyHistory
+		start  time.Time
+		metric awards.MonthlyMetric
+		target int
 	}{
-		{"avg 4.0 workouts", awards.MonthlyHistory{Months: 3, Workouts: 12}, oct, 31, awards.MetricWorkouts, 5},
-		{"avg 3.9 workouts with a habit", awards.MonthlyHistory{Months: 10, Workouts: 39, HabitDays: 100, ActiveHabit: true}, oct, 31, awards.MetricHabitDays, 12},
-		{"no habit, 20 check-in days", awards.MonthlyHistory{Months: 1, CheckinDays: 20}, oct, 31, awards.MetricCheckinDays, 23},
-		{"30 check-in days in a 30-day month caps at 27", awards.MonthlyHistory{Months: 1, CheckinDays: 30}, sep, 30, awards.MetricCheckinDays, 27},
-		{"no history", awards.MonthlyHistory{}, oct, 31, awards.MetricCheckinDays, 8},
-		{"no history with a habit", awards.MonthlyHistory{ActiveHabit: true}, oct, 31, awards.MetricHabitDays, 8},
-		{"days metric capped by days left", awards.MonthlyHistory{}, oct, 4, awards.MetricCheckinDays, 4},
-		{"habit days capped by days left", awards.MonthlyHistory{Months: 1, HabitDays: 20, ActiveHabit: true}, oct, 5, awards.MetricHabitDays, 5},
-		{"workouts never capped by days left", awards.MonthlyHistory{Months: 1, Workouts: 20}, oct, 2, awards.MetricWorkouts, 23},
-		{"workouts capped by the month", awards.MonthlyHistory{Months: 1, Workouts: 40}, sep, 30, awards.MetricWorkouts, 27},
-		{"months with nothing logged get the starter", awards.MonthlyHistory{Months: 2}, oct, 31, awards.MetricCheckinDays, 8},
-		{"a single check-in day rounds up to 2", awards.MonthlyHistory{Months: 1, CheckinDays: 1}, oct, 31, awards.MetricCheckinDays, 2},
+		{"avg 4.0 workouts", awards.MonthlyHistory{Months: 3, Workouts: 12}, oct, awards.MetricWorkouts, 5},
+		{"avg 3.9 workouts with a habit", awards.MonthlyHistory{Months: 10, Workouts: 39, HabitDays: 100, ActiveHabit: true}, oct, awards.MetricHabitDays, 12},
+		{"no habit, 20 check-in days", awards.MonthlyHistory{Months: 1, CheckinDays: 20}, oct, awards.MetricCheckinDays, 23},
+		{"30 check-in days in a 30-day month caps at 27", awards.MonthlyHistory{Months: 1, CheckinDays: 30}, sep, awards.MetricCheckinDays, 27},
+		{"no history", awards.MonthlyHistory{}, oct, awards.MetricCheckinDays, 8},
+		{"no history with a habit", awards.MonthlyHistory{ActiveHabit: true}, oct, awards.MetricHabitDays, 8},
+		{"workouts are not days-limited", awards.MonthlyHistory{Months: 1, Workouts: 20}, oct, awards.MetricWorkouts, 23},
+		{"workouts capped by the month", awards.MonthlyHistory{Months: 1, Workouts: 40}, sep, awards.MetricWorkouts, 27},
+		{"months with nothing logged get the starter", awards.MonthlyHistory{Months: 2}, oct, awards.MetricCheckinDays, 8},
+		{"a single check-in day rounds up to 2", awards.MonthlyHistory{Months: 1, CheckinDays: 1}, oct, awards.MetricCheckinDays, 2},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			m, n := awards.PickMonthly(c.h, c.start, c.daysLeft)
+			m, n := awards.PickMonthly(c.h, c.start)
 			if m != c.metric || n != c.target {
 				t.Fatalf("got %s %d, want %s %d", m, n, c.metric, c.target)
 			}
