@@ -27,7 +27,7 @@ func ProjectMonthlyMedals(ctx context.Context, medals []MonthlyMedal) []award.Vi
 	return out
 }
 
-// MergeEarned puts monthly medals among the badges, newest first. It never
+// MergeEarned puts monthly medals among the badges, oldest first, as the badges alone always went out. It never
 // reads the catalog, so held/total counts stay badges only.
 func MergeEarned(badges, medals []award.View) []award.View {
 	out := make([]award.View, 0, len(badges)+len(medals))
@@ -35,7 +35,7 @@ func MergeEarned(badges, medals []award.View) []award.View {
 	out = append(out, medals...)
 	sort.SliceStable(out, func(i, j int) bool {
 		a, b := out[i].EarnedAt, out[j].EarnedAt
-		return a != nil && b != nil && a.After(*b)
+		return a != nil && b != nil && a.Before(*b)
 	})
 	return out
 }
