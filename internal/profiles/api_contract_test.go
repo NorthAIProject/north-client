@@ -55,6 +55,13 @@ func TestProfileShapes(t *testing.T) {
 	apitest.AssertGolden(t, "profile-awards.golden.json", projectView(ctx, View{
 		Profile: profile, Shares: Shares{Awards: true}, Awards: []awards.Earned{{Badge: badge, At: ended}},
 	}))
+	apitest.AssertGolden(t, "profile-monthly.golden.json", projectView(ctx, View{
+		Profile: profile, Shares: Shares{Awards: true}, Awards: []awards.Earned{{Badge: badge, At: ended.Add(-72 * time.Hour)}},
+		Monthly: []awards.MonthlyMedal{{Key: "2026-09", Metric: awards.MetricHabitDays, Target: 12, At: ended.Add(-24 * time.Hour)}},
+		MonthlyChallenge: &awards.MonthlyChallenge{
+			Key: "2026-10", Month: time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC), Metric: awards.MetricWorkouts, Target: 5, Progress: 3,
+		},
+	}))
 	// A person who shares nothing: the old fields plus the switches, no more.
 	apitest.AssertGolden(t, "profile-private.golden.json", projectView(ctx, View{Profile: profile}))
 	before := ended.Add(-48 * time.Hour)

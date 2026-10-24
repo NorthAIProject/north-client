@@ -1,0 +1,26 @@
+{
+  "awards": [
+    {
+      "id": "workouts_1",
+      "area": "training",
+      "name": "First Workout",
+      "description": "Finish your first workout.",
+      "earnedAt": "2026-10-19T09:00:00Z",
+      "target": 1,
+      "rarity": "100%"
+    },
+    {
+      "id": "monthly-2026-09",
+      "area": "monthly",
+      "name": "September 2026 challenge",
+      "description": "Kept a habit on 12 days in September",
+      "earnedAt": "2026-10-21T09:00:00Z",
+      "target": 12,
+      "monthly": {
+        "month": "2026-09",
+        "metric": "habit_days",
+        "target": 12
+      }
+    }
+  ]
+}

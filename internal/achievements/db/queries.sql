@@ -18,11 +18,13 @@ ON CONFLICT (user_id, category) DO UPDATE SET shared = EXCLUDED.shared;
 -- categories they share, minus anybody blocked either way. Newest first,
 -- before a cursor.
 SELECT a.id, a.user_id, a.category, a.kind, a.title, a.detail, a.occurred_at, a.source_key, a.private,
-       u.display_name, u.handle,
+       u.display_name, u.handle, mc.metric AS monthly_metric, mc.target AS monthly_target,
        (SELECT count(*) FROM kudos k WHERE k.achievement_id = a.id) AS kudos,
        EXISTS (SELECT 1 FROM kudos k WHERE k.achievement_id = a.id AND k.user_id = sqlc.arg('viewer')) AS kudoed
 FROM achievements a
 JOIN users u ON u.id = a.user_id
+LEFT JOIN monthly_challenges mc ON a.kind = 'monthly_challenge_met' AND mc.user_id = a.user_id
+  AND mc.month = CASE WHEN a.kind = 'monthly_challenge_met' THEN (a.source_key || '-01')::date END
 WHERE a.occurred_at < sqlc.arg('before')
   AND (
     a.user_id = sqlc.arg('viewer')

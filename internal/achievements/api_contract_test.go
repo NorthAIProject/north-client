@@ -39,3 +39,15 @@ func TestFeedShapes(t *testing.T) {
 	}}))
 	apitest.AssertGolden(t, "sharing.golden.json", SharingView{Training: true, Streaks: false, Goals: true, XP: true, Awards: true})
 }
+
+func TestMonthlyFeedShape(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	at := time.Date(2026, 10, 1, 7, 30, 0, 0, time.UTC)
+	items := foldMoments(ctx, []Item{{
+		ID: uuid.MustParse("dddddddd-dddd-dddd-dddd-dddddddddddd"), UserID: uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+		DisplayName: "Ana", Handle: "ana_runs", Category: "awards", Kind: "monthly_challenge_met",
+		Title: "Challenge met", OccurredAt: at, SourceKey: "2026-09", MonthlyMetric: "workouts", MonthlyTarget: 12,
+	}})
+	apitest.AssertGolden(t, "feed-monthly.golden.json", projectFeed(ctx, items))
+}

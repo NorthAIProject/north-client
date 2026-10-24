@@ -55,6 +55,9 @@ type FeedItem struct {
 	BadgeID string       `json:"badgeId,omitempty"`
 	Area    string       `json:"area,omitempty"`
 	Badges  []award.View `json:"badges,omitempty"`
+	// Monthly is on a monthly_challenge_met item (category goals on the wire):
+	// the month and the challenge it met.
+	Monthly *award.MonthlyMedalView `json:"monthly,omitempty"`
 }
 
 type Feed struct {
@@ -139,6 +142,10 @@ func projectFeed(ctx context.Context, items []Item) Feed {
 					fi.Badges = append(fi.Badges, b.Project(ctx, &at, nil, ""))
 				}
 			}
+		}
+		if it.Kind == achievement.KindMonthlyChallengeMet && it.MonthlyMetric != "" {
+			fi.Category = achievement.CategoryGoals
+			fi.Monthly = &award.MonthlyMedalView{Month: it.SourceKey, Metric: it.MonthlyMetric, Target: it.MonthlyTarget}
 		}
 		if it.Workout != nil {
 			v := lifts.ProjectCard(*it.Workout, feedExercises)

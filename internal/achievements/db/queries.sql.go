@@ -14,11 +14,13 @@ import (
 
 const feed = `-- name: Feed :many
 SELECT a.id, a.user_id, a.category, a.kind, a.title, a.detail, a.occurred_at, a.source_key, a.private,
-       u.display_name, u.handle,
+       u.display_name, u.handle, mc.metric AS monthly_metric, mc.target AS monthly_target,
        (SELECT count(*) FROM kudos k WHERE k.achievement_id = a.id) AS kudos,
        EXISTS (SELECT 1 FROM kudos k WHERE k.achievement_id = a.id AND k.user_id = $1) AS kudoed
 FROM achievements a
 JOIN users u ON u.id = a.user_id
+LEFT JOIN monthly_challenges mc ON a.kind = 'monthly_challenge_met' AND mc.user_id = a.user_id
+  AND mc.month = CASE WHEN a.kind = 'monthly_challenge_met' THEN (a.source_key || '-01')::date END
 WHERE a.occurred_at < $2
   AND (
     a.user_id = $1
@@ -43,19 +45,21 @@ type FeedParams struct {
 }
 
 type FeedRow struct {
-	ID          uuid.UUID
-	UserID      uuid.UUID
-	Category    string
-	Kind        string
-	Title       string
-	Detail      string
-	OccurredAt  time.Time
-	SourceKey   string
-	Private     bool
-	DisplayName string
-	Handle      *string
-	Kudos       int64
-	Kudoed      bool
+	ID            uuid.UUID
+	UserID        uuid.UUID
+	Category      string
+	Kind          string
+	Title         string
+	Detail        string
+	OccurredAt    time.Time
+	SourceKey     string
+	Private       bool
+	DisplayName   string
+	Handle        *string
+	MonthlyMetric *string
+	MonthlyTarget *int32
+	Kudos         int64
+	Kudoed        bool
 }
 
 // Your own achievements, and those of people you follow (accepted) in the
@@ -86,6 +90,8 @@ func (q *Queries) Feed(ctx context.Context, arg FeedParams) ([]FeedRow, error) {
 			&i.Private,
 			&i.DisplayName,
 			&i.Handle,
+			&i.MonthlyMetric,
+			&i.MonthlyTarget,
 			&i.Kudos,
 			&i.Kudoed,
 		); err != nil {

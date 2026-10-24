@@ -306,3 +306,15 @@ FROM achievements a
 JOIN monthly_challenges c ON c.user_id = a.user_id AND c.month = (a.source_key || '-01')::date
 WHERE a.user_id = $1 AND a.kind = 'monthly_challenge_met'
 ORDER BY a.source_key DESC;
+
+-- name: ListUnseenMonthlyMedals :many
+-- Met months not yet celebrated, oldest first.
+SELECT a.id, a.source_key, a.occurred_at, c.metric, c.target
+FROM achievements a
+JOIN monthly_challenges c ON c.user_id = a.user_id AND c.month = (a.source_key || '-01')::date
+WHERE a.user_id = $1 AND a.kind = 'monthly_challenge_met' AND a.celebrated_at IS NULL
+ORDER BY a.source_key;
+
+-- name: MarkMonthlySeen :exec
+UPDATE achievements SET celebrated_at = now()
+WHERE user_id = $1 AND kind = 'monthly_challenge_met' AND source_key = $2 AND celebrated_at IS NULL;
