@@ -274,6 +274,15 @@ templ aboutCard() {
 					<p class="text-sm leading-relaxed">
 						{ i18n.Tf(ctx, "settings.about.body", ui.ProductName) }
 					</p>
+					<a
+						href={ templ.SafeURL(ui.DiscordURL) }
+						target="_blank"
+						rel="noopener noreferrer"
+						onclick="window.posthog && window.posthog.capture('discord_link_clicked', {surface: 'settings'})"
+						class="inline-block text-sm text-foreground underline underline-offset-4"
+					>
+						{ i18n.T(ctx, "settings.about.discord") }
+					</a>
 				</div>
 			</div>
 		}
