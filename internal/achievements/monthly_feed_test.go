@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/NorthAIProject/north-client/internal/achievements"
 	"github.com/NorthAIProject/north-client/internal/shared/database/testdb"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
@@ -59,6 +61,48 @@ func TestMonthlyFeedCardLocalised(t *testing.T) {
 		}
 		if viewer == "en" && m.Title != "September 2026 challenge" {
 			t.Fatalf("en title = %q", m.Title)
+		}
+	}
+}
+
+// The monthly medal rides the awards switch: a follower sees it only while the
+// owner shares awards, and the owner's own feed never depends on the switch.
+func TestMonthlyFeedFollowsAwardsSwitch(t *testing.T) {
+	ctx := context.Background()
+	pool := testdb.New(t)
+	ach := achievements.NewService(pool)
+	soc := social.NewService(social.NewRepository(pool))
+	ana, leo := person(t, pool, "mg-ana@north.test", "Ana"), person(t, pool, "mg-leo@north.test", "Leo")
+	follow(t, soc, leo, ana, "mgana")
+	if _, err := pool.Exec(ctx, `INSERT INTO monthly_challenges (user_id, month, metric, target) VALUES ($1, '2026-09-01', 'workouts', 12)`, ana.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO achievements (user_id, category, kind, title, detail, occurred_at, source_key, private)
+		VALUES ($1, 'awards', 'monthly_challenge_met', 'Challenge met', '', $2, '2026-09', false)`, ana.ID, time.Now().UTC().Add(-time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	has := func(viewer uuid.UUID) bool {
+		t.Helper()
+		items, err := ach.Feed(ctx, viewer, time.Time{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, it := range items {
+			if it.Kind == "monthly_challenge_met" {
+				return true
+			}
+		}
+		return false
+	}
+	for _, on := range []bool{true, false, true} {
+		if _, err := ach.SetSharing(ctx, ana.ID, achievements.Sharing{Training: true, XP: true, Awards: on}); err != nil {
+			t.Fatal(err)
+		}
+		if got := has(leo.ID); got != on {
+			t.Errorf("awards switch %v: follower sees the medal = %v", on, got)
+		}
+		if !has(ana.ID) {
+			t.Errorf("awards switch %v: the owner lost their own medal", on)
 		}
 	}
 }

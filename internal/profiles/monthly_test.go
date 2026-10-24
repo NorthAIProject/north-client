@@ -70,6 +70,10 @@ func TestProfileNeverShowsAMissedMonth(t *testing.T) {
 	if _, err := w.pool.Exec(ctx, `INSERT INTO monthly_challenges (user_id, month, metric, target) VALUES ($1, '2026-10-01', 'checkin_days', 8)`, leo.ID); err != nil {
 		t.Fatal(err)
 	}
+	// The challenge exists once its owner has opened the month; a viewer only reads it.
+	if _, err := w.svc.View(ctx, leo, "leo", nov02); err != nil {
+		t.Fatal(err)
+	}
 	v, err := w.svc.View(ctx, ana, "leo", nov02)
 	if err != nil {
 		t.Fatal(err)
@@ -87,6 +91,7 @@ func TestProfilePageMonthlyCardFollowsAwardsSwitch(t *testing.T) {
 	const card = `id="monthly-challenge"`
 
 	w.share(t, leo, achievements.Sharing{Training: true, Awards: true})
+	do(leo, http.MethodGet, "/app/u/leomc") // the owner's visit opens the month
 	if body := do(ana, http.MethodGet, "/app/u/leomc").Body.String(); !strings.Contains(body, card) || !strings.Contains(body, "challenge") {
 		t.Error("a follower does not see a shared monthly card")
 	}
@@ -117,4 +122,49 @@ func TestProfileStripCarriesMonthlyMedals(t *testing.T) {
 func newWorldBody(t *testing.T, w world, as users.User, path string) string {
 	t.Helper()
 	return w.pageClient(t)(as, http.MethodGet, path).Body.String()
+}
+
+// Looking at someone's profile must not write their data: the row fixes their
+// target for the month, so only their own visit may create it.
+func TestViewingAnotherProfileNeverCreatesTheirChallenge(t *testing.T) {
+	w := newWorld(t)
+	ctx := context.Background()
+	leo, ana := person(t, w.pool, "leo-pk@n.test", "Leo"), person(t, w.pool, "ana-pk@n.test", "Ana")
+	w.handle(t, leo, "leopk")
+	w.share(t, leo, achievements.Sharing{Training: true, Awards: true})
+	count := func() int {
+		t.Helper()
+		var n int
+		if err := w.pool.QueryRow(ctx, `SELECT count(*) FROM monthly_challenges WHERE user_id = $1`, leo.ID).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+
+	seen, err := w.svc.View(ctx, ana, "leopk", oct20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if seen.MonthlyChallenge != nil || count() != 0 {
+		t.Fatalf("a viewer's visit left card=%v rows=%d", seen.MonthlyChallenge, count())
+	}
+	body := newWorldBody(t, w, ana, "/app/u/leopk")
+	if strings.Contains(body, `id="monthly-challenge"`) || count() != 0 {
+		t.Fatalf("the page showed a card or wrote a row (rows=%d)", count())
+	}
+
+	own, err := w.svc.View(ctx, leo, "leopk", oct20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if own.MonthlyChallenge == nil || count() != 1 {
+		t.Fatalf("the owner's own visit did not create it: %v rows=%d", own.MonthlyChallenge, count())
+	}
+	seen, err = w.svc.View(ctx, ana, "leopk", oct20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if seen.MonthlyChallenge == nil || seen.MonthlyChallenge.Key != "2026-10" {
+		t.Fatalf("a viewer does not see the existing challenge: %v", seen.MonthlyChallenge)
+	}
 }
