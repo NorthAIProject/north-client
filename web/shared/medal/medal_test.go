@@ -112,3 +112,91 @@ func TestEachCoinGetsItsOwnGradientID(t *testing.T) {
 		t.Error("fill must reference its own id")
 	}
 }
+
+func renderMonthly(t *testing.T, s medals.Set, p medal.MonthlyProps) string {
+	t.Helper()
+	var b bytes.Buffer
+	if err := medal.CoinWithMonthly(s, p).Render(context.Background(), &b); err != nil {
+		t.Fatal(err)
+	}
+	return b.String()
+}
+
+func TestMonthlyCoinText(t *testing.T) {
+	p := medal.MonthlyProps{Month: "OCT", Target: 18, Size: 96, Label: "October: 18 days"}
+	var b bytes.Buffer
+	if err := medal.MonthlyCoin(p).Render(context.Background(), &b); err != nil {
+		t.Fatal(err)
+	}
+	out := b.String()
+	for _, want := range []string{">OCT</text>", ">18</text>", `role="img"`, `aria-label="October: 18 days"`, `class="scallop"`, `text-anchor="middle"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in %s", want, out)
+		}
+	}
+	if strings.Contains(out, "opacity") || strings.Contains(out, "stroke-linecap") {
+		t.Errorf("unlocked monthly coin must have no locked style or glyph: %s", out)
+	}
+	p.Locked = true
+	b.Reset()
+	_ = medal.MonthlyCoin(p).Render(context.Background(), &b)
+	if !strings.Contains(b.String(), "grayscale(1);opacity:0.4") {
+		t.Errorf("locked monthly coin needs the locked style: %s", b.String())
+	}
+}
+
+func TestMonthlyCoinGeometryFromJSON(t *testing.T) {
+	s := medals.Load()
+	p := medal.MonthlyProps{Month: "NOV", Target: 5, Size: 96}
+	s.Monthly.Fill = "#123456"
+	s.Monthly.Text.Color = "#ABCDEF"
+	s.Monthly.Text.MonthSize = 11
+	s.Monthly.Text.MonthY = 33
+	s.Monthly.Text.NumberSize = 29
+	s.Monthly.Text.NumberY = 66
+	s.Monthly.Text.FontWeight = 600
+	out := renderMonthly(t, s, p)
+	for _, want := range []string{`fill="#123456"`, `fill="#ABCDEF"`, `font-size="11"`, `y="33"`, `font-size="29"`, `y="66"`, `font-weight="600"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("json value %s not in output: %s", want, out)
+		}
+	}
+}
+
+func TestMonthlyTextContrast(t *testing.T) {
+	m := medals.Load().Monthly
+	ratio := (lum(m.Text.Color) + 0.05) / (lum(m.Fill) + 0.05)
+	if ratio < 4.5 {
+		t.Errorf("%s on %s is %.2f:1, want >= 4.5", m.Text.Color, m.Fill, ratio)
+	}
+}
+
+// Text must sit inside the face: the widest line at its baseline row has to fit
+// the chord of the face circle there, for one, two and three digit targets.
+func TestMonthlyTextFitsTheFace(t *testing.T) {
+	s := medals.Load()
+	const digitWidth = 0.65 // em, wider than any digit in the system fonts
+	mid := s.Coin.ViewBox / 2
+	chord := func(y float64) float64 {
+		d := y - mid
+		return 2 * math.Sqrt(s.Coin.FaceRadius*s.Coin.FaceRadius-d*d)
+	}
+	for _, target := range []int{5, 27, 100, 365} {
+		out := renderMonthly(t, s, medal.MonthlyProps{Month: "DEC", Target: target, Size: 96})
+		size := s.Monthly.Text.NumberSize
+		if target >= 100 {
+			size *= s.Monthly.Text.NumberWideScale
+		}
+		if !strings.Contains(out, `font-size="`+strconv.FormatFloat(size, 'f', -1, 64)+`"`) {
+			t.Errorf("target %d: expected number font-size %v in %s", target, size, out)
+		}
+		width := float64(len(strconv.Itoa(target))) * digitWidth * size
+		if limit := chord(s.Monthly.Text.NumberY); width > limit {
+			t.Errorf("target %d: text %.1f wide, chord at baseline %.1f", target, width, limit)
+		}
+	}
+	mw := 3 * 0.75 * s.Monthly.Text.MonthSize
+	if limit := chord(s.Monthly.Text.MonthY - s.Monthly.Text.MonthSize*0.7); mw > limit {
+		t.Errorf("month text %.1f wide, chord %.1f", mw, limit)
+	}
+}

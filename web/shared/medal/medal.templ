@@ -18,6 +18,40 @@ type Props struct {
 	Locked  bool
 	Monthly bool
 	Label   string
+	// Month and Target make a monthly coin carry text instead of a glyph. Month
+	// arrives short, upper-case and already localised.
+	Month  string
+	Target int
+}
+
+// MonthlyProps describes the monthly challenge coin.
+type MonthlyProps struct {
+	Month  string
+	Target int
+	Size   int
+	Locked bool
+	Label  string
+}
+
+const fontStack = "ui-rounded,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif"
+
+// hasText reports whether the coin shows month and target rather than a glyph.
+func hasText(p Props) bool { return p.Monthly && p.Month != "" }
+
+func faceFill(s medals.Set, p Props) string {
+	if hasText(p) {
+		return s.Monthly.Fill
+	}
+	return s.Areas[string(p.Area)].Fill
+}
+
+// numberSize shrinks three-digit targets so they stay inside the face.
+func numberSize(s medals.Set, p Props) float64 {
+	size := s.Monthly.Text.NumberSize
+	if p.Target >= 100 {
+		size *= s.Monthly.Text.NumberWideScale
+	}
+	return size
 }
 
 var set = medals.Load()
@@ -68,6 +102,17 @@ templ Coin(p Props) {
 	@CoinWith(set, p)
 }
 
+// MonthlyCoin is the monthly challenge coin: gold scalloped rim, deep face,
+// the month above centre and the target number centred.
+templ MonthlyCoin(p MonthlyProps) {
+	@CoinWith(set, Props{Monthly: true, Month: p.Month, Target: p.Target, Size: p.Size, Locked: p.Locked, Label: p.Label})
+}
+
+// CoinWithMonthly renders the monthly coin from an explicit Set.
+templ CoinWithMonthly(s medals.Set, p MonthlyProps) {
+	@CoinWith(s, Props{Monthly: true, Month: p.Month, Target: p.Target, Size: p.Size, Locked: p.Locked, Label: p.Label})
+}
+
 // CoinWith renders from an explicit Set, so a test can prove the output
 // follows the json.
 templ CoinWith(s medals.Set, p Props) {
@@ -89,7 +134,7 @@ templ CoinWith(s medals.Set, p Props) {
 			<linearGradient id={ gid } x1="0" y1="0" x2="1" y2="1">
 				<stop offset="0" stop-color="#ffffff"></stop>
 				<stop offset=".35" stop-color={ rimColour(s, p) }></stop>
-				<stop offset=".7" stop-color={ s.Areas[string(p.Area)].Fill }></stop>
+				<stop offset=".7" stop-color={ faceFill(s, p) }></stop>
 				<stop offset="1" stop-color={ rimColour(s, p) }></stop>
 			</linearGradient>
 		</defs>
@@ -98,8 +143,19 @@ templ CoinWith(s medals.Set, p Props) {
 		} else {
 			<circle cx={ mid } cy={ mid } r={ num(s.Coin.RimRadius) } fill={ "url(#" + gid + ")" }></circle>
 		}
-		<circle cx={ mid } cy={ mid } r={ num(s.Coin.FaceRadius) } fill={ s.Areas[string(p.Area)].Fill }></circle>
+		<circle cx={ mid } cy={ mid } r={ num(s.Coin.FaceRadius) } fill={ faceFill(s, p) }></circle>
 		<circle cx={ mid } cy={ mid } r={ num(s.Coin.FaceRadius) } fill="none" stroke={ s.Coin.FaceEdge.Color } stroke-width={ num(s.Coin.FaceEdge.Width) }></circle>
+		if hasText(p) {
+			<g
+				fill={ s.Monthly.Text.Color }
+				font-family={ fontStack }
+				font-weight={ fmt.Sprint(s.Monthly.Text.FontWeight) }
+				text-anchor="middle"
+			>
+				<text class="month" x={ mid } y={ num(s.Monthly.Text.MonthY) } font-size={ num(s.Monthly.Text.MonthSize) }>{ p.Month }</text>
+				<text class="target" x={ mid } y={ num(s.Monthly.Text.NumberY) } font-size={ num(numberSize(s, p)) }>{ fmt.Sprint(p.Target) }</text>
+			</g>
+		} else {
 		<g
 			transform={ fmt.Sprintf("translate(%s %s) scale(%s)", num(s.Coin.Glyph.Translate), num(s.Coin.Glyph.Translate), num(s.Coin.Glyph.Scale)) }
 			fill="none"
@@ -112,5 +168,6 @@ templ CoinWith(s medals.Set, p Props) {
 				<path d={ d }></path>
 			}
 		</g>
+		}
 	</svg>
 }
