@@ -42,6 +42,9 @@ type Data struct {
 	// Awards are the newest badges to show, newest first; empty when none are
 	// shared or held.
 	Awards []award.View
+	// Monthly is this month's challenge, only when the person shares awards
+	// (or it is the owner); nil otherwise.
+	Monthly *award.MonthlyChallengeView
 }
 
 func initials(name string) string {
@@ -68,6 +71,9 @@ templ ProfilePage(d Data) {
 	@layout.App("@"+d.Handle, d.User, layout.BuildNav(ctx, "/app/friends")) {
 		<div class="mx-auto w-full max-w-3xl space-y-6 p-6 md:p-8">
 			@header(d)
+			if d.Monthly != nil {
+				@awardpages.MonthlyCard(*d.Monthly)
+			}
 			@awardpages.Strip(d.Handle, d.Awards)
 			@card.Card(card.Props{Class: "border-hairline bg-surface"}) {
 				@card.Header() {

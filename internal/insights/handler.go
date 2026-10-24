@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/a-h/templ"
 	"github.com/go-chi/chi/v5"
@@ -23,6 +24,7 @@ import (
 // Badges reads the badges a person holds. awards.Service satisfies it.
 type Badges interface {
 	Earned(ctx context.Context, userID uuid.UUID) ([]awards.Earned, error)
+	Monthly(ctx context.Context, userID uuid.UUID, now time.Time) (awards.MonthlyChallenge, error)
 }
 
 type Handler struct {
@@ -50,7 +52,15 @@ func (h *Handler) awardsCard(r *http.Request) templ.Component {
 		at := held[i].At
 		recent = append(recent, held[i].Badge.Project(ctx, &at, nil, ""))
 	}
-	return awardpages.SummaryCard(len(held), len(award.Catalog()), recent)
+	// The challenge line is a bonus: if it cannot be read, the card still shows.
+	var monthly *award.MonthlyChallengeView
+	if c, err := h.badges.Monthly(ctx, auth.MustUser(ctx).ID, time.Now()); err != nil {
+		middleware.FromContext(ctx).Warn("insights: monthly challenge skipped", slog.Any("error", err))
+	} else {
+		v := awards.ProjectMonthlyChallenge(ctx, c)
+		monthly = &v
+	}
+	return awardpages.SummaryCard(len(held), len(award.Catalog()), recent, monthly)
 }
 
 func NewHandler(svc *Service) *Handler {
