@@ -22,3 +22,7 @@ const Tagline = "An AI operating system for personal growth."
 
 // XProfileURL is the founder's X profile, linked from the marketing navbar.
 const XProfileURL = "https://x.com/fatc88"
+
+// DiscordURL is the invite to Khepri's channel on the community Discord,
+// linked from the marketing footer and the settings about card.
+const DiscordURL = "https://discord.gg/FHHhFUk9e"

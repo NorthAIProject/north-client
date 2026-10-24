@@ -151,6 +151,7 @@ var spanishLanding = map[string]string{
 	"land.footer.privacy": "Privacidad",
 	"land.footer.terms":   "Términos",
 	"land.footer.source":  "Código",
+	"land.footer.discord": "Únete a nosotros en Discord",
 
 	"land.waypoint.week3":  "Semana 3",
 	"land.waypoint.week12": "Semana 12",
