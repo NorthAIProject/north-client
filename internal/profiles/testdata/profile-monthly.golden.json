@@ -16,6 +16,14 @@
   },
   "awards": [
     {
+      "id": "workouts_1",
+      "area": "training",
+      "name": "First Workout",
+      "description": "Finish your first workout.",
+      "earnedAt": "2026-10-17T18:30:00Z",
+      "target": 1
+    },
+    {
       "id": "monthly-2026-09",
       "area": "monthly",
       "name": "September 2026 challenge",
@@ -27,14 +35,6 @@
         "metric": "habit_days",
         "target": 12
       }
-    },
-    {
-      "id": "workouts_1",
-      "area": "training",
-      "name": "First Workout",
-      "description": "Finish your first workout.",
-      "earnedAt": "2026-10-17T18:30:00Z",
-      "target": 1
     }
   ],
   "monthlyChallenge": {

@@ -99,10 +99,10 @@ func TestMonthlyMedalInAwardsAndUnseen(t *testing.T) {
 	e.meetMonth(e.user, "2026-10", "workouts", 5, october.Add(-time.Hour))
 
 	v := e.awardsList()
-	if len(v.Earned) != 2 || v.Earned[0].ID != "monthly-2026-10" || v.Earned[1].ID != "workouts_1" {
-		t.Fatalf("earned = %+v, want the monthly medal first (newest), then the badge", v.Earned)
+	if len(v.Earned) != 2 || v.Earned[0].ID != "workouts_1" || v.Earned[1].ID != "monthly-2026-10" {
+		t.Fatalf("earned = %+v, want the older badge first, then the monthly medal (oldest first)", v.Earned)
 	}
-	m := v.Earned[0]
+	m := v.Earned[1]
 	if m.Area != "monthly" || m.Monthly == nil || m.Monthly.Month != "2026-10" || m.Monthly.Metric != "workouts" || m.Monthly.Target != 5 ||
 		m.EarnedAt == "" || m.Name != "October 2026 challenge" || m.Description != "Logged 5 workouts in October" {
 		t.Fatalf("medal = %+v", m)

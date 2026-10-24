@@ -32,7 +32,7 @@ type AwardsView struct {
 	Earned []award.View `json:"earned"`
 	Locked []award.View `json:"locked"`
 	// MonthlyChallenge is the current local month's challenge. Earned also
-	// carries the monthly medals, with the badges, newest first. A past
+	// carries the monthly medals, with the badges, oldest first. A past
 	// month's unmet challenge is never sent.
 	MonthlyChallenge *award.MonthlyChallengeView `json:"monthlyChallenge,omitempty"`
 }

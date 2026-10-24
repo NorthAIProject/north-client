@@ -8356,7 +8356,7 @@ components:
             $ref: '#/components/schemas/AwardView'
         monthlyChallenge:
           $ref: '#/components/schemas/MonthlyChallengeView'
-          description: This local month's challenge, created on first view. `earned` also lists monthly medals, with the badges, newest first; counts such as "N of 31" stay badges only.
+          description: This local month's challenge, created on first view. `earned` also lists monthly medals, with the badges, oldest first; counts such as "N of 31" stay badges only.
     UnseenAwards:
       type: object
       required: [awards]
@@ -8675,7 +8675,7 @@ components:
                   type: boolean
             awards:
               type: array
-              description: Badges held and monthly medals, newest first. For anyone but you, never private ones, and absent when the person keeps awards to themselves.
+              description: Badges held and monthly medals, oldest first. For anyone but you, never private ones, and absent when the person keeps awards to themselves.
               items:
                 $ref: '#/components/schemas/AwardView'
             monthlyChallenge:
