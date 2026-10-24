@@ -79,8 +79,12 @@
    "monthY": 40,
    "numberSize": 34,
    "numberY": 71,
+   "numberWideFrom": 100,
    "numberWideScale": 0.75,
-   "fontWeight": 700
+   "fontWeight": 700,
+   "fontFamily": "rounded",
+   "anchor": "middle",
+   "baseline": true
   }
  },
  "glyphs": {

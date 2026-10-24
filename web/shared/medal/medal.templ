@@ -33,7 +33,24 @@ type MonthlyProps struct {
 	Label  string
 }
 
-const fontStack = "ui-rounded,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif"
+var fontStacks = map[string]string{
+	"rounded": "ui-rounded,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif",
+}
+
+func fontStack(s medals.Set) string {
+	if f, ok := fontStacks[s.Monthly.Text.FontFamily]; ok {
+		return f
+	}
+	return "system-ui,sans-serif"
+}
+
+// baselineAttr is "central" when the json y values are not baselines.
+func baselineAttr(s medals.Set) string {
+	if s.Monthly.Text.Baseline {
+		return "alphabetic"
+	}
+	return "central"
+}
 
 // hasText reports whether the coin shows month and target rather than a glyph.
 func hasText(p Props) bool { return p.Monthly && p.Month != "" }
@@ -48,7 +65,7 @@ func faceFill(s medals.Set, p Props) string {
 // numberSize shrinks three-digit targets so they stay inside the face.
 func numberSize(s medals.Set, p Props) float64 {
 	size := s.Monthly.Text.NumberSize
-	if p.Target >= 100 {
+	if p.Target >= s.Monthly.Text.NumberWideFrom {
 		size *= s.Monthly.Text.NumberWideScale
 	}
 	return size
@@ -148,26 +165,27 @@ templ CoinWith(s medals.Set, p Props) {
 		if hasText(p) {
 			<g
 				fill={ s.Monthly.Text.Color }
-				font-family={ fontStack }
+				font-family={ fontStack(s) }
+				dominant-baseline={ baselineAttr(s) }
 				font-weight={ fmt.Sprint(s.Monthly.Text.FontWeight) }
-				text-anchor="middle"
+				text-anchor={ s.Monthly.Text.Anchor }
 			>
 				<text class="month" x={ mid } y={ num(s.Monthly.Text.MonthY) } font-size={ num(s.Monthly.Text.MonthSize) }>{ p.Month }</text>
 				<text class="target" x={ mid } y={ num(s.Monthly.Text.NumberY) } font-size={ num(numberSize(s, p)) }>{ fmt.Sprint(p.Target) }</text>
 			</g>
 		} else {
-		<g
-			transform={ fmt.Sprintf("translate(%s %s) scale(%s)", num(s.Coin.Glyph.Translate), num(s.Coin.Glyph.Translate), num(s.Coin.Glyph.Scale)) }
-			fill="none"
-			stroke="#fff"
-			stroke-width={ num(s.Stroke) }
-			stroke-linecap="round"
-			stroke-linejoin="round"
-		>
-			for _, d := range s.Glyphs[p.BadgeID] {
-				<path d={ d }></path>
-			}
-		</g>
+			<g
+				transform={ fmt.Sprintf("translate(%s %s) scale(%s)", num(s.Coin.Glyph.Translate), num(s.Coin.Glyph.Translate), num(s.Coin.Glyph.Scale)) }
+				fill="none"
+				stroke="#fff"
+				stroke-width={ num(s.Stroke) }
+				stroke-linecap="round"
+				stroke-linejoin="round"
+			>
+				for _, d := range s.Glyphs[p.BadgeID] {
+					<path d={ d }></path>
+				}
+			</g>
 		}
 	</svg>
 }

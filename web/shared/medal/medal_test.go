@@ -184,7 +184,7 @@ func TestMonthlyTextFitsTheFace(t *testing.T) {
 	for _, target := range []int{5, 27, 100, 365} {
 		out := renderMonthly(t, s, medal.MonthlyProps{Month: "DEC", Target: target, Size: 96})
 		size := s.Monthly.Text.NumberSize
-		if target >= 100 {
+		if target >= s.Monthly.Text.NumberWideFrom {
 			size *= s.Monthly.Text.NumberWideScale
 		}
 		if !strings.Contains(out, `font-size="`+strconv.FormatFloat(size, 'f', -1, 64)+`"`) {
@@ -198,5 +198,44 @@ func TestMonthlyTextFitsTheFace(t *testing.T) {
 	mw := 3 * 0.75 * s.Monthly.Text.MonthSize
 	if limit := chord(s.Monthly.Text.MonthY - s.Monthly.Text.MonthSize*0.7); mw > limit {
 		t.Errorf("month text %.1f wide, chord %.1f", mw, limit)
+	}
+}
+
+func TestMonthlyWideNumberFollowsJSON(t *testing.T) {
+	s := medals.Load()
+	wide := func() string {
+		return renderMonthly(t, s, medal.MonthlyProps{Month: "OCT", Target: 100, Size: 96})
+	}
+	s.Monthly.Text.NumberWideScale = 0.5
+	if out := wide(); !strings.Contains(out, `font-size="17"`) {
+		t.Errorf("scale 0.5 of 34 should give 17: %s", out)
+	}
+	s.Monthly.Text.NumberWideFrom = 101
+	if out := wide(); !strings.Contains(out, `font-size="34"`) {
+		t.Errorf("100 below the threshold 101 must use the full size: %s", out)
+	}
+	s.Monthly.Text.NumberWideFrom = 10
+	out := renderMonthly(t, s, medal.MonthlyProps{Month: "OCT", Target: 18, Size: 96})
+	if !strings.Contains(out, `font-size="17"`) {
+		t.Errorf("18 at threshold 10 must be scaled: %s", out)
+	}
+}
+
+func TestMonthlyTextIntentFollowsJSON(t *testing.T) {
+	s := medals.Load()
+	s.Monthly.Text.Anchor = "start"
+	s.Monthly.Text.Baseline = false
+	s.Monthly.Text.FontFamily = "unknown"
+	out := renderMonthly(t, s, medal.MonthlyProps{Month: "OCT", Target: 18, Size: 96})
+	for _, want := range []string{`text-anchor="start"`, `dominant-baseline="central"`, `font-family="system-ui,sans-serif"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %s in %s", want, out)
+		}
+	}
+	d := renderMonthly(t, medals.Load(), medal.MonthlyProps{Month: "OCT", Target: 18, Size: 96})
+	for _, want := range []string{`text-anchor="middle"`, `dominant-baseline="alphabetic"`, "ui-rounded"} {
+		if !strings.Contains(d, want) {
+			t.Errorf("default missing %s in %s", want, d)
+		}
 	}
 }
